@@ -1,0 +1,33 @@
+[package]
+name = "spectra_derivation"
+version = "0.1.0"
+edition = "2021"
+publish = false
+
+[lib]
+name = "spectra_derivation"
+crate-type = ["staticlib"]
+
+[dependencies]
+bip39 = "2"
+bitcoin = "0.32"
+bs58 = "0.5"
+bech32 = "0.11"
+curve25519-dalek = { version = "4", default-features = false, features = ["alloc", "precomputed-tables", "zeroize"] }
+ed25519-dalek = { version = "2", default-features = false, features = ["alloc", "digest", "fast", "pkcs8", "rand_core", "zeroize"] }
+hex = "0.4"
+hmac = "0.12"
+pbkdf2 = "0.12"
+secp256k1 = { version = "0.29", features = ["alloc", "global-context", "hashes", "recovery"] }
+secrecy = "0.8"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+sha2 = "0.10"
+slip10 = "0.4"
+tiny-keccak = { version = "2", features = ["keccak"] }
+zeroize = { version = "1", features = ["alloc", "derive"] }
+
+[profile.release]
+lto = true
+codegen-units = 1
+strip = "symbols"
