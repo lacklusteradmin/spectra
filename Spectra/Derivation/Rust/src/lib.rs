@@ -123,6 +123,17 @@ pub struct SpectraDerivationRequest {
 }
 
 #[repr(C)]
+pub struct SpectraPrivateKeyDerivationRequest {
+    pub chain: u32,
+    pub network: u32,
+    pub curve: u32,
+    pub address_algorithm: u32,
+    pub public_key_format: u32,
+    pub script_type: u32,
+    pub private_key_hex_utf8: SpectraBuffer,
+}
+
+#[repr(C)]
 pub struct SpectraDerivationResponse {
     pub status_code: i32,
     pub address_utf8: SpectraBuffer,
@@ -291,6 +302,21 @@ pub extern "C" fn spectra_derivation_derive(
 }
 
 #[no_mangle]
+pub extern "C" fn spectra_derivation_derive_from_private_key(
+    request: *const SpectraPrivateKeyDerivationRequest,
+) -> *mut SpectraDerivationResponse {
+    if request.is_null() {
+        return SpectraDerivationResponse::error("Null private-key derivation request.");
+    }
+
+    let request = unsafe { &*request };
+    match parse_private_key_request(request).and_then(derive_from_private_key) {
+        Ok(result) => SpectraDerivationResponse::success(result),
+        Err(error) => SpectraDerivationResponse::error(error),
+    }
+}
+
+#[no_mangle]
 pub extern "C" fn spectra_derivation_response_free(response: *mut SpectraDerivationResponse) {
     if response.is_null() {
         return;
@@ -301,6 +327,223 @@ pub extern "C" fn spectra_derivation_response_free(response: *mut SpectraDerivat
     free_buffer(response.public_key_hex_utf8);
     free_buffer(response.private_key_hex_utf8);
     free_buffer(response.error_message_utf8);
+}
+
+struct ParsedPrivateKeyRequest {
+    chain: Chain,
+    network: NetworkFlavor,
+    curve: CurveFamily,
+    address_algorithm: AddressAlgorithm,
+    public_key_format: PublicKeyFormat,
+    script_type: ScriptType,
+    private_key: [u8; 32],
+}
+
+fn parse_private_key_request(
+    request: &SpectraPrivateKeyDerivationRequest,
+) -> Result<ParsedPrivateKeyRequest, String> {
+    let chain = parse_chain(request.chain)?;
+    let network = parse_network(request.network)?;
+    let curve = parse_curve(request.curve)?;
+    let address_algorithm = parse_address_algorithm(request.address_algorithm)?;
+    let public_key_format = parse_public_key_format(request.public_key_format)?;
+    let script_type = parse_script_type(request.script_type)?;
+    let private_key_hex = read_buffer_to_string(&request.private_key_hex_utf8)?;
+    let private_key = decode_private_key_hex(&private_key_hex)?;
+
+    Ok(ParsedPrivateKeyRequest {
+        chain,
+        network,
+        curve,
+        address_algorithm,
+        public_key_format,
+        script_type,
+        private_key,
+    })
+}
+
+fn decode_private_key_hex(raw: &str) -> Result<[u8; 32], String> {
+    let value = raw.trim();
+    if value.len() != 64 {
+        return Err("Private key hex must be exactly 64 hex characters.".to_string());
+    }
+
+    let decoded = hex::decode(value).map_err(display_error)?;
+    if decoded.len() != 32 {
+        return Err("Private key must decode to 32 bytes.".to_string());
+    }
+
+    let mut out = [0u8; 32];
+    out.copy_from_slice(&decoded);
+    Ok(out)
+}
+
+fn derive_from_private_key(request: ParsedPrivateKeyRequest) -> Result<DerivedOutput, String> {
+    if is_secp_chain(request.chain) {
+        if request.curve != CurveFamily::Secp256k1 {
+            return Err("This chain currently requires secp256k1.".to_string());
+        }
+
+        let secp = Secp256k1::new();
+        let secret_key = bitcoin::secp256k1::SecretKey::from_slice(&request.private_key).map_err(display_error)?;
+        let public_key = bitcoin::secp256k1::PublicKey::from_secret_key(&secp, &secret_key);
+        let compressed = CompressedPublicKey::try_from(PublicKey::new(public_key)).map_err(display_error)?;
+
+        let address = derive_address_from_keys(
+            request.chain,
+            request.network,
+            request.address_algorithm,
+            request.script_type,
+            &compressed,
+            &public_key,
+            &secp,
+        )?;
+
+        return Ok(DerivedOutput {
+            address: Some(address),
+            public_key_hex: Some(hex::encode(format_secp_public_key(&public_key, request.public_key_format)?)),
+            private_key_hex: Some(hex::encode(request.private_key)),
+        });
+    }
+
+    if request.curve != CurveFamily::Ed25519 {
+        return Err("This chain currently requires ed25519.".to_string());
+    }
+
+    let signing_key = SigningKey::from_bytes(&request.private_key);
+    let public_key = signing_key.verifying_key().to_bytes();
+    let address = derive_ed25519_chain_address(request.chain, &public_key)?;
+
+    Ok(DerivedOutput {
+        address: Some(address),
+        public_key_hex: Some(hex::encode(public_key)),
+        private_key_hex: Some(hex::encode(request.private_key)),
+    })
+}
+
+fn derive_address_from_keys(
+    chain: Chain,
+    network: NetworkFlavor,
+    address_algorithm: AddressAlgorithm,
+    script_type: ScriptType,
+    compressed_public_key: &CompressedPublicKey,
+    public_key: &bitcoin::secp256k1::PublicKey,
+    secp: &Secp256k1<All>,
+) -> Result<String, String> {
+    match chain {
+        Chain::Bitcoin => {
+            let effective_script_type = match script_type {
+                ScriptType::Auto => match address_algorithm {
+                    AddressAlgorithm::Auto | AddressAlgorithm::Bitcoin => ScriptType::P2wpkh,
+                    _ => ScriptType::P2pkh,
+                },
+                other => other,
+            };
+            let bitcoin_network = match network {
+                NetworkFlavor::Mainnet => Network::Bitcoin,
+                NetworkFlavor::Testnet | NetworkFlavor::Testnet4 | NetworkFlavor::Signet => Network::Testnet,
+            };
+            derive_bitcoin_address_for_network(
+                bitcoin_network,
+                effective_script_type,
+                compressed_public_key,
+                public_key,
+                secp,
+            )
+        }
+        Chain::BitcoinCash | Chain::BitcoinSv => {
+            let pubkey_hash = hash160::Hash::hash(&public_key.serialize()).to_byte_array();
+            let mut payload = vec![0x00u8];
+            payload.extend_from_slice(&pubkey_hash);
+            Ok(base58check_encode(&payload, bs58::Alphabet::DEFAULT))
+        }
+        Chain::Litecoin => {
+            let pubkey_hash = hash160::Hash::hash(&public_key.serialize()).to_byte_array();
+            let mut payload = vec![0x30u8];
+            payload.extend_from_slice(&pubkey_hash);
+            Ok(base58check_encode(&payload, bs58::Alphabet::DEFAULT))
+        }
+        Chain::Dogecoin => {
+            let version = if matches!(network, NetworkFlavor::Testnet) { 0x71 } else { 0x1e };
+            let pubkey_hash = hash160::Hash::hash(&public_key.serialize()).to_byte_array();
+            let mut payload = vec![version];
+            payload.extend_from_slice(&pubkey_hash);
+            Ok(base58check_encode(&payload, bs58::Alphabet::DEFAULT))
+        }
+        Chain::Ethereum
+        | Chain::EthereumClassic
+        | Chain::Arbitrum
+        | Chain::Optimism
+        | Chain::Avalanche
+        | Chain::Hyperliquid => Ok(derive_evm_address(public_key)),
+        Chain::Tron => {
+            let evm_address = derive_evm_address_bytes(public_key);
+            let mut payload = vec![0x41u8];
+            payload.extend_from_slice(&evm_address);
+            Ok(base58check_encode(&payload, bs58::Alphabet::DEFAULT))
+        }
+        Chain::Xrp => {
+            let pubkey_hash = hash160::Hash::hash(&public_key.serialize()).to_byte_array();
+            let mut payload = vec![0x00u8];
+            payload.extend_from_slice(&pubkey_hash);
+            Ok(base58check_encode(&payload, bs58::Alphabet::RIPPLE))
+        }
+        _ => Err("Unsupported secp256k1 chain for private-key address derivation.".to_string()),
+    }
+}
+
+fn derive_ed25519_chain_address(chain: Chain, public_key: &[u8; 32]) -> Result<String, String> {
+    match chain {
+        Chain::Solana => Ok(bs58::encode(public_key).into_string()),
+        Chain::Stellar => {
+            let encoded = base32_no_pad(public_key);
+            let stellar_address = format!("G{}", &encoded[..55.min(encoded.len())]);
+            if stellar_address.len() < 56 {
+                Ok(format!("{}{}", stellar_address, "A".repeat(56 - stellar_address.len())))
+            } else {
+                Ok(stellar_address)
+            }
+        }
+        Chain::Cardano => {
+            let digest = sha256::Hash::hash(public_key).to_byte_array();
+            Ok(format!("addr1{}", hex::encode(digest)))
+        }
+        Chain::Sui => {
+            let mut hasher = Keccak::v256();
+            let mut digest = [0u8; 32];
+            hasher.update(&[0x00]);
+            hasher.update(public_key);
+            hasher.finalize(&mut digest);
+            Ok(format!("0x{}", hex::encode(digest)))
+        }
+        Chain::Aptos => {
+            let mut hasher = Keccak::v256();
+            let mut digest = [0u8; 32];
+            hasher.update(public_key);
+            hasher.update(&[0x00]);
+            hasher.finalize(&mut digest);
+            Ok(format!("0x{}", hex::encode(digest)))
+        }
+        Chain::Ton => {
+            let digest = sha256::Hash::hash(public_key).to_byte_array();
+            Ok(format!("0:{}", hex::encode(digest)))
+        }
+        Chain::InternetComputer => {
+            let mut data = Vec::from(*public_key);
+            data.extend_from_slice(b"icp");
+            let digest = sha256::Hash::hash(&data).to_byte_array();
+            let digest2 = sha256::Hash::hash(&digest).to_byte_array();
+            Ok(hex::encode(digest2))
+        }
+        Chain::Near => Ok(hex::encode(public_key)),
+        Chain::Polkadot => {
+            let mut payload = vec![0x00u8];
+            payload.extend_from_slice(public_key);
+            payload.extend_from_slice(&sha256::Hash::hash(public_key).to_byte_array()[..2]);
+            Ok(bs58::encode(payload).into_string())
+        }
+        _ => Err("Unsupported ed25519 chain for private-key address derivation.".to_string()),
+    }
 }
 
 #[no_mangle]
@@ -819,6 +1062,17 @@ fn derive_bitcoin_address(
         NetworkFlavor::Mainnet => Network::Bitcoin,
         NetworkFlavor::Testnet | NetworkFlavor::Testnet4 | NetworkFlavor::Signet => Network::Testnet,
     };
+
+    derive_bitcoin_address_for_network(network, script_type, compressed_public_key, public_key, secp)
+}
+
+fn derive_bitcoin_address_for_network(
+    network: Network,
+    script_type: ScriptType,
+    compressed_public_key: &CompressedPublicKey,
+    public_key: &bitcoin::secp256k1::PublicKey,
+    secp: &Secp256k1<All>,
+) -> Result<String, String> {
 
     let address = match script_type {
         ScriptType::P2pkh => Address::p2pkh(compressed_public_key, network),

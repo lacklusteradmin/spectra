@@ -83,6 +83,16 @@ typedef struct SpectraDerivationRequest {
     uint32_t iteration_count;
 } SpectraDerivationRequest;
 
+typedef struct SpectraPrivateKeyDerivationRequest {
+    uint32_t chain;
+    uint32_t network;
+    uint32_t curve;
+    uint32_t address_algorithm;
+    uint32_t public_key_format;
+    uint32_t script_type;
+    SpectraBuffer private_key_hex_utf8;
+} SpectraPrivateKeyDerivationRequest;
+
 typedef struct SpectraDerivationResponse {
     int32_t status_code;
     SpectraBuffer address_utf8;
@@ -92,6 +102,7 @@ typedef struct SpectraDerivationResponse {
 } SpectraDerivationResponse;
 
 SpectraDerivationResponse *spectra_derivation_derive(const SpectraDerivationRequest *request);
+SpectraDerivationResponse *spectra_derivation_derive_from_private_key(const SpectraPrivateKeyDerivationRequest *request);
 void spectra_derivation_response_free(SpectraDerivationResponse *response);
 void spectra_derivation_buffer_free(SpectraBuffer buffer);
 
