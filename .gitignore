@@ -1,0 +1,43 @@
+# macOS
+.DS_Store
+
+# Xcode / Swift
+DerivedData/
+build/
+*.xcuserstate
+*.xcscmblueprint
+*.moved-aside
+*.pbxuser
+*.mode1v3
+*.mode2v3
+*.perspectivev3
+
+# Xcode user data
+xcuserdata/
+*.xcworkspace/xcuserdata/
+*.xcodeproj/xcuserdata/
+*.xcodeproj/project.xcworkspace/xcuserdata/
+
+# Swift Package Manager
+.build/
+Packages/
+Package.resolved
+
+# Rust
+**/target/
+.rust-build/
+**/*.rs.bk
+
+# Test / diagnostics
+*.log
+*.tmp
+*.swp
+*.swo
+*.orig
+
+# Local secrets / environment files
+.env
+.env.*
+*.pem
+*.key
+*.p12

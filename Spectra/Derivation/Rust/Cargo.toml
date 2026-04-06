@@ -25,6 +25,7 @@ serde_json = "1"
 sha2 = "0.10"
 slip10 = "0.4"
 tiny-keccak = { version = "2", features = ["keccak"] }
+unicode-normalization = "0.1"
 zeroize = { version = "1", features = ["alloc", "derive"] }
 
 [profile.release]

@@ -594,6 +594,7 @@ dependencies = [
  "sha2 0.10.9",
  "slip10",
  "tiny-keccak",
+ "unicode-normalization",
  "zeroize",
 ]
 

@@ -1,75 +1,42 @@
-# Rust Derivation Foundation
+# Rust Derivation Core
 
-This crate is the migration target for the `Derivation/` core.
+This crate is the runtime derivation core behind `Derivation/`.
 
-## Current state
+## Current State
 
-- The Swift derivation engine is still the active implementation.
-- The Rust crate has an early Bitcoin-only implementation draft.
-- The exported C ABI is intentionally small and binary-based.
-- Swift now includes a live Rust FFI bridge for Bitcoin derivation calls.
+- Swift derivation entry points call into Rust through FFI.
+- Rust supports the full current `SeedDerivationChain` set in the bridge.
+- The boundary is raw C ABI (not JSON).
+- The Rust library is built and linked during Xcode builds.
 
-## Why this exists
+## Boundary
 
-The migration goal is:
+- Header: `include/spectra_derivation.h`
+- Symbols:
+  - `spectra_derivation_derive`
+  - `spectra_derivation_response_free`
+  - `spectra_derivation_buffer_free`
 
-- keep Swift as the app-facing layer
-- move seed derivation and key derivation internals into Rust
-- avoid JSON across the runtime FFI boundary
-- keep all secret-bearing runtime inputs in binary form
+## Safety Model
 
-## Planned ownership split
+- Secret fields are passed as UTF-8 byte buffers over FFI.
+- Swift zeroizes temporary UTF-8 seed/passphrase/hmac buffers after call.
+- Rust zeroizes sensitive owned strings on drop and zeroizes derived seed bytes.
+- Rust allocates response buffers and Swift must free with `spectra_derivation_response_free`.
 
-Swift keeps:
+## Ownership Split
 
-- presets
-- user-facing validation
-- app-facing request assembly
-- migration fallback to the current WalletCore-backed path
+- Swift owns:
+  - presets/catalog selection
+  - app-facing request assembly
+  - UI-facing validation/normalization behavior
+- Rust owns:
+  - mnemonic normalization/parsing
+  - seed derivation
+  - key derivation
+  - address/public/private output derivation
 
-Rust will own:
+## Important Rule
 
-- mnemonic normalization
-- mnemonic -> seed
-- seed -> master key
-- derivation path walking
-- private/public key derivation
-- address derivation
-
-## Expected migration order
-
-1. Make the ABI stable.
-2. Make Bitcoin compile and behave correctly in Rust.
-3. Implement Ethereum in Rust.
-4. Implement Solana in Rust.
-5. Switch Swift to call Rust behind the existing engine surface.
-6. Remove WalletCore-backed internals only after parity is proven.
-
-## Current Rust scope
-
-- Bitcoin
-
-## Deferred after Bitcoin compiles cleanly
-
-- Ethereum-family
-- Solana
-
-## Important note
-
-The FFI ids are now frozen in `include/spectra_derivation.h`.
-Do not change those values casually once Swift starts calling the Rust core.
-
-## Bridge Notes
-
-- This integration is currently C-ABI based, not UniFFI-generated bindings.
-- Swift calls Rust symbols directly (`spectra_derivation_derive` and `spectra_derivation_response_free`).
-- There is no Swift fallback derivation path in `WalletDerivationEngine`.
-- The Rust library must be linked for app builds to succeed.
-
-## Seed Safety Notes
-
-- Secret-bearing request fields are passed as UTF-8 byte buffers over FFI, not JSON.
-- Swift zeroizes temporary UTF-8 seed/passphrase/hmac buffers immediately after the Rust call returns.
-- Rust allocates response buffers and Swift always calls `spectra_derivation_response_free` to prevent leaks.
-- Rust normalizes mnemonic whitespace and enforces BIP-39 parsing before derivation.
-- Rust zeroizes in-memory seed/passphrase/hmac/path strings (via `Drop`) and explicit BIP-39 seed bytes after derivation.
+FFI numeric IDs in `spectra_derivation.h` are treated as stable contract values.
+Do not change them casually.
