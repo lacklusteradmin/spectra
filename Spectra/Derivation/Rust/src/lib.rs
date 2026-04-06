@@ -6,6 +6,7 @@ use bitcoin::{Address, Network};
 use std::fmt::Display;
 use std::ptr;
 use std::slice;
+use zeroize::Zeroize;
 
 const STATUS_OK: i32 = 0;
 const STATUS_ERROR: i32 = 1;
@@ -155,6 +156,22 @@ struct ParsedRequest {
     hmac_key: Option<String>,
     mnemonic_wordlist: Option<String>,
     iteration_count: u32,
+}
+
+impl Drop for ParsedRequest {
+    fn drop(&mut self) {
+        self.seed_phrase.zeroize();
+        self.passphrase.zeroize();
+        if let Some(hmac_key) = &mut self.hmac_key {
+            hmac_key.zeroize();
+        }
+        if let Some(wordlist) = &mut self.mnemonic_wordlist {
+            wordlist.zeroize();
+        }
+        if let Some(path) = &mut self.derivation_path {
+            path.zeroize();
+        }
+    }
 }
 
 #[derive(Clone, Copy)]
@@ -381,7 +398,9 @@ fn validate_request(request: &ParsedRequest) -> Result<(), String> {
 
     if let Some(wordlist) = &request.mnemonic_wordlist {
         if !wordlist.eq_ignore_ascii_case("english") {
-            return Err("Only the English mnemonic wordlist is supported in Rust right now.".to_string());
+            return Err(
+                "Only the English mnemonic wordlist is supported in Rust right now.".to_string(),
+            );
         }
     }
 
@@ -393,7 +412,10 @@ fn validate_request(request: &ParsedRequest) -> Result<(), String> {
             match request.derivation_algorithm {
                 DerivationAlgorithm::Auto | DerivationAlgorithm::Bip32Secp256k1 => {}
                 DerivationAlgorithm::Slip10Ed25519 => {
-                    return Err("Bitcoin does not support the SLIP-0010 ed25519 derivation algorithm.".to_string())
+                    return Err(
+                        "Bitcoin does not support the SLIP-0010 ed25519 derivation algorithm."
+                            .to_string(),
+                    )
                 }
             }
         }
@@ -461,13 +483,16 @@ fn derive_bip32_xpriv(
     passphrase: &str,
     derivation_path: &str,
 ) -> Result<Xpriv, String> {
-    let mnemonic = Mnemonic::parse_in_normalized(Language::English, seed_phrase).map_err(display_error)?;
-    let seed = mnemonic.to_seed_normalized(passphrase);
+    let mnemonic =
+        Mnemonic::parse_in_normalized(Language::English, seed_phrase).map_err(display_error)?;
+    let mut seed = mnemonic.to_seed_normalized(passphrase);
     let network = Network::Bitcoin;
     let master = Xpriv::new_master(network, &seed).map_err(display_error)?;
     let path: DerivationPath = derivation_path.parse().map_err(display_error)?;
     let secp = Secp256k1::<All>::new();
-    Ok(master.derive_priv(&secp, &path).map_err(display_error)?)
+    let derived = master.derive_priv(&secp, &path).map_err(display_error)?;
+    seed.zeroize();
+    Ok(derived)
 }
 
 fn derive_bitcoin_address(
@@ -479,13 +504,19 @@ fn derive_bitcoin_address(
 ) -> Result<String, String> {
     let network = match request.network {
         NetworkFlavor::Mainnet => Network::Bitcoin,
-        NetworkFlavor::Testnet | NetworkFlavor::Testnet4 | NetworkFlavor::Signet => Network::Testnet,
+        NetworkFlavor::Testnet | NetworkFlavor::Testnet4 | NetworkFlavor::Signet => {
+            Network::Testnet
+        }
     };
 
     let address = match script_type {
         ScriptType::P2pkh => Address::p2pkh(compressed_public_key, network),
-        ScriptType::P2shP2wpkh => Address::p2shwpkh(compressed_public_key, network).map_err(display_error)?,
-        ScriptType::P2wpkh => Address::p2wpkh(compressed_public_key, network).map_err(display_error)?,
+        ScriptType::P2shP2wpkh => {
+            Address::p2shwpkh(compressed_public_key, network).map_err(display_error)?
+        }
+        ScriptType::P2wpkh => {
+            Address::p2wpkh(compressed_public_key, network).map_err(display_error)?
+        }
         ScriptType::P2tr => {
             let (x_only, _) = public_key.x_only_public_key();
             Address::p2tr(secp, x_only, None, network)
@@ -503,7 +534,10 @@ fn bitcoin_derivation_path(request: &ParsedRequest) -> String {
         .unwrap_or_else(|| "m/84'/0'/0'/0/0".to_string())
 }
 
-fn bitcoin_script_type(request: &ParsedRequest, derivation_path: &str) -> Result<ScriptType, String> {
+fn bitcoin_script_type(
+    request: &ParsedRequest,
+    derivation_path: &str,
+) -> Result<ScriptType, String> {
     match request.script_type {
         ScriptType::Auto => infer_bitcoin_script_type(request.address_algorithm, derivation_path),
         other => Ok(other),
