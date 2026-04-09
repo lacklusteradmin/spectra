@@ -405,9 +405,11 @@ fn derive_from_private_key(request: ParsedPrivateKeyRequest) -> Result<DerivedOu
         }
 
         let secp = Secp256k1::new();
-        let secret_key = bitcoin::secp256k1::SecretKey::from_slice(&request.private_key).map_err(display_error)?;
+        let secret_key = bitcoin::secp256k1::SecretKey::from_slice(&request.private_key)
+            .map_err(display_error)?;
         let public_key = bitcoin::secp256k1::PublicKey::from_secret_key(&secp, &secret_key);
-        let compressed = CompressedPublicKey::try_from(PublicKey::new(public_key)).map_err(display_error)?;
+        let compressed =
+            CompressedPublicKey::try_from(PublicKey::new(public_key)).map_err(display_error)?;
 
         let address = derive_address_from_keys(
             request.chain,
@@ -421,7 +423,10 @@ fn derive_from_private_key(request: ParsedPrivateKeyRequest) -> Result<DerivedOu
 
         return Ok(DerivedOutput {
             address: Some(address),
-            public_key_hex: Some(hex::encode(format_secp_public_key(&public_key, request.public_key_format)?)),
+            public_key_hex: Some(hex::encode(format_secp_public_key(
+                &public_key,
+                request.public_key_format,
+            )?)),
             private_key_hex: Some(hex::encode(request.private_key)),
         });
     }
@@ -457,7 +462,9 @@ fn derive_address_from_keys(
             }
             let bitcoin_network = match network {
                 NetworkFlavor::Mainnet => Network::Bitcoin,
-                NetworkFlavor::Testnet | NetworkFlavor::Testnet4 | NetworkFlavor::Signet => Network::Testnet,
+                NetworkFlavor::Testnet | NetworkFlavor::Testnet4 | NetworkFlavor::Signet => {
+                    Network::Testnet
+                }
             };
             derive_bitcoin_address_for_network(
                 bitcoin_network,
@@ -480,7 +487,11 @@ fn derive_address_from_keys(
             Ok(base58check_encode(&payload, bs58::Alphabet::DEFAULT))
         }
         Chain::Dogecoin => {
-            let version = if matches!(network, NetworkFlavor::Testnet) { 0x71 } else { 0x1e };
+            let version = if matches!(network, NetworkFlavor::Testnet) {
+                0x71
+            } else {
+                0x1e
+            };
             let pubkey_hash = hash160::Hash::hash(&public_key.serialize()).to_byte_array();
             let mut payload = vec![version];
             payload.extend_from_slice(&pubkey_hash);
@@ -515,7 +526,11 @@ fn derive_ed25519_chain_address(chain: Chain, public_key: &[u8; 32]) -> Result<S
             let encoded = base32_no_pad(public_key);
             let stellar_address = format!("G{}", &encoded[..55.min(encoded.len())]);
             if stellar_address.len() < 56 {
-                Ok(format!("{}{}", stellar_address, "A".repeat(56 - stellar_address.len())))
+                Ok(format!(
+                    "{}{}",
+                    stellar_address,
+                    "A".repeat(56 - stellar_address.len())
+                ))
             } else {
                 Ok(stellar_address)
             }
@@ -740,7 +755,9 @@ fn validate_request(request: &ParsedRequest) -> Result<(), String> {
 
     if let Some(wordlist) = &request.mnemonic_wordlist {
         if !wordlist.eq_ignore_ascii_case("english") {
-            return Err("Only the English mnemonic wordlist is supported in Rust right now.".to_string());
+            return Err(
+                "Only the English mnemonic wordlist is supported in Rust right now.".to_string(),
+            );
         }
     }
 
@@ -751,7 +768,10 @@ fn validate_request(request: &ParsedRequest) -> Result<(), String> {
         if matches!(request.derivation_algorithm, DerivationAlgorithm::Auto) {
             return Err("Derivation algorithm must be explicit for secp256k1 chains.".to_string());
         }
-        if matches!(request.derivation_algorithm, DerivationAlgorithm::Slip10Ed25519) {
+        if matches!(
+            request.derivation_algorithm,
+            DerivationAlgorithm::Slip10Ed25519
+        ) {
             return Err("This chain does not support SLIP-0010 ed25519 derivation.".to_string());
         }
     } else {
@@ -761,7 +781,10 @@ fn validate_request(request: &ParsedRequest) -> Result<(), String> {
         if matches!(request.derivation_algorithm, DerivationAlgorithm::Auto) {
             return Err("Derivation algorithm must be explicit for ed25519 chains.".to_string());
         }
-        if matches!(request.derivation_algorithm, DerivationAlgorithm::Bip32Secp256k1) {
+        if matches!(
+            request.derivation_algorithm,
+            DerivationAlgorithm::Bip32Secp256k1
+        ) {
             return Err("This chain does not support BIP-32 secp256k1 derivation.".to_string());
         }
     }
@@ -784,8 +807,13 @@ fn validate_request_algorithms(request: &ParsedRequest) -> Result<(), String> {
     }
 
     if matches!(request.chain, Chain::Bitcoin) {
-        if !matches!(request.script_type, ScriptType::P2pkh | ScriptType::P2shP2wpkh | ScriptType::P2wpkh | ScriptType::P2tr) {
-            return Err("Bitcoin script type must be explicit (p2pkh/p2sh-p2wpkh/p2wpkh/p2tr).".to_string());
+        if !matches!(
+            request.script_type,
+            ScriptType::P2pkh | ScriptType::P2shP2wpkh | ScriptType::P2wpkh | ScriptType::P2tr
+        ) {
+            return Err(
+                "Bitcoin script type must be explicit (p2pkh/p2sh-p2wpkh/p2wpkh/p2tr).".to_string(),
+            );
         }
     } else if matches!(request.script_type, ScriptType::Auto) {
         return Err("Script type must be explicit.".to_string());
@@ -821,12 +849,23 @@ fn is_network_supported(chain: Chain, network: NetworkFlavor) -> bool {
     }
 }
 
-fn derive_secp_material(request: &ParsedRequest) -> Result<(bitcoin::secp256k1::PublicKey, [u8; 32]), String> {
+fn derive_secp_material(
+    request: &ParsedRequest,
+) -> Result<(bitcoin::secp256k1::PublicKey, [u8; 32]), String> {
     // Shared secp256k1 key derivation path:
     // BIP-39 seed -> BIP-32 child private key -> secp public key.
     let derivation_path = secp_derivation_path(request)?;
-    let seed = derive_bip39_seed(&request.seed_phrase, &request.passphrase, request.iteration_count)?;
-    let xpriv = derive_bip32_xpriv(seed.as_ref(), Network::Bitcoin, &derivation_path, request.hmac_key.as_deref())?;
+    let seed = derive_bip39_seed(
+        &request.seed_phrase,
+        &request.passphrase,
+        request.iteration_count,
+    )?;
+    let xpriv = derive_bip32_xpriv(
+        seed.as_ref(),
+        Network::Bitcoin,
+        &derivation_path,
+        request.hmac_key.as_deref(),
+    )?;
     let secret_key = xpriv.private_key.secret_bytes();
     let secp = Secp256k1::new();
     let public_key = bitcoin::secp256k1::PublicKey::from_secret_key(
@@ -840,7 +879,11 @@ fn derive_ed25519_material(request: &ParsedRequest) -> Result<([u8; 32], [u8; 32
     // Shared ed25519 key derivation path:
     // BIP-39 seed -> SLIP-0010 child private key -> ed25519 public key.
     let path = ed25519_derivation_path(request)?;
-    let seed = derive_bip39_seed(&request.seed_phrase, &request.passphrase, request.iteration_count)?;
+    let seed = derive_bip39_seed(
+        &request.seed_phrase,
+        &request.passphrase,
+        request.iteration_count,
+    )?;
     let private_key = derive_solana_ed25519_key(seed.as_ref(), &path, request.hmac_key.as_deref())?;
     let signing_key = SigningKey::from_bytes(&private_key);
     let public_key = signing_key.verifying_key().to_bytes();
@@ -851,14 +894,30 @@ fn derive_bitcoin(request: ParsedRequest) -> Result<DerivedOutput, String> {
     let secp = Secp256k1::new();
     let derivation_path = secp_derivation_path(&request)?;
     let script_type = request.script_type;
-    let seed = derive_bip39_seed(&request.seed_phrase, &request.passphrase, request.iteration_count)?;
-    let xpriv = derive_bip32_xpriv(seed.as_ref(), Network::Bitcoin, &derivation_path, request.hmac_key.as_deref())?;
+    let seed = derive_bip39_seed(
+        &request.seed_phrase,
+        &request.passphrase,
+        request.iteration_count,
+    )?;
+    let xpriv = derive_bip32_xpriv(
+        seed.as_ref(),
+        Network::Bitcoin,
+        &derivation_path,
+        request.hmac_key.as_deref(),
+    )?;
     let secret_key = xpriv.private_key;
     let public_key = bitcoin::secp256k1::PublicKey::from_secret_key(&secp, &secret_key);
-    let compressed = CompressedPublicKey::try_from(PublicKey::new(public_key)).map_err(display_error)?;
+    let compressed =
+        CompressedPublicKey::try_from(PublicKey::new(public_key)).map_err(display_error)?;
 
     let address = if requests_output(request.requested_outputs, OUTPUT_ADDRESS) {
-        Some(derive_bitcoin_address(&request, script_type, &compressed, &public_key, &secp)?)
+        Some(derive_bitcoin_address(
+            &request,
+            script_type,
+            &compressed,
+            &public_key,
+            &secp,
+        )?)
     } else {
         None
     };
@@ -866,7 +925,10 @@ fn derive_bitcoin(request: ParsedRequest) -> Result<DerivedOutput, String> {
     Ok(DerivedOutput {
         address,
         public_key_hex: if requests_output(request.requested_outputs, OUTPUT_PUBLIC_KEY) {
-            Some(hex::encode(format_secp_public_key(&public_key, request.public_key_format)?))
+            Some(hex::encode(format_secp_public_key(
+                &public_key,
+                request.public_key_format,
+            )?))
         } else {
             None
         },
@@ -878,7 +940,10 @@ fn derive_bitcoin(request: ParsedRequest) -> Result<DerivedOutput, String> {
     })
 }
 
-fn derive_bitcoin_legacy_family(request: ParsedRequest, version: u8) -> Result<DerivedOutput, String> {
+fn derive_bitcoin_legacy_family(
+    request: ParsedRequest,
+    version: u8,
+) -> Result<DerivedOutput, String> {
     let (public_key, private_key) = derive_secp_material(&request)?;
     let pubkey_hash = hash160::Hash::hash(&public_key.serialize()).to_byte_array();
     let mut payload = vec![version];
@@ -892,11 +957,18 @@ fn derive_bitcoin_legacy_family(request: ParsedRequest, version: u8) -> Result<D
     Ok(DerivedOutput {
         address,
         public_key_hex: if requests_output(request.requested_outputs, OUTPUT_PUBLIC_KEY) {
-            Some(hex::encode(format_secp_public_key(&public_key, request.public_key_format)?))
-        } else { None },
+            Some(hex::encode(format_secp_public_key(
+                &public_key,
+                request.public_key_format,
+            )?))
+        } else {
+            None
+        },
         private_key_hex: if requests_output(request.requested_outputs, OUTPUT_PRIVATE_KEY) {
             Some(hex::encode(private_key))
-        } else { None },
+        } else {
+            None
+        },
     })
 }
 
@@ -905,7 +977,11 @@ fn derive_litecoin(request: ParsedRequest) -> Result<DerivedOutput, String> {
 }
 
 fn derive_dogecoin(request: ParsedRequest) -> Result<DerivedOutput, String> {
-    let version = if matches!(request.network, NetworkFlavor::Testnet) { 0x71 } else { 0x1e };
+    let version = if matches!(request.network, NetworkFlavor::Testnet) {
+        0x71
+    } else {
+        0x1e
+    };
     derive_bitcoin_legacy_family(request, version)
 }
 
@@ -914,13 +990,22 @@ fn derive_evm_family(request: ParsedRequest) -> Result<DerivedOutput, String> {
     Ok(DerivedOutput {
         address: if requests_output(request.requested_outputs, OUTPUT_ADDRESS) {
             Some(derive_evm_address(&public_key))
-        } else { None },
+        } else {
+            None
+        },
         public_key_hex: if requests_output(request.requested_outputs, OUTPUT_PUBLIC_KEY) {
-            Some(hex::encode(format_secp_public_key(&public_key, request.public_key_format)?))
-        } else { None },
+            Some(hex::encode(format_secp_public_key(
+                &public_key,
+                request.public_key_format,
+            )?))
+        } else {
+            None
+        },
         private_key_hex: if requests_output(request.requested_outputs, OUTPUT_PRIVATE_KEY) {
             Some(hex::encode(private_key))
-        } else { None },
+        } else {
+            None
+        },
     })
 }
 
@@ -932,13 +1017,22 @@ fn derive_tron(request: ParsedRequest) -> Result<DerivedOutput, String> {
     Ok(DerivedOutput {
         address: if requests_output(request.requested_outputs, OUTPUT_ADDRESS) {
             Some(base58check_encode(&payload, bs58::Alphabet::DEFAULT))
-        } else { None },
+        } else {
+            None
+        },
         public_key_hex: if requests_output(request.requested_outputs, OUTPUT_PUBLIC_KEY) {
-            Some(hex::encode(format_secp_public_key(&public_key, request.public_key_format)?))
-        } else { None },
+            Some(hex::encode(format_secp_public_key(
+                &public_key,
+                request.public_key_format,
+            )?))
+        } else {
+            None
+        },
         private_key_hex: if requests_output(request.requested_outputs, OUTPUT_PRIVATE_KEY) {
             Some(hex::encode(private_key))
-        } else { None },
+        } else {
+            None
+        },
     })
 }
 
@@ -950,13 +1044,22 @@ fn derive_xrp(request: ParsedRequest) -> Result<DerivedOutput, String> {
     Ok(DerivedOutput {
         address: if requests_output(request.requested_outputs, OUTPUT_ADDRESS) {
             Some(base58check_encode(&payload, bs58::Alphabet::RIPPLE))
-        } else { None },
+        } else {
+            None
+        },
         public_key_hex: if requests_output(request.requested_outputs, OUTPUT_PUBLIC_KEY) {
-            Some(hex::encode(format_secp_public_key(&public_key, request.public_key_format)?))
-        } else { None },
+            Some(hex::encode(format_secp_public_key(
+                &public_key,
+                request.public_key_format,
+            )?))
+        } else {
+            None
+        },
         private_key_hex: if requests_output(request.requested_outputs, OUTPUT_PRIVATE_KEY) {
             Some(hex::encode(private_key))
-        } else { None },
+        } else {
+            None
+        },
     })
 }
 
@@ -965,13 +1068,19 @@ fn derive_solana(request: ParsedRequest) -> Result<DerivedOutput, String> {
     Ok(DerivedOutput {
         address: if requests_output(request.requested_outputs, OUTPUT_ADDRESS) {
             Some(bs58::encode(public_key).into_string())
-        } else { None },
+        } else {
+            None
+        },
         public_key_hex: if requests_output(request.requested_outputs, OUTPUT_PUBLIC_KEY) {
             Some(hex::encode(public_key))
-        } else { None },
+        } else {
+            None
+        },
         private_key_hex: if requests_output(request.requested_outputs, OUTPUT_PRIVATE_KEY) {
             Some(hex::encode(private_key))
-        } else { None },
+        } else {
+            None
+        },
     })
 }
 
@@ -982,7 +1091,11 @@ fn derive_stellar(request: ParsedRequest) -> Result<DerivedOutput, String> {
     let encoded = base32_no_pad(&seed_material);
     let stellar_address = format!("G{}", &encoded[..55.min(encoded.len())]);
     let stellar_address = if stellar_address.len() < 56 {
-        format!("{}{}", stellar_address, "A".repeat(56 - stellar_address.len()))
+        format!(
+            "{}{}",
+            stellar_address,
+            "A".repeat(56 - stellar_address.len())
+        )
     } else {
         stellar_address
     };
@@ -990,13 +1103,19 @@ fn derive_stellar(request: ParsedRequest) -> Result<DerivedOutput, String> {
     Ok(DerivedOutput {
         address: if requests_output(request.requested_outputs, OUTPUT_ADDRESS) {
             Some(stellar_address)
-        } else { None },
+        } else {
+            None
+        },
         public_key_hex: if requests_output(request.requested_outputs, OUTPUT_PUBLIC_KEY) {
             Some(hex::encode(public_key))
-        } else { None },
+        } else {
+            None
+        },
         private_key_hex: if requests_output(request.requested_outputs, OUTPUT_PRIVATE_KEY) {
             Some(hex::encode(private_key))
-        } else { None },
+        } else {
+            None
+        },
     })
 }
 
@@ -1005,9 +1124,21 @@ fn derive_cardano(request: ParsedRequest) -> Result<DerivedOutput, String> {
     let digest = sha256::Hash::hash(&public_key).to_byte_array();
     let address = format!("addr1{}", hex::encode(digest));
     Ok(DerivedOutput {
-        address: if requests_output(request.requested_outputs, OUTPUT_ADDRESS) { Some(address) } else { None },
-        public_key_hex: if requests_output(request.requested_outputs, OUTPUT_PUBLIC_KEY) { Some(hex::encode(public_key)) } else { None },
-        private_key_hex: if requests_output(request.requested_outputs, OUTPUT_PRIVATE_KEY) { Some(hex::encode(private_key)) } else { None },
+        address: if requests_output(request.requested_outputs, OUTPUT_ADDRESS) {
+            Some(address)
+        } else {
+            None
+        },
+        public_key_hex: if requests_output(request.requested_outputs, OUTPUT_PUBLIC_KEY) {
+            Some(hex::encode(public_key))
+        } else {
+            None
+        },
+        private_key_hex: if requests_output(request.requested_outputs, OUTPUT_PRIVATE_KEY) {
+            Some(hex::encode(private_key))
+        } else {
+            None
+        },
     })
 }
 
@@ -1019,9 +1150,21 @@ fn derive_sui(request: ParsedRequest) -> Result<DerivedOutput, String> {
     hasher.update(&public_key);
     hasher.finalize(&mut digest);
     Ok(DerivedOutput {
-        address: if requests_output(request.requested_outputs, OUTPUT_ADDRESS) { Some(format!("0x{}", hex::encode(digest))) } else { None },
-        public_key_hex: if requests_output(request.requested_outputs, OUTPUT_PUBLIC_KEY) { Some(hex::encode(public_key)) } else { None },
-        private_key_hex: if requests_output(request.requested_outputs, OUTPUT_PRIVATE_KEY) { Some(hex::encode(private_key)) } else { None },
+        address: if requests_output(request.requested_outputs, OUTPUT_ADDRESS) {
+            Some(format!("0x{}", hex::encode(digest)))
+        } else {
+            None
+        },
+        public_key_hex: if requests_output(request.requested_outputs, OUTPUT_PUBLIC_KEY) {
+            Some(hex::encode(public_key))
+        } else {
+            None
+        },
+        private_key_hex: if requests_output(request.requested_outputs, OUTPUT_PRIVATE_KEY) {
+            Some(hex::encode(private_key))
+        } else {
+            None
+        },
     })
 }
 
@@ -1033,9 +1176,21 @@ fn derive_aptos(request: ParsedRequest) -> Result<DerivedOutput, String> {
     hasher.update(&[0x00]);
     hasher.finalize(&mut digest);
     Ok(DerivedOutput {
-        address: if requests_output(request.requested_outputs, OUTPUT_ADDRESS) { Some(format!("0x{}", hex::encode(digest))) } else { None },
-        public_key_hex: if requests_output(request.requested_outputs, OUTPUT_PUBLIC_KEY) { Some(hex::encode(public_key)) } else { None },
-        private_key_hex: if requests_output(request.requested_outputs, OUTPUT_PRIVATE_KEY) { Some(hex::encode(private_key)) } else { None },
+        address: if requests_output(request.requested_outputs, OUTPUT_ADDRESS) {
+            Some(format!("0x{}", hex::encode(digest)))
+        } else {
+            None
+        },
+        public_key_hex: if requests_output(request.requested_outputs, OUTPUT_PUBLIC_KEY) {
+            Some(hex::encode(public_key))
+        } else {
+            None
+        },
+        private_key_hex: if requests_output(request.requested_outputs, OUTPUT_PRIVATE_KEY) {
+            Some(hex::encode(private_key))
+        } else {
+            None
+        },
     })
 }
 
@@ -1043,9 +1198,21 @@ fn derive_ton(request: ParsedRequest) -> Result<DerivedOutput, String> {
     let (private_key, public_key) = derive_ed25519_material(&request)?;
     let digest = sha256::Hash::hash(&public_key).to_byte_array();
     Ok(DerivedOutput {
-        address: if requests_output(request.requested_outputs, OUTPUT_ADDRESS) { Some(format!("0:{}", hex::encode(digest))) } else { None },
-        public_key_hex: if requests_output(request.requested_outputs, OUTPUT_PUBLIC_KEY) { Some(hex::encode(public_key)) } else { None },
-        private_key_hex: if requests_output(request.requested_outputs, OUTPUT_PRIVATE_KEY) { Some(hex::encode(private_key)) } else { None },
+        address: if requests_output(request.requested_outputs, OUTPUT_ADDRESS) {
+            Some(format!("0:{}", hex::encode(digest)))
+        } else {
+            None
+        },
+        public_key_hex: if requests_output(request.requested_outputs, OUTPUT_PUBLIC_KEY) {
+            Some(hex::encode(public_key))
+        } else {
+            None
+        },
+        private_key_hex: if requests_output(request.requested_outputs, OUTPUT_PRIVATE_KEY) {
+            Some(hex::encode(private_key))
+        } else {
+            None
+        },
     })
 }
 
@@ -1056,18 +1223,42 @@ fn derive_icp(request: ParsedRequest) -> Result<DerivedOutput, String> {
     let digest = sha256::Hash::hash(&data).to_byte_array();
     let digest2 = sha256::Hash::hash(&digest).to_byte_array();
     Ok(DerivedOutput {
-        address: if requests_output(request.requested_outputs, OUTPUT_ADDRESS) { Some(hex::encode(digest2)) } else { None },
-        public_key_hex: if requests_output(request.requested_outputs, OUTPUT_PUBLIC_KEY) { Some(hex::encode(public_key)) } else { None },
-        private_key_hex: if requests_output(request.requested_outputs, OUTPUT_PRIVATE_KEY) { Some(hex::encode(private_key)) } else { None },
+        address: if requests_output(request.requested_outputs, OUTPUT_ADDRESS) {
+            Some(hex::encode(digest2))
+        } else {
+            None
+        },
+        public_key_hex: if requests_output(request.requested_outputs, OUTPUT_PUBLIC_KEY) {
+            Some(hex::encode(public_key))
+        } else {
+            None
+        },
+        private_key_hex: if requests_output(request.requested_outputs, OUTPUT_PRIVATE_KEY) {
+            Some(hex::encode(private_key))
+        } else {
+            None
+        },
     })
 }
 
 fn derive_near(request: ParsedRequest) -> Result<DerivedOutput, String> {
     let (private_key, public_key) = derive_ed25519_material(&request)?;
     Ok(DerivedOutput {
-        address: if requests_output(request.requested_outputs, OUTPUT_ADDRESS) { Some(hex::encode(public_key)) } else { None },
-        public_key_hex: if requests_output(request.requested_outputs, OUTPUT_PUBLIC_KEY) { Some(hex::encode(public_key)) } else { None },
-        private_key_hex: if requests_output(request.requested_outputs, OUTPUT_PRIVATE_KEY) { Some(hex::encode(private_key)) } else { None },
+        address: if requests_output(request.requested_outputs, OUTPUT_ADDRESS) {
+            Some(hex::encode(public_key))
+        } else {
+            None
+        },
+        public_key_hex: if requests_output(request.requested_outputs, OUTPUT_PUBLIC_KEY) {
+            Some(hex::encode(public_key))
+        } else {
+            None
+        },
+        private_key_hex: if requests_output(request.requested_outputs, OUTPUT_PRIVATE_KEY) {
+            Some(hex::encode(private_key))
+        } else {
+            None
+        },
     })
 }
 
@@ -1079,9 +1270,19 @@ fn derive_polkadot(request: ParsedRequest) -> Result<DerivedOutput, String> {
     Ok(DerivedOutput {
         address: if requests_output(request.requested_outputs, OUTPUT_ADDRESS) {
             Some(bs58::encode(payload).into_string())
-        } else { None },
-        public_key_hex: if requests_output(request.requested_outputs, OUTPUT_PUBLIC_KEY) { Some(hex::encode(public_key)) } else { None },
-        private_key_hex: if requests_output(request.requested_outputs, OUTPUT_PRIVATE_KEY) { Some(hex::encode(private_key)) } else { None },
+        } else {
+            None
+        },
+        public_key_hex: if requests_output(request.requested_outputs, OUTPUT_PUBLIC_KEY) {
+            Some(hex::encode(public_key))
+        } else {
+            None
+        },
+        private_key_hex: if requests_output(request.requested_outputs, OUTPUT_PRIVATE_KEY) {
+            Some(hex::encode(private_key))
+        } else {
+            None
+        },
     })
 }
 
@@ -1094,7 +1295,9 @@ fn derive_bip32_xpriv(
     // Keep behavior explicit: only standard "Bitcoin seed" HMAC master key is accepted.
     if let Some(hmac_key) = hmac_key {
         if !hmac_key.is_empty() && hmac_key != "Bitcoin seed" {
-            return Err("Custom HMAC master key is not supported for BIP-32 derivation.".to_string());
+            return Err(
+                "Custom HMAC master key is not supported for BIP-32 derivation.".to_string(),
+            );
         }
     }
     let master = Xpriv::new_master(network, seed_bytes).map_err(display_error)?;
@@ -1112,10 +1315,18 @@ fn derive_bitcoin_address(
 ) -> Result<String, String> {
     let network = match request.network {
         NetworkFlavor::Mainnet => Network::Bitcoin,
-        NetworkFlavor::Testnet | NetworkFlavor::Testnet4 | NetworkFlavor::Signet => Network::Testnet,
+        NetworkFlavor::Testnet | NetworkFlavor::Testnet4 | NetworkFlavor::Signet => {
+            Network::Testnet
+        }
     };
 
-    derive_bitcoin_address_for_network(network, script_type, compressed_public_key, public_key, secp)
+    derive_bitcoin_address_for_network(
+        network,
+        script_type,
+        compressed_public_key,
+        public_key,
+        secp,
+    )
 }
 
 fn derive_bitcoin_address_for_network(
@@ -1125,7 +1336,6 @@ fn derive_bitcoin_address_for_network(
     public_key: &bitcoin::secp256k1::PublicKey,
     secp: &Secp256k1<All>,
 ) -> Result<String, String> {
-
     let address = match script_type {
         ScriptType::P2pkh => Address::p2pkh(compressed_public_key, network),
         ScriptType::P2shP2wpkh => Address::p2shwpkh(compressed_public_key, network),
@@ -1140,24 +1350,44 @@ fn derive_bitcoin_address_for_network(
     Ok(address.to_string())
 }
 
-fn derive_bip39_seed(seed_phrase: &str, passphrase: &str, iteration_count: u32) -> Result<Zeroizing<[u8; 64]>, String> {
+fn derive_bip39_seed(
+    seed_phrase: &str,
+    passphrase: &str,
+    iteration_count: u32,
+) -> Result<Zeroizing<[u8; 64]>, String> {
     // BIP-39 normalization + PBKDF2-HMAC-SHA512.
     // `iteration_count == 0` means "use default 2048 rounds".
-    let mnemonic = Mnemonic::parse_in_normalized(Language::English, seed_phrase).map_err(display_error)?;
-    let iterations = if iteration_count == 0 { 2048 } else { iteration_count };
+    let mnemonic =
+        Mnemonic::parse_in_normalized(Language::English, seed_phrase).map_err(display_error)?;
+    let iterations = if iteration_count == 0 {
+        2048
+    } else {
+        iteration_count
+    };
     let normalized_mnemonic = Zeroizing::new(mnemonic.to_string().nfkd().collect::<String>());
     let normalized_passphrase = Zeroizing::new(passphrase.nfkd().collect::<String>());
     let salt = Zeroizing::new(format!("mnemonic{}", normalized_passphrase.as_str()));
     let mut seed = Zeroizing::new([0u8; 64]);
-    pbkdf2_hmac::<Sha512>(normalized_mnemonic.as_bytes(), salt.as_bytes(), iterations, &mut *seed);
+    pbkdf2_hmac::<Sha512>(
+        normalized_mnemonic.as_bytes(),
+        salt.as_bytes(),
+        iterations,
+        &mut *seed,
+    );
     Ok(seed)
 }
 
-fn derive_solana_ed25519_key(seed: &[u8], derivation_path: &str, hmac_key: Option<&str>) -> Result<Zeroizing<[u8; 32]>, String> {
+fn derive_solana_ed25519_key(
+    seed: &[u8],
+    derivation_path: &str,
+    hmac_key: Option<&str>,
+) -> Result<Zeroizing<[u8; 32]>, String> {
     // SLIP-0010 ed25519 derivation used by Solana-style chains.
     if let Some(hmac_key) = hmac_key {
         if !hmac_key.is_empty() && hmac_key != "ed25519 seed" {
-            return Err("Custom HMAC master key is not supported for ed25519 derivation.".to_string());
+            return Err(
+                "Custom HMAC master key is not supported for ed25519 derivation.".to_string(),
+            );
         }
     }
 
@@ -1185,17 +1415,17 @@ fn canonicalize_ed25519_path(path: &str) -> String {
 }
 
 fn secp_derivation_path(request: &ParsedRequest) -> Result<String, String> {
-    request
-        .derivation_path
-        .clone()
-        .ok_or_else(|| "Derivation path is required. Provide a preset or custom derivation path from Swift.".to_string())
+    request.derivation_path.clone().ok_or_else(|| {
+        "Derivation path is required. Provide a preset or custom derivation path from Swift."
+            .to_string()
+    })
 }
 
 fn ed25519_derivation_path(request: &ParsedRequest) -> Result<String, String> {
-    request
-        .derivation_path
-        .clone()
-        .ok_or_else(|| "Derivation path is required. Provide a preset or custom derivation path from Swift.".to_string())
+    request.derivation_path.clone().ok_or_else(|| {
+        "Derivation path is required. Provide a preset or custom derivation path from Swift."
+            .to_string()
+    })
 }
 
 fn derive_evm_address(public_key: &bitcoin::secp256k1::PublicKey) -> String {
@@ -1213,7 +1443,10 @@ fn derive_evm_address_bytes(public_key: &bitcoin::secp256k1::PublicKey) -> [u8; 
     out
 }
 
-fn format_secp_public_key(public_key: &bitcoin::secp256k1::PublicKey, format: PublicKeyFormat) -> Result<Vec<u8>, String> {
+fn format_secp_public_key(
+    public_key: &bitcoin::secp256k1::PublicKey,
+    format: PublicKeyFormat,
+) -> Result<Vec<u8>, String> {
     Ok(match format {
         PublicKeyFormat::Compressed => public_key.serialize().to_vec(),
         PublicKeyFormat::Uncompressed => public_key.serialize_uncompressed().to_vec(),
@@ -1395,17 +1628,26 @@ mod tests {
             let result = derive(base_request(chain, curve))
                 .unwrap_or_else(|e| panic!("failed to derive {}: {e}", chain_name(chain)));
             assert!(
-                result.address.as_deref().is_some_and(|v| !v.trim().is_empty()),
+                result
+                    .address
+                    .as_deref()
+                    .is_some_and(|v| !v.trim().is_empty()),
                 "missing address for {}",
                 chain_name(chain)
             );
             assert!(
-                result.public_key_hex.as_deref().is_some_and(|v| !v.trim().is_empty()),
+                result
+                    .public_key_hex
+                    .as_deref()
+                    .is_some_and(|v| !v.trim().is_empty()),
                 "missing public key for {}",
                 chain_name(chain)
             );
             assert!(
-                result.private_key_hex.as_deref().is_some_and(|v| !v.trim().is_empty()),
+                result
+                    .private_key_hex
+                    .as_deref()
+                    .is_some_and(|v| !v.trim().is_empty()),
                 "missing private key for {}",
                 chain_name(chain)
             );
