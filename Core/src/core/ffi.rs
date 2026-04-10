@@ -1,4 +1,8 @@
 use super::catalog::core_bootstrap;
+use super::fetch::{
+    plan_dogecoin_refresh_targets, plan_evm_refresh_targets, plan_wallet_balance_refresh,
+    DogecoinRefreshTargetsRequest, EvmRefreshTargetsRequest, WalletBalanceRefreshRequest,
+};
 use super::history::{normalize_history, NormalizeHistoryRequest};
 use super::import::{plan_wallet_import, WalletImportRequest};
 use super::localization::localization_catalog;
@@ -8,8 +12,19 @@ use super::refresh::{
     ActiveMaintenancePlanRequest, BackgroundMaintenanceRequest, ChainRefreshPlanRequest,
     HistoryRefreshPlanRequest,
 };
+use super::resources::{static_json_resource, static_text_resource, StaticResourceRequest};
+use super::send::{
+    plan_send_preview_routing, plan_send_submit_preflight, route_send_asset, SendAssetRoutingInput,
+    SendPreviewRoutingRequest, SendSubmitPreflightRequest,
+};
 use super::state::{reduce_state, CoreAppState, StateCommand};
+use super::store::{
+    build_persisted_snapshot, persisted_snapshot_from_json, wallet_secret_index,
+    PersistedAppSnapshotRequest,
+};
 use super::transactions::{merge_transactions, TransactionMergeRequest};
+use super::transfer::{plan_transfer_availability, TransferAvailabilityRequest};
+use super::utxo::{plan_utxo_preview, plan_utxo_spend, UtxoPreviewRequest, UtxoSpendPlanRequest};
 use crate::derivation_runtime::SpectraBuffer;
 use serde::Serialize;
 use std::ptr;
@@ -87,6 +102,40 @@ pub extern "C" fn spectra_core_localization_document_json(
 }
 
 #[no_mangle]
+pub extern "C" fn spectra_core_static_resource_json(
+    request: *const SpectraCoreJSONRequest,
+) -> *mut SpectraJsonResponse {
+    json_response_from_result((|| {
+        if request.is_null() {
+            return Err("Missing static resource request.".to_string());
+        }
+
+        let request = unsafe { &*request };
+        let request = read_json_buffer::<StaticResourceRequest>(&request.json_utf8)?;
+        static_json_resource(&request.resource_name)
+            .map(|json| json.to_string())
+            .ok_or_else(|| format!("Missing static JSON resource {}.", request.resource_name))
+    })())
+}
+
+#[no_mangle]
+pub extern "C" fn spectra_core_static_text_resource_utf8(
+    request: *const SpectraCoreJSONRequest,
+) -> *mut SpectraJsonResponse {
+    json_response_from_result((|| {
+        if request.is_null() {
+            return Err("Missing static text resource request.".to_string());
+        }
+
+        let request = unsafe { &*request };
+        let request = read_json_buffer::<StaticResourceRequest>(&request.json_utf8)?;
+        static_text_resource(&request.resource_name)
+            .map(|text| text.to_string())
+            .ok_or_else(|| format!("Missing static text resource {}.", request.resource_name))
+    })())
+}
+
+#[no_mangle]
 pub extern "C" fn spectra_core_reduce_state_json(
     request: *const SpectraCoreStateReduceRequest,
 ) -> *mut SpectraJsonResponse {
@@ -129,8 +178,41 @@ pub extern "C" fn spectra_core_export_legacy_wallet_store_json(
         }
 
         let request = unsafe { &*request };
-        let state = read_json_buffer::<CoreAppState>(&request.json_utf8)?;
-        core_state_to_legacy_wallet_store_json(&state)
+        let json = read_buffer_to_string(&request.json_utf8)?;
+        let snapshot = persisted_snapshot_from_json(&json)?;
+        core_state_to_legacy_wallet_store_json(&snapshot.app_state)
+    })())
+}
+
+#[no_mangle]
+pub extern "C" fn spectra_core_build_persisted_snapshot_json(
+    request: *const SpectraCoreJSONRequest,
+) -> *mut SpectraJsonResponse {
+    json_response_from_result((|| {
+        if request.is_null() {
+            return Err("Missing persisted snapshot build request.".to_string());
+        }
+
+        let request = unsafe { &*request };
+        let request = read_json_buffer::<PersistedAppSnapshotRequest>(&request.json_utf8)?;
+        let snapshot = build_persisted_snapshot(request)?;
+        serialize_json(&snapshot)
+    })())
+}
+
+#[no_mangle]
+pub extern "C" fn spectra_core_wallet_secret_index_json(
+    request: *const SpectraCoreJSONRequest,
+) -> *mut SpectraJsonResponse {
+    json_response_from_result((|| {
+        if request.is_null() {
+            return Err("Missing wallet secret index request.".to_string());
+        }
+
+        let request = unsafe { &*request };
+        let json = read_buffer_to_string(&request.json_utf8)?;
+        let snapshot = persisted_snapshot_from_json(&json)?;
+        serialize_json(&wallet_secret_index(&snapshot))
     })())
 }
 
@@ -217,6 +299,132 @@ pub extern "C" fn spectra_core_normalize_history_json(
         let request = unsafe { &*request };
         let request = read_json_buffer::<NormalizeHistoryRequest>(&request.json_utf8)?;
         serialize_json(&normalize_history(request))
+    })())
+}
+
+#[no_mangle]
+pub extern "C" fn spectra_core_plan_evm_refresh_targets_json(
+    request: *const SpectraCoreJSONRequest,
+) -> *mut SpectraJsonResponse {
+    json_response_from_result((|| {
+        if request.is_null() {
+            return Err("Missing EVM refresh target planning request.".to_string());
+        }
+        let request = unsafe { &*request };
+        let request = read_json_buffer::<EvmRefreshTargetsRequest>(&request.json_utf8)?;
+        serialize_json(&plan_evm_refresh_targets(request))
+    })())
+}
+
+#[no_mangle]
+pub extern "C" fn spectra_core_plan_dogecoin_refresh_targets_json(
+    request: *const SpectraCoreJSONRequest,
+) -> *mut SpectraJsonResponse {
+    json_response_from_result((|| {
+        if request.is_null() {
+            return Err("Missing Dogecoin refresh target planning request.".to_string());
+        }
+        let request = unsafe { &*request };
+        let request = read_json_buffer::<DogecoinRefreshTargetsRequest>(&request.json_utf8)?;
+        serialize_json(&plan_dogecoin_refresh_targets(request))
+    })())
+}
+
+#[no_mangle]
+pub extern "C" fn spectra_core_plan_wallet_balance_refresh_json(
+    request: *const SpectraCoreJSONRequest,
+) -> *mut SpectraJsonResponse {
+    json_response_from_result((|| {
+        if request.is_null() {
+            return Err("Missing wallet balance refresh planning request.".to_string());
+        }
+        let request = unsafe { &*request };
+        let request = read_json_buffer::<WalletBalanceRefreshRequest>(&request.json_utf8)?;
+        serialize_json(&plan_wallet_balance_refresh(request))
+    })())
+}
+
+#[no_mangle]
+pub extern "C" fn spectra_core_plan_transfer_availability_json(
+    request: *const SpectraCoreJSONRequest,
+) -> *mut SpectraJsonResponse {
+    json_response_from_result((|| {
+        if request.is_null() {
+            return Err("Missing transfer availability planning request.".to_string());
+        }
+        let request = unsafe { &*request };
+        let request = read_json_buffer::<TransferAvailabilityRequest>(&request.json_utf8)?;
+        serialize_json(&plan_transfer_availability(request))
+    })())
+}
+
+#[no_mangle]
+pub extern "C" fn spectra_core_route_send_asset_json(
+    request: *const SpectraCoreJSONRequest,
+) -> *mut SpectraJsonResponse {
+    json_response_from_result((|| {
+        if request.is_null() {
+            return Err("Missing send asset routing request.".to_string());
+        }
+        let request = unsafe { &*request };
+        let request = read_json_buffer::<SendAssetRoutingInput>(&request.json_utf8)?;
+        serialize_json(&route_send_asset(&request))
+    })())
+}
+
+#[no_mangle]
+pub extern "C" fn spectra_core_plan_send_preview_routing_json(
+    request: *const SpectraCoreJSONRequest,
+) -> *mut SpectraJsonResponse {
+    json_response_from_result((|| {
+        if request.is_null() {
+            return Err("Missing send preview routing request.".to_string());
+        }
+        let request = unsafe { &*request };
+        let request = read_json_buffer::<SendPreviewRoutingRequest>(&request.json_utf8)?;
+        serialize_json(&plan_send_preview_routing(request))
+    })())
+}
+
+#[no_mangle]
+pub extern "C" fn spectra_core_plan_send_submit_preflight_json(
+    request: *const SpectraCoreJSONRequest,
+) -> *mut SpectraJsonResponse {
+    json_response_from_result((|| {
+        if request.is_null() {
+            return Err("Missing send submit preflight request.".to_string());
+        }
+        let request = unsafe { &*request };
+        let request = read_json_buffer::<SendSubmitPreflightRequest>(&request.json_utf8)?;
+        serialize_json(&plan_send_submit_preflight(request)?)
+    })())
+}
+
+#[no_mangle]
+pub extern "C" fn spectra_core_plan_utxo_preview_json(
+    request: *const SpectraCoreJSONRequest,
+) -> *mut SpectraJsonResponse {
+    json_response_from_result((|| {
+        if request.is_null() {
+            return Err("Missing UTXO preview request.".to_string());
+        }
+        let request = unsafe { &*request };
+        let request = read_json_buffer::<UtxoPreviewRequest>(&request.json_utf8)?;
+        serialize_json(&plan_utxo_preview(request)?)
+    })())
+}
+
+#[no_mangle]
+pub extern "C" fn spectra_core_plan_utxo_spend_json(
+    request: *const SpectraCoreJSONRequest,
+) -> *mut SpectraJsonResponse {
+    json_response_from_result((|| {
+        if request.is_null() {
+            return Err("Missing UTXO spend plan request.".to_string());
+        }
+        let request = unsafe { &*request };
+        let request = read_json_buffer::<UtxoSpendPlanRequest>(&request.json_utf8)?;
+        serialize_json(&plan_utxo_spend(request)?)
     })())
 }
 
