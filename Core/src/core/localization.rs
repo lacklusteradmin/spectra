@@ -76,9 +76,7 @@ const EMBEDDED_DOCUMENTS: &[EmbeddedDocument] = &[
     EmbeddedDocument {
         locale: "en",
         table: "DiagnosticsContent",
-        json: include_str!(
-            "../../../Resources/Localization/en/DiagnosticsContent.en.json"
-        ),
+        json: include_str!("../../../Resources/Localization/en/DiagnosticsContent.en.json"),
     },
     EmbeddedDocument {
         locale: "en",
@@ -103,16 +101,12 @@ const EMBEDDED_DOCUMENTS: &[EmbeddedDocument] = &[
     EmbeddedDocument {
         locale: "zh-Hans",
         table: "ChainWikiEntries",
-        json: include_str!(
-            "../../../Resources/Localization/zh-Hans/ChainWikiEntries.zh-Hans.json"
-        ),
+        json: include_str!("../../../Resources/Localization/zh-Hans/ChainWikiEntries.zh-Hans.json"),
     },
     EmbeddedDocument {
         locale: "zh-Hans",
         table: "CommonContent",
-        json: include_str!(
-            "../../../Resources/Localization/zh-Hans/CommonContent.zh-Hans.json"
-        ),
+        json: include_str!("../../../Resources/Localization/zh-Hans/CommonContent.zh-Hans.json"),
     },
     EmbeddedDocument {
         locale: "zh-Hans",
@@ -124,16 +118,12 @@ const EMBEDDED_DOCUMENTS: &[EmbeddedDocument] = &[
     EmbeddedDocument {
         locale: "zh-Hans",
         table: "DonationsContent",
-        json: include_str!(
-            "../../../Resources/Localization/zh-Hans/DonationsContent.zh-Hans.json"
-        ),
+        json: include_str!("../../../Resources/Localization/zh-Hans/DonationsContent.zh-Hans.json"),
     },
     EmbeddedDocument {
         locale: "zh-Hans",
         table: "EndpointsContent",
-        json: include_str!(
-            "../../../Resources/Localization/zh-Hans/EndpointsContent.zh-Hans.json"
-        ),
+        json: include_str!("../../../Resources/Localization/zh-Hans/EndpointsContent.zh-Hans.json"),
     },
     EmbeddedDocument {
         locale: "zh-Hans",
@@ -145,23 +135,17 @@ const EMBEDDED_DOCUMENTS: &[EmbeddedDocument] = &[
     EmbeddedDocument {
         locale: "zh-Hans",
         table: "SettingsContent",
-        json: include_str!(
-            "../../../Resources/Localization/zh-Hans/SettingsContent.zh-Hans.json"
-        ),
+        json: include_str!("../../../Resources/Localization/zh-Hans/SettingsContent.zh-Hans.json"),
     },
     EmbeddedDocument {
         locale: "zh-Hant",
         table: "ChainWikiEntries",
-        json: include_str!(
-            "../../../Resources/Localization/zh-Hant/ChainWikiEntries.zh-Hant.json"
-        ),
+        json: include_str!("../../../Resources/Localization/zh-Hant/ChainWikiEntries.zh-Hant.json"),
     },
     EmbeddedDocument {
         locale: "zh-Hant",
         table: "CommonContent",
-        json: include_str!(
-            "../../../Resources/Localization/zh-Hant/CommonContent.zh-Hant.json"
-        ),
+        json: include_str!("../../../Resources/Localization/zh-Hant/CommonContent.zh-Hant.json"),
     },
     EmbeddedDocument {
         locale: "zh-Hant",
@@ -173,16 +157,12 @@ const EMBEDDED_DOCUMENTS: &[EmbeddedDocument] = &[
     EmbeddedDocument {
         locale: "zh-Hant",
         table: "DonationsContent",
-        json: include_str!(
-            "../../../Resources/Localization/zh-Hant/DonationsContent.zh-Hant.json"
-        ),
+        json: include_str!("../../../Resources/Localization/zh-Hant/DonationsContent.zh-Hant.json"),
     },
     EmbeddedDocument {
         locale: "zh-Hant",
         table: "EndpointsContent",
-        json: include_str!(
-            "../../../Resources/Localization/zh-Hant/EndpointsContent.zh-Hant.json"
-        ),
+        json: include_str!("../../../Resources/Localization/zh-Hant/EndpointsContent.zh-Hant.json"),
     },
     EmbeddedDocument {
         locale: "zh-Hant",
@@ -194,9 +174,7 @@ const EMBEDDED_DOCUMENTS: &[EmbeddedDocument] = &[
     EmbeddedDocument {
         locale: "zh-Hant",
         table: "SettingsContent",
-        json: include_str!(
-            "../../../Resources/Localization/zh-Hant/SettingsContent.zh-Hant.json"
-        ),
+        json: include_str!("../../../Resources/Localization/zh-Hant/SettingsContent.zh-Hant.json"),
     },
 ];
 

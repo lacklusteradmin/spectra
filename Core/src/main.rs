@@ -10,19 +10,10 @@ use serde::{Deserialize, Serialize};
 use sha2::Sha512;
 use slip10::{derive_key_from_path, Curve};
 use std::fmt::Display;
-use std::ptr;
-use std::slice;
 use std::str::FromStr;
 use tiny_keccak::{Hasher, Keccak};
 use unicode_normalization::UnicodeNormalization;
 use zeroize::{Zeroize, Zeroizing};
-
-// This module is the Rust derivation core exposed over a C ABI.
-// Swift passes a request struct in, and receives a heap-allocated response
-// containing optional address/public/private key outputs.
-
-const STATUS_OK: i32 = 0;
-const STATUS_ERROR: i32 = 1;
 
 // Bitflags describing which output fields the caller wants back.
 const OUTPUT_ADDRESS: u32 = 1 << 0;
@@ -82,111 +73,6 @@ const SCRIPT_P2WPKH: u32 = 3;
 const SCRIPT_P2TR: u32 = 4;
 const SCRIPT_ACCOUNT: u32 = 5;
 
-// A raw heap buffer passed across the C ABI boundary.
-// Ownership is transferred to the caller and must be released by
-// `spectra_derivation_buffer_free` / `spectra_derivation_response_free`.
-#[repr(C)]
-pub struct SpectraBuffer {
-    pub ptr: *mut u8,
-    pub len: usize,
-}
-
-impl SpectraBuffer {
-    fn empty() -> Self {
-        Self {
-            ptr: ptr::null_mut(),
-            len: 0,
-        }
-    }
-
-    fn from_vec(mut bytes: Vec<u8>) -> Self {
-        let buffer = Self {
-            ptr: bytes.as_mut_ptr(),
-            len: bytes.len(),
-        };
-        std::mem::forget(bytes);
-        buffer
-    }
-
-    fn from_string(value: String) -> Self {
-        Self::from_vec(value.into_bytes())
-    }
-}
-
-// Main seed-phrase derivation request from Swift.
-#[repr(C)]
-pub struct SpectraDerivationRequest {
-    pub chain: u32,
-    pub network: u32,
-    pub curve: u32,
-    pub requested_outputs: u32,
-    pub derivation_algorithm: u32,
-    pub address_algorithm: u32,
-    pub public_key_format: u32,
-    pub script_type: u32,
-    pub seed_phrase_utf8: SpectraBuffer,
-    pub derivation_path_utf8: SpectraBuffer,
-    pub passphrase_utf8: SpectraBuffer,
-    pub hmac_key_utf8: SpectraBuffer,
-    pub mnemonic_wordlist_utf8: SpectraBuffer,
-    pub iteration_count: u32,
-}
-
-// Private-key-only derivation request from Swift.
-#[repr(C)]
-pub struct SpectraPrivateKeyDerivationRequest {
-    pub chain: u32,
-    pub network: u32,
-    pub curve: u32,
-    pub address_algorithm: u32,
-    pub public_key_format: u32,
-    pub script_type: u32,
-    pub private_key_hex_utf8: SpectraBuffer,
-}
-
-// Unified ABI response object (success or error).
-#[repr(C)]
-pub struct SpectraDerivationResponse {
-    pub status_code: i32,
-    pub address_utf8: SpectraBuffer,
-    pub public_key_hex_utf8: SpectraBuffer,
-    pub private_key_hex_utf8: SpectraBuffer,
-    pub error_message_utf8: SpectraBuffer,
-}
-
-impl SpectraDerivationResponse {
-    // Build a successful response and transfer ownership to the caller.
-    fn success(result: DerivedOutput) -> *mut SpectraDerivationResponse {
-        Box::into_raw(Box::new(SpectraDerivationResponse {
-            status_code: STATUS_OK,
-            address_utf8: result
-                .address
-                .map(SpectraBuffer::from_string)
-                .unwrap_or_else(SpectraBuffer::empty),
-            public_key_hex_utf8: result
-                .public_key_hex
-                .map(SpectraBuffer::from_string)
-                .unwrap_or_else(SpectraBuffer::empty),
-            private_key_hex_utf8: result
-                .private_key_hex
-                .map(SpectraBuffer::from_string)
-                .unwrap_or_else(SpectraBuffer::empty),
-            error_message_utf8: SpectraBuffer::empty(),
-        }))
-    }
-
-    // Build an error response and transfer ownership to the caller.
-    fn error(message: impl Into<String>) -> *mut SpectraDerivationResponse {
-        Box::into_raw(Box::new(SpectraDerivationResponse {
-            status_code: STATUS_ERROR,
-            address_utf8: SpectraBuffer::empty(),
-            public_key_hex_utf8: SpectraBuffer::empty(),
-            private_key_hex_utf8: SpectraBuffer::empty(),
-            error_message_utf8: SpectraBuffer::from_string(message.into()),
-        }))
-    }
-}
-
 struct DerivedOutput {
     address: Option<String>,
     public_key_hex: Option<String>,
@@ -230,6 +116,48 @@ struct UniFFIDerivationResponse {
     address: Option<String>,
     public_key_hex: Option<String>,
     private_key_hex: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct UniFFIMaterialRequest {
+    pub chain: u32,
+    pub network: u32,
+    pub curve: u32,
+    pub derivation_algorithm: u32,
+    pub address_algorithm: u32,
+    pub public_key_format: u32,
+    pub script_type: u32,
+    pub seed_phrase: String,
+    pub derivation_path: String,
+    pub passphrase: Option<String>,
+    pub hmac_key: Option<String>,
+    pub mnemonic_wordlist: Option<String>,
+    pub iteration_count: u32,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct UniFFIPrivateKeyMaterialRequest {
+    pub chain: u32,
+    pub network: u32,
+    pub curve: u32,
+    pub address_algorithm: u32,
+    pub public_key_format: u32,
+    pub script_type: u32,
+    pub private_key_hex: String,
+    pub derivation_path: String,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct UniFFIMaterialResponse {
+    address: String,
+    private_key_hex: String,
+    derivation_path: String,
+    account: u32,
+    branch: u32,
+    index: u32,
 }
 
 struct ParsedRequest {
@@ -339,53 +267,6 @@ enum ScriptType {
     Account,
 }
 
-// Primary C entry point for seed-phrase derivation.
-// Pipeline: pointer checks -> parse request -> derive -> ABI response.
-#[no_mangle]
-pub extern "C" fn spectra_derivation_derive(
-    request: *const SpectraDerivationRequest,
-) -> *mut SpectraDerivationResponse {
-    if request.is_null() {
-        return SpectraDerivationResponse::error("Null derivation request.");
-    }
-
-    let request = unsafe { &*request };
-    match parse_request(request).and_then(derive) {
-        Ok(result) => SpectraDerivationResponse::success(result),
-        Err(error) => SpectraDerivationResponse::error(error),
-    }
-}
-
-// Primary C entry point for private-key derivation.
-#[no_mangle]
-pub extern "C" fn spectra_derivation_derive_from_private_key(
-    request: *const SpectraPrivateKeyDerivationRequest,
-) -> *mut SpectraDerivationResponse {
-    if request.is_null() {
-        return SpectraDerivationResponse::error("Null private-key derivation request.");
-    }
-
-    let request = unsafe { &*request };
-    match parse_private_key_request(request).and_then(derive_from_private_key) {
-        Ok(result) => SpectraDerivationResponse::success(result),
-        Err(error) => SpectraDerivationResponse::error(error),
-    }
-}
-
-// Frees a response allocated by this library.
-#[no_mangle]
-pub extern "C" fn spectra_derivation_response_free(response: *mut SpectraDerivationResponse) {
-    if response.is_null() {
-        return;
-    }
-
-    let response = unsafe { Box::from_raw(response) };
-    free_buffer(response.address_utf8);
-    free_buffer(response.public_key_hex_utf8);
-    free_buffer(response.private_key_hex_utf8);
-    free_buffer(response.error_message_utf8);
-}
-
 #[uniffi::export]
 pub fn derivation_derive_json(request_json: String) -> Result<String, crate::SpectraBridgeError> {
     let request: UniFFIDerivationRequest = serde_json::from_str(&request_json)
@@ -404,6 +285,28 @@ pub fn derivation_derive_from_private_key_json(
     let request = parse_uniffi_private_key_request(request)?;
     let result = derive_from_private_key(request)?;
     serialize_uniffi_derivation_response(result)
+}
+
+#[uniffi::export]
+pub fn derivation_build_material_json(
+    request_json: String,
+) -> Result<String, crate::SpectraBridgeError> {
+    let request: UniFFIMaterialRequest = serde_json::from_str(&request_json)
+        .map_err(|error| crate::SpectraBridgeError::from(error.to_string()))?;
+    let request = parse_uniffi_material_request(request)?;
+    let result = build_material(request)?;
+    serialize_uniffi_material_response(result)
+}
+
+#[uniffi::export]
+pub fn derivation_build_material_from_private_key_json(
+    request_json: String,
+) -> Result<String, crate::SpectraBridgeError> {
+    let request: UniFFIPrivateKeyMaterialRequest = serde_json::from_str(&request_json)
+        .map_err(|error| crate::SpectraBridgeError::from(error.to_string()))?;
+    let request = parse_uniffi_private_key_material_request(request)?;
+    let result = build_material_from_private_key(request)?;
+    serialize_uniffi_material_response(result)
 }
 
 fn parse_uniffi_request(
@@ -493,28 +396,23 @@ struct ParsedPrivateKeyRequest {
     private_key: [u8; 32],
 }
 
-fn parse_private_key_request(
-    request: &SpectraPrivateKeyDerivationRequest,
-) -> Result<ParsedPrivateKeyRequest, String> {
-    // Convert raw IDs/buffers from FFI into validated Rust enums/bytes.
-    let chain = parse_chain(request.chain)?;
-    let network = parse_network(request.network)?;
-    let curve = parse_curve(request.curve)?;
-    let address_algorithm = parse_address_algorithm(request.address_algorithm)?;
-    let public_key_format = parse_public_key_format(request.public_key_format)?;
-    let script_type = parse_script_type(request.script_type)?;
-    let private_key_hex = read_buffer_to_string(&request.private_key_hex_utf8)?;
-    let private_key = decode_private_key_hex(&private_key_hex)?;
+struct ParsedMaterialRequest {
+    request: ParsedRequest,
+    derivation_path: String,
+}
 
-    Ok(ParsedPrivateKeyRequest {
-        chain,
-        network,
-        curve,
-        address_algorithm,
-        public_key_format,
-        script_type,
-        private_key,
-    })
+struct ParsedPrivateKeyMaterialRequest {
+    request: ParsedPrivateKeyRequest,
+    derivation_path: String,
+}
+
+struct DerivedMaterial {
+    address: String,
+    private_key_hex: String,
+    derivation_path: String,
+    account: u32,
+    branch: u32,
+    index: u32,
 }
 
 fn decode_private_key_hex(raw: &str) -> Result<[u8; 32], String> {
@@ -531,6 +429,147 @@ fn decode_private_key_hex(raw: &str) -> Result<[u8; 32], String> {
     let mut out = [0u8; 32];
     out.copy_from_slice(&decoded);
     Ok(out)
+}
+
+fn encode_private_key_hex(bytes: &[u8; 32]) -> String {
+    bytes.iter().map(|byte| format!("{byte:02x}")).collect()
+}
+
+fn parse_uniffi_material_request(
+    request: UniFFIMaterialRequest,
+) -> Result<ParsedMaterialRequest, crate::SpectraBridgeError> {
+    let derivation_path = request.derivation_path.trim().to_string();
+    if derivation_path.is_empty() {
+        return Err(crate::SpectraBridgeError::from(
+            "Derivation path is required to build signing material.",
+        ));
+    }
+    let parsed = parse_uniffi_request(UniFFIDerivationRequest {
+        chain: request.chain,
+        network: request.network,
+        curve: request.curve,
+        requested_outputs: OUTPUT_ADDRESS | OUTPUT_PRIVATE_KEY,
+        derivation_algorithm: request.derivation_algorithm,
+        address_algorithm: request.address_algorithm,
+        public_key_format: request.public_key_format,
+        script_type: request.script_type,
+        seed_phrase: request.seed_phrase,
+        derivation_path: Some(derivation_path.clone()),
+        passphrase: request.passphrase,
+        hmac_key: request.hmac_key,
+        mnemonic_wordlist: request.mnemonic_wordlist,
+        iteration_count: request.iteration_count,
+    })?;
+    Ok(ParsedMaterialRequest {
+        request: parsed,
+        derivation_path,
+    })
+}
+
+fn parse_uniffi_private_key_material_request(
+    request: UniFFIPrivateKeyMaterialRequest,
+) -> Result<ParsedPrivateKeyMaterialRequest, crate::SpectraBridgeError> {
+    let derivation_path = request.derivation_path.trim().to_string();
+    if derivation_path.is_empty() {
+        return Err(crate::SpectraBridgeError::from(
+            "Derivation path is required to build signing material.",
+        ));
+    }
+    let parsed = parse_uniffi_private_key_request(UniFFIPrivateKeyDerivationRequest {
+        chain: request.chain,
+        network: request.network,
+        curve: request.curve,
+        address_algorithm: request.address_algorithm,
+        public_key_format: request.public_key_format,
+        script_type: request.script_type,
+        private_key_hex: request.private_key_hex,
+    })?;
+    Ok(ParsedPrivateKeyMaterialRequest {
+        request: parsed,
+        derivation_path,
+    })
+}
+
+fn serialize_uniffi_material_response(
+    result: DerivedMaterial,
+) -> Result<String, crate::SpectraBridgeError> {
+    serde_json::to_string(&UniFFIMaterialResponse {
+        address: result.address,
+        private_key_hex: result.private_key_hex,
+        derivation_path: result.derivation_path,
+        account: result.account,
+        branch: result.branch,
+        index: result.index,
+    })
+    .map_err(|error| crate::SpectraBridgeError::from(error.to_string()))
+}
+
+fn build_material(
+    request: ParsedMaterialRequest,
+) -> Result<DerivedMaterial, crate::SpectraBridgeError> {
+    let result = derive(request.request)?;
+    let address = result.address.ok_or_else(|| {
+        crate::SpectraBridgeError::from("Derived material did not contain an address.")
+    })?;
+    let private_key_hex = result.private_key_hex.ok_or_else(|| {
+        crate::SpectraBridgeError::from("Derived material did not contain a private key.")
+    })?;
+    let (account, branch, index) = parse_account_branch_index(&request.derivation_path);
+    Ok(DerivedMaterial {
+        address,
+        private_key_hex,
+        derivation_path: request.derivation_path,
+        account,
+        branch,
+        index,
+    })
+}
+
+fn build_material_from_private_key(
+    request: ParsedPrivateKeyMaterialRequest,
+) -> Result<DerivedMaterial, crate::SpectraBridgeError> {
+    let ParsedPrivateKeyMaterialRequest {
+        request,
+        derivation_path,
+    } = request;
+    let private_key_hex = encode_private_key_hex(&request.private_key);
+    let result = derive_from_private_key(request)?;
+    let address = result.address.ok_or_else(|| {
+        crate::SpectraBridgeError::from("Derived material did not contain an address.")
+    })?;
+    let (account, branch, index) = parse_account_branch_index(&derivation_path);
+    Ok(DerivedMaterial {
+        address,
+        private_key_hex,
+        derivation_path,
+        account,
+        branch,
+        index,
+    })
+}
+
+fn parse_account_branch_index(path: &str) -> (u32, u32, u32) {
+    let trimmed = path.trim();
+    let Some(stripped) = trimmed
+        .strip_prefix("m/")
+        .or_else(|| trimmed.strip_prefix("M/"))
+    else {
+        return (0, 0, 0);
+    };
+    let segments = stripped
+        .split('/')
+        .filter_map(|segment| {
+            let cleaned = segment.trim_end_matches('\'');
+            cleaned.parse::<u32>().ok()
+        })
+        .collect::<Vec<_>>();
+    let account = segments.get(2).copied().unwrap_or(0);
+    let branch = segments
+        .get(segments.len().saturating_sub(2))
+        .copied()
+        .unwrap_or(0);
+    let index = segments.last().copied().unwrap_or(0);
+    (account, branch, index)
 }
 
 fn derive_from_private_key(request: ParsedPrivateKeyRequest) -> Result<DerivedOutput, String> {
@@ -712,57 +751,6 @@ fn derive_ed25519_chain_address(chain: Chain, public_key: &[u8; 32]) -> Result<S
         }
         _ => Err("Unsupported ed25519 chain for private-key address derivation.".to_string()),
     }
-}
-
-#[no_mangle]
-pub extern "C" fn spectra_derivation_buffer_free(buffer: SpectraBuffer) {
-    free_buffer(buffer);
-}
-
-fn parse_request(request: &SpectraDerivationRequest) -> Result<ParsedRequest, String> {
-    // Decode all FFI scalar IDs and UTF-8 buffers into strongly typed values.
-    let chain = parse_chain(request.chain)?;
-    let network = parse_network(request.network)?;
-    let curve = parse_curve(request.curve)?;
-    let derivation_algorithm = parse_derivation_algorithm(request.derivation_algorithm)?;
-    let address_algorithm = parse_address_algorithm(request.address_algorithm)?;
-    let public_key_format = parse_public_key_format(request.public_key_format)?;
-    let script_type = parse_script_type(request.script_type)?;
-
-    let seed_phrase = normalize_seed_phrase(&read_buffer_to_string(&request.seed_phrase_utf8)?);
-    if seed_phrase.is_empty() {
-        return Err("Seed phrase is empty.".to_string());
-    }
-
-    let derivation_path = optional_trimmed_string(&request.derivation_path_utf8)?;
-    let passphrase = optional_untrimmed_string(&request.passphrase_utf8)?.unwrap_or_default();
-    let hmac_key = optional_trimmed_string(&request.hmac_key_utf8)?;
-    let mnemonic_wordlist = optional_trimmed_string(&request.mnemonic_wordlist_utf8)?;
-
-    if request.requested_outputs == 0 {
-        return Err("At least one output must be requested.".to_string());
-    }
-    let known_outputs = OUTPUT_ADDRESS | OUTPUT_PUBLIC_KEY | OUTPUT_PRIVATE_KEY;
-    if request.requested_outputs & !known_outputs != 0 {
-        return Err("Requested outputs contain unsupported output flags.".to_string());
-    }
-
-    Ok(ParsedRequest {
-        chain,
-        network,
-        curve,
-        requested_outputs: request.requested_outputs,
-        derivation_algorithm,
-        address_algorithm,
-        public_key_format,
-        script_type,
-        seed_phrase,
-        derivation_path,
-        passphrase,
-        hmac_key,
-        mnemonic_wordlist,
-        iteration_count: request.iteration_count,
-    })
 }
 
 fn parse_chain(value: u32) -> Result<Chain, String> {
@@ -1632,57 +1620,12 @@ fn base32_no_pad(input: &[u8]) -> String {
     output
 }
 
-fn read_buffer_to_string(buffer: &SpectraBuffer) -> Result<String, String> {
-    let bytes = read_buffer(buffer);
-    std::str::from_utf8(bytes)
-        .map(|value| value.to_string())
-        .map_err(display_error)
-}
-
-fn optional_trimmed_string(buffer: &SpectraBuffer) -> Result<Option<String>, String> {
-    let value = read_buffer_to_string(buffer)?;
-    let trimmed = value.trim();
-    if trimmed.is_empty() {
-        Ok(None)
-    } else {
-        Ok(Some(trimmed.to_string()))
-    }
-}
-
-fn optional_untrimmed_string(buffer: &SpectraBuffer) -> Result<Option<String>, String> {
-    let value = read_buffer_to_string(buffer)?;
-    if value.is_empty() {
-        Ok(None)
-    } else {
-        Ok(Some(value))
-    }
-}
-
 fn normalize_seed_phrase(value: &str) -> String {
     value.split_whitespace().collect::<Vec<_>>().join(" ")
 }
 
 fn requests_output(requested_outputs: u32, output: u32) -> bool {
     requested_outputs & output != 0
-}
-
-fn free_buffer(buffer: SpectraBuffer) {
-    // Reconstruct the Vec to let Rust drop and free the allocation.
-    if buffer.ptr.is_null() || buffer.len == 0 {
-        return;
-    }
-
-    unsafe {
-        let _ = Vec::from_raw_parts(buffer.ptr, buffer.len, buffer.len);
-    }
-}
-
-fn read_buffer<'a>(buffer: &'a SpectraBuffer) -> &'a [u8] {
-    // Interpret nullable/empty buffers as empty slices for ergonomic parsing.
-    if buffer.ptr.is_null() || buffer.len == 0 {
-        return &[];
-    }
-    unsafe { slice::from_raw_parts(buffer.ptr.cast_const(), buffer.len) }
 }
 
 fn display_error(error: impl Display) -> String {

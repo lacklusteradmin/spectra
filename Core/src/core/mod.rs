@@ -1,4 +1,6 @@
+pub mod addressing;
 pub mod catalog;
+pub mod endpoint_reliability;
 pub mod fetch;
 pub mod ffi;
 pub mod history;

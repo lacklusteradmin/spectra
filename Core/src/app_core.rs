@@ -1,11 +1,5 @@
-use crate::derivation_runtime::SpectraBuffer;
 use serde::{Deserialize, Serialize};
-use std::ptr;
-use std::slice;
 use std::sync::OnceLock;
-
-const STATUS_OK: i32 = 0;
-const STATUS_ERROR: i32 = 1;
 
 const CHAIN_BITCOIN: u32 = 0;
 const CHAIN_ETHEREUM: u32 = 1;
@@ -46,54 +40,6 @@ const ENDPOINT_ROLE_VERIFICATION: u32 = 1 << 6;
 const ENDPOINT_ROLE_RPC: u32 = 1 << 7;
 const ENDPOINT_ROLE_EXPLORER: u32 = 1 << 8;
 const ENDPOINT_ROLE_BACKEND: u32 = 1 << 9;
-
-#[repr(C)]
-pub struct SpectraJsonResponse {
-    pub status_code: i32,
-    pub payload_utf8: SpectraBuffer,
-    pub error_message_utf8: SpectraBuffer,
-}
-
-impl SpectraJsonResponse {
-    fn success(payload: String) -> *mut SpectraJsonResponse {
-        Box::into_raw(Box::new(SpectraJsonResponse {
-            status_code: STATUS_OK,
-            payload_utf8: owned_buffer_from_string(payload),
-            error_message_utf8: empty_buffer(),
-        }))
-    }
-
-    fn error(message: impl Into<String>) -> *mut SpectraJsonResponse {
-        Box::into_raw(Box::new(SpectraJsonResponse {
-            status_code: STATUS_ERROR,
-            payload_utf8: empty_buffer(),
-            error_message_utf8: owned_buffer_from_string(message.into()),
-        }))
-    }
-}
-
-#[repr(C)]
-pub struct SpectraDerivationPathResolutionRequest {
-    pub chain: u32,
-    pub derivation_path_utf8: SpectraBuffer,
-}
-
-#[repr(C)]
-pub struct SpectraStringRequest {
-    pub utf8: SpectraBuffer,
-}
-
-#[repr(C)]
-pub struct SpectraStringArrayRequest {
-    pub json_utf8: SpectraBuffer,
-}
-
-#[repr(C)]
-pub struct SpectraEndpointQueryRequest {
-    pub chain_name_utf8: SpectraBuffer,
-    pub role_mask: u32,
-    pub settings_visible_only: u8,
-}
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
@@ -256,257 +202,15 @@ struct DerivationPathSegment {
 
 static APP_CORE_CATALOG: OnceLock<Result<AppCoreCatalog, String>> = OnceLock::new();
 
-#[no_mangle]
-pub extern "C" fn spectra_app_core_chain_presets_json() -> *mut SpectraJsonResponse {
-    json_response_from_result(
-        app_core_catalog().and_then(|catalog| serialize_json(&catalog.chain_presets)),
-    )
-}
-
-#[no_mangle]
-pub extern "C" fn spectra_app_core_request_compilation_presets_json() -> *mut SpectraJsonResponse {
-    json_response_from_result(
-        app_core_catalog().and_then(|catalog| serialize_json(&catalog.request_compilation_presets)),
-    )
-}
-
-#[no_mangle]
-pub extern "C" fn spectra_app_core_resolve_derivation_path_json(
-    request: *const SpectraDerivationPathResolutionRequest,
-) -> *mut SpectraJsonResponse {
-    if request.is_null() {
-        return SpectraJsonResponse::error("Missing derivation path resolution request.");
-    }
-
-    let response = (|| {
-        let request = unsafe { &*request };
-        let chain_name = chain_name_from_id(request.chain)
-            .ok_or_else(|| format!("Unsupported chain identifier {}.", request.chain))?;
-        let raw_path = read_buffer_to_string(&request.derivation_path_utf8)?;
-        let default_path = default_path_for_chain(chain_name)?;
-        let normalized_path = normalize_derivation_path(&raw_path, &default_path);
-        let resolution = AppCoreDerivationPathResolution {
-            chain: chain_name.to_string(),
-            account_index: resolved_account_index(chain_name, &normalized_path),
-            flavor: resolved_flavor(chain_name, &normalized_path).to_string(),
-            normalized_path,
-        };
-        serialize_json(&resolution)
-    })();
-
-    json_response_from_result(response)
-}
-
-#[no_mangle]
-pub extern "C" fn spectra_app_core_derivation_paths_for_preset_json(
-    account_index: u32,
-) -> *mut SpectraJsonResponse {
-    json_response_from_result(app_core_catalog().and_then(|catalog| {
-        serialize_json(&seed_derivation_paths_for_account(catalog, account_index)?)
-    }))
-}
-
-#[no_mangle]
-pub extern "C" fn spectra_app_core_endpoint_records_json() -> *mut SpectraJsonResponse {
-    json_response_from_result(
-        app_core_catalog().and_then(|catalog| serialize_json(&catalog.endpoint_records)),
-    )
-}
-
-#[no_mangle]
-pub extern "C" fn spectra_app_core_endpoint_for_id_json(
-    request: *const SpectraStringRequest,
-) -> *mut SpectraJsonResponse {
-    json_response_from_result((|| {
-        let id = read_string_request(request, "Missing endpoint id request.")?;
-        let record = app_core_catalog()?
-            .endpoint_records
-            .iter()
-            .find(|record| record.id == id)
-            .map(|record| record.endpoint.clone())
-            .ok_or_else(|| format!("Missing endpoint record for id: {id}"))?;
-        serialize_json(&record)
-    })())
-}
-
-#[no_mangle]
-pub extern "C" fn spectra_app_core_endpoints_for_ids_json(
-    request: *const SpectraStringArrayRequest,
-) -> *mut SpectraJsonResponse {
-    json_response_from_result((|| {
-        let ids = read_string_array_request(request, "Missing endpoint id array request.")?;
-        let catalog = app_core_catalog()?;
-        let endpoints = ids
-            .iter()
-            .map(|id| {
-                catalog
-                    .endpoint_records
-                    .iter()
-                    .find(|record| record.id == *id)
-                    .map(|record| record.endpoint.clone())
-                    .ok_or_else(|| format!("Missing endpoint record for id: {id}"))
-            })
-            .collect::<Result<Vec<_>, _>>()?;
-        serialize_json(&endpoints)
-    })())
-}
-
-#[no_mangle]
-pub extern "C" fn spectra_app_core_endpoint_records_for_chain_json(
-    request: *const SpectraEndpointQueryRequest,
-) -> *mut SpectraJsonResponse {
-    json_response_from_result((|| {
-        let (chain_name, role_mask, settings_visible_only) = read_endpoint_query_request(request)?;
-        let records = endpoint_records_for_chain(
-            app_core_catalog()?,
-            &chain_name,
-            role_mask,
-            settings_visible_only,
-        );
-        serialize_json(&records)
-    })())
-}
-
-#[no_mangle]
-pub extern "C" fn spectra_app_core_grouped_settings_entries_json(
-    request: *const SpectraStringRequest,
-) -> *mut SpectraJsonResponse {
-    json_response_from_result((|| {
-        let chain_name = read_string_request(request, "Missing grouped settings chain request.")?;
-        let entries = grouped_settings_entries(app_core_catalog()?, &chain_name);
-        serialize_json(&entries)
-    })())
-}
-
-#[no_mangle]
-pub extern "C" fn spectra_app_core_diagnostics_checks_json(
-    request: *const SpectraStringRequest,
-) -> *mut SpectraJsonResponse {
-    json_response_from_result((|| {
-        let chain_name = read_string_request(request, "Missing diagnostics chain request.")?;
-        let entries = diagnostics_checks(app_core_catalog()?, &chain_name);
-        serialize_json(&entries)
-    })())
-}
-
-#[no_mangle]
-pub extern "C" fn spectra_app_core_transaction_explorer_entry_json(
-    request: *const SpectraStringRequest,
-) -> *mut SpectraJsonResponse {
-    json_response_from_result((|| {
-        let chain_name = read_string_request(request, "Missing explorer chain request.")?;
-        let entry = transaction_explorer_entry(app_core_catalog()?, &chain_name);
-        serialize_json(&entry)
-    })())
-}
-
-#[no_mangle]
-pub extern "C" fn spectra_app_core_bitcoin_esplora_base_urls_json(
-    request: *const SpectraStringRequest,
-) -> *mut SpectraJsonResponse {
-    json_response_from_result((|| {
-        let network = read_string_request(request, "Missing Bitcoin network request.")?;
-        serialize_json(&bitcoin_esplora_base_urls(app_core_catalog()?, &network)?)
-    })())
-}
-
-#[no_mangle]
-pub extern "C" fn spectra_app_core_bitcoin_wallet_store_default_base_urls_json(
-    request: *const SpectraStringRequest,
-) -> *mut SpectraJsonResponse {
-    json_response_from_result((|| {
-        let network =
-            read_string_request(request, "Missing Bitcoin wallet-store network request.")?;
-        serialize_json(&bitcoin_wallet_store_default_base_urls(
-            app_core_catalog()?,
-            &network,
-        )?)
-    })())
-}
-
-#[no_mangle]
-pub extern "C" fn spectra_app_core_evm_rpc_endpoints_json(
-    request: *const SpectraStringRequest,
-) -> *mut SpectraJsonResponse {
-    json_response_from_result((|| {
-        let chain_name = read_string_request(request, "Missing EVM RPC chain request.")?;
-        let records =
-            endpoint_records_for_chain(app_core_catalog()?, &chain_name, ENDPOINT_ROLE_RPC, true);
-        let endpoints = records
-            .into_iter()
-            .map(|record| record.endpoint)
-            .collect::<Vec<_>>();
-        serialize_json(&endpoints)
-    })())
-}
-
-#[no_mangle]
-pub extern "C" fn spectra_app_core_explorer_supplemental_endpoints_json(
-    request: *const SpectraStringRequest,
-) -> *mut SpectraJsonResponse {
-    json_response_from_result((|| {
-        let chain_name =
-            read_string_request(request, "Missing explorer supplemental chain request.")?;
-        let records = endpoint_records_for_chain(
-            app_core_catalog()?,
-            &chain_name,
-            ENDPOINT_ROLE_EXPLORER,
-            true,
-        );
-        let endpoints = records
-            .into_iter()
-            .map(|record| record.endpoint)
-            .collect::<Vec<_>>();
-        serialize_json(&endpoints)
-    })())
-}
-
-#[no_mangle]
-pub extern "C" fn spectra_app_core_broadcast_provider_options_json(
-    request: *const SpectraStringRequest,
-) -> *mut SpectraJsonResponse {
-    json_response_from_result((|| {
-        let chain_name = read_string_request(request, "Missing broadcast provider chain request.")?;
-        serialize_json(&broadcast_provider_options(&chain_name))
-    })())
-}
-
-#[no_mangle]
-pub extern "C" fn spectra_app_core_chain_backends_json() -> *mut SpectraJsonResponse {
-    json_response_from_result(serialize_json(&chain_backends()))
-}
-
-#[no_mangle]
-pub extern "C" fn spectra_app_core_live_chain_names_json() -> *mut SpectraJsonResponse {
-    json_response_from_result(serialize_json(&live_chain_names()))
-}
-
-#[no_mangle]
-pub extern "C" fn spectra_app_core_app_chain_descriptors_json() -> *mut SpectraJsonResponse {
-    json_response_from_result(serialize_json(&app_chain_descriptors()))
-}
-
-#[no_mangle]
-pub extern "C" fn spectra_app_core_json_response_free(response: *mut SpectraJsonResponse) {
-    if response.is_null() {
-        return;
-    }
-
-    unsafe {
-        let response = Box::from_raw(response);
-    free_buffer(response.payload_utf8);
-    free_buffer(response.error_message_utf8);
-}
-
 #[uniffi::export]
 pub fn app_core_chain_presets_json() -> Result<String, crate::SpectraBridgeError> {
     Ok(app_core_catalog().and_then(|catalog| serialize_json(&catalog.chain_presets))?)
 }
 
 #[uniffi::export]
-pub fn app_core_request_compilation_presets_json(
-) -> Result<String, crate::SpectraBridgeError> {
-    Ok(app_core_catalog().and_then(|catalog| serialize_json(&catalog.request_compilation_presets))?)
+pub fn app_core_request_compilation_presets_json() -> Result<String, crate::SpectraBridgeError> {
+    Ok(app_core_catalog()
+        .and_then(|catalog| serialize_json(&catalog.request_compilation_presets))?)
 }
 
 #[uniffi::export]
@@ -534,8 +238,9 @@ pub fn app_core_resolve_derivation_path_json(
 pub fn app_core_derivation_paths_for_preset_json(
     account_index: u32,
 ) -> Result<String, crate::SpectraBridgeError> {
-    Ok(app_core_catalog()
-        .and_then(|catalog| serialize_json(&seed_derivation_paths_for_account(catalog, account_index)?))?)
+    Ok(app_core_catalog().and_then(|catalog| {
+        serialize_json(&seed_derivation_paths_for_account(catalog, account_index)?)
+    })?)
 }
 
 #[uniffi::export]
@@ -557,7 +262,9 @@ pub fn app_core_endpoint_for_id_json(id: String) -> Result<String, crate::Spectr
 }
 
 #[uniffi::export]
-pub fn app_core_endpoints_for_ids_json(ids_json: String) -> Result<String, crate::SpectraBridgeError> {
+pub fn app_core_endpoints_for_ids_json(
+    ids_json: String,
+) -> Result<String, crate::SpectraBridgeError> {
     let ids = serde_json::from_str::<Vec<String>>(&ids_json)?;
     Ok(app_core_catalog().and_then(|catalog| {
         let endpoints = ids
@@ -595,28 +302,32 @@ pub fn app_core_endpoint_records_for_chain_json(
 pub fn app_core_grouped_settings_entries_json(
     chain_name: String,
 ) -> Result<String, crate::SpectraBridgeError> {
-    Ok(app_core_catalog().and_then(|catalog| serialize_json(&grouped_settings_entries(catalog, &chain_name)))?)
+    Ok(app_core_catalog()
+        .and_then(|catalog| serialize_json(&grouped_settings_entries(catalog, &chain_name)))?)
 }
 
 #[uniffi::export]
 pub fn app_core_diagnostics_checks_json(
     chain_name: String,
 ) -> Result<String, crate::SpectraBridgeError> {
-    Ok(app_core_catalog().and_then(|catalog| serialize_json(&diagnostics_checks(catalog, &chain_name)))?)
+    Ok(app_core_catalog()
+        .and_then(|catalog| serialize_json(&diagnostics_checks(catalog, &chain_name)))?)
 }
 
 #[uniffi::export]
 pub fn app_core_transaction_explorer_entry_json(
     chain_name: String,
 ) -> Result<String, crate::SpectraBridgeError> {
-    Ok(app_core_catalog().and_then(|catalog| serialize_json(&transaction_explorer_entry(catalog, &chain_name)))?)
+    Ok(app_core_catalog()
+        .and_then(|catalog| serialize_json(&transaction_explorer_entry(catalog, &chain_name)))?)
 }
 
 #[uniffi::export]
 pub fn app_core_bitcoin_esplora_base_urls_json(
     network: String,
 ) -> Result<String, crate::SpectraBridgeError> {
-    Ok(app_core_catalog().and_then(|catalog| serialize_json(&bitcoin_esplora_base_urls(catalog, &network)?))?)
+    Ok(app_core_catalog()
+        .and_then(|catalog| serialize_json(&bitcoin_esplora_base_urls(catalog, &network)?))?)
 }
 
 #[uniffi::export]
@@ -646,10 +357,11 @@ pub fn app_core_explorer_supplemental_endpoints_json(
     chain_name: String,
 ) -> Result<String, crate::SpectraBridgeError> {
     Ok(app_core_catalog().and_then(|catalog| {
-        let endpoints = endpoint_records_for_chain(catalog, &chain_name, ENDPOINT_ROLE_EXPLORER, true)
-            .into_iter()
-            .map(|record| record.endpoint)
-            .collect::<Vec<_>>();
+        let endpoints =
+            endpoint_records_for_chain(catalog, &chain_name, ENDPOINT_ROLE_EXPLORER, true)
+                .into_iter()
+                .map(|record| record.endpoint)
+                .collect::<Vec<_>>();
         serialize_json(&endpoints)
     })?)
 }
@@ -674,14 +386,6 @@ pub fn app_core_live_chain_names_json() -> Result<String, crate::SpectraBridgeEr
 #[uniffi::export]
 pub fn app_core_app_chain_descriptors_json() -> Result<String, crate::SpectraBridgeError> {
     Ok(serialize_json(&app_chain_descriptors())?)
-}
-}
-
-fn json_response_from_result(result: Result<String, String>) -> *mut SpectraJsonResponse {
-    match result {
-        Ok(payload) => SpectraJsonResponse::success(payload),
-        Err(message) => SpectraJsonResponse::error(message),
-    }
 }
 
 fn app_core_catalog() -> Result<&'static AppCoreCatalog, String> {
@@ -712,6 +416,7 @@ fn serialize_json<T: Serialize>(value: &T) -> Result<String, String> {
     serde_json::to_string(value).map_err(display_error)
 }
 
+#[cfg(test)]
 fn default_path_for_chain(chain_name: &str) -> Result<String, String> {
     let catalog = app_core_catalog()?;
     catalog
@@ -727,43 +432,6 @@ fn default_path_for_chain(chain_name: &str) -> Result<String, String> {
         })
         .map(|path| path.derivation_path.clone())
         .ok_or_else(|| format!("Missing default derivation path for {chain_name}."))
-}
-
-fn read_string_request(
-    request: *const SpectraStringRequest,
-    missing_message: &str,
-) -> Result<String, String> {
-    if request.is_null() {
-        return Err(missing_message.to_string());
-    }
-    let request = unsafe { &*request };
-    read_buffer_to_string(&request.utf8)
-}
-
-fn read_string_array_request(
-    request: *const SpectraStringArrayRequest,
-    missing_message: &str,
-) -> Result<Vec<String>, String> {
-    if request.is_null() {
-        return Err(missing_message.to_string());
-    }
-    let request = unsafe { &*request };
-    let json = read_buffer_to_string(&request.json_utf8)?;
-    serde_json::from_str::<Vec<String>>(&json).map_err(display_error)
-}
-
-fn read_endpoint_query_request(
-    request: *const SpectraEndpointQueryRequest,
-) -> Result<(String, u32, bool), String> {
-    if request.is_null() {
-        return Err("Missing endpoint query request.".to_string());
-    }
-    let request = unsafe { &*request };
-    Ok((
-        read_buffer_to_string(&request.chain_name_utf8)?,
-        request.role_mask,
-        request.settings_visible_only != 0,
-    ))
 }
 
 fn seed_derivation_paths_for_account(
@@ -1721,47 +1389,6 @@ fn resolved_flavor(chain_name: &str, normalized_path: &str) -> &'static str {
             }
         }
         _ => "standard",
-    }
-}
-
-fn owned_buffer_from_string(value: String) -> SpectraBuffer {
-    let mut bytes = value.into_bytes();
-    let buffer = SpectraBuffer {
-        ptr: bytes.as_mut_ptr(),
-        len: bytes.len(),
-    };
-    std::mem::forget(bytes);
-    buffer
-}
-
-fn empty_buffer() -> SpectraBuffer {
-    SpectraBuffer {
-        ptr: ptr::null_mut(),
-        len: 0,
-    }
-}
-
-fn read_buffer_to_string(buffer: &SpectraBuffer) -> Result<String, String> {
-    let bytes = read_buffer(buffer);
-    std::str::from_utf8(bytes)
-        .map(|value| value.to_string())
-        .map_err(display_error)
-}
-
-fn read_buffer<'a>(buffer: &'a SpectraBuffer) -> &'a [u8] {
-    if buffer.ptr.is_null() || buffer.len == 0 {
-        return &[];
-    }
-    unsafe { slice::from_raw_parts(buffer.ptr.cast_const(), buffer.len) }
-}
-
-fn free_buffer(buffer: SpectraBuffer) {
-    if buffer.ptr.is_null() || buffer.len == 0 {
-        return;
-    }
-
-    unsafe {
-        let _ = Vec::from_raw_parts(buffer.ptr, buffer.len, buffer.len);
     }
 }
 

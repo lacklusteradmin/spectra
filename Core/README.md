@@ -1,42 +1,42 @@
-# Rust Derivation Core
+# Rust Core
 
-This crate is the runtime derivation core behind `Derivation/`.
+This crate is the Rust application core behind the Swift UI layers.
 
 ## Current State
 
-- Swift derivation entry points call into Rust through FFI.
-- Rust supports the full current `SeedDerivationChain` set in the bridge.
-- The boundary is raw C ABI (not JSON).
-- The Rust library is built and linked during Xcode builds.
+- Swift calls Rust through generated UniFFI bindings.
+- The public bridge surface is JSON-oriented for complex payloads.
+- Rust supports the current derivation, catalog, localization, state, fetch-planning, and send-planning APIs used by the app.
+- The Rust library and Swift bindings are generated during Xcode builds.
 
 ## Boundary
 
-- Header: `include/spectra_derivation.h`
-- Symbols:
-  - `spectra_derivation_derive`
-  - `spectra_derivation_response_free`
-  - `spectra_derivation_buffer_free`
+- Rust exports are declared with `#[uniffi::export]`.
+- Generated Swift bindings live under `Derivation/Core/Generated/`.
+- Swift bridge adapters stay in:
+  - `Derivation/Core/WalletRustDerivationBridge.swift`
+  - `Derivation/Core/WalletRustAppCoreBridge.swift`
+  - `ProviderCatalog/Core/WalletRustEndpointCatalogBridge.swift`
 
 ## Safety Model
 
-- Secret fields are passed as UTF-8 byte buffers over FFI.
-- Swift zeroizes temporary UTF-8 seed/passphrase/hmac buffers after call.
+- Sensitive request fields are encoded as Swift strings and passed through UniFFI-generated bindings.
 - Rust zeroizes sensitive owned strings on drop and zeroizes derived seed bytes.
-- Rust allocates response buffers and Swift must free with `spectra_derivation_response_free`.
+- Errors cross the boundary as typed UniFFI errors instead of manual status structs.
 
 ## Ownership Split
 
 - Swift owns:
-  - presets/catalog selection
+  - UI flow orchestration
   - app-facing request assembly
-  - UI-facing validation/normalization behavior
+  - presentation-specific validation and fallback behavior
 - Rust owns:
-  - mnemonic normalization/parsing
-  - seed derivation
-  - key derivation
-  - address/public/private output derivation
+  - derivation and address generation
+  - static catalogs and localization loading
+  - state reduction and migration
+  - fetch/send planning logic
 
 ## Important Rule
 
-FFI numeric IDs in `spectra_derivation.h` are treated as stable contract values.
-Do not change them casually.
+Numeric chain, network, curve, and algorithm IDs are still shared contract values between Swift and Rust.
+Keep them aligned when changing either side of the bridge.

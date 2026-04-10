@@ -51,6 +51,58 @@ pub struct WalletSecretIndex {
     pub password_protected_wallet_ids: Vec<String>,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct StoreDerivedHoldingInput {
+    pub holding_index: usize,
+    pub asset_identity_key: String,
+    pub symbol_upper: String,
+    pub amount: String,
+    pub is_priced_asset: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct StoreDerivedWalletInput {
+    pub wallet_id: String,
+    pub include_in_portfolio_total: bool,
+    pub has_signing_material: bool,
+    pub is_private_key_backed: bool,
+    pub holdings: Vec<StoreDerivedHoldingInput>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct StoreDerivedStateRequest {
+    pub wallets: Vec<StoreDerivedWalletInput>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct WalletHoldingRef {
+    pub wallet_id: String,
+    pub holding_index: usize,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct GroupedPortfolioHolding {
+    pub asset_identity_key: String,
+    pub wallet_id: String,
+    pub holding_index: usize,
+    pub total_amount: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct StoreDerivedStatePlan {
+    pub included_portfolio_holding_refs: Vec<WalletHoldingRef>,
+    pub unique_price_request_holding_refs: Vec<WalletHoldingRef>,
+    pub grouped_portfolio: Vec<GroupedPortfolioHolding>,
+    pub signing_material_wallet_ids: Vec<String>,
+    pub private_key_backed_wallet_ids: Vec<String>,
+}
+
 pub trait SecretStore: Send + Sync {
     fn store_seed_phrase(&self, wallet_id: &str, seed_phrase: &str) -> Result<(), String>;
     fn load_seed_phrase(&self, wallet_id: &str) -> Result<Option<String>, String>;
@@ -123,6 +175,79 @@ pub fn wallet_secret_index(snapshot: &PersistedAppSnapshot) -> WalletSecretIndex
     }
 }
 
+pub fn plan_store_derived_state(request: StoreDerivedStateRequest) -> StoreDerivedStatePlan {
+    let mut included_portfolio_holding_refs = Vec::new();
+    let mut unique_price_request_holding_refs = Vec::new();
+    let mut signing_material_wallet_ids = Vec::new();
+    let mut private_key_backed_wallet_ids = Vec::new();
+
+    let mut seen_price_request_keys = std::collections::BTreeSet::<String>::new();
+    let mut grouped_portfolio_totals = BTreeMap::<String, f64>::new();
+    let mut grouped_portfolio_order = Vec::<String>::new();
+    let mut grouped_portfolio_representatives = BTreeMap::<String, WalletHoldingRef>::new();
+
+    for wallet in request.wallets {
+        if wallet.has_signing_material {
+            signing_material_wallet_ids.push(wallet.wallet_id.clone());
+        }
+        if wallet.is_private_key_backed {
+            private_key_backed_wallet_ids.push(wallet.wallet_id.clone());
+        }
+
+        for holding in wallet.holdings {
+            let holding_ref = WalletHoldingRef {
+                wallet_id: wallet.wallet_id.clone(),
+                holding_index: holding.holding_index,
+            };
+
+            if holding.is_priced_asset
+                && seen_price_request_keys.insert(holding.asset_identity_key.clone())
+            {
+                unique_price_request_holding_refs.push(holding_ref.clone());
+            }
+
+            if wallet.include_in_portfolio_total {
+                included_portfolio_holding_refs.push(holding_ref.clone());
+
+                let amount = holding.amount.parse::<f64>().unwrap_or(0.0);
+                if !grouped_portfolio_totals.contains_key(&holding.asset_identity_key) {
+                    grouped_portfolio_order.push(holding.asset_identity_key.clone());
+                    grouped_portfolio_representatives
+                        .insert(holding.asset_identity_key.clone(), holding_ref);
+                }
+                *grouped_portfolio_totals
+                    .entry(holding.asset_identity_key)
+                    .or_default() += amount;
+            }
+        }
+    }
+
+    let grouped_portfolio = grouped_portfolio_order
+        .into_iter()
+        .filter_map(|asset_identity_key| {
+            let representative = grouped_portfolio_representatives.get(&asset_identity_key)?;
+            Some(GroupedPortfolioHolding {
+                total_amount: grouped_portfolio_totals
+                    .get(&asset_identity_key)
+                    .copied()
+                    .unwrap_or_default()
+                    .to_string(),
+                asset_identity_key,
+                wallet_id: representative.wallet_id.clone(),
+                holding_index: representative.holding_index,
+            })
+        })
+        .collect();
+
+    StoreDerivedStatePlan {
+        included_portfolio_holding_refs,
+        unique_price_request_holding_refs,
+        grouped_portfolio,
+        signing_material_wallet_ids,
+        private_key_backed_wallet_ids,
+    }
+}
+
 fn secret_descriptor_for_wallet(
     wallet_id: &str,
     observation: Option<&WalletSecretObservation>,
@@ -168,8 +293,10 @@ fn display_error(error: impl std::fmt::Display) -> String {
 #[cfg(test)]
 mod tests {
     use super::{
-        build_persisted_snapshot, persisted_snapshot_from_json, wallet_secret_index,
-        PersistedAppSnapshot, PersistedAppSnapshotRequest, WalletSecretObservation,
+        build_persisted_snapshot, persisted_snapshot_from_json, plan_store_derived_state,
+        wallet_secret_index, PersistedAppSnapshot, PersistedAppSnapshotRequest,
+        StoreDerivedHoldingInput, StoreDerivedStateRequest, StoreDerivedWalletInput,
+        WalletSecretObservation,
     };
     use crate::core::state::CoreAppState;
     use std::collections::BTreeMap;
@@ -267,5 +394,62 @@ mod tests {
         let snapshot = persisted_snapshot_from_json(&json).unwrap();
         assert_eq!(snapshot.schema_version, 1);
         assert!(snapshot.secrets.is_empty());
+    }
+
+    #[test]
+    fn plans_store_derived_state_with_stable_grouping() {
+        let plan = plan_store_derived_state(StoreDerivedStateRequest {
+            wallets: vec![
+                StoreDerivedWalletInput {
+                    wallet_id: "wallet-1".to_string(),
+                    include_in_portfolio_total: true,
+                    has_signing_material: true,
+                    is_private_key_backed: false,
+                    holdings: vec![
+                        StoreDerivedHoldingInput {
+                            holding_index: 0,
+                            asset_identity_key: "Bitcoin|BTC".to_string(),
+                            symbol_upper: "BTC".to_string(),
+                            amount: "1.25".to_string(),
+                            is_priced_asset: true,
+                        },
+                        StoreDerivedHoldingInput {
+                            holding_index: 1,
+                            asset_identity_key: "Ethereum|USDC".to_string(),
+                            symbol_upper: "USDC".to_string(),
+                            amount: "50".to_string(),
+                            is_priced_asset: true,
+                        },
+                    ],
+                },
+                StoreDerivedWalletInput {
+                    wallet_id: "wallet-2".to_string(),
+                    include_in_portfolio_total: true,
+                    has_signing_material: false,
+                    is_private_key_backed: true,
+                    holdings: vec![StoreDerivedHoldingInput {
+                        holding_index: 0,
+                        asset_identity_key: "Bitcoin|BTC".to_string(),
+                        symbol_upper: "BTC".to_string(),
+                        amount: "0.75".to_string(),
+                        is_priced_asset: true,
+                    }],
+                },
+            ],
+        });
+
+        assert_eq!(plan.included_portfolio_holding_refs.len(), 3);
+        assert_eq!(plan.unique_price_request_holding_refs.len(), 2);
+        assert_eq!(
+            plan.signing_material_wallet_ids,
+            vec!["wallet-1".to_string()]
+        );
+        assert_eq!(
+            plan.private_key_backed_wallet_ids,
+            vec!["wallet-2".to_string()]
+        );
+        assert_eq!(plan.grouped_portfolio.len(), 2);
+        assert_eq!(plan.grouped_portfolio[0].asset_identity_key, "Bitcoin|BTC");
+        assert_eq!(plan.grouped_portfolio[0].total_amount, "2");
     }
 }

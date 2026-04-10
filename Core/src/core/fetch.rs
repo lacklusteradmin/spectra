@@ -132,6 +132,22 @@ pub struct DogecoinRefreshWalletTarget {
     pub addresses: Vec<String>,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct BalanceRefreshHealthRequest {
+    pub chain_name: String,
+    pub attempted_wallet_count: usize,
+    pub resolved_wallet_count: usize,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct BalanceRefreshHealthPlan {
+    pub should_mark_healthy: bool,
+    pub should_note_successful_sync: bool,
+    pub degraded_detail: Option<String>,
+}
+
 pub fn plan_wallet_balance_refresh(
     request: WalletBalanceRefreshRequest,
 ) -> WalletBalanceRefreshPlan {
@@ -194,6 +210,46 @@ pub fn plan_wallet_balance_refresh(
         service_kind,
         uses_bulk_refresh,
         needs_tracked_tokens,
+    }
+}
+
+pub fn plan_balance_refresh_health(
+    request: BalanceRefreshHealthRequest,
+) -> BalanceRefreshHealthPlan {
+    if request.attempted_wallet_count == 0 {
+        return BalanceRefreshHealthPlan {
+            should_mark_healthy: false,
+            should_note_successful_sync: false,
+            degraded_detail: None,
+        };
+    }
+
+    if request.resolved_wallet_count == request.attempted_wallet_count {
+        return BalanceRefreshHealthPlan {
+            should_mark_healthy: true,
+            should_note_successful_sync: false,
+            degraded_detail: None,
+        };
+    }
+
+    if request.resolved_wallet_count > 0 {
+        return BalanceRefreshHealthPlan {
+            should_mark_healthy: false,
+            should_note_successful_sync: true,
+            degraded_detail: Some(format!(
+                "{} providers are partially reachable. Showing the latest available balances.",
+                request.chain_name
+            )),
+        };
+    }
+
+    BalanceRefreshHealthPlan {
+        should_mark_healthy: false,
+        should_note_successful_sync: false,
+        degraded_detail: Some(format!(
+            "{} providers are unavailable. Using cached balances and history.",
+            request.chain_name
+        )),
     }
 }
 
@@ -322,9 +378,10 @@ fn normalize_evm_address(address: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::{
-        plan_dogecoin_refresh_targets, plan_evm_refresh_targets, plan_wallet_balance_refresh,
-        DogecoinRefreshTargetsRequest, DogecoinRefreshWalletInput, EvmRefreshTargetsRequest,
-        EvmRefreshWalletInput, WalletBalanceRefreshRequest,
+        plan_balance_refresh_health, plan_dogecoin_refresh_targets, plan_evm_refresh_targets,
+        plan_wallet_balance_refresh, BalanceRefreshHealthRequest, DogecoinRefreshTargetsRequest,
+        DogecoinRefreshWalletInput, EvmRefreshTargetsRequest, EvmRefreshWalletInput,
+        WalletBalanceRefreshRequest,
     };
 
     #[test]
@@ -453,5 +510,23 @@ mod tests {
         });
         assert_eq!(with_address.service_kind.as_deref(), Some("evmPortfolio"));
         assert!(with_address.needs_tracked_tokens);
+    }
+
+    #[test]
+    fn plans_balance_refresh_health_for_partial_results() {
+        let plan = plan_balance_refresh_health(BalanceRefreshHealthRequest {
+            chain_name: "Bitcoin".to_string(),
+            attempted_wallet_count: 3,
+            resolved_wallet_count: 1,
+        });
+
+        assert!(!plan.should_mark_healthy);
+        assert!(plan.should_note_successful_sync);
+        assert_eq!(
+            plan.degraded_detail.as_deref(),
+            Some(
+                "Bitcoin providers are partially reachable. Showing the latest available balances."
+            )
+        );
     }
 }
