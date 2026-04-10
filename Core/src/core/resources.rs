@@ -23,25 +23,25 @@ struct EmbeddedTextResource {
 static STATIC_JSON_RESOURCES: &[EmbeddedJsonResource] = &[
     EmbeddedJsonResource {
         name: "TokenVisualRegistry",
-        json: include_str!("../../../Views/Resources/TokenVisualRegistry.json"),
+        json: include_str!("../../../Resources/TokenVisualRegistry.json"),
     },
     EmbeddedJsonResource {
         name: "ChainVisualRegistry",
-        json: include_str!("../../../Views/Resources/ChainVisualRegistry.json"),
+        json: include_str!("../../../Resources/ChainVisualRegistry.json"),
     },
     EmbeddedJsonResource {
         name: "BuyCryptoProviders",
-        json: include_str!("../../../Views/Resources/BuyCryptoProviders.json"),
+        json: include_str!("../../../Resources/BuyCryptoProviders.json"),
     },
     EmbeddedJsonResource {
         name: "BuiltInTokenRegistry",
-        json: include_str!("../../../Views/Resources/BuiltInTokenRegistry.json"),
+        json: include_str!("../../../Resources/BuiltInTokenRegistry.json"),
     },
 ];
 
 static STATIC_TEXT_RESOURCES: &[EmbeddedTextResource] = &[EmbeddedTextResource {
     name: "BIP39EnglishWordList",
-    text: include_str!("../../../Views/Resources/BIP39EnglishWordList.txt"),
+    text: include_str!("../../../Resources/BIP39EnglishWordList.txt"),
 }];
 
 static JSON_RESOURCE_MAP: OnceLock<BTreeMap<String, &'static str>> = OnceLock::new();
