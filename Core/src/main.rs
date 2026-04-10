@@ -6,6 +6,7 @@ use bitcoin::secp256k1::{All, Secp256k1};
 use bitcoin::{Address, Network};
 use ed25519_dalek::SigningKey;
 use pbkdf2::pbkdf2_hmac;
+use serde::{Deserialize, Serialize};
 use sha2::Sha512;
 use slip10::{derive_key_from_path, Curve};
 use std::fmt::Display;
@@ -192,6 +193,45 @@ struct DerivedOutput {
     private_key_hex: Option<String>,
 }
 
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct UniFFIDerivationRequest {
+    pub chain: u32,
+    pub network: u32,
+    pub curve: u32,
+    pub requested_outputs: u32,
+    pub derivation_algorithm: u32,
+    pub address_algorithm: u32,
+    pub public_key_format: u32,
+    pub script_type: u32,
+    pub seed_phrase: String,
+    pub derivation_path: Option<String>,
+    pub passphrase: Option<String>,
+    pub hmac_key: Option<String>,
+    pub mnemonic_wordlist: Option<String>,
+    pub iteration_count: u32,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct UniFFIPrivateKeyDerivationRequest {
+    pub chain: u32,
+    pub network: u32,
+    pub curve: u32,
+    pub address_algorithm: u32,
+    pub public_key_format: u32,
+    pub script_type: u32,
+    pub private_key_hex: String,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct UniFFIDerivationResponse {
+    address: Option<String>,
+    public_key_hex: Option<String>,
+    private_key_hex: Option<String>,
+}
+
 struct ParsedRequest {
     chain: Chain,
     network: NetworkFlavor,
@@ -344,6 +384,103 @@ pub extern "C" fn spectra_derivation_response_free(response: *mut SpectraDerivat
     free_buffer(response.public_key_hex_utf8);
     free_buffer(response.private_key_hex_utf8);
     free_buffer(response.error_message_utf8);
+}
+
+#[uniffi::export]
+pub fn derivation_derive_json(request_json: String) -> Result<String, crate::SpectraBridgeError> {
+    let request: UniFFIDerivationRequest = serde_json::from_str(&request_json)
+        .map_err(|error| crate::SpectraBridgeError::from(error.to_string()))?;
+    let request = parse_uniffi_request(request)?;
+    let result = derive(request)?;
+    serialize_uniffi_derivation_response(result)
+}
+
+#[uniffi::export]
+pub fn derivation_derive_from_private_key_json(
+    request_json: String,
+) -> Result<String, crate::SpectraBridgeError> {
+    let request: UniFFIPrivateKeyDerivationRequest = serde_json::from_str(&request_json)
+        .map_err(|error| crate::SpectraBridgeError::from(error.to_string()))?;
+    let request = parse_uniffi_private_key_request(request)?;
+    let result = derive_from_private_key(request)?;
+    serialize_uniffi_derivation_response(result)
+}
+
+fn parse_uniffi_request(
+    request: UniFFIDerivationRequest,
+) -> Result<ParsedRequest, crate::SpectraBridgeError> {
+    let seed_phrase = normalize_seed_phrase(&request.seed_phrase);
+    if seed_phrase.is_empty() {
+        return Err(crate::SpectraBridgeError::from("Seed phrase is empty."));
+    }
+
+    let derivation_path = request
+        .derivation_path
+        .map(|value| value.trim().to_string())
+        .filter(|value| !value.is_empty());
+    let passphrase = request.passphrase.unwrap_or_default();
+    let hmac_key = request
+        .hmac_key
+        .map(|value| value.trim().to_string())
+        .filter(|value| !value.is_empty());
+    let mnemonic_wordlist = request
+        .mnemonic_wordlist
+        .map(|value| value.trim().to_string())
+        .filter(|value| !value.is_empty());
+
+    if request.requested_outputs == 0 {
+        return Err(crate::SpectraBridgeError::from(
+            "At least one output must be requested.",
+        ));
+    }
+    let known_outputs = OUTPUT_ADDRESS | OUTPUT_PUBLIC_KEY | OUTPUT_PRIVATE_KEY;
+    if request.requested_outputs & !known_outputs != 0 {
+        return Err(crate::SpectraBridgeError::from(
+            "Requested outputs contain unsupported output flags.",
+        ));
+    }
+
+    Ok(ParsedRequest {
+        chain: parse_chain(request.chain)?,
+        network: parse_network(request.network)?,
+        curve: parse_curve(request.curve)?,
+        requested_outputs: request.requested_outputs,
+        derivation_algorithm: parse_derivation_algorithm(request.derivation_algorithm)?,
+        address_algorithm: parse_address_algorithm(request.address_algorithm)?,
+        public_key_format: parse_public_key_format(request.public_key_format)?,
+        script_type: parse_script_type(request.script_type)?,
+        seed_phrase,
+        derivation_path,
+        passphrase,
+        hmac_key,
+        mnemonic_wordlist,
+        iteration_count: request.iteration_count,
+    })
+}
+
+fn parse_uniffi_private_key_request(
+    request: UniFFIPrivateKeyDerivationRequest,
+) -> Result<ParsedPrivateKeyRequest, crate::SpectraBridgeError> {
+    Ok(ParsedPrivateKeyRequest {
+        chain: parse_chain(request.chain)?,
+        network: parse_network(request.network)?,
+        curve: parse_curve(request.curve)?,
+        address_algorithm: parse_address_algorithm(request.address_algorithm)?,
+        public_key_format: parse_public_key_format(request.public_key_format)?,
+        script_type: parse_script_type(request.script_type)?,
+        private_key: decode_private_key_hex(&request.private_key_hex)?,
+    })
+}
+
+fn serialize_uniffi_derivation_response(
+    result: DerivedOutput,
+) -> Result<String, crate::SpectraBridgeError> {
+    serde_json::to_string(&UniFFIDerivationResponse {
+        address: result.address,
+        public_key_hex: result.public_key_hex,
+        private_key_hex: result.private_key_hex,
+    })
+    .map_err(|error| crate::SpectraBridgeError::from(error.to_string()))
 }
 
 struct ParsedPrivateKeyRequest {
@@ -1681,5 +1818,3 @@ mod tests {
         }
     }
 }
-
-fn main() {}

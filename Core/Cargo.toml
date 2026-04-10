@@ -3,10 +3,11 @@ name = "spectra_derivation"
 version = "0.1.0"
 edition = "2021"
 publish = false
+autobins = false
 
 [lib]
 name = "spectra_derivation"
-crate-type = ["staticlib"]
+crate-type = ["staticlib", "cdylib"]
 
 [dependencies]
 bip39 = "2"
@@ -26,6 +27,8 @@ serde_json = "1"
 sha2 = "0.10"
 slip10 = "0.4"
 tiny-keccak = { version = "2", features = ["keccak"] }
+thiserror = "2"
+uniffi = "0.29"
 unicode-normalization = "0.1"
 zeroize = { version = "1", features = ["alloc", "derive"] }
 

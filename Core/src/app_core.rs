@@ -494,9 +494,187 @@ pub extern "C" fn spectra_app_core_json_response_free(response: *mut SpectraJson
 
     unsafe {
         let response = Box::from_raw(response);
-        free_buffer(response.payload_utf8);
-        free_buffer(response.error_message_utf8);
-    }
+    free_buffer(response.payload_utf8);
+    free_buffer(response.error_message_utf8);
+}
+
+#[uniffi::export]
+pub fn app_core_chain_presets_json() -> Result<String, crate::SpectraBridgeError> {
+    Ok(app_core_catalog().and_then(|catalog| serialize_json(&catalog.chain_presets))?)
+}
+
+#[uniffi::export]
+pub fn app_core_request_compilation_presets_json(
+) -> Result<String, crate::SpectraBridgeError> {
+    Ok(app_core_catalog().and_then(|catalog| serialize_json(&catalog.request_compilation_presets))?)
+}
+
+#[uniffi::export]
+pub fn app_core_resolve_derivation_path_json(
+    chain: u32,
+    derivation_path: String,
+) -> Result<String, crate::SpectraBridgeError> {
+    let response = app_core_catalog().and_then(|catalog| {
+        let chain_name = chain_name_from_id(chain)
+            .ok_or_else(|| format!("Unsupported derivation chain identifier {chain}."))?;
+        let default_path = default_path_from_catalog(catalog, chain_name)?;
+        let normalized_path = normalize_derivation_path(&derivation_path, &default_path);
+        let resolution = AppCoreDerivationPathResolution {
+            chain: chain_name.to_string(),
+            normalized_path: normalized_path.clone(),
+            account_index: resolved_account_index(chain_name, &normalized_path),
+            flavor: resolved_flavor(chain_name, &normalized_path).to_string(),
+        };
+        serialize_json(&resolution)
+    })?;
+    Ok(response)
+}
+
+#[uniffi::export]
+pub fn app_core_derivation_paths_for_preset_json(
+    account_index: u32,
+) -> Result<String, crate::SpectraBridgeError> {
+    Ok(app_core_catalog()
+        .and_then(|catalog| serialize_json(&seed_derivation_paths_for_account(catalog, account_index)?))?)
+}
+
+#[uniffi::export]
+pub fn app_core_endpoint_records_json() -> Result<String, crate::SpectraBridgeError> {
+    Ok(app_core_catalog().and_then(|catalog| serialize_json(&catalog.endpoint_records))?)
+}
+
+#[uniffi::export]
+pub fn app_core_endpoint_for_id_json(id: String) -> Result<String, crate::SpectraBridgeError> {
+    Ok(app_core_catalog().and_then(|catalog| {
+        let record = catalog
+            .endpoint_records
+            .iter()
+            .find(|record| record.id == id)
+            .map(|record| record.endpoint.clone())
+            .ok_or_else(|| format!("Missing endpoint record for id: {id}"))?;
+        serialize_json(&record)
+    })?)
+}
+
+#[uniffi::export]
+pub fn app_core_endpoints_for_ids_json(ids_json: String) -> Result<String, crate::SpectraBridgeError> {
+    let ids = serde_json::from_str::<Vec<String>>(&ids_json)?;
+    Ok(app_core_catalog().and_then(|catalog| {
+        let endpoints = ids
+            .iter()
+            .map(|id| {
+                catalog
+                    .endpoint_records
+                    .iter()
+                    .find(|record| &record.id == id)
+                    .map(|record| record.endpoint.clone())
+                    .ok_or_else(|| format!("Missing endpoint record for id: {id}"))
+            })
+            .collect::<Result<Vec<_>, _>>()?;
+        serialize_json(&endpoints)
+    })?)
+}
+
+#[uniffi::export]
+pub fn app_core_endpoint_records_for_chain_json(
+    chain_name: String,
+    role_mask: u32,
+    settings_visible_only: bool,
+) -> Result<String, crate::SpectraBridgeError> {
+    Ok(app_core_catalog().and_then(|catalog| {
+        serialize_json(&endpoint_records_for_chain(
+            catalog,
+            &chain_name,
+            role_mask,
+            settings_visible_only,
+        ))
+    })?)
+}
+
+#[uniffi::export]
+pub fn app_core_grouped_settings_entries_json(
+    chain_name: String,
+) -> Result<String, crate::SpectraBridgeError> {
+    Ok(app_core_catalog().and_then(|catalog| serialize_json(&grouped_settings_entries(catalog, &chain_name)))?)
+}
+
+#[uniffi::export]
+pub fn app_core_diagnostics_checks_json(
+    chain_name: String,
+) -> Result<String, crate::SpectraBridgeError> {
+    Ok(app_core_catalog().and_then(|catalog| serialize_json(&diagnostics_checks(catalog, &chain_name)))?)
+}
+
+#[uniffi::export]
+pub fn app_core_transaction_explorer_entry_json(
+    chain_name: String,
+) -> Result<String, crate::SpectraBridgeError> {
+    Ok(app_core_catalog().and_then(|catalog| serialize_json(&transaction_explorer_entry(catalog, &chain_name)))?)
+}
+
+#[uniffi::export]
+pub fn app_core_bitcoin_esplora_base_urls_json(
+    network: String,
+) -> Result<String, crate::SpectraBridgeError> {
+    Ok(app_core_catalog().and_then(|catalog| serialize_json(&bitcoin_esplora_base_urls(catalog, &network)?))?)
+}
+
+#[uniffi::export]
+pub fn app_core_bitcoin_wallet_store_default_base_urls_json(
+    network: String,
+) -> Result<String, crate::SpectraBridgeError> {
+    Ok(app_core_catalog().and_then(|catalog| {
+        serialize_json(&bitcoin_wallet_store_default_base_urls(catalog, &network)?)
+    })?)
+}
+
+#[uniffi::export]
+pub fn app_core_evm_rpc_endpoints_json(
+    chain_name: String,
+) -> Result<String, crate::SpectraBridgeError> {
+    Ok(app_core_catalog().and_then(|catalog| {
+        let endpoints = endpoint_records_for_chain(catalog, &chain_name, ENDPOINT_ROLE_RPC, false)
+            .into_iter()
+            .map(|record| record.endpoint)
+            .collect::<Vec<_>>();
+        serialize_json(&endpoints)
+    })?)
+}
+
+#[uniffi::export]
+pub fn app_core_explorer_supplemental_endpoints_json(
+    chain_name: String,
+) -> Result<String, crate::SpectraBridgeError> {
+    Ok(app_core_catalog().and_then(|catalog| {
+        let endpoints = endpoint_records_for_chain(catalog, &chain_name, ENDPOINT_ROLE_EXPLORER, true)
+            .into_iter()
+            .map(|record| record.endpoint)
+            .collect::<Vec<_>>();
+        serialize_json(&endpoints)
+    })?)
+}
+
+#[uniffi::export]
+pub fn app_core_broadcast_provider_options_json(
+    chain_name: String,
+) -> Result<String, crate::SpectraBridgeError> {
+    Ok(serialize_json(&broadcast_provider_options(&chain_name))?)
+}
+
+#[uniffi::export]
+pub fn app_core_chain_backends_json() -> Result<String, crate::SpectraBridgeError> {
+    Ok(serialize_json(&chain_backends())?)
+}
+
+#[uniffi::export]
+pub fn app_core_live_chain_names_json() -> Result<String, crate::SpectraBridgeError> {
+    Ok(serialize_json(&live_chain_names())?)
+}
+
+#[uniffi::export]
+pub fn app_core_app_chain_descriptors_json() -> Result<String, crate::SpectraBridgeError> {
+    Ok(serialize_json(&app_chain_descriptors())?)
+}
 }
 
 fn json_response_from_result(result: Result<String, String>) -> *mut SpectraJsonResponse {
