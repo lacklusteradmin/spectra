@@ -30,6 +30,14 @@ impl From<serde_json::Error> for SpectraBridgeError {
     }
 }
 
+impl From<hex::FromHexError> for SpectraBridgeError {
+    fn from(error: hex::FromHexError) -> Self {
+        Self::Failure {
+            message: error.to_string(),
+        }
+    }
+}
+
 // Preset-focused API surface for Rust-side derivation request compilation data.
 // Swift currently owns runtime preset selection, but this keeps Rust ready to
 // own or validate preset payloads without mixing them with execution internals.

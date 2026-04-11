@@ -29,8 +29,10 @@ use super::send::{
 };
 use super::state::{reduce_state, CoreAppState, StateCommand};
 use super::store::{
-    build_persisted_snapshot, persisted_snapshot_from_json, plan_store_derived_state,
-    wallet_secret_index, PersistedAppSnapshotRequest, StoreDerivedStateRequest,
+    aggregate_owned_addresses, build_persisted_snapshot, persisted_snapshot_from_json,
+    plan_receive_selection, plan_self_send_confirmation, plan_store_derived_state,
+    wallet_secret_index, OwnedAddressAggregationRequest, PersistedAppSnapshotRequest,
+    ReceiveSelectionRequest, SelfSendConfirmationRequest, StoreDerivedStateRequest,
 };
 use super::transactions::{merge_transactions, TransactionMergeRequest};
 use super::transfer::{plan_transfer_availability, TransferAvailabilityRequest};
@@ -122,6 +124,30 @@ pub fn core_plan_store_derived_state_json(
 ) -> Result<String, crate::SpectraBridgeError> {
     let request = serde_json::from_str::<StoreDerivedStateRequest>(&request_json)?;
     Ok(serialize_json(&plan_store_derived_state(request))?)
+}
+
+#[uniffi::export]
+pub fn core_aggregate_owned_addresses_json(
+    request_json: String,
+) -> Result<String, crate::SpectraBridgeError> {
+    let request = serde_json::from_str::<OwnedAddressAggregationRequest>(&request_json)?;
+    Ok(serialize_json(&aggregate_owned_addresses(request))?)
+}
+
+#[uniffi::export]
+pub fn core_plan_receive_selection_json(
+    request_json: String,
+) -> Result<String, crate::SpectraBridgeError> {
+    let request = serde_json::from_str::<ReceiveSelectionRequest>(&request_json)?;
+    Ok(serialize_json(&plan_receive_selection(request))?)
+}
+
+#[uniffi::export]
+pub fn core_plan_self_send_confirmation_json(
+    request_json: String,
+) -> Result<String, crate::SpectraBridgeError> {
+    let request = serde_json::from_str::<SelfSendConfirmationRequest>(&request_json)?;
+    Ok(serialize_json(&plan_self_send_confirmation(request))?)
 }
 
 #[uniffi::export]

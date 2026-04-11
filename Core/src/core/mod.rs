@@ -1,4 +1,7 @@
 pub mod addressing;
+pub mod chains;
+pub mod http;
+pub mod service;
 pub mod catalog;
 pub mod endpoint_reliability;
 pub mod fetch;

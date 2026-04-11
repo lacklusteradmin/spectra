@@ -103,6 +103,68 @@ pub struct StoreDerivedStatePlan {
     pub private_key_backed_wallet_ids: Vec<String>,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct OwnedAddressAggregationRequest {
+    pub candidate_addresses: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct ReceiveSelectionHoldingInput {
+    pub holding_index: usize,
+    pub chain_name: String,
+    pub has_contract_address: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct ReceiveSelectionRequest {
+    pub receive_chain_name: String,
+    pub available_receive_chains: Vec<String>,
+    pub available_receive_holdings: Vec<ReceiveSelectionHoldingInput>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct ReceiveSelectionPlan {
+    pub resolved_chain_name: String,
+    pub selected_receive_holding_index: Option<usize>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct PendingSelfSendConfirmationInput {
+    pub wallet_id: String,
+    pub chain_name: String,
+    pub symbol: String,
+    pub destination_address_lowercased: String,
+    pub amount: f64,
+    pub created_at_unix: f64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct SelfSendConfirmationRequest {
+    pub pending_confirmation: Option<PendingSelfSendConfirmationInput>,
+    pub wallet_id: String,
+    pub chain_name: String,
+    pub symbol: String,
+    pub destination_address: String,
+    pub amount: f64,
+    pub now_unix: f64,
+    pub window_seconds: f64,
+    pub owned_addresses: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct SelfSendConfirmationPlan {
+    pub requires_confirmation: bool,
+    pub consume_existing_confirmation: bool,
+    pub clear_pending_confirmation: bool,
+}
+
 pub trait SecretStore: Send + Sync {
     fn store_seed_phrase(&self, wallet_id: &str, seed_phrase: &str) -> Result<(), String>;
     fn load_seed_phrase(&self, wallet_id: &str) -> Result<Option<String>, String>;
@@ -248,6 +310,116 @@ pub fn plan_store_derived_state(request: StoreDerivedStateRequest) -> StoreDeriv
     }
 }
 
+pub fn aggregate_owned_addresses(request: OwnedAddressAggregationRequest) -> Vec<String> {
+    let mut ordered = Vec::new();
+    let mut seen = std::collections::BTreeSet::<String>::new();
+
+    for candidate in request.candidate_addresses {
+        let trimmed = candidate.trim();
+        if trimmed.is_empty() {
+            continue;
+        }
+        let normalized = trimmed.to_lowercase();
+        if seen.insert(normalized) {
+            ordered.push(trimmed.to_string());
+        }
+    }
+
+    ordered
+}
+
+pub fn plan_receive_selection(request: ReceiveSelectionRequest) -> ReceiveSelectionPlan {
+    let resolved_chain_name = if request
+        .available_receive_chains
+        .iter()
+        .any(|chain| chain == &request.receive_chain_name)
+    {
+        request.receive_chain_name
+    } else {
+        request
+            .available_receive_chains
+            .first()
+            .cloned()
+            .unwrap_or_default()
+    };
+
+    let mut first_matching = None;
+    let mut selected_receive_holding_index = None;
+    for holding in request.available_receive_holdings {
+        if holding.chain_name != resolved_chain_name {
+            continue;
+        }
+        if first_matching.is_none() {
+            first_matching = Some(holding.holding_index);
+        }
+        if !holding.has_contract_address {
+            selected_receive_holding_index = Some(holding.holding_index);
+            break;
+        }
+    }
+
+    ReceiveSelectionPlan {
+        resolved_chain_name,
+        selected_receive_holding_index: selected_receive_holding_index.or(first_matching),
+    }
+}
+
+pub fn plan_self_send_confirmation(
+    request: SelfSendConfirmationRequest,
+) -> SelfSendConfirmationPlan {
+    let destination = request.destination_address.trim().to_lowercase();
+    let owned_addresses = request
+        .owned_addresses
+        .into_iter()
+        .map(|address| address.trim().to_lowercase())
+        .collect::<std::collections::BTreeSet<_>>();
+
+    if !owned_addresses.contains(&destination) {
+        return SelfSendConfirmationPlan {
+            requires_confirmation: false,
+            consume_existing_confirmation: false,
+            clear_pending_confirmation: false,
+        };
+    }
+
+    let Some(pending) = request.pending_confirmation else {
+        return SelfSendConfirmationPlan {
+            requires_confirmation: true,
+            consume_existing_confirmation: false,
+            clear_pending_confirmation: false,
+        };
+    };
+
+    let is_expired = request.now_unix - pending.created_at_unix > request.window_seconds;
+    if is_expired {
+        return SelfSendConfirmationPlan {
+            requires_confirmation: true,
+            consume_existing_confirmation: false,
+            clear_pending_confirmation: true,
+        };
+    }
+
+    let same_wallet = pending.wallet_id == request.wallet_id;
+    let same_chain = pending.chain_name == request.chain_name;
+    let same_symbol = pending.symbol == request.symbol;
+    let same_destination = pending.destination_address_lowercased == destination;
+    let same_amount = (pending.amount - request.amount).abs() < 0.00000001;
+
+    if same_wallet && same_chain && same_symbol && same_destination && same_amount {
+        return SelfSendConfirmationPlan {
+            requires_confirmation: false,
+            consume_existing_confirmation: true,
+            clear_pending_confirmation: true,
+        };
+    }
+
+    SelfSendConfirmationPlan {
+        requires_confirmation: true,
+        consume_existing_confirmation: false,
+        clear_pending_confirmation: true,
+    }
+}
+
 fn secret_descriptor_for_wallet(
     wallet_id: &str,
     observation: Option<&WalletSecretObservation>,
@@ -293,10 +465,12 @@ fn display_error(error: impl std::fmt::Display) -> String {
 #[cfg(test)]
 mod tests {
     use super::{
-        build_persisted_snapshot, persisted_snapshot_from_json, plan_store_derived_state,
-        wallet_secret_index, PersistedAppSnapshot, PersistedAppSnapshotRequest,
-        StoreDerivedHoldingInput, StoreDerivedStateRequest, StoreDerivedWalletInput,
-        WalletSecretObservation,
+        aggregate_owned_addresses, build_persisted_snapshot, persisted_snapshot_from_json,
+        plan_receive_selection, plan_self_send_confirmation, plan_store_derived_state,
+        wallet_secret_index, OwnedAddressAggregationRequest, PendingSelfSendConfirmationInput,
+        PersistedAppSnapshot, PersistedAppSnapshotRequest, ReceiveSelectionHoldingInput,
+        ReceiveSelectionRequest, SelfSendConfirmationRequest, StoreDerivedHoldingInput,
+        StoreDerivedStateRequest, StoreDerivedWalletInput, WalletSecretObservation,
     };
     use crate::core::state::CoreAppState;
     use std::collections::BTreeMap;
@@ -451,5 +625,71 @@ mod tests {
         assert_eq!(plan.grouped_portfolio.len(), 2);
         assert_eq!(plan.grouped_portfolio[0].asset_identity_key, "Bitcoin|BTC");
         assert_eq!(plan.grouped_portfolio[0].total_amount, "2");
+    }
+
+    #[test]
+    fn aggregates_owned_addresses_in_order_without_duplicates() {
+        let addresses = aggregate_owned_addresses(OwnedAddressAggregationRequest {
+            candidate_addresses: vec![
+                " 0xAbc ".to_string(),
+                "".to_string(),
+                "0xabc".to_string(),
+                "bc1example".to_string(),
+            ],
+        });
+
+        assert_eq!(
+            addresses,
+            vec!["0xAbc".to_string(), "bc1example".to_string()]
+        );
+    }
+
+    #[test]
+    fn prefers_native_receive_holding_for_resolved_chain() {
+        let plan = plan_receive_selection(ReceiveSelectionRequest {
+            receive_chain_name: "Ethereum".to_string(),
+            available_receive_chains: vec!["Ethereum".to_string()],
+            available_receive_holdings: vec![
+                ReceiveSelectionHoldingInput {
+                    holding_index: 0,
+                    chain_name: "Ethereum".to_string(),
+                    has_contract_address: true,
+                },
+                ReceiveSelectionHoldingInput {
+                    holding_index: 1,
+                    chain_name: "Ethereum".to_string(),
+                    has_contract_address: false,
+                },
+            ],
+        });
+
+        assert_eq!(plan.resolved_chain_name, "Ethereum");
+        assert_eq!(plan.selected_receive_holding_index, Some(1));
+    }
+
+    #[test]
+    fn consumes_matching_pending_self_send_confirmation() {
+        let plan = plan_self_send_confirmation(SelfSendConfirmationRequest {
+            pending_confirmation: Some(PendingSelfSendConfirmationInput {
+                wallet_id: "wallet-1".to_string(),
+                chain_name: "Bitcoin".to_string(),
+                symbol: "BTC".to_string(),
+                destination_address_lowercased: "bc1self".to_string(),
+                amount: 1.5,
+                created_at_unix: 100.0,
+            }),
+            wallet_id: "wallet-1".to_string(),
+            chain_name: "Bitcoin".to_string(),
+            symbol: "BTC".to_string(),
+            destination_address: "BC1SELF".to_string(),
+            amount: 1.5,
+            now_unix: 110.0,
+            window_seconds: 30.0,
+            owned_addresses: vec!["bc1self".to_string()],
+        });
+
+        assert!(!plan.requires_confirmation);
+        assert!(plan.consume_existing_confirmation);
+        assert!(plan.clear_pending_confirmation);
     }
 }
