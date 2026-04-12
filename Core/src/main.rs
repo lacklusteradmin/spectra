@@ -309,6 +309,201 @@ pub fn derivation_build_material_from_private_key_json(
     serialize_uniffi_material_response(result)
 }
 
+/// Derive addresses for multiple chains in a single call.
+///
+/// `chain_paths_json` — JSON object mapping chain display name to derivation path:
+///   `{"Bitcoin": "m/84'/0'/0'/0/0", "Ethereum": "m/44'/60'/0'/0/0", ...}`
+///
+/// Returns a JSON object mapping each chain name to its derived address (or `null`
+/// when the chain name is unrecognised or derivation fails):
+///   `{"Bitcoin": "bc1q...", "Ethereum": "0x...", ...}`
+#[uniffi::export]
+pub fn derivation_derive_all_addresses_json(
+    seed_phrase: String,
+    chain_paths_json: String,
+) -> Result<String, crate::SpectraBridgeError> {
+    let chain_paths: std::collections::HashMap<String, String> =
+        serde_json::from_str(&chain_paths_json)
+            .map_err(|e| crate::SpectraBridgeError::from(e.to_string()))?;
+
+    let mut results: std::collections::HashMap<String, Option<String>> =
+        std::collections::HashMap::new();
+
+    for (chain_name, path) in &chain_paths {
+        let address = derive_address_for_chain(&seed_phrase, chain_name, path)
+            .ok()
+            .flatten();
+        results.insert(chain_name.clone(), address);
+    }
+
+    serde_json::to_string(&results)
+        .map_err(|e| crate::SpectraBridgeError::from(e.to_string()))
+}
+
+/// Derive a single address from a seed phrase, chain name, and derivation path,
+/// using the canonical per-chain algorithm defaults.
+fn derive_address_for_chain(
+    seed_phrase: &str,
+    chain_name: &str,
+    path: &str,
+) -> Result<Option<String>, crate::SpectraBridgeError> {
+    let (chain_id, curve, deriv_alg, addr_alg, pubkey_fmt, script_opt) =
+        match chain_defaults_from_name(chain_name) {
+            Some(defaults) => defaults,
+            None => return Ok(None), // unknown chain — skip silently
+        };
+
+    // For Bitcoin, script type depends on the purpose level in the path (44/49/84/86).
+    // All other chains use a fixed script type supplied by chain_defaults_from_name.
+    let script = script_opt.unwrap_or_else(|| script_type_from_purpose(path));
+
+    let request = UniFFIDerivationRequest {
+        chain: chain_id,
+        network: NETWORK_MAINNET,
+        curve,
+        requested_outputs: OUTPUT_ADDRESS,
+        derivation_algorithm: deriv_alg,
+        address_algorithm: addr_alg,
+        public_key_format: pubkey_fmt,
+        script_type: script,
+        seed_phrase: seed_phrase.to_string(),
+        derivation_path: Some(path.to_string()),
+        passphrase: None,
+        hmac_key: None,
+        mnemonic_wordlist: None,
+        iteration_count: 0,
+    };
+
+    let parsed = parse_uniffi_request(request)?;
+    let output = derive(parsed)?;
+    Ok(output.address)
+}
+
+/// Map a chain display name to its canonical algorithm defaults.
+///
+/// Returns `(chain_id, curve, derivation_algorithm, address_algorithm, public_key_format, script_type)`.
+/// `script_type = None` means the caller should infer it from the path's purpose level
+/// (used for Bitcoin where the address format varies by purpose: 44/49/84/86).
+fn chain_defaults_from_name(name: &str) -> Option<(u32, u32, u32, u32, u32, Option<u32>)> {
+    match name {
+        // ── UTXO / secp256k1 ────────────────────────────────────────────────
+        "Bitcoin" => Some((
+            CHAIN_BITCOIN, CURVE_SECP256K1, DERIVATION_BIP32_SECP256K1,
+            ADDRESS_BITCOIN, PUBLIC_KEY_COMPRESSED, None, // purpose-derived
+        )),
+        "Bitcoin Cash" => Some((
+            CHAIN_BITCOIN_CASH, CURVE_SECP256K1, DERIVATION_BIP32_SECP256K1,
+            ADDRESS_BITCOIN, PUBLIC_KEY_COMPRESSED, Some(SCRIPT_P2PKH),
+        )),
+        "Bitcoin SV" => Some((
+            CHAIN_BITCOIN_SV, CURVE_SECP256K1, DERIVATION_BIP32_SECP256K1,
+            ADDRESS_BITCOIN, PUBLIC_KEY_COMPRESSED, Some(SCRIPT_P2PKH),
+        )),
+        "Litecoin" => Some((
+            CHAIN_LITECOIN, CURVE_SECP256K1, DERIVATION_BIP32_SECP256K1,
+            ADDRESS_BITCOIN, PUBLIC_KEY_COMPRESSED, Some(SCRIPT_P2PKH),
+        )),
+        "Dogecoin" => Some((
+            CHAIN_DOGECOIN, CURVE_SECP256K1, DERIVATION_BIP32_SECP256K1,
+            ADDRESS_BITCOIN, PUBLIC_KEY_COMPRESSED, Some(SCRIPT_P2PKH),
+        )),
+        // ── EVM / secp256k1 ─────────────────────────────────────────────────
+        "Ethereum" => Some((
+            CHAIN_ETHEREUM, CURVE_SECP256K1, DERIVATION_BIP32_SECP256K1,
+            ADDRESS_EVM, PUBLIC_KEY_UNCOMPRESSED, Some(SCRIPT_ACCOUNT),
+        )),
+        "Ethereum Classic" => Some((
+            CHAIN_ETHEREUM_CLASSIC, CURVE_SECP256K1, DERIVATION_BIP32_SECP256K1,
+            ADDRESS_EVM, PUBLIC_KEY_UNCOMPRESSED, Some(SCRIPT_ACCOUNT),
+        )),
+        "Arbitrum" => Some((
+            CHAIN_ARBITRUM, CURVE_SECP256K1, DERIVATION_BIP32_SECP256K1,
+            ADDRESS_EVM, PUBLIC_KEY_UNCOMPRESSED, Some(SCRIPT_ACCOUNT),
+        )),
+        "Optimism" => Some((
+            CHAIN_OPTIMISM, CURVE_SECP256K1, DERIVATION_BIP32_SECP256K1,
+            ADDRESS_EVM, PUBLIC_KEY_UNCOMPRESSED, Some(SCRIPT_ACCOUNT),
+        )),
+        "Avalanche" => Some((
+            CHAIN_AVALANCHE, CURVE_SECP256K1, DERIVATION_BIP32_SECP256K1,
+            ADDRESS_EVM, PUBLIC_KEY_UNCOMPRESSED, Some(SCRIPT_ACCOUNT),
+        )),
+        "Hyperliquid" => Some((
+            CHAIN_HYPERLIQUID, CURVE_SECP256K1, DERIVATION_BIP32_SECP256K1,
+            ADDRESS_EVM, PUBLIC_KEY_UNCOMPRESSED, Some(SCRIPT_ACCOUNT),
+        )),
+        "Tron" => Some((
+            CHAIN_TRON, CURVE_SECP256K1, DERIVATION_BIP32_SECP256K1,
+            ADDRESS_EVM, PUBLIC_KEY_UNCOMPRESSED, Some(SCRIPT_ACCOUNT),
+        )),
+        "XRP Ledger" => Some((
+            CHAIN_XRP, CURVE_SECP256K1, DERIVATION_BIP32_SECP256K1,
+            ADDRESS_BITCOIN, PUBLIC_KEY_COMPRESSED, Some(SCRIPT_P2PKH),
+        )),
+        // ── Ed25519 chains ───────────────────────────────────────────────────
+        "Solana" => Some((
+            CHAIN_SOLANA, CURVE_ED25519, DERIVATION_SLIP10_ED25519,
+            ADDRESS_SOLANA, PUBLIC_KEY_RAW, Some(SCRIPT_ACCOUNT),
+        )),
+        "Stellar" => Some((
+            CHAIN_STELLAR, CURVE_ED25519, DERIVATION_SLIP10_ED25519,
+            ADDRESS_SOLANA, PUBLIC_KEY_RAW, Some(SCRIPT_ACCOUNT),
+        )),
+        "Cardano" => Some((
+            CHAIN_CARDANO, CURVE_ED25519, DERIVATION_SLIP10_ED25519,
+            ADDRESS_SOLANA, PUBLIC_KEY_RAW, Some(SCRIPT_ACCOUNT),
+        )),
+        "Sui" => Some((
+            CHAIN_SUI, CURVE_ED25519, DERIVATION_SLIP10_ED25519,
+            ADDRESS_SOLANA, PUBLIC_KEY_RAW, Some(SCRIPT_ACCOUNT),
+        )),
+        "Aptos" => Some((
+            CHAIN_APTOS, CURVE_ED25519, DERIVATION_SLIP10_ED25519,
+            ADDRESS_SOLANA, PUBLIC_KEY_RAW, Some(SCRIPT_ACCOUNT),
+        )),
+        "TON" => Some((
+            CHAIN_TON, CURVE_ED25519, DERIVATION_SLIP10_ED25519,
+            ADDRESS_SOLANA, PUBLIC_KEY_RAW, Some(SCRIPT_ACCOUNT),
+        )),
+        "Internet Computer" => Some((
+            CHAIN_INTERNET_COMPUTER, CURVE_ED25519, DERIVATION_SLIP10_ED25519,
+            ADDRESS_SOLANA, PUBLIC_KEY_RAW, Some(SCRIPT_ACCOUNT),
+        )),
+        "NEAR" => Some((
+            CHAIN_NEAR, CURVE_ED25519, DERIVATION_SLIP10_ED25519,
+            ADDRESS_SOLANA, PUBLIC_KEY_RAW, Some(SCRIPT_ACCOUNT),
+        )),
+        "Polkadot" => Some((
+            CHAIN_POLKADOT, CURVE_ED25519, DERIVATION_SLIP10_ED25519,
+            ADDRESS_SOLANA, PUBLIC_KEY_RAW, Some(SCRIPT_ACCOUNT),
+        )),
+        _ => None,
+    }
+}
+
+/// Parse the BIP-32 purpose level from a derivation path and return the matching
+/// Bitcoin script type constant.  Defaults to P2PKH when the purpose is unknown.
+///
+/// Examples: `m/44'/…` → P2PKH, `m/49'/…` → P2SH-P2WPKH,
+///           `m/84'/…` → P2WPKH, `m/86'/…` → P2TR.
+fn script_type_from_purpose(path: &str) -> u32 {
+    let without_prefix = path
+        .trim_start_matches('m')
+        .trim_start_matches('M')
+        .trim_start_matches('/');
+    let purpose_segment = without_prefix.split('/').next().unwrap_or("");
+    let purpose_str = purpose_segment
+        .trim_end_matches('\'')
+        .trim_end_matches('h');
+    match purpose_str {
+        "44" => SCRIPT_P2PKH,
+        "49" => SCRIPT_P2SH_P2WPKH,
+        "84" => SCRIPT_P2WPKH,
+        "86" => SCRIPT_P2TR,
+        _ => SCRIPT_P2PKH,
+    }
+}
+
 fn parse_uniffi_request(
     request: UniFFIDerivationRequest,
 ) -> Result<ParsedRequest, crate::SpectraBridgeError> {

@@ -71,6 +71,7 @@ use crate::core::chains::{
 };
 use crate::core::balance_cache::BalanceCache;
 use crate::core::history_cache::HistoryCache;
+use crate::core::history_store::HistoryPaginationStore;
 use crate::core::http::HttpClient;
 use crate::core::secret_store::SecretStore;
 use crate::SpectraBridgeError;
@@ -100,6 +101,8 @@ pub struct WalletService {
     balance_cache: Arc<BalanceCache>,
     /// Phase 2.3 — in-memory history cache (default TTL: 5 min).
     history_cache: Arc<HistoryCache>,
+    /// Phase 2.3 — per-wallet history pagination state (cursor/page/exhaustion).
+    history_pagination: Arc<HistoryPaginationStore>,
     /// Phase 2.7 — optional Keychain delegate (set via `set_secret_store`).
     secret_store: Arc<std::sync::RwLock<Option<Arc<dyn SecretStore>>>>,
 }
@@ -113,6 +116,7 @@ impl WalletService {
             endpoints: Arc::new(RwLock::new(endpoints)),
             balance_cache: Arc::new(BalanceCache::new(30)),
             history_cache: Arc::new(HistoryCache::new(300)), // 5-minute TTL
+            history_pagination: Arc::new(HistoryPaginationStore::new()),
             secret_store: Arc::new(std::sync::RwLock::new(None)),
         }))
     }
@@ -232,6 +236,24 @@ impl WalletService {
                 Ok(serde_json::to_string(&bal)?)
             }
             _ => Err(SpectraBridgeError::from(format!("unknown chain_id: {chain_id}"))),
+        }
+    }
+
+    /// Fetch balance, auto-detecting Bitcoin HD paths.
+    ///
+    /// For chain_id=0 (Bitcoin) with an extended public key (xpub/ypub/zpub),
+    /// delegates to `fetch_bitcoin_xpub_balance`; otherwise calls `fetch_balance`.
+    /// Used internally by `BalanceRefreshEngine`; also callable from Swift.
+    pub async fn fetch_balance_auto(
+        &self,
+        chain_id: u32,
+        address: String,
+    ) -> Result<String, SpectraBridgeError> {
+        if chain_id == 0 && is_extended_public_key(&address) {
+            // 20 receive + 20 change — matches the WalletServiceBridge Swift defaults.
+            self.fetch_bitcoin_xpub_balance(address, 20, 20).await
+        } else {
+            self.fetch_balance(chain_id, address).await
         }
     }
 
@@ -2243,6 +2265,194 @@ impl WalletService {
     }
 
     // ----------------------------------------------------------------
+    // Phase 2.1 — Relational wallet state (keypool + owned addresses)
+    //
+    // These replace UserDefaults JSON blobs on the Swift side.
+    // All calls run in spawn_blocking because rusqlite is not async.
+    // ----------------------------------------------------------------
+
+    /// Persist keypool state for one (wallet_id, chain_name) pair.
+    /// `state_json` encodes `KeypoolState` (nextExternalIndex, nextChangeIndex, reservedReceiveIndex).
+    pub async fn save_keypool_state(
+        &self,
+        db_path: String,
+        wallet_id: String,
+        chain_name: String,
+        state_json: String,
+    ) -> Result<(), SpectraBridgeError> {
+        tokio::task::spawn_blocking(move || {
+            let state: crate::core::wallet_db::KeypoolState =
+                serde_json::from_str(&state_json)
+                    .map_err(|e| format!("save_keypool_state parse: {e}"))?;
+            crate::core::wallet_db::keypool_save(&db_path, &wallet_id, &chain_name, &state)
+        })
+        .await
+        .map_err(|e| SpectraBridgeError::from(format!("spawn_blocking: {e}")))?
+        .map_err(SpectraBridgeError::from)
+    }
+
+    /// Load keypool state for one (wallet_id, chain_name). Returns `null` JSON if not found.
+    pub async fn load_keypool_state(
+        &self,
+        db_path: String,
+        wallet_id: String,
+        chain_name: String,
+    ) -> Result<Option<String>, SpectraBridgeError> {
+        tokio::task::spawn_blocking(move || {
+            let state = crate::core::wallet_db::keypool_load(&db_path, &wallet_id, &chain_name)?;
+            match state {
+                Some(s) => serde_json::to_string(&s)
+                    .map(Some)
+                    .map_err(|e| format!("load_keypool_state serialize: {e}")),
+                None => Ok(None),
+            }
+        })
+        .await
+        .map_err(|e| SpectraBridgeError::from(format!("spawn_blocking: {e}")))?
+        .map_err(SpectraBridgeError::from)
+    }
+
+    /// Bulk-load ALL keypool state across all wallets and chains.
+    /// Returns a JSON object: `{ "Bitcoin": { "<uuid>": { state }, … }, … }`.
+    /// Used at app startup to restore the in-memory keypool dictionaries.
+    pub async fn load_all_keypool_state(
+        &self,
+        db_path: String,
+    ) -> Result<String, SpectraBridgeError> {
+        tokio::task::spawn_blocking(move || {
+            let all = crate::core::wallet_db::keypool_load_all(&db_path)?;
+            serde_json::to_string(&all).map_err(|e| format!("load_all_keypool_state serialize: {e}"))
+        })
+        .await
+        .map_err(|e| SpectraBridgeError::from(format!("spawn_blocking: {e}")))?
+        .map_err(SpectraBridgeError::from)
+    }
+
+    /// Remove all keypool state for a wallet (called when a wallet is deleted).
+    pub async fn delete_keypool_for_wallet(
+        &self,
+        db_path: String,
+        wallet_id: String,
+    ) -> Result<(), SpectraBridgeError> {
+        tokio::task::spawn_blocking(move || {
+            crate::core::wallet_db::keypool_delete_for_wallet(&db_path, &wallet_id)
+        })
+        .await
+        .map_err(|e| SpectraBridgeError::from(format!("spawn_blocking: {e}")))?
+        .map_err(SpectraBridgeError::from)
+    }
+
+    /// Remove all keypool state for a chain (called when the user switches network modes,
+    /// triggering a rescan).
+    pub async fn delete_keypool_for_chain(
+        &self,
+        db_path: String,
+        chain_name: String,
+    ) -> Result<(), SpectraBridgeError> {
+        tokio::task::spawn_blocking(move || {
+            crate::core::wallet_db::keypool_delete_for_chain(&db_path, &chain_name)
+        })
+        .await
+        .map_err(|e| SpectraBridgeError::from(format!("spawn_blocking: {e}")))?
+        .map_err(SpectraBridgeError::from)
+    }
+
+    /// Upsert a single owned address record.
+    /// `record_json` encodes `OwnedAddressRecord` (walletId, chainName, address, derivationPath, branch, branchIndex).
+    pub async fn save_owned_address(
+        &self,
+        db_path: String,
+        record_json: String,
+    ) -> Result<(), SpectraBridgeError> {
+        tokio::task::spawn_blocking(move || {
+            let record: crate::core::wallet_db::OwnedAddressRecord =
+                serde_json::from_str(&record_json)
+                    .map_err(|e| format!("save_owned_address parse: {e}"))?;
+            crate::core::wallet_db::address_save(&db_path, &record)
+        })
+        .await
+        .map_err(|e| SpectraBridgeError::from(format!("spawn_blocking: {e}")))?
+        .map_err(SpectraBridgeError::from)
+    }
+
+    /// Load all owned addresses for a (wallet, chain) pair.
+    /// Returns a JSON array of `OwnedAddressRecord` objects.
+    pub async fn load_owned_addresses(
+        &self,
+        db_path: String,
+        wallet_id: String,
+        chain_name: String,
+    ) -> Result<String, SpectraBridgeError> {
+        tokio::task::spawn_blocking(move || {
+            let records = crate::core::wallet_db::address_load_all(&db_path, &wallet_id, &chain_name)?;
+            serde_json::to_string(&records)
+                .map_err(|e| format!("load_owned_addresses serialize: {e}"))
+        })
+        .await
+        .map_err(|e| SpectraBridgeError::from(format!("spawn_blocking: {e}")))?
+        .map_err(SpectraBridgeError::from)
+    }
+
+    /// Bulk-load ALL owned address records across all wallets and chains.
+    /// Returns a JSON array; used at app startup to restore the in-memory address maps.
+    pub async fn load_all_owned_addresses(
+        &self,
+        db_path: String,
+    ) -> Result<String, SpectraBridgeError> {
+        tokio::task::spawn_blocking(move || {
+            let records = crate::core::wallet_db::address_load_all_chains(&db_path)?;
+            serde_json::to_string(&records)
+                .map_err(|e| format!("load_all_owned_addresses serialize: {e}"))
+        })
+        .await
+        .map_err(|e| SpectraBridgeError::from(format!("spawn_blocking: {e}")))?
+        .map_err(SpectraBridgeError::from)
+    }
+
+    /// Remove all owned address records for a deleted wallet.
+    pub async fn delete_owned_addresses_for_wallet(
+        &self,
+        db_path: String,
+        wallet_id: String,
+    ) -> Result<(), SpectraBridgeError> {
+        tokio::task::spawn_blocking(move || {
+            crate::core::wallet_db::address_delete_for_wallet(&db_path, &wallet_id)
+        })
+        .await
+        .map_err(|e| SpectraBridgeError::from(format!("spawn_blocking: {e}")))?
+        .map_err(SpectraBridgeError::from)
+    }
+
+    /// Remove all owned address records for a chain (called after a full rescan).
+    pub async fn delete_owned_addresses_for_chain(
+        &self,
+        db_path: String,
+        chain_name: String,
+    ) -> Result<(), SpectraBridgeError> {
+        tokio::task::spawn_blocking(move || {
+            crate::core::wallet_db::address_delete_for_chain(&db_path, &chain_name)
+        })
+        .await
+        .map_err(|e| SpectraBridgeError::from(format!("spawn_blocking: {e}")))?
+        .map_err(SpectraBridgeError::from)
+    }
+
+    /// Remove all relational wallet state (keypool + addresses) for a deleted wallet.
+    /// This is the single call to make when a wallet is removed.
+    pub async fn delete_wallet_relational_data(
+        &self,
+        db_path: String,
+        wallet_id: String,
+    ) -> Result<(), SpectraBridgeError> {
+        tokio::task::spawn_blocking(move || {
+            crate::core::wallet_db::delete_wallet_data(&db_path, &wallet_id)
+        })
+        .await
+        .map_err(|e| SpectraBridgeError::from(format!("spawn_blocking: {e}")))?
+        .map_err(SpectraBridgeError::from)
+    }
+
+    // ----------------------------------------------------------------
     // Phase 2.2 — Balance cache
     // ----------------------------------------------------------------
 
@@ -2313,6 +2523,89 @@ impl WalletService {
         let fresh = self.fetch_history(chain_id, address.clone()).await?;
         self.history_cache.set(chain_id, &address, fresh.clone());
         Ok(fresh)
+    }
+
+    // ----------------------------------------------------------------
+    // Phase 2.3 — History pagination state
+    // ----------------------------------------------------------------
+
+    /// Current cursor for the next history fetch, or `None` if no fetch has
+    /// been done yet. Pass the returned value as the starting point for the
+    /// next page request.
+    pub fn history_next_cursor(&self, chain_id: u32, wallet_id: String) -> Option<String> {
+        self.history_pagination.cursor(chain_id, &wallet_id)
+    }
+
+    /// Current zero-based page index for page-numbered chains (EVM, etc.).
+    pub fn history_next_page(&self, chain_id: u32, wallet_id: String) -> u32 {
+        self.history_pagination.page(chain_id, &wallet_id)
+    }
+
+    /// Returns `true` when all history pages have been fetched and no more
+    /// pages are available. Swift should not attempt another fetch until
+    /// `reset_history` is called.
+    pub fn is_history_exhausted(&self, chain_id: u32, wallet_id: String) -> bool {
+        self.history_pagination.is_exhausted(chain_id, &wallet_id)
+    }
+
+    /// Record the cursor returned after a successful cursor-based fetch (UTXO
+    /// chains). Pass `None` when the chain confirms there are no more pages —
+    /// this marks the chain as exhausted.
+    pub fn advance_history_cursor(
+        &self,
+        chain_id: u32,
+        wallet_id: String,
+        next_cursor: Option<String>,
+    ) {
+        self.history_pagination
+            .advance_cursor(chain_id, &wallet_id, next_cursor);
+    }
+
+    /// Increment the page counter after a successful page-based fetch (EVM,
+    /// etc.). Pass `is_last = true` when the returned page was empty or the
+    /// chain indicated no next page.
+    pub fn advance_history_page(&self, chain_id: u32, wallet_id: String, is_last: bool) {
+        self.history_pagination
+            .advance_page(chain_id, &wallet_id, is_last);
+    }
+
+    /// Directly set the page counter to `page`. For page-based chains (EVM)
+    /// where Swift tracks absolute page numbers (1-indexed). Swift sets the
+    /// page to 1 on reset and stores the page that was just fetched after each
+    /// successful request.
+    pub fn set_history_page(&self, chain_id: u32, wallet_id: String, page: u32) {
+        self.history_pagination.set_page(chain_id, &wallet_id, page);
+    }
+
+    /// Explicitly mark a (chain, wallet) pair as exhausted or not. Used when
+    /// Swift detects an empty page without going through `advance_history_*`.
+    pub fn set_history_exhausted(&self, chain_id: u32, wallet_id: String, exhausted: bool) {
+        self.history_pagination
+            .set_exhausted(chain_id, &wallet_id, exhausted);
+    }
+
+    /// Reset pagination state for one (chain, wallet) pair — clears cursor,
+    /// page, and exhaustion flag. Call after the user pulls-to-refresh or
+    /// after a send confirmation.
+    pub fn reset_history(&self, chain_id: u32, wallet_id: String) {
+        self.history_pagination.reset(chain_id, &wallet_id);
+    }
+
+    /// Reset pagination for all chains of one wallet (e.g. wallet deleted or
+    /// user triggers a full history refresh for that wallet).
+    pub fn reset_history_for_wallet(&self, wallet_id: String) {
+        self.history_pagination.reset_all_for_wallet(&wallet_id);
+    }
+
+    /// Reset pagination for all wallets on one chain (e.g. chain re-org or
+    /// endpoint switch).
+    pub fn reset_history_for_chain(&self, chain_id: u32) {
+        self.history_pagination.reset_chain(chain_id);
+    }
+
+    /// Clear all history pagination state. Used on full account wipe / logout.
+    pub fn reset_all_history(&self) {
+        self.history_pagination.reset_all();
     }
 
     // ----------------------------------------------------------------
@@ -2701,6 +2994,14 @@ fn sqlite_load(db_path: &str, key: &str) -> Result<String, String> {
         Err(rusqlite::Error::QueryReturnedNoRows) => Ok("{}".to_string()),
         Err(e) => Err(format!("sqlite load: {e}")),
     }
+}
+
+/// Returns `true` when `s` starts with a BIP-32 extended public key prefix.
+fn is_extended_public_key(s: &str) -> bool {
+    matches!(
+        s.get(..4),
+        Some("xpub") | Some("ypub") | Some("zpub") | Some("Ypub") | Some("Zpub")
+    )
 }
 
 fn sqlite_save(db_path: &str, key: &str, value: &str) -> Result<(), String> {

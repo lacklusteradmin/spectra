@@ -1,7 +1,10 @@
 pub mod addressing;
+pub mod wallet_db;
+pub mod balance_observer;
 pub mod balance_cache;
 pub mod chains;
 pub mod history_cache;
+pub mod history_store;
 pub mod http;
 pub mod secret_store;
 pub mod send_machine;
@@ -16,6 +19,7 @@ pub mod localization;
 pub mod migration;
 pub mod price;
 pub mod refresh;
+pub mod refresh_engine;
 pub mod resources;
 pub mod send;
 pub mod state;
