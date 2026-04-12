@@ -69,7 +69,10 @@ use crate::core::chains::{
     tron::TronClient,
     xrp::XrpClient,
 };
+use crate::core::balance_cache::BalanceCache;
+use crate::core::history_cache::HistoryCache;
 use crate::core::http::HttpClient;
+use crate::core::secret_store::SecretStore;
 use crate::SpectraBridgeError;
 
 // ----------------------------------------------------------------
@@ -93,6 +96,12 @@ pub struct ChainEndpoints {
 #[derive(uniffi::Object)]
 pub struct WalletService {
     endpoints: Arc<RwLock<Vec<ChainEndpoints>>>,
+    /// Phase 2.2 — in-memory balance cache (default TTL: 30 s).
+    balance_cache: Arc<BalanceCache>,
+    /// Phase 2.3 — in-memory history cache (default TTL: 5 min).
+    history_cache: Arc<HistoryCache>,
+    /// Phase 2.7 — optional Keychain delegate (set via `set_secret_store`).
+    secret_store: Arc<std::sync::RwLock<Option<Arc<dyn SecretStore>>>>,
 }
 
 #[uniffi::export]
@@ -102,6 +111,9 @@ impl WalletService {
         let endpoints: Vec<ChainEndpoints> = serde_json::from_str(&endpoints_json)?;
         Ok(Arc::new(Self {
             endpoints: Arc::new(RwLock::new(endpoints)),
+            balance_cache: Arc::new(BalanceCache::new(30)),
+            history_cache: Arc::new(HistoryCache::new(300)), // 5-minute TTL
+            secret_store: Arc::new(std::sync::RwLock::new(None)),
         }))
     }
 
@@ -865,6 +877,96 @@ impl WalletService {
                     })
                     .collect();
                 join_all(futs).await
+            }
+            14 => {
+                // Sui — per-coin-type balance via suix_getBalance, fetched in parallel.
+                use futures::future::join_all;
+                let client = std::sync::Arc::new(SuiClient::new(endpoints));
+                let futs: Vec<_> = inputs
+                    .iter()
+                    .map(|t| {
+                        let client = client.clone();
+                        let address = address.clone();
+                        let coin_type = t.contract.clone();
+                        let symbol = t.symbol.clone();
+                        let decimals = t.decimals;
+                        async move {
+                            let raw = client
+                                .fetch_coin_balance(&address, &coin_type)
+                                .await
+                                .unwrap_or(0u64);
+                            let display = format_decimals(raw as u128, decimals);
+                            TokenOut {
+                                contract: coin_type,
+                                symbol,
+                                decimals,
+                                balance_raw: raw.to_string(),
+                                balance_display: display,
+                            }
+                        }
+                    })
+                    .collect();
+                join_all(futs).await
+            }
+            15 => {
+                // Aptos — per-coin-type balance via 0x1::coin::CoinStore resource,
+                // fetched in parallel.
+                use futures::future::join_all;
+                let client = std::sync::Arc::new(AptosClient::new(endpoints));
+                let futs: Vec<_> = inputs
+                    .iter()
+                    .map(|t| {
+                        let client = client.clone();
+                        let address = address.clone();
+                        let coin_type = t.contract.clone();
+                        let symbol = t.symbol.clone();
+                        let decimals = t.decimals;
+                        async move {
+                            let raw = client
+                                .fetch_coin_balance(&address, &coin_type)
+                                .await
+                                .unwrap_or(0u64);
+                            let display = format_decimals(raw as u128, decimals);
+                            TokenOut {
+                                contract: coin_type,
+                                symbol,
+                                decimals,
+                                balance_raw: raw.to_string(),
+                                balance_display: display,
+                            }
+                        }
+                    })
+                    .collect();
+                join_all(futs).await
+            }
+            16 => {
+                // TON — jetton balances via TonCenter v3 API.
+                // v3 endpoints are registered at chain_id = TON_V3_OFFSET + 16 = 116.
+                let v3_endpoints = self.endpoints_for(TON_V3_OFFSET + chain_id).await;
+                let api_key = self.api_key_for(chain_id).await;
+                let client = TonClient::new(endpoints, api_key).with_v3_endpoints(v3_endpoints);
+                let jetton_balances = client
+                    .fetch_jetton_balances(&address)
+                    .await
+                    .unwrap_or_default();
+
+                inputs.iter().map(|t| {
+                    // Match on master address (case-insensitive — TON addresses can be
+                    // in EQ… or UQ… form; v3 normalises to EQ… but compare leniently).
+                    let raw = jetton_balances
+                        .iter()
+                        .find(|j| j.master_address.eq_ignore_ascii_case(&t.contract))
+                        .map(|j| j.balance_raw)
+                        .unwrap_or(0u128);
+                    let display = format_decimals(raw, t.decimals);
+                    TokenOut {
+                        contract: t.contract.clone(),
+                        symbol: t.symbol.clone(),
+                        decimals: t.decimals,
+                        balance_raw: raw.to_string(),
+                        balance_display: display,
+                    }
+                }).collect()
             }
             _ => {
                 return Err(SpectraBridgeError::from(format!(
@@ -2076,6 +2178,189 @@ impl WalletService {
     }
 
     // ----------------------------------------------------------------
+    // Phase 2.1 — WalletStore CRUD (SQLite-backed snapshot)
+    // ----------------------------------------------------------------
+
+    /// Persist the full wallet-list snapshot as a JSON string. Swift calls this
+    /// whenever the wallet list changes so Rust/SQLite is always up-to-date.
+    /// Key is fixed ("wallets.snapshot.v1") so old values are overwritten.
+    pub async fn save_wallet_snapshot(
+        &self,
+        db_path: String,
+        snapshot_json: String,
+    ) -> Result<(), SpectraBridgeError> {
+        tokio::task::spawn_blocking(move || {
+            sqlite_save(&db_path, "wallets.snapshot.v1", &snapshot_json)
+        })
+        .await
+        .map_err(|e| SpectraBridgeError::from(format!("spawn_blocking: {e}")))?
+        .map_err(SpectraBridgeError::from)
+    }
+
+    /// Load the wallet-list snapshot. Returns `"[]"` if no snapshot has been
+    /// saved yet (first launch or after a reset).
+    pub async fn load_wallet_snapshot(
+        &self,
+        db_path: String,
+    ) -> Result<String, SpectraBridgeError> {
+        tokio::task::spawn_blocking(move || {
+            match sqlite_load(&db_path, "wallets.snapshot.v1") {
+                Ok(v) if v == "{}" => Ok("[]".to_string()), // empty-object sentinel → empty array
+                other => other,
+            }
+        })
+        .await
+        .map_err(|e| SpectraBridgeError::from(format!("spawn_blocking: {e}")))?
+        .map_err(SpectraBridgeError::from)
+    }
+
+    /// Persist arbitrary app settings as a JSON blob. Separate from the wallet
+    /// snapshot so each can be saved independently.
+    pub async fn save_app_settings(
+        &self,
+        db_path: String,
+        settings_json: String,
+    ) -> Result<(), SpectraBridgeError> {
+        tokio::task::spawn_blocking(move || {
+            sqlite_save(&db_path, "app.settings.v1", &settings_json)
+        })
+        .await
+        .map_err(|e| SpectraBridgeError::from(format!("spawn_blocking: {e}")))?
+        .map_err(SpectraBridgeError::from)
+    }
+
+    /// Load app settings. Returns `"{}"` if not yet saved.
+    pub async fn load_app_settings(
+        &self,
+        db_path: String,
+    ) -> Result<String, SpectraBridgeError> {
+        tokio::task::spawn_blocking(move || {
+            sqlite_load(&db_path, "app.settings.v1")
+        })
+        .await
+        .map_err(|e| SpectraBridgeError::from(format!("spawn_blocking: {e}")))?
+        .map_err(SpectraBridgeError::from)
+    }
+
+    // ----------------------------------------------------------------
+    // Phase 2.2 — Balance cache
+    // ----------------------------------------------------------------
+
+    /// Return the cached balance JSON for `(chain_id, address)` if present and
+    /// not expired. Returns `null` as JSON when the cache is cold.
+    pub fn cached_balance(&self, chain_id: u32, address: String) -> Option<String> {
+        self.balance_cache.get(chain_id, &address)
+    }
+
+    /// Store a balance JSON snapshot in the cache.
+    pub fn cache_balance(&self, chain_id: u32, address: String, balance_json: String) {
+        self.balance_cache.set(chain_id, &address, balance_json);
+    }
+
+    /// Evict a specific cached balance (call after a send completes).
+    pub fn invalidate_cached_balance(&self, chain_id: u32, address: String) {
+        self.balance_cache.invalidate(chain_id, &address);
+    }
+
+    /// Evict all expired entries. Cheap to call on any balance-refresh tick.
+    pub fn evict_expired_balance_cache(&self) {
+        self.balance_cache.evict_expired();
+    }
+
+    /// Fetch the balance, returning the cached value if still fresh, otherwise
+    /// fetching from the chain and caching the result.
+    pub async fn fetch_balance_cached(
+        &self,
+        chain_id: u32,
+        address: String,
+    ) -> Result<String, SpectraBridgeError> {
+        if let Some(cached) = self.balance_cache.get(chain_id, &address) {
+            return Ok(cached);
+        }
+        let fresh = self.fetch_balance(chain_id, address.clone()).await?;
+        self.balance_cache.set(chain_id, &address, fresh.clone());
+        Ok(fresh)
+    }
+
+    // ----------------------------------------------------------------
+    // Phase 2.3 — History cache
+    // ----------------------------------------------------------------
+
+    /// Return cached history JSON for `(chain_id, address)` if present and not expired.
+    pub fn cached_history(&self, chain_id: u32, address: String) -> Option<String> {
+        self.history_cache.get(chain_id, &address)
+    }
+
+    /// Store a history JSON snapshot in the in-memory cache.
+    pub fn cache_history(&self, chain_id: u32, address: String, history_json: String) {
+        self.history_cache.set(chain_id, &address, history_json);
+    }
+
+    /// Evict the history cache entry for `(chain_id, address)`.
+    pub fn invalidate_cached_history(&self, chain_id: u32, address: String) {
+        self.history_cache.invalidate(chain_id, &address);
+    }
+
+    /// Fetch history from the chain, returning the cached value if still fresh.
+    pub async fn fetch_history_cached(
+        &self,
+        chain_id: u32,
+        address: String,
+    ) -> Result<String, SpectraBridgeError> {
+        if let Some(cached) = self.history_cache.get(chain_id, &address) {
+            return Ok(cached);
+        }
+        let fresh = self.fetch_history(chain_id, address.clone()).await?;
+        self.history_cache.set(chain_id, &address, fresh.clone());
+        Ok(fresh)
+    }
+
+    // ----------------------------------------------------------------
+    // Phase 2.7 — SecretStore (Keychain delegate)
+    // ----------------------------------------------------------------
+
+    /// Register the Swift Keychain implementation. Must be called once at app
+    /// start before any method that reads or writes secrets.
+    pub fn set_secret_store(&self, store: Arc<dyn SecretStore>) {
+        if let Ok(mut guard) = self.secret_store.write() {
+            *guard = Some(store);
+        }
+    }
+
+    /// Read a secret via the registered `SecretStore`.
+    pub fn load_secret(&self, key: String) -> Option<String> {
+        let guard = self.secret_store.read().ok()?;
+        guard.as_ref()?.load_secret(key)
+    }
+
+    /// Write a secret via the registered `SecretStore`.
+    pub fn save_secret(&self, key: String, value: String) -> bool {
+        let guard = self.secret_store.read().unwrap_or_else(|p| p.into_inner());
+        match guard.as_ref() {
+            Some(s) => s.save_secret(key, value),
+            None => false,
+        }
+    }
+
+    /// Delete a secret via the registered `SecretStore`.
+    pub fn delete_secret(&self, key: String) -> bool {
+        let guard = self.secret_store.read().unwrap_or_else(|p| p.into_inner());
+        match guard.as_ref() {
+            Some(s) => s.delete_secret(key),
+            None => false,
+        }
+    }
+
+    /// List all secret keys matching a prefix via the registered `SecretStore`.
+    pub fn list_secret_keys(&self, prefix_filter: String) -> Vec<String> {
+        let guard = self.secret_store.read().unwrap_or_else(|p| p.into_inner());
+        match guard.as_ref() {
+            Some(s) => s.list_keys(prefix_filter),
+            None => vec![],
+        }
+    }
+
+    // ----------------------------------------------------------------
     // Token catalog
     // ----------------------------------------------------------------
 
@@ -2200,6 +2485,8 @@ pub fn bip39_english_wordlist() -> String {
 const SUBSCAN_OFFSET: u32 = 100;
 /// Logical offset for IC endpoint bundles.
 const IC_OFFSET: u32 = 100;
+/// Logical offset for TON v3 (TonCenter) endpoint bundles.
+const TON_V3_OFFSET: u32 = 100;
 /// Logical offset for explorer (Etherscan-compatible) endpoint bundles.
 const EXPLORER_OFFSET: u32 = 200;
 

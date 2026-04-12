@@ -1,6 +1,10 @@
 pub mod addressing;
+pub mod balance_cache;
 pub mod chains;
+pub mod history_cache;
 pub mod http;
+pub mod secret_store;
+pub mod send_machine;
 pub mod service;
 pub mod catalog;
 pub mod endpoint_reliability;

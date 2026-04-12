@@ -44,8 +44,20 @@ pub struct TonSendResult {
 // Client
 // ----------------------------------------------------------------
 
+/// One jetton (token) balance entry returned by the v3 API.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct TonJettonBalance {
+    /// Jetton master contract address (matches the tracked-token `contract` field).
+    pub master_address: String,
+    /// Jetton wallet contract address (holder's personal wallet for this token).
+    pub wallet_address: String,
+    /// Raw balance in the token's smallest unit.
+    pub balance_raw: u128,
+}
+
 pub struct TonClient {
     endpoints: Vec<String>,
+    v3_endpoints: Vec<String>,
     api_key: Option<String>,
     client: std::sync::Arc<HttpClient>,
 }
@@ -54,9 +66,15 @@ impl TonClient {
     pub fn new(endpoints: Vec<String>, api_key: Option<String>) -> Self {
         Self {
             endpoints,
+            v3_endpoints: vec![],
             api_key,
             client: HttpClient::shared(),
         }
+    }
+
+    pub fn with_v3_endpoints(mut self, v3_endpoints: Vec<String>) -> Self {
+        self.v3_endpoints = v3_endpoints;
+        self
     }
 
     async fn get<T: serde::de::DeserializeOwned>(&self, path: &str) -> Result<T, String> {
@@ -72,6 +90,59 @@ impl TonClient {
             async move { client.get_json(&url, RetryProfile::ChainRead).await }
         })
         .await
+    }
+
+    /// GET from the TonCenter v3 base URL (if configured).
+    async fn get_v3<T: serde::de::DeserializeOwned>(&self, path: &str) -> Result<T, String> {
+        if self.v3_endpoints.is_empty() {
+            return Err("ton: no v3 endpoints configured".to_string());
+        }
+        let path = path.to_string();
+        let api_key = self.api_key.clone();
+        with_fallback(&self.v3_endpoints, |base| {
+            let client = self.client.clone();
+            let api_key = api_key.clone();
+            let mut url = format!("{}{}", base.trim_end_matches('/'), path);
+            if let Some(key) = &api_key {
+                // v3 uses query param `api_key` as well
+                if url.contains('?') {
+                    url.push_str(&format!("&api_key={key}"));
+                } else {
+                    url.push_str(&format!("?api_key={key}"));
+                }
+            }
+            async move { client.get_json(&url, RetryProfile::ChainRead).await }
+        })
+        .await
+    }
+
+    /// Fetch all jetton (token) balances for `address` via the TonCenter v3 API.
+    /// Returns a list of `TonJettonBalance` entries — one per jetton wallet found.
+    pub async fn fetch_jetton_balances(&self, address: &str) -> Result<Vec<TonJettonBalance>, String> {
+        #[derive(Deserialize)]
+        struct Envelope {
+            jetton_wallets: Option<Vec<JettonEntry>>,
+        }
+        #[derive(Deserialize)]
+        struct JettonEntry {
+            balance: Option<String>,
+            address: Option<String>,
+            jetton: Option<AddressWrapper>,
+        }
+        #[derive(Deserialize)]
+        struct AddressWrapper {
+            address: Option<String>,
+        }
+
+        let path = format!("/jetton/wallets?owner_address={address}&limit=100");
+        let resp: Envelope = self.get_v3(&path).await?;
+        let wallets = resp.jetton_wallets.unwrap_or_default();
+        Ok(wallets.into_iter().filter_map(|entry| {
+            let master_address = entry.jetton?.address?;
+            let wallet_address = entry.address?;
+            let balance_raw: u128 = entry.balance?.parse().ok()?;
+            Some(TonJettonBalance { master_address, wallet_address, balance_raw })
+        }).collect())
     }
 
     pub async fn fetch_balance(&self, address: &str) -> Result<TonBalance, String> {

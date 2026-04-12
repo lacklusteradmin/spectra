@@ -143,6 +143,19 @@ impl SuiClient {
             .collect())
     }
 
+    /// Fetch the balance for a specific coin type (e.g. `0x5d4b...::coin::COIN`).
+    /// Returns the raw balance in the coin's smallest unit.
+    pub async fn fetch_coin_balance(&self, address: &str, coin_type: &str) -> Result<u64, String> {
+        let result = self
+            .call("suix_getBalance", json!([address, coin_type]))
+            .await?;
+        result
+            .get("totalBalance")
+            .and_then(|v| v.as_str())
+            .and_then(|s| s.parse().ok())
+            .ok_or_else(|| format!("suix_getBalance: missing totalBalance for {coin_type}"))
+    }
+
     /// Request an unsigned transfer transaction, sign it, and execute.
     pub async fn sign_and_send(
         &self,

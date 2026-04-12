@@ -97,6 +97,20 @@ impl AptosClient {
         })
     }
 
+    /// Fetch the balance for a specific coin type stored in
+    /// `0x1::coin::CoinStore<{coin_type}>` (the legacy Aptos coin standard).
+    /// Returns the raw balance in octas (or smallest unit).
+    pub async fn fetch_coin_balance(&self, address: &str, coin_type: &str) -> Result<u64, String> {
+        // Encode '<' and '>' so they survive as a URL path segment.
+        let encoded = coin_type.replace('<', "%3C").replace('>', "%3E");
+        let path = format!("/accounts/{address}/resource/0x1::coin::CoinStore%3C{encoded}%3E");
+        let resp: Value = self.get(&path).await?;
+        resp.pointer("/data/coin/value")
+            .and_then(|v| v.as_str())
+            .and_then(|s| s.parse().ok())
+            .ok_or_else(|| format!("aptos: missing coin value for {coin_type}"))
+    }
+
     pub async fn fetch_account_info(&self, address: &str) -> Result<(u64, u64), String> {
         let resp: Value = self.get(&format!("/accounts/{address}")).await?;
         let sequence: u64 = resp
