@@ -20,6 +20,15 @@ pub struct StellarBalance {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct StellarAssetBalance {
+    pub asset_code: String,
+    pub asset_issuer: String,
+    /// Fixed 7-decimal stroop units (same precision as XLM).
+    pub amount_stroops: i64,
+    pub amount_display: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct StellarHistoryEntry {
     pub txid: String,
     pub ledger: u64,
@@ -34,6 +43,8 @@ pub struct StellarHistoryEntry {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct StellarSendResult {
     pub txid: String,
+    /// Base64-encoded signed XDR envelope — stored for rebroadcast.
+    pub signed_xdr_b64: String,
 }
 
 // ----------------------------------------------------------------
@@ -50,6 +61,10 @@ struct HorizonAccount {
 struct HorizonBalance {
     balance: String,
     asset_type: String,
+    #[serde(default)]
+    asset_code: String,
+    #[serde(default)]
+    asset_issuer: String,
 }
 
 #[derive(Debug, Deserialize)]
@@ -75,6 +90,7 @@ struct HorizonPaymentsEmbedded {
 
 #[derive(Debug, Deserialize)]
 struct HorizonPaymentRecord {
+    #[allow(dead_code)]
     id: String,
     #[serde(rename = "type")]
     op_type: String,
@@ -132,6 +148,40 @@ impl StellarClient {
         })
     }
 
+    /// Fetch a custom (issued) asset balance. `asset_code` is the alphanumeric
+    /// asset code (e.g. "USDC"); `asset_issuer` is the G... issuer account.
+    /// If the account has no trustline to this asset, returns a zero balance.
+    pub async fn fetch_asset_balance(
+        &self,
+        address: &str,
+        asset_code: &str,
+        asset_issuer: &str,
+    ) -> Result<StellarAssetBalance, String> {
+        let account: HorizonAccount = self.get(&format!("/accounts/{address}")).await?;
+        let entry = account.balances.iter().find(|b| {
+            b.asset_type != "native"
+                && b.asset_code == asset_code
+                && b.asset_issuer == asset_issuer
+        });
+        match entry {
+            Some(b) => {
+                let stroops = parse_stellar_amount(&b.balance)?;
+                Ok(StellarAssetBalance {
+                    asset_code: asset_code.to_string(),
+                    asset_issuer: asset_issuer.to_string(),
+                    amount_stroops: stroops,
+                    amount_display: b.balance.clone(),
+                })
+            }
+            None => Ok(StellarAssetBalance {
+                asset_code: asset_code.to_string(),
+                asset_issuer: asset_issuer.to_string(),
+                amount_stroops: 0,
+                amount_display: "0.0000000".to_string(),
+            }),
+        }
+    }
+
     pub async fn fetch_sequence(&self, address: &str) -> Result<u64, String> {
         let account: HorizonAccount = self.get(&format!("/accounts/{address}")).await?;
         account
@@ -181,7 +231,7 @@ impl StellarClient {
             .collect())
     }
 
-    /// Sign and submit a Payment transaction.
+    /// Sign and submit a native XLM Payment transaction.
     pub async fn sign_and_submit(
         &self,
         from_address: &str,
@@ -190,14 +240,67 @@ impl StellarClient {
         private_key_bytes: &[u8; 64],
         public_key_bytes: &[u8; 32],
     ) -> Result<StellarSendResult, String> {
+        self.sign_and_submit_with_asset(
+            from_address,
+            to_address,
+            stroops,
+            StellarAsset::Native,
+            private_key_bytes,
+            public_key_bytes,
+        )
+        .await
+    }
+
+    /// Sign and submit a custom-asset (credit_alphanum4 / credit_alphanum12)
+    /// Payment transaction.
+    pub async fn sign_and_submit_asset(
+        &self,
+        from_address: &str,
+        to_address: &str,
+        stroops: i64,
+        asset_code: &str,
+        asset_issuer: &str,
+        private_key_bytes: &[u8; 64],
+        public_key_bytes: &[u8; 32],
+    ) -> Result<StellarSendResult, String> {
+        let issuer_key = decode_stellar_address(asset_issuer)?;
+        let code_len = asset_code.len();
+        if code_len == 0 || code_len > 12 {
+            return Err(format!("invalid asset code length: {code_len}"));
+        }
+        let asset = StellarAsset::Credit {
+            code: asset_code.to_string(),
+            issuer: issuer_key,
+        };
+        self.sign_and_submit_with_asset(
+            from_address,
+            to_address,
+            stroops,
+            asset,
+            private_key_bytes,
+            public_key_bytes,
+        )
+        .await
+    }
+
+    async fn sign_and_submit_with_asset(
+        &self,
+        from_address: &str,
+        to_address: &str,
+        stroops: i64,
+        asset: StellarAsset,
+        private_key_bytes: &[u8; 64],
+        public_key_bytes: &[u8; 32],
+    ) -> Result<StellarSendResult, String> {
         let sequence = self.fetch_sequence(from_address).await? + 1;
         let base_fee = self.fetch_base_fee().await?;
 
         let network_passphrase = b"Public Global Stellar Network ; September 2015";
-        let tx_xdr = build_signed_payment_xdr(
+        let tx_xdr = build_signed_payment_xdr_with_asset(
             from_address,
             to_address,
             stroops,
+            &asset,
             base_fee,
             sequence,
             network_passphrase,
@@ -209,15 +312,11 @@ impl StellarClient {
         use base64::Engine;
         let tx_b64 = base64::engine::general_purpose::STANDARD.encode(&tx_xdr);
 
-        // Horizon expects form-encoded tx=...
         let result = with_fallback(&self.endpoints, |base| {
             let client = self.client.clone();
             let tx_b64 = tx_b64.clone();
             let url = format!("{}/transactions", base.trim_end_matches('/'));
             async move {
-                // Horizon requires application/x-www-form-urlencoded for submit.
-                // We use post_text with the encoded body.
-                let body = format!("tx={}", urlencoding_encode(&tx_b64));
                 let resp: serde_json::Value = client
                     .post_json(
                         &url,
@@ -230,38 +329,54 @@ impl StellarClient {
                     .and_then(|v| v.as_str())
                     .ok_or("submit: missing hash")?
                     .to_string();
-                Ok(StellarSendResult { txid: hash })
+                Ok(StellarSendResult { txid: hash, signed_xdr_b64: tx_b64.clone() })
             }
         })
         .await?;
 
         Ok(result)
     }
-}
 
-fn urlencoding_encode(s: &str) -> String {
-    let mut out = String::new();
-    for c in s.chars() {
-        match c {
-            'A'..='Z' | 'a'..='z' | '0'..='9' | '-' | '_' | '.' | '~' => out.push(c),
-            '+' => out.push_str("%2B"),
-            '/' => out.push_str("%2F"),
-            '=' => out.push_str("%3D"),
-            _ => {
-                for byte in c.to_string().as_bytes() {
-                    out.push_str(&format!("%{:02X}", byte));
-                }
+    /// Submit a pre-signed XDR envelope (for rebroadcast).
+    pub async fn submit_envelope_b64(&self, tx_b64: &str) -> Result<StellarSendResult, String> {
+        let tx_b64 = tx_b64.to_string();
+        with_fallback(&self.endpoints, |base| {
+            let client = self.client.clone();
+            let tx_b64 = tx_b64.clone();
+            let url = format!("{}/transactions", base.trim_end_matches('/'));
+            async move {
+                let resp: serde_json::Value = client
+                    .post_json(
+                        &url,
+                        &serde_json::json!({"tx": tx_b64}),
+                        RetryProfile::ChainWrite,
+                    )
+                    .await?;
+                let hash = resp
+                    .get("hash")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("")
+                    .to_string();
+                Ok(StellarSendResult { txid: hash, signed_xdr_b64: tx_b64.clone() })
             }
-        }
+        })
+        .await
     }
-    out
 }
 
 // ----------------------------------------------------------------
 // XDR transaction builder
 // ----------------------------------------------------------------
 
-/// Build a signed Stellar Payment transaction in XDR binary.
+/// Stellar Asset variants for Payment operations.
+#[derive(Debug, Clone)]
+pub enum StellarAsset {
+    Native,
+    /// `code` is 1-12 alphanumeric ASCII, `issuer` is the 32-byte ed25519 key.
+    Credit { code: String, issuer: [u8; 32] },
+}
+
+/// Build a signed Stellar Payment transaction in XDR binary (native XLM).
 pub fn build_signed_payment_xdr(
     from: &str,
     to: &str,
@@ -272,20 +387,42 @@ pub fn build_signed_payment_xdr(
     private_key: &[u8; 64],
     public_key: &[u8; 32],
 ) -> Result<Vec<u8>, String> {
+    build_signed_payment_xdr_with_asset(
+        from,
+        to,
+        stroops,
+        &StellarAsset::Native,
+        base_fee,
+        sequence,
+        network_passphrase,
+        private_key,
+        public_key,
+    )
+}
+
+/// Build a signed Stellar Payment transaction with an arbitrary asset.
+pub fn build_signed_payment_xdr_with_asset(
+    from: &str,
+    to: &str,
+    stroops: i64,
+    asset: &StellarAsset,
+    base_fee: u64,
+    sequence: u64,
+    network_passphrase: &[u8],
+    private_key: &[u8; 64],
+    public_key: &[u8; 32],
+) -> Result<Vec<u8>, String> {
     use ed25519_dalek::{Signer, SigningKey};
     use sha2::{Digest, Sha256};
 
-    let from_bytes = decode_stellar_address(from)?;
+    let _from_bytes = decode_stellar_address(from)?;
     let to_bytes = decode_stellar_address(to)?;
 
-    // Build TransactionEnvelope XDR (simplified).
     // Network hash prefix for transaction signing.
     let network_hash: [u8; 32] = Sha256::digest(network_passphrase).into();
 
     // TransactionV0/Transaction XDR encoding (manual).
-    let tx_xdr = encode_payment_tx(
-        &from_bytes, &to_bytes, stroops, base_fee, sequence, public_key,
-    );
+    let tx_xdr = encode_payment_tx(&to_bytes, stroops, asset, base_fee, sequence, public_key)?;
 
     // Signing payload: sha256(network_hash || ENVELOPE_TYPE_TX(2) || tx_xdr)
     let mut payload = Vec::new();
@@ -294,7 +431,9 @@ pub fn build_signed_payment_xdr(
     payload.extend_from_slice(&tx_xdr);
     let sig_payload: [u8; 32] = Sha256::digest(&payload).into();
 
-    let signing_key = SigningKey::from_bytes(&private_key[..32].try_into().map_err(|_| "privkey too short")?);
+    let signing_key = SigningKey::from_bytes(
+        &private_key[..32].try_into().map_err(|_| "privkey too short")?,
+    );
     let signature = signing_key.sign(&sig_payload);
 
     // TransactionEnvelope: type=ENVELOPE_TYPE_TX(2), tx, signatures
@@ -312,13 +451,13 @@ pub fn build_signed_payment_xdr(
 }
 
 fn encode_payment_tx(
-    from: &[u8; 32],
     to: &[u8; 32],
     stroops: i64,
+    asset: &StellarAsset,
     base_fee: u64,
     sequence: u64,
     public_key: &[u8; 32],
-) -> Vec<u8> {
+) -> Result<Vec<u8>, String> {
     let mut tx = Vec::new();
     // sourceAccount: PUBLIC_KEY_TYPE_ED25519(0) + key
     tx.extend_from_slice(&0u32.to_be_bytes());
@@ -339,13 +478,52 @@ fn encode_payment_tx(
     // PaymentOp: destination (PUBLIC_KEY_TYPE_ED25519 + key)
     tx.extend_from_slice(&0u32.to_be_bytes());
     tx.extend_from_slice(to);
-    // asset: ASSET_TYPE_NATIVE=0
-    tx.extend_from_slice(&0u32.to_be_bytes());
+    // asset
+    encode_asset(&mut tx, asset)?;
     // amount: Int64
     tx.extend_from_slice(&stroops.to_be_bytes());
     // ext: 0
     tx.extend_from_slice(&0u32.to_be_bytes());
-    tx
+    Ok(tx)
+}
+
+/// Encode a Stellar Asset into XDR.
+/// ASSET_TYPE_NATIVE=0, CREDIT_ALPHANUM4=1, CREDIT_ALPHANUM12=2.
+fn encode_asset(tx: &mut Vec<u8>, asset: &StellarAsset) -> Result<(), String> {
+    match asset {
+        StellarAsset::Native => {
+            tx.extend_from_slice(&0u32.to_be_bytes());
+        }
+        StellarAsset::Credit { code, issuer } => {
+            let bytes = code.as_bytes();
+            let len = bytes.len();
+            if len == 0 || len > 12 {
+                return Err(format!("asset code length {len} out of range"));
+            }
+            if !bytes.iter().all(|b| b.is_ascii_alphanumeric()) {
+                return Err(format!("asset code contains non-alphanumeric: {code}"));
+            }
+            if len <= 4 {
+                // ASSET_TYPE_CREDIT_ALPHANUM4 = 1
+                tx.extend_from_slice(&1u32.to_be_bytes());
+                // assetCode4: opaque[4] (fixed, right-padded with zeros)
+                let mut code4 = [0u8; 4];
+                code4[..len].copy_from_slice(bytes);
+                tx.extend_from_slice(&code4);
+            } else {
+                // ASSET_TYPE_CREDIT_ALPHANUM12 = 2
+                tx.extend_from_slice(&2u32.to_be_bytes());
+                // assetCode12: opaque[12] (fixed, right-padded with zeros)
+                let mut code12 = [0u8; 12];
+                code12[..len].copy_from_slice(bytes);
+                tx.extend_from_slice(&code12);
+            }
+            // issuer: AccountID (PUBLIC_KEY_TYPE_ED25519 + 32-byte key)
+            tx.extend_from_slice(&0u32.to_be_bytes());
+            tx.extend_from_slice(issuer);
+        }
+    }
+    Ok(())
 }
 
 fn xdr_write_bytes(out: &mut Vec<u8>, data: &[u8]) {

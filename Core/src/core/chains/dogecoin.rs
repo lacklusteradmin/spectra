@@ -5,7 +5,6 @@
 //! Network params: version byte 0x1e (addresses start with 'D').
 
 use serde::{Deserialize, Serialize};
-use serde_json::Value;
 
 use crate::core::http::{with_fallback, HttpClient, RetryProfile};
 
@@ -27,8 +26,10 @@ struct BlockbookUtxo {
 struct BlockbookAddress {
     balance: String,
     #[serde(default)]
+    #[allow(dead_code)]
     unconfirmed_balance: String,
     #[serde(default)]
+    #[allow(dead_code)]
     txs: u64,
 }
 
@@ -46,20 +47,24 @@ struct BlockbookTx {
     block_time: Option<u64>,
     block_height: Option<u64>,
     #[serde(default)]
+    #[allow(dead_code)]
     value: String,
     fees: Option<String>,
+    #[allow(dead_code)]
     vin: Vec<BlockbookVin>,
     vout: Vec<BlockbookVout>,
 }
 
 #[derive(Debug, Deserialize)]
 struct BlockbookVin {
+    #[allow(dead_code)]
     addresses: Option<Vec<String>>,
 }
 
 #[derive(Debug, Deserialize)]
 struct BlockbookVout {
     addresses: Option<Vec<String>>,
+    #[allow(dead_code)]
     value: Option<String>,
 }
 
@@ -95,6 +100,8 @@ pub struct DogeUtxo {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct DogeSendResult {
     pub txid: String,
+    #[serde(default)]
+    pub raw_tx_hex: String,
 }
 
 // ----------------------------------------------------------------
@@ -197,10 +204,11 @@ impl DogecoinClient {
             let url = format!("{}/api/v2/sendtx/", base.trim_end_matches('/'));
             async move {
                 let txid: String = client
-                    .post_text(&url, hex, RetryProfile::ChainWrite)
+                    .post_text(&url, hex.clone(), RetryProfile::ChainWrite)
                     .await?;
                 Ok(DogeSendResult {
                     txid: txid.trim().to_string(),
+                    raw_tx_hex: hex.clone(),
                 })
             }
         })
@@ -296,7 +304,7 @@ fn build_sighash_preimage(
     utxos: &[(String, u32, u64, Vec<u8>)],
     signing_vout: u32,
     signing_txid: &str,
-    script_pubkey: &[u8],
+    _script_pubkey: &[u8],
     outputs: &[(Vec<u8>, u64)],
     sighash_type: u32,
 ) -> Result<Vec<u8>, String> {

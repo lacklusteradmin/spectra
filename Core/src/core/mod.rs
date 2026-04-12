@@ -10,6 +10,7 @@ pub mod history;
 pub mod import;
 pub mod localization;
 pub mod migration;
+pub mod price;
 pub mod refresh;
 pub mod resources;
 pub mod send;

@@ -27,6 +27,36 @@ struct BlockbookAddress {
     balance: String,
 }
 
+#[derive(Debug, Deserialize)]
+struct BlockbookFeeEstimate {
+    result: String,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct BlockbookTxList {
+    #[serde(default)]
+    transactions: Vec<BlockbookTx>,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct BlockbookTx {
+    txid: String,
+    block_time: Option<u64>,
+    block_height: Option<u64>,
+    #[serde(default)]
+    value: String,
+    fees: Option<String>,
+    #[serde(default)]
+    vin: Vec<BlockbookVin>,
+}
+
+#[derive(Debug, Deserialize)]
+struct BlockbookVin {
+    addresses: Option<Vec<String>>,
+}
+
 // ----------------------------------------------------------------
 // Public result types
 // ----------------------------------------------------------------
@@ -46,8 +76,21 @@ pub struct LtcUtxo {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct LtcHistoryEntry {
+    pub txid: String,
+    pub block_height: u64,
+    pub timestamp: u64,
+    /// Net value change for the queried address. Negative = outgoing.
+    pub amount_sat: i64,
+    pub fee_sat: u64,
+    pub is_incoming: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct LtcSendResult {
     pub txid: String,
+    #[serde(default)]
+    pub raw_tx_hex: String,
 }
 
 // ----------------------------------------------------------------
@@ -103,6 +146,64 @@ impl LitecoinClient {
             .collect())
     }
 
+    /// Fetch recommended fee rate for `blocks` confirmation target.
+    /// Returns satoshis per vbyte. Falls back to 1 sat/vB on failure.
+    pub async fn fetch_fee_rate(&self, blocks: u32) -> u64 {
+        let estimate: Result<BlockbookFeeEstimate, _> = self
+            .get(&format!("/api/v2/estimatefee/{blocks}"))
+            .await;
+        estimate
+            .ok()
+            .and_then(|e| e.result.parse::<f64>().ok())
+            .filter(|v| v.is_finite() && *v > 0.0)
+            .map(|ltc_per_kb| ((ltc_per_kb * 1e8 / 1000.0).ceil() as u64).max(1))
+            .unwrap_or(1)
+    }
+
+    /// Fetch the most recent 50 transactions touching `address` via
+    /// Blockbook's `details=txs` pagination. `amount_sat` is returned as the
+    /// net value change from the queried address's perspective (positive =
+    /// received, negative = sent). Fee is the absolute tx fee; direction
+    /// detection inspects the vin/vout address lists.
+    pub async fn fetch_history(
+        &self,
+        address: &str,
+    ) -> Result<Vec<LtcHistoryEntry>, String> {
+        let list: BlockbookTxList = self
+            .get(&format!(
+                "/api/v2/address/{address}?details=txs&page=1&pageSize=50"
+            ))
+            .await?;
+
+        Ok(list
+            .transactions
+            .into_iter()
+            .map(|tx| {
+                let is_incoming = !tx.vin.iter().any(|i| {
+                    i.addresses
+                        .as_deref()
+                        .unwrap_or_default()
+                        .iter()
+                        .any(|a| a == address)
+                });
+                let amount_sat: i64 = tx.value.parse().unwrap_or(0);
+                let fee_sat: u64 = tx
+                    .fees
+                    .as_deref()
+                    .and_then(|s| s.parse().ok())
+                    .unwrap_or(0);
+                LtcHistoryEntry {
+                    txid: tx.txid,
+                    block_height: tx.block_height.unwrap_or(0),
+                    timestamp: tx.block_time.unwrap_or(0),
+                    amount_sat: if is_incoming { amount_sat } else { -amount_sat },
+                    fee_sat,
+                    is_incoming,
+                }
+            })
+            .collect())
+    }
+
     pub async fn broadcast_raw_tx(&self, hex_tx: &str) -> Result<LtcSendResult, String> {
         let hex = hex_tx.to_string();
         with_fallback(&self.endpoints, |base| {
@@ -110,11 +211,14 @@ impl LitecoinClient {
             let hex = hex.clone();
             let url = format!("{}/api/v2/sendtx/", base.trim_end_matches('/'));
             async move {
+                let raw_tx_hex = hex.clone();
                 let txid: String = client
                     .post_text(&url, hex, RetryProfile::ChainWrite)
                     .await?;
+                let txid = txid.trim().to_string();
                 Ok(LtcSendResult {
-                    txid: txid.trim().to_string(),
+                    txid,
+                    raw_tx_hex,
                 })
             }
         })
@@ -218,7 +322,7 @@ fn sign_ltc_p2pkh(
     }
 
     let mut signed_inputs: Vec<Vec<u8>> = Vec::new();
-    for (txid, vout, _, script_pubkey) in utxos {
+    for (txid, vout, _, _script_pubkey) in utxos {
         // Build SIGHASH_ALL preimage.
         let mut pre = Vec::new();
         pre.extend_from_slice(&1u32.to_le_bytes()); // version

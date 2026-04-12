@@ -21,6 +21,7 @@ use crate::core::http::{with_fallback, HttpClient, RetryProfile};
 // ----------------------------------------------------------------
 
 /// ICP ledger canister ID (mainnet).
+#[allow(dead_code)]
 const ICP_LEDGER_CANISTER: &str = "ryjl3-tyaaa-aaaaa-aaaba-cai";
 /// ICP e8s per ICP.
 const E8S_PER_ICP: u64 = 100_000_000;
@@ -60,6 +61,7 @@ pub struct IcpClient {
     /// Rosetta API endpoint (https://rosetta-api.internetcomputer.org).
     rosetta_endpoints: Vec<String>,
     /// IC HTTP gateway (https://ic0.app).
+    #[allow(dead_code)]
     ic_endpoints: Vec<String>,
     client: std::sync::Arc<HttpClient>,
 }

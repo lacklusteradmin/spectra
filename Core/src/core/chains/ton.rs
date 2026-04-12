@@ -36,6 +36,8 @@ pub struct TonHistoryEntry {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TonSendResult {
     pub message_hash: String,
+    /// Base64-encoded BOC — stored for rebroadcast.
+    pub boc_b64: String,
 }
 
 // ----------------------------------------------------------------
@@ -199,10 +201,12 @@ impl TonClient {
 
         let body = json!({"boc": boc_b64});
         let api_key = self.api_key.clone();
+        let boc_b64_clone = boc_b64.clone();
         let result = with_fallback(&self.endpoints, |base| {
             let client = self.client.clone();
             let body = body.clone();
             let api_key = api_key.clone();
+            let boc_b64_clone = boc_b64_clone.clone();
             let url = if let Some(key) = api_key {
                 format!("{}/sendBoc?api_key={}", base.trim_end_matches('/'), key)
             } else {
@@ -218,12 +222,43 @@ impl TonClient {
                     .and_then(|v| v.as_str())
                     .unwrap_or("")
                     .to_string();
-                Ok(TonSendResult { message_hash: hash })
+                Ok(TonSendResult { message_hash: hash, boc_b64: boc_b64_clone })
             }
         })
         .await?;
 
         Ok(result)
+    }
+
+    /// Send a pre-built BOC (for rebroadcast).
+    pub async fn send_boc(&self, boc_b64: &str) -> Result<TonSendResult, String> {
+        let body = json!({"boc": boc_b64});
+        let api_key = self.api_key.clone();
+        let boc_b64 = boc_b64.to_string();
+        with_fallback(&self.endpoints, |base| {
+            let client = self.client.clone();
+            let body = body.clone();
+            let api_key = api_key.clone();
+            let boc_b64 = boc_b64.clone();
+            let url = if let Some(key) = api_key {
+                format!("{}/sendBoc?api_key={}", base.trim_end_matches('/'), key)
+            } else {
+                format!("{}/sendBoc", base.trim_end_matches('/'))
+            };
+            async move {
+                let resp: Value = client
+                    .post_json(&url, &body, RetryProfile::ChainWrite)
+                    .await?;
+                let hash = resp
+                    .get("result")
+                    .and_then(|r| r.get("hash"))
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("")
+                    .to_string();
+                Ok(TonSendResult { message_hash: hash, boc_b64 })
+            }
+        })
+        .await
     }
 }
 
@@ -244,7 +279,7 @@ pub fn build_wallet_v4r2_transfer(
     seqno: u32,
     comment: Option<&str>,
     private_key: &[u8; 64],
-    public_key: &[u8; 32],
+    _public_key: &[u8; 32],
 ) -> Result<Vec<u8>, String> {
     use ed25519_dalek::{Signer, SigningKey};
 

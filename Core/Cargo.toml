@@ -58,6 +58,9 @@ getrandom = { version = "0.2", features = ["js"] }
 # --- new: async trait support ---
 async-trait = "0.1"
 
+# --- Phase 2: SQLite state persistence ---
+rusqlite = { version = "0.31", features = ["bundled"] }
+
 [profile.release]
 lto = true
 codegen-units = 1

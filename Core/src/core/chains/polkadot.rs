@@ -40,6 +40,8 @@ pub struct DotHistoryEntry {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct DotSendResult {
     pub txid: String,
+    /// Hex-encoded signed extrinsic (0x-prefixed) — stored for rebroadcast.
+    pub extrinsic_hex: String,
 }
 
 // ----------------------------------------------------------------
@@ -266,7 +268,19 @@ impl PolkadotClient {
             .as_str()
             .ok_or("author_submitExtrinsic: expected string")?
             .to_string();
-        Ok(DotSendResult { txid })
+        Ok(DotSendResult { txid, extrinsic_hex: hex })
+    }
+
+    /// Submit a pre-signed extrinsic hex (for rebroadcast).
+    pub async fn submit_extrinsic_hex(&self, hex: &str) -> Result<DotSendResult, String> {
+        let result = self
+            .rpc_call("author_submitExtrinsic", json!([hex]))
+            .await?;
+        let txid = result
+            .as_str()
+            .unwrap_or("")
+            .to_string();
+        Ok(DotSendResult { txid, extrinsic_hex: hex.to_string() })
     }
 }
 
@@ -432,6 +446,7 @@ fn parse_dot_balance(s: &str) -> u128 {
     whole * 10_000_000_000 + frac
 }
 
+#[allow(dead_code)]
 fn format_dot(planck: u128) -> String {
     let whole = planck / 10_000_000_000;
     let frac = planck % 10_000_000_000;

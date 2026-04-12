@@ -42,6 +42,10 @@ pub struct SuiHistoryEntry {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SuiSendResult {
     pub digest: String,
+    /// Base64 tx bytes — stored for rebroadcast.
+    pub tx_bytes_b64: String,
+    /// Base64 signature — stored for rebroadcast.
+    pub sig_b64: String,
 }
 
 // ----------------------------------------------------------------
@@ -198,7 +202,23 @@ impl SuiClient {
             .ok_or("executeTransactionBlock: missing digest")?
             .to_string();
 
-        Ok(SuiSendResult { digest })
+        Ok(SuiSendResult { digest, tx_bytes_b64: tx_bytes_b64.to_string(), sig_b64 })
+    }
+
+    /// Execute a pre-signed transaction block (for rebroadcast).
+    pub async fn execute_signed_tx(&self, tx_bytes_b64: &str, sig_b64: &str) -> Result<SuiSendResult, String> {
+        let execute_result = self
+            .call(
+                "sui_executeTransactionBlock",
+                json!([tx_bytes_b64, [sig_b64], {"showEffects": true}, "WaitForLocalExecution"]),
+            )
+            .await?;
+        let digest = execute_result
+            .get("digest")
+            .and_then(|v| v.as_str())
+            .unwrap_or("")
+            .to_string();
+        Ok(SuiSendResult { digest, tx_bytes_b64: tx_bytes_b64.to_string(), sig_b64: sig_b64.to_string() })
     }
 }
 

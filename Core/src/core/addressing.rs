@@ -161,8 +161,9 @@ fn validate_bitcoin_cash_address(value: &str) -> AddressValidationResult {
 }
 
 fn validate_bitcoin_sv_address(value: &str) -> AddressValidationResult {
-    let lowered = value.to_lowercase();
-    if lowered.starts_with('1') || lowered.starts_with('3') || lowered.starts_with("bc1") {
+    // BSV is legacy-only: base58check P2PKH (version 0x00) or P2SH (0x05),
+    // plus the testnet variants 0x6f / 0xc4. SegWit/Taproot are not valid.
+    if crate::core::chains::bitcoin_sv::validate_bsv_address(value) {
         return make_result(value.to_string());
     }
     invalid_result()

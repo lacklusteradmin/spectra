@@ -1,9 +1,11 @@
 pub mod bitcoin;
+pub mod bitcoin_hd;
 pub mod evm;
 pub mod solana;
 pub mod dogecoin;
 pub mod litecoin;
 pub mod bitcoin_cash;
+pub mod bitcoin_sv;
 pub mod xrp;
 pub mod stellar;
 pub mod cardano;

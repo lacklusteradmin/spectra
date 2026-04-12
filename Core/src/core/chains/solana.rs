@@ -47,6 +47,20 @@ pub struct SolanaHistoryEntry {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SolanaSendResult {
     pub signature: String,
+    #[serde(default)]
+    pub signed_tx_base64: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SplBalance {
+    pub mint: String,
+    pub owner: String,
+    pub balance_raw: String,
+    pub balance_display: String,
+    pub decimals: u8,
+    /// Best-effort symbol. Solana token symbols live in Metaplex metadata PDAs
+    /// which we don't resolve yet; this is an empty string for now.
+    pub symbol: String,
 }
 
 // ----------------------------------------------------------------
@@ -257,14 +271,183 @@ impl SolanaClient {
         let result = self
             .call(
                 "sendTransaction",
-                json!([encoded, {"encoding": "base64", "preflightCommitment": "confirmed"}]),
+                json!([encoded.clone(), {"encoding": "base64", "preflightCommitment": "confirmed"}]),
             )
             .await?;
         let signature = result
             .as_str()
             .ok_or("sendTransaction: expected string")?
             .to_string();
-        Ok(SolanaSendResult { signature })
+        Ok(SolanaSendResult { signature, signed_tx_base64: encoded })
+    }
+
+    // ----------------------------------------------------------------
+    // SPL Token (fungible token) support
+    // ----------------------------------------------------------------
+
+    /// Fetch the SPL token balance for `owner` holding `mint`. Uses
+    /// `getTokenAccountsByOwner` (parsed) so we can read both the raw
+    /// amount and the decimals directly from the parsed account data.
+    pub async fn fetch_spl_balance(
+        &self,
+        mint: &str,
+        owner: &str,
+    ) -> Result<SplBalance, String> {
+        let result = self
+            .call(
+                "getTokenAccountsByOwner",
+                json!([
+                    owner,
+                    { "mint": mint },
+                    { "encoding": "jsonParsed", "commitment": "confirmed" }
+                ]),
+            )
+            .await?;
+
+        // Sum balances across all accounts the owner has for this mint.
+        // In practice there's usually exactly one (the ATA).
+        let accounts = result
+            .get("value")
+            .and_then(|v| v.as_array())
+            .cloned()
+            .unwrap_or_default();
+
+        let mut total: u128 = 0;
+        let mut decimals: u8 = 0;
+        for acct in &accounts {
+            let info = acct.pointer("/account/data/parsed/info/tokenAmount");
+            if let Some(info) = info {
+                let amt_str = info.get("amount").and_then(|v| v.as_str()).unwrap_or("0");
+                let amt: u128 = amt_str.parse().unwrap_or(0);
+                total = total.saturating_add(amt);
+                if let Some(d) = info.get("decimals").and_then(|v| v.as_u64()) {
+                    decimals = d as u8;
+                }
+            }
+        }
+
+        // If the owner has no token account, decimals are unknown. Fetch the
+        // mint account directly to determine decimals so the display is sane.
+        if accounts.is_empty() {
+            decimals = self.fetch_spl_mint_decimals(mint).await.unwrap_or(0);
+        }
+
+        Ok(SplBalance {
+            mint: mint.to_string(),
+            owner: owner.to_string(),
+            balance_raw: total.to_string(),
+            balance_display: format_ft_amount(total, decimals),
+            decimals,
+            symbol: String::new(),
+        })
+    }
+
+    /// Fetch a mint's decimals via `getAccountInfo` + base64 parse. The
+    /// SPL mint layout places the `decimals` byte at offset 44.
+    pub async fn fetch_spl_mint_decimals(&self, mint: &str) -> Result<u8, String> {
+        let result = self
+            .call(
+                "getAccountInfo",
+                json!([mint, {"encoding": "base64", "commitment": "confirmed"}]),
+            )
+            .await?;
+        let data = result
+            .pointer("/value/data/0")
+            .and_then(|v| v.as_str())
+            .ok_or("getAccountInfo: missing data")?;
+        let bytes = base64::engine::general_purpose::STANDARD
+            .decode(data)
+            .map_err(|e| format!("mint data b64: {e}"))?;
+        // Mint layout: first 82 bytes.
+        // [0..36]: mint authority (COption<Pubkey>)
+        // [36..44]: supply (u64 le)
+        // [44]: decimals (u8)
+        bytes.get(44).copied().ok_or_else(|| "mint data short".to_string())
+    }
+
+    /// Check whether an account exists on-chain.
+    pub async fn account_exists(&self, address: &str) -> Result<bool, String> {
+        let result = self
+            .call(
+                "getAccountInfo",
+                json!([address, {"encoding": "base64", "commitment": "confirmed"}]),
+            )
+            .await?;
+        Ok(result.pointer("/value").map(|v| !v.is_null()).unwrap_or(false))
+    }
+
+    /// Sign and broadcast an SPL token transfer. Derives the source and
+    /// destination associated token accounts; if the destination ATA does
+    /// not exist yet the transaction prepends a Create-Idempotent
+    /// instruction so it is materialized in the same atomic tx.
+    #[allow(clippy::too_many_arguments)]
+    pub async fn sign_and_broadcast_spl(
+        &self,
+        from_owner_pubkey: &[u8; 32],
+        to_owner_b58: &str,
+        mint_b58: &str,
+        amount_raw: u64,
+        decimals: u8,
+        private_key_bytes: &[u8; 64],
+    ) -> Result<SolanaSendResult, String> {
+        let to_owner = decode_b58_32(to_owner_b58)?;
+        let mint = decode_b58_32(mint_b58)?;
+
+        let source_ata = derive_associated_token_account(from_owner_pubkey, &mint)?;
+        let dest_ata = derive_associated_token_account(&to_owner, &mint)?;
+
+        let source_ata_b58 = bs58::encode(&source_ata).into_string();
+        let dest_ata_b58 = bs58::encode(&dest_ata).into_string();
+
+        // Destination ATA may not exist yet; we always emit the idempotent
+        // create instruction so it's a no-op if the account already exists.
+        let _dest_exists = self
+            .account_exists(&dest_ata_b58)
+            .await
+            .unwrap_or(false);
+
+        let blockhash = self.fetch_recent_blockhash().await?;
+        let raw_tx = build_spl_transfer_checked(
+            from_owner_pubkey,
+            &to_owner,
+            &mint,
+            &source_ata,
+            &dest_ata,
+            amount_raw,
+            decimals,
+            &blockhash,
+            private_key_bytes,
+        )?;
+
+        let encoded = base64::engine::general_purpose::STANDARD.encode(&raw_tx);
+        let result = self
+            .call(
+                "sendTransaction",
+                json!([encoded.clone(), {"encoding": "base64", "preflightCommitment": "confirmed"}]),
+            )
+            .await?;
+        let signature = result
+            .as_str()
+            .ok_or("sendTransaction: expected string")?
+            .to_string();
+        // Reference the source_ata for potential logging in future.
+        let _ = source_ata_b58;
+        Ok(SolanaSendResult { signature, signed_tx_base64: encoded })
+    }
+
+    /// Broadcast an already-signed transaction given as a base64 string.
+    pub async fn broadcast_raw(&self, signed_tx_base64: &str) -> Result<SolanaSendResult, String> {
+        let result = self
+            .call(
+                "sendTransaction",
+                json!([signed_tx_base64, {"encoding": "base64", "preflightCommitment": "confirmed"}]),
+            )
+            .await?;
+        let signature = result
+            .as_str()
+            .ok_or("sendTransaction: expected string")?
+            .to_string();
+        Ok(SolanaSendResult { signature, signed_tx_base64: signed_tx_base64.to_string() })
     }
 }
 
@@ -342,6 +525,187 @@ pub fn build_sol_transfer(
     Ok(tx)
 }
 
+// ----------------------------------------------------------------
+// SPL helpers: ATA derivation and SPL Transfer transaction builder
+// ----------------------------------------------------------------
+
+/// SPL Token program id (decoded base58).
+pub const SPL_TOKEN_PROGRAM_ID: [u8; 32] = [
+    6, 221, 246, 225, 215, 101, 161, 147, 217, 203, 225, 70, 206, 235, 121, 172, 28, 180, 133,
+    237, 95, 91, 55, 145, 58, 140, 245, 133, 126, 255, 0, 169,
+];
+
+/// Associated Token Account program id (decoded base58).
+pub const ASSOCIATED_TOKEN_PROGRAM_ID: [u8; 32] = [
+    140, 151, 37, 143, 78, 36, 137, 241, 187, 61, 16, 41, 20, 142, 13, 131, 11, 90, 19, 153, 218,
+    255, 16, 132, 4, 142, 123, 216, 219, 233, 248, 89,
+];
+
+/// Decode a base58 Solana address into a 32-byte pubkey.
+fn decode_b58_32(b58: &str) -> Result<[u8; 32], String> {
+    let bytes = bs58::decode(b58)
+        .into_vec()
+        .map_err(|e| format!("b58 decode {b58}: {e}"))?;
+    bytes
+        .try_into()
+        .map_err(|v: Vec<u8>| format!("b58 {b58} not 32 bytes: {}", v.len()))
+}
+
+/// Derive the Associated Token Account for a (wallet, mint) pair.
+///
+/// PDA seeds = [wallet, TOKEN_PROGRAM_ID, mint], program = ASSOCIATED_TOKEN_PROGRAM_ID.
+pub fn derive_associated_token_account(
+    wallet: &[u8; 32],
+    mint: &[u8; 32],
+) -> Result<[u8; 32], String> {
+    use sha2::{Digest, Sha256};
+    let seeds: [&[u8]; 3] = [wallet, &SPL_TOKEN_PROGRAM_ID, mint];
+    // Brute-force the bump seed from 255 down until we find an off-curve point.
+    for bump in (0u8..=255u8).rev() {
+        let mut h = Sha256::new();
+        for s in seeds.iter() {
+            h.update(s);
+        }
+        h.update([bump]);
+        h.update(ASSOCIATED_TOKEN_PROGRAM_ID);
+        h.update(b"ProgramDerivedAddress");
+        let digest: [u8; 32] = h.finalize().into();
+        if is_off_curve(&digest) {
+            return Ok(digest);
+        }
+    }
+    Err("failed to find PDA bump".to_string())
+}
+
+/// An ed25519 point is "off-curve" if CompressedEdwardsY::decompress returns None.
+/// PDAs are valid only when the resulting point is off-curve (so they cannot
+/// coincide with a real pubkey).
+fn is_off_curve(bytes: &[u8; 32]) -> bool {
+    use curve25519_dalek::edwards::CompressedEdwardsY;
+    CompressedEdwardsY::from_slice(bytes)
+        .ok()
+        .and_then(|p| p.decompress())
+        .is_none()
+}
+
+/// Build a signed Solana legacy transaction that
+///   1. Issues an Associated Token Account Create-Idempotent instruction
+///      so the destination ATA is materialized if needed,
+///   2. Issues an SPL Token `TransferChecked` instruction for the transfer.
+///
+/// All instructions are authorized by the source wallet (single signer).
+#[allow(clippy::too_many_arguments)]
+pub fn build_spl_transfer_checked(
+    from_owner: &[u8; 32],
+    to_owner: &[u8; 32],
+    mint: &[u8; 32],
+    source_ata: &[u8; 32],
+    dest_ata: &[u8; 32],
+    amount_raw: u64,
+    decimals: u8,
+    recent_blockhash_b58: &str,
+    private_key: &[u8; 64],
+) -> Result<Vec<u8>, String> {
+    use ed25519_dalek::{Signer, SigningKey};
+
+    let blockhash_bytes = bs58::decode(recent_blockhash_b58)
+        .into_vec()
+        .map_err(|e| format!("invalid blockhash: {e}"))?;
+    if blockhash_bytes.len() != 32 {
+        return Err("blockhash must be 32 bytes".to_string());
+    }
+    let blockhash: [u8; 32] = blockhash_bytes.try_into().unwrap();
+
+    // Account list order (all distinct pubkeys used anywhere):
+    //   index 0: from_owner       (signer + writable, pays fees & funds ATA)
+    //   index 1: dest_ata         (writable)
+    //   index 2: source_ata       (writable)
+    //   index 3: to_owner         (readonly)  — ATA create needs the wallet
+    //   index 4: mint             (readonly)
+    //   index 5: system_program   (readonly)
+    //   index 6: spl_token        (readonly)
+    //   index 7: ata_program      (readonly)
+    //
+    // Header:
+    //   num_required_signatures = 1
+    //   num_readonly_signed     = 0
+    //   num_readonly_unsigned   = 5 (to_owner, mint, system, spl, ata)
+
+    let system_program: [u8; 32] = [0u8; 32];
+    let accounts: [&[u8; 32]; 8] = [
+        from_owner,
+        dest_ata,
+        source_ata,
+        to_owner,
+        mint,
+        &system_program,
+        &SPL_TOKEN_PROGRAM_ID,
+        &ASSOCIATED_TOKEN_PROGRAM_ID,
+    ];
+
+    let header = [1u8, 0u8, 5u8];
+
+    let mut msg = Vec::new();
+    msg.extend_from_slice(&header);
+    msg.extend_from_slice(&compact_u16(accounts.len()));
+    for a in &accounts {
+        msg.extend_from_slice(a.as_ref());
+    }
+    msg.extend_from_slice(&blockhash);
+
+    // 2 instructions.
+    msg.extend_from_slice(&compact_u16(2));
+
+    // -- Instruction 1: CreateIdempotent on ATA program --------------------
+    // Program id: ata_program (index 7)
+    // Accounts (per associated-token-account spec):
+    //   0: payer (signer+writable)   = from_owner (idx 0)
+    //   1: ata (writable)            = dest_ata    (idx 1)
+    //   2: wallet (readonly)         = to_owner    (idx 3)
+    //   3: mint (readonly)           = mint        (idx 4)
+    //   4: system program (readonly) = system      (idx 5)
+    //   5: spl token (readonly)      = spl_token   (idx 6)
+    // Data: single byte tag 1 = CreateIdempotent
+    msg.push(7u8); // program id index (ata program)
+    let ata_accts: [u8; 6] = [0, 1, 3, 4, 5, 6];
+    msg.extend_from_slice(&compact_u16(ata_accts.len()));
+    msg.extend_from_slice(&ata_accts);
+    let ata_data: [u8; 1] = [1u8];
+    msg.extend_from_slice(&compact_u16(ata_data.len()));
+    msg.extend_from_slice(&ata_data);
+
+    // -- Instruction 2: SPL TransferChecked ------------------------------
+    // Program id: spl token (index 6)
+    // Accounts:
+    //   0: source ata (writable)   = source_ata (idx 2)
+    //   1: mint (readonly)         = mint       (idx 4)
+    //   2: dest ata (writable)     = dest_ata   (idx 1)
+    //   3: authority (signer)      = from_owner (idx 0)
+    // Data: [12, amount: u64 LE, decimals: u8]
+    msg.push(6u8); // program id index (spl token)
+    let xfer_accts: [u8; 4] = [2, 4, 1, 0];
+    msg.extend_from_slice(&compact_u16(xfer_accts.len()));
+    msg.extend_from_slice(&xfer_accts);
+    let mut xfer_data = Vec::with_capacity(1 + 8 + 1);
+    xfer_data.push(12u8); // TransferChecked
+    xfer_data.extend_from_slice(&amount_raw.to_le_bytes());
+    xfer_data.push(decimals);
+    msg.extend_from_slice(&compact_u16(xfer_data.len()));
+    msg.extend_from_slice(&xfer_data);
+
+    // Sign the message bytes.
+    let signing_key = SigningKey::from_bytes(
+        &private_key[..32].try_into().map_err(|_| "privkey too short")?,
+    );
+    let signature = signing_key.sign(&msg);
+
+    let mut tx = Vec::new();
+    tx.extend_from_slice(&compact_u16(1)); // 1 signature
+    tx.extend_from_slice(signature.to_bytes().as_ref());
+    tx.extend_from_slice(&msg);
+    Ok(tx)
+}
+
 /// Solana compact-u16 encoding.
 fn compact_u16(val: usize) -> Vec<u8> {
     let mut out = Vec::new();
@@ -371,6 +735,23 @@ fn format_sol(lamports: u64) -> String {
         return whole.to_string();
     }
     let frac_str = format!("{:09}", frac);
+    let trimmed = frac_str.trim_end_matches('0');
+    let capped = if trimmed.len() > 6 { &trimmed[..6] } else { trimmed };
+    format!("{}.{}", whole, capped)
+}
+
+/// Format a raw SPL token amount using its `decimals`.
+fn format_ft_amount(raw: u128, decimals: u8) -> String {
+    if decimals == 0 {
+        return raw.to_string();
+    }
+    let divisor: u128 = 10u128.pow(decimals as u32);
+    let whole = raw / divisor;
+    let frac = raw % divisor;
+    if frac == 0 {
+        return whole.to_string();
+    }
+    let frac_str = format!("{:0>width$}", frac, width = decimals as usize);
     let trimmed = frac_str.trim_end_matches('0');
     let capped = if trimmed.len() > 6 { &trimmed[..6] } else { trimmed };
     format!("{}.{}", whole, capped)

@@ -8,7 +8,6 @@
 //! Signing uses Ed25519 (ed25519-dalek).
 
 use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
 
 use crate::core::http::{with_fallback, HttpClient, RetryProfile};
 
@@ -43,6 +42,8 @@ pub struct CardanoHistoryEntry {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct CardanoSendResult {
     pub txid: String,
+    /// CBOR hex of the signed transaction — stored for rebroadcast.
+    pub cbor_hex: String,
 }
 
 // ----------------------------------------------------------------
@@ -239,12 +240,14 @@ impl CardanoClient {
 
     /// Submit a CBOR-encoded signed transaction.
     pub async fn submit_tx(&self, cbor_hex: &str) -> Result<CardanoSendResult, String> {
+        let cbor_hex_owned = cbor_hex.to_string();
         let cbor_bytes = hex::decode(cbor_hex).map_err(|e| format!("hex decode: {e}"))?;
         let api_key = self.api_key.clone();
         with_fallback(&self.endpoints, |base| {
             let client = self.client.clone();
             let cbor_bytes = cbor_bytes.clone();
             let api_key = api_key.clone();
+            let cbor_hex_owned = cbor_hex_owned.clone();
             let url = format!("{}/tx/submit", base.trim_end_matches('/'));
             async move {
                 use base64::Engine;
@@ -255,7 +258,7 @@ impl CardanoClient {
                 let txid: String = client
                     .post_json_with_headers(&url, &body, &headers, RetryProfile::ChainWrite)
                     .await?;
-                Ok(CardanoSendResult { txid })
+                Ok(CardanoSendResult { txid, cbor_hex: cbor_hex_owned })
             }
         })
         .await

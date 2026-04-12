@@ -36,6 +36,28 @@ pub struct TronHistoryEntry {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TronSendResult {
     pub txid: String,
+    /// Full signed transaction JSON for rebroadcast. Serialized as a JSON string.
+    #[serde(default)]
+    pub signed_tx_json: String,
+}
+
+/// TRC-20 balance payload. Mirrors `Erc20Balance` so the Swift-side decoder
+/// can share a single response type if desired.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Trc20Balance {
+    pub contract: String,
+    pub holder: String,
+    pub balance_raw: String,
+    pub balance_display: String,
+    pub decimals: u8,
+    pub symbol: String,
+}
+
+/// Lightweight TRC-20 metadata (symbol + decimals).
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Trc20Metadata {
+    pub symbol: String,
+    pub decimals: u8,
 }
 
 // ----------------------------------------------------------------
@@ -67,6 +89,7 @@ impl TronClient {
         .await
     }
 
+    #[allow(dead_code)]
     async fn get_json_path<T: serde::de::DeserializeOwned>(&self, path: &str) -> Result<T, String> {
         let path = path.to_string();
         with_fallback(&self.endpoints, |base| {
@@ -94,7 +117,7 @@ impl TronClient {
             .pointer("/block_header/raw_data/number")
             .and_then(|v| v.as_u64())
             .ok_or("getnowblock: missing number")?;
-        let timestamp = resp
+        let _timestamp = resp
             .pointer("/block_header/raw_data/timestamp")
             .and_then(|v| v.as_u64())
             .unwrap_or(0);
@@ -183,7 +206,7 @@ impl TronClient {
             .await?;
 
         // Extract the raw_data_hex for signing.
-        let raw_data_hex = resp
+        let _raw_data_hex = resp
             .get("raw_data_hex")
             .and_then(|v| v.as_str())
             .ok_or("createtransaction: missing raw_data_hex")?;
@@ -200,6 +223,7 @@ impl TronClient {
         // Step 3: Broadcast.
         let mut broadcast_body = resp.clone();
         broadcast_body["signature"] = json!([signature]);
+        let signed_tx_json = broadcast_body.to_string();
         let broadcast_resp = self
             .post("/wallet/broadcasttransaction", &broadcast_body)
             .await?;
@@ -214,8 +238,262 @@ impl TronClient {
                 .unwrap_or("unknown");
             return Err(format!("broadcast failed: {msg}"));
         }
-        Ok(TronSendResult { txid })
+        Ok(TronSendResult { txid, signed_tx_json })
     }
+
+    // ----------------------------------------------------------------
+    // TRC-20
+    // ----------------------------------------------------------------
+
+    /// Fetch a TRC-20 token balance.
+    ///
+    /// Issues three constant calls (`balanceOf`, `decimals`, `symbol`) against
+    /// the provided contract via `/wallet/triggerconstantcontract`.
+    pub async fn fetch_trc20_balance(
+        &self,
+        contract_base58: &str,
+        holder_base58: &str,
+    ) -> Result<Trc20Balance, String> {
+        let raw = self
+            .fetch_trc20_balance_of(contract_base58, holder_base58)
+            .await?;
+        let metadata = self.fetch_trc20_metadata(contract_base58).await?;
+        let balance_display = crate::core::chains::evm::format_token_amount(raw, metadata.decimals);
+        Ok(Trc20Balance {
+            contract: contract_base58.to_string(),
+            holder: holder_base58.to_string(),
+            balance_raw: raw.to_string(),
+            balance_display,
+            decimals: metadata.decimals,
+            symbol: metadata.symbol,
+        })
+    }
+
+    /// Raw `balanceOf(holder)` constant call.
+    pub async fn fetch_trc20_balance_of(
+        &self,
+        contract_base58: &str,
+        holder_base58: &str,
+    ) -> Result<u128, String> {
+        // TRC-20 uses the same 4-byte selector as ERC-20, but Tron addresses are
+        // passed in their *hex* form (0x41... stripped to the last 20 bytes).
+        let holder_hex = tron_base58_to_evm_hex(holder_base58)?;
+        let parameter = format!("{:0>64}", holder_hex);
+
+        let resp = self
+            .post(
+                "/wallet/triggerconstantcontract",
+                &json!({
+                    "owner_address": holder_base58,
+                    "contract_address": contract_base58,
+                    "function_selector": "balanceOf(address)",
+                    "parameter": parameter,
+                    "visible": true
+                }),
+            )
+            .await?;
+
+        let hex_str = resp
+            .get("constant_result")
+            .and_then(|v| v.as_array())
+            .and_then(|arr| arr.first())
+            .and_then(|v| v.as_str())
+            .ok_or("triggerconstantcontract balanceOf: missing result")?;
+
+        // The result is a 32-byte big-endian integer hex string.
+        parse_hex_u256_low_u128(hex_str)
+    }
+
+    /// Fetch token symbol + decimals.
+    pub async fn fetch_trc20_metadata(
+        &self,
+        contract_base58: &str,
+    ) -> Result<Trc20Metadata, String> {
+        // decimals()
+        let resp = self
+            .post(
+                "/wallet/triggerconstantcontract",
+                &json!({
+                    "owner_address": contract_base58,
+                    "contract_address": contract_base58,
+                    "function_selector": "decimals()",
+                    "parameter": "",
+                    "visible": true
+                }),
+            )
+            .await?;
+        let decimals_hex = resp
+            .get("constant_result")
+            .and_then(|v| v.as_array())
+            .and_then(|arr| arr.first())
+            .and_then(|v| v.as_str())
+            .ok_or("triggerconstantcontract decimals: missing result")?;
+        let decimals = parse_hex_u256_low_u128(decimals_hex)? as u8;
+
+        // symbol()
+        let resp = self
+            .post(
+                "/wallet/triggerconstantcontract",
+                &json!({
+                    "owner_address": contract_base58,
+                    "contract_address": contract_base58,
+                    "function_selector": "symbol()",
+                    "parameter": "",
+                    "visible": true
+                }),
+            )
+            .await?;
+        let symbol_hex = resp
+            .get("constant_result")
+            .and_then(|v| v.as_array())
+            .and_then(|arr| arr.first())
+            .and_then(|v| v.as_str())
+            .ok_or("triggerconstantcontract symbol: missing result")?;
+        let symbol = crate::core::chains::evm::decode_abi_string_or_bytes32(symbol_hex)
+            .unwrap_or_default();
+
+        Ok(Trc20Metadata { symbol, decimals })
+    }
+
+    /// Build, sign, and broadcast a TRC-20 `transfer(to, amount)` via
+    /// `triggersmartcontract` → `broadcasttransaction`.
+    pub async fn sign_and_broadcast_trc20(
+        &self,
+        from_base58: &str,
+        contract_base58: &str,
+        to_base58: &str,
+        amount_raw: u128,
+        fee_limit_sun: u64,
+        private_key_bytes: &[u8],
+    ) -> Result<TronSendResult, String> {
+        let to_hex = tron_base58_to_evm_hex(to_base58)?;
+        let to_padded = format!("{:0>64}", to_hex);
+        let amount_padded = format!("{:064x}", amount_raw);
+        let parameter = format!("{}{}", to_padded, amount_padded);
+
+        let resp = self
+            .post(
+                "/wallet/triggersmartcontract",
+                &json!({
+                    "owner_address": from_base58,
+                    "contract_address": contract_base58,
+                    "function_selector": "transfer(address,uint256)",
+                    "parameter": parameter,
+                    "fee_limit": fee_limit_sun,
+                    "call_value": 0,
+                    "visible": true
+                }),
+            )
+            .await?;
+
+        let tx_obj = resp
+            .get("transaction")
+            .ok_or("triggersmartcontract: missing transaction")?;
+        let txid = tx_obj
+            .get("txID")
+            .and_then(|v| v.as_str())
+            .ok_or("triggersmartcontract: missing txID")?
+            .to_string();
+
+        // Check for contract execution errors at the trigger step.
+        if let Some(result_obj) = resp.get("result") {
+            if !result_obj.get("result").and_then(|v| v.as_bool()).unwrap_or(false) {
+                if let Some(msg) = result_obj.get("message").and_then(|v| v.as_str()) {
+                    let decoded = hex::decode(msg).ok()
+                        .and_then(|b| String::from_utf8(b).ok())
+                        .unwrap_or_else(|| msg.to_string());
+                    return Err(format!("trc20 trigger failed: {decoded}"));
+                }
+            }
+        }
+
+        // Sign txID.
+        let txid_bytes = hex::decode(&txid).map_err(|e| format!("txid hex: {e}"))?;
+        let signature = sign_tron_hash(&txid_bytes, private_key_bytes)?;
+
+        // Attach signature and broadcast.
+        let mut broadcast_body = tx_obj.clone();
+        broadcast_body["signature"] = json!([signature]);
+        let signed_tx_json = broadcast_body.to_string();
+        let broadcast_resp = self
+            .post("/wallet/broadcasttransaction", &broadcast_body)
+            .await?;
+        let ok = broadcast_resp
+            .get("result")
+            .and_then(|v| v.as_bool())
+            .unwrap_or(false);
+        if !ok {
+            let msg = broadcast_resp
+                .get("message")
+                .and_then(|v| v.as_str())
+                .unwrap_or("unknown");
+            let decoded = hex::decode(msg).ok()
+                .and_then(|b| String::from_utf8(b).ok())
+                .unwrap_or_else(|| msg.to_string());
+            return Err(format!("trc20 broadcast failed: {decoded}"));
+        }
+        Ok(TronSendResult { txid, signed_tx_json })
+    }
+
+    /// Broadcast an already-signed transaction given as a JSON string.
+    pub async fn broadcast_raw(&self, signed_tx_json: &str) -> Result<TronSendResult, String> {
+        let body: serde_json::Value = serde_json::from_str(signed_tx_json)
+            .map_err(|e| format!("broadcast_raw: invalid JSON: {e}"))?;
+        let txid = body
+            .get("txID")
+            .and_then(|v| v.as_str())
+            .unwrap_or("")
+            .to_string();
+        let broadcast_resp = self.post("/wallet/broadcasttransaction", &body).await?;
+        let ok = broadcast_resp
+            .get("result")
+            .and_then(|v| v.as_bool())
+            .unwrap_or(false);
+        if !ok {
+            let msg = broadcast_resp
+                .get("message")
+                .and_then(|v| v.as_str())
+                .unwrap_or("unknown");
+            let decoded = hex::decode(msg).ok()
+                .and_then(|b| String::from_utf8(b).ok())
+                .unwrap_or_else(|| msg.to_string());
+            return Err(format!("broadcast failed: {decoded}"));
+        }
+        Ok(TronSendResult { txid, signed_tx_json: signed_tx_json.to_string() })
+    }
+}
+
+// ----------------------------------------------------------------
+// TRC-20 helpers
+// ----------------------------------------------------------------
+
+/// Parse a 32-byte big-endian hex integer return value (no `0x` prefix) and
+/// return its low 128 bits. TRC-20 balances and u256 decimals fit comfortably.
+fn parse_hex_u256_low_u128(hex_str: &str) -> Result<u128, String> {
+    let stripped = hex_str.strip_prefix("0x").unwrap_or(hex_str);
+    // Take last 32 hex chars (16 bytes = 128 bits). TRC-20 u256s that exceed
+    // u128 are vanishingly rare for user balances, but we deliberately truncate
+    // high bits rather than error out so the caller still gets *something*.
+    let low = if stripped.len() > 32 {
+        &stripped[stripped.len() - 32..]
+    } else {
+        stripped
+    };
+    u128::from_str_radix(low, 16).map_err(|e| format!("parse u128 hex: {e}"))
+}
+
+/// Convert a Tron base58 address (`T…`) to an EVM-style 20-byte hex string
+/// (without `0x` prefix, without the Tron `0x41` version byte). This is the
+/// format TronGrid expects inside ABI-encoded contract parameters.
+pub fn tron_base58_to_evm_hex(address: &str) -> Result<String, String> {
+    let decoded = bs58::decode(address)
+        .with_check(None)
+        .into_vec()
+        .map_err(|e| format!("base58 decode: {e}"))?;
+    if decoded.len() != 21 || decoded[0] != 0x41 {
+        return Err(format!("invalid Tron address length/prefix: len={}", decoded.len()));
+    }
+    Ok(hex::encode(&decoded[1..]))
 }
 
 // ----------------------------------------------------------------

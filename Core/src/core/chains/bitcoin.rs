@@ -174,6 +174,7 @@ pub struct BitcoinClient {
     http: Arc<HttpClient>,
     /// Ordered list of Esplora base URLs for the current network mode.
     endpoints: Vec<String>,
+    #[allow(dead_code)]
     network: Network,
 }
 
@@ -426,7 +427,7 @@ pub fn sign_p2wpkh(
     let secp_pk = secp256k1::PublicKey::from_secret_key(&secp, &secret_key);
     let pk = CompressedPublicKey::from_slice(&secp_pk.serialize())
         .map_err(|e| format!("pk: {e}"))?;
-    let keypair = bitcoin::key::Keypair::from_secret_key(&secp, &secret_key);
+    let _keypair = bitcoin::key::Keypair::from_secret_key(&secp, &secret_key);
 
     // Parse recipient.
     let to_addr = Address::from_str(&params.to_address)
@@ -611,7 +612,7 @@ pub fn sign_p2pkh(
     let secp_pk_p2pkh = secp256k1::PublicKey::from_secret_key(&secp, &secret_key);
     let pk_bytes_p2pkh = secp_pk_p2pkh.serialize(); // [u8; 33] compressed
 
-    let mut sighash_cache = SighashCache::new(&mut tx);
+    let sighash_cache = SighashCache::new(&mut tx);
     let mut signatures: Vec<(Vec<u8>, Vec<u8>)> = Vec::new();
 
     for (i, utxo) in selected.iter().enumerate() {
@@ -743,7 +744,7 @@ pub fn sign_p2tr(
             .map_err(|e| format!("taproot sighash: {e}"))?;
 
         let msg = Message::from_digest(sighash.to_raw_hash().to_byte_array());
-        let sig = secp.sign_schnorr(&msg, &tweaked_keypair.to_inner());
+        let sig = secp.sign_schnorr(&msg, &tweaked_keypair.to_keypair());
         let tap_sig = bitcoin::taproot::Signature {
             signature: sig,
             sighash_type: TapSighashType::Default,

@@ -43,6 +43,8 @@ pub struct XrpHistoryEntry {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct XrpSendResult {
     pub txid: String,
+    /// Signed tx blob hex — stored for rebroadcast.
+    pub tx_blob_hex: String,
 }
 
 // ----------------------------------------------------------------
@@ -143,7 +145,7 @@ impl XrpClient {
         let mut entries = Vec::new();
         for item in txs {
             let tx = item.get("tx").unwrap_or(&Value::Null);
-            let meta = item.get("meta").unwrap_or(&Value::Null);
+            let _meta = item.get("meta").unwrap_or(&Value::Null);
 
             let txtype = tx.get("TransactionType").and_then(|v| v.as_str()).unwrap_or("");
             if txtype != "Payment" {
@@ -216,7 +218,21 @@ impl XrpClient {
             .and_then(|v| v.as_str())
             .ok_or("submit: missing hash")?
             .to_string();
-        Ok(XrpSendResult { txid })
+        Ok(XrpSendResult { txid, tx_blob_hex: tx_blob })
+    }
+
+    /// Submit a pre-signed transaction blob (for rebroadcast).
+    pub async fn submit_signed_blob(&self, tx_blob_hex: &str) -> Result<XrpSendResult, String> {
+        let result = self
+            .call("submit", json!({"tx_blob": tx_blob_hex}))
+            .await?;
+        let txid = result
+            .get("tx_json")
+            .and_then(|t| t.get("hash"))
+            .and_then(|v| v.as_str())
+            .unwrap_or("")
+            .to_string();
+        Ok(XrpSendResult { txid, tx_blob_hex: tx_blob_hex.to_string() })
     }
 }
 
