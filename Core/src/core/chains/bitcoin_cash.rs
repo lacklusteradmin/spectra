@@ -209,6 +209,28 @@ impl BitcoinCashClient {
             .collect())
     }
 
+    /// Fetch confirmation status for a single txid via Blockbook `/api/v2/tx/{txid}`.
+    pub async fn fetch_tx_status(&self, txid: &str) -> Result<super::bitcoin::UtxoTxStatus, String> {
+        let txid = txid.to_string();
+        with_fallback(&self.endpoints, |base| {
+            let txid = txid.clone();
+            let client = self.client.clone();
+            async move {
+                let url = format!("{base}/api/v2/tx/{txid}");
+                let tx: BlockbookTx = client.get_json(&url, RetryProfile::ChainRead).await?;
+                let confirmed = tx.block_height.map(|h| h > 0).unwrap_or(false);
+                Ok(super::bitcoin::UtxoTxStatus {
+                    txid: tx.txid,
+                    confirmed,
+                    block_height: tx.block_height,
+                    block_time: tx.block_time,
+                    confirmations: None,
+                })
+            }
+        })
+        .await
+    }
+
     pub async fn broadcast_raw_tx(&self, hex_tx: &str) -> Result<BchSendResult, String> {
         let hex = hex_tx.to_string();
         with_fallback(&self.endpoints, |base| {

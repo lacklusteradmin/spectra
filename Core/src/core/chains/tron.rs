@@ -33,6 +33,23 @@ pub struct TronHistoryEntry {
     pub is_incoming: bool,
 }
 
+/// Unified history entry covering both native TRX and TRC-20 token transfers.
+/// Swift decodes this instead of `TronHistoryEntry` for the history tab.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct TronTransfer {
+    pub txid: String,
+    pub block_number: u64,
+    /// Milliseconds since epoch (TronScan convention).
+    pub timestamp_ms: u64,
+    pub from: String,
+    pub to: String,
+    /// Human-readable amount string ("1.5", "10.0", …).
+    pub amount_display: String,
+    /// "TRX" for native, token abbreviation (e.g. "USDT") for TRC-20.
+    pub symbol: String,
+    pub is_incoming: bool,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TronSendResult {
     pub txid: String,
@@ -182,6 +199,158 @@ impl TronClient {
                 }
             })
             .collect())
+    }
+
+    /// Fetch up to `limit` recent transfers combining native TRX and TRC-20
+    /// token transfers from TronScan. Results are sorted newest-first.
+    pub async fn fetch_unified_history(
+        &self,
+        address: &str,
+        api_base: &str,
+        limit: usize,
+    ) -> Result<Vec<TronTransfer>, String> {
+        let limit = limit.min(50);
+
+        // --- Native TRX transfers ---
+        let trx_url = format!(
+            "{}/api/transaction?sort=-timestamp&count=true&limit={}&address={}",
+            api_base.trim_end_matches('/'),
+            limit,
+            address
+        );
+        let trx_resp: Value = self
+            .client
+            .get_json(&trx_url, RetryProfile::ChainRead)
+            .await
+            .unwrap_or(Value::Null);
+        let trx_data = trx_resp
+            .get("data")
+            .and_then(|v| v.as_array())
+            .cloned()
+            .unwrap_or_default();
+
+        let mut entries: Vec<TronTransfer> = trx_data
+            .into_iter()
+            .filter_map(|tx| {
+                // Only include Transfer (contractType 1) transactions.
+                let contract_type = tx.get("contractType").and_then(|v| v.as_u64()).unwrap_or(0);
+                if contract_type != 1 {
+                    return None;
+                }
+                let txid = tx.get("hash").and_then(|v| v.as_str()).unwrap_or("").to_string();
+                let block_number = tx.get("block").and_then(|v| v.as_u64()).unwrap_or(0);
+                let timestamp_ms = tx.get("timestamp").and_then(|v| v.as_u64()).unwrap_or(0);
+                let from = tx
+                    .pointer("/contractData/owner_address")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("")
+                    .to_string();
+                let to = tx
+                    .pointer("/contractData/to_address")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("")
+                    .to_string();
+                let amount_sun = tx
+                    .pointer("/contractData/amount")
+                    .and_then(|v| v.as_u64())
+                    .unwrap_or(0);
+                let is_incoming = to.eq_ignore_ascii_case(address);
+                let trx = amount_sun as f64 / 1_000_000.0;
+                let amount_display = format_trx_f64(trx);
+                Some(TronTransfer {
+                    txid,
+                    block_number,
+                    timestamp_ms,
+                    from,
+                    to,
+                    amount_display,
+                    symbol: "TRX".to_string(),
+                    is_incoming,
+                })
+            })
+            .collect();
+
+        // --- TRC-20 token transfers ---
+        let trc20_url = format!(
+            "{}/api/token_trc20/transfers?limit={}&start=0&sort=-timestamp&address={}",
+            api_base.trim_end_matches('/'),
+            limit,
+            address
+        );
+        let trc20_resp: Value = self
+            .client
+            .get_json(&trc20_url, RetryProfile::ChainRead)
+            .await
+            .unwrap_or(Value::Null);
+        let trc20_data = trc20_resp
+            .get("token_transfers")
+            .and_then(|v| v.as_array())
+            .cloned()
+            .unwrap_or_default();
+
+        for tx in trc20_data {
+            let txid = tx
+                .get("transaction_id")
+                .and_then(|v| v.as_str())
+                .unwrap_or("")
+                .to_string();
+            let block_number = tx.get("block").and_then(|v| v.as_u64()).unwrap_or(0);
+            let timestamp_ms = tx
+                .get("block_ts")
+                .and_then(|v| v.as_u64())
+                .unwrap_or(0);
+            let from = tx
+                .get("from_address")
+                .and_then(|v| v.as_str())
+                .unwrap_or("")
+                .to_string();
+            let to = tx
+                .get("to_address")
+                .and_then(|v| v.as_str())
+                .unwrap_or("")
+                .to_string();
+            let is_incoming = to.eq_ignore_ascii_case(address);
+            let symbol = tx
+                .pointer("/tokenInfo/tokenAbbr")
+                .and_then(|v| v.as_str())
+                .unwrap_or("?")
+                .to_string();
+            let decimals = tx
+                .pointer("/tokenInfo/tokenDecimal")
+                .and_then(|v| v.as_u64())
+                .unwrap_or(6) as u32;
+            let quant_str = tx
+                .get("quant")
+                .and_then(|v| v.as_str())
+                .unwrap_or("0");
+            let quant: u128 = quant_str.parse().unwrap_or(0);
+            let divisor = 10u128.pow(decimals);
+            let whole = quant / divisor;
+            let frac = quant % divisor;
+            let amount_display = if frac == 0 || decimals == 0 {
+                whole.to_string()
+            } else {
+                let frac_str = format!("{:0>width$}", frac, width = decimals as usize);
+                let trimmed = frac_str.trim_end_matches('0');
+                format!("{}.{}", whole, trimmed)
+            };
+
+            entries.push(TronTransfer {
+                txid,
+                block_number,
+                timestamp_ms,
+                from,
+                to,
+                amount_display,
+                symbol,
+                is_incoming,
+            });
+        }
+
+        // Sort newest-first by timestamp.
+        entries.sort_by(|a, b| b.timestamp_ms.cmp(&a.timestamp_ms));
+        entries.truncate(limit);
+        Ok(entries)
     }
 
     /// Create, sign, and broadcast a TRX transfer.
@@ -552,6 +721,12 @@ fn format_trx(sun: u64) -> String {
     let frac_str = format!("{:06}", frac);
     let trimmed = frac_str.trim_end_matches('0');
     format!("{}.{}", whole, trimmed)
+}
+
+fn format_trx_f64(trx: f64) -> String {
+    // Format with up to 6 decimal places, trimming trailing zeros.
+    let sun = (trx * 1_000_000.0).round() as u64;
+    format_trx(sun)
 }
 
 pub fn validate_tron_address(address: &str) -> bool {

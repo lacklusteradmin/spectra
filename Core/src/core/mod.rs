@@ -18,5 +18,6 @@ pub mod state;
 pub mod store;
 pub mod transactions;
 pub mod transfer;
+pub mod tokens;
 pub mod types;
 pub mod utxo;

@@ -47,6 +47,8 @@ struct BlockbookTx {
     block_time: Option<u64>,
     block_height: Option<u64>,
     #[serde(default)]
+    confirmations: u64,
+    #[serde(default)]
     #[allow(dead_code)]
     value: String,
     fees: Option<String>,
@@ -193,6 +195,20 @@ impl DogecoinClient {
                 }
             })
             .collect())
+    }
+
+    /// Fetch confirmation status for a single txid via Blockbook `/api/v2/tx/{txid}`.
+    pub async fn fetch_tx_status(&self, txid: &str) -> Result<super::bitcoin::UtxoTxStatus, String> {
+        let txid = txid.to_string();
+        let tx: BlockbookTx = self.get(&format!("/api/v2/tx/{txid}")).await?;
+        let confirmed = tx.block_height.map(|h| h > 0).unwrap_or(false);
+        Ok(super::bitcoin::UtxoTxStatus {
+            txid: tx.txid,
+            confirmed,
+            block_height: tx.block_height,
+            block_time: tx.block_time,
+            confirmations: Some(tx.confirmations),
+        })
     }
 
     /// Broadcast a raw hex transaction.

@@ -44,6 +44,25 @@ pub struct SolanaHistoryEntry {
     pub to: String,
 }
 
+/// Unified history entry covering both native SOL and SPL token transfers.
+/// Swift decodes this instead of `SolanaHistoryEntry` for the history tab.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SolanaTransfer {
+    pub signature: String,
+    pub slot: u64,
+    pub timestamp: Option<i64>,
+    pub fee_lamports: u64,
+    pub is_incoming: bool,
+    /// Human-readable amount ("1.5", "0.001", …).
+    pub amount_display: String,
+    /// "SOL" for native, mint address for SPL token transfers.
+    pub symbol: String,
+    /// Empty string for native SOL; mint address for SPL.
+    pub mint: String,
+    pub from: String,
+    pub to: String,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SolanaSendResult {
     pub signature: String,
@@ -116,6 +135,71 @@ impl SolanaClient {
             lamports,
             sol_display: format_sol(lamports),
         })
+    }
+
+    /// Fetch SPL token balances for a list of mint addresses.
+    /// For each mint, calls `getTokenAccountsByOwner` filtered by that mint.
+    /// Returns one entry per mint that has a token account (mints with no
+    /// account are silently omitted).
+    pub async fn fetch_spl_balances(
+        &self,
+        owner: &str,
+        mints: &[String],
+    ) -> Result<Vec<SplBalance>, String> {
+        use futures::future::join_all;
+        let futs: Vec<_> = mints
+            .iter()
+            .map(|mint| {
+                let owner = owner.to_string();
+                let mint = mint.clone();
+                let client = Self {
+                    endpoints: self.endpoints.clone(),
+                    client: self.client.clone(),
+                };
+                async move {
+                    let result = client
+                        .call(
+                            "getTokenAccountsByOwner",
+                            json!([
+                                owner,
+                                {"mint": mint},
+                                {"encoding": "jsonParsed", "commitment": "confirmed"}
+                            ]),
+                        )
+                        .await;
+                    let val = result.ok()?;
+                    let accounts = val.get("value")?.as_array()?;
+                    let account = accounts.first()?;
+                    let info = account.pointer("/account/data/parsed/info")?;
+                    let token_amount = info.get("tokenAmount")?;
+                    let balance_raw = token_amount
+                        .get("amount")
+                        .and_then(|v| v.as_str())
+                        .unwrap_or("0")
+                        .to_string();
+                    let decimals = token_amount
+                        .get("decimals")
+                        .and_then(|v| v.as_u64())
+                        .unwrap_or(0) as u8;
+                    let balance_display = token_amount
+                        .get("uiAmountString")
+                        .and_then(|v| v.as_str())
+                        .unwrap_or("0")
+                        .to_string();
+                    Some(SplBalance {
+                        mint,
+                        owner,
+                        balance_raw,
+                        balance_display,
+                        decimals,
+                        symbol: String::new(),
+                    })
+                }
+            })
+            .collect();
+
+        let results = join_all(futs).await;
+        Ok(results.into_iter().flatten().collect())
     }
 
     pub async fn fetch_recent_blockhash(&self) -> Result<String, String> {
@@ -236,6 +320,244 @@ impl SolanaClient {
             });
         }
         Ok(entries)
+    }
+
+    /// Fetch up to `limit` recent transfers as unified entries covering both
+    /// native SOL and SPL token transfers. For each transaction, if SPL token
+    /// balance deltas are found for `address`, those are emitted as separate
+    /// entries (one per mint). Native SOL entries with a zero delta are
+    /// suppressed when SPL entries are present for the same signature.
+    pub async fn fetch_unified_history(
+        &self,
+        address: &str,
+        limit: usize,
+    ) -> Result<Vec<SolanaTransfer>, String> {
+        // 1. Get signatures.
+        let sigs_result = self
+            .call(
+                "getSignaturesForAddress",
+                json!([address, {"limit": limit, "commitment": "confirmed"}]),
+            )
+            .await?;
+        let sig_array = sigs_result
+            .as_array()
+            .ok_or("getSignaturesForAddress: expected array")?;
+
+        let signatures: Vec<String> = sig_array
+            .iter()
+            .filter_map(|s| s.get("signature").and_then(|v| v.as_str()).map(str::to_string))
+            .collect();
+
+        if signatures.is_empty() {
+            return Ok(vec![]);
+        }
+
+        // 2. Fetch each transaction and build unified entries.
+        let mut result: Vec<SolanaTransfer> = Vec::new();
+
+        for sig in &signatures {
+            let tx = self
+                .call(
+                    "getTransaction",
+                    json!([sig, {"encoding": "json", "commitment": "confirmed", "maxSupportedTransactionVersion": 0}]),
+                )
+                .await
+                .unwrap_or(Value::Null);
+
+            if tx.is_null() {
+                continue;
+            }
+
+            let slot = tx.get("slot").and_then(|v| v.as_u64()).unwrap_or(0);
+            let timestamp = tx.get("blockTime").and_then(|v| v.as_i64());
+            let fee = tx
+                .pointer("/meta/fee")
+                .and_then(|v| v.as_u64())
+                .unwrap_or(0);
+
+            let pre_balances = tx
+                .pointer("/meta/preBalances")
+                .and_then(|v| v.as_array())
+                .cloned()
+                .unwrap_or_default();
+            let post_balances = tx
+                .pointer("/meta/postBalances")
+                .and_then(|v| v.as_array())
+                .cloned()
+                .unwrap_or_default();
+            let accounts: Vec<String> = tx
+                .pointer("/transaction/message/accountKeys")
+                .and_then(|v| v.as_array())
+                .map(|arr| {
+                    arr.iter()
+                        .filter_map(|a| a.as_str().map(str::to_string))
+                        .collect()
+                })
+                .unwrap_or_default();
+
+            let from = accounts.first().cloned().unwrap_or_default();
+            let to = accounts.get(1).cloned().unwrap_or_default();
+
+            // Check for SPL token balance deltas.
+            let pre_tok = tx
+                .pointer("/meta/preTokenBalances")
+                .and_then(|v| v.as_array())
+                .cloned()
+                .unwrap_or_default();
+            let post_tok = tx
+                .pointer("/meta/postTokenBalances")
+                .and_then(|v| v.as_array())
+                .cloned()
+                .unwrap_or_default();
+
+            let mut spl_entries: Vec<SolanaTransfer> = Vec::new();
+
+            // Find post-token entries owned by this address.
+            for post_entry in &post_tok {
+                let owner = post_entry
+                    .get("owner")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("");
+                if owner != address {
+                    continue;
+                }
+                let mint = post_entry
+                    .get("mint")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("")
+                    .to_string();
+                let acct_idx = post_entry
+                    .get("accountIndex")
+                    .and_then(|v| v.as_u64())
+                    .unwrap_or(u64::MAX);
+
+                let _post_ui = post_entry
+                    .pointer("/uiTokenAmount/uiAmountString")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("0");
+                let post_raw: u128 = post_entry
+                    .pointer("/uiTokenAmount/amount")
+                    .and_then(|v| v.as_str())
+                    .and_then(|s| s.parse().ok())
+                    .unwrap_or(0);
+
+                // Find matching pre entry by accountIndex.
+                let pre_raw: u128 = pre_tok
+                    .iter()
+                    .find(|e| e.get("accountIndex").and_then(|v| v.as_u64()).unwrap_or(u64::MAX) == acct_idx)
+                    .and_then(|e| e.pointer("/uiTokenAmount/amount").and_then(|v| v.as_str()))
+                    .and_then(|s| s.parse().ok())
+                    .unwrap_or(0);
+
+                if post_raw == pre_raw {
+                    continue; // No change for this token account.
+                }
+
+                let is_incoming = post_raw > pre_raw;
+                let decimals = post_entry
+                    .pointer("/uiTokenAmount/decimals")
+                    .and_then(|v| v.as_u64())
+                    .unwrap_or(6);
+                let delta_raw = if is_incoming {
+                    post_raw.saturating_sub(pre_raw)
+                } else {
+                    pre_raw.saturating_sub(post_raw)
+                };
+                let divisor = 10u128.pow(decimals as u32);
+                let whole = delta_raw / divisor;
+                let frac = delta_raw % divisor;
+                let amount_display = if frac == 0 || decimals == 0 {
+                    whole.to_string()
+                } else {
+                    let frac_str = format!("{:0>width$}", frac, width = decimals as usize);
+                    let trimmed = frac_str.trim_end_matches('0');
+                    format!("{}.{}", whole, trimmed)
+                };
+
+                spl_entries.push(SolanaTransfer {
+                    signature: sig.clone(),
+                    slot,
+                    timestamp,
+                    fee_lamports: fee,
+                    is_incoming,
+                    amount_display,
+                    symbol: mint.clone(), // Swift resolves mint → symbol from token registry
+                    mint,
+                    from: from.clone(),
+                    to: to.clone(),
+                });
+            }
+
+            if !spl_entries.is_empty() {
+                result.extend(spl_entries);
+                // Still emit a native SOL entry if the native balance changed
+                // (fee + send amount visible separately).
+                let idx = accounts.iter().position(|a| a == address);
+                let (pre, post) = idx
+                    .and_then(|i| {
+                        Some((
+                            pre_balances.get(i)?.as_u64()?,
+                            post_balances.get(i)?.as_u64()?,
+                        ))
+                    })
+                    .unwrap_or((0, 0));
+                let sol_delta = if post > pre {
+                    post.saturating_sub(pre)
+                } else {
+                    pre.saturating_sub(post).saturating_sub(fee)
+                };
+                if sol_delta > 0 {
+                    let is_incoming = post > pre;
+                    let sol_display = format_lamports(sol_delta);
+                    result.push(SolanaTransfer {
+                        signature: sig.clone(),
+                        slot,
+                        timestamp,
+                        fee_lamports: fee,
+                        is_incoming,
+                        amount_display: sol_display,
+                        symbol: "SOL".to_string(),
+                        mint: String::new(),
+                        from: from.clone(),
+                        to: to.clone(),
+                    });
+                }
+                continue;
+            }
+
+            // No SPL transfers — emit as a native SOL entry.
+            let idx = accounts.iter().position(|a| a == address);
+            let (pre, post) = idx
+                .and_then(|i| {
+                    Some((
+                        pre_balances.get(i)?.as_u64()?,
+                        post_balances.get(i)?.as_u64()?,
+                    ))
+                })
+                .unwrap_or((0, 0));
+
+            let is_incoming = post > pre;
+            let amount_lamports = if is_incoming {
+                post.saturating_sub(pre)
+            } else {
+                pre.saturating_sub(post).saturating_sub(fee)
+            };
+
+            result.push(SolanaTransfer {
+                signature: sig.clone(),
+                slot,
+                timestamp,
+                fee_lamports: fee,
+                is_incoming,
+                amount_display: format_lamports(amount_lamports),
+                symbol: "SOL".to_string(),
+                mint: String::new(),
+                from,
+                to,
+            });
+        }
+
+        Ok(result)
     }
 
     // ----------------------------------------------------------------
@@ -727,6 +1049,8 @@ fn compact_u16(val: usize) -> Vec<u8> {
 // ----------------------------------------------------------------
 // Formatting
 // ----------------------------------------------------------------
+
+fn format_lamports(lamports: u64) -> String { format_sol(lamports) }
 
 fn format_sol(lamports: u64) -> String {
     let whole = lamports / 1_000_000_000;

@@ -33,10 +33,6 @@ static STATIC_JSON_RESOURCES: &[EmbeddedJsonResource] = &[
         name: "BuyCryptoProviders",
         json: include_str!("../../../Resources/BuyCryptoProviders.json"),
     },
-    EmbeddedJsonResource {
-        name: "BuiltInTokenRegistry",
-        json: include_str!("../../../Resources/BuiltInTokenRegistry.json"),
-    },
 ];
 
 static STATIC_TEXT_RESOURCES: &[EmbeddedTextResource] = &[EmbeddedTextResource {

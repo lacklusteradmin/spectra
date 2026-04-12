@@ -120,6 +120,17 @@ pub struct EsploraFeeEstimates {
 // Public result types
 // ----------------------------------------------------------------
 
+/// Unified tx confirmation status returned by all UTXO chains.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct UtxoTxStatus {
+    pub txid: String,
+    pub confirmed: bool,
+    pub block_height: Option<u64>,
+    pub block_time: Option<u64>,
+    /// Number of confirmations (populated by Blockbook-backed chains; None for Esplora/WoC).
+    pub confirmations: Option<u64>,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct BitcoinBalance {
     /// Confirmed balance in satoshis.
@@ -332,6 +343,30 @@ impl BitcoinClient {
     // ----------------------------------------------------------------
     // Broadcast
     // ----------------------------------------------------------------
+
+    /// Fetch the confirmation status for a single txid.
+    /// Esplora `GET /tx/{txid}/status` returns `EsploraTxStatus` directly.
+    pub async fn fetch_tx_status(&self, txid: &str) -> Result<UtxoTxStatus, String> {
+        let txid = txid.to_string();
+        let http = self.http.clone();
+        let endpoints = self.endpoints.clone();
+        with_fallback(&endpoints, |base| {
+            let txid = txid.clone();
+            let http = http.clone();
+            async move {
+                let url = format!("{base}/tx/{txid}/status");
+                let s: EsploraTxStatus = http.get_json(&url, RetryProfile::ChainRead).await?;
+                Ok(UtxoTxStatus {
+                    txid: txid.clone(),
+                    confirmed: s.confirmed,
+                    block_height: s.block_height,
+                    block_time: s.block_time,
+                    confirmations: None,
+                })
+            }
+        })
+        .await
+    }
 
     pub async fn broadcast_raw_tx(&self, raw_tx_hex: &str) -> Result<String, String> {
         let raw = raw_tx_hex.to_string();

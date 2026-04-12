@@ -241,6 +241,30 @@ impl BitcoinSvClient {
         Ok(out)
     }
 
+    /// Fetch confirmation status for a single txid via WoC `/tx/hash/{txid}`.
+    pub async fn fetch_tx_status(&self, txid: &str) -> Result<super::bitcoin::UtxoTxStatus, String> {
+        let txid = txid.to_string();
+        with_fallback(&self.endpoints, |base| {
+            let client = self.client.clone();
+            let txid = txid.clone();
+            async move {
+                let url = format!("{}/tx/hash/{}", base.trim_end_matches('/'), txid);
+                let tx: WocTxDetail = client.get_json(&url, RetryProfile::ChainRead).await?;
+                let confirmed = tx.blockheight.map(|h| h > 0).unwrap_or(false);
+                let block_height = tx.blockheight.filter(|&h| h > 0).map(|h| h as u64);
+                let block_time = tx.blocktime.or(tx.time);
+                Ok(super::bitcoin::UtxoTxStatus {
+                    txid: txid.clone(),
+                    confirmed,
+                    block_height,
+                    block_time,
+                    confirmations: None,
+                })
+            }
+        })
+        .await
+    }
+
     pub async fn broadcast_raw_tx(&self, hex_tx: &str) -> Result<BsvSendResult, String> {
         let hex = hex_tx.to_string();
         with_fallback(&self.endpoints, |base| {

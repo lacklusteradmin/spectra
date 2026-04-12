@@ -47,6 +47,8 @@ use std::sync::Arc;
 use tokio::sync::RwLock;
 use rusqlite;
 
+use crate::core::chains::bitcoin::UtxoTxStatus;
+use crate::core::tokens;
 use crate::core::chains::{
     aptos::AptosClient,
     bitcoin::{BitcoinClient, BitcoinSendParams, sign_and_broadcast as bitcoin_sign_and_broadcast},
@@ -127,7 +129,7 @@ impl WalletService {
                 let bal = client.fetch_balance(&address).await.map_err(SpectraBridgeError::from)?;
                 Ok(serde_json::to_string(&bal)?)
             }
-            1 | 11 | 12 | 13 | 20 | 21 | 23 => {
+            1 | 11 | 12 | 13 | 20 | 21 | 23 | 24 => {
                 let client = EvmClient::new(endpoints, evm_chain_id_for(chain_id));
                 let bal = client.fetch_balance(&address).await.map_err(SpectraBridgeError::from)?;
                 Ok(serde_json::to_string(&bal)?)
@@ -238,7 +240,7 @@ impl WalletService {
                 let h = client.fetch_history(&address, None).await.map_err(SpectraBridgeError::from)?;
                 Ok(serde_json::to_string(&h)?)
             }
-            1 | 11 | 12 | 13 | 20 | 21 | 23 => {
+            1 | 11 | 12 | 13 | 20 | 21 | 23 | 24 => {
                 let client = EvmClient::new(endpoints, evm_chain_id_for(chain_id));
                 let explorer = self.endpoints_for(EXPLORER_OFFSET + chain_id).await
                     .into_iter().next().unwrap_or_default();
@@ -249,7 +251,7 @@ impl WalletService {
             }
             2 => {
                 let client = SolanaClient::new(endpoints);
-                let h = client.fetch_history(&address, 50).await.map_err(SpectraBridgeError::from)?;
+                let h = client.fetch_unified_history(&address, 50).await.map_err(SpectraBridgeError::from)?;
                 Ok(serde_json::to_string(&h)?)
             }
             3 => {
@@ -282,7 +284,7 @@ impl WalletService {
                 let tronscan = self.endpoints_for(EXPLORER_OFFSET + chain_id).await
                     .into_iter().next()
                     .unwrap_or_else(|| "https://apilist.tronscan.org".to_string());
-                let h = client.fetch_history(&address, &tronscan)
+                let h = client.fetch_unified_history(&address, &tronscan, 50)
                     .await.map_err(SpectraBridgeError::from)?;
                 Ok(serde_json::to_string(&h)?)
             }
@@ -382,7 +384,7 @@ impl WalletService {
                     .await.map_err(SpectraBridgeError::from)?;
                 Ok(serde_json::to_string(&r)?)
             }
-            1 | 11 | 12 | 13 | 20 | 21 | 23 => {
+            1 | 11 | 12 | 13 | 20 | 21 | 23 | 24 => {
                 let from = str_field(&params, "from")?;
                 let to = str_field(&params, "to")?;
                 let value_wei: u128 = params["value_wei"].as_str()
@@ -667,7 +669,7 @@ impl WalletService {
         let endpoints = self.endpoints_for(chain_id).await;
 
         match chain_id {
-            1 | 11 | 12 | 13 | 20 | 21 | 23 => {
+            1 | 11 | 12 | 13 | 20 | 21 | 23 | 24 => {
                 let contract = str_field(&params, "contract")?;
                 let holder = str_field(&params, "holder")?;
                 let client = EvmClient::new(endpoints, evm_chain_id_for(chain_id));
@@ -729,6 +731,151 @@ impl WalletService {
         }
     }
 
+    /// Fetch balances for a list of tokens in one call.
+    ///
+    /// `tokens_json` is a JSON array of objects:
+    ///   `[{"contract": "<address>", "symbol": "<SYM>", "decimals": <u8>}, …]`
+    ///
+    /// For Solana (chain_id=2) `"contract"` is the mint address.
+    ///
+    /// Returns a JSON array in the same shape with additional fields:
+    ///   `"balance_raw"` and `"balance_display"`.
+    /// Tokens that fail to fetch are returned with `"balance_raw": "0"` so the
+    /// caller always gets back the full list.
+    pub async fn fetch_token_balances(
+        &self,
+        chain_id: u32,
+        address: String,
+        tokens_json: String,
+    ) -> Result<String, SpectraBridgeError> {
+        #[derive(serde::Deserialize)]
+        struct TokenIn {
+            contract: String,
+            symbol: String,
+            decimals: u8,
+        }
+        #[derive(serde::Serialize)]
+        struct TokenOut {
+            contract: String,
+            symbol: String,
+            decimals: u8,
+            balance_raw: String,
+            balance_display: String,
+        }
+
+        let inputs: Vec<TokenIn> = serde_json::from_str(&tokens_json)?;
+        if inputs.is_empty() {
+            return Ok("[]".to_string());
+        }
+
+        let endpoints = self.endpoints_for(chain_id).await;
+
+        let results: Vec<TokenOut> = match chain_id {
+            7 => {
+                // Tron — TRC-20 tokens, fetched in parallel.
+                use futures::future::join_all;
+                let client = std::sync::Arc::new(TronClient::new(endpoints));
+                let futs: Vec<_> = inputs
+                    .iter()
+                    .map(|t| {
+                        let client = client.clone();
+                        let contract = t.contract.clone();
+                        let holder = address.clone();
+                        let symbol = t.symbol.clone();
+                        let decimals = t.decimals;
+                        async move {
+                            match client.fetch_trc20_balance(&contract, &holder).await {
+                                Ok(b) => TokenOut {
+                                    contract,
+                                    symbol,
+                                    decimals,
+                                    balance_raw: b.balance_raw,
+                                    balance_display: b.balance_display,
+                                },
+                                Err(_) => TokenOut {
+                                    contract,
+                                    symbol,
+                                    decimals,
+                                    balance_raw: "0".to_string(),
+                                    balance_display: "0".to_string(),
+                                },
+                            }
+                        }
+                    })
+                    .collect();
+                join_all(futs).await
+            }
+            2 => {
+                // Solana — SPL tokens, batch-fetched via getTokenAccountsByOwner.
+                let client = SolanaClient::new(endpoints);
+                let mints: Vec<String> = inputs.iter().map(|t| t.contract.clone()).collect();
+                let spl = client
+                    .fetch_spl_balances(&address, &mints)
+                    .await
+                    .unwrap_or_default();
+                // Build a lookup from mint → SplBalance.
+                let by_mint: std::collections::HashMap<&str, &crate::core::chains::solana::SplBalance> =
+                    spl.iter().map(|b| (b.mint.as_str(), b)).collect();
+                inputs
+                    .iter()
+                    .map(|t| {
+                        let b = by_mint.get(t.contract.as_str());
+                        TokenOut {
+                            contract: t.contract.clone(),
+                            symbol: t.symbol.clone(),
+                            decimals: t.decimals,
+                            balance_raw: b.map(|b| b.balance_raw.clone()).unwrap_or_else(|| "0".to_string()),
+                            balance_display: b.map(|b| b.balance_display.clone()).unwrap_or_else(|| "0".to_string()),
+                        }
+                    })
+                    .collect()
+            }
+            17 => {
+                // NEAR — NEP-141 fungible tokens, fetched in parallel.
+                use futures::future::join_all;
+                let client = std::sync::Arc::new(NearClient::new(endpoints));
+                let futs: Vec<_> = inputs
+                    .iter()
+                    .map(|t| {
+                        let client = client.clone();
+                        let contract = t.contract.clone();
+                        let holder = address.clone();
+                        let symbol = t.symbol.clone();
+                        let decimals = t.decimals;
+                        async move {
+                            let raw = client
+                                .fetch_ft_balance_of(&contract, &holder)
+                                .await
+                                .unwrap_or(0u128);
+                            let display = {
+                                let div = 10u128.pow(decimals as u32);
+                                let whole = raw / div;
+                                let frac = raw % div;
+                                if frac == 0 { whole.to_string() }
+                                else { format!("{whole}.{frac:0>prec$}", prec = decimals as usize) }
+                            };
+                            TokenOut {
+                                contract,
+                                symbol,
+                                decimals,
+                                balance_raw: raw.to_string(),
+                                balance_display: display,
+                            }
+                        }
+                    })
+                    .collect();
+                join_all(futs).await
+            }
+            _ => {
+                return Err(SpectraBridgeError::from(format!(
+                    "fetch_token_balances: unsupported chain_id: {chain_id}"
+                )))
+            }
+        };
+
+        Ok(serde_json::to_string(&results)?)
+    }
+
     /// Sign and broadcast a token transfer on the given chain.
     ///
     /// `params_json` schema:
@@ -755,7 +902,7 @@ impl WalletService {
         let endpoints = self.endpoints_for(chain_id).await;
 
         match chain_id {
-            1 | 11 | 12 | 13 | 20 | 21 | 23 => {
+            1 | 11 | 12 | 13 | 20 | 21 | 23 | 24 => {
                 let from = str_field(&params, "from")?;
                 let contract = str_field(&params, "contract")?;
                 let to = str_field(&params, "to")?;
@@ -928,7 +1075,7 @@ impl WalletService {
                 let fee = client.fetch_fee_rate(6).await.map_err(SpectraBridgeError::from)?;
                 Ok(serde_json::to_string(&fee)?)
             }
-            1 | 11 | 12 | 13 | 20 | 21 | 23 => {
+            1 | 11 | 12 | 13 | 20 | 21 | 23 | 24 => {
                 let client = EvmClient::new(endpoints, evm_chain_id_for(chain_id));
                 let fee = client.fetch_fee_estimate().await.map_err(SpectraBridgeError::from)?;
                 Ok(serde_json::to_string(&fee)?)
@@ -1196,7 +1343,7 @@ impl WalletService {
         tokens_json: String,
     ) -> Result<String, SpectraBridgeError> {
         match chain_id {
-            1 | 11 | 12 | 13 | 20 | 21 | 23 => {}
+            1 | 11 | 12 | 13 | 20 | 21 | 23 | 24 => {}
             _ => return Err(SpectraBridgeError::from(format!(
                 "fetch_evm_token_balances_batch: unsupported chain_id: {chain_id}"
             ))),
@@ -1268,7 +1415,7 @@ impl WalletService {
 
         // Only Etherscan-indexed EVM chains are supported.
         match chain_id {
-            1 | 11 | 12 | 13 | 20 | 21 | 23 => {}
+            1 | 11 | 12 | 13 | 20 | 21 | 23 | 24 => {}
             _ => return Err(SpectraBridgeError::from(format!(
                 "fetch_evm_history_page: chain_id {chain_id} not supported"
             ))),
@@ -1387,7 +1534,7 @@ impl WalletService {
     ) -> Result<String, SpectraBridgeError> {
         let eps = self.endpoints_for(chain_id).await;
         match chain_id {
-            1 | 11 | 12 | 13 | 20 | 21 | 23 => {
+            1 | 11 | 12 | 13 | 20 | 21 | 23 | 24 => {
                 let client = EvmClient::new(eps, evm_chain_id_for(chain_id));
                 let code = client.fetch_code(&address).await.map_err(SpectraBridgeError::from)?;
                 Ok(json!({ "code": code }).to_string())
@@ -1407,7 +1554,7 @@ impl WalletService {
     ) -> Result<String, SpectraBridgeError> {
         let eps = self.endpoints_for(chain_id).await;
         match chain_id {
-            1 | 11 | 12 | 13 | 20 | 21 | 23 => {
+            1 | 11 | 12 | 13 | 20 | 21 | 23 | 24 => {
                 let client = EvmClient::new(eps, evm_chain_id_for(chain_id));
                 let nonce = client.fetch_tx_nonce(&tx_hash).await.map_err(SpectraBridgeError::from)?;
                 Ok(json!({ "nonce": nonce }).to_string())
@@ -1463,6 +1610,13 @@ impl WalletService {
                         .unwrap_or(5)
                 };
                 let values: Vec<u64> = utxos.into_iter().map(|u| u.value).collect();
+                Ok(utxo_fee_preview_json(values, rate))
+            }
+            3 => {
+                let client = DogecoinClient::new(eps);
+                let utxos = client.fetch_utxos(&address).await.map_err(SpectraBridgeError::from)?;
+                let rate = if fee_rate_svb > 0 { fee_rate_svb } else { 1 };
+                let values: Vec<u64> = utxos.into_iter().map(|u| u.value_koin).collect();
                 Ok(utxo_fee_preview_json(values, rate))
             }
             5 => {
@@ -1573,8 +1727,8 @@ impl WalletService {
                     .map_err(SpectraBridgeError::from)?;
                 Ok(serde_json::to_string(&res)?)
             }
-            // EVM chains (ETH, ARB, OP, AVAX, BASE, ETC, BSC)
-            1 | 11 | 12 | 13 | 20 | 21 | 23 => {
+            // EVM chains (ETH, ARB, OP, AVAX, BASE, ETC, BSC, HYPE)
+            1 | 11 | 12 | 13 | 20 | 21 | 23 | 24 => {
                 let evm_id = evm_chain_id_for(chain_id);
                 let client = EvmClient::new(eps, evm_id);
                 let res = client
@@ -1718,7 +1872,7 @@ impl WalletService {
         tx_hash: String,
     ) -> Result<String, SpectraBridgeError> {
         match chain_id {
-            1 | 11 | 12 | 13 | 20 | 21 | 23 => {}
+            1 | 11 | 12 | 13 | 20 | 21 | 23 | 24 => {}
             _ => return Err(SpectraBridgeError::from(format!(
                 "fetch_evm_receipt: unsupported chain_id: {chain_id}"
             ))),
@@ -1764,7 +1918,7 @@ impl WalletService {
         data_hex: String,
     ) -> Result<String, SpectraBridgeError> {
         match chain_id {
-            1 | 11 | 12 | 13 | 20 | 21 | 23 => {}
+            1 | 11 | 12 | 13 | 20 | 21 | 23 | 24 => {}
             _ => return Err(SpectraBridgeError::from(format!(
                 "fetch_evm_send_preview: unsupported chain_id: {chain_id}"
             ))),
@@ -1920,6 +2074,72 @@ impl WalletService {
         .map_err(|e| SpectraBridgeError::from(format!("spawn_blocking: {e}")))?
         .map_err(SpectraBridgeError::from)
     }
+
+    // ----------------------------------------------------------------
+    // Token catalog
+    // ----------------------------------------------------------------
+
+    /// Return the built-in token catalog for the given chain as a JSON array.
+    /// Pass `chain_id = 4294967295` (u32::MAX) to return all chains.
+    pub async fn list_builtin_tokens(
+        &self,
+        chain_id: u32,
+    ) -> Result<String, SpectraBridgeError> {
+        Ok(tokens::list_tokens_json(chain_id))
+    }
+
+    // ----------------------------------------------------------------
+    // UTXO tx status
+    // ----------------------------------------------------------------
+
+    /// Fetch confirmation status for a UTXO chain transaction.
+    /// Returns JSON `{"txid","confirmed","block_height","block_time"}`.
+    /// Supported chain_ids: 0 (BTC), 3 (DOGE), 5 (LTC), 6 (BCH), 22 (BSV).
+    pub async fn fetch_utxo_tx_status(
+        &self,
+        chain_id: u32,
+        txid: String,
+    ) -> Result<String, SpectraBridgeError> {
+        let endpoints = self.endpoints_for(chain_id).await;
+        let status: UtxoTxStatus = match chain_id {
+            0 => {
+                let client = BitcoinClient::new(HttpClient::shared(), endpoints, "mainnet");
+                client.fetch_tx_status(&txid).await.map_err(SpectraBridgeError::from)?
+            }
+            3 => {
+                let client = DogecoinClient::new(endpoints);
+                client.fetch_tx_status(&txid).await.map_err(SpectraBridgeError::from)?
+            }
+            5 => {
+                let client = LitecoinClient::new(endpoints);
+                client.fetch_tx_status(&txid).await.map_err(SpectraBridgeError::from)?
+            }
+            6 => {
+                let client = BitcoinCashClient::new(endpoints);
+                client.fetch_tx_status(&txid).await.map_err(SpectraBridgeError::from)?
+            }
+            22 => {
+                let client = BitcoinSvClient::new(endpoints);
+                client.fetch_tx_status(&txid).await.map_err(SpectraBridgeError::from)?
+            }
+            _ => return Err(SpectraBridgeError::from(format!(
+                "fetch_utxo_tx_status: unsupported chain_id: {chain_id}"
+            ))),
+        };
+        Ok(serde_json::to_string(&status)?)
+    }
+}
+
+// ----------------------------------------------------------------
+// Token catalog (synchronous free function — no network I/O)
+// ----------------------------------------------------------------
+
+/// Return the built-in token catalog as a JSON array string.
+/// Pass `chain_id = 4294967295` (u32::MAX) to get all chains.
+/// This is a synchronous free function so Swift can call it from a `static let`.
+#[uniffi::export]
+pub fn list_builtin_tokens_json(chain_id: u32) -> String {
+    tokens::list_tokens_json(chain_id)
 }
 
 // ----------------------------------------------------------------
@@ -2000,6 +2220,7 @@ impl WalletService {
             .find(|e| e.chain_id == chain_id)
             .and_then(|e| e.api_key.clone())
     }
+
 }
 
 // ----------------------------------------------------------------
@@ -2015,6 +2236,7 @@ fn evm_chain_id_for(spectra_chain_id: u32) -> u64 {
         20 => 8453,
         21 => 61,
         23 => 56,
+        24 => 999,
         _ => 1,
     }
 }

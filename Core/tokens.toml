@@ -1,0 +1,1096 @@
+# Spectra built-in token registry — source of truth for the Rust core.
+# Edit here; the JSON bundle is generated from this file.
+# Fields: chain, chain_id, name, symbol, standard, contract, market_id,
+#         coingecko_id, decimals, display_decimals?, category, enabled
+
+[[tokens]]
+chain        = "ethereum"
+chain_id     = 1
+name         = "Tether USD"
+symbol       = "USDT"
+standard     = "ERC-20"
+contract     = "0xdAC17F958D2ee523a2206206994597C13D831ec7"
+market_id    = "825"
+coingecko_id = "tether"
+decimals     = 6
+category     = "stablecoin"
+enabled      = true
+
+[[tokens]]
+chain        = "ethereum"
+chain_id     = 1
+name         = "USD Coin"
+symbol       = "USDC"
+standard     = "ERC-20"
+contract     = "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48"
+market_id    = "3408"
+coingecko_id = "usd-coin"
+decimals     = 6
+category     = "stablecoin"
+enabled      = true
+
+[[tokens]]
+chain        = "ethereum"
+chain_id     = 1
+name         = "Euro Coin"
+symbol       = "EURC"
+standard     = "ERC-20"
+contract     = "0x1aBaEA1f7C830bD89Acc67eC4af516284b1bC33c"
+market_id    = "0"
+coingecko_id = "euro-coin"
+decimals     = 6
+category     = "stablecoin"
+enabled      = false
+
+[[tokens]]
+chain        = "arbitrum"
+chain_id     = 11
+name         = "USD Coin"
+symbol       = "USDC"
+standard     = "ERC-20"
+contract     = "0xaf88d065e77c8cC2239327C5EDb3A432268e5831"
+market_id    = "3408"
+coingecko_id = "usd-coin"
+decimals     = 6
+category     = "stablecoin"
+enabled      = true
+
+[[tokens]]
+chain        = "arbitrum"
+chain_id     = 11
+name         = "First Digital USD"
+symbol       = "FDUSD"
+standard     = "ERC-20"
+contract     = "0x93C9932E4afa59201F0B5E63f7d816516F1669fE"
+market_id    = "0"
+coingecko_id = "first-digital-usd"
+decimals     = 18
+category     = "stablecoin"
+enabled      = false
+
+[[tokens]]
+chain        = "arbitrum"
+chain_id     = 11
+name         = "PayPal USD"
+symbol       = "PYUSD"
+standard     = "ERC-20"
+contract     = "0x46850aD61C2B7d64d08c9C754F45254596696984"
+market_id    = "27772"
+coingecko_id = "paypal-usd"
+decimals     = 6
+category     = "stablecoin"
+enabled      = false
+
+[[tokens]]
+chain        = "arbitrum"
+chain_id     = 11
+name         = "Ethena USDe"
+symbol       = "USDE"
+standard     = "ERC-20"
+contract     = "0x5d3a1Ff2b6BAb83b63cd9AD0787074081a52ef34"
+market_id    = "0"
+coingecko_id = "ethena-usde"
+decimals     = 18
+category     = "stablecoin"
+enabled      = false
+
+[[tokens]]
+chain        = "arbitrum"
+chain_id     = 11
+name         = "Sky Dollar"
+symbol       = "USDS"
+standard     = "ERC-20"
+contract     = "0x6491c05A82219b8D1479057361ff1654749b876b"
+market_id    = "0"
+coingecko_id = "sky-dollar"
+decimals     = 18
+category     = "stablecoin"
+enabled      = false
+
+[[tokens]]
+chain        = "arbitrum"
+chain_id     = 11
+name         = "Aave"
+symbol       = "AAVE"
+standard     = "ERC-20"
+contract     = "0xba5DdD1f9d7F570dc94a51479a000E3BCE967196"
+market_id    = "7278"
+coingecko_id = "aave"
+decimals     = 18
+category     = "custom"
+enabled      = false
+
+[[tokens]]
+chain        = "aptos"
+chain_id     = 15
+name         = "USD Coin"
+symbol       = "USDC"
+standard     = "Fungible Asset"
+contract     = "0xbae207659db88bea0cbead6da0ed00aac12edcdda169e591cd41c94180b46f3b"
+market_id    = "3408"
+coingecko_id = "usd-coin"
+decimals     = 6
+category     = "stablecoin"
+enabled      = true
+
+[[tokens]]
+chain        = "aptos"
+chain_id     = 15
+name         = "USD1"
+symbol       = "USD1"
+standard     = "Fungible Asset"
+contract     = "0x05fabd1b12e39967a3c24e91b7b8f67719a6dacee74f3c8b9fb7d93e855437d2"
+market_id    = "0"
+coingecko_id = ""
+decimals     = 6
+category     = "stablecoin"
+enabled      = false
+
+[[tokens]]
+chain        = "aptos"
+chain_id     = 15
+name         = "Tether USD"
+symbol       = "USDT"
+standard     = "Fungible Asset"
+contract     = "0x357b0b74bc833e95a115ad22604854d6b0fca151cecd94111770e5d6ffc9dc2b"
+market_id    = "825"
+coingecko_id = "tether"
+decimals     = 6
+category     = "stablecoin"
+enabled      = true
+
+[[tokens]]
+chain        = "aptos"
+chain_id     = 15
+name         = "Ethena USDe"
+symbol       = "USDE"
+standard     = "Fungible Asset"
+contract     = "0xf37a8864fe737eb8ec2c2931047047cbaed1beed3fb0e5b7c5526dafd3b9c2e9"
+market_id    = "0"
+coingecko_id = "ethena-usde"
+decimals     = 6
+category     = "stablecoin"
+enabled      = false
+
+[[tokens]]
+chain        = "avalanche"
+chain_id     = 13
+name         = "USD Coin"
+symbol       = "USDC"
+standard     = "ARC-20"
+contract     = "0xB97EF9Ef8734C71904D8002F8b6Bc66Dd9c48a6E"
+market_id    = "3408"
+coingecko_id = "usd-coin"
+decimals     = 6
+category     = "stablecoin"
+enabled      = true
+
+[[tokens]]
+chain        = "avalanche"
+chain_id     = 13
+name         = "Euro Coin"
+symbol       = "EURC"
+standard     = "ARC-20"
+contract     = "0xC891EB4cbdEFf6e073e859e987815Ed1505c2ACD"
+market_id    = "0"
+coingecko_id = "euro-coin"
+decimals     = 6
+category     = "stablecoin"
+enabled      = false
+
+[[tokens]]
+chain        = "avalanche"
+chain_id     = 13
+name         = "Tether USD"
+symbol       = "USDT"
+standard     = "ARC-20"
+contract     = "0x9702230A8Ea53601f5cD2dc00fDBc13d4dF4A8c7"
+market_id    = "825"
+coingecko_id = "tether"
+decimals     = 6
+category     = "stablecoin"
+enabled      = true
+
+[[tokens]]
+chain        = "hyperliquid"
+chain_id     = 24
+name         = "USD Coin"
+symbol       = "USDC"
+standard     = "ERC-20"
+contract     = "0xb88339CB7199b77E23DB6E890353E22632Ba630f"
+market_id    = "3408"
+coingecko_id = "usd-coin"
+decimals     = 6
+category     = "stablecoin"
+enabled      = true
+
+[[tokens]]
+chain        = "hyperliquid"
+chain_id     = 24
+name         = "Chainlink"
+symbol       = "LINK"
+standard     = "ERC-20"
+contract     = "0x1AC2EE68b8d038C982C1E1f73F596927dd70De59"
+market_id    = "1975"
+coingecko_id = "chainlink"
+decimals     = 18
+category     = "custom"
+enabled      = false
+
+[[tokens]]
+chain        = "ethereum"
+chain_id     = 1
+name         = "Dai"
+symbol       = "DAI"
+standard     = "ERC-20"
+contract     = "0x6B175474E89094C44Da98b954EedeAC495271d0F"
+market_id    = "4943"
+coingecko_id = "dai"
+decimals     = 18
+category     = "stablecoin"
+enabled      = false
+
+[[tokens]]
+chain        = "ethereum"
+chain_id     = 1
+name         = "USDD"
+symbol       = "USDD"
+standard     = "ERC-20"
+contract     = "0x4f8e5DE400DE08B164E7421B3EE387f461beCD1A"
+market_id    = "0"
+coingecko_id = "usdd"
+decimals     = 18
+category     = "stablecoin"
+enabled      = false
+
+[[tokens]]
+chain        = "ethereum"
+chain_id     = 1
+name         = "Sky Dollar"
+symbol       = "USDS"
+standard     = "ERC-20"
+contract     = "0xdC035D45d973E3EC169d2276DDab16f1e407384F"
+market_id    = "0"
+coingecko_id = "sky-dollar"
+decimals     = 18
+category     = "stablecoin"
+enabled      = false
+
+[[tokens]]
+chain        = "ethereum"
+chain_id     = 1
+name         = "Sky"
+symbol       = "SKY"
+standard     = "ERC-20"
+contract     = "0x56072C95FAA701256059aa122697B133aDEd9279"
+market_id    = "0"
+coingecko_id = "sky"
+decimals     = 18
+category     = "custom"
+enabled      = false
+
+[[tokens]]
+chain        = "optimism"
+chain_id     = 12
+name         = "Sky Dollar"
+symbol       = "USDS"
+standard     = "ERC-20"
+contract     = "0x4F13a96EC5C4Cf34e442b46Bbd98a0791F20edC3"
+market_id    = "0"
+coingecko_id = "sky-dollar"
+decimals     = 18
+category     = "stablecoin"
+enabled      = false
+
+[[tokens]]
+chain        = "ethereum"
+chain_id     = 1
+name         = "PayPal USD"
+symbol       = "PYUSD"
+standard     = "ERC-20"
+contract     = "0x6c3ea9036406852006290770BEdFcAbA0e23A0e8"
+market_id    = "27772"
+coingecko_id = "paypal-usd"
+decimals     = 6
+category     = "stablecoin"
+enabled      = false
+
+[[tokens]]
+chain        = "ethereum"
+chain_id     = 1
+name         = "TrueUSD"
+symbol       = "TUSD"
+standard     = "ERC-20"
+contract     = "0x0000000000085d4780B73119b644AE5ecd22b376"
+market_id    = "2563"
+coingecko_id = "true-usd"
+decimals     = 18
+category     = "stablecoin"
+enabled      = false
+
+[[tokens]]
+chain        = "tron"
+chain_id     = 7
+name         = "TrueUSD"
+symbol       = "TUSD"
+standard     = "TRC-20"
+contract     = "TUpMhErZL2fhh4sVNULAbNKLokS4GjC1F4"
+market_id    = "2563"
+coingecko_id = "true-usd"
+decimals     = 18
+category     = "stablecoin"
+enabled      = false
+
+[[tokens]]
+chain        = "bnb"
+chain_id     = 23
+name         = "TrueUSD"
+symbol       = "TUSD"
+standard     = "BEP-20"
+contract     = "0x40af3827F39D0EAcBF4A168f8D4ee67c121D11c9"
+market_id    = "2563"
+coingecko_id = "true-usd"
+decimals     = 18
+category     = "stablecoin"
+enabled      = false
+
+[[tokens]]
+chain        = "avalanche"
+chain_id     = 13
+name         = "TrueUSD"
+symbol       = "TUSD"
+standard     = "ARC-20"
+contract     = "0x1C20E891Bab6b1727d14Da358FAe2984Ed9B59EB"
+market_id    = "2563"
+coingecko_id = "true-usd"
+decimals     = 18
+category     = "stablecoin"
+enabled      = false
+
+[[tokens]]
+chain        = "ethereum"
+chain_id     = 1
+name         = "Global Dollar"
+symbol       = "USDG"
+standard     = "ERC-20"
+contract     = "0xe343167631d89B6Ffc58B88d6b7fB0228795491D"
+market_id    = "0"
+coingecko_id = "global-dollar"
+decimals     = 6
+category     = "stablecoin"
+enabled      = false
+
+[[tokens]]
+chain        = "ethereum"
+chain_id     = 1
+name         = "Cronos"
+symbol       = "CRO"
+standard     = "ERC-20"
+contract     = "0xa0b73e1ff0b80914ab6fe0444e65848c4c34450b"
+market_id    = "0"
+coingecko_id = "cronos"
+decimals     = 8
+category     = "custom"
+enabled      = false
+
+[[tokens]]
+chain        = "ethereum"
+chain_id     = 1
+name         = "KuCoin Token"
+symbol       = "KCS"
+standard     = "ERC-20"
+contract     = "0xf34960d9d60be18cC1D5Afc1A6F012A723a28811"
+market_id    = "2087"
+coingecko_id = "kucoin-shares"
+decimals     = 6
+category     = "custom"
+enabled      = false
+
+[[tokens]]
+chain        = "ethereum"
+chain_id     = 1
+name         = "USD1"
+symbol       = "USD1"
+standard     = "ERC-20"
+contract     = "0x8d0D000Ee44948FC98c9B98A4FA4921476f08B0d"
+market_id    = "0"
+coingecko_id = ""
+decimals     = 18
+category     = "stablecoin"
+enabled      = false
+
+[[tokens]]
+chain        = "bnb"
+chain_id     = 23
+name         = "USD1"
+symbol       = "USD1"
+standard     = "BEP-20"
+contract     = "0x8d0D000Ee44948FC98c9B98A4FA4921476f08B0d"
+market_id    = "0"
+coingecko_id = ""
+decimals     = 18
+category     = "stablecoin"
+enabled      = false
+
+[[tokens]]
+chain        = "ethereum"
+chain_id     = 1
+name         = "First Digital USD"
+symbol       = "FDUSD"
+standard     = "ERC-20"
+contract     = "0xc5f0f7b66764F6ec8C8Dff7BA683102295E16409"
+market_id    = "0"
+coingecko_id = "first-digital-usd"
+decimals     = 18
+category     = "stablecoin"
+enabled      = false
+
+[[tokens]]
+chain        = "bnb"
+chain_id     = 23
+name         = "First Digital USD"
+symbol       = "FDUSD"
+standard     = "BEP-20"
+contract     = "0xc5f0f7b66764F6ec8C8Dff7BA683102295E16409"
+market_id    = "0"
+coingecko_id = "first-digital-usd"
+decimals     = 18
+category     = "stablecoin"
+enabled      = false
+
+[[tokens]]
+chain        = "bnb"
+chain_id     = 23
+name         = "USDD"
+symbol       = "USDD"
+standard     = "BEP-20"
+contract     = "0x45E51bc23D592EB2DBA86da3985299f7895d66Ba"
+market_id    = "0"
+coingecko_id = "usdd"
+decimals     = 18
+category     = "stablecoin"
+enabled      = false
+
+[[tokens]]
+chain        = "bnb"
+chain_id     = 23
+name         = "Ethena USDe"
+symbol       = "USDE"
+standard     = "BEP-20"
+contract     = "0x5d3a1Ff2b6BAb83b63cd9AD0787074081a52ef34"
+market_id    = "0"
+coingecko_id = "ethena-usde"
+decimals     = 18
+category     = "stablecoin"
+enabled      = false
+
+[[tokens]]
+chain        = "bnb"
+chain_id     = 23
+name         = "Ethena"
+symbol       = "ENA"
+standard     = "BEP-20"
+contract     = "0x58538e6A46E07434d7E7375Bc268D3cb839C0133"
+market_id    = "0"
+coingecko_id = "ethena"
+decimals     = 18
+category     = "custom"
+enabled      = false
+
+[[tokens]]
+chain        = "ethereum"
+chain_id     = 1
+name         = "Shiba Inu"
+symbol       = "SHIB"
+standard     = "ERC-20"
+contract     = "0x95aD61b0a150d79219dCF64E1E6Cc01f0B64C4cE"
+market_id    = "5994"
+coingecko_id = "shiba-inu"
+decimals     = 18
+category     = "meme"
+enabled      = false
+
+[[tokens]]
+chain        = "ethereum"
+chain_id     = 1
+name         = "Chainlink"
+symbol       = "LINK"
+standard     = "ERC-20"
+contract     = "0x514910771AF9Ca656af840dff83E8264EcF986CA"
+market_id    = "1975"
+coingecko_id = "chainlink"
+decimals     = 18
+category     = "custom"
+enabled      = false
+
+[[tokens]]
+chain        = "arbitrum"
+chain_id     = 11
+name         = "Chainlink"
+symbol       = "LINK"
+standard     = "ERC-20"
+contract     = "0xf97f4df75117a78c1A5a0DBb814Af92458539FB4"
+market_id    = "1975"
+coingecko_id = "chainlink"
+decimals     = 18
+category     = "custom"
+enabled      = false
+
+[[tokens]]
+chain        = "bnb"
+chain_id     = 23
+name         = "Chainlink"
+symbol       = "LINK"
+standard     = "BEP-20"
+contract     = "0x404460C6A5EdE2D891e8297795264fDe62ADBB75"
+market_id    = "1975"
+coingecko_id = "chainlink"
+decimals     = 18
+category     = "custom"
+enabled      = false
+
+[[tokens]]
+chain        = "arbitrum"
+chain_id     = 11
+name         = "Ethena"
+symbol       = "ENA"
+standard     = "ERC-20"
+contract     = "0x58538e6A46E07434d7E7375Bc268D3cb839C0133"
+market_id    = "0"
+coingecko_id = "ethena"
+decimals     = 18
+category     = "custom"
+enabled      = false
+
+[[tokens]]
+chain        = "avalanche"
+chain_id     = 13
+name         = "Chainlink"
+symbol       = "LINK"
+standard     = "ARC-20"
+contract     = "0x5947BB275c521040051D82396192181b413227A3"
+market_id    = "1975"
+coingecko_id = "chainlink"
+decimals     = 18
+category     = "custom"
+enabled      = false
+
+[[tokens]]
+chain        = "ethereum"
+chain_id     = 1
+name         = "Uniswap"
+symbol       = "UNI"
+standard     = "ERC-20"
+contract     = "0x1f9840a85d5aF5bf1D1762F925BDADdC4201F984"
+market_id    = "7083"
+coingecko_id = "uniswap"
+decimals     = 18
+category     = "custom"
+enabled      = false
+
+[[tokens]]
+chain        = "ethereum"
+chain_id     = 1
+name         = "Aave"
+symbol       = "AAVE"
+standard     = "ERC-20"
+contract     = "0x7Fc66500c84A76Ad7e9c93437bFc5Ac33E2DDaE9"
+market_id    = "7278"
+coingecko_id = "aave"
+decimals     = 18
+category     = "custom"
+enabled      = false
+
+[[tokens]]
+chain        = "ethereum"
+chain_id     = 1
+name         = "Wrapped Bitcoin"
+symbol       = "WBTC"
+standard     = "ERC-20"
+contract     = "0x2260FAC5E5542a773Aa44fBCfeDf7C193bc2C599"
+market_id    = "3717"
+coingecko_id = "wrapped-bitcoin"
+decimals     = 8
+category     = "custom"
+enabled      = false
+
+[[tokens]]
+chain        = "ethereum"
+chain_id     = 1
+name         = "Pepe"
+symbol       = "PEPE"
+standard     = "ERC-20"
+contract     = "0x6982508145454Ce325dDbE47a25d4ec3d2311933"
+market_id    = "24478"
+coingecko_id = "pepe"
+decimals     = 18
+category     = "meme"
+enabled      = false
+
+[[tokens]]
+chain        = "ethereum"
+chain_id     = 1
+name         = "Bitget Token"
+symbol       = "BGB"
+standard     = "ERC-20"
+contract     = "0x54D2252757e1672EEaD234D27B1270728fF90581"
+market_id    = "11092"
+coingecko_id = "bitget-token"
+decimals     = 18
+category     = "custom"
+enabled      = false
+
+[[tokens]]
+chain        = "ethereum"
+chain_id     = 1
+name         = "UNUS SED LEO"
+symbol       = "LEO"
+standard     = "ERC-20"
+contract     = "0x2af5d2ad76741191d15dfe7bf6ac92d4bd912ca3"
+market_id    = "33833"
+coingecko_id = "leo-token"
+decimals     = 18
+category     = "custom"
+enabled      = false
+
+[[tokens]]
+chain        = "ethereum"
+chain_id     = 1
+name         = "Ethena USDe"
+symbol       = "USDE"
+standard     = "ERC-20"
+contract     = "0x4c9EDD5852cd905f086C759E8383e09bff1E68B3"
+market_id    = "0"
+coingecko_id = "ethena-usde"
+decimals     = 18
+category     = "stablecoin"
+enabled      = false
+
+[[tokens]]
+chain        = "ethereum"
+chain_id     = 1
+name         = "Ethena"
+symbol       = "ENA"
+standard     = "ERC-20"
+contract     = "0x57e114B691Db790C35207b2e685D4A43181e6061"
+market_id    = "0"
+coingecko_id = "ethena"
+decimals     = 18
+category     = "custom"
+enabled      = false
+
+[[tokens]]
+chain        = "ethereum"
+chain_id     = 1
+name         = "Ripple USD"
+symbol       = "RLUSD"
+standard     = "ERC-20"
+contract     = "0xcfd748b9de538c9f5b1805e8db9e1d4671f7f2ec"
+market_id    = "0"
+coingecko_id = "ripple-usd"
+decimals     = 18
+category     = "stablecoin"
+enabled      = false
+
+[[tokens]]
+chain        = "ethereum"
+chain_id     = 1
+name         = "PAX Gold"
+symbol       = "PAXG"
+standard     = "ERC-20"
+contract     = "0x45804880De22913dAFE09f4980848ECE6EcbAf78"
+market_id    = "0"
+coingecko_id = "pax-gold"
+decimals     = 18
+category     = "custom"
+enabled      = false
+
+[[tokens]]
+chain        = "ethereum"
+chain_id     = 1
+name         = "Tether Gold"
+symbol       = "XAUT"
+standard     = "ERC-20"
+contract     = "0x68749665FF8D2d112Fa859AA293F07A622782F38"
+market_id    = "0"
+coingecko_id = "tether-gold"
+decimals     = 6
+category     = "custom"
+enabled      = false
+
+[[tokens]]
+chain        = "ethereum"
+chain_id     = 1
+name         = "World Liberty Financial"
+symbol       = "WLFI"
+standard     = "ERC-20"
+contract     = "0xdA5e1988097297dCdc1f90D4dFE7909e847CBeF6"
+market_id    = "0"
+coingecko_id = ""
+decimals     = 18
+category     = "custom"
+enabled      = false
+
+[[tokens]]
+chain        = "bnb"
+chain_id     = 23
+name         = "World Liberty Financial"
+symbol       = "WLFI"
+standard     = "BEP-20"
+contract     = "0x47474747477b199288bf72a1d702f7fe0fb1deea"
+market_id    = "0"
+coingecko_id = ""
+decimals     = 18
+category     = "custom"
+enabled      = false
+
+[[tokens]]
+chain        = "solana"
+chain_id     = 2
+name         = "Tether USD"
+symbol       = "USDT"
+standard     = "SPL"
+contract     = "Es9vMFrzaCERmJfrF4H2FYD4KCoNkY11McCe8BenwNYB"
+market_id    = "825"
+coingecko_id = "tether"
+decimals     = 6
+category     = "stablecoin"
+enabled      = true
+
+[[tokens]]
+chain        = "solana"
+chain_id     = 2
+name         = "USD Coin"
+symbol       = "USDC"
+standard     = "SPL"
+contract     = "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v"
+market_id    = "3408"
+coingecko_id = "usd-coin"
+decimals     = 6
+category     = "stablecoin"
+enabled      = true
+
+[[tokens]]
+chain        = "solana"
+chain_id     = 2
+name         = "Euro Coin"
+symbol       = "EURC"
+standard     = "SPL"
+contract     = "HzwqbKZw8HxMN6bF2yFZNrht3c2iXXzpKcFu7uBEDKtr"
+market_id    = "0"
+coingecko_id = "euro-coin"
+decimals     = 6
+category     = "stablecoin"
+enabled      = false
+
+[[tokens]]
+chain        = "solana"
+chain_id     = 2
+name         = "PayPal USD"
+symbol       = "PYUSD"
+standard     = "SPL"
+contract     = "2b1kV6DkPAnxd5ixfnxCpjxmKwqjjaYmCZfHsFu24GXo"
+market_id    = "27772"
+coingecko_id = "paypal-usd"
+decimals     = 6
+category     = "stablecoin"
+enabled      = false
+
+[[tokens]]
+chain        = "solana"
+chain_id     = 2
+name         = "Global Dollar"
+symbol       = "USDG"
+standard     = "SPL"
+contract     = "2u1tszSeqZ3qBWF3uNGPFc8TzMk2tdiwknnRMWGWjGWH"
+market_id    = "0"
+coingecko_id = "global-dollar"
+decimals     = 6
+category     = "stablecoin"
+enabled      = false
+
+[[tokens]]
+chain        = "solana"
+chain_id     = 2
+name         = "USD1"
+symbol       = "USD1"
+standard     = "SPL"
+contract     = "USD1ttGY1N17NEEHLmELoaybftRBUSErhqYiQzvEmuB"
+market_id    = "0"
+coingecko_id = ""
+decimals     = 6
+category     = "stablecoin"
+enabled      = false
+
+[[tokens]]
+chain        = "solana"
+chain_id     = 2
+name         = "First Digital USD"
+symbol       = "FDUSD"
+standard     = "SPL"
+contract     = "9zNQRsGLjNKwCUU5Gq5LR8beUCPzQMVMqKAi3SSZh54u"
+market_id    = "0"
+coingecko_id = "first-digital-usd"
+decimals     = 6
+category     = "stablecoin"
+enabled      = false
+
+[[tokens]]
+chain        = "solana"
+chain_id     = 2
+name         = "Chainlink"
+symbol       = "LINK"
+standard     = "SPL"
+contract     = "LinkhB3afbBKb2EQQu7s7umdZceV3wcvAUJhQAfQ23L"
+market_id    = "1975"
+coingecko_id = "chainlink"
+decimals     = 8
+category     = "custom"
+enabled      = false
+
+[[tokens]]
+chain        = "solana"
+chain_id     = 2
+name         = "World Liberty Financial"
+symbol       = "WLFI"
+standard     = "SPL"
+contract     = "WLFinEv6ypjkczcS83FZqFpgFZYwQXutRbxGe7oC16g"
+market_id    = "0"
+coingecko_id = ""
+decimals     = 6
+category     = "custom"
+enabled      = false
+
+[[tokens]]
+chain        = "solana"
+chain_id     = 2
+name         = "Jupiter"
+symbol       = "JUP"
+standard     = "SPL"
+contract     = "JUPyiwrYJFskUPiHa7hkeR8VUtAeFoSYbKedZNsDvCN"
+market_id    = "29210"
+coingecko_id = "jupiter-exchange-solana"
+decimals     = 6
+category     = "custom"
+enabled      = false
+
+[[tokens]]
+chain        = "solana"
+chain_id     = 2
+name         = "Bonk"
+symbol       = "BONK"
+standard     = "SPL"
+contract     = "DezXAZ8z7PnrnRJjz3wXBoRgixCa6xjnB7YaB1pPB263"
+market_id    = "23095"
+coingecko_id = "bonk"
+decimals     = 5
+category     = "meme"
+enabled      = false
+
+[[tokens]]
+chain        = "solana"
+chain_id     = 2
+name         = "pump.fun"
+symbol       = "PUMP"
+standard     = "SPL"
+contract     = "pumpCmXqMfrsAkQ5r49WcJnRayYRqmXz6ae8H7H9Dfn"
+market_id    = "0"
+coingecko_id = "pump-fun"
+decimals     = 6
+category     = "meme"
+enabled      = false
+
+[[tokens]]
+chain        = "solana"
+chain_id     = 2
+name         = "Ethena USDe"
+symbol       = "USDE"
+standard     = "SPL"
+contract     = "DEkqHyPN7GMRJ5cArtQFAWefqbZb33Hyf6s5iCwjEonT"
+market_id    = "0"
+coingecko_id = "ethena-usde"
+decimals     = 9
+category     = "stablecoin"
+enabled      = false
+
+[[tokens]]
+chain        = "solana"
+chain_id     = 2
+name         = "Ethena"
+symbol       = "ENA"
+standard     = "SPL"
+contract     = "72QvBVwpxqmheEPfaCwWSWqEFsUy3rhWt6JhQBMNTwD1"
+market_id    = "0"
+coingecko_id = "ethena"
+decimals     = 9
+category     = "custom"
+enabled      = false
+
+[[tokens]]
+chain        = "solana"
+chain_id     = 2
+name         = "Sky Dollar"
+symbol       = "USDS"
+standard     = "SPL"
+contract     = "USDSwr9ApdHk5bvJKMjzff41FfuX8bSxdKcR81vTwcA"
+market_id    = "0"
+coingecko_id = "sky-dollar"
+decimals     = 6
+category     = "stablecoin"
+enabled      = false
+
+[[tokens]]
+chain        = "sui"
+chain_id     = 14
+name         = "USD Coin"
+symbol       = "USDC"
+standard     = "Coin"
+contract     = "0xdba34672e30cb065b1f93e3ab55318768fd6fef66c15942c9f7cb846e2f900e7::usdc::USDC"
+market_id    = "3408"
+coingecko_id = "usd-coin"
+decimals     = 6
+category     = "stablecoin"
+enabled      = true
+
+[[tokens]]
+chain        = "sui"
+chain_id     = 14
+name         = "First Digital USD"
+symbol       = "FDUSD"
+standard     = "Coin"
+contract     = "0xf16e6b723f242ec745dfd7634ad072c42d5c1d9ac9d62a39c381303eaa57693a::fdusd::FDUSD"
+market_id    = "0"
+coingecko_id = "first-digital-usd"
+decimals     = 9
+category     = "stablecoin"
+enabled      = false
+
+[[tokens]]
+chain        = "near"
+chain_id     = 17
+name         = "USD Coin"
+symbol       = "USDC"
+standard     = "NEP-141"
+contract     = "17208628f84f5d6ad33f0da3bbbeb27ffcb398eac501a31bd6ad2011e36133a1"
+market_id    = "3408"
+coingecko_id = "usd-coin"
+decimals     = 6
+category     = "stablecoin"
+enabled      = true
+
+[[tokens]]
+chain        = "near"
+chain_id     = 17
+name         = "Tether USD"
+symbol       = "USDT"
+standard     = "NEP-141"
+contract     = "usdt.tether-token.near"
+market_id    = "825"
+coingecko_id = "tether"
+decimals     = 6
+category     = "stablecoin"
+enabled      = true
+
+[[tokens]]
+chain        = "tron"
+chain_id     = 7
+name         = "Tether USD"
+symbol       = "USDT"
+standard     = "TRC-20"
+contract     = "TR7NHqjeKQxGTCi8q8ZY4pL8otSzgjLj6t"
+market_id    = "825"
+coingecko_id = "tether"
+decimals     = 6
+category     = "stablecoin"
+enabled      = true
+
+[[tokens]]
+chain        = "tron"
+chain_id     = 7
+name         = "USDD"
+symbol       = "USDD"
+standard     = "TRC-20"
+contract     = "TXDk8mbtRbXeYuMNS83CfKPaYYT8XWv9Hz"
+market_id    = "0"
+coingecko_id = "usdd"
+decimals     = 18
+category     = "stablecoin"
+enabled      = false
+
+[[tokens]]
+chain        = "ton"
+chain_id     = 16
+name         = "Tether USD"
+symbol       = "USDT"
+standard     = "Jetton"
+contract     = "EQCxE6mUtQJKFnGfaROTKOt1lZbDiiX1kCixRv7Nw2Id_sDs"
+market_id    = "825"
+coingecko_id = "tether"
+decimals     = 6
+category     = "stablecoin"
+enabled      = true
+
+[[tokens]]
+chain        = "ton"
+chain_id     = 16
+name         = "First Digital USD"
+symbol       = "FDUSD"
+standard     = "Jetton"
+contract     = "EQD0Evpk4timFOHmy4Sv3l_KEUXlM-dN1_KhroTCfB2wkO89"
+market_id    = "0"
+coingecko_id = "first-digital-usd"
+decimals     = 6
+category     = "stablecoin"
+enabled      = false
+
+[[tokens]]
+chain        = "ton"
+chain_id     = 16
+name         = "Ethena USDe"
+symbol       = "USDE"
+standard     = "Jetton"
+contract     = "EQAIb6KmdfdDR7CN1GBqVJuP25iCnLKCvBlJ07Evuu2dzP5f"
+market_id    = "0"
+coingecko_id = "ethena-usde"
+decimals     = 6
+category     = "stablecoin"
+enabled      = false
+
+[[tokens]]
+chain        = "ton"
+chain_id     = 16
+name         = "Ethena"
+symbol       = "ENA"
+standard     = "Jetton"
+contract     = "EQAFhZFZYye0llsl785OzOJG9QT6PXyYUdmiC4U95lBuHh1S"
+market_id    = "0"
+coingecko_id = "ethena"
+decimals     = 6
+category     = "custom"
+enabled      = false
+
+[[tokens]]
+chain        = "tron"
+chain_id     = 7
+name         = "USD1"
+symbol       = "USD1"
+standard     = "TRC-20"
+contract     = "TPFqcBAaaUMCSVRCqPaQ9QnzKhmuoLR6Rc"
+market_id    = "0"
+coingecko_id = ""
+decimals     = 18
+category     = "stablecoin"
+enabled      = false
+
+[[tokens]]
+chain        = "tron"
+chain_id     = 7
+name         = "BitTorrent"
+symbol       = "BTT"
+standard     = "TRC-20"
+contract     = "TAFjULxiVgT4qWk6UZwjqwZXTSaGaqnVp4"
+market_id    = "16086"
+coingecko_id = "bittorrent"
+decimals     = 18
+category     = "meme"
+enabled      = false
