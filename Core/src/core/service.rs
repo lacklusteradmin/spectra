@@ -384,6 +384,26 @@ impl WalletService {
         }
     }
 
+    /// Fetch history for `address` on `chain_id`, normalize the raw
+    /// chain-specific JSON into a standard `ChainHistoryEntry` array,
+    /// and return it as JSON.
+    ///
+    /// Chains covered: BTC(0), LTC(5), BCH(6), BSV(22), DOGE(3), XRP(4),
+    /// XLM(8), ADA(9), DOT(10), SOL(2), TRX(7), SUI(14), APT(15),
+    /// TON(16), NEAR(17), ICP(18), XMR(19).
+    ///
+    /// EVM chains (1,11,12,13,20,21,23,24) are not supported here because
+    /// they use the separate paginated `fetch_evm_history_page_json` method.
+    pub async fn fetch_normalized_history_json(
+        &self,
+        chain_id: u32,
+        address: String,
+    ) -> Result<String, SpectraBridgeError> {
+        let raw = self.fetch_history(chain_id, address).await?;
+        let entries = crate::core::history::normalize_chain_history(chain_id, &raw);
+        Ok(serde_json::to_string(&entries)?)
+    }
+
     // ----------------------------------------------------------------
     // Sign and send
     // ----------------------------------------------------------------
@@ -2688,6 +2708,27 @@ impl WalletService {
         self.apply_native_amount_internal(wallet_id, chain_id, amount).await
     }
 
+    /// Upsert a batch of `AssetHolding` objects into a wallet's holdings.
+    /// Each holding is matched by contract_address (for tokens) or by
+    /// (chain_name, symbol) for native coins.  Non-matching existing holdings
+    /// are preserved.  Returns the updated WalletSummary JSON, or null if the
+    /// wallet was not found.
+    pub async fn upsert_asset_holdings(
+        &self,
+        wallet_id: String,
+        holdings_json: String,
+    ) -> Result<Option<String>, SpectraBridgeError> {
+        let new_holdings: Vec<AssetHolding> = serde_json::from_str(&holdings_json)?;
+        let mut state = self.wallet_state.write().await;
+        if let Some(wallet) = state.wallets.iter_mut().find(|w| w.id == wallet_id) {
+            for holding in new_holdings {
+                upsert_asset_holding(&mut wallet.holdings, holding);
+            }
+            return Ok(Some(serde_json::to_string(wallet)?));
+        }
+        Ok(None)
+    }
+
     async fn apply_native_amount_internal(
         &self,
         wallet_id: String,
@@ -3396,14 +3437,20 @@ fn native_coin_template(chain_id: u32) -> Option<AssetHolding> {
     })
 }
 
-/// Upsert a holding by (symbol, chain_name) — updates `amount` if found,
-/// appends otherwise.
+/// Upsert a holding by (chain_name, contract_address) for tokens or
+/// (chain_name, symbol) for native coins.  Replaces the full holding when
+/// found, appends otherwise.
 fn upsert_asset_holding(holdings: &mut Vec<AssetHolding>, new: AssetHolding) {
-    if let Some(existing) = holdings
-        .iter_mut()
-        .find(|h| h.symbol == new.symbol && h.chain_name == new.chain_name)
-    {
-        existing.amount = new.amount;
+    let pos = match &new.contract_address {
+        Some(contract) => holdings
+            .iter()
+            .position(|h| h.chain_name == new.chain_name && h.contract_address.as_deref() == Some(contract.as_str())),
+        None => holdings
+            .iter()
+            .position(|h| h.chain_name == new.chain_name && h.symbol == new.symbol && h.contract_address.is_none()),
+    };
+    if let Some(idx) = pos {
+        holdings[idx] = new;
     } else {
         holdings.push(new);
     }

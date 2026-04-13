@@ -7,6 +7,8 @@ pub struct SendAssetRoutingInput {
     pub symbol: String,
     pub is_evm_chain: bool,
     pub supports_solana_send_coin: bool,
+    #[serde(default)]
+    pub supports_near_token_send: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -119,6 +121,7 @@ pub fn route_send_asset(input: &SendAssetRoutingInput) -> SendAssetRoutingPlan {
         ("Polkadot", "DOT") => Some("polkadot"),
         _ if input.is_evm_chain => Some("ethereum"),
         _ if input.supports_solana_send_coin => Some("solana"),
+        _ if input.supports_near_token_send => Some("near"),
         _ => None,
     }
     .map(str::to_string);
