@@ -1997,7 +1997,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "spectra_derivation"
+name = "spectra_core"
 version = "0.1.0"
 dependencies = [
  "async-trait",

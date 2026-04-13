@@ -1,12 +1,12 @@
 [package]
-name = "spectra_derivation"
+name = "spectra_core"
 version = "0.1.0"
 edition = "2021"
 publish = false
 autobins = false
 
 [lib]
-name = "spectra_derivation"
+name = "spectra_core"
 crate-type = ["staticlib", "cdylib"]
 
 [dependencies]

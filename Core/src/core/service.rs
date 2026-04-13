@@ -2168,6 +2168,66 @@ impl WalletService {
     }
 
     // ----------------------------------------------------------------
+    // Simple-chain send preview (fee + balance, normalized)
+    // ----------------------------------------------------------------
+
+    /// Fetch a normalized send-preview bundle for chains that only need a
+    /// fee estimate and a native balance check. Supported chain_ids:
+    ///   2 Solana · 4 XRP · 8 Stellar · 9 Cardano · 10 Polkadot ·
+    ///   14 Sui · 15 Aptos · 16 TON · 17 NEAR · 18 ICP · 19 Monero
+    ///
+    /// Returns JSON:
+    /// ```json
+    /// {
+    ///   "fee_display":          0.00025,
+    ///   "fee_raw":              "25000",
+    ///   "fee_rate_description": "rpc",
+    ///   "balance_display":      10.5,
+    ///   "max_sendable":         10.49975
+    /// }
+    /// ```
+    pub async fn fetch_simple_chain_send_preview(
+        &self,
+        chain_id: u32,
+        address: String,
+    ) -> Result<String, SpectraBridgeError> {
+        let (fee_json, balance_json) = tokio::try_join!(
+            self.fetch_fee_estimate(chain_id),
+            self.fetch_balance(chain_id, address),
+        )?;
+
+        let fee_obj: serde_json::Value = serde_json::from_str(&fee_json)?;
+        let bal_obj: serde_json::Value = serde_json::from_str(&balance_json)?;
+
+        let fee_display = fee_obj["native_fee_display"]
+            .as_str()
+            .and_then(|s| s.parse::<f64>().ok())
+            .or_else(|| fee_obj["native_fee_display"].as_f64())
+            .unwrap_or(0.0);
+        let fee_raw = fee_obj["native_fee_raw"]
+            .as_str()
+            .map(|s| s.to_string())
+            .or_else(|| fee_obj["native_fee_raw"].as_u64().map(|n| n.to_string()))
+            .unwrap_or_default();
+        let fee_rate_description = fee_obj["source"]
+            .as_str()
+            .unwrap_or("static")
+            .to_string();
+
+        let balance_display = simple_chain_balance_display(chain_id, &bal_obj);
+        let max_sendable = (balance_display - fee_display).max(0.0);
+
+        Ok(json!({
+            "fee_display":          fee_display,
+            "fee_raw":              fee_raw,
+            "fee_rate_description": fee_rate_description,
+            "balance_display":      balance_display,
+            "max_sendable":         max_sendable,
+        })
+        .to_string())
+    }
+
+    // ----------------------------------------------------------------
     // Phase 2 — SQLite state persistence
     // ----------------------------------------------------------------
 
@@ -2450,6 +2510,104 @@ impl WalletService {
     ) -> Result<(), SpectraBridgeError> {
         tokio::task::spawn_blocking(move || {
             crate::core::wallet_db::delete_wallet_data(&db_path, &wallet_id)
+        })
+        .await
+        .map_err(|e| SpectraBridgeError::from(format!("spawn_blocking: {e}")))?
+        .map_err(SpectraBridgeError::from)
+    }
+
+    // ----------------------------------------------------------------
+    // Phase 2.8 — Transaction history persistence (SQLite-backed)
+    // ----------------------------------------------------------------
+
+    /// Upsert a batch of transaction records. `records_json` is a JSON array of
+    /// HistoryRecord objects (id, walletId, chainName, txHash, createdAt, payload).
+    pub async fn upsert_history_records(
+        &self,
+        db_path: String,
+        records_json: String,
+    ) -> Result<(), SpectraBridgeError> {
+        tokio::task::spawn_blocking(move || {
+            let records: Vec<crate::core::wallet_db::HistoryRecord> =
+                serde_json::from_str(&records_json)
+                    .map_err(|e| format!("upsert_history_records parse: {e}"))?;
+            crate::core::wallet_db::history_upsert_batch(&db_path, &records)
+        })
+        .await
+        .map_err(|e| SpectraBridgeError::from(format!("spawn_blocking: {e}")))?
+        .map_err(SpectraBridgeError::from)
+    }
+
+    /// Fetch all history records, ordered by created_at DESC.
+    /// Returns a JSON array of HistoryRecord objects.
+    pub async fn fetch_all_history_records(
+        &self,
+        db_path: String,
+    ) -> Result<String, SpectraBridgeError> {
+        tokio::task::spawn_blocking(move || {
+            let records = crate::core::wallet_db::history_fetch_all(&db_path)?;
+            serde_json::to_string(&records)
+                .map_err(|e| format!("fetch_all_history_records serialize: {e}"))
+        })
+        .await
+        .map_err(|e| SpectraBridgeError::from(format!("spawn_blocking: {e}")))?
+        .map_err(SpectraBridgeError::from)
+    }
+
+    /// Delete history records by a JSON array of ID strings.
+    pub async fn delete_history_records(
+        &self,
+        db_path: String,
+        ids_json: String,
+    ) -> Result<(), SpectraBridgeError> {
+        tokio::task::spawn_blocking(move || {
+            let ids: Vec<String> = serde_json::from_str(&ids_json)
+                .map_err(|e| format!("delete_history_records parse: {e}"))?;
+            crate::core::wallet_db::history_delete(&db_path, &ids)
+        })
+        .await
+        .map_err(|e| SpectraBridgeError::from(format!("spawn_blocking: {e}")))?
+        .map_err(SpectraBridgeError::from)
+    }
+
+    /// Atomically replace ALL history records with the provided JSON array.
+    pub async fn replace_all_history_records(
+        &self,
+        db_path: String,
+        records_json: String,
+    ) -> Result<(), SpectraBridgeError> {
+        tokio::task::spawn_blocking(move || {
+            let records: Vec<crate::core::wallet_db::HistoryRecord> =
+                serde_json::from_str(&records_json)
+                    .map_err(|e| format!("replace_all_history_records parse: {e}"))?;
+            crate::core::wallet_db::history_replace_all(&db_path, &records)
+        })
+        .await
+        .map_err(|e| SpectraBridgeError::from(format!("spawn_blocking: {e}")))?
+        .map_err(SpectraBridgeError::from)
+    }
+
+    /// Delete all history records for a given wallet_id.
+    pub async fn delete_history_records_for_wallet(
+        &self,
+        db_path: String,
+        wallet_id: String,
+    ) -> Result<(), SpectraBridgeError> {
+        tokio::task::spawn_blocking(move || {
+            crate::core::wallet_db::history_delete_for_wallet(&db_path, &wallet_id)
+        })
+        .await
+        .map_err(|e| SpectraBridgeError::from(format!("spawn_blocking: {e}")))?
+        .map_err(SpectraBridgeError::from)
+    }
+
+    /// Delete all history records (hard reset).
+    pub async fn clear_all_history_records(
+        &self,
+        db_path: String,
+    ) -> Result<(), SpectraBridgeError> {
+        tokio::task::spawn_blocking(move || {
+            crate::core::wallet_db::history_clear(&db_path)
         })
         .await
         .map_err(|e| SpectraBridgeError::from(format!("spawn_blocking: {e}")))?
@@ -2931,6 +3089,54 @@ fn str_field<'a>(params: &'a serde_json::Value, key: &str) -> Result<&'a str, Sp
 fn hex_field(params: &serde_json::Value, key: &str) -> Result<Vec<u8>, SpectraBridgeError> {
     let s = str_field(params, key)?;
     hex::decode(s).map_err(|e| SpectraBridgeError::from(format!("{key} hex decode: {e}")))
+}
+
+/// Extract the normalised native balance (in display units, i.e. divided by
+/// the chain's smallest-unit factor) from a balance JSON value.
+///
+/// Supported chain_ids: 2, 4, 8, 9, 10, 14, 15, 16, 17, 18, 19.
+/// Returns 0.0 for unknown / unsupported chains.
+fn simple_chain_balance_display(chain_id: u32, obj: &serde_json::Value) -> f64 {
+    let u64_field = |key: &str| -> f64 {
+        obj[key].as_u64().map(|n| n as f64)
+            .or_else(|| obj[key].as_str().and_then(|s| s.parse::<u64>().ok()).map(|n| n as f64))
+            .unwrap_or(0.0)
+    };
+    let i64_field = |key: &str| -> f64 {
+        obj[key].as_i64().map(|n| n as f64)
+            .or_else(|| obj[key].as_str().and_then(|s| s.parse::<i64>().ok()).map(|n| n as f64))
+            .unwrap_or(0.0)
+    };
+    match chain_id {
+        2  => u64_field("lamports")  / 1e9,   // Solana
+        4  => u64_field("drops")     / 1e6,   // XRP
+        8  => i64_field("stroops")   / 1e7,   // Stellar
+        9  => u64_field("lovelace")  / 1e6,   // Cardano
+        10 => {
+            // Polkadot — "planck" may be a large integer stored as a string.
+            let raw = obj["planck"].as_u64().map(|n| n as f64)
+                .or_else(|| obj["planck"].as_str().and_then(|s| s.parse::<f64>().ok()))
+                .unwrap_or(0.0);
+            raw / 1e10
+        }
+        14 => u64_field("mist")      / 1e9,   // Sui
+        15 => u64_field("octas")     / 1e8,   // Aptos
+        16 => u64_field("nanotons")  / 1e9,   // TON
+        17 => {
+            // NEAR — prefer the pre-computed display string; fall back to yoctoNEAR.
+            if let Some(s) = obj["near_display"].as_str() {
+                s.parse::<f64>().unwrap_or(0.0)
+            } else {
+                obj["yocto_near"].as_str()
+                    .and_then(|s| s.parse::<f64>().ok())
+                    .map(|y| y / 1e24)
+                    .unwrap_or(0.0)
+            }
+        }
+        18 => u64_field("e8s")       / 1e8,   // ICP
+        19 => u64_field("piconeros") / 1e12,  // Monero
+        _  => 0.0,
+    }
 }
 
 /// Build a `fee_preview` JSON string from an integer raw amount plus

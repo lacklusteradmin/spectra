@@ -326,6 +326,208 @@ pub fn core_record_endpoint_attempt_json(
     Ok(serialize_json(&record_attempt(request))?)
 }
 
+/// Evaluate high-risk warning reasons for a pending send transaction.
+///
+/// Input JSON fields:
+///   chain_name, symbol, amount, holding_amount,
+///   destination_address, destination_input, used_ens_resolution,
+///   wallet_selected_chain,
+///   address_book: [{ chain_name, address }],
+///   tx_addresses: [{ chain_name, address }]
+///
+/// Output: JSON array of warning objects, e.g.:
+///   [{"code":"invalid_format","chain":"Ethereum"}, {"code":"new_address"}, ...]
+#[uniffi::export]
+pub fn core_evaluate_high_risk_send_reasons_json(
+    request_json: String,
+) -> Result<String, crate::SpectraBridgeError> {
+    let req: serde_json::Value = serde_json::from_str(&request_json)
+        .map_err(|e| crate::SpectraBridgeError::from(e.to_string()))?;
+
+    let chain_name = req["chain_name"].as_str().unwrap_or("");
+    let symbol = req["symbol"].as_str().unwrap_or("");
+    let amount = req["amount"].as_f64().unwrap_or(0.0);
+    let holding_amount = req["holding_amount"].as_f64().unwrap_or(0.0);
+    let destination_address = req["destination_address"].as_str().unwrap_or("");
+    let destination_input = req["destination_input"].as_str().unwrap_or("");
+    let used_ens_resolution = req["used_ens_resolution"].as_bool().unwrap_or(false);
+    let wallet_selected_chain = req["wallet_selected_chain"].as_str().unwrap_or("");
+
+    let mut warnings: Vec<serde_json::Value> = Vec::new();
+
+    // 1. Address format validation (already in Rust — no extra cost).
+    if !hrsr_validate_address(chain_name, destination_address) {
+        warnings.push(serde_json::json!({ "code": "invalid_format", "chain": chain_name }));
+    }
+
+    // Normalize destination for case-insensitive comparison.
+    let norm_dest = hrsr_normalize_address(destination_address, chain_name).to_lowercase();
+
+    // 2. New address detection.
+    let empty_arr: Vec<serde_json::Value> = Vec::new();
+    let address_book = req["address_book"].as_array().unwrap_or(&empty_arr);
+    let has_address_book = address_book.iter().any(|e| {
+        e["chain_name"].as_str() == Some(chain_name)
+            && hrsr_normalize_address(e["address"].as_str().unwrap_or(""), chain_name)
+                .to_lowercase()
+                == norm_dest
+    });
+    let tx_addresses = req["tx_addresses"].as_array().unwrap_or(&empty_arr);
+    let has_tx_history = tx_addresses.iter().any(|e| {
+        e["chain_name"].as_str() == Some(chain_name)
+            && hrsr_normalize_address(e["address"].as_str().unwrap_or(""), chain_name)
+                .to_lowercase()
+                == norm_dest
+    });
+    if !has_address_book && !has_tx_history {
+        warnings.push(serde_json::json!({ "code": "new_address" }));
+    }
+
+    // 3. ENS resolution warning.
+    if used_ens_resolution {
+        warnings.push(serde_json::json!({
+            "code": "ens_resolved",
+            "name": destination_input,
+            "address": destination_address
+        }));
+    }
+
+    // 4. Large send percentage (≥25 % of holding balance).
+    if holding_amount > 0.0 {
+        let ratio = amount / holding_amount;
+        if ratio >= 0.25 {
+            let pct = (ratio * 100.0).round() as u64;
+            warnings.push(serde_json::json!({
+                "code": "large_send", "percent": pct, "symbol": symbol
+            }));
+        }
+    }
+
+    // 5-10. Cross-chain prefix mismatch checks.
+    let lowered = destination_input.to_lowercase();
+    let is_evm = matches!(
+        chain_name,
+        "Ethereum" | "Ethereum Classic" | "Arbitrum" | "Optimism"
+            | "BNB Chain" | "Avalanche" | "Hyperliquid"
+    );
+    let is_l2 = matches!(
+        chain_name,
+        "Arbitrum" | "Optimism" | "BNB Chain" | "Avalanche" | "Hyperliquid"
+    );
+    let is_ens_candidate = lowered.ends_with(".eth")
+        && !lowered.contains(' ')
+        && !lowered.starts_with("0x");
+
+    if is_evm {
+        let looks_non_evm = lowered.starts_with("bc1")
+            || lowered.starts_with("tb1")
+            || lowered.starts_with("ltc1")
+            || lowered.starts_with("bnb1")
+            || lowered.starts_with('t')
+            || lowered.starts_with('d')
+            || lowered.starts_with('a');
+        if looks_non_evm {
+            warnings.push(serde_json::json!({ "code": "non_evm_on_evm", "chain": chain_name }));
+        }
+        if is_l2 && is_ens_candidate {
+            warnings.push(serde_json::json!({ "code": "ens_on_l2", "chain": chain_name }));
+        }
+    } else if matches!(chain_name, "Bitcoin" | "Bitcoin Cash" | "Litecoin" | "Dogecoin") {
+        if lowered.starts_with("0x") || is_ens_candidate {
+            warnings.push(serde_json::json!({ "code": "eth_on_utxo", "chain": chain_name }));
+        }
+    } else if chain_name == "Tron" {
+        if lowered.starts_with("0x") || lowered.starts_with("bc1") {
+            warnings.push(serde_json::json!({ "code": "non_tron" }));
+        }
+    } else if chain_name == "Solana" {
+        if lowered.starts_with("0x")
+            || lowered.starts_with("bc1")
+            || lowered.starts_with("ltc1")
+            || lowered.starts_with('t')
+        {
+            warnings.push(serde_json::json!({ "code": "non_solana" }));
+        }
+    } else if chain_name == "XRP Ledger" {
+        if lowered.starts_with("0x")
+            || lowered.starts_with("bc1")
+            || lowered.starts_with('t')
+        {
+            warnings.push(serde_json::json!({ "code": "non_xrp" }));
+        }
+    } else if chain_name == "Monero" {
+        if lowered.starts_with("0x")
+            || lowered.starts_with("bc1")
+            || lowered.starts_with('r')
+        {
+            warnings.push(serde_json::json!({ "code": "non_monero" }));
+        }
+    }
+
+    // 11. Wallet-chain context mismatch.
+    if !wallet_selected_chain.is_empty() && wallet_selected_chain != chain_name {
+        warnings.push(serde_json::json!({ "code": "chain_mismatch" }));
+    }
+
+    Ok(serde_json::to_string(&warnings)
+        .map_err(|e| crate::SpectraBridgeError::from(e.to_string()))?)
+}
+
+/// Validate a destination address for the given chain name using the Rust
+/// address-validation logic already used by `core_validate_address_json`.
+fn hrsr_validate_address(chain_name: &str, address: &str) -> bool {
+    let kind = match chain_name {
+        "Bitcoin" => "bitcoin",
+        "Bitcoin Cash" => "bitcoinCash",
+        "Bitcoin SV" => "bitcoinSV",
+        "Litecoin" => "litecoin",
+        "Dogecoin" => "dogecoin",
+        "Ethereum" | "Ethereum Classic" | "Arbitrum" | "Optimism"
+        | "BNB Chain" | "Avalanche" | "Hyperliquid" => "evm",
+        "Tron" => "tron",
+        "Solana" => "solana",
+        "Cardano" => "cardano",
+        "XRP Ledger" => "xrp",
+        "Stellar" => "stellar",
+        "Monero" => "monero",
+        "Sui" => "sui",
+        "Aptos" => "aptos",
+        "TON" => "ton",
+        "Internet Computer" => "internetComputer",
+        "NEAR" => "near",
+        "Polkadot" => "polkadot",
+        _ => return false,
+    };
+    validate_address(AddressValidationRequest {
+        kind: kind.to_string(),
+        value: address.to_string(),
+        network_mode: None,
+    })
+    .is_valid
+}
+
+/// Normalize an address for case-insensitive comparison, mirroring the Swift
+/// `normalizedAddress(_:for:)` logic in `WalletStore+SendFlow.swift`.
+fn hrsr_normalize_address(address: &str, chain_name: &str) -> String {
+    let t = address.trim().to_string();
+    let is_evm = matches!(
+        chain_name,
+        "Ethereum" | "Ethereum Classic" | "Arbitrum" | "Optimism"
+            | "BNB Chain" | "Avalanche" | "Hyperliquid"
+    );
+    if is_evm {
+        return t.to_lowercase();
+    }
+    if matches!(chain_name, "Sui" | "Aptos") {
+        let l = t.to_lowercase();
+        return if l.starts_with("0x") { l } else { format!("0x{l}") };
+    }
+    if matches!(chain_name, "Internet Computer" | "NEAR") {
+        return t.to_lowercase();
+    }
+    t
+}
+
 fn serialize_json(value: &impl Serialize) -> Result<String, String> {
     serde_json::to_string(value).map_err(display_error)
 }

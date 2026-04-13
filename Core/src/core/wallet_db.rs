@@ -43,7 +43,18 @@ fn open(db_path: &str) -> Result<Connection, String> {
              branch_index    INTEGER,
              updated_at      INTEGER NOT NULL,
              PRIMARY KEY (wallet_id, chain_name, address)
-         );",
+         );
+         CREATE TABLE IF NOT EXISTS history_records (
+             id         TEXT NOT NULL PRIMARY KEY,
+             wallet_id  TEXT,
+             chain_name TEXT NOT NULL,
+             tx_hash    TEXT,
+             created_at REAL NOT NULL,
+             payload    TEXT NOT NULL
+         );
+         CREATE INDEX IF NOT EXISTS idx_hr_wallet  ON history_records(wallet_id);
+         CREATE INDEX IF NOT EXISTS idx_hr_chain   ON history_records(chain_name);
+         CREATE INDEX IF NOT EXISTS idx_hr_created ON history_records(created_at DESC);",
     )
     .map_err(|e| format!("wallet_db create tables: {e}"))?;
     Ok(conn)
@@ -396,6 +407,151 @@ pub fn address_delete_all(db_path: &str) -> Result<(), String> {
     let conn = open(db_path)?;
     conn.execute("DELETE FROM wallet_owned_addresses", [])
         .map_err(|e| format!("address_delete_all: {e}"))?;
+    Ok(())
+}
+
+// ── History record types ──────────────────────────────────────────────────────
+
+/// Represents one persisted transaction record.
+/// `payload` is a base64-encoded JSON blob (the full `PersistedTransactionRecord` from Swift).
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct HistoryRecord {
+    pub id: String,
+    pub wallet_id: Option<String>,
+    pub chain_name: String,
+    pub tx_hash: Option<String>,
+    pub created_at: f64,
+    pub payload: String,
+}
+
+// ── History record CRUD ───────────────────────────────────────────────────────
+
+/// Upsert a batch of history records. Existing rows (matched by `id`) are overwritten.
+pub fn history_upsert_batch(db_path: &str, records: &[HistoryRecord]) -> Result<(), String> {
+    if records.is_empty() { return Ok(()); }
+    let conn = open(db_path)?;
+    conn.execute_batch("BEGIN IMMEDIATE").map_err(|e| format!("history_upsert_batch begin: {e}"))?;
+    let result = (|| -> Result<(), String> {
+        for rec in records {
+            conn.execute(
+                "INSERT INTO history_records (id, wallet_id, chain_name, tx_hash, created_at, payload)
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6)
+                 ON CONFLICT(id) DO UPDATE SET
+                     wallet_id  = excluded.wallet_id,
+                     chain_name = excluded.chain_name,
+                     tx_hash    = excluded.tx_hash,
+                     created_at = excluded.created_at,
+                     payload    = excluded.payload",
+                params![rec.id, rec.wallet_id, rec.chain_name, rec.tx_hash, rec.created_at, rec.payload],
+            ).map_err(|e| format!("history_upsert_batch row: {e}"))?;
+        }
+        Ok(())
+    })();
+    match result {
+        Ok(()) => {
+            conn.execute_batch("COMMIT").map_err(|e| format!("history_upsert_batch commit: {e}"))?;
+            Ok(())
+        }
+        Err(e) => {
+            let _ = conn.execute_batch("ROLLBACK");
+            Err(e)
+        }
+    }
+}
+
+/// Fetch all history records ordered by created_at DESC.
+pub fn history_fetch_all(db_path: &str) -> Result<Vec<HistoryRecord>, String> {
+    let conn = open(db_path)?;
+    let mut stmt = conn
+        .prepare(
+            "SELECT id, wallet_id, chain_name, tx_hash, created_at, payload
+             FROM history_records ORDER BY created_at DESC, id ASC",
+        )
+        .map_err(|e| format!("history_fetch_all prepare: {e}"))?;
+    let rows = stmt
+        .query_map([], |row| {
+            Ok(HistoryRecord {
+                id: row.get(0)?,
+                wallet_id: row.get(1)?,
+                chain_name: row.get(2)?,
+                tx_hash: row.get(3)?,
+                created_at: row.get(4)?,
+                payload: row.get(5)?,
+            })
+        })
+        .map_err(|e| format!("history_fetch_all query: {e}"))?;
+    let mut records = Vec::new();
+    for row in rows {
+        records.push(row.map_err(|e| format!("history_fetch_all row: {e}"))?);
+    }
+    Ok(records)
+}
+
+/// Delete history records by ID list.
+pub fn history_delete(db_path: &str, ids: &[String]) -> Result<(), String> {
+    if ids.is_empty() { return Ok(()); }
+    let conn = open(db_path)?;
+    conn.execute_batch("BEGIN IMMEDIATE").map_err(|e| format!("history_delete begin: {e}"))?;
+    let result = (|| -> Result<(), String> {
+        for id in ids {
+            conn.execute("DELETE FROM history_records WHERE id = ?1", params![id])
+                .map_err(|e| format!("history_delete row: {e}"))?;
+        }
+        Ok(())
+    })();
+    match result {
+        Ok(()) => {
+            conn.execute_batch("COMMIT").map_err(|e| format!("history_delete commit: {e}"))?;
+            Ok(())
+        }
+        Err(e) => {
+            let _ = conn.execute_batch("ROLLBACK");
+            Err(e)
+        }
+    }
+}
+
+/// Atomically delete all records then insert the provided batch (full replacement).
+pub fn history_replace_all(db_path: &str, records: &[HistoryRecord]) -> Result<(), String> {
+    let conn = open(db_path)?;
+    conn.execute_batch("BEGIN IMMEDIATE").map_err(|e| format!("history_replace_all begin: {e}"))?;
+    let result = (|| -> Result<(), String> {
+        conn.execute("DELETE FROM history_records", []).map_err(|e| format!("history_replace_all delete: {e}"))?;
+        for rec in records {
+            conn.execute(
+                "INSERT INTO history_records (id, wallet_id, chain_name, tx_hash, created_at, payload)
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
+                params![rec.id, rec.wallet_id, rec.chain_name, rec.tx_hash, rec.created_at, rec.payload],
+            ).map_err(|e| format!("history_replace_all insert: {e}"))?;
+        }
+        Ok(())
+    })();
+    match result {
+        Ok(()) => {
+            conn.execute_batch("COMMIT").map_err(|e| format!("history_replace_all commit: {e}"))?;
+            Ok(())
+        }
+        Err(e) => {
+            let _ = conn.execute_batch("ROLLBACK");
+            Err(e)
+        }
+    }
+}
+
+/// Delete all history records for a given wallet_id.
+pub fn history_delete_for_wallet(db_path: &str, wallet_id: &str) -> Result<(), String> {
+    let conn = open(db_path)?;
+    conn.execute("DELETE FROM history_records WHERE wallet_id = ?1", params![wallet_id])
+        .map_err(|e| format!("history_delete_for_wallet: {e}"))?;
+    Ok(())
+}
+
+/// Delete all history records (hard reset).
+pub fn history_clear(db_path: &str) -> Result<(), String> {
+    let conn = open(db_path)?;
+    conn.execute("DELETE FROM history_records", [])
+        .map_err(|e| format!("history_clear: {e}"))?;
     Ok(())
 }
 
