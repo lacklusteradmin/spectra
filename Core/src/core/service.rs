@@ -74,6 +74,7 @@ use crate::core::history_cache::HistoryCache;
 use crate::core::history_store::HistoryPaginationStore;
 use crate::core::http::HttpClient;
 use crate::core::secret_store::SecretStore;
+use crate::core::state::{AssetHolding, CoreAppState, StateCommand, WalletSummary, reduce_state};
 use crate::SpectraBridgeError;
 
 // ----------------------------------------------------------------
@@ -105,6 +106,8 @@ pub struct WalletService {
     history_pagination: Arc<HistoryPaginationStore>,
     /// Phase 2.7 — optional Keychain delegate (set via `set_secret_store`).
     secret_store: Arc<std::sync::RwLock<Option<Arc<dyn SecretStore>>>>,
+    /// Phase 2.1 — canonical in-memory wallet + holdings state.
+    wallet_state: Arc<RwLock<CoreAppState>>,
 }
 
 #[uniffi::export]
@@ -118,6 +121,7 @@ impl WalletService {
             history_cache: Arc::new(HistoryCache::new(300)), // 5-minute TTL
             history_pagination: Arc::new(HistoryPaginationStore::new()),
             secret_store: Arc::new(std::sync::RwLock::new(None)),
+            wallet_state: Arc::new(RwLock::new(CoreAppState::default())),
         }))
     }
 
@@ -2453,6 +2457,99 @@ impl WalletService {
     }
 
     // ----------------------------------------------------------------
+    // Phase 2.1 — In-memory wallet state (canonical holdings store)
+    //
+    // Swift calls `init_wallet_state` once at startup (after loading the
+    // snapshot from SQLite), then mutates via `upsert_wallet_json` /
+    // `remove_wallet_json`.  Balance updates from the refresh engine call
+    // `update_native_balance` which parses the chain-specific JSON blob that
+    // Rust itself produced and upserts the native AssetHolding.
+    // ----------------------------------------------------------------
+
+    /// Seed the in-memory wallet list from a JSON array of WalletSummary
+    /// objects.  Called once at startup after `load_wallet_snapshot`.
+    pub async fn init_wallet_state(&self, wallets_json: String) -> Result<(), SpectraBridgeError> {
+        let wallets: Vec<WalletSummary> = serde_json::from_str(&wallets_json)?;
+        let mut state = self.wallet_state.write().await;
+        state.wallets = wallets;
+        Ok(())
+    }
+
+    /// Return all wallets as a JSON array of WalletSummary objects.
+    pub async fn list_wallets_json(&self) -> Result<String, SpectraBridgeError> {
+        let state = self.wallet_state.read().await;
+        Ok(serde_json::to_string(&state.wallets)?)
+    }
+
+    /// Add or replace a wallet (matched by `id`).  Returns the updated wallet
+    /// list as a JSON array so Swift can sync in one round-trip.
+    pub async fn upsert_wallet_json(&self, wallet_json: String) -> Result<String, SpectraBridgeError> {
+        let wallet: WalletSummary = serde_json::from_str(&wallet_json)?;
+        let mut state = self.wallet_state.write().await;
+        let transition = reduce_state(state.clone(), StateCommand::UpsertWallet { wallet });
+        *state = transition.state;
+        Ok(serde_json::to_string(&state.wallets)?)
+    }
+
+    /// Remove a wallet by ID.  Returns the updated wallet list as JSON.
+    pub async fn remove_wallet_json(&self, wallet_id: String) -> Result<String, SpectraBridgeError> {
+        let mut state = self.wallet_state.write().await;
+        let transition = reduce_state(state.clone(), StateCommand::RemoveWallet { wallet_id });
+        *state = transition.state;
+        Ok(serde_json::to_string(&state.wallets)?)
+    }
+
+    /// Parse a chain-specific balance JSON blob (the same format produced by
+    /// `fetch_balance`) and upsert the native `AssetHolding` for the given
+    /// wallet.  Returns the updated `WalletSummary` JSON so Swift can apply
+    /// the new amount in one round-trip without holding a stale copy.
+    ///
+    /// If the wallet is not yet in the in-memory state the call is a no-op
+    /// and returns `null`.
+    pub async fn update_native_balance(
+        &self,
+        wallet_id: String,
+        chain_id: u32,
+        balance_json: String,
+    ) -> Result<Option<String>, SpectraBridgeError> {
+        let amount = match native_amount_from_balance_json(chain_id, &balance_json) {
+            Some(a) => a,
+            None => return Ok(None),
+        };
+        self.apply_native_amount_internal(wallet_id, chain_id, amount).await
+    }
+
+    /// Set the native balance for a wallet directly (for import-time seeding
+    /// where the caller already decoded the Double from Rust fetch JSON).
+    pub async fn set_native_balance(
+        &self,
+        wallet_id: String,
+        chain_id: u32,
+        amount: f64,
+    ) -> Result<Option<String>, SpectraBridgeError> {
+        self.apply_native_amount_internal(wallet_id, chain_id, amount).await
+    }
+
+    async fn apply_native_amount_internal(
+        &self,
+        wallet_id: String,
+        chain_id: u32,
+        amount: f64,
+    ) -> Result<Option<String>, SpectraBridgeError> {
+        let template = match native_coin_template(chain_id) {
+            Some(t) => t,
+            None => return Ok(None),
+        };
+        let holding = AssetHolding { amount, ..template };
+        let mut state = self.wallet_state.write().await;
+        if let Some(wallet) = state.wallets.iter_mut().find(|w| w.id == wallet_id) {
+            upsert_asset_holding(&mut wallet.holdings, holding);
+            return Ok(Some(serde_json::to_string(wallet)?));
+        }
+        Ok(None)
+    }
+
+    // ----------------------------------------------------------------
     // Phase 2.2 — Balance cache
     // ----------------------------------------------------------------
 
@@ -2993,6 +3090,116 @@ fn sqlite_load(db_path: &str, key: &str) -> Result<String, String> {
         Ok(v) => Ok(v),
         Err(rusqlite::Error::QueryReturnedNoRows) => Ok("{}".to_string()),
         Err(e) => Err(format!("sqlite load: {e}")),
+    }
+}
+
+// ----------------------------------------------------------------
+// Phase 2.1 helpers — not UniFFI-exported
+// ----------------------------------------------------------------
+
+/// Parse a chain-specific balance JSON blob and return the native coin amount
+/// as a plain f64.  Mirrors the RustBalanceDecoder logic on the Swift side.
+fn native_amount_from_balance_json(chain_id: u32, json: &str) -> Option<f64> {
+    let v: serde_json::Value = serde_json::from_str(json).ok()?;
+    match chain_id {
+        // Bitcoin
+        0 => v["confirmed_sats"].as_u64().map(|s| s as f64 / 1e8),
+        // EVM chains: ETH, ARB, OP, AVAX, BASE, ETC, BSC, HYPE
+        1 | 11 | 12 | 13 | 20 | 21 | 23 | 24 => {
+            v["balance_display"].as_str().and_then(|s| s.parse().ok())
+                .or_else(|| v["balance_wei"].as_str().and_then(|s| s.parse::<f64>().ok()).map(|w| w / 1e18))
+                .or_else(|| v["balance_wei"].as_f64().map(|w| w / 1e18))
+        }
+        // Solana
+        2 => v["lamports"].as_u64().map(|l| l as f64 / 1e9),
+        // Dogecoin
+        3 => v["balance_koin"].as_u64().map(|k| k as f64 / 1e8),
+        // XRP
+        4 => v["drops"].as_u64().map(|d| d as f64 / 1e6),
+        // Litecoin, Bitcoin Cash, Bitcoin SV
+        5 | 6 | 22 => v["balance_sat"].as_u64().map(|s| s as f64 / 1e8),
+        // Tron
+        7 => v["sun"].as_u64().map(|s| s as f64 / 1e6),
+        // Stellar
+        8 => v["stroops"].as_i64().map(|s| s.unsigned_abs() as f64 / 1e7),
+        // Cardano
+        9 => v["lovelace"].as_u64().map(|l| l as f64 / 1e6),
+        // Polkadot (planck may be a string u128 or a JSON number)
+        10 => v["planck"].as_str().and_then(|s| s.parse::<f64>().ok())
+            .or_else(|| v["planck"].as_f64())
+            .map(|p| p / 10_000_000_000.0),
+        // Sui
+        14 => v["mist"].as_u64().map(|m| m as f64 / 1e9),
+        // Aptos
+        15 => v["octas"].as_u64().map(|o| o as f64 / 1e8),
+        // TON
+        16 => v["nanotons"].as_u64().map(|n| n as f64 / 1e9),
+        // NEAR (yoctoNEAR string or near_display)
+        17 => v["near_display"].as_str().and_then(|s| s.parse().ok())
+            .or_else(|| v["yocto_near"].as_str().and_then(|s| s.parse::<f64>().ok()).map(|y| y / 1e24))
+            .or_else(|| v["yocto_near"].as_f64().map(|y| y / 1e24)),
+        // ICP
+        18 => v["e8s"].as_u64().map(|e| e as f64 / 1e8),
+        // Monero
+        19 => v["piconeros"].as_u64().map(|p| p as f64 / 1e12),
+        _ => None,
+    }
+}
+
+/// Return a zero-amount AssetHolding template for the native coin of each
+/// chain.  Used as the default when the holding doesn't exist yet.
+fn native_coin_template(chain_id: u32) -> Option<AssetHolding> {
+    let (name, symbol, market_data_id, coin_gecko_id, chain_name) = match chain_id {
+        0  => ("Bitcoin",           "BTC",  "1",     "bitcoin",            "Bitcoin"),
+        1  => ("Ethereum",          "ETH",  "1027",  "ethereum",           "Ethereum"),
+        2  => ("Solana",            "SOL",  "5426",  "solana",             "Solana"),
+        3  => ("Dogecoin",          "DOGE", "74",    "dogecoin",           "Dogecoin"),
+        4  => ("XRP",               "XRP",  "52",    "ripple",             "XRP Ledger"),
+        5  => ("Litecoin",          "LTC",  "2",     "litecoin",           "Litecoin"),
+        6  => ("Bitcoin Cash",      "BCH",  "1831",  "bitcoin-cash",       "Bitcoin Cash"),
+        7  => ("Tron",              "TRX",  "1958",  "tron",               "Tron"),
+        8  => ("Stellar",           "XLM",  "512",   "stellar",            "Stellar"),
+        9  => ("Cardano",           "ADA",  "2010",  "cardano",            "Cardano"),
+        10 => ("Polkadot",          "DOT",  "6636",  "polkadot",           "Polkadot"),
+        11 => ("Ethereum",          "ETH",  "1027",  "ethereum",           "Arbitrum"),
+        12 => ("Ethereum",          "ETH",  "1027",  "ethereum",           "Optimism"),
+        13 => ("Avalanche",         "AVAX", "5805",  "avalanche-2",        "Avalanche"),
+        14 => ("Sui",               "SUI",  "20947", "sui",                "Sui"),
+        15 => ("Aptos",             "APT",  "21794", "aptos",              "Aptos"),
+        16 => ("TON",               "TON",  "11419", "the-open-network",   "TON"),
+        17 => ("NEAR",              "NEAR", "6535",  "near",               "NEAR"),
+        18 => ("Internet Computer", "ICP",  "8916",  "internet-computer",  "ICP"),
+        19 => ("Monero",            "XMR",  "328",   "monero",             "Monero"),
+        20 => ("Ethereum",          "ETH",  "1027",  "ethereum",           "Base"),
+        21 => ("Ethereum Classic",  "ETC",  "1321",  "ethereum-classic",   "Ethereum Classic"),
+        22 => ("Bitcoin SV",        "BSV",  "3602",  "bitcoin-cash-sv",    "Bitcoin SV"),
+        23 => ("BNB",               "BNB",  "1839",  "binancecoin",        "BNB Chain"),
+        24 => ("Hyperliquid",       "HYPE", "32196", "hyperliquid",        "Hyperliquid"),
+        _  => return None,
+    };
+    Some(AssetHolding {
+        name: name.to_string(),
+        symbol: symbol.to_string(),
+        market_data_id: market_data_id.to_string(),
+        coin_gecko_id: coin_gecko_id.to_string(),
+        chain_name: chain_name.to_string(),
+        token_standard: "Native".to_string(),
+        contract_address: None,
+        amount: 0.0,
+        price_usd: 0.0,
+    })
+}
+
+/// Upsert a holding by (symbol, chain_name) — updates `amount` if found,
+/// appends otherwise.
+fn upsert_asset_holding(holdings: &mut Vec<AssetHolding>, new: AssetHolding) {
+    if let Some(existing) = holdings
+        .iter_mut()
+        .find(|h| h.symbol == new.symbol && h.chain_name == new.chain_name)
+    {
+        existing.amount = new.amount;
+    } else {
+        holdings.push(new);
     }
 }
 
