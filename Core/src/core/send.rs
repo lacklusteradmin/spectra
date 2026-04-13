@@ -1,6 +1,6 @@
 use serde::{Deserialize, Serialize};
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, uniffi::Record)]
 #[serde(rename_all = "camelCase")]
 pub struct SendAssetRoutingInput {
     pub chain_name: String,
@@ -11,7 +11,7 @@ pub struct SendAssetRoutingInput {
     pub supports_near_token_send: bool,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, uniffi::Record)]
 #[serde(rename_all = "camelCase")]
 pub struct SendAssetRoutingPlan {
     pub preview_kind: Option<String>,
@@ -21,19 +21,19 @@ pub struct SendAssetRoutingPlan {
     pub allows_zero_amount: bool,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, uniffi::Record)]
 #[serde(rename_all = "camelCase")]
 pub struct SendPreviewRoutingRequest {
     pub asset: Option<SendAssetRoutingInput>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, uniffi::Record)]
 #[serde(rename_all = "camelCase")]
 pub struct SendPreviewRoutingPlan {
     pub active_preview_kind: Option<String>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, uniffi::Record)]
 #[serde(rename_all = "camelCase")]
 pub struct SendSubmitPreflightRequest {
     pub wallet_found: bool,
@@ -44,7 +44,7 @@ pub struct SendSubmitPreflightRequest {
     pub asset: Option<SendAssetRoutingInput>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, uniffi::Record)]
 #[serde(rename_all = "camelCase")]
 pub struct SendSubmitPreflightPlan {
     pub submit_kind: String,
@@ -228,6 +228,7 @@ mod tests {
             symbol: "AVAX".to_string(),
             is_evm_chain: true,
             supports_solana_send_coin: false,
+            supports_near_token_send: false,
         });
 
         assert_eq!(route.preview_kind.as_deref(), Some("ethereum"));
@@ -244,6 +245,7 @@ mod tests {
                 symbol: "USDC".to_string(),
                 is_evm_chain: false,
                 supports_solana_send_coin: true,
+                supports_near_token_send: false,
             }),
         });
 
@@ -263,6 +265,7 @@ mod tests {
                 symbol: "BTC".to_string(),
                 is_evm_chain: false,
                 supports_solana_send_coin: false,
+                supports_near_token_send: false,
             }),
         })
         .expect_err("bitcoin zero-value sends should be rejected in preflight");
@@ -283,6 +286,7 @@ mod tests {
                 symbol: "ETH".to_string(),
                 is_evm_chain: true,
                 supports_solana_send_coin: false,
+                supports_near_token_send: false,
             }),
         })
         .expect("native EVM zero-value sends remain allowed");

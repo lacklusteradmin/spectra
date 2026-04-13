@@ -1,7 +1,7 @@
 use serde::{Deserialize, Serialize};
-use std::collections::BTreeMap;
+use std::collections::HashMap;
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, uniffi::Record)]
 #[serde(rename_all = "camelCase")]
 pub struct ReliabilityCounter {
     pub success_count: u32,
@@ -9,17 +9,17 @@ pub struct ReliabilityCounter {
     pub last_updated_at: i64,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, uniffi::Record)]
 #[serde(rename_all = "camelCase")]
 pub struct EndpointOrderingRequest {
     pub candidates: Vec<String>,
-    pub counters: BTreeMap<String, ReliabilityCounter>,
+    pub counters: HashMap<String, ReliabilityCounter>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, uniffi::Record)]
 #[serde(rename_all = "camelCase")]
 pub struct EndpointAttemptRequest {
-    pub counters: BTreeMap<String, ReliabilityCounter>,
+    pub counters: HashMap<String, ReliabilityCounter>,
     pub endpoint: String,
     pub success: bool,
     pub observed_at: i64,
@@ -39,7 +39,7 @@ pub fn order_endpoints(request: EndpointOrderingRequest) -> Vec<String> {
     ordered
 }
 
-pub fn record_attempt(request: EndpointAttemptRequest) -> BTreeMap<String, ReliabilityCounter> {
+pub fn record_attempt(request: EndpointAttemptRequest) -> HashMap<String, ReliabilityCounter> {
     let mut counters = request.counters;
     let mut counter = counters
         .remove(&request.endpoint)
@@ -81,7 +81,7 @@ mod tests {
                 "https://a.example".to_string(),
                 "https://c.example".to_string(),
             ],
-            counters: BTreeMap::from([
+            counters: HashMap::from([
                 (
                     "https://a.example".to_string(),
                     ReliabilityCounter {
@@ -114,7 +114,7 @@ mod tests {
     #[test]
     fn records_success_attempts() {
         let counters = record_attempt(EndpointAttemptRequest {
-            counters: BTreeMap::new(),
+            counters: HashMap::new(),
             endpoint: "https://rpc.example".to_string(),
             success: true,
             observed_at: 42,

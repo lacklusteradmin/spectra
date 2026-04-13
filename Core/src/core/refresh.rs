@@ -1,7 +1,7 @@
 use serde::{Deserialize, Serialize};
-use std::collections::{BTreeMap, BTreeSet};
+use std::collections::{BTreeSet, HashMap};
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, uniffi::Record)]
 #[serde(rename_all = "camelCase")]
 pub struct ActiveMaintenancePlanRequest {
     pub now_unix: f64,
@@ -13,14 +13,14 @@ pub struct ActiveMaintenancePlanRequest {
     pub price_refresh_interval: f64,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, uniffi::Record)]
 #[serde(rename_all = "camelCase")]
 pub struct ActiveMaintenancePlan {
     pub refresh_pending_transactions: bool,
     pub refresh_live_prices: bool,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, uniffi::Record)]
 #[serde(rename_all = "camelCase")]
 pub struct BackgroundMaintenanceRequest {
     pub now_unix: f64,
@@ -29,7 +29,7 @@ pub struct BackgroundMaintenanceRequest {
     pub interval: f64,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, uniffi::Record)]
 #[serde(rename_all = "camelCase")]
 pub struct ChainRefreshPlanRequest {
     pub chain_ids: Vec<String>,
@@ -39,12 +39,12 @@ pub struct ChainRefreshPlanRequest {
     pub history_refresh_interval: f64,
     pub pending_transaction_maintenance_chain_ids: Vec<String>,
     pub degraded_chain_ids: Vec<String>,
-    pub last_good_chain_sync_by_id: BTreeMap<String, f64>,
-    pub last_history_refresh_at_by_chain_id: BTreeMap<String, f64>,
+    pub last_good_chain_sync_by_id: HashMap<String, f64>,
+    pub last_history_refresh_at_by_chain_id: HashMap<String, f64>,
     pub automatic_chain_refresh_staleness_interval: f64,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, uniffi::Record)]
 #[serde(rename_all = "camelCase")]
 pub struct ChainRefreshPlan {
     pub chain_id: String,
@@ -52,13 +52,13 @@ pub struct ChainRefreshPlan {
     pub refresh_history: bool,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, uniffi::Record)]
 #[serde(rename_all = "camelCase")]
 pub struct HistoryRefreshPlanRequest {
     pub chain_ids: Vec<String>,
     pub now_unix: f64,
     pub interval: f64,
-    pub last_history_refresh_at_by_chain_id: BTreeMap<String, f64>,
+    pub last_history_refresh_at_by_chain_id: HashMap<String, f64>,
 }
 
 pub fn active_maintenance_plan(request: ActiveMaintenancePlanRequest) -> ActiveMaintenancePlan {
@@ -163,7 +163,7 @@ fn should_refresh_history(
     chain_id: &str,
     now_unix: f64,
     interval: f64,
-    last_history_refresh_at_by_chain_id: &BTreeMap<String, f64>,
+    last_history_refresh_at_by_chain_id: &HashMap<String, f64>,
 ) -> bool {
     match last_history_refresh_at_by_chain_id.get(chain_id) {
         Some(last_refresh_at) => now_unix - last_refresh_at >= interval,
@@ -205,6 +205,7 @@ fn display_name_for_chain_id(chain_id: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::collections::HashMap;
 
     #[test]
     fn computes_chain_plans() {
@@ -220,12 +221,12 @@ mod tests {
             history_refresh_interval: 300.0,
             pending_transaction_maintenance_chain_ids: vec!["ethereum".to_string()],
             degraded_chain_ids: vec!["solana".to_string()],
-            last_good_chain_sync_by_id: BTreeMap::from([
+            last_good_chain_sync_by_id: HashMap::from([
                 ("ethereum".to_string(), 1_000.0),
                 ("solana".to_string(), 1_000.0),
                 ("bitcoin".to_string(), 1_000.0),
             ]),
-            last_history_refresh_at_by_chain_id: BTreeMap::from([
+            last_history_refresh_at_by_chain_id: HashMap::from([
                 ("ethereum".to_string(), 200.0),
                 ("solana".to_string(), 900.0),
             ]),

@@ -5,14 +5,14 @@ const ERROR_FEE_BELOW_RELAY: &str = "utxo.feeBelowRelayPolicy";
 const ERROR_TRANSACTION_TOO_LARGE: &str = "utxo.transactionTooLarge";
 const ERROR_INSUFFICIENT_FUNDS: &str = "utxo.insufficientFunds";
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, uniffi::Record)]
 #[serde(rename_all = "camelCase")]
 pub struct UtxoEntry {
-    pub index: usize,
+    pub index: u64,
     pub value: u64,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, uniffi::Record)]
 #[serde(rename_all = "camelCase")]
 pub struct UtxoFeePolicy {
     pub chain_name: String,
@@ -23,12 +23,12 @@ pub struct UtxoFeePolicy {
     pub minimum_relay_fee_per_kb: Option<f64>,
     pub base_units_per_coin: Option<f64>,
     pub max_standard_transaction_bytes: u64,
-    pub input_bytes: Option<usize>,
-    pub output_bytes: Option<usize>,
-    pub overhead_bytes: Option<usize>,
+    pub input_bytes: Option<u64>,
+    pub output_bytes: Option<u64>,
+    pub overhead_bytes: Option<u64>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, uniffi::Record)]
 #[serde(rename_all = "camelCase")]
 pub struct UtxoPreviewRequest {
     pub inputs: Vec<UtxoEntry>,
@@ -36,34 +36,34 @@ pub struct UtxoPreviewRequest {
     pub fee_policy: UtxoFeePolicy,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, uniffi::Record)]
 #[serde(rename_all = "camelCase")]
 pub struct UtxoPreviewPlan {
-    pub estimated_transaction_bytes: usize,
+    pub estimated_transaction_bytes: u64,
     pub estimated_fee: u64,
     pub spendable_value: u64,
-    pub input_count: usize,
+    pub input_count: u64,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, uniffi::Record)]
 #[serde(rename_all = "camelCase")]
 pub struct UtxoSpendPlanRequest {
     pub inputs: Vec<UtxoEntry>,
     pub target_value: u64,
     pub fee_rate: f64,
     pub fee_policy: UtxoFeePolicy,
-    pub max_input_count: Option<usize>,
+    pub max_input_count: Option<u64>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, uniffi::Record)]
 #[serde(rename_all = "camelCase")]
 pub struct UtxoSpendPlan {
-    pub selected_indices: Vec<usize>,
+    pub selected_indices: Vec<u64>,
     pub total_input_value: u64,
     pub fee: u64,
     pub change: u64,
     pub uses_change_output: bool,
-    pub estimated_transaction_bytes: usize,
+    pub estimated_transaction_bytes: u64,
 }
 
 pub fn plan_utxo_preview(request: UtxoPreviewRequest) -> Result<UtxoPreviewPlan, String> {
@@ -82,10 +82,10 @@ pub fn plan_utxo_preview(request: UtxoPreviewRequest) -> Result<UtxoPreviewPlan,
     let spendable_value = total_input_value.saturating_sub(estimated_fee);
 
     Ok(UtxoPreviewPlan {
-        estimated_transaction_bytes,
+        estimated_transaction_bytes: estimated_transaction_bytes as u64,
         estimated_fee,
         spendable_value,
-        input_count: request.inputs.len(),
+        input_count: request.inputs.len() as u64,
     })
 }
 
@@ -95,7 +95,9 @@ pub fn plan_utxo_spend(request: UtxoSpendPlanRequest) -> Result<UtxoSpendPlan, S
         return Err(ERROR_INSUFFICIENT_FUNDS.to_string());
     }
 
-    let effective_max_input_count = request.max_input_count.map(|count| count.max(1));
+    let effective_max_input_count = request
+        .max_input_count
+        .map(|count| (count.max(1)) as usize);
     let mut candidates: Vec<Vec<&UtxoEntry>> = Vec::with_capacity(inputs.len() * 2);
 
     let mut prefix: Vec<&UtxoEntry> = Vec::with_capacity(inputs.len());
@@ -176,7 +178,7 @@ fn evaluate_candidate(
                 fee: fee_with_change,
                 change,
                 uses_change_output: true,
-                estimated_transaction_bytes,
+                estimated_transaction_bytes: estimated_transaction_bytes as u64,
             }));
         }
     }
@@ -198,7 +200,7 @@ fn evaluate_candidate(
         fee: fee_without_change + remainder,
         change: 0,
         uses_change_output: false,
-        estimated_transaction_bytes,
+        estimated_transaction_bytes: estimated_transaction_bytes as u64,
     }))
 }
 
@@ -217,9 +219,9 @@ fn is_better_plan(lhs: &UtxoSpendPlan, rhs: &UtxoSpendPlan) -> bool {
 
 impl UtxoFeePolicy {
     fn estimate_transaction_bytes(&self, input_count: usize, output_count: usize) -> usize {
-        let input_bytes = self.input_bytes.unwrap_or(148);
-        let output_bytes = self.output_bytes.unwrap_or(34);
-        let overhead_bytes = self.overhead_bytes.unwrap_or(10);
+        let input_bytes = self.input_bytes.unwrap_or(148) as usize;
+        let output_bytes = self.output_bytes.unwrap_or(34) as usize;
+        let overhead_bytes = self.overhead_bytes.unwrap_or(10) as usize;
         overhead_bytes + (input_bytes * input_count) + (output_bytes * output_count)
     }
 
@@ -359,7 +361,7 @@ mod tests {
         })
         .expect("spend plan should be selected");
 
-        assert_eq!(plan.selected_indices, vec![0]);
+        assert_eq!(plan.selected_indices, vec![0u64]);
         assert!(plan.uses_change_output);
     }
 

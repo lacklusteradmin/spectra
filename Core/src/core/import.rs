@@ -1,6 +1,6 @@
 use serde::{Deserialize, Serialize};
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, uniffi::Record)]
 #[serde(rename_all = "camelCase")]
 pub struct WalletImportAddresses {
     pub bitcoin_address: Option<String>,
@@ -52,7 +52,7 @@ impl WalletImportAddresses {
     }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, uniffi::Record)]
 #[serde(rename_all = "camelCase")]
 pub struct WalletImportWatchOnlyEntries {
     pub bitcoin_addresses: Vec<String>,
@@ -75,11 +75,11 @@ pub struct WalletImportWatchOnlyEntries {
     pub polkadot_addresses: Vec<String>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, uniffi::Record)]
 #[serde(rename_all = "camelCase")]
 pub struct WalletImportRequest {
     pub wallet_name: String,
-    pub default_wallet_name_start_index: usize,
+    pub default_wallet_name_start_index: u64,
     pub primary_selected_chain_name: String,
     pub selected_chain_names: Vec<String>,
     pub planned_wallet_ids: Vec<String>,
@@ -90,7 +90,7 @@ pub struct WalletImportRequest {
     pub watch_only_entries: WalletImportWatchOnlyEntries,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, uniffi::Record)]
 #[serde(rename_all = "camelCase")]
 pub struct WalletSecretInstruction {
     pub wallet_id: String,
@@ -100,7 +100,7 @@ pub struct WalletSecretInstruction {
     pub should_store_password_verifier: bool,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, uniffi::Record)]
 #[serde(rename_all = "camelCase")]
 pub struct PlannedWallet {
     pub wallet_id: String,
@@ -109,7 +109,7 @@ pub struct PlannedWallet {
     pub addresses: WalletImportAddresses,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, uniffi::Record)]
 #[serde(rename_all = "camelCase")]
 pub struct WalletImportPlan {
     pub secret_kind: String,
@@ -153,7 +153,7 @@ fn plan_signing_import(request: WalletImportRequest) -> Result<WalletImportPlan,
             name: wallet_display_name(
                 &request.wallet_name,
                 index + 1,
-                request.default_wallet_name_start_index + index,
+                request.default_wallet_name_start_index as usize + index,
                 selected_chain_count,
             ),
             chain_name: chain_name.clone(),
@@ -199,7 +199,7 @@ fn plan_watch_only_import(request: WalletImportRequest) -> Result<WalletImportPl
                 name: wallet_display_name(
                     &request.wallet_name,
                     index + 1,
-                    request.default_wallet_name_start_index + index,
+                    (request.default_wallet_name_start_index as usize) + index,
                     selected_chain_count,
                 ),
                 chain_name,

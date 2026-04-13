@@ -4,9 +4,9 @@ use serde::Deserialize;
 use std::collections::{BTreeMap, BTreeSet};
 use std::sync::OnceLock;
 
-const CHAIN_PRESETS_JSON: &str = include_str!("../../../Derivation/Catalog/DerivationPresets.json");
+const CHAIN_PRESETS_JSON: &str = include_str!("../../../Swift/Derivation/Catalog/DerivationPresets.json");
 const APP_ENDPOINT_DIRECTORY_JSON: &str =
-    include_str!("../../../ProviderCatalog/Registry/AppEndpointDirectory.json");
+    include_str!("../../../Swift/ProviderCatalog/Registry/AppEndpointDirectory.json");
 
 const EXPLORER_ROLE: &str = "explorer";
 
@@ -135,9 +135,9 @@ fn load_core_catalog() -> Result<CoreCatalog, String> {
             curve: preset.curve,
             default_network,
             default_derivation_path,
-            endpoint_count: counts.0,
-            settings_visible_endpoint_count: counts.1,
-            explorer_endpoint_count: counts.2,
+            endpoint_count: counts.0 as u64,
+            settings_visible_endpoint_count: counts.1 as u64,
+            explorer_endpoint_count: counts.2 as u64,
         });
     }
 

@@ -1,7 +1,7 @@
 use serde::{Deserialize, Serialize};
 use std::cmp::Ordering;
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, uniffi::Record)]
 #[serde(rename_all = "camelCase")]
 pub struct TransactionRecord {
     pub id: String,
@@ -41,7 +41,7 @@ pub struct TransactionRecord {
     pub created_at_unix: f64,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, uniffi::Enum)]
 #[serde(rename_all = "camelCase")]
 pub enum TransactionMergeStrategy {
     StandardUtxo,
@@ -50,7 +50,7 @@ pub enum TransactionMergeStrategy {
     Evm,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, uniffi::Record)]
 #[serde(rename_all = "camelCase")]
 pub struct TransactionMergeRequest {
     pub existing_transactions: Vec<TransactionRecord>,

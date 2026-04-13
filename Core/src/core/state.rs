@@ -1,8 +1,8 @@
-use std::collections::BTreeMap;
+use std::collections::HashMap;
 
 use serde::{Deserialize, Serialize};
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, uniffi::Record)]
 #[serde(rename_all = "camelCase")]
 pub struct WalletAddress {
     pub chain_name: String,
@@ -11,7 +11,7 @@ pub struct WalletAddress {
     pub derivation_path: Option<String>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, uniffi::Record)]
 #[serde(rename_all = "camelCase")]
 pub struct AssetHolding {
     pub name: String,
@@ -25,7 +25,7 @@ pub struct AssetHolding {
     pub price_usd: f64,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, uniffi::Record)]
 #[serde(rename_all = "camelCase")]
 pub struct WalletSummary {
     pub id: String,
@@ -37,12 +37,12 @@ pub struct WalletSummary {
     pub dogecoin_network_mode: String,
     pub bitcoin_xpub: Option<String>,
     pub derivation_preset: String,
-    pub derivation_paths: BTreeMap<String, String>,
+    pub derivation_paths: HashMap<String, String>,
     pub holdings: Vec<AssetHolding>,
     pub addresses: Vec<WalletAddress>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, uniffi::Record)]
 #[serde(rename_all = "camelCase")]
 pub struct AppSettings {
     pub preferred_locale: String,
@@ -60,7 +60,7 @@ impl Default for AppSettings {
     }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, uniffi::Record)]
 #[serde(rename_all = "camelCase")]
 pub struct CoreAppState {
     pub schema_version: u32,
@@ -80,7 +80,7 @@ impl Default for CoreAppState {
     }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, uniffi::Enum)]
 #[serde(tag = "type", rename_all = "camelCase")]
 pub enum StateCommand {
     ReplaceState { state: CoreAppState },
@@ -92,14 +92,14 @@ pub enum StateCommand {
     SetDiagnosticsEnabled { is_enabled: bool },
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, uniffi::Record)]
 #[serde(rename_all = "camelCase")]
 pub struct StateEvent {
     pub kind: String,
     pub subject_id: Option<String>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, uniffi::Record)]
 #[serde(rename_all = "camelCase")]
 pub struct StateTransition {
     pub state: CoreAppState,
@@ -192,6 +192,7 @@ pub fn reduce_state(mut state: CoreAppState, command: StateCommand) -> StateTran
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::collections::HashMap;
 
     #[test]
     fn upsert_wallet_selects_first_wallet() {
@@ -209,7 +210,7 @@ mod tests {
                     dogecoin_network_mode: "mainnet".to_string(),
                     bitcoin_xpub: None,
                     derivation_preset: "standard".to_string(),
-                    derivation_paths: BTreeMap::from([(
+                    derivation_paths: HashMap::from([(
                         "Bitcoin".to_string(),
                         "m/84'/0'/0'/0/0".to_string(),
                     )]),

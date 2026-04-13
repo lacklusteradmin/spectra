@@ -49,7 +49,7 @@ pub trait HistoryProvider: Send + Sync {
         -> Result<Vec<NormalizedTransaction>, String>;
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, uniffi::Record)]
 #[serde(rename_all = "camelCase")]
 pub struct WalletBalanceRefreshRequest {
     pub selected_chain: String,
@@ -58,7 +58,7 @@ pub struct WalletBalanceRefreshRequest {
     pub available_address_kinds: Vec<String>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, uniffi::Record)]
 #[serde(rename_all = "camelCase")]
 pub struct WalletBalanceRefreshPlan {
     pub service_kind: Option<String>,
@@ -66,16 +66,16 @@ pub struct WalletBalanceRefreshPlan {
     pub needs_tracked_tokens: bool,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, uniffi::Record)]
 #[serde(rename_all = "camelCase")]
 pub struct EvmRefreshWalletInput {
-    pub index: usize,
+    pub index: u64,
     pub wallet_id: String,
     pub selected_chain: String,
     pub address: Option<String>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, uniffi::Record)]
 #[serde(rename_all = "camelCase")]
 pub struct EvmRefreshTargetsRequest {
     pub chain_name: String,
@@ -84,16 +84,16 @@ pub struct EvmRefreshTargetsRequest {
     pub group_by_normalized_address: bool,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, uniffi::Record)]
 #[serde(rename_all = "camelCase")]
 pub struct EvmRefreshWalletTarget {
-    pub index: usize,
+    pub index: u64,
     pub wallet_id: String,
     pub address: String,
     pub normalized_address: String,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, uniffi::Record)]
 #[serde(rename_all = "camelCase")]
 pub struct EvmGroupedTarget {
     pub wallet_ids: Vec<String>,
@@ -101,46 +101,46 @@ pub struct EvmGroupedTarget {
     pub normalized_address: String,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, uniffi::Record)]
 #[serde(rename_all = "camelCase")]
 pub struct EvmRefreshPlan {
     pub wallet_targets: Vec<EvmRefreshWalletTarget>,
     pub grouped_targets: Vec<EvmGroupedTarget>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, uniffi::Record)]
 #[serde(rename_all = "camelCase")]
 pub struct DogecoinRefreshWalletInput {
-    pub index: usize,
+    pub index: u64,
     pub wallet_id: String,
     pub selected_chain: String,
     pub addresses: Vec<String>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, uniffi::Record)]
 #[serde(rename_all = "camelCase")]
 pub struct DogecoinRefreshTargetsRequest {
     pub wallets: Vec<DogecoinRefreshWalletInput>,
     pub allowed_wallet_ids: Option<Vec<String>>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, uniffi::Record)]
 #[serde(rename_all = "camelCase")]
 pub struct DogecoinRefreshWalletTarget {
-    pub index: usize,
+    pub index: u64,
     pub wallet_id: String,
     pub addresses: Vec<String>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, uniffi::Record)]
 #[serde(rename_all = "camelCase")]
 pub struct BalanceRefreshHealthRequest {
     pub chain_name: String,
-    pub attempted_wallet_count: usize,
-    pub resolved_wallet_count: usize,
+    pub attempted_wallet_count: u64,
+    pub resolved_wallet_count: u64,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, uniffi::Record)]
 #[serde(rename_all = "camelCase")]
 pub struct BalanceRefreshHealthPlan {
     pub should_mark_healthy: bool,

@@ -1,9 +1,9 @@
 use serde::{Deserialize, Serialize};
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, uniffi::Record)]
 #[serde(rename_all = "camelCase")]
 pub struct TransferHoldingInput {
-    pub index: usize,
+    pub index: u64,
     pub chain_name: String,
     pub symbol: String,
     pub supports_send: bool,
@@ -13,7 +13,7 @@ pub struct TransferHoldingInput {
     pub supports_solana_send_coin: bool,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, uniffi::Record)]
 #[serde(rename_all = "camelCase")]
 pub struct TransferWalletInput {
     pub wallet_id: String,
@@ -21,22 +21,22 @@ pub struct TransferWalletInput {
     pub holdings: Vec<TransferHoldingInput>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, uniffi::Record)]
 #[serde(rename_all = "camelCase")]
 pub struct TransferAvailabilityRequest {
     pub wallets: Vec<TransferWalletInput>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, uniffi::Record)]
 #[serde(rename_all = "camelCase")]
 pub struct WalletTransferAvailability {
     pub wallet_id: String,
-    pub send_holding_indices: Vec<usize>,
-    pub receive_holding_indices: Vec<usize>,
+    pub send_holding_indices: Vec<u64>,
+    pub receive_holding_indices: Vec<u64>,
     pub receive_chains: Vec<String>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, uniffi::Record)]
 #[serde(rename_all = "camelCase")]
 pub struct TransferAvailabilityPlan {
     pub wallets: Vec<WalletTransferAvailability>,
@@ -173,8 +173,8 @@ mod tests {
             plan.receive_enabled_wallet_ids,
             vec!["wallet-1".to_string()]
         );
-        assert_eq!(plan.wallets[0].send_holding_indices, vec![0, 1]);
-        assert_eq!(plan.wallets[0].receive_holding_indices, vec![0, 1, 2]);
+        assert_eq!(plan.wallets[0].send_holding_indices, vec![0u64, 1u64]);
+        assert_eq!(plan.wallets[0].receive_holding_indices, vec![0u64, 1u64, 2u64]);
         assert_eq!(
             plan.wallets[0].receive_chains,
             vec!["Ethereum".to_string(), "Solana".to_string()]
@@ -201,7 +201,7 @@ mod tests {
         });
 
         assert!(plan.send_enabled_wallet_ids.is_empty());
-        assert_eq!(plan.wallets[0].send_holding_indices, Vec::<usize>::new());
-        assert_eq!(plan.wallets[0].receive_holding_indices, vec![0]);
+        assert_eq!(plan.wallets[0].send_holding_indices, Vec::<u64>::new());
+        assert_eq!(plan.wallets[0].receive_holding_indices, vec![0u64]);
     }
 }

@@ -1,9 +1,10 @@
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
+use std::collections::HashMap;
 
 use super::state::CoreAppState;
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, uniffi::Record)]
 #[serde(rename_all = "camelCase")]
 pub struct SecretMaterialDescriptor {
     pub wallet_id: String,
@@ -17,7 +18,7 @@ pub struct SecretMaterialDescriptor {
     pub private_key_store_key: String,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, uniffi::Record)]
 #[serde(rename_all = "camelCase")]
 pub struct PersistedAppSnapshot {
     pub schema_version: u32,
@@ -25,7 +26,7 @@ pub struct PersistedAppSnapshot {
     pub secrets: Vec<SecretMaterialDescriptor>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, uniffi::Record)]
 #[serde(rename_all = "camelCase")]
 pub struct WalletSecretObservation {
     pub wallet_id: String,
@@ -42,7 +43,7 @@ pub struct PersistedAppSnapshotRequest {
     pub secret_observations: Vec<WalletSecretObservation>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, uniffi::Record)]
 #[serde(rename_all = "camelCase")]
 pub struct WalletSecretIndex {
     pub descriptors: Vec<SecretMaterialDescriptor>,
@@ -51,17 +52,17 @@ pub struct WalletSecretIndex {
     pub password_protected_wallet_ids: Vec<String>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, uniffi::Record)]
 #[serde(rename_all = "camelCase")]
 pub struct StoreDerivedHoldingInput {
-    pub holding_index: usize,
+    pub holding_index: u64,
     pub asset_identity_key: String,
     pub symbol_upper: String,
     pub amount: String,
     pub is_priced_asset: bool,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, uniffi::Record)]
 #[serde(rename_all = "camelCase")]
 pub struct StoreDerivedWalletInput {
     pub wallet_id: String,
@@ -71,29 +72,29 @@ pub struct StoreDerivedWalletInput {
     pub holdings: Vec<StoreDerivedHoldingInput>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, uniffi::Record)]
 #[serde(rename_all = "camelCase")]
 pub struct StoreDerivedStateRequest {
     pub wallets: Vec<StoreDerivedWalletInput>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, uniffi::Record)]
 #[serde(rename_all = "camelCase")]
 pub struct WalletHoldingRef {
     pub wallet_id: String,
-    pub holding_index: usize,
+    pub holding_index: u64,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, uniffi::Record)]
 #[serde(rename_all = "camelCase")]
 pub struct GroupedPortfolioHolding {
     pub asset_identity_key: String,
     pub wallet_id: String,
-    pub holding_index: usize,
+    pub holding_index: u64,
     pub total_amount: String,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, uniffi::Record)]
 #[serde(rename_all = "camelCase")]
 pub struct StoreDerivedStatePlan {
     pub included_portfolio_holding_refs: Vec<WalletHoldingRef>,
@@ -103,21 +104,21 @@ pub struct StoreDerivedStatePlan {
     pub private_key_backed_wallet_ids: Vec<String>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, uniffi::Record)]
 #[serde(rename_all = "camelCase")]
 pub struct OwnedAddressAggregationRequest {
     pub candidate_addresses: Vec<String>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, uniffi::Record)]
 #[serde(rename_all = "camelCase")]
 pub struct ReceiveSelectionHoldingInput {
-    pub holding_index: usize,
+    pub holding_index: u64,
     pub chain_name: String,
     pub has_contract_address: bool,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, uniffi::Record)]
 #[serde(rename_all = "camelCase")]
 pub struct ReceiveSelectionRequest {
     pub receive_chain_name: String,
@@ -125,14 +126,14 @@ pub struct ReceiveSelectionRequest {
     pub available_receive_holdings: Vec<ReceiveSelectionHoldingInput>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, uniffi::Record)]
 #[serde(rename_all = "camelCase")]
 pub struct ReceiveSelectionPlan {
     pub resolved_chain_name: String,
-    pub selected_receive_holding_index: Option<usize>,
+    pub selected_receive_holding_index: Option<u64>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, uniffi::Record)]
 #[serde(rename_all = "camelCase")]
 pub struct PendingSelfSendConfirmationInput {
     pub wallet_id: String,
@@ -143,7 +144,7 @@ pub struct PendingSelfSendConfirmationInput {
     pub created_at_unix: f64,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, uniffi::Record)]
 #[serde(rename_all = "camelCase")]
 pub struct SelfSendConfirmationRequest {
     pub pending_confirmation: Option<PendingSelfSendConfirmationInput>,
@@ -157,7 +158,7 @@ pub struct SelfSendConfirmationRequest {
     pub owned_addresses: Vec<String>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, uniffi::Record)]
 #[serde(rename_all = "camelCase")]
 pub struct SelfSendConfirmationPlan {
     pub requires_confirmation: bool,
@@ -198,6 +199,40 @@ pub fn build_persisted_snapshot(
         app_state,
         secrets,
     })
+}
+
+pub fn build_persisted_snapshot_typed(
+    app_state: CoreAppState,
+    secret_observations: Vec<WalletSecretObservation>,
+) -> PersistedAppSnapshot {
+    let observations_by_wallet_id = secret_observations
+        .into_iter()
+        .map(|observation| (observation.wallet_id.clone(), observation))
+        .collect::<HashMap<_, _>>();
+
+    let secrets = app_state
+        .wallets
+        .iter()
+        .map(|wallet| {
+            secret_descriptor_for_wallet(
+                wallet.id.as_str(),
+                observations_by_wallet_id.get(&wallet.id),
+            )
+        })
+        .collect::<Vec<_>>();
+
+    PersistedAppSnapshot {
+        schema_version: 1,
+        app_state,
+        secrets,
+    }
+}
+
+pub fn wallet_secret_index_from_observations(
+    app_state: CoreAppState,
+    secret_observations: Vec<WalletSecretObservation>,
+) -> WalletSecretIndex {
+    wallet_secret_index(&build_persisted_snapshot_typed(app_state, secret_observations))
 }
 
 pub fn persisted_snapshot_from_json(json: &str) -> Result<PersistedAppSnapshot, String> {
@@ -473,7 +508,7 @@ mod tests {
         StoreDerivedStateRequest, StoreDerivedWalletInput, WalletSecretObservation,
     };
     use crate::core::state::CoreAppState;
-    use std::collections::BTreeMap;
+    use std::collections::HashMap;
 
     #[test]
     fn builds_secret_catalog_for_persisted_snapshot() {
@@ -499,7 +534,7 @@ mod tests {
             dogecoin_network_mode: "mainnet".to_string(),
             bitcoin_xpub: None,
             derivation_preset: "standard".to_string(),
-            derivation_paths: BTreeMap::new(),
+            derivation_paths: HashMap::new(),
             holdings: Vec::new(),
             addresses: Vec::new(),
         });

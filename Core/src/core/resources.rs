@@ -23,21 +23,21 @@ struct EmbeddedTextResource {
 static STATIC_JSON_RESOURCES: &[EmbeddedJsonResource] = &[
     EmbeddedJsonResource {
         name: "TokenVisualRegistry",
-        json: include_str!("../../../Resources/TokenVisualRegistry.json"),
+        json: include_str!("../../../Swift/Resources/TokenVisualRegistry.json"),
     },
     EmbeddedJsonResource {
         name: "ChainVisualRegistry",
-        json: include_str!("../../../Resources/ChainVisualRegistry.json"),
+        json: include_str!("../../../Swift/Resources/ChainVisualRegistry.json"),
     },
     EmbeddedJsonResource {
         name: "BuyCryptoProviders",
-        json: include_str!("../../../Resources/BuyCryptoProviders.json"),
+        json: include_str!("../../../Swift/Resources/BuyCryptoProviders.json"),
     },
 ];
 
 static STATIC_TEXT_RESOURCES: &[EmbeddedTextResource] = &[EmbeddedTextResource {
     name: "BIP39EnglishWordList",
-    text: include_str!("../../../Resources/BIP39EnglishWordList.txt"),
+    text: include_str!("../../../Swift/Resources/BIP39EnglishWordList.txt"),
 }];
 
 static JSON_RESOURCE_MAP: OnceLock<BTreeMap<String, &'static str>> = OnceLock::new();

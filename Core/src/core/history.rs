@@ -373,14 +373,14 @@ fn days_from_civil(y: i64, m: i64, d: i64) -> i64 {
     era * 146097 + doe - 719468
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, uniffi::Record)]
 #[serde(rename_all = "camelCase")]
 pub struct HistoryWallet {
     pub wallet_id: String,
     pub selected_chain: String,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, uniffi::Record)]
 #[serde(rename_all = "camelCase")]
 pub struct HistoryTransaction {
     pub id: String,
@@ -397,7 +397,7 @@ pub struct HistoryTransaction {
     pub created_at_unix: f64,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, uniffi::Record)]
 #[serde(rename_all = "camelCase")]
 pub struct NormalizeHistoryRequest {
     pub wallets: Vec<HistoryWallet>,
@@ -405,7 +405,7 @@ pub struct NormalizeHistoryRequest {
     pub unknown_label: String,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, uniffi::Record)]
 #[serde(rename_all = "camelCase")]
 pub struct NormalizedHistoryEntry {
     pub id: String,
@@ -421,11 +421,11 @@ pub struct NormalizedHistoryEntry {
     pub address: String,
     pub transaction_hash: Option<String>,
     pub source_tag: String,
-    pub provider_count: usize,
+    pub provider_count: u64,
     pub search_index: String,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, uniffi::Record)]
 #[serde(rename_all = "camelCase")]
 pub struct BitcoinHistorySnapshot {
     pub txid: String,
@@ -437,12 +437,12 @@ pub struct BitcoinHistorySnapshot {
     pub created_at_unix: f64,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, uniffi::Record)]
 #[serde(rename_all = "camelCase")]
 pub struct MergeBitcoinHistorySnapshotsRequest {
     pub snapshots: Vec<BitcoinHistorySnapshot>,
     pub owned_addresses: Vec<String>,
-    pub limit: usize,
+    pub limit: u64,
 }
 
 pub fn normalize_history(request: NormalizeHistoryRequest) -> Vec<NormalizedHistoryEntry> {
@@ -481,7 +481,7 @@ pub fn normalize_history(request: NormalizeHistoryRequest) -> Vec<NormalizedHist
                 .map(|entry| entry.source_tag.clone())
                 .collect::<std::collections::BTreeSet<_>>()
                 .len()
-                .max(1);
+                .max(1) as u64;
             let best = entries
                 .into_iter()
                 .max_by(|lhs, rhs| compare_entries(lhs, rhs))?;
@@ -533,7 +533,7 @@ pub fn merge_bitcoin_history_snapshots(
             .unwrap_or(std::cmp::Ordering::Equal)
             .then_with(|| lhs.txid.cmp(&rhs.txid))
     });
-    merged.truncate(request.limit.max(1));
+    merged.truncate(request.limit.max(1) as usize);
     merged
 }
 

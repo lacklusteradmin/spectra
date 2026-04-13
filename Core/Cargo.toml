@@ -7,10 +7,8 @@ autobins = false
 
 [lib]
 name = "spectra_core"
-crate-type = ["staticlib", "cdylib"]
 
 [dependencies]
-# --- existing crypto deps (do not change versions — derivation runtime depends on them) ---
 bip39 = "2"
 bitcoin = { version = "0.32", features = ["rand-std"] }
 bs58 = { version = "0.5", features = ["check"] }
@@ -32,40 +30,19 @@ thiserror = "2"
 uniffi = { version = "0.29", features = ["tokio"] }
 unicode-normalization = "0.1"
 zeroize = { version = "1", features = ["alloc", "derive"] }
-
-# --- new: async networking ---
 reqwest = { version = "0.12", default-features = false, features = ["rustls-tls-native-roots", "json", "gzip"] }
 tokio = { version = "1", features = ["rt-multi-thread", "macros", "sync", "time"] }
 once_cell = "1"
 toml = { version = "0.8", default-features = false, features = ["parse"] }
-
-# --- new: additional hash primitives ---
-sha3 = "0.10"         # Keccak-256 via sha3 crate (backup, tiny-keccak already present)
-ripemd = "0.1"        # RIPEMD-160 for Bitcoin HASH160
-blake2 = "0.10"       # Blake2b for Polkadot SS58 + Cardano
-
-# --- new: encoding ---
-base64 = "0.22"       # Solana tx, Stellar XDR, ICP CBOR encoding
-borsh = "1"           # NEAR serialization
-
-# --- new: time + identity ---
+sha3 = "0.10"
+ripemd = "0.1"
+blake2 = "0.10"
+base64 = "0.22"
+borsh = "1"
 chrono = { version = "0.4", features = ["serde"] }
 uuid = { version = "1", features = ["v4", "serde"] }
-
-# --- new: random (signing nonces, key generation) ---
 rand = "0.8"
 getrandom = { version = "0.2", features = ["js"] }
-
-# --- new: async trait support ---
 async-trait = "0.1"
-
-# --- new: parallel futures ---
 futures = "0.3"
-
-# --- Phase 2: SQLite state persistence ---
 rusqlite = { version = "0.31", features = ["bundled"] }
-
-[profile.release]
-lto = true
-codegen-units = 1
-strip = "symbols"

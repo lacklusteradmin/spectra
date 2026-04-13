@@ -1,0 +1,14 @@
+[package]
+name = "spectra_core_ffi"
+version = "0.1.0"
+edition = "2021"
+publish = false
+autobins = false
+
+[lib]
+name = "spectra_core"
+crate-type = ["staticlib", "cdylib"]
+
+[dependencies]
+spectra_core = { path = "../core" }
+uniffi = { version = "0.29", features = ["tokio"] }

@@ -1,4 +1,4 @@
-use std::collections::BTreeMap;
+use std::collections::HashMap;
 
 use serde::{Deserialize, Serialize};
 
@@ -113,7 +113,7 @@ pub fn core_state_to_legacy_wallet_store_json(state: &CoreAppState) -> Result<St
 
 fn core_wallet_from_legacy(wallet: LegacyPersistedWallet) -> WalletSummary {
     let addresses = addresses_from_legacy_wallet(&wallet);
-    let derivation_paths = BTreeMap::from([
+    let derivation_paths = HashMap::from([
         ("Bitcoin".to_string(), wallet.seed_derivation_paths.bitcoin),
         (
             "Bitcoin Cash".to_string(),

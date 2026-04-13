@@ -31,150 +31,142 @@ const EMBEDDED_DOCUMENTS: &[EmbeddedDocument] = &[
     EmbeddedDocument {
         locale: "Base",
         table: "ChainWikiEntries",
-        json: include_str!("../../../Resources/Localization/Base/ChainWikiEntries.json"),
+        json: include_str!("../../../Swift/Resources/Localization/Base/ChainWikiEntries.json"),
     },
     EmbeddedDocument {
         locale: "Base",
         table: "CommonContent",
-        json: include_str!("../../../Resources/Localization/Base/CommonContent.json"),
+        json: include_str!("../../../Swift/Resources/Localization/Base/CommonContent.json"),
     },
     EmbeddedDocument {
         locale: "Base",
         table: "DiagnosticsContent",
-        json: include_str!("../../../Resources/Localization/Base/DiagnosticsContent.json"),
+        json: include_str!("../../../Swift/Resources/Localization/Base/DiagnosticsContent.json"),
     },
     EmbeddedDocument {
         locale: "Base",
         table: "DonationsContent",
-        json: include_str!("../../../Resources/Localization/Base/DonationsContent.json"),
+        json: include_str!("../../../Swift/Resources/Localization/Base/DonationsContent.json"),
     },
     EmbeddedDocument {
         locale: "Base",
         table: "EndpointsContent",
-        json: include_str!("../../../Resources/Localization/Base/EndpointsContent.json"),
+        json: include_str!("../../../Swift/Resources/Localization/Base/EndpointsContent.json"),
     },
     EmbeddedDocument {
         locale: "Base",
         table: "ImportFlowContent",
-        json: include_str!("../../../Resources/Localization/Base/ImportFlowContent.json"),
+        json: include_str!("../../../Swift/Resources/Localization/Base/ImportFlowContent.json"),
     },
     EmbeddedDocument {
         locale: "Base",
         table: "SettingsContent",
-        json: include_str!("../../../Resources/Localization/Base/SettingsContent.json"),
+        json: include_str!("../../../Swift/Resources/Localization/Base/SettingsContent.json"),
     },
     EmbeddedDocument {
         locale: "en",
         table: "ChainWikiEntries",
-        json: include_str!("../../../Resources/Localization/en/ChainWikiEntries.en.json"),
+        json: include_str!("../../../Swift/Resources/Localization/en/ChainWikiEntries.en.json"),
     },
     EmbeddedDocument {
         locale: "en",
         table: "CommonContent",
-        json: include_str!("../../../Resources/Localization/en/CommonContent.en.json"),
+        json: include_str!("../../../Swift/Resources/Localization/en/CommonContent.en.json"),
     },
     EmbeddedDocument {
         locale: "en",
         table: "DiagnosticsContent",
-        json: include_str!("../../../Resources/Localization/en/DiagnosticsContent.en.json"),
+        json: include_str!("../../../Swift/Resources/Localization/en/DiagnosticsContent.en.json"),
     },
     EmbeddedDocument {
         locale: "en",
         table: "DonationsContent",
-        json: include_str!("../../../Resources/Localization/en/DonationsContent.en.json"),
+        json: include_str!("../../../Swift/Resources/Localization/en/DonationsContent.en.json"),
     },
     EmbeddedDocument {
         locale: "en",
         table: "EndpointsContent",
-        json: include_str!("../../../Resources/Localization/en/EndpointsContent.en.json"),
+        json: include_str!("../../../Swift/Resources/Localization/en/EndpointsContent.en.json"),
     },
     EmbeddedDocument {
         locale: "en",
         table: "ImportFlowContent",
-        json: include_str!("../../../Resources/Localization/en/ImportFlowContent.en.json"),
+        json: include_str!("../../../Swift/Resources/Localization/en/ImportFlowContent.en.json"),
     },
     EmbeddedDocument {
         locale: "en",
         table: "SettingsContent",
-        json: include_str!("../../../Resources/Localization/en/SettingsContent.en.json"),
+        json: include_str!("../../../Swift/Resources/Localization/en/SettingsContent.en.json"),
     },
     EmbeddedDocument {
         locale: "zh-Hans",
         table: "ChainWikiEntries",
-        json: include_str!("../../../Resources/Localization/zh-Hans/ChainWikiEntries.zh-Hans.json"),
+        json: include_str!("../../../Swift/Resources/Localization/zh-Hans/ChainWikiEntries.zh-Hans.json"),
     },
     EmbeddedDocument {
         locale: "zh-Hans",
         table: "CommonContent",
-        json: include_str!("../../../Resources/Localization/zh-Hans/CommonContent.zh-Hans.json"),
+        json: include_str!("../../../Swift/Resources/Localization/zh-Hans/CommonContent.zh-Hans.json"),
     },
     EmbeddedDocument {
         locale: "zh-Hans",
         table: "DiagnosticsContent",
-        json: include_str!(
-            "../../../Resources/Localization/zh-Hans/DiagnosticsContent.zh-Hans.json"
-        ),
+        json: include_str!("../../../Swift/Resources/Localization/zh-Hans/DiagnosticsContent.zh-Hans.json"),
     },
     EmbeddedDocument {
         locale: "zh-Hans",
         table: "DonationsContent",
-        json: include_str!("../../../Resources/Localization/zh-Hans/DonationsContent.zh-Hans.json"),
+        json: include_str!("../../../Swift/Resources/Localization/zh-Hans/DonationsContent.zh-Hans.json"),
     },
     EmbeddedDocument {
         locale: "zh-Hans",
         table: "EndpointsContent",
-        json: include_str!("../../../Resources/Localization/zh-Hans/EndpointsContent.zh-Hans.json"),
+        json: include_str!("../../../Swift/Resources/Localization/zh-Hans/EndpointsContent.zh-Hans.json"),
     },
     EmbeddedDocument {
         locale: "zh-Hans",
         table: "ImportFlowContent",
-        json: include_str!(
-            "../../../Resources/Localization/zh-Hans/ImportFlowContent.zh-Hans.json"
-        ),
+        json: include_str!("../../../Swift/Resources/Localization/zh-Hans/ImportFlowContent.zh-Hans.json"),
     },
     EmbeddedDocument {
         locale: "zh-Hans",
         table: "SettingsContent",
-        json: include_str!("../../../Resources/Localization/zh-Hans/SettingsContent.zh-Hans.json"),
+        json: include_str!("../../../Swift/Resources/Localization/zh-Hans/SettingsContent.zh-Hans.json"),
     },
     EmbeddedDocument {
         locale: "zh-Hant",
         table: "ChainWikiEntries",
-        json: include_str!("../../../Resources/Localization/zh-Hant/ChainWikiEntries.zh-Hant.json"),
+        json: include_str!("../../../Swift/Resources/Localization/zh-Hant/ChainWikiEntries.zh-Hant.json"),
     },
     EmbeddedDocument {
         locale: "zh-Hant",
         table: "CommonContent",
-        json: include_str!("../../../Resources/Localization/zh-Hant/CommonContent.zh-Hant.json"),
+        json: include_str!("../../../Swift/Resources/Localization/zh-Hant/CommonContent.zh-Hant.json"),
     },
     EmbeddedDocument {
         locale: "zh-Hant",
         table: "DiagnosticsContent",
-        json: include_str!(
-            "../../../Resources/Localization/zh-Hant/DiagnosticsContent.zh-Hant.json"
-        ),
+        json: include_str!("../../../Swift/Resources/Localization/zh-Hant/DiagnosticsContent.zh-Hant.json"),
     },
     EmbeddedDocument {
         locale: "zh-Hant",
         table: "DonationsContent",
-        json: include_str!("../../../Resources/Localization/zh-Hant/DonationsContent.zh-Hant.json"),
+        json: include_str!("../../../Swift/Resources/Localization/zh-Hant/DonationsContent.zh-Hant.json"),
     },
     EmbeddedDocument {
         locale: "zh-Hant",
         table: "EndpointsContent",
-        json: include_str!("../../../Resources/Localization/zh-Hant/EndpointsContent.zh-Hant.json"),
+        json: include_str!("../../../Swift/Resources/Localization/zh-Hant/EndpointsContent.zh-Hant.json"),
     },
     EmbeddedDocument {
         locale: "zh-Hant",
         table: "ImportFlowContent",
-        json: include_str!(
-            "../../../Resources/Localization/zh-Hant/ImportFlowContent.zh-Hant.json"
-        ),
+        json: include_str!("../../../Swift/Resources/Localization/zh-Hant/ImportFlowContent.zh-Hant.json"),
     },
     EmbeddedDocument {
         locale: "zh-Hant",
         table: "SettingsContent",
-        json: include_str!("../../../Resources/Localization/zh-Hant/SettingsContent.zh-Hant.json"),
+        json: include_str!("../../../Swift/Resources/Localization/zh-Hant/SettingsContent.zh-Hant.json"),
     },
 ];
 
