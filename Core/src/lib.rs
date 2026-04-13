@@ -67,5 +67,34 @@ mod app_core;
 
 pub use app_core::*;
 
-pub mod core;
-pub mod tokens { pub use crate::core::tokens::*; }
+pub mod addressing;
+pub mod balance_cache;
+pub mod balance_observer;
+pub mod catalog;
+pub mod chains;
+pub mod endpoint_reliability;
+pub mod fetch;
+pub mod ffi;
+pub mod history;
+pub mod history_cache;
+pub mod history_store;
+pub mod http;
+pub mod import;
+pub mod localization;
+pub mod migration;
+pub mod price;
+pub mod refresh;
+pub mod refresh_engine;
+pub mod resources;
+pub mod secret_store;
+pub mod send;
+pub mod send_machine;
+pub mod service;
+pub mod state;
+pub mod store;
+pub mod tokens;
+pub mod transactions;
+pub mod transfer;
+pub mod types;
+pub mod utxo;
+pub mod wallet_db;
