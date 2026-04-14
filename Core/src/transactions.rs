@@ -3,7 +3,7 @@ use std::cmp::Ordering;
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, uniffi::Record)]
 #[serde(rename_all = "camelCase")]
-pub struct TransactionRecord {
+pub struct CoreTransactionRecord {
     pub id: String,
     pub wallet_id: Option<String>,
     pub kind: String,
@@ -53,8 +53,8 @@ pub enum TransactionMergeStrategy {
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, uniffi::Record)]
 #[serde(rename_all = "camelCase")]
 pub struct TransactionMergeRequest {
-    pub existing_transactions: Vec<TransactionRecord>,
-    pub incoming_transactions: Vec<TransactionRecord>,
+    pub existing_transactions: Vec<CoreTransactionRecord>,
+    pub incoming_transactions: Vec<CoreTransactionRecord>,
     pub strategy: TransactionMergeStrategy,
     pub chain_name: String,
     #[serde(default)]
@@ -62,7 +62,7 @@ pub struct TransactionMergeRequest {
     pub preserve_created_at_sentinel_unix: Option<f64>,
 }
 
-pub fn merge_transactions(request: TransactionMergeRequest) -> Vec<TransactionRecord> {
+pub fn merge_transactions(request: TransactionMergeRequest) -> Vec<CoreTransactionRecord> {
     let TransactionMergeRequest {
         existing_transactions,
         incoming_transactions,
@@ -108,7 +108,7 @@ pub fn merge_transactions(request: TransactionMergeRequest) -> Vec<TransactionRe
 }
 
 fn incoming_is_relevant(
-    incoming: &TransactionRecord,
+    incoming: &CoreTransactionRecord,
     strategy: &TransactionMergeStrategy,
     chain_name: &str,
 ) -> bool {
@@ -125,8 +125,8 @@ fn incoming_is_relevant(
 }
 
 fn matches_identity(
-    existing: &TransactionRecord,
-    incoming: &TransactionRecord,
+    existing: &CoreTransactionRecord,
+    incoming: &CoreTransactionRecord,
     strategy: &TransactionMergeStrategy,
     chain_name: &str,
     include_symbol_in_identity: bool,
@@ -160,11 +160,11 @@ fn matches_identity(
 }
 
 fn merge_record(
-    existing: TransactionRecord,
-    incoming: TransactionRecord,
+    existing: CoreTransactionRecord,
+    incoming: CoreTransactionRecord,
     strategy: &TransactionMergeStrategy,
     preserve_created_at_sentinel_unix: Option<f64>,
-) -> TransactionRecord {
+) -> CoreTransactionRecord {
     match strategy {
         TransactionMergeStrategy::StandardUtxo => merge_standard_utxo(existing, incoming),
         TransactionMergeStrategy::Dogecoin => merge_dogecoin(existing, incoming),
@@ -178,10 +178,10 @@ fn merge_record(
 }
 
 fn merge_standard_utxo(
-    existing: TransactionRecord,
-    incoming: TransactionRecord,
-) -> TransactionRecord {
-    TransactionRecord {
+    existing: CoreTransactionRecord,
+    incoming: CoreTransactionRecord,
+) -> CoreTransactionRecord {
+    CoreTransactionRecord {
         id: existing.id,
         wallet_id: incoming.wallet_id.or(existing.wallet_id),
         kind: incoming.kind,
@@ -230,8 +230,8 @@ fn merge_standard_utxo(
     }
 }
 
-fn merge_dogecoin(existing: TransactionRecord, incoming: TransactionRecord) -> TransactionRecord {
-    TransactionRecord {
+fn merge_dogecoin(existing: CoreTransactionRecord, incoming: CoreTransactionRecord) -> CoreTransactionRecord {
+    CoreTransactionRecord {
         id: existing.id,
         wallet_id: incoming.wallet_id.or(existing.wallet_id),
         kind: incoming.kind,
@@ -297,11 +297,11 @@ fn merge_dogecoin(existing: TransactionRecord, incoming: TransactionRecord) -> T
 }
 
 fn merge_account_based(
-    existing: TransactionRecord,
-    incoming: TransactionRecord,
+    existing: CoreTransactionRecord,
+    incoming: CoreTransactionRecord,
     preserve_created_at_sentinel_unix: Option<f64>,
-) -> TransactionRecord {
-    TransactionRecord {
+) -> CoreTransactionRecord {
+    CoreTransactionRecord {
         id: existing.id,
         wallet_id: incoming.wallet_id.or(existing.wallet_id),
         kind: incoming.kind,
@@ -355,11 +355,11 @@ fn merge_account_based(
 }
 
 fn merge_evm(
-    existing: TransactionRecord,
-    incoming: TransactionRecord,
+    existing: CoreTransactionRecord,
+    incoming: CoreTransactionRecord,
     preserve_created_at_sentinel_unix: Option<f64>,
-) -> TransactionRecord {
-    TransactionRecord {
+) -> CoreTransactionRecord {
+    CoreTransactionRecord {
         id: existing.id,
         wallet_id: incoming.wallet_id.or(existing.wallet_id),
         kind: incoming.kind,
@@ -440,11 +440,11 @@ fn approximately_equal(lhs: f64, rhs: f64) -> bool {
 #[cfg(test)]
 mod tests {
     use super::{
-        merge_transactions, TransactionMergeRequest, TransactionMergeStrategy, TransactionRecord,
+        merge_transactions, TransactionMergeRequest, TransactionMergeStrategy, CoreTransactionRecord,
     };
 
-    fn sample_transaction(chain_name: &str) -> TransactionRecord {
-        TransactionRecord {
+    fn sample_transaction(chain_name: &str) -> CoreTransactionRecord {
+        CoreTransactionRecord {
             id: "tx-1".to_string(),
             wallet_id: Some("wallet-1".to_string()),
             kind: "receive".to_string(),

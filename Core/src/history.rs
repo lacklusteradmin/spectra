@@ -7,7 +7,7 @@ use std::collections::BTreeMap;
 // ----------------------------------------------------------------
 
 /// A chain history entry normalized to a standard format that Swift can map
-/// directly to `TransactionRecord` without any chain-specific parsing.
+/// directly to `CoreTransactionRecord` without any chain-specific parsing.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ChainHistoryEntry {
     pub kind: String,         // "receive" | "send"
@@ -407,7 +407,7 @@ pub struct NormalizeHistoryRequest {
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, uniffi::Record)]
 #[serde(rename_all = "camelCase")]
-pub struct NormalizedHistoryEntry {
+pub struct CoreNormalizedHistoryEntry {
     pub id: String,
     pub transaction_id: String,
     pub dedupe_key: String,
@@ -427,7 +427,7 @@ pub struct NormalizedHistoryEntry {
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, uniffi::Record)]
 #[serde(rename_all = "camelCase")]
-pub struct BitcoinHistorySnapshot {
+pub struct CoreBitcoinHistorySnapshot {
     pub txid: String,
     pub amount_btc: f64,
     pub kind: String,
@@ -440,19 +440,19 @@ pub struct BitcoinHistorySnapshot {
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, uniffi::Record)]
 #[serde(rename_all = "camelCase")]
 pub struct MergeBitcoinHistorySnapshotsRequest {
-    pub snapshots: Vec<BitcoinHistorySnapshot>,
+    pub snapshots: Vec<CoreBitcoinHistorySnapshot>,
     pub owned_addresses: Vec<String>,
     pub limit: u64,
 }
 
-pub fn normalize_history(request: NormalizeHistoryRequest) -> Vec<NormalizedHistoryEntry> {
+pub fn normalize_history(request: NormalizeHistoryRequest) -> Vec<CoreNormalizedHistoryEntry> {
     let wallet_by_id = request
         .wallets
         .into_iter()
         .map(|wallet| (wallet.wallet_id, wallet.selected_chain))
         .collect::<BTreeMap<_, _>>();
 
-    let mut grouped_by_dedupe_key = BTreeMap::<String, Vec<NormalizedHistoryEntry>>::new();
+    let mut grouped_by_dedupe_key = BTreeMap::<String, Vec<CoreNormalizedHistoryEntry>>::new();
     for transaction in request.transactions {
         let Some(wallet_id) = transaction.wallet_id.as_ref() else {
             continue;
@@ -485,7 +485,7 @@ pub fn normalize_history(request: NormalizeHistoryRequest) -> Vec<NormalizedHist
             let best = entries
                 .into_iter()
                 .max_by(|lhs, rhs| compare_entries(lhs, rhs))?;
-            Some(NormalizedHistoryEntry {
+            Some(CoreNormalizedHistoryEntry {
                 provider_count,
                 ..best
             })
@@ -503,7 +503,7 @@ pub fn normalize_history(request: NormalizeHistoryRequest) -> Vec<NormalizedHist
 
 pub fn merge_bitcoin_history_snapshots(
     request: MergeBitcoinHistorySnapshotsRequest,
-) -> Vec<BitcoinHistorySnapshot> {
+) -> Vec<CoreBitcoinHistorySnapshot> {
     let owned_addresses = request
         .owned_addresses
         .into_iter()
@@ -512,7 +512,7 @@ pub fn merge_bitcoin_history_snapshots(
         .collect::<std::collections::BTreeSet<_>>();
 
     let grouped = request.snapshots.into_iter().fold(
-        BTreeMap::<String, Vec<BitcoinHistorySnapshot>>::new(),
+        BTreeMap::<String, Vec<CoreBitcoinHistorySnapshot>>::new(),
         |mut grouped, snapshot| {
             grouped
                 .entry(snapshot.txid.clone())
@@ -540,7 +540,7 @@ pub fn merge_bitcoin_history_snapshots(
 fn normalized_entry(
     transaction: HistoryTransaction,
     unknown_label: &str,
-) -> NormalizedHistoryEntry {
+) -> CoreNormalizedHistoryEntry {
     let wallet_key = transaction
         .wallet_id
         .clone()
@@ -583,7 +583,7 @@ fn normalized_entry(
     .join(" ")
     .to_lowercase();
 
-    NormalizedHistoryEntry {
+    CoreNormalizedHistoryEntry {
         id: stable_id,
         transaction_id: transaction.id,
         dedupe_key,
@@ -603,9 +603,9 @@ fn normalized_entry(
 }
 
 fn merge_bitcoin_snapshot_group(
-    entries: Vec<BitcoinHistorySnapshot>,
+    entries: Vec<CoreBitcoinHistorySnapshot>,
     owned_addresses: &std::collections::BTreeSet<String>,
-) -> Option<BitcoinHistorySnapshot> {
+) -> Option<CoreBitcoinHistorySnapshot> {
     if entries.is_empty() {
         return None;
     }
@@ -649,7 +649,7 @@ fn merge_bitcoin_snapshot_group(
         .unwrap_or_default();
 
     let representative = ordered_entries.first()?.clone();
-    Some(BitcoinHistorySnapshot {
+    Some(CoreBitcoinHistorySnapshot {
         txid: representative.txid,
         amount_btc: net_amount.abs(),
         kind: if net_amount > 0.0 {
@@ -678,8 +678,8 @@ fn merge_bitcoin_snapshot_group(
 }
 
 fn compare_entries(
-    lhs: &NormalizedHistoryEntry,
-    rhs: &NormalizedHistoryEntry,
+    lhs: &CoreNormalizedHistoryEntry,
+    rhs: &CoreNormalizedHistoryEntry,
 ) -> std::cmp::Ordering {
     status_rank(&lhs.status)
         .cmp(&status_rank(&rhs.status))
@@ -787,7 +787,7 @@ mod tests {
     fn merges_bitcoin_inventory_snapshots_into_net_entries() {
         let merged = merge_bitcoin_history_snapshots(MergeBitcoinHistorySnapshotsRequest {
             snapshots: vec![
-                BitcoinHistorySnapshot {
+                CoreBitcoinHistorySnapshot {
                     txid: "tx-1".to_string(),
                     amount_btc: 0.75,
                     kind: "receive".to_string(),
@@ -796,7 +796,7 @@ mod tests {
                     block_height: Some(100),
                     created_at_unix: 100.0,
                 },
-                BitcoinHistorySnapshot {
+                CoreBitcoinHistorySnapshot {
                     txid: "tx-1".to_string(),
                     amount_btc: 0.25,
                     kind: "send".to_string(),

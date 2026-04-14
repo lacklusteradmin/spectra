@@ -56,6 +56,12 @@ impl HttpClient {
         SHARED_CLIENT.clone()
     }
 
+    /// Access the underlying reqwest client for callers that need full control
+    /// over request construction (e.g. the generic UniFFI `http_request` bridge).
+    pub fn reqwest_client(&self) -> &Client {
+        &self.inner
+    }
+
     // ----------------------------------------------------------------
     // Core request method
     // ----------------------------------------------------------------
@@ -255,6 +261,10 @@ pub enum RetryProfile {
     /// Litecoin-specific endpoints that rate-limit heavily. 4 attempts,
     /// gentler backoff.
     LitecoinRead,
+    /// Litecoin send/broadcast. 3 attempts.
+    LitecoinWrite,
+    /// Litecoin diagnostics. 3 attempts.
+    LitecoinDiagnostics,
 }
 
 impl RetryProfile {
@@ -264,6 +274,8 @@ impl RetryProfile {
             Self::ChainWrite => 2,
             Self::Diagnostics => 2,
             Self::LitecoinRead => 4,
+            Self::LitecoinWrite => 3,
+            Self::LitecoinDiagnostics => 3,
         }
     }
 
@@ -275,6 +287,8 @@ impl RetryProfile {
             Self::ChainWrite => (250, 1000),
             Self::Diagnostics => (200, 800),
             Self::LitecoinRead => (550, 4000),
+            Self::LitecoinWrite => (450, 3000),
+            Self::LitecoinDiagnostics => (350, 2500),
         };
         let raw = base_ms * 2_u64.saturating_pow(attempt as u32 - 1);
         let clamped = raw.min(max_ms);

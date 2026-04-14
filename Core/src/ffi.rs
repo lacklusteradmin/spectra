@@ -1,5 +1,6 @@
 use std::collections::HashMap;
 
+use crate::SpectraBridgeError;
 use super::addressing::{
     validate_address, validate_string_identifier, AddressValidationRequest,
     AddressValidationResult, StringValidationRequest, StringValidationResult,
@@ -16,8 +17,8 @@ use super::fetch::{
     EvmRefreshTargetsRequest, WalletBalanceRefreshPlan, WalletBalanceRefreshRequest,
 };
 use super::history::{
-    merge_bitcoin_history_snapshots, normalize_history, BitcoinHistorySnapshot,
-    MergeBitcoinHistorySnapshotsRequest, NormalizeHistoryRequest, NormalizedHistoryEntry,
+    merge_bitcoin_history_snapshots, normalize_history, CoreBitcoinHistorySnapshot,
+    MergeBitcoinHistorySnapshotsRequest, NormalizeHistoryRequest, CoreNormalizedHistoryEntry,
 };
 use super::import::{plan_wallet_import, WalletImportPlan, WalletImportRequest};
 use super::localization::localization_catalog;
@@ -42,7 +43,10 @@ use super::store::{
     ReceiveSelectionRequest, SelfSendConfirmationPlan, SelfSendConfirmationRequest,
     StoreDerivedStatePlan, StoreDerivedStateRequest, WalletSecretIndex, WalletSecretObservation,
 };
-use super::transactions::{merge_transactions, TransactionMergeRequest, TransactionRecord};
+use super::persistence::models::{
+    CorePersistedAddressBookStore, CorePersistedPriceAlertStore, CorePersistedTransactionRecord,
+};
+use super::transactions::{merge_transactions, TransactionMergeRequest, CoreTransactionRecord};
 use super::transfer::{
     plan_transfer_availability, TransferAvailabilityPlan, TransferAvailabilityRequest,
 };
@@ -215,14 +219,14 @@ pub fn core_history_refresh_plans(
 #[uniffi::export]
 pub fn core_normalize_history(
     request: NormalizeHistoryRequest,
-) -> Vec<NormalizedHistoryEntry> {
+) -> Vec<CoreNormalizedHistoryEntry> {
     normalize_history(request)
 }
 
 #[uniffi::export]
 pub fn core_merge_bitcoin_history_snapshots(
     request: MergeBitcoinHistorySnapshotsRequest,
-) -> Vec<BitcoinHistorySnapshot> {
+) -> Vec<CoreBitcoinHistorySnapshot> {
     merge_bitcoin_history_snapshots(request)
 }
 
@@ -299,8 +303,52 @@ pub fn core_plan_utxo_spend(
 #[uniffi::export]
 pub fn core_merge_transactions(
     request: TransactionMergeRequest,
-) -> Vec<TransactionRecord> {
+) -> Vec<CoreTransactionRecord> {
     merge_transactions(request)
+}
+
+/// Typed input for `core_encode_history_records_json`. `payload_json` is the
+/// full `PersistedTransactionRecord` JSON blob (unencoded); Rust base64-encodes it
+/// into the resulting HistoryRecord payload.
+#[derive(Debug, Clone, Serialize, serde::Deserialize, uniffi::Record)]
+pub struct HistoryRecordEncodeInput {
+    pub id: String,
+    pub wallet_id: Option<String>,
+    pub chain_name: String,
+    pub tx_hash: Option<String>,
+    pub created_at: f64,
+    pub payload_json: String,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct HistoryRecordEncoded {
+    id: String,
+    wallet_id: Option<String>,
+    chain_name: String,
+    tx_hash: Option<String>,
+    created_at: f64,
+    payload: String,
+}
+
+#[uniffi::export]
+pub fn core_encode_history_records_json(
+    records: Vec<HistoryRecordEncodeInput>,
+) -> Result<String, crate::SpectraBridgeError> {
+    use base64::Engine;
+    let engine = base64::engine::general_purpose::STANDARD;
+    let encoded: Vec<HistoryRecordEncoded> = records
+        .into_iter()
+        .map(|r| HistoryRecordEncoded {
+            id: r.id,
+            wallet_id: r.wallet_id,
+            chain_name: r.chain_name,
+            tx_hash: r.tx_hash,
+            created_at: r.created_at,
+            payload: engine.encode(r.payload_json.as_bytes()),
+        })
+        .collect();
+    Ok(serialize_json(&encoded)?)
 }
 
 #[uniffi::export]
@@ -318,6 +366,18 @@ pub fn core_validate_string_identifier(
 }
 
 #[uniffi::export]
+pub fn core_validate_address_json(request_json: String) -> Result<String, SpectraBridgeError> {
+    let request: AddressValidationRequest = serde_json::from_str(&request_json)?;
+    Ok(serde_json::to_string(&validate_address(request))?)
+}
+
+#[uniffi::export]
+pub fn core_validate_string_identifier_json(request_json: String) -> Result<String, SpectraBridgeError> {
+    let request: StringValidationRequest = serde_json::from_str(&request_json)?;
+    Ok(serde_json::to_string(&validate_string_identifier(request))?)
+}
+
+#[uniffi::export]
 pub fn core_order_endpoints_by_reliability(
     request: EndpointOrderingRequest,
 ) -> Vec<String> {
@@ -329,6 +389,22 @@ pub fn core_record_endpoint_attempt(
     request: EndpointAttemptRequest,
 ) -> HashMap<String, ReliabilityCounter> {
     record_attempt(request)
+}
+
+// JSON-string wrappers kept for Swift callers that still encode/decode payloads
+// as JSON rather than typed records.
+#[uniffi::export]
+pub fn core_order_endpoints_by_reliability_json(request_json: String) -> Result<String, SpectraBridgeError> {
+    let request: EndpointOrderingRequest = serde_json::from_str(&request_json)?;
+    let ordered = order_endpoints(request);
+    Ok(serde_json::to_string(&ordered)?)
+}
+
+#[uniffi::export]
+pub fn core_record_endpoint_attempt_json(request_json: String) -> Result<String, SpectraBridgeError> {
+    let request: EndpointAttemptRequest = serde_json::from_str(&request_json)?;
+    let counters = record_attempt(request);
+    Ok(serde_json::to_string(&counters)?)
 }
 
 // ─── High-risk send warning evaluation (inherently dynamic JSON) ──────────────
@@ -533,6 +609,56 @@ fn hrsr_normalize_address(address: &str, chain_name: &str) -> String {
 
 fn serialize_json(value: &impl Serialize) -> Result<String, String> {
     serde_json::to_string(value).map_err(display_error)
+}
+
+// ─── Persisted DTO JSON bridges ─────────────────────────────────────────────
+// Swift `JSONEncoder` / `JSONDecoder` cannot produce the "omit-when-None" wire
+// shape Rust uses for optional fields. Swift therefore round-trips these three
+// DTOs through serde_json via these bridges to keep byte-exact on-disk JSON.
+
+#[uniffi::export]
+pub fn encode_persisted_price_alert_store_json(
+    value: CorePersistedPriceAlertStore,
+) -> Result<String, SpectraBridgeError> {
+    Ok(serialize_json(&value)?)
+}
+
+#[uniffi::export]
+pub fn decode_persisted_price_alert_store_json(
+    json: String,
+) -> Result<CorePersistedPriceAlertStore, SpectraBridgeError> {
+    serde_json::from_str::<CorePersistedPriceAlertStore>(&json)
+        .map_err(SpectraBridgeError::from)
+}
+
+#[uniffi::export]
+pub fn encode_persisted_address_book_store_json(
+    value: CorePersistedAddressBookStore,
+) -> Result<String, SpectraBridgeError> {
+    Ok(serialize_json(&value)?)
+}
+
+#[uniffi::export]
+pub fn decode_persisted_address_book_store_json(
+    json: String,
+) -> Result<CorePersistedAddressBookStore, SpectraBridgeError> {
+    serde_json::from_str::<CorePersistedAddressBookStore>(&json)
+        .map_err(SpectraBridgeError::from)
+}
+
+#[uniffi::export]
+pub fn encode_persisted_transaction_record_json(
+    value: CorePersistedTransactionRecord,
+) -> Result<String, SpectraBridgeError> {
+    Ok(serialize_json(&value)?)
+}
+
+#[uniffi::export]
+pub fn decode_persisted_transaction_record_json(
+    json: String,
+) -> Result<CorePersistedTransactionRecord, SpectraBridgeError> {
+    serde_json::from_str::<CorePersistedTransactionRecord>(&json)
+        .map_err(SpectraBridgeError::from)
 }
 
 fn display_error(error: impl std::fmt::Display) -> String {

@@ -413,7 +413,7 @@ pub fn address_delete_all(db_path: &str) -> Result<(), String> {
 // ── History record types ──────────────────────────────────────────────────────
 
 /// Represents one persisted transaction record.
-/// `payload` is a base64-encoded JSON blob (the full `PersistedTransactionRecord` from Swift).
+/// `payload` is a base64-encoded JSON blob (the full `PersistedCoreTransactionRecord` from Swift).
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct HistoryRecord {
