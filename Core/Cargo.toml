@@ -37,3 +37,6 @@ base64 = "0.22"
 rand = "0.8"
 futures = "0.3"
 rusqlite = { version = "0.31", features = ["bundled"] }
+
+[dev-dependencies]
+wiremock = "0.6"

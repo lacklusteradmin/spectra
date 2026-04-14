@@ -23,6 +23,9 @@ xcuserdata/
 Packages/
 Package.resolved
 
+# Claude Code
+.claude/
+
 # Rust
 **/target/
 .rust-build/

@@ -18,10 +18,21 @@
 
 use std::sync::{Mutex, OnceLock};
 
+use crate::app_state::events::{publish, AppStateEvent};
 use crate::persistence::models::{
     CorePersistedAddressBookEntry, CorePersistedTransactionRecord,
 };
 use crate::wallet_domain::CoreImportedWallet;
+
+fn publish_wallets(g: &StoreRegistry) {
+    publish(AppStateEvent::WalletsChanged(g.wallets.clone()));
+}
+fn publish_transactions(g: &StoreRegistry) {
+    publish(AppStateEvent::TransactionsChanged(g.transactions.clone()));
+}
+fn publish_address_book(g: &StoreRegistry) {
+    publish(AppStateEvent::AddressBookChanged(g.address_book.clone()));
+}
 
 #[derive(Default)]
 struct StoreRegistry {
@@ -43,17 +54,23 @@ pub fn store_wallets_get_all() -> Vec<CoreImportedWallet> {
 
 #[uniffi::export]
 pub fn store_wallets_replace_all(wallets: Vec<CoreImportedWallet>) {
-    registry().lock().unwrap().wallets = wallets;
+    let mut g = registry().lock().unwrap();
+    g.wallets = wallets;
+    publish_wallets(&g);
 }
 
 #[uniffi::export]
 pub fn store_wallets_append(wallet: CoreImportedWallet) {
-    registry().lock().unwrap().wallets.push(wallet);
+    let mut g = registry().lock().unwrap();
+    g.wallets.push(wallet);
+    publish_wallets(&g);
 }
 
 #[uniffi::export]
 pub fn store_wallets_append_many(wallets: Vec<CoreImportedWallet>) {
-    registry().lock().unwrap().wallets.extend(wallets);
+    let mut g = registry().lock().unwrap();
+    g.wallets.extend(wallets);
+    publish_wallets(&g);
 }
 
 /// Insert-or-replace by `id`. Preserves position on update; appends on insert.
@@ -65,16 +82,21 @@ pub fn store_wallets_upsert(wallet: CoreImportedWallet) {
     } else {
         guard.wallets.push(wallet);
     }
+    publish_wallets(&guard);
 }
 
 #[uniffi::export]
 pub fn store_wallets_remove(id: String) {
-    registry().lock().unwrap().wallets.retain(|w| w.id != id);
+    let mut g = registry().lock().unwrap();
+    g.wallets.retain(|w| w.id != id);
+    publish_wallets(&g);
 }
 
 #[uniffi::export]
 pub fn store_wallets_clear() {
-    registry().lock().unwrap().wallets.clear();
+    let mut g = registry().lock().unwrap();
+    g.wallets.clear();
+    publish_wallets(&g);
 }
 
 // ── Transactions ────────────────────────────────────────────────────────
@@ -85,26 +107,31 @@ pub fn store_transactions_get_all() -> Vec<CorePersistedTransactionRecord> {
 
 #[uniffi::export]
 pub fn store_transactions_replace_all(transactions: Vec<CorePersistedTransactionRecord>) {
-    registry().lock().unwrap().transactions = transactions;
+    let mut g = registry().lock().unwrap();
+    g.transactions = transactions;
+    publish_transactions(&g);
 }
 
 #[uniffi::export]
 pub fn store_transactions_prepend(transaction: CorePersistedTransactionRecord) {
-    registry().lock().unwrap().transactions.insert(0, transaction);
+    let mut g = registry().lock().unwrap();
+    g.transactions.insert(0, transaction);
+    publish_transactions(&g);
 }
 
 #[uniffi::export]
 pub fn store_transactions_remove_for_wallet(wallet_id: String) {
-    registry()
-        .lock()
-        .unwrap()
-        .transactions
+    let mut g = registry().lock().unwrap();
+    g.transactions
         .retain(|t| t.wallet_id.as_deref() != Some(wallet_id.as_str()));
+    publish_transactions(&g);
 }
 
 #[uniffi::export]
 pub fn store_transactions_clear() {
-    registry().lock().unwrap().transactions.clear();
+    let mut g = registry().lock().unwrap();
+    g.transactions.clear();
+    publish_transactions(&g);
 }
 
 // ── Address book ───────────────────────────────────────────────────────
@@ -115,22 +142,30 @@ pub fn store_address_book_get_all() -> Vec<CorePersistedAddressBookEntry> {
 
 #[uniffi::export]
 pub fn store_address_book_replace_all(entries: Vec<CorePersistedAddressBookEntry>) {
-    registry().lock().unwrap().address_book = entries;
+    let mut g = registry().lock().unwrap();
+    g.address_book = entries;
+    publish_address_book(&g);
 }
 
 #[uniffi::export]
 pub fn store_address_book_prepend(entry: CorePersistedAddressBookEntry) {
-    registry().lock().unwrap().address_book.insert(0, entry);
+    let mut g = registry().lock().unwrap();
+    g.address_book.insert(0, entry);
+    publish_address_book(&g);
 }
 
 #[uniffi::export]
 pub fn store_address_book_remove(id: String) {
-    registry().lock().unwrap().address_book.retain(|e| e.id != id);
+    let mut g = registry().lock().unwrap();
+    g.address_book.retain(|e| e.id != id);
+    publish_address_book(&g);
 }
 
 #[uniffi::export]
 pub fn store_address_book_clear() {
-    registry().lock().unwrap().address_book.clear();
+    let mut g = registry().lock().unwrap();
+    g.address_book.clear();
+    publish_address_book(&g);
 }
 
 #[uniffi::export]
@@ -139,6 +174,9 @@ pub fn store_clear_all() {
     g.wallets.clear();
     g.transactions.clear();
     g.address_book.clear();
+    publish_wallets(&g);
+    publish_transactions(&g);
+    publish_address_book(&g);
 }
 
 #[cfg(test)]

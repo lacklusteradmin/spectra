@@ -6,6 +6,23 @@
 //! stack so that we get the same resilience without rewriting the
 //! policy from scratch.
 //!
+//! ## Phase 1 UniFFI migration pattern (2026-04)
+//!
+//! The pattern for migrating a Swift URLSession call site to Rust is:
+//!
+//! 1. If the response parsing already lives in Rust (see
+//!    `diagnostics::aggregate::diagnostics_parse_jsonrpc_probe`), prefer
+//!    exposing a single `#[uniffi::export] async fn` that performs
+//!    *transport + parse* in one FFI hop. This eliminates the
+//!    (Rust → Swift → Rust) round-trip.
+//! 2. Otherwise, call the generic ergonomic wrappers in `http_ffi`:
+//!    `http_get` (returns `HttpTextResponse`) or `http_post_json`.
+//!    These use the shared `HttpClient` / `RetryProfile` plumbing
+//!    defined here.
+//! 3. Delete the Swift URLSession code for that call site — the whole
+//!    point of the migration is that Swift stops owning network
+//!    transport.
+//!
 //! ## Usage
 //!
 //! ```rust,ignore
@@ -41,11 +58,16 @@ pub struct HttpClient {
 
 impl HttpClient {
     fn new() -> Self {
+        // Note: `https_only` is intentionally *not* enforced at the
+        // client layer. URLs come from a curated provider catalog that
+        // is already HTTPS-only; enforcing at the transport layer also
+        // blocks wiremock / localhost tests. Callers that need a hard
+        // guarantee should validate the scheme at the catalog level.
         let inner = Client::builder()
-            .timeout(Duration::from_secs(20))
+            .connect_timeout(Duration::from_secs(10))
+            .timeout(Duration::from_secs(30))
             .gzip(true)
-            .https_only(true)
-            .user_agent("Spectra/1.0")
+            .user_agent(concat!("spectra-core/", env!("CARGO_PKG_VERSION")))
             .build()
             .unwrap_or_default();
         Self { inner }

@@ -285,6 +285,153 @@ pub fn core_supports_deep_utxo_discovery(chain_name: String) -> bool {
     matches!(chain_name.as_str(), "Bitcoin Cash" | "Bitcoin SV" | "Litecoin")
 }
 
+// ─── EVM contract-code detection ─────────────────────────────────────────────
+// Lifted from Swift `evmHasContractCode`: a nonempty `eth_getCode` result
+// (anything other than "0x" or "0x0") indicates deployed bytecode.
+
+#[uniffi::export]
+pub fn core_evm_has_contract_code(code: String) -> bool {
+    let normalized = code.trim().to_lowercase();
+    !normalized.is_empty() && normalized != "0x" && normalized != "0x0"
+}
+
+// ─── Insufficient-funds message formatter ────────────────────────────────────
+// Produces the "Insufficient X for amount plus network fee (needs ~N.NNNNNN X)."
+// string used across every chain's submit path. `decimals` selects precision
+// (typically 6 for most chains, 8 for BTC-style, 7 for Stellar).
+
+#[uniffi::export]
+pub fn core_insufficient_funds_for_amount_plus_fee_message(
+    symbol: String,
+    total_needed: f64,
+    decimals: u32,
+) -> String {
+    let d = decimals as usize;
+    format!(
+        "Insufficient {} for amount plus network fee (needs ~{:.*} {}).",
+        symbol, d, total_needed, symbol
+    )
+}
+
+// Variant for the "cover network fee only" case (token sends where
+// fee is paid in native asset).
+#[uniffi::export]
+pub fn core_insufficient_native_for_fee_message(
+    native_symbol: String,
+    fee: f64,
+    decimals: u32,
+    chain_label: Option<String>,
+) -> String {
+    let d = decimals as usize;
+    match chain_label {
+        Some(chain) => format!(
+            "Insufficient {} to cover {} network fee (~{:.*} {}).",
+            native_symbol, chain, d, fee, native_symbol
+        ),
+        None => format!(
+            "Insufficient {} to cover the network fee (~{:.*} {}).",
+            native_symbol, d, fee, native_symbol
+        ),
+    }
+}
+
+// ─── EVM replacement fee bump calculator ─────────────────────────────────────
+// When preparing a speed-up / cancel replacement, Swift bumps existing custom
+// fees by 20% with a 0.1 gwei floor (or falls back to defaults if either input
+// is missing / blank). Returns formatted strings (3 decimals) the way Swift
+// renders them into the composer fields.
+
+#[derive(Debug, Clone, uniffi::Record)]
+pub struct EvmReplacementFeeBump {
+    pub max_fee_gwei: String,
+    pub priority_fee_gwei: String,
+}
+
+#[uniffi::export]
+pub fn core_evm_replacement_fee_bump(
+    existing_max_fee_gwei: Option<String>,
+    existing_priority_fee_gwei: Option<String>,
+    default_max_fee_gwei: f64,
+    default_priority_fee_gwei: f64,
+) -> EvmReplacementFeeBump {
+    let parse = |s: Option<String>| -> Option<f64> {
+        s.and_then(|v| {
+            let trimmed = v.trim().to_string();
+            if trimmed.is_empty() { None } else { trimmed.parse::<f64>().ok() }
+        })
+    };
+    let have_max = parse(existing_max_fee_gwei.clone());
+    let have_pri = parse(existing_priority_fee_gwei.clone());
+    if have_max.is_none() || have_pri.is_none() {
+        return EvmReplacementFeeBump {
+            max_fee_gwei: format!("{:.1}", default_max_fee_gwei),
+            priority_fee_gwei: format!("{:.1}", default_priority_fee_gwei),
+        };
+    }
+    let bumped_max = (have_max.unwrap() * 1.2).max(0.1);
+    let bumped_pri = (have_pri.unwrap() * 1.2).max(0.1);
+    EvmReplacementFeeBump {
+        max_fee_gwei: format!("{:.3}", bumped_max),
+        priority_fee_gwei: format!("{:.3}", bumped_pri),
+    }
+}
+
+// ─── EVM preflight reason codes → localized-ready strings ────────────────────
+// Given the results of HTTP contract-code probes (recipient and optional token
+// contract), produce the set of risk-reason strings Swift previously assembled
+// inline. Swift still drives the HTTP calls (they need per-wallet chain config)
+// but hands Rust the raw `code` strings plus context.
+
+#[derive(Debug, Clone, uniffi::Record)]
+pub struct EvmPreflightContractInput {
+    pub chain_name: String,
+    pub symbol: String,
+    pub recipient_code: Option<String>,     // None = probe failed
+    pub token_symbol: Option<String>,       // None = native send (no token check)
+    pub token_code: Option<String>,         // None = probe failed (only meaningful if token_symbol is Some)
+    pub token_probed: bool,                 // did Swift actually attempt the token probe?
+}
+
+#[uniffi::export]
+pub fn core_evm_preflight_contract_reasons(input: EvmPreflightContractInput) -> Vec<String> {
+    let mut out: Vec<String> = Vec::new();
+    match &input.recipient_code {
+        Some(code) if core_evm_has_contract_code(code.clone()) => {
+            out.push(format!(
+                "Recipient is a smart contract on {}. Confirm it can receive {} safely.",
+                input.chain_name, input.symbol
+            ));
+        }
+        None => {
+            out.push(format!(
+                "Could not verify recipient contract state on {}. Review destination carefully.",
+                input.chain_name
+            ));
+        }
+        _ => {}
+    }
+    if input.token_probed {
+        if let Some(token_sym) = input.token_symbol {
+            match &input.token_code {
+                Some(code) if !core_evm_has_contract_code(code.clone()) => {
+                    out.push(format!(
+                        "Token contract {} appears missing on {}. This may be a wrong-network token selection.",
+                        token_sym, input.chain_name
+                    ));
+                }
+                None => {
+                    out.push(format!(
+                        "Could not verify {} contract bytecode on {}.",
+                        token_sym, input.chain_name
+                    ));
+                }
+                _ => {}
+            }
+        }
+    }
+    out
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -382,6 +529,100 @@ mod tests {
         let m = core_chain_risk_probe_messages("Bitcoin".to_string(), "balance".to_string(), true, false);
         assert!(m.warning.is_some());
         assert!(m.info.is_none());
+    }
+
+    #[test]
+    fn evm_has_contract_code_variants() {
+        assert!(!core_evm_has_contract_code("0x".to_string()));
+        assert!(!core_evm_has_contract_code("0X0".to_string()));
+        assert!(!core_evm_has_contract_code("   0x ".to_string()));
+        assert!(!core_evm_has_contract_code(String::new()));
+        assert!(core_evm_has_contract_code("0x60806040".to_string()));
+    }
+
+    #[test]
+    fn insufficient_funds_message_formats() {
+        let m = core_insufficient_funds_for_amount_plus_fee_message(
+            "BTC".to_string(), 0.12345678, 8,
+        );
+        assert_eq!(m, "Insufficient BTC for amount plus network fee (needs ~0.12345678 BTC).");
+        let m6 = core_insufficient_funds_for_amount_plus_fee_message(
+            "TRX".to_string(), 12.5, 6,
+        );
+        assert_eq!(m6, "Insufficient TRX for amount plus network fee (needs ~12.500000 TRX).");
+    }
+
+    #[test]
+    fn insufficient_native_for_fee_message_with_and_without_chain() {
+        let with = core_insufficient_native_for_fee_message(
+            "TRX".to_string(), 1.2345, 6, Some("Tron".to_string()),
+        );
+        assert!(with.contains("Tron network fee"));
+        assert!(with.contains("1.234500 TRX"));
+        let without = core_insufficient_native_for_fee_message(
+            "SOL".to_string(), 0.000005, 6, None,
+        );
+        assert!(without.starts_with("Insufficient SOL to cover the network fee"));
+    }
+
+    #[test]
+    fn evm_bump_defaults_when_blank() {
+        let r = core_evm_replacement_fee_bump(None, Some(" ".to_string()), 4.0, 2.0);
+        assert_eq!(r.max_fee_gwei, "4.0");
+        assert_eq!(r.priority_fee_gwei, "2.0");
+    }
+
+    #[test]
+    fn evm_bump_scales_existing() {
+        let r = core_evm_replacement_fee_bump(
+            Some("5.0".to_string()), Some("2.5".to_string()), 4.0, 2.0,
+        );
+        assert_eq!(r.max_fee_gwei, "6.000");
+        assert_eq!(r.priority_fee_gwei, "3.000");
+    }
+
+    #[test]
+    fn evm_bump_respects_floor() {
+        let r = core_evm_replacement_fee_bump(
+            Some("0.01".to_string()), Some("0.01".to_string()), 4.0, 2.0,
+        );
+        assert_eq!(r.max_fee_gwei, "0.100");
+        assert_eq!(r.priority_fee_gwei, "0.100");
+    }
+
+    #[test]
+    fn evm_preflight_reports_contract_recipient() {
+        let reasons = core_evm_preflight_contract_reasons(EvmPreflightContractInput {
+            chain_name: "Ethereum".into(), symbol: "ETH".into(),
+            recipient_code: Some("0xabc123".into()),
+            token_symbol: None, token_code: None, token_probed: false,
+        });
+        assert_eq!(reasons.len(), 1);
+        assert!(reasons[0].contains("smart contract on Ethereum"));
+    }
+
+    #[test]
+    fn evm_preflight_reports_probe_failure() {
+        let reasons = core_evm_preflight_contract_reasons(EvmPreflightContractInput {
+            chain_name: "Ethereum".into(), symbol: "ETH".into(),
+            recipient_code: None,
+            token_symbol: None, token_code: None, token_probed: false,
+        });
+        assert_eq!(reasons.len(), 1);
+        assert!(reasons[0].contains("Could not verify recipient"));
+    }
+
+    #[test]
+    fn evm_preflight_reports_missing_token() {
+        let reasons = core_evm_preflight_contract_reasons(EvmPreflightContractInput {
+            chain_name: "Ethereum".into(), symbol: "USDC".into(),
+            recipient_code: Some("0x".into()),
+            token_symbol: Some("USDC".into()),
+            token_code: Some("0x".into()),
+            token_probed: true,
+        });
+        assert_eq!(reasons.len(), 1);
+        assert!(reasons[0].contains("Token contract USDC appears missing"));
     }
 
     #[test]

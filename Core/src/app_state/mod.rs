@@ -3,5 +3,6 @@
 // this module via UniFFI. See `caches.rs`.
 
 pub mod caches;
+pub mod events;
 pub mod store;
 pub mod token_helpers;
