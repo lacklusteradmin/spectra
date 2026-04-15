@@ -1,6 +1,9 @@
 # macOS
 .DS_Store
 
+# Cloud-sync placeholder/partial-download files (OneDrive, Synology Drive, etc.)
+.!*!*
+
 # Xcode / Swift
 DerivedData/
 build/
