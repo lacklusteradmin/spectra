@@ -1,19 +1,20 @@
 use bip39::{Language, Mnemonic};
-use bitcoin::bip32::{DerivationPath, Xpriv};
+use bitcoin::bip32::{ChainCode, ChildNumber, DerivationPath, Fingerprint, Xpriv};
 use bitcoin::hashes::{hash160, sha256, Hash};
 use bitcoin::key::{CompressedPublicKey, PublicKey};
 use bitcoin::secp256k1::{All, Secp256k1};
 use bitcoin::{Address, Network};
 use ed25519_dalek::SigningKey;
+use hmac::{Hmac, Mac};
 use pbkdf2::pbkdf2_hmac;
 use serde::{Deserialize, Serialize};
 use sha2::Sha512;
-use slip10::{derive_key_from_path, Curve};
 use std::fmt::Display;
-use std::str::FromStr;
 use tiny_keccak::{Hasher, Keccak};
 use unicode_normalization::UnicodeNormalization;
 use zeroize::{Zeroize, Zeroizing};
+
+type HmacSha512 = Hmac<Sha512>;
 
 // Bitflags describing which output fields the caller wants back.
 const OUTPUT_ADDRESS: u32 = 1 << 0;
@@ -96,6 +97,7 @@ pub struct UniFFIDerivationRequest {
     pub hmac_key: Option<String>,
     pub mnemonic_wordlist: Option<String>,
     pub iteration_count: u32,
+    pub salt_prefix: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -134,6 +136,7 @@ pub struct UniFFIMaterialRequest {
     pub hmac_key: Option<String>,
     pub mnemonic_wordlist: Option<String>,
     pub iteration_count: u32,
+    pub salt_prefix: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -175,6 +178,7 @@ struct ParsedRequest {
     hmac_key: Option<String>,
     mnemonic_wordlist: Option<String>,
     iteration_count: u32,
+    salt_prefix: Option<String>,
 }
 
 impl Drop for ParsedRequest {
@@ -189,6 +193,9 @@ impl Drop for ParsedRequest {
         }
         if let Some(path) = &mut self.derivation_path {
             path.zeroize();
+        }
+        if let Some(salt_prefix) = &mut self.salt_prefix {
+            salt_prefix.zeroize();
         }
     }
 }
@@ -372,6 +379,7 @@ fn derive_address_for_chain(
         hmac_key: None,
         mnemonic_wordlist: None,
         iteration_count: 0,
+        salt_prefix: None,
     };
 
     let parsed = parse_uniffi_request(request)?;
@@ -525,6 +533,10 @@ fn parse_uniffi_request(
         .mnemonic_wordlist
         .map(|value| value.trim().to_string())
         .filter(|value| !value.is_empty());
+    // `salt_prefix` is intentionally NOT trimmed — callers may legitimately use
+    // a prefix that includes or consists entirely of whitespace. Only an
+    // explicit `None` falls back to the BIP-39 default of "mnemonic".
+    let salt_prefix = request.salt_prefix;
 
     if request.requested_outputs == 0 {
         return Err(crate::SpectraBridgeError::from(
@@ -553,6 +565,7 @@ fn parse_uniffi_request(
         hmac_key,
         mnemonic_wordlist,
         iteration_count: request.iteration_count,
+        salt_prefix,
     })
 }
 
@@ -654,6 +667,7 @@ fn parse_uniffi_material_request(
         hmac_key: request.hmac_key,
         mnemonic_wordlist: request.mnemonic_wordlist,
         iteration_count: request.iteration_count,
+        salt_prefix: request.salt_prefix,
     })?;
     Ok(ParsedMaterialRequest {
         request: parsed,
@@ -1068,18 +1082,14 @@ fn derive(request: ParsedRequest) -> Result<DerivedOutput, String> {
 }
 
 fn validate_request(request: &ParsedRequest) -> Result<(), String> {
-    // Rust currently supports English BIP-39 and enforces curve/algorithm compatibility.
+    // Enforce curve/algorithm compatibility. Wordlist, salt prefix, iteration
+    // count, and HMAC key are user-customizable and resolved downstream.
     if request.iteration_count == 1 {
         return Err("Iteration count must be 0 (default) or >= 2.".to_string());
     }
 
-    if let Some(wordlist) = &request.mnemonic_wordlist {
-        if !wordlist.eq_ignore_ascii_case("english") {
-            return Err(
-                "Only the English mnemonic wordlist is supported in Rust right now.".to_string(),
-            );
-        }
-    }
+    // Validate the wordlist identifier up-front so misspellings fail fast.
+    let _ = resolve_bip39_language(request.mnemonic_wordlist.as_deref())?;
 
     if is_secp_chain(request.chain) {
         if request.curve != CurveFamily::Secp256k1 {
@@ -1175,11 +1185,7 @@ fn derive_secp_material(
     // Shared secp256k1 key derivation path:
     // BIP-39 seed -> BIP-32 child private key -> secp public key.
     let derivation_path = secp_derivation_path(request)?;
-    let seed = derive_bip39_seed(
-        &request.seed_phrase,
-        &request.passphrase,
-        request.iteration_count,
-    )?;
+    let seed = derive_bip39_seed_from_request(&request)?;
     let xpriv = derive_bip32_xpriv(
         seed.as_ref(),
         Network::Bitcoin,
@@ -1199,11 +1205,7 @@ fn derive_ed25519_material(request: &ParsedRequest) -> Result<([u8; 32], [u8; 32
     // Shared ed25519 key derivation path:
     // BIP-39 seed -> SLIP-0010 child private key -> ed25519 public key.
     let path = ed25519_derivation_path(request)?;
-    let seed = derive_bip39_seed(
-        &request.seed_phrase,
-        &request.passphrase,
-        request.iteration_count,
-    )?;
+    let seed = derive_bip39_seed_from_request(&request)?;
     let private_key = derive_solana_ed25519_key(seed.as_ref(), &path, request.hmac_key.as_deref())?;
     let signing_key = SigningKey::from_bytes(&private_key);
     let public_key = signing_key.verifying_key().to_bytes();
@@ -1214,11 +1216,7 @@ fn derive_bitcoin(request: ParsedRequest) -> Result<DerivedOutput, String> {
     let secp = Secp256k1::new();
     let derivation_path = secp_derivation_path(&request)?;
     let script_type = request.script_type;
-    let seed = derive_bip39_seed(
-        &request.seed_phrase,
-        &request.passphrase,
-        request.iteration_count,
-    )?;
+    let seed = derive_bip39_seed_from_request(&request)?;
     let xpriv = derive_bip32_xpriv(
         seed.as_ref(),
         Network::Bitcoin,
@@ -1612,18 +1610,49 @@ fn derive_bip32_xpriv(
     derivation_path: &str,
     hmac_key: Option<&str>,
 ) -> Result<Xpriv, String> {
-    // Keep behavior explicit: only standard "Bitcoin seed" HMAC master key is accepted.
-    if let Some(hmac_key) = hmac_key {
-        if !hmac_key.is_empty() && hmac_key != "Bitcoin seed" {
-            return Err(
-                "Custom HMAC master key is not supported for BIP-32 derivation.".to_string(),
-            );
-        }
-    }
-    let master = Xpriv::new_master(network, seed_bytes).map_err(display_error)?;
+    // BIP-32 master derivation: I = HMAC-SHA512(Key, seed). The default key
+    // is the spec's "Bitcoin seed", but callers may substitute any byte
+    // string — cross-ecosystem wallets sometimes use different constants.
+    let key_bytes = hmac_key
+        .filter(|value| !value.is_empty())
+        .map(|value| value.as_bytes())
+        .unwrap_or(b"Bitcoin seed");
+    let master = derive_bip32_master(seed_bytes, network, key_bytes)?;
     let path: DerivationPath = derivation_path.parse().map_err(display_error)?;
     let secp = Secp256k1::<All>::new();
     master.derive_priv(&secp, &path).map_err(display_error)
+}
+
+fn derive_bip32_master(
+    seed_bytes: &[u8],
+    network: Network,
+    hmac_key: &[u8],
+) -> Result<Xpriv, String> {
+    let hmac_result = hmac_sha512(hmac_key, &[seed_bytes])?;
+    let private_key = bitcoin::secp256k1::SecretKey::from_slice(&hmac_result[..32])
+        .map_err(|error| format!("Derived BIP-32 master key is invalid: {error}"))?;
+    let mut chain_code_bytes = [0u8; 32];
+    chain_code_bytes.copy_from_slice(&hmac_result[32..]);
+    Ok(Xpriv {
+        network: network.into(),
+        depth: 0,
+        parent_fingerprint: Fingerprint::default(),
+        child_number: ChildNumber::Normal { index: 0 },
+        private_key,
+        chain_code: ChainCode::from(chain_code_bytes),
+    })
+}
+
+fn hmac_sha512(key: &[u8], chunks: &[&[u8]]) -> Result<Zeroizing<[u8; 64]>, String> {
+    let mut mac = HmacSha512::new_from_slice(key)
+        .map_err(|error| format!("Invalid HMAC-SHA512 key: {error}"))?;
+    for chunk in chunks {
+        mac.update(chunk);
+    }
+    let tag = mac.finalize().into_bytes();
+    let mut out = Zeroizing::new([0u8; 64]);
+    out.copy_from_slice(&tag);
+    Ok(out)
 }
 
 fn derive_bitcoin_address(
@@ -1674,19 +1703,30 @@ fn derive_bip39_seed(
     seed_phrase: &str,
     passphrase: &str,
     iteration_count: u32,
+    mnemonic_wordlist: Option<&str>,
+    salt_prefix: Option<&str>,
 ) -> Result<Zeroizing<[u8; 64]>, String> {
-    // BIP-39 normalization + PBKDF2-HMAC-SHA512.
-    // `iteration_count == 0` means "use default 2048 rounds".
+    // BIP-39 normalization + PBKDF2-HMAC-SHA512. All knobs are tunable:
+    //   * `iteration_count == 0` selects the BIP-39 default of 2048 rounds.
+    //   * `mnemonic_wordlist == None` selects English.
+    //   * `salt_prefix == None` selects the BIP-39 default of "mnemonic".
+    let language = resolve_bip39_language(mnemonic_wordlist)?;
     let mnemonic =
-        Mnemonic::parse_in_normalized(Language::English, seed_phrase).map_err(display_error)?;
+        Mnemonic::parse_in_normalized(language, seed_phrase).map_err(display_error)?;
     let iterations = if iteration_count == 0 {
         2048
     } else {
         iteration_count
     };
+    let prefix = salt_prefix.unwrap_or("mnemonic");
     let normalized_mnemonic = Zeroizing::new(mnemonic.to_string().nfkd().collect::<String>());
     let normalized_passphrase = Zeroizing::new(passphrase.nfkd().collect::<String>());
-    let salt = Zeroizing::new(format!("mnemonic{}", normalized_passphrase.as_str()));
+    let normalized_prefix = Zeroizing::new(prefix.nfkd().collect::<String>());
+    let salt = Zeroizing::new(format!(
+        "{}{}",
+        normalized_prefix.as_str(),
+        normalized_passphrase.as_str()
+    ));
     let mut seed = Zeroizing::new([0u8; 64]);
     pbkdf2_hmac::<Sha512>(
         normalized_mnemonic.as_bytes(),
@@ -1697,41 +1737,113 @@ fn derive_bip39_seed(
     Ok(seed)
 }
 
+fn derive_bip39_seed_from_request(
+    request: &ParsedRequest,
+) -> Result<Zeroizing<[u8; 64]>, String> {
+    derive_bip39_seed(
+        &request.seed_phrase,
+        &request.passphrase,
+        request.iteration_count,
+        request.mnemonic_wordlist.as_deref(),
+        request.salt_prefix.as_deref(),
+    )
+}
+
 fn derive_solana_ed25519_key(
     seed: &[u8],
     derivation_path: &str,
     hmac_key: Option<&str>,
 ) -> Result<Zeroizing<[u8; 32]>, String> {
-    // SLIP-0010 ed25519 derivation used by Solana-style chains.
-    if let Some(hmac_key) = hmac_key {
-        if !hmac_key.is_empty() && hmac_key != "ed25519 seed" {
-            return Err(
-                "Custom HMAC master key is not supported for ed25519 derivation.".to_string(),
-            );
-        }
+    // SLIP-0010 ed25519 derivation (hand-rolled so the HMAC master key is a
+    // caller-supplied parameter instead of a hardcoded spec constant).
+    let key_bytes = hmac_key
+        .filter(|value| !value.is_empty())
+        .map(|value| value.as_bytes())
+        .unwrap_or(b"ed25519 seed");
+
+    // Master: I = HMAC-SHA512(Key, seed). IL = private_key, IR = chain_code.
+    let master = hmac_sha512(key_bytes, &[seed])?;
+    let mut private_key = Zeroizing::new([0u8; 32]);
+    let mut chain_code = Zeroizing::new([0u8; 32]);
+    private_key.copy_from_slice(&master[..32]);
+    chain_code.copy_from_slice(&master[32..]);
+
+    // Walk the path. SLIP-0010 for ed25519 only supports hardened children,
+    // so any normal index is silently promoted — matches how every ed25519
+    // wallet in the ecosystem interprets paths like `m/44'/501'/0'/0'`.
+    for index in parse_slip10_ed25519_path(derivation_path)? {
+        let index_bytes = index.to_be_bytes();
+        let child = hmac_sha512(
+            &*chain_code,
+            &[&[0x00], &*private_key as &[u8], &index_bytes],
+        )?;
+        private_key.copy_from_slice(&child[..32]);
+        chain_code.copy_from_slice(&child[32..]);
     }
 
-    let canonical_path = canonicalize_ed25519_path(derivation_path);
-    let path = slip10::BIP32Path::from_str(&canonical_path).map_err(display_error)?;
-    let node = derive_key_from_path(seed, Curve::Ed25519, &path).map_err(display_error)?;
-    Ok(Zeroizing::new(node.key))
+    Ok(private_key)
 }
 
-fn canonicalize_ed25519_path(path: &str) -> String {
-    // slip10 expects hardened path segments; append `'` when omitted.
-    let mut out: Vec<String> = Vec::new();
-    for (index, part) in path.split('/').enumerate() {
-        if index == 0 {
-            out.push(part.to_string());
-            continue;
-        }
-        if part.ends_with('\'') {
-            out.push(part.to_string());
-        } else {
-            out.push(format!("{}'", part));
-        }
+fn parse_slip10_ed25519_path(path: &str) -> Result<Vec<u32>, String> {
+    // Accept BIP-32-style path strings (`m/44'/501'/0'/0'`) and coerce every
+    // index to hardened, which is the only form SLIP-0010 ed25519 supports.
+    let trimmed = path.trim();
+    let body = trimmed
+        .strip_prefix("m/")
+        .or_else(|| trimmed.strip_prefix("M/"))
+        .unwrap_or_else(|| {
+            if trimmed == "m" || trimmed == "M" {
+                ""
+            } else {
+                trimmed
+            }
+        });
+    if body.is_empty() {
+        return Ok(Vec::new());
     }
-    out.join("/")
+    let mut indices = Vec::new();
+    for segment in body.split('/') {
+        let cleaned = segment.trim_end_matches('\'').trim_end_matches('h');
+        let raw: u32 = cleaned
+            .parse()
+            .map_err(|_| format!("Invalid derivation path segment: {segment}"))?;
+        if raw & 0x8000_0000 != 0 {
+            return Err(format!(
+                "Derivation path segment out of range: {segment}"
+            ));
+        }
+        indices.push(raw | 0x8000_0000);
+    }
+    Ok(indices)
+}
+
+fn resolve_bip39_language(name: Option<&str>) -> Result<Language, String> {
+    let value = match name {
+        Some(value) if !value.trim().is_empty() => value.trim().to_ascii_lowercase(),
+        _ => return Ok(Language::English),
+    };
+    match value.as_str() {
+        "english" | "en" => Ok(Language::English),
+        "czech" | "cs" => Ok(Language::Czech),
+        "french" | "fr" => Ok(Language::French),
+        "italian" | "it" => Ok(Language::Italian),
+        "japanese" | "ja" | "jp" => Ok(Language::Japanese),
+        "korean" | "ko" | "kr" => Ok(Language::Korean),
+        "portuguese" | "pt" => Ok(Language::Portuguese),
+        "spanish" | "es" => Ok(Language::Spanish),
+        "simplified-chinese"
+        | "chinese-simplified"
+        | "simplified_chinese"
+        | "zh-hans"
+        | "zh-cn"
+        | "zh" => Ok(Language::SimplifiedChinese),
+        "traditional-chinese"
+        | "chinese-traditional"
+        | "traditional_chinese"
+        | "zh-hant"
+        | "zh-tw" => Ok(Language::TraditionalChinese),
+        other => Err(format!("Unsupported mnemonic wordlist: {other}")),
+    }
 }
 
 fn secp_derivation_path(request: &ParsedRequest) -> Result<String, String> {
@@ -1869,6 +1981,7 @@ mod tests {
             hmac_key: None,
             mnemonic_wordlist: Some("english".to_string()),
             iteration_count: 2048,
+            salt_prefix: None,
         }
     }
 
@@ -1927,6 +2040,82 @@ mod tests {
                 chain_name(chain)
             );
         }
+    }
+
+    #[test]
+    fn custom_hmac_key_changes_secp_derivation() {
+        let baseline = derive(base_request(Chain::Bitcoin, CurveFamily::Secp256k1))
+            .expect("baseline secp derivation");
+        let mut customized = base_request(Chain::Bitcoin, CurveFamily::Secp256k1);
+        customized.hmac_key = Some("Nostr seed".to_string());
+        let tweaked = derive(customized).expect("customized secp derivation");
+        assert_ne!(baseline.private_key_hex, tweaked.private_key_hex);
+        assert_ne!(baseline.address, tweaked.address);
+    }
+
+    #[test]
+    fn custom_hmac_key_changes_slip10_derivation() {
+        let baseline = derive(base_request(Chain::Solana, CurveFamily::Ed25519))
+            .expect("baseline slip10 derivation");
+        let mut customized = base_request(Chain::Solana, CurveFamily::Ed25519);
+        customized.hmac_key = Some("custom ed25519 seed".to_string());
+        let tweaked = derive(customized).expect("customized slip10 derivation");
+        assert_ne!(baseline.private_key_hex, tweaked.private_key_hex);
+        assert_ne!(baseline.address, tweaked.address);
+    }
+
+    #[test]
+    fn custom_salt_prefix_changes_seed() {
+        let baseline = derive(base_request(Chain::Bitcoin, CurveFamily::Secp256k1))
+            .expect("baseline seed derivation");
+        let mut customized = base_request(Chain::Bitcoin, CurveFamily::Secp256k1);
+        customized.salt_prefix = Some("electrum".to_string());
+        let tweaked = derive(customized).expect("customized seed derivation");
+        assert_ne!(baseline.private_key_hex, tweaked.private_key_hex);
+    }
+
+    #[test]
+    fn custom_iteration_count_changes_seed() {
+        let baseline = derive(base_request(Chain::Bitcoin, CurveFamily::Secp256k1))
+            .expect("baseline iteration derivation");
+        let mut customized = base_request(Chain::Bitcoin, CurveFamily::Secp256k1);
+        customized.iteration_count = 4096;
+        let tweaked = derive(customized).expect("customized iteration derivation");
+        assert_ne!(baseline.private_key_hex, tweaked.private_key_hex);
+    }
+
+    #[test]
+    fn default_hmac_key_matches_standard_seed() {
+        // Explicitly passing "Bitcoin seed" / "ed25519 seed" must match the
+        // None default — the old API explicitly rejected them, so regressions
+        // here would break any caller still sending the canonical constants.
+        let standard = derive(base_request(Chain::Bitcoin, CurveFamily::Secp256k1))
+            .expect("standard secp");
+        let mut explicit = base_request(Chain::Bitcoin, CurveFamily::Secp256k1);
+        explicit.hmac_key = Some("Bitcoin seed".to_string());
+        let explicit_derived = derive(explicit).expect("explicit secp");
+        assert_eq!(standard.private_key_hex, explicit_derived.private_key_hex);
+
+        let standard_ed = derive(base_request(Chain::Solana, CurveFamily::Ed25519))
+            .expect("standard slip10");
+        let mut explicit_ed = base_request(Chain::Solana, CurveFamily::Ed25519);
+        explicit_ed.hmac_key = Some("ed25519 seed".to_string());
+        let explicit_ed_derived = derive(explicit_ed).expect("explicit slip10");
+        assert_eq!(
+            standard_ed.private_key_hex,
+            explicit_ed_derived.private_key_hex
+        );
+    }
+
+    #[test]
+    fn unknown_wordlist_is_rejected() {
+        let mut request = base_request(Chain::Bitcoin, CurveFamily::Secp256k1);
+        request.mnemonic_wordlist = Some("klingon".to_string());
+        let error = match derive(request) {
+            Err(err) => err,
+            Ok(_) => panic!("klingon wordlist should not resolve"),
+        };
+        assert!(error.to_lowercase().contains("wordlist"), "got: {error}");
     }
 
     fn chain_name(chain: Chain) -> &'static str {

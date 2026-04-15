@@ -110,7 +110,7 @@ pub struct WalletService {
     wallet_state: Arc<RwLock<CoreAppState>>,
 }
 
-#[uniffi::export]
+#[uniffi::export(async_runtime = "tokio")]
 impl WalletService {
     #[uniffi::constructor]
     pub fn new(endpoints_json: String) -> Result<Arc<Self>, SpectraBridgeError> {
@@ -2908,44 +2908,14 @@ impl WalletService {
     // Phase 2.7 — SecretStore (Keychain delegate)
     // ----------------------------------------------------------------
 
-    /// Register the Swift Keychain implementation. Must be called once at app
-    /// start before any method that reads or writes secrets.
+    /// Register the platform Keychain implementation. Must be called once at
+    /// app start before any code path that reads or writes secrets. Rust code
+    /// that needs secret I/O calls the delegate directly via `self.secret_store`;
+    /// there are deliberately no pass-through FFI wrappers — all secret traffic
+    /// is driven by Rust.
     pub fn set_secret_store(&self, store: Arc<dyn SecretStore>) {
         if let Ok(mut guard) = self.secret_store.write() {
             *guard = Some(store);
-        }
-    }
-
-    /// Read a secret via the registered `SecretStore`.
-    pub fn load_secret(&self, key: String) -> Option<String> {
-        let guard = self.secret_store.read().ok()?;
-        guard.as_ref()?.load_secret(key)
-    }
-
-    /// Write a secret via the registered `SecretStore`.
-    pub fn save_secret(&self, key: String, value: String) -> bool {
-        let guard = self.secret_store.read().unwrap_or_else(|p| p.into_inner());
-        match guard.as_ref() {
-            Some(s) => s.save_secret(key, value),
-            None => false,
-        }
-    }
-
-    /// Delete a secret via the registered `SecretStore`.
-    pub fn delete_secret(&self, key: String) -> bool {
-        let guard = self.secret_store.read().unwrap_or_else(|p| p.into_inner());
-        match guard.as_ref() {
-            Some(s) => s.delete_secret(key),
-            None => false,
-        }
-    }
-
-    /// List all secret keys matching a prefix via the registered `SecretStore`.
-    pub fn list_secret_keys(&self, prefix_filter: String) -> Vec<String> {
-        let guard = self.secret_store.read().unwrap_or_else(|p| p.into_inner());
-        match guard.as_ref() {
-            Some(s) => s.list_keys(prefix_filter),
-            None => vec![],
         }
     }
 

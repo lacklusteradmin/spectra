@@ -87,7 +87,7 @@ impl AppStateObserverHandle {
 ///
 /// `async` so it runs inside UniFFI's tokio runtime (required for
 /// `tokio::spawn`).
-#[uniffi::export]
+#[uniffi::export(async_runtime = "tokio")]
 pub async fn register_app_state_observer(
     observer: Arc<dyn AppStateObserver>,
 ) -> Arc<AppStateObserverHandle> {

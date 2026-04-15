@@ -92,7 +92,7 @@ fn parse_method(method: &str) -> Result<Method, HttpError> {
         .map_err(|_| HttpError::InvalidMethod { method: method.to_string() })
 }
 
-#[uniffi::export]
+#[uniffi::export(async_runtime = "tokio")]
 pub async fn http_request(
     method: String,
     url: String,
@@ -170,7 +170,7 @@ pub async fn http_request(
 
 /// GET a URL and return the response body as UTF-8 text with headers.
 /// Single-shot (no retry). Use `http_request` for retry-profiled calls.
-#[uniffi::export]
+#[uniffi::export(async_runtime = "tokio")]
 pub async fn http_get(
     url: String,
     headers: std::collections::HashMap<String, String>,
@@ -194,7 +194,7 @@ pub async fn http_get(
 /// POST a JSON body (already serialised) and return the response as text.
 /// Sets `Content-Type: application/json` automatically unless overridden
 /// by `headers`. Single-shot (no retry).
-#[uniffi::export]
+#[uniffi::export(async_runtime = "tokio")]
 pub async fn http_post_json(
     url: String,
     body_json: String,
@@ -233,7 +233,7 @@ pub struct JsonRpcProbeResult {
     pub detail: String,
 }
 
-#[uniffi::export]
+#[uniffi::export(async_runtime = "tokio")]
 pub async fn diagnostics_probe_jsonrpc(
     url: String,
     rpc_method: String,
@@ -269,7 +269,7 @@ pub async fn diagnostics_probe_jsonrpc(
 }
 
 // Lightweight single-shot probe (no retry). Used by endpoint health checks.
-#[uniffi::export]
+#[uniffi::export(async_runtime = "tokio")]
 pub async fn http_probe(url: String, timeout_secs: u32) -> bool {
     use reqwest::Client;
     let client = Client::builder()

@@ -40,7 +40,7 @@ pub struct BalanceRefreshEngine {
     inner: Arc<Inner>,
 }
 
-#[uniffi::export]
+#[uniffi::export(async_runtime = "tokio")]
 impl BalanceRefreshEngine {
     /// Construct a new engine backed by the given WalletService instance.
     #[uniffi::constructor]
