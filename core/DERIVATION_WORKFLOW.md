@@ -1,3 +1,47 @@
+# Derivation Variables — Complete Inventory
+
+Deterministic pipeline — same inputs always produce the same `(priv, pub, address)`. Grouped by stage:
+
+## Stage 1 — Mnemonic → 64-byte seed (BIP-39 PBKDF2)
+1. `seed_phrase` (mnemonic string)
+2. `mnemonic_wordlist` (language — affects checksum validation; same entropy in two wordlists = different seeds)
+3. `passphrase`
+4. `salt_prefix` (default `"mnemonic"`)
+5. `iteration_count` (default 2048)
+6. *Fixed today:* PBKDF2 hash = SHA-512, output length = 64 bytes, Unicode normalization = NFKD
+
+## Stage 2 — Seed → master key
+7. `curve` (secp256k1, secp256r1, ed25519, sr25519, …)
+8. `derivation_algorithm` (BIP-32, SLIP-0010, Substrate, EIP-2333, …)
+9. `hmac_key` (master HMAC constant — `"Bitcoin seed"` / `"ed25519 seed"` / `"Nist256p1 seed"` / custom)
+10. *Fixed today:* master HMAC = HMAC-SHA-512
+
+## Stage 3 — Master → child (path walk)
+11. `derivation_path` — the segments
+12. Per-segment hardened flag (encoded in the path via `'`/`h`)
+13. *Implicit:* CKDpriv function per (curve, algorithm) — retry rules, non-hardened support
+
+## Stage 4 — Private key → public key
+14. Curve scalar-multiply (determined by `curve`)
+15. `public_key_format` (compressed / uncompressed / x-only / raw)
+
+## Stage 5 — Public key → address
+16. `chain` (often picks defaults for 17–22 below)
+17. `network` (mainnet/testnet/signet/testnet4 → version bytes, HRP)
+18. `address_algorithm` (Bitcoin script, EVM Keccak, Solana Base58, StrKey, …)
+19. `script_type` (P2PKH / P2SH-P2WPKH / P2WPKH / P2TR / Account)
+20. *Fixed per algorithm today:* address hash (Hash160 / Keccak-256 / Blake2b), encoding (Base58Check / Bech32 / Bech32m / Base32), checksum, version prefix
+
+## Currently exposed as explicit request fields
+`seed_phrase`, `passphrase`, `mnemonic_wordlist`, `salt_prefix`, `iteration_count`, `hmac_key`, `curve`, `derivation_algorithm`, `derivation_path`, `chain`, `network`, `public_key_format`, `address_algorithm`, `script_type`.
+
+## Hardcoded but *could* be promoted to parameters
+PBKDF2 hash function, PBKDF2 output length, mnemonic normalization form, master HMAC function, address hash function, address encoding, version/prefix bytes. Moving any of these to request fields would still keep the function deterministic — they're just currently pinned to the BIP-39 / chain specs.
+
+**Total knobs = 14 exposed + ~7 latent spec constants.** The function is fully deterministic over that set.
+
+---
+
 # Seed Phrase → Public/Private Key Workflow
 
 End-to-end description of how `spectra_core` turns a BIP-39 mnemonic into a usable private key, public key, and chain-specific address. Every customization point the caller can override is called out explicitly.

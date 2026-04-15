@@ -1,6 +1,6 @@
-use bitcoin::{Address, Network};
 use serde::{Deserialize, Serialize};
-use std::str::FromStr;
+
+use super::bitcoin_primitives::{parse_bitcoin_address, BitcoinNetworkKind};
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, uniffi::Record)]
 #[serde(rename_all = "camelCase")]
@@ -114,18 +114,19 @@ fn is_lower_hex(value: &str) -> bool {
 }
 
 fn validate_bitcoin_address(value: &str, network_mode: Option<&str>) -> AddressValidationResult {
-    let address = match Address::from_str(value) {
-        Ok(address) => address,
+    let parsed = match parse_bitcoin_address(value) {
+        Ok(parsed) => parsed,
         Err(_) => return invalid_result(),
     };
 
+    let network = match &parsed {
+        super::bitcoin_primitives::ParsedBitcoinAddress::Legacy { network, .. }
+        | super::bitcoin_primitives::ParsedBitcoinAddress::SegWit { network, .. } => network,
+    };
+
     let is_valid = match network_mode.unwrap_or("mainnet") {
-        "mainnet" => address.require_network(Network::Bitcoin).is_ok(),
-        "testnet" | "testnet4" | "signet" => {
-            address.clone().require_network(Network::Testnet).is_ok()
-                || address.clone().require_network(Network::Signet).is_ok()
-                || address.require_network(Network::Regtest).is_ok()
-        }
+        "mainnet" => matches!(network, BitcoinNetworkKind::Mainnet),
+        "testnet" | "testnet4" | "signet" => matches!(network, BitcoinNetworkKind::Testnet),
         _ => false,
     };
 

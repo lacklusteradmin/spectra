@@ -12,10 +12,9 @@
 //! - `ypub…` — BIP49 P2SH-nested-P2WPKH (version bytes `04 9D 7C B2`)
 //! - `zpub…` — BIP84 native SegWit P2WPKH (version bytes `04 B2 47 46`)
 //!
-//! To keep the `bitcoin` crate's strict xpub decoder happy we normalize
-//! y/zpub prefixes down to the canonical xpub version bytes before parsing.
-//! The script type is inferred from the original prefix so address formatting
-//! still picks the right encoder.
+//! We normalize y/zpub prefixes down to the canonical xpub version bytes
+//! before parsing. The script type is inferred from the original prefix so
+//! address formatting still picks the right encoder.
 //!
 //! ## Derivation
 //!
@@ -24,16 +23,16 @@
 //! chain leg and returns `(index, address)` tuples. Aggregation helpers then
 //! query Esplora per address and sum the results.
 
-use std::str::FromStr;
-
 use bip39::Mnemonic;
-use bitcoin::bip32::{ChildNumber, DerivationPath, Xpriv, Xpub};
-use bitcoin::key::CompressedPublicKey;
-use bitcoin::secp256k1::{Secp256k1, All};
-use bitcoin::{Address, Network, PublicKey};
+use secp256k1::{All, Secp256k1};
 use serde::{Deserialize, Serialize};
 
 use crate::chains::bitcoin::{BitcoinClient, EsploraUtxo};
+use crate::derivation::bitcoin_primitives::{
+    encode_p2pkh, encode_p2sh_p2wpkh, encode_p2wpkh, parse_bip32_path, BitcoinNetworkParams,
+    ExtendedPrivateKey, ExtendedPublicKey, BTC_MAINNET, BTC_TESTNET, XPUB_VERSION_MAINNET,
+    XPUB_VERSION_TESTNET,
+};
 
 // ----------------------------------------------------------------
 // Script type inferred from the xpub prefix
@@ -60,30 +59,45 @@ impl HdScriptType {
     }
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum HdNetwork {
+    Mainnet,
+    Testnet,
+}
+
+impl HdNetwork {
+    fn params(self) -> BitcoinNetworkParams {
+        match self {
+            HdNetwork::Mainnet => BTC_MAINNET,
+            HdNetwork::Testnet => BTC_TESTNET,
+        }
+    }
+
+    fn xpub_version(self) -> [u8; 4] {
+        match self {
+            HdNetwork::Mainnet => XPUB_VERSION_MAINNET,
+            HdNetwork::Testnet => XPUB_VERSION_TESTNET,
+        }
+    }
+}
+
 // ----------------------------------------------------------------
 // Xpub normalization
 // ----------------------------------------------------------------
 
-/// Canonical mainnet xpub version bytes used by `bitcoin::bip32::Xpub`.
-const VERSION_XPUB_MAIN: [u8; 4] = [0x04, 0x88, 0xB2, 0x1E];
-/// Canonical testnet tpub version bytes.
-const VERSION_XPUB_TEST: [u8; 4] = [0x04, 0x35, 0x87, 0xCF];
-
-/// Normalize a `y/zpub` (or their testnet counterparts) into a `x/tpub` by
+/// Normalize a `y/zpub` (or their testnet counterparts) into an `x/tpub` by
 /// swapping the 4-byte serialization version prefix. The payload bytes
 /// (depth, parent fingerprint, child number, chain code, pubkey) remain
 /// untouched. Base58Check is re-encoded after the swap.
-pub fn normalize_xpub(
-    input: &str,
-) -> Result<(String, HdScriptType, Network), String> {
+pub fn normalize_xpub(input: &str) -> Result<(String, HdScriptType, HdNetwork), String> {
     let prefix = input.get(..4).unwrap_or("");
     let script_type = HdScriptType::from_prefix(prefix)
         .ok_or_else(|| format!("unsupported xpub prefix: {prefix}"))?;
     let is_testnet = matches!(prefix, "tpub" | "upub" | "vpub");
     let network = if is_testnet {
-        Network::Testnet
+        HdNetwork::Testnet
     } else {
-        Network::Bitcoin
+        HdNetwork::Mainnet
     };
 
     // If already a canonical xpub/tpub, skip the base58 round trip.
@@ -100,16 +114,9 @@ pub fn normalize_xpub(
         return Err("xpub too short".to_string());
     }
     let mut swapped = Vec::with_capacity(raw.len());
-    let canon_version = if is_testnet {
-        VERSION_XPUB_TEST
-    } else {
-        VERSION_XPUB_MAIN
-    };
-    swapped.extend_from_slice(&canon_version);
+    swapped.extend_from_slice(&network.xpub_version());
     swapped.extend_from_slice(&raw[4..]);
-    let encoded = bs58::encode(&swapped)
-        .with_check()
-        .into_string();
+    let encoded = bs58::encode(&swapped).with_check().into_string();
     Ok((encoded, script_type, network))
 }
 
@@ -142,24 +149,21 @@ pub fn derive_children(
     }
 
     let (canon, script_type, network) = normalize_xpub(xpub_input)?;
-    let xpub = Xpub::from_str(&canon).map_err(|e| format!("bad xpub: {e}"))?;
+    let (xpub, _version) = ExtendedPublicKey::from_xpub_string(&canon)
+        .map_err(|e| format!("bad xpub: {e}"))?;
     let secp = Secp256k1::<All>::new();
 
-    let leg = ChildNumber::from_normal_idx(change)
-        .map_err(|e| format!("bad change leg: {e}"))?;
     let leg_xpub = xpub
-        .derive_pub(&secp, &[leg])
+        .derive_child(&secp, change)
         .map_err(|e| format!("derive change leg: {e}"))?;
 
     let mut out = Vec::with_capacity(count as usize);
     for i in 0..count {
         let idx = start_index.saturating_add(i);
-        let child_num = ChildNumber::from_normal_idx(idx)
-            .map_err(|e| format!("bad index {idx}: {e}"))?;
         let child = leg_xpub
-            .derive_pub(&secp, &[child_num])
+            .derive_child(&secp, idx)
             .map_err(|e| format!("derive index {idx}: {e}"))?;
-        let address = address_from_pubkey(&child.public_key, script_type, network, &secp)?;
+        let address = address_from_pubkey(&child, script_type, network)?;
         out.push(HdChildAddress {
             index: idx,
             change,
@@ -170,20 +174,17 @@ pub fn derive_children(
 }
 
 fn address_from_pubkey(
-    pk: &bitcoin::secp256k1::PublicKey,
+    child: &ExtendedPublicKey,
     script_type: HdScriptType,
-    network: Network,
-    secp: &Secp256k1<All>,
+    network: HdNetwork,
 ) -> Result<String, String> {
-    let compressed = CompressedPublicKey::try_from(PublicKey::new(*pk))
-        .map_err(|e| format!("pubkey compression: {e}"))?;
-    let address = match script_type {
-        HdScriptType::P2pkh => Address::p2pkh(&compressed, network),
-        HdScriptType::P2shP2wpkh => Address::p2shwpkh(&compressed, network),
-        HdScriptType::P2wpkh => Address::p2wpkh(&compressed, network),
-    };
-    let _ = secp; // retained for API symmetry with Taproot variants
-    Ok(address.to_string())
+    let compressed = child.public_key.serialize();
+    let params = network.params();
+    match script_type {
+        HdScriptType::P2pkh => Ok(encode_p2pkh(&params, &compressed)),
+        HdScriptType::P2shP2wpkh => Ok(encode_p2sh_p2wpkh(&params, &compressed)),
+        HdScriptType::P2wpkh => encode_p2wpkh(&params, &compressed),
+    }
 }
 
 // ----------------------------------------------------------------
@@ -289,10 +290,7 @@ pub async fn fetch_next_unused_address(
     let batch = derive_children(xpub_input, change, 0, gap_limit.max(1))?;
     for candidate in batch {
         let bal = client.fetch_balance(&candidate.address).await?;
-        if bal.utxo_count == 0
-            && bal.confirmed_sats == 0
-            && bal.unconfirmed_sats == 0
-        {
+        if bal.utxo_count == 0 && bal.confirmed_sats == 0 && bal.unconfirmed_sats == 0 {
             return Ok(Some(candidate));
         }
     }
@@ -326,13 +324,13 @@ pub fn derive_account_xpub(
     let seed = mnemonic.to_seed(passphrase);
 
     let secp = Secp256k1::<All>::new();
-    let master = Xpriv::new_master(Network::Bitcoin, &seed)
+    let master = ExtendedPrivateKey::master_from_seed(b"Bitcoin seed", &seed)
         .map_err(|e| format!("master key: {e}"))?;
-    let path: DerivationPath = account_path.parse()
+    let path = parse_bip32_path(account_path)
         .map_err(|e| format!("invalid derivation path: {e}"))?;
     let account_xpriv = master
-        .derive_priv(&secp, &path)
+        .derive_path(&secp, &path)
         .map_err(|e| format!("derive priv: {e}"))?;
-    let account_xpub = Xpub::from_priv(&secp, &account_xpriv);
-    Ok(account_xpub.to_string())
+    let account_xpub = account_xpriv.to_neutered(&secp);
+    Ok(account_xpub.to_xpub_string(XPUB_VERSION_MAINNET))
 }

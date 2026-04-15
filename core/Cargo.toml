@@ -17,6 +17,7 @@ curve25519-dalek = { version = "4", default-features = false, features = ["alloc
 ed25519-dalek = { version = "2", default-features = false, features = ["alloc", "digest", "fast", "pkcs8", "rand_core", "zeroize"] }
 hex = "0.4"
 hmac = "0.12"
+ripemd = "0.1"
 pbkdf2 = "0.12"
 secp256k1 = { version = "0.29", features = ["alloc", "global-context", "hashes", "recovery", "rand"] }
 serde = { version = "1", features = ["derive"] }
@@ -33,6 +34,7 @@ once_cell = "1"
 toml = { version = "0.8", default-features = false, features = ["parse"] }
 sha3 = "0.10"
 blake2 = "0.10"
+schnorrkel = { version = "0.11", default-features = false, features = ["std"] }
 base64 = "0.22"
 rand = "0.8"
 futures = "0.3"

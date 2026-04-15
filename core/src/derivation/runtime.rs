@@ -1,18 +1,20 @@
 use bip39::{Language, Mnemonic};
-use bitcoin::bip32::{ChainCode, ChildNumber, DerivationPath, Fingerprint, Xpriv};
-use bitcoin::hashes::{hash160, sha256, Hash};
-use bitcoin::key::{CompressedPublicKey, PublicKey};
-use bitcoin::secp256k1::{All, Secp256k1};
-use bitcoin::{Address, Network};
 use ed25519_dalek::SigningKey;
 use hmac::{Hmac, Mac};
 use pbkdf2::pbkdf2_hmac;
+use secp256k1::{All, PublicKey, Secp256k1, SecretKey};
 use serde::{Deserialize, Serialize};
 use sha2::Sha512;
 use std::fmt::Display;
 use tiny_keccak::{Hasher, Keccak};
 use unicode_normalization::UnicodeNormalization;
 use zeroize::{Zeroize, Zeroizing};
+
+use super::bitcoin_primitives::{
+    encode_p2pkh, encode_p2sh_p2wpkh, encode_p2tr, encode_p2wpkh, hash160 as hash160_bytes,
+    parse_bip32_path, sha256 as sha256_bytes, BitcoinNetworkParams, ExtendedPrivateKey,
+    BTC_MAINNET, BTC_TESTNET,
+};
 
 type HmacSha512 = Hmac<Sha512>;
 
@@ -43,6 +45,7 @@ const CHAIN_TON: u32 = 18;
 const CHAIN_INTERNET_COMPUTER: u32 = 19;
 const CHAIN_NEAR: u32 = 20;
 const CHAIN_POLKADOT: u32 = 21;
+const CHAIN_MONERO: u32 = 22;
 
 const NETWORK_MAINNET: u32 = 0;
 const NETWORK_TESTNET: u32 = 1;
@@ -51,15 +54,37 @@ const NETWORK_SIGNET: u32 = 3;
 
 const CURVE_SECP256K1: u32 = 0;
 const CURVE_ED25519: u32 = 1;
+const CURVE_SR25519: u32 = 2;
 
 const DERIVATION_AUTO: u32 = 0;
 const DERIVATION_BIP32_SECP256K1: u32 = 1;
 const DERIVATION_SLIP10_ED25519: u32 = 2;
+const DERIVATION_DIRECT_SEED_ED25519: u32 = 3;
+const DERIVATION_TON_MNEMONIC: u32 = 4;
+const DERIVATION_BIP32_ED25519_ICARUS: u32 = 5;
+const DERIVATION_SUBSTRATE_BIP39: u32 = 6;
+const DERIVATION_MONERO_BIP39: u32 = 7;
 
 const ADDRESS_AUTO: u32 = 0;
 const ADDRESS_BITCOIN: u32 = 1;
 const ADDRESS_EVM: u32 = 2;
 const ADDRESS_SOLANA: u32 = 3;
+const ADDRESS_NEAR_HEX: u32 = 4;
+const ADDRESS_TON_RAW_ACCOUNT_ID: u32 = 5;
+const ADDRESS_CARDANO_SHELLEY_ENTERPRISE: u32 = 6;
+const ADDRESS_SS58: u32 = 7;
+const ADDRESS_MONERO_MAIN: u32 = 8;
+const ADDRESS_TON_V4R2: u32 = 9;
+const ADDRESS_LITECOIN: u32 = 10;
+const ADDRESS_DOGECOIN: u32 = 11;
+const ADDRESS_BITCOIN_CASH_LEGACY: u32 = 12;
+const ADDRESS_BITCOIN_SV_LEGACY: u32 = 13;
+const ADDRESS_TRON_BASE58_CHECK: u32 = 14;
+const ADDRESS_XRP_BASE58_CHECK: u32 = 15;
+const ADDRESS_STELLAR_STRKEY: u32 = 16;
+const ADDRESS_SUI_KECCAK: u32 = 17;
+const ADDRESS_APTOS_KECCAK: u32 = 18;
+const ADDRESS_ICP_PRINCIPAL: u32 = 19;
 
 const PUBLIC_KEY_AUTO: u32 = 0;
 const PUBLIC_KEY_COMPRESSED: u32 = 1;
@@ -83,7 +108,11 @@ struct DerivedOutput {
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct UniFFIDerivationRequest {
-    pub chain: u32,
+    // Deprecated: chain is now inferred from `address_algorithm` at parse
+    // time. Callers may still send it for backwards compatibility, but the
+    // value is ignored by the Rust side.
+    #[serde(default)]
+    pub chain: Option<u32>,
     pub network: u32,
     pub curve: u32,
     pub requested_outputs: u32,
@@ -103,7 +132,11 @@ pub struct UniFFIDerivationRequest {
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct UniFFIPrivateKeyDerivationRequest {
-    pub chain: u32,
+    // Deprecated: chain is now inferred from `address_algorithm` at parse
+    // time. Callers may still send it for backwards compatibility, but the
+    // value is ignored by the Rust side.
+    #[serde(default)]
+    pub chain: Option<u32>,
     pub network: u32,
     pub curve: u32,
     pub address_algorithm: u32,
@@ -123,7 +156,11 @@ struct UniFFIDerivationResponse {
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct UniFFIMaterialRequest {
-    pub chain: u32,
+    // Deprecated: chain is now inferred from `address_algorithm` at parse
+    // time. Callers may still send it for backwards compatibility, but the
+    // value is ignored by the Rust side.
+    #[serde(default)]
+    pub chain: Option<u32>,
     pub network: u32,
     pub curve: u32,
     pub derivation_algorithm: u32,
@@ -142,7 +179,11 @@ pub struct UniFFIMaterialRequest {
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct UniFFIPrivateKeyMaterialRequest {
-    pub chain: u32,
+    // Deprecated: chain is now inferred from `address_algorithm` at parse
+    // time. Callers may still send it for backwards compatibility, but the
+    // value is ignored by the Rust side.
+    #[serde(default)]
+    pub chain: Option<u32>,
     pub network: u32,
     pub curve: u32,
     pub address_algorithm: u32,
@@ -224,6 +265,7 @@ enum Chain {
     InternetComputer,
     Near,
     Polkadot,
+    Monero,
 }
 
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -238,21 +280,90 @@ enum NetworkFlavor {
 enum CurveFamily {
     Secp256k1,
     Ed25519,
+    // Schnorr/Ristretto on Curve25519 — Polkadot/Substrate signing curve.
+    // The 32-byte private key is the "mini secret" that schnorrkel expands
+    // into a full keypair via SHA-512 (ExpansionMode::Ed25519).
+    Sr25519,
 }
 
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, PartialEq, Eq)]
 enum DerivationAlgorithm {
     Auto,
     Bip32Secp256k1,
     Slip10Ed25519,
+    // Private key = PBKDF2-BIP39 seed[0..32]. Path is ignored. Matches the
+    // MyNearWallet / near-seed-phrase convention used across the NEAR ecosystem.
+    DirectSeedEd25519,
+    // TON mnemonic scheme (ton-crypto): entropy = HMAC-SHA512(key=mnemonic,
+    // data=passphrase); seed = PBKDF2(entropy, salt="TON default seed",
+    // 100_000, 64); priv = seed[0..32]. Unrelated to BIP-39 PBKDF2.
+    TonMnemonic,
+    // CIP-3 Icarus: entropy = bip39.to_entropy(mnemonic); xprv = PBKDF2(
+    // passphrase, entropy, 4096, 96); clamp per Khovratovich-Law; walk path
+    // via BIP-32-Ed25519 CKDpriv.
+    Bip32Ed25519Icarus,
+    // substrate-bip39: mini_secret = PBKDF2-HMAC-SHA512(password=BIP-39
+    // entropy, salt="mnemonic"+passphrase, 2048)[0..32]. Then schnorrkel
+    // expands the mini-secret into an sr25519 keypair. Path support is
+    // currently limited to the root (empty path); Substrate's //hard /soft
+    // junctions are deferred.
+    SubstrateBip39,
+    // Monero (BIP-39 variant): private spend key = sc_reduce32(BIP-39 seed[
+    // 0..32]); private view key = sc_reduce32(Keccak256(spend)). NOTE: this
+    // does NOT match Monero's native Electrum-style 25-word seed used by
+    // Cake/Monerujo; it is for cross-chain BIP-39 wallets only.
+    MoneroBip39,
 }
 
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, PartialEq, Eq)]
 enum AddressAlgorithm {
     Auto,
     Bitcoin,
     Evm,
     Solana,
+    NearHex,
+    // TON "raw account id": "<workchain>:<hex>". Workchain defaults to 0.
+    // NOTE: this is NOT the user-friendly base64url address; user-friendly
+    // addresses require state-init (BOC) hashing of a specific wallet version
+    // and are pending a full BOC implementation.
+    TonRawAccountId,
+    // Shelley enterprise address (CIP-19 header type 6, payment-key hash),
+    // bech32 encoded under HRP "addr" (mainnet) or "addr_test" (testnet).
+    CardanoShelleyEnterprise,
+    // SS58 (Substrate) address: prefix_byte(s) || pubkey || blake2b_512(
+    // "SS58PRE" || prefix || pubkey)[0..2], base58-encoded. Network prefix
+    // = 0 (Polkadot mainnet) by default.
+    Ss58,
+    // Monero standard mainnet address: 0x12 || public_spend (32) ||
+    // public_view (32) || keccak256(prev)[0..4], encoded with Monero's
+    // chunked Base58 (8-byte blocks → 11 chars).
+    MoneroMain,
+    // TON wallet v4R2 user-friendly bounceable address: computed by
+    // building a state_init cell with (v4R2 code cell, fresh data cell)
+    // and taking its SHA-256 cell hash as the 32-byte account id, then
+    // formatting tag(0x11)||workchain||account_id||crc16_xmodem as
+    // base64url. Wallet code BOC is embedded and parsed at first use;
+    // the resulting root hash is locked to the public v4R2 code hash
+    // via a self-test.
+    TonV4R2,
+    // Bitcoin-family Base58Check/Bech32 variants that differ from
+    // `Bitcoin` only in their network version bytes / HRP. Splitting
+    // them into discrete variants is what makes address_algorithm
+    // sufficient to describe a derivation without a `chain` hint.
+    Litecoin,
+    Dogecoin,
+    BitcoinCashLegacy,
+    BitcoinSvLegacy,
+    // Per-chain variants for accounts whose address format is distinct
+    // from EVM/Solana/Bitcoin. These exist so `address_algorithm` is
+    // enough to pick the right derivation path without a chain hint.
+    // Internally they still dispatch via `Chain::Tron`/`::Xrp`/etc.
+    TronBase58Check,
+    XrpBase58Check,
+    StellarStrKey,
+    SuiKeccak,
+    AptosKeccak,
+    IcpPrincipal,
 }
 
 #[derive(Clone, Copy)]
@@ -364,8 +475,9 @@ fn derive_address_for_chain(
     // All other chains use a fixed script type supplied by chain_defaults_from_name.
     let script = script_opt.unwrap_or_else(|| script_type_from_purpose(path));
 
+    let _ = chain_id; // chain is inferred from address_algorithm at parse time
     let request = UniFFIDerivationRequest {
-        chain: chain_id,
+        chain: None,
         network: NETWORK_MAINNET,
         curve,
         requested_outputs: OUTPUT_ADDRESS,
@@ -401,19 +513,19 @@ fn chain_defaults_from_name(name: &str) -> Option<(u32, u32, u32, u32, u32, Opti
         )),
         "Bitcoin Cash" => Some((
             CHAIN_BITCOIN_CASH, CURVE_SECP256K1, DERIVATION_BIP32_SECP256K1,
-            ADDRESS_BITCOIN, PUBLIC_KEY_COMPRESSED, Some(SCRIPT_P2PKH),
+            ADDRESS_BITCOIN_CASH_LEGACY, PUBLIC_KEY_COMPRESSED, Some(SCRIPT_P2PKH),
         )),
         "Bitcoin SV" => Some((
             CHAIN_BITCOIN_SV, CURVE_SECP256K1, DERIVATION_BIP32_SECP256K1,
-            ADDRESS_BITCOIN, PUBLIC_KEY_COMPRESSED, Some(SCRIPT_P2PKH),
+            ADDRESS_BITCOIN_SV_LEGACY, PUBLIC_KEY_COMPRESSED, Some(SCRIPT_P2PKH),
         )),
         "Litecoin" => Some((
             CHAIN_LITECOIN, CURVE_SECP256K1, DERIVATION_BIP32_SECP256K1,
-            ADDRESS_BITCOIN, PUBLIC_KEY_COMPRESSED, Some(SCRIPT_P2PKH),
+            ADDRESS_LITECOIN, PUBLIC_KEY_COMPRESSED, Some(SCRIPT_P2PKH),
         )),
         "Dogecoin" => Some((
             CHAIN_DOGECOIN, CURVE_SECP256K1, DERIVATION_BIP32_SECP256K1,
-            ADDRESS_BITCOIN, PUBLIC_KEY_COMPRESSED, Some(SCRIPT_P2PKH),
+            ADDRESS_DOGECOIN, PUBLIC_KEY_COMPRESSED, Some(SCRIPT_P2PKH),
         )),
         // ── EVM / secp256k1 ─────────────────────────────────────────────────
         "Ethereum" => Some((
@@ -442,11 +554,11 @@ fn chain_defaults_from_name(name: &str) -> Option<(u32, u32, u32, u32, u32, Opti
         )),
         "Tron" => Some((
             CHAIN_TRON, CURVE_SECP256K1, DERIVATION_BIP32_SECP256K1,
-            ADDRESS_EVM, PUBLIC_KEY_UNCOMPRESSED, Some(SCRIPT_ACCOUNT),
+            ADDRESS_TRON_BASE58_CHECK, PUBLIC_KEY_UNCOMPRESSED, Some(SCRIPT_ACCOUNT),
         )),
         "XRP Ledger" => Some((
             CHAIN_XRP, CURVE_SECP256K1, DERIVATION_BIP32_SECP256K1,
-            ADDRESS_BITCOIN, PUBLIC_KEY_COMPRESSED, Some(SCRIPT_P2PKH),
+            ADDRESS_XRP_BASE58_CHECK, PUBLIC_KEY_COMPRESSED, Some(SCRIPT_P2PKH),
         )),
         // ── Ed25519 chains ───────────────────────────────────────────────────
         "Solana" => Some((
@@ -455,35 +567,39 @@ fn chain_defaults_from_name(name: &str) -> Option<(u32, u32, u32, u32, u32, Opti
         )),
         "Stellar" => Some((
             CHAIN_STELLAR, CURVE_ED25519, DERIVATION_SLIP10_ED25519,
-            ADDRESS_SOLANA, PUBLIC_KEY_RAW, Some(SCRIPT_ACCOUNT),
+            ADDRESS_STELLAR_STRKEY, PUBLIC_KEY_RAW, Some(SCRIPT_ACCOUNT),
         )),
         "Cardano" => Some((
-            CHAIN_CARDANO, CURVE_ED25519, DERIVATION_SLIP10_ED25519,
-            ADDRESS_SOLANA, PUBLIC_KEY_RAW, Some(SCRIPT_ACCOUNT),
+            CHAIN_CARDANO, CURVE_ED25519, DERIVATION_BIP32_ED25519_ICARUS,
+            ADDRESS_CARDANO_SHELLEY_ENTERPRISE, PUBLIC_KEY_RAW, Some(SCRIPT_ACCOUNT),
         )),
         "Sui" => Some((
             CHAIN_SUI, CURVE_ED25519, DERIVATION_SLIP10_ED25519,
-            ADDRESS_SOLANA, PUBLIC_KEY_RAW, Some(SCRIPT_ACCOUNT),
+            ADDRESS_SUI_KECCAK, PUBLIC_KEY_RAW, Some(SCRIPT_ACCOUNT),
         )),
         "Aptos" => Some((
             CHAIN_APTOS, CURVE_ED25519, DERIVATION_SLIP10_ED25519,
-            ADDRESS_SOLANA, PUBLIC_KEY_RAW, Some(SCRIPT_ACCOUNT),
+            ADDRESS_APTOS_KECCAK, PUBLIC_KEY_RAW, Some(SCRIPT_ACCOUNT),
         )),
         "TON" => Some((
-            CHAIN_TON, CURVE_ED25519, DERIVATION_SLIP10_ED25519,
-            ADDRESS_SOLANA, PUBLIC_KEY_RAW, Some(SCRIPT_ACCOUNT),
+            CHAIN_TON, CURVE_ED25519, DERIVATION_TON_MNEMONIC,
+            ADDRESS_TON_V4R2, PUBLIC_KEY_RAW, Some(SCRIPT_ACCOUNT),
         )),
         "Internet Computer" => Some((
             CHAIN_INTERNET_COMPUTER, CURVE_ED25519, DERIVATION_SLIP10_ED25519,
-            ADDRESS_SOLANA, PUBLIC_KEY_RAW, Some(SCRIPT_ACCOUNT),
+            ADDRESS_ICP_PRINCIPAL, PUBLIC_KEY_RAW, Some(SCRIPT_ACCOUNT),
         )),
         "NEAR" => Some((
-            CHAIN_NEAR, CURVE_ED25519, DERIVATION_SLIP10_ED25519,
-            ADDRESS_SOLANA, PUBLIC_KEY_RAW, Some(SCRIPT_ACCOUNT),
+            CHAIN_NEAR, CURVE_ED25519, DERIVATION_DIRECT_SEED_ED25519,
+            ADDRESS_NEAR_HEX, PUBLIC_KEY_RAW, Some(SCRIPT_ACCOUNT),
         )),
         "Polkadot" => Some((
-            CHAIN_POLKADOT, CURVE_ED25519, DERIVATION_SLIP10_ED25519,
-            ADDRESS_SOLANA, PUBLIC_KEY_RAW, Some(SCRIPT_ACCOUNT),
+            CHAIN_POLKADOT, CURVE_SR25519, DERIVATION_SUBSTRATE_BIP39,
+            ADDRESS_SS58, PUBLIC_KEY_RAW, Some(SCRIPT_ACCOUNT),
+        )),
+        "Monero" => Some((
+            CHAIN_MONERO, CURVE_ED25519, DERIVATION_MONERO_BIP39,
+            ADDRESS_MONERO_MAIN, PUBLIC_KEY_RAW, Some(SCRIPT_ACCOUNT),
         )),
         _ => None,
     }
@@ -550,13 +666,18 @@ fn parse_uniffi_request(
         ));
     }
 
+    let address_algorithm = parse_address_algorithm(request.address_algorithm)?;
+    let chain = match request.chain {
+        Some(value) => parse_chain(value)?,
+        None => chain_from_address_algorithm(address_algorithm)?,
+    };
     Ok(ParsedRequest {
-        chain: parse_chain(request.chain)?,
+        chain,
         network: parse_network(request.network)?,
         curve: parse_curve(request.curve)?,
         requested_outputs: request.requested_outputs,
         derivation_algorithm: parse_derivation_algorithm(request.derivation_algorithm)?,
-        address_algorithm: parse_address_algorithm(request.address_algorithm)?,
+        address_algorithm,
         public_key_format: parse_public_key_format(request.public_key_format)?,
         script_type: parse_script_type(request.script_type)?,
         seed_phrase,
@@ -572,11 +693,16 @@ fn parse_uniffi_request(
 fn parse_uniffi_private_key_request(
     request: UniFFIPrivateKeyDerivationRequest,
 ) -> Result<ParsedPrivateKeyRequest, crate::SpectraBridgeError> {
+    let address_algorithm = parse_address_algorithm(request.address_algorithm)?;
+    let chain = match request.chain {
+        Some(value) => parse_chain(value)?,
+        None => chain_from_address_algorithm(address_algorithm)?,
+    };
     Ok(ParsedPrivateKeyRequest {
-        chain: parse_chain(request.chain)?,
+        chain,
         network: parse_network(request.network)?,
         curve: parse_curve(request.curve)?,
-        address_algorithm: parse_address_algorithm(request.address_algorithm)?,
+        address_algorithm,
         public_key_format: parse_public_key_format(request.public_key_format)?,
         script_type: parse_script_type(request.script_type)?,
         private_key: decode_private_key_hex(&request.private_key_hex)?,
@@ -790,18 +916,14 @@ fn derive_from_private_key(request: ParsedPrivateKeyRequest) -> Result<DerivedOu
         }
 
         let secp = Secp256k1::new();
-        let secret_key = bitcoin::secp256k1::SecretKey::from_slice(&request.private_key)
-            .map_err(display_error)?;
-        let public_key = bitcoin::secp256k1::PublicKey::from_secret_key(&secp, &secret_key);
-        let compressed =
-            CompressedPublicKey::try_from(PublicKey::new(public_key)).map_err(display_error)?;
+        let secret_key = SecretKey::from_slice(&request.private_key).map_err(display_error)?;
+        let public_key = PublicKey::from_secret_key(&secp, &secret_key);
 
         let address = derive_address_from_keys(
             request.chain,
             request.network,
             request.address_algorithm,
             request.script_type,
-            &compressed,
             &public_key,
             &secp,
         )?;
@@ -816,13 +938,49 @@ fn derive_from_private_key(request: ParsedPrivateKeyRequest) -> Result<DerivedOu
         });
     }
 
+    // Polkadot uses sr25519: the 32-byte private key is a Substrate
+    // mini-secret expanded by schnorrkel into a full keypair.
+    if matches!(request.chain, Chain::Polkadot) {
+        if request.curve != CurveFamily::Sr25519 {
+            return Err("Polkadot currently requires sr25519.".to_string());
+        }
+        let mini = schnorrkel::MiniSecretKey::from_bytes(&request.private_key)
+            .map_err(|e| format!("Invalid sr25519 mini-secret: {e}"))?;
+        let keypair = mini.expand_to_keypair(schnorrkel::ExpansionMode::Ed25519);
+        let public_key = keypair.public.to_bytes();
+        return Ok(DerivedOutput {
+            address: Some(encode_ss58(&public_key, 0)),
+            public_key_hex: Some(hex::encode(public_key)),
+            private_key_hex: Some(hex::encode(request.private_key)),
+        });
+    }
+
+    // Monero: the 32-byte private key is the spend seed; sc_reduce32 + Keccak
+    // produce the full spend/view key pair and we encode as Monero main address.
+    if matches!(request.chain, Chain::Monero) {
+        if request.curve != CurveFamily::Ed25519 {
+            return Err("Monero currently requires ed25519.".to_string());
+        }
+        let (private_spend, public_spend, _private_view, public_view) =
+            derive_monero_keys_from_spend_seed(&request.private_key)?;
+        let address = encode_monero_main_address(&public_spend, &public_view, request.network)?;
+        let mut both = [0u8; 64];
+        both[..32].copy_from_slice(&public_spend);
+        both[32..].copy_from_slice(&public_view);
+        return Ok(DerivedOutput {
+            address: Some(address),
+            public_key_hex: Some(hex::encode(both)),
+            private_key_hex: Some(hex::encode(private_spend)),
+        });
+    }
+
     if request.curve != CurveFamily::Ed25519 {
         return Err("This chain currently requires ed25519.".to_string());
     }
 
     let signing_key = SigningKey::from_bytes(&request.private_key);
     let public_key = signing_key.verifying_key().to_bytes();
-    let address = derive_ed25519_chain_address(request.chain, &public_key)?;
+    let address = derive_ed25519_chain_address(request.chain, request.address_algorithm, &public_key)?;
 
     Ok(DerivedOutput {
         address: Some(address),
@@ -836,8 +994,7 @@ fn derive_address_from_keys(
     network: NetworkFlavor,
     address_algorithm: AddressAlgorithm,
     script_type: ScriptType,
-    compressed_public_key: &CompressedPublicKey,
-    public_key: &bitcoin::secp256k1::PublicKey,
+    public_key: &PublicKey,
     secp: &Secp256k1<All>,
 ) -> Result<String, String> {
     match chain {
@@ -845,28 +1002,21 @@ fn derive_address_from_keys(
             if !matches!(address_algorithm, AddressAlgorithm::Bitcoin) {
                 return Err("Bitcoin requests require the Bitcoin address algorithm.".to_string());
             }
-            let bitcoin_network = match network {
-                NetworkFlavor::Mainnet => Network::Bitcoin,
-                NetworkFlavor::Testnet | NetworkFlavor::Testnet4 | NetworkFlavor::Signet => {
-                    Network::Testnet
-                }
-            };
             derive_bitcoin_address_for_network(
-                bitcoin_network,
+                bitcoin_network_params(network),
                 script_type,
-                compressed_public_key,
                 public_key,
                 secp,
             )
         }
         Chain::BitcoinCash | Chain::BitcoinSv => {
-            let pubkey_hash = hash160::Hash::hash(&public_key.serialize()).to_byte_array();
+            let pubkey_hash = hash160_bytes(&public_key.serialize());
             let mut payload = vec![0x00u8];
             payload.extend_from_slice(&pubkey_hash);
             Ok(base58check_encode(&payload, bs58::Alphabet::DEFAULT))
         }
         Chain::Litecoin => {
-            let pubkey_hash = hash160::Hash::hash(&public_key.serialize()).to_byte_array();
+            let pubkey_hash = hash160_bytes(&public_key.serialize());
             let mut payload = vec![0x30u8];
             payload.extend_from_slice(&pubkey_hash);
             Ok(base58check_encode(&payload, bs58::Alphabet::DEFAULT))
@@ -877,7 +1027,7 @@ fn derive_address_from_keys(
             } else {
                 0x1e
             };
-            let pubkey_hash = hash160::Hash::hash(&public_key.serialize()).to_byte_array();
+            let pubkey_hash = hash160_bytes(&public_key.serialize());
             let mut payload = vec![version];
             payload.extend_from_slice(&pubkey_hash);
             Ok(base58check_encode(&payload, bs58::Alphabet::DEFAULT))
@@ -895,7 +1045,7 @@ fn derive_address_from_keys(
             Ok(base58check_encode(&payload, bs58::Alphabet::DEFAULT))
         }
         Chain::Xrp => {
-            let pubkey_hash = hash160::Hash::hash(&public_key.serialize()).to_byte_array();
+            let pubkey_hash = hash160_bytes(&public_key.serialize());
             let mut payload = vec![0x00u8];
             payload.extend_from_slice(&pubkey_hash);
             Ok(base58check_encode(&payload, bs58::Alphabet::RIPPLE))
@@ -904,7 +1054,18 @@ fn derive_address_from_keys(
     }
 }
 
-fn derive_ed25519_chain_address(chain: Chain, public_key: &[u8; 32]) -> Result<String, String> {
+fn bitcoin_network_params(network: NetworkFlavor) -> BitcoinNetworkParams {
+    match network {
+        NetworkFlavor::Mainnet => BTC_MAINNET,
+        NetworkFlavor::Testnet | NetworkFlavor::Testnet4 | NetworkFlavor::Signet => BTC_TESTNET,
+    }
+}
+
+fn derive_ed25519_chain_address(
+    chain: Chain,
+    address_algorithm: AddressAlgorithm,
+    public_key: &[u8; 32],
+) -> Result<String, String> {
     match chain {
         Chain::Solana => Ok(bs58::encode(public_key).into_string()),
         Chain::Stellar => {
@@ -921,8 +1082,7 @@ fn derive_ed25519_chain_address(chain: Chain, public_key: &[u8; 32]) -> Result<S
             }
         }
         Chain::Cardano => {
-            let digest = sha256::Hash::hash(public_key).to_byte_array();
-            Ok(format!("addr1{}", hex::encode(digest)))
+            derive_cardano_shelley_enterprise_address(public_key, NetworkFlavor::Mainnet)
         }
         Chain::Sui => {
             let mut hasher = Keccak::v256();
@@ -940,26 +1100,50 @@ fn derive_ed25519_chain_address(chain: Chain, public_key: &[u8; 32]) -> Result<S
             hasher.finalize(&mut digest);
             Ok(format!("0x{}", hex::encode(digest)))
         }
-        Chain::Ton => {
-            let digest = sha256::Hash::hash(public_key).to_byte_array();
-            Ok(format!("0:{}", hex::encode(digest)))
-        }
+        Chain::Ton => format_ton_address(public_key, address_algorithm),
         Chain::InternetComputer => {
             let mut data = Vec::from(*public_key);
             data.extend_from_slice(b"icp");
-            let digest = sha256::Hash::hash(&data).to_byte_array();
-            let digest2 = sha256::Hash::hash(&digest).to_byte_array();
+            let digest = sha256_bytes(&data);
+            let digest2 = sha256_bytes(&digest);
             Ok(hex::encode(digest2))
         }
         Chain::Near => Ok(hex::encode(public_key)),
-        Chain::Polkadot => {
-            let mut payload = vec![0x00u8];
-            payload.extend_from_slice(public_key);
-            payload.extend_from_slice(&sha256::Hash::hash(public_key).to_byte_array()[..2]);
-            Ok(bs58::encode(payload).into_string())
-        }
         _ => Err("Unsupported ed25519 chain for private-key address derivation.".to_string()),
     }
+}
+
+/// Infer the internal `Chain` dispatch tag from the address algorithm.
+/// This is what makes `chain` optional on the public request: every
+/// supported `AddressAlgorithm` variant is 1:1 with a concrete chain
+/// (or, for EVM, any chain in the EVM family — derivation output is
+/// identical across them, so we pick Ethereum as the canonical tag).
+fn chain_from_address_algorithm(alg: AddressAlgorithm) -> Result<Chain, String> {
+    Ok(match alg {
+        AddressAlgorithm::Bitcoin => Chain::Bitcoin,
+        AddressAlgorithm::Litecoin => Chain::Litecoin,
+        AddressAlgorithm::Dogecoin => Chain::Dogecoin,
+        AddressAlgorithm::BitcoinCashLegacy => Chain::BitcoinCash,
+        AddressAlgorithm::BitcoinSvLegacy => Chain::BitcoinSv,
+        AddressAlgorithm::Evm => Chain::Ethereum,
+        AddressAlgorithm::TronBase58Check => Chain::Tron,
+        AddressAlgorithm::XrpBase58Check => Chain::Xrp,
+        AddressAlgorithm::Solana => Chain::Solana,
+        AddressAlgorithm::StellarStrKey => Chain::Stellar,
+        AddressAlgorithm::SuiKeccak => Chain::Sui,
+        AddressAlgorithm::AptosKeccak => Chain::Aptos,
+        AddressAlgorithm::IcpPrincipal => Chain::InternetComputer,
+        AddressAlgorithm::NearHex => Chain::Near,
+        AddressAlgorithm::TonRawAccountId | AddressAlgorithm::TonV4R2 => Chain::Ton,
+        AddressAlgorithm::CardanoShelleyEnterprise => Chain::Cardano,
+        AddressAlgorithm::Ss58 => Chain::Polkadot,
+        AddressAlgorithm::MoneroMain => Chain::Monero,
+        AddressAlgorithm::Auto => {
+            return Err(
+                "Address algorithm must be explicit to derive chain automatically.".to_string(),
+            )
+        }
+    })
 }
 
 fn parse_chain(value: u32) -> Result<Chain, String> {
@@ -986,6 +1170,7 @@ fn parse_chain(value: u32) -> Result<Chain, String> {
         CHAIN_INTERNET_COMPUTER => Ok(Chain::InternetComputer),
         CHAIN_NEAR => Ok(Chain::Near),
         CHAIN_POLKADOT => Ok(Chain::Polkadot),
+        CHAIN_MONERO => Ok(Chain::Monero),
         other => Err(format!("Unsupported chain id: {other}")),
     }
 }
@@ -1004,6 +1189,7 @@ fn parse_curve(value: u32) -> Result<CurveFamily, String> {
     match value {
         CURVE_SECP256K1 => Ok(CurveFamily::Secp256k1),
         CURVE_ED25519 => Ok(CurveFamily::Ed25519),
+        CURVE_SR25519 => Ok(CurveFamily::Sr25519),
         other => Err(format!("Unsupported curve id: {other}")),
     }
 }
@@ -1013,6 +1199,11 @@ fn parse_derivation_algorithm(value: u32) -> Result<DerivationAlgorithm, String>
         DERIVATION_AUTO => Ok(DerivationAlgorithm::Auto),
         DERIVATION_BIP32_SECP256K1 => Ok(DerivationAlgorithm::Bip32Secp256k1),
         DERIVATION_SLIP10_ED25519 => Ok(DerivationAlgorithm::Slip10Ed25519),
+        DERIVATION_DIRECT_SEED_ED25519 => Ok(DerivationAlgorithm::DirectSeedEd25519),
+        DERIVATION_TON_MNEMONIC => Ok(DerivationAlgorithm::TonMnemonic),
+        DERIVATION_BIP32_ED25519_ICARUS => Ok(DerivationAlgorithm::Bip32Ed25519Icarus),
+        DERIVATION_SUBSTRATE_BIP39 => Ok(DerivationAlgorithm::SubstrateBip39),
+        DERIVATION_MONERO_BIP39 => Ok(DerivationAlgorithm::MoneroBip39),
         other => Err(format!("Unsupported derivation algorithm id: {other}")),
     }
 }
@@ -1023,6 +1214,22 @@ fn parse_address_algorithm(value: u32) -> Result<AddressAlgorithm, String> {
         ADDRESS_BITCOIN => Ok(AddressAlgorithm::Bitcoin),
         ADDRESS_EVM => Ok(AddressAlgorithm::Evm),
         ADDRESS_SOLANA => Ok(AddressAlgorithm::Solana),
+        ADDRESS_NEAR_HEX => Ok(AddressAlgorithm::NearHex),
+        ADDRESS_TON_RAW_ACCOUNT_ID => Ok(AddressAlgorithm::TonRawAccountId),
+        ADDRESS_CARDANO_SHELLEY_ENTERPRISE => Ok(AddressAlgorithm::CardanoShelleyEnterprise),
+        ADDRESS_SS58 => Ok(AddressAlgorithm::Ss58),
+        ADDRESS_MONERO_MAIN => Ok(AddressAlgorithm::MoneroMain),
+        ADDRESS_TON_V4R2 => Ok(AddressAlgorithm::TonV4R2),
+        ADDRESS_LITECOIN => Ok(AddressAlgorithm::Litecoin),
+        ADDRESS_DOGECOIN => Ok(AddressAlgorithm::Dogecoin),
+        ADDRESS_BITCOIN_CASH_LEGACY => Ok(AddressAlgorithm::BitcoinCashLegacy),
+        ADDRESS_BITCOIN_SV_LEGACY => Ok(AddressAlgorithm::BitcoinSvLegacy),
+        ADDRESS_TRON_BASE58_CHECK => Ok(AddressAlgorithm::TronBase58Check),
+        ADDRESS_XRP_BASE58_CHECK => Ok(AddressAlgorithm::XrpBase58Check),
+        ADDRESS_STELLAR_STRKEY => Ok(AddressAlgorithm::StellarStrKey),
+        ADDRESS_SUI_KECCAK => Ok(AddressAlgorithm::SuiKeccak),
+        ADDRESS_APTOS_KECCAK => Ok(AddressAlgorithm::AptosKeccak),
+        ADDRESS_ICP_PRINCIPAL => Ok(AddressAlgorithm::IcpPrincipal),
         other => Err(format!("Unsupported address algorithm id: {other}")),
     }
 }
@@ -1078,6 +1285,7 @@ fn derive(request: ParsedRequest) -> Result<DerivedOutput, String> {
         Chain::InternetComputer => derive_icp(request),
         Chain::Near => derive_near(request),
         Chain::Polkadot => derive_polkadot(request),
+        Chain::Monero => derive_monero(request),
     }
 }
 
@@ -1104,6 +1312,16 @@ fn validate_request(request: &ParsedRequest) -> Result<(), String> {
         ) {
             return Err("This chain does not support SLIP-0010 ed25519 derivation.".to_string());
         }
+    } else if matches!(request.chain, Chain::Polkadot) {
+        if request.curve != CurveFamily::Sr25519 {
+            return Err("Polkadot currently requires sr25519.".to_string());
+        }
+        if !matches!(
+            request.derivation_algorithm,
+            DerivationAlgorithm::SubstrateBip39
+        ) {
+            return Err("Polkadot derivation algorithm must be substrate-bip39.".to_string());
+        }
     } else {
         if request.curve != CurveFamily::Ed25519 {
             return Err("This chain currently requires ed25519.".to_string());
@@ -1117,6 +1335,15 @@ fn validate_request(request: &ParsedRequest) -> Result<(), String> {
         ) {
             return Err("This chain does not support BIP-32 secp256k1 derivation.".to_string());
         }
+        if matches!(
+            request.derivation_algorithm,
+            DerivationAlgorithm::SubstrateBip39
+        ) {
+            return Err("Substrate BIP-39 derivation is reserved for sr25519 chains.".to_string());
+        }
+        // DirectSeedEd25519, TonMnemonic, Slip10Ed25519, Bip32Ed25519Icarus,
+        // MoneroBip39 are all valid for ed25519 chains; pipeline selection
+        // happens in `derive_ed25519_material` (or in chain-specific code).
     }
 
     if !is_network_supported(request.chain, request.network) {
@@ -1174,42 +1401,77 @@ fn is_secp_chain(chain: Chain) -> bool {
 fn is_network_supported(chain: Chain, network: NetworkFlavor) -> bool {
     match chain {
         Chain::Bitcoin => true,
-        Chain::Dogecoin => matches!(network, NetworkFlavor::Mainnet | NetworkFlavor::Testnet),
+        Chain::Dogecoin | Chain::Monero => {
+            matches!(network, NetworkFlavor::Mainnet | NetworkFlavor::Testnet)
+        }
         _ => matches!(network, NetworkFlavor::Mainnet),
     }
 }
 
-fn derive_secp_material(
-    request: &ParsedRequest,
-) -> Result<(bitcoin::secp256k1::PublicKey, [u8; 32]), String> {
+fn derive_secp_material(request: &ParsedRequest) -> Result<(PublicKey, [u8; 32]), String> {
     // Shared secp256k1 key derivation path:
     // BIP-39 seed -> BIP-32 child private key -> secp public key.
     let derivation_path = secp_derivation_path(request)?;
     let seed = derive_bip39_seed_from_request(&request)?;
     let xpriv = derive_bip32_xpriv(
         seed.as_ref(),
-        Network::Bitcoin,
         &derivation_path,
         request.hmac_key.as_deref(),
     )?;
-    let secret_key = xpriv.private_key.secret_bytes();
+    let secret_bytes = xpriv.private_key.secret_bytes();
     let secp = Secp256k1::new();
-    let public_key = bitcoin::secp256k1::PublicKey::from_secret_key(
-        &secp,
-        &bitcoin::secp256k1::SecretKey::from_slice(&secret_key).map_err(display_error)?,
-    );
-    Ok((public_key, secret_key))
+    let public_key = PublicKey::from_secret_key(&secp, &xpriv.private_key);
+    Ok((public_key, secret_bytes))
 }
 
 fn derive_ed25519_material(request: &ParsedRequest) -> Result<([u8; 32], [u8; 32]), String> {
-    // Shared ed25519 key derivation path:
-    // BIP-39 seed -> SLIP-0010 child private key -> ed25519 public key.
-    let path = ed25519_derivation_path(request)?;
-    let seed = derive_bip39_seed_from_request(&request)?;
-    let private_key = derive_solana_ed25519_key(seed.as_ref(), &path, request.hmac_key.as_deref())?;
-    let signing_key = SigningKey::from_bytes(&private_key);
-    let public_key = signing_key.verifying_key().to_bytes();
-    Ok((*private_key, public_key))
+    // Dispatch on the derivation algorithm — ed25519 chains can consume the
+    // same 32-byte private key from several distinct derivation pipelines.
+    match request.derivation_algorithm {
+        DerivationAlgorithm::Slip10Ed25519 => {
+            let path = ed25519_derivation_path(request)?;
+            let seed = derive_bip39_seed_from_request(request)?;
+            let private_key = derive_slip10_ed25519_key(
+                seed.as_ref(),
+                &path,
+                request.hmac_key.as_deref(),
+            )?;
+            let signing_key = SigningKey::from_bytes(&private_key);
+            let public_key = signing_key.verifying_key().to_bytes();
+            Ok((*private_key, public_key))
+        }
+        DerivationAlgorithm::DirectSeedEd25519 => {
+            // NEAR Wallet / MyNearWallet convention: treat BIP-39 PBKDF2
+            // seed[0..32] as the ed25519 private key directly. Path is
+            // ignored; there is no BIP-32 walk.
+            let seed = derive_bip39_seed_from_request(request)?;
+            let mut private_key = [0u8; 32];
+            private_key.copy_from_slice(&seed[..32]);
+            let signing_key = SigningKey::from_bytes(&private_key);
+            let public_key = signing_key.verifying_key().to_bytes();
+            Ok((private_key, public_key))
+        }
+        DerivationAlgorithm::TonMnemonic => {
+            let seed = derive_ton_seed(
+                &request.seed_phrase,
+                &request.passphrase,
+                request.salt_prefix.as_deref(),
+                request.iteration_count,
+            )?;
+            let mut private_key = [0u8; 32];
+            private_key.copy_from_slice(&seed[..32]);
+            let signing_key = SigningKey::from_bytes(&private_key);
+            let public_key = signing_key.verifying_key().to_bytes();
+            Ok((private_key, public_key))
+        }
+        DerivationAlgorithm::Bip32Ed25519Icarus => derive_cardano_icarus_material(request),
+        DerivationAlgorithm::Auto
+        | DerivationAlgorithm::Bip32Secp256k1
+        | DerivationAlgorithm::SubstrateBip39
+        | DerivationAlgorithm::MoneroBip39 => {
+            Err("Derivation algorithm is not valid for ed25519 generic dispatch.".to_string())
+        }
+    }
 }
 
 fn derive_bitcoin(request: ParsedRequest) -> Result<DerivedOutput, String> {
@@ -1219,23 +1481,14 @@ fn derive_bitcoin(request: ParsedRequest) -> Result<DerivedOutput, String> {
     let seed = derive_bip39_seed_from_request(&request)?;
     let xpriv = derive_bip32_xpriv(
         seed.as_ref(),
-        Network::Bitcoin,
         &derivation_path,
         request.hmac_key.as_deref(),
     )?;
     let secret_key = xpriv.private_key;
-    let public_key = bitcoin::secp256k1::PublicKey::from_secret_key(&secp, &secret_key);
-    let compressed =
-        CompressedPublicKey::try_from(PublicKey::new(public_key)).map_err(display_error)?;
+    let public_key = PublicKey::from_secret_key(&secp, &secret_key);
 
     let address = if requests_output(request.requested_outputs, OUTPUT_ADDRESS) {
-        Some(derive_bitcoin_address(
-            &request,
-            script_type,
-            &compressed,
-            &public_key,
-            &secp,
-        )?)
+        Some(derive_bitcoin_address(&request, script_type, &public_key, &secp)?)
     } else {
         None
     };
@@ -1263,7 +1516,7 @@ fn derive_bitcoin_legacy_family(
     version: u8,
 ) -> Result<DerivedOutput, String> {
     let (public_key, private_key) = derive_secp_material(&request)?;
-    let pubkey_hash = hash160::Hash::hash(&public_key.serialize()).to_byte_array();
+    let pubkey_hash = hash160_bytes(&public_key.serialize());
     let mut payload = vec![version];
     payload.extend_from_slice(&pubkey_hash);
     let address = if requests_output(request.requested_outputs, OUTPUT_ADDRESS) {
@@ -1356,7 +1609,7 @@ fn derive_tron(request: ParsedRequest) -> Result<DerivedOutput, String> {
 
 fn derive_xrp(request: ParsedRequest) -> Result<DerivedOutput, String> {
     let (public_key, private_key) = derive_secp_material(&request)?;
-    let pubkey_hash = hash160::Hash::hash(&public_key.serialize()).to_byte_array();
+    let pubkey_hash = hash160_bytes(&public_key.serialize());
     let mut payload = vec![0x00u8];
     payload.extend_from_slice(&pubkey_hash);
     Ok(DerivedOutput {
@@ -1404,19 +1657,16 @@ fn derive_solana(request: ParsedRequest) -> Result<DerivedOutput, String> {
 
 fn derive_stellar(request: ParsedRequest) -> Result<DerivedOutput, String> {
     let (private_key, public_key) = derive_ed25519_material(&request)?;
-    let mut seed_material = Vec::new();
-    seed_material.extend_from_slice(&public_key);
-    let encoded = base32_no_pad(&seed_material);
-    let stellar_address = format!("G{}", &encoded[..55.min(encoded.len())]);
-    let stellar_address = if stellar_address.len() < 56 {
-        format!(
-            "{}{}",
-            stellar_address,
-            "A".repeat(56 - stellar_address.len())
-        )
-    } else {
-        stellar_address
-    };
+    // StrKey for an ed25519 public key: version byte G (6<<3 = 0x30),
+    // then 32-byte pubkey, then a 2-byte CRC16-XMODEM over the 33 bytes
+    // above. Base32 (RFC 4648) encode the 35-byte blob → 56 chars.
+    let mut payload = [0u8; 35];
+    payload[0] = 0x30;
+    payload[1..33].copy_from_slice(&public_key);
+    let checksum = crc16_xmodem(&payload[..33]);
+    payload[33] = (checksum & 0xff) as u8;
+    payload[34] = (checksum >> 8) as u8;
+    let stellar_address = base32_no_pad(&payload);
 
     Ok(DerivedOutput {
         address: if requests_output(request.requested_outputs, OUTPUT_ADDRESS) {
@@ -1439,14 +1689,16 @@ fn derive_stellar(request: ParsedRequest) -> Result<DerivedOutput, String> {
 
 fn derive_cardano(request: ParsedRequest) -> Result<DerivedOutput, String> {
     let (private_key, public_key) = derive_ed25519_material(&request)?;
-    let digest = sha256::Hash::hash(&public_key).to_byte_array();
-    let address = format!("addr1{}", hex::encode(digest));
+    let address = if requests_output(request.requested_outputs, OUTPUT_ADDRESS) {
+        Some(derive_cardano_shelley_enterprise_address(
+            &public_key,
+            request.network,
+        )?)
+    } else {
+        None
+    };
     Ok(DerivedOutput {
-        address: if requests_output(request.requested_outputs, OUTPUT_ADDRESS) {
-            Some(address)
-        } else {
-            None
-        },
+        address,
         public_key_hex: if requests_output(request.requested_outputs, OUTPUT_PUBLIC_KEY) {
             Some(hex::encode(public_key))
         } else {
@@ -1514,10 +1766,10 @@ fn derive_aptos(request: ParsedRequest) -> Result<DerivedOutput, String> {
 
 fn derive_ton(request: ParsedRequest) -> Result<DerivedOutput, String> {
     let (private_key, public_key) = derive_ed25519_material(&request)?;
-    let digest = sha256::Hash::hash(&public_key).to_byte_array();
+    let address_algorithm = request.address_algorithm;
     Ok(DerivedOutput {
         address: if requests_output(request.requested_outputs, OUTPUT_ADDRESS) {
-            Some(format!("0:{}", hex::encode(digest)))
+            Some(format_ton_address(&public_key, address_algorithm)?)
         } else {
             None
         },
@@ -1538,8 +1790,8 @@ fn derive_icp(request: ParsedRequest) -> Result<DerivedOutput, String> {
     let (private_key, public_key) = derive_ed25519_material(&request)?;
     let mut data = Vec::from(public_key);
     data.extend_from_slice(b"icp");
-    let digest = sha256::Hash::hash(&data).to_byte_array();
-    let digest2 = sha256::Hash::hash(&digest).to_byte_array();
+    let digest = sha256_bytes(&data);
+    let digest2 = sha256_bytes(&digest);
     Ok(DerivedOutput {
         address: if requests_output(request.requested_outputs, OUTPUT_ADDRESS) {
             Some(hex::encode(digest2))
@@ -1581,13 +1833,10 @@ fn derive_near(request: ParsedRequest) -> Result<DerivedOutput, String> {
 }
 
 fn derive_polkadot(request: ParsedRequest) -> Result<DerivedOutput, String> {
-    let (private_key, public_key) = derive_ed25519_material(&request)?;
-    let mut payload = vec![0x00u8];
-    payload.extend_from_slice(&public_key);
-    payload.extend_from_slice(&sha256::Hash::hash(&public_key).to_byte_array()[..2]);
+    let (mini_secret, public_key) = derive_substrate_sr25519_material(&request)?;
     Ok(DerivedOutput {
         address: if requests_output(request.requested_outputs, OUTPUT_ADDRESS) {
-            Some(bs58::encode(payload).into_string())
+            Some(encode_ss58(&public_key, 0))
         } else {
             None
         },
@@ -1597,7 +1846,36 @@ fn derive_polkadot(request: ParsedRequest) -> Result<DerivedOutput, String> {
             None
         },
         private_key_hex: if requests_output(request.requested_outputs, OUTPUT_PRIVATE_KEY) {
-            Some(hex::encode(private_key))
+            Some(hex::encode(mini_secret))
+        } else {
+            None
+        },
+    })
+}
+
+fn derive_monero(request: ParsedRequest) -> Result<DerivedOutput, String> {
+    let (private_spend, public_spend, _private_view, public_view) =
+        derive_monero_keys_from_request(&request)?;
+    Ok(DerivedOutput {
+        address: if requests_output(request.requested_outputs, OUTPUT_ADDRESS) {
+            Some(encode_monero_main_address(&public_spend, &public_view, request.network)?)
+        } else {
+            None
+        },
+        public_key_hex: if requests_output(request.requested_outputs, OUTPUT_PUBLIC_KEY) {
+            // Concatenate spend + view as the canonical Monero "public address"
+            // bytes — what wallets export when sharing a public viewing key.
+            let mut both = [0u8; 64];
+            both[..32].copy_from_slice(&public_spend);
+            both[32..].copy_from_slice(&public_view);
+            Some(hex::encode(both))
+        } else {
+            None
+        },
+        private_key_hex: if requests_output(request.requested_outputs, OUTPUT_PRIVATE_KEY) {
+            // Private spend key is the canonical "secret" — the view key is
+            // derivable from it via Keccak256.
+            Some(hex::encode(private_spend))
         } else {
             None
         },
@@ -1606,10 +1884,9 @@ fn derive_polkadot(request: ParsedRequest) -> Result<DerivedOutput, String> {
 
 fn derive_bip32_xpriv(
     seed_bytes: &[u8],
-    network: Network,
     derivation_path: &str,
     hmac_key: Option<&str>,
-) -> Result<Xpriv, String> {
+) -> Result<ExtendedPrivateKey, String> {
     // BIP-32 master derivation: I = HMAC-SHA512(Key, seed). The default key
     // is the spec's "Bitcoin seed", but callers may substitute any byte
     // string — cross-ecosystem wallets sometimes use different constants.
@@ -1617,30 +1894,10 @@ fn derive_bip32_xpriv(
         .filter(|value| !value.is_empty())
         .map(|value| value.as_bytes())
         .unwrap_or(b"Bitcoin seed");
-    let master = derive_bip32_master(seed_bytes, network, key_bytes)?;
-    let path: DerivationPath = derivation_path.parse().map_err(display_error)?;
+    let master = ExtendedPrivateKey::master_from_seed(key_bytes, seed_bytes)?;
+    let path = parse_bip32_path(derivation_path)?;
     let secp = Secp256k1::<All>::new();
-    master.derive_priv(&secp, &path).map_err(display_error)
-}
-
-fn derive_bip32_master(
-    seed_bytes: &[u8],
-    network: Network,
-    hmac_key: &[u8],
-) -> Result<Xpriv, String> {
-    let hmac_result = hmac_sha512(hmac_key, &[seed_bytes])?;
-    let private_key = bitcoin::secp256k1::SecretKey::from_slice(&hmac_result[..32])
-        .map_err(|error| format!("Derived BIP-32 master key is invalid: {error}"))?;
-    let mut chain_code_bytes = [0u8; 32];
-    chain_code_bytes.copy_from_slice(&hmac_result[32..]);
-    Ok(Xpriv {
-        network: network.into(),
-        depth: 0,
-        parent_fingerprint: Fingerprint::default(),
-        child_number: ChildNumber::Normal { index: 0 },
-        private_key,
-        chain_code: ChainCode::from(chain_code_bytes),
-    })
+    master.derive_path(&secp, &path)
 }
 
 fn hmac_sha512(key: &[u8], chunks: &[&[u8]]) -> Result<Zeroizing<[u8; 64]>, String> {
@@ -1658,45 +1915,31 @@ fn hmac_sha512(key: &[u8], chunks: &[&[u8]]) -> Result<Zeroizing<[u8; 64]>, Stri
 fn derive_bitcoin_address(
     request: &ParsedRequest,
     script_type: ScriptType,
-    compressed_public_key: &CompressedPublicKey,
-    public_key: &bitcoin::secp256k1::PublicKey,
+    public_key: &PublicKey,
     secp: &Secp256k1<All>,
 ) -> Result<String, String> {
-    let network = match request.network {
-        NetworkFlavor::Mainnet => Network::Bitcoin,
-        NetworkFlavor::Testnet | NetworkFlavor::Testnet4 | NetworkFlavor::Signet => {
-            Network::Testnet
-        }
-    };
-
     derive_bitcoin_address_for_network(
-        network,
+        bitcoin_network_params(request.network),
         script_type,
-        compressed_public_key,
         public_key,
         secp,
     )
 }
 
 fn derive_bitcoin_address_for_network(
-    network: Network,
+    params: BitcoinNetworkParams,
     script_type: ScriptType,
-    compressed_public_key: &CompressedPublicKey,
-    public_key: &bitcoin::secp256k1::PublicKey,
+    public_key: &PublicKey,
     secp: &Secp256k1<All>,
 ) -> Result<String, String> {
-    let address = match script_type {
-        ScriptType::P2pkh => Address::p2pkh(compressed_public_key, network),
-        ScriptType::P2shP2wpkh => Address::p2shwpkh(compressed_public_key, network),
-        ScriptType::P2wpkh => Address::p2wpkh(compressed_public_key, network),
-        ScriptType::P2tr => {
-            let (x_only, _) = public_key.x_only_public_key();
-            Address::p2tr(secp, x_only, None, network)
-        }
-        _ => return Err("Unsupported Bitcoin script type.".to_string()),
-    };
-
-    Ok(address.to_string())
+    let compressed = public_key.serialize();
+    match script_type {
+        ScriptType::P2pkh => Ok(encode_p2pkh(&params, &compressed)),
+        ScriptType::P2shP2wpkh => Ok(encode_p2sh_p2wpkh(&params, &compressed)),
+        ScriptType::P2wpkh => encode_p2wpkh(&params, &compressed),
+        ScriptType::P2tr => encode_p2tr(&params, secp, public_key),
+        _ => Err("Unsupported Bitcoin script type.".to_string()),
+    }
 }
 
 fn derive_bip39_seed(
@@ -1749,7 +1992,7 @@ fn derive_bip39_seed_from_request(
     )
 }
 
-fn derive_solana_ed25519_key(
+fn derive_slip10_ed25519_key(
     seed: &[u8],
     derivation_path: &str,
     hmac_key: Option<&str>,
@@ -1782,6 +2025,729 @@ fn derive_solana_ed25519_key(
     }
 
     Ok(private_key)
+}
+
+fn derive_ton_seed(
+    mnemonic: &str,
+    passphrase: &str,
+    salt_prefix: Option<&str>,
+    iteration_count: u32,
+) -> Result<Zeroizing<[u8; 64]>, String> {
+    // TON mnemonic scheme (ton-crypto / TonKeeper / Tonhub):
+    //   entropy = HMAC-SHA512(key = mnemonic_string, data = passphrase_bytes)
+    //   seed    = PBKDF2-HMAC-SHA512(entropy, salt = "TON default seed",
+    //                                 iterations = 100_000, dklen = 64)
+    //   priv    = seed[0..32]
+    //
+    // `salt_prefix` and `iteration_count` are honored as customization
+    // points — defaults match the ton-crypto reference implementation.
+    let entropy = hmac_sha512(mnemonic.as_bytes(), &[passphrase.as_bytes()])?;
+    let iterations = if iteration_count == 0 {
+        100_000
+    } else {
+        iteration_count
+    };
+    let salt = salt_prefix.unwrap_or("TON default seed");
+    let mut seed = Zeroizing::new([0u8; 64]);
+    pbkdf2_hmac::<Sha512>(&*entropy, salt.as_bytes(), iterations, &mut *seed);
+    Ok(seed)
+}
+
+fn derive_cardano_icarus_material(
+    request: &ParsedRequest,
+) -> Result<([u8; 32], [u8; 32]), String> {
+    use curve25519_dalek::constants::ED25519_BASEPOINT_POINT;
+    use curve25519_dalek::scalar::Scalar as DalekScalar;
+
+    let root = derive_cardano_icarus_xprv_root(
+        &request.seed_phrase,
+        &request.passphrase,
+        request.mnemonic_wordlist.as_deref(),
+        request.iteration_count,
+    )?;
+    let path = request
+        .derivation_path
+        .clone()
+        .unwrap_or_else(|| "m/1852'/1815'/0'/0/0".to_string());
+
+    let mut xprv: Zeroizing<[u8; 96]> = Zeroizing::new([0u8; 96]);
+    xprv.copy_from_slice(&*root);
+    for index in parse_bip32_path_segments(&path)? {
+        xprv = cardano_icarus_derive_child(&xprv, index)?;
+    }
+
+    let mut private_key = [0u8; 32];
+    private_key.copy_from_slice(&xprv[0..32]);
+
+    // Public key = kL * G on Ed25519. kL is already Khovratovich-Law clamped,
+    // so reducing mod ℓ does not change the group element.
+    let mut scalar_bytes = [0u8; 32];
+    scalar_bytes.copy_from_slice(&private_key);
+    let scalar = DalekScalar::from_bytes_mod_order(scalar_bytes);
+    let point = scalar * ED25519_BASEPOINT_POINT;
+    let public_key = point.compress().to_bytes();
+
+    Ok((private_key, public_key))
+}
+
+fn derive_cardano_icarus_xprv_root(
+    mnemonic: &str,
+    passphrase: &str,
+    wordlist: Option<&str>,
+    iteration_count: u32,
+) -> Result<Zeroizing<[u8; 96]>, String> {
+    // CIP-3 Icarus / CIP-1852 root:
+    //   entropy = BIP-39 entropy decoded from the mnemonic (not the PBKDF2
+    //             seed; Daedalus uses a different legacy scheme)
+    //   xprv    = PBKDF2-HMAC-SHA512(password = passphrase,
+    //                                 salt = entropy,
+    //                                 iterations = 4096,
+    //                                 dklen = 96)
+    //   Then clamp per Khovratovich-Law so kL is a valid ed25519 scalar
+    //   multiple of 8 and < 2^254.
+    let language = resolve_bip39_language(wordlist)?;
+    let parsed =
+        Mnemonic::parse_in_normalized(language, mnemonic).map_err(display_error)?;
+    let entropy = Zeroizing::new(parsed.to_entropy());
+    let iterations = if iteration_count == 0 { 4096 } else { iteration_count };
+    let mut xprv = Zeroizing::new([0u8; 96]);
+    pbkdf2_hmac::<Sha512>(passphrase.as_bytes(), &entropy, iterations, &mut *xprv);
+    xprv[0] &= 0b1111_1000;
+    xprv[31] &= 0b0001_1111;
+    xprv[31] |= 0b0100_0000;
+    Ok(xprv)
+}
+
+fn cardano_icarus_derive_child(
+    xprv: &[u8; 96],
+    index: u32,
+) -> Result<Zeroizing<[u8; 96]>, String> {
+    // BIP-32-Ed25519 (Khovratovich-Law) child key derivation.
+    //   xprv = kL (32) || kR (32) || chain_code (32)
+    //   hardened (i >= 2^31):
+    //     Z  = HMAC-SHA512(chain_code, 0x00 || kL || kR || i_LE)
+    //     cc = HMAC-SHA512(chain_code, 0x01 || kL || kR || i_LE)[32..64]
+    //   soft:
+    //     A  = compressed(kL * G)   // ed25519 public point
+    //     Z  = HMAC-SHA512(chain_code, 0x02 || A || i_LE)
+    //     cc = HMAC-SHA512(chain_code, 0x03 || A || i_LE)[32..64]
+    //   child_kL = parent_kL + 8 * ZL_28  (256-bit LE, overflow discarded)
+    //   child_kR = parent_kR + ZR          (256-bit LE, overflow discarded)
+    use curve25519_dalek::constants::ED25519_BASEPOINT_POINT;
+    use curve25519_dalek::scalar::Scalar as DalekScalar;
+
+    let kl = &xprv[0..32];
+    let kr = &xprv[32..64];
+    let cc = &xprv[64..96];
+    let hardened = index >= 0x8000_0000;
+    let i_le = index.to_le_bytes();
+
+    let (z_tag, cc_tag): (u8, u8) = if hardened { (0x00, 0x01) } else { (0x02, 0x03) };
+
+    let a_compressed = if hardened {
+        [0u8; 32]
+    } else {
+        let mut scalar_bytes = [0u8; 32];
+        scalar_bytes.copy_from_slice(kl);
+        let scalar = DalekScalar::from_bytes_mod_order(scalar_bytes);
+        (scalar * ED25519_BASEPOINT_POINT).compress().to_bytes()
+    };
+
+    let z = if hardened {
+        hmac_sha512(cc, &[&[z_tag], kl, kr, &i_le])?
+    } else {
+        hmac_sha512(cc, &[&[z_tag], &a_compressed, &i_le])?
+    };
+    let child_cc_full = if hardened {
+        hmac_sha512(cc, &[&[cc_tag], kl, kr, &i_le])?
+    } else {
+        hmac_sha512(cc, &[&[cc_tag], &a_compressed, &i_le])?
+    };
+
+    let zl_28 = &z[0..28];
+    let zr = &z[32..64];
+
+    // 8 * ZL_28 as a 32-byte little-endian integer.
+    let mut eight_zl = [0u8; 32];
+    let mut carry: u16 = 0;
+    for (dst, &src) in eight_zl.iter_mut().zip(zl_28.iter()) {
+        let v = (src as u16) * 8 + carry;
+        *dst = (v & 0xff) as u8;
+        carry = v >> 8;
+    }
+    if carry > 0 {
+        eight_zl[28] = carry as u8;
+    }
+
+    let mut child_xprv = Zeroizing::new([0u8; 96]);
+    let mut carry: u16 = 0;
+    for i in 0..32 {
+        let v = (kl[i] as u16) + (eight_zl[i] as u16) + carry;
+        child_xprv[i] = (v & 0xff) as u8;
+        carry = v >> 8;
+    }
+    // Discard final carry — BIP-32-Ed25519 treats the addition as 256-bit.
+    let mut carry: u16 = 0;
+    for i in 0..32 {
+        let v = (kr[i] as u16) + (zr[i] as u16) + carry;
+        child_xprv[32 + i] = (v & 0xff) as u8;
+        carry = v >> 8;
+    }
+    child_xprv[64..96].copy_from_slice(&child_cc_full[32..64]);
+    Ok(child_xprv)
+}
+
+fn derive_cardano_shelley_enterprise_address(
+    public_key: &[u8; 32],
+    network: NetworkFlavor,
+) -> Result<String, String> {
+    // CIP-19 Shelley address: header_byte || payment_credential.
+    //   header: upper 4 bits = address type (0b0110 = enterprise, payment
+    //           credential is a key hash); lower 4 bits = network id
+    //           (0 = testnet, 1 = mainnet).
+    //   payment_credential: Blake2b-224 of the ed25519 public key.
+    //   Encoding: bech32 under HRP "addr" (mainnet) / "addr_test" (testnet).
+    use blake2::digest::consts::U28;
+    use blake2::digest::Digest;
+    use blake2::Blake2b;
+    type Blake2b224 = Blake2b<U28>;
+
+    let mut hasher = Blake2b224::new();
+    hasher.update(public_key);
+    let payment_hash = hasher.finalize();
+
+    let network_id: u8 = match network {
+        NetworkFlavor::Mainnet => 1,
+        NetworkFlavor::Testnet | NetworkFlavor::Testnet4 | NetworkFlavor::Signet => 0,
+    };
+    let header = 0x60 | network_id;
+
+    let mut payload = Vec::with_capacity(29);
+    payload.push(header);
+    payload.extend_from_slice(&payment_hash);
+
+    let hrp_str = if matches!(network, NetworkFlavor::Mainnet) {
+        "addr"
+    } else {
+        "addr_test"
+    };
+    let hrp = bech32::Hrp::parse(hrp_str).map_err(display_error)?;
+    bech32::encode::<bech32::Bech32>(hrp, &payload).map_err(display_error)
+}
+
+fn derive_substrate_sr25519_material(
+    request: &ParsedRequest,
+) -> Result<([u8; 32], [u8; 32]), String> {
+    // Substrate //hard and /soft junctions are not yet supported. Polkadot.js
+    // / subkey defaults to the root mini-secret with no path, so requests
+    // with no derivation path (or just "m") map onto that default.
+    let path = request.derivation_path.as_deref().unwrap_or("").trim();
+    if !path.is_empty() && path != "m" && path != "M" {
+        return Err(
+            "Substrate junction derivation (//hard, /soft) is not yet supported; \
+             omit the derivation path to derive the root sr25519 keypair."
+                .to_string(),
+        );
+    }
+
+    let mini_secret = derive_substrate_mini_secret(
+        &request.seed_phrase,
+        &request.passphrase,
+        request.mnemonic_wordlist.as_deref(),
+        request.salt_prefix.as_deref(),
+        request.iteration_count,
+    )?;
+
+    let mini = schnorrkel::MiniSecretKey::from_bytes(&*mini_secret)
+        .map_err(|e| format!("Invalid sr25519 mini-secret: {e}"))?;
+    let keypair = mini.expand_to_keypair(schnorrkel::ExpansionMode::Ed25519);
+    let public_key = keypair.public.to_bytes();
+
+    let mut mini_out = [0u8; 32];
+    mini_out.copy_from_slice(&*mini_secret);
+    Ok((mini_out, public_key))
+}
+
+fn derive_substrate_mini_secret(
+    mnemonic: &str,
+    passphrase: &str,
+    wordlist: Option<&str>,
+    salt_prefix: Option<&str>,
+    iteration_count: u32,
+) -> Result<Zeroizing<[u8; 32]>, String> {
+    // substrate-bip39: mini-secret = PBKDF2-HMAC-SHA512(
+    //   password = BIP-39 entropy bytes (NOT the mnemonic string),
+    //   salt     = "mnemonic" || passphrase,
+    //   iter     = 2048,
+    //   dklen    = 64
+    // )[0..32].
+    // This is the scheme polkadot-js, sr25519 in subkey, and most Substrate
+    // wallets use to obtain the root mini-secret from a BIP-39 mnemonic.
+    let language = resolve_bip39_language(wordlist)?;
+    let parsed =
+        Mnemonic::parse_in_normalized(language, mnemonic).map_err(display_error)?;
+    let entropy = Zeroizing::new(parsed.to_entropy());
+    let prefix = salt_prefix.unwrap_or("mnemonic");
+    let normalized_passphrase = Zeroizing::new(passphrase.nfkd().collect::<String>());
+    let normalized_prefix = Zeroizing::new(prefix.nfkd().collect::<String>());
+    let salt = Zeroizing::new(format!(
+        "{}{}",
+        normalized_prefix.as_str(),
+        normalized_passphrase.as_str()
+    ));
+    let iterations = if iteration_count == 0 { 2048 } else { iteration_count };
+    let mut buf = Zeroizing::new([0u8; 64]);
+    pbkdf2_hmac::<Sha512>(&entropy, salt.as_bytes(), iterations, &mut *buf);
+    let mut out = Zeroizing::new([0u8; 32]);
+    out.copy_from_slice(&buf[..32]);
+    Ok(out)
+}
+
+fn encode_ss58(public_key: &[u8; 32], network_prefix: u16) -> String {
+    // SS58 v1: prefix_bytes || pubkey || blake2b_512("SS58PRE" || prefix || pubkey)[0..2],
+    // base58-encoded. Single-byte prefix for ids < 64; 2-byte form covers ids up to 16383.
+    use blake2::digest::consts::U64;
+    use blake2::digest::Digest;
+    use blake2::Blake2b;
+    type Blake2b512 = Blake2b<U64>;
+
+    let prefix_bytes: Vec<u8> = if network_prefix < 64 {
+        vec![network_prefix as u8]
+    } else {
+        // 14-bit prefix packed into two bytes per the SS58 spec.
+        let lower = (network_prefix & 0b0000_0000_1111_1111) as u8;
+        let upper = ((network_prefix & 0b0011_1111_0000_0000) >> 8) as u8;
+        let first = ((lower & 0b1111_1100) >> 2) | ((upper & 0b0000_0011) << 6);
+        let second = (lower & 0b0000_0011) | (upper & 0b1111_1100) | 0b0100_0000;
+        vec![first | 0b0100_0000, second]
+    };
+
+    let mut payload = Vec::with_capacity(prefix_bytes.len() + 32 + 2);
+    payload.extend_from_slice(&prefix_bytes);
+    payload.extend_from_slice(public_key);
+
+    let mut hasher = Blake2b512::new();
+    hasher.update(b"SS58PRE");
+    hasher.update(&payload);
+    let checksum = hasher.finalize();
+    payload.extend_from_slice(&checksum[..2]);
+
+    bs58::encode(payload).into_string()
+}
+
+fn derive_monero_keys_from_request(
+    request: &ParsedRequest,
+) -> Result<([u8; 32], [u8; 32], [u8; 32], [u8; 32]), String> {
+    let seed = derive_bip39_seed_from_request(request)?;
+    let mut spend_seed = [0u8; 32];
+    spend_seed.copy_from_slice(&seed[..32]);
+    derive_monero_keys_from_spend_seed(&spend_seed)
+}
+
+fn derive_monero_keys_from_spend_seed(
+    spend_seed: &[u8; 32],
+) -> Result<([u8; 32], [u8; 32], [u8; 32], [u8; 32]), String> {
+    // Monero derivation:
+    //   private_spend = sc_reduce32(spend_seed)
+    //   private_view  = sc_reduce32(Keccak256(private_spend))
+    //   public_*      = scalar * G  (ed25519 basepoint)
+    use curve25519_dalek::constants::ED25519_BASEPOINT_POINT;
+    use curve25519_dalek::scalar::Scalar as DalekScalar;
+
+    let private_spend = DalekScalar::from_bytes_mod_order(*spend_seed).to_bytes();
+
+    let mut hasher = Keccak::v256();
+    let mut spend_hash = [0u8; 32];
+    hasher.update(&private_spend);
+    hasher.finalize(&mut spend_hash);
+    let private_view = DalekScalar::from_bytes_mod_order(spend_hash).to_bytes();
+
+    let public_spend = (DalekScalar::from_bytes_mod_order(private_spend)
+        * ED25519_BASEPOINT_POINT)
+        .compress()
+        .to_bytes();
+    let public_view = (DalekScalar::from_bytes_mod_order(private_view)
+        * ED25519_BASEPOINT_POINT)
+        .compress()
+        .to_bytes();
+
+    Ok((private_spend, public_spend, private_view, public_view))
+}
+
+fn encode_monero_main_address(
+    public_spend: &[u8; 32],
+    public_view: &[u8; 32],
+    network: NetworkFlavor,
+) -> Result<String, String> {
+    // Monero standard address: network_byte || public_spend (32) ||
+    // public_view (32) || keccak256(prev)[0..4]. 69 bytes total → 95 chars
+    // in the chunked Base58 encoding.
+    let network_byte: u8 = match network {
+        NetworkFlavor::Mainnet => 0x12,
+        NetworkFlavor::Testnet => 0x35,
+        NetworkFlavor::Testnet4 | NetworkFlavor::Signet => {
+            return Err("Monero only supports Mainnet and Testnet networks.".to_string())
+        }
+    };
+    let mut payload = Vec::with_capacity(69);
+    payload.push(network_byte);
+    payload.extend_from_slice(public_spend);
+    payload.extend_from_slice(public_view);
+    let mut hasher = Keccak::v256();
+    let mut digest = [0u8; 32];
+    hasher.update(&payload);
+    hasher.finalize(&mut digest);
+    payload.extend_from_slice(&digest[..4]);
+    Ok(monero_base58_encode(&payload))
+}
+
+fn monero_base58_encode(data: &[u8]) -> String {
+    // Monero's chunked Base58: split into 8-byte blocks, each block encodes
+    // as a fixed-width 11 chars (lookup table for partial trailing blocks).
+    // Alphabet differs in ordering from BIP-58's standard alphabet but uses
+    // the same 58 characters.
+    const ALPHABET: &[u8; 58] =
+        b"123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz";
+    const FULL_BLOCK_SIZE: usize = 8;
+    const FULL_ENCODED_BLOCK_SIZE: usize = 11;
+    const ENCODED_BLOCK_SIZES: [usize; FULL_BLOCK_SIZE + 1] = [0, 2, 3, 5, 6, 7, 9, 10, 11];
+
+    let mut out = String::new();
+    let full_blocks = data.len() / FULL_BLOCK_SIZE;
+    let remainder = data.len() % FULL_BLOCK_SIZE;
+
+    for i in 0..full_blocks {
+        let start = i * FULL_BLOCK_SIZE;
+        let block = &data[start..start + FULL_BLOCK_SIZE];
+        let mut value: u64 = 0;
+        for &b in block {
+            value = (value << 8) | u64::from(b);
+        }
+        let mut chars = [b'1'; FULL_ENCODED_BLOCK_SIZE];
+        for j in (0..FULL_ENCODED_BLOCK_SIZE).rev() {
+            chars[j] = ALPHABET[(value % 58) as usize];
+            value /= 58;
+        }
+        out.push_str(std::str::from_utf8(&chars).unwrap());
+    }
+    if remainder > 0 {
+        let block = &data[full_blocks * FULL_BLOCK_SIZE..];
+        let mut value: u64 = 0;
+        for &b in block {
+            value = (value << 8) | u64::from(b);
+        }
+        let encoded_len = ENCODED_BLOCK_SIZES[remainder];
+        let mut chars = vec![b'1'; encoded_len];
+        for j in (0..encoded_len).rev() {
+            chars[j] = ALPHABET[(value % 58) as usize];
+            value /= 58;
+        }
+        out.push_str(std::str::from_utf8(&chars).unwrap());
+    }
+    out
+}
+
+// ---------------------------------------------------------------------------
+// TON v4R2 wallet address derivation
+// ---------------------------------------------------------------------------
+//
+// The user-friendly bounceable address format for a TON wallet is:
+//     tag(1) || workchain(1) || account_id(32) || crc16_xmodem(2)
+// encoded as base64url without padding. `account_id` is the SHA-256 cell hash
+// of the wallet's `state_init`, which is a cell carrying references to the
+// wallet code cell and a freshly-initialized data cell. See the TLB schema in
+// `crypto/block/block.tlb` under `StateInit`.
+//
+// The v4R2 wallet code BOC bytes below were fetched from toncenter/tonweb's
+// `WalletContractV4R2.js`. Correctness is locked by a self-test that asserts
+// the recomputed root cell hash matches the well-known public constant
+// `feb5ff6820e2ff0d9483e7e0d62c817d846789fb4ae580c878866d959dabd5c0`.
+
+const V4R2_CODE_BOC_HEX: &str = "b5ee9c7241021401000\
+2d4000114ff00f4a413f4bcf2c80b010201200203020148040504f8f28308d71820\
+d31fd31fd31f02f823bbf264ed44d0d31fd31fd3fff404d15143baf2a15151baf2a\
+205f901541064f910f2a3f80024a4c8cb1f5240cb1f5230cbff5210f400c9ed54f8\
+0f01d30721c0009f6c519320d74a96d307d402fb00e830e021c001e30021c002e30\
+001c0039130e30d03a4c8cb1f12cb1fcbff1011121302e6d001d0d3032171b0925f\
+04e022d749c120925f04e002d31f218210706c7567bd22821064737472bdb0925f0\
+5e003fa403020fa4401c8ca07cbffc9d0ed44d0810140d721f404305c810108f40a\
+6fa131b3925f07e005d33fc8258210706c7567ba923830e30d03821064737472ba9\
+25f06e30d06070201200809007801fa00f40430f8276f2230500aa121bef2e05082\
+10706c7567831eb17080185004cb0526cf1658fa0219f400cb6917cb1f5260cb3f2\
+0c98040fb0006008a5004810108f45930ed44d0810140d720c801cf16f400c9ed54\
+0172b08e23821064737472831eb17080185005cb055003cf1623fa0213cb6acb1fc\
+b3fc98040fb00925f03e20201200a0b0059bd242b6f6a2684080a06b90fa0218470\
+d4080847a4937d29910ce6903e9ff9837812801b7810148987159f31840201580c0\
+d0011b8c97ed44d0d70b1f8003db29dfb513420405035c87d010c00b23281f2fff2\
+74006040423d029be84c600201200e0f0019adce76a26840206b90eb85ffc00019a\
+f1df6a26840106b90eb858fc0006ed207fa00d4d422f90005c8ca0715cbffc9d077\
+748018c8cb05cb0222cf165005fa0214cb6b12ccccc973fb00c84014810108f451f\
+2a7020070810108d718fa00d33fc8542047810108f451f2a782106e6f7465707480\
+18c8cb05cb025006cf165004fa0214cb6a12cb1fcb3fc973fb0002006c810108d71\
+8fa00d33f305224810108f459f2a782106473747270748018c8cb05cb025005cf16\
+5003fa0213cb6acb1f12cb3fc973fb00000af400c9ed54696225e5";
+
+const V4R2_KNOWN_CODE_HASH: [u8; 32] = [
+    0xfe, 0xb5, 0xff, 0x68, 0x20, 0xe2, 0xff, 0x0d, 0x94, 0x83, 0xe7, 0xe0,
+    0xd6, 0x2c, 0x81, 0x7d, 0x84, 0x67, 0x89, 0xfb, 0x4a, 0xe5, 0x80, 0xc8,
+    0x78, 0x86, 0x6d, 0x95, 0x9d, 0xab, 0xd5, 0xc0,
+];
+
+// Default subwallet id for v4 on the basic workchain (0). Hardcoded in every
+// popular wallet (tonkeeper, tonhub, tonweb) so anyone generating a v4R2
+// address from the same mnemonic produces the same address.
+const V4R2_DEFAULT_WALLET_ID: u32 = 698983191;
+
+#[derive(Clone)]
+struct ParsedCell {
+    d1: u8,
+    d2: u8,
+    data: Vec<u8>,
+    refs: Vec<usize>,
+}
+
+/// Minimal parser for BOC v0 (`b5ee9c72`) carrying ordinary (non-exotic,
+/// level-0) cells. Supports the index and crc32c flags but validates neither;
+/// the parser's correctness is instead locked by a cell-hash self-test.
+fn parse_boc(bytes: &[u8]) -> Result<(Vec<ParsedCell>, usize), String> {
+    if bytes.len() < 6 || &bytes[0..4] != [0xb5, 0xee, 0x9c, 0x72] {
+        return Err("TON BOC: missing magic".to_string());
+    }
+    let flags = bytes[4];
+    let has_idx = (flags & 0x80) != 0;
+    let _has_crc32c = (flags & 0x40) != 0;
+    let ref_size = (flags & 0x07) as usize;
+    if ref_size == 0 || ref_size > 4 {
+        return Err(format!("TON BOC: invalid ref size {ref_size}"));
+    }
+    let off_size = bytes[5] as usize;
+    if off_size == 0 || off_size > 8 {
+        return Err(format!("TON BOC: invalid offset size {off_size}"));
+    }
+    let mut cursor = 6usize;
+    let read_uint = |buf: &[u8], off: usize, n: usize| -> Result<u64, String> {
+        if off + n > buf.len() {
+            return Err("TON BOC: unexpected EOF".to_string());
+        }
+        let mut v = 0u64;
+        for &b in &buf[off..off + n] {
+            v = (v << 8) | u64::from(b);
+        }
+        Ok(v)
+    };
+    let cell_count = read_uint(bytes, cursor, ref_size)? as usize;
+    cursor += ref_size;
+    let root_count = read_uint(bytes, cursor, ref_size)? as usize;
+    cursor += ref_size;
+    let _absent = read_uint(bytes, cursor, ref_size)? as usize;
+    cursor += ref_size;
+    let _tot_cell_size = read_uint(bytes, cursor, off_size)? as usize;
+    cursor += off_size;
+    if root_count == 0 {
+        return Err("TON BOC: no roots".to_string());
+    }
+    let root_idx = read_uint(bytes, cursor, ref_size)? as usize;
+    cursor += ref_size * root_count;
+    if has_idx {
+        cursor += cell_count * off_size;
+    }
+    let mut cells = Vec::with_capacity(cell_count);
+    for _ in 0..cell_count {
+        if cursor + 2 > bytes.len() {
+            return Err("TON BOC: cell header EOF".to_string());
+        }
+        let d1 = bytes[cursor];
+        let d2 = bytes[cursor + 1];
+        cursor += 2;
+        let refs_count = (d1 & 0x07) as usize;
+        let exotic = (d1 & 0x08) != 0;
+        let level = (d1 >> 5) & 0x03;
+        if exotic || level != 0 {
+            return Err("TON BOC: exotic or leveled cells not supported".to_string());
+        }
+        let data_len = ((d2 as usize) + 1) / 2;
+        if cursor + data_len > bytes.len() {
+            return Err("TON BOC: cell data EOF".to_string());
+        }
+        let data = bytes[cursor..cursor + data_len].to_vec();
+        cursor += data_len;
+        let mut refs = Vec::with_capacity(refs_count);
+        for _ in 0..refs_count {
+            refs.push(read_uint(bytes, cursor, ref_size)? as usize);
+            cursor += ref_size;
+        }
+        cells.push(ParsedCell { d1, d2, data, refs });
+    }
+    Ok((cells, root_idx))
+}
+
+/// Recursively compute SHA-256 cell hashes and depths for every cell,
+/// bottom-up. BOC v0 orders cells such that every ref points to a higher
+/// index, so iterating from the tail means every ref is resolved by the
+/// time we reach the cell that uses it.
+fn compute_cell_hashes(cells: &[ParsedCell]) -> Vec<([u8; 32], u16)> {
+    let mut out = vec![([0u8; 32], 0u16); cells.len()];
+    for i in (0..cells.len()).rev() {
+        let cell = &cells[i];
+        let mut repr = Vec::with_capacity(2 + cell.data.len() + cell.refs.len() * 34);
+        repr.push(cell.d1);
+        repr.push(cell.d2);
+        repr.extend_from_slice(&cell.data);
+        let mut depth = 0u16;
+        for &r in &cell.refs {
+            repr.extend_from_slice(&out[r].1.to_be_bytes());
+            depth = depth.max(out[r].1.saturating_add(1));
+        }
+        for &r in &cell.refs {
+            repr.extend_from_slice(&out[r].0);
+        }
+        let hash = sha256_bytes(&repr);
+        out[i] = (hash, depth);
+    }
+    out
+}
+
+/// Returns (code_hash, code_depth) for the embedded v4R2 wallet code cell,
+/// computed once per process.
+fn v4r2_code_hash_and_depth() -> Result<([u8; 32], u16), String> {
+    use std::sync::OnceLock;
+    static CACHE: OnceLock<Result<([u8; 32], u16), String>> = OnceLock::new();
+    CACHE
+        .get_or_init(|| {
+            let boc = hex::decode(V4R2_CODE_BOC_HEX)
+                .map_err(|e| format!("TON v4R2: invalid embedded BOC hex: {e}"))?;
+            let (cells, root) = parse_boc(&boc)?;
+            let hashes = compute_cell_hashes(&cells);
+            let (hash, depth) = hashes[root];
+            if hash != V4R2_KNOWN_CODE_HASH {
+                return Err(format!(
+                    "TON v4R2: computed code hash {} does not match known constant",
+                    hex::encode(hash)
+                ));
+            }
+            Ok((hash, depth))
+        })
+        .clone()
+}
+
+/// Build the v4R2 data cell (321 bits, no refs) carrying the initial seqno,
+/// subwallet id, public key, and empty plugin dict, and return its cell hash
+/// and depth.
+fn v4r2_data_cell_hash(public_key: &[u8; 32]) -> ([u8; 32], u16) {
+    // Layout: seqno(32) || wallet_id(32) || pubkey(256) || plugins?(1) = 321 bits.
+    let mut data = Vec::with_capacity(41);
+    data.extend_from_slice(&0u32.to_be_bytes());
+    data.extend_from_slice(&V4R2_DEFAULT_WALLET_ID.to_be_bytes());
+    data.extend_from_slice(public_key);
+    // Plugins-dict-present bit = 0 lives in bit 7 of the last byte.
+    // Completion bit = 1 in bit 6, remaining bits = 0 → 0x40.
+    data.push(0x40);
+    let mut repr = Vec::with_capacity(2 + data.len());
+    repr.push(0x00); // d1: 0 refs, not exotic, level 0
+    repr.push(81); // d2: floor(321/8)+ceil(321/8) = 40+41 = 81
+    repr.extend_from_slice(&data);
+    let hash = sha256_bytes(&repr);
+    (hash, 0)
+}
+
+/// Build the state_init cell for v4R2 (5 header bits + 2 refs: code, data)
+/// and return its cell hash — which is the TON account id.
+fn v4r2_state_init_account_id(public_key: &[u8; 32]) -> Result<[u8; 32], String> {
+    let (code_hash, code_depth) = v4r2_code_hash_and_depth()?;
+    let (data_hash, data_depth) = v4r2_data_cell_hash(public_key);
+    // 5-bit header: split_depth?=0, special?=0, code?=1, data?=1, library?=0
+    // Padded: 00110 || 1 (completion) || 00 = 0b0011_0100 = 0x34.
+    let header_byte: u8 = 0x34;
+    let mut repr = Vec::with_capacity(2 + 1 + 2 * (2 + 32));
+    repr.push(0x02); // d1: 2 refs
+    repr.push(0x01); // d2: bits=5 → floor(5/8)+ceil(5/8) = 0+1 = 1
+    repr.push(header_byte);
+    repr.extend_from_slice(&code_depth.to_be_bytes());
+    repr.extend_from_slice(&data_depth.to_be_bytes());
+    repr.extend_from_slice(&code_hash);
+    repr.extend_from_slice(&data_hash);
+    Ok(sha256_bytes(&repr))
+}
+
+/// CRC-16/XMODEM (poly=0x1021, init=0x0000, no reflection, no xor-out),
+/// as required by TON user-friendly address checksums.
+fn crc16_xmodem(bytes: &[u8]) -> u16 {
+    let mut crc: u16 = 0;
+    for &b in bytes {
+        crc ^= (u16::from(b)) << 8;
+        for _ in 0..8 {
+            if (crc & 0x8000) != 0 {
+                crc = (crc << 1) ^ 0x1021;
+            } else {
+                crc <<= 1;
+            }
+        }
+    }
+    crc
+}
+
+fn derive_ton_v4r2_address(public_key: &[u8; 32]) -> Result<String, String> {
+    let account_id = v4r2_state_init_account_id(public_key)?;
+    // tag 0x11 = bounceable, not-test; workchain 0x00 = basic workchain.
+    let mut buf = [0u8; 36];
+    buf[0] = 0x11;
+    buf[1] = 0x00;
+    buf[2..34].copy_from_slice(&account_id);
+    let crc = crc16_xmodem(&buf[..34]);
+    buf[34..36].copy_from_slice(&crc.to_be_bytes());
+    use base64::Engine;
+    Ok(base64::engine::general_purpose::URL_SAFE_NO_PAD.encode(buf))
+}
+
+fn format_ton_address(
+    public_key: &[u8; 32],
+    algorithm: AddressAlgorithm,
+) -> Result<String, String> {
+    match algorithm {
+        AddressAlgorithm::TonV4R2 => derive_ton_v4r2_address(public_key),
+        AddressAlgorithm::TonRawAccountId | AddressAlgorithm::Auto => {
+            Ok(format!("0:{}", hex::encode(public_key)))
+        }
+        _ => Err("Unsupported address algorithm for TON.".to_string()),
+    }
+}
+
+fn parse_bip32_path_segments(path: &str) -> Result<Vec<u32>, String> {
+    // Accept BIP-32-style path strings; preserves the hardened flag from
+    // each segment rather than force-hardening (unlike SLIP-0010 ed25519).
+    let trimmed = path.trim();
+    let body = trimmed
+        .strip_prefix("m/")
+        .or_else(|| trimmed.strip_prefix("M/"))
+        .unwrap_or_else(|| {
+            if trimmed == "m" || trimmed == "M" {
+                ""
+            } else {
+                trimmed
+            }
+        });
+    if body.is_empty() {
+        return Ok(Vec::new());
+    }
+    let mut out = Vec::new();
+    for segment in body.split('/') {
+        let seg = segment.trim();
+        let (digits, hardened) = if let Some(s) = seg.strip_suffix('\'') {
+            (s, true)
+        } else if let Some(s) = seg.strip_suffix('h') {
+            (s, true)
+        } else {
+            (seg, false)
+        };
+        let raw: u32 = digits
+            .parse()
+            .map_err(|_| format!("Invalid derivation path segment: {segment}"))?;
+        if raw & 0x8000_0000 != 0 {
+            return Err(format!("Derivation path segment out of range: {segment}"));
+        }
+        out.push(if hardened { raw | 0x8000_0000 } else { raw });
+    }
+    Ok(out)
 }
 
 fn parse_slip10_ed25519_path(path: &str) -> Result<Vec<u32>, String> {
@@ -1860,11 +2826,11 @@ fn ed25519_derivation_path(request: &ParsedRequest) -> Result<String, String> {
     })
 }
 
-fn derive_evm_address(public_key: &bitcoin::secp256k1::PublicKey) -> String {
+fn derive_evm_address(public_key: &PublicKey) -> String {
     format!("0x{}", hex::encode(derive_evm_address_bytes(public_key)))
 }
 
-fn derive_evm_address_bytes(public_key: &bitcoin::secp256k1::PublicKey) -> [u8; 20] {
+fn derive_evm_address_bytes(public_key: &PublicKey) -> [u8; 20] {
     let uncompressed = public_key.serialize_uncompressed();
     let mut hasher = Keccak::v256();
     let mut digest = [0u8; 32];
@@ -1876,7 +2842,7 @@ fn derive_evm_address_bytes(public_key: &bitcoin::secp256k1::PublicKey) -> [u8; 
 }
 
 fn format_secp_public_key(
-    public_key: &bitcoin::secp256k1::PublicKey,
+    public_key: &PublicKey,
     format: PublicKeyFormat,
 ) -> Result<Vec<u8>, String> {
     Ok(match format {
@@ -1899,8 +2865,7 @@ fn base58check_encode(payload: &[u8], alphabet: &bs58::Alphabet) -> String {
 }
 
 fn double_sha256(bytes: &[u8]) -> [u8; 32] {
-    let first = sha256::Hash::hash(bytes).to_byte_array();
-    sha256::Hash::hash(&first).to_byte_array()
+    sha256_bytes(&sha256_bytes(bytes))
 }
 
 fn base32_no_pad(input: &[u8]) -> String {
@@ -1944,21 +2909,72 @@ mod tests {
     use super::*;
 
     fn base_request(chain: Chain, curve: CurveFamily) -> ParsedRequest {
-        let derivation_path = match curve {
-            CurveFamily::Secp256k1 => "m/44'/0'/0'/0/0",
-            CurveFamily::Ed25519 => "m/44'/501'/0'/0'",
-        };
-        let derivation_algorithm = match curve {
-            CurveFamily::Secp256k1 => DerivationAlgorithm::Bip32Secp256k1,
-            CurveFamily::Ed25519 => DerivationAlgorithm::Slip10Ed25519,
+        // Per-chain presets — selecting the derivation algorithm / address
+        // algorithm / default path from the same table that production
+        // callers would hit via `chain_defaults_from_name`.
+        let (derivation_algorithm, address_algorithm, derivation_path) = match chain {
+            Chain::Near => (
+                DerivationAlgorithm::DirectSeedEd25519,
+                AddressAlgorithm::NearHex,
+                "m",
+            ),
+            Chain::Ton => (
+                DerivationAlgorithm::TonMnemonic,
+                AddressAlgorithm::TonRawAccountId,
+                "m",
+            ),
+            Chain::Cardano => (
+                DerivationAlgorithm::Bip32Ed25519Icarus,
+                AddressAlgorithm::CardanoShelleyEnterprise,
+                "m/1852'/1815'/0'/0/0",
+            ),
+            Chain::Polkadot => (
+                DerivationAlgorithm::SubstrateBip39,
+                AddressAlgorithm::Ss58,
+                "m",
+            ),
+            Chain::Monero => (
+                DerivationAlgorithm::MoneroBip39,
+                AddressAlgorithm::MoneroMain,
+                "m",
+            ),
+            _ => match curve {
+                CurveFamily::Secp256k1 => (
+                    DerivationAlgorithm::Bip32Secp256k1,
+                    AddressAlgorithm::Bitcoin,
+                    "m/44'/0'/0'/0/0",
+                ),
+                CurveFamily::Ed25519 => (
+                    DerivationAlgorithm::Slip10Ed25519,
+                    AddressAlgorithm::Solana,
+                    "m/44'/501'/0'/0'",
+                ),
+                CurveFamily::Sr25519 => (
+                    DerivationAlgorithm::SubstrateBip39,
+                    AddressAlgorithm::Ss58,
+                    "m",
+                ),
+            },
         };
         let address_algorithm = match curve {
-            CurveFamily::Secp256k1 => AddressAlgorithm::Bitcoin,
-            CurveFamily::Ed25519 => AddressAlgorithm::Solana,
+            CurveFamily::Secp256k1 if !matches!(chain, Chain::Ethereum | Chain::EthereumClassic
+                | Chain::Arbitrum | Chain::Optimism | Chain::Avalanche | Chain::Hyperliquid | Chain::Tron) => address_algorithm,
+            CurveFamily::Secp256k1 => AddressAlgorithm::Evm,
+            CurveFamily::Ed25519 => address_algorithm,
+            CurveFamily::Sr25519 => address_algorithm,
         };
         let public_key_format = match curve {
-            CurveFamily::Secp256k1 => PublicKeyFormat::Compressed,
-            CurveFamily::Ed25519 => PublicKeyFormat::Raw,
+            CurveFamily::Secp256k1 => {
+                if matches!(chain, Chain::Ethereum | Chain::EthereumClassic
+                    | Chain::Arbitrum | Chain::Optimism | Chain::Avalanche
+                    | Chain::Hyperliquid | Chain::Tron)
+                {
+                    PublicKeyFormat::Uncompressed
+                } else {
+                    PublicKeyFormat::Compressed
+                }
+            }
+            CurveFamily::Ed25519 | CurveFamily::Sr25519 => PublicKeyFormat::Raw,
         };
         let script_type = if matches!(chain, Chain::Bitcoin) {
             ScriptType::P2wpkh
@@ -1980,7 +2996,7 @@ mod tests {
             passphrase: String::new(),
             hmac_key: None,
             mnemonic_wordlist: Some("english".to_string()),
-            iteration_count: 2048,
+            iteration_count: 0,
             salt_prefix: None,
         }
     }
@@ -2009,7 +3025,8 @@ mod tests {
             (Chain::Ton, CurveFamily::Ed25519),
             (Chain::InternetComputer, CurveFamily::Ed25519),
             (Chain::Near, CurveFamily::Ed25519),
-            (Chain::Polkadot, CurveFamily::Ed25519),
+            (Chain::Polkadot, CurveFamily::Sr25519),
+            (Chain::Monero, CurveFamily::Ed25519),
         ];
 
         for (chain, curve) in chains {
@@ -2118,6 +3135,365 @@ mod tests {
         assert!(error.to_lowercase().contains("wordlist"), "got: {error}");
     }
 
+    #[test]
+    fn near_direct_seed_vector() {
+        // NEAR uses the MyNearWallet / near-seed-phrase convention:
+        // priv = BIP-39 PBKDF2 seed[0..32]. For "abandon abandon … about"
+        // with EMPTY passphrase, the 64-byte seed begins with the publicly
+        // documented constant 5eb00bbd… (Trezor's c55257… constant is for
+        // passphrase="TREZOR" — a different vector).
+        let request = base_request(Chain::Near, CurveFamily::Ed25519);
+        let result = derive(request).expect("near direct-seed derive");
+        let priv_hex = result.private_key_hex.expect("near priv");
+        let pub_hex = result.public_key_hex.expect("near pub");
+        let address = result.address.expect("near address");
+
+        assert_eq!(
+            priv_hex,
+            "5eb00bbddcf069084889a8ab9155568165f5c453ccb85e70811aaed6f6da5fc1"
+        );
+
+        // Public key must be the ed25519 derivative of this private scalar.
+        let priv_bytes = hex::decode(&priv_hex).expect("decode priv");
+        let mut priv_arr = [0u8; 32];
+        priv_arr.copy_from_slice(&priv_bytes);
+        let expected_pub = hex::encode(
+            SigningKey::from_bytes(&priv_arr)
+                .verifying_key()
+                .to_bytes(),
+        );
+        assert_eq!(pub_hex, expected_pub);
+        // NEAR implicit account id = hex(public_key).
+        assert_eq!(address, expected_pub);
+    }
+
+    #[test]
+    fn near_direct_seed_ignores_path() {
+        // DirectSeedEd25519 does no BIP-32 walk — changing the derivation_path
+        // must not change the private key.
+        let mut a = base_request(Chain::Near, CurveFamily::Ed25519);
+        a.derivation_path = Some("m/44'/397'/0'".to_string());
+        let mut b = base_request(Chain::Near, CurveFamily::Ed25519);
+        b.derivation_path = Some("m/999'/888/0".to_string());
+        let a_priv = derive(a).unwrap().private_key_hex;
+        let b_priv = derive(b).unwrap().private_key_hex;
+        assert_eq!(a_priv, b_priv);
+    }
+
+    #[test]
+    fn ton_mnemonic_structure() {
+        // TON mnemonic scheme: entropy = HMAC-SHA512(mnemonic, passphrase);
+        // seed = PBKDF2(entropy, "TON default seed", 100_000, 64); priv = seed[0..32].
+        // Cross-wallet vectors aren't pinned yet — this asserts structural
+        // invariants + keypair consistency as a regression floor.
+        let request = base_request(Chain::Ton, CurveFamily::Ed25519);
+        let result = derive(request).expect("ton derive");
+        let priv_hex = result.private_key_hex.expect("ton priv");
+        let pub_hex = result.public_key_hex.expect("ton pub");
+        let address = result.address.expect("ton address");
+
+        assert_eq!(priv_hex.len(), 64);
+        let priv_bytes = hex::decode(&priv_hex).expect("decode priv");
+        let mut priv_arr = [0u8; 32];
+        priv_arr.copy_from_slice(&priv_bytes);
+        let expected_pub = hex::encode(
+            SigningKey::from_bytes(&priv_arr)
+                .verifying_key()
+                .to_bytes(),
+        );
+        assert_eq!(pub_hex, expected_pub);
+        // Raw account id format: "0:<64 hex>".
+        assert!(address.starts_with("0:"));
+        assert_eq!(address.len(), 2 + 64);
+        assert_eq!(&address[2..], expected_pub);
+    }
+
+    #[test]
+    fn ton_mnemonic_diverges_from_slip10() {
+        // Sanity check that the new TonMnemonic algorithm is actually
+        // different from the old SLIP-0010 pipeline it replaced.
+        let mut ton_req = base_request(Chain::Ton, CurveFamily::Ed25519);
+        let ton_priv = derive(ton_req.clone_for_test())
+            .expect("ton priv")
+            .private_key_hex;
+        ton_req.derivation_algorithm = DerivationAlgorithm::Slip10Ed25519;
+        ton_req.derivation_path = Some("m/44'/607'/0'".to_string());
+        let slip_priv = derive(ton_req).expect("slip10 priv").private_key_hex;
+        assert_ne!(ton_priv, slip_priv);
+    }
+
+    #[test]
+    fn ton_mnemonic_honors_iteration_count() {
+        let baseline = derive(base_request(Chain::Ton, CurveFamily::Ed25519))
+            .expect("baseline ton")
+            .private_key_hex;
+        let mut tweaked = base_request(Chain::Ton, CurveFamily::Ed25519);
+        tweaked.iteration_count = 50_000;
+        let tweaked_priv = derive(tweaked).expect("tweaked ton").private_key_hex;
+        assert_ne!(baseline, tweaked_priv);
+    }
+
+    #[test]
+    fn cardano_icarus_enterprise_address_structure() {
+        // CIP-1852 / CIP-3 Icarus + CIP-19 Shelley enterprise address:
+        // header byte is 0x61 (type 6 = enterprise + payment-key hash, network 1 = mainnet).
+        // Bech32 HRP = "addr"; payload is 29 bytes (1 header + 28 Blake2b-224).
+        let request = base_request(Chain::Cardano, CurveFamily::Ed25519);
+        let result = derive(request).expect("cardano derive");
+        let priv_hex = result.private_key_hex.expect("cardano priv");
+        let pub_hex = result.public_key_hex.expect("cardano pub");
+        let address = result.address.expect("cardano address");
+
+        assert_eq!(priv_hex.len(), 64);
+        assert_eq!(pub_hex.len(), 64);
+        assert!(address.starts_with("addr1"), "address: {address}");
+        let (hrp, data) =
+            bech32::decode(&address).expect("bech32 decode must succeed");
+        assert_eq!(hrp.as_str(), "addr");
+        assert_eq!(data.len(), 29);
+        assert_eq!(data[0], 0x61);
+    }
+
+    #[test]
+    fn cardano_icarus_diverges_from_slip10() {
+        // Icarus BIP-32-Ed25519 with Khovratovich-Law clamping produces a
+        // different scalar than SLIP-0010 ed25519 for the same path.
+        let icarus = derive(base_request(Chain::Cardano, CurveFamily::Ed25519))
+            .expect("icarus")
+            .private_key_hex;
+        let mut slip = base_request(Chain::Cardano, CurveFamily::Ed25519);
+        slip.derivation_algorithm = DerivationAlgorithm::Slip10Ed25519;
+        slip.derivation_path = Some("m/1852'/1815'/0'/0'/0'".to_string());
+        let slip_priv = derive(slip).expect("slip").private_key_hex;
+        assert_ne!(icarus, slip_priv);
+    }
+
+    #[test]
+    fn cardano_icarus_passphrase_changes_root() {
+        let baseline = derive(base_request(Chain::Cardano, CurveFamily::Ed25519))
+            .expect("baseline cardano")
+            .private_key_hex;
+        let mut tweaked = base_request(Chain::Cardano, CurveFamily::Ed25519);
+        tweaked.passphrase = "TREZOR".to_string();
+        let tweaked_priv = derive(tweaked).expect("tweaked cardano").private_key_hex;
+        assert_ne!(baseline, tweaked_priv);
+    }
+
+    #[test]
+    fn cardano_icarus_root_is_clamped() {
+        // Khovratovich-Law clamping on the root xprv: kL[31] top 3 bits are
+        // cleared then bit 6 is set — so byte 31 & 0b1110_0000 == 0b0100_0000.
+        // (Child derivation can carry through byte 31, so we only check the
+        // root here.)
+        let root = derive_cardano_icarus_xprv_root(
+            "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about",
+            "",
+            Some("english"),
+            0,
+        )
+        .expect("icarus root");
+        assert_eq!(root[0] & 0b0000_0111, 0, "kL[0] low 3 bits must be clear");
+        assert_eq!(
+            root[31] & 0b1110_0000,
+            0b0100_0000,
+            "kL[31] top 3 bits must be 010"
+        );
+    }
+
+    #[test]
+    fn polkadot_substrate_address_structure() {
+        // SS58 Polkadot mainnet (network prefix 0): 1-byte prefix + 32-byte
+        // pubkey + 2-byte Blake2b-512("SS58PRE"||…) checksum, base58-encoded.
+        // The 35-byte payload base58s to a string starting with '1' for prefix 0.
+        let request = base_request(Chain::Polkadot, CurveFamily::Sr25519);
+        let result = derive(request).expect("polkadot derive");
+        let priv_hex = result.private_key_hex.expect("polkadot mini-secret");
+        let pub_hex = result.public_key_hex.expect("polkadot pub");
+        let address = result.address.expect("polkadot address");
+
+        assert_eq!(priv_hex.len(), 64, "mini-secret = 32 bytes");
+        assert_eq!(pub_hex.len(), 64, "sr25519 pub = 32 bytes");
+        assert_ne!(priv_hex, pub_hex, "mini-secret must differ from pub");
+        assert!(address.starts_with('1'), "Polkadot mainnet starts with '1', got {address}");
+        // Polkadot SS58 addresses are 47–48 base58 chars for the 35-byte payload.
+        assert!(
+            (47..=48).contains(&address.len()),
+            "polkadot address length out of range: {} ({address})",
+            address.len()
+        );
+    }
+
+    #[test]
+    fn polkadot_substrate_passphrase_changes_mini_secret() {
+        let baseline = derive(base_request(Chain::Polkadot, CurveFamily::Sr25519))
+            .expect("baseline polkadot")
+            .private_key_hex;
+        let mut tweaked = base_request(Chain::Polkadot, CurveFamily::Sr25519);
+        tweaked.passphrase = "TREZOR".to_string();
+        let tweaked_priv = derive(tweaked).expect("tweaked polkadot").private_key_hex;
+        assert_ne!(baseline, tweaked_priv);
+    }
+
+    #[test]
+    fn polkadot_substrate_diverges_from_bip39_seed_prefix() {
+        // substrate-bip39 uses the BIP-39 *entropy* (16 bytes for 12 words)
+        // as the PBKDF2 password — NOT the mnemonic string. So the resulting
+        // mini-secret must differ from the first 32 bytes of the standard
+        // BIP-39 PBKDF2 seed (which uses the mnemonic string as password).
+        let result = derive(base_request(Chain::Polkadot, CurveFamily::Sr25519))
+            .expect("polkadot");
+        let mini_secret = result.private_key_hex.expect("mini-secret");
+        let bip39_seed_prefix =
+            "5eb00bbddcf069084889a8ab9155568165f5c453ccb85e70811aaed6f6da5fc1";
+        assert_ne!(mini_secret, bip39_seed_prefix);
+    }
+
+    #[test]
+    fn polkadot_path_with_junction_is_rejected() {
+        let mut request = base_request(Chain::Polkadot, CurveFamily::Sr25519);
+        request.derivation_path = Some("//Alice".to_string());
+        let error = match derive(request) {
+            Err(err) => err,
+            Ok(_) => panic!("junction path must be rejected"),
+        };
+        assert!(
+            error.to_lowercase().contains("junction"),
+            "error should mention junctions, got: {error}"
+        );
+    }
+
+    #[test]
+    fn polkadot_ss58_round_trip() {
+        // Re-decode the SS58 address and verify the embedded pubkey + checksum.
+        use blake2::digest::consts::U64;
+        use blake2::digest::Digest;
+        use blake2::Blake2b;
+        type Blake2b512 = Blake2b<U64>;
+
+        let result = derive(base_request(Chain::Polkadot, CurveFamily::Sr25519))
+            .expect("polkadot");
+        let address = result.address.expect("polkadot address");
+        let pub_hex = result.public_key_hex.expect("polkadot pub");
+
+        let decoded = bs58::decode(&address).into_vec().expect("base58 decode");
+        // 1-byte prefix + 32-byte pubkey + 2-byte checksum = 35 bytes.
+        assert_eq!(decoded.len(), 35);
+        assert_eq!(decoded[0], 0x00, "Polkadot mainnet prefix is 0");
+        assert_eq!(hex::encode(&decoded[1..33]), pub_hex);
+
+        let mut hasher = Blake2b512::new();
+        hasher.update(b"SS58PRE");
+        hasher.update(&decoded[..33]);
+        let checksum = hasher.finalize();
+        assert_eq!(&decoded[33..35], &checksum[..2]);
+    }
+
+    #[test]
+    fn monero_address_structure() {
+        // Monero mainnet standard address: 0x12 || spend(32) || view(32) ||
+        // keccak256(prev)[..4] = 69 bytes → 95 chars chunked Base58.
+        // Network byte 0x12 forces the first character to be '4'.
+        let request = base_request(Chain::Monero, CurveFamily::Ed25519);
+        let result = derive(request).expect("monero derive");
+        let priv_hex = result.private_key_hex.expect("monero priv");
+        let pub_hex = result.public_key_hex.expect("monero pub");
+        let address = result.address.expect("monero address");
+
+        assert_eq!(priv_hex.len(), 64, "spend key = 32 bytes hex");
+        assert_eq!(pub_hex.len(), 128, "spend+view pubs = 64 bytes hex");
+        assert_eq!(address.len(), 95, "Monero mainnet address is 95 chars");
+        assert!(address.starts_with('4'), "Monero mainnet starts with '4', got {address}");
+    }
+
+    #[test]
+    fn monero_keys_match_reduced_bip39_seed_prefix() {
+        // The BIP-39 seed prefix for "abandon … about" with empty passphrase
+        // is 5eb0…fc1; that 32-byte LE integer exceeds the curve25519 group
+        // order ℓ, so sc_reduce32 reduces it to the value below. Pinning the
+        // exact reduction guards against regressions in the scalar-mod path.
+        use curve25519_dalek::scalar::Scalar as DalekScalar;
+        let bip39_prefix =
+            hex::decode("5eb00bbddcf069084889a8ab9155568165f5c453ccb85e70811aaed6f6da5fc1")
+                .expect("decode bip39 prefix");
+        let mut bytes = [0u8; 32];
+        bytes.copy_from_slice(&bip39_prefix);
+        let expected = hex::encode(DalekScalar::from_bytes_mod_order(bytes).to_bytes());
+
+        let result = derive(base_request(Chain::Monero, CurveFamily::Ed25519))
+            .expect("monero");
+        let priv_hex = result.private_key_hex.expect("priv");
+        assert_eq!(priv_hex, expected);
+    }
+
+    #[test]
+    fn monero_view_key_is_keccak_of_spend() {
+        // Reconstruct view = sc_reduce32(Keccak256(spend)) and check that
+        // public_view inside the address payload matches.
+        use curve25519_dalek::constants::ED25519_BASEPOINT_POINT;
+        use curve25519_dalek::scalar::Scalar as DalekScalar;
+
+        let result = derive(base_request(Chain::Monero, CurveFamily::Ed25519))
+            .expect("monero");
+        let pub_hex = result.public_key_hex.expect("pub");
+        let priv_bytes =
+            hex::decode(result.private_key_hex.expect("priv")).expect("decode priv");
+        let mut spend = [0u8; 32];
+        spend.copy_from_slice(&priv_bytes);
+
+        let mut hasher = Keccak::v256();
+        let mut spend_hash = [0u8; 32];
+        hasher.update(&spend);
+        hasher.finalize(&mut spend_hash);
+        let view_scalar = DalekScalar::from_bytes_mod_order(spend_hash);
+        let public_view = (view_scalar * ED25519_BASEPOINT_POINT).compress().to_bytes();
+
+        assert_eq!(&pub_hex[64..128], hex::encode(public_view));
+    }
+
+    #[test]
+    fn monero_passphrase_changes_keys() {
+        let baseline = derive(base_request(Chain::Monero, CurveFamily::Ed25519))
+            .expect("baseline monero")
+            .private_key_hex;
+        let mut tweaked = base_request(Chain::Monero, CurveFamily::Ed25519);
+        tweaked.passphrase = "TREZOR".to_string();
+        let tweaked_priv = derive(tweaked).expect("tweaked monero").private_key_hex;
+        assert_ne!(baseline, tweaked_priv);
+    }
+
+    #[test]
+    fn monero_base58_encodes_known_length_pattern() {
+        // Sanity check the chunked Base58: a 69-byte input must produce 95
+        // characters (8 full blocks * 11 chars + 1 5-byte trailing block * 7).
+        let payload = [0u8; 69];
+        let encoded = monero_base58_encode(&payload);
+        assert_eq!(encoded.len(), 95);
+        // All-zero input encodes as all '1's (the alphabet's index-0 char).
+        assert!(encoded.chars().all(|c| c == '1'));
+    }
+
+    impl ParsedRequest {
+        fn clone_for_test(&self) -> ParsedRequest {
+            ParsedRequest {
+                chain: self.chain,
+                network: self.network,
+                curve: self.curve,
+                requested_outputs: self.requested_outputs,
+                derivation_algorithm: self.derivation_algorithm,
+                address_algorithm: self.address_algorithm,
+                public_key_format: self.public_key_format,
+                script_type: self.script_type,
+                seed_phrase: self.seed_phrase.clone(),
+                derivation_path: self.derivation_path.clone(),
+                passphrase: self.passphrase.clone(),
+                hmac_key: self.hmac_key.clone(),
+                mnemonic_wordlist: self.mnemonic_wordlist.clone(),
+                iteration_count: self.iteration_count,
+                salt_prefix: self.salt_prefix.clone(),
+            }
+        }
+    }
+
     fn chain_name(chain: Chain) -> &'static str {
         match chain {
             Chain::Bitcoin => "bitcoin",
@@ -2142,6 +3518,466 @@ mod tests {
             Chain::InternetComputer => "internet_computer",
             Chain::Near => "near",
             Chain::Polkadot => "polkadot",
+            Chain::Monero => "monero",
+        }
+    }
+
+    #[test]
+    fn ton_v4r2_code_hash_matches_known_constant() {
+        // Ensures the embedded BOC + our parser produce the canonical v4R2
+        // root hash. If either changes, every v4R2 address we emit is wrong,
+        // so this is the trip-wire.
+        let (hash, _depth) = v4r2_code_hash_and_depth().expect("v4r2 code hash");
+        assert_eq!(
+            hex::encode(hash),
+            "feb5ff6820e2ff0d9483e7e0d62c817d846789fb4ae580c878866d959dabd5c0"
+        );
+    }
+
+    #[test]
+    fn ton_v4r2_address_structure_and_determinism() {
+        // User-friendly base64url addresses are exactly 48 chars (36 bytes
+        // → 48 chars under base64url-no-pad). v4R2 bounceable mainnet
+        // addresses all start with "EQ" because tag=0x11, workchain=0x00
+        // decodes to base64 `EQ`.
+        let mut request = base_request(Chain::Ton, CurveFamily::Ed25519);
+        request.address_algorithm = AddressAlgorithm::TonV4R2;
+        let a = derive(request.clone_for_test()).expect("ton v4r2").address.expect("address");
+        let b = derive(request).expect("ton v4r2 again").address.expect("address");
+        assert_eq!(a, b, "v4r2 address must be deterministic");
+        assert_eq!(a.len(), 48, "v4r2 address must be 48 chars: {a}");
+        assert!(a.starts_with("EQ"), "v4r2 bounceable-mainnet prefix: {a}");
+        // Must not contain '+' or '/' (base64url-specific).
+        assert!(!a.contains('+'));
+        assert!(!a.contains('/'));
+    }
+
+    #[test]
+    fn ton_v4r2_diverges_from_raw_account_id() {
+        let mut raw = base_request(Chain::Ton, CurveFamily::Ed25519);
+        raw.address_algorithm = AddressAlgorithm::TonRawAccountId;
+        let raw_addr = derive(raw).expect("raw").address.expect("raw address");
+        let mut v4 = base_request(Chain::Ton, CurveFamily::Ed25519);
+        v4.address_algorithm = AddressAlgorithm::TonV4R2;
+        let v4_addr = derive(v4).expect("v4r2").address.expect("v4r2 address");
+        assert_ne!(raw_addr, v4_addr);
+    }
+
+    #[test]
+    fn ton_v4r2_changes_with_mnemonic() {
+        let mut a = base_request(Chain::Ton, CurveFamily::Ed25519);
+        a.address_algorithm = AddressAlgorithm::TonV4R2;
+        let addr_a = derive(a).expect("a").address.expect("a addr");
+        let mut b = base_request(Chain::Ton, CurveFamily::Ed25519);
+        b.address_algorithm = AddressAlgorithm::TonV4R2;
+        b.seed_phrase = "legal winner thank year wave sausage worth useful legal winner thank yellow".to_string();
+        let addr_b = derive(b).expect("b").address.expect("b addr");
+        assert_ne!(addr_a, addr_b);
+    }
+
+    #[test]
+    fn crc16_xmodem_known_vector() {
+        // Standard CRC-16/XMODEM test vector: "123456789" → 0x31C3.
+        assert_eq!(crc16_xmodem(b"123456789"), 0x31C3);
+    }
+
+    #[test]
+    fn chain_inference_covers_every_per_chain_variant() {
+        // Each per-chain AddressAlgorithm variant must resolve to the
+        // matching Chain. This is what lets callers omit `chain` from
+        // the request and still reach the right derivation pipeline.
+        let cases: &[(AddressAlgorithm, Chain)] = &[
+            (AddressAlgorithm::Bitcoin, Chain::Bitcoin),
+            (AddressAlgorithm::Litecoin, Chain::Litecoin),
+            (AddressAlgorithm::Dogecoin, Chain::Dogecoin),
+            (AddressAlgorithm::BitcoinCashLegacy, Chain::BitcoinCash),
+            (AddressAlgorithm::BitcoinSvLegacy, Chain::BitcoinSv),
+            (AddressAlgorithm::Evm, Chain::Ethereum),
+            (AddressAlgorithm::TronBase58Check, Chain::Tron),
+            (AddressAlgorithm::XrpBase58Check, Chain::Xrp),
+            (AddressAlgorithm::Solana, Chain::Solana),
+            (AddressAlgorithm::StellarStrKey, Chain::Stellar),
+            (AddressAlgorithm::SuiKeccak, Chain::Sui),
+            (AddressAlgorithm::AptosKeccak, Chain::Aptos),
+            (AddressAlgorithm::IcpPrincipal, Chain::InternetComputer),
+            (AddressAlgorithm::NearHex, Chain::Near),
+            (AddressAlgorithm::TonRawAccountId, Chain::Ton),
+            (AddressAlgorithm::TonV4R2, Chain::Ton),
+            (AddressAlgorithm::CardanoShelleyEnterprise, Chain::Cardano),
+            (AddressAlgorithm::Ss58, Chain::Polkadot),
+            (AddressAlgorithm::MoneroMain, Chain::Monero),
+        ];
+        for (alg, expected_chain) in cases {
+            let inferred = match chain_from_address_algorithm(*alg) {
+                Ok(c) => c,
+                Err(e) => panic!("chain_from_address_algorithm failed: {e}"),
+            };
+            assert_eq!(
+                std::mem::discriminant(&inferred),
+                std::mem::discriminant(expected_chain),
+                "chain inference mismatch for address algorithm"
+            );
+        }
+    }
+
+    #[test]
+    fn chain_inference_auto_is_rejected() {
+        let err = match chain_from_address_algorithm(AddressAlgorithm::Auto) {
+            Err(e) => e,
+            Ok(_) => panic!("Auto should not infer a chain"),
+        };
+        assert!(err.contains("explicit"));
+    }
+
+    #[test]
+    fn parse_uniffi_request_infers_chain_when_omitted() {
+        // Construct a minimal request with chain=None and verify it
+        // reaches the same ParsedRequest shape as an explicit chain.
+        let req_json_no_chain = serde_json::json!({
+            "network": NETWORK_MAINNET,
+            "curve": CURVE_ED25519,
+            "requestedOutputs": OUTPUT_ADDRESS | OUTPUT_PUBLIC_KEY,
+            "derivationAlgorithm": DERIVATION_SLIP10_ED25519,
+            "addressAlgorithm": ADDRESS_SOLANA,
+            "publicKeyFormat": PUBLIC_KEY_RAW,
+            "scriptType": SCRIPT_ACCOUNT,
+            "seedPhrase": "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about",
+            "derivationPath": "m/44'/501'/0'/0'",
+            "iterationCount": 0,
+        });
+        let req: UniFFIDerivationRequest = serde_json::from_value(req_json_no_chain)
+            .expect("parse JSON");
+        assert!(req.chain.is_none());
+        let parsed = parse_uniffi_request(req).expect("parse");
+        assert!(matches!(parsed.chain, Chain::Solana));
+    }
+
+    #[test]
+    fn explicit_chain_override_beats_inference() {
+        // When the caller sends `chain` AND an AddressAlgorithm that
+        // would infer a different chain, the explicit value wins — this
+        // preserves back-compat for callers that haven't migrated.
+        let req_json = serde_json::json!({
+            "chain": CHAIN_TRON, // explicit Tron
+            "network": NETWORK_MAINNET,
+            "curve": CURVE_SECP256K1,
+            "requestedOutputs": OUTPUT_ADDRESS,
+            "derivationAlgorithm": DERIVATION_BIP32_SECP256K1,
+            "addressAlgorithm": ADDRESS_EVM, // would infer Ethereum
+            "publicKeyFormat": PUBLIC_KEY_UNCOMPRESSED,
+            "scriptType": SCRIPT_ACCOUNT,
+            "seedPhrase": "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about",
+            "derivationPath": "m/44'/195'/0'/0/0",
+            "iterationCount": 0,
+        });
+        let req: UniFFIDerivationRequest = serde_json::from_value(req_json).expect("parse JSON");
+        let parsed = parse_uniffi_request(req).expect("parse");
+        assert!(matches!(parsed.chain, Chain::Tron));
+    }
+
+    // ──────────────────────────────────────────────────────────────────
+    // Phase 4 — canonical external golden vectors.
+    //
+    // Each entry pins our derivation output against an address emitted
+    // by a reference wallet / official spec for the same mnemonic +
+    // path. If our code ever drifts from the rest of the ecosystem,
+    // one of these asserts fails loudly before a caller can send
+    // funds to a wrong address.
+    // ──────────────────────────────────────────────────────────────────
+
+    struct GoldenVector {
+        label: &'static str,
+        source: &'static str,
+        mnemonic: &'static str,
+        path: &'static str,
+        chain: Chain,
+        curve: CurveFamily,
+        derivation_algorithm: DerivationAlgorithm,
+        address_algorithm: AddressAlgorithm,
+        public_key_format: PublicKeyFormat,
+        script_type: ScriptType,
+        expected: &'static str,
+        case_insensitive: bool,
+    }
+
+    fn run_golden_vector(v: &GoldenVector) -> Result<String, String> {
+        let request = ParsedRequest {
+            chain: v.chain,
+            network: NetworkFlavor::Mainnet,
+            curve: v.curve,
+            requested_outputs: OUTPUT_ADDRESS,
+            derivation_algorithm: v.derivation_algorithm,
+            address_algorithm: v.address_algorithm,
+            public_key_format: v.public_key_format,
+            script_type: v.script_type,
+            seed_phrase: v.mnemonic.to_string(),
+            derivation_path: Some(v.path.to_string()),
+            passphrase: String::new(),
+            hmac_key: None,
+            mnemonic_wordlist: Some("english".to_string()),
+            iteration_count: 0,
+            salt_prefix: None,
+        };
+        let out = derive(request)?;
+        out.address.ok_or_else(|| "no address returned".to_string())
+    }
+
+    fn canonical_golden_vectors() -> Vec<GoldenVector> {
+        // Three reference mnemonics appear below:
+        //   - ABANDON: BIP-39 test vector; used by BIP-84 / BIP-86.
+        //   - ALL_ALL: Trezor firmware canonical test seed; used by the
+        //     trezor-firmware fixtures for Bitcoin/Ethereum/Tron/Solana
+        //     /Cardano/XRP/Litecoin.
+        //   - SEP_0005: Stellar SEP-0005 §Test 1 mnemonic.
+        const ABANDON: &str = "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about";
+        const ALL_ALL: &str = "all all all all all all all all all all all all";
+        const SEP_0005: &str = "illness spike retreat truth genius clock brain pass fit cave bargain toe";
+
+        vec![
+            GoldenVector {
+                label: "Bitcoin P2WPKH (BIP-84)",
+                source: "github.com/bitcoin/bips/blob/master/bip-0084.mediawiki",
+                mnemonic: ABANDON,
+                path: "m/84'/0'/0'/0/0",
+                chain: Chain::Bitcoin,
+                curve: CurveFamily::Secp256k1,
+                derivation_algorithm: DerivationAlgorithm::Bip32Secp256k1,
+                address_algorithm: AddressAlgorithm::Bitcoin,
+                public_key_format: PublicKeyFormat::Compressed,
+                script_type: ScriptType::P2wpkh,
+                expected: "bc1qcr8te4kr609gcawutmrza0j4xv80jy8z306fyu",
+                case_insensitive: false,
+            },
+            GoldenVector {
+                label: "Bitcoin P2TR (BIP-86)",
+                source: "github.com/bitcoin/bips/blob/master/bip-0086.mediawiki",
+                mnemonic: ABANDON,
+                path: "m/86'/0'/0'/0/0",
+                chain: Chain::Bitcoin,
+                curve: CurveFamily::Secp256k1,
+                derivation_algorithm: DerivationAlgorithm::Bip32Secp256k1,
+                address_algorithm: AddressAlgorithm::Bitcoin,
+                public_key_format: PublicKeyFormat::XOnly,
+                script_type: ScriptType::P2tr,
+                expected: "bc1p5cyxnuxmeuwuvkwfem96lqzszd02n6xdcjrs20cac6yqjjwudpxqkedrcr",
+                case_insensitive: false,
+            },
+            GoldenVector {
+                label: "Bitcoin P2PKH legacy",
+                source: "trezor-firmware/tests/device_tests/bitcoin/test_getaddress.py",
+                mnemonic: ALL_ALL,
+                path: "m/44'/0'/0'/0/0",
+                chain: Chain::Bitcoin,
+                curve: CurveFamily::Secp256k1,
+                derivation_algorithm: DerivationAlgorithm::Bip32Secp256k1,
+                address_algorithm: AddressAlgorithm::Bitcoin,
+                public_key_format: PublicKeyFormat::Compressed,
+                script_type: ScriptType::P2pkh,
+                expected: "1JAd7XCBzGudGpJQSDSfpmJhiygtLQWaGL",
+                case_insensitive: false,
+            },
+            GoldenVector {
+                label: "Bitcoin P2WPKH (all-all seed)",
+                source: "trezor-firmware/tests/device_tests/bitcoin/test_getaddress_segwit_native.py",
+                mnemonic: ALL_ALL,
+                path: "m/84'/0'/0'/0/0",
+                chain: Chain::Bitcoin,
+                curve: CurveFamily::Secp256k1,
+                derivation_algorithm: DerivationAlgorithm::Bip32Secp256k1,
+                address_algorithm: AddressAlgorithm::Bitcoin,
+                public_key_format: PublicKeyFormat::Compressed,
+                script_type: ScriptType::P2wpkh,
+                expected: "bc1qannfxke2tfd4l7vhepehpvt05y83v3qsf6nfkk",
+                case_insensitive: false,
+            },
+            GoldenVector {
+                label: "Litecoin P2PKH legacy",
+                source: "trezor-firmware/tests/device_tests/bitcoin/test_getaddress.py",
+                mnemonic: ALL_ALL,
+                path: "m/44'/2'/0'/0/0",
+                chain: Chain::Litecoin,
+                curve: CurveFamily::Secp256k1,
+                derivation_algorithm: DerivationAlgorithm::Bip32Secp256k1,
+                address_algorithm: AddressAlgorithm::Litecoin,
+                public_key_format: PublicKeyFormat::Compressed,
+                script_type: ScriptType::P2pkh,
+                expected: "LcubERmHD31PWup1fbozpKuiqjHZ4anxcL",
+                case_insensitive: false,
+            },
+            GoldenVector {
+                label: "Ethereum",
+                source: "trezor-firmware/common/tests/fixtures/ethereum/getaddress.json",
+                mnemonic: ALL_ALL,
+                path: "m/44'/60'/0'/0/0",
+                chain: Chain::Ethereum,
+                curve: CurveFamily::Secp256k1,
+                derivation_algorithm: DerivationAlgorithm::Bip32Secp256k1,
+                address_algorithm: AddressAlgorithm::Evm,
+                public_key_format: PublicKeyFormat::Uncompressed,
+                script_type: ScriptType::Account,
+                expected: "0x73d0385F4d8E00C5e6504C6030F47BF6212736A8",
+                case_insensitive: true,
+            },
+            GoldenVector {
+                label: "Ethereum Classic",
+                source: "trezor-firmware/common/tests/fixtures/ethereum/getaddress.json",
+                mnemonic: ALL_ALL,
+                path: "m/44'/61'/0'/0/0",
+                chain: Chain::EthereumClassic,
+                curve: CurveFamily::Secp256k1,
+                derivation_algorithm: DerivationAlgorithm::Bip32Secp256k1,
+                address_algorithm: AddressAlgorithm::Evm,
+                public_key_format: PublicKeyFormat::Uncompressed,
+                script_type: ScriptType::Account,
+                expected: "0xF410e37E9C8BCf8CF319c84Ae9dCEbe057804a04",
+                case_insensitive: true,
+            },
+            GoldenVector {
+                label: "Tron",
+                source: "trezor-firmware/common/tests/fixtures/tron/get_address.json",
+                mnemonic: ALL_ALL,
+                path: "m/44'/195'/0'/0/0",
+                chain: Chain::Tron,
+                curve: CurveFamily::Secp256k1,
+                derivation_algorithm: DerivationAlgorithm::Bip32Secp256k1,
+                address_algorithm: AddressAlgorithm::TronBase58Check,
+                public_key_format: PublicKeyFormat::Uncompressed,
+                script_type: ScriptType::Account,
+                expected: "TY72iA3SBtrds3QLYsS7LwYfkzXwAXCRWT",
+                case_insensitive: false,
+            },
+            GoldenVector {
+                label: "XRP Ledger",
+                source: "trezor-firmware/tests/device_tests/ripple/test_get_address.py",
+                mnemonic: ALL_ALL,
+                path: "m/44'/144'/0'/0/0",
+                chain: Chain::Xrp,
+                curve: CurveFamily::Secp256k1,
+                derivation_algorithm: DerivationAlgorithm::Bip32Secp256k1,
+                address_algorithm: AddressAlgorithm::XrpBase58Check,
+                public_key_format: PublicKeyFormat::Compressed,
+                script_type: ScriptType::P2pkh,
+                expected: "rNaqKtKrMSwpwZSzRckPf7S96DkimjkF4H",
+                case_insensitive: false,
+            },
+            GoldenVector {
+                label: "Solana",
+                source: "trezor-firmware/common/tests/fixtures/solana/get_address.json",
+                mnemonic: ALL_ALL,
+                path: "m/44'/501'/0'/0'",
+                chain: Chain::Solana,
+                curve: CurveFamily::Ed25519,
+                derivation_algorithm: DerivationAlgorithm::Slip10Ed25519,
+                address_algorithm: AddressAlgorithm::Solana,
+                public_key_format: PublicKeyFormat::Raw,
+                script_type: ScriptType::Account,
+                expected: "14CCvQzQzHCVgZM3j9soPnXuJXh1RmCfwLVUcdfbZVBS",
+                case_insensitive: false,
+            },
+            GoldenVector {
+                label: "Stellar (SEP-0005 Test 1 #0)",
+                source: "trezor-firmware/common/tests/fixtures/stellar/get_address.json",
+                mnemonic: SEP_0005,
+                path: "m/44'/148'/0'",
+                chain: Chain::Stellar,
+                curve: CurveFamily::Ed25519,
+                derivation_algorithm: DerivationAlgorithm::Slip10Ed25519,
+                address_algorithm: AddressAlgorithm::StellarStrKey,
+                public_key_format: PublicKeyFormat::Raw,
+                script_type: ScriptType::Account,
+                expected: "GDRXE2BQUC3AZNPVFSCEZ76NJ3WWL25FYFK6RGZGIEKWE4SOOHSUJUJ6",
+                case_insensitive: false,
+            },
+            GoldenVector {
+                label: "Cardano Shelley enterprise",
+                source: "trezor-firmware/common/tests/fixtures/cardano/get_enterprise_address.json",
+                mnemonic: ALL_ALL,
+                path: "m/1852'/1815'/0'/0/0",
+                chain: Chain::Cardano,
+                curve: CurveFamily::Ed25519,
+                derivation_algorithm: DerivationAlgorithm::Bip32Ed25519Icarus,
+                address_algorithm: AddressAlgorithm::CardanoShelleyEnterprise,
+                public_key_format: PublicKeyFormat::Raw,
+                script_type: ScriptType::Account,
+                expected: "addr1vxq0nckg3ekgzuqg7w5p9mvgnd9ym28qh5grlph8xd2z92su77c6m",
+                case_insensitive: false,
+            },
+        ]
+    }
+
+    #[test]
+    fn canonical_external_golden_vectors_all_pass() {
+        // Runs every golden vector and collects failures so we see the
+        // full picture in one test run. Any mismatch → test fails with
+        // a readable per-chain diff.
+        let vectors = canonical_golden_vectors();
+        let mut failures: Vec<String> = Vec::new();
+        for v in &vectors {
+            match run_golden_vector(v) {
+                Err(e) => failures.push(format!(
+                    "{} — derivation error: {} (source: {}, path: {})",
+                    v.label, e, v.source, v.path
+                )),
+                Ok(addr) => {
+                    let ok = if v.case_insensitive {
+                        addr.eq_ignore_ascii_case(v.expected)
+                    } else {
+                        addr == v.expected
+                    };
+                    if !ok {
+                        failures.push(format!(
+                            "{} mismatch\n    expected: {}\n    actual:   {}\n    source:   {}\n    path:     {}",
+                            v.label, v.expected, addr, v.source, v.path
+                        ));
+                    }
+                }
+            }
+        }
+        assert!(
+            failures.is_empty(),
+            "{} canonical vector(s) failed:\n{}",
+            failures.len(),
+            failures.join("\n")
+        );
+    }
+
+    #[test]
+    fn evm_replica_chains_share_ethereum_golden() {
+        // Every EVM-compatible chain reuses Ethereum's BIP-44 derivation
+        // (m/44'/60'/…) and Keccak address algorithm, so the same
+        // mnemonic must produce the same address on Arbitrum / Optimism
+        // / BNB Chain / Avalanche / Hyperliquid as on Ethereum. Pin this
+        // so a future per-chain override can't silently diverge.
+        const ALL_ALL: &str = "all all all all all all all all all all all all";
+        let expected = "0x73d0385F4d8E00C5e6504C6030F47BF6212736A8";
+        let replicas = [
+            Chain::Arbitrum,
+            Chain::Optimism,
+            Chain::Avalanche,
+            Chain::Hyperliquid,
+        ];
+        for chain in replicas {
+            let v = GoldenVector {
+                label: "EVM replica",
+                source: "Ethereum golden",
+                mnemonic: ALL_ALL,
+                path: "m/44'/60'/0'/0/0",
+                chain,
+                curve: CurveFamily::Secp256k1,
+                derivation_algorithm: DerivationAlgorithm::Bip32Secp256k1,
+                address_algorithm: AddressAlgorithm::Evm,
+                public_key_format: PublicKeyFormat::Uncompressed,
+                script_type: ScriptType::Account,
+                expected,
+                case_insensitive: true,
+            };
+            let addr = run_golden_vector(&v).expect("evm replica derivation");
+            assert!(
+                addr.eq_ignore_ascii_case(expected),
+                "EVM replica drifted: chain={:?} got {}",
+                std::mem::discriminant(&chain),
+                addr
+            );
         }
     }
 }
