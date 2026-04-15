@@ -4,9 +4,9 @@
 
 ---
 
-## Summary judgement on the rust-bitcoin workspace model
+## Summary judgement on the workspace model
 
-rust-bitcoin uses 16 crates because it is a *public library ecosystem* — downstream users compose only the pieces they need, and each crate can be versioned and published independently. Spectra is an *application*, not a library. Applying that model here would create 16 crates with no downstream consumers, adding Cargo workspace overhead with no payoff.
+A heavily split, multi-crate workspace only pays off when the crates are a *public library ecosystem* — downstream users composing only the pieces they need, with each crate versioned and published independently. Spectra is an *application*, not a library. Splitting it into many crates would create Cargo workspace overhead with no downstream consumers and no payoff.
 
 The right workspace model for Spectra is **3 crates, one workspace root**:
 
@@ -219,5 +219,5 @@ make test         → cargo test -p spectra-core
 ## What this is NOT
 
 - Not a cross-platform UI framework (no Flutter, no React Native, no Kotlin Multiplatform UI). Both UIs are written natively in their platform language. The Rust core is the shared layer; everything above the FFI boundary is platform-native.
-- Not a rust-bitcoin-style library workspace. There are no publicly versioned crates, no `[features]` flags for optional functionality, no semver compatibility commitments between crates.
+- Not a public library workspace. There are no publicly versioned crates, no `[features]` flags for optional functionality, no semver compatibility commitments between crates.
 - Not a new framework to build. The existing Rust core is already shaped correctly for this; the work is reorganization and adding the Android build path.
