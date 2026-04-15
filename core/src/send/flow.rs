@@ -1,4 +1,4 @@
-// Phase 4a pure-logic lifts from Swift/Store/WalletStore+SendFlow.swift.
+// Phase 4a pure-logic lifts from swift/store/WalletStore+SendFlow.swift.
 //
 // Each function is a pure transform with no @Published or iOS dependencies.
 // Swift call sites collapse to one-liners delegating here.

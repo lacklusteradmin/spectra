@@ -58,63 +58,43 @@ pub fn parse_derivation_request_presets_json(
     serde_json::from_str(json)
 }
 
-#[path = "main.rs"]
-mod derivation_runtime;
-
-pub use derivation_runtime::*;
-
 mod app_core;
-
 pub use app_core::*;
 
-pub mod addressing;
-pub mod balance_cache;
-pub mod balance_observer;
-pub mod catalog;
 pub mod chains;
+pub mod derivation;
 pub mod diagnostics;
 pub mod diagnostics_sanitizer;
-pub mod endpoint_reliability;
 pub mod fetch;
 pub mod ffi;
 pub mod formatting;
-pub mod history;
-pub mod history_cache;
-pub mod history_decode;
-pub mod history_store;
-pub mod http;
-pub mod import;
 pub mod localization;
-pub mod migration;
-pub mod persistence;
-pub mod price;
-pub mod refresh;
-pub mod refresh_engine;
+pub mod receive;
 pub mod resources;
-pub mod secret_store;
 pub mod self_tests;
 pub mod send;
-pub mod send_machine;
 pub mod service;
-pub mod state;
 pub mod store;
 pub mod tokens;
-pub mod transactions;
-pub mod transfer;
 pub mod types;
-pub mod utxo;
-pub mod ethereum_send;
-pub mod send_preview_decode;
-pub mod send_payload;
-pub mod send_flow;
-pub mod send_flow_helpers;
-pub mod send_verification;
-pub mod amount_input;
-pub mod app_shell_state;
-pub mod app_state;
-pub mod http_ffi;
-pub mod wallet_core;
-pub mod wallet_db;
-pub mod wallet_domain;
-pub mod receive;
-pub mod balance_decoder;
+pub mod catalog;
+
+// Re-export every submodule at crate root so pre-reorganization paths
+// (e.g. `crate::http::HttpClient`, `crate::wallet_domain::...`) continue to resolve.
+// New code should prefer the folder-qualified path (`crate::fetch::http::...`).
+pub use derivation::*;
+pub use derivation::{addressing, import};
+pub use fetch::{
+    balance_cache, balance_decoder, balance_observer, endpoint_reliability, history,
+    history_cache, history_decode, history_store, http, http_ffi, price, refresh, refresh_engine,
+    transactions,
+};
+pub use send::{
+    amount_input, ethereum as ethereum_send, flow as send_flow, flow_helpers as send_flow_helpers,
+    machine as send_machine, payload as send_payload, preview_decode as send_preview_decode,
+    transfer, utxo, verification as send_verification,
+};
+pub use store::{
+    app_shell_state, app_state, migration, persistence, secret_store, state, wallet_core,
+    wallet_db, wallet_domain,
+};

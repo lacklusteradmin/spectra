@@ -1,6 +1,6 @@
 // Phase D: per-chain diagnostics JSON builders.
 //
-// Lifted from Swift `Swift/Shell/StoreDiagnosticsExport.swift`. The JSON
+// Lifted from Swift `swift/shell/StoreDiagnosticsExport.swift`. The JSON
 // output shape is part of the exported diagnostics bundle contract — keep
 // field names stable across migrations.
 //

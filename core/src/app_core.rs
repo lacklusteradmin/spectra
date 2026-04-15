@@ -24,11 +24,11 @@ const CHAIN_INTERNET_COMPUTER: u32 = 19;
 const CHAIN_NEAR: u32 = 20;
 const CHAIN_POLKADOT: u32 = 21;
 
-const CHAIN_PRESETS_JSON: &str = include_str!("../../Swift/Derivation/DerivationPresets.json");
+const CHAIN_PRESETS_JSON: &str = include_str!("../../swift/Derivation/DerivationPresets.json");
 const REQUEST_COMPILATION_PRESETS_JSON: &str =
-    include_str!("../../Swift/Derivation/DerivationRequestCompilationPresets.json");
+    include_str!("../../swift/Derivation/DerivationRequestCompilationPresets.json");
 const APP_ENDPOINT_DIRECTORY_JSON: &str =
-    include_str!("../../Swift/ProviderCatalog/AppEndpointDirectory.json");
+    include_str!("../../swift/ProviderCatalog/AppEndpointDirectory.json");
 
 const ENDPOINT_ROLE_READ: u32 = 1 << 0;
 const ENDPOINT_ROLE_BALANCE: u32 = 1 << 1;

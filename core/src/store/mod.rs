@@ -1,8 +1,18 @@
+pub mod app_shell_state;
+pub mod app_state;
+pub mod migration;
+pub mod persistence;
+pub mod secret_store;
+pub mod state;
+pub mod wallet_core;
+pub mod wallet_db;
+pub mod wallet_domain;
+
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 use std::collections::HashMap;
 
-use super::state::CoreAppState;
+use self::state::CoreAppState;
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, uniffi::Record)]
 #[serde(rename_all = "camelCase")]
