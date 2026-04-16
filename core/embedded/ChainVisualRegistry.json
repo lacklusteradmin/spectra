@@ -1,0 +1,146 @@
+[
+  {
+    "id": "bitcoin",
+    "mark": "B",
+    "colorName": "orange",
+    "assetName": "bitcoin"
+  },
+  {
+    "id": "bitcoin-cash",
+    "mark": "BC",
+    "colorName": "orange",
+    "assetName": "bitcoincash"
+  },
+  {
+    "id": "bitcoin-sv",
+    "mark": "BS",
+    "colorName": "orange",
+    "assetName": "bitcoinsv"
+  },
+  {
+    "id": "litecoin",
+    "mark": "L",
+    "colorName": "blue",
+    "assetName": "litecoin"
+  },
+  {
+    "id": "dogecoin",
+    "mark": "D",
+    "colorName": "yellow",
+    "assetName": "dogecoin"
+  },
+  {
+    "id": "ethereum",
+    "mark": "E",
+    "colorName": "purple",
+    "assetName": "ethereum"
+  },
+  {
+    "id": "ethereum-classic",
+    "mark": "EC",
+    "colorName": "green",
+    "assetName": "ethereumclassic"
+  },
+  {
+    "id": "arbitrum",
+    "mark": "AR",
+    "colorName": "cyan",
+    "assetName": "arbitrum"
+  },
+  {
+    "id": "optimism",
+    "mark": "OP",
+    "colorName": "red",
+    "assetName": "optimism"
+  },
+  {
+    "id": "bnb",
+    "mark": "BN",
+    "colorName": "yellow",
+    "assetName": "bnb"
+  },
+  {
+    "id": "avalanche",
+    "mark": "AV",
+    "colorName": "red",
+    "assetName": "avax"
+  },
+  {
+    "id": "hyperliquid",
+    "mark": "HY",
+    "colorName": "mint",
+    "assetName": "hyperliquid"
+  },
+  {
+    "id": "tron",
+    "mark": "T",
+    "colorName": "red",
+    "assetName": "tron"
+  },
+  {
+    "id": "solana",
+    "mark": "S",
+    "colorName": "green",
+    "assetName": "solana"
+  },
+  {
+    "id": "stellar",
+    "mark": "XL",
+    "colorName": "teal",
+    "assetName": "stellar"
+  },
+  {
+    "id": "aptos",
+    "mark": "AP",
+    "colorName": "cyan",
+    "assetName": "aptos"
+  },
+  {
+    "id": "ton",
+    "mark": "TN",
+    "colorName": "blue",
+    "assetName": "ton"
+  },
+  {
+    "id": "internet-computer",
+    "mark": "IC",
+    "colorName": "indigo",
+    "assetName": "icp"
+  },
+  {
+    "id": "near",
+    "mark": "N",
+    "colorName": "indigo",
+    "assetName": "near"
+  },
+  {
+    "id": "polkadot",
+    "mark": "P",
+    "colorName": "pink",
+    "assetName": "polkadot"
+  },
+  {
+    "id": "sui",
+    "mark": "SU",
+    "colorName": "mint",
+    "assetName": "sui"
+  },
+  {
+    "id": "cardano",
+    "mark": "A",
+    "colorName": "indigo",
+    "assetName": "cardano"
+  },
+  {
+    "id": "monero",
+    "mark": "M",
+    "colorName": "orange",
+    "assetName": "monero"
+  },
+  {
+    "id": "xrp",
+    "mark": "X",
+    "colorName": "cyan",
+    "assetName": "xrp"
+  }
+]

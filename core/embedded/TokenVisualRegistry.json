@@ -1,0 +1,258 @@
+[
+  {
+    "title": "Tether",
+    "symbol": "USDT",
+    "referenceChain": "Ethereum",
+    "mark": "T",
+    "colorName": "green",
+    "assetName": "tether"
+  },
+  {
+    "title": "TrueUSD",
+    "symbol": "TUSD",
+    "referenceChain": "Ethereum",
+    "mark": "TU",
+    "colorName": "blue",
+    "assetName": "tusd"
+  },
+  {
+    "title": "USD Coin",
+    "symbol": "USDC",
+    "referenceChain": "Ethereum",
+    "mark": "U",
+    "colorName": "blue",
+    "assetName": "usdc"
+  },
+  {
+    "title": "Euro Coin",
+    "symbol": "EURC",
+    "referenceChain": "Ethereum",
+    "mark": "EU",
+    "colorName": "blue",
+    "assetName": "eurc"
+  },
+  {
+    "title": "First Digital USD",
+    "symbol": "FDUSD",
+    "referenceChain": "Ethereum",
+    "mark": "FD",
+    "colorName": "green",
+    "assetName": "fdusd"
+  },
+  {
+    "title": "Dai",
+    "symbol": "DAI",
+    "referenceChain": "Ethereum",
+    "mark": "D",
+    "colorName": "orange",
+    "assetName": "dai"
+  },
+  {
+    "title": "Wrapped Bitcoin",
+    "symbol": "WBTC",
+    "referenceChain": "Ethereum",
+    "mark": "WB",
+    "colorName": "orange",
+    "assetName": "wbtc"
+  },
+  {
+    "title": "Chainlink",
+    "symbol": "LINK",
+    "referenceChain": "Ethereum",
+    "mark": "LI",
+    "colorName": "blue",
+    "assetName": "link"
+  },
+  {
+    "title": "Uniswap",
+    "symbol": "UNI",
+    "referenceChain": "Ethereum",
+    "mark": "UN",
+    "colorName": "pink",
+    "assetName": "uni"
+  },
+  {
+    "title": "Aave",
+    "symbol": "AAVE",
+    "referenceChain": "Ethereum",
+    "mark": "AA",
+    "colorName": "indigo",
+    "assetName": "aave"
+  },
+  {
+    "title": "Jupiter",
+    "symbol": "JUP",
+    "referenceChain": "Solana",
+    "mark": "JU",
+    "colorName": "orange",
+    "assetName": "jup"
+  },
+  {
+    "title": "pump.fun",
+    "symbol": "PUMP",
+    "referenceChain": "Solana",
+    "mark": "P",
+    "colorName": "pink",
+    "assetName": "pump"
+  },
+  {
+    "title": "Bonk",
+    "symbol": "BONK",
+    "referenceChain": "Solana",
+    "mark": "BO",
+    "colorName": "orange",
+    "assetName": "bonk"
+  },
+  {
+    "title": "Pepe",
+    "symbol": "PEPE",
+    "referenceChain": "Ethereum",
+    "mark": "PE",
+    "colorName": "green",
+    "assetName": "pepe"
+  },
+  {
+    "title": "PAX Gold",
+    "symbol": "PAXG",
+    "referenceChain": "Ethereum",
+    "mark": "PX",
+    "colorName": "yellow",
+    "assetName": "paxg"
+  },
+  {
+    "title": "Tether Gold",
+    "symbol": "XAUT",
+    "referenceChain": "Ethereum",
+    "mark": "XA",
+    "colorName": "yellow",
+    "assetName": "xaut"
+  },
+  {
+    "title": "Ethena USDe",
+    "symbol": "USDE",
+    "referenceChain": "Ethereum",
+    "mark": "UE",
+    "colorName": "cyan",
+    "assetName": "usde"
+  },
+  {
+    "title": "Ethena",
+    "symbol": "ENA",
+    "referenceChain": "Ethereum",
+    "mark": "EN",
+    "colorName": "blue",
+    "assetName": "ena"
+  },
+  {
+    "title": "PayPal USD",
+    "symbol": "PYUSD",
+    "referenceChain": "Ethereum",
+    "mark": "PY",
+    "colorName": "blue",
+    "assetName": "pyusd"
+  },
+  {
+    "title": "Global Dollar",
+    "symbol": "USDG",
+    "referenceChain": "Ethereum",
+    "mark": "UG",
+    "colorName": "teal",
+    "assetName": "usdg"
+  },
+  {
+    "title": "USD1",
+    "symbol": "USD1",
+    "referenceChain": "Ethereum",
+    "mark": "U1",
+    "colorName": "green",
+    "assetName": "usd1"
+  },
+  {
+    "title": "Ripple USD",
+    "symbol": "RLUSD",
+    "referenceChain": "Ethereum",
+    "mark": "RL",
+    "colorName": "indigo",
+    "assetName": "rlusd"
+  },
+  {
+    "title": "Sky Dollar",
+    "symbol": "USDS",
+    "referenceChain": "Ethereum",
+    "mark": "US",
+    "colorName": "teal",
+    "assetName": "usds"
+  },
+  {
+    "title": "Sky",
+    "symbol": "SKY",
+    "referenceChain": "Ethereum",
+    "mark": "SK",
+    "colorName": "blue",
+    "assetName": "sky"
+  },
+  {
+    "title": "World Liberty Financial",
+    "symbol": "WLFI",
+    "referenceChain": "Ethereum",
+    "mark": "WL",
+    "colorName": "gray",
+    "assetName": "wlfi"
+  },
+  {
+    "title": "Shiba Inu",
+    "symbol": "SHIB",
+    "referenceChain": "Ethereum",
+    "mark": "SH",
+    "colorName": "orange",
+    "assetName": "shib"
+  },
+  {
+    "title": "BitTorrent",
+    "symbol": "BTT",
+    "referenceChain": "Tron",
+    "mark": "BT",
+    "colorName": "red",
+    "assetName": "btt"
+  },
+  {
+    "title": "USDD",
+    "symbol": "USDD",
+    "referenceChain": "Ethereum",
+    "mark": "UD",
+    "colorName": "green",
+    "assetName": "usdd"
+  },
+  {
+    "title": "Bitget Token",
+    "symbol": "BGB",
+    "referenceChain": "Ethereum",
+    "mark": "BG",
+    "colorName": "yellow",
+    "assetName": "bgb"
+  },
+  {
+    "title": "UNUS SED LEO",
+    "symbol": "LEO",
+    "referenceChain": "Ethereum",
+    "mark": "LE",
+    "colorName": "orange",
+    "assetName": "leo"
+  },
+  {
+    "title": "Cronos",
+    "symbol": "CRO",
+    "referenceChain": "Ethereum",
+    "mark": "CR",
+    "colorName": "blue",
+    "assetName": "cro"
+  },
+  {
+    "title": "KuCoin Token",
+    "symbol": "KCS",
+    "referenceChain": "Ethereum",
+    "mark": "KC",
+    "colorName": "yellow",
+    "assetName": "kcs"
+  }
+]

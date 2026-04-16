@@ -1,0 +1,26 @@
+[
+  {
+    "name": "MoonPay",
+    "description": "Card, bank transfer, Apple Pay, and Google Pay on-ramp that asks for your wallet address during checkout and sends the crypto there.",
+    "url": "https://www.moonpay.com/buy",
+    "urlLabel": "moonpay.com/buy"
+  },
+  {
+    "name": "Ramp Network",
+    "description": "Direct-to-wallet on-ramp for U.S. users. You enter your wallet address and Ramp sends the purchased asset there.",
+    "url": "https://rampnetwork.com/buy",
+    "urlLabel": "rampnetwork.com/buy"
+  },
+  {
+    "name": "Transak",
+    "description": "Direct wallet on-ramp. You enter your wallet address or open it from a supported wallet integration and Transak delivers the crypto there.",
+    "url": "https://global.transak.com",
+    "urlLabel": "global.transak.com"
+  },
+  {
+    "name": "Banxa",
+    "description": "Fiat on-ramp that can send purchased crypto to the wallet address you provide when the partner flow does not use a built-in wallet.",
+    "url": "https://support.banxa.com/en/support/solutions/articles/44002190068-where-will-i-receive-the-cryptocurrency-i-purchase",
+    "urlLabel": "support.banxa.com/.../where-will-i-receive-the-cryptocurrency-i-purchase"
+  }
+]
