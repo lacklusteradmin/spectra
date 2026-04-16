@@ -2853,10 +2853,6 @@ fn base58check_encode(payload: &[u8], alphabet: &bs58::Alphabet) -> String {
         .into_string()
 }
 
-fn double_sha256(bytes: &[u8]) -> [u8; 32] {
-    sha256_bytes(&sha256_bytes(bytes))
-}
-
 fn base32_no_pad(input: &[u8]) -> String {
     data_encoding::BASE32_NOPAD.encode(input)
 }

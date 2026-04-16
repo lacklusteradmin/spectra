@@ -14,7 +14,7 @@
 //!
 //! Correctness is pinned by the golden vectors in `runtime.rs::tests`.
 
-use bech32::{Fe32, Hrp};
+use bech32::Hrp;
 use hmac::{Hmac, Mac};
 use ripemd::Ripemd160;
 use secp256k1::{All, PublicKey, Scalar, Secp256k1, SecretKey};
@@ -33,10 +33,6 @@ pub fn sha256(bytes: &[u8]) -> [u8; 32] {
     let mut result = [0u8; 32];
     result.copy_from_slice(&out);
     result
-}
-
-pub fn double_sha256(bytes: &[u8]) -> [u8; 32] {
-    sha256(&sha256(bytes))
 }
 
 /// RIPEMD160(SHA256(bytes)) — Bitcoin's Hash160 primitive.
@@ -69,9 +65,7 @@ pub fn base58check_decode(s: &str) -> Result<Vec<u8>, String> {
 // BIP-32 extended keys
 // ──────────────────────────────────────────────────────────────────────
 
-pub const XPRV_VERSION_MAINNET: [u8; 4] = [0x04, 0x88, 0xAD, 0xE4];
 pub const XPUB_VERSION_MAINNET: [u8; 4] = [0x04, 0x88, 0xB2, 0x1E];
-pub const XPRV_VERSION_TESTNET: [u8; 4] = [0x04, 0x35, 0x83, 0x94];
 pub const XPUB_VERSION_TESTNET: [u8; 4] = [0x04, 0x35, 0x87, 0xCF];
 
 pub const HARDENED_OFFSET: u32 = 0x80000000;
@@ -423,45 +417,33 @@ pub enum BitcoinNetworkKind {
 pub enum ParsedBitcoinAddress {
     Legacy {
         network: BitcoinNetworkKind,
-        version: u8,
     },
     SegWit {
         network: BitcoinNetworkKind,
-        witness_version: u8,
     },
 }
 
 pub fn parse_bitcoin_address(s: &str) -> Result<ParsedBitcoinAddress, String> {
     // SegWit (bech32 / bech32m) — HRP is lowercase "bc" or "tb".
-    if let Ok((hrp, witver, _program)) = bech32::segwit::decode(s) {
+    if let Ok((hrp, _witver, _program)) = bech32::segwit::decode(s) {
         let hrp_str = hrp.to_string().to_lowercase();
         let network = match hrp_str.as_str() {
             "bc" => BitcoinNetworkKind::Mainnet,
             "tb" | "bcrt" => BitcoinNetworkKind::Testnet,
             other => return Err(format!("unknown bech32 HRP: {other}")),
         };
-        let witness_version = u8::try_from(witver.to_u8())
-            .map_err(|_| "witness version out of range".to_string())?;
-        return Ok(ParsedBitcoinAddress::SegWit {
-            network,
-            witness_version,
-        });
+        return Ok(ParsedBitcoinAddress::SegWit { network });
     }
     // Legacy base58check: 0x00/0x05 mainnet, 0x6f/0xc4 testnet.
     let payload = base58check_decode(s)?;
     if payload.len() != 21 {
         return Err(format!("legacy payload must be 21 bytes, got {}", payload.len()));
     }
-    let (network, version) = match payload[0] {
-        0x00 | 0x05 => (BitcoinNetworkKind::Mainnet, payload[0]),
-        0x6f | 0xc4 => (BitcoinNetworkKind::Testnet, payload[0]),
+    let network = match payload[0] {
+        0x00 | 0x05 => BitcoinNetworkKind::Mainnet,
+        0x6f | 0xc4 => BitcoinNetworkKind::Testnet,
         other => return Err(format!("unknown legacy version byte: 0x{other:02x}")),
     };
-    let _ = (network.clone(), version);
-    Ok(ParsedBitcoinAddress::Legacy { network, version })
+    Ok(ParsedBitcoinAddress::Legacy { network })
 }
 
-/// Swallow the result of `Fe32::to_u8` when it's needed inline.
-fn _fe32_passthrough(x: Fe32) -> u8 {
-    x.to_u8()
-}
