@@ -115,7 +115,7 @@ impl LitecoinClient {
         with_fallback(&self.endpoints, |base| {
             let client = self.client.clone();
             let url = format!("{}{}", base.trim_end_matches('/'), path);
-            async move { client.get_json(&url, RetryProfile::LitecoinRead).await }
+            async move { client.get_json(&url, RetryProfile::ChainRead).await }
         })
         .await
     }

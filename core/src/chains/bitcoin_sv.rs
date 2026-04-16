@@ -181,13 +181,11 @@ impl BitcoinSvClient {
             .collect())
     }
 
-    /// Fetch up to `limit` recent transactions for `address` via WhatsOnChain.
+    /// Fetch recent transactions for `address` via WhatsOnChain.
     ///
     /// WoC exposes `/address/{addr}/history` as a flat list of
     /// `{tx_hash, height}` entries. To populate amounts and timestamps we
-    /// issue a sequential `/tx/hash/{hash}` fetch per entry — WoC free tier
-    /// caps at ~3 req/sec so we deliberately cap `limit` at 25 to keep the
-    /// total wall time reasonable and to stay inside the rate window.
+    /// issue a sequential `/tx/hash/{hash}` fetch per entry.
     ///
     /// Per-entry decoding is best effort: outgoing vs incoming is inferred
     /// from vin `addr` fields (when present) and vout `scriptPubKey.addresses`
@@ -201,9 +199,8 @@ impl BitcoinSvClient {
             .get(&format!("/address/{address}/history"))
             .await?;
 
-        let limit = 25usize;
-        let mut out: Vec<BsvHistoryEntry> = Vec::with_capacity(list.len().min(limit));
-        for item in list.into_iter().take(limit) {
+        let mut out: Vec<BsvHistoryEntry> = Vec::with_capacity(list.len());
+        for item in list.into_iter() {
             let tx: WocTxDetail = match self
                 .get(&format!("/tx/hash/{}", item.tx_hash))
                 .await

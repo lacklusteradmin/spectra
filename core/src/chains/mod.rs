@@ -1,5 +1,4 @@
 pub mod bitcoin;
-pub mod bitcoin_hd;
 pub mod evm;
 pub mod solana;
 pub mod dogecoin;

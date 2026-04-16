@@ -12,9 +12,6 @@ pub enum HttpRetryProfile {
     ChainRead,
     ChainWrite,
     Diagnostics,
-    LitecoinRead,
-    LitecoinWrite,
-    LitecoinDiagnostics,
 }
 
 impl From<HttpRetryProfile> for RetryProfile {
@@ -23,9 +20,6 @@ impl From<HttpRetryProfile> for RetryProfile {
             HttpRetryProfile::ChainRead => RetryProfile::ChainRead,
             HttpRetryProfile::ChainWrite => RetryProfile::ChainWrite,
             HttpRetryProfile::Diagnostics => RetryProfile::Diagnostics,
-            HttpRetryProfile::LitecoinRead => RetryProfile::LitecoinRead,
-            HttpRetryProfile::LitecoinWrite => RetryProfile::LitecoinWrite,
-            HttpRetryProfile::LitecoinDiagnostics => RetryProfile::LitecoinDiagnostics,
         }
     }
 }

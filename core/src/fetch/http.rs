@@ -280,13 +280,6 @@ pub enum RetryProfile {
     ChainWrite,
     /// Health probe / diagnostics. 2 attempts with shorter delays.
     Diagnostics,
-    /// Litecoin-specific endpoints that rate-limit heavily. 4 attempts,
-    /// gentler backoff.
-    LitecoinRead,
-    /// Litecoin send/broadcast. 3 attempts.
-    LitecoinWrite,
-    /// Litecoin diagnostics. 3 attempts.
-    LitecoinDiagnostics,
 }
 
 impl RetryProfile {
@@ -295,9 +288,6 @@ impl RetryProfile {
             Self::ChainRead => 3,
             Self::ChainWrite => 2,
             Self::Diagnostics => 2,
-            Self::LitecoinRead => 4,
-            Self::LitecoinWrite => 3,
-            Self::LitecoinDiagnostics => 3,
         }
     }
 
@@ -308,9 +298,6 @@ impl RetryProfile {
             Self::ChainRead => (350, 2000),
             Self::ChainWrite => (250, 1000),
             Self::Diagnostics => (200, 800),
-            Self::LitecoinRead => (550, 4000),
-            Self::LitecoinWrite => (450, 3000),
-            Self::LitecoinDiagnostics => (350, 2500),
         };
         let raw = base_ms * 2_u64.saturating_pow(attempt as u32 - 1);
         let clamped = raw.min(max_ms);

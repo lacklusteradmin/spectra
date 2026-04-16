@@ -55,26 +55,14 @@ pub fn hash160(bytes: &[u8]) -> [u8; 20] {
 // ──────────────────────────────────────────────────────────────────────
 
 pub fn base58check_encode(payload: &[u8]) -> String {
-    let checksum = double_sha256(payload);
-    let mut buf = Vec::with_capacity(payload.len() + 4);
-    buf.extend_from_slice(payload);
-    buf.extend_from_slice(&checksum[..4]);
-    bs58::encode(buf).into_string()
+    bs58::encode(payload).with_check().into_string()
 }
 
 pub fn base58check_decode(s: &str) -> Result<Vec<u8>, String> {
-    let raw = bs58::decode(s)
+    bs58::decode(s)
+        .with_check(None)
         .into_vec()
-        .map_err(|e| format!("base58 decode: {e}"))?;
-    if raw.len() < 4 {
-        return Err("base58check payload too short".to_string());
-    }
-    let (payload, checksum) = raw.split_at(raw.len() - 4);
-    let expected = double_sha256(payload);
-    if checksum != &expected[..4] {
-        return Err("base58check checksum mismatch".to_string());
-    }
-    Ok(payload.to_vec())
+        .map_err(|e| format!("base58check decode: {e}"))
 }
 
 // ──────────────────────────────────────────────────────────────────────

@@ -2672,18 +2672,8 @@ fn v4r2_state_init_account_id(public_key: &[u8; 32]) -> Result<[u8; 32], String>
 /// CRC-16/XMODEM (poly=0x1021, init=0x0000, no reflection, no xor-out),
 /// as required by TON user-friendly address checksums.
 fn crc16_xmodem(bytes: &[u8]) -> u16 {
-    let mut crc: u16 = 0;
-    for &b in bytes {
-        crc ^= (u16::from(b)) << 8;
-        for _ in 0..8 {
-            if (crc & 0x8000) != 0 {
-                crc = (crc << 1) ^ 0x1021;
-            } else {
-                crc <<= 1;
-            }
-        }
-    }
-    crc
+    const CRC: crc::Crc<u16> = crc::Crc::<u16>::new(&crc::CRC_16_XMODEM);
+    CRC.checksum(bytes)
 }
 
 fn derive_ton_v4r2_address(public_key: &[u8; 32]) -> Result<String, String> {
@@ -2857,11 +2847,10 @@ fn format_secp_public_key(
 }
 
 fn base58check_encode(payload: &[u8], alphabet: &bs58::Alphabet) -> String {
-    let checksum = double_sha256(payload);
-    let mut full = Vec::with_capacity(payload.len() + 4);
-    full.extend_from_slice(payload);
-    full.extend_from_slice(&checksum[..4]);
-    bs58::encode(full).with_alphabet(alphabet).into_string()
+    bs58::encode(payload)
+        .with_alphabet(alphabet)
+        .with_check()
+        .into_string()
 }
 
 fn double_sha256(bytes: &[u8]) -> [u8; 32] {
@@ -2869,27 +2858,7 @@ fn double_sha256(bytes: &[u8]) -> [u8; 32] {
 }
 
 fn base32_no_pad(input: &[u8]) -> String {
-    const ALPHABET: &[u8; 32] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZ234567";
-    let mut output = String::new();
-    let mut buffer: u32 = 0;
-    let mut bits_left = 0u8;
-
-    for &byte in input {
-        buffer = (buffer << 8) | u32::from(byte);
-        bits_left += 8;
-        while bits_left >= 5 {
-            let idx = ((buffer >> (bits_left - 5)) & 0x1f) as usize;
-            output.push(ALPHABET[idx] as char);
-            bits_left -= 5;
-        }
-    }
-
-    if bits_left > 0 {
-        let idx = ((buffer << (5 - bits_left)) & 0x1f) as usize;
-        output.push(ALPHABET[idx] as char);
-    }
-
-    output
+    data_encoding::BASE32_NOPAD.encode(input)
 }
 
 fn normalize_seed_phrase(value: &str) -> String {

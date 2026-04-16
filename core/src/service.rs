@@ -1342,7 +1342,7 @@ impl WalletService {
         passphrase: String,
         account_path: String,
     ) -> Result<String, SpectraBridgeError> {
-        let xpub = crate::chains::bitcoin_hd::derive_account_xpub(
+        let xpub = crate::derivation::utxo_hd::derive_account_xpub(
             &mnemonic_phrase,
             &passphrase,
             &account_path,
@@ -1370,7 +1370,7 @@ impl WalletService {
         count: u32,
     ) -> Result<String, SpectraBridgeError> {
         let children =
-            crate::chains::bitcoin_hd::derive_children(&xpub, change, start_index, count)
+            crate::derivation::utxo_hd::derive_children(&xpub, change, start_index, count)
                 .map_err(SpectraBridgeError::from)?;
         Ok(serde_json::to_string(&children)?)
     }
@@ -1385,7 +1385,7 @@ impl WalletService {
     ) -> Result<String, SpectraBridgeError> {
         let endpoints = self.endpoints_for(0).await;
         let client = BitcoinClient::new(HttpClient::shared(), endpoints, "mainnet");
-        let bal = crate::chains::bitcoin_hd::fetch_xpub_balance(
+        let bal = crate::derivation::utxo_hd::fetch_xpub_balance(
             &client,
             &xpub,
             receive_count,
@@ -1407,7 +1407,7 @@ impl WalletService {
     ) -> Result<String, SpectraBridgeError> {
         let endpoints = self.endpoints_for(0).await;
         let client = BitcoinClient::new(HttpClient::shared(), endpoints, "mainnet");
-        let next = crate::chains::bitcoin_hd::fetch_next_unused_address(
+        let next = crate::derivation::utxo_hd::fetch_next_unused_address(
             &client,
             &xpub,
             change,

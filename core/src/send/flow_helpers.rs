@@ -282,7 +282,7 @@ pub fn core_seed_derivation_chain_raw(chain_name: String) -> Option<String> {
 
 #[uniffi::export]
 pub fn core_supports_deep_utxo_discovery(chain_name: String) -> bool {
-    matches!(chain_name.as_str(), "Bitcoin Cash" | "Bitcoin SV" | "Litecoin")
+    matches!(chain_name.as_str(), "Bitcoin" | "Bitcoin Cash" | "Bitcoin SV" | "Litecoin" | "Dogecoin")
 }
 
 // ─── EVM contract-code detection ─────────────────────────────────────────────

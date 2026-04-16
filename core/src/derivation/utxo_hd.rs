@@ -28,7 +28,8 @@ use secp256k1::{All, Secp256k1};
 use serde::{Deserialize, Serialize};
 
 use crate::chains::bitcoin::{BitcoinClient, EsploraUtxo};
-use crate::derivation::bitcoin_primitives::{
+
+use super::bitcoin_primitives::{
     encode_p2pkh, encode_p2sh_p2wpkh, encode_p2wpkh, parse_bip32_path, BitcoinNetworkParams,
     ExtendedPrivateKey, ExtendedPublicKey, BTC_MAINNET, BTC_TESTNET, XPUB_VERSION_MAINNET,
     XPUB_VERSION_TESTNET,
