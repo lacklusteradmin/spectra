@@ -15,7 +15,7 @@ struct Entry {
 }
 
 pub struct HistoryCache {
-    inner: RwLock<HashMap<String, Entry>>,
+    inner: RwLock<HashMap<(u32, String), Entry>>,
     ttl: Duration,
 }
 
@@ -27,13 +27,9 @@ impl HistoryCache {
         }
     }
 
-    fn key(chain_id: u32, address: &str) -> String {
-        format!("{chain_id}:{address}")
-    }
-
     pub fn get(&self, chain_id: u32, address: &str) -> Option<String> {
         let map = self.inner.read().ok()?;
-        let entry = map.get(&Self::key(chain_id, address))?;
+        let entry = map.get(&(chain_id, address.to_string()))?;
         if entry.inserted_at.elapsed() < self.ttl {
             Some(entry.json.clone())
         } else {
@@ -44,7 +40,7 @@ impl HistoryCache {
     pub fn set(&self, chain_id: u32, address: &str, json: String) {
         if let Ok(mut map) = self.inner.write() {
             map.insert(
-                Self::key(chain_id, address),
+                (chain_id, address.to_string()),
                 Entry { json, inserted_at: Instant::now() },
             );
         }
@@ -52,7 +48,7 @@ impl HistoryCache {
 
     pub fn invalidate(&self, chain_id: u32, address: &str) {
         if let Ok(mut map) = self.inner.write() {
-            map.remove(&Self::key(chain_id, address));
+            map.remove(&(chain_id, address.to_string()));
         }
     }
 

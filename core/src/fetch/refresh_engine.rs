@@ -7,6 +7,7 @@
 
 use crate::balance_observer::{BalanceObserver, RefreshEntry};
 use crate::service::WalletService;
+use futures::stream::{self, StreamExt};
 use std::sync::{Arc, Mutex, RwLock};
 use std::time::Duration;
 
@@ -140,35 +141,45 @@ impl BalanceRefreshEngine {
             return;
         }
 
+        // Snapshot the observer Arc once before the loop instead of once per
+        // entry — avoids N RwLock acquisitions during the hot path.
+        let obs = inner.observer.read().unwrap().clone();
+
+        // Fan out balance fetches with bounded concurrency (up to 8 in flight).
+        // Clone the WalletService Arc once so each spawned future owns its handle
+        // without borrowing `inner` (required for Send + 'static).
+        let ws = Arc::clone(&inner.wallet_service);
+        let results: Vec<Result<(u32, String, String), ()>> = stream::iter(entries)
+            .map(|entry| {
+                let ws = Arc::clone(&ws);
+                async move {
+                    match ws.fetch_balance_auto(entry.chain_id, entry.address.clone()).await {
+                        Ok(json) => Ok((entry.chain_id, entry.wallet_id, json)),
+                        Err(_) => Err(()),
+                    }
+                }
+            })
+            .buffer_unordered(8)
+            .collect()
+            .await;
+
         let mut refreshed: u32 = 0;
         let mut errors: u32 = 0;
 
-        for entry in &entries {
-            match inner
-                .wallet_service
-                .fetch_balance_auto(entry.chain_id, entry.address.clone())
-                .await
-            {
-                Ok(json) => {
-                    // Take a short snapshot of the observer Arc, drop the guard,
-                    // then call the callback outside the lock to avoid re-entrancy.
-                    let obs = inner.observer.read().unwrap().clone();
-                    if let Some(o) = obs {
-                        o.on_balance_updated(
-                            entry.chain_id,
-                            entry.wallet_id.clone(),
-                            json,
-                        );
+        for result in results {
+            match result {
+                Ok((chain_id, wallet_id, json)) => {
+                    if let Some(ref o) = obs {
+                        o.on_balance_updated(chain_id, wallet_id, json);
                     }
                     refreshed += 1;
                 }
-                Err(_) => {
+                Err(()) => {
                     errors += 1;
                 }
             }
         }
 
-        let obs = inner.observer.read().unwrap().clone();
         if let Some(o) = obs {
             o.on_refresh_cycle_complete(refreshed, errors);
         }

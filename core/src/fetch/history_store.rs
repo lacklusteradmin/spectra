@@ -30,7 +30,7 @@ struct PaginationEntry {
 /// Thread-safe in-memory pagination store. The `WalletService` holds one of
 /// these as an `Arc<HistoryPaginationStore>` for the app's lifetime.
 pub struct HistoryPaginationStore {
-    inner: RwLock<HashMap<String, PaginationEntry>>,
+    inner: RwLock<HashMap<(u32, String), PaginationEntry>>,
 }
 
 impl HistoryPaginationStore {
@@ -38,10 +38,6 @@ impl HistoryPaginationStore {
         Self {
             inner: RwLock::new(HashMap::new()),
         }
-    }
-
-    fn key(chain_id: u32, wallet_id: &str) -> String {
-        format!("{chain_id}:{wallet_id}")
     }
 
     // ----------------------------------------------------------------
@@ -53,7 +49,7 @@ impl HistoryPaginationStore {
         self.inner
             .read()
             .ok()?
-            .get(&Self::key(chain_id, wallet_id))
+            .get(&(chain_id, wallet_id.to_string()))
             .and_then(|e| e.cursor.clone())
     }
 
@@ -62,7 +58,7 @@ impl HistoryPaginationStore {
         self.inner
             .read()
             .ok()
-            .and_then(|m| m.get(&Self::key(chain_id, wallet_id)).map(|e| e.page))
+            .and_then(|m| m.get(&(chain_id, wallet_id.to_string())).map(|e| e.page))
             .unwrap_or(0)
     }
 
@@ -71,7 +67,7 @@ impl HistoryPaginationStore {
         self.inner
             .read()
             .ok()
-            .and_then(|m| m.get(&Self::key(chain_id, wallet_id)).map(|e| e.exhausted))
+            .and_then(|m| m.get(&(chain_id, wallet_id.to_string())).map(|e| e.exhausted))
             .unwrap_or(false)
     }
 
@@ -89,7 +85,7 @@ impl HistoryPaginationStore {
     ) {
         if let Ok(mut map) = self.inner.write() {
             let entry = map
-                .entry(Self::key(chain_id, wallet_id))
+                .entry((chain_id, wallet_id.to_string()))
                 .or_default();
             if let Some(c) = next_cursor {
                 entry.cursor = Some(c);
@@ -111,7 +107,7 @@ impl HistoryPaginationStore {
     ) {
         if let Ok(mut map) = self.inner.write() {
             let entry = map
-                .entry(Self::key(chain_id, wallet_id))
+                .entry((chain_id, wallet_id.to_string()))
                 .or_default();
             entry.page = entry.page.saturating_add(1);
             if is_last {
@@ -125,7 +121,7 @@ impl HistoryPaginationStore {
     /// page 1 for the first request and increment per load-more).
     pub fn set_page(&self, chain_id: u32, wallet_id: &str, page: u32) {
         if let Ok(mut map) = self.inner.write() {
-            map.entry(Self::key(chain_id, wallet_id))
+            map.entry((chain_id, wallet_id.to_string()))
                 .or_default()
                 .page = page;
         }
@@ -134,7 +130,7 @@ impl HistoryPaginationStore {
     /// Explicitly mark exhausted (e.g. when an empty page is returned).
     pub fn set_exhausted(&self, chain_id: u32, wallet_id: &str, exhausted: bool) {
         if let Ok(mut map) = self.inner.write() {
-            map.entry(Self::key(chain_id, wallet_id))
+            map.entry((chain_id, wallet_id.to_string()))
                 .or_default()
                 .exhausted = exhausted;
         }
@@ -144,7 +140,7 @@ impl HistoryPaginationStore {
     /// exhaustion. Call when the user refreshes from the top or after a send.
     pub fn reset(&self, chain_id: u32, wallet_id: &str) {
         if let Ok(mut map) = self.inner.write() {
-            map.remove(&Self::key(chain_id, wallet_id));
+            map.remove(&(chain_id, wallet_id.to_string()));
         }
     }
 
@@ -152,21 +148,14 @@ impl HistoryPaginationStore {
     /// when the user triggers a global history refresh).
     pub fn reset_all_for_wallet(&self, wallet_id: &str) {
         if let Ok(mut map) = self.inner.write() {
-            let prefix = format!("{}:{}", u32::MAX, wallet_id); // marker to avoid false matches
-            let _ = prefix; // unused; pattern-match on suffix instead
-            map.retain(|key, _| {
-                // key format is "{chain_id}:{wallet_id}"
-                // Remove entries whose suffix equals ":{wallet_id}"
-                !key.ends_with(&format!(":{wallet_id}"))
-            });
+            map.retain(|key, _| key.1 != wallet_id);
         }
     }
 
     /// Reset all pagination state for a specific chain across all wallets.
     pub fn reset_chain(&self, chain_id: u32) {
-        let prefix = format!("{chain_id}:");
         if let Ok(mut map) = self.inner.write() {
-            map.retain(|key, _| !key.starts_with(&prefix));
+            map.retain(|key, _| key.0 != chain_id);
         }
     }
 

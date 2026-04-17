@@ -15,22 +15,25 @@
 //! wallet_owned_addresses (wallet_id, chain_name, address) → (derivation_path, branch, branch_index)
 //! ```
 
+use parking_lot::Mutex;
 use rusqlite::{params, Connection};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
-use std::sync::Mutex;
 
 // ── Connection pool ──────────────────────────────────────────────────────────
 //
 // Re-uses a single Connection per db_path instead of opening (and running DDL)
 // on every call.  The Mutex is uncontended in practice because all wallet_db
 // callers already run inside `spawn_blocking`.
+//
+// Uses `parking_lot::Mutex` — no poisoning, smaller footprint, and faster
+// uncontended lock/unlock than `std::sync::Mutex`.
 
 static POOL: std::sync::LazyLock<Mutex<HashMap<String, Connection>>> =
     std::sync::LazyLock::new(|| Mutex::new(HashMap::new()));
 
 fn with_conn<T>(db_path: &str, f: impl FnOnce(&Connection) -> Result<T, String>) -> Result<T, String> {
-    let mut pool = POOL.lock().map_err(|e| format!("wallet_db pool lock: {e}"))?;
+    let mut pool = POOL.lock();
     if !pool.contains_key(db_path) {
         let conn = open_new(db_path)?;
         pool.insert(db_path.to_string(), conn);

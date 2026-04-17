@@ -26,6 +26,7 @@
 use bip39::Mnemonic;
 use secp256k1::{All, Secp256k1};
 use serde::{Deserialize, Serialize};
+use std::sync::Arc;
 
 use crate::chains::bitcoin::{BitcoinClient, EsploraUtxo};
 
@@ -237,19 +238,34 @@ pub async fn fetch_xpub_balance(
     let mut utxo_count: usize = 0;
     let mut utxos_out: Vec<HdUtxo> = Vec::new();
 
-    // Sequential scan — Esplora rate limits make parallel fanouts risky, and
-    // most HD wallets only scan 20-40 addresses at a time.
-    for addr in &all {
-        let bal = client.fetch_balance(&addr.address).await?;
+    // Bounded concurrency (5 in flight) via semaphore + join_all — enough to
+    // beat sequential latency while staying under Esplora's rate limits.
+    // We use join_all instead of buffer_unordered because `client` is a
+    // reference and the futures borrow it within the same async scope.
+    let sem = Arc::new(tokio::sync::Semaphore::new(5));
+    let futs: Vec<_> = all.iter().enumerate().map(|(i, addr)| {
+        let address = addr.address.clone();
+        let sem = sem.clone();
+        async move {
+            let _permit = sem.acquire().await.unwrap();
+            let bal = client.fetch_balance(&address).await?;
+            let utxos = if bal.confirmed_sats > 0 || bal.unconfirmed_sats > 0 {
+                client.fetch_utxos(&address).await?
+            } else {
+                Vec::new()
+            };
+            Ok::<_, String>((i, bal, utxos))
+        }
+    }).collect();
+    let results = futures::future::join_all(futs).await;
+
+    for result in results {
+        let (i, bal, utxos) = result?;
         confirmed_sats = confirmed_sats.saturating_add(bal.confirmed_sats);
         unconfirmed_sats = unconfirmed_sats.saturating_add(bal.unconfirmed_sats);
         utxo_count = utxo_count.saturating_add(bal.utxo_count);
-
-        if bal.confirmed_sats > 0 || bal.unconfirmed_sats > 0 {
-            let per_addr = client.fetch_utxos(&addr.address).await?;
-            for u in per_addr {
-                utxos_out.push(from_esplora_utxo(&u, addr));
-            }
+        for u in utxos {
+            utxos_out.push(from_esplora_utxo(&u, &all[i]));
         }
     }
 

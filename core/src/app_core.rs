@@ -194,10 +194,10 @@ pub struct AppCoreAppChainDescriptor {
     pub is_evm: bool,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-struct DerivationPathSegment {
-    value: u32,
-    is_hardened: bool,
+#[derive(Debug, Clone, Copy, PartialEq, Eq, uniffi::Record)]
+pub struct DerivationPathSegment {
+    pub value: u32,
+    pub is_hardened: bool,
 }
 
 static APP_CORE_CATALOG: OnceLock<Result<AppCoreCatalog, String>> = OnceLock::new();
@@ -643,7 +643,7 @@ fn default_path_from_catalog(catalog: &AppCoreCatalog, chain_name: &str) -> Resu
         .ok_or_else(|| format!("Missing default derivation path for {chain_name}."))
 }
 
-fn endpoint_role_bit(role: &str) -> u32 {
+pub(crate) fn endpoint_role_bit(role: &str) -> u32 {
     match role {
         "read" => ENDPOINT_ROLE_READ,
         "balance" => ENDPOINT_ROLE_BALANCE,
@@ -1420,7 +1420,7 @@ fn chain_name_from_id(chain_id: u32) -> Option<&'static str> {
     }
 }
 
-fn parse_derivation_path(raw_path: &str) -> Option<Vec<DerivationPathSegment>> {
+pub(crate) fn parse_derivation_path(raw_path: &str) -> Option<Vec<DerivationPathSegment>> {
     let trimmed = raw_path.trim();
     let mut components = trimmed.split('/');
     let head = components.next()?;
@@ -1444,13 +1444,13 @@ fn parse_derivation_path(raw_path: &str) -> Option<Vec<DerivationPathSegment>> {
         .collect()
 }
 
-fn normalize_derivation_path(raw_path: &str, fallback: &str) -> String {
+pub(crate) fn normalize_derivation_path(raw_path: &str, fallback: &str) -> String {
     parse_derivation_path(raw_path)
         .map(|segments| derivation_path_string(&segments))
         .unwrap_or_else(|| fallback.to_string())
 }
 
-fn derivation_path_string(segments: &[DerivationPathSegment]) -> String {
+pub(crate) fn derivation_path_string(segments: &[DerivationPathSegment]) -> String {
     let suffix = segments
         .iter()
         .map(|segment| {
@@ -1469,7 +1469,7 @@ fn derivation_path_string(segments: &[DerivationPathSegment]) -> String {
     }
 }
 
-fn derivation_path_segment_value(path: &str, index: usize) -> Option<u32> {
+pub(crate) fn derivation_path_segment_value(path: &str, index: usize) -> Option<u32> {
     parse_derivation_path(path)
         .and_then(|segments| segments.get(index).map(|segment| segment.value))
 }

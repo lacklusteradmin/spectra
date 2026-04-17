@@ -640,6 +640,120 @@ pub fn verify_password_verifier(
     super::store::password_verifier::verify(&password, &verifier_data)
 }
 
+// ── Derivation path parsing ──
+
+pub use super::app_core::DerivationPathSegment;
+
+#[uniffi::export]
+pub fn core_parse_derivation_path(raw_path: String) -> Option<Vec<DerivationPathSegment>> {
+    super::app_core::parse_derivation_path(&raw_path)
+}
+
+#[uniffi::export]
+pub fn core_derivation_path_string(segments: Vec<DerivationPathSegment>) -> String {
+    super::app_core::derivation_path_string(&segments)
+}
+
+#[uniffi::export]
+pub fn core_normalize_derivation_path(raw_path: String, fallback: String) -> String {
+    super::app_core::normalize_derivation_path(&raw_path, &fallback)
+}
+
+#[uniffi::export]
+pub fn core_derivation_path_segment_value(path: String, index: u32) -> Option<u32> {
+    super::app_core::derivation_path_segment_value(&path, index as usize)
+}
+
+#[uniffi::export]
+pub fn core_derivation_path_replacing_last_two(
+    raw_path: String,
+    branch: u32,
+    index: u32,
+    fallback: String,
+) -> String {
+    let normalized = super::app_core::normalize_derivation_path(&raw_path, &fallback);
+    let Some(mut segments) = super::app_core::parse_derivation_path(&normalized) else {
+        return fallback;
+    };
+    if segments.len() < 2 {
+        return fallback;
+    }
+    let len = segments.len();
+    segments[len - 2] = DerivationPathSegment {
+        value: branch,
+        is_hardened: false,
+    };
+    segments[len - 1] = DerivationPathSegment {
+        value: index,
+        is_hardened: false,
+    };
+    super::app_core::derivation_path_string(&segments)
+}
+
+// ── Private key hex ──
+
+#[uniffi::export]
+pub fn core_private_key_hex_normalized(raw_value: String) -> String {
+    let trimmed = raw_value.trim().to_lowercase();
+    match trimmed.strip_prefix("0x") {
+        Some(stripped) => stripped.to_string(),
+        None => trimmed,
+    }
+}
+
+#[uniffi::export]
+pub fn core_private_key_hex_is_likely(raw_value: String) -> bool {
+    let normalized = core_private_key_hex_normalized(raw_value);
+    normalized.len() == 64 && normalized.chars().all(|c| c.is_ascii_hexdigit())
+}
+
+// ── Endpoint role mask ──
+
+#[uniffi::export]
+pub fn core_endpoint_role_mask(roles: Vec<String>) -> u32 {
+    roles
+        .iter()
+        .fold(0u32, |mask, role| mask | super::app_core::endpoint_role_bit(role))
+}
+
+// ── Large-movement threshold evaluation ──
+
+#[derive(Debug, Clone, uniffi::Record)]
+pub struct LargeMovementEvaluation {
+    pub should_alert: bool,
+    pub absolute_delta: f64,
+    pub ratio: f64,
+    pub direction_up: bool,
+}
+
+#[uniffi::export]
+pub fn core_evaluate_large_movement(
+    previous_total_usd: f64,
+    current_total_usd: f64,
+    usd_threshold: f64,
+    percent_threshold: f64,
+) -> LargeMovementEvaluation {
+    if previous_total_usd <= 0.0 {
+        return LargeMovementEvaluation {
+            should_alert: false,
+            absolute_delta: 0.0,
+            ratio: 0.0,
+            direction_up: true,
+        };
+    }
+    let delta = current_total_usd - previous_total_usd;
+    let absolute_delta = delta.abs();
+    let ratio = absolute_delta / previous_total_usd;
+    let should_alert =
+        absolute_delta >= usd_threshold && ratio >= (percent_threshold / 100.0);
+    LargeMovementEvaluation {
+        should_alert,
+        absolute_delta,
+        ratio,
+        direction_up: delta >= 0.0,
+    }
+}
+
 fn display_error(error: impl std::fmt::Display) -> String {
     error.to_string()
 }
