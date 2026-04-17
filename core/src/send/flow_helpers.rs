@@ -291,8 +291,79 @@ pub fn core_supports_deep_utxo_discovery(chain_name: String) -> bool {
 
 #[uniffi::export]
 pub fn core_evm_has_contract_code(code: String) -> bool {
-    let normalized = code.trim().to_lowercase();
-    !normalized.is_empty() && normalized != "0x" && normalized != "0x0"
+    let trimmed = code.trim();
+    !trimmed.is_empty()
+        && !trimmed.eq_ignore_ascii_case("0x")
+        && !trimmed.eq_ignore_ascii_case("0x0")
+}
+
+// ─── Send balance validation ────────────────────────────────────────────────
+// Consolidates the per-chain "can we afford amount + fee?" check that was
+// duplicated ~10 times across Swift's `submitSend()`.
+
+#[derive(Debug, Clone, uniffi::Record)]
+pub struct SendBalanceValidationRequest {
+    /// Amount the user wants to send.
+    pub amount: f64,
+    /// Estimated network fee (in the fee-paying asset).
+    pub network_fee: f64,
+    /// Balance of the asset being sent.
+    pub holding_balance: f64,
+    /// Whether this is a native asset send (fee paid from same balance).
+    pub is_native_asset: bool,
+    /// Symbol of the asset being sent (e.g. "SOL", "USDT").
+    pub symbol: String,
+    /// For token sends: symbol of the native asset that pays fees (e.g. "SOL", "TRX").
+    pub native_symbol: Option<String>,
+    /// For token sends: balance of the native asset that pays fees.
+    pub native_balance: Option<f64>,
+    /// Decimal precision for formatting (6 for most, 8 for BTC, 7 for XLM).
+    pub fee_decimals: u32,
+    /// Optional chain label for the fee message (e.g. "Tron", "Solana").
+    pub chain_label: Option<String>,
+}
+
+/// Validate that the wallet has sufficient balance for amount + fee.
+/// Returns `Ok(())` on success, `Err(user-facing error message)` on failure.
+#[uniffi::export]
+pub fn core_validate_send_balance(
+    request: SendBalanceValidationRequest,
+) -> Result<(), SpectraBridgeError> {
+    if request.is_native_asset {
+        let total = request.amount + request.network_fee;
+        if total > request.holding_balance {
+            return Err(SpectraBridgeError::from(
+                core_insufficient_funds_for_amount_plus_fee_message(
+                    request.symbol,
+                    total,
+                    request.fee_decimals,
+                ),
+            ));
+        }
+    } else {
+        // Token send: check token balance for amount, native balance for fee
+        if request.amount > request.holding_balance {
+            return Err(SpectraBridgeError::from(format!(
+                "Insufficient {} balance for this transfer.",
+                request.symbol
+            )));
+        }
+        if let (Some(native_sym), Some(native_bal)) =
+            (request.native_symbol, request.native_balance)
+        {
+            if request.network_fee > native_bal {
+                return Err(SpectraBridgeError::from(
+                    core_insufficient_native_for_fee_message(
+                        native_sym,
+                        request.network_fee,
+                        request.fee_decimals,
+                        request.chain_label,
+                    ),
+                ));
+            }
+        }
+    }
+    Ok(())
 }
 
 // ─── Insufficient-funds message formatter ────────────────────────────────────
@@ -354,14 +425,14 @@ pub fn core_evm_replacement_fee_bump(
     default_max_fee_gwei: f64,
     default_priority_fee_gwei: f64,
 ) -> EvmReplacementFeeBump {
-    let parse = |s: Option<String>| -> Option<f64> {
+    let parse = |s: Option<&str>| -> Option<f64> {
         s.and_then(|v| {
-            let trimmed = v.trim().to_string();
+            let trimmed = v.trim();
             if trimmed.is_empty() { None } else { trimmed.parse::<f64>().ok() }
         })
     };
-    let have_max = parse(existing_max_fee_gwei.clone());
-    let have_pri = parse(existing_priority_fee_gwei.clone());
+    let have_max = parse(existing_max_fee_gwei.as_deref());
+    let have_pri = parse(existing_priority_fee_gwei.as_deref());
     if have_max.is_none() || have_pri.is_none() {
         return EvmReplacementFeeBump {
             max_fee_gwei: format!("{:.1}", default_max_fee_gwei),
@@ -630,5 +701,63 @@ mod tests {
         let m = core_chain_risk_probe_messages("Bitcoin".to_string(), "balance".to_string(), true, true);
         assert!(m.warning.is_none());
         assert!(m.info.is_some());
+    }
+
+    #[test]
+    fn validate_send_balance_native_ok() {
+        let r = core_validate_send_balance(SendBalanceValidationRequest {
+            amount: 1.0, network_fee: 0.001, holding_balance: 2.0,
+            is_native_asset: true, symbol: "SOL".into(),
+            native_symbol: None, native_balance: None, fee_decimals: 6,
+            chain_label: None,
+        });
+        assert!(r.is_ok());
+    }
+
+    #[test]
+    fn validate_send_balance_native_insufficient() {
+        let r = core_validate_send_balance(SendBalanceValidationRequest {
+            amount: 1.5, network_fee: 0.6, holding_balance: 2.0,
+            is_native_asset: true, symbol: "SOL".into(),
+            native_symbol: None, native_balance: None, fee_decimals: 6,
+            chain_label: None,
+        });
+        assert!(r.is_err());
+        assert!(r.unwrap_err().to_string().contains("Insufficient SOL"));
+    }
+
+    #[test]
+    fn validate_send_balance_token_ok() {
+        let r = core_validate_send_balance(SendBalanceValidationRequest {
+            amount: 100.0, network_fee: 5.0, holding_balance: 200.0,
+            is_native_asset: false, symbol: "USDT".into(),
+            native_symbol: Some("TRX".into()), native_balance: Some(50.0),
+            fee_decimals: 6, chain_label: Some("Tron".into()),
+        });
+        assert!(r.is_ok());
+    }
+
+    #[test]
+    fn validate_send_balance_token_insufficient_native() {
+        let r = core_validate_send_balance(SendBalanceValidationRequest {
+            amount: 100.0, network_fee: 5.0, holding_balance: 200.0,
+            is_native_asset: false, symbol: "USDT".into(),
+            native_symbol: Some("TRX".into()), native_balance: Some(1.0),
+            fee_decimals: 6, chain_label: Some("Tron".into()),
+        });
+        assert!(r.is_err());
+        assert!(r.unwrap_err().to_string().contains("Insufficient TRX"));
+    }
+
+    #[test]
+    fn validate_send_balance_token_insufficient_amount() {
+        let r = core_validate_send_balance(SendBalanceValidationRequest {
+            amount: 300.0, network_fee: 5.0, holding_balance: 200.0,
+            is_native_asset: false, symbol: "USDT".into(),
+            native_symbol: Some("TRX".into()), native_balance: Some(50.0),
+            fee_decimals: 6, chain_label: Some("Tron".into()),
+        });
+        assert!(r.is_err());
+        assert!(r.unwrap_err().to_string().contains("Insufficient USDT"));
     }
 }

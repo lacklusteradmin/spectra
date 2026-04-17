@@ -7,7 +7,6 @@
 // blocks from Swift and lets us unit-test the decoding shape once.
 
 use serde_json::Value;
-use std::collections::HashMap;
 
 use super::types::EthereumTokenTransferHistoryDiagnostics;
 
@@ -212,10 +211,6 @@ pub struct HistorySummary {
     pub entry_count: u32,
     pub confirmed_txids: Vec<String>,
 }
-
-// Silence `unused_imports` on HashMap if/when we drop a dependent helper.
-#[allow(dead_code)]
-fn _hashmap_marker() -> HashMap<String, String> { HashMap::new() }
 
 #[cfg(test)]
 mod tests {

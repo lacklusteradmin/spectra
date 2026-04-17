@@ -1,5 +1,5 @@
 use serde_json::Value;
-use std::collections::{BTreeMap, BTreeSet};
+use std::collections::{BTreeSet, HashMap};
 use std::sync::OnceLock;
 
 pub const LOCALIZATION_TABLES: [&str; 7] = [
@@ -14,7 +14,9 @@ pub const LOCALIZATION_TABLES: [&str; 7] = [
 
 #[derive(Debug, Clone)]
 pub struct LocalizationCatalog {
-    documents: BTreeMap<(String, String), Value>,
+    /// locale → table → parsed JSON value. Nested map allows O(1) lookup
+    /// with `&str` keys, avoiding String allocation on every call.
+    documents: HashMap<String, HashMap<String, Value>>,
     supported_locales: Vec<String>,
 }
 
@@ -184,9 +186,11 @@ impl LocalizationCatalog {
 
     pub fn document_for(&self, preferred_locales: &[String], table: &str) -> Option<&Value> {
         let candidates = locale_candidates(preferred_locales);
-        for locale in candidates {
-            if let Some(value) = self.documents.get(&(locale.clone(), table.to_string())) {
-                return Some(value);
+        for locale in &candidates {
+            if let Some(table_map) = self.documents.get(locale.as_str()) {
+                if let Some(value) = table_map.get(table) {
+                    return Some(value);
+                }
             }
         }
         None
@@ -194,15 +198,15 @@ impl LocalizationCatalog {
 }
 
 fn load_localization_catalog() -> Result<LocalizationCatalog, String> {
-    let mut documents = BTreeMap::new();
+    let mut documents: HashMap<String, HashMap<String, Value>> = HashMap::new();
     let mut supported_locales = BTreeSet::new();
 
     for embedded in EMBEDDED_DOCUMENTS {
         let value = serde_json::from_str::<Value>(embedded.json).map_err(display_error)?;
-        documents.insert(
-            (embedded.locale.to_string(), embedded.table.to_string()),
-            value,
-        );
+        documents
+            .entry(embedded.locale.to_string())
+            .or_default()
+            .insert(embedded.table.to_string(), value);
         supported_locales.insert(embedded.locale.to_string());
     }
 

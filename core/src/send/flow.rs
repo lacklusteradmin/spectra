@@ -64,7 +64,7 @@ pub fn classify_evm_receipt_json(json: String) -> Option<EvmReceiptClassificatio
     Some(EvmReceiptClassification { is_confirmed, is_failed, block_number })
 }
 
-fn chain_kind(chain_name: &str) -> Option<&'static str> {
+pub(crate) fn chain_kind(chain_name: &str) -> Option<&'static str> {
     Some(match chain_name {
         "Bitcoin" => "bitcoin",
         "Bitcoin Cash" => "bitcoinCash",
@@ -92,15 +92,9 @@ fn chain_kind(chain_name: &str) -> Option<&'static str> {
 pub fn is_valid_send_address(
     chain_name: String,
     address: String,
-    bitcoin_network_mode: Option<String>,
-    dogecoin_network_mode: Option<String>,
+    network_mode: Option<String>,
 ) -> bool {
     let Some(kind) = chain_kind(&chain_name) else { return false };
-    let network_mode = match kind {
-        "bitcoin" => bitcoin_network_mode,
-        "dogecoin" => dogecoin_network_mode,
-        _ => None,
-    };
     validate_address(AddressValidationRequest {
         kind: kind.to_string(),
         value: address,
@@ -109,10 +103,9 @@ pub fn is_valid_send_address(
     .is_valid
 }
 
-#[uniffi::export]
-pub fn normalized_send_address(chain_name: String, address: String) -> String {
+pub(crate) fn normalize_address(chain_name: &str, address: &str) -> String {
     let t = address.trim();
-    match chain_name.as_str() {
+    match chain_name {
         "Ethereum" | "Ethereum Classic" | "Arbitrum" | "Optimism"
         | "BNB Chain" | "Avalanche" | "Hyperliquid" => t.to_lowercase(),
         "Sui" | "Aptos" => {
@@ -122,6 +115,11 @@ pub fn normalized_send_address(chain_name: String, address: String) -> String {
         "Internet Computer" | "NEAR" => t.to_lowercase(),
         _ => t.to_string(),
     }
+}
+
+#[uniffi::export]
+pub fn normalized_send_address(chain_name: String, address: String) -> String {
+    normalize_address(&chain_name, &address)
 }
 
 /// Heuristic: does the trimmed input look like an ENS name (`foo.eth`, no spaces,

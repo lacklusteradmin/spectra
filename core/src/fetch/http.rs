@@ -37,7 +37,7 @@ use std::collections::HashMap;
 use std::sync::Arc;
 use std::time::Duration;
 
-use once_cell::sync::Lazy;
+use std::sync::LazyLock;
 use reqwest::{Client, Method, StatusCode};
 use serde::de::DeserializeOwned;
 use serde::Serialize;
@@ -48,7 +48,7 @@ use tokio::time::sleep;
 // ----------------------------------------------------------------
 
 /// Process-wide shared `reqwest` client. One allocation, many tasks.
-static SHARED_CLIENT: Lazy<Arc<HttpClient>> = Lazy::new(|| {
+static SHARED_CLIENT: LazyLock<Arc<HttpClient>> = LazyLock::new(|| {
     Arc::new(HttpClient::new())
 });
 

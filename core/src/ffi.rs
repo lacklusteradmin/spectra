@@ -20,9 +20,11 @@ use super::history::{
     merge_bitcoin_history_snapshots, normalize_history, CoreBitcoinHistorySnapshot,
     MergeBitcoinHistorySnapshotsRequest, NormalizeHistoryRequest, CoreNormalizedHistoryEntry,
 };
-use super::import::{plan_wallet_import, WalletImportPlan, WalletImportRequest};
+use super::import::{
+    plan_wallet_import, validate_wallet_import_draft, WalletImportDraftValidationRequest,
+    WalletImportPlan, WalletImportRequest,
+};
 use super::localization::localization_catalog;
-use super::migration::{core_state_to_legacy_wallet_store_json, legacy_wallet_store_to_core_state};
 use super::refresh::{
     active_maintenance_plan, chain_plans, history_plans, should_run_background_maintenance,
     ActiveMaintenancePlan, ActiveMaintenancePlanRequest, BackgroundMaintenanceRequest,
@@ -34,7 +36,7 @@ use super::send::{
     SendAssetRoutingPlan, SendPreviewRoutingPlan, SendPreviewRoutingRequest,
     SendSubmitPreflightPlan, SendSubmitPreflightRequest,
 };
-use super::state::{reduce_state, CoreAppState, StateCommand, StateTransition};
+use super::state::CoreAppState;
 use super::store::{
     aggregate_owned_addresses, build_persisted_snapshot, build_persisted_snapshot_typed,
     persisted_snapshot_from_json, plan_receive_selection, plan_self_send_confirmation,
@@ -95,23 +97,6 @@ pub fn core_static_text_resource_utf8(
         .ok_or_else(|| format!("Missing static text resource {resource_name}.").into())
 }
 
-#[uniffi::export]
-pub fn core_migrate_legacy_wallet_store_json(
-    request_json: String,
-) -> Result<String, crate::SpectraBridgeError> {
-    Ok(serialize_json(&legacy_wallet_store_to_core_state(
-        &request_json,
-    )?)?)
-}
-
-#[uniffi::export]
-pub fn core_export_legacy_wallet_store_json(
-    request_json: String,
-) -> Result<String, crate::SpectraBridgeError> {
-    let state = serde_json::from_str::<CoreAppState>(&request_json)?;
-    Ok(core_state_to_legacy_wallet_store_json(&state)?)
-}
-
 // ─── Persistence JSON boundary (state is inherently JSON from disk) ───────────
 
 #[uniffi::export]
@@ -131,11 +116,6 @@ pub fn core_wallet_secret_index_json(
 }
 
 // ─── Typed FFI functions ──────────────────────────────────────────────────────
-
-#[uniffi::export]
-pub fn core_reduce_state(state: CoreAppState, command: StateCommand) -> StateTransition {
-    reduce_state(state, command)
-}
 
 #[uniffi::export]
 pub fn core_build_persisted_snapshot(
@@ -186,6 +166,13 @@ pub fn core_plan_wallet_import(
     request: WalletImportRequest,
 ) -> Result<WalletImportPlan, crate::SpectraBridgeError> {
     Ok(plan_wallet_import(request)?)
+}
+
+#[uniffi::export]
+pub fn core_validate_wallet_import_draft(
+    request: WalletImportDraftValidationRequest,
+) -> bool {
+    validate_wallet_import_draft(request)
 }
 
 #[uniffi::export]
@@ -366,18 +353,6 @@ pub fn core_validate_string_identifier(
 }
 
 #[uniffi::export]
-pub fn core_validate_address_json(request_json: String) -> Result<String, SpectraBridgeError> {
-    let request: AddressValidationRequest = serde_json::from_str(&request_json)?;
-    Ok(serde_json::to_string(&validate_address(request))?)
-}
-
-#[uniffi::export]
-pub fn core_validate_string_identifier_json(request_json: String) -> Result<String, SpectraBridgeError> {
-    let request: StringValidationRequest = serde_json::from_str(&request_json)?;
-    Ok(serde_json::to_string(&validate_string_identifier(request))?)
-}
-
-#[uniffi::export]
 pub fn core_order_endpoints_by_reliability(
     request: EndpointOrderingRequest,
 ) -> Vec<String> {
@@ -391,110 +366,105 @@ pub fn core_record_endpoint_attempt(
     record_attempt(request)
 }
 
-// JSON-string wrappers kept for Swift callers that still encode/decode payloads
-// as JSON rather than typed records.
-#[uniffi::export]
-pub fn core_order_endpoints_by_reliability_json(request_json: String) -> Result<String, SpectraBridgeError> {
-    let request: EndpointOrderingRequest = serde_json::from_str(&request_json)?;
-    let ordered = order_endpoints(request);
-    Ok(serde_json::to_string(&ordered)?)
+// ─── High-risk send warning evaluation ──────────────────────────────────────
+
+/// A chain_name + address pair used in the high-risk send evaluation.
+#[derive(Debug, Clone, uniffi::Record)]
+pub struct HighRiskChainAddress {
+    pub chain_name: String,
+    pub address: String,
 }
 
-#[uniffi::export]
-pub fn core_record_endpoint_attempt_json(request_json: String) -> Result<String, SpectraBridgeError> {
-    let request: EndpointAttemptRequest = serde_json::from_str(&request_json)?;
-    let counters = record_attempt(request);
-    Ok(serde_json::to_string(&counters)?)
+/// Typed input for high-risk send evaluation — replaces the JSON dict that
+/// Swift previously assembled via `JSONSerialization`.
+#[derive(Debug, Clone, uniffi::Record)]
+pub struct HighRiskSendRequest {
+    pub chain_name: String,
+    pub symbol: String,
+    pub amount: f64,
+    pub holding_amount: f64,
+    pub destination_address: String,
+    pub destination_input: String,
+    pub used_ens_resolution: bool,
+    pub wallet_selected_chain: String,
+    pub address_book_entries: Vec<HighRiskChainAddress>,
+    pub tx_addresses: Vec<HighRiskChainAddress>,
 }
 
-// ─── High-risk send warning evaluation (inherently dynamic JSON) ──────────────
+/// A single high-risk warning with a code and optional metadata fields.
+/// Swift maps these to localized user-facing strings.
+#[derive(Debug, Clone, uniffi::Record)]
+pub struct HighRiskSendWarning {
+    pub code: String,
+    pub chain: Option<String>,
+    pub name: Option<String>,
+    pub address: Option<String>,
+    pub percent: Option<u64>,
+    pub symbol: Option<String>,
+}
 
-/// Evaluate high-risk warning reasons for a pending send transaction.
-///
-/// Input JSON fields:
-///   chain_name, symbol, amount, holding_amount,
-///   destination_address, destination_input, used_ens_resolution,
-///   wallet_selected_chain,
-///   address_book: [{ chain_name, address }],
-///   tx_addresses: [{ chain_name, address }]
-///
-/// Output: JSON array of warning objects, e.g.:
-///   [{"code":"invalid_format","chain":"Ethereum"}, {"code":"new_address"}, ...]
+/// Typed high-risk send evaluation — replaces `core_evaluate_high_risk_send_reasons_json`.
 #[uniffi::export]
-pub fn core_evaluate_high_risk_send_reasons_json(
-    request_json: String,
-) -> Result<String, crate::SpectraBridgeError> {
-    let req: serde_json::Value = serde_json::from_str(&request_json)
-        .map_err(|e| crate::SpectraBridgeError::from(e.to_string()))?;
+pub fn core_evaluate_high_risk_send_reasons(
+    request: HighRiskSendRequest,
+) -> Vec<HighRiskSendWarning> {
+    let chain_name = &request.chain_name;
+    let mut warnings: Vec<HighRiskSendWarning> = Vec::new();
 
-    let chain_name = req["chain_name"].as_str().unwrap_or("");
-    let symbol = req["symbol"].as_str().unwrap_or("");
-    let amount = req["amount"].as_f64().unwrap_or(0.0);
-    let holding_amount = req["holding_amount"].as_f64().unwrap_or(0.0);
-    let destination_address = req["destination_address"].as_str().unwrap_or("");
-    let destination_input = req["destination_input"].as_str().unwrap_or("");
-    let used_ens_resolution = req["used_ens_resolution"].as_bool().unwrap_or(false);
-    let wallet_selected_chain = req["wallet_selected_chain"].as_str().unwrap_or("");
-
-    let mut warnings: Vec<serde_json::Value> = Vec::new();
+    let make = |code: &str| HighRiskSendWarning {
+        code: code.to_string(), chain: None, name: None, address: None, percent: None, symbol: None,
+    };
 
     // 1. Address format validation.
-    if !hrsr_validate_address(chain_name, destination_address) {
-        warnings.push(serde_json::json!({ "code": "invalid_format", "chain": chain_name }));
+    if !hrsr_validate_address(chain_name, &request.destination_address) {
+        warnings.push(HighRiskSendWarning { chain: Some(chain_name.clone()), ..make("invalid_format") });
     }
 
     // Normalize destination for case-insensitive comparison.
-    let norm_dest = hrsr_normalize_address(destination_address, chain_name).to_lowercase();
+    let norm_dest = hrsr_normalize_address(&request.destination_address, chain_name).to_lowercase();
 
     // 2. New address detection.
-    let empty_arr: Vec<serde_json::Value> = Vec::new();
-    let address_book = req["address_book"].as_array().unwrap_or(&empty_arr);
-    let has_address_book = address_book.iter().any(|e| {
-        e["chain_name"].as_str() == Some(chain_name)
-            && hrsr_normalize_address(e["address"].as_str().unwrap_or(""), chain_name)
-                .to_lowercase()
-                == norm_dest
+    let has_address_book = request.address_book_entries.iter().any(|e| {
+        e.chain_name == *chain_name
+            && hrsr_normalize_address(&e.address, chain_name).to_lowercase() == norm_dest
     });
-    let tx_addresses = req["tx_addresses"].as_array().unwrap_or(&empty_arr);
-    let has_tx_history = tx_addresses.iter().any(|e| {
-        e["chain_name"].as_str() == Some(chain_name)
-            && hrsr_normalize_address(e["address"].as_str().unwrap_or(""), chain_name)
-                .to_lowercase()
-                == norm_dest
+    let has_tx_history = request.tx_addresses.iter().any(|e| {
+        e.chain_name == *chain_name
+            && hrsr_normalize_address(&e.address, chain_name).to_lowercase() == norm_dest
     });
     if !has_address_book && !has_tx_history {
-        warnings.push(serde_json::json!({ "code": "new_address" }));
+        warnings.push(make("new_address"));
     }
 
     // 3. ENS resolution warning.
-    if used_ens_resolution {
-        warnings.push(serde_json::json!({
-            "code": "ens_resolved",
-            "name": destination_input,
-            "address": destination_address
-        }));
+    if request.used_ens_resolution {
+        warnings.push(HighRiskSendWarning {
+            name: Some(request.destination_input.clone()),
+            address: Some(request.destination_address.clone()),
+            ..make("ens_resolved")
+        });
     }
 
     // 4. Large send percentage (≥25 % of holding balance).
-    if holding_amount > 0.0 {
-        let ratio = amount / holding_amount;
+    if request.holding_amount > 0.0 {
+        let ratio = request.amount / request.holding_amount;
         if ratio >= 0.25 {
             let pct = (ratio * 100.0).round() as u64;
-            warnings.push(serde_json::json!({
-                "code": "large_send", "percent": pct, "symbol": symbol
-            }));
+            warnings.push(HighRiskSendWarning {
+                percent: Some(pct), symbol: Some(request.symbol.clone()), ..make("large_send")
+            });
         }
     }
 
     // 5-10. Cross-chain prefix mismatch checks.
-    let lowered = destination_input.to_lowercase();
+    let lowered = request.destination_input.to_lowercase();
     let is_evm = matches!(
-        chain_name,
+        chain_name.as_str(),
         "Ethereum" | "Ethereum Classic" | "Arbitrum" | "Optimism"
             | "BNB Chain" | "Avalanche" | "Hyperliquid"
     );
     let is_l2 = matches!(
-        chain_name,
+        chain_name.as_str(),
         "Arbitrum" | "Optimism" | "BNB Chain" | "Avalanche" | "Hyperliquid"
     );
     let is_ens_candidate = lowered.ends_with(".eth")
@@ -510,18 +480,18 @@ pub fn core_evaluate_high_risk_send_reasons_json(
             || lowered.starts_with('d')
             || lowered.starts_with('a');
         if looks_non_evm {
-            warnings.push(serde_json::json!({ "code": "non_evm_on_evm", "chain": chain_name }));
+            warnings.push(HighRiskSendWarning { chain: Some(chain_name.clone()), ..make("non_evm_on_evm") });
         }
         if is_l2 && is_ens_candidate {
-            warnings.push(serde_json::json!({ "code": "ens_on_l2", "chain": chain_name }));
+            warnings.push(HighRiskSendWarning { chain: Some(chain_name.clone()), ..make("ens_on_l2") });
         }
-    } else if matches!(chain_name, "Bitcoin" | "Bitcoin Cash" | "Litecoin" | "Dogecoin") {
+    } else if matches!(chain_name.as_str(), "Bitcoin" | "Bitcoin Cash" | "Litecoin" | "Dogecoin") {
         if lowered.starts_with("0x") || is_ens_candidate {
-            warnings.push(serde_json::json!({ "code": "eth_on_utxo", "chain": chain_name }));
+            warnings.push(HighRiskSendWarning { chain: Some(chain_name.clone()), ..make("eth_on_utxo") });
         }
     } else if chain_name == "Tron" {
         if lowered.starts_with("0x") || lowered.starts_with("bc1") {
-            warnings.push(serde_json::json!({ "code": "non_tron" }));
+            warnings.push(make("non_tron"));
         }
     } else if chain_name == "Solana" {
         if lowered.starts_with("0x")
@@ -529,56 +499,34 @@ pub fn core_evaluate_high_risk_send_reasons_json(
             || lowered.starts_with("ltc1")
             || lowered.starts_with('t')
         {
-            warnings.push(serde_json::json!({ "code": "non_solana" }));
+            warnings.push(make("non_solana"));
         }
     } else if chain_name == "XRP Ledger" {
         if lowered.starts_with("0x")
             || lowered.starts_with("bc1")
             || lowered.starts_with('t')
         {
-            warnings.push(serde_json::json!({ "code": "non_xrp" }));
+            warnings.push(make("non_xrp"));
         }
     } else if chain_name == "Monero" {
         if lowered.starts_with("0x")
             || lowered.starts_with("bc1")
             || lowered.starts_with('r')
         {
-            warnings.push(serde_json::json!({ "code": "non_monero" }));
+            warnings.push(make("non_monero"));
         }
     }
 
     // 11. Wallet-chain context mismatch.
-    if !wallet_selected_chain.is_empty() && wallet_selected_chain != chain_name {
-        warnings.push(serde_json::json!({ "code": "chain_mismatch" }));
+    if !request.wallet_selected_chain.is_empty() && request.wallet_selected_chain != *chain_name {
+        warnings.push(make("chain_mismatch"));
     }
 
-    Ok(serde_json::to_string(&warnings)
-        .map_err(|e| crate::SpectraBridgeError::from(e.to_string()))?)
+    warnings
 }
 
 fn hrsr_validate_address(chain_name: &str, address: &str) -> bool {
-    let kind = match chain_name {
-        "Bitcoin" => "bitcoin",
-        "Bitcoin Cash" => "bitcoinCash",
-        "Bitcoin SV" => "bitcoinSV",
-        "Litecoin" => "litecoin",
-        "Dogecoin" => "dogecoin",
-        "Ethereum" | "Ethereum Classic" | "Arbitrum" | "Optimism"
-        | "BNB Chain" | "Avalanche" | "Hyperliquid" => "evm",
-        "Tron" => "tron",
-        "Solana" => "solana",
-        "Cardano" => "cardano",
-        "XRP Ledger" => "xrp",
-        "Stellar" => "stellar",
-        "Monero" => "monero",
-        "Sui" => "sui",
-        "Aptos" => "aptos",
-        "TON" => "ton",
-        "Internet Computer" => "internetComputer",
-        "NEAR" => "near",
-        "Polkadot" => "polkadot",
-        _ => return false,
-    };
+    let Some(kind) = super::send::flow::chain_kind(chain_name) else { return false };
     validate_address(AddressValidationRequest {
         kind: kind.to_string(),
         value: address.to_string(),
@@ -588,23 +536,7 @@ fn hrsr_validate_address(chain_name: &str, address: &str) -> bool {
 }
 
 fn hrsr_normalize_address(address: &str, chain_name: &str) -> String {
-    let t = address.trim().to_string();
-    let is_evm = matches!(
-        chain_name,
-        "Ethereum" | "Ethereum Classic" | "Arbitrum" | "Optimism"
-            | "BNB Chain" | "Avalanche" | "Hyperliquid"
-    );
-    if is_evm {
-        return t.to_lowercase();
-    }
-    if matches!(chain_name, "Sui" | "Aptos") {
-        let l = t.to_lowercase();
-        return if l.starts_with("0x") { l } else { format!("0x{l}") };
-    }
-    if matches!(chain_name, "Internet Computer" | "NEAR") {
-        return t.to_lowercase();
-    }
-    t
+    super::send::flow::normalize_address(chain_name, address)
 }
 
 fn serialize_json(value: &impl Serialize) -> Result<String, String> {
@@ -659,6 +591,53 @@ pub fn decode_persisted_transaction_record_json(
 ) -> Result<CorePersistedTransactionRecord, SpectraBridgeError> {
     serde_json::from_str::<CorePersistedTransactionRecord>(&json)
         .map_err(SpectraBridgeError::from)
+}
+
+// ─── Seed envelope encryption (Phase 1) ─────────────────────────────────────
+
+/// Encrypt a seed phrase with AES-256-GCM. `master_key_bytes` must be exactly
+/// 32 bytes. Returns the JSON envelope as `Data` (compatible with Swift's
+/// existing `SeedMaterialEnvelope` keychain format).
+#[uniffi::export]
+pub fn encrypt_seed_envelope(
+    plaintext: String,
+    master_key_bytes: Vec<u8>,
+) -> Result<Vec<u8>, SpectraBridgeError> {
+    super::store::seed_envelope::encrypt(plaintext.as_bytes(), &master_key_bytes)
+        .map_err(SpectraBridgeError::from)
+}
+
+/// Decrypt a seed envelope produced by [`encrypt_seed_envelope`] or by Swift's
+/// `SeedMaterialEnvelope.encode`. Returns the plaintext seed phrase.
+#[uniffi::export]
+pub fn decrypt_seed_envelope(
+    data: Vec<u8>,
+    master_key_bytes: Vec<u8>,
+) -> Result<String, SpectraBridgeError> {
+    super::store::seed_envelope::decrypt(&data, &master_key_bytes)
+        .map_err(SpectraBridgeError::from)
+}
+
+// ─── Password verifier (Phase 2) ────────────────────────────────────────────
+
+/// Create a PBKDF2-HMAC-SHA256 password verifier envelope. Returns JSON `Data`
+/// compatible with Swift's `SecureSeedPasswordStore` format.
+#[uniffi::export]
+pub fn create_password_verifier(
+    password: String,
+) -> Result<Vec<u8>, SpectraBridgeError> {
+    super::store::password_verifier::create_verifier(&password)
+        .map_err(SpectraBridgeError::from)
+}
+
+/// Verify a password against a PBKDF2 verifier envelope produced by
+/// [`create_password_verifier`] or by Swift's `SecureSeedPasswordStore.save`.
+#[uniffi::export]
+pub fn verify_password_verifier(
+    password: String,
+    verifier_data: Vec<u8>,
+) -> bool {
+    super::store::password_verifier::verify(&password, &verifier_data)
 }
 
 fn display_error(error: impl std::fmt::Display) -> String {

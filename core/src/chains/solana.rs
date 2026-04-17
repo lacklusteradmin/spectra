@@ -25,7 +25,7 @@ fn rpc(method: &str, params: Value) -> Value {
 // Public result types
 // ----------------------------------------------------------------
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, uniffi::Record)]
 pub struct SolanaBalance {
     /// Lamports (1 SOL = 1_000_000_000 lamports).
     pub lamports: u64,

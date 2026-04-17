@@ -1,6 +1,6 @@
 //! In-memory balance cache with TTL expiry.
 //!
-//! Keyed by `"{chain_id}:{address}"`. Values are JSON strings (the same shape
+//! Keyed by `(chain_id, address)`. Values are JSON strings (the same shape
 //! that `WalletService::fetch_balance` returns) together with the instant they
 //! were stored. Reads return `None` once the TTL has elapsed so the caller
 //! fetches fresh and repopulates.
@@ -17,7 +17,7 @@ struct Entry {
 
 /// Thread-safe in-memory balance cache.
 pub struct BalanceCache {
-    inner: RwLock<HashMap<String, Entry>>,
+    inner: RwLock<HashMap<(u32, String), Entry>>,
     ttl: Duration,
 }
 
@@ -29,15 +29,10 @@ impl BalanceCache {
         }
     }
 
-    /// Cache key used internally.
-    fn key(chain_id: u32, address: &str) -> String {
-        format!("{chain_id}:{address}")
-    }
-
     /// Return the cached balance JSON if present and not expired.
     pub fn get(&self, chain_id: u32, address: &str) -> Option<String> {
         let map = self.inner.read().ok()?;
-        let entry = map.get(&Self::key(chain_id, address))?;
+        let entry = map.get(&(chain_id, address.to_string()))?;
         if entry.inserted_at.elapsed() < self.ttl {
             Some(entry.json.clone())
         } else {
@@ -49,7 +44,7 @@ impl BalanceCache {
     pub fn set(&self, chain_id: u32, address: &str, json: String) {
         if let Ok(mut map) = self.inner.write() {
             map.insert(
-                Self::key(chain_id, address),
+                (chain_id, address.to_string()),
                 Entry { json, inserted_at: Instant::now() },
             );
         }
@@ -58,7 +53,7 @@ impl BalanceCache {
     /// Explicitly invalidate one entry (e.g. after a send completes).
     pub fn invalidate(&self, chain_id: u32, address: &str) {
         if let Ok(mut map) = self.inner.write() {
-            map.remove(&Self::key(chain_id, address));
+            map.remove(&(chain_id, address.to_string()));
         }
     }
 

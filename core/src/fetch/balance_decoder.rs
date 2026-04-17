@@ -72,6 +72,37 @@ pub fn balance_decoder_u128_string_field_as_f64(field: String, json: String) -> 
 }
 
 #[uniffi::export]
+pub fn balance_decoder_f64_field(field: String, json: String) -> Option<f64> {
+    let obj = parse_object(&json)?;
+    field_f64(&obj, &field)
+}
+
+#[uniffi::export]
+pub fn balance_decoder_string_field(field: String, json: String) -> Option<String> {
+    let obj = parse_object(&json)?;
+    obj.get(&field)?.as_str().map(|s| s.to_string())
+}
+
+#[uniffi::export]
+pub fn balance_decoder_has_field(field: String, json: String) -> bool {
+    parse_object(&json).map_or(false, |obj| obj.contains_key(&field))
+}
+
+#[uniffi::export]
+pub fn balance_decoder_first_element_string_field(field: String, json: String) -> Option<String> {
+    let v: Value = serde_json::from_str(&json).ok()?;
+    let arr = v.as_array()?;
+    let obj = arr.first()?.as_object()?;
+    obj.get(&field)?.as_str().map(|s| s.to_string())
+}
+
+#[uniffi::export]
+pub fn balance_decoder_json_array_is_non_empty(json: String) -> bool {
+    let Ok(v) = serde_json::from_str::<Value>(&json) else { return false };
+    v.as_array().map_or(false, |a| !a.is_empty())
+}
+
+#[uniffi::export]
 pub fn balance_decoder_evm_native_balance(json: String) -> Option<f64> {
     let obj = parse_object(&json)?;
     if let Some(display) = obj.get("balance_display").and_then(|v| v.as_str()) {

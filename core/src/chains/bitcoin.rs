@@ -482,7 +482,8 @@ pub fn sign_p2wpkh(
 
     let total_in: u64 = selected.iter().map(|u| u.value).sum();
     let change_sats = total_in.saturating_sub(params.amount_sats).saturating_sub(fee);
-    let use_change = change_sats > 546; // dust threshold
+    const DUST_THRESHOLD_SATS: u64 = 546;
+    let use_change = change_sats > DUST_THRESHOLD_SATS;
 
     // Build inputs (unsigned).
     let sequence = if params.enable_rbf {

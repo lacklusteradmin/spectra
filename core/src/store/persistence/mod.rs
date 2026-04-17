@@ -14,8 +14,7 @@
 // * Version integers and store wrappers match the Swift `currentVersion`
 //   constants.
 //
-// Wallet / Coin / WalletStore shapes are intentionally not re-declared here —
-// see `crate::migration::LegacyPersisted*`, which already mirrors them and is
-// exercised by its own roundtrip test.
+// Wallet / Coin / WalletStore shapes use `crate::state::WalletSummary` directly
+// (single-chain-per-wallet model).
 
 pub mod models;

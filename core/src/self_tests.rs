@@ -6,7 +6,7 @@ use std::collections::HashMap;
 const CANONICAL_MNEMONIC: &str =
     "test test test test test test test test test test test junk";
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, uniffi::Record)]
 #[serde(rename_all = "camelCase")]
 pub struct ChainSelfTestResult {
     pub name: String,
@@ -411,6 +411,24 @@ fn run_for_chain(chain_key: &str) -> Vec<ChainSelfTestResult> {
             .map(run_spec)
             .unwrap_or_default(),
     }
+}
+
+#[uniffi::export]
+pub fn self_tests_run_chain(chain_key: String) -> Vec<ChainSelfTestResult> {
+    run_for_chain(&chain_key)
+}
+
+#[uniffi::export]
+pub fn self_tests_run_all() -> HashMap<String, Vec<ChainSelfTestResult>> {
+    let mut all: Vec<(&str, Vec<ChainSelfTestResult>)> = Vec::new();
+    all.push(("Dogecoin", run_dogecoin()));
+    all.push(("Ethereum", run_ethereum()));
+    for spec in CHAIN_SPECS {
+        all.push((spec.chain_key, run_spec(spec)));
+    }
+    all.into_iter()
+        .map(|(k, v)| (k.to_string(), v))
+        .collect()
 }
 
 #[uniffi::export]

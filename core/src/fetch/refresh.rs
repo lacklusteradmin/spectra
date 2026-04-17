@@ -134,7 +134,7 @@ pub fn chain_plans(request: ChainRefreshPlanRequest) -> Vec<ChainRefreshPlan> {
                     &request.last_history_refresh_at_by_chain_id,
                 );
             ChainRefreshPlan {
-                chain_name: display_name_for_chain_id(&chain_id),
+                chain_name: display_name_for_chain_id(&chain_id).to_string(),
                 chain_id,
                 refresh_history,
             }
@@ -171,7 +171,7 @@ fn should_refresh_history(
     }
 }
 
-fn display_name_for_chain_id(chain_id: &str) -> String {
+fn display_name_for_chain_id<'a>(chain_id: &'a str) -> &'a str {
     match chain_id {
         "bitcoin" => "Bitcoin",
         "bitcoincash" | "bitcoin-cash" => "Bitcoin Cash",
@@ -199,7 +199,6 @@ fn display_name_for_chain_id(chain_id: &str) -> String {
         "polkadot" => "Polkadot",
         other => other,
     }
-    .to_string()
 }
 
 #[cfg(test)]

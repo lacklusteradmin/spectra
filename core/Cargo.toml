@@ -54,6 +54,11 @@ crc = "3"
 # encoders that everything else uses.
 bitcoin = { version = "0.32", features = ["rand-std"] }
 
+# ─── Seed envelope encryption ───────────────────────────────────────
+# AES-256-GCM envelope encryption for seed phrases at rest. Master key
+# is stored in the platform keychain; Rust owns encrypt/decrypt logic.
+aes-gcm = "0.10"
+
 # ─── Secret hygiene ─────────────────────────────────────────────────
 # Wraps mnemonics, seeds, private keys, and HMAC outputs so they scrub
 # on drop instead of leaking through reused buffers.
@@ -75,13 +80,10 @@ hex = "0.4"
 # reqwest: Esplora/Etherscan/RPC fetches (chains/, fetch/).
 # tokio + futures: async runtime for chain clients, fetch, store, service.
 # base64: HTTP basic auth, RPC payloads, TON address encoding.
-# once_cell: process-wide caches (token registries, HTTP clients,
-#   TON v4R2 code hash).
 reqwest = { version = "0.12", default-features = false, features = ["rustls-tls-native-roots", "json", "gzip"] }
 tokio = { version = "1", features = ["rt-multi-thread", "macros", "sync", "time"] }
 futures = "0.3"
 base64 = "0.22"
-once_cell = "1"
 
 # ─── Persistence + config + entropy ─────────────────────────────────
 # rusqlite: wallet store and key-pool tables (store/wallet_db.rs),

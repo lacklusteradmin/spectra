@@ -79,6 +79,10 @@ impl BalanceRefreshEngine {
         }
     }
 
+    pub fn set_entries_typed(&self, entries: Vec<RefreshEntry>) {
+        *self.inner.entries.write().unwrap() = entries;
+    }
+
     /// Start the periodic refresh loop.
     ///
     /// This method is `async` to ensure it runs inside the UniFFI tokio runtime,

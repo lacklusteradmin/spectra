@@ -9,12 +9,21 @@ fn bip39_word_set() -> &'static HashSet<&'static str> {
 }
 
 const EXT_PRIV_PREFIXES: &[&str] = &["xprv", "yprv", "zprv", "tprv", "uprv", "vprv"];
-const BASE58_ALPHABET: &str =
-    "123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz";
 const MIN_SEED_WORD_SEQUENCE: usize = 12;
 
+const BASE58_LUT: [bool; 128] = {
+    let mut lut = [false; 128];
+    let alphabet = b"123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz";
+    let mut i = 0;
+    while i < alphabet.len() {
+        lut[alphabet[i] as usize] = true;
+        i += 1;
+    }
+    lut
+};
+
 fn is_base58_char(c: char) -> bool {
-    BASE58_ALPHABET.contains(c)
+    (c as u32) < 128 && BASE58_LUT[c as usize]
 }
 
 fn is_word_char(c: char) -> bool {

@@ -109,6 +109,9 @@ pub struct CoreSeedDerivationPaths {
     pub polkadot: String,
 }
 
+// TODO: Align CoreImportedWallet with the single-chain WalletSummary model.
+// Per-chain address fields should be replaced with a single `chain_name` +
+// `address` pair once Swift is updated to match.
 #[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq, uniffi::Record)]
 #[serde(rename_all = "camelCase")]
 pub struct CoreImportedWallet {

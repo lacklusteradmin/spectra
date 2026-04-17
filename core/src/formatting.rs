@@ -1,14 +1,15 @@
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
+use std::sync::LazyLock;
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, uniffi::Record)]
 #[serde(rename_all = "camelCase")]
 pub struct AssetDecimalsResolution {
     pub supported: u32,
     pub display: u32,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, uniffi::Record)]
 #[serde(rename_all = "camelCase")]
 pub struct TokenPreferenceOverride {
     pub chain_name: String,
@@ -17,7 +18,7 @@ pub struct TokenPreferenceOverride {
     pub display_decimals: Option<u32>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, uniffi::Record)]
 #[serde(rename_all = "camelCase")]
 pub struct AssetDecimalsRequest {
     pub chain_name: String,
@@ -65,14 +66,17 @@ pub fn native_asset_display_settings_key(chain_name: &str) -> String {
         .unwrap_or_else(|| chain_name.to_string())
 }
 
+static SUPPORTED_DECIMAL_MAP: LazyLock<HashMap<&'static str, u32>> = LazyLock::new(|| {
+    SUPPORTED_DECIMAL_CHAINS.iter().copied().collect()
+});
+
 pub fn supported_decimal_places(chain_name: &str, override_decimals: Option<u32>) -> u32 {
     if let Some(value) = override_decimals {
         return value;
     }
-    SUPPORTED_DECIMAL_CHAINS
-        .iter()
-        .find(|(name, _)| *name == chain_name)
-        .map(|(_, decimals)| *decimals)
+    SUPPORTED_DECIMAL_MAP
+        .get(chain_name)
+        .copied()
         .unwrap_or(6)
 }
 
@@ -168,12 +172,17 @@ fn capitalize_word(word: &str) -> String {
 }
 
 #[uniffi::export]
-pub fn formatting_resolve_asset_decimals_json(
-    request_json: String,
-) -> Result<String, crate::SpectraBridgeError> {
-    let request: AssetDecimalsRequest = serde_json::from_str(&request_json)?;
-    let result = resolve_asset_decimals(&request);
-    Ok(serde_json::to_string(&result)?)
+pub fn formatting_resolve_asset_decimals(
+    request: AssetDecimalsRequest,
+) -> AssetDecimalsResolution {
+    resolve_asset_decimals(&request)
+}
+
+#[uniffi::export]
+pub fn formatting_default_asset_display_decimals_by_chain(
+    default_value: u32,
+) -> HashMap<String, u32> {
+    default_asset_display_decimals_by_chain(default_value)
 }
 
 #[uniffi::export]
@@ -186,26 +195,6 @@ pub fn formatting_native_asset_display_settings_key(chain_name: String) -> Strin
     native_asset_display_settings_key(&chain_name)
 }
 
-#[uniffi::export]
-pub fn formatting_default_asset_display_decimals_by_chain_json(
-    default_value: u32,
-) -> Result<String, crate::SpectraBridgeError> {
-    let map = default_asset_display_decimals_by_chain(default_value);
-    Ok(serde_json::to_string(&map)?)
-}
-
-#[uniffi::export]
-pub fn formatting_normalized_history_source_tag(
-    raw_source: Option<String>,
-    unknown_label: String,
-) -> String {
-    normalized_history_source_tag(raw_source.as_deref(), &unknown_label)
-}
-
-#[uniffi::export]
-pub fn formatting_normalized_status_rank(status: String) -> u32 {
-    normalized_status_rank(&status)
-}
 
 #[cfg(test)]
 mod tests {

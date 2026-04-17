@@ -21,7 +21,7 @@ fn rpc(method: &str, params: Value) -> Value {
 // Public result types
 // ----------------------------------------------------------------
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, uniffi::Record)]
 pub struct NearBalance {
     /// yoctoNEAR (1 NEAR = 10^24 yoctoNEAR).
     pub yocto_near: String,

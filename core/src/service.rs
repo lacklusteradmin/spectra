@@ -74,19 +74,41 @@ use crate::history_cache::HistoryCache;
 use crate::history_store::HistoryPaginationStore;
 use crate::http::HttpClient;
 use crate::secret_store::SecretStore;
-use crate::state::{AssetHolding, CoreAppState, StateCommand, WalletSummary, reduce_state};
+use crate::state::{AssetHolding, CoreAppState, StateCommand, WalletSummary, reduce_state_in_place};
 use crate::SpectraBridgeError;
 
 // ----------------------------------------------------------------
 // Endpoint configuration (passed in from Swift)
 // ----------------------------------------------------------------
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, uniffi::Record)]
 pub struct ChainEndpoints {
     pub chain_id: u32,
     pub endpoints: Vec<String>,
     /// Optional API key for services that require one (Blockfrost, Subscan, etc.)
     pub api_key: Option<String>,
+}
+
+/// Pre-indexed endpoint store: O(1) lookup by chain_id, Arc-wrapped endpoints
+/// to avoid cloning Vec<String> on every network call.
+#[derive(Debug, Clone, Default)]
+struct EndpointIndex {
+    endpoints: std::collections::HashMap<u32, Arc<Vec<String>>>,
+    api_keys: std::collections::HashMap<u32, String>,
+}
+
+impl EndpointIndex {
+    fn from_list(list: Vec<ChainEndpoints>) -> Self {
+        let mut endpoints = std::collections::HashMap::with_capacity(list.len());
+        let mut api_keys = std::collections::HashMap::new();
+        for entry in list {
+            endpoints.insert(entry.chain_id, Arc::new(entry.endpoints));
+            if let Some(key) = entry.api_key {
+                api_keys.insert(entry.chain_id, key);
+            }
+        }
+        Self { endpoints, api_keys }
+    }
 }
 
 // ----------------------------------------------------------------
@@ -97,7 +119,7 @@ pub struct ChainEndpoints {
 /// lifetime of the app session.
 #[derive(uniffi::Object)]
 pub struct WalletService {
-    endpoints: Arc<RwLock<Vec<ChainEndpoints>>>,
+    endpoints: Arc<RwLock<EndpointIndex>>,
     /// Phase 2.2 — in-memory balance cache (default TTL: 30 s).
     balance_cache: Arc<BalanceCache>,
     /// Phase 2.3 — in-memory history cache (default TTL: 5 min).
@@ -110,13 +132,72 @@ pub struct WalletService {
     wallet_state: Arc<RwLock<CoreAppState>>,
 }
 
+/// Typed app settings record for UniFFI — Rust handles JSON serialization to/from SQLite.
+#[derive(Debug, Clone, Serialize, Deserialize, uniffi::Record)]
+#[serde(rename_all = "camelCase")]
+pub struct PersistedAppSettings {
+    pub pricing_provider: String,
+    pub selected_fiat_currency: String,
+    pub fiat_rate_provider: String,
+    #[serde(rename = "ethereumRPCEndpoint")]
+    pub ethereum_rpc_endpoint: String,
+    pub ethereum_network_mode: String,
+    #[serde(rename = "etherscanAPIKey")]
+    pub etherscan_api_key: String,
+    #[serde(rename = "moneroBackendBaseURL")]
+    pub monero_backend_base_url: String,
+    #[serde(rename = "moneroBackendAPIKey")]
+    pub monero_backend_api_key: String,
+    pub bitcoin_network_mode: String,
+    pub dogecoin_network_mode: String,
+    pub bitcoin_esplora_endpoints: String,
+    pub bitcoin_stop_gap: i32,
+    pub bitcoin_fee_priority: String,
+    pub dogecoin_fee_priority: String,
+    pub hide_balances: bool,
+    #[serde(rename = "useFaceID")]
+    pub use_face_id: bool,
+    pub use_auto_lock: bool,
+    #[serde(rename = "useStrictRPCOnly")]
+    pub use_strict_rpc_only: bool,
+    pub require_biometric_for_send_actions: bool,
+    pub use_price_alerts: bool,
+    pub use_transaction_status_notifications: bool,
+    pub use_large_movement_notifications: bool,
+    pub automatic_refresh_frequency_minutes: i32,
+    pub background_sync_profile: String,
+    pub large_movement_alert_percent_threshold: f64,
+    #[serde(rename = "largeMovementAlertUSDThreshold")]
+    pub large_movement_alert_usd_threshold: f64,
+    pub pinned_dashboard_asset_symbols: Vec<String>,
+}
+
+/// Typed token descriptor for passing token arrays across UniFFI without JSON.
+#[derive(Debug, Clone, uniffi::Record)]
+pub struct TokenDescriptor {
+    pub contract: String,
+    pub symbol: String,
+    pub decimals: u8,
+    pub name: Option<String>,
+}
+
+/// Typed result for token balance queries — returned directly via UniFFI.
+#[derive(Debug, Clone, uniffi::Record)]
+pub struct TokenBalanceResult {
+    pub contract_address: String,
+    pub symbol: String,
+    pub decimals: u8,
+    pub balance_raw: String,
+    pub balance_display: String,
+}
+
 #[uniffi::export(async_runtime = "tokio")]
 impl WalletService {
     #[uniffi::constructor]
     pub fn new(endpoints_json: String) -> Result<Arc<Self>, SpectraBridgeError> {
-        let endpoints: Vec<ChainEndpoints> = serde_json::from_str(&endpoints_json)?;
+        let raw: Vec<ChainEndpoints> = serde_json::from_str(&endpoints_json)?;
         Ok(Arc::new(Self {
-            endpoints: Arc::new(RwLock::new(endpoints)),
+            endpoints: Arc::new(RwLock::new(EndpointIndex::from_list(raw))),
             balance_cache: Arc::new(BalanceCache::new(30)),
             history_cache: Arc::new(HistoryCache::new(300)), // 5-minute TTL
             history_pagination: Arc::new(HistoryPaginationStore::new()),
@@ -126,9 +207,27 @@ impl WalletService {
     }
 
     pub async fn update_endpoints(&self, endpoints_json: String) -> Result<(), SpectraBridgeError> {
-        let new_endpoints: Vec<ChainEndpoints> = serde_json::from_str(&endpoints_json)?;
+        let raw: Vec<ChainEndpoints> = serde_json::from_str(&endpoints_json)?;
         let mut guard = self.endpoints.write().await;
-        *guard = new_endpoints;
+        *guard = EndpointIndex::from_list(raw);
+        Ok(())
+    }
+
+    #[uniffi::constructor]
+    pub fn new_typed(endpoints: Vec<ChainEndpoints>) -> Result<Arc<Self>, SpectraBridgeError> {
+        Ok(Arc::new(Self {
+            endpoints: Arc::new(RwLock::new(EndpointIndex::from_list(endpoints))),
+            balance_cache: Arc::new(BalanceCache::new(30)),
+            history_cache: Arc::new(HistoryCache::new(300)),
+            history_pagination: Arc::new(HistoryPaginationStore::new()),
+            secret_store: Arc::new(std::sync::RwLock::new(None)),
+            wallet_state: Arc::new(RwLock::new(CoreAppState::default())),
+        }))
+    }
+
+    pub async fn update_endpoints_typed(&self, endpoints: Vec<ChainEndpoints>) -> Result<(), SpectraBridgeError> {
+        let mut guard = self.endpoints.write().await;
+        *guard = EndpointIndex::from_list(endpoints);
         Ok(())
     }
 
@@ -259,6 +358,35 @@ impl WalletService {
         } else {
             self.fetch_balance(chain_id, address).await
         }
+    }
+
+    pub async fn fetch_solana_balance_typed(
+        &self,
+        address: String,
+    ) -> Result<crate::chains::solana::SolanaBalance, SpectraBridgeError> {
+        let endpoints = self.endpoints_for(2).await;
+        let client = crate::chains::solana::SolanaClient::new(endpoints);
+        client.fetch_balance(&address).await.map_err(SpectraBridgeError::from)
+    }
+
+    pub async fn fetch_near_balance_typed(
+        &self,
+        address: String,
+    ) -> Result<crate::chains::near::NearBalance, SpectraBridgeError> {
+        let endpoints = self.endpoints_for(17).await;
+        let client = crate::chains::near::NearClient::new(endpoints);
+        client.fetch_balance(&address).await.map_err(SpectraBridgeError::from)
+    }
+
+    pub async fn fetch_erc20_balance_typed(
+        &self,
+        chain_id: u32,
+        contract: String,
+        holder: String,
+    ) -> Result<crate::chains::evm::Erc20Balance, SpectraBridgeError> {
+        let endpoints = self.endpoints_for(chain_id).await;
+        let client = crate::chains::evm::EvmClient::new(endpoints, evm_chain_id_for(chain_id));
+        client.fetch_erc20_balance(&contract, &holder).await.map_err(SpectraBridgeError::from)
     }
 
     // ----------------------------------------------------------------
@@ -402,6 +530,32 @@ impl WalletService {
         let raw = self.fetch_history(chain_id, address).await?;
         let entries = crate::history::normalize_chain_history(chain_id, &raw);
         Ok(serde_json::to_string(&entries)?)
+    }
+
+    /// Fetch and decode history in one call — returns typed records directly,
+    /// bypassing JSON serialization/deserialization between Rust and Swift.
+    pub async fn fetch_normalized_history(
+        &self,
+        chain_id: u32,
+        address: String,
+    ) -> Result<Vec<crate::fetch::history_decode::NormalizedHistoryItem>, SpectraBridgeError> {
+        let raw = self.fetch_history(chain_id, address).await?;
+        let entries = crate::history::normalize_chain_history(chain_id, &raw);
+        Ok(entries
+            .into_iter()
+            .map(|e| crate::fetch::history_decode::NormalizedHistoryItem {
+                kind: e.kind,
+                status: e.status,
+                asset_name: e.asset_name,
+                symbol: e.symbol,
+                chain_name: e.chain_name,
+                amount: e.amount,
+                counterparty: e.counterparty,
+                tx_hash: e.tx_hash,
+                block_height: e.block_height,
+                timestamp: e.timestamp,
+            })
+            .collect())
     }
 
     // ----------------------------------------------------------------
@@ -1190,6 +1344,208 @@ impl WalletService {
     }
 
     // ----------------------------------------------------------------
+    // Unified execute_send — collapses derive → payload → sign trampoline
+    // ----------------------------------------------------------------
+
+    /// Derive key material, build the chain-specific payload, sign, and
+    /// broadcast in a single call.
+    ///
+    /// This eliminates the Swift↔Rust trampoline where Swift held a closure
+    /// between derivation and signing. Swift now passes the seed phrase (or
+    /// raw private key) directly, and Rust handles the entire pipeline.
+    pub async fn execute_send(
+        &self,
+        request: crate::send::SendExecutionRequest,
+    ) -> Result<crate::send::SendExecutionResult, SpectraBridgeError> {
+        // 1. Derive key material (or use provided private key).
+        let (priv_hex, pub_hex) = if let Some(ref seed_phrase) = request.seed_phrase {
+            let (_addr, priv_h, pub_h) = crate::derivation::derive_key_material_for_chain(
+                seed_phrase,
+                &request.chain_name,
+                &request.derivation_path,
+            )?;
+            (priv_h, Some(pub_h))
+        } else if let Some(ref pk) = request.private_key_hex {
+            let normalized = if pk.starts_with("0x") { pk[2..].to_string() } else { pk.clone() };
+            (normalized, None)
+        } else {
+            return Err(SpectraBridgeError::from(
+                "execute_send: neither seed_phrase nor private_key_hex provided",
+            ));
+        };
+
+        // 2. Build payload JSON and route to sign_and_send or sign_and_send_token.
+        let is_token = request.contract_address.is_some();
+        let params_json = self.build_execute_send_payload(&request, &priv_hex, &pub_hex)?;
+
+        let result_json = if is_token {
+            self.sign_and_send_token(request.chain_id, params_json).await?
+        } else {
+            self.sign_and_send(request.chain_id, params_json).await?
+        };
+
+        // 3. Classify broadcast result.
+        let send_chain = send_chain_from_chain_id(request.chain_id, is_token);
+        let outcome =
+            crate::send::payload::classify_send_broadcast_result(send_chain, result_json.clone());
+
+        Ok(crate::send::SendExecutionResult {
+            result_json,
+            transaction_hash: outcome.transaction_hash,
+            payload_format: outcome.payload_format,
+        })
+    }
+
+    /// Build the chain-specific payload JSON for `execute_send`.
+    fn build_execute_send_payload(
+        &self,
+        req: &crate::send::SendExecutionRequest,
+        priv_hex: &str,
+        pub_hex: &Option<String>,
+    ) -> Result<String, SpectraBridgeError> {
+        use crate::send::payload::*;
+        use crate::send::preview_decode::build_utxo_sat_send_payload;
+
+        let from = &req.from_address;
+        let to = &req.to_address;
+        let amount = req.amount;
+        let priv_str = priv_hex.to_string();
+
+        // Token sends.
+        if let Some(ref contract) = req.contract_address {
+            let decimals = req.token_decimals.unwrap_or(6);
+            return match req.chain_id {
+                // EVM token
+                1 | 11 | 12 | 13 | 20 | 21 | 23 | 24 => {
+                    let amount_raw = crate::send::preview_decode::amount_to_raw_units_string(amount, decimals);
+                    let overrides = req.evm_overrides_fragment.as_deref().unwrap_or("");
+                    Ok(crate::send::ethereum::build_evm_token_send_payload(
+                        from.clone(), contract.clone(), to.clone(),
+                        amount_raw, priv_str, overrides.to_string(),
+                    ))
+                }
+                // Tron TRC-20
+                7 => Ok(build_tron_token_send_payload(
+                    from.clone(), contract.clone(), to.clone(), amount, decimals, priv_str,
+                )),
+                // Solana SPL
+                2 => Ok(build_solana_token_send_payload(
+                    pub_hex.clone().unwrap_or_default(),
+                    contract.clone(), to.clone(), amount, decimals, priv_str,
+                )),
+                // NEAR NEP-141
+                17 => Ok(build_near_token_send_payload(
+                    from.clone(), contract.clone(), to.clone(), amount, decimals,
+                    priv_str, pub_hex.clone().unwrap_or_default(),
+                )),
+                _ => Err(SpectraBridgeError::from(format!(
+                    "execute_send: unsupported token chain_id: {}", req.chain_id
+                ))),
+            };
+        }
+
+        // Native sends.
+        Ok(match req.chain_id {
+            // Bitcoin
+            0 => build_btc_send_payload(
+                from.clone(), to.clone(), amount,
+                req.fee_rate_svb.unwrap_or(10.0), priv_str,
+            ),
+            // EVM native
+            1 | 11 | 12 | 13 | 20 | 21 | 23 | 24 => {
+                let value_wei = crate::send::preview_decode::amount_to_raw_units_string(amount, 18);
+                let overrides = req.evm_overrides_fragment.as_deref().unwrap_or("");
+                crate::send::ethereum::build_evm_native_send_payload(
+                    from.clone(), to.clone(), value_wei, priv_str, overrides.to_string(),
+                )
+            }
+            // Solana native
+            2 => build_solana_native_send_payload(
+                pub_hex.clone().unwrap_or_default(), to.clone(), amount, priv_str,
+            ),
+            // Dogecoin
+            3 => build_doge_send_payload(
+                from.clone(), to.clone(), amount,
+                req.fee_rate_svb.unwrap_or(0.01), priv_str,
+            ),
+            // XRP
+            4 => build_xrp_send_payload(
+                from.clone(), to.clone(), amount, priv_str,
+                pub_hex.clone(),
+            ),
+            // Litecoin
+            5 => {
+                let amount_sat = (amount * 1e8).round() as u64;
+                let fee_sat = req.fee_sat.unwrap_or(10_000);
+                build_utxo_sat_send_payload(from.clone(), to.clone(), amount_sat, fee_sat, priv_str)
+            }
+            // Bitcoin Cash
+            6 => {
+                let amount_sat = (amount * 1e8).round() as u64;
+                let fee_sat = req.fee_sat.unwrap_or(1_000);
+                build_utxo_sat_send_payload(from.clone(), to.clone(), amount_sat, fee_sat, priv_str)
+            }
+            // Tron native
+            7 => build_tron_native_send_payload(from.clone(), to.clone(), amount, priv_str),
+            // Stellar
+            8 => build_stellar_send_payload(
+                from.clone(), to.clone(), amount, priv_str,
+                pub_hex.clone(),
+            ),
+            // Cardano
+            9 => build_cardano_send_payload(
+                from.clone(), to.clone(), amount,
+                req.fee_amount.unwrap_or(0.17), priv_str,
+                pub_hex.clone().unwrap_or_default(),
+            ),
+            // Polkadot
+            10 => build_polkadot_send_payload(
+                from.clone(), to.clone(), amount, priv_str,
+                pub_hex.clone().unwrap_or_default(),
+            ),
+            // Sui
+            14 => build_sui_send_payload(
+                from.clone(), to.clone(), amount,
+                req.gas_budget.unwrap_or(0.01), priv_str,
+                pub_hex.clone().unwrap_or_default(),
+            ),
+            // Aptos
+            15 => build_aptos_send_payload(
+                from.clone(), to.clone(), amount, priv_str,
+                pub_hex.clone().unwrap_or_default(),
+            ),
+            // TON
+            16 => build_ton_send_payload(
+                from.clone(), to.clone(), amount, priv_str,
+                pub_hex.clone().unwrap_or_default(),
+            ),
+            // NEAR
+            17 => build_near_send_payload(
+                from.clone(), to.clone(), amount, priv_str,
+                pub_hex.clone().unwrap_or_default(),
+            ),
+            // ICP
+            18 => build_icp_send_payload(
+                from.clone(), to.clone(), amount, priv_str,
+                pub_hex.clone(),
+            ),
+            // Monero (no key derivation — uses daemon wallet)
+            19 => build_monero_send_payload(
+                to.clone(), amount, req.monero_priority.unwrap_or(2),
+            ),
+            // Bitcoin SV
+            22 => {
+                let amount_sat = (amount * 1e8).round() as u64;
+                let fee_sat = req.fee_sat.unwrap_or(1_000);
+                build_utxo_sat_send_payload(from.clone(), to.clone(), amount_sat, fee_sat, priv_str)
+            }
+            _ => return Err(SpectraBridgeError::from(format!(
+                "execute_send: unsupported chain_id: {}", req.chain_id
+            ))),
+        })
+    }
+
+    // ----------------------------------------------------------------
     // Fee estimate
     // ----------------------------------------------------------------
 
@@ -1351,6 +1707,21 @@ impl WalletService {
         Ok(json!({ "xpub": xpub }).to_string())
     }
 
+    /// Typed variant — returns the xpub string directly.
+    pub fn derive_bitcoin_account_xpub_typed(
+        &self,
+        mnemonic_phrase: String,
+        passphrase: String,
+        account_path: String,
+    ) -> Result<String, SpectraBridgeError> {
+        crate::derivation::utxo_hd::derive_account_xpub(
+            &mnemonic_phrase,
+            &passphrase,
+            &account_path,
+        )
+        .map_err(SpectraBridgeError::from)
+    }
+
     // ----------------------------------------------------------------
     // Bitcoin HD multi-address (xpub / ypub / zpub)
     // ----------------------------------------------------------------
@@ -1465,6 +1836,35 @@ impl WalletService {
         Ok(serde_json::to_string(&rates)?)
     }
 
+    /// Typed variant — accepts typed coin records and returns typed map directly.
+    pub async fn fetch_prices_typed(
+        &self,
+        provider: String,
+        coins: Vec<crate::price::PriceRequestCoin>,
+        api_key: String,
+    ) -> Result<std::collections::HashMap<String, f64>, SpectraBridgeError> {
+        let provider = crate::price::PriceProvider::from_str(&provider)
+            .ok_or_else(|| format!("unknown price provider: {provider}"))?;
+        let quotes = crate::price::fetch_prices(provider, &coins, &api_key)
+            .await
+            .map_err(SpectraBridgeError::from)?;
+        Ok(quotes)
+    }
+
+    /// Typed variant — accepts typed currency list and returns typed map directly.
+    pub async fn fetch_fiat_rates_typed(
+        &self,
+        provider: String,
+        currencies: Vec<String>,
+    ) -> Result<std::collections::HashMap<String, f64>, SpectraBridgeError> {
+        let provider = crate::price::FiatRateProvider::from_str(&provider)
+            .ok_or_else(|| format!("unknown fiat rate provider: {provider}"))?;
+        let rates = crate::price::fetch_fiat_rates(provider, &currencies)
+            .await
+            .map_err(SpectraBridgeError::from)?;
+        Ok(rates)
+    }
+
     // ----------------------------------------------------------------
     // EVM token balances (batch)
     // ----------------------------------------------------------------
@@ -1498,19 +1898,30 @@ impl WalletService {
         }
         let tokens: Vec<serde_json::Value> = serde_json::from_str(&tokens_json)?;
         let eps = self.endpoints_for(chain_id).await;
-        let client = EvmClient::new(eps, evm_chain_id_for(chain_id));
+        let client = Arc::new(EvmClient::new(eps, evm_chain_id_for(chain_id)));
 
-        let mut results = Vec::with_capacity(tokens.len());
-        for token in &tokens {
-            let contract = token["contract"].as_str().unwrap_or("").to_lowercase();
-            let symbol = token["symbol"].as_str().unwrap_or("?").to_string();
-            let decimals = token["decimals"].as_u64().unwrap_or(18) as u8;
-            if contract.is_empty() {
-                continue;
+        // Parse token descriptors up front, skip empty contracts.
+        let parsed: Vec<(String, String, u8)> = tokens.iter().filter_map(|t| {
+            let contract = t["contract"].as_str().unwrap_or("").to_lowercase();
+            if contract.is_empty() { return None; }
+            let symbol = t["symbol"].as_str().unwrap_or("?").to_string();
+            let decimals = t["decimals"].as_u64().unwrap_or(18) as u8;
+            Some((contract, symbol, decimals))
+        }).collect();
+
+        // Fetch all balances concurrently instead of sequentially.
+        let futs = parsed.iter().map(|(contract, _symbol, _decimals)| {
+            let client = Arc::clone(&client);
+            let contract = contract.clone();
+            let address = address.clone();
+            async move {
+                client.fetch_erc20_balance_of(&contract, &address).await.unwrap_or(0)
             }
-            let raw = client.fetch_erc20_balance_of(&contract, &address)
-                .await
-                .unwrap_or(0);
+        });
+        let balances: Vec<u128> = futures::future::join_all(futs).await;
+
+        let mut results = Vec::with_capacity(parsed.len());
+        for ((contract, symbol, decimals), raw) in parsed.into_iter().zip(balances) {
             let balance_display = {
                 let divisor = 10u128.pow(decimals as u32);
                 let whole = raw / divisor;
@@ -1649,6 +2060,78 @@ impl WalletService {
     }
 
     // ----------------------------------------------------------------
+    // Typed token-array wrappers (no JSON serialization on caller side)
+    // ----------------------------------------------------------------
+
+    pub async fn fetch_token_balances_typed(
+        &self,
+        chain_id: u32,
+        address: String,
+        tokens: Vec<TokenDescriptor>,
+    ) -> Result<String, SpectraBridgeError> {
+        let json = token_descriptors_to_json(&tokens)?;
+        self.fetch_token_balances(chain_id, address, json).await
+    }
+
+    pub async fn fetch_evm_token_balances_batch_typed(
+        &self,
+        chain_id: u32,
+        address: String,
+        tokens: Vec<TokenDescriptor>,
+    ) -> Result<Vec<TokenBalanceResult>, SpectraBridgeError> {
+        match chain_id {
+            1 | 11 | 12 | 13 | 20 | 21 | 23 | 24 => {}
+            _ => return Err(SpectraBridgeError::from(format!(
+                "fetch_evm_token_balances_batch: unsupported chain_id: {chain_id}"
+            ))),
+        }
+        let eps = self.endpoints_for(chain_id).await;
+        let client = EvmClient::new(eps, evm_chain_id_for(chain_id));
+        let mut results = Vec::with_capacity(tokens.len());
+        for t in &tokens {
+            let contract = t.contract.to_lowercase();
+            if contract.is_empty() { continue; }
+            let raw = client.fetch_erc20_balance_of(&contract, &address)
+                .await
+                .unwrap_or(0);
+            let decimals = t.decimals;
+            let balance_display = {
+                let divisor = 10u128.pow(decimals as u32);
+                let whole = raw / divisor;
+                let frac = raw % divisor;
+                if frac == 0 {
+                    whole.to_string()
+                } else {
+                    let frac_s = format!("{:0>width$}", frac, width = decimals as usize);
+                    let trimmed = frac_s.trim_end_matches('0');
+                    let capped = if trimmed.len() > 6 { &trimmed[..6] } else { trimmed };
+                    format!("{}.{}", whole, capped)
+                }
+            };
+            results.push(TokenBalanceResult {
+                contract_address: contract,
+                symbol: t.symbol.clone(),
+                decimals,
+                balance_raw: raw.to_string(),
+                balance_display,
+            });
+        }
+        Ok(results)
+    }
+
+    pub async fn fetch_evm_history_page_typed(
+        &self,
+        chain_id: u32,
+        address: String,
+        tokens: Vec<TokenDescriptor>,
+        page: u32,
+        page_size: u32,
+    ) -> Result<String, SpectraBridgeError> {
+        let json = token_descriptors_to_json_with_name(&tokens)?;
+        self.fetch_evm_history_page(chain_id, address, json, page, page_size).await
+    }
+
+    // ----------------------------------------------------------------
     // ENS resolution
     // ----------------------------------------------------------------
 
@@ -1667,6 +2150,20 @@ impl WalletService {
             .await
             .map_err(SpectraBridgeError::from)?;
         Ok(json!({ "address": address.unwrap_or_default() }).to_string())
+    }
+
+    /// Typed variant — returns the resolved address directly (empty string if not found).
+    pub async fn resolve_ens_name_typed(
+        &self,
+        name: String,
+    ) -> Result<Option<String>, SpectraBridgeError> {
+        let eps = self.endpoints_for(1).await;
+        let client = EvmClient::new(eps, 1);
+        let address = client
+            .resolve_ens(&name)
+            .await
+            .map_err(SpectraBridgeError::from)?;
+        Ok(address.filter(|a| !a.is_empty()))
     }
 
     // ----------------------------------------------------------------
@@ -1706,6 +2203,24 @@ impl WalletService {
                 let client = EvmClient::new(eps, evm_chain_id_for(chain_id));
                 let nonce = client.fetch_tx_nonce(&tx_hash).await.map_err(SpectraBridgeError::from)?;
                 Ok(json!({ "nonce": nonce }).to_string())
+            }
+            _ => Err(SpectraBridgeError::from(format!(
+                "fetch_evm_tx_nonce: unsupported chain_id: {chain_id}"
+            ))),
+        }
+    }
+
+    /// Typed variant — returns the nonce as u64 directly.
+    pub async fn fetch_evm_tx_nonce_typed(
+        &self,
+        chain_id: u32,
+        tx_hash: String,
+    ) -> Result<u64, SpectraBridgeError> {
+        let eps = self.endpoints_for(chain_id).await;
+        match chain_id {
+            1 | 11 | 12 | 13 | 20 | 21 | 23 | 24 => {
+                let client = EvmClient::new(eps, evm_chain_id_for(chain_id));
+                client.fetch_tx_nonce(&tx_hash).await.map_err(SpectraBridgeError::from)
             }
             _ => Err(SpectraBridgeError::from(format!(
                 "fetch_evm_tx_nonce: unsupported chain_id: {chain_id}"
@@ -2348,6 +2863,39 @@ impl WalletService {
         .map_err(SpectraBridgeError::from)
     }
 
+    pub async fn save_app_settings_typed(
+        &self,
+        db_path: String,
+        settings: PersistedAppSettings,
+    ) -> Result<(), SpectraBridgeError> {
+        tokio::task::spawn_blocking(move || {
+            let json = serde_json::to_string(&settings)
+                .map_err(|e| format!("save_app_settings_typed serialize: {e}"))?;
+            sqlite_save(&db_path, "app.settings.v1", &json)
+        })
+        .await
+        .map_err(|e| SpectraBridgeError::from(format!("spawn_blocking: {e}")))?
+        .map_err(SpectraBridgeError::from)
+    }
+
+    pub async fn load_app_settings_typed(
+        &self,
+        db_path: String,
+    ) -> Result<Option<PersistedAppSettings>, SpectraBridgeError> {
+        tokio::task::spawn_blocking(move || {
+            let json = sqlite_load(&db_path, "app.settings.v1")?;
+            if json == "{}" {
+                return Ok(None);
+            }
+            serde_json::from_str::<PersistedAppSettings>(&json)
+                .map(Some)
+                .map_err(|e| format!("load_app_settings_typed deserialize: {e}"))
+        })
+        .await
+        .map_err(|e| SpectraBridgeError::from(format!("spawn_blocking: {e}")))?
+        .map_err(SpectraBridgeError::from)
+    }
+
     // ----------------------------------------------------------------
     // Phase 2.1 — Relational wallet state (keypool + owned addresses)
     //
@@ -2368,6 +2916,22 @@ impl WalletService {
             let state: crate::wallet_db::KeypoolState =
                 serde_json::from_str(&state_json)
                     .map_err(|e| format!("save_keypool_state parse: {e}"))?;
+            crate::wallet_db::keypool_save(&db_path, &wallet_id, &chain_name, &state)
+        })
+        .await
+        .map_err(|e| SpectraBridgeError::from(format!("spawn_blocking: {e}")))?
+        .map_err(SpectraBridgeError::from)
+    }
+
+    /// Persist keypool state using typed record (no JSON intermediate).
+    pub async fn save_keypool_state_typed(
+        &self,
+        db_path: String,
+        wallet_id: String,
+        chain_name: String,
+        state: crate::wallet_db::KeypoolState,
+    ) -> Result<(), SpectraBridgeError> {
+        tokio::task::spawn_blocking(move || {
             crate::wallet_db::keypool_save(&db_path, &wallet_id, &chain_name, &state)
         })
         .await
@@ -2410,6 +2974,16 @@ impl WalletService {
         .await
         .map_err(|e| SpectraBridgeError::from(format!("spawn_blocking: {e}")))?
         .map_err(SpectraBridgeError::from)
+    }
+
+    pub async fn load_all_keypool_state_typed(
+        &self,
+        db_path: String,
+    ) -> Result<std::collections::HashMap<String, std::collections::HashMap<String, crate::wallet_db::KeypoolState>>, SpectraBridgeError> {
+        tokio::task::spawn_blocking(move || crate::wallet_db::keypool_load_all(&db_path))
+            .await
+            .map_err(|e| SpectraBridgeError::from(format!("spawn_blocking: {e}")))?
+            .map_err(SpectraBridgeError::from)
     }
 
     /// Remove all keypool state for a wallet (called when a wallet is deleted).
@@ -2459,6 +3033,20 @@ impl WalletService {
         .map_err(SpectraBridgeError::from)
     }
 
+    /// Upsert a single owned address record using typed record (no JSON intermediate).
+    pub async fn save_owned_address_typed(
+        &self,
+        db_path: String,
+        record: crate::wallet_db::OwnedAddressRecord,
+    ) -> Result<(), SpectraBridgeError> {
+        tokio::task::spawn_blocking(move || {
+            crate::wallet_db::address_save(&db_path, &record)
+        })
+        .await
+        .map_err(|e| SpectraBridgeError::from(format!("spawn_blocking: {e}")))?
+        .map_err(SpectraBridgeError::from)
+    }
+
     /// Load all owned addresses for a (wallet, chain) pair.
     /// Returns a JSON array of `OwnedAddressRecord` objects.
     pub async fn load_owned_addresses(
@@ -2491,6 +3079,16 @@ impl WalletService {
         .await
         .map_err(|e| SpectraBridgeError::from(format!("spawn_blocking: {e}")))?
         .map_err(SpectraBridgeError::from)
+    }
+
+    pub async fn load_all_owned_addresses_typed(
+        &self,
+        db_path: String,
+    ) -> Result<Vec<crate::wallet_db::OwnedAddressRecord>, SpectraBridgeError> {
+        tokio::task::spawn_blocking(move || crate::wallet_db::address_load_all_chains(&db_path))
+            .await
+            .map_err(|e| SpectraBridgeError::from(format!("spawn_blocking: {e}")))?
+            .map_err(SpectraBridgeError::from)
     }
 
     /// Remove all owned address records for a deleted wallet.
@@ -2572,6 +3170,16 @@ impl WalletService {
         .await
         .map_err(|e| SpectraBridgeError::from(format!("spawn_blocking: {e}")))?
         .map_err(SpectraBridgeError::from)
+    }
+
+    pub async fn fetch_all_history_records_typed(
+        &self,
+        db_path: String,
+    ) -> Result<Vec<crate::wallet_db::HistoryRecord>, SpectraBridgeError> {
+        tokio::task::spawn_blocking(move || crate::wallet_db::history_fetch_all(&db_path))
+            .await
+            .map_err(|e| SpectraBridgeError::from(format!("spawn_blocking: {e}")))?
+            .map_err(SpectraBridgeError::from)
     }
 
     /// Delete history records by a JSON array of ID strings.
@@ -2664,17 +3272,41 @@ impl WalletService {
     pub async fn upsert_wallet_json(&self, wallet_json: String) -> Result<String, SpectraBridgeError> {
         let wallet: WalletSummary = serde_json::from_str(&wallet_json)?;
         let mut state = self.wallet_state.write().await;
-        let transition = reduce_state(state.clone(), StateCommand::UpsertWallet { wallet });
-        *state = transition.state;
+        reduce_state_in_place(&mut state, StateCommand::UpsertWallet { wallet });
         Ok(serde_json::to_string(&state.wallets)?)
     }
 
     /// Remove a wallet by ID.  Returns the updated wallet list as JSON.
     pub async fn remove_wallet_json(&self, wallet_id: String) -> Result<String, SpectraBridgeError> {
         let mut state = self.wallet_state.write().await;
-        let transition = reduce_state(state.clone(), StateCommand::RemoveWallet { wallet_id });
-        *state = transition.state;
+        reduce_state_in_place(&mut state, StateCommand::RemoveWallet { wallet_id });
         Ok(serde_json::to_string(&state.wallets)?)
+    }
+
+    // ----------------------------------------------------------------
+    // Phase 3 — typed wallet state (no JSON round-trip)
+    // ----------------------------------------------------------------
+
+    /// Seed the in-memory wallet list from typed `WalletSummary` records.
+    /// Preferred over `init_wallet_state` — avoids JSON serialization overhead.
+    pub async fn init_wallet_state_direct(
+        &self,
+        wallets: Vec<WalletSummary>,
+    ) -> Result<(), SpectraBridgeError> {
+        let mut state = self.wallet_state.write().await;
+        state.wallets = wallets;
+        Ok(())
+    }
+
+    /// Add or replace a wallet from a typed `WalletSummary` record.
+    /// Preferred over `upsert_wallet_json` — avoids JSON round-trip.
+    pub async fn upsert_wallet_direct(
+        &self,
+        wallet: WalletSummary,
+    ) -> Result<(), SpectraBridgeError> {
+        let mut state = self.wallet_state.write().await;
+        reduce_state_in_place(&mut state, StateCommand::UpsertWallet { wallet });
+        Ok(())
     }
 
     /// Parse a chain-specific balance JSON blob (the same format produced by
@@ -2695,6 +3327,19 @@ impl WalletService {
             None => return Ok(None),
         };
         self.apply_native_amount_internal(wallet_id, chain_id, amount).await
+    }
+
+    pub async fn update_native_balance_typed(
+        &self,
+        wallet_id: String,
+        chain_id: u32,
+        balance_json: String,
+    ) -> Result<Option<WalletSummary>, SpectraBridgeError> {
+        let amount = match native_amount_from_balance_json(chain_id, &balance_json) {
+            Some(a) => a,
+            None => return Ok(None),
+        };
+        self.apply_native_amount_typed(wallet_id, chain_id, amount).await
     }
 
     /// Set the native balance for a wallet directly (for import-time seeding
@@ -2744,6 +3389,25 @@ impl WalletService {
         if let Some(wallet) = state.wallets.iter_mut().find(|w| w.id == wallet_id) {
             upsert_asset_holding(&mut wallet.holdings, holding);
             return Ok(Some(serde_json::to_string(wallet)?));
+        }
+        Ok(None)
+    }
+
+    async fn apply_native_amount_typed(
+        &self,
+        wallet_id: String,
+        chain_id: u32,
+        amount: f64,
+    ) -> Result<Option<WalletSummary>, SpectraBridgeError> {
+        let template = match native_coin_template(chain_id) {
+            Some(t) => t,
+            None => return Ok(None),
+        };
+        let holding = AssetHolding { amount, ..template };
+        let mut state = self.wallet_state.write().await;
+        if let Some(wallet) = state.wallets.iter_mut().find(|w| w.id == wallet_id) {
+            upsert_asset_holding(&mut wallet.holdings, holding);
+            return Ok(Some(wallet.clone()));
         }
         Ok(None)
     }
@@ -3032,8 +3696,10 @@ pub fn validate_mnemonic(phrase: String) -> bool {
 /// (2048 words, one per line, alphabetically sorted).
 #[uniffi::export]
 pub fn bip39_english_wordlist() -> String {
-    use bip39::{Language};
-    Language::English.word_list().join("\n")
+    static WORDLIST: std::sync::LazyLock<String> = std::sync::LazyLock::new(|| {
+        bip39::Language::English.word_list().join("\n")
+    });
+    WORDLIST.clone()
 }
 
 // ----------------------------------------------------------------
@@ -3052,19 +3718,15 @@ const EXPLORER_OFFSET: u32 = 200;
 impl WalletService {
     async fn endpoints_for(&self, chain_id: u32) -> Vec<String> {
         let guard = self.endpoints.read().await;
-        guard
-            .iter()
-            .find(|e| e.chain_id == chain_id)
-            .map(|e| e.endpoints.clone())
+        guard.endpoints
+            .get(&chain_id)
+            .map(|arc| (**arc).clone())
             .unwrap_or_default()
     }
 
     async fn api_key_for(&self, chain_id: u32) -> Option<String> {
         let guard = self.endpoints.read().await;
-        guard
-            .iter()
-            .find(|e| e.chain_id == chain_id)
-            .and_then(|e| e.api_key.clone())
+        guard.api_keys.get(&chain_id).cloned()
     }
 
 }
@@ -3084,6 +3746,33 @@ fn evm_chain_id_for(spectra_chain_id: u32) -> u64 {
         23 => 56,
         24 => 999,
         _ => 1,
+    }
+}
+
+/// Map a Spectra chain_id + is_token flag to the `SendChain` enum used by
+/// `classify_send_broadcast_result`.
+fn send_chain_from_chain_id(chain_id: u32, _is_token: bool) -> crate::send::payload::SendChain {
+    use crate::send::payload::SendChain;
+    match chain_id {
+        0 => SendChain::Bitcoin,
+        1 | 11 | 12 | 13 | 20 | 21 | 23 | 24 => SendChain::Ethereum,
+        2 => SendChain::Solana,
+        3 => SendChain::Dogecoin,
+        4 => SendChain::Xrp,
+        5 => SendChain::Litecoin,
+        6 => SendChain::BitcoinCash,
+        7 => SendChain::Tron,
+        8 => SendChain::Stellar,
+        9 => SendChain::Cardano,
+        10 => SendChain::Polkadot,
+        14 => SendChain::Sui,
+        15 => SendChain::Aptos,
+        16 => SendChain::Ton,
+        17 => SendChain::Near,
+        18 => SendChain::Icp,
+        19 => SendChain::Monero,
+        22 => SendChain::BitcoinSV,
+        _ => SendChain::Bitcoin, // fallback; sign_and_send will error first
     }
 }
 
@@ -3150,18 +3839,25 @@ fn simple_chain_balance_display(chain_id: u32, obj: &serde_json::Value) -> f64 {
     }
 }
 
+/// Flat struct for direct serialization — avoids the intermediate
+/// `serde_json::Value` + `Map` heap allocation that `json!()` produces.
+#[derive(Serialize)]
+struct FeePreview<'a> {
+    chain_id: u32,
+    native_fee_raw: &'a str,
+    native_fee_display: &'a str,
+    unit: &'a str,
+    source: &'a str,
+}
+
 /// Build a `fee_preview` JSON string from an integer raw amount plus
 /// decimals. Scales the raw amount down for a human-readable display field.
 fn fee_preview(chain_id: u32, raw: u128, decimals: u8, unit: &str, source: &str) -> String {
     let display = format_decimals(raw, decimals);
-    serde_json::json!({
-        "chain_id": chain_id,
-        "native_fee_raw": raw.to_string(),
-        "native_fee_display": display,
-        "unit": unit,
-        "source": source,
-    })
-    .to_string()
+    let raw_str = raw.to_string();
+    serde_json::to_string(&FeePreview {
+        chain_id, native_fee_raw: &raw_str, native_fee_display: &display, unit, source,
+    }).unwrap()
 }
 
 /// Variant that accepts pre-computed raw/display strings. Used when the raw
@@ -3173,14 +3869,9 @@ fn fee_preview_str(
     unit: &str,
     source: &str,
 ) -> String {
-    serde_json::json!({
-        "chain_id": chain_id,
-        "native_fee_raw": raw,
-        "native_fee_display": display,
-        "unit": unit,
-        "source": source,
-    })
-    .to_string()
+    serde_json::to_string(&FeePreview {
+        chain_id, native_fee_raw: raw, native_fee_display: display, unit, source,
+    }).unwrap()
 }
 
 /// Compute a UTXO capacity fee preview.
@@ -3366,45 +4057,50 @@ fn native_amount_from_balance_json(chain_id: u32, json: &str) -> Option<f64> {
 /// Return a zero-amount AssetHolding template for the native coin of each
 /// chain.  Used as the default when the holding doesn't exist yet.
 fn native_coin_template(chain_id: u32) -> Option<AssetHolding> {
-    let (name, symbol, market_data_id, coin_gecko_id, chain_name) = match chain_id {
-        0  => ("Bitcoin",           "BTC",  "1",     "bitcoin",            "Bitcoin"),
-        1  => ("Ethereum",          "ETH",  "1027",  "ethereum",           "Ethereum"),
-        2  => ("Solana",            "SOL",  "5426",  "solana",             "Solana"),
-        3  => ("Dogecoin",          "DOGE", "74",    "dogecoin",           "Dogecoin"),
-        4  => ("XRP",               "XRP",  "52",    "ripple",             "XRP Ledger"),
-        5  => ("Litecoin",          "LTC",  "2",     "litecoin",           "Litecoin"),
-        6  => ("Bitcoin Cash",      "BCH",  "1831",  "bitcoin-cash",       "Bitcoin Cash"),
-        7  => ("Tron",              "TRX",  "1958",  "tron",               "Tron"),
-        8  => ("Stellar",           "XLM",  "512",   "stellar",            "Stellar"),
-        9  => ("Cardano",           "ADA",  "2010",  "cardano",            "Cardano"),
-        10 => ("Polkadot",          "DOT",  "6636",  "polkadot",           "Polkadot"),
-        11 => ("Ethereum",          "ETH",  "1027",  "ethereum",           "Arbitrum"),
-        12 => ("Ethereum",          "ETH",  "1027",  "ethereum",           "Optimism"),
-        13 => ("Avalanche",         "AVAX", "5805",  "avalanche-2",        "Avalanche"),
-        14 => ("Sui",               "SUI",  "20947", "sui",                "Sui"),
-        15 => ("Aptos",             "APT",  "21794", "aptos",              "Aptos"),
-        16 => ("TON",               "TON",  "11419", "the-open-network",   "TON"),
-        17 => ("NEAR",              "NEAR", "6535",  "near",               "NEAR"),
-        18 => ("Internet Computer", "ICP",  "8916",  "internet-computer",  "ICP"),
-        19 => ("Monero",            "XMR",  "328",   "monero",             "Monero"),
-        20 => ("Ethereum",          "ETH",  "1027",  "ethereum",           "Base"),
-        21 => ("Ethereum Classic",  "ETC",  "1321",  "ethereum-classic",   "Ethereum Classic"),
-        22 => ("Bitcoin SV",        "BSV",  "3602",  "bitcoin-cash-sv",    "Bitcoin SV"),
-        23 => ("BNB",               "BNB",  "1839",  "binancecoin",        "BNB Chain"),
-        24 => ("Hyperliquid",       "HYPE", "32196", "hyperliquid",        "Hyperliquid"),
-        _  => return None,
-    };
-    Some(AssetHolding {
-        name: name.to_string(),
-        symbol: symbol.to_string(),
-        market_data_id: market_data_id.to_string(),
-        coin_gecko_id: coin_gecko_id.to_string(),
-        chain_name: chain_name.to_string(),
-        token_standard: "Native".to_string(),
-        contract_address: None,
-        amount: 0.0,
-        price_usd: 0.0,
-    })
+    static TEMPLATES: std::sync::LazyLock<std::collections::HashMap<u32, AssetHolding>> =
+        std::sync::LazyLock::new(|| {
+            let data: &[(u32, &str, &str, &str, &str, &str)] = &[
+                (0,  "Bitcoin",           "BTC",  "1",     "bitcoin",            "Bitcoin"),
+                (1,  "Ethereum",          "ETH",  "1027",  "ethereum",           "Ethereum"),
+                (2,  "Solana",            "SOL",  "5426",  "solana",             "Solana"),
+                (3,  "Dogecoin",          "DOGE", "74",    "dogecoin",           "Dogecoin"),
+                (4,  "XRP",               "XRP",  "52",    "ripple",             "XRP Ledger"),
+                (5,  "Litecoin",          "LTC",  "2",     "litecoin",           "Litecoin"),
+                (6,  "Bitcoin Cash",      "BCH",  "1831",  "bitcoin-cash",       "Bitcoin Cash"),
+                (7,  "Tron",              "TRX",  "1958",  "tron",               "Tron"),
+                (8,  "Stellar",           "XLM",  "512",   "stellar",            "Stellar"),
+                (9,  "Cardano",           "ADA",  "2010",  "cardano",            "Cardano"),
+                (10, "Polkadot",          "DOT",  "6636",  "polkadot",           "Polkadot"),
+                (11, "Ethereum",          "ETH",  "1027",  "ethereum",           "Arbitrum"),
+                (12, "Ethereum",          "ETH",  "1027",  "ethereum",           "Optimism"),
+                (13, "Avalanche",         "AVAX", "5805",  "avalanche-2",        "Avalanche"),
+                (14, "Sui",               "SUI",  "20947", "sui",                "Sui"),
+                (15, "Aptos",             "APT",  "21794", "aptos",              "Aptos"),
+                (16, "TON",               "TON",  "11419", "the-open-network",   "TON"),
+                (17, "NEAR",              "NEAR", "6535",  "near",               "NEAR"),
+                (18, "Internet Computer", "ICP",  "8916",  "internet-computer",  "ICP"),
+                (19, "Monero",            "XMR",  "328",   "monero",             "Monero"),
+                (20, "Ethereum",          "ETH",  "1027",  "ethereum",           "Base"),
+                (21, "Ethereum Classic",  "ETC",  "1321",  "ethereum-classic",   "Ethereum Classic"),
+                (22, "Bitcoin SV",        "BSV",  "3602",  "bitcoin-cash-sv",    "Bitcoin SV"),
+                (23, "BNB",               "BNB",  "1839",  "binancecoin",        "BNB Chain"),
+                (24, "Hyperliquid",       "HYPE", "32196", "hyperliquid",        "Hyperliquid"),
+            ];
+            data.iter().map(|&(id, name, sym, mid, gecko, chain)| {
+                (id, AssetHolding {
+                    name: name.to_string(),
+                    symbol: sym.to_string(),
+                    market_data_id: mid.to_string(),
+                    coin_gecko_id: gecko.to_string(),
+                    chain_name: chain.to_string(),
+                    token_standard: "Native".to_string(),
+                    contract_address: None,
+                    amount: 0.0,
+                    price_usd: 0.0,
+                })
+            }).collect()
+        });
+    TEMPLATES.get(&chain_id).cloned()
 }
 
 /// Upsert a holding by (chain_name, contract_address) for tokens or
@@ -3447,4 +4143,33 @@ fn sqlite_save(db_path: &str, key: &str, value: &str) -> Result<(), String> {
     )
     .map_err(|e| format!("sqlite save: {e}"))?;
     Ok(())
+}
+
+fn token_descriptors_to_json(tokens: &[TokenDescriptor]) -> Result<String, SpectraBridgeError> {
+    let arr: Vec<serde_json::Value> = tokens
+        .iter()
+        .map(|t| {
+            serde_json::json!({
+                "contract": t.contract,
+                "symbol": t.symbol,
+                "decimals": t.decimals,
+            })
+        })
+        .collect();
+    serde_json::to_string(&arr).map_err(|e| SpectraBridgeError::from(e.to_string()))
+}
+
+fn token_descriptors_to_json_with_name(tokens: &[TokenDescriptor]) -> Result<String, SpectraBridgeError> {
+    let arr: Vec<serde_json::Value> = tokens
+        .iter()
+        .map(|t| {
+            serde_json::json!({
+                "contract": t.contract,
+                "symbol": t.symbol,
+                "name": t.name.clone().unwrap_or_default(),
+                "decimals": t.decimals,
+            })
+        })
+        .collect();
+    serde_json::to_string(&arr).map_err(|e| SpectraBridgeError::from(e.to_string()))
 }

@@ -108,7 +108,7 @@ pub struct EvmSendResult {
 }
 
 /// Balance of an ERC-20 token held at a given address.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, uniffi::Record)]
 pub struct Erc20Balance {
     /// Token contract (checksummed lowercase hex, 0x-prefixed).
     pub contract: String,
@@ -284,8 +284,8 @@ impl EvmClient {
             .unwrap_or(1_000_000_000); // 1 gwei fallback
 
         // maxFeePerGas = 2 * baseFee + priorityFee (EIP-1559 recommended).
-        let max_fee_per_gas_wei = 2 * base_fee_wei + priority_fee_wei;
-        let estimated_fee_wei = max_fee_per_gas_wei * 21_000;
+        let max_fee_per_gas_wei = base_fee_wei.saturating_mul(2).saturating_add(priority_fee_wei);
+        let estimated_fee_wei = max_fee_per_gas_wei.saturating_mul(21_000);
 
         Ok(EvmFeeEstimate {
             base_fee_wei,

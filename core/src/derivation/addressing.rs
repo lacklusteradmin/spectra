@@ -103,10 +103,19 @@ fn make_string_result(normalized_value: String) -> StringValidationResult {
     }
 }
 
+const BASE58_LUT: [bool; 128] = {
+    let mut lut = [false; 128];
+    let alphabet = b"123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz";
+    let mut i = 0;
+    while i < alphabet.len() {
+        lut[alphabet[i] as usize] = true;
+        i += 1;
+    }
+    lut
+};
+
 fn is_base58(value: &str) -> bool {
-    value.chars().all(|character| {
-        "123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz".contains(character)
-    })
+    value.bytes().all(|b| (b < 128) && BASE58_LUT[b as usize])
 }
 
 fn is_lower_hex(value: &str) -> bool {
@@ -171,8 +180,8 @@ fn validate_bitcoin_sv_address(value: &str) -> AddressValidationResult {
 }
 
 fn validate_litecoin_address(value: &str) -> AddressValidationResult {
-    let lowered = value.to_lowercase();
-    if lowered.starts_with("ltc1")
+    if value.starts_with("ltc1")
+        || value.starts_with("Ltc1")
         || value.starts_with('L')
         || value.starts_with('M')
         || value.starts_with('3')
@@ -365,12 +374,9 @@ fn validate_aptos_token_type(value: &str) -> StringValidationResult {
         };
     }
 
-    if validate_aptos_address(&normalized).is_valid {
-        return make_string_result(
-            validate_aptos_address(&normalized)
-                .normalized_value
-                .unwrap_or(normalized),
-        );
+    let addr_result = validate_aptos_address(&normalized);
+    if addr_result.is_valid {
+        return make_string_result(addr_result.normalized_value.unwrap_or(normalized));
     }
 
     if !normalized.contains("::") {
@@ -380,13 +386,8 @@ fn validate_aptos_token_type(value: &str) -> StringValidationResult {
         };
     }
 
-    let address_component = normalized
-        .split("::")
-        .next()
-        .unwrap_or_default()
-        .to_string();
-    let validated_address = validate_aptos_address(&address_component);
-    if !validated_address.is_valid {
+    let address_component = normalized.split("::").next().unwrap_or_default();
+    if !validate_aptos_address(address_component).is_valid {
         return StringValidationResult {
             is_valid: false,
             normalized_value: None,

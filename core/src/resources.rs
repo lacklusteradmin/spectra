@@ -1,5 +1,5 @@
 use serde::Deserialize;
-use std::collections::BTreeMap;
+use std::collections::HashMap;
 use std::sync::OnceLock;
 
 #[derive(Debug, Clone, Deserialize, PartialEq, Eq)]
@@ -40,8 +40,8 @@ static STATIC_TEXT_RESOURCES: &[EmbeddedTextResource] = &[EmbeddedTextResource {
     text: include_str!("../embedded/BIP39EnglishWordList.txt"),
 }];
 
-static JSON_RESOURCE_MAP: OnceLock<BTreeMap<String, &'static str>> = OnceLock::new();
-static TEXT_RESOURCE_MAP: OnceLock<BTreeMap<String, &'static str>> = OnceLock::new();
+static JSON_RESOURCE_MAP: OnceLock<HashMap<&'static str, &'static str>> = OnceLock::new();
+static TEXT_RESOURCE_MAP: OnceLock<HashMap<&'static str, &'static str>> = OnceLock::new();
 
 pub fn static_json_resource(name: &str) -> Option<&'static str> {
     json_resource_map().get(name).copied()
@@ -51,20 +51,20 @@ pub fn static_text_resource(name: &str) -> Option<&'static str> {
     text_resource_map().get(name).copied()
 }
 
-fn json_resource_map() -> &'static BTreeMap<String, &'static str> {
+fn json_resource_map() -> &'static HashMap<&'static str, &'static str> {
     JSON_RESOURCE_MAP.get_or_init(|| {
         STATIC_JSON_RESOURCES
             .iter()
-            .map(|resource| (resource.name.to_string(), resource.json))
+            .map(|resource| (resource.name, resource.json))
             .collect()
     })
 }
 
-fn text_resource_map() -> &'static BTreeMap<String, &'static str> {
+fn text_resource_map() -> &'static HashMap<&'static str, &'static str> {
     TEXT_RESOURCE_MAP.get_or_init(|| {
         STATIC_TEXT_RESOURCES
             .iter()
-            .map(|resource| (resource.name.to_string(), resource.text))
+            .map(|resource| (resource.name, resource.text))
             .collect()
     })
 }

@@ -20,7 +20,7 @@ pub trait BalanceObserver: Send + Sync {
 ///
 /// For Bitcoin HD wallets: set `address` to the xpub/ypub/zpub.
 /// `WalletService::fetch_balance_auto` detects extended keys automatically.
-#[derive(Debug, Clone, serde::Deserialize)]
+#[derive(Debug, Clone, serde::Deserialize, uniffi::Record)]
 pub struct RefreshEntry {
     pub chain_id: u32,
     pub wallet_id: String,

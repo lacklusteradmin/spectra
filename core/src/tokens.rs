@@ -4,7 +4,7 @@
 //! Call [`list_tokens_json`] to get a JSON array of token entries for a given
 //! chain_id (or all chains when `chain_id == u32::MAX`).
 
-use once_cell::sync::Lazy;
+use std::sync::LazyLock;
 use serde::{Deserialize, Serialize};
 
 // Embedded at compile time — no bundle dependency at runtime.
@@ -59,7 +59,7 @@ pub struct TokenEntry {
 // Static catalog
 // ----------------------------------------------------------------
 
-static CATALOG: Lazy<Vec<TokenEntry>> = Lazy::new(|| {
+static CATALOG: LazyLock<Vec<TokenEntry>> = LazyLock::new(|| {
     let parsed: TomlFile = toml::from_str(TOKENS_TOML)
         .expect("tokens.toml is embedded at compile time and must be valid TOML");
     parsed
@@ -88,13 +88,32 @@ static CATALOG: Lazy<Vec<TokenEntry>> = Lazy::new(|| {
 
 /// Return all token entries as a JSON array.
 /// Pass `chain_id = u32::MAX` to get every chain.
+/// Results are cached — the catalog is immutable after init.
 pub fn list_tokens_json(chain_id: u32) -> String {
+    use std::collections::HashMap;
+    use std::sync::RwLock;
+
+    static CACHE: std::sync::LazyLock<RwLock<HashMap<u32, String>>> =
+        std::sync::LazyLock::new(|| RwLock::new(HashMap::new()));
+
+    // Fast path: already cached.
+    if let Ok(map) = CACHE.read() {
+        if let Some(cached) = map.get(&chain_id) {
+            return cached.clone();
+        }
+    }
+
+    // Slow path: serialize once, cache.
     let entries: Vec<&TokenEntry> = if chain_id == u32::MAX {
         CATALOG.iter().collect()
     } else {
         CATALOG.iter().filter(|t| t.chain_id == chain_id).collect()
     };
-    serde_json::to_string(&entries).unwrap_or_else(|_| "[]".to_string())
+    let json = serde_json::to_string(&entries).unwrap_or_else(|_| "[]".to_string());
+    if let Ok(mut map) = CACHE.write() {
+        map.insert(chain_id, json.clone());
+    }
+    json
 }
 
 /// Return a reference to the static catalog slice.

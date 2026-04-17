@@ -72,7 +72,7 @@ impl FiatRateProvider {
 /// identifier returned in the quote map, `symbol` is the ticker used by
 /// symbol-indexed providers (Binance, Coinbase), `coin_gecko_id` is used
 /// by the id-indexed providers (CoinGecko, CoinPaprika, CoinLore).
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, uniffi::Record)]
 #[serde(rename_all = "camelCase")]
 pub struct PriceRequestCoin {
     pub holding_key: String,
@@ -414,7 +414,7 @@ async fn fetch_coinpaprika_quotes(coins: &[PriceRequestCoin]) -> Result<PriceQuo
         // Try the gecko-id → paprika-id lookup first, then fall back to
         // the symbol index.
         if let Some(id) = paprika_id_for(&coin.coin_gecko_id, &coin.symbol) {
-            if let Some(ticker) = by_id.get(&id) {
+            if let Some(ticker) = by_id.get(id) {
                 if let Some(price) = ticker.quotes.as_ref().and_then(|q| q.usd.as_ref()?.price) {
                     if price > 0.0 {
                         resolved.insert(coin.holding_key.clone(), price);
@@ -436,96 +436,103 @@ async fn fetch_coinpaprika_quotes(coins: &[PriceRequestCoin]) -> Result<PriceQuo
     Ok(resolved)
 }
 
-fn paprika_id_for(gecko_id: &str, symbol: &str) -> Option<String> {
-    let gecko = gecko_id.trim().to_lowercase();
-    let gecko_lookup: &[(&str, &str)] = &[
-        ("bitcoin", "btc-bitcoin"),
-        ("ethereum", "eth-ethereum"),
-        ("optimism", "op-optimism"),
-        ("binancecoin", "bnb-binance-coin"),
-        ("bitcoin-cash", "bch-bitcoin-cash"),
-        ("bitcoin-cash-sv", "bsv-bitcoin-sv"),
-        ("litecoin", "ltc-litecoin"),
-        ("dogecoin", "doge-dogecoin"),
-        ("cardano", "ada-cardano"),
-        ("solana", "sol-solana"),
-        ("tron", "trx-tron"),
-        ("stellar", "xlm-stellar"),
-        ("ripple", "xrp-xrp"),
-        ("xrp", "xrp-xrp"),
-        ("monero", "xmr-monero"),
-        ("ethereum-classic", "etc-ethereum-classic"),
-        ("sui", "sui-sui"),
-        ("internet-computer", "icp-internet-computer"),
-        ("near", "near-near-protocol"),
-        ("polkadot", "dot-polkadot-token"),
-        ("hyperliquid", "hype-hyperliquid"),
-        ("tether", "usdt-tether"),
-        ("usd-coin", "usdc-usd-coin"),
-        ("dai", "dai-dai"),
-        ("wrapped-bitcoin", "wbtc-wrapped-bitcoin"),
-        ("chainlink", "link-chainlink"),
-        ("uniswap", "uni-uniswap"),
-        ("aave", "aave-aave"),
-        ("shiba-inu", "shib-shiba-inu"),
-        ("pepe", "pepe-pepe"),
-        ("bitget-token", "bgb-bitget-token"),
-        ("leo-token", "leo-unus-sed-leo"),
-        ("cronos", "cro-cronos"),
-        ("ethena-usde", "usde-ethena-usde"),
-        ("ripple-usd", "rlusd-ripple-usd"),
-        ("pax-gold", "paxg-pax-gold"),
-        ("tether-gold", "xaut-tether-gold"),
-        ("usdd", "usdd-usdd"),
-        ("global-dollar", "usdg-global-dollar"),
-    ];
-    for (k, v) in gecko_lookup {
-        if *k == gecko {
-            return Some((*v).to_string());
+fn paprika_id_for(gecko_id: &str, symbol: &str) -> Option<&'static str> {
+    static GECKO_MAP: std::sync::LazyLock<HashMap<&'static str, &'static str>> =
+        std::sync::LazyLock::new(|| HashMap::from([
+            ("bitcoin", "btc-bitcoin"),
+            ("ethereum", "eth-ethereum"),
+            ("optimism", "op-optimism"),
+            ("binancecoin", "bnb-binance-coin"),
+            ("bitcoin-cash", "bch-bitcoin-cash"),
+            ("bitcoin-cash-sv", "bsv-bitcoin-sv"),
+            ("litecoin", "ltc-litecoin"),
+            ("dogecoin", "doge-dogecoin"),
+            ("cardano", "ada-cardano"),
+            ("solana", "sol-solana"),
+            ("tron", "trx-tron"),
+            ("stellar", "xlm-stellar"),
+            ("ripple", "xrp-xrp"),
+            ("xrp", "xrp-xrp"),
+            ("monero", "xmr-monero"),
+            ("ethereum-classic", "etc-ethereum-classic"),
+            ("sui", "sui-sui"),
+            ("internet-computer", "icp-internet-computer"),
+            ("near", "near-near-protocol"),
+            ("polkadot", "dot-polkadot-token"),
+            ("hyperliquid", "hype-hyperliquid"),
+            ("tether", "usdt-tether"),
+            ("usd-coin", "usdc-usd-coin"),
+            ("dai", "dai-dai"),
+            ("wrapped-bitcoin", "wbtc-wrapped-bitcoin"),
+            ("chainlink", "link-chainlink"),
+            ("uniswap", "uni-uniswap"),
+            ("aave", "aave-aave"),
+            ("shiba-inu", "shib-shiba-inu"),
+            ("pepe", "pepe-pepe"),
+            ("bitget-token", "bgb-bitget-token"),
+            ("leo-token", "leo-unus-sed-leo"),
+            ("cronos", "cro-cronos"),
+            ("ethena-usde", "usde-ethena-usde"),
+            ("ripple-usd", "rlusd-ripple-usd"),
+            ("pax-gold", "paxg-pax-gold"),
+            ("tether-gold", "xaut-tether-gold"),
+            ("usdd", "usdd-usdd"),
+            ("global-dollar", "usdg-global-dollar"),
+        ]));
+    static SYMBOL_MAP: std::sync::LazyLock<HashMap<&'static str, &'static str>> =
+        std::sync::LazyLock::new(|| HashMap::from([
+            ("BTC", "btc-bitcoin"),
+            ("ETH", "eth-ethereum"),
+            ("OP", "op-optimism"),
+            ("BNB", "bnb-binance-coin"),
+            ("BCH", "bch-bitcoin-cash"),
+            ("BSV", "bsv-bitcoin-sv"),
+            ("LTC", "ltc-litecoin"),
+            ("DOGE", "doge-dogecoin"),
+            ("ADA", "ada-cardano"),
+            ("SOL", "sol-solana"),
+            ("TRX", "trx-tron"),
+            ("XLM", "xlm-stellar"),
+            ("XRP", "xrp-xrp"),
+            ("XMR", "xmr-monero"),
+            ("ETC", "etc-ethereum-classic"),
+            ("SUI", "sui-sui"),
+            ("ICP", "icp-internet-computer"),
+            ("NEAR", "near-near-protocol"),
+            ("DOT", "dot-polkadot-token"),
+            ("HYPE", "hype-hyperliquid"),
+            ("USDT", "usdt-tether"),
+            ("USDC", "usdc-usd-coin"),
+            ("DAI", "dai-dai"),
+            ("BGB", "bgb-bitget-token"),
+            ("LEO", "leo-unus-sed-leo"),
+            ("CRO", "cro-cronos"),
+            ("USDE", "usde-ethena-usde"),
+            ("RLUSD", "rlusd-ripple-usd"),
+            ("PAXG", "paxg-pax-gold"),
+            ("XAUT", "xaut-tether-gold"),
+            ("USDD", "usdd-usdd"),
+            ("USDG", "usdg-global-dollar"),
+        ]));
+
+    let gecko = gecko_id.trim();
+    // All keys are lowercase ASCII, so only lowercase if needed.
+    if gecko.bytes().any(|b| b.is_ascii_uppercase()) {
+        let lower = gecko.to_lowercase();
+        if let Some(v) = GECKO_MAP.get(lower.as_str()) {
+            return Some(v);
         }
+    } else if let Some(v) = GECKO_MAP.get(gecko) {
+        return Some(v);
     }
 
-    let sym = symbol.trim().to_uppercase();
-    let symbol_lookup: &[(&str, &str)] = &[
-        ("BTC", "btc-bitcoin"),
-        ("ETH", "eth-ethereum"),
-        ("OP", "op-optimism"),
-        ("BNB", "bnb-binance-coin"),
-        ("BCH", "bch-bitcoin-cash"),
-        ("BSV", "bsv-bitcoin-sv"),
-        ("LTC", "ltc-litecoin"),
-        ("DOGE", "doge-dogecoin"),
-        ("ADA", "ada-cardano"),
-        ("SOL", "sol-solana"),
-        ("TRX", "trx-tron"),
-        ("XLM", "xlm-stellar"),
-        ("XRP", "xrp-xrp"),
-        ("XMR", "xmr-monero"),
-        ("ETC", "etc-ethereum-classic"),
-        ("SUI", "sui-sui"),
-        ("ICP", "icp-internet-computer"),
-        ("NEAR", "near-near-protocol"),
-        ("DOT", "dot-polkadot-token"),
-        ("HYPE", "hype-hyperliquid"),
-        ("USDT", "usdt-tether"),
-        ("USDC", "usdc-usd-coin"),
-        ("DAI", "dai-dai"),
-        ("BGB", "bgb-bitget-token"),
-        ("LEO", "leo-unus-sed-leo"),
-        ("CRO", "cro-cronos"),
-        ("USDE", "usde-ethena-usde"),
-        ("RLUSD", "rlusd-ripple-usd"),
-        ("PAXG", "paxg-pax-gold"),
-        ("XAUT", "xaut-tether-gold"),
-        ("USDD", "usdd-usdd"),
-        ("USDG", "usdg-global-dollar"),
-    ];
-    for (k, v) in symbol_lookup {
-        if *k == sym {
-            return Some((*v).to_string());
-        }
+    let sym = symbol.trim();
+    if sym.bytes().any(|b| b.is_ascii_lowercase()) {
+        let upper = sym.to_uppercase();
+        SYMBOL_MAP.get(upper.as_str()).copied()
+    } else {
+        SYMBOL_MAP.get(sym).copied()
     }
-    None
 }
 
 // ----------------------------------------------------------------
@@ -571,7 +578,7 @@ async fn fetch_coinlore_quotes(coins: &[PriceRequestCoin]) -> Result<PriceQuoteM
         }
         let gecko = coin.coin_gecko_id.trim().to_lowercase();
         let nameid = coinlore_nameid_for(&gecko);
-        let ticker = by_nameid.get(&nameid).copied().or_else(|| {
+        let ticker = by_nameid.get(nameid).copied().or_else(|| {
             let sym = coin.symbol.trim().to_uppercase();
             by_symbol.get(&sym).copied()
         });
@@ -587,16 +594,10 @@ async fn fetch_coinlore_quotes(coins: &[PriceRequestCoin]) -> Result<PriceQuoteM
     Ok(resolved)
 }
 
-fn coinlore_nameid_for(gecko_id: &str) -> String {
-    // Only a handful of ids need remapping — everything else round-trips.
+fn coinlore_nameid_for<'a>(gecko_id: &'a str) -> &'a str {
     match gecko_id {
-        "bitcoin" => "bitcoin".to_string(),
-        "bitcoin-cash-sv" => "bitcoin-cash-sv".to_string(),
-        "polkadot" => "polkadot".to_string(),
-        "stellar" => "stellar".to_string(),
-        "tron" => "tron".to_string(),
-        "ripple" | "xrp" => "ripple".to_string(),
-        other => other.to_string(),
+        "ripple" | "xrp" => "ripple",
+        other => other,
     }
 }
 

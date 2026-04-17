@@ -1,5 +1,3 @@
-use std::collections::HashMap;
-
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, uniffi::Record)]
@@ -31,13 +29,12 @@ pub struct WalletSummary {
     pub id: String,
     pub name: String,
     pub is_watch_only: bool,
-    pub selected_chain: Option<String>,
+    pub chain_name: String,
     pub include_in_portfolio_total: bool,
-    pub bitcoin_network_mode: String,
-    pub dogecoin_network_mode: String,
-    pub bitcoin_xpub: Option<String>,
+    pub network_mode: Option<String>,
+    pub xpub: Option<String>,
     pub derivation_preset: String,
-    pub derivation_paths: HashMap<String, String>,
+    pub derivation_path: Option<String>,
     pub holdings: Vec<AssetHolding>,
     pub addresses: Vec<WalletAddress>,
 }
@@ -72,7 +69,7 @@ pub struct CoreAppState {
 impl Default for CoreAppState {
     fn default() -> Self {
         Self {
-            schema_version: 1,
+            schema_version: 2,
             wallets: Vec::new(),
             selected_wallet_id: None,
             settings: AppSettings::default(),
@@ -106,38 +103,41 @@ pub struct StateTransition {
     pub events: Vec<StateEvent>,
 }
 
-pub fn reduce_state(mut state: CoreAppState, command: StateCommand) -> StateTransition {
+/// Apply a state command in place, returning only the events.
+/// Avoids deep-cloning the entire CoreAppState on every mutation.
+pub fn reduce_state_in_place(state: &mut CoreAppState, command: StateCommand) -> Vec<StateEvent> {
     let mut events = Vec::new();
 
     match command {
         StateCommand::ReplaceState { state: next_state } => {
-            state = next_state;
+            *state = next_state;
             events.push(StateEvent {
                 kind: "stateReplaced".to_string(),
                 subject_id: None,
             });
         }
         StateCommand::UpsertWallet { wallet } => {
+            let wallet_id = wallet.id.clone();
             if let Some(index) = state
                 .wallets
                 .iter()
-                .position(|candidate| candidate.id == wallet.id)
+                .position(|candidate| candidate.id == wallet_id)
             {
-                state.wallets[index] = wallet.clone();
+                state.wallets[index] = wallet;
                 events.push(StateEvent {
                     kind: "walletUpdated".to_string(),
-                    subject_id: Some(wallet.id.clone()),
+                    subject_id: Some(wallet_id.clone()),
                 });
             } else {
-                state.wallets.push(wallet.clone());
+                state.wallets.push(wallet);
                 events.push(StateEvent {
                     kind: "walletAdded".to_string(),
-                    subject_id: Some(wallet.id.clone()),
+                    subject_id: Some(wallet_id.clone()),
                 });
             }
 
             if state.selected_wallet_id.is_none() {
-                state.selected_wallet_id = Some(wallet.id);
+                state.selected_wallet_id = Some(wallet_id);
             }
         }
         StateCommand::SelectWallet { wallet_id } => {
@@ -186,13 +186,38 @@ pub fn reduce_state(mut state: CoreAppState, command: StateCommand) -> StateTran
         }
     }
 
-    StateTransition { state, events }
+    events
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::collections::HashMap;
+
+    fn reduce_state(mut state: CoreAppState, command: StateCommand) -> StateTransition {
+        let events = reduce_state_in_place(&mut state, command);
+        StateTransition { state, events }
+    }
+
+    fn test_wallet(id: &str, chain: &str) -> WalletSummary {
+        WalletSummary {
+            id: id.to_string(),
+            name: "Main".to_string(),
+            is_watch_only: false,
+            chain_name: chain.to_string(),
+            include_in_portfolio_total: true,
+            network_mode: if chain == "Bitcoin" { Some("mainnet".to_string()) } else { None },
+            xpub: None,
+            derivation_preset: "standard".to_string(),
+            derivation_path: Some("m/84'/0'/0'/0/0".to_string()),
+            holdings: Vec::new(),
+            addresses: vec![WalletAddress {
+                chain_name: chain.to_string(),
+                address: "bc1qexample".to_string(),
+                kind: "address".to_string(),
+                derivation_path: Some("m/84'/0'/0'/0/0".to_string()),
+            }],
+        }
+    }
 
     #[test]
     fn upsert_wallet_selects_first_wallet() {
@@ -200,28 +225,7 @@ mod tests {
         let transition = reduce_state(
             state,
             StateCommand::UpsertWallet {
-                wallet: WalletSummary {
-                    id: "wallet-1".to_string(),
-                    name: "Main".to_string(),
-                    is_watch_only: false,
-                    selected_chain: Some("Bitcoin".to_string()),
-                    include_in_portfolio_total: true,
-                    bitcoin_network_mode: "mainnet".to_string(),
-                    dogecoin_network_mode: "mainnet".to_string(),
-                    bitcoin_xpub: None,
-                    derivation_preset: "standard".to_string(),
-                    derivation_paths: HashMap::from([(
-                        "Bitcoin".to_string(),
-                        "m/84'/0'/0'/0/0".to_string(),
-                    )]),
-                    holdings: Vec::new(),
-                    addresses: vec![WalletAddress {
-                        chain_name: "Bitcoin".to_string(),
-                        address: "bc1qexample".to_string(),
-                        kind: "address".to_string(),
-                        derivation_path: Some("m/84'/0'/0'/0/0".to_string()),
-                    }],
-                },
+                wallet: test_wallet("wallet-1", "Bitcoin"),
             },
         );
 
@@ -231,4 +235,5 @@ mod tests {
         );
         assert_eq!(transition.events[0].kind, "walletAdded");
     }
+
 }

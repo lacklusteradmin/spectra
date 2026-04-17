@@ -48,15 +48,23 @@ struct CoreCatalog {
 }
 
 static CORE_CATALOG: OnceLock<Result<CoreCatalog, String>> = OnceLock::new();
+static BOOTSTRAP_CACHE: OnceLock<Result<CoreBootstrap, String>> = OnceLock::new();
 
 pub fn core_bootstrap() -> Result<CoreBootstrap, String> {
+    match BOOTSTRAP_CACHE.get_or_init(build_bootstrap) {
+        Ok(bootstrap) => Ok(bootstrap.clone()),
+        Err(message) => Err(message.clone()),
+    }
+}
+
+fn build_bootstrap() -> Result<CoreBootstrap, String> {
     let catalog = core_catalog()?;
     let localization = localization_catalog()?;
     let supported_locales = localization.supported_locales();
-    let tables = LOCALIZATION_TABLES
+    let tables: Vec<String> = LOCALIZATION_TABLES
         .iter()
         .map(|table| (*table).to_string())
-        .collect::<Vec<_>>();
+        .collect();
 
     Ok(CoreBootstrap {
         capabilities: CoreCapabilities {

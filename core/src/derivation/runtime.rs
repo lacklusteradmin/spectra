@@ -105,7 +105,7 @@ struct DerivedOutput {
     private_key_hex: Option<String>,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, uniffi::Record)]
 #[serde(rename_all = "camelCase")]
 pub struct UniFFIDerivationRequest {
     // Deprecated: chain is now inferred from `address_algorithm` at parse
@@ -129,7 +129,7 @@ pub struct UniFFIDerivationRequest {
     pub salt_prefix: Option<String>,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, uniffi::Record)]
 #[serde(rename_all = "camelCase")]
 pub struct UniFFIPrivateKeyDerivationRequest {
     // Deprecated: chain is now inferred from `address_algorithm` at parse
@@ -145,15 +145,15 @@ pub struct UniFFIPrivateKeyDerivationRequest {
     pub private_key_hex: String,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, uniffi::Record)]
 #[serde(rename_all = "camelCase")]
-struct UniFFIDerivationResponse {
-    address: Option<String>,
-    public_key_hex: Option<String>,
-    private_key_hex: Option<String>,
+pub struct UniFFIDerivationResponse {
+    pub address: Option<String>,
+    pub public_key_hex: Option<String>,
+    pub private_key_hex: Option<String>,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, uniffi::Record)]
 #[serde(rename_all = "camelCase")]
 pub struct UniFFIMaterialRequest {
     // Deprecated: chain is now inferred from `address_algorithm` at parse
@@ -176,7 +176,7 @@ pub struct UniFFIMaterialRequest {
     pub salt_prefix: Option<String>,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, uniffi::Record)]
 #[serde(rename_all = "camelCase")]
 pub struct UniFFIPrivateKeyMaterialRequest {
     // Deprecated: chain is now inferred from `address_algorithm` at parse
@@ -193,15 +193,15 @@ pub struct UniFFIPrivateKeyMaterialRequest {
     pub derivation_path: String,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, uniffi::Record)]
 #[serde(rename_all = "camelCase")]
-struct UniFFIMaterialResponse {
-    address: String,
-    private_key_hex: String,
-    derivation_path: String,
-    account: u32,
-    branch: u32,
-    index: u32,
+pub struct UniFFIMaterialResponse {
+    pub address: String,
+    pub private_key_hex: String,
+    pub derivation_path: String,
+    pub account: u32,
+    pub branch: u32,
+    pub index: u32,
 }
 
 struct ParsedRequest {
@@ -427,6 +427,81 @@ pub fn derivation_build_material_from_private_key_json(
     serialize_uniffi_material_response(result)
 }
 
+#[uniffi::export]
+pub fn derivation_derive(
+    request: UniFFIDerivationRequest,
+) -> Result<UniFFIDerivationResponse, crate::SpectraBridgeError> {
+    let parsed = parse_uniffi_request(request)?;
+    let result = derive(parsed)?;
+    Ok(UniFFIDerivationResponse {
+        address: result.address,
+        public_key_hex: result.public_key_hex,
+        private_key_hex: result.private_key_hex,
+    })
+}
+
+#[uniffi::export]
+pub fn derivation_derive_from_private_key(
+    request: UniFFIPrivateKeyDerivationRequest,
+) -> Result<UniFFIDerivationResponse, crate::SpectraBridgeError> {
+    let parsed = parse_uniffi_private_key_request(request)?;
+    let result = derive_from_private_key(parsed)?;
+    Ok(UniFFIDerivationResponse {
+        address: result.address,
+        public_key_hex: result.public_key_hex,
+        private_key_hex: result.private_key_hex,
+    })
+}
+
+#[uniffi::export]
+pub fn derivation_build_material(
+    request: UniFFIMaterialRequest,
+) -> Result<UniFFIMaterialResponse, crate::SpectraBridgeError> {
+    let parsed = parse_uniffi_material_request(request)?;
+    let result = build_material(parsed)?;
+    Ok(UniFFIMaterialResponse {
+        address: result.address,
+        private_key_hex: result.private_key_hex,
+        derivation_path: result.derivation_path,
+        account: result.account,
+        branch: result.branch,
+        index: result.index,
+    })
+}
+
+#[uniffi::export]
+pub fn derivation_build_material_from_private_key(
+    request: UniFFIPrivateKeyMaterialRequest,
+) -> Result<UniFFIMaterialResponse, crate::SpectraBridgeError> {
+    let parsed = parse_uniffi_private_key_material_request(request)?;
+    let result = build_material_from_private_key(parsed)?;
+    Ok(UniFFIMaterialResponse {
+        address: result.address,
+        private_key_hex: result.private_key_hex,
+        derivation_path: result.derivation_path,
+        account: result.account,
+        branch: result.branch,
+        index: result.index,
+    })
+}
+
+#[uniffi::export]
+pub fn derivation_derive_all_addresses(
+    seed_phrase: String,
+    chain_paths: std::collections::HashMap<String, String>,
+) -> Result<std::collections::HashMap<String, String>, crate::SpectraBridgeError> {
+    let mut results = std::collections::HashMap::new();
+    for (chain_name, path) in &chain_paths {
+        if let Some(address) = derive_address_for_chain(&seed_phrase, chain_name, path)
+            .ok()
+            .flatten()
+        {
+            results.insert(chain_name.clone(), address);
+        }
+    }
+    Ok(results)
+}
+
 /// Derive addresses for multiple chains in a single call.
 ///
 /// `chain_paths_json` — JSON object mapping chain display name to derivation path:
@@ -499,6 +574,50 @@ fn derive_address_for_chain(
     Ok(output.address)
 }
 
+/// Derive full key material (address, public key, private key) for a chain.
+///
+/// Uses the same canonical defaults as `derive_address_for_chain`, but requests
+/// all three outputs so the caller can use the keys for signing.
+pub(crate) fn derive_key_material_for_chain(
+    seed_phrase: &str,
+    chain_name: &str,
+    path: &str,
+) -> Result<(String, String, String), crate::SpectraBridgeError> {
+    let (chain_id, curve, deriv_alg, addr_alg, pubkey_fmt, script_opt) =
+        chain_defaults_from_name(chain_name)
+            .ok_or_else(|| format!("unsupported chain for derivation: {chain_name}"))?;
+
+    let script = script_opt.unwrap_or_else(|| script_type_from_purpose(path));
+    let _ = chain_id;
+
+    let request = UniFFIDerivationRequest {
+        chain: None,
+        network: NETWORK_MAINNET,
+        curve,
+        requested_outputs: OUTPUT_ADDRESS | OUTPUT_PUBLIC_KEY | OUTPUT_PRIVATE_KEY,
+        derivation_algorithm: deriv_alg,
+        address_algorithm: addr_alg,
+        public_key_format: pubkey_fmt,
+        script_type: script,
+        seed_phrase: seed_phrase.to_string(),
+        derivation_path: Some(path.to_string()),
+        passphrase: None,
+        hmac_key: None,
+        mnemonic_wordlist: None,
+        iteration_count: 0,
+        salt_prefix: None,
+    };
+
+    let parsed = parse_uniffi_request(request)?;
+    let output = derive(parsed)?;
+
+    let address = output.address.ok_or("derivation did not produce address")?;
+    let pub_hex = output.public_key_hex.ok_or("derivation did not produce public key")?;
+    let priv_hex = output.private_key_hex.ok_or("derivation did not produce private key")?;
+
+    Ok((address, priv_hex, pub_hex))
+}
+
 /// Map a chain display name to its canonical algorithm defaults.
 ///
 /// Returns `(chain_id, curve, derivation_algorithm, address_algorithm, public_key_format, script_type)`.
@@ -550,6 +669,14 @@ fn chain_defaults_from_name(name: &str) -> Option<(u32, u32, u32, u32, u32, Opti
         )),
         "Hyperliquid" => Some((
             CHAIN_HYPERLIQUID, CURVE_SECP256K1, DERIVATION_BIP32_SECP256K1,
+            ADDRESS_EVM, PUBLIC_KEY_UNCOMPRESSED, Some(SCRIPT_ACCOUNT),
+        )),
+        "BNB Chain" => Some((
+            CHAIN_ETHEREUM, CURVE_SECP256K1, DERIVATION_BIP32_SECP256K1,
+            ADDRESS_EVM, PUBLIC_KEY_UNCOMPRESSED, Some(SCRIPT_ACCOUNT),
+        )),
+        "Base" => Some((
+            CHAIN_ETHEREUM, CURVE_SECP256K1, DERIVATION_BIP32_SECP256K1,
             ADDRESS_EVM, PUBLIC_KEY_UNCOMPRESSED, Some(SCRIPT_ACCOUNT),
         )),
         "Tron" => Some((

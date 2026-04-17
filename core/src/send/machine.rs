@@ -363,21 +363,17 @@ impl SendStateMachine {
         let event: SendEvent = serde_json::from_str(&event_json)
             .map_err(|e| crate::SpectraBridgeError::from(format!("bad event json: {e}")))?;
 
-        let new_state;
-        let effects;
-        {
-            let guard = self.state.lock().map_err(|_| crate::SpectraBridgeError::from("state lock poisoned"))?;
-            (new_state, effects) = transition(&guard, event);
-        }
-        {
-            let mut guard = self.state.lock().map_err(|_| crate::SpectraBridgeError::from("state lock poisoned"))?;
-            *guard = new_state.clone();
-        }
+        let mut guard = self.state.lock().map_err(|_| crate::SpectraBridgeError::from("state lock poisoned"))?;
+        let (new_state, effects) = transition(&guard, event);
+        *guard = new_state;
 
-        Ok(serde_json::json!({
-            "state": new_state,
-            "effects": effects,
-        }).to_string())
+        #[derive(Serialize)]
+        struct ApplyResult<'a> {
+            state: &'a SendState,
+            effects: &'a [SendEffect],
+        }
+        serde_json::to_string(&ApplyResult { state: &guard, effects: &effects })
+            .map_err(crate::SpectraBridgeError::from)
     }
 
     /// Return the current state as JSON.

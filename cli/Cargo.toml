@@ -10,5 +10,15 @@ path = "src/main.rs"
 
 [dependencies]
 spectra_core = { path = "../core" }
-clap = { version = "4", features = ["derive"] }
 serde_json = "1"
+serde = { version = "1", features = ["derive"] }
+dialoguer = { version = "0.11", features = ["fuzzy-select"] }
+rpassword = "7"
+uuid = { version = "1", features = ["v4"] }
+pbkdf2 = "0.12"
+sha2 = "0.10"
+rusqlite = { version = "0.31", features = ["bundled"] }
+dirs = "5"
+getrandom = "0.2"
+bip39 = { version = "2", features = ["all-languages"] }
+colored = "2"

@@ -41,80 +41,80 @@ const ENDPOINT_ROLE_RPC: u32 = 1 << 7;
 const ENDPOINT_ROLE_EXPLORER: u32 = 1 << 8;
 const ENDPOINT_ROLE_BACKEND: u32 = 1 << 9;
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, uniffi::Record)]
 #[serde(rename_all = "camelCase")]
-struct AppCoreChainPreset {
-    chain: String,
-    curve: String,
-    networks: Vec<AppCoreNetworkPreset>,
-    derivation_paths: Vec<AppCorePathPreset>,
+pub struct AppCoreChainPreset {
+    pub chain: String,
+    pub curve: String,
+    pub networks: Vec<AppCoreNetworkPreset>,
+    pub derivation_paths: Vec<AppCorePathPreset>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, uniffi::Record)]
 #[serde(rename_all = "camelCase")]
-struct AppCoreNetworkPreset {
-    network: String,
-    title: String,
-    detail: String,
-    is_default: bool,
+pub struct AppCoreNetworkPreset {
+    pub network: String,
+    pub title: String,
+    pub detail: String,
+    pub is_default: bool,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, uniffi::Record)]
 #[serde(rename_all = "camelCase")]
-struct AppCorePathPreset {
-    title: String,
-    detail: String,
-    derivation_path: String,
-    is_default: bool,
+pub struct AppCorePathPreset {
+    pub title: String,
+    pub detail: String,
+    pub derivation_path: String,
+    pub is_default: bool,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, uniffi::Record)]
 #[serde(rename_all = "camelCase")]
-struct AppCoreRequestCompilationPreset {
-    chain: String,
-    derivation_algorithm: String,
-    address_algorithm: String,
-    public_key_format: String,
-    script_policy: String,
-    fixed_script_type: Option<String>,
-    bitcoin_purpose_script_map: Option<std::collections::BTreeMap<String, String>>,
+pub struct AppCoreRequestCompilationPreset {
+    pub chain: String,
+    pub derivation_algorithm: String,
+    pub address_algorithm: String,
+    pub public_key_format: String,
+    pub script_policy: String,
+    pub fixed_script_type: Option<String>,
+    pub bitcoin_purpose_script_map: Option<std::collections::HashMap<String, String>>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, uniffi::Record)]
 #[serde(rename_all = "camelCase")]
-struct AppCoreDerivationPathResolution {
-    chain: String,
-    normalized_path: String,
-    account_index: u32,
-    flavor: String,
+pub struct AppCoreDerivationPathResolution {
+    pub chain: String,
+    pub normalized_path: String,
+    pub account_index: u32,
+    pub flavor: String,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, uniffi::Record)]
 #[serde(rename_all = "camelCase")]
-struct AppCoreSeedDerivationPaths {
-    is_custom_enabled: bool,
-    bitcoin: String,
-    bitcoin_cash: String,
-    bitcoin_sv: String,
-    litecoin: String,
-    dogecoin: String,
-    ethereum: String,
-    ethereum_classic: String,
-    arbitrum: String,
-    optimism: String,
-    avalanche: String,
-    hyperliquid: String,
-    tron: String,
-    solana: String,
-    stellar: String,
-    xrp: String,
-    cardano: String,
-    sui: String,
-    aptos: String,
-    ton: String,
-    internet_computer: String,
-    near: String,
-    polkadot: String,
+pub struct AppCoreSeedDerivationPaths {
+    pub is_custom_enabled: bool,
+    pub bitcoin: String,
+    pub bitcoin_cash: String,
+    pub bitcoin_sv: String,
+    pub litecoin: String,
+    pub dogecoin: String,
+    pub ethereum: String,
+    pub ethereum_classic: String,
+    pub arbitrum: String,
+    pub optimism: String,
+    pub avalanche: String,
+    pub hyperliquid: String,
+    pub tron: String,
+    pub solana: String,
+    pub stellar: String,
+    pub xrp: String,
+    pub cardano: String,
+    pub sui: String,
+    pub aptos: String,
+    pub ton: String,
+    pub internet_computer: String,
+    pub near: String,
+    pub polkadot: String,
 }
 
 #[derive(Debug, Clone)]
@@ -140,58 +140,58 @@ struct AppCoreEndpointRecord {
     explorer_label: Option<String>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, uniffi::Record)]
 #[serde(rename_all = "camelCase")]
-struct AppCoreGroupedSettingsEntry {
-    title: String,
-    endpoints: Vec<String>,
+pub struct AppCoreGroupedSettingsEntry {
+    pub title: String,
+    pub endpoints: Vec<String>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, uniffi::Record)]
 #[serde(rename_all = "camelCase")]
-struct AppCoreDiagnosticsCheck {
-    endpoint: String,
+pub struct AppCoreDiagnosticsCheck {
+    pub endpoint: String,
     #[serde(rename = "probeURL")]
-    probe_url: String,
+    pub probe_url: String,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, uniffi::Record)]
 #[serde(rename_all = "camelCase")]
-struct AppCoreExplorerEntry {
-    endpoint: String,
-    label: String,
+pub struct AppCoreExplorerEntry {
+    pub endpoint: String,
+    pub label: String,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, uniffi::Record)]
 #[serde(rename_all = "camelCase")]
-struct AppCoreBroadcastProviderOption {
-    id: String,
-    title: String,
+pub struct AppCoreBroadcastProviderOption {
+    pub id: String,
+    pub title: String,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, uniffi::Record)]
 #[serde(rename_all = "camelCase")]
-struct AppCoreChainBackend {
-    chain_name: String,
-    supported_symbols: Vec<String>,
-    integration_state: String,
-    supports_seed_import: bool,
-    supports_balance_refresh: bool,
-    supports_receive_address: bool,
-    supports_send: bool,
+pub struct AppCoreChainBackend {
+    pub chain_name: String,
+    pub supported_symbols: Vec<String>,
+    pub integration_state: String,
+    pub supports_seed_import: bool,
+    pub supports_balance_refresh: bool,
+    pub supports_receive_address: bool,
+    pub supports_send: bool,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, uniffi::Record)]
 #[serde(rename_all = "camelCase")]
-struct AppCoreAppChainDescriptor {
-    id: String,
-    chain_name: String,
-    short_label: String,
-    native_symbol: String,
-    search_keywords: Vec<String>,
-    supports_diagnostics: bool,
-    supports_endpoint_catalog: bool,
-    is_evm: bool,
+pub struct AppCoreAppChainDescriptor {
+    pub id: String,
+    pub chain_name: String,
+    pub short_label: String,
+    pub native_symbol: String,
+    pub search_keywords: Vec<String>,
+    pub supports_diagnostics: bool,
+    pub supports_endpoint_catalog: bool,
+    pub is_evm: bool,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -241,6 +241,42 @@ pub fn app_core_derivation_paths_for_preset_json(
     Ok(app_core_catalog().and_then(|catalog| {
         serialize_json(&seed_derivation_paths_for_account(catalog, account_index)?)
     })?)
+}
+
+#[uniffi::export]
+pub fn app_core_chain_presets() -> Result<Vec<AppCoreChainPreset>, crate::SpectraBridgeError> {
+    Ok(app_core_catalog()?.chain_presets.clone())
+}
+
+#[uniffi::export]
+pub fn app_core_request_compilation_presets() -> Result<Vec<AppCoreRequestCompilationPreset>, crate::SpectraBridgeError> {
+    Ok(app_core_catalog()?.request_compilation_presets.clone())
+}
+
+#[uniffi::export]
+pub fn app_core_resolve_derivation_path(
+    chain: u32,
+    derivation_path: String,
+) -> Result<AppCoreDerivationPathResolution, crate::SpectraBridgeError> {
+    let catalog = app_core_catalog()?;
+    let chain_name = chain_name_from_id(chain)
+        .ok_or_else(|| format!("Unsupported derivation chain identifier {chain}."))?;
+    let default_path = default_path_from_catalog(catalog, chain_name)?;
+    let normalized_path = normalize_derivation_path(&derivation_path, &default_path);
+    Ok(AppCoreDerivationPathResolution {
+        chain: chain_name.to_string(),
+        normalized_path: normalized_path.clone(),
+        account_index: resolved_account_index(chain_name, &normalized_path),
+        flavor: resolved_flavor(chain_name, &normalized_path).to_string(),
+    })
+}
+
+#[uniffi::export]
+pub fn app_core_derivation_paths_for_preset(
+    account_index: u32,
+) -> Result<AppCoreSeedDerivationPaths, crate::SpectraBridgeError> {
+    Ok(app_core_catalog()
+        .and_then(|catalog| seed_derivation_paths_for_account(catalog, account_index))?)
 }
 
 #[uniffi::export]
@@ -375,17 +411,143 @@ pub fn app_core_broadcast_provider_options_json(
 
 #[uniffi::export]
 pub fn app_core_chain_backends_json() -> Result<String, crate::SpectraBridgeError> {
-    Ok(serialize_json(&chain_backends())?)
+    static CACHED: std::sync::LazyLock<String> = std::sync::LazyLock::new(|| {
+        serialize_json(&chain_backends()).expect("chain_backends serialization is infallible")
+    });
+    Ok(CACHED.clone())
 }
 
 #[uniffi::export]
 pub fn app_core_live_chain_names_json() -> Result<String, crate::SpectraBridgeError> {
-    Ok(serialize_json(&live_chain_names())?)
+    static CACHED: std::sync::LazyLock<String> = std::sync::LazyLock::new(|| {
+        serialize_json(&live_chain_names()).expect("live_chain_names serialization is infallible")
+    });
+    Ok(CACHED.clone())
 }
 
 #[uniffi::export]
 pub fn app_core_app_chain_descriptors_json() -> Result<String, crate::SpectraBridgeError> {
-    Ok(serialize_json(&app_chain_descriptors())?)
+    static CACHED: std::sync::LazyLock<String> = std::sync::LazyLock::new(|| {
+        serialize_json(&app_chain_descriptors()).expect("app_chain_descriptors serialization is infallible")
+    });
+    Ok(CACHED.clone())
+}
+
+// ─── Typed (non-JSON) exports ──────────────────────────────────────────────
+
+#[uniffi::export]
+pub fn app_core_endpoint_for_id(id: String) -> Result<String, crate::SpectraBridgeError> {
+    Ok(app_core_catalog()
+        .and_then(|catalog| {
+            catalog
+                .endpoint_records
+                .iter()
+                .find(|r| r.id == id)
+                .map(|r| r.endpoint.clone())
+                .ok_or_else(|| format!("Missing endpoint record for id: {id}"))
+        })?)
+}
+
+#[uniffi::export]
+pub fn app_core_endpoints_for_ids(ids: Vec<String>) -> Result<Vec<String>, crate::SpectraBridgeError> {
+    Ok(app_core_catalog().and_then(|catalog| {
+        ids.iter()
+            .map(|id| {
+                catalog
+                    .endpoint_records
+                    .iter()
+                    .find(|r| &r.id == id)
+                    .map(|r| r.endpoint.clone())
+                    .ok_or_else(|| format!("Missing endpoint record for id: {id}"))
+            })
+            .collect::<Result<Vec<_>, _>>()
+    })?)
+}
+
+#[uniffi::export]
+pub fn app_core_grouped_settings_entries(
+    chain_name: String,
+) -> Result<Vec<AppCoreGroupedSettingsEntry>, crate::SpectraBridgeError> {
+    Ok(app_core_catalog()
+        .map(|catalog| grouped_settings_entries(catalog, &chain_name))?)
+}
+
+#[uniffi::export]
+pub fn app_core_diagnostics_checks(
+    chain_name: String,
+) -> Result<Vec<AppCoreDiagnosticsCheck>, crate::SpectraBridgeError> {
+    Ok(app_core_catalog()
+        .map(|catalog| diagnostics_checks(catalog, &chain_name))?)
+}
+
+#[uniffi::export]
+pub fn app_core_transaction_explorer_entry(
+    chain_name: String,
+) -> Result<Option<AppCoreExplorerEntry>, crate::SpectraBridgeError> {
+    Ok(app_core_catalog()
+        .map(|catalog| transaction_explorer_entry(catalog, &chain_name))?)
+}
+
+#[uniffi::export]
+pub fn app_core_bitcoin_esplora_base_urls(
+    network: String,
+) -> Result<Vec<String>, crate::SpectraBridgeError> {
+    Ok(app_core_catalog()
+        .and_then(|catalog| bitcoin_esplora_base_urls(catalog, &network))?)
+}
+
+#[uniffi::export]
+pub fn app_core_bitcoin_wallet_store_default_base_urls(
+    network: String,
+) -> Result<Vec<String>, crate::SpectraBridgeError> {
+    Ok(app_core_catalog()
+        .and_then(|catalog| bitcoin_wallet_store_default_base_urls(catalog, &network))?)
+}
+
+#[uniffi::export]
+pub fn app_core_evm_rpc_endpoints(
+    chain_name: String,
+) -> Result<Vec<String>, crate::SpectraBridgeError> {
+    Ok(app_core_catalog().and_then(|catalog| {
+        Ok(endpoint_records_for_chain(catalog, &chain_name, ENDPOINT_ROLE_RPC, false)
+            .into_iter()
+            .map(|r| r.endpoint)
+            .collect())
+    })?)
+}
+
+#[uniffi::export]
+pub fn app_core_explorer_supplemental_endpoints(
+    chain_name: String,
+) -> Result<Vec<String>, crate::SpectraBridgeError> {
+    Ok(app_core_catalog().and_then(|catalog| {
+        Ok(endpoint_records_for_chain(catalog, &chain_name, ENDPOINT_ROLE_EXPLORER, true)
+            .into_iter()
+            .map(|r| r.endpoint)
+            .collect())
+    })?)
+}
+
+#[uniffi::export]
+pub fn app_core_broadcast_provider_options(
+    chain_name: String,
+) -> Vec<AppCoreBroadcastProviderOption> {
+    broadcast_provider_options(&chain_name)
+}
+
+#[uniffi::export]
+pub fn app_core_chain_backends() -> Vec<AppCoreChainBackend> {
+    chain_backends()
+}
+
+#[uniffi::export]
+pub fn app_core_live_chain_names() -> Vec<String> {
+    live_chain_names()
+}
+
+#[uniffi::export]
+pub fn app_core_app_chain_descriptors() -> Vec<AppCoreAppChainDescriptor> {
+    app_chain_descriptors()
 }
 
 fn app_core_catalog() -> Result<&'static AppCoreCatalog, String> {

@@ -1,8 +1,9 @@
 pub mod app_shell_state;
 pub mod app_state;
-pub mod migration;
+pub mod password_verifier;
 pub mod persistence;
 pub mod secret_store;
+pub mod seed_envelope;
 pub mod state;
 pub mod wallet_core;
 pub mod wallet_db;
@@ -538,13 +539,12 @@ mod tests {
             id: "wallet-1".to_string(),
             name: "Main".to_string(),
             is_watch_only: false,
-            selected_chain: Some("Bitcoin".to_string()),
+            chain_name: "Bitcoin".to_string(),
             include_in_portfolio_total: true,
-            bitcoin_network_mode: "mainnet".to_string(),
-            dogecoin_network_mode: "mainnet".to_string(),
-            bitcoin_xpub: None,
+            network_mode: Some("mainnet".to_string()),
+            xpub: None,
             derivation_preset: "standard".to_string(),
-            derivation_paths: HashMap::new(),
+            derivation_path: None,
             holdings: Vec::new(),
             addresses: Vec::new(),
         });

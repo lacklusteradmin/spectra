@@ -104,6 +104,61 @@ pub struct BroadcastReceipt {
     pub source_id: String,
 }
 
+/// Unified request for `WalletService::execute_send`.
+///
+/// Collapses the Swift→Rust→Swift→Rust trampoline into a single call by
+/// bundling derivation, payload building, and signing into one operation.
+/// Swift passes the seed phrase or private key; Rust derives the signing key
+/// material, builds the chain-specific payload, signs, and broadcasts.
+#[derive(Debug, Clone, uniffi::Record)]
+pub struct SendExecutionRequest {
+    /// Spectra chain ID matching `sign_and_send` routing (0 = BTC, 1 = ETH, …).
+    pub chain_id: u32,
+    /// Chain display name for derivation lookup ("Bitcoin", "Ethereum", …).
+    pub chain_name: String,
+    /// BIP-32/SLIP-10 derivation path (e.g. "m/84'/0'/0'/0/0").
+    pub derivation_path: String,
+    /// Seed phrase for HD derivation (mutually exclusive with `private_key_hex`).
+    pub seed_phrase: Option<String>,
+    /// Raw private key hex for non-HD wallets (mutually exclusive with `seed_phrase`).
+    pub private_key_hex: Option<String>,
+    /// Source/sender address.
+    pub from_address: String,
+    /// Destination/recipient address.
+    pub to_address: String,
+    /// Human-scale amount (e.g. 0.5 BTC, 1.0 ETH).
+    pub amount: f64,
+    // ── Token-specific ──────────────────────────────────────────────────
+    /// Contract/mint address for token sends (ERC-20, SPL, TRC-20, NEP-141).
+    pub contract_address: Option<String>,
+    /// Token decimals for raw-unit conversion.
+    pub token_decimals: Option<u32>,
+    // ── Chain-specific optional fields ───────────────────────────────────
+    /// BTC fee rate in sat/vB.
+    pub fee_rate_svb: Option<f64>,
+    /// UTXO fee in satoshis (BCH, BSV, LTC, DOGE).
+    pub fee_sat: Option<u64>,
+    /// Sui gas budget in SUI.
+    pub gas_budget: Option<f64>,
+    /// Cardano fee in ADA.
+    pub fee_amount: Option<f64>,
+    /// EVM overrides JSON fragment (nonce, custom gas fees).
+    pub evm_overrides_fragment: Option<String>,
+    /// Monero priority level.
+    pub monero_priority: Option<u32>,
+}
+
+/// Result from `WalletService::execute_send`.
+#[derive(Debug, Clone, uniffi::Record)]
+pub struct SendExecutionResult {
+    /// Raw JSON result from the chain signer/broadcaster.
+    pub result_json: String,
+    /// Extracted transaction hash/ID.
+    pub transaction_hash: String,
+    /// Payload format key (e.g. "bitcoin.rust_json").
+    pub payload_format: String,
+}
+
 pub trait TransferPlanner: Send + Sync {
     fn build_plan(&self, request: &TransferRequest) -> Result<TransferPlan, String>;
 }

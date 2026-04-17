@@ -1,5 +1,7 @@
 use serde::{Deserialize, Serialize};
 
+use super::addressing::{validate_address, AddressValidationRequest};
+
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, uniffi::Record)]
 #[serde(rename_all = "camelCase")]
 pub struct WalletImportAddresses {
@@ -589,6 +591,186 @@ fn trim_optional(value: Option<&str>) -> Option<&str> {
             Some(trimmed)
         }
     })
+}
+
+// ── Import draft validation (replaces Swift-side canImportWallet) ──
+
+#[derive(Debug, Clone, uniffi::Record)]
+pub struct WalletImportDraftValidationRequest {
+    pub selected_chain_names: Vec<String>,
+    pub is_watch_only: bool,
+    pub is_private_key_import: bool,
+    pub is_editing: bool,
+    pub is_create_mode: bool,
+    pub has_valid_wallet_name: bool,
+    pub has_valid_seed_phrase: bool,
+    pub has_valid_private_key_hex: bool,
+    pub is_backup_verification_complete: bool,
+    pub requires_backup_verification: bool,
+    pub watch_only_entries: WalletImportWatchOnlyEntries,
+}
+
+pub fn validate_wallet_import_draft(request: WalletImportDraftValidationRequest) -> bool {
+    if request.is_editing {
+        return request.has_valid_wallet_name;
+    }
+
+    let has_chains = !request.selected_chain_names.is_empty();
+
+    if request.is_create_mode {
+        return has_chains
+            && request.has_valid_seed_phrase
+            && request.is_backup_verification_complete;
+    }
+
+    // Mode compatibility
+    if request.is_watch_only
+        && request
+            .selected_chain_names
+            .iter()
+            .any(|n| n == "Monero")
+    {
+        return false;
+    }
+    if request.is_private_key_import {
+        if request.selected_chain_names.len() != 1 {
+            return false;
+        }
+        if request
+            .selected_chain_names
+            .iter()
+            .any(|n| !is_private_key_chain_supported(n))
+        {
+            return false;
+        }
+    }
+    if request.is_watch_only && request.selected_chain_names.len() != 1 {
+        return false;
+    }
+
+    // Watch-only address validation
+    if request.is_watch_only {
+        if !validate_watch_only_draft_addresses(&request.selected_chain_names, &request.watch_only_entries) {
+            return false;
+        }
+    }
+
+    // Secret validation
+    if !request.is_watch_only && !request.is_private_key_import && !request.has_valid_seed_phrase {
+        return false;
+    }
+    if request.is_private_key_import && !request.has_valid_private_key_hex {
+        return false;
+    }
+
+    let is_backup_verified = request.is_watch_only
+        || !request.requires_backup_verification
+        || request.is_backup_verification_complete;
+
+    has_chains && is_backup_verified
+}
+
+fn is_private_key_chain_supported(chain_name: &str) -> bool {
+    matches!(
+        chain_name,
+        "Bitcoin"
+            | "Bitcoin Cash"
+            | "Bitcoin SV"
+            | "Litecoin"
+            | "Dogecoin"
+            | "Ethereum"
+            | "Ethereum Classic"
+            | "Arbitrum"
+            | "Optimism"
+            | "BNB Chain"
+            | "Avalanche"
+            | "Hyperliquid"
+            | "Tron"
+            | "Solana"
+            | "Cardano"
+            | "Stellar"
+            | "XRP Ledger"
+            | "Sui"
+            | "Aptos"
+            | "TON"
+            | "Internet Computer"
+            | "NEAR"
+            | "Polkadot"
+    )
+}
+
+fn validate_watch_only_draft_addresses(
+    selected_chains: &[String],
+    entries: &WalletImportWatchOnlyEntries,
+) -> bool {
+    for chain in selected_chains {
+        let (kind, addresses, xpub_fallback) = match chain.as_str() {
+            "Bitcoin" => ("bitcoin", &entries.bitcoin_addresses, entries.bitcoin_xpub.as_deref()),
+            "Bitcoin Cash" => ("bitcoinCash", &entries.bitcoin_cash_addresses, None),
+            "Bitcoin SV" => ("bitcoinSV", &entries.bitcoin_sv_addresses, None),
+            "Litecoin" => ("litecoin", &entries.litecoin_addresses, None),
+            "Dogecoin" => ("dogecoin", &entries.dogecoin_addresses, None),
+            "Ethereum" | "Ethereum Classic" | "Arbitrum" | "Optimism" | "BNB Chain"
+            | "Avalanche" | "Hyperliquid" => ("evm", &entries.ethereum_addresses, None),
+            "Tron" => ("tron", &entries.tron_addresses, None),
+            "Solana" => ("solana", &entries.solana_addresses, None),
+            "XRP Ledger" => ("xrp", &entries.xrp_addresses, None),
+            "Stellar" => ("stellar", &entries.stellar_addresses, None),
+            "Monero" => return false, // Monero doesn't support watch-only
+            "Cardano" => ("cardano", &entries.cardano_addresses, None),
+            "Sui" => ("sui", &entries.sui_addresses, None),
+            "Aptos" => ("aptos", &entries.aptos_addresses, None),
+            "TON" => ("ton", &entries.ton_addresses, None),
+            "Internet Computer" => ("internetComputer", &entries.icp_addresses, None),
+            "NEAR" => ("near", &entries.near_addresses, None),
+            "Polkadot" => ("polkadot", &entries.polkadot_addresses, None),
+            _ => return false,
+        };
+
+        // Must have at least one address (or xpub for Bitcoin)
+        let has_xpub = xpub_fallback
+            .map(|x| {
+                let t = x.trim();
+                t.starts_with("xpub") || t.starts_with("ypub") || t.starts_with("zpub")
+            })
+            .unwrap_or(false);
+
+        if addresses.is_empty() && !has_xpub {
+            return false;
+        }
+
+        // Validate each address (Bitcoin xpub skips per-address validation)
+        if !has_xpub || !addresses.is_empty() {
+            for addr in addresses {
+                let result = validate_address(AddressValidationRequest {
+                    kind: kind.to_string(),
+                    value: addr.clone(),
+                    network_mode: None,
+                });
+                if !result.is_valid {
+                    // Bitcoin addresses can be any network for watch-only
+                    if kind == "bitcoin" {
+                        let testnet = validate_address(AddressValidationRequest {
+                            kind: kind.to_string(),
+                            value: addr.clone(),
+                            network_mode: Some("testnet".to_string()),
+                        });
+                        let signet = validate_address(AddressValidationRequest {
+                            kind: kind.to_string(),
+                            value: addr.clone(),
+                            network_mode: Some("signet".to_string()),
+                        });
+                        if !testnet.is_valid && !signet.is_valid {
+                            return false;
+                        }
+                    } else {
+                        return false;
+                    }
+                }
+            }
+        }
+    }
+    true
 }
 
 #[cfg(test)]

@@ -247,8 +247,8 @@ impl BitcoinSvClient {
             async move {
                 let url = format!("{}/tx/hash/{}", base.trim_end_matches('/'), txid);
                 let tx: WocTxDetail = client.get_json(&url, RetryProfile::ChainRead).await?;
-                let confirmed = tx.blockheight.map(|h| h > 0).unwrap_or(false);
-                let block_height = tx.blockheight.filter(|&h| h > 0).map(|h| h as u64);
+                let confirmed = tx.blockheight.map(|h| h >= 0).unwrap_or(false);
+                let block_height = tx.blockheight.filter(|&h| h >= 0).map(|h| h as u64);
                 let block_time = tx.blocktime.or(tx.time);
                 Ok(super::bitcoin::UtxoTxStatus {
                     txid: txid.clone(),

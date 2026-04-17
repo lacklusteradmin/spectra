@@ -446,18 +446,6 @@ fn parse_dot_balance(s: &str) -> u128 {
     whole * 10_000_000_000 + frac
 }
 
-#[allow(dead_code)]
-fn format_dot(planck: u128) -> String {
-    let whole = planck / 10_000_000_000;
-    let frac = planck % 10_000_000_000;
-    if frac == 0 {
-        return whole.to_string();
-    }
-    let frac_str = format!("{:010}", frac);
-    let trimmed = frac_str.trim_end_matches('0');
-    format!("{}.{}", whole, trimmed)
-}
-
 pub fn validate_polkadot_address(address: &str) -> bool {
     decode_ss58(address).is_ok()
 }
