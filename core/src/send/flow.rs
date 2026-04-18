@@ -28,6 +28,25 @@ pub fn compute_background_maintenance_interval(
 }
 
 #[uniffi::export]
+pub fn active_pending_refresh_interval_for_profile(
+    background_sync_profile: String,
+    balanced_interval: f64,
+) -> f64 {
+    match background_sync_profile.as_str() {
+        "conservative" => 30.0,
+        "aggressive" => 10.0,
+        _ => balanced_interval,
+    }
+}
+
+#[uniffi::export]
+pub fn portfolio_composition_signature(holding_keys: Vec<String>) -> String {
+    let mut sorted = holding_keys;
+    sorted.sort();
+    sorted.join("|")
+}
+
+#[uniffi::export]
 pub fn evaluate_heavy_refresh_gate(
     background_sync_profile: String,
     is_network_reachable: bool,

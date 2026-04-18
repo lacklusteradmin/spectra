@@ -79,31 +79,6 @@ struct ChainInfo {
     default_path: String,
 }
 
-#[derive(Debug, Clone, Deserialize)]
-#[serde(rename_all = "camelCase")]
-struct ChainPresetRaw {
-    chain: String,
-    networks: Vec<NetworkPresetRaw>,
-    derivation_paths: Vec<PathPresetRaw>,
-}
-
-#[derive(Debug, Clone, Deserialize)]
-#[serde(rename_all = "camelCase")]
-struct NetworkPresetRaw {
-    network: String,
-    title: String,
-    detail: String,
-    is_default: bool,
-}
-
-#[derive(Debug, Clone, Deserialize)]
-#[serde(rename_all = "camelCase")]
-struct PathPresetRaw {
-    title: String,
-    derivation_path: String,
-    is_default: bool,
-}
-
 fn supported_chains() -> Vec<ChainInfo> {
     let bootstrap = spectra_core::catalog::core_bootstrap()
         .expect("failed to load chain catalog");
@@ -119,9 +94,8 @@ fn supported_chains() -> Vec<ChainInfo> {
         .collect()
 }
 
-fn load_chain_presets() -> Vec<ChainPresetRaw> {
-    const PRESETS_JSON: &str = include_str!("../../swift/derivation/DerivationPresets.json");
-    serde_json::from_str(PRESETS_JSON).expect("failed to parse chain presets")
+fn load_chain_presets() -> Vec<spectra_core::AppCoreChainPreset> {
+    spectra_core::app_core_chain_presets().expect("failed to load chain presets from core")
 }
 
 fn chain_color(chain: &str) -> colored::Color {
@@ -176,7 +150,11 @@ fn read_secret(prompt: &str) -> String {
 }
 
 fn print_prompt() {
-    print!("{} ", "spectra>".cyan().bold());
+    print!("{}{}{} ",
+        "╭─[".bright_black(),
+        "spectra".cyan().bold(),
+        "]─❯".bright_black(),
+    );
     io::stdout().flush().ok();
 }
 
@@ -236,10 +214,77 @@ fn print_banner() {
     println!();
 }
 
+// ─── Section banners ─────────────────────────────────────────────────────────
+
+fn print_wallet_art(title: &str, subtitle: &str) {
+    // Small wallet pictogram — pure ASCII boxes.
+    let art = [
+        "   ╔═══════════════════════╗   ",
+        "   ║  ┌───────────────┐    ║   ",
+        "   ║  │  0x4A3F  ●●●  │◈   ║   ",
+        "   ║  └───────────────┘    ║   ",
+        "   ╚═══════════════════════╝   ",
+    ];
+    println!();
+    for line in &art {
+        println!("  {}", line.cyan());
+    }
+    println!();
+    println!("  {}  {}",
+        format!("[ {} ]", title).bright_cyan().bold(),
+        subtitle.dimmed(),
+    );
+    println!("  {}", "─".repeat(52).dimmed());
+    println!();
+}
+
+fn print_key_art(title: &str, subtitle: &str) {
+    // Stylized key glyph for the new-wallet flow.
+    let art = [
+        "       ╭──╮  ╭╮╭╮╭╮                       ",
+        "       │▓▓│━━│││││││━━━━●                  ",
+        "       ╰──╯  ╰╯╰╯╰╯                       ",
+    ];
+    println!();
+    for line in &art {
+        println!("  {}", line.yellow());
+    }
+    println!();
+    println!("  {}  {}",
+        format!("[ {} ]", title).bright_yellow().bold(),
+        subtitle.dimmed(),
+    );
+    println!("  {}", "─".repeat(52).dimmed());
+    println!();
+}
+
+fn print_eye_art(title: &str, subtitle: &str) {
+    // Eye for watch-only flow.
+    let art = [
+        "         ╭───────────╮                     ",
+        "        ╱    ╭───╮    ╲                    ",
+        "       ▏   ╱ ◉ ◉ ╲   ▕                    ",
+        "        ╲    ╰───╯    ╱                    ",
+        "         ╰───────────╯                     ",
+    ];
+    println!();
+    for line in &art {
+        println!("  {}", line.magenta());
+    }
+    println!();
+    println!("  {}  {}",
+        format!("[ {} ]", title).bright_magenta().bold(),
+        subtitle.dimmed(),
+    );
+    println!("  {}", "─".repeat(52).dimmed());
+    println!();
+}
+
 // ─── Commands ────────────────────────────────────────────────────────────────
 
 fn cmd_import(args: &[&str]) {
     ensure_dirs();
+    print_wallet_art("SIMPLE IMPORT", "restore wallet from seed phrase");
 
     let mut chain_arg: Option<String> = None;
     let mut name_arg: Option<String> = None;
@@ -408,7 +453,7 @@ fn cmd_import(args: &[&str]) {
     save_store(&store);
 
     println!();
-    println!("  {} Wallet imported.", "OK".green().bold());
+    println!("  {} {}", "[ OK ]".green().bold(), "Wallet imported.".white().bold());
     println!("  {} {}", "Name:".dimmed(), wallet_name.white().bold());
     println!("  {} {}", "Chain:".dimmed(), selected.name.color(chain_color(&selected.name)));
     println!("  {} {}", "Path:".dimmed(), selected.default_path.dimmed());
@@ -419,6 +464,7 @@ fn cmd_import(args: &[&str]) {
 
 fn cmd_advimport() {
     ensure_dirs();
+    print_wallet_art("ADVANCED IMPORT", "custom network & derivation path");
 
     let presets = load_chain_presets();
     if presets.is_empty() {
@@ -643,7 +689,7 @@ fn cmd_advimport() {
     save_store(&store);
 
     println!();
-    println!("  {} Wallet imported.", "OK".green().bold());
+    println!("  {} {}", "[ OK ]".green().bold(), "Wallet imported.".white().bold());
     println!("  {} {}", "Name:".dimmed(), wallet_name.white().bold());
     println!("  {} {}", "Chain:".dimmed(), preset.chain.color(chain_color(&preset.chain)));
     if let Some(ref net) = network {
@@ -657,6 +703,7 @@ fn cmd_advimport() {
 
 fn cmd_newwallet() {
     ensure_dirs();
+    print_key_art("NEW WALLET", "generate fresh keys & seed phrase");
 
     let chains = supported_chains();
     if chains.is_empty() {
@@ -821,7 +868,7 @@ fn cmd_newwallet() {
     save_store(&store);
 
     println!();
-    println!("  {} Wallet created.", "OK".green().bold());
+    println!("  {} {}", "[ OK ]".green().bold(), "Wallet created.".white().bold());
     println!("  {} {}", "Name:".dimmed(), wallet_name.white().bold());
     println!("  {} {}", "Chain:".dimmed(), selected.name.color(chain_color(&selected.name)));
     println!("  {} {}", "Path:".dimmed(), selected.default_path.dimmed());
@@ -832,6 +879,7 @@ fn cmd_newwallet() {
 
 fn cmd_wimport() {
     ensure_dirs();
+    print_eye_art("WATCH IMPORT", "read-only tracking by address");
 
     let chains = supported_chains();
     if chains.is_empty() {
@@ -894,7 +942,7 @@ fn cmd_wimport() {
     save_store(&store);
 
     println!();
-    println!("  {} Watch-only wallet added.", "OK".green().bold());
+    println!("  {} {}", "[ OK ]".green().bold(), "Watch-only wallet added.".white().bold());
     println!("  {} {}", "Name:".dimmed(), wallet_name.white().bold());
     println!("  {} {}", "Chain:".dimmed(), selected.name.color(chain_color(&selected.name)));
     println!("  {} {}", "Address:".dimmed(), address.bright_white());

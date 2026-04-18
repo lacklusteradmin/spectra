@@ -12,8 +12,10 @@ pub mod wallet_domain;
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 use std::collections::HashMap;
+use std::hash::{Hash, Hasher};
 
 use self::state::CoreAppState;
+use crate::derivation::addressing::{validate_address, AddressValidationRequest};
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, uniffi::Record)]
 #[serde(rename_all = "camelCase")]
@@ -508,6 +510,437 @@ pub fn plan_dashboard_supported_token_entries(
             seen_keys.insert(key)
         })
         .collect()
+}
+
+pub fn plan_priced_chain(
+    chain_name: String,
+    bitcoin_network_mode_raw: String,
+    ethereum_network_mode_raw: String,
+) -> bool {
+    match chain_name.as_str() {
+        "Bitcoin" => bitcoin_network_mode_raw == "mainnet",
+        "Ethereum" => ethereum_network_mode_raw == "mainnet",
+        _ => true,
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, uniffi::Record)]
+#[serde(rename_all = "camelCase")]
+pub struct WalletChainInput {
+    pub wallet_id: String,
+    pub selected_chain: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, uniffi::Record)]
+#[serde(rename_all = "camelCase")]
+pub struct TransactionActivityInput {
+    pub id: String,
+    pub wallet_id: Option<String>,
+    pub chain_name: String,
+}
+
+pub fn plan_active_wallet_transaction_ids(
+    transactions: Vec<TransactionActivityInput>,
+    wallets: Vec<WalletChainInput>,
+) -> Vec<String> {
+    let wallet_chain: HashMap<String, String> = wallets
+        .into_iter()
+        .map(|wallet| (wallet.wallet_id, wallet.selected_chain))
+        .collect();
+    transactions
+        .into_iter()
+        .filter_map(|transaction| {
+            let wallet_id = transaction.wallet_id.as_ref()?;
+            let chain = wallet_chain.get(wallet_id)?;
+            if chain == &transaction.chain_name {
+                Some(transaction.id)
+            } else {
+                None
+            }
+        })
+        .collect()
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, uniffi::Record)]
+#[serde(rename_all = "camelCase")]
+pub struct NormalizedHistorySignatureTransaction {
+    pub id: String,
+    pub wallet_id: Option<String>,
+    pub kind: String,
+    pub status: String,
+    pub chain_name: String,
+    pub symbol: String,
+    pub transaction_hash: Option<String>,
+    pub created_at_unix: f64,
+}
+
+pub fn plan_normalized_history_signature(
+    transactions: Vec<NormalizedHistorySignatureTransaction>,
+    wallets: Vec<WalletChainInput>,
+) -> i64 {
+    let mut hasher = std::collections::hash_map::DefaultHasher::new();
+    (transactions.len() as u64).hash(&mut hasher);
+    for transaction in &transactions {
+        transaction.id.hash(&mut hasher);
+        transaction.wallet_id.hash(&mut hasher);
+        transaction.kind.hash(&mut hasher);
+        transaction.status.hash(&mut hasher);
+        transaction.chain_name.hash(&mut hasher);
+        transaction.symbol.hash(&mut hasher);
+        transaction
+            .transaction_hash
+            .as_deref()
+            .unwrap_or("")
+            .hash(&mut hasher);
+        transaction.created_at_unix.to_bits().hash(&mut hasher);
+    }
+    let wallet_chain: BTreeMap<String, String> = wallets
+        .into_iter()
+        .map(|wallet| (wallet.wallet_id, wallet.selected_chain))
+        .collect();
+    for (wallet_id, selected_chain) in &wallet_chain {
+        wallet_id.hash(&mut hasher);
+        selected_chain.hash(&mut hasher);
+    }
+    hasher.finish() as i64
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, uniffi::Record)]
+#[serde(rename_all = "camelCase")]
+pub struct WalletEarliestTransactionDate {
+    pub wallet_id: String,
+    pub earliest_created_at_unix: f64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, uniffi::Record)]
+#[serde(rename_all = "camelCase")]
+pub struct TransactionEarliestInput {
+    pub wallet_id: Option<String>,
+    pub created_at_unix: f64,
+}
+
+pub fn plan_earliest_transaction_dates(
+    transactions: Vec<TransactionEarliestInput>,
+) -> Vec<WalletEarliestTransactionDate> {
+    let mut earliest: BTreeMap<String, f64> = BTreeMap::new();
+    for transaction in transactions {
+        let Some(wallet_id) = transaction.wallet_id else {
+            continue;
+        };
+        earliest
+            .entry(wallet_id)
+            .and_modify(|current| {
+                if transaction.created_at_unix < *current {
+                    *current = transaction.created_at_unix;
+                }
+            })
+            .or_insert(transaction.created_at_unix);
+    }
+    earliest
+        .into_iter()
+        .map(|(wallet_id, earliest_created_at_unix)| WalletEarliestTransactionDate {
+            wallet_id,
+            earliest_created_at_unix,
+        })
+        .collect()
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, uniffi::Record)]
+#[serde(rename_all = "camelCase")]
+pub struct WalletChainEligibilityInput {
+    pub wallet_id: String,
+    pub selected_chain: String,
+    pub has_seed_phrase: bool,
+    pub bitcoin_address: Option<String>,
+    pub bitcoin_address_is_valid: bool,
+    pub bitcoin_xpub: Option<String>,
+    pub resolved_address_for_chain: Option<String>,
+}
+
+pub fn plan_has_wallet_for_chain(
+    chain_name: String,
+    wallets: Vec<WalletChainEligibilityInput>,
+) -> bool {
+    wallets.into_iter().any(|wallet| {
+        if wallet.selected_chain != chain_name {
+            return false;
+        }
+        if chain_name == "Bitcoin" {
+            if wallet.has_seed_phrase {
+                return true;
+            }
+            if wallet.bitcoin_address.is_some() && wallet.bitcoin_address_is_valid {
+                return true;
+            }
+            if let Some(xpub) = wallet.bitcoin_xpub.as_ref() {
+                if xpub.starts_with("xpub") || xpub.starts_with("ypub") || xpub.starts_with("zpub")
+                {
+                    return true;
+                }
+            }
+            return false;
+        }
+        wallet.resolved_address_for_chain.is_some()
+    })
+}
+
+fn known_chain_aliases() -> &'static [(&'static str, &'static str)] {
+    &[
+        ("bitcoin", "bitcoin"),
+        ("bitcoin cash", "bitcoin-cash"),
+        ("bitcoin sv", "bitcoin-sv"),
+        ("litecoin", "litecoin"),
+        ("dogecoin", "dogecoin"),
+        ("ethereum", "ethereum"),
+        ("ethereum classic", "ethereum-classic"),
+        ("arbitrum", "arbitrum"),
+        ("optimism", "optimism"),
+        ("bnb chain", "bnb"),
+        ("avalanche", "avalanche"),
+        ("hyperliquid", "hyperliquid"),
+        ("tron", "tron"),
+        ("solana", "solana"),
+        ("stellar", "stellar"),
+        ("cardano", "cardano"),
+        ("xrp ledger", "xrp"),
+        ("monero", "monero"),
+        ("sui", "sui"),
+        ("aptos", "aptos"),
+        ("ton", "ton"),
+        ("internet computer", "internet-computer"),
+        ("near", "near"),
+        ("polkadot", "polkadot"),
+    ]
+}
+
+fn native_symbol_chain_aliases() -> &'static [(&'static str, &'static str)] {
+    &[
+        ("BTC", "bitcoin"),
+        ("BCH", "bitcoin-cash"),
+        ("BSV", "bitcoin-sv"),
+        ("LTC", "litecoin"),
+        ("DOGE", "dogecoin"),
+        ("ETH", "ethereum"),
+        ("ETC", "ethereum-classic"),
+        ("ARB", "arbitrum"),
+        ("OP", "optimism"),
+        ("BNB", "bnb"),
+        ("AVAX", "avalanche"),
+        ("HYPE", "hyperliquid"),
+        ("TRX", "tron"),
+        ("SOL", "solana"),
+        ("XLM", "stellar"),
+        ("ADA", "cardano"),
+        ("XRP", "xrp"),
+        ("XMR", "monero"),
+        ("SUI", "sui"),
+        ("APT", "aptos"),
+        ("TON", "ton"),
+        ("ICP", "internet-computer"),
+        ("NEAR", "near"),
+        ("DOT", "polkadot"),
+    ]
+}
+
+fn canonical_chain_component_inner(
+    chain_name: &str,
+    symbol: &str,
+    localized_chain_id: Option<&str>,
+) -> String {
+    let normalized_chain = chain_name.trim().to_lowercase();
+    let normalized_symbol = symbol.trim().to_uppercase();
+    if let Some((_, alias)) = known_chain_aliases()
+        .iter()
+        .find(|(name, _)| *name == normalized_chain)
+    {
+        return (*alias).to_string();
+    }
+    if let Some(id) = localized_chain_id {
+        let trimmed = id.trim();
+        if !trimmed.is_empty() {
+            return trimmed.to_string();
+        }
+    }
+    if let Some((_, alias)) = native_symbol_chain_aliases()
+        .iter()
+        .find(|(sym, _)| *sym == normalized_symbol)
+    {
+        return (*alias).to_string();
+    }
+    normalized_chain.replace(' ', "-")
+}
+
+pub fn plan_canonical_chain_component(
+    chain_name: String,
+    symbol: String,
+    localized_chain_id: Option<String>,
+) -> String {
+    canonical_chain_component_inner(&chain_name, &symbol, localized_chain_id.as_deref())
+}
+
+pub fn plan_icon_identifier(
+    symbol: String,
+    chain_name: String,
+    contract_address: Option<String>,
+    token_standard: String,
+    localized_chain_id: Option<String>,
+) -> String {
+    let normalized_symbol = symbol.to_lowercase();
+    let trimmed_contract = contract_address
+        .map(|c| c.trim().to_string())
+        .unwrap_or_default();
+    let normalized_chain =
+        canonical_chain_component_inner(&chain_name, &symbol, localized_chain_id.as_deref());
+    if !trimmed_contract.is_empty() {
+        return format!(
+            "token:{}:{}:{}",
+            normalized_chain,
+            normalized_symbol,
+            trimmed_contract.to_lowercase()
+        );
+    }
+    let is_native_token =
+        token_standard.eq_ignore_ascii_case("Native") || token_standard.is_empty();
+    let namespace = if is_native_token { "native" } else { "asset" };
+    format!("{namespace}:{normalized_chain}:{normalized_symbol}")
+}
+
+pub fn plan_normalized_icon_identifier(
+    identifier: String,
+    localized_chain_id: Option<String>,
+) -> String {
+    let trimmed_identifier = identifier.trim().to_string();
+    let components: Vec<String> = trimmed_identifier.split(':').map(String::from).collect();
+    if components.len() < 3 {
+        return trimmed_identifier;
+    }
+    let namespace = &components[0];
+    let chain_component = &components[1];
+    let symbol_component = &components[2];
+    match namespace.as_str() {
+        "native" | "asset" | "token" => {
+            let canonical_chain = canonical_chain_component_inner(
+                chain_component,
+                symbol_component,
+                localized_chain_id.as_deref(),
+            );
+            let mut normalized = components.clone();
+            normalized[0] = namespace.clone();
+            normalized[1] = canonical_chain;
+            normalized[2] = symbol_component.to_lowercase();
+            if normalized.len() >= 4 {
+                normalized[3] = normalized[3].to_lowercase();
+            }
+            normalized.join(":")
+        }
+        _ => trimmed_identifier,
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, uniffi::Enum)]
+pub enum DerivedAddressPostProcess {
+    None,
+    Lowercase,
+    Trim,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, uniffi::Record)]
+#[serde(rename_all = "camelCase")]
+pub struct CoreResetPlan {
+    pub reset_wallets_and_secrets: bool,
+    pub reset_history_and_cache: bool,
+    pub reset_alerts_and_contacts: bool,
+    pub reset_settings_and_endpoints: bool,
+    pub reset_dashboard_customization: bool,
+    pub reset_provider_state: bool,
+    pub clear_network_and_transport_caches: bool,
+}
+
+pub fn plan_reset_dispatch(scopes: Vec<String>) -> CoreResetPlan {
+    let has = |s: &str| scopes.iter().any(|x| x == s);
+    let wallets_and_secrets = has("walletsAndSecrets");
+    let history_and_cache_direct = has("historyAndCache");
+    let history_and_cache = wallets_and_secrets || history_and_cache_direct;
+    CoreResetPlan {
+        reset_wallets_and_secrets: wallets_and_secrets,
+        reset_history_and_cache: history_and_cache,
+        reset_alerts_and_contacts: has("alertsAndContacts"),
+        reset_settings_and_endpoints: has("settingsAndEndpoints"),
+        reset_dashboard_customization: has("dashboardCustomization"),
+        reset_provider_state: has("providerState"),
+        clear_network_and_transport_caches: wallets_and_secrets || history_and_cache_direct,
+    }
+}
+
+pub fn plan_resolve_derived_or_stored_address(
+    derived: Option<String>,
+    stored: Option<String>,
+    validation_kind: String,
+    validation_network_mode: Option<String>,
+    derived_post_process: DerivedAddressPostProcess,
+    normalize_stored: bool,
+) -> Option<String> {
+    if let Some(raw) = derived {
+        let processed = match derived_post_process {
+            DerivedAddressPostProcess::Lowercase => raw.to_lowercase(),
+            DerivedAddressPostProcess::Trim => raw.trim().to_string(),
+            DerivedAddressPostProcess::None => raw,
+        };
+        let result = validate_address(AddressValidationRequest {
+            kind: validation_kind.clone(),
+            value: processed.clone(),
+            network_mode: validation_network_mode.clone(),
+        });
+        if result.is_valid {
+            return Some(processed);
+        }
+    }
+    let stored = stored?;
+    if normalize_stored {
+        let result = validate_address(AddressValidationRequest {
+            kind: validation_kind.clone(),
+            value: stored.clone(),
+            network_mode: validation_network_mode.clone(),
+        });
+        if let Some(normalized) = result.normalized_value {
+            return Some(normalized);
+        }
+    }
+    let trimmed = stored.trim().to_string();
+    let result = validate_address(AddressValidationRequest {
+        kind: validation_kind,
+        value: trimmed.clone(),
+        network_mode: validation_network_mode,
+    });
+    if result.is_valid {
+        Some(trimmed)
+    } else {
+        None
+    }
+}
+
+pub fn plan_display_mark(
+    symbol: String,
+    native_mark: Option<String>,
+    token_mark: Option<String>,
+) -> String {
+    if let Some(mark) = native_mark {
+        if !mark.is_empty() {
+            return mark;
+        }
+    }
+    match symbol.as_str() {
+        "MATIC" => return "P".to_string(),
+        "ARB" => return "AR".to_string(),
+        "TRX" | "USDT" => return "T".to_string(),
+        _ => {}
+    }
+    if let Some(mark) = token_mark {
+        if !mark.is_empty() {
+            return mark;
+        }
+    }
+    symbol.chars().take(2).collect::<String>().to_uppercase()
 }
 
 fn secret_descriptor_for_wallet(

@@ -40,12 +40,19 @@ use super::send::{
 use super::state::CoreAppState;
 use super::store::{
     aggregate_owned_addresses, build_persisted_snapshot, build_persisted_snapshot_typed,
-    persisted_snapshot_from_json, plan_dashboard_supported_token_entries, plan_receive_selection,
+    persisted_snapshot_from_json, plan_active_wallet_transaction_ids,
+    plan_canonical_chain_component, plan_dashboard_supported_token_entries, plan_display_mark,
+    plan_earliest_transaction_dates, plan_has_wallet_for_chain, plan_icon_identifier,
+    plan_normalized_history_signature, plan_normalized_icon_identifier, plan_priced_chain,
+    plan_receive_selection, plan_reset_dispatch, plan_resolve_derived_or_stored_address,
     plan_self_send_confirmation, plan_store_derived_state, wallet_secret_index,
-    wallet_secret_index_from_observations, OwnedAddressAggregationRequest,
-    PersistedAppSnapshotRequest, ReceiveSelectionPlan, ReceiveSelectionRequest,
-    SelfSendConfirmationPlan, SelfSendConfirmationRequest, StoreDerivedStatePlan,
-    StoreDerivedStateRequest, WalletSecretIndex, WalletSecretObservation,
+    wallet_secret_index_from_observations, CoreResetPlan, DerivedAddressPostProcess,
+    NormalizedHistorySignatureTransaction,
+    OwnedAddressAggregationRequest, PersistedAppSnapshotRequest, ReceiveSelectionPlan,
+    ReceiveSelectionRequest, SelfSendConfirmationPlan, SelfSendConfirmationRequest,
+    StoreDerivedStatePlan, StoreDerivedStateRequest, TransactionActivityInput,
+    TransactionEarliestInput, WalletChainEligibilityInput, WalletChainInput,
+    WalletEarliestTransactionDate, WalletSecretIndex, WalletSecretObservation,
 };
 use super::store::wallet_domain::CoreTokenPreferenceEntry;
 use super::persistence::models::{
@@ -169,6 +176,113 @@ pub fn core_plan_dashboard_supported_token_entries(
     entries: Vec<CoreTokenPreferenceEntry>,
 ) -> Vec<CoreTokenPreferenceEntry> {
     plan_dashboard_supported_token_entries(entries)
+}
+
+#[uniffi::export]
+pub fn core_plan_priced_chain(
+    chain_name: String,
+    bitcoin_network_mode_raw: String,
+    ethereum_network_mode_raw: String,
+) -> bool {
+    plan_priced_chain(chain_name, bitcoin_network_mode_raw, ethereum_network_mode_raw)
+}
+
+#[uniffi::export]
+pub fn core_plan_active_wallet_transaction_ids(
+    transactions: Vec<TransactionActivityInput>,
+    wallets: Vec<WalletChainInput>,
+) -> Vec<String> {
+    plan_active_wallet_transaction_ids(transactions, wallets)
+}
+
+#[uniffi::export]
+pub fn core_plan_normalized_history_signature(
+    transactions: Vec<NormalizedHistorySignatureTransaction>,
+    wallets: Vec<WalletChainInput>,
+) -> i64 {
+    plan_normalized_history_signature(transactions, wallets)
+}
+
+#[uniffi::export]
+pub fn core_plan_earliest_transaction_dates(
+    transactions: Vec<TransactionEarliestInput>,
+) -> Vec<WalletEarliestTransactionDate> {
+    plan_earliest_transaction_dates(transactions)
+}
+
+#[uniffi::export]
+pub fn core_plan_has_wallet_for_chain(
+    chain_name: String,
+    wallets: Vec<WalletChainEligibilityInput>,
+) -> bool {
+    plan_has_wallet_for_chain(chain_name, wallets)
+}
+
+#[uniffi::export]
+pub fn core_plan_canonical_chain_component(
+    chain_name: String,
+    symbol: String,
+    localized_chain_id: Option<String>,
+) -> String {
+    plan_canonical_chain_component(chain_name, symbol, localized_chain_id)
+}
+
+#[uniffi::export]
+pub fn core_plan_icon_identifier(
+    symbol: String,
+    chain_name: String,
+    contract_address: Option<String>,
+    token_standard: String,
+    localized_chain_id: Option<String>,
+) -> String {
+    plan_icon_identifier(
+        symbol,
+        chain_name,
+        contract_address,
+        token_standard,
+        localized_chain_id,
+    )
+}
+
+#[uniffi::export]
+pub fn core_plan_normalized_icon_identifier(
+    identifier: String,
+    localized_chain_id: Option<String>,
+) -> String {
+    plan_normalized_icon_identifier(identifier, localized_chain_id)
+}
+
+#[uniffi::export]
+pub fn core_plan_display_mark(
+    symbol: String,
+    native_mark: Option<String>,
+    token_mark: Option<String>,
+) -> String {
+    plan_display_mark(symbol, native_mark, token_mark)
+}
+
+#[uniffi::export]
+pub fn core_plan_reset_dispatch(scopes: Vec<String>) -> CoreResetPlan {
+    plan_reset_dispatch(scopes)
+}
+
+#[uniffi::export]
+pub fn core_plan_resolve_derived_or_stored_address(
+    derived: Option<String>,
+    stored: Option<String>,
+    validation_kind: String,
+    validation_network_mode: Option<String>,
+    derived_post_process: DerivedAddressPostProcess,
+    normalize_stored: bool,
+) -> Option<String> {
+    plan_resolve_derived_or_stored_address(
+        derived,
+        stored,
+        validation_kind,
+        validation_network_mode,
+        derived_post_process,
+        normalize_stored,
+    )
 }
 
 #[uniffi::export]
@@ -350,6 +464,35 @@ pub fn core_encode_history_records_json(
             tx_hash: r.tx_hash,
             created_at: r.created_at,
             payload: engine.encode(r.payload_json.as_bytes()),
+        })
+        .collect();
+    Ok(serialize_json(&encoded)?)
+}
+
+/// Seconds between the Unix epoch (1970-01-01) and the Swift reference date
+/// (2001-01-01). `CorePersistedTransactionRecord.created_at` is stored in Swift
+/// reference seconds; HistoryRecord encodes Unix epoch seconds, so add this
+/// offset when lifting persisted records into history payloads.
+const SWIFT_REFERENCE_EPOCH_OFFSET_SECONDS: f64 = 978_307_200.0;
+
+#[uniffi::export]
+pub fn core_encode_history_records_from_persisted(
+    snapshots: Vec<CorePersistedTransactionRecord>,
+) -> Result<String, crate::SpectraBridgeError> {
+    use base64::Engine;
+    let engine = base64::engine::general_purpose::STANDARD;
+    let encoded: Vec<HistoryRecordEncoded> = snapshots
+        .into_iter()
+        .filter_map(|snap| {
+            let payload_json = serialize_json(&snap).ok()?;
+            Some(HistoryRecordEncoded {
+                id: snap.id.to_lowercase(),
+                wallet_id: snap.wallet_id.map(|w| w.to_lowercase()),
+                chain_name: snap.chain_name,
+                tx_hash: snap.transaction_hash.map(|h| h.to_lowercase()),
+                created_at: snap.created_at + SWIFT_REFERENCE_EPOCH_OFFSET_SECONDS,
+                payload: engine.encode(payload_json.as_bytes()),
+            })
         })
         .collect();
     Ok(serialize_json(&encoded)?)

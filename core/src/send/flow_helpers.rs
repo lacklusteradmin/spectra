@@ -253,28 +253,28 @@ pub fn core_rebroadcast_dispatch_for_format(
 #[uniffi::export]
 pub fn core_seed_derivation_chain_raw(chain_name: String) -> Option<String> {
     let raw = match chain_name.as_str() {
-        "Bitcoin" => "bitcoin",
-        "Bitcoin Cash" => "bitcoinCash",
-        "Bitcoin SV" => "bitcoinSV",
-        "Litecoin" => "litecoin",
-        "Dogecoin" => "dogecoin",
-        "Ethereum" | "BNB Chain" => "ethereum",
-        "Ethereum Classic" => "ethereumClassic",
-        "Arbitrum" => "arbitrum",
-        "Optimism" => "optimism",
-        "Avalanche" => "avalanche",
-        "Hyperliquid" => "hyperliquid",
-        "Tron" => "tron",
-        "Solana" => "solana",
-        "Stellar" => "stellar",
-        "XRP Ledger" => "xrp",
-        "Cardano" => "cardano",
-        "Sui" => "sui",
-        "Aptos" => "aptos",
-        "TON" => "ton",
-        "Internet Computer" => "internetComputer",
-        "NEAR" => "near",
-        "Polkadot" => "polkadot",
+        "Bitcoin" => "Bitcoin",
+        "Bitcoin Cash" => "Bitcoin Cash",
+        "Bitcoin SV" => "Bitcoin SV",
+        "Litecoin" => "Litecoin",
+        "Dogecoin" => "Dogecoin",
+        "Ethereum" | "BNB Chain" => "Ethereum",
+        "Ethereum Classic" => "Ethereum Classic",
+        "Arbitrum" => "Arbitrum",
+        "Optimism" => "Optimism",
+        "Avalanche" => "Avalanche",
+        "Hyperliquid" => "Hyperliquid",
+        "Tron" => "Tron",
+        "Solana" => "Solana",
+        "Stellar" => "Stellar",
+        "XRP Ledger" => "XRP Ledger",
+        "Cardano" => "Cardano",
+        "Sui" => "Sui",
+        "Aptos" => "Aptos",
+        "TON" => "TON",
+        "Internet Computer" => "Internet Computer",
+        "NEAR" => "NEAR",
+        "Polkadot" => "Polkadot",
         _ => return None,
     };
     Some(raw.to_string())
@@ -283,6 +283,62 @@ pub fn core_seed_derivation_chain_raw(chain_name: String) -> Option<String> {
 #[uniffi::export]
 pub fn core_supports_deep_utxo_discovery(chain_name: String) -> bool {
     matches!(chain_name.as_str(), "Bitcoin" | "Bitcoin Cash" | "Bitcoin SV" | "Litecoin" | "Dogecoin")
+}
+
+// ─── Receive address resolver dispatch ───────────────────────────────────────
+// Centralizes the `(symbol, chain_name, is_evm_chain)` → resolver routing that
+// `receiveAddress()` in Swift previously encoded as nested switches.
+
+#[derive(Debug, Clone, PartialEq, Eq, uniffi::Enum)]
+pub enum ReceiveAddressResolverKind {
+    BitcoinLegacy,
+    BitcoinCash,
+    BitcoinSv,
+    Litecoin,
+    DogecoinNone,
+    Evm,
+    Tron,
+    Solana,
+    Cardano,
+    Xrp,
+    Stellar,
+    Monero,
+    Sui,
+    Aptos,
+    Ton,
+    Icp,
+    Near,
+    Polkadot,
+    None,
+}
+
+#[uniffi::export]
+pub fn core_plan_receive_address_resolver(
+    symbol: String,
+    chain_name: String,
+    is_evm_chain: bool,
+) -> ReceiveAddressResolverKind {
+    match (symbol.as_str(), chain_name.as_str()) {
+        ("BTC", _) => ReceiveAddressResolverKind::BitcoinLegacy,
+        ("BCH", "Bitcoin Cash") => ReceiveAddressResolverKind::BitcoinCash,
+        ("BSV", "Bitcoin SV") => ReceiveAddressResolverKind::BitcoinSv,
+        ("LTC", "Litecoin") => ReceiveAddressResolverKind::Litecoin,
+        ("DOGE", "Dogecoin") => ReceiveAddressResolverKind::DogecoinNone,
+        _ if is_evm_chain => ReceiveAddressResolverKind::Evm,
+        (_, "Tron") => ReceiveAddressResolverKind::Tron,
+        (_, "Solana") => ReceiveAddressResolverKind::Solana,
+        (_, "Cardano") => ReceiveAddressResolverKind::Cardano,
+        (_, "XRP Ledger") => ReceiveAddressResolverKind::Xrp,
+        (_, "Stellar") => ReceiveAddressResolverKind::Stellar,
+        (_, "Monero") => ReceiveAddressResolverKind::Monero,
+        (_, "Sui") => ReceiveAddressResolverKind::Sui,
+        (_, "Aptos") => ReceiveAddressResolverKind::Aptos,
+        (_, "TON") => ReceiveAddressResolverKind::Ton,
+        (_, "Internet Computer") => ReceiveAddressResolverKind::Icp,
+        (_, "NEAR") => ReceiveAddressResolverKind::Near,
+        (_, "Polkadot") => ReceiveAddressResolverKind::Polkadot,
+        _ => ReceiveAddressResolverKind::None,
+    }
 }
 
 // ─── EVM contract-code detection ─────────────────────────────────────────────

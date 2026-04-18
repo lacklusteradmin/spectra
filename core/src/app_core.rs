@@ -1,34 +1,11 @@
 use serde::{Deserialize, Serialize};
 use std::sync::OnceLock;
 
-const CHAIN_BITCOIN: u32 = 0;
-const CHAIN_ETHEREUM: u32 = 1;
-const CHAIN_SOLANA: u32 = 2;
-const CHAIN_BITCOIN_CASH: u32 = 3;
-const CHAIN_BITCOIN_SV: u32 = 4;
-const CHAIN_LITECOIN: u32 = 5;
-const CHAIN_DOGECOIN: u32 = 6;
-const CHAIN_ETHEREUM_CLASSIC: u32 = 7;
-const CHAIN_ARBITRUM: u32 = 8;
-const CHAIN_OPTIMISM: u32 = 9;
-const CHAIN_AVALANCHE: u32 = 10;
-const CHAIN_HYPERLIQUID: u32 = 11;
-const CHAIN_TRON: u32 = 12;
-const CHAIN_STELLAR: u32 = 13;
-const CHAIN_XRP: u32 = 14;
-const CHAIN_CARDANO: u32 = 15;
-const CHAIN_SUI: u32 = 16;
-const CHAIN_APTOS: u32 = 17;
-const CHAIN_TON: u32 = 18;
-const CHAIN_INTERNET_COMPUTER: u32 = 19;
-const CHAIN_NEAR: u32 = 20;
-const CHAIN_POLKADOT: u32 = 21;
-
-const CHAIN_PRESETS_JSON: &str = include_str!("../../swift/derivation/DerivationPresets.json");
+const CHAIN_PRESETS_JSON: &str = include_str!("../embedded/DerivationPresets.json");
 const REQUEST_COMPILATION_PRESETS_JSON: &str =
-    include_str!("../../swift/derivation/DerivationRequestCompilationPresets.json");
+    include_str!("../embedded/DerivationRequestCompilationPresets.json");
 const APP_ENDPOINT_DIRECTORY_JSON: &str =
-    include_str!("../../swift/rustbridge/AppEndpointDirectory.json");
+    include_str!("../embedded/AppEndpointDirectory.json");
 
 const ENDPOINT_ROLE_READ: u32 = 1 << 0;
 const ENDPOINT_ROLE_BALANCE: u32 = 1 << 1;
@@ -1392,32 +1369,36 @@ fn app_chain_descriptors() -> Vec<AppCoreAppChainDescriptor> {
     ]
 }
 
+/// Maps the derivation-FFI chain id (the numbering used by Swift's
+/// `WalletRustFFIChain`, shared with `derivation/runtime.rs`) to the preset
+/// name used as a key in `DerivationPresets.json`. This namespace is distinct
+/// from `chains::registry::Chain` — do not conflate.
 fn chain_name_from_id(chain_id: u32) -> Option<&'static str> {
-    match chain_id {
-        CHAIN_BITCOIN => Some("Bitcoin"),
-        CHAIN_ETHEREUM => Some("Ethereum"),
-        CHAIN_SOLANA => Some("Solana"),
-        CHAIN_BITCOIN_CASH => Some("Bitcoin Cash"),
-        CHAIN_BITCOIN_SV => Some("Bitcoin SV"),
-        CHAIN_LITECOIN => Some("Litecoin"),
-        CHAIN_DOGECOIN => Some("Dogecoin"),
-        CHAIN_ETHEREUM_CLASSIC => Some("Ethereum Classic"),
-        CHAIN_ARBITRUM => Some("Arbitrum"),
-        CHAIN_OPTIMISM => Some("Optimism"),
-        CHAIN_AVALANCHE => Some("Avalanche"),
-        CHAIN_HYPERLIQUID => Some("Hyperliquid"),
-        CHAIN_TRON => Some("Tron"),
-        CHAIN_STELLAR => Some("Stellar"),
-        CHAIN_XRP => Some("XRP Ledger"),
-        CHAIN_CARDANO => Some("Cardano"),
-        CHAIN_SUI => Some("Sui"),
-        CHAIN_APTOS => Some("Aptos"),
-        CHAIN_TON => Some("TON"),
-        CHAIN_INTERNET_COMPUTER => Some("Internet Computer"),
-        CHAIN_NEAR => Some("NEAR"),
-        CHAIN_POLKADOT => Some("Polkadot"),
-        _ => None,
-    }
+    Some(match chain_id {
+        0  => "Bitcoin",
+        1  => "Ethereum",
+        2  => "Solana",
+        3  => "Bitcoin Cash",
+        4  => "Bitcoin SV",
+        5  => "Litecoin",
+        6  => "Dogecoin",
+        7  => "Ethereum Classic",
+        8  => "Arbitrum",
+        9  => "Optimism",
+        10 => "Avalanche",
+        11 => "Hyperliquid",
+        12 => "Tron",
+        13 => "Stellar",
+        14 => "XRP Ledger",
+        15 => "Cardano",
+        16 => "Sui",
+        17 => "Aptos",
+        18 => "TON",
+        19 => "Internet Computer",
+        20 => "NEAR",
+        21 => "Polkadot",
+        _  => return None,
+    })
 }
 
 pub(crate) fn parse_derivation_path(raw_path: &str) -> Option<Vec<DerivationPathSegment>> {

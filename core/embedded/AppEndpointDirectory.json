@@ -1,0 +1,2037 @@
+[
+  {
+    "id": "bitcoin.blockchain_info.multiaddr",
+    "chainName": "Bitcoin",
+    "groupTitle": "Bitcoin",
+    "providerID": "blockchain-info",
+    "endpoint": "https://blockchain.info/multiaddr",
+    "roles": [
+      "read",
+      "balance",
+      "history"
+    ],
+    "probeURL": null,
+    "settingsVisible": false,
+    "explorerLabel": null
+  },
+  {
+    "id": "bitcoin.blockchair.xpub",
+    "chainName": "Bitcoin",
+    "groupTitle": "Bitcoin",
+    "providerID": "blockchair",
+    "endpoint": "https://api.blockchair.com/bitcoin/dashboards/xpub/",
+    "roles": [
+      "read",
+      "balance",
+      "history"
+    ],
+    "probeURL": null,
+    "settingsVisible": false,
+    "explorerLabel": null
+  },
+  {
+    "id": "bitcoin.mainnet.blockstream",
+    "chainName": "Bitcoin",
+    "groupTitle": "Bitcoin",
+    "providerID": "esplora",
+    "endpoint": "https://blockstream.info/api",
+    "roles": [
+      "read",
+      "balance",
+      "history",
+      "utxo",
+      "fee",
+      "broadcast",
+      "verification"
+    ],
+    "probeURL": "https://blockstream.info/api",
+    "settingsVisible": true,
+    "explorerLabel": null
+  },
+  {
+    "id": "bitcoin.mainnet.mempool",
+    "chainName": "Bitcoin",
+    "groupTitle": "Bitcoin",
+    "providerID": "esplora",
+    "endpoint": "https://mempool.space/api",
+    "roles": [
+      "read",
+      "balance",
+      "history",
+      "utxo",
+      "fee",
+      "broadcast",
+      "verification"
+    ],
+    "probeURL": "https://mempool.space/api",
+    "settingsVisible": true,
+    "explorerLabel": null
+  },
+  {
+    "id": "bitcoin.mainnet.mempool_emzy",
+    "chainName": "Bitcoin",
+    "groupTitle": "Bitcoin",
+    "providerID": "esplora",
+    "endpoint": "https://mempool.emzy.de/api",
+    "roles": [
+      "read",
+      "balance",
+      "history",
+      "utxo",
+      "fee",
+      "broadcast",
+      "verification"
+    ],
+    "probeURL": "https://mempool.emzy.de/api",
+    "settingsVisible": true,
+    "explorerLabel": null
+  },
+  {
+    "id": "bitcoin.mainnet.maestro",
+    "chainName": "Bitcoin",
+    "groupTitle": "Bitcoin",
+    "providerID": "maestro-esplora",
+    "endpoint": "https://xbt-mainnet.gomaestro-api.org/v0/esplora",
+    "roles": [
+      "read",
+      "balance",
+      "history",
+      "utxo",
+      "fee",
+      "broadcast",
+      "verification"
+    ],
+    "probeURL": "https://xbt-mainnet.gomaestro-api.org/v0/esplora",
+    "settingsVisible": true,
+    "explorerLabel": null
+  },
+  {
+    "id": "bitcoin.explorer.tx",
+    "chainName": "Bitcoin",
+    "groupTitle": "Bitcoin",
+    "providerID": "mempool",
+    "endpoint": "https://mempool.space/tx/",
+    "roles": [
+      "explorer"
+    ],
+    "probeURL": null,
+    "settingsVisible": false,
+    "explorerLabel": "Open In Mempool"
+  },
+  {
+    "id": "bitcoin.testnet.blockstream",
+    "chainName": "Bitcoin",
+    "groupTitle": "Bitcoin Testnet",
+    "providerID": "esplora",
+    "endpoint": "https://blockstream.info/testnet/api",
+    "roles": [
+      "read",
+      "balance",
+      "history",
+      "utxo",
+      "fee",
+      "broadcast",
+      "verification"
+    ],
+    "probeURL": "https://blockstream.info/testnet/api",
+    "settingsVisible": true,
+    "explorerLabel": null
+  },
+  {
+    "id": "bitcoin.testnet.mempool",
+    "chainName": "Bitcoin",
+    "groupTitle": "Bitcoin Testnet",
+    "providerID": "esplora",
+    "endpoint": "https://mempool.space/testnet/api",
+    "roles": [
+      "read",
+      "balance",
+      "history",
+      "utxo",
+      "fee",
+      "broadcast",
+      "verification"
+    ],
+    "probeURL": "https://mempool.space/testnet/api",
+    "settingsVisible": true,
+    "explorerLabel": null
+  },
+  {
+    "id": "bitcoin.testnet4.mempool",
+    "chainName": "Bitcoin",
+    "groupTitle": "Bitcoin Testnet4",
+    "providerID": "esplora",
+    "endpoint": "https://mempool.space/testnet4/api",
+    "roles": [
+      "read",
+      "balance",
+      "history",
+      "utxo",
+      "fee",
+      "broadcast",
+      "verification"
+    ],
+    "probeURL": "https://mempool.space/testnet4/api",
+    "settingsVisible": true,
+    "explorerLabel": null
+  },
+  {
+    "id": "bitcoin.signet.blockstream",
+    "chainName": "Bitcoin",
+    "groupTitle": "Bitcoin Signet",
+    "providerID": "esplora",
+    "endpoint": "https://blockstream.info/signet/api",
+    "roles": [
+      "read",
+      "balance",
+      "history",
+      "utxo",
+      "fee",
+      "broadcast",
+      "verification"
+    ],
+    "probeURL": "https://blockstream.info/signet/api",
+    "settingsVisible": true,
+    "explorerLabel": null
+  },
+  {
+    "id": "bitcoin.signet.mempool",
+    "chainName": "Bitcoin",
+    "groupTitle": "Bitcoin Signet",
+    "providerID": "esplora",
+    "endpoint": "https://mempool.space/signet/api",
+    "roles": [
+      "read",
+      "balance",
+      "history",
+      "utxo",
+      "fee",
+      "broadcast",
+      "verification"
+    ],
+    "probeURL": "https://mempool.space/signet/api",
+    "settingsVisible": true,
+    "explorerLabel": null
+  },
+  {
+    "id": "bitcoincash.blockchair.api",
+    "chainName": "Bitcoin Cash",
+    "groupTitle": "Bitcoin Cash",
+    "providerID": "blockchair",
+    "endpoint": "https://api.blockchair.com/bitcoin-cash",
+    "roles": [
+      "read",
+      "balance",
+      "history",
+      "utxo",
+      "fee",
+      "verification"
+    ],
+    "probeURL": "https://api.blockchair.com/bitcoin-cash/stats",
+    "settingsVisible": true,
+    "explorerLabel": null
+  },
+  {
+    "id": "bitcoincash.blockchair.push",
+    "chainName": "Bitcoin Cash",
+    "groupTitle": "Bitcoin Cash",
+    "providerID": "blockchair",
+    "endpoint": "https://api.blockchair.com/bitcoin-cash/push/transaction",
+    "roles": [
+      "broadcast"
+    ],
+    "probeURL": "https://api.blockchair.com/bitcoin-cash/stats",
+    "settingsVisible": false,
+    "explorerLabel": null
+  },
+  {
+    "id": "bitcoincash.blockchair.txprefix",
+    "chainName": "Bitcoin Cash",
+    "groupTitle": "Bitcoin Cash",
+    "providerID": "blockchair",
+    "endpoint": "https://api.blockchair.com/bitcoin-cash/dashboards/transaction/",
+    "roles": [
+      "verification"
+    ],
+    "probeURL": "https://api.blockchair.com/bitcoin-cash/stats",
+    "settingsVisible": false,
+    "explorerLabel": null
+  },
+  {
+    "id": "bitcoincash.actorforth.api",
+    "chainName": "Bitcoin Cash",
+    "groupTitle": "Bitcoin Cash",
+    "providerID": "actorforth",
+    "endpoint": "https://rest.bch.actorforth.org/v2",
+    "roles": [
+      "read",
+      "balance",
+      "history",
+      "utxo",
+      "verification"
+    ],
+    "probeURL": "https://rest.bch.actorforth.org/v2/blockchain/getBlockchainInfo",
+    "settingsVisible": true,
+    "explorerLabel": null
+  },
+  {
+    "id": "bitcoincash.actorforth.broadcast",
+    "chainName": "Bitcoin Cash",
+    "groupTitle": "Bitcoin Cash",
+    "providerID": "actorforth",
+    "endpoint": "https://rest.bch.actorforth.org/v2/rawtransactions/sendRawTransaction/",
+    "roles": [
+      "broadcast"
+    ],
+    "probeURL": "https://rest.bch.actorforth.org/v2/blockchain/getBlockchainInfo",
+    "settingsVisible": false,
+    "explorerLabel": null
+  },
+  {
+    "id": "bitcoincash.actorforth.txprefix",
+    "chainName": "Bitcoin Cash",
+    "groupTitle": "Bitcoin Cash",
+    "providerID": "actorforth",
+    "endpoint": "https://rest.bch.actorforth.org/v2/transaction/details/",
+    "roles": [
+      "verification"
+    ],
+    "probeURL": "https://rest.bch.actorforth.org/v2/blockchain/getBlockchainInfo",
+    "settingsVisible": false,
+    "explorerLabel": null
+  },
+  {
+    "id": "bitcoincash.explorer.tx",
+    "chainName": "Bitcoin Cash",
+    "groupTitle": "Bitcoin Cash",
+    "providerID": "blockchair",
+    "endpoint": "https://blockchair.com/bitcoin-cash/transaction/",
+    "roles": [
+      "explorer"
+    ],
+    "probeURL": null,
+    "settingsVisible": false,
+    "explorerLabel": "Open In Blockchair"
+  },
+  {
+    "id": "bitcoinsv.whatsonchain.api",
+    "chainName": "Bitcoin SV",
+    "groupTitle": "Bitcoin SV",
+    "providerID": "whatsonchain",
+    "endpoint": "https://api.whatsonchain.com/v1/bsv/main",
+    "roles": [
+      "read",
+      "balance",
+      "history",
+      "utxo",
+      "verification"
+    ],
+    "probeURL": "https://api.whatsonchain.com/v1/bsv/main/chain/info",
+    "settingsVisible": true,
+    "explorerLabel": null
+  },
+  {
+    "id": "bitcoinsv.whatsonchain.chaininfo",
+    "chainName": "Bitcoin SV",
+    "groupTitle": "Bitcoin SV",
+    "providerID": "whatsonchain",
+    "endpoint": "https://api.whatsonchain.com/v1/bsv/main/chain/info",
+    "roles": [
+      "verification"
+    ],
+    "probeURL": "https://api.whatsonchain.com/v1/bsv/main/chain/info",
+    "settingsVisible": false,
+    "explorerLabel": null
+  },
+  {
+    "id": "bitcoinsv.whatsonchain.broadcast",
+    "chainName": "Bitcoin SV",
+    "groupTitle": "Bitcoin SV",
+    "providerID": "whatsonchain",
+    "endpoint": "https://api.whatsonchain.com/v1/bsv/main/tx/raw",
+    "roles": [
+      "broadcast"
+    ],
+    "probeURL": "https://api.whatsonchain.com/v1/bsv/main/chain/info",
+    "settingsVisible": false,
+    "explorerLabel": null
+  },
+  {
+    "id": "bitcoinsv.whatsonchain.txprefix",
+    "chainName": "Bitcoin SV",
+    "groupTitle": "Bitcoin SV",
+    "providerID": "whatsonchain",
+    "endpoint": "https://api.whatsonchain.com/v1/bsv/main/tx/hash/",
+    "roles": [
+      "verification"
+    ],
+    "probeURL": "https://api.whatsonchain.com/v1/bsv/main/chain/info",
+    "settingsVisible": false,
+    "explorerLabel": null
+  },
+  {
+    "id": "bitcoinsv.blockchair.api",
+    "chainName": "Bitcoin SV",
+    "groupTitle": "Bitcoin SV",
+    "providerID": "blockchair",
+    "endpoint": "https://api.blockchair.com/bitcoin-sv",
+    "roles": [
+      "read",
+      "balance",
+      "history",
+      "utxo",
+      "fee",
+      "verification"
+    ],
+    "probeURL": "https://api.blockchair.com/bitcoin-sv/stats",
+    "settingsVisible": true,
+    "explorerLabel": null
+  },
+  {
+    "id": "bitcoinsv.blockchair.push",
+    "chainName": "Bitcoin SV",
+    "groupTitle": "Bitcoin SV",
+    "providerID": "blockchair",
+    "endpoint": "https://api.blockchair.com/bitcoin-sv/push/transaction",
+    "roles": [
+      "broadcast"
+    ],
+    "probeURL": "https://api.blockchair.com/bitcoin-sv/stats",
+    "settingsVisible": false,
+    "explorerLabel": null
+  },
+  {
+    "id": "bitcoinsv.blockchair.txprefix",
+    "chainName": "Bitcoin SV",
+    "groupTitle": "Bitcoin SV",
+    "providerID": "blockchair",
+    "endpoint": "https://api.blockchair.com/bitcoin-sv/dashboards/transaction/",
+    "roles": [
+      "verification"
+    ],
+    "probeURL": "https://api.blockchair.com/bitcoin-sv/stats",
+    "settingsVisible": false,
+    "explorerLabel": null
+  },
+  {
+    "id": "bitcoinsv.explorer.tx",
+    "chainName": "Bitcoin SV",
+    "groupTitle": "Bitcoin SV",
+    "providerID": "whatsonchain",
+    "endpoint": "https://whatsonchain.com/tx/",
+    "roles": [
+      "explorer"
+    ],
+    "probeURL": null,
+    "settingsVisible": false,
+    "explorerLabel": "Open In WhatsOnChain"
+  },
+  {
+    "id": "litecoin.litecoinspace.api",
+    "chainName": "Litecoin",
+    "groupTitle": "Litecoin",
+    "providerID": "litecoinspace",
+    "endpoint": "https://litecoinspace.org/api",
+    "roles": [
+      "read",
+      "balance",
+      "history",
+      "utxo",
+      "fee",
+      "broadcast",
+      "verification"
+    ],
+    "probeURL": "https://litecoinspace.org/api",
+    "settingsVisible": true,
+    "explorerLabel": null
+  },
+  {
+    "id": "litecoin.blockcypher.api",
+    "chainName": "Litecoin",
+    "groupTitle": "Litecoin",
+    "providerID": "blockcypher",
+    "endpoint": "https://api.blockcypher.com/v1/ltc/main",
+    "roles": [
+      "read",
+      "balance",
+      "history",
+      "utxo",
+      "fee",
+      "broadcast",
+      "verification"
+    ],
+    "probeURL": "https://api.blockcypher.com/v1/ltc/main",
+    "settingsVisible": true,
+    "explorerLabel": null
+  },
+  {
+    "id": "litecoin.sochain.api",
+    "chainName": "Litecoin",
+    "groupTitle": "Litecoin",
+    "providerID": "sochain",
+    "endpoint": "https://sochain.com/api/v2",
+    "roles": [
+      "read",
+      "balance",
+      "history",
+      "utxo",
+      "verification"
+    ],
+    "probeURL": "https://sochain.com/api/v2",
+    "settingsVisible": true,
+    "explorerLabel": null
+  },
+  {
+    "id": "litecoin.explorer.tx",
+    "chainName": "Litecoin",
+    "groupTitle": "Litecoin",
+    "providerID": "litecoinspace",
+    "endpoint": "https://litecoinspace.org/tx/",
+    "roles": [
+      "explorer"
+    ],
+    "probeURL": null,
+    "settingsVisible": false,
+    "explorerLabel": "Open In LitecoinSpace"
+  },
+  {
+    "id": "dogecoin.mainnet.blockcypher",
+    "chainName": "Dogecoin",
+    "groupTitle": "Dogecoin",
+    "providerID": "blockcypher",
+    "endpoint": "https://api.blockcypher.com/v1/doge/main",
+    "roles": [
+      "read",
+      "balance",
+      "history",
+      "utxo",
+      "fee",
+      "broadcast",
+      "verification"
+    ],
+    "probeURL": "https://api.blockcypher.com/v1/doge/main",
+    "settingsVisible": true,
+    "explorerLabel": null
+  },
+  {
+    "id": "dogecoin.testnet.blockcypher",
+    "chainName": "Dogecoin",
+    "groupTitle": "Dogecoin Testnet",
+    "providerID": "blockcypher",
+    "endpoint": "https://api.blockcypher.com/v1/doge/test3",
+    "roles": [
+      "read",
+      "balance",
+      "history",
+      "utxo",
+      "fee",
+      "broadcast",
+      "verification"
+    ],
+    "probeURL": "https://api.blockcypher.com/v1/doge/test3",
+    "settingsVisible": true,
+    "explorerLabel": null
+  },
+  {
+    "id": "dogecoin.explorer.tx",
+    "chainName": "Dogecoin",
+    "groupTitle": "Dogecoin",
+    "providerID": "dogechain",
+    "endpoint": "https://dogechain.info/tx/",
+    "roles": [
+      "explorer"
+    ],
+    "probeURL": null,
+    "settingsVisible": false,
+    "explorerLabel": "Open In Dogechain"
+  },
+  {
+    "id": "tron.tronscan.account",
+    "chainName": "Tron",
+    "groupTitle": "Tron",
+    "providerID": "tronscan",
+    "endpoint": "https://apilist.tronscanapi.com/api/accountv2",
+    "roles": [
+      "read",
+      "balance",
+      "history"
+    ],
+    "probeURL": "https://apilist.tronscanapi.com/api/system/status",
+    "settingsVisible": true,
+    "explorerLabel": null
+  },
+  {
+    "id": "tron.trongrid.accounts.io",
+    "chainName": "Tron",
+    "groupTitle": "Tron",
+    "providerID": "trongrid-accounts",
+    "endpoint": "https://api.trongrid.io/v1/accounts",
+    "roles": [
+      "read",
+      "balance",
+      "history"
+    ],
+    "probeURL": "https://api.trongrid.io/wallet/getnowblock",
+    "settingsVisible": true,
+    "explorerLabel": null
+  },
+  {
+    "id": "tron.trongrid.accounts.pro",
+    "chainName": "Tron",
+    "groupTitle": "Tron",
+    "providerID": "trongrid-accounts",
+    "endpoint": "https://api.trongrid.pro/v1/accounts",
+    "roles": [
+      "read",
+      "balance",
+      "history"
+    ],
+    "probeURL": "https://api.trongrid.io/wallet/getnowblock",
+    "settingsVisible": true,
+    "explorerLabel": null
+  },
+  {
+    "id": "tron.trongrid.accounts.network",
+    "chainName": "Tron",
+    "groupTitle": "Tron",
+    "providerID": "trongrid-accounts",
+    "endpoint": "https://api.trongrid.network/v1/accounts",
+    "roles": [
+      "read",
+      "balance",
+      "history"
+    ],
+    "probeURL": "https://api.trongrid.io/wallet/getnowblock",
+    "settingsVisible": true,
+    "explorerLabel": null
+  },
+  {
+    "id": "tron.trongrid.rpc.io",
+    "chainName": "Tron",
+    "groupTitle": "Tron",
+    "providerID": "trongrid-rpc",
+    "endpoint": "https://api.trongrid.io",
+    "roles": [
+      "rpc",
+      "broadcast",
+      "fee",
+      "verification"
+    ],
+    "probeURL": "https://api.trongrid.io/wallet/getnowblock",
+    "settingsVisible": true,
+    "explorerLabel": null
+  },
+  {
+    "id": "tron.trongrid.rpc.pro",
+    "chainName": "Tron",
+    "groupTitle": "Tron",
+    "providerID": "trongrid-rpc",
+    "endpoint": "https://api.trongrid.pro",
+    "roles": [
+      "rpc",
+      "broadcast",
+      "fee",
+      "verification"
+    ],
+    "probeURL": "https://api.trongrid.io/wallet/getnowblock",
+    "settingsVisible": true,
+    "explorerLabel": null
+  },
+  {
+    "id": "tron.trongrid.rpc.network",
+    "chainName": "Tron",
+    "groupTitle": "Tron",
+    "providerID": "trongrid-rpc",
+    "endpoint": "https://api.trongrid.network",
+    "roles": [
+      "rpc",
+      "broadcast",
+      "fee",
+      "verification"
+    ],
+    "probeURL": "https://api.trongrid.io/wallet/getnowblock",
+    "settingsVisible": true,
+    "explorerLabel": null
+  },
+  {
+    "id": "tron.explorer.tx",
+    "chainName": "Tron",
+    "groupTitle": "Tron",
+    "providerID": "tronscan",
+    "endpoint": "https://tronscan.org/#/transaction/",
+    "roles": [
+      "explorer"
+    ],
+    "probeURL": null,
+    "settingsVisible": false,
+    "explorerLabel": "Open In TronScan"
+  },
+  {
+    "id": "solana.rpc.mainnet",
+    "chainName": "Solana",
+    "groupTitle": "Solana",
+    "providerID": "solana-mainnet-beta",
+    "endpoint": "https://api.mainnet-beta.solana.com",
+    "roles": [
+      "rpc",
+      "read",
+      "balance",
+      "history",
+      "broadcast",
+      "fee"
+    ],
+    "probeURL": "https://api.mainnet-beta.solana.com",
+    "settingsVisible": true,
+    "explorerLabel": null
+  },
+  {
+    "id": "solana.rpc.ankr",
+    "chainName": "Solana",
+    "groupTitle": "Solana",
+    "providerID": "solana-ankr",
+    "endpoint": "https://rpc.ankr.com/solana",
+    "roles": [
+      "rpc",
+      "read",
+      "balance",
+      "history",
+      "broadcast",
+      "fee"
+    ],
+    "probeURL": "https://rpc.ankr.com/solana",
+    "settingsVisible": true,
+    "explorerLabel": null
+  },
+  {
+    "id": "solana.rpc.publicnode",
+    "chainName": "Solana",
+    "groupTitle": "Solana",
+    "providerID": "solana-publicnode",
+    "endpoint": "https://solana-rpc.publicnode.com",
+    "roles": [
+      "rpc",
+      "read",
+      "balance",
+      "history",
+      "fee"
+    ],
+    "probeURL": "https://solana-rpc.publicnode.com",
+    "settingsVisible": true,
+    "explorerLabel": null
+  },
+  {
+    "id": "xrp.history.xrpscan_api",
+    "chainName": "XRP Ledger",
+    "groupTitle": "XRP Ledger",
+    "providerID": "xrpscan",
+    "endpoint": "https://api.xrpscan.com/api/v1/account",
+    "roles": [
+      "read",
+      "balance",
+      "history"
+    ],
+    "probeURL": null,
+    "settingsVisible": true,
+    "explorerLabel": null
+  },
+  {
+    "id": "xrp.history.xrpscan",
+    "chainName": "XRP Ledger",
+    "groupTitle": "XRP Ledger",
+    "providerID": "xrpscan",
+    "endpoint": "https://xrpscan.com/api/v1/account",
+    "roles": [
+      "read",
+      "history"
+    ],
+    "probeURL": null,
+    "settingsVisible": true,
+    "explorerLabel": null
+  },
+  {
+    "id": "xrp.rpc.s1",
+    "chainName": "XRP Ledger",
+    "groupTitle": "XRP Ledger",
+    "providerID": "ripple-s1",
+    "endpoint": "https://s1.ripple.com:51234/",
+    "roles": [
+      "rpc",
+      "read",
+      "balance",
+      "history",
+      "broadcast",
+      "fee"
+    ],
+    "probeURL": "https://s1.ripple.com:51234/",
+    "settingsVisible": true,
+    "explorerLabel": null
+  },
+  {
+    "id": "xrp.rpc.s2",
+    "chainName": "XRP Ledger",
+    "groupTitle": "XRP Ledger",
+    "providerID": "ripple-s2",
+    "endpoint": "https://s2.ripple.com:51234/",
+    "roles": [
+      "rpc",
+      "read",
+      "balance",
+      "history",
+      "broadcast",
+      "fee"
+    ],
+    "probeURL": "https://s2.ripple.com:51234/",
+    "settingsVisible": true,
+    "explorerLabel": null
+  },
+  {
+    "id": "xrp.rpc.cluster",
+    "chainName": "XRP Ledger",
+    "groupTitle": "XRP Ledger",
+    "providerID": "xrpl-cluster",
+    "endpoint": "https://xrplcluster.com/",
+    "roles": [
+      "rpc",
+      "read",
+      "balance",
+      "history",
+      "broadcast",
+      "fee"
+    ],
+    "probeURL": "https://xrplcluster.com/",
+    "settingsVisible": true,
+    "explorerLabel": null
+  },
+  {
+    "id": "xrp.explorer.tx",
+    "chainName": "XRP Ledger",
+    "groupTitle": "XRP Ledger",
+    "providerID": "xrpscan",
+    "endpoint": "https://livenet.xrpl.org/transactions/",
+    "roles": [
+      "explorer"
+    ],
+    "probeURL": null,
+    "settingsVisible": false,
+    "explorerLabel": "Open In XRP Explorer"
+  },
+  {
+    "id": "cardano.koios.primary",
+    "chainName": "Cardano",
+    "groupTitle": "Cardano",
+    "providerID": "koios",
+    "endpoint": "https://api.koios.rest/api/v1",
+    "roles": [
+      "read",
+      "balance",
+      "history",
+      "broadcast",
+      "fee"
+    ],
+    "probeURL": "https://api.koios.rest/api/v1/tip",
+    "settingsVisible": true,
+    "explorerLabel": null
+  },
+  {
+    "id": "cardano.koios.xray",
+    "chainName": "Cardano",
+    "groupTitle": "Cardano",
+    "providerID": "koios",
+    "endpoint": "https://graph.xray.app/output/services/koios/mainnet/api/v1",
+    "roles": [
+      "read",
+      "balance",
+      "history",
+      "broadcast",
+      "fee"
+    ],
+    "probeURL": "https://graph.xray.app/output/services/koios/mainnet/api/v1/tip",
+    "settingsVisible": true,
+    "explorerLabel": null
+  },
+  {
+    "id": "cardano.koios.happystaking",
+    "chainName": "Cardano",
+    "groupTitle": "Cardano",
+    "providerID": "koios",
+    "endpoint": "https://koios.happystaking.io:8453/api/v1",
+    "roles": [
+      "read",
+      "balance",
+      "history",
+      "broadcast",
+      "fee"
+    ],
+    "probeURL": "https://koios.happystaking.io:8453/api/v1/tip",
+    "settingsVisible": true,
+    "explorerLabel": null
+  },
+  {
+    "id": "cardano.explorer.tx",
+    "chainName": "Cardano",
+    "groupTitle": "Cardano",
+    "providerID": "cexplorer",
+    "endpoint": "https://cexplorer.io/tx/",
+    "roles": [
+      "explorer"
+    ],
+    "probeURL": null,
+    "settingsVisible": false,
+    "explorerLabel": "Open In Cardano Explorer"
+  },
+  {
+    "id": "aptos.rpc.aptoslabs",
+    "chainName": "Aptos",
+    "groupTitle": "Aptos",
+    "providerID": "aptos-mainnet-rpc",
+    "endpoint": "https://api.mainnet.aptoslabs.com/v1",
+    "roles": [
+      "rpc",
+      "read",
+      "balance",
+      "history",
+      "broadcast",
+      "fee"
+    ],
+    "probeURL": "https://api.mainnet.aptoslabs.com/v1/spec",
+    "settingsVisible": true,
+    "explorerLabel": null
+  },
+  {
+    "id": "aptos.rpc.blastapi",
+    "chainName": "Aptos",
+    "groupTitle": "Aptos",
+    "providerID": "blastapi",
+    "endpoint": "https://aptos-mainnet.public.blastapi.io/v1",
+    "roles": [
+      "rpc",
+      "read",
+      "balance",
+      "history",
+      "broadcast",
+      "fee"
+    ],
+    "probeURL": "https://aptos-mainnet.public.blastapi.io/v1/spec",
+    "settingsVisible": true,
+    "explorerLabel": null
+  },
+  {
+    "id": "aptos.rpc.mainnet",
+    "chainName": "Aptos",
+    "groupTitle": "Aptos",
+    "providerID": "aptoslabs-mainnet",
+    "endpoint": "https://mainnet.aptoslabs.com/v1",
+    "roles": [
+      "rpc",
+      "read",
+      "balance",
+      "history",
+      "broadcast",
+      "fee"
+    ],
+    "probeURL": "https://mainnet.aptoslabs.com/v1/spec",
+    "settingsVisible": true,
+    "explorerLabel": null
+  },
+  {
+    "id": "aptos.explorer.tx",
+    "chainName": "Aptos",
+    "groupTitle": "Aptos",
+    "providerID": "aptoslabs-explorer",
+    "endpoint": "https://explorer.aptoslabs.com/txn/",
+    "roles": [
+      "explorer"
+    ],
+    "probeURL": null,
+    "settingsVisible": false,
+    "explorerLabel": "Open In Aptos Explorer"
+  },
+  {
+    "id": "ton.api.v2",
+    "chainName": "TON",
+    "groupTitle": "TON",
+    "providerID": "toncenter-v2",
+    "endpoint": "https://toncenter.com/api/v2",
+    "roles": [
+      "read",
+      "balance",
+      "history",
+      "broadcast",
+      "fee",
+      "verification"
+    ],
+    "probeURL": "https://toncenter.com/api/v2/getMasterchainInfo",
+    "settingsVisible": true,
+    "explorerLabel": null
+  },
+  {
+    "id": "ton.api.v3",
+    "chainName": "TON",
+    "groupTitle": "TON",
+    "providerID": "toncenter-v3",
+    "endpoint": "https://toncenter.com/api/v3",
+    "roles": [
+      "read",
+      "balance",
+      "history"
+    ],
+    "probeURL": "https://toncenter.com/api/v3/jetton/wallets",
+    "settingsVisible": true,
+    "explorerLabel": null
+  },
+  {
+    "id": "ton.explorer.tx",
+    "chainName": "TON",
+    "groupTitle": "TON",
+    "providerID": "tonviewer",
+    "endpoint": "https://tonviewer.com/",
+    "roles": [
+      "explorer"
+    ],
+    "probeURL": null,
+    "settingsVisible": false,
+    "explorerLabel": "Open In Tonviewer"
+  },
+  {
+    "id": "sui.rpc.mainnet",
+    "chainName": "Sui",
+    "groupTitle": "Sui",
+    "providerID": "sui-mainnet",
+    "endpoint": "https://fullnode.mainnet.sui.io:443",
+    "roles": [
+      "rpc",
+      "read",
+      "balance",
+      "history",
+      "broadcast",
+      "fee"
+    ],
+    "probeURL": "https://fullnode.mainnet.sui.io:443",
+    "settingsVisible": true,
+    "explorerLabel": null
+  },
+  {
+    "id": "sui.rpc.publicnode",
+    "chainName": "Sui",
+    "groupTitle": "Sui",
+    "providerID": "sui-publicnode",
+    "endpoint": "https://sui-rpc.publicnode.com",
+    "roles": [
+      "rpc",
+      "read",
+      "balance",
+      "history",
+      "broadcast",
+      "fee"
+    ],
+    "probeURL": "https://sui-rpc.publicnode.com",
+    "settingsVisible": true,
+    "explorerLabel": null
+  },
+  {
+    "id": "sui.rpc.blockvision",
+    "chainName": "Sui",
+    "groupTitle": "Sui",
+    "providerID": "sui-blockvision",
+    "endpoint": "https://sui-mainnet-endpoint.blockvision.org",
+    "roles": [
+      "rpc",
+      "read",
+      "balance",
+      "history",
+      "broadcast",
+      "fee"
+    ],
+    "probeURL": "https://sui-mainnet-endpoint.blockvision.org",
+    "settingsVisible": true,
+    "explorerLabel": null
+  },
+  {
+    "id": "sui.rpc.blockpi",
+    "chainName": "Sui",
+    "groupTitle": "Sui",
+    "providerID": "sui-blockpi",
+    "endpoint": "https://sui.blockpi.network/v1/rpc/public",
+    "roles": [
+      "rpc",
+      "read",
+      "balance",
+      "history",
+      "broadcast",
+      "fee"
+    ],
+    "probeURL": "https://sui.blockpi.network/v1/rpc/public",
+    "settingsVisible": true,
+    "explorerLabel": null
+  },
+  {
+    "id": "sui.rpc.suiscan",
+    "chainName": "Sui",
+    "groupTitle": "Sui",
+    "providerID": "sui-suiscan",
+    "endpoint": "https://rpc-mainnet.suiscan.xyz",
+    "roles": [
+      "rpc",
+      "read",
+      "balance",
+      "history",
+      "broadcast",
+      "fee"
+    ],
+    "probeURL": "https://rpc-mainnet.suiscan.xyz",
+    "settingsVisible": true,
+    "explorerLabel": null
+  },
+  {
+    "id": "near.rpc.mainnet",
+    "chainName": "NEAR",
+    "groupTitle": "NEAR",
+    "providerID": "near-mainnet-rpc",
+    "endpoint": "https://rpc.mainnet.near.org",
+    "roles": [
+      "rpc",
+      "read",
+      "balance",
+      "history",
+      "broadcast",
+      "fee"
+    ],
+    "probeURL": "https://rpc.mainnet.near.org",
+    "settingsVisible": true,
+    "explorerLabel": null
+  },
+  {
+    "id": "near.rpc.fastnear",
+    "chainName": "NEAR",
+    "groupTitle": "NEAR",
+    "providerID": "fastnear-rpc",
+    "endpoint": "https://free.rpc.fastnear.com",
+    "roles": [
+      "rpc",
+      "read",
+      "balance",
+      "history",
+      "broadcast",
+      "fee"
+    ],
+    "probeURL": "https://free.rpc.fastnear.com",
+    "settingsVisible": true,
+    "explorerLabel": null
+  },
+  {
+    "id": "near.rpc.lava",
+    "chainName": "NEAR",
+    "groupTitle": "NEAR",
+    "providerID": "lava-near-rpc",
+    "endpoint": "https://near.lava.build",
+    "roles": [
+      "rpc",
+      "read",
+      "balance",
+      "history",
+      "broadcast",
+      "fee"
+    ],
+    "probeURL": "https://near.lava.build",
+    "settingsVisible": true,
+    "explorerLabel": null
+  },
+  {
+    "id": "near.history.nearblocks",
+    "chainName": "NEAR",
+    "groupTitle": "NEAR",
+    "providerID": "nearblocks",
+    "endpoint": "https://api.nearblocks.io/v1",
+    "roles": [
+      "read",
+      "history"
+    ],
+    "probeURL": "https://api.nearblocks.io/v1/stats",
+    "settingsVisible": true,
+    "explorerLabel": null
+  },
+  {
+    "id": "near.explorer.tx",
+    "chainName": "NEAR",
+    "groupTitle": "NEAR",
+    "providerID": "nearblocks",
+    "endpoint": "https://nearblocks.io/txns/",
+    "roles": [
+      "explorer"
+    ],
+    "probeURL": null,
+    "settingsVisible": false,
+    "explorerLabel": "Open In NearBlocks"
+  },
+  {
+    "id": "polkadot.sidecar.parity",
+    "chainName": "Polkadot",
+    "groupTitle": "Polkadot",
+    "providerID": "sidecar",
+    "endpoint": "https://polkadot-public-sidecar.parity-chains.parity.io",
+    "roles": [
+      "read",
+      "balance",
+      "history",
+      "broadcast",
+      "fee"
+    ],
+    "probeURL": "https://polkadot-public-sidecar.parity-chains.parity.io/transaction/material",
+    "settingsVisible": true,
+    "explorerLabel": null
+  },
+  {
+    "id": "polkadot.rpc.onfinality",
+    "chainName": "Polkadot",
+    "groupTitle": "Polkadot",
+    "providerID": "rpc",
+    "endpoint": "https://polkadot.api.onfinality.io/public",
+    "roles": [
+      "rpc",
+      "read",
+      "balance",
+      "broadcast",
+      "fee"
+    ],
+    "probeURL": "https://polkadot.api.onfinality.io/public",
+    "settingsVisible": true,
+    "explorerLabel": null
+  },
+  {
+    "id": "polkadot.rpc.dotters",
+    "chainName": "Polkadot",
+    "groupTitle": "Polkadot",
+    "providerID": "rpc",
+    "endpoint": "https://polkadot.dotters.network",
+    "roles": [
+      "rpc",
+      "read",
+      "balance",
+      "broadcast",
+      "fee"
+    ],
+    "probeURL": "https://polkadot.dotters.network",
+    "settingsVisible": true,
+    "explorerLabel": null
+  },
+  {
+    "id": "polkadot.rpc.ibp",
+    "chainName": "Polkadot",
+    "groupTitle": "Polkadot",
+    "providerID": "rpc",
+    "endpoint": "https://rpc.ibp.network/polkadot",
+    "roles": [
+      "rpc",
+      "read",
+      "balance",
+      "broadcast",
+      "fee"
+    ],
+    "probeURL": "https://rpc.ibp.network/polkadot",
+    "settingsVisible": true,
+    "explorerLabel": null
+  },
+  {
+    "id": "polkadot.explorer.tx",
+    "chainName": "Polkadot",
+    "groupTitle": "Polkadot",
+    "providerID": "subscan",
+    "endpoint": "https://polkadot.subscan.io/extrinsic/",
+    "roles": [
+      "explorer"
+    ],
+    "probeURL": null,
+    "settingsVisible": false,
+    "explorerLabel": "Open In Subscan"
+  },
+  {
+    "id": "stellar.horizon.primary",
+    "chainName": "Stellar",
+    "groupTitle": "Stellar",
+    "providerID": "horizon",
+    "endpoint": "https://horizon.stellar.org",
+    "roles": [
+      "read",
+      "balance",
+      "history",
+      "broadcast",
+      "fee"
+    ],
+    "probeURL": "https://horizon.stellar.org/fee_stats",
+    "settingsVisible": true,
+    "explorerLabel": null
+  },
+  {
+    "id": "stellar.horizon.lobstr",
+    "chainName": "Stellar",
+    "groupTitle": "Stellar",
+    "providerID": "horizon",
+    "endpoint": "https://horizon.stellar.lobstr.co",
+    "roles": [
+      "read",
+      "balance",
+      "history",
+      "broadcast",
+      "fee"
+    ],
+    "probeURL": "https://horizon.stellar.lobstr.co/fee_stats",
+    "settingsVisible": true,
+    "explorerLabel": null
+  },
+  {
+    "id": "stellar.explorer.tx",
+    "chainName": "Stellar",
+    "groupTitle": "Stellar",
+    "providerID": "stellar-expert",
+    "endpoint": "https://stellar.expert/explorer/public/tx/",
+    "roles": [
+      "explorer"
+    ],
+    "probeURL": null,
+    "settingsVisible": false,
+    "explorerLabel": "Open In Stellar Expert"
+  },
+  {
+    "id": "monero.backend.1",
+    "chainName": "Monero",
+    "groupTitle": "Monero",
+    "providerID": "trusted-backend",
+    "endpoint": "https://monerolws1.edge.app",
+    "roles": [
+      "backend",
+      "read",
+      "balance",
+      "history",
+      "broadcast",
+      "fee"
+    ],
+    "probeURL": null,
+    "settingsVisible": true,
+    "explorerLabel": null
+  },
+  {
+    "id": "monero.backend.2",
+    "chainName": "Monero",
+    "groupTitle": "Monero",
+    "providerID": "trusted-backend",
+    "endpoint": "https://monerolws2.edge.app",
+    "roles": [
+      "backend",
+      "read",
+      "balance",
+      "history",
+      "broadcast",
+      "fee"
+    ],
+    "probeURL": null,
+    "settingsVisible": true,
+    "explorerLabel": null
+  },
+  {
+    "id": "monero.backend.3",
+    "chainName": "Monero",
+    "groupTitle": "Monero",
+    "providerID": "trusted-backend",
+    "endpoint": "https://monerolws3.edge.app",
+    "roles": [
+      "backend",
+      "read",
+      "balance",
+      "history",
+      "broadcast",
+      "fee"
+    ],
+    "probeURL": null,
+    "settingsVisible": true,
+    "explorerLabel": null
+  },
+  {
+    "id": "monero.explorer.tx",
+    "chainName": "Monero",
+    "groupTitle": "Monero",
+    "providerID": "xmrchain",
+    "endpoint": "https://xmrchain.net/tx/",
+    "roles": [
+      "explorer"
+    ],
+    "probeURL": null,
+    "settingsVisible": false,
+    "explorerLabel": "Open In Monero Explorer"
+  },
+  {
+    "id": "icp.rosetta",
+    "chainName": "Internet Computer",
+    "groupTitle": "Internet Computer",
+    "providerID": "rosetta",
+    "endpoint": "https://rosetta-api.internetcomputer.org",
+    "roles": [
+      "read",
+      "balance",
+      "history",
+      "broadcast",
+      "fee"
+    ],
+    "probeURL": "https://rosetta-api.internetcomputer.org/network/list",
+    "settingsVisible": true,
+    "explorerLabel": null
+  },
+  {
+    "id": "icp.explorer.tx",
+    "chainName": "Internet Computer",
+    "groupTitle": "Internet Computer",
+    "providerID": "dashboard",
+    "endpoint": "https://dashboard.internetcomputer.org/transaction/",
+    "roles": [
+      "explorer"
+    ],
+    "probeURL": null,
+    "settingsVisible": false,
+    "explorerLabel": "Open In ICP Dashboard"
+  },
+  {
+    "id": "ethereum.rpc.publicnode",
+    "chainName": "Ethereum",
+    "groupTitle": "Ethereum",
+    "providerID": "rpc",
+    "endpoint": "https://ethereum-rpc.publicnode.com",
+    "roles": [
+      "rpc",
+      "read",
+      "balance",
+      "history",
+      "broadcast",
+      "fee"
+    ],
+    "probeURL": null,
+    "settingsVisible": true,
+    "explorerLabel": null
+  },
+  {
+    "id": "ethereum.rpc.llamarpc",
+    "chainName": "Ethereum",
+    "groupTitle": "Ethereum",
+    "providerID": "rpc",
+    "endpoint": "https://eth.llamarpc.com",
+    "roles": [
+      "rpc",
+      "read",
+      "balance",
+      "history",
+      "broadcast",
+      "fee"
+    ],
+    "probeURL": null,
+    "settingsVisible": true,
+    "explorerLabel": null
+  },
+  {
+    "id": "ethereum.rpc.cloudflare",
+    "chainName": "Ethereum",
+    "groupTitle": "Ethereum",
+    "providerID": "rpc",
+    "endpoint": "https://cloudflare-eth.com",
+    "roles": [
+      "rpc",
+      "read",
+      "balance",
+      "history",
+      "broadcast",
+      "fee"
+    ],
+    "probeURL": null,
+    "settingsVisible": true,
+    "explorerLabel": null
+  },
+  {
+    "id": "ethereum.rpc.ankr",
+    "chainName": "Ethereum",
+    "groupTitle": "Ethereum",
+    "providerID": "rpc",
+    "endpoint": "https://rpc.ankr.com/eth",
+    "roles": [
+      "rpc",
+      "read",
+      "balance",
+      "history",
+      "broadcast",
+      "fee"
+    ],
+    "probeURL": null,
+    "settingsVisible": true,
+    "explorerLabel": null
+  },
+  {
+    "id": "ethereum.rpc.1rpc",
+    "chainName": "Ethereum",
+    "groupTitle": "Ethereum",
+    "providerID": "rpc",
+    "endpoint": "https://1rpc.io/eth",
+    "roles": [
+      "rpc",
+      "read",
+      "balance",
+      "history",
+      "broadcast",
+      "fee"
+    ],
+    "probeURL": null,
+    "settingsVisible": true,
+    "explorerLabel": null
+  },
+  {
+    "id": "ethereum.explorer.etherscan",
+    "chainName": "Ethereum",
+    "groupTitle": "Ethereum",
+    "providerID": "etherscan",
+    "endpoint": "https://api.etherscan.io/api",
+    "roles": [
+      "explorer",
+      "read",
+      "history"
+    ],
+    "probeURL": "https://api.etherscan.io/api?module=stats&action=ethprice",
+    "settingsVisible": true,
+    "explorerLabel": null
+  },
+  {
+    "id": "ethereum.explorer.ethplorer",
+    "chainName": "Ethereum",
+    "groupTitle": "Ethereum",
+    "providerID": "ethplorer",
+    "endpoint": "https://api.ethplorer.io",
+    "roles": [
+      "explorer",
+      "read",
+      "history"
+    ],
+    "probeURL": "https://api.ethplorer.io/getAddressInfo/0x0000000000000000000000000000000000000000?apiKey=freekey",
+    "settingsVisible": true,
+    "explorerLabel": null
+  },
+  {
+    "id": "ethereum.explorer.blockscout",
+    "chainName": "Ethereum",
+    "groupTitle": "Ethereum",
+    "providerID": "blockscout",
+    "endpoint": "https://eth.blockscout.com",
+    "roles": [
+      "explorer",
+      "read",
+      "history"
+    ],
+    "probeURL": null,
+    "settingsVisible": false,
+    "explorerLabel": null
+  },
+  {
+    "id": "ethereum.explorer.tx",
+    "chainName": "Ethereum",
+    "groupTitle": "Ethereum",
+    "providerID": "etherscan-web",
+    "endpoint": "https://etherscan.io/tx/",
+    "roles": [
+      "explorer"
+    ],
+    "probeURL": null,
+    "settingsVisible": false,
+    "explorerLabel": "Open In Etherscan"
+  },
+  {
+    "id": "ethereum.sepolia.rpc.publicnode",
+    "chainName": "Ethereum",
+    "groupTitle": "Ethereum Sepolia",
+    "providerID": "rpc",
+    "endpoint": "https://ethereum-sepolia-rpc.publicnode.com",
+    "roles": [
+      "rpc",
+      "read",
+      "balance",
+      "history",
+      "broadcast",
+      "fee"
+    ],
+    "probeURL": null,
+    "settingsVisible": true,
+    "explorerLabel": null
+  },
+  {
+    "id": "ethereum.hoodi.rpc.publicnode",
+    "chainName": "Ethereum",
+    "groupTitle": "Ethereum Hoodi",
+    "providerID": "rpc",
+    "endpoint": "https://ethereum-hoodi-rpc.publicnode.com",
+    "roles": [
+      "rpc",
+      "read",
+      "balance",
+      "history",
+      "broadcast",
+      "fee"
+    ],
+    "probeURL": null,
+    "settingsVisible": true,
+    "explorerLabel": null
+  },
+  {
+    "id": "ethereumclassic.rpc.rivet",
+    "chainName": "Ethereum Classic",
+    "groupTitle": "Ethereum Classic",
+    "providerID": "rpc",
+    "endpoint": "https://etc.rivet.link",
+    "roles": [
+      "rpc",
+      "read",
+      "balance",
+      "history",
+      "broadcast",
+      "fee"
+    ],
+    "probeURL": null,
+    "settingsVisible": true,
+    "explorerLabel": null
+  },
+  {
+    "id": "ethereumclassic.rpc.geth",
+    "chainName": "Ethereum Classic",
+    "groupTitle": "Ethereum Classic",
+    "providerID": "rpc",
+    "endpoint": "https://geth-at.etc-network.info",
+    "roles": [
+      "rpc",
+      "read",
+      "balance",
+      "history",
+      "broadcast",
+      "fee"
+    ],
+    "probeURL": null,
+    "settingsVisible": true,
+    "explorerLabel": null
+  },
+  {
+    "id": "ethereumclassic.rpc.besu",
+    "chainName": "Ethereum Classic",
+    "groupTitle": "Ethereum Classic",
+    "providerID": "rpc",
+    "endpoint": "https://besu-at.etc-network.info",
+    "roles": [
+      "rpc",
+      "read",
+      "balance",
+      "history",
+      "broadcast",
+      "fee"
+    ],
+    "probeURL": null,
+    "settingsVisible": true,
+    "explorerLabel": null
+  },
+  {
+    "id": "ethereumclassic.explorer.blockscout",
+    "chainName": "Ethereum Classic",
+    "groupTitle": "Ethereum Classic",
+    "providerID": "blockscout",
+    "endpoint": "https://blockscout.com/etc/mainnet",
+    "roles": [
+      "explorer",
+      "read",
+      "history"
+    ],
+    "probeURL": null,
+    "settingsVisible": false,
+    "explorerLabel": null
+  },
+  {
+    "id": "ethereumclassic.explorer.tx",
+    "chainName": "Ethereum Classic",
+    "groupTitle": "Ethereum Classic",
+    "providerID": "blockscout-web",
+    "endpoint": "https://blockscout.com/etc/mainnet/tx/",
+    "roles": [
+      "explorer"
+    ],
+    "probeURL": null,
+    "settingsVisible": false,
+    "explorerLabel": "Open In Blockscout"
+  },
+  {
+    "id": "arbitrum.rpc.publicnode",
+    "chainName": "Arbitrum",
+    "groupTitle": "Arbitrum",
+    "providerID": "rpc",
+    "endpoint": "https://arbitrum-one-rpc.publicnode.com",
+    "roles": [
+      "rpc",
+      "read",
+      "balance",
+      "history",
+      "broadcast",
+      "fee"
+    ],
+    "probeURL": null,
+    "settingsVisible": true,
+    "explorerLabel": null
+  },
+  {
+    "id": "arbitrum.rpc.arb1",
+    "chainName": "Arbitrum",
+    "groupTitle": "Arbitrum",
+    "providerID": "rpc",
+    "endpoint": "https://arb1.arbitrum.io/rpc",
+    "roles": [
+      "rpc",
+      "read",
+      "balance",
+      "history",
+      "broadcast",
+      "fee"
+    ],
+    "probeURL": null,
+    "settingsVisible": true,
+    "explorerLabel": null
+  },
+  {
+    "id": "arbitrum.rpc.1rpc",
+    "chainName": "Arbitrum",
+    "groupTitle": "Arbitrum",
+    "providerID": "rpc",
+    "endpoint": "https://1rpc.io/arb",
+    "roles": [
+      "rpc",
+      "read",
+      "balance",
+      "history",
+      "broadcast",
+      "fee"
+    ],
+    "probeURL": null,
+    "settingsVisible": true,
+    "explorerLabel": null
+  },
+  {
+    "id": "arbitrum.explorer.tx",
+    "chainName": "Arbitrum",
+    "groupTitle": "Arbitrum",
+    "providerID": "arbiscan",
+    "endpoint": "https://arbiscan.io/tx/",
+    "roles": [
+      "explorer"
+    ],
+    "probeURL": null,
+    "settingsVisible": false,
+    "explorerLabel": "Open In Arbiscan"
+  },
+  {
+    "id": "optimism.rpc.mainnet",
+    "chainName": "Optimism",
+    "groupTitle": "Optimism",
+    "providerID": "rpc",
+    "endpoint": "https://mainnet.optimism.io",
+    "roles": [
+      "rpc",
+      "read",
+      "balance",
+      "history",
+      "broadcast",
+      "fee"
+    ],
+    "probeURL": null,
+    "settingsVisible": true,
+    "explorerLabel": null
+  },
+  {
+    "id": "optimism.rpc.publicnode",
+    "chainName": "Optimism",
+    "groupTitle": "Optimism",
+    "providerID": "rpc",
+    "endpoint": "https://optimism-rpc.publicnode.com",
+    "roles": [
+      "rpc",
+      "read",
+      "balance",
+      "history",
+      "broadcast",
+      "fee"
+    ],
+    "probeURL": null,
+    "settingsVisible": true,
+    "explorerLabel": null
+  },
+  {
+    "id": "optimism.rpc.1rpc",
+    "chainName": "Optimism",
+    "groupTitle": "Optimism",
+    "providerID": "rpc",
+    "endpoint": "https://1rpc.io/op",
+    "roles": [
+      "rpc",
+      "read",
+      "balance",
+      "history",
+      "broadcast",
+      "fee"
+    ],
+    "probeURL": null,
+    "settingsVisible": true,
+    "explorerLabel": null
+  },
+  {
+    "id": "optimism.explorer.tx",
+    "chainName": "Optimism",
+    "groupTitle": "Optimism",
+    "providerID": "optimistic-etherscan",
+    "endpoint": "https://optimistic.etherscan.io/tx/",
+    "roles": [
+      "explorer"
+    ],
+    "probeURL": null,
+    "settingsVisible": false,
+    "explorerLabel": "Open In Optimism Etherscan"
+  },
+  {
+    "id": "bnb.rpc.primary",
+    "chainName": "BNB Chain",
+    "groupTitle": "BNB Chain",
+    "providerID": "rpc",
+    "endpoint": "https://bsc-dataseed.bnbchain.org",
+    "roles": [
+      "rpc",
+      "read",
+      "balance",
+      "history",
+      "broadcast",
+      "fee"
+    ],
+    "probeURL": null,
+    "settingsVisible": true,
+    "explorerLabel": null
+  },
+  {
+    "id": "bnb.rpc.binance",
+    "chainName": "BNB Chain",
+    "groupTitle": "BNB Chain",
+    "providerID": "rpc",
+    "endpoint": "https://bsc-dataseed1.binance.org",
+    "roles": [
+      "rpc",
+      "read",
+      "balance",
+      "history",
+      "broadcast",
+      "fee"
+    ],
+    "probeURL": null,
+    "settingsVisible": true,
+    "explorerLabel": null
+  },
+  {
+    "id": "bnb.rpc.defibit",
+    "chainName": "BNB Chain",
+    "groupTitle": "BNB Chain",
+    "providerID": "rpc",
+    "endpoint": "https://bsc-dataseed1.defibit.io",
+    "roles": [
+      "rpc",
+      "read",
+      "balance",
+      "history",
+      "broadcast",
+      "fee"
+    ],
+    "probeURL": null,
+    "settingsVisible": true,
+    "explorerLabel": null
+  },
+  {
+    "id": "bnb.rpc.ninicoin",
+    "chainName": "BNB Chain",
+    "groupTitle": "BNB Chain",
+    "providerID": "rpc",
+    "endpoint": "https://bsc-dataseed1.ninicoin.io",
+    "roles": [
+      "rpc",
+      "read",
+      "balance",
+      "history",
+      "broadcast",
+      "fee"
+    ],
+    "probeURL": null,
+    "settingsVisible": true,
+    "explorerLabel": null
+  },
+  {
+    "id": "bnb.explorer.bscscan",
+    "chainName": "BNB Chain",
+    "groupTitle": "BNB Chain",
+    "providerID": "bscscan",
+    "endpoint": "https://api.bscscan.com/api",
+    "roles": [
+      "explorer",
+      "read",
+      "history"
+    ],
+    "probeURL": "https://api.bscscan.com/api?module=stats&action=bnbprice",
+    "settingsVisible": true,
+    "explorerLabel": null
+  },
+  {
+    "id": "bnb.explorer.tx",
+    "chainName": "BNB Chain",
+    "groupTitle": "BNB Chain",
+    "providerID": "bscscan-web",
+    "endpoint": "https://bscscan.com/tx/",
+    "roles": [
+      "explorer"
+    ],
+    "probeURL": null,
+    "settingsVisible": false,
+    "explorerLabel": "Open In BscScan"
+  },
+  {
+    "id": "avalanche.rpc.primary",
+    "chainName": "Avalanche",
+    "groupTitle": "Avalanche",
+    "providerID": "rpc",
+    "endpoint": "https://api.avax.network/ext/bc/C/rpc",
+    "roles": [
+      "rpc",
+      "read",
+      "balance",
+      "history",
+      "broadcast",
+      "fee"
+    ],
+    "probeURL": null,
+    "settingsVisible": true,
+    "explorerLabel": null
+  },
+  {
+    "id": "avalanche.rpc.publicnode",
+    "chainName": "Avalanche",
+    "groupTitle": "Avalanche",
+    "providerID": "rpc",
+    "endpoint": "https://avalanche-c-chain-rpc.publicnode.com",
+    "roles": [
+      "rpc",
+      "read",
+      "balance",
+      "history",
+      "broadcast",
+      "fee"
+    ],
+    "probeURL": null,
+    "settingsVisible": true,
+    "explorerLabel": null
+  },
+  {
+    "id": "avalanche.rpc.1rpc",
+    "chainName": "Avalanche",
+    "groupTitle": "Avalanche",
+    "providerID": "rpc",
+    "endpoint": "https://1rpc.io/avax/c",
+    "roles": [
+      "rpc",
+      "read",
+      "balance",
+      "history",
+      "broadcast",
+      "fee"
+    ],
+    "probeURL": null,
+    "settingsVisible": true,
+    "explorerLabel": null
+  },
+  {
+    "id": "avalanche.explorer.tx",
+    "chainName": "Avalanche",
+    "groupTitle": "Avalanche",
+    "providerID": "snowtrace-web",
+    "endpoint": "https://snowtrace.io/tx/",
+    "roles": [
+      "explorer"
+    ],
+    "probeURL": null,
+    "settingsVisible": false,
+    "explorerLabel": "Open In Snowtrace"
+  },
+  {
+    "id": "hyperliquid.rpc.primary",
+    "chainName": "Hyperliquid",
+    "groupTitle": "Hyperliquid",
+    "providerID": "rpc",
+    "endpoint": "https://rpc.hyperliquid.xyz/evm",
+    "roles": [
+      "rpc",
+      "read",
+      "balance",
+      "history",
+      "broadcast",
+      "fee"
+    ],
+    "probeURL": null,
+    "settingsVisible": true,
+    "explorerLabel": null
+  },
+  {
+    "id": "hyperliquid.rpc.onfinality",
+    "chainName": "Hyperliquid",
+    "groupTitle": "Hyperliquid",
+    "providerID": "rpc",
+    "endpoint": "https://hyperliquid.api.onfinality.io/evm/public",
+    "roles": [
+      "rpc",
+      "read",
+      "balance",
+      "history",
+      "broadcast",
+      "fee"
+    ],
+    "probeURL": null,
+    "settingsVisible": true,
+    "explorerLabel": null
+  },
+  {
+    "id": "hyperliquid.explorer.api",
+    "chainName": "Hyperliquid",
+    "groupTitle": "Hyperliquid",
+    "providerID": "hyperevmscan",
+    "endpoint": "https://api.hyperevmscan.io/api",
+    "roles": [
+      "explorer",
+      "read",
+      "history"
+    ],
+    "probeURL": null,
+    "settingsVisible": true,
+    "explorerLabel": null
+  },
+  {
+    "id": "hyperliquid.explorer.web",
+    "chainName": "Hyperliquid",
+    "groupTitle": "Hyperliquid",
+    "providerID": "hyperevmscan",
+    "endpoint": "https://hyperevmscan.io",
+    "roles": [
+      "explorer",
+      "read",
+      "history"
+    ],
+    "probeURL": null,
+    "settingsVisible": false,
+    "explorerLabel": null
+  },
+  {
+    "id": "hyperliquid.explorer.tx",
+    "chainName": "Hyperliquid",
+    "groupTitle": "Hyperliquid",
+    "providerID": "hyperliquid-web",
+    "endpoint": "https://app.hyperliquid.xyz/explorer/tx/",
+    "roles": [
+      "explorer"
+    ],
+    "probeURL": null,
+    "settingsVisible": false,
+    "explorerLabel": "Open In Hyperliquid Explorer"
+  }
+]

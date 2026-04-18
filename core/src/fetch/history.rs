@@ -2,6 +2,8 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::collections::BTreeMap;
 
+use crate::chains::registry::Chain;
+
 // ----------------------------------------------------------------
 // Normalized chain history — standard output from fetch_normalized_history_json
 // ----------------------------------------------------------------
@@ -29,14 +31,18 @@ pub fn normalize_chain_history(chain_id: u32, raw_json: &str) -> Vec<ChainHistor
     let Ok(value) = serde_json::from_str::<Value>(raw_json) else {
         return vec![];
     };
-    let arr = match &value {
-        Value::Array(a) => a,
-        _ => return vec![],
+    let Value::Array(arr) = &value else {
+        return vec![];
     };
+    let Some(chain) = Chain::from_id(chain_id) else {
+        return vec![];
+    };
+    let (asset_name, symbol, chain_name) = history_chain_meta(chain);
+    let factor = 10f64.powi(chain.native_decimals() as i32);
 
-    match chain_id {
-        // ── Bitcoin (0): {txid, confirmed, block_height, block_time, net_sats}
-        0 => arr.iter().filter_map(|e| {
+    match chain {
+        // Bitcoin: {txid, confirmed, block_height, block_time, net_sats}
+        Chain::Bitcoin => arr.iter().filter_map(|e| {
             let txid = e["txid"].as_str()?;
             let net_sats = e["net_sats"].as_i64()?;
             let confirmed = e["confirmed"].as_bool().unwrap_or(false);
@@ -45,42 +51,34 @@ pub fn normalize_chain_history(chain_id: u32, raw_json: &str) -> Vec<ChainHistor
             Some(ChainHistoryEntry {
                 kind: if net_sats >= 0 { "receive" } else { "send" }.to_string(),
                 status: if confirmed { "confirmed" } else { "pending" }.to_string(),
-                asset_name: "Bitcoin".to_string(), symbol: "BTC".to_string(),
-                chain_name: "Bitcoin".to_string(),
-                amount: net_sats.unsigned_abs() as f64 / 1e8,
+                asset_name: asset_name.to_string(), symbol: symbol.to_string(),
+                chain_name: chain_name.to_string(),
+                amount: net_sats.unsigned_abs() as f64 / factor,
                 counterparty: String::new(), tx_hash: txid.to_string(),
                 block_height, timestamp,
             })
         }).collect(),
 
-        // ── Litecoin (5), BCH (6), BSV (22): {txid, amount_sat, block_height, timestamp, is_incoming}
-        5 | 6 | 22 => {
-            let (asset_name, symbol, chain_name) = match chain_id {
-                5  => ("Litecoin",    "LTC", "Litecoin"),
-                6  => ("Bitcoin Cash","BCH", "Bitcoin Cash"),
-                22 => ("Bitcoin SV",  "BSV", "Bitcoin SV"),
-                _  => unreachable!(),
-            };
-            arr.iter().filter_map(|e| {
-                let txid = e["txid"].as_str()?;
-                let amount_sat = e["amount_sat"].as_i64()?;
-                let block_height = e["block_height"].as_i64();
-                let timestamp = e["timestamp"].as_f64().unwrap_or(0.0);
-                let is_incoming = e["is_incoming"].as_bool().unwrap_or(amount_sat >= 0);
-                Some(ChainHistoryEntry {
-                    kind: if is_incoming { "receive" } else { "send" }.to_string(),
-                    status: if block_height.unwrap_or(0) > 0 { "confirmed" } else { "pending" }.to_string(),
-                    asset_name: asset_name.to_string(), symbol: symbol.to_string(),
-                    chain_name: chain_name.to_string(),
-                    amount: amount_sat.unsigned_abs() as f64 / 1e8,
-                    counterparty: String::new(), tx_hash: txid.to_string(),
-                    block_height, timestamp,
-                })
-            }).collect()
-        }
+        // LTC / BCH / BSV: {txid, amount_sat, block_height, timestamp, is_incoming}
+        Chain::Litecoin | Chain::BitcoinCash | Chain::BitcoinSV => arr.iter().filter_map(|e| {
+            let txid = e["txid"].as_str()?;
+            let amount_sat = e["amount_sat"].as_i64()?;
+            let block_height = e["block_height"].as_i64();
+            let timestamp = e["timestamp"].as_f64().unwrap_or(0.0);
+            let is_incoming = e["is_incoming"].as_bool().unwrap_or(amount_sat >= 0);
+            Some(ChainHistoryEntry {
+                kind: if is_incoming { "receive" } else { "send" }.to_string(),
+                status: if block_height.unwrap_or(0) > 0 { "confirmed" } else { "pending" }.to_string(),
+                asset_name: asset_name.to_string(), symbol: symbol.to_string(),
+                chain_name: chain_name.to_string(),
+                amount: amount_sat.unsigned_abs() as f64 / factor,
+                counterparty: String::new(), tx_hash: txid.to_string(),
+                block_height, timestamp,
+            })
+        }).collect(),
 
-        // ── Dogecoin (3): {txid, amount_koin, block_height, timestamp, is_incoming}
-        3 => arr.iter().filter_map(|e| {
+        // Dogecoin: {txid, amount_koin, block_height, timestamp, is_incoming}
+        Chain::Dogecoin => arr.iter().filter_map(|e| {
             let txid = e["txid"].as_str()?;
             let amount_koin = e["amount_koin"].as_i64().unwrap_or(0);
             let block_height = e["block_height"].as_i64();
@@ -89,16 +87,16 @@ pub fn normalize_chain_history(chain_id: u32, raw_json: &str) -> Vec<ChainHistor
             Some(ChainHistoryEntry {
                 kind: if is_incoming { "receive" } else { "send" }.to_string(),
                 status: if block_height.unwrap_or(0) > 0 { "confirmed" } else { "pending" }.to_string(),
-                asset_name: "Dogecoin".to_string(), symbol: "DOGE".to_string(),
-                chain_name: "Dogecoin".to_string(),
-                amount: amount_koin.unsigned_abs() as f64 / 1e8,
+                asset_name: asset_name.to_string(), symbol: symbol.to_string(),
+                chain_name: chain_name.to_string(),
+                amount: amount_koin.unsigned_abs() as f64 / factor,
                 counterparty: String::new(), tx_hash: txid.to_string(),
                 block_height, timestamp,
             })
         }).collect(),
 
-        // ── XRP (4): {txid, timestamp, from, to, amount_drops, is_incoming}
-        4 => arr.iter().filter_map(|e| {
+        // XRP: {txid, timestamp, from, to, amount_drops, is_incoming}
+        Chain::Xrp => arr.iter().filter_map(|e| {
             let txid = e["txid"].as_str()?;
             let drops = e["amount_drops"].as_u64().unwrap_or(0);
             let is_incoming = e["is_incoming"].as_bool().unwrap_or(false);
@@ -108,22 +106,21 @@ pub fn normalize_chain_history(chain_id: u32, raw_json: &str) -> Vec<ChainHistor
             Some(ChainHistoryEntry {
                 kind: if is_incoming { "receive" } else { "send" }.to_string(),
                 status: "confirmed".to_string(),
-                asset_name: "XRP".to_string(), symbol: "XRP".to_string(),
-                chain_name: "XRP Ledger".to_string(),
-                amount: drops as f64 / 1e6,
+                asset_name: asset_name.to_string(), symbol: symbol.to_string(),
+                chain_name: chain_name.to_string(),
+                amount: drops as f64 / factor,
                 counterparty: (if is_incoming { from } else { to }).to_string(),
                 tx_hash: txid.to_string(), block_height: None, timestamp,
             })
         }).collect(),
 
-        // ── Stellar (8): {txid, timestamp (ISO or unix), from/to, amount_stroops, is_incoming}
-        8 => arr.iter().filter_map(|e| {
+        // Stellar: {txid, timestamp (ISO or unix), from/to, amount_stroops, is_incoming}
+        Chain::Stellar => arr.iter().filter_map(|e| {
             let txid = e["txid"].as_str()?;
             let stroops = e["amount_stroops"].as_i64().unwrap_or(0);
             let is_incoming = e["is_incoming"].as_bool().unwrap_or(false);
             let from = e["from"].as_str().unwrap_or("");
             let to = e["to"].as_str().unwrap_or("");
-            // timestamp can be ISO string or unix number
             let timestamp: f64 = if let Some(n) = e["timestamp"].as_f64() {
                 n
             } else if let Some(s) = e["timestamp"].as_str() {
@@ -132,16 +129,16 @@ pub fn normalize_chain_history(chain_id: u32, raw_json: &str) -> Vec<ChainHistor
             Some(ChainHistoryEntry {
                 kind: if is_incoming { "receive" } else { "send" }.to_string(),
                 status: "confirmed".to_string(),
-                asset_name: "Stellar Lumens".to_string(), symbol: "XLM".to_string(),
-                chain_name: "Stellar".to_string(),
-                amount: stroops.unsigned_abs() as f64 / 1e7,
+                asset_name: asset_name.to_string(), symbol: symbol.to_string(),
+                chain_name: chain_name.to_string(),
+                amount: stroops.unsigned_abs() as f64 / factor,
                 counterparty: (if is_incoming { from } else { to }).to_string(),
                 tx_hash: txid.to_string(), block_height: None, timestamp,
             })
         }).collect(),
 
-        // ── Cardano (9): {txid, block_time, amount_lovelace, is_incoming}
-        9 => arr.iter().filter_map(|e| {
+        // Cardano: {txid, block_time, amount_lovelace, is_incoming}
+        Chain::Cardano => arr.iter().filter_map(|e| {
             let txid = e["txid"].as_str()?;
             let lovelace = e["amount_lovelace"].as_i64().unwrap_or(0);
             let is_incoming = e["is_incoming"].as_bool().unwrap_or(false);
@@ -149,16 +146,16 @@ pub fn normalize_chain_history(chain_id: u32, raw_json: &str) -> Vec<ChainHistor
             Some(ChainHistoryEntry {
                 kind: if is_incoming { "receive" } else { "send" }.to_string(),
                 status: "confirmed".to_string(),
-                asset_name: "Cardano".to_string(), symbol: "ADA".to_string(),
-                chain_name: "Cardano".to_string(),
-                amount: lovelace.unsigned_abs() as f64 / 1e6,
+                asset_name: asset_name.to_string(), symbol: symbol.to_string(),
+                chain_name: chain_name.to_string(),
+                amount: lovelace.unsigned_abs() as f64 / factor,
                 counterparty: String::new(), tx_hash: txid.to_string(),
                 block_height: None, timestamp,
             })
         }).collect(),
 
-        // ── Polkadot (10): {txid, amount_planck, timestamp, from, to, is_incoming}
-        10 => arr.iter().filter_map(|e| {
+        // Polkadot: {txid, amount_planck, timestamp, from, to, is_incoming}
+        Chain::Polkadot => arr.iter().filter_map(|e| {
             let txid = e["txid"].as_str()?;
             let planck = e["amount_planck"].as_f64().unwrap_or(0.0);
             let is_incoming = e["is_incoming"].as_bool().unwrap_or(false);
@@ -168,57 +165,59 @@ pub fn normalize_chain_history(chain_id: u32, raw_json: &str) -> Vec<ChainHistor
             Some(ChainHistoryEntry {
                 kind: if is_incoming { "receive" } else { "send" }.to_string(),
                 status: "confirmed".to_string(),
-                asset_name: "Polkadot".to_string(), symbol: "DOT".to_string(),
-                chain_name: "Polkadot".to_string(),
-                amount: planck / 1e10,
+                asset_name: asset_name.to_string(), symbol: symbol.to_string(),
+                chain_name: chain_name.to_string(),
+                amount: planck / factor,
                 counterparty: (if is_incoming { from } else { to }).to_string(),
                 tx_hash: txid.to_string(), block_height: None, timestamp,
             })
         }).collect(),
 
-        // ── Solana (2): SolanaTransfer {signature, timestamp, is_incoming, amount_display, symbol, mint, from, to}
-        2 => arr.iter().filter_map(|e| {
+        // Solana: SolanaTransfer {signature, timestamp, is_incoming, amount_display, symbol, mint, from, to}
+        // Per-entry `symbol` may override for SPL tokens; asset_name tracks it.
+        Chain::Solana => arr.iter().filter_map(|e| {
             let sig = e["signature"].as_str()?;
             let is_incoming = e["is_incoming"].as_bool().unwrap_or(false);
             let amount: f64 = e["amount_display"].as_str().and_then(|s| s.parse().ok()).unwrap_or(0.0);
-            let symbol = e["symbol"].as_str().unwrap_or("SOL");
+            let entry_symbol = e["symbol"].as_str().unwrap_or(symbol);
             let from = e["from"].as_str().unwrap_or("");
             let to = e["to"].as_str().unwrap_or("");
             let timestamp = e["timestamp"].as_f64().unwrap_or(0.0);
-            let asset_name = if symbol == "SOL" { "Solana" } else { symbol };
+            let entry_asset = if entry_symbol == symbol { asset_name } else { entry_symbol };
             Some(ChainHistoryEntry {
                 kind: if is_incoming { "receive" } else { "send" }.to_string(),
                 status: "confirmed".to_string(),
-                asset_name: asset_name.to_string(), symbol: symbol.to_string(),
-                chain_name: "Solana".to_string(), amount,
+                asset_name: entry_asset.to_string(), symbol: entry_symbol.to_string(),
+                chain_name: chain_name.to_string(), amount,
                 counterparty: (if is_incoming { from } else { to }).to_string(),
                 tx_hash: sig.to_string(), block_height: None, timestamp,
             })
         }).collect(),
 
-        // ── Tron (7): TronTransfer {txid, timestamp_ms, from, to, amount_display, symbol}
-        7 => arr.iter().filter_map(|e| {
+        // Tron: TronTransfer {txid, timestamp_ms, from, to, amount_display, symbol}
+        // Per-entry `symbol` may be TRC20; `tron_asset_name` maps it to the display name.
+        Chain::Tron => arr.iter().filter_map(|e| {
             let txid = e["txid"].as_str()?;
             let is_incoming = e["is_incoming"].as_bool().unwrap_or(false);
             let amount: f64 = e["amount_display"].as_str().and_then(|s| s.parse().ok()).unwrap_or(0.0);
-            let symbol = e["symbol"].as_str().unwrap_or("TRX");
+            let entry_symbol = e["symbol"].as_str().unwrap_or(symbol);
             let from = e["from"].as_str().unwrap_or("");
             let to = e["to"].as_str().unwrap_or("");
             let timestamp_ms = e["timestamp_ms"].as_f64().unwrap_or(0.0);
-            let asset_name = tron_asset_name(symbol);
+            let entry_asset = tron_asset_name(entry_symbol);
             Some(ChainHistoryEntry {
                 kind: if is_incoming { "receive" } else { "send" }.to_string(),
                 status: "confirmed".to_string(),
-                asset_name: asset_name.to_string(), symbol: symbol.to_string(),
-                chain_name: "Tron".to_string(), amount,
+                asset_name: entry_asset.to_string(), symbol: entry_symbol.to_string(),
+                chain_name: chain_name.to_string(), amount,
                 counterparty: (if is_incoming { from } else { to }).to_string(),
                 tx_hash: txid.to_string(), block_height: None,
                 timestamp: timestamp_ms / 1000.0,
             })
         }).collect(),
 
-        // ── Sui (14): {digest, amount_mist, timestamp_ms, is_incoming}
-        14 => arr.iter().filter_map(|e| {
+        // Sui: {digest, amount_mist, timestamp_ms, is_incoming}
+        Chain::Sui => arr.iter().filter_map(|e| {
             let digest = e["digest"].as_str()?;
             let mist = e["amount_mist"].as_f64().unwrap_or(0.0);
             let is_incoming = e["is_incoming"].as_bool().unwrap_or(false);
@@ -226,16 +225,16 @@ pub fn normalize_chain_history(chain_id: u32, raw_json: &str) -> Vec<ChainHistor
             Some(ChainHistoryEntry {
                 kind: if is_incoming { "receive" } else { "send" }.to_string(),
                 status: "confirmed".to_string(),
-                asset_name: "Sui".to_string(), symbol: "SUI".to_string(),
-                chain_name: "Sui".to_string(),
-                amount: mist / 1e9,
+                asset_name: asset_name.to_string(), symbol: symbol.to_string(),
+                chain_name: chain_name.to_string(),
+                amount: mist / factor,
                 counterparty: String::new(), tx_hash: digest.to_string(),
                 block_height: None, timestamp: timestamp_ms / 1000.0,
             })
         }).collect(),
 
-        // ── Aptos (15): {txid, amount_octas, timestamp_us, from, to, is_incoming}
-        15 => arr.iter().filter_map(|e| {
+        // Aptos: {txid, amount_octas, timestamp_us, from, to, is_incoming}
+        Chain::Aptos => arr.iter().filter_map(|e| {
             let txid = e["txid"].as_str()?;
             let octas = e["amount_octas"].as_f64().unwrap_or(0.0);
             let is_incoming = e["is_incoming"].as_bool().unwrap_or(false);
@@ -245,17 +244,17 @@ pub fn normalize_chain_history(chain_id: u32, raw_json: &str) -> Vec<ChainHistor
             Some(ChainHistoryEntry {
                 kind: if is_incoming { "receive" } else { "send" }.to_string(),
                 status: "confirmed".to_string(),
-                asset_name: "Aptos".to_string(), symbol: "APT".to_string(),
-                chain_name: "Aptos".to_string(),
-                amount: octas / 1e8,
+                asset_name: asset_name.to_string(), symbol: symbol.to_string(),
+                chain_name: chain_name.to_string(),
+                amount: octas / factor,
                 counterparty: (if is_incoming { from } else { to }).to_string(),
                 tx_hash: txid.to_string(), block_height: None,
                 timestamp: timestamp_us / 1e6,
             })
         }).collect(),
 
-        // ── TON (16): {txid, amount_nanotons, timestamp, from, to, is_incoming}
-        16 => arr.iter().filter_map(|e| {
+        // TON: {txid, amount_nanotons, timestamp, from, to, is_incoming}
+        Chain::Ton => arr.iter().filter_map(|e| {
             let txid = e["txid"].as_str()?;
             let nanotons = e["amount_nanotons"].as_f64().unwrap_or(0.0);
             let is_incoming = e["is_incoming"].as_bool().unwrap_or(false);
@@ -265,16 +264,16 @@ pub fn normalize_chain_history(chain_id: u32, raw_json: &str) -> Vec<ChainHistor
             Some(ChainHistoryEntry {
                 kind: if is_incoming { "receive" } else { "send" }.to_string(),
                 status: "confirmed".to_string(),
-                asset_name: "Toncoin".to_string(), symbol: "TON".to_string(),
-                chain_name: "TON".to_string(),
-                amount: nanotons / 1e9,
+                asset_name: asset_name.to_string(), symbol: symbol.to_string(),
+                chain_name: chain_name.to_string(),
+                amount: nanotons / factor,
                 counterparty: (if is_incoming { from } else { to }).to_string(),
                 tx_hash: txid.to_string(), block_height: None, timestamp,
             })
         }).collect(),
 
-        // ── NEAR (17): {txid, timestamp_ns, signer_id, receiver_id, amount_yocto, is_incoming}
-        17 => arr.iter().filter_map(|e| {
+        // NEAR: {txid, timestamp_ns, signer_id, receiver_id, amount_yocto, is_incoming}
+        Chain::Near => arr.iter().filter_map(|e| {
             let txid = e["txid"].as_str()?;
             let yocto: f64 = e["amount_yocto"].as_str().and_then(|s| s.parse().ok()).unwrap_or(0.0);
             let is_incoming = e["is_incoming"].as_bool().unwrap_or(false);
@@ -284,17 +283,17 @@ pub fn normalize_chain_history(chain_id: u32, raw_json: &str) -> Vec<ChainHistor
             Some(ChainHistoryEntry {
                 kind: if is_incoming { "receive" } else { "send" }.to_string(),
                 status: "confirmed".to_string(),
-                asset_name: "NEAR Protocol".to_string(), symbol: "NEAR".to_string(),
-                chain_name: "NEAR".to_string(),
-                amount: yocto / 1e24,
+                asset_name: asset_name.to_string(), symbol: symbol.to_string(),
+                chain_name: chain_name.to_string(),
+                amount: yocto / factor,
                 counterparty: (if is_incoming { signer } else { receiver }).to_string(),
                 tx_hash: txid.to_string(), block_height: None,
                 timestamp: timestamp_ns / 1e9,
             })
         }).collect(),
 
-        // ── ICP (18): {block_index, amount_e8s, timestamp_ns, from, to, is_incoming}
-        18 => arr.iter().filter_map(|e| {
+        // ICP: {block_index, amount_e8s, timestamp_ns, from, to, is_incoming}
+        Chain::Icp => arr.iter().filter_map(|e| {
             let block_index = e["block_index"].as_i64().unwrap_or(0);
             let e8s = e["amount_e8s"].as_f64().unwrap_or(0.0);
             let is_incoming = e["is_incoming"].as_bool().unwrap_or(false);
@@ -304,17 +303,17 @@ pub fn normalize_chain_history(chain_id: u32, raw_json: &str) -> Vec<ChainHistor
             Some(ChainHistoryEntry {
                 kind: if is_incoming { "receive" } else { "send" }.to_string(),
                 status: "confirmed".to_string(),
-                asset_name: "Internet Computer".to_string(), symbol: "ICP".to_string(),
-                chain_name: "Internet Computer".to_string(),
-                amount: e8s / 1e8,
+                asset_name: asset_name.to_string(), symbol: symbol.to_string(),
+                chain_name: chain_name.to_string(),
+                amount: e8s / factor,
                 counterparty: (if is_incoming { from } else { to }).to_string(),
                 tx_hash: block_index.to_string(), block_height: None,
                 timestamp: timestamp_ns / 1e9,
             })
         }).collect(),
 
-        // ── Monero (19): {txid, amount_piconeros, timestamp, is_incoming}
-        19 => arr.iter().filter_map(|e| {
+        // Monero: {txid, amount_piconeros, timestamp, is_incoming}
+        Chain::Monero => arr.iter().filter_map(|e| {
             let txid = e["txid"].as_str()?;
             let piconeros = e["amount_piconeros"].as_f64().unwrap_or(0.0);
             let is_incoming = e["is_incoming"].as_bool().unwrap_or(false);
@@ -322,15 +321,28 @@ pub fn normalize_chain_history(chain_id: u32, raw_json: &str) -> Vec<ChainHistor
             Some(ChainHistoryEntry {
                 kind: if is_incoming { "receive" } else { "send" }.to_string(),
                 status: "confirmed".to_string(),
-                asset_name: "Monero".to_string(), symbol: "XMR".to_string(),
-                chain_name: "Monero".to_string(),
-                amount: piconeros / 1e12,
+                asset_name: asset_name.to_string(), symbol: symbol.to_string(),
+                chain_name: chain_name.to_string(),
+                amount: piconeros / factor,
                 counterparty: String::new(), tx_hash: txid.to_string(),
                 block_height: None, timestamp,
             })
         }).collect(),
 
         _ => vec![],
+    }
+}
+
+/// Returns (asset_name, symbol, chain_name) used on `ChainHistoryEntry` rows.
+/// Mostly forwards to Chain's coin/chain display methods; the outliers use
+/// longer history-specific names that Swift expects in transaction lists.
+fn history_chain_meta(chain: Chain) -> (&'static str, &'static str, &'static str) {
+    match chain {
+        Chain::Stellar => ("Stellar Lumens",    "XLM",  "Stellar"),
+        Chain::Ton     => ("Toncoin",           "TON",  "TON"),
+        Chain::Near    => ("NEAR Protocol",     "NEAR", "NEAR"),
+        Chain::Icp     => ("Internet Computer", "ICP",  "Internet Computer"),
+        c              => (c.coin_name(), c.coin_symbol(), c.chain_display_name()),
     }
 }
 
