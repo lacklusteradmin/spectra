@@ -149,6 +149,31 @@ pub struct DogecoinRefreshWalletTarget {
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, uniffi::Record)]
 #[serde(rename_all = "camelCase")]
+pub struct NormalizedRefreshWalletInput {
+    pub index: u64,
+    pub wallet_id: String,
+    pub selected_chain: String,
+    pub address: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, uniffi::Record)]
+#[serde(rename_all = "camelCase")]
+pub struct NormalizedRefreshTargetsRequest {
+    pub chain_name: String,
+    pub wallets: Vec<NormalizedRefreshWalletInput>,
+    pub allowed_wallet_ids: Option<Vec<String>>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, uniffi::Record)]
+#[serde(rename_all = "camelCase")]
+pub struct NormalizedRefreshWalletTarget {
+    pub index: u64,
+    pub wallet_id: String,
+    pub address: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, uniffi::Record)]
+#[serde(rename_all = "camelCase")]
 pub struct BalanceRefreshHealthRequest {
     pub chain_name: String,
     pub attempted_wallet_count: u64,
@@ -338,6 +363,34 @@ pub fn plan_evm_refresh_targets(request: EvmRefreshTargetsRequest) -> EvmRefresh
     }
 }
 
+pub fn plan_normalized_refresh_targets(
+    request: NormalizedRefreshTargetsRequest,
+) -> Vec<NormalizedRefreshWalletTarget> {
+    let allowed_wallet_ids = request
+        .allowed_wallet_ids
+        .map(|wallet_ids| wallet_ids.into_iter().collect::<BTreeSet<_>>());
+
+    request
+        .wallets
+        .into_iter()
+        .filter(|wallet| wallet.selected_chain == request.chain_name)
+        .filter(|wallet| {
+            allowed_wallet_ids
+                .as_ref()
+                .map(|wallet_ids| wallet_ids.contains(&wallet.wallet_id))
+                .unwrap_or(true)
+        })
+        .filter_map(|wallet| {
+            let address = trim_optional(wallet.address.as_deref())?.to_string();
+            Some(NormalizedRefreshWalletTarget {
+                index: wallet.index,
+                wallet_id: wallet.wallet_id,
+                address,
+            })
+        })
+        .collect()
+}
+
 pub fn plan_dogecoin_refresh_targets(
     request: DogecoinRefreshTargetsRequest,
 ) -> Vec<DogecoinRefreshWalletTarget> {
@@ -394,8 +447,9 @@ fn normalize_evm_address(address: &str) -> String {
 mod tests {
     use super::{
         plan_balance_refresh_health, plan_dogecoin_refresh_targets, plan_evm_refresh_targets,
-        plan_wallet_balance_refresh, BalanceRefreshHealthRequest, DogecoinRefreshTargetsRequest,
-        DogecoinRefreshWalletInput, EvmRefreshTargetsRequest, EvmRefreshWalletInput,
+        plan_normalized_refresh_targets, plan_wallet_balance_refresh, BalanceRefreshHealthRequest,
+        DogecoinRefreshTargetsRequest, DogecoinRefreshWalletInput, EvmRefreshTargetsRequest,
+        EvmRefreshWalletInput, NormalizedRefreshTargetsRequest, NormalizedRefreshWalletInput,
         WalletBalanceRefreshRequest,
     };
 
@@ -492,6 +546,44 @@ mod tests {
         assert_eq!(targets.len(), 1);
         assert_eq!(targets[0].wallet_id, "wallet-a");
         assert_eq!(targets[0].addresses, vec!["Dabc"]);
+    }
+
+    #[test]
+    fn filters_normalized_targets_by_chain_and_nonempty_address() {
+        let targets = plan_normalized_refresh_targets(NormalizedRefreshTargetsRequest {
+            chain_name: "Solana".to_string(),
+            wallets: vec![
+                NormalizedRefreshWalletInput {
+                    index: 0,
+                    wallet_id: "wallet-a".to_string(),
+                    selected_chain: "Solana".to_string(),
+                    address: Some(" SoLaNaAddr ".to_string()),
+                },
+                NormalizedRefreshWalletInput {
+                    index: 1,
+                    wallet_id: "wallet-b".to_string(),
+                    selected_chain: "Solana".to_string(),
+                    address: Some("".to_string()),
+                },
+                NormalizedRefreshWalletInput {
+                    index: 2,
+                    wallet_id: "wallet-c".to_string(),
+                    selected_chain: "Tron".to_string(),
+                    address: Some("T123".to_string()),
+                },
+                NormalizedRefreshWalletInput {
+                    index: 3,
+                    wallet_id: "wallet-d".to_string(),
+                    selected_chain: "Solana".to_string(),
+                    address: None,
+                },
+            ],
+            allowed_wallet_ids: None,
+        });
+
+        assert_eq!(targets.len(), 1);
+        assert_eq!(targets[0].wallet_id, "wallet-a");
+        assert_eq!(targets[0].address, "SoLaNaAddr");
     }
 
     #[test]

@@ -228,6 +228,129 @@ pub fn history_decode_evm_page(json: String) -> EvmHistoryPageDecoded {
 }
 
 // ────────────────────────────────────────────────────────────────────
+// EVM history page → per-wallet transaction record projection.
+// Given a decoded page and the target wallets, emits one record per
+// (wallet × matching transfer) where "matching" means the transfer
+// touches the wallet's normalized address as sender or receiver.
+// Swift wraps each output in `TransactionRecord` with a fresh UUID.
+// ────────────────────────────────────────────────────────────────────
+
+#[derive(Debug, Clone, uniffi::Record)]
+pub struct EvmPlannedTransactionRecord {
+    pub wallet_id: String,
+    pub wallet_name: String,
+    pub kind: String,
+    pub asset_name: String,
+    pub symbol: String,
+    pub chain_name: String,
+    pub amount_decimal: String,
+    pub counterparty: String,
+    pub transaction_hash: String,
+    pub block_number: i64,
+    pub source_address: String,
+    pub source_used: String,
+    pub created_at_unix: f64,
+}
+
+#[derive(Debug, Clone, uniffi::Record)]
+pub struct EvmTransactionRecordWalletInput {
+    pub wallet_id: String,
+    pub wallet_name: String,
+}
+
+#[derive(Debug, Clone, uniffi::Record)]
+pub struct EvmTransactionRecordRequest {
+    pub decoded_page: EvmHistoryPageDecoded,
+    pub normalized_address: String,
+    pub chain_name: String,
+    pub token_source_used: Option<String>,
+    pub native_asset_name: String,
+    pub native_asset_symbol: String,
+    pub wallets: Vec<EvmTransactionRecordWalletInput>,
+    pub unknown_timestamp_sentinel_unix: f64,
+}
+
+#[uniffi::export]
+pub fn plan_evm_transaction_records(
+    request: EvmTransactionRecordRequest,
+) -> Vec<EvmPlannedTransactionRecord> {
+    let normalized = request.normalized_address;
+    let token_source = request
+        .token_source_used
+        .unwrap_or_else(|| "none".to_string());
+    let native_source = "etherscan".to_string();
+    let mut out: Vec<EvmPlannedTransactionRecord> = Vec::new();
+
+    for wallet in &request.wallets {
+        for transfer in &request.decoded_page.tokens {
+            let is_outgoing = transfer.from_address == normalized;
+            let is_incoming = transfer.to_address == normalized;
+            if !is_outgoing && !is_incoming {
+                continue;
+            }
+            let (counterparty, wallet_side) = if is_outgoing {
+                (transfer.to_address.clone(), transfer.from_address.clone())
+            } else {
+                (transfer.from_address.clone(), transfer.to_address.clone())
+            };
+            let created_at = if transfer.timestamp > 0.0 {
+                transfer.timestamp
+            } else {
+                request.unknown_timestamp_sentinel_unix
+            };
+            out.push(EvmPlannedTransactionRecord {
+                wallet_id: wallet.wallet_id.clone(),
+                wallet_name: wallet.wallet_name.clone(),
+                kind: if is_outgoing { "send" } else { "receive" }.to_string(),
+                asset_name: transfer.token_name.clone(),
+                symbol: transfer.symbol.clone(),
+                chain_name: request.chain_name.clone(),
+                amount_decimal: transfer.amount_decimal.clone(),
+                counterparty,
+                transaction_hash: transfer.transaction_hash.clone(),
+                block_number: transfer.block_number,
+                source_address: wallet_side,
+                source_used: token_source.clone(),
+                created_at_unix: created_at,
+            });
+        }
+        for transfer in &request.decoded_page.native {
+            let is_outgoing = transfer.from_address == normalized;
+            let is_incoming = transfer.to_address == normalized;
+            if !is_outgoing && !is_incoming {
+                continue;
+            }
+            let (counterparty, wallet_side) = if is_outgoing {
+                (transfer.to_address.clone(), transfer.from_address.clone())
+            } else {
+                (transfer.from_address.clone(), transfer.to_address.clone())
+            };
+            let created_at = if transfer.timestamp > 0.0 {
+                transfer.timestamp
+            } else {
+                request.unknown_timestamp_sentinel_unix
+            };
+            out.push(EvmPlannedTransactionRecord {
+                wallet_id: wallet.wallet_id.clone(),
+                wallet_name: wallet.wallet_name.clone(),
+                kind: if is_outgoing { "send" } else { "receive" }.to_string(),
+                asset_name: request.native_asset_name.clone(),
+                symbol: request.native_asset_symbol.clone(),
+                chain_name: request.chain_name.clone(),
+                amount_decimal: transfer.amount_decimal.clone(),
+                counterparty,
+                transaction_hash: transfer.transaction_hash.clone(),
+                block_number: transfer.block_number,
+                source_address: wallet_side,
+                source_used: native_source.clone(),
+                created_at_unix: created_at,
+            });
+        }
+    }
+    out
+}
+
+// ────────────────────────────────────────────────────────────────────
 // HistoryChainID mapping — moved out of Swift.
 // ────────────────────────────────────────────────────────────────────
 
@@ -434,6 +557,73 @@ mod tests {
         assert_eq!(d.tokens[0].amount_decimal, "1.5");
         assert_eq!(d.native.len(), 1);
         assert_eq!(d.native[0].amount_decimal, "1");
+    }
+
+    #[test]
+    fn plans_evm_transaction_records_for_matching_transfers() {
+        let page = EvmHistoryPageDecoded {
+            tokens: vec![EvmTokenTransferItem {
+                contract_address: "0xabc".into(), token_name: "USD Coin".into(),
+                symbol: "USDC".into(), decimals: 6,
+                from_address: "0xself".into(), to_address: "0xother".into(),
+                amount_decimal: "1.5".into(), transaction_hash: "0xhash".into(),
+                block_number: 100, log_index: 0, timestamp: 1700000000.0,
+            }],
+            native: vec![EvmNativeTransferItem {
+                from_address: "0xother".into(), to_address: "0xself".into(),
+                amount_decimal: "0.25".into(), transaction_hash: "0xhash2".into(),
+                block_number: 101, timestamp: 0.0,
+            }],
+        };
+        let out = plan_evm_transaction_records(EvmTransactionRecordRequest {
+            decoded_page: page,
+            normalized_address: "0xself".into(),
+            chain_name: "Ethereum".into(),
+            token_source_used: Some("rust/etherscan".into()),
+            native_asset_name: "Ether".into(),
+            native_asset_symbol: "ETH".into(),
+            wallets: vec![EvmTransactionRecordWalletInput {
+                wallet_id: "w1".into(), wallet_name: "Primary".into(),
+            }],
+            unknown_timestamp_sentinel_unix: -1.0,
+        });
+        assert_eq!(out.len(), 2);
+        assert_eq!(out[0].kind, "send");
+        assert_eq!(out[0].symbol, "USDC");
+        assert_eq!(out[0].counterparty, "0xother");
+        assert_eq!(out[0].source_address, "0xself");
+        assert_eq!(out[0].created_at_unix, 1700000000.0);
+        assert_eq!(out[1].kind, "receive");
+        assert_eq!(out[1].symbol, "ETH");
+        assert_eq!(out[1].source_used, "etherscan");
+        assert_eq!(out[1].created_at_unix, -1.0);
+    }
+
+    #[test]
+    fn plans_evm_transaction_records_skips_unrelated_transfers() {
+        let page = EvmHistoryPageDecoded {
+            tokens: vec![EvmTokenTransferItem {
+                contract_address: "0xabc".into(), token_name: "USD Coin".into(),
+                symbol: "USDC".into(), decimals: 6,
+                from_address: "0xA".into(), to_address: "0xB".into(),
+                amount_decimal: "1".into(), transaction_hash: "0xhash".into(),
+                block_number: 100, log_index: 0, timestamp: 1700000000.0,
+            }],
+            native: vec![],
+        };
+        let out = plan_evm_transaction_records(EvmTransactionRecordRequest {
+            decoded_page: page,
+            normalized_address: "0xself".into(),
+            chain_name: "Ethereum".into(),
+            token_source_used: None,
+            native_asset_name: "Ether".into(),
+            native_asset_symbol: "ETH".into(),
+            wallets: vec![EvmTransactionRecordWalletInput {
+                wallet_id: "w1".into(), wallet_name: "Primary".into(),
+            }],
+            unknown_timestamp_sentinel_unix: -1.0,
+        });
+        assert!(out.is_empty());
     }
 
     #[test]

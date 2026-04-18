@@ -697,3 +697,130 @@ fn filter_rates(
     }
     out
 }
+
+// ----------------------------------------------------------------
+// Client-side merge policies (called from Swift after fetch)
+// ----------------------------------------------------------------
+
+#[derive(Debug, Clone, uniffi::Record)]
+pub struct PriceMergeOutcome {
+    pub updated_prices: HashMap<String, f64>,
+    pub had_meaningful_change: bool,
+}
+
+pub fn merge_price_updates(
+    existing: HashMap<String, f64>,
+    fetched: HashMap<String, f64>,
+) -> PriceMergeOutcome {
+    let mut updated_prices = existing;
+    let mut had_meaningful_change = false;
+    for (key, value) in fetched {
+        if updated_prices.get(&key).copied() != Some(value) {
+            updated_prices.insert(key, value);
+            had_meaningful_change = true;
+        }
+    }
+    PriceMergeOutcome {
+        updated_prices,
+        had_meaningful_change,
+    }
+}
+
+#[uniffi::export]
+pub fn price_merge_live_updates(
+    existing: HashMap<String, f64>,
+    fetched: HashMap<String, f64>,
+) -> PriceMergeOutcome {
+    merge_price_updates(existing, fetched)
+}
+
+pub fn merge_fiat_rate_updates(
+    fetched: HashMap<String, f64>,
+    existing: HashMap<String, f64>,
+    currencies: Vec<String>,
+    base_currency: String,
+) -> HashMap<String, f64> {
+    let mut out: HashMap<String, f64> = HashMap::new();
+    out.insert(base_currency.clone(), 1.0);
+    for currency in currencies {
+        if currency == base_currency {
+            continue;
+        }
+        if let Some(&rate) = fetched.get(&currency) {
+            if rate > 0.0 {
+                out.insert(currency, rate);
+                continue;
+            }
+        }
+        if let Some(&rate) = existing.get(&currency) {
+            if rate > 0.0 {
+                out.insert(currency, rate);
+            }
+        }
+    }
+    out
+}
+
+#[uniffi::export]
+pub fn price_merge_fiat_rate_updates(
+    fetched: HashMap<String, f64>,
+    existing: HashMap<String, f64>,
+    currencies: Vec<String>,
+    base_currency: String,
+) -> HashMap<String, f64> {
+    merge_fiat_rate_updates(fetched, existing, currencies, base_currency)
+}
+
+#[cfg(test)]
+mod merge_tests {
+    use super::*;
+
+    #[test]
+    fn price_merge_detects_change_only_on_difference() {
+        let existing = HashMap::from([("BTC".to_string(), 50000.0)]);
+        let fetched = HashMap::from([("BTC".to_string(), 50000.0)]);
+        let outcome = merge_price_updates(existing, fetched);
+        assert!(!outcome.had_meaningful_change);
+
+        let existing = HashMap::from([("BTC".to_string(), 50000.0)]);
+        let fetched = HashMap::from([("BTC".to_string(), 51000.0)]);
+        let outcome = merge_price_updates(existing, fetched);
+        assert!(outcome.had_meaningful_change);
+        assert_eq!(outcome.updated_prices.get("BTC"), Some(&51000.0));
+    }
+
+    #[test]
+    fn price_merge_preserves_missing_keys() {
+        let existing =
+            HashMap::from([("BTC".to_string(), 50000.0), ("ETH".to_string(), 3000.0)]);
+        let fetched = HashMap::from([("BTC".to_string(), 51000.0)]);
+        let outcome = merge_price_updates(existing, fetched);
+        assert_eq!(outcome.updated_prices.get("ETH"), Some(&3000.0));
+    }
+
+    #[test]
+    fn fiat_merge_prefers_fetched_falls_back_to_existing() {
+        let fetched = HashMap::from([("EUR".to_string(), 0.90)]);
+        let existing =
+            HashMap::from([("JPY".to_string(), 150.0), ("EUR".to_string(), 0.85)]);
+        let currencies = vec!["USD".to_string(), "EUR".to_string(), "JPY".to_string()];
+        let out = merge_fiat_rate_updates(fetched, existing, currencies, "USD".to_string());
+        assert_eq!(out.get("USD"), Some(&1.0));
+        assert_eq!(out.get("EUR"), Some(&0.90));
+        assert_eq!(out.get("JPY"), Some(&150.0));
+    }
+
+    #[test]
+    fn fiat_merge_drops_zero_rates() {
+        let fetched = HashMap::from([("EUR".to_string(), 0.0)]);
+        let existing: HashMap<String, f64> = HashMap::new();
+        let out = merge_fiat_rate_updates(
+            fetched,
+            existing,
+            vec!["USD".to_string(), "EUR".to_string()],
+            "USD".to_string(),
+        );
+        assert_eq!(out.get("USD"), Some(&1.0));
+        assert!(!out.contains_key("EUR"));
+    }
+}

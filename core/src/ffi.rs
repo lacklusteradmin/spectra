@@ -12,9 +12,10 @@ use super::endpoint_reliability::{
 };
 use super::fetch::{
     plan_balance_refresh_health, plan_dogecoin_refresh_targets, plan_evm_refresh_targets,
-    plan_wallet_balance_refresh, BalanceRefreshHealthPlan, BalanceRefreshHealthRequest,
-    DogecoinRefreshTargetsRequest, DogecoinRefreshWalletTarget, EvmRefreshPlan,
-    EvmRefreshTargetsRequest, WalletBalanceRefreshPlan, WalletBalanceRefreshRequest,
+    plan_normalized_refresh_targets, plan_wallet_balance_refresh, BalanceRefreshHealthPlan,
+    BalanceRefreshHealthRequest, DogecoinRefreshTargetsRequest, DogecoinRefreshWalletTarget,
+    EvmRefreshPlan, EvmRefreshTargetsRequest, NormalizedRefreshTargetsRequest,
+    NormalizedRefreshWalletTarget, WalletBalanceRefreshPlan, WalletBalanceRefreshRequest,
 };
 use super::history::{
     merge_bitcoin_history_snapshots, normalize_history, CoreBitcoinHistorySnapshot,
@@ -39,12 +40,14 @@ use super::send::{
 use super::state::CoreAppState;
 use super::store::{
     aggregate_owned_addresses, build_persisted_snapshot, build_persisted_snapshot_typed,
-    persisted_snapshot_from_json, plan_receive_selection, plan_self_send_confirmation,
-    plan_store_derived_state, wallet_secret_index, wallet_secret_index_from_observations,
-    OwnedAddressAggregationRequest, PersistedAppSnapshotRequest, ReceiveSelectionPlan,
-    ReceiveSelectionRequest, SelfSendConfirmationPlan, SelfSendConfirmationRequest,
-    StoreDerivedStatePlan, StoreDerivedStateRequest, WalletSecretIndex, WalletSecretObservation,
+    persisted_snapshot_from_json, plan_dashboard_supported_token_entries, plan_receive_selection,
+    plan_self_send_confirmation, plan_store_derived_state, wallet_secret_index,
+    wallet_secret_index_from_observations, OwnedAddressAggregationRequest,
+    PersistedAppSnapshotRequest, ReceiveSelectionPlan, ReceiveSelectionRequest,
+    SelfSendConfirmationPlan, SelfSendConfirmationRequest, StoreDerivedStatePlan,
+    StoreDerivedStateRequest, WalletSecretIndex, WalletSecretObservation,
 };
+use super::store::wallet_domain::CoreTokenPreferenceEntry;
 use super::persistence::models::{
     CorePersistedAddressBookStore, CorePersistedPriceAlertStore, CorePersistedTransactionRecord,
 };
@@ -162,6 +165,13 @@ pub fn core_plan_self_send_confirmation(
 }
 
 #[uniffi::export]
+pub fn core_plan_dashboard_supported_token_entries(
+    entries: Vec<CoreTokenPreferenceEntry>,
+) -> Vec<CoreTokenPreferenceEntry> {
+    plan_dashboard_supported_token_entries(entries)
+}
+
+#[uniffi::export]
 pub fn core_plan_wallet_import(
     request: WalletImportRequest,
 ) -> Result<WalletImportPlan, crate::SpectraBridgeError> {
@@ -229,6 +239,13 @@ pub fn core_plan_dogecoin_refresh_targets(
     request: DogecoinRefreshTargetsRequest,
 ) -> Vec<DogecoinRefreshWalletTarget> {
     plan_dogecoin_refresh_targets(request)
+}
+
+#[uniffi::export]
+pub fn core_plan_normalized_refresh_targets(
+    request: NormalizedRefreshTargetsRequest,
+) -> Vec<NormalizedRefreshWalletTarget> {
+    plan_normalized_refresh_targets(request)
 }
 
 #[uniffi::export]

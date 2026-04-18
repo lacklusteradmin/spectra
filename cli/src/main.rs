@@ -120,7 +120,7 @@ fn supported_chains() -> Vec<ChainInfo> {
 }
 
 fn load_chain_presets() -> Vec<ChainPresetRaw> {
-    const PRESETS_JSON: &str = include_str!("../../swift/Derivation/DerivationPresets.json");
+    const PRESETS_JSON: &str = include_str!("../../swift/derivation/DerivationPresets.json");
     serde_json::from_str(PRESETS_JSON).expect("failed to parse chain presets")
 }
 

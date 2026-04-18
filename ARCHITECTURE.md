@@ -117,9 +117,9 @@ Liquid Glass is iOS 26's design language. It is purely a SwiftUI/UIKit concern; 
 
 **Migration path from current Views/:**
 - No structural change needed — existing SwiftUI views will adopt Liquid Glass automatically on iOS 26 for chrome (nav bars, tab bars, sheets)
-- Add `.glassEffect()` to custom card surfaces in `DashboardComponents.swift`, asset rows, and the send/receive sheets
+- Add `.glassEffect()` to custom card surfaces in `DashboardViews.swift`, asset rows, and the send/receive sheets
 - Replace any manual `.ultraThinMaterial` backgrounds with `.glassEffect()` where appropriate
-- The `StaticContentCatalog.swift` / `AppLocalization.swift` pattern is unchanged
+- The `StaticContentCatalog.swift` pattern is unchanged
 
 **What does NOT move to Rust:** all SwiftUI view code, animations, haptics, Face ID authentication triggers, Live Activities, notifications, Keychain — these are platform APIs with no Rust equivalent.
 

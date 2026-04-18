@@ -195,6 +195,68 @@ pub fn formatting_native_asset_display_settings_key(chain_name: String) -> Strin
     native_asset_display_settings_key(&chain_name)
 }
 
+#[derive(Debug, Clone, uniffi::Record)]
+pub struct FiatAmountRules {
+    pub decimals: u32,
+    pub minimum_visible: f64,
+}
+
+pub fn fiat_amount_rules(currency_code: &str) -> FiatAmountRules {
+    if currency_code.eq_ignore_ascii_case("JPY") {
+        FiatAmountRules { decimals: 0, minimum_visible: 1.0 }
+    } else {
+        FiatAmountRules { decimals: 2, minimum_visible: 0.01 }
+    }
+}
+
+#[uniffi::export]
+pub fn formatting_fiat_amount_rules(currency_code: String) -> FiatAmountRules {
+    fiat_amount_rules(&currency_code)
+}
+
+pub fn asset_minimum_visible_amount(visible_decimals: u32) -> f64 {
+    if visible_decimals == 0 {
+        0.0
+    } else {
+        10f64.powi(-(visible_decimals as i32))
+    }
+}
+
+#[uniffi::export]
+pub fn formatting_asset_minimum_visible_amount(visible_decimals: u32) -> f64 {
+    asset_minimum_visible_amount(visible_decimals)
+}
+
+const STABLECOIN_USD_SYMBOLS: &[&str] = &["USDC", "USDT", "FDUSD", "TUSD"];
+
+pub fn is_usd_stablecoin(symbol: &str) -> bool {
+    STABLECOIN_USD_SYMBOLS.iter().any(|s| s.eq_ignore_ascii_case(symbol))
+}
+
+pub fn stablecoin_fallback_price_usd(symbol: &str) -> f64 {
+    if is_usd_stablecoin(symbol) { 1.0 } else { 0.0 }
+}
+
+#[uniffi::export]
+pub fn formatting_stablecoin_fallback_price_usd(symbol: String) -> f64 {
+    stablecoin_fallback_price_usd(&symbol)
+}
+
+pub fn dashboard_asset_grouping_key(chain_identity: &str, coin_gecko_id: &str, symbol: &str) -> String {
+    let normalized_cg = coin_gecko_id.trim().to_lowercase();
+    let chain_lc = chain_identity.to_lowercase();
+    if !normalized_cg.is_empty() {
+        format!("chain:{chain_lc}|cg:{normalized_cg}")
+    } else {
+        format!("chain:{chain_lc}|symbol:{}", symbol.to_lowercase())
+    }
+}
+
+#[uniffi::export]
+pub fn formatting_dashboard_asset_grouping_key(chain_identity: String, coin_gecko_id: String, symbol: String) -> String {
+    dashboard_asset_grouping_key(&chain_identity, &coin_gecko_id, &symbol)
+}
+
 
 #[cfg(test)]
 mod tests {
@@ -233,6 +295,23 @@ mod tests {
         });
         assert_eq!(resolution.supported, 18);
         assert_eq!(resolution.display, 18);
+    }
+
+    #[test]
+    fn fiat_amount_rules_jpy_vs_others() {
+        let jpy = fiat_amount_rules("JPY");
+        assert_eq!(jpy.decimals, 0);
+        assert_eq!(jpy.minimum_visible, 1.0);
+        let usd = fiat_amount_rules("USD");
+        assert_eq!(usd.decimals, 2);
+        assert!((usd.minimum_visible - 0.01).abs() < 1e-9);
+    }
+
+    #[test]
+    fn asset_minimum_visible_zero_decimals() {
+        assert_eq!(asset_minimum_visible_amount(0), 0.0);
+        assert!((asset_minimum_visible_amount(2) - 0.01).abs() < 1e-12);
+        assert!((asset_minimum_visible_amount(8) - 1e-8).abs() < 1e-16);
     }
 
     #[test]

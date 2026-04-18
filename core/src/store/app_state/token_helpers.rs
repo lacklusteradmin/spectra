@@ -81,6 +81,27 @@ pub fn normalize_sui_token_identifier(value: String) -> String {
     out
 }
 
+/// Normalize a dashboard asset's contract address for grouping/equality.
+/// Returns `None` for empty/whitespace input. For Sui/Aptos uses the chain's
+/// canonical identifier form; otherwise lowercases the trimmed value.
+#[uniffi::export]
+pub fn normalize_dashboard_contract_address(
+    contract_address: Option<String>,
+    chain_name: String,
+    _token_standard: String,
+) -> Option<String> {
+    let raw = contract_address?;
+    let trimmed = raw.trim();
+    if trimmed.is_empty() {
+        return None;
+    }
+    match chain_name.as_str() {
+        "Sui" => Some(normalize_sui_token_identifier(trimmed.to_string())),
+        "Aptos" => Some(normalize_aptos_token_identifier(trimmed.to_string())),
+        _ => Some(trimmed.to_lowercase()),
+    }
+}
+
 /// Return the package portion of a (possibly-normalized) aptos identifier.
 #[uniffi::export]
 pub fn aptos_package_identifier(value: Option<String>) -> String {
@@ -223,6 +244,30 @@ mod tests {
         assert_eq!(
             ethereum_rpc_endpoint_validation_error("https://rpc.example/abc".into()),
             None
+        );
+    }
+
+    #[test]
+    fn dashboard_contract_dispatch() {
+        assert_eq!(
+            normalize_dashboard_contract_address(Some("  ".into()), "Ethereum".into(), "ERC-20".into()),
+            None
+        );
+        assert_eq!(
+            normalize_dashboard_contract_address(None, "Ethereum".into(), "ERC-20".into()),
+            None
+        );
+        assert_eq!(
+            normalize_dashboard_contract_address(Some("0xABCDEF".into()), "Ethereum".into(), "ERC-20".into()),
+            Some("0xabcdef".into())
+        );
+        assert_eq!(
+            normalize_dashboard_contract_address(Some("0x0002::Foo::bar".into()), "Sui".into(), "Native".into()),
+            Some("0x2::foo::bar".into())
+        );
+        assert_eq!(
+            normalize_dashboard_contract_address(Some("0x001::coin::USDC".into()), "Aptos".into(), "Native".into()),
+            Some("0x1::coin::usdc".into())
         );
     }
 

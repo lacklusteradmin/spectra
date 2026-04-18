@@ -466,6 +466,50 @@ pub fn plan_self_send_confirmation(
     }
 }
 
+pub fn plan_dashboard_supported_token_entries(
+    entries: Vec<wallet_domain::CoreTokenPreferenceEntry>,
+) -> Vec<wallet_domain::CoreTokenPreferenceEntry> {
+    fn chain_name(chain: wallet_domain::CoreTokenTrackingChain) -> &'static str {
+        use wallet_domain::CoreTokenTrackingChain::*;
+        match chain {
+            Ethereum => "Ethereum",
+            Arbitrum => "Arbitrum",
+            Optimism => "Optimism",
+            Bnb => "BNB Chain",
+            Avalanche => "Avalanche",
+            Hyperliquid => "Hyperliquid",
+            Solana => "Solana",
+            Sui => "Sui",
+            Aptos => "Aptos",
+            Ton => "TON",
+            Near => "NEAR",
+            Tron => "Tron",
+        }
+    }
+
+    let mut filtered: Vec<wallet_domain::CoreTokenPreferenceEntry> = entries
+        .into_iter()
+        .filter(|entry| !entry.contract_address.is_empty())
+        .collect();
+    filtered.sort_by(|lhs, rhs| {
+        chain_name(lhs.chain)
+            .to_lowercase()
+            .cmp(&chain_name(rhs.chain).to_lowercase())
+    });
+    let mut seen_keys = std::collections::BTreeSet::<String>::new();
+    filtered
+        .into_iter()
+        .filter(|entry| {
+            let key = format!(
+                "{}|{}",
+                chain_name(entry.chain).to_lowercase(),
+                entry.contract_address.to_lowercase()
+            );
+            seen_keys.insert(key)
+        })
+        .collect()
+}
+
 fn secret_descriptor_for_wallet(
     wallet_id: &str,
     observation: Option<&WalletSecretObservation>,

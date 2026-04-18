@@ -9,3 +9,6 @@ pub use aggregate::*;
 
 pub mod export;
 pub use export::*;
+
+pub mod degraded;
+pub use degraded::*;

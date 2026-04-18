@@ -4,9 +4,9 @@ use serde::Deserialize;
 use std::collections::{BTreeMap, BTreeSet};
 use std::sync::OnceLock;
 
-const CHAIN_PRESETS_JSON: &str = include_str!("../../swift/Derivation/DerivationPresets.json");
+const CHAIN_PRESETS_JSON: &str = include_str!("../../swift/derivation/DerivationPresets.json");
 const APP_ENDPOINT_DIRECTORY_JSON: &str =
-    include_str!("../../swift/ProviderCatalog/AppEndpointDirectory.json");
+    include_str!("../../swift/rustbridge/AppEndpointDirectory.json");
 
 const EXPLORER_ROLE: &str = "explorer";
 
