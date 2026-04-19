@@ -1,13 +1,7 @@
-use std::collections::HashMap;
-
 use crate::SpectraBridgeError;
 use super::addressing::{
     validate_address, validate_string_identifier, AddressValidationRequest,
     AddressValidationResult, StringValidationRequest, StringValidationResult,
-};
-use super::endpoint_reliability::{
-    order_endpoints, record_attempt, EndpointAttemptRequest, EndpointOrderingRequest,
-    ReliabilityCounter,
 };
 use super::fetch::{
     plan_balance_refresh_health, plan_dogecoin_refresh_targets, plan_evm_refresh_targets,
@@ -422,20 +416,6 @@ pub fn core_validate_string_identifier(
     validate_string_identifier(request)
 }
 
-#[uniffi::export]
-pub fn core_order_endpoints_by_reliability(
-    request: EndpointOrderingRequest,
-) -> Vec<String> {
-    order_endpoints(request)
-}
-
-#[uniffi::export]
-pub fn core_record_endpoint_attempt(
-    request: EndpointAttemptRequest,
-) -> HashMap<String, ReliabilityCounter> {
-    record_attempt(request)
-}
-
 // ─── High-risk send warning evaluation ──────────────────────────────────────
 
 /// A chain_name + address pair used in the high-risk send evaluation.
@@ -732,6 +712,15 @@ pub fn core_normalize_derivation_path(raw_path: String, fallback: String) -> Str
 #[uniffi::export]
 pub fn core_derivation_path_segment_value(path: String, index: u32) -> Option<u32> {
     super::app_core::derivation_path_segment_value(&path, index as usize)
+}
+
+#[uniffi::export]
+pub fn core_compile_script_type(
+    preset: super::app_core::AppCoreRequestCompilationPreset,
+    derivation_path: Option<String>,
+) -> Result<String, SpectraBridgeError> {
+    super::app_core::compile_script_type(&preset, derivation_path.as_deref())
+        .map_err(SpectraBridgeError::from)
 }
 
 #[uniffi::export]

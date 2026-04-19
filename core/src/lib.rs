@@ -63,9 +63,8 @@ pub mod catalog;
 pub use derivation::*;
 pub use derivation::{addressing, import};
 pub use fetch::{
-    balance_cache, balance_decoder, balance_observer, endpoint_reliability, history,
-    history_cache, history_decode, history_store, http, http_ffi, price, refresh, refresh_engine,
-    transactions,
+    balance_cache, balance_decoder, balance_observer, history, history_cache, history_decode,
+    history_store, http, http_ffi, price, refresh, refresh_engine, transactions,
 };
 pub use send::{
     amount_input, ethereum as ethereum_send, flow as send_flow, flow_helpers as send_flow_helpers,

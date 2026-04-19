@@ -1,7 +1,6 @@
 pub mod balance_cache;
 pub mod balance_decoder;
 pub mod balance_observer;
-pub mod endpoint_reliability;
 pub mod history;
 pub mod history_cache;
 pub mod history_decode;

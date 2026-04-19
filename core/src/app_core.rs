@@ -74,20 +74,20 @@ struct AppCoreCatalog {
     endpoint_records: Vec<AppCoreEndpointRecord>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, uniffi::Record)]
 #[serde(rename_all = "camelCase")]
-struct AppCoreEndpointRecord {
-    id: String,
-    chain_name: String,
-    group_title: String,
+pub struct AppCoreEndpointRecord {
+    pub id: String,
+    pub chain_name: String,
+    pub group_title: String,
     #[serde(rename = "providerID")]
-    provider_id: String,
-    endpoint: String,
-    roles: Vec<String>,
+    pub provider_id: String,
+    pub endpoint: String,
+    pub roles: Vec<String>,
     #[serde(rename = "probeURL")]
-    probe_url: Option<String>,
-    settings_visible: bool,
-    explorer_label: Option<String>,
+    pub probe_url: Option<String>,
+    pub settings_visible: bool,
+    pub explorer_label: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, uniffi::Record)]
@@ -269,19 +269,18 @@ pub fn app_core_endpoints_for_ids_json(
 }
 
 #[uniffi::export]
-pub fn app_core_endpoint_records_for_chain_json(
+pub fn app_core_endpoint_records_for_chain(
     chain_name: String,
     role_mask: u32,
     settings_visible_only: bool,
-) -> Result<String, crate::SpectraBridgeError> {
-    Ok(app_core_catalog().and_then(|catalog| {
-        serialize_json(&endpoint_records_for_chain(
-            catalog,
-            &chain_name,
-            role_mask,
-            settings_visible_only,
-        ))
-    })?)
+) -> Result<Vec<AppCoreEndpointRecord>, crate::SpectraBridgeError> {
+    let catalog = app_core_catalog()?;
+    Ok(endpoint_records_for_chain(
+        catalog,
+        &chain_name,
+        role_mask,
+        settings_visible_only,
+    ))
 }
 
 #[uniffi::export]
@@ -1426,6 +1425,32 @@ pub(crate) fn derivation_path_string(segments: &[DerivationPathSegment]) -> Stri
 pub(crate) fn derivation_path_segment_value(path: &str, index: usize) -> Option<u32> {
     parse_derivation_path(path)
         .and_then(|segments| segments.get(index).map(|segment| segment.value))
+}
+
+pub(crate) fn compile_script_type(
+    preset: &AppCoreRequestCompilationPreset,
+    derivation_path: Option<&str>,
+) -> Result<String, String> {
+    match preset.script_policy.as_str() {
+        "bitcoinPurpose" => {
+            let purpose = derivation_path
+                .and_then(|path| derivation_path_segment_value(path, 0))
+                .ok_or_else(|| {
+                    "Unable to compile Bitcoin script type from derivation path.".to_string()
+                })?;
+            let map = preset.bitcoin_purpose_script_map.as_ref().ok_or_else(|| {
+                "Bitcoin purpose script policy requires bitcoinPurposeScriptMap.".to_string()
+            })?;
+            map.get(&purpose.to_string())
+                .cloned()
+                .ok_or_else(|| format!("Unsupported Bitcoin derivation purpose {purpose}."))
+        }
+        "fixed" => preset
+            .fixed_script_type
+            .clone()
+            .ok_or_else(|| "Fixed script policy requires fixedScriptType.".to_string()),
+        other => Err(format!("Unknown script policy: {other}")),
+    }
 }
 
 fn resolved_account_index(chain_name: &str, normalized_path: &str) -> u32 {
