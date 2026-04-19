@@ -73,6 +73,6 @@ pub use send::{
     transfer, utxo, verification as send_verification,
 };
 pub use store::{
-    app_shell_state, app_state, password_verifier, persistence, secret_store,
+    app_state, password_verifier, persistence, secret_store,
     seed_envelope, state, wallet_core, wallet_db, wallet_domain,
 };

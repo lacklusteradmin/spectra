@@ -6,12 +6,30 @@ use std::collections::HashMap;
 const CANONICAL_MNEMONIC: &str =
     "test test test test test test test test test test test junk";
 
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, uniffi::Enum)]
+#[serde(rename_all = "camelCase")]
+pub enum ChainSelfTestOutcome {
+    ValidAddressAccepted,
+    ValidAddressRejected,
+    InvalidAddressRejected,
+    InvalidAddressUnexpectedlyAccepted,
+    DerivationFailed,
+    DerivedAddressValid,
+    DerivedAddressInvalid,
+    NormalizationSuccess,
+    NormalizationFailure,
+    ChecksumMutationRejected,
+    ChecksumMutationAccepted,
+    Custom { text: String },
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, uniffi::Record)]
 #[serde(rename_all = "camelCase")]
 pub struct ChainSelfTestResult {
     pub name: String,
     pub passed: bool,
-    pub message: String,
+    pub chain_label: String,
+    pub outcome: ChainSelfTestOutcome,
 }
 
 struct ChainSpec {
@@ -242,10 +260,11 @@ fn run_address_accepts(spec: &ChainSpec) -> ChainSelfTestResult {
     ChainSelfTestResult {
         name: format!("{} Address Validation", spec.chain_label),
         passed,
-        message: if passed {
-            format!("Valid {} address accepted.", spec.chain_label)
+        chain_label: spec.chain_label.to_string(),
+        outcome: if passed {
+            ChainSelfTestOutcome::ValidAddressAccepted
         } else {
-            format!("Valid {} address rejected.", spec.chain_label)
+            ChainSelfTestOutcome::ValidAddressRejected
         },
     }
 }
@@ -255,10 +274,11 @@ fn run_address_rejects(spec: &ChainSpec) -> ChainSelfTestResult {
     ChainSelfTestResult {
         name: format!("{} Address Rejects Invalid", spec.chain_label),
         passed,
-        message: if passed {
-            format!("Invalid {} address rejected.", spec.chain_label)
+        chain_label: spec.chain_label.to_string(),
+        outcome: if passed {
+            ChainSelfTestOutcome::InvalidAddressRejected
         } else {
-            format!("Invalid {} address unexpectedly accepted.", spec.chain_label)
+            ChainSelfTestOutcome::InvalidAddressUnexpectedlyAccepted
         },
     }
 }
@@ -280,20 +300,19 @@ fn run_derivation(spec: &ChainSpec) -> Option<ChainSelfTestResult> {
         return Some(ChainSelfTestResult {
             name,
             passed: false,
-            message: format!(
-                "Failed to derive a {} address from a valid mnemonic.",
-                spec.chain_label
-            ),
+            chain_label: spec.chain_label.to_string(),
+            outcome: ChainSelfTestOutcome::DerivationFailed,
         });
     };
     let passed = validate(spec.address_kind, &address, spec.network_mode);
     Some(ChainSelfTestResult {
         name,
         passed,
-        message: if passed {
-            format!("Mnemonic-derived {} address is valid.", spec.chain_label)
+        chain_label: spec.chain_label.to_string(),
+        outcome: if passed {
+            ChainSelfTestOutcome::DerivedAddressValid
         } else {
-            format!("Derived {} address format is invalid.", spec.chain_label)
+            ChainSelfTestOutcome::DerivedAddressInvalid
         },
     })
 }
@@ -316,28 +335,31 @@ fn run_dogecoin() -> Vec<ChainSelfTestResult> {
         ChainSelfTestResult {
             name: "DOGE Address Mainnet Validation".to_string(),
             passed: mainnet_passed,
-            message: if mainnet_passed {
-                "Mainnet address accepted.".to_string()
+            chain_label: "Dogecoin".to_string(),
+            outcome: if mainnet_passed {
+                ChainSelfTestOutcome::ValidAddressAccepted
             } else {
-                "Mainnet address validation failed.".to_string()
+                ChainSelfTestOutcome::ValidAddressRejected
             },
         },
         ChainSelfTestResult {
             name: "DOGE Address Rejects Invalid".to_string(),
             passed: garbage_rejected,
-            message: if garbage_rejected {
-                "Invalid address rejected.".to_string()
+            chain_label: "Dogecoin".to_string(),
+            outcome: if garbage_rejected {
+                ChainSelfTestOutcome::InvalidAddressRejected
             } else {
-                "Invalid address unexpectedly accepted.".to_string()
+                ChainSelfTestOutcome::InvalidAddressUnexpectedlyAccepted
             },
         },
         ChainSelfTestResult {
             name: "DOGE Address Rejects Bad Checksum".to_string(),
             passed: checksum_rejected,
-            message: if checksum_rejected {
-                "Checksum mutation rejected.".to_string()
+            chain_label: "Dogecoin".to_string(),
+            outcome: if checksum_rejected {
+                ChainSelfTestOutcome::ChecksumMutationRejected
             } else {
-                "Checksum mutation unexpectedly accepted.".to_string()
+                ChainSelfTestOutcome::ChecksumMutationAccepted
             },
         },
     ]
@@ -365,37 +387,41 @@ fn run_ethereum() -> Vec<ChainSelfTestResult> {
         ChainSelfTestResult {
             name: "ETH Address Validation".to_string(),
             passed: valid_passed,
-            message: if valid_passed {
-                "Valid Ethereum address accepted.".to_string()
+            chain_label: "Ethereum".to_string(),
+            outcome: if valid_passed {
+                ChainSelfTestOutcome::ValidAddressAccepted
             } else {
-                "Valid Ethereum address rejected.".to_string()
+                ChainSelfTestOutcome::ValidAddressRejected
             },
         },
         ChainSelfTestResult {
             name: "ETH Address Rejects Invalid".to_string(),
             passed: garbage_rejected,
-            message: if garbage_rejected {
-                "Invalid Ethereum address rejected.".to_string()
+            chain_label: "Ethereum".to_string(),
+            outcome: if garbage_rejected {
+                ChainSelfTestOutcome::InvalidAddressRejected
             } else {
-                "Invalid Ethereum address unexpectedly accepted.".to_string()
+                ChainSelfTestOutcome::InvalidAddressUnexpectedlyAccepted
             },
         },
         ChainSelfTestResult {
             name: "ETH Receive Address Normalization".to_string(),
             passed: normalized_pass,
-            message: if normalized_pass {
-                "Receive address normalized successfully.".to_string()
+            chain_label: "Ethereum".to_string(),
+            outcome: if normalized_pass {
+                ChainSelfTestOutcome::NormalizationSuccess
             } else {
-                "Receive address normalization failed.".to_string()
+                ChainSelfTestOutcome::NormalizationFailure
             },
         },
         ChainSelfTestResult {
             name: "ETH Seed Derivation".to_string(),
             passed: derivation_passed,
-            message: if derivation_passed {
-                "Mnemonic-derived Ethereum address is valid.".to_string()
+            chain_label: "Ethereum".to_string(),
+            outcome: if derivation_passed {
+                ChainSelfTestOutcome::DerivedAddressValid
             } else {
-                "Derived address format is invalid.".to_string()
+                ChainSelfTestOutcome::DerivedAddressInvalid
             },
         },
     ]
@@ -410,6 +436,82 @@ fn run_for_chain(chain_key: &str) -> Vec<ChainSelfTestResult> {
             .find(|spec| spec.chain_key == chain_key)
             .map(run_spec)
             .unwrap_or_default(),
+    }
+}
+
+#[derive(Debug, Deserialize)]
+struct EthRpcResponse {
+    result: Option<String>,
+}
+
+async fn fetch_eth_rpc_hex(url: &str, method: &str, id: u32) -> Result<u64, String> {
+    let body = format!(
+        r#"{{"jsonrpc":"2.0","id":{id},"method":"{method}","params":[]}}"#
+    );
+    let resp = crate::fetch::http_ffi::http_post_json(
+        url.to_string(),
+        body,
+        std::collections::HashMap::new(),
+    )
+    .await
+    .map_err(|e| format!("{e:?}"))?;
+    let parsed: EthRpcResponse =
+        serde_json::from_str(&resp.body).map_err(|e| e.to_string())?;
+    let hex = parsed.result.unwrap_or_default();
+    let trimmed = hex.strip_prefix("0x").unwrap_or(&hex);
+    u64::from_str_radix(trimmed, 16).map_err(|e| e.to_string())
+}
+
+#[uniffi::export(async_runtime = "tokio")]
+pub async fn self_tests_run_ethereum_rpc(
+    rpc_url: String,
+    rpc_label: String,
+) -> Vec<ChainSelfTestResult> {
+    let chain_id_result = fetch_eth_rpc_hex(&rpc_url, "eth_chainId", 1).await;
+    let block_result = fetch_eth_rpc_hex(&rpc_url, "eth_blockNumber", 2).await;
+    match (chain_id_result, block_result) {
+        (Ok(chain_id), Ok(latest_block)) => {
+            let chain_pass = chain_id == 1;
+            vec![
+                ChainSelfTestResult {
+                    name: "ETH RPC Chain ID".to_string(),
+                    passed: chain_pass,
+                    chain_label: "Ethereum".to_string(),
+                    outcome: ChainSelfTestOutcome::Custom {
+                        text: if chain_pass {
+                            "RPC reports Ethereum mainnet (chain id 1).".to_string()
+                        } else {
+                            format!(
+                                "RPC returned chain id {chain_id}. Configure an Ethereum mainnet endpoint."
+                            )
+                        },
+                    },
+                },
+                ChainSelfTestResult {
+                    name: "ETH RPC Latest Block".to_string(),
+                    passed: latest_block > 0,
+                    chain_label: "Ethereum".to_string(),
+                    outcome: ChainSelfTestOutcome::Custom {
+                        text: if latest_block > 0 {
+                            format!("RPC latest block height: {latest_block} via {rpc_label}.")
+                        } else {
+                            "RPC returned an invalid latest block value.".to_string()
+                        },
+                    },
+                },
+            ]
+        }
+        (chain_id, block) => {
+            let detail = chain_id.err().or_else(|| block.err()).unwrap_or_default();
+            vec![ChainSelfTestResult {
+                name: "ETH RPC Health".to_string(),
+                passed: false,
+                chain_label: "Ethereum".to_string(),
+                outcome: ChainSelfTestOutcome::Custom {
+                    text: format!("RPC health check failed for {rpc_label}: {detail}"),
+                },
+            }]
+        }
     }
 }
 

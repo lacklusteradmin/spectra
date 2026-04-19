@@ -1,4 +1,3 @@
-pub mod app_shell_state;
 pub mod app_state;
 pub mod password_verifier;
 pub mod persistence;
@@ -742,11 +741,27 @@ fn native_symbol_chain_aliases() -> &'static [(&'static str, &'static str)] {
     ]
 }
 
-fn canonical_chain_component_inner(
-    chain_name: &str,
-    symbol: &str,
-    localized_chain_id: Option<&str>,
-) -> String {
+fn chain_id_by_chain_name() -> &'static HashMap<String, String> {
+    use std::sync::OnceLock;
+    static LOOKUP: OnceLock<HashMap<String, String>> = OnceLock::new();
+    LOOKUP.get_or_init(|| {
+        let raw = include_str!("../../../resources/strings/base/ChainWikiEntries.json");
+        let mut map = HashMap::new();
+        if let Ok(serde_json::Value::Array(entries)) = serde_json::from_str::<serde_json::Value>(raw)
+        {
+            for entry in entries {
+                let id = entry.get("id").and_then(|v| v.as_str());
+                let name = entry.get("name").and_then(|v| v.as_str());
+                if let (Some(id), Some(name)) = (id, name) {
+                    map.insert(name.trim().to_lowercase(), id.to_string());
+                }
+            }
+        }
+        map
+    })
+}
+
+fn canonical_chain_component_inner(chain_name: &str, symbol: &str) -> String {
     let normalized_chain = chain_name.trim().to_lowercase();
     let normalized_symbol = symbol.trim().to_uppercase();
     if let Some((_, alias)) = known_chain_aliases()
@@ -755,11 +770,8 @@ fn canonical_chain_component_inner(
     {
         return (*alias).to_string();
     }
-    if let Some(id) = localized_chain_id {
-        let trimmed = id.trim();
-        if !trimmed.is_empty() {
-            return trimmed.to_string();
-        }
+    if let Some(id) = chain_id_by_chain_name().get(&normalized_chain) {
+        return id.clone();
     }
     if let Some((_, alias)) = native_symbol_chain_aliases()
         .iter()
@@ -770,12 +782,8 @@ fn canonical_chain_component_inner(
     normalized_chain.replace(' ', "-")
 }
 
-pub fn plan_canonical_chain_component(
-    chain_name: String,
-    symbol: String,
-    localized_chain_id: Option<String>,
-) -> String {
-    canonical_chain_component_inner(&chain_name, &symbol, localized_chain_id.as_deref())
+pub fn plan_canonical_chain_component(chain_name: String, symbol: String) -> String {
+    canonical_chain_component_inner(&chain_name, &symbol)
 }
 
 pub fn plan_icon_identifier(
@@ -783,14 +791,12 @@ pub fn plan_icon_identifier(
     chain_name: String,
     contract_address: Option<String>,
     token_standard: String,
-    localized_chain_id: Option<String>,
 ) -> String {
     let normalized_symbol = symbol.to_lowercase();
     let trimmed_contract = contract_address
         .map(|c| c.trim().to_string())
         .unwrap_or_default();
-    let normalized_chain =
-        canonical_chain_component_inner(&chain_name, &symbol, localized_chain_id.as_deref());
+    let normalized_chain = canonical_chain_component_inner(&chain_name, &symbol);
     if !trimmed_contract.is_empty() {
         return format!(
             "token:{}:{}:{}",
@@ -805,10 +811,7 @@ pub fn plan_icon_identifier(
     format!("{namespace}:{normalized_chain}:{normalized_symbol}")
 }
 
-pub fn plan_normalized_icon_identifier(
-    identifier: String,
-    localized_chain_id: Option<String>,
-) -> String {
+pub fn plan_normalized_icon_identifier(identifier: String) -> String {
     let trimmed_identifier = identifier.trim().to_string();
     let components: Vec<String> = trimmed_identifier.split(':').map(String::from).collect();
     if components.len() < 3 {
@@ -819,11 +822,8 @@ pub fn plan_normalized_icon_identifier(
     let symbol_component = &components[2];
     match namespace.as_str() {
         "native" | "asset" | "token" => {
-            let canonical_chain = canonical_chain_component_inner(
-                chain_component,
-                symbol_component,
-                localized_chain_id.as_deref(),
-            );
+            let canonical_chain =
+                canonical_chain_component_inner(chain_component, symbol_component);
             let mut normalized = components.clone();
             normalized[0] = namespace.clone();
             normalized[1] = canonical_chain;
@@ -917,30 +917,6 @@ pub fn plan_resolve_derived_or_stored_address(
     } else {
         None
     }
-}
-
-pub fn plan_display_mark(
-    symbol: String,
-    native_mark: Option<String>,
-    token_mark: Option<String>,
-) -> String {
-    if let Some(mark) = native_mark {
-        if !mark.is_empty() {
-            return mark;
-        }
-    }
-    match symbol.as_str() {
-        "MATIC" => return "P".to_string(),
-        "ARB" => return "AR".to_string(),
-        "TRX" | "USDT" => return "T".to_string(),
-        _ => {}
-    }
-    if let Some(mark) = token_mark {
-        if !mark.is_empty() {
-            return mark;
-        }
-    }
-    symbol.chars().take(2).collect::<String>().to_uppercase()
 }
 
 fn secret_descriptor_for_wallet(

@@ -5,7 +5,6 @@ use super::addressing::{
     validate_address, validate_string_identifier, AddressValidationRequest,
     AddressValidationResult, StringValidationRequest, StringValidationResult,
 };
-use super::catalog::core_bootstrap;
 use super::endpoint_reliability::{
     order_endpoints, record_attempt, EndpointAttemptRequest, EndpointOrderingRequest,
     ReliabilityCounter,
@@ -25,7 +24,6 @@ use super::import::{
     plan_wallet_import, validate_wallet_import_draft, WalletImportDraftValidationRequest,
     WalletImportPlan, WalletImportRequest,
 };
-use super::localization::localization_catalog;
 use super::refresh::{
     active_maintenance_plan, chain_plans, history_plans, should_run_background_maintenance,
     ActiveMaintenancePlan, ActiveMaintenancePlanRequest, BackgroundMaintenanceRequest,
@@ -39,16 +37,16 @@ use super::send::{
 };
 use super::state::CoreAppState;
 use super::store::{
-    aggregate_owned_addresses, build_persisted_snapshot, build_persisted_snapshot_typed,
-    persisted_snapshot_from_json, plan_active_wallet_transaction_ids,
-    plan_canonical_chain_component, plan_dashboard_supported_token_entries, plan_display_mark,
+    aggregate_owned_addresses, build_persisted_snapshot_typed,
+    plan_active_wallet_transaction_ids,
+    plan_canonical_chain_component, plan_dashboard_supported_token_entries,
     plan_earliest_transaction_dates, plan_has_wallet_for_chain, plan_icon_identifier,
     plan_normalized_history_signature, plan_normalized_icon_identifier, plan_priced_chain,
     plan_receive_selection, plan_reset_dispatch, plan_resolve_derived_or_stored_address,
-    plan_self_send_confirmation, plan_store_derived_state, wallet_secret_index,
+    plan_self_send_confirmation, plan_store_derived_state,
     wallet_secret_index_from_observations, CoreResetPlan, DerivedAddressPostProcess,
     NormalizedHistorySignatureTransaction,
-    OwnedAddressAggregationRequest, PersistedAppSnapshotRequest, ReceiveSelectionPlan,
+    OwnedAddressAggregationRequest, ReceiveSelectionPlan,
     ReceiveSelectionRequest, SelfSendConfirmationPlan, SelfSendConfirmationRequest,
     StoreDerivedStatePlan, StoreDerivedStateRequest, TransactionActivityInput,
     TransactionEarliestInput, WalletChainEligibilityInput, WalletChainInput,
@@ -68,25 +66,7 @@ use super::utxo::{
 };
 use serde::Serialize;
 
-// ─── Inherent JSON functions (kept as-is) ────────────────────────────────────
-
-#[uniffi::export]
-pub fn core_bootstrap_json() -> Result<String, crate::SpectraBridgeError> {
-    Ok(serialize_json(&core_bootstrap()?)?)
-}
-
-#[uniffi::export]
-pub fn core_localization_document_json(
-    resource_name: String,
-    preferred_locales_json: String,
-) -> Result<Vec<u8>, crate::SpectraBridgeError> {
-    let preferred_locales = serde_json::from_str::<Vec<String>>(&preferred_locales_json)?;
-    let document = localization_catalog()?
-        .document_for(&preferred_locales, &resource_name)
-        .cloned()
-        .ok_or_else(|| format!("Missing localization document for table {resource_name}."))?;
-    Ok(serialize_json(&document)?.into_bytes())
-}
+// ─── Static resource lookups ──────────────────────────────────────────────────
 
 #[uniffi::export]
 pub fn core_static_resource_json(
@@ -105,24 +85,6 @@ pub fn core_static_text_resource_utf8(
     static_text_resource(&resource_name)
         .map(|value| value.to_string())
         .ok_or_else(|| format!("Missing static text resource {resource_name}.").into())
-}
-
-// ─── Persistence JSON boundary (state is inherently JSON from disk) ───────────
-
-#[uniffi::export]
-pub fn core_build_persisted_snapshot_json(
-    request_json: String,
-) -> Result<String, crate::SpectraBridgeError> {
-    let request = serde_json::from_str::<PersistedAppSnapshotRequest>(&request_json)?;
-    Ok(serialize_json(&build_persisted_snapshot(request)?)?)
-}
-
-#[uniffi::export]
-pub fn core_wallet_secret_index_json(
-    snapshot_json: String,
-) -> Result<String, crate::SpectraBridgeError> {
-    let snapshot = persisted_snapshot_from_json(&snapshot_json)?;
-    Ok(serialize_json(&wallet_secret_index(&snapshot))?)
 }
 
 // ─── Typed FFI functions ──────────────────────────────────────────────────────
@@ -219,12 +181,8 @@ pub fn core_plan_has_wallet_for_chain(
 }
 
 #[uniffi::export]
-pub fn core_plan_canonical_chain_component(
-    chain_name: String,
-    symbol: String,
-    localized_chain_id: Option<String>,
-) -> String {
-    plan_canonical_chain_component(chain_name, symbol, localized_chain_id)
+pub fn core_plan_canonical_chain_component(chain_name: String, symbol: String) -> String {
+    plan_canonical_chain_component(chain_name, symbol)
 }
 
 #[uniffi::export]
@@ -233,32 +191,13 @@ pub fn core_plan_icon_identifier(
     chain_name: String,
     contract_address: Option<String>,
     token_standard: String,
-    localized_chain_id: Option<String>,
 ) -> String {
-    plan_icon_identifier(
-        symbol,
-        chain_name,
-        contract_address,
-        token_standard,
-        localized_chain_id,
-    )
+    plan_icon_identifier(symbol, chain_name, contract_address, token_standard)
 }
 
 #[uniffi::export]
-pub fn core_plan_normalized_icon_identifier(
-    identifier: String,
-    localized_chain_id: Option<String>,
-) -> String {
-    plan_normalized_icon_identifier(identifier, localized_chain_id)
-}
-
-#[uniffi::export]
-pub fn core_plan_display_mark(
-    symbol: String,
-    native_mark: Option<String>,
-    token_mark: Option<String>,
-) -> String {
-    plan_display_mark(symbol, native_mark, token_mark)
+pub fn core_plan_normalized_icon_identifier(identifier: String) -> String {
+    plan_normalized_icon_identifier(identifier)
 }
 
 #[uniffi::export]
@@ -464,35 +403,6 @@ pub fn core_encode_history_records_json(
             tx_hash: r.tx_hash,
             created_at: r.created_at,
             payload: engine.encode(r.payload_json.as_bytes()),
-        })
-        .collect();
-    Ok(serialize_json(&encoded)?)
-}
-
-/// Seconds between the Unix epoch (1970-01-01) and the Swift reference date
-/// (2001-01-01). `CorePersistedTransactionRecord.created_at` is stored in Swift
-/// reference seconds; HistoryRecord encodes Unix epoch seconds, so add this
-/// offset when lifting persisted records into history payloads.
-const SWIFT_REFERENCE_EPOCH_OFFSET_SECONDS: f64 = 978_307_200.0;
-
-#[uniffi::export]
-pub fn core_encode_history_records_from_persisted(
-    snapshots: Vec<CorePersistedTransactionRecord>,
-) -> Result<String, crate::SpectraBridgeError> {
-    use base64::Engine;
-    let engine = base64::engine::general_purpose::STANDARD;
-    let encoded: Vec<HistoryRecordEncoded> = snapshots
-        .into_iter()
-        .filter_map(|snap| {
-            let payload_json = serialize_json(&snap).ok()?;
-            Some(HistoryRecordEncoded {
-                id: snap.id.to_lowercase(),
-                wallet_id: snap.wallet_id.map(|w| w.to_lowercase()),
-                chain_name: snap.chain_name,
-                tx_hash: snap.transaction_hash.map(|h| h.to_lowercase()),
-                created_at: snap.created_at + SWIFT_REFERENCE_EPOCH_OFFSET_SECONDS,
-                payload: engine.encode(payload_json.as_bytes()),
-            })
         })
         .collect();
     Ok(serialize_json(&encoded)?)
