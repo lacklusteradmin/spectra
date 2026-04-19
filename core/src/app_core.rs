@@ -1,3 +1,4 @@
+use crate::store::wallet_domain::CoreSeedDerivationPaths;
 use serde::{Deserialize, Serialize};
 use std::sync::OnceLock;
 
@@ -64,34 +65,6 @@ pub struct AppCoreDerivationPathResolution {
     pub normalized_path: String,
     pub account_index: u32,
     pub flavor: String,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, uniffi::Record)]
-#[serde(rename_all = "camelCase")]
-pub struct AppCoreSeedDerivationPaths {
-    pub is_custom_enabled: bool,
-    pub bitcoin: String,
-    pub bitcoin_cash: String,
-    pub bitcoin_sv: String,
-    pub litecoin: String,
-    pub dogecoin: String,
-    pub ethereum: String,
-    pub ethereum_classic: String,
-    pub arbitrum: String,
-    pub optimism: String,
-    pub avalanche: String,
-    pub hyperliquid: String,
-    pub tron: String,
-    pub solana: String,
-    pub stellar: String,
-    pub xrp: String,
-    pub cardano: String,
-    pub sui: String,
-    pub aptos: String,
-    pub ton: String,
-    pub internet_computer: String,
-    pub near: String,
-    pub polkadot: String,
 }
 
 #[derive(Debug, Clone)]
@@ -251,7 +224,7 @@ pub fn app_core_resolve_derivation_path(
 #[uniffi::export]
 pub fn app_core_derivation_paths_for_preset(
     account_index: u32,
-) -> Result<AppCoreSeedDerivationPaths, crate::SpectraBridgeError> {
+) -> Result<CoreSeedDerivationPaths, crate::SpectraBridgeError> {
     Ok(app_core_catalog()
         .and_then(|catalog| seed_derivation_paths_for_account(catalog, account_index))?)
 }
@@ -576,8 +549,8 @@ fn default_path_for_chain(chain_name: &str) -> Result<String, String> {
 fn seed_derivation_paths_for_account(
     catalog: &AppCoreCatalog,
     account_index: u32,
-) -> Result<AppCoreSeedDerivationPaths, String> {
-    Ok(AppCoreSeedDerivationPaths {
+) -> Result<CoreSeedDerivationPaths, String> {
+    Ok(CoreSeedDerivationPaths {
         is_custom_enabled: false,
         bitcoin: format!("m/84'/0'/{account_index}'/0/0"),
         bitcoin_cash: format!("m/44'/145'/{account_index}'/0/0"),

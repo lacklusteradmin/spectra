@@ -193,6 +193,64 @@ pub fn core_chain_risk_probe_messages(
     ChainRiskProbeMessages { warning, info }
 }
 
+// ─── Simple chain risk probe config ──────────────────────────────────────────
+// Per-chain static config for the Litecoin/Dogecoin/Solana/XRP/Monero/Sui/Aptos
+// branch of Swift's destination-risk probe: balance JSON field, divisor to
+// reach the display unit, display chain name, and balance label for messages.
+
+#[derive(Debug, Clone, uniffi::Record)]
+pub struct SimpleChainRiskProbeConfig {
+    pub balance_field: String,
+    pub divisor: f64,
+    pub display_chain_name: String,
+    pub balance_label: String,
+}
+
+#[uniffi::export]
+pub fn core_simple_chain_risk_probe_config(
+    chain_name: String,
+    symbol: String,
+) -> Option<SimpleChainRiskProbeConfig> {
+    let (balance_field, divisor, display_chain_name, balance_label) = match chain_name.as_str() {
+        "Litecoin" => ("balance_sat", 1e8, "Litecoin", "balance"),
+        "Dogecoin" if symbol == "DOGE" => ("balance_koin", 1e8, "Dogecoin", "balance"),
+        "Solana" => ("lamports", 1e9, "Solana", "SOL balance"),
+        "XRP Ledger" => ("drops", 1e6, "XRP", "XRP balance"),
+        "Monero" => ("piconeros", 1e12, "Monero", "XMR balance"),
+        "Sui" => ("mist", 1e9, "Sui", "SUI balance"),
+        "Aptos" => ("octas", 1e8, "Aptos", "APT balance"),
+        _ => return None,
+    };
+    Some(SimpleChainRiskProbeConfig {
+        balance_field: balance_field.to_string(),
+        divisor,
+        display_chain_name: display_chain_name.to_string(),
+        balance_label: balance_label.to_string(),
+    })
+}
+
+// ─── Fiat currency display names ─────────────────────────────────────────────
+
+#[uniffi::export]
+pub fn core_fiat_currency_display_name(code: String) -> String {
+    match code.as_str() {
+        "USD" => "US Dollar (USD)",
+        "EUR" => "Euro (EUR)",
+        "GBP" => "British Pound (GBP)",
+        "JPY" => "Japanese Yen (JPY)",
+        "CNY" => "Chinese Yuan (CNY)",
+        "INR" => "Indian Rupee (INR)",
+        "CAD" => "Canadian Dollar (CAD)",
+        "AUD" => "Australian Dollar (AUD)",
+        "CHF" => "Swiss Franc (CHF)",
+        "BRL" => "Brazilian Real (BRL)",
+        "SGD" => "Singapore Dollar (SGD)",
+        "AED" => "UAE Dirham (AED)",
+        _ => return code,
+    }
+    .to_string()
+}
+
 // ─── Broadcast rebroadcast dispatch table ─────────────────────────────────────
 // Maps Swift's BroadcastEntry payload format → (chain_id, result_field, wrap_key,
 // extract_field). Returns an error for unknown formats.
