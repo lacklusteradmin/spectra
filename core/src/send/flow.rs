@@ -73,7 +73,6 @@ pub struct EvmReceiptClassification {
     pub block_number: Option<i64>,
 }
 
-#[uniffi::export]
 pub fn classify_evm_receipt_json(json: String) -> Option<EvmReceiptClassification> {
     let v: serde_json::Value = serde_json::from_str(&json).ok()?;
     let block_number = v.get("block_number").and_then(|x| x.as_i64());

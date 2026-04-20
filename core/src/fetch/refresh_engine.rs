@@ -146,17 +146,20 @@ impl BalanceRefreshEngine {
         let obs = inner.observer.read().unwrap().clone();
 
         // Fan out balance fetches with bounded concurrency (up to 8 in flight).
-        // Clone the WalletService Arc once so each spawned future owns its handle
-        // without borrowing `inner` (required for Send + 'static).
+        // Each successful fetch is immediately applied to the Rust-owned wallet
+        // state; Swift receives the resulting typed `WalletSummary` via the
+        // observer instead of shuttling the raw JSON back.
         let ws = Arc::clone(&inner.wallet_service);
-        let results: Vec<Result<(u32, String, String), ()>> = stream::iter(entries)
+        let results: Vec<Result<(u32, String, Option<crate::store::state::WalletSummary>), ()>> = stream::iter(entries)
             .map(|entry| {
                 let ws = Arc::clone(&ws);
                 async move {
-                    match ws.fetch_balance_auto(entry.chain_id, entry.address.clone()).await {
-                        Ok(json) => Ok((entry.chain_id, entry.wallet_id, json)),
-                        Err(_) => Err(()),
-                    }
+                    let json = ws.fetch_balance_auto(entry.chain_id, entry.address.clone()).await.map_err(|_| ())?;
+                    let summary = ws
+                        .update_native_balance_typed(entry.wallet_id.clone(), entry.chain_id, json)
+                        .await
+                        .map_err(|_| ())?;
+                    Ok((entry.chain_id, entry.wallet_id, summary))
                 }
             })
             .buffer_unordered(8)
@@ -168,9 +171,9 @@ impl BalanceRefreshEngine {
 
         for result in results {
             match result {
-                Ok((chain_id, wallet_id, json)) => {
+                Ok((chain_id, wallet_id, summary)) => {
                     if let Some(ref o) = obs {
-                        o.on_balance_updated(chain_id, wallet_id, json);
+                        o.on_balance_updated(chain_id, wallet_id, summary);
                     }
                     refreshed += 1;
                 }

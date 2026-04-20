@@ -353,7 +353,6 @@ pub enum SimpleChain {
 // Swift stops hand-wiring per-chain wrapping code. Each consumes the same raw
 // inputs the old Swift helpers used; decode + wrap happens in Rust.
 
-#[uniffi::export]
 pub fn build_evm_send_preview_record(
     input: crate::ethereum_send::EvmPreviewDecodeInput,
 ) -> Option<crate::wallet_core::EthereumSendPreview> {
@@ -373,7 +372,6 @@ pub fn build_evm_send_preview_record(
     })
 }
 
-#[uniffi::export]
 pub fn build_utxo_send_preview_record(
     json: String,
 ) -> Option<crate::wallet_core::BitcoinSendPreview> {
@@ -393,7 +391,6 @@ pub fn build_utxo_send_preview_record(
     })
 }
 
-#[uniffi::export]
 pub fn build_bitcoin_hd_send_preview_record(
     balance_json: String,
     fee_json: String,
@@ -411,7 +408,6 @@ pub fn build_bitcoin_hd_send_preview_record(
     })
 }
 
-#[uniffi::export]
 pub fn build_dogecoin_send_preview_record(
     json: String,
     requested_amount: f64,
@@ -434,7 +430,6 @@ pub fn build_dogecoin_send_preview_record(
     })
 }
 
-#[uniffi::export]
 pub fn build_tron_send_preview_record(
     json: String,
 ) -> Option<crate::wallet_core::TronSendPreview> {
@@ -469,7 +464,6 @@ pub enum SimpleChainPreview {
     Polkadot { preview: crate::wallet_core::PolkadotSendPreview },
 }
 
-#[uniffi::export]
 pub fn build_simple_chain_preview(json: String, chain: SimpleChain) -> SimpleChainPreview {
     use crate::wallet_core::*;
     let p = decode_simple_send_preview(json);

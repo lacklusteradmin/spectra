@@ -22,7 +22,6 @@ fn normalize_evm_address(address: &str) -> String {
 /// (an array of `{ "txid": "...", ... }` records). Returns 0 for
 /// any parse failure or non-array payload — matching Swift's
 /// `(try? JSONSerialization...).map { ... } ?? 0` semantics.
-#[uniffi::export]
 pub fn diagnostics_history_entry_count(json: String) -> u32 {
     serde_json::from_str::<Value>(&json)
         .ok()
@@ -30,10 +29,8 @@ pub fn diagnostics_history_entry_count(json: String) -> u32 {
         .unwrap_or(0)
 }
 
-/// Count entries in the `native` array of an EVM history-page JSON
-/// response (the shape returned by `WalletServiceBridge.fetchEVMHistoryPageJSON`).
+/// Count entries in the `native` array of an EVM history-page JSON response.
 /// Returns 0 when the key is missing or the payload is malformed.
-#[uniffi::export]
 pub fn diagnostics_evm_history_native_count(json: String) -> u32 {
     serde_json::from_str::<Value>(&json)
         .ok()
@@ -45,7 +42,6 @@ pub fn diagnostics_evm_history_native_count(json: String) -> u32 {
 /// JSON payload, lowercased and trimmed. Used by
 /// `refreshPendingRustHistoryChainTransactions` to mark known-confirmed
 /// transactions.
-#[uniffi::export]
 pub fn diagnostics_history_confirmed_txids(json: String) -> Vec<String> {
     let Ok(v) = serde_json::from_str::<Value>(&json) else {
         return Vec::new();
@@ -84,7 +80,6 @@ pub fn diagnostics_make_evm_running(address: String) -> EthereumTokenTransferHis
 
 /// EVM diagnostics record seeded when a refresh failed. `error_description`
 /// is the message the caller would normally surface (e.g. `error.localizedDescription`).
-#[uniffi::export]
 pub fn diagnostics_make_evm_error(
     address: String,
     error_description: String,
@@ -107,22 +102,19 @@ pub fn diagnostics_make_evm_error(
     }
 }
 
-/// Build an EVM diagnostics record from an EVM history-page JSON
-/// payload (`fetchEVMHistoryPageJSON`). Equivalent to the Swift
-/// `rustEVMHistoryDiagnostics` helper, minus the bridge call.
-#[uniffi::export]
-pub fn diagnostics_make_evm_success(
+/// Build an EVM diagnostics record from a decoded history page.
+/// Used by `WalletService::fetch_evm_history_diagnostics`.
+pub fn diagnostics_make_evm_success_record(
     address: String,
-    history_json: String,
+    page: &crate::fetch::history_decode::EvmHistoryPageDecoded,
 ) -> EthereumTokenTransferHistoryDiagnostics {
-    let count = diagnostics_evm_history_native_count(history_json) as i32;
     EthereumTokenTransferHistoryDiagnostics {
         address: normalize_evm_address(&address),
         rpc_transfer_count: 0,
         rpc_error: None,
         blockscout_transfer_count: 0,
         blockscout_error: None,
-        etherscan_transfer_count: count,
+        etherscan_transfer_count: page.native.len() as i32,
         etherscan_error: None,
         ethplorer_transfer_count: 0,
         ethplorer_error: None,
@@ -268,10 +260,21 @@ mod tests {
 
     #[test]
     fn evm_success_counts_native() {
-        let s = diagnostics_make_evm_success(
-            "0xAB".into(),
-            r#"{"native":[{},{},{}]}"#.into(),
-        );
+        use crate::fetch::history_decode::{EvmHistoryPageDecoded, EvmNativeTransferItem};
+        let page = EvmHistoryPageDecoded {
+            tokens: vec![],
+            native: (0..3)
+                .map(|_| EvmNativeTransferItem {
+                    from_address: String::new(),
+                    to_address: String::new(),
+                    amount_decimal: "0".into(),
+                    transaction_hash: String::new(),
+                    block_number: 0,
+                    timestamp: 0.0,
+                })
+                .collect(),
+        };
+        let s = diagnostics_make_evm_success_record("0xAB".into(), &page);
         assert_eq!(s.etherscan_transfer_count, 3);
         assert_eq!(s.source_used, "rust");
         assert_eq!(s.address, "0xab");

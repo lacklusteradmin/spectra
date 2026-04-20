@@ -121,7 +121,7 @@ pub struct EsploraFeeEstimates {
 // ----------------------------------------------------------------
 
 /// Unified tx confirmation status returned by all UTXO chains.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, uniffi::Record)]
 pub struct UtxoTxStatus {
     pub txid: String,
     pub confirmed: bool,

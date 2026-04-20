@@ -45,13 +45,11 @@ pub fn core_parse_dogecoin_derivation_index(path: Option<String>, expected_prefi
 
 // ─── Simple chain risk probe config ──────────────────────────────────────────
 // Per-chain static config for the Litecoin/Dogecoin/Solana/XRP/Monero/Sui/Aptos
-// branch of Swift's destination-risk probe: balance JSON field, divisor to
-// reach the display unit, display chain name, and balance label for messages.
+// branch of Swift's destination-risk probe: display chain name and balance
+// label for messages.
 
 #[derive(Debug, Clone, uniffi::Record)]
 pub struct SimpleChainRiskProbeConfig {
-    pub balance_field: String,
-    pub divisor: f64,
     pub display_chain_name: String,
     pub balance_label: String,
 }
@@ -61,19 +59,17 @@ pub fn core_simple_chain_risk_probe_config(
     chain_name: String,
     symbol: String,
 ) -> Option<SimpleChainRiskProbeConfig> {
-    let (balance_field, divisor, display_chain_name, balance_label) = match chain_name.as_str() {
-        "Litecoin" => ("balance_sat", 1e8, "Litecoin", "balance"),
-        "Dogecoin" if symbol == "DOGE" => ("balance_koin", 1e8, "Dogecoin", "balance"),
-        "Solana" => ("lamports", 1e9, "Solana", "SOL balance"),
-        "XRP Ledger" => ("drops", 1e6, "XRP", "XRP balance"),
-        "Monero" => ("piconeros", 1e12, "Monero", "XMR balance"),
-        "Sui" => ("mist", 1e9, "Sui", "SUI balance"),
-        "Aptos" => ("octas", 1e8, "Aptos", "APT balance"),
+    let (display_chain_name, balance_label) = match chain_name.as_str() {
+        "Litecoin" => ("Litecoin", "balance"),
+        "Dogecoin" if symbol == "DOGE" => ("Dogecoin", "balance"),
+        "Solana" => ("Solana", "SOL balance"),
+        "XRP Ledger" => ("XRP", "XRP balance"),
+        "Monero" => ("Monero", "XMR balance"),
+        "Sui" => ("Sui", "SUI balance"),
+        "Aptos" => ("Aptos", "APT balance"),
         _ => return None,
     };
     Some(SimpleChainRiskProbeConfig {
-        balance_field: balance_field.to_string(),
-        divisor,
         display_chain_name: display_chain_name.to_string(),
         balance_label: balance_label.to_string(),
     })
@@ -132,6 +128,60 @@ pub fn core_rebroadcast_dispatch_for_format(
         _ => None,
     };
     entry.ok_or_else(|| SpectraBridgeError::from("Rebroadcast is not supported for this transaction format yet."))
+}
+
+// ─── Rebroadcast prepared payload ────────────────────────────────────────────
+// Fuses the dispatch-table lookup with the payload shape transformation so Swift
+// never has to build JSON objects or scrape fields for rebroadcast. Handles:
+//   • sui.signed_json — remap {txBytesBase64, signatureBase64} → {tx_bytes_b64, sig_b64}
+//   • extract_field branch — pull named field value out of a wallet-produced JSON
+//   • wrap_key branch — wrap raw payload string under a single JSON key
+//   • otherwise — pass payload through unchanged
+
+#[derive(Debug, Clone, uniffi::Record)]
+pub struct PreparedBroadcastPayload {
+    pub chain_id: u32,
+    pub broadcast_payload: String,
+    pub result_field: String,
+}
+
+#[uniffi::export]
+pub fn core_rebroadcast_prepare_payload(
+    format: String,
+    raw_payload: String,
+) -> Result<PreparedBroadcastPayload, SpectraBridgeError> {
+    if format == "sui.signed_json" {
+        let remapped = sui_signed_json_remap(&raw_payload).unwrap_or_else(|| raw_payload.clone());
+        return Ok(PreparedBroadcastPayload {
+            chain_id: 12,
+            broadcast_payload: remapped,
+            result_field: "digest".to_string(),
+        });
+    }
+    let dispatch = core_rebroadcast_dispatch_for_format(format)?;
+    let broadcast_payload = if let Some(extract_field) = dispatch.extract_field.as_ref() {
+        crate::send::preview_decode::extract_json_string_field(raw_payload.clone(), extract_field.clone())
+    } else if let Some(wrap_key) = dispatch.wrap_key.as_ref() {
+        let mut map = serde_json::Map::new();
+        map.insert(wrap_key.clone(), serde_json::Value::String(raw_payload.clone()));
+        serde_json::to_string(&serde_json::Value::Object(map)).unwrap_or(raw_payload)
+    } else {
+        raw_payload
+    };
+    Ok(PreparedBroadcastPayload {
+        chain_id: dispatch.chain_id,
+        broadcast_payload,
+        result_field: dispatch.result_field,
+    })
+}
+
+fn sui_signed_json_remap(raw: &str) -> Option<String> {
+    let v: serde_json::Value = serde_json::from_str(raw).ok()?;
+    let obj = v.as_object()?;
+    let tx = obj.get("txBytesBase64")?.as_str()?;
+    let sig = obj.get("signatureBase64")?.as_str()?;
+    let remapped = serde_json::json!({ "tx_bytes_b64": tx, "sig_b64": sig });
+    serde_json::to_string(&remapped).ok()
 }
 
 // ─── Seed derivation chain raw lookup ────────────────────────────────────────
@@ -231,7 +281,6 @@ pub fn core_plan_receive_address_resolver(
 // Lifted from Swift `evmHasContractCode`: a nonempty `eth_getCode` result
 // (anything other than "0x" or "0x0") indicates deployed bytecode.
 
-#[uniffi::export]
 pub fn core_evm_has_contract_code(code: String) -> bool {
     let trimmed = code.trim();
     !trimmed.is_empty()
@@ -347,6 +396,52 @@ mod tests {
         );
         assert_eq!(r.max_fee_gwei, "6.000");
         assert_eq!(r.priority_fee_gwei, "3.000");
+    }
+
+    #[test]
+    fn prepare_payload_sui_signed_json_remap() {
+        let raw = r#"{"txBytesBase64":"AAAA","signatureBase64":"BBBB"}"#;
+        let p = core_rebroadcast_prepare_payload("sui.signed_json".into(), raw.into()).unwrap();
+        assert_eq!(p.chain_id, 12);
+        assert_eq!(p.result_field, "digest");
+        let parsed: serde_json::Value = serde_json::from_str(&p.broadcast_payload).unwrap();
+        assert_eq!(parsed["tx_bytes_b64"], "AAAA");
+        assert_eq!(parsed["sig_b64"], "BBBB");
+    }
+
+    #[test]
+    fn prepare_payload_sui_malformed_passthrough() {
+        let raw = "not json";
+        let p = core_rebroadcast_prepare_payload("sui.signed_json".into(), raw.into()).unwrap();
+        assert_eq!(p.broadcast_payload, raw);
+    }
+
+    #[test]
+    fn prepare_payload_wrap_key() {
+        let p = core_rebroadcast_prepare_payload("xrp.blob_hex".into(), "deadbeef".into()).unwrap();
+        assert_eq!(p.chain_id, 8);
+        assert_eq!(p.result_field, "txid");
+        let parsed: serde_json::Value = serde_json::from_str(&p.broadcast_payload).unwrap();
+        assert_eq!(parsed["tx_blob_hex"], "deadbeef");
+    }
+
+    #[test]
+    fn prepare_payload_extract_field() {
+        let raw = r#"{"raw_tx_hex":"ff00","other":"x"}"#;
+        let p = core_rebroadcast_prepare_payload("bitcoin.rust_json".into(), raw.into()).unwrap();
+        assert_eq!(p.chain_id, 0);
+        assert_eq!(p.broadcast_payload, "ff00");
+    }
+
+    #[test]
+    fn prepare_payload_passthrough() {
+        let p = core_rebroadcast_prepare_payload("bitcoin.raw_hex".into(), "abcd".into()).unwrap();
+        assert_eq!(p.broadcast_payload, "abcd");
+    }
+
+    #[test]
+    fn prepare_payload_unknown_errors() {
+        assert!(core_rebroadcast_prepare_payload("nope".into(), "x".into()).is_err());
     }
 
     #[test]

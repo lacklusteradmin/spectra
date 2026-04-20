@@ -10,22 +10,6 @@ fn parse_object(json: &str) -> Option<serde_json::Map<String, Value>> {
     v.as_object().cloned()
 }
 
-fn field_u64(obj: &serde_json::Map<String, Value>, field: &str) -> Option<u64> {
-    let v = obj.get(field)?;
-    if let Some(n) = v.as_u64() {
-        return Some(n);
-    }
-    if let Some(s) = v.as_str() {
-        return s.parse::<u64>().ok();
-    }
-    if let Some(f) = v.as_f64() {
-        if f.is_finite() && f >= 0.0 {
-            return Some(f as u64);
-        }
-    }
-    None
-}
-
 fn field_i64(obj: &serde_json::Map<String, Value>, field: &str) -> Option<i64> {
     let v = obj.get(field)?;
     if let Some(n) = v.as_i64() {
@@ -54,38 +38,15 @@ fn field_f64(obj: &serde_json::Map<String, Value>, field: &str) -> Option<f64> {
 }
 
 #[uniffi::export]
-pub fn balance_decoder_u64_field(field: String, json: String) -> Option<u64> {
-    let obj = parse_object(&json)?;
-    field_u64(&obj, &field)
-}
-
-#[uniffi::export]
 pub fn balance_decoder_i64_field(field: String, json: String) -> Option<i64> {
     let obj = parse_object(&json)?;
     field_i64(&obj, &field)
 }
 
 #[uniffi::export]
-pub fn balance_decoder_u128_string_field_as_f64(field: String, json: String) -> Option<f64> {
-    let obj = parse_object(&json)?;
-    field_f64(&obj, &field)
-}
-
-#[uniffi::export]
 pub fn balance_decoder_f64_field(field: String, json: String) -> Option<f64> {
     let obj = parse_object(&json)?;
     field_f64(&obj, &field)
-}
-
-#[uniffi::export]
-pub fn balance_decoder_string_field(field: String, json: String) -> Option<String> {
-    let obj = parse_object(&json)?;
-    obj.get(&field)?.as_str().map(|s| s.to_string())
-}
-
-#[uniffi::export]
-pub fn balance_decoder_has_field(field: String, json: String) -> bool {
-    parse_object(&json).map_or(false, |obj| obj.contains_key(&field))
 }
 
 #[uniffi::export]
@@ -96,35 +57,6 @@ pub fn balance_decoder_first_element_string_field(field: String, json: String) -
     obj.get(&field)?.as_str().map(|s| s.to_string())
 }
 
-#[uniffi::export]
-pub fn balance_decoder_json_array_is_non_empty(json: String) -> bool {
-    let Ok(v) = serde_json::from_str::<Value>(&json) else { return false };
-    v.as_array().map_or(false, |a| !a.is_empty())
-}
-
-#[uniffi::export]
-pub fn balance_decoder_evm_native_balance(json: String) -> Option<f64> {
-    let obj = parse_object(&json)?;
-    if let Some(display) = obj.get("balance_display").and_then(|v| v.as_str()) {
-        if let Ok(v) = display.parse::<f64>() {
-            return Some(v);
-        }
-    }
-    let wei = field_f64(&obj, "balance_wei")?;
-    Some(wei / 1e18)
-}
-
-#[uniffi::export]
-pub fn balance_decoder_yocto_near_to_double(json: String) -> Option<f64> {
-    let obj = parse_object(&json)?;
-    if let Some(display) = obj.get("near_display").and_then(|v| v.as_str()) {
-        if let Ok(v) = display.parse::<f64>() {
-            return Some(v);
-        }
-    }
-    let yocto = field_f64(&obj, "yocto_near")?;
-    Some(yocto / 1e24)
-}
 
 // ---------------------------------------------------------------
 // NEAR history response parser (previously NearBalanceService.parseHistoryResponse)
@@ -287,31 +219,6 @@ pub fn near_parse_history_response(json: String, owner_address: String) -> Vec<N
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    #[test]
-    fn u64_field_from_number_and_string() {
-        assert_eq!(balance_decoder_u64_field("n".into(), r#"{"n":42}"#.into()), Some(42));
-        assert_eq!(balance_decoder_u64_field("n".into(), r#"{"n":"99"}"#.into()), Some(99));
-        assert_eq!(balance_decoder_u64_field("x".into(), r#"{"n":"99"}"#.into()), None);
-    }
-
-    #[test]
-    fn evm_native_balance_prefers_display() {
-        let j = r#"{"balance_display":"1.5","balance_wei":"123"}"#;
-        assert_eq!(balance_decoder_evm_native_balance(j.into()), Some(1.5));
-    }
-
-    #[test]
-    fn evm_native_balance_falls_back_to_wei() {
-        let j = r#"{"balance_wei":"1000000000000000000"}"#;
-        assert_eq!(balance_decoder_evm_native_balance(j.into()), Some(1.0));
-    }
-
-    #[test]
-    fn yocto_near_fallback() {
-        let j = r#"{"yocto_near":"1000000000000000000000000"}"#;
-        assert_eq!(balance_decoder_yocto_near_to_double(j.into()), Some(1.0));
-    }
 
     #[test]
     fn near_history_send_and_receive() {

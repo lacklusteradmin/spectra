@@ -394,6 +394,16 @@ impl Chain {
     pub fn all() -> impl Iterator<Item = Self> {
         (0u32..=24).filter_map(Chain::from_id)
     }
+
+    /// Resolve a chain from the display name Swift uses on the boundary.
+    /// Accepts both `chain_display_name()` and the legacy "Internet Computer"
+    /// alias for `Chain::Icp`.
+    pub fn from_display_name(name: &str) -> Option<Self> {
+        if name == "Internet Computer" {
+            return Some(Chain::Icp);
+        }
+        Chain::all().find(|c| c.chain_display_name() == name)
+    }
 }
 
 #[cfg(test)]

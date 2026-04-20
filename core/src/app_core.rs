@@ -46,16 +46,68 @@ pub struct AppCorePathPreset {
     pub is_default: bool,
 }
 
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Hash, uniffi::Enum)]
+#[serde(rename_all = "camelCase")]
+pub enum AppCoreScriptPolicy {
+    BitcoinPurpose,
+    Fixed,
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Hash, uniffi::Enum)]
+#[serde(rename_all = "camelCase")]
+pub enum AppCoreDerivationAlgorithm {
+    Bip32Secp256k1,
+    Slip10Ed25519,
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Hash, uniffi::Enum)]
+#[serde(rename_all = "camelCase")]
+pub enum AppCoreAddressAlgorithm {
+    Bitcoin,
+    Evm,
+    Solana,
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Hash, uniffi::Enum)]
+#[serde(rename_all = "camelCase")]
+pub enum AppCorePublicKeyFormat {
+    Compressed,
+    Uncompressed,
+    XOnly,
+    Raw,
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Hash, uniffi::Enum)]
+#[serde(rename_all = "camelCase")]
+pub enum AppCoreScriptType {
+    P2pkh,
+    P2shP2wpkh,
+    P2wpkh,
+    P2tr,
+    Account,
+}
+
+/// Endpoint-table slot for a given chain. Mirrors `chains::registry::EndpointSlot`
+/// so the Swift side can ask Rust for the right `chain_id + offset` instead of
+/// reimplementing the offset arithmetic.
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Hash, uniffi::Enum)]
+#[serde(rename_all = "camelCase")]
+pub enum AppCoreEndpointSlot {
+    Primary,
+    Secondary,
+    Explorer,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, uniffi::Record)]
 #[serde(rename_all = "camelCase")]
 pub struct AppCoreRequestCompilationPreset {
     pub chain: String,
-    pub derivation_algorithm: String,
-    pub address_algorithm: String,
-    pub public_key_format: String,
-    pub script_policy: String,
-    pub fixed_script_type: Option<String>,
-    pub bitcoin_purpose_script_map: Option<std::collections::HashMap<String, String>>,
+    pub derivation_algorithm: AppCoreDerivationAlgorithm,
+    pub address_algorithm: AppCoreAddressAlgorithm,
+    pub public_key_format: AppCorePublicKeyFormat,
+    pub script_policy: AppCoreScriptPolicy,
+    pub fixed_script_type: Option<AppCoreScriptType>,
+    pub bitcoin_purpose_script_map: Option<std::collections::HashMap<String, AppCoreScriptType>>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, uniffi::Record)]
@@ -119,12 +171,18 @@ pub struct AppCoreBroadcastProviderOption {
     pub title: String,
 }
 
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, uniffi::Enum)]
+pub enum AppCoreChainIntegrationState {
+    Live,
+    Planned,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, uniffi::Record)]
 #[serde(rename_all = "camelCase")]
 pub struct AppCoreChainBackend {
     pub chain_name: String,
     pub supported_symbols: Vec<String>,
-    pub integration_state: String,
+    pub integration_state: AppCoreChainIntegrationState,
     pub supports_seed_import: bool,
     pub supports_balance_refresh: bool,
     pub supports_receive_address: bool,
@@ -153,47 +211,6 @@ pub struct DerivationPathSegment {
 static APP_CORE_CATALOG: OnceLock<Result<AppCoreCatalog, String>> = OnceLock::new();
 
 #[uniffi::export]
-pub fn app_core_chain_presets_json() -> Result<String, crate::SpectraBridgeError> {
-    Ok(app_core_catalog().and_then(|catalog| serialize_json(&catalog.chain_presets))?)
-}
-
-#[uniffi::export]
-pub fn app_core_request_compilation_presets_json() -> Result<String, crate::SpectraBridgeError> {
-    Ok(app_core_catalog()
-        .and_then(|catalog| serialize_json(&catalog.request_compilation_presets))?)
-}
-
-#[uniffi::export]
-pub fn app_core_resolve_derivation_path_json(
-    chain: u32,
-    derivation_path: String,
-) -> Result<String, crate::SpectraBridgeError> {
-    let response = app_core_catalog().and_then(|catalog| {
-        let chain_name = chain_name_from_id(chain)
-            .ok_or_else(|| format!("Unsupported derivation chain identifier {chain}."))?;
-        let default_path = default_path_from_catalog(catalog, chain_name)?;
-        let normalized_path = normalize_derivation_path(&derivation_path, &default_path);
-        let resolution = AppCoreDerivationPathResolution {
-            chain: chain_name.to_string(),
-            normalized_path: normalized_path.clone(),
-            account_index: resolved_account_index(chain_name, &normalized_path),
-            flavor: resolved_flavor(chain_name, &normalized_path).to_string(),
-        };
-        serialize_json(&resolution)
-    })?;
-    Ok(response)
-}
-
-#[uniffi::export]
-pub fn app_core_derivation_paths_for_preset_json(
-    account_index: u32,
-) -> Result<String, crate::SpectraBridgeError> {
-    Ok(app_core_catalog().and_then(|catalog| {
-        serialize_json(&seed_derivation_paths_for_account(catalog, account_index)?)
-    })?)
-}
-
-#[uniffi::export]
 pub fn app_core_chain_presets() -> Result<Vec<AppCoreChainPreset>, crate::SpectraBridgeError> {
     Ok(app_core_catalog()?.chain_presets.clone())
 }
@@ -205,19 +222,17 @@ pub fn app_core_request_compilation_presets() -> Result<Vec<AppCoreRequestCompil
 
 #[uniffi::export]
 pub fn app_core_resolve_derivation_path(
-    chain: u32,
+    chain: String,
     derivation_path: String,
 ) -> Result<AppCoreDerivationPathResolution, crate::SpectraBridgeError> {
     let catalog = app_core_catalog()?;
-    let chain_name = chain_name_from_id(chain)
-        .ok_or_else(|| format!("Unsupported derivation chain identifier {chain}."))?;
-    let default_path = default_path_from_catalog(catalog, chain_name)?;
+    let default_path = default_path_from_catalog(catalog, &chain)?;
     let normalized_path = normalize_derivation_path(&derivation_path, &default_path);
     Ok(AppCoreDerivationPathResolution {
-        chain: chain_name.to_string(),
+        chain: chain.clone(),
         normalized_path: normalized_path.clone(),
-        account_index: resolved_account_index(chain_name, &normalized_path),
-        flavor: resolved_flavor(chain_name, &normalized_path).to_string(),
+        account_index: resolved_account_index(&chain, &normalized_path),
+        flavor: resolved_flavor(&chain, &normalized_path).to_string(),
     })
 }
 
@@ -227,45 +242,6 @@ pub fn app_core_derivation_paths_for_preset(
 ) -> Result<CoreSeedDerivationPaths, crate::SpectraBridgeError> {
     Ok(app_core_catalog()
         .and_then(|catalog| seed_derivation_paths_for_account(catalog, account_index))?)
-}
-
-#[uniffi::export]
-pub fn app_core_endpoint_records_json() -> Result<String, crate::SpectraBridgeError> {
-    Ok(app_core_catalog().and_then(|catalog| serialize_json(&catalog.endpoint_records))?)
-}
-
-#[uniffi::export]
-pub fn app_core_endpoint_for_id_json(id: String) -> Result<String, crate::SpectraBridgeError> {
-    Ok(app_core_catalog().and_then(|catalog| {
-        let record = catalog
-            .endpoint_records
-            .iter()
-            .find(|record| record.id == id)
-            .map(|record| record.endpoint.clone())
-            .ok_or_else(|| format!("Missing endpoint record for id: {id}"))?;
-        serialize_json(&record)
-    })?)
-}
-
-#[uniffi::export]
-pub fn app_core_endpoints_for_ids_json(
-    ids_json: String,
-) -> Result<String, crate::SpectraBridgeError> {
-    let ids = serde_json::from_str::<Vec<String>>(&ids_json)?;
-    Ok(app_core_catalog().and_then(|catalog| {
-        let endpoints = ids
-            .iter()
-            .map(|id| {
-                catalog
-                    .endpoint_records
-                    .iter()
-                    .find(|record| &record.id == id)
-                    .map(|record| record.endpoint.clone())
-                    .ok_or_else(|| format!("Missing endpoint record for id: {id}"))
-            })
-            .collect::<Result<Vec<_>, _>>()?;
-        serialize_json(&endpoints)
-    })?)
 }
 
 #[uniffi::export]
@@ -282,107 +258,6 @@ pub fn app_core_endpoint_records_for_chain(
         settings_visible_only,
     ))
 }
-
-#[uniffi::export]
-pub fn app_core_grouped_settings_entries_json(
-    chain_name: String,
-) -> Result<String, crate::SpectraBridgeError> {
-    Ok(app_core_catalog()
-        .and_then(|catalog| serialize_json(&grouped_settings_entries(catalog, &chain_name)))?)
-}
-
-#[uniffi::export]
-pub fn app_core_diagnostics_checks_json(
-    chain_name: String,
-) -> Result<String, crate::SpectraBridgeError> {
-    Ok(app_core_catalog()
-        .and_then(|catalog| serialize_json(&diagnostics_checks(catalog, &chain_name)))?)
-}
-
-#[uniffi::export]
-pub fn app_core_transaction_explorer_entry_json(
-    chain_name: String,
-) -> Result<String, crate::SpectraBridgeError> {
-    Ok(app_core_catalog()
-        .and_then(|catalog| serialize_json(&transaction_explorer_entry(catalog, &chain_name)))?)
-}
-
-#[uniffi::export]
-pub fn app_core_bitcoin_esplora_base_urls_json(
-    network: String,
-) -> Result<String, crate::SpectraBridgeError> {
-    Ok(app_core_catalog()
-        .and_then(|catalog| serialize_json(&bitcoin_esplora_base_urls(catalog, &network)?))?)
-}
-
-#[uniffi::export]
-pub fn app_core_bitcoin_wallet_store_default_base_urls_json(
-    network: String,
-) -> Result<String, crate::SpectraBridgeError> {
-    Ok(app_core_catalog().and_then(|catalog| {
-        serialize_json(&bitcoin_wallet_store_default_base_urls(catalog, &network)?)
-    })?)
-}
-
-#[uniffi::export]
-pub fn app_core_evm_rpc_endpoints_json(
-    chain_name: String,
-) -> Result<String, crate::SpectraBridgeError> {
-    Ok(app_core_catalog().and_then(|catalog| {
-        let endpoints = endpoint_records_for_chain(catalog, &chain_name, ENDPOINT_ROLE_RPC, false)
-            .into_iter()
-            .map(|record| record.endpoint)
-            .collect::<Vec<_>>();
-        serialize_json(&endpoints)
-    })?)
-}
-
-#[uniffi::export]
-pub fn app_core_explorer_supplemental_endpoints_json(
-    chain_name: String,
-) -> Result<String, crate::SpectraBridgeError> {
-    Ok(app_core_catalog().and_then(|catalog| {
-        let endpoints =
-            endpoint_records_for_chain(catalog, &chain_name, ENDPOINT_ROLE_EXPLORER, true)
-                .into_iter()
-                .map(|record| record.endpoint)
-                .collect::<Vec<_>>();
-        serialize_json(&endpoints)
-    })?)
-}
-
-#[uniffi::export]
-pub fn app_core_broadcast_provider_options_json(
-    chain_name: String,
-) -> Result<String, crate::SpectraBridgeError> {
-    Ok(serialize_json(&broadcast_provider_options(&chain_name))?)
-}
-
-#[uniffi::export]
-pub fn app_core_chain_backends_json() -> Result<String, crate::SpectraBridgeError> {
-    static CACHED: std::sync::LazyLock<String> = std::sync::LazyLock::new(|| {
-        serialize_json(&chain_backends()).expect("chain_backends serialization is infallible")
-    });
-    Ok(CACHED.clone())
-}
-
-#[uniffi::export]
-pub fn app_core_live_chain_names_json() -> Result<String, crate::SpectraBridgeError> {
-    static CACHED: std::sync::LazyLock<String> = std::sync::LazyLock::new(|| {
-        serialize_json(&live_chain_names()).expect("live_chain_names serialization is infallible")
-    });
-    Ok(CACHED.clone())
-}
-
-#[uniffi::export]
-pub fn app_core_app_chain_descriptors_json() -> Result<String, crate::SpectraBridgeError> {
-    static CACHED: std::sync::LazyLock<String> = std::sync::LazyLock::new(|| {
-        serialize_json(&app_chain_descriptors()).expect("app_chain_descriptors serialization is infallible")
-    });
-    Ok(CACHED.clone())
-}
-
-// ─── Typed (non-JSON) exports ──────────────────────────────────────────────
 
 #[uniffi::export]
 pub fn app_core_endpoint_for_id(id: String) -> Result<String, crate::SpectraBridgeError> {
@@ -521,10 +396,6 @@ fn load_app_core_catalog() -> Result<AppCoreCatalog, String> {
         request_compilation_presets,
         endpoint_records,
     })
-}
-
-fn serialize_json<T: Serialize>(value: &T) -> Result<String, String> {
-    serde_json::to_string(value).map_err(display_error)
 }
 
 #[cfg(test)]
@@ -835,7 +706,7 @@ fn chain_backends() -> Vec<AppCoreChainBackend> {
         AppCoreChainBackend {
             chain_name: "Bitcoin".to_string(),
             supported_symbols: vec!["BTC".to_string()],
-            integration_state: "Live".to_string(),
+            integration_state: AppCoreChainIntegrationState::Live,
             supports_seed_import: true,
             supports_balance_refresh: true,
             supports_receive_address: true,
@@ -844,7 +715,7 @@ fn chain_backends() -> Vec<AppCoreChainBackend> {
         AppCoreChainBackend {
             chain_name: "Bitcoin Cash".to_string(),
             supported_symbols: vec!["BCH".to_string()],
-            integration_state: "Live".to_string(),
+            integration_state: AppCoreChainIntegrationState::Live,
             supports_seed_import: true,
             supports_balance_refresh: true,
             supports_receive_address: true,
@@ -853,7 +724,7 @@ fn chain_backends() -> Vec<AppCoreChainBackend> {
         AppCoreChainBackend {
             chain_name: "Bitcoin SV".to_string(),
             supported_symbols: vec!["BSV".to_string()],
-            integration_state: "Live".to_string(),
+            integration_state: AppCoreChainIntegrationState::Live,
             supports_seed_import: true,
             supports_balance_refresh: true,
             supports_receive_address: true,
@@ -862,7 +733,7 @@ fn chain_backends() -> Vec<AppCoreChainBackend> {
         AppCoreChainBackend {
             chain_name: "Litecoin".to_string(),
             supported_symbols: vec!["LTC".to_string()],
-            integration_state: "Live".to_string(),
+            integration_state: AppCoreChainIntegrationState::Live,
             supports_seed_import: true,
             supports_balance_refresh: true,
             supports_receive_address: true,
@@ -876,7 +747,7 @@ fn chain_backends() -> Vec<AppCoreChainBackend> {
                 "USDC".to_string(),
                 "DAI".to_string(),
             ],
-            integration_state: "Live".to_string(),
+            integration_state: AppCoreChainIntegrationState::Live,
             supports_seed_import: true,
             supports_balance_refresh: true,
             supports_receive_address: true,
@@ -885,7 +756,7 @@ fn chain_backends() -> Vec<AppCoreChainBackend> {
         AppCoreChainBackend {
             chain_name: "Arbitrum".to_string(),
             supported_symbols: vec!["ETH".to_string(), "Tracked ERC-20s".to_string()],
-            integration_state: "Live".to_string(),
+            integration_state: AppCoreChainIntegrationState::Live,
             supports_seed_import: true,
             supports_balance_refresh: true,
             supports_receive_address: true,
@@ -894,7 +765,7 @@ fn chain_backends() -> Vec<AppCoreChainBackend> {
         AppCoreChainBackend {
             chain_name: "Optimism".to_string(),
             supported_symbols: vec!["ETH".to_string(), "Tracked ERC-20s".to_string()],
-            integration_state: "Live".to_string(),
+            integration_state: AppCoreChainIntegrationState::Live,
             supports_seed_import: true,
             supports_balance_refresh: true,
             supports_receive_address: true,
@@ -903,7 +774,7 @@ fn chain_backends() -> Vec<AppCoreChainBackend> {
         AppCoreChainBackend {
             chain_name: "Ethereum Classic".to_string(),
             supported_symbols: vec!["ETC".to_string()],
-            integration_state: "Live".to_string(),
+            integration_state: AppCoreChainIntegrationState::Live,
             supports_seed_import: true,
             supports_balance_refresh: true,
             supports_receive_address: true,
@@ -912,7 +783,7 @@ fn chain_backends() -> Vec<AppCoreChainBackend> {
         AppCoreChainBackend {
             chain_name: "Dogecoin".to_string(),
             supported_symbols: vec!["DOGE".to_string()],
-            integration_state: "Live".to_string(),
+            integration_state: AppCoreChainIntegrationState::Live,
             supports_seed_import: true,
             supports_balance_refresh: true,
             supports_receive_address: true,
@@ -921,7 +792,7 @@ fn chain_backends() -> Vec<AppCoreChainBackend> {
         AppCoreChainBackend {
             chain_name: "BNB Chain".to_string(),
             supported_symbols: vec!["BNB".to_string()],
-            integration_state: "Live".to_string(),
+            integration_state: AppCoreChainIntegrationState::Live,
             supports_seed_import: true,
             supports_balance_refresh: true,
             supports_receive_address: true,
@@ -930,7 +801,7 @@ fn chain_backends() -> Vec<AppCoreChainBackend> {
         AppCoreChainBackend {
             chain_name: "Avalanche".to_string(),
             supported_symbols: vec!["AVAX".to_string()],
-            integration_state: "Live".to_string(),
+            integration_state: AppCoreChainIntegrationState::Live,
             supports_seed_import: true,
             supports_balance_refresh: true,
             supports_receive_address: true,
@@ -939,7 +810,7 @@ fn chain_backends() -> Vec<AppCoreChainBackend> {
         AppCoreChainBackend {
             chain_name: "Hyperliquid".to_string(),
             supported_symbols: vec!["HYPE".to_string(), "Tracked ERC-20s".to_string()],
-            integration_state: "Live".to_string(),
+            integration_state: AppCoreChainIntegrationState::Live,
             supports_seed_import: true,
             supports_balance_refresh: true,
             supports_receive_address: true,
@@ -948,7 +819,7 @@ fn chain_backends() -> Vec<AppCoreChainBackend> {
         AppCoreChainBackend {
             chain_name: "Tron".to_string(),
             supported_symbols: vec!["TRX".to_string(), "USDT".to_string()],
-            integration_state: "Live".to_string(),
+            integration_state: AppCoreChainIntegrationState::Live,
             supports_seed_import: true,
             supports_balance_refresh: true,
             supports_receive_address: true,
@@ -957,7 +828,7 @@ fn chain_backends() -> Vec<AppCoreChainBackend> {
         AppCoreChainBackend {
             chain_name: "Solana".to_string(),
             supported_symbols: vec!["SOL".to_string()],
-            integration_state: "Live".to_string(),
+            integration_state: AppCoreChainIntegrationState::Live,
             supports_seed_import: true,
             supports_balance_refresh: true,
             supports_receive_address: true,
@@ -966,7 +837,7 @@ fn chain_backends() -> Vec<AppCoreChainBackend> {
         AppCoreChainBackend {
             chain_name: "XRP Ledger".to_string(),
             supported_symbols: vec!["XRP".to_string()],
-            integration_state: "Live".to_string(),
+            integration_state: AppCoreChainIntegrationState::Live,
             supports_seed_import: true,
             supports_balance_refresh: true,
             supports_receive_address: true,
@@ -975,7 +846,7 @@ fn chain_backends() -> Vec<AppCoreChainBackend> {
         AppCoreChainBackend {
             chain_name: "Monero".to_string(),
             supported_symbols: vec!["XMR".to_string()],
-            integration_state: "Live".to_string(),
+            integration_state: AppCoreChainIntegrationState::Live,
             supports_seed_import: true,
             supports_balance_refresh: true,
             supports_receive_address: true,
@@ -984,7 +855,7 @@ fn chain_backends() -> Vec<AppCoreChainBackend> {
         AppCoreChainBackend {
             chain_name: "Cardano".to_string(),
             supported_symbols: vec!["ADA".to_string()],
-            integration_state: "Live".to_string(),
+            integration_state: AppCoreChainIntegrationState::Live,
             supports_seed_import: true,
             supports_balance_refresh: true,
             supports_receive_address: true,
@@ -993,7 +864,7 @@ fn chain_backends() -> Vec<AppCoreChainBackend> {
         AppCoreChainBackend {
             chain_name: "Sui".to_string(),
             supported_symbols: vec!["SUI".to_string()],
-            integration_state: "Live".to_string(),
+            integration_state: AppCoreChainIntegrationState::Live,
             supports_seed_import: true,
             supports_balance_refresh: true,
             supports_receive_address: true,
@@ -1002,7 +873,7 @@ fn chain_backends() -> Vec<AppCoreChainBackend> {
         AppCoreChainBackend {
             chain_name: "Aptos".to_string(),
             supported_symbols: vec!["APT".to_string()],
-            integration_state: "Live".to_string(),
+            integration_state: AppCoreChainIntegrationState::Live,
             supports_seed_import: true,
             supports_balance_refresh: true,
             supports_receive_address: true,
@@ -1011,7 +882,7 @@ fn chain_backends() -> Vec<AppCoreChainBackend> {
         AppCoreChainBackend {
             chain_name: "TON".to_string(),
             supported_symbols: vec!["TON".to_string(), "Tracked Jettons".to_string()],
-            integration_state: "Live".to_string(),
+            integration_state: AppCoreChainIntegrationState::Live,
             supports_seed_import: true,
             supports_balance_refresh: true,
             supports_receive_address: true,
@@ -1020,7 +891,7 @@ fn chain_backends() -> Vec<AppCoreChainBackend> {
         AppCoreChainBackend {
             chain_name: "Internet Computer".to_string(),
             supported_symbols: vec!["ICP".to_string()],
-            integration_state: "Live".to_string(),
+            integration_state: AppCoreChainIntegrationState::Live,
             supports_seed_import: true,
             supports_balance_refresh: true,
             supports_receive_address: true,
@@ -1029,7 +900,7 @@ fn chain_backends() -> Vec<AppCoreChainBackend> {
         AppCoreChainBackend {
             chain_name: "NEAR".to_string(),
             supported_symbols: vec!["NEAR".to_string()],
-            integration_state: "Live".to_string(),
+            integration_state: AppCoreChainIntegrationState::Live,
             supports_seed_import: true,
             supports_balance_refresh: true,
             supports_receive_address: true,
@@ -1038,7 +909,7 @@ fn chain_backends() -> Vec<AppCoreChainBackend> {
         AppCoreChainBackend {
             chain_name: "Polkadot".to_string(),
             supported_symbols: vec!["DOT".to_string()],
-            integration_state: "Live".to_string(),
+            integration_state: AppCoreChainIntegrationState::Live,
             supports_seed_import: true,
             supports_balance_refresh: true,
             supports_receive_address: true,
@@ -1047,7 +918,7 @@ fn chain_backends() -> Vec<AppCoreChainBackend> {
         AppCoreChainBackend {
             chain_name: "Stellar".to_string(),
             supported_symbols: vec!["XLM".to_string()],
-            integration_state: "Live".to_string(),
+            integration_state: AppCoreChainIntegrationState::Live,
             supports_seed_import: true,
             supports_balance_refresh: true,
             supports_receive_address: true,
@@ -1056,7 +927,7 @@ fn chain_backends() -> Vec<AppCoreChainBackend> {
         AppCoreChainBackend {
             chain_name: "Polygon".to_string(),
             supported_symbols: vec!["MATIC".to_string()],
-            integration_state: "Planned".to_string(),
+            integration_state: AppCoreChainIntegrationState::Planned,
             supports_seed_import: true,
             supports_balance_refresh: false,
             supports_receive_address: false,
@@ -1341,38 +1212,6 @@ fn app_chain_descriptors() -> Vec<AppCoreAppChainDescriptor> {
     ]
 }
 
-/// Maps the derivation-FFI chain id (the numbering used by Swift's
-/// `WalletRustFFIChain`, shared with `derivation/runtime.rs`) to the preset
-/// name used as a key in `DerivationPresets.json`. This namespace is distinct
-/// from `chains::registry::Chain` — do not conflate.
-fn chain_name_from_id(chain_id: u32) -> Option<&'static str> {
-    Some(match chain_id {
-        0  => "Bitcoin",
-        1  => "Ethereum",
-        2  => "Solana",
-        3  => "Bitcoin Cash",
-        4  => "Bitcoin SV",
-        5  => "Litecoin",
-        6  => "Dogecoin",
-        7  => "Ethereum Classic",
-        8  => "Arbitrum",
-        9  => "Optimism",
-        10 => "Avalanche",
-        11 => "Hyperliquid",
-        12 => "Tron",
-        13 => "Stellar",
-        14 => "XRP Ledger",
-        15 => "Cardano",
-        16 => "Sui",
-        17 => "Aptos",
-        18 => "TON",
-        19 => "Internet Computer",
-        20 => "NEAR",
-        21 => "Polkadot",
-        _  => return None,
-    })
-}
-
 pub(crate) fn parse_derivation_path(raw_path: &str) -> Option<Vec<DerivationPathSegment>> {
     let trimmed = raw_path.trim();
     let mut components = trimmed.split('/');
@@ -1430,9 +1269,9 @@ pub(crate) fn derivation_path_segment_value(path: &str, index: usize) -> Option<
 pub(crate) fn compile_script_type(
     preset: &AppCoreRequestCompilationPreset,
     derivation_path: Option<&str>,
-) -> Result<String, String> {
-    match preset.script_policy.as_str() {
-        "bitcoinPurpose" => {
+) -> Result<AppCoreScriptType, String> {
+    match preset.script_policy {
+        AppCoreScriptPolicy::BitcoinPurpose => {
             let purpose = derivation_path
                 .and_then(|path| derivation_path_segment_value(path, 0))
                 .ok_or_else(|| {
@@ -1442,14 +1281,12 @@ pub(crate) fn compile_script_type(
                 "Bitcoin purpose script policy requires bitcoinPurposeScriptMap.".to_string()
             })?;
             map.get(&purpose.to_string())
-                .cloned()
+                .copied()
                 .ok_or_else(|| format!("Unsupported Bitcoin derivation purpose {purpose}."))
         }
-        "fixed" => preset
+        AppCoreScriptPolicy::Fixed => preset
             .fixed_script_type
-            .clone()
             .ok_or_else(|| "Fixed script policy requires fixedScriptType.".to_string()),
-        other => Err(format!("Unknown script policy: {other}")),
     }
 }
 

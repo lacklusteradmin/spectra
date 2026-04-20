@@ -386,48 +386,6 @@ enum ScriptType {
 }
 
 #[uniffi::export]
-pub fn derivation_derive_json(request_json: String) -> Result<String, crate::SpectraBridgeError> {
-    let request: UniFFIDerivationRequest = serde_json::from_str(&request_json)
-        .map_err(|error| crate::SpectraBridgeError::from(error.to_string()))?;
-    let request = parse_uniffi_request(request)?;
-    let result = derive(request)?;
-    serialize_uniffi_derivation_response(result)
-}
-
-#[uniffi::export]
-pub fn derivation_derive_from_private_key_json(
-    request_json: String,
-) -> Result<String, crate::SpectraBridgeError> {
-    let request: UniFFIPrivateKeyDerivationRequest = serde_json::from_str(&request_json)
-        .map_err(|error| crate::SpectraBridgeError::from(error.to_string()))?;
-    let request = parse_uniffi_private_key_request(request)?;
-    let result = derive_from_private_key(request)?;
-    serialize_uniffi_derivation_response(result)
-}
-
-#[uniffi::export]
-pub fn derivation_build_material_json(
-    request_json: String,
-) -> Result<String, crate::SpectraBridgeError> {
-    let request: UniFFIMaterialRequest = serde_json::from_str(&request_json)
-        .map_err(|error| crate::SpectraBridgeError::from(error.to_string()))?;
-    let request = parse_uniffi_material_request(request)?;
-    let result = build_material(request)?;
-    serialize_uniffi_material_response(result)
-}
-
-#[uniffi::export]
-pub fn derivation_build_material_from_private_key_json(
-    request_json: String,
-) -> Result<String, crate::SpectraBridgeError> {
-    let request: UniFFIPrivateKeyMaterialRequest = serde_json::from_str(&request_json)
-        .map_err(|error| crate::SpectraBridgeError::from(error.to_string()))?;
-    let request = parse_uniffi_private_key_material_request(request)?;
-    let result = build_material_from_private_key(request)?;
-    serialize_uniffi_material_response(result)
-}
-
-#[uniffi::export]
 pub fn derivation_derive(
     request: UniFFIDerivationRequest,
 ) -> Result<UniFFIDerivationResponse, crate::SpectraBridgeError> {
@@ -500,37 +458,6 @@ pub fn derivation_derive_all_addresses(
         }
     }
     Ok(results)
-}
-
-/// Derive addresses for multiple chains in a single call.
-///
-/// `chain_paths_json` — JSON object mapping chain display name to derivation path:
-///   `{"Bitcoin": "m/84'/0'/0'/0/0", "Ethereum": "m/44'/60'/0'/0/0", ...}`
-///
-/// Returns a JSON object mapping each chain name to its derived address (or `null`
-/// when the chain name is unrecognised or derivation fails):
-///   `{"Bitcoin": "bc1q...", "Ethereum": "0x...", ...}`
-#[uniffi::export]
-pub fn derivation_derive_all_addresses_json(
-    seed_phrase: String,
-    chain_paths_json: String,
-) -> Result<String, crate::SpectraBridgeError> {
-    let chain_paths: std::collections::HashMap<String, String> =
-        serde_json::from_str(&chain_paths_json)
-            .map_err(|e| crate::SpectraBridgeError::from(e.to_string()))?;
-
-    let mut results: std::collections::HashMap<String, Option<String>> =
-        std::collections::HashMap::new();
-
-    for (chain_name, path) in &chain_paths {
-        let address = derive_address_for_chain(&seed_phrase, chain_name, path)
-            .ok()
-            .flatten();
-        results.insert(chain_name.clone(), address);
-    }
-
-    serde_json::to_string(&results)
-        .map_err(|e| crate::SpectraBridgeError::from(e.to_string()))
 }
 
 /// Derive a single address from a seed phrase, chain name, and derivation path,
@@ -836,17 +763,6 @@ fn parse_uniffi_private_key_request(
     })
 }
 
-fn serialize_uniffi_derivation_response(
-    result: DerivedOutput,
-) -> Result<String, crate::SpectraBridgeError> {
-    serde_json::to_string(&UniFFIDerivationResponse {
-        address: result.address,
-        public_key_hex: result.public_key_hex,
-        private_key_hex: result.private_key_hex,
-    })
-    .map_err(|error| crate::SpectraBridgeError::from(error.to_string()))
-}
-
 struct ParsedPrivateKeyRequest {
     chain: Chain,
     network: NetworkFlavor,
@@ -950,20 +866,6 @@ fn parse_uniffi_private_key_material_request(
         request: parsed,
         derivation_path,
     })
-}
-
-fn serialize_uniffi_material_response(
-    result: DerivedMaterial,
-) -> Result<String, crate::SpectraBridgeError> {
-    serde_json::to_string(&UniFFIMaterialResponse {
-        address: result.address,
-        private_key_hex: result.private_key_hex,
-        derivation_path: result.derivation_path,
-        account: result.account,
-        branch: result.branch,
-        index: result.index,
-    })
-    .map_err(|error| crate::SpectraBridgeError::from(error.to_string()))
 }
 
 fn build_material(

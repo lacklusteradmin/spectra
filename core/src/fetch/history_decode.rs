@@ -8,12 +8,11 @@
 // Additionally we expose the small `HistoryChainID` enum-like mapping
 // that Swift used to duplicate as a private struct of constants.
 
-use serde::Deserialize;
 use serde_json::Value;
 
 // ────────────────────────────────────────────────────────────────────
-// Normalized chain history — shape produced by
-// `service::fetch_normalized_history_json` (see `history::ChainHistoryEntry`).
+// Normalized chain history — typed item produced by
+// `WalletService::fetch_normalized_history` (see `history::ChainHistoryEntry`).
 // ────────────────────────────────────────────────────────────────────
 
 #[derive(Debug, Clone, uniffi::Record)]
@@ -28,49 +27,6 @@ pub struct NormalizedHistoryItem {
     pub tx_hash: String,
     pub block_height: Option<i64>,
     pub timestamp: f64,
-}
-
-#[derive(Debug, Deserialize)]
-struct NormalizedHistoryItemDto {
-    kind: String,
-    status: String,
-    #[serde(rename = "asset_name")]
-    asset_name: String,
-    symbol: String,
-    #[serde(rename = "chain_name")]
-    chain_name: String,
-    amount: f64,
-    counterparty: String,
-    #[serde(rename = "tx_hash")]
-    tx_hash: String,
-    #[serde(rename = "block_height")]
-    block_height: Option<i64>,
-    timestamp: f64,
-}
-
-/// Decode the JSON string returned by `fetch_normalized_history_json`
-/// into a typed list. Empty vec on any parse failure, matching the
-/// `try?` semantics of the Swift caller.
-#[uniffi::export]
-pub fn history_decode_normalized(json: String) -> Vec<NormalizedHistoryItem> {
-    let Ok(items) = serde_json::from_str::<Vec<NormalizedHistoryItemDto>>(&json) else {
-        return Vec::new();
-    };
-    items
-        .into_iter()
-        .map(|e| NormalizedHistoryItem {
-            kind: e.kind,
-            status: e.status,
-            asset_name: e.asset_name,
-            symbol: e.symbol,
-            chain_name: e.chain_name,
-            amount: e.amount,
-            counterparty: e.counterparty,
-            tx_hash: e.tx_hash,
-            block_height: e.block_height,
-            timestamp: e.timestamp,
-        })
-        .collect()
 }
 
 // ────────────────────────────────────────────────────────────────────
@@ -111,7 +67,7 @@ pub struct EvmHistoryPageDecoded {
     pub native: Vec<EvmNativeTransferItem>,
 }
 
-fn decimal_string_from_wei(wei_str: &str) -> String {
+pub(crate) fn decimal_string_from_wei(wei_str: &str) -> String {
     // Divide the integer wei string by 1e18 without floats.
     let digits: &str = wei_str.trim_start_matches('-');
     let negative = wei_str.starts_with('-');
@@ -160,7 +116,6 @@ fn decimal_string_from_raw(raw: &str, decimals: i32) -> String {
     if negative { format!("-{body}") } else { body }
 }
 
-#[uniffi::export]
 pub fn history_decode_evm_page(json: String) -> EvmHistoryPageDecoded {
     let empty = EvmHistoryPageDecoded { tokens: vec![], native: vec![] };
     let Ok(obj) = serde_json::from_str::<Value>(&json) else {
@@ -465,7 +420,6 @@ pub fn history_pagination_chain_id(chain_name: String) -> Option<u32> {
 
 use crate::history::CoreBitcoinHistorySnapshot;
 
-#[uniffi::export]
 pub fn history_decode_bitcoin_raw_snapshots(json: String) -> Vec<CoreBitcoinHistorySnapshot> {
     let Ok(arr) = serde_json::from_str::<Vec<Value>>(&json) else {
         return Vec::new();
@@ -493,7 +447,6 @@ pub fn history_decode_bitcoin_raw_snapshots(json: String) -> Vec<CoreBitcoinHist
 /// Extract the `address` field from each entry in a JSON array of
 /// `{ "address": ..., ... }` objects (the shape returned by
 /// `derive_bitcoin_hd_addresses_json`). Non-string/missing entries are skipped.
-#[uniffi::export]
 pub fn history_decode_hd_addresses(json: String) -> Vec<String> {
     serde_json::from_str::<Vec<Value>>(&json)
         .ok()
@@ -508,26 +461,6 @@ pub fn history_decode_hd_addresses(json: String) -> Vec<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    #[test]
-    fn decode_normalized_empty() {
-        assert!(history_decode_normalized("not json".into()).is_empty());
-        assert!(history_decode_normalized("[]".into()).is_empty());
-    }
-
-    #[test]
-    fn decode_normalized_roundtrip() {
-        let json = r#"[{
-            "kind":"receive","status":"confirmed",
-            "asset_name":"Bitcoin","symbol":"BTC","chain_name":"Bitcoin",
-            "amount":0.5,"counterparty":"","tx_hash":"abc",
-            "block_height":100,"timestamp":1700000000.0
-        }]"#;
-        let out = history_decode_normalized(json.into());
-        assert_eq!(out.len(), 1);
-        assert_eq!(out[0].symbol, "BTC");
-        assert_eq!(out[0].block_height, Some(100));
-    }
 
     #[test]
     fn decode_evm_page_empty() {

@@ -139,6 +139,17 @@ pub fn diagnostics_build_evm_json(
     pretty_sanitized(payload)
 }
 
+/// Returns true iff the given diagnostics JSON string parses as an object that
+/// contains the top-level `history` and `endpoints` keys produced by
+/// `diagnostics_build_evm_json`. Used by the Swift self-test to verify the
+/// bundle shape without doing any JSON parsing on the Swift side.
+#[uniffi::export]
+pub fn core_diagnostics_evm_json_shape_ok(json: String) -> bool {
+    let Ok(v) = serde_json::from_str::<Value>(&json) else { return false };
+    let Some(obj) = v.as_object() else { return false };
+    obj.contains_key("history") && obj.contains_key("endpoints")
+}
+
 // ---------- UTXO (Bitcoin-shape) ----------
 
 #[uniffi::export]

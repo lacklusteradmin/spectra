@@ -63,7 +63,7 @@ pub mod catalog;
 pub use derivation::*;
 pub use derivation::{addressing, import};
 pub use fetch::{
-    balance_cache, balance_decoder, balance_observer, history, history_cache, history_decode,
+    balance_decoder, balance_observer, history, history_decode,
     history_store, http, http_ffi, price, refresh, refresh_engine, transactions,
 };
 pub use send::{

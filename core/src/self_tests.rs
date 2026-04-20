@@ -1,5 +1,5 @@
 use crate::addressing::{validate_address, AddressValidationRequest};
-use crate::derivation_derive_all_addresses_json;
+use crate::derivation_derive_all_addresses;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
@@ -284,12 +284,10 @@ fn run_address_rejects(spec: &ChainSpec) -> ChainSelfTestResult {
 }
 
 fn derive_one(chain_name: &str, path: &str) -> Option<String> {
-    let chain_paths_json = format!("{{\"{}\":\"{}\"}}", chain_name, path);
-    let response_json =
-        derivation_derive_all_addresses_json(CANONICAL_MNEMONIC.to_string(), chain_paths_json)
-            .ok()?;
-    let map: HashMap<String, Option<String>> = serde_json::from_str(&response_json).ok()?;
-    map.get(chain_name).cloned().flatten()
+    let chain_paths = HashMap::from([(chain_name.to_string(), path.to_string())]);
+    derivation_derive_all_addresses(CANONICAL_MNEMONIC.to_string(), chain_paths)
+        .ok()?
+        .remove(chain_name)
 }
 
 fn run_derivation(spec: &ChainSpec) -> Option<ChainSelfTestResult> {
@@ -533,33 +531,13 @@ pub fn self_tests_run_all() -> HashMap<String, Vec<ChainSelfTestResult>> {
         .collect()
 }
 
-#[uniffi::export]
-pub fn self_tests_run_chain_json(chain_key: String) -> Result<String, crate::SpectraBridgeError> {
-    let results = run_for_chain(&chain_key);
-    serde_json::to_string(&results).map_err(crate::SpectraBridgeError::from)
-}
-
-#[uniffi::export]
-pub fn self_tests_run_all_json() -> Result<String, crate::SpectraBridgeError> {
-    let mut all: Vec<(&str, Vec<ChainSelfTestResult>)> = Vec::new();
-    all.push(("Dogecoin", run_dogecoin()));
-    all.push(("Ethereum", run_ethereum()));
-    for spec in CHAIN_SPECS {
-        all.push((spec.chain_key, run_spec(spec)));
-    }
-    let map: HashMap<&str, Vec<ChainSelfTestResult>> = all.into_iter().collect();
-    serde_json::to_string(&map).map_err(crate::SpectraBridgeError::from)
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
 
     #[test]
     fn self_tests_cover_all_chains() {
-        let json = self_tests_run_all_json().expect("self tests run");
-        let map: HashMap<String, Vec<ChainSelfTestResult>> =
-            serde_json::from_str(&json).expect("decode");
+        let map = self_tests_run_all();
         assert!(map.contains_key("Bitcoin"));
         assert!(map.contains_key("Ethereum"));
         assert!(map.contains_key("Dogecoin"));
