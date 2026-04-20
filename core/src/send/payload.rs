@@ -38,7 +38,6 @@ fn amount_raw_string(amount: f64, decimals: u32) -> String {
 
 // --- Simple "from, to, amount-unit, priv, [pub]" chain payloads ---
 
-#[uniffi::export]
 pub fn build_xrp_send_payload(
     from: String,
     to: String,
@@ -60,7 +59,6 @@ pub fn build_xrp_send_payload(
     }
 }
 
-#[uniffi::export]
 pub fn build_stellar_send_payload(
     from: String,
     to: String,
@@ -82,7 +80,6 @@ pub fn build_stellar_send_payload(
     }
 }
 
-#[uniffi::export]
 pub fn build_sui_send_payload(
     from: String,
     to: String,
@@ -100,7 +97,6 @@ pub fn build_sui_send_payload(
     )
 }
 
-#[uniffi::export]
 pub fn build_aptos_send_payload(
     from: String,
     to: String,
@@ -116,7 +112,6 @@ pub fn build_aptos_send_payload(
     )
 }
 
-#[uniffi::export]
 pub fn build_ton_send_payload(
     from: String,
     to: String,
@@ -132,7 +127,6 @@ pub fn build_ton_send_payload(
     )
 }
 
-#[uniffi::export]
 pub fn build_icp_send_payload(
     from: String,
     to: String,
@@ -154,7 +148,6 @@ pub fn build_icp_send_payload(
     }
 }
 
-#[uniffi::export]
 pub fn build_cardano_send_payload(
     from: String,
     to: String,
@@ -172,7 +165,6 @@ pub fn build_cardano_send_payload(
     )
 }
 
-#[uniffi::export]
 pub fn build_near_send_payload(
     from: String,
     to: String,
@@ -188,7 +180,6 @@ pub fn build_near_send_payload(
     )
 }
 
-#[uniffi::export]
 pub fn build_near_token_send_payload(
     from: String,
     contract: String,
@@ -207,7 +198,6 @@ pub fn build_near_token_send_payload(
     )
 }
 
-#[uniffi::export]
 pub fn build_polkadot_send_payload(
     from: String,
     to: String,
@@ -223,7 +213,6 @@ pub fn build_polkadot_send_payload(
     )
 }
 
-#[uniffi::export]
 pub fn build_monero_send_payload(to: String, amount_xmr: f64, priority: u32) -> String {
     let piconeros = amount_u64(amount_xmr, 1e12);
     format!(
@@ -232,7 +221,6 @@ pub fn build_monero_send_payload(to: String, amount_xmr: f64, priority: u32) -> 
     )
 }
 
-#[uniffi::export]
 pub fn build_solana_native_send_payload(
     from_pubkey_hex: String,
     to: String,
@@ -246,7 +234,6 @@ pub fn build_solana_native_send_payload(
     )
 }
 
-#[uniffi::export]
 pub fn build_solana_token_send_payload(
     from_pubkey_hex: String,
     mint: String,
@@ -264,7 +251,6 @@ pub fn build_solana_token_send_payload(
     )
 }
 
-#[uniffi::export]
 pub fn build_tron_native_send_payload(
     from: String,
     to: String,
@@ -278,7 +264,6 @@ pub fn build_tron_native_send_payload(
     )
 }
 
-#[uniffi::export]
 pub fn build_tron_token_send_payload(
     from: String,
     contract: String,
@@ -296,7 +281,6 @@ pub fn build_tron_token_send_payload(
     )
 }
 
-#[uniffi::export]
 pub fn build_btc_send_payload(
     from: String,
     to: String,
@@ -311,7 +295,6 @@ pub fn build_btc_send_payload(
     )
 }
 
-#[uniffi::export]
 pub fn build_doge_send_payload(
     from: String,
     to: String,
@@ -390,7 +373,6 @@ fn format_key_for(chain: SendChain) -> &'static str {
     }
 }
 
-#[uniffi::export]
 pub fn classify_send_broadcast_result(chain: SendChain, result_json: String) -> SendBroadcastOutcome {
     let field = hash_field_for(chain);
     let mut hash = crate::send_preview_decode::extract_json_string_field(

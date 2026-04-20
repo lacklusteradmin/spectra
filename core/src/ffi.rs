@@ -10,10 +10,7 @@ use super::fetch::{
     EvmRefreshPlan, EvmRefreshTargetsRequest, NormalizedRefreshTargetsRequest,
     NormalizedRefreshWalletTarget, WalletBalanceRefreshPlan, WalletBalanceRefreshRequest,
 };
-use super::history::{
-    merge_bitcoin_history_snapshots, normalize_history, CoreBitcoinHistorySnapshot,
-    MergeBitcoinHistorySnapshotsRequest, NormalizeHistoryRequest, CoreNormalizedHistoryEntry,
-};
+use super::history::{normalize_history, CoreNormalizedHistoryEntry, NormalizeHistoryRequest};
 use super::import::{
     plan_wallet_import, validate_wallet_import_draft, WalletImportDraftValidationRequest,
     WalletImportPlan, WalletImportRequest,
@@ -32,19 +29,34 @@ use super::send::{
 use super::state::CoreAppState;
 use super::store::{
     aggregate_owned_addresses, build_persisted_snapshot_typed,
-    plan_active_wallet_transaction_ids,
-    plan_canonical_chain_component, plan_dashboard_supported_token_entries,
-    plan_earliest_transaction_dates, plan_has_wallet_for_chain, plan_icon_identifier,
-    plan_normalized_history_signature, plan_normalized_icon_identifier, plan_priced_chain,
-    plan_receive_selection, plan_reset_dispatch, plan_resolve_derived_or_stored_address,
-    plan_self_send_confirmation, plan_store_derived_state,
-    wallet_secret_index_from_observations, CoreResetPlan, DerivedAddressPostProcess,
-    NormalizedHistorySignatureTransaction,
-    OwnedAddressAggregationRequest, ReceiveSelectionPlan,
-    ReceiveSelectionRequest, SelfSendConfirmationPlan, SelfSendConfirmationRequest,
+    plan_active_wallet_transaction_ids, plan_append_chain_operational_event,
+    plan_apply_holdings_from_summary, plan_apply_resolved_pending_transaction_statuses,
+    plan_baseline_chain_keypool_state, plan_canonical_chain_component,
+    plan_chain_keypool_state, plan_dashboard_rebuild_for_live_price_change,
+    plan_dashboard_supported_token_entries, plan_earliest_transaction_dates,
+    plan_ethereum_custom_fee_validation, plan_ethereum_manual_nonce_validation,
+    plan_ethereum_send_error_code, plan_evm_recipient_preflight_warnings,
+    plan_has_wallet_for_chain, plan_icon_identifier, plan_merge_built_in_token_preferences,
+    plan_normalized_history_signature, plan_normalized_icon_identifier,
+    plan_price_alert_evaluation, plan_priced_chain, plan_receive_selection, plan_reset_dispatch,
+    plan_resolve_derived_or_stored_address, plan_self_send_confirmation,
+    plan_stale_pending_failure_ids, plan_store_derived_state,
+    plan_transaction_status_poll_failure, plan_transaction_status_poll_success,
+    plan_transaction_status_should_poll, wallet_secret_index_from_observations,
+    ChainKeypoolBaselineInput, ChainKeypoolStateRecord, ChainOperationalEventLevel,
+    ChainOperationalEventRecord, CoreResetPlan, DashboardRebuildDecisionRequest,
+    DerivedAddressPostProcess, EthereumCustomFeeValidationCode,
+    EthereumManualNonceValidationCode, EthereumSendErrorCode, EvmRecipientPreflightRequest,
+    EvmRecipientPreflightWarning, FailureReasonDisposition, HoldingMergeAction,
+    HoldingMergeExistingInput, HoldingMergeIncomingInput, NormalizedHistorySignatureTransaction,
+    OwnedAddressAggregationRequest, PriceAlertEvaluationAlert, PriceAlertEvaluationPlan,
+    PriceAlertEvaluationPrice, ReceiveSelectionPlan, ReceiveSelectionRequest,
+    ResolvedPendingTransactionDecision, ResolvedPendingTransactionInput,
+    SelfSendConfirmationPlan, SelfSendConfirmationRequest, StalePendingFailureTransactionInput,
     StoreDerivedStatePlan, StoreDerivedStateRequest, TransactionActivityInput,
-    TransactionEarliestInput, WalletChainEligibilityInput, WalletChainInput,
-    WalletEarliestTransactionDate, WalletSecretIndex, WalletSecretObservation,
+    TransactionEarliestInput, TransactionStatusPollConfig, TransactionStatusTrackerState,
+    WalletChainEligibilityInput, WalletChainInput, WalletEarliestTransactionDate,
+    WalletSecretIndex, WalletSecretObservation,
 };
 use super::store::wallet_domain::CoreTokenPreferenceEntry;
 use super::persistence::models::{
@@ -133,6 +145,162 @@ pub fn core_plan_dashboard_supported_token_entries(
 ) -> Vec<CoreTokenPreferenceEntry> {
     plan_dashboard_supported_token_entries(entries)
 }
+
+#[uniffi::export]
+pub fn core_plan_merge_built_in_token_preferences(
+    built_ins: Vec<CoreTokenPreferenceEntry>,
+    persisted: Vec<CoreTokenPreferenceEntry>,
+) -> Vec<CoreTokenPreferenceEntry> {
+    plan_merge_built_in_token_preferences(built_ins, persisted)
+}
+
+#[uniffi::export]
+pub fn core_plan_price_alert_evaluation(
+    alerts: Vec<PriceAlertEvaluationAlert>,
+    prices: Vec<PriceAlertEvaluationPrice>,
+) -> PriceAlertEvaluationPlan {
+    plan_price_alert_evaluation(alerts, prices)
+}
+
+#[uniffi::export]
+pub fn core_plan_dashboard_rebuild_for_live_price_change(
+    request: DashboardRebuildDecisionRequest,
+) -> bool {
+    plan_dashboard_rebuild_for_live_price_change(request)
+}
+
+#[uniffi::export]
+pub fn core_plan_ethereum_custom_fee_validation(
+    use_custom_fees: bool,
+    is_ethereum_chain: bool,
+    max_fee_gwei_raw: String,
+    priority_fee_gwei_raw: String,
+) -> Option<EthereumCustomFeeValidationCode> {
+    plan_ethereum_custom_fee_validation(
+        use_custom_fees,
+        is_ethereum_chain,
+        max_fee_gwei_raw,
+        priority_fee_gwei_raw,
+    )
+}
+
+#[uniffi::export]
+pub fn core_plan_ethereum_manual_nonce_validation(
+    manual_nonce_enabled: bool,
+    nonce_raw: String,
+) -> Option<EthereumManualNonceValidationCode> {
+    plan_ethereum_manual_nonce_validation(manual_nonce_enabled, nonce_raw)
+}
+
+#[uniffi::export]
+pub fn core_plan_append_chain_operational_event(
+    existing_events: Vec<ChainOperationalEventRecord>,
+    new_event: ChainOperationalEventRecord,
+) -> Vec<ChainOperationalEventRecord> {
+    plan_append_chain_operational_event(existing_events, new_event)
+}
+
+#[uniffi::export]
+pub fn core_plan_transaction_status_should_poll(
+    tracker: Option<TransactionStatusTrackerState>,
+    now_unix: f64,
+) -> bool {
+    plan_transaction_status_should_poll(tracker, now_unix)
+}
+
+#[uniffi::export]
+pub fn core_plan_transaction_status_poll_success(
+    tracker: Option<TransactionStatusTrackerState>,
+    resolved_status_confirmed: bool,
+    resolved_status_pending: bool,
+    reported_confirmations: Option<u32>,
+    now_unix: f64,
+    config: TransactionStatusPollConfig,
+) -> TransactionStatusTrackerState {
+    plan_transaction_status_poll_success(
+        tracker,
+        resolved_status_confirmed,
+        resolved_status_pending,
+        reported_confirmations,
+        now_unix,
+        config,
+    )
+}
+
+#[uniffi::export]
+pub fn core_plan_transaction_status_poll_failure(
+    tracker: Option<TransactionStatusTrackerState>,
+    now_unix: f64,
+    config: TransactionStatusPollConfig,
+) -> TransactionStatusTrackerState {
+    plan_transaction_status_poll_failure(tracker, now_unix, config)
+}
+
+#[uniffi::export]
+pub fn core_plan_stale_pending_failure_ids(
+    transactions: Vec<StalePendingFailureTransactionInput>,
+    now_unix: f64,
+    config: TransactionStatusPollConfig,
+) -> Vec<String> {
+    plan_stale_pending_failure_ids(transactions, now_unix, config)
+}
+
+#[uniffi::export]
+pub fn core_plan_apply_resolved_pending_transaction_statuses(
+    inputs: Vec<ResolvedPendingTransactionInput>,
+    now_unix: f64,
+    config: TransactionStatusPollConfig,
+) -> Vec<ResolvedPendingTransactionDecision> {
+    plan_apply_resolved_pending_transaction_statuses(inputs, now_unix, config)
+}
+
+const _: fn() = || {
+    let _ = FailureReasonDisposition::None;
+};
+
+#[uniffi::export]
+pub fn core_plan_ethereum_send_error_code(message: String) -> EthereumSendErrorCode {
+    plan_ethereum_send_error_code(message)
+}
+
+const _: fn() = || {
+    let _ = EthereumSendErrorCode::Unknown;
+};
+
+#[uniffi::export]
+pub fn core_plan_baseline_chain_keypool_state(
+    input: ChainKeypoolBaselineInput,
+) -> ChainKeypoolStateRecord {
+    plan_baseline_chain_keypool_state(input)
+}
+
+#[uniffi::export]
+pub fn core_plan_chain_keypool_state(
+    baseline: ChainKeypoolStateRecord,
+    existing: Option<ChainKeypoolStateRecord>,
+) -> ChainKeypoolStateRecord {
+    plan_chain_keypool_state(baseline, existing)
+}
+
+#[uniffi::export]
+pub fn core_plan_apply_holdings_from_summary(
+    existing: Vec<HoldingMergeExistingInput>,
+    incoming: Vec<HoldingMergeIncomingInput>,
+) -> Vec<HoldingMergeAction> {
+    plan_apply_holdings_from_summary(existing, incoming)
+}
+
+#[uniffi::export]
+pub fn core_plan_evm_recipient_preflight_warnings(
+    request: EvmRecipientPreflightRequest,
+) -> Vec<EvmRecipientPreflightWarning> {
+    plan_evm_recipient_preflight_warnings(request)
+}
+
+// Silence dead-code warnings for FFI-only enum payload fields.
+const _: fn() = || {
+    let _ = ChainOperationalEventLevel::Info;
+};
 
 #[uniffi::export]
 pub fn core_plan_priced_chain(
@@ -265,13 +433,6 @@ pub fn core_normalize_history(
     request: NormalizeHistoryRequest,
 ) -> Vec<CoreNormalizedHistoryEntry> {
     normalize_history(request)
-}
-
-#[uniffi::export]
-pub fn core_merge_bitcoin_history_snapshots(
-    request: MergeBitcoinHistorySnapshotsRequest,
-) -> Vec<CoreBitcoinHistorySnapshot> {
-    merge_bitcoin_history_snapshots(request)
 }
 
 #[uniffi::export]

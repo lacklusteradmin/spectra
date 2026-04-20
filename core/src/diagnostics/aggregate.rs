@@ -179,7 +179,6 @@ pub fn diagnostics_parse_jsonrpc_probe(
 /// Convenience for Swift call sites: partition a history JSON payload
 /// into (entry_count, confirmed_txids) in one FFI hop. Useful where
 /// callers need both (e.g. UTXO diagnostics + pending-refresh).
-#[uniffi::export]
 pub fn diagnostics_history_summary(json: String) -> HistorySummary {
     let entries: Vec<Value> = serde_json::from_str::<Value>(&json)
         .ok()

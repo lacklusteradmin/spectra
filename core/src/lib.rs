@@ -68,7 +68,7 @@ pub use fetch::{
 };
 pub use send::{
     amount_input, ethereum as ethereum_send, flow as send_flow, flow_helpers as send_flow_helpers,
-    machine as send_machine, payload as send_payload, preview_decode as send_preview_decode,
+    payload as send_payload, preview_decode as send_preview_decode,
     transfer, utxo, verification as send_verification,
 };
 pub use store::{

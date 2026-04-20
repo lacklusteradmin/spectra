@@ -511,6 +511,81 @@ pub fn plan_dashboard_supported_token_entries(
         .collect()
 }
 
+/// Normalize a token contract address for identity matching. Mirrors the
+/// Swift `normalizedTrackedTokenIdentifier(for:contractAddress:)` dispatch.
+fn normalize_tracked_token_identifier(
+    chain: wallet_domain::CoreTokenTrackingChain,
+    contract_address: &str,
+) -> String {
+    use wallet_domain::CoreTokenTrackingChain::*;
+    let trimmed = contract_address.trim();
+    match chain {
+        Ethereum | Arbitrum | Optimism | Bnb | Avalanche | Hyperliquid => trimmed.to_lowercase(),
+        Aptos => crate::store::app_state::token_helpers::normalize_aptos_token_identifier(
+            trimmed.to_string(),
+        ),
+        Sui => crate::store::app_state::token_helpers::normalize_sui_token_identifier(
+            trimmed.to_string(),
+        ),
+        Ton => trimmed.to_string(),
+        _ => trimmed.to_lowercase(),
+    }
+}
+
+/// Merge built-in token registry entries with persisted user preferences:
+/// copies `is_enabled` + `display_decimals` from matching persisted built-ins,
+/// appends all non-built-in (custom) persisted entries, and returns the list
+/// sorted by (chain-label, built-in first, symbol).
+pub fn plan_merge_built_in_token_preferences(
+    built_ins: Vec<wallet_domain::CoreTokenPreferenceEntry>,
+    persisted: Vec<wallet_domain::CoreTokenPreferenceEntry>,
+) -> Vec<wallet_domain::CoreTokenPreferenceEntry> {
+    fn chain_label(chain: wallet_domain::CoreTokenTrackingChain) -> &'static str {
+        use wallet_domain::CoreTokenTrackingChain::*;
+        match chain {
+            Ethereum => "Ethereum",
+            Arbitrum => "Arbitrum",
+            Optimism => "Optimism",
+            Bnb => "BNB Chain",
+            Avalanche => "Avalanche",
+            Hyperliquid => "Hyperliquid",
+            Solana => "Solana",
+            Sui => "Sui",
+            Aptos => "Aptos",
+            Ton => "TON",
+            Near => "NEAR",
+            Tron => "Tron",
+        }
+    }
+    let mut merged: Vec<wallet_domain::CoreTokenPreferenceEntry> = Vec::new();
+    for built_in in built_ins.into_iter() {
+        let built_in_key =
+            normalize_tracked_token_identifier(built_in.chain, &built_in.contract_address);
+        let existing = persisted.iter().find(|entry| {
+            entry.is_built_in
+                && entry.chain == built_in.chain
+                && normalize_tracked_token_identifier(entry.chain, &entry.contract_address)
+                    == built_in_key
+        });
+        let mut updated = built_in;
+        if let Some(existing) = existing {
+            updated.is_enabled = existing.is_enabled;
+            updated.display_decimals = existing.display_decimals;
+        }
+        merged.push(updated);
+    }
+    merged.extend(persisted.into_iter().filter(|entry| !entry.is_built_in));
+    merged.sort_by(|lhs, rhs| {
+        let lhs_chain = chain_label(lhs.chain);
+        let rhs_chain = chain_label(rhs.chain);
+        lhs_chain
+            .cmp(rhs_chain)
+            .then_with(|| rhs.is_built_in.cmp(&lhs.is_built_in))
+            .then_with(|| lhs.symbol.cmp(&rhs.symbol))
+    });
+    merged
+}
+
 pub fn plan_priced_chain(
     chain_name: String,
     bitcoin_network_mode_raw: String,
@@ -870,6 +945,788 @@ pub fn plan_reset_dispatch(scopes: Vec<String>) -> CoreResetPlan {
         reset_provider_state: has("providerState"),
         clear_network_and_transport_caches: wallets_and_secrets || history_and_cache_direct,
     }
+}
+
+/// Input per price alert — ids/metadata needed to produce notifications;
+/// Swift formats the user-facing text itself.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, uniffi::Record)]
+#[serde(rename_all = "camelCase")]
+pub struct PriceAlertEvaluationAlert {
+    pub id: String,
+    pub holding_key: String,
+    pub asset_name: String,
+    pub symbol: String,
+    pub chain_name: String,
+    pub target_price: f64,
+    pub condition: wallet_domain::CorePriceAlertCondition,
+    pub is_enabled: bool,
+    pub has_triggered: bool,
+}
+
+/// Live price lookup for one holding.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, uniffi::Record)]
+#[serde(rename_all = "camelCase")]
+pub struct PriceAlertEvaluationPrice {
+    pub holding_key: String,
+    pub live_price: f64,
+}
+
+/// Alert `has_triggered` state changes produced by the evaluator.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, uniffi::Record)]
+#[serde(rename_all = "camelCase")]
+pub struct PriceAlertTriggerUpdate {
+    pub id: String,
+    pub has_triggered: bool,
+}
+
+/// A single firing — Swift formats the notification body using this.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, uniffi::Record)]
+#[serde(rename_all = "camelCase")]
+pub struct PriceAlertNotification {
+    pub id: String,
+    pub asset_name: String,
+    pub symbol: String,
+    pub chain_name: String,
+    pub target_price: f64,
+    pub live_price: f64,
+    pub condition: wallet_domain::CorePriceAlertCondition,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, uniffi::Record)]
+#[serde(rename_all = "camelCase")]
+pub struct PriceAlertEvaluationPlan {
+    pub updates: Vec<PriceAlertTriggerUpdate>,
+    pub notifications: Vec<PriceAlertNotification>,
+}
+
+pub fn plan_price_alert_evaluation(
+    alerts: Vec<PriceAlertEvaluationAlert>,
+    prices: Vec<PriceAlertEvaluationPrice>,
+) -> PriceAlertEvaluationPlan {
+    let price_by_key: HashMap<String, f64> = prices
+        .into_iter()
+        .map(|p| (p.holding_key, p.live_price))
+        .collect();
+    let mut updates = Vec::new();
+    let mut notifications = Vec::new();
+    for alert in alerts.into_iter() {
+        if !alert.is_enabled {
+            continue;
+        }
+        let Some(live_price) = price_by_key.get(&alert.holding_key).copied() else {
+            continue;
+        };
+        let meets_target = match alert.condition {
+            wallet_domain::CorePriceAlertCondition::Above => live_price >= alert.target_price,
+            wallet_domain::CorePriceAlertCondition::Below => live_price <= alert.target_price,
+        };
+        if meets_target && !alert.has_triggered {
+            updates.push(PriceAlertTriggerUpdate {
+                id: alert.id.clone(),
+                has_triggered: true,
+            });
+            notifications.push(PriceAlertNotification {
+                id: alert.id,
+                asset_name: alert.asset_name,
+                symbol: alert.symbol,
+                chain_name: alert.chain_name,
+                target_price: alert.target_price,
+                live_price,
+                condition: alert.condition,
+            });
+        } else if !meets_target && alert.has_triggered {
+            updates.push(PriceAlertTriggerUpdate {
+                id: alert.id,
+                has_triggered: false,
+            });
+        }
+    }
+    PriceAlertEvaluationPlan { updates, notifications }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, uniffi::Record)]
+#[serde(rename_all = "camelCase")]
+pub struct DashboardRebuildDecisionRequest {
+    pub old_prices: Vec<PriceAlertEvaluationPrice>,
+    pub new_prices: Vec<PriceAlertEvaluationPrice>,
+    pub cached_relevant_price_keys: Vec<String>,
+    pub pinned_prototype_keys: Vec<String>,
+    pub selected_main_tab_is_home: bool,
+}
+
+/// Decide whether a live-price update should trigger a dashboard rebuild.
+/// Mirrors Swift `shouldRebuildDashboardForLivePriceChange(from:to:)`.
+pub fn plan_dashboard_rebuild_for_live_price_change(
+    request: DashboardRebuildDecisionRequest,
+) -> bool {
+    let old: HashMap<String, f64> = request
+        .old_prices
+        .into_iter()
+        .map(|p| (p.holding_key, p.live_price))
+        .collect();
+    let new: HashMap<String, f64> = request
+        .new_prices
+        .into_iter()
+        .map(|p| (p.holding_key, p.live_price))
+        .collect();
+    if old == new {
+        return false;
+    }
+    if request.cached_relevant_price_keys.is_empty() {
+        return true;
+    }
+    let changed_relevant = request
+        .cached_relevant_price_keys
+        .iter()
+        .any(|key| old.get(key) != new.get(key));
+    if changed_relevant {
+        return true;
+    }
+    if request.selected_main_tab_is_home {
+        return request
+            .pinned_prototype_keys
+            .iter()
+            .any(|key| old.get(key) != new.get(key));
+    }
+    false
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, uniffi::Enum)]
+pub enum EthereumCustomFeeValidationCode {
+    InvalidMaxFee,
+    InvalidPriorityFee,
+    MaxBelowPriority,
+}
+
+pub fn plan_ethereum_custom_fee_validation(
+    use_custom_fees: bool,
+    is_ethereum_chain: bool,
+    max_fee_gwei_raw: String,
+    priority_fee_gwei_raw: String,
+) -> Option<EthereumCustomFeeValidationCode> {
+    if !use_custom_fees || !is_ethereum_chain {
+        return None;
+    }
+    let max_trimmed = max_fee_gwei_raw.trim();
+    let priority_trimmed = priority_fee_gwei_raw.trim();
+    let Some(max_fee) = max_trimmed.parse::<f64>().ok().filter(|v| *v > 0.0) else {
+        return Some(EthereumCustomFeeValidationCode::InvalidMaxFee);
+    };
+    let Some(priority_fee) = priority_trimmed.parse::<f64>().ok().filter(|v| *v > 0.0) else {
+        return Some(EthereumCustomFeeValidationCode::InvalidPriorityFee);
+    };
+    if max_fee < priority_fee {
+        return Some(EthereumCustomFeeValidationCode::MaxBelowPriority);
+    }
+    None
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, uniffi::Enum)]
+pub enum EthereumManualNonceValidationCode {
+    Empty,
+    NotNonNegativeInteger,
+    TooLarge,
+}
+
+pub fn plan_ethereum_manual_nonce_validation(
+    manual_nonce_enabled: bool,
+    nonce_raw: String,
+) -> Option<EthereumManualNonceValidationCode> {
+    if !manual_nonce_enabled {
+        return None;
+    }
+    let trimmed = nonce_raw.trim();
+    if trimmed.is_empty() {
+        return Some(EthereumManualNonceValidationCode::Empty);
+    }
+    let Ok(parsed) = trimmed.parse::<i64>() else {
+        return Some(EthereumManualNonceValidationCode::NotNonNegativeInteger);
+    };
+    if parsed < 0 {
+        return Some(EthereumManualNonceValidationCode::NotNonNegativeInteger);
+    }
+    if parsed > i32::MAX as i64 {
+        return Some(EthereumManualNonceValidationCode::TooLarge);
+    }
+    None
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, uniffi::Enum)]
+#[serde(rename_all = "camelCase")]
+pub enum ChainOperationalEventLevel {
+    Info,
+    Warning,
+    Error,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, uniffi::Record)]
+#[serde(rename_all = "camelCase")]
+pub struct ChainOperationalEventRecord {
+    pub id: String,
+    pub timestamp_unix: f64,
+    pub chain_name: String,
+    pub level: ChainOperationalEventLevel,
+    pub message: String,
+    pub transaction_hash: Option<String>,
+}
+
+/// Prepend `new_event` to `existing_events` and cap the list to 200. Matches
+/// the Swift ring-buffer semantics inside `appendChainOperationalEvent`.
+pub fn plan_append_chain_operational_event(
+    existing_events: Vec<ChainOperationalEventRecord>,
+    new_event: ChainOperationalEventRecord,
+) -> Vec<ChainOperationalEventRecord> {
+    const RING_BUFFER_CAP: usize = 200;
+    let mut events = Vec::with_capacity((existing_events.len() + 1).min(RING_BUFFER_CAP));
+    events.push(new_event);
+    events.extend(
+        existing_events
+            .into_iter()
+            .take(RING_BUFFER_CAP.saturating_sub(1)),
+    );
+    events
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, uniffi::Record)]
+#[serde(rename_all = "camelCase")]
+pub struct EvmRecipientPreflightRequest {
+    pub chain_name: String,
+    pub holding_symbol: String,
+    pub token_symbol: Option<String>,
+    pub recipient_has_code: Option<bool>,
+    pub token_has_code: Option<bool>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, uniffi::Record)]
+#[serde(rename_all = "camelCase")]
+pub struct EvmRecipientPreflightWarning {
+    pub code: String,
+    pub chain_name: Option<String>,
+    pub symbol: Option<String>,
+    pub token_symbol: Option<String>,
+}
+
+/// Build warning codes for an EVM send's recipient + token contract checks.
+/// Swift localizes the codes into user-facing strings.
+pub fn plan_evm_recipient_preflight_warnings(
+    request: EvmRecipientPreflightRequest,
+) -> Vec<EvmRecipientPreflightWarning> {
+    let mut warnings = Vec::new();
+    match request.recipient_has_code {
+        Some(true) => warnings.push(EvmRecipientPreflightWarning {
+            code: "recipient_is_contract".to_string(),
+            chain_name: Some(request.chain_name.clone()),
+            symbol: Some(request.holding_symbol.clone()),
+            token_symbol: None,
+        }),
+        Some(false) => {}
+        None => warnings.push(EvmRecipientPreflightWarning {
+            code: "recipient_code_unknown".to_string(),
+            chain_name: Some(request.chain_name.clone()),
+            symbol: None,
+            token_symbol: None,
+        }),
+    }
+    if let Some(token_symbol) = request.token_symbol {
+        match request.token_has_code {
+            Some(false) => warnings.push(EvmRecipientPreflightWarning {
+                code: "token_contract_missing".to_string(),
+                chain_name: Some(request.chain_name.clone()),
+                symbol: None,
+                token_symbol: Some(token_symbol),
+            }),
+            None => warnings.push(EvmRecipientPreflightWarning {
+                code: "token_code_unknown".to_string(),
+                chain_name: Some(request.chain_name.clone()),
+                symbol: None,
+                token_symbol: Some(token_symbol),
+            }),
+            Some(true) => {}
+        }
+    }
+    warnings
+}
+
+// ─── Transaction status polling state machine (J+K+L) ───────────────────────
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, uniffi::Record)]
+#[serde(rename_all = "camelCase")]
+pub struct TransactionStatusTrackerState {
+    pub last_checked_at_unix: Option<f64>,
+    pub next_check_at_unix: f64,
+    pub consecutive_failures: u32,
+    pub reached_finality: bool,
+}
+
+impl TransactionStatusTrackerState {
+    fn initial(now_unix: f64) -> Self {
+        Self {
+            last_checked_at_unix: None,
+            next_check_at_unix: now_unix,
+            consecutive_failures: 0,
+            reached_finality: false,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, uniffi::Record)]
+#[serde(rename_all = "camelCase")]
+pub struct TransactionStatusPollConfig {
+    pub pending_poll_seconds: f64,
+    pub confirmed_poll_seconds: f64,
+    pub backoff_max_seconds: f64,
+    pub finality_confirmations: u32,
+    pub pending_failure_timeout_seconds: f64,
+    pub pending_failure_min_failures: u32,
+}
+
+/// Matches Swift `shouldPollTransactionStatus`.
+pub fn plan_transaction_status_should_poll(
+    tracker: Option<TransactionStatusTrackerState>,
+    now_unix: f64,
+) -> bool {
+    let tracker = tracker.unwrap_or_else(|| TransactionStatusTrackerState::initial(now_unix));
+    if tracker.reached_finality {
+        return false;
+    }
+    now_unix >= tracker.next_check_at_unix
+}
+
+/// Matches Swift `markTransactionStatusPollSuccess`.
+pub fn plan_transaction_status_poll_success(
+    tracker: Option<TransactionStatusTrackerState>,
+    resolved_status_confirmed: bool,
+    resolved_status_pending: bool,
+    reported_confirmations: Option<u32>,
+    now_unix: f64,
+    config: TransactionStatusPollConfig,
+) -> TransactionStatusTrackerState {
+    let mut tracker =
+        tracker.unwrap_or_else(|| TransactionStatusTrackerState::initial(now_unix));
+    tracker.last_checked_at_unix = Some(now_unix);
+    tracker.consecutive_failures = 0;
+    let reached_finality = if resolved_status_pending {
+        false
+    } else {
+        reported_confirmations.unwrap_or(config.finality_confirmations)
+            >= config.finality_confirmations
+    };
+    if reached_finality {
+        tracker.reached_finality = true;
+        tracker.next_check_at_unix = now_unix + config.backoff_max_seconds;
+    } else if resolved_status_confirmed {
+        tracker.next_check_at_unix = now_unix + config.confirmed_poll_seconds;
+    } else {
+        tracker.next_check_at_unix = now_unix + config.pending_poll_seconds;
+    }
+    tracker
+}
+
+/// Matches Swift `markTransactionStatusPollFailure`. Exponential backoff capped at
+/// `config.backoff_max_seconds`.
+pub fn plan_transaction_status_poll_failure(
+    tracker: Option<TransactionStatusTrackerState>,
+    now_unix: f64,
+    config: TransactionStatusPollConfig,
+) -> TransactionStatusTrackerState {
+    let mut tracker =
+        tracker.unwrap_or_else(|| TransactionStatusTrackerState::initial(now_unix));
+    tracker.last_checked_at_unix = Some(now_unix);
+    tracker.consecutive_failures = tracker.consecutive_failures.saturating_add(1);
+    let exponent = tracker.consecutive_failures.saturating_sub(1) as i32;
+    let backoff =
+        (config.pending_poll_seconds * 2f64.powi(exponent)).min(config.backoff_max_seconds);
+    tracker.next_check_at_unix = now_unix + backoff;
+    tracker
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, uniffi::Record)]
+#[serde(rename_all = "camelCase")]
+pub struct StalePendingFailureTransactionInput {
+    pub id: String,
+    pub created_at_unix: f64,
+    pub status_is_pending: bool,
+    pub tracker_consecutive_failures: u32,
+}
+
+/// Matches Swift `stalePendingFailureIDs`.
+pub fn plan_stale_pending_failure_ids(
+    transactions: Vec<StalePendingFailureTransactionInput>,
+    now_unix: f64,
+    config: TransactionStatusPollConfig,
+) -> Vec<String> {
+    transactions
+        .into_iter()
+        .filter(|transaction| {
+            if !transaction.status_is_pending {
+                return false;
+            }
+            let age = now_unix - transaction.created_at_unix;
+            if age < config.pending_failure_timeout_seconds {
+                return false;
+            }
+            transaction.tracker_consecutive_failures >= config.pending_failure_min_failures
+        })
+        .map(|transaction| transaction.id)
+        .collect()
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, uniffi::Record)]
+#[serde(rename_all = "camelCase")]
+pub struct ResolvedPendingStatusInput {
+    pub status: String,
+    pub confirmations: Option<u32>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, uniffi::Record)]
+#[serde(rename_all = "camelCase")]
+pub struct ResolvedPendingTransactionInput {
+    pub id: String,
+    pub old_status: String,
+    pub old_failure_reason: Option<String>,
+    pub old_confirmations: Option<u32>,
+    pub resolution: Option<ResolvedPendingStatusInput>,
+    pub is_stale_failure: bool,
+    pub current_tracker: Option<TransactionStatusTrackerState>,
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, uniffi::Enum)]
+#[serde(rename_all = "camelCase")]
+pub enum FailureReasonDisposition {
+    None,
+    Preserve,
+    LocalizedFallback,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, uniffi::Record)]
+#[serde(rename_all = "camelCase")]
+pub struct ResolvedPendingTransactionDecision {
+    pub id: String,
+    pub new_status: String,
+    pub status_changed: bool,
+    pub failure_reason_disposition: FailureReasonDisposition,
+    pub updated_tracker: Option<TransactionStatusTrackerState>,
+    pub emit_event_code: Option<String>,
+    /// When set, emit a chain-event indicating the transaction newly reached the
+    /// finality threshold this poll cycle. Independent of `status_changed` so it
+    /// fires when `confirmed→confirmed` but confirmations crossed the threshold.
+    pub reached_finality_confirmations: Option<u32>,
+    pub send_status_notification: bool,
+}
+
+/// Matches Swift `applyResolvedPendingTransactionStatuses` decision logic. Swift keeps
+/// the `setTransactions` mutation and notification/event emission; Rust returns a
+/// per-transaction decision describing what changed.
+pub fn plan_apply_resolved_pending_transaction_statuses(
+    inputs: Vec<ResolvedPendingTransactionInput>,
+    now_unix: f64,
+    config: TransactionStatusPollConfig,
+) -> Vec<ResolvedPendingTransactionDecision> {
+    inputs
+        .into_iter()
+        .filter_map(|input| {
+            if let Some(resolution) = input.resolution {
+                let new_status = resolution.status.clone();
+                let status_changed = input.old_status != new_status;
+                let new_confirmations = resolution.confirmations;
+                let updated_tracker = if new_status != "pending" {
+                    let mut tracker = input
+                        .current_tracker
+                        .clone()
+                        .unwrap_or_else(|| TransactionStatusTrackerState::initial(now_unix));
+                    tracker.reached_finality = new_confirmations
+                        .unwrap_or(config.finality_confirmations)
+                        >= config.finality_confirmations;
+                    tracker.next_check_at_unix = now_unix + config.backoff_max_seconds;
+                    Some(tracker)
+                } else {
+                    None
+                };
+                let failure_reason_disposition = if new_status == "failed" {
+                    if input.old_failure_reason.is_some() {
+                        FailureReasonDisposition::Preserve
+                    } else {
+                        FailureReasonDisposition::LocalizedFallback
+                    }
+                } else {
+                    FailureReasonDisposition::None
+                };
+                let emit_event_code = if status_changed && new_status == "confirmed" {
+                    Some("confirmed".to_string())
+                } else if status_changed && new_status == "failed" {
+                    Some("failed".to_string())
+                } else {
+                    None
+                };
+                let reached_finality_confirmations = match (new_confirmations, input.old_confirmations) {
+                    (Some(new_count), old) if new_status == "confirmed"
+                        && new_count >= config.finality_confirmations
+                        && old.unwrap_or(0) < config.finality_confirmations =>
+                    {
+                        Some(new_count)
+                    }
+                    _ => None,
+                };
+                Some(ResolvedPendingTransactionDecision {
+                    id: input.id,
+                    new_status,
+                    status_changed,
+                    failure_reason_disposition,
+                    updated_tracker,
+                    emit_event_code,
+                    reached_finality_confirmations,
+                    send_status_notification: status_changed,
+                })
+            } else if input.is_stale_failure {
+                let new_status = "failed".to_string();
+                let status_changed = input.old_status != new_status;
+                let failure_reason_disposition = if input.old_failure_reason.is_some() {
+                    FailureReasonDisposition::Preserve
+                } else {
+                    FailureReasonDisposition::LocalizedFallback
+                };
+                let emit_event_code = if status_changed {
+                    Some("failed".to_string())
+                } else {
+                    None
+                };
+                Some(ResolvedPendingTransactionDecision {
+                    id: input.id,
+                    new_status,
+                    status_changed,
+                    failure_reason_disposition,
+                    updated_tracker: None,
+                    emit_event_code,
+                    reached_finality_confirmations: None,
+                    send_status_notification: status_changed,
+                })
+            } else {
+                None
+            }
+        })
+        .collect()
+}
+
+// ─── M: Ethereum send error classification ────────────────────────────────────
+//
+// Matches Swift `mapEthereumSendError`. Swift passes the lowercased error
+// message; Rust returns a code. Swift materializes the localized string.
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, uniffi::Enum)]
+#[serde(rename_all = "camelCase")]
+pub enum EthereumSendErrorCode {
+    NonceTooLow,
+    ReplacementUnderpriced,
+    AlreadyKnown,
+    InsufficientFunds,
+    MaxFeeBelowBaseFee,
+    IntrinsicGasLow,
+    Unknown,
+}
+
+pub fn plan_ethereum_send_error_code(message: String) -> EthereumSendErrorCode {
+    let lower = message.to_lowercase();
+    if lower.contains("nonce too low") {
+        EthereumSendErrorCode::NonceTooLow
+    } else if lower.contains("replacement transaction underpriced") {
+        EthereumSendErrorCode::ReplacementUnderpriced
+    } else if lower.contains("already known") {
+        EthereumSendErrorCode::AlreadyKnown
+    } else if lower.contains("insufficient funds") {
+        EthereumSendErrorCode::InsufficientFunds
+    } else if lower.contains("max fee per gas less than block base fee") {
+        EthereumSendErrorCode::MaxFeeBelowBaseFee
+    } else if lower.contains("intrinsic gas too low") {
+        EthereumSendErrorCode::IntrinsicGasLow
+    } else {
+        EthereumSendErrorCode::Unknown
+    }
+}
+
+// ─── N: Chain keypool state (baseline + merge with existing) ──────────────────
+//
+// Matches Swift `baselineChainKeypoolState` + `keypoolState`. Swift filters
+// transactions and owned addresses against its in-memory dictionaries and
+// supplies the max-index inputs; Rust owns the `+1`, `max(...)`, and
+// reserved-receive merge policy.
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, uniffi::Record)]
+#[serde(rename_all = "camelCase")]
+pub struct ChainKeypoolStateRecord {
+    pub next_external_index: i32,
+    pub next_change_index: i32,
+    pub reserved_receive_index: Option<i32>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, uniffi::Record)]
+#[serde(rename_all = "camelCase")]
+pub struct ChainKeypoolBaselineInput {
+    pub supports_deep_utxo_discovery: bool,
+    pub max_transaction_external_index: Option<i32>,
+    pub max_transaction_change_index: Option<i32>,
+    pub max_owned_external_index: Option<i32>,
+    pub max_owned_change_index: Option<i32>,
+    pub has_resolved_address: bool,
+}
+
+pub fn plan_baseline_chain_keypool_state(
+    input: ChainKeypoolBaselineInput,
+) -> ChainKeypoolStateRecord {
+    if input.supports_deep_utxo_discovery {
+        let max_external = input.max_transaction_external_index.unwrap_or(-1);
+        let max_change = input.max_transaction_change_index.unwrap_or(-1);
+        let max_owned_external = input.max_owned_external_index.unwrap_or(0);
+        let max_owned_change = input.max_owned_change_index.unwrap_or(-1);
+        return ChainKeypoolStateRecord {
+            next_external_index: std::cmp::max(
+                std::cmp::max(max_external, max_owned_external) + 1,
+                1,
+            ),
+            next_change_index: std::cmp::max(
+                std::cmp::max(max_change, max_owned_change) + 1,
+                0,
+            ),
+            reserved_receive_index: None,
+        };
+    }
+    let next_external_index = if input.has_resolved_address { 1 } else { 0 };
+    ChainKeypoolStateRecord {
+        next_external_index,
+        next_change_index: 0,
+        reserved_receive_index: if input.has_resolved_address {
+            Some(0)
+        } else {
+            None
+        },
+    }
+}
+
+pub fn plan_chain_keypool_state(
+    baseline: ChainKeypoolStateRecord,
+    existing: Option<ChainKeypoolStateRecord>,
+) -> ChainKeypoolStateRecord {
+    let Some(mut state) = existing else {
+        return baseline;
+    };
+    state.next_external_index = std::cmp::max(state.next_external_index, baseline.next_external_index);
+    state.next_change_index = std::cmp::max(state.next_change_index, baseline.next_change_index);
+    if state.reserved_receive_index.is_none() {
+        state.reserved_receive_index = baseline.reserved_receive_index;
+    }
+    if let Some(reserved) = state.reserved_receive_index {
+        state.next_external_index = std::cmp::max(state.next_external_index, reserved + 1);
+    }
+    state
+}
+
+// ─── O: Wallet holdings merge from balance summary ────────────────────────────
+//
+// Matches Swift `holdingsAppliedFromSummary`. Rust owns the match-by-key and
+// default-mark policy; Swift applies the actions to its `CoreCoin` array,
+// preserving visual properties (id, priceUsd, mark) on updates and providing
+// defaults on inserts.
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, uniffi::Record)]
+#[serde(rename_all = "camelCase")]
+pub struct HoldingMergeExistingInput {
+    pub symbol: String,
+    pub chain_name: String,
+    pub contract_address: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, uniffi::Record)]
+#[serde(rename_all = "camelCase")]
+pub struct HoldingMergeIncomingInput {
+    pub name: String,
+    pub symbol: String,
+    pub market_data_id: String,
+    pub coin_gecko_id: String,
+    pub chain_name: String,
+    pub token_standard: String,
+    pub contract_address: Option<String>,
+    pub amount: f64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, uniffi::Record)]
+#[serde(rename_all = "camelCase")]
+pub struct HoldingMergeAppendPayload {
+    pub name: String,
+    pub symbol: String,
+    pub market_data_id: String,
+    pub coin_gecko_id: String,
+    pub chain_name: String,
+    pub token_standard: String,
+    pub contract_address: Option<String>,
+    pub amount: f64,
+    pub mark: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, uniffi::Enum)]
+#[serde(rename_all = "camelCase")]
+pub enum HoldingMergeAction {
+    UpdateAmount {
+        existing_index: u32,
+        amount: f64,
+    },
+    Append {
+        coin: HoldingMergeAppendPayload,
+    },
+}
+
+fn holding_lookup_key(symbol: &str, chain_name: &str, contract: Option<&str>) -> String {
+    if let Some(raw) = contract {
+        format!("{}:{}", chain_name, raw.to_lowercase())
+    } else {
+        format!("{}:{}", chain_name, symbol)
+    }
+}
+
+pub fn plan_apply_holdings_from_summary(
+    existing: Vec<HoldingMergeExistingInput>,
+    incoming: Vec<HoldingMergeIncomingInput>,
+) -> Vec<HoldingMergeAction> {
+    if incoming.is_empty() {
+        return Vec::new();
+    }
+    let keys: Vec<String> = existing
+        .iter()
+        .map(|h| holding_lookup_key(&h.symbol, &h.chain_name, h.contract_address.as_deref()))
+        .collect();
+    let mut actions: Vec<HoldingMergeAction> = Vec::new();
+    for holding in incoming {
+        let key = holding_lookup_key(
+            &holding.symbol,
+            &holding.chain_name,
+            holding.contract_address.as_deref(),
+        );
+        if let Some(index) = keys.iter().position(|existing_key| existing_key == &key) {
+            actions.push(HoldingMergeAction::UpdateAmount {
+                existing_index: index as u32,
+                amount: holding.amount,
+            });
+        } else if holding.amount > 0.0 {
+            let mark: String = holding
+                .symbol
+                .chars()
+                .take(2)
+                .collect::<String>()
+                .to_uppercase();
+            actions.push(HoldingMergeAction::Append {
+                coin: HoldingMergeAppendPayload {
+                    name: holding.name,
+                    symbol: holding.symbol,
+                    market_data_id: holding.market_data_id,
+                    coin_gecko_id: holding.coin_gecko_id,
+                    chain_name: holding.chain_name,
+                    token_standard: holding.token_standard,
+                    contract_address: holding.contract_address,
+                    amount: holding.amount,
+                    mark,
+                },
+            });
+        }
+    }
+    actions
 }
 
 pub fn plan_resolve_derived_or_stored_address(

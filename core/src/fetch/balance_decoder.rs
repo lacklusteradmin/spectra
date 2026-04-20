@@ -1,65 +1,13 @@
-// Lightweight JSON balance decoders used by the Swift layer when it
-// receives backend JSON payloads it wants to interpret without owning a
-// decoder. Mirrors the old Swift `RustBalanceDecoder` enum and the
-// NEAR history-response parser that previously lived in ChainTypes.swift.
+// NEAR history response parser (previously NearBalanceService.parseHistoryResponse).
+// The old `balance_decoder_*_field` JSON peekers that used to live here were
+// removed after `fetch_balance` became Rust-internal — the Swift layer now
+// receives typed balance records and no longer needs generic JSON field
+// extraction helpers.
 
 use serde_json::Value;
 
-fn parse_object(json: &str) -> Option<serde_json::Map<String, Value>> {
-    let v: Value = serde_json::from_str(json).ok()?;
-    v.as_object().cloned()
-}
-
-fn field_i64(obj: &serde_json::Map<String, Value>, field: &str) -> Option<i64> {
-    let v = obj.get(field)?;
-    if let Some(n) = v.as_i64() {
-        return Some(n);
-    }
-    if let Some(s) = v.as_str() {
-        return s.parse::<i64>().ok();
-    }
-    if let Some(f) = v.as_f64() {
-        if f.is_finite() {
-            return Some(f as i64);
-        }
-    }
-    None
-}
-
-fn field_f64(obj: &serde_json::Map<String, Value>, field: &str) -> Option<f64> {
-    let v = obj.get(field)?;
-    if let Some(f) = v.as_f64() {
-        return Some(f);
-    }
-    if let Some(s) = v.as_str() {
-        return s.parse::<f64>().ok();
-    }
-    None
-}
-
-#[uniffi::export]
-pub fn balance_decoder_i64_field(field: String, json: String) -> Option<i64> {
-    let obj = parse_object(&json)?;
-    field_i64(&obj, &field)
-}
-
-#[uniffi::export]
-pub fn balance_decoder_f64_field(field: String, json: String) -> Option<f64> {
-    let obj = parse_object(&json)?;
-    field_f64(&obj, &field)
-}
-
-#[uniffi::export]
-pub fn balance_decoder_first_element_string_field(field: String, json: String) -> Option<String> {
-    let v: Value = serde_json::from_str(&json).ok()?;
-    let arr = v.as_array()?;
-    let obj = arr.first()?.as_object()?;
-    obj.get(&field)?.as_str().map(|s| s.to_string())
-}
-
-
 // ---------------------------------------------------------------
-// NEAR history response parser (previously NearBalanceService.parseHistoryResponse)
+// NEAR history response parser
 // ---------------------------------------------------------------
 
 #[derive(Debug, Clone, uniffi::Record)]

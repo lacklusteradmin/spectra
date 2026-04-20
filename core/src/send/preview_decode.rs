@@ -46,7 +46,6 @@ pub struct JsonField {
     pub value: JsonFieldValue,
 }
 
-#[uniffi::export]
 pub fn build_json_object(fields: Vec<JsonField>) -> String {
     let mut out = String::from("{");
     for (i, f) in fields.iter().enumerate() {
@@ -71,7 +70,6 @@ pub fn build_json_object(fields: Vec<JsonField>) -> String {
     out
 }
 
-#[uniffi::export]
 pub fn build_utxo_sat_send_payload(
     from_address: String,
     to_address: String,
@@ -92,7 +90,6 @@ pub fn build_utxo_sat_send_payload(
 /// Extract a top-level JSON field as a string. Numeric/bool values are stringified.
 /// Missing keys or invalid JSON return "". Callers use this for loose scraping of
 /// send-result JSON where the value may be a hash, signature, index, digest, etc.
-#[uniffi::export]
 pub fn extract_json_string_field(json: String, key: String) -> String {
     let Ok(v) = serde_json::from_str::<serde_json::Value>(&json) else {
         return String::new();
@@ -107,7 +104,6 @@ pub fn extract_json_string_field(json: String, key: String) -> String {
 
 /// Convert a decimal amount to its smallest-unit string representation.
 /// Used for ETH→wei, NEAR→yocto, DOT→planck, etc. String-based to avoid f64 rounding.
-#[uniffi::export]
 pub fn amount_to_raw_units_string(amount: f64, decimals: u32) -> String {
     if !amount.is_finite() || amount < 0.0 {
         return "0".to_string();
@@ -158,7 +154,6 @@ pub struct UtxoSendPreview {
     pub max_sendable_sat: u64,
 }
 
-#[uniffi::export]
 pub fn decode_utxo_send_preview(json: String) -> Option<UtxoSendPreview> {
     let v: serde_json::Value = serde_json::from_str(&json).ok()?;
     let o = v.as_object()?;
@@ -195,7 +190,6 @@ pub struct BitcoinHdSendPreview {
     pub max_sendable: f64,
 }
 
-#[uniffi::export]
 pub fn decode_bitcoin_hd_send_preview(
     balance_json: String,
     fee_json: String,
@@ -238,7 +232,6 @@ pub struct DogecoinSendPreviewDecoded {
     pub fee_rate_description: String,
 }
 
-#[uniffi::export]
 pub fn decode_dogecoin_send_preview(
     json: String,
     requested_amount: f64,
@@ -276,7 +269,6 @@ pub struct TronSendPreviewDecoded {
     pub fee_rate_description: Option<String>,
 }
 
-#[uniffi::export]
 pub fn decode_tron_send_preview(json: String) -> Option<TronSendPreviewDecoded> {
     let v: serde_json::Value = serde_json::from_str(&json).ok()?;
     let o = v.as_object()?;
@@ -308,7 +300,6 @@ pub struct SimpleSendPreview {
     pub max_sendable: f64,
 }
 
-#[uniffi::export]
 pub fn decode_simple_send_preview(json: String) -> SimpleSendPreview {
     let Ok(v) = serde_json::from_str::<serde_json::Value>(&json) else {
         return SimpleSendPreview::default();
@@ -531,7 +522,6 @@ pub fn build_simple_chain_preview(json: String, chain: SimpleChain) -> SimpleCha
     }
 }
 
-#[uniffi::export]
 pub fn simple_chain_default_fee_raw(chain: SimpleChain) -> String {
     match chain {
         SimpleChain::Solana => "5000".into(),        // lamports

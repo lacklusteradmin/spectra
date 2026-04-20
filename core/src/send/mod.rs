@@ -2,7 +2,6 @@ pub mod amount_input;
 pub mod ethereum;
 pub mod flow;
 pub mod flow_helpers;
-pub mod machine;
 pub mod payload;
 pub mod preview_decode;
 pub mod transfer;

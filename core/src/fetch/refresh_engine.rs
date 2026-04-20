@@ -66,20 +66,6 @@ impl BalanceRefreshEngine {
         *self.inner.observer.write().unwrap() = None;
     }
 
-    /// Replace the registered wallet-address entries.
-    ///
-    /// `entries_json` must be a JSON array of objects with fields:
-    ///   `chain_id` (u32), `wallet_id` (String), `address` (String).
-    ///
-    /// Call this whenever wallets are added, removed, or their selected chain
-    /// changes so the engine refreshes the correct set.
-    pub fn set_entries(&self, entries_json: String) {
-        match serde_json::from_str::<Vec<RefreshEntry>>(&entries_json) {
-            Ok(entries) => *self.inner.entries.write().unwrap() = entries,
-            Err(e) => eprintln!("BalanceRefreshEngine.set_entries: bad JSON — {e}"),
-        }
-    }
-
     pub fn set_entries_typed(&self, entries: Vec<RefreshEntry>) {
         *self.inner.entries.write().unwrap() = entries;
     }
