@@ -228,24 +228,6 @@ fn format_smallest_unit_decimal(amount: u128, decimals: u32) -> String {
 #[uniffi::export(async_runtime = "tokio")]
 impl WalletService {
     #[uniffi::constructor]
-    pub fn new(endpoints_json: String) -> Result<Arc<Self>, SpectraBridgeError> {
-        let raw: Vec<ChainEndpoints> = serde_json::from_str(&endpoints_json)?;
-        Ok(Arc::new(Self {
-            endpoints: Arc::new(RwLock::new(EndpointIndex::from_list(raw))),
-            history_pagination: Arc::new(HistoryPaginationStore::new()),
-            secret_store: Arc::new(std::sync::RwLock::new(None)),
-            wallet_state: Arc::new(RwLock::new(CoreAppState::default())),
-        }))
-    }
-
-    pub async fn update_endpoints(&self, endpoints_json: String) -> Result<(), SpectraBridgeError> {
-        let raw: Vec<ChainEndpoints> = serde_json::from_str(&endpoints_json)?;
-        let mut guard = self.endpoints.write().await;
-        *guard = EndpointIndex::from_list(raw);
-        Ok(())
-    }
-
-    #[uniffi::constructor]
     pub fn new_typed(endpoints: Vec<ChainEndpoints>) -> Result<Arc<Self>, SpectraBridgeError> {
         Ok(Arc::new(Self {
             endpoints: Arc::new(RwLock::new(EndpointIndex::from_list(endpoints))),
@@ -1112,89 +1094,6 @@ impl WalletService {
     // Token balance (ERC-20 / SPL / NEP-141 / TRC-20 / Stellar assets)
     // ----------------------------------------------------------------
 
-    /// Fetch a single token balance for the given chain.
-    ///
-    /// `params_json` schema (chain-specific):
-    ///   - EVM chains (1,11,12,13,20,21): `{"contract": "0x…", "holder": "0x…"}`
-    ///   - Tron (7): `{"contract": "T…", "holder": "T…"}`
-    ///   - Stellar (8): `{"holder": "G…", "asset_code": "USDC", "asset_issuer": "G…"}`
-    ///   - NEAR (17): `{"contract": "token.near", "holder": "account.near"}`
-    ///   - Solana (2): `{"mint": "<base58>", "owner": "<base58>"}`
-    ///
-    /// Returns a JSON string Swift can decode directly.
-    pub async fn fetch_token_balance(
-        &self,
-        chain_id: u32,
-        params_json: String,
-    ) -> Result<String, SpectraBridgeError> {
-        let params: serde_json::Value = serde_json::from_str(&params_json)?;
-        let chain = Chain::from_id(chain_id)
-            .ok_or_else(|| SpectraBridgeError::from(format!("fetch_token_balance: unsupported chain_id: {chain_id}")))?;
-        let endpoints = self.endpoints_for(chain.id()).await;
-
-        match chain {
-            c if c.is_evm() => {
-                let contract = str_field(&params, "contract")?;
-                let holder = str_field(&params, "holder")?;
-                let client = EvmClient::new(endpoints, c.evm_chain_id());
-                let bal = client
-                    .fetch_erc20_balance(contract, holder)
-                    .await
-                    .map_err(SpectraBridgeError::from)?;
-                Ok(serde_json::to_string(&bal)?)
-            }
-            Chain::Tron => {
-                // Tron — TRC-20 tokens. Addresses are base58 (`T…`).
-                let contract = str_field(&params, "contract")?;
-                let holder = str_field(&params, "holder")?;
-                let client = TronClient::new(endpoints);
-                let bal = client
-                    .fetch_trc20_balance(contract, holder)
-                    .await
-                    .map_err(SpectraBridgeError::from)?;
-                Ok(serde_json::to_string(&bal)?)
-            }
-            Chain::Stellar => {
-                // Stellar — custom issued assets (credit_alphanum4/12).
-                let holder = str_field(&params, "holder")?;
-                let asset_code = str_field(&params, "asset_code")?;
-                let asset_issuer = str_field(&params, "asset_issuer")?;
-                let client = StellarClient::new(endpoints);
-                let bal = client
-                    .fetch_asset_balance(holder, asset_code, asset_issuer)
-                    .await
-                    .map_err(SpectraBridgeError::from)?;
-                Ok(serde_json::to_string(&bal)?)
-            }
-            Chain::Near => {
-                // NEAR — NEP-141 fungible tokens.
-                let contract = str_field(&params, "contract")?;
-                let holder = str_field(&params, "holder")?;
-                let client = NearClient::new(endpoints);
-                let bal = client
-                    .fetch_ft_balance(contract, holder)
-                    .await
-                    .map_err(SpectraBridgeError::from)?;
-                Ok(serde_json::to_string(&bal)?)
-            }
-            Chain::Solana => {
-                // Solana — SPL tokens. We deliberately use "mint"/"owner"
-                // field names to mirror Solana RPC terminology.
-                let mint = str_field(&params, "mint")?;
-                let owner = str_field(&params, "owner")?;
-                let client = SolanaClient::new(endpoints);
-                let bal = client
-                    .fetch_spl_balance(mint, owner)
-                    .await
-                    .map_err(SpectraBridgeError::from)?;
-                Ok(serde_json::to_string(&bal)?)
-            }
-            c => Err(SpectraBridgeError::from(format!(
-                "fetch_token_balance: unsupported chain: {c:?}"
-            ))),
-        }
-    }
-
     /// Fetch balances for a list of tokens in one call.
     ///
     /// For Solana `contract` is the mint address; for Sui / Aptos it is the
@@ -1766,24 +1665,6 @@ impl WalletService {
     ///   - `"m/44'/0'/0'"` → legacy P2PKH (BIP44)
     ///
     /// `passphrase` is the optional BIP39 passphrase — pass `""` for none.
-    ///
-    /// Returns a JSON object `{"xpub": "xpub…"}`.
-    pub fn derive_bitcoin_account_xpub(
-        &self,
-        mnemonic_phrase: String,
-        passphrase: String,
-        account_path: String,
-    ) -> Result<String, SpectraBridgeError> {
-        let xpub = crate::derivation::utxo_hd::derive_account_xpub(
-            &mnemonic_phrase,
-            &passphrase,
-            &account_path,
-        )
-        .map_err(SpectraBridgeError::from)?;
-        Ok(json!({ "xpub": xpub }).to_string())
-    }
-
-    /// Typed variant — returns the xpub string directly.
     pub fn derive_bitcoin_account_xpub_typed(
         &self,
         mnemonic_phrase: String,
@@ -1807,24 +1688,6 @@ impl WalletService {
     ///
     /// - `change` — 0 for external/receive, 1 for internal/change.
     /// - `start_index`, `count` — [start, start+count) scan window.
-    ///
-    /// Returns a JSON array of `{index, change, address}` objects.
-    pub async fn derive_bitcoin_hd_addresses(
-        &self,
-        xpub: String,
-        change: u32,
-        start_index: u32,
-        count: u32,
-    ) -> Result<String, SpectraBridgeError> {
-        let children =
-            crate::derivation::utxo_hd::derive_children(&xpub, change, start_index, count)
-                .map_err(SpectraBridgeError::from)?;
-        Ok(serde_json::to_string(&children)?)
-    }
-
-    /// Typed wrapper: return just the derived addresses. Swift callers that
-    /// previously parsed the JSON array to pull out `address` now get them
-    /// directly.
     pub async fn derive_bitcoin_hd_address_strings(
         &self,
         xpub: String,
@@ -1861,29 +1724,8 @@ impl WalletService {
 
     /// Return the first address on the `change` leg (0 = receive, 1 = change)
     /// that has zero confirmed/unconfirmed history, scanning up to
-    /// `gap_limit` candidates. Returns a JSON object or `null` if exhausted.
-    pub async fn fetch_bitcoin_next_unused_address(
-        &self,
-        xpub: String,
-        change: u32,
-        gap_limit: u32,
-    ) -> Result<String, SpectraBridgeError> {
-        let endpoints = self.endpoints_for(0).await;
-        let client = BitcoinClient::new(HttpClient::shared(), endpoints, "mainnet");
-        let next = crate::derivation::utxo_hd::fetch_next_unused_address(
-            &client,
-            &xpub,
-            change,
-            gap_limit,
-        )
-        .await
-        .map_err(SpectraBridgeError::from)?;
-        Ok(serde_json::to_string(&next)?)
-    }
-
-    /// Typed variant of `fetch_bitcoin_next_unused_address` — returns just
-    /// the derived address string, or `None` if every candidate in the
-    /// `gap_limit` window had activity.
+    /// `gap_limit` candidates. Returns the derived address string, or
+    /// `None` if every candidate in the `gap_limit` window had activity.
     pub async fn fetch_bitcoin_next_unused_address_typed(
         &self,
         xpub: String,
@@ -1910,47 +1752,8 @@ impl WalletService {
     /// Fetch USD spot prices for the supplied coins from `provider`.
     ///
     /// `provider` is the Swift-side display name (e.g. "CoinGecko",
-    /// "Binance Public API"). `coins_json` is a JSON array of
-    /// `{holdingKey, symbol, coinGeckoId}` objects — Swift hands us
-    /// exactly what it currently hands `LivePriceService.fetchQuotes`.
-    /// `api_key` is only consulted by CoinGecko; pass "" for others.
-    ///
-    /// Returns a JSON map keyed by `holdingKey` with USD prices as
-    /// numeric values. Missing coins are simply absent from the map.
-    pub async fn fetch_prices(
-        &self,
-        provider: String,
-        coins_json: String,
-        api_key: String,
-    ) -> Result<String, SpectraBridgeError> {
-        let coins: Vec<crate::price::PriceRequestCoin> =
-            serde_json::from_str(&coins_json)?;
-        let provider = crate::price::PriceProvider::from_str(&provider)
-            .ok_or_else(|| format!("unknown price provider: {provider}"))?;
-        let quotes = crate::price::fetch_prices(provider, &coins, &api_key)
-            .await
-            .map_err(SpectraBridgeError::from)?;
-        Ok(serde_json::to_string(&quotes)?)
-    }
-
-    /// Fetch USD-relative fiat rates from `provider`. `currencies_json`
-    /// is a JSON array of ISO codes (e.g. `["EUR","JPY"]`). The returned
-    /// JSON map always includes `"USD": 1.0`.
-    pub async fn fetch_fiat_rates(
-        &self,
-        provider: String,
-        currencies_json: String,
-    ) -> Result<String, SpectraBridgeError> {
-        let currencies: Vec<String> = serde_json::from_str(&currencies_json)?;
-        let provider = crate::price::FiatRateProvider::from_str(&provider)
-            .ok_or_else(|| format!("unknown fiat rate provider: {provider}"))?;
-        let rates = crate::price::fetch_fiat_rates(provider, &currencies)
-            .await
-            .map_err(SpectraBridgeError::from)?;
-        Ok(serde_json::to_string(&rates)?)
-    }
-
-    /// Typed variant — accepts typed coin records and returns typed map directly.
+    /// "Binance Public API"). `coins` are the tracked tokens. `api_key`
+    /// is only consulted by CoinGecko; pass "" for others.
     pub async fn fetch_prices_typed(
         &self,
         provider: String,
@@ -2184,23 +1987,7 @@ impl WalletService {
     // ----------------------------------------------------------------
 
     /// Resolve an ENS name to an Ethereum address via the ENS Ideas public API.
-    ///
-    /// Returns `{"address": "0x…"}` when resolved, `{"address": ""}` when the
-    /// name has no registered address, or an error on network failure.
-    pub async fn resolve_ens_name(
-        &self,
-        name: String,
-    ) -> Result<String, SpectraBridgeError> {
-        let eps = self.endpoints_for(1).await; // ENS is Ethereum mainnet
-        let client = EvmClient::new(eps, 1);
-        let address = client
-            .resolve_ens(&name)
-            .await
-            .map_err(SpectraBridgeError::from)?;
-        Ok(json!({ "address": address.unwrap_or_default() }).to_string())
-    }
-
-    /// Typed variant — returns the resolved address directly (empty string if not found).
+    /// Returns the resolved address, or `None` if the name has no registered address.
     pub async fn resolve_ens_name_typed(
         &self,
         name: String,
@@ -2218,27 +2005,7 @@ impl WalletService {
     // EVM utilities (contract detection, nonce lookup)
     // ----------------------------------------------------------------
 
-    /// Fetch the bytecode at `address` on the given EVM chain.
-    /// Returns `{"code": "0x…"}`. "0x" / "0x0" means EOA (no contract code).
-    pub async fn fetch_evm_code(
-        &self,
-        chain_id: u32,
-        address: String,
-    ) -> Result<String, SpectraBridgeError> {
-        let chain = Chain::from_id(chain_id).filter(|c| c.is_evm()).ok_or_else(|| {
-            SpectraBridgeError::from(format!(
-                "fetch_evm_code: unsupported chain_id: {chain_id}"
-            ))
-        })?;
-        let eps = self.endpoints_for(chain.id()).await;
-        let client = EvmClient::new(eps, chain.evm_chain_id());
-        let code = client.fetch_code(&address).await.map_err(SpectraBridgeError::from)?;
-        Ok(json!({ "code": code }).to_string())
-    }
-
-    /// Typed wrapper: returns true iff `address` has deployed bytecode on the
-    /// given EVM chain. Combines `fetch_evm_code` with the
-    /// `core_evm_has_contract_code` predicate so Swift never sees the JSON.
+    /// Returns true iff `address` has deployed bytecode on the given EVM chain.
     pub async fn fetch_evm_has_contract_code(
         &self,
         chain_id: u32,
@@ -2256,24 +2023,7 @@ impl WalletService {
     }
 
     /// Fetch the nonce of a submitted transaction by hash on an EVM chain.
-    /// Returns `{"nonce": <u64>}`. Used to pre-fill the replacement-tx nonce field.
-    pub async fn fetch_evm_tx_nonce(
-        &self,
-        chain_id: u32,
-        tx_hash: String,
-    ) -> Result<String, SpectraBridgeError> {
-        let chain = Chain::from_id(chain_id).filter(|c| c.is_evm()).ok_or_else(|| {
-            SpectraBridgeError::from(format!(
-                "fetch_evm_tx_nonce: unsupported chain_id: {chain_id}"
-            ))
-        })?;
-        let eps = self.endpoints_for(chain.id()).await;
-        let client = EvmClient::new(eps, chain.evm_chain_id());
-        let nonce = client.fetch_tx_nonce(&tx_hash).await.map_err(SpectraBridgeError::from)?;
-        Ok(json!({ "nonce": nonce }).to_string())
-    }
-
-    /// Typed variant — returns the nonce as u64 directly.
+    /// Used to pre-fill the replacement-tx nonce field.
     pub async fn fetch_evm_tx_nonce_typed(
         &self,
         chain_id: u32,
@@ -2315,7 +2065,7 @@ impl WalletService {
     /// supplied rate is used directly.
     ///
     /// Supported chain IDs: 0 (BTC), 5 (LTC), 6 (BCH), 22 (BSV).
-    pub async fn fetch_utxo_fee_preview(
+    pub(crate) async fn fetch_utxo_fee_preview(
         &self,
         chain_id: u32,
         address: String,
@@ -2383,7 +2133,7 @@ impl WalletService {
     ///   - BTC/LTC/BCH/BSV/DOGE/EVM: raw transaction hex string
     ///   - Solana: base64-encoded signed transaction bytes
     ///   - Tron: signed transaction JSON string (full broadcasttransaction body)
-    pub async fn broadcast_raw(
+    pub(crate) async fn broadcast_raw(
         &self,
         chain_id: u32,
         payload: String,
@@ -2703,25 +2453,7 @@ impl WalletService {
     // Tron send preview (fee + balance for TRX / TRC-20)
     // ----------------------------------------------------------------
 
-    /// Compute a Tron send preview for TRX or TRC-20 sends.
-    ///
-    /// For TRX native sends: fetches the TRX balance and applies a conservative
-    /// static 1 TRX fee (typical plain-transfer bandwidth cost).
-    ///
-    /// For TRC-20 sends: additionally fetches the token balance via `fetch_trc20_balance`.
-    /// Uses a static ~15 TRX fee (typical USDT transfer energy cost).
-    ///
-    /// Returns:
-    /// ```json
-    /// {
-    ///   "estimated_fee_trx": 1.0,
-    ///   "fee_limit_sun": 0,
-    ///   "spendable_balance": 99.0,
-    ///   "max_sendable": 99.0,
-    ///   "fee_rate_description": "Static bandwidth estimate"
-    /// }
-    /// ```
-    pub async fn fetch_tron_send_preview(
+    pub(crate) async fn fetch_tron_send_preview(
         &self,
         address: String,
         symbol: String,
@@ -3094,24 +2826,6 @@ impl WalletService {
     }
 
     /// Upsert a single owned address record.
-    /// `record_json` encodes `OwnedAddressRecord` (walletId, chainName, address, derivationPath, branch, branchIndex).
-    pub async fn save_owned_address(
-        &self,
-        db_path: String,
-        record_json: String,
-    ) -> Result<(), SpectraBridgeError> {
-        tokio::task::spawn_blocking(move || {
-            let record: crate::wallet_db::OwnedAddressRecord =
-                serde_json::from_str(&record_json)
-                    .map_err(|e| format!("save_owned_address parse: {e}"))?;
-            crate::wallet_db::address_save(&db_path, &record)
-        })
-        .await
-        .map_err(|e| SpectraBridgeError::from(format!("spawn_blocking: {e}")))?
-        .map_err(SpectraBridgeError::from)
-    }
-
-    /// Upsert a single owned address record using typed record (no JSON intermediate).
     pub async fn save_owned_address_typed(
         &self,
         db_path: String,
@@ -3119,40 +2833,6 @@ impl WalletService {
     ) -> Result<(), SpectraBridgeError> {
         tokio::task::spawn_blocking(move || {
             crate::wallet_db::address_save(&db_path, &record)
-        })
-        .await
-        .map_err(|e| SpectraBridgeError::from(format!("spawn_blocking: {e}")))?
-        .map_err(SpectraBridgeError::from)
-    }
-
-    /// Load all owned addresses for a (wallet, chain) pair.
-    /// Returns a JSON array of `OwnedAddressRecord` objects.
-    pub async fn load_owned_addresses(
-        &self,
-        db_path: String,
-        wallet_id: String,
-        chain_name: String,
-    ) -> Result<String, SpectraBridgeError> {
-        tokio::task::spawn_blocking(move || {
-            let records = crate::wallet_db::address_load_all(&db_path, &wallet_id, &chain_name)?;
-            serde_json::to_string(&records)
-                .map_err(|e| format!("load_owned_addresses serialize: {e}"))
-        })
-        .await
-        .map_err(|e| SpectraBridgeError::from(format!("spawn_blocking: {e}")))?
-        .map_err(SpectraBridgeError::from)
-    }
-
-    /// Bulk-load ALL owned address records across all wallets and chains.
-    /// Returns a JSON array; used at app startup to restore the in-memory address maps.
-    pub async fn load_all_owned_addresses(
-        &self,
-        db_path: String,
-    ) -> Result<String, SpectraBridgeError> {
-        tokio::task::spawn_blocking(move || {
-            let records = crate::wallet_db::address_load_all_chains(&db_path)?;
-            serde_json::to_string(&records)
-                .map_err(|e| format!("load_all_owned_addresses serialize: {e}"))
         })
         .await
         .map_err(|e| SpectraBridgeError::from(format!("spawn_blocking: {e}")))?
@@ -3425,37 +3105,13 @@ impl WalletService {
     }
 
     // ----------------------------------------------------------------
-    // Token catalog
-    // ----------------------------------------------------------------
-
-    /// Return the built-in token catalog for the given chain as a JSON array.
-    /// Pass `chain_id = 4294967295` (u32::MAX) to return all chains.
-    pub async fn list_builtin_tokens(
-        &self,
-        chain_id: u32,
-    ) -> Result<String, SpectraBridgeError> {
-        Ok(tokens::list_tokens_json(chain_id))
-    }
-
-    // ----------------------------------------------------------------
     // UTXO tx status
     // ----------------------------------------------------------------
 
     /// Fetch confirmation status for a UTXO chain transaction.
-    /// Returns JSON `{"txid","confirmed","block_height","block_time"}`.
+    /// Returns a typed record so Swift can read `confirmed`/`block_height`/
+    /// `confirmations` fields without bouncing through JSON.
     /// Supported chain_ids: 0 (BTC), 3 (DOGE), 5 (LTC), 6 (BCH), 22 (BSV).
-    pub async fn fetch_utxo_tx_status(
-        &self,
-        chain_id: u32,
-        txid: String,
-    ) -> Result<String, SpectraBridgeError> {
-        let status = self.fetch_utxo_tx_status_typed(chain_id, txid).await?;
-        Ok(serde_json::to_string(&status)?)
-    }
-
-    /// Typed variant of `fetch_utxo_tx_status` — returns the decoded record
-    /// directly so Swift can read the `confirmed`/`block_height`/`confirmations`
-    /// fields without bouncing through JSON.
     pub async fn fetch_utxo_tx_status_typed(
         &self,
         chain_id: u32,
@@ -3497,12 +3153,12 @@ impl WalletService {
 // Token catalog (synchronous free function — no network I/O)
 // ----------------------------------------------------------------
 
-/// Return the built-in token catalog as a JSON array string.
+/// Return the built-in token catalog as a typed list.
 /// Pass `chain_id = 4294967295` (u32::MAX) to get all chains.
 /// This is a synchronous free function so Swift can call it from a `static let`.
 #[uniffi::export]
-pub fn list_builtin_tokens_json(chain_id: u32) -> String {
-    tokens::list_tokens_json(chain_id)
+pub fn list_builtin_tokens(chain_id: u32) -> Vec<tokens::TokenEntry> {
+    tokens::list_tokens(chain_id)
 }
 
 // ----------------------------------------------------------------

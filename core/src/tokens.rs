@@ -1,8 +1,8 @@
 //! Built-in token registry.
 //!
 //! The source of truth is `Core/tokens.toml`, embedded at compile time.
-//! Call [`list_tokens_json`] to get a JSON array of token entries for a given
-//! chain_id (or all chains when `chain_id == u32::MAX`).
+//! Call [`list_tokens`] to get typed token entries for a given chain_id
+//! (or all chains when `chain_id == u32::MAX`).
 
 use std::sync::LazyLock;
 use serde::{Deserialize, Serialize};
@@ -39,7 +39,7 @@ struct TomlToken {
 // Public serialized shape (mirrors ChainTokenRegistryEntry in Swift)
 // ----------------------------------------------------------------
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, uniffi::Record)]
 pub struct TokenEntry {
     pub chain:           String,
     pub chain_id:        u32,
@@ -86,34 +86,13 @@ static CATALOG: LazyLock<Vec<TokenEntry>> = LazyLock::new(|| {
 // Public API
 // ----------------------------------------------------------------
 
-/// Return all token entries as a JSON array.
-/// Pass `chain_id = u32::MAX` to get every chain.
-/// Results are cached — the catalog is immutable after init.
-pub fn list_tokens_json(chain_id: u32) -> String {
-    use std::collections::HashMap;
-    use std::sync::RwLock;
-
-    static CACHE: std::sync::LazyLock<RwLock<HashMap<u32, String>>> =
-        std::sync::LazyLock::new(|| RwLock::new(HashMap::new()));
-
-    // Fast path: already cached.
-    if let Ok(map) = CACHE.read() {
-        if let Some(cached) = map.get(&chain_id) {
-            return cached.clone();
-        }
-    }
-
-    // Slow path: serialize once, cache.
-    let entries: Vec<&TokenEntry> = if chain_id == u32::MAX {
-        CATALOG.iter().collect()
+/// Return token entries for `chain_id`, or all chains when `chain_id == u32::MAX`.
+pub fn list_tokens(chain_id: u32) -> Vec<TokenEntry> {
+    if chain_id == u32::MAX {
+        CATALOG.clone()
     } else {
-        CATALOG.iter().filter(|t| t.chain_id == chain_id).collect()
-    };
-    let json = serde_json::to_string(&entries).unwrap_or_else(|_| "[]".to_string());
-    if let Ok(mut map) = CACHE.write() {
-        map.insert(chain_id, json.clone());
+        CATALOG.iter().filter(|t| t.chain_id == chain_id).cloned().collect()
     }
-    json
 }
 
 /// Return a reference to the static catalog slice.
