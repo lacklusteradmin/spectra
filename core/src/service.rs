@@ -799,11 +799,13 @@ impl WalletService {
     ) -> Result<crate::send::SendExecutionResult, SpectraBridgeError> {
         // 1. Derive key material (or use provided private key).
         let (priv_hex, pub_hex) = if let Some(ref seed_phrase) = request.seed_phrase {
-            let (_addr, priv_h, pub_h) = crate::derivation::derive_key_material_for_chain(
-                seed_phrase,
-                &request.chain_name,
-                &request.derivation_path,
-            )?;
+            let (_addr, priv_h, pub_h) =
+                crate::derivation::derive_key_material_for_chain_with_overrides(
+                    seed_phrase,
+                    &request.chain_name,
+                    &request.derivation_path,
+                    request.derivation_overrides.as_ref(),
+                )?;
             (priv_h, Some(pub_h))
         } else if let Some(ref pk) = request.private_key_hex {
             let normalized = if pk.starts_with("0x") { pk[2..].to_string() } else { pk.clone() };

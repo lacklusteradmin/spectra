@@ -1,0 +1,261 @@
+# Derivation presets — single source of truth for per-chain defaults.
+# Parsed by core/src/derivation/presets.rs at startup and embedded at
+# compile time via `include_str!`. Runtime dispatch in
+# core/src/derivation/runtime.rs reads from this file; there are no longer
+# hardcoded match statements for chain curve / algorithm / address defaults.
+#
+# Fields:
+#   name                  canonical display name (used by chain_defaults_from_name)
+#   chain_id              numeric id matching the CHAIN_* constants in runtime.rs
+#   aliases               optional extra display names that reuse this preset
+#   curve                 secp256k1 | ed25519 | sr25519
+#   derivation_algorithm  bip32_secp256k1 | slip10_ed25519 | direct_seed_ed25519
+#                         | ton_mnemonic | bip32_ed25519_icarus | substrate_bip39
+#                         | monero_bip39
+#   address_algorithm     bitcoin | evm | solana | near_hex | ton_raw_account_id
+#                         | cardano_shelley_enterprise | ss58 | monero_main
+#                         | ton_v4r2 | litecoin | dogecoin | bitcoin_cash_legacy
+#                         | bitcoin_sv_legacy | tron_base58_check
+#                         | xrp_base58_check | stellar_strkey | sui_keccak
+#                         | aptos_keccak | icp_principal
+#   public_key_format     compressed | uncompressed | x_only | raw
+#   script_type           (optional) p2pkh | p2sh_p2wpkh | p2wpkh | p2tr | account
+#                         Bitcoin omits this; the script type is inferred from
+#                         the derivation path's purpose level (44/49/84/86).
+#   networks              list of mainnet | testnet | testnet4 | signet
+
+# ── UTXO / secp256k1 ────────────────────────────────────────────────────
+
+[[chains]]
+name = "Bitcoin"
+chain_id = 0
+curve = "secp256k1"
+derivation_algorithm = "bip32_secp256k1"
+address_algorithm = "bitcoin"
+public_key_format = "compressed"
+networks = ["mainnet", "testnet", "testnet4", "signet"]
+
+[[chains]]
+name = "Bitcoin Cash"
+chain_id = 3
+curve = "secp256k1"
+derivation_algorithm = "bip32_secp256k1"
+address_algorithm = "bitcoin_cash_legacy"
+public_key_format = "compressed"
+script_type = "p2pkh"
+networks = ["mainnet"]
+
+[[chains]]
+name = "Bitcoin SV"
+chain_id = 4
+curve = "secp256k1"
+derivation_algorithm = "bip32_secp256k1"
+address_algorithm = "bitcoin_sv_legacy"
+public_key_format = "compressed"
+script_type = "p2pkh"
+networks = ["mainnet"]
+
+[[chains]]
+name = "Litecoin"
+chain_id = 5
+curve = "secp256k1"
+derivation_algorithm = "bip32_secp256k1"
+address_algorithm = "litecoin"
+public_key_format = "compressed"
+script_type = "p2pkh"
+networks = ["mainnet"]
+
+[[chains]]
+name = "Dogecoin"
+chain_id = 6
+curve = "secp256k1"
+derivation_algorithm = "bip32_secp256k1"
+address_algorithm = "dogecoin"
+public_key_format = "compressed"
+script_type = "p2pkh"
+networks = ["mainnet", "testnet"]
+
+# ── EVM / secp256k1 ─────────────────────────────────────────────────────
+
+[[chains]]
+name = "Ethereum"
+chain_id = 1
+aliases = ["BNB Chain", "Base"]
+curve = "secp256k1"
+derivation_algorithm = "bip32_secp256k1"
+address_algorithm = "evm"
+public_key_format = "uncompressed"
+script_type = "account"
+networks = ["mainnet"]
+
+[[chains]]
+name = "Ethereum Classic"
+chain_id = 7
+curve = "secp256k1"
+derivation_algorithm = "bip32_secp256k1"
+address_algorithm = "evm"
+public_key_format = "uncompressed"
+script_type = "account"
+networks = ["mainnet"]
+
+[[chains]]
+name = "Arbitrum"
+chain_id = 8
+curve = "secp256k1"
+derivation_algorithm = "bip32_secp256k1"
+address_algorithm = "evm"
+public_key_format = "uncompressed"
+script_type = "account"
+networks = ["mainnet"]
+
+[[chains]]
+name = "Optimism"
+chain_id = 9
+curve = "secp256k1"
+derivation_algorithm = "bip32_secp256k1"
+address_algorithm = "evm"
+public_key_format = "uncompressed"
+script_type = "account"
+networks = ["mainnet"]
+
+[[chains]]
+name = "Avalanche"
+chain_id = 10
+curve = "secp256k1"
+derivation_algorithm = "bip32_secp256k1"
+address_algorithm = "evm"
+public_key_format = "uncompressed"
+script_type = "account"
+networks = ["mainnet"]
+
+[[chains]]
+name = "Hyperliquid"
+chain_id = 11
+curve = "secp256k1"
+derivation_algorithm = "bip32_secp256k1"
+address_algorithm = "evm"
+public_key_format = "uncompressed"
+script_type = "account"
+networks = ["mainnet"]
+
+[[chains]]
+name = "Tron"
+chain_id = 12
+curve = "secp256k1"
+derivation_algorithm = "bip32_secp256k1"
+address_algorithm = "tron_base58_check"
+public_key_format = "uncompressed"
+script_type = "account"
+networks = ["mainnet"]
+
+[[chains]]
+name = "XRP Ledger"
+chain_id = 14
+curve = "secp256k1"
+derivation_algorithm = "bip32_secp256k1"
+address_algorithm = "xrp_base58_check"
+public_key_format = "compressed"
+script_type = "p2pkh"
+networks = ["mainnet"]
+
+# ── Ed25519-family chains ───────────────────────────────────────────────
+
+[[chains]]
+name = "Solana"
+chain_id = 2
+curve = "ed25519"
+derivation_algorithm = "slip10_ed25519"
+address_algorithm = "solana"
+public_key_format = "raw"
+script_type = "account"
+networks = ["mainnet"]
+
+[[chains]]
+name = "Stellar"
+chain_id = 13
+curve = "ed25519"
+derivation_algorithm = "slip10_ed25519"
+address_algorithm = "stellar_strkey"
+public_key_format = "raw"
+script_type = "account"
+networks = ["mainnet"]
+
+[[chains]]
+name = "Cardano"
+chain_id = 15
+curve = "ed25519"
+derivation_algorithm = "bip32_ed25519_icarus"
+address_algorithm = "cardano_shelley_enterprise"
+public_key_format = "raw"
+script_type = "account"
+networks = ["mainnet"]
+
+[[chains]]
+name = "Sui"
+chain_id = 16
+curve = "ed25519"
+derivation_algorithm = "slip10_ed25519"
+address_algorithm = "sui_keccak"
+public_key_format = "raw"
+script_type = "account"
+networks = ["mainnet"]
+
+[[chains]]
+name = "Aptos"
+chain_id = 17
+curve = "ed25519"
+derivation_algorithm = "slip10_ed25519"
+address_algorithm = "aptos_keccak"
+public_key_format = "raw"
+script_type = "account"
+networks = ["mainnet"]
+
+[[chains]]
+name = "TON"
+chain_id = 18
+curve = "ed25519"
+derivation_algorithm = "ton_mnemonic"
+address_algorithm = "ton_v4r2"
+public_key_format = "raw"
+script_type = "account"
+networks = ["mainnet"]
+
+[[chains]]
+name = "Internet Computer"
+chain_id = 19
+curve = "ed25519"
+derivation_algorithm = "slip10_ed25519"
+address_algorithm = "icp_principal"
+public_key_format = "raw"
+script_type = "account"
+networks = ["mainnet"]
+
+[[chains]]
+name = "NEAR"
+chain_id = 20
+curve = "ed25519"
+derivation_algorithm = "direct_seed_ed25519"
+address_algorithm = "near_hex"
+public_key_format = "raw"
+script_type = "account"
+networks = ["mainnet"]
+
+[[chains]]
+name = "Polkadot"
+chain_id = 21
+curve = "sr25519"
+derivation_algorithm = "substrate_bip39"
+address_algorithm = "ss58"
+public_key_format = "raw"
+script_type = "account"
+networks = ["mainnet"]
+
+[[chains]]
+name = "Monero"
+chain_id = 22
+curve = "ed25519"
+derivation_algorithm = "monero_bip39"
+address_algorithm = "monero_main"
+public_key_format = "raw"
+script_type = "account"
+networks = ["mainnet", "testnet"]

@@ -23,81 +23,81 @@ const OUTPUT_ADDRESS: u32 = 1 << 0;
 const OUTPUT_PUBLIC_KEY: u32 = 1 << 1;
 const OUTPUT_PRIVATE_KEY: u32 = 1 << 2;
 
-const CHAIN_BITCOIN: u32 = 0;
-const CHAIN_ETHEREUM: u32 = 1;
-const CHAIN_SOLANA: u32 = 2;
-const CHAIN_BITCOIN_CASH: u32 = 3;
-const CHAIN_BITCOIN_SV: u32 = 4;
-const CHAIN_LITECOIN: u32 = 5;
-const CHAIN_DOGECOIN: u32 = 6;
-const CHAIN_ETHEREUM_CLASSIC: u32 = 7;
-const CHAIN_ARBITRUM: u32 = 8;
-const CHAIN_OPTIMISM: u32 = 9;
-const CHAIN_AVALANCHE: u32 = 10;
-const CHAIN_HYPERLIQUID: u32 = 11;
-const CHAIN_TRON: u32 = 12;
-const CHAIN_STELLAR: u32 = 13;
-const CHAIN_XRP: u32 = 14;
-const CHAIN_CARDANO: u32 = 15;
-const CHAIN_SUI: u32 = 16;
-const CHAIN_APTOS: u32 = 17;
-const CHAIN_TON: u32 = 18;
-const CHAIN_INTERNET_COMPUTER: u32 = 19;
-const CHAIN_NEAR: u32 = 20;
-const CHAIN_POLKADOT: u32 = 21;
-const CHAIN_MONERO: u32 = 22;
+pub(super) const CHAIN_BITCOIN: u32 = 0;
+pub(super) const CHAIN_ETHEREUM: u32 = 1;
+pub(super) const CHAIN_SOLANA: u32 = 2;
+pub(super) const CHAIN_BITCOIN_CASH: u32 = 3;
+pub(super) const CHAIN_BITCOIN_SV: u32 = 4;
+pub(super) const CHAIN_LITECOIN: u32 = 5;
+pub(super) const CHAIN_DOGECOIN: u32 = 6;
+pub(super) const CHAIN_ETHEREUM_CLASSIC: u32 = 7;
+pub(super) const CHAIN_ARBITRUM: u32 = 8;
+pub(super) const CHAIN_OPTIMISM: u32 = 9;
+pub(super) const CHAIN_AVALANCHE: u32 = 10;
+pub(super) const CHAIN_HYPERLIQUID: u32 = 11;
+pub(super) const CHAIN_TRON: u32 = 12;
+pub(super) const CHAIN_STELLAR: u32 = 13;
+pub(super) const CHAIN_XRP: u32 = 14;
+pub(super) const CHAIN_CARDANO: u32 = 15;
+pub(super) const CHAIN_SUI: u32 = 16;
+pub(super) const CHAIN_APTOS: u32 = 17;
+pub(super) const CHAIN_TON: u32 = 18;
+pub(super) const CHAIN_INTERNET_COMPUTER: u32 = 19;
+pub(super) const CHAIN_NEAR: u32 = 20;
+pub(super) const CHAIN_POLKADOT: u32 = 21;
+pub(super) const CHAIN_MONERO: u32 = 22;
 
-const NETWORK_MAINNET: u32 = 0;
-const NETWORK_TESTNET: u32 = 1;
-const NETWORK_TESTNET4: u32 = 2;
-const NETWORK_SIGNET: u32 = 3;
+pub(super) const NETWORK_MAINNET: u32 = 0;
+pub(super) const NETWORK_TESTNET: u32 = 1;
+pub(super) const NETWORK_TESTNET4: u32 = 2;
+pub(super) const NETWORK_SIGNET: u32 = 3;
 
-const CURVE_SECP256K1: u32 = 0;
-const CURVE_ED25519: u32 = 1;
-const CURVE_SR25519: u32 = 2;
+pub(super) const CURVE_SECP256K1: u32 = 0;
+pub(super) const CURVE_ED25519: u32 = 1;
+pub(super) const CURVE_SR25519: u32 = 2;
 
 const DERIVATION_AUTO: u32 = 0;
-const DERIVATION_BIP32_SECP256K1: u32 = 1;
-const DERIVATION_SLIP10_ED25519: u32 = 2;
-const DERIVATION_DIRECT_SEED_ED25519: u32 = 3;
-const DERIVATION_TON_MNEMONIC: u32 = 4;
-const DERIVATION_BIP32_ED25519_ICARUS: u32 = 5;
-const DERIVATION_SUBSTRATE_BIP39: u32 = 6;
-const DERIVATION_MONERO_BIP39: u32 = 7;
+pub(super) const DERIVATION_BIP32_SECP256K1: u32 = 1;
+pub(super) const DERIVATION_SLIP10_ED25519: u32 = 2;
+pub(super) const DERIVATION_DIRECT_SEED_ED25519: u32 = 3;
+pub(super) const DERIVATION_TON_MNEMONIC: u32 = 4;
+pub(super) const DERIVATION_BIP32_ED25519_ICARUS: u32 = 5;
+pub(super) const DERIVATION_SUBSTRATE_BIP39: u32 = 6;
+pub(super) const DERIVATION_MONERO_BIP39: u32 = 7;
 
 const ADDRESS_AUTO: u32 = 0;
-const ADDRESS_BITCOIN: u32 = 1;
-const ADDRESS_EVM: u32 = 2;
-const ADDRESS_SOLANA: u32 = 3;
-const ADDRESS_NEAR_HEX: u32 = 4;
-const ADDRESS_TON_RAW_ACCOUNT_ID: u32 = 5;
-const ADDRESS_CARDANO_SHELLEY_ENTERPRISE: u32 = 6;
-const ADDRESS_SS58: u32 = 7;
-const ADDRESS_MONERO_MAIN: u32 = 8;
-const ADDRESS_TON_V4R2: u32 = 9;
-const ADDRESS_LITECOIN: u32 = 10;
-const ADDRESS_DOGECOIN: u32 = 11;
-const ADDRESS_BITCOIN_CASH_LEGACY: u32 = 12;
-const ADDRESS_BITCOIN_SV_LEGACY: u32 = 13;
-const ADDRESS_TRON_BASE58_CHECK: u32 = 14;
-const ADDRESS_XRP_BASE58_CHECK: u32 = 15;
-const ADDRESS_STELLAR_STRKEY: u32 = 16;
-const ADDRESS_SUI_KECCAK: u32 = 17;
-const ADDRESS_APTOS_KECCAK: u32 = 18;
-const ADDRESS_ICP_PRINCIPAL: u32 = 19;
+pub(super) const ADDRESS_BITCOIN: u32 = 1;
+pub(super) const ADDRESS_EVM: u32 = 2;
+pub(super) const ADDRESS_SOLANA: u32 = 3;
+pub(super) const ADDRESS_NEAR_HEX: u32 = 4;
+pub(super) const ADDRESS_TON_RAW_ACCOUNT_ID: u32 = 5;
+pub(super) const ADDRESS_CARDANO_SHELLEY_ENTERPRISE: u32 = 6;
+pub(super) const ADDRESS_SS58: u32 = 7;
+pub(super) const ADDRESS_MONERO_MAIN: u32 = 8;
+pub(super) const ADDRESS_TON_V4R2: u32 = 9;
+pub(super) const ADDRESS_LITECOIN: u32 = 10;
+pub(super) const ADDRESS_DOGECOIN: u32 = 11;
+pub(super) const ADDRESS_BITCOIN_CASH_LEGACY: u32 = 12;
+pub(super) const ADDRESS_BITCOIN_SV_LEGACY: u32 = 13;
+pub(super) const ADDRESS_TRON_BASE58_CHECK: u32 = 14;
+pub(super) const ADDRESS_XRP_BASE58_CHECK: u32 = 15;
+pub(super) const ADDRESS_STELLAR_STRKEY: u32 = 16;
+pub(super) const ADDRESS_SUI_KECCAK: u32 = 17;
+pub(super) const ADDRESS_APTOS_KECCAK: u32 = 18;
+pub(super) const ADDRESS_ICP_PRINCIPAL: u32 = 19;
 
 const PUBLIC_KEY_AUTO: u32 = 0;
-const PUBLIC_KEY_COMPRESSED: u32 = 1;
-const PUBLIC_KEY_UNCOMPRESSED: u32 = 2;
+pub(super) const PUBLIC_KEY_COMPRESSED: u32 = 1;
+pub(super) const PUBLIC_KEY_UNCOMPRESSED: u32 = 2;
 const PUBLIC_KEY_X_ONLY: u32 = 3;
-const PUBLIC_KEY_RAW: u32 = 4;
+pub(super) const PUBLIC_KEY_RAW: u32 = 4;
 
 const SCRIPT_AUTO: u32 = 0;
-const SCRIPT_P2PKH: u32 = 1;
-const SCRIPT_P2SH_P2WPKH: u32 = 2;
-const SCRIPT_P2WPKH: u32 = 3;
-const SCRIPT_P2TR: u32 = 4;
-const SCRIPT_ACCOUNT: u32 = 5;
+pub(super) const SCRIPT_P2PKH: u32 = 1;
+pub(super) const SCRIPT_P2SH_P2WPKH: u32 = 2;
+pub(super) const SCRIPT_P2WPKH: u32 = 3;
+pub(super) const SCRIPT_P2TR: u32 = 4;
+pub(super) const SCRIPT_ACCOUNT: u32 = 5;
 
 struct DerivedOutput {
     address: Option<String>,
@@ -501,21 +501,100 @@ fn derive_address_for_chain(
     Ok(output.address)
 }
 
-/// Derive full key material (address, public key, private key) for a chain.
-///
-/// Uses the same canonical defaults as `derive_address_for_chain`, but requests
-/// all three outputs so the caller can use the keys for signing.
-pub(crate) fn derive_key_material_for_chain(
+/// Derive full key material (address, public key, private key) for a chain,
+/// applying optional power-user overrides (passphrase, wordlist, custom
+/// algorithm/curve/address overrides, etc.). Each override that is `Some`
+/// replaces the chain preset default; fields that are `None` fall back to
+/// the preset. Requests all three outputs so the caller can use the keys
+/// for signing.
+pub(crate) fn derive_key_material_for_chain_with_overrides(
     seed_phrase: &str,
     chain_name: &str,
     path: &str,
+    overrides: Option<&crate::store::wallet_domain::CoreWalletDerivationOverrides>,
 ) -> Result<(String, String, String), crate::SpectraBridgeError> {
-    let (chain_id, curve, deriv_alg, addr_alg, pubkey_fmt, script_opt) =
+    let (chain_id, preset_curve, preset_deriv_alg, preset_addr_alg, preset_pubkey_fmt, script_opt) =
         chain_defaults_from_name(chain_name)
             .ok_or_else(|| format!("unsupported chain for derivation: {chain_name}"))?;
-
-    let script = script_opt.unwrap_or_else(|| script_type_from_purpose(path));
     let _ = chain_id;
+
+    // Apply overrides where provided; otherwise fall back to chain preset.
+    let (
+        curve,
+        deriv_alg,
+        addr_alg,
+        pubkey_fmt,
+        script_type,
+        passphrase,
+        hmac_key,
+        mnemonic_wordlist,
+        iteration_count,
+        salt_prefix,
+    ) = if let Some(o) = overrides {
+        let curve = o
+            .curve
+            .as_deref()
+            .map(super::presets::curve_wire_value)
+            .transpose()
+            .map_err(crate::SpectraBridgeError::from)?
+            .unwrap_or(preset_curve);
+        let deriv_alg = o
+            .derivation_algorithm
+            .as_deref()
+            .map(super::presets::derivation_algorithm_wire_value)
+            .transpose()
+            .map_err(crate::SpectraBridgeError::from)?
+            .unwrap_or(preset_deriv_alg);
+        let addr_alg = o
+            .address_algorithm
+            .as_deref()
+            .map(super::presets::address_algorithm_wire_value)
+            .transpose()
+            .map_err(crate::SpectraBridgeError::from)?
+            .unwrap_or(preset_addr_alg);
+        let pubkey_fmt = o
+            .public_key_format
+            .as_deref()
+            .map(super::presets::public_key_format_wire_value)
+            .transpose()
+            .map_err(crate::SpectraBridgeError::from)?
+            .unwrap_or(preset_pubkey_fmt);
+        let script_override = o
+            .script_type
+            .as_deref()
+            .map(super::presets::script_type_wire_value)
+            .transpose()
+            .map_err(crate::SpectraBridgeError::from)?;
+        let script = script_override
+            .or(script_opt)
+            .unwrap_or_else(|| script_type_from_purpose(path));
+        (
+            curve,
+            deriv_alg,
+            addr_alg,
+            pubkey_fmt,
+            script,
+            o.passphrase.clone(),
+            o.hmac_key.clone(),
+            o.mnemonic_wordlist.clone(),
+            o.iteration_count.unwrap_or(0),
+            o.salt_prefix.clone(),
+        )
+    } else {
+        let script = script_opt.unwrap_or_else(|| script_type_from_purpose(path));
+        (
+            preset_curve,
+            preset_deriv_alg,
+            preset_addr_alg,
+            preset_pubkey_fmt,
+            script,
+            None,
+            None,
+            None,
+            0,
+            None,
+        )
+    };
 
     let request = UniFFIDerivationRequest {
         chain: None,
@@ -525,14 +604,14 @@ pub(crate) fn derive_key_material_for_chain(
         derivation_algorithm: deriv_alg,
         address_algorithm: addr_alg,
         public_key_format: pubkey_fmt,
-        script_type: script,
+        script_type,
         seed_phrase: seed_phrase.to_string(),
         derivation_path: Some(path.to_string()),
-        passphrase: None,
-        hmac_key: None,
-        mnemonic_wordlist: None,
-        iteration_count: 0,
-        salt_prefix: None,
+        passphrase,
+        hmac_key,
+        mnemonic_wordlist,
+        iteration_count,
+        salt_prefix,
     };
 
     let parsed = parse_uniffi_request(request)?;
@@ -550,113 +629,19 @@ pub(crate) fn derive_key_material_for_chain(
 /// Returns `(chain_id, curve, derivation_algorithm, address_algorithm, public_key_format, script_type)`.
 /// `script_type = None` means the caller should infer it from the path's purpose level
 /// (used for Bitcoin where the address format varies by purpose: 44/49/84/86).
+///
+/// Data-driven from [core/derivation_presets.toml](../../derivation_presets.toml);
+/// see `derivation/presets.rs`.
 fn chain_defaults_from_name(name: &str) -> Option<(u32, u32, u32, u32, u32, Option<u32>)> {
-    match name {
-        // ── UTXO / secp256k1 ────────────────────────────────────────────────
-        "Bitcoin" => Some((
-            CHAIN_BITCOIN, CURVE_SECP256K1, DERIVATION_BIP32_SECP256K1,
-            ADDRESS_BITCOIN, PUBLIC_KEY_COMPRESSED, None, // purpose-derived
-        )),
-        "Bitcoin Cash" => Some((
-            CHAIN_BITCOIN_CASH, CURVE_SECP256K1, DERIVATION_BIP32_SECP256K1,
-            ADDRESS_BITCOIN_CASH_LEGACY, PUBLIC_KEY_COMPRESSED, Some(SCRIPT_P2PKH),
-        )),
-        "Bitcoin SV" => Some((
-            CHAIN_BITCOIN_SV, CURVE_SECP256K1, DERIVATION_BIP32_SECP256K1,
-            ADDRESS_BITCOIN_SV_LEGACY, PUBLIC_KEY_COMPRESSED, Some(SCRIPT_P2PKH),
-        )),
-        "Litecoin" => Some((
-            CHAIN_LITECOIN, CURVE_SECP256K1, DERIVATION_BIP32_SECP256K1,
-            ADDRESS_LITECOIN, PUBLIC_KEY_COMPRESSED, Some(SCRIPT_P2PKH),
-        )),
-        "Dogecoin" => Some((
-            CHAIN_DOGECOIN, CURVE_SECP256K1, DERIVATION_BIP32_SECP256K1,
-            ADDRESS_DOGECOIN, PUBLIC_KEY_COMPRESSED, Some(SCRIPT_P2PKH),
-        )),
-        // ── EVM / secp256k1 ─────────────────────────────────────────────────
-        "Ethereum" => Some((
-            CHAIN_ETHEREUM, CURVE_SECP256K1, DERIVATION_BIP32_SECP256K1,
-            ADDRESS_EVM, PUBLIC_KEY_UNCOMPRESSED, Some(SCRIPT_ACCOUNT),
-        )),
-        "Ethereum Classic" => Some((
-            CHAIN_ETHEREUM_CLASSIC, CURVE_SECP256K1, DERIVATION_BIP32_SECP256K1,
-            ADDRESS_EVM, PUBLIC_KEY_UNCOMPRESSED, Some(SCRIPT_ACCOUNT),
-        )),
-        "Arbitrum" => Some((
-            CHAIN_ARBITRUM, CURVE_SECP256K1, DERIVATION_BIP32_SECP256K1,
-            ADDRESS_EVM, PUBLIC_KEY_UNCOMPRESSED, Some(SCRIPT_ACCOUNT),
-        )),
-        "Optimism" => Some((
-            CHAIN_OPTIMISM, CURVE_SECP256K1, DERIVATION_BIP32_SECP256K1,
-            ADDRESS_EVM, PUBLIC_KEY_UNCOMPRESSED, Some(SCRIPT_ACCOUNT),
-        )),
-        "Avalanche" => Some((
-            CHAIN_AVALANCHE, CURVE_SECP256K1, DERIVATION_BIP32_SECP256K1,
-            ADDRESS_EVM, PUBLIC_KEY_UNCOMPRESSED, Some(SCRIPT_ACCOUNT),
-        )),
-        "Hyperliquid" => Some((
-            CHAIN_HYPERLIQUID, CURVE_SECP256K1, DERIVATION_BIP32_SECP256K1,
-            ADDRESS_EVM, PUBLIC_KEY_UNCOMPRESSED, Some(SCRIPT_ACCOUNT),
-        )),
-        "BNB Chain" => Some((
-            CHAIN_ETHEREUM, CURVE_SECP256K1, DERIVATION_BIP32_SECP256K1,
-            ADDRESS_EVM, PUBLIC_KEY_UNCOMPRESSED, Some(SCRIPT_ACCOUNT),
-        )),
-        "Base" => Some((
-            CHAIN_ETHEREUM, CURVE_SECP256K1, DERIVATION_BIP32_SECP256K1,
-            ADDRESS_EVM, PUBLIC_KEY_UNCOMPRESSED, Some(SCRIPT_ACCOUNT),
-        )),
-        "Tron" => Some((
-            CHAIN_TRON, CURVE_SECP256K1, DERIVATION_BIP32_SECP256K1,
-            ADDRESS_TRON_BASE58_CHECK, PUBLIC_KEY_UNCOMPRESSED, Some(SCRIPT_ACCOUNT),
-        )),
-        "XRP Ledger" => Some((
-            CHAIN_XRP, CURVE_SECP256K1, DERIVATION_BIP32_SECP256K1,
-            ADDRESS_XRP_BASE58_CHECK, PUBLIC_KEY_COMPRESSED, Some(SCRIPT_P2PKH),
-        )),
-        // ── Ed25519 chains ───────────────────────────────────────────────────
-        "Solana" => Some((
-            CHAIN_SOLANA, CURVE_ED25519, DERIVATION_SLIP10_ED25519,
-            ADDRESS_SOLANA, PUBLIC_KEY_RAW, Some(SCRIPT_ACCOUNT),
-        )),
-        "Stellar" => Some((
-            CHAIN_STELLAR, CURVE_ED25519, DERIVATION_SLIP10_ED25519,
-            ADDRESS_STELLAR_STRKEY, PUBLIC_KEY_RAW, Some(SCRIPT_ACCOUNT),
-        )),
-        "Cardano" => Some((
-            CHAIN_CARDANO, CURVE_ED25519, DERIVATION_BIP32_ED25519_ICARUS,
-            ADDRESS_CARDANO_SHELLEY_ENTERPRISE, PUBLIC_KEY_RAW, Some(SCRIPT_ACCOUNT),
-        )),
-        "Sui" => Some((
-            CHAIN_SUI, CURVE_ED25519, DERIVATION_SLIP10_ED25519,
-            ADDRESS_SUI_KECCAK, PUBLIC_KEY_RAW, Some(SCRIPT_ACCOUNT),
-        )),
-        "Aptos" => Some((
-            CHAIN_APTOS, CURVE_ED25519, DERIVATION_SLIP10_ED25519,
-            ADDRESS_APTOS_KECCAK, PUBLIC_KEY_RAW, Some(SCRIPT_ACCOUNT),
-        )),
-        "TON" => Some((
-            CHAIN_TON, CURVE_ED25519, DERIVATION_TON_MNEMONIC,
-            ADDRESS_TON_V4R2, PUBLIC_KEY_RAW, Some(SCRIPT_ACCOUNT),
-        )),
-        "Internet Computer" => Some((
-            CHAIN_INTERNET_COMPUTER, CURVE_ED25519, DERIVATION_SLIP10_ED25519,
-            ADDRESS_ICP_PRINCIPAL, PUBLIC_KEY_RAW, Some(SCRIPT_ACCOUNT),
-        )),
-        "NEAR" => Some((
-            CHAIN_NEAR, CURVE_ED25519, DERIVATION_DIRECT_SEED_ED25519,
-            ADDRESS_NEAR_HEX, PUBLIC_KEY_RAW, Some(SCRIPT_ACCOUNT),
-        )),
-        "Polkadot" => Some((
-            CHAIN_POLKADOT, CURVE_SR25519, DERIVATION_SUBSTRATE_BIP39,
-            ADDRESS_SS58, PUBLIC_KEY_RAW, Some(SCRIPT_ACCOUNT),
-        )),
-        "Monero" => Some((
-            CHAIN_MONERO, CURVE_ED25519, DERIVATION_MONERO_BIP39,
-            ADDRESS_MONERO_MAIN, PUBLIC_KEY_RAW, Some(SCRIPT_ACCOUNT),
-        )),
-        _ => None,
-    }
+    let preset = super::presets::preset_by_name(name)?;
+    Some((
+        preset.chain_id,
+        preset.curve,
+        preset.derivation_algorithm,
+        preset.address_algorithm,
+        preset.public_key_format,
+        preset.script_type,
+    ))
 }
 
 /// Parse the BIP-32 purpose level from a derivation path and return the matching
@@ -1408,33 +1393,52 @@ fn validate_request_algorithms(request: &ParsedRequest) -> Result<(), String> {
     Ok(())
 }
 
+/// Inverse of `parse_chain`: map a `Chain` enum variant back to its numeric
+/// id. Used to look up presets loaded from `derivation_presets.toml`.
+fn chain_id(chain: Chain) -> u32 {
+    match chain {
+        Chain::Bitcoin => CHAIN_BITCOIN,
+        Chain::Ethereum => CHAIN_ETHEREUM,
+        Chain::Solana => CHAIN_SOLANA,
+        Chain::BitcoinCash => CHAIN_BITCOIN_CASH,
+        Chain::BitcoinSv => CHAIN_BITCOIN_SV,
+        Chain::Litecoin => CHAIN_LITECOIN,
+        Chain::Dogecoin => CHAIN_DOGECOIN,
+        Chain::EthereumClassic => CHAIN_ETHEREUM_CLASSIC,
+        Chain::Arbitrum => CHAIN_ARBITRUM,
+        Chain::Optimism => CHAIN_OPTIMISM,
+        Chain::Avalanche => CHAIN_AVALANCHE,
+        Chain::Hyperliquid => CHAIN_HYPERLIQUID,
+        Chain::Tron => CHAIN_TRON,
+        Chain::Stellar => CHAIN_STELLAR,
+        Chain::Xrp => CHAIN_XRP,
+        Chain::Cardano => CHAIN_CARDANO,
+        Chain::Sui => CHAIN_SUI,
+        Chain::Aptos => CHAIN_APTOS,
+        Chain::Ton => CHAIN_TON,
+        Chain::InternetComputer => CHAIN_INTERNET_COMPUTER,
+        Chain::Near => CHAIN_NEAR,
+        Chain::Polkadot => CHAIN_POLKADOT,
+        Chain::Monero => CHAIN_MONERO,
+    }
+}
+
 fn is_secp_chain(chain: Chain) -> bool {
-    matches!(
-        chain,
-        Chain::Bitcoin
-            | Chain::BitcoinCash
-            | Chain::BitcoinSv
-            | Chain::Litecoin
-            | Chain::Dogecoin
-            | Chain::Ethereum
-            | Chain::EthereumClassic
-            | Chain::Arbitrum
-            | Chain::Optimism
-            | Chain::Avalanche
-            | Chain::Hyperliquid
-            | Chain::Tron
-            | Chain::Xrp
-    )
+    super::presets::preset_by_chain_id(chain_id(chain))
+        .map(|preset| preset.curve == CURVE_SECP256K1)
+        .unwrap_or(false)
 }
 
 fn is_network_supported(chain: Chain, network: NetworkFlavor) -> bool {
-    match chain {
-        Chain::Bitcoin => true,
-        Chain::Dogecoin | Chain::Monero => {
-            matches!(network, NetworkFlavor::Mainnet | NetworkFlavor::Testnet)
-        }
-        _ => matches!(network, NetworkFlavor::Mainnet),
-    }
+    let wire_network = match network {
+        NetworkFlavor::Mainnet => NETWORK_MAINNET,
+        NetworkFlavor::Testnet => NETWORK_TESTNET,
+        NetworkFlavor::Testnet4 => NETWORK_TESTNET4,
+        NetworkFlavor::Signet => NETWORK_SIGNET,
+    };
+    super::presets::preset_by_chain_id(chain_id(chain))
+        .map(|preset| preset.networks.contains(&wire_network))
+        .unwrap_or(false)
 }
 
 fn derive_secp_material(request: &ParsedRequest) -> Result<(PublicKey, [u8; 32]), String> {

@@ -81,6 +81,55 @@ pub struct CoreCoin {
     pub mark: String,
 }
 
+/// Power-user derivation overrides, keyed by the same string names as
+/// `core/derivation_presets.toml`. Every field is optional; `None` means
+/// "use the chain preset default." Persisted per-wallet and propagated to
+/// every derivation call (import-time preview + send-time signing) so the
+/// imported address and the re-derived signing key stay in sync.
+///
+/// String values (rather than typed enums) keep the UniFFI record stable
+/// against future runtime-side additions; invalid values surface as runtime
+/// errors from the derivation pipeline.
+#[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq, uniffi::Record)]
+#[serde(rename_all = "camelCase")]
+pub struct CoreWalletDerivationOverrides {
+    #[serde(default)]
+    pub passphrase: Option<String>,
+    #[serde(default)]
+    pub mnemonic_wordlist: Option<String>,
+    #[serde(default)]
+    pub iteration_count: Option<u32>,
+    #[serde(default)]
+    pub salt_prefix: Option<String>,
+    #[serde(default)]
+    pub hmac_key: Option<String>,
+    #[serde(default)]
+    pub curve: Option<String>,
+    #[serde(default)]
+    pub derivation_algorithm: Option<String>,
+    #[serde(default)]
+    pub address_algorithm: Option<String>,
+    #[serde(default)]
+    pub public_key_format: Option<String>,
+    #[serde(default)]
+    pub script_type: Option<String>,
+}
+
+impl CoreWalletDerivationOverrides {
+    pub fn is_empty(&self) -> bool {
+        self.passphrase.is_none()
+            && self.mnemonic_wordlist.is_none()
+            && self.iteration_count.is_none()
+            && self.salt_prefix.is_none()
+            && self.hmac_key.is_none()
+            && self.curve.is_none()
+            && self.derivation_algorithm.is_none()
+            && self.address_algorithm.is_none()
+            && self.public_key_format.is_none()
+            && self.script_type.is_none()
+    }
+}
+
 #[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq, uniffi::Record)]
 #[serde(rename_all = "camelCase")]
 pub struct CoreSeedDerivationPaths {
@@ -140,6 +189,8 @@ pub struct CoreImportedWallet {
     pub polkadot_address: Option<String>,
     pub seed_derivation_preset: CoreSeedDerivationPreset,
     pub seed_derivation_paths: CoreSeedDerivationPaths,
+    #[serde(default)]
+    pub derivation_overrides: CoreWalletDerivationOverrides,
     pub selected_chain: String,
     pub holdings: Vec<CoreCoin>,
     pub include_in_portfolio_total: bool,

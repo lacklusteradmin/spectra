@@ -145,6 +145,11 @@ pub struct SendExecutionRequest {
     pub evm_overrides_fragment: Option<String>,
     /// Monero priority level.
     pub monero_priority: Option<u32>,
+    /// Power-user derivation overrides (passphrase, wordlist, curve, etc.).
+    /// `None` means use chain-preset defaults. Must match the overrides used
+    /// at import time, else re-derivation produces a different key and signing
+    /// fails.
+    pub derivation_overrides: Option<crate::store::wallet_domain::CoreWalletDerivationOverrides>,
 }
 
 /// Result from `WalletService::execute_send`.
