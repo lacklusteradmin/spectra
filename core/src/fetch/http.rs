@@ -116,7 +116,7 @@ impl HttpClient {
             let result = req.send().await;
             match result {
                 Err(e) => {
-                    last_err = e.to_string();
+                    last_err = format_reqwest_error(&e);
                     if !profile.is_retryable_error(&e) {
                         break;
                     }
@@ -179,7 +179,7 @@ impl HttpClient {
             let result = self.inner.get(url).send().await;
             match result {
                 Err(e) => {
-                    last_err = e.to_string();
+                    last_err = format_reqwest_error(&e);
                     if !profile.is_retryable_error(&e) {
                         break;
                     }
@@ -244,7 +244,7 @@ impl HttpClient {
                 .await;
             match result {
                 Err(e) => {
-                    last_err = e.to_string();
+                    last_err = format_reqwest_error(&e);
                     if !profile.is_retryable_error(&e) {
                         break;
                     }
@@ -320,6 +320,25 @@ impl RetryProfile {
 // ----------------------------------------------------------------
 // Fallback helpers
 // ----------------------------------------------------------------
+
+fn format_reqwest_error(e: &reqwest::Error) -> String {
+    let mut parts = vec![e.to_string()];
+    let mut source: Option<&dyn std::error::Error> = std::error::Error::source(e);
+    while let Some(s) = source {
+        parts.push(s.to_string());
+        source = s.source();
+    }
+    let mut flags = Vec::new();
+    if e.is_timeout() { flags.push("timeout"); }
+    if e.is_connect() { flags.push("connect"); }
+    if e.is_request() { flags.push("request"); }
+    if e.is_body() { flags.push("body"); }
+    if e.is_decode() { flags.push("decode"); }
+    if !flags.is_empty() {
+        parts.push(format!("flags=[{}]", flags.join(",")));
+    }
+    parts.join(" | ")
+}
 
 /// Try each URL in `endpoints` with `f` until one succeeds. Returns the
 /// first successful result or the last error.

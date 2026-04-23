@@ -25,8 +25,6 @@ use crate::http::{HttpClient, RetryProfile};
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum PriceProvider {
     CoinGecko,
-    Binance,
-    CoinbaseExchange,
     CoinPaprika,
     CoinLore,
 }
@@ -35,8 +33,6 @@ impl PriceProvider {
     pub fn from_str(value: &str) -> Option<Self> {
         match value {
             "CoinGecko" | "coingecko" => Some(Self::CoinGecko),
-            "Binance" | "Binance Public API" | "binance" => Some(Self::Binance),
-            "Coinbase Exchange API" | "coinbaseExchange" => Some(Self::CoinbaseExchange),
             "CoinPaprika" | "coinpaprika" => Some(Self::CoinPaprika),
             "CoinLore" | "coinlore" => Some(Self::CoinLore),
             _ => None,
@@ -112,9 +108,6 @@ fn stablecoin_quotes(coins: &[PriceRequestCoin]) -> PriceQuoteMap {
 // ----------------------------------------------------------------
 
 const COINGECKO_SIMPLE_PRICE_URL: &str = "https://api.coingecko.com/api/v3/simple/price";
-const COINGECKO_PRO_SIMPLE_PRICE_URL: &str = "https://pro-api.coingecko.com/api/v3/simple/price";
-const BINANCE_TICKER_PRICE_URL: &str = "https://api.binance.com/api/v3/ticker/price";
-const COINBASE_EXCHANGE_RATES_URL: &str = "https://api.coinbase.com/v2/exchange-rates?currency=USD";
 const COINPAPRIKA_TICKERS_URL: &str = "https://api.coinpaprika.com/v1/tickers";
 const COINLORE_TICKERS_URL: &str = "https://api.coinlore.net/api/tickers/?start=0&limit=1000";
 
@@ -133,18 +126,12 @@ const FAWAZ_AHMED_USD_RATES_URL: &str =
 /// Returns a map keyed by `holding_key` so the caller can diff against its
 /// existing price cache. Missing coins are simply absent from the map —
 /// callers should fall back to their last known price instead of erroring.
-///
-/// `api_key` is only consulted by the CoinGecko provider; pass an empty
-/// string for the others.
 pub async fn fetch_prices(
     provider: PriceProvider,
     coins: &[PriceRequestCoin],
-    api_key: &str,
 ) -> Result<PriceQuoteMap, String> {
     match provider {
-        PriceProvider::CoinGecko => fetch_coingecko_quotes(coins, api_key).await,
-        PriceProvider::Binance => fetch_binance_quotes(coins).await,
-        PriceProvider::CoinbaseExchange => fetch_coinbase_exchange_quotes(coins).await,
+        PriceProvider::CoinGecko => fetch_coingecko_quotes(coins).await,
         PriceProvider::CoinPaprika => fetch_coinpaprika_quotes(coins).await,
         PriceProvider::CoinLore => fetch_coinlore_quotes(coins).await,
     }
@@ -186,10 +173,7 @@ struct CoinGeckoQuoteEntry {
 /// CoinGecko response shape: `{"bitcoin": {"usd": 1234.5}, ...}`.
 type CoinGeckoResponse = HashMap<String, CoinGeckoQuoteEntry>;
 
-async fn fetch_coingecko_quotes(
-    coins: &[PriceRequestCoin],
-    api_key: &str,
-) -> Result<PriceQuoteMap, String> {
+async fn fetch_coingecko_quotes(coins: &[PriceRequestCoin]) -> Result<PriceQuoteMap, String> {
     // Group by normalized gecko id; skip coins without one.
     let mut grouped: HashMap<String, Vec<&PriceRequestCoin>> = HashMap::new();
     for coin in coins {
@@ -207,164 +191,37 @@ async fn fetch_coingecko_quotes(
     ids.sort();
     let ids_csv = ids.join(",");
 
-    let trimmed_key = api_key.trim();
+    let url = format!(
+        "{COINGECKO_SIMPLE_PRICE_URL}?ids={ids}&vs_currencies=usd",
+        ids = urlencoding_csv(&ids_csv),
+    );
+    let mut headers: HashMap<&str, &str> = HashMap::new();
+    headers.insert("Accept", "application/json");
 
-    // Attempt order mirrors the Swift implementation: pro first (if key
-    // looks pro-style), then demo fallback.
-    let attempts: Vec<(&str, Option<(&str, &str)>)> = if trimmed_key.is_empty() {
-        vec![(COINGECKO_SIMPLE_PRICE_URL, None)]
-    } else {
-        vec![
-            (
-                COINGECKO_PRO_SIMPLE_PRICE_URL,
-                Some(("x-cg-pro-api-key", "x_cg_pro_api_key")),
-            ),
-            (
-                COINGECKO_SIMPLE_PRICE_URL,
-                Some(("x-cg-demo-api-key", "x_cg_demo_api_key")),
-            ),
-        ]
-    };
+    let resp = HttpClient::shared()
+        .get_json_with_headers::<CoinGeckoResponse>(&url, &headers, RetryProfile::ChainRead)
+        .await
+        .map_err(|e| format!("coingecko: {e}"))?;
 
-    let client = HttpClient::shared();
-    let mut last_err = String::from("coingecko: no attempts");
-
-    for (base_url, key_placement) in attempts {
-        let mut url = format!(
-            "{base_url}?ids={ids}&vs_currencies=usd",
-            base_url = base_url,
-            ids = urlencoding_csv(&ids_csv),
-        );
-        let mut headers: HashMap<&str, &str> = HashMap::new();
-        if let Some((header_name, query_name)) = key_placement {
-            if !trimmed_key.is_empty() {
-                url.push_str(&format!("&{}={}", query_name, trimmed_key));
-                headers.insert(header_name, trimmed_key);
-            }
+    let mut resolved = PriceQuoteMap::new();
+    for (id, entry) in resp {
+        let Some(usd) = entry.usd else { continue };
+        if usd <= 0.0 {
+            continue;
         }
-        headers.insert("Accept", "application/json");
-
-        match client
-            .get_json_with_headers::<CoinGeckoResponse>(&url, &headers, RetryProfile::ChainRead)
-            .await
-        {
-            Ok(resp) => {
-                let mut resolved = PriceQuoteMap::new();
-                for (id, entry) in resp {
-                    let Some(usd) = entry.usd else { continue };
-                    if usd <= 0.0 {
-                        continue;
-                    }
-                    if let Some(list) = grouped.get(&id.to_lowercase()) {
-                        for coin in list {
-                            resolved.insert(coin.holding_key.clone(), usd);
-                        }
-                    }
-                }
-                if !resolved.is_empty() {
-                    return Ok(resolved);
-                }
-                last_err = "coingecko: empty response".to_string();
-            }
-            Err(e) => {
-                last_err = format!("coingecko: {e}");
+        if let Some(list) = grouped.get(&id.to_lowercase()) {
+            for coin in list {
+                resolved.insert(coin.holding_key.clone(), usd);
             }
         }
     }
-    Err(last_err)
+    Ok(resolved)
 }
 
 /// URL-encode just the comma-separated id list (no full percent encoding
 /// needed for alnum + `-`, which is the CoinGecko slug shape).
 fn urlencoding_csv(csv: &str) -> String {
     csv.replace(' ', "%20")
-}
-
-// ----------------------------------------------------------------
-// Binance
-// ----------------------------------------------------------------
-
-#[derive(Debug, Deserialize)]
-struct BinanceTicker {
-    symbol: String,
-    price: String,
-}
-
-async fn fetch_binance_quotes(coins: &[PriceRequestCoin]) -> Result<PriceQuoteMap, String> {
-    let mut resolved = stablecoin_quotes(coins);
-
-    let tickers: Vec<BinanceTicker> = HttpClient::shared()
-        .get_json(BINANCE_TICKER_PRICE_URL, RetryProfile::ChainRead)
-        .await?;
-
-    let mut price_by_symbol: HashMap<String, f64> = HashMap::with_capacity(tickers.len());
-    for t in tickers {
-        if let Ok(v) = t.price.parse::<f64>() {
-            if v > 0.0 {
-                price_by_symbol.insert(t.symbol.to_uppercase(), v);
-            }
-        }
-    }
-
-    for coin in coins {
-        if resolved.contains_key(&coin.holding_key) {
-            continue;
-        }
-        let symbol = coin.symbol.trim().to_uppercase();
-        for quote in &["USDT", "FDUSD", "USDC"] {
-            let candidate = format!("{symbol}{quote}");
-            if let Some(price) = price_by_symbol.get(&candidate) {
-                resolved.insert(coin.holding_key.clone(), *price);
-                break;
-            }
-        }
-    }
-
-    Ok(resolved)
-}
-
-// ----------------------------------------------------------------
-// Coinbase Exchange
-// ----------------------------------------------------------------
-
-#[derive(Debug, Deserialize)]
-struct CoinbasePayload {
-    rates: HashMap<String, String>,
-}
-
-#[derive(Debug, Deserialize)]
-struct CoinbaseEnvelope {
-    data: CoinbasePayload,
-}
-
-async fn fetch_coinbase_exchange_quotes(
-    coins: &[PriceRequestCoin],
-) -> Result<PriceQuoteMap, String> {
-    let mut resolved = stablecoin_quotes(coins);
-
-    let env: CoinbaseEnvelope = HttpClient::shared()
-        .get_json(COINBASE_EXCHANGE_RATES_URL, RetryProfile::ChainRead)
-        .await?;
-
-    for coin in coins {
-        if resolved.contains_key(&coin.holding_key) {
-            continue;
-        }
-        let symbol = coin.symbol.trim().to_uppercase();
-        let Some(raw) = env.data.rates.get(&symbol) else {
-            continue;
-        };
-        let Ok(rate) = raw.parse::<f64>() else {
-            continue;
-        };
-        if rate > 0.0 {
-            // Coinbase rates are quoted as "1 USD in target currency", so
-            // USD→coin price is the inverse.
-            resolved.insert(coin.holding_key.clone(), 1.0 / rate);
-        }
-    }
-
-    Ok(resolved)
 }
 
 // ----------------------------------------------------------------

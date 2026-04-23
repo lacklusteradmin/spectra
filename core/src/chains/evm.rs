@@ -693,11 +693,12 @@ impl EvmClient {
         address: &str,
         etherscan_api_base: &str,
         api_key: Option<&str>,
+        etherscan_chain_id: u64,
     ) -> Result<Vec<EvmHistoryEntry>, String> {
         let addr_lower = address.to_lowercase();
         let mut url = format!(
-            "{}/api?module=account&action=txlist&address={}&sort=desc&page=1&offset=50",
-            etherscan_api_base, addr_lower
+            "{}/v2/api?chainid={}&module=account&action=txlist&address={}&sort=desc&page=1&offset=50",
+            etherscan_api_base, etherscan_chain_id, addr_lower
         );
         if let Some(key) = api_key {
             url.push_str(&format!("&apikey={key}"));
@@ -772,7 +773,7 @@ impl EvmClient {
         address: &str,
         etherscan_api_base: &str,
         api_key: Option<&str>,
-        etherscan_chain_id: Option<u64>,
+        etherscan_chain_id: u64,
         page: u32,
         page_size: u32,
     ) -> Result<Vec<EvmTokenTransferEntry>, String> {
@@ -781,12 +782,9 @@ impl EvmClient {
         let safe_size = page_size.max(1).min(500);
 
         let mut url = format!(
-            "{}/api?module=account&action=tokentx&address={}&page={}&offset={}&sort=desc",
-            etherscan_api_base, addr_lower, safe_page, safe_size
+            "{}/v2/api?chainid={}&module=account&action=tokentx&address={}&page={}&offset={}&sort=desc",
+            etherscan_api_base, etherscan_chain_id, addr_lower, safe_page, safe_size
         );
-        if let Some(cid) = etherscan_chain_id {
-            url = format!("{}&chainid={}", url, cid);
-        }
         if let Some(key) = api_key {
             url.push_str(&format!("&apikey={key}"));
         }

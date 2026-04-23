@@ -125,6 +125,9 @@ pub struct WalletService {
     secret_store: Arc<std::sync::RwLock<Option<Arc<dyn SecretStore>>>>,
     /// Phase 2.1 — canonical in-memory wallet + holdings state.
     wallet_state: Arc<RwLock<CoreAppState>>,
+    /// User's Etherscan V2 API key. Shared across all EVM chains because
+    /// Etherscan v2 dispatches by `chainid` parameter against a single host.
+    etherscan_api_key: Arc<std::sync::RwLock<String>>,
 }
 
 /// Typed app settings record for UniFFI — Rust handles JSON serialization to/from SQLite.
@@ -234,6 +237,7 @@ impl WalletService {
             history_pagination: Arc::new(HistoryPaginationStore::new()),
             secret_store: Arc::new(std::sync::RwLock::new(None)),
             wallet_state: Arc::new(RwLock::new(CoreAppState::default())),
+            etherscan_api_key: Arc::new(std::sync::RwLock::new(String::new())),
         }))
     }
 
@@ -241,6 +245,15 @@ impl WalletService {
         let mut guard = self.endpoints.write().await;
         *guard = EndpointIndex::from_list(endpoints);
         Ok(())
+    }
+
+    /// Swift pushes the user's Etherscan V2 API key here. Used for EVM history
+    /// fetches across every indexed EVM chain (chainid is passed as a query
+    /// param, so one key covers all of them).
+    pub fn set_etherscan_api_key(&self, key: String) {
+        if let Ok(mut guard) = self.etherscan_api_key.write() {
+            *guard = key;
+        }
     }
 
     // `fetch_balance` / `fetch_balance_auto` live in the plain-impl block
@@ -926,21 +939,32 @@ impl WalletService {
 
     /// Fetch USD spot prices for the supplied coins from `provider`.
     ///
-    /// `provider` is the Swift-side display name (e.g. "CoinGecko",
-    /// "Binance Public API"). `coins` are the tracked tokens. `api_key`
-    /// is only consulted by CoinGecko; pass "" for others.
+    /// `provider` is the Swift-side display name (e.g. "CoinGecko").
+    /// `coins` are the tracked tokens. All providers use their public
+    /// endpoints — no API key plumbing.
     pub async fn fetch_prices_typed(
         &self,
         provider: String,
         coins: Vec<crate::price::PriceRequestCoin>,
-        api_key: String,
     ) -> Result<std::collections::HashMap<String, f64>, SpectraBridgeError> {
-        let provider = crate::price::PriceProvider::from_str(&provider)
-            .ok_or_else(|| format!("unknown price provider: {provider}"))?;
-        let quotes = crate::price::fetch_prices(provider, &coins, &api_key)
-            .await
-            .map_err(SpectraBridgeError::from)?;
-        Ok(quotes)
+        eprintln!("[spectra:prices] enter provider={provider} coins={}", coins.len());
+        let parsed_provider = match crate::price::PriceProvider::from_str(&provider) {
+            Some(p) => p,
+            None => {
+                eprintln!("[spectra:prices] UNKNOWN provider={provider}");
+                return Err(format!("unknown price provider: {provider}").into());
+            }
+        };
+        match crate::price::fetch_prices(parsed_provider, &coins).await {
+            Ok(quotes) => {
+                eprintln!("[spectra:prices] ok provider={provider} returned={}", quotes.len());
+                Ok(quotes)
+            }
+            Err(e) => {
+                eprintln!("[spectra:prices] FAIL provider={provider}: {e}");
+                Err(SpectraBridgeError::from(e))
+            }
+        }
     }
 
     /// Typed variant — accepts typed currency list and returns typed map directly.
@@ -949,12 +973,24 @@ impl WalletService {
         provider: String,
         currencies: Vec<String>,
     ) -> Result<std::collections::HashMap<String, f64>, SpectraBridgeError> {
-        let provider = crate::price::FiatRateProvider::from_str(&provider)
-            .ok_or_else(|| format!("unknown fiat rate provider: {provider}"))?;
-        let rates = crate::price::fetch_fiat_rates(provider, &currencies)
-            .await
-            .map_err(SpectraBridgeError::from)?;
-        Ok(rates)
+        eprintln!("[spectra:fiat] enter provider={provider} currencies={}", currencies.len());
+        let parsed_provider = match crate::price::FiatRateProvider::from_str(&provider) {
+            Some(p) => p,
+            None => {
+                eprintln!("[spectra:fiat] UNKNOWN provider={provider}");
+                return Err(format!("unknown fiat rate provider: {provider}").into());
+            }
+        };
+        match crate::price::fetch_fiat_rates(parsed_provider, &currencies).await {
+            Ok(rates) => {
+                eprintln!("[spectra:fiat] ok provider={provider} returned={}", rates.len());
+                Ok(rates)
+            }
+            Err(e) => {
+                eprintln!("[spectra:fiat] FAIL provider={provider}: {e}");
+                Err(SpectraBridgeError::from(e))
+            }
+        }
     }
 
     // ----------------------------------------------------------------
@@ -983,7 +1019,7 @@ impl WalletService {
             EvmHistoryPageDecoded, EvmNativeTransferItem, EvmTokenTransferItem,
         };
 
-        // Only Etherscan-indexed EVM chains are supported.
+        // Only EVM chains are supported.
         let chain = Chain::from_id(chain_id).filter(|c| c.is_evm()).ok_or_else(|| {
             SpectraBridgeError::from(format!(
                 "fetch_evm_history_page: chain_id {chain_id} not supported"
@@ -991,28 +1027,26 @@ impl WalletService {
         })?;
 
         let eps = self.endpoints_for(chain.id()).await;
-        let explorer_eps = self.endpoints_for(chain.endpoint_id(EndpointSlot::Explorer)).await;
-        let api_key = self.api_key_for(chain.id()).await;
-        let api_key_str = api_key.as_deref();
-
-        let explorer_base = explorer_eps.into_iter().next().unwrap_or_default();
         let client = EvmClient::new(eps, chain.evm_chain_id());
 
-        // The Etherscan v2 `chainid` param distinguishes chains on the unified endpoint.
-        // For chain-specific Etherscan deployments (ARB, OP, etc.) it is optional but harmless.
-        // Hyperliquid is deliberately excluded — not indexed by Etherscan v2.
-        let etherscan_chain_id: Option<u64> = match chain {
-            Chain::Hyperliquid => None,
-            c if c.is_evm() => Some(c.evm_chain_id()),
-            _ => None,
-        };
+        // Etherscan V2 is a unified multichain API: one host, chainid query
+        // parameter dispatches. Per-chain subdomains (arbiscan.io, etc.) do not
+        // host a V2 path — everything routes through api.etherscan.io.
+        let explorer_base = "https://api.etherscan.io";
+        let etherscan_chain_id = chain.evm_chain_id();
+        let api_key_owned: String = self
+            .etherscan_api_key
+            .read()
+            .map(|g| g.clone())
+            .unwrap_or_default();
+        let api_key_str = if api_key_owned.is_empty() { None } else { Some(api_key_owned.as_str()) };
 
         // Fetch native and token transfers concurrently.
         let (native_result, token_result) = tokio::join!(
-            client.fetch_history(&address, &explorer_base, api_key_str),
+            client.fetch_history(&address, explorer_base, api_key_str, etherscan_chain_id),
             client.fetch_token_transfers(
                 &address,
-                &explorer_base,
+                explorer_base,
                 api_key_str,
                 etherscan_chain_id,
                 page,
@@ -2661,11 +2695,26 @@ impl WalletService {
             }
             c if c.is_evm() => {
                 let client = EvmClient::new(endpoints, c.evm_chain_id());
-                let explorer = self.endpoints_for(c.endpoint_id(EndpointSlot::Explorer)).await
-                    .into_iter().next().unwrap_or_default();
-                let api_key = self.api_key_for(c.id()).await;
-                let h = client.fetch_history(&address, &explorer, api_key.as_deref())
-                    .await.map_err(SpectraBridgeError::from)?;
+                let api_key_owned = self
+                    .etherscan_api_key
+                    .read()
+                    .ok()
+                    .map(|g| g.clone())
+                    .unwrap_or_default();
+                let api_key_str = if api_key_owned.is_empty() {
+                    None
+                } else {
+                    Some(api_key_owned.as_str())
+                };
+                let h = client
+                    .fetch_history(
+                        &address,
+                        "https://api.etherscan.io",
+                        api_key_str,
+                        c.evm_chain_id(),
+                    )
+                    .await
+                    .map_err(SpectraBridgeError::from)?;
                 Ok(serde_json::to_string(&h)?)
             }
             Chain::Solana => {

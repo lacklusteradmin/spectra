@@ -22,19 +22,7 @@ pub struct TronBalance {
     pub trx_display: String,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct TronHistoryEntry {
-    pub txid: String,
-    pub block_number: u64,
-    pub timestamp: u64,
-    pub from: String,
-    pub to: String,
-    pub amount_sun: u64,
-    pub is_incoming: bool,
-}
-
 /// Unified history entry covering both native TRX and TRC-20 token transfers.
-/// Swift decodes this instead of `TronHistoryEntry` for the history tab.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TronTransfer {
     pub txid: String,
@@ -145,60 +133,6 @@ impl TronClient {
             .unwrap_or("")
             .to_string();
         Ok((block_num, block_hash))
-    }
-
-    pub async fn fetch_history(
-        &self,
-        address: &str,
-        api_base: &str,
-    ) -> Result<Vec<TronHistoryEntry>, String> {
-        // TronScan transactions API.
-        let url = format!(
-            "{}/api/transaction?sort=-timestamp&count=true&limit=50&address={}",
-            api_base.trim_end_matches('/'),
-            address
-        );
-        let resp: Value = self
-            .client
-            .get_json(&url, RetryProfile::ChainRead)
-            .await?;
-        let data = resp
-            .get("data")
-            .and_then(|v| v.as_array())
-            .cloned()
-            .unwrap_or_default();
-        Ok(data
-            .into_iter()
-            .map(|tx| {
-                let txid = tx.get("hash").and_then(|v| v.as_str()).unwrap_or("").to_string();
-                let block_number = tx.get("block").and_then(|v| v.as_u64()).unwrap_or(0);
-                let timestamp = tx.get("timestamp").and_then(|v| v.as_u64()).unwrap_or(0);
-                let from = tx
-                    .pointer("/contractData/owner_address")
-                    .and_then(|v| v.as_str())
-                    .unwrap_or("")
-                    .to_string();
-                let to = tx
-                    .pointer("/contractData/to_address")
-                    .and_then(|v| v.as_str())
-                    .unwrap_or("")
-                    .to_string();
-                let amount_sun = tx
-                    .pointer("/contractData/amount")
-                    .and_then(|v| v.as_u64())
-                    .unwrap_or(0);
-                let is_incoming = to.eq_ignore_ascii_case(address);
-                TronHistoryEntry {
-                    txid,
-                    block_number,
-                    timestamp,
-                    from,
-                    to,
-                    amount_sun,
-                    is_incoming,
-                }
-            })
-            .collect())
     }
 
     /// Fetch up to `limit` recent transfers combining native TRX and TRC-20

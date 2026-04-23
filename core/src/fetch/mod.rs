@@ -1,4 +1,3 @@
-pub mod balance_decoder;
 pub mod balance_observer;
 pub mod history;
 pub mod history_decode;
