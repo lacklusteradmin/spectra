@@ -1621,10 +1621,10 @@ pub fn plan_chain_keypool_state(
 
 // ─── O: Wallet holdings merge from balance summary ────────────────────────────
 //
-// Matches Swift `holdingsAppliedFromSummary`. Rust owns the match-by-key and
-// default-mark policy; Swift applies the actions to its `CoreCoin` array,
-// preserving visual properties (id, priceUsd, mark) on updates and providing
-// defaults on inserts.
+// Matches Swift `holdingsAppliedFromSummary`. Rust owns the match-by-key
+// policy; Swift applies the actions to its `CoreCoin` array, preserving
+// visual properties (id, priceUsd) on updates and providing defaults on
+// inserts.
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, uniffi::Record)]
 #[serde(rename_all = "camelCase")]
@@ -1658,7 +1658,6 @@ pub struct HoldingMergeAppendPayload {
     pub token_standard: String,
     pub contract_address: Option<String>,
     pub amount: f64,
-    pub mark: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, uniffi::Enum)]
@@ -1705,12 +1704,6 @@ pub fn plan_apply_holdings_from_summary(
                 amount: holding.amount,
             });
         } else if holding.amount > 0.0 {
-            let mark: String = holding
-                .symbol
-                .chars()
-                .take(2)
-                .collect::<String>()
-                .to_uppercase();
             actions.push(HoldingMergeAction::Append {
                 coin: HoldingMergeAppendPayload {
                     name: holding.name,
@@ -1721,7 +1714,6 @@ pub fn plan_apply_holdings_from_summary(
                     token_standard: holding.token_standard,
                     contract_address: holding.contract_address,
                     amount: holding.amount,
-                    mark,
                 },
             });
         }

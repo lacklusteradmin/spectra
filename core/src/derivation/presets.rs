@@ -1,4 +1,4 @@
-//! Chain derivation presets, loaded from `core/derivation_presets.toml` at
+//! Chain derivation presets, loaded from `core/data/derivation_presets.toml` at
 //! compile time. Single source of truth for per-chain defaults: curve,
 //! derivation algorithm, address algorithm, public key format, script type,
 //! and which networks each chain supports.
@@ -12,7 +12,7 @@ use serde::Deserialize;
 use std::collections::HashMap;
 use std::sync::LazyLock;
 
-static PRESETS_TOML: &str = include_str!("../../derivation_presets.toml");
+static PRESETS_TOML: &str = include_str!("../../data/derivation_presets.toml");
 
 #[derive(Debug, Deserialize)]
 struct PresetsFile {

@@ -4,9 +4,9 @@ use serde::Deserialize;
 use std::collections::{BTreeMap, BTreeSet};
 use std::sync::OnceLock;
 
-const CHAIN_PRESETS_JSON: &str = include_str!("../embedded/DerivationPresets.json");
+const CHAIN_PRESETS_JSON: &str = include_str!("../data/DerivationPresets.json");
 const APP_ENDPOINT_DIRECTORY_JSON: &str =
-    include_str!("../embedded/AppEndpointDirectory.json");
+    include_str!("../data/AppEndpointDirectory.json");
 
 const EXPLORER_ROLE: &str = "explorer";
 

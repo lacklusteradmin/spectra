@@ -20,25 +20,9 @@ struct EmbeddedTextResource {
     text: &'static str,
 }
 
-static STATIC_JSON_RESOURCES: &[EmbeddedJsonResource] = &[
-    EmbeddedJsonResource {
-        name: "TokenVisualRegistry",
-        json: include_str!("../embedded/TokenVisualRegistry.json"),
-    },
-    EmbeddedJsonResource {
-        name: "ChainVisualRegistry",
-        json: include_str!("../embedded/ChainVisualRegistry.json"),
-    },
-    EmbeddedJsonResource {
-        name: "BuyCryptoProviders",
-        json: include_str!("../embedded/BuyCryptoProviders.json"),
-    },
-];
+static STATIC_JSON_RESOURCES: &[EmbeddedJsonResource] = &[];
 
-static STATIC_TEXT_RESOURCES: &[EmbeddedTextResource] = &[EmbeddedTextResource {
-    name: "BIP39EnglishWordList",
-    text: include_str!("../embedded/BIP39EnglishWordList.txt"),
-}];
+static STATIC_TEXT_RESOURCES: &[EmbeddedTextResource] = &[];
 
 static JSON_RESOURCE_MAP: OnceLock<HashMap<&'static str, &'static str>> = OnceLock::new();
 static TEXT_RESOURCE_MAP: OnceLock<HashMap<&'static str, &'static str>> = OnceLock::new();
@@ -74,14 +58,12 @@ mod tests {
     use super::{static_json_resource, static_text_resource};
 
     #[test]
-    fn exposes_embedded_json_resources() {
-        let json = static_json_resource("TokenVisualRegistry").expect("token visual registry");
-        assert!(json.contains("\"USDT\""));
+    fn missing_json_resource_returns_none() {
+        assert!(static_json_resource("DoesNotExist").is_none());
     }
 
     #[test]
-    fn exposes_embedded_text_resources() {
-        let text = static_text_resource("BIP39EnglishWordList").expect("bip39 word list");
-        assert!(text.lines().any(|line| line == "abandon"));
+    fn missing_text_resource_returns_none() {
+        assert!(static_text_resource("DoesNotExist").is_none());
     }
 }

@@ -2,11 +2,11 @@ use crate::store::wallet_domain::CoreSeedDerivationPaths;
 use serde::{Deserialize, Serialize};
 use std::sync::OnceLock;
 
-const CHAIN_PRESETS_JSON: &str = include_str!("../embedded/DerivationPresets.json");
+const CHAIN_PRESETS_JSON: &str = include_str!("../data/DerivationPresets.json");
 const REQUEST_COMPILATION_PRESETS_JSON: &str =
-    include_str!("../embedded/DerivationRequestCompilationPresets.json");
+    include_str!("../data/DerivationRequestCompilationPresets.json");
 const APP_ENDPOINT_DIRECTORY_JSON: &str =
-    include_str!("../embedded/AppEndpointDirectory.json");
+    include_str!("../data/AppEndpointDirectory.json");
 
 const ENDPOINT_ROLE_READ: u32 = 1 << 0;
 const ENDPOINT_ROLE_BALANCE: u32 = 1 << 1;

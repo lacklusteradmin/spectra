@@ -630,7 +630,7 @@ pub(crate) fn derive_key_material_for_chain_with_overrides(
 /// `script_type = None` means the caller should infer it from the path's purpose level
 /// (used for Bitcoin where the address format varies by purpose: 44/49/84/86).
 ///
-/// Data-driven from [core/derivation_presets.toml](../../derivation_presets.toml);
+/// Data-driven from [core/data/derivation_presets.toml](../../data/derivation_presets.toml);
 /// see `derivation/presets.rs`.
 fn chain_defaults_from_name(name: &str) -> Option<(u32, u32, u32, u32, u32, Option<u32>)> {
     let preset = super::presets::preset_by_name(name)?;

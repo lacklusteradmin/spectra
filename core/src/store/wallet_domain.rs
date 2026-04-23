@@ -78,11 +78,10 @@ pub struct CoreCoin {
     pub contract_address: Option<String>,
     pub amount: f64,
     pub price_usd: f64,
-    pub mark: String,
 }
 
 /// Power-user derivation overrides, keyed by the same string names as
-/// `core/derivation_presets.toml`. Every field is optional; `None` means
+/// `core/data/derivation_presets.toml`. Every field is optional; `None` means
 /// "use the chain preset default." Persisted per-wallet and propagated to
 /// every derivation call (import-time preview + send-time signing) so the
 /// imported address and the re-derived signing key stay in sync.
@@ -286,7 +285,6 @@ pub struct CoreDashboardPinOption {
     pub name: String,
     pub subtitle: String,
     pub asset_identifier: Option<String>,
-    pub mark: String,
 }
 
 /// Swift `WalletRustSecretMaterialDescriptor`. JSON keys preserved for decode compat.

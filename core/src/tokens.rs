@@ -1,6 +1,6 @@
 //! Built-in token registry.
 //!
-//! The source of truth is `Core/tokens.toml`, embedded at compile time.
+//! The source of truth is `core/data/tokens.toml`, embedded at compile time.
 //! Call [`list_tokens`] to get typed token entries for a given chain_id
 //! (or all chains when `chain_id == u32::MAX`).
 
@@ -8,7 +8,7 @@ use std::sync::LazyLock;
 use serde::{Deserialize, Serialize};
 
 // Embedded at compile time — no bundle dependency at runtime.
-static TOKENS_TOML: &str = include_str!("../tokens.toml");
+static TOKENS_TOML: &str = include_str!("../data/tokens.toml");
 
 // ----------------------------------------------------------------
 // Parsed TOML shape
@@ -32,6 +32,8 @@ struct TomlToken {
     decimals:        u32,
     display_decimals: Option<u32>,
     category:        String,
+    color_name:      String,
+    asset_name:      String,
     enabled:         bool,
 }
 
@@ -52,6 +54,8 @@ pub struct TokenEntry {
     pub decimals:        u32,
     pub display_decimals: Option<u32>,
     pub category:        String,
+    pub color_name:      String,
+    pub asset_name:      String,
     pub enabled:         bool,
 }
 
@@ -77,6 +81,8 @@ static CATALOG: LazyLock<Vec<TokenEntry>> = LazyLock::new(|| {
             decimals:        t.decimals,
             display_decimals: t.display_decimals,
             category:        t.category,
+            color_name:      t.color_name,
+            asset_name:      t.asset_name,
             enabled:         t.enabled,
         })
         .collect()
