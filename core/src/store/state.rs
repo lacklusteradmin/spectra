@@ -14,7 +14,6 @@ pub struct WalletAddress {
 pub struct AssetHolding {
     pub name: String,
     pub symbol: String,
-    pub market_data_id: String,
     pub coin_gecko_id: String,
     pub chain_name: String,
     pub token_standard: String,

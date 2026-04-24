@@ -1639,7 +1639,6 @@ pub struct HoldingMergeExistingInput {
 pub struct HoldingMergeIncomingInput {
     pub name: String,
     pub symbol: String,
-    pub market_data_id: String,
     pub coin_gecko_id: String,
     pub chain_name: String,
     pub token_standard: String,
@@ -1652,7 +1651,6 @@ pub struct HoldingMergeIncomingInput {
 pub struct HoldingMergeAppendPayload {
     pub name: String,
     pub symbol: String,
-    pub market_data_id: String,
     pub coin_gecko_id: String,
     pub chain_name: String,
     pub token_standard: String,
@@ -1708,7 +1706,6 @@ pub fn plan_apply_holdings_from_summary(
                 coin: HoldingMergeAppendPayload {
                     name: holding.name,
                     symbol: holding.symbol,
-                    market_data_id: holding.market_data_id,
                     coin_gecko_id: holding.coin_gecko_id,
                     chain_name: holding.chain_name,
                     token_standard: holding.token_standard,
@@ -1821,7 +1818,6 @@ mod tests {
         StoreDerivedStateRequest, StoreDerivedWalletInput, WalletSecretObservation,
     };
     use crate::state::CoreAppState;
-    use std::collections::HashMap;
 
     #[test]
     fn builds_secret_catalog_for_persisted_snapshot() {

@@ -8,8 +8,9 @@
 use crate::balance_observer::{BalanceObserver, RefreshEntry};
 use crate::service::WalletService;
 use futures::stream::{self, StreamExt};
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex, RwLock};
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 // ----------------------------------------------------------------
 // Internal state
@@ -21,6 +22,13 @@ struct Inner {
     entries: RwLock<Vec<RefreshEntry>>,
     /// Held by the timer task; `None` means stopped.
     stop_tx: Mutex<Option<tokio::sync::oneshot::Sender<()>>>,
+    /// True while a refresh cycle is in flight. The timer tick path skips
+    /// missed ticks via `MissedTickBehavior::Skip`, but `trigger_immediate`
+    /// spawns its own task and can stack concurrent cycles when multiple
+    /// Swift callers (fiat refresh, pull-to-refresh, wallet change,
+    /// app-resume) fire in close succession. This flag de-dupes across
+    /// both paths.
+    is_cycle_running: AtomicBool,
 }
 
 // ----------------------------------------------------------------
@@ -52,6 +60,7 @@ impl BalanceRefreshEngine {
                 observer: RwLock::new(None),
                 entries: RwLock::new(vec![]),
                 stop_tx: Mutex::new(None),
+                is_cycle_running: AtomicBool::new(false),
             }),
         })
     }
@@ -121,11 +130,35 @@ impl BalanceRefreshEngine {
 
 impl BalanceRefreshEngine {
     async fn run_cycle(inner: &Inner) {
+        // Acquire the in-flight flag atomically; bail if another cycle is
+        // already running. Protects against overlapping cycles from tick +
+        // trigger_immediate or two back-to-back trigger_immediate calls.
+        if inner
+            .is_cycle_running
+            .compare_exchange(false, true, Ordering::Acquire, Ordering::Relaxed)
+            .is_err()
+        {
+            eprintln!("[spectra:refresh] skipped: cycle already in flight");
+            return;
+        }
+        // Drop guard clears the flag even on panic / cancel.
+        struct InFlightGuard<'a>(&'a AtomicBool);
+        impl Drop for InFlightGuard<'_> {
+            fn drop(&mut self) {
+                self.0.store(false, Ordering::Release);
+            }
+        }
+        let _in_flight = InFlightGuard(&inner.is_cycle_running);
+
         // Snapshot entries under a short lock hold, then release before I/O.
         let entries = inner.entries.read().unwrap().clone();
+        let entry_count = entries.len();
         if entries.is_empty() {
             return;
         }
+
+        let cycle_start = Instant::now();
+        eprintln!("[spectra:refresh] cycle start entries={entry_count}");
 
         // Snapshot the observer Arc once before the loop instead of once per
         // entry — avoids N RwLock acquisitions during the hot path.
@@ -172,5 +205,107 @@ impl BalanceRefreshEngine {
         if let Some(o) = obs {
             o.on_refresh_cycle_complete(refreshed, errors);
         }
+
+        let elapsed_ms = cycle_start.elapsed().as_millis();
+        eprintln!(
+            "[spectra:refresh] cycle end refreshed={refreshed} errors={errors} elapsed_ms={elapsed_ms}"
+        );
+    }
+}
+
+// ----------------------------------------------------------------
+// Tests
+// ----------------------------------------------------------------
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Regression test for the in-flight gate pattern used in `run_cycle`.
+    ///
+    /// Spins up two concurrent workers that replicate the exact
+    /// `compare_exchange` + drop-guard pattern, each sleeping 50ms while it
+    /// "owns" the gate. If the pattern is broken (guard removed, swapped to
+    /// `store` instead of `compare_exchange`, etc.) both workers will enter
+    /// the critical section and the invocation count will be 2. With the
+    /// pattern intact only one worker enters; the other sees the gate held
+    /// and bails.
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn in_flight_gate_serialises_concurrent_workers() {
+        use std::sync::atomic::{AtomicU32, Ordering};
+
+        let gate = Arc::new(AtomicBool::new(false));
+        let work_count = Arc::new(AtomicU32::new(0));
+        let skip_count = Arc::new(AtomicU32::new(0));
+
+        async fn guarded_work(
+            gate: Arc<AtomicBool>,
+            work_count: Arc<AtomicU32>,
+            skip_count: Arc<AtomicU32>,
+        ) {
+            if gate
+                .compare_exchange(false, true, Ordering::Acquire, Ordering::Relaxed)
+                .is_err()
+            {
+                skip_count.fetch_add(1, Ordering::Relaxed);
+                return;
+            }
+            struct Guard<'a>(&'a AtomicBool);
+            impl Drop for Guard<'_> {
+                fn drop(&mut self) {
+                    self.0.store(false, Ordering::Release);
+                }
+            }
+            let _g = Guard(&gate);
+            work_count.fetch_add(1, Ordering::Relaxed);
+            tokio::time::sleep(Duration::from_millis(50)).await;
+        }
+
+        let a = tokio::spawn(guarded_work(
+            Arc::clone(&gate),
+            Arc::clone(&work_count),
+            Arc::clone(&skip_count),
+        ));
+        let b = tokio::spawn(guarded_work(
+            Arc::clone(&gate),
+            Arc::clone(&work_count),
+            Arc::clone(&skip_count),
+        ));
+        let _ = tokio::join!(a, b);
+
+        assert_eq!(work_count.load(Ordering::Relaxed), 1, "exactly one worker should enter");
+        assert_eq!(skip_count.load(Ordering::Relaxed), 1, "the other worker should skip");
+        assert!(!gate.load(Ordering::Relaxed), "gate should be released after work finishes");
+    }
+
+    /// After a worker finishes, a subsequent worker should see the gate
+    /// clear and run normally. Catches a regression where the drop guard
+    /// fails to release the flag.
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn in_flight_gate_releases_after_completion() {
+        use std::sync::atomic::{AtomicU32, Ordering};
+
+        let gate = Arc::new(AtomicBool::new(false));
+        let work_count = Arc::new(AtomicU32::new(0));
+
+        for _ in 0..3 {
+            if gate
+                .compare_exchange(false, true, Ordering::Acquire, Ordering::Relaxed)
+                .is_err()
+            {
+                panic!("gate should be clear between sequential runs");
+            }
+            struct Guard<'a>(&'a AtomicBool);
+            impl Drop for Guard<'_> {
+                fn drop(&mut self) {
+                    self.0.store(false, Ordering::Release);
+                }
+            }
+            let _g = Guard(&gate);
+            work_count.fetch_add(1, Ordering::Relaxed);
+        }
+
+        assert_eq!(work_count.load(Ordering::Relaxed), 3);
+        assert!(!gate.load(Ordering::Relaxed));
     }
 }

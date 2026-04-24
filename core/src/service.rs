@@ -47,12 +47,12 @@ use std::sync::Arc;
 use tokio::sync::RwLock;
 use rusqlite;
 
-use crate::chains::bitcoin::UtxoTxStatus;
-use crate::chains::registry::{Chain, EndpointSlot};
+use crate::fetch::chains::bitcoin::UtxoTxStatus;
+use crate::registry::{Chain, EndpointSlot};
 use crate::tokens;
-use crate::chains::{
+use crate::fetch::chains::{
     aptos::AptosClient,
-    bitcoin::{BitcoinClient, BitcoinSendParams, sign_and_broadcast as bitcoin_sign_and_broadcast},
+    bitcoin::BitcoinClient,
     bitcoin_cash::BitcoinCashClient,
     bitcoin_sv::BitcoinSvClient,
     cardano::CardanoClient,
@@ -70,6 +70,7 @@ use crate::chains::{
     tron::TronClient,
     xrp::XrpClient,
 };
+use crate::send::chains::bitcoin::{sign_and_broadcast as bitcoin_sign_and_broadcast, BitcoinSendParams};
 use crate::history_store::HistoryPaginationStore;
 use crate::http::HttpClient;
 use crate::secret_store::SecretStore;
@@ -262,18 +263,18 @@ impl WalletService {
     pub async fn fetch_solana_balance_typed(
         &self,
         address: String,
-    ) -> Result<crate::chains::solana::SolanaBalance, SpectraBridgeError> {
+    ) -> Result<crate::fetch::chains::solana::SolanaBalance, SpectraBridgeError> {
         let endpoints = self.endpoints_for(2).await;
-        let client = crate::chains::solana::SolanaClient::new(endpoints);
+        let client = crate::fetch::chains::solana::SolanaClient::new(endpoints);
         client.fetch_balance(&address).await.map_err(SpectraBridgeError::from)
     }
 
     pub async fn fetch_near_balance_typed(
         &self,
         address: String,
-    ) -> Result<crate::chains::near::NearBalance, SpectraBridgeError> {
+    ) -> Result<crate::fetch::chains::near::NearBalance, SpectraBridgeError> {
         let endpoints = self.endpoints_for(17).await;
-        let client = crate::chains::near::NearClient::new(endpoints);
+        let client = crate::fetch::chains::near::NearClient::new(endpoints);
         client.fetch_balance(&address).await.map_err(SpectraBridgeError::from)
     }
 
@@ -282,12 +283,12 @@ impl WalletService {
         chain_id: u32,
         contract: String,
         holder: String,
-    ) -> Result<crate::chains::evm::Erc20Balance, SpectraBridgeError> {
+    ) -> Result<crate::fetch::chains::evm::Erc20Balance, SpectraBridgeError> {
         let chain = Chain::from_id(chain_id).filter(|c| c.is_evm()).ok_or_else(|| {
             SpectraBridgeError::from(format!("fetch_token_balance_typed: unsupported chain_id: {chain_id}"))
         })?;
         let endpoints = self.endpoints_for(chain.id()).await;
-        let client = crate::chains::evm::EvmClient::new(endpoints, chain.evm_chain_id());
+        let client = crate::fetch::chains::evm::EvmClient::new(endpoints, chain.evm_chain_id());
         client.fetch_erc20_balance(&contract, &holder).await.map_err(SpectraBridgeError::from)
     }
 
@@ -650,7 +651,7 @@ impl WalletService {
                     .fetch_spl_balances(&address, &mints)
                     .await
                     .unwrap_or_default();
-                let by_mint: std::collections::HashMap<&str, &crate::chains::solana::SplBalance> =
+                let by_mint: std::collections::HashMap<&str, &crate::fetch::chains::solana::SplBalance> =
                     spl.iter().map(|b| (b.mint.as_str(), b)).collect();
                 tokens
                     .iter()
@@ -1083,7 +1084,7 @@ impl WalletService {
                 if dec != entry.decimals {
                     entry.decimals = dec;
                     entry.amount_display =
-                        crate::chains::evm::format_evm_decimals(&entry.amount_raw, dec);
+                        crate::fetch::chains::evm::format_evm_decimals(&entry.amount_raw, dec);
                 }
                 if entry.from != addr_lower && entry.to != addr_lower {
                     return None;
@@ -2113,7 +2114,7 @@ impl WalletService {
                     private_key_hex: priv_hex.to_string(),
                     to_address: to.to_string(),
                     amount_sats,
-                    fee_rate: crate::chains::bitcoin::FeeRate { sats_per_vbyte: fee_rate_svb },
+                    fee_rate: crate::fetch::chains::bitcoin::FeeRate { sats_per_vbyte: fee_rate_svb },
                     available_utxos: vec![],
                     network_mode: "mainnet".to_string(),
                     enable_rbf: true,
@@ -3106,7 +3107,7 @@ impl WalletService {
         );
 
         let nonce = nonce_res.unwrap_or(0);
-        let fee = fee_res.unwrap_or(crate::chains::evm::EvmFeeEstimate {
+        let fee = fee_res.unwrap_or(crate::fetch::chains::evm::EvmFeeEstimate {
             base_fee_wei: 0,
             priority_fee_wei: 1_000_000_000,
             max_fee_per_gas_wei: 2_000_000_000,
@@ -3536,7 +3537,7 @@ fn format_decimals(raw: u128, decimals: u8) -> String {
 ///   - `"gas_limit"`: decimal integer or string
 ///   - `"max_fee_per_gas_wei"`: decimal string
 ///   - `"max_priority_fee_per_gas_wei"`: decimal string
-fn read_evm_overrides(params: &serde_json::Value) -> crate::chains::evm::EvmSendOverrides {
+fn read_evm_overrides(params: &serde_json::Value) -> crate::send::chains::evm::EvmSendOverrides {
     let nonce = params["nonce"]
         .as_u64()
         .or_else(|| params["nonce"].as_str().and_then(|s| s.parse().ok()));
@@ -3551,7 +3552,7 @@ fn read_evm_overrides(params: &serde_json::Value) -> crate::chains::evm::EvmSend
         .as_str()
         .and_then(|s| s.parse().ok())
         .or_else(|| params["max_priority_fee_per_gas_wei"].as_u64().map(|n| n as u128));
-    crate::chains::evm::EvmSendOverrides {
+    crate::send::chains::evm::EvmSendOverrides {
         nonce,
         max_fee_per_gas_wei,
         max_priority_fee_per_gas_wei,
@@ -3637,7 +3638,6 @@ fn native_coin_template(chain_id: u32) -> Option<AssetHolding> {
     Some(AssetHolding {
         name: chain.coin_name().to_string(),
         symbol: chain.coin_symbol().to_string(),
-        market_data_id: chain.market_data_id().to_string(),
         coin_gecko_id: chain.coin_gecko_id().to_string(),
         chain_name: chain.chain_display_name().to_string(),
         token_standard: "Native".to_string(),

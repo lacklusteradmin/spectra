@@ -39,27 +39,20 @@ impl From<hex::FromHexError> for SpectraBridgeError {
 mod app_core;
 pub use app_core::*;
 
-pub mod chains;
 pub mod derivation;
 pub mod diagnostics;
-pub mod diagnostics_sanitizer;
 pub mod fetch;
 pub mod ffi;
-pub mod formatting;
-pub mod localization;
+pub mod platform;
 pub mod receive;
-pub mod resources;
-pub mod self_tests;
+pub mod registry;
 pub mod send;
 pub mod service;
 pub mod store;
-pub mod tokens;
-pub mod types;
-pub mod catalog;
 
-// Re-export every submodule at crate root so pre-reorganization paths
-// (e.g. `crate::http::HttpClient`, `crate::wallet_domain::...`) continue to resolve.
-// New code should prefer the folder-qualified path (`crate::fetch::http::...`).
+// Compat re-exports so pre-reorganization paths (e.g. `crate::http::HttpClient`,
+// `crate::catalog::...`, `crate::tokens::...`) continue to resolve without
+// touching call sites. New code should prefer folder-qualified paths.
 pub use derivation::*;
 pub use derivation::{addressing, import};
 pub use fetch::{
@@ -75,3 +68,10 @@ pub use store::{
     app_state, password_verifier, persistence, secret_store,
     seed_envelope, state, wallet_core, wallet_db, wallet_domain,
 };
+// Platform helpers (catalog/formatting/localization/resources/types) were at
+// crate root before reorg — keep them reachable via their old names.
+pub use platform::{catalog, formatting, localization, resources, types};
+// tokens.rs moved under registry/; diagnostics_sanitizer.rs and self_tests.rs
+// moved under diagnostics/. Expose at crate root for existing callers.
+pub use registry::tokens;
+pub use diagnostics::{sanitizer as diagnostics_sanitizer, self_tests};

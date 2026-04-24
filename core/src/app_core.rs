@@ -87,7 +87,7 @@ pub enum AppCoreScriptType {
     Account,
 }
 
-/// Endpoint-table slot for a given chain. Mirrors `chains::registry::EndpointSlot`
+/// Endpoint-table slot for a given chain. Mirrors `crate::registry::EndpointSlot`
 /// so the Swift side can ask Rust for the right `chain_id + offset` instead of
 /// reimplementing the offset arithmetic.
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Hash, uniffi::Enum)]

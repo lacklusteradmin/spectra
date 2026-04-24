@@ -8,6 +8,9 @@ pub mod transfer;
 pub mod utxo;
 pub mod verification;
 
+// Per-chain write-path: build / sign / broadcast transaction methods.
+pub mod chains;
+
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, uniffi::Record)]

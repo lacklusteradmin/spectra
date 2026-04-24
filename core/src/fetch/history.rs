@@ -2,7 +2,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::collections::BTreeMap;
 
-use crate::chains::registry::Chain;
+use crate::registry::Chain;
 
 // ----------------------------------------------------------------
 // Normalized chain history — standard output from fetch_normalized_history_json

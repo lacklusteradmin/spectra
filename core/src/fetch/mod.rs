@@ -9,6 +9,10 @@ pub mod refresh;
 pub mod refresh_engine;
 pub mod transactions;
 
+// Per-chain read-path clients: client struct + shared types + balance /
+// history / metadata / fee-estimate RPC methods.
+pub mod chains;
+
 use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, BTreeSet};
 

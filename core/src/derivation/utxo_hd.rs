@@ -28,7 +28,7 @@ use secp256k1::{All, Secp256k1};
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 
-use crate::chains::bitcoin::{BitcoinClient, EsploraUtxo};
+use crate::fetch::chains::bitcoin::{BitcoinClient, EsploraUtxo};
 
 use super::bitcoin_primitives::{
     encode_p2pkh, encode_p2sh_p2wpkh, encode_p2wpkh, parse_bip32_path, BitcoinNetworkParams,

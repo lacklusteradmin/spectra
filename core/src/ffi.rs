@@ -856,16 +856,16 @@ pub fn core_compile_script_type(
 
 #[uniffi::export]
 pub fn core_chain_id_for_name(name: String) -> Option<u32> {
-    super::chains::registry::Chain::from_display_name(&name).map(|c| c.id())
+    super::registry::Chain::from_display_name(&name).map(|c| c.id())
 }
 
 #[uniffi::export]
 pub fn core_endpoint_id(chain_id: u32, slot: super::app_core::AppCoreEndpointSlot) -> Option<u32> {
-    let chain = super::chains::registry::Chain::from_id(chain_id)?;
+    let chain = super::registry::Chain::from_id(chain_id)?;
     let mapped = match slot {
-        super::app_core::AppCoreEndpointSlot::Primary => super::chains::registry::EndpointSlot::Primary,
-        super::app_core::AppCoreEndpointSlot::Secondary => super::chains::registry::EndpointSlot::Secondary,
-        super::app_core::AppCoreEndpointSlot::Explorer => super::chains::registry::EndpointSlot::Explorer,
+        super::app_core::AppCoreEndpointSlot::Primary => super::registry::EndpointSlot::Primary,
+        super::app_core::AppCoreEndpointSlot::Secondary => super::registry::EndpointSlot::Secondary,
+        super::app_core::AppCoreEndpointSlot::Explorer => super::registry::EndpointSlot::Explorer,
     };
     Some(chain.endpoint_id(mapped))
 }
@@ -877,13 +877,13 @@ pub fn core_endpoint_id(chain_id: u32, slot: super::app_core::AppCoreEndpointSlo
 #[uniffi::export]
 pub fn core_evm_seed_derivation_chain_name(chain_name: String) -> Option<String> {
     Some(
-        match super::chains::registry::Chain::from_display_name(&chain_name)? {
-            super::chains::registry::Chain::Ethereum => "Ethereum",
-            super::chains::registry::Chain::EthereumClassic => "Ethereum Classic",
-            super::chains::registry::Chain::Arbitrum => "Arbitrum",
-            super::chains::registry::Chain::BnbChain => "Ethereum",
-            super::chains::registry::Chain::Avalanche => "Avalanche",
-            super::chains::registry::Chain::Hyperliquid => "Hyperliquid",
+        match super::registry::Chain::from_display_name(&chain_name)? {
+            super::registry::Chain::Ethereum => "Ethereum",
+            super::registry::Chain::EthereumClassic => "Ethereum Classic",
+            super::registry::Chain::Arbitrum => "Arbitrum",
+            super::registry::Chain::BnbChain => "Ethereum",
+            super::registry::Chain::Avalanche => "Avalanche",
+            super::registry::Chain::Hyperliquid => "Hyperliquid",
             _ => return None,
         }
         .to_string(),

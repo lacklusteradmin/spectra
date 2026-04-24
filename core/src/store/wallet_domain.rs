@@ -71,7 +71,6 @@ pub struct CoreCoin {
     pub id: String,
     pub name: String,
     pub symbol: String,
-    pub market_data_id: String,
     pub coin_gecko_id: String,
     pub chain_name: String,
     pub token_standard: String,
@@ -249,8 +248,6 @@ pub struct CoreTokenPreferenceEntry {
     pub symbol: String,
     pub token_standard: String,
     pub contract_address: String,
-    #[serde(rename = "marketDataID")]
-    pub market_data_id: String,
     #[serde(rename = "coinGeckoID")]
     pub coin_gecko_id: String,
     pub decimals: i32,
@@ -316,7 +313,6 @@ mod roundtrip_tests {
             symbol: "USDT".to_string(),
             token_standard: "BEP-20".to_string(),
             contract_address: "0x55d39897".to_string(),
-            market_data_id: "825".to_string(),
             coin_gecko_id: "tether".to_string(),
             decimals: 18,
             display_decimals: Some(6),
@@ -327,7 +323,6 @@ mod roundtrip_tests {
         let json = serde_json::to_string(&entry).unwrap();
         assert!(json.contains("\"chain\":\"BNB Chain\""));
         assert!(json.contains("\"category\":\"stablecoin\""));
-        assert!(json.contains("\"marketDataID\""));
         assert!(json.contains("\"coinGeckoID\""));
         assert!(json.contains("\"isBuiltIn\":true"));
         let decoded: CoreTokenPreferenceEntry = serde_json::from_str(&json).unwrap();
