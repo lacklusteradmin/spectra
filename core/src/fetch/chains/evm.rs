@@ -182,13 +182,13 @@ impl EvmClient {
     }
 
     pub(crate) async fn call(&self, method: &str, params: Value) -> Result<Value, String> {
-        let body = rpc(method, params);
+        let body = std::sync::Arc::new(rpc(method, params));
         with_fallback(&self.endpoints, |url| {
             let client = self.client.clone();
-            let body = body.clone();
+            let body = std::sync::Arc::clone(&body);
             async move {
                 let resp: Value = client
-                    .post_json(&url, &body, RetryProfile::ChainRead)
+                    .post_json(&url, &*body, RetryProfile::ChainRead)
                     .await?;
                 if let Some(err) = resp.get("error") {
                     return Err(format!("rpc error: {err}"));
@@ -632,7 +632,7 @@ impl EvmClient {
     ) -> Result<Vec<EvmTokenTransferEntry>, String> {
         let addr_lower = address.to_lowercase();
         let safe_page = page.max(1);
-        let safe_size = page_size.max(1).min(500);
+        let safe_size = page_size.clamp(1, 500);
 
         let mut url = format!(
             "{}/v2/api?chainid={}&module=account&action=tokentx&address={}&page={}&offset={}&sort=desc",

@@ -72,12 +72,12 @@ impl AptosClient {
 
     pub(crate) async fn post_val(&self, path: &str, body: &Value) -> Result<Value, String> {
         let path = path.to_string();
-        let body = body.clone();
+        let body = std::sync::Arc::new(body.clone());
         with_fallback(&self.endpoints, |base| {
             let client = self.client.clone();
             let url = format!("{}{}", base.trim_end_matches('/'), path);
-            let body = body.clone();
-            async move { client.post_json(&url, &body, RetryProfile::ChainRead).await }
+            let body = std::sync::Arc::clone(&body);
+            async move { client.post_json(&url, &*body, RetryProfile::ChainRead).await }
         })
         .await
     }

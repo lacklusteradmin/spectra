@@ -22,9 +22,6 @@ use crate::http::{with_fallback, HttpClient, RetryProfile};
 // Constants
 // ----------------------------------------------------------------
 
-/// ICP ledger canister ID (mainnet).
-#[allow(dead_code)]
-pub(crate) const ICP_LEDGER_CANISTER: &str = "ryjl3-tyaaa-aaaaa-aaaba-cai";
 /// ICP e8s per ICP.
 pub(crate) const E8S_PER_ICP: u64 = 100_000_000;
 
@@ -62,17 +59,13 @@ pub struct IcpSendResult {
 pub struct IcpClient {
     /// Rosetta API endpoint (https://rosetta-api.internetcomputer.org).
     rosetta_endpoints: Vec<String>,
-    /// IC HTTP gateway (https://ic0.app).
-    #[allow(dead_code)]
-    ic_endpoints: Vec<String>,
     client: std::sync::Arc<HttpClient>,
 }
 
 impl IcpClient {
-    pub fn new(rosetta_endpoints: Vec<String>, ic_endpoints: Vec<String>) -> Self {
+    pub fn new(rosetta_endpoints: Vec<String>) -> Self {
         Self {
             rosetta_endpoints,
-            ic_endpoints,
             client: HttpClient::shared(),
         }
     }
@@ -83,12 +76,12 @@ impl IcpClient {
         body: &Value,
     ) -> Result<T, String> {
         let path = path.to_string();
-        let body = body.clone();
+        let body = std::sync::Arc::new(body.clone());
         with_fallback(&self.rosetta_endpoints, |base| {
             let client = self.client.clone();
             let url = format!("{}{}", base.trim_end_matches('/'), path);
-            let body = body.clone();
-            async move { client.post_json(&url, &body, RetryProfile::ChainRead).await }
+            let body = std::sync::Arc::clone(&body);
+            async move { client.post_json(&url, &*body, RetryProfile::ChainRead).await }
         })
         .await
     }

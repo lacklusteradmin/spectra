@@ -86,29 +86,16 @@ impl TronClient {
 
     pub(crate) async fn post(&self, path: &str, body: &Value) -> Result<Value, String> {
         let path = path.to_string();
-        let body = body.clone();
+        let body = std::sync::Arc::new(body.clone());
         with_fallback(&self.endpoints, |base| {
             let client = self.client.clone();
             let url = format!("{}{}", base.trim_end_matches('/'), path);
-            let body = body.clone();
-            async move { client.post_json(&url, &body, RetryProfile::ChainRead).await }
+            let body = std::sync::Arc::clone(&body);
+            async move { client.post_json(&url, &*body, RetryProfile::ChainRead).await }
         })
         .await
     }
 
-    #[allow(dead_code)]
-    pub(crate) async fn get_json_path<T: serde::de::DeserializeOwned>(
-        &self,
-        path: &str,
-    ) -> Result<T, String> {
-        let path = path.to_string();
-        with_fallback(&self.endpoints, |base| {
-            let client = self.client.clone();
-            let url = format!("{}{}", base.trim_end_matches('/'), path);
-            async move { client.get_json(&url, RetryProfile::ChainRead).await }
-        })
-        .await
-    }
 }
 // Tron fetch paths: balance, latest block, unified TRX+TRC-20 history,
 // TRC-20 balance, TRC-20 metadata.

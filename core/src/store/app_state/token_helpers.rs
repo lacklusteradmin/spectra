@@ -116,7 +116,7 @@ pub fn aptos_package_identifier(value: Option<String>) -> String {
 
 #[uniffi::export]
 pub fn parse_bitcoin_esplora_endpoints(raw: String) -> Vec<String> {
-    raw.split(|c: char| c == ',' || c == '\n' || c == ';')
+    raw.split([',', '\n', ';'])
         .map(|s| s.trim().to_string())
         .filter(|s| !s.is_empty())
         .collect()

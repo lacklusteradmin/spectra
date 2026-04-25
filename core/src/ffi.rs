@@ -689,13 +689,12 @@ pub fn core_evaluate_high_risk_send_reasons(
         {
             warnings.push(make("non_xrp"));
         }
-    } else if chain_name == "Monero" {
-        if lowered.starts_with("0x")
+    } else if chain_name == "Monero"
+        && (lowered.starts_with("0x")
             || lowered.starts_with("bc1")
-            || lowered.starts_with('r')
-        {
-            warnings.push(make("non_monero"));
-        }
+            || lowered.starts_with('r'))
+    {
+        warnings.push(make("non_monero"));
     }
 
     // 11. Wallet-chain context mismatch.

@@ -90,13 +90,13 @@ impl NearClient {
     }
 
     pub(crate) async fn call(&self, method: &str, params: Value) -> Result<Value, String> {
-        let body = rpc(method, params);
+        let body = std::sync::Arc::new(rpc(method, params));
         with_fallback(&self.endpoints, |url| {
             let client = self.client.clone();
-            let body = body.clone();
+            let body = std::sync::Arc::clone(&body);
             async move {
                 let resp: Value = client
-                    .post_json(&url, &body, RetryProfile::ChainRead)
+                    .post_json(&url, &*body, RetryProfile::ChainRead)
                     .await?;
                 if let Some(err) = resp.get("error") {
                     return Err(format!("near rpc error: {err}"));
@@ -540,9 +540,7 @@ pub fn near_parse_history_response(
             .to_lowercase();
             let (kind, counterparty) = if signer == owner {
                 ("send".to_string(), receiver)
-            } else if receiver == owner {
-                ("receive".to_string(), signer)
-            } else if !signer.is_empty() {
+            } else if receiver == owner || !signer.is_empty() {
                 ("receive".to_string(), signer)
             } else {
                 ("send".to_string(), receiver)

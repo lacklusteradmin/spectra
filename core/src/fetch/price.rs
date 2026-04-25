@@ -30,7 +30,7 @@ pub enum PriceProvider {
 }
 
 impl PriceProvider {
-    pub fn from_str(value: &str) -> Option<Self> {
+    pub fn from_raw(value: &str) -> Option<Self> {
         match value {
             "CoinGecko" | "coingecko" => Some(Self::CoinGecko),
             "CoinPaprika" | "coinpaprika" => Some(Self::CoinPaprika),
@@ -49,7 +49,7 @@ pub enum FiatRateProvider {
 }
 
 impl FiatRateProvider {
-    pub fn from_str(value: &str) -> Option<Self> {
+    pub fn from_raw(value: &str) -> Option<Self> {
         match value {
             "Open ER" | "openER" => Some(Self::OpenER),
             "ExchangeRate.host" | "exchangeRateHost" => Some(Self::ExchangeRateHost),
@@ -451,7 +451,7 @@ async fn fetch_coinlore_quotes(coins: &[PriceRequestCoin]) -> Result<PriceQuoteM
     Ok(resolved)
 }
 
-fn coinlore_nameid_for<'a>(gecko_id: &'a str) -> &'a str {
+fn coinlore_nameid_for(gecko_id: &str) -> &str {
     match gecko_id {
         "ripple" | "xrp" => "ripple",
         other => other,

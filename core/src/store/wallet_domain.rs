@@ -3,28 +3,22 @@
 
 use serde::{Deserialize, Serialize};
 
-#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Hash, uniffi::Enum)]
+#[derive(Debug, Clone, Copy, Default, Serialize, Deserialize, PartialEq, Eq, Hash, uniffi::Enum)]
 #[serde(rename_all = "camelCase")]
 pub enum CoreBitcoinNetworkMode {
+    #[default]
     Mainnet,
     Testnet,
     Testnet4,
     Signet,
 }
 
-impl Default for CoreBitcoinNetworkMode {
-    fn default() -> Self { Self::Mainnet }
-}
-
-#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Hash, uniffi::Enum)]
+#[derive(Debug, Clone, Copy, Default, Serialize, Deserialize, PartialEq, Eq, Hash, uniffi::Enum)]
 #[serde(rename_all = "camelCase")]
 pub enum CoreDogecoinNetworkMode {
+    #[default]
     Mainnet,
     Testnet,
-}
-
-impl Default for CoreDogecoinNetworkMode {
-    fn default() -> Self { Self::Mainnet }
 }
 
 /// Swift `TransactionKind` — rawValues: `"send"`, `"receive"`.
@@ -53,16 +47,13 @@ pub enum CorePriceAlertCondition {
     Below,
 }
 
-#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Hash, uniffi::Enum)]
+#[derive(Debug, Clone, Copy, Default, Serialize, Deserialize, PartialEq, Eq, Hash, uniffi::Enum)]
 #[serde(rename_all = "camelCase")]
 pub enum CoreSeedDerivationPreset {
+    #[default]
     Standard,
     Account1,
     Account2,
-}
-
-impl Default for CoreSeedDerivationPreset {
-    fn default() -> Self { Self::Standard }
 }
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq, uniffi::Record)]
@@ -143,6 +134,12 @@ pub struct CoreSeedDerivationPaths {
     pub optimism: String,
     pub avalanche: String,
     pub hyperliquid: String,
+    pub polygon: String,
+    pub base: String,
+    pub linea: String,
+    pub scroll: String,
+    pub blast: String,
+    pub mantle: String,
     pub tron: String,
     pub solana: String,
     pub stellar: String,
@@ -215,6 +212,18 @@ pub enum CoreTokenTrackingChain {
     Avalanche,
     #[serde(rename = "Hyperliquid")]
     Hyperliquid,
+    #[serde(rename = "Polygon")]
+    Polygon,
+    #[serde(rename = "Base")]
+    Base,
+    #[serde(rename = "Linea")]
+    Linea,
+    #[serde(rename = "Scroll")]
+    Scroll,
+    #[serde(rename = "Blast")]
+    Blast,
+    #[serde(rename = "Mantle")]
+    Mantle,
     #[serde(rename = "Solana")]
     Solana,
     #[serde(rename = "Sui")]

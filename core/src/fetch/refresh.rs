@@ -106,7 +106,7 @@ pub fn chain_plans(request: ChainRefreshPlanRequest) -> Vec<ChainRefreshPlan> {
 
     let mut chain_ids = request.chain_ids;
     chain_ids
-        .sort_by(|lhs, rhs| display_name_for_chain_id(lhs).cmp(&display_name_for_chain_id(rhs)));
+        .sort_by(|lhs, rhs| display_name_for_chain_id(lhs).cmp(display_name_for_chain_id(rhs)));
 
     chain_ids
         .into_iter()
@@ -145,7 +145,7 @@ pub fn chain_plans(request: ChainRefreshPlanRequest) -> Vec<ChainRefreshPlan> {
 pub fn history_plans(request: HistoryRefreshPlanRequest) -> Vec<String> {
     let mut chain_ids = request.chain_ids;
     chain_ids
-        .sort_by(|lhs, rhs| display_name_for_chain_id(lhs).cmp(&display_name_for_chain_id(rhs)));
+        .sort_by(|lhs, rhs| display_name_for_chain_id(lhs).cmp(display_name_for_chain_id(rhs)));
     chain_ids
         .into_iter()
         .filter(|chain_id| {
@@ -171,7 +171,7 @@ fn should_refresh_history(
     }
 }
 
-fn display_name_for_chain_id<'a>(chain_id: &'a str) -> &'a str {
+fn display_name_for_chain_id(chain_id: &str) -> &str {
     match chain_id {
         "bitcoin" => "Bitcoin",
         "bitcoincash" | "bitcoin-cash" => "Bitcoin Cash",

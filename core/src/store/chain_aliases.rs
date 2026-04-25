@@ -1,0 +1,155 @@
+//! Canonical chain-name / icon-identifier helpers shared across UI planners.
+
+use std::collections::HashMap;
+
+fn known_chain_aliases() -> &'static [(&'static str, &'static str)] {
+    &[
+        ("bitcoin", "bitcoin"),
+        ("bitcoin cash", "bitcoin-cash"),
+        ("bitcoin sv", "bitcoin-sv"),
+        ("litecoin", "litecoin"),
+        ("dogecoin", "dogecoin"),
+        ("ethereum", "ethereum"),
+        ("ethereum classic", "ethereum-classic"),
+        ("arbitrum", "arbitrum"),
+        ("optimism", "optimism"),
+        ("bnb chain", "bnb"),
+        ("avalanche", "avalanche"),
+        ("hyperliquid", "hyperliquid"),
+        ("tron", "tron"),
+        ("solana", "solana"),
+        ("stellar", "stellar"),
+        ("cardano", "cardano"),
+        ("xrp ledger", "xrp"),
+        ("monero", "monero"),
+        ("sui", "sui"),
+        ("aptos", "aptos"),
+        ("ton", "ton"),
+        ("internet computer", "internet-computer"),
+        ("near", "near"),
+        ("polkadot", "polkadot"),
+    ]
+}
+
+fn native_symbol_chain_aliases() -> &'static [(&'static str, &'static str)] {
+    &[
+        ("BTC", "bitcoin"),
+        ("BCH", "bitcoin-cash"),
+        ("BSV", "bitcoin-sv"),
+        ("LTC", "litecoin"),
+        ("DOGE", "dogecoin"),
+        ("ETH", "ethereum"),
+        ("ETC", "ethereum-classic"),
+        ("ARB", "arbitrum"),
+        ("OP", "optimism"),
+        ("BNB", "bnb"),
+        ("AVAX", "avalanche"),
+        ("HYPE", "hyperliquid"),
+        ("TRX", "tron"),
+        ("SOL", "solana"),
+        ("XLM", "stellar"),
+        ("ADA", "cardano"),
+        ("XRP", "xrp"),
+        ("XMR", "monero"),
+        ("SUI", "sui"),
+        ("APT", "aptos"),
+        ("TON", "ton"),
+        ("ICP", "internet-computer"),
+        ("NEAR", "near"),
+        ("DOT", "polkadot"),
+    ]
+}
+
+fn chain_id_by_chain_name() -> &'static HashMap<String, String> {
+    use std::sync::OnceLock;
+    static LOOKUP: OnceLock<HashMap<String, String>> = OnceLock::new();
+    LOOKUP.get_or_init(|| {
+        let raw = include_str!("../../../resources/strings/base/ChainWikiEntries.json");
+        let mut map = HashMap::new();
+        if let Ok(serde_json::Value::Array(entries)) = serde_json::from_str::<serde_json::Value>(raw)
+        {
+            for entry in entries {
+                let id = entry.get("id").and_then(|v| v.as_str());
+                let name = entry.get("name").and_then(|v| v.as_str());
+                if let (Some(id), Some(name)) = (id, name) {
+                    map.insert(name.trim().to_lowercase(), id.to_string());
+                }
+            }
+        }
+        map
+    })
+}
+
+pub(super) fn canonical_chain_component_inner(chain_name: &str, symbol: &str) -> String {
+    let normalized_chain = chain_name.trim().to_lowercase();
+    let normalized_symbol = symbol.trim().to_uppercase();
+    if let Some((_, alias)) = known_chain_aliases()
+        .iter()
+        .find(|(name, _)| *name == normalized_chain)
+    {
+        return (*alias).to_string();
+    }
+    if let Some(id) = chain_id_by_chain_name().get(&normalized_chain) {
+        return id.clone();
+    }
+    if let Some((_, alias)) = native_symbol_chain_aliases()
+        .iter()
+        .find(|(sym, _)| *sym == normalized_symbol)
+    {
+        return (*alias).to_string();
+    }
+    normalized_chain.replace(' ', "-")
+}
+
+pub fn plan_canonical_chain_component(chain_name: String, symbol: String) -> String {
+    canonical_chain_component_inner(&chain_name, &symbol)
+}
+
+pub fn plan_icon_identifier(
+    symbol: String,
+    chain_name: String,
+    contract_address: Option<String>,
+    token_standard: String,
+) -> String {
+    let normalized_symbol = symbol.to_lowercase();
+    let trimmed_contract = contract_address.map(|c| c.trim().to_string()).unwrap_or_default();
+    let normalized_chain = canonical_chain_component_inner(&chain_name, &symbol);
+    if !trimmed_contract.is_empty() {
+        return format!(
+            "token:{}:{}:{}",
+            normalized_chain,
+            normalized_symbol,
+            trimmed_contract.to_lowercase()
+        );
+    }
+    let is_native_token =
+        token_standard.eq_ignore_ascii_case("Native") || token_standard.is_empty();
+    let namespace = if is_native_token { "native" } else { "asset" };
+    format!("{namespace}:{normalized_chain}:{normalized_symbol}")
+}
+
+pub fn plan_normalized_icon_identifier(identifier: String) -> String {
+    let trimmed_identifier = identifier.trim().to_string();
+    let components: Vec<String> = trimmed_identifier.split(':').map(String::from).collect();
+    if components.len() < 3 {
+        return trimmed_identifier;
+    }
+    let namespace = &components[0];
+    let chain_component = &components[1];
+    let symbol_component = &components[2];
+    match namespace.as_str() {
+        "native" | "asset" | "token" => {
+            let canonical_chain =
+                canonical_chain_component_inner(chain_component, symbol_component);
+            let mut normalized = components.clone();
+            normalized[0] = namespace.clone();
+            normalized[1] = canonical_chain;
+            normalized[2] = symbol_component.to_lowercase();
+            if normalized.len() >= 4 {
+                normalized[3] = normalized[3].to_lowercase();
+            }
+            normalized.join(":")
+        }
+        _ => trimmed_identifier,
+    }
+}

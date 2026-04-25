@@ -1,96 +1,52 @@
 //! WalletService — the stateful async UniFFI object that Swift / Kotlin talk to.
 //!
-//! ## Design
-//!
 //! - All chain operations are `async` internally; UniFFI 0.29 with the tokio
 //!   feature wraps them into `async fn` on the Swift side automatically.
 //! - The service does not own secrets. It receives private key bytes per-call
-//!   (Swift reads from Keychain and passes them in). This keeps the Rust layer
-//!   stateless with respect to secrets.
-//! - Endpoint lists are set at construction time and can be rebuilt by calling
-//!   `update_endpoints`.
-//! - All public methods return `Result<String, SpectraBridgeError>` — the
-//!   `String` is a JSON-encoded response that Swift deserializes on its side.
-//!
-//! ## Chain IDs (frozen — must not change)
-//!
-//! | ID | Chain               |
-//! |----|---------------------|
-//! |  0 | Bitcoin             |
-//! |  1 | Ethereum            |
-//! |  2 | Solana              |
-//! |  3 | Dogecoin            |
-//! |  4 | XRP                 |
-//! |  5 | Litecoin            |
-//! |  6 | Bitcoin Cash        |
-//! |  7 | Tron                |
-//! |  8 | Stellar             |
-//! |  9 | Cardano             |
-//! | 10 | Polkadot            |
-//! | 11 | Arbitrum            |
-//! | 12 | Optimism            |
-//! | 13 | Avalanche           |
-//! | 14 | Sui                 |
-//! | 15 | Aptos               |
-//! | 16 | TON                 |
-//! | 17 | NEAR                |
-//! | 18 | ICP                 |
-//! | 19 | Monero              |
-//! | 20 | Base                |
-//! | 21 | Ethereum Classic    |
-//! | 22 | Bitcoin SV          |
-//! | 23 | BNB Chain           |
+//!   (Swift reads from Keychain and passes them in).
+//! - Endpoint lists are set at construction time and rebuilt via
+//!   `update_endpoints_typed`.
+//! - Frozen chain-id discriminants live in `crate::registry::Chain`.
 
-use serde::{Deserialize, Serialize};
+mod helpers;
+mod standalone;
+mod types;
+
+pub use standalone::*;
+pub use types::*;
+
+use helpers::{
+    fee_preview, fee_preview_str, format_decimals, format_smallest_unit_decimal, hex_field,
+    history_records_from_encode_inputs, is_extended_public_key, native_amount_from_balance_json,
+    native_coin_template, read_evm_overrides, simple_chain_balance_display, sqlite_load,
+    sqlite_save, str_field, upsert_asset_holding, utxo_fee_preview_json,
+};
+
+use crate::fetch::chains::bitcoin::UtxoTxStatus;
+use crate::fetch::chains::{
+    aptos::AptosClient, bitcoin::BitcoinClient, bitcoin_cash::BitcoinCashClient,
+    bitcoin_sv::BitcoinSvClient, cardano::CardanoClient, dogecoin::DogecoinClient,
+    evm::EvmClient, icp::IcpClient, litecoin::LitecoinClient, monero::MoneroClient,
+    near::NearClient, polkadot::PolkadotClient, solana::SolanaClient, stellar::StellarClient,
+    sui::SuiClient, ton::TonClient, tron::TronClient, xrp::XrpClient,
+};
+use crate::history_store::HistoryPaginationStore;
+use crate::http::HttpClient;
+use crate::registry::{Chain, EndpointSlot};
+use crate::secret_store::SecretStore;
+use crate::send::chains::bitcoin::{
+    sign_and_broadcast as bitcoin_sign_and_broadcast, BitcoinSendParams,
+};
+use crate::state::{
+    reduce_state_in_place, AssetHolding, CoreAppState, StateCommand, WalletSummary,
+};
+use crate::SpectraBridgeError;
 use serde_json::json;
 use std::sync::Arc;
 use tokio::sync::RwLock;
-use rusqlite;
 
-use crate::fetch::chains::bitcoin::UtxoTxStatus;
-use crate::registry::{Chain, EndpointSlot};
-use crate::tokens;
-use crate::fetch::chains::{
-    aptos::AptosClient,
-    bitcoin::BitcoinClient,
-    bitcoin_cash::BitcoinCashClient,
-    bitcoin_sv::BitcoinSvClient,
-    cardano::CardanoClient,
-    dogecoin::DogecoinClient,
-    evm::EvmClient,
-    icp::IcpClient,
-    litecoin::LitecoinClient,
-    monero::MoneroClient,
-    near::NearClient,
-    polkadot::PolkadotClient,
-    solana::SolanaClient,
-    stellar::StellarClient,
-    sui::SuiClient,
-    ton::TonClient,
-    tron::TronClient,
-    xrp::XrpClient,
-};
-use crate::send::chains::bitcoin::{sign_and_broadcast as bitcoin_sign_and_broadcast, BitcoinSendParams};
-use crate::history_store::HistoryPaginationStore;
-use crate::http::HttpClient;
-use crate::secret_store::SecretStore;
-use crate::state::{AssetHolding, CoreAppState, StateCommand, WalletSummary, reduce_state_in_place};
-use crate::SpectraBridgeError;
+// ── Endpoint index (internal — pre-indexed for O(1) chain_id lookup) ──────
 
-// ----------------------------------------------------------------
-// Endpoint configuration (passed in from Swift)
-// ----------------------------------------------------------------
-
-#[derive(Debug, Clone, Serialize, Deserialize, uniffi::Record)]
-pub struct ChainEndpoints {
-    pub chain_id: u32,
-    pub endpoints: Vec<String>,
-    /// Optional API key for services that require one (Blockfrost, Subscan, etc.)
-    pub api_key: Option<String>,
-}
-
-/// Pre-indexed endpoint store: O(1) lookup by chain_id, Arc-wrapped endpoints
-/// to avoid cloning Vec<String> on every network call.
 #[derive(Debug, Clone, Default)]
 struct EndpointIndex {
     endpoints: std::collections::HashMap<u32, Arc<Vec<String>>>,
@@ -111,122 +67,21 @@ impl EndpointIndex {
     }
 }
 
-// ----------------------------------------------------------------
-// WalletService
-// ----------------------------------------------------------------
+// ── WalletService — primary UniFFI-exported object ────────────────────────
 
-/// The primary UniFFI-exported object. Swift holds one of these for the
-/// lifetime of the app session.
+/// Swift holds one instance for the lifetime of the app session.
 #[derive(uniffi::Object)]
 pub struct WalletService {
     endpoints: Arc<RwLock<EndpointIndex>>,
-    /// Phase 2.3 — per-wallet history pagination state (cursor/page/exhaustion).
+    /// Per-wallet history pagination state (cursor / page / exhaustion).
     history_pagination: Arc<HistoryPaginationStore>,
-    /// Phase 2.7 — optional Keychain delegate (set via `set_secret_store`).
+    /// Optional Keychain delegate (set via `set_secret_store`).
     secret_store: Arc<std::sync::RwLock<Option<Arc<dyn SecretStore>>>>,
-    /// Phase 2.1 — canonical in-memory wallet + holdings state.
+    /// Canonical in-memory wallet + holdings state.
     wallet_state: Arc<RwLock<CoreAppState>>,
-    /// User's Etherscan V2 API key. Shared across all EVM chains because
-    /// Etherscan v2 dispatches by `chainid` parameter against a single host.
+    /// User's Etherscan V2 API key. Shared across all EVM chains: Etherscan v2
+    /// dispatches by `chainid` parameter against a single host.
     etherscan_api_key: Arc<std::sync::RwLock<String>>,
-}
-
-/// Typed app settings record for UniFFI — Rust handles JSON serialization to/from SQLite.
-#[derive(Debug, Clone, Serialize, Deserialize, uniffi::Record)]
-#[serde(rename_all = "camelCase")]
-pub struct PersistedAppSettings {
-    pub pricing_provider: String,
-    pub selected_fiat_currency: String,
-    pub fiat_rate_provider: String,
-    #[serde(rename = "ethereumRPCEndpoint")]
-    pub ethereum_rpc_endpoint: String,
-    pub ethereum_network_mode: String,
-    #[serde(rename = "etherscanAPIKey")]
-    pub etherscan_api_key: String,
-    #[serde(rename = "moneroBackendBaseURL")]
-    pub monero_backend_base_url: String,
-    #[serde(rename = "moneroBackendAPIKey")]
-    pub monero_backend_api_key: String,
-    pub bitcoin_network_mode: String,
-    pub dogecoin_network_mode: String,
-    pub bitcoin_esplora_endpoints: String,
-    pub bitcoin_stop_gap: i32,
-    pub bitcoin_fee_priority: String,
-    pub dogecoin_fee_priority: String,
-    pub hide_balances: bool,
-    #[serde(rename = "useFaceID")]
-    pub use_face_id: bool,
-    pub use_auto_lock: bool,
-    #[serde(rename = "useStrictRPCOnly")]
-    pub use_strict_rpc_only: bool,
-    pub require_biometric_for_send_actions: bool,
-    pub use_price_alerts: bool,
-    pub use_transaction_status_notifications: bool,
-    pub use_large_movement_notifications: bool,
-    pub automatic_refresh_frequency_minutes: i32,
-    pub background_sync_profile: String,
-    pub large_movement_alert_percent_threshold: f64,
-    #[serde(rename = "largeMovementAlertUSDThreshold")]
-    pub large_movement_alert_usd_threshold: f64,
-    pub pinned_dashboard_asset_symbols: Vec<String>,
-}
-
-/// Typed token descriptor for passing token arrays across UniFFI without JSON.
-#[derive(Debug, Clone, uniffi::Record)]
-pub struct TokenDescriptor {
-    pub contract: String,
-    pub symbol: String,
-    pub decimals: u8,
-    pub name: Option<String>,
-}
-
-/// Typed result for token balance queries — returned directly via UniFFI.
-#[derive(Debug, Clone, uniffi::Record)]
-pub struct TokenBalanceResult {
-    pub contract_address: String,
-    pub symbol: String,
-    pub decimals: u8,
-    pub balance_raw: String,
-    pub balance_display: String,
-}
-
-/// Unified per-chain native balance projection used by `fetch_native_balance_summary`.
-/// `smallest_unit` is a base-10 integer string (sats, lamports, wei, yocto-NEAR, ...);
-/// `amount_display` is the chain's human-readable native amount (e.g. "0.005").
-#[derive(Debug, Clone, uniffi::Record)]
-pub struct NativeBalanceSummary {
-    pub smallest_unit: String,
-    pub amount_display: String,
-    pub utxo_count: u32,
-}
-
-/// Light-weight EVM address probe output. Used by chain-risk warnings to
-/// decide whether a destination looks "fresh" (zero balance + zero nonce).
-#[derive(Debug, Clone, uniffi::Record)]
-pub struct EvmAddressProbe {
-    pub nonce: i64,
-    pub balance_eth: f64,
-}
-
-/// Format a smallest-unit u128 amount as a fixed-decimal string for chains
-/// whose typed balance struct doesn't already provide a `_display` field.
-fn format_smallest_unit_decimal(amount: u128, decimals: u32) -> String {
-    if decimals == 0 {
-        return amount.to_string();
-    }
-    let scale = 10u128.pow(decimals);
-    let whole = amount / scale;
-    let frac = amount % scale;
-    if frac == 0 {
-        return whole.to_string();
-    }
-    let frac_str = format!("{:0>width$}", frac, width = decimals as usize);
-    let trimmed = frac_str.trim_end_matches('0');
-    if trimmed.is_empty() {
-        whole.to_string()
-    } else {
-        format!("{whole}.{trimmed}")
-    }
 }
 
 #[uniffi::export(async_runtime = "tokio")]
@@ -307,7 +162,7 @@ impl WalletService {
         let endpoints = self.endpoints_for(chain.id()).await;
         match chain {
             Chain::Bitcoin => {
-                let client = BitcoinClient::new(HttpClient::shared(), endpoints, "mainnet");
+                let client = BitcoinClient::new(HttpClient::shared(), endpoints);
                 let bal = client.fetch_balance(&address).await.map_err(SpectraBridgeError::from)?;
                 Ok(NativeBalanceSummary {
                     smallest_unit: bal.confirmed_sats.to_string(),
@@ -446,8 +301,7 @@ impl WalletService {
                 })
             }
             Chain::Icp => {
-                let ic_endpoints = self.endpoints_for(chain.endpoint_id(EndpointSlot::Secondary)).await;
-                let client = IcpClient::new(endpoints, ic_endpoints);
+                let client = IcpClient::new(endpoints);
                 let bal = client.fetch_balance(&address).await.map_err(SpectraBridgeError::from)?;
                 Ok(NativeBalanceSummary {
                     smallest_unit: bal.e8s.to_string(),
@@ -822,7 +676,7 @@ impl WalletService {
                 )?;
             (priv_h, Some(pub_h))
         } else if let Some(ref pk) = request.private_key_hex {
-            let normalized = if pk.starts_with("0x") { pk[2..].to_string() } else { pk.clone() };
+            let normalized = pk.strip_prefix("0x").unwrap_or(pk).to_string();
             (normalized, None)
         } else {
             return Err(SpectraBridgeError::from(
@@ -922,7 +776,7 @@ impl WalletService {
         gap_limit: u32,
     ) -> Result<Option<String>, SpectraBridgeError> {
         let endpoints = self.endpoints_for(0).await;
-        let client = BitcoinClient::new(HttpClient::shared(), endpoints, "mainnet");
+        let client = BitcoinClient::new(HttpClient::shared(), endpoints);
         let next = crate::derivation::utxo_hd::fetch_next_unused_address(
             &client,
             &xpub,
@@ -949,7 +803,7 @@ impl WalletService {
         coins: Vec<crate::price::PriceRequestCoin>,
     ) -> Result<std::collections::HashMap<String, f64>, SpectraBridgeError> {
         eprintln!("[spectra:prices] enter provider={provider} coins={}", coins.len());
-        let parsed_provider = match crate::price::PriceProvider::from_str(&provider) {
+        let parsed_provider = match crate::price::PriceProvider::from_raw(&provider) {
             Some(p) => p,
             None => {
                 eprintln!("[spectra:prices] UNKNOWN provider={provider}");
@@ -975,7 +829,7 @@ impl WalletService {
         currencies: Vec<String>,
     ) -> Result<std::collections::HashMap<String, f64>, SpectraBridgeError> {
         eprintln!("[spectra:fiat] enter provider={provider} currencies={}", currencies.len());
-        let parsed_provider = match crate::price::FiatRateProvider::from_str(&provider) {
+        let parsed_provider = match crate::price::FiatRateProvider::from_raw(&provider) {
             Some(p) => p,
             None => {
                 eprintln!("[spectra:fiat] UNKNOWN provider={provider}");
@@ -1848,7 +1702,7 @@ impl WalletService {
         let endpoints = self.endpoints_for(chain.id()).await;
         let status: UtxoTxStatus = match chain {
             Chain::Bitcoin => {
-                let client = BitcoinClient::new(HttpClient::shared(), endpoints, "mainnet");
+                let client = BitcoinClient::new(HttpClient::shared(), endpoints);
                 client.fetch_tx_status(&txid).await.map_err(SpectraBridgeError::from)?
             }
             Chain::Dogecoin => {
@@ -1873,94 +1727,6 @@ impl WalletService {
         };
         Ok(status)
     }
-}
-
-// ----------------------------------------------------------------
-// Token catalog (synchronous free function — no network I/O)
-// ----------------------------------------------------------------
-
-/// Return the built-in token catalog as a typed list.
-/// Pass `chain_id = 4294967295` (u32::MAX) to get all chains.
-/// This is a synchronous free function so Swift can call it from a `static let`.
-#[uniffi::export]
-pub fn list_builtin_tokens(chain_id: u32) -> Vec<tokens::TokenEntry> {
-    tokens::list_tokens(chain_id)
-}
-
-// ----------------------------------------------------------------
-// BIP39 mnemonic utilities (free functions — no network I/O)
-// ----------------------------------------------------------------
-
-/// Generate a new random BIP-39 mnemonic with the requested word count.
-///
-/// `word_count` must be 12, 15, 18, 21, or 24. Any other value falls
-/// back silently to 12 words. Returns the space-joined mnemonic phrase.
-#[uniffi::export]
-pub fn generate_mnemonic(word_count: u32) -> String {
-    use bip39::{Mnemonic, Language};
-    use rand::RngCore;
-
-    // BIP-39 entropy bytes: 128/160/192/224/256 bits → 12/15/18/21/24 words.
-    let entropy_bytes: usize = match word_count {
-        15 => 20,
-        18 => 24,
-        21 => 28,
-        24 => 32,
-        _  => 16, // default: 12 words
-    };
-    let mut entropy = vec![0u8; entropy_bytes];
-    rand::thread_rng().fill_bytes(&mut entropy);
-    // bip39 v2: Mnemonic::from_entropy returns an error only if the entropy
-    // length is invalid — our lengths are always valid so unwrap is safe.
-    Mnemonic::from_entropy_in(Language::English, &entropy)
-        .expect("valid entropy length")
-        .to_string()
-}
-
-/// Validate a BIP-39 mnemonic phrase.
-///
-/// Returns `true` if `phrase` is a valid English BIP-39 mnemonic (correct
-/// word count, all words in the word list, and correct checksum). Returns
-/// `false` for any other input.
-#[uniffi::export]
-pub fn validate_mnemonic(phrase: String) -> bool {
-    use bip39::{Mnemonic, Language};
-    phrase.trim().parse::<Mnemonic>().is_ok()
-        || Mnemonic::parse_in(Language::English, phrase.trim()).is_ok()
-}
-
-/// Return the full BIP-39 English word list as a newline-delimited string
-/// (2048 words, one per line, alphabetically sorted).
-#[uniffi::export]
-pub fn bip39_english_wordlist() -> String {
-    static WORDLIST: std::sync::LazyLock<String> = std::sync::LazyLock::new(|| {
-        bip39::Language::English.word_list().join("\n")
-    });
-    WORDLIST.clone()
-}
-
-// ----------------------------------------------------------------
-// Internal helpers (not exported)
-// ----------------------------------------------------------------
-
-/// Convert typed history encode inputs from Swift into the base64-payload
-/// `HistoryRecord` shape expected by the SQLite layer.
-fn history_records_from_encode_inputs(
-    records: Vec<crate::ffi::HistoryRecordEncodeInput>,
-) -> Vec<crate::wallet_db::HistoryRecord> {
-    use base64::Engine;
-    let engine = base64::engine::general_purpose::STANDARD;
-    records
-        .into_iter()
-        .map(|r| crate::wallet_db::HistoryRecord {
-            id: r.id,
-            wallet_id: r.wallet_id,
-            chain_name: r.chain_name,
-            tx_hash: r.tx_hash,
-            created_at: r.created_at,
-            payload: engine.encode(r.payload_json.as_bytes()),
-        })
-        .collect()
 }
 
 impl WalletService {
@@ -2015,7 +1781,7 @@ impl WalletService {
         let endpoints = self.endpoints_for(chain.id()).await;
         match chain {
             Chain::Bitcoin => {
-                let client = BitcoinClient::new(HttpClient::shared(), endpoints, "mainnet");
+                let client = BitcoinClient::new(HttpClient::shared(), endpoints);
                 let fee = client.fetch_fee_rate(6).await.map_err(SpectraBridgeError::from)?;
                 Ok(serde_json::to_string(&fee)?)
             }
@@ -2108,7 +1874,7 @@ impl WalletService {
                 let amount_sats = params["amount_sat"].as_u64().ok_or("missing amount_sat")?;
                 let fee_rate_svb = params["fee_rate_svb"].as_f64().unwrap_or(10.0);
                 let priv_hex = str_field(&params, "private_key_hex")?;
-                let client = BitcoinClient::new(HttpClient::shared(), endpoints, "mainnet");
+                let client = BitcoinClient::new(HttpClient::shared(), endpoints);
                 let send_params = BitcoinSendParams {
                     from_address: from.to_string(),
                     private_key_hex: priv_hex.to_string(),
@@ -2367,8 +2133,7 @@ impl WalletService {
                         &derived_pub
                     }
                 };
-                let ic_endpoints = self.endpoints_for(chain.endpoint_id(EndpointSlot::Secondary)).await;
-                let client = IcpClient::new(endpoints, ic_endpoints);
+                let client = IcpClient::new(endpoints);
                 let r = client.sign_and_submit(from, to, e8s, &priv_bytes, pub_bytes)
                     .await.map_err(SpectraBridgeError::from)?;
                 Ok(serde_json::to_string(&r)?)
@@ -2569,7 +2334,7 @@ impl WalletService {
 
         match chain {
             Chain::Bitcoin => {
-                let client = BitcoinClient::new(HttpClient::shared(), endpoints, "mainnet");
+                let client = BitcoinClient::new(HttpClient::shared(), endpoints);
                 let bal = client.fetch_balance(&address).await.map_err(SpectraBridgeError::from)?;
                 Ok(serde_json::to_string(&bal)?)
             }
@@ -2648,8 +2413,7 @@ impl WalletService {
                 Ok(serde_json::to_string(&bal)?)
             }
             Chain::Icp => {
-                let ic_endpoints = self.endpoints_for(chain.endpoint_id(EndpointSlot::Secondary)).await;
-                let client = IcpClient::new(endpoints, ic_endpoints);
+                let client = IcpClient::new(endpoints);
                 let bal = client.fetch_balance(&address).await.map_err(SpectraBridgeError::from)?;
                 Ok(serde_json::to_string(&bal)?)
             }
@@ -2690,7 +2454,7 @@ impl WalletService {
 
         match chain {
             Chain::Bitcoin => {
-                let client = BitcoinClient::new(HttpClient::shared(), endpoints, "mainnet");
+                let client = BitcoinClient::new(HttpClient::shared(), endpoints);
                 let h = client.fetch_history(&address, None).await.map_err(SpectraBridgeError::from)?;
                 Ok(serde_json::to_string(&h)?)
             }
@@ -2801,8 +2565,7 @@ impl WalletService {
                 Ok(serde_json::to_string(&h)?)
             }
             Chain::Icp => {
-                let ic_endpoints = self.endpoints_for(chain.endpoint_id(EndpointSlot::Secondary)).await;
-                let client = IcpClient::new(endpoints, ic_endpoints);
+                let client = IcpClient::new(endpoints);
                 let h = client.fetch_history(&address).await.map_err(SpectraBridgeError::from)?;
                 Ok(serde_json::to_string(&h)?)
             }
@@ -2822,7 +2585,7 @@ impl WalletService {
         change_count: u32,
     ) -> Result<String, SpectraBridgeError> {
         let endpoints = self.endpoints_for(0).await;
-        let client = BitcoinClient::new(HttpClient::shared(), endpoints, "mainnet");
+        let client = BitcoinClient::new(HttpClient::shared(), endpoints);
         let bal = crate::derivation::utxo_hd::fetch_xpub_balance(
             &client,
             &xpub,
@@ -2845,7 +2608,7 @@ impl WalletService {
         let eps = self.endpoints_for(chain.id()).await;
         match chain {
             Chain::Bitcoin => {
-                let client = BitcoinClient::new(HttpClient::shared(), eps, "mainnet");
+                let client = BitcoinClient::new(HttpClient::shared(), eps);
                 let utxos = client.fetch_utxos(&address).await.map_err(SpectraBridgeError::from)?;
                 let rate = if fee_rate_svb > 0 {
                     fee_rate_svb
@@ -2901,7 +2664,7 @@ impl WalletService {
         let eps = self.endpoints_for(chain.id()).await;
         match chain {
             Chain::Bitcoin => {
-                let client = BitcoinClient::new(HttpClient::shared(), eps, "mainnet");
+                let client = BitcoinClient::new(HttpClient::shared(), eps);
                 let txid = client
                     .broadcast_raw_tx(&payload)
                     .await
@@ -3363,329 +3126,4 @@ impl WalletService {
     }
 }
 
-// ----------------------------------------------------------------
-// Param extraction helpers
-// ----------------------------------------------------------------
-
-fn str_field<'a>(params: &'a serde_json::Value, key: &str) -> Result<&'a str, SpectraBridgeError> {
-    params[key]
-        .as_str()
-        .ok_or_else(|| SpectraBridgeError::from(format!("missing field: {key}")))
-}
-
-fn hex_field(params: &serde_json::Value, key: &str) -> Result<Vec<u8>, SpectraBridgeError> {
-    let s = str_field(params, key)?;
-    hex::decode(s).map_err(|e| SpectraBridgeError::from(format!("{key} hex decode: {e}")))
-}
-
-/// Extract the normalised native balance (in display units, i.e. divided by
-/// the chain's smallest-unit factor) from a balance JSON value.
-///
-/// Supported chain_ids: 2, 4, 8, 9, 10, 14, 15, 16, 17, 18, 19.
-/// Returns 0.0 for unknown / unsupported chains.
-fn simple_chain_balance_display(chain_id: u32, obj: &serde_json::Value) -> f64 {
-    let u64_field = |key: &str| -> f64 {
-        obj[key].as_u64().map(|n| n as f64)
-            .or_else(|| obj[key].as_str().and_then(|s| s.parse::<u64>().ok()).map(|n| n as f64))
-            .unwrap_or(0.0)
-    };
-    let i64_field = |key: &str| -> f64 {
-        obj[key].as_i64().map(|n| n as f64)
-            .or_else(|| obj[key].as_str().and_then(|s| s.parse::<i64>().ok()).map(|n| n as f64))
-            .unwrap_or(0.0)
-    };
-    let Some(chain) = Chain::from_id(chain_id) else { return 0.0 };
-    let factor = 10f64.powi(chain.native_decimals() as i32);
-    match chain {
-        // Outliers: signed, string-encoded big ints, or multi-field balance shapes.
-        Chain::Stellar => i64_field("stroops") / factor,
-        Chain::Polkadot => {
-            obj["planck"].as_u64().map(|n| n as f64)
-                .or_else(|| obj["planck"].as_str().and_then(|s| s.parse::<f64>().ok()))
-                .unwrap_or(0.0) / factor
-        }
-        Chain::Near => {
-            if let Some(s) = obj["near_display"].as_str() {
-                s.parse::<f64>().unwrap_or(0.0)
-            } else {
-                obj["yocto_near"].as_str()
-                    .and_then(|s| s.parse::<f64>().ok())
-                    .map(|y| y / factor)
-                    .unwrap_or(0.0)
-            }
-        }
-        // Standard shape: single u64 field divided by 10^decimals.
-        Chain::Solana
-        | Chain::Xrp
-        | Chain::Cardano
-        | Chain::Sui
-        | Chain::Aptos
-        | Chain::Ton
-        | Chain::Icp
-        | Chain::Monero => match chain.native_balance_field() {
-            Some(field) => u64_field(field) / factor,
-            None => 0.0,
-        },
-        _ => 0.0,
-    }
-}
-
-/// Flat struct for direct serialization — avoids the intermediate
-/// `serde_json::Value` + `Map` heap allocation that `json!()` produces.
-#[derive(Serialize)]
-struct FeePreview<'a> {
-    chain_id: u32,
-    native_fee_raw: &'a str,
-    native_fee_display: &'a str,
-    unit: &'a str,
-    source: &'a str,
-}
-
-/// Build a `fee_preview` JSON string from an integer raw amount plus
-/// decimals. Scales the raw amount down for a human-readable display field.
-fn fee_preview(chain_id: u32, raw: u128, decimals: u8, unit: &str, source: &str) -> String {
-    let display = format_decimals(raw, decimals);
-    let raw_str = raw.to_string();
-    serde_json::to_string(&FeePreview {
-        chain_id, native_fee_raw: &raw_str, native_fee_display: &display, unit, source,
-    }).unwrap()
-}
-
-/// Variant that accepts pre-computed raw/display strings. Used when the raw
-/// amount doesn't fit in `u128` (e.g. NEAR's 10^21 yoctoNEAR).
-fn fee_preview_str(
-    chain_id: u32,
-    raw: &str,
-    display: &str,
-    unit: &str,
-    source: &str,
-) -> String {
-    serde_json::to_string(&FeePreview {
-        chain_id, native_fee_raw: raw, native_fee_display: display, unit, source,
-    }).unwrap()
-}
-
-/// Compute a UTXO capacity fee preview.
-///
-/// Uses P2PKH sizing (148 bytes/input, 34 bytes/output, 10 bytes overhead).
-/// The preview assumes all confirmed UTXOs above the 546-satoshi dust threshold
-/// are selected, and computes the fee for a single-output (max-send) transaction.
-fn utxo_fee_preview_json(utxo_values: Vec<u64>, fee_rate: u64) -> String {
-    const INPUT_BYTES: u64 = 148;
-    const OUTPUT_BYTES: u64 = 34;
-    const OVERHEAD: u64 = 10;
-    const DUST: u64 = 546;
-
-    let spendable: Vec<u64> = utxo_values.into_iter().filter(|&v| v >= DUST).collect();
-    let n = spendable.len() as u64;
-    let total: u64 = spendable.iter().sum();
-
-    if n == 0 || total == 0 {
-        return json!({
-            "fee_rate_svb": fee_rate,
-            "estimated_fee_sat": 0_u64,
-            "estimated_tx_bytes": 0_u64,
-            "selected_input_count": 0_u64,
-            "uses_change_output": false,
-            "spendable_balance_sat": 0_u64,
-            "max_sendable_sat": 0_u64,
-        })
-        .to_string();
-    }
-
-    // Single-output tx (send everything, no change).
-    let tx_bytes = OVERHEAD + n * INPUT_BYTES + OUTPUT_BYTES;
-    let fee = tx_bytes * fee_rate;
-    let max_sendable = total.saturating_sub(fee);
-
-    json!({
-        "fee_rate_svb": fee_rate,
-        "estimated_fee_sat": fee,
-        "estimated_tx_bytes": tx_bytes,
-        "selected_input_count": n,
-        "uses_change_output": false,
-        "spendable_balance_sat": total,
-        "max_sendable_sat": max_sendable,
-    })
-    .to_string()
-}
-
-/// Scale a raw integer by `10^decimals` into a human-readable decimal
-/// string with up to 6 fractional digits of precision.
-fn format_decimals(raw: u128, decimals: u8) -> String {
-    if decimals == 0 {
-        return raw.to_string();
-    }
-    let divisor: u128 = 10u128.pow(decimals as u32);
-    let whole = raw / divisor;
-    let frac = raw % divisor;
-    if frac == 0 {
-        return whole.to_string();
-    }
-    let frac_str = format!("{:0>width$}", frac, width = decimals as usize);
-    let trimmed = frac_str.trim_end_matches('0');
-    let capped = if trimmed.len() > 6 { &trimmed[..6] } else { trimmed };
-    format!("{}.{}", whole, capped)
-}
-
-/// Parse optional EVM transaction overrides from a `sign_and_send` params
-/// blob. All fields default to `None` — the Rust client then falls back to
-/// its standard pending-nonce / recommended-fee / estimated-gas behavior.
-///
-/// Accepted fields (all optional):
-///   - `"nonce"`: decimal integer or string
-///   - `"gas_limit"`: decimal integer or string
-///   - `"max_fee_per_gas_wei"`: decimal string
-///   - `"max_priority_fee_per_gas_wei"`: decimal string
-fn read_evm_overrides(params: &serde_json::Value) -> crate::send::chains::evm::EvmSendOverrides {
-    let nonce = params["nonce"]
-        .as_u64()
-        .or_else(|| params["nonce"].as_str().and_then(|s| s.parse().ok()));
-    let gas_limit = params["gas_limit"]
-        .as_u64()
-        .or_else(|| params["gas_limit"].as_str().and_then(|s| s.parse().ok()));
-    let max_fee_per_gas_wei = params["max_fee_per_gas_wei"]
-        .as_str()
-        .and_then(|s| s.parse().ok())
-        .or_else(|| params["max_fee_per_gas_wei"].as_u64().map(|n| n as u128));
-    let max_priority_fee_per_gas_wei = params["max_priority_fee_per_gas_wei"]
-        .as_str()
-        .and_then(|s| s.parse().ok())
-        .or_else(|| params["max_priority_fee_per_gas_wei"].as_u64().map(|n| n as u128));
-    crate::send::chains::evm::EvmSendOverrides {
-        nonce,
-        max_fee_per_gas_wei,
-        max_priority_fee_per_gas_wei,
-        gas_limit,
-    }
-}
-
-// ----------------------------------------------------------------
-// SQLite helpers (blocking — must be called via spawn_blocking)
-// ----------------------------------------------------------------
-
-fn sqlite_open(db_path: &str) -> Result<rusqlite::Connection, String> {
-    let conn = rusqlite::Connection::open(db_path)
-        .map_err(|e| format!("sqlite open {db_path}: {e}"))?;
-    conn.execute_batch(
-        "CREATE TABLE IF NOT EXISTS state (
-            key      TEXT    PRIMARY KEY,
-            value    TEXT    NOT NULL,
-            saved_at INTEGER NOT NULL
-        );",
-    )
-    .map_err(|e| format!("sqlite create table: {e}"))?;
-    Ok(conn)
-}
-
-fn sqlite_load(db_path: &str, key: &str) -> Result<String, String> {
-    let conn = sqlite_open(db_path)?;
-    let result: rusqlite::Result<String> = conn.query_row(
-        "SELECT value FROM state WHERE key = ?1",
-        rusqlite::params![key],
-        |row| row.get(0),
-    );
-    match result {
-        Ok(v) => Ok(v),
-        Err(rusqlite::Error::QueryReturnedNoRows) => Ok("{}".to_string()),
-        Err(e) => Err(format!("sqlite load: {e}")),
-    }
-}
-
-// ----------------------------------------------------------------
-// Phase 2.1 helpers — not UniFFI-exported
-// ----------------------------------------------------------------
-
-/// Parse a chain-specific balance JSON blob and return the native coin amount
-/// as a plain f64.  Mirrors the RustBalanceDecoder logic on the Swift side.
-fn native_amount_from_balance_json(chain_id: u32, json: &str) -> Option<f64> {
-    let v: serde_json::Value = serde_json::from_str(json).ok()?;
-    let chain = Chain::from_id(chain_id)?;
-    let factor = 10f64.powi(chain.native_decimals() as i32);
-    match chain {
-        // EVM: prefer pre-computed display; fall back to `balance_wei` string.
-        c if c.is_evm() => v["balance_display"].as_str().and_then(|s| s.parse().ok())
-            .or_else(|| v["balance_wei"].as_str().and_then(|s| s.parse::<f64>().ok()).map(|w| w / factor))
-            .or_else(|| v["balance_wei"].as_f64().map(|w| w / factor)),
-        // NEAR: prefer pre-computed display; fall back to yoctoNEAR string.
-        Chain::Near => v["near_display"].as_str().and_then(|s| s.parse().ok())
-            .or_else(|| v["yocto_near"].as_str().and_then(|s| s.parse::<f64>().ok()).map(|y| y / factor))
-            .or_else(|| v["yocto_near"].as_f64().map(|y| y / factor)),
-        // Stellar stroops is i64; take magnitude.
-        Chain::Stellar => {
-            let field = chain.native_balance_field()?;
-            v[field].as_i64().map(|s| s.unsigned_abs() as f64 / factor)
-        }
-        // Polkadot planck is a big integer stored as a string.
-        Chain::Polkadot => {
-            let field = chain.native_balance_field()?;
-            v[field].as_str().and_then(|s| s.parse::<f64>().ok())
-                .or_else(|| v[field].as_f64())
-                .map(|p| p / factor)
-        }
-        // Standard shape: single u64 field divided by 10^decimals.
-        c => {
-            let field = c.native_balance_field()?;
-            v[field].as_u64().map(|n| n as f64 / factor)
-        }
-    }
-}
-
-/// Return a zero-amount AssetHolding template for the native coin of each
-/// chain.  Used as the default when the holding doesn't exist yet.
-fn native_coin_template(chain_id: u32) -> Option<AssetHolding> {
-    let chain = Chain::from_id(chain_id)?;
-    Some(AssetHolding {
-        name: chain.coin_name().to_string(),
-        symbol: chain.coin_symbol().to_string(),
-        coin_gecko_id: chain.coin_gecko_id().to_string(),
-        chain_name: chain.chain_display_name().to_string(),
-        token_standard: "Native".to_string(),
-        contract_address: None,
-        amount: 0.0,
-        price_usd: 0.0,
-    })
-}
-
-/// Upsert a holding by (chain_name, contract_address) for tokens or
-/// (chain_name, symbol) for native coins.  Replaces the full holding when
-/// found, appends otherwise.
-fn upsert_asset_holding(holdings: &mut Vec<AssetHolding>, new: AssetHolding) {
-    let pos = match &new.contract_address {
-        Some(contract) => holdings
-            .iter()
-            .position(|h| h.chain_name == new.chain_name && h.contract_address.as_deref() == Some(contract.as_str())),
-        None => holdings
-            .iter()
-            .position(|h| h.chain_name == new.chain_name && h.symbol == new.symbol && h.contract_address.is_none()),
-    };
-    if let Some(idx) = pos {
-        holdings[idx] = new;
-    } else {
-        holdings.push(new);
-    }
-}
-
-/// Returns `true` when `s` starts with a BIP-32 extended public key prefix.
-fn is_extended_public_key(s: &str) -> bool {
-    matches!(
-        s.get(..4),
-        Some("xpub") | Some("ypub") | Some("zpub") | Some("Ypub") | Some("Zpub")
-    )
-}
-
-fn sqlite_save(db_path: &str, key: &str, value: &str) -> Result<(), String> {
-    let conn = sqlite_open(db_path)?;
-    let now = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .unwrap_or_default()
-        .as_secs() as i64;
-    conn.execute(
-        "INSERT INTO state (key, value, saved_at) VALUES (?1, ?2, ?3)
-         ON CONFLICT(key) DO UPDATE SET value = excluded.value, saved_at = excluded.saved_at",
-        rusqlite::params![key, value, now],
-    )
-    .map_err(|e| format!("sqlite save: {e}"))?;
-    Ok(())
-}
 

@@ -293,14 +293,14 @@ pub fn normalize_chain_history(chain_id: u32, raw_json: &str) -> Vec<ChainHistor
         }).collect(),
 
         // ICP: {block_index, amount_e8s, timestamp_ns, from, to, is_incoming}
-        Chain::Icp => arr.iter().filter_map(|e| {
+        Chain::Icp => arr.iter().map(|e| {
             let block_index = e["block_index"].as_i64().unwrap_or(0);
             let e8s = e["amount_e8s"].as_f64().unwrap_or(0.0);
             let is_incoming = e["is_incoming"].as_bool().unwrap_or(false);
             let timestamp_ns = e["timestamp_ns"].as_f64().unwrap_or(0.0);
             let from = e["from"].as_str().unwrap_or("");
             let to = e["to"].as_str().unwrap_or("");
-            Some(ChainHistoryEntry {
+            ChainHistoryEntry {
                 kind: if is_incoming { "receive" } else { "send" }.to_string(),
                 status: "confirmed".to_string(),
                 asset_name: asset_name.to_string(), symbol: symbol.to_string(),
@@ -309,7 +309,7 @@ pub fn normalize_chain_history(chain_id: u32, raw_json: &str) -> Vec<ChainHistor
                 counterparty: (if is_incoming { from } else { to }).to_string(),
                 tx_hash: block_index.to_string(), block_height: None,
                 timestamp: timestamp_ns / 1e9,
-            })
+            }
         }).collect(),
 
         // Monero: {txid, amount_piconeros, timestamp, is_incoming}
@@ -496,7 +496,7 @@ pub fn normalize_history(request: NormalizeHistoryRequest) -> Vec<CoreNormalized
                 .max(1) as u64;
             let best = entries
                 .into_iter()
-                .max_by(|lhs, rhs| compare_entries(lhs, rhs))?;
+                .max_by(compare_entries)?;
             Some(CoreNormalizedHistoryEntry {
                 provider_count,
                 ..best

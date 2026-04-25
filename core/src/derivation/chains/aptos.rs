@@ -4,7 +4,7 @@ pub fn pubkey_to_aptos_address(public_key: &[u8; 32]) -> String {
     use sha3::{Digest, Sha3_256};
     let mut h = Sha3_256::new();
     h.update(public_key);
-    h.update(&[0x00u8]); // Ed25519 scheme byte
+    h.update([0x00u8]); // Ed25519 scheme byte
     let hash = h.finalize();
     format!("0x{}", hex::encode(&hash[..]))
 }

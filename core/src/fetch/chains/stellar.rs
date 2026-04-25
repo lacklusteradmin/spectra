@@ -92,8 +92,6 @@ pub(crate) struct HorizonPaymentsEmbedded {
 
 #[derive(Debug, Deserialize)]
 pub(crate) struct HorizonPaymentRecord {
-    #[allow(dead_code)]
-    pub(crate) id: String,
     #[serde(rename = "type")]
     pub(crate) op_type: String,
     #[serde(default)]

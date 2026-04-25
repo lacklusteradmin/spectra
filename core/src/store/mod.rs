@@ -1,4 +1,5 @@
 pub mod app_state;
+pub mod chain_aliases;
 pub mod password_verifier;
 pub mod persistence;
 pub mod secret_store;
@@ -7,6 +8,10 @@ pub mod state;
 pub mod wallet_core;
 pub mod wallet_db;
 pub mod wallet_domain;
+
+pub use chain_aliases::{
+    plan_canonical_chain_component, plan_icon_identifier, plan_normalized_icon_identifier,
+};
 
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
@@ -479,6 +484,12 @@ pub fn plan_dashboard_supported_token_entries(
             Bnb => "BNB Chain",
             Avalanche => "Avalanche",
             Hyperliquid => "Hyperliquid",
+            Polygon => "Polygon",
+            Base => "Base",
+            Linea => "Linea",
+            Scroll => "Scroll",
+            Blast => "Blast",
+            Mantle => "Mantle",
             Solana => "Solana",
             Sui => "Sui",
             Aptos => "Aptos",
@@ -520,7 +531,8 @@ fn normalize_tracked_token_identifier(
     use wallet_domain::CoreTokenTrackingChain::*;
     let trimmed = contract_address.trim();
     match chain {
-        Ethereum | Arbitrum | Optimism | Bnb | Avalanche | Hyperliquid => trimmed.to_lowercase(),
+        Ethereum | Arbitrum | Optimism | Bnb | Avalanche | Hyperliquid | Polygon | Base | Linea
+        | Scroll | Blast | Mantle => trimmed.to_lowercase(),
         Aptos => crate::store::app_state::token_helpers::normalize_aptos_token_identifier(
             trimmed.to_string(),
         ),
@@ -549,6 +561,12 @@ pub fn plan_merge_built_in_token_preferences(
             Bnb => "BNB Chain",
             Avalanche => "Avalanche",
             Hyperliquid => "Hyperliquid",
+            Polygon => "Polygon",
+            Base => "Base",
+            Linea => "Linea",
+            Scroll => "Scroll",
+            Blast => "Blast",
+            Mantle => "Mantle",
             Solana => "Solana",
             Sui => "Sui",
             Aptos => "Aptos",
@@ -756,160 +774,6 @@ pub fn plan_has_wallet_for_chain(
         }
         wallet.resolved_address_for_chain.is_some()
     })
-}
-
-fn known_chain_aliases() -> &'static [(&'static str, &'static str)] {
-    &[
-        ("bitcoin", "bitcoin"),
-        ("bitcoin cash", "bitcoin-cash"),
-        ("bitcoin sv", "bitcoin-sv"),
-        ("litecoin", "litecoin"),
-        ("dogecoin", "dogecoin"),
-        ("ethereum", "ethereum"),
-        ("ethereum classic", "ethereum-classic"),
-        ("arbitrum", "arbitrum"),
-        ("optimism", "optimism"),
-        ("bnb chain", "bnb"),
-        ("avalanche", "avalanche"),
-        ("hyperliquid", "hyperliquid"),
-        ("tron", "tron"),
-        ("solana", "solana"),
-        ("stellar", "stellar"),
-        ("cardano", "cardano"),
-        ("xrp ledger", "xrp"),
-        ("monero", "monero"),
-        ("sui", "sui"),
-        ("aptos", "aptos"),
-        ("ton", "ton"),
-        ("internet computer", "internet-computer"),
-        ("near", "near"),
-        ("polkadot", "polkadot"),
-    ]
-}
-
-fn native_symbol_chain_aliases() -> &'static [(&'static str, &'static str)] {
-    &[
-        ("BTC", "bitcoin"),
-        ("BCH", "bitcoin-cash"),
-        ("BSV", "bitcoin-sv"),
-        ("LTC", "litecoin"),
-        ("DOGE", "dogecoin"),
-        ("ETH", "ethereum"),
-        ("ETC", "ethereum-classic"),
-        ("ARB", "arbitrum"),
-        ("OP", "optimism"),
-        ("BNB", "bnb"),
-        ("AVAX", "avalanche"),
-        ("HYPE", "hyperliquid"),
-        ("TRX", "tron"),
-        ("SOL", "solana"),
-        ("XLM", "stellar"),
-        ("ADA", "cardano"),
-        ("XRP", "xrp"),
-        ("XMR", "monero"),
-        ("SUI", "sui"),
-        ("APT", "aptos"),
-        ("TON", "ton"),
-        ("ICP", "internet-computer"),
-        ("NEAR", "near"),
-        ("DOT", "polkadot"),
-    ]
-}
-
-fn chain_id_by_chain_name() -> &'static HashMap<String, String> {
-    use std::sync::OnceLock;
-    static LOOKUP: OnceLock<HashMap<String, String>> = OnceLock::new();
-    LOOKUP.get_or_init(|| {
-        let raw = include_str!("../../../resources/strings/base/ChainWikiEntries.json");
-        let mut map = HashMap::new();
-        if let Ok(serde_json::Value::Array(entries)) = serde_json::from_str::<serde_json::Value>(raw)
-        {
-            for entry in entries {
-                let id = entry.get("id").and_then(|v| v.as_str());
-                let name = entry.get("name").and_then(|v| v.as_str());
-                if let (Some(id), Some(name)) = (id, name) {
-                    map.insert(name.trim().to_lowercase(), id.to_string());
-                }
-            }
-        }
-        map
-    })
-}
-
-fn canonical_chain_component_inner(chain_name: &str, symbol: &str) -> String {
-    let normalized_chain = chain_name.trim().to_lowercase();
-    let normalized_symbol = symbol.trim().to_uppercase();
-    if let Some((_, alias)) = known_chain_aliases()
-        .iter()
-        .find(|(name, _)| *name == normalized_chain)
-    {
-        return (*alias).to_string();
-    }
-    if let Some(id) = chain_id_by_chain_name().get(&normalized_chain) {
-        return id.clone();
-    }
-    if let Some((_, alias)) = native_symbol_chain_aliases()
-        .iter()
-        .find(|(sym, _)| *sym == normalized_symbol)
-    {
-        return (*alias).to_string();
-    }
-    normalized_chain.replace(' ', "-")
-}
-
-pub fn plan_canonical_chain_component(chain_name: String, symbol: String) -> String {
-    canonical_chain_component_inner(&chain_name, &symbol)
-}
-
-pub fn plan_icon_identifier(
-    symbol: String,
-    chain_name: String,
-    contract_address: Option<String>,
-    token_standard: String,
-) -> String {
-    let normalized_symbol = symbol.to_lowercase();
-    let trimmed_contract = contract_address
-        .map(|c| c.trim().to_string())
-        .unwrap_or_default();
-    let normalized_chain = canonical_chain_component_inner(&chain_name, &symbol);
-    if !trimmed_contract.is_empty() {
-        return format!(
-            "token:{}:{}:{}",
-            normalized_chain,
-            normalized_symbol,
-            trimmed_contract.to_lowercase()
-        );
-    }
-    let is_native_token =
-        token_standard.eq_ignore_ascii_case("Native") || token_standard.is_empty();
-    let namespace = if is_native_token { "native" } else { "asset" };
-    format!("{namespace}:{normalized_chain}:{normalized_symbol}")
-}
-
-pub fn plan_normalized_icon_identifier(identifier: String) -> String {
-    let trimmed_identifier = identifier.trim().to_string();
-    let components: Vec<String> = trimmed_identifier.split(':').map(String::from).collect();
-    if components.len() < 3 {
-        return trimmed_identifier;
-    }
-    let namespace = &components[0];
-    let chain_component = &components[1];
-    let symbol_component = &components[2];
-    match namespace.as_str() {
-        "native" | "asset" | "token" => {
-            let canonical_chain =
-                canonical_chain_component_inner(chain_component, symbol_component);
-            let mut normalized = components.clone();
-            normalized[0] = namespace.clone();
-            normalized[1] = canonical_chain;
-            normalized[2] = symbol_component.to_lowercase();
-            if normalized.len() >= 4 {
-                normalized[3] = normalized[3].to_lowercase();
-            }
-            normalized.join(":")
-        }
-        _ => trimmed_identifier,
-    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, uniffi::Enum)]
@@ -1807,232 +1671,6 @@ fn display_error(error: impl std::fmt::Display) -> String {
     error.to_string()
 }
 
+
 #[cfg(test)]
-mod tests {
-    use super::{
-        aggregate_owned_addresses, build_persisted_snapshot, persisted_snapshot_from_json,
-        plan_receive_selection, plan_self_send_confirmation, plan_store_derived_state,
-        wallet_secret_index, OwnedAddressAggregationRequest, PendingSelfSendConfirmationInput,
-        PersistedAppSnapshot, PersistedAppSnapshotRequest, ReceiveSelectionHoldingInput,
-        ReceiveSelectionRequest, SelfSendConfirmationRequest, StoreDerivedHoldingInput,
-        StoreDerivedStateRequest, StoreDerivedWalletInput, WalletSecretObservation,
-    };
-    use crate::state::CoreAppState;
-
-    #[test]
-    fn builds_secret_catalog_for_persisted_snapshot() {
-        let request = PersistedAppSnapshotRequest {
-            app_state_json: serde_json::to_string(&CoreAppState::default()).unwrap(),
-            secret_observations: vec![WalletSecretObservation {
-                wallet_id: "wallet-1".to_string(),
-                secret_kind: Some("seedPhrase".to_string()),
-                has_seed_phrase: true,
-                has_private_key: false,
-                has_password: true,
-            }],
-        };
-
-        let mut app_state = CoreAppState::default();
-        app_state.wallets.push(crate::state::WalletSummary {
-            id: "wallet-1".to_string(),
-            name: "Main".to_string(),
-            is_watch_only: false,
-            chain_name: "Bitcoin".to_string(),
-            include_in_portfolio_total: true,
-            network_mode: Some("mainnet".to_string()),
-            xpub: None,
-            derivation_preset: "standard".to_string(),
-            derivation_path: None,
-            holdings: Vec::new(),
-            addresses: Vec::new(),
-        });
-
-        let request = PersistedAppSnapshotRequest {
-            app_state_json: serde_json::to_string(&app_state).unwrap(),
-            secret_observations: request.secret_observations,
-        };
-        let snapshot = build_persisted_snapshot(request).unwrap();
-
-        assert_eq!(snapshot.secrets.len(), 1);
-        assert_eq!(snapshot.secrets[0].wallet_id, "wallet-1");
-        assert!(snapshot.secrets[0].has_signing_material);
-        assert_eq!(
-            snapshot.secrets[0].password_store_key,
-            "wallet.seed.password.wallet-1"
-        );
-    }
-
-    #[test]
-    fn computes_wallet_secret_index_from_snapshot() {
-        let snapshot = PersistedAppSnapshot {
-            schema_version: 1,
-            app_state: CoreAppState::default(),
-            secrets: vec![
-                super::SecretMaterialDescriptor {
-                    wallet_id: "seed-wallet".to_string(),
-                    secret_kind: "seedPhrase".to_string(),
-                    has_seed_phrase: true,
-                    has_private_key: false,
-                    has_password: true,
-                    has_signing_material: true,
-                    seed_phrase_store_key: "wallet.seed.seed-wallet".to_string(),
-                    password_store_key: "wallet.seed.password.seed-wallet".to_string(),
-                    private_key_store_key: "wallet.privatekey.seed-wallet".to_string(),
-                },
-                super::SecretMaterialDescriptor {
-                    wallet_id: "watch-wallet".to_string(),
-                    secret_kind: "watchOnly".to_string(),
-                    has_seed_phrase: false,
-                    has_private_key: false,
-                    has_password: false,
-                    has_signing_material: false,
-                    seed_phrase_store_key: "wallet.seed.watch-wallet".to_string(),
-                    password_store_key: "wallet.seed.password.watch-wallet".to_string(),
-                    private_key_store_key: "wallet.privatekey.watch-wallet".to_string(),
-                },
-            ],
-        };
-
-        let index = wallet_secret_index(&snapshot);
-        assert_eq!(
-            index.signing_material_wallet_ids,
-            vec!["seed-wallet".to_string()]
-        );
-        assert_eq!(
-            index.password_protected_wallet_ids,
-            vec!["seed-wallet".to_string()]
-        );
-        assert!(index.private_key_backed_wallet_ids.is_empty());
-    }
-
-    #[test]
-    fn upgrades_core_state_payload_into_empty_secret_snapshot() {
-        let json = serde_json::to_string(&CoreAppState::default()).unwrap();
-        let snapshot = persisted_snapshot_from_json(&json).unwrap();
-        assert_eq!(snapshot.schema_version, 1);
-        assert!(snapshot.secrets.is_empty());
-    }
-
-    #[test]
-    fn plans_store_derived_state_with_stable_grouping() {
-        let plan = plan_store_derived_state(StoreDerivedStateRequest {
-            wallets: vec![
-                StoreDerivedWalletInput {
-                    wallet_id: "wallet-1".to_string(),
-                    include_in_portfolio_total: true,
-                    has_signing_material: true,
-                    is_private_key_backed: false,
-                    holdings: vec![
-                        StoreDerivedHoldingInput {
-                            holding_index: 0,
-                            asset_identity_key: "Bitcoin|BTC".to_string(),
-                            symbol_upper: "BTC".to_string(),
-                            amount: "1.25".to_string(),
-                            is_priced_asset: true,
-                        },
-                        StoreDerivedHoldingInput {
-                            holding_index: 1,
-                            asset_identity_key: "Ethereum|USDC".to_string(),
-                            symbol_upper: "USDC".to_string(),
-                            amount: "50".to_string(),
-                            is_priced_asset: true,
-                        },
-                    ],
-                },
-                StoreDerivedWalletInput {
-                    wallet_id: "wallet-2".to_string(),
-                    include_in_portfolio_total: true,
-                    has_signing_material: false,
-                    is_private_key_backed: true,
-                    holdings: vec![StoreDerivedHoldingInput {
-                        holding_index: 0,
-                        asset_identity_key: "Bitcoin|BTC".to_string(),
-                        symbol_upper: "BTC".to_string(),
-                        amount: "0.75".to_string(),
-                        is_priced_asset: true,
-                    }],
-                },
-            ],
-        });
-
-        assert_eq!(plan.included_portfolio_holding_refs.len(), 3);
-        assert_eq!(plan.unique_price_request_holding_refs.len(), 2);
-        assert_eq!(
-            plan.signing_material_wallet_ids,
-            vec!["wallet-1".to_string()]
-        );
-        assert_eq!(
-            plan.private_key_backed_wallet_ids,
-            vec!["wallet-2".to_string()]
-        );
-        assert_eq!(plan.grouped_portfolio.len(), 2);
-        assert_eq!(plan.grouped_portfolio[0].asset_identity_key, "Bitcoin|BTC");
-        assert_eq!(plan.grouped_portfolio[0].total_amount, "2");
-    }
-
-    #[test]
-    fn aggregates_owned_addresses_in_order_without_duplicates() {
-        let addresses = aggregate_owned_addresses(OwnedAddressAggregationRequest {
-            candidate_addresses: vec![
-                " 0xAbc ".to_string(),
-                "".to_string(),
-                "0xabc".to_string(),
-                "bc1example".to_string(),
-            ],
-        });
-
-        assert_eq!(
-            addresses,
-            vec!["0xAbc".to_string(), "bc1example".to_string()]
-        );
-    }
-
-    #[test]
-    fn prefers_native_receive_holding_for_resolved_chain() {
-        let plan = plan_receive_selection(ReceiveSelectionRequest {
-            receive_chain_name: "Ethereum".to_string(),
-            available_receive_chains: vec!["Ethereum".to_string()],
-            available_receive_holdings: vec![
-                ReceiveSelectionHoldingInput {
-                    holding_index: 0,
-                    chain_name: "Ethereum".to_string(),
-                    has_contract_address: true,
-                },
-                ReceiveSelectionHoldingInput {
-                    holding_index: 1,
-                    chain_name: "Ethereum".to_string(),
-                    has_contract_address: false,
-                },
-            ],
-        });
-
-        assert_eq!(plan.resolved_chain_name, "Ethereum");
-        assert_eq!(plan.selected_receive_holding_index, Some(1));
-    }
-
-    #[test]
-    fn consumes_matching_pending_self_send_confirmation() {
-        let plan = plan_self_send_confirmation(SelfSendConfirmationRequest {
-            pending_confirmation: Some(PendingSelfSendConfirmationInput {
-                wallet_id: "wallet-1".to_string(),
-                chain_name: "Bitcoin".to_string(),
-                symbol: "BTC".to_string(),
-                destination_address_lowercased: "bc1self".to_string(),
-                amount: 1.5,
-                created_at_unix: 100.0,
-            }),
-            wallet_id: "wallet-1".to_string(),
-            chain_name: "Bitcoin".to_string(),
-            symbol: "BTC".to_string(),
-            destination_address: "BC1SELF".to_string(),
-            amount: 1.5,
-            now_unix: 110.0,
-            window_seconds: 30.0,
-            owned_addresses: vec!["bc1self".to_string()],
-        });
-
-        assert!(!plan.requires_confirmation);
-        assert!(plan.consume_existing_confirmation);
-        assert!(plan.clear_pending_confirmation);
-    }
-}
+mod tests;

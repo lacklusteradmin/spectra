@@ -649,10 +649,13 @@ pub fn validate_wallet_import_draft(request: WalletImportDraftValidationRequest)
     }
 
     // Watch-only address validation
-    if request.is_watch_only {
-        if !validate_watch_only_draft_addresses(&request.selected_chain_names, &request.watch_only_entries) {
-            return false;
-        }
+    if request.is_watch_only
+        && !validate_watch_only_draft_addresses(
+            &request.selected_chain_names,
+            &request.watch_only_entries,
+        )
+    {
+        return false;
     }
 
     // Secret validation

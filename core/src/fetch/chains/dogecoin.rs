@@ -24,15 +24,8 @@ pub(crate) struct BlockbookUtxo {
 }
 
 #[derive(Debug, Deserialize)]
-#[serde(rename_all = "camelCase")]
 pub(crate) struct BlockbookAddress {
     pub(crate) balance: String,
-    #[serde(default)]
-    #[allow(dead_code)]
-    pub(crate) unconfirmed_balance: String,
-    #[serde(default)]
-    #[allow(dead_code)]
-    pub(crate) txs: u64,
 }
 
 #[derive(Debug, Deserialize)]
@@ -53,22 +46,12 @@ pub(crate) struct BlockbookTx {
     #[serde(default)]
     pub(crate) value: String,
     pub(crate) fees: Option<String>,
-    #[allow(dead_code)]
-    pub(crate) vin: Vec<BlockbookVin>,
     pub(crate) vout: Vec<BlockbookVout>,
-}
-
-#[derive(Debug, Deserialize)]
-pub(crate) struct BlockbookVin {
-    #[allow(dead_code)]
-    pub(crate) addresses: Option<Vec<String>>,
 }
 
 #[derive(Debug, Deserialize)]
 pub(crate) struct BlockbookVout {
     pub(crate) addresses: Option<Vec<String>>,
-    #[allow(dead_code)]
-    pub(crate) value: Option<String>,
 }
 
 // ----------------------------------------------------------------

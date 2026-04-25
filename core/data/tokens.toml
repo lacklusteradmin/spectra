@@ -1180,3 +1180,129 @@ category     = "meme"
 color_name   = "red"
 asset_name   = "btt"
 enabled      = false
+
+[[tokens]]
+chain        = "polygon"
+chain_id     = 25
+name         = "Tether USD"
+symbol       = "USDT"
+standard     = "ERC-20"
+contract     = "0xc2132D05D31c914a87C6611C10748AEb04B58e8F"
+coingecko_id = "tether"
+decimals     = 6
+category     = "stablecoin"
+color_name   = "green"
+asset_name   = "tether"
+enabled      = true
+
+[[tokens]]
+chain        = "polygon"
+chain_id     = 25
+name         = "USD Coin"
+symbol       = "USDC"
+standard     = "ERC-20"
+contract     = "0x3c499c542cEF5E3811e1192ce70d8cC03d5c3359"
+coingecko_id = "usd-coin"
+decimals     = 6
+category     = "stablecoin"
+color_name   = "blue"
+asset_name   = "usdc"
+enabled      = true
+
+[[tokens]]
+chain        = "polygon"
+chain_id     = 25
+name         = "Dai Stablecoin"
+symbol       = "DAI"
+standard     = "ERC-20"
+contract     = "0x8f3Cf7ad23Cd3CaDbD9735AFf958023239c6A063"
+coingecko_id = "dai"
+decimals     = 18
+category     = "stablecoin"
+color_name   = "yellow"
+asset_name   = "dai"
+enabled      = true
+
+[[tokens]]
+chain        = "base"
+chain_id     = 20
+name         = "USD Coin"
+symbol       = "USDC"
+standard     = "ERC-20"
+contract     = "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913"
+coingecko_id = "usd-coin"
+decimals     = 6
+category     = "stablecoin"
+color_name   = "blue"
+asset_name   = "usdc"
+enabled      = true
+
+[[tokens]]
+chain        = "base"
+chain_id     = 20
+name         = "Dai Stablecoin"
+symbol       = "DAI"
+standard     = "ERC-20"
+contract     = "0x50c5725949A6F0c72E6C4a641F24049A917DB0Cb"
+coingecko_id = "dai"
+decimals     = 18
+category     = "stablecoin"
+color_name   = "yellow"
+asset_name   = "dai"
+enabled      = false
+
+[[tokens]]
+chain        = "linea"
+chain_id     = 26
+name         = "USD Coin"
+symbol       = "USDC"
+standard     = "ERC-20"
+contract     = "0x176211869cA2b568f2A7D4EE941E073a821EE1ff"
+coingecko_id = "usd-coin"
+decimals     = 6
+category     = "stablecoin"
+color_name   = "blue"
+asset_name   = "usdc"
+enabled      = true
+
+[[tokens]]
+chain        = "scroll"
+chain_id     = 27
+name         = "USD Coin"
+symbol       = "USDC"
+standard     = "ERC-20"
+contract     = "0x06eFdBFf2a14a7c8E15944D1F4A48F9F95F663A4"
+coingecko_id = "usd-coin"
+decimals     = 6
+category     = "stablecoin"
+color_name   = "blue"
+asset_name   = "usdc"
+enabled      = true
+
+[[tokens]]
+chain        = "blast"
+chain_id     = 28
+name         = "USD Blast"
+symbol       = "USDB"
+standard     = "ERC-20"
+contract     = "0x4300000000000000000000000000000000000003"
+coingecko_id = "usdb"
+decimals     = 18
+category     = "stablecoin"
+color_name   = "yellow"
+asset_name   = "usdb"
+enabled      = true
+
+[[tokens]]
+chain        = "mantle"
+chain_id     = 29
+name         = "USD Coin"
+symbol       = "USDC"
+standard     = "ERC-20"
+contract     = "0x09Bc4E0D864854c6aFB6eB9A9cdF58aC190D0dF9"
+coingecko_id = "usd-coin"
+decimals     = 6
+category     = "stablecoin"
+color_name   = "blue"
+asset_name   = "usdc"
+enabled      = true

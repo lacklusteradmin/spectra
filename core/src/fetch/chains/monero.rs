@@ -72,13 +72,13 @@ impl MoneroClient {
     }
 
     pub(crate) async fn call(&self, method: &str, params: Value) -> Result<Value, String> {
-        let body = rpc(method, params);
+        let body = std::sync::Arc::new(rpc(method, params));
         with_fallback(&self.wallet_rpc_endpoints, |url| {
             let client = self.client.clone();
-            let body = body.clone();
+            let body = std::sync::Arc::clone(&body);
             async move {
                 let resp: Value = client
-                    .post_json(&url, &body, RetryProfile::ChainRead)
+                    .post_json(&url, &*body, RetryProfile::ChainRead)
                     .await?;
                 if let Some(err) = resp.get("error") {
                     return Err(format!("monero rpc error: {err}"));

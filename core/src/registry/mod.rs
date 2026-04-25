@@ -44,6 +44,11 @@ pub enum Chain {
     BitcoinSV = 22,
     BnbChain = 23,
     Hyperliquid = 24,
+    Polygon = 25,
+    Linea = 26,
+    Scroll = 27,
+    Blast = 28,
+    Mantle = 29,
 }
 
 /// Which endpoint-list slot to fetch for a given chain. The primary slot is
@@ -91,6 +96,11 @@ impl Chain {
             22 => Chain::BitcoinSV,
             23 => Chain::BnbChain,
             24 => Chain::Hyperliquid,
+            25 => Chain::Polygon,
+            26 => Chain::Linea,
+            27 => Chain::Scroll,
+            28 => Chain::Blast,
+            29 => Chain::Mantle,
             _ => return None,
         })
     }
@@ -110,6 +120,11 @@ impl Chain {
                 | Chain::EthereumClassic
                 | Chain::BnbChain
                 | Chain::Hyperliquid
+                | Chain::Polygon
+                | Chain::Linea
+                | Chain::Scroll
+                | Chain::Blast
+                | Chain::Mantle
         )
     }
 
@@ -125,6 +140,11 @@ impl Chain {
             Chain::EthereumClassic => 61,
             Chain::BnbChain => 56,
             Chain::Hyperliquid => 999,
+            Chain::Polygon => 137,
+            Chain::Linea => 59144,
+            Chain::Scroll => 534352,
+            Chain::Blast => 81457,
+            Chain::Mantle => 5000,
             _ => 1,
         }
     }
@@ -144,7 +164,12 @@ impl Chain {
             | Chain::Base
             | Chain::EthereumClassic
             | Chain::BnbChain
-            | Chain::Hyperliquid => SendChain::Ethereum,
+            | Chain::Hyperliquid
+            | Chain::Polygon
+            | Chain::Linea
+            | Chain::Scroll
+            | Chain::Blast
+            | Chain::Mantle => SendChain::Ethereum,
             Chain::Tron => SendChain::Tron,
             Chain::Solana => SendChain::Solana,
             Chain::Xrp => SendChain::Xrp,
@@ -186,7 +211,13 @@ impl Chain {
     pub const fn coin_name(self) -> &'static str {
         match self {
             Chain::Bitcoin => "Bitcoin",
-            Chain::Ethereum | Chain::Arbitrum | Chain::Optimism | Chain::Base => "Ethereum",
+            Chain::Ethereum
+            | Chain::Arbitrum
+            | Chain::Optimism
+            | Chain::Base
+            | Chain::Linea
+            | Chain::Scroll
+            | Chain::Blast => "Ethereum",
             Chain::Solana => "Solana",
             Chain::Dogecoin => "Dogecoin",
             Chain::Xrp => "XRP",
@@ -207,6 +238,8 @@ impl Chain {
             Chain::BitcoinSV => "Bitcoin SV",
             Chain::BnbChain => "BNB",
             Chain::Hyperliquid => "Hyperliquid",
+            Chain::Polygon => "Polygon",
+            Chain::Mantle => "Mantle",
         }
     }
 
@@ -214,7 +247,13 @@ impl Chain {
     pub const fn coin_symbol(self) -> &'static str {
         match self {
             Chain::Bitcoin => "BTC",
-            Chain::Ethereum | Chain::Arbitrum | Chain::Optimism | Chain::Base => "ETH",
+            Chain::Ethereum
+            | Chain::Arbitrum
+            | Chain::Optimism
+            | Chain::Base
+            | Chain::Linea
+            | Chain::Scroll
+            | Chain::Blast => "ETH",
             Chain::Solana => "SOL",
             Chain::Dogecoin => "DOGE",
             Chain::Xrp => "XRP",
@@ -235,6 +274,8 @@ impl Chain {
             Chain::BitcoinSV => "BSV",
             Chain::BnbChain => "BNB",
             Chain::Hyperliquid => "HYPE",
+            Chain::Polygon => "POL",
+            Chain::Mantle => "MNT",
         }
     }
 
@@ -267,6 +308,11 @@ impl Chain {
             Chain::BitcoinSV => "Bitcoin SV",
             Chain::BnbChain => "BNB Chain",
             Chain::Hyperliquid => "Hyperliquid",
+            Chain::Polygon => "Polygon",
+            Chain::Linea => "Linea",
+            Chain::Scroll => "Scroll",
+            Chain::Blast => "Blast",
+            Chain::Mantle => "Mantle",
         }
     }
 
@@ -285,7 +331,12 @@ impl Chain {
             | Chain::Base
             | Chain::EthereumClassic
             | Chain::BnbChain
-            | Chain::Hyperliquid => 18,
+            | Chain::Hyperliquid
+            | Chain::Polygon
+            | Chain::Linea
+            | Chain::Scroll
+            | Chain::Blast
+            | Chain::Mantle => 18,
             Chain::Solana | Chain::Sui | Chain::Ton => 9,
             Chain::Xrp | Chain::Tron | Chain::Cardano => 6,
             Chain::Stellar => 7,
@@ -300,7 +351,13 @@ impl Chain {
     pub const fn coin_gecko_id(self) -> &'static str {
         match self {
             Chain::Bitcoin => "bitcoin",
-            Chain::Ethereum | Chain::Arbitrum | Chain::Optimism | Chain::Base => "ethereum",
+            Chain::Ethereum
+            | Chain::Arbitrum
+            | Chain::Optimism
+            | Chain::Base
+            | Chain::Linea
+            | Chain::Scroll
+            | Chain::Blast => "ethereum",
             Chain::Solana => "solana",
             Chain::Dogecoin => "dogecoin",
             Chain::Xrp => "ripple",
@@ -321,6 +378,8 @@ impl Chain {
             Chain::BitcoinSV => "bitcoin-cash-sv",
             Chain::BnbChain => "binancecoin",
             Chain::Hyperliquid => "hyperliquid",
+            Chain::Polygon => "matic-network",
+            Chain::Mantle => "mantle",
         }
     }
 
@@ -354,7 +413,7 @@ impl Chain {
     /// Iterator over every known chain, in frozen-id order. Lets callers
     /// build per-chain tables without restating the variant list.
     pub fn all() -> impl Iterator<Item = Self> {
-        (0u32..=24).filter_map(Chain::from_id)
+        (0u32..=29).filter_map(Chain::from_id)
     }
 
     /// Resolve a chain from the display name Swift uses on the boundary.
@@ -374,18 +433,18 @@ mod tests {
 
     #[test]
     fn id_roundtrips() {
-        for id in 0u32..=24 {
+        for id in 0u32..=29 {
             let chain = Chain::from_id(id).expect("valid id");
             assert_eq!(chain.id(), id);
         }
-        assert!(Chain::from_id(25).is_none());
+        assert!(Chain::from_id(30).is_none());
         assert!(Chain::from_id(99).is_none());
     }
 
     #[test]
     fn evm_group_matches_legacy_or_pattern() {
-        let expected: Vec<u32> = vec![1, 11, 12, 13, 20, 21, 23, 24];
-        let actual: Vec<u32> = (0u32..=24)
+        let expected: Vec<u32> = vec![1, 11, 12, 13, 20, 21, 23, 24, 25, 26, 27, 28, 29];
+        let actual: Vec<u32> = (0u32..=29)
             .filter_map(Chain::from_id)
             .filter(|c| c.is_evm())
             .map(|c| c.id())
@@ -403,6 +462,11 @@ mod tests {
         assert_eq!(Chain::EthereumClassic.evm_chain_id(), 61);
         assert_eq!(Chain::BnbChain.evm_chain_id(), 56);
         assert_eq!(Chain::Hyperliquid.evm_chain_id(), 999);
+        assert_eq!(Chain::Polygon.evm_chain_id(), 137);
+        assert_eq!(Chain::Linea.evm_chain_id(), 59144);
+        assert_eq!(Chain::Scroll.evm_chain_id(), 534352);
+        assert_eq!(Chain::Blast.evm_chain_id(), 81457);
+        assert_eq!(Chain::Mantle.evm_chain_id(), 5000);
     }
 
     #[test]

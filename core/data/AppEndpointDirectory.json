@@ -2033,5 +2033,407 @@
     "probeURL": null,
     "settingsVisible": false,
     "explorerLabel": "Open In Hyperliquid Explorer"
+  },
+  {
+    "id": "base.rpc.publicnode",
+    "chainName": "Base",
+    "groupTitle": "Base",
+    "providerID": "rpc",
+    "endpoint": "https://base-rpc.publicnode.com",
+    "roles": [
+      "rpc",
+      "read",
+      "balance",
+      "history",
+      "broadcast",
+      "fee"
+    ],
+    "probeURL": null,
+    "settingsVisible": true,
+    "explorerLabel": null
+  },
+  {
+    "id": "base.rpc.mainnet",
+    "chainName": "Base",
+    "groupTitle": "Base",
+    "providerID": "rpc",
+    "endpoint": "https://mainnet.base.org",
+    "roles": [
+      "rpc",
+      "read",
+      "balance",
+      "history",
+      "broadcast",
+      "fee"
+    ],
+    "probeURL": null,
+    "settingsVisible": true,
+    "explorerLabel": null
+  },
+  {
+    "id": "base.rpc.1rpc",
+    "chainName": "Base",
+    "groupTitle": "Base",
+    "providerID": "rpc",
+    "endpoint": "https://1rpc.io/base",
+    "roles": [
+      "rpc",
+      "read",
+      "balance",
+      "history",
+      "broadcast",
+      "fee"
+    ],
+    "probeURL": null,
+    "settingsVisible": true,
+    "explorerLabel": null
+  },
+  {
+    "id": "base.explorer.tx",
+    "chainName": "Base",
+    "groupTitle": "Base",
+    "providerID": "basescan",
+    "endpoint": "https://basescan.org/tx/",
+    "roles": [
+      "explorer"
+    ],
+    "probeURL": null,
+    "settingsVisible": false,
+    "explorerLabel": "Open In BaseScan"
+  },
+  {
+    "id": "linea.rpc.linea-rpc",
+    "chainName": "Linea",
+    "groupTitle": "Linea",
+    "providerID": "rpc",
+    "endpoint": "https://linea-rpc.publicnode.com",
+    "roles": [
+      "rpc",
+      "read",
+      "balance",
+      "history",
+      "broadcast",
+      "fee"
+    ],
+    "probeURL": null,
+    "settingsVisible": true,
+    "explorerLabel": null
+  },
+  {
+    "id": "linea.rpc.rpc",
+    "chainName": "Linea",
+    "groupTitle": "Linea",
+    "providerID": "rpc",
+    "endpoint": "https://rpc.linea.build",
+    "roles": [
+      "rpc",
+      "read",
+      "balance",
+      "history",
+      "broadcast",
+      "fee"
+    ],
+    "probeURL": null,
+    "settingsVisible": true,
+    "explorerLabel": null
+  },
+  {
+    "id": "linea.rpc.1rpc",
+    "chainName": "Linea",
+    "groupTitle": "Linea",
+    "providerID": "rpc",
+    "endpoint": "https://1rpc.io/linea",
+    "roles": [
+      "rpc",
+      "read",
+      "balance",
+      "history",
+      "broadcast",
+      "fee"
+    ],
+    "probeURL": null,
+    "settingsVisible": true,
+    "explorerLabel": null
+  },
+  {
+    "id": "linea.explorer.tx",
+    "chainName": "Linea",
+    "groupTitle": "Linea",
+    "providerID": "lineascan",
+    "endpoint": "https://lineascan.build/tx/",
+    "roles": [
+      "explorer"
+    ],
+    "probeURL": null,
+    "settingsVisible": false,
+    "explorerLabel": "Open In LineaScan"
+  },
+  {
+    "id": "scroll.rpc.scroll-rpc",
+    "chainName": "Scroll",
+    "groupTitle": "Scroll",
+    "providerID": "rpc",
+    "endpoint": "https://scroll-rpc.publicnode.com",
+    "roles": [
+      "rpc",
+      "read",
+      "balance",
+      "history",
+      "broadcast",
+      "fee"
+    ],
+    "probeURL": null,
+    "settingsVisible": true,
+    "explorerLabel": null
+  },
+  {
+    "id": "scroll.rpc.rpc",
+    "chainName": "Scroll",
+    "groupTitle": "Scroll",
+    "providerID": "rpc",
+    "endpoint": "https://rpc.scroll.io",
+    "roles": [
+      "rpc",
+      "read",
+      "balance",
+      "history",
+      "broadcast",
+      "fee"
+    ],
+    "probeURL": null,
+    "settingsVisible": true,
+    "explorerLabel": null
+  },
+  {
+    "id": "scroll.rpc.1rpc",
+    "chainName": "Scroll",
+    "groupTitle": "Scroll",
+    "providerID": "rpc",
+    "endpoint": "https://1rpc.io/scroll",
+    "roles": [
+      "rpc",
+      "read",
+      "balance",
+      "history",
+      "broadcast",
+      "fee"
+    ],
+    "probeURL": null,
+    "settingsVisible": true,
+    "explorerLabel": null
+  },
+  {
+    "id": "scroll.explorer.tx",
+    "chainName": "Scroll",
+    "groupTitle": "Scroll",
+    "providerID": "scrollscan",
+    "endpoint": "https://scrollscan.com/tx/",
+    "roles": [
+      "explorer"
+    ],
+    "probeURL": null,
+    "settingsVisible": false,
+    "explorerLabel": "Open In ScrollScan"
+  },
+  {
+    "id": "blast.rpc.blast-rpc",
+    "chainName": "Blast",
+    "groupTitle": "Blast",
+    "providerID": "rpc",
+    "endpoint": "https://blast-rpc.publicnode.com",
+    "roles": [
+      "rpc",
+      "read",
+      "balance",
+      "history",
+      "broadcast",
+      "fee"
+    ],
+    "probeURL": null,
+    "settingsVisible": true,
+    "explorerLabel": null
+  },
+  {
+    "id": "blast.rpc.rpc",
+    "chainName": "Blast",
+    "groupTitle": "Blast",
+    "providerID": "rpc",
+    "endpoint": "https://rpc.blast.io",
+    "roles": [
+      "rpc",
+      "read",
+      "balance",
+      "history",
+      "broadcast",
+      "fee"
+    ],
+    "probeURL": null,
+    "settingsVisible": true,
+    "explorerLabel": null
+  },
+  {
+    "id": "blast.rpc.blastl2-mainnet",
+    "chainName": "Blast",
+    "groupTitle": "Blast",
+    "providerID": "rpc",
+    "endpoint": "https://blastl2-mainnet.public.blastapi.io",
+    "roles": [
+      "rpc",
+      "read",
+      "balance",
+      "history",
+      "broadcast",
+      "fee"
+    ],
+    "probeURL": null,
+    "settingsVisible": true,
+    "explorerLabel": null
+  },
+  {
+    "id": "blast.explorer.tx",
+    "chainName": "Blast",
+    "groupTitle": "Blast",
+    "providerID": "blastscan",
+    "endpoint": "https://blastscan.io/tx/",
+    "roles": [
+      "explorer"
+    ],
+    "probeURL": null,
+    "settingsVisible": false,
+    "explorerLabel": "Open In BlastScan"
+  },
+  {
+    "id": "mantle.rpc.mantle-rpc",
+    "chainName": "Mantle",
+    "groupTitle": "Mantle",
+    "providerID": "rpc",
+    "endpoint": "https://mantle-rpc.publicnode.com",
+    "roles": [
+      "rpc",
+      "read",
+      "balance",
+      "history",
+      "broadcast",
+      "fee"
+    ],
+    "probeURL": null,
+    "settingsVisible": true,
+    "explorerLabel": null
+  },
+  {
+    "id": "mantle.rpc.rpc",
+    "chainName": "Mantle",
+    "groupTitle": "Mantle",
+    "providerID": "rpc",
+    "endpoint": "https://rpc.mantle.xyz",
+    "roles": [
+      "rpc",
+      "read",
+      "balance",
+      "history",
+      "broadcast",
+      "fee"
+    ],
+    "probeURL": null,
+    "settingsVisible": true,
+    "explorerLabel": null
+  },
+  {
+    "id": "mantle.rpc.1rpc",
+    "chainName": "Mantle",
+    "groupTitle": "Mantle",
+    "providerID": "rpc",
+    "endpoint": "https://1rpc.io/mantle",
+    "roles": [
+      "rpc",
+      "read",
+      "balance",
+      "history",
+      "broadcast",
+      "fee"
+    ],
+    "probeURL": null,
+    "settingsVisible": true,
+    "explorerLabel": null
+  },
+  {
+    "id": "mantle.explorer.tx",
+    "chainName": "Mantle",
+    "groupTitle": "Mantle",
+    "providerID": "mantlescan",
+    "endpoint": "https://mantlescan.xyz/tx/",
+    "roles": [
+      "explorer"
+    ],
+    "probeURL": null,
+    "settingsVisible": false,
+    "explorerLabel": "Open In MantleScan"
+  },
+  {
+    "id": "polygon.rpc.publicnode",
+    "chainName": "Polygon",
+    "groupTitle": "Polygon",
+    "providerID": "rpc",
+    "endpoint": "https://polygon-bor-rpc.publicnode.com",
+    "roles": [
+      "rpc",
+      "read",
+      "balance",
+      "history",
+      "broadcast",
+      "fee"
+    ],
+    "probeURL": null,
+    "settingsVisible": true,
+    "explorerLabel": null
+  },
+  {
+    "id": "polygon.rpc.llama",
+    "chainName": "Polygon",
+    "groupTitle": "Polygon",
+    "providerID": "rpc",
+    "endpoint": "https://polygon.llamarpc.com",
+    "roles": [
+      "rpc",
+      "read",
+      "balance",
+      "history",
+      "broadcast",
+      "fee"
+    ],
+    "probeURL": null,
+    "settingsVisible": true,
+    "explorerLabel": null
+  },
+  {
+    "id": "polygon.rpc.1rpc",
+    "chainName": "Polygon",
+    "groupTitle": "Polygon",
+    "providerID": "rpc",
+    "endpoint": "https://1rpc.io/matic",
+    "roles": [
+      "rpc",
+      "read",
+      "balance",
+      "history",
+      "broadcast",
+      "fee"
+    ],
+    "probeURL": null,
+    "settingsVisible": true,
+    "explorerLabel": null
+  },
+  {
+    "id": "polygon.explorer.tx",
+    "chainName": "Polygon",
+    "groupTitle": "Polygon",
+    "providerID": "polygonscan",
+    "endpoint": "https://polygonscan.com/tx/",
+    "roles": [
+      "explorer"
+    ],
+    "probeURL": null,
+    "settingsVisible": false,
+    "explorerLabel": "Open In PolygonScan"
   }
 ]

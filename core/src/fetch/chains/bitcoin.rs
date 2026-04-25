@@ -174,17 +174,11 @@ pub struct BitcoinClient {
     pub(crate) http: Arc<HttpClient>,
     /// Ordered list of Esplora base URLs for the current network mode.
     pub(crate) endpoints: Vec<String>,
-    #[allow(dead_code)]
-    pub(crate) network: Network,
 }
 
 impl BitcoinClient {
-    pub fn new(http: Arc<HttpClient>, endpoints: Vec<String>, network_mode: &str) -> Self {
-        Self {
-            http,
-            endpoints,
-            network: bitcoin_network_for_mode(network_mode),
-        }
+    pub fn new(http: Arc<HttpClient>, endpoints: Vec<String>) -> Self {
+        Self { http, endpoints }
     }
 }
 // Bitcoin fetch paths (Esplora REST): balance, UTXOs, history, fee estimates,
