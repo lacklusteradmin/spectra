@@ -48,6 +48,7 @@ pub mod receive;
 pub mod registry;
 pub mod send;
 pub mod service;
+pub mod staking;
 pub mod store;
 
 // Compat re-exports so pre-reorganization paths (e.g. `crate::http::HttpClient`,
