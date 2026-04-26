@@ -1,9 +1,9 @@
-// Phase 4a pure-logic lifts from swift/store/WalletStore+SendFlow.swift.
+// Pure-logic helpers backing the send flow.
 //
 // Each function is a pure transform with no @Published or iOS dependencies.
 // Swift call sites collapse to one-liners delegating here.
 
-use crate::addressing::{validate_address, AddressValidationRequest};
+use crate::derivation::addressing::{validate_address, AddressValidationRequest};
 use crate::wallet_core::*;
 
 #[uniffi::export]

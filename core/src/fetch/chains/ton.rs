@@ -57,23 +57,23 @@ pub struct TonJettonBalance {
 // ----------------------------------------------------------------
 
 pub struct TonClient {
-    pub(crate) endpoints: Vec<String>,
-    pub(crate) v3_endpoints: Vec<String>,
+    pub(crate) endpoints: std::sync::Arc<Vec<String>>,
+    pub(crate) v3_endpoints: std::sync::Arc<Vec<String>>,
     pub(crate) api_key: Option<String>,
     pub(crate) client: std::sync::Arc<HttpClient>,
 }
 
 impl TonClient {
-    pub fn new(endpoints: Vec<String>, api_key: Option<String>) -> Self {
+    pub fn new(endpoints: std::sync::Arc<Vec<String>>, api_key: Option<String>) -> Self {
         Self {
             endpoints,
-            v3_endpoints: vec![],
+            v3_endpoints: std::sync::Arc::new(Vec::new()),
             api_key,
             client: HttpClient::shared(),
         }
     }
 
-    pub fn with_v3_endpoints(mut self, v3_endpoints: Vec<String>) -> Self {
+    pub fn with_v3_endpoints(mut self, v3_endpoints: std::sync::Arc<Vec<String>>) -> Self {
         self.v3_endpoints = v3_endpoints;
         self
     }

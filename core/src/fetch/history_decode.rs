@@ -1,12 +1,6 @@
-// Typed decode helpers for the JSON shapes that the Swift layer
-// previously parsed inline in `StoreHistoryRefresh.swift`.
-//
-// These helpers exist so Swift no longer needs to run
-// `JSONDecoder`/`JSONSerialization` over Rust-produced payloads —
-// it can call a typed UniFFI function and get native records back.
-//
-// Additionally we expose the small `HistoryChainID` enum-like mapping
-// that Swift used to duplicate as a private struct of constants.
+// Typed decode helpers for chain-history JSON shapes. Swift calls these via
+// UniFFI to get native records instead of re-parsing JSON. Also exposes the
+// small `HistoryChainID` enum-like mapping used across the history layer.
 
 use serde_json::Value;
 

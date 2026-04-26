@@ -1,8 +1,8 @@
-// Phase A: Rust-owned diagnostic record types exposed to Swift via UniFFI.
+// Rust-owned diagnostic record types exposed to Swift via UniFFI.
 //
 // The JSON serialization shape (serde rename attributes below) matches
 // byte-exactly the Swift dictionary layouts in
-// `swift/shell/StoreDiagnosticsExport.swift` as of Phase A migration.
+// `swift/shell/StoreDiagnosticsExport.swift` since the Rust-owned migration.
 // Changing field names here will break the exported diagnostics-bundle
 // format — add migrations before adjusting.
 

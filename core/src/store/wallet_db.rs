@@ -45,7 +45,9 @@ fn open_new(db_path: &str) -> Result<Connection, String> {
     let conn = Connection::open(db_path)
         .map_err(|e| format!("wallet_db open {db_path}: {e}"))?;
     conn.execute_batch(
-        "PRAGMA journal_mode=WAL;
+        "PRAGMA journal_mode = WAL;
+         PRAGMA synchronous = NORMAL;
+         PRAGMA temp_store = MEMORY;
          CREATE TABLE IF NOT EXISTS wallet_keypool (
              wallet_id              TEXT    NOT NULL,
              chain_name             TEXT    NOT NULL,
@@ -447,8 +449,10 @@ pub fn address_delete_all(db_path: &str) -> Result<(), String> {
 
 // ── History record types ──────────────────────────────────────────────────────
 
-/// Represents one persisted transaction record.
-/// `payload` is a base64-encoded JSON blob (the full `PersistedCoreTransactionRecord` from Swift).
+/// Represents one persisted transaction record. `payload` is the typed
+/// `CorePersistedTransactionRecord` directly — Rust serializes it to JSON
+/// for the SQLite TEXT column and deserializes on read, so the JSON shape
+/// never crosses the FFI as a String.
 #[derive(Debug, Clone, Serialize, Deserialize, uniffi::Record)]
 #[serde(rename_all = "camelCase")]
 pub struct HistoryRecord {
@@ -457,7 +461,7 @@ pub struct HistoryRecord {
     pub chain_name: String,
     pub tx_hash: Option<String>,
     pub created_at: f64,
-    pub payload: String,
+    pub payload: crate::store::persistence::models::CorePersistedTransactionRecord,
 }
 
 // ── History record CRUD ───────────────────────────────────────────────────────
@@ -469,6 +473,8 @@ pub fn history_upsert_batch(db_path: &str, records: &[HistoryRecord]) -> Result<
         conn.execute_batch("BEGIN IMMEDIATE").map_err(|e| format!("history_upsert_batch begin: {e}"))?;
         let result = (|| -> Result<(), String> {
             for rec in records {
+                let payload_json = serde_json::to_string(&rec.payload)
+                    .map_err(|e| format!("history_upsert_batch encode payload: {e}"))?;
                 conn.execute(
                     "INSERT INTO history_records (id, wallet_id, chain_name, tx_hash, created_at, payload)
                      VALUES (?1, ?2, ?3, ?4, ?5, ?6)
@@ -478,7 +484,7 @@ pub fn history_upsert_batch(db_path: &str, records: &[HistoryRecord]) -> Result<
                          tx_hash    = excluded.tx_hash,
                          created_at = excluded.created_at,
                          payload    = excluded.payload",
-                    params![rec.id, rec.wallet_id, rec.chain_name, rec.tx_hash, rec.created_at, rec.payload],
+                    params![rec.id, rec.wallet_id, rec.chain_name, rec.tx_hash, rec.created_at, payload_json],
                 ).map_err(|e| format!("history_upsert_batch row: {e}"))?;
             }
             Ok(())
@@ -507,19 +513,31 @@ pub fn history_fetch_all(db_path: &str) -> Result<Vec<HistoryRecord>, String> {
             .map_err(|e| format!("history_fetch_all prepare: {e}"))?;
         let rows = stmt
             .query_map([], |row| {
-                Ok(HistoryRecord {
-                    id: row.get(0)?,
-                    wallet_id: row.get(1)?,
-                    chain_name: row.get(2)?,
-                    tx_hash: row.get(3)?,
-                    created_at: row.get(4)?,
-                    payload: row.get(5)?,
-                })
+                let payload_json: String = row.get(5)?;
+                Ok((
+                    row.get::<_, String>(0)?,
+                    row.get::<_, Option<String>>(1)?,
+                    row.get::<_, String>(2)?,
+                    row.get::<_, Option<String>>(3)?,
+                    row.get::<_, f64>(4)?,
+                    payload_json,
+                ))
             })
             .map_err(|e| format!("history_fetch_all query: {e}"))?;
         let mut records = Vec::new();
         for row in rows {
-            records.push(row.map_err(|e| format!("history_fetch_all row: {e}"))?);
+            let (id, wallet_id, chain_name, tx_hash, created_at, payload_json) =
+                row.map_err(|e| format!("history_fetch_all row: {e}"))?;
+            let payload = serde_json::from_str(&payload_json)
+                .map_err(|e| format!("history_fetch_all decode payload: {e}"))?;
+            records.push(HistoryRecord {
+                id,
+                wallet_id,
+                chain_name,
+                tx_hash,
+                created_at,
+                payload,
+            });
         }
         Ok(records)
     })
@@ -557,10 +575,12 @@ pub fn history_replace_all(db_path: &str, records: &[HistoryRecord]) -> Result<(
         let result = (|| -> Result<(), String> {
             conn.execute("DELETE FROM history_records", []).map_err(|e| format!("history_replace_all delete: {e}"))?;
             for rec in records {
+                let payload_json = serde_json::to_string(&rec.payload)
+                    .map_err(|e| format!("history_replace_all encode payload: {e}"))?;
                 conn.execute(
                     "INSERT INTO history_records (id, wallet_id, chain_name, tx_hash, created_at, payload)
                      VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
-                    params![rec.id, rec.wallet_id, rec.chain_name, rec.tx_hash, rec.created_at, rec.payload],
+                    params![rec.id, rec.wallet_id, rec.chain_name, rec.tx_hash, rec.created_at, payload_json],
                 ).map_err(|e| format!("history_replace_all insert: {e}"))?;
             }
             Ok(())

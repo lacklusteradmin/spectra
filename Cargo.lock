@@ -2198,6 +2198,7 @@ dependencies = [
  "serde_json",
  "sha2",
  "spectra_core",
+ "tokio",
  "uuid",
 ]
 

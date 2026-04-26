@@ -1,4 +1,4 @@
-// Phase D: per-chain diagnostics JSON builders.
+// per-chain diagnostics JSON builders.
 //
 // Lifted from Swift `swift/shell/StoreDiagnosticsExport.swift`. The JSON
 // output shape is part of the exported diagnostics bundle contract — keep
@@ -13,7 +13,7 @@
 use serde_json::{json, Map, Value};
 
 use super::types::*;
-use crate::diagnostics_sanitizer::sanitize_diagnostics_string;
+use crate::diagnostics::sanitizer::sanitize_diagnostics_string;
 
 /// Generic endpoint-health row (matches Swift `BitcoinEndpointHealthResult`
 /// and the UTXO/non-EVM chains that reuse its shape).

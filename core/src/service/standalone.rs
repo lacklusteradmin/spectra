@@ -2,7 +2,7 @@
 //! utilities. Kept separate from the WalletService impl blocks because they
 //! perform no network I/O and don't need the service's state.
 
-use crate::tokens;
+use crate::registry::tokens;
 
 /// Return the built-in token catalog as a typed list. Pass `chain_id =
 /// u32::MAX` to get all chains. Synchronous so Swift can call from a `static let`.

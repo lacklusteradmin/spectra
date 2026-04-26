@@ -86,13 +86,13 @@ pub(crate) struct BfTx {
 // ----------------------------------------------------------------
 
 pub struct CardanoClient {
-    pub(crate) endpoints: Vec<String>,
+    pub(crate) endpoints: std::sync::Arc<Vec<String>>,
     pub(crate) api_key: String,
     pub(crate) client: std::sync::Arc<HttpClient>,
 }
 
 impl CardanoClient {
-    pub fn new(endpoints: Vec<String>, api_key: String) -> Self {
+    pub fn new(endpoints: std::sync::Arc<Vec<String>>, api_key: String) -> Self {
         Self {
             endpoints,
             api_key,

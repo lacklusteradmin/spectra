@@ -167,13 +167,13 @@ pub struct EvmTokenTransferEntry {
 // ----------------------------------------------------------------
 
 pub struct EvmClient {
-    pub(crate) endpoints: Vec<String>,
+    pub(crate) endpoints: std::sync::Arc<Vec<String>>,
     pub(crate) chain_id: u64,
     pub(crate) client: std::sync::Arc<HttpClient>,
 }
 
 impl EvmClient {
-    pub fn new(endpoints: Vec<String>, chain_id: u64) -> Self {
+    pub fn new(endpoints: std::sync::Arc<Vec<String>>, chain_id: u64) -> Self {
         Self {
             endpoints,
             chain_id,

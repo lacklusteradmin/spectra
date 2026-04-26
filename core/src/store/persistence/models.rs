@@ -6,7 +6,7 @@
 
 use serde::{Deserialize, Serialize};
 
-use crate::wallet_domain::{CorePriceAlertCondition, CoreTransactionKind, CoreTransactionStatus};
+use crate::store::wallet_domain::{CorePriceAlertCondition, CoreTransactionKind, CoreTransactionStatus};
 
 /// Matches Swift `PersistedPriceAlertRule`.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, uniffi::Record)]

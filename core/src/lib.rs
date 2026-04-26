@@ -1,7 +1,27 @@
 uniffi::setup_scaffolding!();
 
+/// Bridge error returned to Swift across UniFFI. Variants describe the broad
+/// failure category so Swift can branch on it (e.g. surface a "no internet"
+/// banner for `Network`, vs. an inline validation error for `InvalidInput`).
+/// `Failure` remains as a catch-all for legacy / un-categorised errors and is
+/// the target of the blanket `From<String>` / `From<&str>` impls so the 200+
+/// existing `.map_err(SpectraBridgeError::from)?` sites keep compiling.
 #[derive(Debug, thiserror::Error, uniffi::Error)]
 pub enum SpectraBridgeError {
+    /// Network / RPC failure — connectivity, timeout, TLS, HTTP non-2xx, etc.
+    #[error("{message}")]
+    Network { message: String },
+    /// Response decoding / parsing failure (malformed JSON, unexpected shape,
+    /// hex decode error). Distinct from `Network` so the UI can blame the
+    /// provider rather than the connection.
+    #[error("{message}")]
+    Decode { message: String },
+    /// Bad caller input — empty seed phrase, invalid address, unsupported
+    /// chain ID, etc. UI surfaces these inline against the offending field.
+    #[error("{message}")]
+    InvalidInput { message: String },
+    /// Catch-all for legacy errors that haven't been categorised. New code
+    /// should prefer the specific variants above.
     #[error("{message}")]
     Failure { message: String },
 }
@@ -22,7 +42,7 @@ impl From<&str> for SpectraBridgeError {
 
 impl From<serde_json::Error> for SpectraBridgeError {
     fn from(error: serde_json::Error) -> Self {
-        Self::Failure {
+        Self::Decode {
             message: error.to_string(),
         }
     }
@@ -30,7 +50,7 @@ impl From<serde_json::Error> for SpectraBridgeError {
 
 impl From<hex::FromHexError> for SpectraBridgeError {
     fn from(error: hex::FromHexError) -> Self {
-        Self::Failure {
+        Self::Decode {
             message: error.to_string(),
         }
     }
@@ -51,28 +71,9 @@ pub mod service;
 pub mod staking;
 pub mod store;
 
-// Compat re-exports so pre-reorganization paths (e.g. `crate::http::HttpClient`,
-// `crate::catalog::...`, `crate::tokens::...`) continue to resolve without
-// touching call sites. New code should prefer folder-qualified paths.
+// Crate-root shortcuts for the heavily-used internal modules. Other paths use
+// the folder-qualified `crate::fetch::http`, `crate::store::state`, etc.
 pub use derivation::*;
-pub use derivation::{addressing, import};
-pub use fetch::{
-    balance_observer, history, history_decode,
-    history_store, http, http_ffi, price, refresh, refresh_engine, transactions,
-};
-pub use send::{
-    amount_input, ethereum as ethereum_send, flow as send_flow, flow_helpers as send_flow_helpers,
-    payload as send_payload, preview_decode as send_preview_decode,
-    transfer, utxo, verification as send_verification,
-};
-pub use store::{
-    app_state, password_verifier, persistence, secret_store,
-    seed_envelope, state, wallet_core, wallet_db, wallet_domain,
-};
-// Platform helpers (catalog/formatting/localization/resources/types) were at
-// crate root before reorg — keep them reachable via their old names.
-pub use platform::{catalog, formatting, localization, resources, types};
-// tokens.rs moved under registry/; diagnostics_sanitizer.rs and self_tests.rs
-// moved under diagnostics/. Expose at crate root for existing callers.
-pub use registry::tokens;
-pub use diagnostics::{sanitizer as diagnostics_sanitizer, self_tests};
+pub use fetch::{history, http, price};
+pub use send::ethereum as ethereum_send;
+pub use store::{state, wallet_core, wallet_db};

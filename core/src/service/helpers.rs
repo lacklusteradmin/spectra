@@ -7,6 +7,22 @@ use crate::SpectraBridgeError;
 use serde::Serialize;
 use serde_json::json;
 
+// ── Chain ID lookup ───────────────────────────────────────────────────────
+
+/// `Chain::from_id` with a uniform error message. Used by every WalletService
+/// method that takes a `chain_id: u32` from Swift.
+pub(super) fn chain_for_id(chain_id: u32) -> Result<Chain, SpectraBridgeError> {
+    Chain::from_id(chain_id)
+        .ok_or_else(|| SpectraBridgeError::from(format!("unknown chain_id: {chain_id}")))
+}
+
+/// Convenience: serialize a value to JSON, returning the bridge error type
+/// directly. Removes the `Ok(serde_json::to_string(&v)?)` boilerplate from
+/// every chain dispatch arm.
+pub(super) fn json_response<T: Serialize>(value: &T) -> Result<String, SpectraBridgeError> {
+    serde_json::to_string(value).map_err(SpectraBridgeError::from)
+}
+
 // ── Param extraction ──────────────────────────────────────────────────────
 
 pub(super) fn str_field<'a>(
@@ -121,52 +137,6 @@ pub(super) fn simple_chain_balance_display(chain_id: u32, obj: &serde_json::Valu
             None => 0.0,
         },
         _ => 0.0,
-    }
-}
-
-/// Parse a chain-specific balance JSON blob and return the native coin amount
-/// as a plain `f64`. Mirrors the RustBalanceDecoder logic on the Swift side.
-pub(super) fn native_amount_from_balance_json(chain_id: u32, json: &str) -> Option<f64> {
-    let v: serde_json::Value = serde_json::from_str(json).ok()?;
-    let chain = Chain::from_id(chain_id)?;
-    let factor = 10f64.powi(chain.native_decimals() as i32);
-    match chain {
-        c if c.is_evm() => v["balance_display"]
-            .as_str()
-            .and_then(|s| s.parse().ok())
-            .or_else(|| {
-                v["balance_wei"]
-                    .as_str()
-                    .and_then(|s| s.parse::<f64>().ok())
-                    .map(|w| w / factor)
-            })
-            .or_else(|| v["balance_wei"].as_f64().map(|w| w / factor)),
-        Chain::Near => v["near_display"]
-            .as_str()
-            .and_then(|s| s.parse().ok())
-            .or_else(|| {
-                v["yocto_near"]
-                    .as_str()
-                    .and_then(|s| s.parse::<f64>().ok())
-                    .map(|y| y / factor)
-            })
-            .or_else(|| v["yocto_near"].as_f64().map(|y| y / factor)),
-        Chain::Stellar => {
-            let field = chain.native_balance_field()?;
-            v[field].as_i64().map(|s| s.unsigned_abs() as f64 / factor)
-        }
-        Chain::Polkadot => {
-            let field = chain.native_balance_field()?;
-            v[field]
-                .as_str()
-                .and_then(|s| s.parse::<f64>().ok())
-                .or_else(|| v[field].as_f64())
-                .map(|p| p / factor)
-        }
-        c => {
-            let field = c.native_balance_field()?;
-            v[field].as_u64().map(|n| n as f64 / factor)
-        }
     }
 }
 
@@ -290,48 +260,82 @@ pub(super) fn read_evm_overrides(
 }
 
 // ── SQLite blocking helpers ───────────────────────────────────────────────
+//
+// Key/value `state` table backing AppState persistence (wallets, settings,
+// fiat rates, live prices, etc.). Mirrors the `with_conn` pool already in
+// `store/wallet_db.rs` — re-uses a single `Connection` per `db_path` instead
+// of opening + running DDL + closing on every load/save. With ~5–10 persists
+// per refresh cycle, the previous open-per-call cost was meaningful.
+//
+// PRAGMAs applied once per connection:
+//   - `journal_mode = WAL`     concurrent reads while a write is in flight
+//   - `synchronous  = NORMAL`  fsync only at checkpoint, ~5× faster writes
+//                              (still durable; only loses ms on power loss)
+//   - `temp_store   = MEMORY`  query temp tables don't hit disk
 
-pub(super) fn sqlite_open(db_path: &str) -> Result<rusqlite::Connection, String> {
+use parking_lot::Mutex as PlMutex;
+use std::collections::HashMap;
+
+static SQLITE_POOL: std::sync::LazyLock<PlMutex<HashMap<String, rusqlite::Connection>>> =
+    std::sync::LazyLock::new(|| PlMutex::new(HashMap::new()));
+
+fn with_state_conn<T>(
+    db_path: &str,
+    f: impl FnOnce(&rusqlite::Connection) -> Result<T, String>,
+) -> Result<T, String> {
+    let mut pool = SQLITE_POOL.lock();
+    if !pool.contains_key(db_path) {
+        pool.insert(db_path.to_string(), open_state_conn(db_path)?);
+    }
+    f(pool.get(db_path).unwrap())
+}
+
+fn open_state_conn(db_path: &str) -> Result<rusqlite::Connection, String> {
     let conn = rusqlite::Connection::open(db_path)
         .map_err(|e| format!("sqlite open {db_path}: {e}"))?;
     conn.execute_batch(
-        "CREATE TABLE IF NOT EXISTS state (
-            key      TEXT    PRIMARY KEY,
-            value    TEXT    NOT NULL,
-            saved_at INTEGER NOT NULL
-        );",
+        "PRAGMA journal_mode = WAL;
+         PRAGMA synchronous = NORMAL;
+         PRAGMA temp_store = MEMORY;
+         CREATE TABLE IF NOT EXISTS state (
+             key      TEXT    PRIMARY KEY,
+             value    TEXT    NOT NULL,
+             saved_at INTEGER NOT NULL
+         );",
     )
-    .map_err(|e| format!("sqlite create table: {e}"))?;
+    .map_err(|e| format!("sqlite init: {e}"))?;
     Ok(conn)
 }
 
 pub(super) fn sqlite_load(db_path: &str, key: &str) -> Result<String, String> {
-    let conn = sqlite_open(db_path)?;
-    let result: rusqlite::Result<String> = conn.query_row(
-        "SELECT value FROM state WHERE key = ?1",
-        rusqlite::params![key],
-        |row| row.get(0),
-    );
-    match result {
-        Ok(v) => Ok(v),
-        Err(rusqlite::Error::QueryReturnedNoRows) => Ok("{}".to_string()),
-        Err(e) => Err(format!("sqlite load: {e}")),
-    }
+    with_state_conn(db_path, |conn| {
+        let result: rusqlite::Result<String> = conn.query_row(
+            "SELECT value FROM state WHERE key = ?1",
+            rusqlite::params![key],
+            |row| row.get(0),
+        );
+        match result {
+            Ok(v) => Ok(v),
+            Err(rusqlite::Error::QueryReturnedNoRows) => Ok("{}".to_string()),
+            Err(e) => Err(format!("sqlite load: {e}")),
+        }
+    })
 }
 
 pub(super) fn sqlite_save(db_path: &str, key: &str, value: &str) -> Result<(), String> {
-    let conn = sqlite_open(db_path)?;
     let now = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .unwrap_or_default()
         .as_secs() as i64;
-    conn.execute(
-        "INSERT INTO state (key, value, saved_at) VALUES (?1, ?2, ?3)
-         ON CONFLICT(key) DO UPDATE SET value = excluded.value, saved_at = excluded.saved_at",
-        rusqlite::params![key, value, now],
-    )
-    .map_err(|e| format!("sqlite save: {e}"))?;
-    Ok(())
+    with_state_conn(db_path, |conn| {
+        conn.execute(
+            "INSERT INTO state (key, value, saved_at) VALUES (?1, ?2, ?3)
+             ON CONFLICT(key) DO UPDATE SET value = excluded.value, saved_at = excluded.saved_at",
+            rusqlite::params![key, value, now],
+        )
+        .map_err(|e| format!("sqlite save: {e}"))?;
+        Ok(())
+    })
 }
 
 // ── State helpers ─────────────────────────────────────────────────────────
@@ -382,22 +386,3 @@ pub(super) fn is_extended_public_key(s: &str) -> bool {
     )
 }
 
-/// Convert typed history encode inputs from Swift into the base64-payload
-/// `HistoryRecord` shape expected by the SQLite layer.
-pub(super) fn history_records_from_encode_inputs(
-    records: Vec<crate::ffi::HistoryRecordEncodeInput>,
-) -> Vec<crate::wallet_db::HistoryRecord> {
-    use base64::Engine;
-    let engine = base64::engine::general_purpose::STANDARD;
-    records
-        .into_iter()
-        .map(|r| crate::wallet_db::HistoryRecord {
-            id: r.id,
-            wallet_id: r.wallet_id,
-            chain_name: r.chain_name,
-            tx_hash: r.tx_hash,
-            created_at: r.created_at,
-            payload: engine.encode(r.payload_json.as_bytes()),
-        })
-        .collect()
-}

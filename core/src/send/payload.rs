@@ -5,7 +5,7 @@
 // expects. Consolidates ~17 scattered `UInt64(amount * 1eN)` + sendPayload()
 // call sites from Swift into one place.
 //
-// Shared broadcast-result classification also lives here (Phase 3b).
+// Shared broadcast-result classification also lives here .
 
 fn json_escape(s: &str) -> String {
     let mut out = String::with_capacity(s.len());
@@ -33,7 +33,7 @@ fn amount_i64(amount: f64, scale: f64) -> i64 {
 }
 
 fn amount_raw_string(amount: f64, decimals: u32) -> String {
-    crate::send_preview_decode::amount_to_raw_units_string(amount, decimals)
+    crate::send::preview_decode::amount_to_raw_units_string(amount, decimals)
 }
 
 // --- Simple "from, to, amount-unit, priv, [pub]" chain payloads ---
@@ -311,7 +311,7 @@ pub fn build_doge_send_payload(
     )
 }
 
-// --- Phase 3b: broadcast-result classification ---
+// --- Broadcast-result classification ---
 
 #[derive(Debug, Clone, Copy, uniffi::Enum)]
 pub enum SendChain {
@@ -375,7 +375,7 @@ fn format_key_for(chain: SendChain) -> &'static str {
 
 pub fn classify_send_broadcast_result(chain: SendChain, result_json: String) -> SendBroadcastOutcome {
     let field = hash_field_for(chain);
-    let mut hash = crate::send_preview_decode::extract_json_string_field(
+    let mut hash = crate::send::preview_decode::extract_json_string_field(
         result_json.clone(),
         field.to_string(),
     );

@@ -100,12 +100,12 @@ pub struct LtcSendResult {
 // ----------------------------------------------------------------
 
 pub struct LitecoinClient {
-    pub(crate) endpoints: Vec<String>,
+    pub(crate) endpoints: std::sync::Arc<Vec<String>>,
     pub(crate) client: std::sync::Arc<HttpClient>,
 }
 
 impl LitecoinClient {
-    pub fn new(endpoints: Vec<String>) -> Self {
+    pub fn new(endpoints: std::sync::Arc<Vec<String>>) -> Self {
         Self {
             endpoints,
             client: HttpClient::shared(),

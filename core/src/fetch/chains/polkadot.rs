@@ -52,17 +52,17 @@ pub struct DotSendResult {
 
 pub struct PolkadotClient {
     /// Polkadot RPC endpoints (wss:// or https://).
-    pub(crate) rpc_endpoints: Vec<String>,
+    pub(crate) rpc_endpoints: std::sync::Arc<Vec<String>>,
     /// Subscan API endpoints (https://polkadot.api.subscan.io).
-    pub(crate) subscan_endpoints: Vec<String>,
+    pub(crate) subscan_endpoints: std::sync::Arc<Vec<String>>,
     pub(crate) subscan_api_key: Option<String>,
     pub(crate) client: std::sync::Arc<HttpClient>,
 }
 
 impl PolkadotClient {
     pub fn new(
-        rpc_endpoints: Vec<String>,
-        subscan_endpoints: Vec<String>,
+        rpc_endpoints: std::sync::Arc<Vec<String>>,
+        subscan_endpoints: std::sync::Arc<Vec<String>>,
         subscan_api_key: Option<String>,
     ) -> Self {
         Self {

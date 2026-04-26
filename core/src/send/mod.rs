@@ -144,8 +144,9 @@ pub struct SendExecutionRequest {
     pub gas_budget: Option<f64>,
     /// Cardano fee in ADA.
     pub fee_amount: Option<f64>,
-    /// EVM overrides JSON fragment (nonce, custom gas fees).
-    pub evm_overrides_fragment: Option<String>,
+    /// EVM overrides (nonce, custom gas fees). Typed; Rust assembles the
+    /// payload fragment internally — no JSON shuttle from Swift.
+    pub evm_overrides: Option<crate::send::ethereum::EvmSendOverridesInput>,
     /// Monero priority level.
     pub monero_priority: Option<u32>,
     /// Power-user derivation overrides (passphrase, wordlist, curve, etc.).
@@ -158,12 +159,17 @@ pub struct SendExecutionRequest {
 /// Result from `WalletService::execute_send`.
 #[derive(Debug, Clone, uniffi::Record)]
 pub struct SendExecutionResult {
-    /// Raw JSON result from the chain signer/broadcaster.
+    /// Raw JSON result from the chain signer/broadcaster. Persisted opaquely
+    /// by Swift as the `signedTransactionPayload` blob — no Swift-side parsing.
     pub result_json: String,
     /// Extracted transaction hash/ID.
     pub transaction_hash: String,
     /// Payload format key (e.g. "bitcoin.rust_json").
     pub payload_format: String,
+    /// Decoded EVM-specific result (nonce, raw_tx_hex, gas_limit). Populated
+    /// when the chain is EVM; `None` for non-EVM chains. Lets Swift skip the
+    /// `decode_evm_send_result(json:)` round-trip.
+    pub evm: Option<crate::send::ethereum::EvmSendResultDecoded>,
 }
 
 pub trait TransferPlanner: Send + Sync {

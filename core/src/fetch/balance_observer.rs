@@ -1,4 +1,4 @@
-// Phase 3 — Rust-driven balance refresh
+// Rust-driven balance refresh
 //
 // Swift implements `BalanceObserver`; Rust calls it whenever a balance fetch
 // completes. The `RefreshEntry` type is the unit of registration.
@@ -9,10 +9,9 @@ use crate::store::state::WalletSummary;
 /// task that owns the refresh timer loop. Implementations must be
 /// `Send + Sync` (UniFFI enforces this for foreign trait objects).
 ///
-/// As of 2026-04-19 the refresh engine applies the balance update to the
-/// Rust-owned wallet state before invoking the callback, so Swift receives a
-/// typed `WalletSummary` record directly instead of shuttling the raw JSON
-/// back through `update_native_balance_typed`.
+/// The refresh engine applies the balance update to the Rust-owned wallet
+/// state before invoking the callback, so Swift receives a typed
+/// `WalletSummary` record directly — no JSON shuttle.
 #[uniffi::export(with_foreign)]
 pub trait BalanceObserver: Send + Sync {
     /// Called after each successful balance fetch within a cycle. `summary`
@@ -28,7 +27,8 @@ pub trait BalanceObserver: Send + Sync {
 /// One (chain, wallet, address) triple registered for periodic refresh.
 ///
 /// For Bitcoin HD wallets: set `address` to the xpub/ypub/zpub.
-/// `WalletService::fetch_balance_auto` detects extended keys automatically.
+/// `WalletService::fetch_native_balance_summary_auto` detects extended keys
+/// automatically.
 #[derive(Debug, Clone, serde::Deserialize, uniffi::Record)]
 pub struct RefreshEntry {
     pub chain_id: u32,

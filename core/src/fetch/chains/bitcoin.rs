@@ -173,11 +173,11 @@ impl FeeRate {
 pub struct BitcoinClient {
     pub(crate) http: Arc<HttpClient>,
     /// Ordered list of Esplora base URLs for the current network mode.
-    pub(crate) endpoints: Vec<String>,
+    pub(crate) endpoints: Arc<Vec<String>>,
 }
 
 impl BitcoinClient {
-    pub fn new(http: Arc<HttpClient>, endpoints: Vec<String>) -> Self {
+    pub fn new(http: Arc<HttpClient>, endpoints: Arc<Vec<String>>) -> Self {
         Self { http, endpoints }
     }
 }

@@ -1,11 +1,11 @@
-// Phase 3 — Rust-owned balance refresh loop
+// Rust-owned balance refresh loop
 //
 // Swift calls `start()` once; Rust drives the timer, fetches balances, and
 // pushes results back through the `BalanceObserver` callback interface.
 // The only job remaining for Swift is to apply the received JSON to the
 // in-memory wallet model via `WalletStore.applyRustBalance(...)`.
 
-use crate::balance_observer::{BalanceObserver, RefreshEntry};
+use crate::fetch::balance_observer::{BalanceObserver, RefreshEntry};
 use crate::service::WalletService;
 use futures::stream::{self, StreamExt};
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -138,6 +138,7 @@ impl BalanceRefreshEngine {
             .compare_exchange(false, true, Ordering::Acquire, Ordering::Relaxed)
             .is_err()
         {
+            #[cfg(debug_assertions)]
             eprintln!("[spectra:refresh] skipped: cycle already in flight");
             return;
         }
@@ -158,7 +159,10 @@ impl BalanceRefreshEngine {
         }
 
         let cycle_start = Instant::now();
+        #[cfg(debug_assertions)]
         eprintln!("[spectra:refresh] cycle start entries={entry_count}");
+        #[cfg(not(debug_assertions))]
+        let _ = entry_count; // silence unused warning in release
 
         // Snapshot the observer Arc once before the loop instead of once per
         // entry — avoids N RwLock acquisitions during the hot path.
@@ -167,18 +171,22 @@ impl BalanceRefreshEngine {
         // Fan out balance fetches with bounded concurrency (up to 8 in flight).
         // Each successful fetch is immediately applied to the Rust-owned wallet
         // state; Swift receives the resulting typed `WalletSummary` via the
-        // observer instead of shuttling the raw JSON back.
+        // observer. The whole pipeline is typed end-to-end — no JSON-string
+        // shuttle between fetch and apply.
         let ws = Arc::clone(&inner.wallet_service);
         let results: Vec<Result<(u32, String, Option<crate::store::state::WalletSummary>), ()>> = stream::iter(entries)
             .map(|entry| {
                 let ws = Arc::clone(&ws);
                 async move {
-                    let json = ws.fetch_balance_auto(entry.chain_id, entry.address.clone()).await.map_err(|_| ())?;
                     let summary = ws
-                        .update_native_balance_typed(entry.wallet_id.clone(), entry.chain_id, json)
+                        .fetch_native_balance_summary_auto(entry.chain_id, entry.address.clone())
                         .await
                         .map_err(|_| ())?;
-                    Ok((entry.chain_id, entry.wallet_id, summary))
+                    let wallet_summary = ws
+                        .apply_native_balance_summary(entry.wallet_id.clone(), entry.chain_id, &summary)
+                        .await
+                        .map_err(|_| ())?;
+                    Ok((entry.chain_id, entry.wallet_id, wallet_summary))
                 }
             })
             .buffer_unordered(8)
@@ -206,10 +214,15 @@ impl BalanceRefreshEngine {
             o.on_refresh_cycle_complete(refreshed, errors);
         }
 
-        let elapsed_ms = cycle_start.elapsed().as_millis();
-        eprintln!(
-            "[spectra:refresh] cycle end refreshed={refreshed} errors={errors} elapsed_ms={elapsed_ms}"
-        );
+        #[cfg(debug_assertions)]
+        {
+            let elapsed_ms = cycle_start.elapsed().as_millis();
+            eprintln!(
+                "[spectra:refresh] cycle end refreshed={refreshed} errors={errors} elapsed_ms={elapsed_ms}"
+            );
+        }
+        #[cfg(not(debug_assertions))]
+        let _ = cycle_start;
     }
 }
 

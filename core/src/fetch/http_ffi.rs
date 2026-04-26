@@ -159,8 +159,7 @@ pub async fn http_request(
 }
 
 // ----------------------------------------------------------------
-// Ergonomic text-oriented wrappers (Phase 1 migration target shape)
-// ----------------------------------------------------------------
+// Ergonomic text-oriented wrappers // ----------------------------------------------------------------
 
 /// GET a URL and return the response body as UTF-8 text with headers.
 /// Single-shot (no retry). Use `http_request` for retry-profiled calls.

@@ -18,6 +18,16 @@ pub struct EvmCustomFeeConfiguration {
     pub max_priority_fee_per_gas_gwei: f64,
 }
 
+/// Typed EVM overrides crossing the FFI from Swift. Internal-only on the
+/// Rust side: `build_execute_send_payload` projects this into the comma-prefix
+/// JSON fragment that `build_evm_*_send_payload` expects.
+#[derive(Debug, Clone, Default, Serialize, Deserialize, uniffi::Record)]
+#[serde(rename_all = "camelCase")]
+pub struct EvmSendOverridesInput {
+    pub nonce: Option<i64>,
+    pub custom_fees: Option<EvmCustomFeeConfiguration>,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, uniffi::Record)]
 #[serde(rename_all = "camelCase")]
 pub struct EvmSupportedToken {
@@ -179,7 +189,7 @@ pub fn prepare_evm_send_assembly(
     })
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, uniffi::Record)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct EvmPreviewDecodeInput {
     pub raw_json: String,
@@ -187,7 +197,7 @@ pub struct EvmPreviewDecodeInput {
     pub custom_fees: Option<EvmCustomFeeConfiguration>,
 }
 
-#[derive(Debug, Clone, Default, Serialize, Deserialize, uniffi::Record)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct EvmPreviewDecoded {
     pub nonce: i64,
@@ -200,7 +210,6 @@ pub struct EvmPreviewDecoded {
     pub max_sendable: Option<f64>,
 }
 
-#[uniffi::export]
 pub fn decode_evm_send_preview(input: EvmPreviewDecodeInput) -> Option<EvmPreviewDecoded> {
     let value: serde_json::Value = serde_json::from_str(&input.raw_json).ok()?;
     let obj = value.as_object()?;
@@ -321,16 +330,17 @@ pub struct EvmSendResultDecoded {
     pub gas_limit: i64,
 }
 
-#[uniffi::export]
-pub fn build_evm_overrides_json_fragment(
-    nonce: Option<i64>,
-    custom_fees: Option<EvmCustomFeeConfiguration>,
-) -> String {
+/// Internal helper: render the typed overrides into the comma-prefix JSON
+/// fragment consumed by `build_evm_native_send_payload` /
+/// `build_evm_token_send_payload`. Not UniFFI-exported — Swift now passes the
+/// typed `EvmSendOverridesInput` on `SendExecutionRequest` instead.
+pub(crate) fn render_evm_overrides_fragment(input: Option<&EvmSendOverridesInput>) -> String {
+    let Some(o) = input else { return String::new() };
     let mut fragments: Vec<String> = Vec::new();
-    if let Some(n) = nonce {
+    if let Some(n) = o.nonce {
         fragments.push(format!("\"nonce\":{}", n));
     }
-    if let Some(cf) = custom_fees {
+    if let Some(ref cf) = o.custom_fees {
         let max_fee_wei = (cf.max_fee_per_gas_gwei * 1e9).round() as u64;
         let prio_wei = (cf.max_priority_fee_per_gas_gwei * 1e9).round() as u64;
         fragments.push(format!("\"max_fee_per_gas_wei\":\"{}\"", max_fee_wei));
@@ -339,9 +349,11 @@ pub fn build_evm_overrides_json_fragment(
     if fragments.is_empty() { String::new() } else { format!(",{}", fragments.join(",")) }
 }
 
-#[uniffi::export]
-pub fn decode_evm_send_result(json: String, fallback_nonce: i64) -> EvmSendResultDecoded {
-    let v: serde_json::Value = match serde_json::from_str(&json) {
+/// Internal helper: parse the broadcast result JSON into the typed EVM record.
+/// Used by `execute_send` to populate `SendExecutionResult.evm` so Swift
+/// doesn't have to re-parse the JSON.
+pub(crate) fn decode_evm_send_result_internal(json: &str, fallback_nonce: i64) -> EvmSendResultDecoded {
+    let v: serde_json::Value = match serde_json::from_str(json) {
         Ok(v) => v,
         Err(_) => {
             return EvmSendResultDecoded { nonce: fallback_nonce, ..Default::default() };
@@ -452,10 +464,10 @@ mod tests {
 
     #[test]
     fn overrides_fragment_builds_comma_prefixed() {
-        let s = build_evm_overrides_json_fragment(
-            Some(9),
-            Some(EvmCustomFeeConfiguration { max_fee_per_gas_gwei: 50.0, max_priority_fee_per_gas_gwei: 3.0 }),
-        );
+        let s = render_evm_overrides_fragment(Some(&EvmSendOverridesInput {
+            nonce: Some(9),
+            custom_fees: Some(EvmCustomFeeConfiguration { max_fee_per_gas_gwei: 50.0, max_priority_fee_per_gas_gwei: 3.0 }),
+        }));
         assert!(s.starts_with(","));
         assert!(s.contains("\"nonce\":9"));
         assert!(s.contains("\"max_fee_per_gas_wei\":\"50000000000\""));
@@ -464,13 +476,14 @@ mod tests {
 
     #[test]
     fn overrides_fragment_empty_when_none() {
-        assert!(build_evm_overrides_json_fragment(None, None).is_empty());
+        assert!(render_evm_overrides_fragment(None).is_empty());
+        assert!(render_evm_overrides_fragment(Some(&EvmSendOverridesInput::default())).is_empty());
     }
 
     #[test]
     fn decode_send_result_pulls_fields() {
         let json = r#"{"txid":"0xabc","raw_tx_hex":"0xf86...","nonce":12,"gas_limit":21000}"#;
-        let r = decode_evm_send_result(json.into(), 0);
+        let r = decode_evm_send_result_internal(json, 0);
         assert_eq!(r.txid, "0xabc");
         assert_eq!(r.nonce, 12);
         assert_eq!(r.gas_limit, 21000);
@@ -509,7 +522,7 @@ mod tests {
 
     #[test]
     fn decode_send_result_uses_fallback_on_missing_nonce() {
-        let r = decode_evm_send_result(r#"{"txid":"x"}"#.into(), 7);
+        let r = decode_evm_send_result_internal(r#"{"txid":"x"}"#, 7);
         assert_eq!(r.nonce, 7);
         assert_eq!(r.gas_limit, 0);
     }

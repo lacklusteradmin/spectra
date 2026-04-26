@@ -22,3 +22,4 @@ dirs = "5"
 getrandom = "0.2"
 bip39 = { version = "2", features = ["all-languages"] }
 colored = "2"
+tokio = { version = "1", features = ["rt-multi-thread", "macros"] }

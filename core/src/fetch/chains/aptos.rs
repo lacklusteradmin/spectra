@@ -48,12 +48,12 @@ pub struct AptosSendResult {
 // ----------------------------------------------------------------
 
 pub struct AptosClient {
-    endpoints: Vec<String>,
+    endpoints: std::sync::Arc<Vec<String>>,
     client: std::sync::Arc<HttpClient>,
 }
 
 impl AptosClient {
-    pub fn new(endpoints: Vec<String>) -> Self {
+    pub fn new(endpoints: std::sync::Arc<Vec<String>>) -> Self {
         Self {
             endpoints,
             client: HttpClient::shared(),

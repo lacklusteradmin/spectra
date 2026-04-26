@@ -81,24 +81,31 @@ fn chain_id_by_chain_name() -> &'static HashMap<String, String> {
 }
 
 pub(super) fn canonical_chain_component_inner(chain_name: &str, symbol: &str) -> String {
-    let normalized_chain = chain_name.trim().to_lowercase();
-    let normalized_symbol = symbol.trim().to_uppercase();
+    // Most lookups hit `known_chain_aliases` on the first pass, so defer the
+    // String allocations as far as possible. Was: unconditional `.to_lowercase()`
+    // on the chain name + `.to_uppercase()` on the symbol — two heap allocs
+    // per call. Now: zero allocs in the hot path (alias hit), one in the
+    // wiki-lookup path, none in the symbol-alias path.
+    let trimmed_chain = chain_name.trim();
+    let trimmed_symbol = symbol.trim();
     if let Some((_, alias)) = known_chain_aliases()
         .iter()
-        .find(|(name, _)| *name == normalized_chain)
+        .find(|(name, _)| name.eq_ignore_ascii_case(trimmed_chain))
     {
         return (*alias).to_string();
     }
-    if let Some(id) = chain_id_by_chain_name().get(&normalized_chain) {
+    // HashMap<String, String> requires an owned key for lookup; allocate once.
+    let normalized_chain_lower = trimmed_chain.to_lowercase();
+    if let Some(id) = chain_id_by_chain_name().get(&normalized_chain_lower) {
         return id.clone();
     }
     if let Some((_, alias)) = native_symbol_chain_aliases()
         .iter()
-        .find(|(sym, _)| *sym == normalized_symbol)
+        .find(|(sym, _)| sym.eq_ignore_ascii_case(trimmed_symbol))
     {
         return (*alias).to_string();
     }
-    normalized_chain.replace(' ', "-")
+    normalized_chain_lower.replace(' ', "-")
 }
 
 pub fn plan_canonical_chain_component(chain_name: String, symbol: String) -> String {

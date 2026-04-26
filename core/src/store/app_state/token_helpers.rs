@@ -1,7 +1,5 @@
-// Pure token-identifier / endpoint normalization helpers lifted from Swift's
-// AppState. Previously these lived as instance methods (string munging, URL
-// validation, CSV parsing) that didn't touch any mutable state. Moving them
-// here shrinks AppState and makes the logic testable without a MainActor.
+// Pure token-identifier + endpoint normalization helpers (string munging,
+// URL validation, CSV parsing). No mutable state — testable in isolation.
 
 /// Canonicalize a `0x…` hex string: strip leading zeroes, keep at least one.
 /// Unchanged if the prefix is not `0x`.

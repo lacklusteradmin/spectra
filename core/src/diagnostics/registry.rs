@@ -1,7 +1,7 @@
-// Phase B: Rust-owned per-wallet diagnostics registry.
+// Rust-owned per-wallet diagnostics registry.
 //
 // Swift previously held 24 `[String: T]` dictionaries (keyed by wallet id)
-// on `WalletChainDiagnosticsState`. Phase B moves that storage here and
+// on `WalletChainDiagnosticsState`. The state lives here and
 // exposes get/set/remove/list/clear via UniFFI, one trio per chain.
 //
 // The in-memory shape is one typed HashMap per chain, guarded by a single

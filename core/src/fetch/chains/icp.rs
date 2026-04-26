@@ -58,12 +58,12 @@ pub struct IcpSendResult {
 
 pub struct IcpClient {
     /// Rosetta API endpoint (https://rosetta-api.internetcomputer.org).
-    rosetta_endpoints: Vec<String>,
+    rosetta_endpoints: std::sync::Arc<Vec<String>>,
     client: std::sync::Arc<HttpClient>,
 }
 
 impl IcpClient {
-    pub fn new(rosetta_endpoints: Vec<String>) -> Self {
+    pub fn new(rosetta_endpoints: std::sync::Arc<Vec<String>>) -> Self {
         Self {
             rosetta_endpoints,
             client: HttpClient::shared(),

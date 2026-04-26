@@ -46,12 +46,12 @@ pub struct XrpSendResult {
 // ----------------------------------------------------------------
 
 pub struct XrpClient {
-    endpoints: Vec<String>,
+    endpoints: std::sync::Arc<Vec<String>>,
     client: std::sync::Arc<HttpClient>,
 }
 
 impl XrpClient {
-    pub fn new(endpoints: Vec<String>) -> Self {
+    pub fn new(endpoints: std::sync::Arc<Vec<String>>) -> Self {
         Self {
             endpoints,
             client: HttpClient::shared(),

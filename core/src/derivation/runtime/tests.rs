@@ -768,7 +768,7 @@ use super::*;
     }
 
     // ──────────────────────────────────────────────────────────────────
-    // Phase 4 — canonical external golden vectors.
+    //  canonical external golden vectors.
     //
     // Each entry pins our derivation output against an address emitted
     // by a reference wallet / official spec for the same mnemonic +

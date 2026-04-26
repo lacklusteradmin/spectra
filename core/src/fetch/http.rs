@@ -6,7 +6,7 @@
 //! stack so that we get the same resilience without rewriting the
 //! policy from scratch.
 //!
-//! ## Phase 1 UniFFI migration pattern (2026-04)
+//! ## UniFFI migration pattern
 //!
 //! The pattern for migrating a Swift URLSession call site to Rust is:
 //!

@@ -11,23 +11,23 @@ use super::fetch::{
     NormalizedRefreshWalletTarget, WalletBalanceRefreshPlan, WalletBalanceRefreshRequest,
 };
 use super::history::{normalize_history, CoreNormalizedHistoryEntry, NormalizeHistoryRequest};
-use super::import::{
+use crate::derivation::import::{
     plan_wallet_import, validate_wallet_import_draft, WalletImportDraftValidationRequest,
     WalletImportPlan, WalletImportRequest,
 };
-use super::refresh::{
+use crate::fetch::refresh::{
     active_maintenance_plan, chain_plans, history_plans, should_run_background_maintenance,
     ActiveMaintenancePlan, ActiveMaintenancePlanRequest, BackgroundMaintenanceRequest,
     ChainRefreshPlan, ChainRefreshPlanRequest, HistoryRefreshPlanRequest,
 };
-use super::resources::{static_json_resource, static_text_resource};
-use super::send::{
+use crate::platform::resources::{static_json_resource, static_text_resource};
+use crate::send::{
     plan_send_preview_routing, plan_send_submit_preflight, route_send_asset, SendAssetRoutingInput,
     SendAssetRoutingPlan, SendPreviewRoutingPlan, SendPreviewRoutingRequest,
     SendSubmitPreflightPlan, SendSubmitPreflightRequest,
 };
-use super::state::CoreAppState;
-use super::store::{
+use crate::store::state::CoreAppState;
+use crate::store::{
     aggregate_owned_addresses, build_persisted_snapshot_typed,
     plan_active_wallet_transaction_ids, plan_append_chain_operational_event,
     plan_apply_holdings_from_summary, plan_apply_resolved_pending_transaction_statuses,
@@ -58,30 +58,25 @@ use super::store::{
     WalletChainEligibilityInput, WalletChainInput, WalletEarliestTransactionDate,
     WalletSecretIndex, WalletSecretObservation,
 };
-use super::store::wallet_domain::CoreTokenPreferenceEntry;
-use super::persistence::models::{
-    CorePersistedAddressBookStore, CorePersistedPriceAlertStore, CorePersistedTransactionRecord,
-};
-use super::transactions::{merge_transactions, TransactionMergeRequest, CoreTransactionRecord};
-use super::transfer::{
+use crate::store::wallet_domain::CoreTokenPreferenceEntry;
+use crate::fetch::transactions::{merge_transactions, TransactionMergeRequest, CoreTransactionRecord};
+use crate::send::transfer::{
     plan_transfer_availability, TransferAvailabilityPlan, TransferAvailabilityRequest,
 };
-use super::utxo::{
+use crate::send::utxo::{
     plan_utxo_preview, plan_utxo_spend, UtxoPreviewPlan, UtxoPreviewRequest, UtxoSpendPlan,
     UtxoSpendPlanRequest,
 };
-use serde::Serialize;
 
 // ─── Static resource lookups ──────────────────────────────────────────────────
 
 #[uniffi::export]
 pub fn core_static_resource_json(
     resource_name: String,
-) -> Result<Vec<u8>, crate::SpectraBridgeError> {
-    let json = static_json_resource(&resource_name)
+) -> Result<String, crate::SpectraBridgeError> {
+    static_json_resource(&resource_name)
         .map(|value| value.to_string())
-        .ok_or_else(|| format!("Missing static JSON resource {resource_name}."))?;
-    Ok(json.into_bytes())
+        .ok_or_else(|| format!("Missing static JSON resource {resource_name}.").into())
 }
 
 #[uniffi::export]
@@ -519,20 +514,6 @@ pub fn core_merge_transactions(
     merge_transactions(request)
 }
 
-/// Typed input for the history persistence endpoints (`upsert_history_records`
-/// and `replace_all_history_records`). `payload_json` is the full
-/// `PersistedTransactionRecord` JSON blob (unencoded); Rust base64-encodes it
-/// into the stored HistoryRecord `payload` column.
-#[derive(Debug, Clone, Serialize, serde::Deserialize, uniffi::Record)]
-pub struct HistoryRecordEncodeInput {
-    pub id: String,
-    pub wallet_id: Option<String>,
-    pub chain_name: String,
-    pub tx_hash: Option<String>,
-    pub created_at: f64,
-    pub payload_json: String,
-}
-
 #[uniffi::export]
 pub fn core_validate_address(
     request: AddressValidationRequest,
@@ -719,61 +700,7 @@ fn hrsr_normalize_address(address: &str, chain_name: &str) -> String {
     super::send::flow::normalize_address(chain_name, address)
 }
 
-fn serialize_json(value: &impl Serialize) -> Result<String, String> {
-    serde_json::to_string(value).map_err(display_error)
-}
-
-// ─── Persisted DTO JSON bridges ─────────────────────────────────────────────
-// Swift `JSONEncoder` / `JSONDecoder` cannot produce the "omit-when-None" wire
-// shape Rust uses for optional fields. Swift therefore round-trips these three
-// DTOs through serde_json via these bridges to keep byte-exact on-disk JSON.
-
-#[uniffi::export]
-pub fn encode_persisted_price_alert_store_json(
-    value: CorePersistedPriceAlertStore,
-) -> Result<String, SpectraBridgeError> {
-    Ok(serialize_json(&value)?)
-}
-
-#[uniffi::export]
-pub fn decode_persisted_price_alert_store_json(
-    json: String,
-) -> Result<CorePersistedPriceAlertStore, SpectraBridgeError> {
-    serde_json::from_str::<CorePersistedPriceAlertStore>(&json)
-        .map_err(SpectraBridgeError::from)
-}
-
-#[uniffi::export]
-pub fn encode_persisted_address_book_store_json(
-    value: CorePersistedAddressBookStore,
-) -> Result<String, SpectraBridgeError> {
-    Ok(serialize_json(&value)?)
-}
-
-#[uniffi::export]
-pub fn decode_persisted_address_book_store_json(
-    json: String,
-) -> Result<CorePersistedAddressBookStore, SpectraBridgeError> {
-    serde_json::from_str::<CorePersistedAddressBookStore>(&json)
-        .map_err(SpectraBridgeError::from)
-}
-
-#[uniffi::export]
-pub fn encode_persisted_transaction_record_json(
-    value: CorePersistedTransactionRecord,
-) -> Result<String, SpectraBridgeError> {
-    Ok(serialize_json(&value)?)
-}
-
-#[uniffi::export]
-pub fn decode_persisted_transaction_record_json(
-    json: String,
-) -> Result<CorePersistedTransactionRecord, SpectraBridgeError> {
-    serde_json::from_str::<CorePersistedTransactionRecord>(&json)
-        .map_err(SpectraBridgeError::from)
-}
-
-// ─── Seed envelope encryption (Phase 1) ─────────────────────────────────────
+// ─── Seed envelope encryption ─────────────────────────────────────
 
 /// Encrypt a seed phrase with AES-256-GCM. `master_key_bytes` must be exactly
 /// 32 bytes. Returns the JSON envelope as `Data` (compatible with Swift's
@@ -798,7 +725,7 @@ pub fn decrypt_seed_envelope(
         .map_err(SpectraBridgeError::from)
 }
 
-// ─── Password verifier (Phase 2) ────────────────────────────────────────────
+// ─── Password verifier ────────────────────────────────────────────
 
 /// Create a PBKDF2-HMAC-SHA256 password verifier envelope. Returns JSON `Data`
 /// compatible with Swift's `SecureSeedPasswordStore` format.
@@ -998,6 +925,3 @@ pub fn core_evaluate_large_movement(
     }
 }
 
-fn display_error(error: impl std::fmt::Display) -> String {
-    error.to_string()
-}

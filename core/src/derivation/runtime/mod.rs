@@ -675,19 +675,24 @@ fn parse_uniffi_request(
         return Err(crate::SpectraBridgeError::from("Seed phrase is empty."));
     }
 
-    let derivation_path = request
-        .derivation_path
-        .map(|value| value.trim().to_string())
-        .filter(|value| !value.is_empty());
+    // Avoid the unconditional `.trim().to_string()` allocation: keep the
+    // original owned String when no whitespace was present (the common case
+    // for paths like "m/44'/60'/0'/0/0", language names like "english", and
+    // hex hmac keys). Re-allocate only when trim actually shortens the value.
+    fn trim_in_place(value: String) -> Option<String> {
+        let trimmed_len = value.trim().len();
+        if trimmed_len == 0 {
+            None
+        } else if trimmed_len == value.len() {
+            Some(value)
+        } else {
+            Some(value.trim().to_string())
+        }
+    }
+    let derivation_path = request.derivation_path.and_then(trim_in_place);
     let passphrase = request.passphrase.unwrap_or_default();
-    let hmac_key = request
-        .hmac_key
-        .map(|value| value.trim().to_string())
-        .filter(|value| !value.is_empty());
-    let mnemonic_wordlist = request
-        .mnemonic_wordlist
-        .map(|value| value.trim().to_string())
-        .filter(|value| !value.is_empty());
+    let hmac_key = request.hmac_key.and_then(trim_in_place);
+    let mnemonic_wordlist = request.mnemonic_wordlist.and_then(trim_in_place);
     // `salt_prefix` is intentionally NOT trimmed — callers may legitimately use
     // a prefix that includes or consists entirely of whitespace. Only an
     // explicit `None` falls back to the BIP-39 default of "mnemonic".
@@ -797,15 +802,27 @@ fn encode_private_key_hex(bytes: &[u8; 32]) -> String {
     bytes.iter().map(|byte| format!("{byte:02x}")).collect()
 }
 
-fn parse_uniffi_material_request(
-    request: UniFFIMaterialRequest,
-) -> Result<ParsedMaterialRequest, crate::SpectraBridgeError> {
-    let derivation_path = request.derivation_path.trim().to_string();
-    if derivation_path.is_empty() {
+/// Trim + non-empty validation shared by both material-request parsers.
+/// Returns the trimmed path without re-allocating when no whitespace was
+/// present (the common case for canonical derivation paths).
+fn require_material_path(raw: String) -> Result<String, crate::SpectraBridgeError> {
+    let trimmed_len = raw.trim().len();
+    if trimmed_len == 0 {
         return Err(crate::SpectraBridgeError::from(
             "Derivation path is required to build signing material.",
         ));
     }
+    if trimmed_len == raw.len() {
+        Ok(raw)
+    } else {
+        Ok(raw.trim().to_string())
+    }
+}
+
+fn parse_uniffi_material_request(
+    request: UniFFIMaterialRequest,
+) -> Result<ParsedMaterialRequest, crate::SpectraBridgeError> {
+    let derivation_path = require_material_path(request.derivation_path)?;
     let parsed = parse_uniffi_request(UniFFIDerivationRequest {
         chain: request.chain,
         network: request.network,
@@ -832,12 +849,7 @@ fn parse_uniffi_material_request(
 fn parse_uniffi_private_key_material_request(
     request: UniFFIPrivateKeyMaterialRequest,
 ) -> Result<ParsedPrivateKeyMaterialRequest, crate::SpectraBridgeError> {
-    let derivation_path = request.derivation_path.trim().to_string();
-    if derivation_path.is_empty() {
-        return Err(crate::SpectraBridgeError::from(
-            "Derivation path is required to build signing material.",
-        ));
-    }
+    let derivation_path = require_material_path(request.derivation_path)?;
     let parsed = parse_uniffi_private_key_request(UniFFIPrivateKeyDerivationRequest {
         chain: request.chain,
         network: request.network,

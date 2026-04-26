@@ -59,12 +59,12 @@ pub struct MoneroSendResult {
 
 pub struct MoneroClient {
     /// Monero wallet-rpc endpoints (http://localhost:18082/json_rpc).
-    wallet_rpc_endpoints: Vec<String>,
+    wallet_rpc_endpoints: std::sync::Arc<Vec<String>>,
     client: std::sync::Arc<HttpClient>,
 }
 
 impl MoneroClient {
-    pub fn new(wallet_rpc_endpoints: Vec<String>) -> Self {
+    pub fn new(wallet_rpc_endpoints: std::sync::Arc<Vec<String>>) -> Self {
         Self {
             wallet_rpc_endpoints,
             client: HttpClient::shared(),

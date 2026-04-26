@@ -1,10 +1,7 @@
-// Phase C: pure aggregation / JSON-parsing helpers lifted from
-// Swift `AppState+DiagnosticsEndpoints.swift`.
-//
-// These helpers compute counts, extract status maps, and build
-// diagnostic records from raw history JSON / RPC responses. Keeping
-// them in Rust drops hand-rolled `JSONSerialization.jsonObject(with:)`
-// blocks from Swift and lets us unit-test the decoding shape once.
+// Pure aggregation + JSON-parsing helpers for diagnostics: count rows,
+// extract status maps, and build diagnostic records from raw history /
+// RPC responses. Unit-tested in one place so the decoding shape stays
+// stable across the chain clients that feed in.
 
 use serde_json::Value;
 
