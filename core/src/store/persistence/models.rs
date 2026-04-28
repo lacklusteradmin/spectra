@@ -61,7 +61,13 @@ impl CorePersistedAddressBookStore {
     pub const CURRENT_VERSION: i32 = 1;
 }
 
-/// Matches Swift `PersistedTransactionRecord`.
+/// SQLite-storage form of a transaction record. Matches Swift
+/// `PersistedTransactionRecord`.
+///
+/// Sibling type: [`crate::fetch::transactions::CoreTransactionRecord`] is the
+/// wire/merge form. Their fields look nearly identical but the two are
+/// deliberately separate — see that type's doc comment for the timestamp
+/// and enum-typing differences.
 ///
 /// `created_at` is a Double (seconds since the Swift reference date,
 /// 2001-01-01T00:00:00Z) — emitted by a vanilla `JSONEncoder()` which is what
@@ -181,14 +187,56 @@ mod tests {
         assert_eq!(reencoded, json);
     }
 
+    /// Minimal record for tests: an unconfirmed receive with no receipt or
+    /// chain-specific extras. Tests start from this and mutate the specific
+    /// fields they exercise so the assertion focus is on what changed,
+    /// not a wall of `None`s.
+    fn minimal_record() -> CorePersistedTransactionRecord {
+        CorePersistedTransactionRecord {
+            id: "11111111-2222-3333-4444-555555555555".to_string(),
+            wallet_id: None,
+            kind: CoreTransactionKind::Receive,
+            status: None,
+            wallet_name: "Main".to_string(),
+            asset_name: "Bitcoin".to_string(),
+            symbol: "BTC".to_string(),
+            chain_name: "Bitcoin".to_string(),
+            amount: 0.0,
+            address: "".to_string(),
+            transaction_hash: None,
+            ethereum_nonce: None,
+            receipt_block_number: None,
+            receipt_gas_used: None,
+            receipt_effective_gas_price_gwei: None,
+            receipt_network_fee_eth: None,
+            fee_priority_raw: None,
+            fee_rate_description: None,
+            confirmation_count: None,
+            dogecoin_confirmed_network_fee_doge: None,
+            dogecoin_confirmations: None,
+            dogecoin_fee_priority_raw: None,
+            dogecoin_estimated_fee_rate_doge_per_kb: None,
+            used_change_output: None,
+            dogecoin_used_change_output: None,
+            source_derivation_path: None,
+            change_derivation_path: None,
+            source_address: None,
+            change_address: None,
+            dogecoin_raw_transaction_hex: None,
+            signed_transaction_payload: None,
+            signed_transaction_payload_format: None,
+            failure_reason: None,
+            transaction_history_source: None,
+            created_at: 0.0,
+        }
+    }
+
     #[test]
     fn transaction_record_roundtrip_with_receipt_fields() {
         let original = CorePersistedTransactionRecord {
-            id: "11111111-2222-3333-4444-555555555555".to_string(),
             wallet_id: Some("wallet-1".to_string()),
             kind: CoreTransactionKind::Send,
             status: Some(CoreTransactionStatus::Confirmed),
-            wallet_name: "Main".to_string(),
             asset_name: "Ethereum".to_string(),
             symbol: "ETH".to_string(),
             chain_name: "Ethereum".to_string(),
@@ -201,24 +249,11 @@ mod tests {
             receipt_effective_gas_price_gwei: Some(25.5),
             receipt_network_fee_eth: Some(0.000535),
             fee_priority_raw: Some("standard".to_string()),
-            fee_rate_description: None,
             confirmation_count: Some(12),
-            dogecoin_confirmed_network_fee_doge: None,
-            dogecoin_confirmations: None,
-            dogecoin_fee_priority_raw: None,
-            dogecoin_estimated_fee_rate_doge_per_kb: None,
             used_change_output: Some(true),
-            dogecoin_used_change_output: None,
-            source_derivation_path: None,
-            change_derivation_path: None,
-            source_address: None,
-            change_address: None,
-            dogecoin_raw_transaction_hex: None,
-            signed_transaction_payload: None,
-            signed_transaction_payload_format: None,
-            failure_reason: None,
             transaction_history_source: Some("rpc".to_string()),
             created_at: 750000000.5,
+            ..minimal_record()
         };
         let json = serde_json::to_string(&original).unwrap();
         // None-valued optional fields must be omitted, not serialized as null.

@@ -43,6 +43,10 @@ bech32 = "0.11"
 ripemd = "0.1"
 tiny-keccak = { version = "2", features = ["keccak"] }
 blake2 = "0.10"
+# blake2b_simd: only crate that exposes BLAKE2b's personalisation field, which
+# Zcash V5 (ZIP-244) sighash construction requires. The `blake2` crate's MAC
+# variant covers keyed hashing but not personal-string parameterisation.
+blake2b_simd = "1.0"
 sha3 = "0.10"
 data-encoding = "2"
 crc = "3"

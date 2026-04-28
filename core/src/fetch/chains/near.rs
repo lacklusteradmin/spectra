@@ -39,6 +39,12 @@ pub struct NearSendResult {
     pub signed_tx_b64: String,
 }
 
+impl super::SignedSubmission for NearSendResult {
+    fn submission_id(&self) -> &str { &self.txid }
+    fn signed_payload(&self) -> &str { &self.signed_tx_b64 }
+    fn signed_payload_format(&self) -> super::SignedPayloadFormat { super::SignedPayloadFormat::Base64 }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct NearFtBalance {
     pub contract: String,

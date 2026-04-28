@@ -143,6 +143,12 @@ fn parse_address_algorithm_name(s: &str) -> Result<u32, String> {
         "sui_keccak" => Ok(ADDRESS_SUI_KECCAK),
         "aptos_keccak" => Ok(ADDRESS_APTOS_KECCAK),
         "icp_principal" => Ok(ADDRESS_ICP_PRINCIPAL),
+        "zcash_transparent" => Ok(ADDRESS_ZCASH_TRANSPARENT),
+        "bitcoin_gold_legacy" => Ok(ADDRESS_BITCOIN_GOLD_LEGACY),
+        "decred_p2pkh" => Ok(ADDRESS_DECRED_P2PKH),
+        "kaspa_schnorr" => Ok(ADDRESS_KASPA_SCHNORR),
+        "dash_legacy" => Ok(ADDRESS_DASH_LEGACY),
+        "bittensor_ss58" => Ok(ADDRESS_BITTENSOR_SS58),
         other => Err(format!("unknown address algorithm: {other}")),
     }
 }

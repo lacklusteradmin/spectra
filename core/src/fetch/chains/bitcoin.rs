@@ -148,6 +148,12 @@ pub struct BitcoinSendResult {
     pub raw_tx_hex: String,
 }
 
+impl super::SignedSubmission for BitcoinSendResult {
+    fn submission_id(&self) -> &str { &self.txid }
+    fn signed_payload(&self) -> &str { &self.raw_tx_hex }
+    fn signed_payload_format(&self) -> super::SignedPayloadFormat { super::SignedPayloadFormat::Hex }
+}
+
 // ----------------------------------------------------------------
 // Fee rate
 // ----------------------------------------------------------------

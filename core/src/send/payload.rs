@@ -213,6 +213,22 @@ pub fn build_polkadot_send_payload(
     )
 }
 
+pub fn build_bittensor_send_payload(
+    from: String,
+    to: String,
+    amount_tao: f64,
+    private_key_hex: String,
+    public_key_hex: String,
+) -> String {
+    // 1 TAO = 10^9 rao.
+    let rao = amount_raw_string(amount_tao, 9);
+    format!(
+        "{{\"from\":\"{}\",\"to\":\"{}\",\"rao\":\"{}\",\"private_key_hex\":\"{}\",\"public_key_hex\":\"{}\"}}",
+        json_escape(&from), json_escape(&to), json_escape(&rao),
+        json_escape(&private_key_hex), json_escape(&public_key_hex)
+    )
+}
+
 pub fn build_monero_send_payload(to: String, amount_xmr: f64, priority: u32) -> String {
     let piconeros = amount_u64(amount_xmr, 1e12);
     format!(
@@ -333,6 +349,12 @@ pub enum SendChain {
     Icp,
     Near,
     Polkadot,
+    Zcash,
+    BitcoinGold,
+    Decred,
+    Kaspa,
+    Dash,
+    Bittensor,
 }
 
 #[derive(Debug, Clone, uniffi::Record)]
@@ -370,6 +392,12 @@ fn format_key_for(chain: SendChain) -> &'static str {
         SendChain::Icp => "icp.rust_json",
         SendChain::Near => "near.rust_json",
         SendChain::Polkadot => "polkadot.rust_json",
+        SendChain::Zcash => "zcash.rust_json",
+        SendChain::BitcoinGold => "bitcoin_gold.rust_json",
+        SendChain::Decred => "decred.rust_json",
+        SendChain::Kaspa => "kaspa.rust_json",
+        SendChain::Dash => "dash.rust_json",
+        SendChain::Bittensor => "bittensor.rust_json",
     }
 }
 

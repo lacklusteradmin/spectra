@@ -611,6 +611,12 @@ use super::*;
             Chain::Near => "near",
             Chain::Polkadot => "polkadot",
             Chain::Monero => "monero",
+            Chain::Zcash => "zcash",
+            Chain::BitcoinGold => "bitcoin_gold",
+            Chain::Decred => "decred",
+            Chain::Kaspa => "kaspa",
+            Chain::Dash => "dash",
+            Chain::Bittensor => "bittensor",
         }
     }
 

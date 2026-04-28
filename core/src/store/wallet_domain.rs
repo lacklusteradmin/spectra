@@ -151,11 +151,24 @@ pub struct CoreSeedDerivationPaths {
     pub internet_computer: String,
     pub near: String,
     pub polkadot: String,
+    pub zcash: String,
+    pub bitcoin_gold: String,
+    pub sei: String,
+    pub celo: String,
+    pub cronos: String,
+    pub op_bnb: String,
+    pub zksync_era: String,
+    pub sonic: String,
+    pub berachain: String,
+    pub unichain: String,
+    pub ink: String,
+    pub decred: String,
+    pub kaspa: String,
+    pub dash: String,
+    pub x_layer: String,
+    pub bittensor: String,
 }
 
-// TODO: Align CoreImportedWallet with the single-chain WalletSummary model.
-// Per-chain address fields should be replaced with a single `chain_name` +
-// `address` pair once Swift is updated to match.
 #[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq, uniffi::Record)]
 #[serde(rename_all = "camelCase")]
 pub struct CoreImportedWallet {
@@ -182,6 +195,12 @@ pub struct CoreImportedWallet {
     pub icp_address: Option<String>,
     pub near_address: Option<String>,
     pub polkadot_address: Option<String>,
+    pub zcash_address: Option<String>,
+    pub bitcoin_gold_address: Option<String>,
+    pub decred_address: Option<String>,
+    pub kaspa_address: Option<String>,
+    pub dash_address: Option<String>,
+    pub bittensor_address: Option<String>,
     pub seed_derivation_preset: CoreSeedDerivationPreset,
     pub seed_derivation_paths: CoreSeedDerivationPaths,
     #[serde(default)]

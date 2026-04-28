@@ -48,6 +48,12 @@ pub struct TronSendResult {
     pub signed_tx_json: String,
 }
 
+impl super::SignedSubmission for TronSendResult {
+    fn submission_id(&self) -> &str { &self.txid }
+    fn signed_payload(&self) -> &str { &self.signed_tx_json }
+    fn signed_payload_format(&self) -> super::SignedPayloadFormat { super::SignedPayloadFormat::Json }
+}
+
 /// TRC-20 balance payload. Mirrors `Erc20Balance` so the Swift-side decoder
 /// can share a single response type if desired.
 #[derive(Debug, Clone, Serialize, Deserialize)]

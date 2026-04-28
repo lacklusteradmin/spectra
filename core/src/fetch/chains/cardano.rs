@@ -48,6 +48,12 @@ pub struct CardanoSendResult {
     pub cbor_hex: String,
 }
 
+impl super::SignedSubmission for CardanoSendResult {
+    fn submission_id(&self) -> &str { &self.txid }
+    fn signed_payload(&self) -> &str { &self.cbor_hex }
+    fn signed_payload_format(&self) -> super::SignedPayloadFormat { super::SignedPayloadFormat::Hex }
+}
+
 // ----------------------------------------------------------------
 // Blockfrost response types (shared within the chain module)
 // ----------------------------------------------------------------

@@ -43,6 +43,12 @@ pub struct AptosSendResult {
     pub signed_body_json: String,
 }
 
+impl super::SignedSubmission for AptosSendResult {
+    fn submission_id(&self) -> &str { &self.txid }
+    fn signed_payload(&self) -> &str { &self.signed_body_json }
+    fn signed_payload_format(&self) -> super::SignedPayloadFormat { super::SignedPayloadFormat::Json }
+}
+
 // ----------------------------------------------------------------
 // Client
 // ----------------------------------------------------------------

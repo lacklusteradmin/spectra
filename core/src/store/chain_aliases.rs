@@ -28,6 +28,22 @@ fn known_chain_aliases() -> &'static [(&'static str, &'static str)] {
         ("internet computer", "internet-computer"),
         ("near", "near"),
         ("polkadot", "polkadot"),
+        ("zcash", "zec"),
+        ("bitcoin gold", "btg"),
+        ("decred", "decred"),
+        ("kaspa", "kaspa"),
+        ("sei", "sei"),
+        ("celo", "celo"),
+        ("cronos", "cronos"),
+        ("opbnb", "opbnb"),
+        ("zksync era", "zksync"),
+        ("sonic", "sonic"),
+        ("berachain", "berachain"),
+        ("unichain", "unichain"),
+        ("ink", "ink"),
+        ("dash", "dash"),
+        ("x layer", "okb"),
+        ("bittensor", "tao"),
     ]
 }
 
@@ -57,6 +73,17 @@ fn native_symbol_chain_aliases() -> &'static [(&'static str, &'static str)] {
         ("ICP", "internet-computer"),
         ("NEAR", "near"),
         ("DOT", "polkadot"),
+        ("ZEC", "zec"),
+        ("BTG", "btg"),
+        ("DCR", "decred"),
+        ("KAS", "kaspa"),
+        ("SEI", "sei"),
+        ("CELO", "celo"),
+        ("CRO", "cronos"),
+        ("BERA", "berachain"),
+        ("DASH", "dash"),
+        ("OKB", "okb"),
+        ("TAO", "tao"),
     ]
 }
 

@@ -1,3 +1,27 @@
+//! # Visibility & FFI boundary
+//!
+//! The crate enforces the FFI boundary by attribute, not by visibility:
+//! **only items tagged `#[uniffi::export]` (or `#[derive(uniffi::Record)]`
+//! / `#[derive(uniffi::Enum)]` / `#[derive(uniffi::Object)]`) cross to
+//! Swift.** Plain `pub` items are crate-public Rust APIs; downstream
+//! Swift never sees them unless they're also marked.
+//!
+//! Conventions for this crate:
+//!   * `pub` — re-used across modules within `spectra_core`. Not part of
+//!     the FFI surface unless the same item also has a UniFFI attribute.
+//!   * `pub(crate)` — internal to the crate; never appears in Swift even
+//!     accidentally.
+//!   * `pub(super)` — internal to a module subtree (e.g. service helpers).
+//!   * `#[uniffi::export]` — the FFI surface. Adding this to a `pub`
+//!     function or a `pub` impl block exposes it (and every method of
+//!     the impl block) to Swift. Be deliberate about adding it.
+//!
+//! When extending the API: ask "is this for other Rust modules to call,
+//! or for Swift?" and pick `pub(crate)` for the former, `#[uniffi::export]`
+//! + `pub` for the latter. Avoid plain `pub` for items that don't need
+//! to escape the module — `pub(super)` is usually enough and keeps the
+//! FFI risk surface low.
+
 uniffi::setup_scaffolding!();
 
 /// Bridge error returned to Swift across UniFFI. Variants describe the broad
@@ -52,6 +76,24 @@ impl From<hex::FromHexError> for SpectraBridgeError {
     fn from(error: hex::FromHexError) -> Self {
         Self::Decode {
             message: error.to_string(),
+        }
+    }
+}
+
+impl From<reqwest::Error> for SpectraBridgeError {
+    fn from(error: reqwest::Error) -> Self {
+        // Network / TLS / DNS / timeout problems route to `Network` so the
+        // UI can branch on them; everything else (notably body-decode
+        // failures from `Response::json()`) lands in `Decode`. Without this
+        // routing, every reqwest error fell into `Failure` and Swift had no
+        // structured way to render "no internet" vs "provider returned bad
+        // shape" — even though the underlying source already had the
+        // distinction.
+        let message = error.to_string();
+        if error.is_decode() {
+            Self::Decode { message }
+        } else {
+            Self::Network { message }
         }
     }
 }

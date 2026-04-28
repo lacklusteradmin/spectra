@@ -1,5 +1,15 @@
 //! Internal helper functions used by the WalletService impl blocks.
 //! None of these are UniFFI-exported.
+//!
+//! ## Error message convention
+//!
+//! Errors raised here use the format `"<context>: <reason>"`, where the
+//! context names the offending field (`private_key_hex`, `planck`, `chain_id`)
+//! and the reason names the failure (`hex decode: …`, `wrong length: …`,
+//! `invalid params: …`). This puts the field name first so the most
+//! diagnostic information appears in any truncated log line. New helpers in
+//! this file should follow the same shape; downstream chain dispatch arms
+//! that still hand-format errors are migration candidates.
 
 use crate::registry::Chain;
 use crate::state::AssetHolding;
@@ -11,14 +21,24 @@ use serde_json::json;
 
 /// `Chain::from_id` with a uniform error message. Used by every WalletService
 /// method that takes a `chain_id: u32` from Swift.
+///
+/// Reader note: the call pattern `let chain = chain_for_id(chain_id)?;` is
+/// the first line of ~30 dispatch methods in `service::mod`. That repetition
+/// is a sign the receiver shape is wrong — a future refactor should accept
+/// `Chain` directly via a typed UniFFI Record (or a thin newtype that does
+/// the lookup once at FFI entry), eliminating the per-method conversion.
+/// New methods should accept `Chain` as a parameter where possible rather
+/// than `chain_id: u32`, with `chain_for_id` only at the FFI boundary.
 pub(super) fn chain_for_id(chain_id: u32) -> Result<Chain, SpectraBridgeError> {
     Chain::from_id(chain_id)
         .ok_or_else(|| SpectraBridgeError::from(format!("unknown chain_id: {chain_id}")))
 }
 
-/// Convenience: serialize a value to JSON, returning the bridge error type
-/// directly. Removes the `Ok(serde_json::to_string(&v)?)` boilerplate from
-/// every chain dispatch arm.
+/// Serialize a value to JSON, returning the bridge error type directly.
+/// Used by chain dispatch arms whose FFI signature is
+/// `Result<String, SpectraBridgeError>`. New endpoints should return a
+/// typed `#[derive(uniffi::Record)]` value directly rather than going
+/// through this helper.
 pub(super) fn json_response<T: Serialize>(value: &T) -> Result<String, SpectraBridgeError> {
     serde_json::to_string(value).map_err(SpectraBridgeError::from)
 }
@@ -40,6 +60,43 @@ pub(super) fn hex_field(
 ) -> Result<Vec<u8>, SpectraBridgeError> {
     let s = str_field(params, key)?;
     hex::decode(s).map_err(|e| SpectraBridgeError::from(format!("{key} hex decode: {e}")))
+}
+
+/// Parse `params` as a typed payload. Lets a chain dispatch arm collapse
+/// six lines of ad-hoc `params["x"].as_y()` extraction into one decode step:
+///
+/// ```ignore
+/// let p: PolkadotSendParams = parse_params(&params)?;
+/// ```
+///
+/// Serde populates the error message with the offending field name, so each
+/// missing-field error is "<chain>: missing field `planck` at line N column M"
+/// instead of an inscrutable `"missing planck"`.
+pub(super) fn parse_params<T: for<'de> serde::Deserialize<'de>>(
+    params: &serde_json::Value,
+) -> Result<T, SpectraBridgeError> {
+    serde_json::from_value(params.clone())
+        .map_err(|e| SpectraBridgeError::from(format!("invalid params: {e}")))
+}
+
+/// Decode a hex string of an exact byte length. Replaces the
+/// `hex_field(..)?.try_into().map_err(|_| "X wrong length")?` pair that
+/// recurred across every chain arm. Includes the field name in both the
+/// "not hex" and "wrong length" error variants.
+pub(super) fn decode_hex_array<const N: usize>(
+    hex_str: &str,
+    field_name: &str,
+) -> Result<[u8; N], SpectraBridgeError> {
+    let bytes = hex::decode(hex_str)
+        .map_err(|e| SpectraBridgeError::from(format!("{field_name} hex decode: {e}")))?;
+    bytes
+        .try_into()
+        .map_err(|v: Vec<u8>| {
+            SpectraBridgeError::from(format!(
+                "{field_name} wrong length: expected {N} bytes, got {}",
+                v.len()
+            ))
+        })
 }
 
 // ── Decimal scaling ───────────────────────────────────────────────────────

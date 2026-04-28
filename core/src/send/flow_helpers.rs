@@ -218,7 +218,8 @@ pub fn core_seed_derivation_chain_raw(chain_name: String) -> Option<String> {
 
 #[uniffi::export]
 pub fn core_supports_deep_utxo_discovery(chain_name: String) -> bool {
-    matches!(chain_name.as_str(), "Bitcoin" | "Bitcoin Cash" | "Bitcoin SV" | "Litecoin" | "Dogecoin")
+    crate::registry::Chain::from_display_name(&chain_name)
+        .is_some_and(|c| c.supports_deep_utxo_discovery())
 }
 
 // ─── Receive address resolver dispatch ───────────────────────────────────────
@@ -245,6 +246,12 @@ pub enum ReceiveAddressResolverKind {
     Icp,
     Near,
     Polkadot,
+    Zcash,
+    BitcoinGold,
+    Decred,
+    Kaspa,
+    Dash,
+    Bittensor,
     None,
 }
 
@@ -273,6 +280,12 @@ pub fn core_plan_receive_address_resolver(
         (_, "Internet Computer") => ReceiveAddressResolverKind::Icp,
         (_, "NEAR") => ReceiveAddressResolverKind::Near,
         (_, "Polkadot") => ReceiveAddressResolverKind::Polkadot,
+        ("ZEC", "Zcash") => ReceiveAddressResolverKind::Zcash,
+        ("BTG", "Bitcoin Gold") => ReceiveAddressResolverKind::BitcoinGold,
+        ("DCR", "Decred") => ReceiveAddressResolverKind::Decred,
+        ("KAS", "Kaspa") => ReceiveAddressResolverKind::Kaspa,
+        ("DASH", "Dash") => ReceiveAddressResolverKind::Dash,
+        ("TAO", "Bittensor") => ReceiveAddressResolverKind::Bittensor,
         _ => ReceiveAddressResolverKind::None,
     }
 }

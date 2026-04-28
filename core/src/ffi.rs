@@ -1,3 +1,32 @@
+//! Free-function UniFFI surface — the **typed path** for Rust↔Swift calls.
+//!
+//! ## FFI patterns in this crate
+//!
+//! There are two patterns for exposing Rust to Swift, both of which a
+//! reader will encounter. Picking the right one for a new endpoint:
+//!
+//!   * **This file (`ffi.rs`)** — preferred for new endpoints. Each
+//!     function is `#[uniffi::export]`-ed and takes/returns typed UniFFI
+//!     records (`#[derive(uniffi::Record)]`). UniFFI handles
+//!     marshalling. Swift gets a generated function whose argument and
+//!     return types are real Swift structs. No JSON intermediate; no
+//!     manual decoding on either side.
+//!
+//!   * **`service::WalletService` methods** — older path, kept for the
+//!     dispatch-by-`chain_id` flows where the body matches on `Chain`
+//!     and calls into per-chain client code. These methods take/return
+//!     `serde_json::Value` / `String` because UniFFI's record system
+//!     doesn't yet model heterogeneous-by-discriminant payloads
+//!     ergonomically, so the `params: Value` blob is parsed inside the
+//!     match arm. As of the typed-params migration the parsed shape is
+//!     the typed `*SendParams` struct from `service::types`, so a reader
+//!     can still find the contract by struct definition.
+//!
+//! When extending the FFI: prefer this file unless the new endpoint
+//! genuinely needs `chain_id`-dispatched bodies. If it does, model the
+//! params as a typed struct in `service::types` so the contract lives
+//! somewhere greppable, and don't invent a new ad-hoc JSON shape.
+
 use crate::SpectraBridgeError;
 use super::addressing::{
     validate_address, validate_string_identifier, AddressValidationRequest,
@@ -647,7 +676,9 @@ pub fn core_evaluate_high_risk_send_reasons(
         if is_l2 && is_ens_candidate {
             warnings.push(HighRiskSendWarning { chain: Some(chain_name.clone()), ..make("ens_on_l2") });
         }
-    } else if matches!(chain_name.as_str(), "Bitcoin" | "Bitcoin Cash" | "Litecoin" | "Dogecoin") {
+    } else if crate::registry::Chain::from_display_name(chain_name)
+        .is_some_and(|c| c.flags_evm_address_as_wrong_chain())
+    {
         if lowered.starts_with("0x") || is_ens_candidate {
             warnings.push(HighRiskSendWarning { chain: Some(chain_name.clone()), ..make("eth_on_utxo") });
         }

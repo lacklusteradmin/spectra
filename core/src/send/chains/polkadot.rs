@@ -1,10 +1,24 @@
 //! Polkadot send: SCALE-encoded Balances.transfer_keep_alive builder,
-//! Ed25519 signer, and RPC submit (plus pre-signed rebroadcast).
+//! sr25519 (schnorrkel) signer using the canonical substrate signing
+//! context, and RPC submit (plus pre-signed rebroadcast).
+//!
+//! `private_key_bytes` is the 32-byte sr25519 mini-secret produced by
+//! `derive_polkadot` (substrate-bip39 expansion). It is *not* a 64-byte
+//! ed25519 secret — the historical signer that took 64 bytes never matched
+//! the sr25519 public key encoded in the SS58 address, so the signature
+//! never verified on-chain. This implementation expands the mini-secret to
+//! a schnorrkel `Keypair`, signs with `signing_context(b"substrate")`, and
+//! emits the result under `MultiSignature::Sr25519` (variant `0x01`).
 
 use serde_json::json;
 
 use crate::derivation::chains::polkadot::decode_ss58;
 use crate::fetch::chains::polkadot::{DotSendResult, PolkadotClient};
+use crate::send::chains::substrate::POLKADOT_BALANCES_TRANSFER_KEEP_ALIVE;
+
+/// Substrate's transaction signing context — fixed across chains that use
+/// the standard sr25519 multi-signature envelope.
+const SR25519_SIGNING_CONTEXT: &[u8] = b"substrate";
 
 impl PolkadotClient {
     /// Sign and submit a Balances.transfer_keep_alive extrinsic.
@@ -13,7 +27,7 @@ impl PolkadotClient {
         from_address: &str,
         to_address: &str,
         planck: u128,
-        private_key_bytes: &[u8; 64],
+        private_key_bytes: &[u8; 32],
         public_key_bytes: &[u8; 32],
     ) -> Result<DotSendResult, String> {
         let _ = from_address;
@@ -69,38 +83,28 @@ pub fn build_signed_transfer(
     tx_version: u32,
     genesis_hash: &str,
     block_hash: &str,
-    private_key: &[u8; 64],
+    private_key: &[u8; 32],
     public_key: &[u8; 32],
 ) -> Result<Vec<u8>, String> {
-    use ed25519_dalek::{Signer, SigningKey};
-
-    // Decode the recipient's SS58 address to a 32-byte public key.
     let dest_pubkey = decode_ss58(to_address)?;
 
-    // Balances.transfer_keep_alive: pallet 5, call 3 on Polkadot mainnet.
     let call = {
         let mut c = Vec::new();
-        c.push(0x05); // pallet index (Balances)
-        c.push(0x03); // call index (transfer_keep_alive)
-        // dest: MultiAddress::Id(AccountId)
-        c.push(0x00); // Id variant
+        c.push(POLKADOT_BALANCES_TRANSFER_KEEP_ALIVE.pallet);
+        c.push(POLKADOT_BALANCES_TRANSFER_KEEP_ALIVE.call);
+        c.push(0x00); // dest: MultiAddress::Id
         c.extend_from_slice(&dest_pubkey);
-        // value: Compact<u128>
         c.extend_from_slice(&scale_compact_u128(amount));
         c
     };
 
-    // Era: immortal (0x00).
-    let era = vec![0x00u8];
-    // Nonce: Compact<u32>.
+    let era = vec![0x00u8]; // immortal
     let nonce_enc = scale_compact_u32(nonce);
-    // Tip: Compact<u128> = 0.
     let tip = scale_compact_u128(0);
 
     let genesis_bytes = decode_hash_hex(genesis_hash)?;
     let block_bytes = decode_hash_hex(block_hash)?;
 
-    // Signing payload.
     let mut payload = Vec::new();
     payload.extend_from_slice(&call);
     payload.extend_from_slice(&era);
@@ -111,35 +115,32 @@ pub fn build_signed_transfer(
     payload.extend_from_slice(&genesis_bytes);
     payload.extend_from_slice(&block_bytes);
 
-    // If payload > 256 bytes, sign its Blake2-256 hash instead.
+    // Substrate signs the Blake2-256 hash when the payload exceeds 256 bytes;
+    // for short payloads it signs the bytes directly. Both branches produce
+    // signatures the runtime accepts — the cutoff is purely a size optimization.
     let signing_input: Vec<u8> = if payload.len() > 256 {
         blake2b_256(&payload).to_vec()
     } else {
         payload.clone()
     };
 
-    let signing_key =
-        SigningKey::from_bytes(&private_key[..32].try_into().map_err(|_| "privkey too short")?);
-    let signature = signing_key.sign(&signing_input);
+    // ExpansionMode::Ed25519 — matches the public key encoded in the SS58 address.
+    let mini = schnorrkel::MiniSecretKey::from_bytes(private_key)
+        .map_err(|e| format!("invalid sr25519 mini-secret: {e}"))?;
+    let keypair = mini.expand_to_keypair(schnorrkel::ExpansionMode::Ed25519);
+    let signature = keypair.sign_simple(SR25519_SIGNING_CONTEXT, &signing_input);
 
-    // Build the extrinsic.
-    // version = 0x84 (signed, version 4)
     let mut extrinsic_body = Vec::new();
-    extrinsic_body.push(0x84); // version
-    // signer: MultiAddress::Id(AccountId)
-    extrinsic_body.push(0x00);
+    extrinsic_body.push(0x84); // signed, version 4
+    extrinsic_body.push(0x00); // signer: MultiAddress::Id
     extrinsic_body.extend_from_slice(public_key);
-    // signature: MultiSignature::Ed25519(sig)
-    extrinsic_body.push(0x00); // Ed25519 variant
-    extrinsic_body.extend_from_slice(signature.to_bytes().as_ref());
-    // extra (era, nonce, tip)
+    extrinsic_body.push(0x01); // signature: MultiSignature::Sr25519
+    extrinsic_body.extend_from_slice(&signature.to_bytes());
     extrinsic_body.extend_from_slice(&era);
     extrinsic_body.extend_from_slice(&nonce_enc);
     extrinsic_body.extend_from_slice(&tip);
-    // call
     extrinsic_body.extend_from_slice(&call);
 
-    // Prepend length (Compact<u32>).
     let mut out = scale_compact_u32(extrinsic_body.len() as u32);
     out.extend_from_slice(&extrinsic_body);
     Ok(out)

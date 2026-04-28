@@ -10,10 +10,12 @@ use super::helpers::{format_smallest_unit_decimal, json_response};
 use super::{NativeBalanceSummary, WalletService};
 use crate::fetch::chains::{
     aptos::AptosClient, bitcoin::BitcoinClient, bitcoin_cash::BitcoinCashClient,
-    bitcoin_sv::BitcoinSvClient, cardano::CardanoClient, dogecoin::DogecoinClient,
-    evm::EvmClient, icp::IcpClient, litecoin::LitecoinClient, monero::MoneroClient,
-    near::NearClient, polkadot::PolkadotClient, solana::SolanaClient, stellar::StellarClient,
-    sui::SuiClient, ton::TonClient, tron::TronClient, xrp::XrpClient,
+    bitcoin_gold::BitcoinGoldClient, bitcoin_sv::BitcoinSvClient, bittensor::BittensorClient,
+    cardano::CardanoClient, dash::DashClient, decred::DecredClient, dogecoin::DogecoinClient,
+    evm::EvmClient, icp::IcpClient, kaspa::KaspaClient, litecoin::LitecoinClient,
+    monero::MoneroClient, near::NearClient, polkadot::PolkadotClient, solana::SolanaClient,
+    stellar::StellarClient, sui::SuiClient, ton::TonClient, tron::TronClient, xrp::XrpClient,
+    zcash::ZcashClient,
 };
 use crate::http::HttpClient;
 use crate::registry::{Chain, EndpointSlot};
@@ -41,6 +43,12 @@ pub(super) enum ChainClient {
     Near { client: NearClient, indexer: String },
     Icp(IcpClient),
     Monero(MoneroClient),
+    Zcash(ZcashClient),
+    BitcoinGold(BitcoinGoldClient),
+    Decred(DecredClient),
+    Kaspa(KaspaClient),
+    Dash(DashClient),
+    Bittensor(BittensorClient),
 }
 
 impl ChainClient {
@@ -99,6 +107,18 @@ impl ChainClient {
             }
             Chain::Icp => ChainClient::Icp(IcpClient::new(endpoints)),
             Chain::Monero => ChainClient::Monero(MoneroClient::new(endpoints)),
+            Chain::Zcash => ChainClient::Zcash(ZcashClient::new(endpoints)),
+            Chain::BitcoinGold => ChainClient::BitcoinGold(BitcoinGoldClient::new(endpoints)),
+            Chain::Decred => ChainClient::Decred(DecredClient::new(endpoints)),
+            Chain::Kaspa => ChainClient::Kaspa(KaspaClient::new(endpoints)),
+            Chain::Dash => ChainClient::Dash(DashClient::new(endpoints)),
+            Chain::Bittensor => {
+                let taostats = service
+                    .endpoints_for(chain.endpoint_id(EndpointSlot::Secondary))
+                    .await;
+                let api_key = service.api_key_for(chain.id()).await;
+                ChainClient::Bittensor(BittensorClient::new(endpoints, taostats, api_key))
+            }
             c => {
                 return Err(SpectraBridgeError::from(format!("unsupported chain: {c:?}")))
             }
@@ -127,6 +147,12 @@ impl ChainClient {
             ChainClient::Near { client, .. } => json_response(&client.fetch_balance(address).await.map_err(SpectraBridgeError::from)?),
             ChainClient::Icp(c) => json_response(&c.fetch_balance(address).await.map_err(SpectraBridgeError::from)?),
             ChainClient::Monero(c) => json_response(&c.fetch_balance(0).await.map_err(SpectraBridgeError::from)?),
+            ChainClient::Zcash(c) => json_response(&c.fetch_balance(address).await.map_err(SpectraBridgeError::from)?),
+            ChainClient::BitcoinGold(c) => json_response(&c.fetch_balance(address).await.map_err(SpectraBridgeError::from)?),
+            ChainClient::Decred(c) => json_response(&c.fetch_balance(address).await.map_err(SpectraBridgeError::from)?),
+            ChainClient::Kaspa(c) => json_response(&c.fetch_balance(address).await.map_err(SpectraBridgeError::from)?),
+            ChainClient::Dash(c) => json_response(&c.fetch_balance(address).await.map_err(SpectraBridgeError::from)?),
+            ChainClient::Bittensor(c) => json_response(&c.fetch_balance(address).await.map_err(SpectraBridgeError::from)?),
         }
     }
 
@@ -212,6 +238,30 @@ impl ChainClient {
                 let bal = c.fetch_balance(0).await.map_err(SpectraBridgeError::from)?;
                 Ok(summary_native(bal.piconeros.to_string(), bal.xmr_display))
             }
+            ChainClient::Zcash(c) => {
+                let bal = c.fetch_balance(address).await.map_err(SpectraBridgeError::from)?;
+                Ok(summary_native(bal.balance_sat.to_string(), bal.balance_display))
+            }
+            ChainClient::BitcoinGold(c) => {
+                let bal = c.fetch_balance(address).await.map_err(SpectraBridgeError::from)?;
+                Ok(summary_native(bal.balance_sat.to_string(), bal.balance_display))
+            }
+            ChainClient::Decred(c) => {
+                let bal = c.fetch_balance(address).await.map_err(SpectraBridgeError::from)?;
+                Ok(summary_native(bal.balance_atoms.to_string(), bal.balance_display))
+            }
+            ChainClient::Kaspa(c) => {
+                let bal = c.fetch_balance(address).await.map_err(SpectraBridgeError::from)?;
+                Ok(summary_native(bal.balance_sompi.to_string(), bal.balance_display))
+            }
+            ChainClient::Dash(c) => {
+                let bal = c.fetch_balance(address).await.map_err(SpectraBridgeError::from)?;
+                Ok(summary_native(bal.balance_sat.to_string(), bal.balance_display))
+            }
+            ChainClient::Bittensor(c) => {
+                let bal = c.fetch_balance(address).await.map_err(SpectraBridgeError::from)?;
+                Ok(summary_native(bal.rao.to_string(), bal.tao_display))
+            }
         }
     }
 
@@ -260,6 +310,12 @@ impl ChainClient {
             ChainClient::Near { client, indexer } => json_response(&client.fetch_history(address, indexer).await.map_err(SpectraBridgeError::from)?),
             ChainClient::Icp(c) => json_response(&c.fetch_history(address).await.map_err(SpectraBridgeError::from)?),
             ChainClient::Monero(c) => json_response(&c.fetch_history(0).await.map_err(SpectraBridgeError::from)?),
+            ChainClient::Zcash(c) => json_response(&c.fetch_history(address).await.map_err(SpectraBridgeError::from)?),
+            ChainClient::BitcoinGold(c) => json_response(&c.fetch_history(address).await.map_err(SpectraBridgeError::from)?),
+            ChainClient::Decred(c) => json_response(&c.fetch_history(address).await.map_err(SpectraBridgeError::from)?),
+            ChainClient::Kaspa(c) => json_response(&c.fetch_history(address).await.map_err(SpectraBridgeError::from)?),
+            ChainClient::Dash(c) => json_response(&c.fetch_history(address).await.map_err(SpectraBridgeError::from)?),
+            ChainClient::Bittensor(c) => json_response(&c.fetch_history(address).await.map_err(SpectraBridgeError::from)?),
         }
     }
 }

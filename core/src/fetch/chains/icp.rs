@@ -52,6 +52,16 @@ pub struct IcpSendResult {
     pub block_index: u64,
 }
 
+impl super::SignedSubmission for IcpSendResult {
+    fn submission_id(&self) -> &str {
+        // ICP exposes only an opaque block index post-confirmation; there is
+        // no string-form txid before the ledger commits the block.
+        ""
+    }
+    fn signed_payload(&self) -> &str { "" }
+    fn signed_payload_format(&self) -> super::SignedPayloadFormat { super::SignedPayloadFormat::None }
+}
+
 // ----------------------------------------------------------------
 // Client (Rosetta-based for read, direct for write)
 // ----------------------------------------------------------------

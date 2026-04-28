@@ -4,11 +4,22 @@
 
 use crate::registry::tokens;
 
-/// Return the built-in token catalog as a typed list. Pass `chain_id =
-/// u32::MAX` to get all chains. Synchronous so Swift can call from a `static let`.
+/// Return the built-in token catalog filtered to one chain. Synchronous
+/// so Swift can call from a `static let`. For "all chains, please" use
+/// [`list_all_builtin_tokens`] — that's the named entry point, not a
+/// sentinel value.
 #[uniffi::export]
 pub fn list_builtin_tokens(chain_id: u32) -> Vec<tokens::TokenEntry> {
     tokens::list_tokens(chain_id)
+}
+
+/// Return the entire built-in token catalog across every registered
+/// chain. Replaces the `list_builtin_tokens(chain_id: u32::MAX)`
+/// sentinel pattern — the "all chains" call site now reads as exactly
+/// what it means instead of forcing the reader to know the magic value.
+#[uniffi::export]
+pub fn list_all_builtin_tokens() -> Vec<tokens::TokenEntry> {
+    tokens::list_tokens(u32::MAX)
 }
 
 /// Generate a new random BIP-39 mnemonic with the requested word count.

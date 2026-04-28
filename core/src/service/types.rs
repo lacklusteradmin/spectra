@@ -86,3 +86,65 @@ pub struct ChainEndpoints {
     /// Optional API key for services that require one (Blockfrost, Subscan, etc.).
     pub api_key: Option<String>,
 }
+
+// ── Per-chain `sign_and_send` parameter shapes ────────────────────────────
+//
+// Each chain's `sign_and_send` arm in `service::mod` historically read its
+// inputs by pulling individual fields out of a `serde_json::Value` with
+// inline `.as_str()` / `.as_u64()` / `try_into()` chains. That style hides
+// the contract — a reader can't see at a glance what shape the Polkadot
+// endpoint expects without scanning the full arm body.
+//
+// Defining a typed struct per chain reverses that: the type doc *is* the
+// API contract, serde gives field-name-aware error messages for free, and
+// the dispatch arm collapses to one `parse_params` call.
+//
+// These structs accept the same JSON shape Swift already produces so this
+// migration is internal — no FFI signature changes.
+
+/// `Chain::Polkadot` send parameters. `planck` is the smallest unit
+/// (10⁻¹⁰ DOT). The 32-byte `private_key_hex` is the sr25519 mini-secret
+/// produced by `derive_polkadot`, *not* a 64-byte ed25519 secret.
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct PolkadotSendParams {
+    pub from: String,
+    pub to: String,
+    /// Accepts either a JSON string ("12500000000") or a JSON number for
+    /// backward compatibility with Swift call sites that emitted both forms.
+    #[serde(deserialize_with = "deserialize_u128_from_string_or_number")]
+    pub planck: u128,
+    pub private_key_hex: String,
+    pub public_key_hex: String,
+}
+
+/// `Chain::Bittensor` send parameters. `rao` is the smallest unit
+/// (10⁻⁹ TAO). Same sr25519 32-byte mini-secret rules as Polkadot.
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct BittensorSendParams {
+    pub from: String,
+    pub to: String,
+    #[serde(deserialize_with = "deserialize_u128_from_string_or_number")]
+    pub rao: u128,
+    pub private_key_hex: String,
+    pub public_key_hex: String,
+}
+
+/// Accepts JSON `"12345"` or `12345` for u128 fields. Swift sends planck
+/// values as strings (since u128 doesn't round-trip safely through JSON
+/// numbers) but legacy call sites emitted them as `as_u64`-able numbers.
+fn deserialize_u128_from_string_or_number<'de, D>(deserializer: D) -> Result<u128, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    use serde::de::Error;
+    let value = serde_json::Value::deserialize(deserializer)?;
+    if let Some(s) = value.as_str() {
+        return s.parse::<u128>().map_err(D::Error::custom);
+    }
+    if let Some(n) = value.as_u64() {
+        return Ok(n as u128);
+    }
+    Err(D::Error::custom("expected u128 as string or number"))
+}

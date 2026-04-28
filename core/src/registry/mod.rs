@@ -49,12 +49,36 @@ pub enum Chain {
     Scroll = 27,
     Blast = 28,
     Mantle = 29,
+    Zcash = 30,
+    BitcoinGold = 31,
+    Decred = 32,
+    Kaspa = 33,
+    Sei = 34,
+    Celo = 35,
+    Cronos = 36,
+    OpBnb = 37,
+    ZkSyncEra = 38,
+    Sonic = 39,
+    Berachain = 40,
+    Unichain = 41,
+    Ink = 42,
+    Dash = 43,
+    XLayer = 44,
+    Bittensor = 45,
 }
 
-/// Which endpoint-list slot to fetch for a given chain. The primary slot is
-/// the chain's own id; secondary and explorer slots are stored at
-/// `id + 100` and `id + 200` respectively (this is the persistence contract
-/// the Swift side currently fills).
+/// Which endpoint-list slot to fetch for a given chain.
+///
+/// Conceptually belongs with the HTTP/networking layer, not the registry —
+/// the registry should own *what chains exist*, the endpoint slot system
+/// is *how we connect to them*. Kept here for now because moving requires
+/// updating ~40 call sites and a Swift binding regeneration; new code
+/// should prefer importing this via `crate::http::EndpointSlot` once the
+/// move lands.
+///
+/// The primary slot is the chain's own id; secondary and explorer slots
+/// are stored at `id + 100` and `id + 200` respectively (this is the
+/// persistence contract the Swift side currently fills).
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
 pub enum EndpointSlot {
     /// The chain's primary RPC provider(s).
@@ -101,12 +125,45 @@ impl Chain {
             27 => Chain::Scroll,
             28 => Chain::Blast,
             29 => Chain::Mantle,
+            30 => Chain::Zcash,
+            31 => Chain::BitcoinGold,
+            32 => Chain::Decred,
+            33 => Chain::Kaspa,
+            34 => Chain::Sei,
+            35 => Chain::Celo,
+            36 => Chain::Cronos,
+            37 => Chain::OpBnb,
+            38 => Chain::ZkSyncEra,
+            39 => Chain::Sonic,
+            40 => Chain::Berachain,
+            41 => Chain::Unichain,
+            42 => Chain::Ink,
+            43 => Chain::Dash,
+            44 => Chain::XLayer,
+            45 => Chain::Bittensor,
             _ => return None,
         })
     }
 
     /// The frozen numeric id.
     pub const fn id(self) -> u32 { self as u32 }
+
+    /// View the chain as an `EvmChain` if it's EVM-family. Lets generic code
+    /// take an `EvmChain` argument instead of accepting any `Chain` and
+    /// asserting `is_evm()` at the call site — the family check moves into
+    /// the type system.
+    ///
+    /// Why not restructure to `Chain::Evm(EvmChain) | Chain::Bitcoin | …`?
+    /// The flat `Chain` enum is referenced by hundreds of match arms across
+    /// derivation, fetch, send, service dispatch, and persistence. A nested
+    /// representation would break every arm and force a flag-day migration,
+    /// for the benefit of one structural property. The `EvmChain` newtype
+    /// gives that benefit at the boundary where it matters (callers that
+    /// genuinely need to enforce "EVM only" can take `EvmChain` directly)
+    /// while leaving the broader codebase untouched.
+    pub const fn as_evm(self) -> Option<EvmChain> {
+        if self.is_evm() { Some(EvmChain(self)) } else { None }
+    }
 
     /// `true` for every EVM-compatible chain.
     pub const fn is_evm(self) -> bool {
@@ -125,6 +182,16 @@ impl Chain {
                 | Chain::Scroll
                 | Chain::Blast
                 | Chain::Mantle
+                | Chain::Sei
+                | Chain::Celo
+                | Chain::Cronos
+                | Chain::OpBnb
+                | Chain::ZkSyncEra
+                | Chain::Sonic
+                | Chain::Berachain
+                | Chain::Unichain
+                | Chain::Ink
+                | Chain::XLayer
         )
     }
 
@@ -145,6 +212,16 @@ impl Chain {
             Chain::Scroll => 534352,
             Chain::Blast => 81457,
             Chain::Mantle => 5000,
+            Chain::Sei => 1329,
+            Chain::Celo => 42220,
+            Chain::Cronos => 25,
+            Chain::OpBnb => 204,
+            Chain::ZkSyncEra => 324,
+            Chain::Sonic => 146,
+            Chain::Berachain => 80094,
+            Chain::Unichain => 130,
+            Chain::Ink => 57073,
+            Chain::XLayer => 196,
             _ => 1,
         }
     }
@@ -157,6 +234,12 @@ impl Chain {
             Chain::BitcoinSV => SendChain::BitcoinSV,
             Chain::Litecoin => SendChain::Litecoin,
             Chain::Dogecoin => SendChain::Dogecoin,
+            Chain::Zcash => SendChain::Zcash,
+            Chain::BitcoinGold => SendChain::BitcoinGold,
+            Chain::Decred => SendChain::Decred,
+            Chain::Kaspa => SendChain::Kaspa,
+            Chain::Dash => SendChain::Dash,
+            Chain::Bittensor => SendChain::Bittensor,
             Chain::Ethereum
             | Chain::Arbitrum
             | Chain::Optimism
@@ -169,7 +252,17 @@ impl Chain {
             | Chain::Linea
             | Chain::Scroll
             | Chain::Blast
-            | Chain::Mantle => SendChain::Ethereum,
+            | Chain::Mantle
+            | Chain::Sei
+            | Chain::Celo
+            | Chain::Cronos
+            | Chain::OpBnb
+            | Chain::ZkSyncEra
+            | Chain::Sonic
+            | Chain::Berachain
+            | Chain::Unichain
+            | Chain::Ink
+            | Chain::XLayer => SendChain::Ethereum,
             Chain::Tron => SendChain::Tron,
             Chain::Solana => SendChain::Solana,
             Chain::Xrp => SendChain::Xrp,
@@ -240,6 +333,20 @@ impl Chain {
             Chain::Hyperliquid => "Hyperliquid",
             Chain::Polygon => "Polygon",
             Chain::Mantle => "Mantle",
+            Chain::Zcash => "Zcash",
+            Chain::BitcoinGold => "Bitcoin Gold",
+            Chain::Decred => "Decred",
+            Chain::Kaspa => "Kaspa",
+            Chain::Sei => "Sei",
+            Chain::Celo => "Celo",
+            Chain::Cronos => "Cronos",
+            Chain::OpBnb => "BNB",
+            Chain::ZkSyncEra | Chain::Unichain | Chain::Ink => "Ethereum",
+            Chain::Sonic => "Sonic",
+            Chain::Berachain => "Berachain",
+            Chain::Dash => "Dash",
+            Chain::XLayer => "OKB",
+            Chain::Bittensor => "Bittensor",
         }
     }
 
@@ -276,6 +383,20 @@ impl Chain {
             Chain::Hyperliquid => "HYPE",
             Chain::Polygon => "POL",
             Chain::Mantle => "MNT",
+            Chain::Zcash => "ZEC",
+            Chain::BitcoinGold => "BTG",
+            Chain::Decred => "DCR",
+            Chain::Kaspa => "KAS",
+            Chain::Sei => "SEI",
+            Chain::Celo => "CELO",
+            Chain::Cronos => "CRO",
+            Chain::OpBnb => "BNB",
+            Chain::ZkSyncEra | Chain::Unichain | Chain::Ink => "ETH",
+            Chain::Sonic => "S",
+            Chain::Berachain => "BERA",
+            Chain::Dash => "DASH",
+            Chain::XLayer => "OKB",
+            Chain::Bittensor => "TAO",
         }
     }
 
@@ -313,6 +434,22 @@ impl Chain {
             Chain::Scroll => "Scroll",
             Chain::Blast => "Blast",
             Chain::Mantle => "Mantle",
+            Chain::Zcash => "Zcash",
+            Chain::BitcoinGold => "Bitcoin Gold",
+            Chain::Decred => "Decred",
+            Chain::Kaspa => "Kaspa",
+            Chain::Sei => "Sei",
+            Chain::Celo => "Celo",
+            Chain::Cronos => "Cronos",
+            Chain::OpBnb => "opBNB",
+            Chain::ZkSyncEra => "zkSync Era",
+            Chain::Sonic => "Sonic",
+            Chain::Berachain => "Berachain",
+            Chain::Unichain => "Unichain",
+            Chain::Ink => "Ink",
+            Chain::Dash => "Dash",
+            Chain::XLayer => "X Layer",
+            Chain::Bittensor => "Bittensor",
         }
     }
 
@@ -323,7 +460,12 @@ impl Chain {
             | Chain::Dogecoin
             | Chain::Litecoin
             | Chain::BitcoinCash
-            | Chain::BitcoinSV => 8,
+            | Chain::BitcoinSV
+            | Chain::Zcash
+            | Chain::BitcoinGold
+            | Chain::Decred
+            | Chain::Kaspa
+            | Chain::Dash => 8,
             Chain::Ethereum
             | Chain::Arbitrum
             | Chain::Optimism
@@ -336,8 +478,18 @@ impl Chain {
             | Chain::Linea
             | Chain::Scroll
             | Chain::Blast
-            | Chain::Mantle => 18,
-            Chain::Solana | Chain::Sui | Chain::Ton => 9,
+            | Chain::Mantle
+            | Chain::Sei
+            | Chain::Celo
+            | Chain::Cronos
+            | Chain::OpBnb
+            | Chain::ZkSyncEra
+            | Chain::Sonic
+            | Chain::Berachain
+            | Chain::Unichain
+            | Chain::Ink
+            | Chain::XLayer => 18,
+            Chain::Solana | Chain::Sui | Chain::Ton | Chain::Bittensor => 9,
             Chain::Xrp | Chain::Tron | Chain::Cardano => 6,
             Chain::Stellar => 7,
             Chain::Aptos | Chain::Icp => 8,
@@ -380,6 +532,20 @@ impl Chain {
             Chain::Hyperliquid => "hyperliquid",
             Chain::Polygon => "matic-network",
             Chain::Mantle => "mantle",
+            Chain::Zcash => "zcash",
+            Chain::BitcoinGold => "bitcoin-gold",
+            Chain::Decred => "decred",
+            Chain::Kaspa => "kaspa",
+            Chain::Sei => "sei-network",
+            Chain::Celo => "celo",
+            Chain::Cronos => "crypto-com-chain",
+            Chain::OpBnb => "binancecoin",
+            Chain::ZkSyncEra | Chain::Unichain | Chain::Ink => "ethereum",
+            Chain::Sonic => "sonic-3",
+            Chain::Berachain => "berachain-bera",
+            Chain::Dash => "dash",
+            Chain::XLayer => "okb",
+            Chain::Bittensor => "bittensor",
         }
     }
 
@@ -395,11 +561,19 @@ impl Chain {
             Chain::Solana => "lamports",
             Chain::Dogecoin => "balance_koin",
             Chain::Xrp => "drops",
-            Chain::Litecoin | Chain::BitcoinCash | Chain::BitcoinSV => "balance_sat",
+            Chain::Litecoin
+            | Chain::BitcoinCash
+            | Chain::BitcoinSV
+            | Chain::Zcash
+            | Chain::BitcoinGold
+            | Chain::Dash => "balance_sat",
+            Chain::Decred => "balance_atoms",
+            Chain::Kaspa => "balance_sompi",
             Chain::Tron => "sun",
             Chain::Stellar => "stroops",
             Chain::Cardano => "lovelace",
             Chain::Polkadot => "planck",
+            Chain::Bittensor => "rao",
             Chain::Sui => "mist",
             Chain::Aptos => "octas",
             Chain::Ton => "nanotons",
@@ -410,10 +584,76 @@ impl Chain {
         })
     }
 
+    /// True when this chain is a Bitcoin-derived UTXO chain that supports
+    /// deep address discovery via xpub-derived gap-limit scans (BIP-32 family).
+    /// Replaces `matches!(chain_name.as_str(), "Bitcoin" | "Bitcoin Cash" | …)`
+    /// at the call sites — keeps the family membership in one place where
+    /// adding a new BTC fork only needs one edit instead of N.
+    pub const fn supports_deep_utxo_discovery(self) -> bool {
+        matches!(
+            self,
+            Chain::Bitcoin
+                | Chain::BitcoinCash
+                | Chain::BitcoinSV
+                | Chain::Litecoin
+                | Chain::Dogecoin
+        )
+    }
+
+    /// True for chains where receiving an EVM-shaped (`0x…` / `.eth`) address
+    /// is unambiguously a wrong-chain mistake. Excludes Bitcoin SV because it
+    /// shares an address space with Bitcoin Cash and the wrong-chain check is
+    /// already covered there.
+    pub const fn flags_evm_address_as_wrong_chain(self) -> bool {
+        matches!(
+            self,
+            Chain::Bitcoin | Chain::BitcoinCash | Chain::Litecoin | Chain::Dogecoin
+        )
+    }
+
+    /// Static fee preview value for chains that use a flat fee, expressed in
+    /// the chain's smallest unit (sats / lamports / drops / planck …).
+    /// `None` for chains where the dispatch site fetches a live value over
+    /// RPC or where the value would overflow `u128`.
+    ///
+    /// Exhaustively matches every `Chain` variant — adding a new chain
+    /// forces the compiler to make the static-vs-dynamic-fee decision
+    /// explicit. Do not reintroduce a `_ =>` catch-all arm.
+    pub const fn static_fee_units(self) -> Option<u128> {
+        match self {
+            // Static flat fees (smallest unit).
+            Chain::Solana => Some(5_000),
+            Chain::Tron => Some(1_000_000),
+            Chain::Cardano => Some(170_000),
+            Chain::Polkadot => Some(160_000_000),
+            Chain::Bittensor => Some(125_000),
+            Chain::Sui => Some(1_000),
+            Chain::Ton => Some(7_000_000),
+            Chain::Icp => Some(10_000),
+            Chain::Monero => Some(500_000_000),
+            Chain::Dogecoin => Some(1_000_000),
+            Chain::Litecoin | Chain::Zcash | Chain::BitcoinSV | Chain::BitcoinGold | Chain::Kaspa => Some(1_000),
+            Chain::BitcoinCash | Chain::Decred | Chain::Dash => Some(2_000),
+            // Dynamic-fee chains: dispatch site queries RPC.
+            Chain::Bitcoin
+            | Chain::Xrp
+            | Chain::Stellar
+            | Chain::Aptos => None,
+            // EVM family: dispatch site uses EvmClient::fetch_fee_estimate.
+            Chain::Ethereum | Chain::Arbitrum | Chain::Optimism | Chain::Avalanche
+            | Chain::Base | Chain::EthereumClassic | Chain::BnbChain | Chain::Hyperliquid
+            | Chain::Polygon | Chain::Linea | Chain::Scroll | Chain::Blast | Chain::Mantle
+            | Chain::Sei | Chain::Celo | Chain::Cronos | Chain::OpBnb | Chain::ZkSyncEra
+            | Chain::Sonic | Chain::Berachain | Chain::Unichain | Chain::Ink | Chain::XLayer => None,
+            // u128 overflow: dispatch site uses fee_preview_str.
+            Chain::Near => None,
+        }
+    }
+
     /// Iterator over every known chain, in frozen-id order. Lets callers
     /// build per-chain tables without restating the variant list.
     pub fn all() -> impl Iterator<Item = Self> {
-        (0u32..=29).filter_map(Chain::from_id)
+        (0u32..=45).filter_map(Chain::from_id)
     }
 
     /// Resolve a chain from the display name Swift uses on the boundary.
@@ -427,24 +667,40 @@ impl Chain {
     }
 }
 
+/// Newtype wrapper that proves the inner `Chain` is EVM-family. Construct
+/// only via `Chain::as_evm`. Callers that need a "definitely EVM" argument
+/// take `EvmChain` directly; callers that hold any `Chain` can dispatch on
+/// `chain.as_evm()` without the runtime `is_evm()` check.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct EvmChain(Chain);
+
+impl EvmChain {
+    /// The underlying `Chain` variant.
+    pub const fn chain(self) -> Chain { self.0 }
+
+    /// EIP-155 chain id — guaranteed non-`1`-fallback because `EvmChain` can
+    /// only be constructed from a chain that returns `true` for `is_evm()`.
+    pub const fn chain_id(self) -> u64 { self.0.evm_chain_id() }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
 
     #[test]
     fn id_roundtrips() {
-        for id in 0u32..=29 {
+        for id in 0u32..=45 {
             let chain = Chain::from_id(id).expect("valid id");
             assert_eq!(chain.id(), id);
         }
-        assert!(Chain::from_id(30).is_none());
+        assert!(Chain::from_id(46).is_none());
         assert!(Chain::from_id(99).is_none());
     }
 
     #[test]
     fn evm_group_matches_legacy_or_pattern() {
-        let expected: Vec<u32> = vec![1, 11, 12, 13, 20, 21, 23, 24, 25, 26, 27, 28, 29];
-        let actual: Vec<u32> = (0u32..=29)
+        let expected: Vec<u32> = vec![1, 11, 12, 13, 20, 21, 23, 24, 25, 26, 27, 28, 29, 34, 35, 36, 37, 38, 39, 40, 41, 42, 44];
+        let actual: Vec<u32> = (0u32..=45)
             .filter_map(Chain::from_id)
             .filter(|c| c.is_evm())
             .map(|c| c.id())
@@ -467,6 +723,16 @@ mod tests {
         assert_eq!(Chain::Scroll.evm_chain_id(), 534352);
         assert_eq!(Chain::Blast.evm_chain_id(), 81457);
         assert_eq!(Chain::Mantle.evm_chain_id(), 5000);
+        assert_eq!(Chain::Sei.evm_chain_id(), 1329);
+        assert_eq!(Chain::Celo.evm_chain_id(), 42220);
+        assert_eq!(Chain::Cronos.evm_chain_id(), 25);
+        assert_eq!(Chain::OpBnb.evm_chain_id(), 204);
+        assert_eq!(Chain::ZkSyncEra.evm_chain_id(), 324);
+        assert_eq!(Chain::Sonic.evm_chain_id(), 146);
+        assert_eq!(Chain::Berachain.evm_chain_id(), 80094);
+        assert_eq!(Chain::Unichain.evm_chain_id(), 130);
+        assert_eq!(Chain::Ink.evm_chain_id(), 57073);
+        assert_eq!(Chain::XLayer.evm_chain_id(), 196);
     }
 
     #[test]

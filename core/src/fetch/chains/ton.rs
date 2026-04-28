@@ -41,6 +41,12 @@ pub struct TonSendResult {
     pub boc_b64: String,
 }
 
+impl super::SignedSubmission for TonSendResult {
+    fn submission_id(&self) -> &str { &self.message_hash }
+    fn signed_payload(&self) -> &str { &self.boc_b64 }
+    fn signed_payload_format(&self) -> super::SignedPayloadFormat { super::SignedPayloadFormat::Base64 }
+}
+
 /// One jetton (token) balance entry returned by the v3 API.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TonJettonBalance {

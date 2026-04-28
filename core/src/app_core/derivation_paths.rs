@@ -147,7 +147,7 @@ pub(super) fn seed_derivation_paths_for_account(
         linea: evm.clone(),
         scroll: evm.clone(),
         blast: evm.clone(),
-        mantle: evm,
+        mantle: evm.clone(),
         tron: slip44(195, account),
         solana: format!("m/44'/501'/{account}'/0'"),
         stellar: format!("m/44'/148'/{account}'"),
@@ -159,6 +159,28 @@ pub(super) fn seed_derivation_paths_for_account(
         internet_computer: slip44(223, account),
         near: format!("m/44'/397'/{account}'"),
         polkadot: format!("m/44'/354'/{account}'"),
+        zcash: slip44(133, account),
+        bitcoin_gold: slip44(156, account),
+        // EVM L1/L2s share the EVM derivation path (SLIP-44 60).
+        sei: evm.clone(),
+        celo: evm.clone(),
+        cronos: evm.clone(),
+        op_bnb: evm.clone(),
+        zksync_era: evm.clone(),
+        sonic: evm.clone(),
+        berachain: evm.clone(),
+        unichain: evm.clone(),
+        ink: evm,
+        decred: slip44(42, account),
+        // Kaspa SLIP-44 coin type 111111.
+        kaspa: format!("m/44'/111111'/{account}'/0/0"),
+        dash: slip44(5, account),
+        // X Layer is an EVM L2 — uses the standard EVM derivation path.
+        x_layer: slip44(60, account),
+        // Bittensor uses SLIP-44 1005 (Polkadot.js convention for substrate
+        // chains; the substrate-bip39 expansion ignores BIP-32 path nodes
+        // but we include the canonical path for downstream display).
+        bittensor: format!("m/44'/1005'/{account}'/0'/0'"),
     })
 }
 

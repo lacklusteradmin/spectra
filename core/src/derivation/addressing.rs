@@ -56,6 +56,12 @@ pub fn validate_address(request: AddressValidationRequest) -> AddressValidationR
         "polkadot" => validate_polkadot_address(&normalized_input),
         "monero" => validate_monero_address(&normalized_input),
         "cardano" => validate_cardano_address(&normalized_input),
+        "zcash" => validate_zcash_address(&normalized_input),
+        "bitcoinGold" => validate_bitcoin_gold_address(&normalized_input),
+        "decred" => validate_decred_address(&normalized_input),
+        "kaspa" => validate_kaspa_address(&normalized_input),
+        "dash" => validate_dash_address(&normalized_input),
+        "bittensor" => validate_bittensor_address(&normalized_input),
         _ => invalid_result(),
     }
 }
@@ -186,6 +192,48 @@ fn validate_litecoin_address(value: &str) -> AddressValidationResult {
         || value.starts_with('M')
         || value.starts_with('3')
     {
+        return make_result(value.to_string());
+    }
+    invalid_result()
+}
+
+fn validate_zcash_address(value: &str) -> AddressValidationResult {
+    if crate::derivation::chains::zcash::validate_zcash_address(value) {
+        return make_result(value.to_string());
+    }
+    invalid_result()
+}
+
+fn validate_bitcoin_gold_address(value: &str) -> AddressValidationResult {
+    if crate::derivation::chains::bitcoin_gold::validate_bitcoin_gold_address(value) {
+        return make_result(value.to_string());
+    }
+    invalid_result()
+}
+
+fn validate_decred_address(value: &str) -> AddressValidationResult {
+    if crate::derivation::chains::decred::validate_decred_address(value) {
+        return make_result(value.to_string());
+    }
+    invalid_result()
+}
+
+fn validate_kaspa_address(value: &str) -> AddressValidationResult {
+    if crate::derivation::chains::kaspa::validate_kaspa_address(value) {
+        return make_result(value.trim().to_ascii_lowercase());
+    }
+    invalid_result()
+}
+
+fn validate_dash_address(value: &str) -> AddressValidationResult {
+    if crate::derivation::chains::dash::validate_dash_address(value) {
+        return make_result(value.to_string());
+    }
+    invalid_result()
+}
+
+fn validate_bittensor_address(value: &str) -> AddressValidationResult {
+    if crate::derivation::chains::bittensor::validate_bittensor_address(value) {
         return make_result(value.to_string());
     }
     invalid_result()

@@ -259,3 +259,63 @@ address_algorithm = "monero_main"
 public_key_format = "raw"
 script_type = "account"
 networks = ["mainnet", "testnet"]
+
+[[chains]]
+name = "Zcash"
+chain_id = 23
+curve = "secp256k1"
+derivation_algorithm = "bip32_secp256k1"
+address_algorithm = "zcash_transparent"
+public_key_format = "compressed"
+script_type = "p2pkh"
+networks = ["mainnet"]
+
+[[chains]]
+name = "Bitcoin Gold"
+chain_id = 24
+curve = "secp256k1"
+derivation_algorithm = "bip32_secp256k1"
+address_algorithm = "bitcoin_gold_legacy"
+public_key_format = "compressed"
+script_type = "p2pkh"
+networks = ["mainnet"]
+
+[[chains]]
+name = "Decred"
+chain_id = 25
+curve = "secp256k1"
+derivation_algorithm = "bip32_secp256k1"
+address_algorithm = "decred_p2pkh"
+public_key_format = "compressed"
+script_type = "p2pkh"
+networks = ["mainnet"]
+
+[[chains]]
+name = "Kaspa"
+chain_id = 26
+curve = "secp256k1"
+derivation_algorithm = "bip32_secp256k1"
+address_algorithm = "kaspa_schnorr"
+public_key_format = "compressed"
+script_type = "account"
+networks = ["mainnet"]
+
+[[chains]]
+name = "Dash"
+chain_id = 27
+curve = "secp256k1"
+derivation_algorithm = "bip32_secp256k1"
+address_algorithm = "dash_legacy"
+public_key_format = "compressed"
+script_type = "p2pkh"
+networks = ["mainnet"]
+
+[[chains]]
+name = "Bittensor"
+chain_id = 28
+curve = "sr25519"
+derivation_algorithm = "substrate_bip39"
+address_algorithm = "bittensor_ss58"
+public_key_format = "raw"
+script_type = "account"
+networks = ["mainnet"]

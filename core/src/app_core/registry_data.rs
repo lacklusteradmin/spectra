@@ -53,6 +53,22 @@ pub(super) fn chain_backends() -> Vec<AppCoreChainBackend> {
         live("Scroll", &["ETH", TRACKED_ERC20]),
         live("Blast", &["ETH", TRACKED_ERC20]),
         live("Mantle", &["MNT", TRACKED_ERC20]),
+        live("Zcash", &["ZEC"]),
+        live("Bitcoin Gold", &["BTG"]),
+        live("Decred", &["DCR"]),
+        live("Kaspa", &["KAS"]),
+        live("Dash", &["DASH"]),
+        live("Sei", &["SEI", TRACKED_ERC20]),
+        live("Celo", &["CELO", TRACKED_ERC20]),
+        live("Cronos", &["CRO", TRACKED_ERC20]),
+        live("opBNB", &["BNB", TRACKED_ERC20]),
+        live("zkSync Era", &["ETH", TRACKED_ERC20]),
+        live("Sonic", &["S", TRACKED_ERC20]),
+        live("Berachain", &["BERA", TRACKED_ERC20]),
+        live("Unichain", &["ETH", TRACKED_ERC20]),
+        live("Ink", &["ETH", TRACKED_ERC20]),
+        live("X Layer", &["OKB", TRACKED_ERC20]),
+        live("Bittensor", &["TAO"]),
     ]
 }
 
@@ -162,6 +178,22 @@ pub(super) fn app_chain_descriptors() -> Vec<AppCoreAppChainDescriptor> {
         evm("scroll", "Scroll", "SCRL", "ETH", &["Scroll"]),
         evm("blast", "Blast", "BLAST", "ETH", &["Blast"]),
         evm("mantle", "Mantle", "MNT", "MNT", &["Mantle", "MNT"]),
+        chain("zcash", "Zcash", "ZEC", "ZEC", &["Zcash", "ZEC"]),
+        chain("bitcoinGold", "Bitcoin Gold", "BTG", "BTG", &["Bitcoin Gold", "BTG"]),
+        chain("decred", "Decred", "DCR", "DCR", &["Decred", "DCR"]),
+        chain("kaspa", "Kaspa", "KAS", "KAS", &["Kaspa", "KAS"]),
+        chain("dash", "Dash", "DASH", "DASH", &["Dash", "DASH"]),
+        evm("sei", "Sei", "SEI", "SEI", &["Sei", "SEI"]),
+        evm("celo", "Celo", "CELO", "CELO", &["Celo", "CELO"]),
+        evm("cronos", "Cronos", "CRO", "CRO", &["Cronos", "CRO"]),
+        evm("opBNB", "opBNB", "opBNB", "BNB", &["opBNB", "BNB L2"]),
+        evm("zkSyncEra", "zkSync Era", "zkSync", "ETH", &["zkSync Era", "zkSync"]),
+        evm("sonic", "Sonic", "S", "S", &["Sonic", "S"]),
+        evm("berachain", "Berachain", "BERA", "BERA", &["Berachain", "BERA"]),
+        evm("unichain", "Unichain", "UNI L2", "ETH", &["Unichain"]),
+        evm("ink", "Ink", "INK", "ETH", &["Ink"]),
+        evm("xLayer", "X Layer", "X Layer", "OKB", &["X Layer", "OKB", "OKX"]),
+        chain("bittensor", "Bittensor", "TAO", "TAO", &["Bittensor", "TAO", "subtensor"]),
     ]
 }
 
@@ -226,6 +258,14 @@ pub(super) fn broadcast_provider_options(chain_name: &str) -> Vec<AppCoreBroadca
             ("lava-near-rpc", "Lava NEAR RPC"),
         ],
         "Polkadot" => &[("sidecar", "Sidecar")],
+        "Zcash" => &[("trezor-blockbook", "Trezor Blockbook")],
+        "Bitcoin Gold" => &[("trezor-blockbook", "Trezor Blockbook")],
+        "Decred" => &[("dcrdata", "dcrdata Insight")],
+        "Kaspa" => &[("kaspaorg", "api.kaspa.org")],
+        "Dash" => &[("trezor-blockbook", "Trezor Blockbook")],
+        "Bittensor" => &[("opentensor", "OpenTensor RPC")],
+        "Sei" | "Celo" | "Cronos" | "opBNB" | "zkSync Era" | "Sonic" | "Berachain"
+        | "Unichain" | "Ink" | "X Layer" => &[("rpc", "RPC Broadcast")],
         _ => &[],
     };
     pairs

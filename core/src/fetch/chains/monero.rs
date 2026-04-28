@@ -53,6 +53,12 @@ pub struct MoneroSendResult {
     pub amount_piconeros: u64,
 }
 
+impl super::SignedSubmission for MoneroSendResult {
+    fn submission_id(&self) -> &str { &self.txid }
+    fn signed_payload(&self) -> &str { "" }
+    fn signed_payload_format(&self) -> super::SignedPayloadFormat { super::SignedPayloadFormat::None }
+}
+
 // ----------------------------------------------------------------
 // Client (wallet-rpc)
 // ----------------------------------------------------------------

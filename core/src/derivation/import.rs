@@ -25,6 +25,12 @@ pub struct WalletImportAddresses {
     pub icp_address: Option<String>,
     pub near_address: Option<String>,
     pub polkadot_address: Option<String>,
+    pub zcash_address: Option<String>,
+    pub bitcoin_gold_address: Option<String>,
+    pub decred_address: Option<String>,
+    pub kaspa_address: Option<String>,
+    pub dash_address: Option<String>,
+    pub bittensor_address: Option<String>,
 }
 
 impl WalletImportAddresses {
@@ -50,6 +56,12 @@ impl WalletImportAddresses {
             icp_address: None,
             near_address: None,
             polkadot_address: None,
+            zcash_address: None,
+            bitcoin_gold_address: None,
+            decred_address: None,
+            kaspa_address: None,
+            dash_address: None,
+            bittensor_address: None,
         }
     }
 }
@@ -75,6 +87,12 @@ pub struct WalletImportWatchOnlyEntries {
     pub icp_addresses: Vec<String>,
     pub near_addresses: Vec<String>,
     pub polkadot_addresses: Vec<String>,
+    pub zcash_addresses: Vec<String>,
+    pub bitcoin_gold_addresses: Vec<String>,
+    pub decred_addresses: Vec<String>,
+    pub kaspa_addresses: Vec<String>,
+    pub dash_addresses: Vec<String>,
+    pub bittensor_addresses: Vec<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, uniffi::Record)]
@@ -311,7 +329,9 @@ fn watch_only_addresses_for_chain(
             })
             .collect(),
         "Ethereum" | "Ethereum Classic" | "Arbitrum" | "Optimism" | "BNB Chain" | "Avalanche"
-        | "Hyperliquid" => entries
+        | "Hyperliquid" | "Polygon" | "Base" | "Linea" | "Scroll" | "Blast" | "Mantle"
+        | "Sei" | "Celo" | "Cronos" | "opBNB" | "zkSync Era" | "Sonic" | "Berachain"
+        | "Unichain" | "Ink" | "X Layer" => entries
             .ethereum_addresses
             .iter()
             .map(|address| {
@@ -467,6 +487,84 @@ fn watch_only_addresses_for_chain(
                 )
             })
             .collect(),
+        "Zcash" => entries
+            .zcash_addresses
+            .iter()
+            .map(|address| {
+                (
+                    "Zcash".to_string(),
+                    WalletImportAddresses {
+                        zcash_address: Some(address.clone()),
+                        ..WalletImportAddresses::empty()
+                    },
+                )
+            })
+            .collect(),
+        "Bitcoin Gold" => entries
+            .bitcoin_gold_addresses
+            .iter()
+            .map(|address| {
+                (
+                    "Bitcoin Gold".to_string(),
+                    WalletImportAddresses {
+                        bitcoin_gold_address: Some(address.clone()),
+                        ..WalletImportAddresses::empty()
+                    },
+                )
+            })
+            .collect(),
+        "Decred" => entries
+            .decred_addresses
+            .iter()
+            .map(|address| {
+                (
+                    "Decred".to_string(),
+                    WalletImportAddresses {
+                        decred_address: Some(address.clone()),
+                        ..WalletImportAddresses::empty()
+                    },
+                )
+            })
+            .collect(),
+        "Kaspa" => entries
+            .kaspa_addresses
+            .iter()
+            .map(|address| {
+                (
+                    "Kaspa".to_string(),
+                    WalletImportAddresses {
+                        kaspa_address: Some(address.clone()),
+                        ..WalletImportAddresses::empty()
+                    },
+                )
+            })
+            .collect(),
+        "Dash" => entries
+            .dash_addresses
+            .iter()
+            .map(|address| {
+                (
+                    "Dash".to_string(),
+                    WalletImportAddresses {
+                        dash_address: Some(address.clone()),
+                        ..WalletImportAddresses::empty()
+                    },
+                )
+            })
+            .collect(),
+        "Bittensor" => entries
+            .bittensor_addresses
+            .iter()
+            .map(|address| {
+                (
+                    "Bittensor".to_string(),
+                    WalletImportAddresses {
+                        bittensor_address: Some(address.clone()),
+                        ..WalletImportAddresses::empty()
+                    },
+                )
+            })
+            .collect(),
         unsupported => {
             return Err(format!(
                 "Watch-only planning is not available for chain: {unsupported}"
@@ -502,7 +600,10 @@ fn addresses_for_chain(
             dogecoin_address: addresses.dogecoin_address.clone(),
             ..WalletImportAddresses::empty()
         },
-        "Ethereum" | "Arbitrum" | "Optimism" | "BNB Chain" | "Avalanche" | "Hyperliquid" => {
+        "Ethereum" | "Arbitrum" | "Optimism" | "BNB Chain" | "Avalanche" | "Hyperliquid"
+        | "Polygon" | "Base" | "Linea" | "Scroll" | "Blast" | "Mantle"
+        | "Sei" | "Celo" | "Cronos" | "opBNB" | "zkSync Era" | "Sonic" | "Berachain"
+        | "Unichain" | "Ink" | "X Layer" => {
             WalletImportAddresses {
                 ethereum_address: addresses.ethereum_address.clone(),
                 ..WalletImportAddresses::empty()
@@ -559,6 +660,30 @@ fn addresses_for_chain(
         },
         "Polkadot" => WalletImportAddresses {
             polkadot_address: addresses.polkadot_address.clone(),
+            ..WalletImportAddresses::empty()
+        },
+        "Zcash" => WalletImportAddresses {
+            zcash_address: addresses.zcash_address.clone(),
+            ..WalletImportAddresses::empty()
+        },
+        "Bitcoin Gold" => WalletImportAddresses {
+            bitcoin_gold_address: addresses.bitcoin_gold_address.clone(),
+            ..WalletImportAddresses::empty()
+        },
+        "Decred" => WalletImportAddresses {
+            decred_address: addresses.decred_address.clone(),
+            ..WalletImportAddresses::empty()
+        },
+        "Kaspa" => WalletImportAddresses {
+            kaspa_address: addresses.kaspa_address.clone(),
+            ..WalletImportAddresses::empty()
+        },
+        "Dash" => WalletImportAddresses {
+            dash_address: addresses.dash_address.clone(),
+            ..WalletImportAddresses::empty()
+        },
+        "Bittensor" => WalletImportAddresses {
+            bittensor_address: addresses.bittensor_address.clone(),
             ..WalletImportAddresses::empty()
         },
         _ => WalletImportAddresses::empty(),
@@ -699,6 +824,22 @@ fn is_private_key_chain_supported(chain_name: &str) -> bool {
             | "Internet Computer"
             | "NEAR"
             | "Polkadot"
+            | "Zcash"
+            | "Bitcoin Gold"
+            | "Decred"
+            | "Kaspa"
+            | "Dash"
+            | "X Layer"
+            | "Bittensor"
+            | "Sei"
+            | "Celo"
+            | "Cronos"
+            | "opBNB"
+            | "zkSync Era"
+            | "Sonic"
+            | "Berachain"
+            | "Unichain"
+            | "Ink"
     )
 }
 
@@ -714,7 +855,8 @@ fn validate_watch_only_draft_addresses(
             "Litecoin" => ("litecoin", &entries.litecoin_addresses, None),
             "Dogecoin" => ("dogecoin", &entries.dogecoin_addresses, None),
             "Ethereum" | "Ethereum Classic" | "Arbitrum" | "Optimism" | "BNB Chain"
-            | "Avalanche" | "Hyperliquid" => ("evm", &entries.ethereum_addresses, None),
+            | "Avalanche" | "Hyperliquid" | "Polygon" | "Base" | "Linea" | "Scroll"
+            | "Blast" | "Mantle" => ("evm", &entries.ethereum_addresses, None),
             "Tron" => ("tron", &entries.tron_addresses, None),
             "Solana" => ("solana", &entries.solana_addresses, None),
             "XRP Ledger" => ("xrp", &entries.xrp_addresses, None),
@@ -727,6 +869,14 @@ fn validate_watch_only_draft_addresses(
             "Internet Computer" => ("internetComputer", &entries.icp_addresses, None),
             "NEAR" => ("near", &entries.near_addresses, None),
             "Polkadot" => ("polkadot", &entries.polkadot_addresses, None),
+            "Zcash" => ("zcash", &entries.zcash_addresses, None),
+            "Bitcoin Gold" => ("bitcoinGold", &entries.bitcoin_gold_addresses, None),
+            "Decred" => ("decred", &entries.decred_addresses, None),
+            "Kaspa" => ("kaspa", &entries.kaspa_addresses, None),
+            "Dash" => ("dash", &entries.dash_addresses, None),
+            "Bittensor" => ("bittensor", &entries.bittensor_addresses, None),
+            "Sei" | "Celo" | "Cronos" | "opBNB" | "zkSync Era" | "Sonic" | "Berachain"
+            | "Unichain" | "Ink" | "X Layer" => ("evm", &entries.ethereum_addresses, None),
             _ => return false,
         };
 
@@ -816,6 +966,12 @@ mod tests {
                 icp_addresses: Vec::new(),
                 near_addresses: Vec::new(),
                 polkadot_addresses: Vec::new(),
+                zcash_addresses: Vec::new(),
+                bitcoin_gold_addresses: Vec::new(),
+                decred_addresses: Vec::new(),
+                kaspa_addresses: Vec::new(),
+                dash_addresses: Vec::new(),
+                bittensor_addresses: Vec::new(),
             },
         })
         .expect("plan");
@@ -856,6 +1012,12 @@ mod tests {
                 icp_addresses: Vec::new(),
                 near_addresses: Vec::new(),
                 polkadot_addresses: Vec::new(),
+                zcash_addresses: Vec::new(),
+                bitcoin_gold_addresses: Vec::new(),
+                decred_addresses: Vec::new(),
+                kaspa_addresses: Vec::new(),
+                dash_addresses: Vec::new(),
+                bittensor_addresses: Vec::new(),
             },
         })
         .expect("plan");

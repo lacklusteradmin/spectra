@@ -1,6 +1,25 @@
 use serde::{Deserialize, Serialize};
 use std::cmp::Ordering;
 
+/// Wire/merge form of a transaction record.
+///
+/// Distinct from [`crate::store::persistence::models::CorePersistedTransactionRecord`]
+/// in two specific ways — they look almost identical but the differences are
+/// load-bearing:
+///   1. **Timestamps**: this type uses unix-epoch seconds (`created_at_unix`)
+///      because merge ordering compares against incoming RPC payloads that
+///      carry unix timestamps. The persisted form uses *Swift reference time*
+///      (seconds since 2001-01-01) for backward-compat with already-stored
+///      Foundation `Date` values.
+///   2. **Enum typing**: `kind` and `status` are plain strings so inbound
+///      records that carry unfamiliar values don't fail to deserialize before
+///      the merge logic can decide what to do with them. The persisted form
+///      uses strongly-typed `CoreTransactionKind` / `CoreTransactionStatus`
+///      enums so storage rejects malformed data at write time.
+///
+/// Conversion between the two forms happens at the Swift boundary
+/// (`TransactionRecord.rustBridgeRecord` / `.persistedSnapshot`), where the
+/// time-base shift and type tightening can both be performed in one place.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, uniffi::Record)]
 #[serde(rename_all = "camelCase")]
 pub struct CoreTransactionRecord {

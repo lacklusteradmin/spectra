@@ -42,6 +42,12 @@ pub struct SuiSendResult {
     pub digest: String,
 }
 
+impl super::SignedSubmission for SuiSendResult {
+    fn submission_id(&self) -> &str { &self.digest }
+    fn signed_payload(&self) -> &str { &self.tx_bytes_b64 }
+    fn signed_payload_format(&self) -> super::SignedPayloadFormat { super::SignedPayloadFormat::Base64 }
+}
+
 // ----------------------------------------------------------------
 // Client
 // ----------------------------------------------------------------

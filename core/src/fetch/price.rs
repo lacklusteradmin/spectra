@@ -325,7 +325,6 @@ fn paprika_id_for(gecko_id: &str, symbol: &str) -> Option<&'static str> {
             ("uniswap", "uni-uniswap"),
             ("aave", "aave-aave"),
             ("shiba-inu", "shib-shiba-inu"),
-            ("pepe", "pepe-pepe"),
             ("bitget-token", "bgb-bitget-token"),
             ("leo-token", "leo-unus-sed-leo"),
             ("cronos", "cro-cronos"),

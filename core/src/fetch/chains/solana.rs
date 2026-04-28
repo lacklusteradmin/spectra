@@ -60,6 +60,12 @@ pub struct SolanaSendResult {
     pub signed_tx_base64: String,
 }
 
+impl super::SignedSubmission for SolanaSendResult {
+    fn submission_id(&self) -> &str { &self.signature }
+    fn signed_payload(&self) -> &str { &self.signed_tx_base64 }
+    fn signed_payload_format(&self) -> super::SignedPayloadFormat { super::SignedPayloadFormat::Base64 }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SplBalance {
     pub mint: String,

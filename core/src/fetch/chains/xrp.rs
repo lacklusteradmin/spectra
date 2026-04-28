@@ -41,6 +41,12 @@ pub struct XrpSendResult {
     pub tx_blob_hex: String,
 }
 
+impl super::SignedSubmission for XrpSendResult {
+    fn submission_id(&self) -> &str { &self.txid }
+    fn signed_payload(&self) -> &str { &self.tx_blob_hex }
+    fn signed_payload_format(&self) -> super::SignedPayloadFormat { super::SignedPayloadFormat::Hex }
+}
+
 // ----------------------------------------------------------------
 // Client
 // ----------------------------------------------------------------

@@ -46,6 +46,12 @@ pub(super) const CHAIN_INTERNET_COMPUTER: u32 = 19;
 pub(super) const CHAIN_NEAR: u32 = 20;
 pub(super) const CHAIN_POLKADOT: u32 = 21;
 pub(super) const CHAIN_MONERO: u32 = 22;
+pub(super) const CHAIN_ZCASH: u32 = 23;
+pub(super) const CHAIN_BITCOIN_GOLD: u32 = 24;
+pub(super) const CHAIN_DECRED: u32 = 25;
+pub(super) const CHAIN_KASPA: u32 = 26;
+pub(super) const CHAIN_DASH: u32 = 27;
+pub(super) const CHAIN_BITTENSOR: u32 = 28;
 
 pub(super) const NETWORK_MAINNET: u32 = 0;
 pub(super) const NETWORK_TESTNET: u32 = 1;
@@ -85,6 +91,12 @@ pub(super) const ADDRESS_STELLAR_STRKEY: u32 = 16;
 pub(super) const ADDRESS_SUI_KECCAK: u32 = 17;
 pub(super) const ADDRESS_APTOS_KECCAK: u32 = 18;
 pub(super) const ADDRESS_ICP_PRINCIPAL: u32 = 19;
+pub(super) const ADDRESS_ZCASH_TRANSPARENT: u32 = 20;
+pub(super) const ADDRESS_BITCOIN_GOLD_LEGACY: u32 = 21;
+pub(super) const ADDRESS_DECRED_P2PKH: u32 = 22;
+pub(super) const ADDRESS_KASPA_SCHNORR: u32 = 23;
+pub(super) const ADDRESS_DASH_LEGACY: u32 = 24;
+pub(super) const ADDRESS_BITTENSOR_SS58: u32 = 25;
 
 const PUBLIC_KEY_AUTO: u32 = 0;
 pub(super) const PUBLIC_KEY_COMPRESSED: u32 = 1;
@@ -266,6 +278,12 @@ enum Chain {
     Near,
     Polkadot,
     Monero,
+    Zcash,
+    BitcoinGold,
+    Decred,
+    Kaspa,
+    Dash,
+    Bittensor,
 }
 
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -354,6 +372,23 @@ enum AddressAlgorithm {
     Dogecoin,
     BitcoinCashLegacy,
     BitcoinSvLegacy,
+    // Zcash transparent (t1...): same hash160 + base58check structure as
+    // Bitcoin P2PKH but with a 2-byte version prefix `0x1CB8` instead of
+    // BTC's `0x00`. Shielded addresses are out of scope.
+    ZcashTransparent,
+    // Bitcoin Gold (G…): BCH/BTC-style P2PKH with version byte `0x26`.
+    BitcoinGoldLegacy,
+    // Decred (Ds…): RIPEMD-160(BLAKE-256(pub)) || base58check with BLAKE-256
+    // checksum and 2-byte version `0x073F`.
+    DecredP2pkh,
+    // Kaspa: CashAddr-variant bech32 with HRP "kaspa", Schnorr P2PK encoded
+    // with version byte 0x00 and a 32-byte x-only secp256k1 public key.
+    KaspaSchnorr,
+    // Dash (X…): BTC-style P2PKH with version byte `0x4C` (76 decimal).
+    DashLegacy,
+    // Bittensor (5…): SS58 with substrate-generic prefix 42, sr25519 curve
+    // (substrate-bip39). Same wire/codec as Polkadot, different network prefix.
+    BittensorSs58,
     // Per-chain variants for accounts whose address format is distinct
     // from EVM/Solana/Bitcoin. These exist so `address_algorithm` is
     // enough to pick the right derivation path without a chain hint.
@@ -964,18 +999,20 @@ fn derive_from_private_key(request: ParsedPrivateKeyRequest) -> Result<DerivedOu
         });
     }
 
-    // Polkadot uses sr25519: the 32-byte private key is a Substrate
-    // mini-secret expanded by schnorrkel into a full keypair.
-    if matches!(request.chain, Chain::Polkadot) {
+    // Polkadot / Bittensor share sr25519 derivation. Difference is the SS58
+    // network prefix used in the human-readable address: 0 for Polkadot, 42
+    // for Bittensor (substrate-generic).
+    if matches!(request.chain, Chain::Polkadot | Chain::Bittensor) {
         if request.curve != CurveFamily::Sr25519 {
-            return Err("Polkadot currently requires sr25519.".to_string());
+            return Err("Polkadot/Bittensor currently require sr25519.".to_string());
         }
         let mini = schnorrkel::MiniSecretKey::from_bytes(&request.private_key)
             .map_err(|e| format!("Invalid sr25519 mini-secret: {e}"))?;
         let keypair = mini.expand_to_keypair(schnorrkel::ExpansionMode::Ed25519);
         let public_key = keypair.public.to_bytes();
+        let prefix = if matches!(request.chain, Chain::Bittensor) { 42 } else { 0 };
         return Ok(DerivedOutput {
-            address: Some(encode_ss58(&public_key, 0)),
+            address: Some(encode_ss58(&public_key, prefix)),
             public_key_hex: Some(hex::encode(public_key)),
             private_key_hex: Some(hex::encode(request.private_key)),
         });
@@ -1041,9 +1078,41 @@ fn derive_address_from_keys(
             payload.extend_from_slice(&pubkey_hash);
             Ok(base58check_encode(&payload, bs58::Alphabet::DEFAULT))
         }
+        Chain::BitcoinGold => {
+            let pubkey_hash = hash160_bytes(&public_key.serialize());
+            let mut payload = vec![0x26u8];
+            payload.extend_from_slice(&pubkey_hash);
+            Ok(base58check_encode(&payload, bs58::Alphabet::DEFAULT))
+        }
+        Chain::Decred => {
+            use crate::derivation::chains::decred::{dcr_hash160, encode_dcr_p2pkh};
+            let pubkey_hash = dcr_hash160(&public_key.serialize());
+            Ok(encode_dcr_p2pkh(&pubkey_hash))
+        }
+        Chain::Kaspa => {
+            use crate::derivation::chains::kaspa::encode_kaspa_schnorr;
+            let serialized = public_key.serialize();
+            let mut x_only = [0u8; 32];
+            x_only.copy_from_slice(&serialized[1..33]);
+            Ok(encode_kaspa_schnorr(&x_only))
+        }
+        Chain::Dash => {
+            let pubkey_hash = hash160_bytes(&public_key.serialize());
+            let mut payload = vec![0x4Cu8];
+            payload.extend_from_slice(&pubkey_hash);
+            Ok(base58check_encode(&payload, bs58::Alphabet::DEFAULT))
+        }
         Chain::Litecoin => {
             let pubkey_hash = hash160_bytes(&public_key.serialize());
             let mut payload = vec![0x30u8];
+            payload.extend_from_slice(&pubkey_hash);
+            Ok(base58check_encode(&payload, bs58::Alphabet::DEFAULT))
+        }
+        Chain::Zcash => {
+            // Mainnet transparent P2PKH: 2-byte version 0x1CB8 || hash160 ||
+            // 4-byte sha256d checksum, base58-encoded → "t1..." addresses.
+            let pubkey_hash = hash160_bytes(&public_key.serialize());
+            let mut payload = vec![0x1Cu8, 0xB8u8];
             payload.extend_from_slice(&pubkey_hash);
             Ok(base58check_encode(&payload, bs58::Alphabet::DEFAULT))
         }
@@ -1164,6 +1233,12 @@ fn chain_from_address_algorithm(alg: AddressAlgorithm) -> Result<Chain, String> 
         AddressAlgorithm::CardanoShelleyEnterprise => Chain::Cardano,
         AddressAlgorithm::Ss58 => Chain::Polkadot,
         AddressAlgorithm::MoneroMain => Chain::Monero,
+        AddressAlgorithm::ZcashTransparent => Chain::Zcash,
+        AddressAlgorithm::BitcoinGoldLegacy => Chain::BitcoinGold,
+        AddressAlgorithm::DecredP2pkh => Chain::Decred,
+        AddressAlgorithm::KaspaSchnorr => Chain::Kaspa,
+        AddressAlgorithm::DashLegacy => Chain::Dash,
+        AddressAlgorithm::BittensorSs58 => Chain::Bittensor,
         AddressAlgorithm::Auto => {
             return Err(
                 "Address algorithm must be explicit to derive chain automatically.".to_string(),
@@ -1197,6 +1272,12 @@ fn parse_chain(value: u32) -> Result<Chain, String> {
         CHAIN_NEAR => Ok(Chain::Near),
         CHAIN_POLKADOT => Ok(Chain::Polkadot),
         CHAIN_MONERO => Ok(Chain::Monero),
+        CHAIN_ZCASH => Ok(Chain::Zcash),
+        CHAIN_BITCOIN_GOLD => Ok(Chain::BitcoinGold),
+        CHAIN_DECRED => Ok(Chain::Decred),
+        CHAIN_KASPA => Ok(Chain::Kaspa),
+        CHAIN_DASH => Ok(Chain::Dash),
+        CHAIN_BITTENSOR => Ok(Chain::Bittensor),
         other => Err(format!("Unsupported chain id: {other}")),
     }
 }
@@ -1256,6 +1337,12 @@ fn parse_address_algorithm(value: u32) -> Result<AddressAlgorithm, String> {
         ADDRESS_SUI_KECCAK => Ok(AddressAlgorithm::SuiKeccak),
         ADDRESS_APTOS_KECCAK => Ok(AddressAlgorithm::AptosKeccak),
         ADDRESS_ICP_PRINCIPAL => Ok(AddressAlgorithm::IcpPrincipal),
+        ADDRESS_ZCASH_TRANSPARENT => Ok(AddressAlgorithm::ZcashTransparent),
+        ADDRESS_BITCOIN_GOLD_LEGACY => Ok(AddressAlgorithm::BitcoinGoldLegacy),
+        ADDRESS_DECRED_P2PKH => Ok(AddressAlgorithm::DecredP2pkh),
+        ADDRESS_KASPA_SCHNORR => Ok(AddressAlgorithm::KaspaSchnorr),
+        ADDRESS_DASH_LEGACY => Ok(AddressAlgorithm::DashLegacy),
+        ADDRESS_BITTENSOR_SS58 => Ok(AddressAlgorithm::BittensorSs58),
         other => Err(format!("Unsupported address algorithm id: {other}")),
     }
 }
@@ -1311,7 +1398,13 @@ fn derive(request: ParsedRequest) -> Result<DerivedOutput, String> {
         Chain::InternetComputer => derive_icp(request),
         Chain::Near => derive_near(request),
         Chain::Polkadot => derive_polkadot(request),
+        Chain::Bittensor => derive_bittensor(request),
         Chain::Monero => derive_monero(request),
+        Chain::Zcash => derive_zcash_transparent(request),
+        Chain::BitcoinGold => derive_bitcoin_legacy_family(request, 0x26),
+        Chain::Decred => derive_decred(request),
+        Chain::Kaspa => derive_kaspa(request),
+        Chain::Dash => derive_bitcoin_legacy_family(request, 0x4C),
     }
 }
 
@@ -1338,15 +1431,15 @@ fn validate_request(request: &ParsedRequest) -> Result<(), String> {
         ) {
             return Err("This chain does not support SLIP-0010 ed25519 derivation.".to_string());
         }
-    } else if matches!(request.chain, Chain::Polkadot) {
+    } else if matches!(request.chain, Chain::Polkadot | Chain::Bittensor) {
         if request.curve != CurveFamily::Sr25519 {
-            return Err("Polkadot currently requires sr25519.".to_string());
+            return Err("Polkadot/Bittensor currently require sr25519.".to_string());
         }
         if !matches!(
             request.derivation_algorithm,
             DerivationAlgorithm::SubstrateBip39
         ) {
-            return Err("Polkadot derivation algorithm must be substrate-bip39.".to_string());
+            return Err("Polkadot/Bittensor derivation algorithm must be substrate-bip39.".to_string());
         }
     } else {
         if request.curve != CurveFamily::Ed25519 {
@@ -1431,7 +1524,13 @@ fn chain_id(chain: Chain) -> u32 {
         Chain::InternetComputer => CHAIN_INTERNET_COMPUTER,
         Chain::Near => CHAIN_NEAR,
         Chain::Polkadot => CHAIN_POLKADOT,
+        Chain::Bittensor => CHAIN_BITTENSOR,
         Chain::Monero => CHAIN_MONERO,
+        Chain::Zcash => CHAIN_ZCASH,
+        Chain::BitcoinGold => CHAIN_BITCOIN_GOLD,
+        Chain::Decred => CHAIN_DECRED,
+        Chain::Kaspa => CHAIN_KASPA,
+        Chain::Dash => CHAIN_DASH,
     }
 }
 
@@ -1599,6 +1698,93 @@ fn derive_dogecoin(request: ParsedRequest) -> Result<DerivedOutput, String> {
         0x1e
     };
     derive_bitcoin_legacy_family(request, version)
+}
+
+fn derive_decred(request: ParsedRequest) -> Result<DerivedOutput, String> {
+    use crate::derivation::chains::decred::{dcr_hash160, encode_dcr_p2pkh};
+    let (public_key, private_key) = derive_secp_material(&request)?;
+    let pubkey_hash = dcr_hash160(&public_key.serialize());
+    let address = if requests_output(request.requested_outputs, OUTPUT_ADDRESS) {
+        Some(encode_dcr_p2pkh(&pubkey_hash))
+    } else {
+        None
+    };
+    Ok(DerivedOutput {
+        address,
+        public_key_hex: if requests_output(request.requested_outputs, OUTPUT_PUBLIC_KEY) {
+            Some(hex::encode(format_secp_public_key(
+                &public_key,
+                request.public_key_format,
+            )?))
+        } else {
+            None
+        },
+        private_key_hex: if requests_output(request.requested_outputs, OUTPUT_PRIVATE_KEY) {
+            Some(hex::encode(private_key))
+        } else {
+            None
+        },
+    })
+}
+
+fn derive_kaspa(request: ParsedRequest) -> Result<DerivedOutput, String> {
+    use crate::derivation::chains::kaspa::encode_kaspa_schnorr;
+    let (public_key, private_key) = derive_secp_material(&request)?;
+    // Kaspa Schnorr addresses use the 32-byte x-only public key.
+    let serialized = public_key.serialize(); // 33-byte compressed
+    let mut x_only = [0u8; 32];
+    x_only.copy_from_slice(&serialized[1..33]);
+    let address = if requests_output(request.requested_outputs, OUTPUT_ADDRESS) {
+        Some(encode_kaspa_schnorr(&x_only))
+    } else {
+        None
+    };
+    Ok(DerivedOutput {
+        address,
+        public_key_hex: if requests_output(request.requested_outputs, OUTPUT_PUBLIC_KEY) {
+            Some(hex::encode(format_secp_public_key(
+                &public_key,
+                request.public_key_format,
+            )?))
+        } else {
+            None
+        },
+        private_key_hex: if requests_output(request.requested_outputs, OUTPUT_PRIVATE_KEY) {
+            Some(hex::encode(private_key))
+        } else {
+            None
+        },
+    })
+}
+
+fn derive_zcash_transparent(request: ParsedRequest) -> Result<DerivedOutput, String> {
+    // Mainnet t1 P2PKH version is 0x1CB8 (two bytes); identical wire format to
+    // Bitcoin P2PKH otherwise: version || hash160 || sha256d-checksum, base58.
+    let (public_key, private_key) = derive_secp_material(&request)?;
+    let pubkey_hash = hash160_bytes(&public_key.serialize());
+    let mut payload = vec![0x1Cu8, 0xB8u8];
+    payload.extend_from_slice(&pubkey_hash);
+    let address = if requests_output(request.requested_outputs, OUTPUT_ADDRESS) {
+        Some(base58check_encode(&payload, bs58::Alphabet::DEFAULT))
+    } else {
+        None
+    };
+    Ok(DerivedOutput {
+        address,
+        public_key_hex: if requests_output(request.requested_outputs, OUTPUT_PUBLIC_KEY) {
+            Some(hex::encode(format_secp_public_key(
+                &public_key,
+                request.public_key_format,
+            )?))
+        } else {
+            None
+        },
+        private_key_hex: if requests_output(request.requested_outputs, OUTPUT_PRIVATE_KEY) {
+            Some(hex::encode(private_key))
+        } else {
+            None
+        },
+    })
 }
 
 fn derive_evm_family(request: ParsedRequest) -> Result<DerivedOutput, String> {
@@ -1882,6 +2068,29 @@ fn derive_polkadot(request: ParsedRequest) -> Result<DerivedOutput, String> {
     Ok(DerivedOutput {
         address: if requests_output(request.requested_outputs, OUTPUT_ADDRESS) {
             Some(encode_ss58(&public_key, 0))
+        } else {
+            None
+        },
+        public_key_hex: if requests_output(request.requested_outputs, OUTPUT_PUBLIC_KEY) {
+            Some(hex::encode(public_key))
+        } else {
+            None
+        },
+        private_key_hex: if requests_output(request.requested_outputs, OUTPUT_PRIVATE_KEY) {
+            Some(hex::encode(mini_secret))
+        } else {
+            None
+        },
+    })
+}
+
+fn derive_bittensor(request: ParsedRequest) -> Result<DerivedOutput, String> {
+    // Bittensor uses the substrate-generic SS58 prefix (42); everything
+    // else mirrors Polkadot — substrate-bip39 expansion + sr25519 keypair.
+    let (mini_secret, public_key) = derive_substrate_sr25519_material(&request)?;
+    Ok(DerivedOutput {
+        address: if requests_output(request.requested_outputs, OUTPUT_ADDRESS) {
+            Some(encode_ss58(&public_key, 42))
         } else {
             None
         },

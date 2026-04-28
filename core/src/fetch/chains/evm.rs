@@ -88,6 +88,12 @@ pub struct EvmSendResult {
     pub max_priority_fee_per_gas_wei: String,
 }
 
+impl super::SignedSubmission for EvmSendResult {
+    fn submission_id(&self) -> &str { &self.txid }
+    fn signed_payload(&self) -> &str { &self.raw_tx_hex }
+    fn signed_payload_format(&self) -> super::SignedPayloadFormat { super::SignedPayloadFormat::Hex }
+}
+
 /// Balance of an ERC-20 token held at a given address.
 #[derive(Debug, Clone, Serialize, Deserialize, uniffi::Record)]
 pub struct Erc20Balance {
