@@ -84,6 +84,7 @@ pub fn classify_evm_receipt_json(json: String) -> Option<EvmReceiptClassificatio
 
 pub(crate) fn chain_kind(chain_name: &str) -> Option<&'static str> {
     Some(match chain_name {
+        // Mainnets
         "Bitcoin" => "bitcoin",
         "Bitcoin Cash" => "bitcoinCash",
         "Bitcoin SV" => "bitcoinSV",
@@ -102,6 +103,35 @@ pub(crate) fn chain_kind(chain_name: &str) -> Option<&'static str> {
         "Internet Computer" => "internetComputer",
         "NEAR" => "near",
         "Polkadot" => "polkadot",
+        // Testnets — each maps to the testnet-flavored validator kind.
+        "Bitcoin Testnet" => "bitcoinTestnet",
+        "Bitcoin Testnet4" => "bitcoinTestnet4",
+        "Bitcoin Signet" => "bitcoinSignet",
+        "Bitcoin Cash Testnet" => "bitcoinCashTestnet",
+        "Bitcoin SV Testnet" => "bitcoinSVTestnet",
+        "Litecoin Testnet" => "litecoinTestnet",
+        "Dogecoin Testnet" => "dogecoinTestnet",
+        "Ethereum Sepolia"
+        | "Ethereum Hoodi"
+        | "Arbitrum Sepolia"
+        | "Optimism Sepolia"
+        | "Base Sepolia"
+        | "BNB Chain Testnet"
+        | "Avalanche Fuji"
+        | "Polygon Amoy"
+        | "Hyperliquid Testnet"
+        | "Ethereum Classic Mordor" => "evmTestnet",
+        "Tron Nile" => "tronTestnet",
+        "Solana Devnet" => "solanaDevnet",
+        "Cardano Preprod" => "cardanoTestnet",
+        "XRP Ledger Testnet" => "xrpTestnet",
+        "Stellar Testnet" => "stellarTestnet",
+        "Monero Stagenet" => "moneroStagenet",
+        "Sui Testnet" => "suiTestnet",
+        "Aptos Testnet" => "aptosTestnet",
+        "TON Testnet" => "tonTestnet",
+        "NEAR Testnet" => "nearTestnet",
+        "Polkadot Westend" => "polkadotTestnet",
         _ => return None,
     })
 }
@@ -124,13 +154,18 @@ pub fn is_valid_send_address(
 pub(crate) fn normalize_address(chain_name: &str, address: &str) -> String {
     let t = address.trim();
     match chain_name {
+        // EVM mainnets + testnets — same lowercase normalization.
         "Ethereum" | "Ethereum Classic" | "Arbitrum" | "Optimism"
-        | "BNB Chain" | "Avalanche" | "Hyperliquid" => t.to_lowercase(),
-        "Sui" | "Aptos" => {
+        | "BNB Chain" | "Avalanche" | "Hyperliquid"
+        | "Ethereum Sepolia" | "Ethereum Hoodi" | "Arbitrum Sepolia"
+        | "Optimism Sepolia" | "Base Sepolia" | "BNB Chain Testnet"
+        | "Avalanche Fuji" | "Polygon Amoy" | "Hyperliquid Testnet"
+        | "Ethereum Classic Mordor" => t.to_lowercase(),
+        "Sui" | "Aptos" | "Sui Testnet" | "Aptos Testnet" => {
             let l = t.to_lowercase();
             if l.starts_with("0x") { l } else { format!("0x{}", l) }
         }
-        "Internet Computer" | "NEAR" => t.to_lowercase(),
+        "Internet Computer" | "NEAR" | "NEAR Testnet" => t.to_lowercase(),
         _ => t.to_string(),
     }
 }

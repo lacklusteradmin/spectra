@@ -22,7 +22,13 @@
 #   script_type           (optional) p2pkh | p2sh_p2wpkh | p2wpkh | p2tr | account
 #                         Bitcoin omits this; the script type is inferred from
 #                         the derivation path's purpose level (44/49/84/86).
-#   networks              list of mainnet | testnet | testnet4 | signet
+#
+# Each row is a distinct chain with its own `chain_id` (matching the
+# CHAIN_* constants in runtime/mod.rs). Testnets, signets, devnets,
+# preprods, and stagenets all get their own row — there is no
+# `network_flavor` parameter; the chain itself encodes mainnet vs testnet.
+# `aliases` carries cross-chain reuse for chains that share derivation
+# recipes byte-for-byte but have separate identities (e.g. EVM family).
 
 # ── UTXO / secp256k1 ────────────────────────────────────────────────────
 
@@ -33,7 +39,6 @@ curve = "secp256k1"
 derivation_algorithm = "bip32_secp256k1"
 address_algorithm = "bitcoin"
 public_key_format = "compressed"
-networks = ["mainnet", "testnet", "testnet4", "signet"]
 
 [[chains]]
 name = "Bitcoin Cash"
@@ -43,7 +48,6 @@ derivation_algorithm = "bip32_secp256k1"
 address_algorithm = "bitcoin_cash_legacy"
 public_key_format = "compressed"
 script_type = "p2pkh"
-networks = ["mainnet"]
 
 [[chains]]
 name = "Bitcoin SV"
@@ -53,7 +57,6 @@ derivation_algorithm = "bip32_secp256k1"
 address_algorithm = "bitcoin_sv_legacy"
 public_key_format = "compressed"
 script_type = "p2pkh"
-networks = ["mainnet"]
 
 [[chains]]
 name = "Litecoin"
@@ -63,7 +66,6 @@ derivation_algorithm = "bip32_secp256k1"
 address_algorithm = "litecoin"
 public_key_format = "compressed"
 script_type = "p2pkh"
-networks = ["mainnet"]
 
 [[chains]]
 name = "Dogecoin"
@@ -73,9 +75,12 @@ derivation_algorithm = "bip32_secp256k1"
 address_algorithm = "dogecoin"
 public_key_format = "compressed"
 script_type = "p2pkh"
-networks = ["mainnet", "testnet"]
 
 # ── EVM / secp256k1 ─────────────────────────────────────────────────────
+# Mainnets that don't have a separate runtime Chain variant (all share
+# Ethereum's derivation recipe and runtime chain_id=1) live in the
+# Ethereum row's aliases. Testnets get their own runtime variants and
+# their own rows below.
 
 [[chains]]
 name = "Ethereum"
@@ -86,7 +91,6 @@ derivation_algorithm = "bip32_secp256k1"
 address_algorithm = "evm"
 public_key_format = "uncompressed"
 script_type = "account"
-networks = ["mainnet"]
 
 [[chains]]
 name = "Ethereum Classic"
@@ -96,7 +100,6 @@ derivation_algorithm = "bip32_secp256k1"
 address_algorithm = "evm"
 public_key_format = "uncompressed"
 script_type = "account"
-networks = ["mainnet"]
 
 [[chains]]
 name = "Arbitrum"
@@ -106,7 +109,6 @@ derivation_algorithm = "bip32_secp256k1"
 address_algorithm = "evm"
 public_key_format = "uncompressed"
 script_type = "account"
-networks = ["mainnet"]
 
 [[chains]]
 name = "Optimism"
@@ -116,7 +118,6 @@ derivation_algorithm = "bip32_secp256k1"
 address_algorithm = "evm"
 public_key_format = "uncompressed"
 script_type = "account"
-networks = ["mainnet"]
 
 [[chains]]
 name = "Avalanche"
@@ -126,7 +127,6 @@ derivation_algorithm = "bip32_secp256k1"
 address_algorithm = "evm"
 public_key_format = "uncompressed"
 script_type = "account"
-networks = ["mainnet"]
 
 [[chains]]
 name = "Hyperliquid"
@@ -136,7 +136,6 @@ derivation_algorithm = "bip32_secp256k1"
 address_algorithm = "evm"
 public_key_format = "uncompressed"
 script_type = "account"
-networks = ["mainnet"]
 
 [[chains]]
 name = "Tron"
@@ -146,7 +145,6 @@ derivation_algorithm = "bip32_secp256k1"
 address_algorithm = "tron_base58_check"
 public_key_format = "uncompressed"
 script_type = "account"
-networks = ["mainnet"]
 
 [[chains]]
 name = "XRP Ledger"
@@ -156,7 +154,6 @@ derivation_algorithm = "bip32_secp256k1"
 address_algorithm = "xrp_base58_check"
 public_key_format = "compressed"
 script_type = "p2pkh"
-networks = ["mainnet"]
 
 # ── Ed25519-family chains ───────────────────────────────────────────────
 
@@ -168,7 +165,6 @@ derivation_algorithm = "slip10_ed25519"
 address_algorithm = "solana"
 public_key_format = "raw"
 script_type = "account"
-networks = ["mainnet"]
 
 [[chains]]
 name = "Stellar"
@@ -178,7 +174,6 @@ derivation_algorithm = "slip10_ed25519"
 address_algorithm = "stellar_strkey"
 public_key_format = "raw"
 script_type = "account"
-networks = ["mainnet"]
 
 [[chains]]
 name = "Cardano"
@@ -188,7 +183,6 @@ derivation_algorithm = "bip32_ed25519_icarus"
 address_algorithm = "cardano_shelley_enterprise"
 public_key_format = "raw"
 script_type = "account"
-networks = ["mainnet"]
 
 [[chains]]
 name = "Sui"
@@ -198,7 +192,6 @@ derivation_algorithm = "slip10_ed25519"
 address_algorithm = "sui_keccak"
 public_key_format = "raw"
 script_type = "account"
-networks = ["mainnet"]
 
 [[chains]]
 name = "Aptos"
@@ -208,7 +201,6 @@ derivation_algorithm = "slip10_ed25519"
 address_algorithm = "aptos_keccak"
 public_key_format = "raw"
 script_type = "account"
-networks = ["mainnet"]
 
 [[chains]]
 name = "TON"
@@ -218,7 +210,6 @@ derivation_algorithm = "ton_mnemonic"
 address_algorithm = "ton_v4r2"
 public_key_format = "raw"
 script_type = "account"
-networks = ["mainnet"]
 
 [[chains]]
 name = "Internet Computer"
@@ -228,7 +219,6 @@ derivation_algorithm = "slip10_ed25519"
 address_algorithm = "icp_principal"
 public_key_format = "raw"
 script_type = "account"
-networks = ["mainnet"]
 
 [[chains]]
 name = "NEAR"
@@ -238,7 +228,6 @@ derivation_algorithm = "direct_seed_ed25519"
 address_algorithm = "near_hex"
 public_key_format = "raw"
 script_type = "account"
-networks = ["mainnet"]
 
 [[chains]]
 name = "Polkadot"
@@ -248,7 +237,6 @@ derivation_algorithm = "substrate_bip39"
 address_algorithm = "ss58"
 public_key_format = "raw"
 script_type = "account"
-networks = ["mainnet"]
 
 [[chains]]
 name = "Monero"
@@ -258,7 +246,6 @@ derivation_algorithm = "monero_bip39"
 address_algorithm = "monero_main"
 public_key_format = "raw"
 script_type = "account"
-networks = ["mainnet", "testnet"]
 
 [[chains]]
 name = "Zcash"
@@ -268,7 +255,6 @@ derivation_algorithm = "bip32_secp256k1"
 address_algorithm = "zcash_transparent"
 public_key_format = "compressed"
 script_type = "p2pkh"
-networks = ["mainnet"]
 
 [[chains]]
 name = "Bitcoin Gold"
@@ -278,7 +264,6 @@ derivation_algorithm = "bip32_secp256k1"
 address_algorithm = "bitcoin_gold_legacy"
 public_key_format = "compressed"
 script_type = "p2pkh"
-networks = ["mainnet"]
 
 [[chains]]
 name = "Decred"
@@ -288,7 +273,6 @@ derivation_algorithm = "bip32_secp256k1"
 address_algorithm = "decred_p2pkh"
 public_key_format = "compressed"
 script_type = "p2pkh"
-networks = ["mainnet"]
 
 [[chains]]
 name = "Kaspa"
@@ -298,7 +282,6 @@ derivation_algorithm = "bip32_secp256k1"
 address_algorithm = "kaspa_schnorr"
 public_key_format = "compressed"
 script_type = "account"
-networks = ["mainnet"]
 
 [[chains]]
 name = "Dash"
@@ -308,7 +291,6 @@ derivation_algorithm = "bip32_secp256k1"
 address_algorithm = "dash_legacy"
 public_key_format = "compressed"
 script_type = "p2pkh"
-networks = ["mainnet"]
 
 [[chains]]
 name = "Bittensor"
@@ -318,4 +300,294 @@ derivation_algorithm = "substrate_bip39"
 address_algorithm = "bittensor_ss58"
 public_key_format = "raw"
 script_type = "account"
-networks = ["mainnet"]
+
+# ── Testnets (chain_id 46-77) ───────────────────────────────────────────
+# Each testnet is a first-class chain. Recipes mirror their mainnet
+# counterpart byte-for-byte (same curve, same derivation algorithm, same
+# address algorithm); differences in version-byte / HRP are resolved at
+# byte-encoding time inside the runtime, branching on chain identity.
+
+[[chains]]
+name = "Bitcoin Testnet"
+chain_id = 46
+curve = "secp256k1"
+derivation_algorithm = "bip32_secp256k1"
+address_algorithm = "bitcoin"
+public_key_format = "compressed"
+
+[[chains]]
+name = "Bitcoin Testnet4"
+chain_id = 47
+curve = "secp256k1"
+derivation_algorithm = "bip32_secp256k1"
+address_algorithm = "bitcoin"
+public_key_format = "compressed"
+
+[[chains]]
+name = "Bitcoin Signet"
+chain_id = 48
+curve = "secp256k1"
+derivation_algorithm = "bip32_secp256k1"
+address_algorithm = "bitcoin"
+public_key_format = "compressed"
+
+[[chains]]
+name = "Litecoin Testnet"
+chain_id = 49
+curve = "secp256k1"
+derivation_algorithm = "bip32_secp256k1"
+address_algorithm = "litecoin"
+public_key_format = "compressed"
+script_type = "p2pkh"
+
+[[chains]]
+name = "Bitcoin Cash Testnet"
+chain_id = 50
+curve = "secp256k1"
+derivation_algorithm = "bip32_secp256k1"
+address_algorithm = "bitcoin_cash_legacy"
+public_key_format = "compressed"
+script_type = "p2pkh"
+
+[[chains]]
+name = "Bitcoin SV Testnet"
+chain_id = 51
+curve = "secp256k1"
+derivation_algorithm = "bip32_secp256k1"
+address_algorithm = "bitcoin_sv_legacy"
+public_key_format = "compressed"
+script_type = "p2pkh"
+
+[[chains]]
+name = "Dogecoin Testnet"
+chain_id = 52
+curve = "secp256k1"
+derivation_algorithm = "bip32_secp256k1"
+address_algorithm = "dogecoin"
+public_key_format = "compressed"
+script_type = "p2pkh"
+
+[[chains]]
+name = "Zcash Testnet"
+chain_id = 53
+curve = "secp256k1"
+derivation_algorithm = "bip32_secp256k1"
+address_algorithm = "zcash_transparent"
+public_key_format = "compressed"
+script_type = "p2pkh"
+
+[[chains]]
+name = "Decred Testnet"
+chain_id = 54
+curve = "secp256k1"
+derivation_algorithm = "bip32_secp256k1"
+address_algorithm = "decred_p2pkh"
+public_key_format = "compressed"
+script_type = "p2pkh"
+
+[[chains]]
+name = "Kaspa Testnet"
+chain_id = 55
+curve = "secp256k1"
+derivation_algorithm = "bip32_secp256k1"
+address_algorithm = "kaspa_schnorr"
+public_key_format = "compressed"
+script_type = "account"
+
+[[chains]]
+name = "Dash Testnet"
+chain_id = 56
+curve = "secp256k1"
+derivation_algorithm = "bip32_secp256k1"
+address_algorithm = "dash_legacy"
+public_key_format = "compressed"
+script_type = "p2pkh"
+
+[[chains]]
+name = "Ethereum Sepolia"
+chain_id = 57
+curve = "secp256k1"
+derivation_algorithm = "bip32_secp256k1"
+address_algorithm = "evm"
+public_key_format = "uncompressed"
+script_type = "account"
+
+[[chains]]
+name = "Ethereum Hoodi"
+chain_id = 58
+curve = "secp256k1"
+derivation_algorithm = "bip32_secp256k1"
+address_algorithm = "evm"
+public_key_format = "uncompressed"
+script_type = "account"
+
+[[chains]]
+name = "Arbitrum Sepolia"
+chain_id = 59
+curve = "secp256k1"
+derivation_algorithm = "bip32_secp256k1"
+address_algorithm = "evm"
+public_key_format = "uncompressed"
+script_type = "account"
+
+[[chains]]
+name = "Optimism Sepolia"
+chain_id = 60
+curve = "secp256k1"
+derivation_algorithm = "bip32_secp256k1"
+address_algorithm = "evm"
+public_key_format = "uncompressed"
+script_type = "account"
+
+[[chains]]
+name = "Base Sepolia"
+chain_id = 61
+curve = "secp256k1"
+derivation_algorithm = "bip32_secp256k1"
+address_algorithm = "evm"
+public_key_format = "uncompressed"
+script_type = "account"
+
+[[chains]]
+name = "BNB Chain Testnet"
+chain_id = 62
+curve = "secp256k1"
+derivation_algorithm = "bip32_secp256k1"
+address_algorithm = "evm"
+public_key_format = "uncompressed"
+script_type = "account"
+
+[[chains]]
+name = "Avalanche Fuji"
+chain_id = 63
+curve = "secp256k1"
+derivation_algorithm = "bip32_secp256k1"
+address_algorithm = "evm"
+public_key_format = "uncompressed"
+script_type = "account"
+
+[[chains]]
+name = "Polygon Amoy"
+chain_id = 64
+curve = "secp256k1"
+derivation_algorithm = "bip32_secp256k1"
+address_algorithm = "evm"
+public_key_format = "uncompressed"
+script_type = "account"
+
+[[chains]]
+name = "Hyperliquid Testnet"
+chain_id = 65
+curve = "secp256k1"
+derivation_algorithm = "bip32_secp256k1"
+address_algorithm = "evm"
+public_key_format = "uncompressed"
+script_type = "account"
+
+[[chains]]
+name = "Ethereum Classic Mordor"
+chain_id = 66
+curve = "secp256k1"
+derivation_algorithm = "bip32_secp256k1"
+address_algorithm = "evm"
+public_key_format = "uncompressed"
+script_type = "account"
+
+[[chains]]
+name = "Tron Nile"
+chain_id = 67
+curve = "secp256k1"
+derivation_algorithm = "bip32_secp256k1"
+address_algorithm = "tron_base58_check"
+public_key_format = "uncompressed"
+script_type = "account"
+
+[[chains]]
+name = "Solana Devnet"
+chain_id = 68
+curve = "ed25519"
+derivation_algorithm = "slip10_ed25519"
+address_algorithm = "solana"
+public_key_format = "raw"
+script_type = "account"
+
+[[chains]]
+name = "XRP Ledger Testnet"
+chain_id = 69
+curve = "secp256k1"
+derivation_algorithm = "bip32_secp256k1"
+address_algorithm = "xrp_base58_check"
+public_key_format = "compressed"
+script_type = "p2pkh"
+
+[[chains]]
+name = "Stellar Testnet"
+chain_id = 70
+curve = "ed25519"
+derivation_algorithm = "slip10_ed25519"
+address_algorithm = "stellar_strkey"
+public_key_format = "raw"
+script_type = "account"
+
+[[chains]]
+name = "Cardano Preprod"
+chain_id = 71
+curve = "ed25519"
+derivation_algorithm = "bip32_ed25519_icarus"
+address_algorithm = "cardano_shelley_enterprise"
+public_key_format = "raw"
+script_type = "account"
+
+[[chains]]
+name = "Sui Testnet"
+chain_id = 72
+curve = "ed25519"
+derivation_algorithm = "slip10_ed25519"
+address_algorithm = "sui_keccak"
+public_key_format = "raw"
+script_type = "account"
+
+[[chains]]
+name = "Aptos Testnet"
+chain_id = 73
+curve = "ed25519"
+derivation_algorithm = "slip10_ed25519"
+address_algorithm = "aptos_keccak"
+public_key_format = "raw"
+script_type = "account"
+
+[[chains]]
+name = "TON Testnet"
+chain_id = 74
+curve = "ed25519"
+derivation_algorithm = "ton_mnemonic"
+address_algorithm = "ton_v4r2"
+public_key_format = "raw"
+script_type = "account"
+
+[[chains]]
+name = "NEAR Testnet"
+chain_id = 75
+curve = "ed25519"
+derivation_algorithm = "direct_seed_ed25519"
+address_algorithm = "near_hex"
+public_key_format = "raw"
+script_type = "account"
+
+[[chains]]
+name = "Polkadot Westend"
+chain_id = 76
+curve = "sr25519"
+derivation_algorithm = "substrate_bip39"
+address_algorithm = "ss58"
+public_key_format = "raw"
+script_type = "account"
+
+[[chains]]
+name = "Monero Stagenet"
+chain_id = 77
+curve = "ed25519"
+derivation_algorithm = "monero_bip39"
+address_algorithm = "monero_main"
+public_key_format = "raw"
+script_type = "account"

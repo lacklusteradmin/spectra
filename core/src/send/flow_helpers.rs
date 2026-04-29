@@ -6,22 +6,32 @@ use crate::SpectraBridgeError;
 // ─── EVM chain context string mapping ────────────────────────────────────────
 // Returns a tag like "ethereum", "ethereum_sepolia", "ethereum_hoodi",
 // "ethereum_classic", "arbitrum", "optimism", "bnb", "avalanche", "hyperliquid",
-// or empty string for non-EVM.
+// or empty string for non-EVM. Each testnet is its own chain row, so the
+// `ethereum_network_mode` argument is retained only for FFI back-compat
+// with stored wallets — the chain_name alone now uniquely identifies the
+// network.
 
 #[uniffi::export]
 pub fn core_evm_chain_context_tag(chain_name: String, ethereum_network_mode: String) -> String {
+    let _ = ethereum_network_mode; // legacy argument, ignored
     match chain_name.as_str() {
-        "Ethereum" => match ethereum_network_mode.as_str() {
-            "sepolia" => "ethereum_sepolia".to_string(),
-            "hoodi" => "ethereum_hoodi".to_string(),
-            _ => "ethereum".to_string(),
-        },
+        "Ethereum" => "ethereum".to_string(),
+        "Ethereum Sepolia" => "ethereum_sepolia".to_string(),
+        "Ethereum Hoodi" => "ethereum_hoodi".to_string(),
         "Ethereum Classic" => "ethereum_classic".to_string(),
+        "Ethereum Classic Mordor" => "ethereum_classic_mordor".to_string(),
         "Arbitrum" => "arbitrum".to_string(),
+        "Arbitrum Sepolia" => "arbitrum_sepolia".to_string(),
         "Optimism" => "optimism".to_string(),
+        "Optimism Sepolia" => "optimism_sepolia".to_string(),
+        "Base Sepolia" => "base_sepolia".to_string(),
         "BNB Chain" => "bnb".to_string(),
+        "BNB Chain Testnet" => "bnb_testnet".to_string(),
         "Avalanche" => "avalanche".to_string(),
+        "Avalanche Fuji" => "avalanche_fuji".to_string(),
+        "Polygon Amoy" => "polygon_amoy".to_string(),
         "Hyperliquid" => "hyperliquid".to_string(),
+        "Hyperliquid Testnet" => "hyperliquid_testnet".to_string(),
         _ => String::new(),
     }
 }
@@ -186,32 +196,20 @@ fn sui_signed_json_remap(raw: &str) -> Option<String> {
 
 // ─── Seed derivation chain raw lookup ────────────────────────────────────────
 
+/// Returns the canonical "raw" derivation-chain name for a given chain row.
+/// Testnets share their mainnet counterpart's derivation engine, so e.g.
+/// `"Ethereum Sepolia"` returns `"Ethereum"`. The Chain enum is the source
+/// of truth for that mapping.
 #[uniffi::export]
 pub fn core_seed_derivation_chain_raw(chain_name: String) -> Option<String> {
-    let raw = match chain_name.as_str() {
-        "Bitcoin" => "Bitcoin",
-        "Bitcoin Cash" => "Bitcoin Cash",
-        "Bitcoin SV" => "Bitcoin SV",
-        "Litecoin" => "Litecoin",
-        "Dogecoin" => "Dogecoin",
-        "Ethereum" | "BNB Chain" => "Ethereum",
-        "Ethereum Classic" => "Ethereum Classic",
-        "Arbitrum" => "Arbitrum",
-        "Optimism" => "Optimism",
-        "Avalanche" => "Avalanche",
-        "Hyperliquid" => "Hyperliquid",
-        "Tron" => "Tron",
-        "Solana" => "Solana",
-        "Stellar" => "Stellar",
-        "XRP Ledger" => "XRP Ledger",
-        "Cardano" => "Cardano",
-        "Sui" => "Sui",
-        "Aptos" => "Aptos",
-        "TON" => "TON",
-        "Internet Computer" => "Internet Computer",
-        "NEAR" => "NEAR",
-        "Polkadot" => "Polkadot",
-        _ => return None,
+    let chain = crate::registry::Chain::from_display_name(&chain_name)?;
+    let mainnet = chain.mainnet_counterpart();
+    // Some EVM L1/L2/sidechains (BNB Chain, Optimism, etc.) reuse Ethereum's
+    // derivation path; the historical raw-name table preserved that
+    // collapsing. Mirror it here.
+    let raw = match mainnet {
+        crate::registry::Chain::BnbChain => "Ethereum",
+        c => c.chain_display_name(),
     };
     Some(raw.to_string())
 }
@@ -261,7 +259,13 @@ pub fn core_plan_receive_address_resolver(
     chain_name: String,
     is_evm_chain: bool,
 ) -> ReceiveAddressResolverKind {
-    match (symbol.as_str(), chain_name.as_str()) {
+    // Collapse testnets onto their mainnet counterpart so the resolver
+    // dispatch table stays mainnet-only. Both share the same derivation
+    // engine + address shape; only the network parameter differs.
+    let dispatch_name: String = crate::registry::Chain::from_display_name(&chain_name)
+        .map(|c| c.mainnet_counterpart().chain_display_name().to_string())
+        .unwrap_or(chain_name.clone());
+    match (symbol.as_str(), dispatch_name.as_str()) {
         ("BTC", _) => ReceiveAddressResolverKind::BitcoinLegacy,
         ("BCH", "Bitcoin Cash") => ReceiveAddressResolverKind::BitcoinCash,
         ("BSV", "Bitcoin SV") => ReceiveAddressResolverKind::BitcoinSv,
@@ -348,9 +352,16 @@ mod tests {
 
     #[test]
     fn evm_chain_context_ethereum_sepolia() {
+        // After the testnet-as-separate-chain migration, Sepolia is its own
+        // chain row. The legacy `network_mode` argument is preserved for
+        // FFI back-compat but no longer used.
         assert_eq!(
-            core_evm_chain_context_tag("Ethereum".to_string(), "sepolia".to_string()),
+            core_evm_chain_context_tag("Ethereum Sepolia".to_string(), String::new()),
             "ethereum_sepolia"
+        );
+        assert_eq!(
+            core_evm_chain_context_tag("Ethereum".to_string(), "ignored".to_string()),
+            "ethereum"
         );
     }
 

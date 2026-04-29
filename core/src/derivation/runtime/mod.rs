@@ -53,10 +53,39 @@ pub(super) const CHAIN_KASPA: u32 = 26;
 pub(super) const CHAIN_DASH: u32 = 27;
 pub(super) const CHAIN_BITTENSOR: u32 = 28;
 
-pub(super) const NETWORK_MAINNET: u32 = 0;
-pub(super) const NETWORK_TESTNET: u32 = 1;
-pub(super) const NETWORK_TESTNET4: u32 = 2;
-pub(super) const NETWORK_SIGNET: u32 = 3;
+// Testnet chain IDs — match registry::Chain layout.
+pub(super) const CHAIN_BITCOIN_TESTNET: u32 = 46;
+pub(super) const CHAIN_BITCOIN_TESTNET4: u32 = 47;
+pub(super) const CHAIN_BITCOIN_SIGNET: u32 = 48;
+pub(super) const CHAIN_LITECOIN_TESTNET: u32 = 49;
+pub(super) const CHAIN_BITCOIN_CASH_TESTNET: u32 = 50;
+pub(super) const CHAIN_BITCOIN_SV_TESTNET: u32 = 51;
+pub(super) const CHAIN_DOGECOIN_TESTNET: u32 = 52;
+pub(super) const CHAIN_ZCASH_TESTNET: u32 = 53;
+pub(super) const CHAIN_DECRED_TESTNET: u32 = 54;
+pub(super) const CHAIN_KASPA_TESTNET: u32 = 55;
+pub(super) const CHAIN_DASH_TESTNET: u32 = 56;
+pub(super) const CHAIN_ETHEREUM_SEPOLIA: u32 = 57;
+pub(super) const CHAIN_ETHEREUM_HOODI: u32 = 58;
+pub(super) const CHAIN_ARBITRUM_SEPOLIA: u32 = 59;
+pub(super) const CHAIN_OPTIMISM_SEPOLIA: u32 = 60;
+pub(super) const CHAIN_BASE_SEPOLIA: u32 = 61;
+pub(super) const CHAIN_BNB_TESTNET: u32 = 62;
+pub(super) const CHAIN_AVALANCHE_FUJI: u32 = 63;
+pub(super) const CHAIN_POLYGON_AMOY: u32 = 64;
+pub(super) const CHAIN_HYPERLIQUID_TESTNET: u32 = 65;
+pub(super) const CHAIN_ETHEREUM_CLASSIC_MORDOR: u32 = 66;
+pub(super) const CHAIN_TRON_NILE: u32 = 67;
+pub(super) const CHAIN_SOLANA_DEVNET: u32 = 68;
+pub(super) const CHAIN_XRP_TESTNET: u32 = 69;
+pub(super) const CHAIN_STELLAR_TESTNET: u32 = 70;
+pub(super) const CHAIN_CARDANO_PREPROD: u32 = 71;
+pub(super) const CHAIN_SUI_TESTNET: u32 = 72;
+pub(super) const CHAIN_APTOS_TESTNET: u32 = 73;
+pub(super) const CHAIN_TON_TESTNET: u32 = 74;
+pub(super) const CHAIN_NEAR_TESTNET: u32 = 75;
+pub(super) const CHAIN_POLKADOT_WESTEND: u32 = 76;
+pub(super) const CHAIN_MONERO_STAGENET: u32 = 77;
 
 pub(super) const CURVE_SECP256K1: u32 = 0;
 pub(super) const CURVE_ED25519: u32 = 1;
@@ -125,7 +154,6 @@ pub struct UniFFIDerivationRequest {
     // value is ignored by the Rust side.
     #[serde(default)]
     pub chain: Option<u32>,
-    pub network: u32,
     pub curve: u32,
     pub requested_outputs: u32,
     pub derivation_algorithm: u32,
@@ -149,7 +177,6 @@ pub struct UniFFIPrivateKeyDerivationRequest {
     // value is ignored by the Rust side.
     #[serde(default)]
     pub chain: Option<u32>,
-    pub network: u32,
     pub curve: u32,
     pub address_algorithm: u32,
     pub public_key_format: u32,
@@ -173,7 +200,6 @@ pub struct UniFFIMaterialRequest {
     // value is ignored by the Rust side.
     #[serde(default)]
     pub chain: Option<u32>,
-    pub network: u32,
     pub curve: u32,
     pub derivation_algorithm: u32,
     pub address_algorithm: u32,
@@ -196,7 +222,6 @@ pub struct UniFFIPrivateKeyMaterialRequest {
     // value is ignored by the Rust side.
     #[serde(default)]
     pub chain: Option<u32>,
-    pub network: u32,
     pub curve: u32,
     pub address_algorithm: u32,
     pub public_key_format: u32,
@@ -218,7 +243,6 @@ pub struct UniFFIMaterialResponse {
 
 struct ParsedRequest {
     chain: Chain,
-    network: NetworkFlavor,
     curve: CurveFamily,
     requested_outputs: u32,
     derivation_algorithm: DerivationAlgorithm,
@@ -253,7 +277,7 @@ impl Drop for ParsedRequest {
     }
 }
 
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, PartialEq, Eq)]
 enum Chain {
     Bitcoin,
     BitcoinCash,
@@ -284,14 +308,41 @@ enum Chain {
     Kaspa,
     Dash,
     Bittensor,
-}
-
-#[derive(Clone, Copy, PartialEq, Eq)]
-enum NetworkFlavor {
-    Mainnet,
-    Testnet,
-    Testnet4,
-    Signet,
+    // Testnets — each is its own chain with its own derivation row in
+    // derivation_presets.toml. Network-flavor parameters are gone; the
+    // chain itself encodes mainnet vs testnet at every byte-selection site.
+    BitcoinTestnet,
+    BitcoinTestnet4,
+    BitcoinSignet,
+    LitecoinTestnet,
+    BitcoinCashTestnet,
+    BitcoinSvTestnet,
+    DogecoinTestnet,
+    ZcashTestnet,
+    DecredTestnet,
+    KaspaTestnet,
+    DashTestnet,
+    EthereumSepolia,
+    EthereumHoodi,
+    ArbitrumSepolia,
+    OptimismSepolia,
+    BaseSepolia,
+    BnbTestnet,
+    AvalancheFuji,
+    PolygonAmoy,
+    HyperliquidTestnet,
+    EthereumClassicMordor,
+    TronNile,
+    SolanaDevnet,
+    XrpTestnet,
+    StellarTestnet,
+    CardanoPreprod,
+    SuiTestnet,
+    AptosTestnet,
+    TonTestnet,
+    NearTestnet,
+    PolkadotWestend,
+    MoneroStagenet,
 }
 
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -515,7 +566,6 @@ fn derive_address_for_chain(
     let _ = chain_id; // chain is inferred from address_algorithm at parse time
     let request = UniFFIDerivationRequest {
         chain: None,
-        network: NETWORK_MAINNET,
         curve,
         requested_outputs: OUTPUT_ADDRESS,
         derivation_algorithm: deriv_alg,
@@ -633,7 +683,6 @@ pub(crate) fn derive_key_material_for_chain_with_overrides(
 
     let request = UniFFIDerivationRequest {
         chain: None,
-        network: NETWORK_MAINNET,
         curve,
         requested_outputs: OUTPUT_ADDRESS | OUTPUT_PUBLIC_KEY | OUTPUT_PRIVATE_KEY,
         derivation_algorithm: deriv_alg,
@@ -752,7 +801,6 @@ fn parse_uniffi_request(
     };
     Ok(ParsedRequest {
         chain,
-        network: parse_network(request.network)?,
         curve: parse_curve(request.curve)?,
         requested_outputs: request.requested_outputs,
         derivation_algorithm: parse_derivation_algorithm(request.derivation_algorithm)?,
@@ -779,7 +827,6 @@ fn parse_uniffi_private_key_request(
     };
     Ok(ParsedPrivateKeyRequest {
         chain,
-        network: parse_network(request.network)?,
         curve: parse_curve(request.curve)?,
         address_algorithm,
         public_key_format: parse_public_key_format(request.public_key_format)?,
@@ -790,7 +837,6 @@ fn parse_uniffi_private_key_request(
 
 struct ParsedPrivateKeyRequest {
     chain: Chain,
-    network: NetworkFlavor,
     curve: CurveFamily,
     address_algorithm: AddressAlgorithm,
     public_key_format: PublicKeyFormat,
@@ -860,7 +906,6 @@ fn parse_uniffi_material_request(
     let derivation_path = require_material_path(request.derivation_path)?;
     let parsed = parse_uniffi_request(UniFFIDerivationRequest {
         chain: request.chain,
-        network: request.network,
         curve: request.curve,
         requested_outputs: OUTPUT_ADDRESS | OUTPUT_PRIVATE_KEY,
         derivation_algorithm: request.derivation_algorithm,
@@ -887,7 +932,6 @@ fn parse_uniffi_private_key_material_request(
     let derivation_path = require_material_path(request.derivation_path)?;
     let parsed = parse_uniffi_private_key_request(UniFFIPrivateKeyDerivationRequest {
         chain: request.chain,
-        network: request.network,
         curve: request.curve,
         address_algorithm: request.address_algorithm,
         public_key_format: request.public_key_format,
@@ -982,7 +1026,6 @@ fn derive_from_private_key(request: ParsedPrivateKeyRequest) -> Result<DerivedOu
 
         let address = derive_address_from_keys(
             request.chain,
-            request.network,
             request.address_algorithm,
             request.script_type,
             &public_key,
@@ -1001,8 +1044,11 @@ fn derive_from_private_key(request: ParsedPrivateKeyRequest) -> Result<DerivedOu
 
     // Polkadot / Bittensor share sr25519 derivation. Difference is the SS58
     // network prefix used in the human-readable address: 0 for Polkadot, 42
-    // for Bittensor (substrate-generic).
-    if matches!(request.chain, Chain::Polkadot | Chain::Bittensor) {
+    // for Bittensor (substrate-generic), 42 for Polkadot Westend.
+    if matches!(
+        request.chain,
+        Chain::Polkadot | Chain::Bittensor | Chain::PolkadotWestend
+    ) {
         if request.curve != CurveFamily::Sr25519 {
             return Err("Polkadot/Bittensor currently require sr25519.".to_string());
         }
@@ -1010,7 +1056,11 @@ fn derive_from_private_key(request: ParsedPrivateKeyRequest) -> Result<DerivedOu
             .map_err(|e| format!("Invalid sr25519 mini-secret: {e}"))?;
         let keypair = mini.expand_to_keypair(schnorrkel::ExpansionMode::Ed25519);
         let public_key = keypair.public.to_bytes();
-        let prefix = if matches!(request.chain, Chain::Bittensor) { 42 } else { 0 };
+        let prefix: u16 = if matches!(request.chain, Chain::Bittensor | Chain::PolkadotWestend) {
+            42
+        } else {
+            0
+        };
         return Ok(DerivedOutput {
             address: Some(encode_ss58(&public_key, prefix)),
             public_key_hex: Some(hex::encode(public_key)),
@@ -1020,13 +1070,13 @@ fn derive_from_private_key(request: ParsedPrivateKeyRequest) -> Result<DerivedOu
 
     // Monero: the 32-byte private key is the spend seed; sc_reduce32 + Keccak
     // produce the full spend/view key pair and we encode as Monero main address.
-    if matches!(request.chain, Chain::Monero) {
+    if matches!(request.chain, Chain::Monero | Chain::MoneroStagenet) {
         if request.curve != CurveFamily::Ed25519 {
             return Err("Monero currently requires ed25519.".to_string());
         }
         let (private_spend, public_spend, _private_view, public_view) =
             derive_monero_keys_from_spend_seed(&request.private_key)?;
-        let address = encode_monero_main_address(&public_spend, &public_view, request.network)?;
+        let address = encode_monero_main_address(&public_spend, &public_view, request.chain)?;
         let mut both = [0u8; 64];
         both[..32].copy_from_slice(&public_spend);
         both[32..].copy_from_slice(&public_view);
@@ -1054,27 +1104,27 @@ fn derive_from_private_key(request: ParsedPrivateKeyRequest) -> Result<DerivedOu
 
 fn derive_address_from_keys(
     chain: Chain,
-    network: NetworkFlavor,
     address_algorithm: AddressAlgorithm,
     script_type: ScriptType,
     public_key: &PublicKey,
     secp: &Secp256k1<All>,
 ) -> Result<String, String> {
-    match chain {
+    match mainnet_counterpart(chain) {
         Chain::Bitcoin => {
             if !matches!(address_algorithm, AddressAlgorithm::Bitcoin) {
                 return Err("Bitcoin requests require the Bitcoin address algorithm.".to_string());
             }
             derive_bitcoin_address_for_network(
-                bitcoin_network_params(network),
+                bitcoin_network_params_for_chain(chain),
                 script_type,
                 public_key,
                 secp,
             )
         }
         Chain::BitcoinCash | Chain::BitcoinSv => {
+            let v = if matches!(chain, Chain::BitcoinCashTestnet | Chain::BitcoinSvTestnet) { 0x6fu8 } else { 0x00u8 };
             let pubkey_hash = hash160_bytes(&public_key.serialize());
-            let mut payload = vec![0x00u8];
+            let mut payload = vec![v];
             payload.extend_from_slice(&pubkey_hash);
             Ok(base58check_encode(&payload, bs58::Alphabet::DEFAULT))
         }
@@ -1097,31 +1147,31 @@ fn derive_address_from_keys(
             Ok(encode_kaspa_schnorr(&x_only))
         }
         Chain::Dash => {
+            let v = if matches!(chain, Chain::DashTestnet) { 0x8Cu8 } else { 0x4Cu8 };
             let pubkey_hash = hash160_bytes(&public_key.serialize());
-            let mut payload = vec![0x4Cu8];
+            let mut payload = vec![v];
             payload.extend_from_slice(&pubkey_hash);
             Ok(base58check_encode(&payload, bs58::Alphabet::DEFAULT))
         }
         Chain::Litecoin => {
+            let v = if matches!(chain, Chain::LitecoinTestnet) { 0x6fu8 } else { 0x30u8 };
             let pubkey_hash = hash160_bytes(&public_key.serialize());
-            let mut payload = vec![0x30u8];
+            let mut payload = vec![v];
             payload.extend_from_slice(&pubkey_hash);
             Ok(base58check_encode(&payload, bs58::Alphabet::DEFAULT))
         }
         Chain::Zcash => {
             // Mainnet transparent P2PKH: 2-byte version 0x1CB8 || hash160 ||
             // 4-byte sha256d checksum, base58-encoded → "t1..." addresses.
+            // Testnet ("Zcash Testnet") uses 2-byte version 0x1D25 → "tm..." addresses.
+            let prefix: [u8; 2] = if matches!(chain, Chain::ZcashTestnet) { [0x1Du8, 0x25u8] } else { [0x1Cu8, 0xB8u8] };
             let pubkey_hash = hash160_bytes(&public_key.serialize());
-            let mut payload = vec![0x1Cu8, 0xB8u8];
+            let mut payload = prefix.to_vec();
             payload.extend_from_slice(&pubkey_hash);
             Ok(base58check_encode(&payload, bs58::Alphabet::DEFAULT))
         }
         Chain::Dogecoin => {
-            let version = if matches!(network, NetworkFlavor::Testnet) {
-                0x71
-            } else {
-                0x1e
-            };
+            let version = if matches!(chain, Chain::DogecoinTestnet) { 0x71 } else { 0x1e };
             let pubkey_hash = hash160_bytes(&public_key.serialize());
             let mut payload = vec![version];
             payload.extend_from_slice(&pubkey_hash);
@@ -1149,10 +1199,10 @@ fn derive_address_from_keys(
     }
 }
 
-fn bitcoin_network_params(network: NetworkFlavor) -> BitcoinNetworkParams {
-    match network {
-        NetworkFlavor::Mainnet => BTC_MAINNET,
-        NetworkFlavor::Testnet | NetworkFlavor::Testnet4 | NetworkFlavor::Signet => BTC_TESTNET,
+fn bitcoin_network_params_for_chain(chain: Chain) -> BitcoinNetworkParams {
+    match chain {
+        Chain::BitcoinTestnet | Chain::BitcoinTestnet4 | Chain::BitcoinSignet => BTC_TESTNET,
+        _ => BTC_MAINNET,
     }
 }
 
@@ -1177,7 +1227,7 @@ fn derive_ed25519_chain_address(
             }
         }
         Chain::Cardano => {
-            derive_cardano_shelley_enterprise_address(public_key, NetworkFlavor::Mainnet)
+            derive_cardano_shelley_enterprise_address(public_key, chain)
         }
         Chain::Sui => {
             let mut hasher = Keccak::v256();
@@ -1278,17 +1328,39 @@ fn parse_chain(value: u32) -> Result<Chain, String> {
         CHAIN_KASPA => Ok(Chain::Kaspa),
         CHAIN_DASH => Ok(Chain::Dash),
         CHAIN_BITTENSOR => Ok(Chain::Bittensor),
+        CHAIN_BITCOIN_TESTNET => Ok(Chain::BitcoinTestnet),
+        CHAIN_BITCOIN_TESTNET4 => Ok(Chain::BitcoinTestnet4),
+        CHAIN_BITCOIN_SIGNET => Ok(Chain::BitcoinSignet),
+        CHAIN_LITECOIN_TESTNET => Ok(Chain::LitecoinTestnet),
+        CHAIN_BITCOIN_CASH_TESTNET => Ok(Chain::BitcoinCashTestnet),
+        CHAIN_BITCOIN_SV_TESTNET => Ok(Chain::BitcoinSvTestnet),
+        CHAIN_DOGECOIN_TESTNET => Ok(Chain::DogecoinTestnet),
+        CHAIN_ZCASH_TESTNET => Ok(Chain::ZcashTestnet),
+        CHAIN_DECRED_TESTNET => Ok(Chain::DecredTestnet),
+        CHAIN_KASPA_TESTNET => Ok(Chain::KaspaTestnet),
+        CHAIN_DASH_TESTNET => Ok(Chain::DashTestnet),
+        CHAIN_ETHEREUM_SEPOLIA => Ok(Chain::EthereumSepolia),
+        CHAIN_ETHEREUM_HOODI => Ok(Chain::EthereumHoodi),
+        CHAIN_ARBITRUM_SEPOLIA => Ok(Chain::ArbitrumSepolia),
+        CHAIN_OPTIMISM_SEPOLIA => Ok(Chain::OptimismSepolia),
+        CHAIN_BASE_SEPOLIA => Ok(Chain::BaseSepolia),
+        CHAIN_BNB_TESTNET => Ok(Chain::BnbTestnet),
+        CHAIN_AVALANCHE_FUJI => Ok(Chain::AvalancheFuji),
+        CHAIN_POLYGON_AMOY => Ok(Chain::PolygonAmoy),
+        CHAIN_HYPERLIQUID_TESTNET => Ok(Chain::HyperliquidTestnet),
+        CHAIN_ETHEREUM_CLASSIC_MORDOR => Ok(Chain::EthereumClassicMordor),
+        CHAIN_TRON_NILE => Ok(Chain::TronNile),
+        CHAIN_SOLANA_DEVNET => Ok(Chain::SolanaDevnet),
+        CHAIN_XRP_TESTNET => Ok(Chain::XrpTestnet),
+        CHAIN_STELLAR_TESTNET => Ok(Chain::StellarTestnet),
+        CHAIN_CARDANO_PREPROD => Ok(Chain::CardanoPreprod),
+        CHAIN_SUI_TESTNET => Ok(Chain::SuiTestnet),
+        CHAIN_APTOS_TESTNET => Ok(Chain::AptosTestnet),
+        CHAIN_TON_TESTNET => Ok(Chain::TonTestnet),
+        CHAIN_NEAR_TESTNET => Ok(Chain::NearTestnet),
+        CHAIN_POLKADOT_WESTEND => Ok(Chain::PolkadotWestend),
+        CHAIN_MONERO_STAGENET => Ok(Chain::MoneroStagenet),
         other => Err(format!("Unsupported chain id: {other}")),
-    }
-}
-
-fn parse_network(value: u32) -> Result<NetworkFlavor, String> {
-    match value {
-        NETWORK_MAINNET => Ok(NetworkFlavor::Mainnet),
-        NETWORK_TESTNET => Ok(NetworkFlavor::Testnet),
-        NETWORK_TESTNET4 => Ok(NetworkFlavor::Testnet4),
-        NETWORK_SIGNET => Ok(NetworkFlavor::Signet),
-        other => Err(format!("Unsupported network id: {other}")),
     }
 }
 
@@ -1374,11 +1446,25 @@ fn derive(request: ParsedRequest) -> Result<DerivedOutput, String> {
     // Validate cross-field constraints before dispatching to chain-specific logic.
     validate_request(&request)?;
 
-    // Dispatch by chain family; each branch handles address/key formatting specifics.
-    match request.chain {
+    // Dispatch by family using `mainnet_counterpart` so testnet variants
+    // route to the same shared derivation routine; the routine branches on
+    // `request.chain` for byte-selection differences.
+    let actual = request.chain;
+    match mainnet_counterpart(actual) {
         Chain::Bitcoin => derive_bitcoin(request),
-        Chain::BitcoinCash => derive_bitcoin_legacy_family(request, 0x00),
-        Chain::BitcoinSv => derive_bitcoin_legacy_family(request, 0x00),
+        Chain::BitcoinCash => {
+            let v = if matches!(actual, Chain::BitcoinCashTestnet) { 0x6f } else { 0x00 };
+            derive_bitcoin_legacy_family(request, v)
+        }
+        Chain::BitcoinSv => {
+            let v = if matches!(actual, Chain::BitcoinSvTestnet) { 0x6f } else { 0x00 };
+            derive_bitcoin_legacy_family(request, v)
+        }
+        Chain::Dash => {
+            let v = if matches!(actual, Chain::DashTestnet) { 0x8C } else { 0x4C };
+            derive_bitcoin_legacy_family(request, v)
+        }
+        Chain::BitcoinGold => derive_bitcoin_legacy_family(request, 0x26),
         Chain::Litecoin => derive_litecoin(request),
         Chain::Dogecoin => derive_dogecoin(request),
         Chain::Ethereum
@@ -1401,10 +1487,9 @@ fn derive(request: ParsedRequest) -> Result<DerivedOutput, String> {
         Chain::Bittensor => derive_bittensor(request),
         Chain::Monero => derive_monero(request),
         Chain::Zcash => derive_zcash_transparent(request),
-        Chain::BitcoinGold => derive_bitcoin_legacy_family(request, 0x26),
         Chain::Decred => derive_decred(request),
         Chain::Kaspa => derive_kaspa(request),
-        Chain::Dash => derive_bitcoin_legacy_family(request, 0x4C),
+        _ => Err("internal error: mainnet_counterpart returned a testnet variant".to_string()),
     }
 }
 
@@ -1463,10 +1548,6 @@ fn validate_request(request: &ParsedRequest) -> Result<(), String> {
         // DirectSeedEd25519, TonMnemonic, Slip10Ed25519, Bip32Ed25519Icarus,
         // MoneroBip39 are all valid for ed25519 chains; pipeline selection
         // happens in `derive_ed25519_material` (or in chain-specific code).
-    }
-
-    if !is_network_supported(request.chain, request.network) {
-        return Err("Network is not supported for this chain.".to_string());
     }
 
     validate_request_algorithms(request)?;
@@ -1531,24 +1612,82 @@ fn chain_id(chain: Chain) -> u32 {
         Chain::Decred => CHAIN_DECRED,
         Chain::Kaspa => CHAIN_KASPA,
         Chain::Dash => CHAIN_DASH,
+        Chain::BitcoinTestnet => CHAIN_BITCOIN_TESTNET,
+        Chain::BitcoinTestnet4 => CHAIN_BITCOIN_TESTNET4,
+        Chain::BitcoinSignet => CHAIN_BITCOIN_SIGNET,
+        Chain::LitecoinTestnet => CHAIN_LITECOIN_TESTNET,
+        Chain::BitcoinCashTestnet => CHAIN_BITCOIN_CASH_TESTNET,
+        Chain::BitcoinSvTestnet => CHAIN_BITCOIN_SV_TESTNET,
+        Chain::DogecoinTestnet => CHAIN_DOGECOIN_TESTNET,
+        Chain::ZcashTestnet => CHAIN_ZCASH_TESTNET,
+        Chain::DecredTestnet => CHAIN_DECRED_TESTNET,
+        Chain::KaspaTestnet => CHAIN_KASPA_TESTNET,
+        Chain::DashTestnet => CHAIN_DASH_TESTNET,
+        Chain::EthereumSepolia => CHAIN_ETHEREUM_SEPOLIA,
+        Chain::EthereumHoodi => CHAIN_ETHEREUM_HOODI,
+        Chain::ArbitrumSepolia => CHAIN_ARBITRUM_SEPOLIA,
+        Chain::OptimismSepolia => CHAIN_OPTIMISM_SEPOLIA,
+        Chain::BaseSepolia => CHAIN_BASE_SEPOLIA,
+        Chain::BnbTestnet => CHAIN_BNB_TESTNET,
+        Chain::AvalancheFuji => CHAIN_AVALANCHE_FUJI,
+        Chain::PolygonAmoy => CHAIN_POLYGON_AMOY,
+        Chain::HyperliquidTestnet => CHAIN_HYPERLIQUID_TESTNET,
+        Chain::EthereumClassicMordor => CHAIN_ETHEREUM_CLASSIC_MORDOR,
+        Chain::TronNile => CHAIN_TRON_NILE,
+        Chain::SolanaDevnet => CHAIN_SOLANA_DEVNET,
+        Chain::XrpTestnet => CHAIN_XRP_TESTNET,
+        Chain::StellarTestnet => CHAIN_STELLAR_TESTNET,
+        Chain::CardanoPreprod => CHAIN_CARDANO_PREPROD,
+        Chain::SuiTestnet => CHAIN_SUI_TESTNET,
+        Chain::AptosTestnet => CHAIN_APTOS_TESTNET,
+        Chain::TonTestnet => CHAIN_TON_TESTNET,
+        Chain::NearTestnet => CHAIN_NEAR_TESTNET,
+        Chain::PolkadotWestend => CHAIN_POLKADOT_WESTEND,
+        Chain::MoneroStagenet => CHAIN_MONERO_STAGENET,
+    }
+}
+
+/// Returns the mainnet variant for a testnet chain, or `chain` itself for
+/// mainnet chains. Used by family-dispatch sites that share derivation
+/// logic between mainnet and testnet (e.g., EVM chains, Bitcoin family).
+fn mainnet_counterpart(chain: Chain) -> Chain {
+    match chain {
+        Chain::BitcoinTestnet | Chain::BitcoinTestnet4 | Chain::BitcoinSignet => Chain::Bitcoin,
+        Chain::LitecoinTestnet => Chain::Litecoin,
+        Chain::BitcoinCashTestnet => Chain::BitcoinCash,
+        Chain::BitcoinSvTestnet => Chain::BitcoinSv,
+        Chain::DogecoinTestnet => Chain::Dogecoin,
+        Chain::ZcashTestnet => Chain::Zcash,
+        Chain::DecredTestnet => Chain::Decred,
+        Chain::KaspaTestnet => Chain::Kaspa,
+        Chain::DashTestnet => Chain::Dash,
+        Chain::EthereumSepolia | Chain::EthereumHoodi => Chain::Ethereum,
+        Chain::ArbitrumSepolia => Chain::Arbitrum,
+        Chain::OptimismSepolia => Chain::Optimism,
+        Chain::BaseSepolia => Chain::Ethereum,
+        Chain::BnbTestnet => Chain::Ethereum,
+        Chain::AvalancheFuji => Chain::Avalanche,
+        Chain::PolygonAmoy => Chain::Ethereum,
+        Chain::HyperliquidTestnet => Chain::Hyperliquid,
+        Chain::EthereumClassicMordor => Chain::EthereumClassic,
+        Chain::TronNile => Chain::Tron,
+        Chain::SolanaDevnet => Chain::Solana,
+        Chain::XrpTestnet => Chain::Xrp,
+        Chain::StellarTestnet => Chain::Stellar,
+        Chain::CardanoPreprod => Chain::Cardano,
+        Chain::SuiTestnet => Chain::Sui,
+        Chain::AptosTestnet => Chain::Aptos,
+        Chain::TonTestnet => Chain::Ton,
+        Chain::NearTestnet => Chain::Near,
+        Chain::PolkadotWestend => Chain::Polkadot,
+        Chain::MoneroStagenet => Chain::Monero,
+        c => c,
     }
 }
 
 fn is_secp_chain(chain: Chain) -> bool {
     super::presets::preset_by_chain_id(chain_id(chain))
         .map(|preset| preset.curve == CURVE_SECP256K1)
-        .unwrap_or(false)
-}
-
-fn is_network_supported(chain: Chain, network: NetworkFlavor) -> bool {
-    let wire_network = match network {
-        NetworkFlavor::Mainnet => NETWORK_MAINNET,
-        NetworkFlavor::Testnet => NETWORK_TESTNET,
-        NetworkFlavor::Testnet4 => NETWORK_TESTNET4,
-        NetworkFlavor::Signet => NETWORK_SIGNET,
-    };
-    super::presets::preset_by_chain_id(chain_id(chain))
-        .map(|preset| preset.networks.contains(&wire_network))
         .unwrap_or(false)
 }
 
@@ -1692,7 +1831,7 @@ fn derive_litecoin(request: ParsedRequest) -> Result<DerivedOutput, String> {
 }
 
 fn derive_dogecoin(request: ParsedRequest) -> Result<DerivedOutput, String> {
-    let version = if matches!(request.network, NetworkFlavor::Testnet) {
+    let version = if matches!(request.chain, Chain::DogecoinTestnet) {
         0x71
     } else {
         0x1e
@@ -1923,7 +2062,7 @@ fn derive_cardano(request: ParsedRequest) -> Result<DerivedOutput, String> {
     let address = if requests_output(request.requested_outputs, OUTPUT_ADDRESS) {
         Some(derive_cardano_shelley_enterprise_address(
             &public_key,
-            request.network,
+            request.chain,
         )?)
     } else {
         None
@@ -2065,9 +2204,10 @@ fn derive_near(request: ParsedRequest) -> Result<DerivedOutput, String> {
 
 fn derive_polkadot(request: ParsedRequest) -> Result<DerivedOutput, String> {
     let (mini_secret, public_key) = derive_substrate_sr25519_material(&request)?;
+    let prefix: u16 = if matches!(request.chain, Chain::PolkadotWestend) { 42 } else { 0 };
     Ok(DerivedOutput {
         address: if requests_output(request.requested_outputs, OUTPUT_ADDRESS) {
-            Some(encode_ss58(&public_key, 0))
+            Some(encode_ss58(&public_key, prefix))
         } else {
             None
         },
@@ -2112,7 +2252,7 @@ fn derive_monero(request: ParsedRequest) -> Result<DerivedOutput, String> {
         derive_monero_keys_from_request(&request)?;
     Ok(DerivedOutput {
         address: if requests_output(request.requested_outputs, OUTPUT_ADDRESS) {
-            Some(encode_monero_main_address(&public_spend, &public_view, request.network)?)
+            Some(encode_monero_main_address(&public_spend, &public_view, request.chain)?)
         } else {
             None
         },
@@ -2173,7 +2313,7 @@ fn derive_bitcoin_address(
     secp: &Secp256k1<All>,
 ) -> Result<String, String> {
     derive_bitcoin_address_for_network(
-        bitcoin_network_params(request.network),
+        bitcoin_network_params_for_chain(request.chain),
         script_type,
         public_key,
         secp,
@@ -2453,7 +2593,7 @@ fn cardano_icarus_derive_child(
 
 fn derive_cardano_shelley_enterprise_address(
     public_key: &[u8; 32],
-    network: NetworkFlavor,
+    chain: Chain,
 ) -> Result<String, String> {
     // CIP-19 Shelley address: header_byte || payment_credential.
     //   header: upper 4 bits = address type (0b0110 = enterprise, payment
@@ -2470,21 +2610,15 @@ fn derive_cardano_shelley_enterprise_address(
     hasher.update(public_key);
     let payment_hash = hasher.finalize();
 
-    let network_id: u8 = match network {
-        NetworkFlavor::Mainnet => 1,
-        NetworkFlavor::Testnet | NetworkFlavor::Testnet4 | NetworkFlavor::Signet => 0,
-    };
+    let is_mainnet = matches!(chain, Chain::Cardano);
+    let network_id: u8 = if is_mainnet { 1 } else { 0 };
     let header = 0x60 | network_id;
 
     let mut payload = Vec::with_capacity(29);
     payload.push(header);
     payload.extend_from_slice(&payment_hash);
 
-    let hrp_str = if matches!(network, NetworkFlavor::Mainnet) {
-        "addr"
-    } else {
-        "addr_test"
-    };
+    let hrp_str = if is_mainnet { "addr" } else { "addr_test" };
     let hrp = bech32::Hrp::parse(hrp_str).map_err(display_error)?;
     bech32::encode::<bech32::Bech32>(hrp, &payload).map_err(display_error)
 }
@@ -2631,17 +2765,15 @@ fn derive_monero_keys_from_spend_seed(
 fn encode_monero_main_address(
     public_spend: &[u8; 32],
     public_view: &[u8; 32],
-    network: NetworkFlavor,
+    chain: Chain,
 ) -> Result<String, String> {
     // Monero standard address: network_byte || public_spend (32) ||
     // public_view (32) || keccak256(prev)[0..4]. 69 bytes total → 95 chars
     // in the chunked Base58 encoding.
-    let network_byte: u8 = match network {
-        NetworkFlavor::Mainnet => 0x12,
-        NetworkFlavor::Testnet => 0x35,
-        NetworkFlavor::Testnet4 | NetworkFlavor::Signet => {
-            return Err("Monero only supports Mainnet and Testnet networks.".to_string())
-        }
+    let network_byte: u8 = match chain {
+        Chain::Monero => 0x12,
+        Chain::MoneroStagenet => 0x18,
+        _ => return Err("Monero address encoding requires a Monero chain variant.".to_string()),
     };
     let mut payload = Vec::with_capacity(69);
     payload.push(network_byte);

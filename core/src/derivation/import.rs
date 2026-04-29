@@ -892,7 +892,10 @@ fn validate_watch_only_draft_addresses(
             return false;
         }
 
-        // Validate each address (Bitcoin xpub skips per-address validation)
+        // Validate each address (Bitcoin xpub skips per-address validation).
+        // Watch-only Bitcoin imports tolerate either network family because
+        // the user may type a testnet address against the mainnet "Bitcoin"
+        // chain row and we still want to accept it for mistake-resilience.
         if !has_xpub || !addresses.is_empty() {
             for addr in addresses {
                 let result = validate_address(AddressValidationRequest {
@@ -901,19 +904,13 @@ fn validate_watch_only_draft_addresses(
                     network_mode: None,
                 });
                 if !result.is_valid {
-                    // Bitcoin addresses can be any network for watch-only
                     if kind == "bitcoin" {
                         let testnet = validate_address(AddressValidationRequest {
-                            kind: kind.to_string(),
+                            kind: "bitcoinTestnet".to_string(),
                             value: addr.clone(),
-                            network_mode: Some("testnet".to_string()),
+                            network_mode: None,
                         });
-                        let signet = validate_address(AddressValidationRequest {
-                            kind: kind.to_string(),
-                            value: addr.clone(),
-                            network_mode: Some("signet".to_string()),
-                        });
-                        if !testnet.is_valid && !signet.is_valid {
+                        if !testnet.is_valid {
                             return false;
                         }
                     } else {

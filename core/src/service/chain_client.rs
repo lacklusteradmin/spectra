@@ -59,16 +59,28 @@ impl ChainClient {
         chain: Chain,
         service: &WalletService,
     ) -> Result<Self, SpectraBridgeError> {
+        // Each chain (mainnet OR testnet) has its own endpoint slot keyed
+        // by its frozen `Chain::id()`, so users can configure independent
+        // RPC URLs. EVM testnets share the EvmClient — its chainid is read
+        // from `chain.evm_chain_id()` which already returns testnet ids
+        // (Sepolia=11155111, Hoodi=560048, etc.).
         let endpoints = service.endpoints_for(chain.id()).await;
-        Ok(match chain {
+        // For non-EVM testnets we dispatch on `mainnet_counterpart()` so a
+        // single set of per-chain client types covers both flavors. The
+        // Bitcoin / Litecoin / Cash / SV / Dogecoin clients don't carry
+        // network state internally — the network parameter is per-call.
+        let dispatch = chain.mainnet_counterpart();
+        Ok(match dispatch {
             Chain::Bitcoin => ChainClient::Bitcoin(BitcoinClient::new(HttpClient::shared(), endpoints)),
             Chain::BitcoinCash => ChainClient::BitcoinCash(BitcoinCashClient::new(endpoints)),
             Chain::BitcoinSV => ChainClient::BitcoinSv(BitcoinSvClient::new(endpoints)),
             Chain::Litecoin => ChainClient::Litecoin(LitecoinClient::new(endpoints)),
             Chain::Dogecoin => ChainClient::Dogecoin(DogecoinClient::new(endpoints)),
-            c if c.is_evm() => ChainClient::Evm(EvmClient::new(endpoints, c.evm_chain_id())),
+            c if c.is_evm() => ChainClient::Evm(EvmClient::new(endpoints, chain.evm_chain_id())),
             Chain::Solana => ChainClient::Solana(SolanaClient::new(endpoints)),
             Chain::Tron => {
+                // Use the testnet/mainnet's own explorer slot so testnet
+                // calls don't accidentally hit the mainnet Tronscan.
                 let tronscan = service
                     .endpoints_for(chain.endpoint_id(EndpointSlot::Explorer))
                     .await

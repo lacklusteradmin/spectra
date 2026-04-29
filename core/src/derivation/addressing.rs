@@ -37,30 +37,44 @@ pub fn validate_address(request: AddressValidationRequest) -> AddressValidationR
         return invalid_result();
     }
 
+    // Each testnet has its own `kind` string (e.g. `"bitcoinTestnet"`,
+    // `"litecoinTestnet"`). The `network_mode` field on the request is
+    // retained for backwards compatibility with stored wallets; new code
+    // paths set the chain-name-specific kind and ignore network_mode.
     match request.kind.as_str() {
-        "bitcoin" => validate_bitcoin_address(&normalized_input, request.network_mode.as_deref()),
-        "bitcoinCash" => validate_bitcoin_cash_address(&normalized_input),
+        "bitcoin" => validate_bitcoin_address(&normalized_input, BitcoinNetworkKind::Mainnet),
+        "bitcoinTestnet" | "bitcoinTestnet4" | "bitcoinSignet" => {
+            validate_bitcoin_address(&normalized_input, BitcoinNetworkKind::Testnet)
+        }
+        "bitcoinCash" => validate_bitcoin_cash_address(&normalized_input, false),
+        "bitcoinCashTestnet" => validate_bitcoin_cash_address(&normalized_input, true),
         "bitcoinSV" => validate_bitcoin_sv_address(&normalized_input),
-        "litecoin" => validate_litecoin_address(&normalized_input),
-        "dogecoin" => validate_dogecoin_address(&normalized_input, request.network_mode.as_deref()),
-        "evm" => validate_evm_address(&normalized_input),
-        "tron" => validate_tron_address(&normalized_input),
-        "solana" => validate_solana_address(&normalized_input),
-        "stellar" => validate_stellar_address(&normalized_input),
-        "xrp" => validate_xrp_address(&normalized_input),
-        "sui" => validate_sui_address(&normalized_input),
-        "aptos" => validate_aptos_address(&normalized_input),
-        "ton" => validate_ton_address(&normalized_input),
+        "bitcoinSVTestnet" => validate_bitcoin_sv_address(&normalized_input),
+        "litecoin" => validate_litecoin_address(&normalized_input, false),
+        "litecoinTestnet" => validate_litecoin_address(&normalized_input, true),
+        "dogecoin" => validate_dogecoin_address(&normalized_input, false),
+        "dogecoinTestnet" => validate_dogecoin_address(&normalized_input, true),
+        // EVM addresses are network-agnostic on the wire — same validator
+        // for mainnet + every EVM testnet.
+        "evm" | "evmTestnet" => validate_evm_address(&normalized_input),
+        "tron" | "tronTestnet" => validate_tron_address(&normalized_input),
+        "solana" | "solanaDevnet" => validate_solana_address(&normalized_input),
+        "stellar" | "stellarTestnet" => validate_stellar_address(&normalized_input),
+        "xrp" | "xrpTestnet" => validate_xrp_address(&normalized_input),
+        "sui" | "suiTestnet" => validate_sui_address(&normalized_input),
+        "aptos" | "aptosTestnet" => validate_aptos_address(&normalized_input),
+        "ton" | "tonTestnet" => validate_ton_address(&normalized_input),
         "internetComputer" => validate_icp_address(&normalized_input),
-        "near" => validate_near_address(&normalized_input),
-        "polkadot" => validate_polkadot_address(&normalized_input),
-        "monero" => validate_monero_address(&normalized_input),
-        "cardano" => validate_cardano_address(&normalized_input),
-        "zcash" => validate_zcash_address(&normalized_input),
+        "near" | "nearTestnet" => validate_near_address(&normalized_input),
+        "polkadot" | "polkadotTestnet" => validate_polkadot_address(&normalized_input),
+        "monero" => validate_monero_address(&normalized_input, false),
+        "moneroStagenet" => validate_monero_address(&normalized_input, true),
+        "cardano" | "cardanoTestnet" => validate_cardano_address(&normalized_input),
+        "zcash" | "zcashTestnet" => validate_zcash_address(&normalized_input),
         "bitcoinGold" => validate_bitcoin_gold_address(&normalized_input),
-        "decred" => validate_decred_address(&normalized_input),
-        "kaspa" => validate_kaspa_address(&normalized_input),
-        "dash" => validate_dash_address(&normalized_input),
+        "decred" | "decredTestnet" => validate_decred_address(&normalized_input),
+        "kaspa" | "kaspaTestnet" => validate_kaspa_address(&normalized_input),
+        "dash" | "dashTestnet" => validate_dash_address(&normalized_input),
         "bittensor" => validate_bittensor_address(&normalized_input),
         _ => invalid_result(),
     }
@@ -128,33 +142,29 @@ fn is_lower_hex(value: &str) -> bool {
     value.chars().all(|character| character.is_ascii_hexdigit())
 }
 
-fn validate_bitcoin_address(value: &str, network_mode: Option<&str>) -> AddressValidationResult {
+fn validate_bitcoin_address(value: &str, expected_network: BitcoinNetworkKind) -> AddressValidationResult {
     let parsed = match parse_bitcoin_address(value) {
         Ok(parsed) => parsed,
         Err(_) => return invalid_result(),
     };
-
     let network = match &parsed {
         super::bitcoin_primitives::ParsedBitcoinAddress::Legacy { network, .. }
         | super::bitcoin_primitives::ParsedBitcoinAddress::SegWit { network, .. } => network,
     };
-
-    let is_valid = match network_mode.unwrap_or("mainnet") {
-        "mainnet" => matches!(network, BitcoinNetworkKind::Mainnet),
-        "testnet" | "testnet4" | "signet" => matches!(network, BitcoinNetworkKind::Testnet),
-        _ => false,
+    let is_valid = match expected_network {
+        BitcoinNetworkKind::Mainnet => matches!(network, BitcoinNetworkKind::Mainnet),
+        BitcoinNetworkKind::Testnet => matches!(network, BitcoinNetworkKind::Testnet),
     };
-
     if !is_valid {
         return invalid_result();
     }
-
     make_result(value.to_string())
 }
 
-fn validate_bitcoin_cash_address(value: &str) -> AddressValidationResult {
+fn validate_bitcoin_cash_address(value: &str, testnet: bool) -> AddressValidationResult {
     let lowered = value.to_lowercase();
-    if let Some(stripped) = lowered.strip_prefix("bitcoincash:") {
+    let expected_prefix = if testnet { "bchtest:" } else { "bitcoincash:" };
+    if let Some(stripped) = lowered.strip_prefix(expected_prefix) {
         if !stripped.is_empty()
             && stripped
                 .chars()
@@ -164,15 +174,23 @@ fn validate_bitcoin_cash_address(value: &str) -> AddressValidationResult {
         }
         return invalid_result();
     }
-
-    if lowered.starts_with('q')
+    if testnet {
+        // Legacy testnet addresses: P2PKH `m`/`n`, P2SH `2`.
+        if lowered.starts_with('q')
+            || lowered.starts_with('p')
+            || value.starts_with('m')
+            || value.starts_with('n')
+            || value.starts_with('2')
+        {
+            return make_result(value.to_string());
+        }
+    } else if lowered.starts_with('q')
         || lowered.starts_with('p')
         || value.starts_with('1')
         || value.starts_with('3')
     {
         return make_result(value.to_string());
     }
-
     invalid_result()
 }
 
@@ -185,7 +203,21 @@ fn validate_bitcoin_sv_address(value: &str) -> AddressValidationResult {
     invalid_result()
 }
 
-fn validate_litecoin_address(value: &str) -> AddressValidationResult {
+fn validate_litecoin_address(value: &str, testnet: bool) -> AddressValidationResult {
+    if testnet {
+        // Litecoin testnet: bech32 HRP "tltc", legacy P2PKH starts with `m`/`n`,
+        // P2SH-P2WPKH starts with `Q`.
+        if value.starts_with("tltc1")
+            || value.starts_with("Tltc1")
+            || value.starts_with('m')
+            || value.starts_with('n')
+            || value.starts_with('Q')
+            || value.starts_with('2')
+        {
+            return make_result(value.to_string());
+        }
+        return invalid_result();
+    }
     if value.starts_with("ltc1")
         || value.starts_with("Ltc1")
         || value.starts_with('L')
@@ -239,21 +271,18 @@ fn validate_bittensor_address(value: &str) -> AddressValidationResult {
     invalid_result()
 }
 
-fn validate_dogecoin_address(value: &str, network_mode: Option<&str>) -> AddressValidationResult {
+fn validate_dogecoin_address(value: &str, testnet: bool) -> AddressValidationResult {
     if !is_base58(value) {
         return invalid_result();
     }
-
-    let is_valid = match network_mode.unwrap_or("mainnet") {
-        "mainnet" => value.starts_with('D') || value.starts_with('A') || value.starts_with('9'),
-        "testnet" => value.starts_with('n') || value.starts_with('2'),
-        _ => false,
+    let is_valid = if testnet {
+        value.starts_with('n') || value.starts_with('2')
+    } else {
+        value.starts_with('D') || value.starts_with('A') || value.starts_with('9')
     };
-
     if !is_valid {
         return invalid_result();
     }
-
     make_result(value.to_string())
 }
 
@@ -392,17 +421,24 @@ fn validate_polkadot_address(value: &str) -> AddressValidationResult {
     invalid_result()
 }
 
-fn validate_monero_address(value: &str) -> AddressValidationResult {
+fn validate_monero_address(value: &str, stagenet: bool) -> AddressValidationResult {
     if !is_base58(value) {
         return invalid_result();
     }
     if value.len() != 95 && value.len() != 106 {
         return invalid_result();
     }
-    if value.starts_with('4') || value.starts_with('8') {
-        return make_result(value.to_string());
+    let valid = if stagenet {
+        // Stagenet primary: starts with `5`. Sub-addresses: `7`.
+        value.starts_with('5') || value.starts_with('7')
+    } else {
+        value.starts_with('4') || value.starts_with('8')
+    };
+    if valid {
+        make_result(value.to_string())
+    } else {
+        invalid_result()
     }
-    invalid_result()
 }
 
 fn validate_cardano_address(value: &str) -> AddressValidationResult {

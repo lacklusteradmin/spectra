@@ -65,6 +65,43 @@ pub enum Chain {
     Dash = 43,
     XLayer = 44,
     Bittensor = 45,
+
+    // ── Testnets (46-77) ────────────────────────────────────────────────
+    // Treated as fully separate chains: own keypair derivation, own
+    // address space, own RPC endpoints, own catalog row. Their wire-format
+    // chain ids are part of persistence; never renumber.
+    BitcoinTestnet = 46,
+    BitcoinTestnet4 = 47,
+    BitcoinSignet = 48,
+    LitecoinTestnet = 49,
+    BitcoinCashTestnet = 50,
+    BitcoinSVTestnet = 51,
+    DogecoinTestnet = 52,
+    ZcashTestnet = 53,
+    DecredTestnet = 54,
+    KaspaTestnet = 55,
+    DashTestnet = 56,
+    EthereumSepolia = 57,
+    EthereumHoodi = 58,
+    ArbitrumSepolia = 59,
+    OptimismSepolia = 60,
+    BaseSepolia = 61,
+    BnbChainTestnet = 62,
+    AvalancheFuji = 63,
+    PolygonAmoy = 64,
+    HyperliquidTestnet = 65,
+    EthereumClassicMordor = 66,
+    TronNile = 67,
+    SolanaDevnet = 68,
+    XrpTestnet = 69,
+    StellarTestnet = 70,
+    CardanoPreprod = 71,
+    SuiTestnet = 72,
+    AptosTestnet = 73,
+    TonTestnet = 74,
+    NearTestnet = 75,
+    PolkadotWestend = 76,
+    MoneroStagenet = 77,
 }
 
 /// Which endpoint-list slot to fetch for a given chain.
@@ -141,8 +178,118 @@ impl Chain {
             43 => Chain::Dash,
             44 => Chain::XLayer,
             45 => Chain::Bittensor,
+            46 => Chain::BitcoinTestnet,
+            47 => Chain::BitcoinTestnet4,
+            48 => Chain::BitcoinSignet,
+            49 => Chain::LitecoinTestnet,
+            50 => Chain::BitcoinCashTestnet,
+            51 => Chain::BitcoinSVTestnet,
+            52 => Chain::DogecoinTestnet,
+            53 => Chain::ZcashTestnet,
+            54 => Chain::DecredTestnet,
+            55 => Chain::KaspaTestnet,
+            56 => Chain::DashTestnet,
+            57 => Chain::EthereumSepolia,
+            58 => Chain::EthereumHoodi,
+            59 => Chain::ArbitrumSepolia,
+            60 => Chain::OptimismSepolia,
+            61 => Chain::BaseSepolia,
+            62 => Chain::BnbChainTestnet,
+            63 => Chain::AvalancheFuji,
+            64 => Chain::PolygonAmoy,
+            65 => Chain::HyperliquidTestnet,
+            66 => Chain::EthereumClassicMordor,
+            67 => Chain::TronNile,
+            68 => Chain::SolanaDevnet,
+            69 => Chain::XrpTestnet,
+            70 => Chain::StellarTestnet,
+            71 => Chain::CardanoPreprod,
+            72 => Chain::SuiTestnet,
+            73 => Chain::AptosTestnet,
+            74 => Chain::TonTestnet,
+            75 => Chain::NearTestnet,
+            76 => Chain::PolkadotWestend,
+            77 => Chain::MoneroStagenet,
             _ => return None,
         })
+    }
+
+    /// Returns `true` for chains that are testnets (faucet-funded, fake-coin,
+    /// not real value). Mainnets return `false`.
+    pub const fn is_testnet(self) -> bool {
+        matches!(
+            self,
+            Chain::BitcoinTestnet
+                | Chain::BitcoinTestnet4
+                | Chain::BitcoinSignet
+                | Chain::LitecoinTestnet
+                | Chain::BitcoinCashTestnet
+                | Chain::BitcoinSVTestnet
+                | Chain::DogecoinTestnet
+                | Chain::ZcashTestnet
+                | Chain::DecredTestnet
+                | Chain::KaspaTestnet
+                | Chain::DashTestnet
+                | Chain::EthereumSepolia
+                | Chain::EthereumHoodi
+                | Chain::ArbitrumSepolia
+                | Chain::OptimismSepolia
+                | Chain::BaseSepolia
+                | Chain::BnbChainTestnet
+                | Chain::AvalancheFuji
+                | Chain::PolygonAmoy
+                | Chain::HyperliquidTestnet
+                | Chain::EthereumClassicMordor
+                | Chain::TronNile
+                | Chain::SolanaDevnet
+                | Chain::XrpTestnet
+                | Chain::StellarTestnet
+                | Chain::CardanoPreprod
+                | Chain::SuiTestnet
+                | Chain::AptosTestnet
+                | Chain::TonTestnet
+                | Chain::NearTestnet
+                | Chain::PolkadotWestend
+                | Chain::MoneroStagenet
+        )
+    }
+
+    /// Maps a testnet variant to its mainnet counterpart for shared logic
+    /// (derivation engine, send-payload classification, native-decimals
+    /// table, etc.). Returns `self` for mainnets.
+    pub const fn mainnet_counterpart(self) -> Chain {
+        match self {
+            Chain::BitcoinTestnet | Chain::BitcoinTestnet4 | Chain::BitcoinSignet => Chain::Bitcoin,
+            Chain::LitecoinTestnet => Chain::Litecoin,
+            Chain::BitcoinCashTestnet => Chain::BitcoinCash,
+            Chain::BitcoinSVTestnet => Chain::BitcoinSV,
+            Chain::DogecoinTestnet => Chain::Dogecoin,
+            Chain::ZcashTestnet => Chain::Zcash,
+            Chain::DecredTestnet => Chain::Decred,
+            Chain::KaspaTestnet => Chain::Kaspa,
+            Chain::DashTestnet => Chain::Dash,
+            Chain::EthereumSepolia | Chain::EthereumHoodi => Chain::Ethereum,
+            Chain::ArbitrumSepolia => Chain::Arbitrum,
+            Chain::OptimismSepolia => Chain::Optimism,
+            Chain::BaseSepolia => Chain::Base,
+            Chain::BnbChainTestnet => Chain::BnbChain,
+            Chain::AvalancheFuji => Chain::Avalanche,
+            Chain::PolygonAmoy => Chain::Polygon,
+            Chain::HyperliquidTestnet => Chain::Hyperliquid,
+            Chain::EthereumClassicMordor => Chain::EthereumClassic,
+            Chain::TronNile => Chain::Tron,
+            Chain::SolanaDevnet => Chain::Solana,
+            Chain::XrpTestnet => Chain::Xrp,
+            Chain::StellarTestnet => Chain::Stellar,
+            Chain::CardanoPreprod => Chain::Cardano,
+            Chain::SuiTestnet => Chain::Sui,
+            Chain::AptosTestnet => Chain::Aptos,
+            Chain::TonTestnet => Chain::Ton,
+            Chain::NearTestnet => Chain::Near,
+            Chain::PolkadotWestend => Chain::Polkadot,
+            Chain::MoneroStagenet => Chain::Monero,
+            _ => self,
+        }
     }
 
     /// The frozen numeric id.
@@ -165,7 +312,7 @@ impl Chain {
         if self.is_evm() { Some(EvmChain(self)) } else { None }
     }
 
-    /// `true` for every EVM-compatible chain.
+    /// `true` for every EVM-compatible chain (mainnet or testnet).
     pub const fn is_evm(self) -> bool {
         matches!(
             self,
@@ -192,6 +339,16 @@ impl Chain {
                 | Chain::Unichain
                 | Chain::Ink
                 | Chain::XLayer
+                | Chain::EthereumSepolia
+                | Chain::EthereumHoodi
+                | Chain::ArbitrumSepolia
+                | Chain::OptimismSepolia
+                | Chain::BaseSepolia
+                | Chain::BnbChainTestnet
+                | Chain::AvalancheFuji
+                | Chain::PolygonAmoy
+                | Chain::HyperliquidTestnet
+                | Chain::EthereumClassicMordor
         )
     }
 
@@ -222,6 +379,17 @@ impl Chain {
             Chain::Unichain => 130,
             Chain::Ink => 57073,
             Chain::XLayer => 196,
+            // EVM testnets — chain ids per chainlist.org / official docs.
+            Chain::EthereumSepolia => 11155111,
+            Chain::EthereumHoodi => 560048,
+            Chain::ArbitrumSepolia => 421614,
+            Chain::OptimismSepolia => 11155420,
+            Chain::BaseSepolia => 84532,
+            Chain::BnbChainTestnet => 97,
+            Chain::AvalancheFuji => 43113,
+            Chain::PolygonAmoy => 80002,
+            Chain::HyperliquidTestnet => 998,
+            Chain::EthereumClassicMordor => 63,
             _ => 1,
         }
     }
@@ -275,6 +443,39 @@ impl Chain {
             Chain::Icp => SendChain::Icp,
             Chain::Near => SendChain::Near,
             Chain::Polkadot => SendChain::Polkadot,
+            // Testnets reuse their mainnet counterpart's send-payload classification —
+            // the on-the-wire envelope shape is identical; only the network parameter
+            // (handled inside the per-chain client) differs.
+            Chain::BitcoinTestnet | Chain::BitcoinTestnet4 | Chain::BitcoinSignet => SendChain::Bitcoin,
+            Chain::LitecoinTestnet => SendChain::Litecoin,
+            Chain::BitcoinCashTestnet => SendChain::BitcoinCash,
+            Chain::BitcoinSVTestnet => SendChain::BitcoinSV,
+            Chain::DogecoinTestnet => SendChain::Dogecoin,
+            Chain::ZcashTestnet => SendChain::Zcash,
+            Chain::DecredTestnet => SendChain::Decred,
+            Chain::KaspaTestnet => SendChain::Kaspa,
+            Chain::DashTestnet => SendChain::Dash,
+            Chain::EthereumSepolia
+            | Chain::EthereumHoodi
+            | Chain::ArbitrumSepolia
+            | Chain::OptimismSepolia
+            | Chain::BaseSepolia
+            | Chain::BnbChainTestnet
+            | Chain::AvalancheFuji
+            | Chain::PolygonAmoy
+            | Chain::HyperliquidTestnet
+            | Chain::EthereumClassicMordor => SendChain::Ethereum,
+            Chain::TronNile => SendChain::Tron,
+            Chain::SolanaDevnet => SendChain::Solana,
+            Chain::XrpTestnet => SendChain::Xrp,
+            Chain::StellarTestnet => SendChain::Stellar,
+            Chain::CardanoPreprod => SendChain::Cardano,
+            Chain::SuiTestnet => SendChain::Sui,
+            Chain::AptosTestnet => SendChain::Aptos,
+            Chain::TonTestnet => SendChain::Ton,
+            Chain::NearTestnet => SendChain::Near,
+            Chain::PolkadotWestend => SendChain::Polkadot,
+            Chain::MoneroStagenet => SendChain::Monero,
         }
     }
 
@@ -347,6 +548,38 @@ impl Chain {
             Chain::Dash => "Dash",
             Chain::XLayer => "OKB",
             Chain::Bittensor => "Bittensor",
+            // Testnets — same coin name as mainnet (the asset is logically the
+            // same; the chain row just makes clear it's not real money).
+            Chain::BitcoinTestnet | Chain::BitcoinTestnet4 | Chain::BitcoinSignet => "Bitcoin",
+            Chain::LitecoinTestnet => "Litecoin",
+            Chain::BitcoinCashTestnet => "Bitcoin Cash",
+            Chain::BitcoinSVTestnet => "Bitcoin SV",
+            Chain::DogecoinTestnet => "Dogecoin",
+            Chain::ZcashTestnet => "Zcash",
+            Chain::DecredTestnet => "Decred",
+            Chain::KaspaTestnet => "Kaspa",
+            Chain::DashTestnet => "Dash",
+            Chain::EthereumSepolia
+            | Chain::EthereumHoodi
+            | Chain::ArbitrumSepolia
+            | Chain::OptimismSepolia
+            | Chain::BaseSepolia => "Ethereum",
+            Chain::BnbChainTestnet => "BNB",
+            Chain::AvalancheFuji => "Avalanche",
+            Chain::PolygonAmoy => "Polygon",
+            Chain::HyperliquidTestnet => "Hyperliquid",
+            Chain::EthereumClassicMordor => "Ethereum Classic",
+            Chain::TronNile => "Tron",
+            Chain::SolanaDevnet => "Solana",
+            Chain::XrpTestnet => "XRP",
+            Chain::StellarTestnet => "Stellar",
+            Chain::CardanoPreprod => "Cardano",
+            Chain::SuiTestnet => "Sui",
+            Chain::AptosTestnet => "Aptos",
+            Chain::TonTestnet => "TON",
+            Chain::NearTestnet => "NEAR",
+            Chain::PolkadotWestend => "Polkadot",
+            Chain::MoneroStagenet => "Monero",
         }
     }
 
@@ -397,6 +630,39 @@ impl Chain {
             Chain::Dash => "DASH",
             Chain::XLayer => "OKB",
             Chain::Bittensor => "TAO",
+            // Testnets — same ticker as mainnet (e.g. testnet BTC is still BTC,
+            // Sepolia ETH is still ETH; the chain row, not the symbol, signals
+            // that it isn't real value).
+            Chain::BitcoinTestnet | Chain::BitcoinTestnet4 | Chain::BitcoinSignet => "BTC",
+            Chain::LitecoinTestnet => "LTC",
+            Chain::BitcoinCashTestnet => "BCH",
+            Chain::BitcoinSVTestnet => "BSV",
+            Chain::DogecoinTestnet => "DOGE",
+            Chain::ZcashTestnet => "ZEC",
+            Chain::DecredTestnet => "DCR",
+            Chain::KaspaTestnet => "KAS",
+            Chain::DashTestnet => "DASH",
+            Chain::EthereumSepolia
+            | Chain::EthereumHoodi
+            | Chain::ArbitrumSepolia
+            | Chain::OptimismSepolia
+            | Chain::BaseSepolia => "ETH",
+            Chain::BnbChainTestnet => "BNB",
+            Chain::AvalancheFuji => "AVAX",
+            Chain::PolygonAmoy => "POL",
+            Chain::HyperliquidTestnet => "HYPE",
+            Chain::EthereumClassicMordor => "ETC",
+            Chain::TronNile => "TRX",
+            Chain::SolanaDevnet => "SOL",
+            Chain::XrpTestnet => "XRP",
+            Chain::StellarTestnet => "XLM",
+            Chain::CardanoPreprod => "ADA",
+            Chain::SuiTestnet => "SUI",
+            Chain::AptosTestnet => "APT",
+            Chain::TonTestnet => "TON",
+            Chain::NearTestnet => "NEAR",
+            Chain::PolkadotWestend => "DOT",
+            Chain::MoneroStagenet => "XMR",
         }
     }
 
@@ -450,6 +716,39 @@ impl Chain {
             Chain::Dash => "Dash",
             Chain::XLayer => "X Layer",
             Chain::Bittensor => "Bittensor",
+            // Testnet display names — these are the *chain* names users see in the catalog.
+            Chain::BitcoinTestnet => "Bitcoin Testnet",
+            Chain::BitcoinTestnet4 => "Bitcoin Testnet4",
+            Chain::BitcoinSignet => "Bitcoin Signet",
+            Chain::LitecoinTestnet => "Litecoin Testnet",
+            Chain::BitcoinCashTestnet => "Bitcoin Cash Testnet",
+            Chain::BitcoinSVTestnet => "Bitcoin SV Testnet",
+            Chain::DogecoinTestnet => "Dogecoin Testnet",
+            Chain::ZcashTestnet => "Zcash Testnet",
+            Chain::DecredTestnet => "Decred Testnet",
+            Chain::KaspaTestnet => "Kaspa Testnet",
+            Chain::DashTestnet => "Dash Testnet",
+            Chain::EthereumSepolia => "Ethereum Sepolia",
+            Chain::EthereumHoodi => "Ethereum Hoodi",
+            Chain::ArbitrumSepolia => "Arbitrum Sepolia",
+            Chain::OptimismSepolia => "Optimism Sepolia",
+            Chain::BaseSepolia => "Base Sepolia",
+            Chain::BnbChainTestnet => "BNB Chain Testnet",
+            Chain::AvalancheFuji => "Avalanche Fuji",
+            Chain::PolygonAmoy => "Polygon Amoy",
+            Chain::HyperliquidTestnet => "Hyperliquid Testnet",
+            Chain::EthereumClassicMordor => "Ethereum Classic Mordor",
+            Chain::TronNile => "Tron Nile",
+            Chain::SolanaDevnet => "Solana Devnet",
+            Chain::XrpTestnet => "XRP Ledger Testnet",
+            Chain::StellarTestnet => "Stellar Testnet",
+            Chain::CardanoPreprod => "Cardano Preprod",
+            Chain::SuiTestnet => "Sui Testnet",
+            Chain::AptosTestnet => "Aptos Testnet",
+            Chain::TonTestnet => "TON Testnet",
+            Chain::NearTestnet => "NEAR Testnet",
+            Chain::PolkadotWestend => "Polkadot Westend",
+            Chain::MoneroStagenet => "Monero Stagenet",
         }
     }
 
@@ -496,6 +795,36 @@ impl Chain {
             Chain::Polkadot => 10,
             Chain::Near => 24,
             Chain::Monero => 12,
+            // Testnets — same decimals as mainnet counterpart.
+            Chain::BitcoinTestnet
+            | Chain::BitcoinTestnet4
+            | Chain::BitcoinSignet
+            | Chain::LitecoinTestnet
+            | Chain::BitcoinCashTestnet
+            | Chain::BitcoinSVTestnet
+            | Chain::DogecoinTestnet
+            | Chain::ZcashTestnet
+            | Chain::DecredTestnet
+            | Chain::KaspaTestnet
+            | Chain::DashTestnet => 8,
+            Chain::EthereumSepolia
+            | Chain::EthereumHoodi
+            | Chain::ArbitrumSepolia
+            | Chain::OptimismSepolia
+            | Chain::BaseSepolia
+            | Chain::BnbChainTestnet
+            | Chain::AvalancheFuji
+            | Chain::PolygonAmoy
+            | Chain::HyperliquidTestnet
+            | Chain::EthereumClassicMordor => 18,
+            Chain::TronNile => 6,
+            Chain::SolanaDevnet | Chain::SuiTestnet | Chain::TonTestnet => 9,
+            Chain::XrpTestnet | Chain::CardanoPreprod => 6,
+            Chain::StellarTestnet => 7,
+            Chain::AptosTestnet => 8,
+            Chain::PolkadotWestend => 10,
+            Chain::NearTestnet => 24,
+            Chain::MoneroStagenet => 12,
         }
     }
 
@@ -546,6 +875,39 @@ impl Chain {
             Chain::Dash => "dash",
             Chain::XLayer => "okb",
             Chain::Bittensor => "bittensor",
+            // Testnets — reuse the mainnet CoinGecko id so the price feed
+            // shows a non-zero number, but the UI is expected to flag the
+            // chain as testnet so users don't confuse it with real money.
+            Chain::BitcoinTestnet | Chain::BitcoinTestnet4 | Chain::BitcoinSignet => "bitcoin",
+            Chain::LitecoinTestnet => "litecoin",
+            Chain::BitcoinCashTestnet => "bitcoin-cash",
+            Chain::BitcoinSVTestnet => "bitcoin-cash-sv",
+            Chain::DogecoinTestnet => "dogecoin",
+            Chain::ZcashTestnet => "zcash",
+            Chain::DecredTestnet => "decred",
+            Chain::KaspaTestnet => "kaspa",
+            Chain::DashTestnet => "dash",
+            Chain::EthereumSepolia
+            | Chain::EthereumHoodi
+            | Chain::ArbitrumSepolia
+            | Chain::OptimismSepolia
+            | Chain::BaseSepolia => "ethereum",
+            Chain::BnbChainTestnet => "binancecoin",
+            Chain::AvalancheFuji => "avalanche-2",
+            Chain::PolygonAmoy => "matic-network",
+            Chain::HyperliquidTestnet => "hyperliquid",
+            Chain::EthereumClassicMordor => "ethereum-classic",
+            Chain::TronNile => "tron",
+            Chain::SolanaDevnet => "solana",
+            Chain::XrpTestnet => "ripple",
+            Chain::StellarTestnet => "stellar",
+            Chain::CardanoPreprod => "cardano",
+            Chain::SuiTestnet => "sui",
+            Chain::AptosTestnet => "aptos",
+            Chain::TonTestnet => "the-open-network",
+            Chain::NearTestnet => "near",
+            Chain::PolkadotWestend => "polkadot",
+            Chain::MoneroStagenet => "monero",
         }
     }
 
@@ -579,6 +941,27 @@ impl Chain {
             Chain::Ton => "nanotons",
             Chain::Icp => "e8s",
             Chain::Monero => "piconeros",
+            // Testnets share their mainnet's balance-field name (the wire
+            // shape returned by the per-chain client is identical).
+            Chain::BitcoinTestnet | Chain::BitcoinTestnet4 | Chain::BitcoinSignet => "confirmed_sats",
+            Chain::SolanaDevnet => "lamports",
+            Chain::DogecoinTestnet => "balance_koin",
+            Chain::XrpTestnet => "drops",
+            Chain::LitecoinTestnet
+            | Chain::BitcoinCashTestnet
+            | Chain::BitcoinSVTestnet
+            | Chain::ZcashTestnet
+            | Chain::DashTestnet => "balance_sat",
+            Chain::DecredTestnet => "balance_atoms",
+            Chain::KaspaTestnet => "balance_sompi",
+            Chain::TronNile => "sun",
+            Chain::StellarTestnet => "stroops",
+            Chain::CardanoPreprod => "lovelace",
+            Chain::PolkadotWestend => "planck",
+            Chain::SuiTestnet => "mist",
+            Chain::AptosTestnet => "octas",
+            Chain::TonTestnet => "nanotons",
+            Chain::MoneroStagenet => "piconeros",
             // EVM + NEAR have multi-field balance shapes handled at the call site.
             _ => return None,
         })
@@ -597,6 +980,13 @@ impl Chain {
                 | Chain::BitcoinSV
                 | Chain::Litecoin
                 | Chain::Dogecoin
+                | Chain::BitcoinTestnet
+                | Chain::BitcoinTestnet4
+                | Chain::BitcoinSignet
+                | Chain::BitcoinCashTestnet
+                | Chain::BitcoinSVTestnet
+                | Chain::LitecoinTestnet
+                | Chain::DogecoinTestnet
         )
     }
 
@@ -607,7 +997,16 @@ impl Chain {
     pub const fn flags_evm_address_as_wrong_chain(self) -> bool {
         matches!(
             self,
-            Chain::Bitcoin | Chain::BitcoinCash | Chain::Litecoin | Chain::Dogecoin
+            Chain::Bitcoin
+                | Chain::BitcoinCash
+                | Chain::Litecoin
+                | Chain::Dogecoin
+                | Chain::BitcoinTestnet
+                | Chain::BitcoinTestnet4
+                | Chain::BitcoinSignet
+                | Chain::BitcoinCashTestnet
+                | Chain::LitecoinTestnet
+                | Chain::DogecoinTestnet
         )
     }
 
@@ -634,26 +1033,67 @@ impl Chain {
             Chain::Dogecoin => Some(1_000_000),
             Chain::Litecoin | Chain::Zcash | Chain::BitcoinSV | Chain::BitcoinGold | Chain::Kaspa => Some(1_000),
             Chain::BitcoinCash | Chain::Decred | Chain::Dash => Some(2_000),
+            // Testnets reuse their mainnet counterpart's static-fee policy.
+            Chain::SolanaDevnet => Some(5_000),
+            Chain::TronNile => Some(1_000_000),
+            Chain::CardanoPreprod => Some(170_000),
+            Chain::PolkadotWestend => Some(160_000_000),
+            Chain::SuiTestnet => Some(1_000),
+            Chain::TonTestnet => Some(7_000_000),
+            Chain::MoneroStagenet => Some(500_000_000),
+            Chain::DogecoinTestnet => Some(1_000_000),
+            Chain::LitecoinTestnet
+            | Chain::ZcashTestnet
+            | Chain::BitcoinSVTestnet
+            | Chain::KaspaTestnet => Some(1_000),
+            Chain::BitcoinCashTestnet | Chain::DecredTestnet | Chain::DashTestnet => Some(2_000),
             // Dynamic-fee chains: dispatch site queries RPC.
             Chain::Bitcoin
             | Chain::Xrp
             | Chain::Stellar
             | Chain::Aptos => None,
+            Chain::BitcoinTestnet
+            | Chain::BitcoinTestnet4
+            | Chain::BitcoinSignet
+            | Chain::XrpTestnet
+            | Chain::StellarTestnet
+            | Chain::AptosTestnet => None,
             // EVM family: dispatch site uses EvmClient::fetch_fee_estimate.
             Chain::Ethereum | Chain::Arbitrum | Chain::Optimism | Chain::Avalanche
             | Chain::Base | Chain::EthereumClassic | Chain::BnbChain | Chain::Hyperliquid
             | Chain::Polygon | Chain::Linea | Chain::Scroll | Chain::Blast | Chain::Mantle
             | Chain::Sei | Chain::Celo | Chain::Cronos | Chain::OpBnb | Chain::ZkSyncEra
             | Chain::Sonic | Chain::Berachain | Chain::Unichain | Chain::Ink | Chain::XLayer => None,
+            Chain::EthereumSepolia
+            | Chain::EthereumHoodi
+            | Chain::ArbitrumSepolia
+            | Chain::OptimismSepolia
+            | Chain::BaseSepolia
+            | Chain::BnbChainTestnet
+            | Chain::AvalancheFuji
+            | Chain::PolygonAmoy
+            | Chain::HyperliquidTestnet
+            | Chain::EthereumClassicMordor => None,
             // u128 overflow: dispatch site uses fee_preview_str.
             Chain::Near => None,
+            Chain::NearTestnet => None,
         }
     }
 
     /// Iterator over every known chain, in frozen-id order. Lets callers
     /// build per-chain tables without restating the variant list.
     pub fn all() -> impl Iterator<Item = Self> {
-        (0u32..=45).filter_map(Chain::from_id)
+        (0u32..=77).filter_map(Chain::from_id)
+    }
+
+    /// Iterator over only mainnet chains.
+    pub fn mainnets() -> impl Iterator<Item = Self> {
+        Self::all().filter(|c| !c.is_testnet())
+    }
+
+    /// Iterator over only testnet chains.
+    pub fn testnets() -> impl Iterator<Item = Self> {
+        Self::all().filter(|c| c.is_testnet())
     }
 
     /// Resolve a chain from the display name Swift uses on the boundary.
@@ -689,23 +1129,39 @@ mod tests {
 
     #[test]
     fn id_roundtrips() {
-        for id in 0u32..=45 {
+        for id in 0u32..=77 {
             let chain = Chain::from_id(id).expect("valid id");
             assert_eq!(chain.id(), id);
         }
-        assert!(Chain::from_id(46).is_none());
+        assert!(Chain::from_id(78).is_none());
         assert!(Chain::from_id(99).is_none());
     }
 
     #[test]
-    fn evm_group_matches_legacy_or_pattern() {
-        let expected: Vec<u32> = vec![1, 11, 12, 13, 20, 21, 23, 24, 25, 26, 27, 28, 29, 34, 35, 36, 37, 38, 39, 40, 41, 42, 44];
-        let actual: Vec<u32> = (0u32..=45)
-            .filter_map(Chain::from_id)
-            .filter(|c| c.is_evm())
-            .map(|c| c.id())
-            .collect();
+    fn evm_group_includes_mainnets_and_testnets() {
+        let mainnet_ids: Vec<u32> = vec![1, 11, 12, 13, 20, 21, 23, 24, 25, 26, 27, 28, 29, 34, 35, 36, 37, 38, 39, 40, 41, 42, 44];
+        let testnet_ids: Vec<u32> = vec![57, 58, 59, 60, 61, 62, 63, 64, 65, 66];
+        let mut expected: Vec<u32> = [mainnet_ids, testnet_ids].concat();
+        expected.sort();
+        let actual: Vec<u32> = Chain::all().filter(|c| c.is_evm()).map(|c| c.id()).collect();
         assert_eq!(actual, expected);
+    }
+
+    #[test]
+    fn testnet_counts_match_total() {
+        let total: usize = Chain::all().count();
+        let testnets: usize = Chain::testnets().count();
+        let mainnets: usize = Chain::mainnets().count();
+        assert_eq!(testnets + mainnets, total);
+        assert_eq!(testnets, 32, "32 testnet chains are expected");
+    }
+
+    #[test]
+    fn testnet_mainnet_counterparts_are_mainnets() {
+        for testnet in Chain::testnets() {
+            let counterpart = testnet.mainnet_counterpart();
+            assert!(!counterpart.is_testnet(), "{:?} mainnet_counterpart returned testnet {:?}", testnet, counterpart);
+        }
     }
 
     #[test]

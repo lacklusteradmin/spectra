@@ -8,24 +8,6 @@
         "title": "Mainnet",
         "detail": "Bitcoin main network",
         "isDefault": true
-      },
-      {
-        "network": "testnet",
-        "title": "Testnet",
-        "detail": "Bitcoin test network",
-        "isDefault": false
-      },
-      {
-        "network": "testnet4",
-        "title": "Testnet4",
-        "detail": "Bitcoin testnet4 network",
-        "isDefault": false
-      },
-      {
-        "network": "signet",
-        "title": "Signet",
-        "detail": "Bitcoin signet network",
-        "isDefault": false
       }
     ],
     "derivationPaths": [
@@ -166,12 +148,6 @@
         "title": "Mainnet",
         "detail": "Dogecoin main network",
         "isDefault": true
-      },
-      {
-        "network": "testnet",
-        "title": "Testnet",
-        "detail": "Dogecoin test network",
-        "isDefault": false
       }
     ],
     "derivationPaths": [
@@ -669,6 +645,696 @@
         "title": "Standard",
         "detail": "m/44'/60'/0'/0/0",
         "derivationPath": "m/44'/60'/0'/0/0",
+        "isDefault": true
+      }
+    ]
+  },
+  {
+    "chain": "Bitcoin Testnet",
+    "curve": "secp256k1",
+    "networks": [
+      {
+        "network": "mainnet",
+        "title": "Bitcoin Testnet",
+        "detail": "Bitcoin Testnet test network",
+        "isDefault": true
+      }
+    ],
+    "derivationPaths": [
+      {
+        "title": "Taproot",
+        "detail": "m/86'/0'/0'/0/0",
+        "derivationPath": "m/86'/0'/0'/0/0",
+        "isDefault": false
+      },
+      {
+        "title": "Native SegWit",
+        "detail": "m/84'/0'/0'/0/0",
+        "derivationPath": "m/84'/0'/0'/0/0",
+        "isDefault": true
+      },
+      {
+        "title": "Nested SegWit",
+        "detail": "m/49'/0'/0'/0/0",
+        "derivationPath": "m/49'/0'/0'/0/0",
+        "isDefault": false
+      },
+      {
+        "title": "Legacy",
+        "detail": "m/44'/0'/0'/0/0",
+        "derivationPath": "m/44'/0'/0'/0/0",
+        "isDefault": false
+      },
+      {
+        "title": "Electrum Legacy",
+        "detail": "m/0'/0",
+        "derivationPath": "m/0'/0",
+        "isDefault": false
+      },
+      {
+        "title": "BIP32 Legacy",
+        "detail": "m/0'/0/0",
+        "derivationPath": "m/0'/0/0",
+        "isDefault": false
+      }
+    ]
+  },
+  {
+    "chain": "Bitcoin Testnet4",
+    "curve": "secp256k1",
+    "networks": [
+      {
+        "network": "mainnet",
+        "title": "Bitcoin Testnet4",
+        "detail": "Bitcoin Testnet4 test network",
+        "isDefault": true
+      }
+    ],
+    "derivationPaths": [
+      {
+        "title": "Taproot",
+        "detail": "m/86'/0'/0'/0/0",
+        "derivationPath": "m/86'/0'/0'/0/0",
+        "isDefault": false
+      },
+      {
+        "title": "Native SegWit",
+        "detail": "m/84'/0'/0'/0/0",
+        "derivationPath": "m/84'/0'/0'/0/0",
+        "isDefault": true
+      },
+      {
+        "title": "Nested SegWit",
+        "detail": "m/49'/0'/0'/0/0",
+        "derivationPath": "m/49'/0'/0'/0/0",
+        "isDefault": false
+      },
+      {
+        "title": "Legacy",
+        "detail": "m/44'/0'/0'/0/0",
+        "derivationPath": "m/44'/0'/0'/0/0",
+        "isDefault": false
+      },
+      {
+        "title": "Electrum Legacy",
+        "detail": "m/0'/0",
+        "derivationPath": "m/0'/0",
+        "isDefault": false
+      },
+      {
+        "title": "BIP32 Legacy",
+        "detail": "m/0'/0/0",
+        "derivationPath": "m/0'/0/0",
+        "isDefault": false
+      }
+    ]
+  },
+  {
+    "chain": "Bitcoin Signet",
+    "curve": "secp256k1",
+    "networks": [
+      {
+        "network": "mainnet",
+        "title": "Bitcoin Signet",
+        "detail": "Bitcoin Signet test network",
+        "isDefault": true
+      }
+    ],
+    "derivationPaths": [
+      {
+        "title": "Taproot",
+        "detail": "m/86'/0'/0'/0/0",
+        "derivationPath": "m/86'/0'/0'/0/0",
+        "isDefault": false
+      },
+      {
+        "title": "Native SegWit",
+        "detail": "m/84'/0'/0'/0/0",
+        "derivationPath": "m/84'/0'/0'/0/0",
+        "isDefault": true
+      },
+      {
+        "title": "Nested SegWit",
+        "detail": "m/49'/0'/0'/0/0",
+        "derivationPath": "m/49'/0'/0'/0/0",
+        "isDefault": false
+      },
+      {
+        "title": "Legacy",
+        "detail": "m/44'/0'/0'/0/0",
+        "derivationPath": "m/44'/0'/0'/0/0",
+        "isDefault": false
+      },
+      {
+        "title": "Electrum Legacy",
+        "detail": "m/0'/0",
+        "derivationPath": "m/0'/0",
+        "isDefault": false
+      },
+      {
+        "title": "BIP32 Legacy",
+        "detail": "m/0'/0/0",
+        "derivationPath": "m/0'/0/0",
+        "isDefault": false
+      }
+    ]
+  },
+  {
+    "chain": "Litecoin Testnet",
+    "curve": "secp256k1",
+    "networks": [
+      {
+        "network": "mainnet",
+        "title": "Litecoin Testnet",
+        "detail": "Litecoin Testnet test network",
+        "isDefault": true
+      }
+    ],
+    "derivationPaths": [
+      {
+        "title": "Legacy",
+        "detail": "m/44'/2'/0'/0/0",
+        "derivationPath": "m/44'/2'/0'/0/0",
+        "isDefault": true
+      },
+      {
+        "title": "SegWit",
+        "detail": "m/49'/2'/0'/0/0",
+        "derivationPath": "m/49'/2'/0'/0/0",
+        "isDefault": false
+      },
+      {
+        "title": "Native SegWit",
+        "detail": "m/84'/2'/0'/0/0",
+        "derivationPath": "m/84'/2'/0'/0/0",
+        "isDefault": false
+      }
+    ]
+  },
+  {
+    "chain": "Bitcoin Cash Testnet",
+    "curve": "secp256k1",
+    "networks": [
+      {
+        "network": "mainnet",
+        "title": "Bitcoin Cash Testnet",
+        "detail": "Bitcoin Cash Testnet test network",
+        "isDefault": true
+      }
+    ],
+    "derivationPaths": [
+      {
+        "title": "Standard",
+        "detail": "m/44'/145'/0'/0/0",
+        "derivationPath": "m/44'/145'/0'/0/0",
+        "isDefault": true
+      },
+      {
+        "title": "Legacy",
+        "detail": "m/44'/0'/0'/0/0",
+        "derivationPath": "m/44'/0'/0'/0/0",
+        "isDefault": false
+      },
+      {
+        "title": "Electrum Legacy",
+        "detail": "m/0",
+        "derivationPath": "m/0",
+        "isDefault": false
+      }
+    ]
+  },
+  {
+    "chain": "Bitcoin SV Testnet",
+    "curve": "secp256k1",
+    "networks": [
+      {
+        "network": "mainnet",
+        "title": "Bitcoin SV Testnet",
+        "detail": "Bitcoin SV Testnet test network",
+        "isDefault": true
+      }
+    ],
+    "derivationPaths": [
+      {
+        "title": "Standard",
+        "detail": "m/44'/236'/0'/0/0",
+        "derivationPath": "m/44'/236'/0'/0/0",
+        "isDefault": true
+      },
+      {
+        "title": "Electrum Legacy",
+        "detail": "m/0",
+        "derivationPath": "m/0",
+        "isDefault": false
+      }
+    ]
+  },
+  {
+    "chain": "Dogecoin Testnet",
+    "curve": "secp256k1",
+    "networks": [
+      {
+        "network": "mainnet",
+        "title": "Dogecoin Testnet",
+        "detail": "Dogecoin Testnet test network",
+        "isDefault": true
+      }
+    ],
+    "derivationPaths": [
+      {
+        "title": "Standard",
+        "detail": "m/44'/3'/0'/0/0",
+        "derivationPath": "m/44'/3'/0'/0/0",
+        "isDefault": true
+      }
+    ]
+  },
+  {
+    "chain": "Ethereum Sepolia",
+    "curve": "secp256k1",
+    "networks": [
+      {
+        "network": "mainnet",
+        "title": "Ethereum Sepolia",
+        "detail": "Ethereum Sepolia test network",
+        "isDefault": true
+      }
+    ],
+    "derivationPaths": [
+      {
+        "title": "Standard",
+        "detail": "m/44'/60'/0'/0/0",
+        "derivationPath": "m/44'/60'/0'/0/0",
+        "isDefault": true
+      }
+    ]
+  },
+  {
+    "chain": "Ethereum Hoodi",
+    "curve": "secp256k1",
+    "networks": [
+      {
+        "network": "mainnet",
+        "title": "Ethereum Hoodi",
+        "detail": "Ethereum Hoodi test network",
+        "isDefault": true
+      }
+    ],
+    "derivationPaths": [
+      {
+        "title": "Standard",
+        "detail": "m/44'/60'/0'/0/0",
+        "derivationPath": "m/44'/60'/0'/0/0",
+        "isDefault": true
+      }
+    ]
+  },
+  {
+    "chain": "Arbitrum Sepolia",
+    "curve": "secp256k1",
+    "networks": [
+      {
+        "network": "mainnet",
+        "title": "Arbitrum Sepolia",
+        "detail": "Arbitrum Sepolia test network",
+        "isDefault": true
+      }
+    ],
+    "derivationPaths": [
+      {
+        "title": "Standard",
+        "detail": "m/44'/60'/0'/0/0",
+        "derivationPath": "m/44'/60'/0'/0/0",
+        "isDefault": true
+      }
+    ]
+  },
+  {
+    "chain": "Optimism Sepolia",
+    "curve": "secp256k1",
+    "networks": [
+      {
+        "network": "mainnet",
+        "title": "Optimism Sepolia",
+        "detail": "Optimism Sepolia test network",
+        "isDefault": true
+      }
+    ],
+    "derivationPaths": [
+      {
+        "title": "Standard",
+        "detail": "m/44'/60'/0'/0/0",
+        "derivationPath": "m/44'/60'/0'/0/0",
+        "isDefault": true
+      }
+    ]
+  },
+  {
+    "chain": "Base Sepolia",
+    "curve": "secp256k1",
+    "networks": [
+      {
+        "network": "mainnet",
+        "title": "Base Sepolia",
+        "detail": "Base Sepolia test network",
+        "isDefault": true
+      }
+    ],
+    "derivationPaths": [
+      {
+        "title": "Standard",
+        "detail": "m/44'/60'/0'/0/0",
+        "derivationPath": "m/44'/60'/0'/0/0",
+        "isDefault": true
+      }
+    ]
+  },
+  {
+    "chain": "BNB Chain Testnet",
+    "curve": "secp256k1",
+    "networks": [
+      {
+        "network": "mainnet",
+        "title": "BNB Chain Testnet",
+        "detail": "BNB Chain Testnet test network",
+        "isDefault": true
+      }
+    ],
+    "derivationPaths": [
+      {
+        "title": "Standard",
+        "detail": "m/44'/60'/0'/0/0",
+        "derivationPath": "m/44'/60'/0'/0/0",
+        "isDefault": true
+      }
+    ]
+  },
+  {
+    "chain": "Avalanche Fuji",
+    "curve": "secp256k1",
+    "networks": [
+      {
+        "network": "mainnet",
+        "title": "Avalanche Fuji",
+        "detail": "Avalanche Fuji test network",
+        "isDefault": true
+      }
+    ],
+    "derivationPaths": [
+      {
+        "title": "Standard",
+        "detail": "m/44'/60'/0'/0/0",
+        "derivationPath": "m/44'/60'/0'/0/0",
+        "isDefault": true
+      }
+    ]
+  },
+  {
+    "chain": "Polygon Amoy",
+    "curve": "secp256k1",
+    "networks": [
+      {
+        "network": "mainnet",
+        "title": "Polygon Amoy",
+        "detail": "Polygon Amoy test network",
+        "isDefault": true
+      }
+    ],
+    "derivationPaths": [
+      {
+        "title": "Standard",
+        "detail": "m/44'/60'/0'/0/0",
+        "derivationPath": "m/44'/60'/0'/0/0",
+        "isDefault": true
+      }
+    ]
+  },
+  {
+    "chain": "Hyperliquid Testnet",
+    "curve": "secp256k1",
+    "networks": [
+      {
+        "network": "mainnet",
+        "title": "Hyperliquid Testnet",
+        "detail": "Hyperliquid Testnet test network",
+        "isDefault": true
+      }
+    ],
+    "derivationPaths": [
+      {
+        "title": "Standard",
+        "detail": "m/44'/60'/0'/0/0",
+        "derivationPath": "m/44'/60'/0'/0/0",
+        "isDefault": true
+      }
+    ]
+  },
+  {
+    "chain": "Ethereum Classic Mordor",
+    "curve": "secp256k1",
+    "networks": [
+      {
+        "network": "mainnet",
+        "title": "Ethereum Classic Mordor",
+        "detail": "Ethereum Classic Mordor test network",
+        "isDefault": true
+      }
+    ],
+    "derivationPaths": [
+      {
+        "title": "Standard",
+        "detail": "m/44'/61'/0'/0/0",
+        "derivationPath": "m/44'/61'/0'/0/0",
+        "isDefault": true
+      }
+    ]
+  },
+  {
+    "chain": "Tron Nile",
+    "curve": "secp256k1",
+    "networks": [
+      {
+        "network": "mainnet",
+        "title": "Tron Nile",
+        "detail": "Tron Nile test network",
+        "isDefault": true
+      }
+    ],
+    "derivationPaths": [
+      {
+        "title": "Standard",
+        "detail": "m/44'/195'/0'/0/0",
+        "derivationPath": "m/44'/195'/0'/0/0",
+        "isDefault": true
+      },
+      {
+        "title": "Simple BIP44",
+        "detail": "m/44'/195'/0'",
+        "derivationPath": "m/44'/195'/0'",
+        "isDefault": false
+      },
+      {
+        "title": "Legacy",
+        "detail": "m/44'/60'/0'/0/0",
+        "derivationPath": "m/44'/60'/0'/0/0",
+        "isDefault": false
+      }
+    ]
+  },
+  {
+    "chain": "Solana Devnet",
+    "curve": "ed25519",
+    "networks": [
+      {
+        "network": "mainnet",
+        "title": "Solana Devnet",
+        "detail": "Solana Devnet test network",
+        "isDefault": true
+      }
+    ],
+    "derivationPaths": [
+      {
+        "title": "Standard",
+        "detail": "m/44'/501'/0'/0'",
+        "derivationPath": "m/44'/501'/0'/0'",
+        "isDefault": true
+      },
+      {
+        "title": "Legacy",
+        "detail": "m/44'/501'/0'",
+        "derivationPath": "m/44'/501'/0'",
+        "isDefault": false
+      }
+    ]
+  },
+  {
+    "chain": "XRP Ledger Testnet",
+    "curve": "secp256k1",
+    "networks": [
+      {
+        "network": "mainnet",
+        "title": "XRP Ledger Testnet",
+        "detail": "XRP Ledger Testnet test network",
+        "isDefault": true
+      }
+    ],
+    "derivationPaths": [
+      {
+        "title": "Standard",
+        "detail": "m/44'/144'/0'/0/0",
+        "derivationPath": "m/44'/144'/0'/0/0",
+        "isDefault": true
+      },
+      {
+        "title": "Simple BIP44",
+        "detail": "m/44'/144'/0'",
+        "derivationPath": "m/44'/144'/0'",
+        "isDefault": false
+      }
+    ]
+  },
+  {
+    "chain": "Stellar Testnet",
+    "curve": "ed25519",
+    "networks": [
+      {
+        "network": "mainnet",
+        "title": "Stellar Testnet",
+        "detail": "Stellar Testnet test network",
+        "isDefault": true
+      }
+    ],
+    "derivationPaths": [
+      {
+        "title": "Standard",
+        "detail": "m/44'/148'/0'",
+        "derivationPath": "m/44'/148'/0'",
+        "isDefault": true
+      }
+    ]
+  },
+  {
+    "chain": "Cardano Preprod",
+    "curve": "ed25519",
+    "networks": [
+      {
+        "network": "mainnet",
+        "title": "Cardano Preprod",
+        "detail": "Cardano Preprod test network",
+        "isDefault": true
+      }
+    ],
+    "derivationPaths": [
+      {
+        "title": "Shelley",
+        "detail": "m/1852'/1815'/0'/0/0",
+        "derivationPath": "m/1852'/1815'/0'/0/0",
+        "isDefault": true
+      },
+      {
+        "title": "Byron",
+        "detail": "m/44'/1815'/0'/0/0",
+        "derivationPath": "m/44'/1815'/0'/0/0",
+        "isDefault": false
+      }
+    ]
+  },
+  {
+    "chain": "Sui Testnet",
+    "curve": "ed25519",
+    "networks": [
+      {
+        "network": "mainnet",
+        "title": "Sui Testnet",
+        "detail": "Sui Testnet test network",
+        "isDefault": true
+      }
+    ],
+    "derivationPaths": [
+      {
+        "title": "Standard",
+        "detail": "m/44'/784'/0'/0'/0'",
+        "derivationPath": "m/44'/784'/0'/0'/0'",
+        "isDefault": true
+      }
+    ]
+  },
+  {
+    "chain": "Aptos Testnet",
+    "curve": "ed25519",
+    "networks": [
+      {
+        "network": "mainnet",
+        "title": "Aptos Testnet",
+        "detail": "Aptos Testnet test network",
+        "isDefault": true
+      }
+    ],
+    "derivationPaths": [
+      {
+        "title": "Standard",
+        "detail": "m/44'/637'/0'/0'/0'",
+        "derivationPath": "m/44'/637'/0'/0'/0'",
+        "isDefault": true
+      }
+    ]
+  },
+  {
+    "chain": "TON Testnet",
+    "curve": "ed25519",
+    "networks": [
+      {
+        "network": "mainnet",
+        "title": "TON Testnet",
+        "detail": "TON Testnet test network",
+        "isDefault": true
+      }
+    ],
+    "derivationPaths": [
+      {
+        "title": "Standard",
+        "detail": "m/44'/607'/0'/0/0",
+        "derivationPath": "m/44'/607'/0'/0/0",
+        "isDefault": true
+      }
+    ]
+  },
+  {
+    "chain": "NEAR Testnet",
+    "curve": "ed25519",
+    "networks": [
+      {
+        "network": "mainnet",
+        "title": "NEAR Testnet",
+        "detail": "NEAR Testnet test network",
+        "isDefault": true
+      }
+    ],
+    "derivationPaths": [
+      {
+        "title": "Standard",
+        "detail": "m/44'/397'/0'",
+        "derivationPath": "m/44'/397'/0'",
+        "isDefault": true
+      }
+    ]
+  },
+  {
+    "chain": "Polkadot Westend",
+    "curve": "ed25519",
+    "networks": [
+      {
+        "network": "mainnet",
+        "title": "Polkadot Westend",
+        "detail": "Polkadot Westend test network",
+        "isDefault": true
+      }
+    ],
+    "derivationPaths": [
+      {
+        "title": "Standard",
+        "detail": "m/44'/354'/0'",
+        "derivationPath": "m/44'/354'/0'",
         "isDefault": true
       }
     ]

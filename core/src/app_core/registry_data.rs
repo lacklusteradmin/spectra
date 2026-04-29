@@ -69,6 +69,42 @@ pub(super) fn chain_backends() -> Vec<AppCoreChainBackend> {
         live("Ink", &["ETH", TRACKED_ERC20]),
         live("X Layer", &["OKB", TRACKED_ERC20]),
         live("Bittensor", &["TAO"]),
+        // ── Testnets ────────────────────────────────────────────────────
+        // Each testnet is its own first-class chain row. Same supported
+        // symbols as its mainnet counterpart (the asset is logically
+        // the same — only the chain row makes clear it isn't real money).
+        live("Bitcoin Testnet", &["BTC"]),
+        live("Bitcoin Testnet4", &["BTC"]),
+        live("Bitcoin Signet", &["BTC"]),
+        live("Litecoin Testnet", &["LTC"]),
+        live("Bitcoin Cash Testnet", &["BCH"]),
+        live("Bitcoin SV Testnet", &["BSV"]),
+        live("Dogecoin Testnet", &["DOGE"]),
+        live("Zcash Testnet", &["ZEC"]),
+        live("Decred Testnet", &["DCR"]),
+        live("Kaspa Testnet", &["KAS"]),
+        live("Dash Testnet", &["DASH"]),
+        live("Ethereum Sepolia", &["ETH", TRACKED_ERC20]),
+        live("Ethereum Hoodi", &["ETH", TRACKED_ERC20]),
+        live("Arbitrum Sepolia", &["ETH", TRACKED_ERC20]),
+        live("Optimism Sepolia", &["ETH", TRACKED_ERC20]),
+        live("Base Sepolia", &["ETH", TRACKED_ERC20]),
+        live("BNB Chain Testnet", &["BNB", TRACKED_ERC20]),
+        live("Avalanche Fuji", &["AVAX", TRACKED_ERC20]),
+        live("Polygon Amoy", &["POL", TRACKED_ERC20]),
+        live("Hyperliquid Testnet", &["HYPE", TRACKED_ERC20]),
+        live("Ethereum Classic Mordor", &["ETC"]),
+        live("Tron Nile", &["TRX"]),
+        live("Solana Devnet", &["SOL"]),
+        live("XRP Ledger Testnet", &["XRP"]),
+        live("Stellar Testnet", &["XLM"]),
+        live("Cardano Preprod", &["ADA"]),
+        live("Sui Testnet", &["SUI"]),
+        live("Aptos Testnet", &["APT"]),
+        live("TON Testnet", &["TON"]),
+        live("NEAR Testnet", &["NEAR"]),
+        live("Polkadot Westend", &["DOT"]),
+        live("Monero Stagenet", &["XMR"]),
     ]
 }
 
@@ -194,13 +230,52 @@ pub(super) fn app_chain_descriptors() -> Vec<AppCoreAppChainDescriptor> {
         evm("ink", "Ink", "INK", "ETH", &["Ink"]),
         evm("xLayer", "X Layer", "X Layer", "OKB", &["X Layer", "OKB", "OKX"]),
         chain("bittensor", "Bittensor", "TAO", "TAO", &["Bittensor", "TAO", "subtensor"]),
+        // ── Testnet rows ────────────────────────────────────────────────
+        // Each testnet has its own descriptor with its own search keywords
+        // so users can find e.g. "Sepolia" or "Fuji" directly. Catalog flag
+        // mirrors the mainnet counterpart's value.
+        chain("bitcoinTestnet", "Bitcoin Testnet", "BTC", "BTC", &["Bitcoin Testnet", "tBTC", "testnet"]),
+        chain("bitcoinTestnet4", "Bitcoin Testnet4", "BTC", "BTC", &["Bitcoin Testnet4", "testnet4"]),
+        chain("bitcoinSignet", "Bitcoin Signet", "BTC", "BTC", &["Bitcoin Signet", "signet"]),
+        chain("litecoinTestnet", "Litecoin Testnet", "LTC", "LTC", &["Litecoin Testnet", "tLTC"]),
+        chain("bitcoinCashTestnet", "Bitcoin Cash Testnet", "BCH", "BCH", &["Bitcoin Cash Testnet", "tBCH"]),
+        chain_no_catalog("bitcoinSVTestnet", "Bitcoin SV Testnet", "BSV", "BSV", &["Bitcoin SV Testnet", "tBSV"]),
+        chain("dogecoinTestnet", "Dogecoin Testnet", "DOGE", "DOGE", &["Dogecoin Testnet", "tDOGE"]),
+        chain("zcashTestnet", "Zcash Testnet", "ZEC", "ZEC", &["Zcash Testnet"]),
+        chain("decredTestnet", "Decred Testnet", "DCR", "DCR", &["Decred Testnet"]),
+        chain("kaspaTestnet", "Kaspa Testnet", "KAS", "KAS", &["Kaspa Testnet"]),
+        chain("dashTestnet", "Dash Testnet", "DASH", "DASH", &["Dash Testnet"]),
+        evm("ethereumSepolia", "Ethereum Sepolia", "ETH", "ETH", &["Ethereum Sepolia", "Sepolia", "ETH"]),
+        evm("ethereumHoodi", "Ethereum Hoodi", "ETH", "ETH", &["Ethereum Hoodi", "Hoodi"]),
+        evm("arbitrumSepolia", "Arbitrum Sepolia", "ARB", "ETH", &["Arbitrum Sepolia", "Sepolia"]),
+        evm("optimismSepolia", "Optimism Sepolia", "OP", "ETH", &["Optimism Sepolia", "Sepolia"]),
+        evm("baseSepolia", "Base Sepolia", "BASE", "ETH", &["Base Sepolia", "Sepolia"]),
+        evm("bnbChainTestnet", "BNB Chain Testnet", "BNB", "BNB", &["BNB Chain Testnet", "Chapel"]),
+        evm("avalancheFuji", "Avalanche Fuji", "AVAX", "AVAX", &["Avalanche Fuji", "Fuji"]),
+        evm("polygonAmoy", "Polygon Amoy", "POL", "POL", &["Polygon Amoy", "Amoy"]),
+        evm("hyperliquidTestnet", "Hyperliquid Testnet", "HYPE", "HYPE", &["Hyperliquid Testnet"]),
+        evm("ethereumClassicMordor", "Ethereum Classic Mordor", "ETC", "ETC", &["Ethereum Classic Mordor", "Mordor"]),
+        chain("tronNile", "Tron Nile", "TRX", "TRX", &["Tron Nile", "Nile"]),
+        chain("solanaDevnet", "Solana Devnet", "SOL", "SOL", &["Solana Devnet", "Devnet"]),
+        chain("xrpTestnet", "XRP Ledger Testnet", "XRP", "XRP", &["XRP Ledger Testnet"]),
+        chain("stellarTestnet", "Stellar Testnet", "XLM", "XLM", &["Stellar Testnet"]),
+        chain("cardanoPreprod", "Cardano Preprod", "ADA", "ADA", &["Cardano Preprod", "Preprod"]),
+        chain("suiTestnet", "Sui Testnet", "SUI", "SUI", &["Sui Testnet"]),
+        chain("aptosTestnet", "Aptos Testnet", "APT", "APT", &["Aptos Testnet"]),
+        chain("tonTestnet", "TON Testnet", "TON", "TON", &["TON Testnet"]),
+        chain("nearTestnet", "NEAR Testnet", "NEAR", "NEAR", &["NEAR Testnet"]),
+        chain("polkadotWestend", "Polkadot Westend", "DOT", "DOT", &["Polkadot Westend", "Westend"]),
+        chain("moneroStagenet", "Monero Stagenet", "XMR", "XMR", &["Monero Stagenet", "Stagenet"]),
     ]
 }
 
 // ── broadcast_provider_options ─────────────────────────────────────────────
 
 pub(super) fn broadcast_provider_options(chain_name: &str) -> Vec<AppCoreBroadcastProviderOption> {
-    let pairs: &[(&str, &str)] = match chain_name {
+    let resolved = crate::registry::Chain::from_display_name(chain_name)
+        .map(|c| c.mainnet_counterpart().chain_display_name())
+        .unwrap_or(chain_name);
+    let pairs: &[(&str, &str)] = match resolved {
         "Bitcoin" => &[("esplora", "Esplora"), ("maestro-esplora", "Maestro Esplora")],
         "Bitcoin Cash" => &[("blockchair", "Blockchair"), ("actorforth", "ActorForth REST")],
         "Bitcoin SV" => &[("whatsonchain", "WhatsOnChain"), ("blockchair", "Blockchair")],

@@ -1,11 +1,9 @@
 //! Chain derivation presets, loaded from `core/data/derivation_presets.toml` at
 //! compile time. Single source of truth for per-chain defaults: curve,
-//! derivation algorithm, address algorithm, public key format, script type,
-//! and which networks each chain supports.
-//!
-//! Replaces three hardcoded match statements that used to live in
-//! `runtime.rs` (`chain_defaults_from_name`, `is_secp_chain`,
-//! `is_network_supported`). Adding a new chain preset is now a TOML edit.
+//! derivation algorithm, address algorithm, public key format, and script
+//! type. Each chain (mainnet or testnet) has its own row with its own
+//! `chain_id`; there is no separate network-flavor parameter — the chain
+//! identity itself encodes mainnet vs testnet at every byte-selection site.
 
 use super::runtime::*;
 use serde::Deserialize;
@@ -31,7 +29,6 @@ struct RawPreset {
     public_key_format: String,
     #[serde(default)]
     script_type: Option<String>,
-    networks: Vec<String>,
 }
 
 #[derive(Debug, Clone)]
@@ -44,7 +41,6 @@ pub(super) struct ChainPreset {
     /// `None` means the caller must infer the script type from the path's
     /// purpose level (only Bitcoin does this today).
     pub script_type: Option<u32>,
-    pub networks: Vec<u32>,
 }
 
 static PRESETS_BY_NAME: LazyLock<HashMap<String, ChainPreset>> = LazyLock::new(|| {
@@ -64,9 +60,7 @@ static PRESETS_BY_CHAIN_ID: LazyLock<HashMap<u32, ChainPreset>> = LazyLock::new(
     let file = load_presets_file();
     let mut map = HashMap::new();
     for raw in &file.chains {
-        // Aliases share chain_id with their canonical entry; keep the first
-        // one encountered so EVM aliases don't overwrite the Ethereum entry.
-        map.entry(raw.chain_id).or_insert_with(|| parse_preset(raw));
+        map.insert(raw.chain_id, parse_preset(raw));
     }
     map
 });
@@ -81,11 +75,6 @@ fn parse_preset(raw: &RawPreset) -> ChainPreset {
         .script_type
         .as_deref()
         .map(|s| parse_script_type_name(s).unwrap_or_else(|e| panic!("{}: {}", raw.name, e)));
-    let networks = raw
-        .networks
-        .iter()
-        .map(|n| parse_network_name(n).unwrap_or_else(|e| panic!("{}: {}", raw.name, e)))
-        .collect();
     ChainPreset {
         chain_id: raw.chain_id,
         curve: parse_curve_name(&raw.curve).unwrap_or_else(|e| panic!("{}: {}", raw.name, e)),
@@ -96,7 +85,6 @@ fn parse_preset(raw: &RawPreset) -> ChainPreset {
         public_key_format: parse_public_key_format_name(&raw.public_key_format)
             .unwrap_or_else(|e| panic!("{}: {}", raw.name, e)),
         script_type,
-        networks,
     }
 }
 
@@ -170,16 +158,6 @@ fn parse_script_type_name(s: &str) -> Result<u32, String> {
         "p2tr" => Ok(SCRIPT_P2TR),
         "account" => Ok(SCRIPT_ACCOUNT),
         other => Err(format!("unknown script type: {other}")),
-    }
-}
-
-fn parse_network_name(s: &str) -> Result<u32, String> {
-    match s {
-        "mainnet" => Ok(NETWORK_MAINNET),
-        "testnet" => Ok(NETWORK_TESTNET),
-        "testnet4" => Ok(NETWORK_TESTNET4),
-        "signet" => Ok(NETWORK_SIGNET),
-        other => Err(format!("unknown network: {other}")),
     }
 }
 

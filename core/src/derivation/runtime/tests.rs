@@ -76,7 +76,6 @@ use super::*;
 
         ParsedRequest {
             chain,
-            network: NetworkFlavor::Mainnet,
             curve,
             requested_outputs: OUTPUT_ADDRESS | OUTPUT_PUBLIC_KEY | OUTPUT_PRIVATE_KEY,
             derivation_algorithm,
@@ -568,7 +567,6 @@ use super::*;
         fn clone_for_test(&self) -> ParsedRequest {
             ParsedRequest {
                 chain: self.chain,
-                network: self.network,
                 curve: self.curve,
                 requested_outputs: self.requested_outputs,
                 derivation_algorithm: self.derivation_algorithm,
@@ -617,6 +615,38 @@ use super::*;
             Chain::Kaspa => "kaspa",
             Chain::Dash => "dash",
             Chain::Bittensor => "bittensor",
+            Chain::BitcoinTestnet => "bitcoin_testnet",
+            Chain::BitcoinTestnet4 => "bitcoin_testnet4",
+            Chain::BitcoinSignet => "bitcoin_signet",
+            Chain::LitecoinTestnet => "litecoin_testnet",
+            Chain::BitcoinCashTestnet => "bitcoin_cash_testnet",
+            Chain::BitcoinSvTestnet => "bitcoin_sv_testnet",
+            Chain::DogecoinTestnet => "dogecoin_testnet",
+            Chain::ZcashTestnet => "zcash_testnet",
+            Chain::DecredTestnet => "decred_testnet",
+            Chain::KaspaTestnet => "kaspa_testnet",
+            Chain::DashTestnet => "dash_testnet",
+            Chain::EthereumSepolia => "ethereum_sepolia",
+            Chain::EthereumHoodi => "ethereum_hoodi",
+            Chain::ArbitrumSepolia => "arbitrum_sepolia",
+            Chain::OptimismSepolia => "optimism_sepolia",
+            Chain::BaseSepolia => "base_sepolia",
+            Chain::BnbTestnet => "bnb_testnet",
+            Chain::AvalancheFuji => "avalanche_fuji",
+            Chain::PolygonAmoy => "polygon_amoy",
+            Chain::HyperliquidTestnet => "hyperliquid_testnet",
+            Chain::EthereumClassicMordor => "ethereum_classic_mordor",
+            Chain::TronNile => "tron_nile",
+            Chain::SolanaDevnet => "solana_devnet",
+            Chain::XrpTestnet => "xrp_testnet",
+            Chain::StellarTestnet => "stellar_testnet",
+            Chain::CardanoPreprod => "cardano_preprod",
+            Chain::SuiTestnet => "sui_testnet",
+            Chain::AptosTestnet => "aptos_testnet",
+            Chain::TonTestnet => "ton_testnet",
+            Chain::NearTestnet => "near_testnet",
+            Chain::PolkadotWestend => "polkadot_westend",
+            Chain::MoneroStagenet => "monero_stagenet",
         }
     }
 
@@ -732,7 +762,6 @@ use super::*;
         // Construct a minimal request with chain=None and verify it
         // reaches the same ParsedRequest shape as an explicit chain.
         let req_json_no_chain = serde_json::json!({
-            "network": NETWORK_MAINNET,
             "curve": CURVE_ED25519,
             "requestedOutputs": OUTPUT_ADDRESS | OUTPUT_PUBLIC_KEY,
             "derivationAlgorithm": DERIVATION_SLIP10_ED25519,
@@ -757,7 +786,6 @@ use super::*;
         // preserves back-compat for callers that haven't migrated.
         let req_json = serde_json::json!({
             "chain": CHAIN_TRON, // explicit Tron
-            "network": NETWORK_MAINNET,
             "curve": CURVE_SECP256K1,
             "requestedOutputs": OUTPUT_ADDRESS,
             "derivationAlgorithm": DERIVATION_BIP32_SECP256K1,
@@ -801,7 +829,6 @@ use super::*;
     fn run_golden_vector(v: &GoldenVector) -> Result<String, String> {
         let request = ParsedRequest {
             chain: v.chain,
-            network: NetworkFlavor::Mainnet,
             curve: v.curve,
             requested_outputs: OUTPUT_ADDRESS,
             derivation_algorithm: v.derivation_algorithm,
