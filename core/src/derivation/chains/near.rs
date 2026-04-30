@@ -1,4 +1,22 @@
-//! NEAR account-id validation (named + implicit hex accounts).
+//! NEAR: account-id validation (named + implicit hex), BIP-39 + direct-seed
+//! ed25519 derivation, hex address encoding. Self-contained — see
+//! `REFACTOR_NOTES.md`.
+//!
+//! NEAR uses *direct-seed* ed25519: the BIP-39 seed's first 32 bytes are the
+//! ed25519 private key — no SLIP-10 path walk. Address = hex(public_key).
+
+use bip39::{Language, Mnemonic};
+use ed25519_dalek::SigningKey;
+use pbkdf2::pbkdf2_hmac;
+use sha2::Sha512;
+use unicode_normalization::UnicodeNormalization;
+use zeroize::Zeroizing;
+
+use crate::derivation::engine::{
+    DerivedOutput, ParsedRequest, OUTPUT_ADDRESS, OUTPUT_PRIVATE_KEY, OUTPUT_PUBLIC_KEY,
+};
+
+// ── Address validation (preserved) ───────────────────────────────────────
 
 pub fn validate_near_address(address: &str) -> bool {
     // NEAR accounts: named (alice.near, sub.alice.near) or implicit (64 hex chars).
@@ -11,4 +29,97 @@ pub fn validate_near_address(address: &str) -> bool {
         && address
             .chars()
             .all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_' || c == '.')
+}
+
+// ── BIP-39 ───────────────────────────────────────────────────────────────
+
+fn resolve_bip39_language(name: Option<&str>) -> Result<Language, String> {
+    let value = match name {
+        Some(value) if !value.trim().is_empty() => value.trim().to_ascii_lowercase(),
+        _ => return Ok(Language::English),
+    };
+    match value.as_str() {
+        "english" | "en" => Ok(Language::English),
+        "czech" | "cs" => Ok(Language::Czech),
+        "french" | "fr" => Ok(Language::French),
+        "italian" | "it" => Ok(Language::Italian),
+        "japanese" | "ja" | "jp" => Ok(Language::Japanese),
+        "korean" | "ko" | "kr" => Ok(Language::Korean),
+        "portuguese" | "pt" => Ok(Language::Portuguese),
+        "spanish" | "es" => Ok(Language::Spanish),
+        "simplified-chinese" | "chinese-simplified" | "simplified_chinese" | "zh-hans"
+        | "zh-cn" | "zh" => Ok(Language::SimplifiedChinese),
+        "traditional-chinese" | "chinese-traditional" | "traditional_chinese" | "zh-hant"
+        | "zh-tw" => Ok(Language::TraditionalChinese),
+        other => Err(format!("Unsupported mnemonic wordlist: {other}")),
+    }
+}
+
+fn derive_bip39_seed(
+    seed_phrase: &str,
+    passphrase: &str,
+    iteration_count: u32,
+    mnemonic_wordlist: Option<&str>,
+    salt_prefix: Option<&str>,
+) -> Result<Zeroizing<[u8; 64]>, String> {
+    let language = resolve_bip39_language(mnemonic_wordlist)?;
+    let mnemonic =
+        Mnemonic::parse_in_normalized(language, seed_phrase).map_err(|e| e.to_string())?;
+    let iterations = if iteration_count == 0 { 2048 } else { iteration_count };
+    let prefix = salt_prefix.unwrap_or("mnemonic");
+    let normalized_mnemonic = Zeroizing::new(mnemonic.to_string().nfkd().collect::<String>());
+    let normalized_passphrase = Zeroizing::new(passphrase.nfkd().collect::<String>());
+    let normalized_prefix = Zeroizing::new(prefix.nfkd().collect::<String>());
+    let salt = Zeroizing::new(format!(
+        "{}{}",
+        normalized_prefix.as_str(),
+        normalized_passphrase.as_str()
+    ));
+    let mut seed = Zeroizing::new([0u8; 64]);
+    pbkdf2_hmac::<Sha512>(
+        normalized_mnemonic.as_bytes(),
+        salt.as_bytes(),
+        iterations,
+        &mut *seed,
+    );
+    Ok(seed)
+}
+
+fn requests_output(requested_outputs: u32, output: u32) -> bool {
+    requested_outputs & output != 0
+}
+
+/// Derive a NEAR account address from BIP-39 + direct-seed ed25519. The
+/// implicit-account address is hex(public_key) — note that NEAR's named
+/// accounts (`alice.near`) live alongside this via on-chain registration.
+pub(crate) fn derive(request: ParsedRequest) -> Result<DerivedOutput, String> {
+    let seed = derive_bip39_seed(
+        &request.seed_phrase,
+        &request.passphrase,
+        request.iteration_count,
+        request.mnemonic_wordlist.as_deref(),
+        request.salt_prefix.as_deref(),
+    )?;
+    let mut private_key = Zeroizing::new([0u8; 32]);
+    private_key.copy_from_slice(&seed[..32]);
+    let signing_key = SigningKey::from_bytes(&private_key);
+    let public_key = signing_key.verifying_key().to_bytes();
+
+    Ok(DerivedOutput {
+        address: if requests_output(request.requested_outputs, OUTPUT_ADDRESS) {
+            Some(hex::encode(public_key))
+        } else {
+            None
+        },
+        public_key_hex: if requests_output(request.requested_outputs, OUTPUT_PUBLIC_KEY) {
+            Some(hex::encode(public_key))
+        } else {
+            None
+        },
+        private_key_hex: if requests_output(request.requested_outputs, OUTPUT_PRIVATE_KEY) {
+            Some(hex::encode(*private_key))
+        } else {
+            None
+        },
+    })
 }

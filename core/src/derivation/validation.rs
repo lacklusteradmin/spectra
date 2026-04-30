@@ -1,6 +1,6 @@
 use serde::{Deserialize, Serialize};
 
-use super::bitcoin_primitives::{parse_bitcoin_address, BitcoinNetworkKind};
+use super::chains::bitcoin::{parse_bitcoin_address, BitcoinNetworkKind};
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, uniffi::Record)]
 #[serde(rename_all = "camelCase")]
@@ -148,8 +148,8 @@ fn validate_bitcoin_address(value: &str, expected_network: BitcoinNetworkKind) -
         Err(_) => return invalid_result(),
     };
     let network = match &parsed {
-        super::bitcoin_primitives::ParsedBitcoinAddress::Legacy { network, .. }
-        | super::bitcoin_primitives::ParsedBitcoinAddress::SegWit { network, .. } => network,
+        super::chains::bitcoin::ParsedBitcoinAddress::Legacy { network, .. }
+        | super::chains::bitcoin::ParsedBitcoinAddress::SegWit { network, .. } => network,
     };
     let is_valid = match expected_network {
         BitcoinNetworkKind::Mainnet => matches!(network, BitcoinNetworkKind::Mainnet),

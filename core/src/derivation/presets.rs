@@ -5,7 +5,7 @@
 //! `chain_id`; there is no separate network-flavor parameter — the chain
 //! identity itself encodes mainnet vs testnet at every byte-selection site.
 
-use super::runtime::*;
+use super::wire::*;
 use serde::Deserialize;
 use std::collections::HashMap;
 use std::sync::LazyLock;

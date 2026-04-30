@@ -1,17 +1,27 @@
-//! Zcash transparent address decoding, script building, and validation.
-//!
-//! Zcash transparent ("t-addresses") use the same hash160 + base58check
-//! shape as Bitcoin P2PKH but with a 2-byte version prefix:
-//!   - `t1...` (P2PKH)  → version `0x1CB8`
-//!   - `t3...` (P2SH)   → version `0x1CBD`
-//!
-//! Shielded addresses (`zs...` / `u1...`) are out of scope for this client.
+//! Zcash transparent: address validation, BIP-32 derivation, t1… P2PKH
+//! base58check encoding (2-byte version prefix). Self-contained — see
+//! `REFACTOR_NOTES.md`.
+
+use bip39::{Language, Mnemonic};
+use hmac::{Hmac, Mac};
+use pbkdf2::pbkdf2_hmac;
+use ripemd::Ripemd160;
+use secp256k1::{All, PublicKey, Scalar, Secp256k1, SecretKey};
+use sha2::{Digest, Sha256, Sha512};
+use unicode_normalization::UnicodeNormalization;
+use zeroize::Zeroizing;
+
+use crate::derivation::engine::{
+    DerivedOutput, ParsedRequest, PublicKeyFormat, OUTPUT_ADDRESS, OUTPUT_PRIVATE_KEY,
+    OUTPUT_PUBLIC_KEY,
+};
+use crate::derivation::enums::Chain;
+
+// ── Address validation (preserved) ───────────────────────────────────────
 
 pub(crate) const ZCASH_T1_VERSION: [u8; 2] = [0x1C, 0xB8];
 pub(crate) const ZCASH_T3_VERSION: [u8; 2] = [0x1C, 0xBD];
 
-/// Decode a t-address into its 20-byte hash160. Accepts both `t1` (P2PKH) and
-/// `t3` (P2SH) prefixes.
 pub(crate) fn decode_zcash_address(address: &str) -> Result<[u8; 20], String> {
     let decoded = bs58::decode(address)
         .with_check(None)
@@ -22,17 +32,13 @@ pub(crate) fn decode_zcash_address(address: &str) -> Result<[u8; 20], String> {
     }
     let version = [decoded[0], decoded[1]];
     if version != ZCASH_T1_VERSION && version != ZCASH_T3_VERSION {
-        return Err(format!(
-            "unrecognised zcash version bytes: {version:02x?}"
-        ));
+        return Err(format!("unrecognised zcash version bytes: {version:02x?}"));
     }
     let mut hash = [0u8; 20];
     hash.copy_from_slice(&decoded[2..22]);
     Ok(hash)
 }
 
-/// P2PKH script for a `t1...` address: `OP_DUP OP_HASH160 <20-byte hash>
-/// OP_EQUALVERIFY OP_CHECKSIG` — identical to Bitcoin.
 pub(crate) fn zcash_p2pkh_script(pubkey_hash: &[u8; 20]) -> Vec<u8> {
     let mut s = vec![0x76u8, 0xa9, 0x14];
     s.extend_from_slice(pubkey_hash);
@@ -42,6 +48,249 @@ pub(crate) fn zcash_p2pkh_script(pubkey_hash: &[u8; 20]) -> Vec<u8> {
 
 pub fn validate_zcash_address(address: &str) -> bool {
     decode_zcash_address(address).is_ok()
+}
+
+// ── Hashing primitives ───────────────────────────────────────────────────
+
+type HmacSha512 = Hmac<Sha512>;
+
+fn hash160_bytes(bytes: &[u8]) -> [u8; 20] {
+    let sha = {
+        let mut hasher = Sha256::new();
+        hasher.update(bytes);
+        let out = hasher.finalize();
+        let mut result = [0u8; 32];
+        result.copy_from_slice(&out);
+        result
+    };
+    let mut hasher = Ripemd160::new();
+    hasher.update(sha);
+    let out = hasher.finalize();
+    let mut result = [0u8; 20];
+    result.copy_from_slice(&out);
+    result
+}
+
+fn base58check_encode(payload: &[u8]) -> String {
+    bs58::encode(payload).with_check().into_string()
+}
+
+// ── BIP-39 ───────────────────────────────────────────────────────────────
+
+fn resolve_bip39_language(name: Option<&str>) -> Result<Language, String> {
+    let value = match name {
+        Some(value) if !value.trim().is_empty() => value.trim().to_ascii_lowercase(),
+        _ => return Ok(Language::English),
+    };
+    match value.as_str() {
+        "english" | "en" => Ok(Language::English),
+        "czech" | "cs" => Ok(Language::Czech),
+        "french" | "fr" => Ok(Language::French),
+        "italian" | "it" => Ok(Language::Italian),
+        "japanese" | "ja" | "jp" => Ok(Language::Japanese),
+        "korean" | "ko" | "kr" => Ok(Language::Korean),
+        "portuguese" | "pt" => Ok(Language::Portuguese),
+        "spanish" | "es" => Ok(Language::Spanish),
+        "simplified-chinese" | "chinese-simplified" | "simplified_chinese" | "zh-hans"
+        | "zh-cn" | "zh" => Ok(Language::SimplifiedChinese),
+        "traditional-chinese" | "chinese-traditional" | "traditional_chinese" | "zh-hant"
+        | "zh-tw" => Ok(Language::TraditionalChinese),
+        other => Err(format!("Unsupported mnemonic wordlist: {other}")),
+    }
+}
+
+fn derive_bip39_seed(
+    seed_phrase: &str,
+    passphrase: &str,
+    iteration_count: u32,
+    mnemonic_wordlist: Option<&str>,
+    salt_prefix: Option<&str>,
+) -> Result<Zeroizing<[u8; 64]>, String> {
+    let language = resolve_bip39_language(mnemonic_wordlist)?;
+    let mnemonic =
+        Mnemonic::parse_in_normalized(language, seed_phrase).map_err(|e| e.to_string())?;
+    let iterations = if iteration_count == 0 { 2048 } else { iteration_count };
+    let prefix = salt_prefix.unwrap_or("mnemonic");
+    let normalized_mnemonic = Zeroizing::new(mnemonic.to_string().nfkd().collect::<String>());
+    let normalized_passphrase = Zeroizing::new(passphrase.nfkd().collect::<String>());
+    let normalized_prefix = Zeroizing::new(prefix.nfkd().collect::<String>());
+    let salt = Zeroizing::new(format!(
+        "{}{}",
+        normalized_prefix.as_str(),
+        normalized_passphrase.as_str()
+    ));
+    let mut seed = Zeroizing::new([0u8; 64]);
+    pbkdf2_hmac::<Sha512>(
+        normalized_mnemonic.as_bytes(),
+        salt.as_bytes(),
+        iterations,
+        &mut *seed,
+    );
+    Ok(seed)
+}
+
+// ── BIP-32 ───────────────────────────────────────────────────────────────
+
+const HARDENED_OFFSET: u32 = 0x80000000;
+
+fn parse_bip32_path(path: &str) -> Result<Vec<u32>, String> {
+    let trimmed = path.trim().trim_start_matches('m').trim_start_matches('M');
+    let trimmed = trimmed.trim_start_matches('/');
+    if trimmed.is_empty() {
+        return Ok(Vec::new());
+    }
+    let mut out = Vec::new();
+    for segment in trimmed.split('/') {
+        let (value, hardened) = if let Some(stripped) = segment.strip_suffix('\'') {
+            (stripped, true)
+        } else if let Some(stripped) = segment.strip_suffix('h') {
+            (stripped, true)
+        } else if let Some(stripped) = segment.strip_suffix('H') {
+            (stripped, true)
+        } else {
+            (segment, false)
+        };
+        let raw: u32 = value
+            .parse()
+            .map_err(|_| format!("invalid path segment: {segment}"))?;
+        if raw >= HARDENED_OFFSET {
+            return Err(format!("path segment out of range: {segment}"));
+        }
+        out.push(if hardened { raw | HARDENED_OFFSET } else { raw });
+    }
+    Ok(out)
+}
+
+#[derive(Clone)]
+struct ExtendedPrivateKey {
+    private_key: SecretKey,
+    chain_code: [u8; 32],
+}
+
+impl ExtendedPrivateKey {
+    fn master_from_seed(hmac_key: &[u8], seed: &[u8]) -> Result<Self, String> {
+        let mut mac =
+            HmacSha512::new_from_slice(hmac_key).map_err(|e| format!("HMAC init: {e}"))?;
+        mac.update(seed);
+        let tag = mac.finalize().into_bytes();
+        let private_key = SecretKey::from_slice(&tag[..32])
+            .map_err(|e| format!("Master key invalid: {e}"))?;
+        let mut chain_code = [0u8; 32];
+        chain_code.copy_from_slice(&tag[32..]);
+        Ok(Self { private_key, chain_code })
+    }
+
+    fn derive_child(&self, secp: &Secp256k1<All>, index: u32) -> Result<Self, String> {
+        let mut mac = HmacSha512::new_from_slice(&self.chain_code)
+            .map_err(|e| format!("HMAC init: {e}"))?;
+        if index >= HARDENED_OFFSET {
+            mac.update(&[0x00]);
+            mac.update(&self.private_key.secret_bytes());
+        } else {
+            let pk = PublicKey::from_secret_key(secp, &self.private_key);
+            mac.update(&pk.serialize());
+        }
+        mac.update(&index.to_be_bytes());
+        let tag = mac.finalize().into_bytes();
+        let tweak = Scalar::from_be_bytes(
+            tag[..32].try_into().map_err(|_| "tag slice".to_string())?,
+        )
+        .map_err(|_| "BIP-32 IL out of range".to_string())?;
+        let private_key = self
+            .private_key
+            .add_tweak(&tweak)
+            .map_err(|e| format!("BIP-32 tweak failed: {e}"))?;
+        let mut chain_code = [0u8; 32];
+        chain_code.copy_from_slice(&tag[32..]);
+        Ok(Self { private_key, chain_code })
+    }
+
+    fn derive_path(&self, secp: &Secp256k1<All>, path: &[u32]) -> Result<Self, String> {
+        let mut key = self.clone();
+        for &index in path {
+            key = key.derive_child(secp, index)?;
+        }
+        Ok(key)
+    }
+}
+
+// ── Public key formatting ────────────────────────────────────────────────
+
+fn format_secp_public_key(
+    public_key: &PublicKey,
+    format: PublicKeyFormat,
+) -> Result<Vec<u8>, String> {
+    Ok(match format {
+        PublicKeyFormat::Compressed => public_key.serialize().to_vec(),
+        PublicKeyFormat::Uncompressed => public_key.serialize_uncompressed().to_vec(),
+        PublicKeyFormat::XOnly => public_key.x_only_public_key().0.serialize().to_vec(),
+        PublicKeyFormat::Raw => public_key.serialize().to_vec(),
+        PublicKeyFormat::Auto => {
+            return Err("Public key format must be explicit.".to_string());
+        }
+    })
+}
+
+// ── Top-level derivation ─────────────────────────────────────────────────
+
+fn requests_output(requested_outputs: u32, output: u32) -> bool {
+    requested_outputs & output != 0
+}
+
+/// Derive a Zcash transparent t-address. Mainnet uses 2-byte prefix
+/// 0x1CB8 ("t1…" addresses); testnet uses 0x1D25 ("tm…").
+pub(crate) fn derive(request: ParsedRequest) -> Result<DerivedOutput, String> {
+    let secp = Secp256k1::new();
+    let derivation_path = request
+        .derivation_path
+        .clone()
+        .ok_or("Derivation path is required.")?;
+    let seed = derive_bip39_seed(
+        &request.seed_phrase,
+        &request.passphrase,
+        request.iteration_count,
+        request.mnemonic_wordlist.as_deref(),
+        request.salt_prefix.as_deref(),
+    )?;
+
+    let key_bytes = request
+        .hmac_key
+        .as_deref()
+        .filter(|v| !v.is_empty())
+        .map(|v| v.as_bytes())
+        .unwrap_or(b"Bitcoin seed");
+    let master = ExtendedPrivateKey::master_from_seed(key_bytes, seed.as_ref())?;
+    let path = parse_bip32_path(&derivation_path)?;
+    let xpriv = master.derive_path(&secp, &path)?;
+    let public_key = PublicKey::from_secret_key(&secp, &xpriv.private_key);
+    let private_bytes = xpriv.private_key.secret_bytes();
+
+    let prefix: [u8; 2] =
+        if matches!(request.chain, Chain::ZcashTestnet) { [0x1D, 0x25] } else { ZCASH_T1_VERSION };
+    let mut payload = prefix.to_vec();
+    payload.extend_from_slice(&hash160_bytes(&public_key.serialize()));
+    let address = if requests_output(request.requested_outputs, OUTPUT_ADDRESS) {
+        Some(base58check_encode(&payload))
+    } else {
+        None
+    };
+
+    Ok(DerivedOutput {
+        address,
+        public_key_hex: if requests_output(request.requested_outputs, OUTPUT_PUBLIC_KEY) {
+            Some(hex::encode(format_secp_public_key(
+                &public_key,
+                request.public_key_format,
+            )?))
+        } else {
+            None
+        },
+        private_key_hex: if requests_output(request.requested_outputs, OUTPUT_PRIVATE_KEY) {
+            Some(hex::encode(private_bytes))
+        } else {
+            None
+        },
+    })
 }
 
 #[cfg(test)]
@@ -56,8 +305,6 @@ mod tests {
 
     #[test]
     fn rejects_btc_p2pkh() {
-        // Bitcoin P2PKH version is 0x00 (one byte), so a valid BTC address
-        // base58-decodes to 21 bytes, not 22 — should be rejected.
         assert!(!validate_zcash_address("1A1zP1eP5QGefi2DMPTfTL5SLmv7DivfNa"));
     }
 
