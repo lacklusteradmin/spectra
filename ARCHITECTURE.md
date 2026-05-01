@@ -1,223 +1,269 @@
-# Spectra — Target Architecture
+# Spectra — Architecture
 
 **Goal:** shared Rust core, 100% native iOS (Liquid Glass) and Android (Material You).
 
+The structural reorganization described in earlier drafts of this file has landed. This document now describes the layout as it is.
+
 ---
 
-## Summary judgement on the workspace model
+## Workspace model
 
-A heavily split, multi-crate workspace only pays off when the crates are a *public library ecosystem* — downstream users composing only the pieces they need, with each crate versioned and published independently. Spectra is an *application*, not a library. Splitting it into many crates would create Cargo workspace overhead with no downstream consumers and no payoff.
-
-The right workspace model for Spectra is **3 crates, one workspace root**:
+Spectra is an *application*, not a library. The Cargo workspace is intentionally small — three published-shape crates (`core`, `ffi`, `cli`) plus the bindgen tool. Heavy splitting would buy nothing.
 
 ```
-Cargo.toml          ← workspace root, members = [core, ffi]
+Cargo.toml          ← workspace root, members = ["core", "ffi", "cli", "tools/uniffi-bindgen"]
 core/               ← pure Rust domain logic, no FFI symbols
-ffi/                ← UniFFI binding crate, depends on core, no domain logic
-tools/uniffi-bindgen/  ← tiny binary crate, only used at codegen time
+ffi/                ← UniFFI binding crate (depends on core, no domain logic)
+cli/                ← optional command-line driver against the same core
+tools/uniffi-bindgen/  ← tiny binary, only used at codegen time
 ```
 
-This is the standard pattern used by Mozilla, Signal, and the UniFFI documentation itself. The `core` crate can be tested with `cargo test` on any machine without touching mobile toolchains. The `ffi` crate is compiled only when building for iOS or Android targets.
+`cargo test -p spectra_core` runs on any machine without a mobile toolchain.
 
 ---
 
-## Recommended directory layout
+## Top-level layout
 
 ```
 Spectra/
 │
-├── Cargo.toml                   ← workspace [members = ["core", "ffi", "tools/uniffi-bindgen"]]
+├── Cargo.toml                  ← workspace root
+├── Cargo.lock
+├── Makefile                    ← `make ios` / `make android` / `make test`
+├── README.md
+├── ARCHITECTURE.md             ← this file
 │
-├── core/                        ← pure Rust, no UniFFI macros
-│   ├── Cargo.toml
+├── core/                       ← pure Rust, no UniFFI macros at this layer
 │   └── src/
-│       ├── lib.rs
-│       ├── chains/              ← per-chain modules (bitcoin, evm, solana, …)
-│       ├── addressing.rs
-│       ├── balance_cache.rs
-│       ├── catalog.rs
-│       ├── history.rs
-│       ├── http.rs
-│       ├── price.rs
-│       ├── send.rs
-│       ├── send_machine.rs
-│       ├── service.rs           ← WalletService struct, methods
-│       ├── tokens.rs
-│       ├── transactions.rs
-│       ├── utxo.rs
-│       ├── wallet_db.rs
-│       └── …
+│       ├── lib.rs              ← crate entry, SpectraBridgeError, module declarations
+│       ├── service.rs          ← WalletService UniFFI object + every impl block
+│       ├── app_core.rs         ← chain catalog, derivation paths, registry data
+│       ├── registry.rs         ← canonical Chain enum + EvmChain newtype + EndpointSlot
+│       ├── tokens.rs           ← built-in token catalog + token-id normalization
+│       ├── formatting.rs       ← decimals / fiat / stablecoin / icon helpers
+│       ├── receive.rs          ← receive-address message builder
+│       ├── resources.rs        ← static-resource lookup (currently empty stub)
+│       ├── derivation/         ← key + address derivation
+│       ├── fetch/              ← balance / history / price / HTTP transport
+│       ├── send/               ← per-chain send flow + utxo + preview decoders
+│       ├── store/              ← persistence + state reducer + secret-store callback
+│       ├── staking/            ← cross-chain staking surface
+│       └── diagnostics/        ← runtime self-tests + per-wallet diagnostics registry
 │
-├── ffi/                         ← thin UniFFI wrapper; no business logic here
-│   ├── Cargo.toml               ← [lib] crate-type = ["cdylib", "staticlib"]
-│   └── src/
-│       └── lib.rs               ← re-exports from core + #[uniffi::export] annotations
+├── ffi/                        ← thin UniFFI wrapper
+│   └── src/lib.rs              ← re-exports from core; #[uniffi::export] mostly lives in core itself
+│
+├── cli/                        ← optional CLI driver against the same core
 │
 ├── tools/
-│   └── uniffi-bindgen/          ← cargo binary that drives bindgen for both platforms
-│       ├── Cargo.toml
-│       └── src/main.rs
+│   └── uniffi-bindgen/         ← cargo binary that drives bindgen for both platforms
 │
-├── Swift/                         ← iOS app, Swift only
-│   ├── App/
-│   │   ├── SpectraApp.swift
-│   │   └── ContentView.swift
-│   ├── Bindings/                ← generated by uniffi-bindgen (gitignored or CI-generated)
+├── swift/                      ← iOS app, Swift only
+│   ├── *.swift                 ← AppState extensions, chain bridges, view models
+│   ├── views/                  ← SwiftUI views
+│   ├── extensions/
+│   ├── tests/
+│   ├── resources/              ← assets, localization
+│   ├── generated/              ← UniFFI output (gitignored; regenerated by bindgen-ios.sh)
 │   │   ├── spectra_core.swift
-│   │   └── spectra_coreFFI.h
-│   ├── Derivation/              ← (current Derivation/ content, as-is)
-│   ├── Fetch/
-│   ├── ProviderCatalog/
-│   ├── Send/
-│   ├── Store/
-│   ├── Views/
-│   ├── Tests/
-│   └── Spectra.xcodeproj        ← kept as iOS build artifact, not file hierarchy source of truth
+│   │   ├── spectra_coreFFI.h
+│   │   ├── spectra_coreFFI.modulemap
+│   │   └── module.modulemap
+│   └── Spectra.xcodeproj       ← iOS build artifact, not the source-of-truth layout
 │
-├── Kotlin/                     ← Android app, Kotlin + Compose
-│   ├── app/
-│   │   ├── src/main/
-│   │   │   ├── kotlin/dev/spectra/
-│   │   │   │   ├── MainActivity.kt
-│   │   │   │   ├── ui/
-│   │   │   │   │   ├── theme/           ← MaterialTheme + DynamicColorScheme
-│   │   │   │   │   ├── dashboard/
-│   │   │   │   │   ├── send/
-│   │   │   │   │   ├── receive/
-│   │   │   │   │   └── settings/
-│   │   │   │   └── core/
-│   │   │   │       ├── WalletStore.kt   ← Android equivalent of WalletStore
-│   │   │   │       └── Bindings.kt      ← thin wrapper over UniFFI Kotlin
-│   │   │   └── jniLibs/                 ← compiled .so files per ABI
-│   │   │       ├── arm64-v8a/
-│   │   │       ├── armeabi-v7a/
-│   │   │       └── x86_64/
-│   │   └── build.gradle.kts
-│   ├── gradle/
-│   └── settings.gradle.kts
+├── kotlin/                     ← Android app, Kotlin + Compose
+│   ├── settings.gradle.kts
+│   ├── build.gradle.kts
+│   └── app/
 │
-└── scripts/                     ← all build automation
-    ├── build-ios.sh             ← cargo build → lipo/xcodebuild → xcframework
-    ├── build-android.sh         ← cargo build for each ABI → copy jniLibs
-    ├── bindgen-ios.sh           ← uniffi-bindgen generate --language swift
-    └── bindgen-android.sh       ← uniffi-bindgen generate --language kotlin
+├── resources/                  ← cross-platform shared assets (icons, strings)
+│
+├── docs/
+│
+└── scripts/
+    ├── build-ios.sh            ← cargo build → lipo/xcodebuild → xcframework
+    ├── build-android.sh        ← cargo build per ABI → copy jniLibs
+    ├── bindgen-ios.sh          ← uniffi-bindgen generate --language swift
+    └── bindgen-android.sh      ← uniffi-bindgen generate --language kotlin
 ```
+
+---
+
+## `core/src/` — file-level map
+
+Each top-level item below is either a `.rs` at the crate root or a folder. Domain folders carry their own per-chain `chains/` subfolder where every chain owns one self-contained file (BIP-39, the relevant curve walk, address encoders).
+
+### Root-level
+
+- **`lib.rs`** — crate entry, `SpectraBridgeError`, top-level module declarations, `pub use` shortcuts.
+- **`service.rs`** (~4100 lines) — the stateful `WalletService` UniFFI object. Holds endpoint index, history pagination, secret-store callback, in-memory `CoreAppState`, and an Etherscan API key. Every async chain-dispatched method lives here, in `impl WalletService` blocks. Shared internal types (`ChainClient` enum, helpers, `PersistedAppSettings`, standalone token-catalog FFI) are in this same file — the old `service_*.rs` shards were merged in.
+- **`app_core.rs`** (~1245 lines) — chain catalog (`AppCoreChainPreset`, endpoint records, broadcast options), derivation-path resolution, registry data. Embeds `data/DerivationPresets.json`, `DerivationRequestCompilationPresets.json`, `AppEndpointDirectory.json`. The old `app_core_derivation_paths.rs` and `app_core_registry_data.rs` are merged in.
+- **`registry.rs`** — canonical `Chain` enum with frozen u32 IDs, `EvmChain` newtype, `EndpointSlot` enum, and the per-chain metadata tables (`coin_name`, `coin_symbol`, `chain_display_name`, `native_decimals`, `evm_chain_id`, `static_fee_units`, `mainnet_counterpart`, etc.). Single source of truth for "what chains exist."
+- **`tokens.rs`** — built-in token catalog (sourced from `core/data/tokens.toml`) plus token-id and endpoint-URL normalization helpers (Aptos canonical hex, Sui token IDs, etc.).
+- **`formatting.rs`** — decimals resolution, fiat amount rules, stablecoin fallback prices, asset display formatting, dashboard grouping keys.
+- **`receive.rs`** — pure receive-address message builder; turns a (chain, wallet, resolved address, has-seed, has-watch) tuple into the user-facing string Swift renders.
+- **`resources.rs`** — static-resource lookup with two FFI exports. The embedded arrays are currently empty; Swift falls back gracefully when nothing is registered.
+
+### `derivation/` — keypair + address derivation
+
+- **`mod.rs`** — module entry + re-exports. `validation` is also exposed as `addressing` for legacy callers.
+- **`engine.rs`** — FFI request/response types (`UniFFIDerivationRequest`, `DerivedOutput`, etc.), wire constants, request validation, and the dispatch table that fans out per chain. Inlined helpers: BIP-39 language resolution, base32 / base58check, secp pubkey formatting, script-type-from-purpose.
+- **`import.rs`** — wallet import flow (seed-phrase, watch-only, private-key) with FFI-exported `core_plan_wallet_import` and `core_validate_wallet_import_draft`.
+- **`validation.rs`** — chain-aware address validation, exposed via `core_validate_address` / `core_validate_string_identifier` FFI.
+- **`presets.rs`** — chain derivation presets loaded from `core/data/derivation_presets.toml` at compile time.
+- **`xpub_walker.rs`** — Bitcoin HD multi-address derivation from xpub/ypub/zpub plus aggregated UTXO/balance scanning.
+- **`tests.rs`** — golden-vector tests across all chains.
+- **`chains/<chain>.rs`** — one self-contained file per chain. Each owns its full pipeline: BIP-39, the relevant curve walk (BIP-32 for secp; SLIP-10 for ed25519; substrate-bip39 for sr25519; direct-seed for NEAR; TON mnemonic; Icarus for Cardano), and the chain-specific address encoder. No shared `primitives/` or `curves/` subdirectory — Bitcoin-internal helpers (`hash160`, `parse_bitcoin_address`, `ExtendedPrivateKey`, etc.) live in `chains/bitcoin.rs` and are imported by `validation.rs` + `xpub_walker.rs`. See `chains/REFACTOR_NOTES.md`.
+
+### `fetch/` — balance, history, price, HTTP
+
+- **`mod.rs`** — balance-refresh planning + targeting, plus `core_plan_*` FFI surface for refresh planning.
+- **`http.rs`** — async HTTP transport (single shared `reqwest::Client`) with retry/backoff and the byte-oriented FFI HTTP entry point that replaces Swift's URLSession resilience layer. The old `http_ffi.rs` is merged in.
+- **`history.rs`** — chain-history normalization + bitcoin inventory snapshot merging.
+- **`history_decode.rs`** — typed JSON decoders for chain-history shapes (EVM pages, BTC raw snapshots, Dogecoin aggregates).
+- **`history_store.rs`** — per-wallet pagination state (cursor / page / exhaustion).
+- **`price.rs`** — price + fiat-rate fetch service.
+- **`refresh.rs`** — chain refresh / history refresh / active-maintenance plan builders (`core_active_maintenance_plan`, `core_chain_refresh_plans`, `core_history_refresh_plans`).
+- **`refresh_engine.rs`** — Rust-driven balance refresh loop + the `BalanceObserver` Swift callback trait it pushes results to (the old `balance_observer.rs` is merged in).
+- **`transactions.rs`** — tx merge logic with Swift-compatible precedence rules.
+- **`chains/<chain>.rs`** — one client per chain (`BitcoinClient`, `EvmClient`, …) handling balance / history / fee / native-summary RPC.
+
+### `send/` — outgoing-transaction flow
+
+- **`mod.rs`** — `route_send_asset`, `plan_send_preview_routing`, `plan_send_submit_preflight`, `TransferRequest` + traits, `SendExecutionRequest`/`SendExecutionResult`.
+- **`amount_input.rs`** — pure decimal parser with max fractional digits.
+- **`flow.rs`** — pure-logic helpers backing the send flow: address validation, EVM chain context tags, ENS-candidate detection, high-risk-send warning evaluation. The old `flow_helpers.rs` is merged in.
+- **`ethereum.rs`** — Ethereum / EVM send core (overrides parsing, payload assembly, send-result decoding).
+- **`payload.rs`** — per-chain send-payload JSON builders + tx-id classification.
+- **`preview_decode.rs`** — send-preview decoders for the 17 non-EVM chains.
+- **`preview_types.rs`** — per-chain send-preview record types (`BitcoinSendPreview`, `SolanaSendPreview`, …). Re-exported as `crate::wallet_core` for legacy callers.
+- **`transfer.rs`** — generic transfer-availability planning.
+- **`utxo.rs`** — UTXO selection, dust thresholds, kilobyte/sat-vbyte fee previews, change-output decisions.
+- **`verification.rs`** — pure state machine for send-broadcast verification notices.
+- **`chains/<chain>.rs`** — per-chain sign-and-broadcast methods. Bitcoin/UTXO chains have their own family. `substrate.rs` is a shared base for sr25519 chains.
+
+### `store/` — persistence + state
+
+- **`mod.rs`** (~1950 lines) — the bulk of the store surface: persisted-snapshot building, derived-state planning, owned-address aggregation, receive selection, dashboard token-preference merging, transaction-status polling, EVM keypool baselines, holding merges, EVM recipient preflight warnings, price-alert evaluation, dashboard rebuild decisions, Ethereum custom-fee / nonce validation, large parts of the `core_plan_*` FFI surface.
+- **`state.rs`** — `WalletAddress`, `AssetHolding`, `WalletSummary`, `AppSettings`, `CoreAppState`, `StateCommand`, plus `reduce_state_in_place` (the canonical reducer Swift calls).
+- **`persistence_models.rs`** — Rust mirrors of Swift's `Persisted*` types (round-trippable JSON).
+- **`wallet_domain.rs`** — wallet domain types ported from Swift `CoreModels.swift`.
+- **`wallet_db.rs`** — SQLite-backed relational store for per-wallet UTXO state (replaces 4 UserDefaults JSON blobs Swift used to own).
+- **`secret_store.rs`** — `SecretStore` UniFFI callback trait. Swift implements it; Rust drives all secret I/O through it so raw key material stays out of Rust-owned memory.
+- **`seed_envelope.rs`** — AES-256-GCM seed-phrase envelope (compatible with Swift's `SeedMaterialEnvelope`).
+- **`password_verifier.rs`** — PBKDF2-HMAC-SHA256 password verifier envelope (compatible with Swift's `SecureSeedPasswordStore`).
+- **`chain_aliases.rs`** — canonical chain-name + icon-identifier helpers used by store dashboard plans.
+- **`tests.rs`** — store-surface integration tests.
+
+### `staking/` — cross-chain staking surface
+
+- **`mod.rs`** — module doc.
+- **`types.rs`** — chain-agnostic `StakingActionKind`, `StakingPositionStatus`, `StakingValidator`, `StakingPosition`, `StakingActionPreview`, `StakingError`.
+- **`chains/<chain>.rs`** — one client per chain that supports staking (Solana, Cardano, Polkadot, Sui, Aptos, NEAR, ICP). Each owns chain-native vocabulary; the shared types are the UI-facing intersection.
+
+### `diagnostics/` — runtime self-tests + diagnostics state
+
+- **`mod.rs`** — re-exports.
+- **`registry.rs`** — Rust-owned per-wallet diagnostics dictionary (replaces 24 keyed dictionaries Swift used to hold).
+- **`types.rs`** — diagnostic record types exposed to Swift via UniFFI.
+- **`aggregate.rs`** — pure JSON-parsing + aggregation for diagnostic record building.
+- **`export.rs`** — per-chain diagnostics JSON builders for the export bundle.
+- **`degraded.rs`** — degraded-chain-sync message pattern matching.
+- **`sanitizer.rs`** — BIP-39 word + extended-key + hex-key redaction for diagnostic logs.
+- **`self_tests.rs`** — runtime self-tests covering address validation + derivation across every supported chain.
+
+---
+
+## FFI surface
+
+Each `#[uniffi::export]` lives in the module that owns its logic — there is **no central `ffi.rs`** under `core/src/`. The `ffi/` crate exists as the binding shim but the bulk of `#[uniffi::export]` annotations are in the core crate alongside the functions they expose.
+
+Pattern for a free function:
+
+```rust
+// core/src/derivation/validation.rs
+#[uniffi::export]
+pub fn core_validate_address(request: AddressValidationRequest) -> AddressValidationResult {
+    validate_address(request)
+}
+
+pub fn validate_address(request: AddressValidationRequest) -> AddressValidationResult { /* … */ }
+```
+
+Pattern for a `WalletService` method:
+
+```rust
+// core/src/service.rs
+#[uniffi::export(async_runtime = "tokio")]
+impl WalletService {
+    pub async fn fetch_balance(&self, chain_id: u32, address: String) -> Result<String, SpectraBridgeError> { /* … */ }
+}
+```
+
+When extending the FFI: prefer free functions on typed UniFFI Records over `WalletService` methods; reserve methods for chain-dispatched flows that genuinely need state.
 
 ---
 
 ## iOS — Liquid Glass
 
-Liquid Glass is iOS 26's design language. It is purely a SwiftUI/UIKit concern; Rust has no role here.
+Liquid Glass is iOS 26's design language. Pure SwiftUI/UIKit; Rust has no role.
 
-**What it requires in Swift:**
-- `.glassEffect()` modifier (iOS 26+) on surfaces that should use the frosted glass material
-- `TabView` with the new `.sidebarAdaptable` style, which automatically gets Liquid Glass chrome
-- `NavigationStack` chrome is automatically updated in iOS 26
-- `UXKit` / `UIKit` presentational layers (sheets, alerts) pick up the glass look without code changes if you target iOS 26+
+- `.glassEffect()` modifier on custom card surfaces (dashboard, asset rows, send/receive sheets).
+- `TabView` with `.sidebarAdaptable` style picks up Liquid Glass chrome automatically.
+- `NavigationStack` chrome is automatic on iOS 26.
+- The Spectra style is **fintech-native** (Robinhood/Coinbase glass-forward), not Apple-faithful-minimal: 28pt corners on tabs, no `List(.insetGrouped)`, custom card surfaces.
 
-**Migration path from current Views/:**
-- No structural change needed — existing SwiftUI views will adopt Liquid Glass automatically on iOS 26 for chrome (nav bars, tab bars, sheets)
-- Add `.glassEffect()` to custom card surfaces in `DashboardViews.swift`, asset rows, and the send/receive sheets
-- Replace any manual `.ultraThinMaterial` backgrounds with `.glassEffect()` where appropriate
-- The `StaticContentCatalog.swift` pattern is unchanged
-
-**What does NOT move to Rust:** all SwiftUI view code, animations, haptics, Face ID authentication triggers, Live Activities, notifications, Keychain — these are platform APIs with no Rust equivalent.
+What does NOT move to Rust: SwiftUI views, animations, haptics, Face ID, Live Activities, notifications, Keychain. All platform APIs.
 
 ---
 
 ## Android — Material You
 
-Material You (MD3) is also purely a Kotlin/Compose concern.
+Material You (MD3) is purely Kotlin/Compose.
 
-**Key Compose dependencies:**
 ```kotlin
 implementation("androidx.compose.material3:material3:1.3+")
 implementation("androidx.compose.material3:material3-adaptive:1.1+")
-```
 
-**Dynamic color (the "You" part):**
-```kotlin
 val colorScheme = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-    dynamicDarkColorScheme(LocalContext.current)   // or dynamicLightColorScheme
+    dynamicDarkColorScheme(LocalContext.current)
 } else {
-    darkColorScheme(primary = SpectraBlue)          // fallback palette
+    darkColorScheme(primary = SpectraBlue)
 }
-MaterialTheme(colorScheme = colorScheme) { … }
 ```
 
-**Screen-for-screen parity with iOS** is achievable with identical Rust core calls; the UI components are different (Compose `LazyColumn` vs SwiftUI `List`, `NavigationDrawer` vs `NavigationStack`, `BottomSheetScaffold` vs `.sheet`) but map directly.
-
-**UniFFI on Android:** `cargo build --target aarch64-linux-android` + JNA/JNI bridge. UniFFI generates Kotlin bindings that call the compiled `.so` via JNA. The pattern is identical to iOS except the generated language is Kotlin instead of Swift.
+UniFFI on Android: `cargo build --target aarch64-linux-android` + JNA bridge. `kotlin/app/src/main/jniLibs/<abi>/` receives the compiled `.so`; the UniFFI-generated Kotlin file imports it. Identical pattern to iOS, swapping the language flag.
 
 ---
 
-## What changes from the current codebase
-
-### 1. Cargo workspace (high priority)
-
-Add a root `Cargo.toml`:
-```toml
-[workspace]
-resolver = "2"
-members = ["core", "ffi", "tools/uniffi-bindgen"]
-```
-
-Rename `Core/` → `core/` and `Core/src/core/` → `core/src/`. Extract the UniFFI `#[uniffi::export]` annotations out of `service.rs` into `ffi/src/lib.rs`. `core` has zero UniFFI dependencies; `ffi` depends on `core` and `uniffi`.
-
-This lets `cargo test -p spectra-core` run on Linux CI without any mobile toolchain installed.
-
-### 2. Move Swift into `ios/`
-
-The current layout has Swift files at the repo root alongside Rust source. Move everything under `ios/`:
+## Build commands
 
 ```
-Derivation/ → ios/Derivation/
-Fetch/      → ios/Fetch/
-Send/       → ios/Send/
-Store/      → ios/Store/
-Views/      → ios/Views/
-Tests/      → ios/Tests/
-ProviderCatalog/ → ios/ProviderCatalog/
-Spectra.xcodeproj → ios/Spectra.xcodeproj
+make ios          → scripts/build-ios.sh + scripts/bindgen-ios.sh
+make android      → scripts/build-android.sh + scripts/bindgen-android.sh
+make test         → cargo test -p spectra_core
+make check        → cargo check --workspace
+make bindgen-ios  → regenerate Swift bindings only
+make bindgen-android → regenerate Kotlin bindings only
+make clean        → cargo clean + rm -rf build/
 ```
 
-### 3. On the Xcode project
-
-The `.xcodeproj` is a required iOS build artifact and must remain. However:
-
-- The project already uses `PBXFileSystemSynchronizedRootGroup` (folder-reference sync) — file additions/deletions do not require pbxproj edits. This is the right approach.
-- The `.xcodeproj` should live in `ios/` and point at paths relative to that directory.
-- It should NOT be the source of truth for the overall project layout. The monorepo root `Cargo.toml` is the source of truth.
-- For Android, `settings.gradle.kts` at `android/` plays the equivalent role.
-- **Do not** add an Xcode workspace (`.xcworkspace`) that tries to span the whole monorepo — that couples iOS tooling to the repo root unnecessarily.
-
-### 4. Create `android/` scaffold
-
-Start with a standard Gradle project generated by Android Studio. The critical integration point is `jniLibs/` — the output of `scripts/build-android.sh` drops the compiled Rust `.so` there, and the UniFFI-generated Kotlin file imports it.
-
-### 5. `scripts/` for build automation
-
-Remove `Core/tools/uniffi-bindgen/` as a nested special case and bring it into the workspace properly. One `Makefile` or `justfile` at the repo root:
-
-```
-make ios          → build-ios.sh + bindgen-ios.sh
-make android      → build-android.sh + bindgen-android.sh
-make test         → cargo test -p spectra-core
-```
+`swift/generated/` and the Kotlin equivalent are gitignored and regenerated by the bindgen scripts.
 
 ---
 
-## What stays the same
+## Design principles
 
-- All Rust chain logic — `core/src/chains/`, `http.rs`, `wallet_db.rs`, etc. No changes needed.
-- The UniFFI boundary design (JSON-over-FFI) — this works equally well for both platforms.
-- The Swift Store/Send/Derivation architecture — it maps directly to what Android will need, which makes porting logic straightforward.
-- The `WalletServiceBridge` pattern — Android gets a `WalletServiceBridge.kt` that wraps the same UniFFI-generated Kotlin types the same way.
+- **Vertical slicing in `chains/`.** Each chain owns its full pipeline in one file. Code duplication across chains (e.g. BIP-39 + SLIP-10 in every ed25519 chain) is intentional — clarity over DRY. Files routinely exceed 1000 lines and that's fine.
+- **Decentralized FFI.** Each `#[uniffi::export]` lives next to the logic it exposes. Centralizing them was tried and abandoned — the boundary tracking grew faster than the surface itself.
+- **`registry::Chain` is the single source of truth** for what chains exist. New chains add one variant + per-chain rows in the metadata tables; `Chain::from_id` and `Chain::all` keep iteration safe.
+- **Rust owns logic, Swift/Kotlin own UI.** No cross-platform UI framework. The FFI boundary is typed UniFFI records (no JSON-over-FFI in new code; legacy JSON dispatch still exists for chain-id-discriminated calls in `service.rs`).
+- **`core` builds without a mobile toolchain.** `cargo test -p spectra_core` runs on Linux CI, gives 280+ passing tests, and gates every change.
 
 ---
 
 ## What this is NOT
 
-- Not a cross-platform UI framework (no Flutter, no React Native, no Kotlin Multiplatform UI). Both UIs are written natively in their platform language. The Rust core is the shared layer; everything above the FFI boundary is platform-native.
-- Not a public library workspace. There are no publicly versioned crates, no `[features]` flags for optional functionality, no semver compatibility commitments between crates.
-- Not a new framework to build. The existing Rust core is already shaped correctly for this; the work is reorganization and adding the Android build path.
+- Not a cross-platform UI framework. Both UIs are written natively.
+- Not a public library workspace. No published crates, no `[features]` flags for optional functionality, no semver commitments between crates.
+- Not a multi-crate domain split. `core` is a single crate. Splitting per-domain (derivation-crate, fetch-crate, …) was considered and rejected — it would multiply Cargo overhead with zero downstream consumers.
