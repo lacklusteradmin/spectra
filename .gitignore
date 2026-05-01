@@ -34,6 +34,9 @@ Package.resolved
 .rust-build/
 **/*.rs.bk
 
+# UniFFI-generated Swift bindings (regenerated from the Rust core)
+swift/generated/
+
 # Test / diagnostics
 *.log
 *.tmp

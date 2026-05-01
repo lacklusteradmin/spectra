@@ -424,6 +424,7 @@ pub(crate) fn parse_script_type(value: u32) -> Result<ScriptType, String> {
     }
 }
 
+
 // ── from former enums.rs ─────────────────────────────────────────
 
 
@@ -760,6 +761,21 @@ pub struct UniFFIDerivationRequest {
     pub mnemonic_wordlist: Option<String>,
     pub iteration_count: u32,
     pub salt_prefix: Option<String>,
+    // Power-user override names for advanced mode. When `Some`, the
+    // string is parsed (via `parse_*_name`) and overrides the
+    // corresponding typed field above. Lets Swift pass the raw
+    // override strings through without reproducing the enum-name lookup
+    // tables on its side.
+    #[serde(default)]
+    pub curve_override_name: Option<String>,
+    #[serde(default)]
+    pub derivation_algorithm_override_name: Option<String>,
+    #[serde(default)]
+    pub address_algorithm_override_name: Option<String>,
+    #[serde(default)]
+    pub public_key_format_override_name: Option<String>,
+    #[serde(default)]
+    pub script_type_override_name: Option<String>,
 }
 
 #[derive(Debug, Deserialize, uniffi::Record)]
@@ -894,19 +910,47 @@ pub(crate) fn parse_uniffi_request(
         ));
     }
 
-    let address_algorithm = parse_address_algorithm(request.address_algorithm)?;
+    // Resolve override names (if present) into the same wire u32 the typed
+    // fields use, then run a single typed parse. This keeps the override
+    // string→u32 mapping in one place (`presets::*_wire_value`) rather
+    // than reproducing it Swift-side.
+    let address_algo_value = match request.address_algorithm_override_name.as_deref() {
+        Some(name) => super::presets::address_algorithm_wire_value(name)?,
+        None => request.address_algorithm,
+    };
+    let address_algorithm = parse_address_algorithm(address_algo_value)?;
     let chain = match request.chain {
         Some(value) => parse_chain(value)?,
         None => chain_from_address_algorithm(address_algorithm)?,
     };
+    let curve_value = match request.curve_override_name.as_deref() {
+        Some(name) => super::presets::curve_wire_value(name)?,
+        None => request.curve,
+    };
+    let curve = parse_curve(curve_value)?;
+    let derivation_algo_value = match request.derivation_algorithm_override_name.as_deref() {
+        Some(name) => super::presets::derivation_algorithm_wire_value(name)?,
+        None => request.derivation_algorithm,
+    };
+    let derivation_algorithm = parse_derivation_algorithm(derivation_algo_value)?;
+    let public_key_format_value = match request.public_key_format_override_name.as_deref() {
+        Some(name) => super::presets::public_key_format_wire_value(name)?,
+        None => request.public_key_format,
+    };
+    let public_key_format = parse_public_key_format(public_key_format_value)?;
+    let script_type_value = match request.script_type_override_name.as_deref() {
+        Some(name) => super::presets::script_type_wire_value(name)?,
+        None => request.script_type,
+    };
+    let script_type = parse_script_type(script_type_value)?;
     Ok(ParsedRequest {
         chain,
-        curve: parse_curve(request.curve)?,
+        curve,
         requested_outputs: request.requested_outputs,
-        derivation_algorithm: parse_derivation_algorithm(request.derivation_algorithm)?,
+        derivation_algorithm,
         address_algorithm,
-        public_key_format: parse_public_key_format(request.public_key_format)?,
-        script_type: parse_script_type(request.script_type)?,
+        public_key_format,
+        script_type,
         seed_phrase,
         derivation_path,
         passphrase,
@@ -1133,6 +1177,11 @@ pub(crate) fn parse_uniffi_material_request(
         mnemonic_wordlist: request.mnemonic_wordlist,
         iteration_count: request.iteration_count,
         salt_prefix: request.salt_prefix,
+        curve_override_name: None,
+        derivation_algorithm_override_name: None,
+        address_algorithm_override_name: None,
+        public_key_format_override_name: None,
+        script_type_override_name: None,
     })?;
     Ok(ParsedMaterialRequest {
         request: parsed,
@@ -1345,6 +1394,11 @@ pub(super) fn derive_address_for_chain(
         mnemonic_wordlist: None,
         iteration_count: 0,
         salt_prefix: None,
+        curve_override_name: None,
+        derivation_algorithm_override_name: None,
+        address_algorithm_override_name: None,
+        public_key_format_override_name: None,
+        script_type_override_name: None,
     };
 
     let parsed = parse_uniffi_request(request)?;
@@ -1460,6 +1514,11 @@ pub(crate) fn derive_key_material_for_chain_with_overrides(
         mnemonic_wordlist,
         iteration_count,
         salt_prefix,
+        curve_override_name: None,
+        derivation_algorithm_override_name: None,
+        address_algorithm_override_name: None,
+        public_key_format_override_name: None,
+        script_type_override_name: None,
     };
 
     let parsed = parse_uniffi_request(request)?;

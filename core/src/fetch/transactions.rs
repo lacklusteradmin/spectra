@@ -43,16 +43,12 @@ pub struct CoreTransactionRecord {
     pub fee_rate_description: Option<String>,
     pub confirmation_count: Option<i64>,
     pub dogecoin_confirmed_network_fee_doge: Option<f64>,
-    pub dogecoin_confirmations: Option<i64>,
-    pub dogecoin_fee_priority_raw: Option<String>,
     pub dogecoin_estimated_fee_rate_doge_per_kb: Option<f64>,
     pub used_change_output: Option<bool>,
-    pub dogecoin_used_change_output: Option<bool>,
     pub source_derivation_path: Option<String>,
     pub change_derivation_path: Option<String>,
     pub source_address: Option<String>,
     pub change_address: Option<String>,
-    pub dogecoin_raw_transaction_hex: Option<String>,
     pub signed_transaction_payload: Option<String>,
     pub signed_transaction_payload_format: Option<String>,
     pub failure_reason: Option<String>,
@@ -225,16 +221,12 @@ fn merge_standard_utxo(
             .or(existing.fee_rate_description),
         confirmation_count: incoming.confirmation_count.or(existing.confirmation_count),
         dogecoin_confirmed_network_fee_doge: existing.dogecoin_confirmed_network_fee_doge,
-        dogecoin_confirmations: existing.dogecoin_confirmations,
-        dogecoin_fee_priority_raw: existing.dogecoin_fee_priority_raw,
         dogecoin_estimated_fee_rate_doge_per_kb: existing.dogecoin_estimated_fee_rate_doge_per_kb,
         used_change_output: incoming.used_change_output.or(existing.used_change_output),
-        dogecoin_used_change_output: existing.dogecoin_used_change_output,
         source_derivation_path: existing.source_derivation_path,
         change_derivation_path: existing.change_derivation_path,
         source_address: incoming.source_address.or(existing.source_address),
         change_address: incoming.change_address.or(existing.change_address),
-        dogecoin_raw_transaction_hex: existing.dogecoin_raw_transaction_hex,
         signed_transaction_payload: incoming
             .signed_transaction_payload
             .or(existing.signed_transaction_payload),
@@ -277,19 +269,10 @@ fn merge_dogecoin(existing: CoreTransactionRecord, incoming: CoreTransactionReco
         dogecoin_confirmed_network_fee_doge: incoming
             .dogecoin_confirmed_network_fee_doge
             .or(existing.dogecoin_confirmed_network_fee_doge),
-        dogecoin_confirmations: incoming
-            .dogecoin_confirmations
-            .or(existing.dogecoin_confirmations),
-        dogecoin_fee_priority_raw: incoming
-            .dogecoin_fee_priority_raw
-            .or(existing.dogecoin_fee_priority_raw),
         dogecoin_estimated_fee_rate_doge_per_kb: incoming
             .dogecoin_estimated_fee_rate_doge_per_kb
             .or(existing.dogecoin_estimated_fee_rate_doge_per_kb),
         used_change_output: incoming.used_change_output.or(existing.used_change_output),
-        dogecoin_used_change_output: incoming
-            .dogecoin_used_change_output
-            .or(existing.dogecoin_used_change_output),
         source_derivation_path: incoming
             .source_derivation_path
             .or(existing.source_derivation_path),
@@ -298,9 +281,6 @@ fn merge_dogecoin(existing: CoreTransactionRecord, incoming: CoreTransactionReco
             .or(existing.change_derivation_path),
         source_address: incoming.source_address.or(existing.source_address),
         change_address: incoming.change_address.or(existing.change_address),
-        dogecoin_raw_transaction_hex: incoming
-            .dogecoin_raw_transaction_hex
-            .or(existing.dogecoin_raw_transaction_hex),
         signed_transaction_payload: incoming
             .signed_transaction_payload
             .or(existing.signed_transaction_payload),
@@ -345,16 +325,12 @@ fn merge_account_based(
             .or(existing.fee_rate_description),
         confirmation_count: incoming.confirmation_count.or(existing.confirmation_count),
         dogecoin_confirmed_network_fee_doge: existing.dogecoin_confirmed_network_fee_doge,
-        dogecoin_confirmations: existing.dogecoin_confirmations,
-        dogecoin_fee_priority_raw: existing.dogecoin_fee_priority_raw,
         dogecoin_estimated_fee_rate_doge_per_kb: existing.dogecoin_estimated_fee_rate_doge_per_kb,
         used_change_output: incoming.used_change_output.or(existing.used_change_output),
-        dogecoin_used_change_output: existing.dogecoin_used_change_output,
         source_derivation_path: existing.source_derivation_path,
         change_derivation_path: existing.change_derivation_path,
         source_address: incoming.source_address.or(existing.source_address),
         change_address: incoming.change_address.or(existing.change_address),
-        dogecoin_raw_transaction_hex: existing.dogecoin_raw_transaction_hex,
         signed_transaction_payload: incoming
             .signed_transaction_payload
             .or(existing.signed_transaction_payload),
@@ -407,16 +383,12 @@ fn merge_evm(
             .or(existing.fee_rate_description),
         confirmation_count: incoming.confirmation_count.or(existing.confirmation_count),
         dogecoin_confirmed_network_fee_doge: existing.dogecoin_confirmed_network_fee_doge,
-        dogecoin_confirmations: existing.dogecoin_confirmations,
-        dogecoin_fee_priority_raw: existing.dogecoin_fee_priority_raw,
         dogecoin_estimated_fee_rate_doge_per_kb: existing.dogecoin_estimated_fee_rate_doge_per_kb,
         used_change_output: incoming.used_change_output.or(existing.used_change_output),
-        dogecoin_used_change_output: existing.dogecoin_used_change_output,
         source_derivation_path: existing.source_derivation_path,
         change_derivation_path: existing.change_derivation_path,
         source_address: existing.source_address,
         change_address: existing.change_address,
-        dogecoin_raw_transaction_hex: existing.dogecoin_raw_transaction_hex,
         signed_transaction_payload: incoming
             .signed_transaction_payload
             .or(existing.signed_transaction_payload),
@@ -484,16 +456,12 @@ mod tests {
             fee_rate_description: Some("normal".to_string()),
             confirmation_count: Some(2),
             dogecoin_confirmed_network_fee_doge: Some(1.0),
-            dogecoin_confirmations: Some(4),
-            dogecoin_fee_priority_raw: Some("priority".to_string()),
             dogecoin_estimated_fee_rate_doge_per_kb: Some(3.0),
             used_change_output: Some(true),
-            dogecoin_used_change_output: Some(true),
             source_derivation_path: Some("m/0/0".to_string()),
             change_derivation_path: Some("m/1/0".to_string()),
             source_address: Some("source-old".to_string()),
             change_address: Some("change-old".to_string()),
-            dogecoin_raw_transaction_hex: Some("raw-hex".to_string()),
             signed_transaction_payload: Some("payload-old".to_string()),
             signed_transaction_payload_format: Some("hex".to_string()),
             failure_reason: Some("old-failure".to_string()),

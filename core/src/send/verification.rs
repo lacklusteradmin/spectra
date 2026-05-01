@@ -57,7 +57,7 @@ pub struct LastSentTransactionSnapshot {
     pub failure_reason: Option<String>,
     pub transaction_history_source: Option<String>,
     pub receipt_block_number: Option<i64>,
-    pub dogecoin_confirmations: Option<i64>,
+    pub confirmation_count: Option<i64>,
 }
 
 /// Mirrors Swift's `updateSendVerificationNoticeForLastSentTransaction()`.
@@ -92,7 +92,7 @@ pub fn verification_notice_for_last_sent(
     let observed_on_network = tx.status == "confirmed"
         || tx.transaction_history_source.is_some()
         || tx.receipt_block_number.is_some()
-        || tx.dogecoin_confirmations.unwrap_or(0) > 0;
+        || tx.confirmation_count.unwrap_or(0) > 0;
     if observed_on_network {
         return SendVerificationNotice::default();
     }
@@ -201,7 +201,7 @@ mod tests {
             status: "pending".into(),
             chain_name: "Dogecoin".into(),
             transaction_hash: Some("abc".into()),
-            dogecoin_confirmations: Some(1),
+            confirmation_count: Some(1),
             ..Default::default()
         }));
         assert!(n.notice.is_none());

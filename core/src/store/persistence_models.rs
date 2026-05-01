@@ -116,15 +116,9 @@ pub struct CorePersistedTransactionRecord {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub dogecoin_confirmed_network_fee_doge: Option<f64>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub dogecoin_confirmations: Option<i64>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub dogecoin_fee_priority_raw: Option<String>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub dogecoin_estimated_fee_rate_doge_per_kb: Option<f64>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub used_change_output: Option<bool>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub dogecoin_used_change_output: Option<bool>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub source_derivation_path: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -133,8 +127,6 @@ pub struct CorePersistedTransactionRecord {
     pub source_address: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub change_address: Option<String>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub dogecoin_raw_transaction_hex: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub signed_transaction_payload: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -213,16 +205,12 @@ mod tests {
             fee_rate_description: None,
             confirmation_count: None,
             dogecoin_confirmed_network_fee_doge: None,
-            dogecoin_confirmations: None,
-            dogecoin_fee_priority_raw: None,
             dogecoin_estimated_fee_rate_doge_per_kb: None,
             used_change_output: None,
-            dogecoin_used_change_output: None,
             source_derivation_path: None,
             change_derivation_path: None,
             source_address: None,
             change_address: None,
-            dogecoin_raw_transaction_hex: None,
             signed_transaction_payload: None,
             signed_transaction_payload_format: None,
             failure_reason: None,
