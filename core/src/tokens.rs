@@ -1,3 +1,110 @@
+//! Built-in token registry.
+//!
+//! The source of truth is `core/data/tokens.toml`, embedded at compile time.
+//! Call [`list_tokens`] to get typed token entries for a given chain_id
+//! (or all chains when `chain_id == u32::MAX`).
+
+use std::sync::LazyLock;
+use serde::{Deserialize, Serialize};
+
+// Embedded at compile time — no bundle dependency at runtime.
+static TOKENS_TOML: &str = include_str!("../data/tokens.toml");
+
+// ----------------------------------------------------------------
+// Parsed TOML shape
+// ----------------------------------------------------------------
+
+#[derive(Debug, Deserialize)]
+struct TomlFile {
+    tokens: Vec<TomlToken>,
+}
+
+#[derive(Debug, Deserialize)]
+struct TomlToken {
+    chain:           String,
+    chain_id:        u32,
+    name:            String,
+    symbol:          String,
+    standard:        String,
+    contract:        String,
+    coingecko_id:    String,
+    decimals:        u32,
+    display_decimals: Option<u32>,
+    category:        String,
+    color_name:      String,
+    asset_name:      String,
+    enabled:         bool,
+}
+
+// ----------------------------------------------------------------
+// Public serialized shape (mirrors ChainTokenRegistryEntry in Swift)
+// ----------------------------------------------------------------
+
+#[derive(Debug, Clone, Serialize, uniffi::Record)]
+pub struct TokenEntry {
+    pub chain:           String,
+    pub chain_id:        u32,
+    pub name:            String,
+    pub symbol:          String,
+    pub token_standard:  String,
+    pub contract:        String,
+    pub coingecko_id:    String,
+    pub decimals:        u32,
+    pub display_decimals: Option<u32>,
+    pub category:        String,
+    pub color_name:      String,
+    pub asset_name:      String,
+    pub enabled:         bool,
+}
+
+// ----------------------------------------------------------------
+// Static catalog
+// ----------------------------------------------------------------
+
+static CATALOG: LazyLock<Vec<TokenEntry>> = LazyLock::new(|| {
+    let parsed: TomlFile = toml::from_str(TOKENS_TOML)
+        .expect("tokens.toml is embedded at compile time and must be valid TOML");
+    parsed
+        .tokens
+        .into_iter()
+        .map(|t| TokenEntry {
+            chain:           t.chain,
+            chain_id:        t.chain_id,
+            name:            t.name,
+            symbol:          t.symbol,
+            token_standard:  t.standard,
+            contract:        t.contract,
+            coingecko_id:    t.coingecko_id,
+            decimals:        t.decimals,
+            display_decimals: t.display_decimals,
+            category:        t.category,
+            color_name:      t.color_name,
+            asset_name:      t.asset_name,
+            enabled:         t.enabled,
+        })
+        .collect()
+});
+
+// ----------------------------------------------------------------
+// Public API
+// ----------------------------------------------------------------
+
+/// Return token entries for `chain_id`, or all chains when `chain_id == u32::MAX`.
+pub fn list_tokens(chain_id: u32) -> Vec<TokenEntry> {
+    if chain_id == u32::MAX {
+        CATALOG.clone()
+    } else {
+        CATALOG.iter().filter(|t| t.chain_id == chain_id).cloned().collect()
+    }
+}
+
+/// Return a reference to the static catalog slice.
+pub fn catalog() -> &'static [TokenEntry] {
+    &CATALOG
+}
+
+// ── Token-id + endpoint URL normalization helpers ─────────────────
+
 // Pure token-identifier + endpoint normalization helpers (string munging,
 // URL validation, CSV parsing). No mutable state — testable in isolation.
 

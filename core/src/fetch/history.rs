@@ -832,3 +832,10 @@ mod tests {
         assert_eq!(merged[0].created_at_unix, 110.0);
     }
 }
+
+// ── FFI surface (relocated from ffi.rs) ──────────────────────────────────
+
+#[uniffi::export]
+pub fn core_normalize_history(request: NormalizeHistoryRequest) -> Vec<CoreNormalizedHistoryEntry> {
+    normalize_history(request)
+}

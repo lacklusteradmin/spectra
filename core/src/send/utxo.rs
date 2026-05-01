@@ -399,3 +399,19 @@ mod tests {
         assert_eq!(error, ERROR_INSUFFICIENT_FUNDS);
     }
 }
+
+// ── FFI surface (relocated from ffi.rs) ──────────────────────────────────
+
+#[uniffi::export]
+pub fn core_plan_utxo_preview(
+    request: UtxoPreviewRequest,
+) -> Result<UtxoPreviewPlan, crate::SpectraBridgeError> {
+    Ok(plan_utxo_preview(request)?)
+}
+
+#[uniffi::export]
+pub fn core_plan_utxo_spend(
+    request: UtxoSpendPlanRequest,
+) -> Result<UtxoSpendPlan, crate::SpectraBridgeError> {
+    Ok(plan_utxo_spend(request)?)
+}

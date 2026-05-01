@@ -1,11 +1,11 @@
-pub mod app_state;
 pub mod chain_aliases;
 pub mod password_verifier;
-pub mod persistence;
+pub mod persistence_models;
 pub mod secret_store;
 pub mod seed_envelope;
 pub mod state;
-pub mod wallet_core;
+// token_helpers moved to root tokens.rs
+// wallet_core moved to send/preview_types.rs
 pub mod wallet_db;
 pub mod wallet_domain;
 
@@ -533,10 +533,10 @@ fn normalize_tracked_token_identifier(
     match chain {
         Ethereum | Arbitrum | Optimism | Bnb | Avalanche | Hyperliquid | Polygon | Base | Linea
         | Scroll | Blast | Mantle => trimmed.to_lowercase(),
-        Aptos => crate::store::app_state::token_helpers::normalize_aptos_token_identifier(
+        Aptos => crate::tokens::normalize_aptos_token_identifier(
             trimmed.to_string(),
         ),
-        Sui => crate::store::app_state::token_helpers::normalize_sui_token_identifier(
+        Sui => crate::tokens::normalize_sui_token_identifier(
             trimmed.to_string(),
         ),
         Ton => trimmed.to_string(),
@@ -1674,3 +1674,279 @@ fn display_error(error: impl std::fmt::Display) -> String {
 
 #[cfg(test)]
 mod tests;
+
+// ── FFI surface (relocated from ffi.rs) ──────────────────────────────────
+
+#[uniffi::export]
+pub fn core_build_persisted_snapshot(
+    app_state: crate::store::state::CoreAppState,
+    secret_observations: Vec<WalletSecretObservation>,
+) -> PersistedAppSnapshot {
+    build_persisted_snapshot_typed(app_state, secret_observations)
+}
+
+#[uniffi::export]
+pub fn core_wallet_secret_index(
+    app_state: crate::store::state::CoreAppState,
+    secret_observations: Vec<WalletSecretObservation>,
+) -> WalletSecretIndex {
+    wallet_secret_index_from_observations(app_state, secret_observations)
+}
+
+#[uniffi::export]
+pub fn core_plan_store_derived_state(
+    request: StoreDerivedStateRequest,
+) -> StoreDerivedStatePlan {
+    plan_store_derived_state(request)
+}
+
+#[uniffi::export]
+pub fn core_aggregate_owned_addresses(request: OwnedAddressAggregationRequest) -> Vec<String> {
+    aggregate_owned_addresses(request)
+}
+
+#[uniffi::export]
+pub fn core_plan_receive_selection(request: ReceiveSelectionRequest) -> ReceiveSelectionPlan {
+    plan_receive_selection(request)
+}
+
+#[uniffi::export]
+pub fn core_plan_self_send_confirmation(
+    request: SelfSendConfirmationRequest,
+) -> SelfSendConfirmationPlan {
+    plan_self_send_confirmation(request)
+}
+
+#[uniffi::export]
+pub fn core_plan_dashboard_supported_token_entries(
+    entries: Vec<crate::store::wallet_domain::CoreTokenPreferenceEntry>,
+) -> Vec<crate::store::wallet_domain::CoreTokenPreferenceEntry> {
+    plan_dashboard_supported_token_entries(entries)
+}
+
+#[uniffi::export]
+pub fn core_plan_merge_built_in_token_preferences(
+    built_ins: Vec<crate::store::wallet_domain::CoreTokenPreferenceEntry>,
+    persisted: Vec<crate::store::wallet_domain::CoreTokenPreferenceEntry>,
+) -> Vec<crate::store::wallet_domain::CoreTokenPreferenceEntry> {
+    plan_merge_built_in_token_preferences(built_ins, persisted)
+}
+
+#[uniffi::export]
+pub fn core_plan_price_alert_evaluation(
+    alerts: Vec<PriceAlertEvaluationAlert>,
+    prices: Vec<PriceAlertEvaluationPrice>,
+) -> PriceAlertEvaluationPlan {
+    plan_price_alert_evaluation(alerts, prices)
+}
+
+#[uniffi::export]
+pub fn core_plan_dashboard_rebuild_for_live_price_change(
+    request: DashboardRebuildDecisionRequest,
+) -> bool {
+    plan_dashboard_rebuild_for_live_price_change(request)
+}
+
+#[uniffi::export]
+pub fn core_plan_ethereum_custom_fee_validation(
+    use_custom_fees: bool,
+    is_ethereum_chain: bool,
+    max_fee_gwei_raw: String,
+    priority_fee_gwei_raw: String,
+) -> Option<EthereumCustomFeeValidationCode> {
+    plan_ethereum_custom_fee_validation(
+        use_custom_fees,
+        is_ethereum_chain,
+        max_fee_gwei_raw,
+        priority_fee_gwei_raw,
+    )
+}
+
+#[uniffi::export]
+pub fn core_plan_ethereum_manual_nonce_validation(
+    manual_nonce_enabled: bool,
+    nonce_raw: String,
+) -> Option<EthereumManualNonceValidationCode> {
+    plan_ethereum_manual_nonce_validation(manual_nonce_enabled, nonce_raw)
+}
+
+#[uniffi::export]
+pub fn core_plan_append_chain_operational_event(
+    existing_events: Vec<ChainOperationalEventRecord>,
+    new_event: ChainOperationalEventRecord,
+) -> Vec<ChainOperationalEventRecord> {
+    plan_append_chain_operational_event(existing_events, new_event)
+}
+
+#[uniffi::export]
+pub fn core_plan_transaction_status_should_poll(
+    tracker: Option<TransactionStatusTrackerState>,
+    now_unix: f64,
+) -> bool {
+    plan_transaction_status_should_poll(tracker, now_unix)
+}
+
+#[uniffi::export]
+pub fn core_plan_transaction_status_poll_success(
+    tracker: Option<TransactionStatusTrackerState>,
+    resolved_status_confirmed: bool,
+    resolved_status_pending: bool,
+    reported_confirmations: Option<u32>,
+    now_unix: f64,
+    config: TransactionStatusPollConfig,
+) -> TransactionStatusTrackerState {
+    plan_transaction_status_poll_success(
+        tracker,
+        resolved_status_confirmed,
+        resolved_status_pending,
+        reported_confirmations,
+        now_unix,
+        config,
+    )
+}
+
+#[uniffi::export]
+pub fn core_plan_transaction_status_poll_failure(
+    tracker: Option<TransactionStatusTrackerState>,
+    now_unix: f64,
+    config: TransactionStatusPollConfig,
+) -> TransactionStatusTrackerState {
+    plan_transaction_status_poll_failure(tracker, now_unix, config)
+}
+
+#[uniffi::export]
+pub fn core_plan_stale_pending_failure_ids(
+    transactions: Vec<StalePendingFailureTransactionInput>,
+    now_unix: f64,
+    config: TransactionStatusPollConfig,
+) -> Vec<String> {
+    plan_stale_pending_failure_ids(transactions, now_unix, config)
+}
+
+#[uniffi::export]
+pub fn core_plan_apply_resolved_pending_transaction_statuses(
+    inputs: Vec<ResolvedPendingTransactionInput>,
+    now_unix: f64,
+    config: TransactionStatusPollConfig,
+) -> Vec<ResolvedPendingTransactionDecision> {
+    plan_apply_resolved_pending_transaction_statuses(inputs, now_unix, config)
+}
+
+#[uniffi::export]
+pub fn core_plan_ethereum_send_error_code(message: String) -> EthereumSendErrorCode {
+    plan_ethereum_send_error_code(message)
+}
+
+#[uniffi::export]
+pub fn core_plan_baseline_chain_keypool_state(
+    input: ChainKeypoolBaselineInput,
+) -> ChainKeypoolStateRecord {
+    plan_baseline_chain_keypool_state(input)
+}
+
+#[uniffi::export]
+pub fn core_plan_chain_keypool_state(
+    baseline: ChainKeypoolStateRecord,
+    existing: Option<ChainKeypoolStateRecord>,
+) -> ChainKeypoolStateRecord {
+    plan_chain_keypool_state(baseline, existing)
+}
+
+#[uniffi::export]
+pub fn core_plan_apply_holdings_from_summary(
+    existing: Vec<HoldingMergeExistingInput>,
+    incoming: Vec<HoldingMergeIncomingInput>,
+) -> Vec<HoldingMergeAction> {
+    plan_apply_holdings_from_summary(existing, incoming)
+}
+
+#[uniffi::export]
+pub fn core_plan_evm_recipient_preflight_warnings(
+    request: EvmRecipientPreflightRequest,
+) -> Vec<EvmRecipientPreflightWarning> {
+    plan_evm_recipient_preflight_warnings(request)
+}
+
+#[uniffi::export]
+pub fn core_plan_priced_chain(
+    chain_name: String,
+    bitcoin_network_mode_raw: String,
+    ethereum_network_mode_raw: String,
+) -> bool {
+    plan_priced_chain(chain_name, bitcoin_network_mode_raw, ethereum_network_mode_raw)
+}
+
+#[uniffi::export]
+pub fn core_plan_active_wallet_transaction_ids(
+    transactions: Vec<TransactionActivityInput>,
+    wallets: Vec<WalletChainInput>,
+) -> Vec<String> {
+    plan_active_wallet_transaction_ids(transactions, wallets)
+}
+
+#[uniffi::export]
+pub fn core_plan_normalized_history_signature(
+    transactions: Vec<NormalizedHistorySignatureTransaction>,
+    wallets: Vec<WalletChainInput>,
+) -> i64 {
+    plan_normalized_history_signature(transactions, wallets)
+}
+
+#[uniffi::export]
+pub fn core_plan_earliest_transaction_dates(
+    transactions: Vec<TransactionEarliestInput>,
+) -> Vec<WalletEarliestTransactionDate> {
+    plan_earliest_transaction_dates(transactions)
+}
+
+#[uniffi::export]
+pub fn core_plan_has_wallet_for_chain(
+    chain_name: String,
+    wallets: Vec<WalletChainEligibilityInput>,
+) -> bool {
+    plan_has_wallet_for_chain(chain_name, wallets)
+}
+
+#[uniffi::export]
+pub fn core_plan_canonical_chain_component(chain_name: String, symbol: String) -> String {
+    plan_canonical_chain_component(chain_name, symbol)
+}
+
+#[uniffi::export]
+pub fn core_plan_icon_identifier(
+    symbol: String,
+    chain_name: String,
+    contract_address: Option<String>,
+    token_standard: String,
+) -> String {
+    plan_icon_identifier(symbol, chain_name, contract_address, token_standard)
+}
+
+#[uniffi::export]
+pub fn core_plan_normalized_icon_identifier(identifier: String) -> String {
+    plan_normalized_icon_identifier(identifier)
+}
+
+#[uniffi::export]
+pub fn core_plan_reset_dispatch(scopes: Vec<String>) -> CoreResetPlan {
+    plan_reset_dispatch(scopes)
+}
+
+#[uniffi::export]
+pub fn core_plan_resolve_derived_or_stored_address(
+    derived: Option<String>,
+    stored: Option<String>,
+    validation_kind: String,
+    validation_network_mode: Option<String>,
+    derived_post_process: DerivedAddressPostProcess,
+    normalize_stored: bool,
+) -> Option<String> {
+    plan_resolve_derived_or_stored_address(
+        derived,
+        stored,
+        validation_kind,
+        validation_network_mode,
+        derived_post_process,
+        normalize_stored,
+    )
+}

@@ -10,8 +10,6 @@
 //! The numeric discriminants are part of the persistence wire format and must
 //! not change; new chains append new variants with the next unused integer.
 
-pub mod tokens;
-
 use crate::send::payload::SendChain;
 
 /// Every chain Spectra knows about. Discriminants are the frozen chain IDs
@@ -1200,4 +1198,42 @@ mod tests {
         assert_eq!(Chain::Tron.endpoint_id(EndpointSlot::Explorer), 207);
         assert_eq!(Chain::Near.endpoint_id(EndpointSlot::Explorer), 217);
     }
+}
+
+// ── FFI surface ──────────────────────────────────────────────────────────
+
+#[uniffi::export]
+pub fn core_chain_id_for_name(name: String) -> Option<u32> {
+    Chain::from_display_name(&name).map(|c| c.id())
+}
+
+#[uniffi::export]
+pub fn core_endpoint_id(chain_id: u32, slot: crate::app_core::AppCoreEndpointSlot) -> Option<u32> {
+    let chain = Chain::from_id(chain_id)?;
+    let mapped = match slot {
+        crate::app_core::AppCoreEndpointSlot::Primary => EndpointSlot::Primary,
+        crate::app_core::AppCoreEndpointSlot::Secondary => EndpointSlot::Secondary,
+        crate::app_core::AppCoreEndpointSlot::Explorer => EndpointSlot::Explorer,
+    };
+    Some(chain.endpoint_id(mapped))
+}
+
+/// EVM derivation source mapping: BNB Chain reuses Ethereum's seed derivation
+/// path (BIP-44 coin type 60), while every other supported EVM chain derives
+/// against its own coin type. Returns the `SeedDerivationChain` raw string the
+/// Swift side should use (its enum raw values are the chain display names).
+#[uniffi::export]
+pub fn core_evm_seed_derivation_chain_name(chain_name: String) -> Option<String> {
+    Some(
+        match Chain::from_display_name(&chain_name)? {
+            Chain::Ethereum => "Ethereum",
+            Chain::EthereumClassic => "Ethereum Classic",
+            Chain::Arbitrum => "Arbitrum",
+            Chain::BnbChain => "Ethereum",
+            Chain::Avalanche => "Avalanche",
+            Chain::Hyperliquid => "Hyperliquid",
+            _ => return None,
+        }
+        .to_string(),
+    )
 }

@@ -3,7 +3,7 @@ use std::cmp::Ordering;
 
 /// Wire/merge form of a transaction record.
 ///
-/// Distinct from [`crate::store::persistence::models::CorePersistedTransactionRecord`]
+/// Distinct from [`crate::store::persistence_models::CorePersistedTransactionRecord`]
 /// in two specific ways — they look almost identical but the differences are
 /// load-bearing:
 ///   1. **Timestamps**: this type uses unix-epoch seconds (`created_at_unix`)
@@ -588,4 +588,11 @@ mod tests {
         assert_eq!(record.failure_reason.as_deref(), Some("new-failure"));
         assert_eq!(record.created_at_unix, 900.0);
     }
+}
+
+// ── FFI surface (relocated from ffi.rs) ──────────────────────────────────
+
+#[uniffi::export]
+pub fn core_merge_transactions(request: TransactionMergeRequest) -> Vec<CoreTransactionRecord> {
+    merge_transactions(request)
 }

@@ -31,6 +31,18 @@ pub struct StringValidationResult {
     pub normalized_value: Option<String>,
 }
 
+#[uniffi::export]
+pub fn core_validate_address(request: AddressValidationRequest) -> AddressValidationResult {
+    validate_address(request)
+}
+
+#[uniffi::export]
+pub fn core_validate_string_identifier(
+    request: StringValidationRequest,
+) -> StringValidationResult {
+    validate_string_identifier(request)
+}
+
 pub fn validate_address(request: AddressValidationRequest) -> AddressValidationResult {
     let normalized_input = trim_string(&request.value);
     if normalized_input.is_empty() {

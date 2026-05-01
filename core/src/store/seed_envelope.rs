@@ -130,3 +130,26 @@ mod tests {
         assert!(decrypt(b"{}", &[0u8; 16]).is_err());
     }
 }
+
+// ── FFI surface (relocated from ffi.rs) ──────────────────────────────────
+
+/// Encrypt a seed phrase with AES-256-GCM. `master_key_bytes` must be exactly
+/// 32 bytes. Returns the JSON envelope as `Data` (compatible with Swift's
+/// existing `SeedMaterialEnvelope` keychain format).
+#[uniffi::export]
+pub fn encrypt_seed_envelope(
+    plaintext: String,
+    master_key_bytes: Vec<u8>,
+) -> Result<Vec<u8>, crate::SpectraBridgeError> {
+    encrypt(plaintext.as_bytes(), &master_key_bytes).map_err(crate::SpectraBridgeError::from)
+}
+
+/// Decrypt a seed envelope produced by [`encrypt_seed_envelope`] or by Swift's
+/// `SeedMaterialEnvelope.encode`. Returns the plaintext seed phrase.
+#[uniffi::export]
+pub fn decrypt_seed_envelope(
+    data: Vec<u8>,
+    master_key_bytes: Vec<u8>,
+) -> Result<String, crate::SpectraBridgeError> {
+    decrypt(&data, &master_key_bytes).map_err(crate::SpectraBridgeError::from)
+}

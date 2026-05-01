@@ -239,3 +239,27 @@ mod tests {
         assert!(!plans[1].refresh_history);
     }
 }
+
+// ── FFI surface (relocated from ffi.rs) ──────────────────────────────────
+
+#[uniffi::export]
+pub fn core_active_maintenance_plan(
+    request: ActiveMaintenancePlanRequest,
+) -> ActiveMaintenancePlan {
+    active_maintenance_plan(request)
+}
+
+#[uniffi::export]
+pub fn core_should_run_background_maintenance(request: BackgroundMaintenanceRequest) -> bool {
+    should_run_background_maintenance(request)
+}
+
+#[uniffi::export]
+pub fn core_chain_refresh_plans(request: ChainRefreshPlanRequest) -> Vec<ChainRefreshPlan> {
+    chain_plans(request)
+}
+
+#[uniffi::export]
+pub fn core_history_refresh_plans(request: HistoryRefreshPlanRequest) -> Vec<String> {
+    history_plans(request)
+}

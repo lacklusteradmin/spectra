@@ -1,9 +1,9 @@
-pub mod balance_observer;
+
 pub mod history;
 pub mod history_decode;
 pub mod history_store;
 pub mod http;
-pub mod http_ffi;
+
 pub mod price;
 pub mod refresh;
 pub mod refresh_engine;
@@ -636,4 +636,39 @@ mod tests {
             )
         );
     }
+}
+
+// ── FFI surface (relocated from ffi.rs) ──────────────────────────────────
+
+#[uniffi::export]
+pub fn core_plan_evm_refresh_targets(request: EvmRefreshTargetsRequest) -> EvmRefreshPlan {
+    plan_evm_refresh_targets(request)
+}
+
+#[uniffi::export]
+pub fn core_plan_dogecoin_refresh_targets(
+    request: DogecoinRefreshTargetsRequest,
+) -> Vec<DogecoinRefreshWalletTarget> {
+    plan_dogecoin_refresh_targets(request)
+}
+
+#[uniffi::export]
+pub fn core_plan_normalized_refresh_targets(
+    request: NormalizedRefreshTargetsRequest,
+) -> Vec<NormalizedRefreshWalletTarget> {
+    plan_normalized_refresh_targets(request)
+}
+
+#[uniffi::export]
+pub fn core_plan_wallet_balance_refresh(
+    request: WalletBalanceRefreshRequest,
+) -> WalletBalanceRefreshPlan {
+    plan_wallet_balance_refresh(request)
+}
+
+#[uniffi::export]
+pub fn core_plan_balance_refresh_health(
+    request: BalanceRefreshHealthRequest,
+) -> BalanceRefreshHealthPlan {
+    plan_balance_refresh_health(request)
 }

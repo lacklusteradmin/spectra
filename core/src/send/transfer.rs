@@ -205,3 +205,12 @@ mod tests {
         assert_eq!(plan.wallets[0].receive_holding_indices, vec![0u64]);
     }
 }
+
+// ── FFI surface (relocated from ffi.rs) ──────────────────────────────────
+
+#[uniffi::export]
+pub fn core_plan_transfer_availability(
+    request: TransferAvailabilityRequest,
+) -> TransferAvailabilityPlan {
+    plan_transfer_availability(request)
+}

@@ -5,7 +5,8 @@
 // The only job remaining for Swift is to apply the received JSON to the
 // in-memory wallet model via `WalletStore.applyRustBalance(...)`.
 
-use crate::fetch::balance_observer::{BalanceObserver, RefreshEntry};
+// `BalanceObserver` + `RefreshEntry` are defined further down in this file
+// (merged in from the former `balance_observer.rs`).
 use crate::service::WalletService;
 use futures::stream::{self, StreamExt};
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -321,4 +322,41 @@ mod tests {
         assert_eq!(work_count.load(Ordering::Relaxed), 3);
         assert!(!gate.load(Ordering::Relaxed));
     }
+}
+
+// ── Merged from balance_observer.rs ───────────────────────────────
+
+use crate::store::state::WalletSummary;
+
+/// Callback interface implemented by Swift. Rust calls these from the tokio
+/// task that owns the refresh timer loop. Implementations must be
+/// `Send + Sync` (UniFFI enforces this for foreign trait objects).
+///
+/// The refresh engine applies the balance update to the Rust-owned wallet
+/// state before invoking the callback, so Swift receives a typed
+/// `WalletSummary` record directly — no JSON shuttle.
+#[uniffi::export(with_foreign)]
+pub trait BalanceObserver: Send + Sync {
+    /// Called after each successful balance fetch within a cycle. `summary`
+    /// is the updated `WalletSummary` (already applied to the Rust store), or
+    /// `None` if the native amount could not be parsed or the wallet is not
+    /// in the in-memory state.
+    fn on_balance_updated(&self, chain_id: u32, wallet_id: String, summary: Option<WalletSummary>);
+
+    /// Called once the full sweep of all registered entries completes.
+    fn on_refresh_cycle_complete(&self, refreshed: u32, errors: u32);
+}
+
+/// One (chain, wallet, address) triple registered for periodic refresh.
+///
+/// For Bitcoin HD wallets: set `address` to the xpub/ypub/zpub.
+/// `WalletService::fetch_native_balance_summary_auto` detects extended keys
+/// automatically.
+#[derive(Debug, Clone, serde::Deserialize, uniffi::Record)]
+pub struct RefreshEntry {
+    pub chain_id: u32,
+    pub wallet_id: String,
+    /// The canonical fetch key: a wallet address for most chains, or an
+    /// xpub/ypub/zpub for Bitcoin HD wallets.
+    pub address: String,
 }

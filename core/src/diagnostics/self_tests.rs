@@ -446,7 +446,7 @@ async fn fetch_eth_rpc_hex(url: &str, method: &str, id: u32) -> Result<u64, Stri
     let body = format!(
         r#"{{"jsonrpc":"2.0","id":{id},"method":"{method}","params":[]}}"#
     );
-    let resp = crate::fetch::http_ffi::http_post_json(
+    let resp = crate::fetch::http::http_post_json(
         url.to_string(),
         body,
         std::collections::HashMap::new(),

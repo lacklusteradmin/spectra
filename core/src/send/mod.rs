@@ -1,9 +1,10 @@
 pub mod amount_input;
 pub mod ethereum;
 pub mod flow;
-pub mod flow_helpers;
+
 pub mod payload;
 pub mod preview_decode;
+pub mod preview_types;
 pub mod transfer;
 pub mod utxo;
 pub mod verification;
@@ -374,4 +375,25 @@ mod tests {
         assert_eq!(plan.amount, 0.0);
         assert!(plan.allows_zero_amount);
     }
+}
+
+// ── FFI surface (relocated from ffi.rs) ──────────────────────────────────
+
+#[uniffi::export]
+pub fn core_route_send_asset(request: SendAssetRoutingInput) -> SendAssetRoutingPlan {
+    route_send_asset(&request)
+}
+
+#[uniffi::export]
+pub fn core_plan_send_preview_routing(
+    request: SendPreviewRoutingRequest,
+) -> SendPreviewRoutingPlan {
+    plan_send_preview_routing(request)
+}
+
+#[uniffi::export]
+pub fn core_plan_send_submit_preflight(
+    request: SendSubmitPreflightRequest,
+) -> Result<SendSubmitPreflightPlan, crate::SpectraBridgeError> {
+    Ok(plan_send_submit_preflight(request)?)
 }

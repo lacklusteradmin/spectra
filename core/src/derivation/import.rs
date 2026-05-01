@@ -137,6 +137,18 @@ pub struct WalletImportPlan {
     pub secret_instructions: Vec<WalletSecretInstruction>,
 }
 
+#[uniffi::export]
+pub fn core_plan_wallet_import(
+    request: WalletImportRequest,
+) -> Result<WalletImportPlan, crate::SpectraBridgeError> {
+    Ok(plan_wallet_import(request)?)
+}
+
+#[uniffi::export]
+pub fn core_validate_wallet_import_draft(request: WalletImportDraftValidationRequest) -> bool {
+    validate_wallet_import_draft(request)
+}
+
 pub fn plan_wallet_import(request: WalletImportRequest) -> Result<WalletImportPlan, String> {
     if request.is_watch_only_import {
         plan_watch_only_import(request)

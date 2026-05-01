@@ -461,7 +461,7 @@ pub struct HistoryRecord {
     pub chain_name: String,
     pub tx_hash: Option<String>,
     pub created_at: f64,
-    pub payload: crate::store::persistence::models::CorePersistedTransactionRecord,
+    pub payload: crate::store::persistence_models::CorePersistedTransactionRecord,
 }
 
 // ── History record CRUD ───────────────────────────────────────────────────────
