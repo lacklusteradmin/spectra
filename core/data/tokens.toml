@@ -91,7 +91,7 @@ coingecko_id = "cronos"
 decimals     = 8
 category     = "custom"
 color_name   = "blue"
-asset_name   = "cro"
+asset_name   = "cronos"
 enabled      = false
 
 # ── DAI ───────────────────────────────────────────────────────────────────
@@ -107,7 +107,7 @@ coingecko_id = "dai"
 decimals     = 18
 category     = "stablecoin"
 color_name   = "orange"
-asset_name   = "dai"
+asset_name   = "skydai"
 enabled      = false
 
 [[tokens]]
@@ -121,7 +121,7 @@ coingecko_id = "dai"
 decimals     = 18
 category     = "stablecoin"
 color_name   = "yellow"
-asset_name   = "dai"
+asset_name   = "skydai"
 enabled      = false
 
 [[tokens]]
@@ -135,7 +135,7 @@ coingecko_id = "dai"
 decimals     = 18
 category     = "stablecoin"
 color_name   = "yellow"
-asset_name   = "dai"
+asset_name   = "skydai"
 enabled      = true
 
 # ── ENA ───────────────────────────────────────────────────────────────────
@@ -151,7 +151,7 @@ coingecko_id = "ethena"
 decimals     = 18
 category     = "custom"
 color_name   = "blue"
-asset_name   = "ena"
+asset_name   = "ethena"
 enabled      = false
 
 [[tokens]]
@@ -165,7 +165,7 @@ coingecko_id = "ethena"
 decimals     = 9
 category     = "custom"
 color_name   = "blue"
-asset_name   = "ena"
+asset_name   = "ethena"
 enabled      = false
 
 [[tokens]]
@@ -179,7 +179,7 @@ coingecko_id = "ethena"
 decimals     = 18
 category     = "custom"
 color_name   = "blue"
-asset_name   = "ena"
+asset_name   = "ethena"
 enabled      = false
 
 [[tokens]]
@@ -193,7 +193,7 @@ coingecko_id = "ethena"
 decimals     = 6
 category     = "custom"
 color_name   = "blue"
-asset_name   = "ena"
+asset_name   = "ethena"
 enabled      = false
 
 [[tokens]]
@@ -207,7 +207,7 @@ coingecko_id = "ethena"
 decimals     = 18
 category     = "custom"
 color_name   = "blue"
-asset_name   = "ena"
+asset_name   = "ethena"
 enabled      = false
 
 # ── EURC ──────────────────────────────────────────────────────────────────
@@ -223,7 +223,7 @@ coingecko_id = "euro-coin"
 decimals     = 6
 category     = "stablecoin"
 color_name   = "blue"
-asset_name   = "eurc"
+asset_name   = "circleeurc"
 enabled      = false
 
 [[tokens]]
@@ -237,7 +237,7 @@ coingecko_id = "euro-coin"
 decimals     = 6
 category     = "stablecoin"
 color_name   = "blue"
-asset_name   = "eurc"
+asset_name   = "circleeurc"
 enabled      = false
 
 [[tokens]]
@@ -251,7 +251,7 @@ coingecko_id = "euro-coin"
 decimals     = 6
 category     = "stablecoin"
 color_name   = "blue"
-asset_name   = "eurc"
+asset_name   = "circleeurc"
 enabled      = false
 
 # ── FDUSD ─────────────────────────────────────────────────────────────────
@@ -267,7 +267,7 @@ coingecko_id = "first-digital-usd"
 decimals     = 18
 category     = "stablecoin"
 color_name   = "green"
-asset_name   = "fdusd"
+asset_name   = "firstdigitalfdusd"
 enabled      = false
 
 [[tokens]]
@@ -281,7 +281,7 @@ coingecko_id = "first-digital-usd"
 decimals     = 6
 category     = "stablecoin"
 color_name   = "green"
-asset_name   = "fdusd"
+asset_name   = "firstdigitalfdusd"
 enabled      = false
 
 [[tokens]]
@@ -295,7 +295,7 @@ coingecko_id = "first-digital-usd"
 decimals     = 18
 category     = "stablecoin"
 color_name   = "green"
-asset_name   = "fdusd"
+asset_name   = "firstdigitalfdusd"
 enabled      = false
 
 [[tokens]]
@@ -309,7 +309,7 @@ coingecko_id = "first-digital-usd"
 decimals     = 9
 category     = "stablecoin"
 color_name   = "green"
-asset_name   = "fdusd"
+asset_name   = "firstdigitalfdusd"
 enabled      = false
 
 [[tokens]]
@@ -323,7 +323,7 @@ coingecko_id = "first-digital-usd"
 decimals     = 6
 category     = "stablecoin"
 color_name   = "green"
-asset_name   = "fdusd"
+asset_name   = "firstdigitalfdusd"
 enabled      = false
 
 [[tokens]]
@@ -337,7 +337,7 @@ coingecko_id = "first-digital-usd"
 decimals     = 18
 category     = "stablecoin"
 color_name   = "green"
-asset_name   = "fdusd"
+asset_name   = "firstdigitalfdusd"
 enabled      = false
 
 # ── JUP ───────────────────────────────────────────────────────────────────
@@ -353,7 +353,7 @@ coingecko_id = "jupiter-exchange-solana"
 decimals     = 6
 category     = "custom"
 color_name   = "orange"
-asset_name   = "jup"
+asset_name   = "jupiter"
 enabled      = false
 
 # ── KCS ───────────────────────────────────────────────────────────────────
@@ -401,7 +401,7 @@ coingecko_id = "chainlink"
 decimals     = 18
 category     = "custom"
 color_name   = "blue"
-asset_name   = "link"
+asset_name   = "chainlink"
 enabled      = false
 
 [[tokens]]
@@ -415,7 +415,7 @@ coingecko_id = "chainlink"
 decimals     = 8
 category     = "custom"
 color_name   = "blue"
-asset_name   = "link"
+asset_name   = "chainlink"
 enabled      = false
 
 [[tokens]]
@@ -429,7 +429,7 @@ coingecko_id = "chainlink"
 decimals     = 18
 category     = "custom"
 color_name   = "blue"
-asset_name   = "link"
+asset_name   = "chainlink"
 enabled      = false
 
 [[tokens]]
@@ -443,7 +443,7 @@ coingecko_id = "chainlink"
 decimals     = 18
 category     = "custom"
 color_name   = "blue"
-asset_name   = "link"
+asset_name   = "chainlink"
 enabled      = false
 
 [[tokens]]
@@ -457,7 +457,7 @@ coingecko_id = "chainlink"
 decimals     = 18
 category     = "custom"
 color_name   = "blue"
-asset_name   = "link"
+asset_name   = "chainlink"
 enabled      = false
 
 [[tokens]]
@@ -471,7 +471,7 @@ coingecko_id = "chainlink"
 decimals     = 18
 category     = "custom"
 color_name   = "blue"
-asset_name   = "link"
+asset_name   = "chainlink"
 enabled      = false
 
 # ── PAXG ──────────────────────────────────────────────────────────────────
@@ -487,7 +487,7 @@ coingecko_id = "pax-gold"
 decimals     = 18
 category     = "custom"
 color_name   = "yellow"
-asset_name   = "paxg"
+asset_name   = "paxospaxg"
 enabled      = false
 
 # ── PUMP ──────────────────────────────────────────────────────────────────
@@ -503,7 +503,7 @@ coingecko_id = "pump-fun"
 decimals     = 6
 category     = "meme"
 color_name   = "pink"
-asset_name   = "pump"
+asset_name   = "pumpfun"
 enabled      = false
 
 # ── PYUSD ─────────────────────────────────────────────────────────────────
@@ -519,7 +519,7 @@ coingecko_id = "paypal-usd"
 decimals     = 6
 category     = "stablecoin"
 color_name   = "blue"
-asset_name   = "pyusd"
+asset_name   = "paypalpyusd"
 enabled      = false
 
 [[tokens]]
@@ -533,7 +533,7 @@ coingecko_id = "paypal-usd"
 decimals     = 6
 category     = "stablecoin"
 color_name   = "blue"
-asset_name   = "pyusd"
+asset_name   = "paypalpyusd"
 enabled      = false
 
 [[tokens]]
@@ -547,7 +547,7 @@ coingecko_id = "paypal-usd"
 decimals     = 6
 category     = "stablecoin"
 color_name   = "blue"
-asset_name   = "pyusd"
+asset_name   = "paypalpyusd"
 enabled      = false
 
 # ── RLUSD ─────────────────────────────────────────────────────────────────
@@ -563,7 +563,7 @@ coingecko_id = "ripple-usd"
 decimals     = 18
 category     = "stablecoin"
 color_name   = "indigo"
-asset_name   = "rlusd"
+asset_name   = "ripplerlusd"
 enabled      = false
 
 # ── SHIB ──────────────────────────────────────────────────────────────────
@@ -579,7 +579,7 @@ coingecko_id = "shiba-inu"
 decimals     = 18
 category     = "meme"
 color_name   = "orange"
-asset_name   = "shib"
+asset_name   = "shibainu"
 enabled      = false
 
 # ── SKY ───────────────────────────────────────────────────────────────────
@@ -669,7 +669,7 @@ coingecko_id = "uniswap"
 decimals     = 18
 category     = "custom"
 color_name   = "pink"
-asset_name   = "uni"
+asset_name   = "uniswap"
 enabled      = false
 
 # ── USD1 ──────────────────────────────────────────────────────────────────
@@ -685,7 +685,7 @@ coingecko_id = ""
 decimals     = 18
 category     = "stablecoin"
 color_name   = "green"
-asset_name   = "usd1"
+asset_name   = "wlfiusd1"
 enabled      = false
 
 [[tokens]]
@@ -699,7 +699,7 @@ coingecko_id = ""
 decimals     = 6
 category     = "stablecoin"
 color_name   = "green"
-asset_name   = "usd1"
+asset_name   = "wlfiusd1"
 enabled      = false
 
 [[tokens]]
@@ -713,7 +713,7 @@ coingecko_id = ""
 decimals     = 18
 category     = "stablecoin"
 color_name   = "green"
-asset_name   = "usd1"
+asset_name   = "wlfiusd1"
 enabled      = false
 
 [[tokens]]
@@ -727,7 +727,7 @@ coingecko_id = ""
 decimals     = 6
 category     = "stablecoin"
 color_name   = "green"
-asset_name   = "usd1"
+asset_name   = "wlfiusd1"
 enabled      = false
 
 [[tokens]]
@@ -741,7 +741,7 @@ coingecko_id = ""
 decimals     = 18
 category     = "stablecoin"
 color_name   = "green"
-asset_name   = "usd1"
+asset_name   = "wlfiusd1"
 enabled      = false
 
 # ── USDB ──────────────────────────────────────────────────────────────────
@@ -773,7 +773,7 @@ coingecko_id = "usd-coin"
 decimals     = 6
 category     = "stablecoin"
 color_name   = "blue"
-asset_name   = "usdc"
+asset_name   = "circleusdc"
 enabled      = true
 
 [[tokens]]
@@ -787,7 +787,7 @@ coingecko_id = "usd-coin"
 decimals     = 6
 category     = "stablecoin"
 color_name   = "blue"
-asset_name   = "usdc"
+asset_name   = "circleusdc"
 enabled      = true
 
 [[tokens]]
@@ -801,7 +801,7 @@ coingecko_id = "usd-coin"
 decimals     = 6
 category     = "stablecoin"
 color_name   = "blue"
-asset_name   = "usdc"
+asset_name   = "circleusdc"
 enabled      = true
 
 [[tokens]]
@@ -815,7 +815,7 @@ coingecko_id = "usd-coin"
 decimals     = 6
 category     = "stablecoin"
 color_name   = "blue"
-asset_name   = "usdc"
+asset_name   = "circleusdc"
 enabled      = true
 
 [[tokens]]
@@ -829,7 +829,7 @@ coingecko_id = "usd-coin"
 decimals     = 6
 category     = "stablecoin"
 color_name   = "blue"
-asset_name   = "usdc"
+asset_name   = "circleusdc"
 enabled      = true
 
 [[tokens]]
@@ -843,7 +843,7 @@ coingecko_id = "usd-coin"
 decimals     = 6
 category     = "stablecoin"
 color_name   = "blue"
-asset_name   = "usdc"
+asset_name   = "circleusdc"
 enabled      = true
 
 [[tokens]]
@@ -857,7 +857,7 @@ coingecko_id = "usd-coin"
 decimals     = 6
 category     = "stablecoin"
 color_name   = "blue"
-asset_name   = "usdc"
+asset_name   = "circleusdc"
 enabled      = true
 
 [[tokens]]
@@ -871,7 +871,7 @@ coingecko_id = "usd-coin"
 decimals     = 6
 category     = "stablecoin"
 color_name   = "blue"
-asset_name   = "usdc"
+asset_name   = "circleusdc"
 enabled      = true
 
 [[tokens]]
@@ -885,7 +885,7 @@ coingecko_id = "usd-coin"
 decimals     = 6
 category     = "stablecoin"
 color_name   = "blue"
-asset_name   = "usdc"
+asset_name   = "circleusdc"
 enabled      = true
 
 [[tokens]]
@@ -899,7 +899,7 @@ coingecko_id = "usd-coin"
 decimals     = 6
 category     = "stablecoin"
 color_name   = "blue"
-asset_name   = "usdc"
+asset_name   = "circleusdc"
 enabled      = true
 
 [[tokens]]
@@ -913,7 +913,7 @@ coingecko_id = "usd-coin"
 decimals     = 6
 category     = "stablecoin"
 color_name   = "blue"
-asset_name   = "usdc"
+asset_name   = "circleusdc"
 enabled      = true
 
 [[tokens]]
@@ -927,7 +927,7 @@ coingecko_id = "usd-coin"
 decimals     = 6
 category     = "stablecoin"
 color_name   = "blue"
-asset_name   = "usdc"
+asset_name   = "circleusdc"
 enabled      = true
 
 [[tokens]]
@@ -941,7 +941,7 @@ coingecko_id = "usd-coin"
 decimals     = 6
 category     = "stablecoin"
 color_name   = "blue"
-asset_name   = "usdc"
+asset_name   = "circleusdc"
 enabled      = true
 
 # ── USDD ──────────────────────────────────────────────────────────────────
@@ -1001,7 +1001,7 @@ coingecko_id = "ethena-usde"
 decimals     = 18
 category     = "stablecoin"
 color_name   = "cyan"
-asset_name   = "usde"
+asset_name   = "ethenausde"
 enabled      = false
 
 [[tokens]]
@@ -1015,7 +1015,7 @@ coingecko_id = "ethena-usde"
 decimals     = 9
 category     = "stablecoin"
 color_name   = "cyan"
-asset_name   = "usde"
+asset_name   = "ethenausde"
 enabled      = false
 
 [[tokens]]
@@ -1029,7 +1029,7 @@ coingecko_id = "ethena-usde"
 decimals     = 18
 category     = "stablecoin"
 color_name   = "cyan"
-asset_name   = "usde"
+asset_name   = "ethenausde"
 enabled      = false
 
 [[tokens]]
@@ -1043,7 +1043,7 @@ coingecko_id = "ethena-usde"
 decimals     = 6
 category     = "stablecoin"
 color_name   = "cyan"
-asset_name   = "usde"
+asset_name   = "ethenausde"
 enabled      = false
 
 [[tokens]]
@@ -1057,7 +1057,7 @@ coingecko_id = "ethena-usde"
 decimals     = 6
 category     = "stablecoin"
 color_name   = "cyan"
-asset_name   = "usde"
+asset_name   = "ethenausde"
 enabled      = false
 
 [[tokens]]
@@ -1071,7 +1071,7 @@ coingecko_id = "ethena-usde"
 decimals     = 18
 category     = "stablecoin"
 color_name   = "cyan"
-asset_name   = "usde"
+asset_name   = "ethenausde"
 enabled      = false
 
 # ── USDG ──────────────────────────────────────────────────────────────────
@@ -1087,7 +1087,7 @@ coingecko_id = "global-dollar"
 decimals     = 6
 category     = "stablecoin"
 color_name   = "teal"
-asset_name   = "usdg"
+asset_name   = "paxosusdg"
 enabled      = false
 
 [[tokens]]
@@ -1101,7 +1101,7 @@ coingecko_id = "global-dollar"
 decimals     = 6
 category     = "stablecoin"
 color_name   = "teal"
-asset_name   = "usdg"
+asset_name   = "paxosusdg"
 enabled      = false
 
 # ── USDS ──────────────────────────────────────────────────────────────────
@@ -1117,7 +1117,7 @@ coingecko_id = "sky-dollar"
 decimals     = 18
 category     = "stablecoin"
 color_name   = "teal"
-asset_name   = "usds"
+asset_name   = "skyusds"
 enabled      = false
 
 [[tokens]]
@@ -1131,7 +1131,7 @@ coingecko_id = "sky-dollar"
 decimals     = 6
 category     = "stablecoin"
 color_name   = "teal"
-asset_name   = "usds"
+asset_name   = "skyusds"
 enabled      = false
 
 [[tokens]]
@@ -1145,7 +1145,7 @@ coingecko_id = "sky-dollar"
 decimals     = 18
 category     = "stablecoin"
 color_name   = "teal"
-asset_name   = "usds"
+asset_name   = "skyusds"
 enabled      = false
 
 [[tokens]]
@@ -1159,7 +1159,7 @@ coingecko_id = "sky-dollar"
 decimals     = 18
 category     = "stablecoin"
 color_name   = "teal"
-asset_name   = "usds"
+asset_name   = "skyusds"
 enabled      = false
 
 # ── USDT ──────────────────────────────────────────────────────────────────
@@ -1175,7 +1175,7 @@ coingecko_id = "tether"
 decimals     = 6
 category     = "stablecoin"
 color_name   = "green"
-asset_name   = "tether"
+asset_name   = "tetherusdt"
 enabled      = true
 
 [[tokens]]
@@ -1189,7 +1189,7 @@ coingecko_id = "tether"
 decimals     = 6
 category     = "stablecoin"
 color_name   = "green"
-asset_name   = "tether"
+asset_name   = "tetherusdt"
 enabled      = true
 
 [[tokens]]
@@ -1203,7 +1203,7 @@ coingecko_id = "tether"
 decimals     = 6
 category     = "stablecoin"
 color_name   = "green"
-asset_name   = "tether"
+asset_name   = "tetherusdt"
 enabled      = true
 
 [[tokens]]
@@ -1217,7 +1217,7 @@ coingecko_id = "tether"
 decimals     = 6
 category     = "stablecoin"
 color_name   = "green"
-asset_name   = "tether"
+asset_name   = "tetherusdt"
 enabled      = true
 
 [[tokens]]
@@ -1231,7 +1231,7 @@ coingecko_id = "tether"
 decimals     = 6
 category     = "stablecoin"
 color_name   = "green"
-asset_name   = "tether"
+asset_name   = "tetherusdt"
 enabled      = true
 
 [[tokens]]
@@ -1245,7 +1245,7 @@ coingecko_id = "tether"
 decimals     = 6
 category     = "stablecoin"
 color_name   = "green"
-asset_name   = "tether"
+asset_name   = "tetherusdt"
 enabled      = true
 
 [[tokens]]
@@ -1259,7 +1259,7 @@ coingecko_id = "tether"
 decimals     = 6
 category     = "stablecoin"
 color_name   = "green"
-asset_name   = "tether"
+asset_name   = "tetherusdt"
 enabled      = true
 
 [[tokens]]
@@ -1273,7 +1273,7 @@ coingecko_id = "tether"
 decimals     = 6
 category     = "stablecoin"
 color_name   = "green"
-asset_name   = "tether"
+asset_name   = "tetherusdt"
 enabled      = true
 
 # ── WBTC ──────────────────────────────────────────────────────────────────
@@ -1289,7 +1289,7 @@ coingecko_id = "wrapped-bitcoin"
 decimals     = 8
 category     = "custom"
 color_name   = "orange"
-asset_name   = "wbtc"
+asset_name   = "wrappedbitcoin"
 enabled      = false
 
 # ── WLFI ──────────────────────────────────────────────────────────────────
@@ -1349,5 +1349,5 @@ coingecko_id = "tether-gold"
 decimals     = 6
 category     = "custom"
 color_name   = "yellow"
-asset_name   = "xaut"
+asset_name   = "tetherxaut"
 enabled      = false
