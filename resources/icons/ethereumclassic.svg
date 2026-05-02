@@ -1,11 +1,9 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
-  <g fill="none" fill-rule="evenodd" transform="scale(2)">
-    <circle cx="16" cy="16" r="16" fill="#328332"/>
-    <g fill="#fff">
-      <path fill-rule="nonzero" d="m15.99 16.55-6.72-.57 6.72-3.8zm0 4.46v6.94L9 17.07zm0-10.06L9 14.85 15.99 4z"/>
-      <path fill-opacity=".6" fill-rule="nonzero" d="m22.71 15.98-6.72.57v-4.38zM15.99 21l6.99-3.94c-2.08 3.24-4.65 7.25-7 10.88zm0-10.06V4l6.99 10.85z"/>
-      <path d="m15.99 16.55 6.72-.57-6.72 3.77z" opacity=".2"/>
-      <path d="m15.99 16.55-6.72-.57 6.72 3.77z" opacity=".6"/>
-    </g>
+  <circle cx="32" cy="32" r="32" fill="#328332"/>
+  <g fill="#fff" transform="scale(2)">
+    <path fill-rule="nonzero" d="m15.99 16.55-6.72-.57 6.72-3.8zm0 4.46v6.94L9 17.07zm0-10.06L9 14.85 15.99 4z"/>
+    <path fill-opacity=".6" fill-rule="nonzero" d="m22.71 15.98-6.72.57v-4.38zM15.99 21l6.99-3.94c-2.08 3.24-4.65 7.25-7 10.88zm0-10.06V4l6.99 10.85z"/>
+    <path d="m15.99 16.55 6.72-.57-6.72 3.77z" opacity=".2"/>
+    <path d="m15.99 16.55-6.72-.57 6.72 3.77z" opacity=".6"/>
   </g>
 </svg>
