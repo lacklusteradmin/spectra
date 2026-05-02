@@ -2415,37 +2415,6 @@ impl WalletService {
         serde_json::from_str(&json_string).map_err(SpectraBridgeError::from)
     }
 
-    pub(crate) async fn apply_native_amount_typed(
-        &self,
-        wallet_id: String,
-        chain_id: u32,
-        amount: f64,
-    ) -> Result<Option<WalletSummary>, SpectraBridgeError> {
-        let template = match native_coin_template(chain_id) {
-            Some(t) => t,
-            None => return Ok(None),
-        };
-        let holding = AssetHolding { amount, ..template };
-        let mut state = self.wallet_state.write().await;
-        if let Some(wallet) = state.wallets.iter_mut().find(|w| w.id == wallet_id) {
-            upsert_asset_holding(&mut wallet.holdings, holding);
-            return Ok(Some(wallet.clone()));
-        }
-        Ok(None)
-    }
-
-    /// Typed sibling of `apply_native_amount_typed` that takes the unified
-    /// `NativeBalanceSummary` instead of a pre-computed `f64`. Lets callers
-    /// like the refresh engine stay typed end-to-end without re-parsing JSON.
-    pub(crate) async fn apply_native_balance_summary(
-        &self,
-        wallet_id: String,
-        chain_id: u32,
-        summary: &NativeBalanceSummary,
-    ) -> Result<Option<WalletSummary>, SpectraBridgeError> {
-        let amount = summary.amount_display.parse::<f64>().unwrap_or(0.0);
-        self.apply_native_amount_typed(wallet_id, chain_id, amount).await
-    }
 }
 
 
@@ -2850,7 +2819,7 @@ pub(super) fn sqlite_save(db_path: &str, key: &str, value: &str) -> Result<(), S
 
 /// Return a zero-amount AssetHolding template for the native coin of each
 /// chain. Used as the default when the holding doesn't exist yet.
-pub(super) fn native_coin_template(chain_id: u32) -> Option<AssetHolding> {
+pub(crate) fn native_coin_template(chain_id: u32) -> Option<AssetHolding> {
     let chain = Chain::from_id(chain_id)?;
     Some(AssetHolding {
         name: chain.coin_name().to_string(),
@@ -2864,27 +2833,6 @@ pub(super) fn native_coin_template(chain_id: u32) -> Option<AssetHolding> {
     })
 }
 
-/// Upsert a holding by `(chain_name, contract_address)` for tokens or
-/// `(chain_name, symbol)` for native coins. Replaces the full holding when
-/// found, appends otherwise.
-pub(super) fn upsert_asset_holding(holdings: &mut Vec<AssetHolding>, new: AssetHolding) {
-    let pos = match &new.contract_address {
-        Some(contract) => holdings.iter().position(|h| {
-            h.chain_name == new.chain_name
-                && h.contract_address.as_deref() == Some(contract.as_str())
-        }),
-        None => holdings.iter().position(|h| {
-            h.chain_name == new.chain_name
-                && h.symbol == new.symbol
-                && h.contract_address.is_none()
-        }),
-    };
-    if let Some(idx) = pos {
-        holdings[idx] = new;
-    } else {
-        holdings.push(new);
-    }
-}
 
 /// Returns `true` when `s` starts with a BIP-32 extended public key prefix.
 pub(super) fn is_extended_public_key(s: &str) -> bool {

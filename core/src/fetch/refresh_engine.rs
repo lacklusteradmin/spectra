@@ -170,23 +170,35 @@ impl BalanceRefreshEngine {
         let obs = inner.observer.read().unwrap().clone();
 
         // Fan out balance fetches with bounded concurrency (up to 8 in flight).
-        // Each successful fetch is immediately applied to the Rust-owned wallet
-        // state; Swift receives the resulting typed `WalletSummary` via the
-        // observer. The whole pipeline is typed end-to-end — no JSON-string
-        // shuttle between fetch and apply.
+        // Rust fetches the native balance from the network, then constructs a
+        // minimal WalletSummary (one holding) from the coin template and the
+        // fetched amount. Swift owns the authoritative wallet model and applies
+        // the update via its merge logic — Rust no longer mirrors wallet state.
         let ws = Arc::clone(&inner.wallet_service);
-        let results: Vec<Result<(u32, String, Option<crate::store::state::WalletSummary>), ()>> = stream::iter(entries)
+        let results: Vec<Result<(u32, String, WalletSummary), ()>> = stream::iter(entries)
             .map(|entry| {
                 let ws = Arc::clone(&ws);
                 async move {
-                    let summary = ws
+                    let fetched = ws
                         .fetch_native_balance_summary_auto(entry.chain_id, entry.address.clone())
                         .await
                         .map_err(|_| ())?;
-                    let wallet_summary = ws
-                        .apply_native_balance_summary(entry.wallet_id.clone(), entry.chain_id, &summary)
-                        .await
-                        .map_err(|_| ())?;
+                    let template = crate::service::native_coin_template(entry.chain_id).ok_or(())?;
+                    let amount = fetched.amount_display.parse::<f64>().unwrap_or(0.0);
+                    let holding = AssetHolding { amount, ..template };
+                    let wallet_summary = WalletSummary {
+                        id: entry.wallet_id.clone(),
+                        name: String::new(),
+                        is_watch_only: false,
+                        chain_name: holding.chain_name.clone(),
+                        include_in_portfolio_total: true,
+                        network_mode: None,
+                        xpub: None,
+                        derivation_preset: String::new(),
+                        derivation_path: None,
+                        holdings: vec![holding],
+                        addresses: vec![],
+                    };
                     Ok((entry.chain_id, entry.wallet_id, wallet_summary))
                 }
             })
@@ -201,7 +213,7 @@ impl BalanceRefreshEngine {
             match result {
                 Ok((chain_id, wallet_id, summary)) => {
                     if let Some(ref o) = obs {
-                        o.on_balance_updated(chain_id, wallet_id, summary);
+                        o.on_balance_updated(chain_id, wallet_id, Some(summary));
                     }
                     refreshed += 1;
                 }
@@ -326,7 +338,7 @@ mod tests {
 
 // ── Merged from balance_observer.rs ───────────────────────────────
 
-use crate::store::state::WalletSummary;
+use crate::store::state::{AssetHolding, WalletSummary};
 
 /// Callback interface implemented by Swift. Rust calls these from the tokio
 /// task that owns the refresh timer loop. Implementations must be
