@@ -57,7 +57,7 @@ enum TorInternalState {
         proxy_task: tokio::task::JoinHandle<()>,
     },
     /// User supplied their own SOCKS5 proxy (e.g. Orbot). Arti is not running.
-    CustomProxy { socks5_url: String },
+    CustomProxy,
     Error { message: String },
 }
 
@@ -109,7 +109,7 @@ pub fn tor_activate_custom_proxy(socks5_url: String) -> Result<(), crate::Spectr
         }
     }
     crate::fetch::http::set_socks5_proxy(Some(&socks5_url));
-    *TOR_STATE.lock() = TorInternalState::CustomProxy { socks5_url };
+    *TOR_STATE.lock() = TorInternalState::CustomProxy;
     Ok(())
 }
 

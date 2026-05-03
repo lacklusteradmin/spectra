@@ -1,13 +1,23 @@
-.PHONY: ios android test check clean bindgen-ios bindgen-android
+.PHONY: ios iosr android androidr test check clean bindgen-ios bindgen-android
 
-# Build iOS static libraries and regenerate Swift bindings
+# Build iOS static libraries and regenerate Swift bindings (debug)
 ios:
 	scripts/build-ios.sh
 	scripts/bindgen-ios.sh
 
-# Build Android .so libraries and regenerate Kotlin bindings
+# Build iOS static libraries in release mode and regenerate Swift bindings
+iosr:
+	scripts/build-ios.sh --release
+	scripts/bindgen-ios.sh
+
+# Build Android .so libraries and regenerate Kotlin bindings (debug)
 android:
 	scripts/build-android.sh
+	scripts/bindgen-android.sh
+
+# Build Android .so libraries in release mode and regenerate Kotlin bindings
+androidr:
+	scripts/build-android.sh --release
 	scripts/bindgen-android.sh
 
 # Run Rust unit tests (no mobile toolchain required)
