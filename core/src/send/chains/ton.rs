@@ -17,6 +17,9 @@ impl TonClient {
         comment: Option<&str>,
         private_key_bytes: &[u8; 64],
         public_key_bytes: &[u8; 32],
+        subwallet_id: Option<u32>,
+        expiry_seconds: Option<u32>,
+        send_mode: Option<u8>,
     ) -> Result<TonSendResult, String> {
         let boc = build_wallet_v4r2_transfer(
             to_address,
@@ -25,6 +28,9 @@ impl TonClient {
             comment,
             private_key_bytes,
             public_key_bytes,
+            subwallet_id,
+            expiry_seconds,
+            send_mode,
         )?;
 
         use base64::Engine;
@@ -111,17 +117,18 @@ pub fn build_wallet_v4r2_transfer(
     comment: Option<&str>,
     private_key: &[u8; 64],
     _public_key: &[u8; 32],
+    subwallet_id: Option<u32>,
+    expiry_seconds: Option<u32>,
+    send_mode: Option<u8>,
 ) -> Result<Vec<u8>, String> {
     use ed25519_dalek::{Signer, SigningKey};
 
-    // WalletV4R2 subwallet_id = 698983191 (standard).
-    let subwallet_id: u32 = 698_983_191;
-    // Expiration = current time + 60 seconds.
+    let subwallet_id: u32 = subwallet_id.unwrap_or(698_983_191);
     let valid_until: u32 = (std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .unwrap_or_default()
         .as_secs()
-        + 60) as u32;
+        + expiry_seconds.unwrap_or(60) as u64) as u32;
 
     // Decode destination address.
     let (workchain, addr_bytes) = decode_ton_address(to_address)?;
@@ -145,7 +152,7 @@ pub fn build_wallet_v4r2_transfer(
     sign_payload.push(workchain as u8);
     sign_payload.extend_from_slice(&addr_bytes);
     sign_payload.extend_from_slice(&nanotons.to_be_bytes());
-    sign_payload.push(0x03); // send mode: pay fees separately + ignore errors
+    sign_payload.push(send_mode.unwrap_or(0x03)); // send mode: pay fees separately + ignore errors
 
     let signing_key =
         SigningKey::from_bytes(&private_key[..32].try_into().map_err(|_| "privkey too short")?);

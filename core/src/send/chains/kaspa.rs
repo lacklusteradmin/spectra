@@ -31,7 +31,6 @@ use crate::fetch::chains::kaspa::{KasSendResult, KaspaClient};
 const TX_VERSION: u16 = 0;
 const SIGHASH_ALL: u8 = 1;
 const SIG_OP_COUNT_DEFAULT: u8 = 1;
-const DEFAULT_FEE_SOMPI: u64 = 1_000;
 const KASPA_SIGHASH_KEY: &[u8] = b"TransactionSigningHash";
 
 impl KaspaClient {
@@ -42,6 +41,8 @@ impl KaspaClient {
         amount_sompi: u64,
         fee_sompi: u64,
         private_key_bytes: &[u8],
+        min_fee_sompi: Option<u64>,
+        dust_threshold_sompi: Option<u64>,
     ) -> Result<KasSendResult, String> {
         let utxos = self.fetch_utxos(from_address).await?;
         if utxos.is_empty() {
@@ -60,7 +61,7 @@ impl KaspaClient {
         }
 
         let total_in: u64 = utxos.iter().map(|u| u.value_sompi).sum();
-        let actual_fee = fee_sompi.max(DEFAULT_FEE_SOMPI);
+        let actual_fee = fee_sompi.max(min_fee_sompi.unwrap_or(1_000));
         let needed = amount_sompi.saturating_add(actual_fee);
         if total_in < needed {
             return Err(format!(
@@ -77,7 +78,7 @@ impl KaspaClient {
             script_pubkey: kaspa_payment_script(to_decoded.0, &to_decoded.1)?,
             script_version: 0,
         }];
-        if change > 1_000 {
+        if change > dust_threshold_sompi.unwrap_or(1_000) {
             outputs.push(KaspaOutputBuild {
                 amount: change,
                 script_pubkey: kaspa_payment_script(from_decoded.0, &from_decoded.1)?,

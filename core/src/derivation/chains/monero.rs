@@ -12,7 +12,6 @@
 use bip39::{Language, Mnemonic};
 use pbkdf2::pbkdf2_hmac;
 use sha2::Sha512;
-use tiny_keccak::{Hasher, Keccak};
 use unicode_normalization::UnicodeNormalization;
 use zeroize::Zeroizing;
 
@@ -44,10 +43,8 @@ pub(crate) fn derive_monero_keys_from_spend_seed(
 
     let private_spend = DalekScalar::from_bytes_mod_order(*spend_seed).to_bytes();
 
-    let mut hasher = Keccak::v256();
-    let mut spend_hash = [0u8; 32];
-    hasher.update(&private_spend);
-    hasher.finalize(&mut spend_hash);
+    use sha3::{Digest, Keccak256};
+    let spend_hash: [u8; 32] = Keccak256::digest(&private_spend).into();
     let private_view = DalekScalar::from_bytes_mod_order(spend_hash).to_bytes();
 
     let public_spend = (DalekScalar::from_bytes_mod_order(private_spend)
@@ -79,10 +76,8 @@ pub(crate) fn encode_monero_main_address(
     payload.push(network_byte);
     payload.extend_from_slice(public_spend);
     payload.extend_from_slice(public_view);
-    let mut hasher = Keccak::v256();
-    let mut digest = [0u8; 32];
-    hasher.update(&payload);
-    hasher.finalize(&mut digest);
+    use sha3::{Digest, Keccak256};
+    let digest: [u8; 32] = Keccak256::digest(&payload).into();
     payload.extend_from_slice(&digest[..4]);
     Ok(monero_base58_encode(&payload))
 }

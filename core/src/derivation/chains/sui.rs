@@ -6,7 +6,6 @@ use ed25519_dalek::SigningKey;
 use hmac::{Hmac, Mac};
 use pbkdf2::pbkdf2_hmac;
 use sha2::Sha512;
-use tiny_keccak::{Hasher, Keccak};
 use unicode_normalization::UnicodeNormalization;
 use zeroize::Zeroizing;
 
@@ -186,11 +185,12 @@ pub(crate) fn derive(request: ParsedRequest) -> Result<DerivedOutput, String> {
     let public_key = signing_key.verifying_key().to_bytes();
 
     let address = if requests_output(request.requested_outputs, OUTPUT_ADDRESS) {
-        let mut hasher = Keccak::v256();
-        let mut digest = [0u8; 32];
-        hasher.update(&[0x00]);
-        hasher.update(&public_key);
-        hasher.finalize(&mut digest);
+        use sha3::{Digest, Keccak256};
+        let digest: [u8; 32] = Keccak256::new()
+            .chain_update([0x00])
+            .chain_update(&public_key)
+            .finalize()
+            .into();
         Some(format!("0x{}", hex::encode(digest)))
     } else {
         None

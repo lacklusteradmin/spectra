@@ -29,6 +29,8 @@ impl PolkadotClient {
         planck: u128,
         private_key_bytes: &[u8; 32],
         public_key_bytes: &[u8; 32],
+        era: Option<Vec<u8>>,
+        tip: Option<u128>,
     ) -> Result<DotSendResult, String> {
         let _ = from_address;
         let nonce = self.fetch_nonce(from_address).await?;
@@ -46,6 +48,8 @@ impl PolkadotClient {
             &block_hash,
             private_key_bytes,
             public_key_bytes,
+            era,
+            tip,
         )?;
 
         let hex = format!("0x{}", hex::encode(&extrinsic));
@@ -85,6 +89,8 @@ pub fn build_signed_transfer(
     block_hash: &str,
     private_key: &[u8; 32],
     public_key: &[u8; 32],
+    era: Option<Vec<u8>>,
+    tip: Option<u128>,
 ) -> Result<Vec<u8>, String> {
     let dest_pubkey = decode_ss58(to_address)?;
 
@@ -98,9 +104,9 @@ pub fn build_signed_transfer(
         c
     };
 
-    let era = vec![0x00u8]; // immortal
+    let era = era.unwrap_or_else(|| vec![0x00u8]); // immortal
     let nonce_enc = scale_compact_u32(nonce);
-    let tip = scale_compact_u128(0);
+    let tip = scale_compact_u128(tip.unwrap_or(0));
 
     let genesis_bytes = decode_hash_hex(genesis_hash)?;
     let block_bytes = decode_hash_hex(block_hash)?;

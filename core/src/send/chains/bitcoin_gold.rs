@@ -41,6 +41,7 @@ impl BitcoinGoldClient {
         amount_sat: u64,
         fee_sat: u64,
         private_key_bytes: &[u8],
+        dust_threshold: Option<u64>,
     ) -> Result<BtgSendResult, String> {
         let utxos = self.fetch_utxos(from_address).await?;
         let from_hash = decode_btg_address(from_address)?;
@@ -56,6 +57,7 @@ impl BitcoinGoldClient {
             fee_sat,
             from_address,
             private_key_bytes,
+            dust_threshold,
         )?;
         self.broadcast_raw_tx(&hex::encode(&raw)).await
     }
@@ -68,6 +70,7 @@ fn sign_btg_tx(
     fee_sat: u64,
     change_address: &str,
     private_key_bytes: &[u8],
+    dust_threshold: Option<u64>,
 ) -> Result<Vec<u8>, String> {
     use secp256k1::{Message, Secp256k1, SecretKey};
 
@@ -83,7 +86,7 @@ fn sign_btg_tx(
     let change_hash = decode_btg_address(change_address)?;
 
     let mut outputs: Vec<(Vec<u8>, u64)> = vec![(btg_p2pkh_script(&to_hash), amount_sat)];
-    if change > 546 {
+    if change > dust_threshold.unwrap_or(546) {
         outputs.push((btg_p2pkh_script(&change_hash), change));
     }
 

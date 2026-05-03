@@ -33,23 +33,23 @@ sha2 = "0.10"
 #   legacy Base58Check (also xpub serialization in bitcoin_primitives).
 # bech32: Bitcoin SegWit (P2WPKH / P2TR), Cardano Shelley.
 # ripemd: Hash160 = RIPEMD160(SHA256(x)) for BTC/XRP/HD-key fingerprint.
-# tiny-keccak: Keccak-256 for EVM, Tron, Sui addresses.
+# sha3: Keccak-256 for EVM, Monero, Sui, Aptos, Tron address derivation.
 # blake2: Blake2b for Polkadot SS58, Sui, Cardano credential hashes.
-# sha3: Keccak variant used by Aptos.
+# blake2b_simd: only crate that exposes BLAKE2b's personalisation field, which
+#   Zcash V5 (ZIP-244) sighash requires. The `blake2` MAC variant covers keyed
+#   hashing but not the personal-string parameterisation field.
 # data-encoding: Base32 (RFC 4648) for Stellar StrKey addresses.
 # crc: CRC16-XMODEM checksums for Stellar StrKey, TON addresses.
+# alloy-rlp: EIP-1559 / EVM transaction RLP encoding.
 bs58 = { version = "0.5", features = ["check"] }
 bech32 = "0.11"
 ripemd = "0.1"
-tiny-keccak = { version = "2", features = ["keccak"] }
-blake2 = "0.10"
-# blake2b_simd: only crate that exposes BLAKE2b's personalisation field, which
-# Zcash V5 (ZIP-244) sighash construction requires. The `blake2` crate's MAC
-# variant covers keyed hashing but not personal-string parameterisation.
-blake2b_simd = "1.0"
 sha3 = "0.10"
+blake2 = "0.10"
+blake2b_simd = "1.0"
 data-encoding = "2"
 crc = "3"
+alloy-rlp = { version = "0.3", features = ["derive"] }
 
 # ─── Bitcoin transaction signing (NOT derivation) ───────────────────
 # Only used in chains/bitcoin.rs for consensus serialization + sighashes.

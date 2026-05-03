@@ -33,6 +33,7 @@ impl BitcoinCashClient {
         amount_sat: u64,
         fee_sat: u64,
         private_key_bytes: &[u8],
+        dust_threshold: Option<u64>,
     ) -> Result<BchSendResult, String> {
         let utxos = self.fetch_utxos(from_address).await?;
         let hash20 = decode_bch_to_hash20(from_address)?;
@@ -48,6 +49,7 @@ impl BitcoinCashClient {
             fee_sat,
             from_address,
             private_key_bytes,
+            dust_threshold,
         )?;
         self.broadcast_raw_tx(&hex::encode(&raw)).await
     }
@@ -70,6 +72,7 @@ pub fn sign_bch_tx(
     fee_sat: u64,
     change_address: &str,
     private_key_bytes: &[u8],
+    dust_threshold: Option<u64>,
 ) -> Result<Vec<u8>, String> {
     use secp256k1::{Message, Secp256k1, SecretKey};
 
@@ -86,7 +89,7 @@ pub fn sign_bch_tx(
     let change_hash = decode_bch_to_hash20(change_address)?;
 
     let mut outputs: Vec<(Vec<u8>, u64)> = vec![(p2pkh_script(&to_hash), amount_sat)];
-    if change > 546 {
+    if change > dust_threshold.unwrap_or(546) {
         outputs.push((p2pkh_script(&change_hash), change));
     }
 

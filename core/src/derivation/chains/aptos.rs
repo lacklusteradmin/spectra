@@ -6,7 +6,6 @@ use ed25519_dalek::SigningKey;
 use hmac::{Hmac, Mac};
 use pbkdf2::pbkdf2_hmac;
 use sha2::Sha512;
-use tiny_keccak::{Hasher, Keccak};
 use unicode_normalization::UnicodeNormalization;
 use zeroize::Zeroizing;
 
@@ -18,11 +17,12 @@ use crate::derivation::engine::{
 
 pub fn pubkey_to_aptos_address(public_key: &[u8; 32]) -> String {
     use sha3::{Digest, Sha3_256};
-    let mut h = Sha3_256::new();
-    h.update(public_key);
-    h.update([0x00u8]);
-    let hash = h.finalize();
-    format!("0x{}", hex::encode(&hash[..]))
+    let hash: [u8; 32] = Sha3_256::new()
+        .chain_update(public_key)
+        .chain_update([0x00u8])
+        .finalize()
+        .into();
+    format!("0x{}", hex::encode(hash))
 }
 
 pub fn validate_aptos_address(address: &str) -> bool {
@@ -180,11 +180,12 @@ pub(crate) fn derive(request: ParsedRequest) -> Result<DerivedOutput, String> {
     let public_key = signing_key.verifying_key().to_bytes();
 
     let address = if requests_output(request.requested_outputs, OUTPUT_ADDRESS) {
-        let mut hasher = Keccak::v256();
-        let mut digest = [0u8; 32];
-        hasher.update(&public_key);
-        hasher.update(&[0x00]);
-        hasher.finalize(&mut digest);
+        use sha3::{Digest, Keccak256};
+        let digest: [u8; 32] = Keccak256::new()
+            .chain_update(&public_key)
+            .chain_update([0x00])
+            .finalize()
+            .into();
         Some(format!("0x{}", hex::encode(digest)))
     } else {
         None

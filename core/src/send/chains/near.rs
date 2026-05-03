@@ -66,9 +66,9 @@ impl NearClient {
 
     /// Sign and broadcast a NEP-141 `ft_transfer` call.
     ///
-    /// Gas defaults to 30 TGas; `deposit` is the NEP-141-required exactly-1
-    /// yoctoNEAR. The receiver must already have a storage deposit on the
-    /// token contract — Spectra does not auto-register.
+    /// `gas_tgas` defaults to 30 TGas; `deposit` is the NEP-141-required
+    /// exactly-1 yoctoNEAR. The receiver must already have a storage deposit
+    /// on the token contract — Spectra does not auto-register.
     pub async fn sign_and_broadcast_ft_transfer(
         &self,
         from_account_id: &str,
@@ -77,6 +77,7 @@ impl NearClient {
         amount_raw: u128,
         private_key_bytes: &[u8; 64],
         public_key_bytes: &[u8; 32],
+        gas_tgas: Option<u64>,
     ) -> Result<NearSendResult, String> {
         let public_key_b58 = bs58::encode(public_key_bytes).into_string();
         let nonce = self
@@ -105,8 +106,8 @@ impl NearClient {
             token_contract,
             "ft_transfer",
             &args_bytes,
-            30_000_000_000_000, // 30 TGas
-            1u128,              // exactly-1 yoctoNEAR (NEP-141 requirement)
+            gas_tgas.unwrap_or(30) * 1_000_000_000_000,
+            1u128, // exactly-1 yoctoNEAR (NEP-141 requirement)
             &block_hash_arr,
             private_key_bytes,
         )?;

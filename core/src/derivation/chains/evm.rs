@@ -38,12 +38,8 @@ pub fn validate_evm_address(address: &str) -> bool {
 }
 
 pub(crate) fn keccak256(data: &[u8]) -> [u8; 32] {
-    use tiny_keccak::{Hasher, Keccak};
-    let mut h = Keccak::v256();
-    h.update(data);
-    let mut out = [0u8; 32];
-    h.finalize(&mut out);
-    out
+    use sha3::{Digest, Keccak256};
+    Keccak256::digest(data).into()
 }
 
 // ── BIP-32 + BIP-39 derivation pipeline (self-contained EVM family) ──────

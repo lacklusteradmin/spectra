@@ -19,10 +19,12 @@ impl CardanoClient {
         fee_lovelace: u64,
         signing_key_bytes: &[u8; 64],
         verification_key_bytes: &[u8; 32],
+        ttl_slots: Option<u64>,
+        min_change_lovelace: Option<u64>,
     ) -> Result<CardanoSendResult, String> {
         let utxos = self.fetch_utxos(from_address).await?;
         let slot = self.fetch_latest_slot().await?;
-        let ttl = slot + 7200; // valid for ~2 hours (2 slots/s * 3600 * 2)
+        let ttl = slot + ttl_slots.unwrap_or(7200);
 
         let to_addr_bytes = decode_cardano_addr_bytes(to_address)?;
         let change_addr_bytes = decode_cardano_addr_bytes(from_address)?;
@@ -41,6 +43,7 @@ impl CardanoClient {
             signing_key_bytes,
             verification_key_bytes,
             ttl,
+            min_change_lovelace,
         )?;
         self.submit_tx(&cbor_hex).await
     }
@@ -88,6 +91,7 @@ pub fn build_signed_ada_tx(
     signing_key_bytes: &[u8; 64],
     verification_key_bytes: &[u8; 32],
     ttl: u64,
+    min_change_lovelace: Option<u64>,
 ) -> Result<String, String> {
     use ed25519_dalek::{Signer, SigningKey};
 
@@ -96,8 +100,7 @@ pub fn build_signed_ada_tx(
 
     // Encode transaction body (map with fields 0-3).
     let mut outputs: Vec<(&[u8], u64)> = vec![(to_address_bytes, amount_lovelace)];
-    if change > 1_000_000 {
-        // min ADA per output
+    if change > min_change_lovelace.unwrap_or(1_000_000) {
         outputs.push((change_address_bytes, change));
     }
 

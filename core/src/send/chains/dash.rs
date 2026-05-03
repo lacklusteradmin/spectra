@@ -36,6 +36,7 @@ impl DashClient {
         amount_sat: u64,
         fee_sat: u64,
         private_key_bytes: &[u8],
+        dust_threshold: Option<u64>,
     ) -> Result<DashSendResult, String> {
         let utxos = self.fetch_utxos(from_address).await?;
         let from_hash = decode_dash_address(from_address)?;
@@ -51,6 +52,7 @@ impl DashClient {
             fee_sat,
             from_address,
             private_key_bytes,
+            dust_threshold,
         )?;
         self.broadcast_raw_tx(&hex::encode(&raw)).await
     }
@@ -90,6 +92,7 @@ fn sign_dash_p2pkh(
     fee_sat: u64,
     change_address: &str,
     private_key_bytes: &[u8],
+    dust_threshold: Option<u64>,
 ) -> Result<Vec<u8>, String> {
     use secp256k1::{Message, Secp256k1, SecretKey};
 
@@ -105,7 +108,7 @@ fn sign_dash_p2pkh(
         dash_p2pkh_script(&decode_dash_address(to_address)?),
         amount_sat,
     )];
-    if change > 546 {
+    if change > dust_threshold.unwrap_or(546) {
         outputs.push((
             dash_p2pkh_script(&decode_dash_address(change_address)?),
             change,

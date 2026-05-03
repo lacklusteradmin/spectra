@@ -15,7 +15,6 @@ use bip39::Language;
 use ed25519_dalek::SigningKey;
 use secp256k1::{All, PublicKey, Secp256k1, SecretKey};
 use serde::{Deserialize, Serialize};
-use tiny_keccak::{Hasher, Keccak};
 use zeroize::Zeroize;
 
 use super::chains::bitcoin::{
@@ -1814,19 +1813,21 @@ fn derive_ed25519_chain_address(
         }
         Chain::Cardano => derive_cardano_shelley_enterprise_address(public_key, chain),
         Chain::Sui => {
-            let mut hasher = Keccak::v256();
-            let mut digest = [0u8; 32];
-            hasher.update(&[0x00]);
-            hasher.update(public_key);
-            hasher.finalize(&mut digest);
+            use sha3::{Digest, Keccak256};
+            let digest: [u8; 32] = Keccak256::new()
+                .chain_update([0x00])
+                .chain_update(public_key)
+                .finalize()
+                .into();
             Ok(format!("0x{}", hex::encode(digest)))
         }
         Chain::Aptos => {
-            let mut hasher = Keccak::v256();
-            let mut digest = [0u8; 32];
-            hasher.update(public_key);
-            hasher.update(&[0x00]);
-            hasher.finalize(&mut digest);
+            use sha3::{Digest, Keccak256};
+            let digest: [u8; 32] = Keccak256::new()
+                .chain_update(public_key)
+                .chain_update([0x00])
+                .finalize()
+                .into();
             Ok(format!("0x{}", hex::encode(digest)))
         }
         Chain::Ton => format_ton_address(public_key, address_algorithm),
@@ -1866,11 +1867,9 @@ fn derive_evm_address(public_key: &PublicKey) -> String {
 }
 
 fn derive_evm_address_bytes(public_key: &PublicKey) -> [u8; 20] {
+    use sha3::{Digest, Keccak256};
     let uncompressed = public_key.serialize_uncompressed();
-    let mut hasher = Keccak::v256();
-    let mut digest = [0u8; 32];
-    hasher.update(&uncompressed[1..]);
-    hasher.finalize(&mut digest);
+    let digest: [u8; 32] = Keccak256::digest(&uncompressed[1..]).into();
     let mut out = [0u8; 20];
     out.copy_from_slice(&digest[12..]);
     out

@@ -10,6 +10,21 @@ use serde_json::{json, Value};
 use crate::http::{with_fallback, HttpClient, RetryProfile};
 
 // ----------------------------------------------------------------
+// ERC-20 4-byte function selectors  (keccak256(signature)[..4])
+// ----------------------------------------------------------------
+pub(crate) const SEL_BALANCE_OF:    [u8; 4] = [0x70, 0xa0, 0x82, 0x31]; // balanceOf(address)
+pub(crate) const SEL_DECIMALS:      [u8; 4] = [0x31, 0x3c, 0xe5, 0x67]; // decimals()
+pub(crate) const SEL_SYMBOL:        [u8; 4] = [0x95, 0xd8, 0x9b, 0x41]; // symbol()
+#[allow(dead_code)]
+pub(crate) const SEL_NAME:          [u8; 4] = [0x06, 0xfd, 0xde, 0x03]; // name()
+#[allow(dead_code)]
+pub(crate) const SEL_TOTAL_SUPPLY:  [u8; 4] = [0x18, 0x16, 0x0d, 0xdd]; // totalSupply()
+pub(crate) const SEL_ALLOWANCE:     [u8; 4] = [0xdd, 0x62, 0xed, 0x3e]; // allowance(address,address)
+pub(crate) const SEL_TRANSFER:      [u8; 4] = [0xa9, 0x05, 0x9c, 0xbb]; // transfer(address,uint256)
+pub(crate) const SEL_TRANSFER_FROM: [u8; 4] = [0x23, 0xb8, 0x72, 0xdd]; // transferFrom(address,address,uint256)
+pub(crate) const SEL_APPROVE:       [u8; 4] = [0x09, 0x5e, 0xa7, 0xb3]; // approve(address,uint256)
+
+// ----------------------------------------------------------------
 // Internal helpers shared by derive/fetch/send
 // ----------------------------------------------------------------
 
@@ -207,6 +222,73 @@ impl EvmClient {
         .await
     }
 
+    /// Send a JSON-RPC 2.0 batch request. Returns one result per request in
+    /// the same order as `requests` regardless of how the server orders the
+    /// batch response.
+    pub(crate) async fn call_batch(
+        &self,
+        requests: Vec<(&str, Value)>,
+    ) -> Result<Vec<Value>, String> {
+        let n = requests.len();
+        if n == 0 {
+            return Ok(vec![]);
+        }
+        let batch: Value = Value::Array(
+            requests
+                .into_iter()
+                .enumerate()
+                .map(|(i, (method, params))| {
+                    json!({
+                        "jsonrpc": "2.0",
+                        "id": (i + 1) as u64,
+                        "method": method,
+                        "params": params,
+                    })
+                })
+                .collect(),
+        );
+        let body = std::sync::Arc::new(batch);
+        with_fallback(&self.endpoints, |url| {
+            let client = self.client.clone();
+            let body = std::sync::Arc::clone(&body);
+            async move {
+                let resp: Value = client
+                    .post_json(&url, &*body, RetryProfile::ChainRead)
+                    .await?;
+                let arr = resp
+                    .as_array()
+                    .ok_or_else(|| "batch: expected array response".to_string())?;
+                // JSON-RPC 2.0 allows out-of-order batch responses; re-order by id.
+                let mut indexed: Vec<(usize, Value)> = arr
+                    .iter()
+                    .map(|v| {
+                        let id = v["id"].as_u64().unwrap_or(0) as usize;
+                        (id, v.clone())
+                    })
+                    .collect();
+                indexed.sort_unstable_by_key(|(id, _)| *id);
+                if indexed.len() != n {
+                    return Err(format!(
+                        "batch: expected {n} responses, got {}",
+                        indexed.len()
+                    ));
+                }
+                indexed
+                    .into_iter()
+                    .map(|(_, v)| {
+                        if let Some(err) = v.get("error") {
+                            return Err(format!("rpc error: {err}"));
+                        }
+                        v.get("result")
+                            .cloned()
+                            .ok_or_else(|| "batch: missing result field".to_string())
+                    })
+                    .collect()
+            }
+        })
+        .await
+    }
+
     /// Bump a base fee by +10% (the minimum EIP-1559 replacement rule).
     /// Used by the UI to compute "speed up" / "cancel" suggested fees.
     pub fn bumped_for_replacement(&self, base: u128) -> u128 {
@@ -291,8 +373,41 @@ impl EvmChainConfig {
 // receipts, tx nonce by hash, ENS resolution, ERC-20 balance + metadata,
 // Etherscan V2 history + token transfers.
 
+fn parse_fee_history(result: &Value) -> Result<EvmFeeEstimate, String> {
+    // Base fee of the *next* block is the last entry in baseFeePerGas.
+    let base_fees = result
+        .get("baseFeePerGas")
+        .and_then(|v| v.as_array())
+        .ok_or("feeHistory: missing baseFeePerGas")?;
+    let base_fee_hex = base_fees
+        .last()
+        .and_then(|v| v.as_str())
+        .ok_or("feeHistory: empty baseFeePerGas")?;
+    let base_fee_wei = parse_hex_u128(base_fee_hex)?;
 
+    // 25th-percentile reward from the most recent block as priority fee.
+    let priority_fee_wei: u128 = result
+        .get("reward")
+        .and_then(|r| r.as_array())
+        .and_then(|arr| arr.last())
+        .and_then(|r| r.as_array())
+        .and_then(|r| r.first())
+        .and_then(|v| v.as_str())
+        .map(parse_hex_u128)
+        .transpose()?
+        .unwrap_or(1_000_000_000); // 1 gwei fallback
 
+    // maxFeePerGas = 2 * baseFee + priorityFee (EIP-1559 recommended).
+    let max_fee_per_gas_wei = base_fee_wei.saturating_mul(2).saturating_add(priority_fee_wei);
+    let estimated_fee_wei = max_fee_per_gas_wei.saturating_mul(21_000);
+
+    Ok(EvmFeeEstimate {
+        base_fee_wei,
+        priority_fee_wei,
+        max_fee_per_gas_wei,
+        estimated_fee_wei,
+    })
+}
 
 impl EvmClient {
     pub async fn fetch_balance(&self, address: &str) -> Result<EvmBalance, String> {
@@ -319,44 +434,32 @@ impl EvmClient {
     }
 
     pub async fn fetch_fee_estimate(&self) -> Result<EvmFeeEstimate, String> {
-        // eth_feeHistory returns base fees and reward percentiles.
         let result = self
             .call("eth_feeHistory", json!([4, "latest", [25, 75]]))
             .await?;
+        parse_fee_history(&result)
+    }
 
-        // Base fee of the *next* block is the last entry in baseFeePerGas.
-        let base_fees = result
-            .get("baseFeePerGas")
-            .and_then(|v| v.as_array())
-            .ok_or("feeHistory: missing baseFeePerGas")?;
-        let base_fee_hex = base_fees
-            .last()
-            .and_then(|v| v.as_str())
-            .ok_or("feeHistory: empty baseFeePerGas")?;
-        let base_fee_wei = parse_hex_u128(base_fee_hex)?;
-
-        // 25th-percentile reward from the most recent block as priority fee.
-        let priority_fee_wei: u128 = result
-            .get("reward")
-            .and_then(|r| r.as_array())
-            .and_then(|arr| arr.last())
-            .and_then(|r| r.as_array())
-            .and_then(|r| r.first())
-            .and_then(|v| v.as_str())
-            .map(parse_hex_u128)
-            .transpose()?
-            .unwrap_or(1_000_000_000); // 1 gwei fallback
-
-        // maxFeePerGas = 2 * baseFee + priorityFee (EIP-1559 recommended).
-        let max_fee_per_gas_wei = base_fee_wei.saturating_mul(2).saturating_add(priority_fee_wei);
-        let estimated_fee_wei = max_fee_per_gas_wei.saturating_mul(21_000);
-
-        Ok(EvmFeeEstimate {
-            base_fee_wei,
-            priority_fee_wei,
-            max_fee_per_gas_wei,
-            estimated_fee_wei,
-        })
+    /// Fetch the pending nonce and fee estimate in a single JSON-RPC 2.0 batch.
+    /// Saves one round-trip vs calling `fetch_nonce` + `fetch_fee_estimate`
+    /// separately — use this when preparing a send preview.
+    pub async fn fetch_nonce_and_fee(
+        &self,
+        address: &str,
+    ) -> Result<(u64, EvmFeeEstimate), String> {
+        let results = self
+            .call_batch(vec![
+                ("eth_getTransactionCount", json!([address, "latest"])),
+                ("eth_feeHistory", json!([4, "latest", [25, 75]])),
+            ])
+            .await?;
+        let nonce = parse_hex_u64(
+            results[0]
+                .as_str()
+                .ok_or("eth_getTransactionCount: expected string")?,
+        )?;
+        let fee = parse_fee_history(&results[1])?;
+        Ok((nonce, fee))
     }
 
     pub async fn estimate_gas(
@@ -516,37 +619,52 @@ impl EvmClient {
         parse_hex_u64(nonce_hex)
     }
 
-    /// Fetch token metadata (symbol + decimals).
+    /// Fetch token metadata (symbol + decimals) in a single batch request.
     pub async fn fetch_erc20_metadata(&self, contract: &str) -> Result<Erc20Metadata, String> {
-        let decimals_result = self
-            .call(
-                "eth_call",
-                json!([
-                    { "to": contract, "data": "0x313ce567" },
-                    "latest"
-                ]),
-            )
+        let results = self
+            .call_batch(vec![
+                (
+                    "eth_call",
+                    json!([{"to": contract, "data": format!("0x{}", hex::encode(SEL_DECIMALS))}, "latest"]),
+                ),
+                (
+                    "eth_call",
+                    json!([{"to": contract, "data": format!("0x{}", hex::encode(SEL_SYMBOL))}, "latest"]),
+                ),
+            ])
             .await?;
-        let decimals_hex = decimals_result
+        let decimals = parse_hex_u128(
+            results[0].as_str().ok_or("eth_call decimals: expected string")?,
+        )? as u8;
+        let symbol = results[1]
             .as_str()
-            .ok_or("eth_call decimals: expected string")?;
-        let decimals = parse_hex_u128(decimals_hex)? as u8;
-
-        let symbol_result = self
-            .call(
-                "eth_call",
-                json!([
-                    { "to": contract, "data": "0x95d89b41" },
-                    "latest"
-                ]),
-            )
-            .await?;
-        let symbol_hex = symbol_result
-            .as_str()
-            .ok_or("eth_call symbol: expected string")?;
-        let symbol = decode_abi_string_or_bytes32(symbol_hex).unwrap_or_default();
-
+            .and_then(decode_abi_string_or_bytes32)
+            .unwrap_or_default();
         Ok(Erc20Metadata { symbol, decimals })
+    }
+
+    /// Fetch the ERC-20 allowance granted by `owner` to `spender`.
+    pub async fn fetch_erc20_allowance(
+        &self,
+        contract: &str,
+        owner: &str,
+        spender: &str,
+    ) -> Result<u128, String> {
+        let data = encode_erc20_allowance(owner, spender)?;
+        let result = self
+            .call(
+                "eth_call",
+                json!([
+                    {
+                        "to": contract,
+                        "data": format!("0x{}", hex::encode(&data)),
+                    },
+                    "latest"
+                ]),
+            )
+            .await?;
+        let hex_str = result.as_str().ok_or("eth_call allowance: expected string")?;
+        parse_hex_u128(hex_str)
     }
 
     // ----------------------------------------------------------------
@@ -713,16 +831,35 @@ impl EvmClient {
 // ERC-20 ABI helpers (shared with send.rs)
 // ----------------------------------------------------------------
 
-/// Encode a `balanceOf(address)` call: `0x70a08231 || pad20(holder)`.
+/// Encode a `balanceOf(address)` call.
 pub fn encode_erc20_balance_of(holder: &str) -> Result<Vec<u8>, String> {
     let holder_bytes = decode_hex(holder)?;
     if holder_bytes.len() != 20 {
         return Err(format!("invalid EVM holder length: {}", holder_bytes.len()));
     }
     let mut out = Vec::with_capacity(4 + 32);
-    out.extend_from_slice(&[0x70, 0xa0, 0x82, 0x31]); // balanceOf(address)
-    out.extend_from_slice(&[0u8; 12]); // left pad 20-byte address to 32 bytes
+    out.extend_from_slice(&SEL_BALANCE_OF);
+    out.extend_from_slice(&[0u8; 12]); // left-pad 20-byte address to 32 bytes
     out.extend_from_slice(&holder_bytes);
+    Ok(out)
+}
+
+/// Encode an `allowance(address owner, address spender)` call.
+pub fn encode_erc20_allowance(owner: &str, spender: &str) -> Result<Vec<u8>, String> {
+    let owner_bytes = decode_hex(owner)?;
+    let spender_bytes = decode_hex(spender)?;
+    if owner_bytes.len() != 20 {
+        return Err(format!("invalid EVM owner length: {}", owner_bytes.len()));
+    }
+    if spender_bytes.len() != 20 {
+        return Err(format!("invalid EVM spender length: {}", spender_bytes.len()));
+    }
+    let mut out = Vec::with_capacity(4 + 32 + 32);
+    out.extend_from_slice(&SEL_ALLOWANCE);
+    out.extend_from_slice(&[0u8; 12]);
+    out.extend_from_slice(&owner_bytes);
+    out.extend_from_slice(&[0u8; 12]);
+    out.extend_from_slice(&spender_bytes);
     Ok(out)
 }
 

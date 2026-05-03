@@ -37,6 +37,7 @@ impl DecredClient {
         amount_atoms: u64,
         fee_atoms: u64,
         private_key_bytes: &[u8],
+        dust_threshold: Option<u64>,
     ) -> Result<DcrSendResult, String> {
         let utxos = self.fetch_utxos(from_address).await?;
         let from_hash = decode_dcr_address(from_address)?;
@@ -46,10 +47,8 @@ impl DecredClient {
         let total_in: u64 = utxos.iter().map(|u| u.value_atoms).sum();
         let change = total_in.saturating_sub(amount_atoms + fee_atoms);
 
-        // Outputs: recipient + optional change. Decred dust threshold is 6030
-        // atoms for standard P2PKH; below that we drop change.
         let mut outputs: Vec<(Vec<u8>, u64)> = vec![(dcr_p2pkh_script(&to_hash), amount_atoms)];
-        if change > 6_030 {
+        if change > dust_threshold.unwrap_or(6_030) {
             let change_hash = decode_dcr_address(from_address)?;
             // Re-encode the same change address from its hash; ensures the
             // wire output uses the canonical encoding even if the caller

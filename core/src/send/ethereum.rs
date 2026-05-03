@@ -26,6 +26,22 @@ pub struct EvmCustomFeeConfiguration {
 pub struct EvmSendOverridesInput {
     pub nonce: Option<i64>,
     pub custom_fees: Option<EvmCustomFeeConfiguration>,
+    /// Pin the gas limit. Defaults: 21_000 for plain ETH, node-estimated for
+    /// ERC-20 / contract calls. Must be set for arbitrary calldata sends.
+    pub gas_limit: Option<i64>,
+    /// Hex-encoded calldata (with or without 0x prefix). For native ETH sends
+    /// this appends arbitrary data (e.g. a memo). For ERC-20 sends, this
+    /// overrides the auto-encoded `transfer(to, amount)` calldata entirely,
+    /// enabling approvals, swaps, multicall, or any ABI-encoded function call.
+    pub calldata_hex: Option<String>,
+    /// Sign the transaction without broadcasting. The signed raw transaction
+    /// hex is returned in `SendExecutionResult.evm.raw_tx_hex`; `txid` is
+    /// left empty. Useful for offline signing or pre-flight inspection.
+    pub sign_only: Option<bool>,
+    /// EIP-2930 access list as a flat JSON string (array of
+    /// `{address, storageKeys}` objects). Pre-warms storage slots to reduce
+    /// gas cost for contracts with known read patterns.
+    pub access_list_json: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, uniffi::Record)]
@@ -345,6 +361,19 @@ pub(crate) fn render_evm_overrides_fragment(input: Option<&EvmSendOverridesInput
         let prio_wei = (cf.max_priority_fee_per_gas_gwei * 1e9).round() as u64;
         fragments.push(format!("\"max_fee_per_gas_wei\":\"{}\"", max_fee_wei));
         fragments.push(format!("\"max_priority_fee_per_gas_wei\":\"{}\"", prio_wei));
+    }
+    if let Some(gl) = o.gas_limit {
+        fragments.push(format!("\"gas_limit\":{}", gl));
+    }
+    if let Some(ref cd) = o.calldata_hex {
+        let cd_clean = cd.trim_start_matches("0x");
+        fragments.push(format!("\"calldata_hex\":\"{}\"", json_escape(cd_clean)));
+    }
+    if o.sign_only == Some(true) {
+        fragments.push("\"sign_only\":true".to_string());
+    }
+    if let Some(ref al) = o.access_list_json {
+        fragments.push(format!("\"access_list_json\":{}", al));
     }
     if fragments.is_empty() { String::new() } else { format!(",{}", fragments.join(",")) }
 }

@@ -4,7 +4,9 @@
 
 use serde_json::json;
 
-use crate::fetch::chains::evm::{decode_hex, EvmClient, EvmSendResult};
+use crate::fetch::chains::evm::{
+    decode_hex, EvmClient, EvmSendResult, SEL_APPROVE, SEL_TRANSFER, SEL_TRANSFER_FROM,
+};
 
 impl EvmClient {
     /// Sign and broadcast an EIP-1559 ETH transfer.
@@ -43,6 +45,7 @@ impl EvmClient {
         let (max_fee, max_priority) = resolve_fees(self, &overrides).await?;
         let gas_limit = overrides.gas_limit.unwrap_or(21_000);
 
+        let native_data = overrides.calldata.as_deref().unwrap_or(&[]);
         let raw_tx = build_eip1559_tx(
             self.chain_id,
             nonce,
@@ -51,11 +54,24 @@ impl EvmClient {
             gas_limit,
             to_address,
             value_wei,
-            &[],
+            native_data,
+            &overrides.access_list,
             private_key_bytes,
         )?;
 
         let hex_tx = format!("0x{}", hex::encode(&raw_tx));
+
+        if overrides.sign_only {
+            return Ok(EvmSendResult {
+                txid: String::new(),
+                nonce,
+                raw_tx_hex: hex_tx,
+                gas_limit,
+                max_fee_per_gas_wei: max_fee.to_string(),
+                max_priority_fee_per_gas_wei: max_priority.to_string(),
+            });
+        }
+
         let result = self
             .call("eth_sendRawTransaction", json!([hex_tx.clone()]))
             .await?;
@@ -118,8 +134,14 @@ impl EvmClient {
             None => self
                 .estimate_gas(from_address, contract, 0u128, Some(&data_hex))
                 .await
-                .map(|g| g.saturating_add(g / 5)) // +20% buffer
+                .map(|g| g.saturating_add(g * overrides.gas_buffer_pct.unwrap_or(20) as u64 / 100))
                 .unwrap_or(65_000),
+        };
+
+        // If calldata override is set, use it instead of the auto-encoded transfer.
+        let call_data = match overrides.calldata {
+            Some(ref cd) => cd.as_slice(),
+            None => &data,
         };
 
         let raw_tx = build_eip1559_tx(
@@ -130,11 +152,24 @@ impl EvmClient {
             gas_limit,
             contract,
             0u128,
-            &data,
+            call_data,
+            &overrides.access_list,
             private_key_bytes,
         )?;
 
         let hex_tx = format!("0x{}", hex::encode(&raw_tx));
+
+        if overrides.sign_only {
+            return Ok(EvmSendResult {
+                txid: String::new(),
+                nonce,
+                raw_tx_hex: hex_tx,
+                gas_limit,
+                max_fee_per_gas_wei: max_fee.to_string(),
+                max_priority_fee_per_gas_wei: max_priority.to_string(),
+            });
+        }
+
         let result = self
             .call("eth_sendRawTransaction", json!([hex_tx.clone()]))
             .await?;
@@ -187,12 +222,27 @@ impl EvmClient {
 ///   fields. If either is `None` we fetch `fetch_fee_estimate()` and fill
 ///   the missing one from the suggestion.
 /// * `gas_limit` — pin the gas limit instead of calling `eth_estimateGas`.
+/// * `calldata` — arbitrary calldata bytes. For the native send path, overrides
+///   the default empty data field (e.g. attaching a memo). For the ERC-20
+///   path, overrides the auto-encoded `transfer(to, amount)` calldata, enabling
+///   arbitrary contract calls (approve, swap, multicall, etc.).
+/// * `access_list` — EIP-2930 access list. Pre-warms storage slots to reduce
+///   gas on contracts with known read patterns.
+/// * `sign_only` — build and sign the transaction but do not broadcast it.
+///   The signed raw transaction is returned in `EvmSendResult.raw_tx_hex`
+///   and `txid` is left empty.
 #[derive(Debug, Clone, Default)]
 pub struct EvmSendOverrides {
     pub nonce: Option<u64>,
     pub max_fee_per_gas_wei: Option<u128>,
     pub max_priority_fee_per_gas_wei: Option<u128>,
     pub gas_limit: Option<u64>,
+    pub calldata: Option<Vec<u8>>,
+    pub access_list: Vec<AccessListEntry>,
+    pub sign_only: bool,
+    /// Percentage buffer added to the `eth_estimateGas` result when
+    /// `gas_limit` is not pinned. Default `20` (i.e. +20%).
+    pub gas_buffer_pct: Option<u32>,
 }
 
 /// Resolve (max_fee_per_gas, max_priority_fee_per_gas) from overrides plus
@@ -221,6 +271,15 @@ async fn resolve_fees(
 // EIP-1559 transaction builder + signer
 // ----------------------------------------------------------------
 
+// EIP-2930 access list entry: (address, storage_keys).
+// An empty access list is the common case; power users can supply one
+// to pre-warm storage slots and reduce gas cost on subsequent reads.
+#[derive(Debug, Clone, Default, alloy_rlp::RlpEncodable)]
+pub struct AccessListEntry {
+    pub address: [u8; 20],
+    pub storage_keys: Vec<[u8; 32]>,
+}
+
 /// Build a signed EIP-1559 (type 2) transaction.
 ///
 /// Returns the raw RLP-encoded transaction bytes, ready to be hex-encoded and
@@ -235,37 +294,28 @@ pub fn build_eip1559_tx(
     to: &str,
     value_wei: u128,
     data: &[u8],
+    access_list: &[AccessListEntry],
     private_key_bytes: &[u8],
 ) -> Result<Vec<u8>, String> {
-    // Decode `to` address.
     let to_bytes = decode_hex(to)?;
     if to_bytes.len() != 20 {
         return Err(format!("invalid EVM address length: {}", to_bytes.len()));
     }
+    let to_arr: [u8; 20] = to_bytes.try_into().unwrap();
 
-    // --- RLP-encode the signing payload ---
     // EIP-1559 signing payload:
     //   0x02 || RLP([chain_id, nonce, max_priority_fee, max_fee, gas_limit,
-    //                 to, value, data, access_list])
-    let unsigned_rlp = rlp_encode_list(&[
-        rlp_encode_u64(chain_id),
-        rlp_encode_u64(nonce),
-        rlp_encode_u128(max_priority_fee_per_gas),
-        rlp_encode_u128(max_fee_per_gas),
-        rlp_encode_u64(gas_limit),
-        rlp_encode_bytes(&to_bytes),
-        rlp_encode_u128(value_wei),
-        rlp_encode_bytes(data),
-        rlp_encode_list(&[]), // empty access list
-    ]);
-
+    //                to, value, data, access_list])
     let mut signing_payload = vec![0x02u8];
-    signing_payload.extend_from_slice(&unsigned_rlp);
+    encode_eip1559_fields(
+        chain_id, nonce, max_priority_fee_per_gas, max_fee_per_gas,
+        gas_limit, &to_arr, value_wei, data, access_list,
+        None, None, None,   // no v/r/s yet
+        &mut signing_payload,
+    );
 
-    // --- keccak256 hash ---
     let msg_hash = crate::derivation::chains::evm::keccak256(&signing_payload);
 
-    // --- secp256k1 sign ---
     use secp256k1::{Message, Secp256k1, SecretKey};
     let secp = Secp256k1::new();
     let secret_key =
@@ -276,77 +326,85 @@ pub fn build_eip1559_tx(
         .serialize_compact();
 
     let v: u64 = rec_id.to_i32() as u64; // 0 or 1 for EIP-1559
-    let r = &sig_bytes[..32];
-    let s = &sig_bytes[32..];
-
-    // --- RLP-encode the full signed transaction ---
-    let signed_rlp = rlp_encode_list(&[
-        rlp_encode_u64(chain_id),
-        rlp_encode_u64(nonce),
-        rlp_encode_u128(max_priority_fee_per_gas),
-        rlp_encode_u128(max_fee_per_gas),
-        rlp_encode_u64(gas_limit),
-        rlp_encode_bytes(&to_bytes),
-        rlp_encode_u128(value_wei),
-        rlp_encode_bytes(data),
-        rlp_encode_list(&[]), // empty access list
-        rlp_encode_u64(v),
-        rlp_encode_bytes(r),
-        rlp_encode_bytes(s),
-    ]);
+    let r: [u8; 32] = sig_bytes[..32].try_into().unwrap();
+    let s: [u8; 32] = sig_bytes[32..].try_into().unwrap();
 
     let mut raw = vec![0x02u8];
-    raw.extend_from_slice(&signed_rlp);
+    encode_eip1559_fields(
+        chain_id, nonce, max_priority_fee_per_gas, max_fee_per_gas,
+        gas_limit, &to_arr, value_wei, data, access_list,
+        Some(v), Some(&r), Some(&s),
+        &mut raw,
+    );
     Ok(raw)
 }
 
-// ----------------------------------------------------------------
-// Minimal RLP encoder
-// ----------------------------------------------------------------
+/// Encode the EIP-1559 field list into `out`. When `v/r/s` are `None`,
+/// produces the signing payload (no signature fields); when `Some`, produces
+/// the full signed transaction body. Called twice to avoid duplicating the
+/// field list.
+#[allow(clippy::too_many_arguments)]
+fn encode_eip1559_fields(
+    chain_id: u64,
+    nonce: u64,
+    max_priority_fee_per_gas: u128,
+    max_fee_per_gas: u128,
+    gas_limit: u64,
+    to: &[u8; 20],
+    value_wei: u128,
+    data: &[u8],
+    access_list: &[AccessListEntry],
+    v: Option<u64>,
+    r: Option<&[u8; 32]>,
+    s: Option<&[u8; 32]>,
+    out: &mut Vec<u8>,
+) {
+    use alloy_rlp::{Encodable, Header};
 
-fn rlp_encode_u64(v: u64) -> Vec<u8> {
-    if v == 0 {
-        return vec![0x80]; // RLP empty string = 0
+    // Collect the payload first so we can write the list header.
+    let mut payload = Vec::new();
+    chain_id.encode(&mut payload);
+    nonce.encode(&mut payload);
+    max_priority_fee_per_gas.encode(&mut payload);
+    max_fee_per_gas.encode(&mut payload);
+    gas_limit.encode(&mut payload);
+    // `to` is a fixed-length address, encoded as a 20-byte string.
+    Header { list: false, payload_length: 20 }.encode(&mut payload);
+    payload.extend_from_slice(to);
+    value_wei.encode(&mut payload);
+    data.encode(&mut payload);
+    // Access list as an RLP list of entries.
+    let mut al_buf = Vec::new();
+    for entry in access_list {
+        alloy_rlp::Encodable::encode(entry, &mut al_buf);
     }
-    let bytes = v.to_be_bytes();
-    let trimmed: Vec<u8> = bytes.iter().copied().skip_while(|&b| b == 0).collect();
-    rlp_encode_bytes(&trimmed)
-}
+    Header { list: true, payload_length: al_buf.len() }.encode(&mut payload);
+    payload.extend_from_slice(&al_buf);
 
-fn rlp_encode_u128(v: u128) -> Vec<u8> {
-    if v == 0 {
-        return vec![0x80];
+    if let (Some(v), Some(r), Some(s)) = (v, r, s) {
+        v.encode(&mut payload);
+        // r and s are 32-byte big integers — strip leading zeros per RLP spec.
+        encode_uint256(r, &mut payload);
+        encode_uint256(s, &mut payload);
     }
-    let bytes = v.to_be_bytes();
-    let trimmed: Vec<u8> = bytes.iter().copied().skip_while(|&b| b == 0).collect();
-    rlp_encode_bytes(&trimmed)
-}
 
-fn rlp_encode_bytes(data: &[u8]) -> Vec<u8> {
-    if data.len() == 1 && data[0] < 0x80 {
-        return vec![data[0]];
-    }
-    let mut out = rlp_length_prefix(data.len(), 0x80);
-    out.extend_from_slice(data);
-    out
-}
-
-fn rlp_encode_list(items: &[Vec<u8>]) -> Vec<u8> {
-    let payload: Vec<u8> = items.iter().flat_map(|v| v.iter().copied()).collect();
-    let mut out = rlp_length_prefix(payload.len(), 0xc0);
+    Header { list: true, payload_length: payload.len() }.encode(out);
     out.extend_from_slice(&payload);
-    out
 }
 
-fn rlp_length_prefix(len: usize, offset: u8) -> Vec<u8> {
-    if len < 56 {
-        vec![offset + len as u8]
+/// Encode a 32-byte big-endian integer as a minimal RLP byte string
+/// (strip leading zero bytes, then apply string header).
+fn encode_uint256(bytes: &[u8; 32], out: &mut Vec<u8>) {
+    use alloy_rlp::Header;
+    let trimmed = bytes.iter().copied().skip_while(|&b| b == 0).collect::<Vec<_>>();
+    if trimmed.is_empty() {
+        // Zero: RLP empty string 0x80
+        out.push(0x80);
+    } else if trimmed.len() == 1 && trimmed[0] < 0x80 {
+        out.push(trimmed[0]);
     } else {
-        let len_bytes = (len as u64).to_be_bytes();
-        let trimmed: Vec<u8> = len_bytes.iter().copied().skip_while(|&b| b == 0).collect();
-        let mut out = vec![offset + 55 + trimmed.len() as u8];
+        Header { list: false, payload_length: trimmed.len() }.encode(out);
         out.extend_from_slice(&trimmed);
-        out
     }
 }
 
@@ -361,11 +419,53 @@ pub(crate) fn encode_erc20_transfer(to: &str, amount: u128) -> Result<Vec<u8>, S
         return Err(format!("invalid EVM to length: {}", to_bytes.len()));
     }
     let mut out = Vec::with_capacity(4 + 32 + 32);
-    out.extend_from_slice(&[0xa9, 0x05, 0x9c, 0xbb]); // transfer(address,uint256)
+    out.extend_from_slice(&SEL_TRANSFER);
     out.extend_from_slice(&[0u8; 12]);
     out.extend_from_slice(&to_bytes);
+    let mut amount_bytes = [0u8; 32];
+    amount_bytes[16..].copy_from_slice(&amount.to_be_bytes());
+    out.extend_from_slice(&amount_bytes);
+    Ok(out)
+}
 
-    // 32-byte big-endian amount, left-padded with zeros.
+/// Encode an `approve(address spender, uint256 amount)` call.
+/// Use this to grant a contract (DEX, bridge, etc.) permission to spend tokens.
+pub fn encode_erc20_approve(spender: &str, amount: u128) -> Result<Vec<u8>, String> {
+    let spender_bytes = decode_hex(spender)?;
+    if spender_bytes.len() != 20 {
+        return Err(format!("invalid EVM spender length: {}", spender_bytes.len()));
+    }
+    let mut out = Vec::with_capacity(4 + 32 + 32);
+    out.extend_from_slice(&SEL_APPROVE);
+    out.extend_from_slice(&[0u8; 12]);
+    out.extend_from_slice(&spender_bytes);
+    let mut amount_bytes = [0u8; 32];
+    amount_bytes[16..].copy_from_slice(&amount.to_be_bytes());
+    out.extend_from_slice(&amount_bytes);
+    Ok(out)
+}
+
+/// Encode a `transferFrom(address from, address to, uint256 amount)` call.
+/// Used for allowance-based pulls (escrow, bridge withdrawal, etc.).
+pub fn encode_erc20_transfer_from(
+    from: &str,
+    to: &str,
+    amount: u128,
+) -> Result<Vec<u8>, String> {
+    let from_bytes = decode_hex(from)?;
+    let to_bytes = decode_hex(to)?;
+    if from_bytes.len() != 20 {
+        return Err(format!("invalid EVM from length: {}", from_bytes.len()));
+    }
+    if to_bytes.len() != 20 {
+        return Err(format!("invalid EVM to length: {}", to_bytes.len()));
+    }
+    let mut out = Vec::with_capacity(4 + 32 + 32 + 32);
+    out.extend_from_slice(&SEL_TRANSFER_FROM);
+    out.extend_from_slice(&[0u8; 12]);
+    out.extend_from_slice(&from_bytes);
+    out.extend_from_slice(&[0u8; 12]);
+    out.extend_from_slice(&to_bytes);
     let mut amount_bytes = [0u8; 32];
     amount_bytes[16..].copy_from_slice(&amount.to_be_bytes());
     out.extend_from_slice(&amount_bytes);

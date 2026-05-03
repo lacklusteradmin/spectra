@@ -19,6 +19,9 @@ pub enum StakingActionKind {
     Restake,
     /// Claim outstanding rewards without touching principal.
     ClaimRewards,
+    /// Atomically move stake from one validator to another (no unbonding period).
+    /// Not supported by all chains — callers should check before presenting this option.
+    ChangeValidator,
 }
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, uniffi::Enum)]
@@ -32,9 +35,6 @@ pub enum StakingPositionStatus {
 }
 
 /// Validator / pool / canister metadata as it appears in the picker UI.
-/// Per-chain fields that don't fit the generic surface (commission rate,
-/// minimum delegation, identity verification) are expressed via
-/// `details` k/v pairs so the UI can show them without typing pressure.
 #[derive(Debug, Clone, Serialize, Deserialize, uniffi::Record)]
 pub struct StakingValidator {
     /// Stable on-chain identifier (vote account, pool ID, validator address,
@@ -55,6 +55,18 @@ pub struct StakingValidator {
     /// Free-form chain-specific tags ("nomination pool", "commission 5%",
     /// "verified", "saturated", etc.) for UI badges.
     pub tags: Vec<String>,
+    /// Minimum delegation amount in the chain's native smallest unit.
+    /// `None` if the chain imposes no per-validator minimum.
+    pub min_delegation_smallest_unit: Option<String>,
+    /// Historical uptime percentage (0.0–100.0). `None` if not reported.
+    pub uptime_pct: Option<f64>,
+    /// Validator's self-reported website URL.
+    pub website: Option<String>,
+    /// Validator's self-reported description / identity blurb.
+    pub description: Option<String>,
+    /// True when this validator will join the active set next epoch.
+    /// Useful for showing "activating soon" in the picker. `None` if not tracked.
+    pub next_epoch_active: Option<bool>,
 }
 
 /// One staking position held by a wallet on a given chain. A wallet can
@@ -74,6 +86,13 @@ pub struct StakingPosition {
     pub claimable_rewards_smallest_unit: String,
     /// Unix timestamp when the unbonding period ends, if applicable.
     pub unbonding_completes_at_unix: Option<i64>,
+    /// Chain epoch (or slot / era) when this position was first created.
+    /// Useful for calculating lock-up age and APY realised. `None` if not tracked.
+    pub epoch_created: Option<i64>,
+    /// Rewards accrued since the last claim action, smallest unit decimal string.
+    /// Distinct from `claimable_rewards` on chains where rewards vest continuously
+    /// but can only be claimed periodically. `None` if not tracked.
+    pub accrued_since_last_claim_smallest_unit: Option<String>,
 }
 
 /// Amount preview for a staking action — what Swift renders before sign.
@@ -96,6 +115,16 @@ pub struct StakingActionPreview {
     /// Free-form notes the UI should surface ("Activates next epoch", "Min
     /// delegation 1 SOL", "Locked for 6 months", etc.).
     pub notes: Vec<String>,
+    /// Predicted staked balance after the action settles, smallest unit decimal
+    /// string. Lets the UI show "will have X staked" without a post-action fetch.
+    pub post_action_balance_smallest_unit: Option<String>,
+    /// Human-readable slashing risk note for the chosen validator, if the chain
+    /// supports slashing ("Validator has been slashed twice in the last 90 days").
+    /// `None` on chains without slashing (Cardano, Solana, etc.).
+    pub slashing_risk_note: Option<String>,
+    /// True when the requested amount meets the validator's minimum delegation.
+    /// `None` when the validator has no stated minimum or minimum is unknown.
+    pub validator_min_met: Option<bool>,
 }
 
 /// Errors returned by staking client operations. UniFFI-friendly; the

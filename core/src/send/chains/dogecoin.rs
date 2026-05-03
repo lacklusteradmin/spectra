@@ -34,6 +34,7 @@ impl DogecoinClient {
         amount_sat: u64,
         fee_sat: u64,
         private_key_bytes: &[u8],
+        dust_threshold: Option<u64>,
     ) -> Result<DogeSendResult, String> {
         let utxos = self.fetch_utxos(from_address).await?;
         let script_pubkey = p2pkh_script(&decode_doge_address(from_address)?)?;
@@ -48,6 +49,7 @@ impl DogecoinClient {
             fee_sat,
             from_address,
             private_key_bytes,
+            dust_threshold,
         )?;
         self.broadcast_raw_tx(&hex::encode(&raw)).await
     }
@@ -69,6 +71,7 @@ pub fn sign_doge_p2pkh(
     fee_koin: u64,
     change_address: &str,
     private_key_bytes: &[u8],
+    dust_threshold: Option<u64>,
 ) -> Result<Vec<u8>, String> {
     use secp256k1::{Message, Secp256k1, SecretKey};
 
@@ -86,7 +89,7 @@ pub fn sign_doge_p2pkh(
         p2pkh_script(&decode_doge_address(to_address)?)?,
         amount_koin,
     )];
-    if change > 546 {
+    if change > dust_threshold.unwrap_or(546) {
         outputs.push((p2pkh_script(&decode_doge_address(change_address)?)?, change));
     }
 

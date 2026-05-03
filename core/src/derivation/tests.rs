@@ -1,6 +1,4 @@
 use ed25519_dalek::SigningKey;
-    use tiny_keccak::{Hasher, Keccak};
-
     use crate::derivation::chains::cardano::derive_cardano_icarus_xprv_root;
     use crate::derivation::chains::monero::monero_base58_encode;
     use crate::derivation::chains::ton::{crc16_xmodem, v4r2_code_hash_and_depth};
@@ -541,10 +539,8 @@ use ed25519_dalek::SigningKey;
         let mut spend = [0u8; 32];
         spend.copy_from_slice(&priv_bytes);
 
-        let mut hasher = Keccak::v256();
-        let mut spend_hash = [0u8; 32];
-        hasher.update(&spend);
-        hasher.finalize(&mut spend_hash);
+        use sha3::{Digest, Keccak256};
+        let spend_hash: [u8; 32] = Keccak256::digest(&spend).into();
         let view_scalar = DalekScalar::from_bytes_mod_order(spend_hash);
         let public_view = (view_scalar * ED25519_BASEPOINT_POINT).compress().to_bytes();
 

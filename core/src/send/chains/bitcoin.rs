@@ -43,6 +43,31 @@ impl BitcoinClient {
 // Transaction construction & signing
 // ----------------------------------------------------------------
 
+// ── Professional coin-selection and output customization ──────────────────
+
+/// UTXO coin-selection strategy.
+#[derive(Debug, Clone, Default)]
+pub enum CoinSelectionStrategy {
+    /// Accumulate the largest UTXOs first. Minimizes input count; may leave
+    /// dust change when total overshoots the target significantly.
+    #[default]
+    LargestFirst,
+    /// Accumulate the smallest UTXOs first. Consolidates dust coins at the
+    /// cost of more inputs and higher fees. Useful for UTXO set hygiene.
+    SmallestFirst,
+}
+
+/// An additional output appended to the transaction after the primary
+/// recipient and change outputs. Enables batch sends and on-chain memos.
+#[derive(Debug, Clone)]
+pub enum BitcoinExtraOutput {
+    /// Secondary payment to another address in the same transaction.
+    Address { address: String, amount_sats: u64 },
+    /// OP_RETURN metadata payload (max 80 bytes, zero value). The `data_hex`
+    /// field is hex-encoded; no `0x` prefix required.
+    OpReturn { data_hex: String },
+}
+
 /// Parameters for building a Bitcoin transaction.
 #[derive(Debug)]
 pub struct BitcoinSendParams {
@@ -50,32 +75,55 @@ pub struct BitcoinSendParams {
     pub from_address: String,
     /// WIF or hex-encoded 32-byte private key.
     pub private_key_hex: String,
-    /// Recipient address.
+    /// Primary recipient address.
     pub to_address: String,
-    /// Amount to send in satoshis.
+    /// Primary send amount in satoshis.
     pub amount_sats: u64,
     /// Fee rate (sats per virtual byte).
     pub fee_rate: FeeRate,
-    /// UTXOs available for spending.
+    /// UTXOs available for automatic coin selection. Ignored when
+    /// `pinned_utxos` is set. Fetched from Esplora if empty.
     pub available_utxos: Vec<EsploraUtxo>,
     /// Which network.
     pub network_mode: String,
-    /// Whether to use RBF (replace-by-fee). Usually `true`.
+    /// Whether to signal RBF (replace-by-fee) on inputs.
     pub enable_rbf: bool,
+    /// Minimum change output in satoshis; dust below this is absorbed into fee.
+    /// `None` uses the standard 546-sat P2PKH dust threshold.
+    pub dust_threshold: Option<u64>,
+    // ── Professional controls ────────────────────────────────────────────────
+    /// Manually selected UTXOs to spend. When `Some`, bypasses automatic coin
+    /// selection entirely — the caller is responsible for ensuring the total
+    /// input value covers `amount_sats` plus fee.
+    pub pinned_utxos: Option<Vec<EsploraUtxo>>,
+    /// Additional outputs appended after the primary recipient and change.
+    /// Enables batch sends (multiple recipients in one tx) and OP_RETURN memos.
+    pub extra_outputs: Vec<BitcoinExtraOutput>,
+    /// Coin selection algorithm used when `pinned_utxos` is `None`.
+    pub coin_selection: CoinSelectionStrategy,
+    /// Sign the transaction but skip the Esplora broadcast. The signed raw
+    /// transaction hex is returned in `BitcoinSendResult.raw_tx_hex` and
+    /// `txid` is left empty. Useful for offline signing, PSBT handoffs, or
+    /// pre-flight fee inspection.
+    pub sign_only: bool,
 }
 
-/// Coin selection: accumulate UTXOs (largest first) until we cover
-/// `target + fee`. Returns the selected UTXOs and the fee in sats.
-fn select_coins(
-    utxos: &[EsploraUtxo],
+/// Coin selection: accumulate UTXOs until we cover `target + fee`.
+/// Sorting order is determined by `strategy`.
+fn select_coins<'a>(
+    utxos: &'a [EsploraUtxo],
     target_sats: u64,
     fee_rate: FeeRate,
     input_bytes: usize,
     output_count: usize,
     overhead_bytes: usize,
-) -> Result<(Vec<&EsploraUtxo>, u64), String> {
+    strategy: &CoinSelectionStrategy,
+) -> Result<(Vec<&'a EsploraUtxo>, u64), String> {
     let mut sorted: Vec<&EsploraUtxo> = utxos.iter().collect();
-    sorted.sort_by(|a, b| b.value.cmp(&a.value));
+    match strategy {
+        CoinSelectionStrategy::LargestFirst => sorted.sort_by(|a, b| b.value.cmp(&a.value)),
+        CoinSelectionStrategy::SmallestFirst => sorted.sort_by(|a, b| a.value.cmp(&b.value)),
+    }
 
     let mut selected: Vec<&EsploraUtxo> = Vec::new();
     let mut total: u64 = 0;
@@ -94,6 +142,45 @@ fn select_coins(
     }
 
     Err("utxo.insufficientFunds".to_string())
+}
+
+/// Build `TxOut` items for `extra_outputs`. OP_RETURN outputs are zero-value.
+fn build_extra_outputs(
+    extra: &[BitcoinExtraOutput],
+    network: bitcoin::Network,
+) -> Result<Vec<TxOut>, String> {
+    let mut out = Vec::new();
+    for item in extra {
+        match item {
+            BitcoinExtraOutput::Address { address, amount_sats } => {
+                let addr = Address::from_str(address)
+                    .map_err(|e| format!("extra output bad address: {e}"))?
+                    .require_network(network)
+                    .map_err(|e| format!("extra output wrong network: {e}"))?;
+                out.push(TxOut {
+                    value: Amount::from_sat(*amount_sats),
+                    script_pubkey: addr.script_pubkey(),
+                });
+            }
+            BitcoinExtraOutput::OpReturn { data_hex } => {
+                let data = hex::decode(data_hex.trim_start_matches("0x"))
+                    .map_err(|e| format!("OP_RETURN bad hex: {e}"))?;
+                if data.len() > 80 {
+                    return Err(format!(
+                        "OP_RETURN data too large: {} bytes (max 80)",
+                        data.len()
+                    ));
+                }
+                let push_bytes = bitcoin::script::PushBytesBuf::try_from(data)
+                    .map_err(|_| "OP_RETURN data exceeds PushBytes limit".to_string())?;
+                out.push(TxOut {
+                    value: Amount::ZERO,
+                    script_pubkey: ScriptBuf::new_op_return(push_bytes.as_push_bytes()),
+                });
+            }
+        }
+    }
+    Ok(out)
 }
 
 /// Build, sign, and serialize a P2WPKH transaction.
@@ -120,19 +207,39 @@ pub fn sign_p2wpkh(params: &mut BitcoinSendParams) -> Result<(Transaction, Strin
         .map_err(|e| format!("recipient on wrong network: {e}"))?;
 
     // P2WPKH: 68 bytes per input (segwit discount applied), 31 bytes per output, 10 overhead.
-    let (selected, fee) = select_coins(
-        &params.available_utxos,
-        params.amount_sats,
-        params.fee_rate,
-        68,
-        2, // to + change
-        10,
-    )?;
+    let extra_output_count = params.extra_outputs.len();
+    let (selected_owned, fee) = if let Some(ref pinned) = params.pinned_utxos {
+        let total_in: u64 = pinned.iter().map(|u| u.value).sum();
+        let n = pinned.len();
+        let output_count = 2 + extra_output_count;
+        let tx_bytes = 10 + n * 68 + output_count * 31;
+        let fee = (tx_bytes as f64 * params.fee_rate.sats_per_vbyte).ceil() as u64;
+        let dummy: Vec<&EsploraUtxo> = pinned.iter().collect();
+        if total_in < params.amount_sats.saturating_add(fee) {
+            return Err("utxo.insufficientFunds".to_string());
+        }
+        (dummy, fee)
+    } else {
+        select_coins(
+            &params.available_utxos,
+            params.amount_sats,
+            params.fee_rate,
+            68,
+            2 + extra_output_count,
+            10,
+            &params.coin_selection,
+        )?
+    };
 
-    let total_in: u64 = selected.iter().map(|u| u.value).sum();
+    let utxos_to_use: Vec<&EsploraUtxo> = if params.pinned_utxos.is_some() {
+        params.pinned_utxos.as_ref().unwrap().iter().collect()
+    } else {
+        selected_owned
+    };
+
+    let total_in: u64 = utxos_to_use.iter().map(|u| u.value).sum();
     let change_sats = total_in.saturating_sub(params.amount_sats).saturating_sub(fee);
-    const DUST_THRESHOLD_SATS: u64 = 546;
-    let use_change = change_sats > DUST_THRESHOLD_SATS;
+    let use_change = change_sats > params.dust_threshold.unwrap_or(546);
 
     // Build inputs (unsigned).
     let sequence = if params.enable_rbf {
@@ -141,7 +248,7 @@ pub fn sign_p2wpkh(params: &mut BitcoinSendParams) -> Result<(Transaction, Strin
         Sequence::MAX
     };
 
-    let inputs: Vec<TxIn> = selected
+    let inputs: Vec<TxIn> = utxos_to_use
         .iter()
         .map(|u| {
             let txid = Txid::from_str(&u.txid)
@@ -173,6 +280,7 @@ pub fn sign_p2wpkh(params: &mut BitcoinSendParams) -> Result<(Transaction, Strin
             script_pubkey: from_addr.script_pubkey(),
         });
     }
+    outputs.extend(build_extra_outputs(&params.extra_outputs, network)?);
 
     let mut tx = Transaction {
         version: Version::TWO,
@@ -189,7 +297,7 @@ pub fn sign_p2wpkh(params: &mut BitcoinSendParams) -> Result<(Transaction, Strin
     let script_code = ScriptBuf::new_p2wpkh(&wpkh);
 
     let mut signatures: Vec<Vec<u8>> = Vec::new();
-    for (i, utxo) in selected.iter().enumerate() {
+    for (i, utxo) in utxos_to_use.iter().enumerate() {
         let sighash = sighash_cache
             .p2wpkh_signature_hash(
                 i,
@@ -241,18 +349,38 @@ pub fn sign_p2pkh(params: &mut BitcoinSendParams) -> Result<(Transaction, String
         .map_err(|e| format!("from address on wrong network: {e}"))?;
 
     // P2PKH: ~148 bytes per input, 34 bytes per output, 10 overhead.
-    let (selected, fee) = select_coins(
-        &params.available_utxos,
-        params.amount_sats,
-        params.fee_rate,
-        148,
-        2,
-        10,
-    )?;
+    let extra_output_count = params.extra_outputs.len();
+    let (selected_owned, fee) = if let Some(ref pinned) = params.pinned_utxos {
+        let total_in: u64 = pinned.iter().map(|u| u.value).sum();
+        let n = pinned.len();
+        let tx_bytes = 10 + n * 148 + (2 + extra_output_count) * 34;
+        let fee = (tx_bytes as f64 * params.fee_rate.sats_per_vbyte).ceil() as u64;
+        let dummy: Vec<&EsploraUtxo> = pinned.iter().collect();
+        if total_in < params.amount_sats.saturating_add(fee) {
+            return Err("utxo.insufficientFunds".to_string());
+        }
+        (dummy, fee)
+    } else {
+        select_coins(
+            &params.available_utxos,
+            params.amount_sats,
+            params.fee_rate,
+            148,
+            2 + extra_output_count,
+            10,
+            &params.coin_selection,
+        )?
+    };
 
-    let total_in: u64 = selected.iter().map(|u| u.value).sum();
+    let utxos_to_use: Vec<&EsploraUtxo> = if params.pinned_utxos.is_some() {
+        params.pinned_utxos.as_ref().unwrap().iter().collect()
+    } else {
+        selected_owned
+    };
+
+    let total_in: u64 = utxos_to_use.iter().map(|u| u.value).sum();
     let change_sats = total_in.saturating_sub(params.amount_sats).saturating_sub(fee);
-    let use_change = change_sats > 546;
+    let use_change = change_sats > params.dust_threshold.unwrap_or(546);
 
     let sequence = if params.enable_rbf {
         Sequence::ENABLE_RBF_NO_LOCKTIME
@@ -260,7 +388,7 @@ pub fn sign_p2pkh(params: &mut BitcoinSendParams) -> Result<(Transaction, String
         Sequence::MAX
     };
 
-    let inputs: Vec<TxIn> = selected
+    let inputs: Vec<TxIn> = utxos_to_use
         .iter()
         .map(|u| {
             let txid = Txid::from_str(&u.txid).unwrap_or_else(|_| Txid::all_zeros());
@@ -283,6 +411,7 @@ pub fn sign_p2pkh(params: &mut BitcoinSendParams) -> Result<(Transaction, String
             script_pubkey: from_addr.script_pubkey(),
         });
     }
+    outputs.extend(build_extra_outputs(&params.extra_outputs, network)?);
 
     let mut tx = Transaction {
         version: Version::TWO,
@@ -298,7 +427,7 @@ pub fn sign_p2pkh(params: &mut BitcoinSendParams) -> Result<(Transaction, String
     let sighash_cache = SighashCache::new(&mut tx);
     let mut signatures: Vec<(Vec<u8>, Vec<u8>)> = Vec::new();
 
-    for (i, utxo) in selected.iter().enumerate() {
+    for i in 0..utxos_to_use.len() {
         let from_spk = from_addr.script_pubkey();
         let sighash = sighash_cache
             .legacy_signature_hash(i, &from_spk, EcdsaSighashType::All as u32)
@@ -309,7 +438,6 @@ pub fn sign_p2pkh(params: &mut BitcoinSendParams) -> Result<(Transaction, String
         let mut sig_der = sig.serialize_der().to_vec();
         sig_der.push(EcdsaSighashType::All as u8);
         signatures.push((sig_der, pk_bytes_p2pkh.to_vec()));
-        let _ = utxo; // suppress unused warning
     }
 
     let tx_ref = sighash_cache.into_transaction();
@@ -353,18 +481,38 @@ pub fn sign_p2tr(params: &mut BitcoinSendParams) -> Result<(Transaction, String)
         .map_err(|e| format!("from address on wrong network: {e}"))?;
 
     // Taproot key-path: 57.5 virtual bytes per input (approximated as 58).
-    let (selected, fee) = select_coins(
-        &params.available_utxos,
-        params.amount_sats,
-        params.fee_rate,
-        58,
-        2,
-        10,
-    )?;
+    let extra_output_count = params.extra_outputs.len();
+    let (selected_owned, fee) = if let Some(ref pinned) = params.pinned_utxos {
+        let total_in: u64 = pinned.iter().map(|u| u.value).sum();
+        let n = pinned.len();
+        let tx_bytes = 10 + n * 58 + (2 + extra_output_count) * 31;
+        let fee = (tx_bytes as f64 * params.fee_rate.sats_per_vbyte).ceil() as u64;
+        let dummy: Vec<&EsploraUtxo> = pinned.iter().collect();
+        if total_in < params.amount_sats.saturating_add(fee) {
+            return Err("utxo.insufficientFunds".to_string());
+        }
+        (dummy, fee)
+    } else {
+        select_coins(
+            &params.available_utxos,
+            params.amount_sats,
+            params.fee_rate,
+            58,
+            2 + extra_output_count,
+            10,
+            &params.coin_selection,
+        )?
+    };
 
-    let total_in: u64 = selected.iter().map(|u| u.value).sum();
+    let utxos_to_use: Vec<&EsploraUtxo> = if params.pinned_utxos.is_some() {
+        params.pinned_utxos.as_ref().unwrap().iter().collect()
+    } else {
+        selected_owned
+    };
+
+    let total_in: u64 = utxos_to_use.iter().map(|u| u.value).sum();
     let change_sats = total_in.saturating_sub(params.amount_sats).saturating_sub(fee);
-    let use_change = change_sats > 546;
+    let use_change = change_sats > params.dust_threshold.unwrap_or(546);
 
     let sequence = if params.enable_rbf {
         Sequence::ENABLE_RBF_NO_LOCKTIME
@@ -372,7 +520,7 @@ pub fn sign_p2tr(params: &mut BitcoinSendParams) -> Result<(Transaction, String)
         Sequence::MAX
     };
 
-    let inputs: Vec<TxIn> = selected
+    let inputs: Vec<TxIn> = utxos_to_use
         .iter()
         .map(|u| {
             let txid = Txid::from_str(&u.txid).unwrap_or_else(|_| Txid::all_zeros());
@@ -395,8 +543,9 @@ pub fn sign_p2tr(params: &mut BitcoinSendParams) -> Result<(Transaction, String)
             script_pubkey: from_addr.script_pubkey(),
         });
     }
+    outputs.extend(build_extra_outputs(&params.extra_outputs, network)?);
 
-    let prevouts: Vec<TxOut> = selected
+    let prevouts: Vec<TxOut> = utxos_to_use
         .iter()
         .map(|u| TxOut {
             value: Amount::from_sat(u.value),
@@ -414,7 +563,7 @@ pub fn sign_p2tr(params: &mut BitcoinSendParams) -> Result<(Transaction, String)
     let mut sighash_cache = SighashCache::new(&mut tx);
     let mut sigs: Vec<Vec<u8>> = Vec::new();
 
-    for i in 0..selected.len() {
+    for i in 0..utxos_to_use.len() {
         use bitcoin::sighash::Prevouts;
         let sighash = sighash_cache
             .taproot_key_spend_signature_hash(
@@ -445,13 +594,13 @@ pub fn sign_p2tr(params: &mut BitcoinSendParams) -> Result<(Transaction, String)
 }
 
 /// High-level send: auto-detect the from-address script type, sign,
-/// and broadcast. Returns the txid.
+/// and broadcast (unless `params.sign_only` is set).
 pub async fn sign_and_broadcast(
     client: &BitcoinClient,
     mut params: BitcoinSendParams,
 ) -> Result<BitcoinSendResult, String> {
-    // Fetch UTXOs if none were provided.
-    if params.available_utxos.is_empty() {
+    // Fetch UTXOs when auto-selection is active and none were pre-supplied.
+    if params.pinned_utxos.is_none() && params.available_utxos.is_empty() {
         params.available_utxos = client.fetch_utxos(&params.from_address).await?;
     }
 
@@ -474,6 +623,13 @@ pub async fn sign_and_broadcast(
         let (_, hex) = sign_p2pkh(&mut params)?;
         hex
     };
+
+    if params.sign_only {
+        return Ok(BitcoinSendResult {
+            txid: String::new(),
+            raw_tx_hex: raw_hex,
+        });
+    }
 
     let txid = client.broadcast_raw_tx(&raw_hex).await?;
 

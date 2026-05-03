@@ -14,11 +14,26 @@ use crate::http::{with_fallback, RetryProfile};
 use crate::derivation::chains::zcash::{decode_zcash_address, zcash_p2pkh_script};
 use crate::fetch::chains::zcash::{ZcashClient, ZecSendResult};
 
+// ── Network upgrade descriptor ────────────────────────────────────────────
+
+/// Zcash consensus rule set for V5 transaction construction.
+#[derive(Clone, Copy)]
+pub struct ZcashNetworkUpgrade {
+    pub version_group_id: u32,
+    pub consensus_branch_id: u32,
+}
+
+impl ZcashNetworkUpgrade {
+    /// NU5 mainnet (ZIP-225). Next upgrade requires a fresh sighash table anyway.
+    pub const NU5: Self = Self {
+        version_group_id: 0x26A7_270A,
+        consensus_branch_id: 0xC2D6_D0B4,
+    };
+}
+
 // ── Network constants ─────────────────────────────────────────────────────
 
 const TX_VERSION_V5: u32 = 5;
-const TX_VERSION_GROUP_ID_NU5: u32 = 0x26A7_270A;
-const CONSENSUS_BRANCH_ID_NU5: u32 = 0xC2D6_D0B4;
 /// `nVersionGroupId` overwintered bit set on the version field.
 const TX_VERSION_OVERWINTERED: u32 = 1 << 31;
 
@@ -55,6 +70,8 @@ impl ZcashClient {
         amount_sat: u64,
         fee_sat: u64,
         private_key_bytes: &[u8],
+        network_upgrade: ZcashNetworkUpgrade,
+        dust_threshold_zats: u64,
     ) -> Result<ZecSendResult, String> {
         let utxos = self.fetch_utxos(from_address).await?;
         let tip = self.fetch_chain_tip_height().await.unwrap_or(0);
@@ -74,6 +91,8 @@ impl ZcashClient {
             from_address,
             expiry_height,
             private_key_bytes,
+            network_upgrade,
+            dust_threshold_zats,
         )?;
         self.broadcast_raw_tx(&hex::encode(&raw)).await
     }
@@ -150,6 +169,8 @@ fn sign_zcash_v5_p2pkh(
     change_address: &str,
     expiry_height: u32,
     private_key_bytes: &[u8],
+    network_upgrade: ZcashNetworkUpgrade,
+    dust_threshold_zats: u64,
 ) -> Result<Vec<u8>, String> {
     use secp256k1::{Message, Secp256k1, SecretKey};
 
@@ -161,13 +182,11 @@ fn sign_zcash_v5_p2pkh(
     let total_in: u64 = utxos.iter().map(|(_, _, v, _)| v).sum();
     let change = total_in.saturating_sub(amount_sat + fee_sat);
 
-    // Outputs: recipient + optional change. Zcash dust threshold matches BTC
-    // (546 zats); below that we drop the change output and let it become fee.
     let mut outputs: Vec<(Vec<u8>, u64)> = vec![(
         zcash_p2pkh_script(&decode_zcash_address(to_address)?),
         amount_sat,
     )];
-    if change > 546 {
+    if change > dust_threshold_zats {
         outputs.push((
             zcash_p2pkh_script(&decode_zcash_address(change_address)?),
             change,
@@ -180,7 +199,7 @@ fn sign_zcash_v5_p2pkh(
     let scripts_digest = compute_scripts_digest(utxos);
     let sequence_digest = compute_sequence_digest(utxos.len());
     let outputs_digest = compute_outputs_digest(&outputs);
-    let header_digest = compute_header_digest(expiry_height);
+    let header_digest = compute_header_digest(expiry_height, network_upgrade);
     let sapling_digest = compute_empty_sapling_digest();
     let orchard_digest = compute_empty_orchard_digest();
 
@@ -206,6 +225,7 @@ fn sign_zcash_v5_p2pkh(
             &transparent_digest,
             &sapling_digest,
             &orchard_digest,
+            network_upgrade,
         );
 
         let msg = Message::from_digest_slice(&sighash).map_err(|e| e.to_string())?;
@@ -234,8 +254,8 @@ fn sign_zcash_v5_p2pkh(
     // Header.
     let header = TX_VERSION_V5 | TX_VERSION_OVERWINTERED;
     raw.extend_from_slice(&header.to_le_bytes());
-    raw.extend_from_slice(&TX_VERSION_GROUP_ID_NU5.to_le_bytes());
-    raw.extend_from_slice(&CONSENSUS_BRANCH_ID_NU5.to_le_bytes());
+    raw.extend_from_slice(&network_upgrade.version_group_id.to_le_bytes());
+    raw.extend_from_slice(&network_upgrade.consensus_branch_id.to_le_bytes());
     raw.extend_from_slice(&0u32.to_le_bytes()); // nLockTime
     raw.extend_from_slice(&expiry_height.to_le_bytes());
 
@@ -263,12 +283,12 @@ fn sign_zcash_v5_p2pkh(
 
 // ── Sub-digests ───────────────────────────────────────────────────────────
 
-fn compute_header_digest(expiry_height: u32) -> [u8; 32] {
+fn compute_header_digest(expiry_height: u32, nu: ZcashNetworkUpgrade) -> [u8; 32] {
     let mut buf = Vec::with_capacity(20);
     let header = TX_VERSION_V5 | TX_VERSION_OVERWINTERED;
     buf.extend_from_slice(&header.to_le_bytes());
-    buf.extend_from_slice(&TX_VERSION_GROUP_ID_NU5.to_le_bytes());
-    buf.extend_from_slice(&CONSENSUS_BRANCH_ID_NU5.to_le_bytes());
+    buf.extend_from_slice(&nu.version_group_id.to_le_bytes());
+    buf.extend_from_slice(&nu.consensus_branch_id.to_le_bytes());
     buf.extend_from_slice(&0u32.to_le_bytes()); // nLockTime
     buf.extend_from_slice(&expiry_height.to_le_bytes());
     blake2b_personalized(PERSONAL_TX_HEADERS, &buf)
@@ -373,12 +393,13 @@ fn compute_zip244_txid_digest(
     transparent: &[u8; 32],
     sapling: &[u8; 32],
     orchard: &[u8; 32],
+    nu: ZcashNetworkUpgrade,
 ) -> [u8; 32] {
     // Personalisation includes the consensus branch id in the trailing bytes:
     // "ZcashTxHash_" + LE-bytes(branch_id).
     let mut personal = [0u8; 16];
     personal[..PERSONAL_TX_TXID_BASE.len()].copy_from_slice(PERSONAL_TX_TXID_BASE);
-    personal[12..16].copy_from_slice(&CONSENSUS_BRANCH_ID_NU5.to_le_bytes());
+    personal[12..16].copy_from_slice(&nu.consensus_branch_id.to_le_bytes());
 
     let mut buf = Vec::with_capacity(4 * 32);
     buf.extend_from_slice(header);

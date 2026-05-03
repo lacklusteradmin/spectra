@@ -15,6 +15,7 @@ impl StellarClient {
         stroops: i64,
         private_key_bytes: &[u8; 64],
         public_key_bytes: &[u8; 32],
+        network_passphrase: Option<Vec<u8>>,
     ) -> Result<StellarSendResult, String> {
         self.sign_and_submit_with_asset(
             from_address,
@@ -23,6 +24,7 @@ impl StellarClient {
             StellarAsset::Native,
             private_key_bytes,
             public_key_bytes,
+            network_passphrase,
         )
         .await
     }
@@ -38,6 +40,7 @@ impl StellarClient {
         asset_issuer: &str,
         private_key_bytes: &[u8; 64],
         public_key_bytes: &[u8; 32],
+        network_passphrase: Option<Vec<u8>>,
     ) -> Result<StellarSendResult, String> {
         let issuer_key = decode_stellar_address(asset_issuer)?;
         let code_len = asset_code.len();
@@ -55,6 +58,7 @@ impl StellarClient {
             asset,
             private_key_bytes,
             public_key_bytes,
+            network_passphrase,
         )
         .await
     }
@@ -67,11 +71,13 @@ impl StellarClient {
         asset: StellarAsset,
         private_key_bytes: &[u8; 64],
         public_key_bytes: &[u8; 32],
+        network_passphrase: Option<Vec<u8>>,
     ) -> Result<StellarSendResult, String> {
         let sequence = self.fetch_sequence(from_address).await? + 1;
         let base_fee = self.fetch_base_fee().await?;
 
-        let network_passphrase = b"Public Global Stellar Network ; September 2015";
+        let default_passphrase = b"Public Global Stellar Network ; September 2015";
+        let passphrase_bytes: &[u8] = network_passphrase.as_deref().unwrap_or(default_passphrase);
         let tx_xdr = build_signed_payment_xdr_with_asset(
             from_address,
             to_address,
@@ -79,7 +85,7 @@ impl StellarClient {
             &asset,
             base_fee,
             sequence,
-            network_passphrase,
+            passphrase_bytes,
             private_key_bytes,
             public_key_bytes,
         )?;

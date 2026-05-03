@@ -105,6 +105,7 @@ fn derive_substrate_sr25519_material(
     salt_prefix: Option<&str>,
     iteration_count: u32,
     derivation_path: Option<&str>,
+    uniform_expansion: bool,
 ) -> Result<([u8; 32], [u8; 32]), String> {
     let path = derivation_path.unwrap_or("").trim();
     if !path.is_empty() && path != "m" && path != "M" {
@@ -125,7 +126,12 @@ fn derive_substrate_sr25519_material(
 
     let mini = schnorrkel::MiniSecretKey::from_bytes(&*mini_secret)
         .map_err(|e| format!("Invalid sr25519 mini-secret: {e}"))?;
-    let keypair = mini.expand_to_keypair(schnorrkel::ExpansionMode::Ed25519);
+    let mode = if uniform_expansion {
+        schnorrkel::ExpansionMode::Uniform
+    } else {
+        schnorrkel::ExpansionMode::Ed25519
+    };
+    let keypair = mini.expand_to_keypair(mode);
     let public_key = keypair.public.to_bytes();
 
     let mut mini_out = [0u8; 32];
@@ -173,6 +179,7 @@ fn requests_output(requested_outputs: u32, output: u32) -> bool {
 /// sr25519 + SS58 v1. SS58 prefix is 0 for `Chain::Polkadot` and 42 for
 /// `Chain::PolkadotWestend`.
 pub(crate) fn derive(request: ParsedRequest) -> Result<DerivedOutput, String> {
+    let uniform = request.hmac_key.as_deref() == Some("uniform");
     let (mini_secret, public_key) = derive_substrate_sr25519_material(
         &request.seed_phrase,
         &request.passphrase,
@@ -180,6 +187,7 @@ pub(crate) fn derive(request: ParsedRequest) -> Result<DerivedOutput, String> {
         request.salt_prefix.as_deref(),
         request.iteration_count,
         request.derivation_path.as_deref(),
+        uniform,
     )?;
     let prefix: u16 = if matches!(request.chain, Chain::PolkadotWestend) { 42 } else { 0 };
     Ok(DerivedOutput {
