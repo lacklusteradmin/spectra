@@ -15,6 +15,7 @@ pub mod evm;
 pub mod icp;
 pub mod kaspa;
 pub mod litecoin;
+pub mod mweb;
 pub mod monero;
 pub mod near;
 pub mod polkadot;

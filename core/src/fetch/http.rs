@@ -38,6 +38,7 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use std::sync::LazyLock;
+use parking_lot::RwLock;
 use reqwest::{Client, Method, StatusCode};
 use serde::de::DeserializeOwned;
 use serde::Serialize;
@@ -47,30 +48,36 @@ use tokio::time::sleep;
 // Shared client
 // ----------------------------------------------------------------
 
-/// Process-wide shared `reqwest` client. One allocation, many tasks.
+/// Process-wide shared `reqwest` client. Interior `RwLock` lets `tor.rs`
+/// swap in a SOCKS5-proxied client at runtime without touching call sites.
 static SHARED_CLIENT: LazyLock<Arc<HttpClient>> = LazyLock::new(|| {
-    Arc::new(HttpClient::new())
+    Arc::new(HttpClient::new(None))
 });
 
 pub struct HttpClient {
-    inner: Client,
+    inner: RwLock<Client>,
+}
+
+fn build_reqwest_client(proxy_url: Option<&str>) -> Client {
+    // Note: `https_only` is intentionally *not* enforced at the client layer.
+    // URLs come from a curated provider catalog that is already HTTPS-only;
+    // enforcing at the transport layer also blocks wiremock / localhost tests.
+    let mut builder = Client::builder()
+        .connect_timeout(Duration::from_secs(10))
+        .timeout(Duration::from_secs(30))
+        .gzip(true)
+        .user_agent(concat!("spectra-core/", env!("CARGO_PKG_VERSION")));
+    if let Some(url) = proxy_url {
+        if let Ok(proxy) = reqwest::Proxy::all(url) {
+            builder = builder.proxy(proxy);
+        }
+    }
+    builder.build().unwrap_or_default()
 }
 
 impl HttpClient {
-    fn new() -> Self {
-        // Note: `https_only` is intentionally *not* enforced at the
-        // client layer. URLs come from a curated provider catalog that
-        // is already HTTPS-only; enforcing at the transport layer also
-        // blocks wiremock / localhost tests. Callers that need a hard
-        // guarantee should validate the scheme at the catalog level.
-        let inner = Client::builder()
-            .connect_timeout(Duration::from_secs(10))
-            .timeout(Duration::from_secs(30))
-            .gzip(true)
-            .user_agent(concat!("spectra-core/", env!("CARGO_PKG_VERSION")))
-            .build()
-            .unwrap_or_default();
-        Self { inner }
+    fn new(proxy_url: Option<&str>) -> Self {
+        Self { inner: RwLock::new(build_reqwest_client(proxy_url)) }
     }
 
     /// Returns the process-wide singleton.
@@ -78,10 +85,22 @@ impl HttpClient {
         SHARED_CLIENT.clone()
     }
 
+    /// Rebuild the inner reqwest client with a new proxy setting.
+    /// Called by `tor.rs` when Tor comes up or is stopped.
+    pub(crate) fn set_proxy(&self, proxy_url: Option<&str>) {
+        *self.inner.write() = build_reqwest_client(proxy_url);
+    }
+
+    /// Clone the inner reqwest client (cheap — it is an Arc internally).
+    /// Callers must NOT hold this across a lock boundary.
+    fn get_client(&self) -> Client {
+        self.inner.read().clone()
+    }
+
     /// Access the underlying reqwest client for callers that need full control
     /// over request construction (e.g. the generic UniFFI `http_request` bridge).
-    pub fn reqwest_client(&self) -> &Client {
-        &self.inner
+    pub fn reqwest_client(&self) -> Client {
+        self.get_client()
     }
 
     // ----------------------------------------------------------------
@@ -105,7 +124,8 @@ impl HttpClient {
                 sleep(delay).await;
             }
 
-            let mut req = self.inner.request(method.clone(), url);
+            let client = self.get_client();
+            let mut req = client.request(method.clone(), url);
             for (key, value) in headers {
                 req = req.header(*key, *value);
             }
@@ -176,7 +196,7 @@ impl HttpClient {
                 sleep(profile.delay_for_attempt(attempt)).await;
             }
 
-            let result = self.inner.get(url).send().await;
+            let result = self.get_client().get(url).send().await;
             match result {
                 Err(e) => {
                     last_err = format_reqwest_error(&e);
@@ -236,7 +256,7 @@ impl HttpClient {
             }
 
             let result = self
-                .inner
+                .get_client()
                 .post(url)
                 .header("Content-Type", "text/plain")
                 .body(body.clone())
@@ -315,6 +335,17 @@ impl RetryProfile {
         }
         false
     }
+}
+
+// ----------------------------------------------------------------
+// Tor proxy switch (called by tor.rs)
+// ----------------------------------------------------------------
+
+/// Replace the shared reqwest client with one that routes all traffic
+/// through the given SOCKS5 URL, or remove the proxy when `None`.
+/// Called by `crate::tor` when Arti finishes bootstrapping / is stopped.
+pub(crate) fn set_socks5_proxy(proxy_url: Option<&str>) {
+    SHARED_CLIENT.set_proxy(proxy_url);
 }
 
 // ----------------------------------------------------------------

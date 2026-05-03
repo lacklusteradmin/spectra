@@ -1,10 +1,11 @@
-//! Litecoin send: build + sign legacy P2PKH transactions, then broadcast via
-//! Blockbook `/api/v2/sendtx`.
+//! Litecoin send: P2PKH transactions and MWEB peg-in transactions, broadcast
+//! via Blockbook `/api/v2/sendtx`.
 
 use crate::http::{with_fallback, RetryProfile};
 
-use crate::derivation::chains::litecoin::{decode_ltc_address, ltc_p2pkh_script};
+use crate::derivation::chains::litecoin::{decode_ltc_address, is_mweb_address, ltc_p2pkh_script, parse_mweb_address};
 use crate::fetch::chains::litecoin::{LitecoinClient, LtcSendResult};
+use crate::send::chains::mweb::{build_peg_in_extension, MWEB_PEGIN_OVERHEAD_BYTES};
 
 impl LitecoinClient {
     pub async fn broadcast_raw_tx(&self, hex_tx: &str) -> Result<LtcSendResult, String> {
@@ -26,6 +27,8 @@ impl LitecoinClient {
     }
 
     /// Fetch UTXOs, sign a legacy P2PKH LTC transaction, and broadcast.
+    /// Automatically routes to the MWEB peg-in path when `to_address` is
+    /// an `ltcmweb1` or `tmweb1` stealth address.
     pub async fn sign_and_broadcast(
         &self,
         from_address: &str,
@@ -35,15 +38,27 @@ impl LitecoinClient {
         private_key_bytes: &[u8],
         dust_threshold: Option<u64>,
     ) -> Result<LtcSendResult, String> {
+        if is_mweb_address(to_address) {
+            return self
+                .sign_and_broadcast_mweb_peg_in(
+                    from_address,
+                    to_address,
+                    amount_sat,
+                    fee_sat,
+                    private_key_bytes,
+                    dust_threshold,
+                )
+                .await;
+        }
         let utxos = self.fetch_utxos(from_address).await?;
         let script_pubkey = ltc_p2pkh_script(&decode_ltc_address(from_address)?)?;
         let utxo_tuples: Vec<(String, u32, u64, Vec<u8>)> = utxos
             .iter()
             .map(|u| (u.txid.clone(), u.vout, u.value_sat, script_pubkey.clone()))
             .collect();
-        let raw = sign_ltc_p2pkh(
+        let raw = sign_ltc_with_output_script(
             &utxo_tuples,
-            to_address,
+            &ltc_p2pkh_script(&decode_ltc_address(to_address)?)?,
             amount_sat,
             fee_sat,
             from_address,
@@ -52,10 +67,62 @@ impl LitecoinClient {
         )?;
         self.broadcast_raw_tx(&hex::encode(&raw)).await
     }
+
+    /// Build and broadcast an MWEB peg-in transaction.
+    ///
+    /// Constructs:
+    ///   - Standard Litecoin tx with UTXOs as inputs, a HogEx output (witness
+    ///     v8 + Pedersen commitment) at `amount_sat`, and optional P2PKH change.
+    ///   - MWEB extension block (Output + PegIn Kernel) appended after locktime.
+    ///
+    /// `fee_sat` is applied as-is; the MWEB overhead (~1017 extra bytes) should
+    /// already be factored in by the caller's fee estimation.
+    async fn sign_and_broadcast_mweb_peg_in(
+        &self,
+        from_address: &str,
+        to_mweb_address: &str,
+        amount_sat: u64,
+        fee_sat: u64,
+        private_key_bytes: &[u8],
+        dust_threshold: Option<u64>,
+    ) -> Result<LtcSendResult, String> {
+        let mweb_addr = parse_mweb_address(to_mweb_address)?;
+
+        // Enforce a fee floor that covers both the on-chain tx and the MWEB
+        // extension block overhead, assuming ≥1 sat/vbyte.
+        let min_fee = MWEB_PEGIN_OVERHEAD_BYTES;
+        let effective_fee = fee_sat.max(min_fee);
+
+        let (mweb_ext, hog_script) =
+            build_peg_in_extension(&mweb_addr, amount_sat, effective_fee)?;
+
+        let utxos = self.fetch_utxos(from_address).await?;
+        let script_pubkey = ltc_p2pkh_script(&decode_ltc_address(from_address)?)?;
+        let utxo_tuples: Vec<(String, u32, u64, Vec<u8>)> = utxos
+            .iter()
+            .map(|u| (u.txid.clone(), u.vout, u.value_sat, script_pubkey.clone()))
+            .collect();
+
+        // Sign the on-chain portion using the HogEx script as the recipient output
+        let mut raw = sign_ltc_with_output_script(
+            &utxo_tuples,
+            &hog_script,
+            amount_sat,
+            effective_fee,
+            from_address,
+            private_key_bytes,
+            dust_threshold,
+        )?;
+
+        // Append MWEB extension block after the standard tx bytes
+        raw.extend_from_slice(&mweb_ext);
+
+        self.broadcast_raw_tx(&hex::encode(&raw)).await
+    }
 }
 
 // ----------------------------------------------------------------
-// Litecoin P2PKH signing (identical wire format to DOGE/BTC legacy)
+// Litecoin transaction signing
 // ----------------------------------------------------------------
 
 fn ltc_decode_txid(txid: &str) -> Result<Vec<u8>, String> {
@@ -85,9 +152,14 @@ fn ltc_varint(n: usize) -> Vec<u8> {
     }
 }
 
-fn sign_ltc_p2pkh(
+/// Sign a Litecoin transaction spending P2PKH inputs to an arbitrary output script.
+///
+/// `to_script` is the full scriptPubKey for the primary output (recipient).
+/// For ordinary sends it is a P2PKH script; for MWEB peg-ins it is the HogEx
+/// witness-v8 script produced by `build_peg_in_extension`.
+fn sign_ltc_with_output_script(
     utxos: &[(String, u32, u64, Vec<u8>)],
-    to_address: &str,
+    to_script: &[u8],
     amount_sat: u64,
     fee_sat: u64,
     change_address: &str,
@@ -104,10 +176,7 @@ fn sign_ltc_p2pkh(
     let total_in: u64 = utxos.iter().map(|(_, _, v, _)| v).sum();
     let change = total_in.saturating_sub(amount_sat + fee_sat);
 
-    let mut outputs: Vec<(Vec<u8>, u64)> = vec![(
-        ltc_p2pkh_script(&decode_ltc_address(to_address)?)?,
-        amount_sat,
-    )];
+    let mut outputs: Vec<(Vec<u8>, u64)> = vec![(to_script.to_vec(), amount_sat)];
     if change > dust_threshold.unwrap_or(546) {
         outputs.push((ltc_p2pkh_script(&decode_ltc_address(change_address)?)?, change));
     }

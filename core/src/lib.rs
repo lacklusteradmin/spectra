@@ -104,6 +104,7 @@ pub use app_core::*;
 pub mod derivation;
 pub mod diagnostics;
 pub mod fetch;
+pub mod tor;
 pub mod formatting;
 pub mod receive;
 pub mod registry;

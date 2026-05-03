@@ -58,6 +58,16 @@ alloy-rlp = { version = "0.3", features = ["derive"] }
 # encoders that everything else uses.
 bitcoin = { version = "0.32", features = ["rand-std"] }
 
+# ─── Litecoin MWEB (MimbleWimble Extension Blocks) ──────────────────
+# blake3: MWEB uses BLAKE3 for all domain-separated hashes (EHashTag).
+# grin_secp256k1zkp is the Grin/MimbleWimble fork of libsecp256k1-zkp.
+# It provides Pedersen commitments and Bulletproof range proofs (via
+# secp256k1_bulletproof_rangeproof_prove) needed to build MWEB peg-in
+# transactions.  The crate's lib name is "secp256k1zkp"; we alias it
+# to that name so `use secp256k1zkp::...` works in mweb.rs.
+blake3 = "1"
+secp256k1zkp = { package = "grin_secp256k1zkp", version = "0.7" }
+
 # ─── Seed envelope encryption ───────────────────────────────────────
 # AES-256-GCM envelope encryption for seed phrases at rest. Master key
 # is stored in the platform keychain; Rust owns encrypt/decrypt logic.
@@ -84,8 +94,16 @@ hex = "0.4"
 # reqwest: Esplora/Etherscan/RPC fetches (chains/, fetch/).
 # tokio + futures: async runtime for chain clients, fetch, store, service.
 # base64: HTTP basic auth, RPC payloads, TON address encoding.
-reqwest = { version = "0.12", default-features = false, features = ["rustls-tls-webpki-roots", "json", "gzip"] }
+reqwest = { version = "0.12", default-features = false, features = ["rustls-tls-webpki-roots", "json", "gzip", "socks"] }
+
+# ─── Embedded Tor client (arti) ──────────────────────────────────────
+# arti-client: pure-Rust Tor client. Bootstraps a Tor circuit and exposes
+#   DataStream connections that the SOCKS5 proxy in tor.rs relays through.
+# tor-rtcompat: runtime bridge; selects tokio+rustls as the async executor.
+arti-client = { version = "0.22", default-features = false, features = ["rustls", "tokio"] }
+tor-rtcompat = { version = "0.22", default-features = false, features = ["tokio", "rustls"] }
 tokio = { version = "1", features = ["rt-multi-thread", "macros", "sync", "time"] }
+tokio-util = { version = "0.7", features = ["compat"] }
 futures = "0.3"
 base64 = "0.22"
 
