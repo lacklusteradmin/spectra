@@ -78,16 +78,16 @@ struct ChainInfo {
 }
 
 fn supported_chains() -> Vec<ChainInfo> {
-    let bootstrap = spectra_core::platform::catalog::core_bootstrap()
-        .expect("failed to load chain catalog");
-    bootstrap
-        .chains
+    spectra_core::app_core_chain_presets()
+        .expect("failed to load chain catalog")
         .into_iter()
-        .filter_map(|c| {
-            c.default_derivation_path.map(|path| ChainInfo {
-                name: c.chain_name,
-                default_path: path,
-            })
+        .filter_map(|preset| {
+            preset.derivation_paths.iter()
+                .find(|p| p.is_default)
+                .map(|p| ChainInfo {
+                    name: preset.chain.clone(),
+                    default_path: p.derivation_path.clone(),
+                })
         })
         .collect()
 }

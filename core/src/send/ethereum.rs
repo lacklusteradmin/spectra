@@ -496,6 +496,7 @@ mod tests {
         let s = render_evm_overrides_fragment(Some(&EvmSendOverridesInput {
             nonce: Some(9),
             custom_fees: Some(EvmCustomFeeConfiguration { max_fee_per_gas_gwei: 50.0, max_priority_fee_per_gas_gwei: 3.0 }),
+            ..Default::default()
         }));
         assert!(s.starts_with(","));
         assert!(s.contains("\"nonce\":9"));
