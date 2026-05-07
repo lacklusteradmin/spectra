@@ -810,49 +810,58 @@ pub fn validate_wallet_import_draft(request: WalletImportDraftValidationRequest)
     has_chains && is_backup_verified
 }
 
+const PRIVATE_KEY_SUPPORTED_CHAINS: &[&str] = &[
+    "Bitcoin",
+    "Bitcoin Cash",
+    "Bitcoin SV",
+    "Litecoin",
+    "Dogecoin",
+    "Ethereum",
+    "Ethereum Classic",
+    "Arbitrum",
+    "Optimism",
+    "BNB Chain",
+    "Avalanche",
+    "Hyperliquid",
+    "Tron",
+    "Solana",
+    "Cardano",
+    "Stellar",
+    "XRP Ledger",
+    "Sui",
+    "Aptos",
+    "TON",
+    "Internet Computer",
+    "NEAR",
+    "Polkadot",
+    "Zcash",
+    "Bitcoin Gold",
+    "Decred",
+    "Kaspa",
+    "Dash",
+    "X Layer",
+    "Bittensor",
+    "Sei",
+    "Celo",
+    "Cronos",
+    "opBNB",
+    "zkSync Era",
+    "Sonic",
+    "Berachain",
+    "Unichain",
+    "Ink",
+];
+
 fn is_private_key_chain_supported(chain_name: &str) -> bool {
-    matches!(
-        chain_name,
-        "Bitcoin"
-            | "Bitcoin Cash"
-            | "Bitcoin SV"
-            | "Litecoin"
-            | "Dogecoin"
-            | "Ethereum"
-            | "Ethereum Classic"
-            | "Arbitrum"
-            | "Optimism"
-            | "BNB Chain"
-            | "Avalanche"
-            | "Hyperliquid"
-            | "Tron"
-            | "Solana"
-            | "Cardano"
-            | "Stellar"
-            | "XRP Ledger"
-            | "Sui"
-            | "Aptos"
-            | "TON"
-            | "Internet Computer"
-            | "NEAR"
-            | "Polkadot"
-            | "Zcash"
-            | "Bitcoin Gold"
-            | "Decred"
-            | "Kaspa"
-            | "Dash"
-            | "X Layer"
-            | "Bittensor"
-            | "Sei"
-            | "Celo"
-            | "Cronos"
-            | "opBNB"
-            | "zkSync Era"
-            | "Sonic"
-            | "Berachain"
-            | "Unichain"
-            | "Ink"
-    )
+    PRIVATE_KEY_SUPPORTED_CHAINS.contains(&chain_name)
+}
+
+/// Returns the ordered list of chain display names that support private-key
+/// import. Used by both iOS and (eventually) Android to gate the PK import
+/// flow — keeping the list here means adding a new chain is one edit.
+#[uniffi::export]
+pub fn core_supported_private_key_chain_names() -> Vec<String> {
+    PRIVATE_KEY_SUPPORTED_CHAINS.iter().map(|s| s.to_string()).collect()
 }
 
 fn validate_watch_only_draft_addresses(

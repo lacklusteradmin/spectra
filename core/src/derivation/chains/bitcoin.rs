@@ -20,11 +20,6 @@ use sha2::{Digest, Sha256, Sha512};
 use unicode_normalization::UnicodeNormalization;
 use zeroize::Zeroizing;
 
-use crate::derivation::engine::{
-    DerivedOutput, ParsedRequest, PublicKeyFormat, ScriptType, OUTPUT_ADDRESS, OUTPUT_PRIVATE_KEY,
-    OUTPUT_PUBLIC_KEY,
-};
-use crate::derivation::enums::Chain;
 use crate::fetch::chains::bitcoin::bitcoin_network_for_mode;
 
 // ── Address validation ───────────────────────────────────────────────────
@@ -105,7 +100,7 @@ fn resolve_bip39_language(name: Option<&str>) -> Result<Language, String> {
     }
 }
 
-fn derive_bip39_seed(
+pub(crate) fn derive_bip39_seed(
     seed_phrase: &str,
     passphrase: &str,
     iteration_count: u32,
@@ -417,13 +412,6 @@ pub(crate) const BTC_TESTNET: BitcoinNetworkParams = BitcoinNetworkParams {
     bech32_hrp: "tb",
 };
 
-fn network_params_for_chain(chain: Chain) -> BitcoinNetworkParams {
-    match chain {
-        Chain::BitcoinTestnet | Chain::BitcoinTestnet4 | Chain::BitcoinSignet => BTC_TESTNET,
-        _ => BTC_MAINNET,
-    }
-}
-
 pub(crate) fn encode_p2pkh(params: &BitcoinNetworkParams, compressed_pubkey: &[u8]) -> String {
     let mut payload = Vec::with_capacity(21);
     payload.push(params.p2pkh_version);
@@ -474,101 +462,6 @@ pub(crate) fn encode_p2tr(
     bech32::segwit::encode_v1(hrp, &tweaked.serialize())
         .map_err(|e| format!("bech32 encode v1: {e}"))
 }
-
-fn encode_address(
-    params: BitcoinNetworkParams,
-    script_type: ScriptType,
-    public_key: &PublicKey,
-    secp: &Secp256k1<All>,
-) -> Result<String, String> {
-    let compressed = public_key.serialize();
-    match script_type {
-        ScriptType::P2pkh => Ok(encode_p2pkh(&params, &compressed)),
-        ScriptType::P2shP2wpkh => Ok(encode_p2sh_p2wpkh(&params, &compressed)),
-        ScriptType::P2wpkh => encode_p2wpkh(&params, &compressed),
-        ScriptType::P2tr => encode_p2tr(&params, secp, public_key),
-        _ => Err("Unsupported Bitcoin script type.".to_string()),
-    }
-}
-
-// ── Public key formatting ────────────────────────────────────────────────
-
-fn format_secp_public_key(
-    public_key: &PublicKey,
-    format: PublicKeyFormat,
-) -> Result<Vec<u8>, String> {
-    Ok(match format {
-        PublicKeyFormat::Compressed => public_key.serialize().to_vec(),
-        PublicKeyFormat::Uncompressed => public_key.serialize_uncompressed().to_vec(),
-        PublicKeyFormat::XOnly => public_key.x_only_public_key().0.serialize().to_vec(),
-        PublicKeyFormat::Raw => public_key.serialize().to_vec(),
-        PublicKeyFormat::Auto => {
-            return Err("Public key format must be explicit.".to_string());
-        }
-    })
-}
-
-// ── Top-level derivation ─────────────────────────────────────────────────
-
-fn requests_output(requested_outputs: u32, output: u32) -> bool {
-    requested_outputs & output != 0
-}
-
-/// Derive a Bitcoin keypair + address from a seed phrase + BIP-32 path.
-/// Handles mainnet, testnet, testnet4, and signet via the chain identity.
-pub(crate) fn derive(request: ParsedRequest) -> Result<DerivedOutput, String> {
-    let secp = Secp256k1::new();
-    let derivation_path = request
-        .derivation_path
-        .clone()
-        .ok_or("Derivation path is required.")?;
-    let script_type = request.script_type;
-
-    let seed = derive_bip39_seed(
-        &request.seed_phrase,
-        &request.passphrase,
-        request.iteration_count,
-        request.mnemonic_wordlist.as_deref(),
-        request.salt_prefix.as_deref(),
-    )?;
-
-    let key_bytes = request
-        .hmac_key
-        .as_deref()
-        .filter(|v| !v.is_empty())
-        .map(|v| v.as_bytes())
-        .unwrap_or(b"Bitcoin seed");
-    let master = ExtendedPrivateKey::master_from_seed(key_bytes, seed.as_ref())?;
-    let path = parse_bip32_path(&derivation_path)?;
-    let xpriv = master.derive_path(&secp, &path)?;
-    let secret_key = xpriv.private_key;
-    let public_key = PublicKey::from_secret_key(&secp, &secret_key);
-
-    let address = if requests_output(request.requested_outputs, OUTPUT_ADDRESS) {
-        let params = network_params_for_chain(request.chain);
-        Some(encode_address(params, script_type, &public_key, &secp)?)
-    } else {
-        None
-    };
-
-    Ok(DerivedOutput {
-        address,
-        public_key_hex: if requests_output(request.requested_outputs, OUTPUT_PUBLIC_KEY) {
-            Some(hex::encode(format_secp_public_key(
-                &public_key,
-                request.public_key_format,
-            )?))
-        } else {
-            None
-        },
-        private_key_hex: if requests_output(request.requested_outputs, OUTPUT_PRIVATE_KEY) {
-            Some(hex::encode(secret_key.secret_bytes()))
-        } else {
-            None
-        },
-    })
-}
-
 
 // ── Bitcoin address parsing (structural, for the validator) ──────────────
 

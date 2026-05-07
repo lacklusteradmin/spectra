@@ -2,9 +2,6 @@ use crate::store::wallet_domain::CoreSeedDerivationPaths;
 use serde::{Deserialize, Serialize};
 use std::sync::OnceLock;
 
-const CHAIN_PRESETS_JSON: &str = include_str!("../data/DerivationPresets.json");
-const REQUEST_COMPILATION_PRESETS_JSON: &str =
-    include_str!("../data/DerivationRequestCompilationPresets.json");
 const APP_ENDPOINT_DIRECTORY_JSON: &str = include_str!("../data/AppEndpointDirectory.json");
 
 const ENDPOINT_ROLE_READ: u32 = 1 << 0;
@@ -17,74 +14,6 @@ const ENDPOINT_ROLE_VERIFICATION: u32 = 1 << 6;
 const ENDPOINT_ROLE_RPC: u32 = 1 << 7;
 const ENDPOINT_ROLE_EXPLORER: u32 = 1 << 8;
 const ENDPOINT_ROLE_BACKEND: u32 = 1 << 9;
-
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, uniffi::Record)]
-#[serde(rename_all = "camelCase")]
-pub struct AppCoreChainPreset {
-    pub chain: String,
-    pub curve: String,
-    pub networks: Vec<AppCoreNetworkPreset>,
-    pub derivation_paths: Vec<AppCorePathPreset>,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, uniffi::Record)]
-#[serde(rename_all = "camelCase")]
-pub struct AppCoreNetworkPreset {
-    pub network: String,
-    pub title: String,
-    pub detail: String,
-    pub is_default: bool,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, uniffi::Record)]
-#[serde(rename_all = "camelCase")]
-pub struct AppCorePathPreset {
-    pub title: String,
-    pub detail: String,
-    pub derivation_path: String,
-    pub is_default: bool,
-}
-
-#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Hash, uniffi::Enum)]
-#[serde(rename_all = "camelCase")]
-pub enum AppCoreScriptPolicy {
-    BitcoinPurpose,
-    Fixed,
-}
-
-#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Hash, uniffi::Enum)]
-#[serde(rename_all = "camelCase")]
-pub enum AppCoreDerivationAlgorithm {
-    Bip32Secp256k1,
-    Slip10Ed25519,
-}
-
-#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Hash, uniffi::Enum)]
-#[serde(rename_all = "camelCase")]
-pub enum AppCoreAddressAlgorithm {
-    Bitcoin,
-    Evm,
-    Solana,
-}
-
-#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Hash, uniffi::Enum)]
-#[serde(rename_all = "camelCase")]
-pub enum AppCorePublicKeyFormat {
-    Compressed,
-    Uncompressed,
-    XOnly,
-    Raw,
-}
-
-#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Hash, uniffi::Enum)]
-#[serde(rename_all = "camelCase")]
-pub enum AppCoreScriptType {
-    P2pkh,
-    P2shP2wpkh,
-    P2wpkh,
-    P2tr,
-    Account,
-}
 
 /// Endpoint-table slot for a given chain. Mirrors `crate::registry::EndpointSlot`
 /// so the Swift side can ask Rust for the right `chain_id + offset` instead of
@@ -99,18 +28,6 @@ pub enum AppCoreEndpointSlot {
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, uniffi::Record)]
 #[serde(rename_all = "camelCase")]
-pub struct AppCoreRequestCompilationPreset {
-    pub chain: String,
-    pub derivation_algorithm: AppCoreDerivationAlgorithm,
-    pub address_algorithm: AppCoreAddressAlgorithm,
-    pub public_key_format: AppCorePublicKeyFormat,
-    pub script_policy: AppCoreScriptPolicy,
-    pub fixed_script_type: Option<AppCoreScriptType>,
-    pub bitcoin_purpose_script_map: Option<std::collections::HashMap<String, AppCoreScriptType>>,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, uniffi::Record)]
-#[serde(rename_all = "camelCase")]
 pub struct AppCoreDerivationPathResolution {
     pub chain: String,
     pub normalized_path: String,
@@ -120,8 +37,6 @@ pub struct AppCoreDerivationPathResolution {
 
 #[derive(Debug, Clone)]
 pub(crate) struct AppCoreCatalog {
-    pub(crate) chain_presets: Vec<AppCoreChainPreset>,
-    pub(crate) request_compilation_presets: Vec<AppCoreRequestCompilationPreset>,
     pub(crate) endpoint_records: Vec<AppCoreEndpointRecord>,
     /// Parallel to `endpoint_records`: pre-computed bitmask per record so the
     /// hot-path filter avoids per-call string matching on `roles`.
@@ -218,23 +133,11 @@ static APP_CORE_CATALOG: OnceLock<Result<AppCoreCatalog, String>> = OnceLock::ne
 // ── UniFFI exports ────────────────────────────────────────────────────────
 
 #[uniffi::export]
-pub fn app_core_chain_presets() -> Result<Vec<AppCoreChainPreset>, crate::SpectraBridgeError> {
-    Ok(app_core_catalog()?.chain_presets.clone())
-}
-
-#[uniffi::export]
-pub fn app_core_request_compilation_presets(
-) -> Result<Vec<AppCoreRequestCompilationPreset>, crate::SpectraBridgeError> {
-    Ok(app_core_catalog()?.request_compilation_presets.clone())
-}
-
-#[uniffi::export]
 pub fn app_core_resolve_derivation_path(
     chain: String,
     derivation_path: String,
 ) -> Result<AppCoreDerivationPathResolution, crate::SpectraBridgeError> {
-    let catalog = app_core_catalog()?;
-    let default_path = default_path_from_catalog(catalog, &chain)?;
+    let default_path = default_path_from_catalog(&chain)?;
     let normalized_path = normalize_derivation_path(&derivation_path, &default_path);
     Ok(AppCoreDerivationPathResolution {
         chain: chain.clone(),
@@ -248,9 +151,7 @@ pub fn app_core_resolve_derivation_path(
 pub fn app_core_derivation_paths_for_preset(
     account_index: u32,
 ) -> Result<CoreSeedDerivationPaths, crate::SpectraBridgeError> {
-    Ok(app_core_catalog().and_then(|catalog| {
-        seed_derivation_paths_for_account(catalog, account_index)
-    })?)
+    Ok(seed_derivation_paths_for_account(account_index)?)
 }
 
 #[uniffi::export]
@@ -386,12 +287,6 @@ pub(crate) fn app_core_catalog() -> Result<&'static AppCoreCatalog, String> {
 
 fn load_app_core_catalog() -> Result<AppCoreCatalog, String> {
     let display_error = |e: serde_json::Error| e.to_string();
-    let chain_presets =
-        serde_json::from_str::<Vec<AppCoreChainPreset>>(CHAIN_PRESETS_JSON).map_err(display_error)?;
-    let request_compilation_presets = serde_json::from_str::<Vec<AppCoreRequestCompilationPreset>>(
-        REQUEST_COMPILATION_PRESETS_JSON,
-    )
-    .map_err(display_error)?;
     let endpoint_records =
         serde_json::from_str::<Vec<AppCoreEndpointRecord>>(APP_ENDPOINT_DIRECTORY_JSON)
             .map_err(display_error)?;
@@ -412,8 +307,6 @@ fn load_app_core_catalog() -> Result<AppCoreCatalog, String> {
             .push(idx);
     }
     Ok(AppCoreCatalog {
-        chain_presets,
-        request_compilation_presets,
         endpoint_records,
         endpoint_role_masks,
         endpoint_records_by_chain,
@@ -519,16 +412,6 @@ mod tests {
     use super::*;
 
     #[test]
-    fn loads_chain_presets_catalog() {
-        let catalog = app_core_catalog().expect("catalog");
-        assert!(catalog.chain_presets.iter().any(|p| p.chain == "Bitcoin"));
-        assert!(catalog
-            .request_compilation_presets
-            .iter()
-            .any(|p| p.chain == "Ethereum"));
-    }
-
-    #[test]
     fn resolves_bitcoin_taproot_path() {
         let default_path = default_path_for_chain("Bitcoin").expect("default path");
         let normalized = normalize_derivation_path("m/86'/0'/2'/0/0", &default_path);
@@ -539,8 +422,7 @@ mod tests {
 
     #[test]
     fn preserves_bitcoin_sv_default_path_for_preset_accounts() {
-        let catalog = app_core_catalog().expect("catalog");
-        let paths = seed_derivation_paths_for_account(catalog, 2).expect("paths");
+        let paths = seed_derivation_paths_for_account(2).expect("paths");
         assert_eq!(paths.bitcoin_sv, "m/44'/236'/0'/0/0");
         assert_eq!(paths.ethereum, "m/44'/60'/2'/0/0");
         assert_eq!(paths.solana, "m/44'/501'/2'/0'");
@@ -629,30 +511,6 @@ pub(crate) fn derivation_path_segment_value(path: &str, index: usize) -> Option<
     parse_derivation_path(path).and_then(|segments| segments.get(index).map(|s| s.value))
 }
 
-pub(crate) fn compile_script_type(
-    preset: &AppCoreRequestCompilationPreset,
-    derivation_path: Option<&str>,
-) -> Result<AppCoreScriptType, String> {
-    match preset.script_policy {
-        AppCoreScriptPolicy::BitcoinPurpose => {
-            let purpose = derivation_path
-                .and_then(|path| derivation_path_segment_value(path, 0))
-                .ok_or_else(|| {
-                    "Unable to compile Bitcoin script type from derivation path.".to_string()
-                })?;
-            let map = preset.bitcoin_purpose_script_map.as_ref().ok_or_else(|| {
-                "Bitcoin purpose script policy requires bitcoinPurposeScriptMap.".to_string()
-            })?;
-            map.get(&purpose.to_string())
-                .copied()
-                .ok_or_else(|| format!("Unsupported Bitcoin derivation purpose {purpose}."))
-        }
-        AppCoreScriptPolicy::Fixed => preset
-            .fixed_script_type
-            .ok_or_else(|| "Fixed script policy requires fixedScriptType.".to_string()),
-    }
-}
-
 pub(super) fn resolved_account_index(chain_name: &str, normalized_path: &str) -> u32 {
     match chain_name {
         "Bitcoin" if normalized_path == "m/0'/0" || normalized_path == "m/0'/0/0" => 0,
@@ -696,7 +554,6 @@ pub(super) fn resolved_flavor(chain_name: &str, normalized_path: &str) -> &'stat
 }
 
 pub(super) fn seed_derivation_paths_for_account(
-    catalog: &AppCoreCatalog,
     account: u32,
 ) -> Result<CoreSeedDerivationPaths, String> {
     // SLIP-44 standard `m/44'/coin'/account'/0/0` is the most common shape;
@@ -706,7 +563,7 @@ pub(super) fn seed_derivation_paths_for_account(
         is_custom_enabled: false,
         bitcoin: format!("m/84'/0'/{account}'/0/0"),
         bitcoin_cash: format!("m/44'/145'/{account}'/0/0"),
-        bitcoin_sv: default_path_from_catalog(catalog, "Bitcoin SV")?,
+        bitcoin_sv: default_path_from_catalog("Bitcoin SV")?,
         litecoin: slip44(2, account),
         dogecoin: slip44(3, account),
         ethereum: evm.clone(),
@@ -761,27 +618,18 @@ fn slip44(coin_type: u32, account: u32) -> String {
     format!("m/44'/{coin_type}'/{account}'/0/0")
 }
 
-pub(super) fn default_path_from_catalog(
-    catalog: &AppCoreCatalog,
-    chain_name: &str,
-) -> Result<String, String> {
-    catalog
-        .chain_presets
+pub(super) fn default_path_from_catalog(chain_name: &str) -> Result<String, String> {
+    crate::chains::catalog()
         .iter()
-        .find(|p| p.chain == chain_name)
-        .and_then(|p| {
-            p.derivation_paths
-                .iter()
-                .find(|path| path.is_default)
-                .or_else(|| p.derivation_paths.first())
-        })
-        .map(|p| p.derivation_path.clone())
+        .find(|c| c.name == chain_name)
+        .map(|c| c.derivation_path.clone())
+        .filter(|p| p.starts_with("m/"))
         .ok_or_else(|| format!("Missing default derivation path for {chain_name}."))
 }
 
 #[cfg(test)]
 pub(super) fn default_path_for_chain(chain_name: &str) -> Result<String, String> {
-    default_path_from_catalog(crate::app_core::app_core_catalog()?, chain_name)
+    default_path_from_catalog(chain_name)
 }
 
 // ── FFI surface ──────────────────────────────────────────────────────────
@@ -804,15 +652,6 @@ pub fn core_normalize_derivation_path(raw_path: String, fallback: String) -> Str
 #[uniffi::export]
 pub fn core_derivation_path_segment_value(path: String, index: u32) -> Option<u32> {
     derivation_path_segment_value(&path, index as usize)
-}
-
-#[uniffi::export]
-pub fn core_compile_script_type(
-    preset: crate::app_core::AppCoreRequestCompilationPreset,
-    derivation_path: Option<String>,
-) -> Result<crate::app_core::AppCoreScriptType, crate::SpectraBridgeError> {
-    compile_script_type(&preset, derivation_path.as_deref())
-        .map_err(crate::SpectraBridgeError::from)
 }
 
 #[uniffi::export]
@@ -958,155 +797,20 @@ pub(super) fn live_chain_names() -> Vec<String> {
 
 // ── app_chain_descriptors ─────────────────────────────────────────────────
 
-struct DescBuilder<'a> {
-    id: &'a str,
-    name: &'a str,
-    label: &'a str,
-    native: &'a str,
-    keywords: &'a [&'a str],
-    is_evm: bool,
-    catalog: bool,
-}
-
-impl<'a> DescBuilder<'a> {
-    fn build(self) -> AppCoreAppChainDescriptor {
-        AppCoreAppChainDescriptor {
-            id: self.id.to_string(),
-            chain_name: self.name.to_string(),
-            short_label: self.label.to_string(),
-            native_symbol: self.native.to_string(),
-            search_keywords: self.keywords.iter().map(|s| s.to_string()).collect(),
-            supports_diagnostics: true,
-            supports_endpoint_catalog: self.catalog,
-            is_evm: self.is_evm,
-        }
-    }
-}
-
-fn evm(id: &str, name: &str, label: &str, native: &str, keywords: &[&str]) -> AppCoreAppChainDescriptor {
-    DescBuilder {
-        id,
-        name,
-        label,
-        native,
-        keywords,
-        is_evm: true,
-        catalog: true,
-    }
-    .build()
-}
-
-fn chain(id: &str, name: &str, label: &str, native: &str, keywords: &[&str]) -> AppCoreAppChainDescriptor {
-    DescBuilder {
-        id,
-        name,
-        label,
-        native,
-        keywords,
-        is_evm: false,
-        catalog: true,
-    }
-    .build()
-}
-
-fn chain_no_catalog(id: &str, name: &str, label: &str, native: &str, keywords: &[&str]) -> AppCoreAppChainDescriptor {
-    DescBuilder {
-        id,
-        name,
-        label,
-        native,
-        keywords,
-        is_evm: false,
-        catalog: false,
-    }
-    .build()
-}
-
 pub(super) fn app_chain_descriptors() -> Vec<AppCoreAppChainDescriptor> {
-    vec![
-        chain("bitcoin", "Bitcoin", "BTC", "BTC", &["Bitcoin", "BTC"]),
-        chain("bitcoinCash", "Bitcoin Cash", "BCH", "BCH", &["Bitcoin Cash", "BCH"]),
-        chain_no_catalog("bitcoinSV", "Bitcoin SV", "BSV", "BSV", &["Bitcoin SV", "BSV"]),
-        chain("litecoin", "Litecoin", "LTC", "LTC", &["Litecoin", "LTC"]),
-        chain("dogecoin", "Dogecoin", "DOGE", "DOGE", &["Dogecoin", "DOGE"]),
-        evm("ethereum", "Ethereum", "ETH", "ETH", &["Ethereum", "ETH"]),
-        evm("ethereumClassic", "Ethereum Classic", "ETC", "ETC", &["Ethereum Classic", "ETC"]),
-        evm("arbitrum", "Arbitrum", "ARB", "ETH", &["Arbitrum", "ARB"]),
-        evm("optimism", "Optimism", "OP", "ETH", &["Optimism", "OP"]),
-        evm("bnb", "BNB Chain", "BNB", "BNB", &["BNB Chain", "BNB"]),
-        evm("avalanche", "Avalanche", "AVAX", "AVAX", &["Avalanche", "AVAX"]),
-        evm("hyperliquid", "Hyperliquid", "HYPE", "HYPE", &["Hyperliquid", "HYPE"]),
-        chain("tron", "Tron", "TRX", "TRX", &["Tron", "TRX"]),
-        chain("solana", "Solana", "SOL", "SOL", &["Solana", "SOL"]),
-        chain("cardano", "Cardano", "ADA", "ADA", &["Cardano", "ADA"]),
-        chain("xrp", "XRP Ledger", "XRP", "XRP", &["XRP Ledger", "XRP"]),
-        chain("stellar", "Stellar", "XLM", "XLM", &["Stellar", "XLM"]),
-        chain("monero", "Monero", "XMR", "XMR", &["Monero", "XMR"]),
-        chain("sui", "Sui", "SUI", "SUI", &["Sui", "SUI"]),
-        chain("aptos", "Aptos", "APT", "APT", &["Aptos", "APT"]),
-        chain("ton", "TON", "TON", "TON", &["TON"]),
-        chain("icp", "Internet Computer", "ICP", "ICP", &["Internet Computer", "ICP"]),
-        chain("near", "NEAR", "NEAR", "NEAR", &["NEAR"]),
-        chain("polkadot", "Polkadot", "DOT", "DOT", &["Polkadot", "DOT"]),
-        evm("polygon", "Polygon", "POL", "POL", &["Polygon", "POL", "MATIC"]),
-        evm("base", "Base", "BASE", "ETH", &["Base", "ETH"]),
-        evm("linea", "Linea", "LINEA", "ETH", &["Linea"]),
-        evm("scroll", "Scroll", "SCRL", "ETH", &["Scroll"]),
-        evm("blast", "Blast", "BLAST", "ETH", &["Blast"]),
-        evm("mantle", "Mantle", "MNT", "MNT", &["Mantle", "MNT"]),
-        chain("zcash", "Zcash", "ZEC", "ZEC", &["Zcash", "ZEC"]),
-        chain("bitcoinGold", "Bitcoin Gold", "BTG", "BTG", &["Bitcoin Gold", "BTG"]),
-        chain("decred", "Decred", "DCR", "DCR", &["Decred", "DCR"]),
-        chain("kaspa", "Kaspa", "KAS", "KAS", &["Kaspa", "KAS"]),
-        chain("dash", "Dash", "DASH", "DASH", &["Dash", "DASH"]),
-        evm("sei", "Sei", "SEI", "SEI", &["Sei", "SEI"]),
-        evm("celo", "Celo", "CELO", "CELO", &["Celo", "CELO"]),
-        evm("cronos", "Cronos", "CRO", "CRO", &["Cronos", "CRO"]),
-        evm("opBNB", "opBNB", "opBNB", "BNB", &["opBNB", "BNB L2"]),
-        evm("zkSyncEra", "zkSync Era", "zkSync", "ETH", &["zkSync Era", "zkSync"]),
-        evm("sonic", "Sonic", "S", "S", &["Sonic", "S"]),
-        evm("berachain", "Berachain", "BERA", "BERA", &["Berachain", "BERA"]),
-        evm("unichain", "Unichain", "UNI L2", "ETH", &["Unichain"]),
-        evm("ink", "Ink", "INK", "ETH", &["Ink"]),
-        evm("xLayer", "X Layer", "X Layer", "OKB", &["X Layer", "OKB", "OKX"]),
-        chain("bittensor", "Bittensor", "TAO", "TAO", &["Bittensor", "TAO", "subtensor"]),
-        // ── Testnet rows ────────────────────────────────────────────────
-        // Each testnet has its own descriptor with its own search keywords
-        // so users can find e.g. "Sepolia" or "Fuji" directly. Catalog flag
-        // mirrors the mainnet counterpart's value.
-        chain("bitcoinTestnet", "Bitcoin Testnet", "BTC", "BTC", &["Bitcoin Testnet", "tBTC", "testnet"]),
-        chain("bitcoinTestnet4", "Bitcoin Testnet4", "BTC", "BTC", &["Bitcoin Testnet4", "testnet4"]),
-        chain("bitcoinSignet", "Bitcoin Signet", "BTC", "BTC", &["Bitcoin Signet", "signet"]),
-        chain("litecoinTestnet", "Litecoin Testnet", "LTC", "LTC", &["Litecoin Testnet", "tLTC"]),
-        chain("bitcoinCashTestnet", "Bitcoin Cash Testnet", "BCH", "BCH", &["Bitcoin Cash Testnet", "tBCH"]),
-        chain_no_catalog("bitcoinSVTestnet", "Bitcoin SV Testnet", "BSV", "BSV", &["Bitcoin SV Testnet", "tBSV"]),
-        chain("dogecoinTestnet", "Dogecoin Testnet", "DOGE", "DOGE", &["Dogecoin Testnet", "tDOGE"]),
-        chain("zcashTestnet", "Zcash Testnet", "ZEC", "ZEC", &["Zcash Testnet"]),
-        chain("decredTestnet", "Decred Testnet", "DCR", "DCR", &["Decred Testnet"]),
-        chain("kaspaTestnet", "Kaspa Testnet", "KAS", "KAS", &["Kaspa Testnet"]),
-        chain("dashTestnet", "Dash Testnet", "DASH", "DASH", &["Dash Testnet"]),
-        evm("ethereumSepolia", "Ethereum Sepolia", "ETH", "ETH", &["Ethereum Sepolia", "Sepolia", "ETH"]),
-        evm("ethereumHoodi", "Ethereum Hoodi", "ETH", "ETH", &["Ethereum Hoodi", "Hoodi"]),
-        evm("arbitrumSepolia", "Arbitrum Sepolia", "ARB", "ETH", &["Arbitrum Sepolia", "Sepolia"]),
-        evm("optimismSepolia", "Optimism Sepolia", "OP", "ETH", &["Optimism Sepolia", "Sepolia"]),
-        evm("baseSepolia", "Base Sepolia", "BASE", "ETH", &["Base Sepolia", "Sepolia"]),
-        evm("bnbChainTestnet", "BNB Chain Testnet", "BNB", "BNB", &["BNB Chain Testnet", "Chapel"]),
-        evm("avalancheFuji", "Avalanche Fuji", "AVAX", "AVAX", &["Avalanche Fuji", "Fuji"]),
-        evm("polygonAmoy", "Polygon Amoy", "POL", "POL", &["Polygon Amoy", "Amoy"]),
-        evm("hyperliquidTestnet", "Hyperliquid Testnet", "HYPE", "HYPE", &["Hyperliquid Testnet"]),
-        evm("ethereumClassicMordor", "Ethereum Classic Mordor", "ETC", "ETC", &["Ethereum Classic Mordor", "Mordor"]),
-        chain("tronNile", "Tron Nile", "TRX", "TRX", &["Tron Nile", "Nile"]),
-        chain("solanaDevnet", "Solana Devnet", "SOL", "SOL", &["Solana Devnet", "Devnet"]),
-        chain("xrpTestnet", "XRP Ledger Testnet", "XRP", "XRP", &["XRP Ledger Testnet"]),
-        chain("stellarTestnet", "Stellar Testnet", "XLM", "XLM", &["Stellar Testnet"]),
-        chain("cardanoPreprod", "Cardano Preprod", "ADA", "ADA", &["Cardano Preprod", "Preprod"]),
-        chain("suiTestnet", "Sui Testnet", "SUI", "SUI", &["Sui Testnet"]),
-        chain("aptosTestnet", "Aptos Testnet", "APT", "APT", &["Aptos Testnet"]),
-        chain("tonTestnet", "TON Testnet", "TON", "TON", &["TON Testnet"]),
-        chain("nearTestnet", "NEAR Testnet", "NEAR", "NEAR", &["NEAR Testnet"]),
-        chain("polkadotWestend", "Polkadot Westend", "DOT", "DOT", &["Polkadot Westend", "Westend"]),
-        chain("moneroStagenet", "Monero Stagenet", "XMR", "XMR", &["Monero Stagenet", "Stagenet"]),
-    ]
+    crate::chains::catalog()
+        .iter()
+        .map(|c| AppCoreAppChainDescriptor {
+            id:                      c.id.clone(),
+            chain_name:              c.name.clone(),
+            short_label:             c.short_label.clone(),
+            native_symbol:           c.gas_token_symbol.clone(),
+            search_keywords:         c.search_keywords.clone(),
+            supports_diagnostics:    c.supports_diagnostics,
+            supports_endpoint_catalog: c.supports_endpoint_catalog,
+            is_evm:                  c.is_evm,
+        })
+        .collect()
 }
 
 // ── broadcast_provider_options ─────────────────────────────────────────────

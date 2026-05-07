@@ -91,19 +91,11 @@ fn chain_id_by_chain_name() -> &'static HashMap<String, String> {
     use std::sync::OnceLock;
     static LOOKUP: OnceLock<HashMap<String, String>> = OnceLock::new();
     LOOKUP.get_or_init(|| {
-        let raw = include_str!("../../../resources/strings/base/ChainWikiEntries.json");
-        let mut map = HashMap::new();
-        if let Ok(serde_json::Value::Array(entries)) = serde_json::from_str::<serde_json::Value>(raw)
-        {
-            for entry in entries {
-                let id = entry.get("id").and_then(|v| v.as_str());
-                let name = entry.get("name").and_then(|v| v.as_str());
-                if let (Some(id), Some(name)) = (id, name) {
-                    map.insert(name.trim().to_lowercase(), id.to_string());
-                }
-            }
-        }
-        map
+        crate::chains::catalog()
+            .iter()
+            .filter(|c| !c.name.is_empty())
+            .map(|c| (c.name.trim().to_lowercase(), c.id.clone()))
+            .collect()
     })
 }
 

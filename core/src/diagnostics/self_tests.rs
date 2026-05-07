@@ -1,5 +1,5 @@
 use crate::derivation::addressing::{validate_address, AddressValidationRequest};
-use crate::derivation_derive_all_addresses;
+use crate::derivation::api::chain_dispatch::derive_for_chain;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
@@ -284,10 +284,9 @@ fn run_address_rejects(spec: &ChainSpec) -> ChainSelfTestResult {
 }
 
 fn derive_one(chain_name: &str, path: &str) -> Option<String> {
-    let chain_paths = HashMap::from([(chain_name.to_string(), path.to_string())]);
-    derivation_derive_all_addresses(CANONICAL_MNEMONIC.to_string(), chain_paths)
-        .ok()?
-        .remove(chain_name)
+    derive_for_chain(chain_name, CANONICAL_MNEMONIC, path, None, None, None, true, false, false)
+        .ok()
+        .and_then(|(addr, _, _)| addr)
 }
 
 fn run_derivation(spec: &ChainSpec) -> Option<ChainSelfTestResult> {

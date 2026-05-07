@@ -185,10 +185,6 @@ use sha2::Sha512;
 use unicode_normalization::UnicodeNormalization;
 use zeroize::Zeroizing;
 
-use crate::derivation::engine::{
-    DerivedOutput, ParsedRequest, PublicKeyFormat, OUTPUT_ADDRESS, OUTPUT_PRIVATE_KEY,
-    OUTPUT_PUBLIC_KEY,
-};
 
 type HmacSha512 = Hmac<Sha512>;
 
@@ -327,79 +323,39 @@ impl ExtendedPrivateKey {
     }
 }
 
-fn format_secp_public_key(
-    public_key: &PublicKey,
-    format: PublicKeyFormat,
-) -> Result<Vec<u8>, String> {
-    Ok(match format {
-        PublicKeyFormat::Compressed => public_key.serialize().to_vec(),
-        PublicKeyFormat::Uncompressed => public_key.serialize_uncompressed().to_vec(),
-        PublicKeyFormat::XOnly => public_key.x_only_public_key().0.serialize().to_vec(),
-        PublicKeyFormat::Raw => public_key.serialize().to_vec(),
-        PublicKeyFormat::Auto => {
-            return Err("Public key format must be explicit.".to_string());
-        }
-    })
-}
-
-fn requests_output(requested_outputs: u32, output: u32) -> bool {
-    requested_outputs & output != 0
-}
-
-/// Derive a Kaspa Schnorr P2PK address from BIP-39 + BIP-32. Mainnet uses
-/// HRP `kaspa:`; the address payload is the 32-byte x-only pubkey.
-pub(crate) fn derive(request: ParsedRequest) -> Result<DerivedOutput, String> {
+pub(crate) fn derive_from_seed_phrase(
+    hrp: &str,
+    seed_phrase: &str,
+    derivation_path: &str,
+    passphrase: Option<&str>,
+    want_address: bool,
+    want_public_key: bool,
+    want_private_key: bool,
+) -> Result<(Option<String>, Option<String>, Option<String>), String> {
     let secp = Secp256k1::new();
-    let derivation_path = request
-        .derivation_path
-        .clone()
-        .ok_or("Derivation path is required.")?;
-    let seed = derive_bip39_seed(
-        &request.seed_phrase,
-        &request.passphrase,
-        request.iteration_count,
-        request.mnemonic_wordlist.as_deref(),
-        request.salt_prefix.as_deref(),
-    )?;
-
-    let key_bytes = request
-        .hmac_key
-        .as_deref()
-        .filter(|v| !v.is_empty())
-        .map(|v| v.as_bytes())
-        .unwrap_or(b"Bitcoin seed");
-    let master = ExtendedPrivateKey::master_from_seed(key_bytes, seed.as_ref())?;
-    let path = parse_bip32_path(&derivation_path)?;
+    let seed = derive_bip39_seed(seed_phrase, passphrase.unwrap_or(""), 0, None, None)?;
+    let master = ExtendedPrivateKey::master_from_seed(b"Bitcoin seed", seed.as_ref())?;
+    let path = parse_bip32_path(derivation_path)?;
     let xpriv = master.derive_path(&secp, &path)?;
     let public_key = PublicKey::from_secret_key(&secp, &xpriv.private_key);
     let private_bytes = xpriv.private_key.secret_bytes();
 
-    // Kaspa Schnorr addresses use the 32-byte x-only public key.
     let serialized = public_key.serialize();
     let mut x_only = [0u8; 32];
     x_only.copy_from_slice(&serialized[1..33]);
-    let address = if requests_output(request.requested_outputs, OUTPUT_ADDRESS) {
-        Some(encode_kaspa_schnorr(&x_only))
+
+    let address = if want_address {
+        Some(encode_kaspa_address(KASPA_VERSION_SCHNORR, &x_only, hrp)
+            .expect("schnorr payload is always valid"))
     } else {
         None
     };
 
-    Ok(DerivedOutput {
+    Ok((
         address,
-        public_key_hex: if requests_output(request.requested_outputs, OUTPUT_PUBLIC_KEY) {
-            Some(hex::encode(format_secp_public_key(
-                &public_key,
-                request.public_key_format,
-            )?))
-        } else {
-            None
-        },
-        private_key_hex: if requests_output(request.requested_outputs, OUTPUT_PRIVATE_KEY) {
-            Some(hex::encode(private_bytes))
-        } else {
-            None
-        },
-    })
+        want_public_key.then(|| hex::encode(public_key.serialize())),
+        want_private_key.then(|| hex::encode(private_bytes)),
+    ))
 }
 
 #[cfg(test)]

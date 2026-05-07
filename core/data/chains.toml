@@ -1,0 +1,2619 @@
+# Spectra chain registry — single source of truth for chain metadata.
+# Replaces: ChainWikiEntries.json, ChainVisualRegistry.json,
+#   app_chain_descriptors() in app_core.rs, chainSelectionDescriptors in
+#   WalletSetupViews.swift, TokenTrackingChain.tokenStandard/.contractAddressPrompt.
+#
+# Ordered by chain_id (= Chain enum discriminant in registry.rs).
+# The chain_id values are part of the persistence wire format — never renumber.
+# To add a chain: append at the end with the next unused chain_id.
+
+# ── Bitcoin (0) ───────────────────────────────────────────────────────────────
+
+[[chains]]
+id                       = "bitcoin"
+chain_id                 = 0
+name                     = "Bitcoin"
+symbol                   = "BTC"
+gas_token_symbol         = "BTC"
+short_label              = "BTC"
+search_keywords          = ["Bitcoin", "BTC"]
+category                 = "bitcoin-family"
+is_evm                   = false
+supports_endpoint_catalog = true
+color_name               = "orange"
+asset_name               = "bitcoin"
+token_standard           = ""
+contract_address_prompt  = ""
+tags                     = ["UTXO", "PoW", "Settlement"]
+family                   = "UTXO / base-layer settlement network"
+consensus                = "Proof of Work (SHA-256)"
+state_model              = "UTXO set"
+primary_use              = "Final settlement, long-horizon self-custody, and simple native BTC transfers."
+slip44_coin_type         = "0 (Bitcoin)"
+derivation_path          = "m/84'/0'/0'/0/0"
+alt_derivation_path      = ""
+total_circulation_model  = "Protocol-capped at 21,000,000 BTC."
+native_coingecko_id        = "bitcoin"
+native_decimals             = 8
+native_asset_name           = "Bitcoin"
+supports_diagnostics        = true
+notable_details          = [
+  "Spectra uses a native Bitcoin engine rather than the generic WalletCore path helper.",
+  "The default receive path shown here is native SegWit BIP84 account 0.",
+  "Balance is fundamentally derived from spendable UTXO state, not an account balance field.",
+]
+
+# ── Ethereum (1) ──────────────────────────────────────────────────────────────
+
+[[chains]]
+id                       = "ethereum"
+chain_id                 = 1
+name                     = "Ethereum"
+symbol                   = "ETH"
+gas_token_symbol         = "ETH"
+short_label              = "ETH"
+search_keywords          = ["Ethereum", "ETH"]
+category                 = "evm-l1"
+is_evm                   = true
+supports_endpoint_catalog = true
+color_name               = "purple"
+asset_name               = "ethereum"
+token_standard           = "ERC-20"
+contract_address_prompt  = "Contract Address"
+tags                     = ["EVM", "PoS", "Smart Contracts"]
+family                   = "Account-based smart contract network"
+consensus                = "Proof of Stake"
+state_model              = "Account state + contract storage"
+primary_use              = "General-purpose smart contracts, DeFi, ERC-20 tokens, and on-chain execution."
+slip44_coin_type         = "60 (Ether)"
+derivation_path          = "m/44'/60'/0'/0/0"
+alt_derivation_path      = ""
+total_circulation_model  = "No fixed maximum supply. Supply changes with validator issuance and fee burn, so long-run circulation is not statically estimatable."
+native_coingecko_id        = "ethereum"
+native_decimals             = 18
+native_asset_name           = "Ethereum"
+supports_diagnostics        = true
+notable_details          = [
+  "BNB Chain reuses the same EVM keyspace and default derivation path family in Spectra.",
+  "ETH balances come from account state; ERC-20 balances come from token contract state.",
+  "History APIs and live balance APIs are separate concerns on EVM chains.",
+]
+
+# ── Solana (2) ────────────────────────────────────────────────────────────────
+
+[[chains]]
+id                       = "solana"
+chain_id                 = 2
+name                     = "Solana"
+symbol                   = "SOL"
+gas_token_symbol         = "SOL"
+short_label              = "SOL"
+search_keywords          = ["Solana", "SOL"]
+category                 = "other"
+is_evm                   = false
+supports_endpoint_catalog = true
+color_name               = "green"
+asset_name               = "solana"
+token_standard           = "SPL"
+contract_address_prompt  = "Mint Address"
+tags                     = ["PoS", "High Throughput", "Smart Contracts"]
+family                   = "Account-based high-throughput network"
+consensus                = "Proof of Stake with Proof of History timing"
+state_model              = "Account state + program-owned token accounts"
+primary_use              = "High-throughput transfers, SPL tokens, and latency-sensitive on-chain applications."
+slip44_coin_type         = "501 (Solana)"
+derivation_path          = "m/44'/501'/0'/0'"
+alt_derivation_path      = ""
+total_circulation_model  = "No fixed maximum supply. Inflation, staking economics, and unlock schedules make long-run live circulation dynamic."
+native_coingecko_id        = "solana"
+native_decimals             = 9
+native_asset_name           = "Solana"
+supports_diagnostics        = true
+notable_details          = [
+  "SPL token balances live in associated token accounts, not in the owner wallet account directly.",
+  "A wallet can show correct history even when token-account balance discovery is degraded, which is why Spectra has Solana-specific fallback logic.",
+]
+
+# ── Dogecoin (3) ──────────────────────────────────────────────────────────────
+
+[[chains]]
+id                       = "dogecoin"
+chain_id                 = 3
+name                     = "Dogecoin"
+symbol                   = "DOGE"
+gas_token_symbol         = "DOGE"
+short_label              = "DOGE"
+search_keywords          = ["Dogecoin", "DOGE"]
+category                 = "bitcoin-family"
+is_evm                   = false
+supports_endpoint_catalog = true
+color_name               = "yellow"
+asset_name               = "dogecoin"
+token_standard           = ""
+contract_address_prompt  = ""
+tags                     = ["UTXO", "PoW", "Payments"]
+family                   = "UTXO payments network"
+consensus                = "Proof of Work with AuxPoW merged-mining ecosystem support"
+state_model              = "UTXO set"
+primary_use              = "Low-friction payments, transfers, and broad exchange support."
+slip44_coin_type         = "3 (Dogecoin)"
+derivation_path          = "m/44'/3'/0'/0/0"
+alt_derivation_path      = ""
+total_circulation_model  = "No fixed terminal cap. Issuance is bounded per block and per year, but the lifetime supply is not protocol-capped."
+native_coingecko_id        = "dogecoin"
+native_decimals             = 8
+native_asset_name           = "Dogecoin"
+supports_diagnostics        = true
+notable_details          = [
+  "Spectra tracks DOGE with extra discovery, keypool, and operational diagnostics beyond the other UTXO chains.",
+  "Because supply has no terminal cap, long-run circulation is intentionally treated here as unestimatable from a static settings page.",
+  "Like Bitcoin and Litecoin, the authoritative spendable state is the UTXO set.",
+]
+
+# ── XRP Ledger (4) ────────────────────────────────────────────────────────────
+
+[[chains]]
+id                       = "xrp"
+chain_id                 = 4
+name                     = "XRP Ledger"
+symbol                   = "XRP"
+gas_token_symbol         = "XRP"
+short_label              = "XRP"
+search_keywords          = ["XRP Ledger", "XRP"]
+category                 = "other"
+is_evm                   = false
+supports_endpoint_catalog = true
+color_name               = "cyan"
+asset_name               = "xrp"
+token_standard           = ""
+contract_address_prompt  = ""
+tags                     = ["Payments", "Settlement"]
+family                   = "Account-based payments ledger"
+consensus                = "XRPL consensus protocol"
+state_model              = "Account state + trust line objects"
+primary_use              = "Fast payments, issued assets, and order-book based transfers."
+slip44_coin_type         = "144 (XRP)"
+derivation_path          = "m/44'/144'/0'/0/0"
+alt_derivation_path      = ""
+total_circulation_model  = "Fixed at 100,000,000,000 XRP total created supply."
+native_coingecko_id        = "ripple"
+native_decimals             = 6
+native_asset_name           = "XRP"
+supports_diagnostics        = true
+notable_details          = [
+  "No mining: all XRP was created at genesis.",
+  "XRPL uses reserve requirements to prevent ledger spam and excessive state growth.",
+  "Issued assets on XRPL differ materially from ERC-20 and SPL token models.",
+]
+
+# ── Litecoin (5) ──────────────────────────────────────────────────────────────
+
+[[chains]]
+id                       = "litecoin"
+chain_id                 = 5
+name                     = "Litecoin"
+symbol                   = "LTC"
+gas_token_symbol         = "LTC"
+short_label              = "LTC"
+search_keywords          = ["Litecoin", "LTC"]
+category                 = "bitcoin-family"
+is_evm                   = false
+supports_endpoint_catalog = true
+color_name               = "blue"
+asset_name               = "litecoin"
+token_standard           = ""
+contract_address_prompt  = ""
+tags                     = ["UTXO", "PoW", "Payments"]
+family                   = "UTXO payments network"
+consensus                = "Proof of Work (Scrypt)"
+state_model              = "UTXO set"
+primary_use              = "Lower-fee payments and faster block cadence than Bitcoin."
+slip44_coin_type         = "2 (Litecoin)"
+derivation_path          = "m/44'/2'/0'/0/0"
+alt_derivation_path      = ""
+total_circulation_model  = "Protocol-capped at 84,000,000 LTC."
+native_coingecko_id        = "litecoin"
+native_decimals             = 8
+native_asset_name           = "Litecoin"
+supports_diagnostics        = true
+notable_details          = [
+  "Shares the UTXO accounting model with Bitcoin but uses a different address and fee environment.",
+  "Spectra derives Litecoin through WalletCore and refreshes against Litecoin-specific providers.",
+  "Four-times Bitcoin's nominal supply does not change divisibility or ledger semantics.",
+]
+
+# ── Bitcoin Cash (6) ──────────────────────────────────────────────────────────
+
+[[chains]]
+id                       = "bitcoin-cash"
+chain_id                 = 6
+name                     = "Bitcoin Cash"
+symbol                   = "BCH"
+gas_token_symbol         = "BCH"
+short_label              = "BCH"
+search_keywords          = ["Bitcoin Cash", "BCH"]
+category                 = "bitcoin-family"
+is_evm                   = false
+supports_endpoint_catalog = true
+color_name               = "orange"
+asset_name               = "bitcoincash"
+token_standard           = ""
+contract_address_prompt  = ""
+tags                     = ["UTXO", "PoW", "Payments"]
+family                   = "UTXO payments network"
+consensus                = "Proof of Work (SHA-256)"
+state_model              = "UTXO set"
+primary_use              = "Peer-to-peer payments with a Bitcoin-derived UTXO model and distinct address/network rules."
+slip44_coin_type         = "145 (Bitcoin Cash)"
+derivation_path          = "m/44'/145'/0'/0/0"
+alt_derivation_path      = ""
+total_circulation_model  = "Protocol-capped at 21,000,000 BCH."
+native_coingecko_id        = "bitcoin-cash"
+native_decimals             = 8
+native_asset_name           = "Bitcoin Cash"
+supports_diagnostics        = true
+notable_details          = [
+  "Bitcoin Cash keeps the Bitcoin-family UTXO model, but uses BCH-specific address validation, transaction history providers, and send logic in Spectra.",
+  "CashAddr formatting is common in user-facing BCH workflows, and Spectra normalizes BCH addresses accordingly.",
+  "Like Bitcoin, authoritative spendable state comes from confirmed and spendable UTXOs rather than an account balance field.",
+]
+
+# ── Tron (7) ──────────────────────────────────────────────────────────────────
+
+[[chains]]
+id                       = "tron"
+chain_id                 = 7
+name                     = "Tron"
+symbol                   = "TRX"
+gas_token_symbol         = "TRX"
+short_label              = "TRX"
+search_keywords          = ["Tron", "TRX"]
+category                 = "other"
+is_evm                   = false
+supports_endpoint_catalog = true
+color_name               = "red"
+asset_name               = "tron"
+token_standard           = "TRC-20"
+contract_address_prompt  = "Contract Address"
+tags                     = ["PoS", "Payments", "Smart Contracts"]
+family                   = "Account-based smart contract network"
+consensus                = "Delegated Proof of Stake"
+state_model              = "Account state + contract storage"
+primary_use              = "Transfers, TRC-20 token activity, and resource-metered smart contract execution."
+slip44_coin_type         = "195 (Tron)"
+derivation_path          = "m/44'/195'/0'/0/0"
+alt_derivation_path      = ""
+total_circulation_model  = "No fixed supply statement is surfaced here. Effective circulating supply changes over time, so it is treated as not statically estimatable in this wiki."
+native_coingecko_id        = "tron"
+native_decimals             = 6
+native_asset_name           = "Tron"
+supports_diagnostics        = true
+notable_details          = [
+  "Tron fees are resource-based and rely on Bandwidth and Energy rather than a pure gas model.",
+  "USDT on Tron is a major real-world usage path and is handled as a tracked TRC-20 asset in Spectra.",
+  "Tron addresses are derived from the ECDSA key family but use Tron-specific address encoding.",
+]
+
+# ── Stellar (8) ───────────────────────────────────────────────────────────────
+
+[[chains]]
+id                       = "stellar"
+chain_id                 = 8
+name                     = "Stellar"
+symbol                   = "XLM"
+gas_token_symbol         = "XLM"
+short_label              = "XLM"
+search_keywords          = ["Stellar", "XLM"]
+category                 = "other"
+is_evm                   = false
+supports_endpoint_catalog = true
+color_name               = "teal"
+asset_name               = "stellar"
+token_standard           = ""
+contract_address_prompt  = ""
+tags                     = ["Payments", "Settlement"]
+family                   = "Account-based payments network"
+consensus                = "Stellar Consensus Protocol"
+state_model              = "Account state + trustline objects"
+primary_use              = "Native XLM transfers, issued-asset settlement, and low-fee payment routing on Stellar."
+slip44_coin_type         = "148 (Stellar Lumens)"
+derivation_path          = "m/44'/148'/0'"
+alt_derivation_path      = ""
+total_circulation_model  = "No fixed terminal cap is surfaced here. Circulating supply is dynamic and partly shaped by foundation-controlled holdings and burns, so this page treats live circulation as non-static."
+native_coingecko_id        = "stellar"
+native_decimals             = 7
+native_asset_name           = "Stellar"
+supports_diagnostics        = true
+notable_details          = [
+  "Spectra currently focuses on native XLM transfers rather than Stellar issued assets and trustline management.",
+  "Stellar uses StrKey-encoded public addresses that typically start with G, not hex or SS58-style formats.",
+  "In-app send support signs Stellar payment operations and broadcasts them through public Horizon endpoints.",
+]
+
+# ── Cardano (9) ───────────────────────────────────────────────────────────────
+
+[[chains]]
+id                       = "cardano"
+chain_id                 = 9
+name                     = "Cardano"
+symbol                   = "ADA"
+gas_token_symbol         = "ADA"
+short_label              = "ADA"
+search_keywords          = ["Cardano", "ADA"]
+category                 = "other"
+is_evm                   = false
+supports_endpoint_catalog = true
+color_name               = "indigo"
+asset_name               = "cardano"
+token_standard           = ""
+contract_address_prompt  = ""
+tags                     = ["eUTXO", "PoS", "Smart Contracts"]
+family                   = "Extended-UTXO smart contract network"
+consensus                = "Ouroboros Proof of Stake"
+state_model              = "eUTXO"
+primary_use              = "Native-asset transfers, staking, and eUTXO-based smart contract workflows."
+slip44_coin_type         = "1815 (Cardano)"
+derivation_path          = "m/44'/1815'/0'/0/0"
+alt_derivation_path      = ""
+total_circulation_model  = "Protocol-capped at 45,000,000,000 ADA."
+native_coingecko_id        = "cardano"
+native_decimals             = 6
+native_asset_name           = "Cardano"
+supports_diagnostics        = true
+notable_details          = [
+  "Cardano is not account-based in the Ethereum sense; it extends the UTXO model with richer script semantics.",
+  "The remaining reserve and reward distribution affect circulating supply over time, but the maximum supply is fixed.",
+  "Native assets on Cardano do not require ERC-20-style token contracts.",
+]
+
+# ── Polkadot (10) ─────────────────────────────────────────────────────────────
+
+[[chains]]
+id                       = "polkadot"
+chain_id                 = 10
+name                     = "Polkadot"
+symbol                   = "DOT"
+gas_token_symbol         = "DOT"
+short_label              = "DOT"
+search_keywords          = ["Polkadot", "DOT"]
+category                 = "other"
+is_evm                   = false
+supports_endpoint_catalog = true
+color_name               = "pink"
+asset_name               = "polkadot"
+token_standard           = ""
+contract_address_prompt  = ""
+tags                     = ["Relay Chain", "PoS", "Smart Contracts"]
+family                   = "Relay-chain / nominated proof-of-stake network"
+consensus                = "Nominated Proof of Stake"
+state_model              = "Account state + runtime pallets"
+primary_use              = "Native DOT transfers, staking, governance, and relay-chain security participation."
+slip44_coin_type         = "354 (Polkadot)"
+derivation_path          = "m/44'/354'/0'"
+alt_derivation_path      = ""
+total_circulation_model  = "No fixed terminal cap is surfaced here. Supply changes over time through staking-era issuance and protocol economics, so live circulation is treated as dynamic."
+native_coingecko_id        = "polkadot"
+native_decimals             = 10
+native_asset_name           = "Polkadot"
+supports_diagnostics        = true
+notable_details          = [
+  "Polkadot addresses use the SS58 address format instead of Ethereum-style hex addresses.",
+  "Spectra uses public Polkadot Sidecar and RPC endpoints for balance, history, endpoint diagnostics, and in-app send support.",
+  "Polkadot transfers are runtime calls signed as extrinsics rather than simple account-state updates through an EVM-style transaction model.",
+]
+
+# ── Arbitrum (11) ─────────────────────────────────────────────────────────────
+
+[[chains]]
+id                       = "arbitrum"
+chain_id                 = 11
+name                     = "Arbitrum"
+symbol                   = "ARB"
+gas_token_symbol         = "ETH"
+short_label              = "ARB"
+search_keywords          = ["Arbitrum", "ARB"]
+category                 = "evm-l2"
+is_evm                   = true
+supports_endpoint_catalog = true
+color_name               = "cyan"
+asset_name               = "arbitrum"
+token_standard           = "ERC-20"
+contract_address_prompt  = "Contract Address"
+tags                     = ["EVM", "L2", "Rollup"]
+family                   = "EVM-compatible layer-2 smart contract network"
+consensus                = "Ethereum-secured optimistic rollup"
+state_model              = "Account state + contract storage"
+primary_use              = "Lower-cost EVM execution, ERC-20 tokens, and Ethereum-compatible activity on Arbitrum One."
+slip44_coin_type         = "60 (Ether); Spectra derives Arbitrum wallets with the Ethereum-compatible EVM path family."
+derivation_path          = "m/44'/60'/0'/0/0"
+alt_derivation_path      = ""
+total_circulation_model  = "The native gas asset is ETH bridged from Ethereum mainnet, so supply is not a chain-native fixed-cap figure for Arbitrum itself."
+native_coingecko_id        = "ethereum"
+native_decimals             = 18
+native_asset_name           = "Ethereum"
+supports_diagnostics        = true
+notable_details          = [
+  "Spectra treats Arbitrum as its own EVM chain context with chain ID 42161, separate RPC rotation, explorer links, diagnostics, and tracked ERC-20 token support.",
+  "Arbitrum uses standard 0x-style EVM addresses while remaining distinct from Ethereum mainnet, BNB Chain, and Avalanche.",
+  "ETH is the native gas asset on Arbitrum, while ARB is a tracked ERC-20 governance token rather than the gas token.",
+]
+
+# ── Optimism (12) ─────────────────────────────────────────────────────────────
+
+[[chains]]
+id                       = "optimism"
+chain_id                 = 12
+name                     = "Optimism"
+symbol                   = "OP"
+gas_token_symbol         = "ETH"
+short_label              = "OP"
+search_keywords          = ["Optimism", "OP"]
+category                 = "evm-l2"
+is_evm                   = true
+supports_endpoint_catalog = true
+color_name               = "red"
+asset_name               = "optimism"
+token_standard           = "ERC-20"
+contract_address_prompt  = "Contract Address"
+tags                     = ["EVM", "L2", "Rollup"]
+family                   = "EVM-compatible layer-2 smart contract network"
+consensus                = "Ethereum-secured optimistic rollup"
+state_model              = "Account state + contract storage"
+primary_use              = "Lower-cost EVM execution, ERC-20 tokens, and Ethereum-compatible activity on Optimism mainnet."
+slip44_coin_type         = "60 (Ether); Spectra derives Optimism wallets with the Ethereum-compatible EVM path family."
+derivation_path          = "m/44'/60'/0'/0/0"
+alt_derivation_path      = ""
+total_circulation_model  = "The native gas asset is ETH bridged from Ethereum mainnet, so supply is not a chain-native fixed-cap figure for Optimism itself."
+native_coingecko_id        = "ethereum"
+native_decimals             = 18
+native_asset_name           = "Ethereum"
+supports_diagnostics        = true
+notable_details          = [
+  "Spectra treats Optimism as its own EVM chain context with chain ID 10, separate RPC rotation, explorer links, diagnostics, and tracked ERC-20 token support.",
+  "Optimism uses standard 0x-style EVM addresses while remaining distinct from Ethereum mainnet, Arbitrum, BNB Chain, and Avalanche.",
+  "ETH is the native gas asset on Optimism, while OP is a tracked ERC-20 governance token rather than the gas token.",
+]
+
+# ── Avalanche (13) ────────────────────────────────────────────────────────────
+
+[[chains]]
+id                       = "avalanche"
+chain_id                 = 13
+name                     = "Avalanche"
+symbol                   = "AVAX"
+gas_token_symbol         = "AVAX"
+short_label              = "AVAX"
+search_keywords          = ["Avalanche", "AVAX"]
+category                 = "evm-l1"
+is_evm                   = true
+supports_endpoint_catalog = true
+color_name               = "red"
+asset_name               = "avalanche"
+token_standard           = "ARC-20"
+contract_address_prompt  = "Contract Address"
+tags                     = ["EVM", "PoS", "Smart Contracts"]
+family                   = "EVM-compatible smart contract network"
+consensus                = "Proof of Stake with Avalanche consensus"
+state_model              = "Account state + contract storage"
+primary_use              = "Native AVAX transfers and C-Chain EVM activity on Avalanche mainnet."
+slip44_coin_type         = "9005 (Avalanche C-Chain); Spectra currently derives Avalanche wallets with 60 for EVM compatibility."
+derivation_path          = "m/44'/60'/0'/0/0"
+alt_derivation_path      = ""
+total_circulation_model  = "AVAX supply is capped at 720,000,000 with live circulating supply changing over time as issuance and fee burn continue."
+native_coingecko_id        = "avalanche-2"
+native_decimals             = 18
+native_asset_name           = "Avalanche"
+supports_diagnostics        = true
+notable_details          = [
+  "Spectra treats Avalanche C-Chain as an EVM network with its own chain context, chain ID, RPC catalog, and diagnostics surface.",
+  "Avalanche uses standard 0x-style EVM addresses while remaining a separate network from Ethereum and BNB Chain.",
+  "Current Spectra support is native-asset focused for AVAX rather than tracked ERC-20 style token balances.",
+]
+
+# ── Sui (14) ──────────────────────────────────────────────────────────────────
+
+[[chains]]
+id                       = "sui"
+chain_id                 = 14
+name                     = "Sui"
+symbol                   = "SUI"
+gas_token_symbol         = "SUI"
+short_label              = "SUI"
+search_keywords          = ["Sui", "SUI"]
+category                 = "other"
+is_evm                   = false
+supports_endpoint_catalog = true
+color_name               = "mint"
+asset_name               = "sui"
+token_standard           = "Sui Coin"
+contract_address_prompt  = "Coin Standard Type"
+tags                     = ["Move", "Object", "PoS"]
+family                   = "Object-centric smart contract network"
+consensus                = "Delegated Proof of Stake"
+state_model              = "Owned objects + shared objects"
+primary_use              = "Move-based applications, object transfers, and asset-centric execution."
+slip44_coin_type         = "784 (Sui)"
+derivation_path          = "m/44'/784'/0'/0'/0'"
+alt_derivation_path      = ""
+total_circulation_model  = "Total supply capped at 10,000,000,000 SUI, with circulation released over time."
+native_coingecko_id        = "sui"
+native_decimals             = 9
+native_asset_name           = "Sui"
+supports_diagnostics        = true
+notable_details          = [
+  "Sui is not simply account-based; assets and other resources are modeled as programmable objects.",
+  "The Move type system and object ownership rules are core to how transfers and shared state work.",
+  "Spectra handles Sui with a dedicated engine rather than treating it like an EVM clone.",
+]
+
+# ── Aptos (15) ────────────────────────────────────────────────────────────────
+
+[[chains]]
+id                       = "aptos"
+chain_id                 = 15
+name                     = "Aptos"
+symbol                   = "APT"
+gas_token_symbol         = "APT"
+short_label              = "APT"
+search_keywords          = ["Aptos", "APT"]
+category                 = "other"
+is_evm                   = false
+supports_endpoint_catalog = true
+color_name               = "cyan"
+asset_name               = "aptos"
+token_standard           = "AIP-21"
+contract_address_prompt  = "Fungible Asset Metadata or Package Address"
+tags                     = ["Move", "PoS", "Smart Contracts"]
+family                   = "Account-based Move smart contract network"
+consensus                = "Proof of Stake with AptosBFT"
+state_model              = "Account state + Move resources"
+primary_use              = "Native APT transfers, Move-based applications, and account/resource-oriented on-chain execution."
+slip44_coin_type         = "637 (Aptos)"
+derivation_path          = "m/44'/637'/0'/0'/0'"
+alt_derivation_path      = ""
+total_circulation_model  = "APT circulation changes over time with staking emissions, unlocks, and protocol economics, so this page treats live circulation as dynamic."
+native_coingecko_id        = "aptos"
+native_decimals             = 8
+native_asset_name           = "Aptos"
+supports_diagnostics        = true
+notable_details          = [
+  "Aptos is closer to Sui in developer model than to EVM chains, but its on-chain state is account-and-resource based rather than object-centric.",
+  "Spectra treats Aptos as a native-asset focused chain in this build, with direct APT balance, send, history, diagnostics, and explorer support.",
+  "Aptos addresses are hex-formatted account addresses and Spectra normalizes them into lowercase 0x-prefixed form.",
+]
+
+# ── TON (16) ──────────────────────────────────────────────────────────────────
+
+[[chains]]
+id                       = "ton"
+chain_id                 = 16
+name                     = "TON"
+symbol                   = "TON"
+gas_token_symbol         = "TON"
+short_label              = "TON"
+search_keywords          = ["TON"]
+category                 = "other"
+is_evm                   = false
+supports_endpoint_catalog = true
+color_name               = "blue"
+asset_name               = "ton"
+token_standard           = "TEP-74"
+contract_address_prompt  = "Jetton Master Address"
+tags                     = ["PoS", "Messaging", "Smart Contracts"]
+family                   = "Account-based message-driven smart contract network"
+consensus                = "Proof of Stake with validator-set finality"
+state_model              = "Account state + contracts/messages"
+primary_use              = "Native Toncoin transfers, jettons, and asynchronous contract interactions on The Open Network."
+slip44_coin_type         = "607 (TON)"
+derivation_path          = "m/44'/607'/0'/0/0"
+alt_derivation_path      = ""
+total_circulation_model  = "Toncoin supply is dynamic over time, so this page treats live circulation as non-static."
+native_coingecko_id        = "the-open-network"
+native_decimals             = 9
+native_asset_name           = "Toncoin"
+supports_diagnostics        = true
+notable_details          = [
+  "TON transfers and contract execution are message-based, so wallet behavior differs from UTXO chains and synchronous EVM calls.",
+  "User-facing wallet addresses are often shown in friendly base64url format rather than raw workchain:hash form.",
+  "Spectra treats TON as a native-asset chain with dedicated balance, send, history, and diagnostics support.",
+]
+
+# ── NEAR (17) ─────────────────────────────────────────────────────────────────
+
+[[chains]]
+id                       = "near"
+chain_id                 = 17
+name                     = "NEAR"
+symbol                   = "NEAR"
+gas_token_symbol         = "NEAR"
+short_label              = "NEAR"
+search_keywords          = ["NEAR"]
+category                 = "other"
+is_evm                   = false
+supports_endpoint_catalog = true
+color_name               = "indigo"
+asset_name               = "near"
+token_standard           = "NEP-141"
+contract_address_prompt  = "Contract Account ID"
+tags                     = ["PoS", "Smart Contracts", "Sharding"]
+family                   = "Account-based smart contract network"
+consensus                = "Proof of Stake with Doomslug / Nightshade architecture"
+state_model              = "Account state + contract storage"
+primary_use              = "Named-account transfers, smart contracts, and user-friendly account-based activity."
+slip44_coin_type         = "397 (NEAR Protocol)"
+derivation_path          = "m/44'/397'/0'"
+alt_derivation_path      = ""
+total_circulation_model  = "No fixed terminal cap is surfaced here. Supply changes over time, so live circulation is treated as dynamic."
+native_coingecko_id        = "near"
+native_decimals             = 24
+native_asset_name           = "NEAR"
+supports_diagnostics        = true
+notable_details          = [
+  "NEAR supports both human-readable named accounts and 64-character implicit accounts.",
+  "Accounts and contracts are both first-class network entities, rather than contracts being purely attached to EOAs.",
+  "Spectra uses NEAR RPC for balances and a NearBlocks-style indexed history source for transaction discovery.",
+]
+
+# ── Internet Computer (18) ────────────────────────────────────────────────────
+
+[[chains]]
+id                       = "internet-computer"
+chain_id                 = 18
+name                     = "Internet Computer"
+symbol                   = "ICP"
+gas_token_symbol         = "ICP"
+short_label              = "ICP"
+search_keywords          = ["Internet Computer", "ICP"]
+category                 = "other"
+is_evm                   = false
+supports_endpoint_catalog = true
+color_name               = "indigo"
+asset_name               = "internetcomputer"
+token_standard           = ""
+contract_address_prompt  = ""
+tags                     = ["Canisters", "PoS", "Smart Contracts"]
+family                   = "Account-based canister network"
+consensus                = "Threshold Relay + chain-key cryptography"
+state_model              = "Account identifiers + canister-managed state"
+primary_use              = "Native ICP transfers, governance participation, and canister-powered applications."
+slip44_coin_type         = "223 (Internet Computer)"
+derivation_path          = "m/44'/223'/0'/0/0"
+alt_derivation_path      = ""
+total_circulation_model  = "Supply is dynamic and tied to governance, staking, and protocol economics, so this page treats live circulation as non-static."
+native_coingecko_id        = "internet-computer"
+native_decimals             = 8
+native_asset_name           = "Internet Computer"
+supports_diagnostics        = true
+notable_details          = [
+  "Spectra currently focuses on native ICP transfers through Internet Computer Rosetta endpoints rather than canister token standards.",
+  "ICP accounts use 64-character account identifiers rather than Ethereum-style EOAs or object-style addresses.",
+  "In-app send support signs native ICP transfers locally and broadcasts them through public Rosetta infrastructure.",
+]
+
+# ── Monero (19) ───────────────────────────────────────────────────────────────
+
+[[chains]]
+id                       = "monero"
+chain_id                 = 19
+name                     = "Monero"
+symbol                   = "XMR"
+gas_token_symbol         = "XMR"
+short_label              = "XMR"
+search_keywords          = ["Monero", "XMR"]
+category                 = "other"
+is_evm                   = false
+supports_endpoint_catalog = true
+color_name               = "orange"
+asset_name               = "monero"
+token_standard           = ""
+contract_address_prompt  = ""
+tags                     = ["Privacy", "PoW", "Payments"]
+family                   = "Privacy-preserving account/one-time-output network"
+consensus                = "Proof of Work (RandomX)"
+state_model              = "Private output model with one-time stealth addresses"
+primary_use              = "Private value transfer with sender, receiver, and amount obfuscation."
+slip44_coin_type         = "128 (Monero)"
+derivation_path          = "Not user-configurable in Spectra's current UI. Monero uses engine-specific wallet derivation and address construction rather than the generic WalletCore path surface."
+alt_derivation_path      = ""
+total_circulation_model  = "No fixed terminal cap. Monero uses tail emission after main emission, so long-run lifetime supply is not capped."
+native_coingecko_id        = "monero"
+native_decimals             = 12
+native_asset_name           = "Monero"
+supports_diagnostics        = true
+notable_details          = [
+  "Monero uses stealth addresses, ring signatures, and confidential amounts, so ledger interpretation differs radically from transparent chains.",
+  "Because Monero is privacy-preserving by design, balance and history logic rely on Monero-specific backend assumptions.",
+  "Tail emission keeps miner incentives alive instead of letting issuance fall to zero permanently.",
+]
+
+# ── Base (20) ─────────────────────────────────────────────────────────────────
+
+[[chains]]
+id                       = "base"
+chain_id                 = 20
+name                     = "Base"
+symbol                   = "ETH"
+gas_token_symbol         = "ETH"
+short_label              = "BASE"
+search_keywords          = ["Base", "ETH"]
+category                 = "evm-l2"
+is_evm                   = true
+supports_endpoint_catalog = true
+color_name               = "blue"
+asset_name               = "base"
+token_standard           = "ERC-20"
+contract_address_prompt  = "Contract Address"
+tags                     = ["EVM", "L2", "Optimistic Rollup"]
+family                   = "Ethereum layer-2 (Optimism stack)"
+consensus                = "Optimistic rollup posting to Ethereum"
+state_model              = "EVM account state"
+primary_use              = "Low-fee Ethereum-compatible transfers and ERC-20 settlement on Base."
+slip44_coin_type         = "60 (Ethereum)"
+derivation_path          = "m/44'/60'/0'/0/0"
+alt_derivation_path      = ""
+total_circulation_model  = "Base is a Coinbase-incubated L2; the gas token is ETH bridged from Ethereum mainnet."
+native_coingecko_id        = "ethereum"
+native_decimals             = 18
+native_asset_name           = "Ethereum"
+supports_diagnostics        = true
+notable_details          = [
+  "Base is built on the OP Stack and inherits Ethereum's security via fraud-proof rollup posting.",
+  "Spectra reuses the shared EVM client; only the chain ID (8453) and endpoint set differ from Ethereum.",
+  "Native USDC on Base uses contract 0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913.",
+]
+
+# ── Ethereum Classic (21) ─────────────────────────────────────────────────────
+
+[[chains]]
+id                       = "ethereum-classic"
+chain_id                 = 21
+name                     = "Ethereum Classic"
+symbol                   = "ETC"
+gas_token_symbol         = "ETC"
+short_label              = "ETC"
+search_keywords          = ["Ethereum Classic", "ETC"]
+category                 = "evm-l1"
+is_evm                   = true
+supports_endpoint_catalog = true
+color_name               = "green"
+asset_name               = "ethereumclassic"
+token_standard           = ""
+contract_address_prompt  = ""
+tags                     = ["EVM", "PoW", "Smart Contracts"]
+family                   = "Account-based smart contract network"
+consensus                = "Proof of Work (Etchash)"
+state_model              = "Account state + contract storage"
+primary_use              = "Native ETC transfers and conservative EVM-compatible contract execution on the original Ethereum chain lineage."
+slip44_coin_type         = "61 (Ether Classic)"
+derivation_path          = "m/44'/61'/0'/0/0"
+alt_derivation_path      = ""
+total_circulation_model  = "No fixed maximum supply. Emission declines over time under the ETC monetary policy, so live circulation changes and is treated as dynamic in this wiki."
+native_coingecko_id        = "ethereum-classic"
+native_decimals             = 18
+native_asset_name           = "Ethereum Classic"
+supports_diagnostics        = true
+notable_details          = [
+  "Spectra routes ETC through the EVM engine stack, but with a dedicated chain context, chain ID, RPC set, and derivation path.",
+  "ETC uses the same 0x-style address format as Ethereum, while remaining a separate network with separate transaction history and fee conditions.",
+  "Tracked ERC-20 style tokens are intentionally not enabled on ETC in Spectra's current support surface; the ETC integration is native-asset focused.",
+]
+
+# ── Bitcoin SV (22) ───────────────────────────────────────────────────────────
+
+[[chains]]
+id                       = "bitcoin-sv"
+chain_id                 = 22
+name                     = "Bitcoin SV"
+symbol                   = "BSV"
+gas_token_symbol         = "BSV"
+short_label              = "BSV"
+search_keywords          = ["Bitcoin SV", "BSV"]
+category                 = "bitcoin-family"
+is_evm                   = false
+supports_endpoint_catalog = false
+color_name               = "orange"
+asset_name               = "bitcoinsv"
+token_standard           = ""
+contract_address_prompt  = ""
+tags                     = ["UTXO", "PoW", "Payments"]
+family                   = "UTXO payments network"
+consensus                = "Proof of Work (SHA-256)"
+state_model              = "UTXO set"
+primary_use              = "Bitcoin-derived UTXO transfers on the BSV network with chain-specific address, policy, and provider behavior."
+slip44_coin_type         = "236 (Bitcoin SV)"
+derivation_path          = "m/44'/236'/0'/0/0"
+alt_derivation_path      = ""
+total_circulation_model  = "Protocol-capped at 21,000,000 BSV."
+native_coingecko_id        = "bitcoin-cash-sv"
+native_decimals             = 8
+native_asset_name           = "Bitcoin SV"
+supports_diagnostics        = true
+notable_details          = [
+  "Bitcoin SV keeps the Bitcoin-family UTXO accounting model while using its own network rules, providers, and explorer surface in Spectra.",
+  "Authoritative spendable balance still comes from spendable UTXOs rather than an account-style balance field.",
+  "Although it shares Bitcoin lineage, BSV support in Spectra is handled through dedicated service and engine flows rather than BTC settings.",
+]
+
+# ── BNB Chain (23) ────────────────────────────────────────────────────────────
+
+[[chains]]
+id                       = "bnb"
+chain_id                 = 23
+name                     = "BNB Chain"
+symbol                   = "BNB"
+gas_token_symbol         = "BNB"
+short_label              = "BNB"
+search_keywords          = ["BNB Chain", "BNB"]
+category                 = "evm-l1"
+is_evm                   = true
+supports_endpoint_catalog = true
+color_name               = "yellow"
+asset_name               = "bnb"
+token_standard           = "BEP-20"
+contract_address_prompt  = "Contract Address"
+tags                     = ["EVM", "PoS", "Smart Contracts"]
+family                   = "EVM-compatible smart contract network"
+consensus                = "Validator-based BNB Chain consensus"
+state_model              = "Account state + contract storage"
+primary_use              = "Lower-cost EVM execution, BEP-20 assets, and exchange-adjacent on-chain activity."
+slip44_coin_type         = "9006 (Binance Smart Chain); Spectra currently derives BNB Chain wallets with 60 for EVM compatibility."
+derivation_path          = "m/44'/60'/0'/0/0"
+alt_derivation_path      = ""
+total_circulation_model  = "Genesis supply began at 200,000,000 BNB, with protocol and ecosystem burn mechanisms targeting a lower long-run supply. Live circulation is dynamic, so this page treats it as not statically estimatable."
+native_coingecko_id        = "binancecoin"
+native_decimals             = 18
+native_asset_name           = "BNB"
+supports_diagnostics        = true
+notable_details          = [
+  "Spectra treats BNB Chain as an EVM network and routes it through the Ethereum-style engine stack.",
+  "Same address format and private-key family as Ethereum, but a distinct chain context and RPC network.",
+  "BEP-20 token handling follows the same general contract-balance logic as ERC-20.",
+]
+
+# ── Hyperliquid (24) ──────────────────────────────────────────────────────────
+
+[[chains]]
+id                       = "hyperliquid"
+chain_id                 = 24
+name                     = "Hyperliquid"
+symbol                   = "HYPE"
+gas_token_symbol         = "HYPE"
+short_label              = "HYPE"
+search_keywords          = ["Hyperliquid", "HYPE"]
+category                 = "evm-l1"
+is_evm                   = true
+supports_endpoint_catalog = true
+color_name               = "mint"
+asset_name               = "hyperliquid"
+token_standard           = "ERC-20"
+contract_address_prompt  = "Contract Address"
+tags                     = ["EVM", "PoS", "Smart Contracts"]
+family                   = "EVM-compatible smart contract network"
+consensus                = "HyperBFT-backed HyperEVM settlement on Hyperliquid"
+state_model              = "Account state + contract storage"
+primary_use              = "Native HYPE transfers and HyperEVM activity on Hyperliquid mainnet."
+slip44_coin_type         = "2457 (Hyperliquid); Spectra currently derives Hyperliquid wallets with 60 for EVM compatibility."
+derivation_path          = "m/44'/60'/0'/0/0"
+alt_derivation_path      = ""
+total_circulation_model  = "HYPE circulation is dynamic over time, so this page treats live circulating supply as non-static."
+native_coingecko_id        = "hyperliquid"
+native_decimals             = 18
+native_asset_name           = "Hyperliquid"
+supports_diagnostics        = true
+notable_details          = [
+  "Spectra treats Hyperliquid HyperEVM as a dedicated EVM chain context with its own chain ID, RPC catalog, explorer links, and diagnostics surface.",
+  "Hyperliquid uses standard 0x-style EVM addresses while remaining separate from Ethereum, BNB Chain, and Avalanche.",
+  "Spectra supports tracked ERC-20 balances and token history on HyperEVM alongside native HYPE balance refresh and send flows.",
+]
+
+# ── Polygon (25) ──────────────────────────────────────────────────────────────
+
+[[chains]]
+id                       = "polygon"
+chain_id                 = 25
+name                     = "Polygon"
+symbol                   = "POL"
+gas_token_symbol         = "POL"
+short_label              = "POL"
+search_keywords          = ["Polygon", "POL", "MATIC"]
+category                 = "evm-l1"
+is_evm                   = true
+supports_endpoint_catalog = true
+color_name               = "purple"
+asset_name               = "polygon"
+token_standard           = "ERC-20"
+contract_address_prompt  = "Contract Address"
+tags                     = ["EVM", "L1", "PoS"]
+family                   = "EVM-compatible proof-of-stake network"
+consensus                = "Proof of Stake (Heimdall + Bor)"
+state_model              = "EVM account state"
+primary_use              = "Low-fee EVM transfers, ERC-20 settlement, and DeFi on Polygon PoS."
+slip44_coin_type         = "60 (Ethereum)"
+derivation_path          = "m/44'/60'/0'/0/0"
+alt_derivation_path      = ""
+total_circulation_model  = "POL replaced MATIC as the gas/staking token following the 2024 token migration; circulating supply is dynamic."
+native_coingecko_id        = "matic-network"
+native_decimals             = 18
+native_asset_name           = "Polygon"
+supports_diagnostics        = true
+notable_details          = [
+  "Polygon PoS is fully EVM-compatible, so Spectra reuses the shared EVM client for balance, history, and send.",
+  "The native token is POL (formerly MATIC); Spectra uses POL as the displayed gas symbol.",
+  "Tracked ERC-20s on Polygon include native USDC, bridged USDT, and DAI.",
+]
+
+# ── Linea (26) ────────────────────────────────────────────────────────────────
+
+[[chains]]
+id                       = "linea"
+chain_id                 = 26
+name                     = "Linea"
+symbol                   = "ETH"
+gas_token_symbol         = "ETH"
+short_label              = "LINEA"
+search_keywords          = ["Linea"]
+category                 = "evm-l2"
+is_evm                   = true
+supports_endpoint_catalog = true
+color_name               = "blue"
+asset_name               = "linea"
+token_standard           = "ERC-20"
+contract_address_prompt  = "Contract Address"
+tags                     = ["EVM", "L2", "ZK Rollup"]
+family                   = "Ethereum layer-2 (zkEVM)"
+consensus                = "zkEVM rollup posting to Ethereum"
+state_model              = "EVM account state"
+primary_use              = "ZK-secured EVM transfers and ERC-20 settlement on Linea."
+slip44_coin_type         = "60 (Ethereum)"
+derivation_path          = "m/44'/60'/0'/0/0"
+alt_derivation_path      = ""
+total_circulation_model  = "Linea is a ConsenSys zkEVM L2; gas token is bridged ETH."
+native_coingecko_id        = "ethereum"
+native_decimals             = 18
+native_asset_name           = "Ethereum"
+supports_diagnostics        = true
+notable_details          = [
+  "Linea is a Type-2 zkEVM rollup, so Spectra reuses the shared EVM client unchanged.",
+  "Chain ID is 59144; the public RPC set covers ConsenSys-operated and third-party endpoints.",
+  "Native USDC on Linea uses contract 0x176211869cA2b568f2A7D4EE941E073a821EE1ff.",
+]
+
+# ── Scroll (27) ───────────────────────────────────────────────────────────────
+
+[[chains]]
+id                       = "scroll"
+chain_id                 = 27
+name                     = "Scroll"
+symbol                   = "ETH"
+gas_token_symbol         = "ETH"
+short_label              = "SCRL"
+search_keywords          = ["Scroll"]
+category                 = "evm-l2"
+is_evm                   = true
+supports_endpoint_catalog = true
+color_name               = "orange"
+asset_name               = "scroll"
+token_standard           = "ERC-20"
+contract_address_prompt  = "Contract Address"
+tags                     = ["EVM", "L2", "ZK Rollup"]
+family                   = "Ethereum layer-2 (zkEVM)"
+consensus                = "zkEVM rollup posting to Ethereum"
+state_model              = "EVM account state"
+primary_use              = "ZK-secured EVM transfers and ERC-20 settlement on Scroll."
+slip44_coin_type         = "60 (Ethereum)"
+derivation_path          = "m/44'/60'/0'/0/0"
+alt_derivation_path      = ""
+total_circulation_model  = "Scroll is a community-built zkEVM L2; gas token is bridged ETH."
+native_coingecko_id        = "ethereum"
+native_decimals             = 18
+native_asset_name           = "Ethereum"
+supports_diagnostics        = true
+notable_details          = [
+  "Scroll targets bytecode-level zkEVM equivalence, so Spectra reuses the shared EVM client.",
+  "Chain ID is 534352.",
+  "Native USDC on Scroll uses contract 0x06eFdBFf2a14a7c8E15944D1F4A48F9F95F663A4.",
+]
+
+# ── Blast (28) ────────────────────────────────────────────────────────────────
+
+[[chains]]
+id                       = "blast"
+chain_id                 = 28
+name                     = "Blast"
+symbol                   = "ETH"
+gas_token_symbol         = "ETH"
+short_label              = "BLAST"
+search_keywords          = ["Blast"]
+category                 = "evm-l2"
+is_evm                   = true
+supports_endpoint_catalog = true
+color_name               = "yellow"
+asset_name               = "blast"
+token_standard           = "ERC-20"
+contract_address_prompt  = "Contract Address"
+tags                     = ["EVM", "L2", "Optimistic Rollup"]
+family                   = "Ethereum layer-2 (yield-bearing)"
+consensus                = "Optimistic rollup posting to Ethereum"
+state_model              = "EVM account state"
+primary_use              = "EVM transfers and yield-bearing ETH/USDB on Blast."
+slip44_coin_type         = "60 (Ethereum)"
+derivation_path          = "m/44'/60'/0'/0/0"
+alt_derivation_path      = ""
+total_circulation_model  = "Blast is an L2 with native ETH/USDB yield distribution; circulating supply is dynamic."
+native_coingecko_id        = "ethereum"
+native_decimals             = 18
+native_asset_name           = "Ethereum"
+supports_diagnostics        = true
+notable_details          = [
+  "Blast is EVM-equivalent and rolls up to Ethereum; Spectra reuses the shared EVM client.",
+  "Chain ID is 81457.",
+  "Native USDB on Blast uses contract 0x4300000000000000000000000000000000000003.",
+]
+
+# ── Mantle (29) ───────────────────────────────────────────────────────────────
+
+[[chains]]
+id                       = "mantle"
+chain_id                 = 29
+name                     = "Mantle"
+symbol                   = "MNT"
+gas_token_symbol         = "MNT"
+short_label              = "MNT"
+search_keywords          = ["Mantle", "MNT"]
+category                 = "evm-l2"
+is_evm                   = true
+supports_endpoint_catalog = true
+color_name               = "green"
+asset_name               = "mantle"
+token_standard           = "ERC-20"
+contract_address_prompt  = "Contract Address"
+tags                     = ["EVM", "L2", "Modular"]
+family                   = "Ethereum layer-2 (modular rollup)"
+consensus                = "Modular rollup with EigenDA data availability"
+state_model              = "EVM account state"
+primary_use              = "Low-fee EVM transfers and ERC-20 settlement on Mantle."
+slip44_coin_type         = "60 (Ethereum)"
+derivation_path          = "m/44'/60'/0'/0/0"
+alt_derivation_path      = ""
+total_circulation_model  = "Mantle uses MNT as its native gas/governance token (formerly BIT). Circulating supply is dynamic."
+native_coingecko_id        = "mantle"
+native_decimals             = 18
+native_asset_name           = "Mantle"
+supports_diagnostics        = true
+notable_details          = [
+  "Mantle is fully EVM-compatible; Spectra reuses the shared EVM client.",
+  "Chain ID is 5000.",
+  "Native USDC on Mantle uses contract 0x09Bc4E0D864854c6aFB6eB9A9cdF58aC190D0dF9.",
+]
+
+# ── Zcash (30) ────────────────────────────────────────────────────────────────
+
+[[chains]]
+id                       = "zcash"
+chain_id                 = 30
+name                     = "Zcash"
+symbol                   = "ZEC"
+gas_token_symbol         = "ZEC"
+short_label              = "ZEC"
+search_keywords          = ["Zcash", "ZEC"]
+category                 = "other"
+is_evm                   = false
+supports_endpoint_catalog = true
+color_name               = "yellow"
+asset_name               = "zcash"
+token_standard           = ""
+contract_address_prompt  = ""
+tags                     = ["UTXO", "Privacy", "PoW"]
+family                   = "Zcash (Halo 2 + transparent UTXO)"
+consensus                = "Proof-of-Work (Equihash 200,9)"
+state_model              = "UTXO (transparent) + zk-SNARK shielded notes (Sapling, Orchard)"
+primary_use              = "Optionally-shielded payments. Spectra uses transparent (t1) addresses only; shielded sends are not supported."
+slip44_coin_type         = "133 (Zcash)"
+derivation_path          = "m/44'/133'/0'/0/0"
+alt_derivation_path      = ""
+total_circulation_model  = "Zcash mirrors Bitcoin's 21M cap with halvings; total ZEC supply is capped at 21,000,000."
+native_coingecko_id        = "zcash"
+native_decimals             = 8
+native_asset_name           = "Zcash"
+supports_diagnostics        = true
+notable_details          = [
+  "Spectra supports transparent (t1...) addresses only. Shielded (zs.../u1...) are not derived or sent.",
+  "Transactions are V5 (NU5) format with empty Sapling and Orchard bundles for transparent-only sends.",
+  "Balance and history come from Trezor Blockbook (zec1.trezor.io).",
+]
+
+# ── Bitcoin Gold (31) ─────────────────────────────────────────────────────────
+
+[[chains]]
+id                       = "bitcoin-gold"
+chain_id                 = 31
+name                     = "Bitcoin Gold"
+symbol                   = "BTG"
+gas_token_symbol         = "BTG"
+short_label              = "BTG"
+search_keywords          = ["Bitcoin Gold", "BTG"]
+category                 = "bitcoin-family"
+is_evm                   = false
+supports_endpoint_catalog = true
+color_name               = "yellow"
+asset_name               = "bitcoingold"
+token_standard           = ""
+contract_address_prompt  = ""
+tags                     = ["UTXO", "PoW"]
+family                   = "Bitcoin fork (Equihash 144,5)"
+consensus                = "Proof-of-Work (Equihash 144,5)"
+state_model              = "UTXO"
+primary_use              = "Bitcoin-style payments with GPU-friendly Equihash mining."
+slip44_coin_type         = "156 (Bitcoin Gold)"
+derivation_path          = "m/44'/156'/0'/0/0"
+alt_derivation_path      = ""
+total_circulation_model  = "21,000,000 BTG cap mirroring Bitcoin's halving schedule."
+native_coingecko_id        = "bitcoin-gold"
+native_decimals             = 8
+native_asset_name           = "Bitcoin Gold"
+supports_diagnostics        = true
+notable_details          = [
+  "P2PKH addresses use version byte 0x26 (G...); P2SH uses 0x17 (A...).",
+  "Sends use BIP-143 sighash with SIGHASH_FORKID and BTG fork id 79.",
+  "Balance and history come from Trezor Blockbook (btg1.trezor.io).",
+]
+
+# ── Decred (32) ───────────────────────────────────────────────────────────────
+
+[[chains]]
+id                       = "decred"
+chain_id                 = 32
+name                     = "Decred"
+symbol                   = "DCR"
+gas_token_symbol         = "DCR"
+short_label              = "DCR"
+search_keywords          = ["Decred", "DCR"]
+category                 = "bitcoin-family"
+is_evm                   = false
+supports_endpoint_catalog = true
+color_name               = "indigo"
+asset_name               = "decred"
+token_standard           = ""
+contract_address_prompt  = ""
+tags                     = ["UTXO", "Hybrid", "PoW", "PoS"]
+family                   = "Decred (BLAKE-256, hybrid PoW + PoS)"
+consensus                = "Hybrid PoW (BLAKE-256) + PoS ticket voting"
+state_model              = "UTXO with on-chain governance"
+primary_use              = "Self-funded protocol with stakeholder-governed on-chain decisions."
+slip44_coin_type         = "42 (Decred)"
+derivation_path          = "m/44'/42'/0'/0/0"
+alt_derivation_path      = ""
+total_circulation_model  = "Capped near 21,000,000 DCR with declining block reward and PoS subsidy."
+native_coingecko_id        = "decred"
+native_decimals             = 8
+native_asset_name           = "Decred"
+supports_diagnostics        = true
+notable_details          = [
+  "Integration is Planned in this build — derivation, balance, history, and send are not yet wired.",
+  "Decred uses BLAKE-256 (NOT double-SHA256) for the address checksum, requiring a custom encoder.",
+  "Transaction format diverges from Bitcoin (witness + prefix split with versioned serialization).",
+]
+
+# ── Kaspa (33) ────────────────────────────────────────────────────────────────
+
+[[chains]]
+id                       = "kaspa"
+chain_id                 = 33
+name                     = "Kaspa"
+symbol                   = "KAS"
+gas_token_symbol         = "KAS"
+short_label              = "KAS"
+search_keywords          = ["Kaspa", "KAS"]
+category                 = "other"
+is_evm                   = false
+supports_endpoint_catalog = true
+color_name               = "teal"
+asset_name               = "kaspa"
+token_standard           = ""
+contract_address_prompt  = ""
+tags                     = ["BlockDAG", "PoW"]
+family                   = "Kaspa (GHOSTDAG protocol)"
+consensus                = "Proof-of-Work (kHeavyHash) on a blockDAG"
+state_model              = "UTXO over GHOSTDAG topological ordering"
+primary_use              = "Sub-second confirmation payments via parallel-block PoW."
+slip44_coin_type         = "111111 (Kaspa)"
+derivation_path          = "m/44'/111111'/0'/0/0"
+alt_derivation_path      = ""
+total_circulation_model  = "Capped at ~28,700,000,000 KAS with monthly chromatic emission decay."
+native_coingecko_id        = "kaspa"
+native_decimals             = 8
+native_asset_name           = "Kaspa"
+supports_diagnostics        = true
+notable_details          = [
+  "Integration is Planned in this build — derivation, balance, history, and send are not yet wired.",
+  "Addresses use a CashAddr-variant bech32 with HRP 'kaspa', distinct from BIP-173 bech32.",
+  "Transactions use Schnorr-secp256k1 signatures and a custom protobuf body.",
+]
+
+# ── Sei (34) ──────────────────────────────────────────────────────────────────
+
+[[chains]]
+id                       = "sei"
+chain_id                 = 34
+name                     = "Sei"
+symbol                   = "SEI"
+gas_token_symbol         = "SEI"
+short_label              = "SEI"
+search_keywords          = ["Sei", "SEI"]
+category                 = "evm-l1"
+is_evm                   = true
+supports_endpoint_catalog = true
+color_name               = "red"
+asset_name               = "sei"
+token_standard           = "ERC-20"
+contract_address_prompt  = "Contract Address"
+tags                     = ["EVM", "L1", "PoS"]
+family                   = "Cosmos-SDK with EVM v2 module"
+consensus                = "Tendermint BFT (Sei v2 with EVM execution)"
+state_model              = "EVM account state"
+primary_use              = "High-throughput EVM with parallel execution and Cosmos-native interop."
+slip44_coin_type         = "60 (Ethereum)"
+derivation_path          = "m/44'/60'/0'/0/0"
+alt_derivation_path      = ""
+total_circulation_model  = "10,000,000,000 SEI cap with staking and governance unlocks."
+native_coingecko_id        = "sei-network"
+native_decimals             = 18
+native_asset_name           = "Sei"
+supports_diagnostics        = true
+notable_details          = [
+  "Spectra reuses the shared EVM client.",
+  "EIP-155 chain id is 1329.",
+]
+
+# ── Celo (35) ─────────────────────────────────────────────────────────────────
+
+[[chains]]
+id                       = "celo"
+chain_id                 = 35
+name                     = "Celo"
+symbol                   = "CELO"
+gas_token_symbol         = "CELO"
+short_label              = "CELO"
+search_keywords          = ["Celo", "CELO"]
+category                 = "evm-l2"
+is_evm                   = true
+supports_endpoint_catalog = true
+color_name               = "yellow"
+asset_name               = "celo"
+token_standard           = "ERC-20"
+contract_address_prompt  = "Contract Address"
+tags                     = ["EVM", "L2", "Mobile"]
+family                   = "Ethereum L2 (Celo migrated to OP Stack 2025)"
+consensus                = "Optimistic rollup on Ethereum"
+state_model              = "EVM account state"
+primary_use              = "Mobile-first stablecoin payments and DeFi on a low-fee EVM L2."
+slip44_coin_type         = "60 (Ethereum)"
+derivation_path          = "m/44'/60'/0'/0/0"
+alt_derivation_path      = ""
+total_circulation_model  = "1,000,000,000 CELO cap with epoch rewards."
+native_coingecko_id        = "celo"
+native_decimals             = 18
+native_asset_name           = "Celo"
+supports_diagnostics        = true
+notable_details          = [
+  "EIP-155 chain id is 42220.",
+  "Native USDC + cUSD/cEUR/cREAL stablecoins live on Celo.",
+]
+
+# ── Cronos (36) ───────────────────────────────────────────────────────────────
+
+[[chains]]
+id                       = "cronos"
+chain_id                 = 36
+name                     = "Cronos"
+symbol                   = "CRO"
+gas_token_symbol         = "CRO"
+short_label              = "CRO"
+search_keywords          = ["Cronos", "CRO"]
+category                 = "evm-l1"
+is_evm                   = true
+supports_endpoint_catalog = true
+color_name               = "blue"
+asset_name               = "cronos"
+token_standard           = "ERC-20"
+contract_address_prompt  = "Contract Address"
+tags                     = ["EVM", "L1"]
+family                   = "Cronos EVM (Cosmos-SDK + Ethermint)"
+consensus                = "Tendermint BFT"
+state_model              = "EVM account state"
+primary_use              = "Crypto.com's L1 EVM for stablecoin payments and DeFi."
+slip44_coin_type         = "60 (Ethereum)"
+derivation_path          = "m/44'/60'/0'/0/0"
+alt_derivation_path      = ""
+total_circulation_model  = "30,000,000,000 CRO cap (post-2022 burn)."
+native_coingecko_id        = "crypto-com-chain"
+native_decimals             = 18
+native_asset_name           = "Cronos"
+supports_diagnostics        = true
+notable_details          = [
+  "EIP-155 chain id is 25.",
+  "Cronos POS chain (chain id 388) is separate; Spectra targets Cronos EVM.",
+]
+
+# ── opBNB (37) ────────────────────────────────────────────────────────────────
+
+[[chains]]
+id                       = "opBNB"
+chain_id                 = 37
+name                     = "opBNB"
+symbol                   = "BNB"
+gas_token_symbol         = "BNB"
+short_label              = "opBNB"
+search_keywords          = ["opBNB", "BNB L2"]
+category                 = "evm-l2"
+is_evm                   = true
+supports_endpoint_catalog = true
+color_name               = "yellow"
+asset_name               = "bnb"
+token_standard           = "ERC-20"
+contract_address_prompt  = "Contract Address"
+tags                     = ["EVM", "L2", "Optimistic Rollup"]
+family                   = "BNB Chain L2 (OP Stack)"
+consensus                = "Optimistic rollup on BNB Chain"
+state_model              = "EVM account state"
+primary_use              = "Cheap BNB-denominated rollup throughput for BSC users."
+slip44_coin_type         = "60 (Ethereum)"
+derivation_path          = "m/44'/60'/0'/0/0"
+alt_derivation_path      = ""
+total_circulation_model  = "Pays gas in BNB; no separate token."
+native_coingecko_id        = "binancecoin"
+native_decimals             = 18
+native_asset_name           = "BNB"
+supports_diagnostics        = true
+notable_details          = [
+  "EIP-155 chain id is 204.",
+  "Settles to BNB Smart Chain L1.",
+]
+
+# ── zkSync Era (38) ───────────────────────────────────────────────────────────
+
+[[chains]]
+id                       = "zksync-era"
+chain_id                 = 38
+name                     = "zkSync Era"
+symbol                   = "ETH"
+gas_token_symbol         = "ETH"
+short_label              = "zkSync"
+search_keywords          = ["zkSync Era", "zkSync"]
+category                 = "evm-l2"
+is_evm                   = true
+supports_endpoint_catalog = true
+color_name               = "gray"
+asset_name               = "zksyncera"
+token_standard           = "ERC-20"
+contract_address_prompt  = "Contract Address"
+tags                     = ["EVM", "L2", "ZK Rollup"]
+family                   = "Ethereum L2 (zkSync Era validium/rollup)"
+consensus                = "ZK rollup with EVM-equivalent execution"
+state_model              = "EVM account state"
+primary_use              = "Validity-proofed L2 with full EVM equivalence."
+slip44_coin_type         = "60 (Ethereum)"
+derivation_path          = "m/44'/60'/0'/0/0"
+alt_derivation_path      = ""
+total_circulation_model  = "Pays gas in ETH; ZK token is governance."
+native_coingecko_id        = "ethereum"
+native_decimals             = 18
+native_asset_name           = "Ethereum"
+supports_diagnostics        = true
+notable_details          = [
+  "EIP-155 chain id is 324.",
+  "Native ETH transfers use standard EIP-1559 envelopes; some advanced features use EIP-712 transactions which are not supported in this build.",
+]
+
+# ── Sonic (39) ────────────────────────────────────────────────────────────────
+
+[[chains]]
+id                       = "sonic"
+chain_id                 = 39
+name                     = "Sonic"
+symbol                   = "S"
+gas_token_symbol         = "S"
+short_label              = "S"
+search_keywords          = ["Sonic", "S"]
+category                 = "evm-l1"
+is_evm                   = true
+supports_endpoint_catalog = true
+color_name               = "gray"
+asset_name               = "sonic"
+token_standard           = "ERC-20"
+contract_address_prompt  = "Contract Address"
+tags                     = ["EVM", "L1"]
+family                   = "Sonic Labs (Fantom successor)"
+consensus                = "Lachesis aBFT"
+state_model              = "EVM account state"
+primary_use              = "High-TPS EVM L1, the rebranded Fantom network."
+slip44_coin_type         = "60 (Ethereum)"
+derivation_path          = "m/44'/60'/0'/0/0"
+alt_derivation_path      = ""
+total_circulation_model  = "Migrated 1:1 from FTM at launch with continuing inflation."
+native_coingecko_id        = "sonic-3"
+native_decimals             = 18
+native_asset_name           = "Sonic"
+supports_diagnostics        = true
+notable_details          = [
+  "EIP-155 chain id is 146.",
+  "Successor to Fantom Opera; FTM holders can swap 1:1 for S.",
+]
+
+# ── Berachain (40) ────────────────────────────────────────────────────────────
+
+[[chains]]
+id                       = "berachain"
+chain_id                 = 40
+name                     = "Berachain"
+symbol                   = "BERA"
+gas_token_symbol         = "BERA"
+short_label              = "BERA"
+search_keywords          = ["Berachain", "BERA"]
+category                 = "evm-l1"
+is_evm                   = true
+supports_endpoint_catalog = true
+color_name               = "orange"
+asset_name               = "bera"
+token_standard           = "ERC-20"
+contract_address_prompt  = "Contract Address"
+tags                     = ["EVM", "L1", "Proof-of-Liquidity"]
+family                   = "Berachain (Cosmos-SDK + EVM)"
+consensus                = "Proof-of-Liquidity (BeaconKit + Tendermint)"
+state_model              = "EVM account state with parallel liquidity rewards"
+primary_use              = "DeFi-native EVM L1 where validators earn from on-chain liquidity provision."
+slip44_coin_type         = "60 (Ethereum)"
+derivation_path          = "m/44'/60'/0'/0/0"
+alt_derivation_path      = ""
+total_circulation_model  = "500,000,000 BERA initial supply with PoL emissions."
+native_coingecko_id        = "berachain-bera"
+native_decimals             = 18
+native_asset_name           = "Berachain"
+supports_diagnostics        = true
+notable_details          = [
+  "EIP-155 chain id is 80094.",
+  "BGT is the staking/governance asset; BERA is the gas token.",
+]
+
+# ── Unichain (41) ─────────────────────────────────────────────────────────────
+
+[[chains]]
+id                       = "unichain"
+chain_id                 = 41
+name                     = "Unichain"
+symbol                   = "ETH"
+gas_token_symbol         = "ETH"
+short_label              = "UNI L2"
+search_keywords          = ["Unichain"]
+category                 = "evm-l2"
+is_evm                   = true
+supports_endpoint_catalog = true
+color_name               = "pink"
+asset_name               = "uniswap"
+token_standard           = "ERC-20"
+contract_address_prompt  = "Contract Address"
+tags                     = ["EVM", "L2", "Optimistic Rollup"]
+family                   = "Ethereum L2 (OP Stack)"
+consensus                = "Optimistic rollup on Ethereum"
+state_model              = "EVM account state"
+primary_use              = "Uniswap's dedicated L2 for DEX-native fast settlement."
+slip44_coin_type         = "60 (Ethereum)"
+derivation_path          = "m/44'/60'/0'/0/0"
+alt_derivation_path      = ""
+total_circulation_model  = "Pays gas in ETH; no separate token."
+native_coingecko_id        = "ethereum"
+native_decimals             = 18
+native_asset_name           = "Ethereum"
+supports_diagnostics        = true
+notable_details          = [
+  "EIP-155 chain id is 130.",
+  "Built by Uniswap Labs on the OP Stack.",
+]
+
+# ── Ink (42) ──────────────────────────────────────────────────────────────────
+
+[[chains]]
+id                       = "ink"
+chain_id                 = 42
+name                     = "Ink"
+symbol                   = "ETH"
+gas_token_symbol         = "ETH"
+short_label              = "INK"
+search_keywords          = ["Ink"]
+category                 = "evm-l2"
+is_evm                   = true
+supports_endpoint_catalog = true
+color_name               = "purple"
+asset_name               = "ink"
+token_standard           = "ERC-20"
+contract_address_prompt  = "Contract Address"
+tags                     = ["EVM", "L2", "Optimistic Rollup"]
+family                   = "Ethereum L2 (OP Stack)"
+consensus                = "Optimistic rollup on Ethereum"
+state_model              = "EVM account state"
+primary_use              = "Kraken's L2 for low-fee DeFi and exchange flows."
+slip44_coin_type         = "60 (Ethereum)"
+derivation_path          = "m/44'/60'/0'/0/0"
+alt_derivation_path      = ""
+total_circulation_model  = "Pays gas in ETH; no separate token."
+native_coingecko_id        = "ethereum"
+native_decimals             = 18
+native_asset_name           = "Ethereum"
+supports_diagnostics        = true
+notable_details          = [
+  "EIP-155 chain id is 57073.",
+  "Built by Kraken on the OP Stack.",
+]
+
+# ── Dash (43) ─────────────────────────────────────────────────────────────────
+
+[[chains]]
+id                       = "dash"
+chain_id                 = 43
+name                     = "Dash"
+symbol                   = "DASH"
+gas_token_symbol         = "DASH"
+short_label              = "DASH"
+search_keywords          = ["Dash", "DASH"]
+category                 = "bitcoin-family"
+is_evm                   = false
+supports_endpoint_catalog = true
+color_name               = "blue"
+asset_name               = "dash"
+token_standard           = ""
+contract_address_prompt  = ""
+tags                     = ["UTXO", "PoW", "Masternodes"]
+family                   = "Bitcoin fork (X11 + masternode tier)"
+consensus                = "Proof-of-Work (X11) with masternode quorum services"
+state_model              = "UTXO with InstantSend + ChainLocks"
+primary_use              = "Fast-finality payments via InstantSend; masternode-secured ChainLocks resist 51% reorgs."
+slip44_coin_type         = "5 (Dash)"
+derivation_path          = "m/44'/5'/0'/0/0"
+alt_derivation_path      = ""
+total_circulation_model  = "Capped near 18,900,000 DASH with -7.14% annual emission decay."
+native_coingecko_id        = "dash"
+native_decimals             = 8
+native_asset_name           = "Dash"
+supports_diagnostics        = true
+notable_details          = [
+  "P2PKH addresses use version byte 0x4C ('X...'); P2SH uses 0x10 ('7...').",
+  "Wire format and SIGHASH_ALL signing are identical to Bitcoin V1 — no SegWit on mainnet.",
+  "Balance and history come from Trezor Blockbook (dash1.trezor.io).",
+]
+
+# ── X Layer (44) ──────────────────────────────────────────────────────────────
+
+[[chains]]
+id                       = "x-layer"
+chain_id                 = 44
+name                     = "X Layer"
+symbol                   = "OKB"
+gas_token_symbol         = "OKB"
+short_label              = "X Layer"
+search_keywords          = ["X Layer", "OKB", "OKX"]
+category                 = "evm-l2"
+is_evm                   = true
+supports_endpoint_catalog = true
+color_name               = "gray"
+asset_name               = "okb"
+token_standard           = "ERC-20"
+contract_address_prompt  = "Contract Address"
+tags                     = ["EVM", "L2", "ZK Rollup"]
+family                   = "Ethereum L2 (Polygon CDK zkEVM)"
+consensus                = "ZK rollup with Polygon CDK validity proofs"
+state_model              = "EVM account state"
+primary_use              = "OKX-anchored zkEVM L2 for low-fee EVM transfers and DeFi denominated in OKB."
+slip44_coin_type         = "60 (Ethereum)"
+derivation_path          = "m/44'/60'/0'/0/0"
+alt_derivation_path      = ""
+total_circulation_model  = "Pays gas in OKB; OKB is OKX's exchange/utility token with periodic burns."
+native_coingecko_id        = "okb"
+native_decimals             = 18
+native_asset_name           = "OKB"
+supports_diagnostics        = true
+notable_details          = [
+  "EIP-155 chain id is 196.",
+  "Built by OKX on Polygon CDK; settles ZK proofs to Ethereum L1.",
+  "Spectra reuses the shared EVM client — derivation, balance, history, and send all flow through the standard EVM pipeline.",
+]
+
+# ── Bittensor (45) ────────────────────────────────────────────────────────────
+
+[[chains]]
+id                       = "bittensor"
+chain_id                 = 45
+name                     = "Bittensor"
+symbol                   = "TAO"
+gas_token_symbol         = "TAO"
+short_label              = "TAO"
+search_keywords          = ["Bittensor", "TAO", "subtensor"]
+category                 = "other"
+is_evm                   = false
+supports_endpoint_catalog = true
+color_name               = "gray"
+asset_name               = "bittensor"
+token_standard           = ""
+contract_address_prompt  = ""
+tags                     = ["L1", "PoW", "AI", "Substrate"]
+family                   = "Substrate (subtensor; Polkadot-style runtime)"
+consensus                = "Proof-of-Work + subnet validator scoring (Yuma consensus)"
+state_model              = "Substrate account/balances; subnets and neurons modeled as on-chain state"
+primary_use              = "Decentralized machine-learning marketplace where subnets stake TAO and earn emissions for serving AI inferences."
+slip44_coin_type         = "1005 (Bittensor)"
+derivation_path          = "m/44'/1005'/0'/0'/0' (substrate-bip39 ignores BIP-32 nodes; the canonical path is shown for display only)"
+alt_derivation_path      = ""
+total_circulation_model  = "Capped at 21,000,000 TAO with 4-year halvings, mirroring Bitcoin emission economics."
+native_coingecko_id        = "bittensor"
+native_decimals             = 9
+native_asset_name           = "Bittensor"
+supports_diagnostics        = true
+notable_details          = [
+  "Addresses use the substrate-generic SS58 prefix (42), so they begin with `5...` and look identical to generic Substrate addresses.",
+  "Wire format and extrinsic signing are Polkadot-compatible (SCALE codec, MultiSignature envelope, sr25519 keypair).",
+  "Spectra ships with hardcoded Bittensor runtime call indexes (Balances pallet 6, transfer_keep_alive call 3); a runtime upgrade requires re-verifying these.",
+  "Balance and history come from Taostats when an API key is configured; without one, history is empty and balance falls back to 0.",
+]
+
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+# Testnets (46-77) — wiki fields intentionally blank; identity + visual only.
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+[[chains]]
+id                       = "bitcoin-testnet"
+chain_id                 = 46
+name                     = "Bitcoin Testnet"
+symbol                   = "BTC"
+gas_token_symbol         = "BTC"
+short_label              = "BTC"
+search_keywords          = ["Bitcoin Testnet", "tBTC", "testnet"]
+category                 = "testnet"
+is_evm                   = false
+supports_endpoint_catalog = true
+color_name               = "orange"
+asset_name               = "bitcoin"
+token_standard           = ""
+contract_address_prompt  = ""
+tags                     = []
+family                   = ""
+consensus                = ""
+state_model              = ""
+primary_use              = ""
+slip44_coin_type         = ""
+derivation_path          = ""
+alt_derivation_path      = ""
+total_circulation_model  = ""
+native_coingecko_id        = "bitcoin"
+native_decimals             = 8
+native_asset_name           = "Bitcoin"
+supports_diagnostics        = true
+notable_details          = []
+
+[[chains]]
+id                       = "bitcoin-testnet4"
+chain_id                 = 47
+name                     = "Bitcoin Testnet4"
+symbol                   = "BTC"
+gas_token_symbol         = "BTC"
+short_label              = "BTC"
+search_keywords          = ["Bitcoin Testnet4", "testnet4"]
+category                 = "testnet"
+is_evm                   = false
+supports_endpoint_catalog = true
+color_name               = "orange"
+asset_name               = "bitcoin"
+token_standard           = ""
+contract_address_prompt  = ""
+tags                     = []
+family                   = ""
+consensus                = ""
+state_model              = ""
+primary_use              = ""
+slip44_coin_type         = ""
+derivation_path          = ""
+alt_derivation_path      = ""
+total_circulation_model  = ""
+native_coingecko_id        = "bitcoin"
+native_decimals             = 8
+native_asset_name           = "Bitcoin"
+supports_diagnostics        = true
+notable_details          = []
+
+[[chains]]
+id                       = "bitcoin-signet"
+chain_id                 = 48
+name                     = "Bitcoin Signet"
+symbol                   = "BTC"
+gas_token_symbol         = "BTC"
+short_label              = "BTC"
+search_keywords          = ["Bitcoin Signet", "signet"]
+category                 = "testnet"
+is_evm                   = false
+supports_endpoint_catalog = true
+color_name               = "orange"
+asset_name               = "bitcoin"
+token_standard           = ""
+contract_address_prompt  = ""
+tags                     = []
+family                   = ""
+consensus                = ""
+state_model              = ""
+primary_use              = ""
+slip44_coin_type         = ""
+derivation_path          = ""
+alt_derivation_path      = ""
+total_circulation_model  = ""
+native_coingecko_id        = "bitcoin"
+native_decimals             = 8
+native_asset_name           = "Bitcoin"
+supports_diagnostics        = true
+notable_details          = []
+
+[[chains]]
+id                       = "litecoin-testnet"
+chain_id                 = 49
+name                     = "Litecoin Testnet"
+symbol                   = "LTC"
+gas_token_symbol         = "LTC"
+short_label              = "LTC"
+search_keywords          = ["Litecoin Testnet", "tLTC"]
+category                 = "testnet"
+is_evm                   = false
+supports_endpoint_catalog = true
+color_name               = "blue"
+asset_name               = "litecoin"
+token_standard           = ""
+contract_address_prompt  = ""
+tags                     = []
+family                   = ""
+consensus                = ""
+state_model              = ""
+primary_use              = ""
+slip44_coin_type         = ""
+derivation_path          = ""
+alt_derivation_path      = ""
+total_circulation_model  = ""
+native_coingecko_id        = "litecoin"
+native_decimals             = 8
+native_asset_name           = "Litecoin"
+supports_diagnostics        = true
+notable_details          = []
+
+[[chains]]
+id                       = "bitcoin-cash-testnet"
+chain_id                 = 50
+name                     = "Bitcoin Cash Testnet"
+symbol                   = "BCH"
+gas_token_symbol         = "BCH"
+short_label              = "BCH"
+search_keywords          = ["Bitcoin Cash Testnet", "tBCH"]
+category                 = "testnet"
+is_evm                   = false
+supports_endpoint_catalog = true
+color_name               = "orange"
+asset_name               = "bitcoincash"
+token_standard           = ""
+contract_address_prompt  = ""
+tags                     = []
+family                   = ""
+consensus                = ""
+state_model              = ""
+primary_use              = ""
+slip44_coin_type         = ""
+derivation_path          = ""
+alt_derivation_path      = ""
+total_circulation_model  = ""
+native_coingecko_id        = "bitcoin-cash"
+native_decimals             = 8
+native_asset_name           = "Bitcoin Cash"
+supports_diagnostics        = true
+notable_details          = []
+
+[[chains]]
+id                       = "bitcoin-sv-testnet"
+chain_id                 = 51
+name                     = "Bitcoin SV Testnet"
+symbol                   = "BSV"
+gas_token_symbol         = "BSV"
+short_label              = "BSV"
+search_keywords          = ["Bitcoin SV Testnet", "tBSV"]
+category                 = "testnet"
+is_evm                   = false
+supports_endpoint_catalog = false
+color_name               = "orange"
+asset_name               = "bitcoinsv"
+token_standard           = ""
+contract_address_prompt  = ""
+tags                     = []
+family                   = ""
+consensus                = ""
+state_model              = ""
+primary_use              = ""
+slip44_coin_type         = ""
+derivation_path          = ""
+alt_derivation_path      = ""
+total_circulation_model  = ""
+native_coingecko_id        = "bitcoin-cash-sv"
+native_decimals             = 8
+native_asset_name           = "Bitcoin SV"
+supports_diagnostics        = true
+notable_details          = []
+
+[[chains]]
+id                       = "dogecoin-testnet"
+chain_id                 = 52
+name                     = "Dogecoin Testnet"
+symbol                   = "DOGE"
+gas_token_symbol         = "DOGE"
+short_label              = "DOGE"
+search_keywords          = ["Dogecoin Testnet", "tDOGE"]
+category                 = "testnet"
+is_evm                   = false
+supports_endpoint_catalog = true
+color_name               = "yellow"
+asset_name               = "dogecoin"
+token_standard           = ""
+contract_address_prompt  = ""
+tags                     = []
+family                   = ""
+consensus                = ""
+state_model              = ""
+primary_use              = ""
+slip44_coin_type         = ""
+derivation_path          = ""
+alt_derivation_path      = ""
+total_circulation_model  = ""
+native_coingecko_id        = "dogecoin"
+native_decimals             = 8
+native_asset_name           = "Dogecoin"
+supports_diagnostics        = true
+notable_details          = []
+
+[[chains]]
+id                       = "zcash-testnet"
+chain_id                 = 53
+name                     = "Zcash Testnet"
+symbol                   = "ZEC"
+gas_token_symbol         = "ZEC"
+short_label              = "ZEC"
+search_keywords          = ["Zcash Testnet"]
+category                 = "testnet"
+is_evm                   = false
+supports_endpoint_catalog = true
+color_name               = "yellow"
+asset_name               = "zcash"
+token_standard           = ""
+contract_address_prompt  = ""
+tags                     = []
+family                   = ""
+consensus                = ""
+state_model              = ""
+primary_use              = ""
+slip44_coin_type         = ""
+derivation_path          = ""
+alt_derivation_path      = ""
+total_circulation_model  = ""
+native_coingecko_id        = "zcash"
+native_decimals             = 8
+native_asset_name           = "Zcash"
+supports_diagnostics        = true
+notable_details          = []
+
+[[chains]]
+id                       = "decred-testnet"
+chain_id                 = 54
+name                     = "Decred Testnet"
+symbol                   = "DCR"
+gas_token_symbol         = "DCR"
+short_label              = "DCR"
+search_keywords          = ["Decred Testnet"]
+category                 = "testnet"
+is_evm                   = false
+supports_endpoint_catalog = true
+color_name               = "indigo"
+asset_name               = "decred"
+token_standard           = ""
+contract_address_prompt  = ""
+tags                     = []
+family                   = ""
+consensus                = ""
+state_model              = ""
+primary_use              = ""
+slip44_coin_type         = ""
+derivation_path          = ""
+alt_derivation_path      = ""
+total_circulation_model  = ""
+native_coingecko_id        = "decred"
+native_decimals             = 8
+native_asset_name           = "Decred"
+supports_diagnostics        = true
+notable_details          = []
+
+[[chains]]
+id                       = "kaspa-testnet"
+chain_id                 = 55
+name                     = "Kaspa Testnet"
+symbol                   = "KAS"
+gas_token_symbol         = "KAS"
+short_label              = "KAS"
+search_keywords          = ["Kaspa Testnet"]
+category                 = "testnet"
+is_evm                   = false
+supports_endpoint_catalog = true
+color_name               = "teal"
+asset_name               = "kaspa"
+token_standard           = ""
+contract_address_prompt  = ""
+tags                     = []
+family                   = ""
+consensus                = ""
+state_model              = ""
+primary_use              = ""
+slip44_coin_type         = ""
+derivation_path          = ""
+alt_derivation_path      = ""
+total_circulation_model  = ""
+native_coingecko_id        = "kaspa"
+native_decimals             = 8
+native_asset_name           = "Kaspa"
+supports_diagnostics        = true
+notable_details          = []
+
+[[chains]]
+id                       = "dash-testnet"
+chain_id                 = 56
+name                     = "Dash Testnet"
+symbol                   = "DASH"
+gas_token_symbol         = "DASH"
+short_label              = "DASH"
+search_keywords          = ["Dash Testnet"]
+category                 = "testnet"
+is_evm                   = false
+supports_endpoint_catalog = true
+color_name               = "blue"
+asset_name               = "dash"
+token_standard           = ""
+contract_address_prompt  = ""
+tags                     = []
+family                   = ""
+consensus                = ""
+state_model              = ""
+primary_use              = ""
+slip44_coin_type         = ""
+derivation_path          = ""
+alt_derivation_path      = ""
+total_circulation_model  = ""
+native_coingecko_id        = "dash"
+native_decimals             = 8
+native_asset_name           = "Dash"
+supports_diagnostics        = true
+notable_details          = []
+
+[[chains]]
+id                       = "ethereum-sepolia"
+chain_id                 = 57
+name                     = "Ethereum Sepolia"
+symbol                   = "ETH"
+gas_token_symbol         = "ETH"
+short_label              = "ETH"
+search_keywords          = ["Ethereum Sepolia", "Sepolia", "ETH"]
+category                 = "testnet"
+is_evm                   = true
+supports_endpoint_catalog = true
+color_name               = "purple"
+asset_name               = "ethereum"
+token_standard           = ""
+contract_address_prompt  = ""
+tags                     = []
+family                   = ""
+consensus                = ""
+state_model              = ""
+primary_use              = ""
+slip44_coin_type         = ""
+derivation_path          = ""
+alt_derivation_path      = ""
+total_circulation_model  = ""
+native_coingecko_id        = "ethereum"
+native_decimals             = 18
+native_asset_name           = "Ethereum"
+supports_diagnostics        = true
+notable_details          = []
+
+[[chains]]
+id                       = "ethereum-hoodi"
+chain_id                 = 58
+name                     = "Ethereum Hoodi"
+symbol                   = "ETH"
+gas_token_symbol         = "ETH"
+short_label              = "ETH"
+search_keywords          = ["Ethereum Hoodi", "Hoodi"]
+category                 = "testnet"
+is_evm                   = true
+supports_endpoint_catalog = true
+color_name               = "purple"
+asset_name               = "ethereum"
+token_standard           = ""
+contract_address_prompt  = ""
+tags                     = []
+family                   = ""
+consensus                = ""
+state_model              = ""
+primary_use              = ""
+slip44_coin_type         = ""
+derivation_path          = ""
+alt_derivation_path      = ""
+total_circulation_model  = ""
+native_coingecko_id        = "ethereum"
+native_decimals             = 18
+native_asset_name           = "Ethereum"
+supports_diagnostics        = true
+notable_details          = []
+
+[[chains]]
+id                       = "arbitrum-sepolia"
+chain_id                 = 59
+name                     = "Arbitrum Sepolia"
+symbol                   = "ARB"
+gas_token_symbol         = "ETH"
+short_label              = "ARB"
+search_keywords          = ["Arbitrum Sepolia", "Sepolia"]
+category                 = "testnet"
+is_evm                   = true
+supports_endpoint_catalog = true
+color_name               = "cyan"
+asset_name               = "arbitrum"
+token_standard           = ""
+contract_address_prompt  = ""
+tags                     = []
+family                   = ""
+consensus                = ""
+state_model              = ""
+primary_use              = ""
+slip44_coin_type         = ""
+derivation_path          = ""
+alt_derivation_path      = ""
+total_circulation_model  = ""
+native_coingecko_id        = "ethereum"
+native_decimals             = 18
+native_asset_name           = "Ethereum"
+supports_diagnostics        = true
+notable_details          = []
+
+[[chains]]
+id                       = "optimism-sepolia"
+chain_id                 = 60
+name                     = "Optimism Sepolia"
+symbol                   = "OP"
+gas_token_symbol         = "ETH"
+short_label              = "OP"
+search_keywords          = ["Optimism Sepolia", "Sepolia"]
+category                 = "testnet"
+is_evm                   = true
+supports_endpoint_catalog = true
+color_name               = "red"
+asset_name               = "optimism"
+token_standard           = ""
+contract_address_prompt  = ""
+tags                     = []
+family                   = ""
+consensus                = ""
+state_model              = ""
+primary_use              = ""
+slip44_coin_type         = ""
+derivation_path          = ""
+alt_derivation_path      = ""
+total_circulation_model  = ""
+native_coingecko_id        = "ethereum"
+native_decimals             = 18
+native_asset_name           = "Ethereum"
+supports_diagnostics        = true
+notable_details          = []
+
+[[chains]]
+id                       = "base-sepolia"
+chain_id                 = 61
+name                     = "Base Sepolia"
+symbol                   = "ETH"
+gas_token_symbol         = "ETH"
+short_label              = "BASE"
+search_keywords          = ["Base Sepolia", "Sepolia"]
+category                 = "testnet"
+is_evm                   = true
+supports_endpoint_catalog = true
+color_name               = "blue"
+asset_name               = "base"
+token_standard           = ""
+contract_address_prompt  = ""
+tags                     = []
+family                   = ""
+consensus                = ""
+state_model              = ""
+primary_use              = ""
+slip44_coin_type         = ""
+derivation_path          = ""
+alt_derivation_path      = ""
+total_circulation_model  = ""
+native_coingecko_id        = "ethereum"
+native_decimals             = 18
+native_asset_name           = "Ethereum"
+supports_diagnostics        = true
+notable_details          = []
+
+[[chains]]
+id                       = "bnb-testnet"
+chain_id                 = 62
+name                     = "BNB Chain Testnet"
+symbol                   = "BNB"
+gas_token_symbol         = "BNB"
+short_label              = "BNB"
+search_keywords          = ["BNB Chain Testnet", "Chapel"]
+category                 = "testnet"
+is_evm                   = true
+supports_endpoint_catalog = true
+color_name               = "yellow"
+asset_name               = "bnb"
+token_standard           = ""
+contract_address_prompt  = ""
+tags                     = []
+family                   = ""
+consensus                = ""
+state_model              = ""
+primary_use              = ""
+slip44_coin_type         = ""
+derivation_path          = ""
+alt_derivation_path      = ""
+total_circulation_model  = ""
+native_coingecko_id        = "binancecoin"
+native_decimals             = 18
+native_asset_name           = "BNB"
+supports_diagnostics        = true
+notable_details          = []
+
+[[chains]]
+id                       = "avalanche-fuji"
+chain_id                 = 63
+name                     = "Avalanche Fuji"
+symbol                   = "AVAX"
+gas_token_symbol         = "AVAX"
+short_label              = "AVAX"
+search_keywords          = ["Avalanche Fuji", "Fuji"]
+category                 = "testnet"
+is_evm                   = true
+supports_endpoint_catalog = true
+color_name               = "red"
+asset_name               = "avalanche"
+token_standard           = ""
+contract_address_prompt  = ""
+tags                     = []
+family                   = ""
+consensus                = ""
+state_model              = ""
+primary_use              = ""
+slip44_coin_type         = ""
+derivation_path          = ""
+alt_derivation_path      = ""
+total_circulation_model  = ""
+native_coingecko_id        = "avalanche-2"
+native_decimals             = 18
+native_asset_name           = "Avalanche"
+supports_diagnostics        = true
+notable_details          = []
+
+[[chains]]
+id                       = "polygon-amoy"
+chain_id                 = 64
+name                     = "Polygon Amoy"
+symbol                   = "POL"
+gas_token_symbol         = "POL"
+short_label              = "POL"
+search_keywords          = ["Polygon Amoy", "Amoy"]
+category                 = "testnet"
+is_evm                   = true
+supports_endpoint_catalog = true
+color_name               = "purple"
+asset_name               = "polygon"
+token_standard           = ""
+contract_address_prompt  = ""
+tags                     = []
+family                   = ""
+consensus                = ""
+state_model              = ""
+primary_use              = ""
+slip44_coin_type         = ""
+derivation_path          = ""
+alt_derivation_path      = ""
+total_circulation_model  = ""
+native_coingecko_id        = "matic-network"
+native_decimals             = 18
+native_asset_name           = "Polygon"
+supports_diagnostics        = true
+notable_details          = []
+
+[[chains]]
+id                       = "hyperliquid-testnet"
+chain_id                 = 65
+name                     = "Hyperliquid Testnet"
+symbol                   = "HYPE"
+gas_token_symbol         = "HYPE"
+short_label              = "HYPE"
+search_keywords          = ["Hyperliquid Testnet"]
+category                 = "testnet"
+is_evm                   = true
+supports_endpoint_catalog = true
+color_name               = "mint"
+asset_name               = "hyperliquid"
+token_standard           = ""
+contract_address_prompt  = ""
+tags                     = []
+family                   = ""
+consensus                = ""
+state_model              = ""
+primary_use              = ""
+slip44_coin_type         = ""
+derivation_path          = ""
+alt_derivation_path      = ""
+total_circulation_model  = ""
+native_coingecko_id        = "hyperliquid"
+native_decimals             = 18
+native_asset_name           = "Hyperliquid"
+supports_diagnostics        = true
+notable_details          = []
+
+[[chains]]
+id                       = "ethereum-classic-mordor"
+chain_id                 = 66
+name                     = "Ethereum Classic Mordor"
+symbol                   = "ETC"
+gas_token_symbol         = "ETC"
+short_label              = "ETC"
+search_keywords          = ["Ethereum Classic Mordor", "Mordor"]
+category                 = "testnet"
+is_evm                   = true
+supports_endpoint_catalog = true
+color_name               = "green"
+asset_name               = "ethereumclassic"
+token_standard           = ""
+contract_address_prompt  = ""
+tags                     = []
+family                   = ""
+consensus                = ""
+state_model              = ""
+primary_use              = ""
+slip44_coin_type         = ""
+derivation_path          = ""
+alt_derivation_path      = ""
+total_circulation_model  = ""
+native_coingecko_id        = "ethereum-classic"
+native_decimals             = 18
+native_asset_name           = "Ethereum Classic"
+supports_diagnostics        = true
+notable_details          = []
+
+[[chains]]
+id                       = "tron-nile"
+chain_id                 = 67
+name                     = "Tron Nile"
+symbol                   = "TRX"
+gas_token_symbol         = "TRX"
+short_label              = "TRX"
+search_keywords          = ["Tron Nile", "Nile"]
+category                 = "testnet"
+is_evm                   = false
+supports_endpoint_catalog = true
+color_name               = "red"
+asset_name               = "tron"
+token_standard           = ""
+contract_address_prompt  = ""
+tags                     = []
+family                   = ""
+consensus                = ""
+state_model              = ""
+primary_use              = ""
+slip44_coin_type         = ""
+derivation_path          = ""
+alt_derivation_path      = ""
+total_circulation_model  = ""
+native_coingecko_id        = "tron"
+native_decimals             = 6
+native_asset_name           = "Tron"
+supports_diagnostics        = true
+notable_details          = []
+
+[[chains]]
+id                       = "solana-devnet"
+chain_id                 = 68
+name                     = "Solana Devnet"
+symbol                   = "SOL"
+gas_token_symbol         = "SOL"
+short_label              = "SOL"
+search_keywords          = ["Solana Devnet", "Devnet"]
+category                 = "testnet"
+is_evm                   = false
+supports_endpoint_catalog = true
+color_name               = "green"
+asset_name               = "solana"
+token_standard           = ""
+contract_address_prompt  = ""
+tags                     = []
+family                   = ""
+consensus                = ""
+state_model              = ""
+primary_use              = ""
+slip44_coin_type         = ""
+derivation_path          = ""
+alt_derivation_path      = ""
+total_circulation_model  = ""
+native_coingecko_id        = "solana"
+native_decimals             = 9
+native_asset_name           = "Solana"
+supports_diagnostics        = true
+notable_details          = []
+
+[[chains]]
+id                       = "xrp-testnet"
+chain_id                 = 69
+name                     = "XRP Ledger Testnet"
+symbol                   = "XRP"
+gas_token_symbol         = "XRP"
+short_label              = "XRP"
+search_keywords          = ["XRP Ledger Testnet"]
+category                 = "testnet"
+is_evm                   = false
+supports_endpoint_catalog = true
+color_name               = "cyan"
+asset_name               = "xrp"
+token_standard           = ""
+contract_address_prompt  = ""
+tags                     = []
+family                   = ""
+consensus                = ""
+state_model              = ""
+primary_use              = ""
+slip44_coin_type         = ""
+derivation_path          = ""
+alt_derivation_path      = ""
+total_circulation_model  = ""
+native_coingecko_id        = "ripple"
+native_decimals             = 6
+native_asset_name           = "XRP"
+supports_diagnostics        = true
+notable_details          = []
+
+[[chains]]
+id                       = "stellar-testnet"
+chain_id                 = 70
+name                     = "Stellar Testnet"
+symbol                   = "XLM"
+gas_token_symbol         = "XLM"
+short_label              = "XLM"
+search_keywords          = ["Stellar Testnet"]
+category                 = "testnet"
+is_evm                   = false
+supports_endpoint_catalog = true
+color_name               = "teal"
+asset_name               = "stellar"
+token_standard           = ""
+contract_address_prompt  = ""
+tags                     = []
+family                   = ""
+consensus                = ""
+state_model              = ""
+primary_use              = ""
+slip44_coin_type         = ""
+derivation_path          = ""
+alt_derivation_path      = ""
+total_circulation_model  = ""
+native_coingecko_id        = "stellar"
+native_decimals             = 7
+native_asset_name           = "Stellar"
+supports_diagnostics        = true
+notable_details          = []
+
+[[chains]]
+id                       = "cardano-preprod"
+chain_id                 = 71
+name                     = "Cardano Preprod"
+symbol                   = "ADA"
+gas_token_symbol         = "ADA"
+short_label              = "ADA"
+search_keywords          = ["Cardano Preprod", "Preprod"]
+category                 = "testnet"
+is_evm                   = false
+supports_endpoint_catalog = true
+color_name               = "indigo"
+asset_name               = "cardano"
+token_standard           = ""
+contract_address_prompt  = ""
+tags                     = []
+family                   = ""
+consensus                = ""
+state_model              = ""
+primary_use              = ""
+slip44_coin_type         = ""
+derivation_path          = ""
+alt_derivation_path      = ""
+total_circulation_model  = ""
+native_coingecko_id        = "cardano"
+native_decimals             = 6
+native_asset_name           = "Cardano"
+supports_diagnostics        = true
+notable_details          = []
+
+[[chains]]
+id                       = "sui-testnet"
+chain_id                 = 72
+name                     = "Sui Testnet"
+symbol                   = "SUI"
+gas_token_symbol         = "SUI"
+short_label              = "SUI"
+search_keywords          = ["Sui Testnet"]
+category                 = "testnet"
+is_evm                   = false
+supports_endpoint_catalog = true
+color_name               = "mint"
+asset_name               = "sui"
+token_standard           = ""
+contract_address_prompt  = ""
+tags                     = []
+family                   = ""
+consensus                = ""
+state_model              = ""
+primary_use              = ""
+slip44_coin_type         = ""
+derivation_path          = ""
+alt_derivation_path      = ""
+total_circulation_model  = ""
+native_coingecko_id        = "sui"
+native_decimals             = 9
+native_asset_name           = "Sui"
+supports_diagnostics        = true
+notable_details          = []
+
+[[chains]]
+id                       = "aptos-testnet"
+chain_id                 = 73
+name                     = "Aptos Testnet"
+symbol                   = "APT"
+gas_token_symbol         = "APT"
+short_label              = "APT"
+search_keywords          = ["Aptos Testnet"]
+category                 = "testnet"
+is_evm                   = false
+supports_endpoint_catalog = true
+color_name               = "cyan"
+asset_name               = "aptos"
+token_standard           = ""
+contract_address_prompt  = ""
+tags                     = []
+family                   = ""
+consensus                = ""
+state_model              = ""
+primary_use              = ""
+slip44_coin_type         = ""
+derivation_path          = ""
+alt_derivation_path      = ""
+total_circulation_model  = ""
+native_coingecko_id        = "aptos"
+native_decimals             = 8
+native_asset_name           = "Aptos"
+supports_diagnostics        = true
+notable_details          = []
+
+[[chains]]
+id                       = "ton-testnet"
+chain_id                 = 74
+name                     = "TON Testnet"
+symbol                   = "TON"
+gas_token_symbol         = "TON"
+short_label              = "TON"
+search_keywords          = ["TON Testnet"]
+category                 = "testnet"
+is_evm                   = false
+supports_endpoint_catalog = true
+color_name               = "blue"
+asset_name               = "ton"
+token_standard           = ""
+contract_address_prompt  = ""
+tags                     = []
+family                   = ""
+consensus                = ""
+state_model              = ""
+primary_use              = ""
+slip44_coin_type         = ""
+derivation_path          = ""
+alt_derivation_path      = ""
+total_circulation_model  = ""
+native_coingecko_id        = "the-open-network"
+native_decimals             = 9
+native_asset_name           = "Toncoin"
+supports_diagnostics        = true
+notable_details          = []
+
+[[chains]]
+id                       = "near-testnet"
+chain_id                 = 75
+name                     = "NEAR Testnet"
+symbol                   = "NEAR"
+gas_token_symbol         = "NEAR"
+short_label              = "NEAR"
+search_keywords          = ["NEAR Testnet"]
+category                 = "testnet"
+is_evm                   = false
+supports_endpoint_catalog = true
+color_name               = "indigo"
+asset_name               = "near"
+token_standard           = ""
+contract_address_prompt  = ""
+tags                     = []
+family                   = ""
+consensus                = ""
+state_model              = ""
+primary_use              = ""
+slip44_coin_type         = ""
+derivation_path          = ""
+alt_derivation_path      = ""
+total_circulation_model  = ""
+native_coingecko_id        = "near"
+native_decimals             = 24
+native_asset_name           = "NEAR"
+supports_diagnostics        = true
+notable_details          = []
+
+[[chains]]
+id                       = "polkadot-westend"
+chain_id                 = 76
+name                     = "Polkadot Westend"
+symbol                   = "DOT"
+gas_token_symbol         = "DOT"
+short_label              = "DOT"
+search_keywords          = ["Polkadot Westend", "Westend"]
+category                 = "testnet"
+is_evm                   = false
+supports_endpoint_catalog = true
+color_name               = "pink"
+asset_name               = "polkadot"
+token_standard           = ""
+contract_address_prompt  = ""
+tags                     = []
+family                   = ""
+consensus                = ""
+state_model              = ""
+primary_use              = ""
+slip44_coin_type         = ""
+derivation_path          = ""
+alt_derivation_path      = ""
+total_circulation_model  = ""
+native_coingecko_id        = "polkadot"
+native_decimals             = 10
+native_asset_name           = "Polkadot"
+supports_diagnostics        = true
+notable_details          = []
+
+[[chains]]
+id                       = "monero-stagenet"
+chain_id                 = 77
+name                     = "Monero Stagenet"
+symbol                   = "XMR"
+gas_token_symbol         = "XMR"
+short_label              = "XMR"
+search_keywords          = ["Monero Stagenet", "Stagenet"]
+category                 = "testnet"
+is_evm                   = false
+supports_endpoint_catalog = true
+color_name               = "orange"
+asset_name               = "monero"
+token_standard           = ""
+contract_address_prompt  = ""
+tags                     = []
+family                   = ""
+consensus                = ""
+state_model              = ""
+primary_use              = ""
+slip44_coin_type         = ""
+derivation_path          = ""
+alt_derivation_path      = ""
+total_circulation_model  = ""
+native_coingecko_id        = "monero"
+native_decimals             = 12
+native_asset_name           = "Monero"
+supports_diagnostics        = true
+notable_details          = []

@@ -20,9 +20,6 @@ use sha2::Sha512;
 use unicode_normalization::UnicodeNormalization;
 use zeroize::Zeroizing;
 
-use crate::derivation::engine::{
-    DerivedOutput, ParsedRequest, OUTPUT_ADDRESS, OUTPUT_PRIVATE_KEY, OUTPUT_PUBLIC_KEY,
-};
 
 // ── SS58 decoding (preserved) ────────────────────────────────────────────
 
@@ -97,7 +94,7 @@ fn derive_substrate_mini_secret(
     Ok(out)
 }
 
-fn derive_substrate_sr25519_material(
+pub(crate) fn derive_substrate_sr25519_material(
     seed_phrase: &str,
     passphrase: &str,
     mnemonic_wordlist: Option<&str>,
@@ -163,38 +160,27 @@ fn encode_ss58(public_key: &[u8; 32], network_prefix: u16) -> String {
     bs58::encode(payload).into_string()
 }
 
-fn requests_output(requested_outputs: u32, output: u32) -> bool {
-    requested_outputs & output != 0
-}
-
-/// Derive a Bittensor SS58 address from BIP-39 + substrate-bip39 PBKDF2 +
-/// sr25519 + SS58 v1 (prefix 42).
-pub(crate) fn derive(request: ParsedRequest) -> Result<DerivedOutput, String> {
+pub(crate) fn derive_from_seed_phrase(
+    seed_phrase: &str,
+    passphrase: Option<&str>,
+    path: Option<&str>,
+    want_address: bool,
+    want_public_key: bool,
+    want_private_key: bool,
+) -> Result<(Option<String>, Option<String>, Option<String>), String> {
     let (mini_secret, public_key) = derive_substrate_sr25519_material(
-        &request.seed_phrase,
-        &request.passphrase,
-        request.mnemonic_wordlist.as_deref(),
-        request.salt_prefix.as_deref(),
-        request.iteration_count,
-        request.derivation_path.as_deref(),
+        seed_phrase,
+        passphrase.unwrap_or(""),
+        None,
+        None,
+        0,
+        path,
     )?;
-    Ok(DerivedOutput {
-        address: if requests_output(request.requested_outputs, OUTPUT_ADDRESS) {
-            Some(encode_ss58(&public_key, 42))
-        } else {
-            None
-        },
-        public_key_hex: if requests_output(request.requested_outputs, OUTPUT_PUBLIC_KEY) {
-            Some(hex::encode(public_key))
-        } else {
-            None
-        },
-        private_key_hex: if requests_output(request.requested_outputs, OUTPUT_PRIVATE_KEY) {
-            Some(hex::encode(mini_secret))
-        } else {
-            None
-        },
-    })
+    Ok((
+        want_address.then(|| encode_ss58(&public_key, 42)),
+        want_public_key.then(|| hex::encode(public_key)),
+        want_private_key.then(|| hex::encode(mini_secret)),
+    ))
 }
 
 #[cfg(test)]

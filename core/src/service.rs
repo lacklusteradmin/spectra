@@ -468,13 +468,19 @@ impl WalletService {
     ) -> Result<crate::send::SendExecutionResult, SpectraBridgeError> {
         // 1. Derive key material (or use provided private key).
         let (priv_hex, pub_hex) = if let Some(ref seed_phrase) = request.seed_phrase {
-            let (_addr, priv_h, pub_h) =
-                crate::derivation::derive_key_material_for_chain_with_overrides(
-                    seed_phrase,
+            let ov = request.derivation_overrides.as_ref();
+            let (_addr, priv_opt, pub_opt) =
+                crate::derivation::api::chain_dispatch::derive_for_chain(
                     &request.chain_name,
+                    seed_phrase,
                     &request.derivation_path,
-                    request.derivation_overrides.as_ref(),
+                    ov.and_then(|o| o.passphrase.as_deref()),
+                    ov.and_then(|o| o.hmac_key.as_deref()),
+                    ov.and_then(|o| o.script_type.as_deref()),
+                    false, true, true,
                 )?;
+            let priv_h = priv_opt.ok_or_else(|| SpectraBridgeError::from("derivation returned no private key"))?;
+            let pub_h = pub_opt.ok_or_else(|| SpectraBridgeError::from("derivation returned no public key"))?;
             (priv_h, Some(pub_h))
         } else if let Some(ref pk) = request.private_key_hex {
             let normalized = pk.strip_prefix("0x").unwrap_or(pk).to_string();

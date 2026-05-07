@@ -13,9 +13,6 @@ use sha2::Sha512;
 use unicode_normalization::UnicodeNormalization;
 use zeroize::Zeroizing;
 
-use crate::derivation::engine::{
-    DerivedOutput, ParsedRequest, OUTPUT_ADDRESS, OUTPUT_PRIVATE_KEY, OUTPUT_PUBLIC_KEY,
-};
 
 // ── Address validation (preserved) ───────────────────────────────────────
 
@@ -193,31 +190,21 @@ fn base32_no_pad(input: &[u8]) -> String {
     data_encoding::BASE32_NOPAD.encode(input)
 }
 
-fn requests_output(requested_outputs: u32, output: u32) -> bool {
-    requested_outputs & output != 0
-}
-
-/// Derive a Stellar G-address from BIP-39 + SLIP-10 ed25519. Address is
-/// the strkey-encoded ed25519 public key (version byte 0x30 + pubkey +
-/// little-endian CRC-16/XMODEM, base32 no-pad).
-pub(crate) fn derive(request: ParsedRequest) -> Result<DerivedOutput, String> {
-    let derivation_path = request
-        .derivation_path
-        .clone()
-        .ok_or("Derivation path is required.")?;
-    let seed = derive_bip39_seed(
-        &request.seed_phrase,
-        &request.passphrase,
-        request.iteration_count,
-        request.mnemonic_wordlist.as_deref(),
-        request.salt_prefix.as_deref(),
-    )?;
-    let private_key =
-        derive_slip10_ed25519_key(seed.as_ref(), &derivation_path, request.hmac_key.as_deref())?;
+pub(crate) fn derive_from_seed_phrase(
+    seed_phrase: &str,
+    derivation_path: &str,
+    passphrase: Option<&str>,
+    hmac_key: Option<&str>,
+    want_address: bool,
+    want_public_key: bool,
+    want_private_key: bool,
+) -> Result<(Option<String>, Option<String>, Option<String>), String> {
+    let seed = derive_bip39_seed(seed_phrase, passphrase.unwrap_or(""), 0, None, None)?;
+    let private_key = derive_slip10_ed25519_key(seed.as_ref(), derivation_path, hmac_key)?;
     let signing_key = SigningKey::from_bytes(&private_key);
     let public_key = signing_key.verifying_key().to_bytes();
 
-    let address = if requests_output(request.requested_outputs, OUTPUT_ADDRESS) {
+    let address = if want_address {
         let mut payload = [0u8; 35];
         payload[0] = 0x30;
         payload[1..33].copy_from_slice(&public_key);
@@ -229,17 +216,9 @@ pub(crate) fn derive(request: ParsedRequest) -> Result<DerivedOutput, String> {
         None
     };
 
-    Ok(DerivedOutput {
+    Ok((
         address,
-        public_key_hex: if requests_output(request.requested_outputs, OUTPUT_PUBLIC_KEY) {
-            Some(hex::encode(public_key))
-        } else {
-            None
-        },
-        private_key_hex: if requests_output(request.requested_outputs, OUTPUT_PRIVATE_KEY) {
-            Some(hex::encode(*private_key))
-        } else {
-            None
-        },
-    })
+        want_public_key.then(|| hex::encode(public_key)),
+        want_private_key.then(|| hex::encode(*private_key)),
+    ))
 }

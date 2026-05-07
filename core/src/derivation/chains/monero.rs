@@ -15,10 +15,6 @@ use sha2::Sha512;
 use unicode_normalization::UnicodeNormalization;
 use zeroize::Zeroizing;
 
-use crate::derivation::engine::{
-    DerivedOutput, ParsedRequest, OUTPUT_ADDRESS, OUTPUT_PRIVATE_KEY, OUTPUT_PUBLIC_KEY,
-};
-use crate::derivation::enums::Chain;
 
 pub fn validate_monero_address(address: &str) -> bool {
     // Monero mainnet addresses start with '4' (standard) or '8' (subaddress)
@@ -65,13 +61,9 @@ pub(crate) fn derive_monero_keys_from_spend_seed(
 pub(crate) fn encode_monero_main_address(
     public_spend: &[u8; 32],
     public_view: &[u8; 32],
-    chain: Chain,
+    is_mainnet: bool,
 ) -> Result<String, String> {
-    let network_byte: u8 = match chain {
-        Chain::Monero => 0x12,
-        Chain::MoneroStagenet => 0x18,
-        _ => return Err("Monero address encoding requires a Monero chain variant.".to_string()),
-    };
+    let network_byte: u8 = if is_mainnet { 0x12 } else { 0x18 };
     let mut payload = Vec::with_capacity(69);
     payload.push(network_byte);
     payload.extend_from_slice(public_spend);
@@ -181,48 +173,37 @@ fn derive_bip39_seed(
     Ok(seed)
 }
 
-fn requests_output(requested_outputs: u32, output: u32) -> bool {
-    requested_outputs & output != 0
-}
-
-/// Derive a Monero address from BIP-39 + spend-seed reduction +
-/// chunked-base58 encoding. Network is selected by `Chain::Monero`
-/// (mainnet) vs `Chain::MoneroStagenet`.
-pub(crate) fn derive(request: ParsedRequest) -> Result<DerivedOutput, String> {
-    let seed = derive_bip39_seed(
-        &request.seed_phrase,
-        &request.passphrase,
-        request.iteration_count,
-        request.mnemonic_wordlist.as_deref(),
-        request.salt_prefix.as_deref(),
-    )?;
+pub(crate) fn derive_from_seed_phrase(
+    is_mainnet: bool,
+    seed_phrase: &str,
+    want_address: bool,
+    want_public_key: bool,
+    want_private_key: bool,
+) -> Result<(Option<String>, Option<String>, Option<String>), String> {
+    let seed = derive_bip39_seed(seed_phrase, "", 0, None, None)?;
     let mut spend_seed = [0u8; 32];
     spend_seed.copy_from_slice(&seed[..32]);
     let (private_spend, public_spend, _private_view, public_view) =
         derive_monero_keys_from_spend_seed(&spend_seed)?;
 
-    Ok(DerivedOutput {
-        address: if requests_output(request.requested_outputs, OUTPUT_ADDRESS) {
-            Some(encode_monero_main_address(
-                &public_spend,
-                &public_view,
-                request.chain,
-            )?)
-        } else {
-            None
-        },
-        public_key_hex: if requests_output(request.requested_outputs, OUTPUT_PUBLIC_KEY) {
-            let mut both = [0u8; 64];
-            both[..32].copy_from_slice(&public_spend);
-            both[32..].copy_from_slice(&public_view);
-            Some(hex::encode(both))
-        } else {
-            None
-        },
-        private_key_hex: if requests_output(request.requested_outputs, OUTPUT_PRIVATE_KEY) {
-            Some(hex::encode(private_spend))
-        } else {
-            None
-        },
-    })
+    let address = if want_address {
+        Some(encode_monero_main_address(&public_spend, &public_view, is_mainnet)?)
+    } else {
+        None
+    };
+
+    let public_key_hex = if want_public_key {
+        let mut both = [0u8; 64];
+        both[..32].copy_from_slice(&public_spend);
+        both[32..].copy_from_slice(&public_view);
+        Some(hex::encode(both))
+    } else {
+        None
+    };
+
+    Ok((
+        address,
+        public_key_hex,
+        want_private_key.then(|| hex::encode(private_spend)),
+    ))
 }

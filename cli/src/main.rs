@@ -368,24 +368,16 @@ fn cmd_import(args: &[&str]) {
     println!("  {} {}-word mnemonic", "validated".green(), word_count);
 
     // Derive address
-    let mut chain_paths = HashMap::new();
-    chain_paths.insert(selected.name.clone(), selected.default_path.clone());
-
-    let addresses = match spectra_core::derivation_derive_all_addresses(
-        seed_trimmed.clone(),
-        chain_paths,
+    let address = match spectra_core::derivation::api::chain_dispatch::derive_for_chain(
+        &selected.name, &seed_trimmed, &selected.default_path, None, None, None, true, false, false,
     ) {
-        Ok(a) => a,
-        Err(e) => {
-            eprintln!("{} Derivation failed: {e}", accent("✗").bold());
+        Ok((Some(a), _, _)) => a,
+        Ok((None, _, _)) => {
+            eprintln!("{} No address could be derived for {}.", accent("✗").bold(), selected.name);
             return;
         }
-    };
-
-    let address = match addresses.get(&selected.name) {
-        Some(a) => a.clone(),
-        None => {
-            eprintln!("{} No address could be derived for {}.", accent("✗").bold(), selected.name);
+        Err(e) => {
+            eprintln!("{} Derivation failed: {e}", accent("✗").bold());
             return;
         }
     };
@@ -604,24 +596,16 @@ fn cmd_advimport() {
     println!("  {} {}-word mnemonic", "validated".green(), word_count);
 
     // Derive address
-    let mut chain_paths = HashMap::new();
-    chain_paths.insert(preset.chain.clone(), derivation_path.clone());
-
-    let addresses = match spectra_core::derivation_derive_all_addresses(
-        seed_trimmed.clone(),
-        chain_paths,
+    let address = match spectra_core::derivation::api::chain_dispatch::derive_for_chain(
+        &preset.chain, &seed_trimmed, &derivation_path, None, None, None, true, false, false,
     ) {
-        Ok(a) => a,
-        Err(e) => {
-            eprintln!("{} Derivation failed: {e}", accent("✗").bold());
+        Ok((Some(a), _, _)) => a,
+        Ok((None, _, _)) => {
+            eprintln!("{} No address could be derived for {}.", accent("✗").bold(), preset.chain);
             return;
         }
-    };
-
-    let address = match addresses.get(&preset.chain) {
-        Some(a) => a.clone(),
-        None => {
-            eprintln!("{} No address could be derived for {}.", accent("✗").bold(), preset.chain);
+        Err(e) => {
+            eprintln!("{} Derivation failed: {e}", accent("✗").bold());
             return;
         }
     };
@@ -783,24 +767,16 @@ fn cmd_newwallet() {
     };
 
     // 5. Derive address
-    let mut chain_paths = HashMap::new();
-    chain_paths.insert(selected.name.clone(), selected.default_path.clone());
-
-    let addresses = match spectra_core::derivation_derive_all_addresses(
-        seed_phrase.clone(),
-        chain_paths,
+    let address = match spectra_core::derivation::api::chain_dispatch::derive_for_chain(
+        &selected.name, &seed_phrase, &selected.default_path, None, None, None, true, false, false,
     ) {
-        Ok(a) => a,
-        Err(e) => {
-            eprintln!("{} Derivation failed: {e}", accent("✗").bold());
+        Ok((Some(a), _, _)) => a,
+        Ok((None, _, _)) => {
+            eprintln!("{} No address could be derived for {}.", accent("✗").bold(), selected.name);
             return;
         }
-    };
-
-    let address = match addresses.get(&selected.name) {
-        Some(a) => a.clone(),
-        None => {
-            eprintln!("{} No address could be derived for {}.", accent("✗").bold(), selected.name);
+        Err(e) => {
+            eprintln!("{} Derivation failed: {e}", accent("✗").bold());
             return;
         }
     };

@@ -13,10 +13,6 @@ use sha2::Sha512;
 use unicode_normalization::UnicodeNormalization;
 use zeroize::Zeroizing;
 
-use crate::derivation::engine::{
-    DerivedOutput, ParsedRequest, OUTPUT_ADDRESS, OUTPUT_PRIVATE_KEY, OUTPUT_PUBLIC_KEY,
-};
-use crate::derivation::enums::Chain;
 
 // ── SS58 decoding (preserved) ────────────────────────────────────────────
 
@@ -98,7 +94,7 @@ fn derive_substrate_mini_secret(
     Ok(out)
 }
 
-fn derive_substrate_sr25519_material(
+pub(crate) fn derive_substrate_sr25519_material(
     seed_phrase: &str,
     passphrase: &str,
     mnemonic_wordlist: Option<&str>,
@@ -171,40 +167,3 @@ pub(crate) fn encode_ss58(public_key: &[u8; 32], network_prefix: u16) -> String 
     bs58::encode(payload).into_string()
 }
 
-fn requests_output(requested_outputs: u32, output: u32) -> bool {
-    requested_outputs & output != 0
-}
-
-/// Derive a Polkadot SS58 address from BIP-39 + substrate-bip39 PBKDF2 +
-/// sr25519 + SS58 v1. SS58 prefix is 0 for `Chain::Polkadot` and 42 for
-/// `Chain::PolkadotWestend`.
-pub(crate) fn derive(request: ParsedRequest) -> Result<DerivedOutput, String> {
-    let uniform = request.hmac_key.as_deref() == Some("uniform");
-    let (mini_secret, public_key) = derive_substrate_sr25519_material(
-        &request.seed_phrase,
-        &request.passphrase,
-        request.mnemonic_wordlist.as_deref(),
-        request.salt_prefix.as_deref(),
-        request.iteration_count,
-        request.derivation_path.as_deref(),
-        uniform,
-    )?;
-    let prefix: u16 = if matches!(request.chain, Chain::PolkadotWestend) { 42 } else { 0 };
-    Ok(DerivedOutput {
-        address: if requests_output(request.requested_outputs, OUTPUT_ADDRESS) {
-            Some(encode_ss58(&public_key, prefix))
-        } else {
-            None
-        },
-        public_key_hex: if requests_output(request.requested_outputs, OUTPUT_PUBLIC_KEY) {
-            Some(hex::encode(public_key))
-        } else {
-            None
-        },
-        private_key_hex: if requests_output(request.requested_outputs, OUTPUT_PRIVATE_KEY) {
-            Some(hex::encode(mini_secret))
-        } else {
-            None
-        },
-    })
-}

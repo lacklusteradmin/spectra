@@ -4,26 +4,17 @@
 //! - `decode_ton_address` / `validate_ton_address`: parse raw or
 //!   base64url user-friendly addresses.
 //! - `derive_ton_seed`: TON mnemonic (ton-crypto / TonKeeper / Tonhub) PBKDF2.
-//! - `format_ton_address`: emit either raw account-id ("0:hex") or v4R2
-//!   base64url depending on the address algorithm.
 //! - The v4R2 path computes the wallet's account id from the embedded
 //!   wallet code BOC + a freshly-built data cell. Correctness is locked
 //!   by `v4r2_code_hash_and_depth`'s self-test against the published
 //!   v4R2 code hash.
 
-use bip39::{Language, Mnemonic};
 use ed25519_dalek::SigningKey;
 use hmac::{Hmac, Mac};
 use pbkdf2::pbkdf2_hmac;
 use sha2::{Digest, Sha256, Sha512};
-use unicode_normalization::UnicodeNormalization;
 use zeroize::Zeroizing;
 
-use crate::derivation::engine::{
-    DerivationAlgorithm, DerivedOutput, ParsedRequest, OUTPUT_ADDRESS, OUTPUT_PRIVATE_KEY,
-    OUTPUT_PUBLIC_KEY,
-};
-use crate::derivation::enums::AddressAlgorithm;
 
 type HmacSha512 = Hmac<Sha512>;
 
@@ -333,199 +324,29 @@ fn derive_ton_v4r2_address(public_key: &[u8; 32]) -> Result<String, String> {
     Ok(base64::engine::general_purpose::URL_SAFE_NO_PAD.encode(buf))
 }
 
-pub(crate) fn format_ton_address(
-    public_key: &[u8; 32],
-    algorithm: AddressAlgorithm,
-) -> Result<String, String> {
-    match algorithm {
-        AddressAlgorithm::TonV4R2 => derive_ton_v4r2_address(public_key),
-        AddressAlgorithm::TonRawAccountId | AddressAlgorithm::Auto => {
-            Ok(format!("0:{}", hex::encode(public_key)))
-        }
-        _ => Err("Unsupported address algorithm for TON.".to_string()),
-    }
-}
-
-// ── BIP-39 ───────────────────────────────────────────────────────────────
-
-fn resolve_bip39_language(name: Option<&str>) -> Result<Language, String> {
-    let value = match name {
-        Some(value) if !value.trim().is_empty() => value.trim().to_ascii_lowercase(),
-        _ => return Ok(Language::English),
-    };
-    match value.as_str() {
-        "english" | "en" => Ok(Language::English),
-        "czech" | "cs" => Ok(Language::Czech),
-        "french" | "fr" => Ok(Language::French),
-        "italian" | "it" => Ok(Language::Italian),
-        "japanese" | "ja" | "jp" => Ok(Language::Japanese),
-        "korean" | "ko" | "kr" => Ok(Language::Korean),
-        "portuguese" | "pt" => Ok(Language::Portuguese),
-        "spanish" | "es" => Ok(Language::Spanish),
-        "simplified-chinese" | "chinese-simplified" | "simplified_chinese" | "zh-hans"
-        | "zh-cn" | "zh" => Ok(Language::SimplifiedChinese),
-        "traditional-chinese" | "chinese-traditional" | "traditional_chinese" | "zh-hant"
-        | "zh-tw" => Ok(Language::TraditionalChinese),
-        other => Err(format!("Unsupported mnemonic wordlist: {other}")),
-    }
-}
-
-fn derive_bip39_seed(
+/// Derive a TON V4R2 bounceable mainnet address from a TON-style mnemonic.
+pub(crate) fn derive_ton_standard(
     seed_phrase: &str,
-    passphrase: &str,
-    iteration_count: u32,
-    mnemonic_wordlist: Option<&str>,
-    salt_prefix: Option<&str>,
-) -> Result<Zeroizing<[u8; 64]>, String> {
-    let language = resolve_bip39_language(mnemonic_wordlist)?;
-    let mnemonic =
-        Mnemonic::parse_in_normalized(language, seed_phrase).map_err(|e| e.to_string())?;
-    let iterations = if iteration_count == 0 { 2048 } else { iteration_count };
-    let prefix = salt_prefix.unwrap_or("mnemonic");
-    let normalized_mnemonic = Zeroizing::new(mnemonic.to_string().nfkd().collect::<String>());
-    let normalized_passphrase = Zeroizing::new(passphrase.nfkd().collect::<String>());
-    let normalized_prefix = Zeroizing::new(prefix.nfkd().collect::<String>());
-    let salt = Zeroizing::new(format!(
-        "{}{}",
-        normalized_prefix.as_str(),
-        normalized_passphrase.as_str()
-    ));
-    let mut seed = Zeroizing::new([0u8; 64]);
-    pbkdf2_hmac::<Sha512>(
-        normalized_mnemonic.as_bytes(),
-        salt.as_bytes(),
-        iterations,
-        &mut *seed,
-    );
-    Ok(seed)
-}
+    passphrase: Option<&str>,
+    want_address: bool,
+    want_public_key: bool,
+    want_private_key: bool,
+) -> Result<(Option<String>, Option<String>, Option<String>), String> {
+    let seed = derive_ton_seed(seed_phrase, passphrase.unwrap_or(""), None, 0)?;
+    let mut private_key = [0u8; 32];
+    private_key.copy_from_slice(&seed[..32]);
+    let signing_key = SigningKey::from_bytes(&private_key);
+    let public_key = signing_key.verifying_key().to_bytes();
 
-// ── SLIP-10 ed25519 ──────────────────────────────────────────────────────
-
-fn parse_slip10_ed25519_path(path: &str) -> Result<Vec<u32>, String> {
-    let trimmed = path.trim();
-    let body = trimmed
-        .strip_prefix("m/")
-        .or_else(|| trimmed.strip_prefix("M/"))
-        .unwrap_or_else(|| {
-            if trimmed == "m" || trimmed == "M" {
-                ""
-            } else {
-                trimmed
-            }
-        });
-    if body.is_empty() {
-        return Ok(Vec::new());
-    }
-    let mut indices = Vec::new();
-    for segment in body.split('/') {
-        let cleaned = segment.trim_end_matches('\'').trim_end_matches('h');
-        let raw: u32 = cleaned
-            .parse()
-            .map_err(|_| format!("Invalid derivation path segment: {segment}"))?;
-        if raw & 0x8000_0000 != 0 {
-            return Err(format!("Derivation path segment out of range: {segment}"));
-        }
-        indices.push(raw | 0x8000_0000);
-    }
-    Ok(indices)
-}
-
-fn derive_slip10_ed25519_key(
-    seed: &[u8],
-    derivation_path: &str,
-    hmac_key: Option<&str>,
-) -> Result<Zeroizing<[u8; 32]>, String> {
-    let key_bytes = hmac_key
-        .filter(|value| !value.is_empty())
-        .map(|value| value.as_bytes())
-        .unwrap_or(b"ed25519 seed");
-    let master = hmac_sha512(key_bytes, &[seed])?;
-    let mut private_key = Zeroizing::new([0u8; 32]);
-    let mut chain_code = Zeroizing::new([0u8; 32]);
-    private_key.copy_from_slice(&master[..32]);
-    chain_code.copy_from_slice(&master[32..]);
-    for index in parse_slip10_ed25519_path(derivation_path)? {
-        let index_bytes = index.to_be_bytes();
-        let child = hmac_sha512(
-            &*chain_code,
-            &[&[0x00], &*private_key as &[u8], &index_bytes],
-        )?;
-        private_key.copy_from_slice(&child[..32]);
-        chain_code.copy_from_slice(&child[32..]);
-    }
-    Ok(private_key)
-}
-
-fn requests_output(requested_outputs: u32, output: u32) -> bool {
-    requested_outputs & output != 0
-}
-
-/// Derive a TON address. Supports TonMnemonic (TON-style mnemonic), plus
-/// BIP-39 + DirectSeed-ed25519 / SLIP-10 ed25519 — orchestrated identically
-/// to the previous engine.rs behavior.
-pub(crate) fn derive(request: ParsedRequest) -> Result<DerivedOutput, String> {
-    let (private_key, public_key) = match request.derivation_algorithm {
-        DerivationAlgorithm::TonMnemonic => {
-            let seed = derive_ton_seed(
-                &request.seed_phrase,
-                &request.passphrase,
-                request.salt_prefix.as_deref(),
-                request.iteration_count,
-            )?;
-            let mut private_key = [0u8; 32];
-            private_key.copy_from_slice(&seed[..32]);
-            let signing_key = SigningKey::from_bytes(&private_key);
-            (private_key, signing_key.verifying_key().to_bytes())
-        }
-        DerivationAlgorithm::DirectSeedEd25519 => {
-            let seed = derive_bip39_seed(
-                &request.seed_phrase,
-                &request.passphrase,
-                request.iteration_count,
-                request.mnemonic_wordlist.as_deref(),
-                request.salt_prefix.as_deref(),
-            )?;
-            let mut private_key = [0u8; 32];
-            private_key.copy_from_slice(&seed[..32]);
-            let signing_key = SigningKey::from_bytes(&private_key);
-            (private_key, signing_key.verifying_key().to_bytes())
-        }
-        DerivationAlgorithm::Slip10Ed25519 => {
-            let path = request
-                .derivation_path
-                .clone()
-                .ok_or("Derivation path is required.")?;
-            let seed = derive_bip39_seed(
-                &request.seed_phrase,
-                &request.passphrase,
-                request.iteration_count,
-                request.mnemonic_wordlist.as_deref(),
-                request.salt_prefix.as_deref(),
-            )?;
-            let private_key =
-                derive_slip10_ed25519_key(seed.as_ref(), &path, request.hmac_key.as_deref())?;
-            let signing_key = SigningKey::from_bytes(&private_key);
-            (*private_key, signing_key.verifying_key().to_bytes())
-        }
-        _ => return Err("Unsupported derivation algorithm for TON.".to_string()),
+    let address = if want_address {
+        Some(derive_ton_v4r2_address(&public_key)?)
+    } else {
+        None
     };
 
-    Ok(DerivedOutput {
-        address: if requests_output(request.requested_outputs, OUTPUT_ADDRESS) {
-            Some(format_ton_address(&public_key, request.address_algorithm)?)
-        } else {
-            None
-        },
-        public_key_hex: if requests_output(request.requested_outputs, OUTPUT_PUBLIC_KEY) {
-            Some(hex::encode(public_key))
-        } else {
-            None
-        },
-        private_key_hex: if requests_output(request.requested_outputs, OUTPUT_PRIVATE_KEY) {
-            Some(hex::encode(private_key))
-        } else {
-            None
-        },
-    })
+    Ok((
+        address,
+        want_public_key.then(|| hex::encode(public_key)),
+        want_private_key.then(|| hex::encode(private_key)),
+    ))
 }

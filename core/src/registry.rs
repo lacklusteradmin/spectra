@@ -500,85 +500,10 @@ impl Chain {
     /// Display name of the native coin (what shows in holding lists).
     /// For EVM sidechains this is the coin they pay gas in, not the chain
     /// (e.g. Arbitrum pays in ETH so `coin_name()` returns `"Ethereum"`).
-    pub const fn coin_name(self) -> &'static str {
-        match self {
-            Chain::Bitcoin => "Bitcoin",
-            Chain::Ethereum
-            | Chain::Arbitrum
-            | Chain::Optimism
-            | Chain::Base
-            | Chain::Linea
-            | Chain::Scroll
-            | Chain::Blast => "Ethereum",
-            Chain::Solana => "Solana",
-            Chain::Dogecoin => "Dogecoin",
-            Chain::Xrp => "XRP",
-            Chain::Litecoin => "Litecoin",
-            Chain::BitcoinCash => "Bitcoin Cash",
-            Chain::Tron => "Tron",
-            Chain::Stellar => "Stellar",
-            Chain::Cardano => "Cardano",
-            Chain::Polkadot => "Polkadot",
-            Chain::Avalanche => "Avalanche",
-            Chain::Sui => "Sui",
-            Chain::Aptos => "Aptos",
-            Chain::Ton => "TON",
-            Chain::Near => "NEAR",
-            Chain::Icp => "Internet Computer",
-            Chain::Monero => "Monero",
-            Chain::EthereumClassic => "Ethereum Classic",
-            Chain::BitcoinSV => "Bitcoin SV",
-            Chain::BnbChain => "BNB",
-            Chain::Hyperliquid => "Hyperliquid",
-            Chain::Polygon => "Polygon",
-            Chain::Mantle => "Mantle",
-            Chain::Zcash => "Zcash",
-            Chain::BitcoinGold => "Bitcoin Gold",
-            Chain::Decred => "Decred",
-            Chain::Kaspa => "Kaspa",
-            Chain::Sei => "Sei",
-            Chain::Celo => "Celo",
-            Chain::Cronos => "Cronos",
-            Chain::OpBnb => "BNB",
-            Chain::ZkSyncEra | Chain::Unichain | Chain::Ink => "Ethereum",
-            Chain::Sonic => "Sonic",
-            Chain::Berachain => "Berachain",
-            Chain::Dash => "Dash",
-            Chain::XLayer => "OKB",
-            Chain::Bittensor => "Bittensor",
-            // Testnets — same coin name as mainnet (the asset is logically the
-            // same; the chain row just makes clear it's not real money).
-            Chain::BitcoinTestnet | Chain::BitcoinTestnet4 | Chain::BitcoinSignet => "Bitcoin",
-            Chain::LitecoinTestnet => "Litecoin",
-            Chain::BitcoinCashTestnet => "Bitcoin Cash",
-            Chain::BitcoinSVTestnet => "Bitcoin SV",
-            Chain::DogecoinTestnet => "Dogecoin",
-            Chain::ZcashTestnet => "Zcash",
-            Chain::DecredTestnet => "Decred",
-            Chain::KaspaTestnet => "Kaspa",
-            Chain::DashTestnet => "Dash",
-            Chain::EthereumSepolia
-            | Chain::EthereumHoodi
-            | Chain::ArbitrumSepolia
-            | Chain::OptimismSepolia
-            | Chain::BaseSepolia => "Ethereum",
-            Chain::BnbChainTestnet => "BNB",
-            Chain::AvalancheFuji => "Avalanche",
-            Chain::PolygonAmoy => "Polygon",
-            Chain::HyperliquidTestnet => "Hyperliquid",
-            Chain::EthereumClassicMordor => "Ethereum Classic",
-            Chain::TronNile => "Tron",
-            Chain::SolanaDevnet => "Solana",
-            Chain::XrpTestnet => "XRP",
-            Chain::StellarTestnet => "Stellar",
-            Chain::CardanoPreprod => "Cardano",
-            Chain::SuiTestnet => "Sui",
-            Chain::AptosTestnet => "Aptos",
-            Chain::TonTestnet => "TON",
-            Chain::NearTestnet => "NEAR",
-            Chain::PolkadotWestend => "Polkadot",
-            Chain::MoneroStagenet => "Monero",
-        }
+    pub fn coin_name(self) -> &'static str {
+        crate::chains::chain_by_id(self as u32)
+            .map(|c| c.native_asset_name.as_str())
+            .unwrap_or("")
     }
 
     /// Ticker of the native coin (BTC, ETH, ...).
@@ -751,162 +676,17 @@ impl Chain {
     }
 
     /// Decimals of the native coin (BTC=8, ETH=18, ...).
-    pub const fn native_decimals(self) -> u8 {
-        match self {
-            Chain::Bitcoin
-            | Chain::Dogecoin
-            | Chain::Litecoin
-            | Chain::BitcoinCash
-            | Chain::BitcoinSV
-            | Chain::Zcash
-            | Chain::BitcoinGold
-            | Chain::Decred
-            | Chain::Kaspa
-            | Chain::Dash => 8,
-            Chain::Ethereum
-            | Chain::Arbitrum
-            | Chain::Optimism
-            | Chain::Avalanche
-            | Chain::Base
-            | Chain::EthereumClassic
-            | Chain::BnbChain
-            | Chain::Hyperliquid
-            | Chain::Polygon
-            | Chain::Linea
-            | Chain::Scroll
-            | Chain::Blast
-            | Chain::Mantle
-            | Chain::Sei
-            | Chain::Celo
-            | Chain::Cronos
-            | Chain::OpBnb
-            | Chain::ZkSyncEra
-            | Chain::Sonic
-            | Chain::Berachain
-            | Chain::Unichain
-            | Chain::Ink
-            | Chain::XLayer => 18,
-            Chain::Solana | Chain::Sui | Chain::Ton | Chain::Bittensor => 9,
-            Chain::Xrp | Chain::Tron | Chain::Cardano => 6,
-            Chain::Stellar => 7,
-            Chain::Aptos | Chain::Icp => 8,
-            Chain::Polkadot => 10,
-            Chain::Near => 24,
-            Chain::Monero => 12,
-            // Testnets — same decimals as mainnet counterpart.
-            Chain::BitcoinTestnet
-            | Chain::BitcoinTestnet4
-            | Chain::BitcoinSignet
-            | Chain::LitecoinTestnet
-            | Chain::BitcoinCashTestnet
-            | Chain::BitcoinSVTestnet
-            | Chain::DogecoinTestnet
-            | Chain::ZcashTestnet
-            | Chain::DecredTestnet
-            | Chain::KaspaTestnet
-            | Chain::DashTestnet => 8,
-            Chain::EthereumSepolia
-            | Chain::EthereumHoodi
-            | Chain::ArbitrumSepolia
-            | Chain::OptimismSepolia
-            | Chain::BaseSepolia
-            | Chain::BnbChainTestnet
-            | Chain::AvalancheFuji
-            | Chain::PolygonAmoy
-            | Chain::HyperliquidTestnet
-            | Chain::EthereumClassicMordor => 18,
-            Chain::TronNile => 6,
-            Chain::SolanaDevnet | Chain::SuiTestnet | Chain::TonTestnet => 9,
-            Chain::XrpTestnet | Chain::CardanoPreprod => 6,
-            Chain::StellarTestnet => 7,
-            Chain::AptosTestnet => 8,
-            Chain::PolkadotWestend => 10,
-            Chain::NearTestnet => 24,
-            Chain::MoneroStagenet => 12,
-        }
+    pub fn native_decimals(self) -> u8 {
+        crate::chains::chain_by_id(self as u32)
+            .map(|c| c.native_decimals as u8)
+            .unwrap_or(18)
     }
 
     /// CoinGecko id (lowercase slug).
-    pub const fn coin_gecko_id(self) -> &'static str {
-        match self {
-            Chain::Bitcoin => "bitcoin",
-            Chain::Ethereum
-            | Chain::Arbitrum
-            | Chain::Optimism
-            | Chain::Base
-            | Chain::Linea
-            | Chain::Scroll
-            | Chain::Blast => "ethereum",
-            Chain::Solana => "solana",
-            Chain::Dogecoin => "dogecoin",
-            Chain::Xrp => "ripple",
-            Chain::Litecoin => "litecoin",
-            Chain::BitcoinCash => "bitcoin-cash",
-            Chain::Tron => "tron",
-            Chain::Stellar => "stellar",
-            Chain::Cardano => "cardano",
-            Chain::Polkadot => "polkadot",
-            Chain::Avalanche => "avalanche-2",
-            Chain::Sui => "sui",
-            Chain::Aptos => "aptos",
-            Chain::Ton => "the-open-network",
-            Chain::Near => "near",
-            Chain::Icp => "internet-computer",
-            Chain::Monero => "monero",
-            Chain::EthereumClassic => "ethereum-classic",
-            Chain::BitcoinSV => "bitcoin-cash-sv",
-            Chain::BnbChain => "binancecoin",
-            Chain::Hyperliquid => "hyperliquid",
-            Chain::Polygon => "matic-network",
-            Chain::Mantle => "mantle",
-            Chain::Zcash => "zcash",
-            Chain::BitcoinGold => "bitcoin-gold",
-            Chain::Decred => "decred",
-            Chain::Kaspa => "kaspa",
-            Chain::Sei => "sei-network",
-            Chain::Celo => "celo",
-            Chain::Cronos => "crypto-com-chain",
-            Chain::OpBnb => "binancecoin",
-            Chain::ZkSyncEra | Chain::Unichain | Chain::Ink => "ethereum",
-            Chain::Sonic => "sonic-3",
-            Chain::Berachain => "berachain-bera",
-            Chain::Dash => "dash",
-            Chain::XLayer => "okb",
-            Chain::Bittensor => "bittensor",
-            // Testnets — reuse the mainnet CoinGecko id so the price feed
-            // shows a non-zero number, but the UI is expected to flag the
-            // chain as testnet so users don't confuse it with real money.
-            Chain::BitcoinTestnet | Chain::BitcoinTestnet4 | Chain::BitcoinSignet => "bitcoin",
-            Chain::LitecoinTestnet => "litecoin",
-            Chain::BitcoinCashTestnet => "bitcoin-cash",
-            Chain::BitcoinSVTestnet => "bitcoin-cash-sv",
-            Chain::DogecoinTestnet => "dogecoin",
-            Chain::ZcashTestnet => "zcash",
-            Chain::DecredTestnet => "decred",
-            Chain::KaspaTestnet => "kaspa",
-            Chain::DashTestnet => "dash",
-            Chain::EthereumSepolia
-            | Chain::EthereumHoodi
-            | Chain::ArbitrumSepolia
-            | Chain::OptimismSepolia
-            | Chain::BaseSepolia => "ethereum",
-            Chain::BnbChainTestnet => "binancecoin",
-            Chain::AvalancheFuji => "avalanche-2",
-            Chain::PolygonAmoy => "matic-network",
-            Chain::HyperliquidTestnet => "hyperliquid",
-            Chain::EthereumClassicMordor => "ethereum-classic",
-            Chain::TronNile => "tron",
-            Chain::SolanaDevnet => "solana",
-            Chain::XrpTestnet => "ripple",
-            Chain::StellarTestnet => "stellar",
-            Chain::CardanoPreprod => "cardano",
-            Chain::SuiTestnet => "sui",
-            Chain::AptosTestnet => "aptos",
-            Chain::TonTestnet => "the-open-network",
-            Chain::NearTestnet => "near",
-            Chain::PolkadotWestend => "polkadot",
-            Chain::MoneroStagenet => "monero",
-        }
+    pub fn coin_gecko_id(self) -> &'static str {
+        crate::chains::chain_by_id(self as u32)
+            .map(|c| c.native_coingecko_id.as_str())
+            .unwrap_or("")
     }
 
     /// Primary JSON field name for the raw native balance in the Rust
@@ -1216,6 +996,41 @@ pub fn core_endpoint_id(chain_id: u32, slot: crate::app_core::AppCoreEndpointSlo
         crate::app_core::AppCoreEndpointSlot::Explorer => EndpointSlot::Explorer,
     };
     Some(chain.endpoint_id(mapped))
+}
+
+/// Resolve any chain name, display name, or ticker symbol to its canonical
+/// chain ID as stored in the `chains.toml` catalog.
+///
+/// Resolution order (all comparisons are case-insensitive and trimmed):
+/// 1. Exact match on `id`, `name`, or `symbol` from the catalog.
+/// 2. Fallback: kebab-case normalization of the input — non-alphanumeric
+///    characters replaced with `-`, consecutive hyphens collapsed, edge
+///    hyphens trimmed. This mirrors `WalletChainID.fallbackRawValue` in Swift
+///    so unknown/custom chain strings hash identically on both platforms.
+#[uniffi::export]
+pub fn core_resolve_chain_id(input: String) -> String {
+    let normalized = input.trim().to_lowercase();
+    if normalized.is_empty() {
+        return input;
+    }
+    for entry in crate::chains::catalog() {
+        if entry.id.to_lowercase() == normalized
+            || entry.name.trim().to_lowercase() == normalized
+            || entry.symbol.trim().to_lowercase() == normalized
+        {
+            return entry.id.clone();
+        }
+    }
+    // Kebab-case fallback for unknown chains.
+    let kebab: String = normalized
+        .chars()
+        .map(|c| if c.is_alphanumeric() { c } else { '-' })
+        .collect();
+    kebab
+        .split('-')
+        .filter(|s| !s.is_empty())
+        .collect::<Vec<_>>()
+        .join("-")
 }
 
 /// EVM derivation source mapping: BNB Chain reuses Ethereum's seed derivation

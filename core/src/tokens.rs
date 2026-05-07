@@ -90,6 +90,7 @@ static CATALOG: LazyLock<Vec<TokenEntry>> = LazyLock::new(|| {
 // ----------------------------------------------------------------
 
 /// Return token entries for `chain_id`, or all chains when `chain_id == u32::MAX`.
+#[uniffi::export]
 pub fn list_tokens(chain_id: u32) -> Vec<TokenEntry> {
     if chain_id == u32::MAX {
         CATALOG.clone()

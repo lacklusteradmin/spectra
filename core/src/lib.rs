@@ -101,7 +101,9 @@ impl From<reqwest::Error> for SpectraBridgeError {
 mod app_core;
 pub use app_core::*;
 
+pub mod chains;
 pub mod derivation;
+pub mod validation;
 pub mod diagnostics;
 pub mod fetch;
 pub mod tor;

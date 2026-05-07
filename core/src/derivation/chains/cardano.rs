@@ -16,10 +16,6 @@ use pbkdf2::pbkdf2_hmac;
 use sha2::Sha512;
 use zeroize::Zeroizing;
 
-use crate::derivation::engine::{
-    DerivedOutput, ParsedRequest, OUTPUT_ADDRESS, OUTPUT_PRIVATE_KEY, OUTPUT_PUBLIC_KEY,
-};
-use crate::derivation::enums::Chain;
 
 // ── Address validation + decoding (preserved) ────────────────────────────
 
@@ -274,7 +270,7 @@ fn cardano_icarus_derive_child(
 
 pub(crate) fn derive_cardano_shelley_enterprise_address(
     public_key: &[u8; 32],
-    chain: Chain,
+    is_mainnet: bool,
 ) -> Result<String, String> {
     use blake2::digest::consts::U28;
     use blake2::digest::Digest;
@@ -285,7 +281,6 @@ pub(crate) fn derive_cardano_shelley_enterprise_address(
     hasher.update(public_key);
     let payment_hash = hasher.finalize();
 
-    let is_mainnet = matches!(chain, Chain::Cardano);
     let network_id: u8 = if is_mainnet { 1 } else { 0 };
     let header = 0x60 | network_id;
 
@@ -298,40 +293,32 @@ pub(crate) fn derive_cardano_shelley_enterprise_address(
     bech32::encode::<bech32::Bech32>(hrp, &payload).map_err(|e| e.to_string())
 }
 
-fn requests_output(requested_outputs: u32, output: u32) -> bool {
-    requested_outputs & output != 0
-}
-
-/// Derive a Cardano Shelley enterprise address from BIP-39 + Icarus
-/// BIP-32-Ed25519 + CIP-19. Network is selected by `Chain::Cardano`
-/// (mainnet) vs `Chain::CardanoPreprod` (testnet).
-pub(crate) fn derive(request: ParsedRequest) -> Result<DerivedOutput, String> {
+pub(crate) fn derive_from_seed_phrase(
+    mainnet: bool,
+    seed_phrase: &str,
+    derivation_path: Option<&str>,
+    passphrase: Option<&str>,
+    want_address: bool,
+    want_public_key: bool,
+    want_private_key: bool,
+) -> Result<(Option<String>, Option<String>, Option<String>), String> {
     let (private_key, public_key) = derive_cardano_icarus_material(
-        &request.seed_phrase,
-        &request.passphrase,
-        request.mnemonic_wordlist.as_deref(),
-        request.iteration_count,
-        request.derivation_path.as_deref(),
+        seed_phrase,
+        passphrase.unwrap_or(""),
+        None,
+        0,
+        derivation_path,
     )?;
-    let address = if requests_output(request.requested_outputs, OUTPUT_ADDRESS) {
-        Some(derive_cardano_shelley_enterprise_address(
-            &public_key,
-            request.chain,
-        )?)
+
+    let address = if want_address {
+        Some(derive_cardano_shelley_enterprise_address(&public_key, mainnet)?)
     } else {
         None
     };
-    Ok(DerivedOutput {
+
+    Ok((
         address,
-        public_key_hex: if requests_output(request.requested_outputs, OUTPUT_PUBLIC_KEY) {
-            Some(hex::encode(public_key))
-        } else {
-            None
-        },
-        private_key_hex: if requests_output(request.requested_outputs, OUTPUT_PRIVATE_KEY) {
-            Some(hex::encode(private_key))
-        } else {
-            None
-        },
-    })
+        want_public_key.then(|| hex::encode(public_key)),
+        want_private_key.then(|| hex::encode(private_key)),
+    ))
 }
