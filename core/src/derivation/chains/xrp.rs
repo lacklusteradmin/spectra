@@ -33,19 +33,6 @@ pub(crate) fn decode_xrp_address(address: &str) -> Result<Vec<u8>, String> {
     Ok(decoded[1..].to_vec())
 }
 
-pub fn validate_xrp_address(address: &str) -> bool {
-    let alphabet = match bs58::Alphabet::new(XRP_ALPHABET_BYTES) {
-        Ok(a) => a,
-        Err(_) => return false,
-    };
-    bs58::decode(address)
-        .with_alphabet(&alphabet)
-        .with_check(None)
-        .into_vec()
-        .map(|b| b.len() == 21 && b[0] == 0x00)
-        .unwrap_or(false)
-}
-
 // ── Hashing primitives ───────────────────────────────────────────────────
 
 type HmacSha512 = Hmac<Sha512>;

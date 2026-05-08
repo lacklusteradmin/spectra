@@ -50,10 +50,6 @@ fn base32_decode_rfc4648(s: &str) -> Option<Vec<u8>> {
     Some(out)
 }
 
-pub fn validate_stellar_address(address: &str) -> bool {
-    decode_stellar_address(address).is_ok()
-}
-
 // ── BIP-39 ───────────────────────────────────────────────────────────────
 
 type HmacSha512 = Hmac<Sha512>;

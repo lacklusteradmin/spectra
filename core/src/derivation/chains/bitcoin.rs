@@ -7,11 +7,8 @@
 //! Bitcoin-family chains (Litecoin, Dogecoin, BCH, BSV, BTG, Dash, Zcash,
 //! Decred, Kaspa) duplicate the same primitives in their own files.
 
-use std::str::FromStr;
-
 use bech32::Hrp;
 use bip39::{Language, Mnemonic};
-use bitcoin::Address;
 use hmac::{Hmac, Mac};
 use pbkdf2::pbkdf2_hmac;
 use ripemd::Ripemd160;
@@ -19,20 +16,6 @@ use secp256k1::{All, PublicKey, Scalar, Secp256k1, SecretKey};
 use sha2::{Digest, Sha256, Sha512};
 use unicode_normalization::UnicodeNormalization;
 use zeroize::Zeroizing;
-
-use crate::fetch::chains::bitcoin::bitcoin_network_for_mode;
-
-// ── Address validation ───────────────────────────────────────────────────
-
-/// Validate a Bitcoin address string against the given network mode.
-/// Returns the canonical form if valid.
-pub fn validate_bitcoin_address(address: &str, network_mode: &str) -> Option<String> {
-    let network = bitcoin_network_for_mode(network_mode);
-    Address::from_str(address)
-        .ok()
-        .and_then(|a| a.require_network(network).ok())
-        .map(|a| a.to_string())
-}
 
 // ── Hashing primitives ───────────────────────────────────────────────────
 

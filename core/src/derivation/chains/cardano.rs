@@ -19,13 +19,6 @@ use zeroize::Zeroizing;
 
 // ── Address validation + decoding (preserved) ────────────────────────────
 
-pub fn validate_cardano_address(address: &str) -> bool {
-    if address.starts_with("addr1") || address.starts_with("addr_test1") {
-        return bech32::decode(address).is_ok();
-    }
-    bs58::decode(address).with_check(None).into_vec().is_ok()
-}
-
 pub(crate) fn decode_cardano_addr_bytes(address: &str) -> Result<Vec<u8>, String> {
     if address.starts_with("addr1") || address.starts_with("addr_test1") {
         bech32::decode(address)

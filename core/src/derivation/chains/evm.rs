@@ -32,11 +32,6 @@ pub fn eip55_checksum(addr_bytes: &[u8]) -> String {
     result
 }
 
-pub fn validate_evm_address(address: &str) -> bool {
-    let s = address.strip_prefix("0x").unwrap_or(address);
-    s.len() == 40 && s.chars().all(|c| c.is_ascii_hexdigit())
-}
-
 pub(crate) fn keccak256(data: &[u8]) -> [u8; 32] {
     use sha3::{Digest, Keccak256};
     Keccak256::digest(data).into()

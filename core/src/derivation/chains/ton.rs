@@ -68,10 +68,6 @@ pub(crate) fn decode_ton_address(address: &str) -> Result<(i8, [u8; 32]), String
     Ok((workchain, arr))
 }
 
-pub fn validate_ton_address(address: &str) -> bool {
-    decode_ton_address(address).is_ok()
-}
-
 // ── TON mnemonic seed expansion ──────────────────────────────────────────
 
 pub(crate) fn derive_ton_seed(

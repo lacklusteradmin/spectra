@@ -31,10 +31,6 @@ pub(crate) fn decode_ss58(address: &str) -> Result<[u8; 32], String> {
     Ok(key_bytes)
 }
 
-pub fn validate_polkadot_address(address: &str) -> bool {
-    decode_ss58(address).is_ok()
-}
-
 // ── BIP-39 ───────────────────────────────────────────────────────────────
 
 fn resolve_bip39_language(name: Option<&str>) -> Result<Language, String> {

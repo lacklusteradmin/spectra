@@ -27,14 +27,6 @@ pub(crate) fn p2pkh_script(pubkey_hash: &[u8; 20]) -> Result<Vec<u8>, String> {
     ])
 }
 
-pub fn validate_dogecoin_address(address: &str) -> bool {
-    bs58::decode(address)
-        .with_check(None)
-        .into_vec()
-        .map(|b| b.len() == 21 && (b[0] == 0x1e || b[0] == 0x16))
-        .unwrap_or(false)
-}
-
 // ── Derivation ────────────────────────────────────────────────────────────
 
 use secp256k1::{PublicKey, Secp256k1, SecretKey};

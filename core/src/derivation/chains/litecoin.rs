@@ -24,26 +24,6 @@ pub(crate) fn ltc_p2pkh_script(pubkey_hash: &[u8; 20]) -> Result<Vec<u8>, String
     Ok(s)
 }
 
-pub fn validate_litecoin_address(address: &str) -> bool {
-    if address.starts_with("ltcmweb1") || address.starts_with("tmweb1") {
-        return bech32::decode(address)
-            .map(|(hrp, data)| {
-                (hrp.as_str() == "ltcmweb" || hrp.as_str() == "tmweb") && data.len() == 66
-            })
-            .unwrap_or(false);
-    }
-    if address.starts_with("ltc1") {
-        return bech32::decode(address)
-            .map(|(hrp, _)| hrp.as_str() == "ltc")
-            .unwrap_or(false);
-    }
-    bs58::decode(address)
-        .with_check(None)
-        .into_vec()
-        .map(|b| b.len() == 21 && (b[0] == 0x30 || b[0] == 0x32 || b[0] == 0x05))
-        .unwrap_or(false)
-}
-
 /// Parsed form of an `ltcmweb1…` or `tmweb1…` stealth address.
 /// `scan_pubkey` (A) and `spend_pubkey` (B) are 33-byte compressed secp256k1 points.
 #[derive(Debug, Clone)]

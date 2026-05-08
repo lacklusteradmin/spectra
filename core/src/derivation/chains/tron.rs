@@ -42,14 +42,6 @@ pub fn tron_base58_to_evm_hex(address: &str) -> Result<String, String> {
     Ok(hex::encode(&decoded[1..]))
 }
 
-pub fn validate_tron_address(address: &str) -> bool {
-    bs58::decode(address)
-        .with_check(None)
-        .into_vec()
-        .map(|b| b.len() == 21 && b[0] == 0x41)
-        .unwrap_or(false)
-}
-
 fn keccak256(data: &[u8]) -> [u8; 32] {
     use sha3::{Digest, Keccak256};
     Keccak256::digest(data).into()

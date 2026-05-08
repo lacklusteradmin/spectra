@@ -10,15 +10,6 @@ use unicode_normalization::UnicodeNormalization;
 use zeroize::Zeroizing;
 
 
-// ── Address validation (preserved) ───────────────────────────────────────
-
-pub fn validate_solana_address(address: &str) -> bool {
-    match bs58::decode(address).into_vec() {
-        Ok(bytes) => bytes.len() == 32,
-        Err(_) => false,
-    }
-}
-
 pub(crate) fn decode_b58_32(b58: &str) -> Result<[u8; 32], String> {
     let bytes = bs58::decode(b58)
         .into_vec()

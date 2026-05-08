@@ -16,19 +16,6 @@ use unicode_normalization::UnicodeNormalization;
 use zeroize::Zeroizing;
 
 
-pub fn validate_monero_address(address: &str) -> bool {
-    // Monero mainnet addresses start with '4' (standard) or '8' (subaddress)
-    // and are 95 characters in base58 (Monero alphabet).
-    if address.len() != 95 {
-        return false;
-    }
-    let first = address.chars().next().unwrap_or('0');
-    (first == '4' || first == '8')
-        && address.chars().all(|c| {
-            "123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz".contains(c)
-        })
-}
-
 /// Derive (private_spend, public_spend, private_view, public_view) from
 /// a 32-byte BIP-39 seed prefix.
 pub(crate) fn derive_monero_keys_from_spend_seed(
