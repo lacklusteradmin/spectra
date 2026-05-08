@@ -19,12 +19,10 @@ use crate::staking::{
     StakingActionPreview, StakingError, StakingPosition, StakingValidator,
 };
 
-#[allow(dead_code)]
 pub struct IcpStakingClient {
     rosetta_endpoints: Vec<String>,
 }
 
-#[allow(dead_code)]
 impl IcpStakingClient {
     pub fn new(rosetta_endpoints: Vec<String>) -> Self {
         Self { rosetta_endpoints }

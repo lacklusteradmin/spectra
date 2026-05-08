@@ -17,12 +17,10 @@ use crate::staking::{
     StakingActionPreview, StakingError, StakingPosition, StakingValidator,
 };
 
-#[allow(dead_code)]
 pub struct SolanaStakingClient {
     rpc_endpoints: Vec<String>,
 }
 
-#[allow(dead_code)]
 impl SolanaStakingClient {
     pub fn new(rpc_endpoints: Vec<String>) -> Self {
         Self { rpc_endpoints }

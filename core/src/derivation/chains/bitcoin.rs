@@ -463,6 +463,160 @@ pub(crate) fn encode_p2tr(
         .map_err(|e| format!("bech32 encode v1: {e}"))
 }
 
+// ── Derivation pipeline (shared by Bitcoin-family chains) ────────────────
+
+use crate::derivation::types::{BitcoinScriptType, DerivationResult, parse_path_metadata};
+use crate::SpectraBridgeError;
+
+/// BIP-39 → BIP-32 path walk → (compressed pubkey, raw private bytes).
+/// `pub(crate)` so BCH / BSV / LTC / DOGE / DASH / BTG chain files can reuse it.
+pub(crate) fn derive_secp_keypair(
+    seed_phrase: &str,
+    derivation_path: &str,
+    passphrase: Option<&str>,
+) -> Result<(PublicKey, [u8; 32]), String> {
+    let secp = Secp256k1::new();
+    let seed = derive_bip39_seed(seed_phrase, passphrase.unwrap_or(""), 0, None, None)?;
+    let master = ExtendedPrivateKey::master_from_seed(b"Bitcoin seed", seed.as_ref())?;
+    let path = parse_bip32_path(derivation_path)?;
+    let xpriv = master.derive_path(&secp, &path)?;
+    let public_key = PublicKey::from_secret_key(&secp, &xpriv.private_key);
+    Ok((public_key, xpriv.private_key.secret_bytes()))
+}
+
+fn encode_address_inner(
+    params: BitcoinNetworkParams,
+    script_type: BitcoinScriptType,
+    public_key: &PublicKey,
+) -> Result<String, String> {
+    let compressed = public_key.serialize();
+    match script_type {
+        BitcoinScriptType::P2pkh => Ok(encode_p2pkh(&params, &compressed)),
+        BitcoinScriptType::P2shP2wpkh => Ok(encode_p2sh_p2wpkh(&params, &compressed)),
+        BitcoinScriptType::P2wpkh => encode_p2wpkh(&params, &compressed),
+        BitcoinScriptType::P2tr => {
+            let secp = Secp256k1::new();
+            encode_p2tr(&params, &secp, public_key)
+        }
+    }
+}
+
+/// Tuple-returning form used by `chain_dispatch`.
+pub(crate) fn derive_from_seed_phrase(
+    params: BitcoinNetworkParams,
+    script_type: BitcoinScriptType,
+    seed_phrase: &str,
+    derivation_path: &str,
+    passphrase: Option<&str>,
+    want_address: bool,
+    want_public_key: bool,
+    want_private_key: bool,
+) -> Result<(Option<String>, Option<String>, Option<String>), String> {
+    let (public_key, private_bytes) =
+        derive_secp_keypair(seed_phrase, derivation_path, passphrase)?;
+    let address = if want_address {
+        Some(encode_address_inner(params, script_type, &public_key)?)
+    } else {
+        None
+    };
+    Ok((
+        address,
+        want_public_key.then(|| hex::encode(public_key.serialize())),
+        want_private_key.then(|| hex::encode(private_bytes)),
+    ))
+}
+
+// ── UniFFI exports ────────────────────────────────────────────────────────
+
+fn decode_privkey_hex(hex_str: &str) -> Result<[u8; 32], SpectraBridgeError> {
+    let trimmed = hex_str.trim();
+    if trimmed.len() != 64 {
+        return Err(SpectraBridgeError::InvalidInput {
+            message: "Private key hex must be exactly 64 characters.".into(),
+        });
+    }
+    let bytes = hex::decode(trimmed)?;
+    let mut out = [0u8; 32];
+    out.copy_from_slice(&bytes);
+    Ok(out)
+}
+
+fn bitcoin_export_internal(
+    params: BitcoinNetworkParams,
+    script_type: BitcoinScriptType,
+    seed_phrase: String,
+    derivation_path: String,
+    passphrase: Option<String>,
+    want_address: bool,
+    want_public_key: bool,
+    want_private_key: bool,
+) -> Result<DerivationResult, SpectraBridgeError> {
+    let (account, branch, index) = parse_path_metadata(&derivation_path);
+    let (address, public_key_hex, private_key_hex) = derive_from_seed_phrase(
+        params, script_type, &seed_phrase, &derivation_path, passphrase.as_deref(),
+        want_address, want_public_key, want_private_key,
+    )?;
+    Ok(DerivationResult { address, public_key_hex, private_key_hex, account, branch, index })
+}
+
+#[uniffi::export]
+pub fn derive_bitcoin(
+    seed_phrase: String, derivation_path: String, passphrase: Option<String>,
+    script_type: BitcoinScriptType,
+    want_address: bool, want_public_key: bool, want_private_key: bool,
+) -> Result<DerivationResult, SpectraBridgeError> {
+    bitcoin_export_internal(BTC_MAINNET, script_type, seed_phrase, derivation_path, passphrase, want_address, want_public_key, want_private_key)
+}
+
+#[uniffi::export]
+pub fn derive_bitcoin_testnet(
+    seed_phrase: String, derivation_path: String, passphrase: Option<String>,
+    script_type: BitcoinScriptType,
+    want_address: bool, want_public_key: bool, want_private_key: bool,
+) -> Result<DerivationResult, SpectraBridgeError> {
+    bitcoin_export_internal(BTC_TESTNET, script_type, seed_phrase, derivation_path, passphrase, want_address, want_public_key, want_private_key)
+}
+
+#[uniffi::export]
+pub fn derive_bitcoin_testnet4(
+    seed_phrase: String, derivation_path: String, passphrase: Option<String>,
+    script_type: BitcoinScriptType,
+    want_address: bool, want_public_key: bool, want_private_key: bool,
+) -> Result<DerivationResult, SpectraBridgeError> {
+    bitcoin_export_internal(BTC_TESTNET, script_type, seed_phrase, derivation_path, passphrase, want_address, want_public_key, want_private_key)
+}
+
+#[uniffi::export]
+pub fn derive_bitcoin_signet(
+    seed_phrase: String, derivation_path: String, passphrase: Option<String>,
+    script_type: BitcoinScriptType,
+    want_address: bool, want_public_key: bool, want_private_key: bool,
+) -> Result<DerivationResult, SpectraBridgeError> {
+    bitcoin_export_internal(BTC_TESTNET, script_type, seed_phrase, derivation_path, passphrase, want_address, want_public_key, want_private_key)
+}
+
+#[uniffi::export]
+pub fn derive_bitcoin_from_private_key(
+    private_key_hex: String, script_type: BitcoinScriptType,
+    want_address: bool, want_public_key: bool,
+) -> Result<DerivationResult, SpectraBridgeError> {
+    let key_bytes = decode_privkey_hex(&private_key_hex)?;
+    let secp = Secp256k1::new();
+    let secret_key = SecretKey::from_slice(&key_bytes).map_err(|e| e.to_string())?;
+    let public_key = PublicKey::from_secret_key(&secp, &secret_key);
+    let address = if want_address {
+        Some(encode_address_inner(BTC_MAINNET, script_type, &public_key)?)
+    } else {
+        None
+    };
+    Ok(DerivationResult {
+        address,
+        public_key_hex: want_public_key.then(|| hex::encode(public_key.serialize())),
+        private_key_hex: None,
+        account: 0, branch: 0, index: 0,
+    })
+}
+
 // ── Bitcoin address parsing (structural, for the validator) ──────────────
 
 #[derive(Debug, Clone, PartialEq, Eq)]

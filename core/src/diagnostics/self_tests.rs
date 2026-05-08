@@ -1,5 +1,4 @@
 use crate::derivation::addressing::{validate_address, AddressValidationRequest};
-use crate::derivation::api::chain_dispatch::derive_for_chain;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
@@ -284,9 +283,36 @@ fn run_address_rejects(spec: &ChainSpec) -> ChainSelfTestResult {
 }
 
 fn derive_one(chain_name: &str, path: &str) -> Option<String> {
-    derive_for_chain(chain_name, CANONICAL_MNEMONIC, path, None, None, None, true, false, false)
-        .ok()
-        .and_then(|(addr, _, _)| addr)
+    use crate::derivation::chains::{
+        aptos, bitcoin as btc, bitcoin_cash as bch, bitcoin_sv as bsv, cardano,
+        evm, icp, litecoin as ltc, near, polkadot, solana, stellar, sui, ton, tron, xrp,
+    };
+    use crate::derivation::types::BitcoinScriptType;
+    let seed = CANONICAL_MNEMONIC.to_string();
+    let path_s = path.to_string();
+    let r = match chain_name {
+        "Bitcoin"            => btc::derive_bitcoin(seed, path_s, None, BitcoinScriptType::P2wpkh, true, false, false).ok()?,
+        "Bitcoin Cash"       => bch::derive_bitcoin_cash(seed, path_s, None, BitcoinScriptType::P2pkh, true, false, false).ok()?,
+        "Bitcoin SV"         => bsv::derive_bitcoin_sv(seed, path_s, None, BitcoinScriptType::P2pkh, true, false, false).ok()?,
+        "Litecoin"           => ltc::derive_litecoin(seed, path_s, None, BitcoinScriptType::P2pkh, true, false, false).ok()?,
+        "Cardano"            => cardano::derive_cardano(seed, Some(path_s), None, true, false, false).ok()?,
+        "Solana"             => solana::derive_solana(seed, path_s, None, None, true, false, false).ok()?,
+        "Stellar"            => stellar::derive_stellar(seed, path_s, None, None, true, false, false).ok()?,
+        "XRP Ledger"         => xrp::derive_xrp(seed, path_s, None, true, false, false).ok()?,
+        "Tron"               => tron::derive_tron(seed, path_s, None, true, false, false).ok()?,
+        "Sui"                => sui::derive_sui(seed, path_s, None, true, false, false).ok()?,
+        "Aptos"              => aptos::derive_aptos(seed, path_s, None, true, false, false).ok()?,
+        "TON"                => ton::derive_ton(seed, None, true, false, false).ok()?,
+        "Internet Computer"  => icp::derive_icp(seed, path_s, None, true, false, false).ok()?,
+        "NEAR"               => near::derive_near(seed, None, true, false, false).ok()?,
+        "Polkadot"           => polkadot::derive_polkadot(seed, None, None, true, false, false).ok()?,
+        "Ethereum"           => evm::derive_ethereum(seed, path_s, None, true, false, false).ok()?,
+        "Avalanche"          => evm::derive_avalanche(seed, path_s, None, true, false, false).ok()?,
+        "Ethereum Classic"   => evm::derive_ethereum_classic(seed, path_s, None, true, false, false).ok()?,
+        "Hyperliquid"        => evm::derive_hyperliquid(seed, path_s, None, true, false, false).ok()?,
+        _                    => return None,
+    };
+    r.address
 }
 
 fn run_derivation(spec: &ChainSpec) -> Option<ChainSelfTestResult> {

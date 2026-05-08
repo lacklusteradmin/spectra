@@ -207,3 +207,28 @@ pub(crate) fn derive_from_seed_phrase(
         want_private_key.then(|| hex::encode(private_spend)),
     ))
 }
+
+// ── UniFFI exports ────────────────────────────────────────────────────────
+
+use crate::derivation::types::DerivationResult;
+use crate::SpectraBridgeError;
+
+#[uniffi::export]
+pub fn derive_monero(
+    seed_phrase: String,
+    want_address: bool, want_public_key: bool, want_private_key: bool,
+) -> Result<DerivationResult, SpectraBridgeError> {
+    let (address, public_key_hex, private_key_hex) =
+        derive_from_seed_phrase(true, &seed_phrase, want_address, want_public_key, want_private_key)?;
+    Ok(DerivationResult { address, public_key_hex, private_key_hex, account: 0, branch: 0, index: 0 })
+}
+
+#[uniffi::export]
+pub fn derive_monero_stagenet(
+    seed_phrase: String,
+    want_address: bool, want_public_key: bool, want_private_key: bool,
+) -> Result<DerivationResult, SpectraBridgeError> {
+    let (address, public_key_hex, private_key_hex) =
+        derive_from_seed_phrase(false, &seed_phrase, want_address, want_public_key, want_private_key)?;
+    Ok(DerivationResult { address, public_key_hex, private_key_hex, account: 0, branch: 0, index: 0 })
+}

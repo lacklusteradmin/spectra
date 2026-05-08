@@ -20,12 +20,10 @@ use crate::staking::{
     StakingActionPreview, StakingError, StakingPosition, StakingValidator,
 };
 
-#[allow(dead_code)]
 pub struct PolkadotStakingClient {
     sidecar_endpoints: Vec<String>,
 }
 
-#[allow(dead_code)]
 impl PolkadotStakingClient {
     pub fn new(sidecar_endpoints: Vec<String>) -> Self {
         Self { sidecar_endpoints }

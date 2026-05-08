@@ -36,6 +36,75 @@ pub fn validate_zcash_address(address: &str) -> bool {
     decode_zcash_address(address).is_ok()
 }
 
+// ── Derivation ────────────────────────────────────────────────────────────
+
+use crate::derivation::types::{DerivationResult, parse_path_metadata};
+use crate::derivation::chains::bitcoin::{base58check_encode, derive_secp_keypair, hash160};
+use crate::SpectraBridgeError;
+
+const ZCASH_MAINNET_VERSION: [u8; 2] = [0x1C, 0xB8];
+const ZCASH_TESTNET_VERSION: [u8; 2] = [0x1D, 0x25];
+
+fn zcash_p2pkh_addr(version: [u8; 2], pubkey: &secp256k1::PublicKey) -> String {
+    let mut payload = vec![version[0], version[1]];
+    payload.extend_from_slice(&hash160(&pubkey.serialize()));
+    base58check_encode(&payload)
+}
+
+pub(crate) fn derive_from_seed_phrase(
+    seed_phrase: &str, derivation_path: &str, passphrase: Option<&str>,
+    want_address: bool, want_public_key: bool, want_private_key: bool,
+) -> Result<(Option<String>, Option<String>, Option<String>), String> {
+    let (pk, priv_bytes) = derive_secp_keypair(seed_phrase, derivation_path, passphrase)?;
+    Ok((
+        want_address.then(|| zcash_p2pkh_addr(ZCASH_MAINNET_VERSION, &pk)),
+        want_public_key.then(|| hex::encode(pk.serialize())),
+        want_private_key.then(|| hex::encode(priv_bytes)),
+    ))
+}
+
+pub(crate) fn derive_from_seed_phrase_testnet(
+    seed_phrase: &str, derivation_path: &str, passphrase: Option<&str>,
+    want_address: bool, want_public_key: bool, want_private_key: bool,
+) -> Result<(Option<String>, Option<String>, Option<String>), String> {
+    let (pk, priv_bytes) = derive_secp_keypair(seed_phrase, derivation_path, passphrase)?;
+    Ok((
+        want_address.then(|| zcash_p2pkh_addr(ZCASH_TESTNET_VERSION, &pk)),
+        want_public_key.then(|| hex::encode(pk.serialize())),
+        want_private_key.then(|| hex::encode(priv_bytes)),
+    ))
+}
+
+fn zcash_internal(
+    version: [u8; 2], seed_phrase: String, derivation_path: String, passphrase: Option<String>,
+    want_address: bool, want_public_key: bool, want_private_key: bool,
+) -> Result<DerivationResult, SpectraBridgeError> {
+    let (account, branch, index) = parse_path_metadata(&derivation_path);
+    let (pk, priv_bytes) = derive_secp_keypair(&seed_phrase, &derivation_path, passphrase.as_deref())?;
+    Ok(DerivationResult {
+        address: want_address.then(|| zcash_p2pkh_addr(version, &pk)),
+        public_key_hex: want_public_key.then(|| hex::encode(pk.serialize())),
+        private_key_hex: want_private_key.then(|| hex::encode(priv_bytes)),
+        account, branch, index,
+    })
+}
+
+#[uniffi::export]
+pub fn derive_zcash(
+    seed_phrase: String, derivation_path: String, passphrase: Option<String>,
+    want_address: bool, want_public_key: bool, want_private_key: bool,
+) -> Result<DerivationResult, SpectraBridgeError> {
+    zcash_internal(ZCASH_MAINNET_VERSION, seed_phrase, derivation_path, passphrase, want_address, want_public_key, want_private_key)
+}
+
+#[uniffi::export]
+pub fn derive_zcash_testnet(
+    seed_phrase: String, derivation_path: String, passphrase: Option<String>,
+    want_address: bool, want_public_key: bool, want_private_key: bool,
+) -> Result<DerivationResult, SpectraBridgeError> {
+    zcash_internal(ZCASH_TESTNET_VERSION, seed_phrase, derivation_path, passphrase, want_address, want_public_key, want_private_key)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

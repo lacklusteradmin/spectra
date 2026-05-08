@@ -183,6 +183,23 @@ pub(crate) fn derive_from_seed_phrase(
     ))
 }
 
+// ── UniFFI export ─────────────────────────────────────────────────────────
+
+use crate::derivation::types::DerivationResult;
+use crate::SpectraBridgeError;
+
+#[uniffi::export]
+pub fn derive_bittensor(
+    seed_phrase: String, passphrase: Option<String>,
+    want_address: bool, want_public_key: bool, want_private_key: bool,
+) -> Result<DerivationResult, SpectraBridgeError> {
+    let (address, public_key_hex, private_key_hex) = derive_from_seed_phrase(
+        &seed_phrase, passphrase.as_deref(), None,
+        want_address, want_public_key, want_private_key,
+    )?;
+    Ok(DerivationResult { address, public_key_hex, private_key_hex, account: 0, branch: 0, index: 0 })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

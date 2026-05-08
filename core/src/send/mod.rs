@@ -108,16 +108,11 @@ pub struct BroadcastReceipt {
 }
 
 /// Unified request for `WalletService::execute_send`.
-///
-/// Collapses the Swift→Rust→Swift→Rust trampoline into a single call by
-/// bundling derivation, payload building, and signing into one operation.
-/// Swift passes the seed phrase or private key; Rust derives the signing key
-/// material, builds the chain-specific payload, signs, and broadcasts.
 #[derive(Debug, Clone, uniffi::Record)]
 pub struct SendExecutionRequest {
     /// Spectra chain ID matching `sign_and_send` routing (0 = BTC, 1 = ETH, …).
     pub chain_id: u32,
-    /// Chain display name for derivation lookup ("Bitcoin", "Ethereum", …).
+    /// Chain display name used to select the derivation function ("Bitcoin", "Ethereum", …).
     pub chain_name: String,
     /// BIP-32/SLIP-10 derivation path (e.g. "m/84'/0'/0'/0/0").
     pub derivation_path: String,
@@ -150,10 +145,7 @@ pub struct SendExecutionRequest {
     pub evm_overrides: Option<crate::send::ethereum::EvmSendOverridesInput>,
     /// Monero priority level.
     pub monero_priority: Option<u32>,
-    /// Power-user derivation overrides (passphrase, wordlist, curve, etc.).
-    /// `None` means use chain-preset defaults. Must match the overrides used
-    /// at import time, else re-derivation produces a different key and signing
-    /// fails.
+    /// Power-user derivation overrides (passphrase, hmac key, script type, etc.).
     pub derivation_overrides: Option<crate::store::wallet_domain::CoreWalletDerivationOverrides>,
 }
 

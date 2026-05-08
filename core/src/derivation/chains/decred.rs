@@ -448,6 +448,62 @@ pub(crate) fn derive_from_seed_phrase_testnet(
     ))
 }
 
+// ── UniFFI exports ────────────────────────────────────────────────────────
+
+use crate::derivation::types::{DerivationResult, parse_path_metadata};
+use crate::SpectraBridgeError;
+
+#[uniffi::export]
+pub fn derive_decred(
+    seed_phrase: String, derivation_path: String, passphrase: Option<String>,
+    want_address: bool, want_public_key: bool, want_private_key: bool,
+) -> Result<DerivationResult, SpectraBridgeError> {
+    let (account, branch, index) = parse_path_metadata(&derivation_path);
+    let (address, public_key_hex, private_key_hex) = derive_from_seed_phrase(
+        &seed_phrase, &derivation_path, passphrase.as_deref(),
+        want_address, want_public_key, want_private_key,
+    )?;
+    Ok(DerivationResult { address, public_key_hex, private_key_hex, account, branch, index })
+}
+
+#[uniffi::export]
+pub fn derive_decred_testnet(
+    seed_phrase: String, derivation_path: String, passphrase: Option<String>,
+    want_address: bool, want_public_key: bool, want_private_key: bool,
+) -> Result<DerivationResult, SpectraBridgeError> {
+    let (account, branch, index) = parse_path_metadata(&derivation_path);
+    let (address, public_key_hex, private_key_hex) = derive_from_seed_phrase_testnet(
+        &seed_phrase, &derivation_path, passphrase.as_deref(),
+        want_address, want_public_key, want_private_key,
+    )?;
+    Ok(DerivationResult { address, public_key_hex, private_key_hex, account, branch, index })
+}
+
+#[uniffi::export]
+pub fn derive_decred_from_private_key(
+    private_key_hex: String, want_address: bool, want_public_key: bool,
+) -> Result<DerivationResult, SpectraBridgeError> {
+    let trimmed = private_key_hex.trim();
+    if trimmed.len() != 64 {
+        return Err(SpectraBridgeError::InvalidInput {
+            message: "Private key hex must be exactly 64 characters.".into(),
+        });
+    }
+    let bytes = hex::decode(trimmed).map_err(|e| e.to_string())?;
+    let mut key_bytes = [0u8; 32];
+    key_bytes.copy_from_slice(&bytes);
+    let secp = Secp256k1::new();
+    let secret_key = SecretKey::from_slice(&key_bytes).map_err(|e| e.to_string())?;
+    let public_key = PublicKey::from_secret_key(&secp, &secret_key);
+    let hash = dcr_hash160(&public_key.serialize());
+    Ok(DerivationResult {
+        address: want_address.then(|| encode_dcr_p2pkh(&hash)),
+        public_key_hex: want_public_key.then(|| hex::encode(public_key.serialize())),
+        private_key_hex: None,
+        account: 0, branch: 0, index: 0,
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

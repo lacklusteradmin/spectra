@@ -167,3 +167,42 @@ pub(crate) fn encode_ss58(public_key: &[u8; 32], network_prefix: u16) -> String 
     bs58::encode(payload).into_string()
 }
 
+// ── UniFFI exports ────────────────────────────────────────────────────────
+
+use crate::derivation::types::DerivationResult;
+use crate::SpectraBridgeError;
+
+fn substrate_internal(
+    ss58_prefix: u16,
+    seed_phrase: String, passphrase: Option<String>, hmac_key: Option<String>,
+    want_address: bool, want_public_key: bool, want_private_key: bool,
+) -> Result<DerivationResult, SpectraBridgeError> {
+    let uniform_expansion = hmac_key.as_deref() == Some("uniform");
+    let (mini_secret, public_key) = derive_substrate_sr25519_material(
+        &seed_phrase, passphrase.as_deref().unwrap_or(""),
+        None, None, 0, None, uniform_expansion,
+    )?;
+    Ok(DerivationResult {
+        address: want_address.then(|| encode_ss58(&public_key, ss58_prefix)),
+        public_key_hex: want_public_key.then(|| hex::encode(public_key)),
+        private_key_hex: want_private_key.then(|| hex::encode(mini_secret)),
+        account: 0, branch: 0, index: 0,
+    })
+}
+
+#[uniffi::export]
+pub fn derive_polkadot(
+    seed_phrase: String, passphrase: Option<String>, hmac_key: Option<String>,
+    want_address: bool, want_public_key: bool, want_private_key: bool,
+) -> Result<DerivationResult, SpectraBridgeError> {
+    substrate_internal(0, seed_phrase, passphrase, hmac_key, want_address, want_public_key, want_private_key)
+}
+
+#[uniffi::export]
+pub fn derive_polkadot_westend(
+    seed_phrase: String, passphrase: Option<String>, hmac_key: Option<String>,
+    want_address: bool, want_public_key: bool, want_private_key: bool,
+) -> Result<DerivationResult, SpectraBridgeError> {
+    substrate_internal(42, seed_phrase, passphrase, hmac_key, want_address, want_public_key, want_private_key)
+}
+

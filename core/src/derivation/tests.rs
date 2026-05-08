@@ -4,26 +4,28 @@ use crate::derivation::chains::cardano::derive_cardano_icarus_xprv_root;
 use crate::derivation::chains::monero::monero_base58_encode;
 use crate::derivation::chains::polkadot::derive_substrate_sr25519_material;
 use crate::derivation::chains::ton::{crc16_xmodem, derive_ton_seed, v4r2_code_hash_and_depth};
-use crate::derivation::api::aptos::derive_aptos;
-use crate::derivation::api::bitcoin::{
-    derive_bitcoin, derive_bitcoin_cash, derive_bitcoin_sv, derive_dogecoin, derive_litecoin,
-};
-use crate::derivation::api::cardano::derive_cardano;
-use crate::derivation::api::evm::{
+use crate::derivation::chains::aptos::derive_aptos;
+use crate::derivation::chains::bitcoin::derive_bitcoin;
+use crate::derivation::chains::bitcoin_cash::derive_bitcoin_cash;
+use crate::derivation::chains::bitcoin_sv::derive_bitcoin_sv;
+use crate::derivation::chains::dogecoin::derive_dogecoin;
+use crate::derivation::chains::litecoin::derive_litecoin;
+use crate::derivation::chains::cardano::derive_cardano;
+use crate::derivation::chains::evm::{
     derive_arbitrum, derive_avalanche, derive_ethereum, derive_ethereum_classic,
     derive_hyperliquid, derive_optimism,
 };
-use crate::derivation::api::icp::derive_icp;
-use crate::derivation::api::monero::derive_monero;
-use crate::derivation::api::near::derive_near;
-use crate::derivation::api::polkadot::derive_polkadot;
-use crate::derivation::api::solana::derive_solana;
-use crate::derivation::api::stellar::derive_stellar;
-use crate::derivation::api::sui::derive_sui;
-use crate::derivation::api::ton::derive_ton;
-use crate::derivation::api::tron::derive_tron;
-use crate::derivation::api::types::BitcoinScriptType;
-use crate::derivation::api::xrp::derive_xrp;
+use crate::derivation::chains::icp::derive_icp;
+use crate::derivation::chains::monero::derive_monero;
+use crate::derivation::chains::near::derive_near;
+use crate::derivation::chains::polkadot::derive_polkadot;
+use crate::derivation::chains::solana::derive_solana;
+use crate::derivation::chains::stellar::derive_stellar;
+use crate::derivation::chains::sui::derive_sui;
+use crate::derivation::chains::ton::derive_ton;
+use crate::derivation::chains::tron::derive_tron;
+use crate::derivation::types::BitcoinScriptType;
+use crate::derivation::chains::xrp::derive_xrp;
 
 const MNEMONIC: &str = "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about";
 const ALL_ALL: &str = "all all all all all all all all all all all all";

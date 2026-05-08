@@ -14,6 +14,9 @@
 mod types;
 pub use types::*;
 
+pub mod service;
+pub use service::StakingService;
+
 pub mod chains {
     pub mod aptos;
     pub mod cardano;

@@ -1,5 +1,5 @@
-//! Bitcoin SV: address validation, BIP-32 derivation, legacy P2PKH
-//! base58check encoding. Self-contained — see `REFACTOR_NOTES.md`.
+//! Bitcoin SV: address validation, BIP-39 + BIP-32 derivation, legacy P2PKH
+//! base58check encoding.
 
 
 // ── Address validation (preserved) ───────────────────────────────────────
@@ -28,3 +28,81 @@ pub fn validate_bsv_address(address: &str) -> bool {
         .map(|b| b.len() == 21 && (b[0] == 0x00 || b[0] == 0x05 || b[0] == 0x6f || b[0] == 0xc4))
         .unwrap_or(false)
 }
+
+// ── Derivation ────────────────────────────────────────────────────────────
+
+use crate::derivation::types::{BitcoinScriptType, DerivationResult, parse_path_metadata};
+use crate::derivation::chains::bitcoin::{base58check_encode, derive_secp_keypair, hash160};
+use crate::SpectraBridgeError;
+
+const BSV_MAINNET_VERSION: u8 = 0x00;
+const BSV_TESTNET_VERSION: u8 = 0x6f;
+
+fn p2pkh_address(version: u8, pubkey: &secp256k1::PublicKey) -> String {
+    let mut payload = vec![version];
+    payload.extend_from_slice(&hash160(&pubkey.serialize()));
+    base58check_encode(&payload)
+}
+
+pub(crate) fn derive_from_seed_phrase(
+    seed_phrase: &str, derivation_path: &str, passphrase: Option<&str>,
+    want_address: bool, want_public_key: bool, want_private_key: bool,
+) -> Result<(Option<String>, Option<String>, Option<String>), String> {
+    let (pk, priv_bytes) = derive_secp_keypair(seed_phrase, derivation_path, passphrase)?;
+    Ok((
+        want_address.then(|| p2pkh_address(BSV_MAINNET_VERSION, &pk)),
+        want_public_key.then(|| hex::encode(pk.serialize())),
+        want_private_key.then(|| hex::encode(priv_bytes)),
+    ))
+}
+
+pub(crate) fn derive_from_seed_phrase_testnet(
+    seed_phrase: &str, derivation_path: &str, passphrase: Option<&str>,
+    want_address: bool, want_public_key: bool, want_private_key: bool,
+) -> Result<(Option<String>, Option<String>, Option<String>), String> {
+    let (pk, priv_bytes) = derive_secp_keypair(seed_phrase, derivation_path, passphrase)?;
+    Ok((
+        want_address.then(|| p2pkh_address(BSV_TESTNET_VERSION, &pk)),
+        want_public_key.then(|| hex::encode(pk.serialize())),
+        want_private_key.then(|| hex::encode(priv_bytes)),
+    ))
+}
+
+fn bsv_internal(
+    version: u8, seed_phrase: String, derivation_path: String, passphrase: Option<String>,
+    script_type: BitcoinScriptType,
+    want_address: bool, want_public_key: bool, want_private_key: bool,
+) -> Result<DerivationResult, SpectraBridgeError> {
+    if !matches!(script_type, BitcoinScriptType::P2pkh) {
+        return Err(SpectraBridgeError::InvalidInput {
+            message: "Bitcoin SV only supports P2PKH addresses.".into(),
+        });
+    }
+    let (account, branch, index) = parse_path_metadata(&derivation_path);
+    let (pk, priv_bytes) = derive_secp_keypair(&seed_phrase, &derivation_path, passphrase.as_deref())?;
+    Ok(DerivationResult {
+        address: want_address.then(|| p2pkh_address(version, &pk)),
+        public_key_hex: want_public_key.then(|| hex::encode(pk.serialize())),
+        private_key_hex: want_private_key.then(|| hex::encode(priv_bytes)),
+        account, branch, index,
+    })
+}
+
+#[uniffi::export]
+pub fn derive_bitcoin_sv(
+    seed_phrase: String, derivation_path: String, passphrase: Option<String>,
+    script_type: BitcoinScriptType,
+    want_address: bool, want_public_key: bool, want_private_key: bool,
+) -> Result<DerivationResult, SpectraBridgeError> {
+    bsv_internal(BSV_MAINNET_VERSION, seed_phrase, derivation_path, passphrase, script_type, want_address, want_public_key, want_private_key)
+}
+
+#[uniffi::export]
+pub fn derive_bitcoin_sv_testnet(
+    seed_phrase: String, derivation_path: String, passphrase: Option<String>,
+    script_type: BitcoinScriptType,
+    want_address: bool, want_public_key: bool, want_private_key: bool,
+) -> Result<DerivationResult, SpectraBridgeError> {
+    bsv_internal(BSV_TESTNET_VERSION, seed_phrase, derivation_path, passphrase, script_type, want_address, want_public_key, want_private_key)
+}
+

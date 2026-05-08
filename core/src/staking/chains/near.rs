@@ -18,12 +18,10 @@ use crate::staking::{
     StakingActionPreview, StakingError, StakingPosition, StakingValidator,
 };
 
-#[allow(dead_code)]
 pub struct NearStakingClient {
     rpc_endpoints: Vec<String>,
 }
 
-#[allow(dead_code)]
 impl NearStakingClient {
     pub fn new(rpc_endpoints: Vec<String>) -> Self {
         Self { rpc_endpoints }

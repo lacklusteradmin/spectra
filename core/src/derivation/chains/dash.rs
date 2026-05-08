@@ -34,6 +34,83 @@ pub fn validate_dash_address(address: &str) -> bool {
     decode_dash_address(address).is_ok()
 }
 
+// ── Derivation ────────────────────────────────────────────────────────────
+
+use crate::derivation::types::{BitcoinScriptType, DerivationResult, parse_path_metadata};
+use crate::derivation::chains::bitcoin::{base58check_encode, derive_secp_keypair, hash160};
+use crate::SpectraBridgeError;
+
+const DASH_MAINNET_P2PKH: u8 = 0x4C;
+const DASH_TESTNET_P2PKH: u8 = 0x8C;
+
+fn p2pkh_address(version: u8, pubkey: &secp256k1::PublicKey) -> String {
+    let mut payload = vec![version];
+    payload.extend_from_slice(&hash160(&pubkey.serialize()));
+    base58check_encode(&payload)
+}
+
+pub(crate) fn derive_from_seed_phrase(
+    seed_phrase: &str, derivation_path: &str, passphrase: Option<&str>,
+    want_address: bool, want_public_key: bool, want_private_key: bool,
+) -> Result<(Option<String>, Option<String>, Option<String>), String> {
+    let (pk, priv_bytes) = derive_secp_keypair(seed_phrase, derivation_path, passphrase)?;
+    Ok((
+        want_address.then(|| p2pkh_address(DASH_MAINNET_P2PKH, &pk)),
+        want_public_key.then(|| hex::encode(pk.serialize())),
+        want_private_key.then(|| hex::encode(priv_bytes)),
+    ))
+}
+
+pub(crate) fn derive_from_seed_phrase_testnet(
+    seed_phrase: &str, derivation_path: &str, passphrase: Option<&str>,
+    want_address: bool, want_public_key: bool, want_private_key: bool,
+) -> Result<(Option<String>, Option<String>, Option<String>), String> {
+    let (pk, priv_bytes) = derive_secp_keypair(seed_phrase, derivation_path, passphrase)?;
+    Ok((
+        want_address.then(|| p2pkh_address(DASH_TESTNET_P2PKH, &pk)),
+        want_public_key.then(|| hex::encode(pk.serialize())),
+        want_private_key.then(|| hex::encode(priv_bytes)),
+    ))
+}
+
+fn dash_internal(
+    version: u8, seed_phrase: String, derivation_path: String, passphrase: Option<String>,
+    script_type: BitcoinScriptType,
+    want_address: bool, want_public_key: bool, want_private_key: bool,
+) -> Result<DerivationResult, SpectraBridgeError> {
+    if !matches!(script_type, BitcoinScriptType::P2pkh) {
+        return Err(SpectraBridgeError::InvalidInput {
+            message: "Dash only supports P2PKH addresses.".into(),
+        });
+    }
+    let (account, branch, index) = parse_path_metadata(&derivation_path);
+    let (pk, priv_bytes) = derive_secp_keypair(&seed_phrase, &derivation_path, passphrase.as_deref())?;
+    Ok(DerivationResult {
+        address: want_address.then(|| p2pkh_address(version, &pk)),
+        public_key_hex: want_public_key.then(|| hex::encode(pk.serialize())),
+        private_key_hex: want_private_key.then(|| hex::encode(priv_bytes)),
+        account, branch, index,
+    })
+}
+
+#[uniffi::export]
+pub fn derive_dash(
+    seed_phrase: String, derivation_path: String, passphrase: Option<String>,
+    script_type: BitcoinScriptType,
+    want_address: bool, want_public_key: bool, want_private_key: bool,
+) -> Result<DerivationResult, SpectraBridgeError> {
+    dash_internal(DASH_MAINNET_P2PKH, seed_phrase, derivation_path, passphrase, script_type, want_address, want_public_key, want_private_key)
+}
+
+#[uniffi::export]
+pub fn derive_dash_testnet(
+    seed_phrase: String, derivation_path: String, passphrase: Option<String>,
+    script_type: BitcoinScriptType,
+    want_address: bool, want_public_key: bool, want_private_key: bool,
+) -> Result<DerivationResult, SpectraBridgeError> {
+    dash_internal(DASH_TESTNET_P2PKH, seed_phrase, derivation_path, passphrase, script_type, want_address, want_public_key, want_private_key)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

@@ -17,12 +17,10 @@ use crate::staking::{
     StakingActionPreview, StakingError, StakingPosition, StakingValidator,
 };
 
-#[allow(dead_code)]
 pub struct AptosStakingClient {
     rest_endpoints: Vec<String>,
 }
 
-#[allow(dead_code)]
 impl AptosStakingClient {
     pub fn new(rest_endpoints: Vec<String>) -> Self {
         Self { rest_endpoints }

@@ -19,12 +19,10 @@ use crate::staking::{
     StakingActionPreview, StakingError, StakingPosition, StakingValidator,
 };
 
-#[allow(dead_code)]
 pub struct CardanoStakingClient {
     rest_endpoints: Vec<String>,
 }
 
-#[allow(dead_code)]
 impl CardanoStakingClient {
     pub fn new(rest_endpoints: Vec<String>) -> Self {
         Self { rest_endpoints }

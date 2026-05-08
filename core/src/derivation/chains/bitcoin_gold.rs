@@ -30,6 +30,55 @@ pub(crate) fn btg_p2pkh_script(pubkey_hash: &[u8; 20]) -> Vec<u8> {
     s
 }
 
+// ── Derivation ────────────────────────────────────────────────────────────
+
+use crate::derivation::types::{BitcoinScriptType, DerivationResult, parse_path_metadata};
+use crate::derivation::chains::bitcoin::{base58check_encode, derive_secp_keypair, hash160};
+use crate::SpectraBridgeError;
+
+pub(crate) fn derive_from_seed_phrase(
+    seed_phrase: &str, derivation_path: &str, passphrase: Option<&str>,
+    want_address: bool, want_public_key: bool, want_private_key: bool,
+) -> Result<(Option<String>, Option<String>, Option<String>), String> {
+    let (pk, priv_bytes) = derive_secp_keypair(seed_phrase, derivation_path, passphrase)?;
+    let address = want_address.then(|| {
+        let mut payload = vec![BTG_P2PKH_VERSION];
+        payload.extend_from_slice(&hash160(&pk.serialize()));
+        base58check_encode(&payload)
+    });
+    Ok((
+        address,
+        want_public_key.then(|| hex::encode(pk.serialize())),
+        want_private_key.then(|| hex::encode(priv_bytes)),
+    ))
+}
+
+#[uniffi::export]
+pub fn derive_bitcoin_gold(
+    seed_phrase: String, derivation_path: String, passphrase: Option<String>,
+    script_type: BitcoinScriptType,
+    want_address: bool, want_public_key: bool, want_private_key: bool,
+) -> Result<DerivationResult, SpectraBridgeError> {
+    if !matches!(script_type, BitcoinScriptType::P2pkh) {
+        return Err(SpectraBridgeError::InvalidInput {
+            message: "Bitcoin Gold only supports P2PKH addresses.".into(),
+        });
+    }
+    let (account, branch, index) = parse_path_metadata(&derivation_path);
+    let (pk, priv_bytes) = derive_secp_keypair(&seed_phrase, &derivation_path, passphrase.as_deref())?;
+    let address = want_address.then(|| {
+        let mut payload = vec![BTG_P2PKH_VERSION];
+        payload.extend_from_slice(&hash160(&pk.serialize()));
+        base58check_encode(&payload)
+    });
+    Ok(DerivationResult {
+        address,
+        public_key_hex: want_public_key.then(|| hex::encode(pk.serialize())),
+        private_key_hex: want_private_key.then(|| hex::encode(priv_bytes)),
+        account, branch, index,
+    })
+}
+
 pub fn validate_bitcoin_gold_address(address: &str) -> bool {
     if address.starts_with("btg1") {
         return bech32::decode(address)
