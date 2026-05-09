@@ -112,6 +112,8 @@ base64 = "0.22"
 #   also used by service.rs for wallet lifecycle operations.
 # toml: parse the bundled chain registry config.
 # rand: OS entropy for fresh-mnemonic generation in service.rs.
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter", "fmt"] }
 parking_lot = "0.12"
 rusqlite = { version = "0.31", features = ["bundled"] }
 toml = { version = "0.8", default-features = false, features = ["parse"] }

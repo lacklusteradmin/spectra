@@ -97,6 +97,14 @@ pub struct WalletService {
 impl WalletService {
     #[uniffi::constructor]
     pub fn new_typed(endpoints: Vec<ChainEndpoints>) -> Result<Arc<Self>, SpectraBridgeError> {
+        static LOGGING: std::sync::OnceLock<()> = std::sync::OnceLock::new();
+        LOGGING.get_or_init(|| {
+            use tracing_subscriber::{fmt, EnvFilter};
+            let filter = EnvFilter::try_from_default_env().unwrap_or_else(|_| {
+                if cfg!(debug_assertions) { EnvFilter::new("debug") } else { EnvFilter::new("info") }
+            });
+            fmt().with_env_filter(filter).without_time().with_ansi(false).init();
+        });
         Ok(Arc::new(Self {
             endpoints: Arc::new(RwLock::new(EndpointIndex::from_list(endpoints))),
             history_pagination: Arc::new(HistoryPaginationStore::new()),
@@ -3666,21 +3674,21 @@ impl WalletService {
         provider: String,
         coins: Vec<crate::price::PriceRequestCoin>,
     ) -> Result<std::collections::HashMap<String, f64>, SpectraBridgeError> {
-        eprintln!("[spectra:prices] enter provider={provider} coins={}", coins.len());
+        tracing::debug!(provider = %provider, coins = coins.len(), "fetch_prices enter");
         let parsed_provider = match crate::price::PriceProvider::from_raw(&provider) {
             Some(p) => p,
             None => {
-                eprintln!("[spectra:prices] UNKNOWN provider={provider}");
+                tracing::warn!(provider = %provider, "unknown price provider");
                 return Err(format!("unknown price provider: {provider}").into());
             }
         };
         match crate::price::fetch_prices(parsed_provider, &coins).await {
             Ok(quotes) => {
-                eprintln!("[spectra:prices] ok provider={provider} returned={}", quotes.len());
+                tracing::debug!(provider = %provider, returned = quotes.len(), "fetch_prices ok");
                 Ok(quotes)
             }
             Err(e) => {
-                eprintln!("[spectra:prices] FAIL provider={provider}: {e}");
+                tracing::error!(provider = %provider, error = %e, "fetch_prices failed");
                 Err(SpectraBridgeError::from(e))
             }
         }
@@ -3692,21 +3700,21 @@ impl WalletService {
         provider: String,
         currencies: Vec<String>,
     ) -> Result<std::collections::HashMap<String, f64>, SpectraBridgeError> {
-        eprintln!("[spectra:fiat] enter provider={provider} currencies={}", currencies.len());
+        tracing::debug!(provider = %provider, currencies = currencies.len(), "fetch_fiat_rates enter");
         let parsed_provider = match crate::price::FiatRateProvider::from_raw(&provider) {
             Some(p) => p,
             None => {
-                eprintln!("[spectra:fiat] UNKNOWN provider={provider}");
+                tracing::warn!(provider = %provider, "unknown fiat rate provider");
                 return Err(format!("unknown fiat rate provider: {provider}").into());
             }
         };
         match crate::price::fetch_fiat_rates(parsed_provider, &currencies).await {
             Ok(rates) => {
-                eprintln!("[spectra:fiat] ok provider={provider} returned={}", rates.len());
+                tracing::debug!(provider = %provider, returned = rates.len(), "fetch_fiat_rates ok");
                 Ok(rates)
             }
             Err(e) => {
-                eprintln!("[spectra:fiat] FAIL provider={provider}: {e}");
+                tracing::error!(provider = %provider, error = %e, "fetch_fiat_rates failed");
                 Err(SpectraBridgeError::from(e))
             }
         }

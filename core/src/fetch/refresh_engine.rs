@@ -5,8 +5,6 @@
 // The only job remaining for Swift is to apply the received JSON to the
 // in-memory wallet model via `WalletStore.applyRustBalance(...)`.
 
-// `BalanceObserver` + `RefreshEntry` are defined further down in this file
-// (merged in from the former `balance_observer.rs`).
 use crate::service::WalletService;
 use futures::stream::{self, StreamExt};
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -76,6 +74,7 @@ impl BalanceRefreshEngine {
         *self.inner.observer.write().unwrap() = None;
     }
 
+    /// Replace the full list of (chain, wallet, address) entries to refresh each cycle.
     pub fn set_entries_typed(&self, entries: Vec<RefreshEntry>) {
         *self.inner.entries.write().unwrap() = entries;
     }
@@ -139,8 +138,7 @@ impl BalanceRefreshEngine {
             .compare_exchange(false, true, Ordering::Acquire, Ordering::Relaxed)
             .is_err()
         {
-            #[cfg(debug_assertions)]
-            eprintln!("[spectra:refresh] skipped: cycle already in flight");
+            tracing::debug!("refresh cycle skipped: already in flight");
             return;
         }
         // Drop guard clears the flag even on panic / cancel.
@@ -160,10 +158,7 @@ impl BalanceRefreshEngine {
         }
 
         let cycle_start = Instant::now();
-        #[cfg(debug_assertions)]
-        eprintln!("[spectra:refresh] cycle start entries={entry_count}");
-        #[cfg(not(debug_assertions))]
-        let _ = entry_count; // silence unused warning in release
+        tracing::debug!(entries = entry_count, "refresh cycle start");
 
         // Snapshot the observer Arc once before the loop instead of once per
         // entry — avoids N RwLock acquisitions during the hot path.
@@ -227,15 +222,8 @@ impl BalanceRefreshEngine {
             o.on_refresh_cycle_complete(refreshed, errors);
         }
 
-        #[cfg(debug_assertions)]
-        {
-            let elapsed_ms = cycle_start.elapsed().as_millis();
-            eprintln!(
-                "[spectra:refresh] cycle end refreshed={refreshed} errors={errors} elapsed_ms={elapsed_ms}"
-            );
-        }
-        #[cfg(not(debug_assertions))]
-        let _ = cycle_start;
+        let elapsed_ms = cycle_start.elapsed().as_millis();
+        tracing::debug!(refreshed, errors, elapsed_ms, "refresh cycle end");
     }
 }
 
@@ -335,8 +323,6 @@ mod tests {
         assert!(!gate.load(Ordering::Relaxed));
     }
 }
-
-// ── Merged from balance_observer.rs ───────────────────────────────
 
 use crate::store::state::{AssetHolding, WalletSummary};
 

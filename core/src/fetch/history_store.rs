@@ -190,7 +190,7 @@ mod tests {
         let store = HistoryPaginationStore::new();
         assert!(store.cursor("bitcoin", "wallet-1").is_none());
         assert!(!store.is_exhausted("bitcoin", "wallet-1"));
-        assert_eq!(store.page(0, "wallet-1"), 0);
+        assert_eq!(store.page("bitcoin", "wallet-1"), 0);
     }
 
     #[test]
@@ -210,11 +210,11 @@ mod tests {
         let store = HistoryPaginationStore::new();
         store.advance_page("ethereum", "wallet-2", false);
         assert_eq!(store.page("ethereum", "wallet-2"), 1);
-        assert!(!store.is_exhausted(1, "wallet-2"));
+        assert!(!store.is_exhausted("ethereum", "wallet-2"));
 
         store.advance_page("ethereum", "wallet-2", true);
         assert_eq!(store.page("ethereum", "wallet-2"), 2);
-        assert!(store.is_exhausted(1, "wallet-2"));
+        assert!(store.is_exhausted("ethereum", "wallet-2"));
     }
 
     #[test]
@@ -234,7 +234,7 @@ mod tests {
         let store = HistoryPaginationStore::new();
         store.advance_cursor("bitcoin", "wallet-1", Some("tx-btc".to_string()));
         store.advance_page("ethereum", "wallet-1", false);
-        store.advance_cursor(4, "wallet-1", Some("tx-xrp".to_string()));
+        store.advance_cursor("xrp", "wallet-1", Some("tx-xrp".to_string()));
         store.advance_cursor("bitcoin", "wallet-2", Some("tx-btc2".to_string()));
 
         store.reset_all_for_wallet("wallet-1");
@@ -251,7 +251,7 @@ mod tests {
         let store = HistoryPaginationStore::new();
         store.advance_cursor("bitcoin", "wallet-1", Some("tx1".to_string()));
         store.advance_cursor("bitcoin", "wallet-2", Some("tx2".to_string()));
-        store.advance_cursor(1, "wallet-1", Some("eth-tx".to_string()));
+        store.advance_cursor("ethereum", "wallet-1", Some("eth-tx".to_string()));
 
         store.reset_chain("bitcoin");
 

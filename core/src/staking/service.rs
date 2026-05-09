@@ -44,9 +44,13 @@ impl StakingService {
                 .map(|e| e.endpoints.clone())
                 .unwrap_or_default()
         };
+        let cardano_api_key = endpoints
+            .iter()
+            .find(|e| e.chain_id == CHAIN_CARDANO)
+            .and_then(|e| e.api_key.clone());
         Arc::new(Self {
             solana: SolanaStakingClient::new(eps(CHAIN_SOLANA)),
-            cardano: CardanoStakingClient::new(eps(CHAIN_CARDANO)),
+            cardano: CardanoStakingClient::new(eps(CHAIN_CARDANO), cardano_api_key),
             sui: SuiStakingClient::new(eps(CHAIN_SUI)),
             aptos: AptosStakingClient::new(eps(CHAIN_APTOS)),
             near: NearStakingClient::new(eps(CHAIN_NEAR)),
@@ -69,9 +73,7 @@ impl StakingService {
             CHAIN_NEAR => self.near.fetch_validators().await,
             CHAIN_POLKADOT => self.polkadot.fetch_validators().await,
             CHAIN_ICP => self.icp.fetch_validators().await,
-            _ => Err(StakingError::InvalidValidator(format!(
-                "unsupported chain {chain_id}"
-            ))),
+            _ => Err(StakingError::NotYetImplemented),
         }
     }
 
@@ -88,9 +90,7 @@ impl StakingService {
             CHAIN_NEAR => self.near.fetch_positions(&wallet_address).await,
             CHAIN_POLKADOT => self.polkadot.fetch_positions(&wallet_address).await,
             CHAIN_ICP => self.icp.fetch_positions(&wallet_address).await,
-            _ => Err(StakingError::InvalidValidator(format!(
-                "unsupported chain {chain_id}"
-            ))),
+            _ => Err(StakingError::NotYetImplemented),
         }
     }
 
@@ -322,6 +322,16 @@ impl StakingService {
     }
 
     // ── Action previews: ICP ─────────────────────────────────────────────────
+
+    pub async fn icp_build_claim_maturity_tx(
+        &self,
+        wallet_address: String,
+        neuron_id: u64,
+    ) -> Result<StakingActionPreview, StakingError> {
+        self.icp
+            .build_claim_maturity_tx(&wallet_address, neuron_id)
+            .await
+    }
 
     pub async fn icp_build_create_neuron_tx(
         &self,

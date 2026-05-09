@@ -1,10 +1,8 @@
-// Rust-owned diagnostic record types exposed to Swift via UniFFI.
-//
-// The JSON serialization shape (serde rename attributes below) matches
-// byte-exactly the Swift dictionary layouts in
-// `swift/shell/StoreDiagnosticsExport.swift` since the Rust-owned migration.
-// Changing field names here will break the exported diagnostics-bundle
-// format — add migrations before adjusting.
+//! Rust-owned diagnostic record types exposed to Swift via UniFFI.
+//!
+//! The JSON serialization shape (serde rename attributes below) must stay
+//! byte-identical to the Swift dictionary layouts — changing field names here
+//! breaks the exported diagnostics-bundle format.
 
 use serde::{Deserialize, Serialize};
 
@@ -121,6 +119,20 @@ simple_address_diagnostics! {
     NearHistoryDiagnostics,
     PolkadotHistoryDiagnostics,
     CardanoHistoryDiagnostics,
+}
+
+#[derive(uniffi::Record, Serialize, Deserialize, Clone, Debug, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct DiagnosticsEnvironmentMetadata {
+    pub app_version: String,
+    pub build_number: String,
+    pub os_version: String,
+    pub locale_identifier: String,
+    pub time_zone_identifier: String,
+    pub pricing_provider: String,
+    pub selected_fiat_currency: String,
+    pub wallet_count: i64,
+    pub transaction_count: i64,
 }
 
 #[cfg(test)]

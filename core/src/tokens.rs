@@ -29,7 +29,7 @@ struct TomlToken {
     coingecko_id:    String,
     decimals:        u32,
     display_decimals: Option<u32>,
-    category:        String,
+    tags:            Vec<String>,
     color_name:      String,
     asset_name:      String,
     enabled:         bool,
@@ -49,7 +49,7 @@ pub struct TokenEntry {
     pub coingecko_id:    String,
     pub decimals:        u32,
     pub display_decimals: Option<u32>,
-    pub category:        String,
+    pub tags:            Vec<String>,
     pub color_name:      String,
     pub asset_name:      String,
     pub enabled:         bool,
@@ -74,7 +74,7 @@ static CATALOG: LazyLock<Vec<TokenEntry>> = LazyLock::new(|| {
             coingecko_id:    t.coingecko_id,
             decimals:        t.decimals,
             display_decimals: t.display_decimals,
-            category:        t.category,
+            tags:            t.tags,
             color_name:      t.color_name,
             asset_name:      t.asset_name,
             enabled:         t.enabled,
@@ -106,17 +106,22 @@ pub fn catalog() -> &'static [TokenEntry] {
 // Pure token-identifier + endpoint normalization helpers (string munging,
 // URL validation, CSV parsing). No mutable state — testable in isolation.
 
+/// Strip leading zeros from a `0x…` hex string, keeping at least one digit.
+/// Returns the value unchanged if it doesn't start with `0x`.
+fn strip_hex_leading_zeros(value: &str) -> String {
+    if !value.starts_with("0x") {
+        return value.to_string();
+    }
+    let hex_part = &value[2..];
+    let significant: String = hex_part.chars().skip_while(|c| *c == '0').collect();
+    format!("0x{}", if significant.is_empty() { "0" } else { &significant })
+}
+
 /// Canonicalize a `0x…` hex string: strip leading zeroes, keep at least one.
 /// Unchanged if the prefix is not `0x`.
 #[uniffi::export]
 pub fn canonical_aptos_hex_address(value: String) -> String {
-    if !value.starts_with("0x") {
-        return value;
-    }
-    let hex_portion = &value[2..];
-    let trimmed: String = hex_portion.chars().skip_while(|c| *c == '0').collect();
-    let canonical = if trimmed.is_empty() { "0".to_string() } else { trimmed };
-    format!("0x{canonical}")
+    strip_hex_leading_zeros(&value)
 }
 
 /// Normalize an Aptos coin-type / identifier string: lowercase, then rewrite
@@ -150,13 +155,7 @@ pub fn normalize_aptos_token_identifier(value: String) -> String {
 /// Canonicalize just a Sui package identifier: `0x…` with trimmed zeroes.
 #[uniffi::export]
 pub fn normalize_sui_package_component(value: String) -> String {
-    if !value.starts_with("0x") {
-        return value;
-    }
-    let hex_portion = &value[2..];
-    let trimmed: String = hex_portion.chars().skip_while(|c| *c == '0').collect();
-    let canonical = if trimmed.is_empty() { "0".to_string() } else { trimmed };
-    format!("0x{canonical}")
+    strip_hex_leading_zeros(&value)
 }
 
 /// Normalize a Sui token identifier: lowercase, split on `::`, canonicalize

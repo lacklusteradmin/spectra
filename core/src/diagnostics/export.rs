@@ -1,14 +1,13 @@
-// per-chain diagnostics JSON builders.
-//
-// Lifted from Swift `swift/shell/StoreDiagnosticsExport.swift`. The JSON
-// output shape is part of the exported diagnostics bundle contract — keep
-// field names stable across migrations.
-//
-// Each builder takes an already-normalized list of diagnostics records
-// (the Swift values of the `*HistoryDiagnosticsByWallet` dictionaries plus
-// their matching endpoint-health arrays) and returns a pretty-printed,
-// key-sorted, sanitized JSON string. Returning `Option<String>` mirrors
-// the Swift helpers that return `String?` on serialization failure.
+//! Per-chain diagnostics JSON builders.
+//!
+//! The JSON output shape is part of the exported diagnostics bundle contract —
+//! keep field names stable across migrations.
+//!
+//! Each builder takes an already-normalized list of diagnostics records and
+//! returns a pretty-printed, sanitized JSON string. `Option<String>` return
+//! type mirrors the Swift helpers that return `String?` on serialization failure.
+
+use std::collections::HashMap;
 
 use serde_json::{json, Map, Value};
 
@@ -271,6 +270,64 @@ pub fn diagnostics_build_solana_json(
         "endpoints": endpoint_dicts,
     });
     pretty_sanitized(payload)
+}
+
+// ---------- Full diagnostics bundle ----------
+
+/// Complete diagnostics bundle. All chain JSON fields are non-optional — callers
+/// supply `"{}"` as a fallback for chains with no data. `generated_at` is a
+/// Unix timestamp (f64) so it round-trips losslessly across FFI without
+/// depending on Swift date-encoding strategy.
+#[derive(uniffi::Record, serde::Serialize, serde::Deserialize, Clone, Debug, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct DiagnosticsBundlePayload {
+    pub schema_version: i32,
+    pub generated_at: f64,
+    pub environment: DiagnosticsEnvironmentMetadata,
+    pub chain_degraded_messages: HashMap<String, String>,
+    // UTXO chains
+    pub bitcoin_diagnostics_json: String,
+    pub dogecoin_diagnostics_json: String,
+    pub bitcoin_cash_diagnostics_json: String,
+    pub bitcoin_sv_diagnostics_json: String,
+    pub litecoin_diagnostics_json: String,
+    // EVM chains
+    pub ethereum_diagnostics_json: String,
+    pub etc_diagnostics_json: String,
+    pub arbitrum_diagnostics_json: String,
+    pub optimism_diagnostics_json: String,
+    pub bnb_diagnostics_json: String,
+    pub avalanche_diagnostics_json: String,
+    pub hyperliquid_diagnostics_json: String,
+    // Other chains
+    pub tron_diagnostics_json: String,
+    pub solana_diagnostics_json: String,
+    pub stellar_diagnostics_json: String,
+    pub cardano_diagnostics_json: String,
+    pub xrp_diagnostics_json: String,
+    pub monero_diagnostics_json: String,
+    pub sui_diagnostics_json: String,
+    pub aptos_diagnostics_json: String,
+    pub ton_diagnostics_json: String,
+    pub icp_diagnostics_json: String,
+    pub near_diagnostics_json: String,
+    pub polkadot_diagnostics_json: String,
+}
+
+/// Serialize a bundle payload to pretty-printed, sanitized JSON. Returns `None`
+/// only on the extremely unlikely serialization failure path.
+#[uniffi::export]
+pub fn diagnostics_bundle_to_json(payload: DiagnosticsBundlePayload) -> Option<String> {
+    let bytes = serde_json::to_vec_pretty(&payload).ok()?;
+    let s = String::from_utf8(bytes).ok()?;
+    Some(sanitize_diagnostics_string(&s))
+}
+
+/// Parse a bundle JSON string back into a `DiagnosticsBundlePayload`. Returns
+/// `None` if the JSON is malformed or missing required fields.
+#[uniffi::export]
+pub fn diagnostics_bundle_from_json(json: String) -> Option<DiagnosticsBundlePayload> {
+    serde_json::from_str(&json).ok()
 }
 
 #[cfg(test)]

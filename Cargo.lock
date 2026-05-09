@@ -3847,6 +3847,8 @@ dependencies = [
  "tokio-util",
  "toml",
  "tor-rtcompat",
+ "tracing",
+ "tracing-subscriber",
  "unicode-normalization",
  "uniffi",
  "wiremock",
