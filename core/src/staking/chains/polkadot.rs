@@ -21,7 +21,7 @@ use crate::staking::{
 };
 
 pub struct PolkadotStakingClient {
-    sidecar_endpoints: Vec<String>,
+    _sidecar_endpoints: Vec<String>,
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -32,7 +32,7 @@ fn dot_display(planck: u128) -> String { format!("{:.4} DOT", planck_to_dot(plan
 
 impl PolkadotStakingClient {
     pub fn new(sidecar_endpoints: Vec<String>) -> Self {
-        Self { sidecar_endpoints }
+        Self { _sidecar_endpoints: sidecar_endpoints }
     }
 
     /// Active validator set. Sidecar: `/pallets/staking/storage/validators`.

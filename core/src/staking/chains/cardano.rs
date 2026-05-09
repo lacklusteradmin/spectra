@@ -20,8 +20,8 @@ use crate::staking::{
 };
 
 pub struct CardanoStakingClient {
-    rest_endpoints: Vec<String>,
-    api_key: Option<String>,
+    _rest_endpoints: Vec<String>,
+    _api_key: Option<String>,
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -36,7 +36,7 @@ fn short_id(id: &str) -> &str {
 
 impl CardanoStakingClient {
     pub fn new(rest_endpoints: Vec<String>, api_key: Option<String>) -> Self {
-        Self { rest_endpoints, api_key }
+        Self { _rest_endpoints: rest_endpoints, _api_key: api_key }
     }
 
     /// Returns the active stake-pool set. Endpoint: Blockfrost `/v0/pools/extended`

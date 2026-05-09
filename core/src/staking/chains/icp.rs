@@ -20,7 +20,7 @@ use crate::staking::{
 };
 
 pub struct IcpStakingClient {
-    rosetta_endpoints: Vec<String>,
+    _rosetta_endpoints: Vec<String>,
 }
 
 // ── Hardcoded well-known NNS named neurons ────────────────────────────────────
@@ -50,7 +50,7 @@ fn dissolve_delay_seconds(months: u32) -> i64 {
 
 impl IcpStakingClient {
     pub fn new(rosetta_endpoints: Vec<String>) -> Self {
-        Self { rosetta_endpoints }
+        Self { _rosetta_endpoints: rosetta_endpoints }
     }
 
     /// Known-good neurons / followee identities the user can delegate

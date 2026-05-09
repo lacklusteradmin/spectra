@@ -38,24 +38,6 @@ use crate::derivation::types::{BitcoinScriptType, DerivationResult, parse_path_m
 use crate::derivation::chains::bitcoin::{base58check_encode, derive_secp_keypair, hash160};
 use crate::SpectraBridgeError;
 
-/// BIP-39 → secp256k1 keypair → BTG P2PKH address (version byte 0x26).
-pub(crate) fn derive_from_seed_phrase(
-    seed_phrase: &str, derivation_path: &str, passphrase: Option<&str>,
-    want_address: bool, want_public_key: bool, want_private_key: bool,
-) -> Result<(Option<String>, Option<String>, Option<String>), String> {
-    let (pk, priv_bytes) = derive_secp_keypair(seed_phrase, derivation_path, passphrase)?;
-    let address = want_address.then(|| {
-        let mut payload = vec![BTG_P2PKH_VERSION];
-        payload.extend_from_slice(&hash160(&pk.serialize()));
-        base58check_encode(&payload)
-    });
-    Ok((
-        address,
-        want_public_key.then(|| hex::encode(pk.serialize())),
-        want_private_key.then(|| hex::encode(priv_bytes)),
-    ))
-}
-
 /// UniFFI export: derive Bitcoin Gold mainnet keys; only P2PKH script type is supported.
 #[uniffi::export]
 pub fn derive_bitcoin_gold(

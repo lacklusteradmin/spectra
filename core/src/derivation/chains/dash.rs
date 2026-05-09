@@ -53,32 +53,6 @@ fn p2pkh_address(version: u8, pubkey: &secp256k1::PublicKey) -> String {
     base58check_encode(&payload)
 }
 
-/// BIP-39 → secp256k1 keypair → Dash mainnet P2PKH address.
-pub(crate) fn derive_from_seed_phrase(
-    seed_phrase: &str, derivation_path: &str, passphrase: Option<&str>,
-    want_address: bool, want_public_key: bool, want_private_key: bool,
-) -> Result<(Option<String>, Option<String>, Option<String>), String> {
-    let (pk, priv_bytes) = derive_secp_keypair(seed_phrase, derivation_path, passphrase)?;
-    Ok((
-        want_address.then(|| p2pkh_address(DASH_MAINNET_P2PKH, &pk)),
-        want_public_key.then(|| hex::encode(pk.serialize())),
-        want_private_key.then(|| hex::encode(priv_bytes)),
-    ))
-}
-
-/// BIP-39 → secp256k1 keypair → Dash testnet P2PKH address.
-pub(crate) fn derive_from_seed_phrase_testnet(
-    seed_phrase: &str, derivation_path: &str, passphrase: Option<&str>,
-    want_address: bool, want_public_key: bool, want_private_key: bool,
-) -> Result<(Option<String>, Option<String>, Option<String>), String> {
-    let (pk, priv_bytes) = derive_secp_keypair(seed_phrase, derivation_path, passphrase)?;
-    Ok((
-        want_address.then(|| p2pkh_address(DASH_TESTNET_P2PKH, &pk)),
-        want_public_key.then(|| hex::encode(pk.serialize())),
-        want_private_key.then(|| hex::encode(priv_bytes)),
-    ))
-}
-
 // Shared body for derive_dash / derive_dash_testnet; rejects non-P2PKH script types.
 fn dash_internal(
     version: u8, seed_phrase: String, derivation_path: String, passphrase: Option<String>,

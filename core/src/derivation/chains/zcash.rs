@@ -55,32 +55,6 @@ fn zcash_p2pkh_addr(version: [u8; 2], pubkey: &secp256k1::PublicKey) -> String {
     base58check_encode(&payload)
 }
 
-/// BIP-39 → secp256k1 keypair → Zcash mainnet transparent P2PKH address.
-pub(crate) fn derive_from_seed_phrase(
-    seed_phrase: &str, derivation_path: &str, passphrase: Option<&str>,
-    want_address: bool, want_public_key: bool, want_private_key: bool,
-) -> Result<(Option<String>, Option<String>, Option<String>), String> {
-    let (pk, priv_bytes) = derive_secp_keypair(seed_phrase, derivation_path, passphrase)?;
-    Ok((
-        want_address.then(|| zcash_p2pkh_addr(ZCASH_MAINNET_VERSION, &pk)),
-        want_public_key.then(|| hex::encode(pk.serialize())),
-        want_private_key.then(|| hex::encode(priv_bytes)),
-    ))
-}
-
-/// BIP-39 → secp256k1 keypair → Zcash testnet transparent P2PKH address.
-pub(crate) fn derive_from_seed_phrase_testnet(
-    seed_phrase: &str, derivation_path: &str, passphrase: Option<&str>,
-    want_address: bool, want_public_key: bool, want_private_key: bool,
-) -> Result<(Option<String>, Option<String>, Option<String>), String> {
-    let (pk, priv_bytes) = derive_secp_keypair(seed_phrase, derivation_path, passphrase)?;
-    Ok((
-        want_address.then(|| zcash_p2pkh_addr(ZCASH_TESTNET_VERSION, &pk)),
-        want_public_key.then(|| hex::encode(pk.serialize())),
-        want_private_key.then(|| hex::encode(priv_bytes)),
-    ))
-}
-
 // Shared body for derive_zcash / derive_zcash_testnet; builds transparent P2PKH address.
 fn zcash_internal(
     version: [u8; 2], seed_phrase: String, derivation_path: String, passphrase: Option<String>,
