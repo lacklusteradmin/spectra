@@ -4,6 +4,7 @@
 
 // ── Address validation (preserved) ───────────────────────────────────────
 
+// Base58check-decode a BSV address and return the 20-byte pubkey hash.
 pub(crate) fn decode_bsv_address(address: &str) -> Result<[u8; 20], String> {
     let decoded = bs58::decode(address)
         .with_check(None)
@@ -21,6 +22,7 @@ pub(crate) fn decode_bsv_address(address: &str) -> Result<[u8; 20], String> {
     Ok(hash)
 }
 
+/// True if the address is valid BSV base58check with a recognised version byte.
 pub fn validate_bsv_address(address: &str) -> bool {
     bs58::decode(address)
         .with_check(None)
@@ -38,12 +40,14 @@ use crate::SpectraBridgeError;
 const BSV_MAINNET_VERSION: u8 = 0x00;
 const BSV_TESTNET_VERSION: u8 = 0x6f;
 
+// Build a BSV P2PKH address: base58check(version || hash160(pubkey)).
 fn p2pkh_address(version: u8, pubkey: &secp256k1::PublicKey) -> String {
     let mut payload = vec![version];
     payload.extend_from_slice(&hash160(&pubkey.serialize()));
     base58check_encode(&payload)
 }
 
+/// BIP-39 → secp256k1 keypair → BSV mainnet P2PKH address.
 pub(crate) fn derive_from_seed_phrase(
     seed_phrase: &str, derivation_path: &str, passphrase: Option<&str>,
     want_address: bool, want_public_key: bool, want_private_key: bool,
@@ -56,6 +60,7 @@ pub(crate) fn derive_from_seed_phrase(
     ))
 }
 
+/// BIP-39 → secp256k1 keypair → BSV testnet P2PKH address.
 pub(crate) fn derive_from_seed_phrase_testnet(
     seed_phrase: &str, derivation_path: &str, passphrase: Option<&str>,
     want_address: bool, want_public_key: bool, want_private_key: bool,
@@ -68,6 +73,7 @@ pub(crate) fn derive_from_seed_phrase_testnet(
     ))
 }
 
+// Shared body for derive_bitcoin_sv / derive_bitcoin_sv_testnet; rejects non-P2PKH script types.
 fn bsv_internal(
     version: u8, seed_phrase: String, derivation_path: String, passphrase: Option<String>,
     script_type: BitcoinScriptType,
@@ -88,6 +94,7 @@ fn bsv_internal(
     })
 }
 
+/// UniFFI export: derive Bitcoin SV mainnet keys (P2PKH only).
 #[uniffi::export]
 pub fn derive_bitcoin_sv(
     seed_phrase: String, derivation_path: String, passphrase: Option<String>,
@@ -97,6 +104,7 @@ pub fn derive_bitcoin_sv(
     bsv_internal(BSV_MAINNET_VERSION, seed_phrase, derivation_path, passphrase, script_type, want_address, want_public_key, want_private_key)
 }
 
+/// UniFFI export: derive Bitcoin SV testnet keys (P2PKH only).
 #[uniffi::export]
 pub fn derive_bitcoin_sv_testnet(
     seed_phrase: String, derivation_path: String, passphrase: Option<String>,

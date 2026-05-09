@@ -49,10 +49,12 @@ fn polymod(values: &[u8]) -> u64 {
     c ^ 1
 }
 
+// Expand the HRP into low-5-bit values for use in the CashAddr-style checksum.
 fn hrp_expand(hrp: &str) -> Vec<u8> {
     hrp.bytes().map(|b| b & 0x1f).collect()
 }
 
+// Compute the 8-symbol CashAddr-style checksum for the given HRP and data payload.
 fn checksum(hrp: &str, data: &[u8]) -> [u8; 8] {
     let mut values = hrp_expand(hrp);
     values.push(0); // separator
@@ -171,6 +173,7 @@ pub(crate) fn decode_kaspa_address(address: &str) -> Result<(u8, Vec<u8>, bool),
     Ok((version, payload, is_testnet))
 }
 
+/// True if address is a structurally valid Kaspa address (correct HRP, checksum, and payload length).
 pub fn validate_kaspa_address(address: &str) -> bool {
     decode_kaspa_address(address).is_ok()
 }
@@ -188,6 +191,7 @@ use zeroize::Zeroizing;
 
 type HmacSha512 = Hmac<Sha512>;
 
+// Map locale string ("en", "zh-cn", etc.) to BIP-39 wordlist; defaults to English.
 fn resolve_bip39_language(name: Option<&str>) -> Result<Language, String> {
     let value = match name {
         Some(value) if !value.trim().is_empty() => value.trim().to_ascii_lowercase(),
@@ -210,6 +214,7 @@ fn resolve_bip39_language(name: Option<&str>) -> Result<Language, String> {
     }
 }
 
+// BIP-39 mnemonic → 64-byte seed via NFKD normalization and PBKDF2-HMAC-SHA512.
 fn derive_bip39_seed(
     seed_phrase: &str,
     passphrase: &str,
@@ -242,6 +247,7 @@ fn derive_bip39_seed(
 
 const HARDENED_OFFSET: u32 = 0x80000000;
 
+// Parse a BIP-32 derivation path string ("m/44'/111111'/0'/0/0") into a list of child index integers.
 fn parse_bip32_path(path: &str) -> Result<Vec<u32>, String> {
     let trimmed = path.trim().trim_start_matches('m').trim_start_matches('M');
     let trimmed = trimmed.trim_start_matches('/');
@@ -277,6 +283,7 @@ struct ExtendedPrivateKey {
 }
 
 impl ExtendedPrivateKey {
+    // Derive BIP-32 master key: HMAC-SHA512(hmac_key, seed) → private key (IL) + chain code (IR).
     fn master_from_seed(hmac_key: &[u8], seed: &[u8]) -> Result<Self, String> {
         let mut mac =
             HmacSha512::new_from_slice(hmac_key).map_err(|e| format!("HMAC init: {e}"))?;
@@ -289,6 +296,7 @@ impl ExtendedPrivateKey {
         Ok(Self { private_key, chain_code })
     }
 
+    // Derive a BIP-32 child key; hardened indices use private key as input, non-hardened use public key.
     fn derive_child(&self, secp: &Secp256k1<All>, index: u32) -> Result<Self, String> {
         let mut mac = HmacSha512::new_from_slice(&self.chain_code)
             .map_err(|e| format!("HMAC init: {e}"))?;
@@ -314,6 +322,7 @@ impl ExtendedPrivateKey {
         Ok(Self { private_key, chain_code })
     }
 
+    // Walk the full BIP-32 derivation path by applying derive_child for each index.
     fn derive_path(&self, secp: &Secp256k1<All>, path: &[u32]) -> Result<Self, String> {
         let mut key = self.clone();
         for &index in path {
@@ -323,6 +332,7 @@ impl ExtendedPrivateKey {
     }
 }
 
+// Derive a Kaspa Schnorr address, public key, and private key from a mnemonic via BIP-39 + BIP-32.
 pub(crate) fn derive_from_seed_phrase(
     hrp: &str,
     seed_phrase: &str,
@@ -363,6 +373,7 @@ pub(crate) fn derive_from_seed_phrase(
 use crate::derivation::types::{DerivationResult, parse_path_metadata};
 use crate::SpectraBridgeError;
 
+/// UniFFI export: derive Kaspa mainnet wallet (kaspa:… Schnorr address) from a seed phrase.
 #[uniffi::export]
 pub fn derive_kaspa(
     seed_phrase: String, derivation_path: String, passphrase: Option<String>,
@@ -376,6 +387,7 @@ pub fn derive_kaspa(
     Ok(DerivationResult { address, public_key_hex, private_key_hex, account, branch, index })
 }
 
+/// UniFFI export: derive Kaspa testnet wallet (kaspatest:… Schnorr address) from a seed phrase.
 #[uniffi::export]
 pub fn derive_kaspa_testnet(
     seed_phrase: String, derivation_path: String, passphrase: Option<String>,

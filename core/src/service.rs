@@ -58,8 +58,8 @@ pub(crate) use tokio::sync::RwLock;
 
 #[derive(Debug, Clone, Default)]
 pub(crate) struct EndpointIndex {
-    endpoints: std::collections::HashMap<u32, Arc<Vec<String>>>,
-    api_keys: std::collections::HashMap<u32, String>,
+    endpoints: std::collections::HashMap<String, Arc<Vec<String>>>,
+    api_keys: std::collections::HashMap<String, String>,
 }
 
 impl EndpointIndex {
@@ -67,7 +67,7 @@ impl EndpointIndex {
         let mut endpoints = std::collections::HashMap::with_capacity(list.len());
         let mut api_keys = std::collections::HashMap::new();
         for entry in list {
-            endpoints.insert(entry.chain_id, Arc::new(entry.endpoints));
+            endpoints.insert(entry.chain_id.clone(), Arc::new(entry.endpoints));
             if let Some(key) = entry.api_key {
                 api_keys.insert(entry.chain_id, key);
             }
@@ -128,7 +128,7 @@ impl WalletService {
         &self,
         address: String,
     ) -> Result<crate::fetch::chains::solana::SolanaBalance, SpectraBridgeError> {
-        let endpoints = self.endpoints_for(2).await;
+        let endpoints = self.endpoints_for("solana").await;
         let client = crate::fetch::chains::solana::SolanaClient::new(endpoints);
         client.fetch_balance(&address).await.map_err(Into::into)
     }
@@ -137,19 +137,19 @@ impl WalletService {
         &self,
         address: String,
     ) -> Result<crate::fetch::chains::near::NearBalance, SpectraBridgeError> {
-        let endpoints = self.endpoints_for(17).await;
+        let endpoints = self.endpoints_for("near").await;
         let client = crate::fetch::chains::near::NearClient::new(endpoints);
         client.fetch_balance(&address).await.map_err(Into::into)
     }
 
     pub async fn fetch_erc20_balance_typed(
         &self,
-        chain_id: u32,
+        chain_id: String,
         contract: String,
         holder: String,
     ) -> Result<crate::fetch::chains::evm::Erc20Balance, SpectraBridgeError> {
-        let chain = chain_for_evm_id(chain_id)?;
-        let endpoints = self.endpoints_for(chain.id()).await;
+        let chain = chain_for_evm_id(&chain_id)?;
+        let endpoints = self.endpoints_for(chain.str_id()).await;
         let client = crate::fetch::chains::evm::EvmClient::new(endpoints, chain.evm_chain_id());
         client.fetch_erc20_balance(&contract, &holder).await.map_err(Into::into)
     }
@@ -161,10 +161,10 @@ impl WalletService {
     /// native amount as decimal string. `utxo_count` is 0 for non-UTXO chains.
     pub async fn fetch_native_balance_summary(
         &self,
-        chain_id: u32,
+        chain_id: String,
         address: String,
     ) -> Result<NativeBalanceSummary, SpectraBridgeError> {
-        let chain = chain_for_id(chain_id)?;
+        let chain = chain_for_id(&chain_id)?;
         let client = ChainClient::build(chain, self).await?;
         client.fetch_native_balance_summary(&address).await
     }
@@ -177,11 +177,11 @@ impl WalletService {
     /// returning typed records directly across the FFI boundary.
     pub async fn fetch_normalized_history(
         &self,
-        chain_id: u32,
+        chain_id: String,
         address: String,
     ) -> Result<Vec<crate::fetch::history_decode::NormalizedHistoryItem>, SpectraBridgeError> {
-        let raw = self.fetch_history(chain_id, address).await?;
-        let entries = crate::history::normalize_chain_history(chain_id, &raw);
+        let raw = self.fetch_history(&chain_id, address).await?;
+        let entries = crate::history::normalize_chain_history(&chain_id, &raw);
         Ok(entries
             .into_iter()
             .map(|e| crate::fetch::history_decode::NormalizedHistoryItem {
@@ -205,20 +205,20 @@ impl WalletService {
     /// "has this address seen any activity?".
     pub async fn fetch_history_has_activity(
         &self,
-        chain_id: u32,
+        chain_id: String,
         address: String,
     ) -> Result<bool, SpectraBridgeError> {
-        let raw = self.fetch_history(chain_id, address).await?;
+        let raw = self.fetch_history(&chain_id, address).await?;
         Ok(crate::diagnostics::diagnostics_history_entry_count(raw) > 0)
     }
 
     /// Fetch history JSON and return the top-level entry count.
     pub async fn fetch_history_entry_count(
         &self,
-        chain_id: u32,
+        chain_id: String,
         address: String,
     ) -> Result<u32, SpectraBridgeError> {
-        let raw = self.fetch_history(chain_id, address).await?;
+        let raw = self.fetch_history(&chain_id, address).await?;
         Ok(crate::diagnostics::diagnostics_history_entry_count(raw))
     }
 
@@ -226,10 +226,10 @@ impl WalletService {
     /// Used to reconcile pending transactions with on-chain confirmations.
     pub async fn fetch_history_confirmed_txids(
         &self,
-        chain_id: u32,
+        chain_id: String,
         address: String,
     ) -> Result<Vec<String>, SpectraBridgeError> {
-        let raw = self.fetch_history(chain_id, address).await?;
+        let raw = self.fetch_history(&chain_id, address).await?;
         Ok(crate::diagnostics::diagnostics_history_confirmed_txids(raw))
     }
 
@@ -290,7 +290,7 @@ impl WalletService {
     /// caller always gets back the full list.
     pub async fn fetch_token_balances(
         &self,
-        chain_id: u32,
+        chain_id: String,
         address: String,
         tokens: Vec<TokenDescriptor>,
     ) -> Result<Vec<TokenBalanceResult>, SpectraBridgeError> {
@@ -298,9 +298,9 @@ impl WalletService {
             return Ok(Vec::new());
         }
 
-        let chain = Chain::from_id(chain_id)
+        let chain = Chain::from_str_id(&chain_id)
             .ok_or_else(|| SpectraBridgeError::from(format!("fetch_token_balances: unsupported chain_id: {chain_id}")))?;
-        let endpoints = self.endpoints_for(chain.id()).await;
+        let endpoints = self.endpoints_for(chain.str_id()).await;
 
         macro_rules! coin_token_balances {
             ($Client:ty, $endpoints:expr) => {{
@@ -418,8 +418,8 @@ impl WalletService {
             Chain::Ton => {
                 // TON — jetton balances via TonCenter v3 API. The v3 endpoint
                 // lives in the chain's Secondary slot (registered as id + 100 = 116).
-                let v3_endpoints = self.endpoints_for(chain.endpoint_id(EndpointSlot::Secondary)).await;
-                let api_key = self.api_key_for(chain.id()).await;
+                let v3_endpoints = self.endpoints_for(&chain.endpoint_str_id(EndpointSlot::Secondary)).await;
+                let api_key = self.api_key_for(chain.str_id()).await;
                 let client = TonClient::new(endpoints, api_key).with_v3_endpoints(v3_endpoints);
                 let jetton_balances = client
                     .fetch_jetton_balances(&address)
@@ -616,15 +616,15 @@ impl WalletService {
         let params_json = self.build_execute_send_payload(&request, &priv_hex, &pub_hex)?;
 
         let result_json = if is_token {
-            self.sign_and_send_token(request.chain_id, params_json).await?
+            self.sign_and_send_token(&request.chain_id, params_json).await?
         } else {
-            self.sign_and_send(request.chain_id, params_json).await?
+            self.sign_and_send(&request.chain_id, params_json).await?
         };
 
         // 3. Classify broadcast result. `is_token` is intentionally unused —
         // `SendChain` is chain-family granularity, not token/native.
         let _ = is_token;
-        let send_chain = Chain::from_id(request.chain_id)
+        let send_chain = Chain::from_str_id(&request.chain_id)
             .map(Chain::send_chain)
             .unwrap_or(crate::send::payload::SendChain::Bitcoin);
         let outcome =
@@ -632,7 +632,7 @@ impl WalletService {
 
         // 4. For EVM chains, decode the typed result here so Swift doesn't
         // have to round-trip through `decode_evm_send_result(json:)`.
-        let evm = if Chain::from_id(request.chain_id).is_some_and(Chain::is_evm) {
+        let evm = if Chain::from_str_id(&request.chain_id).is_some_and(Chain::is_evm) {
             let fallback_nonce = request
                 .evm_overrides
                 .as_ref()
@@ -693,7 +693,7 @@ impl WalletService {
     /// skip token transfers entirely.
     pub async fn fetch_evm_history_page(
         &self,
-        chain_id: u32,
+        chain_id: String,
         address: String,
         tokens: Vec<TokenDescriptor>,
         page: u32,
@@ -704,9 +704,9 @@ impl WalletService {
         };
 
         // Only EVM chains are supported.
-        let chain = chain_for_evm_id(chain_id)?;
+        let chain = chain_for_evm_id(&chain_id)?;
 
-        let eps = self.endpoints_for(chain.id()).await;
+        let eps = self.endpoints_for(chain.str_id()).await;
         let client = EvmClient::new(eps, chain.evm_chain_id());
 
         // Etherscan V2 is a unified multichain API: one host, chainid query
@@ -808,12 +808,12 @@ impl WalletService {
 
     pub async fn fetch_evm_token_balances_batch_typed(
         &self,
-        chain_id: u32,
+        chain_id: String,
         address: String,
         tokens: Vec<TokenDescriptor>,
     ) -> Result<Vec<TokenBalanceResult>, SpectraBridgeError> {
-        let chain = chain_for_evm_id(chain_id)?;
-        let eps = self.endpoints_for(chain.id()).await;
+        let chain = chain_for_evm_id(&chain_id)?;
+        let eps = self.endpoints_for(chain.str_id()).await;
         let client = EvmClient::new(eps, chain.evm_chain_id());
         let mut results = Vec::with_capacity(tokens.len());
         for t in &tokens {
@@ -840,7 +840,7 @@ impl WalletService {
     /// chain-support failure the record is seeded with an error description.
     pub async fn fetch_evm_history_diagnostics(
         &self,
-        chain_id: u32,
+        chain_id: String,
         address: String,
     ) -> crate::diagnostics::EthereumTokenTransferHistoryDiagnostics {
         use crate::diagnostics::aggregate::{
@@ -865,7 +865,7 @@ impl WalletService {
         &self,
         name: String,
     ) -> Result<Option<String>, SpectraBridgeError> {
-        let eps = self.endpoints_for(1).await;
+        let eps = self.endpoints_for("ethereum").await;
         let client = EvmClient::new(eps, 1);
         let address = client
             .resolve_ens(&name)
@@ -881,11 +881,11 @@ impl WalletService {
     /// Returns true iff `address` has deployed bytecode on the given EVM chain.
     pub async fn fetch_evm_has_contract_code(
         &self,
-        chain_id: u32,
+        chain_id: String,
         address: String,
     ) -> Result<bool, SpectraBridgeError> {
-        let chain = chain_for_evm_id(chain_id)?;
-        let eps = self.endpoints_for(chain.id()).await;
+        let chain = chain_for_evm_id(&chain_id)?;
+        let eps = self.endpoints_for(chain.str_id()).await;
         let client = EvmClient::new(eps, chain.evm_chain_id());
         let code = client.fetch_code(&address).await?;
         Ok(crate::send::flow::core_evm_has_contract_code(code))
@@ -895,11 +895,11 @@ impl WalletService {
     /// Used to pre-fill the replacement-tx nonce field.
     pub async fn fetch_evm_tx_nonce_typed(
         &self,
-        chain_id: u32,
+        chain_id: String,
         tx_hash: String,
     ) -> Result<u64, SpectraBridgeError> {
-        let chain = chain_for_evm_id(chain_id)?;
-        let eps = self.endpoints_for(chain.id()).await;
+        let chain = chain_for_evm_id(&chain_id)?;
+        let eps = self.endpoints_for(chain.str_id()).await;
         let client = EvmClient::new(eps, chain.evm_chain_id());
         client.fetch_tx_nonce(&tx_hash).await.map_err(Into::into)
     }
@@ -913,11 +913,11 @@ impl WalletService {
     /// matches the prior `rustField(...)` semantics on the Swift side).
     pub async fn broadcast_raw_extract(
         &self,
-        chain_id: u32,
+        chain_id: String,
         payload: String,
         result_field: String,
     ) -> Result<String, SpectraBridgeError> {
-        let json = self.broadcast_raw(chain_id, payload).await?;
+        let json = self.broadcast_raw(&chain_id, payload).await?;
         Ok(crate::send::preview_decode::extract_json_string_field(
             json,
             result_field,
@@ -933,11 +933,11 @@ impl WalletService {
     /// while the transaction is still pending.
     pub async fn fetch_evm_receipt_classification(
         &self,
-        chain_id: u32,
+        chain_id: String,
         tx_hash: String,
     ) -> Result<Option<crate::send::flow::EvmReceiptClassification>, SpectraBridgeError> {
-        let chain = chain_for_evm_id(chain_id)?;
-        let eps = self.endpoints_for(chain.id()).await;
+        let chain = chain_for_evm_id(&chain_id)?;
+        let eps = self.endpoints_for(chain.str_id()).await;
         let client = EvmClient::new(eps, chain.evm_chain_id());
         let Some(receipt) = client.fetch_receipt(&tx_hash).await? else {
             return Ok(None);
@@ -960,7 +960,7 @@ impl WalletService {
     /// overrides applied. Returns `None` when the decoder rejects the payload.
     pub async fn fetch_evm_send_preview_typed(
         &self,
-        chain_id: u32,
+        chain_id: String,
         from: String,
         to: String,
         value_wei: String,
@@ -969,7 +969,7 @@ impl WalletService {
         custom_fees: Option<crate::ethereum_send::EvmCustomFeeConfiguration>,
     ) -> Result<Option<crate::wallet_core::EthereumSendPreview>, SpectraBridgeError> {
         let raw = self
-            .fetch_evm_send_preview(chain_id, from, to, value_wei, data_hex)
+            .fetch_evm_send_preview(&chain_id, from, to, value_wei, data_hex)
             .await?;
         Ok(crate::send::preview_decode::build_evm_send_preview_record(
             crate::ethereum_send::EvmPreviewDecodeInput {
@@ -985,11 +985,11 @@ impl WalletService {
     /// skipping the fee/gas work of the full preview.
     pub async fn fetch_evm_address_probe(
         &self,
-        chain_id: u32,
+        chain_id: String,
         address: String,
     ) -> Result<EvmAddressProbe, SpectraBridgeError> {
-        let chain = chain_for_evm_id(chain_id)?;
-        let eps = self.endpoints_for(chain.id()).await;
+        let chain = chain_for_evm_id(&chain_id)?;
+        let eps = self.endpoints_for(chain.str_id()).await;
         let client = EvmClient::new(eps, chain.evm_chain_id());
         let (nonce_res, bal_res) = tokio::join!(client.fetch_nonce(&address), client.fetch_balance(&address));
         let nonce = nonce_res.unwrap_or(0) as i64;
@@ -1020,12 +1020,12 @@ impl WalletService {
     /// flow). Fuses `fetch_utxo_fee_preview` + `build_utxo_send_preview_record`.
     pub async fn fetch_utxo_fee_preview_typed(
         &self,
-        chain_id: u32,
+        chain_id: String,
         address: String,
         fee_rate_svb: u64,
     ) -> Result<Option<crate::wallet_core::BitcoinSendPreview>, SpectraBridgeError> {
         let raw = self
-            .fetch_utxo_fee_preview(chain_id, address, fee_rate_svb)
+            .fetch_utxo_fee_preview(&chain_id, address, fee_rate_svb)
             .await?;
         Ok(crate::send::preview_decode::build_utxo_send_preview_record(raw))
     }
@@ -1039,7 +1039,7 @@ impl WalletService {
         fee_priority: String,
     ) -> Result<Option<crate::wallet_core::DogecoinSendPreview>, SpectraBridgeError> {
         let raw = self
-            .fetch_utxo_fee_preview(Chain::Dogecoin.id(), address, 0)
+            .fetch_utxo_fee_preview(Chain::Dogecoin.str_id(), address, 0)
             .await?;
         Ok(crate::send::preview_decode::build_dogecoin_send_preview_record(
             raw,
@@ -1058,7 +1058,7 @@ impl WalletService {
     ) -> Result<Option<crate::wallet_core::BitcoinSendPreview>, SpectraBridgeError> {
         let (balance_json, fee_json) = tokio::try_join!(
             self.fetch_bitcoin_xpub_balance(xpub, receive_count, change_count),
-            self.fetch_fee_estimate(Chain::Bitcoin.id()),
+            self.fetch_fee_estimate(Chain::Bitcoin.str_id()),
         )?;
         Ok(crate::send::preview_decode::build_bitcoin_hd_send_preview_record(
             balance_json,
@@ -1070,12 +1070,12 @@ impl WalletService {
     /// + `build_simple_chain_preview` so Swift never sees the intermediate JSON.
     pub async fn fetch_simple_chain_send_preview_typed(
         &self,
-        chain_id: u32,
+        chain_id: String,
         address: String,
         chain: crate::send::preview_decode::SimpleChain,
     ) -> Result<crate::send::preview_decode::SimpleChainPreview, SpectraBridgeError> {
         let raw = self
-            .fetch_simple_chain_send_preview(chain_id, address)
+            .fetch_simple_chain_send_preview(&chain_id, address)
             .await?;
         Ok(crate::send::preview_decode::build_simple_chain_preview(
             raw, chain,
@@ -1165,12 +1165,12 @@ impl WalletService {
     /// Supported chain_ids: 0 (BTC), 3 (DOGE), 5 (LTC), 6 (BCH), 22 (BSV).
     pub async fn fetch_utxo_tx_status_typed(
         &self,
-        chain_id: u32,
+        chain_id: String,
         txid: String,
     ) -> Result<UtxoTxStatus, SpectraBridgeError> {
-        let chain = Chain::from_id(chain_id)
+        let chain = Chain::from_str_id(&chain_id)
             .ok_or_else(|| SpectraBridgeError::from(format!("fetch_utxo_tx_status: unsupported chain_id: {chain_id}")))?;
-        let endpoints = self.endpoints_for(chain.id()).await;
+        let endpoints = self.endpoints_for(chain.str_id()).await;
         let status: UtxoTxStatus = match chain {
             Chain::Bitcoin => {
                 let client = BitcoinClient::new(HttpClient::shared(), endpoints);
@@ -1221,19 +1221,18 @@ impl WalletService {
 }
 
 impl WalletService {
-    pub(crate) async fn endpoints_for(&self, chain_id: u32) -> Arc<Vec<String>> {
-        // Cached `Arc<Vec<String>>` returned directly — no clone of inner Vec.
+    pub(crate) async fn endpoints_for(&self, chain_id: &str) -> Arc<Vec<String>> {
         let guard = self.endpoints.read().await;
         guard
             .endpoints
-            .get(&chain_id)
+            .get(chain_id)
             .cloned()
             .unwrap_or_else(|| Arc::new(Vec::new()))
     }
 
-    pub(crate) async fn api_key_for(&self, chain_id: u32) -> Option<String> {
+    pub(crate) async fn api_key_for(&self, chain_id: &str) -> Option<String> {
         let guard = self.endpoints.read().await;
-        guard.api_keys.get(&chain_id).cloned()
+        guard.api_keys.get(chain_id).cloned()
     }
 
     /// Internal fee-estimate helper used by `estimate_send_fee_*` and the
@@ -1247,12 +1246,12 @@ impl WalletService {
     /// `source` is `"rpc"` for live values and `"static"` for hardcoded defaults.
     pub(crate) async fn fetch_fee_estimate(
         &self,
-        chain_id: u32,
+        chain_id: &str,
     ) -> Result<String, SpectraBridgeError> {
-        let Some(chain) = Chain::from_id(chain_id) else {
+        let Some(chain) = Chain::from_str_id(&chain_id) else {
             return Ok(json!({"note": "fee estimation not supported for this chain"}).to_string());
         };
-        let endpoints = self.endpoints_for(chain.id()).await;
+        let endpoints = self.endpoints_for(chain.str_id()).await;
         match chain {
             Chain::Bitcoin => {
                 let client = BitcoinClient::new(HttpClient::shared(), endpoints);
@@ -1310,7 +1309,7 @@ impl WalletService {
         &self,
         address: String,
     ) -> Result<Vec<crate::history::CoreBitcoinHistorySnapshot>, SpectraBridgeError> {
-        let raw = self.fetch_history(Chain::Bitcoin.id(), address).await?;
+        let raw = self.fetch_history(Chain::Bitcoin.str_id(), address).await?;
         Ok(crate::fetch::history_decode::history_decode_bitcoin_raw_snapshots(raw))
     }
 
@@ -1320,12 +1319,12 @@ impl WalletService {
     /// and private keys (read from Keychain by Swift before calling).
     pub(crate) async fn sign_and_send(
         &self,
-        chain_id: u32,
+        chain_id: &str,
         params: serde_json::Value,
     ) -> Result<String, SpectraBridgeError> {
-        let chain = Chain::from_id(chain_id)
+        let chain = Chain::from_str_id(chain_id)
             .ok_or_else(|| SpectraBridgeError::from(format!("sign_and_send: unsupported chain_id: {chain_id}")))?;
-        let endpoints = self.endpoints_for(chain.id()).await;
+        let endpoints = self.endpoints_for(chain.str_id()).await;
 
         match chain {
             Chain::Bitcoin => {
@@ -1606,7 +1605,7 @@ impl WalletService {
                     .try_into().map_err(|_| "privkey wrong length")?;
                 let pub_arr: [u8; 32] = hex_field(&params, "public_key_hex")?
                     .try_into().map_err(|_| "pubkey wrong length")?;
-                let api_key = self.api_key_for(chain.id()).await.unwrap_or_default();
+                let api_key = self.api_key_for(chain.str_id()).await.unwrap_or_default();
                 let client = CardanoClient::new(endpoints, api_key);
                 let r = client.sign_and_broadcast(
                     from, to, amount_lovelace, fee_lovelace, &priv_arr, &pub_arr,
@@ -1619,8 +1618,8 @@ impl WalletService {
                 let p: PolkadotSendParams = parse_params(&params)?;
                 let priv_arr: [u8; 32] = decode_hex_array(&p.private_key_hex, "private_key_hex")?;
                 let pub_arr: [u8; 32] = decode_hex_array(&p.public_key_hex, "public_key_hex")?;
-                let subscan = self.endpoints_for(chain.endpoint_id(EndpointSlot::Secondary)).await;
-                let api_key = self.api_key_for(chain.id()).await;
+                let subscan = self.endpoints_for(&chain.endpoint_str_id(EndpointSlot::Secondary)).await;
+                let api_key = self.api_key_for(chain.str_id()).await;
                 let client = PolkadotClient::new(endpoints, subscan, api_key);
                 let r = client.sign_and_submit(&p.from, &p.to, p.planck, &priv_arr, &pub_arr, p.era, p.tip)
                     .await?;
@@ -1630,8 +1629,8 @@ impl WalletService {
                 let p: BittensorSendParams = parse_params(&params)?;
                 let priv_arr: [u8; 32] = decode_hex_array(&p.private_key_hex, "private_key_hex")?;
                 let pub_arr: [u8; 32] = decode_hex_array(&p.public_key_hex, "public_key_hex")?;
-                let taostats = self.endpoints_for(chain.endpoint_id(EndpointSlot::Secondary)).await;
-                let api_key = self.api_key_for(chain.id()).await;
+                let taostats = self.endpoints_for(&chain.endpoint_str_id(EndpointSlot::Secondary)).await;
+                let api_key = self.api_key_for(chain.str_id()).await;
                 let client = BittensorClient::new(endpoints, taostats, api_key);
                 let r = client.sign_and_submit(&p.from, &p.to, p.rao, &priv_arr, &pub_arr)
                     .await?;
@@ -1646,7 +1645,7 @@ impl WalletService {
                     .try_into().map_err(|_| "privkey wrong length")?;
                 let pub_arr: [u8; 32] = hex_field(&params, "public_key_hex")?
                     .try_into().map_err(|_| "pubkey wrong length")?;
-                let api_key = self.api_key_for(chain.id()).await;
+                let api_key = self.api_key_for(chain.str_id()).await;
                 let client = TonClient::new(endpoints, api_key);
                 let seqno = client.fetch_seqno(from).await?;
                 let r = client.sign_and_send(
@@ -1714,12 +1713,12 @@ impl WalletService {
     ///     "decimals": <u8>, "private_key_hex": "<64-byte>"}`
     pub(crate) async fn sign_and_send_token(
         &self,
-        chain_id: u32,
+        chain_id: &str,
         params: serde_json::Value,
     ) -> Result<String, SpectraBridgeError> {
-        let chain = Chain::from_id(chain_id)
+        let chain = Chain::from_str_id(chain_id)
             .ok_or_else(|| SpectraBridgeError::from(format!("sign_and_send_token: unsupported chain_id: {chain_id}")))?;
-        let endpoints = self.endpoints_for(chain.id()).await;
+        let endpoints = self.endpoints_for(chain.str_id()).await;
 
         match chain {
             c if c.is_evm() => {
@@ -1870,7 +1869,7 @@ impl WalletService {
 
     pub(crate) async fn fetch_balance(
         &self,
-        chain_id: u32,
+        chain_id: &str,
         address: String,
     ) -> Result<String, SpectraBridgeError> {
         let chain = chain_for_id(chain_id)?;
@@ -1886,10 +1885,10 @@ impl WalletService {
     /// retyping for the marginal saving.
     pub(crate) async fn fetch_native_balance_summary_auto(
         &self,
-        chain_id: u32,
+        chain_id: &str,
         address: String,
     ) -> Result<NativeBalanceSummary, SpectraBridgeError> {
-        if chain_id == 0 && is_extended_public_key(&address) {
+        if chain_id == "bitcoin" && is_extended_public_key(&address) {
             // xpub path stays JSON-based; parse once and project into the
             // unified summary shape.
             let json = self.fetch_bitcoin_xpub_balance(address, 20, 20).await?;
@@ -1910,7 +1909,7 @@ impl WalletService {
 
     pub(crate) async fn fetch_history(
         &self,
-        chain_id: u32,
+        chain_id: &str,
         address: String,
     ) -> Result<String, SpectraBridgeError> {
         let chain = chain_for_id(chain_id)?;
@@ -1924,7 +1923,7 @@ impl WalletService {
         receive_count: u32,
         change_count: u32,
     ) -> Result<String, SpectraBridgeError> {
-        let endpoints = self.endpoints_for(0).await;
+        let endpoints = self.endpoints_for("bitcoin").await;
         let client = BitcoinClient::new(HttpClient::shared(), endpoints);
         let bal = crate::derivation::utxo_hd::fetch_xpub_balance(
             &client,
@@ -1939,13 +1938,13 @@ impl WalletService {
 
     pub(crate) async fn fetch_utxo_fee_preview(
         &self,
-        chain_id: u32,
+        chain_id: &str,
         address: String,
         fee_rate_svb: u64,
     ) -> Result<String, SpectraBridgeError> {
-        let chain = Chain::from_id(chain_id)
+        let chain = Chain::from_str_id(chain_id)
             .ok_or_else(|| SpectraBridgeError::from(format!("fetch_utxo_fee_preview: unsupported chain_id: {chain_id}")))?;
-        let eps = self.endpoints_for(chain.id()).await;
+        let eps = self.endpoints_for(chain.str_id()).await;
         match chain {
             Chain::Bitcoin => {
                 let client = BitcoinClient::new(HttpClient::shared(), eps);
@@ -1996,12 +1995,12 @@ impl WalletService {
 
     pub(crate) async fn broadcast_raw(
         &self,
-        chain_id: u32,
+        chain_id: &str,
         payload: String,
     ) -> Result<String, SpectraBridgeError> {
-        let chain = Chain::from_id(chain_id)
+        let chain = Chain::from_str_id(chain_id)
             .ok_or_else(|| SpectraBridgeError::from(format!("broadcast_raw: chain {chain_id} not supported")))?;
-        let eps = self.endpoints_for(chain.id()).await;
+        let eps = self.endpoints_for(chain.str_id()).await;
         match chain {
             Chain::Bitcoin => {
                 let client = BitcoinClient::new(HttpClient::shared(), eps);
@@ -2096,7 +2095,7 @@ impl WalletService {
                 let cbor = val["cbor_hex"].as_str()
                     .ok_or("broadcast_raw cardano: missing cbor_hex")?
                     .to_string();
-                let api_key = self.api_key_for(chain.id()).await.unwrap_or_default();
+                let api_key = self.api_key_for(chain.str_id()).await.unwrap_or_default();
                 let client = CardanoClient::new(eps, api_key);
                 let res = client
                     .submit_tx(&cbor)
@@ -2109,8 +2108,8 @@ impl WalletService {
                 let ext_hex = val["extrinsic_hex"].as_str()
                     .ok_or("broadcast_raw polkadot: missing extrinsic_hex")?
                     .to_string();
-                let subscan = self.endpoints_for(chain.endpoint_id(EndpointSlot::Secondary)).await;
-                let api_key = self.api_key_for(chain.id()).await;
+                let subscan = self.endpoints_for(&chain.endpoint_str_id(EndpointSlot::Secondary)).await;
+                let api_key = self.api_key_for(chain.str_id()).await;
                 let client = PolkadotClient::new(eps, subscan, api_key);
                 let res = client
                     .submit_extrinsic_hex(&ext_hex)
@@ -2150,7 +2149,7 @@ impl WalletService {
                 let boc = val["boc_b64"].as_str()
                     .ok_or("broadcast_raw ton: missing boc_b64")?
                     .to_string();
-                let api_key = self.api_key_for(chain.id()).await;
+                let api_key = self.api_key_for(chain.str_id()).await;
                 let client = TonClient::new(eps, api_key);
                 let res = client
                     .send_boc(&boc)
@@ -2181,14 +2180,14 @@ impl WalletService {
 
     pub(crate) async fn fetch_evm_send_preview(
         &self,
-        chain_id: u32,
+        chain_id: &str,
         from: String,
         to: String,
         value_wei: String,
         data_hex: String,
     ) -> Result<String, SpectraBridgeError> {
         let chain = chain_for_evm_id(chain_id)?;
-        let eps = self.endpoints_for(chain.id()).await;
+        let eps = self.endpoints_for(chain.str_id()).await;
         let client = EvmClient::new(eps, chain.evm_chain_id());
 
         let value_u128: u128 = value_wei.parse().unwrap_or(0);
@@ -2244,7 +2243,7 @@ impl WalletService {
         symbol: String,
         contract_address: String,
     ) -> Result<String, SpectraBridgeError> {
-        let eps = self.endpoints_for(7).await;
+        let eps = self.endpoints_for("tron").await;
         let client = TronClient::new(eps);
 
         let trx_balance = client.fetch_balance(&address).await
@@ -2280,7 +2279,7 @@ impl WalletService {
 
     pub(crate) async fn fetch_simple_chain_send_preview(
         &self,
-        chain_id: u32,
+        chain_id: &str,
         address: String,
     ) -> Result<String, SpectraBridgeError> {
         let (fee_json, balance_json) = tokio::try_join!(
@@ -2306,7 +2305,7 @@ impl WalletService {
             .unwrap_or("static")
             .to_string();
 
-        let balance_display = simple_chain_balance_display(chain_id, &bal_obj);
+        let balance_display = simple_chain_balance_display(&chain_id, &bal_obj);
         let max_sendable = (balance_display - fee_display).max(0.0);
 
         Ok(json!({
@@ -2333,7 +2332,7 @@ impl WalletService {
         let amount = req.amount;
         let priv_str = priv_hex.to_string();
 
-        let chain = Chain::from_id(req.chain_id).ok_or_else(|| {
+        let chain = Chain::from_str_id(&req.chain_id).ok_or_else(|| {
             SpectraBridgeError::from(format!("execute_send: unsupported chain_id: {}", req.chain_id))
         })?;
 
@@ -2503,23 +2502,13 @@ use serde::Serialize;
 
 // ── Chain ID lookup ───────────────────────────────────────────────────────
 
-/// `Chain::from_id` with a uniform error message. Used by every WalletService
-/// method that takes a `chain_id: u32` from Swift.
-///
-/// Reader note: the call pattern `let chain = chain_for_id(chain_id)?;` is
-/// the first line of ~30 dispatch methods in `service::mod`. That repetition
-/// is a sign the receiver shape is wrong — a future refactor should accept
-/// `Chain` directly via a typed UniFFI Record (or a thin newtype that does
-/// the lookup once at FFI entry), eliminating the per-method conversion.
-/// New methods should accept `Chain` as a parameter where possible rather
-/// than `chain_id: u32`, with `chain_for_id` only at the FFI boundary.
-pub(super) fn chain_for_id(chain_id: u32) -> Result<Chain, SpectraBridgeError> {
-    Chain::from_id(chain_id)
+pub(super) fn chain_for_id(chain_id: &str) -> Result<Chain, SpectraBridgeError> {
+    Chain::from_str_id(chain_id)
         .ok_or_else(|| SpectraBridgeError::from(format!("unknown chain_id: {chain_id}")))
 }
 
-pub(super) fn chain_for_evm_id(chain_id: u32) -> Result<Chain, SpectraBridgeError> {
-    Chain::from_id(chain_id)
+pub(super) fn chain_for_evm_id(chain_id: &str) -> Result<Chain, SpectraBridgeError> {
+    Chain::from_str_id(chain_id)
         .filter(|c| c.is_evm())
         .ok_or_else(|| SpectraBridgeError::from(format!("unsupported EVM chain_id: {chain_id}")))
 }
@@ -2620,7 +2609,7 @@ pub(super) fn format_decimals(raw: u128, decimals: u8) -> String {
 
 /// Extract the normalised native balance (in display units) from a balance
 /// JSON value. Returns 0.0 for unknown / unsupported chains.
-pub(super) fn simple_chain_balance_display(chain_id: u32, obj: &serde_json::Value) -> f64 {
+pub(super) fn simple_chain_balance_display(chain_id: &str, obj: &serde_json::Value) -> f64 {
     let u64_field = |key: &str| -> f64 {
         obj[key]
             .as_u64()
@@ -2635,7 +2624,7 @@ pub(super) fn simple_chain_balance_display(chain_id: u32, obj: &serde_json::Valu
             .or_else(|| obj[key].as_str().and_then(|s| s.parse::<i64>().ok()).map(|n| n as f64))
             .unwrap_or(0.0)
     };
-    let Some(chain) = Chain::from_id(chain_id) else {
+    let Some(chain) = Chain::from_str_id(&chain_id) else {
         return 0.0;
     };
     let factor = 10f64.powi(chain.native_decimals() as i32);
@@ -2679,16 +2668,14 @@ pub(super) fn simple_chain_balance_display(chain_id: u32, obj: &serde_json::Valu
 /// `serde_json::Value` + `Map` heap allocation that `json!()` would produce.
 #[derive(Serialize)]
 struct FeePreview<'a> {
-    chain_id: u32,
+    chain_id: &'a str,
     native_fee_raw: &'a str,
     native_fee_display: &'a str,
     unit: &'a str,
     source: &'a str,
 }
 
-/// Build a `fee_preview` JSON string from an integer raw amount plus decimals.
-/// Scales the raw amount down for a human-readable display field.
-pub(super) fn fee_preview(chain_id: u32, raw: u128, decimals: u8, unit: &str, source: &str) -> String {
+pub(super) fn fee_preview(chain_id: &str, raw: u128, decimals: u8, unit: &str, source: &str) -> String {
     let display = format_decimals(raw, decimals);
     let raw_str = raw.to_string();
     serde_json::to_string(&FeePreview {
@@ -2701,10 +2688,8 @@ pub(super) fn fee_preview(chain_id: u32, raw: u128, decimals: u8, unit: &str, so
     .unwrap()
 }
 
-/// Variant that accepts pre-computed raw/display strings. Used when the raw
-/// amount doesn't fit in `u128` (e.g. NEAR's 10^21 yoctoNEAR).
 pub(super) fn fee_preview_str(
-    chain_id: u32,
+    chain_id: &str,
     raw: &str,
     display: &str,
     unit: &str,
@@ -2918,8 +2903,8 @@ pub(super) fn sqlite_save(db_path: &str, key: &str, value: &str) -> Result<(), S
 
 /// Return a zero-amount AssetHolding template for the native coin of each
 /// chain. Used as the default when the holding doesn't exist yet.
-pub(crate) fn native_coin_template(chain_id: u32) -> Option<AssetHolding> {
-    let chain = Chain::from_id(chain_id)?;
+pub(crate) fn native_coin_template(chain_id: &str) -> Option<AssetHolding> {
+    let chain = Chain::from_str_id(chain_id)?;
     Some(AssetHolding {
         name: chain.coin_name().to_string(),
         symbol: chain.coin_symbol().to_string(),
@@ -3084,7 +3069,7 @@ pub struct EvmAddressProbe {
 /// rebuilt via `update_endpoints_typed`.
 #[derive(Debug, Clone, Serialize, Deserialize, uniffi::Record)]
 pub struct ChainEndpoints {
-    pub chain_id: u32,
+    pub chain_id: String,
     pub endpoints: Vec<String>,
     /// Optional API key for services that require one (Blockfrost, Subscan, etc.).
     pub api_key: Option<String>,
@@ -3191,17 +3176,17 @@ use crate::tokens;
 /// [`list_all_builtin_tokens`] — that's the named entry point, not a
 /// sentinel value.
 #[uniffi::export]
-pub fn list_builtin_tokens(chain_id: u32) -> Vec<tokens::TokenEntry> {
+pub fn list_builtin_tokens(chain_id: String) -> Vec<tokens::TokenEntry> {
     tokens::list_tokens(chain_id)
 }
 
 /// Return the entire built-in token catalog across every registered
-/// chain. Replaces the `list_builtin_tokens(chain_id: u32::MAX)`
+/// chain. Replaces the `list_builtin_tokens(chain_id: String::MAX)`
 /// sentinel pattern — the "all chains" call site now reads as exactly
 /// what it means instead of forcing the reader to know the magic value.
 #[uniffi::export]
 pub fn list_all_builtin_tokens() -> Vec<tokens::TokenEntry> {
-    tokens::list_tokens(u32::MAX)
+    tokens::list_tokens(String::new())
 }
 
 /// Generate a new random BIP-39 mnemonic with the requested word count.
@@ -3301,7 +3286,7 @@ impl ChainClient {
         // RPC URLs. EVM testnets share the EvmClient — its chainid is read
         // from `chain.evm_chain_id()` which already returns testnet ids
         // (Sepolia=11155111, Hoodi=560048, etc.).
-        let endpoints = service.endpoints_for(chain.id()).await;
+        let endpoints = service.endpoints_for(chain.str_id()).await;
         // For non-EVM testnets we dispatch on `mainnet_counterpart()` so a
         // single set of per-chain client types covers both flavors. The
         // Bitcoin / Litecoin / Cash / SV / Dogecoin clients don't carry
@@ -3319,7 +3304,7 @@ impl ChainClient {
                 // Use the testnet/mainnet's own explorer slot so testnet
                 // calls don't accidentally hit the mainnet Tronscan.
                 let tronscan = service
-                    .endpoints_for(chain.endpoint_id(EndpointSlot::Explorer))
+                    .endpoints_for(&chain.endpoint_str_id(EndpointSlot::Explorer))
                     .await
                     .first()
                     .cloned()
@@ -3329,25 +3314,25 @@ impl ChainClient {
             Chain::Stellar => ChainClient::Stellar(StellarClient::new(endpoints)),
             Chain::Xrp => ChainClient::Xrp(XrpClient::new(endpoints)),
             Chain::Cardano => {
-                let api_key = service.api_key_for(chain.id()).await.unwrap_or_default();
+                let api_key = service.api_key_for(chain.str_id()).await.unwrap_or_default();
                 ChainClient::Cardano(CardanoClient::new(endpoints, api_key))
             }
             Chain::Polkadot => {
                 let subscan = service
-                    .endpoints_for(chain.endpoint_id(EndpointSlot::Secondary))
+                    .endpoints_for(&chain.endpoint_str_id(EndpointSlot::Secondary))
                     .await;
-                let api_key = service.api_key_for(chain.id()).await;
+                let api_key = service.api_key_for(chain.str_id()).await;
                 ChainClient::Polkadot(PolkadotClient::new(endpoints, subscan, api_key))
             }
             Chain::Sui => ChainClient::Sui(SuiClient::new(endpoints)),
             Chain::Aptos => ChainClient::Aptos(AptosClient::new(endpoints)),
             Chain::Ton => {
-                let api_key = service.api_key_for(chain.id()).await;
+                let api_key = service.api_key_for(chain.str_id()).await;
                 ChainClient::Ton(TonClient::new(endpoints, api_key))
             }
             Chain::Near => {
                 let indexer = service
-                    .endpoints_for(chain.endpoint_id(EndpointSlot::Explorer))
+                    .endpoints_for(&chain.endpoint_str_id(EndpointSlot::Explorer))
                     .await
                     .first()
                     .cloned()
@@ -3363,9 +3348,9 @@ impl ChainClient {
             Chain::Dash => ChainClient::Dash(DashClient::new(endpoints)),
             Chain::Bittensor => {
                 let taostats = service
-                    .endpoints_for(chain.endpoint_id(EndpointSlot::Secondary))
+                    .endpoints_for(&chain.endpoint_str_id(EndpointSlot::Secondary))
                     .await;
-                let api_key = service.api_key_for(chain.id()).await;
+                let api_key = service.api_key_for(chain.str_id()).await;
                 ChainClient::Bittensor(BittensorClient::new(endpoints, taostats, api_key))
             }
             c => {
@@ -3643,7 +3628,7 @@ impl WalletService {
         change: u32,
         gap_limit: u32,
     ) -> Result<Option<String>, SpectraBridgeError> {
-        let endpoints = self.endpoints_for(0).await;
+        let endpoints = self.endpoints_for("bitcoin").await;
         let client = BitcoinClient::new(HttpClient::shared(), endpoints);
         let next = crate::derivation::utxo_hd::fetch_next_unused_address(
             &client,
@@ -4017,20 +4002,20 @@ impl WalletService {
     /// Current cursor for the next history fetch, or `None` if no fetch has
     /// been done yet. Pass the returned value as the starting point for the
     /// next page request.
-    pub fn history_next_cursor(&self, chain_id: u32, wallet_id: String) -> Option<String> {
-        self.history_pagination.cursor(chain_id, &wallet_id)
+    pub fn history_next_cursor(&self, chain_id: String, wallet_id: String) -> Option<String> {
+        self.history_pagination.cursor(&chain_id, &wallet_id)
     }
 
     /// Current zero-based page index for page-numbered chains (EVM, etc.).
-    pub fn history_next_page(&self, chain_id: u32, wallet_id: String) -> u32 {
-        self.history_pagination.page(chain_id, &wallet_id)
+    pub fn history_next_page(&self, chain_id: String, wallet_id: String) -> u32 {
+        self.history_pagination.page(&chain_id, &wallet_id)
     }
 
     /// Returns `true` when all history pages have been fetched and no more
     /// pages are available. Swift should not attempt another fetch until
     /// `reset_history` is called.
-    pub fn is_history_exhausted(&self, chain_id: u32, wallet_id: String) -> bool {
-        self.history_pagination.is_exhausted(chain_id, &wallet_id)
+    pub fn is_history_exhausted(&self, chain_id: String, wallet_id: String) -> bool {
+        self.history_pagination.is_exhausted(&chain_id, &wallet_id)
     }
 
     /// Record the cursor returned after a successful cursor-based fetch (UTXO
@@ -4038,42 +4023,42 @@ impl WalletService {
     /// this marks the chain as exhausted.
     pub fn advance_history_cursor(
         &self,
-        chain_id: u32,
+        chain_id: String,
         wallet_id: String,
         next_cursor: Option<String>,
     ) {
         self.history_pagination
-            .advance_cursor(chain_id, &wallet_id, next_cursor);
+            .advance_cursor(&chain_id, &wallet_id, next_cursor);
     }
 
     /// Increment the page counter after a successful page-based fetch (EVM,
     /// etc.). Pass `is_last = true` when the returned page was empty or the
     /// chain indicated no next page.
-    pub fn advance_history_page(&self, chain_id: u32, wallet_id: String, is_last: bool) {
+    pub fn advance_history_page(&self, chain_id: String, wallet_id: String, is_last: bool) {
         self.history_pagination
-            .advance_page(chain_id, &wallet_id, is_last);
+            .advance_page(&chain_id, &wallet_id, is_last);
     }
 
     /// Directly set the page counter to `page`. For page-based chains (EVM)
     /// where Swift tracks absolute page numbers (1-indexed). Swift sets the
     /// page to 1 on reset and stores the page that was just fetched after each
     /// successful request.
-    pub fn set_history_page(&self, chain_id: u32, wallet_id: String, page: u32) {
-        self.history_pagination.set_page(chain_id, &wallet_id, page);
+    pub fn set_history_page(&self, chain_id: String, wallet_id: String, page: u32) {
+        self.history_pagination.set_page(&chain_id, &wallet_id, page);
     }
 
     /// Explicitly mark a (chain, wallet) pair as exhausted or not. Used when
     /// Swift detects an empty page without going through `advance_history_*`.
-    pub fn set_history_exhausted(&self, chain_id: u32, wallet_id: String, exhausted: bool) {
+    pub fn set_history_exhausted(&self, chain_id: String, wallet_id: String, exhausted: bool) {
         self.history_pagination
-            .set_exhausted(chain_id, &wallet_id, exhausted);
+            .set_exhausted(&chain_id, &wallet_id, exhausted);
     }
 
     /// Reset pagination state for one (chain, wallet) pair — clears cursor,
     /// page, and exhaustion flag. Call after the user pulls-to-refresh or
     /// after a send confirmation.
-    pub fn reset_history(&self, chain_id: u32, wallet_id: String) {
-        self.history_pagination.reset(chain_id, &wallet_id);
+    pub fn reset_history(&self, chain_id: String, wallet_id: String) {
+        self.history_pagination.reset(&chain_id, &wallet_id);
     }
 
     /// Reset pagination for all chains of one wallet (e.g. wallet deleted or
@@ -4084,8 +4069,8 @@ impl WalletService {
 
     /// Reset pagination for all wallets on one chain (e.g. chain re-org or
     /// endpoint switch).
-    pub fn reset_history_for_chain(&self, chain_id: u32) {
-        self.history_pagination.reset_chain(chain_id);
+    pub fn reset_history_for_chain(&self, chain_id: String) {
+        self.history_pagination.reset_chain(&chain_id);
     }
 
     /// Clear all history pagination state. Used on full account wipe / logout.

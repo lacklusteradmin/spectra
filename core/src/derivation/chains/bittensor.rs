@@ -23,6 +23,7 @@ use zeroize::Zeroizing;
 
 // ── SS58 decoding (preserved) ────────────────────────────────────────────
 
+// Decode a Bittensor SS58 address and return the inner 32-byte sr25519 public key.
 pub(crate) fn decode_bittensor_ss58(address: &str) -> Result<[u8; 32], String> {
     let decoded = bs58::decode(address)
         .into_vec()
@@ -37,12 +38,14 @@ pub(crate) fn decode_bittensor_ss58(address: &str) -> Result<[u8; 32], String> {
     Ok(key_bytes)
 }
 
+/// True if address is a valid Bittensor SS58 address.
 pub fn validate_bittensor_address(address: &str) -> bool {
     decode_bittensor_ss58(address).is_ok()
 }
 
 // ── BIP-39 ───────────────────────────────────────────────────────────────
 
+// Map locale string ("en", "zh-cn", etc.) to BIP-39 wordlist; defaults to English.
 fn resolve_bip39_language(name: Option<&str>) -> Result<Language, String> {
     let value = match name {
         Some(value) if !value.trim().is_empty() => value.trim().to_ascii_lowercase(),
@@ -67,6 +70,7 @@ fn resolve_bip39_language(name: Option<&str>) -> Result<Language, String> {
 
 // ── substrate-bip39 mini-secret ──────────────────────────────────────────
 
+// PBKDF2-HMAC-SHA512 on raw BIP-39 entropy bytes (not the mnemonic string); first 32 bytes are the mini-secret key.
 fn derive_substrate_mini_secret(
     mnemonic: &str,
     passphrase: &str,
@@ -94,6 +98,7 @@ fn derive_substrate_mini_secret(
     Ok(out)
 }
 
+// Derive the sr25519 mini-secret and public key from a mnemonic via substrate-bip39 PBKDF2 (Ed25519 expansion mode).
 pub(crate) fn derive_substrate_sr25519_material(
     seed_phrase: &str,
     passphrase: &str,
@@ -131,6 +136,7 @@ pub(crate) fn derive_substrate_sr25519_material(
 
 // ── SS58 v1 encoding ─────────────────────────────────────────────────────
 
+// Encode a 32-byte sr25519 public key into an SS58 v1 address with the given network prefix.
 fn encode_ss58(public_key: &[u8; 32], network_prefix: u16) -> String {
     use blake2::digest::consts::U64;
     use blake2::digest::Digest;
@@ -160,6 +166,7 @@ fn encode_ss58(public_key: &[u8; 32], network_prefix: u16) -> String {
     bs58::encode(payload).into_string()
 }
 
+// Derive Bittensor address, public key, and mini-secret hex from a mnemonic seed phrase.
 pub(crate) fn derive_from_seed_phrase(
     seed_phrase: &str,
     passphrase: Option<&str>,
@@ -188,6 +195,7 @@ pub(crate) fn derive_from_seed_phrase(
 use crate::derivation::types::DerivationResult;
 use crate::SpectraBridgeError;
 
+/// UniFFI export: derive Bittensor wallet (address, public key, mini-secret) from a seed phrase.
 #[uniffi::export]
 pub fn derive_bittensor(
     seed_phrase: String, passphrase: Option<String>,

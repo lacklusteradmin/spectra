@@ -20,6 +20,7 @@ use zeroize::Zeroizing;
 
 type HmacSha512 = Hmac<Sha512>;
 
+// Map locale string ("en", "zh-cn", etc.) to BIP-39 wordlist; defaults to English.
 fn resolve_bip39_language(name: Option<&str>) -> Result<Language, String> {
     let value = match name {
         Some(value) if !value.trim().is_empty() => value.trim().to_ascii_lowercase(),
@@ -42,6 +43,7 @@ fn resolve_bip39_language(name: Option<&str>) -> Result<Language, String> {
     }
 }
 
+// BIP-39 mnemonic → 64-byte seed via NFKD normalization and PBKDF2-HMAC-SHA512.
 fn derive_bip39_seed(
     seed_phrase: &str,
     passphrase: &str,
@@ -74,6 +76,7 @@ fn derive_bip39_seed(
 
 // ── SLIP-10 ed25519 ──────────────────────────────────────────────────────
 
+// HMAC-SHA512 over concatenated chunks; returns a 64-byte Zeroizing buffer.
 fn hmac_sha512(key: &[u8], chunks: &[&[u8]]) -> Result<Zeroizing<[u8; 64]>, String> {
     let mut mac = HmacSha512::new_from_slice(key)
         .map_err(|error| format!("Invalid HMAC-SHA512 key: {error}"))?;
@@ -86,6 +89,7 @@ fn hmac_sha512(key: &[u8], chunks: &[&[u8]]) -> Result<Zeroizing<[u8; 64]>, Stri
     Ok(out)
 }
 
+// Parse a SLIP-10 derivation path and force every segment to hardened.
 fn parse_slip10_ed25519_path(path: &str) -> Result<Vec<u32>, String> {
     let trimmed = path.trim();
     let body = trimmed
@@ -115,6 +119,7 @@ fn parse_slip10_ed25519_path(path: &str) -> Result<Vec<u32>, String> {
     Ok(indices)
 }
 
+// Walk SLIP-10 hardened child derivation from seed to produce a 32-byte ed25519 private key.
 fn derive_slip10_ed25519_key(
     seed: &[u8],
     derivation_path: &str,
@@ -141,6 +146,7 @@ fn derive_slip10_ed25519_key(
     Ok(private_key)
 }
 
+// SHA-256 of the input; a helper to avoid repeated Sha256::new() boilerplate.
 fn sha256_bytes(input: &[u8]) -> [u8; 32] {
     let mut hasher = Sha256::new();
     hasher.update(input);
@@ -150,6 +156,7 @@ fn sha256_bytes(input: &[u8]) -> [u8; 32] {
     buf
 }
 
+/// BIP-39 → SLIP-10 ed25519 → ICP address: hex(SHA-256(SHA-256(pubkey || "icp"))).
 pub(crate) fn derive_from_seed_phrase(
     seed_phrase: &str,
     derivation_path: &str,
@@ -185,6 +192,7 @@ pub(crate) fn derive_from_seed_phrase(
 use crate::derivation::types::{DerivationResult, parse_path_metadata};
 use crate::SpectraBridgeError;
 
+/// UniFFI export: derive Internet Computer keys from a BIP-39 seed phrase.
 #[uniffi::export]
 pub fn derive_icp(
     seed_phrase: String, derivation_path: String, passphrase: Option<String>,

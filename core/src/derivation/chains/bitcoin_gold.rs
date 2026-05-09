@@ -7,6 +7,7 @@
 pub(crate) const BTG_P2PKH_VERSION: u8 = 0x26;
 pub(crate) const BTG_P2SH_VERSION: u8 = 0x17;
 
+// Base58check-decode a BTG address and return the 20-byte pubkey hash; rejects non-BTG version bytes.
 pub(crate) fn decode_btg_address(address: &str) -> Result<[u8; 20], String> {
     let decoded = bs58::decode(address)
         .with_check(None)
@@ -23,6 +24,7 @@ pub(crate) fn decode_btg_address(address: &str) -> Result<[u8; 20], String> {
     Ok(hash)
 }
 
+// Build the standard P2PKH script (OP_DUP OP_HASH160 <hash> OP_EQUALVERIFY OP_CHECKSIG).
 pub(crate) fn btg_p2pkh_script(pubkey_hash: &[u8; 20]) -> Vec<u8> {
     let mut s = vec![0x76u8, 0xa9, 0x14];
     s.extend_from_slice(pubkey_hash);
@@ -36,6 +38,7 @@ use crate::derivation::types::{BitcoinScriptType, DerivationResult, parse_path_m
 use crate::derivation::chains::bitcoin::{base58check_encode, derive_secp_keypair, hash160};
 use crate::SpectraBridgeError;
 
+/// BIP-39 → secp256k1 keypair → BTG P2PKH address (version byte 0x26).
 pub(crate) fn derive_from_seed_phrase(
     seed_phrase: &str, derivation_path: &str, passphrase: Option<&str>,
     want_address: bool, want_public_key: bool, want_private_key: bool,
@@ -53,6 +56,7 @@ pub(crate) fn derive_from_seed_phrase(
     ))
 }
 
+/// UniFFI export: derive Bitcoin Gold mainnet keys; only P2PKH script type is supported.
 #[uniffi::export]
 pub fn derive_bitcoin_gold(
     seed_phrase: String, derivation_path: String, passphrase: Option<String>,
@@ -79,6 +83,7 @@ pub fn derive_bitcoin_gold(
     })
 }
 
+/// True if address is a valid BTG P2PKH (base58check) or P2WPKH (bech32 "btg1") address.
 pub fn validate_bitcoin_gold_address(address: &str) -> bool {
     if address.starts_with("btg1") {
         return bech32::decode(address)

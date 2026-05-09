@@ -18,6 +18,7 @@ use zeroize::Zeroizing;
 
 type HmacSha512 = Hmac<Sha512>;
 
+// SHA-256 hash of input bytes, returning a fixed 32-byte array.
 fn sha256_bytes(input: &[u8]) -> [u8; 32] {
     let mut hasher = Sha256::new();
     hasher.update(input);
@@ -27,6 +28,7 @@ fn sha256_bytes(input: &[u8]) -> [u8; 32] {
     buf
 }
 
+// HMAC-SHA512 over concatenated chunks; returns a 64-byte Zeroizing buffer.
 fn hmac_sha512(key: &[u8], chunks: &[&[u8]]) -> Result<Zeroizing<[u8; 64]>, String> {
     let mut mac = HmacSha512::new_from_slice(key)
         .map_err(|error| format!("Invalid HMAC-SHA512 key: {error}"))?;
@@ -39,6 +41,7 @@ fn hmac_sha512(key: &[u8], chunks: &[&[u8]]) -> Result<Zeroizing<[u8; 64]>, Stri
     Ok(out)
 }
 
+// Decode a TON address (raw workchain:hex form or 36-byte base64url user-friendly form) → (workchain, account_id).
 pub(crate) fn decode_ton_address(address: &str) -> Result<(i8, [u8; 32]), String> {
     // TON addresses can be in raw form (workchain:hex) or user-friendly base64url.
     if address.contains(':') {
@@ -70,6 +73,7 @@ pub(crate) fn decode_ton_address(address: &str) -> Result<(i8, [u8; 32]), String
 
 // ── TON mnemonic seed expansion ──────────────────────────────────────────
 
+// TON mnemonic → 64-byte seed: HMAC-SHA512(mnemonic, passphrase) then PBKDF2 with "TON default seed" salt.
 pub(crate) fn derive_ton_seed(
     mnemonic: &str,
     passphrase: &str,
@@ -307,6 +311,7 @@ pub(crate) fn crc16_xmodem(bytes: &[u8]) -> u16 {
     CRC.checksum(bytes)
 }
 
+// Build the TON v4R2 bounceable user-friendly address from a public key via state_init cell hash.
 fn derive_ton_v4r2_address(public_key: &[u8; 32]) -> Result<String, String> {
     let account_id = v4r2_state_init_account_id(public_key)?;
     // tag 0x11 = bounceable, not-test; workchain 0x00 = basic workchain.
@@ -352,6 +357,7 @@ pub(crate) fn derive_ton_standard(
 use crate::derivation::types::DerivationResult;
 use crate::SpectraBridgeError;
 
+// Shared derivation logic for all TON networks (mainnet and testnet addresses are identical).
 fn ton_internal(
     seed_phrase: String, passphrase: Option<String>,
     want_address: bool, want_public_key: bool, want_private_key: bool,
@@ -363,6 +369,7 @@ fn ton_internal(
     Ok(DerivationResult { address, public_key_hex, private_key_hex, account: 0, branch: 0, index: 0 })
 }
 
+/// UniFFI export: derive TON mainnet wallet (v4R2 bounceable address) from a seed phrase.
 #[uniffi::export]
 pub fn derive_ton(
     seed_phrase: String, passphrase: Option<String>,
@@ -371,6 +378,7 @@ pub fn derive_ton(
     ton_internal(seed_phrase, passphrase, want_address, want_public_key, want_private_key)
 }
 
+/// UniFFI export: derive TON testnet wallet from a seed phrase (same derivation as mainnet).
 #[uniffi::export]
 pub fn derive_ton_testnet(
     seed_phrase: String, passphrase: Option<String>,

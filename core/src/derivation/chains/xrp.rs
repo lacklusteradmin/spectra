@@ -19,6 +19,7 @@ const XRP_ALPHABET_BYTES: &[u8; 58] =
 
 // ── Address validation (preserved) ───────────────────────────────────────
 
+// Decode an XRP address using the Ripple base58 alphabet; returns the 20-byte account ID.
 pub(crate) fn decode_xrp_address(address: &str) -> Result<Vec<u8>, String> {
     let alphabet =
         bs58::Alphabet::new(XRP_ALPHABET_BYTES).map_err(|e| format!("alphabet: {e}"))?;
@@ -37,6 +38,7 @@ pub(crate) fn decode_xrp_address(address: &str) -> Result<Vec<u8>, String> {
 
 type HmacSha512 = Hmac<Sha512>;
 
+// RIPEMD-160(SHA-256(bytes)) — the XRP address hash primitive.
 fn hash160_bytes(bytes: &[u8]) -> [u8; 20] {
     let sha = {
         let mut hasher = Sha256::new();
@@ -56,6 +58,7 @@ fn hash160_bytes(bytes: &[u8]) -> [u8; 20] {
 
 // ── BIP-39 ───────────────────────────────────────────────────────────────
 
+// Map locale string ("en", "zh-cn", etc.) to BIP-39 wordlist; defaults to English.
 fn resolve_bip39_language(name: Option<&str>) -> Result<Language, String> {
     let value = match name {
         Some(value) if !value.trim().is_empty() => value.trim().to_ascii_lowercase(),
@@ -78,6 +81,7 @@ fn resolve_bip39_language(name: Option<&str>) -> Result<Language, String> {
     }
 }
 
+// BIP-39 mnemonic → 64-byte seed via NFKD normalization and PBKDF2-HMAC-SHA512.
 fn derive_bip39_seed(
     seed_phrase: &str,
     passphrase: &str,
@@ -112,6 +116,7 @@ fn derive_bip39_seed(
 
 const HARDENED_OFFSET: u32 = 0x80000000;
 
+// Parse a BIP-32 derivation path string ("m/44'/144'/0'/0/0") into a list of child index integers.
 fn parse_bip32_path(path: &str) -> Result<Vec<u32>, String> {
     let trimmed = path.trim().trim_start_matches('m').trim_start_matches('M');
     let trimmed = trimmed.trim_start_matches('/');
@@ -147,6 +152,7 @@ struct ExtendedPrivateKey {
 }
 
 impl ExtendedPrivateKey {
+    // Derive BIP-32 master key: HMAC-SHA512(hmac_key, seed) → private key (IL) + chain code (IR).
     fn master_from_seed(hmac_key: &[u8], seed: &[u8]) -> Result<Self, String> {
         let mut mac =
             HmacSha512::new_from_slice(hmac_key).map_err(|e| format!("HMAC init: {e}"))?;
@@ -159,6 +165,7 @@ impl ExtendedPrivateKey {
         Ok(Self { private_key, chain_code })
     }
 
+    // Derive a BIP-32 child key; hardened indices use private key as input, non-hardened use public key.
     fn derive_child(&self, secp: &Secp256k1<All>, index: u32) -> Result<Self, String> {
         let mut mac = HmacSha512::new_from_slice(&self.chain_code)
             .map_err(|e| format!("HMAC init: {e}"))?;
@@ -184,6 +191,7 @@ impl ExtendedPrivateKey {
         Ok(Self { private_key, chain_code })
     }
 
+    // Walk the full BIP-32 derivation path by applying derive_child for each index.
     fn derive_path(&self, secp: &Secp256k1<All>, path: &[u32]) -> Result<Self, String> {
         let mut key = self.clone();
         for &index in path {
@@ -193,6 +201,7 @@ impl ExtendedPrivateKey {
     }
 }
 
+// Derive XRP address, public key, and private key from a mnemonic via BIP-39 + BIP-32 secp256k1.
 pub(crate) fn derive_from_seed_phrase(
     seed_phrase: &str,
     derivation_path: &str,
@@ -236,6 +245,7 @@ pub(crate) fn derive_from_seed_phrase(
 use crate::derivation::types::{DerivationResult, parse_path_metadata};
 use crate::SpectraBridgeError;
 
+// Shared derivation logic for all XRP Ledger networks.
 fn xrp_internal(
     seed_phrase: String, derivation_path: String, passphrase: Option<String>,
     want_address: bool, want_public_key: bool, want_private_key: bool,
@@ -248,6 +258,7 @@ fn xrp_internal(
     Ok(DerivationResult { address, public_key_hex, private_key_hex, account, branch, index })
 }
 
+/// UniFFI export: derive XRP Ledger mainnet wallet from a seed phrase.
 #[uniffi::export]
 pub fn derive_xrp(
     seed_phrase: String, derivation_path: String, passphrase: Option<String>,
@@ -256,6 +267,7 @@ pub fn derive_xrp(
     xrp_internal(seed_phrase, derivation_path, passphrase, want_address, want_public_key, want_private_key)
 }
 
+/// UniFFI export: derive XRP Ledger testnet wallet from a seed phrase.
 #[uniffi::export]
 pub fn derive_xrp_testnet(
     seed_phrase: String, derivation_path: String, passphrase: Option<String>,

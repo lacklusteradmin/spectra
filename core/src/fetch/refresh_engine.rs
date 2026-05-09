@@ -175,15 +175,15 @@ impl BalanceRefreshEngine {
         // fetched amount. Swift owns the authoritative wallet model and applies
         // the update via its merge logic — Rust no longer mirrors wallet state.
         let ws = Arc::clone(&inner.wallet_service);
-        let results: Vec<Result<(u32, String, WalletSummary), ()>> = stream::iter(entries)
+        let results: Vec<Result<(String, String, WalletSummary), ()>> = stream::iter(entries)
             .map(|entry| {
                 let ws = Arc::clone(&ws);
                 async move {
                     let fetched = ws
-                        .fetch_native_balance_summary_auto(entry.chain_id, entry.address.clone())
+                        .fetch_native_balance_summary_auto(&entry.chain_id, entry.address.clone())
                         .await
                         .map_err(|_| ())?;
-                    let template = crate::service::native_coin_template(entry.chain_id).ok_or(())?;
+                    let template = crate::service::native_coin_template(&entry.chain_id).ok_or(())?;
                     let amount = fetched.amount_display.parse::<f64>().unwrap_or(0.0);
                     let holding = AssetHolding { amount, ..template };
                     let wallet_summary = WalletSummary {
@@ -199,7 +199,7 @@ impl BalanceRefreshEngine {
                         holdings: vec![holding],
                         addresses: vec![],
                     };
-                    Ok((entry.chain_id, entry.wallet_id, wallet_summary))
+                    Ok((entry.chain_id.clone(), entry.wallet_id, wallet_summary))
                 }
             })
             .buffer_unordered(8)
@@ -353,7 +353,7 @@ pub trait BalanceObserver: Send + Sync {
     /// is the updated `WalletSummary` (already applied to the Rust store), or
     /// `None` if the native amount could not be parsed or the wallet is not
     /// in the in-memory state.
-    fn on_balance_updated(&self, chain_id: u32, wallet_id: String, summary: Option<WalletSummary>);
+    fn on_balance_updated(&self, chain_id: String, wallet_id: String, summary: Option<WalletSummary>);
 
     /// Called once the full sweep of all registered entries completes.
     fn on_refresh_cycle_complete(&self, refreshed: u32, errors: u32);
@@ -366,7 +366,7 @@ pub trait BalanceObserver: Send + Sync {
 /// automatically.
 #[derive(Debug, Clone, serde::Deserialize, uniffi::Record)]
 pub struct RefreshEntry {
-    pub chain_id: u32,
+    pub chain_id: String,
     pub wallet_id: String,
     /// The canonical fetch key: a wallet address for most chains, or an
     /// xpub/ypub/zpub for Bitcoin HD wallets.

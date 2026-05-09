@@ -114,7 +114,6 @@ pub struct AppCoreChainBackend {
 pub struct AppCoreAppChainDescriptor {
     pub id: String,
     pub chain_name: String,
-    pub short_label: String,
     pub native_symbol: String,
     pub search_keywords: Vec<String>,
     pub supports_diagnostics: bool,
@@ -803,7 +802,6 @@ pub(super) fn app_chain_descriptors() -> Vec<AppCoreAppChainDescriptor> {
         .map(|c| AppCoreAppChainDescriptor {
             id:                      c.id.clone(),
             chain_name:              c.name.clone(),
-            short_label:             c.short_label.clone(),
             native_symbol:           c.gas_token_symbol.clone(),
             search_keywords:         c.search_keywords.clone(),
             supports_diagnostics:    c.supports_diagnostics,

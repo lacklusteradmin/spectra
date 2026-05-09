@@ -10,6 +10,7 @@ use unicode_normalization::UnicodeNormalization;
 use zeroize::Zeroizing;
 
 
+// Decode a base58 string and assert it is exactly 32 bytes (used for Solana pubkeys).
 pub(crate) fn decode_b58_32(b58: &str) -> Result<[u8; 32], String> {
     let bytes = bs58::decode(b58)
         .into_vec()
@@ -23,6 +24,7 @@ pub(crate) fn decode_b58_32(b58: &str) -> Result<[u8; 32], String> {
 
 type HmacSha512 = Hmac<Sha512>;
 
+// Map locale string ("en", "zh-cn", etc.) to BIP-39 wordlist; defaults to English.
 fn resolve_bip39_language(name: Option<&str>) -> Result<Language, String> {
     let value = match name {
         Some(value) if !value.trim().is_empty() => value.trim().to_ascii_lowercase(),
@@ -45,6 +47,7 @@ fn resolve_bip39_language(name: Option<&str>) -> Result<Language, String> {
     }
 }
 
+// BIP-39 mnemonic → 64-byte seed via NFKD normalization and PBKDF2-HMAC-SHA512.
 fn derive_bip39_seed(
     seed_phrase: &str,
     passphrase: &str,
@@ -77,6 +80,7 @@ fn derive_bip39_seed(
 
 // ── HMAC-SHA512 + SLIP-10 ed25519 ────────────────────────────────────────
 
+// HMAC-SHA512 over concatenated chunks; returns a 64-byte Zeroizing buffer.
 fn hmac_sha512(key: &[u8], chunks: &[&[u8]]) -> Result<Zeroizing<[u8; 64]>, String> {
     let mut mac = HmacSha512::new_from_slice(key)
         .map_err(|error| format!("Invalid HMAC-SHA512 key: {error}"))?;
@@ -89,6 +93,7 @@ fn hmac_sha512(key: &[u8], chunks: &[&[u8]]) -> Result<Zeroizing<[u8; 64]>, Stri
     Ok(out)
 }
 
+// Parse a SLIP-10 derivation path and force every segment to hardened.
 fn parse_slip10_ed25519_path(path: &str) -> Result<Vec<u32>, String> {
     let trimmed = path.trim();
     let body = trimmed
@@ -118,6 +123,7 @@ fn parse_slip10_ed25519_path(path: &str) -> Result<Vec<u32>, String> {
     Ok(indices)
 }
 
+// Walk SLIP-10 hardened child derivation from seed to produce a 32-byte ed25519 private key.
 fn derive_slip10_ed25519_key(
     seed: &[u8],
     derivation_path: &str,
@@ -144,6 +150,7 @@ fn derive_slip10_ed25519_key(
     Ok(private_key)
 }
 
+/// BIP-39 → SLIP-10 ed25519 → Solana address (base58 pubkey).
 pub(crate) fn derive_from_seed_phrase(
     seed_phrase: &str,
     derivation_path: &str,
@@ -170,6 +177,7 @@ pub(crate) fn derive_from_seed_phrase(
 use crate::derivation::types::{DerivationResult, parse_path_metadata};
 use crate::SpectraBridgeError;
 
+// Shared body for derive_solana / derive_solana_devnet.
 fn solana_internal(
     seed_phrase: String, derivation_path: String, passphrase: Option<String>,
     hmac_key: Option<String>,
@@ -183,6 +191,7 @@ fn solana_internal(
     Ok(DerivationResult { address, public_key_hex, private_key_hex, account, branch, index })
 }
 
+/// UniFFI export: derive Solana mainnet keys from a BIP-39 seed phrase.
 #[uniffi::export]
 pub fn derive_solana(
     seed_phrase: String, derivation_path: String, passphrase: Option<String>,
@@ -192,6 +201,7 @@ pub fn derive_solana(
     solana_internal(seed_phrase, derivation_path, passphrase, hmac_key, want_address, want_public_key, want_private_key)
 }
 
+/// UniFFI export: derive Solana devnet keys (identical derivation to mainnet).
 #[uniffi::export]
 pub fn derive_solana_devnet(
     seed_phrase: String, derivation_path: String, passphrase: Option<String>,

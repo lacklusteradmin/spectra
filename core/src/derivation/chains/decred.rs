@@ -50,6 +50,7 @@ const BLAKE256_SIGMA: [[usize; 16]; 10] = [
 ];
 
 #[inline(always)]
+// BLAKE-256 G mixing function: one quarter-round of the BLAKE internal permutation.
 fn g_mix(state: &mut [u32; 16], a: usize, b: usize, c: usize, d: usize, m: &[u32; 16], r: usize, e: usize) {
     let row = &BLAKE256_SIGMA[r % 10];
     state[a] = state[a]
@@ -66,6 +67,7 @@ fn g_mix(state: &mut [u32; 16], a: usize, b: usize, c: usize, d: usize, m: &[u32
     state[b] = (state[b] ^ state[c]).rotate_right(7);
 }
 
+// BLAKE-256 block compression: update chaining state h with one 512-bit message block.
 fn blake256_compress(h: &mut [u32; 8], block: &[u8; 64], t0: u32, t1: u32) {
     let mut m = [0u32; 16];
     for i in 0..16 {
@@ -194,6 +196,7 @@ pub(crate) fn dcr_base58check_encode(payload: &[u8]) -> String {
     bs58::encode(full).into_string()
 }
 
+// Decode a Decred base58check string: strip the 4-byte BLAKE-256² checksum and return the payload.
 pub(crate) fn dcr_base58check_decode(input: &str) -> Result<Vec<u8>, String> {
     let raw = bs58::decode(input).into_vec().map_err(|e| format!("dcr base58 decode: {e}"))?;
     if raw.len() < 5 {
@@ -245,6 +248,7 @@ pub(crate) fn dcr_p2pkh_script(pubkey_hash: &[u8; 20]) -> Vec<u8> {
     s
 }
 
+/// True if address is a valid Decred mainnet address (Ds… P2PKH or Dc… P2SH).
 pub fn validate_decred_address(address: &str) -> bool {
     decode_dcr_address(address).is_ok()
 }
@@ -253,6 +257,7 @@ pub fn validate_decred_address(address: &str) -> bool {
 
 type HmacSha512 = Hmac<Sha512>;
 
+// Map locale string ("en", "zh-cn", etc.) to BIP-39 wordlist; defaults to English.
 fn resolve_bip39_language(name: Option<&str>) -> Result<Language, String> {
     let value = match name {
         Some(value) if !value.trim().is_empty() => value.trim().to_ascii_lowercase(),
@@ -275,6 +280,7 @@ fn resolve_bip39_language(name: Option<&str>) -> Result<Language, String> {
     }
 }
 
+// BIP-39 mnemonic → 64-byte seed via NFKD normalization and PBKDF2-HMAC-SHA512.
 fn derive_bip39_seed(
     seed_phrase: &str,
     passphrase: &str,
@@ -309,6 +315,7 @@ fn derive_bip39_seed(
 
 const HARDENED_OFFSET: u32 = 0x80000000;
 
+// Parse a BIP-32 derivation path string ("m/44'/42'/0'/0/0") into a list of child index integers.
 fn parse_bip32_path(path: &str) -> Result<Vec<u32>, String> {
     let trimmed = path.trim().trim_start_matches('m').trim_start_matches('M');
     let trimmed = trimmed.trim_start_matches('/');
@@ -344,6 +351,7 @@ struct ExtendedPrivateKey {
 }
 
 impl ExtendedPrivateKey {
+    // Derive BIP-32 master key: HMAC-SHA512(hmac_key, seed) → private key (IL) + chain code (IR).
     fn master_from_seed(hmac_key: &[u8], seed: &[u8]) -> Result<Self, String> {
         let mut mac =
             HmacSha512::new_from_slice(hmac_key).map_err(|e| format!("HMAC init: {e}"))?;
@@ -356,6 +364,7 @@ impl ExtendedPrivateKey {
         Ok(Self { private_key, chain_code })
     }
 
+    // Derive a BIP-32 child key; hardened indices use private key as input, non-hardened use public key.
     fn derive_child(&self, secp: &Secp256k1<All>, index: u32) -> Result<Self, String> {
         let mut mac = HmacSha512::new_from_slice(&self.chain_code)
             .map_err(|e| format!("HMAC init: {e}"))?;
@@ -381,6 +390,7 @@ impl ExtendedPrivateKey {
         Ok(Self { private_key, chain_code })
     }
 
+    // Walk the full BIP-32 derivation path by applying derive_child for each index.
     fn derive_path(&self, secp: &Secp256k1<All>, path: &[u32]) -> Result<Self, String> {
         let mut key = self.clone();
         for &index in path {
@@ -390,6 +400,7 @@ impl ExtendedPrivateKey {
     }
 }
 
+// BIP-39 → BIP-32 path walk → (compressed secp256k1 pubkey, raw 32-byte private key).
 fn derive_secp_keypair(
     seed_phrase: &str,
     derivation_path: &str,
@@ -404,6 +415,7 @@ fn derive_secp_keypair(
     Ok((public_key, xpriv.private_key.secret_bytes()))
 }
 
+// Derive Decred mainnet address (Ds…), public key, and private key from a mnemonic.
 pub(crate) fn derive_from_seed_phrase(
     seed_phrase: &str,
     derivation_path: &str,
@@ -423,6 +435,7 @@ pub(crate) fn derive_from_seed_phrase(
 
 pub(crate) const DCR_TESTNET_P2PKH_VERSION: [u8; 2] = [0x0F, 0x21];
 
+// Derive Decred testnet address (Ts…), public key, and private key from a mnemonic.
 pub(crate) fn derive_from_seed_phrase_testnet(
     seed_phrase: &str,
     derivation_path: &str,
@@ -453,6 +466,7 @@ pub(crate) fn derive_from_seed_phrase_testnet(
 use crate::derivation::types::{DerivationResult, parse_path_metadata};
 use crate::SpectraBridgeError;
 
+/// UniFFI export: derive Decred mainnet wallet (Ds… P2PKH address) from a seed phrase.
 #[uniffi::export]
 pub fn derive_decred(
     seed_phrase: String, derivation_path: String, passphrase: Option<String>,
@@ -466,6 +480,7 @@ pub fn derive_decred(
     Ok(DerivationResult { address, public_key_hex, private_key_hex, account, branch, index })
 }
 
+/// UniFFI export: derive Decred testnet wallet (Ts… P2PKH address) from a seed phrase.
 #[uniffi::export]
 pub fn derive_decred_testnet(
     seed_phrase: String, derivation_path: String, passphrase: Option<String>,
@@ -479,6 +494,7 @@ pub fn derive_decred_testnet(
     Ok(DerivationResult { address, public_key_hex, private_key_hex, account, branch, index })
 }
 
+/// UniFFI export: derive a Decred mainnet address and public key from a raw private key hex string.
 #[uniffi::export]
 pub fn derive_decred_from_private_key(
     private_key_hex: String, want_address: bool, want_public_key: bool,

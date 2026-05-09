@@ -15,6 +15,7 @@ use zeroize::Zeroizing;
 
 // ── BIP-39 ───────────────────────────────────────────────────────────────
 
+// Map locale string ("en", "zh-cn", etc.) to BIP-39 wordlist; defaults to English.
 fn resolve_bip39_language(name: Option<&str>) -> Result<Language, String> {
     let value = match name {
         Some(value) if !value.trim().is_empty() => value.trim().to_ascii_lowercase(),
@@ -37,6 +38,7 @@ fn resolve_bip39_language(name: Option<&str>) -> Result<Language, String> {
     }
 }
 
+// BIP-39 mnemonic → 64-byte seed via NFKD normalization and PBKDF2-HMAC-SHA512.
 fn derive_bip39_seed(
     seed_phrase: &str,
     passphrase: &str,
@@ -67,6 +69,7 @@ fn derive_bip39_seed(
     Ok(seed)
 }
 
+/// BIP-39 seed first 32 bytes → ed25519 keypair; NEAR address = hex(pubkey) (no path walk).
 pub(crate) fn derive_from_seed_phrase(
     seed_phrase: &str,
     passphrase: Option<&str>,
@@ -92,6 +95,7 @@ pub(crate) fn derive_from_seed_phrase(
 use crate::derivation::types::DerivationResult;
 use crate::SpectraBridgeError;
 
+// Shared body for derive_near / derive_near_testnet.
 fn near_internal(
     seed_phrase: String, passphrase: Option<String>,
     want_address: bool, want_public_key: bool, want_private_key: bool,
@@ -102,6 +106,7 @@ fn near_internal(
     Ok(DerivationResult { address, public_key_hex, private_key_hex, account: 0, branch: 0, index: 0 })
 }
 
+/// UniFFI export: derive NEAR mainnet keys (direct-seed ed25519; address = hex pubkey).
 #[uniffi::export]
 pub fn derive_near(
     seed_phrase: String, passphrase: Option<String>,
@@ -110,6 +115,7 @@ pub fn derive_near(
     near_internal(seed_phrase, passphrase, want_address, want_public_key, want_private_key)
 }
 
+/// UniFFI export: derive NEAR testnet keys (identical derivation to mainnet).
 #[uniffi::export]
 pub fn derive_near_testnet(
     seed_phrase: String, passphrase: Option<String>,

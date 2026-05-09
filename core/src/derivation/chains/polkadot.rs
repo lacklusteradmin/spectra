@@ -16,6 +16,7 @@ use zeroize::Zeroizing;
 
 // ── SS58 decoding (preserved) ────────────────────────────────────────────
 
+// Decode a Polkadot/Substrate SS58 address and return the inner 32-byte public key.
 pub(crate) fn decode_ss58(address: &str) -> Result<[u8; 32], String> {
     let decoded = bs58::decode(address)
         .into_vec()
@@ -33,6 +34,7 @@ pub(crate) fn decode_ss58(address: &str) -> Result<[u8; 32], String> {
 
 // ── BIP-39 ───────────────────────────────────────────────────────────────
 
+// Map locale string ("en", "zh-cn", etc.) to BIP-39 wordlist; defaults to English.
 fn resolve_bip39_language(name: Option<&str>) -> Result<Language, String> {
     let value = match name {
         Some(value) if !value.trim().is_empty() => value.trim().to_ascii_lowercase(),
@@ -57,6 +59,7 @@ fn resolve_bip39_language(name: Option<&str>) -> Result<Language, String> {
 
 // ── substrate-bip39 mini-secret ──────────────────────────────────────────
 
+// substrate-bip39: PBKDF2(password=entropy, salt="mnemonic"||passphrase)[..32] → mini-secret key.
 fn derive_substrate_mini_secret(
     mnemonic: &str,
     passphrase: &str,
@@ -90,6 +93,7 @@ fn derive_substrate_mini_secret(
     Ok(out)
 }
 
+// Derive sr25519 mini-secret and public key from mnemonic; uniform_expansion selects the schnorrkel expansion mode.
 pub(crate) fn derive_substrate_sr25519_material(
     seed_phrase: &str,
     passphrase: &str,
@@ -133,6 +137,7 @@ pub(crate) fn derive_substrate_sr25519_material(
 
 // ── SS58 v1 encoding ─────────────────────────────────────────────────────
 
+/// Encode a 32-byte sr25519 public key into an SS58 v1 address with the given network prefix.
 pub(crate) fn encode_ss58(public_key: &[u8; 32], network_prefix: u16) -> String {
     use blake2::digest::consts::U64;
     use blake2::digest::Digest;
@@ -168,6 +173,7 @@ pub(crate) fn encode_ss58(public_key: &[u8; 32], network_prefix: u16) -> String 
 use crate::derivation::types::DerivationResult;
 use crate::SpectraBridgeError;
 
+// Shared derivation logic for all Substrate-based networks; ss58_prefix selects the network.
 fn substrate_internal(
     ss58_prefix: u16,
     seed_phrase: String, passphrase: Option<String>, hmac_key: Option<String>,
@@ -186,6 +192,7 @@ fn substrate_internal(
     })
 }
 
+/// UniFFI export: derive Polkadot mainnet wallet (SS58 prefix 0, "1…" addresses).
 #[uniffi::export]
 pub fn derive_polkadot(
     seed_phrase: String, passphrase: Option<String>, hmac_key: Option<String>,
@@ -194,6 +201,7 @@ pub fn derive_polkadot(
     substrate_internal(0, seed_phrase, passphrase, hmac_key, want_address, want_public_key, want_private_key)
 }
 
+/// UniFFI export: derive Polkadot Westend testnet wallet (SS58 prefix 42, "5…" addresses).
 #[uniffi::export]
 pub fn derive_polkadot_westend(
     seed_phrase: String, passphrase: Option<String>, hmac_key: Option<String>,

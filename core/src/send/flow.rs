@@ -620,7 +620,7 @@ pub fn core_simple_chain_risk_probe_config(
 
 #[derive(Debug, Clone, uniffi::Record)]
 pub struct RebroadcastDispatch {
-    pub chain_id: u32,
+    pub chain_id: String,
     pub result_field: String,
     pub wrap_key: Option<String>,
     pub extract_field: Option<String>,
@@ -635,35 +635,35 @@ pub fn core_rebroadcast_dispatch_for_format(
     // 5 ethereum, 6 tron, 7 solana, 8 xrp, 9 stellar, 10 monero,
     // 11 cardano, 12 sui, 13 aptos, 14 ton, 15 icp, 16 near, 17 polkadot
     let entry: Option<RebroadcastDispatch> = match format.as_str() {
-        "bitcoin.raw_hex" => Some(RebroadcastDispatch { chain_id: 0, result_field: "txid".into(), wrap_key: None, extract_field: None }),
-        "bitcoin_cash.raw_hex" => Some(RebroadcastDispatch { chain_id: 1, result_field: "txid".into(), wrap_key: None, extract_field: None }),
-        "bitcoin_sv.raw_hex" => Some(RebroadcastDispatch { chain_id: 2, result_field: "txid".into(), wrap_key: None, extract_field: None }),
-        "litecoin.raw_hex" => Some(RebroadcastDispatch { chain_id: 3, result_field: "txid".into(), wrap_key: None, extract_field: None }),
-        "dogecoin.raw_hex" => Some(RebroadcastDispatch { chain_id: 4, result_field: "txid".into(), wrap_key: None, extract_field: None }),
-        "tron.signed_json" => Some(RebroadcastDispatch { chain_id: 6, result_field: "txid".into(), wrap_key: None, extract_field: None }),
-        "solana.base64" => Some(RebroadcastDispatch { chain_id: 7, result_field: "signature".into(), wrap_key: None, extract_field: None }),
-        "xrp.blob_hex" => Some(RebroadcastDispatch { chain_id: 8, result_field: "txid".into(), wrap_key: Some("tx_blob_hex".into()), extract_field: None }),
-        "stellar.xdr" => Some(RebroadcastDispatch { chain_id: 9, result_field: "txid".into(), wrap_key: Some("signed_xdr_b64".into()), extract_field: None }),
-        "cardano.cbor_hex" => Some(RebroadcastDispatch { chain_id: 11, result_field: "txid".into(), wrap_key: Some("cbor_hex".into()), extract_field: None }),
-        "near.base64" => Some(RebroadcastDispatch { chain_id: 16, result_field: "txid".into(), wrap_key: Some("signed_tx_b64".into()), extract_field: None }),
-        "polkadot.extrinsic_hex" => Some(RebroadcastDispatch { chain_id: 17, result_field: "txid".into(), wrap_key: Some("extrinsic_hex".into()), extract_field: None }),
-        "aptos.signed_json" => Some(RebroadcastDispatch { chain_id: 13, result_field: "txid".into(), wrap_key: Some("signed_body_json".into()), extract_field: None }),
-        "ton.boc" => Some(RebroadcastDispatch { chain_id: 14, result_field: "message_hash".into(), wrap_key: Some("boc_b64".into()), extract_field: None }),
-        "bitcoin.rust_json" => Some(RebroadcastDispatch { chain_id: 0, result_field: "txid".into(), wrap_key: None, extract_field: Some("raw_tx_hex".into()) }),
-        "bitcoin_cash.rust_json" => Some(RebroadcastDispatch { chain_id: 1, result_field: "txid".into(), wrap_key: None, extract_field: Some("raw_tx_hex".into()) }),
-        "bitcoin_sv.rust_json" => Some(RebroadcastDispatch { chain_id: 2, result_field: "txid".into(), wrap_key: None, extract_field: Some("raw_tx_hex".into()) }),
-        "litecoin.rust_json" => Some(RebroadcastDispatch { chain_id: 3, result_field: "txid".into(), wrap_key: None, extract_field: Some("raw_tx_hex".into()) }),
-        "dogecoin.rust_json" => Some(RebroadcastDispatch { chain_id: 4, result_field: "txid".into(), wrap_key: None, extract_field: Some("raw_tx_hex".into()) }),
-        "solana.rust_json" => Some(RebroadcastDispatch { chain_id: 7, result_field: "signature".into(), wrap_key: None, extract_field: Some("signed_tx_base64".into()) }),
-        "tron.rust_json" => Some(RebroadcastDispatch { chain_id: 6, result_field: "txid".into(), wrap_key: None, extract_field: Some("signed_tx_json".into()) }),
-        "xrp.rust_json" => Some(RebroadcastDispatch { chain_id: 8, result_field: "txid".into(), wrap_key: None, extract_field: None }),
-        "stellar.rust_json" => Some(RebroadcastDispatch { chain_id: 9, result_field: "txid".into(), wrap_key: None, extract_field: None }),
-        "cardano.rust_json" => Some(RebroadcastDispatch { chain_id: 11, result_field: "txid".into(), wrap_key: None, extract_field: None }),
-        "polkadot.rust_json" => Some(RebroadcastDispatch { chain_id: 17, result_field: "txid".into(), wrap_key: None, extract_field: None }),
-        "sui.rust_json" => Some(RebroadcastDispatch { chain_id: 12, result_field: "digest".into(), wrap_key: None, extract_field: None }),
-        "aptos.rust_json" => Some(RebroadcastDispatch { chain_id: 13, result_field: "txid".into(), wrap_key: None, extract_field: None }),
-        "ton.rust_json" => Some(RebroadcastDispatch { chain_id: 14, result_field: "message_hash".into(), wrap_key: None, extract_field: None }),
-        "near.rust_json" => Some(RebroadcastDispatch { chain_id: 16, result_field: "txid".into(), wrap_key: None, extract_field: None }),
+        "bitcoin.raw_hex" => Some(RebroadcastDispatch { chain_id: "bitcoin".into(), result_field: "txid".into(), wrap_key: None, extract_field: None }),
+        "bitcoin_cash.raw_hex" => Some(RebroadcastDispatch { chain_id: "bitcoin-cash".into(), result_field: "txid".into(), wrap_key: None, extract_field: None }),
+        "bitcoin_sv.raw_hex" => Some(RebroadcastDispatch { chain_id: "bitcoin-sv".into(), result_field: "txid".into(), wrap_key: None, extract_field: None }),
+        "litecoin.raw_hex" => Some(RebroadcastDispatch { chain_id: "litecoin".into(), result_field: "txid".into(), wrap_key: None, extract_field: None }),
+        "dogecoin.raw_hex" => Some(RebroadcastDispatch { chain_id: "dogecoin".into(), result_field: "txid".into(), wrap_key: None, extract_field: None }),
+        "tron.signed_json" => Some(RebroadcastDispatch { chain_id: "tron".into(), result_field: "txid".into(), wrap_key: None, extract_field: None }),
+        "solana.base64" => Some(RebroadcastDispatch { chain_id: "solana".into(), result_field: "signature".into(), wrap_key: None, extract_field: None }),
+        "xrp.blob_hex" => Some(RebroadcastDispatch { chain_id: "xrp".into(), result_field: "txid".into(), wrap_key: Some("tx_blob_hex".into()), extract_field: None }),
+        "stellar.xdr" => Some(RebroadcastDispatch { chain_id: "stellar".into(), result_field: "txid".into(), wrap_key: Some("signed_xdr_b64".into()), extract_field: None }),
+        "cardano.cbor_hex" => Some(RebroadcastDispatch { chain_id: "cardano".into(), result_field: "txid".into(), wrap_key: Some("cbor_hex".into()), extract_field: None }),
+        "near.base64" => Some(RebroadcastDispatch { chain_id: "near".into(), result_field: "txid".into(), wrap_key: Some("signed_tx_b64".into()), extract_field: None }),
+        "polkadot.extrinsic_hex" => Some(RebroadcastDispatch { chain_id: "polkadot".into(), result_field: "txid".into(), wrap_key: Some("extrinsic_hex".into()), extract_field: None }),
+        "aptos.signed_json" => Some(RebroadcastDispatch { chain_id: "aptos".into(), result_field: "txid".into(), wrap_key: Some("signed_body_json".into()), extract_field: None }),
+        "ton.boc" => Some(RebroadcastDispatch { chain_id: "ton".into(), result_field: "message_hash".into(), wrap_key: Some("boc_b64".into()), extract_field: None }),
+        "bitcoin.rust_json" => Some(RebroadcastDispatch { chain_id: "bitcoin".into(), result_field: "txid".into(), wrap_key: None, extract_field: Some("raw_tx_hex".into()) }),
+        "bitcoin_cash.rust_json" => Some(RebroadcastDispatch { chain_id: "bitcoin-cash".into(), result_field: "txid".into(), wrap_key: None, extract_field: Some("raw_tx_hex".into()) }),
+        "bitcoin_sv.rust_json" => Some(RebroadcastDispatch { chain_id: "bitcoin-sv".into(), result_field: "txid".into(), wrap_key: None, extract_field: Some("raw_tx_hex".into()) }),
+        "litecoin.rust_json" => Some(RebroadcastDispatch { chain_id: "litecoin".into(), result_field: "txid".into(), wrap_key: None, extract_field: Some("raw_tx_hex".into()) }),
+        "dogecoin.rust_json" => Some(RebroadcastDispatch { chain_id: "dogecoin".into(), result_field: "txid".into(), wrap_key: None, extract_field: Some("raw_tx_hex".into()) }),
+        "solana.rust_json" => Some(RebroadcastDispatch { chain_id: "solana".into(), result_field: "signature".into(), wrap_key: None, extract_field: Some("signed_tx_base64".into()) }),
+        "tron.rust_json" => Some(RebroadcastDispatch { chain_id: "tron".into(), result_field: "txid".into(), wrap_key: None, extract_field: Some("signed_tx_json".into()) }),
+        "xrp.rust_json" => Some(RebroadcastDispatch { chain_id: "xrp".into(), result_field: "txid".into(), wrap_key: None, extract_field: None }),
+        "stellar.rust_json" => Some(RebroadcastDispatch { chain_id: "stellar".into(), result_field: "txid".into(), wrap_key: None, extract_field: None }),
+        "cardano.rust_json" => Some(RebroadcastDispatch { chain_id: "cardano".into(), result_field: "txid".into(), wrap_key: None, extract_field: None }),
+        "polkadot.rust_json" => Some(RebroadcastDispatch { chain_id: "polkadot".into(), result_field: "txid".into(), wrap_key: None, extract_field: None }),
+        "sui.rust_json" => Some(RebroadcastDispatch { chain_id: "sui".into(), result_field: "digest".into(), wrap_key: None, extract_field: None }),
+        "aptos.rust_json" => Some(RebroadcastDispatch { chain_id: "aptos".into(), result_field: "txid".into(), wrap_key: None, extract_field: None }),
+        "ton.rust_json" => Some(RebroadcastDispatch { chain_id: "ton".into(), result_field: "message_hash".into(), wrap_key: None, extract_field: None }),
+        "near.rust_json" => Some(RebroadcastDispatch { chain_id: "near".into(), result_field: "txid".into(), wrap_key: None, extract_field: None }),
         _ => None,
     };
     entry.ok_or_else(|| SpectraBridgeError::from("Rebroadcast is not supported for this transaction format yet."))
@@ -679,7 +679,7 @@ pub fn core_rebroadcast_dispatch_for_format(
 
 #[derive(Debug, Clone, uniffi::Record)]
 pub struct PreparedBroadcastPayload {
-    pub chain_id: u32,
+    pub chain_id: String,
     pub broadcast_payload: String,
     pub result_field: String,
 }
@@ -692,7 +692,7 @@ pub fn core_rebroadcast_prepare_payload(
     if format == "sui.signed_json" {
         let remapped = sui_signed_json_remap(&raw_payload).unwrap_or_else(|| raw_payload.clone());
         return Ok(PreparedBroadcastPayload {
-            chain_id: 12,
+            chain_id: "sui".into(),
             broadcast_payload: remapped,
             result_field: "digest".to_string(),
         });
@@ -917,7 +917,7 @@ mod flow_helpers_tests {
     #[test]
     fn rebroadcast_dispatch_btc() {
         let d = core_rebroadcast_dispatch_for_format("bitcoin.raw_hex".to_string()).unwrap();
-        assert_eq!(d.chain_id, 0);
+        assert_eq!(d.chain_id, "bitcoin");
         assert_eq!(d.result_field, "txid");
     }
 
@@ -955,7 +955,7 @@ mod flow_helpers_tests {
     fn prepare_payload_sui_signed_json_remap() {
         let raw = r#"{"txBytesBase64":"AAAA","signatureBase64":"BBBB"}"#;
         let p = core_rebroadcast_prepare_payload("sui.signed_json".into(), raw.into()).unwrap();
-        assert_eq!(p.chain_id, 12);
+        assert_eq!(p.chain_id, "sui");
         assert_eq!(p.result_field, "digest");
         let parsed: serde_json::Value = serde_json::from_str(&p.broadcast_payload).unwrap();
         assert_eq!(parsed["tx_bytes_b64"], "AAAA");
@@ -972,7 +972,7 @@ mod flow_helpers_tests {
     #[test]
     fn prepare_payload_wrap_key() {
         let p = core_rebroadcast_prepare_payload("xrp.blob_hex".into(), "deadbeef".into()).unwrap();
-        assert_eq!(p.chain_id, 8);
+        assert_eq!(p.chain_id, "xrp");
         assert_eq!(p.result_field, "txid");
         let parsed: serde_json::Value = serde_json::from_str(&p.broadcast_payload).unwrap();
         assert_eq!(parsed["tx_blob_hex"], "deadbeef");
@@ -982,7 +982,7 @@ mod flow_helpers_tests {
     fn prepare_payload_extract_field() {
         let raw = r#"{"raw_tx_hex":"ff00","other":"x"}"#;
         let p = core_rebroadcast_prepare_payload("bitcoin.rust_json".into(), raw.into()).unwrap();
-        assert_eq!(p.chain_id, 0);
+        assert_eq!(p.chain_id, "bitcoin");
         assert_eq!(p.broadcast_payload, "ff00");
     }
 

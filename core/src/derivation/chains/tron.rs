@@ -17,6 +17,7 @@ use zeroize::Zeroizing;
 
 // ── Address validation + helpers (preserved) ─────────────────────────────
 
+/// Derive a Tron address from a 65-byte uncompressed pubkey: keccak256 → last 20 bytes → 0x41 prefix → base58check.
 pub fn pubkey_to_tron_address(pubkey_uncompressed: &[u8]) -> Result<String, String> {
     if pubkey_uncompressed.len() != 65 || pubkey_uncompressed[0] != 0x04 {
         return Err("expected 65-byte uncompressed public key".to_string());
@@ -28,6 +29,7 @@ pub fn pubkey_to_tron_address(pubkey_uncompressed: &[u8]) -> Result<String, Stri
     Ok(bs58::encode(&versioned).with_check().into_string())
 }
 
+/// Decode a Tron base58check address and return the 20-byte EVM-style hex account hash (without 0x41 prefix).
 pub fn tron_base58_to_evm_hex(address: &str) -> Result<String, String> {
     let decoded = bs58::decode(address)
         .with_check(None)
@@ -42,6 +44,7 @@ pub fn tron_base58_to_evm_hex(address: &str) -> Result<String, String> {
     Ok(hex::encode(&decoded[1..]))
 }
 
+// Keccak-256 hash; used for Tron address derivation.
 fn keccak256(data: &[u8]) -> [u8; 32] {
     use sha3::{Digest, Keccak256};
     Keccak256::digest(data).into()
@@ -51,6 +54,7 @@ fn keccak256(data: &[u8]) -> [u8; 32] {
 
 type HmacSha512 = Hmac<Sha512>;
 
+// Map locale string ("en", "zh-cn", etc.) to BIP-39 wordlist; defaults to English.
 fn resolve_bip39_language(name: Option<&str>) -> Result<Language, String> {
     let value = match name {
         Some(value) if !value.trim().is_empty() => value.trim().to_ascii_lowercase(),
@@ -73,6 +77,7 @@ fn resolve_bip39_language(name: Option<&str>) -> Result<Language, String> {
     }
 }
 
+// BIP-39 mnemonic → 64-byte seed via NFKD normalization and PBKDF2-HMAC-SHA512.
 fn derive_bip39_seed(
     seed_phrase: &str,
     passphrase: &str,
@@ -107,6 +112,7 @@ fn derive_bip39_seed(
 
 const HARDENED_OFFSET: u32 = 0x80000000;
 
+// Parse a BIP-32 derivation path string ("m/44'/195'/0'/0/0") into a list of child index integers.
 fn parse_bip32_path(path: &str) -> Result<Vec<u32>, String> {
     let trimmed = path.trim().trim_start_matches('m').trim_start_matches('M');
     let trimmed = trimmed.trim_start_matches('/');
@@ -142,6 +148,7 @@ struct ExtendedPrivateKey {
 }
 
 impl ExtendedPrivateKey {
+    // Derive BIP-32 master key: HMAC-SHA512(hmac_key, seed) → private key (IL) + chain code (IR).
     fn master_from_seed(hmac_key: &[u8], seed: &[u8]) -> Result<Self, String> {
         let mut mac =
             HmacSha512::new_from_slice(hmac_key).map_err(|e| format!("HMAC init: {e}"))?;
@@ -154,6 +161,7 @@ impl ExtendedPrivateKey {
         Ok(Self { private_key, chain_code })
     }
 
+    // Derive a BIP-32 child key; hardened indices use private key as input, non-hardened use public key.
     fn derive_child(&self, secp: &Secp256k1<All>, index: u32) -> Result<Self, String> {
         let mut mac = HmacSha512::new_from_slice(&self.chain_code)
             .map_err(|e| format!("HMAC init: {e}"))?;
@@ -179,6 +187,7 @@ impl ExtendedPrivateKey {
         Ok(Self { private_key, chain_code })
     }
 
+    // Walk the full BIP-32 derivation path by applying derive_child for each index.
     fn derive_path(&self, secp: &Secp256k1<All>, path: &[u32]) -> Result<Self, String> {
         let mut key = self.clone();
         for &index in path {
@@ -188,6 +197,7 @@ impl ExtendedPrivateKey {
     }
 }
 
+// Derive Tron address, public key, and private key from a mnemonic via BIP-39 + BIP-32 secp256k1.
 pub(crate) fn derive_from_seed_phrase(
     seed_phrase: &str,
     derivation_path: &str,
@@ -226,6 +236,7 @@ pub(crate) fn derive_from_seed_phrase(
 use crate::derivation::types::{DerivationResult, parse_path_metadata};
 use crate::SpectraBridgeError;
 
+// Shared derivation logic for all Tron networks.
 fn tron_internal(
     seed_phrase: String, derivation_path: String, passphrase: Option<String>,
     want_address: bool, want_public_key: bool, want_private_key: bool,
@@ -238,6 +249,7 @@ fn tron_internal(
     Ok(DerivationResult { address, public_key_hex, private_key_hex, account, branch, index })
 }
 
+/// UniFFI export: derive Tron mainnet wallet from a seed phrase.
 #[uniffi::export]
 pub fn derive_tron(
     seed_phrase: String, derivation_path: String, passphrase: Option<String>,
@@ -246,6 +258,7 @@ pub fn derive_tron(
     tron_internal(seed_phrase, derivation_path, passphrase, want_address, want_public_key, want_private_key)
 }
 
+/// UniFFI export: derive Tron Nile testnet wallet from a seed phrase.
 #[uniffi::export]
 pub fn derive_tron_nile(
     seed_phrase: String, derivation_path: String, passphrase: Option<String>,

@@ -385,25 +385,11 @@ pub fn history_evm_native_asset(chain_name: String) -> Option<EvmNativeAsset> {
     Some(EvmNativeAsset { asset_name: name.into(), symbol: symbol.into() })
 }
 
-/// Map a user-visible chain name to the `chain_id` used by the
+/// Map a user-visible chain name to the string chain id used by the
 /// history pagination store. Returns `None` for unsupported names.
-/// Mirrors the private `HistoryChainID` table in Swift.
 #[uniffi::export]
-pub fn history_pagination_chain_id(chain_name: String) -> Option<u32> {
-    Some(match chain_name.as_str() {
-        "Bitcoin" => 0,
-        "Ethereum" => 1,
-        "Dogecoin" => 3,
-        "Litecoin" => 5,
-        "Bitcoin Cash" => 6,
-        "Tron" => 7,
-        "Arbitrum" => 11,
-        "Optimism" => 12,
-        "Bitcoin SV" => 22,
-        "BNB Chain" => 23,
-        "Hyperliquid" => 24,
-        _ => return None,
-    })
+pub fn history_pagination_chain_id(chain_name: String) -> Option<String> {
+    crate::registry::Chain::from_display_name(&chain_name).map(|c| c.str_id().to_string())
 }
 
 // ────────────────────────────────────────────────────────────────────
@@ -622,8 +608,8 @@ mod tests {
 
     #[test]
     fn chain_id_mapping() {
-        assert_eq!(history_pagination_chain_id("Bitcoin".into()), Some(0));
-        assert_eq!(history_pagination_chain_id("Hyperliquid".into()), Some(24));
+        assert_eq!(history_pagination_chain_id("Bitcoin".into()), Some("bitcoin".into()));
+        assert_eq!(history_pagination_chain_id("Hyperliquid".into()), Some("hyperliquid".into()));
         assert_eq!(history_pagination_chain_id("Nope".into()), None);
     }
 }

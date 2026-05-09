@@ -16,6 +16,7 @@ use zeroize::Zeroizing;
 
 // ── Address validation (preserved) ───────────────────────────────────────
 
+// Decode a Stellar G-account strkey and return the inner 32-byte ed25519 public key.
 pub(crate) fn decode_stellar_address(address: &str) -> Result<[u8; 32], String> {
     let decoded = base32_decode_rfc4648(address.trim())
         .ok_or_else(|| format!("stellar base32 decode failed: {address}"))?;
@@ -31,6 +32,7 @@ pub(crate) fn decode_stellar_address(address: &str) -> Result<[u8; 32], String> 
     Ok(key)
 }
 
+// Decode a no-padding RFC 4648 base32 string into bytes; returns None on invalid characters.
 fn base32_decode_rfc4648(s: &str) -> Option<Vec<u8>> {
     const ALPHABET: &[u8] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZ234567";
     let s = s.to_uppercase();
@@ -54,6 +56,7 @@ fn base32_decode_rfc4648(s: &str) -> Option<Vec<u8>> {
 
 type HmacSha512 = Hmac<Sha512>;
 
+// Map locale string ("en", "zh-cn", etc.) to BIP-39 wordlist; defaults to English.
 fn resolve_bip39_language(name: Option<&str>) -> Result<Language, String> {
     let value = match name {
         Some(value) if !value.trim().is_empty() => value.trim().to_ascii_lowercase(),
@@ -76,6 +79,7 @@ fn resolve_bip39_language(name: Option<&str>) -> Result<Language, String> {
     }
 }
 
+// BIP-39 mnemonic → 64-byte seed via NFKD normalization and PBKDF2-HMAC-SHA512.
 fn derive_bip39_seed(
     seed_phrase: &str,
     passphrase: &str,
@@ -108,6 +112,7 @@ fn derive_bip39_seed(
 
 // ── SLIP-10 ed25519 ──────────────────────────────────────────────────────
 
+// HMAC-SHA512 over concatenated chunks; returns a 64-byte Zeroizing buffer.
 fn hmac_sha512(key: &[u8], chunks: &[&[u8]]) -> Result<Zeroizing<[u8; 64]>, String> {
     let mut mac = HmacSha512::new_from_slice(key)
         .map_err(|error| format!("Invalid HMAC-SHA512 key: {error}"))?;
@@ -120,6 +125,7 @@ fn hmac_sha512(key: &[u8], chunks: &[&[u8]]) -> Result<Zeroizing<[u8; 64]>, Stri
     Ok(out)
 }
 
+// Parse SLIP-10 ed25519 derivation path; all segments are forced hardened (0x8000_0000 bit set).
 fn parse_slip10_ed25519_path(path: &str) -> Result<Vec<u32>, String> {
     let trimmed = path.trim();
     let body = trimmed
@@ -149,6 +155,7 @@ fn parse_slip10_ed25519_path(path: &str) -> Result<Vec<u32>, String> {
     Ok(indices)
 }
 
+// Walk the SLIP-10 ed25519 derivation path from the seed to produce the final 32-byte private key.
 fn derive_slip10_ed25519_key(
     seed: &[u8],
     derivation_path: &str,
@@ -177,15 +184,18 @@ fn derive_slip10_ed25519_key(
 
 // ── strkey (CRC-16/XMODEM + base32) ──────────────────────────────────────
 
+// CRC-16/XMODEM checksum used by the Stellar strkey format for address integrity.
 fn crc16_xmodem(bytes: &[u8]) -> u16 {
     const CRC: crc::Crc<u16> = crc::Crc::<u16>::new(&crc::CRC_16_XMODEM);
     CRC.checksum(bytes)
 }
 
+// RFC 4648 base32 encode without padding; used to produce the final strkey address string.
 fn base32_no_pad(input: &[u8]) -> String {
     data_encoding::BASE32_NOPAD.encode(input)
 }
 
+// Derive Stellar address, public key, and private key from a mnemonic via BIP-39 + SLIP-10 ed25519.
 pub(crate) fn derive_from_seed_phrase(
     seed_phrase: &str,
     derivation_path: &str,
@@ -224,6 +234,7 @@ pub(crate) fn derive_from_seed_phrase(
 use crate::derivation::types::{DerivationResult, parse_path_metadata};
 use crate::SpectraBridgeError;
 
+// Shared derivation logic for all Stellar networks.
 fn stellar_internal(
     seed_phrase: String, derivation_path: String, passphrase: Option<String>,
     hmac_key: Option<String>,
@@ -237,6 +248,7 @@ fn stellar_internal(
     Ok(DerivationResult { address, public_key_hex, private_key_hex, account, branch, index })
 }
 
+/// UniFFI export: derive Stellar mainnet wallet (G-account strkey address) from a seed phrase.
 #[uniffi::export]
 pub fn derive_stellar(
     seed_phrase: String, derivation_path: String, passphrase: Option<String>,
@@ -246,6 +258,7 @@ pub fn derive_stellar(
     stellar_internal(seed_phrase, derivation_path, passphrase, hmac_key, want_address, want_public_key, want_private_key)
 }
 
+/// UniFFI export: derive Stellar testnet wallet from a seed phrase.
 #[uniffi::export]
 pub fn derive_stellar_testnet(
     seed_phrase: String, derivation_path: String, passphrase: Option<String>,

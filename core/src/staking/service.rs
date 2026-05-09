@@ -14,13 +14,13 @@ use crate::staking::{
     StakingActionPreview, StakingError, StakingPosition, StakingValidator,
 };
 
-const CHAIN_SOLANA: u32 = 2;
-const CHAIN_CARDANO: u32 = 9;
-const CHAIN_POLKADOT: u32 = 10;
-const CHAIN_SUI: u32 = 14;
-const CHAIN_APTOS: u32 = 15;
-const CHAIN_NEAR: u32 = 17;
-const CHAIN_ICP: u32 = 18;
+const CHAIN_SOLANA: &str = "solana";
+const CHAIN_CARDANO: &str = "cardano";
+const CHAIN_POLKADOT: &str = "polkadot";
+const CHAIN_SUI: &str = "sui";
+const CHAIN_APTOS: &str = "aptos";
+const CHAIN_NEAR: &str = "near";
+const CHAIN_ICP: &str = "internet-computer";
 
 #[derive(uniffi::Object)]
 pub struct StakingService {
@@ -37,7 +37,7 @@ pub struct StakingService {
 impl StakingService {
     #[uniffi::constructor]
     pub fn new(endpoints: Vec<ChainEndpoints>) -> Arc<Self> {
-        let eps = |chain_id: u32| -> Vec<String> {
+        let eps = |chain_id: &str| -> Vec<String> {
             endpoints
                 .iter()
                 .find(|e| e.chain_id == chain_id)
@@ -59,9 +59,9 @@ impl StakingService {
 
     pub async fn fetch_validators(
         &self,
-        chain_id: u32,
+        chain_id: String,
     ) -> Result<Vec<StakingValidator>, StakingError> {
-        match chain_id {
+        match chain_id.as_str() {
             CHAIN_SOLANA => self.solana.fetch_validators().await,
             CHAIN_CARDANO => self.cardano.fetch_validators().await,
             CHAIN_SUI => self.sui.fetch_validators().await,
@@ -77,10 +77,10 @@ impl StakingService {
 
     pub async fn fetch_positions(
         &self,
-        chain_id: u32,
+        chain_id: String,
         wallet_address: String,
     ) -> Result<Vec<StakingPosition>, StakingError> {
-        match chain_id {
+        match chain_id.as_str() {
             CHAIN_SOLANA => self.solana.fetch_positions(&wallet_address).await,
             CHAIN_CARDANO => self.cardano.fetch_positions(&wallet_address).await,
             CHAIN_SUI => self.sui.fetch_positions(&wallet_address).await,

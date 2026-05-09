@@ -19,6 +19,7 @@ use zeroize::Zeroizing;
 
 // ── Address validation + decoding (preserved) ────────────────────────────
 
+// Decode a Cardano address: bech32 for Shelley (addr1/addr_test1), base58check for Byron.
 pub(crate) fn decode_cardano_addr_bytes(address: &str) -> Result<Vec<u8>, String> {
     if address.starts_with("addr1") || address.starts_with("addr_test1") {
         bech32::decode(address)
@@ -37,6 +38,7 @@ pub(crate) fn decode_cardano_addr_bytes(address: &str) -> Result<Vec<u8>, String
 
 type HmacSha512 = Hmac<Sha512>;
 
+// Map locale string ("en", "zh-cn", etc.) to BIP-39 wordlist; defaults to English.
 fn resolve_bip39_language(name: Option<&str>) -> Result<Language, String> {
     let value = match name {
         Some(value) if !value.trim().is_empty() => value.trim().to_ascii_lowercase(),
@@ -61,6 +63,7 @@ fn resolve_bip39_language(name: Option<&str>) -> Result<Language, String> {
 
 // ── BIP-32 path parsing ──────────────────────────────────────────────────
 
+// Parse a BIP-32 derivation path string into a list of child index integers (hardened or soft).
 fn parse_bip32_path_segments(path: &str) -> Result<Vec<u32>, String> {
     let trimmed = path.trim();
     let body = trimmed
@@ -99,6 +102,7 @@ fn parse_bip32_path_segments(path: &str) -> Result<Vec<u32>, String> {
 
 // ── HMAC-SHA512 ──────────────────────────────────────────────────────────
 
+// HMAC-SHA512 over concatenated chunks; used by the BIP-32-Ed25519 child derivation.
 fn hmac_sha512(key: &[u8], chunks: &[&[u8]]) -> Result<Zeroizing<[u8; 64]>, String> {
     let mut mac = HmacSha512::new_from_slice(key)
         .map_err(|error| format!("Invalid HMAC-SHA512 key: {error}"))?;
@@ -113,6 +117,7 @@ fn hmac_sha512(key: &[u8], chunks: &[&[u8]]) -> Result<Zeroizing<[u8; 64]>, Stri
 
 // ── BIP-32-Ed25519 (Khovratovich-Law) ────────────────────────────────────
 
+// Derive Cardano Icarus private key and ed25519 public key via CIP-3 + BIP-32-Ed25519 child walk.
 pub(crate) fn derive_cardano_icarus_material(
     seed_phrase: &str,
     passphrase: &str,
@@ -153,6 +158,7 @@ pub(crate) fn derive_cardano_icarus_material(
     Ok((private_key, public_key))
 }
 
+// CIP-3 Icarus root xprv: PBKDF2-HMAC-SHA512(passphrase, entropy, 4096, 96) then Khovratovich-Law clamp.
 pub(crate) fn derive_cardano_icarus_xprv_root(
     mnemonic: &str,
     passphrase: &str,
@@ -181,6 +187,7 @@ pub(crate) fn derive_cardano_icarus_xprv_root(
     Ok(xprv)
 }
 
+// BIP-32-Ed25519 (Khovratovich-Law) one-step child key derivation from a 96-byte xprv.
 fn cardano_icarus_derive_child(
     xprv: &[u8; 96],
     index: u32,
@@ -261,6 +268,7 @@ fn cardano_icarus_derive_child(
 
 // ── CIP-19 Shelley enterprise address ────────────────────────────────────
 
+// Build a CIP-19 Shelley enterprise address: Blake2b-224(pubkey) as the payment key hash, bech32-encoded.
 pub(crate) fn derive_cardano_shelley_enterprise_address(
     public_key: &[u8; 32],
     is_mainnet: bool,
@@ -286,6 +294,7 @@ pub(crate) fn derive_cardano_shelley_enterprise_address(
     bech32::encode::<bech32::Bech32>(hrp, &payload).map_err(|e| e.to_string())
 }
 
+// Derive Cardano address, public key, and private key from a mnemonic via CIP-3 Icarus + BIP-32-Ed25519.
 pub(crate) fn derive_from_seed_phrase(
     mainnet: bool,
     seed_phrase: &str,
@@ -321,6 +330,7 @@ pub(crate) fn derive_from_seed_phrase(
 use crate::derivation::types::{DerivationResult, parse_path_metadata};
 use crate::SpectraBridgeError;
 
+// Shared derivation logic for Cardano networks; mainnet flag selects addr/addr_test HRP.
 fn cardano_internal(
     mainnet: bool,
     seed_phrase: String, derivation_path: Option<String>, passphrase: Option<String>,
@@ -336,6 +346,7 @@ fn cardano_internal(
     Ok(DerivationResult { address, public_key_hex, private_key_hex, account, branch, index })
 }
 
+/// UniFFI export: derive Cardano mainnet wallet (addr1… bech32 address) from a seed phrase.
 #[uniffi::export]
 pub fn derive_cardano(
     seed_phrase: String, derivation_path: Option<String>, passphrase: Option<String>,
@@ -344,6 +355,7 @@ pub fn derive_cardano(
     cardano_internal(true, seed_phrase, derivation_path, passphrase, want_address, want_public_key, want_private_key)
 }
 
+/// UniFFI export: derive Cardano Preprod testnet wallet (addr_test1… bech32 address) from a seed phrase.
 #[uniffi::export]
 pub fn derive_cardano_preprod(
     seed_phrase: String, derivation_path: Option<String>, passphrase: Option<String>,

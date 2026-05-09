@@ -11,11 +11,9 @@
 
 [[chains]]
 id                       = "bitcoin"
-chain_id                 = 0
 name                     = "Bitcoin"
 symbol                   = "BTC"
 gas_token_symbol         = "BTC"
-short_label              = "BTC"
 search_keywords          = ["Bitcoin", "BTC"]
 category                 = "bitcoin-family"
 is_evm                   = false
@@ -47,11 +45,9 @@ notable_details          = [
 
 [[chains]]
 id                       = "ethereum"
-chain_id                 = 1
 name                     = "Ethereum"
 symbol                   = "ETH"
 gas_token_symbol         = "ETH"
-short_label              = "ETH"
 search_keywords          = ["Ethereum", "ETH"]
 category                 = "evm-l1"
 is_evm                   = true
@@ -83,11 +79,9 @@ notable_details          = [
 
 [[chains]]
 id                       = "solana"
-chain_id                 = 2
 name                     = "Solana"
 symbol                   = "SOL"
 gas_token_symbol         = "SOL"
-short_label              = "SOL"
 search_keywords          = ["Solana", "SOL"]
 category                 = "other"
 is_evm                   = false
@@ -118,11 +112,9 @@ notable_details          = [
 
 [[chains]]
 id                       = "dogecoin"
-chain_id                 = 3
 name                     = "Dogecoin"
 symbol                   = "DOGE"
 gas_token_symbol         = "DOGE"
-short_label              = "DOGE"
 search_keywords          = ["Dogecoin", "DOGE"]
 category                 = "bitcoin-family"
 is_evm                   = false
@@ -154,11 +146,9 @@ notable_details          = [
 
 [[chains]]
 id                       = "xrp"
-chain_id                 = 4
 name                     = "XRP Ledger"
 symbol                   = "XRP"
 gas_token_symbol         = "XRP"
-short_label              = "XRP"
 search_keywords          = ["XRP Ledger", "XRP"]
 category                 = "other"
 is_evm                   = false
@@ -190,11 +180,9 @@ notable_details          = [
 
 [[chains]]
 id                       = "litecoin"
-chain_id                 = 5
 name                     = "Litecoin"
 symbol                   = "LTC"
 gas_token_symbol         = "LTC"
-short_label              = "LTC"
 search_keywords          = ["Litecoin", "LTC"]
 category                 = "bitcoin-family"
 is_evm                   = false
@@ -226,11 +214,9 @@ notable_details          = [
 
 [[chains]]
 id                       = "bitcoin-cash"
-chain_id                 = 6
 name                     = "Bitcoin Cash"
 symbol                   = "BCH"
 gas_token_symbol         = "BCH"
-short_label              = "BCH"
 search_keywords          = ["Bitcoin Cash", "BCH"]
 category                 = "bitcoin-family"
 is_evm                   = false
@@ -262,11 +248,9 @@ notable_details          = [
 
 [[chains]]
 id                       = "tron"
-chain_id                 = 7
 name                     = "Tron"
 symbol                   = "TRX"
 gas_token_symbol         = "TRX"
-short_label              = "TRX"
 search_keywords          = ["Tron", "TRX"]
 category                 = "other"
 is_evm                   = false
@@ -298,11 +282,9 @@ notable_details          = [
 
 [[chains]]
 id                       = "stellar"
-chain_id                 = 8
 name                     = "Stellar"
 symbol                   = "XLM"
 gas_token_symbol         = "XLM"
-short_label              = "XLM"
 search_keywords          = ["Stellar", "XLM"]
 category                 = "other"
 is_evm                   = false
@@ -334,11 +316,9 @@ notable_details          = [
 
 [[chains]]
 id                       = "cardano"
-chain_id                 = 9
 name                     = "Cardano"
 symbol                   = "ADA"
 gas_token_symbol         = "ADA"
-short_label              = "ADA"
 search_keywords          = ["Cardano", "ADA"]
 category                 = "other"
 is_evm                   = false
@@ -370,11 +350,9 @@ notable_details          = [
 
 [[chains]]
 id                       = "polkadot"
-chain_id                 = 10
 name                     = "Polkadot"
 symbol                   = "DOT"
 gas_token_symbol         = "DOT"
-short_label              = "DOT"
 search_keywords          = ["Polkadot", "DOT"]
 category                 = "other"
 is_evm                   = false
@@ -406,11 +384,9 @@ notable_details          = [
 
 [[chains]]
 id                       = "arbitrum"
-chain_id                 = 11
 name                     = "Arbitrum"
 symbol                   = "ARB"
 gas_token_symbol         = "ETH"
-short_label              = "ARB"
 search_keywords          = ["Arbitrum", "ARB"]
 category                 = "evm-l2"
 is_evm                   = true
@@ -442,11 +418,9 @@ notable_details          = [
 
 [[chains]]
 id                       = "optimism"
-chain_id                 = 12
 name                     = "Optimism"
 symbol                   = "OP"
 gas_token_symbol         = "ETH"
-short_label              = "OP"
 search_keywords          = ["Optimism", "OP"]
 category                 = "evm-l2"
 is_evm                   = true
@@ -478,11 +452,9 @@ notable_details          = [
 
 [[chains]]
 id                       = "avalanche"
-chain_id                 = 13
 name                     = "Avalanche"
 symbol                   = "AVAX"
 gas_token_symbol         = "AVAX"
-short_label              = "AVAX"
 search_keywords          = ["Avalanche", "AVAX"]
 category                 = "evm-l1"
 is_evm                   = true
@@ -514,11 +486,9 @@ notable_details          = [
 
 [[chains]]
 id                       = "sui"
-chain_id                 = 14
 name                     = "Sui"
 symbol                   = "SUI"
 gas_token_symbol         = "SUI"
-short_label              = "SUI"
 search_keywords          = ["Sui", "SUI"]
 category                 = "other"
 is_evm                   = false
@@ -550,11 +520,9 @@ notable_details          = [
 
 [[chains]]
 id                       = "aptos"
-chain_id                 = 15
 name                     = "Aptos"
 symbol                   = "APT"
 gas_token_symbol         = "APT"
-short_label              = "APT"
 search_keywords          = ["Aptos", "APT"]
 category                 = "other"
 is_evm                   = false
@@ -586,11 +554,9 @@ notable_details          = [
 
 [[chains]]
 id                       = "ton"
-chain_id                 = 16
 name                     = "TON"
 symbol                   = "TON"
 gas_token_symbol         = "TON"
-short_label              = "TON"
 search_keywords          = ["TON"]
 category                 = "other"
 is_evm                   = false
@@ -622,11 +588,9 @@ notable_details          = [
 
 [[chains]]
 id                       = "near"
-chain_id                 = 17
 name                     = "NEAR"
 symbol                   = "NEAR"
 gas_token_symbol         = "NEAR"
-short_label              = "NEAR"
 search_keywords          = ["NEAR"]
 category                 = "other"
 is_evm                   = false
@@ -658,11 +622,9 @@ notable_details          = [
 
 [[chains]]
 id                       = "internet-computer"
-chain_id                 = 18
 name                     = "Internet Computer"
 symbol                   = "ICP"
 gas_token_symbol         = "ICP"
-short_label              = "ICP"
 search_keywords          = ["Internet Computer", "ICP"]
 category                 = "other"
 is_evm                   = false
@@ -694,11 +656,9 @@ notable_details          = [
 
 [[chains]]
 id                       = "monero"
-chain_id                 = 19
 name                     = "Monero"
 symbol                   = "XMR"
 gas_token_symbol         = "XMR"
-short_label              = "XMR"
 search_keywords          = ["Monero", "XMR"]
 category                 = "other"
 is_evm                   = false
@@ -730,11 +690,9 @@ notable_details          = [
 
 [[chains]]
 id                       = "base"
-chain_id                 = 20
 name                     = "Base"
-symbol                   = "ETH"
+symbol                   = "BASE"
 gas_token_symbol         = "ETH"
-short_label              = "BASE"
 search_keywords          = ["Base", "ETH"]
 category                 = "evm-l2"
 is_evm                   = true
@@ -766,11 +724,9 @@ notable_details          = [
 
 [[chains]]
 id                       = "ethereum-classic"
-chain_id                 = 21
 name                     = "Ethereum Classic"
 symbol                   = "ETC"
 gas_token_symbol         = "ETC"
-short_label              = "ETC"
 search_keywords          = ["Ethereum Classic", "ETC"]
 category                 = "evm-l1"
 is_evm                   = true
@@ -802,11 +758,9 @@ notable_details          = [
 
 [[chains]]
 id                       = "bitcoin-sv"
-chain_id                 = 22
 name                     = "Bitcoin SV"
 symbol                   = "BSV"
 gas_token_symbol         = "BSV"
-short_label              = "BSV"
 search_keywords          = ["Bitcoin SV", "BSV"]
 category                 = "bitcoin-family"
 is_evm                   = false
@@ -838,11 +792,9 @@ notable_details          = [
 
 [[chains]]
 id                       = "bnb"
-chain_id                 = 23
 name                     = "BNB Chain"
 symbol                   = "BNB"
 gas_token_symbol         = "BNB"
-short_label              = "BNB"
 search_keywords          = ["BNB Chain", "BNB"]
 category                 = "evm-l1"
 is_evm                   = true
@@ -874,11 +826,9 @@ notable_details          = [
 
 [[chains]]
 id                       = "hyperliquid"
-chain_id                 = 24
 name                     = "Hyperliquid"
 symbol                   = "HYPE"
 gas_token_symbol         = "HYPE"
-short_label              = "HYPE"
 search_keywords          = ["Hyperliquid", "HYPE"]
 category                 = "evm-l1"
 is_evm                   = true
@@ -910,11 +860,9 @@ notable_details          = [
 
 [[chains]]
 id                       = "polygon"
-chain_id                 = 25
 name                     = "Polygon"
 symbol                   = "POL"
 gas_token_symbol         = "POL"
-short_label              = "POL"
 search_keywords          = ["Polygon", "POL", "MATIC"]
 category                 = "evm-l1"
 is_evm                   = true
@@ -946,11 +894,9 @@ notable_details          = [
 
 [[chains]]
 id                       = "linea"
-chain_id                 = 26
 name                     = "Linea"
-symbol                   = "ETH"
+symbol                   = "LINEA"
 gas_token_symbol         = "ETH"
-short_label              = "LINEA"
 search_keywords          = ["Linea"]
 category                 = "evm-l2"
 is_evm                   = true
@@ -982,11 +928,9 @@ notable_details          = [
 
 [[chains]]
 id                       = "scroll"
-chain_id                 = 27
 name                     = "Scroll"
-symbol                   = "ETH"
+symbol                   = "SCRL"
 gas_token_symbol         = "ETH"
-short_label              = "SCRL"
 search_keywords          = ["Scroll"]
 category                 = "evm-l2"
 is_evm                   = true
@@ -1018,11 +962,9 @@ notable_details          = [
 
 [[chains]]
 id                       = "blast"
-chain_id                 = 28
 name                     = "Blast"
-symbol                   = "ETH"
+symbol                   = "BLAST"
 gas_token_symbol         = "ETH"
-short_label              = "BLAST"
 search_keywords          = ["Blast"]
 category                 = "evm-l2"
 is_evm                   = true
@@ -1054,11 +996,9 @@ notable_details          = [
 
 [[chains]]
 id                       = "mantle"
-chain_id                 = 29
 name                     = "Mantle"
 symbol                   = "MNT"
 gas_token_symbol         = "MNT"
-short_label              = "MNT"
 search_keywords          = ["Mantle", "MNT"]
 category                 = "evm-l2"
 is_evm                   = true
@@ -1090,11 +1030,9 @@ notable_details          = [
 
 [[chains]]
 id                       = "zcash"
-chain_id                 = 30
 name                     = "Zcash"
 symbol                   = "ZEC"
 gas_token_symbol         = "ZEC"
-short_label              = "ZEC"
 search_keywords          = ["Zcash", "ZEC"]
 category                 = "other"
 is_evm                   = false
@@ -1126,11 +1064,9 @@ notable_details          = [
 
 [[chains]]
 id                       = "bitcoin-gold"
-chain_id                 = 31
 name                     = "Bitcoin Gold"
 symbol                   = "BTG"
 gas_token_symbol         = "BTG"
-short_label              = "BTG"
 search_keywords          = ["Bitcoin Gold", "BTG"]
 category                 = "bitcoin-family"
 is_evm                   = false
@@ -1162,11 +1098,9 @@ notable_details          = [
 
 [[chains]]
 id                       = "decred"
-chain_id                 = 32
 name                     = "Decred"
 symbol                   = "DCR"
 gas_token_symbol         = "DCR"
-short_label              = "DCR"
 search_keywords          = ["Decred", "DCR"]
 category                 = "bitcoin-family"
 is_evm                   = false
@@ -1198,11 +1132,9 @@ notable_details          = [
 
 [[chains]]
 id                       = "kaspa"
-chain_id                 = 33
 name                     = "Kaspa"
 symbol                   = "KAS"
 gas_token_symbol         = "KAS"
-short_label              = "KAS"
 search_keywords          = ["Kaspa", "KAS"]
 category                 = "other"
 is_evm                   = false
@@ -1234,11 +1166,9 @@ notable_details          = [
 
 [[chains]]
 id                       = "sei"
-chain_id                 = 34
 name                     = "Sei"
 symbol                   = "SEI"
 gas_token_symbol         = "SEI"
-short_label              = "SEI"
 search_keywords          = ["Sei", "SEI"]
 category                 = "evm-l1"
 is_evm                   = true
@@ -1269,11 +1199,9 @@ notable_details          = [
 
 [[chains]]
 id                       = "celo"
-chain_id                 = 35
 name                     = "Celo"
 symbol                   = "CELO"
 gas_token_symbol         = "CELO"
-short_label              = "CELO"
 search_keywords          = ["Celo", "CELO"]
 category                 = "evm-l2"
 is_evm                   = true
@@ -1304,11 +1232,9 @@ notable_details          = [
 
 [[chains]]
 id                       = "cronos"
-chain_id                 = 36
 name                     = "Cronos"
 symbol                   = "CRO"
 gas_token_symbol         = "CRO"
-short_label              = "CRO"
 search_keywords          = ["Cronos", "CRO"]
 category                 = "evm-l1"
 is_evm                   = true
@@ -1338,12 +1264,10 @@ notable_details          = [
 # ── opBNB (37) ────────────────────────────────────────────────────────────────
 
 [[chains]]
-id                       = "opBNB"
-chain_id                 = 37
+id                       = "opbnb"
 name                     = "opBNB"
-symbol                   = "BNB"
+symbol                   = "opBNB"
 gas_token_symbol         = "BNB"
-short_label              = "opBNB"
 search_keywords          = ["opBNB", "BNB L2"]
 category                 = "evm-l2"
 is_evm                   = true
@@ -1374,11 +1298,9 @@ notable_details          = [
 
 [[chains]]
 id                       = "zksync-era"
-chain_id                 = 38
 name                     = "zkSync Era"
-symbol                   = "ETH"
+symbol                   = "zkSync"
 gas_token_symbol         = "ETH"
-short_label              = "zkSync"
 search_keywords          = ["zkSync Era", "zkSync"]
 category                 = "evm-l2"
 is_evm                   = true
@@ -1409,11 +1331,9 @@ notable_details          = [
 
 [[chains]]
 id                       = "sonic"
-chain_id                 = 39
 name                     = "Sonic"
 symbol                   = "S"
 gas_token_symbol         = "S"
-short_label              = "S"
 search_keywords          = ["Sonic", "S"]
 category                 = "evm-l1"
 is_evm                   = true
@@ -1444,11 +1364,9 @@ notable_details          = [
 
 [[chains]]
 id                       = "berachain"
-chain_id                 = 40
 name                     = "Berachain"
 symbol                   = "BERA"
 gas_token_symbol         = "BERA"
-short_label              = "BERA"
 search_keywords          = ["Berachain", "BERA"]
 category                 = "evm-l1"
 is_evm                   = true
@@ -1479,11 +1397,9 @@ notable_details          = [
 
 [[chains]]
 id                       = "unichain"
-chain_id                 = 41
 name                     = "Unichain"
-symbol                   = "ETH"
+symbol                   = "UNI L2"
 gas_token_symbol         = "ETH"
-short_label              = "UNI L2"
 search_keywords          = ["Unichain"]
 category                 = "evm-l2"
 is_evm                   = true
@@ -1514,11 +1430,9 @@ notable_details          = [
 
 [[chains]]
 id                       = "ink"
-chain_id                 = 42
 name                     = "Ink"
-symbol                   = "ETH"
+symbol                   = "INK"
 gas_token_symbol         = "ETH"
-short_label              = "INK"
 search_keywords          = ["Ink"]
 category                 = "evm-l2"
 is_evm                   = true
@@ -1549,11 +1463,9 @@ notable_details          = [
 
 [[chains]]
 id                       = "dash"
-chain_id                 = 43
 name                     = "Dash"
 symbol                   = "DASH"
 gas_token_symbol         = "DASH"
-short_label              = "DASH"
 search_keywords          = ["Dash", "DASH"]
 category                 = "bitcoin-family"
 is_evm                   = false
@@ -1585,11 +1497,9 @@ notable_details          = [
 
 [[chains]]
 id                       = "x-layer"
-chain_id                 = 44
 name                     = "X Layer"
-symbol                   = "OKB"
+symbol                   = "X Layer"
 gas_token_symbol         = "OKB"
-short_label              = "X Layer"
 search_keywords          = ["X Layer", "OKB", "OKX"]
 category                 = "evm-l2"
 is_evm                   = true
@@ -1621,11 +1531,9 @@ notable_details          = [
 
 [[chains]]
 id                       = "bittensor"
-chain_id                 = 45
 name                     = "Bittensor"
 symbol                   = "TAO"
 gas_token_symbol         = "TAO"
-short_label              = "TAO"
 search_keywords          = ["Bittensor", "TAO", "subtensor"]
 category                 = "other"
 is_evm                   = false
@@ -1660,11 +1568,9 @@ notable_details          = [
 
 [[chains]]
 id                       = "bitcoin-testnet"
-chain_id                 = 46
 name                     = "Bitcoin Testnet"
 symbol                   = "BTC"
 gas_token_symbol         = "BTC"
-short_label              = "BTC"
 search_keywords          = ["Bitcoin Testnet", "tBTC", "testnet"]
 category                 = "testnet"
 is_evm                   = false
@@ -1689,12 +1595,10 @@ supports_diagnostics        = true
 notable_details          = []
 
 [[chains]]
-id                       = "bitcoin-testnet4"
-chain_id                 = 47
+id                       = "bitcoin-testnet-4"
 name                     = "Bitcoin Testnet4"
 symbol                   = "BTC"
 gas_token_symbol         = "BTC"
-short_label              = "BTC"
 search_keywords          = ["Bitcoin Testnet4", "testnet4"]
 category                 = "testnet"
 is_evm                   = false
@@ -1720,11 +1624,9 @@ notable_details          = []
 
 [[chains]]
 id                       = "bitcoin-signet"
-chain_id                 = 48
 name                     = "Bitcoin Signet"
 symbol                   = "BTC"
 gas_token_symbol         = "BTC"
-short_label              = "BTC"
 search_keywords          = ["Bitcoin Signet", "signet"]
 category                 = "testnet"
 is_evm                   = false
@@ -1750,11 +1652,9 @@ notable_details          = []
 
 [[chains]]
 id                       = "litecoin-testnet"
-chain_id                 = 49
 name                     = "Litecoin Testnet"
 symbol                   = "LTC"
 gas_token_symbol         = "LTC"
-short_label              = "LTC"
 search_keywords          = ["Litecoin Testnet", "tLTC"]
 category                 = "testnet"
 is_evm                   = false
@@ -1780,11 +1680,9 @@ notable_details          = []
 
 [[chains]]
 id                       = "bitcoin-cash-testnet"
-chain_id                 = 50
 name                     = "Bitcoin Cash Testnet"
 symbol                   = "BCH"
 gas_token_symbol         = "BCH"
-short_label              = "BCH"
 search_keywords          = ["Bitcoin Cash Testnet", "tBCH"]
 category                 = "testnet"
 is_evm                   = false
@@ -1810,11 +1708,9 @@ notable_details          = []
 
 [[chains]]
 id                       = "bitcoin-sv-testnet"
-chain_id                 = 51
 name                     = "Bitcoin SV Testnet"
 symbol                   = "BSV"
 gas_token_symbol         = "BSV"
-short_label              = "BSV"
 search_keywords          = ["Bitcoin SV Testnet", "tBSV"]
 category                 = "testnet"
 is_evm                   = false
@@ -1840,11 +1736,9 @@ notable_details          = []
 
 [[chains]]
 id                       = "dogecoin-testnet"
-chain_id                 = 52
 name                     = "Dogecoin Testnet"
 symbol                   = "DOGE"
 gas_token_symbol         = "DOGE"
-short_label              = "DOGE"
 search_keywords          = ["Dogecoin Testnet", "tDOGE"]
 category                 = "testnet"
 is_evm                   = false
@@ -1870,11 +1764,9 @@ notable_details          = []
 
 [[chains]]
 id                       = "zcash-testnet"
-chain_id                 = 53
 name                     = "Zcash Testnet"
 symbol                   = "ZEC"
 gas_token_symbol         = "ZEC"
-short_label              = "ZEC"
 search_keywords          = ["Zcash Testnet"]
 category                 = "testnet"
 is_evm                   = false
@@ -1900,11 +1792,9 @@ notable_details          = []
 
 [[chains]]
 id                       = "decred-testnet"
-chain_id                 = 54
 name                     = "Decred Testnet"
 symbol                   = "DCR"
 gas_token_symbol         = "DCR"
-short_label              = "DCR"
 search_keywords          = ["Decred Testnet"]
 category                 = "testnet"
 is_evm                   = false
@@ -1930,11 +1820,9 @@ notable_details          = []
 
 [[chains]]
 id                       = "kaspa-testnet"
-chain_id                 = 55
 name                     = "Kaspa Testnet"
 symbol                   = "KAS"
 gas_token_symbol         = "KAS"
-short_label              = "KAS"
 search_keywords          = ["Kaspa Testnet"]
 category                 = "testnet"
 is_evm                   = false
@@ -1960,11 +1848,9 @@ notable_details          = []
 
 [[chains]]
 id                       = "dash-testnet"
-chain_id                 = 56
 name                     = "Dash Testnet"
 symbol                   = "DASH"
 gas_token_symbol         = "DASH"
-short_label              = "DASH"
 search_keywords          = ["Dash Testnet"]
 category                 = "testnet"
 is_evm                   = false
@@ -1990,11 +1876,9 @@ notable_details          = []
 
 [[chains]]
 id                       = "ethereum-sepolia"
-chain_id                 = 57
 name                     = "Ethereum Sepolia"
 symbol                   = "ETH"
 gas_token_symbol         = "ETH"
-short_label              = "ETH"
 search_keywords          = ["Ethereum Sepolia", "Sepolia", "ETH"]
 category                 = "testnet"
 is_evm                   = true
@@ -2020,11 +1904,9 @@ notable_details          = []
 
 [[chains]]
 id                       = "ethereum-hoodi"
-chain_id                 = 58
 name                     = "Ethereum Hoodi"
 symbol                   = "ETH"
 gas_token_symbol         = "ETH"
-short_label              = "ETH"
 search_keywords          = ["Ethereum Hoodi", "Hoodi"]
 category                 = "testnet"
 is_evm                   = true
@@ -2050,11 +1932,9 @@ notable_details          = []
 
 [[chains]]
 id                       = "arbitrum-sepolia"
-chain_id                 = 59
 name                     = "Arbitrum Sepolia"
 symbol                   = "ARB"
 gas_token_symbol         = "ETH"
-short_label              = "ARB"
 search_keywords          = ["Arbitrum Sepolia", "Sepolia"]
 category                 = "testnet"
 is_evm                   = true
@@ -2080,11 +1960,9 @@ notable_details          = []
 
 [[chains]]
 id                       = "optimism-sepolia"
-chain_id                 = 60
 name                     = "Optimism Sepolia"
 symbol                   = "OP"
 gas_token_symbol         = "ETH"
-short_label              = "OP"
 search_keywords          = ["Optimism Sepolia", "Sepolia"]
 category                 = "testnet"
 is_evm                   = true
@@ -2110,11 +1988,9 @@ notable_details          = []
 
 [[chains]]
 id                       = "base-sepolia"
-chain_id                 = 61
 name                     = "Base Sepolia"
-symbol                   = "ETH"
+symbol                   = "BASE"
 gas_token_symbol         = "ETH"
-short_label              = "BASE"
 search_keywords          = ["Base Sepolia", "Sepolia"]
 category                 = "testnet"
 is_evm                   = true
@@ -2140,11 +2016,9 @@ notable_details          = []
 
 [[chains]]
 id                       = "bnb-testnet"
-chain_id                 = 62
 name                     = "BNB Chain Testnet"
 symbol                   = "BNB"
 gas_token_symbol         = "BNB"
-short_label              = "BNB"
 search_keywords          = ["BNB Chain Testnet", "Chapel"]
 category                 = "testnet"
 is_evm                   = true
@@ -2170,11 +2044,9 @@ notable_details          = []
 
 [[chains]]
 id                       = "avalanche-fuji"
-chain_id                 = 63
 name                     = "Avalanche Fuji"
 symbol                   = "AVAX"
 gas_token_symbol         = "AVAX"
-short_label              = "AVAX"
 search_keywords          = ["Avalanche Fuji", "Fuji"]
 category                 = "testnet"
 is_evm                   = true
@@ -2200,11 +2072,9 @@ notable_details          = []
 
 [[chains]]
 id                       = "polygon-amoy"
-chain_id                 = 64
 name                     = "Polygon Amoy"
 symbol                   = "POL"
 gas_token_symbol         = "POL"
-short_label              = "POL"
 search_keywords          = ["Polygon Amoy", "Amoy"]
 category                 = "testnet"
 is_evm                   = true
@@ -2230,11 +2100,9 @@ notable_details          = []
 
 [[chains]]
 id                       = "hyperliquid-testnet"
-chain_id                 = 65
 name                     = "Hyperliquid Testnet"
 symbol                   = "HYPE"
 gas_token_symbol         = "HYPE"
-short_label              = "HYPE"
 search_keywords          = ["Hyperliquid Testnet"]
 category                 = "testnet"
 is_evm                   = true
@@ -2260,11 +2128,9 @@ notable_details          = []
 
 [[chains]]
 id                       = "ethereum-classic-mordor"
-chain_id                 = 66
 name                     = "Ethereum Classic Mordor"
 symbol                   = "ETC"
 gas_token_symbol         = "ETC"
-short_label              = "ETC"
 search_keywords          = ["Ethereum Classic Mordor", "Mordor"]
 category                 = "testnet"
 is_evm                   = true
@@ -2290,11 +2156,9 @@ notable_details          = []
 
 [[chains]]
 id                       = "tron-nile"
-chain_id                 = 67
 name                     = "Tron Nile"
 symbol                   = "TRX"
 gas_token_symbol         = "TRX"
-short_label              = "TRX"
 search_keywords          = ["Tron Nile", "Nile"]
 category                 = "testnet"
 is_evm                   = false
@@ -2320,11 +2184,9 @@ notable_details          = []
 
 [[chains]]
 id                       = "solana-devnet"
-chain_id                 = 68
 name                     = "Solana Devnet"
 symbol                   = "SOL"
 gas_token_symbol         = "SOL"
-short_label              = "SOL"
 search_keywords          = ["Solana Devnet", "Devnet"]
 category                 = "testnet"
 is_evm                   = false
@@ -2350,11 +2212,9 @@ notable_details          = []
 
 [[chains]]
 id                       = "xrp-testnet"
-chain_id                 = 69
 name                     = "XRP Ledger Testnet"
 symbol                   = "XRP"
 gas_token_symbol         = "XRP"
-short_label              = "XRP"
 search_keywords          = ["XRP Ledger Testnet"]
 category                 = "testnet"
 is_evm                   = false
@@ -2380,11 +2240,9 @@ notable_details          = []
 
 [[chains]]
 id                       = "stellar-testnet"
-chain_id                 = 70
 name                     = "Stellar Testnet"
 symbol                   = "XLM"
 gas_token_symbol         = "XLM"
-short_label              = "XLM"
 search_keywords          = ["Stellar Testnet"]
 category                 = "testnet"
 is_evm                   = false
@@ -2410,11 +2268,9 @@ notable_details          = []
 
 [[chains]]
 id                       = "cardano-preprod"
-chain_id                 = 71
 name                     = "Cardano Preprod"
 symbol                   = "ADA"
 gas_token_symbol         = "ADA"
-short_label              = "ADA"
 search_keywords          = ["Cardano Preprod", "Preprod"]
 category                 = "testnet"
 is_evm                   = false
@@ -2440,11 +2296,9 @@ notable_details          = []
 
 [[chains]]
 id                       = "sui-testnet"
-chain_id                 = 72
 name                     = "Sui Testnet"
 symbol                   = "SUI"
 gas_token_symbol         = "SUI"
-short_label              = "SUI"
 search_keywords          = ["Sui Testnet"]
 category                 = "testnet"
 is_evm                   = false
@@ -2470,11 +2324,9 @@ notable_details          = []
 
 [[chains]]
 id                       = "aptos-testnet"
-chain_id                 = 73
 name                     = "Aptos Testnet"
 symbol                   = "APT"
 gas_token_symbol         = "APT"
-short_label              = "APT"
 search_keywords          = ["Aptos Testnet"]
 category                 = "testnet"
 is_evm                   = false
@@ -2500,11 +2352,9 @@ notable_details          = []
 
 [[chains]]
 id                       = "ton-testnet"
-chain_id                 = 74
 name                     = "TON Testnet"
 symbol                   = "TON"
 gas_token_symbol         = "TON"
-short_label              = "TON"
 search_keywords          = ["TON Testnet"]
 category                 = "testnet"
 is_evm                   = false
@@ -2530,11 +2380,9 @@ notable_details          = []
 
 [[chains]]
 id                       = "near-testnet"
-chain_id                 = 75
 name                     = "NEAR Testnet"
 symbol                   = "NEAR"
 gas_token_symbol         = "NEAR"
-short_label              = "NEAR"
 search_keywords          = ["NEAR Testnet"]
 category                 = "testnet"
 is_evm                   = false
@@ -2560,11 +2408,9 @@ notable_details          = []
 
 [[chains]]
 id                       = "polkadot-westend"
-chain_id                 = 76
 name                     = "Polkadot Westend"
 symbol                   = "DOT"
 gas_token_symbol         = "DOT"
-short_label              = "DOT"
 search_keywords          = ["Polkadot Westend", "Westend"]
 category                 = "testnet"
 is_evm                   = false
@@ -2590,11 +2436,9 @@ notable_details          = []
 
 [[chains]]
 id                       = "monero-stagenet"
-chain_id                 = 77
 name                     = "Monero Stagenet"
 symbol                   = "XMR"
 gas_token_symbol         = "XMR"
-short_label              = "XMR"
 search_keywords          = ["Monero Stagenet", "Stagenet"]
 category                 = "testnet"
 is_evm                   = false

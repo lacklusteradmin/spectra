@@ -1,8 +1,8 @@
 //! Built-in token registry.
 //!
 //! The source of truth is `core/data/tokens.toml`, embedded at compile time.
-//! Call [`list_tokens`] to get typed token entries for a given chain_id
-//! (or all chains when `chain_id == u32::MAX`).
+//! Call [`list_tokens`] to get typed token entries for a given chain id string
+//! (or all chains when the empty string `""` is passed).
 
 use std::sync::LazyLock;
 use serde::{Deserialize, Serialize};
@@ -22,7 +22,6 @@ struct TomlFile {
 #[derive(Debug, Deserialize)]
 struct TomlToken {
     chain:           String,
-    chain_id:        u32,
     name:            String,
     symbol:          String,
     standard:        String,
@@ -43,7 +42,6 @@ struct TomlToken {
 #[derive(Debug, Clone, Serialize, uniffi::Record)]
 pub struct TokenEntry {
     pub chain:           String,
-    pub chain_id:        u32,
     pub name:            String,
     pub symbol:          String,
     pub token_standard:  String,
@@ -69,7 +67,6 @@ static CATALOG: LazyLock<Vec<TokenEntry>> = LazyLock::new(|| {
         .into_iter()
         .map(|t| TokenEntry {
             chain:           t.chain,
-            chain_id:        t.chain_id,
             name:            t.name,
             symbol:          t.symbol,
             token_standard:  t.standard,
@@ -89,13 +86,13 @@ static CATALOG: LazyLock<Vec<TokenEntry>> = LazyLock::new(|| {
 // Public API
 // ----------------------------------------------------------------
 
-/// Return token entries for `chain_id`, or all chains when `chain_id == u32::MAX`.
+/// Return token entries for `chain_id`, or all chains when `chain_id` is `""`.
 #[uniffi::export]
-pub fn list_tokens(chain_id: u32) -> Vec<TokenEntry> {
-    if chain_id == u32::MAX {
+pub fn list_tokens(chain_id: String) -> Vec<TokenEntry> {
+    if chain_id.is_empty() {
         CATALOG.clone()
     } else {
-        CATALOG.iter().filter(|t| t.chain_id == chain_id).cloned().collect()
+        CATALOG.iter().filter(|t| t.chain == chain_id).cloned().collect()
     }
 }
 

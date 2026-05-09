@@ -4,6 +4,7 @@
 
 // ── Address validation (preserved from prior file) ───────────────────────
 
+// Base58check-decode a DOGE address and return the 20-byte pubkey hash.
 pub(crate) fn decode_doge_address(address: &str) -> Result<[u8; 20], String> {
     let decoded = bs58::decode(address)
         .with_check(None)
@@ -17,6 +18,7 @@ pub(crate) fn decode_doge_address(address: &str) -> Result<[u8; 20], String> {
     Ok(hash)
 }
 
+// Build the DOGE P2PKH locking script for the given 20-byte pubkey hash.
 pub(crate) fn p2pkh_script(pubkey_hash: &[u8; 20]) -> Result<Vec<u8>, String> {
     Ok(vec![
         0x76, 0xa9, 0x14, pubkey_hash[0], pubkey_hash[1], pubkey_hash[2], pubkey_hash[3],
@@ -37,12 +39,14 @@ use crate::SpectraBridgeError;
 const DOGE_MAINNET_VERSION: u8 = 0x1e;
 const DOGE_TESTNET_VERSION: u8 = 0x71;
 
+// Build a DOGE P2PKH address: base58check(version || hash160(pubkey)).
 fn doge_p2pkh_address(version: u8, pubkey: &PublicKey) -> String {
     let mut payload = vec![version];
     payload.extend_from_slice(&hash160(&pubkey.serialize()));
     base58check_encode(&payload)
 }
 
+/// BIP-39 → secp256k1 keypair → DOGE mainnet P2PKH address.
 pub(crate) fn derive_from_seed_phrase(
     seed_phrase: &str, derivation_path: &str, passphrase: Option<&str>,
     want_address: bool, want_public_key: bool, want_private_key: bool,
@@ -55,6 +59,7 @@ pub(crate) fn derive_from_seed_phrase(
     ))
 }
 
+/// BIP-39 → secp256k1 keypair → DOGE testnet P2PKH address.
 pub(crate) fn derive_from_seed_phrase_testnet(
     seed_phrase: &str, derivation_path: &str, passphrase: Option<&str>,
     want_address: bool, want_public_key: bool, want_private_key: bool,
@@ -67,6 +72,7 @@ pub(crate) fn derive_from_seed_phrase_testnet(
     ))
 }
 
+// Shared body for derive_dogecoin / derive_dogecoin_testnet; rejects non-P2PKH script types.
 fn doge_internal(
     version: u8, seed_phrase: String, derivation_path: String, passphrase: Option<String>,
     script_type: BitcoinScriptType,
@@ -87,6 +93,7 @@ fn doge_internal(
     })
 }
 
+/// UniFFI export: derive Dogecoin mainnet keys (P2PKH only).
 #[uniffi::export]
 pub fn derive_dogecoin(
     seed_phrase: String, derivation_path: String, passphrase: Option<String>,
@@ -96,6 +103,7 @@ pub fn derive_dogecoin(
     doge_internal(DOGE_MAINNET_VERSION, seed_phrase, derivation_path, passphrase, script_type, want_address, want_public_key, want_private_key)
 }
 
+/// UniFFI export: derive Dogecoin testnet keys.
 #[uniffi::export]
 pub fn derive_dogecoin_testnet(
     seed_phrase: String, derivation_path: String, passphrase: Option<String>,
@@ -105,6 +113,7 @@ pub fn derive_dogecoin_testnet(
     doge_internal(DOGE_TESTNET_VERSION, seed_phrase, derivation_path, passphrase, script_type, want_address, want_public_key, want_private_key)
 }
 
+/// UniFFI export: derive Dogecoin address/pubkey directly from a hex private key.
 #[uniffi::export]
 pub fn derive_dogecoin_from_private_key(
     private_key_hex: String, want_address: bool, want_public_key: bool,

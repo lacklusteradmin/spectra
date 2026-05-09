@@ -110,8 +110,8 @@ pub struct BroadcastReceipt {
 /// Unified request for `WalletService::execute_send`.
 #[derive(Debug, Clone, uniffi::Record)]
 pub struct SendExecutionRequest {
-    /// Spectra chain ID matching `sign_and_send` routing (0 = BTC, 1 = ETH, …).
-    pub chain_id: u32,
+    /// Spectra chain ID string (e.g. "bitcoin", "ethereum").
+    pub chain_id: String,
     /// Chain display name used to select the derivation function ("Bitcoin", "Ethereum", …).
     pub chain_name: String,
     /// BIP-32/SLIP-10 derivation path (e.g. "m/84'/0'/0'/0/0").

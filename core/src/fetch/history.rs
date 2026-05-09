@@ -27,14 +27,14 @@ pub struct ChainHistoryEntry {
 /// Convert a raw history JSON string (as returned by `fetch_history`) into
 /// normalized `ChainHistoryEntry` records that Swift can consume without
 /// any chain-specific parsing logic.
-pub fn normalize_chain_history(chain_id: u32, raw_json: &str) -> Vec<ChainHistoryEntry> {
+pub fn normalize_chain_history(chain_id: &str, raw_json: &str) -> Vec<ChainHistoryEntry> {
     let Ok(value) = serde_json::from_str::<Value>(raw_json) else {
         return vec![];
     };
     let Value::Array(arr) = &value else {
         return vec![];
     };
-    let Some(chain) = Chain::from_id(chain_id) else {
+    let Some(chain) = Chain::from_str_id(chain_id) else {
         return vec![];
     };
     let (asset_name, symbol, chain_name) = history_chain_meta(chain);

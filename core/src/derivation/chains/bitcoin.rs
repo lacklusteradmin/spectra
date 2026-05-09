@@ -21,6 +21,7 @@ use zeroize::Zeroizing;
 
 type HmacSha512 = Hmac<Sha512>;
 
+// SHA-256 of the input bytes; used internally by hash160 and the Taproot tweak.
 pub(crate) fn sha256(bytes: &[u8]) -> [u8; 32] {
     let mut hasher = Sha256::new();
     hasher.update(bytes);
@@ -41,10 +42,12 @@ pub(crate) fn hash160(bytes: &[u8]) -> [u8; 20] {
     result
 }
 
+// Base58Check-encode a payload (appends a 4-byte SHA-256² checksum before encoding).
 pub(crate) fn base58check_encode(payload: &[u8]) -> String {
     bs58::encode(payload).with_check().into_string()
 }
 
+// Decode a Base58Check string, verify the 4-byte SHA-256² checksum, and return the payload.
 pub(crate) fn base58check_decode(s: &str) -> Result<Vec<u8>, String> {
     bs58::decode(s)
         .with_check(None)
@@ -54,6 +57,7 @@ pub(crate) fn base58check_decode(s: &str) -> Result<Vec<u8>, String> {
 
 // ── BIP-39 ───────────────────────────────────────────────────────────────
 
+// Map locale string ("en", "zh-cn", etc.) to BIP-39 wordlist; defaults to English.
 fn resolve_bip39_language(name: Option<&str>) -> Result<Language, String> {
     let value = match name {
         Some(value) if !value.trim().is_empty() => value.trim().to_ascii_lowercase(),
@@ -83,6 +87,7 @@ fn resolve_bip39_language(name: Option<&str>) -> Result<Language, String> {
     }
 }
 
+// BIP-39 mnemonic → 64-byte seed via NFKD normalization and PBKDF2-HMAC-SHA512.
 pub(crate) fn derive_bip39_seed(
     seed_phrase: &str,
     passphrase: &str,
@@ -117,6 +122,7 @@ pub(crate) fn derive_bip39_seed(
 
 pub(crate) const HARDENED_OFFSET: u32 = 0x80000000;
 
+// Parse a BIP-32 derivation path string ("m/44'/0'/0'/0/0") into a list of child index integers.
 pub(crate) fn parse_bip32_path(path: &str) -> Result<Vec<u32>, String> {
     let trimmed = path.trim().trim_start_matches('m').trim_start_matches('M');
     let trimmed = trimmed.trim_start_matches('/');
@@ -189,6 +195,7 @@ impl ExtendedPrivateKey {
         })
     }
 
+    // Compute the 4-byte fingerprint of this key's public key (first 4 bytes of hash160(pubkey)).
     pub fn fingerprint(&self, secp: &Secp256k1<All>) -> [u8; 4] {
         let pk = PublicKey::from_secret_key(secp, &self.private_key);
         let h = hash160(&pk.serialize());
@@ -197,6 +204,7 @@ impl ExtendedPrivateKey {
         fp
     }
 
+    // Derive a BIP-32 child key; hardened indices use private key as input, non-hardened use public key.
     pub fn derive_child(&self, secp: &Secp256k1<All>, index: u32) -> Result<Self, String> {
         let mut mac = HmacSha512::new_from_slice(&self.chain_code)
             .map_err(|e| format!("HMAC init: {e}"))?;
@@ -233,6 +241,7 @@ impl ExtendedPrivateKey {
         })
     }
 
+    // Walk the full BIP-32 derivation path by applying derive_child for each index.
     pub fn derive_path(&self, secp: &Secp256k1<All>, path: &[u32]) -> Result<Self, String> {
         let mut key = self.clone();
         for &index in path {
@@ -241,6 +250,7 @@ impl ExtendedPrivateKey {
         Ok(key)
     }
 
+    // Convert this extended private key to its corresponding extended public key (neutered).
     pub fn to_neutered(&self, secp: &Secp256k1<All>) -> ExtendedPublicKey {
         ExtendedPublicKey {
             depth: self.depth,
@@ -253,6 +263,7 @@ impl ExtendedPrivateKey {
 }
 
 impl ExtendedPublicKey {
+    // Compute the 4-byte fingerprint of this extended public key (first 4 bytes of hash160(pubkey)).
     pub fn fingerprint(&self) -> [u8; 4] {
         let h = hash160(&self.public_key.serialize());
         let mut fp = [0u8; 4];
@@ -294,6 +305,7 @@ impl ExtendedPublicKey {
         })
     }
 
+    // Serialize this extended public key to an xpub base58check string with the given version bytes.
     pub fn to_xpub_string(&self, version: [u8; 4]) -> String {
         encode_extended_key(
             version,
@@ -326,6 +338,7 @@ impl ExtendedPublicKey {
     }
 }
 
+// Serialize a BIP-32 extended key into a 78-byte base58check payload with version, depth, and child metadata.
 fn encode_extended_key(
     version: [u8; 4],
     depth: u8,
@@ -344,6 +357,7 @@ fn encode_extended_key(
     base58check_encode(&payload)
 }
 
+// Decode an xpub/xprv base58check string into its component fields (version, depth, fingerprint, child number, chain code, key).
 fn decode_extended_key(
     s: &str,
 ) -> Result<([u8; 4], u8, [u8; 4], u32, [u8; 32], [u8; 33]), String> {
@@ -395,6 +409,7 @@ pub(crate) const BTC_TESTNET: BitcoinNetworkParams = BitcoinNetworkParams {
     bech32_hrp: "tb",
 };
 
+// Encode a P2PKH address: version_byte || hash160(pubkey), base58check-encoded.
 pub(crate) fn encode_p2pkh(params: &BitcoinNetworkParams, compressed_pubkey: &[u8]) -> String {
     let mut payload = Vec::with_capacity(21);
     payload.push(params.p2pkh_version);
@@ -402,6 +417,7 @@ pub(crate) fn encode_p2pkh(params: &BitcoinNetworkParams, compressed_pubkey: &[u
     base58check_encode(&payload)
 }
 
+// Encode a P2SH-P2WPKH (wrapped SegWit) address: hash160(redeemScript) with the P2SH version byte.
 pub(crate) fn encode_p2sh_p2wpkh(params: &BitcoinNetworkParams, compressed_pubkey: &[u8]) -> String {
     // redeemScript = OP_0 <20-byte pubkey hash>
     let mut redeem = Vec::with_capacity(22);
@@ -414,6 +430,7 @@ pub(crate) fn encode_p2sh_p2wpkh(params: &BitcoinNetworkParams, compressed_pubke
     base58check_encode(&payload)
 }
 
+// Encode a P2WPKH (native SegWit v0) bech32 address from a compressed public key.
 pub(crate) fn encode_p2wpkh(
     params: &BitcoinNetworkParams,
     compressed_pubkey: &[u8],
@@ -467,6 +484,7 @@ pub(crate) fn derive_secp_keypair(
     Ok((public_key, xpriv.private_key.secret_bytes()))
 }
 
+// Dispatch to the correct address encoder (P2PKH / P2SH-P2WPKH / P2WPKH / P2TR) by script type.
 fn encode_address_inner(
     params: BitcoinNetworkParams,
     script_type: BitcoinScriptType,
@@ -511,6 +529,7 @@ pub(crate) fn derive_from_seed_phrase(
 
 // ── UniFFI exports ────────────────────────────────────────────────────────
 
+// Validate and decode a 64-character hex private key string into 32 raw bytes.
 fn decode_privkey_hex(hex_str: &str) -> Result<[u8; 32], SpectraBridgeError> {
     let trimmed = hex_str.trim();
     if trimmed.len() != 64 {
@@ -524,6 +543,7 @@ fn decode_privkey_hex(hex_str: &str) -> Result<[u8; 32], SpectraBridgeError> {
     Ok(out)
 }
 
+// Shared derivation logic for all Bitcoin networks; params selects mainnet/testnet version bytes.
 fn bitcoin_export_internal(
     params: BitcoinNetworkParams,
     script_type: BitcoinScriptType,
@@ -542,6 +562,7 @@ fn bitcoin_export_internal(
     Ok(DerivationResult { address, public_key_hex, private_key_hex, account, branch, index })
 }
 
+/// UniFFI export: derive Bitcoin mainnet wallet (P2PKH/P2SH-P2WPKH/P2WPKH/P2TR) from a seed phrase.
 #[uniffi::export]
 pub fn derive_bitcoin(
     seed_phrase: String, derivation_path: String, passphrase: Option<String>,
@@ -551,6 +572,7 @@ pub fn derive_bitcoin(
     bitcoin_export_internal(BTC_MAINNET, script_type, seed_phrase, derivation_path, passphrase, want_address, want_public_key, want_private_key)
 }
 
+/// UniFFI export: derive Bitcoin testnet wallet from a seed phrase.
 #[uniffi::export]
 pub fn derive_bitcoin_testnet(
     seed_phrase: String, derivation_path: String, passphrase: Option<String>,
@@ -560,6 +582,7 @@ pub fn derive_bitcoin_testnet(
     bitcoin_export_internal(BTC_TESTNET, script_type, seed_phrase, derivation_path, passphrase, want_address, want_public_key, want_private_key)
 }
 
+/// UniFFI export: derive Bitcoin testnet4 wallet from a seed phrase.
 #[uniffi::export]
 pub fn derive_bitcoin_testnet4(
     seed_phrase: String, derivation_path: String, passphrase: Option<String>,
@@ -569,6 +592,7 @@ pub fn derive_bitcoin_testnet4(
     bitcoin_export_internal(BTC_TESTNET, script_type, seed_phrase, derivation_path, passphrase, want_address, want_public_key, want_private_key)
 }
 
+/// UniFFI export: derive Bitcoin signet wallet from a seed phrase.
 #[uniffi::export]
 pub fn derive_bitcoin_signet(
     seed_phrase: String, derivation_path: String, passphrase: Option<String>,
@@ -578,6 +602,7 @@ pub fn derive_bitcoin_signet(
     bitcoin_export_internal(BTC_TESTNET, script_type, seed_phrase, derivation_path, passphrase, want_address, want_public_key, want_private_key)
 }
 
+/// UniFFI export: derive a Bitcoin mainnet address and public key from a raw private key hex string.
 #[uniffi::export]
 pub fn derive_bitcoin_from_private_key(
     private_key_hex: String, script_type: BitcoinScriptType,
@@ -614,6 +639,7 @@ pub(crate) enum ParsedBitcoinAddress {
     SegWit { network: BitcoinNetworkKind },
 }
 
+// Parse a Bitcoin address as SegWit (bech32/bech32m) or legacy (base58check) and return its network kind.
 pub(crate) fn parse_bitcoin_address(s: &str) -> Result<ParsedBitcoinAddress, String> {
     // SegWit (bech32 / bech32m) — HRP is lowercase "bc" or "tb".
     if let Ok((hrp, _witver, _program)) = bech32::segwit::decode(s) {

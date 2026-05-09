@@ -18,6 +18,7 @@ use zeroize::Zeroizing;
 
 /// Derive (private_spend, public_spend, private_view, public_view) from
 /// a 32-byte BIP-39 seed prefix.
+/// Expand a 32-byte spend seed into (private_spend, public_spend, private_view, public_view) via sc_reduce32 + Keccak256.
 pub(crate) fn derive_monero_keys_from_spend_seed(
     spend_seed: &[u8; 32],
 ) -> Result<([u8; 32], [u8; 32], [u8; 32], [u8; 32]), String> {
@@ -45,6 +46,7 @@ pub(crate) fn derive_monero_keys_from_spend_seed(
 /// Encode a Monero standard address: `network_byte || public_spend (32) ||
 /// public_view (32) || keccak256(prev)[0..4]`, then chunked Base58.
 /// Network byte: 0x12 for `Chain::Monero`, 0x18 for `Chain::MoneroStagenet`.
+/// Encode a Monero standard address from public spend + view keys with the given network byte.
 pub(crate) fn encode_monero_main_address(
     public_spend: &[u8; 32],
     public_view: &[u8; 32],
@@ -64,6 +66,7 @@ pub(crate) fn encode_monero_main_address(
 /// Monero's chunked Base58: split the input into 8-byte blocks, each
 /// encoding to a fixed-width 11-char chunk. The alphabet differs in
 /// ordering from BIP-58 but uses the same 58 characters.
+/// Monero chunked Base58: split input into 8-byte blocks, encode each to a fixed-width 11-char chunk.
 pub(crate) fn monero_base58_encode(data: &[u8]) -> String {
     const ALPHABET: &[u8; 58] =
         b"123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz";
@@ -108,6 +111,7 @@ pub(crate) fn monero_base58_encode(data: &[u8]) -> String {
 
 // ── BIP-39 ───────────────────────────────────────────────────────────────
 
+// Map locale string ("en", "zh-cn", etc.) to BIP-39 wordlist; defaults to English.
 fn resolve_bip39_language(name: Option<&str>) -> Result<Language, String> {
     let value = match name {
         Some(value) if !value.trim().is_empty() => value.trim().to_ascii_lowercase(),
@@ -130,6 +134,7 @@ fn resolve_bip39_language(name: Option<&str>) -> Result<Language, String> {
     }
 }
 
+// BIP-39 mnemonic → 64-byte seed via NFKD normalization and PBKDF2-HMAC-SHA512.
 fn derive_bip39_seed(
     seed_phrase: &str,
     passphrase: &str,
@@ -160,6 +165,7 @@ fn derive_bip39_seed(
     Ok(seed)
 }
 
+/// BIP-39 seed → Monero spend/view keypair → chunked-base58 address (0x12 mainnet, 0x18 stagenet).
 pub(crate) fn derive_from_seed_phrase(
     is_mainnet: bool,
     seed_phrase: &str,
@@ -200,6 +206,7 @@ pub(crate) fn derive_from_seed_phrase(
 use crate::derivation::types::DerivationResult;
 use crate::SpectraBridgeError;
 
+/// UniFFI export: derive Monero mainnet keys from a BIP-39 seed phrase.
 #[uniffi::export]
 pub fn derive_monero(
     seed_phrase: String,
@@ -210,6 +217,7 @@ pub fn derive_monero(
     Ok(DerivationResult { address, public_key_hex, private_key_hex, account: 0, branch: 0, index: 0 })
 }
 
+/// UniFFI export: derive Monero stagenet keys from a BIP-39 seed phrase.
 #[uniffi::export]
 pub fn derive_monero_stagenet(
     seed_phrase: String,

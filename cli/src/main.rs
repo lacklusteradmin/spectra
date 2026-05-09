@@ -1023,24 +1023,18 @@ fn cmd_delete() {
 
 // ─── Chain-name → Chain enum mapping ────────────────────────────────────────
 
-fn chain_id_for_name(name: &str) -> Option<u32> {
+fn chain_id_for_name(name: &str) -> Option<String> {
     use spectra_core::registry::Chain;
     let n = name.trim();
-    for id in 0..=29u32 {
-        if let Some(c) = Chain::from_id(id) {
-            if c.chain_display_name().eq_ignore_ascii_case(n)
-                || c.coin_name().eq_ignore_ascii_case(n)
-            {
-                return Some(c.id());
-            }
-        }
-    }
-    None
+    Chain::all().find(|c| {
+        c.chain_display_name().eq_ignore_ascii_case(n)
+            || c.coin_name().eq_ignore_ascii_case(n)
+    }).map(|c| c.str_id().to_string())
 }
 
-fn chain_native_symbol(chain_id: u32) -> &'static str {
+fn chain_native_symbol(chain_id: &str) -> &'static str {
     use spectra_core::registry::Chain;
-    Chain::from_id(chain_id).map(|c| c.coin_symbol()).unwrap_or("?")
+    Chain::from_str_id(chain_id).map(|c| c.coin_symbol()).unwrap_or("?")
 }
 
 // ─── Wallet picker (shared by balance/history/staking) ──────────────────────
@@ -1083,7 +1077,7 @@ fn endpoints_for_chain(chain_name: &str, role_mask: u32) -> Vec<String> {
 }
 
 fn build_service_for_chain(
-    chain_id: u32,
+    chain_id: String,
     chain_name: &str,
     role_mask: u32,
 ) -> Result<std::sync::Arc<spectra_core::service::WalletService>, String> {
@@ -1119,18 +1113,18 @@ fn cmd_balance(rt: &tokio::runtime::Runtime) {
 
     println!("  {} {}", muted("→"), faint(&format!("fetching {}", wallet.address)));
 
-    let service = match build_service_for_chain(chain_id, &wallet.chain_name, ENDPOINT_ROLE_BALANCE | ENDPOINT_ROLE_RPC) {
+    let service = match build_service_for_chain(chain_id.clone(), &wallet.chain_name, ENDPOINT_ROLE_BALANCE | ENDPOINT_ROLE_RPC) {
         Ok(s) => s,
         Err(e) => { eprintln!("  {} {e}", accent("✗").bold()); return; }
     };
 
     let result = rt.block_on(async {
-        service.fetch_native_balance_summary(chain_id, wallet.address.clone()).await
+        service.fetch_native_balance_summary(chain_id.clone(), wallet.address.clone()).await
     });
 
     match result {
         Ok(summary) => {
-            let symbol = chain_native_symbol(chain_id);
+            let symbol = chain_native_symbol(&chain_id);
             println!();
             println!("  {}  {} {}",
                 chain_paint("●", &wallet.chain_name).bold(),
@@ -1174,7 +1168,7 @@ fn cmd_history(rt: &tokio::runtime::Runtime) {
     println!("  {} {}", muted("→"), faint(&format!("fetching {}", wallet.address)));
 
     let service = match build_service_for_chain(
-        chain_id, &wallet.chain_name,
+        chain_id.clone(), &wallet.chain_name,
         ENDPOINT_ROLE_HISTORY | ENDPOINT_ROLE_BALANCE | ENDPOINT_ROLE_RPC,
     ) {
         Ok(s) => s,
@@ -1365,7 +1359,7 @@ fn cmd_receive() {
     section_tinted("Receive", &format!("{} address", wallet.chain_name), (r, g, b));
     println!("  {}", wallet.address.white().bold());
     println!();
-    println!("  {} {}", muted("symbol "), chain_paint(chain_native_symbol(chain_id_for_name(&wallet.chain_name).unwrap_or(0)), &wallet.chain_name).bold());
+    println!("  {} {}", muted("symbol "), chain_paint(chain_native_symbol(chain_id_for_name(&wallet.chain_name).as_deref().unwrap_or("")), &wallet.chain_name).bold());
     if let Some(ref p) = wallet.derivation_path {
         println!("  {} {}", muted("path   "), faint(p));
     }
@@ -1493,7 +1487,7 @@ fn cmd_send(rt: &tokio::runtime::Runtime) {
     };
 
     let (r, g, b) = chain_rgb(&wallet.chain_name);
-    section_tinted("Send", &format!("transfer {} from {}", chain_native_symbol(chain_id), wallet.name), (r, g, b));
+    section_tinted("Send", &format!("transfer {} from {}", chain_native_symbol(&chain_id), wallet.name), (r, g, b));
 
     let to_address: String = match Input::<String>::new()
         .with_prompt("To address")
@@ -1507,7 +1501,7 @@ fn cmd_send(rt: &tokio::runtime::Runtime) {
     }
 
     let amount_str: String = match Input::<String>::new()
-        .with_prompt(format!("Amount ({})", chain_native_symbol(chain_id)))
+        .with_prompt(format!("Amount ({})", chain_native_symbol(&chain_id)))
         .interact_text()
     {
         Ok(a) => a.trim().to_string(),
@@ -1521,7 +1515,7 @@ fn cmd_send(rt: &tokio::runtime::Runtime) {
     println!();
     println!("  {} {} {} {}",
         muted("→ sending"),
-        format!("{} {}", amount, chain_native_symbol(chain_id)).white().bold(),
+        format!("{} {}", amount, chain_native_symbol(&chain_id)).white().bold(),
         muted("to"),
         accent_soft(&to_address),
     );
@@ -1563,7 +1557,7 @@ fn cmd_send(rt: &tokio::runtime::Runtime) {
 
     // Build service with broadcast endpoints
     let service = match build_service_for_chain(
-        chain_id, &wallet.chain_name,
+        chain_id.clone(), &wallet.chain_name,
         ENDPOINT_ROLE_BALANCE | ENDPOINT_ROLE_RPC | (1 << 5) /* BROADCAST */ | (1 << 4) /* FEE */ | (1 << 3) /* UTXO */,
     ) {
         Ok(s) => s,
@@ -1643,7 +1637,6 @@ fn cmd_price(rt: &tokio::runtime::Runtime) {
         Ok(Some(i)) => i,
         _ => { println!("{}", muted("cancelled")); return; }
     };
-    let _ = Chain::from_id(0); // silence import-only warning if any
     print_price_for_chain(rt, &chain_names[idx]);
 }
 
@@ -1656,7 +1649,7 @@ fn print_price_for_chain(rt: &tokio::runtime::Runtime, chain_name: &str) {
             return;
         }
     };
-    let chain = Chain::from_id(chain_id).unwrap();
+    let chain = Chain::from_str_id(&chain_id).unwrap();
     let symbol = chain.coin_symbol();
     let coin_gecko_id = chain.coin_gecko_id();
 
@@ -1714,7 +1707,7 @@ fn cmd_portfolio(rt: &tokio::runtime::Runtime) {
     let mut symbol_for_chain: HashMap<String, String> = HashMap::new();
     for c in &unique_chains {
         if let Some(id) = chain_id_for_name(c) {
-            let chain = Chain::from_id(id).unwrap();
+            let chain = Chain::from_str_id(&id).unwrap();
             requests.push(spectra_core::price::PriceRequestCoin {
                 holding_key: c.clone(),
                 symbol: chain.coin_symbol().to_string(),
@@ -1732,7 +1725,7 @@ fn cmd_portfolio(rt: &tokio::runtime::Runtime) {
     let mut total_usd = 0.0;
     for w in &store.wallets {
         let chain_id = match chain_id_for_name(&w.chain_name) { Some(i) => i, None => continue };
-        let svc = match build_service_for_chain(chain_id, &w.chain_name, ENDPOINT_ROLE_BALANCE | ENDPOINT_ROLE_RPC) {
+        let svc = match build_service_for_chain(chain_id.clone(), &w.chain_name, ENDPOINT_ROLE_BALANCE | ENDPOINT_ROLE_RPC) {
             Ok(s) => s,
             Err(_) => continue,
         };

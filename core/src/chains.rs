@@ -20,11 +20,9 @@ struct TomlFile {
 #[derive(Debug, Deserialize)]
 struct TomlChain {
     id:                      String,
-    chain_id:                u32,
     name:                    String,
     symbol:                  String,
     gas_token_symbol:        String,
-    short_label:             String,
     search_keywords:         Vec<String>,
     category:                String,
     is_evm:                  bool,
@@ -56,11 +54,9 @@ struct TomlChain {
 #[derive(Debug, Clone, Serialize, uniffi::Record)]
 pub struct ChainEntry {
     pub id:                      String,
-    pub chain_id:                u32,
     pub name:                    String,
     pub symbol:                  String,
     pub gas_token_symbol:        String,
-    pub short_label:             String,
     pub search_keywords:         Vec<String>,
     pub category:                String,
     pub is_evm:                  bool,
@@ -97,11 +93,9 @@ static CATALOG: LazyLock<Vec<ChainEntry>> = LazyLock::new(|| {
         .into_iter()
         .map(|c| ChainEntry {
             id:                      c.id,
-            chain_id:                c.chain_id,
             name:                    c.name,
             symbol:                  c.symbol,
             gas_token_symbol:        c.gas_token_symbol,
-            short_label:             c.short_label,
             search_keywords:         c.search_keywords,
             category:                c.category,
             is_evm:                  c.is_evm,
@@ -143,7 +137,7 @@ pub(crate) fn catalog() -> &'static [ChainEntry] {
     &CATALOG
 }
 
-/// Return the entry for a specific chain_id, or `None` if not found.
-pub fn chain_by_id(chain_id: u32) -> Option<&'static ChainEntry> {
-    CATALOG.iter().find(|c| c.chain_id == chain_id)
+/// Return the entry for a specific string id, or `None` if not found.
+pub fn chain_by_str_id(id: &str) -> Option<&'static ChainEntry> {
+    CATALOG.iter().find(|c| c.id == id)
 }
