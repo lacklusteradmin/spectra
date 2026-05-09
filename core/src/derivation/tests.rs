@@ -354,7 +354,7 @@ fn monero_address_structure() {
     let pub_hex = result.public_key_hex.expect("monero pub");
     let address = result.address.expect("monero address");
 
-    assert_eq!(priv_hex.len(), 64, "spend key = 32 bytes hex");
+    assert_eq!(priv_hex.len(), 128, "spend+view privkeys = 64 bytes hex");
     assert_eq!(pub_hex.len(), 128, "spend+view pubs = 64 bytes hex");
     assert_eq!(address.len(), 95, "Monero mainnet address is 95 chars");
     assert!(address.starts_with('4'), "Monero mainnet starts with '4', got {address}");
@@ -375,7 +375,7 @@ fn monero_keys_match_reduced_bip39_seed_prefix() {
 
     let result = derive_monero(MNEMONIC.into(), false, false, true).expect("monero");
     let priv_hex = result.private_key_hex.expect("priv");
-    assert_eq!(priv_hex, expected);
+    assert_eq!(&priv_hex[..64], expected, "private_key_hex[0..64] must be sc_reduce32(seed prefix)");
 }
 
 #[test]
@@ -388,15 +388,18 @@ fn monero_view_key_is_keccak_of_spend() {
     let result = derive_monero(MNEMONIC.into(), false, true, true).expect("monero");
     let pub_hex = result.public_key_hex.expect("pub");
     let priv_bytes = hex::decode(result.private_key_hex.expect("priv")).expect("decode priv");
+    assert_eq!(priv_bytes.len(), 64, "private_key_hex must encode spend||view = 64 bytes");
     let mut spend = [0u8; 32];
-    spend.copy_from_slice(&priv_bytes);
+    spend.copy_from_slice(&priv_bytes[..32]);
 
     use sha3::{Digest, Keccak256};
     let spend_hash: [u8; 32] = Keccak256::digest(&spend).into();
     let view_scalar = DalekScalar::from_bytes_mod_order(spend_hash);
+    let private_view_expected = view_scalar.to_bytes();
     let public_view = (view_scalar * ED25519_BASEPOINT_POINT).compress().to_bytes();
 
-    assert_eq!(&pub_hex[64..128], hex::encode(public_view));
+    assert_eq!(&pub_hex[64..128], hex::encode(public_view), "public_view key mismatch");
+    assert_eq!(&priv_bytes[32..], private_view_expected, "private_view must be sc_reduce32(Keccak256(spend))");
 }
 
 #[test]
@@ -406,6 +409,41 @@ fn monero_passphrase_changes_keys() {
     let seed_empty = derive_bip39_seed(MNEMONIC, "", 0, None, None).unwrap();
     let seed_trezor = derive_bip39_seed(MNEMONIC, "TREZOR", 0, None, None).unwrap();
     assert_ne!(&seed_empty[..32], &seed_trezor[..32]);
+}
+
+#[test]
+fn monero_electrum_seed_decodes_known_vector() {
+    // Test vector sourced from the libmonero crate's own doc-test.
+    // 24 data words encode the spend secret; word 25 ("rounded") is the CRC checksum.
+    use crate::derivation::chains::monero::decode_monero_electrum_seed;
+    let phrase = "tissue raking haunted huts afraid volcano howls liar egotistic \
+                  befit rounded older bluntly imbalance pivot exotic tuxedo amaze \
+                  mostly lukewarm macro vocal hounded biplane rounded";
+    let seed = decode_monero_electrum_seed(phrase).expect("decode failed");
+    assert_eq!(
+        hex::encode(*seed),
+        "f7b3beabc9bd6ced864096c0891a8fdf94dc714178a09828775dba01b4df9ab8"
+    );
+}
+
+#[test]
+fn monero_electrum_seed_bad_checksum_rejected() {
+    use crate::derivation::chains::monero::decode_monero_electrum_seed;
+    // Replace the checksum word with a wrong word.
+    let phrase = "tissue raking haunted huts afraid volcano howls liar egotistic \
+                  befit rounded older bluntly imbalance pivot exotic tuxedo amaze \
+                  mostly lukewarm macro vocal hounded biplane abbey";
+    let err = decode_monero_electrum_seed(phrase).expect_err("should fail checksum");
+    assert!(err.contains("checksum"), "expected checksum error, got: {err}");
+}
+
+#[test]
+fn monero_electrum_and_bip39_produce_different_addresses() {
+    // The same 12-word BIP-39 mnemonic treated as a Monero Electrum seed must fail
+    // because the BIP-39 word list ≠ Monero word list.
+    use crate::derivation::chains::monero::decode_monero_electrum_seed;
+    let bip39_12 = "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about";
+    assert!(decode_monero_electrum_seed(bip39_12).is_err(), "12-word BIP-39 must not parse as Electrum");
 }
 
 #[test]

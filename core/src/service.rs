@@ -3239,6 +3239,27 @@ pub fn bip39_english_wordlist() -> String {
     WORDLIST.clone()
 }
 
+/// Return the full BIP-39 word list for the given language as a newline-delimited string.
+/// Accepts the same language codes as the derivation functions ("en", "zh-cn", etc.).
+/// Falls back to English for unrecognised codes.
+#[uniffi::export]
+pub fn bip39_wordlist(language: String) -> String {
+    use bip39::Language;
+    let lang = match language.trim().to_ascii_lowercase().as_str() {
+        "czech" | "cs" => Language::Czech,
+        "french" | "fr" => Language::French,
+        "italian" | "it" => Language::Italian,
+        "japanese" | "ja" | "jp" => Language::Japanese,
+        "korean" | "ko" | "kr" => Language::Korean,
+        "portuguese" | "pt" => Language::Portuguese,
+        "spanish" | "es" => Language::Spanish,
+        "simplified-chinese" | "zh-hans" | "zh-cn" | "zh" => Language::SimplifiedChinese,
+        "traditional-chinese" | "zh-hant" | "zh-tw" => Language::TraditionalChinese,
+        _ => Language::English,
+    };
+    lang.word_list().join("\n")
+}
+
 // ── Merged from chain_client.rs ──────────────────────
 
 // Per-chain client dispatch — collapses the 17-arm `match chain` blocks that
