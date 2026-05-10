@@ -1,7 +1,7 @@
 //! Cardano chain client.
 //!
-//! Uses the Blockfrost REST API (api.blockfrost.io/v0) for balance,
-//! history, protocol params, and transaction submission.
+//! Uses the Koios REST API (api.koios.rest/api/v1) for balance,
+//! history, UTXOs, and protocol params.
 //! Cardano transactions are encoded in CBOR (cardano-multiplatform-lib
 //! is too heavy; we use a minimal handwritten CBOR encoder for simple
 //! ADA-only transfers).
@@ -55,36 +55,39 @@ impl super::SignedSubmission for CardanoSendResult {
 }
 
 // ----------------------------------------------------------------
-// Blockfrost response types (shared within the chain module)
+// Koios response types (shared within the chain module)
 // ----------------------------------------------------------------
 
 #[derive(Debug, Deserialize)]
-pub(crate) struct BfAddress {
-    pub(crate) amount: Vec<BfAmount>,
+pub(crate) struct KoiosAddressInfo {
+    pub(crate) balance: String,
 }
 
 #[derive(Debug, Deserialize)]
-pub(crate) struct BfAmount {
-    pub(crate) unit: String,
-    pub(crate) quantity: String,
-}
-
-#[derive(Debug, Deserialize)]
-pub(crate) struct BfUtxo {
+pub(crate) struct KoiosUtxo {
     pub(crate) tx_hash: String,
     pub(crate) tx_index: u32,
-    pub(crate) amount: Vec<BfAmount>,
+    pub(crate) value: String,
+    #[serde(default)]
+    pub(crate) is_spent: bool,
 }
 
 #[derive(Debug, Deserialize)]
-#[serde(rename_all = "snake_case")]
-pub(crate) struct BfTx {
-    pub(crate) hash: String,
-    pub(crate) block: String,
-    pub(crate) block_time: u64,
+pub(crate) struct KoiosTxRef {
+    pub(crate) tx_hash: String,
+}
+
+#[derive(Debug, Deserialize)]
+pub(crate) struct KoiosTxInfo {
+    pub(crate) tx_hash: String,
     #[serde(default)]
-    pub(crate) output_amount: Vec<BfAmount>,
-    pub(crate) fees: String,
+    pub(crate) block_height: u64,
+    #[serde(default)]
+    pub(crate) tx_timestamp: u64,
+    #[serde(default)]
+    pub(crate) total_output: String,
+    #[serde(default)]
+    pub(crate) fee: String,
 }
 
 // ----------------------------------------------------------------
@@ -93,6 +96,7 @@ pub(crate) struct BfTx {
 
 pub struct CardanoClient {
     pub(crate) endpoints: std::sync::Arc<Vec<String>>,
+    #[allow(dead_code)]
     pub(crate) api_key: String,
     pub(crate) client: std::sync::Arc<HttpClient>,
 }
@@ -108,42 +112,42 @@ impl CardanoClient {
 
     pub(crate) async fn get<T: serde::de::DeserializeOwned>(&self, path: &str) -> Result<T, String> {
         let path = path.to_string();
-        let api_key = self.api_key.clone();
         with_fallback(&self.endpoints, |base| {
             let client = self.client.clone();
-            let api_key = api_key.clone();
             let url = format!("{}{}", base.trim_end_matches('/'), path);
-            async move {
-                let mut headers = std::collections::HashMap::new();
-                headers.insert("project_id", api_key.as_str());
-                client
-                    .get_json_with_headers(
-                        &url,
-                        &{
-                            let mut h = std::collections::HashMap::new();
-                            h.insert("project_id", api_key.as_str());
-                            h
-                        },
-                        RetryProfile::ChainRead,
-                    )
-                    .await
-            }
+            async move { client.get_json(&url, RetryProfile::ChainRead).await }
+        })
+        .await
+    }
+
+    pub(crate) async fn post<B: Serialize, T: serde::de::DeserializeOwned>(
+        &self,
+        path: &str,
+        body: &B,
+    ) -> Result<T, String> {
+        let path = path.to_string();
+        let body_val = serde_json::to_value(body).map_err(|e| e.to_string())?;
+        with_fallback(&self.endpoints, |base| {
+            let client = self.client.clone();
+            let url = format!("{}{}", base.trim_end_matches('/'), path);
+            let body_val = body_val.clone();
+            async move { client.post_json(&url, &body_val, RetryProfile::ChainRead).await }
         })
         .await
     }
 }
-// Cardano fetch paths (Blockfrost REST): balance, UTXOs, history, latest slot.
-
-
 
 impl CardanoClient {
     pub async fn fetch_balance(&self, address: &str) -> Result<CardanoBalance, String> {
-        let info: BfAddress = self.get(&format!("/addresses/{address}")).await?;
-        let lovelace: u64 = info
-            .amount
-            .iter()
-            .find(|a| a.unit == "lovelace")
-            .and_then(|a| a.quantity.parse().ok())
+        #[derive(Serialize)]
+        struct Req<'a> { #[serde(rename = "_addresses")] addresses: &'a [&'a str] }
+        let resp: Vec<KoiosAddressInfo> = self
+            .post("/address_info", &Req { addresses: &[address] })
+            .await?;
+        let lovelace: u64 = resp
+            .into_iter()
+            .next()
+            .and_then(|r| r.balance.parse().ok())
             .unwrap_or(0);
         Ok(CardanoBalance {
             lovelace,
@@ -152,21 +156,18 @@ impl CardanoClient {
     }
 
     pub async fn fetch_utxos(&self, address: &str) -> Result<Vec<CardanoUtxo>, String> {
-        let utxos: Vec<BfUtxo> = self.get(&format!("/addresses/{address}/utxos")).await?;
+        #[derive(Serialize)]
+        struct Req<'a> { #[serde(rename = "_addresses")] addresses: &'a [&'a str] }
+        let utxos: Vec<KoiosUtxo> = self
+            .post("/address_utxos", &Req { addresses: &[address] })
+            .await?;
         Ok(utxos
             .into_iter()
-            .map(|u| {
-                let lovelace = u
-                    .amount
-                    .iter()
-                    .find(|a| a.unit == "lovelace")
-                    .and_then(|a| a.quantity.parse().ok())
-                    .unwrap_or(0);
-                CardanoUtxo {
-                    tx_hash: u.tx_hash,
-                    tx_index: u.tx_index,
-                    lovelace,
-                }
+            .filter(|u| !u.is_spent)
+            .map(|u| CardanoUtxo {
+                tx_hash: u.tx_hash,
+                tx_index: u.tx_index,
+                lovelace: u.value.parse().unwrap_or(0),
             })
             .collect())
     }
@@ -175,47 +176,48 @@ impl CardanoClient {
         &self,
         address: &str,
     ) -> Result<Vec<CardanoHistoryEntry>, String> {
-        #[derive(Deserialize)]
-        struct BfTxRef {
-            tx_hash: String,
-        }
-        let tx_refs: Vec<BfTxRef> = self
-            .get(&format!("/addresses/{address}/transactions?count=50&order=desc"))
+        #[derive(Serialize)]
+        struct AddrReq<'a> { #[serde(rename = "_addresses")] addresses: &'a [&'a str] }
+        #[derive(Serialize)]
+        struct TxReq { #[serde(rename = "_tx_hashes")] tx_hashes: Vec<String> }
+
+        let tx_refs: Vec<KoiosTxRef> = self
+            .post("/address_txs", &AddrReq { addresses: &[address] })
             .await?;
 
-        let mut entries = Vec::new();
-        for tx_ref in tx_refs {
-            let tx: BfTx = match self.get(&format!("/txs/{}", tx_ref.tx_hash)).await {
-                Ok(t) => t,
-                Err(_) => continue,
-            };
-            let amount_lovelace: i64 = tx
-                .output_amount
-                .iter()
-                .find(|a| a.unit == "lovelace")
-                .and_then(|a| a.quantity.parse().ok())
-                .unwrap_or(0i64);
-            let fee_lovelace: u64 = tx.fees.parse().unwrap_or(0);
-            entries.push(CardanoHistoryEntry {
-                txid: tx.hash,
-                block: tx.block,
-                block_time: tx.block_time,
-                is_incoming: amount_lovelace > 0,
-                amount_lovelace,
-                fee_lovelace,
-            });
-        }
+        let hashes: Vec<String> = tx_refs.iter().take(20).map(|r| r.tx_hash.clone()).collect();
+        if hashes.is_empty() { return Ok(vec![]); }
+
+        let tx_infos: Vec<KoiosTxInfo> = self
+            .post("/tx_info", &TxReq { tx_hashes: hashes })
+            .await
+            .unwrap_or_default();
+
+        let mut entries: Vec<CardanoHistoryEntry> = tx_infos
+            .into_iter()
+            .map(|tx| {
+                let total: i64 = tx.total_output.parse().unwrap_or(0);
+                let fee: u64 = tx.fee.parse().unwrap_or(0);
+                CardanoHistoryEntry {
+                    txid: tx.tx_hash,
+                    block: tx.block_height.to_string(),
+                    block_time: tx.tx_timestamp,
+                    is_incoming: total > 0,
+                    amount_lovelace: total,
+                    fee_lovelace: fee,
+                }
+            })
+            .collect();
+        entries.sort_by(|a, b| b.block_time.cmp(&a.block_time));
         Ok(entries)
     }
 
     /// Fetch current slot from the latest block.
     pub async fn fetch_latest_slot(&self) -> Result<u64, String> {
         #[derive(Deserialize)]
-        struct LatestBlock {
-            slot: u64,
-        }
-        let block: LatestBlock = self.get("/blocks/latest").await?;
-        Ok(block.slot)
+        struct Tip { abs_slot: u64 }
+        let tips: Vec<Tip> = self.get("/tip").await?;
+        tips.into_iter().next().map(|t| t.abs_slot).ok_or_else(|| "tip: empty response".to_string())
     }
 }
 

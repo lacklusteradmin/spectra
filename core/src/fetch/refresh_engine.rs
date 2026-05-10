@@ -28,6 +28,10 @@ struct Inner {
     /// app-resume) fire in close succession. This flag de-dupes across
     /// both paths.
     is_cycle_running: AtomicBool,
+    /// Set by `trigger_immediate` when a cycle is already in flight. The
+    /// running cycle checks this flag before exiting and re-runs if set,
+    /// ensuring that an entries update arriving mid-cycle is never dropped.
+    pending_trigger: AtomicBool,
 }
 
 // ----------------------------------------------------------------
@@ -60,6 +64,7 @@ impl BalanceRefreshEngine {
                 entries: RwLock::new(vec![]),
                 stop_tx: Mutex::new(None),
                 is_cycle_running: AtomicBool::new(false),
+                pending_trigger: AtomicBool::new(false),
             }),
         })
     }
@@ -116,9 +121,14 @@ impl BalanceRefreshEngine {
 
     /// Run one refresh cycle immediately without waiting for the next tick.
     /// Also `async` to guarantee Tokio context for `tokio::spawn`.
+    ///
+    /// If a cycle is already in flight, sets `pending_trigger` so the running
+    /// cycle will re-run once it finishes (picks up any entry changes that
+    /// arrived while the cycle was running).
     pub async fn trigger_immediate(&self) {
         let inner = Arc::clone(&self.inner);
         tokio::spawn(async move {
+            inner.pending_trigger.store(true, Ordering::Release);
             Self::run_cycle(&inner).await;
         });
     }
@@ -133,12 +143,14 @@ impl BalanceRefreshEngine {
         // Acquire the in-flight flag atomically; bail if another cycle is
         // already running. Protects against overlapping cycles from tick +
         // trigger_immediate or two back-to-back trigger_immediate calls.
+        // When we bail, the `pending_trigger` flag set by `trigger_immediate`
+        // ensures the running cycle will re-run after it finishes.
         if inner
             .is_cycle_running
             .compare_exchange(false, true, Ordering::Acquire, Ordering::Relaxed)
             .is_err()
         {
-            tracing::debug!("refresh cycle skipped: already in flight");
+            tracing::debug!("refresh cycle deferred: already in flight");
             return;
         }
         // Drop guard clears the flag even on panic / cancel.
@@ -150,80 +162,95 @@ impl BalanceRefreshEngine {
         }
         let _in_flight = InFlightGuard(&inner.is_cycle_running);
 
-        // Snapshot entries under a short lock hold, then release before I/O.
-        let entries = inner.entries.read().unwrap().clone();
-        let entry_count = entries.len();
-        if entries.is_empty() {
-            return;
-        }
+        // Loop to consume any pending triggers that arrived while we were
+        // running. This ensures that entry updates (new wallets imported
+        // mid-cycle) are picked up without waiting for the periodic timer.
+        loop {
+            // Clear the flag before snapshotting entries so that a trigger
+            // arriving after the snapshot but before this clear is not lost
+            // — it will set the flag again and we loop.
+            inner.pending_trigger.store(false, Ordering::Release);
 
-        let cycle_start = Instant::now();
-        tracing::debug!(entries = entry_count, "refresh cycle start");
+            // Snapshot entries under a short lock hold, then release before I/O.
+            let entries = inner.entries.read().unwrap().clone();
+            let entry_count = entries.len();
+            if entries.is_empty() {
+                break;
+            }
 
-        // Snapshot the observer Arc once before the loop instead of once per
-        // entry — avoids N RwLock acquisitions during the hot path.
-        let obs = inner.observer.read().unwrap().clone();
+            let cycle_start = Instant::now();
+            tracing::debug!(entries = entry_count, "refresh cycle start");
 
-        // Fan out balance fetches with bounded concurrency (up to 8 in flight).
-        // Rust fetches the native balance from the network, then constructs a
-        // minimal WalletSummary (one holding) from the coin template and the
-        // fetched amount. Swift owns the authoritative wallet model and applies
-        // the update via its merge logic — Rust no longer mirrors wallet state.
-        let ws = Arc::clone(&inner.wallet_service);
-        let results: Vec<Result<(String, String, WalletSummary), ()>> = stream::iter(entries)
-            .map(|entry| {
-                let ws = Arc::clone(&ws);
-                async move {
-                    let fetched = ws
-                        .fetch_native_balance_summary_auto(&entry.chain_id, entry.address.clone())
-                        .await
-                        .map_err(|_| ())?;
-                    let template = crate::service::native_coin_template(&entry.chain_id).ok_or(())?;
-                    let amount = fetched.amount_display.parse::<f64>().unwrap_or(0.0);
-                    let holding = AssetHolding { amount, ..template };
-                    let wallet_summary = WalletSummary {
-                        id: entry.wallet_id.clone(),
-                        name: String::new(),
-                        is_watch_only: false,
-                        chain_name: holding.chain_name.clone(),
-                        include_in_portfolio_total: true,
-                        network_mode: None,
-                        xpub: None,
-                        derivation_preset: String::new(),
-                        derivation_path: None,
-                        holdings: vec![holding],
-                        addresses: vec![],
-                    };
-                    Ok((entry.chain_id.clone(), entry.wallet_id, wallet_summary))
-                }
-            })
-            .buffer_unordered(8)
-            .collect()
-            .await;
+            // Snapshot the observer Arc once before the loop instead of once per
+            // entry — avoids N RwLock acquisitions during the hot path.
+            let obs = inner.observer.read().unwrap().clone();
 
-        let mut refreshed: u32 = 0;
-        let mut errors: u32 = 0;
-
-        for result in results {
-            match result {
-                Ok((chain_id, wallet_id, summary)) => {
-                    if let Some(ref o) = obs {
-                        o.on_balance_updated(chain_id, wallet_id, Some(summary));
+            // Fan out balance fetches with bounded concurrency (up to 8 in flight).
+            // Rust fetches the native balance from the network, then constructs a
+            // minimal WalletSummary (one holding) from the coin template and the
+            // fetched amount. Swift owns the authoritative wallet model and applies
+            // the update via its merge logic — Rust no longer mirrors wallet state.
+            let ws = Arc::clone(&inner.wallet_service);
+            let results: Vec<Result<(String, String, WalletSummary), ()>> = stream::iter(entries)
+                .map(|entry| {
+                    let ws = Arc::clone(&ws);
+                    async move {
+                        let fetched = ws
+                            .fetch_native_balance_summary_auto(&entry.chain_id, entry.address.clone())
+                            .await
+                            .map_err(|_| ())?;
+                        let template = crate::service::native_coin_template(&entry.chain_id).ok_or(())?;
+                        let amount = fetched.amount_display.parse::<f64>().unwrap_or(0.0);
+                        let holding = AssetHolding { amount, ..template };
+                        let wallet_summary = WalletSummary {
+                            id: entry.wallet_id.clone(),
+                            name: String::new(),
+                            is_watch_only: false,
+                            chain_name: holding.chain_name.clone(),
+                            include_in_portfolio_total: true,
+                            network_mode: None,
+                            xpub: None,
+                            derivation_preset: String::new(),
+                            derivation_path: None,
+                            holdings: vec![holding],
+                            addresses: vec![],
+                        };
+                        Ok((entry.chain_id.clone(), entry.wallet_id, wallet_summary))
                     }
-                    refreshed += 1;
-                }
-                Err(()) => {
-                    errors += 1;
+                })
+                .buffer_unordered(8)
+                .collect()
+                .await;
+
+            let mut refreshed: u32 = 0;
+            let mut errors: u32 = 0;
+
+            for result in results {
+                match result {
+                    Ok((chain_id, wallet_id, summary)) => {
+                        if let Some(ref o) = obs {
+                            o.on_balance_updated(chain_id, wallet_id, Some(summary));
+                        }
+                        refreshed += 1;
+                    }
+                    Err(()) => {
+                        errors += 1;
+                    }
                 }
             }
-        }
 
-        if let Some(o) = obs {
-            o.on_refresh_cycle_complete(refreshed, errors);
-        }
+            if let Some(o) = obs.as_ref() {
+                o.on_refresh_cycle_complete(refreshed, errors);
+            }
 
-        let elapsed_ms = cycle_start.elapsed().as_millis();
-        tracing::debug!(refreshed, errors, elapsed_ms, "refresh cycle end");
+            let elapsed_ms = cycle_start.elapsed().as_millis();
+            tracing::debug!(refreshed, errors, elapsed_ms, "refresh cycle end");
+
+            // Re-run if a trigger arrived while this cycle was executing.
+            if !inner.pending_trigger.load(Ordering::Acquire) {
+                break;
+            }
+        }
     }
 }
 

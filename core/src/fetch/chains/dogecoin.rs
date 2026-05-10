@@ -1,6 +1,7 @@
 //! Dogecoin chain client.
 //!
-//! Uses Blockbook-compatible REST API (same as most UTXO explorers).
+//! Uses BlockCypher REST API (the only configured endpoint).
+//! Endpoint base: https://api.blockcypher.com/v1/doge/main
 //! Signing uses secp256k1 / P2PKH (Dogecoin does not support SegWit).
 //! Network params: version byte 0x1e (addresses start with 'D').
 
@@ -11,47 +12,38 @@ use crate::http::{with_fallback, HttpClient, RetryProfile};
 
 
 // ----------------------------------------------------------------
-// Blockbook response types
+// BlockCypher response types
 // ----------------------------------------------------------------
 
+/// Response from GET /addrs/{address}/balance
 #[derive(Debug, Deserialize)]
-pub(crate) struct BlockbookUtxo {
-    pub(crate) txid: String,
-    pub(crate) vout: u32,
-    pub(crate) value: String,
+struct BlockcypherBalance {
+    /// Confirmed balance in koinus (1 DOGE = 100_000_000 koinus).
+    balance: u64,
+}
+
+/// Response from GET /addrs/{address}?unspentOnly=true
+#[derive(Debug, Deserialize)]
+struct BlockcypherAddress {
     #[serde(default)]
-    pub(crate) confirmations: u32,
+    txrefs: Vec<BlockcypherTxref>,
 }
 
 #[derive(Debug, Deserialize)]
-pub(crate) struct BlockbookAddress {
-    pub(crate) balance: String,
-}
-
-#[derive(Debug, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub(crate) struct BlockbookTxList {
+struct BlockcypherTxref {
+    tx_hash: String,
     #[serde(default)]
-    pub(crate) transactions: Vec<BlockbookTx>,
-}
-
-#[derive(Debug, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub(crate) struct BlockbookTx {
-    pub(crate) txid: String,
-    pub(crate) block_time: Option<u64>,
-    pub(crate) block_height: Option<u64>,
+    tx_output_n: i32,
     #[serde(default)]
-    pub(crate) confirmations: u64,
+    tx_input_n: i32,
+    value: i64,
     #[serde(default)]
-    pub(crate) value: String,
-    pub(crate) fees: Option<String>,
-    pub(crate) vout: Vec<BlockbookVout>,
-}
-
-#[derive(Debug, Deserialize)]
-pub(crate) struct BlockbookVout {
-    pub(crate) addresses: Option<Vec<String>>,
+    confirmations: u32,
+    #[serde(default)]
+    block_height: i64,
+    #[serde(default)]
+    spent: bool,
+    confirmed: Option<String>,
 }
 
 // ----------------------------------------------------------------
@@ -123,81 +115,107 @@ impl DogecoinClient {
         .await
     }
 }
-// Dogecoin fetch paths (Blockbook REST): balance, UTXOs, history, tx status.
-
 
 impl DogecoinClient {
     pub async fn fetch_balance(&self, address: &str) -> Result<DogeBalance, String> {
-        let info: BlockbookAddress = self
-            .get(&format!("/api/v2/address/{address}?details=basic"))
+        let info: BlockcypherBalance = self
+            .get(&format!("/addrs/{address}/balance"))
             .await?;
-        let koin: u64 = info.balance.parse().unwrap_or(0);
         Ok(DogeBalance {
-            balance_koin: koin,
-            balance_display: format_doge(koin),
+            balance_koin: info.balance,
+            balance_display: format_doge(info.balance),
         })
     }
 
     pub async fn fetch_utxos(&self, address: &str) -> Result<Vec<DogeUtxo>, String> {
-        let utxos: Vec<BlockbookUtxo> = self.get(&format!("/api/v2/utxo/{address}")).await?;
-        Ok(utxos
+        let info: BlockcypherAddress = self
+            .get(&format!("/addrs/{address}?unspentOnly=true"))
+            .await?;
+        Ok(info
+            .txrefs
             .into_iter()
-            .map(|u| DogeUtxo {
-                txid: u.txid,
-                vout: u.vout,
-                value_koin: u.value.parse().unwrap_or(0),
-                confirmations: u.confirmations,
+            .filter(|r| r.tx_output_n >= 0 && !r.spent && r.value >= 0)
+            .map(|r| DogeUtxo {
+                txid: r.tx_hash,
+                vout: r.tx_output_n as u32,
+                value_koin: r.value as u64,
+                confirmations: r.confirmations,
             })
             .collect())
     }
 
     pub async fn fetch_history(&self, address: &str) -> Result<Vec<DogeHistoryEntry>, String> {
-        let list: BlockbookTxList = self
-            .get(&format!(
-                "/api/v2/address/{address}?details=txs&page=1&pageSize=50"
-            ))
+        let info: BlockcypherAddress = self
+            .get(&format!("/addrs/{address}?limit=50"))
             .await?;
-
-        Ok(list
-            .transactions
+        let mut seen = std::collections::HashSet::new();
+        let mut entries: Vec<DogeHistoryEntry> = info
+            .txrefs
             .into_iter()
-            .map(|tx| {
-                let is_incoming = tx.vout.iter().any(|o| {
-                    o.addresses
-                        .as_deref()
-                        .unwrap_or_default()
-                        .contains(&address.to_string())
-                });
-                let amount_koin: i64 = tx.value.parse().unwrap_or(0);
-                let fee_koin: u64 = tx.fees.as_deref().and_then(|s| s.parse().ok()).unwrap_or(0);
+            .filter(|r| seen.insert(r.tx_hash.clone()))
+            .map(|r| {
+                let is_incoming = r.tx_input_n < 0;
                 DogeHistoryEntry {
-                    txid: tx.txid,
-                    block_height: tx.block_height.unwrap_or(0),
-                    timestamp: tx.block_time.unwrap_or(0),
-                    amount_koin: if is_incoming { amount_koin } else { -amount_koin },
-                    fee_koin,
+                    txid: r.tx_hash,
+                    block_height: if r.block_height > 0 { r.block_height as u64 } else { 0 },
+                    timestamp: parse_blockcypher_time(r.confirmed.as_deref()),
+                    amount_koin: if is_incoming { r.value } else { -r.value.abs() },
+                    fee_koin: 0,
                     is_incoming,
                 }
             })
-            .collect())
+            .collect();
+        entries.sort_by(|a, b| b.block_height.cmp(&a.block_height));
+        Ok(entries)
     }
 
-    /// Fetch confirmation status for a single txid via Blockbook `/api/v2/tx/{txid}`.
     pub async fn fetch_tx_status(
         &self,
         txid: &str,
     ) -> Result<crate::fetch::chains::bitcoin::UtxoTxStatus, String> {
-        let txid = txid.to_string();
-        let tx: BlockbookTx = self.get(&format!("/api/v2/tx/{txid}")).await?;
+        #[derive(Deserialize)]
+        struct BlockcypherTx {
+            hash: String,
+            block_height: Option<i64>,
+            confirmations: Option<u64>,
+            confirmed: Option<String>,
+        }
+        let tx: BlockcypherTx = self.get(&format!("/txs/{txid}")).await?;
         let confirmed = tx.block_height.map(|h| h > 0).unwrap_or(false);
         Ok(crate::fetch::chains::bitcoin::UtxoTxStatus {
-            txid: tx.txid,
+            txid: tx.hash,
             confirmed,
-            block_height: tx.block_height,
-            block_time: tx.block_time,
-            confirmations: Some(tx.confirmations),
+            block_height: tx.block_height.map(|h| if h > 0 { h as u64 } else { 0 }),
+            block_time: Some(parse_blockcypher_time(tx.confirmed.as_deref())),
+            confirmations: tx.confirmations,
         })
     }
+}
+
+/// Parse a BlockCypher RFC 3339 timestamp string to a Unix timestamp.
+/// Returns 0 on parse failure — timestamps are display-only.
+fn parse_blockcypher_time(s: Option<&str>) -> u64 {
+    fn inner(s: &str) -> Option<u64> {
+        let b = s.as_bytes();
+        if b.len() < 19 { return None; }
+        let year:  i64 = std::str::from_utf8(&b[0..4]).ok()?.parse().ok()?;
+        let month: i64 = std::str::from_utf8(&b[5..7]).ok()?.parse().ok()?;
+        let day:   i64 = std::str::from_utf8(&b[8..10]).ok()?.parse().ok()?;
+        let hour:  i64 = std::str::from_utf8(&b[11..13]).ok()?.parse().ok()?;
+        let min:   i64 = std::str::from_utf8(&b[14..16]).ok()?.parse().ok()?;
+        let sec:   i64 = std::str::from_utf8(&b[17..19]).ok()?.parse().ok()?;
+        // Days since Unix epoch using civil calendar (Euclidean algorithm).
+        let m_adj = if month <= 2 { month + 9 } else { month - 3 };
+        let y_adj = if month <= 2 { year - 1 } else { year };
+        let era = y_adj.div_euclid(400);
+        let yoe = y_adj - era * 400;
+        let doy = (153 * m_adj + 2) / 5 + day - 1;
+        let doe = yoe * 365 + yoe / 4 - yoe / 100 + doy;
+        let days = era * 146097 + doe - 719468;
+        let ts = days * 86400 + hour * 3600 + min * 60 + sec;
+        if ts < 0 { None } else { Some(ts as u64) }
+    }
+    s.and_then(|s| if s.is_empty() { None } else { inner(s) }).unwrap_or(0)
 }
 
 fn format_doge(koin: u64) -> String {
