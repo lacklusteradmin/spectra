@@ -65,6 +65,10 @@ pub struct SendSubmitPreflightPlan {
     pub preview_kind: Option<String>,
     pub normalized_destination_address: String,
     pub amount: f64,
+    /// Original trimmed user input string — carries exact decimal representation
+    /// through to `SendExecutionRequest.amount_str` so raw-unit conversion never
+    /// touches f64.
+    pub amount_str: String,
     pub chain_name: String,
     pub symbol: String,
     pub native_evm_symbol: Option<String>,
@@ -126,6 +130,12 @@ pub struct SendExecutionRequest {
     pub to_address: String,
     /// Human-scale amount (e.g. 0.5 BTC, 1.0 ETH).
     pub amount: f64,
+    /// Exact decimal string from the user's input (e.g. "0.1", "1.5"). When
+    /// present, raw-unit conversion uses pure string arithmetic via
+    /// `decimal_str_to_raw_units` — avoiding the f64 precision loss that
+    /// occurs when `amount` is used directly. Always set this from
+    /// `SendSubmitPreflightPlan.amount_str`; `None` falls back to the f64 path.
+    pub amount_str: Option<String>,
     // ── Token-specific ──────────────────────────────────────────────────
     /// Contract/mint address for token sends (ERC-20, SPL, TRC-20, NEP-141).
     pub contract_address: Option<String>,
@@ -267,6 +277,7 @@ pub fn plan_send_submit_preflight(
         preview_kind: route.preview_kind,
         normalized_destination_address,
         amount,
+        amount_str: amount_input.to_string(),
         chain_name: asset.chain_name,
         symbol: asset.symbol,
         native_evm_symbol: route.native_evm_symbol,

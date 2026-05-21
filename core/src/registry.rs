@@ -458,6 +458,22 @@ impl Chain {
         }
     }
 
+    /// Etherscan V2 base URL for this EVM chain, or `None` if the chain is not
+    /// indexed by Etherscan. Etherscan V2 is a unified multichain endpoint
+    /// (`/v2/api?chainid=X`) — all Etherscan-family chains share the same host.
+    /// Chains using other explorers (Blockscout for ETC, Hyperliquid's own
+    /// explorer) return `None` and history falls back to empty.
+    pub const fn evm_explorer_api_base(self) -> Option<&'static str> {
+        match self {
+            Chain::EthereumClassic
+            | Chain::EthereumClassicMordor
+            | Chain::Hyperliquid
+            | Chain::HyperliquidTestnet => None,
+            _ if self.is_evm() => Some("https://api.etherscan.io"),
+            _ => None,
+        }
+    }
+
     /// Map to the `SendChain` discriminant used by send-payload classification.
     pub const fn send_chain(self) -> SendChain {
         match self {

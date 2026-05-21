@@ -32,9 +32,6 @@ fn amount_i64(amount: f64, scale: f64) -> i64 {
     (amount * scale).round() as i64
 }
 
-fn amount_raw_string(amount: f64, decimals: u32) -> String {
-    crate::send::preview_decode::amount_to_raw_units_string(amount, decimals)
-}
 
 // --- Simple "from, to, amount-unit, priv, [pub]" chain payloads ---
 
@@ -168,14 +165,13 @@ pub fn build_cardano_send_payload(
 pub fn build_near_send_payload(
     from: String,
     to: String,
-    amount_near: f64,
+    yocto_near: String,
     private_key_hex: String,
     public_key_hex: String,
 ) -> String {
-    let yocto = amount_raw_string(amount_near, 24);
     format!(
         "{{\"from\":\"{}\",\"to\":\"{}\",\"yocto_near\":\"{}\",\"private_key_hex\":\"{}\",\"public_key_hex\":\"{}\"}}",
-        json_escape(&from), json_escape(&to), json_escape(&yocto),
+        json_escape(&from), json_escape(&to), json_escape(&yocto_near),
         json_escape(&private_key_hex), json_escape(&public_key_hex)
     )
 }
@@ -184,16 +180,13 @@ pub fn build_near_token_send_payload(
     from: String,
     contract: String,
     to: String,
-    amount: f64,
-    decimals: u32,
+    amount_raw: String,
     private_key_hex: String,
     public_key_hex: String,
 ) -> String {
-    let scale = 10f64.powi(decimals as i32);
-    let amount_raw = amount_u64(amount, scale);
     format!(
         "{{\"from\":\"{}\",\"contract\":\"{}\",\"to\":\"{}\",\"amount_raw\":\"{}\",\"private_key_hex\":\"{}\",\"public_key_hex\":\"{}\"}}",
-        json_escape(&from), json_escape(&contract), json_escape(&to), amount_raw,
+        json_escape(&from), json_escape(&contract), json_escape(&to), json_escape(&amount_raw),
         json_escape(&private_key_hex), json_escape(&public_key_hex)
     )
 }
@@ -201,11 +194,10 @@ pub fn build_near_token_send_payload(
 pub fn build_polkadot_send_payload(
     from: String,
     to: String,
-    amount_dot: f64,
+    planck: String,
     private_key_hex: String,
     public_key_hex: String,
 ) -> String {
-    let planck = amount_raw_string(amount_dot, 10);
     format!(
         "{{\"from\":\"{}\",\"to\":\"{}\",\"planck\":\"{}\",\"private_key_hex\":\"{}\",\"public_key_hex\":\"{}\"}}",
         json_escape(&from), json_escape(&to), json_escape(&planck),
@@ -216,12 +208,10 @@ pub fn build_polkadot_send_payload(
 pub fn build_bittensor_send_payload(
     from: String,
     to: String,
-    amount_tao: f64,
+    rao: String,
     private_key_hex: String,
     public_key_hex: String,
 ) -> String {
-    // 1 TAO = 10^9 rao.
-    let rao = amount_raw_string(amount_tao, 9);
     format!(
         "{{\"from\":\"{}\",\"to\":\"{}\",\"rao\":\"{}\",\"private_key_hex\":\"{}\",\"public_key_hex\":\"{}\"}}",
         json_escape(&from), json_escape(&to), json_escape(&rao),
