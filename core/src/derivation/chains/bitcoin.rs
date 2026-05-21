@@ -7,15 +7,14 @@
 //! Bitcoin-family chains (Litecoin, Dogecoin, BCH, BSV, BTG, Dash, Zcash,
 //! Decred, Kaspa) duplicate the same primitives in their own files.
 
+pub(crate) use crate::derivation::primitives::{
+    derive_bip39_seed, parse_bip32_path, HARDENED_OFFSET,
+};
 use bech32::Hrp;
-use bip39::{Language, Mnemonic};
 use hmac::{Hmac, Mac};
-use pbkdf2::pbkdf2_hmac;
 use ripemd::Ripemd160;
 use secp256k1::{All, PublicKey, Scalar, Secp256k1, SecretKey};
 use sha2::{Digest, Sha256, Sha512};
-use unicode_normalization::UnicodeNormalization;
-use zeroize::Zeroizing;
 
 // ── Hashing primitives ───────────────────────────────────────────────────
 
@@ -53,102 +52,6 @@ pub(crate) fn base58check_decode(s: &str) -> Result<Vec<u8>, String> {
         .with_check(None)
         .into_vec()
         .map_err(|e| format!("base58check decode: {e}"))
-}
-
-// ── BIP-39 ───────────────────────────────────────────────────────────────
-
-// Map locale string ("en", "zh-cn", etc.) to BIP-39 wordlist; defaults to English.
-fn resolve_bip39_language(name: Option<&str>) -> Result<Language, String> {
-    let value = match name {
-        Some(value) if !value.trim().is_empty() => value.trim().to_ascii_lowercase(),
-        _ => return Ok(Language::English),
-    };
-    match value.as_str() {
-        "english" | "en" => Ok(Language::English),
-        "czech" | "cs" => Ok(Language::Czech),
-        "french" | "fr" => Ok(Language::French),
-        "italian" | "it" => Ok(Language::Italian),
-        "japanese" | "ja" | "jp" => Ok(Language::Japanese),
-        "korean" | "ko" | "kr" => Ok(Language::Korean),
-        "portuguese" | "pt" => Ok(Language::Portuguese),
-        "spanish" | "es" => Ok(Language::Spanish),
-        "simplified-chinese"
-        | "chinese-simplified"
-        | "simplified_chinese"
-        | "zh-hans"
-        | "zh-cn"
-        | "zh" => Ok(Language::SimplifiedChinese),
-        "traditional-chinese"
-        | "chinese-traditional"
-        | "traditional_chinese"
-        | "zh-hant"
-        | "zh-tw" => Ok(Language::TraditionalChinese),
-        other => Err(format!("Unsupported mnemonic wordlist: {other}")),
-    }
-}
-
-// BIP-39 mnemonic → 64-byte seed via NFKD normalization and PBKDF2-HMAC-SHA512.
-pub(crate) fn derive_bip39_seed(
-    seed_phrase: &str,
-    passphrase: &str,
-    iteration_count: u32,
-    mnemonic_wordlist: Option<&str>,
-    salt_prefix: Option<&str>,
-) -> Result<Zeroizing<[u8; 64]>, String> {
-    let language = resolve_bip39_language(mnemonic_wordlist)?;
-    let mnemonic = Mnemonic::parse_in_normalized(language, seed_phrase)
-        .map_err(|e| e.to_string())?;
-    let iterations = if iteration_count == 0 { 2048 } else { iteration_count };
-    let prefix = salt_prefix.unwrap_or("mnemonic");
-    let normalized_mnemonic = Zeroizing::new(mnemonic.to_string().nfkd().collect::<String>());
-    let normalized_passphrase = Zeroizing::new(passphrase.nfkd().collect::<String>());
-    let normalized_prefix = Zeroizing::new(prefix.nfkd().collect::<String>());
-    let salt = Zeroizing::new(format!(
-        "{}{}",
-        normalized_prefix.as_str(),
-        normalized_passphrase.as_str()
-    ));
-    let mut seed = Zeroizing::new([0u8; 64]);
-    pbkdf2_hmac::<Sha512>(
-        normalized_mnemonic.as_bytes(),
-        salt.as_bytes(),
-        iterations,
-        &mut *seed,
-    );
-    Ok(seed)
-}
-
-// ── BIP-32 path parsing ──────────────────────────────────────────────────
-
-pub(crate) const HARDENED_OFFSET: u32 = 0x80000000;
-
-// Parse a BIP-32 derivation path string ("m/44'/0'/0'/0/0") into a list of child index integers.
-pub(crate) fn parse_bip32_path(path: &str) -> Result<Vec<u32>, String> {
-    let trimmed = path.trim().trim_start_matches('m').trim_start_matches('M');
-    let trimmed = trimmed.trim_start_matches('/');
-    if trimmed.is_empty() {
-        return Ok(Vec::new());
-    }
-    let mut out = Vec::new();
-    for segment in trimmed.split('/') {
-        let (value, hardened) = if let Some(stripped) = segment.strip_suffix('\'') {
-            (stripped, true)
-        } else if let Some(stripped) = segment.strip_suffix('h') {
-            (stripped, true)
-        } else if let Some(stripped) = segment.strip_suffix('H') {
-            (stripped, true)
-        } else {
-            (segment, false)
-        };
-        let raw: u32 = value
-            .parse()
-            .map_err(|_| format!("invalid path segment: {segment}"))?;
-        if raw >= HARDENED_OFFSET {
-            return Err(format!("path segment out of range: {segment}"));
-        }
-        out.push(if hardened { raw | HARDENED_OFFSET } else { raw });
-    }
-    Ok(out)
 }
 
 // ── BIP-32 extended keys ─────────────────────────────────────────────────
@@ -206,8 +109,8 @@ impl ExtendedPrivateKey {
 
     // Derive a BIP-32 child key; hardened indices use private key as input, non-hardened use public key.
     pub fn derive_child(&self, secp: &Secp256k1<All>, index: u32) -> Result<Self, String> {
-        let mut mac = HmacSha512::new_from_slice(&self.chain_code)
-            .map_err(|e| format!("HMAC init: {e}"))?;
+        let mut mac =
+            HmacSha512::new_from_slice(&self.chain_code).map_err(|e| format!("HMAC init: {e}"))?;
         if index >= HARDENED_OFFSET {
             mac.update(&[0x00]);
             mac.update(&self.private_key.secret_bytes());
@@ -277,8 +180,8 @@ impl ExtendedPublicKey {
         if index >= HARDENED_OFFSET {
             return Err("cannot derive a hardened child from an xpub".to_string());
         }
-        let mut mac = HmacSha512::new_from_slice(&self.chain_code)
-            .map_err(|e| format!("HMAC init: {e}"))?;
+        let mut mac =
+            HmacSha512::new_from_slice(&self.chain_code).map_err(|e| format!("HMAC init: {e}"))?;
         mac.update(&self.public_key.serialize());
         mac.update(&index.to_be_bytes());
         let tag = mac.finalize().into_bytes();
@@ -323,8 +226,8 @@ impl ExtendedPublicKey {
     pub fn from_xpub_string(s: &str) -> Result<(Self, [u8; 4]), String> {
         let (version, depth, parent_fingerprint, child_number, chain_code, key_bytes) =
             decode_extended_key(s)?;
-        let public_key = PublicKey::from_slice(&key_bytes)
-            .map_err(|e| format!("xpub: invalid pubkey: {e}"))?;
+        let public_key =
+            PublicKey::from_slice(&key_bytes).map_err(|e| format!("xpub: invalid pubkey: {e}"))?;
         Ok((
             Self {
                 depth,
@@ -358,9 +261,7 @@ fn encode_extended_key(
 }
 
 // Decode an xpub/xprv base58check string into its component fields (version, depth, fingerprint, child number, chain code, key).
-fn decode_extended_key(
-    s: &str,
-) -> Result<([u8; 4], u8, [u8; 4], u32, [u8; 32], [u8; 33]), String> {
+fn decode_extended_key(s: &str) -> Result<([u8; 4], u8, [u8; 4], u32, [u8; 32], [u8; 33]), String> {
     let payload = base58check_decode(s)?;
     if payload.len() != 78 {
         return Err(format!(
@@ -418,7 +319,10 @@ pub(crate) fn encode_p2pkh(params: &BitcoinNetworkParams, compressed_pubkey: &[u
 }
 
 // Encode a P2SH-P2WPKH (wrapped SegWit) address: hash160(redeemScript) with the P2SH version byte.
-pub(crate) fn encode_p2sh_p2wpkh(params: &BitcoinNetworkParams, compressed_pubkey: &[u8]) -> String {
+pub(crate) fn encode_p2sh_p2wpkh(
+    params: &BitcoinNetworkParams,
+    compressed_pubkey: &[u8],
+) -> String {
     // redeemScript = OP_0 <20-byte pubkey hash>
     let mut redeem = Vec::with_capacity(22);
     redeem.push(0x00);
@@ -465,7 +369,7 @@ pub(crate) fn encode_p2tr(
 
 // ── Derivation pipeline (shared by Bitcoin-family chains) ────────────────
 
-use crate::derivation::types::{BitcoinScriptType, DerivationResult, parse_path_metadata};
+use crate::derivation::types::{parse_path_metadata, BitcoinScriptType, DerivationResult};
 use crate::SpectraBridgeError;
 
 /// BIP-39 → BIP-32 path walk → (compressed pubkey, raw private bytes).
@@ -512,7 +416,7 @@ pub(crate) fn derive_from_seed_phrase(
     want_address: bool,
     want_public_key: bool,
     want_private_key: bool,
-) -> Result<(Option<String>, Option<String>, Option<String>), String> {
+) -> Result<crate::derivation::primitives::OptionalKeyMaterial, String> {
     let (public_key, private_bytes) =
         derive_secp_keypair(seed_phrase, derivation_path, passphrase)?;
     let address = if want_address {
@@ -556,57 +460,124 @@ fn bitcoin_export_internal(
 ) -> Result<DerivationResult, SpectraBridgeError> {
     let (account, branch, index) = parse_path_metadata(&derivation_path);
     let (address, public_key_hex, private_key_hex) = derive_from_seed_phrase(
-        params, script_type, &seed_phrase, &derivation_path, passphrase.as_deref(),
-        want_address, want_public_key, want_private_key,
+        params,
+        script_type,
+        &seed_phrase,
+        &derivation_path,
+        passphrase.as_deref(),
+        want_address,
+        want_public_key,
+        want_private_key,
     )?;
-    Ok(DerivationResult { address, public_key_hex, private_key_hex, account, branch, index })
+    Ok(DerivationResult {
+        address,
+        public_key_hex,
+        private_key_hex,
+        account,
+        branch,
+        index,
+    })
 }
 
 /// UniFFI export: derive Bitcoin mainnet wallet (P2PKH/P2SH-P2WPKH/P2WPKH/P2TR) from a seed phrase.
 #[uniffi::export]
 pub fn derive_bitcoin(
-    seed_phrase: String, derivation_path: String, passphrase: Option<String>,
+    seed_phrase: String,
+    derivation_path: String,
+    passphrase: Option<String>,
     script_type: BitcoinScriptType,
-    want_address: bool, want_public_key: bool, want_private_key: bool,
+    want_address: bool,
+    want_public_key: bool,
+    want_private_key: bool,
 ) -> Result<DerivationResult, SpectraBridgeError> {
-    bitcoin_export_internal(BTC_MAINNET, script_type, seed_phrase, derivation_path, passphrase, want_address, want_public_key, want_private_key)
+    bitcoin_export_internal(
+        BTC_MAINNET,
+        script_type,
+        seed_phrase,
+        derivation_path,
+        passphrase,
+        want_address,
+        want_public_key,
+        want_private_key,
+    )
 }
 
 /// UniFFI export: derive Bitcoin testnet wallet from a seed phrase.
 #[uniffi::export]
 pub fn derive_bitcoin_testnet(
-    seed_phrase: String, derivation_path: String, passphrase: Option<String>,
+    seed_phrase: String,
+    derivation_path: String,
+    passphrase: Option<String>,
     script_type: BitcoinScriptType,
-    want_address: bool, want_public_key: bool, want_private_key: bool,
+    want_address: bool,
+    want_public_key: bool,
+    want_private_key: bool,
 ) -> Result<DerivationResult, SpectraBridgeError> {
-    bitcoin_export_internal(BTC_TESTNET, script_type, seed_phrase, derivation_path, passphrase, want_address, want_public_key, want_private_key)
+    bitcoin_export_internal(
+        BTC_TESTNET,
+        script_type,
+        seed_phrase,
+        derivation_path,
+        passphrase,
+        want_address,
+        want_public_key,
+        want_private_key,
+    )
 }
 
 /// UniFFI export: derive Bitcoin testnet4 wallet from a seed phrase.
 #[uniffi::export]
 pub fn derive_bitcoin_testnet4(
-    seed_phrase: String, derivation_path: String, passphrase: Option<String>,
+    seed_phrase: String,
+    derivation_path: String,
+    passphrase: Option<String>,
     script_type: BitcoinScriptType,
-    want_address: bool, want_public_key: bool, want_private_key: bool,
+    want_address: bool,
+    want_public_key: bool,
+    want_private_key: bool,
 ) -> Result<DerivationResult, SpectraBridgeError> {
-    bitcoin_export_internal(BTC_TESTNET, script_type, seed_phrase, derivation_path, passphrase, want_address, want_public_key, want_private_key)
+    bitcoin_export_internal(
+        BTC_TESTNET,
+        script_type,
+        seed_phrase,
+        derivation_path,
+        passphrase,
+        want_address,
+        want_public_key,
+        want_private_key,
+    )
 }
 
 /// UniFFI export: derive Bitcoin signet wallet from a seed phrase.
 #[uniffi::export]
 pub fn derive_bitcoin_signet(
-    seed_phrase: String, derivation_path: String, passphrase: Option<String>,
+    seed_phrase: String,
+    derivation_path: String,
+    passphrase: Option<String>,
     script_type: BitcoinScriptType,
-    want_address: bool, want_public_key: bool, want_private_key: bool,
+    want_address: bool,
+    want_public_key: bool,
+    want_private_key: bool,
 ) -> Result<DerivationResult, SpectraBridgeError> {
-    bitcoin_export_internal(BTC_TESTNET, script_type, seed_phrase, derivation_path, passphrase, want_address, want_public_key, want_private_key)
+    bitcoin_export_internal(
+        BTC_TESTNET,
+        script_type,
+        seed_phrase,
+        derivation_path,
+        passphrase,
+        want_address,
+        want_public_key,
+        want_private_key,
+    )
 }
 
 /// UniFFI export: derive a Bitcoin mainnet address and public key from a raw private key hex string.
 #[uniffi::export]
 pub fn derive_bitcoin_from_private_key(
-    private_key_hex: String, script_type: BitcoinScriptType,
-    want_address: bool, want_public_key: bool,
+    private_key_hex: String,
+    script_type: BitcoinScriptType,
+    want_address: bool,
+    want_public_key: bool,
 ) -> Result<DerivationResult, SpectraBridgeError> {
     let key_bytes = decode_privkey_hex(&private_key_hex)?;
     let secp = Secp256k1::new();
@@ -621,7 +592,9 @@ pub fn derive_bitcoin_from_private_key(
         address,
         public_key_hex: want_public_key.then(|| hex::encode(public_key.serialize())),
         private_key_hex: None,
-        account: 0, branch: 0, index: 0,
+        account: 0,
+        branch: 0,
+        index: 0,
     })
 }
 
@@ -654,7 +627,10 @@ pub(crate) fn parse_bitcoin_address(s: &str) -> Result<ParsedBitcoinAddress, Str
     // Legacy base58check: 0x00/0x05 mainnet, 0x6f/0xc4 testnet.
     let payload = base58check_decode(s)?;
     if payload.len() != 21 {
-        return Err(format!("legacy payload must be 21 bytes, got {}", payload.len()));
+        return Err(format!(
+            "legacy payload must be 21 bytes, got {}",
+            payload.len()
+        ));
     }
     let network = match payload[0] {
         0x00 | 0x05 => BitcoinNetworkKind::Mainnet,

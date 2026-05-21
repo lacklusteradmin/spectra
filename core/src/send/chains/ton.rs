@@ -59,7 +59,10 @@ impl TonClient {
                     .and_then(|v| v.as_str())
                     .unwrap_or("")
                     .to_string();
-                Ok(TonSendResult { message_hash: hash, boc_b64: boc_b64_clone })
+                Ok(TonSendResult {
+                    message_hash: hash,
+                    boc_b64: boc_b64_clone,
+                })
             }
         })
         .await?;
@@ -92,7 +95,10 @@ impl TonClient {
                     .and_then(|v| v.as_str())
                     .unwrap_or("")
                     .to_string();
-                Ok(TonSendResult { message_hash: hash, boc_b64 })
+                Ok(TonSendResult {
+                    message_hash: hash,
+                    boc_b64,
+                })
             }
         })
         .await
@@ -148,14 +154,17 @@ pub fn build_wallet_v4r2_transfer(
     sign_payload.extend_from_slice(&valid_until.to_be_bytes());
     sign_payload.extend_from_slice(&seqno.to_be_bytes());
     sign_payload.push(0x00); // simple send mode op
-    // Serialized internal message reference (simplified).
+                             // Serialized internal message reference (simplified).
     sign_payload.push(workchain as u8);
     sign_payload.extend_from_slice(&addr_bytes);
     sign_payload.extend_from_slice(&nanotons.to_be_bytes());
     sign_payload.push(send_mode.unwrap_or(0x03)); // send mode: pay fees separately + ignore errors
 
-    let signing_key =
-        SigningKey::from_bytes(&private_key[..32].try_into().map_err(|_| "privkey too short")?);
+    let signing_key = SigningKey::from_bytes(
+        &private_key[..32]
+            .try_into()
+            .map_err(|_| "privkey too short")?,
+    );
     let signature = signing_key.sign(&sign_payload);
 
     // Build external message BoC (simplified serialization).
@@ -170,7 +179,7 @@ pub fn build_wallet_v4r2_transfer(
     boc.push(0x01); // flags: single root, no checksum
     boc.push(0x01); // cell count = 1
     boc.push(0x01); // root count = 1
-    // size of refs and data (simplified).
+                    // size of refs and data (simplified).
     boc.push(0x00); // refs size = 0
     let data_size = cell_data.len() as u8;
     boc.push(data_size);

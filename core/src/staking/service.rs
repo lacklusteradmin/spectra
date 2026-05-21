@@ -307,9 +307,7 @@ impl StakingService {
         let planck = amount_planck
             .parse::<u128>()
             .map_err(|_| StakingError::AmountBelowMinimum(amount_planck))?;
-        self.polkadot
-            .build_unbond_tx(&wallet_address, planck)
-            .await
+        self.polkadot.build_unbond_tx(&wallet_address, planck).await
     }
 
     pub async fn polkadot_build_withdraw_unbonded_tx(

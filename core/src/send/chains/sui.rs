@@ -19,7 +19,12 @@ impl SuiClient {
         let tx_result = self
             .call(
                 "unsafe_transferSui",
-                json!([from_address, to_address, gas_budget.to_string(), mist.to_string()]),
+                json!([
+                    from_address,
+                    to_address,
+                    gas_budget.to_string(),
+                    mist.to_string()
+                ]),
             )
             .await?;
 
@@ -41,7 +46,9 @@ impl SuiClient {
         use sha2::{Digest, Sha256};
         let digest: [u8; 32] = Sha256::digest(&signing_payload).into();
         // ed25519-dalek SigningKey::from_bytes takes the 32-byte seed (first half of the 64-byte keypair).
-        let seed: [u8; 32] = private_key_bytes[..32].try_into().map_err(|_| "privkey too short")?;
+        let seed: [u8; 32] = private_key_bytes[..32]
+            .try_into()
+            .map_err(|_| "privkey too short")?;
         let signing_key = SigningKey::from_bytes(&seed);
         let signature = signing_key.sign(&digest);
 
@@ -64,7 +71,11 @@ impl SuiClient {
             .ok_or("executeTransactionBlock: missing digest")?
             .to_string();
 
-        Ok(SuiSendResult { digest, tx_bytes_b64: tx_bytes_b64.to_string(), sig_b64 })
+        Ok(SuiSendResult {
+            digest,
+            tx_bytes_b64: tx_bytes_b64.to_string(),
+            sig_b64,
+        })
     }
 
     /// Execute a pre-signed transaction block (for rebroadcast).

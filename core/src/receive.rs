@@ -115,7 +115,11 @@ pub fn receive_address_message(input: ReceiveAddressMessageInput) -> String {
                 );
             }
             Some(evm) => {
-                return if resolved_address.is_empty() { evm } else { resolved_address };
+                return if resolved_address.is_empty() {
+                    evm
+                } else {
+                    resolved_address
+                };
             }
         }
     }
@@ -145,7 +149,11 @@ pub fn receive_address_message(input: ReceiveAddressMessageInput) -> String {
                 );
             }
             Some(addr) => {
-                return if resolved_address.is_empty() { addr } else { resolved_address };
+                return if resolved_address.is_empty() {
+                    addr
+                } else {
+                    resolved_address
+                };
             }
         }
     }
@@ -264,7 +272,10 @@ mod tests {
         let mut i = base();
         i.has_seed = true;
         i.is_resolving = true;
-        assert_eq!(receive_address_message(i), "Loading Bitcoin receive address...");
+        assert_eq!(
+            receive_address_message(i),
+            "Loading Bitcoin receive address..."
+        );
     }
 
     #[test]
@@ -274,7 +285,10 @@ mod tests {
         i.chain_name = "Bitcoin Cash".into();
         i.has_seed = true;
         let msg = receive_address_message(i);
-        assert_eq!(msg, "Tap Refresh or reopen Receive to resolve a Bitcoin Cash address.");
+        assert_eq!(
+            msg,
+            "Tap Refresh or reopen Receive to resolve a Bitcoin Cash address."
+        );
     }
 
     #[test]
@@ -370,6 +384,9 @@ mod tests {
         let mut i = base();
         i.chain_name = "Nothing".into();
         i.symbol = "XYZ".into();
-        assert_eq!(receive_address_message(i), "Receive is not enabled for this chain.");
+        assert_eq!(
+            receive_address_message(i),
+            "Receive is not enabled for this chain."
+        );
     }
 }

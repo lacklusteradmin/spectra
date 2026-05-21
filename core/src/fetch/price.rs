@@ -84,8 +84,7 @@ pub type PriceQuoteMap = HashMap<String, f64>;
 // ----------------------------------------------------------------
 
 const USD_STABLECOINS: &[&str] = &[
-    "USDT", "USDC", "DAI", "FDUSD", "TUSD", "BUSD", "USDE", "PYUSD", "USDS", "USDD", "USDG",
-    "USD1",
+    "USDT", "USDC", "DAI", "FDUSD", "TUSD", "BUSD", "USDE", "PYUSD", "USDS", "USDD", "USDG", "USD1",
 ];
 
 fn is_usd_stablecoin(symbol: &str) -> bool {
@@ -259,9 +258,7 @@ async fn fetch_coinpaprika_quotes(coins: &[PriceRequestCoin]) -> Result<PriceQuo
         tickers.iter().map(|t| (t.id.clone(), t)).collect();
     let mut by_symbol: HashMap<String, &PaprikaTicker> = HashMap::new();
     for t in &tickers {
-        by_symbol
-            .entry(t.symbol.to_uppercase())
-            .or_insert(t);
+        by_symbol.entry(t.symbol.to_uppercase()).or_insert(t);
     }
 
     for coin in coins {
@@ -295,81 +292,85 @@ async fn fetch_coinpaprika_quotes(coins: &[PriceRequestCoin]) -> Result<PriceQuo
 
 fn paprika_id_for(gecko_id: &str, symbol: &str) -> Option<&'static str> {
     static GECKO_MAP: std::sync::LazyLock<HashMap<&'static str, &'static str>> =
-        std::sync::LazyLock::new(|| HashMap::from([
-            ("bitcoin", "btc-bitcoin"),
-            ("ethereum", "eth-ethereum"),
-            ("optimism", "op-optimism"),
-            ("binancecoin", "bnb-binance-coin"),
-            ("bitcoin-cash", "bch-bitcoin-cash"),
-            ("bitcoin-cash-sv", "bsv-bitcoin-sv"),
-            ("litecoin", "ltc-litecoin"),
-            ("dogecoin", "doge-dogecoin"),
-            ("cardano", "ada-cardano"),
-            ("solana", "sol-solana"),
-            ("tron", "trx-tron"),
-            ("stellar", "xlm-stellar"),
-            ("ripple", "xrp-xrp"),
-            ("xrp", "xrp-xrp"),
-            ("monero", "xmr-monero"),
-            ("ethereum-classic", "etc-ethereum-classic"),
-            ("sui", "sui-sui"),
-            ("internet-computer", "icp-internet-computer"),
-            ("near", "near-near-protocol"),
-            ("polkadot", "dot-polkadot-token"),
-            ("hyperliquid", "hype-hyperliquid"),
-            ("tether", "usdt-tether"),
-            ("usd-coin", "usdc-usd-coin"),
-            ("dai", "dai-dai"),
-            ("wrapped-bitcoin", "wbtc-wrapped-bitcoin"),
-            ("chainlink", "link-chainlink"),
-            ("uniswap", "uni-uniswap"),
-            ("aave", "aave-aave"),
-            ("shiba-inu", "shib-shiba-inu"),
-            ("bitget-token", "bgb-bitget-token"),
-            ("leo-token", "leo-unus-sed-leo"),
-            ("cronos", "cro-cronos"),
-            ("ethena-usde", "usde-ethena-usde"),
-            ("ripple-usd", "rlusd-ripple-usd"),
-            ("pax-gold", "paxg-pax-gold"),
-            ("tether-gold", "xaut-tether-gold"),
-            ("usdd", "usdd-usdd"),
-            ("global-dollar", "usdg-global-dollar"),
-        ]));
+        std::sync::LazyLock::new(|| {
+            HashMap::from([
+                ("bitcoin", "btc-bitcoin"),
+                ("ethereum", "eth-ethereum"),
+                ("optimism", "op-optimism"),
+                ("binancecoin", "bnb-binance-coin"),
+                ("bitcoin-cash", "bch-bitcoin-cash"),
+                ("bitcoin-cash-sv", "bsv-bitcoin-sv"),
+                ("litecoin", "ltc-litecoin"),
+                ("dogecoin", "doge-dogecoin"),
+                ("cardano", "ada-cardano"),
+                ("solana", "sol-solana"),
+                ("tron", "trx-tron"),
+                ("stellar", "xlm-stellar"),
+                ("ripple", "xrp-xrp"),
+                ("xrp", "xrp-xrp"),
+                ("monero", "xmr-monero"),
+                ("ethereum-classic", "etc-ethereum-classic"),
+                ("sui", "sui-sui"),
+                ("internet-computer", "icp-internet-computer"),
+                ("near", "near-near-protocol"),
+                ("polkadot", "dot-polkadot-token"),
+                ("hyperliquid", "hype-hyperliquid"),
+                ("tether", "usdt-tether"),
+                ("usd-coin", "usdc-usd-coin"),
+                ("dai", "dai-dai"),
+                ("wrapped-bitcoin", "wbtc-wrapped-bitcoin"),
+                ("chainlink", "link-chainlink"),
+                ("uniswap", "uni-uniswap"),
+                ("aave", "aave-aave"),
+                ("shiba-inu", "shib-shiba-inu"),
+                ("bitget-token", "bgb-bitget-token"),
+                ("leo-token", "leo-unus-sed-leo"),
+                ("cronos", "cro-cronos"),
+                ("ethena-usde", "usde-ethena-usde"),
+                ("ripple-usd", "rlusd-ripple-usd"),
+                ("pax-gold", "paxg-pax-gold"),
+                ("tether-gold", "xaut-tether-gold"),
+                ("usdd", "usdd-usdd"),
+                ("global-dollar", "usdg-global-dollar"),
+            ])
+        });
     static SYMBOL_MAP: std::sync::LazyLock<HashMap<&'static str, &'static str>> =
-        std::sync::LazyLock::new(|| HashMap::from([
-            ("BTC", "btc-bitcoin"),
-            ("ETH", "eth-ethereum"),
-            ("OP", "op-optimism"),
-            ("BNB", "bnb-binance-coin"),
-            ("BCH", "bch-bitcoin-cash"),
-            ("BSV", "bsv-bitcoin-sv"),
-            ("LTC", "ltc-litecoin"),
-            ("DOGE", "doge-dogecoin"),
-            ("ADA", "ada-cardano"),
-            ("SOL", "sol-solana"),
-            ("TRX", "trx-tron"),
-            ("XLM", "xlm-stellar"),
-            ("XRP", "xrp-xrp"),
-            ("XMR", "xmr-monero"),
-            ("ETC", "etc-ethereum-classic"),
-            ("SUI", "sui-sui"),
-            ("ICP", "icp-internet-computer"),
-            ("NEAR", "near-near-protocol"),
-            ("DOT", "dot-polkadot-token"),
-            ("HYPE", "hype-hyperliquid"),
-            ("USDT", "usdt-tether"),
-            ("USDC", "usdc-usd-coin"),
-            ("DAI", "dai-dai"),
-            ("BGB", "bgb-bitget-token"),
-            ("LEO", "leo-unus-sed-leo"),
-            ("CRO", "cro-cronos"),
-            ("USDE", "usde-ethena-usde"),
-            ("RLUSD", "rlusd-ripple-usd"),
-            ("PAXG", "paxg-pax-gold"),
-            ("XAUT", "xaut-tether-gold"),
-            ("USDD", "usdd-usdd"),
-            ("USDG", "usdg-global-dollar"),
-        ]));
+        std::sync::LazyLock::new(|| {
+            HashMap::from([
+                ("BTC", "btc-bitcoin"),
+                ("ETH", "eth-ethereum"),
+                ("OP", "op-optimism"),
+                ("BNB", "bnb-binance-coin"),
+                ("BCH", "bch-bitcoin-cash"),
+                ("BSV", "bsv-bitcoin-sv"),
+                ("LTC", "ltc-litecoin"),
+                ("DOGE", "doge-dogecoin"),
+                ("ADA", "ada-cardano"),
+                ("SOL", "sol-solana"),
+                ("TRX", "trx-tron"),
+                ("XLM", "xlm-stellar"),
+                ("XRP", "xrp-xrp"),
+                ("XMR", "xmr-monero"),
+                ("ETC", "etc-ethereum-classic"),
+                ("SUI", "sui-sui"),
+                ("ICP", "icp-internet-computer"),
+                ("NEAR", "near-near-protocol"),
+                ("DOT", "dot-polkadot-token"),
+                ("HYPE", "hype-hyperliquid"),
+                ("USDT", "usdt-tether"),
+                ("USDC", "usdc-usd-coin"),
+                ("DAI", "dai-dai"),
+                ("BGB", "bgb-bitget-token"),
+                ("LEO", "leo-unus-sed-leo"),
+                ("CRO", "cro-cronos"),
+                ("USDE", "usde-ethena-usde"),
+                ("RLUSD", "rlusd-ripple-usd"),
+                ("PAXG", "paxg-pax-gold"),
+                ("XAUT", "xaut-tether-gold"),
+                ("USDD", "usdd-usdd"),
+                ("USDG", "usdg-global-dollar"),
+            ])
+        });
 
     let gecko = gecko_id.trim();
     // All keys are lowercase ASCII, so only lowercase if needed.
@@ -417,15 +418,11 @@ async fn fetch_coinlore_quotes(coins: &[PriceRequestCoin]) -> Result<PriceQuoteM
 
     let mut by_nameid: HashMap<String, &CoinLoreTicker> = HashMap::new();
     for t in &resp.data {
-        by_nameid
-            .entry(t.nameid.to_lowercase())
-            .or_insert(t);
+        by_nameid.entry(t.nameid.to_lowercase()).or_insert(t);
     }
     let mut by_symbol: HashMap<String, &CoinLoreTicker> = HashMap::new();
     for t in &resp.data {
-        by_symbol
-            .entry(t.symbol.to_uppercase())
-            .or_insert(t);
+        by_symbol.entry(t.symbol.to_uppercase()).or_insert(t);
     }
 
     for coin in coins {
@@ -538,10 +535,7 @@ async fn fetch_fawaz_ahmed_rates(currencies: &[String]) -> Result<HashMap<String
     Ok(filter_rates(normalized, currencies))
 }
 
-fn filter_rates(
-    rates: HashMap<String, f64>,
-    allowed: &[String],
-) -> HashMap<String, f64> {
+fn filter_rates(rates: HashMap<String, f64>, allowed: &[String]) -> HashMap<String, f64> {
     let mut out = HashMap::new();
     for currency in allowed {
         let upper = currency.to_uppercase();
@@ -647,8 +641,7 @@ mod merge_tests {
 
     #[test]
     fn price_merge_preserves_missing_keys() {
-        let existing =
-            HashMap::from([("BTC".to_string(), 50000.0), ("ETH".to_string(), 3000.0)]);
+        let existing = HashMap::from([("BTC".to_string(), 50000.0), ("ETH".to_string(), 3000.0)]);
         let fetched = HashMap::from([("BTC".to_string(), 51000.0)]);
         let outcome = merge_price_updates(existing, fetched);
         assert_eq!(outcome.updated_prices.get("ETH"), Some(&3000.0));
@@ -657,8 +650,7 @@ mod merge_tests {
     #[test]
     fn fiat_merge_prefers_fetched_falls_back_to_existing() {
         let fetched = HashMap::from([("EUR".to_string(), 0.90)]);
-        let existing =
-            HashMap::from([("JPY".to_string(), 150.0), ("EUR".to_string(), 0.85)]);
+        let existing = HashMap::from([("JPY".to_string(), 150.0), ("EUR".to_string(), 0.85)]);
         let currencies = vec!["USD".to_string(), "EUR".to_string(), "JPY".to_string()];
         let out = merge_fiat_rate_updates(fetched, existing, currencies, "USD".to_string());
         assert_eq!(out.get("USD"), Some(&1.0));

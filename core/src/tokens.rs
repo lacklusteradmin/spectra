@@ -4,8 +4,8 @@
 //! Call [`list_tokens`] to get typed token entries for a given chain id string
 //! (or all chains when the empty string `""` is passed).
 
-use std::sync::LazyLock;
 use serde::{Deserialize, Serialize};
+use std::sync::LazyLock;
 
 // Embedded at compile time — no bundle dependency at runtime.
 static TOKENS_TOML: &str = include_str!("../data/tokens.toml");
@@ -21,18 +21,18 @@ struct TomlFile {
 
 #[derive(Debug, Deserialize)]
 struct TomlToken {
-    chain:           String,
-    name:            String,
-    symbol:          String,
-    standard:        String,
-    contract:        String,
-    coingecko_id:    String,
-    decimals:        u32,
+    chain: String,
+    name: String,
+    symbol: String,
+    standard: String,
+    contract: String,
+    coingecko_id: String,
+    decimals: u32,
     display_decimals: Option<u32>,
-    tags:            Vec<String>,
-    color_name:      String,
-    asset_name:      String,
-    enabled:         bool,
+    tags: Vec<String>,
+    color_name: String,
+    asset_name: String,
+    enabled: bool,
 }
 
 // ----------------------------------------------------------------
@@ -41,18 +41,18 @@ struct TomlToken {
 
 #[derive(Debug, Clone, Serialize, uniffi::Record)]
 pub struct TokenEntry {
-    pub chain:           String,
-    pub name:            String,
-    pub symbol:          String,
-    pub token_standard:  String,
-    pub contract:        String,
-    pub coingecko_id:    String,
-    pub decimals:        u32,
+    pub chain: String,
+    pub name: String,
+    pub symbol: String,
+    pub token_standard: String,
+    pub contract: String,
+    pub coingecko_id: String,
+    pub decimals: u32,
     pub display_decimals: Option<u32>,
-    pub tags:            Vec<String>,
-    pub color_name:      String,
-    pub asset_name:      String,
-    pub enabled:         bool,
+    pub tags: Vec<String>,
+    pub color_name: String,
+    pub asset_name: String,
+    pub enabled: bool,
 }
 
 // ----------------------------------------------------------------
@@ -66,18 +66,18 @@ static CATALOG: LazyLock<Vec<TokenEntry>> = LazyLock::new(|| {
         .tokens
         .into_iter()
         .map(|t| TokenEntry {
-            chain:           t.chain,
-            name:            t.name,
-            symbol:          t.symbol,
-            token_standard:  t.standard,
-            contract:        t.contract,
-            coingecko_id:    t.coingecko_id,
-            decimals:        t.decimals,
+            chain: t.chain,
+            name: t.name,
+            symbol: t.symbol,
+            token_standard: t.standard,
+            contract: t.contract,
+            coingecko_id: t.coingecko_id,
+            decimals: t.decimals,
             display_decimals: t.display_decimals,
-            tags:            t.tags,
-            color_name:      t.color_name,
-            asset_name:      t.asset_name,
-            enabled:         t.enabled,
+            tags: t.tags,
+            color_name: t.color_name,
+            asset_name: t.asset_name,
+            enabled: t.enabled,
         })
         .collect()
 });
@@ -92,7 +92,11 @@ pub fn list_tokens(chain_id: String) -> Vec<TokenEntry> {
     if chain_id.is_empty() {
         CATALOG.clone()
     } else {
-        CATALOG.iter().filter(|t| t.chain == chain_id).cloned().collect()
+        CATALOG
+            .iter()
+            .filter(|t| t.chain == chain_id)
+            .cloned()
+            .collect()
     }
 }
 
@@ -114,7 +118,14 @@ fn strip_hex_leading_zeros(value: &str) -> String {
     }
     let hex_part = &value[2..];
     let significant: String = hex_part.chars().skip_while(|c| *c == '0').collect();
-    format!("0x{}", if significant.is_empty() { "0" } else { &significant })
+    format!(
+        "0x{}",
+        if significant.is_empty() {
+            "0"
+        } else {
+            &significant
+        }
+    )
 }
 
 /// Canonicalize a `0x…` hex string: strip leading zeroes, keep at least one.
@@ -142,7 +153,9 @@ pub fn normalize_aptos_token_identifier(value: String) -> String {
             while end < bytes.len() && (bytes[end] as char).is_ascii_hexdigit() {
                 end += 1;
             }
-            out.push_str(&canonical_aptos_hex_address(lowercased[start..end].to_string()));
+            out.push_str(&canonical_aptos_hex_address(
+                lowercased[start..end].to_string(),
+            ));
             i = end;
         } else {
             out.push(bytes[i] as char);
@@ -321,7 +334,10 @@ mod tests {
             normalize_sui_token_identifier("0x0002::Foo::bar".into()),
             "0x2::foo::bar"
         );
-        assert_eq!(normalize_sui_token_identifier("plaintext".into()), "plaintext");
+        assert_eq!(
+            normalize_sui_token_identifier("plaintext".into()),
+            "plaintext"
+        );
     }
 
     #[test]
@@ -335,12 +351,12 @@ mod tests {
     #[test]
     fn endpoint_validation() {
         assert_eq!(
-            bitcoin_esplora_endpoints_validation_error("https://x.example,https://y.example".into()),
+            bitcoin_esplora_endpoints_validation_error(
+                "https://x.example,https://y.example".into()
+            ),
             None
         );
-        assert!(
-            bitcoin_esplora_endpoints_validation_error("notaurl".into()).is_some()
-        );
+        assert!(bitcoin_esplora_endpoints_validation_error("notaurl".into()).is_some());
         assert_eq!(ethereum_rpc_endpoint_validation_error("".into()), None);
         assert!(ethereum_rpc_endpoint_validation_error("ftp://x".into()).is_some());
         assert_eq!(
@@ -352,7 +368,11 @@ mod tests {
     #[test]
     fn dashboard_contract_dispatch() {
         assert_eq!(
-            normalize_dashboard_contract_address(Some("  ".into()), "Ethereum".into(), "ERC-20".into()),
+            normalize_dashboard_contract_address(
+                Some("  ".into()),
+                "Ethereum".into(),
+                "ERC-20".into()
+            ),
             None
         );
         assert_eq!(
@@ -360,25 +380,34 @@ mod tests {
             None
         );
         assert_eq!(
-            normalize_dashboard_contract_address(Some("0xABCDEF".into()), "Ethereum".into(), "ERC-20".into()),
+            normalize_dashboard_contract_address(
+                Some("0xABCDEF".into()),
+                "Ethereum".into(),
+                "ERC-20".into()
+            ),
             Some("0xabcdef".into())
         );
         assert_eq!(
-            normalize_dashboard_contract_address(Some("0x0002::Foo::bar".into()), "Sui".into(), "Native".into()),
+            normalize_dashboard_contract_address(
+                Some("0x0002::Foo::bar".into()),
+                "Sui".into(),
+                "Native".into()
+            ),
             Some("0x2::foo::bar".into())
         );
         assert_eq!(
-            normalize_dashboard_contract_address(Some("0x001::coin::USDC".into()), "Aptos".into(), "Native".into()),
+            normalize_dashboard_contract_address(
+                Some("0x001::coin::USDC".into()),
+                "Aptos".into(),
+                "Native".into()
+            ),
             Some("0x1::coin::usdc".into())
         );
     }
 
     #[test]
     fn aptos_package_id_splits_first_colon() {
-        assert_eq!(
-            aptos_package_identifier(Some("0x1:coin".into())),
-            "0x1"
-        );
+        assert_eq!(aptos_package_identifier(Some("0x1:coin".into())), "0x1");
         assert_eq!(aptos_package_identifier(None), "");
     }
 }

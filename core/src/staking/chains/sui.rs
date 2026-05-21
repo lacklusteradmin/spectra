@@ -44,18 +44,26 @@ struct SuiValidatorSummary {
     description: String,
     #[serde(default)]
     project_url: String,
-    commission_rate: String,     // basis points, "500" = 5%
+    commission_rate: String,          // basis points, "500" = 5%
     staking_pool_sui_balance: String, // MIST string
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
-fn mist_to_sui(mist: u64) -> f64 { mist as f64 / 1_000_000_000.0 }
+fn mist_to_sui(mist: u64) -> f64 {
+    mist as f64 / 1_000_000_000.0
+}
 
-fn sui_display(mist: u64) -> String { format!("{:.6} SUI", mist_to_sui(mist)) }
+fn sui_display(mist: u64) -> String {
+    format!("{:.6} SUI", mist_to_sui(mist))
+}
 
 fn short_id(id: &str) -> &str {
-    if id.len() >= 10 { &id[..10] } else { id }
+    if id.len() >= 10 {
+        &id[..10]
+    } else {
+        id
+    }
 }
 
 impl SuiStakingClient {
@@ -108,7 +116,11 @@ impl SuiStakingClient {
                     tags: vec![],
                     min_delegation_smallest_unit: Some("1000000000".to_string()), // 1 SUI
                     uptime_pct: None,
-                    website: if v.project_url.is_empty() { None } else { Some(v.project_url) },
+                    website: if v.project_url.is_empty() {
+                        None
+                    } else {
+                        Some(v.project_url)
+                    },
                     description: if v.description.is_empty() {
                         None
                     } else {
@@ -170,9 +182,7 @@ impl SuiStakingClient {
             estimated_fee_smallest_unit: "1000000".to_string(),
             estimated_fee_display: "~0.001 SUI".to_string(),
             unbonding_period_seconds: 24 * 3600,
-            notes: vec![
-                "Principal + rewards return at the end of the current epoch.".to_string(),
-            ],
+            notes: vec!["Principal + rewards return at the end of the current epoch.".to_string()],
             post_action_balance_smallest_unit: None,
             slashing_risk_note: None,
             validator_min_met: None,

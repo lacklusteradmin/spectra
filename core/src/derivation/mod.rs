@@ -5,8 +5,10 @@
 //! address encoder, and the UniFFI export surface).
 
 pub mod chains;
+pub mod dispatch;
 pub mod funds_finder;
 pub mod import;
+pub mod primitives;
 pub mod types;
 pub mod validation;
 pub mod xpub_walker;

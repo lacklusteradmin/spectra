@@ -17,7 +17,9 @@ use zeroize::Zeroize;
 
 use crate::http::{with_fallback, RetryProfile};
 
-use crate::fetch::chains::bitcoin::{bitcoin_network_for_mode, BitcoinClient, BitcoinSendResult, EsploraUtxo, FeeRate};
+use crate::fetch::chains::bitcoin::{
+    bitcoin_network_for_mode, BitcoinClient, BitcoinSendResult, EsploraUtxo, FeeRate,
+};
 
 impl BitcoinClient {
     pub async fn broadcast_raw_tx(&self, raw_tx_hex: &str) -> Result<String, String> {
@@ -152,7 +154,10 @@ fn build_extra_outputs(
     let mut out = Vec::new();
     for item in extra {
         match item {
-            BitcoinExtraOutput::Address { address, amount_sats } => {
+            BitcoinExtraOutput::Address {
+                address,
+                amount_sats,
+            } => {
                 let addr = Address::from_str(address)
                     .map_err(|e| format!("extra output bad address: {e}"))?
                     .require_network(network)
@@ -196,8 +201,8 @@ pub fn sign_p2wpkh(params: &mut BitcoinSendParams) -> Result<(Transaction, Strin
     key_bytes.zeroize();
 
     let secp_pk = secp256k1::PublicKey::from_secret_key(&secp, &secret_key);
-    let pk = CompressedPublicKey::from_slice(&secp_pk.serialize())
-        .map_err(|e| format!("pk: {e}"))?;
+    let pk =
+        CompressedPublicKey::from_slice(&secp_pk.serialize()).map_err(|e| format!("pk: {e}"))?;
     let _keypair = bitcoin::key::Keypair::from_secret_key(&secp, &secret_key);
 
     // Parse recipient.
@@ -231,14 +236,16 @@ pub fn sign_p2wpkh(params: &mut BitcoinSendParams) -> Result<(Transaction, Strin
         )?
     };
 
-    let utxos_to_use: Vec<&EsploraUtxo> = if params.pinned_utxos.is_some() {
-        params.pinned_utxos.as_ref().unwrap().iter().collect()
+    let utxos_to_use: Vec<&EsploraUtxo> = if let Some(pinned_utxos) = &params.pinned_utxos {
+        pinned_utxos.iter().collect()
     } else {
         selected_owned
     };
 
     let total_in: u64 = utxos_to_use.iter().map(|u| u.value).sum();
-    let change_sats = total_in.saturating_sub(params.amount_sats).saturating_sub(fee);
+    let change_sats = total_in
+        .saturating_sub(params.amount_sats)
+        .saturating_sub(fee);
     let use_change = change_sats > params.dust_threshold.unwrap_or(546);
 
     // Build inputs (unsigned).
@@ -372,14 +379,16 @@ pub fn sign_p2pkh(params: &mut BitcoinSendParams) -> Result<(Transaction, String
         )?
     };
 
-    let utxos_to_use: Vec<&EsploraUtxo> = if params.pinned_utxos.is_some() {
-        params.pinned_utxos.as_ref().unwrap().iter().collect()
+    let utxos_to_use: Vec<&EsploraUtxo> = if let Some(pinned_utxos) = &params.pinned_utxos {
+        pinned_utxos.iter().collect()
     } else {
         selected_owned
     };
 
     let total_in: u64 = utxos_to_use.iter().map(|u| u.value).sum();
-    let change_sats = total_in.saturating_sub(params.amount_sats).saturating_sub(fee);
+    let change_sats = total_in
+        .saturating_sub(params.amount_sats)
+        .saturating_sub(fee);
     let use_change = change_sats > params.dust_threshold.unwrap_or(546);
 
     let sequence = if params.enable_rbf {
@@ -504,14 +513,16 @@ pub fn sign_p2tr(params: &mut BitcoinSendParams) -> Result<(Transaction, String)
         )?
     };
 
-    let utxos_to_use: Vec<&EsploraUtxo> = if params.pinned_utxos.is_some() {
-        params.pinned_utxos.as_ref().unwrap().iter().collect()
+    let utxos_to_use: Vec<&EsploraUtxo> = if let Some(pinned_utxos) = &params.pinned_utxos {
+        pinned_utxos.iter().collect()
     } else {
         selected_owned
     };
 
     let total_in: u64 = utxos_to_use.iter().map(|u| u.value).sum();
-    let change_sats = total_in.saturating_sub(params.amount_sats).saturating_sub(fee);
+    let change_sats = total_in
+        .saturating_sub(params.amount_sats)
+        .saturating_sub(fee);
     let use_change = change_sats > params.dust_threshold.unwrap_or(546);
 
     let sequence = if params.enable_rbf {
@@ -566,11 +577,7 @@ pub fn sign_p2tr(params: &mut BitcoinSendParams) -> Result<(Transaction, String)
     for i in 0..utxos_to_use.len() {
         use bitcoin::sighash::Prevouts;
         let sighash = sighash_cache
-            .taproot_key_spend_signature_hash(
-                i,
-                &Prevouts::All(&prevouts),
-                TapSighashType::Default,
-            )
+            .taproot_key_spend_signature_hash(i, &Prevouts::All(&prevouts), TapSighashType::Default)
             .map_err(|e| format!("taproot sighash: {e}"))?;
 
         let msg = Message::from_digest(sighash.to_raw_hash().to_byte_array());

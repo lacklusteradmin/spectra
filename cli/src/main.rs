@@ -28,7 +28,10 @@ struct CliWalletStore {
 
 impl Default for CliWalletStore {
     fn default() -> Self {
-        Self { version: 1, wallets: Vec::new() }
+        Self {
+            version: 1,
+            wallets: Vec::new(),
+        }
     }
 }
 
@@ -77,13 +80,34 @@ struct ChainInfo {
     default_path: String,
 }
 
+struct ChainPreset {
+    chain: String,
+    derivation_paths: Vec<DerivationPathChoice>,
+    networks: Vec<NetworkChoice>,
+}
+
+struct DerivationPathChoice {
+    title: String,
+    derivation_path: String,
+    is_default: bool,
+}
+
+struct NetworkChoice {
+    title: String,
+    detail: String,
+    network: String,
+    is_default: bool,
+}
+
 fn supported_chains() -> Vec<ChainInfo> {
-    spectra_core::app_core_chain_presets()
-        .expect("failed to load chain catalog")
+    load_chain_presets()
         .into_iter()
         .filter_map(|preset| {
-            preset.derivation_paths.iter()
+            preset
+                .derivation_paths
+                .iter()
                 .find(|p| p.is_default)
+                .or_else(|| preset.derivation_paths.first())
                 .map(|p| ChainInfo {
                     name: preset.chain.clone(),
                     default_path: p.derivation_path.clone(),
@@ -92,8 +116,60 @@ fn supported_chains() -> Vec<ChainInfo> {
         .collect()
 }
 
-fn load_chain_presets() -> Vec<spectra_core::AppCoreChainPreset> {
-    spectra_core::app_core_chain_presets().expect("failed to load chain presets from core")
+fn load_chain_presets() -> Vec<ChainPreset> {
+    spectra_core::chains::list_all_chains()
+        .into_iter()
+        .filter(|chain| chain.derivation_path.starts_with("m/"))
+        .map(|chain| {
+            let mut derivation_paths = vec![DerivationPathChoice {
+                title: "Default".to_string(),
+                derivation_path: chain.derivation_path.clone(),
+                is_default: true,
+            }];
+            if chain.alt_derivation_path.starts_with("m/")
+                && chain.alt_derivation_path != chain.derivation_path
+            {
+                derivation_paths.push(DerivationPathChoice {
+                    title: "Alternate".to_string(),
+                    derivation_path: chain.alt_derivation_path.clone(),
+                    is_default: false,
+                });
+            }
+            ChainPreset {
+                chain: chain.name,
+                derivation_paths,
+                networks: vec![NetworkChoice {
+                    title: chain.category.clone(),
+                    detail: chain.id.clone(),
+                    network: chain.id,
+                    is_default: true,
+                }],
+            }
+        })
+        .collect()
+}
+
+fn derive_address_for_chain(
+    chain_name: &str,
+    seed_phrase: &str,
+    derivation_path: &str,
+) -> Result<String, spectra_core::SpectraBridgeError> {
+    let result = spectra_core::derivation::dispatch::derive_for_chain_name(
+        chain_name,
+        seed_phrase,
+        derivation_path,
+        None,
+        None,
+        None,
+        true,
+        false,
+        false,
+    )?;
+    result
+        .address
+        .ok_or_else(|| spectra_core::SpectraBridgeError::Failure {
+            message: format!("No address could be derived for {chain_name}."),
+        })
 }
 
 /// Brand-accurate truecolor for each chain. Returns the legacy `colored::Color`
@@ -106,41 +182,41 @@ fn chain_color(chain: &str) -> colored::Color {
 fn chain_rgb(chain: &str) -> (u8, u8, u8) {
     match chain {
         // Bitcoin family — orange/amber
-        "Bitcoin"            => (247, 147, 26),
-        "Bitcoin Cash"       => (139, 197, 65),
-        "Bitcoin SV"         => (255, 153, 0),
-        "Litecoin"           => (191, 191, 191),
-        "Dogecoin"           => (194, 167, 89),
+        "Bitcoin" => (247, 147, 26),
+        "Bitcoin Cash" => (139, 197, 65),
+        "Bitcoin SV" => (255, 153, 0),
+        "Litecoin" => (191, 191, 191),
+        "Dogecoin" => (194, 167, 89),
         // Ethereum family — distinct hues per L2
-        "Ethereum"           => (98, 126, 234),
-        "Ethereum Classic"   => (60, 132, 99),
-        "Arbitrum"           => (40, 160, 240),
-        "Optimism"           => (255, 4, 32),
-        "Base"               => (0, 82, 255),
-        "Polygon"            => (130, 71, 229),
-        "Avalanche"          => (232, 65, 66),
-        "BNB Chain"          => (240, 185, 11),
-        "Hyperliquid"        => (151, 252, 228),
-        "Linea"              => (97, 223, 255),
-        "Scroll"             => (255, 215, 173),
-        "Blast"              => (252, 252, 3),
-        "Mantle"             => (159, 242, 198),
+        "Ethereum" => (98, 126, 234),
+        "Ethereum Classic" => (60, 132, 99),
+        "Arbitrum" => (40, 160, 240),
+        "Optimism" => (255, 4, 32),
+        "Base" => (0, 82, 255),
+        "Polygon" => (130, 71, 229),
+        "Avalanche" => (232, 65, 66),
+        "BNB Chain" => (240, 185, 11),
+        "Hyperliquid" => (151, 252, 228),
+        "Linea" => (97, 223, 255),
+        "Scroll" => (255, 215, 173),
+        "Blast" => (252, 252, 3),
+        "Mantle" => (159, 242, 198),
         // Layer 1 / alt
-        "Solana"             => (153, 69, 255),
-        "Tron"               => (235, 0, 41),
-        "XRP Ledger"         => (35, 41, 47),
-        "XRP"                => (35, 41, 47),
-        "Cardano"            => (0, 51, 173),
-        "Polkadot"           => (230, 0, 122),
-        "Sui"                => (77, 162, 255),
-        "Aptos"              => (109, 232, 207),
-        "TON"                => (0, 152, 234),
-        "Stellar"            => (123, 95, 255),
-        "NEAR"               => (138, 220, 138),
-        "Internet Computer"  => (235, 0, 153),
-        "ICP"                => (235, 0, 153),
-        "Monero"             => (255, 102, 0),
-        _                    => (200, 200, 210),
+        "Solana" => (153, 69, 255),
+        "Tron" => (235, 0, 41),
+        "XRP Ledger" => (35, 41, 47),
+        "XRP" => (35, 41, 47),
+        "Cardano" => (0, 51, 173),
+        "Polkadot" => (230, 0, 122),
+        "Sui" => (77, 162, 255),
+        "Aptos" => (109, 232, 207),
+        "TON" => (0, 152, 234),
+        "Stellar" => (123, 95, 255),
+        "NEAR" => (138, 220, 138),
+        "Internet Computer" => (235, 0, 153),
+        "ICP" => (235, 0, 153),
+        "Monero" => (255, 102, 0),
+        _ => (200, 200, 210),
     }
 }
 
@@ -170,18 +246,23 @@ fn read_secret(prompt: &str) -> String {
         eprint!("{prompt}");
         io::stderr().flush().ok();
         let mut line = String::new();
-        io::stdin().lock().read_line(&mut line).expect("failed to read input");
-        line.trim_end_matches('\n').trim_end_matches('\r').to_string()
+        io::stdin()
+            .lock()
+            .read_line(&mut line)
+            .expect("failed to read input");
+        line.trim_end_matches('\n')
+            .trim_end_matches('\r')
+            .to_string()
     }
 }
 
 // ─── Design tokens ──────────────────────────────────────────────────────────
 // Vibrant palette: purple accent, cyan for secondary info, lavender for hints.
 
-const ACCENT: (u8, u8, u8) = (165, 130, 255);       // purple — primary
-const ACCENT_SOFT: (u8, u8, u8) = (130, 200, 255);  // sky blue — secondary
-const MUTED: (u8, u8, u8) = (90, 220, 200);         // teal/mint — info
-const FAINT: (u8, u8, u8) = (200, 150, 230);        // lavender — hints
+const ACCENT: (u8, u8, u8) = (165, 130, 255); // purple — primary
+const ACCENT_SOFT: (u8, u8, u8) = (130, 200, 255); // sky blue — secondary
+const MUTED: (u8, u8, u8) = (90, 220, 200); // teal/mint — info
+const FAINT: (u8, u8, u8) = (200, 150, 230); // lavender — hints
 
 fn accent(s: &str) -> colored::ColoredString {
     s.truecolor(ACCENT.0, ACCENT.1, ACCENT.2)
@@ -197,7 +278,8 @@ fn faint(s: &str) -> colored::ColoredString {
 }
 
 fn print_prompt() {
-    print!("{}{}{}{} ",
+    print!(
+        "{}{}{}{} ",
         "[".truecolor(140, 100, 200),
         "spectra".truecolor(220, 180, 255).bold(),
         "]".truecolor(140, 100, 200),
@@ -210,7 +292,8 @@ fn print_prompt() {
 
 fn print_banner() {
     println!();
-    println!("  {}  {}",
+    println!(
+        "  {}  {}",
         accent("spectra").bold(),
         muted("type 'help' to begin"),
     );
@@ -247,7 +330,10 @@ fn gradient_line(text: &str) -> String {
             let s = (t - 0.833) / 0.167;
             (50.0 + 90.0 * s, 80.0 - 30.0 * s, 255.0)
         };
-        out.push_str(&format!("\x1b[38;2;{};{};{}m{}\x1b[0m", r as u8, g as u8, b as u8, ch));
+        out.push_str(&format!(
+            "\x1b[38;2;{};{};{}m{}\x1b[0m",
+            r as u8, g as u8, b as u8, ch
+        ));
     }
     out
 }
@@ -270,7 +356,8 @@ fn print_logo() {
 
 fn section_tinted(title: &str, subtitle: &str, rgb: (u8, u8, u8)) {
     println!();
-    println!("  {}  {}",
+    println!(
+        "  {}  {}",
         "◆".truecolor(rgb.0, rgb.1, rgb.2).bold(),
         title.to_lowercase().truecolor(rgb.0, rgb.1, rgb.2).bold(),
     );
@@ -284,40 +371,57 @@ fn section_tinted(title: &str, subtitle: &str, rgb: (u8, u8, u8)) {
 
 fn cmd_import(args: &[&str]) {
     ensure_dirs();
-    section_tinted("Simple Import", "restore wallet from seed phrase", (165, 130, 255));
+    section_tinted(
+        "Simple Import",
+        "restore wallet from seed phrase",
+        (165, 130, 255),
+    );
 
     let mut chain_arg: Option<String> = None;
     let mut name_arg: Option<String> = None;
     let mut i = 0;
     while i < args.len() {
         match args[i] {
-            "--chain" if i + 1 < args.len() => { chain_arg = Some(args[i + 1].to_string()); i += 2; }
-            "--name" if i + 1 < args.len() => { name_arg = Some(args[i + 1].to_string()); i += 2; }
-            _ => { i += 1; }
+            "--chain" if i + 1 < args.len() => {
+                chain_arg = Some(args[i + 1].to_string());
+                i += 2;
+            }
+            "--name" if i + 1 < args.len() => {
+                name_arg = Some(args[i + 1].to_string());
+                i += 2;
+            }
+            _ => {
+                i += 1;
+            }
         }
     }
 
     let chains = supported_chains();
     if chains.is_empty() {
-        eprintln!("{} No supported chains found in catalog.", accent("✗").bold());
+        eprintln!(
+            "{} No supported chains found in catalog.",
+            accent("✗").bold()
+        );
         return;
     }
 
     // 1. Select chain
     let selected = match &chain_arg {
-        Some(name) => {
-            match chains.iter().find(|c| c.name.eq_ignore_ascii_case(name)) {
-                Some(c) => c,
-                None => {
-                    eprintln!("{} Unknown chain \"{}\".", accent("✗").bold(), name.yellow());
-                    eprintln!("{}", "Supported chains:".dimmed());
-                    for c in &chains {
-                        eprintln!("  {}", c.name.color(chain_color(&c.name)));
-                    }
-                    return;
+        Some(name) => match chains.iter().find(|c| c.name.eq_ignore_ascii_case(name)) {
+            Some(c) => c,
+            None => {
+                eprintln!(
+                    "{} Unknown chain \"{}\".",
+                    accent("✗").bold(),
+                    name.yellow()
+                );
+                eprintln!("{}", "Supported chains:".dimmed());
+                for c in &chains {
+                    eprintln!("  {}", c.name.color(chain_color(&c.name)));
                 }
+                return;
             }
-        }
+        },
         None => {
             let names: Vec<&str> = chains.iter().map(|c| c.name.as_str()).collect();
             let idx = match FuzzySelect::new()
@@ -327,13 +431,20 @@ fn cmd_import(args: &[&str]) {
                 .interact_opt()
             {
                 Ok(Some(i)) => i,
-                _ => { println!("{}", muted("cancelled")); return; }
+                _ => {
+                    println!("{}", muted("cancelled"));
+                    return;
+                }
             };
             &chains[idx]
         }
     };
 
-    println!("  {} {}", muted("chain  "), selected.name.color(chain_color(&selected.name)).bold());
+    println!(
+        "  {} {}",
+        muted("chain  "),
+        selected.name.color(chain_color(&selected.name)).bold()
+    );
 
     // 2. Wallet name
     let wallet_name = match name_arg {
@@ -345,7 +456,10 @@ fn cmd_import(args: &[&str]) {
                 .interact_text()
             {
                 Ok(n) => n,
-                Err(_) => { println!("{}", muted("cancelled")); return; }
+                Err(_) => {
+                    println!("{}", muted("cancelled"));
+                    return;
+                }
             }
         }
     };
@@ -360,7 +474,10 @@ fn cmd_import(args: &[&str]) {
     }
 
     if bip39::Mnemonic::parse_in(bip39::Language::English, &seed_trimmed).is_err() {
-        eprintln!("{} Invalid BIP39 mnemonic. Expected 12 or 24 words.", accent("✗").bold());
+        eprintln!(
+            "{} Invalid BIP39 mnemonic. Expected 12 or 24 words.",
+            accent("✗").bold()
+        );
         return;
     }
 
@@ -368,19 +485,14 @@ fn cmd_import(args: &[&str]) {
     println!("  {} {}-word mnemonic", "validated".green(), word_count);
 
     // Derive address
-    let address = match spectra_core::derivation::api::chain_dispatch::derive_for_chain(
-        &selected.name, &seed_trimmed, &selected.default_path, None, None, None, true, false, false,
-    ) {
-        Ok((Some(a), _, _)) => a,
-        Ok((None, _, _)) => {
-            eprintln!("{} No address could be derived for {}.", accent("✗").bold(), selected.name);
-            return;
-        }
-        Err(e) => {
-            eprintln!("{} Derivation failed: {e}", accent("✗").bold());
-            return;
-        }
-    };
+    let address =
+        match derive_address_for_chain(&selected.name, &seed_trimmed, &selected.default_path) {
+            Ok(address) => address,
+            Err(e) => {
+                eprintln!("{} Derivation failed: {e}", accent("✗").bold());
+                return;
+            }
+        };
 
     // 4. Password
     let password = loop {
@@ -402,18 +514,17 @@ fn cmd_import(args: &[&str]) {
     rand_fill(&mut salt);
     let master_key = derive_master_key(&password, &salt);
 
-    let encrypted_seed = match spectra_core::store::seed_envelope::encrypt(
-        seed_trimmed.as_bytes(),
-        &master_key,
-    ) {
-        Ok(data) => data,
-        Err(e) => {
-            eprintln!("{} Encryption failed: {e}", accent("✗").bold());
-            return;
-        }
-    };
+    let encrypted_seed =
+        match spectra_core::store::seed_envelope::encrypt(seed_trimmed.as_bytes(), &master_key) {
+            Ok(data) => data,
+            Err(e) => {
+                eprintln!("{} Encryption failed: {e}", accent("✗").bold());
+                return;
+            }
+        };
 
-    let password_verifier = match spectra_core::store::password_verifier::create_verifier(&password) {
+    let password_verifier = match spectra_core::store::password_verifier::create_verifier(&password)
+    {
         Ok(data) => data,
         Err(e) => {
             eprintln!("{} Verifier failed: {e}", accent("✗").bold());
@@ -424,12 +535,18 @@ fn cmd_import(args: &[&str]) {
     // 6. Persist
     let wallet_id = uuid::Uuid::new_v4().to_string().to_uppercase();
 
-    fs::write(secrets_dir().join(format!("{wallet_id}.seed")), &encrypted_seed)
-        .expect("failed to write encrypted seed");
+    fs::write(
+        secrets_dir().join(format!("{wallet_id}.seed")),
+        &encrypted_seed,
+    )
+    .expect("failed to write encrypted seed");
     fs::write(secrets_dir().join(format!("{wallet_id}.salt")), &salt)
         .expect("failed to write salt");
-    fs::write(secrets_dir().join(format!("{wallet_id}.password")), &password_verifier)
-        .expect("failed to write password verifier");
+    fs::write(
+        secrets_dir().join(format!("{wallet_id}.password")),
+        &password_verifier,
+    )
+    .expect("failed to write password verifier");
 
     let wallet = CliWallet {
         id: wallet_id,
@@ -445,9 +562,17 @@ fn cmd_import(args: &[&str]) {
     save_store(&store);
 
     println!();
-    println!("  {} {}", accent("✓").bold(), "Wallet imported.".white().bold());
+    println!(
+        "  {} {}",
+        accent("✓").bold(),
+        "Wallet imported.".white().bold()
+    );
     println!("  {} {}", muted("name   "), wallet_name.white().bold());
-    println!("  {} {}", muted("chain  "), selected.name.color(chain_color(&selected.name)));
+    println!(
+        "  {} {}",
+        muted("chain  "),
+        selected.name.color(chain_color(&selected.name))
+    );
     println!("  {} {}", muted("path   "), selected.default_path.dimmed());
     println!("  {} {}", muted("addr   "), address.bright_white());
 }
@@ -456,7 +581,11 @@ fn cmd_import(args: &[&str]) {
 
 fn cmd_advimport() {
     ensure_dirs();
-    section_tinted("Advanced Import", "custom network and derivation path", (130, 200, 255));
+    section_tinted(
+        "Advanced Import",
+        "custom network and derivation path",
+        (130, 200, 255),
+    );
 
     let presets = load_chain_presets();
     if presets.is_empty() {
@@ -473,17 +602,30 @@ fn cmd_advimport() {
         .interact_opt()
     {
         Ok(Some(i)) => i,
-        _ => { println!("{}", muted("cancelled")); return; }
+        _ => {
+            println!("{}", muted("cancelled"));
+            return;
+        }
     };
     let preset = &presets[chain_idx];
-    println!("  {} {}", muted("chain  "), preset.chain.color(chain_color(&preset.chain)).bold());
+    println!(
+        "  {} {}",
+        muted("chain  "),
+        preset.chain.color(chain_color(&preset.chain)).bold()
+    );
 
     // 2. Select network (if multiple)
     let network = if preset.networks.len() > 1 {
-        let labels: Vec<String> = preset.networks.iter()
+        let labels: Vec<String> = preset
+            .networks
+            .iter()
             .map(|n| format!("{} — {}", n.title, n.detail))
             .collect();
-        let default_idx = preset.networks.iter().position(|n| n.is_default).unwrap_or(0);
+        let default_idx = preset
+            .networks
+            .iter()
+            .position(|n| n.is_default)
+            .unwrap_or(0);
         let idx = match FuzzySelect::new()
             .with_prompt("Select network")
             .items(&labels)
@@ -491,7 +633,10 @@ fn cmd_advimport() {
             .interact_opt()
         {
             Ok(Some(i)) => i,
-            _ => { println!("{}", muted("cancelled")); return; }
+            _ => {
+                println!("{}", muted("cancelled"));
+                return;
+            }
         };
         let net = &preset.networks[idx];
         println!("  {} {}", muted("net    "), net.title.white().bold());
@@ -502,11 +647,17 @@ fn cmd_advimport() {
 
     // 3. Select derivation path (if multiple, plus custom option)
     let derivation_path = if preset.derivation_paths.len() > 1 {
-        let mut labels: Vec<String> = preset.derivation_paths.iter()
+        let mut labels: Vec<String> = preset
+            .derivation_paths
+            .iter()
             .map(|p| format!("{:<20} {}", p.title, p.derivation_path.dimmed()))
             .collect();
         labels.push("Custom path...".to_string());
-        let default_idx = preset.derivation_paths.iter().position(|p| p.is_default).unwrap_or(0);
+        let default_idx = preset
+            .derivation_paths
+            .iter()
+            .position(|p| p.is_default)
+            .unwrap_or(0);
         let idx = match FuzzySelect::new()
             .with_prompt("Select derivation path")
             .items(&labels)
@@ -514,7 +665,10 @@ fn cmd_advimport() {
             .interact_opt()
         {
             Ok(Some(i)) => i,
-            _ => { println!("{}", muted("cancelled")); return; }
+            _ => {
+                println!("{}", muted("cancelled"));
+                return;
+            }
         };
         if idx == preset.derivation_paths.len() {
             // Custom path
@@ -526,11 +680,19 @@ fn cmd_advimport() {
                     println!("  {} {}", muted("path   "), p.white().bold());
                     p
                 }
-                Err(_) => { println!("{}", muted("cancelled")); return; }
+                Err(_) => {
+                    println!("{}", muted("cancelled"));
+                    return;
+                }
             }
         } else {
             let path = &preset.derivation_paths[idx];
-            println!("  {} {} ({})", muted("path   "), path.derivation_path.white().bold(), path.title.dimmed());
+            println!(
+                "  {} {} ({})",
+                muted("path   "),
+                path.derivation_path.white().bold(),
+                path.title.dimmed()
+            );
             path.derivation_path.clone()
         }
     } else if let Some(path) = preset.derivation_paths.first() {
@@ -546,7 +708,10 @@ fn cmd_advimport() {
             .interact_opt()
         {
             Ok(Some(i)) => i,
-            _ => { println!("{}", muted("cancelled")); return; }
+            _ => {
+                println!("{}", muted("cancelled"));
+                return;
+            }
         };
         if idx == 1 {
             match Input::<String>::new()
@@ -557,14 +722,26 @@ fn cmd_advimport() {
                     println!("  {} {}", muted("path   "), p.white().bold());
                     p
                 }
-                Err(_) => { println!("{}", muted("cancelled")); return; }
+                Err(_) => {
+                    println!("{}", muted("cancelled"));
+                    return;
+                }
             }
         } else {
-            println!("  {} {} ({})", muted("path   "), path.derivation_path.white().bold(), path.title.dimmed());
+            println!(
+                "  {} {} ({})",
+                muted("path   "),
+                path.derivation_path.white().bold(),
+                path.title.dimmed()
+            );
             path.derivation_path.clone()
         }
     } else {
-        eprintln!("{} No derivation paths available for {}.", accent("✗").bold(), preset.chain);
+        eprintln!(
+            "{} No derivation paths available for {}.",
+            accent("✗").bold(),
+            preset.chain
+        );
         return;
     };
 
@@ -575,7 +752,10 @@ fn cmd_advimport() {
         .interact_text()
     {
         Ok(n) => n,
-        Err(_) => { println!("{}", muted("cancelled")); return; }
+        Err(_) => {
+            println!("{}", muted("cancelled"));
+            return;
+        }
     };
 
     // 5. Seed phrase
@@ -588,7 +768,10 @@ fn cmd_advimport() {
     }
 
     if bip39::Mnemonic::parse_in(bip39::Language::English, &seed_trimmed).is_err() {
-        eprintln!("{} Invalid BIP39 mnemonic. Expected 12 or 24 words.", accent("✗").bold());
+        eprintln!(
+            "{} Invalid BIP39 mnemonic. Expected 12 or 24 words.",
+            accent("✗").bold()
+        );
         return;
     }
 
@@ -596,14 +779,8 @@ fn cmd_advimport() {
     println!("  {} {}-word mnemonic", "validated".green(), word_count);
 
     // Derive address
-    let address = match spectra_core::derivation::api::chain_dispatch::derive_for_chain(
-        &preset.chain, &seed_trimmed, &derivation_path, None, None, None, true, false, false,
-    ) {
-        Ok((Some(a), _, _)) => a,
-        Ok((None, _, _)) => {
-            eprintln!("{} No address could be derived for {}.", accent("✗").bold(), preset.chain);
-            return;
-        }
+    let address = match derive_address_for_chain(&preset.chain, &seed_trimmed, &derivation_path) {
+        Ok(address) => address,
         Err(e) => {
             eprintln!("{} Derivation failed: {e}", accent("✗").bold());
             return;
@@ -630,18 +807,17 @@ fn cmd_advimport() {
     rand_fill(&mut salt);
     let master_key = derive_master_key(&password, &salt);
 
-    let encrypted_seed = match spectra_core::store::seed_envelope::encrypt(
-        seed_trimmed.as_bytes(),
-        &master_key,
-    ) {
-        Ok(data) => data,
-        Err(e) => {
-            eprintln!("{} Encryption failed: {e}", accent("✗").bold());
-            return;
-        }
-    };
+    let encrypted_seed =
+        match spectra_core::store::seed_envelope::encrypt(seed_trimmed.as_bytes(), &master_key) {
+            Ok(data) => data,
+            Err(e) => {
+                eprintln!("{} Encryption failed: {e}", accent("✗").bold());
+                return;
+            }
+        };
 
-    let password_verifier = match spectra_core::store::password_verifier::create_verifier(&password) {
+    let password_verifier = match spectra_core::store::password_verifier::create_verifier(&password)
+    {
         Ok(data) => data,
         Err(e) => {
             eprintln!("{} Verifier failed: {e}", accent("✗").bold());
@@ -652,12 +828,18 @@ fn cmd_advimport() {
     // 8. Persist
     let wallet_id = uuid::Uuid::new_v4().to_string().to_uppercase();
 
-    fs::write(secrets_dir().join(format!("{wallet_id}.seed")), &encrypted_seed)
-        .expect("failed to write encrypted seed");
+    fs::write(
+        secrets_dir().join(format!("{wallet_id}.seed")),
+        &encrypted_seed,
+    )
+    .expect("failed to write encrypted seed");
     fs::write(secrets_dir().join(format!("{wallet_id}.salt")), &salt)
         .expect("failed to write salt");
-    fs::write(secrets_dir().join(format!("{wallet_id}.password")), &password_verifier)
-        .expect("failed to write password verifier");
+    fs::write(
+        secrets_dir().join(format!("{wallet_id}.password")),
+        &password_verifier,
+    )
+    .expect("failed to write password verifier");
 
     let wallet = CliWallet {
         id: wallet_id,
@@ -673,9 +855,17 @@ fn cmd_advimport() {
     save_store(&store);
 
     println!();
-    println!("  {} {}", accent("✓").bold(), "Wallet imported.".white().bold());
+    println!(
+        "  {} {}",
+        accent("✓").bold(),
+        "Wallet imported.".white().bold()
+    );
     println!("  {} {}", muted("name   "), wallet_name.white().bold());
-    println!("  {} {}", muted("chain  "), preset.chain.color(chain_color(&preset.chain)));
+    println!(
+        "  {} {}",
+        muted("chain  "),
+        preset.chain.color(chain_color(&preset.chain))
+    );
     if let Some(ref net) = network {
         println!("  {} {}", muted("net    "), net.white());
     }
@@ -687,11 +877,18 @@ fn cmd_advimport() {
 
 fn cmd_newwallet() {
     ensure_dirs();
-    section_tinted("New Wallet", "generate fresh keys and seed phrase", (255, 200, 100));
+    section_tinted(
+        "New Wallet",
+        "generate fresh keys and seed phrase",
+        (255, 200, 100),
+    );
 
     let chains = supported_chains();
     if chains.is_empty() {
-        eprintln!("{} No supported chains found in catalog.", accent("✗").bold());
+        eprintln!(
+            "{} No supported chains found in catalog.",
+            accent("✗").bold()
+        );
         return;
     }
 
@@ -704,10 +901,17 @@ fn cmd_newwallet() {
         .interact_opt()
     {
         Ok(Some(i)) => i,
-        _ => { println!("{}", muted("cancelled")); return; }
+        _ => {
+            println!("{}", muted("cancelled"));
+            return;
+        }
     };
     let selected = &chains[chain_idx];
-    println!("  {} {}", muted("chain  "), selected.name.color(chain_color(&selected.name)).bold());
+    println!(
+        "  {} {}",
+        muted("chain  "),
+        selected.name.color(chain_color(&selected.name)).bold()
+    );
 
     // 2. Word count
     let word_options = ["12 words", "24 words"];
@@ -718,7 +922,10 @@ fn cmd_newwallet() {
         .interact_opt()
     {
         Ok(Some(i)) => i,
-        _ => { println!("{}", muted("cancelled")); return; }
+        _ => {
+            println!("{}", muted("cancelled"));
+            return;
+        }
     };
     let word_count: usize = if word_idx == 0 { 12 } else { 24 };
 
@@ -736,8 +943,15 @@ fn cmd_newwallet() {
     let seed_phrase = mnemonic.to_string();
 
     println!();
-    println!("  {}  {}", accent("!").bold(), "save these words securely".white().bold());
-    println!("     {}", muted("anyone with this phrase can spend your funds"));
+    println!(
+        "  {}  {}",
+        accent("!").bold(),
+        "save these words securely".white().bold()
+    );
+    println!(
+        "     {}",
+        muted("anyone with this phrase can spend your funds")
+    );
     println!();
 
     // Display words in a numbered grid
@@ -763,23 +977,21 @@ fn cmd_newwallet() {
         .interact_text()
     {
         Ok(n) => n,
-        Err(_) => { println!("{}", muted("cancelled")); return; }
+        Err(_) => {
+            println!("{}", muted("cancelled"));
+            return;
+        }
     };
 
     // 5. Derive address
-    let address = match spectra_core::derivation::api::chain_dispatch::derive_for_chain(
-        &selected.name, &seed_phrase, &selected.default_path, None, None, None, true, false, false,
-    ) {
-        Ok((Some(a), _, _)) => a,
-        Ok((None, _, _)) => {
-            eprintln!("{} No address could be derived for {}.", accent("✗").bold(), selected.name);
-            return;
-        }
-        Err(e) => {
-            eprintln!("{} Derivation failed: {e}", accent("✗").bold());
-            return;
-        }
-    };
+    let address =
+        match derive_address_for_chain(&selected.name, &seed_phrase, &selected.default_path) {
+            Ok(address) => address,
+            Err(e) => {
+                eprintln!("{} Derivation failed: {e}", accent("✗").bold());
+                return;
+            }
+        };
 
     // 6. Password
     let password = loop {
@@ -801,18 +1013,17 @@ fn cmd_newwallet() {
     rand_fill(&mut salt);
     let master_key = derive_master_key(&password, &salt);
 
-    let encrypted_seed = match spectra_core::store::seed_envelope::encrypt(
-        seed_phrase.as_bytes(),
-        &master_key,
-    ) {
-        Ok(data) => data,
-        Err(e) => {
-            eprintln!("{} Encryption failed: {e}", accent("✗").bold());
-            return;
-        }
-    };
+    let encrypted_seed =
+        match spectra_core::store::seed_envelope::encrypt(seed_phrase.as_bytes(), &master_key) {
+            Ok(data) => data,
+            Err(e) => {
+                eprintln!("{} Encryption failed: {e}", accent("✗").bold());
+                return;
+            }
+        };
 
-    let password_verifier = match spectra_core::store::password_verifier::create_verifier(&password) {
+    let password_verifier = match spectra_core::store::password_verifier::create_verifier(&password)
+    {
         Ok(data) => data,
         Err(e) => {
             eprintln!("{} Verifier failed: {e}", accent("✗").bold());
@@ -823,12 +1034,18 @@ fn cmd_newwallet() {
     // 8. Persist
     let wallet_id = uuid::Uuid::new_v4().to_string().to_uppercase();
 
-    fs::write(secrets_dir().join(format!("{wallet_id}.seed")), &encrypted_seed)
-        .expect("failed to write encrypted seed");
+    fs::write(
+        secrets_dir().join(format!("{wallet_id}.seed")),
+        &encrypted_seed,
+    )
+    .expect("failed to write encrypted seed");
     fs::write(secrets_dir().join(format!("{wallet_id}.salt")), &salt)
         .expect("failed to write salt");
-    fs::write(secrets_dir().join(format!("{wallet_id}.password")), &password_verifier)
-        .expect("failed to write password verifier");
+    fs::write(
+        secrets_dir().join(format!("{wallet_id}.password")),
+        &password_verifier,
+    )
+    .expect("failed to write password verifier");
 
     let wallet = CliWallet {
         id: wallet_id,
@@ -844,9 +1061,17 @@ fn cmd_newwallet() {
     save_store(&store);
 
     println!();
-    println!("  {} {}", accent("✓").bold(), "Wallet created.".white().bold());
+    println!(
+        "  {} {}",
+        accent("✓").bold(),
+        "Wallet created.".white().bold()
+    );
     println!("  {} {}", muted("name   "), wallet_name.white().bold());
-    println!("  {} {}", muted("chain  "), selected.name.color(chain_color(&selected.name)));
+    println!(
+        "  {} {}",
+        muted("chain  "),
+        selected.name.color(chain_color(&selected.name))
+    );
     println!("  {} {}", muted("path   "), selected.default_path.dimmed());
     println!("  {} {}", muted("addr   "), address.bright_white());
 }
@@ -855,11 +1080,18 @@ fn cmd_newwallet() {
 
 fn cmd_wimport() {
     ensure_dirs();
-    section_tinted("Watch Import", "read-only tracking by address", (90, 220, 200));
+    section_tinted(
+        "Watch Import",
+        "read-only tracking by address",
+        (90, 220, 200),
+    );
 
     let chains = supported_chains();
     if chains.is_empty() {
-        eprintln!("{} No supported chains found in catalog.", accent("✗").bold());
+        eprintln!(
+            "{} No supported chains found in catalog.",
+            accent("✗").bold()
+        );
         return;
     }
 
@@ -872,10 +1104,17 @@ fn cmd_wimport() {
         .interact_opt()
     {
         Ok(Some(i)) => i,
-        _ => { println!("{}", muted("cancelled")); return; }
+        _ => {
+            println!("{}", muted("cancelled"));
+            return;
+        }
     };
     let selected = &chains[chain_idx];
-    println!("  {} {}", muted("chain  "), selected.name.color(chain_color(&selected.name)).bold());
+    println!(
+        "  {} {}",
+        muted("chain  "),
+        selected.name.color(chain_color(&selected.name)).bold()
+    );
 
     // 2. Address
     let address: String = match Input::<String>::new()
@@ -883,7 +1122,10 @@ fn cmd_wimport() {
         .interact_text()
     {
         Ok(a) => a.trim().to_string(),
-        Err(_) => { println!("{}", muted("cancelled")); return; }
+        Err(_) => {
+            println!("{}", muted("cancelled"));
+            return;
+        }
     };
 
     if address.is_empty() {
@@ -898,7 +1140,10 @@ fn cmd_wimport() {
         .interact_text()
     {
         Ok(n) => n,
-        Err(_) => { println!("{}", muted("cancelled")); return; }
+        Err(_) => {
+            println!("{}", muted("cancelled"));
+            return;
+        }
     };
 
     // 4. Persist (no secrets needed for watch-only)
@@ -918,9 +1163,17 @@ fn cmd_wimport() {
     save_store(&store);
 
     println!();
-    println!("  {} {}", accent("✓").bold(), "Watch-only wallet added.".white().bold());
+    println!(
+        "  {} {}",
+        accent("✓").bold(),
+        "Watch-only wallet added.".white().bold()
+    );
     println!("  {} {}", muted("name   "), wallet_name.white().bold());
-    println!("  {} {}", muted("chain  "), selected.name.color(chain_color(&selected.name)));
+    println!(
+        "  {} {}",
+        muted("chain  "),
+        selected.name.color(chain_color(&selected.name))
+    );
     println!("  {} {}", muted("addr   "), address.bright_white());
 }
 
@@ -930,7 +1183,8 @@ fn cmd_list() {
     if store.wallets.is_empty() {
         println!();
         println!("  {}", muted("no wallets yet"));
-        println!("  {} {} {}",
+        println!(
+            "  {} {} {}",
             faint("run"),
             accent_soft("import"),
             faint("to add one"),
@@ -945,8 +1199,13 @@ fn cmd_list() {
         } else {
             chain_paint("●", &w.chain_name).bold()
         };
-        let tag = if w.watch_only { faint(" watch").to_string() } else { String::new() };
-        println!("  {}  {}  {}{}",
+        let tag = if w.watch_only {
+            faint(" watch").to_string()
+        } else {
+            String::new()
+        };
+        println!(
+            "  {}  {}  {}{}",
             dot,
             w.name.white().bold(),
             chain_paint(&w.chain_name, &w.chain_name).bold(),
@@ -955,9 +1214,14 @@ fn cmd_list() {
         println!("     {}", accent_soft(&w.address));
     }
     println!();
-    println!("  {} {}",
+    println!(
+        "  {} {}",
         accent(&format!("{}", store.wallets.len())).bold(),
-        faint(if store.wallets.len() == 1 { "wallet" } else { "wallets" }),
+        faint(if store.wallets.len() == 1 {
+            "wallet"
+        } else {
+            "wallets"
+        }),
     );
 }
 
@@ -969,7 +1233,9 @@ fn cmd_delete() {
         return;
     }
 
-    let labels: Vec<String> = store.wallets.iter()
+    let labels: Vec<String> = store
+        .wallets
+        .iter()
         .map(|w| {
             let tag = if w.watch_only { " (watch)" } else { "" };
             format!("{} — {} — {}{}", w.name, w.chain_name, w.address, tag)
@@ -982,13 +1248,18 @@ fn cmd_delete() {
         .interact_opt()
     {
         Ok(Some(i)) => i,
-        _ => { println!("{}", muted("cancelled")); return; }
+        _ => {
+            println!("{}", muted("cancelled"));
+            return;
+        }
     };
 
     let wallet = &store.wallets[idx];
     let confirm_label = format!(
         "Delete \"{}\" ({})? Type '{}' to confirm",
-        wallet.name, wallet.chain_name, "yes".red().bold()
+        wallet.name,
+        wallet.chain_name,
+        "yes".red().bold()
     );
     let answer: String = match Input::<String>::new()
         .with_prompt(&confirm_label)
@@ -996,7 +1267,10 @@ fn cmd_delete() {
         .interact_text()
     {
         Ok(a) => a,
-        Err(_) => { println!("{}", muted("cancelled")); return; }
+        Err(_) => {
+            println!("{}", muted("cancelled"));
+            return;
+        }
     };
 
     if answer.trim().to_lowercase() != "yes" {
@@ -1018,7 +1292,11 @@ fn cmd_delete() {
         let _ = fs::remove_file(secrets_dir().join(format!("{wallet_id}.password")));
     }
 
-    println!("  {} Wallet \"{}\" deleted.", accent("✓").bold(), wallet_name);
+    println!(
+        "  {} Wallet \"{}\" deleted.",
+        accent("✓").bold(),
+        wallet_name
+    );
 }
 
 // ─── Chain-name → Chain enum mapping ────────────────────────────────────────
@@ -1026,25 +1304,34 @@ fn cmd_delete() {
 fn chain_id_for_name(name: &str) -> Option<String> {
     use spectra_core::registry::Chain;
     let n = name.trim();
-    Chain::all().find(|c| {
-        c.chain_display_name().eq_ignore_ascii_case(n)
-            || c.coin_name().eq_ignore_ascii_case(n)
-    }).map(|c| c.str_id().to_string())
+    Chain::all()
+        .find(|c| {
+            c.chain_display_name().eq_ignore_ascii_case(n) || c.coin_name().eq_ignore_ascii_case(n)
+        })
+        .map(|c| c.str_id().to_string())
 }
 
 fn chain_native_symbol(chain_id: &str) -> &'static str {
     use spectra_core::registry::Chain;
-    Chain::from_str_id(chain_id).map(|c| c.coin_symbol()).unwrap_or("?")
+    Chain::from_str_id(chain_id)
+        .map(|c| c.coin_symbol())
+        .unwrap_or("?")
 }
 
 // ─── Wallet picker (shared by balance/history/staking) ──────────────────────
 
 fn pick_wallet<'a>(store: &'a CliWalletStore, prompt: &str) -> Option<&'a CliWallet> {
     if store.wallets.is_empty() {
-        println!("  {} Use {} to add one.", "No wallets.".dimmed(), "import".cyan());
+        println!(
+            "  {} Use {} to add one.",
+            "No wallets.".dimmed(),
+            "import".cyan()
+        );
         return None;
     }
-    let labels: Vec<String> = store.wallets.iter()
+    let labels: Vec<String> = store
+        .wallets
+        .iter()
         .map(|w| {
             let tag = if w.watch_only { " (watch)" } else { "" };
             format!("{} — {} — {}{}", w.name, w.chain_name, w.address, tag)
@@ -1056,7 +1343,10 @@ fn pick_wallet<'a>(store: &'a CliWalletStore, prompt: &str) -> Option<&'a CliWal
         .interact_opt()
     {
         Ok(Some(i)) => i,
-        _ => { println!("{}", muted("cancelled")); return None; }
+        _ => {
+            println!("{}", muted("cancelled"));
+            return None;
+        }
     };
     Some(&store.wallets[idx])
 }
@@ -1068,11 +1358,9 @@ const ENDPOINT_ROLE_HISTORY: u32 = 1 << 2;
 const ENDPOINT_ROLE_RPC: u32 = 1 << 7;
 
 fn endpoints_for_chain(chain_name: &str, role_mask: u32) -> Vec<String> {
-    let recs = spectra_core::app_core_endpoint_records_for_chain(
-        chain_name.to_string(),
-        role_mask,
-        false,
-    ).unwrap_or_default();
+    let recs =
+        spectra_core::app_core_endpoint_records_for_chain(chain_name.to_string(), role_mask, false)
+            .unwrap_or_default();
     recs.into_iter().map(|r| r.endpoint).collect()
 }
 
@@ -1105,38 +1393,53 @@ fn cmd_balance(rt: &tokio::runtime::Runtime) {
     let chain_id = match chain_id_for_name(&wallet.chain_name) {
         Some(id) => id,
         None => {
-            eprintln!("  {} Chain {} is not registered for balance lookups.",
-                accent("?").bold(), wallet.chain_name);
+            eprintln!(
+                "  {} Chain {} is not registered for balance lookups.",
+                accent("?").bold(),
+                wallet.chain_name
+            );
             return;
         }
     };
 
-    println!("  {} {}", muted("→"), faint(&format!("fetching {}", wallet.address)));
+    println!(
+        "  {} {}",
+        muted("→"),
+        faint(&format!("fetching {}", wallet.address))
+    );
 
-    let service = match build_service_for_chain(chain_id.clone(), &wallet.chain_name, ENDPOINT_ROLE_BALANCE | ENDPOINT_ROLE_RPC) {
+    let service = match build_service_for_chain(
+        chain_id.clone(),
+        &wallet.chain_name,
+        ENDPOINT_ROLE_BALANCE | ENDPOINT_ROLE_RPC,
+    ) {
         Ok(s) => s,
-        Err(e) => { eprintln!("  {} {e}", accent("✗").bold()); return; }
+        Err(e) => {
+            eprintln!("  {} {e}", accent("✗").bold());
+            return;
+        }
     };
 
     let result = rt.block_on(async {
-        service.fetch_native_balance_summary(chain_id.clone(), wallet.address.clone()).await
+        service
+            .fetch_native_balance_summary(chain_id.clone(), wallet.address.clone())
+            .await
     });
 
     match result {
         Ok(summary) => {
             let symbol = chain_native_symbol(&chain_id);
             println!();
-            println!("  {}  {} {}",
+            println!(
+                "  {}  {} {}",
                 chain_paint("●", &wallet.chain_name).bold(),
                 summary.amount_display.white().bold(),
                 chain_paint(symbol, &wallet.chain_name).bold(),
             );
-            println!("     {} {}",
-                muted("raw"),
-                faint(&summary.smallest_unit),
-            );
+            println!("     {} {}", muted("raw"), faint(&summary.smallest_unit),);
             if summary.utxo_count > 0 {
-                println!("     {} {}",
+                println!(
+                    "     {} {}",
                     muted("utxo"),
                     accent_soft(&summary.utxo_count.to_string()),
                 );
@@ -1159,24 +1462,37 @@ fn cmd_history(rt: &tokio::runtime::Runtime) {
     let chain_id = match chain_id_for_name(&wallet.chain_name) {
         Some(id) => id,
         None => {
-            eprintln!("  {} Chain {} is not registered for history lookups.",
-                accent("?").bold(), wallet.chain_name);
+            eprintln!(
+                "  {} Chain {} is not registered for history lookups.",
+                accent("?").bold(),
+                wallet.chain_name
+            );
             return;
         }
     };
 
-    println!("  {} {}", muted("→"), faint(&format!("fetching {}", wallet.address)));
+    println!(
+        "  {} {}",
+        muted("→"),
+        faint(&format!("fetching {}", wallet.address))
+    );
 
     let service = match build_service_for_chain(
-        chain_id.clone(), &wallet.chain_name,
+        chain_id.clone(),
+        &wallet.chain_name,
         ENDPOINT_ROLE_HISTORY | ENDPOINT_ROLE_BALANCE | ENDPOINT_ROLE_RPC,
     ) {
         Ok(s) => s,
-        Err(e) => { eprintln!("  {} {e}", accent("✗").bold()); return; }
+        Err(e) => {
+            eprintln!("  {} {e}", accent("✗").bold());
+            return;
+        }
     };
 
     let result = rt.block_on(async {
-        service.fetch_normalized_history(chain_id, wallet.address.clone()).await
+        service
+            .fetch_normalized_history(chain_id, wallet.address.clone())
+            .await
     });
 
     let entries = match result {
@@ -1193,30 +1509,43 @@ fn cmd_history(rt: &tokio::runtime::Runtime) {
         return;
     }
 
-    println!("  {}  {} {}",
+    println!(
+        "  {}  {} {}",
         chain_paint("●", &wallet.chain_name).bold(),
         entries.len().to_string().white().bold(),
-        chain_paint(if entries.len() == 1 { "transaction" } else { "transactions" }, &wallet.chain_name),
+        chain_paint(
+            if entries.len() == 1 {
+                "transaction"
+            } else {
+                "transactions"
+            },
+            &wallet.chain_name
+        ),
     );
     println!();
 
     for e in entries.iter().take(20) {
         let arrow = match e.kind.as_str() {
-            "send" | "Send"       => "↑".truecolor(255, 110, 130).bold(),
+            "send" | "Send" => "↑".truecolor(255, 110, 130).bold(),
             "receive" | "Receive" => "↓".truecolor(120, 230, 160).bold(),
-            _                     => "·".truecolor(180, 180, 200),
+            _ => "·".truecolor(180, 180, 200),
         };
         let amount = match e.kind.as_str() {
-            "send" | "Send"       => format!("{:>10.4}", e.amount).truecolor(255, 110, 130).bold(),
-            "receive" | "Receive" => format!("{:>10.4}", e.amount).truecolor(120, 230, 160).bold(),
-            _                     => format!("{:>10.4}", e.amount).white(),
+            "send" | "Send" => format!("{:>10.4}", e.amount)
+                .truecolor(255, 110, 130)
+                .bold(),
+            "receive" | "Receive" => format!("{:>10.4}", e.amount)
+                .truecolor(120, 230, 160)
+                .bold(),
+            _ => format!("{:>10.4}", e.amount).white(),
         };
         let when = if e.timestamp > 0.0 {
             format_unix(e.timestamp as i64)
         } else {
             "—".to_string()
         };
-        println!("  {}  {} {}  {}  {}",
+        println!(
+            "  {}  {} {}  {}  {}",
             arrow,
             amount,
             chain_paint(&e.symbol, &wallet.chain_name),
@@ -1224,7 +1553,7 @@ fn cmd_history(rt: &tokio::runtime::Runtime) {
             faint(&when),
         );
         let hash_short = if e.tx_hash.len() > 20 {
-            format!("{}…{}", &e.tx_hash[..10], &e.tx_hash[e.tx_hash.len()-6..])
+            format!("{}…{}", &e.tx_hash[..10], &e.tx_hash[e.tx_hash.len() - 6..])
         } else {
             e.tx_hash.clone()
         };
@@ -1237,18 +1566,32 @@ fn cmd_history(rt: &tokio::runtime::Runtime) {
 }
 
 fn format_unix(ts: i64) -> String {
-    if ts <= 0 { return "—".to_string(); }
+    if ts <= 0 {
+        return "—".to_string();
+    }
     let now = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .map(|d| d.as_secs() as i64)
         .unwrap_or(0);
     let diff = now - ts;
-    if diff < 0 { return "future".to_string(); }
-    if diff < 60 { return format!("{diff}s ago"); }
-    if diff < 3600 { return format!("{}m ago", diff / 60); }
-    if diff < 86400 { return format!("{}h ago", diff / 3600); }
-    if diff < 86400 * 30 { return format!("{}d ago", diff / 86400); }
-    if diff < 86400 * 365 { return format!("{}mo ago", diff / (86400 * 30)); }
+    if diff < 0 {
+        return "future".to_string();
+    }
+    if diff < 60 {
+        return format!("{diff}s ago");
+    }
+    if diff < 3600 {
+        return format!("{}m ago", diff / 60);
+    }
+    if diff < 86400 {
+        return format!("{}h ago", diff / 3600);
+    }
+    if diff < 86400 * 30 {
+        return format!("{}d ago", diff / 86400);
+    }
+    if diff < 86400 * 365 {
+        return format!("{}mo ago", diff / (86400 * 30));
+    }
     format!("{}y ago", diff / (86400 * 365))
 }
 
@@ -1261,22 +1604,35 @@ fn cmd_staking(_rt: &tokio::runtime::Runtime) {
         None => return,
     };
 
-    let stakable = matches!(wallet.chain_name.as_str(),
-        "Solana" | "Sui" | "Aptos" | "Polkadot" | "Internet Computer" | "ICP" | "NEAR" | "Cardano");
+    let stakable = matches!(
+        wallet.chain_name.as_str(),
+        "Solana" | "Sui" | "Aptos" | "Polkadot" | "Internet Computer" | "ICP" | "NEAR" | "Cardano"
+    );
 
     println!();
     if !stakable {
-        println!("  {}  {}", muted("·"), faint(&format!("staking unavailable on {}", wallet.chain_name)));
-        println!("     {}", faint("supports: Solana, Sui, Aptos, Polkadot, ICP, NEAR, Cardano"));
+        println!(
+            "  {}  {}",
+            muted("·"),
+            faint(&format!("staking unavailable on {}", wallet.chain_name))
+        );
+        println!(
+            "     {}",
+            faint("supports: Solana, Sui, Aptos, Polkadot, ICP, NEAR, Cardano")
+        );
         return;
     }
 
-    println!("  {}  {}",
+    println!(
+        "  {}  {}",
         accent("!").bold(),
         format!("staking on {} not yet wired up", wallet.chain_name).white(),
     );
     println!();
-    println!("     {}", faint("planned: positions, rewards, validators with APY"));
+    println!(
+        "     {}",
+        faint("planned: positions, rewards, validators with APY")
+    );
 }
 
 // ─── Wallet detail / show ────────────────────────────────────────────────────
@@ -1290,8 +1646,20 @@ fn cmd_show() {
     let (r, g, b) = chain_rgb(&wallet.chain_name);
     section_tinted("Wallet Detail", &wallet.chain_name, (r, g, b));
     println!("  {} {}", muted("name   "), wallet.name.white().bold());
-    println!("  {} {}", muted("chain  "), chain_paint(&wallet.chain_name, &wallet.chain_name).bold());
-    println!("  {} {}", muted("type   "), if wallet.watch_only { faint("watch-only") } else { accent_soft("hd · seed phrase") });
+    println!(
+        "  {} {}",
+        muted("chain  "),
+        chain_paint(&wallet.chain_name, &wallet.chain_name).bold()
+    );
+    println!(
+        "  {} {}",
+        muted("type   "),
+        if wallet.watch_only {
+            faint("watch-only")
+        } else {
+            accent_soft("hd · seed phrase")
+        }
+    );
     if let Some(ref path) = wallet.derivation_path {
         println!("  {} {}", muted("path   "), accent_soft(path));
     }
@@ -1304,7 +1672,9 @@ fn cmd_show() {
 fn cmd_rename() {
     let mut store = load_store();
     let idx = match {
-        let labels: Vec<String> = store.wallets.iter()
+        let labels: Vec<String> = store
+            .wallets
+            .iter()
             .map(|w| format!("{} — {}", w.name, w.chain_name))
             .collect();
         if labels.is_empty() {
@@ -1317,7 +1687,10 @@ fn cmd_rename() {
             .interact_opt()
     } {
         Ok(Some(i)) => i,
-        _ => { println!("{}", muted("cancelled")); return; }
+        _ => {
+            println!("{}", muted("cancelled"));
+            return;
+        }
     };
 
     let current = store.wallets[idx].name.clone();
@@ -1327,7 +1700,10 @@ fn cmd_rename() {
         .interact_text()
     {
         Ok(n) => n.trim().to_string(),
-        Err(_) => { println!("{}", muted("cancelled")); return; }
+        Err(_) => {
+            println!("{}", muted("cancelled"));
+            return;
+        }
     };
 
     if new_name.is_empty() {
@@ -1339,7 +1715,8 @@ fn cmd_rename() {
     save_store(&store);
 
     println!();
-    println!("  {} {} {} {}",
+    println!(
+        "  {} {} {} {}",
         accent("✓").bold(),
         faint(&current),
         muted("→"),
@@ -1356,15 +1733,32 @@ fn cmd_receive() {
         None => return,
     };
     let (r, g, b) = chain_rgb(&wallet.chain_name);
-    section_tinted("Receive", &format!("{} address", wallet.chain_name), (r, g, b));
+    section_tinted(
+        "Receive",
+        &format!("{} address", wallet.chain_name),
+        (r, g, b),
+    );
     println!("  {}", wallet.address.white().bold());
     println!();
-    println!("  {} {}", muted("symbol "), chain_paint(chain_native_symbol(chain_id_for_name(&wallet.chain_name).as_deref().unwrap_or("")), &wallet.chain_name).bold());
+    println!(
+        "  {} {}",
+        muted("symbol "),
+        chain_paint(
+            chain_native_symbol(
+                chain_id_for_name(&wallet.chain_name)
+                    .as_deref()
+                    .unwrap_or("")
+            ),
+            &wallet.chain_name
+        )
+        .bold()
+    );
     if let Some(ref p) = wallet.derivation_path {
         println!("  {} {}", muted("path   "), faint(p));
     }
     println!();
-    println!("  {} {}",
+    println!(
+        "  {} {}",
         accent_soft("→"),
         faint("share this address with the sender"),
     );
@@ -1381,17 +1775,28 @@ fn cmd_export() {
 
     if wallet.watch_only {
         println!();
-        println!("  {} {}",
+        println!(
+            "  {} {}",
             accent("!").bold(),
             "watch-only wallets have no seed phrase".white(),
         );
         return;
     }
 
-    section_tinted("Export Seed", "decrypt and display recovery phrase", (255, 130, 100));
+    section_tinted(
+        "Export Seed",
+        "decrypt and display recovery phrase",
+        (255, 130, 100),
+    );
 
-    println!("  {}", "this will display your seed phrase in plain text.".truecolor(255, 180, 120));
-    println!("  {}", faint("anyone watching your screen can take your funds."));
+    println!(
+        "  {}",
+        "this will display your seed phrase in plain text.".truecolor(255, 180, 120)
+    );
+    println!(
+        "  {}",
+        faint("anyone watching your screen can take your funds.")
+    );
     println!();
 
     let confirm: String = match Input::<String>::new()
@@ -1400,7 +1805,10 @@ fn cmd_export() {
         .interact_text()
     {
         Ok(c) => c,
-        Err(_) => { println!("{}", muted("cancelled")); return; }
+        Err(_) => {
+            println!("{}", muted("cancelled"));
+            return;
+        }
     };
     if confirm.trim().to_lowercase() != "yes" {
         println!("{}", muted("  cancelled"));
@@ -1415,15 +1823,24 @@ fn cmd_export() {
 
     let salt = match fs::read(&salt_path) {
         Ok(s) => s,
-        Err(e) => { eprintln!("  {} unable to read salt: {e}", accent("✗").bold()); return; }
+        Err(e) => {
+            eprintln!("  {} unable to read salt: {e}", accent("✗").bold());
+            return;
+        }
     };
     let verifier_data = match fs::read(&verifier_path) {
         Ok(v) => v,
-        Err(e) => { eprintln!("  {} unable to read verifier: {e}", accent("✗").bold()); return; }
+        Err(e) => {
+            eprintln!("  {} unable to read verifier: {e}", accent("✗").bold());
+            return;
+        }
     };
     let envelope = match fs::read(&seed_path) {
         Ok(s) => s,
-        Err(e) => { eprintln!("  {} unable to read seed envelope: {e}", accent("✗").bold()); return; }
+        Err(e) => {
+            eprintln!("  {} unable to read seed envelope: {e}", accent("✗").bold());
+            return;
+        }
     };
 
     if !spectra_core::store::password_verifier::verify(&password, &verifier_data) {
@@ -1434,7 +1851,10 @@ fn cmd_export() {
     let master_key = derive_master_key(&password, &salt);
     let seed_phrase = match spectra_core::store::seed_envelope::decrypt(&envelope, &master_key) {
         Ok(s) => s,
-        Err(e) => { eprintln!("  {} decryption failed: {e}", accent("✗").bold()); return; }
+        Err(e) => {
+            eprintln!("  {} decryption failed: {e}", accent("✗").bold());
+            return;
+        }
     };
 
     println!();
@@ -1448,9 +1868,12 @@ fn cmd_export() {
             print!("  {} {}", faint(&num), w.white().bold());
         }
     }
-    if words.len() % 4 != 0 { println!(); }
+    if words.len() % 4 != 0 {
+        println!();
+    }
     println!();
-    println!("  {} {}",
+    println!(
+        "  {} {}",
         accent("!").bold(),
         "store this securely. clear your terminal when done.".truecolor(255, 180, 120),
     );
@@ -1467,37 +1890,60 @@ fn cmd_send(rt: &tokio::runtime::Runtime) {
 
     if wallet.watch_only {
         println!();
-        println!("  {} {}", accent("!").bold(), "watch-only wallets cannot send".white());
+        println!(
+            "  {} {}",
+            accent("!").bold(),
+            "watch-only wallets cannot send".white()
+        );
         return;
     }
 
     let chain_id = match chain_id_for_name(&wallet.chain_name) {
         Some(id) => id,
         None => {
-            eprintln!("  {} chain {} not registered", accent("?").bold(), wallet.chain_name);
+            eprintln!(
+                "  {} chain {} not registered",
+                accent("?").bold(),
+                wallet.chain_name
+            );
             return;
         }
     };
     let derivation_path = match wallet.derivation_path.clone() {
         Some(p) => p,
         None => {
-            eprintln!("  {} wallet has no derivation path stored", accent("✗").bold());
+            eprintln!(
+                "  {} wallet has no derivation path stored",
+                accent("✗").bold()
+            );
             return;
         }
     };
 
     let (r, g, b) = chain_rgb(&wallet.chain_name);
-    section_tinted("Send", &format!("transfer {} from {}", chain_native_symbol(&chain_id), wallet.name), (r, g, b));
+    section_tinted(
+        "Send",
+        &format!(
+            "transfer {} from {}",
+            chain_native_symbol(&chain_id),
+            wallet.name
+        ),
+        (r, g, b),
+    );
 
     let to_address: String = match Input::<String>::new()
         .with_prompt("To address")
         .interact_text()
     {
         Ok(a) => a.trim().to_string(),
-        Err(_) => { println!("{}", muted("cancelled")); return; }
+        Err(_) => {
+            println!("{}", muted("cancelled"));
+            return;
+        }
     };
     if to_address.is_empty() {
-        eprintln!("  {} address cannot be empty", accent("✗").bold()); return;
+        eprintln!("  {} address cannot be empty", accent("✗").bold());
+        return;
     }
 
     let amount_str: String = match Input::<String>::new()
@@ -1505,17 +1951,26 @@ fn cmd_send(rt: &tokio::runtime::Runtime) {
         .interact_text()
     {
         Ok(a) => a.trim().to_string(),
-        Err(_) => { println!("{}", muted("cancelled")); return; }
+        Err(_) => {
+            println!("{}", muted("cancelled"));
+            return;
+        }
     };
     let amount: f64 = match amount_str.parse() {
         Ok(v) if v > 0.0 => v,
-        _ => { eprintln!("  {} invalid amount", accent("✗").bold()); return; }
+        _ => {
+            eprintln!("  {} invalid amount", accent("✗").bold());
+            return;
+        }
     };
 
     println!();
-    println!("  {} {} {} {}",
+    println!(
+        "  {} {} {} {}",
         muted("→ sending"),
-        format!("{} {}", amount, chain_native_symbol(&chain_id)).white().bold(),
+        format!("{} {}", amount, chain_native_symbol(&chain_id))
+            .white()
+            .bold(),
         muted("to"),
         accent_soft(&to_address),
     );
@@ -1525,25 +1980,38 @@ fn cmd_send(rt: &tokio::runtime::Runtime) {
         .interact_text()
     {
         Ok(c) => c,
-        Err(_) => { println!("{}", muted("cancelled")); return; }
+        Err(_) => {
+            println!("{}", muted("cancelled"));
+            return;
+        }
     };
     if confirm.trim().to_lowercase() != "yes" {
-        println!("{}", muted("  cancelled")); return;
+        println!("{}", muted("  cancelled"));
+        return;
     }
 
     // Decrypt seed
     let password = read_secret(&format!("  {} ", muted("password:")));
     let salt = match fs::read(secrets_dir().join(format!("{}.salt", wallet.id))) {
         Ok(s) => s,
-        Err(e) => { eprintln!("  {} {e}", accent("✗").bold()); return; }
+        Err(e) => {
+            eprintln!("  {} {e}", accent("✗").bold());
+            return;
+        }
     };
     let verifier_data = match fs::read(secrets_dir().join(format!("{}.password", wallet.id))) {
         Ok(v) => v,
-        Err(e) => { eprintln!("  {} {e}", accent("✗").bold()); return; }
+        Err(e) => {
+            eprintln!("  {} {e}", accent("✗").bold());
+            return;
+        }
     };
     let envelope = match fs::read(secrets_dir().join(format!("{}.seed", wallet.id))) {
         Ok(s) => s,
-        Err(e) => { eprintln!("  {} {e}", accent("✗").bold()); return; }
+        Err(e) => {
+            eprintln!("  {} {e}", accent("✗").bold());
+            return;
+        }
     };
     if !spectra_core::store::password_verifier::verify(&password, &verifier_data) {
         eprintln!("  {} incorrect password", accent("✗").bold());
@@ -1552,16 +2020,23 @@ fn cmd_send(rt: &tokio::runtime::Runtime) {
     let master_key = derive_master_key(&password, &salt);
     let seed_phrase = match spectra_core::store::seed_envelope::decrypt(&envelope, &master_key) {
         Ok(s) => s,
-        Err(e) => { eprintln!("  {} {e}", accent("✗").bold()); return; }
+        Err(e) => {
+            eprintln!("  {} {e}", accent("✗").bold());
+            return;
+        }
     };
 
     // Build service with broadcast endpoints
     let service = match build_service_for_chain(
-        chain_id.clone(), &wallet.chain_name,
-        ENDPOINT_ROLE_BALANCE | ENDPOINT_ROLE_RPC | (1 << 5) /* BROADCAST */ | (1 << 4) /* FEE */ | (1 << 3) /* UTXO */,
+        chain_id.clone(),
+        &wallet.chain_name,
+        ENDPOINT_ROLE_BALANCE | ENDPOINT_ROLE_RPC | (1 << 5) /* BROADCAST */ | (1 << 4) /* FEE */ | (1 << 3), /* UTXO */
     ) {
         Ok(s) => s,
-        Err(e) => { eprintln!("  {} {e}", accent("✗").bold()); return; }
+        Err(e) => {
+            eprintln!("  {} {e}", accent("✗").bold());
+            return;
+        }
     };
 
     let request = spectra_core::send::SendExecutionRequest {
@@ -1573,6 +2048,7 @@ fn cmd_send(rt: &tokio::runtime::Runtime) {
         from_address: wallet.address.clone(),
         to_address: to_address.clone(),
         amount,
+        amount_str: Some(amount_str.clone()),
         contract_address: None,
         token_decimals: None,
         fee_rate_svb: None,
@@ -1591,13 +2067,25 @@ fn cmd_send(rt: &tokio::runtime::Runtime) {
     match result {
         Ok(res) => {
             println!();
-            println!("  {} {}", accent("✓").bold(), "transaction broadcast".white().bold());
+            println!(
+                "  {} {}",
+                accent("✓").bold(),
+                "transaction broadcast".white().bold()
+            );
             if !res.transaction_hash.is_empty() {
-                println!("  {} {}", muted("tx     "), accent_soft(&res.transaction_hash));
+                println!(
+                    "  {} {}",
+                    muted("tx     "),
+                    accent_soft(&res.transaction_hash)
+                );
             }
         }
         Err(e) => {
-            eprintln!("  {} {}", accent("✗").bold(), format!("broadcast failed: {e}").white());
+            eprintln!(
+                "  {} {}",
+                accent("✗").bold(),
+                format!("broadcast failed: {e}").white()
+            );
         }
     }
 }
@@ -1605,8 +2093,6 @@ fn cmd_send(rt: &tokio::runtime::Runtime) {
 // ─── Price ──────────────────────────────────────────────────────────────────
 
 fn cmd_price(rt: &tokio::runtime::Runtime) {
-    use spectra_core::registry::Chain;
-
     let store = load_store();
     if store.wallets.is_empty() {
         // Allow asking for any chain even with no wallets
@@ -1619,7 +2105,10 @@ fn cmd_price(rt: &tokio::runtime::Runtime) {
             .interact_opt()
         {
             Ok(Some(i)) => i,
-            _ => { println!("{}", muted("cancelled")); return; }
+            _ => {
+                println!("{}", muted("cancelled"));
+                return;
+            }
         };
         return print_price_for_chain(rt, &chains[idx].name);
     }
@@ -1635,7 +2124,10 @@ fn cmd_price(rt: &tokio::runtime::Runtime) {
         .interact_opt()
     {
         Ok(Some(i)) => i,
-        _ => { println!("{}", muted("cancelled")); return; }
+        _ => {
+            println!("{}", muted("cancelled"));
+            return;
+        }
     };
     print_price_for_chain(rt, &chain_names[idx]);
 }
@@ -1653,7 +2145,11 @@ fn print_price_for_chain(rt: &tokio::runtime::Runtime, chain_name: &str) {
     let symbol = chain.coin_symbol();
     let coin_gecko_id = chain.coin_gecko_id();
 
-    println!("  {} {}", muted("→"), faint(&format!("fetching {} price…", symbol)));
+    println!(
+        "  {} {}",
+        muted("→"),
+        faint(&format!("fetching {} price…", symbol))
+    );
 
     let request = vec![spectra_core::price::PriceRequestCoin {
         holding_key: symbol.to_string(),
@@ -1664,23 +2160,23 @@ fn print_price_for_chain(rt: &tokio::runtime::Runtime, chain_name: &str) {
     // We construct a service even though pricing doesn't need chain endpoints
     let service = spectra_core::service::WalletService::new_typed(vec![]).unwrap();
     let result = rt.block_on(async {
-        service.fetch_prices_typed("CoinGecko".to_string(), request).await
+        service
+            .fetch_prices_typed("CoinGecko".to_string(), request)
+            .await
     });
 
     match result {
         Ok(map) => {
             let price = map.get(symbol).copied().unwrap_or(0.0);
             println!();
-            println!("  {}  {} {}  {}",
+            println!(
+                "  {}  {} {}  {}",
                 chain_paint("●", chain_name).bold(),
                 format!("${:.2}", price).white().bold(),
                 muted("USD"),
                 chain_paint(symbol, chain_name).bold(),
             );
-            println!("     {} {}",
-                muted("via"),
-                faint("CoinGecko"),
-            );
+            println!("     {} {}", muted("via"), faint("CoinGecko"),);
         }
         Err(e) => {
             eprintln!("  {} {e}", accent("✗").bold());
@@ -1698,7 +2194,11 @@ fn cmd_portfolio(rt: &tokio::runtime::Runtime) {
         return;
     }
 
-    section_tinted("Portfolio", "balances × prices, summed in USD", (140, 230, 180));
+    section_tinted(
+        "Portfolio",
+        "balances × prices, summed in USD",
+        (140, 230, 180),
+    );
 
     // 1. Fetch prices for unique chains (one CoinGecko call).
     let unique_chains: std::collections::BTreeSet<String> =
@@ -1717,19 +2217,33 @@ fn cmd_portfolio(rt: &tokio::runtime::Runtime) {
         }
     }
     let pricing = spectra_core::service::WalletService::new_typed(vec![]).unwrap();
-    let prices = rt.block_on(async {
-        pricing.fetch_prices_typed("CoinGecko".to_string(), requests).await
-    }).unwrap_or_default();
+    let prices = rt
+        .block_on(async {
+            pricing
+                .fetch_prices_typed("CoinGecko".to_string(), requests)
+                .await
+        })
+        .unwrap_or_default();
 
     // 2. Fetch balance for each wallet sequentially.
     let mut total_usd = 0.0;
     for w in &store.wallets {
-        let chain_id = match chain_id_for_name(&w.chain_name) { Some(i) => i, None => continue };
-        let svc = match build_service_for_chain(chain_id.clone(), &w.chain_name, ENDPOINT_ROLE_BALANCE | ENDPOINT_ROLE_RPC) {
+        let chain_id = match chain_id_for_name(&w.chain_name) {
+            Some(i) => i,
+            None => continue,
+        };
+        let svc = match build_service_for_chain(
+            chain_id.clone(),
+            &w.chain_name,
+            ENDPOINT_ROLE_BALANCE | ENDPOINT_ROLE_RPC,
+        ) {
             Ok(s) => s,
             Err(_) => continue,
         };
-        let bal_res = rt.block_on(async { svc.fetch_native_balance_summary(chain_id, w.address.clone()).await });
+        let bal_res = rt.block_on(async {
+            svc.fetch_native_balance_summary(chain_id, w.address.clone())
+                .await
+        });
         let amount: f64 = bal_res
             .ok()
             .and_then(|s| s.amount_display.parse().ok())
@@ -1737,9 +2251,17 @@ fn cmd_portfolio(rt: &tokio::runtime::Runtime) {
         let price = prices.get(&w.chain_name).copied().unwrap_or(0.0);
         let usd = amount * price;
         total_usd += usd;
-        let symbol = symbol_for_chain.get(&w.chain_name).cloned().unwrap_or_else(|| "?".into());
-        let dot = if w.watch_only { chain_paint("○", &w.chain_name) } else { chain_paint("●", &w.chain_name).bold() };
-        println!("  {}  {:<14}  {:>14}  {}  {}",
+        let symbol = symbol_for_chain
+            .get(&w.chain_name)
+            .cloned()
+            .unwrap_or_else(|| "?".into());
+        let dot = if w.watch_only {
+            chain_paint("○", &w.chain_name)
+        } else {
+            chain_paint("●", &w.chain_name).bold()
+        };
+        println!(
+            "  {}  {:<14}  {:>14}  {}  {}",
             dot,
             w.name.white(),
             format!("{:.4} {}", amount, symbol).truecolor(220, 220, 230),
@@ -1748,7 +2270,8 @@ fn cmd_portfolio(rt: &tokio::runtime::Runtime) {
         );
     }
     println!();
-    println!("  {}  {} {}",
+    println!(
+        "  {}  {} {}",
         accent("Σ").bold(),
         format!("${:.2}", total_usd).white().bold(),
         muted("USD"),
@@ -1763,15 +2286,18 @@ fn cmd_about() {
     println!();
 
     let label_w = 10;
-    println!("  {}  {}",
+    println!(
+        "  {}  {}",
         format!("{:<label_w$}", "encryption").white().bold(),
         faint("AES-256-GCM · PBKDF2-HMAC-SHA256"),
     );
-    println!("  {}  {}",
+    println!(
+        "  {}  {}",
         format!("{:<label_w$}", "storage").white().bold(),
         faint(&data_dir().display().to_string()),
     );
-    println!("  {}  {} {}",
+    println!(
+        "  {}  {} {}",
         format!("{:<label_w$}", "chains").white().bold(),
         accent_soft(&chains.len().to_string()),
         faint("supported"),
@@ -1811,7 +2337,10 @@ fn cmd_import_menu() {
         .interact_opt()
     {
         Ok(Some(i)) => i,
-        _ => { println!("{}", muted("cancelled")); return; }
+        _ => {
+            println!("{}", muted("cancelled"));
+            return;
+        }
     };
     match idx {
         0 => cmd_newwallet(),
@@ -1825,45 +2354,63 @@ fn cmd_import_menu() {
 fn cmd_help() {
     type Group<'a> = (&'a str, (u8, u8, u8), &'a [(&'a str, &'a str)]);
     let groups: &[Group] = &[
-        ("wallet", (165, 130, 255), &[
-            ("import",            "import a wallet (choose type)"),
-            ("nw, newwallet",     "generate a new wallet"),
-            ("si, simport",       "import from seed phrase"),
-            ("ai, advimport",     "import with custom path"),
-            ("wi, wimport",       "watch-only by address"),
-            ("ls, list",          "list wallets"),
-            ("show, info",        "show full wallet detail"),
-            ("mv, rename",        "rename a wallet"),
-            ("rm, delete",        "delete a wallet"),
-            ("export",            "reveal seed phrase (password)"),
-        ]),
-        ("activity", (90, 220, 200), &[
-            ("bal, balance",      "on-chain balance"),
-            ("hist, history",     "transaction history"),
-            ("recv, receive",     "show address to receive funds"),
-            ("send, tx",          "send a transaction"),
-            ("stake, staking",    "staking info"),
-        ]),
-        ("market", (130, 200, 255), &[
-            ("price",             "current USD price (CoinGecko)"),
-            ("p, portfolio",      "total balance × price across wallets"),
-        ]),
-        ("system", (255, 200, 100), &[
-            ("about",             "about spectra"),
-            ("help, ?",           "show this help"),
-            ("q, quit",           "exit"),
-        ]),
+        (
+            "wallet",
+            (165, 130, 255),
+            &[
+                ("import", "import a wallet (choose type)"),
+                ("nw, newwallet", "generate a new wallet"),
+                ("si, simport", "import from seed phrase"),
+                ("ai, advimport", "import with custom path"),
+                ("wi, wimport", "watch-only by address"),
+                ("ls, list", "list wallets"),
+                ("show, info", "show full wallet detail"),
+                ("mv, rename", "rename a wallet"),
+                ("rm, delete", "delete a wallet"),
+                ("export", "reveal seed phrase (password)"),
+            ],
+        ),
+        (
+            "activity",
+            (90, 220, 200),
+            &[
+                ("bal, balance", "on-chain balance"),
+                ("hist, history", "transaction history"),
+                ("recv, receive", "show address to receive funds"),
+                ("send, tx", "send a transaction"),
+                ("stake, staking", "staking info"),
+            ],
+        ),
+        (
+            "market",
+            (130, 200, 255),
+            &[
+                ("price", "current USD price (CoinGecko)"),
+                ("p, portfolio", "total balance × price across wallets"),
+            ],
+        ),
+        (
+            "system",
+            (255, 200, 100),
+            &[
+                ("about", "about spectra"),
+                ("help, ?", "show this help"),
+                ("q, quit", "exit"),
+            ],
+        ),
     ];
 
     for (group, rgb, items) in groups {
         let (r, g, b) = *rgb;
         println!();
-        println!("  {} {}",
+        println!(
+            "  {} {}",
             "▎".truecolor(r, g, b).bold(),
             group.truecolor(r, g, b).bold(),
         );
         for (cmd, desc) in *items {
-            println!("    {}  {}",
+            println!(
+                "    {}  {}",
                 format!("{:<18}", cmd).truecolor(r, g, b),
                 faint(desc),
             );
@@ -1922,7 +2469,8 @@ fn run_shell(rt: &tokio::runtime::Runtime) {
                 break;
             }
             other => {
-                eprintln!("  {}  {} {}",
+                eprintln!(
+                    "  {}  {} {}",
                     accent("?").bold(),
                     faint(&format!("unknown: {other}")),
                     faint("· try 'help'"),
@@ -1937,7 +2485,6 @@ fn run_shell(rt: &tokio::runtime::Runtime) {
 // ─── Main ────────────────────────────────────────────────────────────────────
 
 fn main() {
-    let rt = tokio::runtime::Runtime::new()
-        .expect("failed to start tokio runtime");
+    let rt = tokio::runtime::Runtime::new().expect("failed to start tokio runtime");
     run_shell(&rt);
 }

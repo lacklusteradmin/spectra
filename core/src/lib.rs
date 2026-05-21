@@ -19,8 +19,10 @@
 //! When extending the API: ask "is this for other Rust modules to call,
 //! or for Swift?" and pick `pub(crate)` for the former, `#[uniffi::export]`
 //! + `pub` for the latter. Avoid plain `pub` for items that don't need
-//! to escape the module — `pub(super)` is usually enough and keeps the
-//! FFI risk surface low.
+//!   to escape the module — `pub(super)` is usually enough and keeps the
+//!   FFI risk surface low.
+
+#![allow(clippy::too_many_arguments, clippy::type_complexity)]
 
 uniffi::setup_scaffolding!();
 
@@ -103,10 +105,8 @@ pub use app_core::*;
 
 pub mod chains;
 pub mod derivation;
-pub mod validation;
 pub mod diagnostics;
 pub mod fetch;
-pub mod tor;
 pub mod formatting;
 pub mod receive;
 pub mod registry;
@@ -116,11 +116,13 @@ pub mod service;
 pub mod staking;
 pub mod store;
 pub mod tokens;
+pub mod tor;
+pub mod validation;
 
 // Crate-root shortcuts for the heavily-used internal modules. Other paths use
 // the folder-qualified `crate::fetch::http`, `crate::store::state`, etc.
 pub use derivation::*;
 pub use fetch::{history, http, price};
 pub use send::ethereum as ethereum_send;
-pub use store::{state, wallet_db};
 pub use send::preview_types as wallet_core;
+pub use store::{state, wallet_db};

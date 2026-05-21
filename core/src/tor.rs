@@ -20,16 +20,16 @@
 //! isolation policy (one stream per TCP connection). This means balance
 //! checks for different wallets cannot be correlated by a Tor exit node.
 
-use std::sync::{Arc, LazyLock};
-use std::sync::atomic::{AtomicU8, Ordering};
-use std::io;
-use parking_lot::Mutex;
-use tokio::net::{TcpListener, TcpStream};
-use tokio::io::{AsyncReadExt, AsyncWriteExt};
-use arti_client::{TorClient, TorClientConfig};
 use arti_client::config::CfgPath;
-use tor_rtcompat::PreferredRuntime;
+use arti_client::{TorClient, TorClientConfig};
+use parking_lot::Mutex;
+use std::io;
+use std::sync::atomic::{AtomicU8, Ordering};
+use std::sync::{Arc, LazyLock};
+use tokio::io::{AsyncReadExt, AsyncWriteExt};
+use tokio::net::{TcpListener, TcpStream};
 use tokio_util::compat::FuturesAsyncReadCompatExt;
+use tor_rtcompat::PreferredRuntime;
 
 // ── Public FFI types ─────────────────────────────────────────────────────────
 
@@ -50,7 +50,9 @@ pub enum TorStatus {
 
 enum TorInternalState {
     Stopped,
-    Bootstrapping { percent: Arc<AtomicU8> },
+    Bootstrapping {
+        percent: Arc<AtomicU8>,
+    },
     Running {
         // Keep the client alive so the Tor circuits stay open.
         _client: Arc<TorClient<PreferredRuntime>>,
@@ -58,7 +60,9 @@ enum TorInternalState {
     },
     /// User supplied their own SOCKS5 proxy (e.g. Orbot). Arti is not running.
     CustomProxy,
-    Error { message: String },
+    Error {
+        message: String,
+    },
 }
 
 static TOR_STATE: LazyLock<Mutex<TorInternalState>> =
@@ -86,7 +90,9 @@ pub async fn tor_start(data_dir: String) -> Result<(), crate::SpectraBridgeError
     let percent = Arc::new(AtomicU8::new(0));
     {
         let mut guard = TOR_STATE.lock();
-        *guard = TorInternalState::Bootstrapping { percent: percent.clone() };
+        *guard = TorInternalState::Bootstrapping {
+            percent: percent.clone(),
+        };
     }
 
     tokio::spawn(bootstrap_tor(data_dir, percent));
@@ -134,8 +140,10 @@ pub fn tor_status() -> TorStatus {
         TorInternalState::Bootstrapping { percent } => TorStatus::Bootstrapping {
             percent: percent.load(Ordering::Relaxed),
         },
-        TorInternalState::Running { .. } | TorInternalState::CustomProxy { .. } => TorStatus::Ready,
-        TorInternalState::Error { message } => TorStatus::Error { message: message.clone() },
+        TorInternalState::Running { .. } | TorInternalState::CustomProxy => TorStatus::Ready,
+        TorInternalState::Error { message } => TorStatus::Error {
+            message: message.clone(),
+        },
     }
 }
 
@@ -208,16 +216,11 @@ async fn run_socks5_proxy(tor: Arc<TorClient<PreferredRuntime>>) {
         }
     };
 
-    loop {
-        match listener.accept().await {
-            Ok((stream, _)) => {
-                let tor = tor.clone();
-                tokio::spawn(async move {
-                    let _ = handle_socks5(stream, tor).await;
-                });
-            }
-            Err(_) => break,
-        }
+    while let Ok((stream, _)) = listener.accept().await {
+        let tor = tor.clone();
+        tokio::spawn(async move {
+            let _ = handle_socks5(stream, tor).await;
+        });
     }
 }
 
@@ -237,7 +240,10 @@ async fn handle_socks5(
 
     if !methods.contains(&0x00) {
         tcp.write_all(&[5, 0xFF]).await?;
-        return Err(io::Error::new(io::ErrorKind::PermissionDenied, "no acceptable auth"));
+        return Err(io::Error::new(
+            io::ErrorKind::PermissionDenied,
+            "no acceptable auth",
+        ));
     }
     tcp.write_all(&[5, 0x00]).await?; // no-auth accepted
 
@@ -248,7 +254,10 @@ async fn handle_socks5(
     if req[0] != 5 || req[1] != 0x01 {
         // Only CONNECT (0x01) is supported.
         tcp.write_all(&[5, 0x07, 0, 1, 0, 0, 0, 0, 0, 0]).await?;
-        return Err(io::Error::new(io::ErrorKind::Unsupported, "only CONNECT supported"));
+        return Err(io::Error::new(
+            io::ErrorKind::Unsupported,
+            "only CONNECT supported",
+        ));
     }
 
     let host: String = match req[3] {

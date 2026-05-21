@@ -249,7 +249,10 @@ pub fn wallet_secret_index_from_observations(
     app_state: CoreAppState,
     secret_observations: Vec<WalletSecretObservation>,
 ) -> WalletSecretIndex {
-    wallet_secret_index(&build_persisted_snapshot_typed(app_state, secret_observations))
+    wallet_secret_index(&build_persisted_snapshot_typed(
+        app_state,
+        secret_observations,
+    ))
 }
 
 pub fn persisted_snapshot_from_json(json: &str) -> Result<PersistedAppSnapshot, String> {
@@ -533,12 +536,8 @@ fn normalize_tracked_token_identifier(
     match chain {
         Ethereum | Arbitrum | Optimism | Bnb | Avalanche | Hyperliquid | Polygon | Base | Linea
         | Scroll | Blast | Mantle => trimmed.to_lowercase(),
-        Aptos => crate::tokens::normalize_aptos_token_identifier(
-            trimmed.to_string(),
-        ),
-        Sui => crate::tokens::normalize_sui_token_identifier(
-            trimmed.to_string(),
-        ),
+        Aptos => crate::tokens::normalize_aptos_token_identifier(trimmed.to_string()),
+        Sui => crate::tokens::normalize_sui_token_identifier(trimmed.to_string()),
         Ton => trimmed.to_string(),
         _ => trimmed.to_lowercase(),
     }
@@ -730,10 +729,12 @@ pub fn plan_earliest_transaction_dates(
     }
     earliest
         .into_iter()
-        .map(|(wallet_id, earliest_created_at_unix)| WalletEarliestTransactionDate {
-            wallet_id,
-            earliest_created_at_unix,
-        })
+        .map(
+            |(wallet_id, earliest_created_at_unix)| WalletEarliestTransactionDate {
+                wallet_id,
+                earliest_created_at_unix,
+            },
+        )
         .collect()
 }
 
@@ -905,7 +906,10 @@ pub fn plan_price_alert_evaluation(
             });
         }
     }
-    PriceAlertEvaluationPlan { updates, notifications }
+    PriceAlertEvaluationPlan {
+        updates,
+        notifications,
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, uniffi::Record)]
@@ -1165,8 +1169,7 @@ pub fn plan_transaction_status_poll_success(
     now_unix: f64,
     config: TransactionStatusPollConfig,
 ) -> TransactionStatusTrackerState {
-    let mut tracker =
-        tracker.unwrap_or_else(|| TransactionStatusTrackerState::initial(now_unix));
+    let mut tracker = tracker.unwrap_or_else(|| TransactionStatusTrackerState::initial(now_unix));
     tracker.last_checked_at_unix = Some(now_unix);
     tracker.consecutive_failures = 0;
     let reached_finality = if resolved_status_pending {
@@ -1193,8 +1196,7 @@ pub fn plan_transaction_status_poll_failure(
     now_unix: f64,
     config: TransactionStatusPollConfig,
 ) -> TransactionStatusTrackerState {
-    let mut tracker =
-        tracker.unwrap_or_else(|| TransactionStatusTrackerState::initial(now_unix));
+    let mut tracker = tracker.unwrap_or_else(|| TransactionStatusTrackerState::initial(now_unix));
     tracker.last_checked_at_unix = Some(now_unix);
     tracker.consecutive_failures = tracker.consecutive_failures.saturating_add(1);
     let exponent = tracker.consecutive_failures.saturating_sub(1) as i32;
@@ -1322,15 +1324,17 @@ pub fn plan_apply_resolved_pending_transaction_statuses(
                 } else {
                     None
                 };
-                let reached_finality_confirmations = match (new_confirmations, input.old_confirmations) {
-                    (Some(new_count), old) if new_status == "confirmed"
-                        && new_count >= config.finality_confirmations
-                        && old.unwrap_or(0) < config.finality_confirmations =>
-                    {
-                        Some(new_count)
-                    }
-                    _ => None,
-                };
+                let reached_finality_confirmations =
+                    match (new_confirmations, input.old_confirmations) {
+                        (Some(new_count), old)
+                            if new_status == "confirmed"
+                                && new_count >= config.finality_confirmations
+                                && old.unwrap_or(0) < config.finality_confirmations =>
+                        {
+                            Some(new_count)
+                        }
+                        _ => None,
+                    };
                 Some(ResolvedPendingTransactionDecision {
                     id: input.id,
                     new_status,
@@ -1446,10 +1450,7 @@ pub fn plan_baseline_chain_keypool_state(
                 std::cmp::max(max_external, max_owned_external) + 1,
                 1,
             ),
-            next_change_index: std::cmp::max(
-                std::cmp::max(max_change, max_owned_change) + 1,
-                0,
-            ),
+            next_change_index: std::cmp::max(std::cmp::max(max_change, max_owned_change) + 1, 0),
             reserved_receive_index: None,
         };
     }
@@ -1472,7 +1473,8 @@ pub fn plan_chain_keypool_state(
     let Some(mut state) = existing else {
         return baseline;
     };
-    state.next_external_index = std::cmp::max(state.next_external_index, baseline.next_external_index);
+    state.next_external_index =
+        std::cmp::max(state.next_external_index, baseline.next_external_index);
     state.next_change_index = std::cmp::max(state.next_change_index, baseline.next_change_index);
     if state.reserved_receive_index.is_none() {
         state.reserved_receive_index = baseline.reserved_receive_index;
@@ -1525,13 +1527,8 @@ pub struct HoldingMergeAppendPayload {
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, uniffi::Enum)]
 #[serde(rename_all = "camelCase")]
 pub enum HoldingMergeAction {
-    UpdateAmount {
-        existing_index: u32,
-        amount: f64,
-    },
-    Append {
-        coin: HoldingMergeAppendPayload,
-    },
+    UpdateAmount { existing_index: u32, amount: f64 },
+    Append { coin: HoldingMergeAppendPayload },
 }
 
 fn holding_lookup_key(symbol: &str, chain_name: &str, contract: Option<&str>) -> String {
@@ -1671,7 +1668,6 @@ fn display_error(error: impl std::fmt::Display) -> String {
     error.to_string()
 }
 
-
 #[cfg(test)]
 mod tests;
 
@@ -1694,9 +1690,7 @@ pub fn core_wallet_secret_index(
 }
 
 #[uniffi::export]
-pub fn core_plan_store_derived_state(
-    request: StoreDerivedStateRequest,
-) -> StoreDerivedStatePlan {
+pub fn core_plan_store_derived_state(request: StoreDerivedStateRequest) -> StoreDerivedStatePlan {
     plan_store_derived_state(request)
 }
 
@@ -1873,7 +1867,11 @@ pub fn core_plan_priced_chain(
     bitcoin_network_mode_raw: String,
     ethereum_network_mode_raw: String,
 ) -> bool {
-    plan_priced_chain(chain_name, bitcoin_network_mode_raw, ethereum_network_mode_raw)
+    plan_priced_chain(
+        chain_name,
+        bitcoin_network_mode_raw,
+        ethereum_network_mode_raw,
+    )
 }
 
 #[uniffi::export]

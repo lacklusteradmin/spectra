@@ -32,7 +32,10 @@ use std::collections::HashMap;
 static POOL: std::sync::LazyLock<Mutex<HashMap<String, Connection>>> =
     std::sync::LazyLock::new(|| Mutex::new(HashMap::new()));
 
-fn with_conn<T>(db_path: &str, f: impl FnOnce(&Connection) -> Result<T, String>) -> Result<T, String> {
+fn with_conn<T>(
+    db_path: &str,
+    f: impl FnOnce(&Connection) -> Result<T, String>,
+) -> Result<T, String> {
     let mut pool = POOL.lock();
     if !pool.contains_key(db_path) {
         let conn = open_new(db_path)?;
@@ -42,8 +45,7 @@ fn with_conn<T>(db_path: &str, f: impl FnOnce(&Connection) -> Result<T, String>)
 }
 
 fn open_new(db_path: &str) -> Result<Connection, String> {
-    let conn = Connection::open(db_path)
-        .map_err(|e| format!("wallet_db open {db_path}: {e}"))?;
+    let conn = Connection::open(db_path).map_err(|e| format!("wallet_db open {db_path}: {e}"))?;
     conn.execute_batch(
         "PRAGMA journal_mode = WAL;
          PRAGMA synchronous = NORMAL;
@@ -240,7 +242,10 @@ pub fn keypool_load_for_chain(
 /// This is the startup bulk-load that replaces reading UserDefaults JSON.
 pub fn keypool_load_all(
     db_path: &str,
-) -> Result<std::collections::HashMap<String, std::collections::HashMap<String, KeypoolState>>, String> {
+) -> Result<
+    std::collections::HashMap<String, std::collections::HashMap<String, KeypoolState>>,
+    String,
+> {
     with_conn(db_path, |conn| {
         let mut stmt = conn
             .prepare(
@@ -261,8 +266,10 @@ pub fn keypool_load_all(
                 ))
             })
             .map_err(|e| format!("keypool_load_all query: {e}"))?;
-        let mut outer: std::collections::HashMap<String, std::collections::HashMap<String, KeypoolState>> =
-            std::collections::HashMap::new();
+        let mut outer: std::collections::HashMap<
+            String,
+            std::collections::HashMap<String, KeypoolState>,
+        > = std::collections::HashMap::new();
         for row in rows {
             let (chain, wallet, state) = row.map_err(|e| format!("keypool_load_all row: {e}"))?;
             outer.entry(chain).or_default().insert(wallet, state);
@@ -320,10 +327,7 @@ pub struct OwnedAddressRecord {
 // ── Owned address CRUD ────────────────────────────────────────────────────────
 
 /// Upsert a single owned address record (identified by wallet + chain + address).
-pub fn address_save(
-    db_path: &str,
-    record: &OwnedAddressRecord,
-) -> Result<(), String> {
+pub fn address_save(db_path: &str, record: &OwnedAddressRecord) -> Result<(), String> {
     with_conn(db_path, |conn| {
         conn.execute(
             "INSERT INTO wallet_owned_addresses
@@ -384,9 +388,7 @@ pub fn address_load_all(
 
 /// Load ALL owned address records across all wallets and chains.
 /// Used at startup to bulk-restore the in-memory map.
-pub fn address_load_all_chains(
-    db_path: &str,
-) -> Result<Vec<OwnedAddressRecord>, String> {
+pub fn address_load_all_chains(db_path: &str) -> Result<Vec<OwnedAddressRecord>, String> {
     with_conn(db_path, |conn| {
         let mut stmt = conn
             .prepare(
@@ -468,9 +470,12 @@ pub struct HistoryRecord {
 
 /// Upsert a batch of history records. Existing rows (matched by `id`) are overwritten.
 pub fn history_upsert_batch(db_path: &str, records: &[HistoryRecord]) -> Result<(), String> {
-    if records.is_empty() { return Ok(()); }
+    if records.is_empty() {
+        return Ok(());
+    }
     with_conn(db_path, |conn| {
-        conn.execute_batch("BEGIN IMMEDIATE").map_err(|e| format!("history_upsert_batch begin: {e}"))?;
+        conn.execute_batch("BEGIN IMMEDIATE")
+            .map_err(|e| format!("history_upsert_batch begin: {e}"))?;
         let result = (|| -> Result<(), String> {
             for rec in records {
                 let payload_json = serde_json::to_string(&rec.payload)
@@ -491,7 +496,8 @@ pub fn history_upsert_batch(db_path: &str, records: &[HistoryRecord]) -> Result<
         })();
         match result {
             Ok(()) => {
-                conn.execute_batch("COMMIT").map_err(|e| format!("history_upsert_batch commit: {e}"))?;
+                conn.execute_batch("COMMIT")
+                    .map_err(|e| format!("history_upsert_batch commit: {e}"))?;
                 Ok(())
             }
             Err(e) => {
@@ -545,9 +551,12 @@ pub fn history_fetch_all(db_path: &str) -> Result<Vec<HistoryRecord>, String> {
 
 /// Delete history records by ID list.
 pub fn history_delete(db_path: &str, ids: &[String]) -> Result<(), String> {
-    if ids.is_empty() { return Ok(()); }
+    if ids.is_empty() {
+        return Ok(());
+    }
     with_conn(db_path, |conn| {
-        conn.execute_batch("BEGIN IMMEDIATE").map_err(|e| format!("history_delete begin: {e}"))?;
+        conn.execute_batch("BEGIN IMMEDIATE")
+            .map_err(|e| format!("history_delete begin: {e}"))?;
         let result = (|| -> Result<(), String> {
             for id in ids {
                 conn.execute("DELETE FROM history_records WHERE id = ?1", params![id])
@@ -557,7 +566,8 @@ pub fn history_delete(db_path: &str, ids: &[String]) -> Result<(), String> {
         })();
         match result {
             Ok(()) => {
-                conn.execute_batch("COMMIT").map_err(|e| format!("history_delete commit: {e}"))?;
+                conn.execute_batch("COMMIT")
+                    .map_err(|e| format!("history_delete commit: {e}"))?;
                 Ok(())
             }
             Err(e) => {
@@ -571,9 +581,11 @@ pub fn history_delete(db_path: &str, ids: &[String]) -> Result<(), String> {
 /// Atomically delete all records then insert the provided batch (full replacement).
 pub fn history_replace_all(db_path: &str, records: &[HistoryRecord]) -> Result<(), String> {
     with_conn(db_path, |conn| {
-        conn.execute_batch("BEGIN IMMEDIATE").map_err(|e| format!("history_replace_all begin: {e}"))?;
+        conn.execute_batch("BEGIN IMMEDIATE")
+            .map_err(|e| format!("history_replace_all begin: {e}"))?;
         let result = (|| -> Result<(), String> {
-            conn.execute("DELETE FROM history_records", []).map_err(|e| format!("history_replace_all delete: {e}"))?;
+            conn.execute("DELETE FROM history_records", [])
+                .map_err(|e| format!("history_replace_all delete: {e}"))?;
             for rec in records {
                 let payload_json = serde_json::to_string(&rec.payload)
                     .map_err(|e| format!("history_replace_all encode payload: {e}"))?;
@@ -587,7 +599,8 @@ pub fn history_replace_all(db_path: &str, records: &[HistoryRecord]) -> Result<(
         })();
         match result {
             Ok(()) => {
-                conn.execute_batch("COMMIT").map_err(|e| format!("history_replace_all commit: {e}"))?;
+                conn.execute_batch("COMMIT")
+                    .map_err(|e| format!("history_replace_all commit: {e}"))?;
                 Ok(())
             }
             Err(e) => {
@@ -601,8 +614,11 @@ pub fn history_replace_all(db_path: &str, records: &[HistoryRecord]) -> Result<(
 /// Delete all history records for a given wallet_id.
 pub fn history_delete_for_wallet(db_path: &str, wallet_id: &str) -> Result<(), String> {
     with_conn(db_path, |conn| {
-        conn.execute("DELETE FROM history_records WHERE wallet_id = ?1", params![wallet_id])
-            .map_err(|e| format!("history_delete_for_wallet: {e}"))?;
+        conn.execute(
+            "DELETE FROM history_records WHERE wallet_id = ?1",
+            params![wallet_id],
+        )
+        .map_err(|e| format!("history_delete_for_wallet: {e}"))?;
         Ok(())
     })
 }
@@ -690,9 +706,39 @@ mod tests {
     #[test]
     fn keypool_load_all_groups_by_chain() {
         let db = tmp_db();
-        keypool_save(&db, "w1", "Bitcoin", &KeypoolState { next_external_index: 1, next_change_index: 0, reserved_receive_index: None }).unwrap();
-        keypool_save(&db, "w2", "Bitcoin", &KeypoolState { next_external_index: 2, next_change_index: 1, reserved_receive_index: None }).unwrap();
-        keypool_save(&db, "w1", "Dogecoin", &KeypoolState { next_external_index: 5, next_change_index: 2, reserved_receive_index: Some(4) }).unwrap();
+        keypool_save(
+            &db,
+            "w1",
+            "Bitcoin",
+            &KeypoolState {
+                next_external_index: 1,
+                next_change_index: 0,
+                reserved_receive_index: None,
+            },
+        )
+        .unwrap();
+        keypool_save(
+            &db,
+            "w2",
+            "Bitcoin",
+            &KeypoolState {
+                next_external_index: 2,
+                next_change_index: 1,
+                reserved_receive_index: None,
+            },
+        )
+        .unwrap();
+        keypool_save(
+            &db,
+            "w1",
+            "Dogecoin",
+            &KeypoolState {
+                next_external_index: 5,
+                next_change_index: 2,
+                reserved_receive_index: Some(4),
+            },
+        )
+        .unwrap();
         let all = keypool_load_all(&db).unwrap();
         assert_eq!(all["Bitcoin"]["w1"].next_external_index, 1);
         assert_eq!(all["Bitcoin"]["w2"].next_external_index, 2);
@@ -702,8 +748,28 @@ mod tests {
     #[test]
     fn keypool_delete_for_wallet() {
         let db = tmp_db();
-        keypool_save(&db, "w1", "Bitcoin", &KeypoolState { next_external_index: 5, next_change_index: 1, reserved_receive_index: None }).unwrap();
-        keypool_save(&db, "w2", "Bitcoin", &KeypoolState { next_external_index: 3, next_change_index: 0, reserved_receive_index: None }).unwrap();
+        keypool_save(
+            &db,
+            "w1",
+            "Bitcoin",
+            &KeypoolState {
+                next_external_index: 5,
+                next_change_index: 1,
+                reserved_receive_index: None,
+            },
+        )
+        .unwrap();
+        keypool_save(
+            &db,
+            "w2",
+            "Bitcoin",
+            &KeypoolState {
+                next_external_index: 3,
+                next_change_index: 0,
+                reserved_receive_index: None,
+            },
+        )
+        .unwrap();
         super::keypool_delete_for_wallet(&db, "w1").unwrap();
         assert!(keypool_load(&db, "w1", "Bitcoin").unwrap().is_none());
         assert!(keypool_load(&db, "w2", "Bitcoin").unwrap().is_some());
@@ -730,15 +796,29 @@ mod tests {
     #[test]
     fn delete_wallet_data_removes_both_tables() {
         let db = tmp_db();
-        keypool_save(&db, "w1", "Dogecoin", &KeypoolState { next_external_index: 1, next_change_index: 0, reserved_receive_index: None }).unwrap();
-        address_save(&db, &OwnedAddressRecord {
-            wallet_id: "w1".to_string(),
-            chain_name: "Dogecoin".to_string(),
-            address: "D1test".to_string(),
-            derivation_path: None,
-            branch: None,
-            branch_index: None,
-        }).unwrap();
+        keypool_save(
+            &db,
+            "w1",
+            "Dogecoin",
+            &KeypoolState {
+                next_external_index: 1,
+                next_change_index: 0,
+                reserved_receive_index: None,
+            },
+        )
+        .unwrap();
+        address_save(
+            &db,
+            &OwnedAddressRecord {
+                wallet_id: "w1".to_string(),
+                chain_name: "Dogecoin".to_string(),
+                address: "D1test".to_string(),
+                derivation_path: None,
+                branch: None,
+                branch_index: None,
+            },
+        )
+        .unwrap();
         delete_wallet_data(&db, "w1").unwrap();
         assert!(keypool_load(&db, "w1", "Dogecoin").unwrap().is_none());
         assert!(address_load_all(&db, "w1", "Dogecoin").unwrap().is_empty());

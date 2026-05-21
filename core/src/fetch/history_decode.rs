@@ -81,7 +81,11 @@ pub(crate) fn decimal_string_from_wei(wei_str: &str) -> String {
     } else {
         format!("{int_part}.{frac_trimmed}")
     };
-    if negative { format!("-{body}") } else { body }
+    if negative {
+        format!("-{body}")
+    } else {
+        body
+    }
 }
 
 fn decimal_string_from_raw(raw: &str, decimals: i32) -> String {
@@ -107,36 +111,64 @@ fn decimal_string_from_raw(raw: &str, decimals: i32) -> String {
     } else {
         format!("{int_part}.{frac_trimmed}")
     };
-    if negative { format!("-{body}") } else { body }
+    if negative {
+        format!("-{body}")
+    } else {
+        body
+    }
 }
 
 pub fn history_decode_evm_page(json: String) -> EvmHistoryPageDecoded {
-    let empty = EvmHistoryPageDecoded { tokens: vec![], native: vec![] };
+    let empty = EvmHistoryPageDecoded {
+        tokens: vec![],
+        native: vec![],
+    };
     let Ok(obj) = serde_json::from_str::<Value>(&json) else {
         return empty;
     };
-    let Some(obj) = obj.as_object() else { return empty };
+    let Some(obj) = obj.as_object() else {
+        return empty;
+    };
 
     let mut tokens: Vec<EvmTokenTransferItem> = Vec::new();
     if let Some(raw_tokens) = obj.get("tokens").and_then(Value::as_array) {
         for item in raw_tokens {
-            let Some(contract) = item.get("contract").and_then(Value::as_str) else { continue };
-            let Some(symbol) = item.get("symbol").and_then(Value::as_str) else { continue };
-            let Some(token_name) = item.get("token_name").and_then(Value::as_str) else { continue };
-            let Some(from_addr) = item.get("from").and_then(Value::as_str) else { continue };
-            let Some(to_addr) = item.get("to").and_then(Value::as_str) else { continue };
-            let Some(txid) = item.get("txid").and_then(Value::as_str) else { continue };
-            let Some(block_num) = item.get("block_number").and_then(Value::as_i64) else { continue };
-            let Some(log_idx) = item.get("log_index").and_then(Value::as_i64) else { continue };
-            let Some(tsecs) = item.get("timestamp").and_then(Value::as_f64) else { continue };
-            let decimals = item.get("decimals").and_then(Value::as_i64).unwrap_or(18) as i32;
-            let amount_decimal = if let Some(display) = item.get("amount_display").and_then(Value::as_str) {
-                display.to_string()
-            } else if let Some(raw) = item.get("amount_raw").and_then(Value::as_str) {
-                decimal_string_from_raw(raw, decimals)
-            } else {
-                "0".to_string()
+            let Some(contract) = item.get("contract").and_then(Value::as_str) else {
+                continue;
             };
+            let Some(symbol) = item.get("symbol").and_then(Value::as_str) else {
+                continue;
+            };
+            let Some(token_name) = item.get("token_name").and_then(Value::as_str) else {
+                continue;
+            };
+            let Some(from_addr) = item.get("from").and_then(Value::as_str) else {
+                continue;
+            };
+            let Some(to_addr) = item.get("to").and_then(Value::as_str) else {
+                continue;
+            };
+            let Some(txid) = item.get("txid").and_then(Value::as_str) else {
+                continue;
+            };
+            let Some(block_num) = item.get("block_number").and_then(Value::as_i64) else {
+                continue;
+            };
+            let Some(log_idx) = item.get("log_index").and_then(Value::as_i64) else {
+                continue;
+            };
+            let Some(tsecs) = item.get("timestamp").and_then(Value::as_f64) else {
+                continue;
+            };
+            let decimals = item.get("decimals").and_then(Value::as_i64).unwrap_or(18) as i32;
+            let amount_decimal =
+                if let Some(display) = item.get("amount_display").and_then(Value::as_str) {
+                    display.to_string()
+                } else if let Some(raw) = item.get("amount_raw").and_then(Value::as_str) {
+                    decimal_string_from_raw(raw, decimals)
+                } else {
+                    "0".to_string()
+                };
             tokens.push(EvmTokenTransferItem {
                 contract_address: contract.to_string(),
                 token_name: token_name.to_string(),
@@ -156,12 +188,24 @@ pub fn history_decode_evm_page(json: String) -> EvmHistoryPageDecoded {
     let mut native: Vec<EvmNativeTransferItem> = Vec::new();
     if let Some(raw_native) = obj.get("native").and_then(Value::as_array) {
         for item in raw_native {
-            let Some(from_addr) = item.get("from").and_then(Value::as_str) else { continue };
-            let Some(to_addr) = item.get("to").and_then(Value::as_str) else { continue };
-            let Some(txid) = item.get("txid").and_then(Value::as_str) else { continue };
-            let Some(block_num) = item.get("block_number").and_then(Value::as_i64) else { continue };
-            let Some(tsecs) = item.get("timestamp").and_then(Value::as_f64) else { continue };
-            let Some(wei_str) = item.get("value_wei").and_then(Value::as_str) else { continue };
+            let Some(from_addr) = item.get("from").and_then(Value::as_str) else {
+                continue;
+            };
+            let Some(to_addr) = item.get("to").and_then(Value::as_str) else {
+                continue;
+            };
+            let Some(txid) = item.get("txid").and_then(Value::as_str) else {
+                continue;
+            };
+            let Some(block_num) = item.get("block_number").and_then(Value::as_i64) else {
+                continue;
+            };
+            let Some(tsecs) = item.get("timestamp").and_then(Value::as_f64) else {
+                continue;
+            };
+            let Some(wei_str) = item.get("value_wei").and_then(Value::as_str) else {
+                continue;
+            };
             native.push(EvmNativeTransferItem {
                 from_address: from_addr.to_string(),
                 to_address: to_addr.to_string(),
@@ -330,26 +374,62 @@ pub struct DogecoinAggregatedTx {
 #[uniffi::export]
 pub fn history_aggregate_dogecoin(input: DogecoinAggregateInput) -> Vec<DogecoinAggregatedTx> {
     use std::collections::HashMap;
-    let own: std::collections::HashSet<String> =
-        input.own_addresses.into_iter().map(|a| a.to_lowercase()).collect();
+    let own: std::collections::HashSet<String> = input
+        .own_addresses
+        .into_iter()
+        .map(|a| a.to_lowercase())
+        .collect();
     let mut by_hash: HashMap<String, Vec<NormalizedHistoryItem>> = HashMap::new();
     for e in input.entries {
-        if e.tx_hash.is_empty() { continue; }
+        if e.tx_hash.is_empty() {
+            continue;
+        }
         by_hash.entry(e.tx_hash.clone()).or_default().push(e);
     }
     let mut out = Vec::new();
     for (_hash, group) in by_hash {
-        let Some(first) = group.first().cloned() else { continue };
-        let signed: f64 = group.iter().map(|s| if s.kind == "receive" { s.amount } else { -s.amount }).sum();
-        if signed.abs() == 0.0 { continue; }
+        let Some(first) = group.first().cloned() else {
+            continue;
+        };
+        let signed: f64 = group
+            .iter()
+            .map(|s| {
+                if s.kind == "receive" {
+                    s.amount
+                } else {
+                    -s.amount
+                }
+            })
+            .sum();
+        if signed.abs() == 0.0 {
+            continue;
+        }
         let kind = if signed > 0.0 { "receive" } else { "send" };
         let amount = signed.abs();
-        let status = if group.iter().any(|s| s.status == "pending") { "pending" } else { "confirmed" };
+        let status = if group.iter().any(|s| s.status == "pending") {
+            "pending"
+        } else {
+            "confirmed"
+        };
         let block_number = group.iter().filter_map(|s| s.block_height).max();
-        let known_ts: Vec<f64> = group.iter().filter_map(|s| if s.timestamp > 0.0 { Some(s.timestamp) } else { None }).collect();
+        let known_ts: Vec<f64> = group
+            .iter()
+            .filter_map(|s| {
+                if s.timestamp > 0.0 {
+                    Some(s.timestamp)
+                } else {
+                    None
+                }
+            })
+            .collect();
         let created_at_unix = known_ts.iter().copied().fold(f64::INFINITY, f64::min);
-        let created_at_unix = if created_at_unix.is_finite() { created_at_unix } else { first.timestamp };
-        let counterparty = group.iter()
+        let created_at_unix = if created_at_unix.is_finite() {
+            created_at_unix
+        } else {
+            first.timestamp
+        };
+        let counterparty = group
+            .iter()
             .map(|s| s.counterparty.clone())
             .find(|c| {
                 let trimmed = c.trim();
@@ -357,8 +437,13 @@ pub fn history_aggregate_dogecoin(input: DogecoinAggregateInput) -> Vec<Dogecoin
             })
             .unwrap_or_else(|| first.counterparty.clone());
         out.push(DogecoinAggregatedTx {
-            hash: first.tx_hash.clone(), kind: kind.into(), status: status.into(),
-            amount, counterparty, block_number, created_at_unix,
+            hash: first.tx_hash.clone(),
+            kind: kind.into(),
+            status: status.into(),
+            amount,
+            counterparty,
+            block_number,
+            created_at_unix,
         });
     }
     out
@@ -375,14 +460,19 @@ pub struct EvmNativeAsset {
 #[uniffi::export]
 pub fn history_evm_native_asset(chain_name: String) -> Option<EvmNativeAsset> {
     let (name, symbol) = match chain_name.as_str() {
-        "Ethereum" | "Ethereum Sepolia" | "Ethereum Hoodi" | "Arbitrum" | "Optimism" => ("Ether", "ETH"),
+        "Ethereum" | "Ethereum Sepolia" | "Ethereum Hoodi" | "Arbitrum" | "Optimism" => {
+            ("Ether", "ETH")
+        }
         "Avalanche" => ("Avalanche", "AVAX"),
         "BNB Chain" => ("BNB", "BNB"),
         "Ethereum Classic" => ("Ethereum Classic", "ETC"),
         "Hyperliquid" => ("Hyperliquid", "HYPE"),
         _ => return None,
     };
-    Some(EvmNativeAsset { asset_name: name.into(), symbol: symbol.into() })
+    Some(EvmNativeAsset {
+        asset_name: name.into(),
+        symbol: symbol.into(),
+    })
 }
 
 /// Map a user-visible chain name to the string chain id used by the
@@ -408,9 +498,15 @@ pub fn history_decode_bitcoin_raw_snapshots(json: String) -> Vec<CoreBitcoinHist
         .filter_map(|entry| {
             let txid = entry.get("txid").and_then(Value::as_str)?;
             let net_sats = entry.get("net_sats").and_then(Value::as_i64).unwrap_or(0);
-            let confirmed = entry.get("confirmed").and_then(Value::as_bool).unwrap_or(false);
+            let confirmed = entry
+                .get("confirmed")
+                .and_then(Value::as_bool)
+                .unwrap_or(false);
             let block_height = entry.get("block_height").and_then(Value::as_i64);
-            let created_at_unix = entry.get("block_time").and_then(Value::as_f64).unwrap_or(0.0);
+            let created_at_unix = entry
+                .get("block_time")
+                .and_then(Value::as_f64)
+                .unwrap_or(0.0);
             Some(CoreBitcoinHistorySnapshot {
                 txid: txid.to_string(),
                 amount_btc: net_sats.unsigned_abs() as f64 / 100_000_000.0,
@@ -432,7 +528,11 @@ pub fn history_decode_hd_addresses(json: String) -> Vec<String> {
         .ok()
         .map(|arr| {
             arr.into_iter()
-                .filter_map(|e| e.get("address").and_then(Value::as_str).map(|s| s.to_string()))
+                .filter_map(|e| {
+                    e.get("address")
+                        .and_then(Value::as_str)
+                        .map(|s| s.to_string())
+                })
                 .collect()
         })
         .unwrap_or_default()
@@ -476,16 +576,25 @@ mod tests {
     fn plans_evm_transaction_records_for_matching_transfers() {
         let page = EvmHistoryPageDecoded {
             tokens: vec![EvmTokenTransferItem {
-                contract_address: "0xabc".into(), token_name: "USD Coin".into(),
-                symbol: "USDC".into(), decimals: 6,
-                from_address: "0xself".into(), to_address: "0xother".into(),
-                amount_decimal: "1.5".into(), transaction_hash: "0xhash".into(),
-                block_number: 100, log_index: 0, timestamp: 1700000000.0,
+                contract_address: "0xabc".into(),
+                token_name: "USD Coin".into(),
+                symbol: "USDC".into(),
+                decimals: 6,
+                from_address: "0xself".into(),
+                to_address: "0xother".into(),
+                amount_decimal: "1.5".into(),
+                transaction_hash: "0xhash".into(),
+                block_number: 100,
+                log_index: 0,
+                timestamp: 1700000000.0,
             }],
             native: vec![EvmNativeTransferItem {
-                from_address: "0xother".into(), to_address: "0xself".into(),
-                amount_decimal: "0.25".into(), transaction_hash: "0xhash2".into(),
-                block_number: 101, timestamp: 0.0,
+                from_address: "0xother".into(),
+                to_address: "0xself".into(),
+                amount_decimal: "0.25".into(),
+                transaction_hash: "0xhash2".into(),
+                block_number: 101,
+                timestamp: 0.0,
             }],
         };
         let out = plan_evm_transaction_records(EvmTransactionRecordRequest {
@@ -496,7 +605,8 @@ mod tests {
             native_asset_name: "Ether".into(),
             native_asset_symbol: "ETH".into(),
             wallets: vec![EvmTransactionRecordWalletInput {
-                wallet_id: "w1".into(), wallet_name: "Primary".into(),
+                wallet_id: "w1".into(),
+                wallet_name: "Primary".into(),
             }],
             unknown_timestamp_sentinel_unix: -1.0,
         });
@@ -516,11 +626,17 @@ mod tests {
     fn plans_evm_transaction_records_skips_unrelated_transfers() {
         let page = EvmHistoryPageDecoded {
             tokens: vec![EvmTokenTransferItem {
-                contract_address: "0xabc".into(), token_name: "USD Coin".into(),
-                symbol: "USDC".into(), decimals: 6,
-                from_address: "0xA".into(), to_address: "0xB".into(),
-                amount_decimal: "1".into(), transaction_hash: "0xhash".into(),
-                block_number: 100, log_index: 0, timestamp: 1700000000.0,
+                contract_address: "0xabc".into(),
+                token_name: "USD Coin".into(),
+                symbol: "USDC".into(),
+                decimals: 6,
+                from_address: "0xA".into(),
+                to_address: "0xB".into(),
+                amount_decimal: "1".into(),
+                transaction_hash: "0xhash".into(),
+                block_number: 100,
+                log_index: 0,
+                timestamp: 1700000000.0,
             }],
             native: vec![],
         };
@@ -532,7 +648,8 @@ mod tests {
             native_asset_name: "Ether".into(),
             native_asset_symbol: "ETH".into(),
             wallets: vec![EvmTransactionRecordWalletInput {
-                wallet_id: "w1".into(), wallet_name: "Primary".into(),
+                wallet_id: "w1".into(),
+                wallet_name: "Primary".into(),
             }],
             unknown_timestamp_sentinel_unix: -1.0,
         });
@@ -571,18 +688,28 @@ mod tests {
     #[test]
     fn hd_addresses_decode() {
         let json = r#"[{"address":"addr1"},{"address":"addr2"},{"foo":"x"}]"#;
-        assert_eq!(history_decode_hd_addresses(json.into()), vec!["addr1", "addr2"]);
+        assert_eq!(
+            history_decode_hd_addresses(json.into()),
+            vec!["addr1", "addr2"]
+        );
         assert!(history_decode_hd_addresses("garbage".into()).is_empty());
     }
 
     #[test]
     fn dogecoin_aggregate_nets_amounts() {
-        let entry = |kind: &str, amount, counterparty: &str, ts: f64, status: &str| NormalizedHistoryItem {
-            kind: kind.into(), status: status.into(),
-            asset_name: "Dogecoin".into(), symbol: "DOGE".into(), chain_name: "Dogecoin".into(),
-            amount, counterparty: counterparty.into(), tx_hash: "tx1".into(),
-            block_height: Some(100), timestamp: ts,
-        };
+        let entry =
+            |kind: &str, amount, counterparty: &str, ts: f64, status: &str| NormalizedHistoryItem {
+                kind: kind.into(),
+                status: status.into(),
+                asset_name: "Dogecoin".into(),
+                symbol: "DOGE".into(),
+                chain_name: "Dogecoin".into(),
+                amount,
+                counterparty: counterparty.into(),
+                tx_hash: "tx1".into(),
+                block_height: Some(100),
+                timestamp: ts,
+            };
         let out = history_aggregate_dogecoin(DogecoinAggregateInput {
             own_addresses: vec!["Own1".into()],
             entries: vec![
@@ -608,8 +735,14 @@ mod tests {
 
     #[test]
     fn chain_id_mapping() {
-        assert_eq!(history_pagination_chain_id("Bitcoin".into()), Some("bitcoin".into()));
-        assert_eq!(history_pagination_chain_id("Hyperliquid".into()), Some("hyperliquid".into()));
+        assert_eq!(
+            history_pagination_chain_id("Bitcoin".into()),
+            Some("bitcoin".into())
+        );
+        assert_eq!(
+            history_pagination_chain_id("Hyperliquid".into()),
+            Some("hyperliquid".into())
+        );
         assert_eq!(history_pagination_chain_id("Nope".into()), None);
     }
 }

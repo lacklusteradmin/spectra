@@ -196,10 +196,14 @@ impl BalanceRefreshEngine {
                     let ws = Arc::clone(&ws);
                     async move {
                         let fetched = ws
-                            .fetch_native_balance_summary_auto(&entry.chain_id, entry.address.clone())
+                            .fetch_native_balance_summary_auto(
+                                &entry.chain_id,
+                                entry.address.clone(),
+                            )
                             .await
                             .map_err(|_| ())?;
-                        let template = crate::service::native_coin_template(&entry.chain_id).ok_or(())?;
+                        let template =
+                            crate::service::native_coin_template(&entry.chain_id).ok_or(())?;
                         let amount = fetched.amount_display.parse::<f64>().unwrap_or(0.0);
                         let holding = AssetHolding { amount, ..template };
                         let wallet_summary = WalletSummary {
@@ -314,9 +318,20 @@ mod tests {
         ));
         let _ = tokio::join!(a, b);
 
-        assert_eq!(work_count.load(Ordering::Relaxed), 1, "exactly one worker should enter");
-        assert_eq!(skip_count.load(Ordering::Relaxed), 1, "the other worker should skip");
-        assert!(!gate.load(Ordering::Relaxed), "gate should be released after work finishes");
+        assert_eq!(
+            work_count.load(Ordering::Relaxed),
+            1,
+            "exactly one worker should enter"
+        );
+        assert_eq!(
+            skip_count.load(Ordering::Relaxed),
+            1,
+            "the other worker should skip"
+        );
+        assert!(
+            !gate.load(Ordering::Relaxed),
+            "gate should be released after work finishes"
+        );
     }
 
     /// After a worker finishes, a subsequent worker should see the gate
@@ -366,7 +381,12 @@ pub trait BalanceObserver: Send + Sync {
     /// is the updated `WalletSummary` (already applied to the Rust store), or
     /// `None` if the native amount could not be parsed or the wallet is not
     /// in the in-memory state.
-    fn on_balance_updated(&self, chain_id: String, wallet_id: String, summary: Option<WalletSummary>);
+    fn on_balance_updated(
+        &self,
+        chain_id: String,
+        wallet_id: String,
+        summary: Option<WalletSummary>,
+    );
 
     /// Called once the full sweep of all registered entries completes.
     fn on_refresh_cycle_complete(&self, refreshed: u32, errors: u32);

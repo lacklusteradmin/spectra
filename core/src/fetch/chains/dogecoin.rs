@@ -9,8 +9,6 @@ use serde::{Deserialize, Serialize};
 
 use crate::http::{with_fallback, HttpClient, RetryProfile};
 
-
-
 // ----------------------------------------------------------------
 // BlockCypher response types
 // ----------------------------------------------------------------
@@ -83,9 +81,15 @@ pub struct DogeSendResult {
 }
 
 impl super::SignedSubmission for DogeSendResult {
-    fn submission_id(&self) -> &str { &self.txid }
-    fn signed_payload(&self) -> &str { &self.raw_tx_hex }
-    fn signed_payload_format(&self) -> super::SignedPayloadFormat { super::SignedPayloadFormat::Hex }
+    fn submission_id(&self) -> &str {
+        &self.txid
+    }
+    fn signed_payload(&self) -> &str {
+        &self.raw_tx_hex
+    }
+    fn signed_payload_format(&self) -> super::SignedPayloadFormat {
+        super::SignedPayloadFormat::Hex
+    }
 }
 
 // ----------------------------------------------------------------
@@ -105,7 +109,10 @@ impl DogecoinClient {
         }
     }
 
-    pub(crate) async fn get<T: serde::de::DeserializeOwned>(&self, path: &str) -> Result<T, String> {
+    pub(crate) async fn get<T: serde::de::DeserializeOwned>(
+        &self,
+        path: &str,
+    ) -> Result<T, String> {
         let path = path.to_string();
         with_fallback(&self.endpoints, |base| {
             let client = self.client.clone();
@@ -118,9 +125,7 @@ impl DogecoinClient {
 
 impl DogecoinClient {
     pub async fn fetch_balance(&self, address: &str) -> Result<DogeBalance, String> {
-        let info: BlockcypherBalance = self
-            .get(&format!("/addrs/{address}/balance"))
-            .await?;
+        let info: BlockcypherBalance = self.get(&format!("/addrs/{address}/balance")).await?;
         Ok(DogeBalance {
             balance_koin: info.balance,
             balance_display: format_doge(info.balance),
@@ -145,9 +150,7 @@ impl DogecoinClient {
     }
 
     pub async fn fetch_history(&self, address: &str) -> Result<Vec<DogeHistoryEntry>, String> {
-        let info: BlockcypherAddress = self
-            .get(&format!("/addrs/{address}?limit=50"))
-            .await?;
+        let info: BlockcypherAddress = self.get(&format!("/addrs/{address}?limit=50")).await?;
         let mut seen = std::collections::HashSet::new();
         let mut entries: Vec<DogeHistoryEntry> = info
             .txrefs
@@ -157,7 +160,11 @@ impl DogecoinClient {
                 let is_incoming = r.tx_input_n < 0;
                 DogeHistoryEntry {
                     txid: r.tx_hash,
-                    block_height: if r.block_height > 0 { r.block_height as u64 } else { 0 },
+                    block_height: if r.block_height > 0 {
+                        r.block_height as u64
+                    } else {
+                        0
+                    },
                     timestamp: parse_blockcypher_time(r.confirmed.as_deref()),
                     amount_koin: if is_incoming { r.value } else { -r.value.abs() },
                     fee_koin: 0,
@@ -197,13 +204,15 @@ impl DogecoinClient {
 fn parse_blockcypher_time(s: Option<&str>) -> u64 {
     fn inner(s: &str) -> Option<u64> {
         let b = s.as_bytes();
-        if b.len() < 19 { return None; }
-        let year:  i64 = std::str::from_utf8(&b[0..4]).ok()?.parse().ok()?;
+        if b.len() < 19 {
+            return None;
+        }
+        let year: i64 = std::str::from_utf8(&b[0..4]).ok()?.parse().ok()?;
         let month: i64 = std::str::from_utf8(&b[5..7]).ok()?.parse().ok()?;
-        let day:   i64 = std::str::from_utf8(&b[8..10]).ok()?.parse().ok()?;
-        let hour:  i64 = std::str::from_utf8(&b[11..13]).ok()?.parse().ok()?;
-        let min:   i64 = std::str::from_utf8(&b[14..16]).ok()?.parse().ok()?;
-        let sec:   i64 = std::str::from_utf8(&b[17..19]).ok()?.parse().ok()?;
+        let day: i64 = std::str::from_utf8(&b[8..10]).ok()?.parse().ok()?;
+        let hour: i64 = std::str::from_utf8(&b[11..13]).ok()?.parse().ok()?;
+        let min: i64 = std::str::from_utf8(&b[14..16]).ok()?.parse().ok()?;
+        let sec: i64 = std::str::from_utf8(&b[17..19]).ok()?.parse().ok()?;
         // Days since Unix epoch using civil calendar (Euclidean algorithm).
         let m_adj = if month <= 2 { month + 9 } else { month - 3 };
         let y_adj = if month <= 2 { year - 1 } else { year };
@@ -213,9 +222,14 @@ fn parse_blockcypher_time(s: Option<&str>) -> u64 {
         let doe = yoe * 365 + yoe / 4 - yoe / 100 + doy;
         let days = era * 146097 + doe - 719468;
         let ts = days * 86400 + hour * 3600 + min * 60 + sec;
-        if ts < 0 { None } else { Some(ts as u64) }
+        if ts < 0 {
+            None
+        } else {
+            Some(ts as u64)
+        }
     }
-    s.and_then(|s| if s.is_empty() { None } else { inner(s) }).unwrap_or(0)
+    s.and_then(|s| if s.is_empty() { None } else { inner(s) })
+        .unwrap_or(0)
 }
 
 fn format_doge(koin: u64) -> String {

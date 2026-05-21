@@ -8,8 +8,6 @@ use serde::{Deserialize, Serialize};
 
 use crate::http::{with_fallback, HttpClient, RetryProfile};
 
-
-
 // ----------------------------------------------------------------
 // Blockbook shared types (same shape as dogecoin)
 // ----------------------------------------------------------------
@@ -96,9 +94,15 @@ pub struct LtcSendResult {
 }
 
 impl super::SignedSubmission for LtcSendResult {
-    fn submission_id(&self) -> &str { &self.txid }
-    fn signed_payload(&self) -> &str { &self.raw_tx_hex }
-    fn signed_payload_format(&self) -> super::SignedPayloadFormat { super::SignedPayloadFormat::Hex }
+    fn submission_id(&self) -> &str {
+        &self.txid
+    }
+    fn signed_payload(&self) -> &str {
+        &self.raw_tx_hex
+    }
+    fn signed_payload_format(&self) -> super::SignedPayloadFormat {
+        super::SignedPayloadFormat::Hex
+    }
 }
 
 // ----------------------------------------------------------------
@@ -118,7 +122,10 @@ impl LitecoinClient {
         }
     }
 
-    pub(crate) async fn get<T: serde::de::DeserializeOwned>(&self, path: &str) -> Result<T, String> {
+    pub(crate) async fn get<T: serde::de::DeserializeOwned>(
+        &self,
+        path: &str,
+    ) -> Result<T, String> {
         let path = path.to_string();
         with_fallback(&self.endpoints, |base| {
             let client = self.client.clone();
@@ -130,8 +137,6 @@ impl LitecoinClient {
 }
 // Litecoin fetch paths (Blockbook REST): balance, UTXOs, fee estimate,
 // history, and tx-status lookup.
-
-
 
 impl LitecoinClient {
     pub async fn fetch_balance(&self, address: &str) -> Result<LtcBalance, String> {

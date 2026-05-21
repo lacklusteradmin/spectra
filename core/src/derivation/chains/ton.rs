@@ -1,5 +1,4 @@
-//! TON address decode + validation + derivation. Self-contained — see
-//! `REFACTOR_NOTES.md`.
+//! TON address decode + validation + derivation
 //!
 //! - `decode_ton_address` / `validate_ton_address`: parse raw or
 //!   base64url user-friendly addresses.
@@ -14,7 +13,6 @@ use hmac::{Hmac, Mac};
 use pbkdf2::pbkdf2_hmac;
 use sha2::{Digest, Sha256, Sha512};
 use zeroize::Zeroizing;
-
 
 type HmacSha512 = Hmac<Sha512>;
 
@@ -89,7 +87,11 @@ pub(crate) fn derive_ton_seed(
     // `salt_prefix` and `iteration_count` are honored as customization
     // points — defaults match the ton-crypto reference implementation.
     let entropy = hmac_sha512(mnemonic.as_bytes(), &[passphrase.as_bytes()])?;
-    let iterations = if iteration_count == 0 { 100_000 } else { iteration_count };
+    let iterations = if iteration_count == 0 {
+        100_000
+    } else {
+        iteration_count
+    };
     let salt = salt_prefix.unwrap_or("TON default seed");
     let mut seed = Zeroizing::new([0u8; 64]);
     pbkdf2_hmac::<Sha512>(&*entropy, salt.as_bytes(), iterations, &mut *seed);
@@ -127,9 +129,8 @@ f1df6a26840106b90eb858fc0006ed207fa00d4d422f90005c8ca0715cbffc9d077\
 5003fa0213cb6acb1f12cb3fc973fb00000af400c9ed54696225e5";
 
 const V4R2_KNOWN_CODE_HASH: [u8; 32] = [
-    0xfe, 0xb5, 0xff, 0x68, 0x20, 0xe2, 0xff, 0x0d, 0x94, 0x83, 0xe7, 0xe0,
-    0xd6, 0x2c, 0x81, 0x7d, 0x84, 0x67, 0x89, 0xfb, 0x4a, 0xe5, 0x80, 0xc8,
-    0x78, 0x86, 0x6d, 0x95, 0x9d, 0xab, 0xd5, 0xc0,
+    0xfe, 0xb5, 0xff, 0x68, 0x20, 0xe2, 0xff, 0x0d, 0x94, 0x83, 0xe7, 0xe0, 0xd6, 0x2c, 0x81, 0x7d,
+    0x84, 0x67, 0x89, 0xfb, 0x4a, 0xe5, 0x80, 0xc8, 0x78, 0x86, 0x6d, 0x95, 0x9d, 0xab, 0xd5, 0xc0,
 ];
 
 // Default subwallet id for v4 on the basic workchain (0). Hardcoded in
@@ -332,7 +333,7 @@ pub(crate) fn derive_ton_standard(
     want_address: bool,
     want_public_key: bool,
     want_private_key: bool,
-) -> Result<(Option<String>, Option<String>, Option<String>), String> {
+) -> Result<crate::derivation::primitives::OptionalKeyMaterial, String> {
     let seed = derive_ton_seed(seed_phrase, passphrase.unwrap_or(""), None, 0)?;
     let mut private_key = [0u8; 32];
     private_key.copy_from_slice(&seed[..32]);
@@ -359,30 +360,61 @@ use crate::SpectraBridgeError;
 
 // Shared derivation logic for all TON networks (mainnet and testnet addresses are identical).
 fn ton_internal(
-    seed_phrase: String, passphrase: Option<String>,
-    want_address: bool, want_public_key: bool, want_private_key: bool,
+    seed_phrase: String,
+    passphrase: Option<String>,
+    want_address: bool,
+    want_public_key: bool,
+    want_private_key: bool,
 ) -> Result<DerivationResult, SpectraBridgeError> {
     let (address, public_key_hex, private_key_hex) = derive_ton_standard(
-        &seed_phrase, passphrase.as_deref(),
-        want_address, want_public_key, want_private_key,
+        &seed_phrase,
+        passphrase.as_deref(),
+        want_address,
+        want_public_key,
+        want_private_key,
     )?;
-    Ok(DerivationResult { address, public_key_hex, private_key_hex, account: 0, branch: 0, index: 0 })
+    Ok(DerivationResult {
+        address,
+        public_key_hex,
+        private_key_hex,
+        account: 0,
+        branch: 0,
+        index: 0,
+    })
 }
 
 /// UniFFI export: derive TON mainnet wallet (v4R2 bounceable address) from a seed phrase.
 #[uniffi::export]
 pub fn derive_ton(
-    seed_phrase: String, passphrase: Option<String>,
-    want_address: bool, want_public_key: bool, want_private_key: bool,
+    seed_phrase: String,
+    passphrase: Option<String>,
+    want_address: bool,
+    want_public_key: bool,
+    want_private_key: bool,
 ) -> Result<DerivationResult, SpectraBridgeError> {
-    ton_internal(seed_phrase, passphrase, want_address, want_public_key, want_private_key)
+    ton_internal(
+        seed_phrase,
+        passphrase,
+        want_address,
+        want_public_key,
+        want_private_key,
+    )
 }
 
 /// UniFFI export: derive TON testnet wallet from a seed phrase (same derivation as mainnet).
 #[uniffi::export]
 pub fn derive_ton_testnet(
-    seed_phrase: String, passphrase: Option<String>,
-    want_address: bool, want_public_key: bool, want_private_key: bool,
+    seed_phrase: String,
+    passphrase: Option<String>,
+    want_address: bool,
+    want_public_key: bool,
+    want_private_key: bool,
 ) -> Result<DerivationResult, SpectraBridgeError> {
-    ton_internal(seed_phrase, passphrase, want_address, want_public_key, want_private_key)
+    ton_internal(
+        seed_phrase,
+        passphrase,
+        want_address,
+        want_public_key,
+        want_private_key,
+    )
 }

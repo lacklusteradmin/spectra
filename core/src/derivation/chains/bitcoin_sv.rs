@@ -1,7 +1,6 @@
 //! Bitcoin SV: address validation, BIP-39 + BIP-32 derivation, legacy P2PKH
 //! base58check encoding.
 
-
 // ── Address validation (preserved) ───────────────────────────────────────
 
 // Base58check-decode a BSV address and return the 20-byte pubkey hash.
@@ -33,8 +32,8 @@ pub fn validate_bsv_address(address: &str) -> bool {
 
 // ── Derivation ────────────────────────────────────────────────────────────
 
-use crate::derivation::types::{BitcoinScriptType, DerivationResult, parse_path_metadata};
 use crate::derivation::chains::bitcoin::{base58check_encode, derive_secp_keypair, hash160};
+use crate::derivation::types::{parse_path_metadata, BitcoinScriptType, DerivationResult};
 use crate::SpectraBridgeError;
 
 const BSV_MAINNET_VERSION: u8 = 0x00;
@@ -49,9 +48,14 @@ fn p2pkh_address(version: u8, pubkey: &secp256k1::PublicKey) -> String {
 
 // Shared body for derive_bitcoin_sv / derive_bitcoin_sv_testnet; rejects non-P2PKH script types.
 fn bsv_internal(
-    version: u8, seed_phrase: String, derivation_path: String, passphrase: Option<String>,
+    version: u8,
+    seed_phrase: String,
+    derivation_path: String,
+    passphrase: Option<String>,
     script_type: BitcoinScriptType,
-    want_address: bool, want_public_key: bool, want_private_key: bool,
+    want_address: bool,
+    want_public_key: bool,
+    want_private_key: bool,
 ) -> Result<DerivationResult, SpectraBridgeError> {
     if !matches!(script_type, BitcoinScriptType::P2pkh) {
         return Err(SpectraBridgeError::InvalidInput {
@@ -59,32 +63,60 @@ fn bsv_internal(
         });
     }
     let (account, branch, index) = parse_path_metadata(&derivation_path);
-    let (pk, priv_bytes) = derive_secp_keypair(&seed_phrase, &derivation_path, passphrase.as_deref())?;
+    let (pk, priv_bytes) =
+        derive_secp_keypair(&seed_phrase, &derivation_path, passphrase.as_deref())?;
     Ok(DerivationResult {
         address: want_address.then(|| p2pkh_address(version, &pk)),
         public_key_hex: want_public_key.then(|| hex::encode(pk.serialize())),
         private_key_hex: want_private_key.then(|| hex::encode(priv_bytes)),
-        account, branch, index,
+        account,
+        branch,
+        index,
     })
 }
 
 /// UniFFI export: derive Bitcoin SV mainnet keys (P2PKH only).
 #[uniffi::export]
 pub fn derive_bitcoin_sv(
-    seed_phrase: String, derivation_path: String, passphrase: Option<String>,
+    seed_phrase: String,
+    derivation_path: String,
+    passphrase: Option<String>,
     script_type: BitcoinScriptType,
-    want_address: bool, want_public_key: bool, want_private_key: bool,
+    want_address: bool,
+    want_public_key: bool,
+    want_private_key: bool,
 ) -> Result<DerivationResult, SpectraBridgeError> {
-    bsv_internal(BSV_MAINNET_VERSION, seed_phrase, derivation_path, passphrase, script_type, want_address, want_public_key, want_private_key)
+    bsv_internal(
+        BSV_MAINNET_VERSION,
+        seed_phrase,
+        derivation_path,
+        passphrase,
+        script_type,
+        want_address,
+        want_public_key,
+        want_private_key,
+    )
 }
 
 /// UniFFI export: derive Bitcoin SV testnet keys (P2PKH only).
 #[uniffi::export]
 pub fn derive_bitcoin_sv_testnet(
-    seed_phrase: String, derivation_path: String, passphrase: Option<String>,
+    seed_phrase: String,
+    derivation_path: String,
+    passphrase: Option<String>,
     script_type: BitcoinScriptType,
-    want_address: bool, want_public_key: bool, want_private_key: bool,
+    want_address: bool,
+    want_public_key: bool,
+    want_private_key: bool,
 ) -> Result<DerivationResult, SpectraBridgeError> {
-    bsv_internal(BSV_TESTNET_VERSION, seed_phrase, derivation_path, passphrase, script_type, want_address, want_public_key, want_private_key)
+    bsv_internal(
+        BSV_TESTNET_VERSION,
+        seed_phrase,
+        derivation_path,
+        passphrase,
+        script_type,
+        want_address,
+        want_public_key,
+        want_private_key,
+    )
 }
-

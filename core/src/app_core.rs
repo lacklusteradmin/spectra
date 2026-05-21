@@ -160,7 +160,12 @@ pub fn app_core_endpoint_records_for_chain(
     settings_visible_only: bool,
 ) -> Result<Vec<AppCoreEndpointRecord>, crate::SpectraBridgeError> {
     let catalog = app_core_catalog()?;
-    Ok(endpoint_records_for_chain(catalog, &chain_name, role_mask, settings_visible_only))
+    Ok(endpoint_records_for_chain(
+        catalog,
+        &chain_name,
+        role_mask,
+        settings_visible_only,
+    ))
 }
 
 #[uniffi::export]
@@ -218,17 +223,15 @@ pub fn app_core_transaction_explorer_entry(
 pub fn app_core_bitcoin_esplora_base_urls(
     network: String,
 ) -> Result<Vec<String>, crate::SpectraBridgeError> {
-    Ok(app_core_catalog()
-        .and_then(|catalog| bitcoin_esplora_base_urls(catalog, &network))?)
+    Ok(app_core_catalog().and_then(|catalog| bitcoin_esplora_base_urls(catalog, &network))?)
 }
 
 #[uniffi::export]
 pub fn app_core_bitcoin_wallet_store_default_base_urls(
     network: String,
 ) -> Result<Vec<String>, crate::SpectraBridgeError> {
-    Ok(app_core_catalog().and_then(|catalog| {
-        bitcoin_wallet_store_default_base_urls(catalog, &network)
-    })?)
+    Ok(app_core_catalog()
+        .and_then(|catalog| bitcoin_wallet_store_default_base_urls(catalog, &network))?)
 }
 
 #[uniffi::export]
@@ -236,10 +239,12 @@ pub fn app_core_evm_rpc_endpoints(
     chain_name: String,
 ) -> Result<Vec<String>, crate::SpectraBridgeError> {
     let catalog = app_core_catalog()?;
-    Ok(endpoint_records_for_chain(catalog, &chain_name, ENDPOINT_ROLE_RPC, false)
-        .into_iter()
-        .map(|r| r.endpoint)
-        .collect())
+    Ok(
+        endpoint_records_for_chain(catalog, &chain_name, ENDPOINT_ROLE_RPC, false)
+            .into_iter()
+            .map(|r| r.endpoint)
+            .collect(),
+    )
 }
 
 #[uniffi::export]
@@ -247,10 +252,12 @@ pub fn app_core_explorer_supplemental_endpoints(
     chain_name: String,
 ) -> Result<Vec<String>, crate::SpectraBridgeError> {
     let catalog = app_core_catalog()?;
-    Ok(endpoint_records_for_chain(catalog, &chain_name, ENDPOINT_ROLE_EXPLORER, true)
-        .into_iter()
-        .map(|r| r.endpoint)
-        .collect())
+    Ok(
+        endpoint_records_for_chain(catalog, &chain_name, ENDPOINT_ROLE_EXPLORER, true)
+            .into_iter()
+            .map(|r| r.endpoint)
+            .collect(),
+    )
 }
 
 #[uniffi::export]
@@ -542,8 +549,7 @@ pub(super) fn resolved_flavor(chain_name: &str, normalized_path: &str) -> &'stat
         "Solana" if normalized_path == "m/44'/501'/0'" => "legacy",
         "Cardano" if normalized_path.starts_with("m/44'/1815'") => "legacy",
         "Tron"
-            if normalized_path == "m/44'/195'/0'"
-                || normalized_path.starts_with("m/44'/60'") =>
+            if normalized_path == "m/44'/195'/0'" || normalized_path.starts_with("m/44'/60'") =>
         {
             "legacy"
         }
@@ -800,13 +806,13 @@ pub(super) fn app_chain_descriptors() -> Vec<AppCoreAppChainDescriptor> {
     crate::chains::catalog()
         .iter()
         .map(|c| AppCoreAppChainDescriptor {
-            id:                      c.id.clone(),
-            chain_name:              c.name.clone(),
-            native_symbol:           c.gas_token_symbol.clone(),
-            search_keywords:         c.search_keywords.clone(),
-            supports_diagnostics:    c.supports_diagnostics,
+            id: c.id.clone(),
+            chain_name: c.name.clone(),
+            native_symbol: c.gas_token_symbol.clone(),
+            search_keywords: c.search_keywords.clone(),
+            supports_diagnostics: c.supports_diagnostics,
             supports_endpoint_catalog: c.supports_endpoint_catalog,
-            is_evm:                  c.is_evm,
+            is_evm: c.is_evm,
         })
         .collect()
 }
@@ -818,10 +824,22 @@ pub(super) fn broadcast_provider_options(chain_name: &str) -> Vec<AppCoreBroadca
         .map(|c| c.mainnet_counterpart().chain_display_name())
         .unwrap_or(chain_name);
     let pairs: &[(&str, &str)] = match resolved {
-        "Bitcoin" => &[("esplora", "Esplora"), ("maestro-esplora", "Maestro Esplora")],
-        "Bitcoin Cash" => &[("blockchair", "Blockchair"), ("actorforth", "ActorForth REST")],
-        "Bitcoin SV" => &[("whatsonchain", "WhatsOnChain"), ("blockchair", "Blockchair")],
-        "Litecoin" => &[("litecoinspace", "LitecoinSpace"), ("blockcypher", "BlockCypher")],
+        "Bitcoin" => &[
+            ("esplora", "Esplora"),
+            ("maestro-esplora", "Maestro Esplora"),
+        ],
+        "Bitcoin Cash" => &[
+            ("blockchair", "Blockchair"),
+            ("actorforth", "ActorForth REST"),
+        ],
+        "Bitcoin SV" => &[
+            ("whatsonchain", "WhatsOnChain"),
+            ("blockchair", "Blockchair"),
+        ],
+        "Litecoin" => &[
+            ("litecoinspace", "LitecoinSpace"),
+            ("blockcypher", "BlockCypher"),
+        ],
         "Dogecoin" => &[("blockcypher", "BlockCypher")],
         "Ethereum" | "Ethereum Classic" | "Arbitrum" | "Optimism" | "BNB Chain" | "Avalanche"
         | "Hyperliquid" | "Polygon" | "Base" | "Linea" | "Scroll" | "Blast" | "Mantle" => {
@@ -881,8 +899,8 @@ pub(super) fn broadcast_provider_options(chain_name: &str) -> Vec<AppCoreBroadca
         "Kaspa" => &[("kaspaorg", "api.kaspa.org")],
         "Dash" => &[("trezor-blockbook", "Trezor Blockbook")],
         "Bittensor" => &[("opentensor", "OpenTensor RPC")],
-        "Sei" | "Celo" | "Cronos" | "opBNB" | "zkSync Era" | "Sonic" | "Berachain"
-        | "Unichain" | "Ink" | "X Layer" => &[("rpc", "RPC Broadcast")],
+        "Sei" | "Celo" | "Cronos" | "opBNB" | "zkSync Era" | "Sonic" | "Berachain" | "Unichain"
+        | "Ink" | "X Layer" => &[("rpc", "RPC Broadcast")],
         _ => &[],
     };
     pairs

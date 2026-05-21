@@ -1,7 +1,5 @@
 //! Zcash transparent: address validation, BIP-32 derivation, t1… P2PKH
-//! base58check encoding (2-byte version prefix). Self-contained — see
-//! `REFACTOR_NOTES.md`.
-
+//! base58check encoding (2-byte version prefix)
 
 // ── Address validation (preserved) ───────────────────────────────────────
 
@@ -41,8 +39,8 @@ pub fn validate_zcash_address(address: &str) -> bool {
 
 // ── Derivation ────────────────────────────────────────────────────────────
 
-use crate::derivation::types::{DerivationResult, parse_path_metadata};
 use crate::derivation::chains::bitcoin::{base58check_encode, derive_secp_keypair, hash160};
+use crate::derivation::types::{parse_path_metadata, DerivationResult};
 use crate::SpectraBridgeError;
 
 const ZCASH_MAINNET_VERSION: [u8; 2] = [0x1C, 0xB8];
@@ -57,35 +55,67 @@ fn zcash_p2pkh_addr(version: [u8; 2], pubkey: &secp256k1::PublicKey) -> String {
 
 // Shared body for derive_zcash / derive_zcash_testnet; builds transparent P2PKH address.
 fn zcash_internal(
-    version: [u8; 2], seed_phrase: String, derivation_path: String, passphrase: Option<String>,
-    want_address: bool, want_public_key: bool, want_private_key: bool,
+    version: [u8; 2],
+    seed_phrase: String,
+    derivation_path: String,
+    passphrase: Option<String>,
+    want_address: bool,
+    want_public_key: bool,
+    want_private_key: bool,
 ) -> Result<DerivationResult, SpectraBridgeError> {
     let (account, branch, index) = parse_path_metadata(&derivation_path);
-    let (pk, priv_bytes) = derive_secp_keypair(&seed_phrase, &derivation_path, passphrase.as_deref())?;
+    let (pk, priv_bytes) =
+        derive_secp_keypair(&seed_phrase, &derivation_path, passphrase.as_deref())?;
     Ok(DerivationResult {
         address: want_address.then(|| zcash_p2pkh_addr(version, &pk)),
         public_key_hex: want_public_key.then(|| hex::encode(pk.serialize())),
         private_key_hex: want_private_key.then(|| hex::encode(priv_bytes)),
-        account, branch, index,
+        account,
+        branch,
+        index,
     })
 }
 
 /// UniFFI export: derive Zcash mainnet transparent keys.
 #[uniffi::export]
 pub fn derive_zcash(
-    seed_phrase: String, derivation_path: String, passphrase: Option<String>,
-    want_address: bool, want_public_key: bool, want_private_key: bool,
+    seed_phrase: String,
+    derivation_path: String,
+    passphrase: Option<String>,
+    want_address: bool,
+    want_public_key: bool,
+    want_private_key: bool,
 ) -> Result<DerivationResult, SpectraBridgeError> {
-    zcash_internal(ZCASH_MAINNET_VERSION, seed_phrase, derivation_path, passphrase, want_address, want_public_key, want_private_key)
+    zcash_internal(
+        ZCASH_MAINNET_VERSION,
+        seed_phrase,
+        derivation_path,
+        passphrase,
+        want_address,
+        want_public_key,
+        want_private_key,
+    )
 }
 
 /// UniFFI export: derive Zcash testnet transparent keys.
 #[uniffi::export]
 pub fn derive_zcash_testnet(
-    seed_phrase: String, derivation_path: String, passphrase: Option<String>,
-    want_address: bool, want_public_key: bool, want_private_key: bool,
+    seed_phrase: String,
+    derivation_path: String,
+    passphrase: Option<String>,
+    want_address: bool,
+    want_public_key: bool,
+    want_private_key: bool,
 ) -> Result<DerivationResult, SpectraBridgeError> {
-    zcash_internal(ZCASH_TESTNET_VERSION, seed_phrase, derivation_path, passphrase, want_address, want_public_key, want_private_key)
+    zcash_internal(
+        ZCASH_TESTNET_VERSION,
+        seed_phrase,
+        derivation_path,
+        passphrase,
+        want_address,
+        want_public_key,
+        want_private_key,
+    )
 }
 
 #[cfg(test)]
@@ -100,7 +130,9 @@ mod tests {
 
     #[test]
     fn rejects_btc_p2pkh() {
-        assert!(!validate_zcash_address("1A1zP1eP5QGefi2DMPTfTL5SLmv7DivfNa"));
+        assert!(!validate_zcash_address(
+            "1A1zP1eP5QGefi2DMPTfTL5SLmv7DivfNa"
+        ));
     }
 
     #[test]

@@ -14,8 +14,6 @@ use serde_json::{json, Value};
 
 use crate::http::{with_fallback, HttpClient, RetryProfile};
 
-
-
 // ----------------------------------------------------------------
 // Public result types
 // ----------------------------------------------------------------
@@ -47,9 +45,15 @@ pub struct DotSendResult {
 }
 
 impl super::SignedSubmission for DotSendResult {
-    fn submission_id(&self) -> &str { &self.txid }
-    fn signed_payload(&self) -> &str { &self.extrinsic_hex }
-    fn signed_payload_format(&self) -> super::SignedPayloadFormat { super::SignedPayloadFormat::Hex }
+    fn submission_id(&self) -> &str {
+        &self.txid
+    }
+    fn signed_payload(&self) -> &str {
+        &self.extrinsic_hex
+    }
+    fn signed_payload_format(&self) -> super::SignedPayloadFormat {
+        super::SignedPayloadFormat::Hex
+    }
 }
 
 // ----------------------------------------------------------------
@@ -80,7 +84,9 @@ impl PolkadotClient {
     }
 
     pub(crate) async fn rpc_call(&self, method: &str, params: Value) -> Result<Value, String> {
-        let body = std::sync::Arc::new(json!({"jsonrpc": "2.0", "id": 1, "method": method, "params": params}));
+        let body = std::sync::Arc::new(
+            json!({"jsonrpc": "2.0", "id": 1, "method": method, "params": params}),
+        );
         with_fallback(&self.rpc_endpoints, |url| {
             let client = self.client.clone();
             let body = std::sync::Arc::clone(&body);
@@ -129,8 +135,6 @@ impl PolkadotClient {
 }
 // Polkadot fetch paths: balance (Subscan), runtime/genesis/block info (RPC),
 // nonce (RPC), and history (Subscan).
-
-
 
 impl PolkadotClient {
     pub async fn fetch_balance(&self, address: &str) -> Result<DotBalance, String> {

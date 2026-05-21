@@ -20,8 +20,6 @@ use serde::{Deserialize, Serialize};
 
 use crate::http::{with_fallback, HttpClient, RetryProfile};
 
-
-
 // ----------------------------------------------------------------
 // WhatsOnChain response types
 // ----------------------------------------------------------------
@@ -115,9 +113,15 @@ pub struct BsvSendResult {
 }
 
 impl super::SignedSubmission for BsvSendResult {
-    fn submission_id(&self) -> &str { &self.txid }
-    fn signed_payload(&self) -> &str { &self.raw_tx_hex }
-    fn signed_payload_format(&self) -> super::SignedPayloadFormat { super::SignedPayloadFormat::Hex }
+    fn submission_id(&self) -> &str {
+        &self.txid
+    }
+    fn signed_payload(&self) -> &str {
+        &self.raw_tx_hex
+    }
+    fn signed_payload_format(&self) -> super::SignedPayloadFormat {
+        super::SignedPayloadFormat::Hex
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -150,7 +154,10 @@ impl BitcoinSvClient {
         }
     }
 
-    pub(crate) async fn get<T: serde::de::DeserializeOwned>(&self, path: &str) -> Result<T, String> {
+    pub(crate) async fn get<T: serde::de::DeserializeOwned>(
+        &self,
+        path: &str,
+    ) -> Result<T, String> {
         let path = path.to_string();
         with_fallback(&self.endpoints, |base| {
             let client = self.client.clone();
@@ -162,8 +169,6 @@ impl BitcoinSvClient {
 }
 // BSV fetch paths (WhatsOnChain REST): balance, UTXOs, history (with per-tx
 // enrichment), and tx status.
-
-
 
 impl BitcoinSvClient {
     pub async fn fetch_balance(&self, address: &str) -> Result<BsvBalance, String> {

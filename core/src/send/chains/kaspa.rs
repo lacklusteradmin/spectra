@@ -296,7 +296,14 @@ fn sign_kaspa_inputs(
     let mut signed = Vec::with_capacity(inputs.len());
     for i in 0..inputs.len() {
         let sighash = sighash_for_input(
-            inputs, outputs, i, &prevouts, &sequences, &sigopcounts, &outputs_h, &payload_h,
+            inputs,
+            outputs,
+            i,
+            &prevouts,
+            &sequences,
+            &sigopcounts,
+            &outputs_h,
+            &payload_h,
         )?;
         let msg = Message::from_digest_slice(&sighash).map_err(|e| e.to_string())?;
         let sig = secp.sign_schnorr(&msg, &keypair);

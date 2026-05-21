@@ -1,8 +1,8 @@
-/// Field-level validation rules shared across platforms.
-///
-/// Each function is pure (no I/O, no mutable state) and returns an
-/// `Option<String>` error message that the UI can display inline.
-/// `None` means the field is valid.
+//! Field-level validation rules shared across platforms.
+//!
+//! Each function is pure (no I/O, no mutable state) and returns an
+//! `Option<String>` error message that the UI can display inline.
+//! `None` means the field is valid.
 
 /// Returns an error or advisory message when `word_count` is outside the
 /// set of BIP-39 standard mnemonic lengths, or `None` when it is valid.

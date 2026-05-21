@@ -110,9 +110,15 @@ pub struct ZecSendResult {
 }
 
 impl super::SignedSubmission for ZecSendResult {
-    fn submission_id(&self) -> &str { &self.txid }
-    fn signed_payload(&self) -> &str { &self.raw_tx_hex }
-    fn signed_payload_format(&self) -> super::SignedPayloadFormat { super::SignedPayloadFormat::Hex }
+    fn submission_id(&self) -> &str {
+        &self.txid
+    }
+    fn signed_payload(&self) -> &str {
+        &self.raw_tx_hex
+    }
+    fn signed_payload_format(&self) -> super::SignedPayloadFormat {
+        super::SignedPayloadFormat::Hex
+    }
 }
 
 // ----------------------------------------------------------------
@@ -132,7 +138,10 @@ impl ZcashClient {
         }
     }
 
-    pub(crate) async fn get<T: serde::de::DeserializeOwned>(&self, path: &str) -> Result<T, String> {
+    pub(crate) async fn get<T: serde::de::DeserializeOwned>(
+        &self,
+        path: &str,
+    ) -> Result<T, String> {
         let path = path.to_string();
         with_fallback(&self.endpoints, |base| {
             let client = self.client.clone();

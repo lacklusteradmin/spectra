@@ -11,8 +11,6 @@ use serde::{Deserialize, Serialize};
 
 use crate::http::{with_fallback, HttpClient, RetryProfile};
 
-
-
 // ----------------------------------------------------------------
 // Blockbook types
 // ----------------------------------------------------------------
@@ -98,9 +96,15 @@ pub struct BchSendResult {
 }
 
 impl super::SignedSubmission for BchSendResult {
-    fn submission_id(&self) -> &str { &self.txid }
-    fn signed_payload(&self) -> &str { &self.raw_tx_hex }
-    fn signed_payload_format(&self) -> super::SignedPayloadFormat { super::SignedPayloadFormat::Hex }
+    fn submission_id(&self) -> &str {
+        &self.txid
+    }
+    fn signed_payload(&self) -> &str {
+        &self.raw_tx_hex
+    }
+    fn signed_payload_format(&self) -> super::SignedPayloadFormat {
+        super::SignedPayloadFormat::Hex
+    }
 }
 
 // ----------------------------------------------------------------
@@ -120,7 +124,10 @@ impl BitcoinCashClient {
         }
     }
 
-    pub(crate) async fn get<T: serde::de::DeserializeOwned>(&self, path: &str) -> Result<T, String> {
+    pub(crate) async fn get<T: serde::de::DeserializeOwned>(
+        &self,
+        path: &str,
+    ) -> Result<T, String> {
         let path = path.to_string();
         with_fallback(&self.endpoints, |base| {
             let client = self.client.clone();
@@ -132,7 +139,6 @@ impl BitcoinCashClient {
 }
 // BCH fetch paths (Blockbook REST): balance, UTXOs, fee estimate, history,
 // tx status.
-
 
 use crate::derivation::chains::bitcoin_cash::normalize_bch_address;
 

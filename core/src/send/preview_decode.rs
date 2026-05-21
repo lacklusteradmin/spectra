@@ -31,13 +31,25 @@ fn json_escape_local(s: &str) -> String {
 /// JSON-escaped quoted strings; Raw emits verbatim (caller's responsibility).
 #[derive(Debug, Clone, uniffi::Enum)]
 pub enum JsonFieldValue {
-    Str { value: String },
-    Int { value: i64 },
-    UInt { value: u64 },
-    Float { value: f64 },
-    Bool { value: bool },
+    Str {
+        value: String,
+    },
+    Int {
+        value: i64,
+    },
+    UInt {
+        value: u64,
+    },
+    Float {
+        value: f64,
+    },
+    Bool {
+        value: bool,
+    },
     /// Verbatim JSON text (e.g. a nested object or pre-formatted number).
-    Raw { value: String },
+    Raw {
+        value: String,
+    },
 }
 
 #[derive(Debug, Clone, uniffi::Record)]
@@ -49,7 +61,9 @@ pub struct JsonField {
 pub fn build_json_object(fields: Vec<JsonField>) -> String {
     let mut out = String::from("{");
     for (i, f) in fields.iter().enumerate() {
-        if i > 0 { out.push(','); }
+        if i > 0 {
+            out.push(',');
+        }
         out.push('"');
         out.push_str(&json_escape_local(&f.name));
         out.push_str("\":");
@@ -94,7 +108,9 @@ pub fn extract_json_string_field(json: String, key: String) -> String {
     let Ok(v) = serde_json::from_str::<serde_json::Value>(&json) else {
         return String::new();
     };
-    let Some(obj) = v.as_object() else { return String::new() };
+    let Some(obj) = v.as_object() else {
+        return String::new();
+    };
     match obj.get(&key) {
         Some(serde_json::Value::String(s)) => s.clone(),
         Some(serde_json::Value::Null) | None => String::new(),
@@ -139,7 +155,11 @@ pub fn decimal_str_to_raw_units(amount_str: &str, decimals: u32) -> String {
         digits.push_str(&frac_part[..decimals]);
     }
     let trimmed = digits.trim_start_matches('0');
-    if trimmed.is_empty() { "0".to_string() } else { trimmed.to_string() }
+    if trimmed.is_empty() {
+        "0".to_string()
+    } else {
+        trimmed.to_string()
+    }
 }
 
 /// Convert a decimal f64 amount to its smallest-unit string representation.
@@ -284,7 +304,8 @@ pub fn decode_dogecoin_send_preview(
         spendable_balance_doge: base.spendable_balance,
         requested_amount_doge: requested_amount,
         estimated_network_fee_doge: base.estimated_network_fee_coin,
-        estimated_fee_rate_doge_per_kb: base.estimated_fee_rate_sat_vb as f64 * 1000.0 / SAT_PER_COIN,
+        estimated_fee_rate_doge_per_kb: base.estimated_fee_rate_sat_vb as f64 * 1000.0
+            / SAT_PER_COIN,
         estimated_transaction_bytes: base.estimated_transaction_bytes,
         selected_input_count: base.selected_input_count,
         uses_change_output: uses_change,
@@ -310,10 +331,7 @@ pub fn decode_tron_send_preview(json: String) -> Option<TronSendPreviewDecoded> 
     let v: serde_json::Value = serde_json::from_str(&json).ok()?;
     let o = v.as_object()?;
     let fee_trx = obj_f64(o, "estimated_fee_trx").unwrap_or(0.0);
-    let fee_limit_sun = o
-        .get("fee_limit_sun")
-        .and_then(|v| v.as_i64())
-        .unwrap_or(0);
+    let fee_limit_sun = o.get("fee_limit_sun").and_then(|v| v.as_i64()).unwrap_or(0);
     let spendable = obj_f64(o, "spendable_balance").unwrap_or(0.0);
     let max_sendable = obj_f64(o, "max_sendable").unwrap_or(spendable);
     Some(TronSendPreviewDecoded {
@@ -458,9 +476,7 @@ pub fn build_dogecoin_send_preview_record(
     })
 }
 
-pub fn build_tron_send_preview_record(
-    json: String,
-) -> Option<crate::wallet_core::TronSendPreview> {
+pub fn build_tron_send_preview_record(json: String) -> Option<crate::wallet_core::TronSendPreview> {
     let d = decode_tron_send_preview(json)?;
     Some(crate::wallet_core::TronSendPreview {
         estimatedNetworkFeeTrx: d.estimated_network_fee_trx,
@@ -479,17 +495,39 @@ pub fn build_tron_send_preview_record(
 // Swift dispatches on the enum variant to assign the right @Published preview.
 #[derive(Debug, Clone, uniffi::Enum)]
 pub enum SimpleChainPreview {
-    Solana { preview: crate::wallet_core::SolanaSendPreview },
-    Xrp { preview: crate::wallet_core::XRPSendPreview },
-    Stellar { preview: crate::wallet_core::StellarSendPreview },
-    Monero { preview: crate::wallet_core::MoneroSendPreview },
-    Cardano { preview: crate::wallet_core::CardanoSendPreview },
-    Sui { preview: crate::wallet_core::SuiSendPreview },
-    Aptos { preview: crate::wallet_core::AptosSendPreview },
-    Ton { preview: crate::wallet_core::TONSendPreview },
-    Icp { preview: crate::wallet_core::ICPSendPreview },
-    Near { preview: crate::wallet_core::NearSendPreview },
-    Polkadot { preview: crate::wallet_core::PolkadotSendPreview },
+    Solana {
+        preview: crate::wallet_core::SolanaSendPreview,
+    },
+    Xrp {
+        preview: crate::wallet_core::XRPSendPreview,
+    },
+    Stellar {
+        preview: crate::wallet_core::StellarSendPreview,
+    },
+    Monero {
+        preview: crate::wallet_core::MoneroSendPreview,
+    },
+    Cardano {
+        preview: crate::wallet_core::CardanoSendPreview,
+    },
+    Sui {
+        preview: crate::wallet_core::SuiSendPreview,
+    },
+    Aptos {
+        preview: crate::wallet_core::AptosSendPreview,
+    },
+    Ton {
+        preview: crate::wallet_core::TONSendPreview,
+    },
+    Icp {
+        preview: crate::wallet_core::ICPSendPreview,
+    },
+    Near {
+        preview: crate::wallet_core::NearSendPreview,
+    },
+    Polkadot {
+        preview: crate::wallet_core::PolkadotSendPreview,
+    },
 }
 
 pub fn build_simple_chain_preview(json: String, chain: SimpleChain) -> SimpleChainPreview {
@@ -501,76 +539,159 @@ pub fn build_simple_chain_preview(json: String, chain: SimpleChain) -> SimpleCha
     let max = p.max_sendable;
     let raw = p.fee_raw.clone();
     match chain {
-        SimpleChain::Solana => SimpleChainPreview::Solana { preview: SolanaSendPreview {
-            estimatedNetworkFeeSol: fee, spendableBalance: bal, feeRateDescription: Some(desc),
-            estimatedTransactionBytes: None, selectedInputCount: None, usesChangeOutput: None, maxSendable: max,
-        }},
-        SimpleChain::Xrp => SimpleChainPreview::Xrp { preview: XRPSendPreview {
-            estimatedNetworkFeeXrp: fee, feeDrops: raw.parse().unwrap_or(12),
-            sequence: 0, lastLedgerSequence: 0, spendableBalance: bal, feeRateDescription: Some(desc),
-            estimatedTransactionBytes: None, selectedInputCount: None, usesChangeOutput: None, maxSendable: max,
-        }},
-        SimpleChain::Stellar => SimpleChainPreview::Stellar { preview: StellarSendPreview {
-            estimatedNetworkFeeXlm: fee, feeStroops: raw.parse().unwrap_or(100),
-            sequence: 0, spendableBalance: bal, feeRateDescription: Some(desc),
-            estimatedTransactionBytes: None, selectedInputCount: None, usesChangeOutput: None, maxSendable: max,
-        }},
-        SimpleChain::Monero => SimpleChainPreview::Monero { preview: MoneroSendPreview {
-            estimatedNetworkFeeXmr: fee, priorityLabel: "normal".into(), spendableBalance: bal,
-            feeRateDescription: Some(desc), estimatedTransactionBytes: None, selectedInputCount: None,
-            usesChangeOutput: None, maxSendable: max,
-        }},
-        SimpleChain::Cardano => SimpleChainPreview::Cardano { preview: CardanoSendPreview {
-            estimatedNetworkFeeAda: fee, ttlSlot: 0, spendableBalance: bal, feeRateDescription: Some(desc),
-            estimatedTransactionBytes: None, selectedInputCount: None, usesChangeOutput: None, maxSendable: max,
-        }},
-        SimpleChain::Sui => SimpleChainPreview::Sui { preview: SuiSendPreview {
-            estimatedNetworkFeeSui: fee, gasBudgetMist: raw.parse().unwrap_or(3_000_000),
-            referenceGasPrice: 1_000, spendableBalance: bal, feeRateDescription: Some(desc),
-            estimatedTransactionBytes: None, selectedInputCount: None, usesChangeOutput: None, maxSendable: max,
-        }},
+        SimpleChain::Solana => SimpleChainPreview::Solana {
+            preview: SolanaSendPreview {
+                estimatedNetworkFeeSol: fee,
+                spendableBalance: bal,
+                feeRateDescription: Some(desc),
+                estimatedTransactionBytes: None,
+                selectedInputCount: None,
+                usesChangeOutput: None,
+                maxSendable: max,
+            },
+        },
+        SimpleChain::Xrp => SimpleChainPreview::Xrp {
+            preview: XRPSendPreview {
+                estimatedNetworkFeeXrp: fee,
+                feeDrops: raw.parse().unwrap_or(12),
+                sequence: 0,
+                lastLedgerSequence: 0,
+                spendableBalance: bal,
+                feeRateDescription: Some(desc),
+                estimatedTransactionBytes: None,
+                selectedInputCount: None,
+                usesChangeOutput: None,
+                maxSendable: max,
+            },
+        },
+        SimpleChain::Stellar => SimpleChainPreview::Stellar {
+            preview: StellarSendPreview {
+                estimatedNetworkFeeXlm: fee,
+                feeStroops: raw.parse().unwrap_or(100),
+                sequence: 0,
+                spendableBalance: bal,
+                feeRateDescription: Some(desc),
+                estimatedTransactionBytes: None,
+                selectedInputCount: None,
+                usesChangeOutput: None,
+                maxSendable: max,
+            },
+        },
+        SimpleChain::Monero => SimpleChainPreview::Monero {
+            preview: MoneroSendPreview {
+                estimatedNetworkFeeXmr: fee,
+                priorityLabel: "normal".into(),
+                spendableBalance: bal,
+                feeRateDescription: Some(desc),
+                estimatedTransactionBytes: None,
+                selectedInputCount: None,
+                usesChangeOutput: None,
+                maxSendable: max,
+            },
+        },
+        SimpleChain::Cardano => SimpleChainPreview::Cardano {
+            preview: CardanoSendPreview {
+                estimatedNetworkFeeAda: fee,
+                ttlSlot: 0,
+                spendableBalance: bal,
+                feeRateDescription: Some(desc),
+                estimatedTransactionBytes: None,
+                selectedInputCount: None,
+                usesChangeOutput: None,
+                maxSendable: max,
+            },
+        },
+        SimpleChain::Sui => SimpleChainPreview::Sui {
+            preview: SuiSendPreview {
+                estimatedNetworkFeeSui: fee,
+                gasBudgetMist: raw.parse().unwrap_or(3_000_000),
+                referenceGasPrice: 1_000,
+                spendableBalance: bal,
+                feeRateDescription: Some(desc),
+                estimatedTransactionBytes: None,
+                selectedInputCount: None,
+                usesChangeOutput: None,
+                maxSendable: max,
+            },
+        },
         SimpleChain::Aptos => {
             let gas: u64 = raw.parse().unwrap_or(100);
-            SimpleChainPreview::Aptos { preview: AptosSendPreview {
-                estimatedNetworkFeeApt: fee, maxGasAmount: 10_000, gasUnitPriceOctas: gas,
-                spendableBalance: bal, feeRateDescription: Some(format!("{} octas/unit", gas)),
-                estimatedTransactionBytes: None, selectedInputCount: None, usesChangeOutput: None, maxSendable: max,
-            }}
+            SimpleChainPreview::Aptos {
+                preview: AptosSendPreview {
+                    estimatedNetworkFeeApt: fee,
+                    maxGasAmount: 10_000,
+                    gasUnitPriceOctas: gas,
+                    spendableBalance: bal,
+                    feeRateDescription: Some(format!("{} octas/unit", gas)),
+                    estimatedTransactionBytes: None,
+                    selectedInputCount: None,
+                    usesChangeOutput: None,
+                    maxSendable: max,
+                },
+            }
+        }
+        SimpleChain::Ton => SimpleChainPreview::Ton {
+            preview: TONSendPreview {
+                estimatedNetworkFeeTon: fee,
+                sequenceNumber: 0,
+                spendableBalance: bal,
+                feeRateDescription: Some(desc),
+                estimatedTransactionBytes: None,
+                selectedInputCount: None,
+                usesChangeOutput: None,
+                maxSendable: max,
+            },
         },
-        SimpleChain::Ton => SimpleChainPreview::Ton { preview: TONSendPreview {
-            estimatedNetworkFeeTon: fee, sequenceNumber: 0, spendableBalance: bal,
-            feeRateDescription: Some(desc), estimatedTransactionBytes: None, selectedInputCount: None,
-            usesChangeOutput: None, maxSendable: max,
-        }},
-        SimpleChain::Icp => SimpleChainPreview::Icp { preview: ICPSendPreview {
-            estimatedNetworkFeeIcp: fee, feeE8s: raw.parse().unwrap_or(10_000),
-            spendableBalance: bal, feeRateDescription: Some(desc),
-            estimatedTransactionBytes: None, selectedInputCount: None, usesChangeOutput: None, maxSendable: max,
-        }},
-        SimpleChain::Near => SimpleChainPreview::Near { preview: NearSendPreview {
-            estimatedNetworkFeeNear: fee, gasPriceYoctoNear: raw.clone(), spendableBalance: bal,
-            feeRateDescription: Some(raw),
-            estimatedTransactionBytes: None, selectedInputCount: None, usesChangeOutput: None, maxSendable: max,
-        }},
-        SimpleChain::Polkadot => SimpleChainPreview::Polkadot { preview: PolkadotSendPreview {
-            estimatedNetworkFeeDot: fee, spendableBalance: bal, feeRateDescription: Some(desc),
-            estimatedTransactionBytes: None, selectedInputCount: None, usesChangeOutput: None, maxSendable: max,
-        }},
+        SimpleChain::Icp => SimpleChainPreview::Icp {
+            preview: ICPSendPreview {
+                estimatedNetworkFeeIcp: fee,
+                feeE8s: raw.parse().unwrap_or(10_000),
+                spendableBalance: bal,
+                feeRateDescription: Some(desc),
+                estimatedTransactionBytes: None,
+                selectedInputCount: None,
+                usesChangeOutput: None,
+                maxSendable: max,
+            },
+        },
+        SimpleChain::Near => SimpleChainPreview::Near {
+            preview: NearSendPreview {
+                estimatedNetworkFeeNear: fee,
+                gasPriceYoctoNear: raw.clone(),
+                spendableBalance: bal,
+                feeRateDescription: Some(raw),
+                estimatedTransactionBytes: None,
+                selectedInputCount: None,
+                usesChangeOutput: None,
+                maxSendable: max,
+            },
+        },
+        SimpleChain::Polkadot => SimpleChainPreview::Polkadot {
+            preview: PolkadotSendPreview {
+                estimatedNetworkFeeDot: fee,
+                spendableBalance: bal,
+                feeRateDescription: Some(desc),
+                estimatedTransactionBytes: None,
+                selectedInputCount: None,
+                usesChangeOutput: None,
+                maxSendable: max,
+            },
+        },
     }
 }
 
 pub fn simple_chain_default_fee_raw(chain: SimpleChain) -> String {
     match chain {
-        SimpleChain::Solana => "5000".into(),        // lamports
-        SimpleChain::Xrp => "12".into(),             // drops
-        SimpleChain::Stellar => "100".into(),        // stroops
+        SimpleChain::Solana => "5000".into(), // lamports
+        SimpleChain::Xrp => "12".into(),      // drops
+        SimpleChain::Stellar => "100".into(), // stroops
         SimpleChain::Monero => "0".into(),
-        SimpleChain::Cardano => "170000".into(),     // lovelace
-        SimpleChain::Sui => "3000000".into(),        // mist gas budget
-        SimpleChain::Aptos => "100".into(),          // octas (gas unit)
-        SimpleChain::Ton => "10000000".into(),       // nano ton
-        SimpleChain::Icp => "10000".into(),          // e8s
-        SimpleChain::Near => "100000000".into(),     // yocto gas price
+        SimpleChain::Cardano => "170000".into(), // lovelace
+        SimpleChain::Sui => "3000000".into(),    // mist gas budget
+        SimpleChain::Aptos => "100".into(),      // octas (gas unit)
+        SimpleChain::Ton => "10000000".into(),   // nano ton
+        SimpleChain::Icp => "10000".into(),      // e8s
+        SimpleChain::Near => "100000000".into(), // yocto gas price
         SimpleChain::Polkadot => "10000000000".into(), // planck
     }
 }
@@ -644,10 +765,26 @@ mod tests {
     #[test]
     fn json_object_builder_mixed_types_and_escapes() {
         let s = build_json_object(vec![
-            JsonField { name: "from".into(), value: JsonFieldValue::Str { value: "a\"b".into() } },
-            JsonField { name: "amount_sat".into(), value: JsonFieldValue::UInt { value: 42 } },
-            JsonField { name: "memo".into(), value: JsonFieldValue::Raw { value: "null".into() } },
-            JsonField { name: "flag".into(), value: JsonFieldValue::Bool { value: true } },
+            JsonField {
+                name: "from".into(),
+                value: JsonFieldValue::Str {
+                    value: "a\"b".into(),
+                },
+            },
+            JsonField {
+                name: "amount_sat".into(),
+                value: JsonFieldValue::UInt { value: 42 },
+            },
+            JsonField {
+                name: "memo".into(),
+                value: JsonFieldValue::Raw {
+                    value: "null".into(),
+                },
+            },
+            JsonField {
+                name: "flag".into(),
+                value: JsonFieldValue::Bool { value: true },
+            },
         ]);
         let v: serde_json::Value = serde_json::from_str(&s).unwrap();
         assert_eq!(v["from"], "a\"b");
@@ -658,7 +795,13 @@ mod tests {
 
     #[test]
     fn utxo_payload_has_numeric_sat_fields() {
-        let p = build_utxo_sat_send_payload("bc1from".into(), "bc1to".into(), 150000, 1000, "kk".into());
+        let p = build_utxo_sat_send_payload(
+            "bc1from".into(),
+            "bc1to".into(),
+            150000,
+            1000,
+            "kk".into(),
+        );
         let v: serde_json::Value = serde_json::from_str(&p).unwrap();
         assert_eq!(v["amount_sat"], 150000);
         assert_eq!(v["fee_sat"], 1000);
@@ -672,7 +815,10 @@ mod tests {
         assert_eq!(extract_json_string_field(j.into(), "nonce".into()), "7");
         assert_eq!(extract_json_string_field(j.into(), "flag".into()), "true");
         assert_eq!(extract_json_string_field(j.into(), "missing".into()), "");
-        assert_eq!(extract_json_string_field("{not json".into(), "x".into()), "");
+        assert_eq!(
+            extract_json_string_field("{not json".into(), "x".into()),
+            ""
+        );
     }
 
     #[test]
@@ -688,10 +834,19 @@ mod tests {
         // Values that f64 cannot represent exactly — must be exact via string path.
         assert_eq!(decimal_str_to_raw_units("0.1", 18), "100000000000000000");
         assert_eq!(decimal_str_to_raw_units("0.3", 18), "300000000000000000");
-        assert_eq!(decimal_str_to_raw_units("1.234567890123456789", 18), "1234567890123456789");
+        assert_eq!(
+            decimal_str_to_raw_units("1.234567890123456789", 18),
+            "1234567890123456789"
+        );
         // NEAR: 24 decimals
-        assert_eq!(decimal_str_to_raw_units("0.1", 24), "100000000000000000000000");
-        assert_eq!(decimal_str_to_raw_units("1", 24), "1000000000000000000000000");
+        assert_eq!(
+            decimal_str_to_raw_units("0.1", 24),
+            "100000000000000000000000"
+        );
+        assert_eq!(
+            decimal_str_to_raw_units("1", 24),
+            "1000000000000000000000000"
+        );
         // Low-decimal chains
         assert_eq!(decimal_str_to_raw_units("1.5", 9), "1500000000");
         assert_eq!(decimal_str_to_raw_units("100", 6), "100000000");

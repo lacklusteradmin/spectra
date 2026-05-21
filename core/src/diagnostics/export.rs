@@ -97,7 +97,9 @@ fn evm_endpoint_row_value(row: &EvmEndpointHealthRow) -> Value {
     })
 }
 
-fn unix_or_zero(t: Option<f64>) -> f64 { t.unwrap_or(0.0) }
+fn unix_or_zero(t: Option<f64>) -> f64 {
+    t.unwrap_or(0.0)
+}
 
 // ---------- EVM ----------
 
@@ -108,26 +110,29 @@ pub fn diagnostics_build_evm_json(
     history_last_updated_at_unix: Option<f64>,
     endpoints_last_updated_at_unix: Option<f64>,
 ) -> Option<String> {
-    let history_dicts: Vec<Value> = history.iter().map(|e| {
-        let d = &e.diagnostics;
-        json!({
-            "walletID": e.wallet_id,
-            "address": d.address,
-            "rpcTransferCount": d.rpc_transfer_count,
-            "rpcError": d.rpc_error.clone().unwrap_or_default(),
-            "blockscoutTransferCount": d.blockscout_transfer_count,
-            "blockscoutError": d.blockscout_error.clone().unwrap_or_default(),
-            "etherscanTransferCount": d.etherscan_transfer_count,
-            "etherscanError": d.etherscan_error.clone().unwrap_or_default(),
-            "ethplorerTransferCount": d.ethplorer_transfer_count,
-            "ethplorerError": d.ethplorer_error.clone().unwrap_or_default(),
-            "sourceUsed": d.source_used,
-            "transferScanCount": d.transfer_scan_count,
-            "decodedTransferCount": d.decoded_transfer_count,
-            "unsupportedTransferDropCount": d.unsupported_transfer_drop_count,
-            "decodingCompletenessRatio": d.decoding_completeness_ratio,
+    let history_dicts: Vec<Value> = history
+        .iter()
+        .map(|e| {
+            let d = &e.diagnostics;
+            json!({
+                "walletID": e.wallet_id,
+                "address": d.address,
+                "rpcTransferCount": d.rpc_transfer_count,
+                "rpcError": d.rpc_error.clone().unwrap_or_default(),
+                "blockscoutTransferCount": d.blockscout_transfer_count,
+                "blockscoutError": d.blockscout_error.clone().unwrap_or_default(),
+                "etherscanTransferCount": d.etherscan_transfer_count,
+                "etherscanError": d.etherscan_error.clone().unwrap_or_default(),
+                "ethplorerTransferCount": d.ethplorer_transfer_count,
+                "ethplorerError": d.ethplorer_error.clone().unwrap_or_default(),
+                "sourceUsed": d.source_used,
+                "transferScanCount": d.transfer_scan_count,
+                "decodedTransferCount": d.decoded_transfer_count,
+                "unsupportedTransferDropCount": d.unsupported_transfer_drop_count,
+                "decodingCompletenessRatio": d.decoding_completeness_ratio,
+            })
         })
-    }).collect();
+        .collect();
     let endpoint_dicts: Vec<Value> = endpoints.iter().map(evm_endpoint_row_value).collect();
     let payload = json!({
         "historyLastUpdatedAt": unix_or_zero(history_last_updated_at_unix),
@@ -144,8 +149,12 @@ pub fn diagnostics_build_evm_json(
 /// bundle shape without doing any JSON parsing on the Swift side.
 #[uniffi::export]
 pub fn core_diagnostics_evm_json_shape_ok(json: String) -> bool {
-    let Ok(v) = serde_json::from_str::<Value>(&json) else { return false };
-    let Some(obj) = v.as_object() else { return false };
+    let Ok(v) = serde_json::from_str::<Value>(&json) else {
+        return false;
+    };
+    let Some(obj) = v.as_object() else {
+        return false;
+    };
     obj.contains_key("history") && obj.contains_key("endpoints")
 }
 
@@ -159,20 +168,29 @@ pub fn diagnostics_build_utxo_json(
     endpoints_last_updated_at_unix: Option<f64>,
     extra_network_mode: Option<String>,
 ) -> Option<String> {
-    let history_dicts: Vec<Value> = history.iter().map(|item| {
-        json!({
-            "walletID": item.wallet_id,
-            "identifier": item.identifier,
-            "sourceUsed": item.source_used,
-            "transactionCount": item.transaction_count,
-            "nextCursor": item.next_cursor.clone().unwrap_or_default(),
-            "error": item.error.clone().unwrap_or_default(),
+    let history_dicts: Vec<Value> = history
+        .iter()
+        .map(|item| {
+            json!({
+                "walletID": item.wallet_id,
+                "identifier": item.identifier,
+                "sourceUsed": item.source_used,
+                "transactionCount": item.transaction_count,
+                "nextCursor": item.next_cursor.clone().unwrap_or_default(),
+                "error": item.error.clone().unwrap_or_default(),
+            })
         })
-    }).collect();
+        .collect();
     let endpoint_dicts: Vec<Value> = endpoints.iter().map(endpoint_row_value).collect();
     let mut payload = Map::new();
-    payload.insert("historyLastUpdatedAt".into(), json!(unix_or_zero(history_last_updated_at_unix)));
-    payload.insert("endpointsLastUpdatedAt".into(), json!(unix_or_zero(endpoints_last_updated_at_unix)));
+    payload.insert(
+        "historyLastUpdatedAt".into(),
+        json!(unix_or_zero(history_last_updated_at_unix)),
+    );
+    payload.insert(
+        "endpointsLastUpdatedAt".into(),
+        json!(unix_or_zero(endpoints_last_updated_at_unix)),
+    );
     payload.insert("history".into(), Value::Array(history_dicts));
     payload.insert("endpoints".into(), Value::Array(endpoint_dicts));
     if let Some(mode) = extra_network_mode {
@@ -190,15 +208,18 @@ pub fn diagnostics_build_simple_address_json(
     history_last_updated_at_unix: Option<f64>,
     endpoints_last_updated_at_unix: Option<f64>,
 ) -> Option<String> {
-    let history_dicts: Vec<Value> = history.iter().map(|item| {
-        json!({
-            "walletID": item.wallet_id,
-            "address": item.address,
-            "sourceUsed": item.source_used,
-            "transactionCount": item.transaction_count,
-            "error": item.error.clone().unwrap_or_default(),
+    let history_dicts: Vec<Value> = history
+        .iter()
+        .map(|item| {
+            json!({
+                "walletID": item.wallet_id,
+                "address": item.address,
+                "sourceUsed": item.source_used,
+                "transactionCount": item.transaction_count,
+                "error": item.error.clone().unwrap_or_default(),
+            })
         })
-    }).collect();
+        .collect();
     let endpoint_dicts: Vec<Value> = endpoints.iter().map(endpoint_row_value).collect();
     let payload = json!({
         "historyLastUpdatedAt": unix_or_zero(history_last_updated_at_unix),
@@ -220,17 +241,20 @@ pub fn diagnostics_build_tron_json(
     last_send_error_at_unix: Option<f64>,
     last_send_error_details: Option<String>,
 ) -> Option<String> {
-    let history_dicts: Vec<Value> = history.iter().map(|e| {
-        let d = &e.diagnostics;
-        json!({
-            "walletID": e.wallet_id,
-            "address": d.address,
-            "tronScanTxCount": d.tron_scan_tx_count,
-            "tronScanTRC20Count": d.tron_scan_trc20_count,
-            "sourceUsed": d.source_used,
-            "error": d.error.clone().unwrap_or_default(),
+    let history_dicts: Vec<Value> = history
+        .iter()
+        .map(|e| {
+            let d = &e.diagnostics;
+            json!({
+                "walletID": e.wallet_id,
+                "address": d.address,
+                "tronScanTxCount": d.tron_scan_tx_count,
+                "tronScanTRC20Count": d.tron_scan_trc20_count,
+                "sourceUsed": d.source_used,
+                "error": d.error.clone().unwrap_or_default(),
+            })
         })
-    }).collect();
+        .collect();
     let endpoint_dicts: Vec<Value> = endpoints.iter().map(endpoint_row_value).collect();
     let payload = json!({
         "historyLastUpdatedAt": unix_or_zero(history_last_updated_at_unix),
@@ -252,16 +276,19 @@ pub fn diagnostics_build_solana_json(
     history_last_updated_at_unix: Option<f64>,
     endpoints_last_updated_at_unix: Option<f64>,
 ) -> Option<String> {
-    let history_dicts: Vec<Value> = history.iter().map(|e| {
-        let d = &e.diagnostics;
-        json!({
-            "walletID": e.wallet_id,
-            "address": d.address,
-            "rpcCount": d.rpc_count,
-            "sourceUsed": d.source_used,
-            "error": d.error.clone().unwrap_or_default(),
+    let history_dicts: Vec<Value> = history
+        .iter()
+        .map(|e| {
+            let d = &e.diagnostics;
+            json!({
+                "walletID": e.wallet_id,
+                "address": d.address,
+                "rpcCount": d.rpc_count,
+                "sourceUsed": d.source_used,
+                "error": d.error.clone().unwrap_or_default(),
+            })
         })
-    }).collect();
+        .collect();
     let endpoint_dicts: Vec<Value> = endpoints.iter().map(endpoint_row_value).collect();
     let payload = json!({
         "historyLastUpdatedAt": unix_or_zero(history_last_updated_at_unix),
@@ -365,7 +392,8 @@ mod tests {
             }],
             Some(1.0),
             Some(2.0),
-        ).expect("builds");
+        )
+        .expect("builds");
         assert!(s.contains("\"walletID\""));
         assert!(s.contains("\"rpcTransferCount\""));
         assert!(s.contains("\"historyLastUpdatedAt\""));
@@ -387,20 +415,15 @@ mod tests {
             None,
             None,
             Some("mainnet".into()),
-        ).expect("builds");
+        )
+        .expect("builds");
         assert!(s.contains("\"networkMode\""));
         assert!(s.contains("mainnet"));
     }
 
     #[test]
     fn utxo_json_omits_network_mode_when_none() {
-        let s = diagnostics_build_utxo_json(
-            vec![],
-            vec![],
-            None,
-            None,
-            None,
-        ).expect("builds");
+        let s = diagnostics_build_utxo_json(vec![], vec![], None, None, None).expect("builds");
         assert!(!s.contains("networkMode"));
     }
 
@@ -422,7 +445,8 @@ mod tests {
             }],
             Some(10.0),
             None,
-        ).expect("builds");
+        )
+        .expect("builds");
         assert!(s.contains("\"walletID\""));
         assert!(s.contains("\"transactionCount\""));
         assert!(s.contains("-1"));
@@ -437,7 +461,8 @@ mod tests {
             None,
             Some(42.0),
             Some("details".into()),
-        ).expect("builds");
+        )
+        .expect("builds");
         assert!(s.contains("\"lastSendErrorAt\""));
         assert!(s.contains("\"lastSendErrorDetails\""));
         assert!(s.contains("details"));
@@ -458,7 +483,8 @@ mod tests {
             vec![],
             None,
             None,
-        ).expect("builds");
+        )
+        .expect("builds");
         assert!(s.contains("\"rpcCount\""));
     }
 }

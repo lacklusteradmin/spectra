@@ -205,13 +205,8 @@ fn sign_zcash_v5_p2pkh(
 
     let mut signed_inputs: Vec<Vec<u8>> = Vec::with_capacity(utxos.len());
     for (input_index, (txid, vout, value, script_pubkey)) in utxos.iter().enumerate() {
-        let txin_sig_digest = compute_txin_sig_digest(
-            txid,
-            *vout,
-            *value,
-            script_pubkey,
-            input_index as u32,
-        )?;
+        let txin_sig_digest =
+            compute_txin_sig_digest(txid, *vout, *value, script_pubkey, input_index as u32)?;
         let transparent_digest = compute_transparent_sig_digest(
             &prevouts_digest,
             &amounts_digest,
@@ -416,4 +411,3 @@ fn compute_zip244_txid_digest(
 fn _legacy_dsha_unused(data: &[u8]) -> [u8; 32] {
     dsha256(data)
 }
-

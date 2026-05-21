@@ -96,10 +96,7 @@ pub fn verification_notice_for_last_sent(
     if observed_on_network {
         return SendVerificationNotice::default();
     }
-    verification_notice_for_status(
-        CoreSendVerificationStatus::Deferred,
-        tx.chain_name,
-    )
+    verification_notice_for_status(CoreSendVerificationStatus::Deferred, tx.chain_name)
 }
 
 #[cfg(test)]
@@ -108,20 +105,16 @@ mod tests {
 
     #[test]
     fn verified_clears_notice() {
-        let n = verification_notice_for_status(
-            CoreSendVerificationStatus::Verified,
-            "Ethereum".into(),
-        );
+        let n =
+            verification_notice_for_status(CoreSendVerificationStatus::Verified, "Ethereum".into());
         assert!(n.notice.is_none());
         assert!(!n.is_warning);
     }
 
     #[test]
     fn deferred_mentions_chain_name() {
-        let n = verification_notice_for_status(
-            CoreSendVerificationStatus::Deferred,
-            "Bitcoin".into(),
-        );
+        let n =
+            verification_notice_for_status(CoreSendVerificationStatus::Deferred, "Bitcoin".into());
         assert!(n.notice.unwrap().contains("Bitcoin"));
         assert!(!n.is_warning);
     }
@@ -129,7 +122,9 @@ mod tests {
     #[test]
     fn failed_includes_message_and_warning_flag() {
         let n = verification_notice_for_status(
-            CoreSendVerificationStatus::Failed { message: "node down".into() },
+            CoreSendVerificationStatus::Failed {
+                message: "node down".into(),
+            },
             "Tron".into(),
         );
         let text = n.notice.unwrap();

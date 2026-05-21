@@ -6,7 +6,7 @@
 //!    at deregistration). `is_stake_address_registered` checks current state.
 //! 2. `build_register_and_delegate_tx` bundles registration (if not yet done)
 //!    + a `stake_delegation` cert pointing at the chosen pool, in a single tx.
-//!    Subsequent re-delegations only need the delegation cert.
+//!      Subsequent re-delegations only need the delegation cert.
 //! 3. There is no unbonding period — delegated stake earns rewards immediately
 //!    on the next epoch boundary (~5 days). `build_deregister_tx` recovers the
 //!    2-ADA deposit and stops staking.
@@ -26,17 +26,28 @@ pub struct CardanoStakingClient {
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
-fn lovelace_to_ada(lovelace: u64) -> f64 { lovelace as f64 / 1_000_000.0 }
+fn lovelace_to_ada(lovelace: u64) -> f64 {
+    lovelace as f64 / 1_000_000.0
+}
 
-fn ada_display(lovelace: u64) -> String { format!("{:.6} ADA", lovelace_to_ada(lovelace)) }
+fn ada_display(lovelace: u64) -> String {
+    format!("{:.6} ADA", lovelace_to_ada(lovelace))
+}
 
 fn short_id(id: &str) -> &str {
-    if id.len() >= 12 { &id[..12] } else { id }
+    if id.len() >= 12 {
+        &id[..12]
+    } else {
+        id
+    }
 }
 
 impl CardanoStakingClient {
     pub fn new(rest_endpoints: Vec<String>, api_key: Option<String>) -> Self {
-        Self { _rest_endpoints: rest_endpoints, _api_key: api_key }
+        Self {
+            _rest_endpoints: rest_endpoints,
+            _api_key: api_key,
+        }
     }
 
     /// Returns the active stake-pool set. Endpoint: Blockfrost `/v0/pools/extended`
@@ -80,7 +91,8 @@ impl CardanoStakingClient {
             estimated_fee_display: "~2.2 ADA (incl. 2 ADA registration deposit)".to_string(),
             unbonding_period_seconds: 0, // no unbonding on Cardano
             notes: vec![
-                "Registers your stake key (2 ADA refundable deposit) if not already registered.".to_string(),
+                "Registers your stake key (2 ADA refundable deposit) if not already registered."
+                    .to_string(),
                 "Rewards start at the next epoch boundary (~5 days).".to_string(),
                 "Funds never leave your wallet — delegation only.".to_string(),
             ],

@@ -61,7 +61,10 @@ impl TronClient {
                 .unwrap_or("unknown");
             return Err(format!("broadcast failed: {msg}"));
         }
-        Ok(TronSendResult { txid, signed_tx_json })
+        Ok(TronSendResult {
+            txid,
+            signed_tx_json,
+        })
     }
 
     /// Build, sign, and broadcast a TRC-20 `transfer(to, amount)` via
@@ -106,7 +109,11 @@ impl TronClient {
 
         // Check for contract execution errors at the trigger step.
         if let Some(result_obj) = resp.get("result") {
-            if !result_obj.get("result").and_then(|v| v.as_bool()).unwrap_or(false) {
+            if !result_obj
+                .get("result")
+                .and_then(|v| v.as_bool())
+                .unwrap_or(false)
+            {
                 if let Some(msg) = result_obj.get("message").and_then(|v| v.as_str()) {
                     let decoded = hex::decode(msg)
                         .ok()
@@ -143,7 +150,10 @@ impl TronClient {
                 .unwrap_or_else(|| msg.to_string());
             return Err(format!("trc20 broadcast failed: {decoded}"));
         }
-        Ok(TronSendResult { txid, signed_tx_json })
+        Ok(TronSendResult {
+            txid,
+            signed_tx_json,
+        })
     }
 
     /// Broadcast an already-signed transaction given as a JSON string.
@@ -171,7 +181,10 @@ impl TronClient {
                 .unwrap_or_else(|| msg.to_string());
             return Err(format!("broadcast failed: {decoded}"));
         }
-        Ok(TronSendResult { txid, signed_tx_json: signed_tx_json.to_string() })
+        Ok(TronSendResult {
+            txid,
+            signed_tx_json: signed_tx_json.to_string(),
+        })
     }
 }
 

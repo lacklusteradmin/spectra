@@ -151,8 +151,8 @@ pub fn derive_children(
     }
 
     let (canon, script_type, network) = normalize_xpub(xpub_input)?;
-    let (xpub, _version) = ExtendedPublicKey::from_xpub_string(&canon)
-        .map_err(|e| format!("bad xpub: {e}"))?;
+    let (xpub, _version) =
+        ExtendedPublicKey::from_xpub_string(&canon).map_err(|e| format!("bad xpub: {e}"))?;
     let secp = Secp256k1::<All>::new();
 
     let leg_xpub = xpub
@@ -243,20 +243,24 @@ pub async fn fetch_xpub_balance(
     // We use join_all instead of buffer_unordered because `client` is a
     // reference and the futures borrow it within the same async scope.
     let sem = Arc::new(tokio::sync::Semaphore::new(5));
-    let futs: Vec<_> = all.iter().enumerate().map(|(i, addr)| {
-        let address = addr.address.clone();
-        let sem = sem.clone();
-        async move {
-            let _permit = sem.acquire().await.unwrap();
-            let bal = client.fetch_balance(&address).await?;
-            let utxos = if bal.confirmed_sats > 0 || bal.unconfirmed_sats > 0 {
-                client.fetch_utxos(&address).await?
-            } else {
-                Vec::new()
-            };
-            Ok::<_, String>((i, bal, utxos))
-        }
-    }).collect();
+    let futs: Vec<_> = all
+        .iter()
+        .enumerate()
+        .map(|(i, addr)| {
+            let address = addr.address.clone();
+            let sem = sem.clone();
+            async move {
+                let _permit = sem.acquire().await.unwrap();
+                let bal = client.fetch_balance(&address).await?;
+                let utxos = if bal.confirmed_sats > 0 || bal.unconfirmed_sats > 0 {
+                    client.fetch_utxos(&address).await?
+                } else {
+                    Vec::new()
+                };
+                Ok::<_, String>((i, bal, utxos))
+            }
+        })
+        .collect();
     let results = futures::future::join_all(futs).await;
 
     for result in results {
@@ -343,8 +347,8 @@ pub fn derive_account_xpub(
     let secp = Secp256k1::<All>::new();
     let master = ExtendedPrivateKey::master_from_seed(b"Bitcoin seed", &seed)
         .map_err(|e| format!("master key: {e}"))?;
-    let path = parse_bip32_path(account_path)
-        .map_err(|e| format!("invalid derivation path: {e}"))?;
+    let path =
+        parse_bip32_path(account_path).map_err(|e| format!("invalid derivation path: {e}"))?;
     let account_xpriv = master
         .derive_path(&secp, &path)
         .map_err(|e| format!("derive priv: {e}"))?;

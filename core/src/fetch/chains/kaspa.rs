@@ -118,9 +118,15 @@ pub struct KasSendResult {
 }
 
 impl super::SignedSubmission for KasSendResult {
-    fn submission_id(&self) -> &str { &self.txid }
-    fn signed_payload(&self) -> &str { &self.raw_tx_hex }
-    fn signed_payload_format(&self) -> super::SignedPayloadFormat { super::SignedPayloadFormat::Hex }
+    fn submission_id(&self) -> &str {
+        &self.txid
+    }
+    fn signed_payload(&self) -> &str {
+        &self.raw_tx_hex
+    }
+    fn signed_payload_format(&self) -> super::SignedPayloadFormat {
+        super::SignedPayloadFormat::Hex
+    }
 }
 
 #[derive(Debug, Deserialize)]
@@ -145,7 +151,10 @@ impl KaspaClient {
         }
     }
 
-    pub(crate) async fn get<T: serde::de::DeserializeOwned>(&self, path: &str) -> Result<T, String> {
+    pub(crate) async fn get<T: serde::de::DeserializeOwned>(
+        &self,
+        path: &str,
+    ) -> Result<T, String> {
         let path = path.to_string();
         with_fallback(&self.endpoints, |base| {
             let client = self.client.clone();
@@ -156,9 +165,7 @@ impl KaspaClient {
     }
 
     pub async fn fetch_balance(&self, address: &str) -> Result<KasBalance, String> {
-        let info: ApiBalance = self
-            .get(&format!("/addresses/{address}/balance"))
-            .await?;
+        let info: ApiBalance = self.get(&format!("/addresses/{address}/balance")).await?;
         Ok(KasBalance {
             balance_sompi: info.balance,
             balance_display: format_kas(info.balance),
@@ -259,7 +266,11 @@ impl KaspaClient {
                     txid: tx.transaction_id,
                     confirmed,
                     block_height: tx.accepting_block_blue_score,
-                    block_time: if tx.block_time > 0 { Some(tx.block_time) } else { None },
+                    block_time: if tx.block_time > 0 {
+                        Some(tx.block_time)
+                    } else {
+                        None
+                    },
                     confirmations: None,
                 })
             }

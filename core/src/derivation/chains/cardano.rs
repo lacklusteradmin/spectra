@@ -1,6 +1,6 @@
 //! Cardano: address validation, decoding, BIP-32-Ed25519 (Icarus / CIP-3 +
 //! CIP-1852) key derivation, and CIP-19 Shelley enterprise address
-//! encoding. Self-contained — see `REFACTOR_NOTES.md`.
+//! encoding
 //!
 //! - Address validation accepts Shelley bech32 (`addr1` / `addr_test1`) and
 //!   Byron base58.
@@ -15,7 +15,6 @@ use hmac::{Hmac, Mac};
 use pbkdf2::pbkdf2_hmac;
 use sha2::Sha512;
 use zeroize::Zeroizing;
-
 
 // ── Address validation + decoding (preserved) ────────────────────────────
 
@@ -55,7 +54,10 @@ fn resolve_bip39_language(name: Option<&str>) -> Result<Language, String> {
         "spanish" | "es" => Ok(Language::Spanish),
         "simplified-chinese" | "chinese-simplified" | "simplified_chinese" | "zh-hans"
         | "zh-cn" | "zh" => Ok(Language::SimplifiedChinese),
-        "traditional-chinese" | "chinese-traditional" | "traditional_chinese" | "zh-hant"
+        "traditional-chinese"
+        | "chinese-traditional"
+        | "traditional_chinese"
+        | "zh-hant"
         | "zh-tw" => Ok(Language::TraditionalChinese),
         other => Err(format!("Unsupported mnemonic wordlist: {other}")),
     }
@@ -175,10 +177,13 @@ pub(crate) fn derive_cardano_icarus_xprv_root(
     //   Then clamp per Khovratovich-Law so kL is a valid ed25519 scalar
     //   multiple of 8 and < 2^254.
     let language = resolve_bip39_language(wordlist)?;
-    let parsed =
-        Mnemonic::parse_in_normalized(language, mnemonic).map_err(|e| e.to_string())?;
+    let parsed = Mnemonic::parse_in_normalized(language, mnemonic).map_err(|e| e.to_string())?;
     let entropy = Zeroizing::new(parsed.to_entropy());
-    let iterations = if iteration_count == 0 { 4096 } else { iteration_count };
+    let iterations = if iteration_count == 0 {
+        4096
+    } else {
+        iteration_count
+    };
     let mut xprv = Zeroizing::new([0u8; 96]);
     pbkdf2_hmac::<Sha512>(passphrase.as_bytes(), &entropy, iterations, &mut *xprv);
     xprv[0] &= 0b1111_1000;
@@ -188,10 +193,7 @@ pub(crate) fn derive_cardano_icarus_xprv_root(
 }
 
 // BIP-32-Ed25519 (Khovratovich-Law) one-step child key derivation from a 96-byte xprv.
-fn cardano_icarus_derive_child(
-    xprv: &[u8; 96],
-    index: u32,
-) -> Result<Zeroizing<[u8; 96]>, String> {
+fn cardano_icarus_derive_child(xprv: &[u8; 96], index: u32) -> Result<Zeroizing<[u8; 96]>, String> {
     // BIP-32-Ed25519 (Khovratovich-Law) child key derivation.
     //   xprv = kL (32) || kR (32) || chain_code (32)
     //   hardened (i >= 2^31):
@@ -303,7 +305,7 @@ pub(crate) fn derive_from_seed_phrase(
     want_address: bool,
     want_public_key: bool,
     want_private_key: bool,
-) -> Result<(Option<String>, Option<String>, Option<String>), String> {
+) -> Result<crate::derivation::primitives::OptionalKeyMaterial, String> {
     let (private_key, public_key) = derive_cardano_icarus_material(
         seed_phrase,
         passphrase.unwrap_or(""),
@@ -313,7 +315,10 @@ pub(crate) fn derive_from_seed_phrase(
     )?;
 
     let address = if want_address {
-        Some(derive_cardano_shelley_enterprise_address(&public_key, mainnet)?)
+        Some(derive_cardano_shelley_enterprise_address(
+            &public_key,
+            mainnet,
+        )?)
     } else {
         None
     };
@@ -327,39 +332,80 @@ pub(crate) fn derive_from_seed_phrase(
 
 // ── UniFFI exports ────────────────────────────────────────────────────────
 
-use crate::derivation::types::{DerivationResult, parse_path_metadata};
+use crate::derivation::types::{parse_path_metadata, DerivationResult};
 use crate::SpectraBridgeError;
 
 // Shared derivation logic for Cardano networks; mainnet flag selects addr/addr_test HRP.
 fn cardano_internal(
     mainnet: bool,
-    seed_phrase: String, derivation_path: Option<String>, passphrase: Option<String>,
-    want_address: bool, want_public_key: bool, want_private_key: bool,
+    seed_phrase: String,
+    derivation_path: Option<String>,
+    passphrase: Option<String>,
+    want_address: bool,
+    want_public_key: bool,
+    want_private_key: bool,
 ) -> Result<DerivationResult, SpectraBridgeError> {
-    let (account, branch, index) = derivation_path.as_deref()
+    let (account, branch, index) = derivation_path
+        .as_deref()
         .map(parse_path_metadata)
         .unwrap_or((0, 0, 0));
     let (address, public_key_hex, private_key_hex) = derive_from_seed_phrase(
-        mainnet, &seed_phrase, derivation_path.as_deref(), passphrase.as_deref(),
-        want_address, want_public_key, want_private_key,
+        mainnet,
+        &seed_phrase,
+        derivation_path.as_deref(),
+        passphrase.as_deref(),
+        want_address,
+        want_public_key,
+        want_private_key,
     )?;
-    Ok(DerivationResult { address, public_key_hex, private_key_hex, account, branch, index })
+    Ok(DerivationResult {
+        address,
+        public_key_hex,
+        private_key_hex,
+        account,
+        branch,
+        index,
+    })
 }
 
 /// UniFFI export: derive Cardano mainnet wallet (addr1… bech32 address) from a seed phrase.
 #[uniffi::export]
 pub fn derive_cardano(
-    seed_phrase: String, derivation_path: Option<String>, passphrase: Option<String>,
-    want_address: bool, want_public_key: bool, want_private_key: bool,
+    seed_phrase: String,
+    derivation_path: Option<String>,
+    passphrase: Option<String>,
+    want_address: bool,
+    want_public_key: bool,
+    want_private_key: bool,
 ) -> Result<DerivationResult, SpectraBridgeError> {
-    cardano_internal(true, seed_phrase, derivation_path, passphrase, want_address, want_public_key, want_private_key)
+    cardano_internal(
+        true,
+        seed_phrase,
+        derivation_path,
+        passphrase,
+        want_address,
+        want_public_key,
+        want_private_key,
+    )
 }
 
 /// UniFFI export: derive Cardano Preprod testnet wallet (addr_test1… bech32 address) from a seed phrase.
 #[uniffi::export]
 pub fn derive_cardano_preprod(
-    seed_phrase: String, derivation_path: Option<String>, passphrase: Option<String>,
-    want_address: bool, want_public_key: bool, want_private_key: bool,
+    seed_phrase: String,
+    derivation_path: Option<String>,
+    passphrase: Option<String>,
+    want_address: bool,
+    want_public_key: bool,
+    want_private_key: bool,
 ) -> Result<DerivationResult, SpectraBridgeError> {
-    cardano_internal(false, seed_phrase, derivation_path, passphrase, want_address, want_public_key, want_private_key)
+    cardano_internal(
+        false,
+        seed_phrase,
+        derivation_path,
+        passphrase,
+        want_address,
+        want_public_key,
+        want_private_key,
+    )
 }

@@ -6,7 +6,9 @@
 
 use serde::{Deserialize, Serialize};
 
-use crate::store::wallet_domain::{CorePriceAlertCondition, CoreTransactionKind, CoreTransactionStatus};
+use crate::store::wallet_domain::{
+    CorePriceAlertCondition, CoreTransactionKind, CoreTransactionStatus,
+};
 
 /// Matches Swift `PersistedPriceAlertRule`.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, uniffi::Record)]
@@ -148,7 +150,10 @@ mod tests {
         // Sample payload in the exact byte shape Swift would emit.
         let json = r#"{"version":1,"alerts":[{"id":"3F2504E0-4F89-11D3-9A0C-0305E82C3301","holdingKey":"ethereum:ETH","assetName":"Ethereum","symbol":"ETH","chainName":"Ethereum","targetPrice":3500.0,"condition":"Above","isEnabled":true,"hasTriggered":false}]}"#;
         let decoded: CorePersistedPriceAlertStore = serde_json::from_str(json).unwrap();
-        assert_eq!(decoded.version, CorePersistedPriceAlertStore::CURRENT_VERSION);
+        assert_eq!(
+            decoded.version,
+            CorePersistedPriceAlertStore::CURRENT_VERSION
+        );
         assert_eq!(decoded.alerts.len(), 1);
         assert_eq!(decoded.alerts[0].condition, CorePriceAlertCondition::Above);
         let reencoded = serde_json::to_string(&decoded).unwrap();
@@ -159,7 +164,10 @@ mod tests {
     fn address_book_store_roundtrip() {
         let json = r#"{"version":1,"entries":[{"id":"550E8400-E29B-41D4-A716-446655440000","name":"Cold Wallet","chainName":"Bitcoin","address":"bc1qexample","note":"primary"}]}"#;
         let decoded: CorePersistedAddressBookStore = serde_json::from_str(json).unwrap();
-        assert_eq!(decoded.version, CorePersistedAddressBookStore::CURRENT_VERSION);
+        assert_eq!(
+            decoded.version,
+            CorePersistedAddressBookStore::CURRENT_VERSION
+        );
         assert_eq!(decoded.entries[0].name, "Cold Wallet");
         let reencoded = serde_json::to_string(&decoded).unwrap();
         assert_eq!(reencoded, json);

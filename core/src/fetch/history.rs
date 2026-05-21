@@ -12,8 +12,8 @@ use crate::registry::Chain;
 /// directly to `CoreTransactionRecord` without any chain-specific parsing.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ChainHistoryEntry {
-    pub kind: String,         // "receive" | "send"
-    pub status: String,       // "confirmed" | "pending"
+    pub kind: String,   // "receive" | "send"
+    pub status: String, // "confirmed" | "pending"
     pub asset_name: String,
     pub symbol: String,
     pub chain_name: String,
@@ -21,7 +21,7 @@ pub struct ChainHistoryEntry {
     pub counterparty: String,
     pub tx_hash: String,
     pub block_height: Option<i64>,
-    pub timestamp: f64,       // Unix seconds
+    pub timestamp: f64, // Unix seconds
 }
 
 /// Convert a raw history JSON string (as returned by `fetch_history`) into
@@ -42,292 +42,405 @@ pub fn normalize_chain_history(chain_id: &str, raw_json: &str) -> Vec<ChainHisto
 
     match chain {
         // Bitcoin: {txid, confirmed, block_height, block_time, net_sats}
-        Chain::Bitcoin => arr.iter().filter_map(|e| {
-            let txid = e["txid"].as_str()?;
-            let net_sats = e["net_sats"].as_i64()?;
-            let confirmed = e["confirmed"].as_bool().unwrap_or(false);
-            let block_height = e["block_height"].as_i64();
-            let timestamp = e["block_time"].as_f64().unwrap_or(0.0);
-            Some(ChainHistoryEntry {
-                kind: if net_sats >= 0 { "receive" } else { "send" }.to_string(),
-                status: if confirmed { "confirmed" } else { "pending" }.to_string(),
-                asset_name: asset_name.to_string(), symbol: symbol.to_string(),
-                chain_name: chain_name.to_string(),
-                amount: net_sats.unsigned_abs() as f64 / factor,
-                counterparty: String::new(), tx_hash: txid.to_string(),
-                block_height, timestamp,
+        Chain::Bitcoin => arr
+            .iter()
+            .filter_map(|e| {
+                let txid = e["txid"].as_str()?;
+                let net_sats = e["net_sats"].as_i64()?;
+                let confirmed = e["confirmed"].as_bool().unwrap_or(false);
+                let block_height = e["block_height"].as_i64();
+                let timestamp = e["block_time"].as_f64().unwrap_or(0.0);
+                Some(ChainHistoryEntry {
+                    kind: if net_sats >= 0 { "receive" } else { "send" }.to_string(),
+                    status: if confirmed { "confirmed" } else { "pending" }.to_string(),
+                    asset_name: asset_name.to_string(),
+                    symbol: symbol.to_string(),
+                    chain_name: chain_name.to_string(),
+                    amount: net_sats.unsigned_abs() as f64 / factor,
+                    counterparty: String::new(),
+                    tx_hash: txid.to_string(),
+                    block_height,
+                    timestamp,
+                })
             })
-        }).collect(),
+            .collect(),
 
         // LTC / BCH / BSV: {txid, amount_sat, block_height, timestamp, is_incoming}
-        Chain::Litecoin | Chain::BitcoinCash | Chain::BitcoinSV => arr.iter().filter_map(|e| {
-            let txid = e["txid"].as_str()?;
-            let amount_sat = e["amount_sat"].as_i64()?;
-            let block_height = e["block_height"].as_i64();
-            let timestamp = e["timestamp"].as_f64().unwrap_or(0.0);
-            let is_incoming = e["is_incoming"].as_bool().unwrap_or(amount_sat >= 0);
-            Some(ChainHistoryEntry {
-                kind: if is_incoming { "receive" } else { "send" }.to_string(),
-                status: if block_height.unwrap_or(0) > 0 { "confirmed" } else { "pending" }.to_string(),
-                asset_name: asset_name.to_string(), symbol: symbol.to_string(),
-                chain_name: chain_name.to_string(),
-                amount: amount_sat.unsigned_abs() as f64 / factor,
-                counterparty: String::new(), tx_hash: txid.to_string(),
-                block_height, timestamp,
+        Chain::Litecoin | Chain::BitcoinCash | Chain::BitcoinSV => arr
+            .iter()
+            .filter_map(|e| {
+                let txid = e["txid"].as_str()?;
+                let amount_sat = e["amount_sat"].as_i64()?;
+                let block_height = e["block_height"].as_i64();
+                let timestamp = e["timestamp"].as_f64().unwrap_or(0.0);
+                let is_incoming = e["is_incoming"].as_bool().unwrap_or(amount_sat >= 0);
+                Some(ChainHistoryEntry {
+                    kind: if is_incoming { "receive" } else { "send" }.to_string(),
+                    status: if block_height.unwrap_or(0) > 0 {
+                        "confirmed"
+                    } else {
+                        "pending"
+                    }
+                    .to_string(),
+                    asset_name: asset_name.to_string(),
+                    symbol: symbol.to_string(),
+                    chain_name: chain_name.to_string(),
+                    amount: amount_sat.unsigned_abs() as f64 / factor,
+                    counterparty: String::new(),
+                    tx_hash: txid.to_string(),
+                    block_height,
+                    timestamp,
+                })
             })
-        }).collect(),
+            .collect(),
 
         // Dogecoin: {txid, amount_koin, block_height, timestamp, is_incoming}
-        Chain::Dogecoin => arr.iter().filter_map(|e| {
-            let txid = e["txid"].as_str()?;
-            let amount_koin = e["amount_koin"].as_i64().unwrap_or(0);
-            let block_height = e["block_height"].as_i64();
-            let timestamp = e["timestamp"].as_f64().unwrap_or(0.0);
-            let is_incoming = e["is_incoming"].as_bool().unwrap_or(amount_koin >= 0);
-            Some(ChainHistoryEntry {
-                kind: if is_incoming { "receive" } else { "send" }.to_string(),
-                status: if block_height.unwrap_or(0) > 0 { "confirmed" } else { "pending" }.to_string(),
-                asset_name: asset_name.to_string(), symbol: symbol.to_string(),
-                chain_name: chain_name.to_string(),
-                amount: amount_koin.unsigned_abs() as f64 / factor,
-                counterparty: String::new(), tx_hash: txid.to_string(),
-                block_height, timestamp,
+        Chain::Dogecoin => arr
+            .iter()
+            .filter_map(|e| {
+                let txid = e["txid"].as_str()?;
+                let amount_koin = e["amount_koin"].as_i64().unwrap_or(0);
+                let block_height = e["block_height"].as_i64();
+                let timestamp = e["timestamp"].as_f64().unwrap_or(0.0);
+                let is_incoming = e["is_incoming"].as_bool().unwrap_or(amount_koin >= 0);
+                Some(ChainHistoryEntry {
+                    kind: if is_incoming { "receive" } else { "send" }.to_string(),
+                    status: if block_height.unwrap_or(0) > 0 {
+                        "confirmed"
+                    } else {
+                        "pending"
+                    }
+                    .to_string(),
+                    asset_name: asset_name.to_string(),
+                    symbol: symbol.to_string(),
+                    chain_name: chain_name.to_string(),
+                    amount: amount_koin.unsigned_abs() as f64 / factor,
+                    counterparty: String::new(),
+                    tx_hash: txid.to_string(),
+                    block_height,
+                    timestamp,
+                })
             })
-        }).collect(),
+            .collect(),
 
         // XRP: {txid, timestamp, from, to, amount_drops, is_incoming}
-        Chain::Xrp => arr.iter().filter_map(|e| {
-            let txid = e["txid"].as_str()?;
-            let drops = e["amount_drops"].as_u64().unwrap_or(0);
-            let is_incoming = e["is_incoming"].as_bool().unwrap_or(false);
-            let timestamp = e["timestamp"].as_f64().unwrap_or(0.0);
-            let from = e["from"].as_str().unwrap_or("");
-            let to = e["to"].as_str().unwrap_or("");
-            Some(ChainHistoryEntry {
-                kind: if is_incoming { "receive" } else { "send" }.to_string(),
-                status: "confirmed".to_string(),
-                asset_name: asset_name.to_string(), symbol: symbol.to_string(),
-                chain_name: chain_name.to_string(),
-                amount: drops as f64 / factor,
-                counterparty: (if is_incoming { from } else { to }).to_string(),
-                tx_hash: txid.to_string(), block_height: None, timestamp,
+        Chain::Xrp => arr
+            .iter()
+            .filter_map(|e| {
+                let txid = e["txid"].as_str()?;
+                let drops = e["amount_drops"].as_u64().unwrap_or(0);
+                let is_incoming = e["is_incoming"].as_bool().unwrap_or(false);
+                let timestamp = e["timestamp"].as_f64().unwrap_or(0.0);
+                let from = e["from"].as_str().unwrap_or("");
+                let to = e["to"].as_str().unwrap_or("");
+                Some(ChainHistoryEntry {
+                    kind: if is_incoming { "receive" } else { "send" }.to_string(),
+                    status: "confirmed".to_string(),
+                    asset_name: asset_name.to_string(),
+                    symbol: symbol.to_string(),
+                    chain_name: chain_name.to_string(),
+                    amount: drops as f64 / factor,
+                    counterparty: (if is_incoming { from } else { to }).to_string(),
+                    tx_hash: txid.to_string(),
+                    block_height: None,
+                    timestamp,
+                })
             })
-        }).collect(),
+            .collect(),
 
         // Stellar: {txid, timestamp (ISO or unix), from/to, amount_stroops, is_incoming}
-        Chain::Stellar => arr.iter().filter_map(|e| {
-            let txid = e["txid"].as_str()?;
-            let stroops = e["amount_stroops"].as_i64().unwrap_or(0);
-            let is_incoming = e["is_incoming"].as_bool().unwrap_or(false);
-            let from = e["from"].as_str().unwrap_or("");
-            let to = e["to"].as_str().unwrap_or("");
-            let timestamp: f64 = if let Some(n) = e["timestamp"].as_f64() {
-                n
-            } else if let Some(s) = e["timestamp"].as_str() {
-                parse_iso8601_timestamp(s)
-            } else { 0.0 };
-            Some(ChainHistoryEntry {
-                kind: if is_incoming { "receive" } else { "send" }.to_string(),
-                status: "confirmed".to_string(),
-                asset_name: asset_name.to_string(), symbol: symbol.to_string(),
-                chain_name: chain_name.to_string(),
-                amount: stroops.unsigned_abs() as f64 / factor,
-                counterparty: (if is_incoming { from } else { to }).to_string(),
-                tx_hash: txid.to_string(), block_height: None, timestamp,
+        Chain::Stellar => arr
+            .iter()
+            .filter_map(|e| {
+                let txid = e["txid"].as_str()?;
+                let stroops = e["amount_stroops"].as_i64().unwrap_or(0);
+                let is_incoming = e["is_incoming"].as_bool().unwrap_or(false);
+                let from = e["from"].as_str().unwrap_or("");
+                let to = e["to"].as_str().unwrap_or("");
+                let timestamp: f64 = if let Some(n) = e["timestamp"].as_f64() {
+                    n
+                } else if let Some(s) = e["timestamp"].as_str() {
+                    parse_iso8601_timestamp(s)
+                } else {
+                    0.0
+                };
+                Some(ChainHistoryEntry {
+                    kind: if is_incoming { "receive" } else { "send" }.to_string(),
+                    status: "confirmed".to_string(),
+                    asset_name: asset_name.to_string(),
+                    symbol: symbol.to_string(),
+                    chain_name: chain_name.to_string(),
+                    amount: stroops.unsigned_abs() as f64 / factor,
+                    counterparty: (if is_incoming { from } else { to }).to_string(),
+                    tx_hash: txid.to_string(),
+                    block_height: None,
+                    timestamp,
+                })
             })
-        }).collect(),
+            .collect(),
 
         // Cardano: {txid, block_time, amount_lovelace, is_incoming}
-        Chain::Cardano => arr.iter().filter_map(|e| {
-            let txid = e["txid"].as_str()?;
-            let lovelace = e["amount_lovelace"].as_i64().unwrap_or(0);
-            let is_incoming = e["is_incoming"].as_bool().unwrap_or(false);
-            let timestamp = e["block_time"].as_f64().unwrap_or(0.0);
-            Some(ChainHistoryEntry {
-                kind: if is_incoming { "receive" } else { "send" }.to_string(),
-                status: "confirmed".to_string(),
-                asset_name: asset_name.to_string(), symbol: symbol.to_string(),
-                chain_name: chain_name.to_string(),
-                amount: lovelace.unsigned_abs() as f64 / factor,
-                counterparty: String::new(), tx_hash: txid.to_string(),
-                block_height: None, timestamp,
+        Chain::Cardano => arr
+            .iter()
+            .filter_map(|e| {
+                let txid = e["txid"].as_str()?;
+                let lovelace = e["amount_lovelace"].as_i64().unwrap_or(0);
+                let is_incoming = e["is_incoming"].as_bool().unwrap_or(false);
+                let timestamp = e["block_time"].as_f64().unwrap_or(0.0);
+                Some(ChainHistoryEntry {
+                    kind: if is_incoming { "receive" } else { "send" }.to_string(),
+                    status: "confirmed".to_string(),
+                    asset_name: asset_name.to_string(),
+                    symbol: symbol.to_string(),
+                    chain_name: chain_name.to_string(),
+                    amount: lovelace.unsigned_abs() as f64 / factor,
+                    counterparty: String::new(),
+                    tx_hash: txid.to_string(),
+                    block_height: None,
+                    timestamp,
+                })
             })
-        }).collect(),
+            .collect(),
 
         // Polkadot: {txid, amount_planck, timestamp, from, to, is_incoming}
-        Chain::Polkadot => arr.iter().filter_map(|e| {
-            let txid = e["txid"].as_str()?;
-            let planck = e["amount_planck"].as_f64().unwrap_or(0.0);
-            let is_incoming = e["is_incoming"].as_bool().unwrap_or(false);
-            let timestamp = e["timestamp"].as_f64().unwrap_or(0.0);
-            let from = e["from"].as_str().unwrap_or("");
-            let to = e["to"].as_str().unwrap_or("");
-            Some(ChainHistoryEntry {
-                kind: if is_incoming { "receive" } else { "send" }.to_string(),
-                status: "confirmed".to_string(),
-                asset_name: asset_name.to_string(), symbol: symbol.to_string(),
-                chain_name: chain_name.to_string(),
-                amount: planck / factor,
-                counterparty: (if is_incoming { from } else { to }).to_string(),
-                tx_hash: txid.to_string(), block_height: None, timestamp,
+        Chain::Polkadot => arr
+            .iter()
+            .filter_map(|e| {
+                let txid = e["txid"].as_str()?;
+                let planck = e["amount_planck"].as_f64().unwrap_or(0.0);
+                let is_incoming = e["is_incoming"].as_bool().unwrap_or(false);
+                let timestamp = e["timestamp"].as_f64().unwrap_or(0.0);
+                let from = e["from"].as_str().unwrap_or("");
+                let to = e["to"].as_str().unwrap_or("");
+                Some(ChainHistoryEntry {
+                    kind: if is_incoming { "receive" } else { "send" }.to_string(),
+                    status: "confirmed".to_string(),
+                    asset_name: asset_name.to_string(),
+                    symbol: symbol.to_string(),
+                    chain_name: chain_name.to_string(),
+                    amount: planck / factor,
+                    counterparty: (if is_incoming { from } else { to }).to_string(),
+                    tx_hash: txid.to_string(),
+                    block_height: None,
+                    timestamp,
+                })
             })
-        }).collect(),
+            .collect(),
 
         // Solana: SolanaTransfer {signature, timestamp, is_incoming, amount_display, symbol, mint, from, to}
         // Per-entry `symbol` may override for SPL tokens; asset_name tracks it.
-        Chain::Solana => arr.iter().filter_map(|e| {
-            let sig = e["signature"].as_str()?;
-            let is_incoming = e["is_incoming"].as_bool().unwrap_or(false);
-            let amount: f64 = e["amount_display"].as_str().and_then(|s| s.parse().ok()).unwrap_or(0.0);
-            let entry_symbol = e["symbol"].as_str().unwrap_or(symbol);
-            let from = e["from"].as_str().unwrap_or("");
-            let to = e["to"].as_str().unwrap_or("");
-            let timestamp = e["timestamp"].as_f64().unwrap_or(0.0);
-            let entry_asset = if entry_symbol == symbol { asset_name } else { entry_symbol };
-            Some(ChainHistoryEntry {
-                kind: if is_incoming { "receive" } else { "send" }.to_string(),
-                status: "confirmed".to_string(),
-                asset_name: entry_asset.to_string(), symbol: entry_symbol.to_string(),
-                chain_name: chain_name.to_string(), amount,
-                counterparty: (if is_incoming { from } else { to }).to_string(),
-                tx_hash: sig.to_string(), block_height: None, timestamp,
+        Chain::Solana => arr
+            .iter()
+            .filter_map(|e| {
+                let sig = e["signature"].as_str()?;
+                let is_incoming = e["is_incoming"].as_bool().unwrap_or(false);
+                let amount: f64 = e["amount_display"]
+                    .as_str()
+                    .and_then(|s| s.parse().ok())
+                    .unwrap_or(0.0);
+                let entry_symbol = e["symbol"].as_str().unwrap_or(symbol);
+                let from = e["from"].as_str().unwrap_or("");
+                let to = e["to"].as_str().unwrap_or("");
+                let timestamp = e["timestamp"].as_f64().unwrap_or(0.0);
+                let entry_asset = if entry_symbol == symbol {
+                    asset_name
+                } else {
+                    entry_symbol
+                };
+                Some(ChainHistoryEntry {
+                    kind: if is_incoming { "receive" } else { "send" }.to_string(),
+                    status: "confirmed".to_string(),
+                    asset_name: entry_asset.to_string(),
+                    symbol: entry_symbol.to_string(),
+                    chain_name: chain_name.to_string(),
+                    amount,
+                    counterparty: (if is_incoming { from } else { to }).to_string(),
+                    tx_hash: sig.to_string(),
+                    block_height: None,
+                    timestamp,
+                })
             })
-        }).collect(),
+            .collect(),
 
         // Tron: TronTransfer {txid, timestamp_ms, from, to, amount_display, symbol}
         // Per-entry `symbol` may be TRC20; `tron_asset_name` maps it to the display name.
-        Chain::Tron => arr.iter().filter_map(|e| {
-            let txid = e["txid"].as_str()?;
-            let is_incoming = e["is_incoming"].as_bool().unwrap_or(false);
-            let amount: f64 = e["amount_display"].as_str().and_then(|s| s.parse().ok()).unwrap_or(0.0);
-            let entry_symbol = e["symbol"].as_str().unwrap_or(symbol);
-            let from = e["from"].as_str().unwrap_or("");
-            let to = e["to"].as_str().unwrap_or("");
-            let timestamp_ms = e["timestamp_ms"].as_f64().unwrap_or(0.0);
-            let entry_asset = tron_asset_name(entry_symbol);
-            Some(ChainHistoryEntry {
-                kind: if is_incoming { "receive" } else { "send" }.to_string(),
-                status: "confirmed".to_string(),
-                asset_name: entry_asset.to_string(), symbol: entry_symbol.to_string(),
-                chain_name: chain_name.to_string(), amount,
-                counterparty: (if is_incoming { from } else { to }).to_string(),
-                tx_hash: txid.to_string(), block_height: None,
-                timestamp: timestamp_ms / 1000.0,
+        Chain::Tron => arr
+            .iter()
+            .filter_map(|e| {
+                let txid = e["txid"].as_str()?;
+                let is_incoming = e["is_incoming"].as_bool().unwrap_or(false);
+                let amount: f64 = e["amount_display"]
+                    .as_str()
+                    .and_then(|s| s.parse().ok())
+                    .unwrap_or(0.0);
+                let entry_symbol = e["symbol"].as_str().unwrap_or(symbol);
+                let from = e["from"].as_str().unwrap_or("");
+                let to = e["to"].as_str().unwrap_or("");
+                let timestamp_ms = e["timestamp_ms"].as_f64().unwrap_or(0.0);
+                let entry_asset = tron_asset_name(entry_symbol);
+                Some(ChainHistoryEntry {
+                    kind: if is_incoming { "receive" } else { "send" }.to_string(),
+                    status: "confirmed".to_string(),
+                    asset_name: entry_asset.to_string(),
+                    symbol: entry_symbol.to_string(),
+                    chain_name: chain_name.to_string(),
+                    amount,
+                    counterparty: (if is_incoming { from } else { to }).to_string(),
+                    tx_hash: txid.to_string(),
+                    block_height: None,
+                    timestamp: timestamp_ms / 1000.0,
+                })
             })
-        }).collect(),
+            .collect(),
 
         // Sui: {digest, amount_mist, timestamp_ms, is_incoming}
-        Chain::Sui => arr.iter().filter_map(|e| {
-            let digest = e["digest"].as_str()?;
-            let mist = e["amount_mist"].as_f64().unwrap_or(0.0);
-            let is_incoming = e["is_incoming"].as_bool().unwrap_or(false);
-            let timestamp_ms = e["timestamp_ms"].as_f64().unwrap_or(0.0);
-            Some(ChainHistoryEntry {
-                kind: if is_incoming { "receive" } else { "send" }.to_string(),
-                status: "confirmed".to_string(),
-                asset_name: asset_name.to_string(), symbol: symbol.to_string(),
-                chain_name: chain_name.to_string(),
-                amount: mist / factor,
-                counterparty: String::new(), tx_hash: digest.to_string(),
-                block_height: None, timestamp: timestamp_ms / 1000.0,
+        Chain::Sui => arr
+            .iter()
+            .filter_map(|e| {
+                let digest = e["digest"].as_str()?;
+                let mist = e["amount_mist"].as_f64().unwrap_or(0.0);
+                let is_incoming = e["is_incoming"].as_bool().unwrap_or(false);
+                let timestamp_ms = e["timestamp_ms"].as_f64().unwrap_or(0.0);
+                Some(ChainHistoryEntry {
+                    kind: if is_incoming { "receive" } else { "send" }.to_string(),
+                    status: "confirmed".to_string(),
+                    asset_name: asset_name.to_string(),
+                    symbol: symbol.to_string(),
+                    chain_name: chain_name.to_string(),
+                    amount: mist / factor,
+                    counterparty: String::new(),
+                    tx_hash: digest.to_string(),
+                    block_height: None,
+                    timestamp: timestamp_ms / 1000.0,
+                })
             })
-        }).collect(),
+            .collect(),
 
         // Aptos: {txid, amount_octas, timestamp_us, from, to, is_incoming}
-        Chain::Aptos => arr.iter().filter_map(|e| {
-            let txid = e["txid"].as_str()?;
-            let octas = e["amount_octas"].as_f64().unwrap_or(0.0);
-            let is_incoming = e["is_incoming"].as_bool().unwrap_or(false);
-            let timestamp_us = e["timestamp_us"].as_f64().unwrap_or(0.0);
-            let from = e["from"].as_str().unwrap_or("");
-            let to = e["to"].as_str().unwrap_or("");
-            Some(ChainHistoryEntry {
-                kind: if is_incoming { "receive" } else { "send" }.to_string(),
-                status: "confirmed".to_string(),
-                asset_name: asset_name.to_string(), symbol: symbol.to_string(),
-                chain_name: chain_name.to_string(),
-                amount: octas / factor,
-                counterparty: (if is_incoming { from } else { to }).to_string(),
-                tx_hash: txid.to_string(), block_height: None,
-                timestamp: timestamp_us / 1e6,
+        Chain::Aptos => arr
+            .iter()
+            .filter_map(|e| {
+                let txid = e["txid"].as_str()?;
+                let octas = e["amount_octas"].as_f64().unwrap_or(0.0);
+                let is_incoming = e["is_incoming"].as_bool().unwrap_or(false);
+                let timestamp_us = e["timestamp_us"].as_f64().unwrap_or(0.0);
+                let from = e["from"].as_str().unwrap_or("");
+                let to = e["to"].as_str().unwrap_or("");
+                Some(ChainHistoryEntry {
+                    kind: if is_incoming { "receive" } else { "send" }.to_string(),
+                    status: "confirmed".to_string(),
+                    asset_name: asset_name.to_string(),
+                    symbol: symbol.to_string(),
+                    chain_name: chain_name.to_string(),
+                    amount: octas / factor,
+                    counterparty: (if is_incoming { from } else { to }).to_string(),
+                    tx_hash: txid.to_string(),
+                    block_height: None,
+                    timestamp: timestamp_us / 1e6,
+                })
             })
-        }).collect(),
+            .collect(),
 
         // TON: {txid, amount_nanotons, timestamp, from, to, is_incoming}
-        Chain::Ton => arr.iter().filter_map(|e| {
-            let txid = e["txid"].as_str()?;
-            let nanotons = e["amount_nanotons"].as_f64().unwrap_or(0.0);
-            let is_incoming = e["is_incoming"].as_bool().unwrap_or(false);
-            let timestamp = e["timestamp"].as_f64().unwrap_or(0.0);
-            let from = e["from"].as_str().unwrap_or("");
-            let to = e["to"].as_str().unwrap_or("");
-            Some(ChainHistoryEntry {
-                kind: if is_incoming { "receive" } else { "send" }.to_string(),
-                status: "confirmed".to_string(),
-                asset_name: asset_name.to_string(), symbol: symbol.to_string(),
-                chain_name: chain_name.to_string(),
-                amount: nanotons / factor,
-                counterparty: (if is_incoming { from } else { to }).to_string(),
-                tx_hash: txid.to_string(), block_height: None, timestamp,
+        Chain::Ton => arr
+            .iter()
+            .filter_map(|e| {
+                let txid = e["txid"].as_str()?;
+                let nanotons = e["amount_nanotons"].as_f64().unwrap_or(0.0);
+                let is_incoming = e["is_incoming"].as_bool().unwrap_or(false);
+                let timestamp = e["timestamp"].as_f64().unwrap_or(0.0);
+                let from = e["from"].as_str().unwrap_or("");
+                let to = e["to"].as_str().unwrap_or("");
+                Some(ChainHistoryEntry {
+                    kind: if is_incoming { "receive" } else { "send" }.to_string(),
+                    status: "confirmed".to_string(),
+                    asset_name: asset_name.to_string(),
+                    symbol: symbol.to_string(),
+                    chain_name: chain_name.to_string(),
+                    amount: nanotons / factor,
+                    counterparty: (if is_incoming { from } else { to }).to_string(),
+                    tx_hash: txid.to_string(),
+                    block_height: None,
+                    timestamp,
+                })
             })
-        }).collect(),
+            .collect(),
 
         // NEAR: {txid, timestamp_ns, signer_id, receiver_id, amount_yocto, is_incoming}
-        Chain::Near => arr.iter().filter_map(|e| {
-            let txid = e["txid"].as_str()?;
-            let yocto: f64 = e["amount_yocto"].as_str().and_then(|s| s.parse().ok()).unwrap_or(0.0);
-            let is_incoming = e["is_incoming"].as_bool().unwrap_or(false);
-            let timestamp_ns = e["timestamp_ns"].as_f64().unwrap_or(0.0);
-            let signer = e["signer_id"].as_str().unwrap_or("");
-            let receiver = e["receiver_id"].as_str().unwrap_or("");
-            Some(ChainHistoryEntry {
-                kind: if is_incoming { "receive" } else { "send" }.to_string(),
-                status: "confirmed".to_string(),
-                asset_name: asset_name.to_string(), symbol: symbol.to_string(),
-                chain_name: chain_name.to_string(),
-                amount: yocto / factor,
-                counterparty: (if is_incoming { signer } else { receiver }).to_string(),
-                tx_hash: txid.to_string(), block_height: None,
-                timestamp: timestamp_ns / 1e9,
+        Chain::Near => arr
+            .iter()
+            .filter_map(|e| {
+                let txid = e["txid"].as_str()?;
+                let yocto: f64 = e["amount_yocto"]
+                    .as_str()
+                    .and_then(|s| s.parse().ok())
+                    .unwrap_or(0.0);
+                let is_incoming = e["is_incoming"].as_bool().unwrap_or(false);
+                let timestamp_ns = e["timestamp_ns"].as_f64().unwrap_or(0.0);
+                let signer = e["signer_id"].as_str().unwrap_or("");
+                let receiver = e["receiver_id"].as_str().unwrap_or("");
+                Some(ChainHistoryEntry {
+                    kind: if is_incoming { "receive" } else { "send" }.to_string(),
+                    status: "confirmed".to_string(),
+                    asset_name: asset_name.to_string(),
+                    symbol: symbol.to_string(),
+                    chain_name: chain_name.to_string(),
+                    amount: yocto / factor,
+                    counterparty: (if is_incoming { signer } else { receiver }).to_string(),
+                    tx_hash: txid.to_string(),
+                    block_height: None,
+                    timestamp: timestamp_ns / 1e9,
+                })
             })
-        }).collect(),
+            .collect(),
 
         // ICP: {block_index, amount_e8s, timestamp_ns, from, to, is_incoming}
-        Chain::Icp => arr.iter().map(|e| {
-            let block_index = e["block_index"].as_i64().unwrap_or(0);
-            let e8s = e["amount_e8s"].as_f64().unwrap_or(0.0);
-            let is_incoming = e["is_incoming"].as_bool().unwrap_or(false);
-            let timestamp_ns = e["timestamp_ns"].as_f64().unwrap_or(0.0);
-            let from = e["from"].as_str().unwrap_or("");
-            let to = e["to"].as_str().unwrap_or("");
-            ChainHistoryEntry {
-                kind: if is_incoming { "receive" } else { "send" }.to_string(),
-                status: "confirmed".to_string(),
-                asset_name: asset_name.to_string(), symbol: symbol.to_string(),
-                chain_name: chain_name.to_string(),
-                amount: e8s / factor,
-                counterparty: (if is_incoming { from } else { to }).to_string(),
-                tx_hash: block_index.to_string(), block_height: None,
-                timestamp: timestamp_ns / 1e9,
-            }
-        }).collect(),
+        Chain::Icp => arr
+            .iter()
+            .map(|e| {
+                let block_index = e["block_index"].as_i64().unwrap_or(0);
+                let e8s = e["amount_e8s"].as_f64().unwrap_or(0.0);
+                let is_incoming = e["is_incoming"].as_bool().unwrap_or(false);
+                let timestamp_ns = e["timestamp_ns"].as_f64().unwrap_or(0.0);
+                let from = e["from"].as_str().unwrap_or("");
+                let to = e["to"].as_str().unwrap_or("");
+                ChainHistoryEntry {
+                    kind: if is_incoming { "receive" } else { "send" }.to_string(),
+                    status: "confirmed".to_string(),
+                    asset_name: asset_name.to_string(),
+                    symbol: symbol.to_string(),
+                    chain_name: chain_name.to_string(),
+                    amount: e8s / factor,
+                    counterparty: (if is_incoming { from } else { to }).to_string(),
+                    tx_hash: block_index.to_string(),
+                    block_height: None,
+                    timestamp: timestamp_ns / 1e9,
+                }
+            })
+            .collect(),
 
         // Monero: {txid, amount_piconeros, timestamp, is_incoming}
-        Chain::Monero => arr.iter().filter_map(|e| {
-            let txid = e["txid"].as_str()?;
-            let piconeros = e["amount_piconeros"].as_f64().unwrap_or(0.0);
-            let is_incoming = e["is_incoming"].as_bool().unwrap_or(false);
-            let timestamp = e["timestamp"].as_f64().unwrap_or(0.0);
-            Some(ChainHistoryEntry {
-                kind: if is_incoming { "receive" } else { "send" }.to_string(),
-                status: "confirmed".to_string(),
-                asset_name: asset_name.to_string(), symbol: symbol.to_string(),
-                chain_name: chain_name.to_string(),
-                amount: piconeros / factor,
-                counterparty: String::new(), tx_hash: txid.to_string(),
-                block_height: None, timestamp,
+        Chain::Monero => arr
+            .iter()
+            .filter_map(|e| {
+                let txid = e["txid"].as_str()?;
+                let piconeros = e["amount_piconeros"].as_f64().unwrap_or(0.0);
+                let is_incoming = e["is_incoming"].as_bool().unwrap_or(false);
+                let timestamp = e["timestamp"].as_f64().unwrap_or(0.0);
+                Some(ChainHistoryEntry {
+                    kind: if is_incoming { "receive" } else { "send" }.to_string(),
+                    status: "confirmed".to_string(),
+                    asset_name: asset_name.to_string(),
+                    symbol: symbol.to_string(),
+                    chain_name: chain_name.to_string(),
+                    amount: piconeros / factor,
+                    counterparty: String::new(),
+                    tx_hash: txid.to_string(),
+                    block_height: None,
+                    timestamp,
+                })
             })
-        }).collect(),
+            .collect(),
 
         _ => vec![],
     }
@@ -338,21 +451,21 @@ pub fn normalize_chain_history(chain_id: &str, raw_json: &str) -> Vec<ChainHisto
 /// longer history-specific names that Swift expects in transaction lists.
 fn history_chain_meta(chain: Chain) -> (&'static str, &'static str, &'static str) {
     match chain {
-        Chain::Stellar => ("Stellar Lumens",    "XLM",  "Stellar"),
-        Chain::Ton     => ("Toncoin",           "TON",  "TON"),
-        Chain::Near    => ("NEAR Protocol",     "NEAR", "NEAR"),
-        Chain::Icp     => ("Internet Computer", "ICP",  "Internet Computer"),
-        c              => (c.coin_name(), c.coin_symbol(), c.chain_display_name()),
+        Chain::Stellar => ("Stellar Lumens", "XLM", "Stellar"),
+        Chain::Ton => ("Toncoin", "TON", "TON"),
+        Chain::Near => ("NEAR Protocol", "NEAR", "NEAR"),
+        Chain::Icp => ("Internet Computer", "ICP", "Internet Computer"),
+        c => (c.coin_name(), c.coin_symbol(), c.chain_display_name()),
     }
 }
 
 fn tron_asset_name(symbol: &str) -> &str {
     match symbol {
-        "TRX"  => "Tron",
+        "TRX" => "Tron",
         "USDT" => "Tether USD",
         "USDC" => "USD Coin",
-        "BTT"  => "BitTorrent",
-        _      => symbol,
+        "BTT" => "BitTorrent",
+        _ => symbol,
     }
 }
 
@@ -363,14 +476,18 @@ fn parse_iso8601_timestamp(s: &str) -> f64 {
     // Use a manual parser to avoid heavy dependencies.
     let s = s.trim();
     // Expect at minimum: "YYYY-MM-DDTHH:MM:SS"
-    if s.len() < 19 { return 0.0; }
-    let year:  i64 = s[0..4].parse().unwrap_or(0);
+    if s.len() < 19 {
+        return 0.0;
+    }
+    let year: i64 = s[0..4].parse().unwrap_or(0);
     let month: i64 = s[5..7].parse().unwrap_or(0);
-    let day:   i64 = s[8..10].parse().unwrap_or(0);
-    let hour:  i64 = s[11..13].parse().unwrap_or(0);
-    let min:   i64 = s[14..16].parse().unwrap_or(0);
-    let sec:   i64 = s[17..19].parse().unwrap_or(0);
-    if year == 0 || month == 0 || day == 0 { return 0.0; }
+    let day: i64 = s[8..10].parse().unwrap_or(0);
+    let hour: i64 = s[11..13].parse().unwrap_or(0);
+    let min: i64 = s[14..16].parse().unwrap_or(0);
+    let sec: i64 = s[17..19].parse().unwrap_or(0);
+    if year == 0 || month == 0 || day == 0 {
+        return 0.0;
+    }
     // Days since Unix epoch (1970-01-01)
     let days = days_from_civil(year, month, day);
     (days * 86400 + hour * 3600 + min * 60 + sec) as f64
@@ -494,9 +611,7 @@ pub fn normalize_history(request: NormalizeHistoryRequest) -> Vec<CoreNormalized
                 .collect::<std::collections::BTreeSet<_>>()
                 .len()
                 .max(1) as u64;
-            let best = entries
-                .into_iter()
-                .max_by(compare_entries)?;
+            let best = entries.into_iter().max_by(compare_entries)?;
             Some(CoreNormalizedHistoryEntry {
                 provider_count,
                 ..best

@@ -97,8 +97,8 @@ fn sign_dash_p2pkh(
     use secp256k1::{Message, Secp256k1, SecretKey};
 
     let secp = Secp256k1::new();
-    let secret_key =
-        SecretKey::from_slice(private_key_bytes).map_err(|e| format!("dash invalid privkey: {e}"))?;
+    let secret_key = SecretKey::from_slice(private_key_bytes)
+        .map_err(|e| format!("dash invalid privkey: {e}"))?;
     let pubkey_bytes = secp256k1::PublicKey::from_secret_key(&secp, &secret_key).serialize();
 
     let total_in: u64 = utxos.iter().map(|(_, _, v, _)| v).sum();

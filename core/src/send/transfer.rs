@@ -174,7 +174,10 @@ mod tests {
             vec!["wallet-1".to_string()]
         );
         assert_eq!(plan.wallets[0].send_holding_indices, vec![0u64, 1u64]);
-        assert_eq!(plan.wallets[0].receive_holding_indices, vec![0u64, 1u64, 2u64]);
+        assert_eq!(
+            plan.wallets[0].receive_holding_indices,
+            vec![0u64, 1u64, 2u64]
+        );
         assert_eq!(
             plan.wallets[0].receive_chains,
             vec!["Ethereum".to_string(), "Solana".to_string()]

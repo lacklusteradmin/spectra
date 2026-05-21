@@ -12,17 +12,17 @@ use crate::http::{with_fallback, HttpClient, RetryProfile};
 // ----------------------------------------------------------------
 // ERC-20 4-byte function selectors  (keccak256(signature)[..4])
 // ----------------------------------------------------------------
-pub(crate) const SEL_BALANCE_OF:    [u8; 4] = [0x70, 0xa0, 0x82, 0x31]; // balanceOf(address)
-pub(crate) const SEL_DECIMALS:      [u8; 4] = [0x31, 0x3c, 0xe5, 0x67]; // decimals()
-pub(crate) const SEL_SYMBOL:        [u8; 4] = [0x95, 0xd8, 0x9b, 0x41]; // symbol()
+pub(crate) const SEL_BALANCE_OF: [u8; 4] = [0x70, 0xa0, 0x82, 0x31]; // balanceOf(address)
+pub(crate) const SEL_DECIMALS: [u8; 4] = [0x31, 0x3c, 0xe5, 0x67]; // decimals()
+pub(crate) const SEL_SYMBOL: [u8; 4] = [0x95, 0xd8, 0x9b, 0x41]; // symbol()
 #[allow(dead_code)]
-pub(crate) const SEL_NAME:          [u8; 4] = [0x06, 0xfd, 0xde, 0x03]; // name()
+pub(crate) const SEL_NAME: [u8; 4] = [0x06, 0xfd, 0xde, 0x03]; // name()
 #[allow(dead_code)]
-pub(crate) const SEL_TOTAL_SUPPLY:  [u8; 4] = [0x18, 0x16, 0x0d, 0xdd]; // totalSupply()
-pub(crate) const SEL_ALLOWANCE:     [u8; 4] = [0xdd, 0x62, 0xed, 0x3e]; // allowance(address,address)
-pub(crate) const SEL_TRANSFER:      [u8; 4] = [0xa9, 0x05, 0x9c, 0xbb]; // transfer(address,uint256)
+pub(crate) const SEL_TOTAL_SUPPLY: [u8; 4] = [0x18, 0x16, 0x0d, 0xdd]; // totalSupply()
+pub(crate) const SEL_ALLOWANCE: [u8; 4] = [0xdd, 0x62, 0xed, 0x3e]; // allowance(address,address)
+pub(crate) const SEL_TRANSFER: [u8; 4] = [0xa9, 0x05, 0x9c, 0xbb]; // transfer(address,uint256)
 pub(crate) const SEL_TRANSFER_FROM: [u8; 4] = [0x23, 0xb8, 0x72, 0xdd]; // transferFrom(address,address,uint256)
-pub(crate) const SEL_APPROVE:       [u8; 4] = [0x09, 0x5e, 0xa7, 0xb3]; // approve(address,uint256)
+pub(crate) const SEL_APPROVE: [u8; 4] = [0x09, 0x5e, 0xa7, 0xb3]; // approve(address,uint256)
 
 // ----------------------------------------------------------------
 // Internal helpers shared by derive/fetch/send
@@ -104,9 +104,15 @@ pub struct EvmSendResult {
 }
 
 impl super::SignedSubmission for EvmSendResult {
-    fn submission_id(&self) -> &str { &self.txid }
-    fn signed_payload(&self) -> &str { &self.raw_tx_hex }
-    fn signed_payload_format(&self) -> super::SignedPayloadFormat { super::SignedPayloadFormat::Hex }
+    fn submission_id(&self) -> &str {
+        &self.txid
+    }
+    fn signed_payload(&self) -> &str {
+        &self.raw_tx_hex
+    }
+    fn signed_payload_format(&self) -> super::SignedPayloadFormat {
+        super::SignedPayloadFormat::Hex
+    }
 }
 
 /// Balance of an ERC-20 token held at a given address.
@@ -326,7 +332,9 @@ fn parse_fee_history(result: &Value) -> Result<EvmFeeEstimate, String> {
         .unwrap_or(1_000_000_000); // 1 gwei fallback
 
     // maxFeePerGas = 2 * baseFee + priorityFee (EIP-1559 recommended).
-    let max_fee_per_gas_wei = base_fee_wei.saturating_mul(2).saturating_add(priority_fee_wei);
+    let max_fee_per_gas_wei = base_fee_wei
+        .saturating_mul(2)
+        .saturating_add(priority_fee_wei);
     let estimated_fee_wei = max_fee_per_gas_wei.saturating_mul(21_000);
 
     Ok(EvmFeeEstimate {
@@ -448,7 +456,9 @@ impl EvmClient {
                 ]),
             )
             .await?;
-        let hex_str = result.as_str().ok_or("eth_call balanceOf: expected string")?;
+        let hex_str = result
+            .as_str()
+            .ok_or("eth_call balanceOf: expected string")?;
         parse_hex_u128(hex_str)
     }
 
@@ -562,7 +572,9 @@ impl EvmClient {
             ])
             .await?;
         let decimals = parse_hex_u128(
-            results[0].as_str().ok_or("eth_call decimals: expected string")?,
+            results[0]
+                .as_str()
+                .ok_or("eth_call decimals: expected string")?,
         )? as u8;
         let symbol = results[1]
             .as_str()
@@ -591,7 +603,9 @@ impl EvmClient {
                 ]),
             )
             .await?;
-        let hex_str = result.as_str().ok_or("eth_call allowance: expected string")?;
+        let hex_str = result
+            .as_str()
+            .ok_or("eth_call allowance: expected string")?;
         parse_hex_u128(hex_str)
     }
 
@@ -633,18 +647,15 @@ impl EvmClient {
             gas_used: String,
         }
 
-        let resp: ApiResp = self
-            .client
-            .get_json(&url, RetryProfile::ChainRead)
-            .await?;
+        let resp: ApiResp = self.client.get_json(&url, RetryProfile::ChainRead).await?;
 
         if resp.status != "1" {
             // Empty history returns status "0" — not an error.
             return Ok(vec![]);
         }
 
-        let items: Vec<TxItem> = serde_json::from_value(resp.result)
-            .map_err(|e| format!("history parse: {e}"))?;
+        let items: Vec<TxItem> =
+            serde_json::from_value(resp.result).map_err(|e| format!("history parse: {e}"))?;
 
         let addr_norm = address.to_lowercase();
         let entries = items
@@ -716,10 +727,7 @@ impl EvmClient {
             log_index: String,
         }
 
-        let resp: ApiResp = self
-            .client
-            .get_json(&url, RetryProfile::ChainRead)
-            .await?;
+        let resp: ApiResp = self.client.get_json(&url, RetryProfile::ChainRead).await?;
 
         if resp.status != "1" {
             // status "0" = empty history or rate limit — treat as empty.
@@ -780,7 +788,10 @@ pub fn encode_erc20_allowance(owner: &str, spender: &str) -> Result<Vec<u8>, Str
         return Err(format!("invalid EVM owner length: {}", owner_bytes.len()));
     }
     if spender_bytes.len() != 20 {
-        return Err(format!("invalid EVM spender length: {}", spender_bytes.len()));
+        return Err(format!(
+            "invalid EVM spender length: {}",
+            spender_bytes.len()
+        ));
     }
     let mut out = Vec::with_capacity(4 + 32 + 32);
     out.extend_from_slice(&SEL_ALLOWANCE);
@@ -822,9 +833,18 @@ pub fn decode_abi_string_or_bytes32(hex_str: &str) -> Option<String> {
     }
 
     // Fallback: treat as bytes32, trim trailing null bytes.
-    let trimmed: Vec<u8> = bytes.iter().take(32).copied().take_while(|&b| b != 0).collect();
+    let trimmed: Vec<u8> = bytes
+        .iter()
+        .take(32)
+        .copied()
+        .take_while(|&b| b != 0)
+        .collect();
     let s = String::from_utf8(trimmed).ok()?;
-    if s.is_empty() { None } else { Some(s) }
+    if s.is_empty() {
+        None
+    } else {
+        Some(s)
+    }
 }
 
 // ----------------------------------------------------------------
@@ -845,7 +865,11 @@ pub fn format_token_amount(raw: u128, decimals: u8) -> String {
     }
     let frac_str = format!("{:0>width$}", frac, width = decimals as usize);
     let trimmed = frac_str.trim_end_matches('0');
-    let capped = if trimmed.len() > 6 { &trimmed[..6] } else { trimmed };
+    let capped = if trimmed.len() > 6 {
+        &trimmed[..6]
+    } else {
+        trimmed
+    };
     format!("{}.{}", whole, capped)
 }
 
@@ -868,7 +892,11 @@ pub fn format_ether(wei: u128) -> String {
     let frac_str = format!("{:018}", frac);
     let trimmed = frac_str.trim_end_matches('0');
     // Show at most 6 decimal places.
-    let capped = if trimmed.len() > 6 { &trimmed[..6] } else { trimmed };
+    let capped = if trimmed.len() > 6 {
+        &trimmed[..6]
+    } else {
+        trimmed
+    };
     format!("{}.{}", whole, capped)
 }
 

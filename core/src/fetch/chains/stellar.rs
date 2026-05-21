@@ -8,8 +8,6 @@ use serde::{Deserialize, Serialize};
 
 use crate::http::{with_fallback, HttpClient, RetryProfile};
 
-
-
 // ----------------------------------------------------------------
 // Public result types
 // ----------------------------------------------------------------
@@ -50,9 +48,15 @@ pub struct StellarSendResult {
 }
 
 impl super::SignedSubmission for StellarSendResult {
-    fn submission_id(&self) -> &str { &self.txid }
-    fn signed_payload(&self) -> &str { &self.signed_xdr_b64 }
-    fn signed_payload_format(&self) -> super::SignedPayloadFormat { super::SignedPayloadFormat::Base64 }
+    fn submission_id(&self) -> &str {
+        &self.txid
+    }
+    fn signed_payload(&self) -> &str {
+        &self.signed_xdr_b64
+    }
+    fn signed_payload_format(&self) -> super::SignedPayloadFormat {
+        super::SignedPayloadFormat::Base64
+    }
 }
 
 // ----------------------------------------------------------------
@@ -127,7 +131,10 @@ impl StellarClient {
         }
     }
 
-    pub(crate) async fn get<T: serde::de::DeserializeOwned>(&self, path: &str) -> Result<T, String> {
+    pub(crate) async fn get<T: serde::de::DeserializeOwned>(
+        &self,
+        path: &str,
+    ) -> Result<T, String> {
         let path = path.to_string();
         with_fallback(&self.endpoints, |base| {
             let client = self.client.clone();
@@ -139,7 +146,6 @@ impl StellarClient {
 }
 // Stellar fetch paths (Horizon): native balance, per-asset balance, sequence,
 // base fee, and payments history.
-
 
 impl StellarClient {
     pub async fn fetch_balance(&self, address: &str) -> Result<StellarBalance, String> {

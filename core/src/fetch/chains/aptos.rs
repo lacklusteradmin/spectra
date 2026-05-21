@@ -9,8 +9,6 @@ use serde_json::Value;
 
 use crate::http::{with_fallback, HttpClient, RetryProfile};
 
-
-
 // ----------------------------------------------------------------
 // Public result types
 // ----------------------------------------------------------------
@@ -44,9 +42,15 @@ pub struct AptosSendResult {
 }
 
 impl super::SignedSubmission for AptosSendResult {
-    fn submission_id(&self) -> &str { &self.txid }
-    fn signed_payload(&self) -> &str { &self.signed_body_json }
-    fn signed_payload_format(&self) -> super::SignedPayloadFormat { super::SignedPayloadFormat::Json }
+    fn submission_id(&self) -> &str {
+        &self.txid
+    }
+    fn signed_payload(&self) -> &str {
+        &self.signed_body_json
+    }
+    fn signed_payload_format(&self) -> super::SignedPayloadFormat {
+        super::SignedPayloadFormat::Json
+    }
 }
 
 // ----------------------------------------------------------------
@@ -83,15 +87,17 @@ impl AptosClient {
             let client = self.client.clone();
             let url = format!("{}{}", base.trim_end_matches('/'), path);
             let body = std::sync::Arc::clone(&body);
-            async move { client.post_json(&url, &*body, RetryProfile::ChainRead).await }
+            async move {
+                client
+                    .post_json(&url, &*body, RetryProfile::ChainRead)
+                    .await
+            }
         })
         .await
     }
 }
 // Aptos fetch paths: balance, per-coin balance, account info, ledger info,
 // gas price, history.
-
-
 
 impl AptosClient {
     pub async fn fetch_balance(&self, address: &str) -> Result<AptosBalance, String> {
@@ -167,7 +173,11 @@ impl AptosClient {
             if txtype != "user_transaction" {
                 continue;
             }
-            let txid = tx.get("hash").and_then(|v| v.as_str()).unwrap_or("").to_string();
+            let txid = tx
+                .get("hash")
+                .and_then(|v| v.as_str())
+                .unwrap_or("")
+                .to_string();
             let version: u64 = tx
                 .get("version")
                 .and_then(|v| v.as_str())
@@ -205,7 +215,11 @@ impl AptosClient {
                     .and_then(|v| v.as_array())
                     .cloned()
                     .unwrap_or_default();
-                let to = args.first().and_then(|v| v.as_str()).unwrap_or("").to_string();
+                let to = args
+                    .first()
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("")
+                    .to_string();
                 let amount: u64 = args
                     .get(1)
                     .and_then(|v| v.as_str())

@@ -1,5 +1,5 @@
 //! Decred: address validation, BIP-32 derivation, P2PKH (Ds…) BLAKE-256
-//! base58check encoding. Self-contained — see `REFACTOR_NOTES.md`.
+//! base58check encoding
 //!
 //! Decred uses BLAKE-256 (SHA-3 finalist family — NOT BLAKE2) wherever
 //! Bitcoin uses double-SHA256:
@@ -18,22 +18,39 @@ use sha2::Sha512;
 use unicode_normalization::UnicodeNormalization;
 use zeroize::Zeroizing;
 
-
 pub(crate) const DCR_P2PKH_VERSION: [u8; 2] = [0x07, 0x3F];
 pub(crate) const DCR_P2SH_VERSION: [u8; 2] = [0x07, 0x1A];
 
 // ── BLAKE-256 (SHA-3 finalist BLAKE-1 family) ─────────────────────────────
 
 const BLAKE256_IV: [u32; 8] = [
-    0x6A09_E667, 0xBB67_AE85, 0x3C6E_F372, 0xA54F_F53A,
-    0x510E_527F, 0x9B05_688C, 0x1F83_D9AB, 0x5BE0_CD19,
+    0x6A09_E667,
+    0xBB67_AE85,
+    0x3C6E_F372,
+    0xA54F_F53A,
+    0x510E_527F,
+    0x9B05_688C,
+    0x1F83_D9AB,
+    0x5BE0_CD19,
 ];
 
 const BLAKE256_C: [u32; 16] = [
-    0x243F_6A88, 0x85A3_08D3, 0x1319_8A2E, 0x0370_7344,
-    0xA409_3822, 0x299F_31D0, 0x082E_FA98, 0xEC4E_6C89,
-    0x4528_21E6, 0x38D0_1377, 0xBE54_66CF, 0x34E9_0C6C,
-    0xC0AC_29B7, 0xC97C_50DD, 0x3F84_D5B5, 0xB547_0917,
+    0x243F_6A88,
+    0x85A3_08D3,
+    0x1319_8A2E,
+    0x0370_7344,
+    0xA409_3822,
+    0x299F_31D0,
+    0x082E_FA98,
+    0xEC4E_6C89,
+    0x4528_21E6,
+    0x38D0_1377,
+    0xBE54_66CF,
+    0x34E9_0C6C,
+    0xC0AC_29B7,
+    0xC97C_50DD,
+    0x3F84_D5B5,
+    0xB547_0917,
 ];
 
 const BLAKE256_SIGMA: [[usize; 16]; 10] = [
@@ -51,7 +68,16 @@ const BLAKE256_SIGMA: [[usize; 16]; 10] = [
 
 #[inline(always)]
 // BLAKE-256 G mixing function: one quarter-round of the BLAKE internal permutation.
-fn g_mix(state: &mut [u32; 16], a: usize, b: usize, c: usize, d: usize, m: &[u32; 16], r: usize, e: usize) {
+fn g_mix(
+    state: &mut [u32; 16],
+    a: usize,
+    b: usize,
+    c: usize,
+    d: usize,
+    m: &[u32; 16],
+    r: usize,
+    e: usize,
+) {
     let row = &BLAKE256_SIGMA[r % 10];
     state[a] = state[a]
         .wrapping_add(state[b])
@@ -179,7 +205,7 @@ pub(crate) fn blake256(data: &[u8]) -> [u8; 32] {
 pub(crate) fn dcr_hash160(data: &[u8]) -> [u8; 20] {
     let inner = blake256(data);
     let mut hasher = Ripemd160::new();
-    RipemdDigest::update(&mut hasher, &inner);
+    RipemdDigest::update(&mut hasher, inner);
     let out = hasher.finalize();
     let mut hash = [0u8; 20];
     hash.copy_from_slice(&out);
@@ -198,7 +224,9 @@ pub(crate) fn dcr_base58check_encode(payload: &[u8]) -> String {
 
 // Decode a Decred base58check string: strip the 4-byte BLAKE-256² checksum and return the payload.
 pub(crate) fn dcr_base58check_decode(input: &str) -> Result<Vec<u8>, String> {
-    let raw = bs58::decode(input).into_vec().map_err(|e| format!("dcr base58 decode: {e}"))?;
+    let raw = bs58::decode(input)
+        .into_vec()
+        .map_err(|e| format!("dcr base58 decode: {e}"))?;
     if raw.len() < 5 {
         return Err("dcr base58check payload too short".to_string());
     }
@@ -229,9 +257,7 @@ pub(crate) fn decode_dcr_address(address: &str) -> Result<[u8; 20], String> {
     }
     let version = [payload[0], payload[1]];
     if version != DCR_P2PKH_VERSION && version != DCR_P2SH_VERSION {
-        return Err(format!(
-            "unrecognised dcr version bytes: {version:02x?}"
-        ));
+        return Err(format!("unrecognised dcr version bytes: {version:02x?}"));
     }
     let mut hash = [0u8; 20];
     hash.copy_from_slice(&payload[2..22]);
@@ -274,7 +300,10 @@ fn resolve_bip39_language(name: Option<&str>) -> Result<Language, String> {
         "spanish" | "es" => Ok(Language::Spanish),
         "simplified-chinese" | "chinese-simplified" | "simplified_chinese" | "zh-hans"
         | "zh-cn" | "zh" => Ok(Language::SimplifiedChinese),
-        "traditional-chinese" | "chinese-traditional" | "traditional_chinese" | "zh-hant"
+        "traditional-chinese"
+        | "chinese-traditional"
+        | "traditional_chinese"
+        | "zh-hant"
         | "zh-tw" => Ok(Language::TraditionalChinese),
         other => Err(format!("Unsupported mnemonic wordlist: {other}")),
     }
@@ -291,7 +320,11 @@ fn derive_bip39_seed(
     let language = resolve_bip39_language(mnemonic_wordlist)?;
     let mnemonic =
         Mnemonic::parse_in_normalized(language, seed_phrase).map_err(|e| e.to_string())?;
-    let iterations = if iteration_count == 0 { 2048 } else { iteration_count };
+    let iterations = if iteration_count == 0 {
+        2048
+    } else {
+        iteration_count
+    };
     let prefix = salt_prefix.unwrap_or("mnemonic");
     let normalized_mnemonic = Zeroizing::new(mnemonic.to_string().nfkd().collect::<String>());
     let normalized_passphrase = Zeroizing::new(passphrase.nfkd().collect::<String>());
@@ -357,17 +390,20 @@ impl ExtendedPrivateKey {
             HmacSha512::new_from_slice(hmac_key).map_err(|e| format!("HMAC init: {e}"))?;
         mac.update(seed);
         let tag = mac.finalize().into_bytes();
-        let private_key = SecretKey::from_slice(&tag[..32])
-            .map_err(|e| format!("Master key invalid: {e}"))?;
+        let private_key =
+            SecretKey::from_slice(&tag[..32]).map_err(|e| format!("Master key invalid: {e}"))?;
         let mut chain_code = [0u8; 32];
         chain_code.copy_from_slice(&tag[32..]);
-        Ok(Self { private_key, chain_code })
+        Ok(Self {
+            private_key,
+            chain_code,
+        })
     }
 
     // Derive a BIP-32 child key; hardened indices use private key as input, non-hardened use public key.
     fn derive_child(&self, secp: &Secp256k1<All>, index: u32) -> Result<Self, String> {
-        let mut mac = HmacSha512::new_from_slice(&self.chain_code)
-            .map_err(|e| format!("HMAC init: {e}"))?;
+        let mut mac =
+            HmacSha512::new_from_slice(&self.chain_code).map_err(|e| format!("HMAC init: {e}"))?;
         if index >= HARDENED_OFFSET {
             mac.update(&[0x00]);
             mac.update(&self.private_key.secret_bytes());
@@ -377,17 +413,19 @@ impl ExtendedPrivateKey {
         }
         mac.update(&index.to_be_bytes());
         let tag = mac.finalize().into_bytes();
-        let tweak = Scalar::from_be_bytes(
-            tag[..32].try_into().map_err(|_| "tag slice".to_string())?,
-        )
-        .map_err(|_| "BIP-32 IL out of range".to_string())?;
+        let tweak =
+            Scalar::from_be_bytes(tag[..32].try_into().map_err(|_| "tag slice".to_string())?)
+                .map_err(|_| "BIP-32 IL out of range".to_string())?;
         let private_key = self
             .private_key
             .add_tweak(&tweak)
             .map_err(|e| format!("BIP-32 tweak failed: {e}"))?;
         let mut chain_code = [0u8; 32];
         chain_code.copy_from_slice(&tag[32..]);
-        Ok(Self { private_key, chain_code })
+        Ok(Self {
+            private_key,
+            chain_code,
+        })
     }
 
     // Walk the full BIP-32 derivation path by applying derive_child for each index.
@@ -423,8 +461,9 @@ pub(crate) fn derive_from_seed_phrase(
     want_address: bool,
     want_public_key: bool,
     want_private_key: bool,
-) -> Result<(Option<String>, Option<String>, Option<String>), String> {
-    let (public_key, private_bytes) = derive_secp_keypair(seed_phrase, derivation_path, passphrase)?;
+) -> Result<crate::derivation::primitives::OptionalKeyMaterial, String> {
+    let (public_key, private_bytes) =
+        derive_secp_keypair(seed_phrase, derivation_path, passphrase)?;
     let pubkey_hash = dcr_hash160(&public_key.serialize());
     Ok((
         want_address.then(|| encode_dcr_p2pkh(&pubkey_hash)),
@@ -443,8 +482,9 @@ pub(crate) fn derive_from_seed_phrase_testnet(
     want_address: bool,
     want_public_key: bool,
     want_private_key: bool,
-) -> Result<(Option<String>, Option<String>, Option<String>), String> {
-    let (public_key, private_bytes) = derive_secp_keypair(seed_phrase, derivation_path, passphrase)?;
+) -> Result<crate::derivation::primitives::OptionalKeyMaterial, String> {
+    let (public_key, private_bytes) =
+        derive_secp_keypair(seed_phrase, derivation_path, passphrase)?;
     let pubkey_hash = dcr_hash160(&public_key.serialize());
     let address = if want_address {
         let mut payload = Vec::with_capacity(22);
@@ -463,41 +503,73 @@ pub(crate) fn derive_from_seed_phrase_testnet(
 
 // ── UniFFI exports ────────────────────────────────────────────────────────
 
-use crate::derivation::types::{DerivationResult, parse_path_metadata};
+use crate::derivation::types::{parse_path_metadata, DerivationResult};
 use crate::SpectraBridgeError;
 
 /// UniFFI export: derive Decred mainnet wallet (Ds… P2PKH address) from a seed phrase.
 #[uniffi::export]
 pub fn derive_decred(
-    seed_phrase: String, derivation_path: String, passphrase: Option<String>,
-    want_address: bool, want_public_key: bool, want_private_key: bool,
+    seed_phrase: String,
+    derivation_path: String,
+    passphrase: Option<String>,
+    want_address: bool,
+    want_public_key: bool,
+    want_private_key: bool,
 ) -> Result<DerivationResult, SpectraBridgeError> {
     let (account, branch, index) = parse_path_metadata(&derivation_path);
     let (address, public_key_hex, private_key_hex) = derive_from_seed_phrase(
-        &seed_phrase, &derivation_path, passphrase.as_deref(),
-        want_address, want_public_key, want_private_key,
+        &seed_phrase,
+        &derivation_path,
+        passphrase.as_deref(),
+        want_address,
+        want_public_key,
+        want_private_key,
     )?;
-    Ok(DerivationResult { address, public_key_hex, private_key_hex, account, branch, index })
+    Ok(DerivationResult {
+        address,
+        public_key_hex,
+        private_key_hex,
+        account,
+        branch,
+        index,
+    })
 }
 
 /// UniFFI export: derive Decred testnet wallet (Ts… P2PKH address) from a seed phrase.
 #[uniffi::export]
 pub fn derive_decred_testnet(
-    seed_phrase: String, derivation_path: String, passphrase: Option<String>,
-    want_address: bool, want_public_key: bool, want_private_key: bool,
+    seed_phrase: String,
+    derivation_path: String,
+    passphrase: Option<String>,
+    want_address: bool,
+    want_public_key: bool,
+    want_private_key: bool,
 ) -> Result<DerivationResult, SpectraBridgeError> {
     let (account, branch, index) = parse_path_metadata(&derivation_path);
     let (address, public_key_hex, private_key_hex) = derive_from_seed_phrase_testnet(
-        &seed_phrase, &derivation_path, passphrase.as_deref(),
-        want_address, want_public_key, want_private_key,
+        &seed_phrase,
+        &derivation_path,
+        passphrase.as_deref(),
+        want_address,
+        want_public_key,
+        want_private_key,
     )?;
-    Ok(DerivationResult { address, public_key_hex, private_key_hex, account, branch, index })
+    Ok(DerivationResult {
+        address,
+        public_key_hex,
+        private_key_hex,
+        account,
+        branch,
+        index,
+    })
 }
 
 /// UniFFI export: derive a Decred mainnet address and public key from a raw private key hex string.
 #[uniffi::export]
 pub fn derive_decred_from_private_key(
-    private_key_hex: String, want_address: bool, want_public_key: bool,
+    private_key_hex: String,
+    want_address: bool,
+    want_public_key: bool,
 ) -> Result<DerivationResult, SpectraBridgeError> {
     let trimmed = private_key_hex.trim();
     if trimmed.len() != 64 {
@@ -516,7 +588,9 @@ pub fn derive_decred_from_private_key(
         address: want_address.then(|| encode_dcr_p2pkh(&hash)),
         public_key_hex: want_public_key.then(|| hex::encode(public_key.serialize())),
         private_key_hex: None,
-        account: 0, branch: 0, index: 0,
+        account: 0,
+        branch: 0,
+        index: 0,
     })
 }
 
@@ -553,6 +627,8 @@ mod tests {
         assert!(!validate_decred_address(""));
         assert!(!validate_decred_address("not-a-decred-address"));
         // Bitcoin P2PKH starts with "1" — wrong version byte for DCR.
-        assert!(!validate_decred_address("1A1zP1eP5QGefi2DMPTfTL5SLmv7DivfNa"));
+        assert!(!validate_decred_address(
+            "1A1zP1eP5QGefi2DMPTfTL5SLmv7DivfNa"
+        ));
     }
 }

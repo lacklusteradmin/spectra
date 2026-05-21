@@ -241,7 +241,10 @@ fn merge_standard_utxo(
     }
 }
 
-fn merge_dogecoin(existing: CoreTransactionRecord, incoming: CoreTransactionRecord) -> CoreTransactionRecord {
+fn merge_dogecoin(
+    existing: CoreTransactionRecord,
+    incoming: CoreTransactionRecord,
+) -> CoreTransactionRecord {
     CoreTransactionRecord {
         id: existing.id,
         wallet_id: incoming.wallet_id.or(existing.wallet_id),
@@ -431,7 +434,8 @@ fn approximately_equal(lhs: f64, rhs: f64) -> bool {
 #[cfg(test)]
 mod tests {
     use super::{
-        merge_transactions, TransactionMergeRequest, TransactionMergeStrategy, CoreTransactionRecord,
+        merge_transactions, CoreTransactionRecord, TransactionMergeRequest,
+        TransactionMergeStrategy,
     };
 
     fn sample_transaction(chain_name: &str) -> CoreTransactionRecord {

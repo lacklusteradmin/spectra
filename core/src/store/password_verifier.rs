@@ -128,9 +128,7 @@ mod tests {
 /// Create a PBKDF2-HMAC-SHA256 password verifier envelope. Returns JSON `Data`
 /// compatible with Swift's `SecureSeedPasswordStore` format.
 #[uniffi::export]
-pub fn create_password_verifier(
-    password: String,
-) -> Result<Vec<u8>, crate::SpectraBridgeError> {
+pub fn create_password_verifier(password: String) -> Result<Vec<u8>, crate::SpectraBridgeError> {
     create_verifier(&password).map_err(crate::SpectraBridgeError::from)
 }
 

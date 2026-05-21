@@ -68,7 +68,10 @@ impl CardanoClient {
                 let txid: String = client
                     .post_json_with_headers(&url, &body, &headers, RetryProfile::ChainWrite)
                     .await?;
-                Ok(CardanoSendResult { txid, cbor_hex: cbor_hex_owned })
+                Ok(CardanoSendResult {
+                    txid,
+                    cbor_hex: cbor_hex_owned,
+                })
             }
         })
         .await

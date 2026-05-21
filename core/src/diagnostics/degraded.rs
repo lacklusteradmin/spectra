@@ -102,7 +102,9 @@ mod tests {
     #[test]
     fn live_success_detects_known_phrases() {
         assert!(detail_indicates_live_success("foo partially reachable bar"));
-        assert!(detail_indicates_live_success("foo partial provider failures bar"));
+        assert!(detail_indicates_live_success(
+            "foo partial provider failures bar"
+        ));
         assert!(!detail_indicates_live_success("foo timed out"));
     }
 

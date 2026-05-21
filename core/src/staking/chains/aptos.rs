@@ -26,12 +26,20 @@ pub struct AptosStakingClient {
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
-fn octas_to_apt(octas: u64) -> f64 { octas as f64 / 1e8 }
+fn octas_to_apt(octas: u64) -> f64 {
+    octas as f64 / 1e8
+}
 
-fn apt_display(octas: u64) -> String { format!("{:.6} APT", octas_to_apt(octas)) }
+fn apt_display(octas: u64) -> String {
+    format!("{:.6} APT", octas_to_apt(octas))
+}
 
 fn short_id(id: &str) -> &str {
-    if id.len() >= 10 { &id[..10] } else { id }
+    if id.len() >= 10 {
+        &id[..10]
+    } else {
+        id
+    }
 }
 
 impl AptosStakingClient {
@@ -56,18 +64,17 @@ impl AptosStakingClient {
         });
         // Response: [[pool_addr1, pool_addr2, ...]] — outer array = return values,
         // inner array = the vector<address> return value.
-        let resp: serde_json::Value =
-            match with_fallback(&self.rest_endpoints, |base| {
-                let client = client.clone();
-                let body = body.clone();
-                let url = format!("{}{}", base.trim_end_matches('/'), path);
-                async move { client.post_json(&url, &body, RetryProfile::ChainRead).await }
-            })
-            .await
-            {
-                Ok(r) => r,
-                Err(_) => return Ok(vec![]),
-            };
+        let resp: serde_json::Value = match with_fallback(&self.rest_endpoints, |base| {
+            let client = client.clone();
+            let body = body.clone();
+            let url = format!("{}{}", base.trim_end_matches('/'), path);
+            async move { client.post_json(&url, &body, RetryProfile::ChainRead).await }
+        })
+        .await
+        {
+            Ok(r) => r,
+            Err(_) => return Ok(vec![]),
+        };
 
         let pool_addrs: Vec<String> = resp
             .as_array()

@@ -9,8 +9,6 @@ use serde_json::{json, Value};
 
 use crate::http::{with_fallback, HttpClient, RetryProfile};
 
-
-
 // ----------------------------------------------------------------
 // Public result types
 // ----------------------------------------------------------------
@@ -42,9 +40,15 @@ pub struct XrpSendResult {
 }
 
 impl super::SignedSubmission for XrpSendResult {
-    fn submission_id(&self) -> &str { &self.txid }
-    fn signed_payload(&self) -> &str { &self.tx_blob_hex }
-    fn signed_payload_format(&self) -> super::SignedPayloadFormat { super::SignedPayloadFormat::Hex }
+    fn submission_id(&self) -> &str {
+        &self.txid
+    }
+    fn signed_payload(&self) -> &str {
+        &self.tx_blob_hex
+    }
+    fn signed_payload_format(&self) -> super::SignedPayloadFormat {
+        super::SignedPayloadFormat::Hex
+    }
 }
 
 // ----------------------------------------------------------------
@@ -97,12 +101,13 @@ fn rpc(method: &str, params: Value) -> Value {
 }
 // XRP fetch paths: balance, sequence, fee, history.
 
-
-
 impl XrpClient {
     pub async fn fetch_balance(&self, address: &str) -> Result<XrpBalance, String> {
         let result = self
-            .call("account_info", json!({"account": address, "ledger_index": "validated"}))
+            .call(
+                "account_info",
+                json!({"account": address, "ledger_index": "validated"}),
+            )
             .await?;
         let drops: u64 = result
             .pointer("/account_data/Balance")
@@ -117,7 +122,10 @@ impl XrpClient {
 
     pub async fn fetch_sequence(&self, address: &str) -> Result<u32, String> {
         let result = self
-            .call("account_info", json!({"account": address, "ledger_index": "current"}))
+            .call(
+                "account_info",
+                json!({"account": address, "ledger_index": "current"}),
+            )
             .await?;
         result
             .pointer("/account_data/Sequence")
@@ -153,11 +161,18 @@ impl XrpClient {
             let tx = item.get("tx").unwrap_or(&Value::Null);
             let _meta = item.get("meta").unwrap_or(&Value::Null);
 
-            let txtype = tx.get("TransactionType").and_then(|v| v.as_str()).unwrap_or("");
+            let txtype = tx
+                .get("TransactionType")
+                .and_then(|v| v.as_str())
+                .unwrap_or("");
             if txtype != "Payment" {
                 continue;
             }
-            let txid = tx.get("hash").and_then(|v| v.as_str()).unwrap_or("").to_string();
+            let txid = tx
+                .get("hash")
+                .and_then(|v| v.as_str())
+                .unwrap_or("")
+                .to_string();
             let ledger_index = tx.get("ledger_index").and_then(|v| v.as_u64()).unwrap_or(0);
             // XRP epoch: 2000-01-01, Unix epoch difference = 946684800
             let timestamp = tx
@@ -165,8 +180,16 @@ impl XrpClient {
                 .and_then(|v| v.as_u64())
                 .map(|d| d + 946_684_800)
                 .unwrap_or(0);
-            let from = tx.get("Account").and_then(|v| v.as_str()).unwrap_or("").to_string();
-            let to = tx.get("Destination").and_then(|v| v.as_str()).unwrap_or("").to_string();
+            let from = tx
+                .get("Account")
+                .and_then(|v| v.as_str())
+                .unwrap_or("")
+                .to_string();
+            let to = tx
+                .get("Destination")
+                .and_then(|v| v.as_str())
+                .unwrap_or("")
+                .to_string();
             let amount_drops = tx
                 .get("Amount")
                 .and_then(|v| v.as_str())

@@ -8,15 +8,15 @@
 /// zero extra cost and are useful as display metadata or for signing bookkeeping.
 #[derive(Debug, uniffi::Record)]
 pub struct DerivationResult {
-    pub address:         Option<String>,
-    pub public_key_hex:  Option<String>,
+    pub address: Option<String>,
+    pub public_key_hex: Option<String>,
     pub private_key_hex: Option<String>,
     /// Segment 2 of the BIP-32 path (the account level), hardening stripped.
-    pub account:         u32,
+    pub account: u32,
     /// Second-to-last segment (the change/branch level).
-    pub branch:          u32,
+    pub branch: u32,
     /// Last segment (the address index).
-    pub index:           u32,
+    pub index: u32,
 }
 
 // ── Script type (UTXO chains) ─────────────────────────────────────────────────

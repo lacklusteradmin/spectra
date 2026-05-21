@@ -3,7 +3,9 @@
 
 use crate::http::{with_fallback, RetryProfile};
 
-use crate::derivation::chains::litecoin::{decode_ltc_address, is_mweb_address, ltc_p2pkh_script, parse_mweb_address};
+use crate::derivation::chains::litecoin::{
+    decode_ltc_address, is_mweb_address, ltc_p2pkh_script, parse_mweb_address,
+};
 use crate::fetch::chains::litecoin::{LitecoinClient, LtcSendResult};
 use crate::send::chains::mweb::{build_peg_in_extension, MWEB_PEGIN_OVERHEAD_BYTES};
 
@@ -93,8 +95,7 @@ impl LitecoinClient {
         let min_fee = MWEB_PEGIN_OVERHEAD_BYTES;
         let effective_fee = fee_sat.max(min_fee);
 
-        let (mweb_ext, hog_script) =
-            build_peg_in_extension(&mweb_addr, amount_sat, effective_fee)?;
+        let (mweb_ext, hog_script) = build_peg_in_extension(&mweb_addr, amount_sat, effective_fee)?;
 
         let utxos = self.fetch_utxos(from_address).await?;
         let script_pubkey = ltc_p2pkh_script(&decode_ltc_address(from_address)?)?;
@@ -178,7 +179,10 @@ fn sign_ltc_with_output_script(
 
     let mut outputs: Vec<(Vec<u8>, u64)> = vec![(to_script.to_vec(), amount_sat)];
     if change > dust_threshold.unwrap_or(546) {
-        outputs.push((ltc_p2pkh_script(&decode_ltc_address(change_address)?)?, change));
+        outputs.push((
+            ltc_p2pkh_script(&decode_ltc_address(change_address)?)?,
+            change,
+        ));
     }
 
     let mut signed_inputs: Vec<Vec<u8>> = Vec::new();

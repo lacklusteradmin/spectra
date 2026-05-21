@@ -3,7 +3,9 @@
 
 use serde::{Deserialize, Serialize};
 
-#[derive(Debug, Clone, Copy, Default, Serialize, Deserialize, PartialEq, Eq, Hash, uniffi::Enum)]
+#[derive(
+    Debug, Clone, Copy, Default, Serialize, Deserialize, PartialEq, Eq, Hash, uniffi::Enum,
+)]
 #[serde(rename_all = "camelCase")]
 pub enum CoreBitcoinNetworkMode {
     #[default]
@@ -13,7 +15,9 @@ pub enum CoreBitcoinNetworkMode {
     Signet,
 }
 
-#[derive(Debug, Clone, Copy, Default, Serialize, Deserialize, PartialEq, Eq, Hash, uniffi::Enum)]
+#[derive(
+    Debug, Clone, Copy, Default, Serialize, Deserialize, PartialEq, Eq, Hash, uniffi::Enum,
+)]
 #[serde(rename_all = "camelCase")]
 pub enum CoreDogecoinNetworkMode {
     #[default]
@@ -47,7 +51,9 @@ pub enum CorePriceAlertCondition {
     Below,
 }
 
-#[derive(Debug, Clone, Copy, Default, Serialize, Deserialize, PartialEq, Eq, Hash, uniffi::Enum)]
+#[derive(
+    Debug, Clone, Copy, Default, Serialize, Deserialize, PartialEq, Eq, Hash, uniffi::Enum,
+)]
 #[serde(rename_all = "camelCase")]
 pub enum CoreSeedDerivationPreset {
     #[default]

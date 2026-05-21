@@ -66,18 +66,14 @@ pub fn native_asset_display_settings_key(chain_name: &str) -> String {
         .unwrap_or_else(|| chain_name.to_string())
 }
 
-static SUPPORTED_DECIMAL_MAP: LazyLock<HashMap<&'static str, u32>> = LazyLock::new(|| {
-    SUPPORTED_DECIMAL_CHAINS.iter().copied().collect()
-});
+static SUPPORTED_DECIMAL_MAP: LazyLock<HashMap<&'static str, u32>> =
+    LazyLock::new(|| SUPPORTED_DECIMAL_CHAINS.iter().copied().collect());
 
 pub fn supported_decimal_places(chain_name: &str, override_decimals: Option<u32>) -> u32 {
     if let Some(value) = override_decimals {
         return value;
     }
-    SUPPORTED_DECIMAL_MAP
-        .get(chain_name)
-        .copied()
-        .unwrap_or(6)
+    SUPPORTED_DECIMAL_MAP.get(chain_name).copied().unwrap_or(6)
 }
 
 pub fn display_decimal_places(
@@ -172,9 +168,7 @@ fn capitalize_word(word: &str) -> String {
 }
 
 #[uniffi::export]
-pub fn formatting_resolve_asset_decimals(
-    request: AssetDecimalsRequest,
-) -> AssetDecimalsResolution {
+pub fn formatting_resolve_asset_decimals(request: AssetDecimalsRequest) -> AssetDecimalsResolution {
     resolve_asset_decimals(&request)
 }
 
@@ -203,9 +197,15 @@ pub struct FiatAmountRules {
 
 pub fn fiat_amount_rules(currency_code: &str) -> FiatAmountRules {
     if currency_code.eq_ignore_ascii_case("JPY") {
-        FiatAmountRules { decimals: 0, minimum_visible: 1.0 }
+        FiatAmountRules {
+            decimals: 0,
+            minimum_visible: 1.0,
+        }
     } else {
-        FiatAmountRules { decimals: 2, minimum_visible: 0.01 }
+        FiatAmountRules {
+            decimals: 2,
+            minimum_visible: 0.01,
+        }
     }
 }
 
@@ -230,11 +230,17 @@ pub fn formatting_asset_minimum_visible_amount(visible_decimals: u32) -> f64 {
 const STABLECOIN_USD_SYMBOLS: &[&str] = &["USDC", "USDT", "FDUSD", "TUSD"];
 
 pub fn is_usd_stablecoin(symbol: &str) -> bool {
-    STABLECOIN_USD_SYMBOLS.iter().any(|s| s.eq_ignore_ascii_case(symbol))
+    STABLECOIN_USD_SYMBOLS
+        .iter()
+        .any(|s| s.eq_ignore_ascii_case(symbol))
 }
 
 pub fn stablecoin_fallback_price_usd(symbol: &str) -> f64 {
-    if is_usd_stablecoin(symbol) { 1.0 } else { 0.0 }
+    if is_usd_stablecoin(symbol) {
+        1.0
+    } else {
+        0.0
+    }
 }
 
 #[uniffi::export]
@@ -242,7 +248,11 @@ pub fn formatting_stablecoin_fallback_price_usd(symbol: String) -> f64 {
     stablecoin_fallback_price_usd(&symbol)
 }
 
-pub fn dashboard_asset_grouping_key(chain_identity: &str, coin_gecko_id: &str, symbol: &str) -> String {
+pub fn dashboard_asset_grouping_key(
+    chain_identity: &str,
+    coin_gecko_id: &str,
+    symbol: &str,
+) -> String {
     let normalized_cg = coin_gecko_id.trim().to_lowercase();
     let chain_lc = chain_identity.to_lowercase();
     if !normalized_cg.is_empty() {
@@ -253,10 +263,13 @@ pub fn dashboard_asset_grouping_key(chain_identity: &str, coin_gecko_id: &str, s
 }
 
 #[uniffi::export]
-pub fn formatting_dashboard_asset_grouping_key(chain_identity: String, coin_gecko_id: String, symbol: String) -> String {
+pub fn formatting_dashboard_asset_grouping_key(
+    chain_identity: String,
+    coin_gecko_id: String,
+    symbol: String,
+) -> String {
     dashboard_asset_grouping_key(&chain_identity, &coin_gecko_id, &symbol)
 }
-
 
 #[cfg(test)]
 mod tests {

@@ -44,7 +44,10 @@ impl SolanaClient {
             .as_str()
             .ok_or("sendTransaction: expected string")?
             .to_string();
-        Ok(SolanaSendResult { signature, signed_tx_base64: encoded })
+        Ok(SolanaSendResult {
+            signature,
+            signed_tx_base64: encoded,
+        })
     }
 
     /// Sign and broadcast an SPL token transfer. Derives the source and
@@ -99,14 +102,14 @@ impl SolanaClient {
             .ok_or("sendTransaction: expected string")?
             .to_string();
         let _ = source_ata_b58;
-        Ok(SolanaSendResult { signature, signed_tx_base64: encoded })
+        Ok(SolanaSendResult {
+            signature,
+            signed_tx_base64: encoded,
+        })
     }
 
     /// Broadcast an already-signed transaction given as a base64 string.
-    pub async fn broadcast_raw(
-        &self,
-        signed_tx_base64: &str,
-    ) -> Result<SolanaSendResult, String> {
+    pub async fn broadcast_raw(&self, signed_tx_base64: &str) -> Result<SolanaSendResult, String> {
         let result = self
             .call(
                 "sendTransaction",
@@ -178,7 +181,7 @@ pub fn build_sol_transfer(
     msg.extend_from_slice(&compact_u16(2));
     msg.push(0u8); // from index
     msg.push(1u8); // to index
-    // Data: SystemInstruction::Transfer = [2,0,0,0] + lamports as le u64
+                   // Data: SystemInstruction::Transfer = [2,0,0,0] + lamports as le u64
     let mut data = Vec::new();
     data.extend_from_slice(&2u32.to_le_bytes()); // Transfer instruction
     data.extend_from_slice(&lamports.to_le_bytes());
@@ -186,8 +189,11 @@ pub fn build_sol_transfer(
     msg.extend_from_slice(&data);
 
     // Sign.
-    let signing_key =
-        SigningKey::from_bytes(&private_key[..32].try_into().map_err(|_| "privkey too short")?);
+    let signing_key = SigningKey::from_bytes(
+        &private_key[..32]
+            .try_into()
+            .map_err(|_| "privkey too short")?,
+    );
     let signature = signing_key.sign(&msg);
 
     // Serialize: compact_u16(1) || sig || message
@@ -326,8 +332,11 @@ pub fn build_spl_transfer_checked(
     msg.extend_from_slice(&xfer_data);
 
     // Sign the message bytes.
-    let signing_key =
-        SigningKey::from_bytes(&private_key[..32].try_into().map_err(|_| "privkey too short")?);
+    let signing_key = SigningKey::from_bytes(
+        &private_key[..32]
+            .try_into()
+            .map_err(|_| "privkey too short")?,
+    );
     let signature = signing_key.sign(&msg);
 
     let mut tx = Vec::new();

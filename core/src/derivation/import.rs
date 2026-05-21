@@ -341,9 +341,9 @@ fn watch_only_addresses_for_chain(
             })
             .collect(),
         "Ethereum" | "Ethereum Classic" | "Arbitrum" | "Optimism" | "BNB Chain" | "Avalanche"
-        | "Hyperliquid" | "Polygon" | "Base" | "Linea" | "Scroll" | "Blast" | "Mantle"
-        | "Sei" | "Celo" | "Cronos" | "opBNB" | "zkSync Era" | "Sonic" | "Berachain"
-        | "Unichain" | "Ink" | "X Layer" => entries
+        | "Hyperliquid" | "Polygon" | "Base" | "Linea" | "Scroll" | "Blast" | "Mantle" | "Sei"
+        | "Celo" | "Cronos" | "opBNB" | "zkSync Era" | "Sonic" | "Berachain" | "Unichain"
+        | "Ink" | "X Layer" => entries
             .ethereum_addresses
             .iter()
             .map(|address| {
@@ -613,14 +613,12 @@ fn addresses_for_chain(
             ..WalletImportAddresses::empty()
         },
         "Ethereum" | "Arbitrum" | "Optimism" | "BNB Chain" | "Avalanche" | "Hyperliquid"
-        | "Polygon" | "Base" | "Linea" | "Scroll" | "Blast" | "Mantle"
-        | "Sei" | "Celo" | "Cronos" | "opBNB" | "zkSync Era" | "Sonic" | "Berachain"
-        | "Unichain" | "Ink" | "X Layer" => {
-            WalletImportAddresses {
-                ethereum_address: addresses.ethereum_address.clone(),
-                ..WalletImportAddresses::empty()
-            }
-        }
+        | "Polygon" | "Base" | "Linea" | "Scroll" | "Blast" | "Mantle" | "Sei" | "Celo"
+        | "Cronos" | "opBNB" | "zkSync Era" | "Sonic" | "Berachain" | "Unichain" | "Ink"
+        | "X Layer" => WalletImportAddresses {
+            ethereum_address: addresses.ethereum_address.clone(),
+            ..WalletImportAddresses::empty()
+        },
         "Ethereum Classic" => WalletImportAddresses {
             ethereum_address: addresses.ethereum_classic_address.clone(),
             ethereum_classic_address: addresses.ethereum_classic_address.clone(),
@@ -761,12 +759,7 @@ pub fn validate_wallet_import_draft(request: WalletImportDraftValidationRequest)
     }
 
     // Mode compatibility
-    if request.is_watch_only
-        && request
-            .selected_chain_names
-            .iter()
-            .any(|n| n == "Monero")
-    {
+    if request.is_watch_only && request.selected_chain_names.iter().any(|n| n == "Monero") {
         return false;
     }
     if request.is_private_key_import {
@@ -861,7 +854,10 @@ fn is_private_key_chain_supported(chain_name: &str) -> bool {
 /// flow — keeping the list here means adding a new chain is one edit.
 #[uniffi::export]
 pub fn core_supported_private_key_chain_names() -> Vec<String> {
-    PRIVATE_KEY_SUPPORTED_CHAINS.iter().map(|s| s.to_string()).collect()
+    PRIVATE_KEY_SUPPORTED_CHAINS
+        .iter()
+        .map(|s| s.to_string())
+        .collect()
 }
 
 fn validate_watch_only_draft_addresses(
@@ -870,14 +866,18 @@ fn validate_watch_only_draft_addresses(
 ) -> bool {
     for chain in selected_chains {
         let (kind, addresses, xpub_fallback) = match chain.as_str() {
-            "Bitcoin" => ("bitcoin", &entries.bitcoin_addresses, entries.bitcoin_xpub.as_deref()),
+            "Bitcoin" => (
+                "bitcoin",
+                &entries.bitcoin_addresses,
+                entries.bitcoin_xpub.as_deref(),
+            ),
             "Bitcoin Cash" => ("bitcoinCash", &entries.bitcoin_cash_addresses, None),
             "Bitcoin SV" => ("bitcoinSV", &entries.bitcoin_sv_addresses, None),
             "Litecoin" => ("litecoin", &entries.litecoin_addresses, None),
             "Dogecoin" => ("dogecoin", &entries.dogecoin_addresses, None),
             "Ethereum" | "Ethereum Classic" | "Arbitrum" | "Optimism" | "BNB Chain"
-            | "Avalanche" | "Hyperliquid" | "Polygon" | "Base" | "Linea" | "Scroll"
-            | "Blast" | "Mantle" => ("evm", &entries.ethereum_addresses, None),
+            | "Avalanche" | "Hyperliquid" | "Polygon" | "Base" | "Linea" | "Scroll" | "Blast"
+            | "Mantle" => ("evm", &entries.ethereum_addresses, None),
             "Tron" => ("tron", &entries.tron_addresses, None),
             "Solana" => ("solana", &entries.solana_addresses, None),
             "XRP Ledger" => ("xrp", &entries.xrp_addresses, None),

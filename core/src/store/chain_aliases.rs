@@ -138,7 +138,9 @@ pub fn plan_icon_identifier(
     token_standard: String,
 ) -> String {
     let normalized_symbol = symbol.to_lowercase();
-    let trimmed_contract = contract_address.map(|c| c.trim().to_string()).unwrap_or_default();
+    let trimmed_contract = contract_address
+        .map(|c| c.trim().to_string())
+        .unwrap_or_default();
     let normalized_chain = canonical_chain_component_inner(&chain_name, &symbol);
     if !trimmed_contract.is_empty() {
         return format!(

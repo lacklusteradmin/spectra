@@ -49,7 +49,10 @@ impl NearClient {
             .and_then(|v| v.as_str())
             .ok_or("broadcast: missing hash")?
             .to_string();
-        Ok(NearSendResult { txid, signed_tx_b64: tx_b64 })
+        Ok(NearSendResult {
+            txid,
+            signed_tx_b64: tx_b64,
+        })
     }
 
     /// Rebroadcast a pre-signed transaction (base64-encoded).
@@ -61,7 +64,10 @@ impl NearClient {
             .and_then(|v| v.as_str())
             .unwrap_or("")
             .to_string();
-        Ok(NearSendResult { txid, signed_tx_b64: tx_b64.to_string() })
+        Ok(NearSendResult {
+            txid,
+            signed_tx_b64: tx_b64.to_string(),
+        })
     }
 
     /// Sign and broadcast a NEP-141 `ft_transfer` call.
@@ -121,7 +127,10 @@ impl NearClient {
             .and_then(|v| v.as_str())
             .ok_or("broadcast: missing hash")?
             .to_string();
-        Ok(NearSendResult { txid, signed_tx_b64: tx_b64 })
+        Ok(NearSendResult {
+            txid,
+            signed_tx_b64: tx_b64,
+        })
     }
 }
 
@@ -155,8 +164,11 @@ pub fn build_near_transfer_tx(
     // Hash the transaction for signing.
     let tx_hash: [u8; 32] = Sha256::digest(&tx).into();
 
-    let signing_key =
-        SigningKey::from_bytes(&private_key[..32].try_into().map_err(|_| "privkey too short")?);
+    let signing_key = SigningKey::from_bytes(
+        &private_key[..32]
+            .try_into()
+            .map_err(|_| "privkey too short")?,
+    );
     let signature = signing_key.sign(&tx_hash);
 
     // SignedTransaction = Transaction || Signature
@@ -192,7 +204,7 @@ fn borsh_encode_transfer(
     out.extend_from_slice(block_hash);
     // actions: array (u32 len)
     out.extend_from_slice(&1u32.to_le_bytes()); // 1 action
-    // Action::Transfer = variant 3
+                                                // Action::Transfer = variant 3
     out.push(3u8);
     // Transfer.deposit: u128
     out.extend_from_slice(&yocto_amount.to_le_bytes());
@@ -230,8 +242,11 @@ pub fn build_near_function_call_tx(
     );
 
     let tx_hash: [u8; 32] = Sha256::digest(&tx).into();
-    let signing_key =
-        SigningKey::from_bytes(&private_key[..32].try_into().map_err(|_| "privkey too short")?);
+    let signing_key = SigningKey::from_bytes(
+        &private_key[..32]
+            .try_into()
+            .map_err(|_| "privkey too short")?,
+    );
     let signature = signing_key.sign(&tx_hash);
 
     // SignedTransaction = Transaction || Signature (key_type(4) + sig(64))

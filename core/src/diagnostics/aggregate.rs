@@ -31,7 +31,11 @@ pub fn diagnostics_history_entry_count(json: String) -> u32 {
 pub fn diagnostics_evm_history_native_count(json: String) -> u32 {
     serde_json::from_str::<Value>(&json)
         .ok()
-        .and_then(|v| v.get("native").and_then(Value::as_array).map(|a| a.len() as u32))
+        .and_then(|v| {
+            v.get("native")
+                .and_then(Value::as_array)
+                .map(|a| a.len() as u32)
+        })
         .unwrap_or(0)
 }
 
@@ -165,8 +169,7 @@ pub fn diagnostics_parse_jsonrpc_probe(
         .and_then(|e| e.get("message"))
         .and_then(Value::as_str)
         .map(|s| s.to_string());
-    let detail = error_message
-        .unwrap_or_else(|| format!("HTTP {}", status_code.unwrap_or(-1)));
+    let detail = error_message.unwrap_or_else(|| format!("HTTP {}", status_code.unwrap_or(-1)));
     JsonRpcProbeOutcome {
         reachable: false,
         detail,
@@ -211,26 +214,24 @@ mod tests {
             2
         );
         assert_eq!(diagnostics_history_entry_count("not-json".into()), 0);
-        assert_eq!(diagnostics_history_entry_count(r#"{"foo":"bar"}"#.into()), 0);
+        assert_eq!(
+            diagnostics_history_entry_count(r#"{"foo":"bar"}"#.into()),
+            0
+        );
         assert_eq!(diagnostics_history_entry_count("[]".into()), 0);
     }
 
     #[test]
     fn evm_native_count() {
         assert_eq!(
-            diagnostics_evm_history_native_count(
-                r#"{"native":[1,2,3],"tokens":[]}"#.into()
-            ),
+            diagnostics_evm_history_native_count(r#"{"native":[1,2,3],"tokens":[]}"#.into()),
             3
         );
         assert_eq!(
             diagnostics_evm_history_native_count(r#"{"tokens":[]}"#.into()),
             0
         );
-        assert_eq!(
-            diagnostics_evm_history_native_count("bogus".into()),
-            0
-        );
+        assert_eq!(diagnostics_evm_history_native_count("bogus".into()), 0);
     }
 
     #[test]
@@ -278,10 +279,8 @@ mod tests {
 
     #[test]
     fn jsonrpc_probe_classifies_result() {
-        let ok = diagnostics_parse_jsonrpc_probe(
-            Some(200),
-            r#"{"jsonrpc":"2.0","result":{}}"#.into(),
-        );
+        let ok =
+            diagnostics_parse_jsonrpc_probe(Some(200), r#"{"jsonrpc":"2.0","result":{}}"#.into());
         assert!(ok.reachable);
         assert_eq!(ok.detail, "OK");
 
@@ -303,9 +302,7 @@ mod tests {
 
     #[test]
     fn history_summary_combines() {
-        let s = diagnostics_history_summary(
-            r#"[{"txid":"AA"},{"txid":"bb"},{"other":1}]"#.into(),
-        );
+        let s = diagnostics_history_summary(r#"[{"txid":"AA"},{"txid":"bb"},{"other":1}]"#.into());
         assert_eq!(s.entry_count, 3);
         assert_eq!(s.confirmed_txids, vec!["aa".to_string(), "bb".to_string()]);
     }

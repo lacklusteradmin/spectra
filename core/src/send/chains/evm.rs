@@ -189,9 +189,7 @@ impl EvmClient {
 
     /// Broadcast a pre-signed raw transaction hex (0x-prefixed).
     pub async fn broadcast_raw(&self, hex_tx: &str) -> Result<EvmSendResult, String> {
-        let result = self
-            .call("eth_sendRawTransaction", json!([hex_tx]))
-            .await?;
+        let result = self.call("eth_sendRawTransaction", json!([hex_tx])).await?;
         let txid = result
             .as_str()
             .ok_or("eth_sendRawTransaction: expected string")?
@@ -308,9 +306,18 @@ pub fn build_eip1559_tx(
     //                to, value, data, access_list])
     let mut signing_payload = vec![0x02u8];
     encode_eip1559_fields(
-        chain_id, nonce, max_priority_fee_per_gas, max_fee_per_gas,
-        gas_limit, &to_arr, value_wei, data, access_list,
-        None, None, None,   // no v/r/s yet
+        chain_id,
+        nonce,
+        max_priority_fee_per_gas,
+        max_fee_per_gas,
+        gas_limit,
+        &to_arr,
+        value_wei,
+        data,
+        access_list,
+        None,
+        None,
+        None, // no v/r/s yet
         &mut signing_payload,
     );
 
@@ -331,9 +338,18 @@ pub fn build_eip1559_tx(
 
     let mut raw = vec![0x02u8];
     encode_eip1559_fields(
-        chain_id, nonce, max_priority_fee_per_gas, max_fee_per_gas,
-        gas_limit, &to_arr, value_wei, data, access_list,
-        Some(v), Some(&r), Some(&s),
+        chain_id,
+        nonce,
+        max_priority_fee_per_gas,
+        max_fee_per_gas,
+        gas_limit,
+        &to_arr,
+        value_wei,
+        data,
+        access_list,
+        Some(v),
+        Some(&r),
+        Some(&s),
         &mut raw,
     );
     Ok(raw)
@@ -369,7 +385,11 @@ fn encode_eip1559_fields(
     max_fee_per_gas.encode(&mut payload);
     gas_limit.encode(&mut payload);
     // `to` is a fixed-length address, encoded as a 20-byte string.
-    Header { list: false, payload_length: 20 }.encode(&mut payload);
+    Header {
+        list: false,
+        payload_length: 20,
+    }
+    .encode(&mut payload);
     payload.extend_from_slice(to);
     value_wei.encode(&mut payload);
     data.encode(&mut payload);
@@ -378,7 +398,11 @@ fn encode_eip1559_fields(
     for entry in access_list {
         alloy_rlp::Encodable::encode(entry, &mut al_buf);
     }
-    Header { list: true, payload_length: al_buf.len() }.encode(&mut payload);
+    Header {
+        list: true,
+        payload_length: al_buf.len(),
+    }
+    .encode(&mut payload);
     payload.extend_from_slice(&al_buf);
 
     if let (Some(v), Some(r), Some(s)) = (v, r, s) {
@@ -388,7 +412,11 @@ fn encode_eip1559_fields(
         encode_uint256(s, &mut payload);
     }
 
-    Header { list: true, payload_length: payload.len() }.encode(out);
+    Header {
+        list: true,
+        payload_length: payload.len(),
+    }
+    .encode(out);
     out.extend_from_slice(&payload);
 }
 
@@ -396,14 +424,22 @@ fn encode_eip1559_fields(
 /// (strip leading zero bytes, then apply string header).
 fn encode_uint256(bytes: &[u8; 32], out: &mut Vec<u8>) {
     use alloy_rlp::Header;
-    let trimmed = bytes.iter().copied().skip_while(|&b| b == 0).collect::<Vec<_>>();
+    let trimmed = bytes
+        .iter()
+        .copied()
+        .skip_while(|&b| b == 0)
+        .collect::<Vec<_>>();
     if trimmed.is_empty() {
         // Zero: RLP empty string 0x80
         out.push(0x80);
     } else if trimmed.len() == 1 && trimmed[0] < 0x80 {
         out.push(trimmed[0]);
     } else {
-        Header { list: false, payload_length: trimmed.len() }.encode(out);
+        Header {
+            list: false,
+            payload_length: trimmed.len(),
+        }
+        .encode(out);
         out.extend_from_slice(&trimmed);
     }
 }
@@ -433,7 +469,10 @@ pub(crate) fn encode_erc20_transfer(to: &str, amount: u128) -> Result<Vec<u8>, S
 pub fn encode_erc20_approve(spender: &str, amount: u128) -> Result<Vec<u8>, String> {
     let spender_bytes = decode_hex(spender)?;
     if spender_bytes.len() != 20 {
-        return Err(format!("invalid EVM spender length: {}", spender_bytes.len()));
+        return Err(format!(
+            "invalid EVM spender length: {}",
+            spender_bytes.len()
+        ));
     }
     let mut out = Vec::with_capacity(4 + 32 + 32);
     out.extend_from_slice(&SEL_APPROVE);
@@ -447,11 +486,7 @@ pub fn encode_erc20_approve(spender: &str, amount: u128) -> Result<Vec<u8>, Stri
 
 /// Encode a `transferFrom(address from, address to, uint256 amount)` call.
 /// Used for allowance-based pulls (escrow, bridge withdrawal, etc.).
-pub fn encode_erc20_transfer_from(
-    from: &str,
-    to: &str,
-    amount: u128,
-) -> Result<Vec<u8>, String> {
+pub fn encode_erc20_transfer_from(from: &str, to: &str, amount: u128) -> Result<Vec<u8>, String> {
     let from_bytes = decode_hex(from)?;
     let to_bytes = decode_hex(to)?;
     if from_bytes.len() != 20 {

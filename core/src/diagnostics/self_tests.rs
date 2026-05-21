@@ -2,8 +2,7 @@ use crate::derivation::addressing::{validate_address, AddressValidationRequest};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
-const CANONICAL_MNEMONIC: &str =
-    "test test test test test test test test test test test junk";
+const CANONICAL_MNEMONIC: &str = "test test test test test test test test test test test junk";
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, uniffi::Enum)]
 #[serde(rename_all = "camelCase")]
@@ -284,33 +283,71 @@ fn run_address_rejects(spec: &ChainSpec) -> ChainSelfTestResult {
 
 fn derive_one(chain_name: &str, path: &str) -> Option<String> {
     use crate::derivation::chains::{
-        aptos, bitcoin as btc, bitcoin_cash as bch, bitcoin_sv as bsv, cardano,
-        evm, icp, litecoin as ltc, near, polkadot, solana, stellar, sui, ton, tron, xrp,
+        aptos, bitcoin as btc, bitcoin_cash as bch, bitcoin_sv as bsv, cardano, evm, icp,
+        litecoin as ltc, near, polkadot, solana, stellar, sui, ton, tron, xrp,
     };
     use crate::derivation::types::BitcoinScriptType;
     let seed = CANONICAL_MNEMONIC.to_string();
     let path_s = path.to_string();
     let r = match chain_name {
-        "Bitcoin"            => btc::derive_bitcoin(seed, path_s, None, BitcoinScriptType::P2wpkh, true, false, false).ok()?,
-        "Bitcoin Cash"       => bch::derive_bitcoin_cash(seed, path_s, None, BitcoinScriptType::P2pkh, true, false, false).ok()?,
-        "Bitcoin SV"         => bsv::derive_bitcoin_sv(seed, path_s, None, BitcoinScriptType::P2pkh, true, false, false).ok()?,
-        "Litecoin"           => ltc::derive_litecoin(seed, path_s, None, BitcoinScriptType::P2pkh, true, false, false).ok()?,
-        "Cardano"            => cardano::derive_cardano(seed, Some(path_s), None, true, false, false).ok()?,
-        "Solana"             => solana::derive_solana(seed, path_s, None, None, true, false, false).ok()?,
-        "Stellar"            => stellar::derive_stellar(seed, path_s, None, None, true, false, false).ok()?,
-        "XRP Ledger"         => xrp::derive_xrp(seed, path_s, None, true, false, false).ok()?,
-        "Tron"               => tron::derive_tron(seed, path_s, None, true, false, false).ok()?,
-        "Sui"                => sui::derive_sui(seed, path_s, None, true, false, false).ok()?,
-        "Aptos"              => aptos::derive_aptos(seed, path_s, None, true, false, false).ok()?,
-        "TON"                => ton::derive_ton(seed, None, true, false, false).ok()?,
-        "Internet Computer"  => icp::derive_icp(seed, path_s, None, true, false, false).ok()?,
-        "NEAR"               => near::derive_near(seed, None, true, false, false).ok()?,
-        "Polkadot"           => polkadot::derive_polkadot(seed, None, None, true, false, false).ok()?,
-        "Ethereum"           => evm::derive_ethereum(seed, path_s, None, true, false, false).ok()?,
-        "Avalanche"          => evm::derive_avalanche(seed, path_s, None, true, false, false).ok()?,
-        "Ethereum Classic"   => evm::derive_ethereum_classic(seed, path_s, None, true, false, false).ok()?,
-        "Hyperliquid"        => evm::derive_hyperliquid(seed, path_s, None, true, false, false).ok()?,
-        _                    => return None,
+        "Bitcoin" => btc::derive_bitcoin(
+            seed,
+            path_s,
+            None,
+            BitcoinScriptType::P2wpkh,
+            true,
+            false,
+            false,
+        )
+        .ok()?,
+        "Bitcoin Cash" => bch::derive_bitcoin_cash(
+            seed,
+            path_s,
+            None,
+            BitcoinScriptType::P2pkh,
+            true,
+            false,
+            false,
+        )
+        .ok()?,
+        "Bitcoin SV" => bsv::derive_bitcoin_sv(
+            seed,
+            path_s,
+            None,
+            BitcoinScriptType::P2pkh,
+            true,
+            false,
+            false,
+        )
+        .ok()?,
+        "Litecoin" => ltc::derive_litecoin(
+            seed,
+            path_s,
+            None,
+            BitcoinScriptType::P2pkh,
+            true,
+            false,
+            false,
+        )
+        .ok()?,
+        "Cardano" => cardano::derive_cardano(seed, Some(path_s), None, true, false, false).ok()?,
+        "Solana" => solana::derive_solana(seed, path_s, None, None, true, false, false).ok()?,
+        "Stellar" => stellar::derive_stellar(seed, path_s, None, None, true, false, false).ok()?,
+        "XRP Ledger" => xrp::derive_xrp(seed, path_s, None, true, false, false).ok()?,
+        "Tron" => tron::derive_tron(seed, path_s, None, true, false, false).ok()?,
+        "Sui" => sui::derive_sui(seed, path_s, None, true, false, false).ok()?,
+        "Aptos" => aptos::derive_aptos(seed, path_s, None, true, false, false).ok()?,
+        "TON" => ton::derive_ton(seed, None, true, false, false).ok()?,
+        "Internet Computer" => icp::derive_icp(seed, path_s, None, true, false, false).ok()?,
+        "NEAR" => near::derive_near(seed, None, true, false, false).ok()?,
+        "Polkadot" => polkadot::derive_polkadot(seed, None, None, true, false, false).ok()?,
+        "Ethereum" => evm::derive_ethereum(seed, path_s, None, true, false, false).ok()?,
+        "Avalanche" => evm::derive_avalanche(seed, path_s, None, true, false, false).ok()?,
+        "Ethereum Classic" => {
+            evm::derive_ethereum_classic(seed, path_s, None, true, false, false).ok()?
+        }
+        "Hyperliquid" => evm::derive_hyperliquid(seed, path_s, None, true, false, false).ok()?,
+        _ => return None,
     };
     r.address
 }
@@ -399,8 +436,8 @@ fn run_ethereum() -> Vec<ChainSelfTestResult> {
         network_mode: None,
     })
     .normalized_value
-        .map(|v| v == mixed_case.to_lowercase())
-        .unwrap_or(false);
+    .map(|v| v == mixed_case.to_lowercase())
+    .unwrap_or(false);
     let derived = derive_one("Ethereum", "m/44'/60'/0'/0/0");
     let derivation_passed = derived
         .as_deref()
@@ -468,18 +505,12 @@ struct EthRpcResponse {
 }
 
 async fn fetch_eth_rpc_hex(url: &str, method: &str, id: u32) -> Result<u64, String> {
-    let body = format!(
-        r#"{{"jsonrpc":"2.0","id":{id},"method":"{method}","params":[]}}"#
-    );
-    let resp = crate::fetch::http::http_post_json(
-        url.to_string(),
-        body,
-        std::collections::HashMap::new(),
-    )
-    .await
-    .map_err(|e| format!("{e:?}"))?;
-    let parsed: EthRpcResponse =
-        serde_json::from_str(&resp.body).map_err(|e| e.to_string())?;
+    let body = format!(r#"{{"jsonrpc":"2.0","id":{id},"method":"{method}","params":[]}}"#);
+    let resp =
+        crate::fetch::http::http_post_json(url.to_string(), body, std::collections::HashMap::new())
+            .await
+            .map_err(|e| format!("{e:?}"))?;
+    let parsed: EthRpcResponse = serde_json::from_str(&resp.body).map_err(|e| e.to_string())?;
     let hex = parsed.result.unwrap_or_default();
     let trimmed = hex.strip_prefix("0x").unwrap_or(&hex);
     u64::from_str_radix(trimmed, 16).map_err(|e| e.to_string())
@@ -551,9 +582,7 @@ pub fn self_tests_run_all() -> HashMap<String, Vec<ChainSelfTestResult>> {
     for spec in CHAIN_SPECS {
         all.push((spec.chain_key, run_spec(spec)));
     }
-    all.into_iter()
-        .map(|(k, v)| (k.to_string(), v))
-        .collect()
+    all.into_iter().map(|(k, v)| (k.to_string(), v)).collect()
 }
 
 #[cfg(test)]

@@ -58,7 +58,10 @@ impl HistoryPaginationStore {
         self.inner
             .read()
             .ok()
-            .and_then(|m| m.get(&(chain_id.to_string(), wallet_id.to_string())).map(|e| e.page))
+            .and_then(|m| {
+                m.get(&(chain_id.to_string(), wallet_id.to_string()))
+                    .map(|e| e.page)
+            })
             .unwrap_or(0)
     }
 
@@ -67,7 +70,10 @@ impl HistoryPaginationStore {
         self.inner
             .read()
             .ok()
-            .and_then(|m| m.get(&(chain_id.to_string(), wallet_id.to_string())).map(|e| e.exhausted))
+            .and_then(|m| {
+                m.get(&(chain_id.to_string(), wallet_id.to_string()))
+                    .map(|e| e.exhausted)
+            })
             .unwrap_or(false)
     }
 
@@ -77,12 +83,7 @@ impl HistoryPaginationStore {
 
     /// Record the cursor returned after a successful fetch. A `None` cursor
     /// means the chain confirmed there are no more pages — mark as exhausted.
-    pub fn advance_cursor(
-        &self,
-        chain_id: &str,
-        wallet_id: &str,
-        next_cursor: Option<String>,
-    ) {
+    pub fn advance_cursor(&self, chain_id: &str, wallet_id: &str, next_cursor: Option<String>) {
         if let Ok(mut map) = self.inner.write() {
             let entry = map
                 .entry((chain_id.to_string(), wallet_id.to_string()))
@@ -99,12 +100,7 @@ impl HistoryPaginationStore {
     /// Advance the page counter for page-numbered chains. Call after a
     /// successful non-empty fetch. Pass `is_last = true` when the page was
     /// the terminal page (empty result or chain said "no next").
-    pub fn advance_page(
-        &self,
-        chain_id: &str,
-        wallet_id: &str,
-        is_last: bool,
-    ) {
+    pub fn advance_page(&self, chain_id: &str, wallet_id: &str, is_last: bool) {
         if let Ok(mut map) = self.inner.write() {
             let entry = map
                 .entry((chain_id.to_string(), wallet_id.to_string()))
@@ -197,7 +193,10 @@ mod tests {
     fn advance_cursor_tracks_state() {
         let store = HistoryPaginationStore::new();
         store.advance_cursor("bitcoin", "wallet-1", Some("abc123".to_string()));
-        assert_eq!(store.cursor("bitcoin", "wallet-1").as_deref(), Some("abc123"));
+        assert_eq!(
+            store.cursor("bitcoin", "wallet-1").as_deref(),
+            Some("abc123")
+        );
         assert!(!store.is_exhausted("bitcoin", "wallet-1"));
 
         // Terminal: no next cursor → exhausted.
@@ -243,7 +242,10 @@ mod tests {
         assert_eq!(store.page("ethereum", "wallet-1"), 0);
         assert!(store.cursor("xrp", "wallet-1").is_none());
         // wallet-2 unaffected
-        assert_eq!(store.cursor("bitcoin", "wallet-2").as_deref(), Some("tx-btc2"));
+        assert_eq!(
+            store.cursor("bitcoin", "wallet-2").as_deref(),
+            Some("tx-btc2")
+        );
     }
 
     #[test]
@@ -257,6 +259,9 @@ mod tests {
 
         assert!(store.cursor("bitcoin", "wallet-1").is_none());
         assert!(store.cursor("bitcoin", "wallet-2").is_none());
-        assert_eq!(store.cursor("ethereum", "wallet-1").as_deref(), Some("eth-tx"));
+        assert_eq!(
+            store.cursor("ethereum", "wallet-1").as_deref(),
+            Some("eth-tx")
+        );
     }
 }

@@ -11,8 +11,6 @@ use serde_json::Value;
 
 use crate::http::{with_fallback, HttpClient, RetryProfile};
 
-
-
 // ----------------------------------------------------------------
 // Public result types
 // ----------------------------------------------------------------
@@ -49,9 +47,15 @@ pub struct TronSendResult {
 }
 
 impl super::SignedSubmission for TronSendResult {
-    fn submission_id(&self) -> &str { &self.txid }
-    fn signed_payload(&self) -> &str { &self.signed_tx_json }
-    fn signed_payload_format(&self) -> super::SignedPayloadFormat { super::SignedPayloadFormat::Json }
+    fn submission_id(&self) -> &str {
+        &self.txid
+    }
+    fn signed_payload(&self) -> &str {
+        &self.signed_tx_json
+    }
+    fn signed_payload_format(&self) -> super::SignedPayloadFormat {
+        super::SignedPayloadFormat::Json
+    }
 }
 
 /// TRC-20 balance payload. Mirrors `Erc20Balance` so the Swift-side decoder
@@ -97,24 +101,29 @@ impl TronClient {
             let client = self.client.clone();
             let url = format!("{}{}", base.trim_end_matches('/'), path);
             let body = std::sync::Arc::clone(&body);
-            async move { client.post_json(&url, &*body, RetryProfile::ChainRead).await }
+            async move {
+                client
+                    .post_json(&url, &*body, RetryProfile::ChainRead)
+                    .await
+            }
         })
         .await
     }
-
 }
 // Tron fetch paths: balance, latest block, unified TRX+TRC-20 history,
 // TRC-20 balance, TRC-20 metadata.
 
 use serde_json::json;
 
-
 use crate::derivation::chains::tron::tron_base58_to_evm_hex;
 
 impl TronClient {
     pub async fn fetch_balance(&self, address: &str) -> Result<TronBalance, String> {
         let resp = self
-            .post("/wallet/getaccount", &json!({"address": address, "visible": true}))
+            .post(
+                "/wallet/getaccount",
+                &json!({"address": address, "visible": true}),
+            )
             .await?;
         let sun = resp.get("balance").and_then(|v| v.as_u64()).unwrap_or(0);
         Ok(TronBalance {
@@ -178,7 +187,11 @@ impl TronClient {
                 if contract_type != 1 {
                     return None;
                 }
-                let txid = tx.get("hash").and_then(|v| v.as_str()).unwrap_or("").to_string();
+                let txid = tx
+                    .get("hash")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("")
+                    .to_string();
                 let block_number = tx.get("block").and_then(|v| v.as_u64()).unwrap_or(0);
                 let timestamp_ms = tx.get("timestamp").and_then(|v| v.as_u64()).unwrap_or(0);
                 let from = tx
@@ -297,9 +310,12 @@ impl TronClient {
         contract_base58: &str,
         holder_base58: &str,
     ) -> Result<Trc20Balance, String> {
-        let raw = self.fetch_trc20_balance_of(contract_base58, holder_base58).await?;
+        let raw = self
+            .fetch_trc20_balance_of(contract_base58, holder_base58)
+            .await?;
         let metadata = self.fetch_trc20_metadata(contract_base58).await?;
-        let balance_display = crate::fetch::chains::evm::format_token_amount(raw, metadata.decimals);
+        let balance_display =
+            crate::fetch::chains::evm::format_token_amount(raw, metadata.decimals);
         Ok(Trc20Balance {
             contract: contract_base58.to_string(),
             holder: holder_base58.to_string(),
@@ -390,8 +406,8 @@ impl TronClient {
             .and_then(|arr| arr.first())
             .and_then(|v| v.as_str())
             .ok_or("triggerconstantcontract symbol: missing result")?;
-        let symbol = crate::fetch::chains::evm::decode_abi_string_or_bytes32(symbol_hex)
-            .unwrap_or_default();
+        let symbol =
+            crate::fetch::chains::evm::decode_abi_string_or_bytes32(symbol_hex).unwrap_or_default();
 
         Ok(Trc20Metadata { symbol, decimals })
     }

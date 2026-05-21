@@ -31,18 +31,42 @@ pub struct IcpStakingClient {
 // proposals and earn full voting rewards without manual participation.
 
 const KNOWN_NEURONS: &[(&str, &str, &str)] = &[
-    ("6914974521667616512", "DFINITY Foundation", "The official DFINITY Foundation neuron. Votes on most NNS proposals."),
-    ("2649066124616010593", "ICA (Internet Computer Association)", "Internet Computer Association governance neuron."),
-    ("4966884161088437903", "Synapse.vote", "Community governance aggregator; follows technical proposals."),
-    ("7305824810703703771", "Cycle_DAO", "Community-run DAO focused on decentralisation motions."),
-    ("6366547817393942096", "Taggr", "Decentralised social platform neuron with active governance participation."),
+    (
+        "6914974521667616512",
+        "DFINITY Foundation",
+        "The official DFINITY Foundation neuron. Votes on most NNS proposals.",
+    ),
+    (
+        "2649066124616010593",
+        "ICA (Internet Computer Association)",
+        "Internet Computer Association governance neuron.",
+    ),
+    (
+        "4966884161088437903",
+        "Synapse.vote",
+        "Community governance aggregator; follows technical proposals.",
+    ),
+    (
+        "7305824810703703771",
+        "Cycle_DAO",
+        "Community-run DAO focused on decentralisation motions.",
+    ),
+    (
+        "6366547817393942096",
+        "Taggr",
+        "Decentralised social platform neuron with active governance participation.",
+    ),
 ];
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
-fn e8s_to_icp(e8s: u64) -> f64 { e8s as f64 / 1e8 }
+fn e8s_to_icp(e8s: u64) -> f64 {
+    e8s as f64 / 1e8
+}
 
-fn icp_display(e8s: u64) -> String { format!("{:.4} ICP", e8s_to_icp(e8s)) }
+fn icp_display(e8s: u64) -> String {
+    format!("{:.4} ICP", e8s_to_icp(e8s))
+}
 
 fn dissolve_delay_seconds(months: u32) -> i64 {
     months as i64 * 30 * 24 * 3600
@@ -50,7 +74,9 @@ fn dissolve_delay_seconds(months: u32) -> i64 {
 
 impl IcpStakingClient {
     pub fn new(rosetta_endpoints: Vec<String>) -> Self {
-        Self { _rosetta_endpoints: rosetta_endpoints }
+        Self {
+            _rosetta_endpoints: rosetta_endpoints,
+        }
     }
 
     /// Known-good neurons / followee identities the user can delegate
@@ -112,7 +138,10 @@ impl IcpStakingClient {
             estimated_fee_display: "~0.0001 ICP".to_string(),
             unbonding_period_seconds: delay_secs,
             notes: vec![
-                format!("Dissolve delay: {delay_label} (~{:.0}% APY estimate).", apy_estimate * 100.0),
+                format!(
+                    "Dissolve delay: {delay_label} (~{:.0}% APY estimate).",
+                    apy_estimate * 100.0
+                ),
                 "Rewards require ≥6 months dissolve delay.".to_string(),
                 "Follow a named neuron to auto-vote and earn full rewards.".to_string(),
             ],
@@ -163,7 +192,8 @@ impl IcpStakingClient {
             estimated_fee_display: "~0.0001 ICP".to_string(),
             unbonding_period_seconds: 0, // delay depends on neuron's current setting
             notes: vec![
-                "Starts the dissolve countdown; rewards continue accruing during dissolve.".to_string(),
+                "Starts the dissolve countdown; rewards continue accruing during dissolve."
+                    .to_string(),
                 "Once dissolved, use Disburse to sweep ICP back to your account.".to_string(),
             ],
             post_action_balance_smallest_unit: None,

@@ -9,8 +9,6 @@ use serde_json::{json, Value};
 
 use crate::http::{with_fallback, HttpClient, RetryProfile};
 
-
-
 // ----------------------------------------------------------------
 // Public result types
 // ----------------------------------------------------------------
@@ -40,9 +38,15 @@ pub struct NearSendResult {
 }
 
 impl super::SignedSubmission for NearSendResult {
-    fn submission_id(&self) -> &str { &self.txid }
-    fn signed_payload(&self) -> &str { &self.signed_tx_b64 }
-    fn signed_payload_format(&self) -> super::SignedPayloadFormat { super::SignedPayloadFormat::Base64 }
+    fn submission_id(&self) -> &str {
+        &self.txid
+    }
+    fn signed_payload(&self) -> &str {
+        &self.signed_tx_b64
+    }
+    fn signed_payload_format(&self) -> super::SignedPayloadFormat {
+        super::SignedPayloadFormat::Base64
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -122,9 +126,6 @@ fn rpc(method: &str, params: Value) -> Value {
 // NEAR fetch paths: view_account balance, access-key nonce, latest block hash,
 // history (indexer), NEP-141 FT balance + metadata, and the UniFFI-exported
 // `near_parse_history_response` used by the Swift layer.
-
-
-
 
 impl NearClient {
     pub async fn fetch_balance(&self, account_id: &str) -> Result<NearBalance, String> {
@@ -284,7 +285,11 @@ impl NearClient {
         account_id: &str,
     ) -> Result<u128, String> {
         let bytes = self
-            .view_function(contract, "ft_balance_of", &json!({ "account_id": account_id }))
+            .view_function(
+                contract,
+                "ft_balance_of",
+                &json!({ "account_id": account_id }),
+            )
             .await?;
         // Response body is a JSON string like `"1000000"`.
         let s: String =
@@ -294,7 +299,9 @@ impl NearClient {
     }
 
     pub async fn fetch_ft_metadata(&self, contract: &str) -> Result<NearFtMetadata, String> {
-        let bytes = self.view_function(contract, "ft_metadata", &json!({})).await?;
+        let bytes = self
+            .view_function(contract, "ft_metadata", &json!({}))
+            .await?;
         #[derive(Deserialize)]
         struct RawMeta {
             spec: String,
@@ -345,7 +352,11 @@ fn format_near(yocto: &str) -> String {
     }
     let frac_str = format!("{:024}", frac);
     let trimmed = frac_str.trim_end_matches('0');
-    let capped = if trimmed.len() > 6 { &trimmed[..6] } else { trimmed };
+    let capped = if trimmed.len() > 6 {
+        &trimmed[..6]
+    } else {
+        trimmed
+    };
     format!("{}.{}", whole, capped)
 }
 
@@ -363,7 +374,11 @@ fn format_ft_amount(raw: u128, decimals: u8) -> String {
     }
     let frac_str = format!("{:0>width$}", frac, width = decimals as usize);
     let trimmed = frac_str.trim_end_matches('0');
-    let capped = if trimmed.len() > 6 { &trimmed[..6] } else { trimmed };
+    let capped = if trimmed.len() > 6 {
+        &trimmed[..6]
+    } else {
+        trimmed
+    };
     format!("{}.{}", whole, capped)
 }
 
@@ -475,7 +490,11 @@ fn history_timestamp_seconds(row: &serde_json::Map<String, Value>) -> Option<f64
     };
     if let Some(t) = history_numeric_timestamp(
         row,
-        &["block_timestamp", "timestamp", "included_in_block_timestamp"],
+        &[
+            "block_timestamp",
+            "timestamp",
+            "included_in_block_timestamp",
+        ],
     ) {
         if let Some(s) = pick(t) {
             return Some(s);
@@ -509,7 +528,9 @@ fn yocto_to_near(yocto: &str) -> f64 {
         return frac.parse::<f64>().unwrap_or(0.0);
     }
     let (int_part, frac_part) = s.split_at(s.len() - 24);
-    format!("{}.{}", int_part, frac_part).parse::<f64>().unwrap_or(0.0)
+    format!("{}.{}", int_part, frac_part)
+        .parse::<f64>()
+        .unwrap_or(0.0)
 }
 
 #[uniffi::export]
@@ -525,14 +546,18 @@ pub fn near_parse_history_response(
         .into_iter()
         .filter_map(|row| {
             let row_obj = row.as_object()?.clone();
-            let hash =
-                history_string_value(&row_obj, &["transaction_hash", "hash", "receipt_id"])?;
+            let hash = history_string_value(&row_obj, &["transaction_hash", "hash", "receipt_id"])?;
             if hash.is_empty() {
                 return None;
             }
             let signer = history_string_value(
                 &row_obj,
-                &["signer_account_id", "predecessor_account_id", "signer_id", "signer"],
+                &[
+                    "signer_account_id",
+                    "predecessor_account_id",
+                    "signer_id",
+                    "signer",
+                ],
             )
             .unwrap_or_default()
             .trim()

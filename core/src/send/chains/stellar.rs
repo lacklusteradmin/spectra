@@ -111,7 +111,10 @@ impl StellarClient {
                     .and_then(|v| v.as_str())
                     .ok_or("submit: missing hash")?
                     .to_string();
-                Ok(StellarSendResult { txid: hash, signed_xdr_b64: tx_b64.clone() })
+                Ok(StellarSendResult {
+                    txid: hash,
+                    signed_xdr_b64: tx_b64.clone(),
+                })
             }
         })
         .await?;
@@ -139,7 +142,10 @@ impl StellarClient {
                     .and_then(|v| v.as_str())
                     .unwrap_or("")
                     .to_string();
-                Ok(StellarSendResult { txid: hash, signed_xdr_b64: tx_b64.clone() })
+                Ok(StellarSendResult {
+                    txid: hash,
+                    signed_xdr_b64: tx_b64.clone(),
+                })
             }
         })
         .await
@@ -155,7 +161,10 @@ impl StellarClient {
 pub enum StellarAsset {
     Native,
     /// `code` is 1-12 alphanumeric ASCII, `issuer` is the 32-byte ed25519 key.
-    Credit { code: String, issuer: [u8; 32] },
+    Credit {
+        code: String,
+        issuer: [u8; 32],
+    },
 }
 
 /// Build a signed Stellar Payment transaction in XDR binary (native XLM).
@@ -215,8 +224,11 @@ pub fn build_signed_payment_xdr_with_asset(
     payload.extend_from_slice(&tx_xdr);
     let sig_payload: [u8; 32] = Sha256::digest(&payload).into();
 
-    let signing_key =
-        SigningKey::from_bytes(&private_key[..32].try_into().map_err(|_| "privkey too short")?);
+    let signing_key = SigningKey::from_bytes(
+        &private_key[..32]
+            .try_into()
+            .map_err(|_| "privkey too short")?,
+    );
     let signature = signing_key.sign(&sig_payload);
 
     // TransactionEnvelope: type=ENVELOPE_TYPE_TX(2), tx, signatures
@@ -225,7 +237,7 @@ pub fn build_signed_payment_xdr_with_asset(
     envelope.extend_from_slice(&tx_xdr);
     // DecoratedSignature array (1 item)
     envelope.extend_from_slice(&1u32.to_be_bytes()); // array length
-    // hint = last 4 bytes of public key
+                                                     // hint = last 4 bytes of public key
     envelope.extend_from_slice(&public_key[28..32]);
     // signature (VarOpaque, max 64)
     xdr_write_bytes(&mut envelope, signature.to_bytes().as_ref());
@@ -258,7 +270,7 @@ fn encode_payment_tx(
     // Operation: sourceAccount optional=0, type=PAYMENT(1)
     tx.extend_from_slice(&0u32.to_be_bytes()); // no source account override
     tx.extend_from_slice(&1u32.to_be_bytes()); // PAYMENT op type
-    // PaymentOp: destination (PUBLIC_KEY_TYPE_ED25519 + key)
+                                               // PaymentOp: destination (PUBLIC_KEY_TYPE_ED25519 + key)
     tx.extend_from_slice(&0u32.to_be_bytes());
     tx.extend_from_slice(to);
     // asset

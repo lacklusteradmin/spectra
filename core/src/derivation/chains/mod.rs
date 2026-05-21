@@ -3,10 +3,10 @@
 
 pub mod aptos;
 pub mod bitcoin;
-pub mod bittensor;
 pub mod bitcoin_cash;
 pub mod bitcoin_gold;
 pub mod bitcoin_sv;
+pub mod bittensor;
 pub mod cardano;
 pub mod dash;
 pub mod decred;

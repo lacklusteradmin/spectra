@@ -3,8 +3,8 @@
 //! Kaspa uses a CashAddr-variant bech32 (NOT BIP-173) with HRP `"kaspa"` for
 //! mainnet. The address payload encodes:
 //!   * 1-byte version: `0x00` Schnorr P2PK (32-byte x-only pubkey),
-//!                     `0x01` ECDSA P2PK (33-byte compressed pubkey),
-//!                     `0x08` P2SH (32-byte script hash).
+//!     `0x01` ECDSA P2PK (33-byte compressed pubkey),
+//!     `0x08` P2SH (32-byte script hash).
 //!   * Variable-length payload (32 bytes for Schnorr/P2SH, 33 for ECDSA).
 //!
 //! Spectra uses Schnorr P2PK addresses (the modern Kaspa default). The 32-byte
@@ -62,8 +62,8 @@ fn checksum(hrp: &str, data: &[u8]) -> [u8; 8] {
     values.extend_from_slice(&[0u8; 8]);
     let polymod = polymod(&values);
     let mut out = [0u8; 8];
-    for i in 0..8 {
-        out[i] = ((polymod >> (5 * (7 - i))) & 0x1f) as u8;
+    for (i, value) in out.iter_mut().enumerate() {
+        *value = ((polymod >> (5 * (7 - i))) & 0x1f) as u8;
     }
     out
 }
@@ -152,8 +152,8 @@ pub(crate) fn decode_kaspa_address(address: &str) -> Result<(u8, Vec<u8>, bool),
     if polymod(&buf) != 0 {
         return Err("kaspa checksum mismatch".to_string());
     }
-    let bytes = convert_bits(payload5, 5, 8, false)
-        .map_err(|e| format!("kaspa decode 5→8: {e}"))?;
+    let bytes =
+        convert_bits(payload5, 5, 8, false).map_err(|e| format!("kaspa decode 5→8: {e}"))?;
     if bytes.is_empty() {
         return Err("kaspa empty payload".to_string());
     }
@@ -188,7 +188,6 @@ use sha2::Sha512;
 use unicode_normalization::UnicodeNormalization;
 use zeroize::Zeroizing;
 
-
 type HmacSha512 = Hmac<Sha512>;
 
 // Map locale string ("en", "zh-cn", etc.) to BIP-39 wordlist; defaults to English.
@@ -208,7 +207,10 @@ fn resolve_bip39_language(name: Option<&str>) -> Result<Language, String> {
         "spanish" | "es" => Ok(Language::Spanish),
         "simplified-chinese" | "chinese-simplified" | "simplified_chinese" | "zh-hans"
         | "zh-cn" | "zh" => Ok(Language::SimplifiedChinese),
-        "traditional-chinese" | "chinese-traditional" | "traditional_chinese" | "zh-hant"
+        "traditional-chinese"
+        | "chinese-traditional"
+        | "traditional_chinese"
+        | "zh-hant"
         | "zh-tw" => Ok(Language::TraditionalChinese),
         other => Err(format!("Unsupported mnemonic wordlist: {other}")),
     }
@@ -225,7 +227,11 @@ fn derive_bip39_seed(
     let language = resolve_bip39_language(mnemonic_wordlist)?;
     let mnemonic =
         Mnemonic::parse_in_normalized(language, seed_phrase).map_err(|e| e.to_string())?;
-    let iterations = if iteration_count == 0 { 2048 } else { iteration_count };
+    let iterations = if iteration_count == 0 {
+        2048
+    } else {
+        iteration_count
+    };
     let prefix = salt_prefix.unwrap_or("mnemonic");
     let normalized_mnemonic = Zeroizing::new(mnemonic.to_string().nfkd().collect::<String>());
     let normalized_passphrase = Zeroizing::new(passphrase.nfkd().collect::<String>());
@@ -289,17 +295,20 @@ impl ExtendedPrivateKey {
             HmacSha512::new_from_slice(hmac_key).map_err(|e| format!("HMAC init: {e}"))?;
         mac.update(seed);
         let tag = mac.finalize().into_bytes();
-        let private_key = SecretKey::from_slice(&tag[..32])
-            .map_err(|e| format!("Master key invalid: {e}"))?;
+        let private_key =
+            SecretKey::from_slice(&tag[..32]).map_err(|e| format!("Master key invalid: {e}"))?;
         let mut chain_code = [0u8; 32];
         chain_code.copy_from_slice(&tag[32..]);
-        Ok(Self { private_key, chain_code })
+        Ok(Self {
+            private_key,
+            chain_code,
+        })
     }
 
     // Derive a BIP-32 child key; hardened indices use private key as input, non-hardened use public key.
     fn derive_child(&self, secp: &Secp256k1<All>, index: u32) -> Result<Self, String> {
-        let mut mac = HmacSha512::new_from_slice(&self.chain_code)
-            .map_err(|e| format!("HMAC init: {e}"))?;
+        let mut mac =
+            HmacSha512::new_from_slice(&self.chain_code).map_err(|e| format!("HMAC init: {e}"))?;
         if index >= HARDENED_OFFSET {
             mac.update(&[0x00]);
             mac.update(&self.private_key.secret_bytes());
@@ -309,17 +318,19 @@ impl ExtendedPrivateKey {
         }
         mac.update(&index.to_be_bytes());
         let tag = mac.finalize().into_bytes();
-        let tweak = Scalar::from_be_bytes(
-            tag[..32].try_into().map_err(|_| "tag slice".to_string())?,
-        )
-        .map_err(|_| "BIP-32 IL out of range".to_string())?;
+        let tweak =
+            Scalar::from_be_bytes(tag[..32].try_into().map_err(|_| "tag slice".to_string())?)
+                .map_err(|_| "BIP-32 IL out of range".to_string())?;
         let private_key = self
             .private_key
             .add_tweak(&tweak)
             .map_err(|e| format!("BIP-32 tweak failed: {e}"))?;
         let mut chain_code = [0u8; 32];
         chain_code.copy_from_slice(&tag[32..]);
-        Ok(Self { private_key, chain_code })
+        Ok(Self {
+            private_key,
+            chain_code,
+        })
     }
 
     // Walk the full BIP-32 derivation path by applying derive_child for each index.
@@ -341,7 +352,7 @@ pub(crate) fn derive_from_seed_phrase(
     want_address: bool,
     want_public_key: bool,
     want_private_key: bool,
-) -> Result<(Option<String>, Option<String>, Option<String>), String> {
+) -> Result<crate::derivation::primitives::OptionalKeyMaterial, String> {
     let secp = Secp256k1::new();
     let seed = derive_bip39_seed(seed_phrase, passphrase.unwrap_or(""), 0, None, None)?;
     let master = ExtendedPrivateKey::master_from_seed(b"Bitcoin seed", seed.as_ref())?;
@@ -355,8 +366,10 @@ pub(crate) fn derive_from_seed_phrase(
     x_only.copy_from_slice(&serialized[1..33]);
 
     let address = if want_address {
-        Some(encode_kaspa_address(KASPA_VERSION_SCHNORR, &x_only, hrp)
-            .expect("schnorr payload is always valid"))
+        Some(
+            encode_kaspa_address(KASPA_VERSION_SCHNORR, &x_only, hrp)
+                .expect("schnorr payload is always valid"),
+        )
     } else {
         None
     };
@@ -370,35 +383,67 @@ pub(crate) fn derive_from_seed_phrase(
 
 // ── UniFFI exports ────────────────────────────────────────────────────────
 
-use crate::derivation::types::{DerivationResult, parse_path_metadata};
+use crate::derivation::types::{parse_path_metadata, DerivationResult};
 use crate::SpectraBridgeError;
 
 /// UniFFI export: derive Kaspa mainnet wallet (kaspa:… Schnorr address) from a seed phrase.
 #[uniffi::export]
 pub fn derive_kaspa(
-    seed_phrase: String, derivation_path: String, passphrase: Option<String>,
-    want_address: bool, want_public_key: bool, want_private_key: bool,
+    seed_phrase: String,
+    derivation_path: String,
+    passphrase: Option<String>,
+    want_address: bool,
+    want_public_key: bool,
+    want_private_key: bool,
 ) -> Result<DerivationResult, SpectraBridgeError> {
     let (account, branch, index) = parse_path_metadata(&derivation_path);
     let (address, public_key_hex, private_key_hex) = derive_from_seed_phrase(
-        KASPA_HRP, &seed_phrase, &derivation_path, passphrase.as_deref(),
-        want_address, want_public_key, want_private_key,
+        KASPA_HRP,
+        &seed_phrase,
+        &derivation_path,
+        passphrase.as_deref(),
+        want_address,
+        want_public_key,
+        want_private_key,
     )?;
-    Ok(DerivationResult { address, public_key_hex, private_key_hex, account, branch, index })
+    Ok(DerivationResult {
+        address,
+        public_key_hex,
+        private_key_hex,
+        account,
+        branch,
+        index,
+    })
 }
 
 /// UniFFI export: derive Kaspa testnet wallet (kaspatest:… Schnorr address) from a seed phrase.
 #[uniffi::export]
 pub fn derive_kaspa_testnet(
-    seed_phrase: String, derivation_path: String, passphrase: Option<String>,
-    want_address: bool, want_public_key: bool, want_private_key: bool,
+    seed_phrase: String,
+    derivation_path: String,
+    passphrase: Option<String>,
+    want_address: bool,
+    want_public_key: bool,
+    want_private_key: bool,
 ) -> Result<DerivationResult, SpectraBridgeError> {
     let (account, branch, index) = parse_path_metadata(&derivation_path);
     let (address, public_key_hex, private_key_hex) = derive_from_seed_phrase(
-        KASPA_TESTNET_HRP, &seed_phrase, &derivation_path, passphrase.as_deref(),
-        want_address, want_public_key, want_private_key,
+        KASPA_TESTNET_HRP,
+        &seed_phrase,
+        &derivation_path,
+        passphrase.as_deref(),
+        want_address,
+        want_public_key,
+        want_private_key,
     )?;
-    Ok(DerivationResult { address, public_key_hex, private_key_hex, account, branch, index })
+    Ok(DerivationResult {
+        address,
+        public_key_hex,
+        private_key_hex,
+        account,
+        branch,
+        index,
+    })
 }
 
 #[cfg(test)]

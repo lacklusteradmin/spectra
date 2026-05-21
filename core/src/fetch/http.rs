@@ -37,11 +37,11 @@ use std::collections::HashMap;
 use std::sync::Arc;
 use std::time::Duration;
 
-use std::sync::LazyLock;
 use parking_lot::RwLock;
 use reqwest::{Client, Method, StatusCode};
 use serde::de::DeserializeOwned;
 use serde::Serialize;
+use std::sync::LazyLock;
 use tokio::time::sleep;
 
 // ----------------------------------------------------------------
@@ -50,9 +50,7 @@ use tokio::time::sleep;
 
 /// Process-wide shared `reqwest` client. Interior `RwLock` lets `tor.rs`
 /// swap in a SOCKS5-proxied client at runtime without touching call sites.
-static SHARED_CLIENT: LazyLock<Arc<HttpClient>> = LazyLock::new(|| {
-    Arc::new(HttpClient::new(None))
-});
+static SHARED_CLIENT: LazyLock<Arc<HttpClient>> = LazyLock::new(|| Arc::new(HttpClient::new(None)));
 
 pub struct HttpClient {
     inner: RwLock<Client>,
@@ -77,7 +75,9 @@ fn build_reqwest_client(proxy_url: Option<&str>) -> Client {
 
 impl HttpClient {
     fn new(proxy_url: Option<&str>) -> Self {
-        Self { inner: RwLock::new(build_reqwest_client(proxy_url)) }
+        Self {
+            inner: RwLock::new(build_reqwest_client(proxy_url)),
+        }
     }
 
     /// Returns the process-wide singleton.
@@ -228,8 +228,14 @@ impl HttpClient {
         profile: RetryProfile,
     ) -> Result<T, String> {
         let json_body = serde_json::to_value(body).map_err(|e| e.to_string())?;
-        self.request_with_retry(Method::POST, url, Some(&json_body), &HashMap::new(), profile)
-            .await
+        self.request_with_retry(
+            Method::POST,
+            url,
+            Some(&json_body),
+            &HashMap::new(),
+            profile,
+        )
+        .await
     }
 
     /// POST a JSON body with custom headers.
@@ -246,7 +252,12 @@ impl HttpClient {
     }
 
     /// POST raw bytes (for broadcast endpoints that want a hex string body).
-    pub async fn post_text(&self, url: &str, body: String, profile: RetryProfile) -> Result<String, String> {
+    pub async fn post_text(
+        &self,
+        url: &str,
+        body: String,
+        profile: RetryProfile,
+    ) -> Result<String, String> {
         let max_attempts = profile.max_attempts();
         let mut last_err = String::new();
 
@@ -360,11 +371,21 @@ fn format_reqwest_error(e: &reqwest::Error) -> String {
         source = s.source();
     }
     let mut flags = Vec::new();
-    if e.is_timeout() { flags.push("timeout"); }
-    if e.is_connect() { flags.push("connect"); }
-    if e.is_request() { flags.push("request"); }
-    if e.is_body() { flags.push("body"); }
-    if e.is_decode() { flags.push("decode"); }
+    if e.is_timeout() {
+        flags.push("timeout");
+    }
+    if e.is_connect() {
+        flags.push("connect");
+    }
+    if e.is_request() {
+        flags.push("request");
+    }
+    if e.is_body() {
+        flags.push("body");
+    }
+    if e.is_decode() {
+        flags.push("decode");
+    }
     if !flags.is_empty() {
         parts.push(format!("flags=[{}]", flags.join(",")));
     }
@@ -373,10 +394,7 @@ fn format_reqwest_error(e: &reqwest::Error) -> String {
 
 /// Try each URL in `endpoints` with `f` until one succeeds. Returns the
 /// first successful result or the last error.
-pub async fn with_fallback<F, Fut, T>(
-    endpoints: &[String],
-    f: F,
-) -> Result<T, String>
+pub async fn with_fallback<F, Fut, T>(endpoints: &[String], f: F) -> Result<T, String>
 where
     F: Fn(String) -> Fut,
     Fut: std::future::Future<Output = Result<T, String>>,
@@ -400,10 +418,7 @@ where
 
 /// Probe each URL in `endpoints` with a GET and return all that respond
 /// 200 OK (within the given timeout). Used by the diagnostics subsystem.
-pub async fn probe_endpoints(
-    endpoints: &[String],
-    timeout_secs: u64,
-) -> Vec<(String, bool)> {
+pub async fn probe_endpoints(endpoints: &[String], timeout_secs: u64) -> Vec<(String, bool)> {
     let client = Client::builder()
         .timeout(Duration::from_secs(timeout_secs))
         .https_only(true)
@@ -413,7 +428,10 @@ pub async fn probe_endpoints(
 
     let mut results = Vec::with_capacity(endpoints.len());
     for url in endpoints {
-        let ok = client.get(url.as_str()).send().await
+        let ok = client
+            .get(url.as_str())
+            .send()
+            .await
             .map(|r| r.status().is_success())
             .unwrap_or(false);
         results.push((url.clone(), ok));
@@ -483,7 +501,11 @@ pub struct HttpTextResponse {
 fn collect_headers(resp: &reqwest::Response) -> std::collections::HashMap<String, String> {
     resp.headers()
         .iter()
-        .filter_map(|(k, v)| v.to_str().ok().map(|s| (k.as_str().to_string(), s.to_string())))
+        .filter_map(|(k, v)| {
+            v.to_str()
+                .ok()
+                .map(|s| (k.as_str().to_string(), s.to_string()))
+        })
         .collect()
 }
 
@@ -491,15 +513,20 @@ fn classify_reqwest_error(err: reqwest::Error) -> HttpError {
     if err.is_timeout() {
         HttpError::Timeout { elapsed_ms: 0 }
     } else if err.is_decode() {
-        HttpError::Decode { message: err.to_string() }
+        HttpError::Decode {
+            message: err.to_string(),
+        }
     } else {
-        HttpError::Network { message: err.to_string() }
+        HttpError::Network {
+            message: err.to_string(),
+        }
     }
 }
 
 fn parse_method(method: &str) -> Result<Method, HttpError> {
-    Method::from_bytes(method.to_uppercase().as_bytes())
-        .map_err(|_| HttpError::InvalidMethod { method: method.to_string() })
+    Method::from_bytes(method.to_uppercase().as_bytes()).map_err(|_| HttpError::InvalidMethod {
+        method: method.to_string(),
+    })
 }
 
 #[uniffi::export(async_runtime = "tokio")]
@@ -558,7 +585,9 @@ pub async fn http_request(
                 let body_bytes = resp
                     .bytes()
                     .await
-                    .map_err(|e| HttpError::Transport { message: e.to_string() })?
+                    .map_err(|e| HttpError::Transport {
+                        message: e.to_string(),
+                    })?
                     .to_vec();
                 return Ok(HttpResponse {
                     status_code,
@@ -593,11 +622,14 @@ pub async fn http_get(
     let resp = req.send().await.map_err(classify_reqwest_error)?;
     let status = resp.status().as_u16();
     let response_headers = collect_headers(&resp);
-    let body = resp
-        .text()
-        .await
-        .map_err(|e| HttpError::Decode { message: e.to_string() })?;
-    Ok(HttpTextResponse { status, body, headers: response_headers })
+    let body = resp.text().await.map_err(|e| HttpError::Decode {
+        message: e.to_string(),
+    })?;
+    Ok(HttpTextResponse {
+        status,
+        body,
+        headers: response_headers,
+    })
 }
 
 /// POST a JSON body (already serialised) and return the response as text.
@@ -611,7 +643,9 @@ pub async fn http_post_json(
 ) -> Result<HttpTextResponse, HttpError> {
     let client = HttpClient::shared();
     let inner = client.reqwest_client();
-    let has_ct = headers.keys().any(|k| k.eq_ignore_ascii_case("content-type"));
+    let has_ct = headers
+        .keys()
+        .any(|k| k.eq_ignore_ascii_case("content-type"));
     let mut req = inner.post(&url);
     if !has_ct {
         req = req.header("Content-Type", "application/json");
@@ -623,11 +657,14 @@ pub async fn http_post_json(
     let resp = req.send().await.map_err(classify_reqwest_error)?;
     let status = resp.status().as_u16();
     let response_headers = collect_headers(&resp);
-    let body = resp
-        .text()
-        .await
-        .map_err(|e| HttpError::Decode { message: e.to_string() })?;
-    Ok(HttpTextResponse { status, body, headers: response_headers })
+    let body = resp.text().await.map_err(|e| HttpError::Decode {
+        message: e.to_string(),
+    })?;
+    Ok(HttpTextResponse {
+        status,
+        body,
+        headers: response_headers,
+    })
 }
 
 /// Pilot: perform a JSON-RPC reachability probe end-to-end in Rust.
@@ -643,10 +680,7 @@ pub struct JsonRpcProbeResult {
 }
 
 #[uniffi::export(async_runtime = "tokio")]
-pub async fn diagnostics_probe_jsonrpc(
-    url: String,
-    rpc_method: String,
-) -> JsonRpcProbeResult {
+pub async fn diagnostics_probe_jsonrpc(url: String, rpc_method: String) -> JsonRpcProbeResult {
     use crate::diagnostics::aggregate::diagnostics_parse_jsonrpc_probe;
 
     let payload = serde_json::json!({
@@ -718,7 +752,10 @@ mod tests {
         let resp = http_get(url, Default::default()).await.expect("ok");
         assert_eq!(resp.status, 200);
         assert_eq!(resp.body, "world");
-        assert_eq!(resp.headers.get("x-spectra-test").map(String::as_str), Some("yes"));
+        assert_eq!(
+            resp.headers.get("x-spectra-test").map(String::as_str),
+            Some("yes")
+        );
     }
 
     #[tokio::test]
@@ -728,7 +765,9 @@ mod tests {
             .respond_with(ResponseTemplate::new(404).set_body_string("nope"))
             .mount(&server)
             .await;
-        let resp = http_get(server.uri(), Default::default()).await.expect("ok");
+        let resp = http_get(server.uri(), Default::default())
+            .await
+            .expect("ok");
         assert_eq!(resp.status, 404);
         assert_eq!(resp.body, "nope");
     }
@@ -755,7 +794,8 @@ mod tests {
         let result = http_get("http://127.0.0.1:1/".into(), Default::default()).await;
         assert!(result.is_err());
         match result.unwrap_err() {
-            HttpError::Network { .. } | HttpError::Transport { .. } | HttpError::Timeout { .. } => {}
+            HttpError::Network { .. } | HttpError::Transport { .. } | HttpError::Timeout { .. } => {
+            }
             other => panic!("expected network-class error, got {other:?}"),
         }
     }
@@ -765,8 +805,9 @@ mod tests {
         let server = MockServer::start().await;
         Mock::given(method("POST"))
             .respond_with(
-                ResponseTemplate::new(200)
-                    .set_body_string(r#"{"jsonrpc":"2.0","id":"spectra-health","result":{"ok":true}}"#),
+                ResponseTemplate::new(200).set_body_string(
+                    r#"{"jsonrpc":"2.0","id":"spectra-health","result":{"ok":true}}"#,
+                ),
             )
             .mount(&server)
             .await;
@@ -788,6 +829,10 @@ mod tests {
             .await;
         let out = diagnostics_probe_jsonrpc(server.uri(), "bogus".into()).await;
         assert!(!out.reachable);
-        assert!(out.detail.contains("Method not found"), "detail={}", out.detail);
+        assert!(
+            out.detail.contains("Method not found"),
+            "detail={}",
+            out.detail
+        );
     }
 }

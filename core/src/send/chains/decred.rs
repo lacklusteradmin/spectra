@@ -235,9 +235,9 @@ fn serialize_full(
     buf.extend_from_slice(&varint(inputs.len()));
     for (input, script) in inputs.iter().zip(signed_sig_scripts) {
         buf.extend_from_slice(&input.amount.to_le_bytes()); // value_in
-        // block_height: signing wallet doesn't know the UTXO's confirmation
-        // height; setting 0xFFFFFFFF (the "unknown" sentinel) is accepted by
-        // mempool when paired with block_index = 0xFFFFFFFF.
+                                                            // block_height: signing wallet doesn't know the UTXO's confirmation
+                                                            // height; setting 0xFFFFFFFF (the "unknown" sentinel) is accepted by
+                                                            // mempool when paired with block_index = 0xFFFFFFFF.
         buf.extend_from_slice(&0xFFFF_FFFFu32.to_le_bytes());
         buf.extend_from_slice(&0xFFFF_FFFFu32.to_le_bytes()); // block_index
         buf.extend_from_slice(&varint(script.len()));

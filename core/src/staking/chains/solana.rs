@@ -46,12 +46,20 @@ struct VoteAccount {
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
-fn lamports_to_sol(lamports: u64) -> f64 { lamports as f64 / 1_000_000_000.0 }
+fn lamports_to_sol(lamports: u64) -> f64 {
+    lamports as f64 / 1_000_000_000.0
+}
 
-fn sol_display(lamports: u64) -> String { format!("{:.6} SOL", lamports_to_sol(lamports)) }
+fn sol_display(lamports: u64) -> String {
+    format!("{:.6} SOL", lamports_to_sol(lamports))
+}
 
 fn short_id(id: &str) -> &str {
-    if id.len() >= 8 { &id[..8] } else { id }
+    if id.len() >= 8 {
+        &id[..8]
+    } else {
+        id
+    }
 }
 
 fn vote_account_to_validator(v: VoteAccount, is_active: bool) -> StakingValidator {
@@ -63,7 +71,11 @@ fn vote_account_to_validator(v: VoteAccount, is_active: bool) -> StakingValidato
         commission: Some(v.commission as f64 / 100.0),
         total_stake_smallest_unit: Some(v.activated_stake.to_string()),
         is_active,
-        tags: if is_active { vec![] } else { vec!["delinquent".to_string()] },
+        tags: if is_active {
+            vec![]
+        } else {
+            vec!["delinquent".to_string()]
+        },
         min_delegation_smallest_unit: Some("1000000".to_string()), // 0.001 SOL
         uptime_pct: None,
         website: None,

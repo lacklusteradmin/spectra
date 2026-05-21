@@ -55,12 +55,21 @@ pub fn evaluate_heavy_refresh_gate(
     is_low_power_mode: bool,
     battery_level: f32,
 ) -> bool {
-    if !is_network_reachable { return false; }
+    if !is_network_reachable {
+        return false;
+    }
     match background_sync_profile.as_str() {
-        "conservative" => !is_constrained_network && !is_expensive_network && !is_low_power_mode && battery_level >= 0.30,
+        "conservative" => {
+            !is_constrained_network
+                && !is_expensive_network
+                && !is_low_power_mode
+                && battery_level >= 0.30
+        }
         "balanced" => !is_constrained_network && !is_low_power_mode && battery_level >= 0.20,
         _ => {
-            if is_low_power_mode && battery_level < 0.15 { return false; }
+            if is_low_power_mode && battery_level < 0.15 {
+                return false;
+            }
             battery_level >= 0.15
         }
     }
@@ -79,7 +88,11 @@ pub fn classify_evm_receipt_json(json: String) -> Option<EvmReceiptClassificatio
     let status = v.get("status").and_then(|x| x.as_str());
     let is_confirmed = block_number.is_some();
     let is_failed = matches!(status, Some("0x0"));
-    Some(EvmReceiptClassification { is_confirmed, is_failed, block_number })
+    Some(EvmReceiptClassification {
+        is_confirmed,
+        is_failed,
+        block_number,
+    })
 }
 
 pub(crate) fn chain_kind(chain_name: &str) -> Option<&'static str> {
@@ -90,7 +103,8 @@ pub(crate) fn chain_kind(chain_name: &str) -> Option<&'static str> {
         "Bitcoin SV" => "bitcoinSV",
         "Litecoin" => "litecoin",
         "Dogecoin" => "dogecoin",
-        "Ethereum" | "Ethereum Classic" | "Arbitrum" | "Optimism" | "BNB Chain" | "Avalanche" | "Hyperliquid" => "evm",
+        "Ethereum" | "Ethereum Classic" | "Arbitrum" | "Optimism" | "BNB Chain" | "Avalanche"
+        | "Hyperliquid" => "evm",
         "Tron" => "tron",
         "Solana" => "solana",
         "Cardano" => "cardano",
@@ -142,7 +156,9 @@ pub fn is_valid_send_address(
     address: String,
     network_mode: Option<String>,
 ) -> bool {
-    let Some(kind) = chain_kind(&chain_name) else { return false };
+    let Some(kind) = chain_kind(&chain_name) else {
+        return false;
+    };
     validate_address(AddressValidationRequest {
         kind: kind.to_string(),
         value: address,
@@ -155,15 +171,30 @@ pub(crate) fn normalize_address(chain_name: &str, address: &str) -> String {
     let t = address.trim();
     match chain_name {
         // EVM mainnets + testnets — same lowercase normalization.
-        "Ethereum" | "Ethereum Classic" | "Arbitrum" | "Optimism"
-        | "BNB Chain" | "Avalanche" | "Hyperliquid"
-        | "Ethereum Sepolia" | "Ethereum Hoodi" | "Arbitrum Sepolia"
-        | "Optimism Sepolia" | "Base Sepolia" | "BNB Chain Testnet"
-        | "Avalanche Fuji" | "Polygon Amoy" | "Hyperliquid Testnet"
+        "Ethereum"
+        | "Ethereum Classic"
+        | "Arbitrum"
+        | "Optimism"
+        | "BNB Chain"
+        | "Avalanche"
+        | "Hyperliquid"
+        | "Ethereum Sepolia"
+        | "Ethereum Hoodi"
+        | "Arbitrum Sepolia"
+        | "Optimism Sepolia"
+        | "Base Sepolia"
+        | "BNB Chain Testnet"
+        | "Avalanche Fuji"
+        | "Polygon Amoy"
+        | "Hyperliquid Testnet"
         | "Ethereum Classic Mordor" => t.to_lowercase(),
         "Sui" | "Aptos" | "Sui Testnet" | "Aptos Testnet" => {
             let l = t.to_lowercase();
-            if l.starts_with("0x") { l } else { format!("0x{}", l) }
+            if l.starts_with("0x") {
+                l
+            } else {
+                format!("0x{}", l)
+            }
         }
         "Internet Computer" | "NEAR" | "NEAR Testnet" => t.to_lowercase(),
         _ => t.to_string(),
@@ -180,9 +211,7 @@ pub fn normalized_send_address(chain_name: String, address: String) -> String {
 #[uniffi::export]
 pub fn is_ens_name_candidate(value: String) -> bool {
     let normalized = value.trim().to_lowercase();
-    normalized.ends_with(".eth")
-        && !normalized.contains(' ')
-        && !normalized.starts_with("0x")
+    normalized.ends_with(".eth") && !normalized.contains(' ') && !normalized.starts_with("0x")
 }
 
 /// Snapshot of every chain's current send-preview. Swift passes the full set;
@@ -235,68 +264,205 @@ type Extracted = (
 
 fn extract(input: &SendPreviewsInput, chain: &str) -> Option<Extracted> {
     match chain {
-        "Bitcoin" => input.bitcoin.as_ref().map(|p| (
-            p.spendableBalance, p.feeRateDescription.clone(), p.estimatedTransactionBytes,
-            p.selectedInputCount, p.usesChangeOutput, p.maxSendable, Some(p.estimatedNetworkFeeBtc),
-        )),
-        "Bitcoin Cash" => input.bitcoin_cash.as_ref().map(|p| (
-            p.spendableBalance, p.feeRateDescription.clone(), p.estimatedTransactionBytes,
-            p.selectedInputCount, p.usesChangeOutput, p.maxSendable, Some(p.estimatedNetworkFeeBtc),
-        )),
-        "Bitcoin SV" => input.bitcoin_sv.as_ref().map(|p| (
-            p.spendableBalance, p.feeRateDescription.clone(), p.estimatedTransactionBytes,
-            p.selectedInputCount, p.usesChangeOutput, p.maxSendable, Some(p.estimatedNetworkFeeBtc),
-        )),
-        "Litecoin" => input.litecoin.as_ref().map(|p| (
-            p.spendableBalance, p.feeRateDescription.clone(), p.estimatedTransactionBytes,
-            p.selectedInputCount, p.usesChangeOutput, p.maxSendable, Some(p.estimatedNetworkFeeBtc),
-        )),
-        "Dogecoin" => input.dogecoin.as_ref().map(|p| (
-            Some(p.spendableBalance), p.feeRateDescription.clone(), Some(p.estimatedTransactionBytes),
-            Some(p.selectedInputCount), Some(p.usesChangeOutput), Some(p.maxSendable), None,
-        )),
-        "Ethereum" | "Ethereum Classic" | "Arbitrum" | "Optimism" | "BNB Chain" | "Avalanche" | "Hyperliquid" => {
-            input.ethereum.as_ref().map(|p| (
-                p.spendableBalance, p.feeRateDescription.clone(), None, None, None, p.maxSendable, None,
-            ))
-        }
-        "Tron" => input.tron.as_ref().map(|p| (
-            Some(p.spendableBalance), p.feeRateDescription.clone(), None, None, None, Some(p.maxSendable), None,
-        )),
-        "Solana" => input.solana.as_ref().map(|p| (
-            Some(p.spendableBalance), p.feeRateDescription.clone(), None, None, None, Some(p.maxSendable), None,
-        )),
-        "XRP Ledger" => input.xrp.as_ref().map(|p| (
-            Some(p.spendableBalance), p.feeRateDescription.clone(), None, None, None, Some(p.maxSendable), None,
-        )),
-        "Stellar" => input.stellar.as_ref().map(|p| (
-            Some(p.spendableBalance), p.feeRateDescription.clone(), None, None, None, Some(p.maxSendable), None,
-        )),
-        "Monero" => input.monero.as_ref().map(|p| (
-            Some(p.spendableBalance), p.feeRateDescription.clone(), None, None, None, Some(p.maxSendable), None,
-        )),
-        "Cardano" => input.cardano.as_ref().map(|p| (
-            Some(p.spendableBalance), p.feeRateDescription.clone(), None, None, None, Some(p.maxSendable), None,
-        )),
-        "Sui" => input.sui.as_ref().map(|p| (
-            Some(p.spendableBalance), p.feeRateDescription.clone(), None, None, None, Some(p.maxSendable), None,
-        )),
-        "Aptos" => input.aptos.as_ref().map(|p| (
-            Some(p.spendableBalance), p.feeRateDescription.clone(), None, None, None, Some(p.maxSendable), None,
-        )),
-        "TON" => input.ton.as_ref().map(|p| (
-            Some(p.spendableBalance), p.feeRateDescription.clone(), None, None, None, Some(p.maxSendable), None,
-        )),
-        "Internet Computer" => input.icp.as_ref().map(|p| (
-            Some(p.spendableBalance), p.feeRateDescription.clone(), None, None, None, Some(p.maxSendable), None,
-        )),
-        "NEAR" => input.near.as_ref().map(|p| (
-            Some(p.spendableBalance), p.feeRateDescription.clone(), None, None, None, Some(p.maxSendable), None,
-        )),
-        "Polkadot" => input.polkadot.as_ref().map(|p| (
-            Some(p.spendableBalance), p.feeRateDescription.clone(), p.estimatedTransactionBytes,
-            None, None, Some(p.maxSendable), None,
-        )),
+        "Bitcoin" => input.bitcoin.as_ref().map(|p| {
+            (
+                p.spendableBalance,
+                p.feeRateDescription.clone(),
+                p.estimatedTransactionBytes,
+                p.selectedInputCount,
+                p.usesChangeOutput,
+                p.maxSendable,
+                Some(p.estimatedNetworkFeeBtc),
+            )
+        }),
+        "Bitcoin Cash" => input.bitcoin_cash.as_ref().map(|p| {
+            (
+                p.spendableBalance,
+                p.feeRateDescription.clone(),
+                p.estimatedTransactionBytes,
+                p.selectedInputCount,
+                p.usesChangeOutput,
+                p.maxSendable,
+                Some(p.estimatedNetworkFeeBtc),
+            )
+        }),
+        "Bitcoin SV" => input.bitcoin_sv.as_ref().map(|p| {
+            (
+                p.spendableBalance,
+                p.feeRateDescription.clone(),
+                p.estimatedTransactionBytes,
+                p.selectedInputCount,
+                p.usesChangeOutput,
+                p.maxSendable,
+                Some(p.estimatedNetworkFeeBtc),
+            )
+        }),
+        "Litecoin" => input.litecoin.as_ref().map(|p| {
+            (
+                p.spendableBalance,
+                p.feeRateDescription.clone(),
+                p.estimatedTransactionBytes,
+                p.selectedInputCount,
+                p.usesChangeOutput,
+                p.maxSendable,
+                Some(p.estimatedNetworkFeeBtc),
+            )
+        }),
+        "Dogecoin" => input.dogecoin.as_ref().map(|p| {
+            (
+                Some(p.spendableBalance),
+                p.feeRateDescription.clone(),
+                Some(p.estimatedTransactionBytes),
+                Some(p.selectedInputCount),
+                Some(p.usesChangeOutput),
+                Some(p.maxSendable),
+                None,
+            )
+        }),
+        "Ethereum" | "Ethereum Classic" | "Arbitrum" | "Optimism" | "BNB Chain" | "Avalanche"
+        | "Hyperliquid" => input.ethereum.as_ref().map(|p| {
+            (
+                p.spendableBalance,
+                p.feeRateDescription.clone(),
+                None,
+                None,
+                None,
+                p.maxSendable,
+                None,
+            )
+        }),
+        "Tron" => input.tron.as_ref().map(|p| {
+            (
+                Some(p.spendableBalance),
+                p.feeRateDescription.clone(),
+                None,
+                None,
+                None,
+                Some(p.maxSendable),
+                None,
+            )
+        }),
+        "Solana" => input.solana.as_ref().map(|p| {
+            (
+                Some(p.spendableBalance),
+                p.feeRateDescription.clone(),
+                None,
+                None,
+                None,
+                Some(p.maxSendable),
+                None,
+            )
+        }),
+        "XRP Ledger" => input.xrp.as_ref().map(|p| {
+            (
+                Some(p.spendableBalance),
+                p.feeRateDescription.clone(),
+                None,
+                None,
+                None,
+                Some(p.maxSendable),
+                None,
+            )
+        }),
+        "Stellar" => input.stellar.as_ref().map(|p| {
+            (
+                Some(p.spendableBalance),
+                p.feeRateDescription.clone(),
+                None,
+                None,
+                None,
+                Some(p.maxSendable),
+                None,
+            )
+        }),
+        "Monero" => input.monero.as_ref().map(|p| {
+            (
+                Some(p.spendableBalance),
+                p.feeRateDescription.clone(),
+                None,
+                None,
+                None,
+                Some(p.maxSendable),
+                None,
+            )
+        }),
+        "Cardano" => input.cardano.as_ref().map(|p| {
+            (
+                Some(p.spendableBalance),
+                p.feeRateDescription.clone(),
+                None,
+                None,
+                None,
+                Some(p.maxSendable),
+                None,
+            )
+        }),
+        "Sui" => input.sui.as_ref().map(|p| {
+            (
+                Some(p.spendableBalance),
+                p.feeRateDescription.clone(),
+                None,
+                None,
+                None,
+                Some(p.maxSendable),
+                None,
+            )
+        }),
+        "Aptos" => input.aptos.as_ref().map(|p| {
+            (
+                Some(p.spendableBalance),
+                p.feeRateDescription.clone(),
+                None,
+                None,
+                None,
+                Some(p.maxSendable),
+                None,
+            )
+        }),
+        "TON" => input.ton.as_ref().map(|p| {
+            (
+                Some(p.spendableBalance),
+                p.feeRateDescription.clone(),
+                None,
+                None,
+                None,
+                Some(p.maxSendable),
+                None,
+            )
+        }),
+        "Internet Computer" => input.icp.as_ref().map(|p| {
+            (
+                Some(p.spendableBalance),
+                p.feeRateDescription.clone(),
+                None,
+                None,
+                None,
+                Some(p.maxSendable),
+                None,
+            )
+        }),
+        "NEAR" => input.near.as_ref().map(|p| {
+            (
+                Some(p.spendableBalance),
+                p.feeRateDescription.clone(),
+                None,
+                None,
+                None,
+                Some(p.maxSendable),
+                None,
+            )
+        }),
+        "Polkadot" => input.polkadot.as_ref().map(|p| {
+            (
+                Some(p.spendableBalance),
+                p.feeRateDescription.clone(),
+                p.estimatedTransactionBytes,
+                None,
+                None,
+                Some(p.maxSendable),
+                None,
+            )
+        }),
         _ => None,
     }
 }
@@ -394,7 +560,9 @@ pub fn core_evaluate_high_risk_send_reasons(
     };
 
     let hrsr_validate = |chain_name: &str, address: &str| -> bool {
-        let Some(kind) = chain_kind(chain_name) else { return false };
+        let Some(kind) = chain_kind(chain_name) else {
+            return false;
+        };
         validate_address(AddressValidationRequest {
             kind: kind.to_string(),
             value: address.to_string(),
@@ -412,8 +580,7 @@ pub fn core_evaluate_high_risk_send_reasons(
     }
 
     // Normalize destination for case-insensitive comparison.
-    let norm_dest =
-        normalize_address(chain_name, &request.destination_address).to_lowercase();
+    let norm_dest = normalize_address(chain_name, &request.destination_address).to_lowercase();
 
     // 2. New address detection.
     let has_address_book = request.address_book_entries.iter().any(|e| {
@@ -573,7 +740,10 @@ pub fn core_is_evm_chain(chain_name: String) -> bool {
 // ─── Dogecoin derivation index parser ─────────────────────────────────────────
 
 #[uniffi::export]
-pub fn core_parse_dogecoin_derivation_index(path: Option<String>, expected_prefix: String) -> Option<i32> {
+pub fn core_parse_dogecoin_derivation_index(
+    path: Option<String>,
+    expected_prefix: String,
+) -> Option<i32> {
     let path = path?;
     if !path.starts_with(&expected_prefix) {
         return None;
@@ -635,38 +805,185 @@ pub fn core_rebroadcast_dispatch_for_format(
     // 5 ethereum, 6 tron, 7 solana, 8 xrp, 9 stellar, 10 monero,
     // 11 cardano, 12 sui, 13 aptos, 14 ton, 15 icp, 16 near, 17 polkadot
     let entry: Option<RebroadcastDispatch> = match format.as_str() {
-        "bitcoin.raw_hex" => Some(RebroadcastDispatch { chain_id: "bitcoin".into(), result_field: "txid".into(), wrap_key: None, extract_field: None }),
-        "bitcoin_cash.raw_hex" => Some(RebroadcastDispatch { chain_id: "bitcoin-cash".into(), result_field: "txid".into(), wrap_key: None, extract_field: None }),
-        "bitcoin_sv.raw_hex" => Some(RebroadcastDispatch { chain_id: "bitcoin-sv".into(), result_field: "txid".into(), wrap_key: None, extract_field: None }),
-        "litecoin.raw_hex" => Some(RebroadcastDispatch { chain_id: "litecoin".into(), result_field: "txid".into(), wrap_key: None, extract_field: None }),
-        "dogecoin.raw_hex" => Some(RebroadcastDispatch { chain_id: "dogecoin".into(), result_field: "txid".into(), wrap_key: None, extract_field: None }),
-        "tron.signed_json" => Some(RebroadcastDispatch { chain_id: "tron".into(), result_field: "txid".into(), wrap_key: None, extract_field: None }),
-        "solana.base64" => Some(RebroadcastDispatch { chain_id: "solana".into(), result_field: "signature".into(), wrap_key: None, extract_field: None }),
-        "xrp.blob_hex" => Some(RebroadcastDispatch { chain_id: "xrp".into(), result_field: "txid".into(), wrap_key: Some("tx_blob_hex".into()), extract_field: None }),
-        "stellar.xdr" => Some(RebroadcastDispatch { chain_id: "stellar".into(), result_field: "txid".into(), wrap_key: Some("signed_xdr_b64".into()), extract_field: None }),
-        "cardano.cbor_hex" => Some(RebroadcastDispatch { chain_id: "cardano".into(), result_field: "txid".into(), wrap_key: Some("cbor_hex".into()), extract_field: None }),
-        "near.base64" => Some(RebroadcastDispatch { chain_id: "near".into(), result_field: "txid".into(), wrap_key: Some("signed_tx_b64".into()), extract_field: None }),
-        "polkadot.extrinsic_hex" => Some(RebroadcastDispatch { chain_id: "polkadot".into(), result_field: "txid".into(), wrap_key: Some("extrinsic_hex".into()), extract_field: None }),
-        "aptos.signed_json" => Some(RebroadcastDispatch { chain_id: "aptos".into(), result_field: "txid".into(), wrap_key: Some("signed_body_json".into()), extract_field: None }),
-        "ton.boc" => Some(RebroadcastDispatch { chain_id: "ton".into(), result_field: "message_hash".into(), wrap_key: Some("boc_b64".into()), extract_field: None }),
-        "bitcoin.rust_json" => Some(RebroadcastDispatch { chain_id: "bitcoin".into(), result_field: "txid".into(), wrap_key: None, extract_field: Some("raw_tx_hex".into()) }),
-        "bitcoin_cash.rust_json" => Some(RebroadcastDispatch { chain_id: "bitcoin-cash".into(), result_field: "txid".into(), wrap_key: None, extract_field: Some("raw_tx_hex".into()) }),
-        "bitcoin_sv.rust_json" => Some(RebroadcastDispatch { chain_id: "bitcoin-sv".into(), result_field: "txid".into(), wrap_key: None, extract_field: Some("raw_tx_hex".into()) }),
-        "litecoin.rust_json" => Some(RebroadcastDispatch { chain_id: "litecoin".into(), result_field: "txid".into(), wrap_key: None, extract_field: Some("raw_tx_hex".into()) }),
-        "dogecoin.rust_json" => Some(RebroadcastDispatch { chain_id: "dogecoin".into(), result_field: "txid".into(), wrap_key: None, extract_field: Some("raw_tx_hex".into()) }),
-        "solana.rust_json" => Some(RebroadcastDispatch { chain_id: "solana".into(), result_field: "signature".into(), wrap_key: None, extract_field: Some("signed_tx_base64".into()) }),
-        "tron.rust_json" => Some(RebroadcastDispatch { chain_id: "tron".into(), result_field: "txid".into(), wrap_key: None, extract_field: Some("signed_tx_json".into()) }),
-        "xrp.rust_json" => Some(RebroadcastDispatch { chain_id: "xrp".into(), result_field: "txid".into(), wrap_key: None, extract_field: None }),
-        "stellar.rust_json" => Some(RebroadcastDispatch { chain_id: "stellar".into(), result_field: "txid".into(), wrap_key: None, extract_field: None }),
-        "cardano.rust_json" => Some(RebroadcastDispatch { chain_id: "cardano".into(), result_field: "txid".into(), wrap_key: None, extract_field: None }),
-        "polkadot.rust_json" => Some(RebroadcastDispatch { chain_id: "polkadot".into(), result_field: "txid".into(), wrap_key: None, extract_field: None }),
-        "sui.rust_json" => Some(RebroadcastDispatch { chain_id: "sui".into(), result_field: "digest".into(), wrap_key: None, extract_field: None }),
-        "aptos.rust_json" => Some(RebroadcastDispatch { chain_id: "aptos".into(), result_field: "txid".into(), wrap_key: None, extract_field: None }),
-        "ton.rust_json" => Some(RebroadcastDispatch { chain_id: "ton".into(), result_field: "message_hash".into(), wrap_key: None, extract_field: None }),
-        "near.rust_json" => Some(RebroadcastDispatch { chain_id: "near".into(), result_field: "txid".into(), wrap_key: None, extract_field: None }),
+        "bitcoin.raw_hex" => Some(RebroadcastDispatch {
+            chain_id: "bitcoin".into(),
+            result_field: "txid".into(),
+            wrap_key: None,
+            extract_field: None,
+        }),
+        "bitcoin_cash.raw_hex" => Some(RebroadcastDispatch {
+            chain_id: "bitcoin-cash".into(),
+            result_field: "txid".into(),
+            wrap_key: None,
+            extract_field: None,
+        }),
+        "bitcoin_sv.raw_hex" => Some(RebroadcastDispatch {
+            chain_id: "bitcoin-sv".into(),
+            result_field: "txid".into(),
+            wrap_key: None,
+            extract_field: None,
+        }),
+        "litecoin.raw_hex" => Some(RebroadcastDispatch {
+            chain_id: "litecoin".into(),
+            result_field: "txid".into(),
+            wrap_key: None,
+            extract_field: None,
+        }),
+        "dogecoin.raw_hex" => Some(RebroadcastDispatch {
+            chain_id: "dogecoin".into(),
+            result_field: "txid".into(),
+            wrap_key: None,
+            extract_field: None,
+        }),
+        "tron.signed_json" => Some(RebroadcastDispatch {
+            chain_id: "tron".into(),
+            result_field: "txid".into(),
+            wrap_key: None,
+            extract_field: None,
+        }),
+        "solana.base64" => Some(RebroadcastDispatch {
+            chain_id: "solana".into(),
+            result_field: "signature".into(),
+            wrap_key: None,
+            extract_field: None,
+        }),
+        "xrp.blob_hex" => Some(RebroadcastDispatch {
+            chain_id: "xrp".into(),
+            result_field: "txid".into(),
+            wrap_key: Some("tx_blob_hex".into()),
+            extract_field: None,
+        }),
+        "stellar.xdr" => Some(RebroadcastDispatch {
+            chain_id: "stellar".into(),
+            result_field: "txid".into(),
+            wrap_key: Some("signed_xdr_b64".into()),
+            extract_field: None,
+        }),
+        "cardano.cbor_hex" => Some(RebroadcastDispatch {
+            chain_id: "cardano".into(),
+            result_field: "txid".into(),
+            wrap_key: Some("cbor_hex".into()),
+            extract_field: None,
+        }),
+        "near.base64" => Some(RebroadcastDispatch {
+            chain_id: "near".into(),
+            result_field: "txid".into(),
+            wrap_key: Some("signed_tx_b64".into()),
+            extract_field: None,
+        }),
+        "polkadot.extrinsic_hex" => Some(RebroadcastDispatch {
+            chain_id: "polkadot".into(),
+            result_field: "txid".into(),
+            wrap_key: Some("extrinsic_hex".into()),
+            extract_field: None,
+        }),
+        "aptos.signed_json" => Some(RebroadcastDispatch {
+            chain_id: "aptos".into(),
+            result_field: "txid".into(),
+            wrap_key: Some("signed_body_json".into()),
+            extract_field: None,
+        }),
+        "ton.boc" => Some(RebroadcastDispatch {
+            chain_id: "ton".into(),
+            result_field: "message_hash".into(),
+            wrap_key: Some("boc_b64".into()),
+            extract_field: None,
+        }),
+        "bitcoin.rust_json" => Some(RebroadcastDispatch {
+            chain_id: "bitcoin".into(),
+            result_field: "txid".into(),
+            wrap_key: None,
+            extract_field: Some("raw_tx_hex".into()),
+        }),
+        "bitcoin_cash.rust_json" => Some(RebroadcastDispatch {
+            chain_id: "bitcoin-cash".into(),
+            result_field: "txid".into(),
+            wrap_key: None,
+            extract_field: Some("raw_tx_hex".into()),
+        }),
+        "bitcoin_sv.rust_json" => Some(RebroadcastDispatch {
+            chain_id: "bitcoin-sv".into(),
+            result_field: "txid".into(),
+            wrap_key: None,
+            extract_field: Some("raw_tx_hex".into()),
+        }),
+        "litecoin.rust_json" => Some(RebroadcastDispatch {
+            chain_id: "litecoin".into(),
+            result_field: "txid".into(),
+            wrap_key: None,
+            extract_field: Some("raw_tx_hex".into()),
+        }),
+        "dogecoin.rust_json" => Some(RebroadcastDispatch {
+            chain_id: "dogecoin".into(),
+            result_field: "txid".into(),
+            wrap_key: None,
+            extract_field: Some("raw_tx_hex".into()),
+        }),
+        "solana.rust_json" => Some(RebroadcastDispatch {
+            chain_id: "solana".into(),
+            result_field: "signature".into(),
+            wrap_key: None,
+            extract_field: Some("signed_tx_base64".into()),
+        }),
+        "tron.rust_json" => Some(RebroadcastDispatch {
+            chain_id: "tron".into(),
+            result_field: "txid".into(),
+            wrap_key: None,
+            extract_field: Some("signed_tx_json".into()),
+        }),
+        "xrp.rust_json" => Some(RebroadcastDispatch {
+            chain_id: "xrp".into(),
+            result_field: "txid".into(),
+            wrap_key: None,
+            extract_field: None,
+        }),
+        "stellar.rust_json" => Some(RebroadcastDispatch {
+            chain_id: "stellar".into(),
+            result_field: "txid".into(),
+            wrap_key: None,
+            extract_field: None,
+        }),
+        "cardano.rust_json" => Some(RebroadcastDispatch {
+            chain_id: "cardano".into(),
+            result_field: "txid".into(),
+            wrap_key: None,
+            extract_field: None,
+        }),
+        "polkadot.rust_json" => Some(RebroadcastDispatch {
+            chain_id: "polkadot".into(),
+            result_field: "txid".into(),
+            wrap_key: None,
+            extract_field: None,
+        }),
+        "sui.rust_json" => Some(RebroadcastDispatch {
+            chain_id: "sui".into(),
+            result_field: "digest".into(),
+            wrap_key: None,
+            extract_field: None,
+        }),
+        "aptos.rust_json" => Some(RebroadcastDispatch {
+            chain_id: "aptos".into(),
+            result_field: "txid".into(),
+            wrap_key: None,
+            extract_field: None,
+        }),
+        "ton.rust_json" => Some(RebroadcastDispatch {
+            chain_id: "ton".into(),
+            result_field: "message_hash".into(),
+            wrap_key: None,
+            extract_field: None,
+        }),
+        "near.rust_json" => Some(RebroadcastDispatch {
+            chain_id: "near".into(),
+            result_field: "txid".into(),
+            wrap_key: None,
+            extract_field: None,
+        }),
         _ => None,
     };
-    entry.ok_or_else(|| SpectraBridgeError::from("Rebroadcast is not supported for this transaction format yet."))
+    entry.ok_or_else(|| {
+        SpectraBridgeError::from("Rebroadcast is not supported for this transaction format yet.")
+    })
 }
 
 // ─── Rebroadcast prepared payload ────────────────────────────────────────────
@@ -699,10 +1016,16 @@ pub fn core_rebroadcast_prepare_payload(
     }
     let dispatch = core_rebroadcast_dispatch_for_format(format)?;
     let broadcast_payload = if let Some(extract_field) = dispatch.extract_field.as_ref() {
-        crate::send::preview_decode::extract_json_string_field(raw_payload.clone(), extract_field.clone())
+        crate::send::preview_decode::extract_json_string_field(
+            raw_payload.clone(),
+            extract_field.clone(),
+        )
     } else if let Some(wrap_key) = dispatch.wrap_key.as_ref() {
         let mut map = serde_json::Map::new();
-        map.insert(wrap_key.clone(), serde_json::Value::String(raw_payload.clone()));
+        map.insert(
+            wrap_key.clone(),
+            serde_json::Value::String(raw_payload.clone()),
+        );
         serde_json::to_string(&serde_json::Value::Object(map)).unwrap_or(raw_payload)
     } else {
         raw_payload
@@ -856,7 +1179,11 @@ pub fn core_evm_replacement_fee_bump(
     let parse = |s: Option<&str>| -> Option<f64> {
         s.and_then(|v| {
             let trimmed = v.trim();
-            if trimmed.is_empty() { None } else { trimmed.parse::<f64>().ok() }
+            if trimmed.is_empty() {
+                None
+            } else {
+                trimmed.parse::<f64>().ok()
+            }
         })
     };
     let have_max = parse(existing_max_fee_gwei.as_deref());
@@ -905,11 +1232,17 @@ mod flow_helpers_tests {
     #[test]
     fn parse_dogecoin_index() {
         assert_eq!(
-            core_parse_dogecoin_derivation_index(Some("m/44'/3'/0'/0/7".to_string()), "m/44'/3'/0'/0/".to_string()),
+            core_parse_dogecoin_derivation_index(
+                Some("m/44'/3'/0'/0/7".to_string()),
+                "m/44'/3'/0'/0/".to_string()
+            ),
             Some(7)
         );
         assert_eq!(
-            core_parse_dogecoin_derivation_index(Some("other".to_string()), "m/44'/3'/0'/0/".to_string()),
+            core_parse_dogecoin_derivation_index(
+                Some("other".to_string()),
+                "m/44'/3'/0'/0/".to_string()
+            ),
             None
         );
     }
@@ -945,7 +1278,10 @@ mod flow_helpers_tests {
     #[test]
     fn evm_bump_scales_existing() {
         let r = core_evm_replacement_fee_bump(
-            Some("5.0".to_string()), Some("2.5".to_string()), 4.0, 2.0,
+            Some("5.0".to_string()),
+            Some("2.5".to_string()),
+            4.0,
+            2.0,
         );
         assert_eq!(r.max_fee_gwei, "6.000");
         assert_eq!(r.priority_fee_gwei, "3.000");
@@ -1000,10 +1336,12 @@ mod flow_helpers_tests {
     #[test]
     fn evm_bump_respects_floor() {
         let r = core_evm_replacement_fee_bump(
-            Some("0.01".to_string()), Some("0.01".to_string()), 4.0, 2.0,
+            Some("0.01".to_string()),
+            Some("0.01".to_string()),
+            4.0,
+            2.0,
         );
         assert_eq!(r.max_fee_gwei, "0.100");
         assert_eq!(r.priority_fee_gwei, "0.100");
     }
-
 }

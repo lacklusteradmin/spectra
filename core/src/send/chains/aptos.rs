@@ -45,12 +45,17 @@ impl AptosClient {
         let signing_msg_hex = encode_resp
             .as_str()
             .ok_or("encode_submission: expected string")?;
-        let signing_bytes =
-            hex::decode(signing_msg_hex.strip_prefix("0x").unwrap_or(signing_msg_hex))
-                .map_err(|e| format!("hex: {e}"))?;
+        let signing_bytes = hex::decode(
+            signing_msg_hex
+                .strip_prefix("0x")
+                .unwrap_or(signing_msg_hex),
+        )
+        .map_err(|e| format!("hex: {e}"))?;
 
         use ed25519_dalek::{Signer, SigningKey};
-        let seed: [u8; 32] = private_key_bytes[..32].try_into().map_err(|_| "privkey too short")?;
+        let seed: [u8; 32] = private_key_bytes[..32]
+            .try_into()
+            .map_err(|_| "privkey too short")?;
         let signing_key = SigningKey::from_bytes(&seed);
         let signature = signing_key.sign(&signing_bytes);
 
@@ -73,13 +78,17 @@ impl AptosClient {
             .and_then(|v| v.as_str())
             .and_then(|s| s.parse().ok());
 
-        Ok(AptosSendResult { txid, version, signed_body_json })
+        Ok(AptosSendResult {
+            txid,
+            version,
+            signed_body_json,
+        })
     }
 
     /// Submit a pre-signed transaction body JSON (for rebroadcast).
     pub async fn submit_signed_body(&self, signed_json: &str) -> Result<AptosSendResult, String> {
-        let body: Value = serde_json::from_str(signed_json)
-            .map_err(|e| format!("json parse: {e}"))?;
+        let body: Value =
+            serde_json::from_str(signed_json).map_err(|e| format!("json parse: {e}"))?;
         let submit_resp: Value = self.post_val("/transactions", &body).await?;
         let txid = submit_resp
             .get("hash")
@@ -90,6 +99,10 @@ impl AptosClient {
             .get("version")
             .and_then(|v| v.as_str())
             .and_then(|s| s.parse().ok());
-        Ok(AptosSendResult { txid, version, signed_body_json: signed_json.to_string() })
+        Ok(AptosSendResult {
+            txid,
+            version,
+            signed_body_json: signed_json.to_string(),
+        })
     }
 }

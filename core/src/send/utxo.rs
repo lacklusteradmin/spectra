@@ -95,9 +95,7 @@ pub fn plan_utxo_spend(request: UtxoSpendPlanRequest) -> Result<UtxoSpendPlan, S
         return Err(ERROR_INSUFFICIENT_FUNDS.to_string());
     }
 
-    let effective_max_input_count = request
-        .max_input_count
-        .map(|count| (count.max(1)) as usize);
+    let effective_max_input_count = request.max_input_count.map(|count| (count.max(1)) as usize);
     let mut candidates: Vec<Vec<&UtxoEntry>> = Vec::with_capacity(inputs.len() * 2);
 
     let mut prefix: Vec<&UtxoEntry> = Vec::with_capacity(inputs.len());

@@ -102,30 +102,85 @@ pub enum EndpointSlot {
 
 // All variants in stable order. Used by Chain::all().
 const ALL_CHAINS: &[Chain] = &[
-    Chain::Bitcoin, Chain::Ethereum, Chain::Solana, Chain::Dogecoin,
-    Chain::Xrp, Chain::Litecoin, Chain::BitcoinCash, Chain::Tron,
-    Chain::Stellar, Chain::Cardano, Chain::Polkadot, Chain::Arbitrum,
-    Chain::Optimism, Chain::Avalanche, Chain::Sui, Chain::Aptos,
-    Chain::Ton, Chain::Near, Chain::Icp, Chain::Monero,
-    Chain::Base, Chain::EthereumClassic, Chain::BitcoinSV, Chain::BnbChain,
-    Chain::Hyperliquid, Chain::Polygon, Chain::Linea, Chain::Scroll,
-    Chain::Blast, Chain::Mantle, Chain::Zcash, Chain::BitcoinGold,
-    Chain::Decred, Chain::Kaspa, Chain::Sei, Chain::Celo,
-    Chain::Cronos, Chain::OpBnb, Chain::ZkSyncEra, Chain::Sonic,
-    Chain::Berachain, Chain::Unichain, Chain::Ink, Chain::Dash,
-    Chain::XLayer, Chain::Bittensor,
+    Chain::Bitcoin,
+    Chain::Ethereum,
+    Chain::Solana,
+    Chain::Dogecoin,
+    Chain::Xrp,
+    Chain::Litecoin,
+    Chain::BitcoinCash,
+    Chain::Tron,
+    Chain::Stellar,
+    Chain::Cardano,
+    Chain::Polkadot,
+    Chain::Arbitrum,
+    Chain::Optimism,
+    Chain::Avalanche,
+    Chain::Sui,
+    Chain::Aptos,
+    Chain::Ton,
+    Chain::Near,
+    Chain::Icp,
+    Chain::Monero,
+    Chain::Base,
+    Chain::EthereumClassic,
+    Chain::BitcoinSV,
+    Chain::BnbChain,
+    Chain::Hyperliquid,
+    Chain::Polygon,
+    Chain::Linea,
+    Chain::Scroll,
+    Chain::Blast,
+    Chain::Mantle,
+    Chain::Zcash,
+    Chain::BitcoinGold,
+    Chain::Decred,
+    Chain::Kaspa,
+    Chain::Sei,
+    Chain::Celo,
+    Chain::Cronos,
+    Chain::OpBnb,
+    Chain::ZkSyncEra,
+    Chain::Sonic,
+    Chain::Berachain,
+    Chain::Unichain,
+    Chain::Ink,
+    Chain::Dash,
+    Chain::XLayer,
+    Chain::Bittensor,
     // Testnets
-    Chain::BitcoinTestnet, Chain::BitcoinTestnet4, Chain::BitcoinSignet,
-    Chain::LitecoinTestnet, Chain::BitcoinCashTestnet, Chain::BitcoinSVTestnet,
-    Chain::DogecoinTestnet, Chain::ZcashTestnet, Chain::DecredTestnet,
-    Chain::KaspaTestnet, Chain::DashTestnet, Chain::EthereumSepolia,
-    Chain::EthereumHoodi, Chain::ArbitrumSepolia, Chain::OptimismSepolia,
-    Chain::BaseSepolia, Chain::BnbChainTestnet, Chain::AvalancheFuji,
-    Chain::PolygonAmoy, Chain::HyperliquidTestnet, Chain::EthereumClassicMordor,
-    Chain::TronNile, Chain::SolanaDevnet, Chain::XrpTestnet,
-    Chain::StellarTestnet, Chain::CardanoPreprod, Chain::SuiTestnet,
-    Chain::AptosTestnet, Chain::TonTestnet, Chain::NearTestnet,
-    Chain::PolkadotWestend, Chain::MoneroStagenet,
+    Chain::BitcoinTestnet,
+    Chain::BitcoinTestnet4,
+    Chain::BitcoinSignet,
+    Chain::LitecoinTestnet,
+    Chain::BitcoinCashTestnet,
+    Chain::BitcoinSVTestnet,
+    Chain::DogecoinTestnet,
+    Chain::ZcashTestnet,
+    Chain::DecredTestnet,
+    Chain::KaspaTestnet,
+    Chain::DashTestnet,
+    Chain::EthereumSepolia,
+    Chain::EthereumHoodi,
+    Chain::ArbitrumSepolia,
+    Chain::OptimismSepolia,
+    Chain::BaseSepolia,
+    Chain::BnbChainTestnet,
+    Chain::AvalancheFuji,
+    Chain::PolygonAmoy,
+    Chain::HyperliquidTestnet,
+    Chain::EthereumClassicMordor,
+    Chain::TronNile,
+    Chain::SolanaDevnet,
+    Chain::XrpTestnet,
+    Chain::StellarTestnet,
+    Chain::CardanoPreprod,
+    Chain::SuiTestnet,
+    Chain::AptosTestnet,
+    Chain::TonTestnet,
+    Chain::NearTestnet,
+    Chain::PolkadotWestend,
+    Chain::MoneroStagenet,
 ];
 
 impl Chain {
@@ -375,7 +430,11 @@ impl Chain {
 
     /// View the chain as an `EvmChain` if it's EVM-family.
     pub const fn as_evm(self) -> Option<EvmChain> {
-        if self.is_evm() { Some(EvmChain(self)) } else { None }
+        if self.is_evm() {
+            Some(EvmChain(self))
+        } else {
+            None
+        }
     }
 
     /// `true` for every EVM-compatible chain (mainnet or testnet).
@@ -523,7 +582,9 @@ impl Chain {
             Chain::Icp => SendChain::Icp,
             Chain::Near => SendChain::Near,
             Chain::Polkadot => SendChain::Polkadot,
-            Chain::BitcoinTestnet | Chain::BitcoinTestnet4 | Chain::BitcoinSignet => SendChain::Bitcoin,
+            Chain::BitcoinTestnet | Chain::BitcoinTestnet4 | Chain::BitcoinSignet => {
+                SendChain::Bitcoin
+            }
             Chain::LitecoinTestnet => SendChain::Litecoin,
             Chain::BitcoinCashTestnet => SendChain::BitcoinCash,
             Chain::BitcoinSVTestnet => SendChain::BitcoinSV,
@@ -774,7 +835,9 @@ impl Chain {
             Chain::Ton => "nanotons",
             Chain::Icp => "e8s",
             Chain::Monero => "piconeros",
-            Chain::BitcoinTestnet | Chain::BitcoinTestnet4 | Chain::BitcoinSignet => "confirmed_sats",
+            Chain::BitcoinTestnet | Chain::BitcoinTestnet4 | Chain::BitcoinSignet => {
+                "confirmed_sats"
+            }
             Chain::SolanaDevnet => "lamports",
             Chain::DogecoinTestnet => "balance_koin",
             Chain::XrpTestnet => "drops",
@@ -843,7 +906,11 @@ impl Chain {
             Chain::Icp => Some(10_000),
             Chain::Monero => Some(500_000_000),
             Chain::Dogecoin => Some(1_000_000),
-            Chain::Litecoin | Chain::Zcash | Chain::BitcoinSV | Chain::BitcoinGold | Chain::Kaspa => Some(1_000),
+            Chain::Litecoin
+            | Chain::Zcash
+            | Chain::BitcoinSV
+            | Chain::BitcoinGold
+            | Chain::Kaspa => Some(1_000),
             Chain::BitcoinCash | Chain::Decred | Chain::Dash => Some(2_000),
             Chain::SolanaDevnet => Some(5_000),
             Chain::TronNile => Some(1_000_000),
@@ -858,21 +925,36 @@ impl Chain {
             | Chain::BitcoinSVTestnet
             | Chain::KaspaTestnet => Some(1_000),
             Chain::BitcoinCashTestnet | Chain::DecredTestnet | Chain::DashTestnet => Some(2_000),
-            Chain::Bitcoin
-            | Chain::Xrp
-            | Chain::Stellar
-            | Chain::Aptos => None,
+            Chain::Bitcoin | Chain::Xrp | Chain::Stellar | Chain::Aptos => None,
             Chain::BitcoinTestnet
             | Chain::BitcoinTestnet4
             | Chain::BitcoinSignet
             | Chain::XrpTestnet
             | Chain::StellarTestnet
             | Chain::AptosTestnet => None,
-            Chain::Ethereum | Chain::Arbitrum | Chain::Optimism | Chain::Avalanche
-            | Chain::Base | Chain::EthereumClassic | Chain::BnbChain | Chain::Hyperliquid
-            | Chain::Polygon | Chain::Linea | Chain::Scroll | Chain::Blast | Chain::Mantle
-            | Chain::Sei | Chain::Celo | Chain::Cronos | Chain::OpBnb | Chain::ZkSyncEra
-            | Chain::Sonic | Chain::Berachain | Chain::Unichain | Chain::Ink | Chain::XLayer => None,
+            Chain::Ethereum
+            | Chain::Arbitrum
+            | Chain::Optimism
+            | Chain::Avalanche
+            | Chain::Base
+            | Chain::EthereumClassic
+            | Chain::BnbChain
+            | Chain::Hyperliquid
+            | Chain::Polygon
+            | Chain::Linea
+            | Chain::Scroll
+            | Chain::Blast
+            | Chain::Mantle
+            | Chain::Sei
+            | Chain::Celo
+            | Chain::Cronos
+            | Chain::OpBnb
+            | Chain::ZkSyncEra
+            | Chain::Sonic
+            | Chain::Berachain
+            | Chain::Unichain
+            | Chain::Ink
+            | Chain::XLayer => None,
             Chain::EthereumSepolia
             | Chain::EthereumHoodi
             | Chain::ArbitrumSepolia
@@ -917,8 +999,12 @@ impl Chain {
 pub struct EvmChain(Chain);
 
 impl EvmChain {
-    pub const fn chain(self) -> Chain { self.0 }
-    pub const fn chain_id(self) -> u64 { self.0.evm_chain_id() }
+    pub const fn chain(self) -> Chain {
+        self.0
+    }
+    pub const fn chain_id(self) -> u64 {
+        self.0.evm_chain_id()
+    }
 }
 
 #[cfg(test)]
@@ -943,19 +1029,48 @@ mod tests {
     #[test]
     fn evm_group_includes_mainnets_and_testnets() {
         let mainnet_ids: Vec<&str> = vec![
-            "ethereum", "arbitrum", "optimism", "avalanche", "base",
-            "ethereum-classic", "bnb", "hyperliquid", "polygon", "linea",
-            "scroll", "blast", "mantle", "sei", "celo", "cronos", "opbnb",
-            "zksync-era", "sonic", "berachain", "unichain", "ink", "x-layer",
+            "ethereum",
+            "arbitrum",
+            "optimism",
+            "avalanche",
+            "base",
+            "ethereum-classic",
+            "bnb",
+            "hyperliquid",
+            "polygon",
+            "linea",
+            "scroll",
+            "blast",
+            "mantle",
+            "sei",
+            "celo",
+            "cronos",
+            "opbnb",
+            "zksync-era",
+            "sonic",
+            "berachain",
+            "unichain",
+            "ink",
+            "x-layer",
         ];
         let testnet_ids: Vec<&str> = vec![
-            "ethereum-sepolia", "ethereum-hoodi", "arbitrum-sepolia",
-            "optimism-sepolia", "base-sepolia", "bnb-testnet", "avalanche-fuji",
-            "polygon-amoy", "hyperliquid-testnet", "ethereum-classic-mordor",
+            "ethereum-sepolia",
+            "ethereum-hoodi",
+            "arbitrum-sepolia",
+            "optimism-sepolia",
+            "base-sepolia",
+            "bnb-testnet",
+            "avalanche-fuji",
+            "polygon-amoy",
+            "hyperliquid-testnet",
+            "ethereum-classic-mordor",
         ];
         let mut expected: Vec<&str> = [mainnet_ids, testnet_ids].concat();
         expected.sort();
-        let mut actual: Vec<&str> = Chain::all().filter(|c| c.is_evm()).map(|c| c.str_id()).collect();
+        let mut actual: Vec<&str> = Chain::all()
+            .filter(|c| c.is_evm())
+            .map(|c| c.str_id())
+            .collect();
         actual.sort();
         assert_eq!(actual, expected);
     }
@@ -973,7 +1088,12 @@ mod tests {
     fn testnet_mainnet_counterparts_are_mainnets() {
         for testnet in Chain::testnets() {
             let counterpart = testnet.mainnet_counterpart();
-            assert!(!counterpart.is_testnet(), "{:?} mainnet_counterpart returned testnet {:?}", testnet, counterpart);
+            assert!(
+                !counterpart.is_testnet(),
+                "{:?} mainnet_counterpart returned testnet {:?}",
+                testnet,
+                counterpart
+            );
         }
     }
 
@@ -1006,11 +1126,26 @@ mod tests {
 
     #[test]
     fn endpoint_slots_use_string_suffixes() {
-        assert_eq!(Chain::Polkadot.endpoint_str_id(EndpointSlot::Primary), "polkadot");
-        assert_eq!(Chain::Polkadot.endpoint_str_id(EndpointSlot::Secondary), "polkadot:secondary");
-        assert_eq!(Chain::Ethereum.endpoint_str_id(EndpointSlot::Explorer), "ethereum:explorer");
-        assert_eq!(Chain::Tron.endpoint_str_id(EndpointSlot::Explorer), "tron:explorer");
-        assert_eq!(Chain::Near.endpoint_str_id(EndpointSlot::Explorer), "near:explorer");
+        assert_eq!(
+            Chain::Polkadot.endpoint_str_id(EndpointSlot::Primary),
+            "polkadot"
+        );
+        assert_eq!(
+            Chain::Polkadot.endpoint_str_id(EndpointSlot::Secondary),
+            "polkadot:secondary"
+        );
+        assert_eq!(
+            Chain::Ethereum.endpoint_str_id(EndpointSlot::Explorer),
+            "ethereum:explorer"
+        );
+        assert_eq!(
+            Chain::Tron.endpoint_str_id(EndpointSlot::Explorer),
+            "tron:explorer"
+        );
+        assert_eq!(
+            Chain::Near.endpoint_str_id(EndpointSlot::Explorer),
+            "near:explorer"
+        );
     }
 }
 
@@ -1024,7 +1159,10 @@ pub fn core_chain_str_id_for_name(name: String) -> Option<String> {
 
 /// Endpoint-table key for a given chain + slot combination.
 #[uniffi::export]
-pub fn core_endpoint_str_id(chain_id: String, slot: crate::app_core::AppCoreEndpointSlot) -> Option<String> {
+pub fn core_endpoint_str_id(
+    chain_id: String,
+    slot: crate::app_core::AppCoreEndpointSlot,
+) -> Option<String> {
     let chain = Chain::from_str_id(&chain_id)?;
     let mapped = match slot {
         crate::app_core::AppCoreEndpointSlot::Primary => EndpointSlot::Primary,

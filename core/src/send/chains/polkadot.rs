@@ -60,7 +60,10 @@ impl PolkadotClient {
             .as_str()
             .ok_or("author_submitExtrinsic: expected string")?
             .to_string();
-        Ok(DotSendResult { txid, extrinsic_hex: hex })
+        Ok(DotSendResult {
+            txid,
+            extrinsic_hex: hex,
+        })
     }
 
     /// Submit a pre-signed extrinsic hex (for rebroadcast).
@@ -69,7 +72,10 @@ impl PolkadotClient {
             .rpc_call("author_submitExtrinsic", json!([hex]))
             .await?;
         let txid = result.as_str().unwrap_or("").to_string();
-        Ok(DotSendResult { txid, extrinsic_hex: hex.to_string() })
+        Ok(DotSendResult {
+            txid,
+            extrinsic_hex: hex.to_string(),
+        })
     }
 }
 

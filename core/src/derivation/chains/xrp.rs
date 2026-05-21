@@ -1,28 +1,22 @@
 //! XRP Ledger: address validation, BIP-32 derivation, base58check with the
-//! XRP/Ripple alphabet. Self-contained — see `REFACTOR_NOTES.md`.
+//! XRP/Ripple alphabet
 //!
 //! Address derivation: `0x00 || hash160(compressed_pubkey)` then base58check
 //! with the Ripple alphabet (`rpshnaf3…`).
 
-use bip39::{Language, Mnemonic};
+use crate::derivation::primitives::{derive_bip39_seed, parse_bip32_path, HARDENED_OFFSET};
 use hmac::{Hmac, Mac};
-use pbkdf2::pbkdf2_hmac;
 use ripemd::Ripemd160;
 use secp256k1::{All, PublicKey, Scalar, Secp256k1, SecretKey};
 use sha2::{Digest, Sha256, Sha512};
-use unicode_normalization::UnicodeNormalization;
-use zeroize::Zeroizing;
 
-
-const XRP_ALPHABET_BYTES: &[u8; 58] =
-    b"rpshnaf39wBUDNEGHJKLM4PQRST7VWXYZ2bcdeCg65jkm8oFqi1tuvAxyz";
+const XRP_ALPHABET_BYTES: &[u8; 58] = b"rpshnaf39wBUDNEGHJKLM4PQRST7VWXYZ2bcdeCg65jkm8oFqi1tuvAxyz";
 
 // ── Address validation (preserved) ───────────────────────────────────────
 
 // Decode an XRP address using the Ripple base58 alphabet; returns the 20-byte account ID.
 pub(crate) fn decode_xrp_address(address: &str) -> Result<Vec<u8>, String> {
-    let alphabet =
-        bs58::Alphabet::new(XRP_ALPHABET_BYTES).map_err(|e| format!("alphabet: {e}"))?;
+    let alphabet = bs58::Alphabet::new(XRP_ALPHABET_BYTES).map_err(|e| format!("alphabet: {e}"))?;
     let decoded = bs58::decode(address)
         .with_alphabet(&alphabet)
         .with_check(None)
@@ -30,6 +24,9 @@ pub(crate) fn decode_xrp_address(address: &str) -> Result<Vec<u8>, String> {
         .map_err(|e| format!("xrp address decode: {e}"))?;
     if decoded.len() != 21 {
         return Err(format!("xrp address length: {}", decoded.len()));
+    }
+    if decoded[0] != 0x00 {
+        return Err(format!("xrp address version: 0x{:02x}", decoded[0]));
     }
     Ok(decoded[1..].to_vec())
 }
@@ -56,95 +53,6 @@ fn hash160_bytes(bytes: &[u8]) -> [u8; 20] {
     result
 }
 
-// ── BIP-39 ───────────────────────────────────────────────────────────────
-
-// Map locale string ("en", "zh-cn", etc.) to BIP-39 wordlist; defaults to English.
-fn resolve_bip39_language(name: Option<&str>) -> Result<Language, String> {
-    let value = match name {
-        Some(value) if !value.trim().is_empty() => value.trim().to_ascii_lowercase(),
-        _ => return Ok(Language::English),
-    };
-    match value.as_str() {
-        "english" | "en" => Ok(Language::English),
-        "czech" | "cs" => Ok(Language::Czech),
-        "french" | "fr" => Ok(Language::French),
-        "italian" | "it" => Ok(Language::Italian),
-        "japanese" | "ja" | "jp" => Ok(Language::Japanese),
-        "korean" | "ko" | "kr" => Ok(Language::Korean),
-        "portuguese" | "pt" => Ok(Language::Portuguese),
-        "spanish" | "es" => Ok(Language::Spanish),
-        "simplified-chinese" | "chinese-simplified" | "simplified_chinese" | "zh-hans"
-        | "zh-cn" | "zh" => Ok(Language::SimplifiedChinese),
-        "traditional-chinese" | "chinese-traditional" | "traditional_chinese" | "zh-hant"
-        | "zh-tw" => Ok(Language::TraditionalChinese),
-        other => Err(format!("Unsupported mnemonic wordlist: {other}")),
-    }
-}
-
-// BIP-39 mnemonic → 64-byte seed via NFKD normalization and PBKDF2-HMAC-SHA512.
-fn derive_bip39_seed(
-    seed_phrase: &str,
-    passphrase: &str,
-    iteration_count: u32,
-    mnemonic_wordlist: Option<&str>,
-    salt_prefix: Option<&str>,
-) -> Result<Zeroizing<[u8; 64]>, String> {
-    let language = resolve_bip39_language(mnemonic_wordlist)?;
-    let mnemonic =
-        Mnemonic::parse_in_normalized(language, seed_phrase).map_err(|e| e.to_string())?;
-    let iterations = if iteration_count == 0 { 2048 } else { iteration_count };
-    let prefix = salt_prefix.unwrap_or("mnemonic");
-    let normalized_mnemonic = Zeroizing::new(mnemonic.to_string().nfkd().collect::<String>());
-    let normalized_passphrase = Zeroizing::new(passphrase.nfkd().collect::<String>());
-    let normalized_prefix = Zeroizing::new(prefix.nfkd().collect::<String>());
-    let salt = Zeroizing::new(format!(
-        "{}{}",
-        normalized_prefix.as_str(),
-        normalized_passphrase.as_str()
-    ));
-    let mut seed = Zeroizing::new([0u8; 64]);
-    pbkdf2_hmac::<Sha512>(
-        normalized_mnemonic.as_bytes(),
-        salt.as_bytes(),
-        iterations,
-        &mut *seed,
-    );
-    Ok(seed)
-}
-
-// ── BIP-32 ───────────────────────────────────────────────────────────────
-
-const HARDENED_OFFSET: u32 = 0x80000000;
-
-// Parse a BIP-32 derivation path string ("m/44'/144'/0'/0/0") into a list of child index integers.
-fn parse_bip32_path(path: &str) -> Result<Vec<u32>, String> {
-    let trimmed = path.trim().trim_start_matches('m').trim_start_matches('M');
-    let trimmed = trimmed.trim_start_matches('/');
-    if trimmed.is_empty() {
-        return Ok(Vec::new());
-    }
-    let mut out = Vec::new();
-    for segment in trimmed.split('/') {
-        let (value, hardened) = if let Some(stripped) = segment.strip_suffix('\'') {
-            (stripped, true)
-        } else if let Some(stripped) = segment.strip_suffix('h') {
-            (stripped, true)
-        } else if let Some(stripped) = segment.strip_suffix('H') {
-            (stripped, true)
-        } else {
-            (segment, false)
-        };
-        let raw: u32 = value
-            .parse()
-            .map_err(|_| format!("invalid path segment: {segment}"))?;
-        if raw >= HARDENED_OFFSET {
-            return Err(format!("path segment out of range: {segment}"));
-        }
-        out.push(if hardened { raw | HARDENED_OFFSET } else { raw });
-    }
-    Ok(out)
-}
-
 #[derive(Clone)]
 struct ExtendedPrivateKey {
     private_key: SecretKey,
@@ -158,17 +66,20 @@ impl ExtendedPrivateKey {
             HmacSha512::new_from_slice(hmac_key).map_err(|e| format!("HMAC init: {e}"))?;
         mac.update(seed);
         let tag = mac.finalize().into_bytes();
-        let private_key = SecretKey::from_slice(&tag[..32])
-            .map_err(|e| format!("Master key invalid: {e}"))?;
+        let private_key =
+            SecretKey::from_slice(&tag[..32]).map_err(|e| format!("Master key invalid: {e}"))?;
         let mut chain_code = [0u8; 32];
         chain_code.copy_from_slice(&tag[32..]);
-        Ok(Self { private_key, chain_code })
+        Ok(Self {
+            private_key,
+            chain_code,
+        })
     }
 
     // Derive a BIP-32 child key; hardened indices use private key as input, non-hardened use public key.
     fn derive_child(&self, secp: &Secp256k1<All>, index: u32) -> Result<Self, String> {
-        let mut mac = HmacSha512::new_from_slice(&self.chain_code)
-            .map_err(|e| format!("HMAC init: {e}"))?;
+        let mut mac =
+            HmacSha512::new_from_slice(&self.chain_code).map_err(|e| format!("HMAC init: {e}"))?;
         if index >= HARDENED_OFFSET {
             mac.update(&[0x00]);
             mac.update(&self.private_key.secret_bytes());
@@ -178,17 +89,19 @@ impl ExtendedPrivateKey {
         }
         mac.update(&index.to_be_bytes());
         let tag = mac.finalize().into_bytes();
-        let tweak = Scalar::from_be_bytes(
-            tag[..32].try_into().map_err(|_| "tag slice".to_string())?,
-        )
-        .map_err(|_| "BIP-32 IL out of range".to_string())?;
+        let tweak =
+            Scalar::from_be_bytes(tag[..32].try_into().map_err(|_| "tag slice".to_string())?)
+                .map_err(|_| "BIP-32 IL out of range".to_string())?;
         let private_key = self
             .private_key
             .add_tweak(&tweak)
             .map_err(|e| format!("BIP-32 tweak failed: {e}"))?;
         let mut chain_code = [0u8; 32];
         chain_code.copy_from_slice(&tag[32..]);
-        Ok(Self { private_key, chain_code })
+        Ok(Self {
+            private_key,
+            chain_code,
+        })
     }
 
     // Walk the full BIP-32 derivation path by applying derive_child for each index.
@@ -209,7 +122,7 @@ pub(crate) fn derive_from_seed_phrase(
     want_address: bool,
     want_public_key: bool,
     want_private_key: bool,
-) -> Result<(Option<String>, Option<String>, Option<String>), String> {
+) -> Result<crate::derivation::primitives::OptionalKeyMaterial, String> {
     let secp = Secp256k1::new();
     let seed = derive_bip39_seed(seed_phrase, passphrase.unwrap_or(""), 0, None, None)?;
     let master = ExtendedPrivateKey::master_from_seed(b"Bitcoin seed", seed.as_ref())?;
@@ -221,8 +134,8 @@ pub(crate) fn derive_from_seed_phrase(
     let address = if want_address {
         let mut payload = vec![0x00u8];
         payload.extend_from_slice(&hash160_bytes(&public_key.serialize()));
-        let alphabet = bs58::Alphabet::new(XRP_ALPHABET_BYTES)
-            .map_err(|e| format!("xrp alphabet: {e}"))?;
+        let alphabet =
+            bs58::Alphabet::new(XRP_ALPHABET_BYTES).map_err(|e| format!("xrp alphabet: {e}"))?;
         Some(
             bs58::encode(&payload)
                 .with_alphabet(&alphabet)
@@ -242,36 +155,73 @@ pub(crate) fn derive_from_seed_phrase(
 
 // ── UniFFI exports ────────────────────────────────────────────────────────
 
-use crate::derivation::types::{DerivationResult, parse_path_metadata};
+use crate::derivation::types::{parse_path_metadata, DerivationResult};
 use crate::SpectraBridgeError;
 
 // Shared derivation logic for all XRP Ledger networks.
 fn xrp_internal(
-    seed_phrase: String, derivation_path: String, passphrase: Option<String>,
-    want_address: bool, want_public_key: bool, want_private_key: bool,
+    seed_phrase: String,
+    derivation_path: String,
+    passphrase: Option<String>,
+    want_address: bool,
+    want_public_key: bool,
+    want_private_key: bool,
 ) -> Result<DerivationResult, SpectraBridgeError> {
     let (account, branch, index) = parse_path_metadata(&derivation_path);
     let (address, public_key_hex, private_key_hex) = derive_from_seed_phrase(
-        &seed_phrase, &derivation_path, passphrase.as_deref(),
-        want_address, want_public_key, want_private_key,
+        &seed_phrase,
+        &derivation_path,
+        passphrase.as_deref(),
+        want_address,
+        want_public_key,
+        want_private_key,
     )?;
-    Ok(DerivationResult { address, public_key_hex, private_key_hex, account, branch, index })
+    Ok(DerivationResult {
+        address,
+        public_key_hex,
+        private_key_hex,
+        account,
+        branch,
+        index,
+    })
 }
 
 /// UniFFI export: derive XRP Ledger mainnet wallet from a seed phrase.
 #[uniffi::export]
 pub fn derive_xrp(
-    seed_phrase: String, derivation_path: String, passphrase: Option<String>,
-    want_address: bool, want_public_key: bool, want_private_key: bool,
+    seed_phrase: String,
+    derivation_path: String,
+    passphrase: Option<String>,
+    want_address: bool,
+    want_public_key: bool,
+    want_private_key: bool,
 ) -> Result<DerivationResult, SpectraBridgeError> {
-    xrp_internal(seed_phrase, derivation_path, passphrase, want_address, want_public_key, want_private_key)
+    xrp_internal(
+        seed_phrase,
+        derivation_path,
+        passphrase,
+        want_address,
+        want_public_key,
+        want_private_key,
+    )
 }
 
 /// UniFFI export: derive XRP Ledger testnet wallet from a seed phrase.
 #[uniffi::export]
 pub fn derive_xrp_testnet(
-    seed_phrase: String, derivation_path: String, passphrase: Option<String>,
-    want_address: bool, want_public_key: bool, want_private_key: bool,
+    seed_phrase: String,
+    derivation_path: String,
+    passphrase: Option<String>,
+    want_address: bool,
+    want_public_key: bool,
+    want_private_key: bool,
 ) -> Result<DerivationResult, SpectraBridgeError> {
-    xrp_internal(seed_phrase, derivation_path, passphrase, want_address, want_public_key, want_private_key)
+    xrp_internal(
+        seed_phrase,
+        derivation_path,
+        passphrase,
+        want_address,
+        want_public_key,
+        want_private_key,
+    )
 }

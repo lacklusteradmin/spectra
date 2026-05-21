@@ -11,8 +11,6 @@ use serde_json::{json, Value};
 
 use crate::http::{with_fallback, HttpClient, RetryProfile};
 
-
-
 // ----------------------------------------------------------------
 // Public result types
 // ----------------------------------------------------------------
@@ -43,9 +41,15 @@ pub struct SuiSendResult {
 }
 
 impl super::SignedSubmission for SuiSendResult {
-    fn submission_id(&self) -> &str { &self.digest }
-    fn signed_payload(&self) -> &str { &self.tx_bytes_b64 }
-    fn signed_payload_format(&self) -> super::SignedPayloadFormat { super::SignedPayloadFormat::Base64 }
+    fn submission_id(&self) -> &str {
+        &self.digest
+    }
+    fn signed_payload(&self) -> &str {
+        &self.tx_bytes_b64
+    }
+    fn signed_payload_format(&self) -> super::SignedPayloadFormat {
+        super::SignedPayloadFormat::Base64
+    }
 }
 
 // ----------------------------------------------------------------
@@ -91,8 +95,6 @@ fn rpc(method: &str, params: Value) -> Value {
 }
 // Sui fetch paths: native balance, per-coin balance, history.
 
-
-
 impl SuiClient {
     pub async fn fetch_balance(&self, address: &str) -> Result<SuiBalance, String> {
         let result = self
@@ -132,7 +134,11 @@ impl SuiClient {
         Ok(data
             .into_iter()
             .map(|item| {
-                let digest = item.get("digest").and_then(|v| v.as_str()).unwrap_or("").to_string();
+                let digest = item
+                    .get("digest")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("")
+                    .to_string();
                 let timestamp_ms = item
                     .get("timestampMs")
                     .and_then(|v| v.as_str())
@@ -171,6 +177,10 @@ fn format_sui(mist: u64) -> String {
     }
     let frac_str = format!("{:09}", frac);
     let trimmed = frac_str.trim_end_matches('0');
-    let capped = if trimmed.len() > 6 { &trimmed[..6] } else { trimmed };
+    let capped = if trimmed.len() > 6 {
+        &trimmed[..6]
+    } else {
+        trimmed
+    };
     format!("{}.{}", whole, capped)
 }

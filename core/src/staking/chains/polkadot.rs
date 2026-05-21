@@ -26,13 +26,19 @@ pub struct PolkadotStakingClient {
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
-fn planck_to_dot(planck: u128) -> f64 { planck as f64 / 1e10 }
+fn planck_to_dot(planck: u128) -> f64 {
+    planck as f64 / 1e10
+}
 
-fn dot_display(planck: u128) -> String { format!("{:.4} DOT", planck_to_dot(planck)) }
+fn dot_display(planck: u128) -> String {
+    format!("{:.4} DOT", planck_to_dot(planck))
+}
 
 impl PolkadotStakingClient {
     pub fn new(sidecar_endpoints: Vec<String>) -> Self {
-        Self { _sidecar_endpoints: sidecar_endpoints }
+        Self {
+            _sidecar_endpoints: sidecar_endpoints,
+        }
     }
 
     /// Active validator set. Sidecar: `/pallets/staking/storage/validators`.

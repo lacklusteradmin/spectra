@@ -1,6 +1,5 @@
 //! Litecoin: address validation, P2PKH (L…) base58check encoding,
-//! and MWEB stealth address parsing. Self-contained — see `REFACTOR_NOTES.md`.
-
+//! and MWEB stealth address parsing
 
 // ── Address validation ───────────────────────────────────────────────────
 
@@ -38,8 +37,7 @@ pub struct MwebAddress {
 /// Returns an error for non-MWEB addresses or malformed payloads.
 /// Decode a bech32m MWEB stealth address into its constituent scan and spend public keys.
 pub fn parse_mweb_address(address: &str) -> Result<MwebAddress, String> {
-    let (hrp, data) = bech32::decode(address)
-        .map_err(|e| format!("invalid mweb address: {e}"))?;
+    let (hrp, data) = bech32::decode(address).map_err(|e| format!("invalid mweb address: {e}"))?;
     if hrp.as_str() != "ltcmweb" && hrp.as_str() != "tmweb" {
         return Err(format!(
             "expected ltcmweb or tmweb HRP, got \"{}\"",
@@ -56,7 +54,10 @@ pub fn parse_mweb_address(address: &str) -> Result<MwebAddress, String> {
     let mut spend_pubkey = [0u8; 33];
     scan_pubkey.copy_from_slice(&data[0..33]);
     spend_pubkey.copy_from_slice(&data[33..66]);
-    Ok(MwebAddress { scan_pubkey, spend_pubkey })
+    Ok(MwebAddress {
+        scan_pubkey,
+        spend_pubkey,
+    })
 }
 
 /// Returns true if `address` is a mainnet or testnet MWEB stealth address.
@@ -67,10 +68,10 @@ pub fn is_mweb_address(address: &str) -> bool {
 
 // ── Derivation ────────────────────────────────────────────────────────────
 
-use secp256k1::{PublicKey, Secp256k1, SecretKey};
-use crate::derivation::types::{BitcoinScriptType, DerivationResult, parse_path_metadata};
 use crate::derivation::chains::bitcoin::{base58check_encode, derive_secp_keypair, hash160};
+use crate::derivation::types::{parse_path_metadata, BitcoinScriptType, DerivationResult};
 use crate::SpectraBridgeError;
+use secp256k1::{PublicKey, Secp256k1, SecretKey};
 
 const LTC_MAINNET_VERSION: u8 = 0x30;
 const LTC_TESTNET_VERSION: u8 = 0x6f;
@@ -84,9 +85,14 @@ fn p2pkh_address(version: u8, pubkey: &PublicKey) -> String {
 
 // Shared body for derive_litecoin / derive_litecoin_testnet; rejects non-P2PKH script types.
 fn ltc_internal(
-    version: u8, seed_phrase: String, derivation_path: String, passphrase: Option<String>,
+    version: u8,
+    seed_phrase: String,
+    derivation_path: String,
+    passphrase: Option<String>,
     script_type: BitcoinScriptType,
-    want_address: bool, want_public_key: bool, want_private_key: bool,
+    want_address: bool,
+    want_public_key: bool,
+    want_private_key: bool,
 ) -> Result<DerivationResult, SpectraBridgeError> {
     if !matches!(script_type, BitcoinScriptType::P2pkh) {
         return Err(SpectraBridgeError::InvalidInput {
@@ -94,39 +100,70 @@ fn ltc_internal(
         });
     }
     let (account, branch, index) = parse_path_metadata(&derivation_path);
-    let (pk, priv_bytes) = derive_secp_keypair(&seed_phrase, &derivation_path, passphrase.as_deref())?;
+    let (pk, priv_bytes) =
+        derive_secp_keypair(&seed_phrase, &derivation_path, passphrase.as_deref())?;
     Ok(DerivationResult {
         address: want_address.then(|| p2pkh_address(version, &pk)),
         public_key_hex: want_public_key.then(|| hex::encode(pk.serialize())),
         private_key_hex: want_private_key.then(|| hex::encode(priv_bytes)),
-        account, branch, index,
+        account,
+        branch,
+        index,
     })
 }
 
 /// UniFFI export: derive Litecoin mainnet keys (P2PKH only).
 #[uniffi::export]
 pub fn derive_litecoin(
-    seed_phrase: String, derivation_path: String, passphrase: Option<String>,
+    seed_phrase: String,
+    derivation_path: String,
+    passphrase: Option<String>,
     script_type: BitcoinScriptType,
-    want_address: bool, want_public_key: bool, want_private_key: bool,
+    want_address: bool,
+    want_public_key: bool,
+    want_private_key: bool,
 ) -> Result<DerivationResult, SpectraBridgeError> {
-    ltc_internal(LTC_MAINNET_VERSION, seed_phrase, derivation_path, passphrase, script_type, want_address, want_public_key, want_private_key)
+    ltc_internal(
+        LTC_MAINNET_VERSION,
+        seed_phrase,
+        derivation_path,
+        passphrase,
+        script_type,
+        want_address,
+        want_public_key,
+        want_private_key,
+    )
 }
 
 /// UniFFI export: derive Litecoin testnet keys.
 #[uniffi::export]
 pub fn derive_litecoin_testnet(
-    seed_phrase: String, derivation_path: String, passphrase: Option<String>,
+    seed_phrase: String,
+    derivation_path: String,
+    passphrase: Option<String>,
     script_type: BitcoinScriptType,
-    want_address: bool, want_public_key: bool, want_private_key: bool,
+    want_address: bool,
+    want_public_key: bool,
+    want_private_key: bool,
 ) -> Result<DerivationResult, SpectraBridgeError> {
-    ltc_internal(LTC_TESTNET_VERSION, seed_phrase, derivation_path, passphrase, script_type, want_address, want_public_key, want_private_key)
+    ltc_internal(
+        LTC_TESTNET_VERSION,
+        seed_phrase,
+        derivation_path,
+        passphrase,
+        script_type,
+        want_address,
+        want_public_key,
+        want_private_key,
+    )
 }
 
 /// UniFFI export: derive Litecoin address/pubkey directly from a hex private key.
 #[uniffi::export]
 pub fn derive_litecoin_from_private_key(
-    private_key_hex: String, want_address: bool, want_public_key: bool,
+    private_key_hex: String,
+    want_address: bool,
+    want_public_key: bool,
 ) -> Result<DerivationResult, SpectraBridgeError> {
     let trimmed = private_key_hex.trim();
     if trimmed.len() != 64 {
@@ -144,6 +181,8 @@ pub fn derive_litecoin_from_private_key(
         address: want_address.then(|| p2pkh_address(LTC_MAINNET_VERSION, &pk)),
         public_key_hex: want_public_key.then(|| hex::encode(pk.serialize())),
         private_key_hex: None,
-        account: 0, branch: 0, index: 0,
+        account: 0,
+        branch: 0,
+        index: 0,
     })
 }

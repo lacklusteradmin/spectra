@@ -204,7 +204,11 @@ mod tests {
             is_watch_only: false,
             chain_name: chain.to_string(),
             include_in_portfolio_total: true,
-            network_mode: if chain == "Bitcoin" { Some("mainnet".to_string()) } else { None },
+            network_mode: if chain == "Bitcoin" {
+                Some("mainnet".to_string())
+            } else {
+                None
+            },
             xpub: None,
             derivation_preset: "standard".to_string(),
             derivation_path: Some("m/84'/0'/0'/0/0".to_string()),
@@ -234,5 +238,4 @@ mod tests {
         );
         assert_eq!(transition.events[0].kind, "walletAdded");
     }
-
 }

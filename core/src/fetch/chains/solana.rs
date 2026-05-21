@@ -61,9 +61,15 @@ pub struct SolanaSendResult {
 }
 
 impl super::SignedSubmission for SolanaSendResult {
-    fn submission_id(&self) -> &str { &self.signature }
-    fn signed_payload(&self) -> &str { &self.signed_tx_base64 }
-    fn signed_payload_format(&self) -> super::SignedPayloadFormat { super::SignedPayloadFormat::Base64 }
+    fn submission_id(&self) -> &str {
+        &self.signature
+    }
+    fn signed_payload(&self) -> &str {
+        &self.signed_tx_base64
+    }
+    fn signed_payload_format(&self) -> super::SignedPayloadFormat {
+        super::SignedPayloadFormat::Base64
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -123,7 +129,6 @@ fn rpc(method: &str, params: Value) -> Value {
 // unified history, account existence, mint decimals.
 
 use base64::Engine as _;
-
 
 impl SolanaClient {
     pub async fn fetch_balance(&self, address: &str) -> Result<SolanaBalance, String> {
@@ -204,10 +209,7 @@ impl SolanaClient {
 
     pub async fn fetch_recent_blockhash(&self) -> Result<String, String> {
         let result = self
-            .call(
-                "getLatestBlockhash",
-                json!([{"commitment": "confirmed"}]),
-            )
+            .call("getLatestBlockhash", json!([{"commitment": "confirmed"}]))
             .await?;
         result
             .get("value")
@@ -235,7 +237,11 @@ impl SolanaClient {
 
         let signatures: Vec<String> = sig_array
             .iter()
-            .filter_map(|s| s.get("signature").and_then(|v| v.as_str()).map(str::to_string))
+            .filter_map(|s| {
+                s.get("signature")
+                    .and_then(|v| v.as_str())
+                    .map(str::to_string)
+            })
             .collect();
 
         if signatures.is_empty() {
@@ -340,7 +346,11 @@ impl SolanaClient {
 
         let signatures: Vec<String> = sig_array
             .iter()
-            .filter_map(|s| s.get("signature").and_then(|v| v.as_str()).map(str::to_string))
+            .filter_map(|s| {
+                s.get("signature")
+                    .and_then(|v| v.as_str())
+                    .map(str::to_string)
+            })
             .collect();
 
         if signatures.is_empty() {
@@ -409,7 +419,10 @@ impl SolanaClient {
 
             // Find post-token entries owned by this address.
             for post_entry in &post_tok {
-                let owner = post_entry.get("owner").and_then(|v| v.as_str()).unwrap_or("");
+                let owner = post_entry
+                    .get("owner")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("");
                 if owner != address {
                     continue;
                 }
@@ -437,7 +450,9 @@ impl SolanaClient {
                 let pre_raw: u128 = pre_tok
                     .iter()
                     .find(|e| {
-                        e.get("accountIndex").and_then(|v| v.as_u64()).unwrap_or(u64::MAX)
+                        e.get("accountIndex")
+                            .and_then(|v| v.as_u64())
+                            .unwrap_or(u64::MAX)
                             == acct_idx
                     })
                     .and_then(|e| e.pointer("/uiTokenAmount/amount").and_then(|v| v.as_str()))
@@ -624,7 +639,10 @@ impl SolanaClient {
         // [0..36]: mint authority (COption<Pubkey>)
         // [36..44]: supply (u64 le)
         // [44]: decimals (u8)
-        bytes.get(44).copied().ok_or_else(|| "mint data short".to_string())
+        bytes
+            .get(44)
+            .copied()
+            .ok_or_else(|| "mint data short".to_string())
     }
 
     /// Check whether an account exists on-chain.
@@ -635,7 +653,10 @@ impl SolanaClient {
                 json!([address, {"encoding": "base64", "commitment": "confirmed"}]),
             )
             .await?;
-        Ok(result.pointer("/value").map(|v| !v.is_null()).unwrap_or(false))
+        Ok(result
+            .pointer("/value")
+            .map(|v| !v.is_null())
+            .unwrap_or(false))
     }
 }
 
@@ -651,7 +672,11 @@ fn format_sol(lamports: u64) -> String {
     }
     let frac_str = format!("{:09}", frac);
     let trimmed = frac_str.trim_end_matches('0');
-    let capped = if trimmed.len() > 6 { &trimmed[..6] } else { trimmed };
+    let capped = if trimmed.len() > 6 {
+        &trimmed[..6]
+    } else {
+        trimmed
+    };
     format!("{}.{}", whole, capped)
 }
 
@@ -668,6 +693,10 @@ fn format_ft_amount(raw: u128, decimals: u8) -> String {
     }
     let frac_str = format!("{:0>width$}", frac, width = decimals as usize);
     let trimmed = frac_str.trim_end_matches('0');
-    let capped = if trimmed.len() > 6 { &trimmed[..6] } else { trimmed };
+    let capped = if trimmed.len() > 6 {
+        &trimmed[..6]
+    } else {
+        trimmed
+    };
     format!("{}.{}", whole, capped)
 }

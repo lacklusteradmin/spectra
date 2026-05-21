@@ -32,7 +32,6 @@ fn amount_i64(amount: f64, scale: f64) -> i64 {
     (amount * scale).round() as i64
 }
 
-
 // --- Simple "from, to, amount-unit, priv, [pub]" chain payloads ---
 
 pub fn build_xrp_send_payload(
@@ -223,7 +222,9 @@ pub fn build_monero_send_payload(to: String, amount_xmr: f64, priority: u32) -> 
     let piconeros = amount_u64(amount_xmr, 1e12);
     format!(
         "{{\"to\":\"{}\",\"piconeros\":{},\"priority\":{}}}",
-        json_escape(&to), piconeros, priority
+        json_escape(&to),
+        piconeros,
+        priority
     )
 }
 
@@ -236,7 +237,10 @@ pub fn build_solana_native_send_payload(
     let lamports = amount_u64(amount_sol, 1e9);
     format!(
         "{{\"from_pubkey_hex\":\"{}\",\"to\":\"{}\",\"lamports\":{},\"private_key_hex\":\"{}\"}}",
-        json_escape(&from_pubkey_hex), json_escape(&to), lamports, json_escape(&private_key_hex)
+        json_escape(&from_pubkey_hex),
+        json_escape(&to),
+        lamports,
+        json_escape(&private_key_hex)
     )
 }
 
@@ -266,7 +270,10 @@ pub fn build_tron_native_send_payload(
     let amount_sun = amount_u64(amount_trx, 1e6);
     format!(
         "{{\"from\":\"{}\",\"to\":\"{}\",\"amount_sun\":{},\"private_key_hex\":\"{}\"}}",
-        json_escape(&from), json_escape(&to), amount_sun, json_escape(&private_key_hex)
+        json_escape(&from),
+        json_escape(&to),
+        amount_sun,
+        json_escape(&private_key_hex)
     )
 }
 
@@ -391,7 +398,10 @@ fn format_key_for(chain: SendChain) -> &'static str {
     }
 }
 
-pub fn classify_send_broadcast_result(chain: SendChain, result_json: String) -> SendBroadcastOutcome {
+pub fn classify_send_broadcast_result(
+    chain: SendChain,
+    result_json: String,
+) -> SendBroadcastOutcome {
     let field = hash_field_for(chain);
     let mut hash = crate::send::preview_decode::extract_json_string_field(
         result_json.clone(),
@@ -413,7 +423,13 @@ mod tests {
 
     #[test]
     fn xrp_payload_round_trip() {
-        let s = build_xrp_send_payload("fa".into(), "to".into(), 1.5, "priv".into(), Some("pub".into()));
+        let s = build_xrp_send_payload(
+            "fa".into(),
+            "to".into(),
+            1.5,
+            "priv".into(),
+            Some("pub".into()),
+        );
         let v: serde_json::Value = serde_json::from_str(&s).unwrap();
         assert_eq!(v["drops"], 1_500_000);
         assert_eq!(v["public_key_hex"], "pub");
@@ -437,20 +453,14 @@ mod tests {
 
     #[test]
     fn classify_sui_digest() {
-        let o = classify_send_broadcast_result(
-            SendChain::Sui,
-            r#"{"digest":"abc"}"#.into(),
-        );
+        let o = classify_send_broadcast_result(SendChain::Sui, r#"{"digest":"abc"}"#.into());
         assert_eq!(o.transaction_hash, "abc");
         assert_eq!(o.payload_format, "sui.rust_json");
     }
 
     #[test]
     fn classify_icp_fallback_when_no_block_index() {
-        let o = classify_send_broadcast_result(
-            SendChain::Icp,
-            r#"{"other":1}"#.into(),
-        );
+        let o = classify_send_broadcast_result(SendChain::Icp, r#"{"other":1}"#.into());
         assert_eq!(o.transaction_hash, r#"{"other":1}"#);
     }
 }

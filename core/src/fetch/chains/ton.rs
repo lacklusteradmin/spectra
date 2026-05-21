@@ -9,8 +9,6 @@ use serde::{Deserialize, Serialize};
 
 use crate::http::{with_fallback, HttpClient, RetryProfile};
 
-
-
 // ----------------------------------------------------------------
 // Public result types
 // ----------------------------------------------------------------
@@ -42,9 +40,15 @@ pub struct TonSendResult {
 }
 
 impl super::SignedSubmission for TonSendResult {
-    fn submission_id(&self) -> &str { &self.message_hash }
-    fn signed_payload(&self) -> &str { &self.boc_b64 }
-    fn signed_payload_format(&self) -> super::SignedPayloadFormat { super::SignedPayloadFormat::Base64 }
+    fn submission_id(&self) -> &str {
+        &self.message_hash
+    }
+    fn signed_payload(&self) -> &str {
+        &self.boc_b64
+    }
+    fn signed_payload_format(&self) -> super::SignedPayloadFormat {
+        super::SignedPayloadFormat::Base64
+    }
 }
 
 /// One jetton (token) balance entry returned by the v3 API.
@@ -84,7 +88,10 @@ impl TonClient {
         self
     }
 
-    pub(crate) async fn get<T: serde::de::DeserializeOwned>(&self, path: &str) -> Result<T, String> {
+    pub(crate) async fn get<T: serde::de::DeserializeOwned>(
+        &self,
+        path: &str,
+    ) -> Result<T, String> {
         let path = path.to_string();
         let api_key = self.api_key.clone();
         with_fallback(&self.endpoints, |base| {
@@ -100,7 +107,10 @@ impl TonClient {
     }
 
     /// GET from the TonCenter v3 base URL (if configured).
-    pub(crate) async fn get_v3<T: serde::de::DeserializeOwned>(&self, path: &str) -> Result<T, String> {
+    pub(crate) async fn get_v3<T: serde::de::DeserializeOwned>(
+        &self,
+        path: &str,
+    ) -> Result<T, String> {
         if self.v3_endpoints.is_empty() {
             return Err("ton: no v3 endpoints configured".to_string());
         }
@@ -124,8 +134,6 @@ impl TonClient {
     }
 }
 // TON fetch paths: balance, seqno, history (TonCenter v2), jetton balances (v3).
-
-
 
 impl TonClient {
     /// Fetch all jetton (token) balances for `address` via the TonCenter v3 API.
@@ -282,6 +290,10 @@ fn format_ton(nanotons: u64) -> String {
     }
     let frac_str = format!("{:09}", frac);
     let trimmed = frac_str.trim_end_matches('0');
-    let capped = if trimmed.len() > 6 { &trimmed[..6] } else { trimmed };
+    let capped = if trimmed.len() > 6 {
+        &trimmed[..6]
+    } else {
+        trimmed
+    };
     format!("{}.{}", whole, capped)
 }

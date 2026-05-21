@@ -1,6 +1,5 @@
 //! Bitcoin Gold: address validation, BIP-32 derivation, P2PKH (G…)
-//! base58check encoding. Self-contained — see `REFACTOR_NOTES.md`.
-
+//! base58check encoding
 
 // ── Address validation (preserved) ───────────────────────────────────────
 
@@ -17,7 +16,10 @@ pub(crate) fn decode_btg_address(address: &str) -> Result<[u8; 20], String> {
         return Err("btg legacy payload must be 21 bytes".to_string());
     }
     if decoded[0] != BTG_P2PKH_VERSION && decoded[0] != BTG_P2SH_VERSION {
-        return Err(format!("unrecognised btg version byte: 0x{:02x}", decoded[0]));
+        return Err(format!(
+            "unrecognised btg version byte: 0x{:02x}",
+            decoded[0]
+        ));
     }
     let mut hash = [0u8; 20];
     hash.copy_from_slice(&decoded[1..21]);
@@ -34,16 +36,20 @@ pub(crate) fn btg_p2pkh_script(pubkey_hash: &[u8; 20]) -> Vec<u8> {
 
 // ── Derivation ────────────────────────────────────────────────────────────
 
-use crate::derivation::types::{BitcoinScriptType, DerivationResult, parse_path_metadata};
 use crate::derivation::chains::bitcoin::{base58check_encode, derive_secp_keypair, hash160};
+use crate::derivation::types::{parse_path_metadata, BitcoinScriptType, DerivationResult};
 use crate::SpectraBridgeError;
 
 /// UniFFI export: derive Bitcoin Gold mainnet keys; only P2PKH script type is supported.
 #[uniffi::export]
 pub fn derive_bitcoin_gold(
-    seed_phrase: String, derivation_path: String, passphrase: Option<String>,
+    seed_phrase: String,
+    derivation_path: String,
+    passphrase: Option<String>,
     script_type: BitcoinScriptType,
-    want_address: bool, want_public_key: bool, want_private_key: bool,
+    want_address: bool,
+    want_public_key: bool,
+    want_private_key: bool,
 ) -> Result<DerivationResult, SpectraBridgeError> {
     if !matches!(script_type, BitcoinScriptType::P2pkh) {
         return Err(SpectraBridgeError::InvalidInput {
@@ -51,7 +57,8 @@ pub fn derive_bitcoin_gold(
         });
     }
     let (account, branch, index) = parse_path_metadata(&derivation_path);
-    let (pk, priv_bytes) = derive_secp_keypair(&seed_phrase, &derivation_path, passphrase.as_deref())?;
+    let (pk, priv_bytes) =
+        derive_secp_keypair(&seed_phrase, &derivation_path, passphrase.as_deref())?;
     let address = want_address.then(|| {
         let mut payload = vec![BTG_P2PKH_VERSION];
         payload.extend_from_slice(&hash160(&pk.serialize()));
@@ -61,7 +68,9 @@ pub fn derive_bitcoin_gold(
         address,
         public_key_hex: want_public_key.then(|| hex::encode(pk.serialize())),
         private_key_hex: want_private_key.then(|| hex::encode(priv_bytes)),
-        account, branch, index,
+        account,
+        branch,
+        index,
     })
 }
 

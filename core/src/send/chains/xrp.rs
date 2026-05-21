@@ -36,7 +36,10 @@ impl XrpClient {
             .and_then(|v| v.as_str())
             .ok_or("submit: missing hash")?
             .to_string();
-        Ok(XrpSendResult { txid, tx_blob_hex: tx_blob })
+        Ok(XrpSendResult {
+            txid,
+            tx_blob_hex: tx_blob,
+        })
     }
 
     /// Submit a pre-signed transaction blob (for rebroadcast).
@@ -48,7 +51,10 @@ impl XrpClient {
             .and_then(|v| v.as_str())
             .unwrap_or("")
             .to_string();
-        Ok(XrpSendResult { txid, tx_blob_hex: tx_blob_hex.to_string() })
+        Ok(XrpSendResult {
+            txid,
+            tx_blob_hex: tx_blob_hex.to_string(),
+        })
     }
 }
 
@@ -72,7 +78,8 @@ pub fn build_signed_payment(
     // Build signing payload (canonical field order per XRPL spec).
     let signing_prefix = hex::decode("53545800").unwrap(); // "STX\x00"
 
-    let unsigned_fields = encode_payment_fields(from, to, amount_drops, fee_drops, sequence, public_key_hex)?;
+    let unsigned_fields =
+        encode_payment_fields(from, to, amount_drops, fee_drops, sequence, public_key_hex)?;
 
     let mut signing_payload = signing_prefix.clone();
     signing_payload.extend_from_slice(&unsigned_fields);
@@ -88,7 +95,13 @@ pub fn build_signed_payment(
 
     // Rebuild with TxnSignature field inserted (field 16, type 7 = VL).
     let signed_fields = encode_payment_fields_signed(
-        from, to, amount_drops, fee_drops, sequence, public_key_hex, &sig_hex,
+        from,
+        to,
+        amount_drops,
+        fee_drops,
+        sequence,
+        public_key_hex,
+        &sig_hex,
     )?;
 
     Ok(hex::encode_upper(&signed_fields))
@@ -144,7 +157,8 @@ fn encode_payment_fields_signed(
     public_key_hex: &str,
     sig_hex: &str,
 ) -> Result<Vec<u8>, String> {
-    let mut out = encode_payment_fields(from, to, amount_drops, fee_drops, sequence, public_key_hex)?;
+    let mut out =
+        encode_payment_fields(from, to, amount_drops, fee_drops, sequence, public_key_hex)?;
     // TxnSignature, field 4, type 7
     out.push(0x74);
     let sig_bytes = hex::decode(sig_hex).map_err(|e| format!("sig hex: {e}"))?;

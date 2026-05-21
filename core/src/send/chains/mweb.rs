@@ -17,11 +17,11 @@ use rand::RngCore;
 use crate::derivation::chains::litecoin::MwebAddress;
 
 // ── EHashTag constants (ASCII values from libmw/include/mw/crypto/Hasher.h) ──
-const HTAG_DERIVE: u8 = b'D';   // shared secret: t = BLAKE3('D' | s·A)
-const HTAG_NONCE: u8 = b'N';    // nonce:          n = BLAKE3('N' | k_s)[:16]
-const HTAG_OUT_KEY: u8 = b'O';  // receiver key:   Ko = BLAKE3('O'|t) · B
+const HTAG_DERIVE: u8 = b'D'; // shared secret: t = BLAKE3('D' | s·A)
+const HTAG_NONCE: u8 = b'N'; // nonce:          n = BLAKE3('N' | k_s)[:16]
+const HTAG_OUT_KEY: u8 = b'O'; // receiver key:   Ko = BLAKE3('O'|t) · B
 const HTAG_SEND_KEY: u8 = b'S'; // sending key:    s  = BLAKE3('S'|A|B|v_le8|n)
-const HTAG_TAG: u8 = b'T';      // view tag:        t[0] of BLAKE3('T'|s·A)
+const HTAG_TAG: u8 = b'T'; // view tag:        t[0] of BLAKE3('T'|s·A)
 
 // MWEB kernel feature flags
 const KERNEL_FEAT_HAS_FEE: u8 = 0x01;
@@ -37,7 +37,11 @@ pub const MWEB_PEGIN_OVERHEAD_BYTES: u64 = 1017;
 
 /// BLAKE3(tag_byte | data) → 32 bytes.
 fn b3(tag: u8, data: &[u8]) -> [u8; 32] {
-    blake3::Hasher::new().update(&[tag]).update(data).finalize().into()
+    blake3::Hasher::new()
+        .update(&[tag])
+        .update(data)
+        .finalize()
+        .into()
 }
 
 /// BLAKE3(parts[0] | parts[1] | …) → 32 bytes, no tag prefix.
@@ -52,7 +56,10 @@ fn b3_cat(parts: &[&[u8]]) -> [u8; 32] {
 /// BLAKE3(data) → 64 bytes via XOF.
 fn b3_64(data: &[u8]) -> [u8; 64] {
     let mut out = [0u8; 64];
-    blake3::Hasher::new().update(data).finalize_xof().fill(&mut out);
+    blake3::Hasher::new()
+        .update(data)
+        .finalize_xof()
+        .fill(&mut out);
     out
 }
 
@@ -102,7 +109,8 @@ fn derive_output_keys(
     // Step 4: shared point sA = s · A_scan;  shared secret t = BLAKE3('D' | sA)
     let mut sa = secp256k1zkp::key::PublicKey::from_slice(secp, &addr.scan_pubkey)
         .map_err(|e| format!("mweb scan pubkey: {e}"))?;
-    sa.mul_assign(secp, &s_sk).map_err(|e| format!("mweb sA: {e}"))?;
+    sa.mul_assign(secp, &s_sk)
+        .map_err(|e| format!("mweb sA: {e}"))?;
     let sa_compressed = pk33(secp, &sa)?;
     let t = b3(HTAG_DERIVE, &sa_compressed);
 
@@ -112,13 +120,15 @@ fn derive_output_keys(
         .map_err(|e| format!("mweb out_key scalar: {e}"))?;
     let mut ko = secp256k1zkp::key::PublicKey::from_slice(secp, &addr.spend_pubkey)
         .map_err(|e| format!("mweb spend pubkey Ko: {e}"))?;
-    ko.mul_assign(secp, &ok_sk).map_err(|e| format!("mweb Ko: {e}"))?;
+    ko.mul_assign(secp, &ok_sk)
+        .map_err(|e| format!("mweb Ko: {e}"))?;
     let receiver_pubkey = pk33(secp, &ko)?;
 
     // Step 6: K_e = s · B_spend  (key exchange pubkey, goes in OutputMessage)
     let mut ke = secp256k1zkp::key::PublicKey::from_slice(secp, &addr.spend_pubkey)
         .map_err(|e| format!("mweb spend pubkey Ke: {e}"))?;
-    ke.mul_assign(secp, &s_sk).map_err(|e| format!("mweb Ke: {e}"))?;
+    ke.mul_assign(secp, &s_sk)
+        .map_err(|e| format!("mweb Ke: {e}"))?;
     let key_exchange_pubkey = pk33(secp, &ke)?;
 
     // Step 7: view_tag = BLAKE3('T' | sA)[0]
@@ -146,7 +156,13 @@ fn derive_output_keys(
     msg[35..43].copy_from_slice(&masked_value);
     msg[43..59].copy_from_slice(&masked_nonce);
 
-    Ok(MwebOutputKeys { sender_sk: k_s, sender_pubkey, receiver_pubkey, blinding, output_message: msg })
+    Ok(MwebOutputKeys {
+        sender_sk: k_s,
+        sender_pubkey,
+        receiver_pubkey,
+        blinding,
+        output_message: msg,
+    })
 }
 
 // ── MWEB Output construction ─────────────────────────────────────────────────
@@ -301,7 +317,10 @@ fn schnorr_sign(msg_hash: &[u8; 32], sk_bytes: &[u8; 32]) -> Result<[u8; 64], St
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
-fn pk33(secp: &secp256k1zkp::Secp256k1, pk: &secp256k1zkp::key::PublicKey) -> Result<[u8; 33], String> {
+fn pk33(
+    secp: &secp256k1zkp::Secp256k1,
+    pk: &secp256k1zkp::key::PublicKey,
+) -> Result<[u8; 33], String> {
     pk.serialize_vec(secp, true).as_slice()[..33]
         .try_into()
         .map_err(|_| "pk33: unexpected length".to_string())

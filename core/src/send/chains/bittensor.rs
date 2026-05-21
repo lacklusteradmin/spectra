@@ -49,7 +49,9 @@ impl BittensorClient {
         )?;
 
         let hex = format!("0x{}", hex::encode(&extrinsic));
-        let result = self.rpc_call("author_submitExtrinsic", json!([hex])).await?;
+        let result = self
+            .rpc_call("author_submitExtrinsic", json!([hex]))
+            .await?;
         let txid = result
             .as_str()
             .ok_or("author_submitExtrinsic: expected string")?
@@ -61,7 +63,9 @@ impl BittensorClient {
     }
 
     pub async fn submit_extrinsic_hex(&self, hex: &str) -> Result<TaoSendResult, String> {
-        let result = self.rpc_call("author_submitExtrinsic", json!([hex])).await?;
+        let result = self
+            .rpc_call("author_submitExtrinsic", json!([hex]))
+            .await?;
         let txid = result.as_str().unwrap_or("").to_string();
         Ok(TaoSendResult {
             txid,

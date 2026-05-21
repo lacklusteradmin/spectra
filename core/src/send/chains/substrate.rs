@@ -23,11 +23,13 @@ impl RuntimeCallIndex {
 
 /// Polkadot mainnet (relay chain), `Balances.transfer_keep_alive`.
 /// Verified against runtime spec_version 1_002_000 (April 2026).
-pub const POLKADOT_BALANCES_TRANSFER_KEEP_ALIVE: RuntimeCallIndex = RuntimeCallIndex::new(0x05, 0x03);
+pub const POLKADOT_BALANCES_TRANSFER_KEEP_ALIVE: RuntimeCallIndex =
+    RuntimeCallIndex::new(0x05, 0x03);
 
 /// Bittensor mainnet (subtensor), `Balances.transfer_keep_alive`.
 /// Verified against subtensor runtime as of April 2026.
-pub const BITTENSOR_BALANCES_TRANSFER_KEEP_ALIVE: RuntimeCallIndex = RuntimeCallIndex::new(0x06, 0x03);
+pub const BITTENSOR_BALANCES_TRANSFER_KEEP_ALIVE: RuntimeCallIndex =
+    RuntimeCallIndex::new(0x06, 0x03);
 
 /// Typed error for substrate-family signing paths. Replaces the
 /// `Result<_, String>` returns that lost structure: callers can now
@@ -64,8 +66,15 @@ impl std::fmt::Display for SubstrateSignError {
             SubstrateSignError::HashDecode { field, source } => {
                 write!(f, "{field} hex decode: {source}")
             }
-            SubstrateSignError::WrongLength { field, expected, got } => {
-                write!(f, "{field} wrong length: expected {expected} bytes, got {got}")
+            SubstrateSignError::WrongLength {
+                field,
+                expected,
+                got,
+            } => {
+                write!(
+                    f,
+                    "{field} wrong length: expected {expected} bytes, got {got}"
+                )
             }
         }
     }

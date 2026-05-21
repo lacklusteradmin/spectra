@@ -1,14 +1,11 @@
 //! Solana: address validation, BIP-39 + SLIP-10 ed25519 derivation,
-//! base58 pubkey encoding. Self-contained — see `REFACTOR_NOTES.md`.
+//! base58 pubkey encoding
 
-use bip39::{Language, Mnemonic};
+use crate::derivation::primitives::derive_bip39_seed;
 use ed25519_dalek::SigningKey;
 use hmac::{Hmac, Mac};
-use pbkdf2::pbkdf2_hmac;
 use sha2::Sha512;
-use unicode_normalization::UnicodeNormalization;
 use zeroize::Zeroizing;
-
 
 // Decode a base58 string and assert it is exactly 32 bytes (used for Solana pubkeys).
 pub(crate) fn decode_b58_32(b58: &str) -> Result<[u8; 32], String> {
@@ -20,63 +17,7 @@ pub(crate) fn decode_b58_32(b58: &str) -> Result<[u8; 32], String> {
         .map_err(|v: Vec<u8>| format!("b58 {b58} not 32 bytes: {}", v.len()))
 }
 
-// ── BIP-39 ───────────────────────────────────────────────────────────────
-
 type HmacSha512 = Hmac<Sha512>;
-
-// Map locale string ("en", "zh-cn", etc.) to BIP-39 wordlist; defaults to English.
-fn resolve_bip39_language(name: Option<&str>) -> Result<Language, String> {
-    let value = match name {
-        Some(value) if !value.trim().is_empty() => value.trim().to_ascii_lowercase(),
-        _ => return Ok(Language::English),
-    };
-    match value.as_str() {
-        "english" | "en" => Ok(Language::English),
-        "czech" | "cs" => Ok(Language::Czech),
-        "french" | "fr" => Ok(Language::French),
-        "italian" | "it" => Ok(Language::Italian),
-        "japanese" | "ja" | "jp" => Ok(Language::Japanese),
-        "korean" | "ko" | "kr" => Ok(Language::Korean),
-        "portuguese" | "pt" => Ok(Language::Portuguese),
-        "spanish" | "es" => Ok(Language::Spanish),
-        "simplified-chinese" | "chinese-simplified" | "simplified_chinese" | "zh-hans"
-        | "zh-cn" | "zh" => Ok(Language::SimplifiedChinese),
-        "traditional-chinese" | "chinese-traditional" | "traditional_chinese" | "zh-hant"
-        | "zh-tw" => Ok(Language::TraditionalChinese),
-        other => Err(format!("Unsupported mnemonic wordlist: {other}")),
-    }
-}
-
-// BIP-39 mnemonic → 64-byte seed via NFKD normalization and PBKDF2-HMAC-SHA512.
-fn derive_bip39_seed(
-    seed_phrase: &str,
-    passphrase: &str,
-    iteration_count: u32,
-    mnemonic_wordlist: Option<&str>,
-    salt_prefix: Option<&str>,
-) -> Result<Zeroizing<[u8; 64]>, String> {
-    let language = resolve_bip39_language(mnemonic_wordlist)?;
-    let mnemonic =
-        Mnemonic::parse_in_normalized(language, seed_phrase).map_err(|e| e.to_string())?;
-    let iterations = if iteration_count == 0 { 2048 } else { iteration_count };
-    let prefix = salt_prefix.unwrap_or("mnemonic");
-    let normalized_mnemonic = Zeroizing::new(mnemonic.to_string().nfkd().collect::<String>());
-    let normalized_passphrase = Zeroizing::new(passphrase.nfkd().collect::<String>());
-    let normalized_prefix = Zeroizing::new(prefix.nfkd().collect::<String>());
-    let salt = Zeroizing::new(format!(
-        "{}{}",
-        normalized_prefix.as_str(),
-        normalized_passphrase.as_str()
-    ));
-    let mut seed = Zeroizing::new([0u8; 64]);
-    pbkdf2_hmac::<Sha512>(
-        normalized_mnemonic.as_bytes(),
-        salt.as_bytes(),
-        iterations,
-        &mut *seed,
-    );
-    Ok(seed)
-}
 
 // ── HMAC-SHA512 + SLIP-10 ed25519 ────────────────────────────────────────
 
@@ -159,7 +100,7 @@ pub(crate) fn derive_from_seed_phrase(
     want_address: bool,
     want_public_key: bool,
     want_private_key: bool,
-) -> Result<(Option<String>, Option<String>, Option<String>), String> {
+) -> Result<crate::derivation::primitives::OptionalKeyMaterial, String> {
     let seed = derive_bip39_seed(seed_phrase, passphrase.unwrap_or(""), 0, None, None)?;
     let private_key = derive_slip10_ed25519_key(seed.as_ref(), derivation_path, hmac_key)?;
     let signing_key = SigningKey::from_bytes(&private_key);
@@ -174,39 +115,79 @@ pub(crate) fn derive_from_seed_phrase(
 
 // ── UniFFI exports ────────────────────────────────────────────────────────
 
-use crate::derivation::types::{DerivationResult, parse_path_metadata};
+use crate::derivation::types::{parse_path_metadata, DerivationResult};
 use crate::SpectraBridgeError;
 
 // Shared body for derive_solana / derive_solana_devnet.
 fn solana_internal(
-    seed_phrase: String, derivation_path: String, passphrase: Option<String>,
+    seed_phrase: String,
+    derivation_path: String,
+    passphrase: Option<String>,
     hmac_key: Option<String>,
-    want_address: bool, want_public_key: bool, want_private_key: bool,
+    want_address: bool,
+    want_public_key: bool,
+    want_private_key: bool,
 ) -> Result<DerivationResult, SpectraBridgeError> {
     let (account, branch, index) = parse_path_metadata(&derivation_path);
     let (address, public_key_hex, private_key_hex) = derive_from_seed_phrase(
-        &seed_phrase, &derivation_path, passphrase.as_deref(), hmac_key.as_deref(),
-        want_address, want_public_key, want_private_key,
+        &seed_phrase,
+        &derivation_path,
+        passphrase.as_deref(),
+        hmac_key.as_deref(),
+        want_address,
+        want_public_key,
+        want_private_key,
     )?;
-    Ok(DerivationResult { address, public_key_hex, private_key_hex, account, branch, index })
+    Ok(DerivationResult {
+        address,
+        public_key_hex,
+        private_key_hex,
+        account,
+        branch,
+        index,
+    })
 }
 
 /// UniFFI export: derive Solana mainnet keys from a BIP-39 seed phrase.
 #[uniffi::export]
 pub fn derive_solana(
-    seed_phrase: String, derivation_path: String, passphrase: Option<String>,
+    seed_phrase: String,
+    derivation_path: String,
+    passphrase: Option<String>,
     hmac_key: Option<String>,
-    want_address: bool, want_public_key: bool, want_private_key: bool,
+    want_address: bool,
+    want_public_key: bool,
+    want_private_key: bool,
 ) -> Result<DerivationResult, SpectraBridgeError> {
-    solana_internal(seed_phrase, derivation_path, passphrase, hmac_key, want_address, want_public_key, want_private_key)
+    solana_internal(
+        seed_phrase,
+        derivation_path,
+        passphrase,
+        hmac_key,
+        want_address,
+        want_public_key,
+        want_private_key,
+    )
 }
 
 /// UniFFI export: derive Solana devnet keys (identical derivation to mainnet).
 #[uniffi::export]
 pub fn derive_solana_devnet(
-    seed_phrase: String, derivation_path: String, passphrase: Option<String>,
+    seed_phrase: String,
+    derivation_path: String,
+    passphrase: Option<String>,
     hmac_key: Option<String>,
-    want_address: bool, want_public_key: bool, want_private_key: bool,
+    want_address: bool,
+    want_public_key: bool,
+    want_private_key: bool,
 ) -> Result<DerivationResult, SpectraBridgeError> {
-    solana_internal(seed_phrase, derivation_path, passphrase, hmac_key, want_address, want_public_key, want_private_key)
+    solana_internal(
+        seed_phrase,
+        derivation_path,
+        passphrase,
+        hmac_key,
+        want_address,
+        want_public_key,
+        want_private_key,
+    )
 }

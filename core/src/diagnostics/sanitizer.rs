@@ -135,8 +135,7 @@ fn redact_seed_word_sequences(input: &str) -> String {
         sequences.push(current);
     }
 
-    let mut redact_ranges: Vec<(usize, usize)> =
-        sequences.into_iter().flatten().collect();
+    let mut redact_ranges: Vec<(usize, usize)> = sequences.into_iter().flatten().collect();
     redact_ranges.sort_by(|a, b| b.0.cmp(&a.0));
 
     let mut out: Vec<char> = chars;

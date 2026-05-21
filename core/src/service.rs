@@ -35,8 +35,8 @@ pub(crate) use crate::fetch::chains::{
     bittensor::BittensorClient, cardano::CardanoClient, dash::DashClient, decred::DecredClient,
     dogecoin::DogecoinClient, evm::EvmClient, icp::IcpClient, kaspa::KaspaClient,
     litecoin::LitecoinClient, monero::MoneroClient, near::NearClient, polkadot::PolkadotClient,
-    solana::SolanaClient, stellar::StellarClient, sui::SuiClient, ton::TonClient,
-    tron::TronClient, xrp::XrpClient, zcash::ZcashClient,
+    solana::SolanaClient, stellar::StellarClient, sui::SuiClient, ton::TonClient, tron::TronClient,
+    xrp::XrpClient, zcash::ZcashClient,
 };
 pub(crate) use crate::fetch::history_store::HistoryPaginationStore;
 pub(crate) use crate::http::HttpClient;
@@ -72,7 +72,10 @@ impl EndpointIndex {
                 api_keys.insert(entry.chain_id, key);
             }
         }
-        Self { endpoints, api_keys }
+        Self {
+            endpoints,
+            api_keys,
+        }
     }
 }
 
@@ -101,9 +104,17 @@ impl WalletService {
         LOGGING.get_or_init(|| {
             use tracing_subscriber::{fmt, EnvFilter};
             let filter = EnvFilter::try_from_default_env().unwrap_or_else(|_| {
-                if cfg!(debug_assertions) { EnvFilter::new("debug") } else { EnvFilter::new("info") }
+                if cfg!(debug_assertions) {
+                    EnvFilter::new("debug")
+                } else {
+                    EnvFilter::new("info")
+                }
             });
-            fmt().with_env_filter(filter).without_time().with_ansi(false).init();
+            fmt()
+                .with_env_filter(filter)
+                .without_time()
+                .with_ansi(false)
+                .init();
         });
         Ok(Arc::new(Self {
             endpoints: Arc::new(RwLock::new(EndpointIndex::from_list(endpoints))),
@@ -114,7 +125,10 @@ impl WalletService {
         }))
     }
 
-    pub async fn update_endpoints_typed(&self, endpoints: Vec<ChainEndpoints>) -> Result<(), SpectraBridgeError> {
+    pub async fn update_endpoints_typed(
+        &self,
+        endpoints: Vec<ChainEndpoints>,
+    ) -> Result<(), SpectraBridgeError> {
         let mut guard = self.endpoints.write().await;
         *guard = EndpointIndex::from_list(endpoints);
         Ok(())
@@ -159,7 +173,10 @@ impl WalletService {
         let chain = chain_for_evm_id(&chain_id)?;
         let endpoints = self.endpoints_for(chain.str_id()).await;
         let client = crate::fetch::chains::evm::EvmClient::new(endpoints, chain.evm_chain_id());
-        client.fetch_erc20_balance(&contract, &holder).await.map_err(Into::into)
+        client
+            .fetch_erc20_balance(&contract, &holder)
+            .await
+            .map_err(Into::into)
     }
 
     /// Unified per-chain native balance summary, replacing chain-specific JSON
@@ -305,31 +322,40 @@ impl WalletService {
             return Ok(Vec::new());
         }
 
-        let chain = Chain::from_str_id(&chain_id)
-            .ok_or_else(|| SpectraBridgeError::from(format!("fetch_token_balances: unsupported chain_id: {chain_id}")))?;
+        let chain = Chain::from_str_id(&chain_id).ok_or_else(|| {
+            SpectraBridgeError::from(format!(
+                "fetch_token_balances: unsupported chain_id: {chain_id}"
+            ))
+        })?;
         let endpoints = self.endpoints_for(chain.str_id()).await;
 
         macro_rules! coin_token_balances {
             ($Client:ty, $endpoints:expr) => {{
                 use futures::future::join_all;
                 let client = std::sync::Arc::new(<$Client>::new($endpoints));
-                let futs: Vec<_> = tokens.iter().map(|t| {
-                    let client = client.clone();
-                    let address = address.clone();
-                    let coin_type = t.contract.clone();
-                    let symbol = t.symbol.clone();
-                    let decimals = t.decimals;
-                    async move {
-                        let raw = client.fetch_coin_balance(&address, &coin_type).await.unwrap_or(0u64);
-                        TokenBalanceResult {
-                            contract_address: coin_type,
-                            symbol,
-                            decimals,
-                            balance_raw: raw.to_string(),
-                            balance_display: format_decimals(raw as u128, decimals),
+                let futs: Vec<_> = tokens
+                    .iter()
+                    .map(|t| {
+                        let client = client.clone();
+                        let address = address.clone();
+                        let coin_type = t.contract.clone();
+                        let symbol = t.symbol.clone();
+                        let decimals = t.decimals;
+                        async move {
+                            let raw = client
+                                .fetch_coin_balance(&address, &coin_type)
+                                .await
+                                .unwrap_or(0u64);
+                            TokenBalanceResult {
+                                contract_address: coin_type,
+                                symbol,
+                                decimals,
+                                balance_raw: raw.to_string(),
+                                balance_display: format_decimals(raw as u128, decimals),
+                            }
                         }
-                    }
-                }).collect();
+                    })
+                    .collect();
                 join_all(futs).await
             }};
         }
@@ -375,8 +401,10 @@ impl WalletService {
                     .fetch_spl_balances(&address, &mints)
                     .await
                     .unwrap_or_default();
-                let by_mint: std::collections::HashMap<&str, &crate::fetch::chains::solana::SplBalance> =
-                    spl.iter().map(|b| (b.mint.as_str(), b)).collect();
+                let by_mint: std::collections::HashMap<
+                    &str,
+                    &crate::fetch::chains::solana::SplBalance,
+                > = spl.iter().map(|b| (b.mint.as_str(), b)).collect();
                 tokens
                     .iter()
                     .map(|t| {
@@ -385,8 +413,12 @@ impl WalletService {
                             contract_address: t.contract.clone(),
                             symbol: t.symbol.clone(),
                             decimals: t.decimals,
-                            balance_raw: b.map(|b| b.balance_raw.clone()).unwrap_or_else(|| "0".to_string()),
-                            balance_display: b.map(|b| b.balance_display.clone()).unwrap_or_else(|| "0".to_string()),
+                            balance_raw: b
+                                .map(|b| b.balance_raw.clone())
+                                .unwrap_or_else(|| "0".to_string()),
+                            balance_display: b
+                                .map(|b| b.balance_display.clone())
+                                .unwrap_or_else(|| "0".to_string()),
                         }
                     })
                     .collect()
@@ -425,7 +457,9 @@ impl WalletService {
             Chain::Ton => {
                 // TON — jetton balances via TonCenter v3 API. The v3 endpoint
                 // lives in the chain's Secondary slot (registered as id + 100 = 116).
-                let v3_endpoints = self.endpoints_for(&chain.endpoint_str_id(EndpointSlot::Secondary)).await;
+                let v3_endpoints = self
+                    .endpoints_for(&chain.endpoint_str_id(EndpointSlot::Secondary))
+                    .await;
                 let api_key = self.api_key_for(chain.str_id()).await;
                 let client = TonClient::new(endpoints, api_key).with_v3_endpoints(v3_endpoints);
                 let jetton_balances = client
@@ -433,21 +467,24 @@ impl WalletService {
                     .await
                     .unwrap_or_default();
 
-                tokens.iter().map(|t| {
-                    let raw = jetton_balances
-                        .iter()
-                        .find(|j| j.master_address.eq_ignore_ascii_case(&t.contract))
-                        .map(|j| j.balance_raw)
-                        .unwrap_or(0u128);
-                    let display = format_decimals(raw, t.decimals);
-                    TokenBalanceResult {
-                        contract_address: t.contract.clone(),
-                        symbol: t.symbol.clone(),
-                        decimals: t.decimals,
-                        balance_raw: raw.to_string(),
-                        balance_display: display,
-                    }
-                }).collect()
+                tokens
+                    .iter()
+                    .map(|t| {
+                        let raw = jetton_balances
+                            .iter()
+                            .find(|j| j.master_address.eq_ignore_ascii_case(&t.contract))
+                            .map(|j| j.balance_raw)
+                            .unwrap_or(0u128);
+                        let display = format_decimals(raw, t.decimals);
+                        TokenBalanceResult {
+                            contract_address: t.contract.clone(),
+                            symbol: t.symbol.clone(),
+                            decimals: t.decimals,
+                            balance_raw: raw.to_string(),
+                            balance_display: display,
+                        }
+                    })
+                    .collect()
             }
             c => {
                 return Err(SpectraBridgeError::from(format!(
@@ -463,7 +500,6 @@ impl WalletService {
     // Unified execute_send — collapses derive → payload → sign trampoline
     // ----------------------------------------------------------------
 
-
     /// Derive key material, build the chain-specific payload, sign, and
     /// broadcast in a single call.
     ///
@@ -476,138 +512,40 @@ impl WalletService {
     ) -> Result<crate::send::SendExecutionResult, SpectraBridgeError> {
         // 1. Derive key material (or use provided private key).
         let (priv_hex, pub_hex) = if let Some(ref seed_phrase) = request.seed_phrase {
-            use crate::derivation::chains::{
-                aptos, bitcoin as btc, bitcoin_cash as bch, bitcoin_gold as btg, bitcoin_sv as bsv,
-                bittensor, cardano, dash, decred, dogecoin as doge, evm, icp, kaspa,
-                litecoin as ltc, monero as xmr, near, polkadot, solana, stellar, sui, ton, tron, xrp, zcash,
-            };
             use crate::derivation::types::BitcoinScriptType;
             let ov = request.derivation_overrides.as_ref();
-            let pass = ov.and_then(|o| o.passphrase.clone()).filter(|s| !s.is_empty());
-            let hmac = ov.and_then(|o| o.hmac_key.clone()).filter(|s| !s.is_empty());
-            let script = ov.and_then(|o| o.script_type.as_deref())
+            let pass = ov
+                .and_then(|o| o.passphrase.clone())
+                .filter(|s| !s.is_empty());
+            let hmac = ov
+                .and_then(|o| o.hmac_key.clone())
+                .filter(|s| !s.is_empty());
+            let script = ov
+                .and_then(|o| o.script_type.as_deref())
                 .and_then(|s| match s.to_lowercase().as_str() {
-                    "p2pkh"                     => Some(BitcoinScriptType::P2pkh),
-                    "p2shp2wpkh"|"p2sh-p2wpkh" => Some(BitcoinScriptType::P2shP2wpkh),
-                    "p2wpkh"                    => Some(BitcoinScriptType::P2wpkh),
-                    "p2tr"                      => Some(BitcoinScriptType::P2tr),
-                    _                           => None,
+                    "p2pkh" => Some(BitcoinScriptType::P2pkh),
+                    "p2shp2wpkh" | "p2sh-p2wpkh" => Some(BitcoinScriptType::P2shP2wpkh),
+                    "p2wpkh" => Some(BitcoinScriptType::P2wpkh),
+                    "p2tr" => Some(BitcoinScriptType::P2tr),
+                    _ => None,
                 })
                 .unwrap_or_else(|| {
-                    let purpose = request.derivation_path.split('/').find(|s| *s != "m" && *s != "M").map(|s| s.trim_end_matches('\''));
-                    match purpose {
-                        Some("44") => BitcoinScriptType::P2pkh,
-                        Some("49") => BitcoinScriptType::P2shP2wpkh,
-                        Some("86") => BitcoinScriptType::P2tr,
-                        _          => BitcoinScriptType::P2wpkh,
-                    }
+                    crate::derivation::dispatch::script_type_for_path(&request.derivation_path)
                 });
-            let s = seed_phrase.clone();
-            let p = request.derivation_path.clone();
-            let wa = false; let wp = true; let wk = true;
-            let r = match request.chain_name.as_str() {
-                "Bitcoin" =>
-                    btc::derive_bitcoin(s, p, pass, script, wa, wp, wk)?,
-                "Bitcoin Testnet" =>
-                    btc::derive_bitcoin_testnet(s, p, pass, script, wa, wp, wk)?,
-                "Bitcoin Testnet4" =>
-                    btc::derive_bitcoin_testnet4(s, p, pass, script, wa, wp, wk)?,
-                "Bitcoin Signet" =>
-                    btc::derive_bitcoin_signet(s, p, pass, script, wa, wp, wk)?,
-                "Bitcoin Cash" =>
-                    bch::derive_bitcoin_cash(s, p, pass, BitcoinScriptType::P2pkh, wa, wp, wk)?,
-                "Bitcoin Cash Testnet" =>
-                    bch::derive_bitcoin_cash_testnet(s, p, pass, BitcoinScriptType::P2pkh, wa, wp, wk)?,
-                "Bitcoin SV" =>
-                    bsv::derive_bitcoin_sv(s, p, pass, BitcoinScriptType::P2pkh, wa, wp, wk)?,
-                "Bitcoin SV Testnet" =>
-                    bsv::derive_bitcoin_sv_testnet(s, p, pass, BitcoinScriptType::P2pkh, wa, wp, wk)?,
-                "Litecoin" =>
-                    ltc::derive_litecoin(s, p, pass, script, wa, wp, wk)?,
-                "Litecoin Testnet" =>
-                    ltc::derive_litecoin_testnet(s, p, pass, script, wa, wp, wk)?,
-                "Dogecoin" =>
-                    doge::derive_dogecoin(s, p, pass, BitcoinScriptType::P2pkh, wa, wp, wk)?,
-                "Dogecoin Testnet" =>
-                    doge::derive_dogecoin_testnet(s, p, pass, BitcoinScriptType::P2pkh, wa, wp, wk)?,
-                "Dash" =>
-                    dash::derive_dash(s, p, pass, BitcoinScriptType::P2pkh, wa, wp, wk)?,
-                "Dash Testnet" =>
-                    dash::derive_dash_testnet(s, p, pass, BitcoinScriptType::P2pkh, wa, wp, wk)?,
-                "Bitcoin Gold" =>
-                    btg::derive_bitcoin_gold(s, p, pass, BitcoinScriptType::P2pkh, wa, wp, wk)?,
-                "Zcash" =>
-                    zcash::derive_zcash(s, p, pass, wa, wp, wk)?,
-                "Zcash Testnet" =>
-                    zcash::derive_zcash_testnet(s, p, pass, wa, wp, wk)?,
-                "Decred" =>
-                    decred::derive_decred(s, p, pass, wa, wp, wk)?,
-                "Decred Testnet" =>
-                    decred::derive_decred_testnet(s, p, pass, wa, wp, wk)?,
-                "Kaspa" =>
-                    kaspa::derive_kaspa(s, p, pass, wa, wp, wk)?,
-                "Kaspa Testnet" =>
-                    kaspa::derive_kaspa_testnet(s, p, pass, wa, wp, wk)?,
-                "Ethereum" =>          evm::derive_ethereum(s, p, pass, wa, wp, wk)?,
-                "Ethereum Classic" =>  evm::derive_ethereum_classic(s, p, pass, wa, wp, wk)?,
-                "Arbitrum" =>          evm::derive_arbitrum(s, p, pass, wa, wp, wk)?,
-                "Optimism" =>          evm::derive_optimism(s, p, pass, wa, wp, wk)?,
-                "Avalanche" =>         evm::derive_avalanche(s, p, pass, wa, wp, wk)?,
-                "Base" =>              evm::derive_base(s, p, pass, wa, wp, wk)?,
-                "BNB Chain" =>         evm::derive_bnb(s, p, pass, wa, wp, wk)?,
-                "Polygon" =>           evm::derive_polygon(s, p, pass, wa, wp, wk)?,
-                "Hyperliquid" =>       evm::derive_hyperliquid(s, p, pass, wa, wp, wk)?,
-                "Linea" =>             evm::derive_linea(s, p, pass, wa, wp, wk)?,
-                "Scroll" =>            evm::derive_scroll(s, p, pass, wa, wp, wk)?,
-                "Blast" =>             evm::derive_blast(s, p, pass, wa, wp, wk)?,
-                "Mantle" =>            evm::derive_mantle(s, p, pass, wa, wp, wk)?,
-                "Sei" =>               evm::derive_sei(s, p, pass, wa, wp, wk)?,
-                "Celo" =>              evm::derive_celo(s, p, pass, wa, wp, wk)?,
-                "Cronos" =>            evm::derive_cronos(s, p, pass, wa, wp, wk)?,
-                "opBNB" =>             evm::derive_op_bnb(s, p, pass, wa, wp, wk)?,
-                "zkSync Era" =>        evm::derive_zksync_era(s, p, pass, wa, wp, wk)?,
-                "Sonic" =>             evm::derive_sonic(s, p, pass, wa, wp, wk)?,
-                "Berachain" =>         evm::derive_berachain(s, p, pass, wa, wp, wk)?,
-                "Unichain" =>          evm::derive_unichain(s, p, pass, wa, wp, wk)?,
-                "Ink" =>               evm::derive_ink(s, p, pass, wa, wp, wk)?,
-                "X Layer" =>           evm::derive_x_layer(s, p, pass, wa, wp, wk)?,
-                "Ethereum Sepolia" =>          evm::derive_ethereum_sepolia(s, p, pass, wa, wp, wk)?,
-                "Ethereum Hoodi" =>            evm::derive_ethereum_hoodi(s, p, pass, wa, wp, wk)?,
-                "Ethereum Classic Mordor" =>   evm::derive_ethereum_classic_mordor(s, p, pass, wa, wp, wk)?,
-                "Arbitrum Sepolia" =>          evm::derive_arbitrum_sepolia(s, p, pass, wa, wp, wk)?,
-                "Optimism Sepolia" =>          evm::derive_optimism_sepolia(s, p, pass, wa, wp, wk)?,
-                "Base Sepolia" =>              evm::derive_base_sepolia(s, p, pass, wa, wp, wk)?,
-                "BNB Chain Testnet" =>         evm::derive_bnb_testnet(s, p, pass, wa, wp, wk)?,
-                "Avalanche Fuji" =>            evm::derive_avalanche_fuji(s, p, pass, wa, wp, wk)?,
-                "Polygon Amoy" =>              evm::derive_polygon_amoy(s, p, pass, wa, wp, wk)?,
-                "Hyperliquid Testnet" =>       evm::derive_hyperliquid_testnet(s, p, pass, wa, wp, wk)?,
-                "Tron" =>       tron::derive_tron(s, p, pass, wa, wp, wk)?,
-                "Tron Nile" =>  tron::derive_tron_nile(s, p, pass, wa, wp, wk)?,
-                "Solana" =>         solana::derive_solana(s, p, pass, hmac, wa, wp, wk)?,
-                "Solana Devnet" =>  solana::derive_solana_devnet(s, p, pass, hmac, wa, wp, wk)?,
-                "Stellar" =>         stellar::derive_stellar(s, p, pass, hmac, wa, wp, wk)?,
-                "Stellar Testnet" => stellar::derive_stellar_testnet(s, p, pass, hmac, wa, wp, wk)?,
-                "XRP Ledger" =>         xrp::derive_xrp(s, p, pass, wa, wp, wk)?,
-                "XRP Ledger Testnet" => xrp::derive_xrp_testnet(s, p, pass, wa, wp, wk)?,
-                "Cardano" =>         cardano::derive_cardano(s, Some(p), pass, wa, wp, wk)?,
-                "Cardano Preprod" => cardano::derive_cardano_preprod(s, Some(p), pass, wa, wp, wk)?,
-                "Sui" =>         sui::derive_sui(s, p, pass, wa, wp, wk)?,
-                "Sui Testnet" => sui::derive_sui_testnet(s, p, pass, wa, wp, wk)?,
-                "Aptos" =>         aptos::derive_aptos(s, p, pass, wa, wp, wk)?,
-                "Aptos Testnet" => aptos::derive_aptos_testnet(s, p, pass, wa, wp, wk)?,
-                "TON" =>         ton::derive_ton(s, pass, wa, wp, wk)?,
-                "TON Testnet" => ton::derive_ton_testnet(s, pass, wa, wp, wk)?,
-                "Internet Computer" => icp::derive_icp(s, p, pass, wa, wp, wk)?,
-                "NEAR" =>         near::derive_near(s, pass, wa, wp, wk)?,
-                "NEAR Testnet" => near::derive_near_testnet(s, pass, wa, wp, wk)?,
-                "Polkadot" =>         polkadot::derive_polkadot(s, pass, hmac, wa, wp, wk)?,
-                "Polkadot Westend" => polkadot::derive_polkadot_westend(s, pass, hmac, wa, wp, wk)?,
-                "Bittensor" =>       bittensor::derive_bittensor(s, pass, wa, wp, wk)?,
-                "Monero" =>          xmr::derive_monero(s, wa, wp, wk)?,
-                "Monero Stagenet" => xmr::derive_monero_stagenet(s, wa, wp, wk)?,
-                other => return Err(SpectraBridgeError::from(format!("unsupported chain: {other}"))),
-            };
-            let priv_h = r.private_key_hex.ok_or_else(|| SpectraBridgeError::from("derivation returned no private key"))?;
+            let r = crate::derivation::dispatch::derive_for_chain_name(
+                &request.chain_name,
+                seed_phrase,
+                &request.derivation_path,
+                pass.as_deref(),
+                hmac.as_deref(),
+                Some(script),
+                false,
+                true,
+                true,
+            )?;
+            let priv_h = r
+                .private_key_hex
+                .ok_or_else(|| SpectraBridgeError::from("derivation returned no private key"))?;
             (priv_h, r.public_key_hex)
         } else if let Some(ref pk) = request.private_key_hex {
             let normalized = pk.strip_prefix("0x").unwrap_or(pk).to_string();
@@ -623,7 +561,8 @@ impl WalletService {
         let params_json = self.build_execute_send_payload(&request, &priv_hex, &pub_hex)?;
 
         let result_json = if is_token {
-            self.sign_and_send_token(&request.chain_id, params_json).await?
+            self.sign_and_send_token(&request.chain_id, params_json)
+                .await?
         } else {
             self.sign_and_send(&request.chain_id, params_json).await?
         };
@@ -668,21 +607,16 @@ impl WalletService {
     // Bitcoin HD — seed → account xpub derivation
     // ----------------------------------------------------------------
 
-
     // ----------------------------------------------------------------
     // Bitcoin HD multi-address (xpub / ypub / zpub)
     // ----------------------------------------------------------------
 
-
     // `fetch_bitcoin_xpub_balance` lives in the plain-impl block below
     // (JSON shuttle — kept internal, not exported to Swift).
-
 
     // ----------------------------------------------------------------
     // Price / fiat rate service
     // ----------------------------------------------------------------
-
-
 
     // ----------------------------------------------------------------
     // EVM paginated history (native + ERC-20 token transfers)
@@ -716,15 +650,23 @@ impl WalletService {
         let eps = self.endpoints_for(chain.str_id()).await;
         let client = EvmClient::new(eps, chain.evm_chain_id());
 
-        let explorer_base = chain.evm_explorer_api_base()
-            .ok_or_else(|| SpectraBridgeError::from(format!("{} does not support Etherscan history", chain.chain_display_name())))?;
+        let explorer_base = chain.evm_explorer_api_base().ok_or_else(|| {
+            SpectraBridgeError::from(format!(
+                "{} does not support Etherscan history",
+                chain.chain_display_name()
+            ))
+        })?;
         let etherscan_chain_id = chain.evm_chain_id();
         let api_key_owned: String = self
             .etherscan_api_key
             .read()
             .map(|g| g.clone())
             .unwrap_or_default();
-        let api_key_str = if api_key_owned.is_empty() { None } else { Some(api_key_owned.as_str()) };
+        let api_key_str = if api_key_owned.is_empty() {
+            None
+        } else {
+            Some(api_key_owned.as_str())
+        };
 
         // Fetch native and token transfers concurrently.
         let (native_result, token_result) = tokio::join!(
@@ -823,8 +765,11 @@ impl WalletService {
         let mut results = Vec::with_capacity(tokens.len());
         for t in &tokens {
             let contract = t.contract.to_lowercase();
-            if contract.is_empty() { continue; }
-            let raw = client.fetch_erc20_balance_of(&contract, &address)
+            if contract.is_empty() {
+                continue;
+            }
+            let raw = client
+                .fetch_erc20_balance_of(&contract, &address)
                 .await
                 .unwrap_or(0);
             let decimals = t.decimals;
@@ -872,10 +817,7 @@ impl WalletService {
     ) -> Result<Option<String>, SpectraBridgeError> {
         let eps = self.endpoints_for("ethereum").await;
         let client = EvmClient::new(eps, 1);
-        let address = client
-            .resolve_ens(&name)
-            .await
-            ?;
+        let address = client.resolve_ens(&name).await?;
         Ok(address.filter(|a| !a.is_empty()))
     }
 
@@ -996,7 +938,8 @@ impl WalletService {
         let chain = chain_for_evm_id(&chain_id)?;
         let eps = self.endpoints_for(chain.str_id()).await;
         let client = EvmClient::new(eps, chain.evm_chain_id());
-        let (nonce_res, bal_res) = tokio::join!(client.fetch_nonce(&address), client.fetch_balance(&address));
+        let (nonce_res, bal_res) =
+            tokio::join!(client.fetch_nonce(&address), client.fetch_balance(&address));
         let nonce = nonce_res.unwrap_or(0) as i64;
         let balance_wei: u128 = bal_res
             .map(|b| b.balance_wei.parse::<u128>().unwrap_or(0))
@@ -1018,7 +961,9 @@ impl WalletService {
         let raw = self
             .fetch_tron_send_preview(address, symbol, contract_address)
             .await?;
-        Ok(crate::send::preview_decode::build_tron_send_preview_record(raw))
+        Ok(crate::send::preview_decode::build_tron_send_preview_record(
+            raw,
+        ))
     }
 
     /// Typed UTXO fee preview wrapper (BTC / LTC / BCH / BSV single-address
@@ -1032,7 +977,9 @@ impl WalletService {
         let raw = self
             .fetch_utxo_fee_preview(&chain_id, address, fee_rate_svb)
             .await?;
-        Ok(crate::send::preview_decode::build_utxo_send_preview_record(raw))
+        Ok(crate::send::preview_decode::build_utxo_send_preview_record(
+            raw,
+        ))
     }
 
     /// Typed Dogecoin send preview: runs the UTXO fee-preview fetch on the
@@ -1046,11 +993,13 @@ impl WalletService {
         let raw = self
             .fetch_utxo_fee_preview(Chain::Dogecoin.str_id(), address, 0)
             .await?;
-        Ok(crate::send::preview_decode::build_dogecoin_send_preview_record(
-            raw,
-            requested_amount,
-            fee_priority,
-        ))
+        Ok(
+            crate::send::preview_decode::build_dogecoin_send_preview_record(
+                raw,
+                requested_amount,
+                fee_priority,
+            ),
+        )
     }
 
     /// Typed Bitcoin HD send preview: concurrently fetches the xpub balance
@@ -1065,10 +1014,12 @@ impl WalletService {
             self.fetch_bitcoin_xpub_balance(xpub, receive_count, change_count),
             self.fetch_fee_estimate(Chain::Bitcoin.str_id()),
         )?;
-        Ok(crate::send::preview_decode::build_bitcoin_hd_send_preview_record(
-            balance_json,
-            fee_json,
-        ))
+        Ok(
+            crate::send::preview_decode::build_bitcoin_hd_send_preview_record(
+                balance_json,
+                fee_json,
+            ),
+        )
     }
 
     /// Typed simple-chain send preview: fuses `fetch_simple_chain_send_preview`
@@ -1091,13 +1042,9 @@ impl WalletService {
     // Phase 2 — SQLite state persistence
     // ----------------------------------------------------------------
 
-
-
     // ----------------------------------------------------------------
     // Phase 2.1 — WalletStore CRUD (SQLite-backed snapshot)
     // ----------------------------------------------------------------
-
-
 
     // ----------------------------------------------------------------
     // Phase 2.1 — Relational wallet state (keypool + owned addresses)
@@ -1106,44 +1053,17 @@ impl WalletService {
     // All calls run in spawn_blocking because rusqlite is not async.
     // ----------------------------------------------------------------
 
-
-
-
-
-
-
-
-
-
     // ----------------------------------------------------------------
     // Phase 2.8 — Transaction history persistence (SQLite-backed)
     // ----------------------------------------------------------------
-
-
-
-
-
 
     // ----------------------------------------------------------------
     // Phase 3 — typed wallet state (no JSON round-trip)
     // ----------------------------------------------------------------
 
-
-
     // ----------------------------------------------------------------
     // Phase 2.3 — History pagination state
     // ----------------------------------------------------------------
-
-
-
-
-
-
-
-
-
-
-
 
     // ----------------------------------------------------------------
     // Phase 2.7 — SecretStore (Keychain delegate)
@@ -1173,8 +1093,11 @@ impl WalletService {
         chain_id: String,
         txid: String,
     ) -> Result<UtxoTxStatus, SpectraBridgeError> {
-        let chain = Chain::from_str_id(&chain_id)
-            .ok_or_else(|| SpectraBridgeError::from(format!("fetch_utxo_tx_status: unsupported chain_id: {chain_id}")))?;
+        let chain = Chain::from_str_id(&chain_id).ok_or_else(|| {
+            SpectraBridgeError::from(format!(
+                "fetch_utxo_tx_status: unsupported chain_id: {chain_id}"
+            ))
+        })?;
         let endpoints = self.endpoints_for(chain.str_id()).await;
         let status: UtxoTxStatus = match chain {
             Chain::Bitcoin => {
@@ -1217,9 +1140,11 @@ impl WalletService {
                 let client = DashClient::new(endpoints);
                 client.fetch_tx_status(&txid).await?
             }
-            c => return Err(SpectraBridgeError::from(format!(
-                "fetch_utxo_tx_status: unsupported chain: {c:?}"
-            ))),
+            c => {
+                return Err(SpectraBridgeError::from(format!(
+                    "fetch_utxo_tx_status: unsupported chain: {c:?}"
+                )))
+            }
         };
         Ok(status)
     }
@@ -1253,7 +1178,7 @@ impl WalletService {
         &self,
         chain_id: &str,
     ) -> Result<String, SpectraBridgeError> {
-        let Some(chain) = Chain::from_str_id(&chain_id) else {
+        let Some(chain) = Chain::from_str_id(chain_id) else {
             return Ok(json!({"note": "fee estimation not supported for this chain"}).to_string());
         };
         let endpoints = self.endpoints_for(chain.str_id()).await;
@@ -1272,29 +1197,57 @@ impl WalletService {
             Chain::Xrp => {
                 let client = XrpClient::new(endpoints);
                 let drops = client.fetch_fee().await?;
-                Ok(fee_preview(chain_id, drops as u128, chain.native_decimals(), chain.coin_symbol(), "rpc"))
+                Ok(fee_preview(
+                    chain_id,
+                    drops as u128,
+                    chain.native_decimals(),
+                    chain.coin_symbol(),
+                    "rpc",
+                ))
             }
             Chain::Stellar => {
                 let client = StellarClient::new(endpoints);
                 let stroops = client.fetch_base_fee().await?;
-                Ok(fee_preview(chain_id, stroops as u128, chain.native_decimals(), chain.coin_symbol(), "rpc"))
+                Ok(fee_preview(
+                    chain_id,
+                    stroops as u128,
+                    chain.native_decimals(),
+                    chain.coin_symbol(),
+                    "rpc",
+                ))
             }
             Chain::Aptos => {
                 let client = AptosClient::new(endpoints);
                 let price = client.fetch_gas_price().await?;
-                Ok(fee_preview(chain_id, price as u128, chain.native_decimals(), chain.coin_symbol(), "rpc"))
+                Ok(fee_preview(
+                    chain_id,
+                    price as u128,
+                    chain.native_decimals(),
+                    chain.coin_symbol(),
+                    "rpc",
+                ))
             }
             // NEAR's static fee overflows u128 — fall back to the string variant.
             Chain::Near => Ok(fee_preview_str(
-                chain_id, "1000000000000000000000", "0.001", chain.coin_symbol(), "static",
+                chain_id,
+                "1000000000000000000000",
+                "0.001",
+                chain.coin_symbol(),
+                "static",
             )),
             // Every remaining supported chain returns a flat static fee from
             // `Chain::static_fee_units`. One arm replaces 18 near-identical ones.
             other => match other.static_fee_units() {
                 Some(units) => Ok(fee_preview(
-                    chain_id, units, chain.native_decimals(), chain.coin_symbol(), "static",
+                    chain_id,
+                    units,
+                    chain.native_decimals(),
+                    chain.coin_symbol(),
+                    "static",
                 )),
-                None => Ok(json!({"note": "fee estimation not supported for this chain"}).to_string()),
+                None => {
+                    Ok(json!({"note": "fee estimation not supported for this chain"}).to_string())
+                }
             },
         }
     }
@@ -1327,8 +1280,9 @@ impl WalletService {
         chain_id: &str,
         params: serde_json::Value,
     ) -> Result<String, SpectraBridgeError> {
-        let chain = Chain::from_str_id(chain_id)
-            .ok_or_else(|| SpectraBridgeError::from(format!("sign_and_send: unsupported chain_id: {chain_id}")))?;
+        let chain = Chain::from_str_id(chain_id).ok_or_else(|| {
+            SpectraBridgeError::from(format!("sign_and_send: unsupported chain_id: {chain_id}"))
+        })?;
         let endpoints = self.endpoints_for(chain.str_id()).await;
 
         match chain {
@@ -1344,7 +1298,9 @@ impl WalletService {
                     private_key_hex: priv_hex.to_string(),
                     to_address: to.to_string(),
                     amount_sats,
-                    fee_rate: crate::fetch::chains::bitcoin::FeeRate { sats_per_vbyte: fee_rate_svb },
+                    fee_rate: crate::fetch::chains::bitcoin::FeeRate {
+                        sats_per_vbyte: fee_rate_svb,
+                    },
                     available_utxos: vec![],
                     network_mode: "mainnet".to_string(),
                     enable_rbf: true,
@@ -1354,14 +1310,14 @@ impl WalletService {
                     coin_selection: crate::send::chains::bitcoin::CoinSelectionStrategy::default(),
                     sign_only: params["sign_only"].as_bool().unwrap_or(false),
                 };
-                let r = bitcoin_sign_and_broadcast(&client, send_params)
-                    .await?;
+                let r = bitcoin_sign_and_broadcast(&client, send_params).await?;
                 Ok(serde_json::to_string(&r)?)
             }
             c if c.is_evm() => {
                 let from = str_field(&params, "from")?;
                 let to = str_field(&params, "to")?;
-                let value_wei: u128 = params["value_wei"].as_str()
+                let value_wei: u128 = params["value_wei"]
+                    .as_str()
                     .and_then(|s| s.parse().ok())
                     .ok_or("missing value_wei")?;
                 let priv_bytes = hex_field(&params, "private_key_hex")?;
@@ -1374,13 +1330,17 @@ impl WalletService {
             }
             Chain::Solana => {
                 let from_bytes = hex_field(&params, "from_pubkey_hex")?;
-                let from_arr: [u8; 32] = from_bytes.try_into().map_err(|_| "from pubkey wrong length")?;
+                let from_arr: [u8; 32] = from_bytes
+                    .try_into()
+                    .map_err(|_| "from pubkey wrong length")?;
                 let to = str_field(&params, "to")?;
                 let lamports = params["lamports"].as_u64().ok_or("missing lamports")?;
                 let priv_bytes = hex_field(&params, "private_key_hex")?;
-                let priv_arr: [u8; 64] = priv_bytes.try_into().map_err(|_| "privkey wrong length")?;
+                let priv_arr: [u8; 64] =
+                    priv_bytes.try_into().map_err(|_| "privkey wrong length")?;
                 let client = SolanaClient::new(endpoints);
-                let r = client.sign_and_broadcast(&from_arr, to, lamports, &priv_arr)
+                let r = client
+                    .sign_and_broadcast(&from_arr, to, lamports, &priv_arr)
                     .await?;
                 Ok(serde_json::to_string(&r)?)
             }
@@ -1391,19 +1351,23 @@ impl WalletService {
                 let priv_bytes = hex_field(&params, "private_key_hex")?;
                 // public_key_hex is optional: derive compressed secp256k1 pubkey when absent.
                 let derived_pub: String;
-                let pub_hex: &str = match params["public_key_hex"].as_str().filter(|s| !s.is_empty()) {
-                    Some(s) => s,
-                    None => {
-                        use secp256k1::{PublicKey as SecpPubKey, Secp256k1, SecretKey};
-                        let secp = Secp256k1::new();
-                        let secret = SecretKey::from_slice(&priv_bytes)
-                            .map_err(|e| format!("bad privkey: {e}"))?;
-                        derived_pub = hex::encode(SecpPubKey::from_secret_key(&secp, &secret).serialize());
-                        &derived_pub
-                    }
-                };
+                let pub_hex: &str =
+                    match params["public_key_hex"].as_str().filter(|s| !s.is_empty()) {
+                        Some(s) => s,
+                        None => {
+                            use secp256k1::{PublicKey as SecpPubKey, Secp256k1, SecretKey};
+                            let secp = Secp256k1::new();
+                            let secret = SecretKey::from_slice(&priv_bytes)
+                                .map_err(|e| format!("bad privkey: {e}"))?;
+                            derived_pub = hex::encode(
+                                SecpPubKey::from_secret_key(&secp, &secret).serialize(),
+                            );
+                            &derived_pub
+                        }
+                    };
                 let client = XrpClient::new(endpoints);
-                let r = client.sign_and_submit(from, to, drops, &priv_bytes, pub_hex)
+                let r = client
+                    .sign_and_submit(from, to, drops, &priv_bytes, pub_hex)
                     .await?;
                 Ok(serde_json::to_string(&r)?)
             }
@@ -1413,7 +1377,8 @@ impl WalletService {
                 let amount_sun = params["amount_sun"].as_u64().ok_or("missing amount_sun")?;
                 let priv_bytes = hex_field(&params, "private_key_hex")?;
                 let client = TronClient::new(endpoints);
-                let r = client.sign_and_broadcast(from, to, amount_sun, &priv_bytes)
+                let r = client
+                    .sign_and_broadcast(from, to, amount_sun, &priv_bytes)
                     .await?;
                 Ok(serde_json::to_string(&r)?)
             }
@@ -1423,11 +1388,14 @@ impl WalletService {
                 let mist = params["mist"].as_u64().ok_or("missing mist")?;
                 let gas_budget = params["gas_budget"].as_u64().unwrap_or(10_000_000);
                 let priv_arr: [u8; 64] = hex_field(&params, "private_key_hex")?
-                    .try_into().map_err(|_| "privkey wrong length")?;
+                    .try_into()
+                    .map_err(|_| "privkey wrong length")?;
                 let pub_arr: [u8; 32] = hex_field(&params, "public_key_hex")?
-                    .try_into().map_err(|_| "pubkey wrong length")?;
+                    .try_into()
+                    .map_err(|_| "pubkey wrong length")?;
                 let client = SuiClient::new(endpoints);
-                let r = client.sign_and_send(from, to, mist, gas_budget, &priv_arr, &pub_arr)
+                let r = client
+                    .sign_and_send(from, to, mist, gas_budget, &priv_arr, &pub_arr)
                     .await?;
                 Ok(serde_json::to_string(&r)?)
             }
@@ -1436,26 +1404,33 @@ impl WalletService {
                 let to = str_field(&params, "to")?;
                 let octas = params["octas"].as_u64().ok_or("missing octas")?;
                 let priv_arr: [u8; 64] = hex_field(&params, "private_key_hex")?
-                    .try_into().map_err(|_| "privkey wrong length")?;
+                    .try_into()
+                    .map_err(|_| "privkey wrong length")?;
                 let pub_arr: [u8; 32] = hex_field(&params, "public_key_hex")?
-                    .try_into().map_err(|_| "pubkey wrong length")?;
+                    .try_into()
+                    .map_err(|_| "pubkey wrong length")?;
                 let client = AptosClient::new(endpoints);
-                let r = client.sign_and_submit(from, to, octas, &priv_arr, &pub_arr)
+                let r = client
+                    .sign_and_submit(from, to, octas, &priv_arr, &pub_arr)
                     .await?;
                 Ok(serde_json::to_string(&r)?)
             }
             Chain::Near => {
                 let from = str_field(&params, "from")?;
                 let to = str_field(&params, "to")?;
-                let yocto: u128 = params["yocto_near"].as_str()
+                let yocto: u128 = params["yocto_near"]
+                    .as_str()
                     .and_then(|s| s.parse().ok())
                     .ok_or("missing yocto_near")?;
                 let priv_arr: [u8; 64] = hex_field(&params, "private_key_hex")?
-                    .try_into().map_err(|_| "privkey wrong length")?;
+                    .try_into()
+                    .map_err(|_| "privkey wrong length")?;
                 let pub_arr: [u8; 32] = hex_field(&params, "public_key_hex")?
-                    .try_into().map_err(|_| "pubkey wrong length")?;
+                    .try_into()
+                    .map_err(|_| "pubkey wrong length")?;
                 let client = NearClient::new(endpoints);
-                let r = client.sign_and_broadcast(from, to, yocto, &priv_arr, &pub_arr)
+                let r = client
+                    .sign_and_broadcast(from, to, yocto, &priv_arr, &pub_arr)
                     .await?;
                 Ok(serde_json::to_string(&r)?)
             }
@@ -1466,7 +1441,15 @@ impl WalletService {
                 let fee_sat = params["fee_sat"].as_u64().unwrap_or(200_000);
                 let priv_bytes = hex_field(&params, "private_key_hex")?;
                 let client = DogecoinClient::new(endpoints);
-                let r = client.sign_and_broadcast(from, to, amount_sat, fee_sat, &priv_bytes, params["dust_threshold_sats"].as_u64())
+                let r = client
+                    .sign_and_broadcast(
+                        from,
+                        to,
+                        amount_sat,
+                        fee_sat,
+                        &priv_bytes,
+                        params["dust_threshold_sats"].as_u64(),
+                    )
                     .await?;
                 Ok(serde_json::to_string(&r)?)
             }
@@ -1477,7 +1460,15 @@ impl WalletService {
                 let fee_sat = params["fee_sat"].as_u64().unwrap_or(10_000);
                 let priv_bytes = hex_field(&params, "private_key_hex")?;
                 let client = LitecoinClient::new(endpoints);
-                let r = client.sign_and_broadcast(from, to, amount_sat, fee_sat, &priv_bytes, params["dust_threshold_sats"].as_u64())
+                let r = client
+                    .sign_and_broadcast(
+                        from,
+                        to,
+                        amount_sat,
+                        fee_sat,
+                        &priv_bytes,
+                        params["dust_threshold_sats"].as_u64(),
+                    )
                     .await?;
                 Ok(serde_json::to_string(&r)?)
             }
@@ -1488,7 +1479,15 @@ impl WalletService {
                 let fee_sat = params["fee_sat"].as_u64().unwrap_or(1_000);
                 let priv_bytes = hex_field(&params, "private_key_hex")?;
                 let client = BitcoinCashClient::new(endpoints);
-                let r = client.sign_and_broadcast(from, to, amount_sat, fee_sat, &priv_bytes, params["dust_threshold_sats"].as_u64())
+                let r = client
+                    .sign_and_broadcast(
+                        from,
+                        to,
+                        amount_sat,
+                        fee_sat,
+                        &priv_bytes,
+                        params["dust_threshold_sats"].as_u64(),
+                    )
                     .await?;
                 Ok(serde_json::to_string(&r)?)
             }
@@ -1499,7 +1498,15 @@ impl WalletService {
                 let fee_sat = params["fee_sat"].as_u64().unwrap_or(1_000);
                 let priv_bytes = hex_field(&params, "private_key_hex")?;
                 let client = BitcoinSvClient::new(endpoints);
-                let r = client.sign_and_broadcast(from, to, amount_sat, fee_sat, &priv_bytes, params["dust_threshold_sats"].as_u64())
+                let r = client
+                    .sign_and_broadcast(
+                        from,
+                        to,
+                        amount_sat,
+                        fee_sat,
+                        &priv_bytes,
+                        params["dust_threshold_sats"].as_u64(),
+                    )
                     .await?;
                 Ok(serde_json::to_string(&r)?)
             }
@@ -1512,7 +1519,11 @@ impl WalletService {
                 let client = ZcashClient::new(endpoints);
                 let r = client
                     .sign_and_broadcast(
-                        from, to, amount_sat, fee_sat, &priv_bytes,
+                        from,
+                        to,
+                        amount_sat,
+                        fee_sat,
+                        &priv_bytes,
                         crate::send::chains::zcash::ZcashNetworkUpgrade::NU5,
                         params["dust_threshold_zats"].as_u64().unwrap_or(546),
                     )
@@ -1527,7 +1538,14 @@ impl WalletService {
                 let priv_bytes = hex_field(&params, "private_key_hex")?;
                 let client = BitcoinGoldClient::new(endpoints);
                 let r = client
-                    .sign_and_broadcast(from, to, amount_sat, fee_sat, &priv_bytes, params["dust_threshold_sats"].as_u64())
+                    .sign_and_broadcast(
+                        from,
+                        to,
+                        amount_sat,
+                        fee_sat,
+                        &priv_bytes,
+                        params["dust_threshold_sats"].as_u64(),
+                    )
                     .await?;
                 Ok(serde_json::to_string(&r)?)
             }
@@ -1539,7 +1557,14 @@ impl WalletService {
                 let priv_bytes = hex_field(&params, "private_key_hex")?;
                 let client = DecredClient::new(endpoints);
                 let r = client
-                    .sign_and_broadcast(from, to, amount_atoms, fee_atoms, &priv_bytes, params["dust_threshold_atoms"].as_u64())
+                    .sign_and_broadcast(
+                        from,
+                        to,
+                        amount_atoms,
+                        fee_atoms,
+                        &priv_bytes,
+                        params["dust_threshold_atoms"].as_u64(),
+                    )
                     .await?;
                 Ok(serde_json::to_string(&r)?)
             }
@@ -1552,7 +1577,11 @@ impl WalletService {
                 let client = KaspaClient::new(endpoints);
                 let r = client
                     .sign_and_broadcast(
-                        from, to, amount_sompi, fee_sompi, &priv_bytes,
+                        from,
+                        to,
+                        amount_sompi,
+                        fee_sompi,
+                        &priv_bytes,
                         params["min_fee_sompi"].as_u64(),
                         params["dust_threshold_sompi"].as_u64(),
                     )
@@ -1567,7 +1596,14 @@ impl WalletService {
                 let priv_bytes = hex_field(&params, "private_key_hex")?;
                 let client = DashClient::new(endpoints);
                 let r = client
-                    .sign_and_broadcast(from, to, amount_sat, fee_sat, &priv_bytes, params["dust_threshold_sats"].as_u64())
+                    .sign_and_broadcast(
+                        from,
+                        to,
+                        amount_sat,
+                        fee_sat,
+                        &priv_bytes,
+                        params["dust_threshold_sats"].as_u64(),
+                    )
                     .await?;
                 Ok(serde_json::to_string(&r)?)
             }
@@ -1582,51 +1618,74 @@ impl WalletService {
                     expanded[..32].copy_from_slice(&priv_raw);
                     expanded
                 } else {
-                    priv_raw.try_into().map_err(|_| "privkey must be 32 or 64 bytes")?
+                    priv_raw
+                        .try_into()
+                        .map_err(|_| "privkey must be 32 or 64 bytes")?
                 };
                 // public_key_hex is optional: derive ed25519 verifying key when absent.
-                let pub_arr: [u8; 32] = match params["public_key_hex"].as_str().filter(|s| !s.is_empty()) {
-                    Some(s) => hex::decode(s).map_err(|e| format!("pubkey hex: {e}"))?
-                        .try_into().map_err(|_| "pubkey wrong length")?,
-                    None => {
-                        use ed25519_dalek::SigningKey;
-                        let seed: [u8; 32] = priv_arr[..32].try_into()
-                            .map_err(|_| "privkey seed too short")?;
-                        SigningKey::from_bytes(&seed).verifying_key().to_bytes()
-                    }
-                };
-                let network_passphrase = params["network_passphrase"].as_str().map(|s| s.as_bytes().to_vec());
+                let pub_arr: [u8; 32] =
+                    match params["public_key_hex"].as_str().filter(|s| !s.is_empty()) {
+                        Some(s) => hex::decode(s)
+                            .map_err(|e| format!("pubkey hex: {e}"))?
+                            .try_into()
+                            .map_err(|_| "pubkey wrong length")?,
+                        None => {
+                            use ed25519_dalek::SigningKey;
+                            let seed: [u8; 32] = priv_arr[..32]
+                                .try_into()
+                                .map_err(|_| "privkey seed too short")?;
+                            SigningKey::from_bytes(&seed).verifying_key().to_bytes()
+                        }
+                    };
+                let network_passphrase = params["network_passphrase"]
+                    .as_str()
+                    .map(|s| s.as_bytes().to_vec());
                 let client = StellarClient::new(endpoints);
-                let r = client.sign_and_submit(from, to, stroops, &priv_arr, &pub_arr, network_passphrase)
+                let r = client
+                    .sign_and_submit(from, to, stroops, &priv_arr, &pub_arr, network_passphrase)
                     .await?;
                 Ok(serde_json::to_string(&r)?)
             }
             Chain::Cardano => {
                 let from = str_field(&params, "from")?;
                 let to = str_field(&params, "to")?;
-                let amount_lovelace = params["amount_lovelace"].as_u64().ok_or("missing amount_lovelace")?;
+                let amount_lovelace = params["amount_lovelace"]
+                    .as_u64()
+                    .ok_or("missing amount_lovelace")?;
                 let fee_lovelace = params["fee_lovelace"].as_u64().unwrap_or(170_000);
                 let priv_arr: [u8; 64] = hex_field(&params, "private_key_hex")?
-                    .try_into().map_err(|_| "privkey wrong length")?;
+                    .try_into()
+                    .map_err(|_| "privkey wrong length")?;
                 let pub_arr: [u8; 32] = hex_field(&params, "public_key_hex")?
-                    .try_into().map_err(|_| "pubkey wrong length")?;
+                    .try_into()
+                    .map_err(|_| "pubkey wrong length")?;
                 let api_key = self.api_key_for(chain.str_id()).await.unwrap_or_default();
                 let client = CardanoClient::new(endpoints, api_key);
-                let r = client.sign_and_broadcast(
-                    from, to, amount_lovelace, fee_lovelace, &priv_arr, &pub_arr,
-                    params["ttl_slots"].as_u64(),
-                    params["min_change_lovelace"].as_u64(),
-                ).await?;
+                let r = client
+                    .sign_and_broadcast(
+                        from,
+                        to,
+                        amount_lovelace,
+                        fee_lovelace,
+                        &priv_arr,
+                        &pub_arr,
+                        params["ttl_slots"].as_u64(),
+                        params["min_change_lovelace"].as_u64(),
+                    )
+                    .await?;
                 Ok(serde_json::to_string(&r)?)
             }
             Chain::Polkadot => {
                 let p: PolkadotSendParams = parse_params(&params)?;
                 let priv_arr: [u8; 32] = decode_hex_array(&p.private_key_hex, "private_key_hex")?;
                 let pub_arr: [u8; 32] = decode_hex_array(&p.public_key_hex, "public_key_hex")?;
-                let subscan = self.endpoints_for(&chain.endpoint_str_id(EndpointSlot::Secondary)).await;
+                let subscan = self
+                    .endpoints_for(&chain.endpoint_str_id(EndpointSlot::Secondary))
+                    .await;
                 let api_key = self.api_key_for(chain.str_id()).await;
                 let client = PolkadotClient::new(endpoints, subscan, api_key);
-                let r = client.sign_and_submit(&p.from, &p.to, p.planck, &priv_arr, &pub_arr, p.era, p.tip)
+                let r = client
+                    .sign_and_submit(&p.from, &p.to, p.planck, &priv_arr, &pub_arr, p.era, p.tip)
                     .await?;
                 json_response(&r)
             }
@@ -1634,10 +1693,13 @@ impl WalletService {
                 let p: BittensorSendParams = parse_params(&params)?;
                 let priv_arr: [u8; 32] = decode_hex_array(&p.private_key_hex, "private_key_hex")?;
                 let pub_arr: [u8; 32] = decode_hex_array(&p.public_key_hex, "public_key_hex")?;
-                let taostats = self.endpoints_for(&chain.endpoint_str_id(EndpointSlot::Secondary)).await;
+                let taostats = self
+                    .endpoints_for(&chain.endpoint_str_id(EndpointSlot::Secondary))
+                    .await;
                 let api_key = self.api_key_for(chain.str_id()).await;
                 let client = BittensorClient::new(endpoints, taostats, api_key);
-                let r = client.sign_and_submit(&p.from, &p.to, p.rao, &priv_arr, &pub_arr)
+                let r = client
+                    .sign_and_submit(&p.from, &p.to, p.rao, &priv_arr, &pub_arr)
                     .await?;
                 json_response(&r)
             }
@@ -1647,18 +1709,27 @@ impl WalletService {
                 let nanotons = params["nanotons"].as_u64().ok_or("missing nanotons")?;
                 let comment = params["comment"].as_str();
                 let priv_arr: [u8; 64] = hex_field(&params, "private_key_hex")?
-                    .try_into().map_err(|_| "privkey wrong length")?;
+                    .try_into()
+                    .map_err(|_| "privkey wrong length")?;
                 let pub_arr: [u8; 32] = hex_field(&params, "public_key_hex")?
-                    .try_into().map_err(|_| "pubkey wrong length")?;
+                    .try_into()
+                    .map_err(|_| "pubkey wrong length")?;
                 let api_key = self.api_key_for(chain.str_id()).await;
                 let client = TonClient::new(endpoints, api_key);
                 let seqno = client.fetch_seqno(from).await?;
-                let r = client.sign_and_send(
-                    to, nanotons, seqno, comment, &priv_arr, &pub_arr,
-                    params["subwallet_id"].as_u64().map(|n| n as u32),
-                    params["expiry_seconds"].as_u64().map(|n| n as u32),
-                    params["send_mode"].as_u64().map(|n| n as u8),
-                ).await?;
+                let r = client
+                    .sign_and_send(
+                        to,
+                        nanotons,
+                        seqno,
+                        comment,
+                        &priv_arr,
+                        &pub_arr,
+                        params["subwallet_id"].as_u64().map(|n| n as u32),
+                        params["expiry_seconds"].as_u64().map(|n| n as u32),
+                        params["send_mode"].as_u64().map(|n| n as u8),
+                    )
+                    .await?;
                 Ok(serde_json::to_string(&r)?)
             }
             Chain::Icp => {
@@ -1668,22 +1739,26 @@ impl WalletService {
                 let priv_bytes = hex_field(&params, "private_key_hex")?;
                 // public_key_hex is optional: derive compressed secp256k1 pubkey when absent.
                 let derived_pub: Vec<u8>;
-                let pub_bytes: &[u8] = match params["public_key_hex"].as_str().filter(|s| !s.is_empty()) {
-                    Some(s) => {
-                        derived_pub = hex::decode(s).map_err(|e| format!("pubkey hex: {e}"))?;
-                        &derived_pub
-                    }
-                    None => {
-                        use secp256k1::{PublicKey as SecpPubKey, Secp256k1, SecretKey};
-                        let secp = Secp256k1::new();
-                        let secret = SecretKey::from_slice(&priv_bytes)
-                            .map_err(|e| format!("bad privkey: {e}"))?;
-                        derived_pub = SecpPubKey::from_secret_key(&secp, &secret).serialize().to_vec();
-                        &derived_pub
-                    }
-                };
+                let pub_bytes: &[u8] =
+                    match params["public_key_hex"].as_str().filter(|s| !s.is_empty()) {
+                        Some(s) => {
+                            derived_pub = hex::decode(s).map_err(|e| format!("pubkey hex: {e}"))?;
+                            &derived_pub
+                        }
+                        None => {
+                            use secp256k1::{PublicKey as SecpPubKey, Secp256k1, SecretKey};
+                            let secp = Secp256k1::new();
+                            let secret = SecretKey::from_slice(&priv_bytes)
+                                .map_err(|e| format!("bad privkey: {e}"))?;
+                            derived_pub = SecpPubKey::from_secret_key(&secp, &secret)
+                                .serialize()
+                                .to_vec();
+                            &derived_pub
+                        }
+                    };
                 let client = IcpClient::new(endpoints);
-                let r = client.sign_and_submit(from, to, e8s, &priv_bytes, pub_bytes)
+                let r = client
+                    .sign_and_submit(from, to, e8s, &priv_bytes, pub_bytes)
                     .await?;
                 Ok(serde_json::to_string(&r)?)
             }
@@ -1695,7 +1770,9 @@ impl WalletService {
                 let r = client.send(to, piconeros, 0, priority).await?;
                 Ok(serde_json::to_string(&r)?)
             }
-            c => Err(SpectraBridgeError::from(format!("sign_and_send: unsupported chain: {c:?}"))),
+            c => Err(SpectraBridgeError::from(format!(
+                "sign_and_send: unsupported chain: {c:?}"
+            ))),
         }
     }
 
@@ -1721,8 +1798,11 @@ impl WalletService {
         chain_id: &str,
         params: serde_json::Value,
     ) -> Result<String, SpectraBridgeError> {
-        let chain = Chain::from_str_id(chain_id)
-            .ok_or_else(|| SpectraBridgeError::from(format!("sign_and_send_token: unsupported chain_id: {chain_id}")))?;
+        let chain = Chain::from_str_id(chain_id).ok_or_else(|| {
+            SpectraBridgeError::from(format!(
+                "sign_and_send_token: unsupported chain_id: {chain_id}"
+            ))
+        })?;
         let endpoints = self.endpoints_for(chain.str_id()).await;
 
         match chain {
@@ -1740,10 +1820,14 @@ impl WalletService {
                 let client = EvmClient::new(endpoints, c.evm_chain_id());
                 let r = client
                     .sign_and_broadcast_erc20_with_overrides(
-                        from, contract, to, amount_raw, &priv_bytes, overrides,
+                        from,
+                        contract,
+                        to,
+                        amount_raw,
+                        &priv_bytes,
+                        overrides,
                     )
-                    .await
-                    ?;
+                    .await?;
                 Ok(serde_json::to_string(&r)?)
             }
             Chain::Tron => {
@@ -1762,9 +1846,15 @@ impl WalletService {
                 let priv_bytes = hex_field(&params, "private_key_hex")?;
                 let client = TronClient::new(endpoints);
                 let r = client
-                    .sign_and_broadcast_trc20(from, contract, to, amount_raw, fee_limit_sun, &priv_bytes)
-                    .await
-                    ?;
+                    .sign_and_broadcast_trc20(
+                        from,
+                        contract,
+                        to,
+                        amount_raw,
+                        fee_limit_sun,
+                        &priv_bytes,
+                    )
+                    .await?;
                 Ok(serde_json::to_string(&r)?)
             }
             Chain::Stellar => {
@@ -1781,7 +1871,9 @@ impl WalletService {
                 let pub_arr: [u8; 32] = hex_field(&params, "public_key_hex")?
                     .try_into()
                     .map_err(|_| "pubkey wrong length")?;
-                let network_passphrase = params["network_passphrase"].as_str().map(|s| s.as_bytes().to_vec());
+                let network_passphrase = params["network_passphrase"]
+                    .as_str()
+                    .map(|s| s.as_bytes().to_vec());
                 let client = StellarClient::new(endpoints);
                 let r = client
                     .sign_and_submit_asset(
@@ -1848,16 +1940,8 @@ impl WalletService {
                     .map_err(|_| "privkey wrong length")?;
                 let client = SolanaClient::new(endpoints);
                 let r = client
-                    .sign_and_broadcast_spl(
-                        &from_arr,
-                        to,
-                        mint,
-                        amount_raw,
-                        decimals,
-                        &priv_arr,
-                    )
-                    .await
-                    ?;
+                    .sign_and_broadcast_spl(&from_arr, to, mint, amount_raw, decimals, &priv_arr)
+                    .await?;
                 Ok(serde_json::to_string(&r)?)
             }
             c => Err(SpectraBridgeError::from(format!(
@@ -1896,8 +1980,7 @@ impl WalletService {
             // xpub path stays JSON-based; parse once and project into the
             // unified summary shape.
             let json = self.fetch_bitcoin_xpub_balance(address, 20, 20).await?;
-            let value: serde_json::Value =
-                serde_json::from_str(&json)?;
+            let value: serde_json::Value = serde_json::from_str(&json)?;
             let confirmed_sats = value["confirmed_sats"].as_u64().unwrap_or(0);
             let utxo_count = value["utxo_count"].as_u64().unwrap_or(0) as u32;
             return Ok(NativeBalanceSummary {
@@ -1933,8 +2016,7 @@ impl WalletService {
             receive_count,
             change_count,
         )
-        .await
-        ?;
+        .await?;
         Ok(serde_json::to_string(&bal)?)
     }
 
@@ -1944,8 +2026,11 @@ impl WalletService {
         address: String,
         fee_rate_svb: u64,
     ) -> Result<String, SpectraBridgeError> {
-        let chain = Chain::from_str_id(chain_id)
-            .ok_or_else(|| SpectraBridgeError::from(format!("fetch_utxo_fee_preview: unsupported chain_id: {chain_id}")))?;
+        let chain = Chain::from_str_id(chain_id).ok_or_else(|| {
+            SpectraBridgeError::from(format!(
+                "fetch_utxo_fee_preview: unsupported chain_id: {chain_id}"
+            ))
+        })?;
         let eps = self.endpoints_for(chain.str_id()).await;
         match chain {
             Chain::Bitcoin => {
@@ -1954,7 +2039,9 @@ impl WalletService {
                 let rate = if fee_rate_svb > 0 {
                     fee_rate_svb
                 } else {
-                    client.fetch_fee_rate(3).await
+                    client
+                        .fetch_fee_rate(3)
+                        .await
                         .map(|r| r.sats_per_vbyte.ceil() as u64)
                         .unwrap_or(5)
                 };
@@ -1971,14 +2058,22 @@ impl WalletService {
             Chain::Litecoin => {
                 let client = LitecoinClient::new(eps);
                 let utxos = client.fetch_utxos(&address).await?;
-                let rate = if fee_rate_svb > 0 { fee_rate_svb } else { client.fetch_fee_rate(3).await };
+                let rate = if fee_rate_svb > 0 {
+                    fee_rate_svb
+                } else {
+                    client.fetch_fee_rate(3).await
+                };
                 let values: Vec<u64> = utxos.into_iter().map(|u| u.value_sat).collect();
                 Ok(utxo_fee_preview_json(values, rate))
             }
             Chain::BitcoinCash => {
                 let client = BitcoinCashClient::new(eps);
                 let utxos = client.fetch_utxos(&address).await?;
-                let rate = if fee_rate_svb > 0 { fee_rate_svb } else { client.fetch_fee_rate(3).await };
+                let rate = if fee_rate_svb > 0 {
+                    fee_rate_svb
+                } else {
+                    client.fetch_fee_rate(3).await
+                };
                 let values: Vec<u64> = utxos.into_iter().map(|u| u.value_sat).collect();
                 Ok(utxo_fee_preview_json(values, rate))
             }
@@ -2000,179 +2095,143 @@ impl WalletService {
         chain_id: &str,
         payload: String,
     ) -> Result<String, SpectraBridgeError> {
-        let chain = Chain::from_str_id(chain_id)
-            .ok_or_else(|| SpectraBridgeError::from(format!("broadcast_raw: chain {chain_id} not supported")))?;
+        let chain = Chain::from_str_id(chain_id).ok_or_else(|| {
+            SpectraBridgeError::from(format!("broadcast_raw: chain {chain_id} not supported"))
+        })?;
         let eps = self.endpoints_for(chain.str_id()).await;
         match chain {
             Chain::Bitcoin => {
                 let client = BitcoinClient::new(HttpClient::shared(), eps);
-                let txid = client
-                    .broadcast_raw_tx(&payload)
-                    .await
-                    ?;
+                let txid = client.broadcast_raw_tx(&payload).await?;
                 Ok(json!({ "txid": txid }).to_string())
             }
             Chain::Dogecoin => {
                 let client = DogecoinClient::new(eps);
-                let res = client
-                    .broadcast_raw_tx(&payload)
-                    .await
-                    ?;
+                let res = client.broadcast_raw_tx(&payload).await?;
                 Ok(serde_json::to_string(&res)?)
             }
             Chain::Litecoin => {
                 let client = LitecoinClient::new(eps);
-                let res = client
-                    .broadcast_raw_tx(&payload)
-                    .await
-                    ?;
+                let res = client.broadcast_raw_tx(&payload).await?;
                 Ok(serde_json::to_string(&res)?)
             }
             Chain::BitcoinCash => {
                 let client = BitcoinCashClient::new(eps);
-                let res = client
-                    .broadcast_raw_tx(&payload)
-                    .await
-                    ?;
+                let res = client.broadcast_raw_tx(&payload).await?;
                 Ok(serde_json::to_string(&res)?)
             }
             Chain::BitcoinSV => {
                 let client = BitcoinSvClient::new(eps);
-                let res = client
-                    .broadcast_raw_tx(&payload)
-                    .await
-                    ?;
+                let res = client.broadcast_raw_tx(&payload).await?;
                 Ok(serde_json::to_string(&res)?)
             }
             Chain::Solana => {
                 let client = SolanaClient::new(eps);
-                let res = client
-                    .broadcast_raw(&payload)
-                    .await
-                    ?;
+                let res = client.broadcast_raw(&payload).await?;
                 Ok(serde_json::to_string(&res)?)
             }
             Chain::Tron => {
                 let client = TronClient::new(eps);
-                let res = client
-                    .broadcast_raw(&payload)
-                    .await
-                    ?;
+                let res = client.broadcast_raw(&payload).await?;
                 Ok(serde_json::to_string(&res)?)
             }
             c if c.is_evm() => {
                 let client = EvmClient::new(eps, c.evm_chain_id());
-                let res = client
-                    .broadcast_raw(&payload)
-                    .await
-                    ?;
+                let res = client.broadcast_raw(&payload).await?;
                 Ok(serde_json::to_string(&res)?)
             }
             Chain::Xrp => {
                 let val: serde_json::Value = serde_json::from_str(&payload)?;
-                let blob = val["tx_blob_hex"].as_str()
+                let blob = val["tx_blob_hex"]
+                    .as_str()
                     .ok_or("broadcast_raw xrp: missing tx_blob_hex")?
                     .to_string();
                 let client = XrpClient::new(eps);
-                let res = client
-                    .submit_signed_blob(&blob)
-                    .await
-                    ?;
+                let res = client.submit_signed_blob(&blob).await?;
                 Ok(serde_json::to_string(&res)?)
             }
             Chain::Stellar => {
                 let val: serde_json::Value = serde_json::from_str(&payload)?;
-                let xdr = val["signed_xdr_b64"].as_str()
+                let xdr = val["signed_xdr_b64"]
+                    .as_str()
                     .ok_or("broadcast_raw stellar: missing signed_xdr_b64")?
                     .to_string();
                 let client = StellarClient::new(eps);
-                let res = client
-                    .submit_envelope_b64(&xdr)
-                    .await
-                    ?;
+                let res = client.submit_envelope_b64(&xdr).await?;
                 Ok(serde_json::to_string(&res)?)
             }
             Chain::Cardano => {
                 let val: serde_json::Value = serde_json::from_str(&payload)?;
-                let cbor = val["cbor_hex"].as_str()
+                let cbor = val["cbor_hex"]
+                    .as_str()
                     .ok_or("broadcast_raw cardano: missing cbor_hex")?
                     .to_string();
                 let api_key = self.api_key_for(chain.str_id()).await.unwrap_or_default();
                 let client = CardanoClient::new(eps, api_key);
-                let res = client
-                    .submit_tx(&cbor)
-                    .await
-                    ?;
+                let res = client.submit_tx(&cbor).await?;
                 Ok(serde_json::to_string(&res)?)
             }
             Chain::Polkadot => {
                 let val: serde_json::Value = serde_json::from_str(&payload)?;
-                let ext_hex = val["extrinsic_hex"].as_str()
+                let ext_hex = val["extrinsic_hex"]
+                    .as_str()
                     .ok_or("broadcast_raw polkadot: missing extrinsic_hex")?
                     .to_string();
-                let subscan = self.endpoints_for(&chain.endpoint_str_id(EndpointSlot::Secondary)).await;
+                let subscan = self
+                    .endpoints_for(&chain.endpoint_str_id(EndpointSlot::Secondary))
+                    .await;
                 let api_key = self.api_key_for(chain.str_id()).await;
                 let client = PolkadotClient::new(eps, subscan, api_key);
-                let res = client
-                    .submit_extrinsic_hex(&ext_hex)
-                    .await
-                    ?;
+                let res = client.submit_extrinsic_hex(&ext_hex).await?;
                 Ok(serde_json::to_string(&res)?)
             }
             Chain::Sui => {
                 let val: serde_json::Value = serde_json::from_str(&payload)?;
-                let tx_bytes = val["tx_bytes_b64"].as_str()
+                let tx_bytes = val["tx_bytes_b64"]
+                    .as_str()
                     .ok_or("broadcast_raw sui: missing tx_bytes_b64")?
                     .to_string();
-                let sig = val["sig_b64"].as_str()
+                let sig = val["sig_b64"]
+                    .as_str()
                     .ok_or("broadcast_raw sui: missing sig_b64")?
                     .to_string();
                 let client = SuiClient::new(eps);
-                let res = client
-                    .execute_signed_tx(&tx_bytes, &sig)
-                    .await
-                    ?;
+                let res = client.execute_signed_tx(&tx_bytes, &sig).await?;
                 Ok(serde_json::to_string(&res)?)
             }
             Chain::Aptos => {
                 let val: serde_json::Value = serde_json::from_str(&payload)?;
-                let body_json = val["signed_body_json"].as_str()
+                let body_json = val["signed_body_json"]
+                    .as_str()
                     .ok_or("broadcast_raw aptos: missing signed_body_json")?
                     .to_string();
                 let client = AptosClient::new(eps);
-                let res = client
-                    .submit_signed_body(&body_json)
-                    .await
-                    ?;
+                let res = client.submit_signed_body(&body_json).await?;
                 Ok(serde_json::to_string(&res)?)
             }
             Chain::Ton => {
                 let val: serde_json::Value = serde_json::from_str(&payload)?;
-                let boc = val["boc_b64"].as_str()
+                let boc = val["boc_b64"]
+                    .as_str()
                     .ok_or("broadcast_raw ton: missing boc_b64")?
                     .to_string();
                 let api_key = self.api_key_for(chain.str_id()).await;
                 let client = TonClient::new(eps, api_key);
-                let res = client
-                    .send_boc(&boc)
-                    .await
-                    ?;
+                let res = client.send_boc(&boc).await?;
                 Ok(serde_json::to_string(&res)?)
             }
             Chain::Near => {
                 let val: serde_json::Value = serde_json::from_str(&payload)?;
-                let tx_b64 = val["signed_tx_b64"].as_str()
+                let tx_b64 = val["signed_tx_b64"]
+                    .as_str()
                     .ok_or("broadcast_raw near: missing signed_tx_b64")?
                     .to_string();
                 let client = NearClient::new(eps);
-                let res = client
-                    .broadcast_signed_tx_b64(&tx_b64)
-                    .await
-                    ?;
+                let res = client.broadcast_signed_tx_b64(&tx_b64).await?;
                 Ok(serde_json::to_string(&res)?)
             }
             Chain::Icp => Err(SpectraBridgeError::from(
-                "ICP rebroadcast is not supported".to_string()
+                "ICP rebroadcast is not supported".to_string(),
             )),
             c => Err(SpectraBridgeError::from(format!(
                 "broadcast_raw: chain {c:?} not supported"
@@ -2218,8 +2277,7 @@ impl WalletService {
             .map(|b| b.balance_wei.parse::<u128>().unwrap_or(0))
             .unwrap_or(0);
 
-        let estimated_fee_wei: u128 = (gas_limit as u128)
-            .saturating_mul(fee.max_fee_per_gas_wei);
+        let estimated_fee_wei: u128 = (gas_limit as u128).saturating_mul(fee.max_fee_per_gas_wei);
         let max_fee_gwei = fee.max_fee_per_gas_wei as f64 / 1_000_000_000.0;
         let priority_fee_gwei = fee.priority_fee_wei as f64 / 1_000_000_000.0;
         let balance_eth = balance_wei_val as f64 / 1e18;
@@ -2236,7 +2294,8 @@ impl WalletService {
             "spendable_eth": spendable_eth,
             "fee_rate_description": format!("Max {:.2} gwei / Priority {:.2} gwei",
                 max_fee_gwei, priority_fee_gwei),
-        }).to_string())
+        })
+        .to_string())
     }
 
     pub(crate) async fn fetch_tron_send_preview(
@@ -2248,7 +2307,9 @@ impl WalletService {
         let eps = self.endpoints_for("tron").await;
         let client = TronClient::new(eps);
 
-        let trx_balance = client.fetch_balance(&address).await
+        let trx_balance = client
+            .fetch_balance(&address)
+            .await
             .map(|b| b.sun as f64 / 1_000_000.0)
             .unwrap_or(0.0);
 
@@ -2261,10 +2322,13 @@ impl WalletService {
                 "spendable_balance": spendable,
                 "max_sendable": spendable,
                 "fee_rate_description": "Static bandwidth estimate",
-            }).to_string());
+            })
+            .to_string());
         }
 
-        let token_balance = client.fetch_trc20_balance_of(&contract_address, &address).await
+        let token_balance = client
+            .fetch_trc20_balance_of(&contract_address, &address)
+            .await
             .map(|raw| raw as f64 / 1_000_000.0)
             .unwrap_or(0.0);
 
@@ -2276,7 +2340,8 @@ impl WalletService {
             "spendable_balance": token_balance,
             "max_sendable": token_balance,
             "fee_rate_description": "Static energy estimate",
-        }).to_string())
+        })
+        .to_string())
     }
 
     pub(crate) async fn fetch_simple_chain_send_preview(
@@ -2302,12 +2367,9 @@ impl WalletService {
             .map(|s| s.to_string())
             .or_else(|| fee_obj["native_fee_raw"].as_u64().map(|n| n.to_string()))
             .unwrap_or_default();
-        let fee_rate_description = fee_obj["source"]
-            .as_str()
-            .unwrap_or("static")
-            .to_string();
+        let fee_rate_description = fee_obj["source"].as_str().unwrap_or("static").to_string();
 
-        let balance_display = simple_chain_balance_display(&chain_id, &bal_obj);
+        let balance_display = simple_chain_balance_display(chain_id, &bal_obj);
         let max_sendable = (balance_display - fee_display).max(0.0);
 
         Ok(json!({
@@ -2327,7 +2389,9 @@ impl WalletService {
         pub_hex: &Option<String>,
     ) -> Result<serde_json::Value, SpectraBridgeError> {
         use crate::send::payload::*;
-        use crate::send::preview_decode::{build_utxo_sat_send_payload, decimal_str_to_raw_units, amount_to_raw_units_string};
+        use crate::send::preview_decode::{
+            amount_to_raw_units_string, build_utxo_sat_send_payload, decimal_str_to_raw_units,
+        };
 
         let from = &req.from_address;
         let to = &req.to_address;
@@ -2335,7 +2399,10 @@ impl WalletService {
         let priv_str = priv_hex.to_string();
 
         let chain = Chain::from_str_id(&req.chain_id).ok_or_else(|| {
-            SpectraBridgeError::from(format!("execute_send: unsupported chain_id: {}", req.chain_id))
+            SpectraBridgeError::from(format!(
+                "execute_send: unsupported chain_id: {}",
+                req.chain_id
+            ))
         })?;
 
         // When the caller supplies the original decimal string (from
@@ -2361,140 +2428,255 @@ impl WalletService {
                         req.evm_overrides.as_ref(),
                     );
                     crate::send::ethereum::build_evm_token_send_payload(
-                        from.clone(), contract.clone(), to.clone(),
-                        amount_raw, priv_str, overrides,
+                        from.clone(),
+                        contract.clone(),
+                        to.clone(),
+                        amount_raw,
+                        priv_str,
+                        overrides,
                     )
                 }
                 Chain::Tron => build_tron_token_send_payload(
-                    from.clone(), contract.clone(), to.clone(), amount, decimals, priv_str,
+                    from.clone(),
+                    contract.clone(),
+                    to.clone(),
+                    amount,
+                    decimals,
+                    priv_str,
                 ),
                 Chain::Solana => build_solana_token_send_payload(
                     pub_hex.clone().unwrap_or_default(),
-                    contract.clone(), to.clone(), amount, decimals, priv_str,
+                    contract.clone(),
+                    to.clone(),
+                    amount,
+                    decimals,
+                    priv_str,
                 ),
                 Chain::Near => build_near_token_send_payload(
-                    from.clone(), contract.clone(), to.clone(),
+                    from.clone(),
+                    contract.clone(),
+                    to.clone(),
                     to_raw(decimals),
-                    priv_str, pub_hex.clone().unwrap_or_default(),
+                    priv_str,
+                    pub_hex.clone().unwrap_or_default(),
                 ),
-                c => return Err(SpectraBridgeError::from(format!(
-                    "execute_send: unsupported token chain: {c:?}"
-                ))),
+                c => {
+                    return Err(SpectraBridgeError::from(format!(
+                        "execute_send: unsupported token chain: {c:?}"
+                    )))
+                }
             }
         } else {
             match chain {
-            Chain::Bitcoin => build_btc_send_payload(
-                from.clone(), to.clone(), amount,
-                req.fee_rate_svb.unwrap_or(10.0), priv_str,
-            ),
-            c if c.is_evm() => {
-                let value_wei = to_raw(18);
-                let overrides = crate::send::ethereum::render_evm_overrides_fragment(
-                    req.evm_overrides.as_ref(),
-                );
-                crate::send::ethereum::build_evm_native_send_payload(
-                    from.clone(), to.clone(), value_wei, priv_str, overrides,
-                )
-            }
-            Chain::Solana => build_solana_native_send_payload(
-                pub_hex.clone().unwrap_or_default(), to.clone(), amount, priv_str,
-            ),
-            Chain::Dogecoin => build_doge_send_payload(
-                from.clone(), to.clone(), amount,
-                req.fee_rate_svb.unwrap_or(0.01), priv_str,
-            ),
-            Chain::Xrp => build_xrp_send_payload(
-                from.clone(), to.clone(), amount, priv_str,
-                pub_hex.clone(),
-            ),
-            Chain::Litecoin | Chain::BitcoinCash => {
-                let amount_sat = (amount * 10f64.powi(chain.native_decimals() as i32)).round() as u64;
-                let fee_sat = req.fee_sat.unwrap_or(if chain == Chain::Litecoin { 10_000 } else { 1_000 });
-                build_utxo_sat_send_payload(from.clone(), to.clone(), amount_sat, fee_sat, priv_str)
-            }
-            Chain::Tron => build_tron_native_send_payload(from.clone(), to.clone(), amount, priv_str),
-            Chain::Stellar => build_stellar_send_payload(
-                from.clone(), to.clone(), amount, priv_str,
-                pub_hex.clone(),
-            ),
-            Chain::Cardano => build_cardano_send_payload(
-                from.clone(), to.clone(), amount,
-                req.fee_amount.unwrap_or(0.17), priv_str,
-                pub_hex.clone().unwrap_or_default(),
-            ),
-            Chain::Polkadot => build_polkadot_send_payload(
-                from.clone(), to.clone(), to_raw(10), priv_str,
-                pub_hex.clone().unwrap_or_default(),
-            ),
-            Chain::Bittensor => crate::send::payload::build_bittensor_send_payload(
-                from.clone(), to.clone(), to_raw(9), priv_str,
-                pub_hex.clone().unwrap_or_default(),
-            ),
-            Chain::Sui => build_sui_send_payload(
-                from.clone(), to.clone(), amount,
-                req.gas_budget.unwrap_or(0.01), priv_str,
-                pub_hex.clone().unwrap_or_default(),
-            ),
-            Chain::Aptos => build_aptos_send_payload(
-                from.clone(), to.clone(), amount, priv_str,
-                pub_hex.clone().unwrap_or_default(),
-            ),
-            Chain::Ton => build_ton_send_payload(
-                from.clone(), to.clone(), amount, priv_str,
-                pub_hex.clone().unwrap_or_default(),
-            ),
-            Chain::Near => build_near_send_payload(
-                from.clone(), to.clone(), to_raw(24), priv_str,
-                pub_hex.clone().unwrap_or_default(),
-            ),
-            Chain::Icp => build_icp_send_payload(
-                from.clone(), to.clone(), amount, priv_str,
-                pub_hex.clone(),
-            ),
-            Chain::Monero => build_monero_send_payload(
-                to.clone(), amount, req.monero_priority.unwrap_or(2),
-            ),
-            Chain::BitcoinSV => {
-                let amount_sat = (amount * 10f64.powi(chain.native_decimals() as i32)).round() as u64;
-                let fee_sat = req.fee_sat.unwrap_or(1_000);
-                build_utxo_sat_send_payload(from.clone(), to.clone(), amount_sat, fee_sat, priv_str)
-            }
-            Chain::Zcash => {
-                let amount_sat = (amount * 10f64.powi(chain.native_decimals() as i32)).round() as u64;
-                let fee_sat = req.fee_sat.unwrap_or(1_000);
-                build_utxo_sat_send_payload(from.clone(), to.clone(), amount_sat, fee_sat, priv_str)
-            }
-            Chain::BitcoinGold => {
-                let amount_sat = (amount * 10f64.powi(chain.native_decimals() as i32)).round() as u64;
-                let fee_sat = req.fee_sat.unwrap_or(1_000);
-                build_utxo_sat_send_payload(from.clone(), to.clone(), amount_sat, fee_sat, priv_str)
-            }
-            Chain::Decred => {
-                let amount_atoms = (amount * 10f64.powi(chain.native_decimals() as i32)).round() as u64;
-                let fee_atoms = req.fee_sat.unwrap_or(2_000);
-                build_utxo_sat_send_payload(from.clone(), to.clone(), amount_atoms, fee_atoms, priv_str)
-            }
-            Chain::Kaspa => {
-                let amount_sompi = (amount * 10f64.powi(chain.native_decimals() as i32)).round() as u64;
-                let fee_sompi = req.fee_sat.unwrap_or(1_000);
-                build_utxo_sat_send_payload(from.clone(), to.clone(), amount_sompi, fee_sompi, priv_str)
-            }
-            Chain::Dash => {
-                let amount_sat = (amount * 10f64.powi(chain.native_decimals() as i32)).round() as u64;
-                let fee_sat = req.fee_sat.unwrap_or(2_000);
-                build_utxo_sat_send_payload(from.clone(), to.clone(), amount_sat, fee_sat, priv_str)
-            }
-            c => return Err(SpectraBridgeError::from(format!(
-                "execute_send: unsupported chain: {c:?}"
-            ))),
+                Chain::Bitcoin => build_btc_send_payload(
+                    from.clone(),
+                    to.clone(),
+                    amount,
+                    req.fee_rate_svb.unwrap_or(10.0),
+                    priv_str,
+                ),
+                c if c.is_evm() => {
+                    let value_wei = to_raw(18);
+                    let overrides = crate::send::ethereum::render_evm_overrides_fragment(
+                        req.evm_overrides.as_ref(),
+                    );
+                    crate::send::ethereum::build_evm_native_send_payload(
+                        from.clone(),
+                        to.clone(),
+                        value_wei,
+                        priv_str,
+                        overrides,
+                    )
+                }
+                Chain::Solana => build_solana_native_send_payload(
+                    pub_hex.clone().unwrap_or_default(),
+                    to.clone(),
+                    amount,
+                    priv_str,
+                ),
+                Chain::Dogecoin => build_doge_send_payload(
+                    from.clone(),
+                    to.clone(),
+                    amount,
+                    req.fee_rate_svb.unwrap_or(0.01),
+                    priv_str,
+                ),
+                Chain::Xrp => build_xrp_send_payload(
+                    from.clone(),
+                    to.clone(),
+                    amount,
+                    priv_str,
+                    pub_hex.clone(),
+                ),
+                Chain::Litecoin | Chain::BitcoinCash => {
+                    let amount_sat =
+                        (amount * 10f64.powi(chain.native_decimals() as i32)).round() as u64;
+                    let fee_sat = req.fee_sat.unwrap_or(if chain == Chain::Litecoin {
+                        10_000
+                    } else {
+                        1_000
+                    });
+                    build_utxo_sat_send_payload(
+                        from.clone(),
+                        to.clone(),
+                        amount_sat,
+                        fee_sat,
+                        priv_str,
+                    )
+                }
+                Chain::Tron => {
+                    build_tron_native_send_payload(from.clone(), to.clone(), amount, priv_str)
+                }
+                Chain::Stellar => build_stellar_send_payload(
+                    from.clone(),
+                    to.clone(),
+                    amount,
+                    priv_str,
+                    pub_hex.clone(),
+                ),
+                Chain::Cardano => build_cardano_send_payload(
+                    from.clone(),
+                    to.clone(),
+                    amount,
+                    req.fee_amount.unwrap_or(0.17),
+                    priv_str,
+                    pub_hex.clone().unwrap_or_default(),
+                ),
+                Chain::Polkadot => build_polkadot_send_payload(
+                    from.clone(),
+                    to.clone(),
+                    to_raw(10),
+                    priv_str,
+                    pub_hex.clone().unwrap_or_default(),
+                ),
+                Chain::Bittensor => crate::send::payload::build_bittensor_send_payload(
+                    from.clone(),
+                    to.clone(),
+                    to_raw(9),
+                    priv_str,
+                    pub_hex.clone().unwrap_or_default(),
+                ),
+                Chain::Sui => build_sui_send_payload(
+                    from.clone(),
+                    to.clone(),
+                    amount,
+                    req.gas_budget.unwrap_or(0.01),
+                    priv_str,
+                    pub_hex.clone().unwrap_or_default(),
+                ),
+                Chain::Aptos => build_aptos_send_payload(
+                    from.clone(),
+                    to.clone(),
+                    amount,
+                    priv_str,
+                    pub_hex.clone().unwrap_or_default(),
+                ),
+                Chain::Ton => build_ton_send_payload(
+                    from.clone(),
+                    to.clone(),
+                    amount,
+                    priv_str,
+                    pub_hex.clone().unwrap_or_default(),
+                ),
+                Chain::Near => build_near_send_payload(
+                    from.clone(),
+                    to.clone(),
+                    to_raw(24),
+                    priv_str,
+                    pub_hex.clone().unwrap_or_default(),
+                ),
+                Chain::Icp => build_icp_send_payload(
+                    from.clone(),
+                    to.clone(),
+                    amount,
+                    priv_str,
+                    pub_hex.clone(),
+                ),
+                Chain::Monero => {
+                    build_monero_send_payload(to.clone(), amount, req.monero_priority.unwrap_or(2))
+                }
+                Chain::BitcoinSV => {
+                    let amount_sat =
+                        (amount * 10f64.powi(chain.native_decimals() as i32)).round() as u64;
+                    let fee_sat = req.fee_sat.unwrap_or(1_000);
+                    build_utxo_sat_send_payload(
+                        from.clone(),
+                        to.clone(),
+                        amount_sat,
+                        fee_sat,
+                        priv_str,
+                    )
+                }
+                Chain::Zcash => {
+                    let amount_sat =
+                        (amount * 10f64.powi(chain.native_decimals() as i32)).round() as u64;
+                    let fee_sat = req.fee_sat.unwrap_or(1_000);
+                    build_utxo_sat_send_payload(
+                        from.clone(),
+                        to.clone(),
+                        amount_sat,
+                        fee_sat,
+                        priv_str,
+                    )
+                }
+                Chain::BitcoinGold => {
+                    let amount_sat =
+                        (amount * 10f64.powi(chain.native_decimals() as i32)).round() as u64;
+                    let fee_sat = req.fee_sat.unwrap_or(1_000);
+                    build_utxo_sat_send_payload(
+                        from.clone(),
+                        to.clone(),
+                        amount_sat,
+                        fee_sat,
+                        priv_str,
+                    )
+                }
+                Chain::Decred => {
+                    let amount_atoms =
+                        (amount * 10f64.powi(chain.native_decimals() as i32)).round() as u64;
+                    let fee_atoms = req.fee_sat.unwrap_or(2_000);
+                    build_utxo_sat_send_payload(
+                        from.clone(),
+                        to.clone(),
+                        amount_atoms,
+                        fee_atoms,
+                        priv_str,
+                    )
+                }
+                Chain::Kaspa => {
+                    let amount_sompi =
+                        (amount * 10f64.powi(chain.native_decimals() as i32)).round() as u64;
+                    let fee_sompi = req.fee_sat.unwrap_or(1_000);
+                    build_utxo_sat_send_payload(
+                        from.clone(),
+                        to.clone(),
+                        amount_sompi,
+                        fee_sompi,
+                        priv_str,
+                    )
+                }
+                Chain::Dash => {
+                    let amount_sat =
+                        (amount * 10f64.powi(chain.native_decimals() as i32)).round() as u64;
+                    let fee_sat = req.fee_sat.unwrap_or(2_000);
+                    build_utxo_sat_send_payload(
+                        from.clone(),
+                        to.clone(),
+                        amount_sat,
+                        fee_sat,
+                        priv_str,
+                    )
+                }
+                c => {
+                    return Err(SpectraBridgeError::from(format!(
+                        "execute_send: unsupported chain: {c:?}"
+                    )))
+                }
             }
         };
         serde_json::from_str(&json_string).map_err(Into::into)
     }
-
 }
-
-
 
 // ── Merged from service_helpers.rs ──────────────────────
 
@@ -2582,14 +2764,12 @@ pub(super) fn decode_hex_array<const N: usize>(
 ) -> Result<[u8; N], SpectraBridgeError> {
     let bytes = hex::decode(hex_str)
         .map_err(|e| SpectraBridgeError::from(format!("{field_name} hex decode: {e}")))?;
-    bytes
-        .try_into()
-        .map_err(|v: Vec<u8>| {
-            SpectraBridgeError::from(format!(
-                "{field_name} wrong length: expected {N} bytes, got {}",
-                v.len()
-            ))
-        })
+    bytes.try_into().map_err(|v: Vec<u8>| {
+        SpectraBridgeError::from(format!(
+            "{field_name} wrong length: expected {N} bytes, got {}",
+            v.len()
+        ))
+    })
 }
 
 // ── Decimal scaling ───────────────────────────────────────────────────────
@@ -2597,15 +2777,25 @@ pub(super) fn decode_hex_array<const N: usize>(
 /// Format a smallest-unit `u128` amount as a fixed-decimal string. Used for
 /// chains whose typed balance struct doesn't already provide a `_display` field.
 fn format_units(raw: u128, decimals: u32, max_frac: usize) -> String {
-    if decimals == 0 { return raw.to_string(); }
+    if decimals == 0 {
+        return raw.to_string();
+    }
     let scale = 10u128.pow(decimals);
     let whole = raw / scale;
     let frac = raw % scale;
-    if frac == 0 { return whole.to_string(); }
+    if frac == 0 {
+        return whole.to_string();
+    }
     let frac_str = format!("{:0>width$}", frac, width = decimals as usize);
     let trimmed = frac_str.trim_end_matches('0');
-    if trimmed.is_empty() { return whole.to_string(); }
-    let capped = if trimmed.len() > max_frac { &trimmed[..max_frac] } else { trimmed };
+    if trimmed.is_empty() {
+        return whole.to_string();
+    }
+    let capped = if trimmed.len() > max_frac {
+        &trimmed[..max_frac]
+    } else {
+        trimmed
+    };
     format!("{whole}.{capped}")
 }
 
@@ -2628,28 +2818,40 @@ pub(super) fn simple_chain_balance_display(chain_id: &str, obj: &serde_json::Val
         obj[key]
             .as_u64()
             .map(|n| n as f64)
-            .or_else(|| obj[key].as_str().and_then(|s| s.parse::<u64>().ok()).map(|n| n as f64))
+            .or_else(|| {
+                obj[key]
+                    .as_str()
+                    .and_then(|s| s.parse::<u64>().ok())
+                    .map(|n| n as f64)
+            })
             .unwrap_or(0.0)
     };
     let i64_field = |key: &str| -> f64 {
         obj[key]
             .as_i64()
             .map(|n| n as f64)
-            .or_else(|| obj[key].as_str().and_then(|s| s.parse::<i64>().ok()).map(|n| n as f64))
+            .or_else(|| {
+                obj[key]
+                    .as_str()
+                    .and_then(|s| s.parse::<i64>().ok())
+                    .map(|n| n as f64)
+            })
             .unwrap_or(0.0)
     };
-    let Some(chain) = Chain::from_str_id(&chain_id) else {
+    let Some(chain) = Chain::from_str_id(chain_id) else {
         return 0.0;
     };
     let factor = 10f64.powi(chain.native_decimals() as i32);
     match chain {
         Chain::Stellar => i64_field("stroops") / factor,
-        Chain::Polkadot => obj["planck"]
-            .as_u64()
-            .map(|n| n as f64)
-            .or_else(|| obj["planck"].as_str().and_then(|s| s.parse::<f64>().ok()))
-            .unwrap_or(0.0)
-            / factor,
+        Chain::Polkadot => {
+            obj["planck"]
+                .as_u64()
+                .map(|n| n as f64)
+                .or_else(|| obj["planck"].as_str().and_then(|s| s.parse::<f64>().ok()))
+                .unwrap_or(0.0)
+                / factor
+        }
         Chain::Near => {
             if let Some(s) = obj["near_display"].as_str() {
                 s.parse::<f64>().unwrap_or(0.0)
@@ -2689,7 +2891,13 @@ struct FeePreview<'a> {
     source: &'a str,
 }
 
-pub(super) fn fee_preview(chain_id: &str, raw: u128, decimals: u8, unit: &str, source: &str) -> String {
+pub(super) fn fee_preview(
+    chain_id: &str,
+    raw: u128,
+    decimals: u8,
+    unit: &str,
+    source: &str,
+) -> String {
     let display = format_decimals(raw, decimals);
     let raw_str = raw.to_string();
     serde_json::to_string(&FeePreview {
@@ -2784,10 +2992,14 @@ pub(super) fn read_evm_overrides(
     let max_priority_fee_per_gas_wei = params["max_priority_fee_per_gas_wei"]
         .as_str()
         .and_then(|s| s.parse().ok())
-        .or_else(|| params["max_priority_fee_per_gas_wei"].as_u64().map(|n| n as u128));
-    let calldata = params["calldata_hex"].as_str().and_then(|s| {
-        hex::decode(s.trim_start_matches("0x")).ok()
-    });
+        .or_else(|| {
+            params["max_priority_fee_per_gas_wei"]
+                .as_u64()
+                .map(|n| n as u128)
+        });
+    let calldata = params["calldata_hex"]
+        .as_str()
+        .and_then(|s| hex::decode(s.trim_start_matches("0x")).ok());
     let sign_only = params["sign_only"].as_bool().unwrap_or(false);
     let access_list = params["access_list_json"]
         .as_str()
@@ -2804,23 +3016,23 @@ pub(super) fn read_evm_overrides(
                         .map(|ks| {
                             ks.iter()
                                 .filter_map(|k| {
-                                    let kb = hex::decode(
-                                        k.as_str()?.trim_start_matches("0x"),
-                                    ).ok()?;
+                                    let kb =
+                                        hex::decode(k.as_str()?.trim_start_matches("0x")).ok()?;
                                     kb.try_into().ok()
                                 })
                                 .collect::<Vec<[u8; 32]>>()
                         })
                         .unwrap_or_default();
-                    Some(AccessListEntry { address: addr, storage_keys: keys })
+                    Some(AccessListEntry {
+                        address: addr,
+                        storage_keys: keys,
+                    })
                 })
                 .collect::<Vec<_>>()
         })
         .unwrap_or_default();
 
-    let gas_buffer_pct = params["gas_buffer_pct"]
-        .as_u64()
-        .map(|n| n as u32);
+    let gas_buffer_pct = params["gas_buffer_pct"].as_u64().map(|n| n as u32);
 
     crate::send::chains::evm::EvmSendOverrides {
         nonce,
@@ -2866,8 +3078,8 @@ fn with_state_conn<T>(
 }
 
 fn open_state_conn(db_path: &str) -> Result<rusqlite::Connection, String> {
-    let conn = rusqlite::Connection::open(db_path)
-        .map_err(|e| format!("sqlite open {db_path}: {e}"))?;
+    let conn =
+        rusqlite::Connection::open(db_path).map_err(|e| format!("sqlite open {db_path}: {e}"))?;
     conn.execute_batch(
         "PRAGMA journal_mode = WAL;
          PRAGMA synchronous = NORMAL;
@@ -2931,7 +3143,6 @@ pub(crate) fn native_coin_template(chain_id: &str) -> Option<AssetHolding> {
     })
 }
 
-
 /// Returns `true` when `s` starts with a BIP-32 extended public key prefix.
 pub(super) fn is_extended_public_key(s: &str) -> bool {
     matches!(
@@ -2939,7 +3150,6 @@ pub(super) fn is_extended_public_key(s: &str) -> bool {
         Some("xpub") | Some("ypub") | Some("zpub") | Some("Ypub") | Some("Zpub")
     )
 }
-
 
 // ── FFI: misc utility surface (relocated from ffi.rs) ────────────────────
 
@@ -2988,8 +3198,7 @@ pub fn core_evaluate_large_movement(
     let delta = current_total_usd - previous_total_usd;
     let absolute_delta = delta.abs();
     let ratio = absolute_delta / previous_total_usd;
-    let should_alert =
-        absolute_delta >= usd_threshold && ratio >= (percent_threshold / 100.0);
+    let should_alert = absolute_delta >= usd_threshold && ratio >= (percent_threshold / 100.0);
     LargeMovementEvaluation {
         should_alert,
         absolute_delta,
@@ -3122,7 +3331,10 @@ pub(crate) struct PolkadotSendParams {
     #[serde(default)]
     pub era: Option<Vec<u8>>,
     /// Tip in planck. `None` → 0.
-    #[serde(default, deserialize_with = "deserialize_option_u128_from_string_or_number")]
+    #[serde(
+        default,
+        deserialize_with = "deserialize_option_u128_from_string_or_number"
+    )]
     pub tip: Option<u128>,
 }
 
@@ -3280,45 +3492,100 @@ async fn fetch_balance(
     let endpoints = service.endpoints_for(chain.str_id()).await;
     let dispatch = chain.mainnet_counterpart();
     match dispatch {
-        Chain::Bitcoin => json_response(&BitcoinClient::new(HttpClient::shared(), endpoints).fetch_balance(address).await?),
-        Chain::BitcoinCash => json_response(&BitcoinCashClient::new(endpoints).fetch_balance(address).await?),
-        Chain::BitcoinSV => json_response(&BitcoinSvClient::new(endpoints).fetch_balance(address).await?),
-        Chain::Litecoin => json_response(&LitecoinClient::new(endpoints).fetch_balance(address).await?),
-        Chain::Dogecoin => json_response(&DogecoinClient::new(endpoints).fetch_balance(address).await?),
-        c if c.is_evm() => json_response(&EvmClient::new(endpoints, chain.evm_chain_id()).fetch_balance(address).await?),
+        Chain::Bitcoin => json_response(
+            &BitcoinClient::new(HttpClient::shared(), endpoints)
+                .fetch_balance(address)
+                .await?,
+        ),
+        Chain::BitcoinCash => json_response(
+            &BitcoinCashClient::new(endpoints)
+                .fetch_balance(address)
+                .await?,
+        ),
+        Chain::BitcoinSV => json_response(
+            &BitcoinSvClient::new(endpoints)
+                .fetch_balance(address)
+                .await?,
+        ),
+        Chain::Litecoin => json_response(
+            &LitecoinClient::new(endpoints)
+                .fetch_balance(address)
+                .await?,
+        ),
+        Chain::Dogecoin => json_response(
+            &DogecoinClient::new(endpoints)
+                .fetch_balance(address)
+                .await?,
+        ),
+        c if c.is_evm() => json_response(
+            &EvmClient::new(endpoints, chain.evm_chain_id())
+                .fetch_balance(address)
+                .await?,
+        ),
         Chain::Solana => json_response(&SolanaClient::new(endpoints).fetch_balance(address).await?),
         Chain::Tron => json_response(&TronClient::new(endpoints).fetch_balance(address).await?),
-        Chain::Stellar => json_response(&StellarClient::new(endpoints).fetch_balance(address).await?),
+        Chain::Stellar => {
+            json_response(&StellarClient::new(endpoints).fetch_balance(address).await?)
+        }
         Chain::Xrp => json_response(&XrpClient::new(endpoints).fetch_balance(address).await?),
         Chain::Cardano => {
-            let api_key = service.api_key_for(chain.str_id()).await.unwrap_or_default();
-            json_response(&CardanoClient::new(endpoints, api_key).fetch_balance(address).await?)
+            let api_key = service
+                .api_key_for(chain.str_id())
+                .await
+                .unwrap_or_default();
+            json_response(
+                &CardanoClient::new(endpoints, api_key)
+                    .fetch_balance(address)
+                    .await?,
+            )
         }
         Chain::Polkadot => {
-            let subscan = service.endpoints_for(&chain.endpoint_str_id(EndpointSlot::Secondary)).await;
+            let subscan = service
+                .endpoints_for(&chain.endpoint_str_id(EndpointSlot::Secondary))
+                .await;
             let api_key = service.api_key_for(chain.str_id()).await;
-            json_response(&PolkadotClient::new(endpoints, subscan, api_key).fetch_balance(address).await?)
+            json_response(
+                &PolkadotClient::new(endpoints, subscan, api_key)
+                    .fetch_balance(address)
+                    .await?,
+            )
         }
         Chain::Sui => json_response(&SuiClient::new(endpoints).fetch_balance(address).await?),
         Chain::Aptos => json_response(&AptosClient::new(endpoints).fetch_balance(address).await?),
         Chain::Ton => {
             let api_key = service.api_key_for(chain.str_id()).await;
-            json_response(&TonClient::new(endpoints, api_key).fetch_balance(address).await?)
+            json_response(
+                &TonClient::new(endpoints, api_key)
+                    .fetch_balance(address)
+                    .await?,
+            )
         }
         Chain::Near => json_response(&NearClient::new(endpoints).fetch_balance(address).await?),
         Chain::Icp => json_response(&IcpClient::new(endpoints).fetch_balance(address).await?),
         Chain::Monero => json_response(&MoneroClient::new(endpoints).fetch_balance(0).await?),
         Chain::Zcash => json_response(&ZcashClient::new(endpoints).fetch_balance(address).await?),
-        Chain::BitcoinGold => json_response(&BitcoinGoldClient::new(endpoints).fetch_balance(address).await?),
+        Chain::BitcoinGold => json_response(
+            &BitcoinGoldClient::new(endpoints)
+                .fetch_balance(address)
+                .await?,
+        ),
         Chain::Decred => json_response(&DecredClient::new(endpoints).fetch_balance(address).await?),
         Chain::Kaspa => json_response(&KaspaClient::new(endpoints).fetch_balance(address).await?),
         Chain::Dash => json_response(&DashClient::new(endpoints).fetch_balance(address).await?),
         Chain::Bittensor => {
-            let taostats = service.endpoints_for(&chain.endpoint_str_id(EndpointSlot::Secondary)).await;
+            let taostats = service
+                .endpoints_for(&chain.endpoint_str_id(EndpointSlot::Secondary))
+                .await;
             let api_key = service.api_key_for(chain.str_id()).await;
-            json_response(&BittensorClient::new(endpoints, taostats, api_key).fetch_balance(address).await?)
+            json_response(
+                &BittensorClient::new(endpoints, taostats, api_key)
+                    .fetch_balance(address)
+                    .await?,
+            )
         }
-        c => Err(SpectraBridgeError::from(format!("unsupported chain: {c:?}"))),
+        c => Err(SpectraBridgeError::from(format!(
+            "unsupported chain: {c:?}"
+        ))),
     }
 }
 
@@ -3331,7 +3598,9 @@ async fn fetch_native_balance_summary(
     let dispatch = chain.mainnet_counterpart();
     match dispatch {
         Chain::Bitcoin => {
-            let bal = BitcoinClient::new(HttpClient::shared(), endpoints).fetch_balance(address).await?;
+            let bal = BitcoinClient::new(HttpClient::shared(), endpoints)
+                .fetch_balance(address)
+                .await?;
             Ok(NativeBalanceSummary {
                 smallest_unit: bal.confirmed_sats.to_string(),
                 amount_display: format_smallest_unit_decimal(bal.confirmed_sats as u128, 8),
@@ -3339,23 +3608,45 @@ async fn fetch_native_balance_summary(
             })
         }
         Chain::BitcoinCash => {
-            let bal = BitcoinCashClient::new(endpoints).fetch_balance(address).await?;
-            Ok(summary_native(bal.balance_sat.to_string(), bal.balance_display))
+            let bal = BitcoinCashClient::new(endpoints)
+                .fetch_balance(address)
+                .await?;
+            Ok(summary_native(
+                bal.balance_sat.to_string(),
+                bal.balance_display,
+            ))
         }
         Chain::BitcoinSV => {
-            let bal = BitcoinSvClient::new(endpoints).fetch_balance(address).await?;
-            Ok(summary_native(bal.balance_sat.to_string(), bal.balance_display))
+            let bal = BitcoinSvClient::new(endpoints)
+                .fetch_balance(address)
+                .await?;
+            Ok(summary_native(
+                bal.balance_sat.to_string(),
+                bal.balance_display,
+            ))
         }
         Chain::Litecoin => {
-            let bal = LitecoinClient::new(endpoints).fetch_balance(address).await?;
-            Ok(summary_native(bal.balance_sat.to_string(), bal.balance_display))
+            let bal = LitecoinClient::new(endpoints)
+                .fetch_balance(address)
+                .await?;
+            Ok(summary_native(
+                bal.balance_sat.to_string(),
+                bal.balance_display,
+            ))
         }
         Chain::Dogecoin => {
-            let bal = DogecoinClient::new(endpoints).fetch_balance(address).await?;
-            Ok(summary_native(bal.balance_koin.to_string(), bal.balance_display))
+            let bal = DogecoinClient::new(endpoints)
+                .fetch_balance(address)
+                .await?;
+            Ok(summary_native(
+                bal.balance_koin.to_string(),
+                bal.balance_display,
+            ))
         }
         c if c.is_evm() => {
-            let bal = EvmClient::new(endpoints, chain.evm_chain_id()).fetch_balance(address).await?;
+            let bal = EvmClient::new(endpoints, chain.evm_chain_id())
+                .fetch_balance(address)
+                .await?;
             Ok(summary_native(bal.balance_wei, bal.balance_display))
         }
         Chain::Solana => {
@@ -3375,14 +3666,23 @@ async fn fetch_native_balance_summary(
             Ok(summary_native(bal.drops.to_string(), bal.xrp_display))
         }
         Chain::Cardano => {
-            let api_key = service.api_key_for(chain.str_id()).await.unwrap_or_default();
-            let bal = CardanoClient::new(endpoints, api_key).fetch_balance(address).await?;
+            let api_key = service
+                .api_key_for(chain.str_id())
+                .await
+                .unwrap_or_default();
+            let bal = CardanoClient::new(endpoints, api_key)
+                .fetch_balance(address)
+                .await?;
             Ok(summary_native(bal.lovelace.to_string(), bal.ada_display))
         }
         Chain::Polkadot => {
-            let subscan = service.endpoints_for(&chain.endpoint_str_id(EndpointSlot::Secondary)).await;
+            let subscan = service
+                .endpoints_for(&chain.endpoint_str_id(EndpointSlot::Secondary))
+                .await;
             let api_key = service.api_key_for(chain.str_id()).await;
-            let bal = PolkadotClient::new(endpoints, subscan, api_key).fetch_balance(address).await?;
+            let bal = PolkadotClient::new(endpoints, subscan, api_key)
+                .fetch_balance(address)
+                .await?;
             Ok(summary_native(bal.planck.to_string(), bal.dot_display))
         }
         Chain::Sui => {
@@ -3395,7 +3695,9 @@ async fn fetch_native_balance_summary(
         }
         Chain::Ton => {
             let api_key = service.api_key_for(chain.str_id()).await;
-            let bal = TonClient::new(endpoints, api_key).fetch_balance(address).await?;
+            let bal = TonClient::new(endpoints, api_key)
+                .fetch_balance(address)
+                .await?;
             Ok(summary_native(bal.nanotons.to_string(), bal.ton_display))
         }
         Chain::Near => {
@@ -3412,31 +3714,54 @@ async fn fetch_native_balance_summary(
         }
         Chain::Zcash => {
             let bal = ZcashClient::new(endpoints).fetch_balance(address).await?;
-            Ok(summary_native(bal.balance_sat.to_string(), bal.balance_display))
+            Ok(summary_native(
+                bal.balance_sat.to_string(),
+                bal.balance_display,
+            ))
         }
         Chain::BitcoinGold => {
-            let bal = BitcoinGoldClient::new(endpoints).fetch_balance(address).await?;
-            Ok(summary_native(bal.balance_sat.to_string(), bal.balance_display))
+            let bal = BitcoinGoldClient::new(endpoints)
+                .fetch_balance(address)
+                .await?;
+            Ok(summary_native(
+                bal.balance_sat.to_string(),
+                bal.balance_display,
+            ))
         }
         Chain::Decred => {
             let bal = DecredClient::new(endpoints).fetch_balance(address).await?;
-            Ok(summary_native(bal.balance_atoms.to_string(), bal.balance_display))
+            Ok(summary_native(
+                bal.balance_atoms.to_string(),
+                bal.balance_display,
+            ))
         }
         Chain::Kaspa => {
             let bal = KaspaClient::new(endpoints).fetch_balance(address).await?;
-            Ok(summary_native(bal.balance_sompi.to_string(), bal.balance_display))
+            Ok(summary_native(
+                bal.balance_sompi.to_string(),
+                bal.balance_display,
+            ))
         }
         Chain::Dash => {
             let bal = DashClient::new(endpoints).fetch_balance(address).await?;
-            Ok(summary_native(bal.balance_sat.to_string(), bal.balance_display))
+            Ok(summary_native(
+                bal.balance_sat.to_string(),
+                bal.balance_display,
+            ))
         }
         Chain::Bittensor => {
-            let taostats = service.endpoints_for(&chain.endpoint_str_id(EndpointSlot::Secondary)).await;
+            let taostats = service
+                .endpoints_for(&chain.endpoint_str_id(EndpointSlot::Secondary))
+                .await;
             let api_key = service.api_key_for(chain.str_id()).await;
-            let bal = BittensorClient::new(endpoints, taostats, api_key).fetch_balance(address).await?;
+            let bal = BittensorClient::new(endpoints, taostats, api_key)
+                .fetch_balance(address)
+                .await?;
             Ok(summary_native(bal.rao.to_string(), bal.tao_display))
         }
-        c => Err(SpectraBridgeError::from(format!("unsupported chain: {c:?}"))),
+        c => Err(SpectraBridgeError::from(format!(
+            "unsupported chain: {c:?}"
+        ))),
     }
 }
 
@@ -3449,23 +3774,56 @@ async fn fetch_history(
     let endpoints = service.endpoints_for(chain.str_id()).await;
     let dispatch = chain.mainnet_counterpart();
     match dispatch {
-        Chain::Bitcoin => json_response(&BitcoinClient::new(HttpClient::shared(), endpoints).fetch_history(address, None).await?),
-        Chain::BitcoinCash => json_response(&BitcoinCashClient::new(endpoints).fetch_history(address).await?),
-        Chain::BitcoinSV => json_response(&BitcoinSvClient::new(endpoints).fetch_history(address).await?),
-        Chain::Litecoin => json_response(&LitecoinClient::new(endpoints).fetch_history(address).await?),
-        Chain::Dogecoin => json_response(&DogecoinClient::new(endpoints).fetch_history(address).await?),
+        Chain::Bitcoin => json_response(
+            &BitcoinClient::new(HttpClient::shared(), endpoints)
+                .fetch_history(address, None)
+                .await?,
+        ),
+        Chain::BitcoinCash => json_response(
+            &BitcoinCashClient::new(endpoints)
+                .fetch_history(address)
+                .await?,
+        ),
+        Chain::BitcoinSV => json_response(
+            &BitcoinSvClient::new(endpoints)
+                .fetch_history(address)
+                .await?,
+        ),
+        Chain::Litecoin => json_response(
+            &LitecoinClient::new(endpoints)
+                .fetch_history(address)
+                .await?,
+        ),
+        Chain::Dogecoin => json_response(
+            &DogecoinClient::new(endpoints)
+                .fetch_history(address)
+                .await?,
+        ),
         c if c.is_evm() => {
             let Some(explorer_base) = chain.evm_explorer_api_base() else {
                 return json_response(&Vec::<crate::fetch::chains::evm::EvmHistoryEntry>::new());
             };
-            let api_key_owned = service.etherscan_api_key.read().ok().map(|g| g.clone()).unwrap_or_default();
-            let api_key_str = if api_key_owned.is_empty() { None } else { Some(api_key_owned.as_str()) };
+            let api_key_owned = service
+                .etherscan_api_key
+                .read()
+                .ok()
+                .map(|g| g.clone())
+                .unwrap_or_default();
+            let api_key_str = if api_key_owned.is_empty() {
+                None
+            } else {
+                Some(api_key_owned.as_str())
+            };
             let h = EvmClient::new(endpoints, chain.evm_chain_id())
                 .fetch_history(address, explorer_base, api_key_str, chain.evm_chain_id())
                 .await?;
             json_response(&h)
         }
-        Chain::Solana => json_response(&SolanaClient::new(endpoints).fetch_unified_history(address, 50).await?),
+        Chain::Solana => json_response(
+            &SolanaClient::new(endpoints)
+                .fetch_unified_history(address, 50)
+                .await?,
+        ),
         Chain::Tron => {
             let tronscan = service
                 .endpoints_for(&chain.endpoint_str_id(EndpointSlot::Explorer))
@@ -3473,24 +3831,47 @@ async fn fetch_history(
                 .first()
                 .cloned()
                 .unwrap_or_else(|| "https://apilist.tronscan.org".to_string());
-            json_response(&TronClient::new(endpoints).fetch_unified_history(address, &tronscan, 50).await?)
+            json_response(
+                &TronClient::new(endpoints)
+                    .fetch_unified_history(address, &tronscan, 50)
+                    .await?,
+            )
         }
-        Chain::Stellar => json_response(&StellarClient::new(endpoints).fetch_history(address).await?),
+        Chain::Stellar => {
+            json_response(&StellarClient::new(endpoints).fetch_history(address).await?)
+        }
         Chain::Xrp => json_response(&XrpClient::new(endpoints).fetch_history(address).await?),
         Chain::Cardano => {
-            let api_key = service.api_key_for(chain.str_id()).await.unwrap_or_default();
-            json_response(&CardanoClient::new(endpoints, api_key).fetch_history(address).await?)
+            let api_key = service
+                .api_key_for(chain.str_id())
+                .await
+                .unwrap_or_default();
+            json_response(
+                &CardanoClient::new(endpoints, api_key)
+                    .fetch_history(address)
+                    .await?,
+            )
         }
         Chain::Polkadot => {
-            let subscan = service.endpoints_for(&chain.endpoint_str_id(EndpointSlot::Secondary)).await;
+            let subscan = service
+                .endpoints_for(&chain.endpoint_str_id(EndpointSlot::Secondary))
+                .await;
             let api_key = service.api_key_for(chain.str_id()).await;
-            json_response(&PolkadotClient::new(endpoints, subscan, api_key).fetch_history(address).await?)
+            json_response(
+                &PolkadotClient::new(endpoints, subscan, api_key)
+                    .fetch_history(address)
+                    .await?,
+            )
         }
         Chain::Sui => json_response(&SuiClient::new(endpoints).fetch_history(address).await?),
         Chain::Aptos => json_response(&AptosClient::new(endpoints).fetch_history(address).await?),
         Chain::Ton => {
             let api_key = service.api_key_for(chain.str_id()).await;
-            json_response(&TonClient::new(endpoints, api_key).fetch_history(address).await?)
+            json_response(
+                &TonClient::new(endpoints, api_key)
+                    .fetch_history(address)
+                    .await?,
+            )
         }
         Chain::Near => {
             let indexer = service
@@ -3499,21 +3880,37 @@ async fn fetch_history(
                 .first()
                 .cloned()
                 .unwrap_or_else(|| "https://api.kitwallet.app".to_string());
-            json_response(&NearClient::new(endpoints).fetch_history(address, &indexer).await?)
+            json_response(
+                &NearClient::new(endpoints)
+                    .fetch_history(address, &indexer)
+                    .await?,
+            )
         }
         Chain::Icp => json_response(&IcpClient::new(endpoints).fetch_history(address).await?),
         Chain::Monero => json_response(&MoneroClient::new(endpoints).fetch_history(0).await?),
         Chain::Zcash => json_response(&ZcashClient::new(endpoints).fetch_history(address).await?),
-        Chain::BitcoinGold => json_response(&BitcoinGoldClient::new(endpoints).fetch_history(address).await?),
+        Chain::BitcoinGold => json_response(
+            &BitcoinGoldClient::new(endpoints)
+                .fetch_history(address)
+                .await?,
+        ),
         Chain::Decred => json_response(&DecredClient::new(endpoints).fetch_history(address).await?),
         Chain::Kaspa => json_response(&KaspaClient::new(endpoints).fetch_history(address).await?),
         Chain::Dash => json_response(&DashClient::new(endpoints).fetch_history(address).await?),
         Chain::Bittensor => {
-            let taostats = service.endpoints_for(&chain.endpoint_str_id(EndpointSlot::Secondary)).await;
+            let taostats = service
+                .endpoints_for(&chain.endpoint_str_id(EndpointSlot::Secondary))
+                .await;
             let api_key = service.api_key_for(chain.str_id()).await;
-            json_response(&BittensorClient::new(endpoints, taostats, api_key).fetch_history(address).await?)
+            json_response(
+                &BittensorClient::new(endpoints, taostats, api_key)
+                    .fetch_history(address)
+                    .await?,
+            )
         }
-        c => Err(SpectraBridgeError::from(format!("unsupported chain: {c:?}"))),
+        c => Err(SpectraBridgeError::from(format!(
+            "unsupported chain: {c:?}"
+        ))),
     }
 }
 
@@ -3524,7 +3921,6 @@ fn summary_native(smallest_unit: String, amount_display: String) -> NativeBalanc
         utxo_count: 0,
     }
 }
-
 
 // ── Merged from service_derivation_methods.rs ──────────────────────
 
@@ -3576,8 +3972,7 @@ impl WalletService {
         count: u32,
     ) -> Result<Vec<String>, SpectraBridgeError> {
         let children =
-            crate::derivation::utxo_hd::derive_children(&xpub, change, start_index, count)
-                ?;
+            crate::derivation::utxo_hd::derive_children(&xpub, change, start_index, count)?;
         Ok(children.into_iter().map(|c| c.address).collect())
     }
 
@@ -3594,13 +3989,9 @@ impl WalletService {
         let endpoints = self.endpoints_for("bitcoin").await;
         let client = BitcoinClient::new(HttpClient::shared(), endpoints);
         let next = crate::derivation::utxo_hd::fetch_next_unused_address(
-            &client,
-            &xpub,
-            change,
-            gap_limit,
+            &client, &xpub, change, gap_limit,
         )
-        .await
-        ?;
+        .await?;
         Ok(next.map(|c| c.address))
     }
 }
@@ -3698,12 +4089,10 @@ impl WalletService {
         db_path: String,
         key: String,
     ) -> Result<String, SpectraBridgeError> {
-        tokio::task::spawn_blocking(move || {
-            sqlite_load(&db_path, &key)
-        })
-        .await
-        .map_err(|e| SpectraBridgeError::from(format!("spawn_blocking: {e}")))?
-        .map_err(Into::into)
+        tokio::task::spawn_blocking(move || sqlite_load(&db_path, &key))
+            .await
+            .map_err(|e| SpectraBridgeError::from(format!("spawn_blocking: {e}")))?
+            .map_err(Into::into)
     }
 
     /// Persist the JSON state blob under `key` in the SQLite database at
@@ -3714,12 +4103,10 @@ impl WalletService {
         key: String,
         state_json: String,
     ) -> Result<(), SpectraBridgeError> {
-        tokio::task::spawn_blocking(move || {
-            sqlite_save(&db_path, &key, &state_json)
-        })
-        .await
-        .map_err(|e| SpectraBridgeError::from(format!("spawn_blocking: {e}")))?
-        .map_err(Into::into)
+        tokio::task::spawn_blocking(move || sqlite_save(&db_path, &key, &state_json))
+            .await
+            .map_err(|e| SpectraBridgeError::from(format!("spawn_blocking: {e}")))?
+            .map_err(Into::into)
     }
 
     pub async fn save_app_settings_typed(
@@ -3774,7 +4161,13 @@ impl WalletService {
     pub async fn load_all_keypool_state_typed(
         &self,
         db_path: String,
-    ) -> Result<std::collections::HashMap<String, std::collections::HashMap<String, crate::wallet_db::KeypoolState>>, SpectraBridgeError> {
+    ) -> Result<
+        std::collections::HashMap<
+            String,
+            std::collections::HashMap<String, crate::wallet_db::KeypoolState>,
+        >,
+        SpectraBridgeError,
+    > {
         tokio::task::spawn_blocking(move || crate::wallet_db::keypool_load_all(&db_path))
             .await
             .map_err(|e| SpectraBridgeError::from(format!("spawn_blocking: {e}")))?
@@ -3816,12 +4209,10 @@ impl WalletService {
         db_path: String,
         record: crate::wallet_db::OwnedAddressRecord,
     ) -> Result<(), SpectraBridgeError> {
-        tokio::task::spawn_blocking(move || {
-            crate::wallet_db::address_save(&db_path, &record)
-        })
-        .await
-        .map_err(|e| SpectraBridgeError::from(format!("spawn_blocking: {e}")))?
-        .map_err(Into::into)
+        tokio::task::spawn_blocking(move || crate::wallet_db::address_save(&db_path, &record))
+            .await
+            .map_err(|e| SpectraBridgeError::from(format!("spawn_blocking: {e}")))?
+            .map_err(Into::into)
     }
 
     pub async fn load_all_owned_addresses_typed(
@@ -3934,12 +4325,10 @@ impl WalletService {
         &self,
         db_path: String,
     ) -> Result<(), SpectraBridgeError> {
-        tokio::task::spawn_blocking(move || {
-            crate::wallet_db::history_clear(&db_path)
-        })
-        .await
-        .map_err(|e| SpectraBridgeError::from(format!("spawn_blocking: {e}")))?
-        .map_err(Into::into)
+        tokio::task::spawn_blocking(move || crate::wallet_db::history_clear(&db_path))
+            .await
+            .map_err(|e| SpectraBridgeError::from(format!("spawn_blocking: {e}")))?
+            .map_err(Into::into)
     }
 
     /// Seed the in-memory wallet list from typed `WalletSummary` records.
@@ -4007,7 +4396,8 @@ impl WalletService {
     /// page to 1 on reset and stores the page that was just fetched after each
     /// successful request.
     pub fn set_history_page(&self, chain_id: String, wallet_id: String, page: u32) {
-        self.history_pagination.set_page(&chain_id, &wallet_id, page);
+        self.history_pagination
+            .set_page(&chain_id, &wallet_id, page);
     }
 
     /// Explicitly mark a (chain, wallet) pair as exhausted or not. Used when
@@ -4054,11 +4444,13 @@ impl WalletService {
         &self,
         db_path: String,
         key: String,
-    ) -> Result<Option<crate::store::persistence_models::CorePersistedPriceAlertStore>, SpectraBridgeError> {
+    ) -> Result<
+        Option<crate::store::persistence_models::CorePersistedPriceAlertStore>,
+        SpectraBridgeError,
+    > {
         let json = tokio::task::spawn_blocking(move || sqlite_load(&db_path, &key))
             .await
-            .map_err(|e| SpectraBridgeError::from(format!("spawn_blocking: {e}")))?
-            ?;
+            .map_err(|e| SpectraBridgeError::from(format!("spawn_blocking: {e}")))??;
         if json == "{}" {
             return Ok(None);
         }
@@ -4084,11 +4476,13 @@ impl WalletService {
         &self,
         db_path: String,
         key: String,
-    ) -> Result<Option<crate::store::persistence_models::CorePersistedAddressBookStore>, SpectraBridgeError> {
+    ) -> Result<
+        Option<crate::store::persistence_models::CorePersistedAddressBookStore>,
+        SpectraBridgeError,
+    > {
         let json = tokio::task::spawn_blocking(move || sqlite_load(&db_path, &key))
             .await
-            .map_err(|e| SpectraBridgeError::from(format!("spawn_blocking: {e}")))?
-            ?;
+            .map_err(|e| SpectraBridgeError::from(format!("spawn_blocking: {e}")))??;
         if json == "{}" {
             return Ok(None);
         }

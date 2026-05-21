@@ -61,7 +61,10 @@ pub fn decrypt(data: &[u8], master_key: &[u8]) -> Result<String, String> {
     let envelope: Envelope =
         serde_json::from_slice(data).map_err(|e| format!("JSON decode failed: {e}"))?;
     if envelope.version != 1 {
-        return Err(format!("unsupported envelope version: {}", envelope.version));
+        return Err(format!(
+            "unsupported envelope version: {}",
+            envelope.version
+        ));
     }
     if envelope.nonce.len() != 12 {
         return Err("invalid nonce length".into());
@@ -95,9 +98,7 @@ pub(crate) mod base64_serde {
         STANDARD.encode(data).serialize(serializer)
     }
 
-    pub fn deserialize<'de, D: Deserializer<'de>>(
-        deserializer: D,
-    ) -> Result<Vec<u8>, D::Error> {
+    pub fn deserialize<'de, D: Deserializer<'de>>(deserializer: D) -> Result<Vec<u8>, D::Error> {
         let s = String::deserialize(deserializer)?;
         STANDARD.decode(s).map_err(serde::de::Error::custom)
     }

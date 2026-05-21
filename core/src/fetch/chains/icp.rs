@@ -16,8 +16,6 @@ use serde_json::Value;
 
 use crate::http::{with_fallback, HttpClient, RetryProfile};
 
-
-
 // ----------------------------------------------------------------
 // Constants
 // ----------------------------------------------------------------
@@ -58,8 +56,12 @@ impl super::SignedSubmission for IcpSendResult {
         // no string-form txid before the ledger commits the block.
         ""
     }
-    fn signed_payload(&self) -> &str { "" }
-    fn signed_payload_format(&self) -> super::SignedPayloadFormat { super::SignedPayloadFormat::None }
+    fn signed_payload(&self) -> &str {
+        ""
+    }
+    fn signed_payload_format(&self) -> super::SignedPayloadFormat {
+        super::SignedPayloadFormat::None
+    }
 }
 
 // ----------------------------------------------------------------
@@ -91,7 +93,11 @@ impl IcpClient {
             let client = self.client.clone();
             let url = format!("{}{}", base.trim_end_matches('/'), path);
             let body = std::sync::Arc::clone(&body);
-            async move { client.post_json(&url, &*body, RetryProfile::ChainRead).await }
+            async move {
+                client
+                    .post_json(&url, &*body, RetryProfile::ChainRead)
+                    .await
+            }
         })
         .await
     }
@@ -99,7 +105,6 @@ impl IcpClient {
 // ICP fetch paths (via Rosetta): balance and history.
 
 use serde_json::json;
-
 
 impl IcpClient {
     pub async fn fetch_balance(&self, account_address: &str) -> Result<IcpBalance, String> {

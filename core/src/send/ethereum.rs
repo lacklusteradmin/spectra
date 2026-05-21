@@ -141,10 +141,17 @@ fn amount_to_smallest_unit(amount: f64, decimals: u32) -> Result<String, EvmSend
     digits.push_str(&frac_part);
     // Strip leading zeros but keep at least "0".
     let trimmed = digits.trim_start_matches('0').to_string();
-    Ok(if trimmed.is_empty() { "0".to_string() } else { trimmed })
+    Ok(if trimmed.is_empty() {
+        "0".to_string()
+    } else {
+        trimmed
+    })
 }
 
-fn encode_erc20_transfer_data(destination: &str, amount_smallest: &str) -> Result<String, EvmSendError> {
+fn encode_erc20_transfer_data(
+    destination: &str,
+    amount_smallest: &str,
+) -> Result<String, EvmSendError> {
     let dst = normalize_evm_address(destination);
     if !is_valid_evm_address(&dst) {
         return Err(EvmSendError::InvalidDestination);
@@ -232,7 +239,10 @@ pub fn decode_evm_send_preview(input: EvmPreviewDecodeInput) -> Option<EvmPrevie
 
     let rpc_nonce = obj.get("nonce").and_then(|v| v.as_i64()).unwrap_or(0);
     let nonce = input.explicit_nonce.unwrap_or(rpc_nonce);
-    let gas_limit = obj.get("gas_limit").and_then(|v| v.as_i64()).unwrap_or(21_000);
+    let gas_limit = obj
+        .get("gas_limit")
+        .and_then(|v| v.as_i64())
+        .unwrap_or(21_000);
     let live_fee_gwei = obj
         .get("max_fee_per_gas_gwei")
         .and_then(|v| v.as_f64())
@@ -375,30 +385,49 @@ pub(crate) fn render_evm_overrides_fragment(input: Option<&EvmSendOverridesInput
     if let Some(ref al) = o.access_list_json {
         fragments.push(format!("\"access_list_json\":{}", al));
     }
-    if fragments.is_empty() { String::new() } else { format!(",{}", fragments.join(",")) }
+    if fragments.is_empty() {
+        String::new()
+    } else {
+        format!(",{}", fragments.join(","))
+    }
 }
 
 /// Internal helper: parse the broadcast result JSON into the typed EVM record.
 /// Used by `execute_send` to populate `SendExecutionResult.evm` so Swift
 /// doesn't have to re-parse the JSON.
-pub(crate) fn decode_evm_send_result_internal(json: &str, fallback_nonce: i64) -> EvmSendResultDecoded {
+pub(crate) fn decode_evm_send_result_internal(
+    json: &str,
+    fallback_nonce: i64,
+) -> EvmSendResultDecoded {
     let v: serde_json::Value = match serde_json::from_str(json) {
         Ok(v) => v,
         Err(_) => {
-            return EvmSendResultDecoded { nonce: fallback_nonce, ..Default::default() };
+            return EvmSendResultDecoded {
+                nonce: fallback_nonce,
+                ..Default::default()
+            };
         }
     };
     let obj = v.as_object();
     let get_str = |k: &str| -> String {
-        obj.and_then(|o| o.get(k)).and_then(|v| v.as_str()).unwrap_or("").to_string()
+        obj.and_then(|o| o.get(k))
+            .and_then(|v| v.as_str())
+            .unwrap_or("")
+            .to_string()
     };
     let nonce = obj
         .and_then(|o| o.get("nonce"))
-        .and_then(|v| v.as_i64().or_else(|| v.as_str().and_then(|s| s.parse::<i64>().ok())))
+        .and_then(|v| {
+            v.as_i64()
+                .or_else(|| v.as_str().and_then(|s| s.parse::<i64>().ok()))
+        })
         .unwrap_or(fallback_nonce);
     let gas_limit = obj
         .and_then(|o| o.get("gas_limit"))
-        .and_then(|v| v.as_i64().or_else(|| v.as_str().and_then(|s| s.parse::<i64>().ok())))
+        .and_then(|v| {
+            v.as_i64()
+                .or_else(|| v.as_str().and_then(|s| s.parse::<i64>().ok()))
+        })
         .unwrap_or(0);
     EvmSendResultDecoded {
         txid: get_str("txid"),
@@ -450,7 +479,9 @@ mod tests {
         assert_eq!(a.to_address, "0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48");
         assert!(a.data_hex.starts_with("0xa9059cbb"));
         // 100 USDC at 6 decimals = 100_000_000 = 0x5F5E100, padded
-        assert!(a.data_hex.ends_with("0000000000000000000000000000000000000000000000000000000005f5e100"));
+        assert!(a
+            .data_hex
+            .ends_with("0000000000000000000000000000000000000000000000000000000005f5e100"));
     }
 
     #[test]
@@ -495,7 +526,10 @@ mod tests {
     fn overrides_fragment_builds_comma_prefixed() {
         let s = render_evm_overrides_fragment(Some(&EvmSendOverridesInput {
             nonce: Some(9),
-            custom_fees: Some(EvmCustomFeeConfiguration { max_fee_per_gas_gwei: 50.0, max_priority_fee_per_gas_gwei: 3.0 }),
+            custom_fees: Some(EvmCustomFeeConfiguration {
+                max_fee_per_gas_gwei: 50.0,
+                max_priority_fee_per_gas_gwei: 3.0,
+            }),
             ..Default::default()
         }));
         assert!(s.starts_with(","));
@@ -522,7 +556,10 @@ mod tests {
     #[test]
     fn native_payload_escapes_and_overrides() {
         let p = build_evm_native_send_payload(
-            "0xfrom".into(), "0xto".into(), "1000".into(), "aa".into(),
+            "0xfrom".into(),
+            "0xto".into(),
+            "1000".into(),
+            "aa".into(),
             ",\"nonce\":5".into(),
         );
         assert!(p.contains("\"value_wei\":\"1000\""));
@@ -533,7 +570,11 @@ mod tests {
     #[test]
     fn native_payload_escapes_quotes() {
         let p = build_evm_native_send_payload(
-            "0xfr\"om".into(), "0xto".into(), "0".into(), "k".into(), "".into(),
+            "0xfr\"om".into(),
+            "0xto".into(),
+            "0".into(),
+            "k".into(),
+            "".into(),
         );
         assert!(p.contains("0xfr\\\"om"));
         let v: serde_json::Value = serde_json::from_str(&p).unwrap();
@@ -543,7 +584,12 @@ mod tests {
     #[test]
     fn token_payload_shape() {
         let p = build_evm_token_send_payload(
-            "0xfrom".into(), "0xcontract".into(), "0xto".into(), "1000000".into(), "k".into(), "".into(),
+            "0xfrom".into(),
+            "0xcontract".into(),
+            "0xto".into(),
+            "1000000".into(),
+            "k".into(),
+            "".into(),
         );
         let v: serde_json::Value = serde_json::from_str(&p).unwrap();
         assert_eq!(v["contract"], "0xcontract");

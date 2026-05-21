@@ -20,8 +20,6 @@ use serde_json::{json, Value};
 
 use crate::http::{with_fallback, HttpClient, RetryProfile};
 
-
-
 // ----------------------------------------------------------------
 // Public result types
 // ----------------------------------------------------------------
@@ -54,9 +52,15 @@ pub struct MoneroSendResult {
 }
 
 impl super::SignedSubmission for MoneroSendResult {
-    fn submission_id(&self) -> &str { &self.txid }
-    fn signed_payload(&self) -> &str { "" }
-    fn signed_payload_format(&self) -> super::SignedPayloadFormat { super::SignedPayloadFormat::None }
+    fn submission_id(&self) -> &str {
+        &self.txid
+    }
+    fn signed_payload(&self) -> &str {
+        ""
+    }
+    fn signed_payload_format(&self) -> super::SignedPayloadFormat {
+        super::SignedPayloadFormat::None
+    }
 }
 
 // ----------------------------------------------------------------
@@ -103,8 +107,6 @@ fn rpc(method: &str, params: Value) -> Value {
 }
 // Monero fetch paths (via wallet-rpc): balance, address, history,
 // and sub-account creation (read-side metadata).
-
-
 
 impl MoneroClient {
     pub async fn fetch_balance(&self, account_index: u32) -> Result<MoneroBalance, String> {
@@ -159,7 +161,11 @@ impl MoneroClient {
             if let Some(txs) = in_result.get(direction).and_then(|v| v.as_array()) {
                 let is_incoming = *direction == "in";
                 for tx in txs {
-                    let txid = tx.get("txid").and_then(|v| v.as_str()).unwrap_or("").to_string();
+                    let txid = tx
+                        .get("txid")
+                        .and_then(|v| v.as_str())
+                        .unwrap_or("")
+                        .to_string();
                     let timestamp = tx.get("timestamp").and_then(|v| v.as_u64()).unwrap_or(0);
                     let amount = tx.get("amount").and_then(|v| v.as_u64()).unwrap_or(0);
                     let fee = tx.get("fee").and_then(|v| v.as_u64()).unwrap_or(0);
@@ -193,9 +199,7 @@ impl MoneroClient {
 
     /// Create a new wallet account (for HD wallet sub-account).
     pub async fn create_account(&self, label: &str) -> Result<u32, String> {
-        let result = self
-            .call("create_account", json!({"label": label}))
-            .await?;
+        let result = self.call("create_account", json!({"label": label})).await?;
         result
             .get("account_index")
             .and_then(|v| v.as_u64())
@@ -212,6 +216,10 @@ fn format_xmr(piconeros: u64) -> String {
     }
     let frac_str = format!("{:012}", frac);
     let trimmed = frac_str.trim_end_matches('0');
-    let capped = if trimmed.len() > 6 { &trimmed[..6] } else { trimmed };
+    let capped = if trimmed.len() > 6 {
+        &trimmed[..6]
+    } else {
+        trimmed
+    };
     format!("{}.{}", whole, capped)
 }
