@@ -540,8 +540,7 @@ fn cmd_import(args: &[&str]) {
         &encrypted_seed,
     )
     .expect("failed to write encrypted seed");
-    fs::write(secrets_dir().join(format!("{wallet_id}.salt")), &salt)
-        .expect("failed to write salt");
+    fs::write(secrets_dir().join(format!("{wallet_id}.salt")), salt).expect("failed to write salt");
     fs::write(
         secrets_dir().join(format!("{wallet_id}.password")),
         &password_verifier,
@@ -833,8 +832,7 @@ fn cmd_advimport() {
         &encrypted_seed,
     )
     .expect("failed to write encrypted seed");
-    fs::write(secrets_dir().join(format!("{wallet_id}.salt")), &salt)
-        .expect("failed to write salt");
+    fs::write(secrets_dir().join(format!("{wallet_id}.salt")), salt).expect("failed to write salt");
     fs::write(
         secrets_dir().join(format!("{wallet_id}.password")),
         &password_verifier,
@@ -965,7 +963,7 @@ fn cmd_newwallet() {
             print!("  {num} {w}");
         }
     }
-    if words.len() % 4 != 0 {
+    if !words.len().is_multiple_of(4) {
         println!();
     }
     println!();
@@ -1039,8 +1037,7 @@ fn cmd_newwallet() {
         &encrypted_seed,
     )
     .expect("failed to write encrypted seed");
-    fs::write(secrets_dir().join(format!("{wallet_id}.salt")), &salt)
-        .expect("failed to write salt");
+    fs::write(secrets_dir().join(format!("{wallet_id}.salt")), salt).expect("failed to write salt");
     fs::write(
         secrets_dir().join(format!("{wallet_id}.password")),
         &password_verifier,
@@ -1671,21 +1668,20 @@ fn cmd_show() {
 
 fn cmd_rename() {
     let mut store = load_store();
-    let idx = match {
-        let labels: Vec<String> = store
-            .wallets
-            .iter()
-            .map(|w| format!("{} — {}", w.name, w.chain_name))
-            .collect();
-        if labels.is_empty() {
-            println!("  {}", muted("no wallets"));
-            return;
-        }
-        FuzzySelect::new()
-            .with_prompt("Wallet to rename")
-            .items(&labels)
-            .interact_opt()
-    } {
+    let labels: Vec<String> = store
+        .wallets
+        .iter()
+        .map(|w| format!("{} — {}", w.name, w.chain_name))
+        .collect();
+    if labels.is_empty() {
+        println!("  {}", muted("no wallets"));
+        return;
+    }
+    let selection = FuzzySelect::new()
+        .with_prompt("Wallet to rename")
+        .items(&labels)
+        .interact_opt();
+    let idx = match selection {
         Ok(Some(i)) => i,
         _ => {
             println!("{}", muted("cancelled"));
@@ -1868,7 +1864,7 @@ fn cmd_export() {
             print!("  {} {}", faint(&num), w.white().bold());
         }
     }
-    if words.len() % 4 != 0 {
+    if !words.len().is_multiple_of(4) {
         println!();
     }
     println!();

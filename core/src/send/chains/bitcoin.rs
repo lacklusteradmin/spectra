@@ -6,6 +6,7 @@ use std::str::FromStr;
 use bitcoin::absolute::LockTime;
 use bitcoin::hashes::Hash as _;
 use bitcoin::key::{TapTweak, TweakedKeypair};
+use bitcoin::script::{Builder, PushBytesBuf};
 use bitcoin::secp256k1::{Message, Secp256k1, SecretKey};
 use bitcoin::sighash::{EcdsaSighashType, SighashCache, TapSighashType};
 use bitcoin::transaction::Version;
@@ -188,6 +189,19 @@ fn build_extra_outputs(
     Ok(out)
 }
 
+fn tx_input_for_utxo(utxo: &EsploraUtxo, sequence: Sequence) -> Result<TxIn, String> {
+    let txid = Txid::from_str(&utxo.txid).map_err(|e| format!("bad txid {}: {e}", utxo.txid))?;
+    Ok(TxIn {
+        previous_output: OutPoint {
+            txid,
+            vout: utxo.vout,
+        },
+        script_sig: ScriptBuf::new(),
+        sequence,
+        witness: Witness::new(),
+    })
+}
+
 /// Build, sign, and serialize a P2WPKH transaction.
 pub fn sign_p2wpkh(params: &mut BitcoinSendParams) -> Result<(Transaction, String), String> {
     let secp = Secp256k1::new();
@@ -257,18 +271,8 @@ pub fn sign_p2wpkh(params: &mut BitcoinSendParams) -> Result<(Transaction, Strin
 
     let inputs: Vec<TxIn> = utxos_to_use
         .iter()
-        .map(|u| {
-            let txid = Txid::from_str(&u.txid)
-                .map_err(|e| format!("bad txid {}: {e}", u.txid))
-                .unwrap_or_else(|_| Txid::all_zeros());
-            TxIn {
-                previous_output: OutPoint { txid, vout: u.vout },
-                script_sig: ScriptBuf::new(),
-                sequence,
-                witness: Witness::new(),
-            }
-        })
-        .collect();
+        .map(|u| tx_input_for_utxo(u, sequence))
+        .collect::<Result<_, _>>()?;
 
     // Build outputs.
     let mut outputs = vec![TxOut {
@@ -324,6 +328,137 @@ pub fn sign_p2wpkh(params: &mut BitcoinSendParams) -> Result<(Transaction, Strin
     // Apply witnesses.
     let tx_ref = sighash_cache.into_transaction();
     for (i, sig) in signatures.iter().enumerate() {
+        let mut witness = Witness::new();
+        witness.push(sig);
+        witness.push(pk_bytes.as_slice());
+        tx_ref.input[i].witness = witness;
+    }
+
+    let raw_hex = bitcoin::consensus::encode::serialize_hex(tx_ref);
+    Ok((tx_ref.clone(), raw_hex))
+}
+
+/// Build, sign, and serialize a nested SegWit P2SH-P2WPKH transaction.
+pub fn sign_p2sh_p2wpkh(params: &mut BitcoinSendParams) -> Result<(Transaction, String), String> {
+    let secp = Secp256k1::new();
+    let network = bitcoin_network_for_mode(&params.network_mode);
+
+    let mut key_bytes =
+        hex::decode(&params.private_key_hex).map_err(|e| format!("bad private key hex: {e}"))?;
+    let secret_key =
+        SecretKey::from_slice(&key_bytes).map_err(|e| format!("bad private key: {e}"))?;
+    key_bytes.zeroize();
+
+    let secp_pk = secp256k1::PublicKey::from_secret_key(&secp, &secret_key);
+    let pk =
+        CompressedPublicKey::from_slice(&secp_pk.serialize()).map_err(|e| format!("pk: {e}"))?;
+    let wpkh = pk.wpubkey_hash();
+    let pk_bytes = pk.to_bytes();
+    let redeem_script = ScriptBuf::new_p2wpkh(&wpkh);
+
+    let to_addr = Address::from_str(&params.to_address)
+        .map_err(|e| format!("bad recipient address: {e}"))?
+        .require_network(network)
+        .map_err(|e| format!("recipient on wrong network: {e}"))?;
+
+    let from_addr = Address::from_str(&params.from_address)
+        .map_err(|e| format!("bad from address: {e}"))?
+        .require_network(network)
+        .map_err(|e| format!("from address on wrong network: {e}"))?;
+    let from_spk = from_addr.script_pubkey();
+    let expected_spk = redeem_script.to_p2sh();
+    if from_spk != expected_spk {
+        return Err("from P2SH address does not match the supplied private key".to_string());
+    }
+
+    // Nested P2SH-P2WPKH spends are roughly 91 vbytes per input.
+    let extra_output_count = params.extra_outputs.len();
+    let (selected_owned, fee) = if let Some(ref pinned) = params.pinned_utxos {
+        let total_in: u64 = pinned.iter().map(|u| u.value).sum();
+        let n = pinned.len();
+        let tx_bytes = 10 + n * 91 + (2 + extra_output_count) * 31;
+        let fee = (tx_bytes as f64 * params.fee_rate.sats_per_vbyte).ceil() as u64;
+        let dummy: Vec<&EsploraUtxo> = pinned.iter().collect();
+        if total_in < params.amount_sats.saturating_add(fee) {
+            return Err("utxo.insufficientFunds".to_string());
+        }
+        (dummy, fee)
+    } else {
+        select_coins(
+            &params.available_utxos,
+            params.amount_sats,
+            params.fee_rate,
+            91,
+            2 + extra_output_count,
+            10,
+            &params.coin_selection,
+        )?
+    };
+
+    let utxos_to_use: Vec<&EsploraUtxo> = if let Some(pinned_utxos) = &params.pinned_utxos {
+        pinned_utxos.iter().collect()
+    } else {
+        selected_owned
+    };
+
+    let total_in: u64 = utxos_to_use.iter().map(|u| u.value).sum();
+    let change_sats = total_in
+        .saturating_sub(params.amount_sats)
+        .saturating_sub(fee);
+    let use_change = change_sats > params.dust_threshold.unwrap_or(546);
+
+    let sequence = if params.enable_rbf {
+        Sequence::ENABLE_RBF_NO_LOCKTIME
+    } else {
+        Sequence::MAX
+    };
+    let inputs: Vec<TxIn> = utxos_to_use
+        .iter()
+        .map(|u| tx_input_for_utxo(u, sequence))
+        .collect::<Result<_, _>>()?;
+
+    let mut outputs = vec![TxOut {
+        value: Amount::from_sat(params.amount_sats),
+        script_pubkey: to_addr.script_pubkey(),
+    }];
+    if use_change {
+        outputs.push(TxOut {
+            value: Amount::from_sat(change_sats),
+            script_pubkey: from_spk,
+        });
+    }
+    outputs.extend(build_extra_outputs(&params.extra_outputs, network)?);
+
+    let mut tx = Transaction {
+        version: Version::TWO,
+        lock_time: LockTime::ZERO,
+        input: inputs,
+        output: outputs,
+    };
+
+    let mut sighash_cache = SighashCache::new(&mut tx);
+    let mut signatures: Vec<Vec<u8>> = Vec::new();
+    for (i, utxo) in utxos_to_use.iter().enumerate() {
+        let sighash = sighash_cache
+            .p2wpkh_signature_hash(
+                i,
+                &redeem_script,
+                Amount::from_sat(utxo.value),
+                EcdsaSighashType::All,
+            )
+            .map_err(|e| format!("sighash: {e}"))?;
+        let msg = Message::from_digest(sighash.to_raw_hash().to_byte_array());
+        let sig = secp.sign_ecdsa(&msg, &secret_key);
+        let mut sig_der = sig.serialize_der().to_vec();
+        sig_der.push(EcdsaSighashType::All as u8);
+        signatures.push(sig_der);
+    }
+
+    let tx_ref = sighash_cache.into_transaction();
+    let redeem_push = PushBytesBuf::try_from(redeem_script.as_bytes().to_vec())
+        .map_err(|_| "redeem script exceeds PushBytes limit".to_string())?;
+    for (i, sig) in signatures.iter().enumerate() {
+        tx_ref.input[i].script_sig = Builder::new().push_slice(&redeem_push).into_script();
         let mut witness = Witness::new();
         witness.push(sig);
         witness.push(pk_bytes.as_slice());
@@ -399,16 +534,8 @@ pub fn sign_p2pkh(params: &mut BitcoinSendParams) -> Result<(Transaction, String
 
     let inputs: Vec<TxIn> = utxos_to_use
         .iter()
-        .map(|u| {
-            let txid = Txid::from_str(&u.txid).unwrap_or_else(|_| Txid::all_zeros());
-            TxIn {
-                previous_output: OutPoint { txid, vout: u.vout },
-                script_sig: ScriptBuf::new(),
-                sequence,
-                witness: Witness::new(),
-            }
-        })
-        .collect();
+        .map(|u| tx_input_for_utxo(u, sequence))
+        .collect::<Result<_, _>>()?;
 
     let mut outputs = vec![TxOut {
         value: Amount::from_sat(params.amount_sats),
@@ -533,16 +660,8 @@ pub fn sign_p2tr(params: &mut BitcoinSendParams) -> Result<(Transaction, String)
 
     let inputs: Vec<TxIn> = utxos_to_use
         .iter()
-        .map(|u| {
-            let txid = Txid::from_str(&u.txid).unwrap_or_else(|_| Txid::all_zeros());
-            TxIn {
-                previous_output: OutPoint { txid, vout: u.vout },
-                script_sig: ScriptBuf::new(),
-                sequence,
-                witness: Witness::new(),
-            }
-        })
-        .collect();
+        .map(|u| tx_input_for_utxo(u, sequence))
+        .collect::<Result<_, _>>()?;
 
     let mut outputs = vec![TxOut {
         value: Amount::from_sat(params.amount_sats),
@@ -624,9 +743,17 @@ pub async fn sign_and_broadcast(
     {
         let (_, hex) = sign_p2wpkh(&mut params)?;
         hex
+    } else if Address::from_str(&params.from_address)
+        .ok()
+        .and_then(|addr| {
+            addr.require_network(bitcoin_network_for_mode(&params.network_mode))
+                .ok()
+        })
+        .is_some_and(|addr| addr.script_pubkey().is_p2sh())
+    {
+        let (_, hex) = sign_p2sh_p2wpkh(&mut params)?;
+        hex
     } else {
-        // Legacy (P2PKH) or nested-SegWit (P2SH-P2WPKH).
-        // P2SH-P2WPKH uses the same signing path as P2PKH for the outer script.
         let (_, hex) = sign_p2pkh(&mut params)?;
         hex
     };

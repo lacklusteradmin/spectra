@@ -1,23 +1,25 @@
 //! WalletService — the stateful async UniFFI object that Swift / Kotlin talk to.
 //!
-//! New methods should land in a matching sub-module (`chain_client`,
-//! `helpers`, `derivation_methods`, `pricing_methods`, `state_methods`,
-//! `standalone`) rather than `mod.rs` itself.
+//! New chain-dispatch parameter records belong in `service_send_params.rs`.
+//! New stateless FFI helpers should live beside the domain module that owns
+//! their logic; new stateful network/storage flows stay on `WalletService`.
 //!
 //! ## FFI dichotomy
 //!
 //! This file owns the **dispatched path** — methods that match on `Chain`
-//! and call into per-chain clients. See `ffi.rs` for the **typed path** —
+//! and call into per-chain clients. Free `#[uniffi::export]` functions in
+//! domain modules form the **typed path** —
 //! free functions exporting via UniFFI Records. New endpoints that don't
-//! dispatch on `Chain` belong in `ffi.rs` rather than here. Within this
+//! dispatch on `Chain` belong beside their owning domain module rather than
+//! here. Within this
 //! file, the historical `params: serde_json::Value` shape has been
-//! replaced with typed `*SendParams` structs in `service::types` for
+//! replaced with typed `*SendParams` structs in `service_send_params.rs` for
 //! migrated chains; new chain dispatch arms should follow that pattern,
 //! not invent fresh ad-hoc JSON shapes.
 //!
 //! ## Service properties
 //!
-//! - All chain operations are `async` internally; UniFFI 0.29 with the tokio
+//! - All chain operations are `async` internally; UniFFI 0.31 with the tokio
 //!   feature wraps them into `async fn` on the Swift side automatically.
 //! - The service does not own secrets. It receives private key bytes per-call
 //!   (Swift reads from Keychain and passes them in).
@@ -25,9 +27,8 @@
 //!   `update_endpoints_typed`.
 //! - Frozen chain-id discriminants live in `crate::registry::Chain`.
 
-// `WalletService` types, helpers, and per-domain `impl` blocks all live
-// in this file (sections at the bottom were merged from the old
-// `service_*.rs` files for clarity).
+// `WalletService` state and behavior live here; per-chain send parameter
+// contracts live in `service_send_params.rs`.
 
 pub(crate) use crate::fetch::chains::{
     aptos::AptosClient, bitcoin::BitcoinClient, bitcoin::UtxoTxStatus,
@@ -53,6 +54,10 @@ pub(crate) use crate::SpectraBridgeError;
 pub(crate) use serde_json::json;
 pub(crate) use std::sync::Arc;
 pub(crate) use tokio::sync::RwLock;
+
+#[path = "service_send_params.rs"]
+mod service_send_params;
+pub(crate) use service_send_params::*;
 
 // ── Endpoint index (internal — pre-indexed for O(1) chain_id lookup) ──────
 
@@ -1287,332 +1292,299 @@ impl WalletService {
 
         match chain {
             Chain::Bitcoin => {
-                let from = str_field(&params, "from")?;
-                let to = str_field(&params, "to")?;
-                let amount_sats = params["amount_sat"].as_u64().ok_or("missing amount_sat")?;
-                let fee_rate_svb = params["fee_rate_svb"].as_f64().unwrap_or(10.0);
-                let priv_hex = str_field(&params, "private_key_hex")?;
+                let p: BitcoinNativeSendParams = parse_params(&params)?;
                 let client = BitcoinClient::new(HttpClient::shared(), endpoints);
                 let send_params = BitcoinSendParams {
-                    from_address: from.to_string(),
-                    private_key_hex: priv_hex.to_string(),
-                    to_address: to.to_string(),
-                    amount_sats,
+                    from_address: p.from,
+                    private_key_hex: p.private_key_hex,
+                    to_address: p.to,
+                    amount_sats: p.amount_sat,
                     fee_rate: crate::fetch::chains::bitcoin::FeeRate {
-                        sats_per_vbyte: fee_rate_svb,
+                        sats_per_vbyte: p.fee_rate_svb.unwrap_or(10.0),
                     },
                     available_utxos: vec![],
                     network_mode: "mainnet".to_string(),
                     enable_rbf: true,
-                    dust_threshold: params["dust_threshold_sats"].as_u64(),
+                    dust_threshold: p.dust_threshold_sats,
                     pinned_utxos: None,
                     extra_outputs: vec![],
                     coin_selection: crate::send::chains::bitcoin::CoinSelectionStrategy::default(),
-                    sign_only: params["sign_only"].as_bool().unwrap_or(false),
+                    sign_only: p.sign_only,
                 };
                 let r = bitcoin_sign_and_broadcast(&client, send_params).await?;
                 Ok(serde_json::to_string(&r)?)
             }
             c if c.is_evm() => {
-                let from = str_field(&params, "from")?;
-                let to = str_field(&params, "to")?;
-                let value_wei: u128 = params["value_wei"]
-                    .as_str()
-                    .and_then(|s| s.parse().ok())
-                    .ok_or("missing value_wei")?;
-                let priv_bytes = hex_field(&params, "private_key_hex")?;
+                let p: EvmNativeSendParams = parse_params(&params)?;
+                let priv_bytes = hex::decode(&p.private_key_hex).map_err(|e| {
+                    SpectraBridgeError::from(format!("private_key_hex hex decode: {e}"))
+                })?;
                 let overrides = read_evm_overrides(&params);
                 let client = EvmClient::new(endpoints, c.evm_chain_id());
                 let r = client
-                    .sign_and_broadcast_with_overrides(from, to, value_wei, &priv_bytes, overrides)
+                    .sign_and_broadcast_with_overrides(
+                        &p.from,
+                        &p.to,
+                        p.value_wei,
+                        &priv_bytes,
+                        overrides,
+                    )
                     .await?;
                 Ok(serde_json::to_string(&r)?)
             }
             Chain::Solana => {
-                let from_bytes = hex_field(&params, "from_pubkey_hex")?;
-                let from_arr: [u8; 32] = from_bytes
-                    .try_into()
-                    .map_err(|_| "from pubkey wrong length")?;
-                let to = str_field(&params, "to")?;
-                let lamports = params["lamports"].as_u64().ok_or("missing lamports")?;
-                let priv_bytes = hex_field(&params, "private_key_hex")?;
-                let priv_arr: [u8; 64] =
-                    priv_bytes.try_into().map_err(|_| "privkey wrong length")?;
+                let p: SolanaNativeSendParams = parse_params(&params)?;
+                let from_arr: [u8; 32] = decode_hex_array(&p.from_pubkey_hex, "from_pubkey_hex")?;
+                let priv_arr: [u8; 64] = decode_hex_array(&p.private_key_hex, "private_key_hex")?;
                 let client = SolanaClient::new(endpoints);
                 let r = client
-                    .sign_and_broadcast(&from_arr, to, lamports, &priv_arr)
+                    .sign_and_broadcast(&from_arr, &p.to, p.lamports, &priv_arr)
                     .await?;
                 Ok(serde_json::to_string(&r)?)
             }
             Chain::Xrp => {
-                let from = str_field(&params, "from")?;
-                let to = str_field(&params, "to")?;
-                let drops = params["drops"].as_u64().ok_or("missing drops")?;
-                let priv_bytes = hex_field(&params, "private_key_hex")?;
+                let p: XrpSendParams = parse_params(&params)?;
+                let priv_bytes = hex::decode(&p.private_key_hex).map_err(|e| {
+                    SpectraBridgeError::from(format!("private_key_hex hex decode: {e}"))
+                })?;
                 // public_key_hex is optional: derive compressed secp256k1 pubkey when absent.
                 let derived_pub: String;
-                let pub_hex: &str =
-                    match params["public_key_hex"].as_str().filter(|s| !s.is_empty()) {
-                        Some(s) => s,
-                        None => {
-                            use secp256k1::{PublicKey as SecpPubKey, Secp256k1, SecretKey};
-                            let secp = Secp256k1::new();
-                            let secret = SecretKey::from_slice(&priv_bytes)
-                                .map_err(|e| format!("bad privkey: {e}"))?;
-                            derived_pub = hex::encode(
-                                SecpPubKey::from_secret_key(&secp, &secret).serialize(),
-                            );
-                            &derived_pub
-                        }
-                    };
+                let pub_hex: &str = match p.public_key_hex.as_deref().filter(|s| !s.is_empty()) {
+                    Some(s) => s,
+                    None => {
+                        use secp256k1::{PublicKey as SecpPubKey, Secp256k1, SecretKey};
+                        let secp = Secp256k1::new();
+                        let secret = SecretKey::from_slice(&priv_bytes)
+                            .map_err(|e| format!("bad privkey: {e}"))?;
+                        derived_pub =
+                            hex::encode(SecpPubKey::from_secret_key(&secp, &secret).serialize());
+                        &derived_pub
+                    }
+                };
                 let client = XrpClient::new(endpoints);
                 let r = client
-                    .sign_and_submit(from, to, drops, &priv_bytes, pub_hex)
+                    .sign_and_submit(&p.from, &p.to, p.drops, &priv_bytes, pub_hex)
                     .await?;
                 Ok(serde_json::to_string(&r)?)
             }
             Chain::Tron => {
-                let from = str_field(&params, "from")?;
-                let to = str_field(&params, "to")?;
-                let amount_sun = params["amount_sun"].as_u64().ok_or("missing amount_sun")?;
-                let priv_bytes = hex_field(&params, "private_key_hex")?;
+                let p: TronNativeSendParams = parse_params(&params)?;
+                let priv_bytes = hex::decode(&p.private_key_hex).map_err(|e| {
+                    SpectraBridgeError::from(format!("private_key_hex hex decode: {e}"))
+                })?;
                 let client = TronClient::new(endpoints);
                 let r = client
-                    .sign_and_broadcast(from, to, amount_sun, &priv_bytes)
+                    .sign_and_broadcast(&p.from, &p.to, p.amount_sun, &priv_bytes)
                     .await?;
                 Ok(serde_json::to_string(&r)?)
             }
             Chain::Sui => {
-                let from = str_field(&params, "from")?;
-                let to = str_field(&params, "to")?;
-                let mist = params["mist"].as_u64().ok_or("missing mist")?;
-                let gas_budget = params["gas_budget"].as_u64().unwrap_or(10_000_000);
-                let priv_arr: [u8; 64] = hex_field(&params, "private_key_hex")?
-                    .try_into()
-                    .map_err(|_| "privkey wrong length")?;
-                let pub_arr: [u8; 32] = hex_field(&params, "public_key_hex")?
-                    .try_into()
-                    .map_err(|_| "pubkey wrong length")?;
+                let p: SuiSendParams = parse_params(&params)?;
+                let priv_arr: [u8; 64] = decode_hex_array(&p.private_key_hex, "private_key_hex")?;
+                let pub_arr: [u8; 32] = decode_hex_array(&p.public_key_hex, "public_key_hex")?;
                 let client = SuiClient::new(endpoints);
                 let r = client
-                    .sign_and_send(from, to, mist, gas_budget, &priv_arr, &pub_arr)
+                    .sign_and_send(
+                        &p.from,
+                        &p.to,
+                        p.mist,
+                        p.gas_budget.unwrap_or(10_000_000),
+                        &priv_arr,
+                        &pub_arr,
+                    )
                     .await?;
                 Ok(serde_json::to_string(&r)?)
             }
             Chain::Aptos => {
-                let from = str_field(&params, "from")?;
-                let to = str_field(&params, "to")?;
-                let octas = params["octas"].as_u64().ok_or("missing octas")?;
-                let priv_arr: [u8; 64] = hex_field(&params, "private_key_hex")?
-                    .try_into()
-                    .map_err(|_| "privkey wrong length")?;
-                let pub_arr: [u8; 32] = hex_field(&params, "public_key_hex")?
-                    .try_into()
-                    .map_err(|_| "pubkey wrong length")?;
+                let p: AptosSendParams = parse_params(&params)?;
+                let priv_arr: [u8; 64] = decode_hex_array(&p.private_key_hex, "private_key_hex")?;
+                let pub_arr: [u8; 32] = decode_hex_array(&p.public_key_hex, "public_key_hex")?;
                 let client = AptosClient::new(endpoints);
                 let r = client
-                    .sign_and_submit(from, to, octas, &priv_arr, &pub_arr)
+                    .sign_and_submit(&p.from, &p.to, p.octas, &priv_arr, &pub_arr)
                     .await?;
                 Ok(serde_json::to_string(&r)?)
             }
             Chain::Near => {
-                let from = str_field(&params, "from")?;
-                let to = str_field(&params, "to")?;
-                let yocto: u128 = params["yocto_near"]
-                    .as_str()
-                    .and_then(|s| s.parse().ok())
-                    .ok_or("missing yocto_near")?;
-                let priv_arr: [u8; 64] = hex_field(&params, "private_key_hex")?
-                    .try_into()
-                    .map_err(|_| "privkey wrong length")?;
-                let pub_arr: [u8; 32] = hex_field(&params, "public_key_hex")?
-                    .try_into()
-                    .map_err(|_| "pubkey wrong length")?;
+                let p: NearNativeSendParams = parse_params(&params)?;
+                let priv_arr: [u8; 64] = decode_hex_array(&p.private_key_hex, "private_key_hex")?;
+                let pub_arr: [u8; 32] = decode_hex_array(&p.public_key_hex, "public_key_hex")?;
                 let client = NearClient::new(endpoints);
                 let r = client
-                    .sign_and_broadcast(from, to, yocto, &priv_arr, &pub_arr)
+                    .sign_and_broadcast(&p.from, &p.to, p.yocto_near, &priv_arr, &pub_arr)
                     .await?;
                 Ok(serde_json::to_string(&r)?)
             }
             Chain::Dogecoin => {
-                let from = str_field(&params, "from")?;
-                let to = str_field(&params, "to")?;
-                let amount_sat = params["amount_sat"].as_u64().ok_or("missing amount_sat")?;
-                let fee_sat = params["fee_sat"].as_u64().unwrap_or(200_000);
-                let priv_bytes = hex_field(&params, "private_key_hex")?;
+                let p: UtxoFixedFeeSendParams = parse_params(&params)?;
+                let priv_bytes = hex::decode(&p.private_key_hex).map_err(|e| {
+                    SpectraBridgeError::from(format!("private_key_hex hex decode: {e}"))
+                })?;
                 let client = DogecoinClient::new(endpoints);
                 let r = client
                     .sign_and_broadcast(
-                        from,
-                        to,
-                        amount_sat,
-                        fee_sat,
+                        &p.from,
+                        &p.to,
+                        p.amount_sat,
+                        p.fee_sat.unwrap_or(200_000),
                         &priv_bytes,
-                        params["dust_threshold_sats"].as_u64(),
+                        p.dust_threshold_sats,
                     )
                     .await?;
                 Ok(serde_json::to_string(&r)?)
             }
             Chain::Litecoin => {
-                let from = str_field(&params, "from")?;
-                let to = str_field(&params, "to")?;
-                let amount_sat = params["amount_sat"].as_u64().ok_or("missing amount_sat")?;
-                let fee_sat = params["fee_sat"].as_u64().unwrap_or(10_000);
-                let priv_bytes = hex_field(&params, "private_key_hex")?;
+                let p: UtxoFixedFeeSendParams = parse_params(&params)?;
+                let priv_bytes = hex::decode(&p.private_key_hex).map_err(|e| {
+                    SpectraBridgeError::from(format!("private_key_hex hex decode: {e}"))
+                })?;
                 let client = LitecoinClient::new(endpoints);
                 let r = client
                     .sign_and_broadcast(
-                        from,
-                        to,
-                        amount_sat,
-                        fee_sat,
+                        &p.from,
+                        &p.to,
+                        p.amount_sat,
+                        p.fee_sat.unwrap_or(10_000),
                         &priv_bytes,
-                        params["dust_threshold_sats"].as_u64(),
+                        p.dust_threshold_sats,
                     )
                     .await?;
                 Ok(serde_json::to_string(&r)?)
             }
             Chain::BitcoinCash => {
-                let from = str_field(&params, "from")?;
-                let to = str_field(&params, "to")?;
-                let amount_sat = params["amount_sat"].as_u64().ok_or("missing amount_sat")?;
-                let fee_sat = params["fee_sat"].as_u64().unwrap_or(1_000);
-                let priv_bytes = hex_field(&params, "private_key_hex")?;
+                let p: UtxoFixedFeeSendParams = parse_params(&params)?;
+                let priv_bytes = hex::decode(&p.private_key_hex).map_err(|e| {
+                    SpectraBridgeError::from(format!("private_key_hex hex decode: {e}"))
+                })?;
                 let client = BitcoinCashClient::new(endpoints);
                 let r = client
                     .sign_and_broadcast(
-                        from,
-                        to,
-                        amount_sat,
-                        fee_sat,
+                        &p.from,
+                        &p.to,
+                        p.amount_sat,
+                        p.fee_sat.unwrap_or(1_000),
                         &priv_bytes,
-                        params["dust_threshold_sats"].as_u64(),
+                        p.dust_threshold_sats,
                     )
                     .await?;
                 Ok(serde_json::to_string(&r)?)
             }
             Chain::BitcoinSV => {
-                let from = str_field(&params, "from")?;
-                let to = str_field(&params, "to")?;
-                let amount_sat = params["amount_sat"].as_u64().ok_or("missing amount_sat")?;
-                let fee_sat = params["fee_sat"].as_u64().unwrap_or(1_000);
-                let priv_bytes = hex_field(&params, "private_key_hex")?;
+                let p: UtxoFixedFeeSendParams = parse_params(&params)?;
+                let priv_bytes = hex::decode(&p.private_key_hex).map_err(|e| {
+                    SpectraBridgeError::from(format!("private_key_hex hex decode: {e}"))
+                })?;
                 let client = BitcoinSvClient::new(endpoints);
                 let r = client
                     .sign_and_broadcast(
-                        from,
-                        to,
-                        amount_sat,
-                        fee_sat,
+                        &p.from,
+                        &p.to,
+                        p.amount_sat,
+                        p.fee_sat.unwrap_or(1_000),
                         &priv_bytes,
-                        params["dust_threshold_sats"].as_u64(),
+                        p.dust_threshold_sats,
                     )
                     .await?;
                 Ok(serde_json::to_string(&r)?)
             }
             Chain::Zcash => {
-                let from = str_field(&params, "from")?;
-                let to = str_field(&params, "to")?;
-                let amount_sat = params["amount_sat"].as_u64().ok_or("missing amount_sat")?;
-                let fee_sat = params["fee_sat"].as_u64().unwrap_or(1_000);
-                let priv_bytes = hex_field(&params, "private_key_hex")?;
+                let p: ZcashSendParams = parse_params(&params)?;
+                let priv_bytes = hex::decode(&p.private_key_hex).map_err(|e| {
+                    SpectraBridgeError::from(format!("private_key_hex hex decode: {e}"))
+                })?;
                 let client = ZcashClient::new(endpoints);
                 let r = client
                     .sign_and_broadcast(
-                        from,
-                        to,
-                        amount_sat,
-                        fee_sat,
+                        &p.from,
+                        &p.to,
+                        p.amount_sat,
+                        p.fee_sat.unwrap_or(1_000),
                         &priv_bytes,
                         crate::send::chains::zcash::ZcashNetworkUpgrade::NU5,
-                        params["dust_threshold_zats"].as_u64().unwrap_or(546),
+                        p.dust_threshold_zats.unwrap_or(546),
                     )
                     .await?;
                 Ok(serde_json::to_string(&r)?)
             }
             Chain::BitcoinGold => {
-                let from = str_field(&params, "from")?;
-                let to = str_field(&params, "to")?;
-                let amount_sat = params["amount_sat"].as_u64().ok_or("missing amount_sat")?;
-                let fee_sat = params["fee_sat"].as_u64().unwrap_or(1_000);
-                let priv_bytes = hex_field(&params, "private_key_hex")?;
+                let p: UtxoFixedFeeSendParams = parse_params(&params)?;
+                let priv_bytes = hex::decode(&p.private_key_hex).map_err(|e| {
+                    SpectraBridgeError::from(format!("private_key_hex hex decode: {e}"))
+                })?;
                 let client = BitcoinGoldClient::new(endpoints);
                 let r = client
                     .sign_and_broadcast(
-                        from,
-                        to,
-                        amount_sat,
-                        fee_sat,
+                        &p.from,
+                        &p.to,
+                        p.amount_sat,
+                        p.fee_sat.unwrap_or(1_000),
                         &priv_bytes,
-                        params["dust_threshold_sats"].as_u64(),
+                        p.dust_threshold_sats,
                     )
                     .await?;
                 Ok(serde_json::to_string(&r)?)
             }
             Chain::Decred => {
-                let from = str_field(&params, "from")?;
-                let to = str_field(&params, "to")?;
-                let amount_atoms = params["amount_sat"].as_u64().ok_or("missing amount_sat")?;
-                let fee_atoms = params["fee_sat"].as_u64().unwrap_or(2_000);
-                let priv_bytes = hex_field(&params, "private_key_hex")?;
+                let p: DecredSendParams = parse_params(&params)?;
+                let priv_bytes = hex::decode(&p.private_key_hex).map_err(|e| {
+                    SpectraBridgeError::from(format!("private_key_hex hex decode: {e}"))
+                })?;
                 let client = DecredClient::new(endpoints);
                 let r = client
                     .sign_and_broadcast(
-                        from,
-                        to,
-                        amount_atoms,
-                        fee_atoms,
+                        &p.from,
+                        &p.to,
+                        p.amount_sat,
+                        p.fee_sat.unwrap_or(2_000),
                         &priv_bytes,
-                        params["dust_threshold_atoms"].as_u64(),
+                        p.dust_threshold_atoms,
                     )
                     .await?;
                 Ok(serde_json::to_string(&r)?)
             }
             Chain::Kaspa => {
-                let from = str_field(&params, "from")?;
-                let to = str_field(&params, "to")?;
-                let amount_sompi = params["amount_sat"].as_u64().ok_or("missing amount_sat")?;
-                let fee_sompi = params["fee_sat"].as_u64().unwrap_or(1_000);
-                let priv_bytes = hex_field(&params, "private_key_hex")?;
+                let p: KaspaSendParams = parse_params(&params)?;
+                let priv_bytes = hex::decode(&p.private_key_hex).map_err(|e| {
+                    SpectraBridgeError::from(format!("private_key_hex hex decode: {e}"))
+                })?;
                 let client = KaspaClient::new(endpoints);
                 let r = client
                     .sign_and_broadcast(
-                        from,
-                        to,
-                        amount_sompi,
-                        fee_sompi,
+                        &p.from,
+                        &p.to,
+                        p.amount_sat,
+                        p.fee_sat.unwrap_or(1_000),
                         &priv_bytes,
-                        params["min_fee_sompi"].as_u64(),
-                        params["dust_threshold_sompi"].as_u64(),
+                        p.min_fee_sompi,
+                        p.dust_threshold_sompi,
                     )
                     .await?;
                 Ok(serde_json::to_string(&r)?)
             }
             Chain::Dash => {
-                let from = str_field(&params, "from")?;
-                let to = str_field(&params, "to")?;
-                let amount_sat = params["amount_sat"].as_u64().ok_or("missing amount_sat")?;
-                let fee_sat = params["fee_sat"].as_u64().unwrap_or(2_000);
-                let priv_bytes = hex_field(&params, "private_key_hex")?;
+                let p: UtxoFixedFeeSendParams = parse_params(&params)?;
+                let priv_bytes = hex::decode(&p.private_key_hex).map_err(|e| {
+                    SpectraBridgeError::from(format!("private_key_hex hex decode: {e}"))
+                })?;
                 let client = DashClient::new(endpoints);
                 let r = client
                     .sign_and_broadcast(
-                        from,
-                        to,
-                        amount_sat,
-                        fee_sat,
+                        &p.from,
+                        &p.to,
+                        p.amount_sat,
+                        p.fee_sat.unwrap_or(2_000),
                         &priv_bytes,
-                        params["dust_threshold_sats"].as_u64(),
+                        p.dust_threshold_sats,
                     )
                     .await?;
                 Ok(serde_json::to_string(&r)?)
             }
             Chain::Stellar => {
-                let from = str_field(&params, "from")?;
-                let to = str_field(&params, "to")?;
-                let stroops = params["stroops"].as_i64().ok_or("missing stroops")?;
+                let p: StellarSendParams = parse_params(&params)?;
                 // Accept 32-byte seed (raw import) or 64-byte expanded key (derived).
-                let priv_raw = hex_field(&params, "private_key_hex")?;
+                let priv_raw = hex::decode(&p.private_key_hex).map_err(|e| {
+                    SpectraBridgeError::from(format!("private_key_hex hex decode: {e}"))
+                })?;
                 let priv_arr: [u8; 64] = if priv_raw.len() == 32 {
                     let mut expanded = [0u8; 64];
                     expanded[..32].copy_from_slice(&priv_raw);
@@ -1623,54 +1595,53 @@ impl WalletService {
                         .map_err(|_| "privkey must be 32 or 64 bytes")?
                 };
                 // public_key_hex is optional: derive ed25519 verifying key when absent.
-                let pub_arr: [u8; 32] =
-                    match params["public_key_hex"].as_str().filter(|s| !s.is_empty()) {
-                        Some(s) => hex::decode(s)
-                            .map_err(|e| format!("pubkey hex: {e}"))?
+                let pub_arr: [u8; 32] = match p.public_key_hex.as_deref().filter(|s| !s.is_empty())
+                {
+                    Some(s) => hex::decode(s)
+                        .map_err(|e| format!("pubkey hex: {e}"))?
+                        .try_into()
+                        .map_err(|_| "pubkey wrong length")?,
+                    None => {
+                        use ed25519_dalek::SigningKey;
+                        let seed: [u8; 32] = priv_arr[..32]
                             .try_into()
-                            .map_err(|_| "pubkey wrong length")?,
-                        None => {
-                            use ed25519_dalek::SigningKey;
-                            let seed: [u8; 32] = priv_arr[..32]
-                                .try_into()
-                                .map_err(|_| "privkey seed too short")?;
-                            SigningKey::from_bytes(&seed).verifying_key().to_bytes()
-                        }
-                    };
-                let network_passphrase = params["network_passphrase"]
-                    .as_str()
+                            .map_err(|_| "privkey seed too short")?;
+                        SigningKey::from_bytes(&seed).verifying_key().to_bytes()
+                    }
+                };
+                let network_passphrase = p
+                    .network_passphrase
+                    .as_deref()
                     .map(|s| s.as_bytes().to_vec());
                 let client = StellarClient::new(endpoints);
                 let r = client
-                    .sign_and_submit(from, to, stroops, &priv_arr, &pub_arr, network_passphrase)
+                    .sign_and_submit(
+                        &p.from,
+                        &p.to,
+                        p.stroops,
+                        &priv_arr,
+                        &pub_arr,
+                        network_passphrase,
+                    )
                     .await?;
                 Ok(serde_json::to_string(&r)?)
             }
             Chain::Cardano => {
-                let from = str_field(&params, "from")?;
-                let to = str_field(&params, "to")?;
-                let amount_lovelace = params["amount_lovelace"]
-                    .as_u64()
-                    .ok_or("missing amount_lovelace")?;
-                let fee_lovelace = params["fee_lovelace"].as_u64().unwrap_or(170_000);
-                let priv_arr: [u8; 64] = hex_field(&params, "private_key_hex")?
-                    .try_into()
-                    .map_err(|_| "privkey wrong length")?;
-                let pub_arr: [u8; 32] = hex_field(&params, "public_key_hex")?
-                    .try_into()
-                    .map_err(|_| "pubkey wrong length")?;
+                let p: CardanoSendParams = parse_params(&params)?;
+                let priv_arr: [u8; 64] = decode_hex_array(&p.private_key_hex, "private_key_hex")?;
+                let pub_arr: [u8; 32] = decode_hex_array(&p.public_key_hex, "public_key_hex")?;
                 let api_key = self.api_key_for(chain.str_id()).await.unwrap_or_default();
                 let client = CardanoClient::new(endpoints, api_key);
                 let r = client
                     .sign_and_broadcast(
-                        from,
-                        to,
-                        amount_lovelace,
-                        fee_lovelace,
+                        &p.from,
+                        &p.to,
+                        p.amount_lovelace,
+                        p.fee_lovelace.unwrap_or(170_000),
                         &priv_arr,
                         &pub_arr,
-                        params["ttl_slots"].as_u64(),
-                        params["min_change_lovelace"].as_u64(),
+                        p.ttl_slots,
+                        p.min_change_lovelace,
                     )
                     .await?;
                 Ok(serde_json::to_string(&r)?)
@@ -1704,70 +1675,62 @@ impl WalletService {
                 json_response(&r)
             }
             Chain::Ton => {
-                let from = str_field(&params, "from")?;
-                let to = str_field(&params, "to")?;
-                let nanotons = params["nanotons"].as_u64().ok_or("missing nanotons")?;
-                let comment = params["comment"].as_str();
-                let priv_arr: [u8; 64] = hex_field(&params, "private_key_hex")?
-                    .try_into()
-                    .map_err(|_| "privkey wrong length")?;
-                let pub_arr: [u8; 32] = hex_field(&params, "public_key_hex")?
-                    .try_into()
-                    .map_err(|_| "pubkey wrong length")?;
+                let p: TonSendParams = parse_params(&params)?;
+                let priv_arr: [u8; 64] = decode_hex_array(&p.private_key_hex, "private_key_hex")?;
+                let pub_arr: [u8; 32] = decode_hex_array(&p.public_key_hex, "public_key_hex")?;
                 let api_key = self.api_key_for(chain.str_id()).await;
                 let client = TonClient::new(endpoints, api_key);
-                let seqno = client.fetch_seqno(from).await?;
+                let seqno = client.fetch_seqno(&p.from).await?;
                 let r = client
                     .sign_and_send(
-                        to,
-                        nanotons,
+                        &p.to,
+                        p.nanotons,
                         seqno,
-                        comment,
+                        p.comment.as_deref(),
                         &priv_arr,
                         &pub_arr,
-                        params["subwallet_id"].as_u64().map(|n| n as u32),
-                        params["expiry_seconds"].as_u64().map(|n| n as u32),
-                        params["send_mode"].as_u64().map(|n| n as u8),
+                        p.subwallet_id.map(|n| n as u32),
+                        p.expiry_seconds.map(|n| n as u32),
+                        p.send_mode.map(|n| n as u8),
                     )
                     .await?;
                 Ok(serde_json::to_string(&r)?)
             }
             Chain::Icp => {
-                let from = str_field(&params, "from")?;
-                let to = str_field(&params, "to")?;
-                let e8s = params["e8s"].as_u64().ok_or("missing e8s")?;
-                let priv_bytes = hex_field(&params, "private_key_hex")?;
+                let p: IcpSendParams = parse_params(&params)?;
+                let priv_bytes = hex::decode(&p.private_key_hex).map_err(|e| {
+                    SpectraBridgeError::from(format!("private_key_hex hex decode: {e}"))
+                })?;
                 // public_key_hex is optional: derive compressed secp256k1 pubkey when absent.
                 let derived_pub: Vec<u8>;
-                let pub_bytes: &[u8] =
-                    match params["public_key_hex"].as_str().filter(|s| !s.is_empty()) {
-                        Some(s) => {
-                            derived_pub = hex::decode(s).map_err(|e| format!("pubkey hex: {e}"))?;
-                            &derived_pub
-                        }
-                        None => {
-                            use secp256k1::{PublicKey as SecpPubKey, Secp256k1, SecretKey};
-                            let secp = Secp256k1::new();
-                            let secret = SecretKey::from_slice(&priv_bytes)
-                                .map_err(|e| format!("bad privkey: {e}"))?;
-                            derived_pub = SecpPubKey::from_secret_key(&secp, &secret)
-                                .serialize()
-                                .to_vec();
-                            &derived_pub
-                        }
-                    };
+                let pub_bytes: &[u8] = match p.public_key_hex.as_deref().filter(|s| !s.is_empty()) {
+                    Some(s) => {
+                        derived_pub = hex::decode(s).map_err(|e| format!("pubkey hex: {e}"))?;
+                        &derived_pub
+                    }
+                    None => {
+                        use secp256k1::{PublicKey as SecpPubKey, Secp256k1, SecretKey};
+                        let secp = Secp256k1::new();
+                        let secret = SecretKey::from_slice(&priv_bytes)
+                            .map_err(|e| format!("bad privkey: {e}"))?;
+                        derived_pub = SecpPubKey::from_secret_key(&secp, &secret)
+                            .serialize()
+                            .to_vec();
+                        &derived_pub
+                    }
+                };
                 let client = IcpClient::new(endpoints);
                 let r = client
-                    .sign_and_submit(from, to, e8s, &priv_bytes, pub_bytes)
+                    .sign_and_submit(&p.from, &p.to, p.e8s, &priv_bytes, pub_bytes)
                     .await?;
                 Ok(serde_json::to_string(&r)?)
             }
             Chain::Monero => {
-                let to = str_field(&params, "to")?;
-                let piconeros = params["piconeros"].as_u64().ok_or("missing piconeros")?;
-                let priority = params["priority"].as_u64().unwrap_or(2) as u32;
+                let p: MoneroSendParams = parse_params(&params)?;
                 let client = MoneroClient::new(endpoints);
-                let r = client.send(to, piconeros, 0, priority).await?;
+                let r = client
+                    .send(&p.to, p.piconeros, 0, p.priority.unwrap_or(2) as u32)
+                    .await?;
                 Ok(serde_json::to_string(&r)?)
             }
             c => Err(SpectraBridgeError::from(format!(
@@ -1807,23 +1770,18 @@ impl WalletService {
 
         match chain {
             c if c.is_evm() => {
-                let from = str_field(&params, "from")?;
-                let contract = str_field(&params, "contract")?;
-                let to = str_field(&params, "to")?;
-                let amount_raw: u128 = params["amount_raw"]
-                    .as_str()
-                    .and_then(|s| s.parse().ok())
-                    .or_else(|| params["amount_raw"].as_u64().map(|n| n as u128))
-                    .ok_or("missing amount_raw")?;
-                let priv_bytes = hex_field(&params, "private_key_hex")?;
+                let p: TokenAmountSendParams = parse_params(&params)?;
+                let priv_bytes = hex::decode(&p.private_key_hex).map_err(|e| {
+                    SpectraBridgeError::from(format!("private_key_hex hex decode: {e}"))
+                })?;
                 let overrides = read_evm_overrides(&params);
                 let client = EvmClient::new(endpoints, c.evm_chain_id());
                 let r = client
                     .sign_and_broadcast_erc20_with_overrides(
-                        from,
-                        contract,
-                        to,
-                        amount_raw,
+                        &p.from,
+                        &p.contract,
+                        &p.to,
+                        p.amount_raw,
                         &priv_bytes,
                         overrides,
                     )
@@ -1834,24 +1792,18 @@ impl WalletService {
                 // Tron — TRC-20. Addresses are base58, amount is in token units,
                 // `fee_limit_sun` defaults to 100 TRX (100_000_000 sun) which
                 // covers typical USDT transfers (roughly 13-25 TRX actual cost).
-                let from = str_field(&params, "from")?;
-                let contract = str_field(&params, "contract")?;
-                let to = str_field(&params, "to")?;
-                let amount_raw: u128 = params["amount_raw"]
-                    .as_str()
-                    .and_then(|s| s.parse().ok())
-                    .or_else(|| params["amount_raw"].as_u64().map(|n| n as u128))
-                    .ok_or("missing amount_raw")?;
-                let fee_limit_sun = params["fee_limit_sun"].as_u64().unwrap_or(100_000_000);
-                let priv_bytes = hex_field(&params, "private_key_hex")?;
+                let p: TronTokenSendParams = parse_params(&params)?;
+                let priv_bytes = hex::decode(&p.private_key_hex).map_err(|e| {
+                    SpectraBridgeError::from(format!("private_key_hex hex decode: {e}"))
+                })?;
                 let client = TronClient::new(endpoints);
                 let r = client
                     .sign_and_broadcast_trc20(
-                        from,
-                        contract,
-                        to,
-                        amount_raw,
-                        fee_limit_sun,
+                        &p.from,
+                        &p.contract,
+                        &p.to,
+                        p.amount_raw,
+                        p.fee_limit_sun.unwrap_or(100_000_000),
                         &priv_bytes,
                     )
                     .await?;
@@ -1860,28 +1812,21 @@ impl WalletService {
             Chain::Stellar => {
                 // Stellar — custom issued asset payment. Uses same keypair
                 // shape as native XLM sends (64-byte priv, 32-byte pub).
-                let from = str_field(&params, "from")?;
-                let to = str_field(&params, "to")?;
-                let stroops = params["stroops"].as_i64().ok_or("missing stroops")?;
-                let asset_code = str_field(&params, "asset_code")?;
-                let asset_issuer = str_field(&params, "asset_issuer")?;
-                let priv_arr: [u8; 64] = hex_field(&params, "private_key_hex")?
-                    .try_into()
-                    .map_err(|_| "privkey wrong length")?;
-                let pub_arr: [u8; 32] = hex_field(&params, "public_key_hex")?
-                    .try_into()
-                    .map_err(|_| "pubkey wrong length")?;
-                let network_passphrase = params["network_passphrase"]
-                    .as_str()
+                let p: StellarTokenSendParams = parse_params(&params)?;
+                let priv_arr: [u8; 64] = decode_hex_array(&p.private_key_hex, "private_key_hex")?;
+                let pub_arr: [u8; 32] = decode_hex_array(&p.public_key_hex, "public_key_hex")?;
+                let network_passphrase = p
+                    .network_passphrase
+                    .as_deref()
                     .map(|s| s.as_bytes().to_vec());
                 let client = StellarClient::new(endpoints);
                 let r = client
                     .sign_and_submit_asset(
-                        from,
-                        to,
-                        stroops,
-                        asset_code,
-                        asset_issuer,
+                        &p.from,
+                        &p.to,
+                        p.stroops,
+                        &p.asset_code,
+                        &p.asset_issuer,
                         &priv_arr,
                         &pub_arr,
                         network_passphrase,
@@ -1891,56 +1836,38 @@ impl WalletService {
             }
             Chain::Near => {
                 // NEAR — NEP-141 fungible token transfer (ft_transfer).
-                let from = str_field(&params, "from")?;
-                let contract = str_field(&params, "contract")?;
-                let to = str_field(&params, "to")?;
-                let amount_raw: u128 = params["amount_raw"]
-                    .as_str()
-                    .and_then(|s| s.parse().ok())
-                    .or_else(|| params["amount_raw"].as_u64().map(|n| n as u128))
-                    .ok_or("missing amount_raw")?;
-                let priv_arr: [u8; 64] = hex_field(&params, "private_key_hex")?
-                    .try_into()
-                    .map_err(|_| "privkey wrong length")?;
-                let pub_arr: [u8; 32] = hex_field(&params, "public_key_hex")?
-                    .try_into()
-                    .map_err(|_| "pubkey wrong length")?;
+                let p: NearTokenSendParams = parse_params(&params)?;
+                let priv_arr: [u8; 64] = decode_hex_array(&p.private_key_hex, "private_key_hex")?;
+                let pub_arr: [u8; 32] = decode_hex_array(&p.public_key_hex, "public_key_hex")?;
                 let client = NearClient::new(endpoints);
                 let r = client
                     .sign_and_broadcast_ft_transfer(
-                        from,
-                        contract,
-                        to,
-                        amount_raw,
+                        &p.from,
+                        &p.contract,
+                        &p.to,
+                        p.amount_raw,
                         &priv_arr,
                         &pub_arr,
-                        params["gas_tgas"].as_u64(),
+                        p.gas_tgas,
                     )
                     .await?;
                 Ok(serde_json::to_string(&r)?)
             }
             Chain::Solana => {
                 // Solana — SPL token transfer with idempotent ATA create.
-                let from_arr: [u8; 32] = hex_field(&params, "from_pubkey_hex")?
-                    .try_into()
-                    .map_err(|_| "from pubkey wrong length")?;
-                let to = str_field(&params, "to")?;
-                let mint = str_field(&params, "mint")?;
-                let amount_raw: u64 = params["amount_raw"]
-                    .as_str()
-                    .and_then(|s| s.parse().ok())
-                    .or_else(|| params["amount_raw"].as_u64())
-                    .ok_or("missing amount_raw")?;
-                let decimals: u8 = params["decimals"]
-                    .as_u64()
-                    .map(|n| n as u8)
-                    .ok_or("missing decimals")?;
-                let priv_arr: [u8; 64] = hex_field(&params, "private_key_hex")?
-                    .try_into()
-                    .map_err(|_| "privkey wrong length")?;
+                let p: SolanaTokenSendParams = parse_params(&params)?;
+                let from_arr: [u8; 32] = decode_hex_array(&p.from_pubkey_hex, "from_pubkey_hex")?;
+                let priv_arr: [u8; 64] = decode_hex_array(&p.private_key_hex, "private_key_hex")?;
                 let client = SolanaClient::new(endpoints);
                 let r = client
-                    .sign_and_broadcast_spl(&from_arr, to, mint, amount_raw, decimals, &priv_arr)
+                    .sign_and_broadcast_spl(
+                        &from_arr,
+                        &p.to,
+                        &p.mint,
+                        p.amount_raw,
+                        p.decimals,
+                        &priv_arr,
+                    )
                     .await?;
                 Ok(serde_json::to_string(&r)?)
             }
@@ -2718,25 +2645,6 @@ pub(super) fn json_response<T: Serialize>(value: &T) -> Result<String, SpectraBr
     serde_json::to_string(value).map_err(Into::into)
 }
 
-// ── Param extraction ──────────────────────────────────────────────────────
-
-pub(super) fn str_field<'a>(
-    params: &'a serde_json::Value,
-    key: &str,
-) -> Result<&'a str, SpectraBridgeError> {
-    params[key]
-        .as_str()
-        .ok_or_else(|| SpectraBridgeError::from(format!("missing field: {key}")))
-}
-
-pub(super) fn hex_field(
-    params: &serde_json::Value,
-    key: &str,
-) -> Result<Vec<u8>, SpectraBridgeError> {
-    let s = str_field(params, key)?;
-    hex::decode(s).map_err(|e| SpectraBridgeError::from(format!("{key} hex decode: {e}")))
-}
-
 /// Parse `params` as a typed payload. Lets a chain dispatch arm collapse
 /// six lines of ad-hoc `params["x"].as_y()` extraction into one decode step:
 ///
@@ -2754,9 +2662,9 @@ pub(super) fn parse_params<T: for<'de> serde::Deserialize<'de>>(
         .map_err(|e| SpectraBridgeError::from(format!("invalid params: {e}")))
 }
 
-/// Decode a hex string of an exact byte length. Replaces the
-/// `hex_field(..)?.try_into().map_err(|_| "X wrong length")?` pair that
-/// recurred across every chain arm. Includes the field name in both the
+/// Decode a hex string of an exact byte length. Replaces repeated
+/// per-arm hex decoding and fixed-length conversion boilerplate. Includes
+/// the field name in both the
 /// "not hex" and "wrong length" error variants.
 pub(super) fn decode_hex_array<const N: usize>(
     hex_str: &str,
@@ -3298,97 +3206,7 @@ pub struct ChainEndpoints {
     pub api_key: Option<String>,
 }
 
-// ── Per-chain `sign_and_send` parameter shapes ────────────────────────────
-//
-// Each chain's `sign_and_send` arm in `service::mod` historically read its
-// inputs by pulling individual fields out of a `serde_json::Value` with
-// inline `.as_str()` / `.as_u64()` / `try_into()` chains. That style hides
-// the contract — a reader can't see at a glance what shape the Polkadot
-// endpoint expects without scanning the full arm body.
-//
-// Defining a typed struct per chain reverses that: the type doc *is* the
-// API contract, serde gives field-name-aware error messages for free, and
-// the dispatch arm collapses to one `parse_params` call.
-//
-// These structs accept the same JSON shape Swift already produces so this
-// migration is internal — no FFI signature changes.
-
-/// `Chain::Polkadot` send parameters. `planck` is the smallest unit
-/// (10⁻¹⁰ DOT). The 32-byte `private_key_hex` is the sr25519 mini-secret
-/// produced by `derive_polkadot`, *not* a 64-byte ed25519 secret.
-#[derive(Debug, Clone, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub(crate) struct PolkadotSendParams {
-    pub from: String,
-    pub to: String,
-    /// Accepts either a JSON string ("12500000000") or a JSON number for
-    /// backward compatibility with Swift call sites that emitted both forms.
-    #[serde(deserialize_with = "deserialize_u128_from_string_or_number")]
-    pub planck: u128,
-    pub private_key_hex: String,
-    pub public_key_hex: String,
-    /// SCALE-encoded era bytes. `None` → immortal (`[0x00]`).
-    #[serde(default)]
-    pub era: Option<Vec<u8>>,
-    /// Tip in planck. `None` → 0.
-    #[serde(
-        default,
-        deserialize_with = "deserialize_option_u128_from_string_or_number"
-    )]
-    pub tip: Option<u128>,
-}
-
-/// `Chain::Bittensor` send parameters. `rao` is the smallest unit
-/// (10⁻⁹ TAO). Same sr25519 32-byte mini-secret rules as Polkadot.
-#[derive(Debug, Clone, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub(crate) struct BittensorSendParams {
-    pub from: String,
-    pub to: String,
-    #[serde(deserialize_with = "deserialize_u128_from_string_or_number")]
-    pub rao: u128,
-    pub private_key_hex: String,
-    pub public_key_hex: String,
-}
-
-/// Accepts JSON `"12345"` or `12345` for u128 fields. Swift sends planck
-/// values as strings (since u128 doesn't round-trip safely through JSON
-/// numbers) but legacy call sites emitted them as `as_u64`-able numbers.
-fn deserialize_u128_from_string_or_number<'de, D>(deserializer: D) -> Result<u128, D::Error>
-where
-    D: serde::Deserializer<'de>,
-{
-    use serde::de::Error;
-    let value = serde_json::Value::deserialize(deserializer)?;
-    if let Some(s) = value.as_str() {
-        return s.parse::<u128>().map_err(D::Error::custom);
-    }
-    if let Some(n) = value.as_u64() {
-        return Ok(n as u128);
-    }
-    Err(D::Error::custom("expected u128 as string or number"))
-}
-
-fn deserialize_option_u128_from_string_or_number<'de, D>(
-    deserializer: D,
-) -> Result<Option<u128>, D::Error>
-where
-    D: serde::Deserializer<'de>,
-{
-    use serde::de::Error;
-    let value = serde_json::Value::deserialize(deserializer)?;
-    if value.is_null() {
-        return Ok(None);
-    }
-    if let Some(s) = value.as_str() {
-        return s.parse::<u128>().map(Some).map_err(D::Error::custom);
-    }
-    if let Some(n) = value.as_u64() {
-        return Ok(Some(n as u128));
-    }
-    Err(D::Error::custom("expected u128 as string, number, or null"))
-}
-
+// Per-chain send parameter records live in `service_send_params.rs`.
 // ── Merged from service_standalone.rs ──────────────────────
 
 // Synchronous, stateless UniFFI exports — token catalog + BIP-39 mnemonic
@@ -3926,8 +3744,8 @@ fn summary_native(smallest_unit: String, amount_display: String) -> NativeBalanc
 
 // WalletService — Bitcoin xpub / HD address derivation.
 //
-// Sliced out of `service/mod.rs`. The `WalletService` type itself stays in
-// `mod.rs`; methods here live in a separate `impl` block (Rust permits
+// Merged back from an older service slice. The `WalletService` type itself
+// stays in `service.rs`; methods live in separate `impl` blocks (Rust permits
 // multiple impl blocks per type, and UniFFI exports them as if they were one).
 
 // (inner allow stripped during merge)
@@ -4000,8 +3818,8 @@ impl WalletService {
 
 // WalletService — live price + fiat-rate fetch.
 //
-// Sliced out of `service/mod.rs`. The `WalletService` type itself stays in
-// `mod.rs`; methods here live in a separate `impl` block (Rust permits
+// Merged back from an older service slice. The `WalletService` type itself
+// stays in `service.rs`; methods live in separate `impl` blocks (Rust permits
 // multiple impl blocks per type, and UniFFI exports them as if they were one).
 
 // (inner allow stripped during merge)
@@ -4071,8 +3889,8 @@ impl WalletService {
 
 // WalletService — state persistence (SQLite-backed load/save/delete).
 //
-// Sliced out of `service/mod.rs`. The `WalletService` type itself stays in
-// `mod.rs`; methods here live in a separate `impl` block (Rust permits
+// Merged back from an older service slice. The `WalletService` type itself
+// stays in `service.rs`; methods live in separate `impl` blocks (Rust permits
 // multiple impl blocks per type, and UniFFI exports them as if they were one).
 
 // (inner allow stripped during merge)

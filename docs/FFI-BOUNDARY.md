@@ -7,7 +7,7 @@ Reference for the Rust↔Swift contract. Read this before:
 - regenerating Swift bindings after a Rust change
 - debugging a "type mismatch at the boundary" build error
 
-The wallet's logic lives in `core/` (Rust). Swift consumes that logic via UniFFI 0.29, which generates Swift bindings from `#[uniffi::export]`-tagged Rust items. Everything that crosses the boundary is one of: a UniFFI Record, a UniFFI Enum, a UniFFI Object, or a UniFFI Error.
+The wallet's logic lives in `core/` (Rust). Swift consumes that logic via UniFFI 0.31, which generates Swift bindings from `#[uniffi::export]`-tagged Rust items. Everything that crosses the boundary is one of: a UniFFI Record, a UniFFI Enum, a UniFFI Object, or a UniFFI Error.
 
 Code references in this doc point at concrete files; treat the file as the source of truth and the doc as the explanation.
 
@@ -19,7 +19,7 @@ There are two ways an endpoint reaches Swift, and they look different on both si
 
 ### Pattern A — typed path (preferred)
 
-A free function in `core/src/ffi.rs` (or a `#[uniffi::export]`-tagged free function in any module) that takes typed records and returns a typed record:
+A `#[uniffi::export]`-tagged free function in the module that owns the logic, taking typed records and returning a typed record:
 
 ```rust
 #[uniffi::export]
@@ -32,19 +32,19 @@ UniFFI generates a Swift function with real Swift struct argument and return typ
 
 **Use this for**: anything that doesn't dispatch on `Chain`. Validation, address probes, decoder helpers, presets, registry lookups, BIP-39 utilities, normalization, transaction merge logic.
 
-**The home for these is `core/src/ffi.rs`** — the file is the canonical FFI surface. New endpoints should land there unless they have a specific reason to live elsewhere (e.g. they're tightly coupled to a `WalletService` field).
+**The home for these is the owning domain module** — for example validation helpers live under `core/src/derivation/`, store planners under `core/src/store/`, and token catalog helpers near `service.rs`/`tokens.rs`. There is no central `core/src/ffi.rs`.
 
 ### Pattern B — dispatched path
 
-A method on `WalletService` in `core/src/service/mod.rs` that takes `chain_id: u32` plus a per-chain-shaped JSON `Value`, dispatches on `Chain`, and returns a JSON-serialized `String`:
+A method on `WalletService` in `core/src/service.rs` that takes a `chain_id` plus a per-chain-shaped JSON `Value`, dispatches on `Chain`, and returns a JSON-serialized `String`:
 
 ```rust
 pub(crate) async fn sign_and_send(
     &self,
-    chain_id: u32,
+    chain_id: &str,
     params: serde_json::Value,
 ) -> Result<String, SpectraBridgeError> {
-    let chain = Chain::from_id(chain_id).ok_or(...)?;
+    let chain = Chain::from_str_id(chain_id).ok_or(...)?;
     match chain {
         Chain::Polkadot => { /* ... */ }
         Chain::Bittensor => { /* ... */ }
@@ -53,11 +53,11 @@ pub(crate) async fn sign_and_send(
 }
 ```
 
-Swift gets `func signAndSend(chainId: UInt32, params: ...) async throws -> String` and decodes the JSON itself.
+Swift normally reaches this via a typed higher-level method such as `executeSend`; Rust still uses JSON internally for the heterogeneous per-chain payload before dispatch.
 
 **Use this only for**: methods that genuinely dispatch on `Chain` and where the per-chain return shapes are heterogeneous enough that one UniFFI Record won't cover them. Send dispatch, fee preview, transaction broadcast.
 
-**Inside the dispatched arm**, the input JSON should be parsed into a typed struct as the first line — see `service::types::PolkadotSendParams`, `BittensorSendParams`. Don't pull fields out of the `serde_json::Value` ad-hoc; that hides the contract.
+**Inside the dispatched arm**, the input JSON should be parsed into a typed struct as the first line — see `core/src/service_send_params.rs`. Don't pull fields out of the `serde_json::Value` ad hoc; that hides the contract.
 
 ### Why two patterns
 
@@ -66,13 +66,13 @@ Pattern A is strictly better when it works. Pattern B exists because:
 1. UniFFI Records can't be heterogeneous-by-discriminant in a way that's ergonomic for ~20 different chain return shapes. Modeling every chain's send result as a separate UniFFI Record and adding a UniFFI Enum to wrap them is possible but adds binding surface for marginal gain.
 2. The Swift call sites for chain-dispatched flows already had a "decode this JSON" shape from before UniFFI was adopted. Migrating them is mechanical but touches every chain.
 
-A long-term goal is to migrate Pattern B to Pattern A on a per-method basis. The `service::types` typed-params structs are the first step — input is now typed even if the return is still a String.
+A long-term goal is to migrate Pattern B to Pattern A on a per-method basis. The `service_send_params.rs` typed-params structs are the first step — input is now typed even if the return is still a String.
 
 ---
 
 ## What can cross
 
-UniFFI 0.29 supports these item kinds. Each has different rules.
+UniFFI 0.31 supports these item kinds. Each has different rules.
 
 ### `#[derive(uniffi::Record)]`
 
@@ -173,7 +173,7 @@ This is the lightest-weight FFI surface and the right default for stateless util
 
 ## What can't cross
 
-UniFFI 0.29 doesn't support:
+UniFFI 0.31 doesn't support:
 
 - **Generics on FFI items.** `fn validate<T>(...)` doesn't cross. Monomorphize at the boundary.
 - **Trait objects.** `Box<dyn Foo>` doesn't cross. Convert to a typed enum or wrap in a UniFFI Object.
@@ -242,7 +242,7 @@ When in doubt, regenerate bindings and recompile Swift. The compile error will t
 The dispatched path (Pattern B) ships JSON between Rust and Swift. Both sides need to agree on the shape:
 
 - **camelCase** field names. Rust uses `#[serde(rename_all = "camelCase")]`; Swift's default `JSONEncoder` already produces camelCase.
-- **Numeric types**: prefer `i64` / `u32` / `f64` for fields that round-trip through JSON. `u128` doesn't survive — JSON numbers can't represent it. For u128, use `String` and parse with a typed serde helper (see `deserialize_u128_from_string_or_number` in `service::types`).
+- **Numeric types**: prefer `i64` / `u32` / `f64` for fields that round-trip through JSON. `u128` doesn't survive — JSON numbers can't represent it. For u128, use `String` and parse with a typed serde helper (see `deserialize_u128_from_string_or_number` in `service_send_params.rs`).
 - **Optional fields**: Rust `Option<T>` with `#[serde(skip_serializing_if = "Option::is_none")]` produces "omit when None"; Swift's `decodeIfPresent` handles the omission. Don't emit `null` — Swift treats `null` and "absent" the same on read but persistence layers (SQLite) don't.
 - **Dates/times**: unix epoch seconds (`f64`) for wire shapes that flow through merge/refresh; Swift reference time (`f64`, seconds since 2001-01-01 UTC) for shapes that flow through SQLite persistence. The two formats look identical but use different epochs — see the `CoreTransactionRecord` vs `CorePersistedTransactionRecord` doc comments for why.
 - **Hex bytes**: lowercase, no `0x` prefix unless the chain's wire format requires one (EVM does; Bitcoin doesn't).
@@ -283,8 +283,9 @@ Rust serialized one shape; Swift expected another. Print the raw string at the b
 ## Further reading
 
 - `core/src/lib.rs` — `SpectraBridgeError` definition and conversion impls.
-- `core/src/ffi.rs` — the typed-path FFI surface, with a header doc explaining the dichotomy.
-- `core/src/service/mod.rs` — the dispatched-path methods.
+- domain modules such as `core/src/derivation/validation.rs`, `core/src/store/mod.rs`, and `core/src/service.rs` — the typed-path FFI surface is decentralized.
+- `core/src/service.rs` — the dispatched-path methods.
+- `core/src/service_send_params.rs` — typed parameter contracts for chain-dispatched send paths.
 - `core/src/service/types.rs` — typed parameter structs for chain dispatch arms.
 - `core/src/service/standalone.rs` — synchronous, stateless UniFFI exports (token catalog, BIP-39).
 - `swift/rustbridge/WalletServiceBridge.swift` — the Swift singleton that holds the `WalletService` instance and exposes call sites for Swift code.

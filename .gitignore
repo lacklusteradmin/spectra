@@ -26,8 +26,30 @@ xcuserdata/
 Packages/
 Package.resolved
 
-# Claude Code
+# AI assistants / coding agents
+AGENTS.md
+CLAUDE.md
+CLAUDE.local.md
+GEMINI.md
+GEMINI.local.md
+.aider*
 .claude/
+.claude.json
+.claude.local.json
+.codex/
+.continue/
+.cursor/
+.cursorignore
+.cursorindexingignore
+.gemini/
+.goose/
+.kiro/
+.mcp/
+.mcp.json
+.roo/
+.roocode/
+.trae/
+.windsurf/
 
 # Rust
 **/target/
