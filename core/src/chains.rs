@@ -28,7 +28,7 @@ struct TomlChain {
     is_evm: bool,
     supports_endpoint_catalog: bool,
     supports_diagnostics: bool,
-    color_name: String,
+    color: String,
     asset_name: String,
     token_standard: String,
     contract_address_prompt: String,
@@ -36,15 +36,14 @@ struct TomlChain {
     native_decimals: u32,
     native_asset_name: String,
     tags: Vec<String>,
+    comment: String,
     family: String,
     consensus: String,
     state_model: String,
     primary_use: String,
-    slip44_coin_type: String,
     derivation_path: String,
     alt_derivation_path: String,
     total_circulation_model: String,
-    notable_details: Vec<String>,
 }
 
 // ----------------------------------------------------------------
@@ -62,7 +61,7 @@ pub struct ChainEntry {
     pub is_evm: bool,
     pub supports_endpoint_catalog: bool,
     pub supports_diagnostics: bool,
-    pub color_name: String,
+    pub color: String,
     pub asset_name: String,
     pub token_standard: String,
     pub contract_address_prompt: String,
@@ -70,15 +69,14 @@ pub struct ChainEntry {
     pub native_decimals: u32,
     pub native_asset_name: String,
     pub tags: Vec<String>,
+    pub comment: String,
     pub family: String,
     pub consensus: String,
     pub state_model: String,
     pub primary_use: String,
-    pub slip44_coin_type: String,
     pub derivation_path: String,
     pub alt_derivation_path: String,
     pub total_circulation_model: String,
-    pub notable_details: Vec<String>,
 }
 
 // ----------------------------------------------------------------
@@ -101,7 +99,7 @@ static CATALOG: LazyLock<Vec<ChainEntry>> = LazyLock::new(|| {
             is_evm: c.is_evm,
             supports_endpoint_catalog: c.supports_endpoint_catalog,
             supports_diagnostics: c.supports_diagnostics,
-            color_name: c.color_name,
+            color: c.color,
             asset_name: c.asset_name,
             token_standard: c.token_standard,
             contract_address_prompt: c.contract_address_prompt,
@@ -109,15 +107,14 @@ static CATALOG: LazyLock<Vec<ChainEntry>> = LazyLock::new(|| {
             native_decimals: c.native_decimals,
             native_asset_name: c.native_asset_name,
             tags: c.tags,
+            comment: c.comment,
             family: c.family,
             consensus: c.consensus,
             state_model: c.state_model,
             primary_use: c.primary_use,
-            slip44_coin_type: c.slip44_coin_type,
             derivation_path: c.derivation_path,
             alt_derivation_path: c.alt_derivation_path,
             total_circulation_model: c.total_circulation_model,
-            notable_details: c.notable_details,
         })
         .collect()
 });

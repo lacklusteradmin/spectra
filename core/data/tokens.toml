@@ -1,1227 +1,1318 @@
 # Spectra built-in token registry — single source of truth for both the
 # Rust core (economic/technical fields) and the Swift UI (visual fields).
-# Visual metadata (color_name, asset_name) is duplicated across chain rows
+# Visual metadata (color, asset_name) is duplicated across chain rows
 # for the same symbol — same values, short strings, acceptable redundancy.
 # Fields: chain, chain_id, name, symbol, standard, contract, coingecko_id,
-#         decimals, display_decimals?, tags, color_name, asset_name, enabled
+#         decimals, display_decimals?, tags, comment, color, asset_name, enabled
 #
 # Grouped by chain (chain_id ascending), then by symbol within each chain.
 
 # ── Ethereum ─────────────────────────────────────────────────────────────────
 
 [[tokens]]
-chain        = "ethereum"
-name         = "Aave"
-symbol       = "AAVE"
-standard     = "ERC-20"
-contract     = "0x7Fc66500c84A76Ad7e9c93437bFc5Ac33E2DDaE9"
+chain = "ethereum"
+name = "Aave"
+symbol = "AAVE"
+standard = "ERC-20"
+contract = "0x7Fc66500c84A76Ad7e9c93437bFc5Ac33E2DDaE9"
 coingecko_id = "aave"
-decimals     = 18
-tags         = []
-color_name   = "indigo"
-asset_name   = "aave"
-enabled      = false
+decimals = 18
+tags = []
+comment = "Governance token for Aave, a decentralized liquidity protocol for lending and borrowing crypto assets."
+color = "indigo"
+asset_name = "aave"
+enabled = false
 
 [[tokens]]
-chain        = "ethereum"
-name         = "Bitget Token"
-symbol       = "BGB"
-standard     = "ERC-20"
-contract     = "0x54D2252757e1672EEaD234D27B1270728fF90581"
+chain = "ethereum"
+name = "Bitget Token"
+symbol = "BGB"
+standard = "ERC-20"
+contract = "0x54D2252757e1672EEaD234D27B1270728fF90581"
 coingecko_id = "bitget-token"
-decimals     = 18
-tags         = []
-color_name   = "yellow"
-asset_name   = "bgb"
-enabled      = false
+decimals = 18
+tags = []
+comment = "Utility token for the Bitget exchange and Bitget Wallet ecosystem, used for platform perks and services."
+color = "yellow"
+asset_name = "bgb"
+enabled = false
 
 [[tokens]]
-chain        = "ethereum"
-name         = "Cronos"
-symbol       = "CRO"
-standard     = "ERC-20"
-contract     = "0xa0b73e1ff0b80914ab6fe0444e65848c4c34450b"
+chain = "ethereum"
+name = "Cronos"
+symbol = "CRO"
+standard = "ERC-20"
+contract = "0xa0b73e1ff0b80914ab6fe0444e65848c4c34450b"
 coingecko_id = "cronos"
-decimals     = 8
-tags         = []
-color_name   = "blue"
-asset_name   = "cronos"
-enabled      = false
+decimals = 8
+tags = []
+comment = "Utility token for the Cronos and Crypto.com ecosystem, used across network fees, staking, and platform services."
+color = "blue"
+asset_name = "cronos"
+enabled = false
 
 [[tokens]]
-chain        = "ethereum"
-name         = "Dai"
-symbol       = "DAI"
-standard     = "ERC-20"
-contract     = "0x6B175474E89094C44Da98b954EedeAC495271d0F"
+chain = "ethereum"
+name = "Dai"
+symbol = "DAI"
+standard = "ERC-20"
+contract = "0x6B175474E89094C44Da98b954EedeAC495271d0F"
 coingecko_id = "dai"
-decimals     = 18
-tags         = ["stablecoin"]
-color_name   = "orange"
-asset_name   = "skydai"
-enabled      = false
+decimals = 18
+tags = ["stablecoin"]
+comment = "Decentralized U.S. dollar stablecoin from Sky, formerly MakerDAO, backed by crypto and real-world collateral."
+color = "orange"
+asset_name = "skydai"
+enabled = false
 
 [[tokens]]
-chain        = "ethereum"
-name         = "Ethena"
-symbol       = "ENA"
-standard     = "ERC-20"
-contract     = "0x57e114B691Db790C35207b2e685D4A43181e6061"
+chain = "ethereum"
+name = "Ethena"
+symbol = "ENA"
+standard = "ERC-20"
+contract = "0x57e114B691Db790C35207b2e685D4A43181e6061"
 coingecko_id = "ethena"
-decimals     = 18
-tags         = []
-color_name   = "blue"
-asset_name   = "ethena"
-enabled      = false
+decimals = 18
+tags = []
+comment = "Governance token for Ethena, the protocol behind the USDe crypto-native synthetic dollar."
+color = "blue"
+asset_name = "ethena"
+enabled = false
 
 [[tokens]]
-chain        = "ethereum"
-name         = "Euro Coin"
-symbol       = "EURC"
-standard     = "ERC-20"
-contract     = "0x1aBaEA1f7C830bD89Acc67eC4af516284b1bC33c"
+chain = "ethereum"
+name = "Euro Coin"
+symbol = "EURC"
+standard = "ERC-20"
+contract = "0x1aBaEA1f7C830bD89Acc67eC4af516284b1bC33c"
 coingecko_id = "euro-coin"
-decimals     = 6
-tags         = ["stablecoin"]
-color_name   = "blue"
-asset_name   = "circleeurc"
-enabled      = false
+decimals = 6
+tags = ["stablecoin"]
+comment = "Euro-backed stablecoin issued by Circle and designed to be redeemable 1:1 for euros through supported channels."
+color = "blue"
+asset_name = "circleeurc"
+enabled = false
 
 [[tokens]]
-chain        = "ethereum"
-name         = "First Digital USD"
-symbol       = "FDUSD"
-standard     = "ERC-20"
-contract     = "0xc5f0f7b66764F6ec8C8Dff7BA683102295E16409"
+chain = "ethereum"
+name = "First Digital USD"
+symbol = "FDUSD"
+standard = "ERC-20"
+contract = "0xc5f0f7b66764F6ec8C8Dff7BA683102295E16409"
 coingecko_id = "first-digital-usd"
-decimals     = 18
-tags         = ["stablecoin"]
-color_name   = "green"
-asset_name   = "firstdigitalfdusd"
-enabled      = false
+decimals = 18
+tags = ["stablecoin"]
+comment = "U.S. dollar stablecoin issued by First Digital, designed for trading, payments, and DeFi settlement."
+color = "green"
+asset_name = "firstdigitalfdusd"
+enabled = false
 
 [[tokens]]
-chain        = "ethereum"
-name         = "KuCoin Token"
-symbol       = "KCS"
-standard     = "ERC-20"
-contract     = "0xf34960d9d60be18cC1D5Afc1A6F012A723a28811"
+chain = "ethereum"
+name = "KuCoin Token"
+symbol = "KCS"
+standard = "ERC-20"
+contract = "0xf34960d9d60be18cC1D5Afc1A6F012A723a28811"
 coingecko_id = "kucoin-shares"
-decimals     = 6
-tags         = []
-color_name   = "yellow"
-asset_name   = "kcs"
-enabled      = false
+decimals = 6
+tags = []
+comment = "Native utility token of the KuCoin exchange ecosystem, used for platform rewards, fees, and services."
+color = "yellow"
+asset_name = "kcs"
+enabled = false
 
 [[tokens]]
-chain        = "ethereum"
-name         = "UNUS SED LEO"
-symbol       = "LEO"
-standard     = "ERC-20"
-contract     = "0x2af5d2ad76741191d15dfe7bf6ac92d4bd912ca3"
+chain = "ethereum"
+name = "UNUS SED LEO"
+symbol = "LEO"
+standard = "ERC-20"
+contract = "0x2af5d2ad76741191d15dfe7bf6ac92d4bd912ca3"
 coingecko_id = "leo-token"
-decimals     = 18
-tags         = []
-color_name   = "orange"
-asset_name   = "leo"
-enabled      = false
+decimals = 18
+tags = []
+comment = "Utility token for the iFinex and Bitfinex ecosystem, built around exchange fee benefits and platform utility."
+color = "orange"
+asset_name = "leo"
+enabled = false
 
 [[tokens]]
-chain        = "ethereum"
-name         = "Chainlink"
-symbol       = "LINK"
-standard     = "ERC-20"
-contract     = "0x514910771AF9Ca656af840dff83E8264EcF986CA"
+chain = "ethereum"
+name = "Chainlink"
+symbol = "LINK"
+standard = "ERC-20"
+contract = "0x514910771AF9Ca656af840dff83E8264EcF986CA"
 coingecko_id = "chainlink"
-decimals     = 18
-tags         = []
-color_name   = "blue"
-asset_name   = "chainlink"
-enabled      = false
+decimals = 18
+tags = []
+comment = "Token for Chainlink, the decentralized oracle network that connects smart contracts with external data and services."
+color = "blue"
+asset_name = "chainlink"
+enabled = false
 
 [[tokens]]
-chain        = "ethereum"
-name         = "PAX Gold"
-symbol       = "PAXG"
-standard     = "ERC-20"
-contract     = "0x45804880De22913dAFE09f4980848ECE6EcbAf78"
+chain = "ethereum"
+name = "PAX Gold"
+symbol = "PAXG"
+standard = "ERC-20"
+contract = "0x45804880De22913dAFE09f4980848ECE6EcbAf78"
 coingecko_id = "pax-gold"
-decimals     = 18
-tags         = []
-color_name   = "yellow"
-asset_name   = "paxospaxg"
-enabled      = false
+decimals = 18
+tags = []
+comment = "Gold-backed token from Paxos, with each token representing one fine troy ounce of London Good Delivery gold."
+color = "yellow"
+asset_name = "paxospaxg"
+enabled = false
 
 [[tokens]]
-chain        = "ethereum"
-name         = "PayPal USD"
-symbol       = "PYUSD"
-standard     = "ERC-20"
-contract     = "0x6c3ea9036406852006290770BEdFcAbA0e23A0e8"
+chain = "ethereum"
+name = "PayPal USD"
+symbol = "PYUSD"
+standard = "ERC-20"
+contract = "0x6c3ea9036406852006290770BEdFcAbA0e23A0e8"
 coingecko_id = "paypal-usd"
-decimals     = 6
-tags         = ["stablecoin"]
-color_name   = "blue"
-asset_name   = "paypalpyusd"
-enabled      = false
+decimals = 6
+tags = ["stablecoin"]
+comment = "PayPal USD stablecoin issued by Paxos, designed as a fully backed U.S. dollar payment token."
+color = "blue"
+asset_name = "paypalpyusd"
+enabled = false
 
 [[tokens]]
-chain        = "ethereum"
-name         = "Ripple USD"
-symbol       = "RLUSD"
-standard     = "ERC-20"
-contract     = "0xcfd748b9de538c9f5b1805e8db9e1d4671f7f2ec"
+chain = "ethereum"
+name = "Ripple USD"
+symbol = "RLUSD"
+standard = "ERC-20"
+contract = "0xcfd748b9de538c9f5b1805e8db9e1d4671f7f2ec"
 coingecko_id = "ripple-usd"
-decimals     = 18
-tags         = ["stablecoin"]
-color_name   = "indigo"
-asset_name   = "ripplerlusd"
-enabled      = false
+decimals = 18
+tags = ["stablecoin"]
+comment = "Ripple USD stablecoin, a U.S. dollar-backed token designed for payments, trading, and settlement use cases."
+color = "indigo"
+asset_name = "ripplerlusd"
+enabled = false
 
 [[tokens]]
-chain        = "ethereum"
-name         = "Shiba Inu"
-symbol       = "SHIB"
-standard     = "ERC-20"
-contract     = "0x95aD61b0a150d79219dCF64E1E6Cc01f0B64C4cE"
+chain = "ethereum"
+name = "Shiba Inu"
+symbol = "SHIB"
+standard = "ERC-20"
+contract = "0x95aD61b0a150d79219dCF64E1E6Cc01f0B64C4cE"
 coingecko_id = "shiba-inu"
-decimals     = 18
-tags         = ["meme"]
-color_name   = "orange"
-asset_name   = "shibainu"
-enabled      = false
+decimals = 18
+tags = ["meme"]
+comment = "Community-driven meme token at the center of the Shiba Inu ecosystem."
+color = "orange"
+asset_name = "shibainu"
+enabled = false
 
 [[tokens]]
-chain        = "ethereum"
-name         = "Sky"
-symbol       = "SKY"
-standard     = "ERC-20"
-contract     = "0x56072C95FAA701256059aa122697B133aDEd9279"
+chain = "ethereum"
+name = "Sky"
+symbol = "SKY"
+standard = "ERC-20"
+contract = "0x56072C95FAA701256059aa122697B133aDEd9279"
 coingecko_id = "sky"
-decimals     = 18
-tags         = []
-color_name   = "blue"
-asset_name   = "sky"
-enabled      = false
+decimals = 18
+tags = []
+comment = "Governance token of the Sky Protocol, replacing MKR for protocol voting and parameter decisions."
+color = "blue"
+asset_name = "sky"
+enabled = false
 
 [[tokens]]
-chain        = "ethereum"
-name         = "TrueUSD"
-symbol       = "TUSD"
-standard     = "ERC-20"
-contract     = "0x0000000000085d4780B73119b644AE5ecd22b376"
+chain = "ethereum"
+name = "TrueUSD"
+symbol = "TUSD"
+standard = "ERC-20"
+contract = "0x0000000000085d4780B73119b644AE5ecd22b376"
 coingecko_id = "true-usd"
-decimals     = 18
-tags         = ["stablecoin"]
-color_name   = "blue"
-asset_name   = "tusd"
-enabled      = false
+decimals = 18
+tags = ["stablecoin"]
+comment = "TrueUSD stablecoin, a U.S. dollar-pegged token designed for trading, payments, and DeFi use."
+color = "blue"
+asset_name = "tusd"
+enabled = false
 
 [[tokens]]
-chain        = "ethereum"
-name         = "Uniswap"
-symbol       = "UNI"
-standard     = "ERC-20"
-contract     = "0x1f9840a85d5aF5bf1D1762F925BDADdC4201F984"
+chain = "ethereum"
+name = "Uniswap"
+symbol = "UNI"
+standard = "ERC-20"
+contract = "0x1f9840a85d5aF5bf1D1762F925BDADdC4201F984"
 coingecko_id = "uniswap"
-decimals     = 18
-tags         = []
-color_name   = "pink"
-asset_name   = "uniswap"
-enabled      = false
+decimals = 18
+tags = []
+comment = "Governance token of the Uniswap protocol, letting holders participate in protocol decision-making."
+color = "pink"
+asset_name = "uniswap"
+enabled = false
 
 [[tokens]]
-chain        = "ethereum"
-name         = "USD1"
-symbol       = "USD1"
-standard     = "ERC-20"
-contract     = "0x8d0D000Ee44948FC98c9B98A4FA4921476f08B0d"
+chain = "ethereum"
+name = "USD1"
+symbol = "USD1"
+standard = "ERC-20"
+contract = "0x8d0D000Ee44948FC98c9B98A4FA4921476f08B0d"
 coingecko_id = ""
-decimals     = 18
-tags         = ["stablecoin"]
-color_name   = "green"
-asset_name   = "wlfiusd1"
-enabled      = false
+decimals = 18
+tags = ["stablecoin"]
+comment = "U.S. dollar stablecoin from World Liberty Financial, backed by cash and short-duration U.S. Treasury assets."
+color = "green"
+asset_name = "wlfiusd1"
+enabled = false
 
 [[tokens]]
-chain        = "ethereum"
-name         = "USD Coin"
-symbol       = "USDC"
-standard     = "ERC-20"
-contract     = "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48"
+chain = "ethereum"
+name = "USD Coin"
+symbol = "USDC"
+standard = "ERC-20"
+contract = "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48"
 coingecko_id = "usd-coin"
-decimals     = 6
-tags         = ["stablecoin"]
-color_name   = "blue"
-asset_name   = "circleusdc"
-enabled      = true
+decimals = 6
+tags = ["stablecoin"]
+comment = "Circle-issued U.S. dollar stablecoin, designed to be fully reserved and redeemable 1:1 for dollars."
+color = "blue"
+asset_name = "circleusdc"
+enabled = true
 
 [[tokens]]
-chain        = "ethereum"
-name         = "USDD"
-symbol       = "USDD"
-standard     = "ERC-20"
-contract     = "0x4f8e5DE400DE08B164E7421B3EE387f461beCD1A"
+chain = "ethereum"
+name = "USDD"
+symbol = "USDD"
+standard = "ERC-20"
+contract = "0x4f8e5DE400DE08B164E7421B3EE387f461beCD1A"
 coingecko_id = "usdd"
-decimals     = 18
-tags         = ["stablecoin"]
-color_name   = "green"
-asset_name   = "usdd"
-enabled      = false
+decimals = 18
+tags = ["stablecoin"]
+comment = "Over-collateralized decentralized U.S. dollar stablecoin managed by TRON DAO Reserve."
+color = "green"
+asset_name = "usdd"
+enabled = false
 
 [[tokens]]
-chain        = "ethereum"
-name         = "Ethena USDe"
-symbol       = "USDE"
-standard     = "ERC-20"
-contract     = "0x4c9EDD5852cd905f086C759E8383e09bff1E68B3"
+chain = "ethereum"
+name = "Ethena USDe"
+symbol = "USDE"
+standard = "ERC-20"
+contract = "0x4c9EDD5852cd905f086C759E8383e09bff1E68B3"
 coingecko_id = "ethena-usde"
-decimals     = 18
-tags         = ["stablecoin"]
-color_name   = "cyan"
-asset_name   = "ethenausde"
-enabled      = false
+decimals = 18
+tags = ["stablecoin"]
+comment = "Ethena USDe synthetic dollar, backed through crypto collateral, stable assets, and delta-hedging strategies."
+color = "cyan"
+asset_name = "ethenausde"
+enabled = false
 
 [[tokens]]
-chain        = "ethereum"
-name         = "Global Dollar"
-symbol       = "USDG"
-standard     = "ERC-20"
-contract     = "0xe343167631d89B6Ffc58B88d6b7fB0228795491D"
+chain = "ethereum"
+name = "Global Dollar"
+symbol = "USDG"
+standard = "ERC-20"
+contract = "0xe343167631d89B6Ffc58B88d6b7fB0228795491D"
 coingecko_id = "global-dollar"
-decimals     = 6
-tags         = ["stablecoin"]
-color_name   = "teal"
-asset_name   = "paxosusdg"
-enabled      = false
+decimals = 6
+tags = ["stablecoin"]
+comment = "Global Dollar stablecoin issued by Paxos Digital Singapore for the Global Dollar Network."
+color = "teal"
+asset_name = "paxosusdg"
+enabled = false
 
 [[tokens]]
-chain        = "ethereum"
-name         = "Sky Dollar"
-symbol       = "USDS"
-standard     = "ERC-20"
-contract     = "0xdC035D45d973E3EC169d2276DDab16f1e407384F"
+chain = "ethereum"
+name = "Sky Dollar"
+symbol = "USDS"
+standard = "ERC-20"
+contract = "0xdC035D45d973E3EC169d2276DDab16f1e407384F"
 coingecko_id = "sky-dollar"
-decimals     = 18
-tags         = ["stablecoin"]
-color_name   = "teal"
-asset_name   = "skyusds"
-enabled      = false
+decimals = 18
+tags = ["stablecoin"]
+comment = "Sky Dollar stablecoin, the upgraded dollar asset of the Sky Protocol and successor path for DAI users."
+color = "teal"
+asset_name = "skyusds"
+enabled = false
 
 [[tokens]]
-chain        = "ethereum"
-name         = "Tether USD"
-symbol       = "USDT"
-standard     = "ERC-20"
-contract     = "0xdAC17F958D2ee523a2206206994597C13D831ec7"
+chain = "ethereum"
+name = "Tether USD"
+symbol = "USDT"
+standard = "ERC-20"
+contract = "0xdAC17F958D2ee523a2206206994597C13D831ec7"
 coingecko_id = "tether"
-decimals     = 6
-tags         = ["stablecoin"]
-color_name   = "green"
-asset_name   = "tetherusdt"
-enabled      = true
+decimals = 6
+tags = ["stablecoin"]
+comment = "Tether USD stablecoin, a widely used dollar-pegged token for trading, payments, and on-chain settlement."
+color = "green"
+asset_name = "tetherusdt"
+enabled = true
 
 [[tokens]]
-chain        = "ethereum"
-name         = "Wrapped Bitcoin"
-symbol       = "WBTC"
-standard     = "ERC-20"
-contract     = "0x2260FAC5E5542a773Aa44fBCfeDf7C193bc2C599"
+chain = "ethereum"
+name = "Wrapped Bitcoin"
+symbol = "WBTC"
+standard = "ERC-20"
+contract = "0x2260FAC5E5542a773Aa44fBCfeDf7C193bc2C599"
 coingecko_id = "wrapped-bitcoin"
-decimals     = 8
-tags         = []
-color_name   = "orange"
-asset_name   = "wrappedbitcoin"
-enabled      = false
+decimals = 8
+tags = []
+comment = "Wrapped Bitcoin token backed 1:1 by BTC, bringing Bitcoin liquidity into Ethereum-compatible DeFi."
+color = "orange"
+asset_name = "wrappedbitcoin"
+enabled = false
 
 [[tokens]]
-chain        = "ethereum"
-name         = "World Liberty Financial"
-symbol       = "WLFI"
-standard     = "ERC-20"
-contract     = "0xdA5e1988097297dCdc1f90D4dFE7909e847CBeF6"
+chain = "ethereum"
+name = "World Liberty Financial"
+symbol = "WLFI"
+standard = "ERC-20"
+contract = "0xdA5e1988097297dCdc1f90D4dFE7909e847CBeF6"
 coingecko_id = ""
-decimals     = 18
-tags         = []
-color_name   = "gray"
-asset_name   = "wlfi"
-enabled      = false
+decimals = 18
+tags = []
+comment = "Governance token of World Liberty Financial, used for protocol participation and voting."
+color = "gray"
+asset_name = "wlfi"
+enabled = false
 
 [[tokens]]
-chain        = "ethereum"
-name         = "Tether Gold"
-symbol       = "XAUT"
-standard     = "ERC-20"
-contract     = "0x68749665FF8D2d112Fa859AA293F07A622782F38"
+chain = "ethereum"
+name = "Tether Gold"
+symbol = "XAUT"
+standard = "ERC-20"
+contract = "0x68749665FF8D2d112Fa859AA293F07A622782F38"
 coingecko_id = "tether-gold"
-decimals     = 6
-tags         = []
-color_name   = "yellow"
-asset_name   = "tetherxaut"
-enabled      = false
+decimals = 6
+tags = []
+comment = "Tether Gold token, with each token representing one fine troy ounce of physical gold."
+color = "yellow"
+asset_name = "tetherxaut"
+enabled = false
 
 # ── Solana ───────────────────────────────────────────────────────────────────
 
 [[tokens]]
-chain        = "solana"
-name         = "Ethena"
-symbol       = "ENA"
-standard     = "SPL"
-contract     = "72QvBVwpxqmheEPfaCwWSWqEFsUy3rhWt6JhQBMNTwD1"
+chain = "solana"
+name = "Ethena"
+symbol = "ENA"
+standard = "SPL"
+contract = "72QvBVwpxqmheEPfaCwWSWqEFsUy3rhWt6JhQBMNTwD1"
 coingecko_id = "ethena"
-decimals     = 9
-tags         = []
-color_name   = "blue"
-asset_name   = "ethena"
-enabled      = false
+decimals = 9
+tags = []
+comment = "Governance token for Ethena, the protocol behind the USDe crypto-native synthetic dollar."
+color = "blue"
+asset_name = "ethena"
+enabled = false
 
 [[tokens]]
-chain        = "solana"
-name         = "Euro Coin"
-symbol       = "EURC"
-standard     = "SPL"
-contract     = "HzwqbKZw8HxMN6bF2yFZNrht3c2iXXzpKcFu7uBEDKtr"
+chain = "solana"
+name = "Euro Coin"
+symbol = "EURC"
+standard = "SPL"
+contract = "HzwqbKZw8HxMN6bF2yFZNrht3c2iXXzpKcFu7uBEDKtr"
 coingecko_id = "euro-coin"
-decimals     = 6
-tags         = ["stablecoin"]
-color_name   = "blue"
-asset_name   = "circleeurc"
-enabled      = false
+decimals = 6
+tags = ["stablecoin"]
+comment = "Euro-backed stablecoin issued by Circle and designed to be redeemable 1:1 for euros through supported channels."
+color = "blue"
+asset_name = "circleeurc"
+enabled = false
 
 [[tokens]]
-chain        = "solana"
-name         = "First Digital USD"
-symbol       = "FDUSD"
-standard     = "SPL"
-contract     = "9zNQRsGLjNKwCUU5Gq5LR8beUCPzQMVMqKAi3SSZh54u"
+chain = "solana"
+name = "First Digital USD"
+symbol = "FDUSD"
+standard = "SPL"
+contract = "9zNQRsGLjNKwCUU5Gq5LR8beUCPzQMVMqKAi3SSZh54u"
 coingecko_id = "first-digital-usd"
-decimals     = 6
-tags         = ["stablecoin"]
-color_name   = "green"
-asset_name   = "firstdigitalfdusd"
-enabled      = false
+decimals = 6
+tags = ["stablecoin"]
+comment = "U.S. dollar stablecoin issued by First Digital, designed for trading, payments, and DeFi settlement."
+color = "green"
+asset_name = "firstdigitalfdusd"
+enabled = false
 
 [[tokens]]
-chain        = "solana"
-name         = "Jupiter"
-symbol       = "JUP"
-standard     = "SPL"
-contract     = "JUPyiwrYJFskUPiHa7hkeR8VUtAeFoSYbKedZNsDvCN"
+chain = "solana"
+name = "Jupiter"
+symbol = "JUP"
+standard = "SPL"
+contract = "JUPyiwrYJFskUPiHa7hkeR8VUtAeFoSYbKedZNsDvCN"
 coingecko_id = "jupiter-exchange-solana"
-decimals     = 6
-tags         = []
-color_name   = "orange"
-asset_name   = "jupiter"
-enabled      = false
+decimals = 6
+tags = []
+comment = "Governance token for Jupiter, a Solana DeFi platform best known for swap aggregation and liquidity routing."
+color = "orange"
+asset_name = "jupiter"
+enabled = false
 
 [[tokens]]
-chain        = "solana"
-name         = "Chainlink"
-symbol       = "LINK"
-standard     = "SPL"
-contract     = "LinkhB3afbBKb2EQQu7s7umdZceV3wcvAUJhQAfQ23L"
+chain = "solana"
+name = "Chainlink"
+symbol = "LINK"
+standard = "SPL"
+contract = "LinkhB3afbBKb2EQQu7s7umdZceV3wcvAUJhQAfQ23L"
 coingecko_id = "chainlink"
-decimals     = 8
-tags         = []
-color_name   = "blue"
-asset_name   = "chainlink"
-enabled      = false
+decimals = 8
+tags = []
+comment = "Token for Chainlink, the decentralized oracle network that connects smart contracts with external data and services."
+color = "blue"
+asset_name = "chainlink"
+enabled = false
 
 [[tokens]]
-chain        = "solana"
-name         = "pump.fun"
-symbol       = "PUMP"
-standard     = "SPL"
-contract     = "pumpCmXqMfrsAkQ5r49WcJnRayYRqmXz6ae8H7H9Dfn"
+chain = "solana"
+name = "pump.fun"
+symbol = "PUMP"
+standard = "SPL"
+contract = "pumpCmXqMfrsAkQ5r49WcJnRayYRqmXz6ae8H7H9Dfn"
 coingecko_id = "pump-fun"
-decimals     = 6
-tags         = ["meme"]
-color_name   = "pink"
-asset_name   = "pumpfun"
-enabled      = false
+decimals = 6
+tags = ["meme"]
+comment = "Token for pump.fun, the Solana memecoin launchpad and trading ecosystem."
+color = "pink"
+asset_name = "pumpfun"
+enabled = false
 
 [[tokens]]
-chain        = "solana"
-name         = "PayPal USD"
-symbol       = "PYUSD"
-standard     = "SPL"
-contract     = "2b1kV6DkPAnxd5ixfnxCpjxmKwqjjaYmCZfHsFu24GXo"
+chain = "solana"
+name = "PayPal USD"
+symbol = "PYUSD"
+standard = "SPL"
+contract = "2b1kV6DkPAnxd5ixfnxCpjxmKwqjjaYmCZfHsFu24GXo"
 coingecko_id = "paypal-usd"
-decimals     = 6
-tags         = ["stablecoin"]
-color_name   = "blue"
-asset_name   = "paypalpyusd"
-enabled      = false
+decimals = 6
+tags = ["stablecoin"]
+comment = "PayPal USD stablecoin issued by Paxos, designed as a fully backed U.S. dollar payment token."
+color = "blue"
+asset_name = "paypalpyusd"
+enabled = false
 
 [[tokens]]
-chain        = "solana"
-name         = "USD1"
-symbol       = "USD1"
-standard     = "SPL"
-contract     = "USD1ttGY1N17NEEHLmELoaybftRBUSErhqYiQzvEmuB"
+chain = "solana"
+name = "USD1"
+symbol = "USD1"
+standard = "SPL"
+contract = "USD1ttGY1N17NEEHLmELoaybftRBUSErhqYiQzvEmuB"
 coingecko_id = ""
-decimals     = 6
-tags         = ["stablecoin"]
-color_name   = "green"
-asset_name   = "wlfiusd1"
-enabled      = false
+decimals = 6
+tags = ["stablecoin"]
+comment = "U.S. dollar stablecoin from World Liberty Financial, backed by cash and short-duration U.S. Treasury assets."
+color = "green"
+asset_name = "wlfiusd1"
+enabled = false
 
 [[tokens]]
-chain        = "solana"
-name         = "USD Coin"
-symbol       = "USDC"
-standard     = "SPL"
-contract     = "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v"
+chain = "solana"
+name = "USD Coin"
+symbol = "USDC"
+standard = "SPL"
+contract = "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v"
 coingecko_id = "usd-coin"
-decimals     = 6
-tags         = ["stablecoin"]
-color_name   = "blue"
-asset_name   = "circleusdc"
-enabled      = true
+decimals = 6
+tags = ["stablecoin"]
+comment = "Circle-issued U.S. dollar stablecoin, designed to be fully reserved and redeemable 1:1 for dollars."
+color = "blue"
+asset_name = "circleusdc"
+enabled = true
 
 [[tokens]]
-chain        = "solana"
-name         = "Ethena USDe"
-symbol       = "USDE"
-standard     = "SPL"
-contract     = "DEkqHyPN7GMRJ5cArtQFAWefqbZb33Hyf6s5iCwjEonT"
+chain = "solana"
+name = "Ethena USDe"
+symbol = "USDE"
+standard = "SPL"
+contract = "DEkqHyPN7GMRJ5cArtQFAWefqbZb33Hyf6s5iCwjEonT"
 coingecko_id = "ethena-usde"
-decimals     = 9
-tags         = ["stablecoin"]
-color_name   = "cyan"
-asset_name   = "ethenausde"
-enabled      = false
+decimals = 9
+tags = ["stablecoin"]
+comment = "Ethena USDe synthetic dollar, backed through crypto collateral, stable assets, and delta-hedging strategies."
+color = "cyan"
+asset_name = "ethenausde"
+enabled = false
 
 [[tokens]]
-chain        = "solana"
-name         = "Global Dollar"
-symbol       = "USDG"
-standard     = "SPL"
-contract     = "2u1tszSeqZ3qBWF3uNGPFc8TzMk2tdiwknnRMWGWjGWH"
+chain = "solana"
+name = "Global Dollar"
+symbol = "USDG"
+standard = "SPL"
+contract = "2u1tszSeqZ3qBWF3uNGPFc8TzMk2tdiwknnRMWGWjGWH"
 coingecko_id = "global-dollar"
-decimals     = 6
-tags         = ["stablecoin"]
-color_name   = "teal"
-asset_name   = "paxosusdg"
-enabled      = false
+decimals = 6
+tags = ["stablecoin"]
+comment = "Global Dollar stablecoin issued by Paxos Digital Singapore for the Global Dollar Network."
+color = "teal"
+asset_name = "paxosusdg"
+enabled = false
 
 [[tokens]]
-chain        = "solana"
-name         = "Sky Dollar"
-symbol       = "USDS"
-standard     = "SPL"
-contract     = "USDSwr9ApdHk5bvJKMjzff41FfuX8bSxdKcR81vTwcA"
+chain = "solana"
+name = "Sky Dollar"
+symbol = "USDS"
+standard = "SPL"
+contract = "USDSwr9ApdHk5bvJKMjzff41FfuX8bSxdKcR81vTwcA"
 coingecko_id = "sky-dollar"
-decimals     = 6
-tags         = ["stablecoin"]
-color_name   = "teal"
-asset_name   = "skyusds"
-enabled      = false
+decimals = 6
+tags = ["stablecoin"]
+comment = "Sky Dollar stablecoin, the upgraded dollar asset of the Sky Protocol and successor path for DAI users."
+color = "teal"
+asset_name = "skyusds"
+enabled = false
 
 [[tokens]]
-chain        = "solana"
-name         = "Tether USD"
-symbol       = "USDT"
-standard     = "SPL"
-contract     = "Es9vMFrzaCERmJfrF4H2FYD4KCoNkY11McCe8BenwNYB"
+chain = "solana"
+name = "Tether USD"
+symbol = "USDT"
+standard = "SPL"
+contract = "Es9vMFrzaCERmJfrF4H2FYD4KCoNkY11McCe8BenwNYB"
 coingecko_id = "tether"
-decimals     = 6
-tags         = ["stablecoin"]
-color_name   = "green"
-asset_name   = "tetherusdt"
-enabled      = true
+decimals = 6
+tags = ["stablecoin"]
+comment = "Tether USD stablecoin, a widely used dollar-pegged token for trading, payments, and on-chain settlement."
+color = "green"
+asset_name = "tetherusdt"
+enabled = true
 
 [[tokens]]
-chain        = "solana"
-name         = "World Liberty Financial"
-symbol       = "WLFI"
-standard     = "SPL"
-contract     = "WLFinEv6ypjkczcS83FZqFpgFZYwQXutRbxGe7oC16g"
+chain = "solana"
+name = "World Liberty Financial"
+symbol = "WLFI"
+standard = "SPL"
+contract = "WLFinEv6ypjkczcS83FZqFpgFZYwQXutRbxGe7oC16g"
 coingecko_id = ""
-decimals     = 6
-tags         = []
-color_name   = "gray"
-asset_name   = "wlfi"
-enabled      = false
+decimals = 6
+tags = []
+comment = "Governance token of World Liberty Financial, used for protocol participation and voting."
+color = "gray"
+asset_name = "wlfi"
+enabled = false
 
 # ── Tron ─────────────────────────────────────────────────────────────────────
 
 [[tokens]]
-chain        = "tron"
-name         = "BitTorrent"
-symbol       = "BTT"
-standard     = "TRC-20"
-contract     = "TAFjULxiVgT4qWk6UZwjqwZXTSaGaqnVp4"
+chain = "tron"
+name = "BitTorrent"
+symbol = "BTT"
+standard = "TRC-20"
+contract = "TAFjULxiVgT4qWk6UZwjqwZXTSaGaqnVp4"
 coingecko_id = "bittorrent"
-decimals     = 18
-tags         = ["meme"]
-color_name   = "red"
-asset_name   = "btt"
-enabled      = false
+decimals = 18
+tags = ["meme"]
+comment = "Utility token for the BitTorrent ecosystem, designed around peer-to-peer file sharing, bandwidth, and storage incentives."
+color = "red"
+asset_name = "btt"
+enabled = false
 
 [[tokens]]
-chain        = "tron"
-name         = "TrueUSD"
-symbol       = "TUSD"
-standard     = "TRC-20"
-contract     = "TUpMhErZL2fhh4sVNULAbNKLokS4GjC1F4"
+chain = "tron"
+name = "TrueUSD"
+symbol = "TUSD"
+standard = "TRC-20"
+contract = "TUpMhErZL2fhh4sVNULAbNKLokS4GjC1F4"
 coingecko_id = "true-usd"
-decimals     = 18
-tags         = ["stablecoin"]
-color_name   = "blue"
-asset_name   = "tusd"
-enabled      = false
+decimals = 18
+tags = ["stablecoin"]
+comment = "TrueUSD stablecoin, a U.S. dollar-pegged token designed for trading, payments, and DeFi use."
+color = "blue"
+asset_name = "tusd"
+enabled = false
 
 [[tokens]]
-chain        = "tron"
-name         = "USD1"
-symbol       = "USD1"
-standard     = "TRC-20"
-contract     = "TPFqcBAaaUMCSVRCqPaQ9QnzKhmuoLR6Rc"
+chain = "tron"
+name = "USD1"
+symbol = "USD1"
+standard = "TRC-20"
+contract = "TPFqcBAaaUMCSVRCqPaQ9QnzKhmuoLR6Rc"
 coingecko_id = ""
-decimals     = 18
-tags         = ["stablecoin"]
-color_name   = "green"
-asset_name   = "wlfiusd1"
-enabled      = false
+decimals = 18
+tags = ["stablecoin"]
+comment = "U.S. dollar stablecoin from World Liberty Financial, backed by cash and short-duration U.S. Treasury assets."
+color = "green"
+asset_name = "wlfiusd1"
+enabled = false
 
 [[tokens]]
-chain        = "tron"
-name         = "USDD"
-symbol       = "USDD"
-standard     = "TRC-20"
-contract     = "TXDk8mbtRbXeYuMNS83CfKPaYYT8XWv9Hz"
+chain = "tron"
+name = "USDD"
+symbol = "USDD"
+standard = "TRC-20"
+contract = "TXDk8mbtRbXeYuMNS83CfKPaYYT8XWv9Hz"
 coingecko_id = "usdd"
-decimals     = 18
-tags         = ["stablecoin"]
-color_name   = "green"
-asset_name   = "usdd"
-enabled      = false
+decimals = 18
+tags = ["stablecoin"]
+comment = "Over-collateralized decentralized U.S. dollar stablecoin managed by TRON DAO Reserve."
+color = "green"
+asset_name = "usdd"
+enabled = false
 
 [[tokens]]
-chain        = "tron"
-name         = "Tether USD"
-symbol       = "USDT"
-standard     = "TRC-20"
-contract     = "TR7NHqjeKQxGTCi8q8ZY4pL8otSzgjLj6t"
+chain = "tron"
+name = "Tether USD"
+symbol = "USDT"
+standard = "TRC-20"
+contract = "TR7NHqjeKQxGTCi8q8ZY4pL8otSzgjLj6t"
 coingecko_id = "tether"
-decimals     = 6
-tags         = ["stablecoin"]
-color_name   = "green"
-asset_name   = "tetherusdt"
-enabled      = true
+decimals = 6
+tags = ["stablecoin"]
+comment = "Tether USD stablecoin, a widely used dollar-pegged token for trading, payments, and on-chain settlement."
+color = "green"
+asset_name = "tetherusdt"
+enabled = true
 
 # ── Arbitrum ─────────────────────────────────────────────────────────────────
 
 [[tokens]]
-chain        = "arbitrum"
-name         = "Aave"
-symbol       = "AAVE"
-standard     = "ERC-20"
-contract     = "0xba5DdD1f9d7F570dc94a51479a000E3BCE967196"
+chain = "arbitrum"
+name = "Aave"
+symbol = "AAVE"
+standard = "ERC-20"
+contract = "0xba5DdD1f9d7F570dc94a51479a000E3BCE967196"
 coingecko_id = "aave"
-decimals     = 18
-tags         = []
-color_name   = "indigo"
-asset_name   = "aave"
-enabled      = false
+decimals = 18
+tags = []
+comment = "Governance token for Aave, a decentralized liquidity protocol for lending and borrowing crypto assets."
+color = "indigo"
+asset_name = "aave"
+enabled = false
 
 [[tokens]]
-chain        = "arbitrum"
-name         = "Ethena"
-symbol       = "ENA"
-standard     = "ERC-20"
-contract     = "0x58538e6A46E07434d7E7375Bc268D3cb839C0133"
+chain = "arbitrum"
+name = "Ethena"
+symbol = "ENA"
+standard = "ERC-20"
+contract = "0x58538e6A46E07434d7E7375Bc268D3cb839C0133"
 coingecko_id = "ethena"
-decimals     = 18
-tags         = []
-color_name   = "blue"
-asset_name   = "ethena"
-enabled      = false
+decimals = 18
+tags = []
+comment = "Governance token for Ethena, the protocol behind the USDe crypto-native synthetic dollar."
+color = "blue"
+asset_name = "ethena"
+enabled = false
 
 [[tokens]]
-chain        = "arbitrum"
-name         = "First Digital USD"
-symbol       = "FDUSD"
-standard     = "ERC-20"
-contract     = "0x93C9932E4afa59201F0B5E63f7d816516F1669fE"
+chain = "arbitrum"
+name = "First Digital USD"
+symbol = "FDUSD"
+standard = "ERC-20"
+contract = "0x93C9932E4afa59201F0B5E63f7d816516F1669fE"
 coingecko_id = "first-digital-usd"
-decimals     = 18
-tags         = ["stablecoin"]
-color_name   = "green"
-asset_name   = "firstdigitalfdusd"
-enabled      = false
+decimals = 18
+tags = ["stablecoin"]
+comment = "U.S. dollar stablecoin issued by First Digital, designed for trading, payments, and DeFi settlement."
+color = "green"
+asset_name = "firstdigitalfdusd"
+enabled = false
 
 [[tokens]]
-chain        = "arbitrum"
-name         = "Chainlink"
-symbol       = "LINK"
-standard     = "ERC-20"
-contract     = "0xf97f4df75117a78c1A5a0DBb814Af92458539FB4"
+chain = "arbitrum"
+name = "Chainlink"
+symbol = "LINK"
+standard = "ERC-20"
+contract = "0xf97f4df75117a78c1A5a0DBb814Af92458539FB4"
 coingecko_id = "chainlink"
-decimals     = 18
-tags         = []
-color_name   = "blue"
-asset_name   = "chainlink"
-enabled      = false
+decimals = 18
+tags = []
+comment = "Token for Chainlink, the decentralized oracle network that connects smart contracts with external data and services."
+color = "blue"
+asset_name = "chainlink"
+enabled = false
 
 [[tokens]]
-chain        = "arbitrum"
-name         = "PayPal USD"
-symbol       = "PYUSD"
-standard     = "ERC-20"
-contract     = "0x46850aD61C2B7d64d08c9C754F45254596696984"
+chain = "arbitrum"
+name = "PayPal USD"
+symbol = "PYUSD"
+standard = "ERC-20"
+contract = "0x46850aD61C2B7d64d08c9C754F45254596696984"
 coingecko_id = "paypal-usd"
-decimals     = 6
-tags         = ["stablecoin"]
-color_name   = "blue"
-asset_name   = "paypalpyusd"
-enabled      = false
+decimals = 6
+tags = ["stablecoin"]
+comment = "PayPal USD stablecoin issued by Paxos, designed as a fully backed U.S. dollar payment token."
+color = "blue"
+asset_name = "paypalpyusd"
+enabled = false
 
 [[tokens]]
-chain        = "arbitrum"
-name         = "USD Coin"
-symbol       = "USDC"
-standard     = "ERC-20"
-contract     = "0xaf88d065e77c8cC2239327C5EDb3A432268e5831"
+chain = "arbitrum"
+name = "USD Coin"
+symbol = "USDC"
+standard = "ERC-20"
+contract = "0xaf88d065e77c8cC2239327C5EDb3A432268e5831"
 coingecko_id = "usd-coin"
-decimals     = 6
-tags         = ["stablecoin"]
-color_name   = "blue"
-asset_name   = "circleusdc"
-enabled      = true
+decimals = 6
+tags = ["stablecoin"]
+comment = "Circle-issued U.S. dollar stablecoin, designed to be fully reserved and redeemable 1:1 for dollars."
+color = "blue"
+asset_name = "circleusdc"
+enabled = true
 
 [[tokens]]
-chain        = "arbitrum"
-name         = "Ethena USDe"
-symbol       = "USDE"
-standard     = "ERC-20"
-contract     = "0x5d3a1Ff2b6BAb83b63cd9AD0787074081a52ef34"
+chain = "arbitrum"
+name = "Ethena USDe"
+symbol = "USDE"
+standard = "ERC-20"
+contract = "0x5d3a1Ff2b6BAb83b63cd9AD0787074081a52ef34"
 coingecko_id = "ethena-usde"
-decimals     = 18
-tags         = ["stablecoin"]
-color_name   = "cyan"
-asset_name   = "ethenausde"
-enabled      = false
+decimals = 18
+tags = ["stablecoin"]
+comment = "Ethena USDe synthetic dollar, backed through crypto collateral, stable assets, and delta-hedging strategies."
+color = "cyan"
+asset_name = "ethenausde"
+enabled = false
 
 [[tokens]]
-chain        = "arbitrum"
-name         = "Sky Dollar"
-symbol       = "USDS"
-standard     = "ERC-20"
-contract     = "0x6491c05A82219b8D1479057361ff1654749b876b"
+chain = "arbitrum"
+name = "Sky Dollar"
+symbol = "USDS"
+standard = "ERC-20"
+contract = "0x6491c05A82219b8D1479057361ff1654749b876b"
 coingecko_id = "sky-dollar"
-decimals     = 18
-tags         = ["stablecoin"]
-color_name   = "teal"
-asset_name   = "skyusds"
-enabled      = false
+decimals = 18
+tags = ["stablecoin"]
+comment = "Sky Dollar stablecoin, the upgraded dollar asset of the Sky Protocol and successor path for DAI users."
+color = "teal"
+asset_name = "skyusds"
+enabled = false
 
 # ── Optimism ─────────────────────────────────────────────────────────────────
 
 [[tokens]]
-chain        = "optimism"
-name         = "Sky Dollar"
-symbol       = "USDS"
-standard     = "ERC-20"
-contract     = "0x4F13a96EC5C4Cf34e442b46Bbd98a0791F20edC3"
+chain = "optimism"
+name = "Sky Dollar"
+symbol = "USDS"
+standard = "ERC-20"
+contract = "0x4F13a96EC5C4Cf34e442b46Bbd98a0791F20edC3"
 coingecko_id = "sky-dollar"
-decimals     = 18
-tags         = ["stablecoin"]
-color_name   = "teal"
-asset_name   = "skyusds"
-enabled      = false
+decimals = 18
+tags = ["stablecoin"]
+comment = "Sky Dollar stablecoin, the upgraded dollar asset of the Sky Protocol and successor path for DAI users."
+color = "teal"
+asset_name = "skyusds"
+enabled = false
 
 # ── Avalanche ────────────────────────────────────────────────────────────────
 
 [[tokens]]
-chain        = "avalanche"
-name         = "Euro Coin"
-symbol       = "EURC"
-standard     = "ARC-20"
-contract     = "0xC891EB4cbdEFf6e073e859e987815Ed1505c2ACD"
+chain = "avalanche"
+name = "Euro Coin"
+symbol = "EURC"
+standard = "ARC-20"
+contract = "0xC891EB4cbdEFf6e073e859e987815Ed1505c2ACD"
 coingecko_id = "euro-coin"
-decimals     = 6
-tags         = ["stablecoin"]
-color_name   = "blue"
-asset_name   = "circleeurc"
-enabled      = false
+decimals = 6
+tags = ["stablecoin"]
+comment = "Euro-backed stablecoin issued by Circle and designed to be redeemable 1:1 for euros through supported channels."
+color = "blue"
+asset_name = "circleeurc"
+enabled = false
 
 [[tokens]]
-chain        = "avalanche"
-name         = "Chainlink"
-symbol       = "LINK"
-standard     = "ARC-20"
-contract     = "0x5947BB275c521040051D82396192181b413227A3"
+chain = "avalanche"
+name = "Chainlink"
+symbol = "LINK"
+standard = "ARC-20"
+contract = "0x5947BB275c521040051D82396192181b413227A3"
 coingecko_id = "chainlink"
-decimals     = 18
-tags         = []
-color_name   = "blue"
-asset_name   = "chainlink"
-enabled      = false
+decimals = 18
+tags = []
+comment = "Token for Chainlink, the decentralized oracle network that connects smart contracts with external data and services."
+color = "blue"
+asset_name = "chainlink"
+enabled = false
 
 [[tokens]]
-chain        = "avalanche"
-name         = "TrueUSD"
-symbol       = "TUSD"
-standard     = "ARC-20"
-contract     = "0x1C20E891Bab6b1727d14Da358FAe2984Ed9B59EB"
+chain = "avalanche"
+name = "TrueUSD"
+symbol = "TUSD"
+standard = "ARC-20"
+contract = "0x1C20E891Bab6b1727d14Da358FAe2984Ed9B59EB"
 coingecko_id = "true-usd"
-decimals     = 18
-tags         = ["stablecoin"]
-color_name   = "blue"
-asset_name   = "tusd"
-enabled      = false
+decimals = 18
+tags = ["stablecoin"]
+comment = "TrueUSD stablecoin, a U.S. dollar-pegged token designed for trading, payments, and DeFi use."
+color = "blue"
+asset_name = "tusd"
+enabled = false
 
 [[tokens]]
-chain        = "avalanche"
-name         = "USD Coin"
-symbol       = "USDC"
-standard     = "ARC-20"
-contract     = "0xB97EF9Ef8734C71904D8002F8b6Bc66Dd9c48a6E"
+chain = "avalanche"
+name = "USD Coin"
+symbol = "USDC"
+standard = "ARC-20"
+contract = "0xB97EF9Ef8734C71904D8002F8b6Bc66Dd9c48a6E"
 coingecko_id = "usd-coin"
-decimals     = 6
-tags         = ["stablecoin"]
-color_name   = "blue"
-asset_name   = "circleusdc"
-enabled      = true
+decimals = 6
+tags = ["stablecoin"]
+comment = "Circle-issued U.S. dollar stablecoin, designed to be fully reserved and redeemable 1:1 for dollars."
+color = "blue"
+asset_name = "circleusdc"
+enabled = true
 
 [[tokens]]
-chain        = "avalanche"
-name         = "Tether USD"
-symbol       = "USDT"
-standard     = "ARC-20"
-contract     = "0x9702230A8Ea53601f5cD2dc00fDBc13d4dF4A8c7"
+chain = "avalanche"
+name = "Tether USD"
+symbol = "USDT"
+standard = "ARC-20"
+contract = "0x9702230A8Ea53601f5cD2dc00fDBc13d4dF4A8c7"
 coingecko_id = "tether"
-decimals     = 6
-tags         = ["stablecoin"]
-color_name   = "green"
-asset_name   = "tetherusdt"
-enabled      = true
+decimals = 6
+tags = ["stablecoin"]
+comment = "Tether USD stablecoin, a widely used dollar-pegged token for trading, payments, and on-chain settlement."
+color = "green"
+asset_name = "tetherusdt"
+enabled = true
 
 # ── Sui ──────────────────────────────────────────────────────────────────────
 
 [[tokens]]
-chain        = "sui"
-name         = "First Digital USD"
-symbol       = "FDUSD"
-standard     = "Sui Coin"
-contract     = "0xf16e6b723f242ec745dfd7634ad072c42d5c1d9ac9d62a39c381303eaa57693a::fdusd::FDUSD"
+chain = "sui"
+name = "First Digital USD"
+symbol = "FDUSD"
+standard = "Sui Coin"
+contract = "0xf16e6b723f242ec745dfd7634ad072c42d5c1d9ac9d62a39c381303eaa57693a::fdusd::FDUSD"
 coingecko_id = "first-digital-usd"
-decimals     = 9
-tags         = ["stablecoin"]
-color_name   = "green"
-asset_name   = "firstdigitalfdusd"
-enabled      = false
+decimals = 9
+tags = ["stablecoin"]
+comment = "U.S. dollar stablecoin issued by First Digital, designed for trading, payments, and DeFi settlement."
+color = "green"
+asset_name = "firstdigitalfdusd"
+enabled = false
 
 [[tokens]]
-chain        = "sui"
-name         = "USD Coin"
-symbol       = "USDC"
-standard     = "Sui Coin"
-contract     = "0xdba34672e30cb065b1f93e3ab55318768fd6fef66c15942c9f7cb846e2f900e7::usdc::USDC"
+chain = "sui"
+name = "USD Coin"
+symbol = "USDC"
+standard = "Sui Coin"
+contract = "0xdba34672e30cb065b1f93e3ab55318768fd6fef66c15942c9f7cb846e2f900e7::usdc::USDC"
 coingecko_id = "usd-coin"
-decimals     = 6
-tags         = ["stablecoin"]
-color_name   = "blue"
-asset_name   = "circleusdc"
-enabled      = true
+decimals = 6
+tags = ["stablecoin"]
+comment = "Circle-issued U.S. dollar stablecoin, designed to be fully reserved and redeemable 1:1 for dollars."
+color = "blue"
+asset_name = "circleusdc"
+enabled = true
 
 # ── Aptos ────────────────────────────────────────────────────────────────────
 
 [[tokens]]
-chain        = "aptos"
-name         = "USD1"
-symbol       = "USD1"
-standard     = "AIP-21"
-contract     = "0x05fabd1b12e39967a3c24e91b7b8f67719a6dacee74f3c8b9fb7d93e855437d2"
+chain = "aptos"
+name = "USD1"
+symbol = "USD1"
+standard = "AIP-21"
+contract = "0x05fabd1b12e39967a3c24e91b7b8f67719a6dacee74f3c8b9fb7d93e855437d2"
 coingecko_id = ""
-decimals     = 6
-tags         = ["stablecoin"]
-color_name   = "green"
-asset_name   = "wlfiusd1"
-enabled      = false
+decimals = 6
+tags = ["stablecoin"]
+comment = "U.S. dollar stablecoin from World Liberty Financial, backed by cash and short-duration U.S. Treasury assets."
+color = "green"
+asset_name = "wlfiusd1"
+enabled = false
 
 [[tokens]]
-chain        = "aptos"
-name         = "USD Coin"
-symbol       = "USDC"
-standard     = "AIP-21"
-contract     = "0xbae207659db88bea0cbead6da0ed00aac12edcdda169e591cd41c94180b46f3b"
+chain = "aptos"
+name = "USD Coin"
+symbol = "USDC"
+standard = "AIP-21"
+contract = "0xbae207659db88bea0cbead6da0ed00aac12edcdda169e591cd41c94180b46f3b"
 coingecko_id = "usd-coin"
-decimals     = 6
-tags         = ["stablecoin"]
-color_name   = "blue"
-asset_name   = "circleusdc"
-enabled      = true
+decimals = 6
+tags = ["stablecoin"]
+comment = "Circle-issued U.S. dollar stablecoin, designed to be fully reserved and redeemable 1:1 for dollars."
+color = "blue"
+asset_name = "circleusdc"
+enabled = true
 
 [[tokens]]
-chain        = "aptos"
-name         = "Ethena USDe"
-symbol       = "USDE"
-standard     = "AIP-21"
-contract     = "0xf37a8864fe737eb8ec2c2931047047cbaed1beed3fb0e5b7c5526dafd3b9c2e9"
+chain = "aptos"
+name = "Ethena USDe"
+symbol = "USDE"
+standard = "AIP-21"
+contract = "0xf37a8864fe737eb8ec2c2931047047cbaed1beed3fb0e5b7c5526dafd3b9c2e9"
 coingecko_id = "ethena-usde"
-decimals     = 6
-tags         = ["stablecoin"]
-color_name   = "cyan"
-asset_name   = "ethenausde"
-enabled      = false
+decimals = 6
+tags = ["stablecoin"]
+comment = "Ethena USDe synthetic dollar, backed through crypto collateral, stable assets, and delta-hedging strategies."
+color = "cyan"
+asset_name = "ethenausde"
+enabled = false
 
 [[tokens]]
-chain        = "aptos"
-name         = "Tether USD"
-symbol       = "USDT"
-standard     = "AIP-21"
-contract     = "0x357b0b74bc833e95a115ad22604854d6b0fca151cecd94111770e5d6ffc9dc2b"
+chain = "aptos"
+name = "Tether USD"
+symbol = "USDT"
+standard = "AIP-21"
+contract = "0x357b0b74bc833e95a115ad22604854d6b0fca151cecd94111770e5d6ffc9dc2b"
 coingecko_id = "tether"
-decimals     = 6
-tags         = ["stablecoin"]
-color_name   = "green"
-asset_name   = "tetherusdt"
-enabled      = true
+decimals = 6
+tags = ["stablecoin"]
+comment = "Tether USD stablecoin, a widely used dollar-pegged token for trading, payments, and on-chain settlement."
+color = "green"
+asset_name = "tetherusdt"
+enabled = true
 
 # ── TON ──────────────────────────────────────────────────────────────────────
 
 [[tokens]]
-chain        = "ton"
-name         = "Ethena"
-symbol       = "ENA"
-standard     = "TEP-74"
-contract     = "EQAFhZFZYye0llsl785OzOJG9QT6PXyYUdmiC4U95lBuHh1S"
+chain = "ton"
+name = "Ethena"
+symbol = "ENA"
+standard = "TEP-74"
+contract = "EQAFhZFZYye0llsl785OzOJG9QT6PXyYUdmiC4U95lBuHh1S"
 coingecko_id = "ethena"
-decimals     = 6
-tags         = []
-color_name   = "blue"
-asset_name   = "ethena"
-enabled      = false
+decimals = 6
+tags = []
+comment = "Governance token for Ethena, the protocol behind the USDe crypto-native synthetic dollar."
+color = "blue"
+asset_name = "ethena"
+enabled = false
 
 [[tokens]]
-chain        = "ton"
-name         = "First Digital USD"
-symbol       = "FDUSD"
-standard     = "TEP-74"
-contract     = "EQD0Evpk4timFOHmy4Sv3l_KEUXlM-dN1_KhroTCfB2wkO89"
+chain = "ton"
+name = "First Digital USD"
+symbol = "FDUSD"
+standard = "TEP-74"
+contract = "EQD0Evpk4timFOHmy4Sv3l_KEUXlM-dN1_KhroTCfB2wkO89"
 coingecko_id = "first-digital-usd"
-decimals     = 6
-tags         = ["stablecoin"]
-color_name   = "green"
-asset_name   = "firstdigitalfdusd"
-enabled      = false
+decimals = 6
+tags = ["stablecoin"]
+comment = "U.S. dollar stablecoin issued by First Digital, designed for trading, payments, and DeFi settlement."
+color = "green"
+asset_name = "firstdigitalfdusd"
+enabled = false
 
 [[tokens]]
-chain        = "ton"
-name         = "Ethena USDe"
-symbol       = "USDE"
-standard     = "TEP-74"
-contract     = "EQAIb6KmdfdDR7CN1GBqVJuP25iCnLKCvBlJ07Evuu2dzP5f"
+chain = "ton"
+name = "Ethena USDe"
+symbol = "USDE"
+standard = "TEP-74"
+contract = "EQAIb6KmdfdDR7CN1GBqVJuP25iCnLKCvBlJ07Evuu2dzP5f"
 coingecko_id = "ethena-usde"
-decimals     = 6
-tags         = ["stablecoin"]
-color_name   = "cyan"
-asset_name   = "ethenausde"
-enabled      = false
+decimals = 6
+tags = ["stablecoin"]
+comment = "Ethena USDe synthetic dollar, backed through crypto collateral, stable assets, and delta-hedging strategies."
+color = "cyan"
+asset_name = "ethenausde"
+enabled = false
 
 [[tokens]]
-chain        = "ton"
-name         = "Tether USD"
-symbol       = "USDT"
-standard     = "TEP-74"
-contract     = "EQCxE6mUtQJKFnGfaROTKOt1lZbDiiX1kCixRv7Nw2Id_sDs"
+chain = "ton"
+name = "Tether USD"
+symbol = "USDT"
+standard = "TEP-74"
+contract = "EQCxE6mUtQJKFnGfaROTKOt1lZbDiiX1kCixRv7Nw2Id_sDs"
 coingecko_id = "tether"
-decimals     = 6
-tags         = ["stablecoin"]
-color_name   = "green"
-asset_name   = "tetherusdt"
-enabled      = true
+decimals = 6
+tags = ["stablecoin"]
+comment = "Tether USD stablecoin, a widely used dollar-pegged token for trading, payments, and on-chain settlement."
+color = "green"
+asset_name = "tetherusdt"
+enabled = true
 
 # ── NEAR ─────────────────────────────────────────────────────────────────────
 
 [[tokens]]
-chain        = "near"
-name         = "USD Coin"
-symbol       = "USDC"
-standard     = "NEP-141"
-contract     = "17208628f84f5d6ad33f0da3bbbeb27ffcb398eac501a31bd6ad2011e36133a1"
+chain = "near"
+name = "USD Coin"
+symbol = "USDC"
+standard = "NEP-141"
+contract = "17208628f84f5d6ad33f0da3bbbeb27ffcb398eac501a31bd6ad2011e36133a1"
 coingecko_id = "usd-coin"
-decimals     = 6
-tags         = ["stablecoin"]
-color_name   = "blue"
-asset_name   = "circleusdc"
-enabled      = true
+decimals = 6
+tags = ["stablecoin"]
+comment = "Circle-issued U.S. dollar stablecoin, designed to be fully reserved and redeemable 1:1 for dollars."
+color = "blue"
+asset_name = "circleusdc"
+enabled = true
 
 [[tokens]]
-chain        = "near"
-name         = "Tether USD"
-symbol       = "USDT"
-standard     = "NEP-141"
-contract     = "usdt.tether-token.near"
+chain = "near"
+name = "Tether USD"
+symbol = "USDT"
+standard = "NEP-141"
+contract = "usdt.tether-token.near"
 coingecko_id = "tether"
-decimals     = 6
-tags         = ["stablecoin"]
-color_name   = "green"
-asset_name   = "tetherusdt"
-enabled      = true
+decimals = 6
+tags = ["stablecoin"]
+comment = "Tether USD stablecoin, a widely used dollar-pegged token for trading, payments, and on-chain settlement."
+color = "green"
+asset_name = "tetherusdt"
+enabled = true
 
 # ── Base ─────────────────────────────────────────────────────────────────────
 
 [[tokens]]
-chain        = "base"
-name         = "Dai Stablecoin"
-symbol       = "DAI"
-standard     = "ERC-20"
-contract     = "0x50c5725949A6F0c72E6C4a641F24049A917DB0Cb"
+chain = "base"
+name = "Dai Stablecoin"
+symbol = "DAI"
+standard = "ERC-20"
+contract = "0x50c5725949A6F0c72E6C4a641F24049A917DB0Cb"
 coingecko_id = "dai"
-decimals     = 18
-tags         = ["stablecoin"]
-color_name   = "yellow"
-asset_name   = "skydai"
-enabled      = false
+decimals = 18
+tags = ["stablecoin"]
+comment = "Decentralized U.S. dollar stablecoin from Sky, formerly MakerDAO, backed by crypto and real-world collateral."
+color = "yellow"
+asset_name = "skydai"
+enabled = false
 
 [[tokens]]
-chain        = "base"
-name         = "USD Coin"
-symbol       = "USDC"
-standard     = "ERC-20"
-contract     = "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913"
+chain = "base"
+name = "USD Coin"
+symbol = "USDC"
+standard = "ERC-20"
+contract = "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913"
 coingecko_id = "usd-coin"
-decimals     = 6
-tags         = ["stablecoin"]
-color_name   = "blue"
-asset_name   = "circleusdc"
-enabled      = true
+decimals = 6
+tags = ["stablecoin"]
+comment = "Circle-issued U.S. dollar stablecoin, designed to be fully reserved and redeemable 1:1 for dollars."
+color = "blue"
+asset_name = "circleusdc"
+enabled = true
 
 # ── BNB Chain ────────────────────────────────────────────────────────────────
 
 [[tokens]]
-chain        = "bnb"
-name         = "Ethena"
-symbol       = "ENA"
-standard     = "BEP-20"
-contract     = "0x58538e6A46E07434d7E7375Bc268D3cb839C0133"
+chain = "bnb"
+name = "Ethena"
+symbol = "ENA"
+standard = "BEP-20"
+contract = "0x58538e6A46E07434d7E7375Bc268D3cb839C0133"
 coingecko_id = "ethena"
-decimals     = 18
-tags         = []
-color_name   = "blue"
-asset_name   = "ethena"
-enabled      = false
+decimals = 18
+tags = []
+comment = "Governance token for Ethena, the protocol behind the USDe crypto-native synthetic dollar."
+color = "blue"
+asset_name = "ethena"
+enabled = false
 
 [[tokens]]
-chain        = "bnb"
-name         = "First Digital USD"
-symbol       = "FDUSD"
-standard     = "BEP-20"
-contract     = "0xc5f0f7b66764F6ec8C8Dff7BA683102295E16409"
+chain = "bnb"
+name = "First Digital USD"
+symbol = "FDUSD"
+standard = "BEP-20"
+contract = "0xc5f0f7b66764F6ec8C8Dff7BA683102295E16409"
 coingecko_id = "first-digital-usd"
-decimals     = 18
-tags         = ["stablecoin"]
-color_name   = "green"
-asset_name   = "firstdigitalfdusd"
-enabled      = false
+decimals = 18
+tags = ["stablecoin"]
+comment = "U.S. dollar stablecoin issued by First Digital, designed for trading, payments, and DeFi settlement."
+color = "green"
+asset_name = "firstdigitalfdusd"
+enabled = false
 
 [[tokens]]
-chain        = "bnb"
-name         = "Chainlink"
-symbol       = "LINK"
-standard     = "BEP-20"
-contract     = "0x404460C6A5EdE2D891e8297795264fDe62ADBB75"
+chain = "bnb"
+name = "Chainlink"
+symbol = "LINK"
+standard = "BEP-20"
+contract = "0x404460C6A5EdE2D891e8297795264fDe62ADBB75"
 coingecko_id = "chainlink"
-decimals     = 18
-tags         = []
-color_name   = "blue"
-asset_name   = "chainlink"
-enabled      = false
+decimals = 18
+tags = []
+comment = "Token for Chainlink, the decentralized oracle network that connects smart contracts with external data and services."
+color = "blue"
+asset_name = "chainlink"
+enabled = false
 
 [[tokens]]
-chain        = "bnb"
-name         = "TrueUSD"
-symbol       = "TUSD"
-standard     = "BEP-20"
-contract     = "0x40af3827F39D0EAcBF4A168f8D4ee67c121D11c9"
+chain = "bnb"
+name = "TrueUSD"
+symbol = "TUSD"
+standard = "BEP-20"
+contract = "0x40af3827F39D0EAcBF4A168f8D4ee67c121D11c9"
 coingecko_id = "true-usd"
-decimals     = 18
-tags         = ["stablecoin"]
-color_name   = "blue"
-asset_name   = "tusd"
-enabled      = false
+decimals = 18
+tags = ["stablecoin"]
+comment = "TrueUSD stablecoin, a U.S. dollar-pegged token designed for trading, payments, and DeFi use."
+color = "blue"
+asset_name = "tusd"
+enabled = false
 
 [[tokens]]
-chain        = "bnb"
-name         = "USD1"
-symbol       = "USD1"
-standard     = "BEP-20"
-contract     = "0x8d0D000Ee44948FC98c9B98A4FA4921476f08B0d"
+chain = "bnb"
+name = "USD1"
+symbol = "USD1"
+standard = "BEP-20"
+contract = "0x8d0D000Ee44948FC98c9B98A4FA4921476f08B0d"
 coingecko_id = ""
-decimals     = 18
-tags         = ["stablecoin"]
-color_name   = "green"
-asset_name   = "wlfiusd1"
-enabled      = false
+decimals = 18
+tags = ["stablecoin"]
+comment = "U.S. dollar stablecoin from World Liberty Financial, backed by cash and short-duration U.S. Treasury assets."
+color = "green"
+asset_name = "wlfiusd1"
+enabled = false
 
 [[tokens]]
-chain        = "bnb"
-name         = "USDD"
-symbol       = "USDD"
-standard     = "BEP-20"
-contract     = "0x45E51bc23D592EB2DBA86da3985299f7895d66Ba"
+chain = "bnb"
+name = "USDD"
+symbol = "USDD"
+standard = "BEP-20"
+contract = "0x45E51bc23D592EB2DBA86da3985299f7895d66Ba"
 coingecko_id = "usdd"
-decimals     = 18
-tags         = ["stablecoin"]
-color_name   = "green"
-asset_name   = "usdd"
-enabled      = false
+decimals = 18
+tags = ["stablecoin"]
+comment = "Over-collateralized decentralized U.S. dollar stablecoin managed by TRON DAO Reserve."
+color = "green"
+asset_name = "usdd"
+enabled = false
 
 [[tokens]]
-chain        = "bnb"
-name         = "Ethena USDe"
-symbol       = "USDE"
-standard     = "BEP-20"
-contract     = "0x5d3a1Ff2b6BAb83b63cd9AD0787074081a52ef34"
+chain = "bnb"
+name = "Ethena USDe"
+symbol = "USDE"
+standard = "BEP-20"
+contract = "0x5d3a1Ff2b6BAb83b63cd9AD0787074081a52ef34"
 coingecko_id = "ethena-usde"
-decimals     = 18
-tags         = ["stablecoin"]
-color_name   = "cyan"
-asset_name   = "ethenausde"
-enabled      = false
+decimals = 18
+tags = ["stablecoin"]
+comment = "Ethena USDe synthetic dollar, backed through crypto collateral, stable assets, and delta-hedging strategies."
+color = "cyan"
+asset_name = "ethenausde"
+enabled = false
 
 [[tokens]]
-chain        = "bnb"
-name         = "World Liberty Financial"
-symbol       = "WLFI"
-standard     = "BEP-20"
-contract     = "0x47474747477b199288bf72a1d702f7fe0fb1deea"
+chain = "bnb"
+name = "World Liberty Financial"
+symbol = "WLFI"
+standard = "BEP-20"
+contract = "0x47474747477b199288bf72a1d702f7fe0fb1deea"
 coingecko_id = ""
-decimals     = 18
-tags         = []
-color_name   = "gray"
-asset_name   = "wlfi"
-enabled      = false
+decimals = 18
+tags = []
+comment = "Governance token of World Liberty Financial, used for protocol participation and voting."
+color = "gray"
+asset_name = "wlfi"
+enabled = false
 
 # ── Hyperliquid ──────────────────────────────────────────────────────────────
 
 [[tokens]]
-chain        = "hyperliquid"
-name         = "Chainlink"
-symbol       = "LINK"
-standard     = "ERC-20"
-contract     = "0x1AC2EE68b8d038C982C1E1f73F596927dd70De59"
+chain = "hyperliquid"
+name = "Chainlink"
+symbol = "LINK"
+standard = "ERC-20"
+contract = "0x1AC2EE68b8d038C982C1E1f73F596927dd70De59"
 coingecko_id = "chainlink"
-decimals     = 18
-tags         = []
-color_name   = "blue"
-asset_name   = "chainlink"
-enabled      = false
+decimals = 18
+tags = []
+comment = "Token for Chainlink, the decentralized oracle network that connects smart contracts with external data and services."
+color = "blue"
+asset_name = "chainlink"
+enabled = false
 
 [[tokens]]
-chain        = "hyperliquid"
-name         = "USD Coin"
-symbol       = "USDC"
-standard     = "ERC-20"
-contract     = "0xb88339CB7199b77E23DB6E890353E22632Ba630f"
+chain = "hyperliquid"
+name = "USD Coin"
+symbol = "USDC"
+standard = "ERC-20"
+contract = "0xb88339CB7199b77E23DB6E890353E22632Ba630f"
 coingecko_id = "usd-coin"
-decimals     = 6
-tags         = ["stablecoin"]
-color_name   = "blue"
-asset_name   = "circleusdc"
-enabled      = true
+decimals = 6
+tags = ["stablecoin"]
+comment = "Circle-issued U.S. dollar stablecoin, designed to be fully reserved and redeemable 1:1 for dollars."
+color = "blue"
+asset_name = "circleusdc"
+enabled = true
 
 # ── Polygon ──────────────────────────────────────────────────────────────────
 
 [[tokens]]
-chain        = "polygon"
-name         = "Dai Stablecoin"
-symbol       = "DAI"
-standard     = "ERC-20"
-contract     = "0x8f3Cf7ad23Cd3CaDbD9735AFf958023239c6A063"
+chain = "polygon"
+name = "Dai Stablecoin"
+symbol = "DAI"
+standard = "ERC-20"
+contract = "0x8f3Cf7ad23Cd3CaDbD9735AFf958023239c6A063"
 coingecko_id = "dai"
-decimals     = 18
-tags         = ["stablecoin"]
-color_name   = "yellow"
-asset_name   = "skydai"
-enabled      = true
+decimals = 18
+tags = ["stablecoin"]
+comment = "Decentralized U.S. dollar stablecoin from Sky, formerly MakerDAO, backed by crypto and real-world collateral."
+color = "yellow"
+asset_name = "skydai"
+enabled = true
 
 [[tokens]]
-chain        = "polygon"
-name         = "USD Coin"
-symbol       = "USDC"
-standard     = "ERC-20"
-contract     = "0x3c499c542cEF5E3811e1192ce70d8cC03d5c3359"
+chain = "polygon"
+name = "USD Coin"
+symbol = "USDC"
+standard = "ERC-20"
+contract = "0x3c499c542cEF5E3811e1192ce70d8cC03d5c3359"
 coingecko_id = "usd-coin"
-decimals     = 6
-tags         = ["stablecoin"]
-color_name   = "blue"
-asset_name   = "circleusdc"
-enabled      = true
+decimals = 6
+tags = ["stablecoin"]
+comment = "Circle-issued U.S. dollar stablecoin, designed to be fully reserved and redeemable 1:1 for dollars."
+color = "blue"
+asset_name = "circleusdc"
+enabled = true
 
 [[tokens]]
-chain        = "polygon"
-name         = "Tether USD"
-symbol       = "USDT"
-standard     = "ERC-20"
-contract     = "0xc2132D05D31c914a87C6611C10748AEb04B58e8F"
+chain = "polygon"
+name = "Tether USD"
+symbol = "USDT"
+standard = "ERC-20"
+contract = "0xc2132D05D31c914a87C6611C10748AEb04B58e8F"
 coingecko_id = "tether"
-decimals     = 6
-tags         = ["stablecoin"]
-color_name   = "green"
-asset_name   = "tetherusdt"
-enabled      = true
+decimals = 6
+tags = ["stablecoin"]
+comment = "Tether USD stablecoin, a widely used dollar-pegged token for trading, payments, and on-chain settlement."
+color = "green"
+asset_name = "tetherusdt"
+enabled = true
 
 # ── Linea ────────────────────────────────────────────────────────────────────
 
 [[tokens]]
-chain        = "linea"
-name         = "USD Coin"
-symbol       = "USDC"
-standard     = "ERC-20"
-contract     = "0x176211869cA2b568f2A7D4EE941E073a821EE1ff"
+chain = "linea"
+name = "USD Coin"
+symbol = "USDC"
+standard = "ERC-20"
+contract = "0x176211869cA2b568f2A7D4EE941E073a821EE1ff"
 coingecko_id = "usd-coin"
-decimals     = 6
-tags         = ["stablecoin"]
-color_name   = "blue"
-asset_name   = "circleusdc"
-enabled      = true
+decimals = 6
+tags = ["stablecoin"]
+comment = "Circle-issued U.S. dollar stablecoin, designed to be fully reserved and redeemable 1:1 for dollars."
+color = "blue"
+asset_name = "circleusdc"
+enabled = true
 
 # ── Scroll ───────────────────────────────────────────────────────────────────
 
 [[tokens]]
-chain        = "scroll"
-name         = "USD Coin"
-symbol       = "USDC"
-standard     = "ERC-20"
-contract     = "0x06eFdBFf2a14a7c8E15944D1F4A48F9F95F663A4"
+chain = "scroll"
+name = "USD Coin"
+symbol = "USDC"
+standard = "ERC-20"
+contract = "0x06eFdBFf2a14a7c8E15944D1F4A48F9F95F663A4"
 coingecko_id = "usd-coin"
-decimals     = 6
-tags         = ["stablecoin"]
-color_name   = "blue"
-asset_name   = "circleusdc"
-enabled      = true
+decimals = 6
+tags = ["stablecoin"]
+comment = "Circle-issued U.S. dollar stablecoin, designed to be fully reserved and redeemable 1:1 for dollars."
+color = "blue"
+asset_name = "circleusdc"
+enabled = true
 
 # ── Blast ────────────────────────────────────────────────────────────────────
 
 [[tokens]]
-chain        = "blast"
-name         = "USD Blast"
-symbol       = "USDB"
-standard     = "ERC-20"
-contract     = "0x4300000000000000000000000000000000000003"
+chain = "blast"
+name = "USD Blast"
+symbol = "USDB"
+standard = "ERC-20"
+contract = "0x4300000000000000000000000000000000000003"
 coingecko_id = "usdb"
-decimals     = 18
-tags         = ["stablecoin"]
-color_name   = "yellow"
-asset_name   = "usdb"
-enabled      = true
+decimals = 18
+tags = ["stablecoin"]
+comment = "Blast native stablecoin, an automatically rebasing dollar asset used across the Blast ecosystem."
+color = "yellow"
+asset_name = "usdb"
+enabled = true
 
 # ── Mantle ───────────────────────────────────────────────────────────────────
 
 [[tokens]]
-chain        = "mantle"
-name         = "USD Coin"
-symbol       = "USDC"
-standard     = "ERC-20"
-contract     = "0x09Bc4E0D864854c6aFB6eB9A9cdF58aC190D0dF9"
+chain = "mantle"
+name = "USD Coin"
+symbol = "USDC"
+standard = "ERC-20"
+contract = "0x09Bc4E0D864854c6aFB6eB9A9cdF58aC190D0dF9"
 coingecko_id = "usd-coin"
-decimals     = 6
-tags         = ["stablecoin"]
-color_name   = "blue"
-asset_name   = "circleusdc"
-enabled      = true
+decimals = 6
+tags = ["stablecoin"]
+comment = "Circle-issued U.S. dollar stablecoin, designed to be fully reserved and redeemable 1:1 for dollars."
+color = "blue"
+asset_name = "circleusdc"
+enabled = true

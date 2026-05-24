@@ -561,18 +561,18 @@ pub(super) fn resolved_flavor(chain_name: &str, normalized_path: &str) -> &'stat
 pub(super) fn seed_derivation_paths_for_account(
     account: u32,
 ) -> Result<CoreSeedDerivationPaths, String> {
-    // SLIP-44 standard `m/44'/coin'/account'/0/0` is the most common shape;
+    // The `m/44'/coin'/account'/0/0` shape is the most common default;
     // a few chains diverge (Solana, Stellar, NEAR, Polkadot, Sui, Aptos).
-    let evm = slip44(60, account);
+    let evm = bip44_path(60, account);
     Ok(CoreSeedDerivationPaths {
         is_custom_enabled: false,
         bitcoin: format!("m/84'/0'/{account}'/0/0"),
         bitcoin_cash: format!("m/44'/145'/{account}'/0/0"),
         bitcoin_sv: default_path_from_catalog("Bitcoin SV")?,
-        litecoin: slip44(2, account),
-        dogecoin: slip44(3, account),
+        litecoin: bip44_path(2, account),
+        dogecoin: bip44_path(3, account),
         ethereum: evm.clone(),
-        ethereum_classic: slip44(61, account),
+        ethereum_classic: bip44_path(61, account),
         arbitrum: evm.clone(),
         optimism: evm.clone(),
         avalanche: evm.clone(),
@@ -583,20 +583,20 @@ pub(super) fn seed_derivation_paths_for_account(
         scroll: evm.clone(),
         blast: evm.clone(),
         mantle: evm.clone(),
-        tron: slip44(195, account),
+        tron: bip44_path(195, account),
         solana: format!("m/44'/501'/{account}'/0'"),
         stellar: format!("m/44'/148'/{account}'"),
-        xrp: slip44(144, account),
+        xrp: bip44_path(144, account),
         cardano: format!("m/1852'/1815'/{account}'/0/0"),
         sui: format!("m/44'/784'/{account}'/0'/0'"),
         aptos: format!("m/44'/637'/{account}'/0'/0'"),
-        ton: slip44(607, account),
-        internet_computer: slip44(223, account),
+        ton: bip44_path(607, account),
+        internet_computer: bip44_path(223, account),
         near: format!("m/44'/397'/{account}'"),
         polkadot: format!("m/44'/354'/{account}'"),
-        zcash: slip44(133, account),
-        bitcoin_gold: slip44(156, account),
-        // EVM L1/L2s share the EVM derivation path (SLIP-44 60).
+        zcash: bip44_path(133, account),
+        bitcoin_gold: bip44_path(156, account),
+        // EVM L1/L2s share the default Ethereum-style derivation path.
         sei: evm.clone(),
         celo: evm.clone(),
         cronos: evm.clone(),
@@ -606,20 +606,19 @@ pub(super) fn seed_derivation_paths_for_account(
         berachain: evm.clone(),
         unichain: evm.clone(),
         ink: evm,
-        decred: slip44(42, account),
-        // Kaspa SLIP-44 coin type 111111.
+        decred: bip44_path(42, account),
         kaspa: format!("m/44'/111111'/{account}'/0/0"),
-        dash: slip44(5, account),
+        dash: bip44_path(5, account),
         // X Layer is an EVM L2 — uses the standard EVM derivation path.
-        x_layer: slip44(60, account),
-        // Bittensor uses SLIP-44 1005 (Polkadot.js convention for substrate
-        // chains; the substrate-bip39 expansion ignores BIP-32 path nodes
-        // but we include the canonical path for downstream display).
+        x_layer: bip44_path(60, account),
+        // Bittensor follows the Polkadot.js-style substrate path; the
+        // substrate-bip39 expansion ignores BIP-32 path nodes but we include
+        // the canonical path for downstream display.
         bittensor: format!("m/44'/1005'/{account}'/0'/0'"),
     })
 }
 
-fn slip44(coin_type: u32, account: u32) -> String {
+fn bip44_path(coin_type: u32, account: u32) -> String {
     format!("m/44'/{coin_type}'/{account}'/0/0")
 }
 

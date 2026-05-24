@@ -30,7 +30,8 @@ struct TomlToken {
     decimals: u32,
     display_decimals: Option<u32>,
     tags: Vec<String>,
-    color_name: String,
+    comment: String,
+    color: String,
     asset_name: String,
     enabled: bool,
 }
@@ -50,7 +51,8 @@ pub struct TokenEntry {
     pub decimals: u32,
     pub display_decimals: Option<u32>,
     pub tags: Vec<String>,
-    pub color_name: String,
+    pub comment: String,
+    pub color: String,
     pub asset_name: String,
     pub enabled: bool,
 }
@@ -75,7 +77,8 @@ static CATALOG: LazyLock<Vec<TokenEntry>> = LazyLock::new(|| {
             decimals: t.decimals,
             display_decimals: t.display_decimals,
             tags: t.tags,
-            color_name: t.color_name,
+            comment: t.comment,
+            color: t.color,
             asset_name: t.asset_name,
             enabled: t.enabled,
         })
