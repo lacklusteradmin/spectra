@@ -142,7 +142,7 @@ pub fn app_core_resolve_derivation_path(
         chain: chain.clone(),
         normalized_path: normalized_path.clone(),
         account_index: resolved_account_index(&chain, &normalized_path),
-        flavor: resolved_flavor(&chain, &normalized_path).to_string(),
+        flavor: resolved_flavor(&chain, &normalized_path),
     })
 }
 
@@ -427,9 +427,9 @@ mod tests {
     }
 
     #[test]
-    fn preserves_bitcoin_sv_default_path_for_preset_accounts() {
+    fn renders_catalog_default_paths_for_preset_accounts() {
         let paths = seed_derivation_paths_for_account(2).expect("paths");
-        assert_eq!(paths.bitcoin_sv, "m/44'/236'/0'/0/0");
+        assert_eq!(paths.bitcoin_sv, "m/44'/236'/2'/0/0");
         assert_eq!(paths.ethereum, "m/44'/60'/2'/0/0");
         assert_eq!(paths.solana, "m/44'/501'/2'/0'");
     }
@@ -525,109 +525,85 @@ pub(super) fn resolved_account_index(chain_name: &str, normalized_path: &str) ->
     }
 }
 
-pub(super) fn resolved_flavor(chain_name: &str, normalized_path: &str) -> &'static str {
-    match chain_name {
-        "Bitcoin" => match normalized_path {
-            p if p.starts_with("m/86'") => "taproot",
-            p if p.starts_with("m/84'") => "nativeSegWit",
-            p if p.starts_with("m/49'") => "nestedSegWit",
-            "m/0'/0" | "m/0'/0/0" => "electrumLegacy",
-            p if p.starts_with("m/44'") => "legacy",
-            _ => "standard",
-        },
-        "Litecoin" => match normalized_path {
-            p if p.starts_with("m/84'/2'") => "nativeSegWit",
-            p if p.starts_with("m/49'/2'") => "nestedSegWit",
-            p if p.starts_with("m/44'/2'") => "legacy",
-            _ => "standard",
-        },
-        "Bitcoin Cash" => match normalized_path {
-            "m/0" => "electrumLegacy",
-            p if p.starts_with("m/44'/0'") || p.starts_with("m/44'/145'") => "legacy",
-            _ => "standard",
-        },
-        "Solana" if normalized_path == "m/44'/501'/0'" => "legacy",
-        "Cardano" if normalized_path.starts_with("m/44'/1815'") => "legacy",
-        "Tron"
-            if normalized_path == "m/44'/195'/0'" || normalized_path.starts_with("m/44'/60'") =>
-        {
-            "legacy"
-        }
-        "XRP Ledger" if normalized_path == "m/44'/144'/0'" => "legacy",
-        _ => "standard",
-    }
+pub(super) fn resolved_flavor(chain_name: &str, normalized_path: &str) -> String {
+    let account = resolved_account_index(chain_name, normalized_path);
+    crate::chains::derivation_paths_for_chain(chain_name)
+        .and_then(|entries| {
+            entries.iter().find_map(|entry| {
+                let rendered = render_derivation_path_template(&entry.path, account);
+                if normalize_derivation_path(&rendered, "") == normalized_path {
+                    Some(entry.tag.clone())
+                } else {
+                    None
+                }
+            })
+        })
+        .unwrap_or_else(|| "standard".to_string())
 }
 
 pub(super) fn seed_derivation_paths_for_account(
     account: u32,
 ) -> Result<CoreSeedDerivationPaths, String> {
-    // The `m/44'/coin'/account'/0/0` shape is the most common default;
-    // a few chains diverge (Solana, Stellar, NEAR, Polkadot, Sui, Aptos).
-    let evm = bip44_path(60, account);
     Ok(CoreSeedDerivationPaths {
         is_custom_enabled: false,
-        bitcoin: format!("m/84'/0'/{account}'/0/0"),
-        bitcoin_cash: format!("m/44'/145'/{account}'/0/0"),
-        bitcoin_sv: default_path_from_catalog("Bitcoin SV")?,
-        litecoin: bip44_path(2, account),
-        dogecoin: bip44_path(3, account),
-        ethereum: evm.clone(),
-        ethereum_classic: bip44_path(61, account),
-        arbitrum: evm.clone(),
-        optimism: evm.clone(),
-        avalanche: evm.clone(),
-        hyperliquid: evm.clone(),
-        polygon: evm.clone(),
-        base: evm.clone(),
-        linea: evm.clone(),
-        scroll: evm.clone(),
-        blast: evm.clone(),
-        mantle: evm.clone(),
-        tron: bip44_path(195, account),
-        solana: format!("m/44'/501'/{account}'/0'"),
-        stellar: format!("m/44'/148'/{account}'"),
-        xrp: bip44_path(144, account),
-        cardano: format!("m/1852'/1815'/{account}'/0/0"),
-        sui: format!("m/44'/784'/{account}'/0'/0'"),
-        aptos: format!("m/44'/637'/{account}'/0'/0'"),
-        ton: bip44_path(607, account),
-        internet_computer: bip44_path(223, account),
-        near: format!("m/44'/397'/{account}'"),
-        polkadot: format!("m/44'/354'/{account}'"),
-        zcash: bip44_path(133, account),
-        bitcoin_gold: bip44_path(156, account),
-        // EVM L1/L2s share the default Ethereum-style derivation path.
-        sei: evm.clone(),
-        celo: evm.clone(),
-        cronos: evm.clone(),
-        op_bnb: evm.clone(),
-        zksync_era: evm.clone(),
-        sonic: evm.clone(),
-        berachain: evm.clone(),
-        unichain: evm.clone(),
-        ink: evm,
-        decred: bip44_path(42, account),
-        kaspa: format!("m/44'/111111'/{account}'/0/0"),
-        dash: bip44_path(5, account),
-        // X Layer is an EVM L2 — uses the standard EVM derivation path.
-        x_layer: bip44_path(60, account),
-        // Bittensor follows the Polkadot.js-style substrate path; the
-        // substrate-bip39 expansion ignores BIP-32 path nodes but we include
-        // the canonical path for downstream display.
-        bittensor: format!("m/44'/1005'/{account}'/0'/0'"),
+        bitcoin: default_path_from_catalog_for_account("Bitcoin", account)?,
+        bitcoin_cash: default_path_from_catalog_for_account("Bitcoin Cash", account)?,
+        bitcoin_sv: default_path_from_catalog_for_account("Bitcoin SV", account)?,
+        litecoin: default_path_from_catalog_for_account("Litecoin", account)?,
+        dogecoin: default_path_from_catalog_for_account("Dogecoin", account)?,
+        ethereum: default_path_from_catalog_for_account("Ethereum", account)?,
+        ethereum_classic: default_path_from_catalog_for_account("Ethereum Classic", account)?,
+        arbitrum: default_path_from_catalog_for_account("Arbitrum", account)?,
+        optimism: default_path_from_catalog_for_account("Optimism", account)?,
+        avalanche: default_path_from_catalog_for_account("Avalanche", account)?,
+        hyperliquid: default_path_from_catalog_for_account("Hyperliquid", account)?,
+        polygon: default_path_from_catalog_for_account("Polygon", account)?,
+        base: default_path_from_catalog_for_account("Base", account)?,
+        linea: default_path_from_catalog_for_account("Linea", account)?,
+        scroll: default_path_from_catalog_for_account("Scroll", account)?,
+        blast: default_path_from_catalog_for_account("Blast", account)?,
+        mantle: default_path_from_catalog_for_account("Mantle", account)?,
+        tron: default_path_from_catalog_for_account("Tron", account)?,
+        solana: default_path_from_catalog_for_account("Solana", account)?,
+        stellar: default_path_from_catalog_for_account("Stellar", account)?,
+        xrp: default_path_from_catalog_for_account("XRP Ledger", account)?,
+        cardano: default_path_from_catalog_for_account("Cardano", account)?,
+        sui: default_path_from_catalog_for_account("Sui", account)?,
+        aptos: default_path_from_catalog_for_account("Aptos", account)?,
+        ton: default_path_from_catalog_for_account("TON", account)?,
+        internet_computer: default_path_from_catalog_for_account("Internet Computer", account)?,
+        near: default_path_from_catalog_for_account("NEAR", account)?,
+        polkadot: default_path_from_catalog_for_account("Polkadot", account)?,
+        zcash: default_path_from_catalog_for_account("Zcash", account)?,
+        bitcoin_gold: default_path_from_catalog_for_account("Bitcoin Gold", account)?,
+        sei: default_path_from_catalog_for_account("Sei", account)?,
+        celo: default_path_from_catalog_for_account("Celo", account)?,
+        cronos: default_path_from_catalog_for_account("Cronos", account)?,
+        op_bnb: default_path_from_catalog_for_account("opBNB", account)?,
+        zksync_era: default_path_from_catalog_for_account("zkSync Era", account)?,
+        sonic: default_path_from_catalog_for_account("Sonic", account)?,
+        berachain: default_path_from_catalog_for_account("Berachain", account)?,
+        unichain: default_path_from_catalog_for_account("Unichain", account)?,
+        ink: default_path_from_catalog_for_account("Ink", account)?,
+        decred: default_path_from_catalog_for_account("Decred", account)?,
+        kaspa: default_path_from_catalog_for_account("Kaspa", account)?,
+        dash: default_path_from_catalog_for_account("Dash", account)?,
+        x_layer: default_path_from_catalog_for_account("X Layer", account)?,
+        bittensor: default_path_from_catalog_for_account("Bittensor", account)?,
     })
 }
 
-fn bip44_path(coin_type: u32, account: u32) -> String {
-    format!("m/44'/{coin_type}'/{account}'/0/0")
+fn render_derivation_path_template(template: &str, account: u32) -> String {
+    template.replace("{account}", &account.to_string())
 }
 
 pub(super) fn default_path_from_catalog(chain_name: &str) -> Result<String, String> {
-    crate::chains::catalog()
-        .iter()
-        .find(|c| c.name == chain_name)
-        .map(|c| c.derivation_path.clone())
-        .filter(|p| p.starts_with("m/"))
+    default_path_from_catalog_for_account(chain_name, 0)
+}
+
+fn default_path_from_catalog_for_account(chain_name: &str, account: u32) -> Result<String, String> {
+    crate::chains::default_derivation_path_template(chain_name)
+        .map(|template| render_derivation_path_template(template, account))
         .ok_or_else(|| format!("Missing default derivation path for {chain_name}."))
 }
 

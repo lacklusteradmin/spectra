@@ -41,14 +41,31 @@ struct TomlChain {
     consensus: String,
     state_model: String,
     primary_use: String,
-    derivation_path: String,
-    alt_derivation_path: String,
+    derivation_path: Vec<TomlDerivationPathEntry>,
     total_circulation_model: String,
+}
+
+#[derive(Debug, Deserialize)]
+struct TomlDerivationPathEntry {
+    tag: String,
+    path: String,
+    #[serde(default)]
+    is_default: bool,
+    #[serde(default)]
+    note: String,
 }
 
 // ----------------------------------------------------------------
 // Public serialized shape — exposed to Swift via UniFFI
 // ----------------------------------------------------------------
+
+#[derive(Debug, Clone, Serialize, uniffi::Record)]
+pub struct ChainDerivationPathEntry {
+    pub tag: String,
+    pub path: String,
+    pub is_default: bool,
+    pub note: String,
+}
 
 #[derive(Debug, Clone, Serialize, uniffi::Record)]
 pub struct ChainEntry {
@@ -74,9 +91,19 @@ pub struct ChainEntry {
     pub consensus: String,
     pub state_model: String,
     pub primary_use: String,
-    pub derivation_path: String,
-    pub alt_derivation_path: String,
+    pub derivation_path: Vec<ChainDerivationPathEntry>,
     pub total_circulation_model: String,
+}
+
+impl From<TomlDerivationPathEntry> for ChainDerivationPathEntry {
+    fn from(value: TomlDerivationPathEntry) -> Self {
+        Self {
+            tag: value.tag,
+            path: value.path,
+            is_default: value.is_default,
+            note: value.note,
+        }
+    }
 }
 
 // ----------------------------------------------------------------
@@ -112,8 +139,7 @@ static CATALOG: LazyLock<Vec<ChainEntry>> = LazyLock::new(|| {
             consensus: c.consensus,
             state_model: c.state_model,
             primary_use: c.primary_use,
-            derivation_path: c.derivation_path,
-            alt_derivation_path: c.alt_derivation_path,
+            derivation_path: c.derivation_path.into_iter().map(Into::into).collect(),
             total_circulation_model: c.total_circulation_model,
         })
         .collect()
@@ -137,4 +163,28 @@ pub(crate) fn catalog() -> &'static [ChainEntry] {
 /// Return the entry for a specific string id, or `None` if not found.
 pub fn chain_by_str_id(id: &str) -> Option<&'static ChainEntry> {
     CATALOG.iter().find(|c| c.id == id)
+}
+
+pub(crate) fn default_derivation_path_template(chain_name: &str) -> Option<&'static str> {
+    CATALOG
+        .iter()
+        .find(|c| c.name == chain_name)
+        .and_then(|chain| {
+            chain
+                .derivation_path
+                .iter()
+                .find(|entry| entry.is_default)
+                .or_else(|| chain.derivation_path.first())
+        })
+        .map(|entry| entry.path.as_str())
+        .filter(|path| path.starts_with("m/"))
+}
+
+pub(crate) fn derivation_paths_for_chain(
+    chain_name: &str,
+) -> Option<&'static [ChainDerivationPathEntry]> {
+    CATALOG
+        .iter()
+        .find(|c| c.name == chain_name)
+        .map(|chain| chain.derivation_path.as_slice())
 }

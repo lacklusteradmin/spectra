@@ -65,9 +65,9 @@ impl FiatRateProvider {
 // ----------------------------------------------------------------
 
 /// One coin the caller wants priced. `holding_key` is the Swift-side
-/// identifier returned in the quote map, `symbol` is the ticker used by
-/// symbol-indexed providers (Binance, Coinbase), `coin_gecko_id` is used
-/// by the id-indexed providers (CoinGecko, CoinPaprika, CoinLore).
+/// identifier returned in the quote map, `symbol` is used as a provider
+/// fallback, and `coin_gecko_id` is the canonical market-data id used by
+/// id-indexed providers (CoinGecko, CoinPaprika, CoinLore).
 #[derive(Debug, Clone, Serialize, Deserialize, uniffi::Record)]
 #[serde(rename_all = "camelCase")]
 pub struct PriceRequestCoin {

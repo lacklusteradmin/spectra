@@ -76,9 +76,9 @@ pub struct CoreCoin {
     pub price_usd: f64,
 }
 
-/// Power-user derivation overrides, keyed by the same string names as
-/// `core/data/derivation_presets.toml`. Every field is optional; `None` means
-/// "use the chain preset default." Persisted per-wallet and propagated to
+/// Power-user derivation overrides layered on top of the chain defaults in
+/// `core/data/chains.toml`. Every field is optional; `None` means
+/// "use the catalog default." Persisted per-wallet and propagated to
 /// every derivation call (import-time preview + send-time signing) so the
 /// imported address and the re-derived signing key stay in sync.
 ///
