@@ -59,6 +59,10 @@ GEMINI.local.md
 # UniFFI-generated Swift bindings (regenerated from the Rust core)
 swift/generated/
 
+# UniFFI-generated Android bindings and Rust JNI libraries
+kotlin/app/src/main/kotlin/uniffi/
+kotlin/app/src/main/jniLibs/
+
 # Test / diagnostics
 *.log
 *.tmp

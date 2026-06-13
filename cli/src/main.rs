@@ -119,23 +119,27 @@ fn supported_chains() -> Vec<ChainInfo> {
 fn load_chain_presets() -> Vec<ChainPreset> {
     spectra_core::chains::list_all_chains()
         .into_iter()
-        .filter(|chain| chain.derivation_path.starts_with("m/"))
-        .map(|chain| {
-            let mut derivation_paths = vec![DerivationPathChoice {
-                title: "Default".to_string(),
-                derivation_path: chain.derivation_path.clone(),
-                is_default: true,
-            }];
-            if chain.alt_derivation_path.starts_with("m/")
-                && chain.alt_derivation_path != chain.derivation_path
-            {
-                derivation_paths.push(DerivationPathChoice {
-                    title: "Alternate".to_string(),
-                    derivation_path: chain.alt_derivation_path.clone(),
-                    is_default: false,
-                });
+        .filter_map(|chain| {
+            let derivation_paths: Vec<DerivationPathChoice> = chain
+                .derivation_path
+                .into_iter()
+                .filter_map(|entry| {
+                    let derivation_path = entry.path.replace("{account}", "0");
+                    derivation_path
+                        .starts_with("m/")
+                        .then_some(DerivationPathChoice {
+                            title: entry.tag,
+                            derivation_path,
+                            is_default: entry.is_default,
+                        })
+                })
+                .collect();
+
+            if derivation_paths.is_empty() {
+                return None;
             }
-            ChainPreset {
+
+            Some(ChainPreset {
                 chain: chain.name,
                 derivation_paths,
                 networks: vec![NetworkChoice {
@@ -144,7 +148,7 @@ fn load_chain_presets() -> Vec<ChainPreset> {
                     network: chain.id,
                     is_default: true,
                 }],
-            }
+            })
         })
         .collect()
 }

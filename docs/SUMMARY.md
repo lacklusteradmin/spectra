@@ -121,7 +121,7 @@ Pure UI. Each view observes `AppState` and renders state. No business logic.
 - [views/StakingView.swift](views/StakingView.swift) — Cross-chain staking entry.
 - [views/DonationsView.swift](views/DonationsView.swift), [views/AboutView.swift](views/AboutView.swift), [views/BuyCryptoHelpView.swift](views/BuyCryptoHelpView.swift), [views/ResetWalletWarningView.swift](views/ResetWalletWarningView.swift) — Static / informational screens.
 - [views/ImageRendering.swift](views/ImageRendering.swift) — Token / chain icon helpers.
-- [views/LiquidGlassUI.md](views/LiquidGlassUI.md) — Notes on iOS 26 Liquid Glass usage in Spectra views.
+- [iosUI.md](iosUI.md) — iOS 26 UI and Liquid Glass implementation guide.
 
 ## extensions/ — Live Activity widget targets
 
