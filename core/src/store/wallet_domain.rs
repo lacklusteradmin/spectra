@@ -2,6 +2,7 @@
 // Color is intentionally omitted — Swift derives display color from symbol.
 
 use serde::{Deserialize, Serialize};
+use zeroize::Zeroize;
 
 #[derive(
     Debug, Clone, Copy, Default, Serialize, Deserialize, PartialEq, Eq, Hash, uniffi::Enum,
@@ -122,6 +123,18 @@ impl CoreWalletDerivationOverrides {
             && self.address_algorithm.is_none()
             && self.public_key_format.is_none()
             && self.script_type.is_none()
+    }
+
+    pub(crate) fn zeroize_sensitive_fields(&mut self) {
+        if let Some(value) = &mut self.passphrase {
+            value.zeroize();
+        }
+        if let Some(value) = &mut self.hmac_key {
+            value.zeroize();
+        }
+        if let Some(value) = &mut self.salt_prefix {
+            value.zeroize();
+        }
     }
 }
 

@@ -13,6 +13,7 @@ pub mod verification;
 pub mod chains;
 
 use serde::{Deserialize, Serialize};
+use zeroize::Zeroize;
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, uniffi::Record)]
 #[serde(rename_all = "camelCase")]
@@ -159,12 +160,27 @@ pub struct SendExecutionRequest {
     pub derivation_overrides: Option<crate::store::wallet_domain::CoreWalletDerivationOverrides>,
 }
 
+impl SendExecutionRequest {
+    pub(crate) fn zeroize_sensitive_fields(&mut self) {
+        if let Some(value) = &mut self.seed_phrase {
+            value.zeroize();
+        }
+        if let Some(value) = &mut self.private_key_hex {
+            value.zeroize();
+        }
+        if let Some(overrides) = &mut self.derivation_overrides {
+            overrides.zeroize_sensitive_fields();
+        }
+    }
+}
+
 /// Result from `WalletService::execute_send`.
 #[derive(Debug, Clone, uniffi::Record)]
 pub struct SendExecutionResult {
-    /// Raw JSON result from the chain signer/broadcaster. Persisted opaquely
-    /// by Swift as the `signedTransactionPayload` blob — no Swift-side parsing.
-    pub result_json: String,
+    /// Opaque chain payload used only for persisted rebroadcast support.
+    /// Swift must not parse this for business state; add typed fields here
+    /// when new send-result values are needed.
+    pub rebroadcast_payload: String,
     /// Extracted transaction hash/ID.
     pub transaction_hash: String,
     /// Payload format key (e.g. "bitcoin.rust_json").
@@ -301,7 +317,8 @@ fn native_evm_symbol_for_chain(chain_name: &str) -> Option<String> {
 mod tests {
     use super::{
         plan_send_preview_routing, plan_send_submit_preflight, route_send_asset,
-        SendAssetRoutingInput, SendPreviewRoutingRequest, SendSubmitPreflightRequest,
+        SendAssetRoutingInput, SendExecutionRequest, SendPreviewRoutingRequest,
+        SendSubmitPreflightRequest,
     };
 
     #[test]
@@ -377,6 +394,46 @@ mod tests {
         assert_eq!(plan.submit_kind, "ethereum");
         assert_eq!(plan.amount, 0.0);
         assert!(plan.allows_zero_amount);
+    }
+
+    #[test]
+    fn send_execution_request_scrubs_secret_fields() {
+        let mut request = SendExecutionRequest {
+            chain_id: "ethereum".to_string(),
+            chain_name: "Ethereum".to_string(),
+            derivation_path: "m/44'/60'/0'/0/0".to_string(),
+            seed_phrase: Some("abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about".to_string()),
+            private_key_hex: Some("0123456789abcdef".repeat(4)),
+            from_address: "0xfrom".to_string(),
+            to_address: "0xto".to_string(),
+            amount: 1.0,
+            amount_str: Some("1".to_string()),
+            contract_address: None,
+            token_decimals: None,
+            fee_rate_svb: None,
+            fee_sat: None,
+            gas_budget: None,
+            fee_amount: None,
+            evm_overrides: None,
+            monero_priority: None,
+            derivation_overrides: Some(
+                crate::store::wallet_domain::CoreWalletDerivationOverrides {
+                    passphrase: Some("wallet passphrase".to_string()),
+                    hmac_key: Some("custom hmac".to_string()),
+                    salt_prefix: Some("mnemonic".to_string()),
+                    ..Default::default()
+                },
+            ),
+        };
+
+        request.zeroize_sensitive_fields();
+
+        assert_eq!(request.seed_phrase.as_deref(), Some(""));
+        assert_eq!(request.private_key_hex.as_deref(), Some(""));
+        let overrides = request.derivation_overrides.as_ref().expect("overrides");
+        assert_eq!(overrides.passphrase.as_deref(), Some(""));
+        assert_eq!(overrides.hmac_key.as_deref(), Some(""));
+        assert_eq!(overrides.salt_prefix.as_deref(), Some(""));
     }
 }
 

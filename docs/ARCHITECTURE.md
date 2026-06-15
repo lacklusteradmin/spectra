@@ -12,8 +12,8 @@ Spectra is an *application*, not a library. The Cargo workspace is intentionally
 
 ```
 Cargo.toml          ← workspace root, members = ["core", "ffi", "cli", "tools/uniffi-bindgen"]
-core/               ← pure Rust domain logic, no FFI symbols
-ffi/                ← UniFFI binding crate (depends on core, no domain logic)
+core/               ← Rust domain logic + the UniFFI-exported surface
+ffi/                ← UniFFI binding crate (thin re-export shim)
 cli/                ← optional command-line driver against the same core
 tools/uniffi-bindgen/  ← tiny binary, only used at codegen time
 ```
@@ -33,9 +33,9 @@ Spectra/
 ├── README.md
 ├── ARCHITECTURE.md             ← this file
 │
-├── core/                       ← pure Rust, no UniFFI macros at this layer
+├── core/                       ← Rust domain logic, including UniFFI exports
 │   └── src/
-│       ├── lib.rs              ← crate entry, SpectraBridgeError, module declarations
+│       ├── lib.rs              ← crate entry, scaffolding, SpectraBridgeError, module declarations
 │       ├── service.rs          ← WalletService UniFFI object + every impl block
 │       ├── app_core.rs         ← chain catalog, derivation paths, registry data
 │       ├── registry.rs         ← canonical Chain enum + EvmChain newtype + EndpointSlot

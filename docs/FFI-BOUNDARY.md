@@ -11,6 +11,11 @@ The wallet's logic lives in `core/` (Rust). Swift consumes that logic via UniFFI
 
 Code references in this doc point at concrete files; treat the file as the source of truth and the doc as the explanation.
 
+The `ffi/` crate is intentionally a thin re-export shim. The real boundary is
+attribute-defined inside `core/`: a Rust item becomes foreign-callable only when
+it is tagged with `#[uniffi::export]` or derives a UniFFI boundary type. Plain
+`pub` Rust items are not automatically Swift/Kotlin API.
+
 ---
 
 ## The two patterns
@@ -239,13 +244,33 @@ When in doubt, regenerate bindings and recompile Swift. The compile error will t
 
 ## JSON-on-the-wire conventions
 
-The dispatched path (Pattern B) ships JSON between Rust and Swift. Both sides need to agree on the shape:
+The dispatched path (Pattern B) may still ship JSON inside Rust and, for a few
+legacy endpoints, across the FFI. Treat JSON as a temporary migration format or
+as an opaque chain payload for rebroadcast, not as the preferred business API.
+Both sides need to agree on any shape that still crosses:
 
 - **camelCase** field names. Rust uses `#[serde(rename_all = "camelCase")]`; Swift's default `JSONEncoder` already produces camelCase.
 - **Numeric types**: prefer `i64` / `u32` / `f64` for fields that round-trip through JSON. `u128` doesn't survive — JSON numbers can't represent it. For u128, use `String` and parse with a typed serde helper (see `deserialize_u128_from_string_or_number` in `service_send_params.rs`).
 - **Optional fields**: Rust `Option<T>` with `#[serde(skip_serializing_if = "Option::is_none")]` produces "omit when None"; Swift's `decodeIfPresent` handles the omission. Don't emit `null` — Swift treats `null` and "absent" the same on read but persistence layers (SQLite) don't.
 - **Dates/times**: unix epoch seconds (`f64`) for wire shapes that flow through merge/refresh; Swift reference time (`f64`, seconds since 2001-01-01 UTC) for shapes that flow through SQLite persistence. The two formats look identical but use different epochs — see the `CoreTransactionRecord` vs `CorePersistedTransactionRecord` doc comments for why.
 - **Hex bytes**: lowercase, no `0x` prefix unless the chain's wire format requires one (EVM does; Bitcoin doesn't).
+
+### Send-result payloads
+
+`WalletService::execute_send` returns typed business fields (`transaction_hash`,
+`payload_format`, and EVM decode data) plus an opaque `rebroadcast_payload`.
+Swift may persist that payload for later rebroadcast, but should not parse it to
+derive business state. If Swift needs another value, add a typed field to
+`SendExecutionResult` instead of reaching into the payload JSON.
+
+### Secret material
+
+Swift/Keychain owns long-lived secret storage. Rust receives seed phrases,
+private keys, passphrases, and HMAC overrides only for the duration of a single
+derivation/signing call. UniFFI 0.31 records cannot implement custom `Drop`
+cleanly, so call paths that receive secret-bearing records must explicitly scrub
+their owned strings before returning, and execution code should avoid extra
+clones where borrowing is enough.
 
 ---
 
