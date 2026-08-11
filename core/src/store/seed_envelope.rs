@@ -11,7 +11,7 @@ use aes_gcm::aead::{Aead, KeyInit};
 use aes_gcm::{Aes256Gcm, Key, Nonce};
 use rand::RngCore;
 use serde::{Deserialize, Serialize};
-use zeroize::Zeroize;
+use zeroize::{Zeroize, Zeroizing};
 
 /// On-disk envelope — field names and base64 encoding match the Swift
 /// `SeedMaterialEnvelope.Envelope` struct exactly so existing keychain
@@ -77,14 +77,17 @@ pub fn decrypt(data: &[u8], master_key: &[u8]) -> Result<String, String> {
     let cipher = Aes256Gcm::new(key);
     let nonce = Nonce::from_slice(&envelope.nonce);
 
-    let mut plaintext = cipher
+    let plaintext = cipher
         .decrypt(nonce, envelope.ciphertext.as_ref())
         .map_err(|_| "AES-GCM decrypt failed (bad key or corrupted data)".to_string())?;
 
-    let result = String::from_utf8(plaintext.clone())
-        .map_err(|_| "decrypted data is not valid UTF-8".to_string());
-    plaintext.zeroize();
-    result
+    // Consume `plaintext` directly (no clone). On the error path the raw bytes
+    // are still recovered from the error and wiped before returning.
+    String::from_utf8(plaintext).map_err(|e| {
+        let mut bytes = e.into_bytes();
+        bytes.zeroize();
+        "decrypted data is not valid UTF-8".to_string()
+    })
 }
 
 /// Serde helper — encodes `Vec<u8>` as standard base64, matching Swift's
@@ -142,6 +145,10 @@ pub fn encrypt_seed_envelope(
     plaintext: String,
     master_key_bytes: Vec<u8>,
 ) -> Result<Vec<u8>, crate::SpectraBridgeError> {
+    // Wipe the secret seed and master key from Rust memory once we're done,
+    // rather than leaving them in dropped-but-unzeroed heap allocations.
+    let plaintext = Zeroizing::new(plaintext);
+    let master_key_bytes = Zeroizing::new(master_key_bytes);
     encrypt(plaintext.as_bytes(), &master_key_bytes).map_err(crate::SpectraBridgeError::from)
 }
 
@@ -152,5 +159,6 @@ pub fn decrypt_seed_envelope(
     data: Vec<u8>,
     master_key_bytes: Vec<u8>,
 ) -> Result<String, crate::SpectraBridgeError> {
+    let master_key_bytes = Zeroizing::new(master_key_bytes);
     decrypt(&data, &master_key_bytes).map_err(crate::SpectraBridgeError::from)
 }

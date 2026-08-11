@@ -169,6 +169,21 @@ pub(crate) fn default_derivation_path_template(chain_name: &str) -> Option<&'sta
     CATALOG
         .iter()
         .find(|c| c.name == chain_name)
+        .and_then(default_template_of)
+}
+
+/// Same lookup keyed by the canonical chain id.
+///
+/// Prefer this over the display-name form: `registry::Chain::chain_display_name`
+/// and the catalog's `name` do not always agree (the registry calls Internet
+/// Computer `"ICP"`, the catalog calls it `"Internet Computer"`), so a
+/// name-keyed lookup silently misses. Ids are frozen and match on both sides.
+pub(crate) fn default_derivation_path_template_by_id(id: &str) -> Option<&'static str> {
+    chain_by_str_id(id).and_then(default_template_of)
+}
+
+fn default_template_of(chain: &'static ChainEntry) -> Option<&'static str> {
+    Some(chain)
         .and_then(|chain| {
             chain
                 .derivation_path

@@ -428,10 +428,54 @@ mod tests {
 
     #[test]
     fn renders_catalog_default_paths_for_preset_accounts() {
+        use crate::registry::Chain;
+
         let paths = seed_derivation_paths_for_account(2).expect("paths");
-        assert_eq!(paths.bitcoin_sv, "m/44'/236'/2'/0/0");
-        assert_eq!(paths.ethereum, "m/44'/60'/2'/0/0");
-        assert_eq!(paths.solana, "m/44'/501'/2'/0'");
+        assert_eq!(paths.path_for(Chain::BitcoinSV), Some("m/44'/236'/2'/0/0"));
+        assert_eq!(paths.path_for(Chain::Ethereum), Some("m/44'/60'/2'/0/0"));
+        assert_eq!(paths.path_for(Chain::Solana), Some("m/44'/501'/2'/0'"));
+    }
+
+    /// Every mainnet chain the catalog gives a BIP-32 template for gets a path,
+    /// and testnets resolve through their mainnet counterpart rather than
+    /// carrying their own entry.
+    #[test]
+    fn derivation_paths_cover_the_catalog_and_resolve_testnets() {
+        use crate::registry::Chain;
+
+        let paths = seed_derivation_paths_for_account(0).expect("paths");
+        for chain in Chain::all() {
+            let mainnet = chain.mainnet_counterpart();
+            let expected =
+                crate::chains::default_derivation_path_template_by_id(mainnet.str_id()).is_some();
+            assert_eq!(
+                paths.path_for(chain).is_some(),
+                expected,
+                "{} path presence disagrees with the catalog",
+                chain.str_id()
+            );
+            if chain.is_testnet() {
+                assert!(
+                    !paths.by_chain.contains_key(chain.str_id()),
+                    "{} should not have its own entry",
+                    chain.str_id()
+                );
+                assert_eq!(
+                    paths.path_for(chain),
+                    paths.path_for(mainnet),
+                    "{} must resolve to its mainnet path",
+                    chain.str_id()
+                );
+            }
+        }
+
+        // Monero derives its keys its own way and has `derivation_path = []`
+        // in the catalog, so it is deliberately absent.
+        assert_eq!(paths.path_for(Chain::Monero), None);
+
+        // BNB Chain has a catalog template but was missing from the
+        // hand-written list this replaced, so it now gets an entry.
+        assert!(paths.path_for(Chain::BnbChain).is_some());
     }
 }
 
@@ -541,55 +585,42 @@ pub(super) fn resolved_flavor(chain_name: &str, normalized_path: &str) -> String
         .unwrap_or_else(|| "standard".to_string())
 }
 
+/// Default derivation paths for every mainnet chain at `account`.
+///
+/// Driven off `registry::Chain` rather than a hand-written list. The list this
+/// replaced named 44 chains and had to be edited alongside `chains.toml`, the
+/// Rust record and the Swift enum every time a chain was added.
+///
+/// Testnets are skipped: they resolve through `mainnet_counterpart()` at read
+/// time. Chains whose catalog entry has no template are skipped rather than
+/// failing the whole build — one unconfigured chain should not take out
+/// derivation for the other 45.
 pub(super) fn seed_derivation_paths_for_account(
     account: u32,
 ) -> Result<CoreSeedDerivationPaths, String> {
+    use crate::registry::Chain;
+
+    let mut by_chain = std::collections::HashMap::new();
+    for chain in Chain::all() {
+        if chain.is_testnet() {
+            continue;
+        }
+        // Keyed by id, not display name: the registry and the catalog disagree
+        // on some names (registry "ICP" vs catalog "Internet Computer").
+        if let Some(template) = crate::chains::default_derivation_path_template_by_id(chain.str_id())
+        {
+            by_chain.insert(
+                chain.str_id().to_string(),
+                render_derivation_path_template(template, account),
+            );
+        }
+    }
+    if by_chain.is_empty() {
+        return Err("Chain catalog produced no derivation paths.".to_string());
+    }
     Ok(CoreSeedDerivationPaths {
         is_custom_enabled: false,
-        bitcoin: default_path_from_catalog_for_account("Bitcoin", account)?,
-        bitcoin_cash: default_path_from_catalog_for_account("Bitcoin Cash", account)?,
-        bitcoin_sv: default_path_from_catalog_for_account("Bitcoin SV", account)?,
-        litecoin: default_path_from_catalog_for_account("Litecoin", account)?,
-        dogecoin: default_path_from_catalog_for_account("Dogecoin", account)?,
-        ethereum: default_path_from_catalog_for_account("Ethereum", account)?,
-        ethereum_classic: default_path_from_catalog_for_account("Ethereum Classic", account)?,
-        arbitrum: default_path_from_catalog_for_account("Arbitrum", account)?,
-        optimism: default_path_from_catalog_for_account("Optimism", account)?,
-        avalanche: default_path_from_catalog_for_account("Avalanche", account)?,
-        hyperliquid: default_path_from_catalog_for_account("Hyperliquid", account)?,
-        polygon: default_path_from_catalog_for_account("Polygon", account)?,
-        base: default_path_from_catalog_for_account("Base", account)?,
-        linea: default_path_from_catalog_for_account("Linea", account)?,
-        scroll: default_path_from_catalog_for_account("Scroll", account)?,
-        blast: default_path_from_catalog_for_account("Blast", account)?,
-        mantle: default_path_from_catalog_for_account("Mantle", account)?,
-        tron: default_path_from_catalog_for_account("Tron", account)?,
-        solana: default_path_from_catalog_for_account("Solana", account)?,
-        stellar: default_path_from_catalog_for_account("Stellar", account)?,
-        xrp: default_path_from_catalog_for_account("XRP Ledger", account)?,
-        cardano: default_path_from_catalog_for_account("Cardano", account)?,
-        sui: default_path_from_catalog_for_account("Sui", account)?,
-        aptos: default_path_from_catalog_for_account("Aptos", account)?,
-        ton: default_path_from_catalog_for_account("TON", account)?,
-        internet_computer: default_path_from_catalog_for_account("Internet Computer", account)?,
-        near: default_path_from_catalog_for_account("NEAR", account)?,
-        polkadot: default_path_from_catalog_for_account("Polkadot", account)?,
-        zcash: default_path_from_catalog_for_account("Zcash", account)?,
-        bitcoin_gold: default_path_from_catalog_for_account("Bitcoin Gold", account)?,
-        sei: default_path_from_catalog_for_account("Sei", account)?,
-        celo: default_path_from_catalog_for_account("Celo", account)?,
-        cronos: default_path_from_catalog_for_account("Cronos", account)?,
-        op_bnb: default_path_from_catalog_for_account("opBNB", account)?,
-        zksync_era: default_path_from_catalog_for_account("zkSync Era", account)?,
-        sonic: default_path_from_catalog_for_account("Sonic", account)?,
-        berachain: default_path_from_catalog_for_account("Berachain", account)?,
-        unichain: default_path_from_catalog_for_account("Unichain", account)?,
-        ink: default_path_from_catalog_for_account("Ink", account)?,
-        decred: default_path_from_catalog_for_account("Decred", account)?,
-        kaspa: default_path_from_catalog_for_account("Kaspa", account)?,
-        dash: default_path_from_catalog_for_account("Dash", account)?,
-        x_layer: default_path_from_catalog_for_account("X Layer", account)?,
-        bittensor: default_path_from_catalog_for_account("Bittensor", account)?,
+        by_chain,
     })
 }
 
@@ -622,6 +653,19 @@ pub fn core_parse_derivation_path(raw_path: String) -> Option<Vec<DerivationPath
 #[uniffi::export]
 pub fn core_derivation_path_string(segments: Vec<DerivationPathSegment>) -> String {
     derivation_path_string(&segments)
+}
+
+/// Key under which a chain's derivation path is stored in
+/// `CoreSeedDerivationPaths::by_chain`.
+///
+/// Testnets resolve to their mainnet counterpart: the derivation recipe is
+/// identical and only the address encoding differs, so both share one stored
+/// path. Unknown names return an empty string.
+#[uniffi::export]
+pub fn core_seed_derivation_path_key(chain_name: String) -> String {
+    crate::registry::Chain::from_display_name(&chain_name)
+        .map(|chain| chain.mainnet_counterpart().str_id().to_string())
+        .unwrap_or_default()
 }
 
 #[uniffi::export]

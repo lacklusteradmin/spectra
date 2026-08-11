@@ -114,9 +114,22 @@ pub fn tor_activate_custom_proxy(socks5_url: String) -> Result<(), crate::Spectr
             _ => {}
         }
     }
-    crate::fetch::http::set_socks5_proxy(Some(&socks5_url));
+    crate::fetch::http::set_socks5_proxy(Some(&force_remote_dns(&socks5_url)));
     *TOR_STATE.lock() = TorInternalState::CustomProxy;
     Ok(())
+}
+
+/// Force proxy-side ("remote") DNS resolution by upgrading a plain `socks5://`
+/// URL to `socks5h://`. With the leaky `socks5://` form, reqwest resolves the
+/// target hostname *locally* before connecting to the proxy, so every chain
+/// provider lookup leaks to the device resolver / ISP even while Tor is up —
+/// defeating the whole point of routing through Tor. `socks5h://` makes the
+/// proxy (Tor) perform the lookup. Any other scheme is passed through untouched.
+fn force_remote_dns(socks5_url: &str) -> String {
+    match socks5_url.strip_prefix("socks5://") {
+        Some(rest) => format!("socks5h://{rest}"),
+        None => socks5_url.to_string(),
+    }
 }
 
 /// Stop Tor and restore direct HTTP routing. Safe to call when already stopped.
@@ -164,7 +177,8 @@ async fn bootstrap_tor(data_dir: String, percent: Arc<AtomicU8>) {
                 };
             }
 
-            crate::fetch::http::set_socks5_proxy(Some("socks5://127.0.0.1:19050"));
+            // socks5h:// → Tor resolves DNS; socks5:// would leak lookups locally.
+            crate::fetch::http::set_socks5_proxy(Some("socks5h://127.0.0.1:19050"));
         }
         Err(message) => {
             let mut guard = TOR_STATE.lock();
@@ -307,4 +321,30 @@ async fn handle_socks5(
     tokio::io::copy_bidirectional(&mut tcp, &mut tor_compat).await?;
 
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::force_remote_dns;
+
+    #[test]
+    fn upgrades_leaky_socks5_scheme() {
+        assert_eq!(
+            force_remote_dns("socks5://127.0.0.1:9150"),
+            "socks5h://127.0.0.1:9150"
+        );
+    }
+
+    #[test]
+    fn leaves_remote_dns_scheme_untouched() {
+        assert_eq!(
+            force_remote_dns("socks5h://127.0.0.1:9150"),
+            "socks5h://127.0.0.1:9150"
+        );
+        // Non-socks schemes are passed through verbatim.
+        assert_eq!(
+            force_remote_dns("http://127.0.0.1:8080"),
+            "http://127.0.0.1:8080"
+        );
+    }
 }

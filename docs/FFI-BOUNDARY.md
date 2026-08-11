@@ -209,13 +209,13 @@ For Android: `bash scripts/bindgen-android.sh` and `bash scripts/build-android.s
 
 ### What "regenerated" means in practice
 
-Anything in `swift/generated/` is overwritten on every bindgen run. Don't edit those files. If you need a Swift-side wrapper around a generated type, add it in `swift/shell/`, `swift/rustbridge/`, or wherever the consuming code lives — never in `swift/generated/`.
+Anything in `swift/generated/` is overwritten on every bindgen run. Don't edit those files. If you need a Swift-side wrapper around a generated type, add it next to the consuming code (`swift/*.swift`, `swift/views/`) — never in `swift/generated/`.
 
 The pattern is:
 
 - Rust defines `CoreCoin` as a UniFFI Record.
 - `swift/generated/` produces a Swift `CoreCoin` struct.
-- `swift/shell/CoreModels.swift` does `typealias Coin = CoreCoin` and adds Swift-side extensions (`Identifiable` conformance, helper initializers, color resolution).
+- `swift/CoreModels.swift` does `typealias Coin = CoreCoin` and adds Swift-side extensions (`Identifiable` conformance, helper initializers, color resolution).
 
 That keeps the generated layer mechanical and the Swift-side ergonomics in code you control.
 
@@ -267,7 +267,13 @@ derive business state. If Swift needs another value, add a typed field to
 
 Swift/Keychain owns long-lived secret storage. Rust receives seed phrases,
 private keys, passphrases, and HMAC overrides only for the duration of a single
-derivation/signing call. UniFFI 0.31 records cannot implement custom `Drop`
+derivation/signing call.
+
+`SecretStore` (`core/src/store/secret_store.rs`) is the trait that keeps this
+uniform: iOS backs it with Keychain, and `core/src/store/secret_backends.rs`
+provides `InMemorySecretStore` for tests and `FileSecretStore` for the CLI.
+Never add a secret path that only one platform can satisfy — if the CLI cannot
+drive it, it is a platform detail wearing a core API's clothes. UniFFI 0.31 records cannot implement custom `Drop`
 cleanly, so call paths that receive secret-bearing records must explicitly scrub
 their owned strings before returning, and execution code should avoid extra
 clones where borrowing is enough.
@@ -311,7 +317,6 @@ Rust serialized one shape; Swift expected another. Print the raw string at the b
 - domain modules such as `core/src/derivation/validation.rs`, `core/src/store/mod.rs`, and `core/src/service.rs` — the typed-path FFI surface is decentralized.
 - `core/src/service.rs` — the dispatched-path methods.
 - `core/src/service_send_params.rs` — typed parameter contracts for chain-dispatched send paths.
-- `core/src/service/types.rs` — typed parameter structs for chain dispatch arms.
-- `core/src/service/standalone.rs` — synchronous, stateless UniFFI exports (token catalog, BIP-39).
-- `swift/rustbridge/WalletServiceBridge.swift` — the Swift singleton that holds the `WalletService` instance and exposes call sites for Swift code.
+- `core/src/service/send_execution.rs`, `core/src/service/history_cursor.rs` — helpers split out of `service.rs`.
+- `swift/WalletServiceBridge.swift` — the Swift singleton that holds the `WalletService` instance and exposes call sites for Swift code.
 - `scripts/bindgen-ios.sh` / `scripts/build-ios.sh` — the binding regeneration and iOS artifact builds.

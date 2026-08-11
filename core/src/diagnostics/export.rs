@@ -312,33 +312,11 @@ pub struct DiagnosticsBundlePayload {
     pub generated_at: f64,
     pub environment: DiagnosticsEnvironmentMetadata,
     pub chain_degraded_messages: HashMap<String, String>,
-    // UTXO chains
-    pub bitcoin_diagnostics_json: String,
-    pub dogecoin_diagnostics_json: String,
-    pub bitcoin_cash_diagnostics_json: String,
-    pub bitcoin_sv_diagnostics_json: String,
-    pub litecoin_diagnostics_json: String,
-    // EVM chains
-    pub ethereum_diagnostics_json: String,
-    pub etc_diagnostics_json: String,
-    pub arbitrum_diagnostics_json: String,
-    pub optimism_diagnostics_json: String,
-    pub bnb_diagnostics_json: String,
-    pub avalanche_diagnostics_json: String,
-    pub hyperliquid_diagnostics_json: String,
-    // Other chains
-    pub tron_diagnostics_json: String,
-    pub solana_diagnostics_json: String,
-    pub stellar_diagnostics_json: String,
-    pub cardano_diagnostics_json: String,
-    pub xrp_diagnostics_json: String,
-    pub monero_diagnostics_json: String,
-    pub sui_diagnostics_json: String,
-    pub aptos_diagnostics_json: String,
-    pub ton_diagnostics_json: String,
-    pub icp_diagnostics_json: String,
-    pub near_diagnostics_json: String,
-    pub polkadot_diagnostics_json: String,
+    /// `Chain::str_id()` → that chain's diagnostics JSON blob (`"{}"` when the
+    /// chain has no data). Keyed rather than one field per chain: the bundle is
+    /// written for human inspection and nothing reads individual chains, so a
+    /// map costs nothing and adding a chain stops being a schema change.
+    pub chain_diagnostics_json: HashMap<String, String>,
 }
 
 /// Serialize a bundle payload to pretty-printed, sanitized JSON. Returns `None`

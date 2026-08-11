@@ -20,6 +20,8 @@ use rusqlite::{params, Connection};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
+use super::state::{CoreAppState, WalletSummary};
+
 // ── Connection pool ──────────────────────────────────────────────────────────
 //
 // Re-uses a single Connection per db_path instead of opening (and running DDL)
@@ -36,12 +38,13 @@ fn with_conn<T>(
     db_path: &str,
     f: impl FnOnce(&Connection) -> Result<T, String>,
 ) -> Result<T, String> {
+    use std::collections::hash_map::Entry;
     let mut pool = POOL.lock();
-    if !pool.contains_key(db_path) {
-        let conn = open_new(db_path)?;
-        pool.insert(db_path.to_string(), conn);
-    }
-    f(pool.get(db_path).unwrap())
+    let conn = match pool.entry(db_path.to_string()) {
+        Entry::Occupied(e) => e.into_mut(),
+        Entry::Vacant(e) => e.insert(open_new(db_path)?),
+    };
+    f(conn)
 }
 
 fn open_new(db_path: &str) -> Result<Connection, String> {
@@ -79,7 +82,23 @@ fn open_new(db_path: &str) -> Result<Connection, String> {
          );
          CREATE INDEX IF NOT EXISTS idx_hr_wallet  ON history_records(wallet_id);
          CREATE INDEX IF NOT EXISTS idx_hr_chain   ON history_records(chain_name);
-         CREATE INDEX IF NOT EXISTS idx_hr_created ON history_records(created_at DESC);",
+         CREATE INDEX IF NOT EXISTS idx_hr_created ON history_records(created_at DESC);
+         CREATE TABLE IF NOT EXISTS wallets (
+             id                         TEXT    NOT NULL PRIMARY KEY,
+             name                       TEXT    NOT NULL,
+             chain_name                 TEXT    NOT NULL,
+             is_watch_only              INTEGER NOT NULL DEFAULT 0,
+             include_in_portfolio_total INTEGER NOT NULL DEFAULT 1,
+             sort_index                 INTEGER NOT NULL,  -- preserves CoreAppState.wallets order
+             payload                    TEXT    NOT NULL,  -- full WalletSummary JSON
+             updated_at                 INTEGER NOT NULL
+         );
+         CREATE INDEX IF NOT EXISTS idx_wallets_chain ON wallets(chain_name);
+         CREATE INDEX IF NOT EXISTS idx_wallets_order ON wallets(sort_index);
+         CREATE TABLE IF NOT EXISTS app_state_meta (
+             key   TEXT NOT NULL PRIMARY KEY,
+             value TEXT NOT NULL
+         );",
     )
     .map_err(|e| format!("wallet_db create tables: {e}"))?;
     Ok(conn)
@@ -632,21 +651,265 @@ pub fn history_clear(db_path: &str) -> Result<(), String> {
     })
 }
 
+// ── App state (wallets + settings) ────────────────────────────────────────────
+//
+// This is the persistence layer for `store::state::CoreAppState` — the
+// chain-agnostic wallet model. Before it existed, `CoreAppState` had no home in
+// Rust at all: iOS persisted its own Swift-side model and the CLI wrote its own
+// `wallets.json`, so "the wallet list" had two incompatible on-disk shapes and
+// neither belonged to the core.
+//
+// Storage follows the `history_records` house style: identity and query columns
+// are promoted, the rest of the record rides along as JSON in `payload`. Wallet
+// order is explicit in `sort_index` because `CoreAppState.wallets` is a `Vec`
+// and its order is user-visible.
+
+const META_SCHEMA_VERSION: &str = "schema_version";
+const META_SELECTED_WALLET_ID: &str = "selected_wallet_id";
+const META_SETTINGS: &str = "settings";
+
+/// Insert or replace one wallet, keeping its existing position when it is
+/// already stored and appending it to the end when it is new.
+///
+/// Use this for a single-wallet edit. To write a whole state snapshot use
+/// [`app_state_save`], which also prunes wallets that are no longer present.
+pub fn wallet_upsert(db_path: &str, wallet: &WalletSummary) -> Result<(), String> {
+    let payload =
+        serde_json::to_string(wallet).map_err(|e| format!("wallet_upsert encode: {e}"))?;
+    with_conn(db_path, |conn| {
+        let next_index: i64 = conn
+            .query_row(
+                "SELECT COALESCE(MAX(sort_index) + 1, 0) FROM wallets",
+                [],
+                |row| row.get(0),
+            )
+            .map_err(|e| format!("wallet_upsert next index: {e}"))?;
+        conn.execute(
+            "INSERT INTO wallets
+                 (id, name, chain_name, is_watch_only, include_in_portfolio_total,
+                  sort_index, payload, updated_at)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)
+             ON CONFLICT(id) DO UPDATE SET
+                 name                       = excluded.name,
+                 chain_name                 = excluded.chain_name,
+                 is_watch_only              = excluded.is_watch_only,
+                 include_in_portfolio_total = excluded.include_in_portfolio_total,
+                 payload                    = excluded.payload,
+                 updated_at                 = excluded.updated_at",
+            params![
+                wallet.id,
+                wallet.name,
+                wallet.chain_name,
+                wallet.is_watch_only,
+                wallet.include_in_portfolio_total,
+                next_index,
+                payload,
+                now_secs(),
+            ],
+        )
+        .map_err(|e| format!("wallet_upsert: {e}"))?;
+        Ok(())
+    })
+}
+
+/// Load one wallet by id.
+pub fn wallet_load(db_path: &str, wallet_id: &str) -> Result<Option<WalletSummary>, String> {
+    with_conn(db_path, |conn| {
+        let result = conn.query_row(
+            "SELECT payload FROM wallets WHERE id = ?1",
+            params![wallet_id],
+            |row| row.get::<_, String>(0),
+        );
+        match result {
+            Ok(payload) => serde_json::from_str(&payload)
+                .map(Some)
+                .map_err(|e| format!("wallet_load decode {wallet_id}: {e}")),
+            Err(rusqlite::Error::QueryReturnedNoRows) => Ok(None),
+            Err(e) => Err(format!("wallet_load: {e}")),
+        }
+    })
+}
+
+/// Load every wallet, in the stored display order.
+pub fn wallet_load_all(db_path: &str) -> Result<Vec<WalletSummary>, String> {
+    with_conn(db_path, |conn| {
+        let mut stmt = conn
+            .prepare("SELECT id, payload FROM wallets ORDER BY sort_index ASC")
+            .map_err(|e| format!("wallet_load_all prepare: {e}"))?;
+        let rows = stmt
+            .query_map([], |row| {
+                Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?))
+            })
+            .map_err(|e| format!("wallet_load_all query: {e}"))?;
+        let mut wallets = Vec::new();
+        for row in rows {
+            let (id, payload) = row.map_err(|e| format!("wallet_load_all row: {e}"))?;
+            wallets.push(
+                serde_json::from_str(&payload)
+                    .map_err(|e| format!("wallet_load_all decode {id}: {e}"))?,
+            );
+        }
+        Ok(wallets)
+    })
+}
+
+/// Delete one wallet row. Does not touch that wallet's keypool, owned addresses
+/// or history — use [`delete_wallet_data`] for the full teardown.
+pub fn wallet_delete(db_path: &str, wallet_id: &str) -> Result<(), String> {
+    with_conn(db_path, |conn| {
+        conn.execute("DELETE FROM wallets WHERE id = ?1", params![wallet_id])
+            .map_err(|e| format!("wallet_delete: {e}"))?;
+        Ok(())
+    })
+}
+
+/// Persist a whole [`CoreAppState`] snapshot.
+///
+/// Replaces the stored wallet set: wallets absent from `state` are removed, and
+/// `sort_index` is rewritten so the stored order matches `state.wallets`. Runs
+/// in one transaction, so a failure part-way leaves the previous snapshot
+/// intact rather than a half-written wallet list.
+pub fn app_state_save(db_path: &str, state: &CoreAppState) -> Result<(), String> {
+    let settings = serde_json::to_string(&state.settings)
+        .map_err(|e| format!("app_state_save encode settings: {e}"))?;
+    let payloads: Vec<(usize, &WalletSummary, String)> = state
+        .wallets
+        .iter()
+        .enumerate()
+        .map(|(index, wallet)| {
+            serde_json::to_string(wallet)
+                .map(|payload| (index, wallet, payload))
+                .map_err(|e| format!("app_state_save encode wallet {}: {e}", wallet.id))
+        })
+        .collect::<Result<_, _>>()?;
+
+    with_conn(db_path, |conn| {
+        let tx = conn
+            .unchecked_transaction()
+            .map_err(|e| format!("app_state_save begin: {e}"))?;
+        let updated_at = now_secs();
+
+        tx.execute("DELETE FROM wallets", [])
+            .map_err(|e| format!("app_state_save clear wallets: {e}"))?;
+        {
+            let mut stmt = tx
+                .prepare(
+                    "INSERT INTO wallets
+                         (id, name, chain_name, is_watch_only, include_in_portfolio_total,
+                          sort_index, payload, updated_at)
+                     VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
+                )
+                .map_err(|e| format!("app_state_save prepare: {e}"))?;
+            for (index, wallet, payload) in &payloads {
+                stmt.execute(params![
+                    wallet.id,
+                    wallet.name,
+                    wallet.chain_name,
+                    wallet.is_watch_only,
+                    wallet.include_in_portfolio_total,
+                    *index as i64,
+                    payload,
+                    updated_at,
+                ])
+                .map_err(|e| format!("app_state_save insert {}: {e}", wallet.id))?;
+            }
+        }
+
+        let mut meta = tx
+            .prepare(
+                "INSERT INTO app_state_meta (key, value) VALUES (?1, ?2)
+                 ON CONFLICT(key) DO UPDATE SET value = excluded.value",
+            )
+            .map_err(|e| format!("app_state_save prepare meta: {e}"))?;
+        meta.execute(params![
+            META_SCHEMA_VERSION,
+            state.schema_version.to_string()
+        ])
+        .map_err(|e| format!("app_state_save schema_version: {e}"))?;
+        meta.execute(params![META_SETTINGS, settings])
+            .map_err(|e| format!("app_state_save settings: {e}"))?;
+        // Absent selection is stored as an absent row, not an empty string, so
+        // "no wallet selected" and "a wallet whose id is empty" stay distinct.
+        match &state.selected_wallet_id {
+            Some(id) => meta
+                .execute(params![META_SELECTED_WALLET_ID, id])
+                .map(|_| ())
+                .map_err(|e| format!("app_state_save selected_wallet_id: {e}"))?,
+            None => tx
+                .execute(
+                    "DELETE FROM app_state_meta WHERE key = ?1",
+                    params![META_SELECTED_WALLET_ID],
+                )
+                .map(|_| ())
+                .map_err(|e| format!("app_state_save clear selected_wallet_id: {e}"))?,
+        }
+        drop(meta);
+
+        tx.commit()
+            .map_err(|e| format!("app_state_save commit: {e}"))
+    })
+}
+
+/// Load the persisted [`CoreAppState`].
+///
+/// An untouched database loads as `CoreAppState::default()`, so first run needs
+/// no special-casing at the call site.
+pub fn app_state_load(db_path: &str) -> Result<CoreAppState, String> {
+    let wallets = wallet_load_all(db_path)?;
+    with_conn(db_path, |conn| {
+        let mut stmt = conn
+            .prepare("SELECT key, value FROM app_state_meta")
+            .map_err(|e| format!("app_state_load prepare: {e}"))?;
+        let rows = stmt
+            .query_map([], |row| {
+                Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?))
+            })
+            .map_err(|e| format!("app_state_load query: {e}"))?;
+
+        let mut state = CoreAppState {
+            wallets,
+            ..CoreAppState::default()
+        };
+        for row in rows {
+            let (key, value) = row.map_err(|e| format!("app_state_load row: {e}"))?;
+            match key.as_str() {
+                META_SCHEMA_VERSION => {
+                    state.schema_version = value
+                        .parse()
+                        .map_err(|e| format!("app_state_load schema_version {value:?}: {e}"))?;
+                }
+                META_SELECTED_WALLET_ID => state.selected_wallet_id = Some(value),
+                META_SETTINGS => {
+                    state.settings = serde_json::from_str(&value)
+                        .map_err(|e| format!("app_state_load settings: {e}"))?;
+                }
+                // Forward compatibility: a newer build's extra meta keys are
+                // ignored rather than treated as corruption.
+                _ => {}
+            }
+        }
+        Ok(state)
+    })
+}
+
 // ── Combined wallet teardown ──────────────────────────────────────────────────
 
-/// Remove all relational wallet state (keypool + addresses) for a deleted wallet.
+/// Remove every trace of a deleted wallet: its row, keypool, owned addresses
+/// and history records.
 pub fn delete_wallet_data(db_path: &str, wallet_id: &str) -> Result<(), String> {
     with_conn(db_path, |conn| {
-        conn.execute(
-            "DELETE FROM wallet_keypool WHERE wallet_id = ?1",
-            params![wallet_id],
-        )
-        .map_err(|e| format!("delete_wallet_data keypool: {e}"))?;
-        conn.execute(
-            "DELETE FROM wallet_owned_addresses WHERE wallet_id = ?1",
-            params![wallet_id],
-        )
-        .map_err(|e| format!("delete_wallet_data addresses: {e}"))?;
+        for (table, column) in [
+            ("wallets", "id"),
+            ("wallet_keypool", "wallet_id"),
+            ("wallet_owned_addresses", "wallet_id"),
+            ("history_records", "wallet_id"),
+        ] {
+            conn.execute(
+                &format!("DELETE FROM {table} WHERE {column} = ?1"),
+                params![wallet_id],
+            )
+            .map_err(|e| format!("delete_wallet_data {table}: {e}"))?;
+        }
         Ok(())
     })
 }
@@ -822,5 +1085,180 @@ mod tests {
         delete_wallet_data(&db, "w1").unwrap();
         assert!(keypool_load(&db, "w1", "Dogecoin").unwrap().is_none());
         assert!(address_load_all(&db, "w1", "Dogecoin").unwrap().is_empty());
+    }
+
+    // ── App state ────────────────────────────────────────────────────────────
+
+    use super::super::state::{AppSettings, WalletAddress};
+
+    /// Minimal history record. The payload is decoded from JSON rather than
+    /// built field-by-field: `CorePersistedTransactionRecord` has ~30 fields of
+    /// which only these are required, and going through serde keeps the helper
+    /// honest about which ones those are.
+    fn history_record(id: &str, wallet_id: &str) -> HistoryRecord {
+        let payload = serde_json::from_value(serde_json::json!({
+            "id": id,
+            "walletId": wallet_id,
+            "kind": "send",
+            "walletName": "Wallet",
+            "assetName": "Bitcoin",
+            "symbol": "BTC",
+            "chainName": "Bitcoin",
+            "amount": 1.0,
+            "address": "bc1qexample",
+            "createdAt": 0.0,
+        }))
+        .expect("history payload fixture must match CorePersistedTransactionRecord");
+        HistoryRecord {
+            id: id.to_string(),
+            wallet_id: Some(wallet_id.to_string()),
+            chain_name: "Bitcoin".to_string(),
+            tx_hash: Some(format!("hash-{id}")),
+            created_at: 0.0,
+            payload,
+        }
+    }
+
+    fn wallet(id: &str, chain: &str) -> WalletSummary {
+        WalletSummary {
+            id: id.to_string(),
+            name: format!("Wallet {id}"),
+            is_watch_only: false,
+            chain_name: chain.to_string(),
+            include_in_portfolio_total: true,
+            network_mode: None,
+            xpub: None,
+            derivation_preset: "default".to_string(),
+            derivation_path: Some("m/84'/0'/0'/0/0".to_string()),
+            holdings: Vec::new(),
+            addresses: vec![WalletAddress {
+                chain_name: chain.to_string(),
+                address: format!("addr-{id}"),
+                kind: "receive".to_string(),
+                derivation_path: None,
+            }],
+        }
+    }
+
+    #[test]
+    fn app_state_load_on_empty_db_is_default() {
+        let db = tmp_db();
+        assert_eq!(app_state_load(&db).unwrap(), CoreAppState::default());
+    }
+
+    #[test]
+    fn app_state_round_trips() {
+        let db = tmp_db();
+        let state = CoreAppState {
+            schema_version: 2,
+            wallets: vec![wallet("w1", "Bitcoin"), wallet("w2", "Ethereum")],
+            selected_wallet_id: Some("w2".to_string()),
+            settings: AppSettings {
+                preferred_locale: "zh-Hans".to_string(),
+                fiat_currency_code: "CNY".to_string(),
+                diagnostics_enabled: false,
+            },
+        };
+        app_state_save(&db, &state).unwrap();
+        assert_eq!(app_state_load(&db).unwrap(), state);
+    }
+
+    #[test]
+    fn app_state_save_preserves_wallet_order() {
+        let db = tmp_db();
+        // Ids deliberately out of lexicographic order, so a load that sorted by
+        // id instead of position would fail here.
+        let ordered = vec![wallet("zz", "Bitcoin"), wallet("aa", "Solana"), wallet("mm", "Sui")];
+        let state = CoreAppState {
+            wallets: ordered.clone(),
+            ..CoreAppState::default()
+        };
+        app_state_save(&db, &state).unwrap();
+        let ids: Vec<String> = app_state_load(&db)
+            .unwrap()
+            .wallets
+            .iter()
+            .map(|w| w.id.clone())
+            .collect();
+        assert_eq!(ids, vec!["zz", "aa", "mm"]);
+    }
+
+    #[test]
+    fn app_state_save_prunes_removed_wallets() {
+        let db = tmp_db();
+        app_state_save(
+            &db,
+            &CoreAppState {
+                wallets: vec![wallet("w1", "Bitcoin"), wallet("w2", "Ethereum")],
+                selected_wallet_id: Some("w1".to_string()),
+                ..CoreAppState::default()
+            },
+        )
+        .unwrap();
+        app_state_save(
+            &db,
+            &CoreAppState {
+                wallets: vec![wallet("w2", "Ethereum")],
+                ..CoreAppState::default()
+            },
+        )
+        .unwrap();
+
+        let loaded = app_state_load(&db).unwrap();
+        assert_eq!(loaded.wallets.len(), 1);
+        assert_eq!(loaded.wallets[0].id, "w2");
+        assert!(wallet_load(&db, "w1").unwrap().is_none());
+        // Clearing the selection must clear the stored row, not leave the stale
+        // id behind.
+        assert_eq!(loaded.selected_wallet_id, None);
+    }
+
+    #[test]
+    fn wallet_upsert_appends_then_updates_in_place() {
+        let db = tmp_db();
+        wallet_upsert(&db, &wallet("w1", "Bitcoin")).unwrap();
+        wallet_upsert(&db, &wallet("w2", "Ethereum")).unwrap();
+
+        let mut renamed = wallet("w1", "Bitcoin");
+        renamed.name = "Renamed".to_string();
+        renamed.include_in_portfolio_total = false;
+        wallet_upsert(&db, &renamed).unwrap();
+
+        let all = wallet_load_all(&db).unwrap();
+        assert_eq!(all.len(), 2, "upsert must not duplicate an existing wallet");
+        // w1 keeps position 0 across the update.
+        assert_eq!(all[0].id, "w1");
+        assert_eq!(all[0].name, "Renamed");
+        assert!(!all[0].include_in_portfolio_total);
+        assert_eq!(all[1].id, "w2");
+    }
+
+    #[test]
+    fn delete_wallet_data_removes_the_wallet_row_and_its_history() {
+        let db = tmp_db();
+        app_state_save(
+            &db,
+            &CoreAppState {
+                wallets: vec![wallet("w1", "Bitcoin"), wallet("w2", "Bitcoin")],
+                ..CoreAppState::default()
+            },
+        )
+        .unwrap();
+        history_upsert_batch(
+            &db,
+            &[history_record("tx1", "w1"), history_record("tx2", "w2")],
+        )
+        .unwrap();
+
+        delete_wallet_data(&db, "w1").unwrap();
+
+        assert!(wallet_load(&db, "w1").unwrap().is_none());
+        assert!(wallet_load(&db, "w2").unwrap().is_some());
+        let remaining: Vec<String> = history_fetch_all(&db)
+            .unwrap()
+            .into_iter()
+            .map(|r| r.id)
+            .collect();
+        assert_eq!(remaining, vec!["tx2"], "only w1's history should be gone");
     }
 }

@@ -1,6 +1,8 @@
 // Domain types for wallet state, ported from Swift CoreModels.swift.
 // Color is intentionally omitted — Swift derives display color from symbol.
 
+use std::collections::HashMap;
+
 use serde::{Deserialize, Serialize};
 use zeroize::Zeroize;
 
@@ -142,50 +144,30 @@ impl CoreWalletDerivationOverrides {
 #[serde(rename_all = "camelCase")]
 pub struct CoreSeedDerivationPaths {
     pub is_custom_enabled: bool,
-    pub bitcoin: String,
-    pub bitcoin_cash: String,
-    pub bitcoin_sv: String,
-    pub litecoin: String,
-    pub dogecoin: String,
-    pub ethereum: String,
-    pub ethereum_classic: String,
-    pub arbitrum: String,
-    pub optimism: String,
-    pub avalanche: String,
-    pub hyperliquid: String,
-    pub polygon: String,
-    pub base: String,
-    pub linea: String,
-    pub scroll: String,
-    pub blast: String,
-    pub mantle: String,
-    pub tron: String,
-    pub solana: String,
-    pub stellar: String,
-    pub xrp: String,
-    pub cardano: String,
-    pub sui: String,
-    pub aptos: String,
-    pub ton: String,
-    pub internet_computer: String,
-    pub near: String,
-    pub polkadot: String,
-    pub zcash: String,
-    pub bitcoin_gold: String,
-    pub sei: String,
-    pub celo: String,
-    pub cronos: String,
-    pub op_bnb: String,
-    pub zksync_era: String,
-    pub sonic: String,
-    pub berachain: String,
-    pub unichain: String,
-    pub ink: String,
-    pub decred: String,
-    pub kaspa: String,
-    pub dash: String,
-    pub x_layer: String,
-    pub bittensor: String,
+    /// `Chain::str_id()` → derivation path, for mainnet chains only.
+    ///
+    /// Testnets resolve through `Chain::mainnet_counterpart()` rather than
+    /// carrying their own entry — a testnet wallet derives from the same path
+    /// as its mainnet, only the address encoding differs. Use
+    /// [`CoreSeedDerivationPaths::path_for`] rather than indexing directly so
+    /// that stays true at every call site.
+    pub by_chain: HashMap<String, String>,
+}
+
+impl CoreSeedDerivationPaths {
+    /// Derivation path configured for `chain`, resolving testnets to their
+    /// mainnet counterpart's entry.
+    pub fn path_for(&self, chain: crate::registry::Chain) -> Option<&str> {
+        self.by_chain
+            .get(chain.mainnet_counterpart().str_id())
+            .map(String::as_str)
+    }
+
+    /// Set the path for `chain`, writing through to the mainnet slot.
+    pub fn set_path_for(&mut self, chain: crate::registry::Chain, path: impl Into<String>) {
+        self.by_chain
+            .insert(chain.mainnet_counterpart().str_id().to_string(), path.into());
+    }
 }
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq, uniffi::Record)]
@@ -195,31 +177,17 @@ pub struct CoreImportedWallet {
     pub name: String,
     pub bitcoin_network_mode: CoreBitcoinNetworkMode,
     pub dogecoin_network_mode: CoreDogecoinNetworkMode,
-    pub bitcoin_address: Option<String>,
+    /// `Chain::address_slot()` → address for this wallet.
+    ///
+    /// A wallet belongs to one chain (`selected_chain`), so in practice this
+    /// holds a single entry — two for Ethereum Classic, which occupies both the
+    /// shared EVM slot and its own. It is a map rather than one `Option<String>`
+    /// per chain so that adding a chain is a registry edit and not a schema
+    /// change here, in the Swift record, in its `Codable`, and at every
+    /// construction site.
+    pub addresses: HashMap<String, String>,
+    /// Bitcoin account xpub/ypub/zpub. Not an address, so it keeps its own field.
     pub bitcoin_xpub: Option<String>,
-    pub bitcoin_cash_address: Option<String>,
-    pub bitcoin_sv_address: Option<String>,
-    pub litecoin_address: Option<String>,
-    pub dogecoin_address: Option<String>,
-    pub ethereum_address: Option<String>,
-    pub tron_address: Option<String>,
-    pub solana_address: Option<String>,
-    pub stellar_address: Option<String>,
-    pub xrp_address: Option<String>,
-    pub monero_address: Option<String>,
-    pub cardano_address: Option<String>,
-    pub sui_address: Option<String>,
-    pub aptos_address: Option<String>,
-    pub ton_address: Option<String>,
-    pub icp_address: Option<String>,
-    pub near_address: Option<String>,
-    pub polkadot_address: Option<String>,
-    pub zcash_address: Option<String>,
-    pub bitcoin_gold_address: Option<String>,
-    pub decred_address: Option<String>,
-    pub kaspa_address: Option<String>,
-    pub dash_address: Option<String>,
-    pub bittensor_address: Option<String>,
     pub seed_derivation_preset: CoreSeedDerivationPreset,
     pub seed_derivation_paths: CoreSeedDerivationPaths,
     #[serde(default)]
@@ -232,6 +200,18 @@ pub struct CoreImportedWallet {
 impl CoreImportedWallet {
     pub fn total_balance(&self) -> f64 {
         self.holdings.iter().map(|c| c.amount * c.price_usd).sum()
+    }
+
+    /// This wallet's address for `chain`, if it has one.
+    pub fn address_for(&self, chain: crate::registry::Chain) -> Option<&str> {
+        self.addresses.get(chain.address_slot()).map(String::as_str)
+    }
+
+    /// The address for the wallet's own chain — what the UI shows and what
+    /// balance/history calls query.
+    pub fn primary_address(&self) -> Option<&str> {
+        crate::registry::Chain::from_display_name(&self.selected_chain)
+            .and_then(|chain| self.address_for(chain))
     }
 }
 

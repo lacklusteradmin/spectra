@@ -38,6 +38,58 @@ pub struct WalletSummary {
     pub addresses: Vec<WalletAddress>,
 }
 
+// Plain `impl` — deliberately not `#[uniffi::export]`. These are Rust-side
+// domain helpers; the FFI surface stays the record's fields.
+impl WalletSummary {
+    /// Build a summary for a wallet with one address on one chain.
+    ///
+    /// This is the shape most chains produce: a single derived address, no
+    /// xpub, no network-mode variants. Multi-address wallets (Bitcoin and the
+    /// other UTXO chains) push into `addresses` instead.
+    pub fn single_address(
+        id: impl Into<String>,
+        name: impl Into<String>,
+        chain_name: impl Into<String>,
+        address: impl Into<String>,
+        derivation_path: Option<String>,
+        is_watch_only: bool,
+    ) -> Self {
+        let chain_name = chain_name.into();
+        Self {
+            id: id.into(),
+            name: name.into(),
+            is_watch_only,
+            chain_name: chain_name.clone(),
+            include_in_portfolio_total: true,
+            network_mode: None,
+            xpub: None,
+            derivation_preset: "default".to_string(),
+            derivation_path: derivation_path.clone(),
+            holdings: Vec::new(),
+            addresses: vec![WalletAddress {
+                chain_name,
+                address: address.into(),
+                kind: "receive".to_string(),
+                derivation_path,
+            }],
+        }
+    }
+
+    /// The address to show and query for this wallet.
+    ///
+    /// Prefers the first `"receive"` address and falls back to the first
+    /// address of any kind, so a wallet whose addresses were built by a path
+    /// that doesn't classify them still resolves. `None` only when the wallet
+    /// has no addresses at all.
+    pub fn primary_address(&self) -> Option<&str> {
+        self.addresses
+            .iter()
+            .find(|a| a.kind == "receive")
+            .or_else(|| self.addresses.first())
+            .map(|a| a.address.as_str())
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, uniffi::Record)]
 #[serde(rename_all = "camelCase")]
 pub struct AppSettings {

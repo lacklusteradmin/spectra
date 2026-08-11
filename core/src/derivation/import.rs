@@ -1,98 +1,62 @@
+use std::collections::HashMap;
+
 use serde::{Deserialize, Serialize};
 
 use super::addressing::{validate_address, AddressValidationRequest};
+use crate::registry::Chain;
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, uniffi::Record)]
+/// Addresses supplied by a wallet import, keyed by [`Chain::address_slot`].
+///
+/// Keyed rather than one field per chain: the slot set is derived from
+/// `registry::Chain`, so adding a chain is a registry edit and nothing here
+/// changes. EVM chains share the `"ethereum"` slot — see `address_slot`.
+#[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq, Eq, uniffi::Record)]
 #[serde(rename_all = "camelCase")]
 pub struct WalletImportAddresses {
-    pub bitcoin_address: Option<String>,
+    /// `Chain::address_slot()` → address. Absent slot means "not supplied".
+    pub by_slot: HashMap<String, String>,
+    /// Bitcoin account xpub/ypub/zpub. Not an address, so it gets its own
+    /// field rather than a slot.
     pub bitcoin_xpub: Option<String>,
-    pub bitcoin_cash_address: Option<String>,
-    pub bitcoin_sv_address: Option<String>,
-    pub litecoin_address: Option<String>,
-    pub dogecoin_address: Option<String>,
-    pub ethereum_address: Option<String>,
-    pub ethereum_classic_address: Option<String>,
-    pub tron_address: Option<String>,
-    pub solana_address: Option<String>,
-    pub xrp_address: Option<String>,
-    pub stellar_address: Option<String>,
-    pub monero_address: Option<String>,
-    pub cardano_address: Option<String>,
-    pub sui_address: Option<String>,
-    pub aptos_address: Option<String>,
-    pub ton_address: Option<String>,
-    pub icp_address: Option<String>,
-    pub near_address: Option<String>,
-    pub polkadot_address: Option<String>,
-    pub zcash_address: Option<String>,
-    pub bitcoin_gold_address: Option<String>,
-    pub decred_address: Option<String>,
-    pub kaspa_address: Option<String>,
-    pub dash_address: Option<String>,
-    pub bittensor_address: Option<String>,
 }
 
 impl WalletImportAddresses {
     fn empty() -> Self {
+        Self::default()
+    }
+
+    /// One address in one chain's slot.
+    fn single(chain: Chain, address: impl Into<String>) -> Self {
         Self {
-            bitcoin_address: None,
+            by_slot: HashMap::from([(chain.address_slot().to_string(), address.into())]),
             bitcoin_xpub: None,
-            bitcoin_cash_address: None,
-            bitcoin_sv_address: None,
-            litecoin_address: None,
-            dogecoin_address: None,
-            ethereum_address: None,
-            ethereum_classic_address: None,
-            tron_address: None,
-            solana_address: None,
-            xrp_address: None,
-            stellar_address: None,
-            monero_address: None,
-            cardano_address: None,
-            sui_address: None,
-            aptos_address: None,
-            ton_address: None,
-            icp_address: None,
-            near_address: None,
-            polkadot_address: None,
-            zcash_address: None,
-            bitcoin_gold_address: None,
-            decred_address: None,
-            kaspa_address: None,
-            dash_address: None,
-            bittensor_address: None,
         }
+    }
+
+    /// The address stored for `chain`, if the import supplied one.
+    pub fn address_for(&self, chain: Chain) -> Option<&str> {
+        self.by_slot.get(chain.address_slot()).map(String::as_str)
     }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, uniffi::Record)]
+/// Watch-only address lists, keyed by [`Chain::address_slot`]. A watch-only
+/// import can supply several addresses per chain; each becomes one wallet.
+#[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq, Eq, uniffi::Record)]
 #[serde(rename_all = "camelCase")]
 pub struct WalletImportWatchOnlyEntries {
-    pub bitcoin_addresses: Vec<String>,
+    /// `Chain::address_slot()` → addresses, in the order the user entered them.
+    pub by_slot: HashMap<String, Vec<String>>,
     pub bitcoin_xpub: Option<String>,
-    pub bitcoin_cash_addresses: Vec<String>,
-    pub bitcoin_sv_addresses: Vec<String>,
-    pub litecoin_addresses: Vec<String>,
-    pub dogecoin_addresses: Vec<String>,
-    pub ethereum_addresses: Vec<String>,
-    pub tron_addresses: Vec<String>,
-    pub solana_addresses: Vec<String>,
-    pub xrp_addresses: Vec<String>,
-    pub stellar_addresses: Vec<String>,
-    pub cardano_addresses: Vec<String>,
-    pub sui_addresses: Vec<String>,
-    pub aptos_addresses: Vec<String>,
-    pub ton_addresses: Vec<String>,
-    pub icp_addresses: Vec<String>,
-    pub near_addresses: Vec<String>,
-    pub polkadot_addresses: Vec<String>,
-    pub zcash_addresses: Vec<String>,
-    pub bitcoin_gold_addresses: Vec<String>,
-    pub decred_addresses: Vec<String>,
-    pub kaspa_addresses: Vec<String>,
-    pub dash_addresses: Vec<String>,
-    pub bittensor_addresses: Vec<String>,
+}
+
+impl WalletImportWatchOnlyEntries {
+    /// Addresses entered for `chain`, or an empty slice when none were.
+    pub fn addresses_for(&self, chain: Chain) -> &[String] {
+        self.by_slot
+            .get(chain.address_slot())
+            .map(Vec::as_slice)
+            .unwrap_or(&[])
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, uniffi::Record)]
@@ -147,6 +111,27 @@ pub fn core_plan_wallet_import(
 #[uniffi::export]
 pub fn core_validate_wallet_import_draft(request: WalletImportDraftValidationRequest) -> bool {
     validate_wallet_import_draft(request)
+}
+
+/// Key under which a chain's address belongs in [`WalletImportAddresses`] and
+/// [`WalletImportWatchOnlyEntries`].
+///
+/// Exported so the UI never hardcodes slot keys or has to know that EVM chains
+/// share one. Pass a chain display name; unknown names return an empty string.
+#[uniffi::export]
+pub fn core_address_slot(chain_name: String) -> String {
+    Chain::from_display_name(&chain_name)
+        .map(|chain| chain.address_slot().to_string())
+        .unwrap_or_default()
+}
+
+/// `true` when a chain can be imported watch-only from an address alone.
+/// Monero cannot — watching it needs the private view key.
+#[uniffi::export]
+pub fn core_supports_watch_only_import(chain_name: String) -> bool {
+    Chain::from_display_name(&chain_name)
+        .map(Chain::supports_watch_only_import)
+        .unwrap_or(false)
 }
 
 pub fn plan_wallet_import(request: WalletImportRequest) -> Result<WalletImportPlan, String> {
@@ -262,443 +247,74 @@ fn watch_only_addresses_for_chain(
     primary_chain_name: &str,
     entries: &WalletImportWatchOnlyEntries,
 ) -> Result<Vec<(String, WalletImportAddresses)>, String> {
-    let wallets = match primary_chain_name {
-        "Bitcoin" => {
-            if let Some(xpub) = trim_optional(entries.bitcoin_xpub.as_deref()) {
-                vec![(
-                    "Bitcoin".to_string(),
-                    WalletImportAddresses {
-                        bitcoin_xpub: Some(xpub.to_string()),
-                        ..WalletImportAddresses::empty()
-                    },
-                )]
-            } else {
-                entries
-                    .bitcoin_addresses
-                    .iter()
-                    .map(|address| {
-                        (
-                            "Bitcoin".to_string(),
-                            WalletImportAddresses {
-                                bitcoin_address: Some(address.clone()),
-                                ..WalletImportAddresses::empty()
-                            },
-                        )
-                    })
-                    .collect()
-            }
+    let unsupported =
+        || format!("Watch-only planning is not available for chain: {primary_chain_name}");
+    let chain = Chain::from_display_name(primary_chain_name).ok_or_else(unsupported)?;
+    if !chain.supports_watch_only_import() {
+        return Err(unsupported());
+    }
+
+    // Bitcoin has a second form: one xpub stands in for the whole account, so
+    // it plans a single wallet instead of one per address.
+    if chain == Chain::Bitcoin {
+        if let Some(xpub) = trim_optional(entries.bitcoin_xpub.as_deref()) {
+            return Ok(vec![(
+                primary_chain_name.to_string(),
+                WalletImportAddresses {
+                    by_slot: HashMap::new(),
+                    bitcoin_xpub: Some(xpub.to_string()),
+                },
+            )]);
         }
-        "Bitcoin Cash" => entries
-            .bitcoin_cash_addresses
-            .iter()
-            .map(|address| {
-                (
-                    "Bitcoin Cash".to_string(),
-                    WalletImportAddresses {
-                        bitcoin_cash_address: Some(address.clone()),
-                        ..WalletImportAddresses::empty()
-                    },
-                )
-            })
-            .collect(),
-        "Bitcoin SV" => entries
-            .bitcoin_sv_addresses
-            .iter()
-            .map(|address| {
-                (
-                    "Bitcoin SV".to_string(),
-                    WalletImportAddresses {
-                        bitcoin_sv_address: Some(address.clone()),
-                        ..WalletImportAddresses::empty()
-                    },
-                )
-            })
-            .collect(),
-        "Litecoin" => entries
-            .litecoin_addresses
-            .iter()
-            .map(|address| {
-                (
-                    "Litecoin".to_string(),
-                    WalletImportAddresses {
-                        litecoin_address: Some(address.clone()),
-                        ..WalletImportAddresses::empty()
-                    },
-                )
-            })
-            .collect(),
-        "Dogecoin" => entries
-            .dogecoin_addresses
-            .iter()
-            .map(|address| {
-                (
-                    "Dogecoin".to_string(),
-                    WalletImportAddresses {
-                        dogecoin_address: Some(address.clone()),
-                        ..WalletImportAddresses::empty()
-                    },
-                )
-            })
-            .collect(),
-        "Ethereum" | "Ethereum Classic" | "Arbitrum" | "Optimism" | "BNB Chain" | "Avalanche"
-        | "Hyperliquid" | "Polygon" | "Base" | "Linea" | "Scroll" | "Blast" | "Mantle" | "Sei"
-        | "Celo" | "Cronos" | "opBNB" | "zkSync Era" | "Sonic" | "Berachain" | "Unichain"
-        | "Ink" | "X Layer" => entries
-            .ethereum_addresses
-            .iter()
-            .map(|address| {
-                (
-                    primary_chain_name.to_string(),
-                    WalletImportAddresses {
-                        ethereum_address: Some(address.clone()),
-                        ..WalletImportAddresses::empty()
-                    },
-                )
-            })
-            .collect(),
-        "Tron" => entries
-            .tron_addresses
-            .iter()
-            .map(|address| {
-                (
-                    "Tron".to_string(),
-                    WalletImportAddresses {
-                        tron_address: Some(address.clone()),
-                        ..WalletImportAddresses::empty()
-                    },
-                )
-            })
-            .collect(),
-        "Solana" => entries
-            .solana_addresses
-            .iter()
-            .map(|address| {
-                (
-                    "Solana".to_string(),
-                    WalletImportAddresses {
-                        solana_address: Some(address.clone()),
-                        ..WalletImportAddresses::empty()
-                    },
-                )
-            })
-            .collect(),
-        "XRP Ledger" => entries
-            .xrp_addresses
-            .iter()
-            .map(|address| {
-                (
-                    "XRP Ledger".to_string(),
-                    WalletImportAddresses {
-                        xrp_address: Some(address.clone()),
-                        ..WalletImportAddresses::empty()
-                    },
-                )
-            })
-            .collect(),
-        "Stellar" => entries
-            .stellar_addresses
-            .iter()
-            .map(|address| {
-                (
-                    "Stellar".to_string(),
-                    WalletImportAddresses {
-                        stellar_address: Some(address.clone()),
-                        ..WalletImportAddresses::empty()
-                    },
-                )
-            })
-            .collect(),
-        "Cardano" => entries
-            .cardano_addresses
-            .iter()
-            .map(|address| {
-                (
-                    "Cardano".to_string(),
-                    WalletImportAddresses {
-                        cardano_address: Some(address.clone()),
-                        ..WalletImportAddresses::empty()
-                    },
-                )
-            })
-            .collect(),
-        "Sui" => entries
-            .sui_addresses
-            .iter()
-            .map(|address| {
-                (
-                    "Sui".to_string(),
-                    WalletImportAddresses {
-                        sui_address: Some(address.clone()),
-                        ..WalletImportAddresses::empty()
-                    },
-                )
-            })
-            .collect(),
-        "Aptos" => entries
-            .aptos_addresses
-            .iter()
-            .map(|address| {
-                (
-                    "Aptos".to_string(),
-                    WalletImportAddresses {
-                        aptos_address: Some(address.clone()),
-                        ..WalletImportAddresses::empty()
-                    },
-                )
-            })
-            .collect(),
-        "TON" => entries
-            .ton_addresses
-            .iter()
-            .map(|address| {
-                (
-                    "TON".to_string(),
-                    WalletImportAddresses {
-                        ton_address: Some(address.clone()),
-                        ..WalletImportAddresses::empty()
-                    },
-                )
-            })
-            .collect(),
-        "Internet Computer" => entries
-            .icp_addresses
-            .iter()
-            .map(|address| {
-                (
-                    "Internet Computer".to_string(),
-                    WalletImportAddresses {
-                        icp_address: Some(address.clone()),
-                        ..WalletImportAddresses::empty()
-                    },
-                )
-            })
-            .collect(),
-        "NEAR" => entries
-            .near_addresses
-            .iter()
-            .map(|address| {
-                (
-                    "NEAR".to_string(),
-                    WalletImportAddresses {
-                        near_address: Some(address.clone()),
-                        ..WalletImportAddresses::empty()
-                    },
-                )
-            })
-            .collect(),
-        "Polkadot" => entries
-            .polkadot_addresses
-            .iter()
-            .map(|address| {
-                (
-                    "Polkadot".to_string(),
-                    WalletImportAddresses {
-                        polkadot_address: Some(address.clone()),
-                        ..WalletImportAddresses::empty()
-                    },
-                )
-            })
-            .collect(),
-        "Zcash" => entries
-            .zcash_addresses
-            .iter()
-            .map(|address| {
-                (
-                    "Zcash".to_string(),
-                    WalletImportAddresses {
-                        zcash_address: Some(address.clone()),
-                        ..WalletImportAddresses::empty()
-                    },
-                )
-            })
-            .collect(),
-        "Bitcoin Gold" => entries
-            .bitcoin_gold_addresses
-            .iter()
-            .map(|address| {
-                (
-                    "Bitcoin Gold".to_string(),
-                    WalletImportAddresses {
-                        bitcoin_gold_address: Some(address.clone()),
-                        ..WalletImportAddresses::empty()
-                    },
-                )
-            })
-            .collect(),
-        "Decred" => entries
-            .decred_addresses
-            .iter()
-            .map(|address| {
-                (
-                    "Decred".to_string(),
-                    WalletImportAddresses {
-                        decred_address: Some(address.clone()),
-                        ..WalletImportAddresses::empty()
-                    },
-                )
-            })
-            .collect(),
-        "Kaspa" => entries
-            .kaspa_addresses
-            .iter()
-            .map(|address| {
-                (
-                    "Kaspa".to_string(),
-                    WalletImportAddresses {
-                        kaspa_address: Some(address.clone()),
-                        ..WalletImportAddresses::empty()
-                    },
-                )
-            })
-            .collect(),
-        "Dash" => entries
-            .dash_addresses
-            .iter()
-            .map(|address| {
-                (
-                    "Dash".to_string(),
-                    WalletImportAddresses {
-                        dash_address: Some(address.clone()),
-                        ..WalletImportAddresses::empty()
-                    },
-                )
-            })
-            .collect(),
-        "Bittensor" => entries
-            .bittensor_addresses
-            .iter()
-            .map(|address| {
-                (
-                    "Bittensor".to_string(),
-                    WalletImportAddresses {
-                        bittensor_address: Some(address.clone()),
-                        ..WalletImportAddresses::empty()
-                    },
-                )
-            })
-            .collect(),
-        unsupported => {
-            return Err(format!(
-                "Watch-only planning is not available for chain: {unsupported}"
-            ))
-        }
-    };
-    Ok(wallets)
+    }
+
+    Ok(entries
+        .addresses_for(chain)
+        .iter()
+        .map(|address| {
+            (
+                primary_chain_name.to_string(),
+                WalletImportAddresses::single(chain, address.clone()),
+            )
+        })
+        .collect())
 }
 
+/// The address slots a wallet on `chain_name` should carry.
+///
+/// A wallet is per-chain, so it takes only the slots its own chain reads.
+/// Bitcoin additionally carries the account xpub when one was supplied.
 fn addresses_for_chain(
     chain_name: &str,
     addresses: &WalletImportAddresses,
 ) -> WalletImportAddresses {
-    match chain_name {
-        "Bitcoin" => WalletImportAddresses {
-            bitcoin_address: addresses.bitcoin_address.clone(),
-            bitcoin_xpub: addresses.bitcoin_xpub.clone(),
-            ..WalletImportAddresses::empty()
+    let Some(chain) = Chain::from_display_name(chain_name) else {
+        return WalletImportAddresses::empty();
+    };
+
+    let mut by_slot = HashMap::new();
+    if let Some(address) = addresses.address_for(chain) {
+        by_slot.insert(chain.address_slot().to_string(), address.to_string());
+    }
+    // Ethereum Classic is EVM-shaped but has its own slot, and downstream code
+    // reads the generic `"ethereum"` slot for any EVM wallet. Fill both so an
+    // ETC wallet resolves either way.
+    if chain == Chain::EthereumClassic {
+        if let Some(address) = addresses.address_for(Chain::EthereumClassic) {
+            by_slot.insert(Chain::Ethereum.address_slot().to_string(), address.to_string());
+        }
+    }
+
+    WalletImportAddresses {
+        by_slot,
+        bitcoin_xpub: if chain == Chain::Bitcoin {
+            addresses.bitcoin_xpub.clone()
+        } else {
+            None
         },
-        "Bitcoin Cash" => WalletImportAddresses {
-            bitcoin_cash_address: addresses.bitcoin_cash_address.clone(),
-            ..WalletImportAddresses::empty()
-        },
-        "Bitcoin SV" => WalletImportAddresses {
-            bitcoin_sv_address: addresses.bitcoin_sv_address.clone(),
-            ..WalletImportAddresses::empty()
-        },
-        "Litecoin" => WalletImportAddresses {
-            litecoin_address: addresses.litecoin_address.clone(),
-            ..WalletImportAddresses::empty()
-        },
-        "Dogecoin" => WalletImportAddresses {
-            dogecoin_address: addresses.dogecoin_address.clone(),
-            ..WalletImportAddresses::empty()
-        },
-        "Ethereum" | "Arbitrum" | "Optimism" | "BNB Chain" | "Avalanche" | "Hyperliquid"
-        | "Polygon" | "Base" | "Linea" | "Scroll" | "Blast" | "Mantle" | "Sei" | "Celo"
-        | "Cronos" | "opBNB" | "zkSync Era" | "Sonic" | "Berachain" | "Unichain" | "Ink"
-        | "X Layer" => WalletImportAddresses {
-            ethereum_address: addresses.ethereum_address.clone(),
-            ..WalletImportAddresses::empty()
-        },
-        "Ethereum Classic" => WalletImportAddresses {
-            ethereum_address: addresses.ethereum_classic_address.clone(),
-            ethereum_classic_address: addresses.ethereum_classic_address.clone(),
-            ..WalletImportAddresses::empty()
-        },
-        "Tron" => WalletImportAddresses {
-            tron_address: addresses.tron_address.clone(),
-            ..WalletImportAddresses::empty()
-        },
-        "Solana" => WalletImportAddresses {
-            solana_address: addresses.solana_address.clone(),
-            ..WalletImportAddresses::empty()
-        },
-        "XRP Ledger" => WalletImportAddresses {
-            xrp_address: addresses.xrp_address.clone(),
-            ..WalletImportAddresses::empty()
-        },
-        "Stellar" => WalletImportAddresses {
-            stellar_address: addresses.stellar_address.clone(),
-            ..WalletImportAddresses::empty()
-        },
-        "Monero" => WalletImportAddresses {
-            monero_address: addresses.monero_address.clone(),
-            ..WalletImportAddresses::empty()
-        },
-        "Cardano" => WalletImportAddresses {
-            cardano_address: addresses.cardano_address.clone(),
-            ..WalletImportAddresses::empty()
-        },
-        "Sui" => WalletImportAddresses {
-            sui_address: addresses.sui_address.clone(),
-            ..WalletImportAddresses::empty()
-        },
-        "Aptos" => WalletImportAddresses {
-            aptos_address: addresses.aptos_address.clone(),
-            ..WalletImportAddresses::empty()
-        },
-        "TON" => WalletImportAddresses {
-            ton_address: addresses.ton_address.clone(),
-            ..WalletImportAddresses::empty()
-        },
-        "Internet Computer" => WalletImportAddresses {
-            icp_address: addresses.icp_address.clone(),
-            ..WalletImportAddresses::empty()
-        },
-        "NEAR" => WalletImportAddresses {
-            near_address: addresses.near_address.clone(),
-            ..WalletImportAddresses::empty()
-        },
-        "Polkadot" => WalletImportAddresses {
-            polkadot_address: addresses.polkadot_address.clone(),
-            ..WalletImportAddresses::empty()
-        },
-        "Zcash" => WalletImportAddresses {
-            zcash_address: addresses.zcash_address.clone(),
-            ..WalletImportAddresses::empty()
-        },
-        "Bitcoin Gold" => WalletImportAddresses {
-            bitcoin_gold_address: addresses.bitcoin_gold_address.clone(),
-            ..WalletImportAddresses::empty()
-        },
-        "Decred" => WalletImportAddresses {
-            decred_address: addresses.decred_address.clone(),
-            ..WalletImportAddresses::empty()
-        },
-        "Kaspa" => WalletImportAddresses {
-            kaspa_address: addresses.kaspa_address.clone(),
-            ..WalletImportAddresses::empty()
-        },
-        "Dash" => WalletImportAddresses {
-            dash_address: addresses.dash_address.clone(),
-            ..WalletImportAddresses::empty()
-        },
-        "Bittensor" => WalletImportAddresses {
-            bittensor_address: addresses.bittensor_address.clone(),
-            ..WalletImportAddresses::empty()
-        },
-        _ => WalletImportAddresses::empty(),
     }
 }
+
 
 fn wallet_display_name(
     base_name: &str,
@@ -864,41 +480,21 @@ fn validate_watch_only_draft_addresses(
     selected_chains: &[String],
     entries: &WalletImportWatchOnlyEntries,
 ) -> bool {
-    for chain in selected_chains {
-        let (kind, addresses, xpub_fallback) = match chain.as_str() {
-            "Bitcoin" => (
-                "bitcoin",
-                &entries.bitcoin_addresses,
-                entries.bitcoin_xpub.as_deref(),
-            ),
-            "Bitcoin Cash" => ("bitcoinCash", &entries.bitcoin_cash_addresses, None),
-            "Bitcoin SV" => ("bitcoinSV", &entries.bitcoin_sv_addresses, None),
-            "Litecoin" => ("litecoin", &entries.litecoin_addresses, None),
-            "Dogecoin" => ("dogecoin", &entries.dogecoin_addresses, None),
-            "Ethereum" | "Ethereum Classic" | "Arbitrum" | "Optimism" | "BNB Chain"
-            | "Avalanche" | "Hyperliquid" | "Polygon" | "Base" | "Linea" | "Scroll" | "Blast"
-            | "Mantle" => ("evm", &entries.ethereum_addresses, None),
-            "Tron" => ("tron", &entries.tron_addresses, None),
-            "Solana" => ("solana", &entries.solana_addresses, None),
-            "XRP Ledger" => ("xrp", &entries.xrp_addresses, None),
-            "Stellar" => ("stellar", &entries.stellar_addresses, None),
-            "Monero" => return false, // Monero doesn't support watch-only
-            "Cardano" => ("cardano", &entries.cardano_addresses, None),
-            "Sui" => ("sui", &entries.sui_addresses, None),
-            "Aptos" => ("aptos", &entries.aptos_addresses, None),
-            "TON" => ("ton", &entries.ton_addresses, None),
-            "Internet Computer" => ("internetComputer", &entries.icp_addresses, None),
-            "NEAR" => ("near", &entries.near_addresses, None),
-            "Polkadot" => ("polkadot", &entries.polkadot_addresses, None),
-            "Zcash" => ("zcash", &entries.zcash_addresses, None),
-            "Bitcoin Gold" => ("bitcoinGold", &entries.bitcoin_gold_addresses, None),
-            "Decred" => ("decred", &entries.decred_addresses, None),
-            "Kaspa" => ("kaspa", &entries.kaspa_addresses, None),
-            "Dash" => ("dash", &entries.dash_addresses, None),
-            "Bittensor" => ("bittensor", &entries.bittensor_addresses, None),
-            "Sei" | "Celo" | "Cronos" | "opBNB" | "zkSync Era" | "Sonic" | "Berachain"
-            | "Unichain" | "Ink" | "X Layer" => ("evm", &entries.ethereum_addresses, None),
-            _ => return false,
+    for chain_name in selected_chains {
+        // Unknown chain, or one that cannot be watched from an address alone
+        // (Monero needs a view key) — the draft is not importable.
+        let Some(chain) = Chain::from_display_name(chain_name) else {
+            return false;
+        };
+        if !chain.supports_watch_only_import() {
+            return false;
+        }
+        let kind = chain.address_validation_kind();
+        let addresses = entries.addresses_for(chain);
+        let xpub_fallback = if chain == Chain::Bitcoin {
+            entries.bitcoin_xpub.as_deref()
+        } else {
+            None
         };
 
         // Must have at least one address (or xpub for Bitcoin)
@@ -948,6 +544,16 @@ fn validate_watch_only_draft_addresses(
 mod tests {
     use super::*;
 
+    fn slots(addresses: &WalletImportAddresses) -> Vec<(String, String)> {
+        let mut pairs: Vec<_> = addresses
+            .by_slot
+            .iter()
+            .map(|(k, v)| (k.clone(), v.clone()))
+            .collect();
+        pairs.sort();
+        pairs
+    }
+
     #[test]
     fn plans_multi_chain_seed_import() {
         let plan = plan_wallet_import(WalletImportRequest {
@@ -960,43 +566,121 @@ mod tests {
             is_private_key_import: false,
             has_wallet_password: true,
             resolved_addresses: WalletImportAddresses {
-                bitcoin_address: Some("bc1qexample".to_string()),
-                ethereum_address: Some("0x1234".to_string()),
-                ethereum_classic_address: Some("0x5678".to_string()),
-                ..WalletImportAddresses::empty()
-            },
-            watch_only_entries: WalletImportWatchOnlyEntries {
-                bitcoin_addresses: Vec::new(),
+                by_slot: HashMap::from([
+                    ("bitcoin".to_string(), "bc1qexample".to_string()),
+                    ("ethereum".to_string(), "0x1234".to_string()),
+                    ("ethereum-classic".to_string(), "0x5678".to_string()),
+                ]),
                 bitcoin_xpub: None,
-                bitcoin_cash_addresses: Vec::new(),
-                bitcoin_sv_addresses: Vec::new(),
-                litecoin_addresses: Vec::new(),
-                dogecoin_addresses: Vec::new(),
-                ethereum_addresses: Vec::new(),
-                tron_addresses: Vec::new(),
-                solana_addresses: Vec::new(),
-                xrp_addresses: Vec::new(),
-                stellar_addresses: Vec::new(),
-                cardano_addresses: Vec::new(),
-                sui_addresses: Vec::new(),
-                aptos_addresses: Vec::new(),
-                ton_addresses: Vec::new(),
-                icp_addresses: Vec::new(),
-                near_addresses: Vec::new(),
-                polkadot_addresses: Vec::new(),
-                zcash_addresses: Vec::new(),
-                bitcoin_gold_addresses: Vec::new(),
-                decred_addresses: Vec::new(),
-                kaspa_addresses: Vec::new(),
-                dash_addresses: Vec::new(),
-                bittensor_addresses: Vec::new(),
             },
+            watch_only_entries: WalletImportWatchOnlyEntries::default(),
         })
         .expect("plan");
 
         assert_eq!(plan.wallets.len(), 2);
         assert_eq!(plan.wallets[0].name, "Main 1");
         assert_eq!(plan.secret_instructions[0].secret_kind, "seedPhrase");
+        // Each wallet carries only its own chain's slot — the Bitcoin wallet
+        // must not receive the Ethereum address.
+        assert_eq!(
+            slots(&plan.wallets[0].addresses),
+            vec![("bitcoin".to_string(), "bc1qexample".to_string())]
+        );
+        assert_eq!(
+            slots(&plan.wallets[1].addresses),
+            vec![("ethereum".to_string(), "0x1234".to_string())]
+        );
+    }
+
+    #[test]
+    fn evm_chains_share_one_address_slot() {
+        let request = |chain: &str| WalletImportRequest {
+            wallet_name: "W".to_string(),
+            default_wallet_name_start_index: 0,
+            primary_selected_chain_name: chain.to_string(),
+            selected_chain_names: vec![chain.to_string()],
+            planned_wallet_ids: vec!["1".to_string()],
+            is_watch_only_import: false,
+            is_private_key_import: false,
+            has_wallet_password: false,
+            resolved_addresses: WalletImportAddresses {
+                by_slot: HashMap::from([("ethereum".to_string(), "0xabc".to_string())]),
+                bitcoin_xpub: None,
+            },
+            watch_only_entries: WalletImportWatchOnlyEntries::default(),
+        };
+
+        // Including chains the old hand-written match never listed.
+        for chain in ["Ethereum", "Arbitrum", "Base", "Polygon", "Ink", "X Layer"] {
+            let plan = plan_wallet_import(request(chain)).expect("plan");
+            assert_eq!(
+                plan.wallets[0].addresses.by_slot.get("ethereum").map(String::as_str),
+                Some("0xabc"),
+                "{chain} should read the shared ethereum slot"
+            );
+        }
+    }
+
+    #[test]
+    fn ethereum_classic_fills_both_its_own_slot_and_the_evm_slot() {
+        let plan = plan_wallet_import(WalletImportRequest {
+            wallet_name: "W".to_string(),
+            default_wallet_name_start_index: 0,
+            primary_selected_chain_name: "Ethereum Classic".to_string(),
+            selected_chain_names: vec!["Ethereum Classic".to_string()],
+            planned_wallet_ids: vec!["1".to_string()],
+            is_watch_only_import: false,
+            is_private_key_import: false,
+            has_wallet_password: false,
+            resolved_addresses: WalletImportAddresses {
+                by_slot: HashMap::from([
+                    ("ethereum".to_string(), "0xmainnet".to_string()),
+                    ("ethereum-classic".to_string(), "0xclassic".to_string()),
+                ]),
+                bitcoin_xpub: None,
+            },
+            watch_only_entries: WalletImportWatchOnlyEntries::default(),
+        })
+        .expect("plan");
+
+        // Both slots carry the *ETC* address; the plain Ethereum address must
+        // not leak into an ETC wallet.
+        assert_eq!(
+            slots(&plan.wallets[0].addresses),
+            vec![
+                ("ethereum".to_string(), "0xclassic".to_string()),
+                ("ethereum-classic".to_string(), "0xclassic".to_string()),
+            ]
+        );
+    }
+
+    #[test]
+    fn seed_import_carries_bitcoin_xpub_only_on_the_bitcoin_wallet() {
+        let plan = plan_wallet_import(WalletImportRequest {
+            wallet_name: "Main".to_string(),
+            default_wallet_name_start_index: 0,
+            primary_selected_chain_name: "Bitcoin".to_string(),
+            selected_chain_names: vec!["Bitcoin".to_string(), "Solana".to_string()],
+            planned_wallet_ids: vec!["1".to_string(), "2".to_string()],
+            is_watch_only_import: false,
+            is_private_key_import: false,
+            has_wallet_password: false,
+            resolved_addresses: WalletImportAddresses {
+                by_slot: HashMap::from([
+                    ("bitcoin".to_string(), "bc1qexample".to_string()),
+                    ("solana".to_string(), "SoLaNa".to_string()),
+                ]),
+                bitcoin_xpub: Some("zpub999".to_string()),
+            },
+            watch_only_entries: WalletImportWatchOnlyEntries::default(),
+        })
+        .expect("plan");
+
+        assert_eq!(
+            plan.wallets[0].addresses.bitcoin_xpub.as_deref(),
+            Some("zpub999")
+        );
+        assert_eq!(plan.wallets[1].addresses.bitcoin_xpub, None);
     }
 
     #[test]
@@ -1012,30 +696,8 @@ mod tests {
             has_wallet_password: false,
             resolved_addresses: WalletImportAddresses::empty(),
             watch_only_entries: WalletImportWatchOnlyEntries {
-                bitcoin_addresses: Vec::new(),
+                by_slot: HashMap::new(),
                 bitcoin_xpub: Some("xpub123".to_string()),
-                bitcoin_cash_addresses: Vec::new(),
-                bitcoin_sv_addresses: Vec::new(),
-                litecoin_addresses: Vec::new(),
-                dogecoin_addresses: Vec::new(),
-                ethereum_addresses: Vec::new(),
-                tron_addresses: Vec::new(),
-                solana_addresses: Vec::new(),
-                xrp_addresses: Vec::new(),
-                stellar_addresses: Vec::new(),
-                cardano_addresses: Vec::new(),
-                sui_addresses: Vec::new(),
-                aptos_addresses: Vec::new(),
-                ton_addresses: Vec::new(),
-                icp_addresses: Vec::new(),
-                near_addresses: Vec::new(),
-                polkadot_addresses: Vec::new(),
-                zcash_addresses: Vec::new(),
-                bitcoin_gold_addresses: Vec::new(),
-                decred_addresses: Vec::new(),
-                kaspa_addresses: Vec::new(),
-                dash_addresses: Vec::new(),
-                bittensor_addresses: Vec::new(),
             },
         })
         .expect("plan");
@@ -1047,5 +709,94 @@ mod tests {
             Some("xpub123")
         );
         assert_eq!(plan.secret_kind, "watchOnly");
+    }
+
+    #[test]
+    fn watch_only_expands_one_wallet_per_address() {
+        let plan = plan_wallet_import(WalletImportRequest {
+            wallet_name: "Watch".to_string(),
+            default_wallet_name_start_index: 0,
+            primary_selected_chain_name: "Solana".to_string(),
+            selected_chain_names: vec!["Solana".to_string()],
+            planned_wallet_ids: vec!["a".to_string(), "b".to_string()],
+            is_watch_only_import: true,
+            is_private_key_import: false,
+            has_wallet_password: false,
+            resolved_addresses: WalletImportAddresses::empty(),
+            watch_only_entries: WalletImportWatchOnlyEntries {
+                by_slot: HashMap::from([(
+                    "solana".to_string(),
+                    vec!["addr1".to_string(), "addr2".to_string()],
+                )]),
+                bitcoin_xpub: None,
+            },
+        })
+        .expect("plan");
+
+        assert_eq!(plan.wallets.len(), 2);
+        assert_eq!(
+            plan.wallets[0].addresses.by_slot.get("solana").map(String::as_str),
+            Some("addr1")
+        );
+        assert_eq!(
+            plan.wallets[1].addresses.by_slot.get("solana").map(String::as_str),
+            Some("addr2")
+        );
+    }
+
+    #[test]
+    fn watch_only_rejects_chains_that_need_more_than_an_address() {
+        let plan = plan_wallet_import(WalletImportRequest {
+            wallet_name: "Watch".to_string(),
+            default_wallet_name_start_index: 0,
+            primary_selected_chain_name: "Monero".to_string(),
+            selected_chain_names: vec!["Monero".to_string()],
+            planned_wallet_ids: vec!["a".to_string()],
+            is_watch_only_import: true,
+            is_private_key_import: false,
+            has_wallet_password: false,
+            resolved_addresses: WalletImportAddresses::empty(),
+            watch_only_entries: WalletImportWatchOnlyEntries {
+                by_slot: HashMap::from([("monero".to_string(), vec!["4addr".to_string()])]),
+                bitcoin_xpub: None,
+            },
+        });
+
+        // Monero watch-only needs a view key, so an address alone is refused.
+        assert!(plan.is_err());
+        assert!(plan.unwrap_err().contains("not available"));
+    }
+
+    #[test]
+    fn unknown_chain_is_not_importable_watch_only() {
+        let plan = plan_wallet_import(WalletImportRequest {
+            wallet_name: "Watch".to_string(),
+            default_wallet_name_start_index: 0,
+            primary_selected_chain_name: "Nonexistent Chain".to_string(),
+            selected_chain_names: vec!["Nonexistent Chain".to_string()],
+            planned_wallet_ids: vec!["a".to_string()],
+            is_watch_only_import: true,
+            is_private_key_import: false,
+            has_wallet_password: false,
+            resolved_addresses: WalletImportAddresses::empty(),
+            watch_only_entries: WalletImportWatchOnlyEntries::default(),
+        });
+        assert!(plan.is_err());
+    }
+
+    #[test]
+    fn testnet_chains_do_not_borrow_their_mainnet_address() {
+        // A Bitcoin testnet address is not a Bitcoin address, so a testnet
+        // chain must not resolve into the mainnet slot.
+        assert_ne!(
+            Chain::BitcoinTestnet.address_slot(),
+            Chain::Bitcoin.address_slot()
+        );
+        let addresses = WalletImportAddresses {
+            by_slot: HashMap::from([("bitcoin".to_string(), "bc1qexample".to_string())]),
+            bitcoin_xpub: None,
+        };
+        assert_eq!(addresses.address_for(Chain::BitcoinTestnet), None);
+        assert_eq!(addresses.address_for(Chain::Bitcoin), Some("bc1qexample"));
     }
 }

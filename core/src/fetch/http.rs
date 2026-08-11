@@ -66,11 +66,30 @@ fn build_reqwest_client(proxy_url: Option<&str>) -> Client {
         .gzip(true)
         .user_agent(concat!("spectra-core/", env!("CARGO_PKG_VERSION")));
     if let Some(url) = proxy_url {
-        if let Ok(proxy) = reqwest::Proxy::all(url) {
-            builder = builder.proxy(proxy);
+        match reqwest::Proxy::all(url) {
+            Ok(proxy) => builder = builder.proxy(proxy),
+            // Fail closed: a proxy (e.g. Tor) was requested but is unusable.
+            // Returning a direct client here would silently de-anonymize the
+            // user over clearnet, so block all traffic instead.
+            Err(_) => return build_blocked_client(),
         }
     }
-    builder.build().unwrap_or_default()
+    match builder.build() {
+        Ok(client) => client,
+        // Same fail-closed posture if the proxied client fails to build.
+        Err(_) if proxy_url.is_some() => build_blocked_client(),
+        Err(_) => Client::new(),
+    }
+}
+
+/// A client that cannot reach the network: every request is routed to a dead
+/// loopback port. Used when a proxy was requested but could not be applied, so
+/// connectivity breaks loudly instead of leaking over a direct connection.
+fn build_blocked_client() -> Client {
+    Client::builder()
+        .proxy(reqwest::Proxy::all("socks5h://127.0.0.1:1").expect("static proxy url is valid"))
+        .build()
+        .unwrap_or_else(|_| Client::new())
 }
 
 impl HttpClient {

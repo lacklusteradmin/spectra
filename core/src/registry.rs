@@ -353,6 +353,28 @@ impl Chain {
         })
     }
 
+    /// Key under which this chain's address is stored during wallet import.
+    ///
+    /// Most chains own their address, so the slot is just [`Chain::str_id`].
+    /// The exceptions are the EVM family: one derived secp256k1 address serves
+    /// Ethereum, Arbitrum, Base and the rest, so they all share the
+    /// `"ethereum"` slot rather than each carrying a copy.
+    ///
+    /// Ethereum Classic is EVM but keeps a slot of its own, because the import
+    /// flow lets the user supply a distinct ETC address. A wallet on that chain
+    /// is written into *both* slots — see `derivation::import::addresses_for_chain`.
+    ///
+    /// Testnets fall through to their own `str_id`. Import only ever populates
+    /// mainnet slots, so a testnet lookup misses and yields no address — which
+    /// is correct: a Bitcoin testnet address is not a Bitcoin address.
+    pub const fn address_slot(self) -> &'static str {
+        match self {
+            Chain::EthereumClassic => Chain::EthereumClassic.str_id(),
+            _ if self.is_evm() && !self.is_testnet() => Chain::Ethereum.str_id(),
+            _ => self.str_id(),
+        }
+    }
+
     /// Returns `true` for chains that are testnets.
     pub const fn is_testnet(self) -> bool {
         matches!(
@@ -878,6 +900,145 @@ impl Chain {
         )
     }
 
+    /// The `kind` string [`crate::derivation::validation::validate_address`]
+    /// dispatches on for this chain's address format.
+    ///
+    /// Address *format* families are coarser than chains: every EVM chain
+    /// validates as `"evm"`, and each testnet has its own flavour because the
+    /// version bytes differ. This is the single source for that mapping —
+    /// import validation, send validation and diagnostics all read it. It used
+    /// to be duplicated three times, and the copies had drifted: the send-side
+    /// table was missing Base, Polygon, Zcash, Kaspa and a dozen others, so
+    /// `is_valid_send_address` rejected every address on those chains.
+    /// The match is exhaustive on purpose: adding a `Chain` variant must not
+    /// compile until someone states its address format. The EVM arms duplicate
+    /// [`Chain::is_evm`]'s list to keep that property; a test asserts the two
+    /// never disagree.
+    pub const fn address_validation_kind(self) -> &'static str {
+        match self {
+            // EVM: one format, network-agnostic on the wire.
+            Chain::Ethereum
+            | Chain::Arbitrum
+            | Chain::Optimism
+            | Chain::Avalanche
+            | Chain::Base
+            | Chain::EthereumClassic
+            | Chain::BnbChain
+            | Chain::Hyperliquid
+            | Chain::Polygon
+            | Chain::Linea
+            | Chain::Scroll
+            | Chain::Blast
+            | Chain::Mantle
+            | Chain::Sei
+            | Chain::Celo
+            | Chain::Cronos
+            | Chain::OpBnb
+            | Chain::ZkSyncEra
+            | Chain::Sonic
+            | Chain::Berachain
+            | Chain::Unichain
+            | Chain::Ink
+            | Chain::XLayer => "evm",
+            Chain::EthereumSepolia
+            | Chain::EthereumHoodi
+            | Chain::ArbitrumSepolia
+            | Chain::OptimismSepolia
+            | Chain::BaseSepolia
+            | Chain::BnbChainTestnet
+            | Chain::AvalancheFuji
+            | Chain::PolygonAmoy
+            | Chain::HyperliquidTestnet
+            | Chain::EthereumClassicMordor => "evmTestnet",
+
+            Chain::Bitcoin => "bitcoin",
+            Chain::BitcoinTestnet => "bitcoinTestnet",
+            Chain::BitcoinTestnet4 => "bitcoinTestnet4",
+            Chain::BitcoinSignet => "bitcoinSignet",
+            Chain::BitcoinCash => "bitcoinCash",
+            Chain::BitcoinCashTestnet => "bitcoinCashTestnet",
+            Chain::BitcoinSV => "bitcoinSV",
+            Chain::BitcoinSVTestnet => "bitcoinSVTestnet",
+            Chain::Litecoin => "litecoin",
+            Chain::LitecoinTestnet => "litecoinTestnet",
+            Chain::Dogecoin => "dogecoin",
+            Chain::DogecoinTestnet => "dogecoinTestnet",
+            Chain::Tron => "tron",
+            Chain::TronNile => "tronTestnet",
+            Chain::Solana => "solana",
+            Chain::SolanaDevnet => "solanaDevnet",
+            Chain::Stellar => "stellar",
+            Chain::StellarTestnet => "stellarTestnet",
+            Chain::Xrp => "xrp",
+            Chain::XrpTestnet => "xrpTestnet",
+            Chain::Sui => "sui",
+            Chain::SuiTestnet => "suiTestnet",
+            Chain::Aptos => "aptos",
+            Chain::AptosTestnet => "aptosTestnet",
+            Chain::Ton => "ton",
+            Chain::TonTestnet => "tonTestnet",
+            Chain::Icp => "internetComputer",
+            Chain::Near => "near",
+            Chain::NearTestnet => "nearTestnet",
+            Chain::Polkadot => "polkadot",
+            Chain::PolkadotWestend => "polkadotTestnet",
+            Chain::Monero => "monero",
+            Chain::MoneroStagenet => "moneroStagenet",
+            Chain::Cardano => "cardano",
+            Chain::CardanoPreprod => "cardanoTestnet",
+            Chain::Zcash => "zcash",
+            Chain::ZcashTestnet => "zcashTestnet",
+            Chain::BitcoinGold => "bitcoinGold",
+            Chain::Decred => "decred",
+            Chain::DecredTestnet => "decredTestnet",
+            Chain::Kaspa => "kaspa",
+            Chain::KaspaTestnet => "kaspaTestnet",
+            Chain::Dash => "dash",
+            Chain::DashTestnet => "dashTestnet",
+            Chain::Bittensor => "bittensor",
+        }
+    }
+
+    /// `true` when a wallet on this chain can be imported watch-only from an
+    /// address alone.
+    ///
+    /// Monero is the notable exclusion: watching a Monero account needs the
+    /// private view key, which an address does not carry. Testnets are excluded
+    /// because import only populates mainnet slots — see [`Chain::address_slot`].
+    pub const fn supports_watch_only_import(self) -> bool {
+        if self.is_testnet() {
+            return false;
+        }
+        if self.is_evm() {
+            return true;
+        }
+        matches!(
+            self,
+            Chain::Bitcoin
+                | Chain::BitcoinCash
+                | Chain::BitcoinSV
+                | Chain::Litecoin
+                | Chain::Dogecoin
+                | Chain::Tron
+                | Chain::Solana
+                | Chain::Xrp
+                | Chain::Stellar
+                | Chain::Cardano
+                | Chain::Sui
+                | Chain::Aptos
+                | Chain::Ton
+                | Chain::Icp
+                | Chain::Near
+                | Chain::Polkadot
+                | Chain::Zcash
+                | Chain::BitcoinGold
+                | Chain::Decred
+                | Chain::Kaspa
+                | Chain::Dash
+                | Chain::Bittensor
+        )
+    }
+
     pub const fn flags_evm_address_as_wrong_chain(self) -> bool {
         matches!(
             self,
@@ -1010,6 +1171,93 @@ impl EvmChain {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// `address_validation_kind`'s EVM arms duplicate `is_evm`'s list so the
+    /// match can stay exhaustive. This is what stops the two from drifting.
+    #[test]
+    fn evm_validation_kind_agrees_with_is_evm() {
+        for chain in Chain::all() {
+            let kind = chain.address_validation_kind();
+            let kind_says_evm = kind == "evm" || kind == "evmTestnet";
+            assert_eq!(
+                kind_says_evm,
+                chain.is_evm(),
+                "{} : is_evm()={} but address_validation_kind()={kind:?}",
+                chain.str_id(),
+                chain.is_evm(),
+            );
+            if chain.is_evm() {
+                assert_eq!(
+                    kind,
+                    if chain.is_testnet() { "evmTestnet" } else { "evm" },
+                    "{} has the wrong EVM flavour",
+                    chain.str_id(),
+                );
+            }
+        }
+    }
+
+    /// Every chain's kind must be one `validate_address` actually dispatches
+    /// on. A kind it doesn't know falls through to `invalid_result()`, which
+    /// silently rejects every address on that chain — the failure mode the
+    /// old per-module copies of this table had.
+    #[test]
+    fn every_chain_has_a_kind_validate_address_recognises() {
+        use crate::derivation::validation::{validate_address, AddressValidationRequest};
+        for chain in Chain::all() {
+            let kind = chain.address_validation_kind();
+            assert!(!kind.is_empty(), "{} has an empty kind", chain.str_id());
+            // A syntactically impossible address: a recognised kind still
+            // reports `is_valid == false`, so this can't distinguish on its
+            // own. What it does catch is a kind that panics or is blank.
+            let result = validate_address(AddressValidationRequest {
+                kind: kind.to_string(),
+                value: "!".to_string(),
+                network_mode: None,
+            });
+            assert!(!result.is_valid, "{kind} accepted a bogus address");
+        }
+    }
+
+    /// Address slots: every chain has one, and the EVM family shares Ethereum's.
+    #[test]
+    fn address_slots_are_shared_across_the_evm_family_only() {
+        for chain in Chain::all() {
+            let slot = chain.address_slot();
+            assert!(!slot.is_empty(), "{} has no slot", chain.str_id());
+            if chain.is_evm() && !chain.is_testnet() && chain != Chain::EthereumClassic {
+                assert_eq!(
+                    slot,
+                    Chain::Ethereum.str_id(),
+                    "{} should share the ethereum slot",
+                    chain.str_id()
+                );
+            } else {
+                assert_eq!(
+                    slot,
+                    chain.str_id(),
+                    "{} should own its slot",
+                    chain.str_id()
+                );
+            }
+        }
+    }
+
+    /// Watch-only support must never be claimed for a chain with no slot to
+    /// read, and Monero must stay excluded.
+    #[test]
+    fn watch_only_support_excludes_monero_and_testnets() {
+        assert!(!Chain::Monero.supports_watch_only_import());
+        assert!(!Chain::BitcoinTestnet.supports_watch_only_import());
+        assert!(Chain::Bitcoin.supports_watch_only_import());
+        assert!(Chain::Polygon.supports_watch_only_import());
+        assert!(Chain::EthereumClassic.supports_watch_only_import());
+        for chain in Chain::all() {
+            if chain.supports_watch_only_import() {
+                assert!(!chain.is_testnet(), "{} is a testnet", chain.str_id());
+            }
+        }
+    }
 
     #[test]
     fn str_id_roundtrips() {

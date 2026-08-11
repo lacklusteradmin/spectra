@@ -1,6 +1,7 @@
 pub mod chain_aliases;
 pub mod password_verifier;
 pub mod persistence_models;
+pub mod secret_backends;
 pub mod secret_store;
 pub mod seed_envelope;
 pub mod state;

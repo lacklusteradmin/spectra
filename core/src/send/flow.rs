@@ -4,6 +4,7 @@
 // Swift call sites collapse to one-liners delegating here.
 
 use crate::derivation::addressing::{validate_address, AddressValidationRequest};
+use crate::registry::Chain;
 use crate::wallet_core::*;
 
 #[uniffi::export]
@@ -95,59 +96,15 @@ pub fn classify_evm_receipt_json(json: String) -> Option<EvmReceiptClassificatio
     })
 }
 
+/// Address-format kind for a chain *display name*.
+///
+/// Thin wrapper over [`Chain::address_validation_kind`]; the mapping itself
+/// lives in the registry. This used to be its own table and had drifted —
+/// Base, Polygon, Zcash, Kaspa, Dash, Bittensor, Decred, Bitcoin Gold and the
+/// newer EVM chains were missing, so `is_valid_send_address` returned `false`
+/// for every address on them.
 pub(crate) fn chain_kind(chain_name: &str) -> Option<&'static str> {
-    Some(match chain_name {
-        // Mainnets
-        "Bitcoin" => "bitcoin",
-        "Bitcoin Cash" => "bitcoinCash",
-        "Bitcoin SV" => "bitcoinSV",
-        "Litecoin" => "litecoin",
-        "Dogecoin" => "dogecoin",
-        "Ethereum" | "Ethereum Classic" | "Arbitrum" | "Optimism" | "BNB Chain" | "Avalanche"
-        | "Hyperliquid" => "evm",
-        "Tron" => "tron",
-        "Solana" => "solana",
-        "Cardano" => "cardano",
-        "XRP Ledger" => "xrp",
-        "Stellar" => "stellar",
-        "Monero" => "monero",
-        "Sui" => "sui",
-        "Aptos" => "aptos",
-        "TON" => "ton",
-        "Internet Computer" => "internetComputer",
-        "NEAR" => "near",
-        "Polkadot" => "polkadot",
-        // Testnets — each maps to the testnet-flavored validator kind.
-        "Bitcoin Testnet" => "bitcoinTestnet",
-        "Bitcoin Testnet4" => "bitcoinTestnet4",
-        "Bitcoin Signet" => "bitcoinSignet",
-        "Bitcoin Cash Testnet" => "bitcoinCashTestnet",
-        "Bitcoin SV Testnet" => "bitcoinSVTestnet",
-        "Litecoin Testnet" => "litecoinTestnet",
-        "Dogecoin Testnet" => "dogecoinTestnet",
-        "Ethereum Sepolia"
-        | "Ethereum Hoodi"
-        | "Arbitrum Sepolia"
-        | "Optimism Sepolia"
-        | "Base Sepolia"
-        | "BNB Chain Testnet"
-        | "Avalanche Fuji"
-        | "Polygon Amoy"
-        | "Hyperliquid Testnet"
-        | "Ethereum Classic Mordor" => "evmTestnet",
-        "Tron Nile" => "tronTestnet",
-        "Solana Devnet" => "solanaDevnet",
-        "Cardano Preprod" => "cardanoTestnet",
-        "XRP Ledger Testnet" => "xrpTestnet",
-        "Stellar Testnet" => "stellarTestnet",
-        "Monero Stagenet" => "moneroStagenet",
-        "Sui Testnet" => "suiTestnet",
-        "Aptos Testnet" => "aptosTestnet",
-        "TON Testnet" => "tonTestnet",
-        "NEAR Testnet" => "nearTestnet",
-        "Polkadot Westend" => "polkadotTestnet",
-        _ => return None,
-    })
+    Chain::from_display_name(chain_name).map(Chain::address_validation_kind)
 }
 
 #[uniffi::export]
@@ -214,28 +171,35 @@ pub fn is_ens_name_candidate(value: String) -> bool {
     normalized.ends_with(".eth") && !normalized.contains(' ') && !normalized.starts_with("0x")
 }
 
-/// Snapshot of every chain's current send-preview. Swift passes the full set;
-/// Rust picks the one matching `chain_name` and flattens it to `SendPreviewDetails`.
-#[derive(Debug, Clone, uniffi::Record)]
-pub struct SendPreviewsInput {
-    pub bitcoin: Option<BitcoinSendPreview>,
-    pub bitcoin_cash: Option<BitcoinSendPreview>,
-    pub bitcoin_sv: Option<BitcoinSendPreview>,
-    pub litecoin: Option<BitcoinSendPreview>,
-    pub dogecoin: Option<DogecoinSendPreview>,
-    pub ethereum: Option<EthereumSendPreview>,
-    pub tron: Option<TronSendPreview>,
-    pub solana: Option<SolanaSendPreview>,
-    pub xrp: Option<XRPSendPreview>,
-    pub stellar: Option<StellarSendPreview>,
-    pub monero: Option<MoneroSendPreview>,
-    pub cardano: Option<CardanoSendPreview>,
-    pub sui: Option<SuiSendPreview>,
-    pub aptos: Option<AptosSendPreview>,
-    pub ton: Option<TONSendPreview>,
-    pub icp: Option<ICPSendPreview>,
-    pub near: Option<NearSendPreview>,
-    pub polkadot: Option<PolkadotSendPreview>,
+/// The send-preview for the chain currently being composed.
+///
+/// One variant per preview record shape. Previously this was
+/// `SendPreviewsInput`: a record with one `Option<…SendPreview>` field per
+/// chain, of which Swift filled exactly one and Rust selected it by matching on
+/// the chain *name*. That name match carried its own EVM chain list, and the
+/// list had gone stale — it named seven EVM chains, so Base, Polygon, Linea,
+/// Scroll, Blast, Mantle and the rest returned no preview details at all.
+///
+/// With the preview tagged at the source there is no chain matching left to get
+/// wrong, and 17 empty optionals stop crossing the FFI on every keystroke.
+#[derive(Debug, Clone, uniffi::Enum)]
+pub enum SendPreview {
+    /// Bitcoin, Bitcoin Cash, Bitcoin SV and Litecoin share one preview shape.
+    Utxo { preview: BitcoinSendPreview },
+    Dogecoin { preview: DogecoinSendPreview },
+    Ethereum { preview: EthereumSendPreview },
+    Tron { preview: TronSendPreview },
+    Solana { preview: SolanaSendPreview },
+    Xrp { preview: XRPSendPreview },
+    Stellar { preview: StellarSendPreview },
+    Monero { preview: MoneroSendPreview },
+    Cardano { preview: CardanoSendPreview },
+    Sui { preview: SuiSendPreview },
+    Aptos { preview: AptosSendPreview },
+    Ton { preview: TONSendPreview },
+    Icp { preview: ICPSendPreview },
+    Near { preview: NearSendPreview },
+    Polkadot { preview: PolkadotSendPreview },
 }
 
 #[allow(non_snake_case)]
@@ -249,10 +213,92 @@ pub struct SendPreviewDetailsCore {
     pub maxSendable: Option<f64>,
 }
 
-// Per-chain extracted tuple: (spendable, feeRateDesc, txBytes, inputCount, usesChange, maxSendable, estFee)
-// `estFee` (the 7th slot) is only non-None for UTXO chains with a distinct network-fee
-// field; it drives the `fallback = coin_amount - est_fee` calc Swift does at the tail.
-type Extracted = (
+#[uniffi::export]
+pub fn compute_send_preview_details(
+    preview: Option<SendPreview>,
+    coin_amount: f64,
+) -> Option<SendPreviewDetailsCore> {
+    let preview = preview?;
+
+    // Which fields each preview shape contributes. The seventh value is an
+    // estimated network fee, present only for UTXO chains; it backs the
+    // `coin_amount - fee` fallback applied below when a preview reports no
+    // spendable balance or max-sendable of its own.
+    //
+    // Several shapes carry fields this deliberately drops (Tron and friends
+    // populate `estimatedTransactionBytes`, but the send sheet does not show
+    // byte counts for account-model chains). That selection is preserved
+    // exactly as it was.
+    let (spendable, fee_rate, tx_bytes, input_count, uses_change, max_sendable, est_fee) =
+        match preview {
+            SendPreview::Utxo { preview: p } => (
+                p.spendableBalance,
+                p.feeRateDescription,
+                p.estimatedTransactionBytes,
+                p.selectedInputCount,
+                p.usesChangeOutput,
+                p.maxSendable,
+                Some(p.estimatedNetworkFeeBtc),
+            ),
+            SendPreview::Dogecoin { preview: p } => (
+                Some(p.spendableBalance),
+                p.feeRateDescription,
+                Some(p.estimatedTransactionBytes),
+                Some(p.selectedInputCount),
+                Some(p.usesChangeOutput),
+                Some(p.maxSendable),
+                None,
+            ),
+            SendPreview::Ethereum { preview: p } => (
+                p.spendableBalance,
+                p.feeRateDescription,
+                None,
+                None,
+                None,
+                p.maxSendable,
+                None,
+            ),
+            SendPreview::Polkadot { preview: p } => (
+                Some(p.spendableBalance),
+                p.feeRateDescription,
+                p.estimatedTransactionBytes,
+                None,
+                None,
+                Some(p.maxSendable),
+                None,
+            ),
+            // Account-model chains: balance, fee description and max sendable.
+            SendPreview::Tron { preview: p } => simple(p.spendableBalance, p.feeRateDescription, p.maxSendable),
+            SendPreview::Solana { preview: p } => simple(p.spendableBalance, p.feeRateDescription, p.maxSendable),
+            SendPreview::Xrp { preview: p } => simple(p.spendableBalance, p.feeRateDescription, p.maxSendable),
+            SendPreview::Stellar { preview: p } => simple(p.spendableBalance, p.feeRateDescription, p.maxSendable),
+            SendPreview::Monero { preview: p } => simple(p.spendableBalance, p.feeRateDescription, p.maxSendable),
+            SendPreview::Cardano { preview: p } => simple(p.spendableBalance, p.feeRateDescription, p.maxSendable),
+            SendPreview::Sui { preview: p } => simple(p.spendableBalance, p.feeRateDescription, p.maxSendable),
+            SendPreview::Aptos { preview: p } => simple(p.spendableBalance, p.feeRateDescription, p.maxSendable),
+            SendPreview::Ton { preview: p } => simple(p.spendableBalance, p.feeRateDescription, p.maxSendable),
+            SendPreview::Icp { preview: p } => simple(p.spendableBalance, p.feeRateDescription, p.maxSendable),
+            SendPreview::Near { preview: p } => simple(p.spendableBalance, p.feeRateDescription, p.maxSendable),
+        };
+
+    let fallback = est_fee.map(|fee| (coin_amount - fee).max(0.0));
+    Some(SendPreviewDetailsCore {
+        spendableBalance: spendable.or(fallback),
+        feeRateDescription: fee_rate,
+        estimatedTransactionBytes: tx_bytes,
+        selectedInputCount: input_count,
+        usesChangeOutput: uses_change,
+        maxSendable: max_sendable.or(fallback),
+    })
+}
+
+/// Field selection shared by the account-model chains.
+#[allow(clippy::type_complexity)]
+fn simple(
+    spendable: f64,
+    fee_rate: Option<String>,
+    max_sendable: f64,
+) -> (
     Option<f64>,
     Option<String>,
     Option<i64>,
@@ -260,234 +306,128 @@ type Extracted = (
     Option<bool>,
     Option<f64>,
     Option<f64>,
-);
-
-fn extract(input: &SendPreviewsInput, chain: &str) -> Option<Extracted> {
-    match chain {
-        "Bitcoin" => input.bitcoin.as_ref().map(|p| {
-            (
-                p.spendableBalance,
-                p.feeRateDescription.clone(),
-                p.estimatedTransactionBytes,
-                p.selectedInputCount,
-                p.usesChangeOutput,
-                p.maxSendable,
-                Some(p.estimatedNetworkFeeBtc),
-            )
-        }),
-        "Bitcoin Cash" => input.bitcoin_cash.as_ref().map(|p| {
-            (
-                p.spendableBalance,
-                p.feeRateDescription.clone(),
-                p.estimatedTransactionBytes,
-                p.selectedInputCount,
-                p.usesChangeOutput,
-                p.maxSendable,
-                Some(p.estimatedNetworkFeeBtc),
-            )
-        }),
-        "Bitcoin SV" => input.bitcoin_sv.as_ref().map(|p| {
-            (
-                p.spendableBalance,
-                p.feeRateDescription.clone(),
-                p.estimatedTransactionBytes,
-                p.selectedInputCount,
-                p.usesChangeOutput,
-                p.maxSendable,
-                Some(p.estimatedNetworkFeeBtc),
-            )
-        }),
-        "Litecoin" => input.litecoin.as_ref().map(|p| {
-            (
-                p.spendableBalance,
-                p.feeRateDescription.clone(),
-                p.estimatedTransactionBytes,
-                p.selectedInputCount,
-                p.usesChangeOutput,
-                p.maxSendable,
-                Some(p.estimatedNetworkFeeBtc),
-            )
-        }),
-        "Dogecoin" => input.dogecoin.as_ref().map(|p| {
-            (
-                Some(p.spendableBalance),
-                p.feeRateDescription.clone(),
-                Some(p.estimatedTransactionBytes),
-                Some(p.selectedInputCount),
-                Some(p.usesChangeOutput),
-                Some(p.maxSendable),
-                None,
-            )
-        }),
-        "Ethereum" | "Ethereum Classic" | "Arbitrum" | "Optimism" | "BNB Chain" | "Avalanche"
-        | "Hyperliquid" => input.ethereum.as_ref().map(|p| {
-            (
-                p.spendableBalance,
-                p.feeRateDescription.clone(),
-                None,
-                None,
-                None,
-                p.maxSendable,
-                None,
-            )
-        }),
-        "Tron" => input.tron.as_ref().map(|p| {
-            (
-                Some(p.spendableBalance),
-                p.feeRateDescription.clone(),
-                None,
-                None,
-                None,
-                Some(p.maxSendable),
-                None,
-            )
-        }),
-        "Solana" => input.solana.as_ref().map(|p| {
-            (
-                Some(p.spendableBalance),
-                p.feeRateDescription.clone(),
-                None,
-                None,
-                None,
-                Some(p.maxSendable),
-                None,
-            )
-        }),
-        "XRP Ledger" => input.xrp.as_ref().map(|p| {
-            (
-                Some(p.spendableBalance),
-                p.feeRateDescription.clone(),
-                None,
-                None,
-                None,
-                Some(p.maxSendable),
-                None,
-            )
-        }),
-        "Stellar" => input.stellar.as_ref().map(|p| {
-            (
-                Some(p.spendableBalance),
-                p.feeRateDescription.clone(),
-                None,
-                None,
-                None,
-                Some(p.maxSendable),
-                None,
-            )
-        }),
-        "Monero" => input.monero.as_ref().map(|p| {
-            (
-                Some(p.spendableBalance),
-                p.feeRateDescription.clone(),
-                None,
-                None,
-                None,
-                Some(p.maxSendable),
-                None,
-            )
-        }),
-        "Cardano" => input.cardano.as_ref().map(|p| {
-            (
-                Some(p.spendableBalance),
-                p.feeRateDescription.clone(),
-                None,
-                None,
-                None,
-                Some(p.maxSendable),
-                None,
-            )
-        }),
-        "Sui" => input.sui.as_ref().map(|p| {
-            (
-                Some(p.spendableBalance),
-                p.feeRateDescription.clone(),
-                None,
-                None,
-                None,
-                Some(p.maxSendable),
-                None,
-            )
-        }),
-        "Aptos" => input.aptos.as_ref().map(|p| {
-            (
-                Some(p.spendableBalance),
-                p.feeRateDescription.clone(),
-                None,
-                None,
-                None,
-                Some(p.maxSendable),
-                None,
-            )
-        }),
-        "TON" => input.ton.as_ref().map(|p| {
-            (
-                Some(p.spendableBalance),
-                p.feeRateDescription.clone(),
-                None,
-                None,
-                None,
-                Some(p.maxSendable),
-                None,
-            )
-        }),
-        "Internet Computer" => input.icp.as_ref().map(|p| {
-            (
-                Some(p.spendableBalance),
-                p.feeRateDescription.clone(),
-                None,
-                None,
-                None,
-                Some(p.maxSendable),
-                None,
-            )
-        }),
-        "NEAR" => input.near.as_ref().map(|p| {
-            (
-                Some(p.spendableBalance),
-                p.feeRateDescription.clone(),
-                None,
-                None,
-                None,
-                Some(p.maxSendable),
-                None,
-            )
-        }),
-        "Polkadot" => input.polkadot.as_ref().map(|p| {
-            (
-                Some(p.spendableBalance),
-                p.feeRateDescription.clone(),
-                p.estimatedTransactionBytes,
-                None,
-                None,
-                Some(p.maxSendable),
-                None,
-            )
-        }),
-        _ => None,
-    }
-}
-
-#[uniffi::export]
-pub fn compute_send_preview_details(
-    input: SendPreviewsInput,
-    chain_name: String,
-    coin_amount: f64,
-) -> Option<SendPreviewDetailsCore> {
-    let d = extract(&input, &chain_name)?;
-    let fallback = d.6.map(|fee| (coin_amount - fee).max(0.0));
-    Some(SendPreviewDetailsCore {
-        spendableBalance: d.0.or(fallback),
-        feeRateDescription: d.1,
-        estimatedTransactionBytes: d.2,
-        selectedInputCount: d.3,
-        usesChangeOutput: d.4,
-        maxSendable: d.5.or(fallback),
-    })
+) {
+    (
+        Some(spendable),
+        fee_rate,
+        None,
+        None,
+        None,
+        Some(max_sendable),
+        None,
+    )
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn utxo_preview() -> BitcoinSendPreview {
+        BitcoinSendPreview {
+            estimatedNetworkFeeBtc: 0.5,
+            feeRateDescription: Some("12 sat/vB".to_string()),
+            spendableBalance: None,
+            estimatedTransactionBytes: Some(226),
+            selectedInputCount: Some(2),
+            usesChangeOutput: Some(true),
+            maxSendable: None,
+            ..Default::default()
+        }
+    }
+
+    /// UTXO chains report a network fee, and a preview that gives no spendable
+    /// balance or max-sendable falls back to `amount - fee`.
+    #[test]
+    fn utxo_preview_falls_back_to_amount_minus_fee() {
+        let d = compute_send_preview_details(
+            Some(SendPreview::Utxo {
+                preview: utxo_preview(),
+            }),
+            2.0,
+        )
+        .expect("details");
+        assert_eq!(d.spendableBalance, Some(1.5));
+        assert_eq!(d.maxSendable, Some(1.5));
+        assert_eq!(d.estimatedTransactionBytes, Some(226));
+        assert_eq!(d.selectedInputCount, Some(2));
+        assert_eq!(d.usesChangeOutput, Some(true));
+        assert_eq!(d.feeRateDescription.as_deref(), Some("12 sat/vB"));
+    }
+
+    /// The fallback never goes negative.
+    #[test]
+    fn utxo_fallback_clamps_at_zero() {
+        let d = compute_send_preview_details(
+            Some(SendPreview::Utxo {
+                preview: utxo_preview(),
+            }),
+            0.1,
+        )
+        .expect("details");
+        assert_eq!(d.spendableBalance, Some(0.0));
+    }
+
+    /// A preview's own values win over the fallback.
+    #[test]
+    fn utxo_preview_values_take_precedence_over_the_fallback() {
+        let mut preview = utxo_preview();
+        preview.spendableBalance = Some(9.0);
+        preview.maxSendable = Some(8.0);
+        let d = compute_send_preview_details(Some(SendPreview::Utxo { preview }), 2.0).expect("details");
+        assert_eq!(d.spendableBalance, Some(9.0));
+        assert_eq!(d.maxSendable, Some(8.0));
+    }
+
+    /// Account-model chains contribute balance, fee text and max sendable, and
+    /// deliberately drop the byte/input/change fields their record also carries.
+    #[test]
+    fn account_model_previews_drop_utxo_only_fields() {
+        let d = compute_send_preview_details(
+            Some(SendPreview::Tron {
+                preview: TronSendPreview {
+                    spendableBalance: 100.0,
+                    feeRateDescription: Some("1 TRX".to_string()),
+                    estimatedTransactionBytes: Some(300),
+                    selectedInputCount: Some(1),
+                    usesChangeOutput: Some(true),
+                    maxSendable: 99.0,
+                    ..Default::default()
+                },
+            }),
+            100.0,
+        )
+        .expect("details");
+        assert_eq!(d.spendableBalance, Some(100.0));
+        assert_eq!(d.maxSendable, Some(99.0));
+        assert_eq!(d.estimatedTransactionBytes, None);
+        assert_eq!(d.selectedInputCount, None);
+        assert_eq!(d.usesChangeOutput, None);
+    }
+
+    /// Polkadot is the one account-model chain that does surface byte size.
+    #[test]
+    fn polkadot_preview_keeps_transaction_bytes() {
+        let d = compute_send_preview_details(
+            Some(SendPreview::Polkadot {
+                preview: PolkadotSendPreview {
+                    spendableBalance: 10.0,
+                    feeRateDescription: None,
+                    estimatedTransactionBytes: Some(144),
+                    maxSendable: 9.0,
+                    ..Default::default()
+                },
+            }),
+            10.0,
+        )
+        .expect("details");
+        assert_eq!(d.estimatedTransactionBytes, Some(144));
+        assert_eq!(d.selectedInputCount, None);
+    }
+
+    #[test]
+    fn absent_preview_yields_no_details() {
+        assert!(compute_send_preview_details(None, 1.0).is_none());
+    }
 
     #[test]
     fn ens_candidate_positive() {
@@ -700,41 +640,29 @@ pub fn core_evaluate_high_risk_send_reasons(
 use crate::SpectraBridgeError;
 
 // ─── EVM chain context string mapping ────────────────────────────────────────
-// Returns a tag like "ethereum", "ethereum_sepolia", "ethereum_hoodi",
-// "ethereum_classic", "arbitrum", "optimism", "bnb", "avalanche", "hyperliquid",
-// or empty string for non-EVM. Each testnet is its own chain row, so the
-// `ethereum_network_mode` argument is retained only for FFI back-compat
-// with stored wallets — the chain_name alone now uniquely identifies the
-// network.
-
+/// Snake-cased chain identifier for EVM chains; empty string for everything
+/// else. Swift maps the result onto its `EVMChainContext` enum.
+///
+/// Each testnet is its own chain row, so `ethereum_network_mode` is retained
+/// only for FFI back-compat — `chain_name` alone identifies the network.
+///
+/// Derived from `Chain::str_id()` rather than transcribed. The hand-written
+/// table this replaces had drifted badly: it listed `"Base Sepolia"` but not
+/// `"Base"`, `"Polygon Amoy"` but not `"Polygon"`, and omitted Linea, Scroll,
+/// Blast and Mantle entirely — so `evmChainContext(for:)` returned nil and
+/// those mainnets were not treated as EVM chains by the send flow at all.
 #[uniffi::export]
 pub fn core_evm_chain_context_tag(chain_name: String, ethereum_network_mode: String) -> String {
     let _ = ethereum_network_mode; // legacy argument, ignored
-    match chain_name.as_str() {
-        "Ethereum" => "ethereum".to_string(),
-        "Ethereum Sepolia" => "ethereum_sepolia".to_string(),
-        "Ethereum Hoodi" => "ethereum_hoodi".to_string(),
-        "Ethereum Classic" => "ethereum_classic".to_string(),
-        "Ethereum Classic Mordor" => "ethereum_classic_mordor".to_string(),
-        "Arbitrum" => "arbitrum".to_string(),
-        "Arbitrum Sepolia" => "arbitrum_sepolia".to_string(),
-        "Optimism" => "optimism".to_string(),
-        "Optimism Sepolia" => "optimism_sepolia".to_string(),
-        "Base Sepolia" => "base_sepolia".to_string(),
-        "BNB Chain" => "bnb".to_string(),
-        "BNB Chain Testnet" => "bnb_testnet".to_string(),
-        "Avalanche" => "avalanche".to_string(),
-        "Avalanche Fuji" => "avalanche_fuji".to_string(),
-        "Polygon Amoy" => "polygon_amoy".to_string(),
-        "Hyperliquid" => "hyperliquid".to_string(),
-        "Hyperliquid Testnet" => "hyperliquid_testnet".to_string(),
-        _ => String::new(),
-    }
+    Chain::from_display_name(&chain_name)
+        .filter(|chain| chain.is_evm())
+        .map(|chain| chain.str_id().replace('-', "_"))
+        .unwrap_or_default()
 }
 
 #[uniffi::export]
 pub fn core_is_evm_chain(chain_name: String) -> bool {
-    !core_evm_chain_context_tag(chain_name, "mainnet".to_string()).is_empty()
+    Chain::from_display_name(&chain_name).is_some_and(Chain::is_evm)
 }
 
 // ─── Dogecoin derivation index parser ─────────────────────────────────────────
@@ -1206,6 +1134,120 @@ pub fn core_evm_replacement_fee_bump(
 mod flow_helpers_tests {
     use super::*;
 
+    /// Every tag the hand-written table used to emit, pinned. Regenerating
+    /// these from `str_id` must not change a single existing value — Swift
+    /// switches on these strings.
+    #[test]
+    fn evm_context_tags_match_the_legacy_table() {
+        for (chain_name, expected) in [
+            ("Ethereum", "ethereum"),
+            ("Ethereum Sepolia", "ethereum_sepolia"),
+            ("Ethereum Hoodi", "ethereum_hoodi"),
+            ("Ethereum Classic", "ethereum_classic"),
+            ("Ethereum Classic Mordor", "ethereum_classic_mordor"),
+            ("Arbitrum", "arbitrum"),
+            ("Arbitrum Sepolia", "arbitrum_sepolia"),
+            ("Optimism", "optimism"),
+            ("Optimism Sepolia", "optimism_sepolia"),
+            ("Base Sepolia", "base_sepolia"),
+            ("BNB Chain", "bnb"),
+            ("BNB Chain Testnet", "bnb_testnet"),
+            ("Avalanche", "avalanche"),
+            ("Avalanche Fuji", "avalanche_fuji"),
+            ("Polygon Amoy", "polygon_amoy"),
+            ("Hyperliquid", "hyperliquid"),
+            ("Hyperliquid Testnet", "hyperliquid_testnet"),
+        ] {
+            assert_eq!(
+                core_evm_chain_context_tag(chain_name.to_string(), String::new()),
+                expected,
+                "{chain_name} tag changed"
+            );
+        }
+        // Non-EVM stays empty.
+        assert!(core_evm_chain_context_tag("Bitcoin".to_string(), String::new()).is_empty());
+        assert!(core_evm_chain_context_tag("Nope".to_string(), String::new()).is_empty());
+    }
+
+    /// The mainnets the old table skipped. Swift already has
+    /// `EVMChainContext` cases for these tags; Rust simply never produced them.
+    #[test]
+    fn evm_mainnets_the_legacy_table_skipped_now_produce_tags() {
+        for (chain_name, expected) in [
+            ("Base", "base"),
+            ("Polygon", "polygon"),
+            ("Linea", "linea"),
+            ("Scroll", "scroll"),
+            ("Blast", "blast"),
+            ("Mantle", "mantle"),
+        ] {
+            assert_eq!(
+                core_evm_chain_context_tag(chain_name.to_string(), String::new()),
+                expected
+            );
+            assert!(core_is_evm_chain(chain_name.to_string()), "{chain_name}");
+        }
+    }
+
+    /// `chain_kind` used to carry its own display-name table, and that table
+    /// omitted 22 mainnet chains — Base, Polygon, Zcash, Kaspa, Dash and the
+    /// newer EVM rollups among them. `chain_kind` returned `None` for each, so
+    /// `is_valid_send_address` rejected *every* address on those chains and the
+    /// send flow could not be completed at all. It now reads the registry.
+    #[test]
+    fn send_validation_covers_the_chains_the_old_table_omitted() {
+        let evm = "0x9858EfFD232B4033E47d90003D41EC34EcaEda94";
+        let previously_broken_evm = [
+            "Base",
+            "Polygon",
+            "Linea",
+            "Scroll",
+            "Blast",
+            "Mantle",
+            "Sei",
+            "Celo",
+            "Cronos",
+            "opBNB",
+            "zkSync Era",
+            "Sonic",
+            "Berachain",
+            "Unichain",
+            "Ink",
+            "X Layer",
+        ];
+        for chain in previously_broken_evm {
+            assert_eq!(
+                chain_kind(chain),
+                Some("evm"),
+                "{chain} must resolve to the EVM validator"
+            );
+            assert!(
+                is_valid_send_address(chain.to_string(), evm.to_string(), None),
+                "{chain} must accept a valid EVM address"
+            );
+        }
+
+        // Non-EVM chains the old table also missed.
+        for (chain, kind) in [
+            ("Zcash", "zcash"),
+            ("Bitcoin Gold", "bitcoinGold"),
+            ("Decred", "decred"),
+            ("Kaspa", "kaspa"),
+            ("Dash", "dash"),
+            ("Bittensor", "bittensor"),
+        ] {
+            assert_eq!(chain_kind(chain), Some(kind), "{chain} kind");
+        }
+
+        // Still rejects what it should.
+        assert_eq!(chain_kind("Not A Chain"), None);
+        assert!(!is_valid_send_address(
+            "Polygon".to_string(),
+            "not-an-address".to_string(),
+            None
+        ));
+    }
+
     #[test]
     fn evm_chain_context_ethereum_sepolia() {
         // After the testnet-as-separate-chain migration, Sepolia is its own
@@ -1345,3 +1387,4 @@ mod flow_helpers_tests {
         assert_eq!(r.priority_fee_gwei, "0.100");
     }
 }
+

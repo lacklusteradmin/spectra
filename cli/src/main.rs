@@ -1,41 +1,22 @@
+use base64::Engine as _;
 use colored::Colorize;
 use dialoguer::{FuzzySelect, Input};
-use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
-use std::fs;
 use std::io::{self, BufRead, IsTerminal, Write};
 use std::path::PathBuf;
+use std::sync::LazyLock;
 
-// ─── Persisted wallet ────────────────────────────────────────────────────────
+use spectra_core::store::secret_backends::FileSecretStore;
+use spectra_core::store::secret_store::{SecretClass, SecretStore};
+use spectra_core::store::state::{CoreAppState, WalletSummary};
+use spectra_core::store::wallet_db;
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
-struct CliWallet {
-    id: String,
-    name: String,
-    chain_name: String,
-    address: String,
-    #[serde(default)]
-    derivation_path: Option<String>,
-    #[serde(default)]
-    watch_only: bool,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-struct CliWalletStore {
-    version: u32,
-    wallets: Vec<CliWallet>,
-}
-
-impl Default for CliWalletStore {
-    fn default() -> Self {
-        Self {
-            version: 1,
-            wallets: Vec::new(),
-        }
-    }
-}
-
-// ─── Data directory ──────────────────────────────────────────────────────────
+// ─── Store ───────────────────────────────────────────────────────────────────
+//
+// The CLI holds no wallet model of its own. A wallet is a `WalletSummary` and
+// the whole app state is a `CoreAppState`, persisted by `wallet_db` — the same
+// types and the same SQLite store the iOS app uses. That is the CLI's job here:
+// if a core API can only be driven from Swift, it isn't core yet.
 
 fn data_dir() -> PathBuf {
     dirs::home_dir()
@@ -43,34 +24,144 @@ fn data_dir() -> PathBuf {
         .join(".spectra")
 }
 
-fn secrets_dir() -> PathBuf {
-    data_dir().join("secrets")
+fn db_path() -> String {
+    data_dir()
+        .join("spectra.sqlite")
+        .to_string_lossy()
+        .into_owned()
 }
 
-fn wallets_path() -> PathBuf {
-    data_dir().join("wallets.json")
-}
+/// Process-wide secret store rooted at `~/.spectra/secrets`.
+///
+/// The Rust-side counterpart to the Keychain-backed `SecretStore` iOS
+/// registers: same trait, same key layout, different backend.
+static SECRETS: LazyLock<FileSecretStore> = LazyLock::new(|| {
+    FileSecretStore::new(data_dir().join("secrets")).expect("failed to open ~/.spectra/secrets")
+});
 
 fn ensure_dirs() {
-    let sd = secrets_dir();
-    if !sd.exists() {
-        fs::create_dir_all(&sd).expect("failed to create ~/.spectra/secrets");
+    std::fs::create_dir_all(data_dir()).expect("failed to create ~/.spectra");
+    LazyLock::force(&SECRETS);
+}
+
+fn load_state() -> CoreAppState {
+    wallet_db::app_state_load(&db_path()).unwrap_or_else(|e| {
+        eprintln!("  {} failed to load wallets: {e}", accent("✗").bold());
+        CoreAppState::default()
+    })
+}
+
+fn save_state(state: &CoreAppState) {
+    if let Err(e) = wallet_db::app_state_save(&db_path(), state) {
+        eprintln!("  {} failed to save wallets: {e}", accent("✗").bold());
     }
 }
 
-fn load_store() -> CliWalletStore {
-    let path = wallets_path();
-    if !path.exists() {
-        return CliWalletStore::default();
-    }
-    let data = fs::read_to_string(&path).expect("failed to read wallets.json");
-    serde_json::from_str(&data).unwrap_or_default()
+/// Address the CLI shows and queries for a wallet. Wallets always carry one by
+/// construction; the fallback keeps a malformed record printable rather than
+/// panicking mid-listing.
+fn wallet_address(wallet: &WalletSummary) -> &str {
+    wallet.primary_address().unwrap_or("")
 }
 
-fn save_store(store: &CliWalletStore) {
-    let path = wallets_path();
-    let json = serde_json::to_string_pretty(store).expect("failed to serialize wallet store");
-    fs::write(&path, json).expect("failed to write wallets.json");
+// ─── Wallet secrets ──────────────────────────────────────────────────────────
+//
+// Three blobs per wallet: the AES-GCM seed envelope, the salt its master key
+// was derived from, and the password verifier. `SecretStore` values are opaque
+// strings, so each is base64 on the way in and out.
+
+/// Encrypted seed material for one wallet.
+struct WalletSecrets {
+    envelope: Vec<u8>,
+    salt: Vec<u8>,
+    verifier: Vec<u8>,
+}
+
+fn seed_key(wallet_id: &str) -> String {
+    format!("{wallet_id}.seed")
+}
+
+fn salt_key(wallet_id: &str) -> String {
+    format!("{wallet_id}.salt")
+}
+
+fn verifier_key(wallet_id: &str) -> String {
+    format!("{wallet_id}.password")
+}
+
+fn b64() -> base64::engine::general_purpose::GeneralPurpose {
+    base64::engine::general_purpose::STANDARD
+}
+
+fn save_wallet_secrets(wallet_id: &str, secrets: &WalletSecrets) -> Result<(), String> {
+    let engine = b64();
+    for (kind, key, value) in [
+        (
+            SecretClass::Seed,
+            seed_key(wallet_id),
+            &secrets.envelope,
+        ),
+        (SecretClass::Generic, salt_key(wallet_id), &secrets.salt),
+        (
+            SecretClass::Generic,
+            verifier_key(wallet_id),
+            &secrets.verifier,
+        ),
+    ] {
+        SECRETS
+            .save_secret(kind, key, engine.encode(value))
+            .map_err(|e| e.to_string())?;
+    }
+    Ok(())
+}
+
+fn load_wallet_secrets(wallet_id: &str) -> Result<WalletSecrets, String> {
+    let engine = b64();
+    let read = |kind, key: String| -> Result<Vec<u8>, String> {
+        let raw = SECRETS.load_secret(kind, key).map_err(|e| e.to_string())?;
+        engine
+            .decode(raw.trim())
+            .map_err(|e| format!("corrupt secret: {e}"))
+    };
+    Ok(WalletSecrets {
+        envelope: read(SecretClass::Seed, seed_key(wallet_id))?,
+        salt: read(SecretClass::Generic, salt_key(wallet_id))?,
+        verifier: read(SecretClass::Generic, verifier_key(wallet_id))?,
+    })
+}
+
+fn delete_wallet_secrets(wallet_id: &str) {
+    let _ = SECRETS.delete_secret(SecretClass::Seed, seed_key(wallet_id));
+    let _ = SECRETS.delete_secret(SecretClass::Generic, salt_key(wallet_id));
+    let _ = SECRETS.delete_secret(SecretClass::Generic, verifier_key(wallet_id));
+}
+
+/// Encrypt `seed_phrase` under `password` and persist all three blobs.
+fn seal_wallet_secrets(wallet_id: &str, seed_phrase: &str, password: &str) -> Result<(), String> {
+    let mut salt = [0u8; 16];
+    rand_fill(&mut salt);
+    let master_key = derive_master_key(password, &salt);
+    let envelope = spectra_core::store::seed_envelope::encrypt(seed_phrase.as_bytes(), &master_key)?;
+    let verifier = spectra_core::store::password_verifier::create_verifier(password)?;
+    save_wallet_secrets(
+        wallet_id,
+        &WalletSecrets {
+            envelope,
+            salt: salt.to_vec(),
+            verifier,
+        },
+    )
+}
+
+/// Check `password` against a wallet's stored verifier, then decrypt its seed
+/// phrase. `Err` carries a message already suitable for display.
+fn unlock_seed_phrase(wallet_id: &str, password: &str) -> Result<String, String> {
+    let secrets = load_wallet_secrets(wallet_id)?;
+    if !spectra_core::store::password_verifier::verify(password, &secrets.verifier) {
+        return Err("incorrect password".to_string());
+    }
+    let master_key = derive_master_key(password, &secrets.salt);
+    spectra_core::store::seed_envelope::decrypt(&secrets.envelope, &master_key)
 }
 
 // ─── Chain catalog ───────────────────────────────────────────────────────────
@@ -513,56 +604,24 @@ fn cmd_import(args: &[&str]) {
         break pw;
     };
 
-    // 5. Encrypt
-    let mut salt = [0u8; 16];
-    rand_fill(&mut salt);
-    let master_key = derive_master_key(&password, &salt);
-
-    let encrypted_seed =
-        match spectra_core::store::seed_envelope::encrypt(seed_trimmed.as_bytes(), &master_key) {
-            Ok(data) => data,
-            Err(e) => {
-                eprintln!("{} Encryption failed: {e}", accent("✗").bold());
-                return;
-            }
-        };
-
-    let password_verifier = match spectra_core::store::password_verifier::create_verifier(&password)
-    {
-        Ok(data) => data,
-        Err(e) => {
-            eprintln!("{} Verifier failed: {e}", accent("✗").bold());
-            return;
-        }
-    };
-
-    // 6. Persist
+    // 5. Encrypt + persist secrets
     let wallet_id = uuid::Uuid::new_v4().to_string().to_uppercase();
+    if let Err(e) = seal_wallet_secrets(&wallet_id, &seed_trimmed, &password) {
+        eprintln!("{} Failed to store seed: {e}", accent("✗").bold());
+        return;
+    }
 
-    fs::write(
-        secrets_dir().join(format!("{wallet_id}.seed")),
-        &encrypted_seed,
-    )
-    .expect("failed to write encrypted seed");
-    fs::write(secrets_dir().join(format!("{wallet_id}.salt")), salt).expect("failed to write salt");
-    fs::write(
-        secrets_dir().join(format!("{wallet_id}.password")),
-        &password_verifier,
-    )
-    .expect("failed to write password verifier");
-
-    let wallet = CliWallet {
-        id: wallet_id,
-        name: wallet_name.clone(),
-        chain_name: selected.name.clone(),
-        address: address.clone(),
-        derivation_path: Some(selected.default_path.clone()),
-        watch_only: false,
-    };
-
-    let mut store = load_store();
-    store.wallets.push(wallet);
-    save_store(&store);
+    // 6. Persist the wallet
+    let mut state = load_state();
+    state.wallets.push(WalletSummary::single_address(
+        wallet_id,
+        wallet_name.clone(),
+        selected.name.clone(),
+        address.clone(),
+        Some(selected.default_path.clone()),
+        false,
+    ));
+    save_state(&state);
 
     println!();
     println!(
@@ -805,56 +864,24 @@ fn cmd_advimport() {
         break pw;
     };
 
-    // 7. Encrypt
-    let mut salt = [0u8; 16];
-    rand_fill(&mut salt);
-    let master_key = derive_master_key(&password, &salt);
-
-    let encrypted_seed =
-        match spectra_core::store::seed_envelope::encrypt(seed_trimmed.as_bytes(), &master_key) {
-            Ok(data) => data,
-            Err(e) => {
-                eprintln!("{} Encryption failed: {e}", accent("✗").bold());
-                return;
-            }
-        };
-
-    let password_verifier = match spectra_core::store::password_verifier::create_verifier(&password)
-    {
-        Ok(data) => data,
-        Err(e) => {
-            eprintln!("{} Verifier failed: {e}", accent("✗").bold());
-            return;
-        }
-    };
-
-    // 8. Persist
+    // 7. Encrypt + persist secrets
     let wallet_id = uuid::Uuid::new_v4().to_string().to_uppercase();
+    if let Err(e) = seal_wallet_secrets(&wallet_id, &seed_trimmed, &password) {
+        eprintln!("{} Failed to store seed: {e}", accent("✗").bold());
+        return;
+    }
 
-    fs::write(
-        secrets_dir().join(format!("{wallet_id}.seed")),
-        &encrypted_seed,
-    )
-    .expect("failed to write encrypted seed");
-    fs::write(secrets_dir().join(format!("{wallet_id}.salt")), salt).expect("failed to write salt");
-    fs::write(
-        secrets_dir().join(format!("{wallet_id}.password")),
-        &password_verifier,
-    )
-    .expect("failed to write password verifier");
-
-    let wallet = CliWallet {
-        id: wallet_id,
-        name: wallet_name.clone(),
-        chain_name: preset.chain.clone(),
-        address: address.clone(),
-        derivation_path: Some(derivation_path.clone()),
-        watch_only: false,
-    };
-
-    let mut store = load_store();
-    store.wallets.push(wallet);
-    save_store(&store);
+    // 8. Persist the wallet
+    let mut state = load_state();
+    state.wallets.push(WalletSummary::single_address(
+        wallet_id,
+        wallet_name.clone(),
+        preset.chain.clone(),
+        address.clone(),
+        Some(derivation_path.clone()),
+        false,
+    ));
+    save_state(&state);
 
     println!();
     println!(
@@ -1010,56 +1037,24 @@ fn cmd_newwallet() {
         break pw;
     };
 
-    // 7. Encrypt
-    let mut salt = [0u8; 16];
-    rand_fill(&mut salt);
-    let master_key = derive_master_key(&password, &salt);
-
-    let encrypted_seed =
-        match spectra_core::store::seed_envelope::encrypt(seed_phrase.as_bytes(), &master_key) {
-            Ok(data) => data,
-            Err(e) => {
-                eprintln!("{} Encryption failed: {e}", accent("✗").bold());
-                return;
-            }
-        };
-
-    let password_verifier = match spectra_core::store::password_verifier::create_verifier(&password)
-    {
-        Ok(data) => data,
-        Err(e) => {
-            eprintln!("{} Verifier failed: {e}", accent("✗").bold());
-            return;
-        }
-    };
-
-    // 8. Persist
+    // 7. Encrypt + persist secrets
     let wallet_id = uuid::Uuid::new_v4().to_string().to_uppercase();
+    if let Err(e) = seal_wallet_secrets(&wallet_id, &seed_phrase, &password) {
+        eprintln!("{} Failed to store seed: {e}", accent("✗").bold());
+        return;
+    }
 
-    fs::write(
-        secrets_dir().join(format!("{wallet_id}.seed")),
-        &encrypted_seed,
-    )
-    .expect("failed to write encrypted seed");
-    fs::write(secrets_dir().join(format!("{wallet_id}.salt")), salt).expect("failed to write salt");
-    fs::write(
-        secrets_dir().join(format!("{wallet_id}.password")),
-        &password_verifier,
-    )
-    .expect("failed to write password verifier");
-
-    let wallet = CliWallet {
-        id: wallet_id,
-        name: wallet_name.clone(),
-        chain_name: selected.name.clone(),
-        address: address.clone(),
-        derivation_path: Some(selected.default_path.clone()),
-        watch_only: false,
-    };
-
-    let mut store = load_store();
-    store.wallets.push(wallet);
-    save_store(&store);
+    // 8. Persist the wallet
+    let mut state = load_state();
+    state.wallets.push(WalletSummary::single_address(
+        wallet_id,
+        wallet_name.clone(),
+        selected.name.clone(),
+        address.clone(),
+        Some(selected.default_path.clone()),
+        false,
+    ));
+    save_state(&state);
 
     println!();
     println!(
@@ -1149,19 +1144,16 @@ fn cmd_wimport() {
 
     // 4. Persist (no secrets needed for watch-only)
     let wallet_id = uuid::Uuid::new_v4().to_string().to_uppercase();
-
-    let wallet = CliWallet {
-        id: wallet_id,
-        name: wallet_name.clone(),
-        chain_name: selected.name.clone(),
-        address: address.clone(),
-        derivation_path: None,
-        watch_only: true,
-    };
-
-    let mut store = load_store();
-    store.wallets.push(wallet);
-    save_store(&store);
+    let mut state = load_state();
+    state.wallets.push(WalletSummary::single_address(
+        wallet_id,
+        wallet_name.clone(),
+        selected.name.clone(),
+        address.clone(),
+        None,
+        true,
+    ));
+    save_state(&state);
 
     println!();
     println!(
@@ -1179,9 +1171,9 @@ fn cmd_wimport() {
 }
 
 fn cmd_list() {
-    let store = load_store();
+    let state = load_state();
 
-    if store.wallets.is_empty() {
+    if state.wallets.is_empty() {
         println!();
         println!("  {}", muted("no wallets yet"));
         println!(
@@ -1194,13 +1186,13 @@ fn cmd_list() {
     }
 
     println!();
-    for w in &store.wallets {
-        let dot = if w.watch_only {
+    for w in &state.wallets {
+        let dot = if w.is_watch_only {
             chain_paint("○", &w.chain_name)
         } else {
             chain_paint("●", &w.chain_name).bold()
         };
-        let tag = if w.watch_only {
+        let tag = if w.is_watch_only {
             faint(" watch").to_string()
         } else {
             String::new()
@@ -1212,13 +1204,13 @@ fn cmd_list() {
             chain_paint(&w.chain_name, &w.chain_name).bold(),
             tag,
         );
-        println!("     {}", accent_soft(&w.address));
+        println!("     {}", accent_soft(wallet_address(w)));
     }
     println!();
     println!(
         "  {} {}",
-        accent(&format!("{}", store.wallets.len())).bold(),
-        faint(if store.wallets.len() == 1 {
+        accent(&format!("{}", state.wallets.len())).bold(),
+        faint(if state.wallets.len() == 1 {
             "wallet"
         } else {
             "wallets"
@@ -1227,19 +1219,19 @@ fn cmd_list() {
 }
 
 fn cmd_delete() {
-    let mut store = load_store();
+    let mut state = load_state();
 
-    if store.wallets.is_empty() {
+    if state.wallets.is_empty() {
         println!("  {} Nothing to delete.", "No wallets.".dimmed());
         return;
     }
 
-    let labels: Vec<String> = store
+    let labels: Vec<String> = state
         .wallets
         .iter()
         .map(|w| {
-            let tag = if w.watch_only { " (watch)" } else { "" };
-            format!("{} — {} — {}{}", w.name, w.chain_name, w.address, tag)
+            let tag = if w.is_watch_only { " (watch)" } else { "" };
+            format!("{} — {} — {}{}", w.name, w.chain_name, wallet_address(w), tag)
         })
         .collect();
 
@@ -1255,7 +1247,7 @@ fn cmd_delete() {
         }
     };
 
-    let wallet = &store.wallets[idx];
+    let wallet = &state.wallets[idx];
     let confirm_label = format!(
         "Delete \"{}\" ({})? Type '{}' to confirm",
         wallet.name,
@@ -1281,16 +1273,18 @@ fn cmd_delete() {
 
     let wallet_id = wallet.id.clone();
     let wallet_name = wallet.name.clone();
-    let is_watch = wallet.watch_only;
+    let is_watch = wallet.is_watch_only;
 
-    store.wallets.remove(idx);
-    save_store(&store);
+    state.wallets.remove(idx);
+    save_state(&state);
+    // Keypool, owned addresses and history rows for this wallet go too —
+    // `app_state_save` only rewrites the wallet list.
+    if let Err(e) = wallet_db::delete_wallet_data(&db_path(), &wallet_id) {
+        eprintln!("  {} failed to clear wallet data: {e}", accent("✗").bold());
+    }
 
-    // Clean up secret files (if not watch-only)
     if !is_watch {
-        let _ = fs::remove_file(secrets_dir().join(format!("{wallet_id}.seed")));
-        let _ = fs::remove_file(secrets_dir().join(format!("{wallet_id}.salt")));
-        let _ = fs::remove_file(secrets_dir().join(format!("{wallet_id}.password")));
+        delete_wallet_secrets(&wallet_id);
     }
 
     println!(
@@ -1321,8 +1315,8 @@ fn chain_native_symbol(chain_id: &str) -> &'static str {
 
 // ─── Wallet picker (shared by balance/history/staking) ──────────────────────
 
-fn pick_wallet<'a>(store: &'a CliWalletStore, prompt: &str) -> Option<&'a CliWallet> {
-    if store.wallets.is_empty() {
+fn pick_wallet<'a>(state: &'a CoreAppState, prompt: &str) -> Option<&'a WalletSummary> {
+    if state.wallets.is_empty() {
         println!(
             "  {} Use {} to add one.",
             "No wallets.".dimmed(),
@@ -1330,12 +1324,12 @@ fn pick_wallet<'a>(store: &'a CliWalletStore, prompt: &str) -> Option<&'a CliWal
         );
         return None;
     }
-    let labels: Vec<String> = store
+    let labels: Vec<String> = state
         .wallets
         .iter()
         .map(|w| {
-            let tag = if w.watch_only { " (watch)" } else { "" };
-            format!("{} — {} — {}{}", w.name, w.chain_name, w.address, tag)
+            let tag = if w.is_watch_only { " (watch)" } else { "" };
+            format!("{} — {} — {}{}", w.name, w.chain_name, wallet_address(w), tag)
         })
         .collect();
     let idx = match FuzzySelect::new()
@@ -1349,7 +1343,7 @@ fn pick_wallet<'a>(store: &'a CliWalletStore, prompt: &str) -> Option<&'a CliWal
             return None;
         }
     };
-    Some(&store.wallets[idx])
+    Some(&state.wallets[idx])
 }
 
 // ─── Endpoint resolution + service construction ─────────────────────────────
@@ -1386,8 +1380,8 @@ fn build_service_for_chain(
 // ─── balance command ────────────────────────────────────────────────────────
 
 fn cmd_balance(rt: &tokio::runtime::Runtime) {
-    let store = load_store();
-    let wallet = match pick_wallet(&store, "Wallet for balance") {
+    let state = load_state();
+    let wallet = match pick_wallet(&state, "Wallet for balance") {
         Some(w) => w.clone(),
         None => return,
     };
@@ -1406,7 +1400,7 @@ fn cmd_balance(rt: &tokio::runtime::Runtime) {
     println!(
         "  {} {}",
         muted("→"),
-        faint(&format!("fetching {}", wallet.address))
+        faint(&format!("fetching {}", wallet_address(&wallet)))
     );
 
     let service = match build_service_for_chain(
@@ -1423,7 +1417,7 @@ fn cmd_balance(rt: &tokio::runtime::Runtime) {
 
     let result = rt.block_on(async {
         service
-            .fetch_native_balance_summary(chain_id.clone(), wallet.address.clone())
+            .fetch_native_balance_summary(chain_id.clone(), wallet_address(&wallet).to_string())
             .await
     });
 
@@ -1455,8 +1449,8 @@ fn cmd_balance(rt: &tokio::runtime::Runtime) {
 // ─── history command ────────────────────────────────────────────────────────
 
 fn cmd_history(rt: &tokio::runtime::Runtime) {
-    let store = load_store();
-    let wallet = match pick_wallet(&store, "Wallet for history") {
+    let state = load_state();
+    let wallet = match pick_wallet(&state, "Wallet for history") {
         Some(w) => w.clone(),
         None => return,
     };
@@ -1475,7 +1469,7 @@ fn cmd_history(rt: &tokio::runtime::Runtime) {
     println!(
         "  {} {}",
         muted("→"),
-        faint(&format!("fetching {}", wallet.address))
+        faint(&format!("fetching {}", wallet_address(&wallet)))
     );
 
     let service = match build_service_for_chain(
@@ -1492,7 +1486,7 @@ fn cmd_history(rt: &tokio::runtime::Runtime) {
 
     let result = rt.block_on(async {
         service
-            .fetch_normalized_history(chain_id, wallet.address.clone())
+            .fetch_normalized_history(chain_id, wallet_address(&wallet).to_string())
             .await
     });
 
@@ -1599,8 +1593,8 @@ fn format_unix(ts: i64) -> String {
 // ─── staking command ────────────────────────────────────────────────────────
 
 fn cmd_staking(_rt: &tokio::runtime::Runtime) {
-    let store = load_store();
-    let wallet = match pick_wallet(&store, "Wallet for staking") {
+    let state = load_state();
+    let wallet = match pick_wallet(&state, "Wallet for staking") {
         Some(w) => w.clone(),
         None => return,
     };
@@ -1639,8 +1633,8 @@ fn cmd_staking(_rt: &tokio::runtime::Runtime) {
 // ─── Wallet detail / show ────────────────────────────────────────────────────
 
 fn cmd_show() {
-    let store = load_store();
-    let wallet = match pick_wallet(&store, "Wallet to inspect") {
+    let state = load_state();
+    let wallet = match pick_wallet(&state, "Wallet to inspect") {
         Some(w) => w.clone(),
         None => return,
     };
@@ -1655,7 +1649,7 @@ fn cmd_show() {
     println!(
         "  {} {}",
         muted("type   "),
-        if wallet.watch_only {
+        if wallet.is_watch_only {
             faint("watch-only")
         } else {
             accent_soft("hd · seed phrase")
@@ -1664,15 +1658,15 @@ fn cmd_show() {
     if let Some(ref path) = wallet.derivation_path {
         println!("  {} {}", muted("path   "), accent_soft(path));
     }
-    println!("  {} {}", muted("addr   "), wallet.address.white().bold());
+    println!("  {} {}", muted("addr   "), wallet_address(&wallet).white().bold());
     println!("  {} {}", muted("id     "), faint(&wallet.id));
 }
 
 // ─── Rename ─────────────────────────────────────────────────────────────────
 
 fn cmd_rename() {
-    let mut store = load_store();
-    let labels: Vec<String> = store
+    let mut state = load_state();
+    let labels: Vec<String> = state
         .wallets
         .iter()
         .map(|w| format!("{} — {}", w.name, w.chain_name))
@@ -1693,7 +1687,7 @@ fn cmd_rename() {
         }
     };
 
-    let current = store.wallets[idx].name.clone();
+    let current = state.wallets[idx].name.clone();
     let new_name: String = match Input::<String>::new()
         .with_prompt("New name")
         .with_initial_text(&current)
@@ -1711,8 +1705,8 @@ fn cmd_rename() {
         return;
     }
 
-    store.wallets[idx].name = new_name.clone();
-    save_store(&store);
+    state.wallets[idx].name = new_name.clone();
+    save_state(&state);
 
     println!();
     println!(
@@ -1727,8 +1721,8 @@ fn cmd_rename() {
 // ─── Receive (show address) ─────────────────────────────────────────────────
 
 fn cmd_receive() {
-    let store = load_store();
-    let wallet = match pick_wallet(&store, "Wallet to receive on") {
+    let state = load_state();
+    let wallet = match pick_wallet(&state, "Wallet to receive on") {
         Some(w) => w.clone(),
         None => return,
     };
@@ -1738,7 +1732,7 @@ fn cmd_receive() {
         &format!("{} address", wallet.chain_name),
         (r, g, b),
     );
-    println!("  {}", wallet.address.white().bold());
+    println!("  {}", wallet_address(&wallet).white().bold());
     println!();
     println!(
         "  {} {}",
@@ -1767,13 +1761,13 @@ fn cmd_receive() {
 // ─── Export (reveal seed phrase) ────────────────────────────────────────────
 
 fn cmd_export() {
-    let store = load_store();
-    let wallet = match pick_wallet(&store, "Wallet to export") {
+    let state = load_state();
+    let wallet = match pick_wallet(&state, "Wallet to export") {
         Some(w) => w.clone(),
         None => return,
     };
 
-    if wallet.watch_only {
+    if wallet.is_watch_only {
         println!();
         println!(
             "  {} {}",
@@ -1817,42 +1811,10 @@ fn cmd_export() {
 
     let password = read_secret(&format!("  {} ", muted("password:")));
 
-    let salt_path = secrets_dir().join(format!("{}.salt", wallet.id));
-    let seed_path = secrets_dir().join(format!("{}.seed", wallet.id));
-    let verifier_path = secrets_dir().join(format!("{}.password", wallet.id));
-
-    let salt = match fs::read(&salt_path) {
-        Ok(s) => s,
+    let seed_phrase = match unlock_seed_phrase(&wallet.id, &password) {
+        Ok(phrase) => phrase,
         Err(e) => {
-            eprintln!("  {} unable to read salt: {e}", accent("✗").bold());
-            return;
-        }
-    };
-    let verifier_data = match fs::read(&verifier_path) {
-        Ok(v) => v,
-        Err(e) => {
-            eprintln!("  {} unable to read verifier: {e}", accent("✗").bold());
-            return;
-        }
-    };
-    let envelope = match fs::read(&seed_path) {
-        Ok(s) => s,
-        Err(e) => {
-            eprintln!("  {} unable to read seed envelope: {e}", accent("✗").bold());
-            return;
-        }
-    };
-
-    if !spectra_core::store::password_verifier::verify(&password, &verifier_data) {
-        eprintln!("  {} {}", accent("✗").bold(), "incorrect password".white());
-        return;
-    }
-
-    let master_key = derive_master_key(&password, &salt);
-    let seed_phrase = match spectra_core::store::seed_envelope::decrypt(&envelope, &master_key) {
-        Ok(s) => s,
-        Err(e) => {
-            eprintln!("  {} decryption failed: {e}", accent("✗").bold());
+            eprintln!("  {} {e}", accent("✗").bold());
             return;
         }
     };
@@ -1882,13 +1844,13 @@ fn cmd_export() {
 // ─── Send ───────────────────────────────────────────────────────────────────
 
 fn cmd_send(rt: &tokio::runtime::Runtime) {
-    let store = load_store();
-    let wallet = match pick_wallet(&store, "Wallet to send from") {
+    let state = load_state();
+    let wallet = match pick_wallet(&state, "Wallet to send from") {
         Some(w) => w.clone(),
         None => return,
     };
 
-    if wallet.watch_only {
+    if wallet.is_watch_only {
         println!();
         println!(
             "  {} {}",
@@ -1992,34 +1954,8 @@ fn cmd_send(rt: &tokio::runtime::Runtime) {
 
     // Decrypt seed
     let password = read_secret(&format!("  {} ", muted("password:")));
-    let salt = match fs::read(secrets_dir().join(format!("{}.salt", wallet.id))) {
-        Ok(s) => s,
-        Err(e) => {
-            eprintln!("  {} {e}", accent("✗").bold());
-            return;
-        }
-    };
-    let verifier_data = match fs::read(secrets_dir().join(format!("{}.password", wallet.id))) {
-        Ok(v) => v,
-        Err(e) => {
-            eprintln!("  {} {e}", accent("✗").bold());
-            return;
-        }
-    };
-    let envelope = match fs::read(secrets_dir().join(format!("{}.seed", wallet.id))) {
-        Ok(s) => s,
-        Err(e) => {
-            eprintln!("  {} {e}", accent("✗").bold());
-            return;
-        }
-    };
-    if !spectra_core::store::password_verifier::verify(&password, &verifier_data) {
-        eprintln!("  {} incorrect password", accent("✗").bold());
-        return;
-    }
-    let master_key = derive_master_key(&password, &salt);
-    let seed_phrase = match spectra_core::store::seed_envelope::decrypt(&envelope, &master_key) {
-        Ok(s) => s,
+    let seed_phrase = match unlock_seed_phrase(&wallet.id, &password) {
+        Ok(phrase) => phrase,
         Err(e) => {
             eprintln!("  {} {e}", accent("✗").bold());
             return;
@@ -2045,7 +1981,7 @@ fn cmd_send(rt: &tokio::runtime::Runtime) {
         derivation_path,
         seed_phrase: Some(seed_phrase),
         private_key_hex: None,
-        from_address: wallet.address.clone(),
+        from_address: wallet_address(&wallet).to_string(),
         to_address: to_address.clone(),
         amount,
         amount_str: Some(amount_str.clone()),
@@ -2093,8 +2029,8 @@ fn cmd_send(rt: &tokio::runtime::Runtime) {
 // ─── Price ──────────────────────────────────────────────────────────────────
 
 fn cmd_price(rt: &tokio::runtime::Runtime) {
-    let store = load_store();
-    if store.wallets.is_empty() {
+    let state = load_state();
+    if state.wallets.is_empty() {
         // Allow asking for any chain even with no wallets
         let chains = supported_chains();
         let names: Vec<&str> = chains.iter().map(|c| c.name.as_str()).collect();
@@ -2114,7 +2050,7 @@ fn cmd_price(rt: &tokio::runtime::Runtime) {
     }
 
     let unique_chains: std::collections::BTreeSet<String> =
-        store.wallets.iter().map(|w| w.chain_name.clone()).collect();
+        state.wallets.iter().map(|w| w.chain_name.clone()).collect();
     let chain_names: Vec<String> = unique_chains.into_iter().collect();
     let labels: Vec<&str> = chain_names.iter().map(|s| s.as_str()).collect();
     let idx = match FuzzySelect::new()
@@ -2188,8 +2124,8 @@ fn print_price_for_chain(rt: &tokio::runtime::Runtime, chain_name: &str) {
 
 fn cmd_portfolio(rt: &tokio::runtime::Runtime) {
     use spectra_core::registry::Chain;
-    let store = load_store();
-    if store.wallets.is_empty() {
+    let state = load_state();
+    if state.wallets.is_empty() {
         println!("  {}", muted("no wallets"));
         return;
     }
@@ -2202,7 +2138,7 @@ fn cmd_portfolio(rt: &tokio::runtime::Runtime) {
 
     // 1. Fetch prices for unique chains (one CoinGecko call).
     let unique_chains: std::collections::BTreeSet<String> =
-        store.wallets.iter().map(|w| w.chain_name.clone()).collect();
+        state.wallets.iter().map(|w| w.chain_name.clone()).collect();
     let mut requests = Vec::new();
     let mut symbol_for_chain: HashMap<String, String> = HashMap::new();
     for c in &unique_chains {
@@ -2227,7 +2163,7 @@ fn cmd_portfolio(rt: &tokio::runtime::Runtime) {
 
     // 2. Fetch balance for each wallet sequentially.
     let mut total_usd = 0.0;
-    for w in &store.wallets {
+    for w in &state.wallets {
         let chain_id = match chain_id_for_name(&w.chain_name) {
             Some(i) => i,
             None => continue,
@@ -2241,7 +2177,7 @@ fn cmd_portfolio(rt: &tokio::runtime::Runtime) {
             Err(_) => continue,
         };
         let bal_res = rt.block_on(async {
-            svc.fetch_native_balance_summary(chain_id, w.address.clone())
+            svc.fetch_native_balance_summary(chain_id, wallet_address(w).to_string())
                 .await
         });
         let amount: f64 = bal_res
@@ -2255,7 +2191,7 @@ fn cmd_portfolio(rt: &tokio::runtime::Runtime) {
             .get(&w.chain_name)
             .cloned()
             .unwrap_or_else(|| "?".into());
-        let dot = if w.watch_only {
+        let dot = if w.is_watch_only {
             chain_paint("○", &w.chain_name)
         } else {
             chain_paint("●", &w.chain_name).bold()
@@ -2485,6 +2421,10 @@ fn run_shell(rt: &tokio::runtime::Runtime) {
 // ─── Main ────────────────────────────────────────────────────────────────────
 
 fn main() {
+    // Up front, not lazily per command: `wallet_db` opens a SQLite file and
+    // needs its parent directory to exist before the first read, so a fresh
+    // install must not have `list` fail before `import` has ever run.
+    ensure_dirs();
     let rt = tokio::runtime::Runtime::new().expect("failed to start tokio runtime");
     run_shell(&rt);
 }

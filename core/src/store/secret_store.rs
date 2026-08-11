@@ -35,6 +35,21 @@ pub enum SecretClass {
     Generic,
 }
 
+impl SecretClass {
+    /// Stable, filesystem- and identifier-safe name for this class's bucket.
+    ///
+    /// Native backends (see [`secret_backends`](super::secret_backends)) use it
+    /// as a directory / map key. It is part of the on-disk layout, so treat
+    /// these strings as frozen.
+    pub fn bucket(self) -> &'static str {
+        match self {
+            SecretClass::Seed => "seed",
+            SecretClass::PrivateKey => "private_key",
+            SecretClass::Generic => "generic",
+        }
+    }
+}
+
 /// Error surface returned across the FFI. Keeps "not found" distinct from
 /// infrastructure failures so callers can react correctly.
 #[derive(Debug, Error, uniffi::Error)]
