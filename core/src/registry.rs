@@ -101,6 +101,19 @@ pub enum EndpointSlot {
 }
 
 // All variants in stable order. Used by Chain::all().
+/// What a chain requires before a holding may be sent.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SendRule {
+    /// Only the chain's native asset.
+    NativeOnly,
+    /// The native asset, or a token the app supports on this chain.
+    NativeOrSupportedToken,
+    /// Solana's own list of sendable coins.
+    SupportedSolanaCoin,
+    /// No extra restriction beyond the chain supporting sends at all.
+    Any,
+}
+
 const ALL_CHAINS: &[Chain] = &[
     Chain::Bitcoin,
     Chain::Ethereum,
@@ -882,6 +895,60 @@ impl Chain {
         })
     }
 
+    /// Whether a holding on this chain can be sent given only its symbol, or
+    /// whether the caller must also know it is a supported token.
+    ///
+    /// Extracted verbatim from `can_send_holding`, which matched on chain-name
+    /// strings. Note the asymmetry it preserves: Ethereum, BNB Chain and
+    /// Avalanche gate non-native assets on token support, while every other EVM
+    /// chain falls through to `Any`. That is the behaviour as it stands — see
+    /// `send_rule_asymmetry_across_evm_chains` for the case it leaves open.
+    pub const fn send_rule(self) -> SendRule {
+        match self.mainnet_counterpart() {
+            Chain::Ethereum | Chain::BnbChain | Chain::Avalanche => SendRule::NativeOrSupportedToken,
+            Chain::EthereumClassic | Chain::Hyperliquid => SendRule::NativeOnly,
+            Chain::Solana => SendRule::SupportedSolanaCoin,
+            _ => SendRule::Any,
+        }
+    }
+
+    /// How incoming history for this chain merges with what is already stored.
+    ///
+    /// Exhaustive on purpose: a new chain will not compile until someone says
+    /// how its history merges, rather than silently defaulting to the wrong
+    /// rule. This used to live as eighteen near-identical Swift wrappers,
+    /// which is how a chain could be added and quietly get the wrong one.
+    pub const fn transaction_merge_strategy(self) -> crate::fetch::transactions::TransactionMergeStrategy {
+        use crate::fetch::transactions::TransactionMergeStrategy as S;
+        // Resolved through the mainnet counterpart so a testnet can never merge
+        // differently from the chain it mirrors — listing them separately is
+        // how `zcash-testnet` silently ended up account-based.
+        match self.mainnet_counterpart() {
+            // Dogecoin's own variant: its explorer reports change outputs in a
+            // shape the shared UTXO merge mishandles.
+            Chain::Dogecoin => S::Dogecoin,
+            Chain::Bitcoin
+            | Chain::BitcoinCash
+            | Chain::BitcoinSV
+            | Chain::Litecoin
+            | Chain::BitcoinGold
+            | Chain::Dash
+            | Chain::Decred
+            | Chain::Zcash
+            | Chain::Kaspa => S::StandardUtxo,
+            other if other.is_evm() => S::Evm,
+            _ => S::AccountBased,
+        }
+    }
+
+    /// Whether the merge identity for this chain includes the asset symbol.
+    ///
+    /// Tron carries multiple assets on one transaction hash, so hash alone is
+    /// not a unique key there.
+    pub const fn merge_identity_includes_symbol(self) -> bool {
+        matches!(self.mainnet_counterpart(), Chain::Tron)
+    }
+
     pub const fn supports_deep_utxo_discovery(self) -> bool {
         matches!(
             self,
@@ -906,10 +973,9 @@ impl Chain {
     /// Address *format* families are coarser than chains: every EVM chain
     /// validates as `"evm"`, and each testnet has its own flavour because the
     /// version bytes differ. This is the single source for that mapping —
-    /// import validation, send validation and diagnostics all read it. It used
-    /// to be duplicated three times, and the copies had drifted: the send-side
-    /// table was missing Base, Polygon, Zcash, Kaspa and a dozen others, so
-    /// `is_valid_send_address` rejected every address on those chains.
+    /// import validation, send validation and diagnostics all read it. Do not
+    /// re-tabulate it per module; a stale copy silently rejects every address
+    /// on the chains it misses.
     /// The match is exhaustive on purpose: adding a `Chain` variant must not
     /// compile until someone states its address format. The EVM arms duplicate
     /// [`Chain::is_evm`]'s list to keep that property; a test asserts the two

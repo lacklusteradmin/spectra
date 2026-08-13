@@ -44,6 +44,8 @@ pub struct TransferAvailabilityPlan {
     pub receive_enabled_wallet_ids: Vec<String>,
 }
 
+use crate::registry::SendRule;
+
 pub fn plan_transfer_availability(
     request: TransferAvailabilityRequest,
 ) -> TransferAvailabilityPlan {
@@ -109,14 +111,18 @@ fn can_send_holding(holding: &TransferHoldingInput, has_signing_material: bool) 
         return false;
     }
 
-    match holding.chain_name.as_str() {
-        "Ethereum" => holding.symbol == "ETH" || holding.supports_evm_token,
-        "Ethereum Classic" => holding.symbol == "ETC",
-        "BNB Chain" => holding.symbol == "BNB" || holding.supports_evm_token,
-        "Avalanche" => holding.symbol == "AVAX" || holding.supports_evm_token,
-        "Hyperliquid" => holding.symbol == "HYPE",
-        "Solana" => holding.supports_solana_send_coin,
-        _ => true,
+    // The per-chain rule lives on `registry::Chain`; an unknown chain name
+    // keeps the old fallthrough rather than silently blocking sends.
+    let Some(chain) = crate::registry::Chain::from_display_name(&holding.chain_name) else {
+        return true;
+    };
+    match chain.send_rule() {
+        SendRule::Any => true,
+        SendRule::NativeOnly => holding.symbol == chain.coin_symbol(),
+        SendRule::NativeOrSupportedToken => {
+            holding.symbol == chain.coin_symbol() || holding.supports_evm_token
+        }
+        SendRule::SupportedSolanaCoin => holding.supports_solana_send_coin,
     }
 }
 
@@ -209,7 +215,7 @@ mod tests {
     }
 }
 
-// ── FFI surface (relocated from ffi.rs) ──────────────────────────────────
+// ── FFI surface ─────────────────────────────────────────────────────────────
 
 #[uniffi::export]
 pub fn core_plan_transfer_availability(

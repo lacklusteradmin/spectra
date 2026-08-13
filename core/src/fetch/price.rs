@@ -1,10 +1,8 @@
 //! Price and fiat-rate fetching service.
 //!
-//! Ports the legacy Swift `LivePriceService` / `FiatRateService` (at
-//! `Views/Models/PricingModels.swift`) into Rust so Swift can stop owning
-//! the market-data surface. The Rust side handles every supported provider
-//! end-to-end: build the URL, fetch with retry, decode the JSON, resolve
-//! each requested coin to a USD price keyed by its `holding_key`, and
+//! Handles every supported provider end-to-end: build the URL, fetch with
+//! retry, decode the JSON, resolve each requested coin to a USD price keyed
+//! by its `holding_key`, and
 //! fold in stablecoin pinning where the provider doesn't list the token.
 //!
 //! Fiat rates follow the same shape: provider → `HashMap<currency, rate>`

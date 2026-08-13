@@ -924,7 +924,6 @@ pub struct DashboardRebuildDecisionRequest {
 }
 
 /// Decide whether a live-price update should trigger a dashboard rebuild.
-/// Mirrors Swift `shouldRebuildDashboardForLivePriceChange(from:to:)`.
 pub fn plan_dashboard_rebuild_for_live_price_change(
     request: DashboardRebuildDecisionRequest,
 ) -> bool {
@@ -1128,7 +1127,7 @@ pub struct TransactionStatusTrackerState {
 }
 
 impl TransactionStatusTrackerState {
-    fn initial(now_unix: f64) -> Self {
+    pub(crate) fn initial(now_unix: f64) -> Self {
         Self {
             last_checked_at_unix: None,
             next_check_at_unix: now_unix,
@@ -1213,12 +1212,14 @@ pub struct StalePendingFailureTransactionInput {
     pub id: String,
     pub created_at_unix: f64,
     pub status_is_pending: bool,
-    pub tracker_consecutive_failures: u32,
 }
 
-/// Matches Swift `stalePendingFailureIDs`.
-pub fn plan_stale_pending_failure_ids(
+/// Pending transactions that have been pending too long *and* have failed to
+/// resolve often enough to call it. `failures` is the caller's tracker table;
+/// a transaction missing from it has never failed a poll.
+pub(crate) fn plan_stale_pending_failure_ids(
     transactions: Vec<StalePendingFailureTransactionInput>,
+    failures: &std::collections::HashMap<String, u32>,
     now_unix: f64,
     config: TransactionStatusPollConfig,
 ) -> Vec<String> {
@@ -1232,7 +1233,8 @@ pub fn plan_stale_pending_failure_ids(
             if age < config.pending_failure_timeout_seconds {
                 return false;
             }
-            transaction.tracker_consecutive_failures >= config.pending_failure_min_failures
+            failures.get(&transaction.id).copied().unwrap_or(0)
+                >= config.pending_failure_min_failures
         })
         .map(|transaction| transaction.id)
         .collect()
@@ -1254,7 +1256,6 @@ pub struct ResolvedPendingTransactionInput {
     pub old_confirmations: Option<u32>,
     pub resolution: Option<ResolvedPendingStatusInput>,
     pub is_stale_failure: bool,
-    pub current_tracker: Option<TransactionStatusTrackerState>,
 }
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, uniffi::Enum)]
@@ -1272,7 +1273,6 @@ pub struct ResolvedPendingTransactionDecision {
     pub new_status: String,
     pub status_changed: bool,
     pub failure_reason_disposition: FailureReasonDisposition,
-    pub updated_tracker: Option<TransactionStatusTrackerState>,
     pub emit_event_code: Option<String>,
     /// When set, emit a chain-event indicating the transaction newly reached the
     /// finality threshold this poll cycle. Independent of `status_changed` so it
@@ -1284,31 +1284,27 @@ pub struct ResolvedPendingTransactionDecision {
 /// Matches Swift `applyResolvedPendingTransactionStatuses` decision logic. Swift keeps
 /// the `setTransactions` mutation and notification/event emission; Rust returns a
 /// per-transaction decision describing what changed.
-pub fn plan_apply_resolved_pending_transaction_statuses(
+pub(crate) fn plan_apply_resolved_pending_transaction_statuses(
     inputs: Vec<ResolvedPendingTransactionInput>,
+    trackers: &mut std::collections::HashMap<String, TransactionStatusTrackerState>,
     now_unix: f64,
     config: TransactionStatusPollConfig,
 ) -> Vec<ResolvedPendingTransactionDecision> {
-    inputs
-        .into_iter()
-        .filter_map(|input| {
-            if let Some(resolution) = input.resolution {
+    let mut decisions = Vec::new();
+    for input in inputs {
+        let decision = if let Some(resolution) = input.resolution {
                 let new_status = resolution.status.clone();
                 let status_changed = input.old_status != new_status;
                 let new_confirmations = resolution.confirmations;
-                let updated_tracker = if new_status != "pending" {
-                    let mut tracker = input
-                        .current_tracker
-                        .clone()
-                        .unwrap_or_else(|| TransactionStatusTrackerState::initial(now_unix));
+                if new_status != "pending" {
+                    let tracker = trackers
+                        .entry(input.id.clone())
+                        .or_insert_with(|| TransactionStatusTrackerState::initial(now_unix));
                     tracker.reached_finality = new_confirmations
                         .unwrap_or(config.finality_confirmations)
                         >= config.finality_confirmations;
                     tracker.next_check_at_unix = now_unix + config.backoff_max_seconds;
-                    Some(tracker)
-                } else {
-                    None
-                };
+                }
                 let failure_reason_disposition = if new_status == "failed" {
                     if input.old_failure_reason.is_some() {
                         FailureReasonDisposition::Preserve
@@ -1341,12 +1337,11 @@ pub fn plan_apply_resolved_pending_transaction_statuses(
                     new_status,
                     status_changed,
                     failure_reason_disposition,
-                    updated_tracker,
                     emit_event_code,
                     reached_finality_confirmations,
                     send_status_notification: status_changed,
                 })
-            } else if input.is_stale_failure {
+        } else if input.is_stale_failure {
                 let new_status = "failed".to_string();
                 let status_changed = input.old_status != new_status;
                 let failure_reason_disposition = if input.old_failure_reason.is_some() {
@@ -1364,16 +1359,16 @@ pub fn plan_apply_resolved_pending_transaction_statuses(
                     new_status,
                     status_changed,
                     failure_reason_disposition,
-                    updated_tracker: None,
                     emit_event_code,
                     reached_finality_confirmations: None,
                     send_status_notification: status_changed,
                 })
-            } else {
-                None
-            }
-        })
-        .collect()
+        } else {
+            None
+        };
+        decisions.extend(decision);
+    }
+    decisions
 }
 
 // ─── M: Ethereum send error classification ────────────────────────────────────
@@ -1532,53 +1527,7 @@ pub enum HoldingMergeAction {
     Append { coin: HoldingMergeAppendPayload },
 }
 
-fn holding_lookup_key(symbol: &str, chain_name: &str, contract: Option<&str>) -> String {
-    if let Some(raw) = contract {
-        format!("{}:{}", chain_name, raw.to_lowercase())
-    } else {
-        format!("{}:{}", chain_name, symbol)
-    }
-}
 
-pub fn plan_apply_holdings_from_summary(
-    existing: Vec<HoldingMergeExistingInput>,
-    incoming: Vec<HoldingMergeIncomingInput>,
-) -> Vec<HoldingMergeAction> {
-    if incoming.is_empty() {
-        return Vec::new();
-    }
-    let keys: Vec<String> = existing
-        .iter()
-        .map(|h| holding_lookup_key(&h.symbol, &h.chain_name, h.contract_address.as_deref()))
-        .collect();
-    let mut actions: Vec<HoldingMergeAction> = Vec::new();
-    for holding in incoming {
-        let key = holding_lookup_key(
-            &holding.symbol,
-            &holding.chain_name,
-            holding.contract_address.as_deref(),
-        );
-        if let Some(index) = keys.iter().position(|existing_key| existing_key == &key) {
-            actions.push(HoldingMergeAction::UpdateAmount {
-                existing_index: index as u32,
-                amount: holding.amount,
-            });
-        } else if holding.amount > 0.0 {
-            actions.push(HoldingMergeAction::Append {
-                coin: HoldingMergeAppendPayload {
-                    name: holding.name,
-                    symbol: holding.symbol,
-                    coin_gecko_id: holding.coin_gecko_id,
-                    chain_name: holding.chain_name,
-                    token_standard: holding.token_standard,
-                    contract_address: holding.contract_address,
-                    amount: holding.amount,
-                },
-            });
-        }
-    }
-    actions
-}
 
 pub fn plan_resolve_derived_or_stored_address(
     derived: Option<String>,
@@ -1672,7 +1621,7 @@ fn display_error(error: impl std::fmt::Display) -> String {
 #[cfg(test)]
 mod tests;
 
-// ── FFI surface (relocated from ffi.rs) ──────────────────────────────────
+// ── FFI surface ─────────────────────────────────────────────────────────────
 
 #[uniffi::export]
 pub fn core_build_persisted_snapshot(
@@ -1701,12 +1650,12 @@ pub fn core_aggregate_owned_addresses(request: OwnedAddressAggregationRequest) -
 }
 
 #[uniffi::export]
-pub fn core_plan_receive_selection(request: ReceiveSelectionRequest) -> ReceiveSelectionPlan {
+pub fn core_receive_selection(request: ReceiveSelectionRequest) -> ReceiveSelectionPlan {
     plan_receive_selection(request)
 }
 
 #[uniffi::export]
-pub fn core_plan_self_send_confirmation(
+pub fn core_self_send_confirmation(
     request: SelfSendConfirmationRequest,
 ) -> SelfSendConfirmationPlan {
     plan_self_send_confirmation(request)
@@ -1743,7 +1692,7 @@ pub fn core_plan_dashboard_rebuild_for_live_price_change(
 }
 
 #[uniffi::export]
-pub fn core_plan_ethereum_custom_fee_validation(
+pub fn core_ethereum_custom_fee_validation(
     use_custom_fees: bool,
     is_ethereum_chain: bool,
     max_fee_gwei_raw: String,
@@ -1758,7 +1707,7 @@ pub fn core_plan_ethereum_custom_fee_validation(
 }
 
 #[uniffi::export]
-pub fn core_plan_ethereum_manual_nonce_validation(
+pub fn core_ethereum_manual_nonce_validation(
     manual_nonce_enabled: bool,
     nonce_raw: String,
 ) -> Option<EthereumManualNonceValidationCode> {
@@ -1774,61 +1723,7 @@ pub fn core_plan_append_chain_operational_event(
 }
 
 #[uniffi::export]
-pub fn core_plan_transaction_status_should_poll(
-    tracker: Option<TransactionStatusTrackerState>,
-    now_unix: f64,
-) -> bool {
-    plan_transaction_status_should_poll(tracker, now_unix)
-}
-
-#[uniffi::export]
-pub fn core_plan_transaction_status_poll_success(
-    tracker: Option<TransactionStatusTrackerState>,
-    resolved_status_confirmed: bool,
-    resolved_status_pending: bool,
-    reported_confirmations: Option<u32>,
-    now_unix: f64,
-    config: TransactionStatusPollConfig,
-) -> TransactionStatusTrackerState {
-    plan_transaction_status_poll_success(
-        tracker,
-        resolved_status_confirmed,
-        resolved_status_pending,
-        reported_confirmations,
-        now_unix,
-        config,
-    )
-}
-
-#[uniffi::export]
-pub fn core_plan_transaction_status_poll_failure(
-    tracker: Option<TransactionStatusTrackerState>,
-    now_unix: f64,
-    config: TransactionStatusPollConfig,
-) -> TransactionStatusTrackerState {
-    plan_transaction_status_poll_failure(tracker, now_unix, config)
-}
-
-#[uniffi::export]
-pub fn core_plan_stale_pending_failure_ids(
-    transactions: Vec<StalePendingFailureTransactionInput>,
-    now_unix: f64,
-    config: TransactionStatusPollConfig,
-) -> Vec<String> {
-    plan_stale_pending_failure_ids(transactions, now_unix, config)
-}
-
-#[uniffi::export]
-pub fn core_plan_apply_resolved_pending_transaction_statuses(
-    inputs: Vec<ResolvedPendingTransactionInput>,
-    now_unix: f64,
-    config: TransactionStatusPollConfig,
-) -> Vec<ResolvedPendingTransactionDecision> {
-    plan_apply_resolved_pending_transaction_statuses(inputs, now_unix, config)
-}
-
-#[uniffi::export]
-pub fn core_plan_ethereum_send_error_code(message: String) -> EthereumSendErrorCode {
+pub fn core_ethereum_send_error_code(message: String) -> EthereumSendErrorCode {
     plan_ethereum_send_error_code(message)
 }
 
@@ -1847,23 +1742,16 @@ pub fn core_plan_chain_keypool_state(
     plan_chain_keypool_state(baseline, existing)
 }
 
-#[uniffi::export]
-pub fn core_plan_apply_holdings_from_summary(
-    existing: Vec<HoldingMergeExistingInput>,
-    incoming: Vec<HoldingMergeIncomingInput>,
-) -> Vec<HoldingMergeAction> {
-    plan_apply_holdings_from_summary(existing, incoming)
-}
 
 #[uniffi::export]
-pub fn core_plan_evm_recipient_preflight_warnings(
+pub fn core_evm_recipient_preflight_warnings(
     request: EvmRecipientPreflightRequest,
 ) -> Vec<EvmRecipientPreflightWarning> {
     plan_evm_recipient_preflight_warnings(request)
 }
 
 #[uniffi::export]
-pub fn core_plan_priced_chain(
+pub fn core_priced_chain(
     chain_name: String,
     bitcoin_network_mode_raw: String,
     ethereum_network_mode_raw: String,
@@ -1876,7 +1764,7 @@ pub fn core_plan_priced_chain(
 }
 
 #[uniffi::export]
-pub fn core_plan_active_wallet_transaction_ids(
+pub fn core_active_wallet_transaction_ids(
     transactions: Vec<TransactionActivityInput>,
     wallets: Vec<WalletChainInput>,
 ) -> Vec<String> {
@@ -1884,7 +1772,7 @@ pub fn core_plan_active_wallet_transaction_ids(
 }
 
 #[uniffi::export]
-pub fn core_plan_normalized_history_signature(
+pub fn core_normalized_history_signature(
     transactions: Vec<NormalizedHistorySignatureTransaction>,
     wallets: Vec<WalletChainInput>,
 ) -> i64 {
@@ -1892,14 +1780,14 @@ pub fn core_plan_normalized_history_signature(
 }
 
 #[uniffi::export]
-pub fn core_plan_earliest_transaction_dates(
+pub fn core_earliest_transaction_dates(
     transactions: Vec<TransactionEarliestInput>,
 ) -> Vec<WalletEarliestTransactionDate> {
     plan_earliest_transaction_dates(transactions)
 }
 
 #[uniffi::export]
-pub fn core_plan_has_wallet_for_chain(
+pub fn core_has_wallet_for_chain(
     chain_name: String,
     wallets: Vec<WalletChainEligibilityInput>,
 ) -> bool {
@@ -1907,12 +1795,12 @@ pub fn core_plan_has_wallet_for_chain(
 }
 
 #[uniffi::export]
-pub fn core_plan_canonical_chain_component(chain_name: String, symbol: String) -> String {
+pub fn core_canonical_chain_component(chain_name: String, symbol: String) -> String {
     plan_canonical_chain_component(chain_name, symbol)
 }
 
 #[uniffi::export]
-pub fn core_plan_icon_identifier(
+pub fn core_icon_identifier(
     symbol: String,
     chain_name: String,
     contract_address: Option<String>,
@@ -1922,7 +1810,7 @@ pub fn core_plan_icon_identifier(
 }
 
 #[uniffi::export]
-pub fn core_plan_normalized_icon_identifier(identifier: String) -> String {
+pub fn core_normalized_icon_identifier(identifier: String) -> String {
     plan_normalized_icon_identifier(identifier)
 }
 
@@ -1932,7 +1820,7 @@ pub fn core_plan_reset_dispatch(scopes: Vec<String>) -> CoreResetPlan {
 }
 
 #[uniffi::export]
-pub fn core_plan_resolve_derived_or_stored_address(
+pub fn core_resolve_derived_or_stored_address(
     derived: Option<String>,
     stored: Option<String>,
     validation_kind: String,

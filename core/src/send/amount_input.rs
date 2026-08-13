@@ -1,6 +1,5 @@
-// Pure amount-input validation: Swift previously owned one regex-validated
-// parser per chain. This module generalizes to any positive decimal amount with
-// a max fractional digit count.
+// Amount-input validation: parses any positive decimal amount, bounded by a
+// maximum fractional digit count.
 
 #[uniffi::export]
 pub fn parse_amount_input(text: String, max_decimals: u32) -> Option<f64> {

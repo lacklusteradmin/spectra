@@ -77,6 +77,133 @@ pub struct TransactionMergeRequest {
     pub preserve_created_at_sentinel_unix: Option<f64>,
 }
 
+// ── Wire ↔ persisted conversion ──────────────────────────────────────────────
+//
+// The two shapes hold the same 30 fields and differ in three ways: `kind` and
+// `status` are strings on the wire and enums in storage, and the timestamp is
+// Unix on the wire and Swift reference time in storage. Both platforms used to
+// own this conversion; it belongs here, next to the merge that needs it.
+
+use crate::store::persistence_models::CorePersistedTransactionRecord;
+use crate::store::wallet_domain::{CoreTransactionKind, CoreTransactionStatus};
+
+/// Seconds between the Unix epoch and Swift's reference date (2001-01-01 UTC).
+const SWIFT_REFERENCE_EPOCH_OFFSET_SECS: f64 = 978_307_200.0;
+
+fn kind_from_raw(raw: &str) -> CoreTransactionKind {
+    match raw {
+        "send" => CoreTransactionKind::Send,
+        _ => CoreTransactionKind::Receive,
+    }
+}
+
+fn kind_to_raw(kind: CoreTransactionKind) -> &'static str {
+    match kind {
+        CoreTransactionKind::Send => "send",
+        CoreTransactionKind::Receive => "receive",
+    }
+}
+
+fn status_from_raw(raw: &str) -> Option<CoreTransactionStatus> {
+    match raw {
+        "pending" => Some(CoreTransactionStatus::Pending),
+        "confirmed" => Some(CoreTransactionStatus::Confirmed),
+        "failed" => Some(CoreTransactionStatus::Failed),
+        _ => None,
+    }
+}
+
+/// A stored record with no status is legacy data: receives were pending and
+/// sends were confirmed. Applying that here means no read site has to remember.
+fn status_to_raw(status: Option<CoreTransactionStatus>, kind: CoreTransactionKind) -> String {
+    match status {
+        Some(CoreTransactionStatus::Pending) => "pending",
+        Some(CoreTransactionStatus::Confirmed) => "confirmed",
+        Some(CoreTransactionStatus::Failed) => "failed",
+        None => match kind {
+            CoreTransactionKind::Send => "confirmed",
+            CoreTransactionKind::Receive => "pending",
+        },
+    }
+    .to_string()
+}
+
+impl From<CorePersistedTransactionRecord> for CoreTransactionRecord {
+    fn from(stored: CorePersistedTransactionRecord) -> Self {
+        Self {
+            id: stored.id,
+            wallet_id: stored.wallet_id,
+            kind: kind_to_raw(stored.kind).to_string(),
+            status: status_to_raw(stored.status, stored.kind),
+            wallet_name: stored.wallet_name,
+            asset_name: stored.asset_name,
+            symbol: stored.symbol,
+            chain_name: stored.chain_name,
+            amount: stored.amount,
+            address: stored.address,
+            transaction_hash: stored.transaction_hash,
+            ethereum_nonce: stored.ethereum_nonce,
+            receipt_block_number: stored.receipt_block_number,
+            receipt_gas_used: stored.receipt_gas_used,
+            receipt_effective_gas_price_gwei: stored.receipt_effective_gas_price_gwei,
+            receipt_network_fee_eth: stored.receipt_network_fee_eth,
+            fee_priority_raw: stored.fee_priority_raw,
+            fee_rate_description: stored.fee_rate_description,
+            confirmation_count: stored.confirmation_count,
+            dogecoin_confirmed_network_fee_doge: stored.dogecoin_confirmed_network_fee_doge,
+            dogecoin_estimated_fee_rate_doge_per_kb: stored.dogecoin_estimated_fee_rate_doge_per_kb,
+            used_change_output: stored.used_change_output,
+            source_derivation_path: stored.source_derivation_path,
+            change_derivation_path: stored.change_derivation_path,
+            source_address: stored.source_address,
+            change_address: stored.change_address,
+            signed_transaction_payload: stored.signed_transaction_payload,
+            signed_transaction_payload_format: stored.signed_transaction_payload_format,
+            failure_reason: stored.failure_reason,
+            transaction_history_source: stored.transaction_history_source,
+            created_at_unix: stored.created_at + SWIFT_REFERENCE_EPOCH_OFFSET_SECS,
+        }
+    }
+}
+
+impl From<CoreTransactionRecord> for CorePersistedTransactionRecord {
+    fn from(wire: CoreTransactionRecord) -> Self {
+        Self {
+            id: wire.id,
+            wallet_id: wire.wallet_id,
+            kind: kind_from_raw(&wire.kind),
+            status: status_from_raw(&wire.status),
+            wallet_name: wire.wallet_name,
+            asset_name: wire.asset_name,
+            symbol: wire.symbol,
+            chain_name: wire.chain_name,
+            amount: wire.amount,
+            address: wire.address,
+            transaction_hash: wire.transaction_hash,
+            ethereum_nonce: wire.ethereum_nonce,
+            receipt_block_number: wire.receipt_block_number,
+            receipt_gas_used: wire.receipt_gas_used,
+            receipt_effective_gas_price_gwei: wire.receipt_effective_gas_price_gwei,
+            receipt_network_fee_eth: wire.receipt_network_fee_eth,
+            fee_priority_raw: wire.fee_priority_raw,
+            fee_rate_description: wire.fee_rate_description,
+            confirmation_count: wire.confirmation_count,
+            dogecoin_confirmed_network_fee_doge: wire.dogecoin_confirmed_network_fee_doge,
+            dogecoin_estimated_fee_rate_doge_per_kb: wire.dogecoin_estimated_fee_rate_doge_per_kb,
+            used_change_output: wire.used_change_output,
+            source_derivation_path: wire.source_derivation_path,
+            change_derivation_path: wire.change_derivation_path,
+            source_address: wire.source_address,
+            change_address: wire.change_address,
+            signed_transaction_payload: wire.signed_transaction_payload,
+            signed_transaction_payload_format: wire.signed_transaction_payload_format,
+            failure_reason: wire.failure_reason,
+            transaction_history_source: wire.transaction_history_source,
+            created_at: wire.created_at_unix - SWIFT_REFERENCE_EPOCH_OFFSET_SECS,
+        }
+    }
+}
+
 pub fn merge_transactions(request: TransactionMergeRequest) -> Vec<CoreTransactionRecord> {
     let TransactionMergeRequest {
         existing_transactions,
@@ -562,9 +689,96 @@ mod tests {
     }
 }
 
-// ── FFI surface (relocated from ffi.rs) ──────────────────────────────────
+// ── FFI surface ─────────────────────────────────────────────────────────────
 
 #[uniffi::export]
 pub fn core_merge_transactions(request: TransactionMergeRequest) -> Vec<CoreTransactionRecord> {
     merge_transactions(request)
+}
+
+#[cfg(test)]
+mod wire_persisted_conversion {
+    use super::*;
+
+    /// Every field populated with a distinguishable value, so a field dropped
+    /// or crossed in the conversion shows up as an inequality rather than
+    /// passing on defaults.
+    fn populated_wire() -> CoreTransactionRecord {
+        CoreTransactionRecord {
+            id: "TX-1".to_string(),
+            wallet_id: Some("w1".to_string()),
+            kind: "send".to_string(),
+            status: "confirmed".to_string(),
+            wallet_name: "Wallet".to_string(),
+            asset_name: "Bitcoin".to_string(),
+            symbol: "BTC".to_string(),
+            chain_name: "Bitcoin".to_string(),
+            amount: 1.25,
+            address: "bc1qexample".to_string(),
+            transaction_hash: Some("0xhash".to_string()),
+            ethereum_nonce: Some(7),
+            receipt_block_number: Some(1234),
+            receipt_gas_used: Some("21000".to_string()),
+            receipt_effective_gas_price_gwei: Some(12.5),
+            receipt_network_fee_eth: Some(0.00042),
+            fee_priority_raw: Some("priority".to_string()),
+            fee_rate_description: Some("12 sat/vB".to_string()),
+            confirmation_count: Some(6),
+            dogecoin_confirmed_network_fee_doge: Some(1.5),
+            dogecoin_estimated_fee_rate_doge_per_kb: Some(0.01),
+            used_change_output: Some(true),
+            source_derivation_path: Some("m/84'/0'/0'/0/0".to_string()),
+            change_derivation_path: Some("m/84'/0'/0'/1/0".to_string()),
+            source_address: Some("bc1qsource".to_string()),
+            change_address: Some("bc1qchange".to_string()),
+            signed_transaction_payload: Some("deadbeef".to_string()),
+            signed_transaction_payload_format: Some("hex".to_string()),
+            failure_reason: Some("none".to_string()),
+            transaction_history_source: Some("esplora".to_string()),
+            created_at_unix: 1_700_000_000.0,
+        }
+    }
+
+    #[test]
+    fn wire_to_stored_and_back_is_lossless() {
+        let original = populated_wire();
+        let stored: CorePersistedTransactionRecord = original.clone().into();
+        let round_tripped: CoreTransactionRecord = stored.into();
+        assert_eq!(round_tripped, original);
+    }
+
+    #[test]
+    fn the_timestamp_changes_epoch_and_returns() {
+        let stored: CorePersistedTransactionRecord = populated_wire().into();
+        // Same instant, expressed from 2001-01-01 instead of 1970-01-01.
+        assert_eq!(stored.created_at, 1_700_000_000.0 - 978_307_200.0);
+        let back: CoreTransactionRecord = stored.into();
+        assert_eq!(back.created_at_unix, 1_700_000_000.0);
+    }
+
+    /// A stored record with no status is legacy data. Reading it applies the
+    /// documented fallback rather than inventing a status.
+    #[test]
+    fn a_missing_stored_status_falls_back_by_kind() {
+        let mut stored: CorePersistedTransactionRecord = populated_wire().into();
+        stored.status = None;
+
+        stored.kind = CoreTransactionKind::Send;
+        let as_send: CoreTransactionRecord = stored.clone().into();
+        assert_eq!(as_send.status, "confirmed");
+
+        stored.kind = CoreTransactionKind::Receive;
+        let as_receive: CoreTransactionRecord = stored.into();
+        assert_eq!(as_receive.status, "pending");
+    }
+
+    /// An unrecognised status string does not silently become "pending" on the
+    /// way in — it stores as absent, and the fallback above then applies.
+    #[test]
+    fn an_unknown_status_string_stores_as_absent() {
+        let mut wire = populated_wire();
+        wire.status = "who-knows".to_string();
+        let stored: CorePersistedTransactionRecord = wire.into();
+        assert_eq!(stored.status, None);
+    }
 }

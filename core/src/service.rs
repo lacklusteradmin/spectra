@@ -47,12 +47,14 @@ pub(crate) use crate::send::chains::bitcoin::{
     sign_and_broadcast as bitcoin_sign_and_broadcast, BitcoinSendParams,
 };
 pub(crate) use crate::state::{
-    reduce_state_in_place, AssetHolding, CoreAppState, StateCommand, WalletSummary,
+    reduce_state_in_place, AssetHolding, CoreAppState, StateCommand, StateTransition,
 };
 pub(crate) use crate::store::secret_store::SecretStore;
+pub(crate) use crate::store::{TransactionStatusPollConfig, TransactionStatusTrackerState};
 pub(crate) use crate::SpectraBridgeError;
 
 pub(crate) use serde_json::json;
+pub(crate) use std::collections::HashMap;
 pub(crate) use std::sync::Arc;
 pub(crate) use tokio::sync::RwLock;
 
@@ -91,6 +93,52 @@ impl EndpointIndex {
     }
 }
 
+/// Keypool map key. A wallet has one keypool per chain.
+fn keypool_key(wallet_id: &str, chain_name: &str) -> String {
+    format!("{wallet_id}|{chain_name}")
+}
+
+fn record_from_keypool(state: &crate::wallet_db::KeypoolState) -> crate::store::ChainKeypoolStateRecord {
+    crate::store::ChainKeypoolStateRecord {
+        next_external_index: state.next_external_index as i32,
+        next_change_index: state.next_change_index as i32,
+        reserved_receive_index: state.reserved_receive_index.map(|i| i as i32),
+    }
+}
+
+/// Store one keypool entry in memory and in SQLite. Caller holds the lock, so
+/// the read-modify-write around this call stays atomic.
+async fn persist_keypool(
+    state_db_path: &Arc<RwLock<Option<String>>>,
+    keypool: &mut HashMap<String, crate::wallet_db::KeypoolState>,
+    key: String,
+    wallet_id: &str,
+    chain_name: &str,
+    state: crate::wallet_db::KeypoolState,
+) -> Result<(), SpectraBridgeError> {
+    keypool.insert(key, state.clone());
+    // Without a bound database the service runs in memory only — the shape
+    // tests and short-lived tools. Nothing to write.
+    let Some(db_path) = state_db_path.read().await.clone() else {
+        return Ok(());
+    };
+    let (wallet_id, chain_name) = (wallet_id.to_string(), chain_name.to_string());
+    tokio::task::spawn_blocking(move || {
+        crate::wallet_db::keypool_save(&db_path, &wallet_id, &chain_name, &state)
+    })
+    .await
+    .map_err(|e| SpectraBridgeError::from(format!("spawn_blocking: {e}")))?
+    .map_err(Into::into)
+}
+
+fn keypool_from_record(record: &crate::store::ChainKeypoolStateRecord) -> crate::wallet_db::KeypoolState {
+    crate::wallet_db::KeypoolState {
+        next_external_index: record.next_external_index as i64,
+        next_change_index: record.next_change_index as i64,
+        reserved_receive_index: record.reserved_receive_index.map(|i| i as i64),
+    }
+}
+
 // ── WalletService — primary UniFFI-exported object ────────────────────────
 
 /// Swift holds one instance for the lifetime of the app session.
@@ -103,9 +151,24 @@ pub struct WalletService {
     pub(crate) secret_store: Arc<std::sync::RwLock<Option<Arc<dyn SecretStore>>>>,
     /// Canonical in-memory wallet + holdings state.
     pub(crate) wallet_state: Arc<RwLock<CoreAppState>>,
+    /// Where `wallet_state` is persisted. `None` until `open_state` is called,
+    /// in which case commands apply in memory only — the shape tests and
+    /// short-lived tools want.
+    pub(crate) state_db_path: Arc<RwLock<Option<String>>>,
     /// User's Etherscan V2 API key. Shared across all EVM chains: Etherscan v2
     /// dispatches by `chainid` parameter against a single host.
     pub(crate) etherscan_api_key: Arc<std::sync::RwLock<String>>,
+    /// Confirmation-poll backoff state, keyed by transaction id. Not persisted:
+    /// a restart should re-poll every pending transaction immediately, which is
+    /// what an absent tracker already means.
+    pub(crate) status_trackers: Arc<RwLock<HashMap<String, TransactionStatusTrackerState>>>,
+    /// Keypool indices, keyed by `wallet_id|chain_name`.
+    ///
+    /// Unlike `status_trackers` this IS persisted — losing it means reissuing
+    /// an address that was already handed out. Held in memory so that
+    /// reserve-and-increment can happen atomically under one lock; every
+    /// mutation writes through to `wallet_keypool` before returning.
+    pub(crate) keypool: Arc<RwLock<HashMap<String, crate::wallet_db::KeypoolState>>>,
 }
 
 #[uniffi::export(async_runtime = "tokio")]
@@ -133,7 +196,10 @@ impl WalletService {
             history_pagination: Arc::new(HistoryPaginationStore::new()),
             secret_store: Arc::new(std::sync::RwLock::new(None)),
             wallet_state: Arc::new(RwLock::new(CoreAppState::default())),
+            state_db_path: Arc::new(RwLock::new(None)),
             etherscan_api_key: Arc::new(std::sync::RwLock::new(String::new())),
+            status_trackers: Arc::new(RwLock::new(HashMap::new())),
+            keypool: Arc::new(RwLock::new(HashMap::new())),
         }))
     }
 
@@ -272,7 +338,7 @@ impl WalletService {
     /// Fused Bitcoin HD history page: derive external+change addresses from
     /// `xpub`, concurrently fetch each address's history, and merge into a
     /// deduplicated page truncated to `limit`. Scan window is 20 external +
-    /// 10 change, matching the legacy Swift orchestration this replaces.
+    /// 10 change.
     pub async fn fetch_bitcoin_hd_history_page(
         &self,
         xpub: String,
@@ -767,8 +833,7 @@ impl WalletService {
 
     /// Typed wrapper around `broadcast_raw`: runs the broadcast then extracts
     /// the named field (typically `"txid"` or `"digest"`) from the result JSON.
-    /// Returns the field value as a string (empty string when missing —
-    /// matches the prior `rustField(...)` semantics on the Swift side).
+    /// Returns the field value as a string, or an empty string when missing.
     pub async fn broadcast_raw_extract(
         &self,
         chain_id: String,
@@ -2580,7 +2645,6 @@ pub(super) fn read_evm_overrides(
 //   - `temp_store   = MEMORY`  query temp tables don't hit disk
 
 use parking_lot::Mutex as PlMutex;
-use std::collections::HashMap;
 
 static SQLITE_POOL: std::sync::LazyLock<PlMutex<HashMap<String, rusqlite::Connection>>> =
     std::sync::LazyLock::new(|| PlMutex::new(HashMap::new()));
@@ -2670,7 +2734,7 @@ pub(super) fn is_extended_public_key(s: &str) -> bool {
     )
 }
 
-// ── FFI: misc utility surface (relocated from ffi.rs) ────────────────────
+// ── FFI: misc utility surface ───────────────────────────────────────────────
 
 /// Trim + lowercase + strip leading `0x` from a private-key hex string.
 #[uniffi::export]
@@ -2767,7 +2831,6 @@ pub struct PersistedAppSettings {
     pub large_movement_alert_percent_threshold: f64,
     #[serde(rename = "largeMovementAlertUSDThreshold")]
     pub large_movement_alert_usd_threshold: f64,
-    pub pinned_dashboard_asset_symbols: Vec<String>,
 }
 
 /// Token descriptor passed across UniFFI without JSON-shuttle marshalling.
@@ -2805,6 +2868,59 @@ pub struct NativeBalanceSummary {
 pub struct EvmAddressProbe {
     pub nonce: i64,
     pub balance_eth: f64,
+}
+
+/// What a [`TransactionCommand`] changed, by id.
+///
+/// Deliberately not the resulting list: history is unbounded, so a command that
+/// returned it would make every write cost the size of the whole store.
+#[derive(Debug, Clone, Default, uniffi::Record)]
+pub struct TransactionChange {
+    pub added: Vec<String>,
+    pub updated: Vec<String>,
+    pub removed: Vec<String>,
+}
+
+impl TransactionChange {
+    /// True when the store is unchanged, so a caller can skip re-reading.
+    pub fn is_empty(&self) -> bool {
+        self.added.is_empty() && self.updated.is_empty() && self.removed.is_empty()
+    }
+}
+
+/// Mutations of the transaction store.
+///
+/// `Upsert` covers recording a send, merging a fetched history page, and
+/// updating a status — in every case the caller supplies the record it wants
+/// stored, and core works out whether that is an addition or an update.
+#[derive(Debug, Clone, uniffi::Enum)]
+pub enum TransactionCommand {
+    Upsert {
+        records: Vec<crate::store::persistence_models::CorePersistedTransactionRecord>,
+    },
+    /// Merge a freshly fetched page into what is already stored.
+    ///
+    /// Core reads its own records to merge against, so only the incoming page
+    /// crosses the FFI. Previously a front end shipped its entire history over,
+    /// received the merged list back, and diffed it — the whole history moved
+    /// three times per refresh.
+    /// Merge freshly fetched history for a chain into what is stored.
+    ///
+    /// The merge strategy is not a parameter: it is a property of the chain and
+    /// comes from `registry::Chain`. Callers used to pass it, which is how a
+    /// chain could be wired to the wrong one.
+    Merge {
+        incoming: Vec<crate::fetch::transactions::CoreTransactionRecord>,
+        chain_name: String,
+        preserve_created_at_sentinel_unix: Option<f64>,
+    },
+    Remove {
+        ids: Vec<String>,
+    },
+    RemoveForWallet {
+        wallet_id: String,
+    },
+    Clear,
 }
 
 /// Endpoint configuration passed in from Swift at construction time and
@@ -3609,6 +3725,13 @@ impl WalletService {
         db_path: String,
         wallet_id: String,
     ) -> Result<(), SpectraBridgeError> {
+        // Drop the in-memory rows too, or a reserve after this would still see
+        // the deleted wallet's indices.
+        {
+            let suffix_owner = wallet_id.clone();
+            let mut keypool = self.keypool.write().await;
+            keypool.retain(|key, _| !key.starts_with(&format!("{suffix_owner}|")));
+        }
         tokio::task::spawn_blocking(move || {
             crate::wallet_db::keypool_delete_for_wallet(&db_path, &wallet_id)
         })
@@ -3624,6 +3747,13 @@ impl WalletService {
         db_path: String,
         chain_name: String,
     ) -> Result<(), SpectraBridgeError> {
+        // Switching network mode invalidates every index on the chain; the
+        // in-memory copy has to go with the stored one.
+        {
+            let suffix = format!("|{chain_name}");
+            let mut keypool = self.keypool.write().await;
+            keypool.retain(|key, _| !key.ends_with(&suffix));
+        }
         tokio::task::spawn_blocking(move || {
             crate::wallet_db::keypool_delete_for_chain(&db_path, &chain_name)
         })
@@ -3760,24 +3890,558 @@ impl WalletService {
             .map_err(Into::into)
     }
 
-    /// Seed the in-memory wallet list from typed `WalletSummary` records.
-    pub async fn init_wallet_state_direct(
-        &self,
-        wallets: Vec<WalletSummary>,
-    ) -> Result<(), SpectraBridgeError> {
+    // ── Owned application state ───────────────────────────────────────────
+    //
+    // `CoreAppState` is the domain state, and this service owns it. Front ends
+    // send a `StateCommand` and receive the resulting state; they do not keep
+    // their own copy and mutate it.
+    //
+    // `open_state` binds a database path, after which every accepted command is
+    // persisted before it returns. Callers therefore cannot forget to save,
+    // which is how two copies of the truth start diverging.
+
+    /// Bind the service to its state database and load what is stored there.
+    ///
+    /// An untouched database yields `CoreAppState::default()`. Call once at
+    /// startup; the returned state is the caller's initial snapshot.
+    pub async fn open_state(&self, db_path: String) -> Result<CoreAppState, SpectraBridgeError> {
+        // Opening is idempotent. A second call with the same database returns
+        // what is already held rather than re-reading — a late `open_state`
+        // (the app's launch reload racing a user action) would otherwise
+        // replace the in-memory state with a snapshot taken before the newer
+        // command, silently reverting it.
+        if self.state_db_path.read().await.as_deref() == Some(db_path.as_str()) {
+            return Ok(self.wallet_state.read().await.clone());
+        }
+
+        let loaded = {
+            let path = db_path.clone();
+            tokio::task::spawn_blocking(move || crate::wallet_db::app_state_load(&path))
+                .await
+                .map_err(|e| SpectraBridgeError::from(format!("spawn_blocking: {e}")))??
+        };
+        let keypool = {
+            let path = db_path.clone();
+            tokio::task::spawn_blocking(move || crate::wallet_db::keypool_load_all(&path))
+                .await
+                .map_err(|e| SpectraBridgeError::from(format!("spawn_blocking: {e}")))??
+        };
+        *self.keypool.write().await = keypool
+            .into_iter()
+            .flat_map(|(chain, per_wallet)| {
+                per_wallet
+                    .into_iter()
+                    .map(move |(wallet, state)| (keypool_key(&wallet, &chain), state))
+            })
+            .collect();
+
+        *self.state_db_path.write().await = Some(db_path);
         let mut state = self.wallet_state.write().await;
-        state.wallets = wallets;
-        Ok(())
+        *state = loaded;
+        Ok(state.clone())
     }
 
-    /// Add or replace a wallet from a typed `WalletSummary` record.
-    pub async fn upsert_wallet_direct(
+    /// Apply a command to the owned state, persist it, and return the result.
+    ///
+    /// The returned `StateTransition` carries the new state and the events the
+    /// reducer produced, so a front end can both re-render and react without a
+    /// second call. When no command applied — setting a value to what it
+    /// already is — `events` is empty and nothing is written.
+    pub async fn apply_state_command(
         &self,
-        wallet: WalletSummary,
+        command: StateCommand,
+    ) -> Result<StateTransition, SpectraBridgeError> {
+        let (snapshot, events) = {
+            let mut state = self.wallet_state.write().await;
+            let events = reduce_state_in_place(&mut state, command);
+            (state.clone(), events)
+        };
+
+        if !events.is_empty() {
+            if let Some(path) = self.state_db_path.read().await.clone() {
+                let to_save = snapshot.clone();
+                tokio::task::spawn_blocking(move || {
+                    crate::wallet_db::app_state_save(&path, &to_save)
+                })
+                .await
+                .map_err(|e| SpectraBridgeError::from(format!("spawn_blocking: {e}")))??;
+            }
+        }
+
+        Ok(StateTransition {
+            state: snapshot,
+            events,
+        })
+    }
+
+    // ── Owned transaction store ───────────────────────────────────────────
+    //
+    // Transactions are core-owned like everything else in this section, but
+    // they deliberately do *not* live in `CoreAppState`. History is unbounded,
+    // and `apply_state_command` returns the whole state — putting them there
+    // would clone every transaction on every unrelated command.
+    //
+    // So the store is SQLite (`history_records`), and a command reports *what
+    // changed by id* rather than handing back the list. Core computes that
+    // delta itself, which is the part a caller can get wrong: whether a record
+    // is new or an update is a property of the store, not of the caller.
+
+    /// Change a command made to the transaction store. Ids, not records —
+    /// callers re-read only what they need.
+    pub async fn apply_transaction_command(
+        &self,
+        command: TransactionCommand,
+    ) -> Result<TransactionChange, SpectraBridgeError> {
+        let db_path = self.bound_state_db_path().await?;
+
+        tokio::task::spawn_blocking(move || -> Result<TransactionChange, String> {
+            match command {
+                TransactionCommand::Upsert { records } => {
+                    if records.is_empty() {
+                        return Ok(TransactionChange::default());
+                    }
+                    let rows: Vec<crate::wallet_db::HistoryRecord> = records
+                        .into_iter()
+                        .map(crate::wallet_db::history_record_from_payload)
+                        .collect();
+                    let ids: Vec<String> = rows.iter().map(|r| r.id.clone()).collect();
+                    let existing = crate::wallet_db::history_existing_ids(&db_path, &ids)?;
+                    crate::wallet_db::history_upsert_batch(&db_path, &rows)?;
+                    let existing: std::collections::HashSet<String> =
+                        existing.into_iter().collect();
+                    let (updated, added): (Vec<String>, Vec<String>) =
+                        ids.into_iter().partition(|id| existing.contains(id));
+                    Ok(TransactionChange {
+                        added,
+                        updated,
+                        removed: Vec::new(),
+                    })
+                }
+                TransactionCommand::Merge {
+                    incoming,
+                    chain_name,
+                    preserve_created_at_sentinel_unix,
+                } => {
+                    let chain = Chain::from_display_name(&chain_name)
+                        .ok_or_else(|| format!("merge: unknown chain {chain_name:?}"))?;
+                    let strategy = chain.transaction_merge_strategy();
+                    let include_symbol_in_identity = chain.merge_identity_includes_symbol();
+                    let existing: Vec<crate::fetch::transactions::CoreTransactionRecord> =
+                        crate::wallet_db::history_fetch_all(&db_path)?
+                            .into_iter()
+                            .map(|row| row.payload.into())
+                            .collect();
+                    let before: std::collections::HashMap<String, String> = existing
+                        .iter()
+                        .map(|record| (record.id.to_lowercase(), fingerprint(record)))
+                        .collect();
+
+                    let merged = crate::fetch::transactions::merge_transactions(
+                        crate::fetch::transactions::TransactionMergeRequest {
+                            existing_transactions: existing,
+                            incoming_transactions: incoming,
+                            strategy,
+                            chain_name,
+                            include_symbol_in_identity,
+                            preserve_created_at_sentinel_unix,
+                        },
+                    );
+
+                    // Only records the merge actually altered are written — a
+                    // history refresh mostly returns what is already stored.
+                    let mut added = Vec::new();
+                    let mut updated = Vec::new();
+                    let mut rows = Vec::new();
+                    for record in merged {
+                        let id = record.id.to_lowercase();
+                        match before.get(&id) {
+                            Some(previous) if *previous == fingerprint(&record) => continue,
+                            Some(_) => updated.push(id),
+                            None => added.push(id),
+                        }
+                        rows.push(crate::wallet_db::history_record_from_payload(record.into()));
+                    }
+                    if !rows.is_empty() {
+                        crate::wallet_db::history_upsert_batch(&db_path, &rows)?;
+                    }
+                    Ok(TransactionChange {
+                        added,
+                        updated,
+                        removed: Vec::new(),
+                    })
+                }
+                TransactionCommand::Remove { ids } => {
+                    if ids.is_empty() {
+                        return Ok(TransactionChange::default());
+                    }
+                    let ids: Vec<String> = ids.iter().map(|id| id.to_lowercase()).collect();
+                    let removed = crate::wallet_db::history_existing_ids(&db_path, &ids)?;
+                    crate::wallet_db::history_delete(&db_path, &ids)?;
+                    Ok(TransactionChange {
+                        removed,
+                        ..TransactionChange::default()
+                    })
+                }
+                TransactionCommand::RemoveForWallet { wallet_id } => {
+                    let removed: Vec<String> =
+                        crate::wallet_db::history_fetch_for_wallet(&db_path, &wallet_id)?
+                            .into_iter()
+                            .map(|record| record.id)
+                            .collect();
+                    crate::wallet_db::history_delete_for_wallet(&db_path, &wallet_id)?;
+                    Ok(TransactionChange {
+                        removed,
+                        ..TransactionChange::default()
+                    })
+                }
+                TransactionCommand::Clear => {
+                    let removed: Vec<String> = crate::wallet_db::history_fetch_all(&db_path)?
+                        .into_iter()
+                        .map(|record| record.id)
+                        .collect();
+                    crate::wallet_db::history_clear(&db_path)?;
+                    Ok(TransactionChange {
+                        removed,
+                        ..TransactionChange::default()
+                    })
+                }
+            }
+        })
+        .await
+        .map_err(|e| SpectraBridgeError::from(format!("spawn_blocking: {e}")))?
+        .map_err(Into::into)
+    }
+
+    /// Every stored transaction, newest first.
+    pub async fn transactions(
+        &self,
+    ) -> Result<Vec<crate::store::persistence_models::CorePersistedTransactionRecord>, SpectraBridgeError>
+    {
+        let db_path = self.bound_state_db_path().await?;
+        tokio::task::spawn_blocking(move || crate::wallet_db::history_fetch_all(&db_path))
+            .await
+            .map_err(|e| SpectraBridgeError::from(format!("spawn_blocking: {e}")))?
+            .map(|rows| rows.into_iter().map(|row| row.payload).collect())
+            .map_err(Into::into)
+    }
+
+    /// Stored transactions for one wallet, newest first.
+    pub async fn transactions_for_wallet(
+        &self,
+        wallet_id: String,
+    ) -> Result<Vec<crate::store::persistence_models::CorePersistedTransactionRecord>, SpectraBridgeError>
+    {
+        let db_path = self.bound_state_db_path().await?;
+        tokio::task::spawn_blocking(move || {
+            crate::wallet_db::history_fetch_for_wallet(&db_path, &wallet_id)
+        })
+        .await
+        .map_err(|e| SpectraBridgeError::from(format!("spawn_blocking: {e}")))?
+        .map(|rows| rows.into_iter().map(|row| row.payload).collect())
+        .map_err(Into::into)
+    }
+
+    /// Which of `transaction_ids` are due for a confirmation poll now.
+    ///
+    /// An untracked transaction is always due — that is what makes a fresh
+    /// launch re-poll everything pending.
+    pub async fn transactions_due_for_status_poll(
+        &self,
+        transaction_ids: Vec<String>,
+        now_unix: f64,
+    ) -> Vec<String> {
+        let trackers = self.status_trackers.read().await;
+        transaction_ids
+            .into_iter()
+            .filter(|id| {
+                crate::store::plan_transaction_status_should_poll(
+                    trackers.get(id).cloned(),
+                    now_unix,
+                )
+            })
+            .collect()
+    }
+
+    /// Record that a status poll returned, and advance the backoff.
+    pub async fn record_status_poll_success(
+        &self,
+        transaction_id: String,
+        resolved_status_confirmed: bool,
+        resolved_status_pending: bool,
+        reported_confirmations: Option<u32>,
+        now_unix: f64,
+        config: TransactionStatusPollConfig,
+    ) {
+        let mut trackers = self.status_trackers.write().await;
+        let next = crate::store::plan_transaction_status_poll_success(
+            trackers.get(&transaction_id).cloned(),
+            resolved_status_confirmed,
+            resolved_status_pending,
+            reported_confirmations,
+            now_unix,
+            config,
+        );
+        trackers.insert(transaction_id, next);
+    }
+
+    /// Record that a status poll failed, and back off further.
+    pub async fn record_status_poll_failure(
+        &self,
+        transaction_id: String,
+        now_unix: f64,
+        config: TransactionStatusPollConfig,
+    ) {
+        let mut trackers = self.status_trackers.write().await;
+        let next = crate::store::plan_transaction_status_poll_failure(
+            trackers.get(&transaction_id).cloned(),
+            now_unix,
+            config,
+        );
+        trackers.insert(transaction_id, next);
+    }
+
+    /// Force `transaction_id` to be polled on the next sweep.
+    ///
+    /// `clear_finality` re-opens a transaction that had already been treated as
+    /// final — the UTXO chains do this when a reorg is suspected.
+    pub async fn reset_status_tracker(
+        &self,
+        transaction_id: String,
+        now_unix: f64,
+        clear_finality: bool,
+    ) {
+        let mut trackers = self.status_trackers.write().await;
+        let entry = trackers
+            .entry(transaction_id)
+            .or_insert_with(|| TransactionStatusTrackerState::initial(now_unix));
+        entry.next_check_at_unix = f64::NEG_INFINITY;
+        if clear_finality {
+            entry.reached_finality = false;
+        }
+    }
+
+    /// Drop trackers for transactions that no longer exist.
+    pub async fn retain_status_trackers(&self, transaction_ids: Vec<String>) {
+        let keep: std::collections::HashSet<String> = transaction_ids.into_iter().collect();
+        self.status_trackers
+            .write()
+            .await
+            .retain(|id, _| keep.contains(id));
+    }
+
+    /// Forget all confirmation-poll state (wallet reset / sign-out).
+    pub async fn clear_status_trackers(&self) {
+        self.status_trackers.write().await.clear();
+    }
+
+    /// Pending transactions old enough, and failing often enough, to be treated
+    /// as failed. Failure counts come from core's own trackers.
+    pub async fn stale_pending_failure_ids(
+        &self,
+        transactions: Vec<crate::store::StalePendingFailureTransactionInput>,
+        now_unix: f64,
+        config: TransactionStatusPollConfig,
+    ) -> Vec<String> {
+        let failures: HashMap<String, u32> = self
+            .status_trackers
+            .read()
+            .await
+            .iter()
+            .map(|(id, tracker)| (id.clone(), tracker.consecutive_failures))
+            .collect();
+        crate::store::plan_stale_pending_failure_ids(transactions, &failures, now_unix, config)
+    }
+
+    /// Decide what each resolved pending transaction becomes, advancing the
+    /// confirmation trackers as a side effect.
+    pub async fn apply_resolved_pending_transaction_statuses(
+        &self,
+        inputs: Vec<crate::store::ResolvedPendingTransactionInput>,
+        now_unix: f64,
+        config: TransactionStatusPollConfig,
+    ) -> Vec<crate::store::ResolvedPendingTransactionDecision> {
+        let mut trackers = self.status_trackers.write().await;
+        crate::store::plan_apply_resolved_pending_transaction_statuses(
+            inputs,
+            &mut trackers,
+            now_unix,
+            config,
+        )
+    }
+
+    /// Import wallets: plan them, build them, and store them.
+    ///
+    /// Replaces the old `core_plan_wallet_import` round trip, where core
+    /// decided what to create and the caller constructed and stored it.
+    /// Secrets are not touched here — `secret_instructions` in the outcome
+    /// tells the platform what to write to its own keystore.
+    pub async fn import_wallets(
+        &self,
+        commit: crate::derivation::import::WalletImportCommit,
+    ) -> Result<crate::derivation::import::WalletImportOutcome, SpectraBridgeError> {
+        let plan = crate::derivation::import::plan_wallet_import(commit.request.clone())?;
+        let wallets = crate::derivation::import::wallets_for_import(&commit, &plan);
+        let is_watch_only = commit.request.is_watch_only_import;
+        for wallet in &wallets {
+            self.apply_state_command(StateCommand::UpsertWallet {
+                wallet: wallet.to_summary(is_watch_only),
+            })
+            .await?;
+        }
+        Ok(crate::derivation::import::WalletImportOutcome {
+            secret_kind: plan.secret_kind,
+            secret_instructions: plan.secret_instructions,
+            wallets,
+        })
+    }
+
+    // ── Keypool ───────────────────────────────────────────────────────────
+    //
+    // Reserving an index is read-modify-write. Doing that across an FFI round
+    // trip is a race — two callers read the same index and both hand it out,
+    // which on a UTXO chain means the same receive address given to two
+    // people. Every mutation below holds the lock for the whole operation and
+    // writes through to SQLite before returning.
+
+    /// The wallet's keypool for a chain, merged with `baseline` and recorded.
+    pub async fn keypool_state(
+        &self,
+        wallet_id: String,
+        chain_name: String,
+        baseline: crate::store::ChainKeypoolStateRecord,
+    ) -> Result<crate::wallet_db::KeypoolState, SpectraBridgeError> {
+        let key = keypool_key(&wallet_id, &chain_name);
+        let mut keypool = self.keypool.write().await;
+        let merged = crate::store::plan_chain_keypool_state(
+            baseline,
+            keypool.get(&key).map(record_from_keypool),
+        );
+        let next = keypool_from_record(&merged);
+        persist_keypool(&self.state_db_path, &mut keypool, key, &wallet_id, &chain_name, next.clone())
+            .await?;
+        Ok(next)
+    }
+
+    /// Reserve the next receive index, or return the one already reserved.
+    pub async fn reserve_receive_index(
+        &self,
+        wallet_id: String,
+        chain_name: String,
+        baseline: crate::store::ChainKeypoolStateRecord,
+        minimum_index: i64,
+    ) -> Result<i64, SpectraBridgeError> {
+        let key = keypool_key(&wallet_id, &chain_name);
+        let mut keypool = self.keypool.write().await;
+        let merged = crate::store::plan_chain_keypool_state(
+            baseline,
+            keypool.get(&key).map(record_from_keypool),
+        );
+        let mut state = keypool_from_record(&merged);
+        if let Some(reserved) = state.reserved_receive_index {
+            // Already reserved: hand back the same index rather than burning a
+            // new one every time the receive sheet opens.
+            persist_keypool(&self.state_db_path, &mut keypool, key, &wallet_id, &chain_name, state)
+                .await?;
+            return Ok(reserved);
+        }
+        let reserved = state.next_external_index.max(minimum_index);
+        state.reserved_receive_index = Some(reserved);
+        state.next_external_index = state.next_external_index.max(reserved + 1);
+        persist_keypool(&self.state_db_path, &mut keypool, key, &wallet_id, &chain_name, state)
+            .await?;
+        Ok(reserved)
+    }
+
+    /// Reserve the next change index. Always consumes one.
+    pub async fn reserve_change_index(
+        &self,
+        wallet_id: String,
+        chain_name: String,
+        baseline: crate::store::ChainKeypoolStateRecord,
+    ) -> Result<i64, SpectraBridgeError> {
+        let key = keypool_key(&wallet_id, &chain_name);
+        let mut keypool = self.keypool.write().await;
+        let merged = crate::store::plan_chain_keypool_state(
+            baseline,
+            keypool.get(&key).map(record_from_keypool),
+        );
+        let mut state = keypool_from_record(&merged);
+        let reserved = state.next_change_index.max(0);
+        state.next_change_index = reserved + 1;
+        persist_keypool(&self.state_db_path, &mut keypool, key, &wallet_id, &chain_name, state)
+            .await?;
+        Ok(reserved)
+    }
+
+    /// Release the reserved receive index once its address has been used.
+    pub async fn clear_reserved_receive_index(
+        &self,
+        wallet_id: String,
+        chain_name: String,
     ) -> Result<(), SpectraBridgeError> {
-        let mut state = self.wallet_state.write().await;
-        reduce_state_in_place(&mut state, StateCommand::UpsertWallet { wallet });
-        Ok(())
+        let key = keypool_key(&wallet_id, &chain_name);
+        let mut keypool = self.keypool.write().await;
+        let Some(mut state) = keypool.get(&key).cloned() else {
+            return Ok(());
+        };
+        state.reserved_receive_index = None;
+        persist_keypool(&self.state_db_path, &mut keypool, key, &wallet_id, &chain_name, state)
+            .await
+    }
+
+    /// Every wallet's keypool, for the diagnostics screen. Read-only.
+    pub async fn keypool_snapshot(
+        &self,
+    ) -> HashMap<String, HashMap<String, crate::wallet_db::KeypoolState>> {
+        let keypool = self.keypool.read().await;
+        let mut out: HashMap<String, HashMap<String, crate::wallet_db::KeypoolState>> =
+            HashMap::new();
+        for (key, state) in keypool.iter() {
+            let Some((wallet_id, chain_name)) = key.split_once('|') else {
+                continue;
+            };
+            out.entry(chain_name.to_string())
+                .or_default()
+                .insert(wallet_id.to_string(), state.clone());
+        }
+        out
+    }
+
+    /// The wallets core holds, as the shape the iOS app renders.
+    ///
+    /// A view model built from the authoritative `WalletSummary` list, with the
+    /// derivation-path table filled from the catalog defaults for the wallet's
+    /// preset.
+    pub async fn wallets_for_display(
+        &self,
+    ) -> Result<Vec<crate::store::wallet_domain::CoreImportedWallet>, SpectraBridgeError> {
+        let wallets = self.wallet_state.read().await.wallets.clone();
+        let mut rendered = Vec::with_capacity(wallets.len());
+        for wallet in wallets {
+            let account = match wallet.derivation_preset.as_str() {
+                "account1" => 1,
+                "account2" => 2,
+                _ => 0,
+            };
+            let defaults = crate::app_core_derivation_paths_for_preset(account)?;
+            rendered.push(wallet.to_imported_wallet(&defaults));
+        }
+        Ok(rendered)
+    }
+
+    /// Current snapshot of the owned state.
+    pub async fn app_state(&self) -> CoreAppState {
+        self.wallet_state.read().await.clone()
+    }
+
+    /// Fiat currency the user has chosen, as an ISO 4217 code.
+    pub async fn fiat_currency_code(&self) -> String {
+        self.wallet_state
+            .read()
+            .await
+            .settings
+            .fiat_currency_code
+            .clone()
     }
 
     // ── History pagination cursor methods live in `service/history_cursor.rs` ──
@@ -3853,5 +4517,24 @@ impl WalletService {
             .await
             .map_err(|e| SpectraBridgeError::from(format!("spawn_blocking: {e}")))?
             .map_err(Into::into)
+    }
+}
+
+
+/// Cheap content signature, to tell an unchanged merge result from a real one.
+/// Serialization is enough: these records are flat and compare by value.
+fn fingerprint(record: &crate::fetch::transactions::CoreTransactionRecord) -> String {
+    serde_json::to_string(record).unwrap_or_default()
+}
+
+// Plain `impl` — not exported. Helpers for the owned-state methods above.
+impl WalletService {
+    /// The bound state database, or an error naming what the caller skipped.
+    async fn bound_state_db_path(&self) -> Result<String, SpectraBridgeError> {
+        self.state_db_path.read().await.clone().ok_or_else(|| {
+            SpectraBridgeError::from(
+                "transaction store not opened: call open_state first".to_string(),
+            )
+        })
     }
 }

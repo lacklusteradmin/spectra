@@ -135,7 +135,7 @@ mod tests {
     }
 }
 
-// ── FFI surface (relocated from ffi.rs) ──────────────────────────────────
+// ── FFI surface ─────────────────────────────────────────────────────────────
 
 /// Encrypt a seed phrase with AES-256-GCM. `master_key_bytes` must be exactly
 /// 32 bytes. Returns the JSON envelope as `Data` (compatible with Swift's

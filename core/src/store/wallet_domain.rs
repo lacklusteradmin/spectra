@@ -1,5 +1,5 @@
-// Domain types for wallet state, ported from Swift CoreModels.swift.
-// Color is intentionally omitted — Swift derives display color from symbol.
+// Wallet value types crossing the FFI. Display color is deliberately absent:
+// the platform derives it from the asset symbol.
 
 use std::collections::HashMap;
 
@@ -213,6 +213,204 @@ impl CoreImportedWallet {
         crate::registry::Chain::from_display_name(&self.selected_chain)
             .and_then(|chain| self.address_for(chain))
     }
+}
+
+// ── CoreImportedWallet ↔ WalletSummary ───────────────────────────────────────
+//
+// `WalletSummary` is the model core computes with; `CoreImportedWallet` is the
+// shape the iOS app still uses. The conversion exists so the two can coexist
+// while the app migrates, and it is **deliberately asymmetric**:
+//
+// A `CoreImportedWallet` carries the whole 45-entry derivation-path table and
+// two network-mode fields on *every* wallet, even though a wallet belongs to
+// one chain and uses one path on one network. Converting to `WalletSummary`
+// keeps the entry that wallet actually uses and drops the other 44 — they are
+// global defaults, not per-wallet data. Converting back therefore cannot
+// reconstruct them, and rebuilds the table from the defaults instead.
+//
+// That asymmetry is the point, not a defect: the round trip losing redundant
+// copies is what makes `WalletSummary` the smaller, correcter model.
+
+impl CoreImportedWallet {
+    /// The network mode this wallet is actually on, as a raw string.
+    ///
+    /// Only one of the two stored modes applies — the one matching the wallet's
+    /// chain — and every other chain is always mainnet.
+    fn active_network_mode(&self) -> Option<String> {
+        match self.selected_chain.as_str() {
+            "Bitcoin" => Some(match self.bitcoin_network_mode {
+                CoreBitcoinNetworkMode::Mainnet => "mainnet",
+                CoreBitcoinNetworkMode::Testnet => "testnet",
+                CoreBitcoinNetworkMode::Testnet4 => "testnet4",
+                CoreBitcoinNetworkMode::Signet => "signet",
+            }),
+            "Dogecoin" => Some(match self.dogecoin_network_mode {
+                CoreDogecoinNetworkMode::Mainnet => "mainnet",
+                CoreDogecoinNetworkMode::Testnet => "testnet",
+            }),
+            _ => None,
+        }
+        .map(str::to_string)
+    }
+
+    /// Convert to the model core computes with.
+    ///
+    /// `is_watch_only` cannot be read off this record — the app derives it from
+    /// whether the Keychain holds signing material — so the caller supplies it.
+    pub fn to_summary(&self, is_watch_only: bool) -> crate::store::state::WalletSummary {
+        use crate::registry::Chain;
+        use crate::store::state::{AssetHolding, WalletAddress, WalletSummary};
+
+        let chain = Chain::from_display_name(&self.selected_chain);
+        let derivation_path = chain.and_then(|chain| {
+            self.seed_derivation_paths
+                .path_for(chain)
+                .map(str::to_string)
+        });
+
+        WalletSummary {
+            id: self.id.clone(),
+            name: self.name.clone(),
+            is_watch_only,
+            chain_name: self.selected_chain.clone(),
+            include_in_portfolio_total: self.include_in_portfolio_total,
+            network_mode: self.active_network_mode(),
+            xpub: self.bitcoin_xpub.clone(),
+            derivation_preset: match self.seed_derivation_preset {
+                CoreSeedDerivationPreset::Standard => "standard",
+                CoreSeedDerivationPreset::Account1 => "account1",
+                CoreSeedDerivationPreset::Account2 => "account2",
+            }
+            .to_string(),
+            derivation_path: derivation_path.clone(),
+            derivation_overrides: self.derivation_overrides.clone(),
+            holdings: self
+                .holdings
+                .iter()
+                .map(|coin| AssetHolding {
+                    // `CoreCoin::id` is a SwiftUI `Identifiable` key, not
+                    // domain data, so it does not survive into the summary.
+                    name: coin.name.clone(),
+                    symbol: coin.symbol.clone(),
+                    coin_gecko_id: coin.coin_gecko_id.clone(),
+                    chain_name: coin.chain_name.clone(),
+                    token_standard: coin.token_standard.clone(),
+                    contract_address: coin.contract_address.clone(),
+                    amount: coin.amount,
+                    price_usd: coin.price_usd,
+                })
+                .collect(),
+            addresses: chain
+                .and_then(|chain| {
+                    self.addresses
+                        .get(chain.address_slot())
+                        .map(|address| WalletAddress {
+                            chain_name: self.selected_chain.clone(),
+                            address: address.clone(),
+                            kind: "receive".to_string(),
+                            derivation_path,
+                        })
+                })
+                .into_iter()
+                .collect(),
+        }
+    }
+}
+
+/// Render an app wallet record back into the authoritative model.
+///
+/// Exported so the shell can hand core a `WalletSummary` without reimplementing
+/// the mapping. `is_watch_only` is a platform fact the record cannot carry.
+#[uniffi::export]
+pub fn core_wallet_summary(
+    wallet: CoreImportedWallet,
+    is_watch_only: bool,
+) -> crate::store::state::WalletSummary {
+    wallet.to_summary(is_watch_only)
+}
+
+impl crate::store::state::WalletSummary {
+    /// Convert back into the shape the iOS app renders.
+    ///
+    /// The reverse of [`CoreImportedWallet::to_summary`], and lossy in the
+    /// direction that does not matter: the 45-entry derivation-path table is
+    /// rebuilt from `defaults` with this wallet's own path written over its
+    /// chain's slot. Those defaults were never per-wallet data.
+    ///
+    /// `WalletSummary` remains the authority. This produces a view model.
+    pub fn to_imported_wallet(&self, defaults: &CoreSeedDerivationPaths) -> CoreImportedWallet {
+        use crate::registry::Chain;
+
+        let chain = Chain::from_display_name(&self.chain_name);
+        let mut seed_derivation_paths = defaults.clone();
+        if let (Some(chain), Some(path)) = (chain, self.derivation_path.as_deref()) {
+            seed_derivation_paths.set_path_for(chain, path);
+        }
+
+        let network_mode = self.network_mode.as_deref();
+        CoreImportedWallet {
+            id: self.id.clone(),
+            name: self.name.clone(),
+            bitcoin_network_mode: match network_mode {
+                Some("testnet") => CoreBitcoinNetworkMode::Testnet,
+                Some("testnet4") => CoreBitcoinNetworkMode::Testnet4,
+                Some("signet") => CoreBitcoinNetworkMode::Signet,
+                _ => CoreBitcoinNetworkMode::Mainnet,
+            },
+            dogecoin_network_mode: match network_mode {
+                Some("testnet") => CoreDogecoinNetworkMode::Testnet,
+                _ => CoreDogecoinNetworkMode::Mainnet,
+            },
+            addresses: self
+                .addresses
+                .iter()
+                .filter_map(|entry| {
+                    Chain::from_display_name(&entry.chain_name)
+                        .map(|chain| (chain.address_slot().to_string(), entry.address.clone()))
+                })
+                .collect(),
+            bitcoin_xpub: self.xpub.clone(),
+            seed_derivation_preset: match self.derivation_preset.as_str() {
+                "account1" => CoreSeedDerivationPreset::Account1,
+                "account2" => CoreSeedDerivationPreset::Account2,
+                _ => CoreSeedDerivationPreset::Standard,
+            },
+            seed_derivation_paths,
+            derivation_overrides: self.derivation_overrides.clone(),
+            selected_chain: self.chain_name.clone(),
+            holdings: self
+                .holdings
+                .iter()
+                .map(|holding| CoreCoin {
+                    // Derived from what identifies the holding, not random.
+                    // A view model is rebuilt on every projection refresh, and
+                    // a fresh id each time would make SwiftUI treat every row
+                    // as new — losing selection and animating the whole list.
+                    id: holding_identity(holding),
+                    name: holding.name.clone(),
+                    symbol: holding.symbol.clone(),
+                    coin_gecko_id: holding.coin_gecko_id.clone(),
+                    chain_name: holding.chain_name.clone(),
+                    token_standard: holding.token_standard.clone(),
+                    contract_address: holding.contract_address.clone(),
+                    amount: holding.amount,
+                    price_usd: holding.price_usd,
+                })
+                .collect(),
+            include_in_portfolio_total: self.include_in_portfolio_total,
+        }
+    }
+}
+
+/// Stable identity for a holding: chain, symbol and contract are what make two
+/// holdings the same asset.
+fn holding_identity(holding: &crate::store::state::AssetHolding) -> String {
+    format!(
+        "{}|{}|{}",
+        holding.chain_name,
+        holding.symbol,
+        holding.contract_address.as_deref().unwrap_or("")
+    )
 }
 
 /// Swift `TokenTrackingChain` — rawValues are chain display names.

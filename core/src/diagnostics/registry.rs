@@ -1,8 +1,6 @@
-// Rust-owned per-wallet diagnostics registry.
+// Per-wallet diagnostics registry, keyed by wallet id.
 //
-// Swift previously held 24 `[String: T]` dictionaries (keyed by wallet id)
-// on `WalletChainDiagnosticsState`. The state lives here and
-// exposes get/set/remove/list/clear via UniFFI, one trio per chain.
+// Exposes get/set/remove/list/clear via UniFFI, one trio per chain.
 //
 // The in-memory shape is one typed HashMap per chain, guarded by a single
 // Mutex — simple, and the dict-sized data is trivial so contention is

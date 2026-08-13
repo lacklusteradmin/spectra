@@ -1,7 +1,7 @@
-// Pure-logic helpers backing the send flow.
+// Pure-logic helpers backing the send flow: address validation and
+// normalization, EVM chain context, send-preview flattening, risk evaluation.
 //
-// Each function is a pure transform with no @Published or iOS dependencies.
-// Swift call sites collapse to one-liners delegating here.
+// Every function here is a pure transform with no platform dependencies.
 
 use crate::derivation::addressing::{validate_address, AddressValidationRequest};
 use crate::registry::Chain;
@@ -99,10 +99,7 @@ pub fn classify_evm_receipt_json(json: String) -> Option<EvmReceiptClassificatio
 /// Address-format kind for a chain *display name*.
 ///
 /// Thin wrapper over [`Chain::address_validation_kind`]; the mapping itself
-/// lives in the registry. This used to be its own table and had drifted —
-/// Base, Polygon, Zcash, Kaspa, Dash, Bittensor, Decred, Bitcoin Gold and the
-/// newer EVM chains were missing, so `is_valid_send_address` returned `false`
-/// for every address on them.
+/// lives in the registry.
 pub(crate) fn chain_kind(chain_name: &str) -> Option<&'static str> {
     Chain::from_display_name(chain_name).map(Chain::address_validation_kind)
 }
@@ -163,8 +160,8 @@ pub fn normalized_send_address(chain_name: String, address: String) -> String {
     normalize_address(&chain_name, &address)
 }
 
-/// Heuristic: does the trimmed input look like an ENS name (`foo.eth`, no spaces,
-/// not an 0x-prefixed hex address)? Mirrors Swift's `isENSNameCandidate`.
+/// Heuristic: does the trimmed input look like an ENS name (`foo.eth`, no
+/// spaces, not an 0x-prefixed hex address)?
 #[uniffi::export]
 pub fn is_ens_name_candidate(value: String) -> bool {
     let normalized = value.trim().to_lowercase();
@@ -173,15 +170,9 @@ pub fn is_ens_name_candidate(value: String) -> bool {
 
 /// The send-preview for the chain currently being composed.
 ///
-/// One variant per preview record shape. Previously this was
-/// `SendPreviewsInput`: a record with one `Option<…SendPreview>` field per
-/// chain, of which Swift filled exactly one and Rust selected it by matching on
-/// the chain *name*. That name match carried its own EVM chain list, and the
-/// list had gone stale — it named seven EVM chains, so Base, Polygon, Linea,
-/// Scroll, Blast, Mantle and the rest returned no preview details at all.
-///
-/// With the preview tagged at the source there is no chain matching left to get
-/// wrong, and 17 empty optionals stop crossing the FFI on every keystroke.
+/// One variant per preview record shape. The caller picks the variant, so no
+/// chain-name matching happens on this path and only the relevant preview
+/// crosses the FFI.
 #[derive(Debug, Clone, uniffi::Enum)]
 pub enum SendPreview {
     /// Bitcoin, Bitcoin Cash, Bitcoin SV and Litecoin share one preview shape.
@@ -443,7 +434,7 @@ mod tests {
     }
 }
 
-// ── FFI: high-risk send evaluation (relocated from ffi.rs) ───────────────
+// ── FFI: high-risk send evaluation ──────────────────────────────────────────
 
 /// A chain_name + address pair used in the high-risk send evaluation.
 #[derive(Debug, Clone, uniffi::Record)]
@@ -452,8 +443,7 @@ pub struct HighRiskChainAddress {
     pub address: String,
 }
 
-/// Typed input for high-risk send evaluation — replaces the JSON dict that
-/// Swift previously assembled via `JSONSerialization`.
+/// Typed input for high-risk send evaluation.
 #[derive(Debug, Clone, uniffi::Record)]
 pub struct HighRiskSendRequest {
     pub chain_name: String,
@@ -646,11 +636,8 @@ use crate::SpectraBridgeError;
 /// Each testnet is its own chain row, so `ethereum_network_mode` is retained
 /// only for FFI back-compat — `chain_name` alone identifies the network.
 ///
-/// Derived from `Chain::str_id()` rather than transcribed. The hand-written
-/// table this replaces had drifted badly: it listed `"Base Sepolia"` but not
-/// `"Base"`, `"Polygon Amoy"` but not `"Polygon"`, and omitted Linea, Scroll,
-/// Blast and Mantle entirely — so `evmChainContext(for:)` returned nil and
-/// those mainnets were not treated as EVM chains by the send flow at all.
+/// Derived from `Chain::str_id()` rather than transcribed, so it cannot fall
+/// behind the registry.
 #[uniffi::export]
 pub fn core_evm_chain_context_tag(chain_name: String, ethereum_network_mode: String) -> String {
     let _ = ethereum_network_mode; // legacy argument, ignored
@@ -1001,8 +988,8 @@ pub fn core_supports_deep_utxo_discovery(chain_name: String) -> bool {
 }
 
 // ─── Receive address resolver dispatch ───────────────────────────────────────
-// Centralizes the `(symbol, chain_name, is_evm_chain)` → resolver routing that
-// `receiveAddress()` in Swift previously encoded as nested switches.
+// Routes `(symbol, chain_name, is_evm_chain)` to the resolver that produces the
+// receive address for that combination.
 
 #[derive(Debug, Clone, PartialEq, Eq, uniffi::Enum)]
 pub enum ReceiveAddressResolverKind {
@@ -1034,7 +1021,7 @@ pub enum ReceiveAddressResolverKind {
 }
 
 #[uniffi::export]
-pub fn core_plan_receive_address_resolver(
+pub fn core_receive_address_resolver(
     symbol: String,
     chain_name: String,
     is_evm_chain: bool,

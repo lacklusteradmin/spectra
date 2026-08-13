@@ -123,7 +123,7 @@ mod tests {
     }
 }
 
-// ── FFI surface (relocated from ffi.rs) ──────────────────────────────────
+// ── FFI surface ─────────────────────────────────────────────────────────────
 
 /// Create a PBKDF2-HMAC-SHA256 password verifier envelope. Returns JSON `Data`
 /// compatible with Swift's `SecureSeedPasswordStore` format.

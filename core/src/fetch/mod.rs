@@ -63,22 +63,7 @@ pub trait HistoryProvider: Send + Sync {
         -> Result<Vec<NormalizedTransaction>, String>;
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, uniffi::Record)]
-#[serde(rename_all = "camelCase")]
-pub struct WalletBalanceRefreshRequest {
-    pub selected_chain: String,
-    pub has_seed_phrase: bool,
-    pub has_extended_public_key: bool,
-    pub available_address_kinds: Vec<String>,
-}
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, uniffi::Record)]
-#[serde(rename_all = "camelCase")]
-pub struct WalletBalanceRefreshPlan {
-    pub service_kind: Option<String>,
-    pub uses_bulk_refresh: bool,
-    pub needs_tracked_tokens: bool,
-}
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, uniffi::Record)]
 #[serde(rename_all = "camelCase")]
@@ -171,126 +156,9 @@ pub struct NormalizedRefreshWalletTarget {
     pub address: String,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, uniffi::Record)]
-#[serde(rename_all = "camelCase")]
-pub struct BalanceRefreshHealthRequest {
-    pub chain_name: String,
-    pub attempted_wallet_count: u64,
-    pub resolved_wallet_count: u64,
-}
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, uniffi::Record)]
-#[serde(rename_all = "camelCase")]
-pub struct BalanceRefreshHealthPlan {
-    pub should_mark_healthy: bool,
-    pub should_note_successful_sync: bool,
-    pub degraded_detail: Option<String>,
-}
 
-pub fn plan_wallet_balance_refresh(
-    request: WalletBalanceRefreshRequest,
-) -> WalletBalanceRefreshPlan {
-    let address_kinds = request
-        .available_address_kinds
-        .into_iter()
-        .collect::<BTreeSet<_>>();
 
-    let plan = match request.selected_chain.as_str() {
-        "Bitcoin"
-            if request.has_seed_phrase
-                || request.has_extended_public_key
-                || address_kinds.contains("bitcoin") =>
-        {
-            Some(("bitcoinBulk", true, false))
-        }
-        "Bitcoin Cash" if address_kinds.contains("bitcoinCash") => {
-            Some(("utxoSingleAddress", false, false))
-        }
-        "Bitcoin SV" if address_kinds.contains("bitcoinSV") => {
-            Some(("utxoSingleAddress", false, false))
-        }
-        "Litecoin" if address_kinds.contains("litecoin") => {
-            Some(("utxoSingleAddress", false, false))
-        }
-        "Dogecoin" if address_kinds.contains("dogecoin") => Some(("dogecoinBulk", true, false)),
-        "Ethereum" | "Ethereum Classic" | "Arbitrum" | "Optimism" | "BNB Chain" | "Avalanche"
-        | "Hyperliquid"
-            if address_kinds.contains("evm") =>
-        {
-            Some(("evmPortfolio", false, true))
-        }
-        "Tron" if address_kinds.contains("tron") => Some(("tronPortfolio", false, true)),
-        "Solana" if address_kinds.contains("solana") => Some(("solanaPortfolio", false, true)),
-        "Cardano" if address_kinds.contains("cardano") => Some(("singleBalance", false, false)),
-        "XRP Ledger" if address_kinds.contains("xrp") => Some(("singleBalance", false, false)),
-        "Stellar" if address_kinds.contains("stellar") => Some(("singleBalance", false, false)),
-        "Monero" if address_kinds.contains("monero") => Some(("singleBalance", false, false)),
-        "Sui" if address_kinds.contains("sui") => Some(("suiPortfolio", false, true)),
-        "Aptos" if address_kinds.contains("aptos") => Some(("aptosPortfolio", false, true)),
-        "TON" if address_kinds.contains("ton") => Some(("tonPortfolio", false, true)),
-        "Internet Computer" if address_kinds.contains("icp") => {
-            Some(("singleBalance", false, false))
-        }
-        "NEAR" if address_kinds.contains("near") => Some(("nearPortfolio", false, true)),
-        "Polkadot" if address_kinds.contains("polkadot") => Some(("singleBalance", false, false)),
-        _ => None,
-    };
-
-    let (service_kind, uses_bulk_refresh, needs_tracked_tokens) = match plan {
-        Some((kind, uses_bulk_refresh, needs_tracked_tokens)) => (
-            Some(kind.to_string()),
-            uses_bulk_refresh,
-            needs_tracked_tokens,
-        ),
-        None => (None, false, false),
-    };
-
-    WalletBalanceRefreshPlan {
-        service_kind,
-        uses_bulk_refresh,
-        needs_tracked_tokens,
-    }
-}
-
-pub fn plan_balance_refresh_health(
-    request: BalanceRefreshHealthRequest,
-) -> BalanceRefreshHealthPlan {
-    if request.attempted_wallet_count == 0 {
-        return BalanceRefreshHealthPlan {
-            should_mark_healthy: false,
-            should_note_successful_sync: false,
-            degraded_detail: None,
-        };
-    }
-
-    if request.resolved_wallet_count == request.attempted_wallet_count {
-        return BalanceRefreshHealthPlan {
-            should_mark_healthy: true,
-            should_note_successful_sync: false,
-            degraded_detail: None,
-        };
-    }
-
-    if request.resolved_wallet_count > 0 {
-        return BalanceRefreshHealthPlan {
-            should_mark_healthy: false,
-            should_note_successful_sync: true,
-            degraded_detail: Some(format!(
-                "{} providers are partially reachable. Showing the latest available balances.",
-                request.chain_name
-            )),
-        };
-    }
-
-    BalanceRefreshHealthPlan {
-        should_mark_healthy: false,
-        should_note_successful_sync: false,
-        degraded_detail: Some(format!(
-            "{} providers are unavailable. Using cached balances and history.",
-            request.chain_name
-        )),
-    }
-}
 
 pub fn plan_evm_refresh_targets(request: EvmRefreshTargetsRequest) -> EvmRefreshPlan {
     let allowed_wallet_ids = request
@@ -445,11 +313,10 @@ fn normalize_evm_address(address: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::{
-        plan_balance_refresh_health, plan_dogecoin_refresh_targets, plan_evm_refresh_targets,
-        plan_normalized_refresh_targets, plan_wallet_balance_refresh, BalanceRefreshHealthRequest,
+        plan_dogecoin_refresh_targets, plan_evm_refresh_targets,
+        plan_normalized_refresh_targets,
         DogecoinRefreshTargetsRequest, DogecoinRefreshWalletInput, EvmRefreshTargetsRequest,
         EvmRefreshWalletInput, NormalizedRefreshTargetsRequest, NormalizedRefreshWalletInput,
-        WalletBalanceRefreshRequest,
     };
 
     #[test]
@@ -585,89 +452,29 @@ mod tests {
         assert_eq!(targets[0].address, "SoLaNaAddr");
     }
 
-    #[test]
-    fn plans_balance_refresh_for_bitcoin_when_xpub_is_available() {
-        let plan = plan_wallet_balance_refresh(WalletBalanceRefreshRequest {
-            selected_chain: "Bitcoin".to_string(),
-            has_seed_phrase: false,
-            has_extended_public_key: true,
-            available_address_kinds: vec![],
-        });
 
-        assert_eq!(plan.service_kind.as_deref(), Some("bitcoinBulk"));
-        assert!(plan.uses_bulk_refresh);
-    }
 
-    #[test]
-    fn plans_evm_portfolio_refresh_only_when_evm_address_exists() {
-        let missing_address = plan_wallet_balance_refresh(WalletBalanceRefreshRequest {
-            selected_chain: "Arbitrum".to_string(),
-            has_seed_phrase: false,
-            has_extended_public_key: false,
-            available_address_kinds: vec![],
-        });
-        assert_eq!(missing_address.service_kind, None);
-
-        let with_address = plan_wallet_balance_refresh(WalletBalanceRefreshRequest {
-            selected_chain: "Arbitrum".to_string(),
-            has_seed_phrase: false,
-            has_extended_public_key: false,
-            available_address_kinds: vec!["evm".to_string()],
-        });
-        assert_eq!(with_address.service_kind.as_deref(), Some("evmPortfolio"));
-        assert!(with_address.needs_tracked_tokens);
-    }
-
-    #[test]
-    fn plans_balance_refresh_health_for_partial_results() {
-        let plan = plan_balance_refresh_health(BalanceRefreshHealthRequest {
-            chain_name: "Bitcoin".to_string(),
-            attempted_wallet_count: 3,
-            resolved_wallet_count: 1,
-        });
-
-        assert!(!plan.should_mark_healthy);
-        assert!(plan.should_note_successful_sync);
-        assert_eq!(
-            plan.degraded_detail.as_deref(),
-            Some(
-                "Bitcoin providers are partially reachable. Showing the latest available balances."
-            )
-        );
-    }
 }
 
-// ── FFI surface (relocated from ffi.rs) ──────────────────────────────────
+// ── FFI surface ─────────────────────────────────────────────────────────────
 
 #[uniffi::export]
-pub fn core_plan_evm_refresh_targets(request: EvmRefreshTargetsRequest) -> EvmRefreshPlan {
+pub fn core_evm_refresh_targets(request: EvmRefreshTargetsRequest) -> EvmRefreshPlan {
     plan_evm_refresh_targets(request)
 }
 
 #[uniffi::export]
-pub fn core_plan_dogecoin_refresh_targets(
+pub fn core_dogecoin_refresh_targets(
     request: DogecoinRefreshTargetsRequest,
 ) -> Vec<DogecoinRefreshWalletTarget> {
     plan_dogecoin_refresh_targets(request)
 }
 
 #[uniffi::export]
-pub fn core_plan_normalized_refresh_targets(
+pub fn core_normalized_refresh_targets(
     request: NormalizedRefreshTargetsRequest,
 ) -> Vec<NormalizedRefreshWalletTarget> {
     plan_normalized_refresh_targets(request)
 }
 
-#[uniffi::export]
-pub fn core_plan_wallet_balance_refresh(
-    request: WalletBalanceRefreshRequest,
-) -> WalletBalanceRefreshPlan {
-    plan_wallet_balance_refresh(request)
-}
 
-#[uniffi::export]
-pub fn core_plan_balance_refresh_health(
-    request: BalanceRefreshHealthRequest,
-) -> BalanceRefreshHealthPlan {
-    plan_balance_refresh_health(request)
-}

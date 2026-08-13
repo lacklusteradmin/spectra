@@ -59,6 +59,24 @@ Spectra reduces risk by reducing unnecessary complexity.
 
 Every added integration can create new trust assumptions, new exploit surface, and new ways for users to be tricked. By staying focused on custody, payments, staking, diagnostics, and recovery, the app can remain safer and easier to reason about than feature-heavy wallets chasing every trend.
 
+## Architecture
+
+Spectra is one program with several front ends. The wallet itself — key
+derivation, signing, chain registry, network access, persistence — is a Rust
+core in `core/`. A command-line front end in `cli/` drives that same core, which
+is both a useful tool and the check that the core carries no hidden dependency
+on a phone. The iOS app in `swift/` (and Android in `kotlin/`) renders what the
+core reports and forwards what the user does.
+
+Doing it this way means the security-critical code has exactly one
+implementation to review rather than one per platform.
+
+The app was written before the core, so that separation is not finished:
+`swift/` still owns state and decisions that belong in `core/`.
+[`PLAN.md`](PLAN.md) states the target and the staged work to get there;
+[`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) describes the layout as it stands
+today.
+
 ## Open Source
 
 Spectra is intended to be truly open source, privacy-conscious, and decentralized in spirit. Users should be able to inspect how it works, understand the network paths it uses, and keep control over their own keys and wallet data.

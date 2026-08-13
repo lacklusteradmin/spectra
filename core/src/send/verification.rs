@@ -1,8 +1,6 @@
-// Pure state machine for send broadcast verification notices.
-//
-// Swift previously held 4 mutating functions to compute notice text + warning
-// flag based on `CoreSendVerificationStatus` and the last sent transaction.
-// This module centralizes the logic so all platforms derive the same notice.
+// Pure state machine for send-broadcast verification notices: given the last
+// sent transaction and its verification status, decides the notice text and
+// whether it should be shown as a warning.
 
 use serde::{Deserialize, Serialize};
 
@@ -60,7 +58,9 @@ pub struct LastSentTransactionSnapshot {
     pub confirmation_count: Option<i64>,
 }
 
-/// Mirrors Swift's `updateSendVerificationNoticeForLastSentTransaction()`.
+/// Decides what to tell the user about their most recent send: whether the
+/// broadcast has been seen by an indexer, is still unconfirmed, or failed.
+/// Returns the default (no notice) for anything that isn't a hashed send.
 #[uniffi::export]
 pub fn verification_notice_for_last_sent(
     snapshot: Option<LastSentTransactionSnapshot>,

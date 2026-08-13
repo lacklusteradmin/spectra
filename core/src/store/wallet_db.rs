@@ -20,7 +20,7 @@ use rusqlite::{params, Connection};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
-use super::state::{CoreAppState, WalletSummary};
+use super::state::{AddressBookEntry, CoreAppState, WalletSummary};
 
 // ── Connection pool ──────────────────────────────────────────────────────────
 //
@@ -98,7 +98,17 @@ fn open_new(db_path: &str) -> Result<Connection, String> {
          CREATE TABLE IF NOT EXISTS app_state_meta (
              key   TEXT NOT NULL PRIMARY KEY,
              value TEXT NOT NULL
-         );",
+         );
+         CREATE TABLE IF NOT EXISTS address_book (
+             id         TEXT    NOT NULL PRIMARY KEY,
+             chain_name TEXT    NOT NULL,
+             address    TEXT    NOT NULL,
+             sort_index INTEGER NOT NULL,  -- preserves CoreAppState.address_book order
+             payload    TEXT    NOT NULL,  -- full AddressBookEntry JSON
+             updated_at INTEGER NOT NULL
+         );
+         CREATE INDEX IF NOT EXISTS idx_ab_chain ON address_book(chain_name);
+         CREATE INDEX IF NOT EXISTS idx_ab_order ON address_book(sort_index);",
     )
     .map_err(|e| format!("wallet_db create tables: {e}"))?;
     Ok(conn)
@@ -487,6 +497,70 @@ pub struct HistoryRecord {
 
 // ── History record CRUD ───────────────────────────────────────────────────────
 
+/// Seconds between the Unix epoch and Swift's reference date (2001-01-01 UTC).
+///
+/// `CorePersistedTransactionRecord::created_at` is in Swift reference time
+/// because that is what the persisted shape has always used; the
+/// `history_records.created_at` column is Unix, because that is what every
+/// other table and every chain API uses. The conversion lives here so no
+/// front end has to remember which side of the boundary it is on — getting it
+/// wrong silently misorders history by 31 years.
+const SWIFT_REFERENCE_EPOCH_OFFSET_SECS: f64 = 978_307_200.0;
+
+/// Build the indexed row for a transaction from the record itself.
+///
+/// The id / wallet id / tx hash are lowercased so lookups are case-insensitive
+/// without every query having to say so.
+pub fn history_record_from_payload(
+    payload: crate::store::persistence_models::CorePersistedTransactionRecord,
+) -> HistoryRecord {
+    HistoryRecord {
+        id: payload.id.to_lowercase(),
+        wallet_id: payload.wallet_id.as_deref().map(str::to_lowercase),
+        chain_name: payload.chain_name.clone(),
+        tx_hash: payload.transaction_hash.as_deref().map(str::to_lowercase),
+        created_at: payload.created_at + SWIFT_REFERENCE_EPOCH_OFFSET_SECS,
+        payload,
+    }
+}
+
+/// Which of `ids` already exist, lowercased.
+pub fn history_existing_ids(db_path: &str, ids: &[String]) -> Result<Vec<String>, String> {
+    if ids.is_empty() {
+        return Ok(Vec::new());
+    }
+    with_conn(db_path, |conn| {
+        let mut stmt = conn
+            .prepare("SELECT id FROM history_records")
+            .map_err(|e| format!("history_existing_ids prepare: {e}"))?;
+        let rows = stmt
+            .query_map([], |row| row.get::<_, String>(0))
+            .map_err(|e| format!("history_existing_ids query: {e}"))?;
+        let wanted: std::collections::HashSet<String> =
+            ids.iter().map(|id| id.to_lowercase()).collect();
+        let mut found = Vec::new();
+        for row in rows {
+            let id = row.map_err(|e| format!("history_existing_ids row: {e}"))?;
+            if wanted.contains(&id) {
+                found.push(id);
+            }
+        }
+        Ok(found)
+    })
+}
+
+/// Load every transaction for one wallet, newest first.
+pub fn history_fetch_for_wallet(
+    db_path: &str,
+    wallet_id: &str,
+) -> Result<Vec<HistoryRecord>, String> {
+    let wallet_id = wallet_id.to_lowercase();
+    Ok(history_fetch_all(db_path)?
+        .into_iter()
+        .filter(|record| record.wallet_id.as_deref() == Some(wallet_id.as_str()))
+        .collect())
+}
+
 /// Upsert a batch of history records. Existing rows (matched by `id`) are overwritten.
 pub fn history_upsert_batch(db_path: &str, records: &[HistoryRecord]) -> Result<(), String> {
     if records.is_empty() {
@@ -815,6 +889,31 @@ pub fn app_state_save(db_path: &str, state: &CoreAppState) -> Result<(), String>
             }
         }
 
+        tx.execute("DELETE FROM address_book", [])
+            .map_err(|e| format!("app_state_save clear address book: {e}"))?;
+        {
+            let mut stmt = tx
+                .prepare(
+                    "INSERT INTO address_book
+                         (id, chain_name, address, sort_index, payload, updated_at)
+                     VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
+                )
+                .map_err(|e| format!("app_state_save prepare address book: {e}"))?;
+            for (index, entry) in state.address_book.iter().enumerate() {
+                let payload = serde_json::to_string(entry)
+                    .map_err(|e| format!("app_state_save encode address entry {}: {e}", entry.id))?;
+                stmt.execute(params![
+                    entry.id,
+                    entry.chain_name,
+                    entry.address,
+                    index as i64,
+                    payload,
+                    updated_at,
+                ])
+                .map_err(|e| format!("app_state_save insert address entry {}: {e}", entry.id))?;
+            }
+        }
+
         let mut meta = tx
             .prepare(
                 "INSERT INTO app_state_meta (key, value) VALUES (?1, ?2)
@@ -850,12 +949,36 @@ pub fn app_state_save(db_path: &str, state: &CoreAppState) -> Result<(), String>
     })
 }
 
+/// Load every saved recipient, in the stored display order.
+pub fn address_book_load_all(db_path: &str) -> Result<Vec<AddressBookEntry>, String> {
+    with_conn(db_path, |conn| {
+        let mut stmt = conn
+            .prepare("SELECT id, payload FROM address_book ORDER BY sort_index ASC")
+            .map_err(|e| format!("address_book_load_all prepare: {e}"))?;
+        let rows = stmt
+            .query_map([], |row| {
+                Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?))
+            })
+            .map_err(|e| format!("address_book_load_all query: {e}"))?;
+        let mut entries = Vec::new();
+        for row in rows {
+            let (id, payload) = row.map_err(|e| format!("address_book_load_all row: {e}"))?;
+            entries.push(
+                serde_json::from_str(&payload)
+                    .map_err(|e| format!("address_book_load_all decode {id}: {e}"))?,
+            );
+        }
+        Ok(entries)
+    })
+}
+
 /// Load the persisted [`CoreAppState`].
 ///
 /// An untouched database loads as `CoreAppState::default()`, so first run needs
 /// no special-casing at the call site.
 pub fn app_state_load(db_path: &str) -> Result<CoreAppState, String> {
     let wallets = wallet_load_all(db_path)?;
+    let address_book = address_book_load_all(db_path)?;
     with_conn(db_path, |conn| {
         let mut stmt = conn
             .prepare("SELECT key, value FROM app_state_meta")
@@ -868,6 +991,7 @@ pub fn app_state_load(db_path: &str) -> Result<CoreAppState, String> {
 
         let mut state = CoreAppState {
             wallets,
+            address_book,
             ..CoreAppState::default()
         };
         for row in rows {
@@ -1130,6 +1254,7 @@ mod tests {
             xpub: None,
             derivation_preset: "default".to_string(),
             derivation_path: Some("m/84'/0'/0'/0/0".to_string()),
+            derivation_overrides: Default::default(),
             holdings: Vec::new(),
             addresses: vec![WalletAddress {
                 chain_name: chain.to_string(),
@@ -1154,10 +1279,17 @@ mod tests {
             wallets: vec![wallet("w1", "Bitcoin"), wallet("w2", "Ethereum")],
             selected_wallet_id: Some("w2".to_string()),
             settings: AppSettings {
-                preferred_locale: "zh-Hans".to_string(),
                 fiat_currency_code: "CNY".to_string(),
-                diagnostics_enabled: false,
+                pinned_dashboard_asset_symbols: vec!["BTC".to_string()],
             },
+            token_preferences: Vec::new(),
+            address_book: vec![AddressBookEntry {
+                id: "ab1".to_string(),
+                name: "Cold".to_string(),
+                chain_name: "Bitcoin".to_string(),
+                address: "bc1qexample".to_string(),
+                note: "vault".to_string(),
+            }],
         };
         app_state_save(&db, &state).unwrap();
         assert_eq!(app_state_load(&db).unwrap(), state);

@@ -193,17 +193,25 @@ UniFFI 0.31 doesn't support:
 
 ## How bindings get regenerated
 
-Workflow:
+**Building the app regenerates them.** The Xcode "Build Rust Derivation Core"
+phase compiles the Rust and runs the bindgen every build, so the normal loop is:
+edit `core/`, build, and the Swift side sees the new API. That phase is marked
+`alwaysOutOfDate` precisely so a Rust-only edit is never skipped.
 
-1. Edit Rust code in `core/`.
-2. Run `cargo build --release --manifest-path core/Cargo.toml` to confirm it compiles.
-3. Run `bash scripts/bindgen-ios.sh`. This:
-   - Builds `libspectra_core.dylib` (debug profile).
-   - Runs `spectra-uniffi-bindgen generate --language swift` against the dylib.
-   - Writes generated Swift to `swift/generated/`.
-4. Build the Swift app with `xcodebuild` (or open in Xcode).
+Run `bash scripts/bindgen-ios.sh` when you need the bindings without an Xcode
+build — checking the generated surface after an FFI change, or working outside
+Xcode. It builds `libspectra_core.dylib`, runs
+`spectra-uniffi-bindgen generate --language swift` against it, and writes to
+`swift/generated/`.
 
-For the iOS build artifacts (the static framework that ships with the app), use `bash scripts/build-ios.sh`. That builds the dylib for every iOS architecture and writes them to `build/apple/`. Run it before shipping; not needed for day-to-day development.
+> The script and the Xcode phase apply *different* Swift 6 patches to the
+> generated file, so their output is not byte-identical. The Xcode phase wins in
+> practice because it runs on every build. Reconciling them is an open item in
+> [`PLAN.md`](../PLAN.md).
+
+For the shipping iOS artifacts (the static framework), use
+`bash scripts/build-ios.sh`. That builds the dylib for every iOS architecture
+into `build/apple/`. Needed before shipping, not day to day.
 
 For Android: `bash scripts/bindgen-android.sh` and `bash scripts/build-android.sh` are the equivalents. Kotlin bindings land in `kotlin/`.
 
@@ -282,13 +290,26 @@ clones where borrowing is enough.
 
 ## When to keep state on Rust vs Swift
 
-A frequent question on new endpoints: should the endpoint be a `WalletService` method (Pattern B / Object) or a free function (Pattern A)?
+Rust keeps the domain state. Swift keeps view state. That is the whole rule; see
+[`PLAN.md`](../PLAN.md) for the table of which is which and why pushing view
+state across the FFI is a mistake rather than extra rigour.
 
-- **Free function** if the endpoint is stateless: input → output, no observation of prior calls, no shared cache. Examples: validation, decoding, BIP-39 utilities, transaction merge.
-- **`WalletService` method** if the endpoint touches shared connection state: HTTP client, endpoint lists, secret store, the refresh engine. Examples: send, balance fetch, history fetch.
-- **Pure Swift** if the endpoint is purely derived from observable state already on `AppState` and doesn't need to consult Rust at all. Examples: formatting, fiat conversion display.
+For a new endpoint, the question is only which *shape* it takes:
 
-The wallet has been steadily moving logic from Swift into Rust — see `ARCHITECTURE.md` for the rationale. New work should default to Rust unless the logic is genuinely UI-shaped (e.g. a SwiftUI binding helper).
+- **Free function** if it is stateless: input → output, no observation of prior calls, no shared cache. Examples: validation, decoding, BIP-39 utilities, transaction merge.
+- **`WalletService` method** if it touches shared state: HTTP client, endpoint lists, secret store, the refresh engine, the app state itself. Examples: send, balance fetch, history fetch.
+- **Pure Swift** only if it is genuinely UI-shaped — a SwiftUI binding helper, a layout calculation, locale-driven text. Not "derived from `AppState`": `AppState` holding domain state is the thing being fixed.
+
+### Do not add a `core_plan_*`
+
+Roughly 40 exports follow a pattern where Rust computes a decision and Swift
+applies it to Swift-owned state. That splits one state machine across the FFI,
+and every one of them was carved out of a specific Swift call site, so the
+signature describes a screen rather than a domain concept.
+
+If core needs to decide something, core should own the state it decides about,
+and the endpoint should be an intent that returns the new state. Existing
+planners are being removed, not extended.
 
 ---
 

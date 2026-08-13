@@ -101,11 +101,72 @@ pub struct WalletImportPlan {
     pub secret_instructions: Vec<WalletSecretInstruction>,
 }
 
-#[uniffi::export]
-pub fn core_plan_wallet_import(
-    request: WalletImportRequest,
-) -> Result<WalletImportPlan, crate::SpectraBridgeError> {
-    Ok(plan_wallet_import(request)?)
+/// Everything core needs to turn an import form into stored wallets.
+///
+/// The draft fields stay in Swift — they are an in-progress form. What crosses
+/// is the resolved outcome: which chains, which addresses, and the derivation
+/// settings the wallets are created with.
+#[derive(Debug, Clone, uniffi::Record)]
+pub struct WalletImportCommit {
+    pub request: WalletImportRequest,
+    /// Holdings each created wallet starts with, from the chain picker.
+    pub holdings: Vec<crate::store::wallet_domain::CoreCoin>,
+    pub seed_derivation_preset: crate::store::wallet_domain::CoreSeedDerivationPreset,
+    pub seed_derivation_paths: crate::store::wallet_domain::CoreSeedDerivationPaths,
+    pub derivation_overrides: crate::store::wallet_domain::CoreWalletDerivationOverrides,
+    pub bitcoin_network_mode: crate::store::wallet_domain::CoreBitcoinNetworkMode,
+    pub dogecoin_network_mode: crate::store::wallet_domain::CoreDogecoinNetworkMode,
+}
+
+/// What an import produced. `secret_instructions` is the only part the caller
+/// must still act on — Keychain is platform, so writing the seed phrase stays
+/// on the platform side.
+#[derive(Debug, Clone, uniffi::Record)]
+pub struct WalletImportOutcome {
+    pub secret_kind: String,
+    pub secret_instructions: Vec<WalletSecretInstruction>,
+    pub wallets: Vec<crate::store::wallet_domain::CoreImportedWallet>,
+}
+
+/// Build the wallets an import plan calls for, without storing them.
+///
+/// Mirrors what the iOS app used to do by hand after reading the plan.
+pub(crate) fn wallets_for_import(
+    commit: &WalletImportCommit,
+    plan: &WalletImportPlan,
+) -> Vec<crate::store::wallet_domain::CoreImportedWallet> {
+    use crate::store::wallet_domain::{CoreBitcoinNetworkMode, CoreDogecoinNetworkMode};
+    plan.wallets
+        .iter()
+        .map(|planned| crate::store::wallet_domain::CoreImportedWallet {
+            id: planned.wallet_id.clone(),
+            name: planned.name.clone(),
+            // Network mode applies only to the chain it belongs to; every other
+            // wallet is mainnet regardless of what the importer had selected.
+            bitcoin_network_mode: if planned.chain_name == "Bitcoin" {
+                commit.bitcoin_network_mode
+            } else {
+                CoreBitcoinNetworkMode::Mainnet
+            },
+            dogecoin_network_mode: if planned.chain_name == "Dogecoin" {
+                commit.dogecoin_network_mode
+            } else {
+                CoreDogecoinNetworkMode::Mainnet
+            },
+            addresses: planned.addresses.by_slot.clone(),
+            bitcoin_xpub: if planned.chain_name == "Bitcoin" {
+                planned.addresses.bitcoin_xpub.clone()
+            } else {
+                None
+            },
+            seed_derivation_preset: commit.seed_derivation_preset,
+            seed_derivation_paths: commit.seed_derivation_paths.clone(),
+            derivation_overrides: commit.derivation_overrides.clone(),
+            selected_chain: planned.chain_name.clone(),
+            holdings: commit.holdings.clone(),
+            include_in_portfolio_total: true,
+        })
+        .collect()
 }
 
 #[uniffi::export]

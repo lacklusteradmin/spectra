@@ -1,7 +1,5 @@
-// Pure receive-address message builder. Swift previously owned a ~45-line
-// chain-by-chain switch that produced user-facing strings describing the
-// receive state. This module lifts that logic into Rust so Swift can become
-// a thin forwarder.
+// Builds the user-facing string shown on the receive screen — the address
+// itself, or an explanation of why there isn't one yet.
 
 /// Inputs needed to render the user-facing receive-address string for the
 /// current wallet + chain selection.
@@ -162,7 +160,6 @@ pub fn receive_address_message(input: ReceiveAddressMessageInput) -> String {
 }
 
 /// Picks the user-visible wallet display name given import batch context.
-/// Mirrors Swift's `walletDisplayName(baseName:batchPosition:defaultWalletIndex:selectedChainCount:)`.
 #[uniffi::export]
 pub fn wallet_display_name(
     base_name: String,
@@ -182,7 +179,7 @@ pub fn wallet_display_name(
 }
 
 /// Returns the next integer to use for a default "Wallet N" name, given the
-/// set of existing wallet names. Mirrors Swift's `nextDefaultWalletNameIndex()`.
+/// set of existing wallet names.
 #[uniffi::export]
 pub fn next_default_wallet_name_index(existing_wallet_names: Vec<String>) -> i32 {
     let mut highest = 0i32;
@@ -199,7 +196,7 @@ pub fn next_default_wallet_name_index(existing_wallet_names: Vec<String>) -> i32
 }
 
 /// Returns true when the chain supports the bip39-style private-key import
-/// flow. Mirrors Swift's `importWallet` inclusion check.
+/// flow.
 #[uniffi::export]
 pub fn chain_supports_private_key_import(chain_name: String) -> bool {
     matches!(

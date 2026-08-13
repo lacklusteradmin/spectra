@@ -127,9 +127,8 @@ pub fn diagnostics_make_evm_success_record(
     }
 }
 
-/// Outcome of a JSON-RPC reachability probe. Mirrors the ad-hoc
-/// `(reachable, detail)` tuple that Swift used to compute inline
-/// while probing Near / Polkadot RPC endpoints.
+/// Outcome of a JSON-RPC reachability probe: whether the endpoint answered,
+/// and a human-readable detail line for the diagnostics screen.
 #[derive(uniffi::Record, Clone, Debug, PartialEq)]
 pub struct JsonRpcProbeOutcome {
     pub reachable: bool,

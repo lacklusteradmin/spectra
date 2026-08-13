@@ -240,7 +240,7 @@ mod tests {
     }
 }
 
-// ── FFI surface (relocated from ffi.rs) ──────────────────────────────────
+// ── FFI surface ─────────────────────────────────────────────────────────────
 
 #[uniffi::export]
 pub fn core_active_maintenance_plan(

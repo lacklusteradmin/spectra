@@ -1,7 +1,5 @@
-// Per-chain send-preview record types. Formerly also hosted a full Rust-side
-// WalletCore state mirror that Swift forwarded @Published mutations into; that
-// mirror is dead code now that Swift no longer treats WalletCore as canonical
-// state, so only the shared preview structs remain.
+// Per-chain send-preview record types, plus the `SendPreview` tagged enum in
+// `send::flow` that carries one of them across the FFI.
 
 use serde::{Deserialize, Serialize};
 

@@ -6,7 +6,6 @@ pub mod payload;
 pub mod preview_decode;
 pub mod preview_types;
 pub mod transfer;
-pub mod utxo;
 pub mod verification;
 
 // Per-chain write-path: build / sign / broadcast transaction methods.
@@ -437,7 +436,7 @@ mod tests {
     }
 }
 
-// ── FFI surface (relocated from ffi.rs) ──────────────────────────────────
+// ── FFI surface ─────────────────────────────────────────────────────────────
 
 #[uniffi::export]
 pub fn core_route_send_asset(request: SendAssetRoutingInput) -> SendAssetRoutingPlan {
@@ -445,14 +444,14 @@ pub fn core_route_send_asset(request: SendAssetRoutingInput) -> SendAssetRouting
 }
 
 #[uniffi::export]
-pub fn core_plan_send_preview_routing(
+pub fn core_send_preview_routing(
     request: SendPreviewRoutingRequest,
 ) -> SendPreviewRoutingPlan {
     plan_send_preview_routing(request)
 }
 
 #[uniffi::export]
-pub fn core_plan_send_submit_preflight(
+pub fn core_send_submit_preflight(
     request: SendSubmitPreflightRequest,
 ) -> Result<SendSubmitPreflightPlan, crate::SpectraBridgeError> {
     Ok(plan_send_submit_preflight(request)?)

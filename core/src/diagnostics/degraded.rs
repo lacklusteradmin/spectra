@@ -1,9 +1,7 @@
 //! Degraded-chain-sync message pattern matching and normalization.
 //!
-//! Centralizes the rules that Swift previously owned in
-//! `swift/fetch/DiagnosticsState.swift`. The Swift layer still performs
-//! locale-specific string lookup and formatting; this module just decides
-//! which template key applies and normalizes detail strings before display.
+//! Decides which message template applies to a sync failure and normalizes the
+//! detail string. Locale lookup and formatting stay on the platform side.
 
 pub fn detail_indicates_live_success(detail: &str) -> bool {
     detail.contains("partially reachable") || detail.contains("partial provider failures")

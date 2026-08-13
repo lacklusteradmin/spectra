@@ -33,7 +33,11 @@ pub struct WalletSummary {
     pub network_mode: Option<String>,
     pub xpub: Option<String>,
     pub derivation_preset: String,
+    /// The single path this wallet derives from. A wallet belongs to one chain,
+    /// so it needs one path — not the whole per-chain table.
     pub derivation_path: Option<String>,
+    /// Power-user derivation overrides, if the wallet was imported with any.
+    pub derivation_overrides: crate::store::wallet_domain::CoreWalletDerivationOverrides,
     pub holdings: Vec<AssetHolding>,
     pub addresses: Vec<WalletAddress>,
 }
@@ -65,6 +69,7 @@ impl WalletSummary {
             xpub: None,
             derivation_preset: "default".to_string(),
             derivation_path: derivation_path.clone(),
+            derivation_overrides: Default::default(),
             holdings: Vec::new(),
             addresses: vec![WalletAddress {
                 chain_name,
@@ -90,20 +95,57 @@ impl WalletSummary {
     }
 }
 
+/// A saved recipient.
+///
+/// `address` is stored already normalized for its chain, so comparisons are a
+/// case-insensitive string match rather than a per-chain rule at every call
+/// site.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, uniffi::Record)]
 #[serde(rename_all = "camelCase")]
+pub struct AddressBookEntry {
+    pub id: String,
+    pub name: String,
+    pub chain_name: String,
+    pub address: String,
+    pub note: String,
+}
+
+/// Why an address-book entry was refused. Front ends map these to their own
+/// wording; the decision itself is core's.
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, uniffi::Enum)]
+#[serde(rename_all = "camelCase")]
+pub enum AddressBookRejection {
+    EmptyName,
+    InvalidAddress,
+    DuplicateAddress,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, uniffi::Record)]
+#[serde(rename_all = "camelCase")]
+/// Settings that are part of the domain — every front end must agree on them,
+/// and losing one on restart would be a bug.
+///
+/// Presentation preferences (theme, which rows are pinned, diagnostic
+/// verbosity) are *not* domain state and stay on the platform. Do not add a
+/// field here that only one front end reads.
 pub struct AppSettings {
-    pub preferred_locale: String,
+    /// ISO 4217 code the user wants amounts displayed in.
     pub fiat_currency_code: String,
-    pub diagnostics_enabled: bool,
+    /// Asset symbols the user pinned to the dashboard, in display order.
+    /// Empty means "not chosen yet" — the front end shows its own defaults.
+    ///
+    /// `default` so that a state file written before this field existed still
+    /// loads. Not a migration shim — the struct simply grows, and an absent
+    /// list is exactly the same as an empty one.
+    #[serde(default)]
+    pub pinned_dashboard_asset_symbols: Vec<String>,
 }
 
 impl Default for AppSettings {
     fn default() -> Self {
         Self {
-            preferred_locale: "en".to_string(),
             fiat_currency_code: "USD".to_string(),
-            diagnostics_enabled: true,
+            pinned_dashboard_asset_symbols: Vec::new(),
         }
     }
 }
@@ -115,6 +157,11 @@ pub struct CoreAppState {
     pub wallets: Vec<WalletSummary>,
     pub selected_wallet_id: Option<String>,
     pub settings: AppSettings,
+    /// Saved recipients, most recently added first.
+    pub address_book: Vec<AddressBookEntry>,
+    /// Which tokens the user tracks, and how many decimals each displays.
+    #[serde(default)]
+    pub token_preferences: Vec<crate::store::wallet_domain::CoreTokenPreferenceEntry>,
 }
 
 impl Default for CoreAppState {
@@ -124,20 +171,58 @@ impl Default for CoreAppState {
             wallets: Vec::new(),
             selected_wallet_id: None,
             settings: AppSettings::default(),
+            address_book: Vec::new(),
+            token_preferences: Vec::new(),
         }
     }
 }
 
+/// Most tokens use 18 or fewer; the ceiling exists to stop a typo from
+/// producing an unrenderable amount.
+const MAX_TOKEN_DECIMALS: i32 = 30;
+
+/// An intent to change the resident state.
+///
+/// `ReplaceState` and `UpsertWallet` carry whole records, so every value is as
+/// large as those — clippy's `large_enum_variant`. Boxing them would not help:
+/// this is a UniFFI enum, and what crosses the boundary is the encoded form,
+/// not the Rust layout. Commands are constructed a handful of times per user
+/// action, not in a loop.
+#[allow(clippy::large_enum_variant)]
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, uniffi::Enum)]
 #[serde(tag = "type", rename_all = "camelCase")]
 pub enum StateCommand {
     ReplaceState { state: CoreAppState },
     UpsertWallet { wallet: WalletSummary },
+    /// Update a wallet only if it is still stored.
+    ///
+    /// Balance refresh uses this: a refresh result that arrives after the user
+    /// deleted the wallet must not bring it back. Creating is a separate
+    /// intent, and `UpsertWallet` is the command for it.
+    UpdateWalletIfPresent { wallet: WalletSummary },
     SelectWallet { wallet_id: String },
     RemoveWallet { wallet_id: String },
-    SetPreferredLocale { locale_identifier: String },
     SetFiatCurrency { fiat_currency_code: String },
-    SetDiagnosticsEnabled { is_enabled: bool },
+    /// Replace the pinned dashboard set. Symbols are normalised to upper case
+    /// and de-duplicated, first occurrence winning, so display order is the
+    /// order the user pinned them in.
+    SetPinnedDashboardAssets { symbols: Vec<String> },
+    /// Replace the tracked-token list. Core clamps the decimal fields, so a
+    /// caller cannot store a token that displays more places than it has.
+    SetTokenPreferences {
+        entries: Vec<crate::store::wallet_domain::CoreTokenPreferenceEntry>,
+    },
+    /// Add a recipient. `address` is normalized and validated by the reducer;
+    /// a rejected entry produces an `addressBookRejected` event and no change.
+    AddAddressBookEntry {
+        id: String,
+        name: String,
+        chain_name: String,
+        address: String,
+        note: String,
+    },
+    RenameAddressBookEntry { id: String, name: String },
+    RemoveAddressBookEntry { id: String },
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, uniffi::Record)]
@@ -152,6 +237,25 @@ pub struct StateEvent {
 pub struct StateTransition {
     pub state: CoreAppState,
     pub events: Vec<StateEvent>,
+}
+
+/// Is this (chain, address) pair already saved? Addresses are stored
+/// normalized, so this is a case-insensitive compare rather than a per-chain
+/// rule. `excluding` skips one entry, for edit-in-place checks.
+fn address_book_contains(
+    state: &CoreAppState,
+    chain_name: &str,
+    normalized_address: &str,
+    excluding: Option<&str>,
+) -> bool {
+    if normalized_address.is_empty() {
+        return false;
+    }
+    state.address_book.iter().any(|entry| {
+        Some(entry.id.as_str()) != excluding
+            && entry.chain_name == chain_name
+            && entry.address.eq_ignore_ascii_case(normalized_address)
+    })
 }
 
 /// Apply a state command in place, returning only the events.
@@ -191,6 +295,18 @@ pub fn reduce_state_in_place(state: &mut CoreAppState, command: StateCommand) ->
                 state.selected_wallet_id = Some(wallet_id);
             }
         }
+        StateCommand::UpdateWalletIfPresent { wallet } => {
+            if let Some(index) = state.wallets.iter().position(|w| w.id == wallet.id) {
+                if state.wallets[index] != wallet {
+                    let wallet_id = wallet.id.clone();
+                    state.wallets[index] = wallet;
+                    events.push(StateEvent {
+                        kind: "walletUpdated".to_string(),
+                        subject_id: Some(wallet_id),
+                    });
+                }
+            }
+        }
         StateCommand::SelectWallet { wallet_id } => {
             if state.wallets.iter().any(|wallet| wallet.id == wallet_id) {
                 state.selected_wallet_id = Some(wallet_id.clone());
@@ -214,26 +330,140 @@ pub fn reduce_state_in_place(state: &mut CoreAppState, command: StateCommand) ->
                 });
             }
         }
-        StateCommand::SetPreferredLocale { locale_identifier } => {
-            state.settings.preferred_locale = locale_identifier.clone();
-            events.push(StateEvent {
-                kind: "preferredLocaleChanged".to_string(),
-                subject_id: Some(locale_identifier),
-            });
+        StateCommand::AddAddressBookEntry {
+            id,
+            name,
+            chain_name,
+            address,
+            note,
+        } => {
+            let name = name.trim().to_string();
+            let address = crate::send::flow::normalize_address(&chain_name, &address);
+
+            // Refusals are reported, not silently dropped: a front end that
+            // ignored the result would otherwise show a saved contact that was
+            // never saved.
+            let rejection = if name.is_empty() {
+                Some(AddressBookRejection::EmptyName)
+            } else if !crate::send::flow::is_valid_send_address(
+                chain_name.clone(),
+                address.clone(),
+                None,
+            ) {
+                Some(AddressBookRejection::InvalidAddress)
+            } else if address_book_contains(state, &chain_name, &address, None) {
+                Some(AddressBookRejection::DuplicateAddress)
+            } else {
+                None
+            };
+
+            match rejection {
+                Some(reason) => events.push(StateEvent {
+                    kind: "addressBookRejected".to_string(),
+                    subject_id: Some(
+                        serde_json::to_value(reason)
+                            .ok()
+                            .and_then(|v| v.as_str().map(str::to_string))
+                            .unwrap_or_default(),
+                    ),
+                }),
+                None => {
+                    // Newest first: the list is a recency-ordered shortlist,
+                    // not an archive.
+                    state.address_book.insert(
+                        0,
+                        AddressBookEntry {
+                            id: id.clone(),
+                            name,
+                            chain_name,
+                            address,
+                            note: note.trim().to_string(),
+                        },
+                    );
+                    events.push(StateEvent {
+                        kind: "addressBookEntryAdded".to_string(),
+                        subject_id: Some(id),
+                    });
+                }
+            }
+        }
+        StateCommand::RenameAddressBookEntry { id, name } => {
+            let name = name.trim().to_string();
+            if name.is_empty() {
+                events.push(StateEvent {
+                    kind: "addressBookRejected".to_string(),
+                    subject_id: Some("emptyName".to_string()),
+                });
+            } else if let Some(entry) = state.address_book.iter_mut().find(|e| e.id == id) {
+                if entry.name != name {
+                    entry.name = name;
+                    events.push(StateEvent {
+                        kind: "addressBookEntryRenamed".to_string(),
+                        subject_id: Some(id),
+                    });
+                }
+            }
+        }
+        StateCommand::RemoveAddressBookEntry { id } => {
+            let before = state.address_book.len();
+            state.address_book.retain(|entry| entry.id != id);
+            if state.address_book.len() != before {
+                events.push(StateEvent {
+                    kind: "addressBookEntryRemoved".to_string(),
+                    subject_id: Some(id),
+                });
+            }
         }
         StateCommand::SetFiatCurrency { fiat_currency_code } => {
-            state.settings.fiat_currency_code = fiat_currency_code.clone();
-            events.push(StateEvent {
-                kind: "fiatCurrencyChanged".to_string(),
-                subject_id: Some(fiat_currency_code),
-            });
+            let normalized = fiat_currency_code.trim().to_uppercase();
+            if normalized != state.settings.fiat_currency_code {
+                state.settings.fiat_currency_code = normalized.clone();
+                events.push(StateEvent {
+                    kind: "fiatCurrencyChanged".to_string(),
+                    subject_id: Some(normalized),
+                });
+            }
         }
-        StateCommand::SetDiagnosticsEnabled { is_enabled } => {
-            state.settings.diagnostics_enabled = is_enabled;
-            events.push(StateEvent {
-                kind: "diagnosticsToggleChanged".to_string(),
-                subject_id: None,
-            });
+        StateCommand::SetTokenPreferences { entries } => {
+            let normalized: Vec<_> = entries
+                .into_iter()
+                .map(|mut entry| {
+                    entry.decimals = entry.decimals.clamp(0, MAX_TOKEN_DECIMALS);
+                    // Displaying more places than the token has is meaningless,
+                    // and negative places are not a thing.
+                    entry.display_decimals = entry
+                        .display_decimals
+                        .map(|display| display.clamp(0, entry.decimals));
+                    entry
+                })
+                .collect();
+            if normalized != state.token_preferences {
+                state.token_preferences = normalized;
+                events.push(StateEvent {
+                    kind: "tokenPreferencesChanged".to_string(),
+                    subject_id: None,
+                });
+            }
+        }
+        StateCommand::SetPinnedDashboardAssets { symbols } => {
+            let mut seen = std::collections::HashSet::new();
+            let normalized: Vec<String> = symbols
+                .into_iter()
+                .filter_map(|symbol| {
+                    let symbol = symbol.trim().to_uppercase();
+                    if symbol.is_empty() || !seen.insert(symbol.clone()) {
+                        return None;
+                    }
+                    Some(symbol)
+                })
+                .collect();
+            if normalized != state.settings.pinned_dashboard_asset_symbols {
+                state.settings.pinned_dashboard_asset_symbols = normalized;
+                events.push(StateEvent {
+                    kind: "pinnedDashboardAssetsChanged".to_string(),
+                    subject_id: None,
+                });
+            }
         }
     }
 
@@ -263,6 +493,7 @@ mod tests {
             },
             xpub: None,
             derivation_preset: "standard".to_string(),
+            derivation_overrides: Default::default(),
             derivation_path: Some("m/84'/0'/0'/0/0".to_string()),
             holdings: Vec::new(),
             addresses: vec![WalletAddress {

@@ -7,8 +7,10 @@ use std::path::PathBuf;
 use std::sync::LazyLock;
 
 use spectra_core::store::secret_backends::FileSecretStore;
+use spectra_core::store::wallet_domain::CoreTransactionKind;
 use spectra_core::store::secret_store::{SecretClass, SecretStore};
-use spectra_core::store::state::{CoreAppState, WalletSummary};
+use spectra_core::service::WalletService;
+use spectra_core::store::state::{CoreAppState, StateCommand, StateTransition, WalletSummary};
 use spectra_core::store::wallet_db;
 
 // ─── Store ───────────────────────────────────────────────────────────────────
@@ -55,6 +57,48 @@ fn save_state(state: &CoreAppState) {
     if let Err(e) = wallet_db::app_state_save(&db_path(), state) {
         eprintln!("  {} failed to save wallets: {e}", accent("✗").bold());
     }
+}
+
+// ─── Settings ────────────────────────────────────────────────────────────────
+//
+// Settings go through `WalletService::apply_state_command`, the same path the
+// app uses, rather than being written here directly. The service is opened
+// fresh per command: a CLI process is short-lived, and reopening means it never
+// holds a stale snapshot to overwrite the store with.
+
+fn with_state_service<T>(
+    rt: &tokio::runtime::Runtime,
+    body: impl FnOnce(&tokio::runtime::Runtime, &std::sync::Arc<WalletService>) -> T,
+) -> Result<T, String> {
+    let service = WalletService::new_typed(Vec::new()).map_err(|e| e.to_string())?;
+    rt.block_on(service.open_state(db_path()))
+        .map_err(|e| e.to_string())?;
+    Ok(body(rt, &service))
+}
+
+fn fiat_currency() -> String {
+    load_state().settings.fiat_currency_code
+}
+
+/// Send one command to core and return what it decided.
+fn apply_command(
+    rt: &tokio::runtime::Runtime,
+    command: StateCommand,
+) -> Result<StateTransition, String> {
+    with_state_service(rt, |rt, service| {
+        rt.block_on(service.apply_state_command(command))
+            .map_err(|e| e.to_string())
+    })?
+}
+
+fn set_fiat_currency(rt: &tokio::runtime::Runtime, code: &str) -> Result<String, String> {
+    apply_command(
+        rt,
+        StateCommand::SetFiatCurrency {
+            fiat_currency_code: code.to_string(),
+        },
+    )
+    .map(|transition| transition.state.settings.fiat_currency_code)
 }
 
 /// Address the CLI shows and queries for a wallet. Wallets always carry one by
@@ -2104,12 +2148,13 @@ fn print_price_for_chain(rt: &tokio::runtime::Runtime, chain_name: &str) {
     match result {
         Ok(map) => {
             let price = map.get(symbol).copied().unwrap_or(0.0);
+            let (rate, code) = fiat_conversion(rt);
             println!();
             println!(
                 "  {}  {} {}  {}",
                 chain_paint("●", chain_name).bold(),
-                format!("${:.2}", price).white().bold(),
-                muted("USD"),
+                money(price, rate).white().bold(),
+                muted(&code),
                 chain_paint(symbol, chain_name).bold(),
             );
             println!("     {} {}", muted("via"), faint("CoinGecko"),);
@@ -2118,6 +2163,282 @@ fn print_price_for_chain(rt: &tokio::runtime::Runtime, chain_name: &str) {
             eprintln!("  {} {e}", accent("✗").bold());
         }
     }
+}
+
+fn cmd_currency(rt: &tokio::runtime::Runtime, args: &[&str]) {
+    let current = fiat_currency();
+
+    if let Some(requested) = args.first() {
+        match set_fiat_currency(rt, requested) {
+            Ok(code) if code == current => {
+                println!("  {} {}", muted("already"), code.white().bold());
+            }
+            Ok(code) => {
+                println!(
+                    "  {} {} {} {}",
+                    accent("✓").bold(),
+                    current.dimmed(),
+                    muted("→"),
+                    code.white().bold(),
+                );
+            }
+            Err(e) => eprintln!("  {} {e}", accent("✗").bold()),
+        }
+        return;
+    }
+
+    section_tinted("Currency", "display currency for prices and totals", (150, 190, 255));
+    println!("  {} {}", muted("current"), current.white().bold());
+    println!();
+    println!(
+        "  {} {}",
+        faint("set with"),
+        accent_soft("currency EUR"),
+    );
+    println!(
+        "  {}",
+        faint("shared with the app — the same setting, the same store"),
+    );
+}
+
+// ─── Stored transactions ─────────────────────────────────────────────────────
+//
+// Reads the transaction store core owns. Distinct from `history`, which fetches
+// from the chain — this is what has actually been recorded locally.
+
+fn cmd_txs(rt: &tokio::runtime::Runtime, args: &[&str]) {
+    let wallet_filter = args.first().map(|s| s.to_string());
+    let result = with_state_service(rt, |rt, service| match &wallet_filter {
+        Some(wallet_id) => rt.block_on(service.transactions_for_wallet(wallet_id.clone())),
+        None => rt.block_on(service.transactions()),
+    });
+    let records = match result.and_then(|r| r.map_err(|e| e.to_string())) {
+        Ok(records) => records,
+        Err(e) => {
+            eprintln!("  {} {e}", accent("✗").bold());
+            return;
+        }
+    };
+
+    section_tinted("Transactions", "recorded locally", (190, 170, 255));
+    if records.is_empty() {
+        println!("  {}", muted("none recorded"));
+        return;
+    }
+    for record in &records {
+        let arrow = match record.kind {
+            CoreTransactionKind::Send => "↑".truecolor(255, 110, 130).bold(),
+            CoreTransactionKind::Receive => "↓".truecolor(120, 230, 160).bold(),
+        };
+        println!(
+            "  {}  {:>12}  {:<10}  {}",
+            arrow,
+            format!("{:.6}", record.amount).truecolor(220, 220, 230),
+            chain_paint(&record.symbol, &record.chain_name).bold(),
+            faint(&record.address),
+        );
+        if let Some(hash) = &record.transaction_hash {
+            println!("     {}", muted(hash));
+        }
+    }
+    println!();
+    println!(
+        "  {} {}",
+        accent(&format!("{}", records.len())).bold(),
+        faint(if records.len() == 1 { "transaction" } else { "transactions" }),
+    );
+}
+
+// ─── Address book ────────────────────────────────────────────────────────────
+
+fn cmd_addressbook(rt: &tokio::runtime::Runtime, args: &[&str]) {
+    match args.first().copied() {
+        Some("add") => addressbook_add(rt, &args[1..]),
+        Some("rm") | Some("remove") => addressbook_remove(rt, &args[1..]),
+        _ => addressbook_list(),
+    }
+}
+
+fn addressbook_list() {
+    let entries = load_state().address_book;
+    section_tinted("Address Book", "saved recipients", (150, 200, 180));
+    if entries.is_empty() {
+        println!("  {}", muted("empty"));
+        println!(
+            "  {} {}",
+            faint("add one with"),
+            accent_soft("ab add <chain> <name> <address> [note]"),
+        );
+        return;
+    }
+    for entry in &entries {
+        println!(
+            "  {}  {:<16}  {}",
+            chain_paint("●", &entry.chain_name).bold(),
+            entry.name.white().bold(),
+            chain_paint(&entry.chain_name, &entry.chain_name),
+        );
+        println!("     {}", accent_soft(&entry.address));
+        if !entry.note.is_empty() {
+            println!("     {}", faint(&entry.note));
+        }
+    }
+    println!();
+    println!(
+        "  {} {}",
+        accent(&format!("{}", entries.len())).bold(),
+        faint(if entries.len() == 1 { "contact" } else { "contacts" }),
+    );
+}
+
+/// `ab add` prompts; `ab add <chain> <name> <address> [note...]` does not.
+/// The non-interactive form exists because the fuzzy pickers need a TTY, which
+/// makes the interactive path impossible to drive from a script or a test.
+fn addressbook_add(rt: &tokio::runtime::Runtime, args: &[&str]) {
+    let (chain_name, name, address, note) = if args.len() >= 3 {
+        (
+            args[0].to_string(),
+            args[1].to_string(),
+            args[2].to_string(),
+            args[3..].join(" "),
+        )
+    } else {
+        let chains = supported_chains();
+        let names: Vec<&str> = chains.iter().map(|c| c.name.as_str()).collect();
+        let Ok(Some(idx)) = FuzzySelect::new()
+            .with_prompt("Chain")
+            .items(&names)
+            .interact_opt()
+        else {
+            println!("{}", muted("cancelled"));
+            return;
+        };
+        let Ok(name): Result<String, _> = Input::new().with_prompt("Contact name").interact_text()
+        else {
+            println!("{}", muted("cancelled"));
+            return;
+        };
+        let Ok(address): Result<String, _> = Input::new().with_prompt("Address").interact_text()
+        else {
+            println!("{}", muted("cancelled"));
+            return;
+        };
+        let note: String = Input::new()
+            .with_prompt("Note (optional)")
+            .allow_empty(true)
+            .interact_text()
+            .unwrap_or_default();
+        (chains[idx].name.clone(), name, address, note)
+    };
+
+    let command = StateCommand::AddAddressBookEntry {
+        id: uuid::Uuid::new_v4().to_string().to_uppercase(),
+        name,
+        chain_name,
+        address,
+        note,
+    };
+    match apply_command(rt, command) {
+        Ok(transition) => match rejection_reason(&transition) {
+            // Core decides whether an entry is acceptable; the CLI only
+            // reports what it decided.
+            Some(reason) => eprintln!("  {} {}", accent("✗").bold(), rejection_text(&reason)),
+            None => println!("  {} contact saved", accent("✓").bold()),
+        },
+        Err(e) => eprintln!("  {} {e}", accent("✗").bold()),
+    }
+}
+
+fn addressbook_remove(rt: &tokio::runtime::Runtime, args: &[&str]) {
+    let entries = load_state().address_book;
+    if entries.is_empty() {
+        println!("  {}", muted("nothing to remove"));
+        return;
+    }
+    if let Some(needle) = args.first() {
+        let Some(entry) = entries
+            .iter()
+            .find(|e| e.id.eq_ignore_ascii_case(needle) || e.name.eq_ignore_ascii_case(needle))
+        else {
+            eprintln!("  {} no contact matching {needle}", accent("✗").bold());
+            return;
+        };
+        match apply_command(
+            rt,
+            StateCommand::RemoveAddressBookEntry {
+                id: entry.id.clone(),
+            },
+        ) {
+            Ok(_) => println!("  {} removed", accent("✓").bold()),
+            Err(e) => eprintln!("  {} {e}", accent("✗").bold()),
+        }
+        return;
+    }
+    let labels: Vec<String> = entries
+        .iter()
+        .map(|e| format!("{} — {} — {}", e.name, e.chain_name, e.address))
+        .collect();
+    let Ok(Some(idx)) = FuzzySelect::new()
+        .with_prompt("Remove which contact")
+        .items(&labels)
+        .interact_opt()
+    else {
+        println!("{}", muted("cancelled"));
+        return;
+    };
+    let command = StateCommand::RemoveAddressBookEntry {
+        id: entries[idx].id.clone(),
+    };
+    match apply_command(rt, command) {
+        Ok(_) => println!("  {} removed", accent("✓").bold()),
+        Err(e) => eprintln!("  {} {e}", accent("✗").bold()),
+    }
+}
+
+fn rejection_reason(transition: &StateTransition) -> Option<String> {
+    transition
+        .events
+        .iter()
+        .find(|e| e.kind == "addressBookRejected")
+        .and_then(|e| e.subject_id.clone())
+}
+
+fn rejection_text(reason: &str) -> String {
+    match reason {
+        "emptyName" => "contact name cannot be empty".to_string(),
+        "invalidAddress" => "that address is not valid for this chain".to_string(),
+        "duplicateAddress" => "that address is already saved".to_string(),
+        other => format!("rejected: {other}"),
+    }
+}
+
+// ─── Fiat conversion ─────────────────────────────────────────────────────────
+
+/// USD → the user's selected currency, as (rate, code). Falls back to 1.0/USD
+/// when the selection is USD or the rate lookup fails — a display currency is
+/// never worth failing a command over.
+fn fiat_conversion(rt: &tokio::runtime::Runtime) -> (f64, String) {
+    let code = fiat_currency();
+    if code == "USD" {
+        return (1.0, code);
+    }
+    let Ok(service) = WalletService::new_typed(Vec::new()) else {
+        return (1.0, "USD".to_string());
+    };
+    match rt.block_on(service.fetch_fiat_rates_typed("OpenER".to_string(), vec![code.clone()])) {
+        Ok(rates) => match rates.get(&code).copied() {
+            Some(rate) if rate > 0.0 => (rate, code),
+            _ => (1.0, "USD".to_string()),
+        },
+        Err(e) => {
+            eprintln!("  {} {code} rate unavailable ({e}), showing USD", faint("!"));
+            (1.0, "USD".to_string())
+        }
+    }
+}
+
+fn money(amount: f64, rate: f64) -> String {
+    format!("{:.2}", amount * rate)
 }
 
 // ─── Portfolio (sum balance × price across wallets) ─────────────────────────
@@ -2130,9 +2451,10 @@ fn cmd_portfolio(rt: &tokio::runtime::Runtime) {
         return;
     }
 
+    let (rate, code) = fiat_conversion(rt);
     section_tinted(
         "Portfolio",
-        "balances × prices, summed in USD",
+        &format!("balances × prices, summed in {code}"),
         (140, 230, 180),
     );
 
@@ -2201,16 +2523,16 @@ fn cmd_portfolio(rt: &tokio::runtime::Runtime) {
             dot,
             w.name.white(),
             format!("{:.4} {}", amount, symbol).truecolor(220, 220, 230),
-            faint(&format!("@ ${:.2}", price)),
-            format!("${:.2}", usd).white().bold(),
+            faint(&format!("@ {}", money(price, rate))),
+            money(usd, rate).white().bold(),
         );
     }
     println!();
     println!(
         "  {}  {} {}",
         accent("Σ").bold(),
-        format!("${:.2}", total_usd).white().bold(),
-        muted("USD"),
+        money(total_usd, rate).white().bold(),
+        muted(&code),
     );
 }
 
@@ -2321,7 +2643,10 @@ fn cmd_help() {
             "market",
             (130, 200, 255),
             &[
-                ("price", "current USD price (CoinGecko)"),
+                ("price", "current price (CoinGecko)"),
+                ("currency, fiat", "show or set the display currency"),
+                ("ab, addressbook", "saved recipients (ab add / ab rm)"),
+                ("txs, transactions", "locally recorded transactions"),
                 ("p, portfolio", "total balance × price across wallets"),
             ],
         ),
@@ -2397,6 +2722,9 @@ fn run_shell(rt: &tokio::runtime::Runtime) {
             "history" | "hist" => cmd_history(rt),
             "staking" | "stake" => cmd_staking(rt),
             "price" => cmd_price(rt),
+            "currency" | "fiat" => cmd_currency(rt, args),
+            "ab" | "addressbook" => cmd_addressbook(rt, args),
+            "txs" | "transactions" => cmd_txs(rt, args),
             "portfolio" | "p" => cmd_portfolio(rt),
             "about" => cmd_about(),
             "help" | "?" => cmd_help(),

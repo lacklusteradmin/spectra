@@ -213,6 +213,7 @@ impl BalanceRefreshEngine {
                             chain_name: holding.chain_name.clone(),
                             include_in_portfolio_total: true,
                             network_mode: None,
+                            derivation_overrides: Default::default(),
                             xpub: None,
                             derivation_preset: String::new(),
                             derivation_path: None,

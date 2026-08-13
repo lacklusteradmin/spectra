@@ -2,7 +2,10 @@
 
 **Goal:** shared Rust core, 100% native iOS (Liquid Glass) and Android (Material You).
 
-The structural reorganization described in earlier drafts of this file has landed. This document now describes the layout as it is.
+This document describes the layout **as it is**. For where it is going — core
+owns the domain state, the CLI proves core needs no platform, the UI renders and
+forwards — see [`PLAN.md`](../PLAN.md) at the repo root. The gap between the two
+is real and is catalogued under "Known divergence" below.
 
 ---
 
@@ -98,7 +101,7 @@ Each top-level item below is either a `.rs` at the crate root or a folder. Domai
 - **`lib.rs`** — crate entry, `SpectraBridgeError`, top-level module declarations, `pub use` shortcuts.
 - **`service.rs`** (~3860 lines) — the stateful `WalletService` UniFFI object. Holds endpoint index, history pagination, secret-store callback, in-memory `CoreAppState`, and an Etherscan API key. Async chain-dispatched methods live here in `impl WalletService` blocks; per-chain send parameter records are split into `service_send_params.rs`.
 - **`service_send_params.rs`** — typed serde contracts for chain-dispatched native/token send payloads. `WalletService` still receives heterogeneous JSON internally, but dispatch arms parse into these records before touching fields.
-- **`app_core.rs`** (~940 lines) — chain catalog (`AppCoreChainPreset`, endpoint records, broadcast options), derivation-path resolution, registry data. Embeds `data/AppEndpointDirectory.json`. The old `app_core_derivation_paths.rs` and `app_core_registry_data.rs` are merged in.
+- **`app_core.rs`** (~940 lines) — chain catalog (`AppCoreChainPreset`, endpoint records, broadcast options), derivation-path resolution, registry data. Embeds `data/AppEndpointDirectory.json`.
 - **`registry.rs`** — canonical `Chain` enum with frozen u32 IDs, `EvmChain` newtype, `EndpointSlot` enum, and the per-chain metadata tables (`coin_name`, `coin_symbol`, `chain_display_name`, `native_decimals`, `evm_chain_id`, `static_fee_units`, `mainnet_counterpart`, `address_slot`, `address_validation_kind`, `supports_watch_only_import`, etc.). Single source of truth for "what chains exist" **and for per-chain facts** — a new fact about chains goes here, not in a match inside the module that needs it.
 - **`tokens.rs`** — built-in token catalog (sourced from `core/data/tokens.toml`) plus token-id and endpoint-URL normalization helpers (Aptos canonical hex, Sui token IDs, etc.).
 - **`formatting.rs`** — decimals resolution, fiat amount rules, stablecoin fallback prices, asset display formatting, dashboard grouping keys.
@@ -107,7 +110,7 @@ Each top-level item below is either a `.rs` at the crate root or a folder. Domai
 
 ### `derivation/` — keypair + address derivation
 
-- **`mod.rs`** — module entry + re-exports. `validation` is also exposed as `addressing` for legacy callers.
+- **`mod.rs`** — module entry + re-exports. `validation` is also aliased as `addressing`; prefer the real name in new code.
 - **`types.rs`** — derivation output types (`DerivationResult`, `BitcoinScriptType`, …).
 - **`dispatch.rs`** — per-chain dispatch table plus script-type-from-purpose resolution.
 - **`primitives.rs`** — shared crypto helpers: BIP-39 seed expansion, PBKDF2, Blake2b, base32 / base58check, secp pubkey formatting.
@@ -121,13 +124,13 @@ Each top-level item below is either a `.rs` at the crate root or a folder. Domai
 ### `fetch/` — balance, history, price, HTTP
 
 - **`mod.rs`** — balance-refresh planning + targeting, plus `core_plan_*` FFI surface for refresh planning.
-- **`http.rs`** — async HTTP transport (single shared `reqwest::Client`) with retry/backoff and the byte-oriented FFI HTTP entry point that replaces Swift's URLSession resilience layer. The old `http_ffi.rs` is merged in.
+- **`http.rs`** — async HTTP transport (single shared `reqwest::Client`) with retry/backoff and the byte-oriented FFI HTTP entry point. All network access goes through here, on either platform.
 - **`history.rs`** — chain-history normalization + bitcoin inventory snapshot merging.
 - **`history_decode.rs`** — typed JSON decoders for chain-history shapes (EVM pages, BTC raw snapshots, Dogecoin aggregates).
 - **`history_store.rs`** — per-wallet pagination state (cursor / page / exhaustion).
 - **`price.rs`** — price + fiat-rate fetch service.
 - **`refresh.rs`** — chain refresh / history refresh / active-maintenance plan builders (`core_active_maintenance_plan`, `core_chain_refresh_plans`, `core_history_refresh_plans`).
-- **`refresh_engine.rs`** — Rust-driven balance refresh loop + the `BalanceObserver` Swift callback trait it pushes results to (the old `balance_observer.rs` is merged in).
+- **`refresh_engine.rs`** — Rust-driven balance refresh loop + the `BalanceObserver` Swift callback trait it pushes results to.
 - **`transactions.rs`** — tx merge logic with Swift-compatible precedence rules.
 - **`chains/<chain>.rs`** — one client per chain (`BitcoinClient`, `EvmClient`, …) handling balance / history / fee / native-summary RPC.
 
@@ -135,11 +138,11 @@ Each top-level item below is either a `.rs` at the crate root or a folder. Domai
 
 - **`mod.rs`** — `route_send_asset`, `plan_send_preview_routing`, `plan_send_submit_preflight`, `TransferRequest` + traits, `SendExecutionRequest`/`SendExecutionResult`.
 - **`amount_input.rs`** — pure decimal parser with max fractional digits.
-- **`flow.rs`** — pure-logic helpers backing the send flow: address validation, EVM chain context tags, ENS-candidate detection, high-risk-send warning evaluation. The old `flow_helpers.rs` is merged in.
+- **`flow.rs`** — pure-logic helpers backing the send flow: address validation, EVM chain context tags, ENS-candidate detection, high-risk-send warning evaluation.
 - **`ethereum.rs`** — Ethereum / EVM send core (overrides parsing, payload assembly, send-result decoding).
 - **`payload.rs`** — per-chain send-payload JSON builders + tx-id classification.
 - **`preview_decode.rs`** — send-preview decoders for the 17 non-EVM chains.
-- **`preview_types.rs`** — per-chain send-preview record types (`BitcoinSendPreview`, `SolanaSendPreview`, …). Re-exported as `crate::wallet_core` for legacy callers.
+- **`preview_types.rs`** — per-chain send-preview record types (`BitcoinSendPreview`, `SolanaSendPreview`, …), plus the `SendPreview` tagged enum that carries one across the FFI. Also re-exported as `crate::wallet_core`; prefer the real path.
 - **`transfer.rs`** — generic transfer-availability planning.
 - **`utxo.rs`** — UTXO selection, dust thresholds, kilobyte/sat-vbyte fee previews, change-output decisions.
 - **`verification.rs`** — pure state machine for send-broadcast verification notices.
@@ -151,13 +154,13 @@ Each top-level item below is either a `.rs` at the crate root or a folder. Domai
 - **`state.rs`** — `WalletAddress`, `AssetHolding`, `WalletSummary`, `AppSettings`, `CoreAppState`, `StateCommand`, plus `reduce_state_in_place`.
 
   **This is the chain-agnostic wallet model, and iOS does not use it yet.** Swift's canonical store is `AppState`'s `@Observable` arrays of `ImportedWallet` (see `swift/AppState+CoreStateStore.swift`); no Swift code constructs a `StateCommand`. Today `reduce_state_in_place` is driven by `WalletService::init_wallet_state_direct` and by the CLI. Moving iOS onto it is the open work — see "Known divergence" below.
-- **`persistence_models.rs`** — Rust mirrors of Swift's `Persisted*` types (round-trippable JSON).
-- **`wallet_domain.rs`** — wallet domain types ported from Swift `CoreModels.swift`.
+- **`persistence_models.rs`** — on-disk record shapes for the wallet store, round-trippable as JSON.
+- **`wallet_domain.rs`** — `CoreImportedWallet` and the value types around it. Carries no Rust behaviour; see "Known divergence".
 - **`wallet_db.rs`** — SQLite-backed relational store. Per-wallet UTXO state (keypool + owned addresses, replacing 4 UserDefaults JSON blobs Swift used to own), transaction history, and the `CoreAppState` snapshot itself (`app_state_save` / `app_state_load`, `wallet_upsert` / `wallet_load_all`).
 - **`secret_store.rs`** — `SecretStore` UniFFI callback trait. Swift implements it; Rust drives all secret I/O through it so raw key material stays out of Rust-owned memory.
 - **`secret_backends.rs`** — native `SecretStore` implementations: `InMemorySecretStore` (tests) and `FileSecretStore` (the CLI, and any headless Rust consumer). These exist so secret-bearing core paths can run without a mobile platform; a trait with no Rust implementation cannot be tested or driven from the CLI.
-- **`seed_envelope.rs`** — AES-256-GCM seed-phrase envelope (compatible with Swift's `SeedMaterialEnvelope`).
-- **`password_verifier.rs`** — PBKDF2-HMAC-SHA256 password verifier envelope (compatible with Swift's `SecureSeedPasswordStore`).
+- **`seed_envelope.rs`** — AES-256-GCM seed-phrase envelope.
+- **`password_verifier.rs`** — PBKDF2-HMAC-SHA256 password-verifier envelope.
 - **`chain_aliases.rs`** — canonical chain-name + icon-identifier helpers used by store dashboard plans.
 - **`tests.rs`** — store-surface integration tests.
 
@@ -170,7 +173,7 @@ Each top-level item below is either a `.rs` at the crate root or a folder. Domai
 ### `diagnostics/` — runtime self-tests + diagnostics state
 
 - **`mod.rs`** — re-exports.
-- **`registry.rs`** — Rust-owned per-wallet diagnostics dictionary (replaces 24 keyed dictionaries Swift used to hold).
+- **`registry.rs`** — per-wallet diagnostics dictionary, keyed by wallet and chain.
 - **`types.rs`** — diagnostic record types exposed to Swift via UniFFI.
 - **`aggregate.rs`** — pure JSON-parsing + aggregation for diagnostic record building.
 - **`export.rs`** — per-chain diagnostics JSON builders for the export bundle.
@@ -256,19 +259,18 @@ make clean        → cargo clean + rm -rf build/
 
 `swift/generated/` and the Kotlin equivalent are gitignored and regenerated by the bindgen scripts.
 
-The `SpectraTests` target was missing `SWIFT_INCLUDE_PATHS = $(SRCROOT)/generated`,
-so it could not resolve `spectra_coreFFI` and the Swift test suite had never
-compiled. It runs now:
+The Swift suite runs from the `swift/` directory:
 
 ```
 cd swift && xcodebuild test -scheme Spectra \
   -destination 'platform=iOS Simulator,name=iPhone 17 Pro'
 ```
 
-The Rust build phase is marked `alwaysOutOfDate`. Its `inputPaths` listed only
-`ffi/`, never `core/src/**`, so editing core logic left Xcode believing the
-bindings were current and it compiled Swift against a stale
-`swift/generated/spectra_core.swift`.
+Both test targets need `SWIFT_INCLUDE_PATHS = $(SRCROOT)/generated` to resolve
+`spectra_coreFFI`. The Xcode "Build Rust Derivation Core" phase is marked
+`alwaysOutOfDate` — its `inputPaths` cannot practically enumerate `core/src/**`,
+so without that flag Xcode skips the phase after a Rust edit and compiles Swift
+against stale bindings.
 
 ---
 
@@ -277,125 +279,33 @@ bindings were current and it compiled Swift against a stale
 - **Vertical slicing in `chains/`.** Each chain owns its full pipeline in one file. Some chain-local duplication is intentional where it makes protocol behavior clearer; pure wrapper repetition (for example EVM replica derivation exports) should be generated by local macros or registry-driven helpers.
 - **Decentralized FFI.** Each `#[uniffi::export]` lives next to the logic it exposes. Centralizing them was tried and abandoned — the boundary tracking grew faster than the surface itself.
 - **`registry::Chain` is the single source of truth** for what chains exist. New chains add one variant + per-chain rows in the metadata tables; `Chain::from_id` and `Chain::all` keep iteration safe.
-- **Rust owns logic, Swift/Kotlin own UI.** No cross-platform UI framework. The FFI boundary is typed UniFFI records where practical; heterogeneous chain-dispatched send flows still use an internal JSON shuttle, parsed immediately into typed Rust records before dispatch.
-- **`core` builds without a mobile toolchain.** `cargo test -p spectra_core` runs on Linux CI, gives 280+ passing tests, and gates every change.
+- **Rust owns the domain, Swift/Kotlin own the UI.** No cross-platform UI framework. This is the intent, not yet the state — see "Known divergence" below. The FFI boundary is typed UniFFI records where practical; heterogeneous chain-dispatched send flows still use an internal JSON shuttle, parsed immediately into typed Rust records before dispatch.
+- **`core` builds without a mobile toolchain.** `cargo test --workspace` needs no Xcode, runs the full suite, and gates every change.
 
 ---
 
-## Known divergence: iOS bypasses the core state model
+## Known divergence: Swift owns the domain state
 
-Spectra's app was built before its core. Logic has been moved into Rust
-steadily since, but the *shape* of several core APIs still records where they
-were carved out of rather than what the domain is. Writing that down keeps it a
-tracked debt rather than an invisible one.
+The app was written before the core, and that ordering is still visible: Swift's
+`AppState` is the authoritative store for wallets, transactions and the address
+book, and Rust's `reduce_state_in_place` reducer has never been called from
+Swift. `swift/AppState+CoreStateStore.swift` says so directly — *"There is no
+Rust round-trip."*
 
-**Two wallet models.**
+Two consequences show up throughout this document:
 
-| | `store::state::WalletSummary` | `store::wallet_domain::CoreImportedWallet` |
-|---|---|---|
-| Shape | `chain_name` + `addresses: Vec<WalletAddress>` | one `Option<String>` field per chain (27 of them) |
-| Adding a chain | no change | edit the struct, regenerate, update Swift |
-| Rust logic using it | `service.rs`, `refresh_engine.rs`, `wallet_db.rs`, the CLI | **none** |
-| Swift usage | balance-refresh seam only | the app's primary model (`typealias ImportedWallet`) |
+- **`store::wallet_domain::CoreImportedWallet` carries no Rust behaviour.** It
+  exists so UniFFI emits a Swift struct. `store::state::WalletSummary` is the
+  model the core actually computes with, and the two describe the same thing.
+- **42 of the ~90 `core_*` FFI exports are `core_plan_*` planners** — core
+  computes a decision, Swift applies it to Swift-owned state. That splits one
+  state machine across the boundary, and each signature describes the screen it
+  was extracted from rather than a domain concept.
 
-`CoreImportedWallet` exists so UniFFI emits a Swift struct. It carries no Rust
-behaviour. `WalletSummary` is the model the core actually computes with.
-
-**Wide per-chain records.** All of them have been converted. They used to
-enumerate ~26 of the ~78 chains `registry::Chain` knows about, so adding a chain
-meant editing each record plus its Swift call sites — the cost that
-`registry::Chain` was introduced to remove.
-
-| Record | State |
-|---|---|
-| `WalletImportAddresses`, `WalletImportWatchOnlyEntries` | done — keyed by `Chain::address_slot` |
-| `CoreSeedDerivationPaths` | done — keyed by `Chain::str_id`, testnets fold onto their mainnet |
-| `DiagnosticsBundlePayload` | done — keyed by `Chain::str_id` |
-| `CoreImportedWallet` | done — `addresses` keyed by `Chain::address_slot`, with `PersistedWallet` following |
-| `SendPreviewsInput` | done — replaced by the `SendPreview` tagged enum |
-
-The converted ones are the pattern to follow. What they removed:
-
-- `derivation/import.rs`: ~430 lines of per-chain match arms → ~50 lines of
-  registry lookup.
-- `CoreSeedDerivationPaths`: a 45-field record, a 44-arm builder in
-  `app_core.rs`, a 238-line Swift extension (two 76-case switches plus a
-  hardcoded copy of every path already in `chains.toml`), a 64-line Codable
-  keyPath table and a 47-line coding-keys enum → a map plus ~80 lines total.
-- `DiagnosticsBundlePayload`: 21 fields → one map. Nothing read the individual
-  fields; they existed only to be serialized.
-- `CoreImportedWallet`: 27 address fields → one map, and `PersistedWallet` (the
-  Swift on-disk mirror) with it — that struct declared its 26 fields four times
-  over, in declarations, an initializer's parameters, its assignments and a
-  hand-written decoder. The "rebuild the whole record to change one field"
-  copy-constructors at five call sites became two-line mutations.
-
-- `SendPreviewsInput`: 18 heterogeneous `Option<…SendPreview>` fields plus a
-  236-line `extract` that selected one *by chain name* → a `SendPreview` tagged
-  enum and a 105-line match on the variant. Homogeneous maps don't fit here —
-  the preview shapes genuinely differ — but tagging at the source removes the
-  chain matching entirely, and 17 empty optionals stop crossing the FFI on every
-  keystroke.
-
-Swift keeps 24 one-line `wallet.<chain>Address` accessors over the map as a
-compatibility shim for the ~300 existing read sites. They are reads, not
-storage: a new chain needs no entry, and new code should call
-`address(forChainNamed:)`.
-
-**Duplicated chain tables.** Facts about chains kept getting re-tabulated per
-module, and the copies drifted. Consolidating them into `registry::Chain` fixed
-two live bugs:
-
-| Fact | Was duplicated in | Now |
-|---|---|---|
-| address format for validation | `send/flow.rs::chain_kind`, `derivation/import.rs`, `diagnostics/self_tests.rs` | `Chain::address_validation_kind` |
-| which chains are EVM | `is_evm`, `chain_kind`, `core_evm_chain_context_tag`, `import.rs`, `walletForSingleChain` (Swift) | `Chain::is_evm`, read via `coreIsEvmChain` |
-| default derivation paths | `chains.toml`, `app_core.rs`, `CoreModels.swift`'s `fallbackPaths` | `chains.toml`, read through `Chain::str_id` |
-| which storage slot a chain's address uses | `import.rs` (twice), `AppState+ReceiveFlow.swift` | `Chain::address_slot`, read via `coreAddressSlot` |
-| which chains have a send preview | `send/flow.rs::extract` | the `SendPreview` variant the caller picks |
-
-`chain_kind` omitted 22 mainnets, so `is_valid_send_address` rejected every
-address on Base, Polygon, Zcash, Kaspa, Dash, Bittensor and the newer rollups.
-`core_evm_chain_context_tag` listed `"Base Sepolia"` but not `"Base"`, and
-`"Polygon Amoy"` but not `"Polygon"`, so those mainnets were not recognised as
-EVM chains by the send flow. Both are regression-tested now.
-
-**`core_plan_*`.** Roughly 40 of the ~87 `core_*` FFI exports are planners:
-Rust decides, Swift applies the decision to Swift-owned state. That splits one
-state machine across the boundary. Each was extracted from a specific Swift call
-site, so the signatures describe a screen's needs rather than a domain concept.
-Collapsing them depends on moving state ownership into Rust first.
-
-**Direction.** New work should use `WalletSummary` / `CoreAppState` and add
-chain-keyed maps rather than per-chain fields. Per-chain facts belong on
-`registry::Chain`, not in a match inside the module that happens to need them.
-The CLI is the check: it drives the same `store::state` types and the same
-`wallet_db` tables as the app, so an API that only Swift can call shows up as an
-API the CLI cannot reach.
-
-**Known open items.**
-
-- `EVMChainContext` (Swift, `SendPreviewTypes.swift`) has cases for 15 of the 23
-  EVM mainnets. Sei, Celo, Cronos, opBNB, zkSync Era, Sonic, Berachain,
-  Unichain, Ink and X Layer resolve to `nil`, so `isEVMChain(_:)` is still false
-  for them. Each new case needs an `expectedChainID` and `defaultRPCEndpoints`.
-- Testnet endpoint records in `core/data/AppEndpointDirectory.json` carry
-  `"chainName": "Ethereum"` with the testnet only in `groupTitle`, left over
-  from the testnet-as-separate-chain migration. `appCoreEvmRpcEndpoints` filters
-  on `chainName`, so `EVMChainContext.ethereumSepolia.defaultRPCEndpoints` is
-  empty. `AppStateTests.testEthereumTestNetworksExposeExpectedContextsAndEndpoints`
-  fails on exactly this and is left failing on purpose — the fix is a data
-  change whose routing impact needs checking against live endpoints.
-- `scripts/bindgen-ios.sh` and the Xcode "build Rust core" build phase both
-  regenerate `swift/generated/`, and they apply *different* Swift 6 patches (the
-  script adds `nonisolated` to declarations; the build phase only patches
-  `vtablePtr`). The Xcode phase runs on every build and wins. One of them should
-  go.
-- A find/replace of `"ICP"` vs `"Internet Computer"`: `registry::Chain`'s display
-  name and the `chains.toml` `name` disagree for that chain, which is why
-  `Chain::from_display_name` special-cases it and why catalog lookups must key
-  on `str_id` (`chains::default_derivation_path_template_by_id`). Aligning the
-  two names would remove both workarounds.
+Closing this is the project's current work. [`PLAN.md`](../PLAN.md) is the plan
+of record: it holds the target architecture, the domain-state / view-state line,
+the staged work, and the list of open items. Do not restate any of that here —
+this file describes what exists.
 
 ---
 

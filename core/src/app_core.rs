@@ -473,13 +473,12 @@ mod tests {
         // in the catalog, so it is deliberately absent.
         assert_eq!(paths.path_for(Chain::Monero), None);
 
-        // BNB Chain has a catalog template but was missing from the
-        // hand-written list this replaced, so it now gets an entry.
+        // BNB Chain has a catalog template, so it gets an entry.
         assert!(paths.path_for(Chain::BnbChain).is_some());
     }
 }
 
-// ── FFI surface (relocated from ffi.rs) ──────────────────────────────────
+// ── FFI surface ─────────────────────────────────────────────────────────────
 
 /// Build the full transaction-explorer URL for a chain. Encapsulates the
 /// per-chain URL format (Aptos appends `?network=mainnet`, every other chain
@@ -633,7 +632,19 @@ pub(super) fn default_path_from_catalog(chain_name: &str) -> Result<String, Stri
 }
 
 fn default_path_from_catalog_for_account(chain_name: &str, account: u32) -> Result<String, String> {
-    crate::chains::default_derivation_path_template(chain_name)
+    use crate::registry::Chain;
+
+    // Testnets carry `derivation_path = []` in the catalog: they derive from
+    // their mainnet's path and differ only in address encoding. Resolving
+    // through `mainnet_counterpart` states that rule here too — without it,
+    // asking for any testnet's path fails, and the iOS caller turns that into
+    // a `fatalError`.
+    let template = crate::chains::default_derivation_path_template(chain_name).or_else(|| {
+        Chain::from_display_name(chain_name).and_then(|chain| {
+            crate::chains::default_derivation_path_template_by_id(chain.mainnet_counterpart().str_id())
+        })
+    });
+    template
         .map(|template| render_derivation_path_template(template, account))
         .ok_or_else(|| format!("Missing default derivation path for {chain_name}."))
 }
@@ -981,4 +992,44 @@ fn endpoints_for_known_ids(catalog: &AppCoreCatalog, ids: &[&str]) -> Result<Vec
                 .ok_or_else(|| format!("Missing endpoint record for id: {id}"))
         })
         .collect()
+}
+
+#[cfg(test)]
+mod testnet_derivation_paths {
+    use crate::registry::Chain;
+
+    /// Testnets have no catalog template of their own; asking for one used to
+    /// fail, and the iOS caller turns a failure here into a `fatalError`.
+    #[test]
+    fn every_testnet_resolves_to_its_mainnet_path() {
+        for chain in Chain::all().filter(|c| c.is_testnet()) {
+            let mainnet = chain.mainnet_counterpart();
+            if crate::chains::default_derivation_path_template_by_id(mainnet.str_id()).is_none() {
+                continue; // Monero and friends have no BIP-32 path at all.
+            }
+            let resolved = super::app_core_resolve_derivation_path(
+                chain.chain_display_name().to_string(),
+                String::new(),
+            );
+            assert!(
+                resolved.is_ok(),
+                "{} failed to resolve: {:?}",
+                chain.chain_display_name(),
+                resolved.err()
+            );
+        }
+    }
+
+    #[test]
+    fn a_testnet_resolves_to_the_same_path_as_its_mainnet() {
+        let testnet = super::app_core_resolve_derivation_path(
+            "Bitcoin Testnet4".to_string(),
+            String::new(),
+        )
+        .expect("testnet4");
+        let mainnet =
+            super::app_core_resolve_derivation_path("Bitcoin".to_string(), String::new())
+                .expect("bitcoin");
+        assert_eq!(testnet.normalized_path, mainnet.normalized_path);
+    }
 }

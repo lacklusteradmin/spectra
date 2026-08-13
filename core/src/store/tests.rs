@@ -32,6 +32,7 @@ fn builds_secret_catalog_for_persisted_snapshot() {
         xpub: None,
         derivation_preset: "standard".to_string(),
         derivation_path: None,
+        derivation_overrides: Default::default(),
         holdings: Vec::new(),
         addresses: Vec::new(),
     });
@@ -223,4 +224,1595 @@ fn consumes_matching_pending_self_send_confirmation() {
     assert!(!plan.requires_confirmation);
     assert!(plan.consume_existing_confirmation);
     assert!(plan.clear_pending_confirmation);
+}
+
+// ── Owned application state ──────────────────────────────────────────────────
+//
+// `WalletService` owns `CoreAppState`. These pin the contract every front end
+// relies on: a command mutates core's copy, persists it, and the next process
+// sees the change.
+
+#[cfg(test)]
+mod owned_state {
+    use crate::service::WalletService;
+    use crate::state::{CoreAppState, StateCommand};
+
+    fn tmp_db(tag: &str) -> String {
+        let mut path = std::env::temp_dir();
+        path.push(format!(
+            "spectra-owned-state-{tag}-{}-{:?}.sqlite",
+            std::process::id(),
+            std::thread::current().id()
+        ));
+        let _ = std::fs::remove_file(&path);
+        path.to_string_lossy().into_owned()
+    }
+
+    fn service() -> std::sync::Arc<WalletService> {
+        WalletService::new_typed(Vec::new()).expect("service")
+    }
+
+    #[tokio::test]
+    async fn defaults_to_usd_before_anything_is_stored() {
+        let service = service();
+        let db = tmp_db("defaults");
+        let state = service.open_state(db.clone()).await.expect("open");
+        assert_eq!(state.settings.fiat_currency_code, "USD");
+        assert_eq!(state, CoreAppState::default());
+        let _ = std::fs::remove_file(&db);
+    }
+
+    /// The point of Stage 0: a command changes core's state and survives a
+    /// restart without the caller doing anything to save it.
+    #[tokio::test]
+    async fn a_command_persists_without_the_caller_saving() {
+        let db = tmp_db("persist");
+
+        let first = service();
+        first.open_state(db.clone()).await.expect("open");
+        let transition = first
+            .apply_state_command(StateCommand::SetFiatCurrency {
+                fiat_currency_code: "EUR".to_string(),
+            })
+            .await
+            .expect("apply");
+        assert_eq!(transition.state.settings.fiat_currency_code, "EUR");
+        assert_eq!(transition.events.len(), 1);
+        assert_eq!(transition.events[0].kind, "fiatCurrencyChanged");
+
+        // A second service, as a second process would see it.
+        let second = service();
+        let reopened = second.open_state(db.clone()).await.expect("reopen");
+        assert_eq!(reopened.settings.fiat_currency_code, "EUR");
+        assert_eq!(second.fiat_currency_code().await, "EUR");
+
+        let _ = std::fs::remove_file(&db);
+    }
+
+    #[tokio::test]
+    async fn currency_codes_are_normalized() {
+        let service = service();
+        service.open_state(tmp_db("normalize")).await.expect("open");
+        let transition = service
+            .apply_state_command(StateCommand::SetFiatCurrency {
+                fiat_currency_code: "  eur \n".to_string(),
+            })
+            .await
+            .expect("apply");
+        assert_eq!(transition.state.settings.fiat_currency_code, "EUR");
+    }
+
+    /// Setting a value to what it already is is not a change: no event, and
+    /// nothing is written.
+    #[tokio::test]
+    async fn a_no_op_command_emits_no_event() {
+        let service = service();
+        service.open_state(tmp_db("noop")).await.expect("open");
+        let transition = service
+            .apply_state_command(StateCommand::SetFiatCurrency {
+                fiat_currency_code: "usd".to_string(),
+            })
+            .await
+            .expect("apply");
+        assert!(transition.events.is_empty());
+        assert_eq!(transition.state.settings.fiat_currency_code, "USD");
+    }
+
+    /// Without `open_state` the service still works, in memory only. Tests and
+    /// short-lived tools rely on this.
+    #[tokio::test]
+    async fn commands_apply_in_memory_when_no_database_is_bound() {
+        let service = service();
+        let transition = service
+            .apply_state_command(StateCommand::SetFiatCurrency {
+                fiat_currency_code: "JPY".to_string(),
+            })
+            .await
+            .expect("apply");
+        assert_eq!(transition.state.settings.fiat_currency_code, "JPY");
+        assert_eq!(service.fiat_currency_code().await, "JPY");
+    }
+}
+
+// ── Address book (core-owned) ────────────────────────────────────────────────
+//
+// Validation lives in the reducer, not at the call site: a front end that
+// forgets to check cannot save a duplicate or an invalid address.
+
+#[cfg(test)]
+mod address_book {
+    use crate::service::WalletService;
+    use crate::state::{AddressBookRejection, StateCommand};
+
+    const BTC: &str = "bc1qcr8te4kr609gcawutmrza0j4xv80jy8z306fyu";
+    const BTC2: &str = "bc1qw508d6qejxtdg4y5r3zarvary0c5xw7kv8f3t4";
+
+    fn tmp_db(tag: &str) -> String {
+        let mut path = std::env::temp_dir();
+        path.push(format!(
+            "spectra-address-book-{tag}-{}-{:?}.sqlite",
+            std::process::id(),
+            std::thread::current().id()
+        ));
+        let _ = std::fs::remove_file(&path);
+        path.to_string_lossy().into_owned()
+    }
+
+    fn service() -> std::sync::Arc<WalletService> {
+        WalletService::new_typed(Vec::new()).expect("service")
+    }
+
+    fn add(id: &str, name: &str, address: &str) -> StateCommand {
+        StateCommand::AddAddressBookEntry {
+            id: id.to_string(),
+            name: name.to_string(),
+            chain_name: "Bitcoin".to_string(),
+            address: address.to_string(),
+            note: String::new(),
+        }
+    }
+
+    fn rejection(events: &[crate::state::StateEvent]) -> Option<String> {
+        events
+            .iter()
+            .find(|e| e.kind == "addressBookRejected")
+            .and_then(|e| e.subject_id.clone())
+    }
+
+    #[tokio::test]
+    async fn adds_newest_first_and_trims() {
+        let service = service();
+        service
+            .apply_state_command(add("1", "  Cold  ", BTC))
+            .await
+            .expect("add");
+        let transition = service
+            .apply_state_command(add("2", "Hot", BTC2))
+            .await
+            .expect("add");
+
+        let ids: Vec<&str> = transition
+            .state
+            .address_book
+            .iter()
+            .map(|e| e.id.as_str())
+            .collect();
+        assert_eq!(ids, vec!["2", "1"], "newest entry comes first");
+        assert_eq!(transition.state.address_book[1].name, "Cold");
+    }
+
+    #[tokio::test]
+    async fn refuses_an_empty_name() {
+        let service = service();
+        let transition = service
+            .apply_state_command(add("1", "   ", BTC))
+            .await
+            .expect("add");
+        assert!(transition.state.address_book.is_empty());
+        assert_eq!(rejection(&transition.events).as_deref(), Some("emptyName"));
+    }
+
+    #[tokio::test]
+    async fn refuses_an_address_that_is_not_valid_for_the_chain() {
+        let service = service();
+        let transition = service
+            .apply_state_command(add("1", "Typo", "bc1qnot-a-real-address"))
+            .await
+            .expect("add");
+        assert!(transition.state.address_book.is_empty());
+        assert_eq!(
+            rejection(&transition.events).as_deref(),
+            Some("invalidAddress")
+        );
+    }
+
+    /// The same address twice is refused, and case does not get around it —
+    /// addresses are stored normalized.
+    #[tokio::test]
+    async fn refuses_a_duplicate_regardless_of_case() {
+        let service = service();
+        service.apply_state_command(add("1", "Cold", BTC)).await.expect("add");
+        let transition = service
+            .apply_state_command(add("2", "Cold again", &BTC.to_uppercase()))
+            .await
+            .expect("add");
+        assert_eq!(transition.state.address_book.len(), 1);
+        assert_eq!(
+            rejection(&transition.events).as_deref(),
+            Some("duplicateAddress")
+        );
+    }
+
+    /// The same address on a different chain is a different recipient.
+    #[tokio::test]
+    async fn the_same_address_on_another_chain_is_not_a_duplicate() {
+        let service = service();
+        service.apply_state_command(add("1", "BTC", BTC)).await.expect("add");
+        let transition = service
+            .apply_state_command(StateCommand::AddAddressBookEntry {
+                id: "2".to_string(),
+                name: "LTC".to_string(),
+                chain_name: "Litecoin".to_string(),
+                address: "ltc1qw508d6qejxtdg4y5r3zarvary0c5xw7kgmn4n9".to_string(),
+                note: String::new(),
+            })
+            .await
+            .expect("add");
+        assert_eq!(transition.state.address_book.len(), 2);
+        assert!(rejection(&transition.events).is_none());
+    }
+
+    #[tokio::test]
+    async fn renames_and_removes() {
+        let service = service();
+        service.apply_state_command(add("1", "Cold", BTC)).await.expect("add");
+
+        let renamed = service
+            .apply_state_command(StateCommand::RenameAddressBookEntry {
+                id: "1".to_string(),
+                name: "  Vault  ".to_string(),
+            })
+            .await
+            .expect("rename");
+        assert_eq!(renamed.state.address_book[0].name, "Vault");
+
+        let empty = service
+            .apply_state_command(StateCommand::RenameAddressBookEntry {
+                id: "1".to_string(),
+                name: "  ".to_string(),
+            })
+            .await
+            .expect("rename");
+        assert_eq!(empty.state.address_book[0].name, "Vault", "unchanged");
+        assert_eq!(rejection(&empty.events).as_deref(), Some("emptyName"));
+
+        let removed = service
+            .apply_state_command(StateCommand::RemoveAddressBookEntry {
+                id: "1".to_string(),
+            })
+            .await
+            .expect("remove");
+        assert!(removed.state.address_book.is_empty());
+
+        // Removing what is already gone is not a change.
+        let again = service
+            .apply_state_command(StateCommand::RemoveAddressBookEntry {
+                id: "1".to_string(),
+            })
+            .await
+            .expect("remove");
+        assert!(again.events.is_empty());
+    }
+
+    #[tokio::test]
+    async fn survives_a_restart_in_order() {
+        let db = tmp_db("persist");
+
+        let first = service();
+        first.open_state(db.clone()).await.expect("open");
+        first.apply_state_command(add("1", "Cold", BTC)).await.expect("add");
+        first.apply_state_command(add("2", "Hot", BTC2)).await.expect("add");
+
+        let second = service();
+        let reopened = second.open_state(db.clone()).await.expect("reopen");
+        let ids: Vec<&str> = reopened
+            .address_book
+            .iter()
+            .map(|e| e.id.as_str())
+            .collect();
+        assert_eq!(ids, vec!["2", "1"]);
+        assert_eq!(reopened.address_book[0].name, "Hot");
+
+        let _ = std::fs::remove_file(&db);
+    }
+
+    #[test]
+    fn rejection_reasons_serialize_as_the_strings_front_ends_match_on() {
+        for (reason, expected) in [
+            (AddressBookRejection::EmptyName, "emptyName"),
+            (AddressBookRejection::InvalidAddress, "invalidAddress"),
+            (AddressBookRejection::DuplicateAddress, "duplicateAddress"),
+        ] {
+            assert_eq!(
+                serde_json::to_value(reason).unwrap().as_str(),
+                Some(expected)
+            );
+        }
+    }
+}
+
+// ── Owned transaction store ──────────────────────────────────────────────────
+//
+// Transactions live in SQLite, not in `CoreAppState` — history is unbounded and
+// `apply_state_command` returns the whole state. What core owns here is the
+// writes and, critically, the added/updated/removed delta: whether a record is
+// new is a property of the store, and callers used to have to guess.
+
+#[cfg(test)]
+mod transaction_store {
+    use crate::service::{TransactionCommand, WalletService};
+    use crate::store::persistence_models::CorePersistedTransactionRecord;
+
+    fn tmp_db(tag: &str) -> String {
+        let mut path = std::env::temp_dir();
+        path.push(format!(
+            "spectra-tx-store-{tag}-{}-{:?}.sqlite",
+            std::process::id(),
+            std::thread::current().id()
+        ));
+        let _ = std::fs::remove_file(&path);
+        path.to_string_lossy().into_owned()
+    }
+
+    async fn opened(tag: &str) -> (std::sync::Arc<WalletService>, String) {
+        let service = WalletService::new_typed(Vec::new()).expect("service");
+        let db = tmp_db(tag);
+        service.open_state(db.clone()).await.expect("open");
+        (service, db)
+    }
+
+    fn record(id: &str, wallet: &str, status: &str) -> CorePersistedTransactionRecord {
+        serde_json::from_value(serde_json::json!({
+            "id": id,
+            "walletId": wallet,
+            "kind": "send",
+            "status": status,
+            "walletName": "W",
+            "assetName": "Bitcoin",
+            "symbol": "BTC",
+            "chainName": "Bitcoin",
+            "amount": 1.0,
+            "address": "bc1qexample",
+            "transactionHash": format!("hash-{id}"),
+            "createdAt": 0.0,
+        }))
+        .expect("fixture must match CorePersistedTransactionRecord")
+    }
+
+    /// The whole point: core decides what is new and what is an update.
+    #[tokio::test]
+    async fn upsert_reports_added_then_updated_for_the_same_id() {
+        let (service, db) = opened("delta").await;
+
+        let first = service
+            .apply_transaction_command(TransactionCommand::Upsert {
+                records: vec![record("tx1", "w1", "pending")],
+            })
+            .await
+            .expect("upsert");
+        assert_eq!(first.added, vec!["tx1"]);
+        assert!(first.updated.is_empty());
+
+        let second = service
+            .apply_transaction_command(TransactionCommand::Upsert {
+                records: vec![record("tx1", "w1", "confirmed")],
+            })
+            .await
+            .expect("upsert");
+        assert!(second.added.is_empty(), "same id is not a new record");
+        assert_eq!(second.updated, vec!["tx1"]);
+
+        // And the update actually landed — the failure mode a caller-computed
+        // delta produces is a silently dropped status change.
+        let stored = service.transactions().await.expect("read");
+        assert_eq!(stored.len(), 1);
+        assert_eq!(
+            serde_json::to_value(stored[0].status).unwrap().as_str(),
+            Some("confirmed")
+        );
+
+        let _ = std::fs::remove_file(&db);
+    }
+
+    #[tokio::test]
+    async fn a_mixed_batch_is_split_into_added_and_updated() {
+        let (service, db) = opened("mixed").await;
+        service
+            .apply_transaction_command(TransactionCommand::Upsert {
+                records: vec![record("tx1", "w1", "pending")],
+            })
+            .await
+            .expect("upsert");
+
+        let change = service
+            .apply_transaction_command(TransactionCommand::Upsert {
+                records: vec![
+                    record("tx1", "w1", "confirmed"),
+                    record("tx2", "w1", "pending"),
+                ],
+            })
+            .await
+            .expect("upsert");
+        assert_eq!(change.updated, vec!["tx1"]);
+        assert_eq!(change.added, vec!["tx2"]);
+
+        let _ = std::fs::remove_file(&db);
+    }
+
+    #[tokio::test]
+    async fn ids_are_matched_case_insensitively() {
+        let (service, db) = opened("case").await;
+        service
+            .apply_transaction_command(TransactionCommand::Upsert {
+                records: vec![record("ABC-123", "w1", "pending")],
+            })
+            .await
+            .expect("upsert");
+        let change = service
+            .apply_transaction_command(TransactionCommand::Upsert {
+                records: vec![record("abc-123", "w1", "confirmed")],
+            })
+            .await
+            .expect("upsert");
+        assert_eq!(change.updated, vec!["abc-123"], "not a second record");
+        assert_eq!(service.transactions().await.expect("read").len(), 1);
+
+        let _ = std::fs::remove_file(&db);
+    }
+
+    #[tokio::test]
+    async fn removes_by_id_by_wallet_and_wholesale() {
+        let (service, db) = opened("remove").await;
+        service
+            .apply_transaction_command(TransactionCommand::Upsert {
+                records: vec![
+                    record("tx1", "w1", "confirmed"),
+                    record("tx2", "w1", "confirmed"),
+                    record("tx3", "w2", "confirmed"),
+                ],
+            })
+            .await
+            .expect("upsert");
+
+        let removed = service
+            .apply_transaction_command(TransactionCommand::Remove {
+                ids: vec!["tx1".to_string()],
+            })
+            .await
+            .expect("remove");
+        assert_eq!(removed.removed, vec!["tx1"]);
+
+        assert_eq!(
+            service
+                .transactions_for_wallet("w1".to_string())
+                .await
+                .expect("read")
+                .len(),
+            1
+        );
+
+        let by_wallet = service
+            .apply_transaction_command(TransactionCommand::RemoveForWallet {
+                wallet_id: "w1".to_string(),
+            })
+            .await
+            .expect("remove");
+        assert_eq!(by_wallet.removed, vec!["tx2"]);
+        assert_eq!(service.transactions().await.expect("read").len(), 1);
+
+        let cleared = service
+            .apply_transaction_command(TransactionCommand::Clear)
+            .await
+            .expect("clear");
+        assert_eq!(cleared.removed, vec!["tx3"]);
+        assert!(service.transactions().await.expect("read").is_empty());
+
+        let _ = std::fs::remove_file(&db);
+    }
+
+    #[tokio::test]
+    async fn removing_what_is_absent_is_not_a_change() {
+        let (service, db) = opened("absent").await;
+        let change = service
+            .apply_transaction_command(TransactionCommand::Remove {
+                ids: vec!["nope".to_string()],
+            })
+            .await
+            .expect("remove");
+        assert!(change.is_empty());
+        let _ = std::fs::remove_file(&db);
+    }
+
+    /// Without a bound store the error says what to do, rather than writing
+    /// somewhere nobody will look.
+    #[tokio::test]
+    async fn commands_require_an_opened_store() {
+        let service = WalletService::new_typed(Vec::new()).expect("service");
+        let error = service
+            .apply_transaction_command(TransactionCommand::Clear)
+            .await
+            .expect_err("must refuse");
+        assert!(
+            error.to_string().contains("open_state"),
+            "unhelpful error: {error}"
+        );
+    }
+
+    /// `created_at` is Swift reference time in the record and Unix time in the
+    /// indexed column. Getting that wrong misorders history by 31 years.
+    #[tokio::test]
+    async fn created_at_is_converted_to_unix_time_for_the_index() {
+        let (service, db) = opened("epoch").await;
+        service
+            .apply_transaction_command(TransactionCommand::Upsert {
+                records: vec![record("tx1", "w1", "confirmed")],
+            })
+            .await
+            .expect("upsert");
+
+        let rows = crate::wallet_db::history_fetch_all(&db).expect("rows");
+        // createdAt 0.0 in Swift reference time is 2001-01-01 UTC.
+        assert_eq!(rows[0].created_at, 978_307_200.0);
+        // The record itself keeps the reference-time value it was given.
+        assert_eq!(rows[0].payload.created_at, 0.0);
+
+        let _ = std::fs::remove_file(&db);
+    }
+}
+
+#[cfg(test)]
+mod transaction_merge {
+    use crate::fetch::transactions::CoreTransactionRecord;
+    use crate::service::{TransactionCommand, WalletService};
+
+    fn tmp_db(tag: &str) -> String {
+        let mut path = std::env::temp_dir();
+        path.push(format!(
+            "spectra-tx-merge-{tag}-{}-{:?}.sqlite",
+            std::process::id(),
+            std::thread::current().id()
+        ));
+        let _ = std::fs::remove_file(&path);
+        path.to_string_lossy().into_owned()
+    }
+
+    async fn opened(tag: &str) -> (std::sync::Arc<WalletService>, String) {
+        let service = WalletService::new_typed(Vec::new()).expect("service");
+        let db = tmp_db(tag);
+        service.open_state(db.clone()).await.expect("open");
+        (service, db)
+    }
+
+    fn wire(id: &str, hash: &str, confirmations: Option<i64>) -> CoreTransactionRecord {
+        CoreTransactionRecord {
+            id: id.to_string(),
+            wallet_id: Some("w1".to_string()),
+            kind: "receive".to_string(),
+            status: "confirmed".to_string(),
+            wallet_name: "W".to_string(),
+            asset_name: "Bitcoin".to_string(),
+            symbol: "BTC".to_string(),
+            chain_name: "Bitcoin".to_string(),
+            amount: 1.0,
+            address: "bc1qexample".to_string(),
+            transaction_hash: Some(hash.to_string()),
+            ethereum_nonce: None,
+            receipt_block_number: None,
+            receipt_gas_used: None,
+            receipt_effective_gas_price_gwei: None,
+            receipt_network_fee_eth: None,
+            fee_priority_raw: None,
+            fee_rate_description: None,
+            confirmation_count: confirmations,
+            dogecoin_confirmed_network_fee_doge: None,
+            dogecoin_estimated_fee_rate_doge_per_kb: None,
+            used_change_output: None,
+            source_derivation_path: None,
+            change_derivation_path: None,
+            source_address: None,
+            change_address: None,
+            signed_transaction_payload: None,
+            signed_transaction_payload_format: None,
+            failure_reason: None,
+            transaction_history_source: None,
+            created_at_unix: 1_700_000_000.0,
+        }
+    }
+
+    fn merge(incoming: Vec<CoreTransactionRecord>) -> TransactionCommand {
+        // Strategy comes from the registry now — "Bitcoin" implies StandardUtxo.
+        TransactionCommand::Merge {
+            incoming,
+            chain_name: "Bitcoin".to_string(),
+            preserve_created_at_sentinel_unix: None,
+        }
+    }
+
+    #[tokio::test]
+    async fn a_first_merge_adds_everything() {
+        let (service, db) = opened("first").await;
+        let change = service
+            .apply_transaction_command(merge(vec![wire("tx1", "hash1", Some(1))]))
+            .await
+            .expect("merge");
+        assert_eq!(change.added, vec!["tx1"]);
+        assert_eq!(service.transactions().await.expect("read").len(), 1);
+        let _ = std::fs::remove_file(&db);
+    }
+
+    /// The point of merging in core: a refresh that returns what is already
+    /// stored writes nothing at all.
+    #[tokio::test]
+    async fn re_merging_identical_records_is_a_no_op() {
+        let (service, db) = opened("noop").await;
+        service
+            .apply_transaction_command(merge(vec![wire("tx1", "hash1", Some(1))]))
+            .await
+            .expect("merge");
+
+        let again = service
+            .apply_transaction_command(merge(vec![wire("tx1", "hash1", Some(1))]))
+            .await
+            .expect("merge");
+        assert!(
+            again.is_empty(),
+            "unchanged records must not be rewritten: {again:?}"
+        );
+        let _ = std::fs::remove_file(&db);
+    }
+
+    /// A record whose confirmations moved is an update, and only it is written.
+    #[tokio::test]
+    async fn only_genuinely_changed_records_are_written() {
+        let (service, db) = opened("changed").await;
+        service
+            .apply_transaction_command(merge(vec![
+                wire("tx1", "hash1", Some(1)),
+                wire("tx2", "hash2", Some(1)),
+            ]))
+            .await
+            .expect("merge");
+
+        let change = service
+            .apply_transaction_command(merge(vec![
+                wire("tx1", "hash1", Some(1)),   // unchanged
+                wire("tx2", "hash2", Some(6)),   // confirmations advanced
+                wire("tx3", "hash3", Some(1)),   // new
+            ]))
+            .await
+            .expect("merge");
+        assert_eq!(change.updated, vec!["tx2"]);
+        assert_eq!(change.added, vec!["tx3"]);
+        assert_eq!(service.transactions().await.expect("read").len(), 3);
+        let _ = std::fs::remove_file(&db);
+    }
+
+    /// Merging reads the store, so a record written by an unrelated command is
+    /// merged against rather than duplicated.
+    #[tokio::test]
+    async fn merge_sees_records_written_by_other_commands() {
+        let (service, db) = opened("crosstalk").await;
+        service
+            .apply_transaction_command(TransactionCommand::Upsert {
+                records: vec![wire("tx1", "hash1", Some(1)).into()],
+            })
+            .await
+            .expect("upsert");
+
+        let change = service
+            .apply_transaction_command(merge(vec![wire("tx1", "hash1", Some(9))]))
+            .await
+            .expect("merge");
+        assert_eq!(change.updated, vec!["tx1"], "must not be treated as new");
+        assert_eq!(service.transactions().await.expect("read").len(), 1);
+        let _ = std::fs::remove_file(&db);
+    }
+}
+
+// ── CoreImportedWallet → WalletSummary ───────────────────────────────────────
+//
+// The app's wallet record converted into the model core computes with. What
+// these pin is which fields survive and which deliberately do not.
+
+#[cfg(test)]
+mod wallet_model_conversion {
+    use crate::registry::Chain;
+    use crate::store::wallet_domain::{
+        CoreBitcoinNetworkMode, CoreCoin, CoreImportedWallet, CoreSeedDerivationPaths,
+        CoreSeedDerivationPreset, CoreWalletDerivationOverrides,
+    };
+    use std::collections::HashMap;
+
+    fn bitcoin_wallet() -> CoreImportedWallet {
+        let mut paths = CoreSeedDerivationPaths::default();
+        // The full table every wallet carries today, of which one entry applies.
+        paths.set_path_for(Chain::Bitcoin, "m/84'/0'/0'/0/0");
+        paths.set_path_for(Chain::Ethereum, "m/44'/60'/0'/0/0");
+        paths.set_path_for(Chain::Solana, "m/44'/501'/0'");
+
+        CoreImportedWallet {
+            id: "w1".to_string(),
+            name: "Cold".to_string(),
+            bitcoin_network_mode: CoreBitcoinNetworkMode::Testnet4,
+            dogecoin_network_mode: Default::default(),
+            addresses: HashMap::from([("bitcoin".to_string(), "bc1qexample".to_string())]),
+            bitcoin_xpub: Some("zpub123".to_string()),
+            seed_derivation_preset: CoreSeedDerivationPreset::Account2,
+            seed_derivation_paths: paths,
+            derivation_overrides: CoreWalletDerivationOverrides {
+                passphrase: Some("secret".to_string()),
+                ..Default::default()
+            },
+            selected_chain: "Bitcoin".to_string(),
+            holdings: vec![CoreCoin {
+                id: "some-uuid".to_string(),
+                name: "Bitcoin".to_string(),
+                symbol: "BTC".to_string(),
+                coin_gecko_id: "bitcoin".to_string(),
+                chain_name: "Bitcoin".to_string(),
+                token_standard: "Native".to_string(),
+                contract_address: None,
+                amount: 1.5,
+                price_usd: 60000.0,
+            }],
+            include_in_portfolio_total: true,
+        }
+    }
+
+    #[test]
+    fn keeps_the_path_the_wallet_uses_and_drops_the_rest() {
+        let summary = bitcoin_wallet().to_summary(false);
+        assert_eq!(summary.derivation_path.as_deref(), Some("m/84'/0'/0'/0/0"));
+        // The Ethereum and Solana entries were global defaults, not this
+        // wallet's data, and do not survive into the model core computes with.
+        assert_eq!(summary.chain_name, "Bitcoin");
+    }
+
+    #[test]
+    fn keeps_only_the_network_mode_that_applies() {
+        let summary = bitcoin_wallet().to_summary(false);
+        assert_eq!(summary.network_mode.as_deref(), Some("testnet4"));
+
+        // A wallet on a chain with no network variants reports none, rather
+        // than the meaningless mainnet default the record always holds.
+        let mut solana = bitcoin_wallet();
+        solana.selected_chain = "Solana".to_string();
+        assert_eq!(solana.to_summary(false).network_mode, None);
+    }
+
+    #[test]
+    fn carries_overrides_xpub_preset_and_holdings() {
+        let summary = bitcoin_wallet().to_summary(false);
+        assert_eq!(
+            summary.derivation_overrides.passphrase.as_deref(),
+            Some("secret")
+        );
+        assert_eq!(summary.xpub.as_deref(), Some("zpub123"));
+        assert_eq!(summary.derivation_preset, "account2");
+        assert_eq!(summary.holdings.len(), 1);
+        assert_eq!(summary.holdings[0].amount, 1.5);
+        assert_eq!(summary.holdings[0].symbol, "BTC");
+    }
+
+    /// The address becomes a typed entry with its chain and derivation path,
+    /// rather than a bare string in a slot-keyed map.
+    #[test]
+    fn the_address_gains_its_chain_and_path() {
+        let summary = bitcoin_wallet().to_summary(false);
+        assert_eq!(summary.addresses.len(), 1);
+        assert_eq!(summary.addresses[0].address, "bc1qexample");
+        assert_eq!(summary.addresses[0].chain_name, "Bitcoin");
+        assert_eq!(
+            summary.addresses[0].derivation_path.as_deref(),
+            Some("m/84'/0'/0'/0/0")
+        );
+        assert_eq!(summary.primary_address(), Some("bc1qexample"));
+    }
+
+    /// Watch-only is a Keychain fact on iOS, not something the record holds,
+    /// so the caller states it.
+    #[test]
+    fn watch_only_comes_from_the_caller() {
+        assert!(!bitcoin_wallet().to_summary(false).is_watch_only);
+        assert!(bitcoin_wallet().to_summary(true).is_watch_only);
+    }
+
+    /// A wallet whose chain the registry does not know converts without an
+    /// address rather than panicking or inventing one.
+    #[test]
+    fn an_unknown_chain_yields_no_address() {
+        let mut wallet = bitcoin_wallet();
+        wallet.selected_chain = "Nonexistent Chain".to_string();
+        let summary = wallet.to_summary(false);
+        assert!(summary.addresses.is_empty());
+        assert_eq!(summary.derivation_path, None);
+    }
+}
+
+#[cfg(test)]
+mod wallet_view_model {
+    use crate::registry::Chain;
+    use crate::store::state::{AssetHolding, WalletAddress, WalletSummary};
+    use crate::store::wallet_domain::CoreSeedDerivationPaths;
+
+    fn defaults() -> CoreSeedDerivationPaths {
+        crate::app_core_derivation_paths_for_preset(0).expect("defaults")
+    }
+
+    fn summary() -> WalletSummary {
+        WalletSummary {
+            id: "w1".to_string(),
+            name: "Cold".to_string(),
+            is_watch_only: false,
+            chain_name: "Bitcoin".to_string(),
+            include_in_portfolio_total: true,
+            network_mode: Some("testnet4".to_string()),
+            xpub: Some("zpub123".to_string()),
+            derivation_preset: "account2".to_string(),
+            derivation_path: Some("m/84'/0'/2'/0/0".to_string()),
+            derivation_overrides: Default::default(),
+            holdings: vec![AssetHolding {
+                name: "Bitcoin".to_string(),
+                symbol: "BTC".to_string(),
+                coin_gecko_id: "bitcoin".to_string(),
+                chain_name: "Bitcoin".to_string(),
+                token_standard: "Native".to_string(),
+                contract_address: None,
+                amount: 1.5,
+                price_usd: 60000.0,
+            }],
+            addresses: vec![WalletAddress {
+                chain_name: "Bitcoin".to_string(),
+                address: "bc1qexample".to_string(),
+                kind: "receive".to_string(),
+                derivation_path: Some("m/84'/0'/2'/0/0".to_string()),
+            }],
+        }
+    }
+
+    /// Everything the app renders survives the trip out to the view model.
+    #[test]
+    fn the_view_model_carries_what_the_app_shows() {
+        let view = summary().to_imported_wallet(&defaults());
+        assert_eq!(view.id, "w1");
+        assert_eq!(view.selected_chain, "Bitcoin");
+        assert_eq!(view.bitcoin_xpub.as_deref(), Some("zpub123"));
+        assert_eq!(view.address_for(Chain::Bitcoin), Some("bc1qexample"));
+        assert_eq!(view.holdings.len(), 1);
+        assert_eq!(view.holdings[0].amount, 1.5);
+        // The wallet's own path overrides the default for its chain.
+        assert_eq!(
+            view.seed_derivation_paths.path_for(Chain::Bitcoin),
+            Some("m/84'/0'/2'/0/0")
+        );
+        // Other chains keep the catalog defaults, which is all they ever were.
+        assert!(view.seed_derivation_paths.path_for(Chain::Solana).is_some());
+    }
+
+    /// The network mode goes back into the field for the wallet's own chain and
+    /// leaves the other alone.
+    #[test]
+    fn only_the_wallets_own_network_mode_is_restored() {
+        use crate::store::wallet_domain::{CoreBitcoinNetworkMode, CoreDogecoinNetworkMode};
+        let view = summary().to_imported_wallet(&defaults());
+        assert_eq!(view.bitcoin_network_mode, CoreBitcoinNetworkMode::Testnet4);
+        assert_eq!(view.dogecoin_network_mode, CoreDogecoinNetworkMode::Mainnet);
+    }
+
+    /// Holding ids are derived from what identifies the asset, so rebuilding
+    /// the view model does not make SwiftUI think every row is new.
+    #[test]
+    fn holding_ids_are_stable_across_rebuilds() {
+        let first = summary().to_imported_wallet(&defaults());
+        let second = summary().to_imported_wallet(&defaults());
+        assert_eq!(first.holdings[0].id, second.holdings[0].id);
+        assert!(!first.holdings[0].id.is_empty());
+
+        // Two different assets do not collide.
+        let mut other = summary();
+        other.holdings[0].symbol = "USDT".to_string();
+        other.holdings[0].contract_address = Some("0xdac1".to_string());
+        let third = other.to_imported_wallet(&defaults());
+        assert_ne!(first.holdings[0].id, third.holdings[0].id);
+    }
+
+    /// Round trip through both conversions preserves everything the summary
+    /// holds — the authority is unchanged by being rendered.
+    #[test]
+    fn summary_survives_a_round_trip_through_the_view_model() {
+        let original = summary();
+        let round_tripped = original
+            .to_imported_wallet(&defaults())
+            .to_summary(original.is_watch_only);
+        assert_eq!(round_tripped, original);
+    }
+}
+
+#[cfg(test)]
+mod wallet_update_if_present {
+    use crate::service::WalletService;
+    use crate::state::{StateCommand, WalletSummary};
+
+    fn wallet(id: &str, name: &str) -> WalletSummary {
+        WalletSummary::single_address(id, name, "Bitcoin", "bc1qexample", None, false)
+    }
+
+    /// A balance result that arrives after the wallet was deleted must not
+    /// bring it back.
+    #[tokio::test]
+    async fn does_not_resurrect_a_deleted_wallet() {
+        let service = WalletService::new_typed(Vec::new()).expect("service");
+        service
+            .apply_state_command(StateCommand::UpsertWallet {
+                wallet: wallet("w1", "Cold"),
+            })
+            .await
+            .expect("upsert");
+        service
+            .apply_state_command(StateCommand::RemoveWallet {
+                wallet_id: "w1".to_string(),
+            })
+            .await
+            .expect("remove");
+
+        let late = service
+            .apply_state_command(StateCommand::UpdateWalletIfPresent {
+                wallet: wallet("w1", "Cold with fresh balance"),
+            })
+            .await
+            .expect("update");
+        assert!(late.state.wallets.is_empty(), "wallet came back");
+        assert!(late.events.is_empty());
+    }
+
+    #[tokio::test]
+    async fn updates_a_wallet_that_is_still_there() {
+        let service = WalletService::new_typed(Vec::new()).expect("service");
+        service
+            .apply_state_command(StateCommand::UpsertWallet {
+                wallet: wallet("w1", "Cold"),
+            })
+            .await
+            .expect("upsert");
+        let updated = service
+            .apply_state_command(StateCommand::UpdateWalletIfPresent {
+                wallet: wallet("w1", "Renamed"),
+            })
+            .await
+            .expect("update");
+        assert_eq!(updated.state.wallets[0].name, "Renamed");
+        assert_eq!(updated.events.len(), 1);
+    }
+}
+
+#[cfg(test)]
+mod open_state_idempotence {
+    use crate::service::WalletService;
+    use crate::state::StateCommand;
+
+    fn tmp_db() -> String {
+        let mut path = std::env::temp_dir();
+        path.push(format!(
+            "spectra-open-idem-{}-{:?}.sqlite",
+            std::process::id(),
+            std::thread::current().id()
+        ));
+        let _ = std::fs::remove_file(&path);
+        path.to_string_lossy().into_owned()
+    }
+
+    /// A second `open_state` must not discard state written since the first.
+    /// The app calls it from a launch reload that races user actions.
+    #[tokio::test]
+    async fn reopening_does_not_revert_newer_writes() {
+        let service = WalletService::new_typed(Vec::new()).expect("service");
+        let db = tmp_db();
+        service.open_state(db.clone()).await.expect("open");
+
+        service
+            .apply_state_command(StateCommand::SetFiatCurrency {
+                fiat_currency_code: "EUR".to_string(),
+            })
+            .await
+            .expect("apply");
+
+        let reopened = service.open_state(db.clone()).await.expect("reopen");
+        assert_eq!(reopened.settings.fiat_currency_code, "EUR");
+        let _ = std::fs::remove_file(&db);
+    }
+
+    /// A different database is a genuine open, and does replace the state.
+    #[tokio::test]
+    async fn opening_a_different_database_replaces_the_state() {
+        let service = WalletService::new_typed(Vec::new()).expect("service");
+        let first = tmp_db();
+        service.open_state(first.clone()).await.expect("open");
+        service
+            .apply_state_command(StateCommand::SetFiatCurrency {
+                fiat_currency_code: "EUR".to_string(),
+            })
+            .await
+            .expect("apply");
+
+        let second = format!("{first}.other");
+        let _ = std::fs::remove_file(&second);
+        let switched = service.open_state(second.clone()).await.expect("open other");
+        assert_eq!(switched.settings.fiat_currency_code, "USD");
+
+        let _ = std::fs::remove_file(&first);
+        let _ = std::fs::remove_file(&second);
+    }
+
+}
+
+/// Confirmation-poll backoff. Core owns the tracker table; these cover the
+/// intents Swift drives it with.
+#[cfg(test)]
+mod status_trackers {
+    use crate::service::WalletService;
+
+// ── Confirmation-poll trackers (core-owned) ───────────────────────────
+
+fn poll_config() -> crate::store::TransactionStatusPollConfig {
+    crate::store::TransactionStatusPollConfig {
+        pending_poll_seconds: 10.0,
+        confirmed_poll_seconds: 30.0,
+        backoff_max_seconds: 600.0,
+        finality_confirmations: 6,
+        pending_failure_timeout_seconds: 3600.0,
+        pending_failure_min_failures: 3,
+    }
+}
+
+#[tokio::test]
+async fn untracked_transaction_is_always_due_for_poll() {
+    let service = WalletService::new_typed(Vec::new()).expect("service");
+    let due = service
+        .transactions_due_for_status_poll(vec!["tx1".into(), "tx2".into()], 1_000.0)
+        .await;
+    assert_eq!(due, vec!["tx1".to_string(), "tx2".to_string()]);
+}
+
+#[tokio::test]
+async fn recorded_poll_defers_the_next_one() {
+    let service = WalletService::new_typed(Vec::new()).expect("service");
+    service
+        .record_status_poll_success("tx1".into(), false, true, None, 1_000.0, poll_config())
+        .await;
+    assert!(service
+        .transactions_due_for_status_poll(vec!["tx1".into()], 1_000.0)
+        .await
+        .is_empty());
+    // ...and becomes due again once the interval has passed.
+    assert_eq!(
+        service
+            .transactions_due_for_status_poll(vec!["tx1".into()], 2_000.0)
+            .await,
+        vec!["tx1".to_string()]
+    );
+}
+
+#[tokio::test]
+async fn manual_recheck_makes_a_deferred_transaction_due_again() {
+    let service = WalletService::new_typed(Vec::new()).expect("service");
+    service
+        .record_status_poll_success("tx1".into(), true, false, Some(99), 1_000.0, poll_config())
+        .await;
+    assert!(service
+        .transactions_due_for_status_poll(vec!["tx1".into()], 1_000.0)
+        .await
+        .is_empty());
+    service.reset_status_tracker("tx1".into(), 1_000.0, true).await;
+    assert_eq!(
+        service
+            .transactions_due_for_status_poll(vec!["tx1".into()], 1_000.0)
+            .await,
+        vec!["tx1".to_string()]
+    );
+}
+
+#[tokio::test]
+async fn stale_pending_needs_both_age_and_repeated_failures() {
+    let service = WalletService::new_typed(Vec::new()).expect("service");
+    let input = |id: &str| crate::store::StalePendingFailureTransactionInput {
+        id: id.to_string(),
+        created_at_unix: 0.0,
+        status_is_pending: true,
+    };
+    let now = 10_000.0; // well past pending_failure_timeout_seconds
+
+    // Old enough, but never failed a poll → not stale.
+    assert!(service
+        .stale_pending_failure_ids(vec![input("tx1")], now, poll_config())
+        .await
+        .is_empty());
+
+    for _ in 0..3 {
+        service
+            .record_status_poll_failure("tx1".into(), now, poll_config())
+            .await;
+    }
+    assert_eq!(
+        service
+            .stale_pending_failure_ids(vec![input("tx1")], now, poll_config())
+            .await,
+        vec!["tx1".to_string()]
+    );
+}
+
+#[tokio::test]
+async fn retaining_trackers_drops_transactions_that_no_longer_exist() {
+    let service = WalletService::new_typed(Vec::new()).expect("service");
+    for id in ["tx1", "tx2"] {
+        service
+            .record_status_poll_success(id.into(), false, true, None, 1_000.0, poll_config())
+            .await;
+    }
+    service.retain_status_trackers(vec!["tx1".into()]).await;
+    // tx2's tracker is gone, so it reads as never-polled — due immediately.
+    assert_eq!(
+        service
+            .transactions_due_for_status_poll(vec!["tx1".into(), "tx2".into()], 1_000.0)
+            .await,
+        vec!["tx2".to_string()]
+    );
+}
+}
+
+/// Importing is a core operation now: it plans, builds and stores in one call.
+#[cfg(test)]
+mod wallet_import {
+    use crate::derivation::import::{WalletImportAddresses, WalletImportCommit, WalletImportRequest};
+    use crate::service::WalletService;
+    use crate::store::wallet_domain::{
+        CoreBitcoinNetworkMode, CoreDogecoinNetworkMode, CoreSeedDerivationPaths,
+        CoreSeedDerivationPreset, CoreWalletDerivationOverrides,
+    };
+    use std::collections::HashMap;
+
+    fn commit(chains: &[&str], addresses: &[(&str, &str)]) -> WalletImportCommit {
+        WalletImportCommit {
+            request: WalletImportRequest {
+                wallet_name: String::new(),
+                default_wallet_name_start_index: 1,
+                primary_selected_chain_name: chains[0].to_string(),
+                selected_chain_names: chains.iter().map(|c| c.to_string()).collect(),
+                planned_wallet_ids: (0..chains.len())
+                    .map(|i| format!("11111111-0000-0000-0000-00000000000{i}"))
+                    .collect(),
+                is_watch_only_import: false,
+                is_private_key_import: false,
+                has_wallet_password: false,
+                resolved_addresses: WalletImportAddresses {
+                    by_slot: addresses
+                        .iter()
+                        .map(|(k, v)| (k.to_string(), v.to_string()))
+                        .collect(),
+                    bitcoin_xpub: None,
+                },
+                watch_only_entries: Default::default(),
+            },
+            holdings: Vec::new(),
+            seed_derivation_preset: CoreSeedDerivationPreset::Standard,
+            seed_derivation_paths: CoreSeedDerivationPaths {
+                by_chain: HashMap::new(),
+                is_custom_enabled: false,
+            },
+            derivation_overrides: CoreWalletDerivationOverrides::default(),
+            bitcoin_network_mode: CoreBitcoinNetworkMode::Mainnet,
+            dogecoin_network_mode: CoreDogecoinNetworkMode::Mainnet,
+        }
+    }
+
+    #[tokio::test]
+    async fn imported_wallets_land_in_core_state() {
+        let service = WalletService::new_typed(Vec::new()).expect("service");
+        let outcome = service
+            .import_wallets(commit(&["Solana"], &[("solana", "SoLaNaAddr")]))
+            .await
+            .expect("import");
+
+        assert_eq!(outcome.wallets.len(), 1);
+        // The caller does not store anything — core already did.
+        let stored = service.wallets_for_display().await.expect("wallets");
+        assert_eq!(stored.len(), 1);
+        assert_eq!(stored[0].selected_chain, "Solana");
+        assert_eq!(stored[0].addresses.get("solana").map(String::as_str), Some("SoLaNaAddr"));
+    }
+
+    #[tokio::test]
+    async fn network_mode_applies_only_to_its_own_chain() {
+        let service = WalletService::new_typed(Vec::new()).expect("service");
+        let mut input = commit(
+            &["Bitcoin", "Solana"],
+            &[("bitcoin", "bc1qaddr"), ("solana", "SoLaNaAddr")],
+        );
+        input.bitcoin_network_mode = CoreBitcoinNetworkMode::Testnet;
+        let outcome = service.import_wallets(input).await.expect("import");
+
+        let by_chain: std::collections::HashMap<_, _> = outcome
+            .wallets
+            .iter()
+            .map(|w| (w.selected_chain.as_str(), w))
+            .collect();
+        assert_eq!(
+            by_chain["Bitcoin"].bitcoin_network_mode,
+            CoreBitcoinNetworkMode::Testnet
+        );
+        // Selecting Bitcoin testnet must not drag the Solana wallet with it.
+        assert_eq!(
+            by_chain["Solana"].bitcoin_network_mode,
+            CoreBitcoinNetworkMode::Mainnet
+        );
+    }
+}
+
+/// Keypool reservation. The property that matters is that an index is never
+/// handed out twice — so these hammer it concurrently.
+#[cfg(test)]
+mod keypool {
+    use crate::service::WalletService;
+    use crate::store::ChainKeypoolStateRecord;
+
+    fn baseline() -> ChainKeypoolStateRecord {
+        ChainKeypoolStateRecord {
+            next_external_index: 0,
+            next_change_index: 0,
+            reserved_receive_index: None,
+        }
+    }
+
+    #[tokio::test]
+    async fn receive_reservation_is_stable_across_calls() {
+        let service = WalletService::new_typed(Vec::new()).expect("service");
+        let first = service
+            .reserve_receive_index("w1".into(), "Bitcoin".into(), baseline(), 0)
+            .await
+            .expect("reserve");
+        let second = service
+            .reserve_receive_index("w1".into(), "Bitcoin".into(), baseline(), 0)
+            .await
+            .expect("reserve");
+        // Opening the receive sheet twice must not burn two addresses.
+        assert_eq!(first, second);
+    }
+
+    #[tokio::test]
+    async fn change_indices_are_never_handed_out_twice() {
+        let service = WalletService::new_typed(Vec::new()).expect("service");
+        let mut handles = Vec::new();
+        for _ in 0..32 {
+            let service = service.clone();
+            handles.push(tokio::spawn(async move {
+                service
+                    .reserve_change_index("w1".into(), "Bitcoin".into(), baseline())
+                    .await
+                    .expect("reserve")
+            }));
+        }
+        let mut seen = Vec::new();
+        for handle in handles {
+            seen.push(handle.await.expect("join"));
+        }
+        seen.sort_unstable();
+        let unique: std::collections::HashSet<_> = seen.iter().copied().collect();
+        assert_eq!(unique.len(), 32, "an index was reserved twice: {seen:?}");
+        assert_eq!(seen, (0..32).collect::<Vec<i64>>());
+    }
+
+    #[tokio::test]
+    async fn clearing_a_reservation_frees_the_next_index() {
+        let service = WalletService::new_typed(Vec::new()).expect("service");
+        let first = service
+            .reserve_receive_index("w1".into(), "Bitcoin".into(), baseline(), 0)
+            .await
+            .expect("reserve");
+        service
+            .clear_reserved_receive_index("w1".into(), "Bitcoin".into())
+            .await
+            .expect("clear");
+        let second = service
+            .reserve_receive_index("w1".into(), "Bitcoin".into(), baseline(), 0)
+            .await
+            .expect("reserve");
+        // The used address must not be reissued.
+        assert_ne!(first, second);
+        assert_eq!(second, first + 1);
+    }
+
+    #[tokio::test]
+    async fn keypool_survives_reopening_the_database() {
+        let db = {
+            let mut path = std::env::temp_dir();
+            path.push(format!("spectra-keypool-reopen-{}.sqlite", std::process::id()));
+            let _ = std::fs::remove_file(&path);
+            path.to_string_lossy().into_owned()
+        };
+        let service = WalletService::new_typed(Vec::new()).expect("service");
+        service.open_state(db.clone()).await.expect("open");
+        let reserved = service
+            .reserve_receive_index("w1".into(), "Bitcoin".into(), baseline(), 0)
+            .await
+            .expect("reserve");
+
+        let reopened = WalletService::new_typed(Vec::new()).expect("service");
+        reopened.open_state(db.clone()).await.expect("open");
+        let after = reopened
+            .reserve_receive_index("w1".into(), "Bitcoin".into(), baseline(), 0)
+            .await
+            .expect("reserve");
+        // A restart must not reissue the address already handed out.
+        assert_eq!(reserved, after);
+
+        let _ = std::fs::remove_file(&db);
+    }
+}
+
+/// Pinned dashboard assets are user choices that must survive a restart, so
+/// core owns them like any other setting.
+#[cfg(test)]
+mod pinned_dashboard_assets {
+    use crate::service::WalletService;
+    use crate::state::StateCommand;
+
+    async fn pins(service: &WalletService) -> Vec<String> {
+        service
+            .apply_state_command(StateCommand::SetPinnedDashboardAssets { symbols: vec![] })
+            .await
+            .expect("read")
+            .state
+            .settings
+            .pinned_dashboard_asset_symbols
+    }
+
+    #[tokio::test]
+    async fn symbols_are_uppercased_and_deduplicated_in_pin_order() {
+        let service = WalletService::new_typed(Vec::new()).expect("service");
+        let transition = service
+            .apply_state_command(StateCommand::SetPinnedDashboardAssets {
+                symbols: vec![
+                    " eth ".into(),
+                    "BTC".into(),
+                    "Eth".into(),
+                    "".into(),
+                    "sol".into(),
+                ],
+            })
+            .await
+            .expect("apply");
+        assert_eq!(
+            transition.state.settings.pinned_dashboard_asset_symbols,
+            vec!["ETH".to_string(), "BTC".to_string(), "SOL".to_string()]
+        );
+    }
+
+    #[tokio::test]
+    async fn setting_the_same_pins_emits_nothing() {
+        let service = WalletService::new_typed(Vec::new()).expect("service");
+        let command = || StateCommand::SetPinnedDashboardAssets {
+            symbols: vec!["BTC".into()],
+        };
+        let first = service.apply_state_command(command()).await.expect("apply");
+        assert_eq!(first.events.len(), 1);
+        let second = service.apply_state_command(command()).await.expect("apply");
+        assert!(second.events.is_empty(), "re-pinning the same set is a no-op");
+    }
+
+    #[tokio::test]
+    async fn clearing_pins_is_distinguishable_from_never_pinning() {
+        let service = WalletService::new_typed(Vec::new()).expect("service");
+        assert!(pins(&service).await.is_empty());
+        service
+            .apply_state_command(StateCommand::SetPinnedDashboardAssets {
+                symbols: vec!["BTC".into()],
+            })
+            .await
+            .expect("apply");
+        let cleared = service
+            .apply_state_command(StateCommand::SetPinnedDashboardAssets { symbols: vec![] })
+            .await
+            .expect("apply");
+        assert!(cleared.state.settings.pinned_dashboard_asset_symbols.is_empty());
+        assert_eq!(cleared.events.len(), 1, "clearing is a real change");
+    }
+}
+
+/// Adding a field to `AppSettings` must not make an already-written state file
+/// unreadable. This is not hypothetical: adding
+/// `pinned_dashboard_asset_symbols` without `#[serde(default)]` made every
+/// launch on an existing database fail with "missing field".
+#[cfg(test)]
+mod settings_forward_compatibility {
+    use crate::state::{AppSettings, CoreAppState};
+
+    #[test]
+    fn settings_written_before_a_field_existed_still_load() {
+        let legacy = r#"{"fiatCurrencyCode":"EUR"}"#;
+        let settings: AppSettings =
+            serde_json::from_str(legacy).expect("settings from before the field was added");
+        assert_eq!(settings.fiat_currency_code, "EUR");
+        assert!(settings.pinned_dashboard_asset_symbols.is_empty());
+    }
+
+    #[test]
+    fn state_written_before_token_preferences_existed_still_loads() {
+        let legacy = r#"{
+            "schemaVersion": 2,
+            "wallets": [],
+            "selectedWalletId": null,
+            "settings": {"fiatCurrencyCode":"USD"},
+            "addressBook": []
+        }"#;
+        let state: CoreAppState = serde_json::from_str(legacy).expect("legacy state");
+        assert!(state.token_preferences.is_empty());
+    }
+}
+
+/// The merge strategy per chain used to be eighteen Swift wrappers. These pin
+/// the registry to exactly what those wrappers did, so the move cannot change
+/// behaviour for any chain that already had one.
+#[cfg(test)]
+mod transaction_merge_strategy {
+    use crate::fetch::transactions::TransactionMergeStrategy as S;
+    use crate::registry::Chain;
+
+    fn strategy(display_name: &str) -> S {
+        Chain::from_display_name(display_name)
+            .unwrap_or_else(|| panic!("unknown chain {display_name}"))
+            .transaction_merge_strategy()
+    }
+
+    #[test]
+    fn matches_the_swift_wrappers_it_replaced() {
+        for name in ["Bitcoin", "Bitcoin Cash", "Bitcoin SV", "Litecoin"] {
+            assert_eq!(strategy(name), S::StandardUtxo, "{name}");
+        }
+        assert_eq!(strategy("Dogecoin"), S::Dogecoin);
+        for name in [
+            "Tron", "Solana", "Cardano", "XRP Ledger", "Stellar", "Monero", "Sui", "Aptos", "TON",
+            "Internet Computer", "NEAR", "Polkadot",
+        ] {
+            assert_eq!(strategy(name), S::AccountBased, "{name}");
+        }
+        for name in ["Ethereum", "Arbitrum", "Base", "Polygon"] {
+            assert_eq!(strategy(name), S::Evm, "{name}");
+        }
+    }
+
+    #[test]
+    fn only_tron_keys_its_merge_identity_on_symbol() {
+        for chain in Chain::all() {
+            let expected = matches!(chain.str_id(), "tron" | "tron-nile");
+            assert_eq!(
+                chain.merge_identity_includes_symbol(),
+                expected,
+                "{}",
+                chain.str_id()
+            );
+        }
+    }
+
+    #[test]
+    fn a_testnet_merges_the_same_way_as_its_mainnet() {
+        for chain in Chain::all() {
+            let mainnet = chain.mainnet_counterpart();
+            if mainnet == chain {
+                continue;
+            }
+            assert_eq!(
+                chain.transaction_merge_strategy(),
+                mainnet.transaction_merge_strategy(),
+                "{} diverges from {}",
+                chain.str_id(),
+                mainnet.str_id()
+            );
+        }
+    }
+}
+
+/// `supportedEVMToken` used to exclude a chain's native asset with six
+/// hand-written chain/symbol pairs. It asks the registry now, so these pin the
+/// registry to exactly what those six said.
+#[cfg(test)]
+mod evm_native_symbols {
+    use crate::registry::Chain;
+
+    #[test]
+    fn native_symbols_match_the_hand_written_pairs_they_replaced() {
+        for (display_name, symbol) in [
+            ("Ethereum", "ETH"),
+            ("Ethereum Classic", "ETC"),
+            ("Optimism", "ETH"),
+            ("BNB Chain", "BNB"),
+            ("Avalanche", "AVAX"),
+            ("Hyperliquid", "HYPE"),
+        ] {
+            let chain = Chain::from_display_name(display_name)
+                .unwrap_or_else(|| panic!("unknown chain {display_name}"));
+            assert_eq!(chain.coin_symbol(), symbol, "{display_name}");
+        }
+    }
+
+    #[test]
+    fn every_evm_chain_has_a_native_symbol() {
+        for chain in Chain::all().filter(|c| c.is_evm()) {
+            assert!(
+                !chain.coin_symbol().is_empty(),
+                "{} has no native symbol, so its native asset would be treated as a token",
+                chain.str_id()
+            );
+        }
+    }
+}
+
+/// The send rule per chain used to be a `match` on chain-name strings inside
+/// `can_send_holding`. These pin the registry to exactly what it said.
+#[cfg(test)]
+mod send_rules {
+    use crate::registry::{Chain, SendRule};
+
+    fn rule(display_name: &str) -> SendRule {
+        Chain::from_display_name(display_name)
+            .unwrap_or_else(|| panic!("unknown chain {display_name}"))
+            .send_rule()
+    }
+
+    #[test]
+    fn matches_the_string_match_it_replaced() {
+        assert_eq!(rule("Ethereum"), SendRule::NativeOrSupportedToken);
+        assert_eq!(rule("BNB Chain"), SendRule::NativeOrSupportedToken);
+        assert_eq!(rule("Avalanche"), SendRule::NativeOrSupportedToken);
+        assert_eq!(rule("Ethereum Classic"), SendRule::NativeOnly);
+        assert_eq!(rule("Hyperliquid"), SendRule::NativeOnly);
+        assert_eq!(rule("Solana"), SendRule::SupportedSolanaCoin);
+        // Everything else fell through to no extra restriction.
+        assert_eq!(rule("Bitcoin"), SendRule::Any);
+        assert_eq!(rule("Polkadot"), SendRule::Any);
+    }
+
+    /// Documents an open inconsistency rather than asserting it is correct.
+    ///
+    /// Ethereum gates a non-native asset on it being a supported token; every
+    /// other EVM chain does not. If that is deliberate, this test is the note
+    /// saying so. If it is not, this is the list to fix.
+    #[test]
+    fn send_rule_asymmetry_across_evm_chains() {
+        let gated: Vec<&str> = Chain::all()
+            .filter(|c| c.is_evm() && !c.is_testnet())
+            .filter(|c| c.send_rule() == SendRule::NativeOrSupportedToken)
+            .map(|c| c.str_id())
+            .collect();
+        assert_eq!(
+            gated,
+            vec!["ethereum", "avalanche", "bnb"],
+            "an EVM chain changed its send gating; confirm that was intended"
+        );
+    }
+
+    #[test]
+    fn a_testnet_sends_under_the_same_rule_as_its_mainnet() {
+        for chain in Chain::all() {
+            let mainnet = chain.mainnet_counterpart();
+            if mainnet == chain {
+                continue;
+            }
+            assert_eq!(
+                chain.send_rule(),
+                mainnet.send_rule(),
+                "{} diverges from {}",
+                chain.str_id(),
+                mainnet.str_id()
+            );
+        }
+    }
 }

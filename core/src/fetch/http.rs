@@ -1,10 +1,8 @@
 //! Async HTTP transport with retry/backoff for chain providers.
 //!
 //! This module owns the single shared `reqwest::Client` used by all
-//! chain-specific fetch and send implementations. It mirrors the retry
-//! behaviour of the legacy Swift `NetworkRetryProfile` / `ProviderHTTP`
-//! stack so that we get the same resilience without rewriting the
-//! policy from scratch.
+//! chain-specific fetch and send implementations, and the retry/backoff
+//! policy applied to every provider call.
 //!
 //! ## UniFFI migration pattern
 //!
@@ -321,7 +319,7 @@ impl HttpClient {
 // Retry profiles
 // ----------------------------------------------------------------
 
-/// Retry behaviour profiles, matching the legacy Swift `NetworkRetryProfile`.
+/// Retry behaviour profiles, selected per call site by how costly a retry is.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum RetryProfile {
     /// Standard chain read (balance, history, UTXO). 3 attempts.
@@ -686,11 +684,9 @@ pub async fn http_post_json(
     })
 }
 
-/// Pilot: perform a JSON-RPC reachability probe end-to-end in Rust.
-/// Combines the HTTP POST with the existing
-/// `diagnostics_parse_jsonrpc_probe` parser so Swift no longer needs to
-/// own any URLSession code for this call site. Returns the probe
-/// outcome *plus* the observed HTTP status (for the diagnostics row).
+/// A JSON-RPC reachability probe performed end-to-end: the POST plus the
+/// `diagnostics_parse_jsonrpc_probe` parse. Returns the probe outcome and the
+/// observed HTTP status, which the diagnostics row displays separately.
 #[derive(Debug, Clone, uniffi::Record)]
 pub struct JsonRpcProbeResult {
     pub reachable: bool,
