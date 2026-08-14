@@ -126,6 +126,183 @@ pub struct WalletImportOutcome {
     pub secret_kind: String,
     pub secret_instructions: Vec<WalletSecretInstruction>,
     pub wallets: Vec<crate::store::wallet_domain::CoreImportedWallet>,
+    /// Addresses the import refused, in the form they were supplied.
+    ///
+    /// Refusals are reported rather than silent. Dropping them quietly means a
+    /// watch-only import of one bad address succeeds and stores a wallet with
+    /// no address at all, which reads to the user as "imported" — the same
+    /// mistake the address book already fixed with `addressBookRejected`.
+    pub rejected_addresses: Vec<String>,
+}
+
+/// Which network the import's addresses should be validated against.
+///
+/// Only two chains have a user-selectable network mode, and both put their
+/// testnet addresses in the *mainnet* slot: `ImportDraft` is keyed by mainnet
+/// display name, so there is no "Bitcoin Testnet" row to carry them. Without
+/// this, validating the `bitcoin` slot as mainnet refuses a testnet wallet the
+/// app has always allowed.
+#[derive(Debug, Clone, Copy, Default)]
+pub(crate) struct ImportNetworks {
+    pub bitcoin: crate::store::wallet_domain::CoreBitcoinNetworkMode,
+    pub dogecoin: crate::store::wallet_domain::CoreDogecoinNetworkMode,
+}
+
+/// Keep a Bitcoin account xpub only if it carries a serialization prefix this
+/// network uses. `None` in, `None` out.
+fn validated_bitcoin_xpub(
+    xpub: Option<&String>,
+    networks: ImportNetworks,
+) -> (Option<String>, Option<String>) {
+    let Some(trimmed) = xpub.map(|value| value.trim()).filter(|v| !v.is_empty()) else {
+        return (None, None);
+    };
+    if networks
+        .bitcoin_xpub_prefixes()
+        .iter()
+        .any(|prefix| trimmed.starts_with(prefix))
+    {
+        (Some(trimmed.to_string()), None)
+    } else {
+        (None, Some(trimmed.to_string()))
+    }
+}
+
+impl ImportNetworks {
+    /// Serialization prefixes a Bitcoin account xpub may carry on this network.
+    ///
+    /// One per BIP: 44 → `xpub`, 49 → `ypub`, 84 → `zpub`, with the testnet
+    /// counterparts. An xpub is not an address, so `validate_address` has
+    /// nothing to say about it — but storing an arbitrary string as one means
+    /// a watch wallet that derives nothing and shows no address.
+    fn bitcoin_xpub_prefixes(self) -> &'static [&'static str] {
+        use crate::store::wallet_domain::CoreBitcoinNetworkMode as Btc;
+        match self.bitcoin {
+            Btc::Mainnet => &["xpub", "ypub", "zpub"],
+            Btc::Testnet | Btc::Testnet4 | Btc::Signet => &["tpub", "upub", "vpub"],
+        }
+    }
+
+    /// The chain whose format answers for `slot` under these network modes.
+    fn chain_for(self, slot: &str) -> Option<Chain> {
+        use crate::store::wallet_domain::{CoreBitcoinNetworkMode as Btc, CoreDogecoinNetworkMode as Doge};
+        if slot == Chain::Bitcoin.address_slot() {
+            return Some(match self.bitcoin {
+                Btc::Mainnet => Chain::Bitcoin,
+                Btc::Testnet => Chain::BitcoinTestnet,
+                Btc::Testnet4 => Chain::BitcoinTestnet4,
+                Btc::Signet => Chain::BitcoinSignet,
+            });
+        }
+        if slot == Chain::Dogecoin.address_slot() {
+            return Some(match self.dogecoin {
+                Doge::Mainnet => Chain::Dogecoin,
+                Doge::Testnet => Chain::DogecoinTestnet,
+            });
+        }
+        // Every other slot is shared by a chain family (all EVM mainnets use
+        // one), so any chain in the family answers for the format.
+        Chain::all().find(|chain| chain.address_slot() == slot)
+    }
+}
+
+/// Validate one address against the chain that owns `slot` on this network.
+///
+/// `Ok` carries the normalized form to store; `Err` means the address does not
+/// parse for that chain.
+fn validated_address_in_slot(
+    slot: &str,
+    address: &str,
+    networks: ImportNetworks,
+) -> Result<String, ()> {
+    let chain = networks.chain_for(slot).ok_or(())?;
+    let result = validate_address(AddressValidationRequest {
+        kind: chain.address_validation_kind().to_string(),
+        value: address.to_string(),
+        network_mode: None,
+    });
+    if result.is_valid {
+        Ok(result
+            .normalized_value
+            .unwrap_or_else(|| address.to_string()))
+    } else {
+        Err(())
+    }
+}
+
+/// Drop any address that does not validate for its chain, reporting what was
+/// dropped.
+///
+/// One rule for every chain. The iOS import path applied validation to some
+/// chains and not others — twenty-one kept whatever was typed, three required
+/// it to parse — which meant an unparseable address could be stored for a
+/// wallet depending only on which chain it was. Storing a malformed address is
+/// worse than storing none: it renders as the wallet's receive address.
+pub(crate) fn validated_addresses(
+    addresses: &WalletImportAddresses,
+    networks: ImportNetworks,
+) -> (WalletImportAddresses, Vec<String>) {
+    let mut kept = HashMap::new();
+    let mut rejected = Vec::new();
+    for (slot, address) in &addresses.by_slot {
+        let trimmed = address.trim();
+        if trimmed.is_empty() {
+            continue;
+        }
+        match validated_address_in_slot(slot, trimmed, networks) {
+            Ok(normalized) => {
+                kept.insert(slot.clone(), normalized);
+            }
+            Err(()) => rejected.push(trimmed.to_string()),
+        }
+    }
+    let (bitcoin_xpub, refused_xpub) =
+        validated_bitcoin_xpub(addresses.bitcoin_xpub.as_ref(), networks);
+    rejected.extend(refused_xpub);
+    (
+        WalletImportAddresses {
+            by_slot: kept,
+            bitcoin_xpub,
+        },
+        rejected,
+    )
+}
+
+/// The same rule over the watch-only lists, which are a separate input.
+///
+/// This is the path that actually needs it. A signing import's address is
+/// derived by core and valid by construction; a watch-only import's is typed
+/// by the user, and it is the only address the wallet will ever have. Missing
+/// it here meant the "every chain is validated" rule covered the path that
+/// could not fail and skipped the one that could.
+pub(crate) fn validated_watch_only_entries(
+    entries: &WalletImportWatchOnlyEntries,
+    networks: ImportNetworks,
+) -> (WalletImportWatchOnlyEntries, Vec<String>) {
+    let mut kept: HashMap<String, Vec<String>> = HashMap::new();
+    let mut rejected = Vec::new();
+    for (slot, addresses) in &entries.by_slot {
+        for address in addresses {
+            let trimmed = address.trim();
+            if trimmed.is_empty() {
+                continue;
+            }
+            match validated_address_in_slot(slot, trimmed, networks) {
+                Ok(normalized) => kept.entry(slot.clone()).or_default().push(normalized),
+                Err(()) => rejected.push(trimmed.to_string()),
+            }
+        }
+    }
+    let (bitcoin_xpub, refused_xpub) =
+        validated_bitcoin_xpub(entries.bitcoin_xpub.as_ref(), networks);
+    rejected.extend(refused_xpub);
+    (
+        WalletImportWatchOnlyEntries {
+            by_slot: kept,
+            bitcoin_xpub,
+        },
+        rejected,
+    )
 }
 
 /// Build the wallets an import plan calls for, without storing them.

@@ -1380,6 +1380,11 @@ mod wallet_import {
     };
     use std::collections::HashMap;
 
+    // Real addresses: core validates every import address now, so a
+    // placeholder would simply be dropped.
+    const BTC: &str = "bc1qcr8te4kr609gcawutmrza0j4xv80jy8z306fyu";
+    const SOL: &str = "11111111111111111111111111111111";
+
     fn commit(chains: &[&str], addresses: &[(&str, &str)]) -> WalletImportCommit {
         WalletImportCommit {
             request: WalletImportRequest {
@@ -1418,7 +1423,7 @@ mod wallet_import {
     async fn imported_wallets_land_in_core_state() {
         let service = WalletService::new_typed(Vec::new()).expect("service");
         let outcome = service
-            .import_wallets(commit(&["Solana"], &[("solana", "SoLaNaAddr")]))
+            .import_wallets(commit(&["Solana"], &[("solana", SOL)]))
             .await
             .expect("import");
 
@@ -1427,7 +1432,7 @@ mod wallet_import {
         let stored = service.wallets_for_display().await.expect("wallets");
         assert_eq!(stored.len(), 1);
         assert_eq!(stored[0].selected_chain, "Solana");
-        assert_eq!(stored[0].addresses.get("solana").map(String::as_str), Some("SoLaNaAddr"));
+        assert_eq!(stored[0].addresses.get("solana").map(String::as_str), Some(SOL));
     }
 
     #[tokio::test]
@@ -1435,7 +1440,7 @@ mod wallet_import {
         let service = WalletService::new_typed(Vec::new()).expect("service");
         let mut input = commit(
             &["Bitcoin", "Solana"],
-            &[("bitcoin", "bc1qaddr"), ("solana", "SoLaNaAddr")],
+            &[("bitcoin", BTC), ("solana", SOL)],
         );
         input.bitcoin_network_mode = CoreBitcoinNetworkMode::Testnet;
         let outcome = service.import_wallets(input).await.expect("import");
@@ -1813,6 +1818,500 @@ mod send_rules {
                 chain.str_id(),
                 mainnet.str_id()
             );
+        }
+    }
+}
+
+/// `wallet_derived_state` replaced two planners that returned holding indices
+/// for the caller to resolve. These cover the parts that indirection made easy
+/// to get wrong: grouping, network-mode-dependent identity, and send gating.
+#[cfg(test)]
+mod wallet_derived_state {
+    use crate::service::{NetworkModes, WalletService};
+    use crate::state::StateCommand;
+    use crate::store::wallet_domain::CoreCoin;
+
+    fn mainnet() -> NetworkModes {
+        NetworkModes {
+            bitcoin: "Mainnet".into(),
+            ethereum: "Mainnet".into(),
+            dogecoin: "Mainnet".into(),
+        }
+    }
+
+    fn coin(symbol: &str, chain: &str, amount: f64) -> CoreCoin {
+        CoreCoin {
+            id: format!("{chain}-{symbol}"),
+            name: symbol.to_string(),
+            symbol: symbol.to_string(),
+            coin_gecko_id: symbol.to_lowercase(),
+            chain_name: chain.to_string(),
+            token_standard: String::new(),
+            contract_address: None,
+            amount,
+            price_usd: 1.0,
+        }
+    }
+
+    async fn service_with(wallets: Vec<(&str, &str, Vec<CoreCoin>, bool)>) -> std::sync::Arc<WalletService> {
+        let service = WalletService::new_typed(Vec::new()).expect("service");
+        for (id, chain, holdings, included) in wallets {
+            let mut summary = crate::store::state::WalletSummary::single_address(
+                id, id, chain, "addr", None, false,
+            );
+            summary.include_in_portfolio_total = included;
+            summary.holdings = holdings
+                .into_iter()
+                .map(|c| crate::store::state::AssetHolding {
+                    name: c.name,
+                    symbol: c.symbol,
+                    coin_gecko_id: c.coin_gecko_id,
+                    chain_name: c.chain_name,
+                    token_standard: c.token_standard,
+                    contract_address: c.contract_address,
+                    amount: c.amount,
+                    price_usd: c.price_usd,
+                })
+                .collect();
+            service
+                .apply_state_command(StateCommand::UpsertWallet { wallet: summary })
+                .await
+                .expect("upsert");
+        }
+        service
+    }
+
+    #[tokio::test]
+    async fn portfolio_sums_the_same_asset_across_wallets() {
+        let service = service_with(vec![
+            ("w1", "Bitcoin", vec![coin("BTC", "Bitcoin", 1.5)], true),
+            ("w2", "Bitcoin", vec![coin("BTC", "Bitcoin", 0.5)], true),
+        ])
+        .await;
+        let derived = service
+            .wallet_derived_state(vec![], vec![], mainnet())
+            .await
+            .expect("derived");
+        assert_eq!(derived.portfolio.len(), 1);
+        assert_eq!(derived.portfolio[0].amount, 2.0);
+    }
+
+    #[tokio::test]
+    async fn wallets_excluded_from_the_total_contribute_nothing() {
+        let service = service_with(vec![
+            ("w1", "Bitcoin", vec![coin("BTC", "Bitcoin", 1.0)], true),
+            ("w2", "Bitcoin", vec![coin("BTC", "Bitcoin", 9.0)], false),
+        ])
+        .await;
+        let derived = service
+            .wallet_derived_state(vec![], vec![], mainnet())
+            .await
+            .expect("derived");
+        assert_eq!(derived.portfolio[0].amount, 1.0);
+        assert_eq!(derived.included_portfolio_holdings.len(), 1);
+    }
+
+    #[tokio::test]
+    async fn a_testnet_coin_is_not_quoted_and_groups_separately() {
+        let service = service_with(vec![(
+            "w1",
+            "Bitcoin",
+            vec![coin("BTC", "Bitcoin", 1.0)],
+            true,
+        )])
+        .await;
+        let testnet = NetworkModes {
+            bitcoin: "Testnet".into(),
+            ..mainnet()
+        };
+        let derived = service
+            .wallet_derived_state(vec![], vec![], testnet)
+            .await
+            .expect("derived");
+        assert!(
+            derived.unique_price_request_coins.is_empty(),
+            "testnet coins have no price to request"
+        );
+    }
+
+    #[tokio::test]
+    async fn sending_needs_signing_material_on_a_live_chain() {
+        let service = service_with(vec![(
+            "w1",
+            "Bitcoin",
+            vec![coin("BTC", "Bitcoin", 1.0)],
+            true,
+        )])
+        .await;
+
+        let watch_only = service
+            .wallet_derived_state(vec![], vec![], mainnet())
+            .await
+            .expect("derived");
+        assert!(watch_only.send_enabled_wallet_ids.is_empty());
+        // Receiving never needs a key.
+        assert_eq!(watch_only.receive_enabled_wallet_ids, vec!["w1".to_string()]);
+
+        let with_key = service
+            .wallet_derived_state(vec!["w1".into()], vec![], mainnet())
+            .await
+            .expect("derived");
+        assert_eq!(with_key.send_enabled_wallet_ids, vec!["w1".to_string()]);
+    }
+
+    #[tokio::test]
+    async fn an_untracked_token_on_ethereum_cannot_be_sent() {
+        let service = service_with(vec![(
+            "w1",
+            "Ethereum",
+            vec![coin("ETH", "Ethereum", 1.0), coin("SHIB", "Ethereum", 1.0)],
+            true,
+        )])
+        .await;
+        let derived = service
+            .wallet_derived_state(vec!["w1".into()], vec![], mainnet())
+            .await
+            .expect("derived");
+        let sendable: Vec<&str> = derived.send_coins_by_wallet_id["w1"]
+            .iter()
+            .map(|c| c.symbol.as_str())
+            .collect();
+        assert_eq!(sendable, vec!["ETH"], "SHIB is not a tracked token");
+    }
+}
+
+/// `resolvedAddress(for:chainName:)` used to be a 24-case switch mapping each
+/// chain name to its own accessor. It asks core for the derivation chain now,
+/// so core must answer for every chain that switch listed — a missing entry
+/// would silently return no address rather than fail to compile.
+#[cfg(test)]
+mod seed_derivation_chain_coverage {
+    use crate::registry::Chain;
+
+    /// The non-EVM chains the Swift switch named, minus the four that keep
+    /// bespoke resolvers (Bitcoin, Dogecoin, Cardano, Monero).
+    const SWITCH_CHAINS: &[&str] = &[
+        "Bitcoin Cash",
+        "Bitcoin SV",
+        "Litecoin",
+        "Tron",
+        "Solana",
+        "Stellar",
+        "XRP Ledger",
+        "Sui",
+        "Aptos",
+        "TON",
+        "Internet Computer",
+        "NEAR",
+        "Polkadot",
+        "Zcash",
+        "Bitcoin Gold",
+        "Decred",
+        "Kaspa",
+        "Dash",
+        "Bittensor",
+    ];
+
+    #[test]
+    fn every_chain_the_switch_named_still_resolves() {
+        for name in SWITCH_CHAINS {
+            assert!(
+                Chain::from_display_name(name).is_some(),
+                "{name} is no longer a known chain"
+            );
+            assert!(
+                crate::send::flow::core_seed_derivation_chain_raw(name.to_string()).is_some(),
+                "{name} has no seed derivation chain, so its address would resolve to nil"
+            );
+        }
+    }
+}
+
+/// Import addresses are validated for every chain, not for some of them.
+///
+/// The iOS path validated three chains and passed the other twenty-one through
+/// untouched, so whether a malformed address reached storage depended only on
+/// which chain it was typed under.
+#[cfg(test)]
+mod import_address_validation {
+    use crate::derivation::import::WalletImportAddresses;
+
+    /// Mainnet, which is what every case here means unless it says otherwise.
+    fn validated_addresses(
+        addresses: &WalletImportAddresses,
+    ) -> (WalletImportAddresses, Vec<String>) {
+        crate::derivation::import::validated_addresses(addresses, Default::default())
+    }
+
+    fn addresses(pairs: &[(&str, &str)]) -> WalletImportAddresses {
+        WalletImportAddresses {
+            by_slot: pairs
+                .iter()
+                .map(|(k, v)| (k.to_string(), v.to_string()))
+                .collect(),
+            bitcoin_xpub: None,
+        }
+    }
+
+    #[test]
+    fn a_malformed_address_is_dropped_whatever_the_chain() {
+        // "solana" and "tron" were both in the lenient group.
+        let (kept, rejected) = validated_addresses(&addresses(&[
+            ("solana", "not-a-solana-address"),
+            ("tron", "nonsense"),
+            ("ethereum", "0xnothex"),
+        ]));
+        assert!(kept.by_slot.is_empty(), "kept: {:?}", kept.by_slot);
+        assert_eq!(rejected.len(), 3);
+    }
+
+    #[test]
+    fn a_valid_address_survives_and_is_normalised() {
+        let (kept, rejected) = validated_addresses(&addresses(&[(
+            "ethereum",
+            "0x742D35CC6634C0532925A3B844bC454E4438F44E",
+        )]));
+        assert!(rejected.is_empty());
+        let stored = kept.by_slot.get("ethereum").expect("kept");
+        // Normalisation is core's, not the caller's transcription.
+        assert!(stored.starts_with("0x"));
+        assert_eq!(stored.len(), 42);
+    }
+
+    #[test]
+    fn empty_and_whitespace_entries_are_skipped_not_rejected() {
+        let (kept, rejected) = validated_addresses(&addresses(&[("solana", "   ")]));
+        assert!(kept.by_slot.is_empty());
+        assert!(
+            rejected.is_empty(),
+            "an unfilled field is not a rejected address"
+        );
+    }
+
+    #[test]
+    fn the_bitcoin_xpub_is_carried_through_untouched() {
+        let mut input = addresses(&[]);
+        input.bitcoin_xpub = Some("zpub-whatever".to_string());
+        let (kept, _) = validated_addresses(&input);
+        assert_eq!(kept.bitcoin_xpub.as_deref(), Some("zpub-whatever"));
+    }
+
+    /// A derived address is mainnet-format even on a testnet import, so the
+    /// slot map is judged against mainnet regardless of the selected mode.
+    ///
+    /// Derivation at import runs against the mainnet chain — `chainPaths` is
+    /// keyed by mainnet display name — and the testnet address is re-derived
+    /// for display. Judging this map by the selected network mode dropped
+    /// every address on a testnet import and produced a wallet with none.
+    #[test]
+    fn a_derived_address_is_kept_on_a_testnet_import() {
+        use crate::store::wallet_domain::{CoreBitcoinNetworkMode, CoreDogecoinNetworkMode};
+        let derived = "bc1qw508d6qejxtdg4y5r3zarvary0c5xw7kv8f3t4";
+        // Even asked for testnet4, the slot map is mainnet.
+        let (kept, rejected) = crate::derivation::import::validated_addresses(
+            &addresses(&[("bitcoin", derived)]),
+            crate::derivation::import::ImportNetworks {
+                bitcoin: CoreBitcoinNetworkMode::Testnet4,
+                dogecoin: CoreDogecoinNetworkMode::Mainnet,
+            },
+        );
+        // The helper itself honours what it is told...
+        assert_eq!(rejected, vec![derived.to_string()]);
+        assert!(kept.by_slot.is_empty());
+        // ...so it is `import_wallets` that must pass mainnet here, which is
+        // what the default does.
+        let (kept, rejected) = validated_addresses(&addresses(&[("bitcoin", derived)]));
+        assert!(rejected.is_empty());
+        assert_eq!(kept.by_slot.get("bitcoin").map(String::as_str), Some(derived));
+    }
+
+    #[test]
+    fn a_rejection_names_the_address_not_the_slot() {
+        // The caller has to be able to tell the user which address was
+        // refused. A slot name ("ethereum") does not identify one when the
+        // import supplied several.
+        let (_, rejected) = validated_addresses(&addresses(&[("solana", "not-an-address")]));
+        assert_eq!(rejected, vec!["not-an-address".to_string()]);
+    }
+
+    /// The watch-only list is a separate input from the slot map, and it is the
+    /// one where the address is typed rather than derived.
+    mod watch_only {
+        use crate::derivation::import::{ImportNetworks, WalletImportWatchOnlyEntries};
+        use std::collections::HashMap;
+
+        /// Mainnet, as above.
+        fn validated_watch_only_entries(
+            entries: &WalletImportWatchOnlyEntries,
+        ) -> (WalletImportWatchOnlyEntries, Vec<String>) {
+            validated_watch_only_entries_on(entries, Default::default())
+        }
+
+        fn validated_watch_only_entries_on(
+            entries: &WalletImportWatchOnlyEntries,
+            networks: ImportNetworks,
+        ) -> (WalletImportWatchOnlyEntries, Vec<String>) {
+            crate::derivation::import::validated_watch_only_entries(entries, networks)
+        }
+
+        fn entries(slot: &str, addresses: &[&str]) -> WalletImportWatchOnlyEntries {
+            WalletImportWatchOnlyEntries {
+                by_slot: HashMap::from([(
+                    slot.to_string(),
+                    addresses.iter().map(|a| a.to_string()).collect(),
+                )]),
+                bitcoin_xpub: None,
+            }
+        }
+
+        #[test]
+        fn a_malformed_watch_address_is_refused() {
+            let (kept, rejected) = validated_watch_only_entries(&entries("solana", &["garbage"]));
+            assert!(kept.by_slot.is_empty(), "kept: {:?}", kept.by_slot);
+            assert_eq!(rejected, vec!["garbage".to_string()]);
+        }
+
+        #[test]
+        fn valid_watch_addresses_survive_and_are_normalised() {
+            let (kept, rejected) = validated_watch_only_entries(&entries(
+                "ethereum",
+                &["0x742D35CC6634C0532925A3B844bC454E4438F44E"],
+            ));
+            assert!(rejected.is_empty());
+            let stored = kept.by_slot.get("ethereum").expect("kept");
+            assert_eq!(stored.len(), 1);
+            assert!(stored[0].starts_with("0x"));
+        }
+
+        /// Core normalises on the way in, so a caller does not have to.
+        ///
+        /// The iOS import path used to lower-case Sui, NEAR and Kaspa by hand,
+        /// call `normalizedSendAddress` for Aptos / TON / Internet Computer,
+        /// and `normalizeEVMAddress` for the EVM slot — all of it upstream of
+        /// a core call that normalises again. This pins the property those
+        /// call sites were duplicating, so deleting them is a provable no-op
+        /// rather than a hopeful one.
+        #[test]
+        fn every_slot_normalises_without_help_from_the_caller() {
+            let padded = "0x0000000000000000000000000000000000000000000000000000000000000ABC";
+            let cases: [(&str, &str, &str); 3] = [
+                (
+                    "ethereum",
+                    "0x742D35CC6634C0532925A3B844BC454E4438F44E",
+                    "0x742d35cc6634c0532925a3b844bc454e4438f44e",
+                ),
+                ("sui", padded, &padded.to_lowercase()),
+                ("aptos", padded, &padded.to_lowercase()),
+            ];
+            for (slot, typed, expected) in cases {
+                let (kept, rejected) = validated_watch_only_entries(&entries(slot, &[typed]));
+                assert!(rejected.is_empty(), "{slot}: rejected {typed}");
+                assert_eq!(
+                    kept.by_slot.get(slot).map(Vec::as_slice),
+                    Some([expected.to_string()].as_slice()),
+                    "{slot} did not normalise"
+                );
+            }
+        }
+
+        /// The import path and the send path must agree on what an address
+        /// looks like once normalised.
+        ///
+        /// They are two separate tables today — `validate_address` matches on
+        /// the validation kind, `normalize_address` on the chain display name.
+        /// iOS called the second (as `normalizedSendAddress`) before handing
+        /// addresses to the first. Deleting those calls is only safe while the
+        /// two agree, so this fails if they ever drift apart.
+        #[test]
+        fn the_send_normaliser_and_the_import_normaliser_agree() {
+            use crate::send::flow::normalized_send_address;
+            // Internet Computer is absent on purpose: its account identifier
+            // carries a CRC32 prefix, so there is no fixture to write here
+            // without computing a real one, and a fixture the validator
+            // rejects would test nothing.
+            let cases: [(&str, &str, &str); 5] = [
+                ("Ethereum", "ethereum", "0x742D35CC6634C0532925A3B844BC454E4438F44E"),
+                (
+                    "Sui",
+                    "sui",
+                    "0x0000000000000000000000000000000000000000000000000000000000000ABC",
+                ),
+                (
+                    "Aptos",
+                    "aptos",
+                    "0x0000000000000000000000000000000000000000000000000000000000000ABC",
+                ),
+                ("NEAR", "near", "Example.NEAR"),
+                ("Solana", "solana", "BLeUXTx9thHGT7VJUtF9vHEmfMDgW1nnKZ9UVer2CoLX"),
+            ];
+            for (chain_name, slot, typed) in cases {
+                let (kept, rejected) = validated_watch_only_entries(&entries(slot, &[typed]));
+                assert!(rejected.is_empty(), "{chain_name}: rejected {typed}");
+                let imported = kept.by_slot.get(slot).and_then(|list| list.first()).unwrap();
+                let sent = normalized_send_address(chain_name.to_string(), typed.to_string());
+                assert_eq!(
+                    imported, &sent,
+                    "{chain_name}: import normalised to {imported}, send to {sent}"
+                );
+            }
+        }
+
+        #[test]
+        fn surrounding_whitespace_is_not_the_caller_s_problem_either() {
+            let (kept, rejected) = validated_watch_only_entries(&entries(
+                "ethereum",
+                &["  0x742d35cc6634c0532925a3b844bc454e4438f44e  "],
+            ));
+            assert!(rejected.is_empty());
+            assert_eq!(
+                kept.by_slot.get("ethereum").map(Vec::as_slice),
+                Some(["0x742d35cc6634c0532925a3b844bc454e4438f44e".to_string()].as_slice())
+            );
+        }
+
+        /// A testnet address arrives in its mainnet's slot, so validation has
+        /// to be told which network the import is for.
+        ///
+        /// `ImportDraft.watchOnlyInputsByChainName` is keyed by mainnet display
+        /// name — there is no "Bitcoin Testnet" row — so a testnet watch import
+        /// puts a testnet address in the `bitcoin` slot. Validating that slot as
+        /// mainnet refuses a wallet the app has always allowed.
+        #[test]
+        fn a_testnet_watch_address_survives_when_the_import_is_for_testnet() {
+            use crate::store::wallet_domain::{CoreBitcoinNetworkMode, CoreDogecoinNetworkMode};
+            // tb1 prefix — valid Bitcoin testnet, invalid on mainnet.
+            let typed = "tb1qw508d6qejxtdg4y5r3zarvary0c5xw7kxpjzsx";
+            let (kept, rejected) = validated_watch_only_entries_on(
+                &entries("bitcoin", &[typed]),
+                ImportNetworks {
+                    bitcoin: CoreBitcoinNetworkMode::Testnet,
+                    dogecoin: CoreDogecoinNetworkMode::Mainnet,
+                },
+            );
+            assert!(rejected.is_empty(), "testnet address refused: {rejected:?}");
+            assert_eq!(kept.by_slot.get("bitcoin").map(Vec::len), Some(1));
+        }
+
+        #[test]
+        fn a_testnet_watch_address_is_still_refused_on_mainnet() {
+            let typed = "tb1qw508d6qejxtdg4y5r3zarvary0c5xw7kxpjzsx";
+            let (kept, rejected) = validated_watch_only_entries(&entries("bitcoin", &[typed]));
+            assert_eq!(rejected, vec![typed.to_string()]);
+            assert!(kept.by_slot.is_empty());
+        }
+
+        #[test]
+        fn one_bad_address_does_not_discard_the_good_ones() {
+            let (kept, rejected) = validated_watch_only_entries(&entries(
+                "ethereum",
+                &[
+                    "0x742D35CC6634C0532925A3B844bC454E4438F44E",
+                    "0xnothex",
+                    "0x0000000000000000000000000000000000000001",
+                ],
+            ));
+            assert_eq!(kept.by_slot.get("ethereum").expect("kept").len(), 2);
+            assert_eq!(rejected, vec!["0xnothex".to_string()]);
         }
     }
 }

@@ -8,19 +8,22 @@ publish = false
 name = "spectra"
 path = "src/main.rs"
 
+# The CLI is a front end and nothing else. It owns argument parsing, terminal
+# rendering and password prompting; every wallet, crypto and chain decision
+# belongs to `spectra_core`. If a dependency here would let this crate decide
+# something about a wallet, it is in the wrong crate — that is why bip39,
+# pbkdf2, sha2, base64 and getrandom are no longer listed: mnemonic generation
+# and seed sealing are core's, not the front end's.
 [dependencies]
 spectra_core = { path = "../core" }
-# base64: SecretStore values are opaque strings; the seed envelope, salt and
-# password verifier are bytes, so they ride across as base64.
-base64 = "0.22"
-dialoguer = { version = "0.11", features = ["fuzzy-select"] }
+clap = { version = "4", features = ["derive"] }
+colored = "2"
+# Machine-readable output for `--json`. The acceptance script parses it, which
+# is what makes the CLI a gate rather than a demo.
+serde_json = "1"
+# Reads a password without echoing it. Only used when stdin is a terminal;
+# scripted runs supply secrets by file or environment instead.
 rpassword = "7"
 uuid = { version = "1", features = ["v4"] }
-# pbkdf2 + sha2: master-key derivation for the seed envelope.
-pbkdf2 = "0.12"
-sha2 = "0.10"
 dirs = "5"
-getrandom = "0.2"
-bip39 = { version = "2", features = ["all-languages"] }
-colored = "2"
 tokio = { version = "1", features = ["rt-multi-thread", "macros"] }

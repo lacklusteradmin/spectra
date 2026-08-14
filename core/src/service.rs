@@ -139,6 +139,64 @@ fn keypool_from_record(record: &crate::store::ChainKeypoolStateRecord) -> crate:
     }
 }
 
+/// Which network the user is on, for the chains that have a choice.
+///
+/// Only these three vary at runtime; every other chain's display title is its
+/// name. Ported verbatim from Swift's `displayNetworkName`.
+#[derive(Debug, Clone, uniffi::Record)]
+pub struct NetworkModes {
+    pub bitcoin: String,
+    pub ethereum: String,
+    pub dogecoin: String,
+}
+
+impl NetworkModes {
+    fn network_name<'a>(&'a self, chain_name: &'a str) -> &'a str {
+        match chain_name {
+            "Bitcoin" => &self.bitcoin,
+            "Ethereum" => &self.ethereum,
+            "Dogecoin" => &self.dogecoin,
+            other => other,
+        }
+    }
+
+    /// "Bitcoin" on mainnet, "Bitcoin Testnet" otherwise.
+    fn display_chain_title(&self, chain_name: &str) -> String {
+        let network = self.network_name(chain_name);
+        if network == chain_name || network == "Mainnet" {
+            chain_name.to_string()
+        } else {
+            format!("{chain_name} {network}")
+        }
+    }
+
+    /// Testnet coins have no price, so they are not quoted.
+    fn is_priced_chain(&self, chain_name: &str) -> bool {
+        match chain_name {
+            "Bitcoin" => self.bitcoin == "Mainnet",
+            "Ethereum" => self.ethereum == "Mainnet",
+            _ => true,
+        }
+    }
+}
+
+/// Everything the wallet list implies, with holdings already resolved.
+#[derive(Debug, Clone, uniffi::Record)]
+pub struct WalletDerivedState {
+    pub included_portfolio_holdings: Vec<crate::store::wallet_domain::CoreCoin>,
+    pub unique_price_request_coins: Vec<crate::store::wallet_domain::CoreCoin>,
+    /// One entry per asset, amounts summed across wallets.
+    pub portfolio: Vec<crate::store::wallet_domain::CoreCoin>,
+    pub send_coins_by_wallet_id: HashMap<String, Vec<crate::store::wallet_domain::CoreCoin>>,
+    pub receive_coins_by_wallet_id: HashMap<String, Vec<crate::store::wallet_domain::CoreCoin>>,
+    pub receive_chains_by_wallet_id: HashMap<String, Vec<String>>,
+    pub send_enabled_wallet_ids: Vec<String>,
+    pub receive_enabled_wallet_ids: Vec<String>,
+    pub refreshable_chain_names: Vec<String>,
+    pub signing_material_wallet_ids: Vec<String>,
+    pub private_key_backed_wallet_ids: Vec<String>,
+}
+
 // ── WalletService — primary UniFFI-exported object ────────────────────────
 
 /// Swift holds one instance for the lifetime of the app session.
@@ -4279,7 +4337,57 @@ impl WalletService {
         &self,
         commit: crate::derivation::import::WalletImportCommit,
     ) -> Result<crate::derivation::import::WalletImportOutcome, SpectraBridgeError> {
-        let plan = crate::derivation::import::plan_wallet_import(commit.request.clone())?;
+        // One validation rule for every chain, applied before planning so a
+        // malformed address cannot reach storage. Both inputs carry addresses:
+        // `resolved_addresses` for a signing import, `watch_only_entries` for a
+        // watch-only one. Validating only the first covered the path whose
+        // address core derived itself and skipped the path where the user
+        // typed it.
+        let mut commit = commit;
+        // The two inputs carry addresses of different provenance, so they are
+        // judged against different networks.
+        //
+        // `resolved_addresses` holds what the caller *derived*, and derivation
+        // runs against the mainnet chain whatever network mode is selected — a
+        // testnet wallet stores a mainnet-format address and re-derives the
+        // testnet one for display. Judging it by the selected mode would drop
+        // every address on a testnet import.
+        //
+        // `watch_only_entries` holds what the user *typed*, for the network
+        // they are on, and `ImportDraft` has no testnet row to put it in — so
+        // a testnet address arrives in the mainnet slot and only the mode says
+        // how to read it.
+        let typed_networks = crate::derivation::import::ImportNetworks {
+            bitcoin: commit.bitcoin_network_mode,
+            dogecoin: commit.dogecoin_network_mode,
+        };
+        let (validated, mut rejected_addresses) =
+            crate::derivation::import::validated_addresses(
+                &commit.request.resolved_addresses,
+                crate::derivation::import::ImportNetworks::default(),
+            );
+        commit.request.resolved_addresses = validated;
+        let (validated_watch_only, rejected_watch_only) =
+            crate::derivation::import::validated_watch_only_entries(
+                &commit.request.watch_only_entries,
+                typed_networks,
+            );
+        commit.request.watch_only_entries = validated_watch_only;
+        rejected_addresses.extend(rejected_watch_only);
+
+        // A plan that fails *because* validation emptied the input is a refusal
+        // of what the caller supplied, not an internal failure — say which
+        // address was refused, and classify it so a caller can tell the two
+        // apart without reading the message.
+        let plan = match crate::derivation::import::plan_wallet_import(commit.request.clone()) {
+            Ok(plan) => plan,
+            Err(message) if !rejected_addresses.is_empty() => {
+                return Err(SpectraBridgeError::InvalidInput {
+                    message: format!("{message} Rejected: {}", rejected_addresses.join(", ")),
+                })
+            }
+            Err(message) => return Err(SpectraBridgeError::from(message)),
+        };
         let wallets = crate::derivation::import::wallets_for_import(&commit, &plan);
         let is_watch_only = commit.request.is_watch_only_import;
         for wallet in &wallets {
@@ -4292,6 +4400,7 @@ impl WalletService {
             secret_kind: plan.secret_kind,
             secret_instructions: plan.secret_instructions,
             wallets,
+            rejected_addresses,
         })
     }
 
@@ -4405,6 +4514,138 @@ impl WalletService {
                 .insert(wallet_id.to_string(), state.clone());
         }
         out
+    }
+
+    /// Everything the wallet list implies, rendered.
+    ///
+    /// Replaces `core_plan_store_derived_state` + `core_plan_transfer_availability`,
+    /// which returned holding *indices* that the caller resolved back into
+    /// coins against its own copy of the wallets. Core holds the wallets, so it
+    /// resolves them itself.
+    ///
+    /// The three inputs are the things core genuinely cannot know: which
+    /// wallets have signing material or a private key (that is the platform
+    /// keystore) and which network mode the user is on.
+    pub async fn wallet_derived_state(
+        &self,
+        signing_material_wallet_ids: Vec<String>,
+        private_key_backed_wallet_ids: Vec<String>,
+        network_modes: NetworkModes,
+    ) -> Result<WalletDerivedState, SpectraBridgeError> {
+        use std::collections::{BTreeMap, HashSet};
+
+        let wallets = self.wallets_for_display().await?;
+        let token_preferences = self.wallet_state.read().await.token_preferences.clone();
+        let signing: HashSet<&str> = signing_material_wallet_ids
+            .iter()
+            .map(String::as_str)
+            .collect();
+
+        let live_chains: HashSet<String> = crate::app_core::live_chain_names().into_iter().collect();
+        let backends: HashMap<String, crate::app_core::AppCoreChainBackend> =
+            crate::app_core::chain_backends()
+                .into_iter()
+                .map(|b| (b.chain_name.clone(), b))
+                .collect();
+
+        let mut included_portfolio_holdings = Vec::new();
+        let mut unique_price_request_coins = Vec::new();
+        let mut seen_price_keys = HashSet::new();
+        let mut grouped_order: Vec<String> = Vec::new();
+        let mut grouped_totals: BTreeMap<String, f64> = BTreeMap::new();
+        let mut grouped_representative: BTreeMap<String, crate::store::wallet_domain::CoreCoin> =
+            BTreeMap::new();
+
+        let mut send_coins_by_wallet_id = HashMap::new();
+        let mut receive_coins_by_wallet_id = HashMap::new();
+        let mut receive_chains_by_wallet_id = HashMap::new();
+        let mut send_enabled_wallet_ids = Vec::new();
+        let mut receive_enabled_wallet_ids = Vec::new();
+
+        for wallet in &wallets {
+            let has_signing_material = signing.contains(wallet.id.as_str());
+            let mut send_coins = Vec::new();
+            let mut receive_coins = Vec::new();
+            let mut receive_chains: Vec<String> = Vec::new();
+
+            for holding in &wallet.holdings {
+                let identity_key = format!(
+                    "{}|{}",
+                    network_modes.display_chain_title(&holding.chain_name),
+                    holding.symbol
+                );
+                let backend = backends.get(&holding.chain_name);
+
+                if network_modes.is_priced_chain(&holding.chain_name)
+                    && seen_price_keys.insert(identity_key.clone())
+                {
+                    unique_price_request_coins.push(holding.clone());
+                }
+
+                if wallet.include_in_portfolio_total {
+                    included_portfolio_holdings.push(holding.clone());
+                    if !grouped_totals.contains_key(&identity_key) {
+                        grouped_order.push(identity_key.clone());
+                        grouped_representative.insert(identity_key.clone(), holding.clone());
+                    }
+                    *grouped_totals.entry(identity_key).or_default() += holding.amount;
+                }
+
+                if crate::send::transfer::can_send_coin(
+                    holding,
+                    has_signing_material,
+                    backend.is_some_and(|b| b.supports_send),
+                    live_chains.contains(&holding.chain_name),
+                    &token_preferences,
+                ) {
+                    send_coins.push(holding.clone());
+                }
+                if backend.is_some_and(|b| b.supports_receive_address) {
+                    receive_coins.push(holding.clone());
+                    if !receive_chains.contains(&holding.chain_name) {
+                        receive_chains.push(holding.chain_name.clone());
+                    }
+                }
+            }
+
+            if !send_coins.is_empty() {
+                send_enabled_wallet_ids.push(wallet.id.clone());
+            }
+            if !receive_coins.is_empty() {
+                receive_enabled_wallet_ids.push(wallet.id.clone());
+            }
+            send_coins_by_wallet_id.insert(wallet.id.clone(), send_coins);
+            receive_coins_by_wallet_id.insert(wallet.id.clone(), receive_coins);
+            receive_chains_by_wallet_id.insert(wallet.id.clone(), receive_chains);
+        }
+
+        let portfolio = grouped_order
+            .into_iter()
+            .filter_map(|key| {
+                let mut representative = grouped_representative.remove(&key)?;
+                representative.amount = grouped_totals.get(&key).copied().unwrap_or(0.0);
+                Some(representative)
+            })
+            .collect();
+
+        Ok(WalletDerivedState {
+            included_portfolio_holdings,
+            unique_price_request_coins,
+            portfolio,
+            send_coins_by_wallet_id,
+            receive_coins_by_wallet_id,
+            receive_chains_by_wallet_id,
+            send_enabled_wallet_ids,
+            receive_enabled_wallet_ids,
+            refreshable_chain_names: wallets
+                .iter()
+                .map(|w| w.selected_chain.clone())
+                .collect::<HashSet<_>>()
+                .into_iter()
+                .collect(),
+            signing_material_wallet_ids,
+            private_key_backed_wallet_ids,
+        })
     }
 
     /// The wallets core holds, as the shape the iOS app renders.

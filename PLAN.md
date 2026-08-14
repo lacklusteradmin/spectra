@@ -402,6 +402,231 @@ relocate the round trip.
 
 ### Stage 3 — Thin the shell
 
+> **Method change, decided partway through this stage.** Everything above was
+> done as *equivalent migration*: move the code, change no behaviour. That
+> works until it meets a place where the Swift is not self-consistent — 21
+> chains accept an unvalidated import address and 3 do not; 3 EVM chains gate
+> non-native sends on token support and 20 do not. Preserving those exactly
+> means either reproducing the inconsistency in core or stopping to ask which
+> side is right, and there are more of them ahead.
+>
+> The remit here is a rewrite, so from this point the rule is: **write the one
+> correct rule in core and delete the Swift, rather than port what is there.**
+> Where the existing behaviour splits, take the safe side — validate every
+> address, gate every chain. Every such change is listed under "Behaviour
+> changed on purpose" below, with what it was and why, so any of them can be
+> reversed on inspection.
+>
+> Slices are proven by the CLI before the Swift is deleted. That is the same
+> test rule 1 has always stated; it is now also the acceptance gate.
+
+## Behaviour changed on purpose
+
+**Import addresses are now validated for every chain.**
+
+*Was:* the iOS import path built a `resolved<Chain>Address` local for 21 chains
+— the typed value, kept whenever the chain was selected and non-empty, with no
+validation — and used it in preference to the validated/derived value. Dogecoin,
+Ethereum and Ethereum Classic had no such local and used only the validated
+path. So whether a malformed address reached storage depended on which chain it
+was typed under.
+
+*Now:* `validated_addresses` in core runs every supplied address through
+`validate_address` with the chain's own `address_validation_kind`, keeps the
+normalised form, and drops what does not parse. One rule, no exceptions.
+
+*Why this side:* a stored malformed address is worse than a missing one — it
+renders as the wallet's receive address, so a user could hand it out.
+
+*Checkable without the app:* `spectra address validate` runs the same function
+the import does, and exits 3 on a refusal so a script can assert it.
+
+```
+$ spectra address validate --chain Ethereum 0x742D35CC6634C0532925A3B844bC454E4438F44E
+  ✓ valid, normalised to 0x742d35cc6634c0532925a3b844bc454e4438f44e
+$ spectra address validate --chain Solana not-an-address
+  ✗ not a valid Solana address        # exit 3
+```
+
+*Fallout worth noting:* two existing core tests used placeholder addresses
+(`"SoLaNaAddr"`, `"bc1qaddr"`) and started failing, because the rule dropped
+them. They now use real ones. A fixture that a validation rule rejects was
+never testing what it claimed to.
+
+**Watch-only import addresses are validated too.**
+
+*Was:* the rule above only ran over `resolved_addresses`. A watch-only import
+reads a different input — `watch_only_entries` — so it was not validated at
+all. The rule therefore covered the path whose address core derives itself, and
+skipped the one where the user types it. That is backwards.
+
+*Now:* `validated_watch_only_entries` applies the same rule to that input.
+A watch-only import of a malformed address used to store a wallet with no
+address; it is refused.
+
+*Found by:* rewriting the CLI so `wallet watch` goes through `import_wallets`.
+The old CLI built the `WalletSummary` itself, so it could not have found this.
+
+**Refused import addresses are reported, not dropped.**
+
+*Was:* `import_wallets` dropped what failed validation with a `tracing::warn!`
+and carried on, so no caller could tell a validated import from a silently
+emptied one.
+
+*Now:* `WalletImportOutcome` carries `rejected_addresses`, and an import left
+with nothing to plan returns `InvalidInput` naming what was refused rather than
+a generic failure. iOS surfaces it through `importError`. Same shape as
+`addressBookRejected`: core decides, the front end reports.
+
+**The CLI no longer writes domain records directly.**
+
+*Was:* its four import commands built `WalletSummary` values by hand and called
+`app_state_save`; rename and delete mutated `CoreAppState` in place and saved
+it. Every one of those skipped the reducer — which is why the CLI kept passing
+while bypassing the validation core had just gained.
+
+*Now:* imports go through `WalletService::import_wallets`, mutations through
+`StateCommand`. The visible change: an import core would refuse now fails
+instead of succeeding.
+
+**A signing import's address comes only from derivation.**
+
+*Was:* the import slot map read `resolved<Chain>Address ?? <chain>Address` for
+23 chains, where the first is the raw typed value (kept whenever the chain is
+selected and the field is non-empty, **unvalidated**) and the second is the
+derived address. The typed value won.
+
+*Now:* the 23 locals and the fallback are gone. Derivation is the only source
+for a signing import; a private-key import uses a typed value only after it
+validates. Bitcoin's xpub and Monero's address stay typed, because neither has
+a derived counterpart.
+
+*Why this side:* an address that is not derived from the wallet's own key is
+unspendable by that wallet, and core's validation cannot catch it — a valid
+address for the wrong key still parses.
+
+*Honest scope:* this was **latent, not live**. `isWatchOnlyMode` has one writer
+and it resets the draft first, so the typed fields are always empty in a signing
+import. What is removed is a rule whose safety depended on an invariant two
+files away, not a reachable bug. See the Stage 3 note above for the trace.
+
+**Three copies of the diagnostics chain list became one, and a test that keeps
+it that way.**
+
+*Was:* 23 near-identical `<chain>DiagnosticsJSON()` wrappers in
+`StoreDiagnosticsExport`, a 24-row table below them calling all 23, and 24
+closures in `DiagnosticsViews` calling them a third time.
+
+*Now:* one `diagnosticsJSON(for:)` keyed by display name, one
+`diagnosticsBundleChainNames` list, and the views pass a name.
+
+*This one bought no lines* — 130 in, 130 out. What it bought is that the list
+exists once, and `DiagnosticsBundleCoverageTests` fails if the switch and the
+list disagree. That test is not hypothetical: collapsing the wrappers silently
+dropped **Tron and Solana**, because they have their own JSON builders and did
+not match the shape the other 22 shared. Nothing failed — a missing case just
+returns `nil`, and the bundle would have shipped without them. The test was
+written because of that, not before it.
+
+*Not done, and it is the reason the switch survives:* the per-chain state is
+still 163 stored properties on `WalletChainDiagnosticsState`, forwarded by 707
+lines of pure pass-through in `DiagnosticsStore.swift`. Keying those by chain
+deletes both and is the largest single win left in Stage 3 — roughly 1,100
+lines — but it moves ~650 call sites, most of them in `views/`, and there are
+no UI tests behind it. It should be its own pass, not a tail-end of this one.
+
+**`EVMChainContext` stopped being a 15-case copy of a 23-row registry table.**
+
+*Was:* a Swift enum with one case per EVM chain and five switches over it —
+`displayName`, `tokenTrackingChain`, `expectedChainID`, the derivation path and
+`isEthereumFamily`. It had cases for 15 of the 23 EVM mainnets, and
+`isEVMChain` was defined as "this switch returned non-nil". So **Sei, Celo,
+Cronos, opBNB, zkSync Era, Sonic, Berachain, Unichain, Ink and X Layer were not
+EVM chains as far as the app was concerned**, and every EVM path skipped them
+without saying so. `Chain::evm_chain_id` has had all 23 the whole time.
+
+*Now:* a struct built from `core_evm_chain_context`, with `isEVMChain` asking
+`coreIsEvmChain` directly. The named statics (`EVMChainContext.arbitrum`, …) are
+kept so the call sites in `views/` read the same. Adding an EVM chain is a
+registry edit.
+
+*One deliberate non-choice:* the statics resolve through core and fall back to a
+context with chain id `0` rather than force-unwrapping. A wrong chain id fails
+the pre-signing check loudly; a `fatalError` in a static initialiser would take
+the app down at launch. That is the same trap that made resolving a derivation
+path crash every testnet.
+
+**The import flow's three per-chain expansions collapsed onto one table.**
+
+*Was:* `AppState+ReceiveFlow` expanded every chain four separate times — 24
+`typed<Chain>Address` locals, 23 `<chain>AddressEntries` locals, a 25-optional
+block unpacked from the derived map, and a 25-row slot map repacking it — plus
+a 22-row watch-only copy and a hardcoded 23-name EVM set.
+
+*Now:* `draft.watchOnlyInputsByChainName` is the one table, as `ImportDraft`
+always intended; `addressByChainName` is filled by whichever branch produced
+the addresses and handed to `WalletImportAddresses.slotMap` once. The EVM set
+is `coreIsEvmChain`. The file is 872 → 708 lines.
+
+*Worth stating plainly:* the raw count of chain-name literals in this file went
+from 201 to 109, not to zero, and part of the remainder is new — `typed("Sui")`
+appears where `typedSuiAddress` did. That is not cheating the metric so much as
+showing its limit: a name used to *look up one table* is not the same debt as a
+name that *declares its own variable*, but both count the same. Adding a chain
+to this file is now a `ImportDraft` field plus nothing here.
+
+**The import flow's own address validation is gone; core's is the only one.**
+
+*Was:* `AppState+ReceiveFlow` held three more gates on top of core's — a
+16-row watch-only validation table, a Bitcoin address-or-xpub guard, and a
+seven-chain EVM guard — each restating per-chain address formats the registry
+already holds. It also re-stated `ImportDraft.watchOnlyInputsByChainName` as a
+23-row slot map, normalising each chain by hand on the way.
+
+*Now:* all four are deleted. `draft.watchOnlyEntriesBySlot` is passed straight
+through, and core validates and normalises.
+
+*Two behaviour changes inside this, both deliberate:*
+
+- **A bad line no longer fails the whole import.** Swift refused if any entry
+  in a chain's list was invalid; core keeps the valid ones and returns the rest
+  in `rejectedAddresses`. An import with nothing left still fails.
+- **A malformed Bitcoin xpub is refused.** Swift checked the `xpub`/`ypub`/
+  `zpub` prefix; deleting that guard without replacing it would have let any
+  string be stored as an account xpub. The rule moved to core and gained the
+  testnet prefixes (`tpub`/`upub`/`vpub`), which the Swift check did not have —
+  so a testnet watch-xpub import works where it silently did not before.
+
+*Two things this slice found, both now pinned by tests:*
+
+- **Validating watch-only addresses had broken testnet watch imports.** Added
+  in the previous slice, it judged every address in the `bitcoin` slot as
+  mainnet — but `ImportDraft` is keyed by mainnet display name, so a testnet
+  address arrives in that slot too. `ImportNetworks` now carries the mode.
+- **The two inputs need different networks, and conflating them broke a
+  signing import.** `resolved_addresses` holds what the caller *derived*, and
+  derivation runs against the mainnet chain whatever mode is selected — the
+  testnet address is re-derived for display. Judging that map by the selected
+  mode dropped every address on a testnet import;
+  `testImportingBitcoinWalletPersistsDerivedAddressOnTestnet4` caught it.
+  Mainnet for the derived map, the selected mode for the typed one.
+
+**`spectra` is not a REPL.**
+
+*Was:* an interactive shell — 24 prompt-driven commands, `dialoguer` pickers,
+and a `main()` that ignored argv entirely. Nothing could drive it but a person
+at a keyboard, so rule 1's "if `spectra` cannot drive it" could never actually
+be tested.
+
+*Now:* a clap subcommand tree. `--json` on every command, `--data-dir` for a
+scratch store, and exit codes that separate *core said no* (3) from *something
+broke* (1) and *you asked wrongly* (2). Destructive actions — delete, send,
+printing a seed — take `--yes` rather than a typed confirmation. Secrets arrive
+by file, environment or interactive prompt, never as an argument: arguments are
+visible in `ps` and land in shell history.
+
+
+
 With state and decisions in core, most of the 19,766 lines at the root of
 `swift/` are either dead or belong in Rust:
 
@@ -470,25 +695,142 @@ Done so far:
   pins the current list and fails if it changes, so the question stays visible
   instead of being decided by accident.
 
-**Next unit, and why it did not happen in this pass.** `core_plan_store_derived_state`
-and `core_plan_transfer_availability` still return holding *indices* that Swift
-resolves back into `Coin`s. The indirection exists because `WalletSummary`
-drops `CoreCoin::id`, so core cannot hand back a renderable coin from the
-authoritative record. Removing it means a `wallet_derived_state()` on the
-service that builds its request from core's own wallets and returns resolved
-coins. Everything it needs is already core-side — `supportsSend`,
-`supportsReceiveAddress` and `liveChainNames` come from the catalog bridge
-today — except the Keychain lookups (`has_signing_material`,
-`is_private_key_backed`), which stay platform and get passed in. That is a
-single coherent change to portfolio totals and send/receive availability, and
-it wants a whole pass rather than the tail of one.
-- `AppState+*` extensions shrink to event forwarding.
-- Bridges (`WalletServiceBridge`, `CachedCoreHelpers`) shrink as the surface
-  they wrap shrinks.
+- **`wallet_derived_state()` — the indirection is gone.**
+  `core_plan_store_derived_state` and `core_plan_transfer_availability`
+  returned holding *indices* that Swift resolved back into `Coin`s against its
+  own copy of the wallets. Core holds the wallets, so it now resolves them
+  itself and returns coins. `rustStoreDerivedStatePlan`,
+  `rustTransferAvailabilityPlan` and `resolveHolding` are deleted — 49 lines of
+  pure index plumbing — and `_rebuildWalletDerivedStateBody` drops from ~80
+  lines of ref-walking to assembling a cache from what core already resolved.
+
+  Three inputs still cross, and they are the right three: which wallets have
+  signing material or a private key (the platform keystore) and which network
+  mode the user is on. `NetworkModes` carries the last one and ports
+  `displayNetworkName` exactly — the network mode changes an asset's identity
+  key, so a testnet BTC groups separately from a mainnet one and is not quoted.
+
+  `can_send_coin` reads tracked tokens from `CoreAppState.token_preferences`,
+  which is only possible because they moved into core earlier this stage.
+
+- **`resolvedAddress(for:chainName:)`** was a 24-case switch mapping each chain
+  to its own accessor, where nineteen of those accessors were the identical
+  one-liner with a different slot. It asks core for the derivation chain now.
+
+  Four stay explicit and the reason matters: Bitcoin and Dogecoin choose their
+  derivation chain from the selected network mode, Cardano prefers a stored
+  address before deriving, and Monero *only* uses a stored address. Collapsing
+  all twenty-four — which is what I did first, and which compiled — would have
+  made Monero attempt a derivation it has no key for. Compilation does not
+  catch this class of change; only reading each implementation does.
+  `every_chain_the_switch_named_still_resolves` covers the nineteen.
+
+- **The CLI became the gate it was supposed to be.** Rule 1 has always said the
+  CLI is the test — "if `spectra` cannot drive it, it is in the wrong place" —
+  but the CLI was a REPL whose `main()` never read argv, so the test could only
+  ever be run by hand. Rewritten as a clap front end: 2,802 lines in one
+  `main.rs` became 2,083 across ten files, and `scripts/cli-acceptance.sh` runs
+  38 assertions against a scratch data directory with no network.
+
+  What the rewrite found is the point. The old CLI *bypassed* core on every
+  path it was supposed to prove: it assembled `WalletSummary` values itself and
+  called `app_state_save`, so it exercised none of the import rules. The
+  previous slice had added `validated_addresses_for_cli` — a core function
+  existing only so the CLI could check a rule it could not otherwise reach —
+  which is the shape of the problem, not a fix for it. It is deleted; `wallet
+  watch` now drives `import_wallets`, and doing so immediately surfaced that
+  watch-only addresses were never validated at all.
+
+  Also deleted: the CLI's own `chain_rgb` (30 hardcoded RGB pairs against 78
+  catalog chains, everything else grey — it reads `chains.toml`'s `color` now),
+  `chain_id_for_name`, `chain_native_symbol` and `load_chain_presets`, all
+  re-tabulating what `registry::Chain` holds. Its `bip39`, `pbkdf2`, `sha2`,
+  `base64` and `getrandom` dependencies went with them: mnemonic generation was
+  already core's, and seed sealing now is.
+
+- **Seed sealing policy → `store::wallet_secrets`.** The KDF and its cost, the
+  three blobs a sealed wallet consists of, their key names and their encoding
+  lived in `cli/src/main.rs`. That is domain policy in a front end. It is core's
+  now, with tests covering the cases the inline version had no way to state —
+  that two wallets sealed from the same phrase and password differ, that a
+  reseal replaces every blob rather than leaving a stale salt, and that a
+  corrupt blob is not reported as a wrong password.
+
+  Worth being precise about what was *not* duplicated: iOS seals with a random
+  Keychain-held master key, not a password-derived one, and that difference is
+  correct — the Keychain provides the protection the CLI has to derive. Both
+  sides already shared core's `seed_envelope` cipher. What was misplaced was the
+  CLI owning the policy around it.
+
+**Where this stands, and the honest shape of what is left.**
+
+The state and decisions have moved. What remains is bulk: roughly 8,700 lines
+of Swift that exist because the shell restates per-chain facts core already
+holds. The four heavy files, with how much of each is literally a hardcoded
+chain name:
+
+| File | Lines | Lines naming a chain |
+|---|---|---|
+| `AppState+SendFlow` | 1,566 | 106 |
+| `AppState` | 1,252 | 29 |
+| `AppState+ReceiveFlow` | 872 | 154 |
+| `AppState+DiagnosticsEndpoints` | 859 | 64 |
+
+`AppState+ReceiveFlow` is the densest and the next target. The import flow
+expands every chain three separate times — `typed<Chain>Address` locals, then
+`resolved<Chain>Address` locals, then the slot map — and `ImportDraft` already
+has `watchOnlyInputsByChainName`, a single table proving the shape works. The
+three expansions should collapse onto one table.
+
+**The open question about the slot map is now traced and answered.** The
+previous note said twenty-three chains kept an unvalidated `resolved<Chain>`
+local that outranked the derived value, that Dogecoin / Ethereum / Ethereum
+Classic did not, and that "whether the looser path is reachable depends on the
+import guards upstream, which is not traced here."
+
+Traced: **it was not reachable.** `res(wants, v)` returns the typed value when
+the chain is selected and the field is non-empty, and those fields are only
+filled in watch-only mode. `ImportDraft.isWatchOnlyMode` has exactly one
+writer — `configureForWatchAddressesImport()` — which calls `reset()` first, so
+a signing import always starts with every address field empty. The `didSet` on
+the flag only refreshes selection state; nothing else in the app assigns it.
+
+So the fallback was inert, not wrong. What it was, precisely, is a rule whose
+safety lived in a different file: had a second writer of `isWatchOnlyMode` ever
+appeared — a mode toggle inside the flow, a restored draft — a typed address
+would have silently outranked the one derived from the user's seed, and the
+wallet would have been stored with an address its key cannot spend. Core's
+validation would not have caught it either: a valid address for the wrong key
+still parses.
+
+The 23 locals and the `?? ` fallbacks are deleted. A signing import's address
+now comes only from derivation, and a private-key import's only from a value
+that passed validation. Two chains keep an explicit typed source, and both have
+a reason: Bitcoin's account **xpub** is not an address and has no derived
+counterpart, and **Monero** is not part of the batch derivation, so what the
+user supplied is its only source — guarded by the validity check that already
+sat above it.
+
+The three-chain asymmetry disappears with the fallback rather than needing to be
+settled: Dogecoin, Ethereum and Ethereum Classic were the chains with *no*
+looser path, and now no chain has one.
+
+**One correction to an earlier note in this plan:** `walletDerivedCache` should
+*not* be deleted. It is a synchronous projection in front of an async core,
+which is exactly the pattern this document asks for — lose it on restart and
+nothing breaks. Its *producer* moved into core (`wallet_derived_state`); its
+consumers are views, and they are right to read a cache.
 
 **Done when:** the root of `swift/` is a minority of the Swift line count, and
-adding a chain requires no Swift change at all. Currently 19,811 root vs
-10,969 in `views/` — the number that has to invert.
+adding a chain requires no Swift change at all. Currently 18,613 root vs
+10,969 in `views/` — the number that has to invert. Down 1,023 so far, and
+worth splitting honestly: 965 of that is one dead file that was never in the
+build, so only ~60 net lines have actually been moved rather than found — the
+`resolved<Chain>` deletion took out 24 lines while the two error paths added
+back more than that, which is the right trade and still not progress on this
+metric. The remaining weight is in `AppState+SendFlow` (1,566), `AppState`
+(1,239), `AppState+ReceiveFlow` (708) and `AppState+DiagnosticsEndpoints`
+(859), and those come down only when the caches they feed stop existing.
 
 ### Stage 4 — Android
 
@@ -503,11 +845,21 @@ Not by feel. These four numbers, checked at the end of each stage:
 
 | Metric | Start | Now | Target |
 |---|---|---|---|
-| `core_plan_*` exports | 42 | 10 | 10, all Stage 3 |
-| Swift root lines vs `views/` | 19,766 vs 11,113 | 19,800 vs 11,113 | inverted |
+| `core_plan_*` exports | 42 | 8 | 0 |
+| Swift root lines vs `views/` | 19,766 vs 11,113 | 18,613 vs 10,969 | inverted |
 | Domain collections stored on `AppState` | 3 | 0 | 0 |
 | Domain settings owned by core | 0 | 1 | all |
 | Wallet operations reachable from the CLI | partial | partial | all |
+| CLI commands drivable without a TTY | 0 of 24 | all | all |
+
+The last row is new, and it is the one that makes the others checkable. Every
+earlier "proven by the CLI" claim in this document was proven by a person typing
+into a prompt. `scripts/cli-acceptance.sh` replaces that with 38 assertions on
+exit codes and JSON, over a scratch data directory and with no network.
+
+Both iOS suites are green as of this pass — 34 tests, 0 failures. The
+`testEthereumTestNetworksExposeExpectedContextsAndEndpoints` failure this
+document told readers to expect is fixed, so a red test is now a real one.
 
 Stage 0 built the mechanism and moved nothing, so the Swift count went *up*.
 The address book is the first collection to actually move; the count starts
@@ -530,14 +882,17 @@ coming down as the paths it replaced are deleted.
 
 Carried from the audit, not blocking the stages above but not forgotten:
 
-- Sepolia / Hoodi endpoint records in `core/data/AppEndpointDirectory.json`
-  carry `"chainName": "Ethereum"` with the testnet only in `groupTitle`, so
-  `appCoreEvmRpcEndpoints` cannot find them.
-  `AppStateTests.testEthereumTestNetworksExposeExpectedContextsAndEndpoints`
-  fails on exactly this and is left red on purpose.
-- `EVMChainContext` (Swift) covers 15 of 23 EVM mainnets. Sei, Celo, Cronos,
-  opBNB, zkSync Era, Sonic, Berachain, Unichain, Ink and X Layer resolve to
-  `nil`. Each needs an `expectedChainID` and `defaultRPCEndpoints`.
+- ~~Sepolia / Hoodi endpoint records cannot be found by name.~~ **Fixed.** The
+  cause was not the data: all eight testnet record sets are written the same
+  way, filed under their mainnet's `chainName` with the testnet in
+  `groupTitle`. The *index* did not know that convention, which broke both
+  directions — the testnet could not be looked up, and the mainnet's RPC list
+  silently included the testnet's endpoints. There are two indexes now, because
+  two consumers want different answers: per-network for anything that talks to
+  a chain, per-chain for the settings screen, which shows a chain and its
+  testnets together.
+- ~~`EVMChainContext` covers 15 of 23 EVM mainnets.~~ **Fixed** by deleting the
+  enum — see Stage 3.
 - `scripts/bindgen-ios.sh` and the Xcode "Build Rust Derivation Core" phase both
   regenerate `swift/generated/` and apply *different* Swift 6 patches. One
   should go.

@@ -103,6 +103,72 @@ pub fn plan_transfer_availability(
     }
 }
 
+/// Whether a holding can be sent, applied to a resolved coin.
+///
+/// Same rules as `can_send_holding`, expressed against the record core actually
+/// holds instead of an index-and-flags input the caller had to assemble.
+pub(crate) fn can_send_coin(
+    coin: &crate::store::wallet_domain::CoreCoin,
+    has_signing_material: bool,
+    chain_supports_send: bool,
+    is_live_chain: bool,
+    token_preferences: &[crate::store::wallet_domain::CoreTokenPreferenceEntry],
+) -> bool {
+    if !chain_supports_send {
+        return false;
+    }
+    if is_live_chain && !has_signing_material {
+        return false;
+    }
+    let Some(chain) = crate::registry::Chain::from_display_name(&coin.chain_name) else {
+        return true;
+    };
+    let is_tracked_token = || {
+        token_preferences.iter().any(|entry| {
+            entry.is_enabled
+                && entry.symbol == coin.symbol
+                && chain_display_name(entry.chain) == coin.chain_name
+                && match coin.contract_address.as_deref() {
+                    Some(contract) => entry.contract_address.eq_ignore_ascii_case(contract),
+                    None => true,
+                }
+        })
+    };
+    match chain.send_rule() {
+        SendRule::Any => true,
+        SendRule::NativeOnly => coin.symbol == chain.coin_symbol(),
+        SendRule::NativeOrSupportedToken => {
+            coin.symbol == chain.coin_symbol() || is_tracked_token()
+        }
+        SendRule::SupportedSolanaCoin => coin.symbol == chain.coin_symbol() || is_tracked_token(),
+    }
+}
+
+/// `CoreTokenTrackingChain`'s serde names are the chain display names.
+fn chain_display_name(chain: crate::store::wallet_domain::CoreTokenTrackingChain) -> &'static str {
+    use crate::store::wallet_domain::CoreTokenTrackingChain as C;
+    match chain {
+        C::Ethereum => "Ethereum",
+        C::Arbitrum => "Arbitrum",
+        C::Optimism => "Optimism",
+        C::Bnb => "BNB Chain",
+        C::Avalanche => "Avalanche",
+        C::Hyperliquid => "Hyperliquid",
+        C::Polygon => "Polygon",
+        C::Base => "Base",
+        C::Linea => "Linea",
+        C::Scroll => "Scroll",
+        C::Blast => "Blast",
+        C::Mantle => "Mantle",
+        C::Solana => "Solana",
+        C::Sui => "Sui",
+        C::Aptos => "Aptos",
+        C::Ton => "TON",
+        C::Near => "NEAR",
+        C::Tron => "Tron",
+    }
+}
+
 fn can_send_holding(holding: &TransferHoldingInput, has_signing_material: bool) -> bool {
     if !holding.supports_send {
         return false;
@@ -217,9 +283,4 @@ mod tests {
 
 // ── FFI surface ─────────────────────────────────────────────────────────────
 
-#[uniffi::export]
-pub fn core_plan_transfer_availability(
-    request: TransferAvailabilityRequest,
-) -> TransferAvailabilityPlan {
-    plan_transfer_availability(request)
-}
+

@@ -652,6 +652,42 @@ pub fn core_is_evm_chain(chain_name: String) -> bool {
     Chain::from_display_name(&chain_name).is_some_and(Chain::is_evm)
 }
 
+/// The per-chain facts an EVM send needs, for any EVM chain in the registry.
+///
+/// Swift held these in an `EVMChainContext` enum with a case per chain, which
+/// covered 15 of the 23 EVM mainnets — Sei, Celo, Cronos, opBNB, zkSync Era,
+/// Sonic, Berachain, Unichain, Ink and X Layer had no case, so `isEVMChain`
+/// answered *false* for them and every EVM path skipped them silently. Sourcing
+/// the facts from the registry means adding a chain there is enough.
+#[derive(Debug, Clone, PartialEq, Eq, uniffi::Record)]
+pub struct EvmChainContextInfo {
+    pub display_name: String,
+    /// EIP-155 chain id, checked against what the RPC reports before signing.
+    pub chain_id: u64,
+    /// BIP-44 coin type. 60 for the Ethereum family; Ethereum Classic has its
+    /// own registered type and derives from a different path.
+    pub coin_type: u32,
+    /// Ethereum mainnet and its testnets, which share fee and nonce handling.
+    pub is_ethereum_family: bool,
+    pub is_ethereum_mainnet: bool,
+}
+
+#[uniffi::export]
+pub fn core_evm_chain_context(chain_name: String) -> Option<EvmChainContextInfo> {
+    let chain = Chain::from_display_name(&chain_name).filter(|chain| chain.is_evm())?;
+    Some(EvmChainContextInfo {
+        display_name: chain.chain_display_name().to_string(),
+        chain_id: chain.evm_chain_id(),
+        coin_type: if chain.mainnet_counterpart() == Chain::EthereumClassic {
+            61
+        } else {
+            60
+        },
+        is_ethereum_family: chain.mainnet_counterpart() == Chain::Ethereum,
+        is_ethereum_mainnet: chain == Chain::Ethereum,
+    })
+}
+
 // ─── Dogecoin derivation index parser ─────────────────────────────────────────
 
 #[uniffi::export]
@@ -1375,3 +1411,57 @@ mod flow_helpers_tests {
     }
 }
 
+
+#[cfg(test)]
+mod evm_chain_context_tests {
+    use super::*;
+
+    /// Every EVM chain in the registry resolves, including the ten the Swift
+    /// enum had no case for.
+    #[test]
+    fn every_evm_chain_has_a_context() {
+        for chain in Chain::all().filter(|chain| chain.is_evm()) {
+            let context = core_evm_chain_context(chain.chain_display_name().to_string())
+                .unwrap_or_else(|| panic!("{} has no context", chain.str_id()));
+            assert_eq!(context.chain_id, chain.evm_chain_id());
+            assert!(context.chain_id > 0, "{} has no chain id", chain.str_id());
+        }
+    }
+
+    #[test]
+    fn the_ten_chains_the_swift_enum_skipped_now_resolve() {
+        for name in [
+            "Sei", "Celo", "Cronos", "opBNB", "zkSync Era", "Sonic", "Berachain", "Unichain",
+            "Ink", "X Layer",
+        ] {
+            let context =
+                core_evm_chain_context(name.to_string()).unwrap_or_else(|| panic!("{name} missing"));
+            assert_eq!(context.coin_type, 60, "{name} should derive from coin type 60");
+            assert!(!context.is_ethereum_family, "{name} is not Ethereum family");
+        }
+    }
+
+    #[test]
+    fn ethereum_classic_derives_from_its_own_coin_type() {
+        let context = core_evm_chain_context("Ethereum Classic".to_string()).expect("context");
+        assert_eq!(context.coin_type, 61);
+        assert_eq!(context.chain_id, 61);
+        assert!(!context.is_ethereum_family);
+    }
+
+    #[test]
+    fn the_ethereum_family_is_mainnet_and_its_testnets() {
+        for name in ["Ethereum", "Ethereum Sepolia", "Ethereum Hoodi"] {
+            let context = core_evm_chain_context(name.to_string()).expect("context");
+            assert!(context.is_ethereum_family, "{name} should be Ethereum family");
+        }
+        assert!(core_evm_chain_context("Ethereum".to_string()).unwrap().is_ethereum_mainnet);
+        assert!(!core_evm_chain_context("Ethereum Sepolia".to_string()).unwrap().is_ethereum_mainnet);
+    }
+
+    #[test]
+    fn a_non_evm_chain_has_no_context() {
+        assert!(core_evm_chain_context("Bitcoin".to_string()).is_none());
+        assert!(core_evm_chain_context("Nope".to_string()).is_none());
+    }
+}

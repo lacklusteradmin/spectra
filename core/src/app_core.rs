@@ -41,9 +41,15 @@ pub(crate) struct AppCoreCatalog {
     /// Parallel to `endpoint_records`: pre-computed bitmask per record so the
     /// hot-path filter avoids per-call string matching on `roles`.
     pub(crate) endpoint_role_masks: Vec<u32>,
-    /// Pre-indexed `chain_name` → record-index list. Eliminates the linear
-    /// scan done on every `endpoint_records_for_chain` lookup.
+    /// Pre-indexed *network* → record-index list, where a testnet's records
+    /// are indexed under the testnet rather than under its mainnet. Backs the
+    /// lookups that must return one network's endpoints and no other's.
     pub(crate) endpoint_records_by_chain: std::collections::HashMap<String, Vec<usize>>,
+    /// Pre-indexed `chain_name` → record-index list, keeping a chain and its
+    /// testnets together. The settings screen wants exactly this: one section
+    /// per chain, with the testnets as groups inside it.
+    pub(crate) endpoint_records_by_settings_chain:
+        std::collections::HashMap<String, Vec<usize>>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, uniffi::Record)]
@@ -304,10 +310,30 @@ fn load_app_core_catalog() -> Result<AppCoreCatalog, String> {
                 .fold(0u32, |acc, role| acc | endpoint_role_bit(role))
         })
         .collect();
+    // A testnet's records are filed under its *mainnet* `chainName`, with the
+    // testnet named only in `groupTitle` — that is how all eight of them are
+    // written (Bitcoin Testnet/Testnet4/Signet, Dogecoin Testnet, Ethereum
+    // Sepolia/Hoodi). Indexing by `chainName` alone therefore did two wrong
+    // things at once: asking for "Ethereum Sepolia" found nothing, and asking
+    // for "Ethereum" returned the Sepolia and Hoodi RPCs along with mainnet's.
+    //
+    // A record belongs to the chain its group names, and to its `chainName`
+    // only when the group does not name a different one.
     let mut endpoint_records_by_chain: std::collections::HashMap<String, Vec<usize>> =
         std::collections::HashMap::new();
+    let mut endpoint_records_by_settings_chain: std::collections::HashMap<String, Vec<usize>> =
+        std::collections::HashMap::new();
     for (idx, record) in endpoint_records.iter().enumerate() {
+        let owner = if record.group_title.is_empty() {
+            record.chain_name.clone()
+        } else {
+            record.group_title.clone()
+        };
         endpoint_records_by_chain
+            .entry(owner)
+            .or_default()
+            .push(idx);
+        endpoint_records_by_settings_chain
             .entry(record.chain_name.clone())
             .or_default()
             .push(idx);
@@ -316,6 +342,7 @@ fn load_app_core_catalog() -> Result<AppCoreCatalog, String> {
         endpoint_records,
         endpoint_role_masks,
         endpoint_records_by_chain,
+        endpoint_records_by_settings_chain,
     })
 }
 
@@ -341,7 +368,21 @@ fn endpoint_records_for_chain(
     role_mask: u32,
     settings_visible_only: bool,
 ) -> Vec<AppCoreEndpointRecord> {
-    let Some(indices) = catalog.endpoint_records_by_chain.get(chain_name) else {
+    records_from(
+        catalog,
+        catalog.endpoint_records_by_chain.get(chain_name),
+        role_mask,
+        settings_visible_only,
+    )
+}
+
+fn records_from(
+    catalog: &AppCoreCatalog,
+    indices: Option<&Vec<usize>>,
+    role_mask: u32,
+    settings_visible_only: bool,
+) -> Vec<AppCoreEndpointRecord> {
+    let Some(indices) = indices else {
         return Vec::new();
     };
     indices
@@ -363,7 +404,14 @@ fn grouped_settings_entries(
     catalog: &AppCoreCatalog,
     chain_name: &str,
 ) -> Vec<AppCoreGroupedSettingsEntry> {
-    let visible_records = endpoint_records_for_chain(catalog, chain_name, 0, true);
+    // Settings shows a chain *and its testnets*, each as its own group, so this
+    // reads the by-chain index rather than the per-network one.
+    let visible_records = records_from(
+        catalog,
+        catalog.endpoint_records_by_settings_chain.get(chain_name),
+        0,
+        true,
+    );
     let mut titles = Vec::<String>::new();
     let mut grouped = std::collections::BTreeMap::<String, Vec<String>>::new();
     for record in visible_records {
@@ -1031,5 +1079,71 @@ mod testnet_derivation_paths {
             super::app_core_resolve_derivation_path("Bitcoin".to_string(), String::new())
                 .expect("bitcoin");
         assert_eq!(testnet.normalized_path, mainnet.normalized_path);
+    }
+}
+
+#[cfg(test)]
+mod endpoint_network_index_tests {
+    use super::*;
+
+    fn rpc_endpoints(chain_name: &str) -> Vec<String> {
+        app_core_evm_rpc_endpoints(chain_name.to_string()).expect("catalog")
+    }
+
+    /// A testnet's records are filed under its mainnet's `chainName`, with the
+    /// testnet named only in `groupTitle`. Both directions of that were wrong
+    /// before: the testnet could not be looked up, and the mainnet's list
+    /// included the testnet's endpoints.
+    #[test]
+    fn a_testnet_resolves_its_own_rpc_endpoints() {
+        assert_eq!(
+            rpc_endpoints("Ethereum Sepolia"),
+            vec!["https://ethereum-sepolia-rpc.publicnode.com".to_string()]
+        );
+        assert_eq!(
+            rpc_endpoints("Ethereum Hoodi"),
+            vec!["https://ethereum-hoodi-rpc.publicnode.com".to_string()]
+        );
+    }
+
+    #[test]
+    fn a_mainnet_rpc_list_holds_no_testnet_endpoints() {
+        for endpoint in rpc_endpoints("Ethereum") {
+            assert!(
+                !endpoint.contains("sepolia") && !endpoint.contains("hoodi"),
+                "Ethereum mainnet RPC list contains {endpoint}"
+            );
+        }
+    }
+
+    /// Settings is the one consumer that wants a chain *and* its testnets, as
+    /// separate groups inside one section.
+    #[test]
+    fn settings_keeps_a_chain_and_its_testnets_together() {
+        let catalog = app_core_catalog().expect("catalog");
+        let titles: Vec<String> = grouped_settings_entries(catalog, "Bitcoin")
+            .into_iter()
+            .map(|entry| entry.title)
+            .collect();
+        for expected in ["Bitcoin Testnet", "Bitcoin Testnet4", "Bitcoin Signet"] {
+            assert!(titles.contains(&expected.to_string()), "missing {expected}");
+        }
+    }
+
+    #[test]
+    fn every_testnet_group_is_reachable_by_its_own_name() {
+        let catalog = app_core_catalog().expect("catalog");
+        for record in &catalog.endpoint_records {
+            if record.group_title.is_empty() || record.group_title == record.chain_name {
+                continue;
+            }
+            let found = endpoint_records_for_chain(catalog, &record.group_title, 0, false);
+            assert!(
+                found.iter().any(|other| other.id == record.id),
+                "{} is not reachable as {}",
+                record.id,
+                record.group_title
+            );
+        }
     }
 }

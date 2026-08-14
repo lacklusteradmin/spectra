@@ -9,6 +9,7 @@ pub mod state;
 // wallet_core moved to send/preview_types.rs
 pub mod wallet_db;
 pub mod wallet_domain;
+pub mod wallet_secrets;
 
 pub use chain_aliases::{
     plan_canonical_chain_component, plan_icon_identifier, plan_normalized_icon_identifier,
@@ -1637,11 +1638,6 @@ pub fn core_wallet_secret_index(
     secret_observations: Vec<WalletSecretObservation>,
 ) -> WalletSecretIndex {
     wallet_secret_index_from_observations(app_state, secret_observations)
-}
-
-#[uniffi::export]
-pub fn core_plan_store_derived_state(request: StoreDerivedStateRequest) -> StoreDerivedStatePlan {
-    plan_store_derived_state(request)
 }
 
 #[uniffi::export]
