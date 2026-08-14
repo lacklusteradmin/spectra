@@ -105,9 +105,7 @@ impl TonClient {
     }
 }
 
-// ----------------------------------------------------------------
-// TON WalletV4R2 message builder (simplified)
-// ----------------------------------------------------------------
+// ── TON WalletV4R2 message builder (simplified)
 
 /// Build a signed external message for WalletV4R2.
 /// Returns a BoC (Bag of Cells) serialized as bytes.

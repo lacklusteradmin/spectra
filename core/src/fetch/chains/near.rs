@@ -9,9 +9,7 @@ use serde_json::{json, Value};
 
 use crate::http::{with_fallback, HttpClient, RetryProfile};
 
-// ----------------------------------------------------------------
-// Public result types
-// ----------------------------------------------------------------
+// ── Public result types
 
 #[derive(Debug, Clone, Serialize, Deserialize, uniffi::Record)]
 pub struct NearBalance {
@@ -67,9 +65,7 @@ pub struct NearFtMetadata {
     pub decimals: u8,
 }
 
-// ----------------------------------------------------------------
-// UniFFI-exported history parsed snapshot
-// ----------------------------------------------------------------
+// ── UniFFI-exported history parsed snapshot
 
 #[derive(Debug, Clone, uniffi::Record)]
 pub struct NearHistoryParsedSnapshot {
@@ -82,9 +78,7 @@ pub struct NearHistoryParsedSnapshot {
     pub created_at_unix_seconds: f64,
 }
 
-// ----------------------------------------------------------------
-// Client
-// ----------------------------------------------------------------
+// ── Client
 
 pub struct NearClient {
     pub(crate) endpoints: std::sync::Arc<Vec<String>>,
@@ -240,9 +234,7 @@ impl NearClient {
             .collect())
     }
 
-    // ----------------------------------------------------------------
-    // NEP-141 (fungible token) support
-    // ----------------------------------------------------------------
+    // ── NEP-141 (fungible token) support
 
     /// Call a view function on `contract` and return its decoded bytes.
     /// `args` is JSON that will be serialized, base64-encoded, and sent as
@@ -337,9 +329,7 @@ impl NearClient {
     }
 }
 
-// ----------------------------------------------------------------
-// Formatting helpers (used by balance + FT balance)
-// ----------------------------------------------------------------
+// ── Formatting helpers (used by balance + FT balance)
 
 fn format_near(yocto: &str) -> String {
     // yocto is a 25-digit decimal; divide by 10^24 for NEAR.
@@ -382,10 +372,8 @@ fn format_ft_amount(raw: u128, decimals: u8) -> String {
     format!("{}.{}", whole, capped)
 }
 
-// ---------------------------------------------------------------
 // History response parser (Swift calls this directly via UniFFI to
 // decode raw NEAR indexer JSON into typed snapshots).
-// ---------------------------------------------------------------
 
 fn history_rows(value: &Value) -> Vec<Value> {
     if let Some(arr) = value.as_array() {

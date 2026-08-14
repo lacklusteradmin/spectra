@@ -4,9 +4,7 @@ use std::collections::BTreeMap;
 
 use crate::registry::Chain;
 
-// ----------------------------------------------------------------
-// Normalized chain history — standard output from fetch_normalized_history_json
-// ----------------------------------------------------------------
+// ── Normalized chain history — standard output from fetch_normalized_history_json
 
 /// A chain history entry normalized to a standard format that Swift can map
 /// directly to `CoreTransactionRecord` without any chain-specific parsing.

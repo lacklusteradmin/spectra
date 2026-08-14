@@ -1,15 +1,8 @@
-//! Refresh: drive core's balance engine over every stored wallet.
-//!
 //! `BalanceRefreshEngine` is the one subsystem where Rust already owns the
-//! loop — it holds the timer, fetches, applies the result to the Rust-owned
-//! wallet state, and calls back. Swift's part is a `BalanceObserver`
-//! conformance, and until now Swift's was the only one, so "the engine needs
-//! no platform" was an assumption rather than a fact.
+//! loop; this is the second `BalanceObserver` it has ever had.
 //!
-//! The CLI runs one sweep and exits rather than starting the timer, and it
-//! needed `refresh_now` to do it — `trigger_immediate` spawns and returns,
-//! which is right for an app that will get the callbacks later and useless to
-//! a process about to exit.
+//! One sweep, awaited — `trigger_immediate` spawns and returns, which suits an
+//! app and abandons the work of a process about to exit.
 
 use std::sync::{Arc, Mutex};
 

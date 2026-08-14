@@ -152,9 +152,7 @@ impl StellarClient {
     }
 }
 
-// ----------------------------------------------------------------
-// XDR transaction builder
-// ----------------------------------------------------------------
+// ── XDR transaction builder
 
 /// Stellar Asset variants for Payment operations.
 #[derive(Debug, Clone)]

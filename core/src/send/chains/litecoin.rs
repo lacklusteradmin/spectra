@@ -122,9 +122,7 @@ impl LitecoinClient {
     }
 }
 
-// ----------------------------------------------------------------
-// Litecoin transaction signing
-// ----------------------------------------------------------------
+// ── Litecoin transaction signing
 
 fn ltc_decode_txid(txid: &str) -> Result<Vec<u8>, String> {
     let mut bytes = hex::decode(txid).map_err(|e| format!("txid decode: {e}"))?;

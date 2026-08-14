@@ -9,9 +9,7 @@ use serde_json::Value;
 
 use crate::http::{with_fallback, HttpClient, RetryProfile};
 
-// ----------------------------------------------------------------
-// Public result types
-// ----------------------------------------------------------------
+// ── Public result types
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AptosBalance {
@@ -53,9 +51,7 @@ impl super::SignedSubmission for AptosSendResult {
     }
 }
 
-// ----------------------------------------------------------------
-// Client
-// ----------------------------------------------------------------
+// ── Client
 
 pub struct AptosClient {
     endpoints: std::sync::Arc<Vec<String>>,

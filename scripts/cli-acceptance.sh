@@ -184,6 +184,51 @@ contains "defaults to USD"  '"currency":"USD"' spectra --json currency
 check "sets a currency"                     $OK spectra currency CHF
 contains "reads it back from the store" '"currency":"CHF"' spectra --json currency
 
+# ── Price alerts ────────────────────────────────────────────────────────────
+#
+# The rules moved into `CoreAppState` for this command to exist; before it they
+# lived only in Swift with core owning just the evaluator. Every check here is
+# a separate process, so this is also the persistence test.
+
+section "price alerts"
+check "adds an alert"                       $OK \
+    spectra alert add --chain Bitcoin --target 1 --above
+check "refuses an alert that cannot fire"   $REJECTED \
+    spectra alert add --chain Bitcoin --target 0
+contains "the alert survives a new process" '"symbol":"BTC"' \
+    spectra --json alert list
+check "removes by symbol"                   $OK spectra alert remove BTC
+check "refuses removing what is not set"    $REJECTED spectra alert remove BTC
+check "refuses checking with no alerts"     $REJECTED spectra alert check
+
+# ── Keypool ─────────────────────────────────────────────────────────────────
+#
+# Reserving a receive index must be idempotent — the app opening the receive
+# sheet twice must not burn two addresses — and change must always consume one.
+
+section "keypool"
+check "shows the pool"                      $OK spectra pool show "Acceptance SOL"
+contains "reserving twice yields the same receive index" '"index":0' \
+    spectra --json pool next "Acceptance SOL"
+contains "and again"                        '"index":0' \
+    spectra --json pool next "Acceptance SOL"
+contains "change always consumes"           '"index":0' \
+    spectra --json pool next-change "Acceptance SOL"
+contains "so the next change differs"       '"index":1' \
+    spectra --json pool next-change "Acceptance SOL"
+
+# ── Rescan ──────────────────────────────────────────────────────────────────
+
+section "rescan"
+contains "derives the candidate matrix offline" '"checked":false' \
+    with_seed "legal winner thank year wave sausage worth useful legal winner thank yellow" \
+    spectra --json rescan --dry-run
+contains "four Bitcoin script types across three accounts" '"chain":"bitcoin"' \
+    with_seed "legal winner thank year wave sausage worth useful legal winner thank yellow" \
+    spectra --json rescan --dry-run --chain Bitcoin
+check "refuses a seed that is not a mnemonic" $REJECTED \
+    with_seed "not a real seed phrase at all" spectra rescan --dry-run
+
 # ── Refresh ─────────────────────────────────────────────────────────────────
 #
 # The sweep itself needs a network. What is checkable offline is that the

@@ -42,9 +42,7 @@ impl BitcoinClient {
     }
 }
 
-// ----------------------------------------------------------------
-// Transaction construction & signing
-// ----------------------------------------------------------------
+// ── Transaction construction & signing
 
 // ── Professional coin-selection and output customization ──────────────────
 

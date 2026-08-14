@@ -36,9 +36,7 @@ use super::chains::bitcoin::{
     XPUB_VERSION_TESTNET,
 };
 
-// ----------------------------------------------------------------
-// Script type inferred from the xpub prefix
-// ----------------------------------------------------------------
+// ── Script type inferred from the xpub prefix
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum HdScriptType {
@@ -83,9 +81,7 @@ impl HdNetwork {
     }
 }
 
-// ----------------------------------------------------------------
-// Xpub normalization
-// ----------------------------------------------------------------
+// ── Xpub normalization
 
 /// Normalize a `y/zpub` (or their testnet counterparts) into an `x/tpub` by
 /// swapping the 4-byte serialization version prefix. The payload bytes
@@ -122,9 +118,7 @@ pub fn normalize_xpub(input: &str) -> Result<(String, HdScriptType, HdNetwork), 
     Ok((encoded, script_type, network))
 }
 
-// ----------------------------------------------------------------
-// Child derivation
-// ----------------------------------------------------------------
+// ── Child derivation
 
 /// One derived child address with its `change/index` position on the chain.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -189,9 +183,7 @@ fn address_from_pubkey(
     }
 }
 
-// ----------------------------------------------------------------
-// Aggregated balance / UTXO fetch
-// ----------------------------------------------------------------
+// ── Aggregated balance / UTXO fetch
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct HdXpubBalance {
@@ -294,9 +286,7 @@ fn from_esplora_utxo(u: &EsploraUtxo, addr: &HdChildAddress) -> HdUtxo {
     }
 }
 
-// ----------------------------------------------------------------
-// Next-unused address (receive/change discovery)
-// ----------------------------------------------------------------
+// ── Next-unused address (receive/change discovery)
 
 /// Scan forward on the `change` leg until the first address that has zero
 /// historical transactions, respecting a gap limit. Returns `Ok(None)` if
@@ -318,9 +308,7 @@ pub async fn fetch_next_unused_address(
     Ok(None)
 }
 
-// ----------------------------------------------------------------
-// Seed phrase → account-level xpub
-// ----------------------------------------------------------------
+// ── Seed phrase → account-level xpub
 
 /// Derive the account-level extended public key (xpub) from a BIP39 mnemonic.
 ///

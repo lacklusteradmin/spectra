@@ -9,9 +9,7 @@ use serde_json::{json, Value};
 
 use crate::http::{with_fallback, HttpClient, RetryProfile};
 
-// ----------------------------------------------------------------
-// Public result types
-// ----------------------------------------------------------------
+// ── Public result types
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct XrpBalance {
@@ -51,9 +49,7 @@ impl super::SignedSubmission for XrpSendResult {
     }
 }
 
-// ----------------------------------------------------------------
-// Client
-// ----------------------------------------------------------------
+// ── Client
 
 pub struct XrpClient {
     endpoints: std::sync::Arc<Vec<String>>,

@@ -1,12 +1,7 @@
-//! Wallet lifecycle: create, import, watch, inspect, rename, delete, export.
-//!
-//! Every wallet that lands in the store gets there through
-//! `WalletService::import_wallets`, and every mutation afterwards through a
-//! `StateCommand`. The previous CLI built `WalletSummary` values by hand and
-//! wrote `CoreAppState` straight to disk, which meant it skipped every rule
-//! core applies on the way in — including, after the last change, address
-//! validation. A front end that assembles domain records itself is not a test
-//! of core; it is a second implementation of it.
+//! Wallets enter through `WalletService::import_wallets` and change through
+//! `StateCommand` — never by assembling a `WalletSummary` here. The previous
+//! CLI did assemble them, and so skipped every rule core applies on the way
+//! in, including address validation.
 
 use clap::{Args, Subcommand};
 use colored::Colorize as _;
@@ -46,7 +41,6 @@ pub enum WalletCommand {
     Export(ExportArgs),
 }
 
-/// How to name a wallet and where to read its password.
 #[derive(Args)]
 pub struct CreationArgs {
     /// Chain display name, registry id or symbol.
@@ -68,8 +62,8 @@ pub struct CreationArgs {
 
 impl CreationArgs {
     fn password(&self) -> CliResult<String> {
-        // The env default only counts when it is actually set; otherwise fall
-        // through to the prompt so an interactive run still works.
+        // The env default only counts when set, so an interactive run still
+        // reaches the prompt.
         let env = self
             .password_env
             .clone()
@@ -172,14 +166,12 @@ pub fn run(ctx: &Ctx, out: Out, command: WalletCommand) -> CliResult<()> {
 
 fn new(ctx: &Ctx, out: Out, args: NewArgs) -> CliResult<()> {
     let chain = resolve_chain(&args.creation.chain)?;
-    // Checked here rather than left to `generate_mnemonic`, which maps every
-    // count that is not 24 to twelve words. Asking for 18 and silently getting
-    // 12 is the kind of quiet substitution a wallet should never make.
+    // `generate_mnemonic` maps every count that is not 24 to twelve words;
+    // asking for 18 and silently getting 12 is not a substitution a wallet
+    // should make.
     if !matches!(args.words, 12 | 24) {
         return Err(CliError::usage("--words must be 12 or 24"));
     }
-    // Mnemonic generation is core's — the app calls the same function. A CLI
-    // that generated its own would be a second source of entropy policy.
     let seed_phrase = spectra_core::service::generate_mnemonic(args.words);
     let outcome = seal_and_import(ctx, &args.creation, chain, &seed_phrase)?;
 
@@ -213,7 +205,6 @@ fn import(ctx: &Ctx, out: Out, args: ImportArgs) -> CliResult<()> {
     }
     .resolve("seed phrase")?;
 
-    // Core owns what counts as a mnemonic; the CLI only reports the verdict.
     if !spectra_core::service::validate_mnemonic(seed_phrase.clone()) {
         return Err(CliError::rejected(
             "not a valid BIP-39 English mnemonic (check the words and the count)",
@@ -235,12 +226,9 @@ fn import(ctx: &Ctx, out: Out, args: ImportArgs) -> CliResult<()> {
     Ok(())
 }
 
-/// Seal the seed, then hand the import to core; undo the seal if it refuses.
-///
-/// Sealing first is the safer order. A failure after sealing leaves an orphan
-/// secret under an id no wallet references — invisible and inert. The other
-/// order leaves a wallet listed that has no key behind it, which reads as
-/// spendable and is not.
+/// Sealing first is the safer order: a failure afterwards leaves an orphan
+/// secret under an id no wallet references, where the other order leaves a
+/// wallet that looks spendable and is not.
 fn seal_and_import(
     ctx: &Ctx,
     args: &CreationArgs,
@@ -521,7 +509,6 @@ fn derive_address(chain: Chain, seed_phrase: &str, path: &str) -> CliResult<Stri
     })
 }
 
-/// A one-chain, one-wallet signing import.
 fn signing_commit(
     chain: Chain,
     wallet_id: &str,
@@ -573,7 +560,6 @@ fn commit_for(
     }
 }
 
-/// The wallet an import produced, as core stored it.
 fn first_wallet(outcome: &WalletImportOutcome) -> CliResult<WalletSummary> {
     let is_watch_only = outcome.secret_kind == "watchOnly";
     outcome

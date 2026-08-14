@@ -11,9 +11,7 @@ use serde_json::{json, Value};
 
 use crate::http::{with_fallback, HttpClient, RetryProfile};
 
-// ----------------------------------------------------------------
-// Public result types
-// ----------------------------------------------------------------
+// ── Public result types
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SuiBalance {
@@ -52,9 +50,7 @@ impl super::SignedSubmission for SuiSendResult {
     }
 }
 
-// ----------------------------------------------------------------
-// Client
-// ----------------------------------------------------------------
+// ── Client
 
 pub struct SuiClient {
     endpoints: std::sync::Arc<Vec<String>>,

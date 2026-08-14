@@ -1,9 +1,5 @@
-//! Diagnostics: core's own self-tests, and the exportable bundle.
-//!
-//! `self_tests.rs` is 605 lines of derivation and address checks that only the
-//! iOS diagnostics screen has ever run. They need no network and no device, so
-//! there was never a reason the CLI could not run them — only that nothing
-//! asked.
+//! Core's self-tests need no network and no device; only the iOS diagnostics
+//! screen had ever run them.
 
 use clap::{Args, Subcommand};
 use colored::Colorize as _;

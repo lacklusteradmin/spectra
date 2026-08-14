@@ -205,9 +205,7 @@ impl EvmClient {
     }
 }
 
-// ----------------------------------------------------------------
-// Send overrides + fee resolution
-// ----------------------------------------------------------------
+// ── Send overrides + fee resolution
 
 /// Optional overrides for EIP-1559 sends. Any `None` field falls back to the
 /// default behavior (latest-nonce / recommended fee / estimated gas limit).
@@ -265,9 +263,7 @@ async fn resolve_fees(
     }
 }
 
-// ----------------------------------------------------------------
-// EIP-1559 transaction builder + signer
-// ----------------------------------------------------------------
+// ── EIP-1559 transaction builder + signer
 
 // EIP-2930 access list entry: (address, storage_keys).
 // An empty access list is the common case; power users can supply one
@@ -444,9 +440,7 @@ fn encode_uint256(bytes: &[u8; 32], out: &mut Vec<u8>) {
     }
 }
 
-// ----------------------------------------------------------------
-// ERC-20 transfer ABI encoding (used by the send path)
-// ----------------------------------------------------------------
+// ── ERC-20 transfer ABI encoding (used by the send path)
 
 /// Encode a `transfer(address,uint256)` call.
 pub(crate) fn encode_erc20_transfer(to: &str, amount: u128) -> Result<Vec<u8>, String> {

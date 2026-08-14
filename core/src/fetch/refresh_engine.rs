@@ -1,9 +1,6 @@
-// Rust-owned balance refresh loop
-//
-// Swift calls `start()` once; Rust drives the timer, fetches balances, and
-// pushes results back through the `BalanceObserver` callback interface.
-// The only job remaining for Swift is to apply the received JSON to the
-// in-memory wallet model via `WalletStore.applyRustBalance(...)`.
+// Rust-owned balance refresh loop. Rust drives the timer, fetches, applies
+// each result to its own wallet state, and hands the observer a typed
+// `WalletSummary` — the front end only mirrors it.
 
 use crate::service::WalletService;
 use futures::stream::{self, StreamExt};
@@ -11,15 +8,12 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex, RwLock};
 use std::time::{Duration, Instant};
 
-// ----------------------------------------------------------------
-// Internal state
-// ----------------------------------------------------------------
+// ── Internal state
 
 struct Inner {
     wallet_service: Arc<WalletService>,
     observer: RwLock<Option<Arc<dyn BalanceObserver>>>,
     entries: RwLock<Vec<RefreshEntry>>,
-    /// Held by the timer task; `None` means stopped.
     stop_tx: Mutex<Option<tokio::sync::oneshot::Sender<()>>>,
     /// True while a refresh cycle is in flight. The timer tick path skips
     /// missed ticks via `MissedTickBehavior::Skip`, but `trigger_immediate`
@@ -34,19 +28,11 @@ struct Inner {
     pending_trigger: AtomicBool,
 }
 
-// ----------------------------------------------------------------
-// BalanceRefreshEngine (UniFFI-exported object)
-// ----------------------------------------------------------------
+// ── BalanceRefreshEngine (UniFFI-exported object)
 
-/// Rust-owned periodic balance refresh engine.
-///
-/// Lifecycle:
-///   1. `new(walletService:)` — create once per app session.
-///   2. `set_observer(:)` — register the Swift balance observer.
-///   3. `set_entries(:)` — push the initial wallet-address list.
-///   4. `await start(intervalSecs:)` — begin the timer loop.
-///   5. Call `set_entries` again whenever wallets are added/removed.
-///   6. `stop()` on background or logout.
+/// Order matters: observer and entries before `start`, and `set_entries_typed`
+/// again whenever the wallet list changes. A short-lived caller wants
+/// `refresh_now` instead of `start`.
 #[derive(uniffi::Object)]
 pub struct BalanceRefreshEngine {
     inner: Arc<Inner>,
@@ -54,7 +40,6 @@ pub struct BalanceRefreshEngine {
 
 #[uniffi::export(async_runtime = "tokio")]
 impl BalanceRefreshEngine {
-    /// Construct a new engine backed by the given WalletService instance.
     #[uniffi::constructor]
     pub fn new(wallet_service: Arc<WalletService>) -> Arc<Self> {
         Arc::new(Self {
@@ -69,12 +54,10 @@ impl BalanceRefreshEngine {
         })
     }
 
-    /// Register the Swift observer that receives balance notifications.
     pub fn set_observer(&self, observer: Arc<dyn BalanceObserver>) {
         *self.inner.observer.write().unwrap() = Some(observer);
     }
 
-    /// Clear the observer (e.g. on logout or memory pressure).
     pub fn clear_observer(&self) {
         *self.inner.observer.write().unwrap() = None;
     }
@@ -145,9 +128,7 @@ impl BalanceRefreshEngine {
     }
 }
 
-// ----------------------------------------------------------------
-// Refresh cycle (private, not exported)
-// ----------------------------------------------------------------
+// ── Refresh cycle (private, not exported)
 
 impl BalanceRefreshEngine {
     async fn run_cycle(inner: &Inner) {
@@ -270,9 +251,7 @@ impl BalanceRefreshEngine {
     }
 }
 
-// ----------------------------------------------------------------
-// Tests
-// ----------------------------------------------------------------
+// ── Tests
 
 #[cfg(test)]
 mod tests {

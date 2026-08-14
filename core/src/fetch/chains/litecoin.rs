@@ -8,9 +8,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::http::{with_fallback, HttpClient, RetryProfile};
 
-// ----------------------------------------------------------------
-// Blockbook shared types (same shape as dogecoin)
-// ----------------------------------------------------------------
+// ── Blockbook shared types (same shape as dogecoin)
 
 #[derive(Debug, Deserialize)]
 pub(crate) struct BlockbookUtxo {
@@ -57,9 +55,7 @@ pub(crate) struct BlockbookVin {
     pub(crate) addresses: Option<Vec<String>>,
 }
 
-// ----------------------------------------------------------------
-// Public result types
-// ----------------------------------------------------------------
+// ── Public result types
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct LtcBalance {
@@ -105,9 +101,7 @@ impl super::SignedSubmission for LtcSendResult {
     }
 }
 
-// ----------------------------------------------------------------
-// Client
-// ----------------------------------------------------------------
+// ── Client
 
 pub struct LitecoinClient {
     pub(crate) endpoints: std::sync::Arc<Vec<String>>,

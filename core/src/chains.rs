@@ -8,9 +8,7 @@ use std::sync::LazyLock;
 
 static CHAINS_TOML: &str = include_str!("../data/chains.toml");
 
-// ----------------------------------------------------------------
-// Parsed TOML shape
-// ----------------------------------------------------------------
+// ── Parsed TOML shape
 
 #[derive(Debug, Deserialize)]
 struct TomlFile {
@@ -55,9 +53,7 @@ struct TomlDerivationPathEntry {
     note: String,
 }
 
-// ----------------------------------------------------------------
-// Public serialized shape — exposed to Swift via UniFFI
-// ----------------------------------------------------------------
+// ── Public serialized shape — exposed to Swift via UniFFI
 
 #[derive(Debug, Clone, Serialize, uniffi::Record)]
 pub struct ChainDerivationPathEntry {
@@ -106,9 +102,7 @@ impl From<TomlDerivationPathEntry> for ChainDerivationPathEntry {
     }
 }
 
-// ----------------------------------------------------------------
-// Static catalog
-// ----------------------------------------------------------------
+// ── Static catalog
 
 static CATALOG: LazyLock<Vec<ChainEntry>> = LazyLock::new(|| {
     let parsed: TomlFile = toml::from_str(CHAINS_TOML)
@@ -145,9 +139,7 @@ static CATALOG: LazyLock<Vec<ChainEntry>> = LazyLock::new(|| {
         .collect()
 });
 
-// ----------------------------------------------------------------
-// Public API
-// ----------------------------------------------------------------
+// ── Public API
 
 /// Return all chain entries (mainnet + testnet).
 #[uniffi::export]

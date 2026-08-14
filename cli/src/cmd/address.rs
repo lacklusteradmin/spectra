@@ -1,9 +1,6 @@
-//! Addresses: checking one, and the saved-recipient list.
-//!
-//! Both go to core for the verdict. `validate` calls the same
-//! `validate_address` the import rule calls, and the address book sends
-//! `StateCommand`s and reports the `addressBookRejected` event rather than
-//! deciding for itself what is acceptable.
+//! `validate` calls the same `validate_address` the import rule calls; the
+//! address book reports core's `addressBookRejected` rather than deciding for
+//! itself.
 
 use clap::{Args, Subcommand};
 use colored::Colorize as _;
@@ -74,11 +71,7 @@ pub fn run(ctx: &Ctx, out: Out, command: AddressCommand) -> CliResult<()> {
     }
 }
 
-/// `address validate` — is this address acceptable for this chain?
-///
-/// The rule is core's and applies to every chain identically, so it is
-/// checkable without the app. Exit code 3 on a refusal, so a script can assert
-/// the refusal rather than parse the message.
+/// Exit 3 on a refusal, so a script can assert it rather than parse a message.
 fn validate(out: Out, args: ValidateArgs) -> CliResult<()> {
     let chain = resolve_chain(&args.chain)?;
     let result = validate_address(AddressValidationRequest {
@@ -193,8 +186,7 @@ fn book_remove(ctx: &Ctx, out: Out, args: BookRemoveArgs) -> CliResult<()> {
     Ok(())
 }
 
-/// Core reports a refusal as an event carrying the reason; the front end only
-/// chooses the wording.
+/// Core decides; the front end only chooses the wording.
 fn rejection(transition: &StateTransition) -> Option<String> {
     transition
         .events

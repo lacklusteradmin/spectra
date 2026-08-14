@@ -662,9 +662,7 @@ impl Chain {
         }
     }
 
-    // ----------------------------------------------------------------
-    // Native-coin metadata
-    // ----------------------------------------------------------------
+    // ── Native-coin metadata
 
     pub fn coin_name(self) -> &'static str {
         crate::chains::chain_by_str_id(self.str_id())

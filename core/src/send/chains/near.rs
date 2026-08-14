@@ -134,9 +134,7 @@ impl NearClient {
     }
 }
 
-// ----------------------------------------------------------------
-// NEAR transaction builder (BORSH)
-// ----------------------------------------------------------------
+// ── NEAR transaction builder (BORSH)
 
 /// Build a signed NEAR Transfer transaction.
 pub fn build_near_transfer_tx(

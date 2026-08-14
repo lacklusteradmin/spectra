@@ -20,9 +20,7 @@ use serde_json::{json, Value};
 
 use crate::http::{with_fallback, HttpClient, RetryProfile};
 
-// ----------------------------------------------------------------
-// Public result types
-// ----------------------------------------------------------------
+// ── Public result types
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct MoneroBalance {
@@ -63,9 +61,7 @@ impl super::SignedSubmission for MoneroSendResult {
     }
 }
 
-// ----------------------------------------------------------------
-// Client (wallet-rpc)
-// ----------------------------------------------------------------
+// ── Client (wallet-rpc)
 
 pub struct MoneroClient {
     /// Monero wallet-rpc endpoints (http://localhost:18082/json_rpc).

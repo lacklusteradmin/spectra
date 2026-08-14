@@ -40,9 +40,7 @@ impl HistoryPaginationStore {
         }
     }
 
-    // ----------------------------------------------------------------
-    // Reads
-    // ----------------------------------------------------------------
+    // ── Reads
 
     /// Current cursor for the next fetch, or `None` if no fetch has been done.
     pub fn cursor(&self, chain_id: &str, wallet_id: &str) -> Option<String> {
@@ -77,9 +75,7 @@ impl HistoryPaginationStore {
             .unwrap_or(false)
     }
 
-    // ----------------------------------------------------------------
-    // Writes
-    // ----------------------------------------------------------------
+    // ── Writes
 
     /// Record the cursor returned after a successful fetch. A `None` cursor
     /// means the chain confirmed there are no more pages — mark as exhausted.
@@ -163,9 +159,7 @@ impl HistoryPaginationStore {
     }
 }
 
-// ----------------------------------------------------------------
-// Default impl
-// ----------------------------------------------------------------
+// ── Default impl
 
 impl Default for HistoryPaginationStore {
     fn default() -> Self {
@@ -173,9 +167,7 @@ impl Default for HistoryPaginationStore {
     }
 }
 
-// ----------------------------------------------------------------
-// Tests
-// ----------------------------------------------------------------
+// ── Tests
 
 #[cfg(test)]
 mod tests {

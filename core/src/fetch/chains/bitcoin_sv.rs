@@ -20,9 +20,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::http::{with_fallback, HttpClient, RetryProfile};
 
-// ----------------------------------------------------------------
-// WhatsOnChain response types
-// ----------------------------------------------------------------
+// ── WhatsOnChain response types
 
 #[derive(Debug, Deserialize)]
 pub(crate) struct WocBalance {
@@ -87,9 +85,7 @@ pub(crate) struct WocTxVoutScriptPubKey {
     pub(crate) addresses: Option<Vec<String>>,
 }
 
-// ----------------------------------------------------------------
-// Public result types
-// ----------------------------------------------------------------
+// ── Public result types
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct BsvBalance {
@@ -137,9 +133,7 @@ pub struct BsvHistoryEntry {
     pub is_incoming: bool,
 }
 
-// ----------------------------------------------------------------
-// Client
-// ----------------------------------------------------------------
+// ── Client
 
 pub struct BitcoinSvClient {
     pub(crate) endpoints: std::sync::Arc<Vec<String>>,

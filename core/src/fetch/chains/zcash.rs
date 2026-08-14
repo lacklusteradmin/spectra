@@ -11,9 +11,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::http::{with_fallback, HttpClient, RetryProfile};
 
-// ----------------------------------------------------------------
-// Blockbook shared shapes (same as Litecoin / BCH / BSV).
-// ----------------------------------------------------------------
+// ── Blockbook shared shapes (same as Litecoin / BCH / BSV).
 
 #[derive(Debug, Deserialize)]
 pub(crate) struct BlockbookUtxo {
@@ -73,9 +71,7 @@ struct BlockbookBackend {
     blocks: u64,
 }
 
-// ----------------------------------------------------------------
-// Public result types.
-// ----------------------------------------------------------------
+// ── Public result types.
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ZecBalance {
@@ -121,9 +117,7 @@ impl super::SignedSubmission for ZecSendResult {
     }
 }
 
-// ----------------------------------------------------------------
-// Client.
-// ----------------------------------------------------------------
+// ── Client.
 
 pub struct ZcashClient {
     pub(crate) endpoints: std::sync::Arc<Vec<String>>,

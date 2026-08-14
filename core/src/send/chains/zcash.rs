@@ -156,9 +156,7 @@ const PERSONAL_TX_PREVOUTS: &[u8] = b"ZTxIdPrevoutHash";
 const PERSONAL_TX_SEQUENCE: &[u8] = b"ZTxIdSequencHash";
 const PERSONAL_TX_SIG_DIGEST: &[u8] = b"Zcash___TxInHash";
 
-// ----------------------------------------------------------------
-// ZIP-244 / ZIP-244-revised sighash construction (NU5 transparent-only).
-// ----------------------------------------------------------------
+// ── ZIP-244 / ZIP-244-revised sighash construction (NU5 transparent-only).
 
 #[allow(clippy::too_many_arguments)]
 fn sign_zcash_v5_p2pkh(

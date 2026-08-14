@@ -1,13 +1,5 @@
-//! Staking: which validators a chain offers, and what a wallet has staked.
-//!
-//! Core has had a full staking service — validators, positions, and
-//! transaction builders for Solana, Cardano, Sui and Polkadot — with no CLI
-//! caller at all. Only `StakingBridge.swift` drove it, which by rule 1 means it
-//! had never been shown to be core-owned: a subsystem reachable from one front
-//! end only is a subsystem that might still depend on that front end.
-//!
-//! Read-only for now. The build-and-sign paths exist in core and want the same
-//! `--yes` treatment `send` has before they are exposed.
+//! Read-only. Core's build-and-sign paths exist and want `send`'s `--yes`
+//! treatment before they are exposed here.
 
 use clap::{Args, Subcommand};
 use colored::Colorize as _;

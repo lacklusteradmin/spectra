@@ -1,29 +1,22 @@
-//! Failure, and what the shell learns from it.
-//!
-//! Exit codes are part of the interface: the acceptance script has to tell
-//! "core refused this" from "the network was down", and a single non-zero code
-//! cannot say which.
+//! Exit codes are part of the interface: a script has to tell "core refused
+//! this" from "the network was down".
 
 use std::fmt;
 
 /// Process exit codes. `2` is left to clap, which uses it for usage errors.
 pub const EXIT_FAILURE: i32 = 1;
 pub const EXIT_USAGE: i32 = 2;
-/// Core considered the request and said no — an invalid address, a duplicate
-/// contact, a wrong password. Distinct from a failure because the command
-/// worked; the answer was no.
+/// Core considered the request and said no. Distinct from a failure: the
+/// command worked, the answer was no.
 pub const EXIT_REJECTED: i32 = 3;
 
 #[derive(Debug)]
 pub struct CliError {
     pub message: String,
     pub code: i32,
-    /// The command already printed its own JSON document.
-    ///
-    /// `--json` must produce exactly one object. A command that reports a
-    /// result *and* fails — self-tests with failures, say — would otherwise
-    /// print its results and then have `main` print an error object after it,
-    /// which is two documents and parses as neither.
+    /// Suppresses `main`'s error object. `--json` must produce exactly one
+    /// document, and a command that reports results *and* fails would
+    /// otherwise print two.
     pub already_emitted: bool,
 }
 

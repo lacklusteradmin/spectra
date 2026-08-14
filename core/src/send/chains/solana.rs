@@ -127,9 +127,7 @@ impl SolanaClient {
     }
 }
 
-// ----------------------------------------------------------------
-// Transaction builder
-// ----------------------------------------------------------------
+// ── Transaction builder
 
 /// Build a signed Solana legacy transaction for a native SOL transfer.
 ///
@@ -205,9 +203,7 @@ pub fn build_sol_transfer(
     Ok(tx)
 }
 
-// ----------------------------------------------------------------
-// SPL helpers: ATA derivation and SPL Transfer transaction builder
-// ----------------------------------------------------------------
+// ── SPL helpers: ATA derivation and SPL Transfer transaction builder
 
 /// SPL Token program id (decoded base58).
 pub const SPL_TOKEN_PROGRAM_ID: [u8; 32] = [

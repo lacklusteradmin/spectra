@@ -79,9 +79,7 @@ impl PolkadotClient {
     }
 }
 
-// ----------------------------------------------------------------
-// SCALE-encoded Polkadot extrinsic builder
-// ----------------------------------------------------------------
+// ── SCALE-encoded Polkadot extrinsic builder
 
 /// Build a signed Balances.transfer_keep_alive extrinsic.
 #[allow(clippy::too_many_arguments)]
@@ -158,9 +156,7 @@ pub fn build_signed_transfer(
     Ok(out)
 }
 
-// ----------------------------------------------------------------
-// SCALE codec helpers
-// ----------------------------------------------------------------
+// ── SCALE codec helpers
 
 fn scale_compact_u32(n: u32) -> Vec<u8> {
     scale_compact_u128(n as u128)

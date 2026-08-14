@@ -8,9 +8,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::http::{with_fallback, HttpClient, RetryProfile};
 
-// ----------------------------------------------------------------
-// Public result types
-// ----------------------------------------------------------------
+// ── Public result types
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct StellarBalance {
@@ -59,9 +57,7 @@ impl super::SignedSubmission for StellarSendResult {
     }
 }
 
-// ----------------------------------------------------------------
-// Horizon API response types
-// ----------------------------------------------------------------
+// ── Horizon API response types
 
 #[derive(Debug, Deserialize)]
 pub(crate) struct HorizonAccount {
@@ -114,9 +110,7 @@ pub(crate) struct HorizonPaymentRecord {
     pub(crate) transaction_hash: String,
 }
 
-// ----------------------------------------------------------------
-// Client
-// ----------------------------------------------------------------
+// ── Client
 
 pub struct StellarClient {
     pub(crate) endpoints: std::sync::Arc<Vec<String>>,

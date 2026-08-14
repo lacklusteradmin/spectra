@@ -1,11 +1,8 @@
-//! Process context: where data lives, how secrets are read, and the one place
-//! `WalletService` is opened.
+//! Process context: paths, secret input, and the one place `WalletService` is
+//! opened.
 //!
-//! The CLI holds no wallet model of its own. A wallet is a `WalletSummary`, the
-//! resident state is a `CoreAppState`, and both are core's — persisted by
-//! `wallet_db` into the same SQLite store the iOS app uses. That is the point
-//! of this crate existing: a core API that can only be driven from Swift is not
-//! core yet.
+//! The CLI holds no wallet model of its own — `WalletSummary` and
+//! `CoreAppState` are core's, in the same SQLite store the app uses.
 
 use std::io::{IsTerminal, Read};
 use std::path::PathBuf;
@@ -26,16 +23,13 @@ use crate::error::{CliError, CliResult};
 pub struct SecretSource {
     /// Read from this file. `-` means standard input.
     pub file: Option<String>,
-    /// Read from this environment variable.
     pub env: Option<String>,
 }
 
 impl SecretSource {
-    /// Resolve the secret, prompting on a terminal when no source was given.
-    ///
-    /// `prompt` is only ever shown interactively; a scripted run that reaches
-    /// the prompt gets an error instead, because a CLI that blocks on a hidden
-    /// prompt in CI is indistinguishable from one that hung.
+    /// Errors rather than prompting when stdin is not a terminal: a CLI
+    /// blocked on a hidden prompt in CI is indistinguishable from one that
+    /// hung.
     pub fn resolve(&self, prompt: &str) -> CliResult<String> {
         if let Some(path) = &self.file {
             return read_secret_file(path);
@@ -71,7 +65,6 @@ fn read_secret_file(path: &str) -> CliResult<String> {
     Ok(raw.trim().to_string())
 }
 
-/// Everything a command needs that is not its own arguments.
 pub struct Ctx {
     pub rt: tokio::runtime::Runtime,
     pub data_dir: PathBuf,
@@ -79,20 +72,16 @@ pub struct Ctx {
 }
 
 impl Ctx {
-    /// `--data-dir`, else `SPECTRA_DATA_DIR`, else `~/.spectra`.
-    ///
-    /// Overridable because the acceptance script has to run against a scratch
-    /// directory. A test suite that can only run against the user's real
-    /// wallets is one nobody runs.
+    /// `--data-dir`, else `SPECTRA_DATA_DIR`, else `~/.spectra`. Overridable
+    /// so the acceptance script never touches the user's real wallets.
     pub fn new(data_dir: Option<PathBuf>) -> CliResult<Self> {
         let data_dir = data_dir
             .or_else(|| std::env::var_os("SPECTRA_DATA_DIR").map(PathBuf::from))
             .or_else(|| dirs::home_dir().map(|home| home.join(".spectra")))
             .ok_or_else(|| CliError::failure("cannot determine a data directory"))?;
 
-        // `wallet_db` opens a SQLite file and needs its parent to exist before
-        // the first read, so a fresh install must not fail on `list` before
-        // anything has ever been imported.
+        // SQLite needs the parent directory before the first read, so a fresh
+        // install must not fail on `list`.
         std::fs::create_dir_all(&data_dir)
             .map_err(|e| CliError::failure(format!("cannot create {}: {e}", data_dir.display())))?;
         let secrets = FileSecretStore::new(data_dir.join("secrets"))
@@ -115,11 +104,8 @@ impl Ctx {
             .into_owned()
     }
 
-    /// A service with no chain endpoints, for state and off-chain work.
-    ///
-    /// Opened fresh per command on purpose: a CLI process is short-lived, and
-    /// reopening means it never holds a snapshot old enough to overwrite a
-    /// newer store with.
+    /// Opened fresh per command on purpose: a short-lived process never holds
+    /// a snapshot old enough to overwrite a newer store with.
     pub fn service(&self) -> CliResult<Arc<WalletService>> {
         let service = WalletService::new_typed(Vec::new()).map_err(CliError::from)?;
         self.rt
@@ -128,7 +114,6 @@ impl Ctx {
         Ok(service)
     }
 
-    /// The resident domain state, as core holds it.
     pub fn state(&self) -> CliResult<CoreAppState> {
         let service = WalletService::new_typed(Vec::new()).map_err(CliError::from)?;
         self.rt
@@ -136,7 +121,6 @@ impl Ctx {
             .map_err(CliError::from)
     }
 
-    /// Send one command to core and return what it decided.
     pub fn apply(&self, command: StateCommand) -> CliResult<StateTransition> {
         let service = self.service()?;
         self.rt
@@ -144,10 +128,8 @@ impl Ctx {
             .map_err(CliError::from)
     }
 
-    /// Resolve a wallet by id, or by an unambiguous name or address prefix.
-    ///
-    /// Selection is by argument, never by an interactive picker: a picker
-    /// needs a TTY, and a command that needs a TTY cannot be a test.
+    /// By argument, never an interactive picker: a command that needs a TTY
+    /// cannot be a test.
     pub fn find_wallet(&self, needle: &str) -> CliResult<WalletSummary> {
         let state = self.state()?;
         let matches: Vec<&WalletSummary> = state
@@ -178,9 +160,8 @@ fn wallet_matches(wallet: &WalletSummary, needle: &str) -> bool {
             .is_some_and(|address| address.eq_ignore_ascii_case(needle))
 }
 
-/// The address the CLI shows for a wallet. Wallets carry one by construction;
-/// the fallback keeps a malformed record printable rather than panicking
-/// mid-listing.
+/// Wallets carry an address by construction; the fallback keeps a malformed
+/// record printable rather than panicking mid-listing.
 pub fn wallet_address(wallet: &WalletSummary) -> &str {
     wallet.primary_address().unwrap_or("")
 }

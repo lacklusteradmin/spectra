@@ -11,9 +11,7 @@ use serde_json::{json, Value};
 
 use crate::http::{with_fallback, HttpClient, RetryProfile};
 
-// ----------------------------------------------------------------
-// Public result types
-// ----------------------------------------------------------------
+// ── Public result types
 
 #[derive(Debug, Clone, Serialize, Deserialize, uniffi::Record)]
 pub struct SolanaBalance {
@@ -84,9 +82,7 @@ pub struct SplBalance {
     pub symbol: String,
 }
 
-// ----------------------------------------------------------------
-// Solana client
-// ----------------------------------------------------------------
+// ── Solana client
 
 pub struct SolanaClient {
     pub(crate) endpoints: std::sync::Arc<Vec<String>>,

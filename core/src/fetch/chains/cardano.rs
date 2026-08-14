@@ -11,9 +11,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::http::{with_fallback, HttpClient, RetryProfile};
 
-// ----------------------------------------------------------------
-// Public result types
-// ----------------------------------------------------------------
+// ── Public result types
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct CardanoBalance {
@@ -58,9 +56,7 @@ impl super::SignedSubmission for CardanoSendResult {
     }
 }
 
-// ----------------------------------------------------------------
-// Koios response types (shared within the chain module)
-// ----------------------------------------------------------------
+// ── Koios response types (shared within the chain module)
 
 #[derive(Debug, Deserialize)]
 pub(crate) struct KoiosAddressInfo {
@@ -94,9 +90,7 @@ pub(crate) struct KoiosTxInfo {
     pub(crate) fee: String,
 }
 
-// ----------------------------------------------------------------
-// Client
-// ----------------------------------------------------------------
+// ── Client
 
 pub struct CardanoClient {
     pub(crate) endpoints: std::sync::Arc<Vec<String>>,

@@ -162,6 +162,10 @@ pub struct CoreAppState {
     /// Which tokens the user tracks, and how many decimals each displays.
     #[serde(default)]
     pub token_preferences: Vec<crate::store::wallet_domain::CoreTokenPreferenceEntry>,
+    /// Price alerts. Domain state by rule 4 — losing one on restart means an
+    /// alert the user set never fires.
+    #[serde(default)]
+    pub price_alerts: Vec<crate::store::PriceAlertEvaluationAlert>,
 }
 
 impl Default for CoreAppState {
@@ -173,6 +177,7 @@ impl Default for CoreAppState {
             settings: AppSettings::default(),
             address_book: Vec::new(),
             token_preferences: Vec::new(),
+            price_alerts: Vec::new(),
         }
     }
 }
@@ -220,6 +225,11 @@ pub enum StateCommand {
         chain_name: String,
         address: String,
         note: String,
+    },
+    /// Replace the price-alert list. Core normalises: an alert whose target is
+    /// not a positive number cannot fire, so it is refused rather than stored.
+    SetPriceAlerts {
+        alerts: Vec<crate::store::PriceAlertEvaluationAlert>,
     },
     RenameAddressBookEntry { id: String, name: String },
     RemoveAddressBookEntry { id: String },
@@ -421,6 +431,19 @@ pub fn reduce_state_in_place(state: &mut CoreAppState, command: StateCommand) ->
                 events.push(StateEvent {
                     kind: "fiatCurrencyChanged".to_string(),
                     subject_id: Some(normalized),
+                });
+            }
+        }
+        StateCommand::SetPriceAlerts { alerts } => {
+            let kept: Vec<_> = alerts
+                .into_iter()
+                .filter(|alert| alert.target_price > 0.0 && !alert.holding_key.trim().is_empty())
+                .collect();
+            if kept != state.price_alerts {
+                state.price_alerts = kept;
+                events.push(StateEvent {
+                    kind: "priceAlertsChanged".to_string(),
+                    subject_id: None,
                 });
             }
         }

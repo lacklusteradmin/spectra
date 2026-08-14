@@ -10,9 +10,7 @@ use std::sync::LazyLock;
 // Embedded at compile time — no bundle dependency at runtime.
 static TOKENS_TOML: &str = include_str!("../data/tokens.toml");
 
-// ----------------------------------------------------------------
-// Parsed TOML shape
-// ----------------------------------------------------------------
+// ── Parsed TOML shape
 
 #[derive(Debug, Deserialize)]
 struct TomlFile {
@@ -36,9 +34,7 @@ struct TomlToken {
     enabled: bool,
 }
 
-// ----------------------------------------------------------------
-// Public serialized shape (mirrors ChainTokenRegistryEntry in Swift)
-// ----------------------------------------------------------------
+// ── Public serialized shape (mirrors ChainTokenRegistryEntry in Swift)
 
 #[derive(Debug, Clone, Serialize, uniffi::Record)]
 pub struct TokenEntry {
@@ -57,9 +53,7 @@ pub struct TokenEntry {
     pub enabled: bool,
 }
 
-// ----------------------------------------------------------------
-// Static catalog
-// ----------------------------------------------------------------
+// ── Static catalog
 
 static CATALOG: LazyLock<Vec<TokenEntry>> = LazyLock::new(|| {
     let parsed: TomlFile = toml::from_str(TOKENS_TOML)
@@ -85,9 +79,7 @@ static CATALOG: LazyLock<Vec<TokenEntry>> = LazyLock::new(|| {
         .collect()
 });
 
-// ----------------------------------------------------------------
-// Public API
-// ----------------------------------------------------------------
+// ── Public API
 
 /// Return token entries for `chain_id`, or all chains when `chain_id` is `""`.
 #[uniffi::export]

@@ -55,9 +55,7 @@ impl BitcoinCashClient {
     }
 }
 
-// ----------------------------------------------------------------
-// BCH SIGHASH_FORKID signing (BIP143-variant)
-// ----------------------------------------------------------------
+// ── BCH SIGHASH_FORKID signing (BIP143-variant)
 
 /// SIGHASH_ALL | SIGHASH_FORKID = 0x41
 const SIGHASH_ALL_FORKID: u32 = 0x41;
@@ -147,9 +145,7 @@ pub fn sign_bch_tx(
     Ok(build_tx(&signed_inputs, &outputs))
 }
 
-// ----------------------------------------------------------------
-// Script / tx helpers
-// ----------------------------------------------------------------
+// ── Script / tx helpers
 
 fn p2pkh_script(hash: &[u8; 20]) -> Vec<u8> {
     let mut s = vec![0x76u8, 0xa9, 0x14];

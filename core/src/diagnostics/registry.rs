@@ -11,16 +11,11 @@ use std::sync::Mutex;
 
 use super::types::*;
 
-/// Per-wallet history diagnostics, keyed by chain and then by wallet.
+/// Per-wallet history diagnostics, keyed by chain then wallet.
 ///
-/// This was a macro that stamped out five exports — get / set / remove / all /
-/// replace — for each of twenty-four chains: **120 FFI functions for one
-/// hash map**. Swift called `all` and `replace`; `get`, `set` and `remove`
-/// had no caller on either side for any chain, so seventy-two of the hundred
-/// and twenty existed to be counted.
-///
-/// One registry per record shape, each keyed by chain name. Adding a chain is
-/// a registry edit and adds no exports.
+/// One registry per record shape. This was a macro stamping out five exports
+/// per chain over one hash map — 120 FFI functions, 72 of which had no caller
+/// on either side.
 #[derive(Default)]
 struct DiagnosticsRegistry {
     utxo: HashMap<String, HashMap<String, BitcoinHistoryDiagnostics>>,
@@ -85,9 +80,7 @@ chain_keyed_registry!(
     diagnostics_replace_simple
 );
 
-/// Tron and Solana report one record shape each and only one chain uses them,
-/// so they stay unkeyed rather than gaining a chain argument that could only
-/// ever hold one value.
+/// One chain each, so a chain argument could only ever hold one value.
 #[uniffi::export]
 pub fn diagnostics_all_tron() -> HashMap<String, TronHistoryDiagnostics> {
     registry().lock().unwrap().tron.clone()

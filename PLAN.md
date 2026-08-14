@@ -1021,6 +1021,31 @@ Done so far:
   shape as the derive one — find the Swift switch, ask what single call it is
   standing in for.
 
+- **The CLI gap is closed: `rescan`, `pool`, `alert`.**
+
+  *`rescan`* drives the funds finder. Core derives the candidate matrix — 55
+  addresses, twelve of them Bitcoin across four script types and three
+  accounts — and its own doc said "the balance of this address is checked
+  separately by Swift", which was the half with no second implementation.
+
+  *`pool`* reserves receive and change indices. Core holds one write lock
+  across the whole read-modify-write because two callers racing there hand the
+  same receive address to two people; a second *process* is the only way to
+  test that guarantee, and it holds — reserving a receive index repeatedly
+  returns the same one, change consumes every time.
+
+  *`alert`* needed the state to move first. Price-alert rules lived only in
+  Swift (`priceAlerts.snapshot`), with core owning the evaluator and Swift
+  applying its verdict — the `core_plan_*` shape this document is removing.
+  They are `CoreAppState.price_alerts` now, behind `SetPriceAlerts`, which
+  refuses an alert with a non-positive target because it could never fire.
+
+  **The round-trip test was written before the command this time.** The token
+  list shipped unpersisted for exactly as long as nobody reopened the database
+  after writing one, so `every_resident_collection_round_trips` now walks the
+  whole resident state rather than the newest field: adding a collection either
+  joins that test or fails it.
+
 - **`spectra refresh`, and two bugs core could not have shown on its own.**
 
   `BalanceRefreshEngine` is the one subsystem where Rust already owns the loop:

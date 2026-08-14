@@ -55,9 +55,7 @@ impl DogecoinClient {
     }
 }
 
-// ----------------------------------------------------------------
-// Dogecoin P2PKH signing
-// ----------------------------------------------------------------
+// ── Dogecoin P2PKH signing
 
 /// Sign and serialize a Dogecoin P2PKH transaction.
 ///

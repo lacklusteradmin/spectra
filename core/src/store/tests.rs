@@ -2398,3 +2398,104 @@ mod tracked_tokens_persist {
         assert_eq!(reloaded.token_preferences[0].display_decimals, Some(6));
     }
 }
+
+/// Every collection on `CoreAppState` survives a reopen.
+///
+/// Written before the price-alert command, because the token list shipped
+/// unpersisted for exactly as long as nobody reopened the database after
+/// writing one. This walks every collection rather than the newest, so the
+/// next field added is covered by the same test or fails it.
+#[cfg(test)]
+mod resident_state_round_trip {
+    use crate::store::state::{CoreAppState, StateCommand, reduce_state_in_place};
+    use crate::store::wallet_db;
+    use crate::store::PriceAlertEvaluationAlert;
+    use crate::store::wallet_domain::CorePriceAlertCondition;
+
+    fn tmp_db() -> String {
+        let mut path = std::env::temp_dir();
+        path.push(format!(
+            "spectra-resident-{}-{:?}.sqlite",
+            std::process::id(),
+            std::thread::current().id()
+        ));
+        let _ = std::fs::remove_file(&path);
+        path.to_string_lossy().into_owned()
+    }
+
+    fn alert(id: &str, target: f64) -> PriceAlertEvaluationAlert {
+        PriceAlertEvaluationAlert {
+            id: id.to_string(),
+            holding_key: "BTC".to_string(),
+            asset_name: "Bitcoin".to_string(),
+            symbol: "BTC".to_string(),
+            chain_name: "Bitcoin".to_string(),
+            target_price: target,
+            condition: CorePriceAlertCondition::Above,
+            is_enabled: true,
+            has_triggered: false,
+        }
+    }
+
+    #[test]
+    fn a_price_alert_survives_a_reopen() {
+        let db = tmp_db();
+        let mut state = CoreAppState::default();
+        reduce_state_in_place(
+            &mut state,
+            StateCommand::SetPriceAlerts {
+                alerts: vec![alert("A1", 100_000.0)],
+            },
+        );
+        wallet_db::app_state_save(&db, &state).expect("save");
+
+        let reloaded = wallet_db::app_state_load(&db).expect("load");
+        assert_eq!(reloaded.price_alerts.len(), 1, "price alert was lost");
+        assert_eq!(reloaded.price_alerts[0].target_price, 100_000.0);
+    }
+
+    #[test]
+    fn an_alert_that_cannot_fire_is_refused() {
+        let mut state = CoreAppState::default();
+        reduce_state_in_place(
+            &mut state,
+            StateCommand::SetPriceAlerts {
+                alerts: vec![alert("A1", 0.0), alert("A2", -5.0), alert("A3", 42.0)],
+            },
+        );
+        assert_eq!(state.price_alerts.len(), 1);
+        assert_eq!(state.price_alerts[0].id, "A3");
+    }
+
+    /// Whatever the resident state holds must come back. Add a collection and
+    /// this fails until `app_state_save` learns about it.
+    #[test]
+    fn every_resident_collection_round_trips() {
+        let db = tmp_db();
+        let mut state = CoreAppState::default();
+        reduce_state_in_place(
+            &mut state,
+            StateCommand::SetPriceAlerts { alerts: vec![alert("A1", 1.0)] },
+        );
+        reduce_state_in_place(
+            &mut state,
+            StateCommand::AddAddressBookEntry {
+                id: "C1".into(),
+                name: "Alice".into(),
+                chain_name: "Ethereum".into(),
+                address: "0x742d35Cc6634C0532925a3b844Bc454e4438f44e".into(),
+                note: String::new(),
+            },
+        );
+        reduce_state_in_place(
+            &mut state,
+            StateCommand::SetFiatCurrency { fiat_currency_code: "CHF".into() },
+        );
+        wallet_db::app_state_save(&db, &state).expect("save");
+        let back = wallet_db::app_state_load(&db).expect("load");
+
+        assert_eq!(back.price_alerts.len(), 1, "price_alerts not persisted");
+        assert_eq!(back.address_book.len(), 1, "address_book not persisted");
+        assert_eq!(back.settings.fiat_currency_code, "CHF", "settings not persisted");
+    }
+}

@@ -26,9 +26,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::http::HttpClient;
 
-// ----------------------------------------------------------------
-// Network helpers
-// ----------------------------------------------------------------
+// ── Network helpers
 
 pub(crate) fn bitcoin_network_for_mode(mode: &str) -> Network {
     match mode {
@@ -39,9 +37,7 @@ pub(crate) fn bitcoin_network_for_mode(mode: &str) -> Network {
     }
 }
 
-// ----------------------------------------------------------------
-// Esplora API types
-// ----------------------------------------------------------------
+// ── Esplora API types
 
 #[derive(Debug, Deserialize)]
 pub struct EsploraUtxo {
@@ -105,9 +101,7 @@ pub struct EsploraFeeEstimates {
     pub targets: std::collections::HashMap<String, f64>,
 }
 
-// ----------------------------------------------------------------
-// Public result types
-// ----------------------------------------------------------------
+// ── Public result types
 
 /// Unified tx confirmation status returned by all UTXO chains.
 #[derive(Debug, Clone, Serialize, Deserialize, uniffi::Record)]
@@ -160,9 +154,7 @@ impl super::SignedSubmission for BitcoinSendResult {
     }
 }
 
-// ----------------------------------------------------------------
-// Fee rate
-// ----------------------------------------------------------------
+// ── Fee rate
 
 /// Satoshis per virtual byte, as returned by `GET /fee-estimates`.
 #[derive(Debug, Clone, Copy, Serialize, Deserialize)]
@@ -177,9 +169,7 @@ impl FeeRate {
     }
 }
 
-// ----------------------------------------------------------------
-// BitcoinClient
-// ----------------------------------------------------------------
+// ── BitcoinClient
 
 /// Stateless client for all Bitcoin Esplora interactions.
 pub struct BitcoinClient {
@@ -199,9 +189,7 @@ impl BitcoinClient {
 use crate::http::{with_fallback, RetryProfile};
 
 impl BitcoinClient {
-    // ----------------------------------------------------------------
-    // Fetch: balance
-    // ----------------------------------------------------------------
+    // ── Fetch: balance
 
     pub async fn fetch_balance(&self, address: &str) -> Result<BitcoinBalance, String> {
         let addr = address.to_string();
@@ -231,9 +219,7 @@ impl BitcoinClient {
         .await
     }
 
-    // ----------------------------------------------------------------
-    // Fetch: UTXOs
-    // ----------------------------------------------------------------
+    // ── Fetch: UTXOs
 
     pub async fn fetch_utxos(&self, address: &str) -> Result<Vec<EsploraUtxo>, String> {
         let addr = address.to_string();
@@ -251,9 +237,7 @@ impl BitcoinClient {
         .await
     }
 
-    // ----------------------------------------------------------------
-    // Fetch: transaction history
-    // ----------------------------------------------------------------
+    // ── Fetch: transaction history
 
     pub async fn fetch_history(
         &self,
@@ -308,9 +292,7 @@ impl BitcoinClient {
         .await
     }
 
-    // ----------------------------------------------------------------
-    // Fetch: fee estimates
-    // ----------------------------------------------------------------
+    // ── Fetch: fee estimates
 
     /// Returns the fee rate for `confirmation_target` blocks (typically
     /// 1, 6, or 144). Falls back to a conservative 10 sat/vB if the
@@ -347,9 +329,7 @@ impl BitcoinClient {
         Ok(FeeRate { sats_per_vbyte })
     }
 
-    // ----------------------------------------------------------------
-    // Fetch: tx status (confirmation lookup)
-    // ----------------------------------------------------------------
+    // ── Fetch: tx status (confirmation lookup)
 
     /// Fetch the confirmation status for a single txid.
     /// Esplora `GET /tx/{txid}/status` returns `EsploraTxStatus` directly.

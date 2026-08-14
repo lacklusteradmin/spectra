@@ -78,9 +78,7 @@ impl CardanoClient {
     }
 }
 
-// ----------------------------------------------------------------
-// Cardano transaction building (minimal CBOR for ADA-only transfer)
-// ----------------------------------------------------------------
+// ── Cardano transaction building (minimal CBOR for ADA-only transfer)
 
 /// Build a signed Shelley-era ADA transfer transaction.
 /// Returns raw CBOR bytes as hex.
@@ -170,9 +168,7 @@ fn encode_witness_set(vkey: &[u8], sig: &[u8]) -> Vec<u8> {
     cbor_map(&[(cbor_uint(0), cbor_array_of(&[vkey_sig]))])
 }
 
-// ----------------------------------------------------------------
-// Minimal CBOR encoder
-// ----------------------------------------------------------------
+// ── Minimal CBOR encoder
 
 fn cbor_uint(n: u64) -> Vec<u8> {
     if n <= 23 {

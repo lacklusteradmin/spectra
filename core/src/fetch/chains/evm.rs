@@ -9,9 +9,7 @@ use serde_json::{json, Value};
 
 use crate::http::{with_fallback, HttpClient, RetryProfile};
 
-// ----------------------------------------------------------------
-// ERC-20 4-byte function selectors  (keccak256(signature)[..4])
-// ----------------------------------------------------------------
+// ── ERC-20 4-byte function selectors  (keccak256(signature)[..4])
 pub(crate) const SEL_BALANCE_OF: [u8; 4] = [0x70, 0xa0, 0x82, 0x31]; // balanceOf(address)
 pub(crate) const SEL_DECIMALS: [u8; 4] = [0x31, 0x3c, 0xe5, 0x67]; // decimals()
 pub(crate) const SEL_SYMBOL: [u8; 4] = [0x95, 0xd8, 0x9b, 0x41]; // symbol()
@@ -24,9 +22,7 @@ pub(crate) const SEL_TRANSFER: [u8; 4] = [0xa9, 0x05, 0x9c, 0xbb]; // transfer(a
 pub(crate) const SEL_TRANSFER_FROM: [u8; 4] = [0x23, 0xb8, 0x72, 0xdd]; // transferFrom(address,address,uint256)
 pub(crate) const SEL_APPROVE: [u8; 4] = [0x09, 0x5e, 0xa7, 0xb3]; // approve(address,uint256)
 
-// ----------------------------------------------------------------
-// Internal helpers shared by derive/fetch/send
-// ----------------------------------------------------------------
+// ── Internal helpers shared by derive/fetch/send
 
 /// Strip the `0x` prefix from a hex string and decode to bytes.
 pub(crate) fn decode_hex(s: &str) -> Result<Vec<u8>, String> {
@@ -56,9 +52,7 @@ fn rpc(method: &str, params: Value) -> Value {
     })
 }
 
-// ----------------------------------------------------------------
-// Public result types
-// ----------------------------------------------------------------
+// ── Public result types
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct EvmBalance {
@@ -189,9 +183,7 @@ pub struct EvmTokenTransferEntry {
     pub timestamp: u64,
 }
 
-// ----------------------------------------------------------------
-// EVM client
-// ----------------------------------------------------------------
+// ── EVM client
 
 pub struct EvmClient {
     pub(crate) endpoints: std::sync::Arc<Vec<String>>,
@@ -609,9 +601,7 @@ impl EvmClient {
         parse_hex_u128(hex_str)
     }
 
-    // ----------------------------------------------------------------
-    // History (Etherscan V2 multi-chain endpoint)
-    // ----------------------------------------------------------------
+    // ── History (Etherscan V2 multi-chain endpoint)
 
     pub async fn fetch_history(
         &self,
@@ -763,9 +753,7 @@ impl EvmClient {
     }
 }
 
-// ----------------------------------------------------------------
-// ERC-20 ABI helpers (shared with send.rs)
-// ----------------------------------------------------------------
+// ── ERC-20 ABI helpers (shared with send.rs)
 
 /// Encode a `balanceOf(address)` call.
 pub fn encode_erc20_balance_of(holder: &str) -> Result<Vec<u8>, String> {
@@ -847,9 +835,7 @@ pub fn decode_abi_string_or_bytes32(hex_str: &str) -> Option<String> {
     }
 }
 
-// ----------------------------------------------------------------
-// Formatting
-// ----------------------------------------------------------------
+// ── Formatting
 
 /// Format a raw `u128` token amount with the given decimals, trimming trailing
 /// zeros and capping to 6 fractional digits for display.

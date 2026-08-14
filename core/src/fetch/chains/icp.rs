@@ -16,16 +16,12 @@ use serde_json::Value;
 
 use crate::http::{with_fallback, HttpClient, RetryProfile};
 
-// ----------------------------------------------------------------
-// Constants
-// ----------------------------------------------------------------
+// ── Constants
 
 /// ICP e8s per ICP.
 pub(crate) const E8S_PER_ICP: u64 = 100_000_000;
 
-// ----------------------------------------------------------------
-// Public result types
-// ----------------------------------------------------------------
+// ── Public result types
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct IcpBalance {
@@ -64,9 +60,7 @@ impl super::SignedSubmission for IcpSendResult {
     }
 }
 
-// ----------------------------------------------------------------
-// Client (Rosetta-based for read, direct for write)
-// ----------------------------------------------------------------
+// ── Client (Rosetta-based for read, direct for write)
 
 pub struct IcpClient {
     /// Rosetta API endpoint (https://rosetta-api.internetcomputer.org).

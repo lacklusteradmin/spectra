@@ -9,9 +9,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::http::{with_fallback, HttpClient, RetryProfile};
 
-// ----------------------------------------------------------------
-// BlockCypher response types
-// ----------------------------------------------------------------
+// ── BlockCypher response types
 
 /// Response from GET /addrs/{address}/balance
 #[derive(Debug, Deserialize)]
@@ -44,9 +42,7 @@ struct BlockcypherTxref {
     confirmed: Option<String>,
 }
 
-// ----------------------------------------------------------------
-// Public result types
-// ----------------------------------------------------------------
+// ── Public result types
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct DogeBalance {
@@ -92,9 +88,7 @@ impl super::SignedSubmission for DogeSendResult {
     }
 }
 
-// ----------------------------------------------------------------
-// Client
-// ----------------------------------------------------------------
+// ── Client
 
 pub struct DogecoinClient {
     pub(crate) endpoints: std::sync::Arc<Vec<String>>,

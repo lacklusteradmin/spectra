@@ -9,9 +9,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::http::{with_fallback, HttpClient, RetryProfile};
 
-// ----------------------------------------------------------------
-// Public result types
-// ----------------------------------------------------------------
+// ── Public result types
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TonBalance {
@@ -62,9 +60,7 @@ pub struct TonJettonBalance {
     pub balance_raw: u128,
 }
 
-// ----------------------------------------------------------------
-// Client
-// ----------------------------------------------------------------
+// ── Client
 
 pub struct TonClient {
     pub(crate) endpoints: std::sync::Arc<Vec<String>>,

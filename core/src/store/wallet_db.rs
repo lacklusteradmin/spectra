@@ -745,6 +745,7 @@ const META_SETTINGS: &str = "settings";
 /// because `AppSettings` is the "every front end must agree" bag and this is a
 /// list the user edits.
 const META_TOKEN_PREFERENCES: &str = "token_preferences";
+const META_PRICE_ALERTS: &str = "price_alerts";
 
 /// Insert or replace one wallet, keeping its existing position when it is
 /// already stored and appending it to the end when it is new.
@@ -852,6 +853,8 @@ pub fn app_state_save(db_path: &str, state: &CoreAppState) -> Result<(), String>
         .map_err(|e| format!("app_state_save encode settings: {e}"))?;
     let token_preferences = serde_json::to_string(&state.token_preferences)
         .map_err(|e| format!("app_state_save encode token_preferences: {e}"))?;
+    let price_alerts = serde_json::to_string(&state.price_alerts)
+        .map_err(|e| format!("app_state_save encode price_alerts: {e}"))?;
     let payloads: Vec<(usize, &WalletSummary, String)> = state
         .wallets
         .iter()
@@ -931,6 +934,8 @@ pub fn app_state_save(db_path: &str, state: &CoreAppState) -> Result<(), String>
             state.schema_version.to_string()
         ])
         .map_err(|e| format!("app_state_save schema_version: {e}"))?;
+        meta.execute(params![META_PRICE_ALERTS, price_alerts])
+            .map_err(|e| format!("app_state_save price_alerts: {e}"))?;
         meta.execute(params![META_TOKEN_PREFERENCES, token_preferences])
             .map_err(|e| format!("app_state_save token_preferences: {e}"))?;
         meta.execute(params![META_SETTINGS, settings])
@@ -1018,6 +1023,10 @@ pub fn app_state_load(db_path: &str) -> Result<CoreAppState, String> {
                 META_TOKEN_PREFERENCES => {
                     state.token_preferences = serde_json::from_str(&value)
                         .map_err(|e| format!("app_state_load token_preferences: {e}"))?;
+                }
+                META_PRICE_ALERTS => {
+                    state.price_alerts = serde_json::from_str(&value)
+                        .map_err(|e| format!("app_state_load price_alerts: {e}"))?;
                 }
                 // Forward compatibility: a newer build's extra meta keys are
                 // ignored rather than treated as corruption.
@@ -1295,6 +1304,7 @@ mod tests {
                 pinned_dashboard_asset_symbols: vec!["BTC".to_string()],
             },
             token_preferences: Vec::new(),
+            price_alerts: Vec::new(),
             address_book: vec![AddressBookEntry {
                 id: "ab1".to_string(),
                 name: "Cold".to_string(),

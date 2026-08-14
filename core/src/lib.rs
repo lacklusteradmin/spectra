@@ -1,26 +1,8 @@
-//! # Visibility & FFI boundary
+//! The FFI boundary is enforced by attribute, not visibility: only
+//! `#[uniffi::export]` and the `uniffi::` derives cross to Swift. `pub` alone
+//! is a crate-public Rust API and stays invisible there.
 //!
-//! The crate enforces the FFI boundary by attribute, not by visibility:
-//! **only items tagged `#[uniffi::export]` (or `#[derive(uniffi::Record)]`
-//! / `#[derive(uniffi::Enum)]` / `#[derive(uniffi::Object)]`) cross to
-//! Swift.** Plain `pub` items are crate-public Rust APIs; downstream
-//! Swift never sees them unless they're also marked.
-//!
-//! Conventions for this crate:
-//!   * `pub` — re-used across modules within `spectra_core`. Not part of
-//!     the FFI surface unless the same item also has a UniFFI attribute.
-//!   * `pub(crate)` — internal to the crate; never appears in Swift even
-//!     accidentally.
-//!   * `pub(super)` — internal to a module subtree (e.g. service helpers).
-//!   * `#[uniffi::export]` — the FFI surface. Adding this to a `pub`
-//!     function or a `pub` impl block exposes it (and every method of
-//!     the impl block) to Swift. Be deliberate about adding it.
-//!
-//! When extending the API: ask "is this for other Rust modules to call,
-//! or for Swift?" and pick `pub(crate)` for the former, `#[uniffi::export]`
-//! + `pub` for the latter. Avoid plain `pub` for items that don't need
-//!   to escape the module — `pub(super)` is usually enough and keeps the
-//!   FFI risk surface low.
+//! Exporting an `impl` block exports **every method in it**.
 
 #![allow(clippy::too_many_arguments, clippy::type_complexity)]
 

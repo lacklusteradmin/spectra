@@ -1,32 +1,13 @@
-//! WalletService — the stateful async UniFFI object that Swift / Kotlin talk to.
+//! The stateful object the shells talk to: anything touching the HTTP client,
+//! endpoint lists, the secret store or the resident state. Stateless helpers
+//! belong beside the domain module that owns them.
 //!
-//! New chain-dispatch parameter records belong in `service_send_params.rs`.
-//! New stateless FFI helpers should live beside the domain module that owns
-//! their logic; new stateful network/storage flows stay on `WalletService`.
+//! This file holds the **dispatched path** — methods that match on `Chain`.
+//! New arms take typed `*SendParams` from `service_send_params.rs`, never a
+//! fresh ad-hoc JSON shape.
 //!
-//! ## FFI dichotomy
-//!
-//! This file owns the **dispatched path** — methods that match on `Chain`
-//! and call into per-chain clients. Free `#[uniffi::export]` functions in
-//! domain modules form the **typed path** —
-//! free functions exporting via UniFFI Records. New endpoints that don't
-//! dispatch on `Chain` belong beside their owning domain module rather than
-//! here. Within this
-//! file, the historical `params: serde_json::Value` shape has been
-//! replaced with typed `*SendParams` structs in `service_send_params.rs` for
-//! migrated chains; new chain dispatch arms should follow that pattern,
-//! not invent fresh ad-hoc JSON shapes.
-//!
-//! ## Service properties
-//!
-//! - All chain operations are `async` internally; UniFFI 0.31 with the tokio
-//!   feature wraps them into `async fn` on the Swift side automatically.
-//! - The service does not own long-lived secrets. Swift reads from Keychain and
-//!   passes signing material per call; Rust scrubs the boundary records and
-//!   short-lived derived private-key strings after use.
-//! - Endpoint lists are set at construction time and rebuilt via
-//!   `update_endpoints_typed`.
-//! - Frozen chain-id discriminants live in `crate::registry::Chain`.
+//! It owns no long-lived secrets: signing material arrives per call and is
+//! scrubbed after use.
 
 // `WalletService` state and behavior live here; per-chain send parameter
 // contracts live in `service_send_params.rs`.
@@ -440,9 +421,7 @@ impl WalletService {
     // block regardless of `pub(crate)` visibility, so chain-dispatch helpers
     // consumed only by execute_send must be outside this block.
 
-    // ----------------------------------------------------------------
-    // Token balance (ERC-20 / SPL / NEP-141 / TRC-20 / Stellar assets)
-    // ----------------------------------------------------------------
+    // ── Token balance (ERC-20 / SPL / NEP-141 / TRC-20 / Stellar assets)
 
     /// Fetch balances for a list of tokens in one call.
     ///
@@ -635,30 +614,20 @@ impl WalletService {
         Ok(results)
     }
 
-    // ----------------------------------------------------------------
-    // Unified execute_send — collapses derive → payload → sign trampoline
-    // ----------------------------------------------------------------
+    // ── Unified execute_send — collapses derive → payload → sign trampoline
 
     // `execute_send` lives in `service/send_execution.rs`.
 
-    // ----------------------------------------------------------------
-    // Bitcoin HD — seed → account xpub derivation
-    // ----------------------------------------------------------------
+    // ── Bitcoin HD — seed → account xpub derivation
 
-    // ----------------------------------------------------------------
-    // Bitcoin HD multi-address (xpub / ypub / zpub)
-    // ----------------------------------------------------------------
+    // ── Bitcoin HD multi-address (xpub / ypub / zpub)
 
     // `fetch_bitcoin_xpub_balance` lives in the plain-impl block below
     // (JSON shuttle — kept internal, not exported to Swift).
 
-    // ----------------------------------------------------------------
-    // Price / fiat rate service
-    // ----------------------------------------------------------------
+    // ── Price / fiat rate service
 
-    // ----------------------------------------------------------------
-    // EVM paginated history (native + ERC-20 token transfers)
-    // ----------------------------------------------------------------
+    // ── EVM paginated history (native + ERC-20 token transfers)
 
     /// Fetch one page of EVM transaction history for `address`.
     ///
@@ -787,9 +756,7 @@ impl WalletService {
         })
     }
 
-    // ----------------------------------------------------------------
-    // Typed token-array wrappers (no JSON serialization on caller side)
-    // ----------------------------------------------------------------
+    // ── Typed token-array wrappers (no JSON serialization on caller side)
 
     pub async fn fetch_evm_token_balances_batch_typed(
         &self,
@@ -843,9 +810,7 @@ impl WalletService {
         }
     }
 
-    // ----------------------------------------------------------------
-    // ENS resolution
-    // ----------------------------------------------------------------
+    // ── ENS resolution
 
     /// Resolve an ENS name to an Ethereum address via the ENS Ideas public API.
     /// Returns the resolved address, or `None` if the name has no registered address.
@@ -859,9 +824,7 @@ impl WalletService {
         Ok(address.filter(|a| !a.is_empty()))
     }
 
-    // ----------------------------------------------------------------
-    // EVM utilities (contract detection, nonce lookup)
-    // ----------------------------------------------------------------
+    // ── EVM utilities (contract detection, nonce lookup)
 
     /// Returns true iff `address` has deployed bytecode on the given EVM chain.
     pub async fn fetch_evm_has_contract_code(
@@ -908,9 +871,7 @@ impl WalletService {
         ))
     }
 
-    // ----------------------------------------------------------------
-    // EVM receipt polling
-    // ----------------------------------------------------------------
+    // ── EVM receipt polling
 
     /// Fused fetch + classification for an EVM receipt: returns
     /// `Some(classification)` once the receipt has been mined, or `None`
@@ -935,9 +896,7 @@ impl WalletService {
     // (JSON shuttles — kept internal, not exported to Swift). Their typed
     // wrappers below call into those internal helpers.
 
-    // ----------------------------------------------------------------
-    // Typed send-preview wrappers (fuse fetch + decode in Rust)
-    // ----------------------------------------------------------------
+    // ── Typed send-preview wrappers (fuse fetch + decode in Rust)
 
     /// Typed EVM send preview: fetches the raw preview JSON then decodes it
     /// into `EthereumSendPreview` with the caller-supplied nonce / fee
@@ -1075,36 +1034,22 @@ impl WalletService {
         ))
     }
 
-    // ----------------------------------------------------------------
-    // Phase 2 — SQLite state persistence
-    // ----------------------------------------------------------------
+    // ── Phase 2 — SQLite state persistence
 
-    // ----------------------------------------------------------------
-    // Phase 2.1 — WalletStore CRUD (SQLite-backed snapshot)
-    // ----------------------------------------------------------------
+    // ── Phase 2.1 — WalletStore CRUD (SQLite-backed snapshot)
 
-    // ----------------------------------------------------------------
     // Phase 2.1 — Relational wallet state (keypool + owned addresses)
     //
     // These replace UserDefaults JSON blobs on the Swift side.
     // All calls run in spawn_blocking because rusqlite is not async.
-    // ----------------------------------------------------------------
 
-    // ----------------------------------------------------------------
-    // Phase 2.8 — Transaction history persistence (SQLite-backed)
-    // ----------------------------------------------------------------
+    // ── Phase 2.8 — Transaction history persistence (SQLite-backed)
 
-    // ----------------------------------------------------------------
-    // Phase 3 — typed wallet state (no JSON round-trip)
-    // ----------------------------------------------------------------
+    // ── Phase 3 — typed wallet state (no JSON round-trip)
 
-    // ----------------------------------------------------------------
-    // Phase 2.3 — History pagination state
-    // ----------------------------------------------------------------
+    // ── Phase 2.3 — History pagination state
 
-    // ----------------------------------------------------------------
-    // Phase 2.7 — SecretStore (Keychain delegate)
-    // ----------------------------------------------------------------
+    // ── Phase 2.7 — SecretStore (Keychain delegate)
 
     /// Register the platform Keychain implementation. Must be called once at
     /// app start before any code path that reads or writes secrets. Rust code
@@ -1117,9 +1062,7 @@ impl WalletService {
         }
     }
 
-    // ----------------------------------------------------------------
-    // UTXO tx status
-    // ----------------------------------------------------------------
+    // ── UTXO tx status
 
     /// Fetch confirmation status for a UTXO chain transaction.
     /// Returns a typed record so Swift can read `confirmed`/`block_height`/
@@ -1289,12 +1232,10 @@ impl WalletService {
         }
     }
 
-    // ----------------------------------------------------------------
     // Internal helpers — non-FFI. UniFFI exports every method of an
     // `#[uniffi::export]` impl block regardless of `pub(crate)`, so helpers
     // only called from other Rust methods live here to stay off the FFI
     // surface.
-    // ----------------------------------------------------------------
 
     /// Fetch Bitcoin history JSON for `address` and decode it into typed
     /// `CoreBitcoinHistorySnapshot` records. Now internal-only — callers go
@@ -1909,11 +1850,9 @@ impl WalletService {
         }
     }
 
-    // ----------------------------------------------------------------
     // Internal JSON-returning helpers (not exported to Swift — the typed
     // wrappers above in the exported impl block call these and translate
     // the JSON into UniFFI records at the boundary).
-    // ----------------------------------------------------------------
 
     pub(crate) async fn fetch_balance(
         &self,

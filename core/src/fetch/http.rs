@@ -1,35 +1,9 @@
-//! Async HTTP transport with retry/backoff for chain providers.
+//! The one shared `reqwest::Client` and the retry policy every provider call
+//! goes through.
 //!
-//! This module owns the single shared `reqwest::Client` used by all
-//! chain-specific fetch and send implementations, and the retry/backoff
-//! policy applied to every provider call.
-//!
-//! ## UniFFI migration pattern
-//!
-//! The pattern for migrating a Swift URLSession call site to Rust is:
-//!
-//! 1. If the response parsing already lives in Rust (see
-//!    `diagnostics::aggregate::diagnostics_parse_jsonrpc_probe`), prefer
-//!    exposing a single `#[uniffi::export] async fn` that performs
-//!    *transport + parse* in one FFI hop. This eliminates the
-//!    (Rust → Swift → Rust) round-trip.
-//! 2. Otherwise, call the generic ergonomic wrappers in `http_ffi`:
-//!    `http_get` (returns `HttpTextResponse`) or `http_post_json`.
-//!    These use the shared `HttpClient` / `RetryProfile` plumbing
-//!    defined here.
-//! 3. Delete the Swift URLSession code for that call site — the whole
-//!    point of the migration is that Swift stops owning network
-//!    transport.
-//!
-//! ## Usage
-//!
-//! ```rust,ignore
-//! let client = HttpClient::shared();
-//! let body: serde_json::Value = client
-//!     .get_json("https://blockstream.info/api/address/bc1q.../utxo",
-//!               RetryProfile::ChainRead)
-//!     .await?;
-//! ```
+//! When moving a call site off Swift's URLSession: if the parsing already
+//! lives here, export *transport + parse* as one async fn rather than handing
+//! Swift a body to send back.
 
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -42,9 +16,7 @@ use serde::Serialize;
 use std::sync::LazyLock;
 use tokio::time::sleep;
 
-// ----------------------------------------------------------------
-// Shared client
-// ----------------------------------------------------------------
+// ── Shared client
 
 /// Process-wide shared `reqwest` client. Interior `RwLock` lets `tor.rs`
 /// swap in a SOCKS5-proxied client at runtime without touching call sites.
@@ -120,9 +92,7 @@ impl HttpClient {
         self.get_client()
     }
 
-    // ----------------------------------------------------------------
-    // Core request method
-    // ----------------------------------------------------------------
+    // ── Core request method
 
     async fn request_with_retry<T: DeserializeOwned>(
         &self,
@@ -178,9 +148,7 @@ impl HttpClient {
         Err(format!("all {max_attempts} attempts failed: {last_err}"))
     }
 
-    // ----------------------------------------------------------------
-    // Convenience wrappers
-    // ----------------------------------------------------------------
+    // ── Convenience wrappers
 
     /// GET a JSON response.
     pub async fn get_json<T: DeserializeOwned>(
@@ -315,9 +283,7 @@ impl HttpClient {
     }
 }
 
-// ----------------------------------------------------------------
-// Retry profiles
-// ----------------------------------------------------------------
+// ── Retry profiles
 
 /// Retry behaviour profiles, selected per call site by how costly a retry is.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -365,9 +331,7 @@ impl RetryProfile {
     }
 }
 
-// ----------------------------------------------------------------
-// Tor proxy switch (called by tor.rs)
-// ----------------------------------------------------------------
+// ── Tor proxy switch (called by tor.rs)
 
 /// Replace the shared reqwest client with one that routes all traffic
 /// through the given SOCKS5 URL, or remove the proxy when `None`.
@@ -376,9 +340,7 @@ pub(crate) fn set_socks5_proxy(proxy_url: Option<&str>) {
     SHARED_CLIENT.set_proxy(proxy_url);
 }
 
-// ----------------------------------------------------------------
-// Fallback helpers
-// ----------------------------------------------------------------
+// ── Fallback helpers
 
 fn format_reqwest_error(e: &reqwest::Error) -> String {
     let mut parts = vec![e.to_string()];
@@ -620,7 +582,6 @@ pub async fn http_request(
     })
 }
 
-// ----------------------------------------------------------------
 // Ergonomic text-oriented wrappers // ----------------------------------------------------------------
 
 /// GET a URL and return the response body as UTF-8 text with headers.

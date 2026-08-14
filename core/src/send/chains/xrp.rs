@@ -58,9 +58,7 @@ impl XrpClient {
     }
 }
 
-// ----------------------------------------------------------------
-// XRP binary codec (minimal — Payment only)
-// ----------------------------------------------------------------
+// ── XRP binary codec (minimal — Payment only)
 
 /// Build and sign an XRP Payment transaction.
 /// Returns the signed tx blob as an uppercase hex string.

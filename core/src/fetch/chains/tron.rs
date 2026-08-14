@@ -11,9 +11,7 @@ use serde_json::Value;
 
 use crate::http::{with_fallback, HttpClient, RetryProfile};
 
-// ----------------------------------------------------------------
-// Public result types
-// ----------------------------------------------------------------
+// ── Public result types
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TronBalance {
@@ -77,9 +75,7 @@ pub struct Trc20Metadata {
     pub decimals: u8,
 }
 
-// ----------------------------------------------------------------
-// Client
-// ----------------------------------------------------------------
+// ── Client
 
 pub struct TronClient {
     pub(crate) endpoints: std::sync::Arc<Vec<String>>,
@@ -413,9 +409,7 @@ impl TronClient {
     }
 }
 
-// ----------------------------------------------------------------
-// TRC-20 helpers
-// ----------------------------------------------------------------
+// ── TRC-20 helpers
 
 /// Parse a 32-byte big-endian hex integer return value (no `0x` prefix) and
 /// return its low 128 bits. TRC-20 balances and u256 decimals fit comfortably.

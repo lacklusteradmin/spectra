@@ -11,9 +11,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::http::{with_fallback, HttpClient, RetryProfile};
 
-// ----------------------------------------------------------------
-// Blockbook types
-// ----------------------------------------------------------------
+// ── Blockbook types
 
 #[derive(Debug, Deserialize)]
 pub(crate) struct BlockbookUtxo {
@@ -59,9 +57,7 @@ pub(crate) struct BlockbookVin {
     pub(crate) addresses: Option<Vec<String>>,
 }
 
-// ----------------------------------------------------------------
-// Public result types
-// ----------------------------------------------------------------
+// ── Public result types
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct BchBalance {
@@ -107,9 +103,7 @@ impl super::SignedSubmission for BchSendResult {
     }
 }
 
-// ----------------------------------------------------------------
-// Client
-// ----------------------------------------------------------------
+// ── Client
 
 pub struct BitcoinCashClient {
     pub(crate) endpoints: std::sync::Arc<Vec<String>>,

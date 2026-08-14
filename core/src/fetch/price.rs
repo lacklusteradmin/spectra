@@ -14,9 +14,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::http::{HttpClient, RetryProfile};
 
-// ----------------------------------------------------------------
-// Provider catalog
-// ----------------------------------------------------------------
+// ── Provider catalog
 
 /// Market-data providers Swift currently supports. Matches the Swift
 /// `PricingProvider` enum raw values so existing settings round-trip.
@@ -58,9 +56,7 @@ impl FiatRateProvider {
     }
 }
 
-// ----------------------------------------------------------------
-// Inputs / outputs
-// ----------------------------------------------------------------
+// ── Inputs / outputs
 
 /// One coin the caller wants priced. `holding_key` is the Swift-side
 /// identifier returned in the quote map, `symbol` is used as a provider
@@ -77,9 +73,7 @@ pub struct PriceRequestCoin {
 /// Keyed by `holding_key`. Value is USD price.
 pub type PriceQuoteMap = HashMap<String, f64>;
 
-// ----------------------------------------------------------------
-// Stablecoin pinning
-// ----------------------------------------------------------------
+// ── Stablecoin pinning
 
 const USD_STABLECOINS: &[&str] = &[
     "USDT", "USDC", "DAI", "FDUSD", "TUSD", "BUSD", "USDE", "PYUSD", "USDS", "USDD", "USDG", "USD1",
@@ -100,9 +94,7 @@ fn stablecoin_quotes(coins: &[PriceRequestCoin]) -> PriceQuoteMap {
     out
 }
 
-// ----------------------------------------------------------------
-// Market-data endpoints (mirror ChainBackendRegistry)
-// ----------------------------------------------------------------
+// ── Market-data endpoints (mirror ChainBackendRegistry)
 
 const COINGECKO_SIMPLE_PRICE_URL: &str = "https://api.coingecko.com/api/v3/simple/price";
 const COINPAPRIKA_TICKERS_URL: &str = "https://api.coinpaprika.com/v1/tickers";
@@ -114,9 +106,7 @@ const EXCHANGE_RATE_HOST_LIVE_URL: &str = "https://api.exchangerate.host/live";
 const FAWAZ_AHMED_USD_RATES_URL: &str =
     "https://cdn.jsdelivr.net/npm/@fawazahmed0/currency-api@latest/v1/currencies/usd.json";
 
-// ----------------------------------------------------------------
-// Public entry points
-// ----------------------------------------------------------------
+// ── Public entry points
 
 /// Fetch USD prices for the supplied coins from the given provider.
 ///
@@ -157,9 +147,7 @@ pub async fn fetch_fiat_rates(
     Ok(rates)
 }
 
-// ----------------------------------------------------------------
-// CoinGecko
-// ----------------------------------------------------------------
+// ── CoinGecko
 
 #[derive(Debug, Deserialize)]
 struct CoinGeckoQuoteEntry {
@@ -221,9 +209,7 @@ fn urlencoding_csv(csv: &str) -> String {
     csv.replace(' ', "%20")
 }
 
-// ----------------------------------------------------------------
-// CoinPaprika
-// ----------------------------------------------------------------
+// ── CoinPaprika
 
 #[derive(Debug, Deserialize)]
 struct PaprikaQuotes {
@@ -390,9 +376,7 @@ fn paprika_id_for(gecko_id: &str, symbol: &str) -> Option<&'static str> {
     }
 }
 
-// ----------------------------------------------------------------
-// CoinLore
-// ----------------------------------------------------------------
+// ── CoinLore
 
 #[derive(Debug, Deserialize)]
 struct CoinLoreTicker {
@@ -452,9 +436,7 @@ fn coinlore_nameid_for(gecko_id: &str) -> &str {
     }
 }
 
-// ----------------------------------------------------------------
-// Fiat rates
-// ----------------------------------------------------------------
+// ── Fiat rates
 
 #[derive(Debug, Deserialize)]
 struct OpenERResponse {
@@ -546,9 +528,7 @@ fn filter_rates(rates: HashMap<String, f64>, allowed: &[String]) -> HashMap<Stri
     out
 }
 
-// ----------------------------------------------------------------
-// Client-side merge policies (called from Swift after fetch)
-// ----------------------------------------------------------------
+// ── Client-side merge policies (called from Swift after fetch)
 
 #[derive(Debug, Clone, uniffi::Record)]
 pub struct PriceMergeOutcome {

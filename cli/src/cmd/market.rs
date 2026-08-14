@@ -1,8 +1,5 @@
-//! Prices, portfolio value, and the display currency.
-//!
-//! The currency is a domain setting: it lives in `CoreAppState.settings` and is
-//! shared with the app, so setting it here changes what the phone shows. It
-//! goes through `SetFiatCurrency` like every other state change.
+//! The display currency is domain state shared with the app: setting it here
+//! changes what the phone shows.
 
 use clap::Args;
 use colored::Colorize as _;
@@ -196,7 +193,7 @@ pub fn currency(ctx: &Ctx, out: Out, args: CurrencyArgs) -> CliResult<()> {
 // ─── Shared lookups ─────────────────────────────────────────────────────────
 
 /// Spot USD prices keyed by coin symbol, in one CoinGecko call.
-fn spot_price_usd(
+pub(super) fn spot_price_usd(
     ctx: &Ctx,
     chains: &[Chain],
 ) -> CliResult<std::collections::HashMap<String, f64>> {

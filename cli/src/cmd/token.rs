@@ -1,9 +1,5 @@
-//! Tokens: the built-in catalog, and which ones this wallet tracks.
-//!
-//! Tracked tokens live in `CoreAppState.token_preferences` and go in through
-//! `SetTokenPreferences`, which clamps the display decimals — a token cannot
-//! show more places than it has. That rule was the reason the list moved into
-//! core; until now only Swift could exercise it.
+//! `SetTokenPreferences` clamps the display decimals — a token cannot show
+//! more places than it has — which is the rule the list moved into core for.
 
 use clap::{Args, Subcommand};
 use colored::Colorize as _;

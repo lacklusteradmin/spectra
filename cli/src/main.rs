@@ -1,12 +1,9 @@
 //! `spectra` — a front end for `spectra_core`, and the check that core needs
 //! no platform.
 //!
-//! Every command here is non-interactive by default and scriptable: arguments
-//! select, `--json` reports, and exit codes distinguish "core said no" from
-//! "something broke". That is deliberate. `PLAN.md` rule 1 makes this CLI the
-//! acceptance gate for logic moving out of Swift — "if `spectra` cannot drive
-//! it, it is in the wrong place" — and the previous version could only be
-//! driven by a person typing into a prompt, which is not a gate.
+//! Every command is non-interactive and scriptable, because `PLAN.md` rule 1
+//! makes this CLI the acceptance gate: a rule it cannot drive is in the wrong
+//! place. The previous version was a REPL, which cannot gate anything.
 
 mod cmd;
 mod ctx;
@@ -76,6 +73,14 @@ enum Command {
     Diagnostics(cmd::diagnostics::DiagnosticsCommand),
     /// Run one balance-refresh sweep through core's engine.
     Refresh(cmd::refresh::RefreshArgs),
+    /// Search a seed's derivation paths for funded addresses.
+    Rescan(cmd::rescan::RescanArgs),
+    /// A wallet's receive/change index pool.
+    #[command(subcommand)]
+    Pool(cmd::address_pool::PoolCommand),
+    /// Price alerts.
+    #[command(subcommand)]
+    Alert(cmd::alert::AlertCommand),
 }
 
 fn main() {
@@ -109,5 +114,8 @@ fn dispatch(ctx: &Ctx, out: Out, command: Command) -> Result<(), CliError> {
         Command::Token(command) => cmd::token::run(ctx, out, command),
         Command::Diagnostics(command) => cmd::diagnostics::run(ctx, out, command),
         Command::Refresh(args) => cmd::refresh::refresh(ctx, out, args),
+        Command::Rescan(args) => cmd::rescan::rescan(ctx, out, args),
+        Command::Pool(command) => cmd::address_pool::run(ctx, out, command),
+        Command::Alert(command) => cmd::alert::run(ctx, out, command),
     }
 }

@@ -1,20 +1,11 @@
-//! How a wallet's seed phrase is sealed, named and stored.
+//! The *policy* binding [`seed_envelope`](super::seed_envelope)'s cipher to
+//! [`password_verifier`](super::password_verifier)'s check: the KDF and its
+//! cost, the three blobs a sealed wallet consists of, and their keys.
 //!
-//! [`seed_envelope`](super::seed_envelope) owns the cipher and
-//! [`password_verifier`](super::password_verifier) owns the password check.
-//! This module owns the *policy* that binds them together: the KDF and its
-//! cost, the three blobs a sealed wallet consists of, the keys they live
-//! under, and the encoding that puts bytes into a [`SecretStore`]'s opaque
-//! string values.
-//!
-//! It belongs in core because both front ends have to agree on it. It used to
-//! live in `cli/src/main.rs`, which meant the CLI defined one sealed format and
-//! iOS defined another — and a front end could have raised or lowered the
-//! PBKDF2 cost with nothing to disagree with it.
-//!
-//! The `SecretStore` backend stays platform-owned: iOS hands over a
-//! Keychain-backed implementation, the CLI a file-backed one. What is sealed
-//! and how is core's; where the bytes physically rest is the platform's.
+//! It belongs in core because both front ends must agree on it — it used to
+//! live in `cli/src/main.rs`, where a front end could have changed the PBKDF2
+//! cost with nothing to disagree. The *backend* stays platform-owned: Keychain
+//! on iOS, files for the CLI.
 
 use base64::Engine as _;
 use rand::RngCore;
@@ -32,11 +23,7 @@ pub const PBKDF2_ITERATIONS: u32 = 210_000;
 /// Salt length in bytes for the master-key derivation.
 const SALT_LEN: usize = 16;
 
-/// What can go wrong sealing or unsealing a wallet's secret.
-///
-/// Deliberately not a `uniffi::Error`: nothing crosses the FFI for this. iOS
-/// seals through the Keychain, and growing the FFI surface is the debt
-/// `PLAN.md` is removing, not adding to.
+/// Deliberately not a `uniffi::Error`: nothing crosses the FFI for this.
 #[derive(Debug, thiserror::Error, PartialEq, Eq)]
 pub enum WalletSecretError {
     /// No sealed material is stored for this wallet — a watch-only wallet, or
@@ -65,10 +52,8 @@ impl From<SecretStoreError> for WalletSecretError {
     }
 }
 
-/// The three blobs one sealed wallet consists of, and the bucket each belongs
-/// in. Splitting them is what lets the seed sit in the platform's strongest
-/// bucket while the salt and verifier — neither of which is secret on its own —
-/// sit in the generic one.
+/// Split by bucket so the seed sits in the platform's strongest one while the
+/// salt and verifier — neither secret alone — sit in the generic one.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum Blob {
     /// The AES-GCM envelope holding the seed phrase.
@@ -80,7 +65,6 @@ enum Blob {
 }
 
 impl Blob {
-    /// Bucket this blob is stored in. Only the envelope is seed material.
     fn class(self) -> SecretClass {
         match self {
             Blob::Envelope => SecretClass::Seed,
@@ -88,8 +72,7 @@ impl Blob {
         }
     }
 
-    /// Suffix appended to the wallet id. Part of the on-disk layout — these
-    /// strings are frozen.
+    /// Part of the on-disk layout: frozen.
     fn suffix(self) -> &'static str {
         match self {
             Blob::Envelope => "seed",
@@ -109,7 +92,6 @@ fn engine() -> base64::engine::general_purpose::GeneralPurpose {
     base64::engine::general_purpose::STANDARD
 }
 
-/// `SecretStore` values are opaque strings, so bytes ride across as base64.
 fn write_blob(
     store: &dyn SecretStore,
     wallet_id: &str,
@@ -134,10 +116,7 @@ fn read_blob(
         })
 }
 
-/// Stretch `password` into the 32-byte AES key that seals the envelope.
-///
-/// `Zeroizing` so the key is wiped when it leaves scope rather than lingering
-/// in the caller's stack frame after the envelope is sealed or opened.
+/// `Zeroizing` so the key is wiped rather than left in the caller's frame.
 fn derive_master_key(password: &str, salt: &[u8]) -> Zeroizing<[u8; 32]> {
     let mut key = Zeroizing::new([0u8; 32]);
     pbkdf2::pbkdf2_hmac::<sha2::Sha256>(
@@ -149,8 +128,7 @@ fn derive_master_key(password: &str, salt: &[u8]) -> Zeroizing<[u8; 32]> {
     key
 }
 
-/// Seal `seed_phrase` under `password` and store all three blobs for
-/// `wallet_id`, replacing anything already stored for it.
+/// Replaces anything already stored for `wallet_id`.
 pub fn seal(
     store: &dyn SecretStore,
     wallet_id: &str,
@@ -180,10 +158,7 @@ pub fn seal(
     Ok(())
 }
 
-/// Check `password` against the stored verifier, then decrypt and return the
-/// seed phrase.
-///
-/// The verifier is checked first so a wrong password is reported as such
+/// The verifier is checked first, so a wrong password is reported as such
 /// rather than as an AES-GCM tag mismatch.
 pub fn unlock(
     store: &dyn SecretStore,
@@ -202,7 +177,7 @@ pub fn unlock(
         .map_err(|message| WalletSecretError::Corrupt { message })
 }
 
-/// Remove every blob for `wallet_id`. Idempotent, like the underlying store.
+/// Idempotent, like the underlying store.
 pub fn delete(store: &dyn SecretStore, wallet_id: &str) -> Result<(), WalletSecretError> {
     for blob in Blob::ALL {
         store.delete_secret(blob.class(), blob.key(wallet_id))?;
@@ -210,10 +185,7 @@ pub fn delete(store: &dyn SecretStore, wallet_id: &str) -> Result<(), WalletSecr
     Ok(())
 }
 
-/// Whether sealed material exists for `wallet_id`.
-///
-/// Answers off the envelope alone: it is the blob that makes a wallet
-/// spendable, and the other two are useless without it.
+/// Answers off the envelope alone: the other two are useless without it.
 pub fn is_sealed(store: &dyn SecretStore, wallet_id: &str) -> bool {
     store
         .load_secret(Blob::Envelope.class(), Blob::Envelope.key(wallet_id))
