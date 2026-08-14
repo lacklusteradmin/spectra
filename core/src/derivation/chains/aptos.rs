@@ -148,7 +148,6 @@ fn aptos_internal(
 }
 
 /// UniFFI export: derive Aptos mainnet keys from a BIP-39 seed phrase.
-#[uniffi::export]
 pub fn derive_aptos(
     seed_phrase: String,
     derivation_path: String,
@@ -168,7 +167,6 @@ pub fn derive_aptos(
 }
 
 /// UniFFI export: derive Aptos testnet keys (identical derivation to mainnet; network differs at RPC layer).
-#[uniffi::export]
 pub fn derive_aptos_testnet(
     seed_phrase: String,
     derivation_path: String,

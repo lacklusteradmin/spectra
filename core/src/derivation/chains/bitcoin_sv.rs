@@ -76,7 +76,6 @@ fn bsv_internal(
 }
 
 /// UniFFI export: derive Bitcoin SV mainnet keys (P2PKH only).
-#[uniffi::export]
 pub fn derive_bitcoin_sv(
     seed_phrase: String,
     derivation_path: String,
@@ -99,7 +98,6 @@ pub fn derive_bitcoin_sv(
 }
 
 /// UniFFI export: derive Bitcoin SV testnet keys (P2PKH only).
-#[uniffi::export]
 pub fn derive_bitcoin_sv_testnet(
     seed_phrase: String,
     derivation_path: String,

@@ -41,7 +41,6 @@ use crate::derivation::types::{parse_path_metadata, BitcoinScriptType, Derivatio
 use crate::SpectraBridgeError;
 
 /// UniFFI export: derive Bitcoin Gold mainnet keys; only P2PKH script type is supported.
-#[uniffi::export]
 pub fn derive_bitcoin_gold(
     seed_phrase: String,
     derivation_path: String,

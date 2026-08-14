@@ -454,6 +454,62 @@ pub enum CoreTokenTrackingChain {
     Tron,
 }
 
+impl CoreTokenTrackingChain {
+    /// The chain a tracked token belongs to, from its display name.
+    ///
+    /// The mapping was only ever expressed as serde renames, which meant a
+    /// caller outside serialization had no way to ask. Not every chain can host
+    /// tracked tokens, so this returns `None` rather than guessing.
+    pub fn from_chain_name(name: &str) -> Option<Self> {
+        match name {
+            "Ethereum" => Some(Self::Ethereum),
+            "Arbitrum" => Some(Self::Arbitrum),
+            "Optimism" => Some(Self::Optimism),
+            "BNB Chain" => Some(Self::Bnb),
+            "Avalanche" => Some(Self::Avalanche),
+            "Hyperliquid" => Some(Self::Hyperliquid),
+            "Polygon" => Some(Self::Polygon),
+            "Base" => Some(Self::Base),
+            "Linea" => Some(Self::Linea),
+            "Scroll" => Some(Self::Scroll),
+            "Blast" => Some(Self::Blast),
+            "Mantle" => Some(Self::Mantle),
+            "Solana" => Some(Self::Solana),
+            "Sui" => Some(Self::Sui),
+            "Aptos" => Some(Self::Aptos),
+            "TON" => Some(Self::Ton),
+            "NEAR" => Some(Self::Near),
+            "Tron" => Some(Self::Tron),
+            _ => None,
+        }
+    }
+
+    /// The display name this variant stands for.
+    pub const fn chain_name(self) -> &'static str {
+        match self {
+            Self::Ethereum => "Ethereum",
+            Self::Arbitrum => "Arbitrum",
+            Self::Optimism => "Optimism",
+            Self::Bnb => "BNB Chain",
+            Self::Avalanche => "Avalanche",
+            Self::Hyperliquid => "Hyperliquid",
+            Self::Polygon => "Polygon",
+            Self::Base => "Base",
+            Self::Linea => "Linea",
+            Self::Scroll => "Scroll",
+            Self::Blast => "Blast",
+            Self::Mantle => "Mantle",
+            Self::Solana => "Solana",
+            Self::Sui => "Sui",
+            Self::Aptos => "Aptos",
+            Self::Ton => "TON",
+            Self::Near => "NEAR",
+            Self::Tron => "Tron",
+        }
+    }
+}
+
+
 /// Swift `TokenPreferenceCategory` — rawValues: "stablecoin", "meme", "custom".
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Hash, uniffi::Enum)]
 #[serde(rename_all = "lowercase")]
@@ -570,5 +626,50 @@ mod roundtrip_tests {
         let d: CoreWalletRustSecretMaterialDescriptor = serde_json::from_str(json).unwrap();
         assert_eq!(d.wallet_id, "w1");
         assert!(d.has_password);
+    }
+}
+
+#[cfg(test)]
+mod token_tracking_chain_tests {
+    use super::CoreTokenTrackingChain;
+    use crate::registry::Chain;
+
+    /// Every chain that can host tracked tokens resolves both ways, and the
+    /// name it round-trips through is one the registry recognises.
+    #[test]
+    fn every_tracking_chain_round_trips_through_the_registry() {
+        for variant in [
+            CoreTokenTrackingChain::Ethereum,
+            CoreTokenTrackingChain::Arbitrum,
+            CoreTokenTrackingChain::Optimism,
+            CoreTokenTrackingChain::Bnb,
+            CoreTokenTrackingChain::Avalanche,
+            CoreTokenTrackingChain::Hyperliquid,
+            CoreTokenTrackingChain::Polygon,
+            CoreTokenTrackingChain::Base,
+            CoreTokenTrackingChain::Linea,
+            CoreTokenTrackingChain::Scroll,
+            CoreTokenTrackingChain::Blast,
+            CoreTokenTrackingChain::Mantle,
+            CoreTokenTrackingChain::Solana,
+            CoreTokenTrackingChain::Sui,
+            CoreTokenTrackingChain::Aptos,
+            CoreTokenTrackingChain::Ton,
+            CoreTokenTrackingChain::Near,
+            CoreTokenTrackingChain::Tron,
+        ] {
+            let name = variant.chain_name();
+            assert_eq!(CoreTokenTrackingChain::from_chain_name(name), Some(variant));
+            assert!(
+                Chain::from_display_name(name).is_some(),
+                "{name} is not a chain the registry knows"
+            );
+        }
+    }
+
+    #[test]
+    fn a_chain_without_tracked_tokens_has_no_variant() {
+        assert_eq!(CoreTokenTrackingChain::from_chain_name("Bitcoin"), None);
+        assert_eq!(CoreTokenTrackingChain::from_chain_name("Monero"), None);
     }
 }

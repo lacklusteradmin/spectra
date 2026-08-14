@@ -233,21 +233,24 @@ pub struct WalletService {
 impl WalletService {
     #[uniffi::constructor]
     pub fn new_typed(endpoints: Vec<ChainEndpoints>) -> Result<Arc<Self>, SpectraBridgeError> {
+        // A library installing a global subscriber is already a liberty; one
+        // that writes to *stdout* at *debug* is a bug. It corrupted every
+        // `spectra --json` run — core's connection logs landed in the middle of
+        // the document — and a caller has no way to opt out of a `OnceLock`.
+        //
+        // Now: stderr, and quiet unless asked. `RUST_LOG=debug` restores what
+        // debug builds used to do by default.
         static LOGGING: std::sync::OnceLock<()> = std::sync::OnceLock::new();
         LOGGING.get_or_init(|| {
             use tracing_subscriber::{fmt, EnvFilter};
-            let filter = EnvFilter::try_from_default_env().unwrap_or_else(|_| {
-                if cfg!(debug_assertions) {
-                    EnvFilter::new("debug")
-                } else {
-                    EnvFilter::new("info")
-                }
-            });
-            fmt()
+            let filter = EnvFilter::try_from_default_env()
+                .unwrap_or_else(|_| EnvFilter::new("warn"));
+            let _ = fmt()
                 .with_env_filter(filter)
+                .with_writer(std::io::stderr)
                 .without_time()
                 .with_ansi(false)
-                .init();
+                .try_init();
         });
         Ok(Arc::new(Self {
             endpoints: Arc::new(RwLock::new(EndpointIndex::from_list(endpoints))),
@@ -3004,7 +3007,6 @@ use crate::tokens;
 /// so Swift can call from a `static let`. For "all chains, please" use
 /// [`list_all_builtin_tokens`] — that's the named entry point, not a
 /// sentinel value.
-#[uniffi::export]
 pub fn list_builtin_tokens(chain_id: String) -> Vec<tokens::TokenEntry> {
     tokens::list_tokens(chain_id)
 }

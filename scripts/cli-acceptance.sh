@@ -184,6 +184,72 @@ contains "defaults to USD"  '"currency":"USD"' spectra --json currency
 check "sets a currency"                     $OK spectra currency CHF
 contains "reads it back from the store" '"currency":"CHF"' spectra --json currency
 
+# ── Refresh ─────────────────────────────────────────────────────────────────
+#
+# The sweep itself needs a network. What is checkable offline is that the
+# engine refuses an empty run rather than reporting a successful no-op — the
+# shape of the bug this command surfaced, where a sweep that had not finished
+# reported "0 refreshed, 0 errors".
+
+section "refresh"
+# Against its *own* empty directory: by this point the shared one has wallets,
+# and `spectra refresh` there would sweep them over the network — which this
+# script promises not to do. The first version of this check did exactly that.
+check "refuses a refresh with no wallets"   $REJECTED \
+    "$BIN" --data-dir "$(mktemp -d)" refresh
+
+# ── Diagnostics ─────────────────────────────────────────────────────────────
+#
+# Core's own self-tests, which need no network and no device. Seven of them
+# were failing on fabricated fixtures until the CLI could run them.
+
+section "diagnostics"
+check "every chain's self-tests pass"       $OK spectra diagnostics self-test
+contains "reports a check count"      '"failed":0' \
+    spectra --json diagnostics self-test
+check "self-tests one chain"                $OK spectra diagnostics self-test --chain Bitcoin
+check "refuses self-tests for an unknown chain" $USAGE \
+    spectra diagnostics self-test --chain Nope
+contains "builds a diagnostics document"  '"endpoints"' \
+    spectra diagnostics show --chain Bitcoin
+
+# ── Tracked tokens ──────────────────────────────────────────────────────────
+#
+# The clamp is the rule that moved into core with the list: a token cannot
+# display more places than it has. And they have to survive a reopen — every
+# command here is a separate process, so this section is also the persistence
+# test.
+
+section "tracked tokens"
+contains "lists the built-in catalog" '"symbol":"USDC"' \
+    spectra --json token catalog --chain Ethereum
+check "refuses a token the catalog does not have" $REJECTED \
+    spectra token track --chain Ethereum NOTACOIN
+check "refuses tracking on a chain without tokens" $REJECTED \
+    spectra token track --chain Bitcoin USDC
+check "tracks a catalog token"                     $OK \
+    spectra token track --chain Ethereum USDC --display-decimals 2
+check "refuses tracking the same token twice"      $REJECTED \
+    spectra token track --chain Ethereum USDC
+contains "the tracked token survives a new process" '"symbol":"USDC"' \
+    spectra --json token list
+contains "clamps a display width the token cannot have" '"displayDecimals":6' \
+    spectra --json token track --chain Ethereum USDT --display-decimals 99
+check "untracks"                                   $OK spectra token untrack USDC
+check "refuses untracking what is not tracked"     $REJECTED spectra token untrack USDC
+
+# ── Staking ─────────────────────────────────────────────────────────────────
+#
+# Offline half only. Core has had a staking service since before the CLI could
+# reach it — only Swift drove it — so "which chains stake" is the part worth
+# asserting without a network.
+
+section "staking"
+check "refuses staking on a chain that does not stake" $REJECTED \
+    spectra staking validators --chain Bitcoin
+check "refuses staking on an unknown chain"            $USAGE \
+    spectra staking validators --chain Nope
+
 # ── Deletion ────────────────────────────────────────────────────────────────
 
 section "deletion"

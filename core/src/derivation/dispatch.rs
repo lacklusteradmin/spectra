@@ -140,3 +140,78 @@ pub fn derive_for_chain_name(
 
     Ok(result)
 }
+
+/// Derive for a chain named at the boundary.
+///
+/// One export in place of ~50 `derive<Chain>` functions, each of which Swift
+/// called from exactly one arm of a 212-line switch that reproduced this
+/// dispatch. The switch existed because the FFI offered no way to say "this
+/// chain" — the dispatcher was here the whole time, and the CLI already used
+/// it. `script_type` is honoured for the Bitcoin family and ignored elsewhere,
+/// as before; `None` derives it from the path.
+#[uniffi::export]
+pub fn core_derive_for_chain(
+    chain_name: String,
+    seed_phrase: String,
+    derivation_path: String,
+    passphrase: Option<String>,
+    hmac_key: Option<String>,
+    script_type: Option<BitcoinScriptType>,
+    want_address: bool,
+    want_public_key: bool,
+    want_private_key: bool,
+) -> Result<DerivationResult, SpectraBridgeError> {
+    derive_for_chain_name(
+        &chain_name,
+        &seed_phrase,
+        &derivation_path,
+        passphrase.as_deref(),
+        hmac_key.as_deref(),
+        script_type,
+        want_address,
+        want_public_key,
+        want_private_key,
+    )
+}
+
+#[cfg(test)]
+mod dispatch_export_tests {
+    use super::*;
+
+    /// Every chain the registry lists derives through the one export.
+    ///
+    /// This is the property the 50 separate exports could not state: that the
+    /// set of derivable chains and the set the registry knows are the same.
+    #[test]
+    fn every_registry_chain_derives_through_one_call() {
+        const PHRASE: &str =
+            "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about";
+        let mut missing = Vec::new();
+        for chain in crate::registry::Chain::all() {
+            // Testnets derive from their mainnet's catalog path.
+            let Some(template) = crate::chains::default_derivation_path_template_by_id(
+                chain.mainnet_counterpart().str_id(),
+            ) else {
+                continue;
+            };
+            let path = template.replace("{account}", "0");
+            let result = core_derive_for_chain(
+                chain.chain_display_name().to_string(),
+                PHRASE.to_string(),
+                path,
+                None,
+                None,
+                None,
+                true,
+                false,
+                false,
+            );
+            match result {
+                Ok(r) if r.address.is_some() => {}
+                _ => missing.push(chain.chain_display_name()),
+            }
+        }
+        assert!(missing.is_empty(), "no address derived for: {missing:?}");
+    }
+}
+

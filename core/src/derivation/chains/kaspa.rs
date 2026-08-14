@@ -387,7 +387,6 @@ use crate::derivation::types::{parse_path_metadata, DerivationResult};
 use crate::SpectraBridgeError;
 
 /// UniFFI export: derive Kaspa mainnet wallet (kaspa:… Schnorr address) from a seed phrase.
-#[uniffi::export]
 pub fn derive_kaspa(
     seed_phrase: String,
     derivation_path: String,
@@ -417,7 +416,6 @@ pub fn derive_kaspa(
 }
 
 /// UniFFI export: derive Kaspa testnet wallet (kaspatest:… Schnorr address) from a seed phrase.
-#[uniffi::export]
 pub fn derive_kaspa_testnet(
     seed_phrase: String,
     derivation_path: String,

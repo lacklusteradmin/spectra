@@ -187,7 +187,6 @@ fn xrp_internal(
 }
 
 /// UniFFI export: derive XRP Ledger mainnet wallet from a seed phrase.
-#[uniffi::export]
 pub fn derive_xrp(
     seed_phrase: String,
     derivation_path: String,
@@ -207,7 +206,6 @@ pub fn derive_xrp(
 }
 
 /// UniFFI export: derive XRP Ledger testnet wallet from a seed phrase.
-#[uniffi::export]
 pub fn derive_xrp_testnet(
     seed_phrase: String,
     derivation_path: String,

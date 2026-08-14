@@ -64,14 +64,6 @@ pub fn core_static_resource_json(
         .ok_or_else(|| format!("Missing static JSON resource {resource_name}.").into())
 }
 
-#[uniffi::export]
-pub fn core_static_text_resource_utf8(
-    resource_name: String,
-) -> Result<String, crate::SpectraBridgeError> {
-    static_text_resource(&resource_name)
-        .map(|value| value.to_string())
-        .ok_or_else(|| format!("Missing static text resource {resource_name}.").into())
-}
 
 #[cfg(test)]
 mod tests {

@@ -1926,7 +1926,6 @@ use crate::derivation::types::DerivationResult;
 use crate::SpectraBridgeError;
 
 /// UniFFI export: derive Monero mainnet keys from a BIP-39 seed phrase.
-#[uniffi::export]
 pub fn derive_monero(
     seed_phrase: String,
     want_address: bool,
@@ -1951,7 +1950,6 @@ pub fn derive_monero(
 }
 
 /// UniFFI export: derive Monero stagenet keys from a BIP-39 seed phrase.
-#[uniffi::export]
 pub fn derive_monero_stagenet(
     seed_phrase: String,
     want_address: bool,

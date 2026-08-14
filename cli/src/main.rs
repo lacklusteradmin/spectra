@@ -65,6 +65,17 @@ enum Command {
     Portfolio(cmd::market::PortfolioArgs),
     /// Read or set the display currency.
     Currency(cmd::market::CurrencyArgs),
+    /// Validators and staked positions.
+    #[command(subcommand)]
+    Staking(cmd::staking::StakingCommand),
+    /// The token catalog, and which tokens this wallet tracks.
+    #[command(subcommand)]
+    Token(cmd::token::TokenCommand),
+    /// Core's self-tests and diagnostics documents.
+    #[command(subcommand)]
+    Diagnostics(cmd::diagnostics::DiagnosticsCommand),
+    /// Run one balance-refresh sweep through core's engine.
+    Refresh(cmd::refresh::RefreshArgs),
 }
 
 fn main() {
@@ -75,7 +86,9 @@ fn main() {
 
     if let Err(error) = result {
         out.text(|| eprintln!("  {} {}", out::fail_mark(), error));
-        out.emit(serde_json::json!({ "ok": false, "error": error.message }));
+        if !error.already_emitted {
+            out.emit(serde_json::json!({ "ok": false, "error": error.message }));
+        }
         std::process::exit(error.code);
     }
 }
@@ -92,5 +105,9 @@ fn dispatch(ctx: &Ctx, out: Out, command: Command) -> Result<(), CliError> {
         Command::Price(args) => cmd::market::price(ctx, out, args),
         Command::Portfolio(args) => cmd::market::portfolio(ctx, out, args),
         Command::Currency(args) => cmd::market::currency(ctx, out, args),
+        Command::Staking(command) => cmd::staking::run(ctx, out, command),
+        Command::Token(command) => cmd::token::run(ctx, out, command),
+        Command::Diagnostics(command) => cmd::diagnostics::run(ctx, out, command),
+        Command::Refresh(args) => cmd::refresh::refresh(ctx, out, args),
     }
 }

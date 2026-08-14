@@ -309,7 +309,6 @@ fn json_escape(s: &str) -> String {
 
 /// Build the JSON payload for a native EVM send. `overrides_fragment` is the
 /// comma-prefixed string from `build_evm_overrides_json_fragment` (may be empty).
-#[uniffi::export]
 pub fn build_evm_native_send_payload(
     from_address: String,
     to_address: String,
@@ -327,7 +326,6 @@ pub fn build_evm_native_send_payload(
     )
 }
 
-#[uniffi::export]
 pub fn build_evm_token_send_payload(
     from_address: String,
     contract_address: String,

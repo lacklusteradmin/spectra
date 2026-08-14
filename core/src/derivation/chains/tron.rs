@@ -177,7 +177,6 @@ fn tron_internal(
 }
 
 /// UniFFI export: derive Tron mainnet wallet from a seed phrase.
-#[uniffi::export]
 pub fn derive_tron(
     seed_phrase: String,
     derivation_path: String,
@@ -197,7 +196,6 @@ pub fn derive_tron(
 }
 
 /// UniFFI export: derive Tron Nile testnet wallet from a seed phrase.
-#[uniffi::export]
 pub fn derive_tron_nile(
     seed_phrase: String,
     derivation_path: String,

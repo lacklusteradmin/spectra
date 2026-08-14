@@ -59,7 +59,6 @@ use crate::derivation::types::DerivationResult;
 use crate::SpectraBridgeError;
 
 /// UniFFI export: derive Bittensor wallet (address, public key, mini-secret) from a seed phrase.
-#[uniffi::export]
 pub fn derive_bittensor(
     seed_phrase: String,
     passphrase: Option<String>,

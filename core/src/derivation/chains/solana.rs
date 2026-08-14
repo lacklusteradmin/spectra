@@ -149,7 +149,6 @@ fn solana_internal(
 }
 
 /// UniFFI export: derive Solana mainnet keys from a BIP-39 seed phrase.
-#[uniffi::export]
 pub fn derive_solana(
     seed_phrase: String,
     derivation_path: String,
@@ -171,7 +170,6 @@ pub fn derive_solana(
 }
 
 /// UniFFI export: derive Solana devnet keys (identical derivation to mainnet).
-#[uniffi::export]
 pub fn derive_solana_devnet(
     seed_phrase: String,
     derivation_path: String,

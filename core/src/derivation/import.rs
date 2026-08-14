@@ -363,14 +363,6 @@ pub fn core_address_slot(chain_name: String) -> String {
         .unwrap_or_default()
 }
 
-/// `true` when a chain can be imported watch-only from an address alone.
-/// Monero cannot — watching it needs the private view key.
-#[uniffi::export]
-pub fn core_supports_watch_only_import(chain_name: String) -> bool {
-    Chain::from_display_name(&chain_name)
-        .map(Chain::supports_watch_only_import)
-        .unwrap_or(false)
-}
 
 pub fn plan_wallet_import(request: WalletImportRequest) -> Result<WalletImportPlan, String> {
     if request.is_watch_only_import {

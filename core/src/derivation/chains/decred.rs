@@ -536,7 +536,6 @@ pub fn derive_decred(
 }
 
 /// UniFFI export: derive Decred testnet wallet (Ts… P2PKH address) from a seed phrase.
-#[uniffi::export]
 pub fn derive_decred_testnet(
     seed_phrase: String,
     derivation_path: String,

@@ -1624,21 +1624,7 @@ mod tests;
 
 // ── FFI surface ─────────────────────────────────────────────────────────────
 
-#[uniffi::export]
-pub fn core_build_persisted_snapshot(
-    app_state: crate::store::state::CoreAppState,
-    secret_observations: Vec<WalletSecretObservation>,
-) -> PersistedAppSnapshot {
-    build_persisted_snapshot_typed(app_state, secret_observations)
-}
 
-#[uniffi::export]
-pub fn core_wallet_secret_index(
-    app_state: crate::store::state::CoreAppState,
-    secret_observations: Vec<WalletSecretObservation>,
-) -> WalletSecretIndex {
-    wallet_secret_index_from_observations(app_state, secret_observations)
-}
 
 #[uniffi::export]
 pub fn core_aggregate_owned_addresses(request: OwnedAddressAggregationRequest) -> Vec<String> {

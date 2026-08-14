@@ -503,7 +503,6 @@ pub fn derive_bitcoin(
 }
 
 /// UniFFI export: derive Bitcoin testnet wallet from a seed phrase.
-#[uniffi::export]
 pub fn derive_bitcoin_testnet(
     seed_phrase: String,
     derivation_path: String,
@@ -526,7 +525,6 @@ pub fn derive_bitcoin_testnet(
 }
 
 /// UniFFI export: derive Bitcoin testnet4 wallet from a seed phrase.
-#[uniffi::export]
 pub fn derive_bitcoin_testnet4(
     seed_phrase: String,
     derivation_path: String,
@@ -549,7 +547,6 @@ pub fn derive_bitcoin_testnet4(
 }
 
 /// UniFFI export: derive Bitcoin signet wallet from a seed phrase.
-#[uniffi::export]
 pub fn derive_bitcoin_signet(
     seed_phrase: String,
     derivation_path: String,

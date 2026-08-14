@@ -133,7 +133,6 @@ use crate::derivation::types::{parse_path_metadata, DerivationResult};
 use crate::SpectraBridgeError;
 
 /// UniFFI export: derive Internet Computer keys from a BIP-39 seed phrase.
-#[uniffi::export]
 pub fn derive_icp(
     seed_phrase: String,
     derivation_path: String,

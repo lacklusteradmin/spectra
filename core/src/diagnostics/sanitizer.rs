@@ -151,10 +151,6 @@ pub fn sanitize_diagnostics_string(input: &str) -> String {
     redact_seed_word_sequences(&stage2)
 }
 
-#[uniffi::export]
-pub fn diagnostics_sanitize_string(input: String) -> String {
-    sanitize_diagnostics_string(&input)
-}
 
 #[cfg(test)]
 mod tests {

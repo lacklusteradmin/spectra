@@ -52,7 +52,6 @@ fn substrate_internal(
 }
 
 /// UniFFI export: derive Polkadot mainnet wallet (SS58 prefix 0, "1…" addresses).
-#[uniffi::export]
 pub fn derive_polkadot(
     seed_phrase: String,
     passphrase: Option<String>,
@@ -73,7 +72,6 @@ pub fn derive_polkadot(
 }
 
 /// UniFFI export: derive Polkadot Westend testnet wallet (SS58 prefix 42, "5…" addresses).
-#[uniffi::export]
 pub fn derive_polkadot_westend(
     seed_phrase: String,
     passphrase: Option<String>,

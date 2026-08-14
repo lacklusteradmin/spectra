@@ -60,7 +60,6 @@ fn near_internal(
 }
 
 /// UniFFI export: derive NEAR mainnet keys (direct-seed ed25519; address = hex pubkey).
-#[uniffi::export]
 pub fn derive_near(
     seed_phrase: String,
     passphrase: Option<String>,
@@ -78,7 +77,6 @@ pub fn derive_near(
 }
 
 /// UniFFI export: derive NEAR testnet keys (identical derivation to mainnet).
-#[uniffi::export]
 pub fn derive_near_testnet(
     seed_phrase: String,
     passphrase: Option<String>,

@@ -47,7 +47,7 @@ const CHAIN_SPECS: &[ChainSpec] = &[
         chain_label: "Bitcoin",
         address_kind: "bitcoin",
         network_mode: Some("mainnet"),
-        valid_address: "bc1qw508d6qejxtdg4y5r3zarvary0c5xw7kygt080",
+        valid_address: "bc1qgkju4yvvtuz0s8vqn837q396jezu2h8ex7gk98",
         invalid_address: "bc1_not_valid",
         derivation_chain: Some("Bitcoin"),
         derivation_path: "m/84'/0'/0'/0/0",
@@ -57,7 +57,7 @@ const CHAIN_SPECS: &[ChainSpec] = &[
         chain_label: "Bitcoin Cash",
         address_kind: "bitcoinCash",
         network_mode: None,
-        valid_address: "bitcoincash:qq07d3s9k4u8x7n5e9qj6m4eht0n5k7n3w6d5m9c8w",
+        valid_address: "19GmUu4QnfGirbAxnpDviczXKZ8LVCvvq8",
         invalid_address: "bitcoincash:not_valid",
         derivation_chain: Some("Bitcoin Cash"),
         derivation_path: "m/44'/145'/0'/0/0",
@@ -77,7 +77,7 @@ const CHAIN_SPECS: &[ChainSpec] = &[
         chain_label: "Litecoin",
         address_kind: "litecoin",
         network_mode: None,
-        valid_address: "ltc1qg82u8my75w4q8k4s4w9q3k6v7d9s8g0j4qg3s6",
+        valid_address: "LZHamZCxNf71EmnHgUkztqMyaWyBc5nrkb",
         invalid_address: "ltc_not_valid",
         derivation_chain: Some("Litecoin"),
         derivation_path: "m/44'/2'/0'/0/0",
@@ -107,7 +107,7 @@ const CHAIN_SPECS: &[ChainSpec] = &[
         chain_label: "Stellar",
         address_kind: "stellar",
         network_mode: None,
-        valid_address: "GBRPYHIL2C4F7Q4W6H6OL5K2C4BFRJHC7YQ7AZZLQ6G4Z7D4VJ4M6N4K",
+        valid_address: "GAFOIIMIXWLSN66RYL32JHCI7AMKWZ3TYYSZTOXSTLPHJWPMZDERMXUO",
         invalid_address: "stellar_not_valid",
         derivation_chain: Some("Stellar"),
         derivation_path: "m/44'/148'/0'",
@@ -167,7 +167,7 @@ const CHAIN_SPECS: &[ChainSpec] = &[
         chain_label: "Internet Computer",
         address_kind: "internetComputer",
         network_mode: None,
-        valid_address: "be2us-64aaa-aaaaa-qaabq-cai",
+        valid_address: "3d67a090082c446abb79b91cfa4937cb69256d23b23c72d6fa0461e62d8b3fe3",
         invalid_address: "icp_not_valid",
         derivation_chain: Some("Internet Computer"),
         derivation_path: "m/44'/223'/0'/0/0",
@@ -187,7 +187,7 @@ const CHAIN_SPECS: &[ChainSpec] = &[
         chain_label: "Polkadot",
         address_kind: "polkadot",
         network_mode: None,
-        valid_address: "15oF4u3gP5xY8J8cH7W5WqJ9wS6XtK9vYw7R1oL2nQm1QdKp",
+        valid_address: "13DyfGHEWo6GF98AxoBbovBHy82rrr4H3LrWaxggtEpgku8o",
         invalid_address: "dot_not_valid",
         derivation_chain: Some("Polkadot"),
         derivation_path: "m/44'/354'/0'",
@@ -197,7 +197,7 @@ const CHAIN_SPECS: &[ChainSpec] = &[
         chain_label: "Monero",
         address_kind: "monero",
         network_mode: None,
-        valid_address: "47zQ5w3QJ9P4hJ2sD7v8QnE9mQfQv7s3y6Fq1v6F5g4Yv7dL1m4rV4bW2tK4w9W8nS2b8S8i3Q2vX5M8Q1n7w6Jp1q2x3Q",
+        valid_address: "46pWvmHcWgbDZDhzkgqMN52rq4tJZGZv26qDTiZW4Jg21tqEyrDaQMjVVACuC59gc9Ma3LM9CqD44Cn8XVqjAnPxEnP1PrZ",
         invalid_address: "xmr_not_valid",
         derivation_chain: None,
         derivation_path: "",
@@ -601,5 +601,45 @@ mod tests {
     fn ethereum_self_tests_pass() {
         let results = run_ethereum();
         assert!(results.iter().all(|r| r.passed), "{:#?}", results);
+    }
+}
+
+#[cfg(test)]
+mod fixtures_are_real_tests {
+    use super::*;
+
+    /// Every self-test passes.
+    ///
+    /// Seven did not, all of them "<chain> Address Validation", for Bitcoin,
+    /// Bitcoin Cash, Litecoin, Monero, Polkadot, Stellar and Internet Computer.
+    /// The validators were right; the *fixtures* were hand-typed strings that
+    /// looked like addresses and had invalid checksums — Bitcoin's was the
+    /// BIP-173 vector with the last seven characters wrong. The replacements
+    /// are derived by core from the standard test mnemonic, so they are correct
+    /// by construction rather than by typing.
+    ///
+    /// This test is the reason that cannot recur: the self-tests are now
+    /// themselves tested, so a bad fixture fails the build instead of showing
+    /// a red row on a diagnostics screen nobody reads.
+    #[test]
+    fn every_self_test_passes() {
+        let failures: Vec<String> = self_tests_run_all()
+            .into_iter()
+            .flat_map(|(chain, results)| {
+                results
+                    .into_iter()
+                    .filter(|result| !result.passed)
+                    .map(move |result| format!("{chain}: {}", result.name))
+            })
+            .collect();
+        assert!(failures.is_empty(), "failing self-tests: {failures:#?}");
+    }
+
+    /// A self-test suite with no checks is a chain nobody is checking.
+    #[test]
+    fn every_chain_with_a_suite_actually_checks_something() {
+        for (chain, results) in self_tests_run_all() {
+            assert!(!results.is_empty(), "{chain} has an empty self-test suite");
+        }
     }
 }

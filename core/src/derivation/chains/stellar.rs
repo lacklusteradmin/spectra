@@ -215,7 +215,6 @@ fn stellar_internal(
 }
 
 /// UniFFI export: derive Stellar mainnet wallet (G-account strkey address) from a seed phrase.
-#[uniffi::export]
 pub fn derive_stellar(
     seed_phrase: String,
     derivation_path: String,
@@ -237,7 +236,6 @@ pub fn derive_stellar(
 }
 
 /// UniFFI export: derive Stellar testnet wallet from a seed phrase.
-#[uniffi::export]
 pub fn derive_stellar_testnet(
     seed_phrase: String,
     derivation_path: String,

@@ -690,7 +690,6 @@ pub fn core_evm_chain_context(chain_name: String) -> Option<EvmChainContextInfo>
 
 // ─── Dogecoin derivation index parser ─────────────────────────────────────────
 
-#[uniffi::export]
 pub fn core_parse_dogecoin_derivation_index(
     path: Option<String>,
     expected_prefix: String,
@@ -747,7 +746,6 @@ pub struct RebroadcastDispatch {
     pub extract_field: Option<String>,
 }
 
-#[uniffi::export]
 pub fn core_rebroadcast_dispatch_for_format(
     format: String,
 ) -> Result<RebroadcastDispatch, SpectraBridgeError> {

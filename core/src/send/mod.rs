@@ -438,10 +438,6 @@ mod tests {
 
 // ── FFI surface ─────────────────────────────────────────────────────────────
 
-#[uniffi::export]
-pub fn core_route_send_asset(request: SendAssetRoutingInput) -> SendAssetRoutingPlan {
-    route_send_asset(&request)
-}
 
 #[uniffi::export]
 pub fn core_send_preview_routing(

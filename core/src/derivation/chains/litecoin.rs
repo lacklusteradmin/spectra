@@ -136,7 +136,6 @@ pub fn derive_litecoin(
 }
 
 /// UniFFI export: derive Litecoin testnet keys.
-#[uniffi::export]
 pub fn derive_litecoin_testnet(
     seed_phrase: String,
     derivation_path: String,

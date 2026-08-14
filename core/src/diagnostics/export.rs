@@ -14,19 +14,21 @@ use serde_json::{json, Map, Value};
 use super::types::*;
 use crate::diagnostics::sanitizer::sanitize_diagnostics_string;
 
-/// Generic endpoint-health row (matches Swift `BitcoinEndpointHealthResult`
-/// and the UTXO/non-EVM chains that reuse its shape).
+/// One endpoint's reachability, for every chain.
+///
+/// There used to be two of these — a plain one and an `EndpointHealthRow`
+/// that added `label` — which is a field, not a type. Carrying both forced the
+/// per-chain diagnostics state to keep two differently-typed slots for the same
+/// thing, which is why the endpoint-health properties could not be keyed by
+/// chain until now.
+///
+/// `label` stays out of the non-EVM JSON: `endpoint_row_value` does not emit it
+/// and `evm_endpoint_row_value` does, so the bundle shape is unchanged.
 #[derive(uniffi::Record, serde::Serialize, serde::Deserialize, Clone, Debug, PartialEq)]
 pub struct EndpointHealthRow {
-    pub endpoint: String,
-    pub reachable: bool,
-    pub status_code: Option<i32>,
-    pub detail: String,
-}
-
-/// EVM endpoint-health row (adds a human-readable `label`).
-#[derive(uniffi::Record, serde::Serialize, serde::Deserialize, Clone, Debug, PartialEq)]
-pub struct EvmEndpointHealthRow {
+    /// Human-readable name for the endpoint. Empty for chains whose
+    /// diagnostics list endpoints without one.
+    #[serde(default)]
     pub label: String,
     pub endpoint: String,
     pub reachable: bool,
@@ -87,7 +89,7 @@ fn endpoint_row_value(row: &EndpointHealthRow) -> Value {
     })
 }
 
-fn evm_endpoint_row_value(row: &EvmEndpointHealthRow) -> Value {
+fn evm_endpoint_row_value(row: &EndpointHealthRow) -> Value {
     json!({
         "label": row.label,
         "endpoint": row.endpoint,
@@ -103,10 +105,9 @@ fn unix_or_zero(t: Option<f64>) -> f64 {
 
 // ---------- EVM ----------
 
-#[uniffi::export]
 pub fn diagnostics_build_evm_json(
     history: Vec<EvmHistoryEntry>,
-    endpoints: Vec<EvmEndpointHealthRow>,
+    endpoints: Vec<EndpointHealthRow>,
     history_last_updated_at_unix: Option<f64>,
     endpoints_last_updated_at_unix: Option<f64>,
 ) -> Option<String> {
@@ -160,7 +161,6 @@ pub fn core_diagnostics_evm_json_shape_ok(json: String) -> bool {
 
 // ---------- UTXO (Bitcoin-shape) ----------
 
-#[uniffi::export]
 pub fn diagnostics_build_utxo_json(
     history: Vec<UtxoHistoryEntry>,
     endpoints: Vec<EndpointHealthRow>,
@@ -201,7 +201,6 @@ pub fn diagnostics_build_utxo_json(
 
 // ---------- Simple address chains ----------
 
-#[uniffi::export]
 pub fn diagnostics_build_simple_address_json(
     history: Vec<SimpleAddressHistoryEntry>,
     endpoints: Vec<EndpointHealthRow>,
@@ -232,7 +231,6 @@ pub fn diagnostics_build_simple_address_json(
 
 // ---------- Tron ----------
 
-#[uniffi::export]
 pub fn diagnostics_build_tron_json(
     history: Vec<TronHistoryEntry>,
     endpoints: Vec<EndpointHealthRow>,
@@ -269,7 +267,6 @@ pub fn diagnostics_build_tron_json(
 
 // ---------- Solana ----------
 
-#[uniffi::export]
 pub fn diagnostics_build_solana_json(
     history: Vec<SolanaHistoryEntry>,
     endpoints: Vec<EndpointHealthRow>,
@@ -361,7 +358,7 @@ mod tests {
                     decoding_completeness_ratio: 0.9,
                 },
             }],
-            vec![EvmEndpointHealthRow {
+            vec![EndpointHealthRow {
                 label: "alchemy".into(),
                 endpoint: "https://example".into(),
                 reachable: true,
@@ -416,6 +413,7 @@ mod tests {
                 error: Some("err".into()),
             }],
             vec![EndpointHealthRow {
+                label: String::new(),
                 endpoint: "u".into(),
                 reachable: false,
                 status_code: None,
@@ -464,5 +462,155 @@ mod tests {
         )
         .expect("builds");
         assert!(s.contains("\"rpcCount\""));
+    }
+}
+
+/// The diagnostics document for one chain.
+///
+/// One export in place of five builders, and it takes no `history` argument
+/// because core owns that now — the caller used to read core's registry, hand
+/// the rows straight back across the FFI, and receive JSON built from them.
+/// Which shape a chain reports is `Chain::diagnostics_shape`, a registry fact,
+/// so this function does not match on chain names at all.
+#[uniffi::export]
+pub fn core_diagnostics_json(
+    chain_name: String,
+    endpoints: Vec<EndpointHealthRow>,
+    history_last_updated_at_unix: Option<f64>,
+    endpoints_last_updated_at_unix: Option<f64>,
+    extra_network_mode: Option<String>,
+    last_send_error_at_unix: Option<f64>,
+    last_send_error_details: Option<String>,
+) -> Option<String> {
+    use crate::diagnostics::registry as reg;
+    use crate::registry::{Chain, DiagnosticsShape};
+
+    let chain = Chain::from_display_name(&chain_name)?;
+    match chain.diagnostics_shape() {
+        DiagnosticsShape::Utxo => {
+            let history = reg::diagnostics_all_utxo(chain_name)
+                .into_values()
+                // `UtxoHistoryEntry` is an alias for the record itself — it
+                // already carries its wallet id.
+                .collect();
+            diagnostics_build_utxo_json(
+                history,
+                endpoints,
+                history_last_updated_at_unix,
+                endpoints_last_updated_at_unix,
+                extra_network_mode,
+            )
+        }
+        DiagnosticsShape::Evm => {
+            let history = reg::diagnostics_all_evm(chain_name)
+                .into_iter()
+                .map(|(wallet_id, diagnostics)| EvmHistoryEntry {
+                    wallet_id,
+                    diagnostics,
+                })
+                .collect();
+            diagnostics_build_evm_json(
+                history,
+                endpoints,
+                history_last_updated_at_unix,
+                endpoints_last_updated_at_unix,
+            )
+        }
+        DiagnosticsShape::Simple => {
+            let history = reg::diagnostics_all_simple(chain_name)
+                .into_iter()
+                .map(|(wallet_id, d)| SimpleAddressHistoryEntry {
+                    wallet_id,
+                    address: d.address,
+                    source_used: d.source_used,
+                    transaction_count: d.transaction_count,
+                    error: d.error,
+                })
+                .collect();
+            diagnostics_build_simple_address_json(
+                history,
+                endpoints,
+                history_last_updated_at_unix,
+                endpoints_last_updated_at_unix,
+            )
+        }
+        DiagnosticsShape::Tron => {
+            let history = reg::diagnostics_all_tron()
+                .into_iter()
+                .map(|(wallet_id, diagnostics)| TronHistoryEntry {
+                    wallet_id,
+                    diagnostics,
+                })
+                .collect();
+            diagnostics_build_tron_json(
+                history,
+                endpoints,
+                history_last_updated_at_unix,
+                endpoints_last_updated_at_unix,
+                last_send_error_at_unix,
+                last_send_error_details,
+            )
+        }
+        DiagnosticsShape::Solana => {
+            let history = reg::diagnostics_all_solana()
+                .into_iter()
+                .map(|(wallet_id, diagnostics)| SolanaHistoryEntry {
+                    wallet_id,
+                    diagnostics,
+                })
+                .collect();
+            diagnostics_build_solana_json(
+                history,
+                endpoints,
+                history_last_updated_at_unix,
+                endpoints_last_updated_at_unix,
+            )
+        }
+    }
+}
+
+#[cfg(test)]
+mod one_builder_tests {
+    use super::*;
+    use crate::registry::{Chain, DiagnosticsShape};
+
+    /// Every chain the diagnostics bundle reports on produces a document.
+    ///
+    /// Five separate builders could not state this; a chain simply had no
+    /// builder and nothing said so.
+    #[test]
+    fn every_chain_produces_a_document() {
+        for chain in Chain::all().filter(|c| !c.is_testnet()) {
+            let json = core_diagnostics_json(
+                chain.chain_display_name().to_string(),
+                Vec::new(),
+                None,
+                None,
+                None,
+                None,
+                None,
+            );
+            assert!(
+                json.is_some(),
+                "{} produced no diagnostics document",
+                chain.chain_display_name()
+            );
+        }
+    }
+
+    #[test]
+    fn shapes_cover_the_families_they_claim() {
+        assert_eq!(Chain::Bitcoin.diagnostics_shape(), DiagnosticsShape::Utxo);
+        assert_eq!(Chain::Dogecoin.diagnostics_shape(), DiagnosticsShape::Utxo);
+        assert_eq!(Chain::Ethereum.diagnostics_shape(), DiagnosticsShape::Evm);
+        assert_eq!(Chain::Arbitrum.diagnostics_shape(), DiagnosticsShape::Evm);
+        assert_eq!(Chain::Tron.diagnostics_shape(), DiagnosticsShape::Tron);
+        assert_eq!(Chain::Solana.diagnostics_shape(), DiagnosticsShape::Solana);
+        assert_eq!(Chain::Xrp.diagnostics_shape(), DiagnosticsShape::Simple);
+        // A testnet reports the same shape as its mainnet.
+        assert_eq!(
+            Chain::BitcoinTestnet.diagnostics_shape(),
+            DiagnosticsShape::Utxo
+        );
     }
 }

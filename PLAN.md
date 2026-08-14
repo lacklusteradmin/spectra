@@ -510,6 +510,100 @@ and it resets the draft first, so the typed fields are always empty in a signing
 import. What is removed is a rule whose safety depended on an invariant two
 files away, not a reachable bug. See the Stage 3 note above for the trace.
 
+**History scalars keyed by chain; `DiagnosticsStore` is 707 → 189.**
+
+The last uniform family: `<chain>HistoryDiagnosticsLastUpdatedAt` and
+`isRunning<Chain>HistoryDiagnostics` across 24 chains — 48 stored properties and
+48 forwarding pairs — onto `historyRunByChain`.
+
+Two things the compiler caught that a careless pass would have shipped:
+`StoreHistoryRefresh.swift` was not in the file list I rewrote, so it still
+named the deleted properties; and a `?:` chain ending in `nil` infers a
+read-only `KeyPath`, which a subscript-backed path cannot satisfy — that site
+now carries a chain *name* instead of a key path, which is what it wanted all
+along.
+
+**What is left, and the finding under it.** The 62 forwards still in
+`DiagnosticsStore` are the `<chain>HistoryDiagnosticsByWallet` dictionaries,
+whose value types differ. Except mostly they do not: XRP, Stellar, Cardano,
+Monero, Sui, Aptos, TON, ICP, NEAR and Polkadot all declare **the same four
+fields** — `address`, `sourceUsed`, `transactionCount`, `error`. Swift already
+says so out loud, with a `SimpleAddressHistoryDiag` protocol in
+`StoreDiagnosticsExport` that exists purely to treat them as one type.
+
+So the same move as the endpoint rows applies: ten identical uniffi records
+become one, and the ten dictionaries collapse with them. Only Bitcoin
+(`identifier`, `nextCursor`), Ethereum, Tron (`tronScanTxCount`,
+`tronScanTrc20Count`) and Solana (`rpcCount`) genuinely differ. That is the next
+slice, and it ends `DiagnosticsStore.swift`.
+
+**Endpoint health keyed by chain — and the two row records became one.**
+
+The blocker was not the properties, it was the types. `EvmEndpointHealthRow`
+differed from `EndpointHealthRow` by a single `label` field, and two records for
+one thing forced two differently-typed slots per chain, which is why this family
+could not be keyed. They are one record in core now, with `label` empty for
+chains whose diagnostics list endpoints without one. The bundle JSON is
+unchanged: `endpoint_row_value` still omits the field and
+`evm_endpoint_row_value` still emits it.
+
+With that done, 72 stored properties and their 72 forwarding pairs collapsed
+onto `endpointHealthByChain`. One wrinkle worth writing down: the generic
+runners take key paths, and a key path cannot use `dict[key, default: …]` —
+the subscript index has to be Hashable. So `AppState` gained a
+`subscript(endpointHealthFor:)` that reads through to the table and returns the
+empty state for an unknown chain, and the key paths point at that.
+
+`DiagnosticsStore.swift`: 707 → 373. `DiagnosticsState.swift`: 500 → 436.
+
+**The diagnostics state collapse — first family done, the pattern proven.**
+
+Self-tests were three stored properties per chain (`<chain>SelfTestResults`,
+`isRunning<Chain>SelfTests`, `<chain>SelfTestsLastRunAt`) across six chains,
+each with a forwarding pair in `DiagnosticsStore`, a `run<Chain>SelfTests()`
+wrapper threading three key paths, a row in the view dispatch table, and two
+lines in the reset. Eighteen properties, six wrappers, five tables.
+
+Now: one `selfTestsByChain: [String: SelfTests]`, one `runSelfTests(for:)`, and
+the reset clears the table. **-102 lines**, and the per-chain abbreviation
+("BTC", "BCH", …) that the wrappers carried by hand comes from the registry
+descriptor, which had it all along.
+
+The shape every remaining family copies:
+
+1. Replace the per-chain stored properties with one keyed table on
+   `WalletChainDiagnosticsState`.
+2. Delete the matching forwarding pairs in `DiagnosticsStore.swift`; add one
+   accessor that returns the empty state for an unknown chain.
+3. Collapse the per-chain wrappers into one function taking a chain name.
+4. Point the view dispatch table and the reset at the table.
+
+What is left, in the order the win gets bigger: endpoint health (three
+properties × ~22 chains, complicated only by `EndpointHealthRow` vs
+`EvmEndpointHealthRow`), then the history scalars (two × ~22, fully uniform).
+`DiagnosticsStore.swift` is 707 → 644 and is entirely forwarding; it ends at
+zero when those two families land.
+
+**The net for the diagnostics collapse, built and proven to bite.**
+
+The same 24 chains are written down six times: `StandardDiagnosticsChain`,
+`chainDiagDescriptors`, `DiagnosticsViews.dispatchTable`,
+`diagnosticsBundleChainNames`, the `diagnosticsJSON(for:)` switch, and the 163
+per-chain stored properties behind them. Collapsing that is the largest piece of
+Stage 3 left, and its failure mode is a chain falling out of one list while the
+others keep it.
+
+`DiagnosticsChainTableTests` asserts the lists agree — on registry id, since the
+enum spells chains as ids, the bundle as display names, and `title` as neither
+("Bitcoin Diagnostics"). It says nothing about behaviour; it exists to fail when
+one table is edited alone.
+
+**A net was checked before being trusted.** Removing `"Solana"` from the bundle
+list turns three of the four tests red, naming the chain. The first attempt to
+verify that used a `sed` expression that silently matched nothing, so the tests
+"passed" and proved exactly nothing — worth recording, because an unchecked net
+and no net look identical from the outside.
+
 **Three copies of the diagnostics chain list became one, and a test that keeps
 it that way.**
 
@@ -521,12 +615,17 @@ closures in `DiagnosticsViews` calling them a third time.
 `diagnosticsBundleChainNames` list, and the views pass a name.
 
 *This one bought no lines* — 130 in, 130 out. What it bought is that the list
-exists once, and `DiagnosticsBundleCoverageTests` fails if the switch and the
-list disagree. That test is not hypothetical: collapsing the wrappers silently
-dropped **Tron and Solana**, because they have their own JSON builders and did
-not match the shape the other 22 shared. Nothing failed — a missing case just
-returns `nil`, and the bundle would have shipped without them. The test was
-written because of that, not before it.
+exists once, and `DiagnosticsBundleCoverageTests` names the chain when the
+switch and the list disagree.
+
+Collapsing the wrappers did drop **Tron and Solana** on the way — they have
+their own JSON builders and did not match the shape the other 22 shared. Worth
+being accurate about what that proves: `DiagnosticsBundleTests` already asserted
+`chainDiagnosticsJson.count == 24`, so the drop would have failed the suite the
+moment it ran. It compiled and I saw green only because I had run
+`xcodebuild build` and not yet `xcodebuild test`. The existing net held; what it
+would not have said is *which* two chains were missing, which is the gap the new
+test fills.
 
 *Not done, and it is the reason the switch survives:* the per-chain state is
 still 163 stored properties on `WalletChainDiagnosticsState`, forwarded by 707
@@ -822,7 +921,7 @@ nothing breaks. Its *producer* moved into core (`wallet_derived_state`); its
 consumers are views, and they are right to read a cache.
 
 **Done when:** the root of `swift/` is a minority of the Swift line count, and
-adding a chain requires no Swift change at all. Currently 18,613 root vs
+adding a chain requires no Swift change at all. Currently 17,922 root vs
 10,969 in `views/` — the number that has to invert. Down 1,023 so far, and
 worth splitting honestly: 965 of that is one dead file that was never in the
 build, so only ~60 net lines have actually been moved rather than found — the
@@ -831,6 +930,187 @@ back more than that, which is the right trade and still not progress on this
 metric. The remaining weight is in `AppState+SendFlow` (1,566), `AppState`
 (1,239), `AppState+ReceiveFlow` (708) and `AppState+DiagnosticsEndpoints`
 (859), and those come down only when the caches they feed stop existing.
+
+### Stage C — Rewrite core — **started**
+
+Stages 0-3 moved ownership *into* core without reshaping core. It shows: the
+crate is 59,564 lines with **234 exported functions**, which is the plainest
+statement that it is still a library of helpers rather than a program. A front
+end that has 234 ways in does not have to go through the ten that matter.
+
+Measured, not estimated:
+
+| | |
+|---|---|
+| `#[uniffi::export]` sites / exported functions | 251 / 234 |
+| `service.rs` | 4,781 lines, 90 functions, 22 `match chain` sites |
+| Chain tables | two — `chains.rs` (TOML) and `registry.rs` (enum) |
+| Duplicate module pairs | `service.rs`/`service/`, `validation.rs`/`derivation/validation.rs`, `fetch/refresh.rs`/`refresh_engine.rs` |
+
+**C1 — the skeleton.** Holds the FFI surface still, so no Swift changes:
+merge the two chain tables, split `service.rs` into the three owners it
+actually has (resident state, per-chain network clients, send execution), and
+collapse the duplicate module pairs.
+
+**C2 — the surface.** 234 → 30-40. Most exports are "core computes a value,
+Swift assembles it" — those should *disappear*, not be renamed. What survives:
+`WalletService` methods, `StateCommand`, and the few genuinely pure
+calculations. This one moves every Swift call site, so it runs with the rest of
+Stage 3 rather than beside it.
+
+Done so far:
+
+- **Five JSON builders → one, and the caller stopped ferrying core's own data.**
+
+  `diagnosticsJSON(for:)` was a 24-case switch picking between five builders,
+  and each case read history *out of core's registry* and handed it straight
+  back across the FFI so core could build a document from it. Core owns that
+  storage, and which shape a chain reports is now
+  `Chain::diagnostics_shape` — a registry fact, so `core_diagnostics_json`
+  matches on no chain names at all. The chain name is the whole input.
+
+  `every_chain_produces_a_document` walks the registry and asserts one comes
+  back; five separate builders could not say that, and a chain with no builder
+  said nothing. `StoreDiagnosticsExport.swift`: 342 → 156, and the three
+  wrapper helpers plus `simpleEntries` went with the switch.
+
+- **950 exported functions → 765.** Measured from the generated bindings, which
+  is the only honest count: grepping `#[uniffi::export]` in the source says
+  "231", because one macro invocation can expand to a hundred exports. That gap
+  *was* the problem, not a measurement artefact.
+
+  *`per_chain_registries!` was 120 of them.* The macro stamped out five
+  exports — get / set / remove / all / replace — for each of twenty-four
+  chains, over one hash map. Swift called `all` and `replace`; **`get`, `set`
+  and `remove` had no caller on either side, for any chain** — seventy-two
+  functions that existed to be generated. Now three registries keyed by chain
+  name plus Tron and Solana unkeyed, two operations each: ten exports.
+
+  *Ten records became one.* `simple_address_diagnostics!` stamped out ten
+  structs — `XRPHistoryDiagnostics`, `StellarHistoryDiagnostics`, eight more —
+  from a single field list. The macro was core admitting they were identical
+  while making the callers pay for the difference: ten typed slots, ten
+  dictionaries, ten forwarding pairs, and a Swift protocol whose entire job was
+  to treat them as one type again. One `SimpleHistoryDiagnostics`, and the
+  protocol, its ten conformances and the ten dictionaries went with it.
+  `DiagnosticsStore.swift`: 707 → **158**.
+
+- **231 source-level exports → 198, in two earlier cuts.**
+
+  *Sixteen had no Swift caller at all.* Ten were dead outright and are deleted;
+  six were used only inside Rust and lost the attribute. Nothing else changed.
+
+  *Fifty `derive<Chain>` exports became one.* Swift called each from exactly one
+  arm of a 212-line switch in `WalletRustDerivationBridge` that reproduced a
+  dispatch core has always had — `derive_for_chain_name`, which the CLI already
+  used. The switch is now four lines calling `core_derive_for_chain`, the bridge
+  is 356 → 161 lines, and 40 exports lost the attribute while keeping their
+  bodies, because the dispatcher calls them.
+
+  The new export can state something the fifty could not:
+  `every_registry_chain_derives_through_one_call` walks every chain in the
+  registry and asserts an address comes back. Fifty separate functions had no
+  way to say "these are all of them".
+
+  **The distribution is the finding.** Of 231 exports, **173 have exactly one
+  Swift call site**. That is what a helper library looks like from the inside:
+  not an interface, a pile of one-shot favours. The remaining cuts are the same
+  shape as the derive one — find the Swift switch, ask what single call it is
+  standing in for.
+
+- **`spectra refresh`, and two bugs core could not have shown on its own.**
+
+  `BalanceRefreshEngine` is the one subsystem where Rust already owns the loop:
+  it holds the timer, fetches, applies the result to Rust-owned state, and calls
+  back through `BalanceObserver`. Swift's conformance was the only one, so "the
+  engine needs no platform" was an assumption. It holds — a CLI observer sweeps
+  three chains and reports three updates.
+
+  *`trigger_immediate` cannot be awaited.* It spawns the cycle and returns,
+  which is right for an app that will receive callbacks later and useless to a
+  process about to exit: the first run printed "0 refreshed, 0 errors" while
+  three fetches were still in flight. Added `refresh_now`, the same cycle
+  awaited. Nothing was wrong with the engine; there was simply no way to *use*
+  it from anything short-lived, and only a short-lived caller would notice.
+
+  *Core installed a global tracing subscriber on stdout, at `debug`.*
+  `WalletService::new_typed` did it in a `OnceLock`, so no caller could opt
+  out, and every `spectra --json` run had core's connection logs interleaved
+  through the document — `json.load` failing on "Extra data" is how it
+  surfaced. A library taking the process's stdout is wrong on its own; at
+  `debug` by default it is also loud. Now stderr, and `warn` unless `RUST_LOG`
+  says otherwise.
+
+  *And one in the acceptance script:* the new check ran `spectra refresh`
+  against the shared directory, which by then had wallets — so the script that
+  promises no network swept three chains over it. It has its own empty
+  directory now.
+
+- **Seven of core's own self-tests were failing, on fabricated fixtures.**
+
+  `self_tests.rs` is 605 lines of derivation and address checks that only the
+  iOS diagnostics screen had ever run. Run from the CLI: **59 of 66 passed**.
+  All seven failures were `<chain> Address Validation`, for Bitcoin, Bitcoin
+  Cash, Litecoin, Monero, Polkadot, Stellar and Internet Computer.
+
+  The validators were right. The *fixtures* were hand-typed strings that look
+  like addresses and carry invalid checksums — Bitcoin's was the BIP-173 test
+  vector with the last seven characters wrong (`…c5xw7kygt080` for
+  `…c5xw7kv8f3t4`), and Internet Computer's was a principal where an account
+  identifier belongs. Same class as the `"SoLaNaAddr"` placeholders found
+  earlier, but subtler, because these look real.
+
+  Settled empirically rather than from memory: core rejects the fixture and
+  accepts the canonical vector. The replacements are **derived by core** from
+  the standard test mnemonic and each one verified through
+  `spectra address validate` before use, so they are right by construction
+  rather than by typing. 66/66 now.
+
+  `every_self_test_passes` makes the self-tests themselves tested, so the next
+  bad fixture fails the build instead of showing a red row on a screen nobody
+  reads.
+
+  *Two of my own bugs on the way:* `--json` printed two documents when a
+  command reported results and then failed (`CliError::reported` now suppresses
+  the second), and the `--chain` filter passed a registry id where core keys
+  self-tests by display name — which reported "Bitcoin has no self-tests", a
+  sentence that reads as a coverage gap rather than a wrong argument.
+
+- **Tracked tokens were never persisted, and the CLI is how that surfaced.**
+
+  This document claimed they "arrive with the rest of the state". They did not:
+  `token_preferences` is a field on `CoreAppState`, and `app_state_save` wrote
+  `settings`, `wallets` and the address book and never it. Every launch loaded
+  an empty list.
+
+  Nothing caught it because no test reopened the database after tracking a
+  token, and the app holds them in memory for the life of a session — so the
+  loss only shows on relaunch, and only to a user. `spectra token track`
+  followed by `spectra token list` is two processes, so it showed immediately.
+
+  Fixed with a `token_preferences` meta row, pinned by two tests that save and
+  reload. The clamp — a token cannot display more places than it has — works
+  and now survives the round trip: asking for 99 places on a 6-decimal token
+  stores 6.
+
+  *A fixture bug on the way:* the first version of the test helper keyed its
+  temp database on the process id alone, so the second test read the first
+  one's tokens and passed on data it never wrote. Keyed on thread id too now.
+
+- **`spectra staking` and `spectra token` are the first CLI callers core has
+  had for either.** Staking's service — validators, positions, four chains of
+  transaction builders — was reachable only from `StakingBridge.swift`, and the
+  token list only from Swift's settings screen. Both worked first try, which
+  answers whether they were core-owned; the token *persistence* did not, which
+  answers whether anyone had checked.
+
+- **One name per chain.** The enum called Internet Computer "ICP" and
+  `chains.toml` called it "Internet Computer". The cost was never the name: it
+  was a special case in `from_display_name`, an id-keyed lookup in `app_core`
+  with a comment explaining why, and the standing question of which spelling a
+  call site meant. Both tests walking the full catalog pass, so the rename was
+  the only drift — and `display_names_match_the_catalog` means the next one
+  fails the build.
 
 ### Stage 4 — Android
 
@@ -846,7 +1126,7 @@ Not by feel. These four numbers, checked at the end of each stage:
 | Metric | Start | Now | Target |
 |---|---|---|---|
 | `core_plan_*` exports | 42 | 8 | 0 |
-| Swift root lines vs `views/` | 19,766 vs 11,113 | 18,613 vs 10,969 | inverted |
+| Swift root lines vs `views/` | 19,766 vs 11,113 | 17,922 vs 10,969 | inverted |
 | Domain collections stored on `AppState` | 3 | 0 | 0 |
 | Domain settings owned by core | 0 | 1 | all |
 | Wallet operations reachable from the CLI | partial | partial | all |
@@ -896,7 +1176,8 @@ Carried from the audit, not blocking the stages above but not forgotten:
 - `scripts/bindgen-ios.sh` and the Xcode "Build Rust Derivation Core" phase both
   regenerate `swift/generated/` and apply *different* Swift 6 patches. One
   should go.
-- `registry::Chain` calls Internet Computer `"ICP"`; `core/data/chains.toml`
-  calls it `"Internet Computer"`. Aligning them removes a special case in
-  `Chain::from_display_name` and the id-keyed catalog lookup that works around
-  it.
+- ~~`registry::Chain` calls Internet Computer `"ICP"`.~~ **Fixed.** The enum
+  says "Internet Computer" now; `coin_symbol` still says "ICP", which is what
+  that field is for. The special case in `from_display_name` is gone, and
+  `display_names_match_the_catalog` walks all 78 chains — that rename was the
+  only disagreement, and there cannot be another one silently.

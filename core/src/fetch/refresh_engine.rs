@@ -132,6 +132,17 @@ impl BalanceRefreshEngine {
             Self::run_cycle(&inner).await;
         });
     }
+
+    /// Run one sweep and wait for it to finish.
+    ///
+    /// `trigger_immediate` spawns and returns, which is right for a long-lived
+    /// app that will receive the observer callbacks later. A process that is
+    /// about to exit has nowhere to receive them: the CLI got "0 refreshed"
+    /// while the fetches were still in flight. This is the same cycle, awaited.
+    pub async fn refresh_now(&self) {
+        self.inner.pending_trigger.store(true, Ordering::Release);
+        Self::run_cycle(&self.inner).await;
+    }
 }
 
 // ----------------------------------------------------------------

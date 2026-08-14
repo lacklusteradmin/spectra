@@ -85,7 +85,6 @@ fn dash_internal(
 }
 
 /// UniFFI export: derive Dash mainnet keys (P2PKH only).
-#[uniffi::export]
 pub fn derive_dash(
     seed_phrase: String,
     derivation_path: String,
@@ -108,7 +107,6 @@ pub fn derive_dash(
 }
 
 /// UniFFI export: derive Dash testnet keys.
-#[uniffi::export]
 pub fn derive_dash_testnet(
     seed_phrase: String,
     derivation_path: String,

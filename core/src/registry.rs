@@ -771,7 +771,7 @@ impl Chain {
             Chain::Aptos => "Aptos",
             Chain::Ton => "TON",
             Chain::Near => "NEAR",
-            Chain::Icp => "ICP",
+            Chain::Icp => "Internet Computer",
             Chain::Monero => "Monero",
             Chain::Base => "Base",
             Chain::EthereumClassic => "Ethereum Classic",
@@ -1212,13 +1212,41 @@ impl Chain {
         Self::all().filter(|c| c.is_testnet())
     }
 
-    /// Resolve a chain from the display name Swift uses on the boundary.
-    pub fn from_display_name(name: &str) -> Option<Self> {
-        if name == "Internet Computer" {
-            return Some(Chain::Icp);
+    /// Which diagnostics record shape this chain reports.
+    ///
+    /// A per-chain fact, so it lives here rather than in a `match` inside the
+    /// exporter — and it is what lets one JSON builder replace five.
+    pub const fn diagnostics_shape(self) -> DiagnosticsShape {
+        match self.mainnet_counterpart() {
+            Chain::Bitcoin
+            | Chain::BitcoinCash
+            | Chain::BitcoinSV
+            | Chain::Litecoin
+            | Chain::Dogecoin => DiagnosticsShape::Utxo,
+            Chain::Tron => DiagnosticsShape::Tron,
+            Chain::Solana => DiagnosticsShape::Solana,
+            other if other.is_evm() => DiagnosticsShape::Evm,
+            _ => DiagnosticsShape::Simple,
         }
+    }
+
+    /// Resolve a chain from the display name used on the boundary.
+    ///
+    /// No special cases: the enum and `chains.toml` agree on every name, and
+    /// `display_names_match_the_catalog` fails if they ever stop.
+    pub fn from_display_name(name: &str) -> Option<Self> {
         Chain::all().find(|c| c.chain_display_name() == name)
     }
+}
+
+/// The record shape a chain's history diagnostics use.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, uniffi::Enum)]
+pub enum DiagnosticsShape {
+    Utxo,
+    Evm,
+    Simple,
+    Tron,
+    Solana,
 }
 
 /// Newtype wrapper that proves the inner `Chain` is EVM-family.
@@ -1527,4 +1555,50 @@ pub fn core_evm_seed_derivation_chain_name(chain_name: String) -> Option<String>
         }
         .to_string(),
     )
+}
+
+#[cfg(test)]
+mod catalog_agreement_tests {
+    use super::*;
+
+    /// The enum and `chains.toml` describe the same chains, so they must agree
+    /// on what each one is called.
+    ///
+    /// They did not: the enum called Internet Computer "ICP" while the catalog
+    /// called it "Internet Computer". The cost was not the name — it was a
+    /// special case in `from_display_name`, a comment in `app_core` explaining
+    /// why a lookup had to be keyed by id, and the standing question of which
+    /// spelling any given call site meant.
+    #[test]
+    fn display_names_match_the_catalog() {
+        let catalog = crate::chains::list_all_chains();
+        for chain in Chain::all() {
+            let Some(entry) = catalog.iter().find(|entry| entry.id == chain.str_id()) else {
+                continue;
+            };
+            assert_eq!(
+                chain.chain_display_name(),
+                entry.name,
+                "{} is \"{}\" in the enum and \"{}\" in chains.toml",
+                chain.str_id(),
+                chain.chain_display_name(),
+                entry.name
+            );
+        }
+    }
+
+    /// Every catalog entry is reachable from the name it publishes, with no
+    /// special case in the resolver.
+    #[test]
+    fn every_catalog_name_resolves() {
+        for entry in crate::chains::list_all_chains() {
+            assert_eq!(
+                Chain::from_display_name(&entry.name).map(Chain::str_id),
+                Some(entry.id.as_str()),
+                "{} does not resolve from \"{}\"",
+                entry.id,
+                entry.name
+            );
+        }
+    }
 }

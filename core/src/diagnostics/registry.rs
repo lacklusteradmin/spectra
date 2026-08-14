@@ -11,164 +11,106 @@ use std::sync::Mutex;
 
 use super::types::*;
 
-macro_rules! per_chain_registries {
-    (
-        $(
-            ($field:ident, $ty:ident, $get:ident, $set:ident, $rm:ident, $all:ident, $replace:ident)
-        ),* $(,)?
-    ) => {
-        #[derive(Default)]
-        struct DiagnosticsRegistry {
-            $( $field: HashMap<String, $ty>, )*
+/// Per-wallet history diagnostics, keyed by chain and then by wallet.
+///
+/// This was a macro that stamped out five exports — get / set / remove / all /
+/// replace — for each of twenty-four chains: **120 FFI functions for one
+/// hash map**. Swift called `all` and `replace`; `get`, `set` and `remove`
+/// had no caller on either side for any chain, so seventy-two of the hundred
+/// and twenty existed to be counted.
+///
+/// One registry per record shape, each keyed by chain name. Adding a chain is
+/// a registry edit and adds no exports.
+#[derive(Default)]
+struct DiagnosticsRegistry {
+    utxo: HashMap<String, HashMap<String, BitcoinHistoryDiagnostics>>,
+    evm: HashMap<String, HashMap<String, EthereumTokenTransferHistoryDiagnostics>>,
+    simple: HashMap<String, HashMap<String, SimpleHistoryDiagnostics>>,
+    tron: HashMap<String, TronHistoryDiagnostics>,
+    solana: HashMap<String, SolanaHistoryDiagnostics>,
+}
+
+impl DiagnosticsRegistry {
+    fn clear(&mut self) {
+        self.utxo.clear();
+        self.evm.clear();
+        self.simple.clear();
+        self.tron.clear();
+        self.solana.clear();
+    }
+}
+
+fn registry() -> &'static Mutex<DiagnosticsRegistry> {
+    use std::sync::OnceLock;
+    static REG: OnceLock<Mutex<DiagnosticsRegistry>> = OnceLock::new();
+    REG.get_or_init(|| Mutex::new(DiagnosticsRegistry::default()))
+}
+
+macro_rules! chain_keyed_registry {
+    ($field:ident, $ty:ident, $all:ident, $replace:ident) => {
+        #[uniffi::export]
+        pub fn $all(chain_name: String) -> HashMap<String, $ty> {
+            registry()
+                .lock()
+                .unwrap()
+                .$field
+                .get(&chain_name)
+                .cloned()
+                .unwrap_or_default()
         }
-
-        impl DiagnosticsRegistry {
-            fn clear(&mut self) {
-                $( self.$field.clear(); )*
-            }
-        }
-
-        fn registry() -> &'static Mutex<DiagnosticsRegistry> {
-            use std::sync::OnceLock;
-            static REG: OnceLock<Mutex<DiagnosticsRegistry>> = OnceLock::new();
-            REG.get_or_init(|| Mutex::new(DiagnosticsRegistry::default()))
-        }
-
-        $(
-            #[uniffi::export]
-            pub fn $get(wallet_id: String) -> Option<$ty> {
-                registry().lock().unwrap().$field.get(&wallet_id).cloned()
-            }
-
-            #[uniffi::export]
-            pub fn $set(wallet_id: String, value: $ty) {
-                registry().lock().unwrap().$field.insert(wallet_id, value);
-            }
-
-            #[uniffi::export]
-            pub fn $rm(wallet_id: String) {
-                registry().lock().unwrap().$field.remove(&wallet_id);
-            }
-
-            #[uniffi::export]
-            pub fn $all() -> HashMap<String, $ty> {
-                registry().lock().unwrap().$field.clone()
-            }
-
-            /// Replace the entire per-chain dict in one call. Used by the Swift
-            /// compatibility setter that presents a `[String: T]` API.
-            #[uniffi::export]
-            pub fn $replace(entries: HashMap<String, $ty>) {
-                registry().lock().unwrap().$field = entries;
-            }
-        )*
 
         #[uniffi::export]
-        pub fn diagnostics_clear_all() {
-            registry().lock().unwrap().clear();
+        pub fn $replace(chain_name: String, entries: HashMap<String, $ty>) {
+            registry().lock().unwrap().$field.insert(chain_name, entries);
         }
     };
 }
 
-per_chain_registries! {
-    (bitcoin, BitcoinHistoryDiagnostics,
-        diagnostics_get_bitcoin, diagnostics_set_bitcoin,
-        diagnostics_remove_bitcoin, diagnostics_all_bitcoin,
-        diagnostics_replace_bitcoin),
-    (bitcoin_cash, BitcoinHistoryDiagnostics,
-        diagnostics_get_bitcoin_cash, diagnostics_set_bitcoin_cash,
-        diagnostics_remove_bitcoin_cash, diagnostics_all_bitcoin_cash,
-        diagnostics_replace_bitcoin_cash),
-    (bitcoin_sv, BitcoinHistoryDiagnostics,
-        diagnostics_get_bitcoin_sv, diagnostics_set_bitcoin_sv,
-        diagnostics_remove_bitcoin_sv, diagnostics_all_bitcoin_sv,
-        diagnostics_replace_bitcoin_sv),
-    (litecoin, BitcoinHistoryDiagnostics,
-        diagnostics_get_litecoin, diagnostics_set_litecoin,
-        diagnostics_remove_litecoin, diagnostics_all_litecoin,
-        diagnostics_replace_litecoin),
-    (dogecoin, BitcoinHistoryDiagnostics,
-        diagnostics_get_dogecoin, diagnostics_set_dogecoin,
-        diagnostics_remove_dogecoin, diagnostics_all_dogecoin,
-        diagnostics_replace_dogecoin),
+chain_keyed_registry!(
+    utxo,
+    BitcoinHistoryDiagnostics,
+    diagnostics_all_utxo,
+    diagnostics_replace_utxo
+);
+chain_keyed_registry!(
+    evm,
+    EthereumTokenTransferHistoryDiagnostics,
+    diagnostics_all_evm,
+    diagnostics_replace_evm
+);
+chain_keyed_registry!(
+    simple,
+    SimpleHistoryDiagnostics,
+    diagnostics_all_simple,
+    diagnostics_replace_simple
+);
 
-    (ethereum, EthereumTokenTransferHistoryDiagnostics,
-        diagnostics_get_ethereum, diagnostics_set_ethereum,
-        diagnostics_remove_ethereum, diagnostics_all_ethereum,
-        diagnostics_replace_ethereum),
-    (etc, EthereumTokenTransferHistoryDiagnostics,
-        diagnostics_get_etc, diagnostics_set_etc,
-        diagnostics_remove_etc, diagnostics_all_etc,
-        diagnostics_replace_etc),
-    (arbitrum, EthereumTokenTransferHistoryDiagnostics,
-        diagnostics_get_arbitrum, diagnostics_set_arbitrum,
-        diagnostics_remove_arbitrum, diagnostics_all_arbitrum,
-        diagnostics_replace_arbitrum),
-    (optimism, EthereumTokenTransferHistoryDiagnostics,
-        diagnostics_get_optimism, diagnostics_set_optimism,
-        diagnostics_remove_optimism, diagnostics_all_optimism,
-        diagnostics_replace_optimism),
-    (bnb, EthereumTokenTransferHistoryDiagnostics,
-        diagnostics_get_bnb, diagnostics_set_bnb,
-        diagnostics_remove_bnb, diagnostics_all_bnb,
-        diagnostics_replace_bnb),
-    (avalanche, EthereumTokenTransferHistoryDiagnostics,
-        diagnostics_get_avalanche, diagnostics_set_avalanche,
-        diagnostics_remove_avalanche, diagnostics_all_avalanche,
-        diagnostics_replace_avalanche),
-    (hyperliquid, EthereumTokenTransferHistoryDiagnostics,
-        diagnostics_get_hyperliquid, diagnostics_set_hyperliquid,
-        diagnostics_remove_hyperliquid, diagnostics_all_hyperliquid,
-        diagnostics_replace_hyperliquid),
+/// Tron and Solana report one record shape each and only one chain uses them,
+/// so they stay unkeyed rather than gaining a chain argument that could only
+/// ever hold one value.
+#[uniffi::export]
+pub fn diagnostics_all_tron() -> HashMap<String, TronHistoryDiagnostics> {
+    registry().lock().unwrap().tron.clone()
+}
 
-    (tron, TronHistoryDiagnostics,
-        diagnostics_get_tron, diagnostics_set_tron,
-        diagnostics_remove_tron, diagnostics_all_tron,
-        diagnostics_replace_tron),
-    (solana, SolanaHistoryDiagnostics,
-        diagnostics_get_solana, diagnostics_set_solana,
-        diagnostics_remove_solana, diagnostics_all_solana,
-        diagnostics_replace_solana),
-    (xrp, XRPHistoryDiagnostics,
-        diagnostics_get_xrp, diagnostics_set_xrp,
-        diagnostics_remove_xrp, diagnostics_all_xrp,
-        diagnostics_replace_xrp),
-    (stellar, StellarHistoryDiagnostics,
-        diagnostics_get_stellar, diagnostics_set_stellar,
-        diagnostics_remove_stellar, diagnostics_all_stellar,
-        diagnostics_replace_stellar),
-    (monero, MoneroHistoryDiagnostics,
-        diagnostics_get_monero, diagnostics_set_monero,
-        diagnostics_remove_monero, diagnostics_all_monero,
-        diagnostics_replace_monero),
-    (sui, SuiHistoryDiagnostics,
-        diagnostics_get_sui, diagnostics_set_sui,
-        diagnostics_remove_sui, diagnostics_all_sui,
-        diagnostics_replace_sui),
-    (aptos, AptosHistoryDiagnostics,
-        diagnostics_get_aptos, diagnostics_set_aptos,
-        diagnostics_remove_aptos, diagnostics_all_aptos,
-        diagnostics_replace_aptos),
-    (ton, TONHistoryDiagnostics,
-        diagnostics_get_ton, diagnostics_set_ton,
-        diagnostics_remove_ton, diagnostics_all_ton,
-        diagnostics_replace_ton),
-    (icp, ICPHistoryDiagnostics,
-        diagnostics_get_icp, diagnostics_set_icp,
-        diagnostics_remove_icp, diagnostics_all_icp,
-        diagnostics_replace_icp),
-    (near, NearHistoryDiagnostics,
-        diagnostics_get_near, diagnostics_set_near,
-        diagnostics_remove_near, diagnostics_all_near,
-        diagnostics_replace_near),
-    (polkadot, PolkadotHistoryDiagnostics,
-        diagnostics_get_polkadot, diagnostics_set_polkadot,
-        diagnostics_remove_polkadot, diagnostics_all_polkadot,
-        diagnostics_replace_polkadot),
-    (cardano, CardanoHistoryDiagnostics,
-        diagnostics_get_cardano, diagnostics_set_cardano,
-        diagnostics_remove_cardano, diagnostics_all_cardano,
-        diagnostics_replace_cardano),
+#[uniffi::export]
+pub fn diagnostics_replace_tron(entries: HashMap<String, TronHistoryDiagnostics>) {
+    registry().lock().unwrap().tron = entries;
+}
+
+#[uniffi::export]
+pub fn diagnostics_all_solana() -> HashMap<String, SolanaHistoryDiagnostics> {
+    registry().lock().unwrap().solana.clone()
+}
+
+#[uniffi::export]
+pub fn diagnostics_replace_solana(entries: HashMap<String, SolanaHistoryDiagnostics>) {
+    registry().lock().unwrap().solana = entries;
+}
+
+#[uniffi::export]
+pub fn diagnostics_clear_all() {
+    registry().lock().unwrap().clear();
 }
 
 #[cfg(test)]
@@ -196,41 +138,54 @@ mod tests {
     }
 
     #[test]
-    fn set_get_remove_list_clear() {
+    fn replace_and_read_back_by_chain() {
         let _g = test_lock();
         diagnostics_clear_all();
-        assert!(diagnostics_get_bitcoin("w1".into()).is_none());
+        assert!(diagnostics_all_utxo("Bitcoin".into()).is_empty());
 
-        diagnostics_set_bitcoin("w1".into(), sample_bitcoin("w1"));
-        diagnostics_set_bitcoin("w2".into(), sample_bitcoin("w2"));
-        assert_eq!(diagnostics_all_bitcoin().len(), 2);
-        assert_eq!(
-            diagnostics_get_bitcoin("w1".into()).unwrap().wallet_id,
-            "w1"
-        );
+        let mut entries = HashMap::new();
+        entries.insert("w1".to_string(), sample_bitcoin("w1"));
+        entries.insert("w2".to_string(), sample_bitcoin("w2"));
+        diagnostics_replace_utxo("Bitcoin".into(), entries);
+        assert_eq!(diagnostics_all_utxo("Bitcoin".into()).len(), 2);
 
-        diagnostics_remove_bitcoin("w1".into());
-        assert!(diagnostics_get_bitcoin("w1".into()).is_none());
-        assert_eq!(diagnostics_all_bitcoin().len(), 1);
-
-        // Replace-all
-        let mut replacement = HashMap::new();
-        replacement.insert("w3".into(), sample_bitcoin("w3"));
-        diagnostics_replace_bitcoin(replacement);
-        assert_eq!(diagnostics_all_bitcoin().len(), 1);
-        assert!(diagnostics_get_bitcoin("w3".into()).is_some());
-        assert!(diagnostics_get_bitcoin("w2".into()).is_none());
+        // Replace is a replace, not a merge.
+        let mut only_w3 = HashMap::new();
+        only_w3.insert("w3".to_string(), sample_bitcoin("w3"));
+        diagnostics_replace_utxo("Bitcoin".into(), only_w3);
+        let stored = diagnostics_all_utxo("Bitcoin".into());
+        assert_eq!(stored.len(), 1);
+        assert!(stored.contains_key("w3"));
 
         diagnostics_clear_all();
-        assert!(diagnostics_all_bitcoin().is_empty());
+        assert!(diagnostics_all_utxo("Bitcoin".into()).is_empty());
+    }
+
+    /// Chains sharing a record shape must not share a bucket. The old macro got
+    /// this from having a separate field per chain; keyed storage has to be
+    /// asked.
+    #[test]
+    fn chains_of_the_same_shape_keep_separate_buckets() {
+        let _g = test_lock();
+        diagnostics_clear_all();
+        let mut entries = HashMap::new();
+        entries.insert("w".to_string(), sample_bitcoin("w"));
+        diagnostics_replace_utxo("Bitcoin".into(), entries);
+
+        assert_eq!(diagnostics_all_utxo("Bitcoin".into()).len(), 1);
+        assert!(diagnostics_all_utxo("Litecoin".into()).is_empty());
+        assert!(diagnostics_all_utxo("Bitcoin Cash".into()).is_empty());
+        // A different shape entirely is untouched.
+        assert!(diagnostics_all_simple("XRP Ledger".into()).is_empty());
     }
 
     #[test]
-    fn independent_chain_buckets() {
+    fn an_unknown_chain_reads_empty_rather_than_trapping() {
         let _g = test_lock();
         diagnostics_clear_all();
-        diagnostics_set_bitcoin("w".into(), sample_bitcoin("w"));
-        assert!(diagnostics_all_litecoin().is_empty());
-        assert_eq!(diagnostics_all_bitcoin().len(), 1);
+        assert!(diagnostics_all_utxo("Nope".into()).is_empty());
+        assert!(diagnostics_all_simple("Nope".into()).is_empty());
+        assert!(diagnostics_all_evm("Nope".into()).is_empty());
     }
+
 }

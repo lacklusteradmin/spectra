@@ -91,34 +91,24 @@ diagnostics_record! {
 }
 
 // Simple address/source/count/error shape shared by ten chains.
-macro_rules! simple_address_diagnostics {
-    ($($name:ident),* $(,)?) => {
-        $(
-            diagnostics_record! {
-                $name {
-                    address: String,
-                    #[serde(rename = "sourceUsed")]
-                    source_used: String,
-                    #[serde(rename = "transactionCount")]
-                    transaction_count: i32,
-                    error: Option<String>,
-                }
-            }
-        )*
-    };
-}
-
-simple_address_diagnostics! {
-    XRPHistoryDiagnostics,
-    StellarHistoryDiagnostics,
-    MoneroHistoryDiagnostics,
-    SuiHistoryDiagnostics,
-    AptosHistoryDiagnostics,
-    TONHistoryDiagnostics,
-    ICPHistoryDiagnostics,
-    NearHistoryDiagnostics,
-    PolkadotHistoryDiagnostics,
-    CardanoHistoryDiagnostics,
+diagnostics_record! {
+    /// History diagnostics for a chain that reports one address, one source and
+    /// a count.
+    ///
+    /// There were ten of these — `SimpleHistoryDiagnostics`,
+    /// `SimpleHistoryDiagnostics`, and eight more — stamped out by a macro
+    /// from one field list. Ten names for one record: the macro was core
+    /// already admitting they were identical, and the cost landed on the
+    /// callers, which needed ten differently-typed slots, ten dictionaries and
+    /// a Swift protocol whose only job was to treat them as one type again.
+    SimpleHistoryDiagnostics {
+        address: String,
+        #[serde(rename = "sourceUsed")]
+        source_used: String,
+        #[serde(rename = "transactionCount")]
+        transaction_count: i32,
+        error: Option<String>,
+    }
 }
 
 #[derive(uniffi::Record, Serialize, Deserialize, Clone, Debug, PartialEq)]
@@ -190,14 +180,6 @@ mod tests {
             }
         };
     }
-    simple_test!(xrp_roundtrip, XRPHistoryDiagnostics);
-    simple_test!(stellar_roundtrip, StellarHistoryDiagnostics);
-    simple_test!(monero_roundtrip, MoneroHistoryDiagnostics);
-    simple_test!(sui_roundtrip, SuiHistoryDiagnostics);
-    simple_test!(aptos_roundtrip, AptosHistoryDiagnostics);
-    simple_test!(ton_roundtrip, TONHistoryDiagnostics);
-    simple_test!(icp_roundtrip, ICPHistoryDiagnostics);
-    simple_test!(near_roundtrip, NearHistoryDiagnostics);
-    simple_test!(polkadot_roundtrip, PolkadotHistoryDiagnostics);
-    simple_test!(cardano_roundtrip, CardanoHistoryDiagnostics);
+    // Ten identical round-trips became one when the ten records did.
+    simple_test!(simple_history_roundtrip, SimpleHistoryDiagnostics);
 }

@@ -3,7 +3,11 @@
 
 pub mod address;
 pub mod chain;
+pub mod diagnostics;
 pub mod market;
+pub mod refresh;
+pub mod staking;
+pub mod token;
 pub mod tx;
 pub mod wallet;
 

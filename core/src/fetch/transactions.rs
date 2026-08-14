@@ -691,10 +691,6 @@ mod tests {
 
 // ── FFI surface ─────────────────────────────────────────────────────────────
 
-#[uniffi::export]
-pub fn core_merge_transactions(request: TransactionMergeRequest) -> Vec<CoreTransactionRecord> {
-    merge_transactions(request)
-}
 
 #[cfg(test)]
 mod wire_persisted_conversion {

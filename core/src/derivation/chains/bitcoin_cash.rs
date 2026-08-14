@@ -94,7 +94,6 @@ pub fn derive_bitcoin_cash(
 }
 
 /// UniFFI export: derive Bitcoin Cash testnet keys (P2PKH only).
-#[uniffi::export]
 pub fn derive_bitcoin_cash_testnet(
     seed_phrase: String,
     derivation_path: String,

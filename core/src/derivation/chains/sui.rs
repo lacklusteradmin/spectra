@@ -148,7 +148,6 @@ fn sui_internal(
 }
 
 /// UniFFI export: derive Sui mainnet wallet from a seed phrase.
-#[uniffi::export]
 pub fn derive_sui(
     seed_phrase: String,
     derivation_path: String,
@@ -168,7 +167,6 @@ pub fn derive_sui(
 }
 
 /// UniFFI export: derive Sui testnet wallet from a seed phrase.
-#[uniffi::export]
 pub fn derive_sui_testnet(
     seed_phrase: String,
     derivation_path: String,

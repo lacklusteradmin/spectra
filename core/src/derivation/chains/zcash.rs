@@ -77,7 +77,6 @@ fn zcash_internal(
 }
 
 /// UniFFI export: derive Zcash mainnet transparent keys.
-#[uniffi::export]
 pub fn derive_zcash(
     seed_phrase: String,
     derivation_path: String,
@@ -98,7 +97,6 @@ pub fn derive_zcash(
 }
 
 /// UniFFI export: derive Zcash testnet transparent keys.
-#[uniffi::export]
 pub fn derive_zcash_testnet(
     seed_phrase: String,
     derivation_path: String,

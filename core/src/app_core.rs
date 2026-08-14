@@ -652,8 +652,8 @@ pub(super) fn seed_derivation_paths_for_account(
         if chain.is_testnet() {
             continue;
         }
-        // Keyed by id, not display name: the registry and the catalog disagree
-        // on some names (registry "ICP" vs catalog "Internet Computer").
+        // Keyed by id rather than display name — ids are the stable key, and
+        // `display_names_match_the_catalog` now guarantees the names agree too.
         if let Some(template) = crate::chains::default_derivation_path_template_by_id(chain.str_id())
         {
             by_chain.insert(
@@ -727,15 +727,7 @@ pub fn core_seed_derivation_path_key(chain_name: String) -> String {
         .unwrap_or_default()
 }
 
-#[uniffi::export]
-pub fn core_normalize_derivation_path(raw_path: String, fallback: String) -> String {
-    normalize_derivation_path(&raw_path, &fallback)
-}
 
-#[uniffi::export]
-pub fn core_derivation_path_segment_value(path: String, index: u32) -> Option<u32> {
-    derivation_path_segment_value(&path, index as usize)
-}
 
 #[uniffi::export]
 pub fn core_derivation_path_replacing_last_two(

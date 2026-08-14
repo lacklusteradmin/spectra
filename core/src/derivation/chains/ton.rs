@@ -384,7 +384,6 @@ fn ton_internal(
 }
 
 /// UniFFI export: derive TON mainnet wallet (v4R2 bounceable address) from a seed phrase.
-#[uniffi::export]
 pub fn derive_ton(
     seed_phrase: String,
     passphrase: Option<String>,
@@ -402,7 +401,6 @@ pub fn derive_ton(
 }
 
 /// UniFFI export: derive TON testnet wallet from a seed phrase (same derivation as mainnet).
-#[uniffi::export]
 pub fn derive_ton_testnet(
     seed_phrase: String,
     passphrase: Option<String>,

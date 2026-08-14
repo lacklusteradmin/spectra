@@ -118,7 +118,6 @@ pub fn derive_dogecoin(
 }
 
 /// UniFFI export: derive Dogecoin testnet keys.
-#[uniffi::export]
 pub fn derive_dogecoin_testnet(
     seed_phrase: String,
     derivation_path: String,

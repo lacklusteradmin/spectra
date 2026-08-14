@@ -2315,3 +2315,86 @@ mod import_address_validation {
         }
     }
 }
+
+/// Tracked tokens survive a reopen.
+///
+/// They did not. `token_preferences` is a field on `CoreAppState`, but
+/// `app_state_save` wrote `settings`, `wallets` and the address book and never
+/// this — so every launch loaded an empty list, and `PLAN.md`'s claim that
+/// they "arrive with the rest of the state" was false. Nothing caught it
+/// because no test reopened the database after tracking a token, and the app
+/// keeps them in memory for the life of a session.
+#[cfg(test)]
+mod tracked_tokens_persist {
+    use crate::store::state::{CoreAppState, StateCommand};
+    use crate::store::wallet_domain::{
+        CoreTokenPreferenceCategory, CoreTokenPreferenceEntry, CoreTokenTrackingChain,
+    };
+    use crate::store::wallet_db;
+
+    /// One database per test. Keyed by thread id as well as pid: two tests in
+    /// the same process share a pid, and the first version of this helper did
+    /// not, so the second test read the first one's tokens and "passed" on
+    /// data it never wrote.
+    fn tmp_db() -> String {
+        let mut path = std::env::temp_dir();
+        path.push(format!(
+            "spectra-tokens-{}-{:?}.sqlite",
+            std::process::id(),
+            std::thread::current().id()
+        ));
+        let _ = std::fs::remove_file(&path);
+        path.to_string_lossy().into_owned()
+    }
+
+    fn entry(symbol: &str, decimals: i32, display: Option<i32>) -> CoreTokenPreferenceEntry {
+        CoreTokenPreferenceEntry {
+            id: format!("id-{symbol}"),
+            chain: CoreTokenTrackingChain::Ethereum,
+            name: symbol.to_string(),
+            symbol: symbol.to_string(),
+            token_standard: "ERC-20".to_string(),
+            contract_address: "0x0000000000000000000000000000000000000001".to_string(),
+            coin_gecko_id: symbol.to_lowercase(),
+            decimals,
+            display_decimals: display,
+            category: CoreTokenPreferenceCategory::Custom,
+            is_built_in: false,
+            is_enabled: true,
+        }
+    }
+
+    #[test]
+    fn a_tracked_token_survives_a_reopen() {
+        let db = tmp_db();
+        let mut state = CoreAppState::default();
+        crate::store::state::reduce_state_in_place(
+            &mut state,
+            StateCommand::SetTokenPreferences {
+                entries: vec![entry("USDC", 6, Some(2))],
+            },
+        );
+        wallet_db::app_state_save(&db, &state).expect("save");
+
+        let reloaded = wallet_db::app_state_load(&db).expect("load");
+        assert_eq!(reloaded.token_preferences.len(), 1, "tracked token was lost");
+        assert_eq!(reloaded.token_preferences[0].symbol, "USDC");
+        assert_eq!(reloaded.token_preferences[0].display_decimals, Some(2));
+    }
+
+    #[test]
+    fn the_clamp_survives_the_round_trip() {
+        let db = tmp_db();
+        let mut state = CoreAppState::default();
+        crate::store::state::reduce_state_in_place(
+            &mut state,
+            StateCommand::SetTokenPreferences {
+                // More places than the token has.
+                entries: vec![entry("USDT", 6, Some(99))],
+            },
+        );
+        wallet_db::app_state_save(&db, &state).expect("save");
+        let reloaded = wallet_db::app_state_load(&db).expect("load");
+        assert_eq!(reloaded.token_preferences[0].display_decimals, Some(6));
+    }
+}

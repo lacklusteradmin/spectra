@@ -369,7 +369,6 @@ fn cardano_internal(
 }
 
 /// UniFFI export: derive Cardano mainnet wallet (addr1… bech32 address) from a seed phrase.
-#[uniffi::export]
 pub fn derive_cardano(
     seed_phrase: String,
     derivation_path: Option<String>,
@@ -390,7 +389,6 @@ pub fn derive_cardano(
 }
 
 /// UniFFI export: derive Cardano Preprod testnet wallet (addr_test1… bech32 address) from a seed phrase.
-#[uniffi::export]
 pub fn derive_cardano_preprod(
     seed_phrase: String,
     derivation_path: Option<String>,
