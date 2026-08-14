@@ -4,8 +4,11 @@ Spectra's iOS app was built before its Rust core. This document states the
 architecture the project is moving to, why, what still stands in the way, and
 the order the work happens in.
 
-It is the plan of record. When it disagrees with `docs/ARCHITECTURE.md`, this
-file describes the destination and that file describes the present.
+It is the plan of record: the target, the staged work, and the honest state of
+each stage. `docs/ARCHITECTURE.md` is its complement — the decisions and their
+reasons, which do not change as the work lands. It used to also carry a
+file-by-file map and a "known divergence" section restating this document; both
+were deleted once they went stale, which took about a week.
 
 ---
 

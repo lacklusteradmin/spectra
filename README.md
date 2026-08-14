@@ -73,9 +73,9 @@ implementation to review rather than one per platform.
 
 The app was written before the core, so that separation is not finished:
 `swift/` still owns state and decisions that belong in `core/`.
-[`PLAN.md`](PLAN.md) states the target and the staged work to get there;
-[`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) describes the layout as it stands
-today.
+[`PLAN.md`](PLAN.md) states the target, the staged work to get there, and how
+far along it is; [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) records the
+architectural decisions and why they were made.
 
 ## Open Source
 
