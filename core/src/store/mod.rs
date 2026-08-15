@@ -12,7 +12,7 @@ pub mod wallet_domain;
 pub mod wallet_secrets;
 
 pub use chain_aliases::{
-    plan_canonical_chain_component, plan_icon_identifier, plan_normalized_icon_identifier,
+    core_canonical_chain_component, core_icon_identifier, core_normalized_icon_identifier,
 };
 
 use serde::{Deserialize, Serialize};
@@ -21,7 +21,7 @@ use std::collections::HashMap;
 use std::hash::{Hash, Hasher};
 
 use self::state::CoreAppState;
-use crate::derivation::addressing::{validate_address, AddressValidationRequest};
+use crate::validation::address::{validate_address, AddressValidationRequest};
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, uniffi::Record)]
 #[serde(rename_all = "camelCase")]
@@ -73,32 +73,6 @@ pub struct WalletSecretIndex {
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, uniffi::Record)]
 #[serde(rename_all = "camelCase")]
-pub struct StoreDerivedHoldingInput {
-    pub holding_index: u64,
-    pub asset_identity_key: String,
-    pub symbol_upper: String,
-    pub amount: String,
-    pub is_priced_asset: bool,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, uniffi::Record)]
-#[serde(rename_all = "camelCase")]
-pub struct StoreDerivedWalletInput {
-    pub wallet_id: String,
-    pub include_in_portfolio_total: bool,
-    pub has_signing_material: bool,
-    pub is_private_key_backed: bool,
-    pub holdings: Vec<StoreDerivedHoldingInput>,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, uniffi::Record)]
-#[serde(rename_all = "camelCase")]
-pub struct StoreDerivedStateRequest {
-    pub wallets: Vec<StoreDerivedWalletInput>,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, uniffi::Record)]
-#[serde(rename_all = "camelCase")]
 pub struct WalletHoldingRef {
     pub wallet_id: String,
     pub holding_index: u64,
@@ -111,16 +85,6 @@ pub struct GroupedPortfolioHolding {
     pub wallet_id: String,
     pub holding_index: u64,
     pub total_amount: String,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, uniffi::Record)]
-#[serde(rename_all = "camelCase")]
-pub struct StoreDerivedStatePlan {
-    pub included_portfolio_holding_refs: Vec<WalletHoldingRef>,
-    pub unique_price_request_holding_refs: Vec<WalletHoldingRef>,
-    pub grouped_portfolio: Vec<GroupedPortfolioHolding>,
-    pub signing_material_wallet_ids: Vec<String>,
-    pub private_key_backed_wallet_ids: Vec<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, uniffi::Record)]
@@ -294,79 +258,6 @@ pub fn wallet_secret_index(snapshot: &PersistedAppSnapshot) -> WalletSecretIndex
     }
 }
 
-pub fn plan_store_derived_state(request: StoreDerivedStateRequest) -> StoreDerivedStatePlan {
-    let mut included_portfolio_holding_refs = Vec::new();
-    let mut unique_price_request_holding_refs = Vec::new();
-    let mut signing_material_wallet_ids = Vec::new();
-    let mut private_key_backed_wallet_ids = Vec::new();
-
-    let mut seen_price_request_keys = std::collections::BTreeSet::<String>::new();
-    let mut grouped_portfolio_totals = BTreeMap::<String, f64>::new();
-    let mut grouped_portfolio_order = Vec::<String>::new();
-    let mut grouped_portfolio_representatives = BTreeMap::<String, WalletHoldingRef>::new();
-
-    for wallet in request.wallets {
-        if wallet.has_signing_material {
-            signing_material_wallet_ids.push(wallet.wallet_id.clone());
-        }
-        if wallet.is_private_key_backed {
-            private_key_backed_wallet_ids.push(wallet.wallet_id.clone());
-        }
-
-        for holding in wallet.holdings {
-            let holding_ref = WalletHoldingRef {
-                wallet_id: wallet.wallet_id.clone(),
-                holding_index: holding.holding_index,
-            };
-
-            if holding.is_priced_asset
-                && seen_price_request_keys.insert(holding.asset_identity_key.clone())
-            {
-                unique_price_request_holding_refs.push(holding_ref.clone());
-            }
-
-            if wallet.include_in_portfolio_total {
-                included_portfolio_holding_refs.push(holding_ref.clone());
-
-                let amount = holding.amount.parse::<f64>().unwrap_or(0.0);
-                if !grouped_portfolio_totals.contains_key(&holding.asset_identity_key) {
-                    grouped_portfolio_order.push(holding.asset_identity_key.clone());
-                    grouped_portfolio_representatives
-                        .insert(holding.asset_identity_key.clone(), holding_ref);
-                }
-                *grouped_portfolio_totals
-                    .entry(holding.asset_identity_key)
-                    .or_default() += amount;
-            }
-        }
-    }
-
-    let grouped_portfolio = grouped_portfolio_order
-        .into_iter()
-        .filter_map(|asset_identity_key| {
-            let representative = grouped_portfolio_representatives.get(&asset_identity_key)?;
-            Some(GroupedPortfolioHolding {
-                total_amount: grouped_portfolio_totals
-                    .get(&asset_identity_key)
-                    .copied()
-                    .unwrap_or_default()
-                    .to_string(),
-                asset_identity_key,
-                wallet_id: representative.wallet_id.clone(),
-                holding_index: representative.holding_index,
-            })
-        })
-        .collect();
-
-    StoreDerivedStatePlan {
-        included_portfolio_holding_refs,
-        unique_price_request_holding_refs,
-        grouped_portfolio,
-        signing_material_wallet_ids,
-        private_key_backed_wallet_ids,
-    }
-}
-
 pub fn aggregate_owned_addresses(request: OwnedAddressAggregationRequest) -> Vec<String> {
     let mut ordered = Vec::new();
     let mut seen = std::collections::BTreeSet::<String>::new();
@@ -385,7 +276,8 @@ pub fn aggregate_owned_addresses(request: OwnedAddressAggregationRequest) -> Vec
     ordered
 }
 
-pub fn plan_receive_selection(request: ReceiveSelectionRequest) -> ReceiveSelectionPlan {
+#[uniffi::export]
+pub fn core_receive_selection(request: ReceiveSelectionRequest) -> ReceiveSelectionPlan {
     let resolved_chain_name = if request
         .available_receive_chains
         .iter()
@@ -421,7 +313,8 @@ pub fn plan_receive_selection(request: ReceiveSelectionRequest) -> ReceiveSelect
     }
 }
 
-pub fn plan_self_send_confirmation(
+#[uniffi::export]
+pub fn core_self_send_confirmation(
     request: SelfSendConfirmationRequest,
 ) -> SelfSendConfirmationPlan {
     let destination = request.destination_address.trim().to_lowercase();
@@ -477,41 +370,23 @@ pub fn plan_self_send_confirmation(
     }
 }
 
-pub fn plan_dashboard_supported_token_entries(
+/// De-duplicate and order the tracked tokens a dashboard row may show.
+///
+/// A pure sort and filter over the subset the caller assembled, not over the
+/// stored preference list — so there is no state here to own.
+#[uniffi::export]
+pub fn core_dashboard_supported_token_entries(
     entries: Vec<wallet_domain::CoreTokenPreferenceEntry>,
 ) -> Vec<wallet_domain::CoreTokenPreferenceEntry> {
-    fn chain_name(chain: wallet_domain::CoreTokenTrackingChain) -> &'static str {
-        use wallet_domain::CoreTokenTrackingChain::*;
-        match chain {
-            Ethereum => "Ethereum",
-            Arbitrum => "Arbitrum",
-            Optimism => "Optimism",
-            Bnb => "BNB Chain",
-            Avalanche => "Avalanche",
-            Hyperliquid => "Hyperliquid",
-            Polygon => "Polygon",
-            Base => "Base",
-            Linea => "Linea",
-            Scroll => "Scroll",
-            Blast => "Blast",
-            Mantle => "Mantle",
-            Solana => "Solana",
-            Sui => "Sui",
-            Aptos => "Aptos",
-            Ton => "TON",
-            Near => "NEAR",
-            Tron => "Tron",
-        }
-    }
-
     let mut filtered: Vec<wallet_domain::CoreTokenPreferenceEntry> = entries
         .into_iter()
         .filter(|entry| !entry.contract_address.is_empty())
         .collect();
     filtered.sort_by(|lhs, rhs| {
-        chain_name(lhs.chain)
+        lhs.chain
+            .chain_name()
             .to_lowercase()
-            .cmp(&chain_name(rhs.chain).to_lowercase())
+            .cmp(&rhs.chain.chain_name().to_lowercase())
     });
     let mut seen_keys = std::collections::BTreeSet::<String>::new();
     filtered
@@ -519,7 +394,7 @@ pub fn plan_dashboard_supported_token_entries(
         .filter(|entry| {
             let key = format!(
                 "{}|{}",
-                chain_name(entry.chain).to_lowercase(),
+                entry.chain.chain_name().to_lowercase(),
                 entry.contract_address.to_lowercase()
             );
             seen_keys.insert(key)
@@ -545,6 +420,48 @@ fn normalize_tracked_token_identifier(
     }
 }
 
+/// The built-in token catalog, as preference entries.
+///
+/// Built from `tokens.toml` — the same catalog `list_all_builtin_tokens`
+/// serves. A caller used to fetch that list, reshape each row into a
+/// preference entry, and hand it back for merging; the reshaping is here now,
+/// where the catalog already is.
+///
+/// `id` is derived from chain and contract rather than minted at random: a
+/// built-in's identity *is* its contract, and the old ids were regenerated on
+/// every launch anyway.
+pub fn built_in_token_preferences() -> Vec<wallet_domain::CoreTokenPreferenceEntry> {
+    crate::tokens::catalog()
+        .iter()
+        .filter_map(|token| {
+            let chain = wallet_domain::CoreTokenTrackingChain::from_chain_name(&token.chain)?;
+            let category = token
+                .tags
+                .iter()
+                .find_map(|tag| match tag.as_str() {
+                    "stablecoin" => Some(wallet_domain::CoreTokenPreferenceCategory::Stablecoin),
+                    "meme" => Some(wallet_domain::CoreTokenPreferenceCategory::Meme),
+                    _ => None,
+                })
+                .unwrap_or(wallet_domain::CoreTokenPreferenceCategory::Custom);
+            Some(wallet_domain::CoreTokenPreferenceEntry {
+                id: format!("builtin:{}:{}", chain.chain_name(), token.contract),
+                chain,
+                name: token.name.clone(),
+                symbol: token.symbol.clone(),
+                token_standard: token.token_standard.clone(),
+                contract_address: token.contract.clone(),
+                coin_gecko_id: token.coingecko_id.clone(),
+                decimals: token.decimals as i32,
+                display_decimals: token.display_decimals.map(|d| d as i32),
+                category,
+                is_built_in: true,
+                is_enabled: token.enabled,
+            })
+        })
+        .collect()
+}
+
 /// Merge built-in token registry entries with persisted user preferences:
 /// copies `is_enabled` + `display_decimals` from matching persisted built-ins,
 /// appends all non-built-in (custom) persisted entries, and returns the list
@@ -553,29 +470,6 @@ pub fn plan_merge_built_in_token_preferences(
     built_ins: Vec<wallet_domain::CoreTokenPreferenceEntry>,
     persisted: Vec<wallet_domain::CoreTokenPreferenceEntry>,
 ) -> Vec<wallet_domain::CoreTokenPreferenceEntry> {
-    fn chain_label(chain: wallet_domain::CoreTokenTrackingChain) -> &'static str {
-        use wallet_domain::CoreTokenTrackingChain::*;
-        match chain {
-            Ethereum => "Ethereum",
-            Arbitrum => "Arbitrum",
-            Optimism => "Optimism",
-            Bnb => "BNB Chain",
-            Avalanche => "Avalanche",
-            Hyperliquid => "Hyperliquid",
-            Polygon => "Polygon",
-            Base => "Base",
-            Linea => "Linea",
-            Scroll => "Scroll",
-            Blast => "Blast",
-            Mantle => "Mantle",
-            Solana => "Solana",
-            Sui => "Sui",
-            Aptos => "Aptos",
-            Ton => "TON",
-            Near => "NEAR",
-            Tron => "Tron",
-        }
-    }
     let mut merged: Vec<wallet_domain::CoreTokenPreferenceEntry> = Vec::new();
     for built_in in built_ins.into_iter() {
         let built_in_key =
@@ -595,26 +489,14 @@ pub fn plan_merge_built_in_token_preferences(
     }
     merged.extend(persisted.into_iter().filter(|entry| !entry.is_built_in));
     merged.sort_by(|lhs, rhs| {
-        let lhs_chain = chain_label(lhs.chain);
-        let rhs_chain = chain_label(rhs.chain);
+        let lhs_chain = lhs.chain.chain_name();
+        let rhs_chain = rhs.chain.chain_name();
         lhs_chain
             .cmp(rhs_chain)
             .then_with(|| rhs.is_built_in.cmp(&lhs.is_built_in))
             .then_with(|| lhs.symbol.cmp(&rhs.symbol))
     });
     merged
-}
-
-pub fn plan_priced_chain(
-    chain_name: String,
-    bitcoin_network_mode_raw: String,
-    ethereum_network_mode_raw: String,
-) -> bool {
-    match chain_name.as_str() {
-        "Bitcoin" => bitcoin_network_mode_raw == "mainnet",
-        "Ethereum" => ethereum_network_mode_raw == "mainnet",
-        _ => true,
-    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, uniffi::Record)]
@@ -632,7 +514,8 @@ pub struct TransactionActivityInput {
     pub chain_name: String,
 }
 
-pub fn plan_active_wallet_transaction_ids(
+#[uniffi::export]
+pub fn core_active_wallet_transaction_ids(
     transactions: Vec<TransactionActivityInput>,
     wallets: Vec<WalletChainInput>,
 ) -> Vec<String> {
@@ -667,7 +550,8 @@ pub struct NormalizedHistorySignatureTransaction {
     pub created_at_unix: f64,
 }
 
-pub fn plan_normalized_history_signature(
+#[uniffi::export]
+pub fn core_normalized_history_signature(
     transactions: Vec<NormalizedHistorySignatureTransaction>,
     wallets: Vec<WalletChainInput>,
 ) -> i64 {
@@ -712,7 +596,8 @@ pub struct TransactionEarliestInput {
     pub created_at_unix: f64,
 }
 
-pub fn plan_earliest_transaction_dates(
+#[uniffi::export]
+pub fn core_earliest_transaction_dates(
     transactions: Vec<TransactionEarliestInput>,
 ) -> Vec<WalletEarliestTransactionDate> {
     let mut earliest: BTreeMap<String, f64> = BTreeMap::new();
@@ -752,7 +637,8 @@ pub struct WalletChainEligibilityInput {
     pub resolved_address_for_chain: Option<String>,
 }
 
-pub fn plan_has_wallet_for_chain(
+#[uniffi::export]
+pub fn core_has_wallet_for_chain(
     chain_name: String,
     wallets: Vec<WalletChainEligibilityInput>,
 ) -> bool {
@@ -798,7 +684,15 @@ pub struct CoreResetPlan {
     pub clear_network_and_transport_caches: bool,
 }
 
-pub fn plan_reset_dispatch(scopes: Vec<String>) -> CoreResetPlan {
+/// Which sub-resets a set of user-chosen scopes implies.
+///
+/// Kept as a calculation the caller applies, on purpose: the *rule* is domain
+/// — resetting wallets implies resetting history — but every action it
+/// dispatches is platform (Keychain deletes, `UserDefaults`, URL caches).
+/// There is no core-owned state behind it to move, which is why it is not a
+/// `plan_` any more.
+#[uniffi::export]
+pub fn core_reset_dispatch(scopes: Vec<String>) -> CoreResetPlan {
     let has = |s: &str| scopes.iter().any(|x| x == s);
     let wallets_and_secrets = has("walletsAndSecrets");
     let history_and_cache_direct = has("historyAndCache");
@@ -914,52 +808,6 @@ pub fn plan_price_alert_evaluation(
     }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, uniffi::Record)]
-#[serde(rename_all = "camelCase")]
-pub struct DashboardRebuildDecisionRequest {
-    pub old_prices: Vec<PriceAlertEvaluationPrice>,
-    pub new_prices: Vec<PriceAlertEvaluationPrice>,
-    pub cached_relevant_price_keys: Vec<String>,
-    pub pinned_prototype_keys: Vec<String>,
-    pub selected_main_tab_is_home: bool,
-}
-
-/// Decide whether a live-price update should trigger a dashboard rebuild.
-pub fn plan_dashboard_rebuild_for_live_price_change(
-    request: DashboardRebuildDecisionRequest,
-) -> bool {
-    let old: HashMap<String, f64> = request
-        .old_prices
-        .into_iter()
-        .map(|p| (p.holding_key, p.live_price))
-        .collect();
-    let new: HashMap<String, f64> = request
-        .new_prices
-        .into_iter()
-        .map(|p| (p.holding_key, p.live_price))
-        .collect();
-    if old == new {
-        return false;
-    }
-    if request.cached_relevant_price_keys.is_empty() {
-        return true;
-    }
-    let changed_relevant = request
-        .cached_relevant_price_keys
-        .iter()
-        .any(|key| old.get(key) != new.get(key));
-    if changed_relevant {
-        return true;
-    }
-    if request.selected_main_tab_is_home {
-        return request
-            .pinned_prototype_keys
-            .iter()
-            .any(|key| old.get(key) != new.get(key));
-    }
-    false
-}
-
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, uniffi::Enum)]
 pub enum EthereumCustomFeeValidationCode {
     InvalidMaxFee,
@@ -967,7 +815,8 @@ pub enum EthereumCustomFeeValidationCode {
     MaxBelowPriority,
 }
 
-pub fn plan_ethereum_custom_fee_validation(
+#[uniffi::export]
+pub fn core_ethereum_custom_fee_validation(
     use_custom_fees: bool,
     is_ethereum_chain: bool,
     max_fee_gwei_raw: String,
@@ -997,7 +846,8 @@ pub enum EthereumManualNonceValidationCode {
     TooLarge,
 }
 
-pub fn plan_ethereum_manual_nonce_validation(
+#[uniffi::export]
+pub fn core_ethereum_manual_nonce_validation(
     manual_nonce_enabled: bool,
     nonce_raw: String,
 ) -> Option<EthereumManualNonceValidationCode> {
@@ -1039,6 +889,26 @@ pub struct ChainOperationalEventRecord {
     pub transaction_hash: Option<String>,
 }
 
+/// Seconds since the Unix epoch. The one clock read in this module.
+pub fn now_unix() -> f64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_secs_f64())
+        .unwrap_or(0.0)
+}
+
+/// An opaque identifier for a newly recorded event.
+///
+/// Random hex rather than a UUID: nothing parses these, and the shape is not
+/// worth a dependency. Callers must treat it as opaque — the platform used to
+/// mint UUIDs here and no reader depended on that either.
+pub fn new_event_id() -> String {
+    use rand::RngCore as _;
+    let mut bytes = [0u8; 16];
+    rand::thread_rng().fill_bytes(&mut bytes);
+    hex::encode(bytes)
+}
+
 /// Prepend `new_event` to `existing_events` and cap the list to 200. Matches
 /// the Swift ring-buffer semantics inside `appendChainOperationalEvent`.
 pub fn plan_append_chain_operational_event(
@@ -1077,7 +947,8 @@ pub struct EvmRecipientPreflightWarning {
 
 /// Build warning codes for an EVM send's recipient + token contract checks.
 /// Swift localizes the codes into user-facing strings.
-pub fn plan_evm_recipient_preflight_warnings(
+#[uniffi::export]
+pub fn core_evm_recipient_preflight_warnings(
     request: EvmRecipientPreflightRequest,
 ) -> Vec<EvmRecipientPreflightWarning> {
     let mut warnings = Vec::new();
@@ -1389,7 +1260,8 @@ pub enum EthereumSendErrorCode {
     Unknown,
 }
 
-pub fn plan_ethereum_send_error_code(message: String) -> EthereumSendErrorCode {
+#[uniffi::export]
+pub fn core_ethereum_send_error_code(message: String) -> EthereumSendErrorCode {
     let lower = message.to_lowercase();
     if lower.contains("nonce too low") {
         EthereumSendErrorCode::NonceTooLow
@@ -1530,7 +1402,8 @@ pub enum HoldingMergeAction {
 
 
 
-pub fn plan_resolve_derived_or_stored_address(
+#[uniffi::export]
+pub fn core_resolve_derived_or_stored_address(
     derived: Option<String>,
     stored: Option<String>,
     validation_kind: String,
@@ -1631,191 +1504,3 @@ pub fn core_aggregate_owned_addresses(request: OwnedAddressAggregationRequest) -
     aggregate_owned_addresses(request)
 }
 
-#[uniffi::export]
-pub fn core_receive_selection(request: ReceiveSelectionRequest) -> ReceiveSelectionPlan {
-    plan_receive_selection(request)
-}
-
-#[uniffi::export]
-pub fn core_self_send_confirmation(
-    request: SelfSendConfirmationRequest,
-) -> SelfSendConfirmationPlan {
-    plan_self_send_confirmation(request)
-}
-
-#[uniffi::export]
-pub fn core_plan_dashboard_supported_token_entries(
-    entries: Vec<crate::store::wallet_domain::CoreTokenPreferenceEntry>,
-) -> Vec<crate::store::wallet_domain::CoreTokenPreferenceEntry> {
-    plan_dashboard_supported_token_entries(entries)
-}
-
-#[uniffi::export]
-pub fn core_plan_merge_built_in_token_preferences(
-    built_ins: Vec<crate::store::wallet_domain::CoreTokenPreferenceEntry>,
-    persisted: Vec<crate::store::wallet_domain::CoreTokenPreferenceEntry>,
-) -> Vec<crate::store::wallet_domain::CoreTokenPreferenceEntry> {
-    plan_merge_built_in_token_preferences(built_ins, persisted)
-}
-
-#[uniffi::export]
-pub fn core_plan_price_alert_evaluation(
-    alerts: Vec<PriceAlertEvaluationAlert>,
-    prices: Vec<PriceAlertEvaluationPrice>,
-) -> PriceAlertEvaluationPlan {
-    plan_price_alert_evaluation(alerts, prices)
-}
-
-#[uniffi::export]
-pub fn core_plan_dashboard_rebuild_for_live_price_change(
-    request: DashboardRebuildDecisionRequest,
-) -> bool {
-    plan_dashboard_rebuild_for_live_price_change(request)
-}
-
-#[uniffi::export]
-pub fn core_ethereum_custom_fee_validation(
-    use_custom_fees: bool,
-    is_ethereum_chain: bool,
-    max_fee_gwei_raw: String,
-    priority_fee_gwei_raw: String,
-) -> Option<EthereumCustomFeeValidationCode> {
-    plan_ethereum_custom_fee_validation(
-        use_custom_fees,
-        is_ethereum_chain,
-        max_fee_gwei_raw,
-        priority_fee_gwei_raw,
-    )
-}
-
-#[uniffi::export]
-pub fn core_ethereum_manual_nonce_validation(
-    manual_nonce_enabled: bool,
-    nonce_raw: String,
-) -> Option<EthereumManualNonceValidationCode> {
-    plan_ethereum_manual_nonce_validation(manual_nonce_enabled, nonce_raw)
-}
-
-#[uniffi::export]
-pub fn core_plan_append_chain_operational_event(
-    existing_events: Vec<ChainOperationalEventRecord>,
-    new_event: ChainOperationalEventRecord,
-) -> Vec<ChainOperationalEventRecord> {
-    plan_append_chain_operational_event(existing_events, new_event)
-}
-
-#[uniffi::export]
-pub fn core_ethereum_send_error_code(message: String) -> EthereumSendErrorCode {
-    plan_ethereum_send_error_code(message)
-}
-
-#[uniffi::export]
-pub fn core_plan_baseline_chain_keypool_state(
-    input: ChainKeypoolBaselineInput,
-) -> ChainKeypoolStateRecord {
-    plan_baseline_chain_keypool_state(input)
-}
-
-#[uniffi::export]
-pub fn core_plan_chain_keypool_state(
-    baseline: ChainKeypoolStateRecord,
-    existing: Option<ChainKeypoolStateRecord>,
-) -> ChainKeypoolStateRecord {
-    plan_chain_keypool_state(baseline, existing)
-}
-
-
-#[uniffi::export]
-pub fn core_evm_recipient_preflight_warnings(
-    request: EvmRecipientPreflightRequest,
-) -> Vec<EvmRecipientPreflightWarning> {
-    plan_evm_recipient_preflight_warnings(request)
-}
-
-#[uniffi::export]
-pub fn core_priced_chain(
-    chain_name: String,
-    bitcoin_network_mode_raw: String,
-    ethereum_network_mode_raw: String,
-) -> bool {
-    plan_priced_chain(
-        chain_name,
-        bitcoin_network_mode_raw,
-        ethereum_network_mode_raw,
-    )
-}
-
-#[uniffi::export]
-pub fn core_active_wallet_transaction_ids(
-    transactions: Vec<TransactionActivityInput>,
-    wallets: Vec<WalletChainInput>,
-) -> Vec<String> {
-    plan_active_wallet_transaction_ids(transactions, wallets)
-}
-
-#[uniffi::export]
-pub fn core_normalized_history_signature(
-    transactions: Vec<NormalizedHistorySignatureTransaction>,
-    wallets: Vec<WalletChainInput>,
-) -> i64 {
-    plan_normalized_history_signature(transactions, wallets)
-}
-
-#[uniffi::export]
-pub fn core_earliest_transaction_dates(
-    transactions: Vec<TransactionEarliestInput>,
-) -> Vec<WalletEarliestTransactionDate> {
-    plan_earliest_transaction_dates(transactions)
-}
-
-#[uniffi::export]
-pub fn core_has_wallet_for_chain(
-    chain_name: String,
-    wallets: Vec<WalletChainEligibilityInput>,
-) -> bool {
-    plan_has_wallet_for_chain(chain_name, wallets)
-}
-
-#[uniffi::export]
-pub fn core_canonical_chain_component(chain_name: String, symbol: String) -> String {
-    plan_canonical_chain_component(chain_name, symbol)
-}
-
-#[uniffi::export]
-pub fn core_icon_identifier(
-    symbol: String,
-    chain_name: String,
-    contract_address: Option<String>,
-    token_standard: String,
-) -> String {
-    plan_icon_identifier(symbol, chain_name, contract_address, token_standard)
-}
-
-#[uniffi::export]
-pub fn core_normalized_icon_identifier(identifier: String) -> String {
-    plan_normalized_icon_identifier(identifier)
-}
-
-#[uniffi::export]
-pub fn core_plan_reset_dispatch(scopes: Vec<String>) -> CoreResetPlan {
-    plan_reset_dispatch(scopes)
-}
-
-#[uniffi::export]
-pub fn core_resolve_derived_or_stored_address(
-    derived: Option<String>,
-    stored: Option<String>,
-    validation_kind: String,
-    validation_network_mode: Option<String>,
-    derived_post_process: DerivedAddressPostProcess,
-    normalize_stored: bool,
-) -> Option<String> {
-    plan_resolve_derived_or_stored_address(
-        derived,
-        stored,
-        validation_kind,
-        validation_network_mode,
-        derived_post_process,
-        normalize_stored,
-    )
-}

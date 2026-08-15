@@ -455,33 +455,46 @@ pub enum CoreTokenTrackingChain {
 }
 
 impl CoreTokenTrackingChain {
+    /// Every variant, in declaration order.
+    pub const ALL: &'static [Self] = &[
+        Self::Ethereum,
+        Self::Arbitrum,
+        Self::Optimism,
+        Self::Bnb,
+        Self::Avalanche,
+        Self::Hyperliquid,
+        Self::Polygon,
+        Self::Base,
+        Self::Linea,
+        Self::Scroll,
+        Self::Blast,
+        Self::Mantle,
+        Self::Solana,
+        Self::Sui,
+        Self::Aptos,
+        Self::Ton,
+        Self::Near,
+        Self::Tron,
+    ];
+
     /// The chain a tracked token belongs to, from its display name.
     ///
-    /// The mapping was only ever expressed as serde renames, which meant a
-    /// caller outside serialization had no way to ask. Not every chain can host
-    /// tracked tokens, so this returns `None` rather than guessing.
+    /// Matches case-insensitively and accepts `tokens.toml`'s `"bnb"` for BNB
+    /// Chain. Derived from [`chain_name`] rather than tabulated again: this
+    /// mapping had four copies — here, its inverse below, a `chain_label`
+    /// helper in the merge planner, and `tokenTrackingChainFor` in Swift.
+    ///
+    /// Not every chain can host tracked tokens, so this returns `None` rather
+    /// than guessing.
     pub fn from_chain_name(name: &str) -> Option<Self> {
-        match name {
-            "Ethereum" => Some(Self::Ethereum),
-            "Arbitrum" => Some(Self::Arbitrum),
-            "Optimism" => Some(Self::Optimism),
-            "BNB Chain" => Some(Self::Bnb),
-            "Avalanche" => Some(Self::Avalanche),
-            "Hyperliquid" => Some(Self::Hyperliquid),
-            "Polygon" => Some(Self::Polygon),
-            "Base" => Some(Self::Base),
-            "Linea" => Some(Self::Linea),
-            "Scroll" => Some(Self::Scroll),
-            "Blast" => Some(Self::Blast),
-            "Mantle" => Some(Self::Mantle),
-            "Solana" => Some(Self::Solana),
-            "Sui" => Some(Self::Sui),
-            "Aptos" => Some(Self::Aptos),
-            "TON" => Some(Self::Ton),
-            "NEAR" => Some(Self::Near),
-            "Tron" => Some(Self::Tron),
-            _ => None,
+        let needle = name.trim();
+        if needle.eq_ignore_ascii_case("bnb") {
+            return Some(Self::Bnb);
         }
+        Self::ALL
+            .iter()
+            .copied()
+            .find(|chain| chain.chain_name().eq_ignore_ascii_case(needle))
     }
 
     /// The display name this variant stands for.

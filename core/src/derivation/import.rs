@@ -2,7 +2,7 @@ use std::collections::HashMap;
 
 use serde::{Deserialize, Serialize};
 
-use super::addressing::{validate_address, AddressValidationRequest};
+use crate::validation::address::{validate_address, AddressValidationRequest};
 use crate::registry::Chain;
 
 /// Addresses supplied by a wallet import, keyed by [`Chain::address_slot`].

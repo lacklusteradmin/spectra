@@ -95,7 +95,6 @@ fn doge_internal(
 }
 
 /// UniFFI export: derive Dogecoin mainnet keys (P2PKH only).
-#[uniffi::export]
 pub fn derive_dogecoin(
     seed_phrase: String,
     derivation_path: String,

@@ -198,172 +198,28 @@ const ALL_CHAINS: &[Chain] = &[
 
 impl Chain {
     /// Stable string id matching `chains.toml` `id` field.
-    pub const fn str_id(self) -> &'static str {
-        match self {
-            Chain::Bitcoin => "bitcoin",
-            Chain::Ethereum => "ethereum",
-            Chain::Solana => "solana",
-            Chain::Dogecoin => "dogecoin",
-            Chain::Xrp => "xrp",
-            Chain::Litecoin => "litecoin",
-            Chain::BitcoinCash => "bitcoin-cash",
-            Chain::Tron => "tron",
-            Chain::Stellar => "stellar",
-            Chain::Cardano => "cardano",
-            Chain::Polkadot => "polkadot",
-            Chain::Arbitrum => "arbitrum",
-            Chain::Optimism => "optimism",
-            Chain::Avalanche => "avalanche",
-            Chain::Sui => "sui",
-            Chain::Aptos => "aptos",
-            Chain::Ton => "ton",
-            Chain::Near => "near",
-            Chain::Icp => "internet-computer",
-            Chain::Monero => "monero",
-            Chain::Base => "base",
-            Chain::EthereumClassic => "ethereum-classic",
-            Chain::BitcoinSV => "bitcoin-sv",
-            Chain::BnbChain => "bnb",
-            Chain::Hyperliquid => "hyperliquid",
-            Chain::Polygon => "polygon",
-            Chain::Linea => "linea",
-            Chain::Scroll => "scroll",
-            Chain::Blast => "blast",
-            Chain::Mantle => "mantle",
-            Chain::Zcash => "zcash",
-            Chain::BitcoinGold => "bitcoin-gold",
-            Chain::Decred => "decred",
-            Chain::Kaspa => "kaspa",
-            Chain::Sei => "sei",
-            Chain::Celo => "celo",
-            Chain::Cronos => "cronos",
-            Chain::OpBnb => "opbnb",
-            Chain::ZkSyncEra => "zksync-era",
-            Chain::Sonic => "sonic",
-            Chain::Berachain => "berachain",
-            Chain::Unichain => "unichain",
-            Chain::Ink => "ink",
-            Chain::Dash => "dash",
-            Chain::XLayer => "x-layer",
-            Chain::Bittensor => "bittensor",
-            Chain::BitcoinTestnet => "bitcoin-testnet",
-            Chain::BitcoinTestnet4 => "bitcoin-testnet-4",
-            Chain::BitcoinSignet => "bitcoin-signet",
-            Chain::LitecoinTestnet => "litecoin-testnet",
-            Chain::BitcoinCashTestnet => "bitcoin-cash-testnet",
-            Chain::BitcoinSVTestnet => "bitcoin-sv-testnet",
-            Chain::DogecoinTestnet => "dogecoin-testnet",
-            Chain::ZcashTestnet => "zcash-testnet",
-            Chain::DecredTestnet => "decred-testnet",
-            Chain::KaspaTestnet => "kaspa-testnet",
-            Chain::DashTestnet => "dash-testnet",
-            Chain::EthereumSepolia => "ethereum-sepolia",
-            Chain::EthereumHoodi => "ethereum-hoodi",
-            Chain::ArbitrumSepolia => "arbitrum-sepolia",
-            Chain::OptimismSepolia => "optimism-sepolia",
-            Chain::BaseSepolia => "base-sepolia",
-            Chain::BnbChainTestnet => "bnb-testnet",
-            Chain::AvalancheFuji => "avalanche-fuji",
-            Chain::PolygonAmoy => "polygon-amoy",
-            Chain::HyperliquidTestnet => "hyperliquid-testnet",
-            Chain::EthereumClassicMordor => "ethereum-classic-mordor",
-            Chain::TronNile => "tron-nile",
-            Chain::SolanaDevnet => "solana-devnet",
-            Chain::XrpTestnet => "xrp-testnet",
-            Chain::StellarTestnet => "stellar-testnet",
-            Chain::CardanoPreprod => "cardano-preprod",
-            Chain::SuiTestnet => "sui-testnet",
-            Chain::AptosTestnet => "aptos-testnet",
-            Chain::TonTestnet => "ton-testnet",
-            Chain::NearTestnet => "near-testnet",
-            Chain::PolkadotWestend => "polkadot-westend",
-            Chain::MoneroStagenet => "monero-stagenet",
-        }
+    /// This chain's row in the catalog.
+    ///
+    /// The enum is declared in `chains.toml` order, so a variant *is* an index
+    /// into the catalog and every column it holds can be read without a second
+    /// table. `chain_order_matches_the_catalog` fails the build if they drift.
+    pub fn entry(self) -> &'static crate::chains::ChainEntry {
+        crate::chains::catalog()
+            .get(self as usize)
+            .expect("enum declaration order is the catalog's order")
+    }
+
+    /// Stable string id — the catalog's `id`.
+    pub fn str_id(self) -> &'static str {
+        self.entry().id.as_str()
     }
 
     /// Parse a string id (from `chains.toml` or the FFI boundary) into a `Chain`.
+    /// Parse a string id (from `chains.toml` or the FFI boundary) into a `Chain`.
     pub fn from_str_id(id: &str) -> Option<Self> {
-        Some(match id {
-            "bitcoin" => Chain::Bitcoin,
-            "ethereum" => Chain::Ethereum,
-            "solana" => Chain::Solana,
-            "dogecoin" => Chain::Dogecoin,
-            "xrp" => Chain::Xrp,
-            "litecoin" => Chain::Litecoin,
-            "bitcoin-cash" => Chain::BitcoinCash,
-            "tron" => Chain::Tron,
-            "stellar" => Chain::Stellar,
-            "cardano" => Chain::Cardano,
-            "polkadot" => Chain::Polkadot,
-            "arbitrum" => Chain::Arbitrum,
-            "optimism" => Chain::Optimism,
-            "avalanche" => Chain::Avalanche,
-            "sui" => Chain::Sui,
-            "aptos" => Chain::Aptos,
-            "ton" => Chain::Ton,
-            "near" => Chain::Near,
-            "internet-computer" => Chain::Icp,
-            "monero" => Chain::Monero,
-            "base" => Chain::Base,
-            "ethereum-classic" => Chain::EthereumClassic,
-            "bitcoin-sv" => Chain::BitcoinSV,
-            "bnb" => Chain::BnbChain,
-            "hyperliquid" => Chain::Hyperliquid,
-            "polygon" => Chain::Polygon,
-            "linea" => Chain::Linea,
-            "scroll" => Chain::Scroll,
-            "blast" => Chain::Blast,
-            "mantle" => Chain::Mantle,
-            "zcash" => Chain::Zcash,
-            "bitcoin-gold" => Chain::BitcoinGold,
-            "decred" => Chain::Decred,
-            "kaspa" => Chain::Kaspa,
-            "sei" => Chain::Sei,
-            "celo" => Chain::Celo,
-            "cronos" => Chain::Cronos,
-            "opbnb" => Chain::OpBnb,
-            "zksync-era" => Chain::ZkSyncEra,
-            "sonic" => Chain::Sonic,
-            "berachain" => Chain::Berachain,
-            "unichain" => Chain::Unichain,
-            "ink" => Chain::Ink,
-            "dash" => Chain::Dash,
-            "x-layer" => Chain::XLayer,
-            "bittensor" => Chain::Bittensor,
-            "bitcoin-testnet" => Chain::BitcoinTestnet,
-            "bitcoin-testnet-4" => Chain::BitcoinTestnet4,
-            "bitcoin-signet" => Chain::BitcoinSignet,
-            "litecoin-testnet" => Chain::LitecoinTestnet,
-            "bitcoin-cash-testnet" => Chain::BitcoinCashTestnet,
-            "bitcoin-sv-testnet" => Chain::BitcoinSVTestnet,
-            "dogecoin-testnet" => Chain::DogecoinTestnet,
-            "zcash-testnet" => Chain::ZcashTestnet,
-            "decred-testnet" => Chain::DecredTestnet,
-            "kaspa-testnet" => Chain::KaspaTestnet,
-            "dash-testnet" => Chain::DashTestnet,
-            "ethereum-sepolia" => Chain::EthereumSepolia,
-            "ethereum-hoodi" => Chain::EthereumHoodi,
-            "arbitrum-sepolia" => Chain::ArbitrumSepolia,
-            "optimism-sepolia" => Chain::OptimismSepolia,
-            "base-sepolia" => Chain::BaseSepolia,
-            "bnb-testnet" => Chain::BnbChainTestnet,
-            "avalanche-fuji" => Chain::AvalancheFuji,
-            "polygon-amoy" => Chain::PolygonAmoy,
-            "hyperliquid-testnet" => Chain::HyperliquidTestnet,
-            "ethereum-classic-mordor" => Chain::EthereumClassicMordor,
-            "tron-nile" => Chain::TronNile,
-            "solana-devnet" => Chain::SolanaDevnet,
-            "xrp-testnet" => Chain::XrpTestnet,
-            "stellar-testnet" => Chain::StellarTestnet,
-            "cardano-preprod" => Chain::CardanoPreprod,
-            "sui-testnet" => Chain::SuiTestnet,
-            "aptos-testnet" => Chain::AptosTestnet,
-            "ton-testnet" => Chain::TonTestnet,
-            "near-testnet" => Chain::NearTestnet,
-            "polkadot-westend" => Chain::PolkadotWestend,
-            "monero-stagenet" => Chain::MoneroStagenet,
-            _ => return None,
-        })
+        static BY_ID: std::sync::LazyLock<std::collections::HashMap<&'static str, Chain>> =
+            std::sync::LazyLock::new(|| Chain::all().map(|c| (c.str_id(), c)).collect());
+        BY_ID.get(id).copied()
     }
 
     /// Key under which this chain's address is stored during wallet import.
@@ -380,7 +236,7 @@ impl Chain {
     /// Testnets fall through to their own `str_id`. Import only ever populates
     /// mainnet slots, so a testnet lookup misses and yields no address — which
     /// is correct: a Bitcoin testnet address is not a Bitcoin address.
-    pub const fn address_slot(self) -> &'static str {
+    pub fn address_slot(self) -> &'static str {
         match self {
             Chain::EthereumClassic => Chain::EthereumClassic.str_id(),
             _ if self.is_evm() && !self.is_testnet() => Chain::Ethereum.str_id(),
@@ -665,183 +521,29 @@ impl Chain {
     // ── Native-coin metadata
 
     pub fn coin_name(self) -> &'static str {
-        crate::chains::chain_by_str_id(self.str_id())
-            .map(|c| c.native_asset_name.as_str())
-            .unwrap_or("")
+        self.entry().native_asset_name.as_str()
     }
 
-    pub const fn coin_symbol(self) -> &'static str {
-        match self {
-            Chain::Bitcoin => "BTC",
-            Chain::Ethereum
-            | Chain::Arbitrum
-            | Chain::Optimism
-            | Chain::Base
-            | Chain::Linea
-            | Chain::Scroll
-            | Chain::Blast => "ETH",
-            Chain::Solana => "SOL",
-            Chain::Dogecoin => "DOGE",
-            Chain::Xrp => "XRP",
-            Chain::Litecoin => "LTC",
-            Chain::BitcoinCash => "BCH",
-            Chain::Tron => "TRX",
-            Chain::Stellar => "XLM",
-            Chain::Cardano => "ADA",
-            Chain::Polkadot => "DOT",
-            Chain::Avalanche => "AVAX",
-            Chain::Sui => "SUI",
-            Chain::Aptos => "APT",
-            Chain::Ton => "TON",
-            Chain::Near => "NEAR",
-            Chain::Icp => "ICP",
-            Chain::Monero => "XMR",
-            Chain::EthereumClassic => "ETC",
-            Chain::BitcoinSV => "BSV",
-            Chain::BnbChain => "BNB",
-            Chain::Hyperliquid => "HYPE",
-            Chain::Polygon => "POL",
-            Chain::Mantle => "MNT",
-            Chain::Zcash => "ZEC",
-            Chain::BitcoinGold => "BTG",
-            Chain::Decred => "DCR",
-            Chain::Kaspa => "KAS",
-            Chain::Sei => "SEI",
-            Chain::Celo => "CELO",
-            Chain::Cronos => "CRO",
-            Chain::OpBnb => "BNB",
-            Chain::ZkSyncEra | Chain::Unichain | Chain::Ink => "ETH",
-            Chain::Sonic => "S",
-            Chain::Berachain => "BERA",
-            Chain::Dash => "DASH",
-            Chain::XLayer => "OKB",
-            Chain::Bittensor => "TAO",
-            Chain::BitcoinTestnet | Chain::BitcoinTestnet4 | Chain::BitcoinSignet => "BTC",
-            Chain::LitecoinTestnet => "LTC",
-            Chain::BitcoinCashTestnet => "BCH",
-            Chain::BitcoinSVTestnet => "BSV",
-            Chain::DogecoinTestnet => "DOGE",
-            Chain::ZcashTestnet => "ZEC",
-            Chain::DecredTestnet => "DCR",
-            Chain::KaspaTestnet => "KAS",
-            Chain::DashTestnet => "DASH",
-            Chain::EthereumSepolia
-            | Chain::EthereumHoodi
-            | Chain::ArbitrumSepolia
-            | Chain::OptimismSepolia
-            | Chain::BaseSepolia => "ETH",
-            Chain::BnbChainTestnet => "BNB",
-            Chain::AvalancheFuji => "AVAX",
-            Chain::PolygonAmoy => "POL",
-            Chain::HyperliquidTestnet => "HYPE",
-            Chain::EthereumClassicMordor => "ETC",
-            Chain::TronNile => "TRX",
-            Chain::SolanaDevnet => "SOL",
-            Chain::XrpTestnet => "XRP",
-            Chain::StellarTestnet => "XLM",
-            Chain::CardanoPreprod => "ADA",
-            Chain::SuiTestnet => "SUI",
-            Chain::AptosTestnet => "APT",
-            Chain::TonTestnet => "TON",
-            Chain::NearTestnet => "NEAR",
-            Chain::PolkadotWestend => "DOT",
-            Chain::MoneroStagenet => "XMR",
-        }
+    /// The asset fees are paid in — the catalog's `gas_token_symbol`.
+    ///
+    /// Not `symbol`: an L2 usually has a governance token of its own while
+    /// still charging gas in ETH, and this is the one a balance is denominated
+    /// in.
+    pub fn coin_symbol(self) -> &'static str {
+        self.entry().gas_token_symbol.as_str()
     }
 
-    pub const fn chain_display_name(self) -> &'static str {
-        match self {
-            Chain::Bitcoin => "Bitcoin",
-            Chain::Ethereum => "Ethereum",
-            Chain::Solana => "Solana",
-            Chain::Dogecoin => "Dogecoin",
-            Chain::Xrp => "XRP Ledger",
-            Chain::Litecoin => "Litecoin",
-            Chain::BitcoinCash => "Bitcoin Cash",
-            Chain::Tron => "Tron",
-            Chain::Stellar => "Stellar",
-            Chain::Cardano => "Cardano",
-            Chain::Polkadot => "Polkadot",
-            Chain::Arbitrum => "Arbitrum",
-            Chain::Optimism => "Optimism",
-            Chain::Avalanche => "Avalanche",
-            Chain::Sui => "Sui",
-            Chain::Aptos => "Aptos",
-            Chain::Ton => "TON",
-            Chain::Near => "NEAR",
-            Chain::Icp => "Internet Computer",
-            Chain::Monero => "Monero",
-            Chain::Base => "Base",
-            Chain::EthereumClassic => "Ethereum Classic",
-            Chain::BitcoinSV => "Bitcoin SV",
-            Chain::BnbChain => "BNB Chain",
-            Chain::Hyperliquid => "Hyperliquid",
-            Chain::Polygon => "Polygon",
-            Chain::Linea => "Linea",
-            Chain::Scroll => "Scroll",
-            Chain::Blast => "Blast",
-            Chain::Mantle => "Mantle",
-            Chain::Zcash => "Zcash",
-            Chain::BitcoinGold => "Bitcoin Gold",
-            Chain::Decred => "Decred",
-            Chain::Kaspa => "Kaspa",
-            Chain::Sei => "Sei",
-            Chain::Celo => "Celo",
-            Chain::Cronos => "Cronos",
-            Chain::OpBnb => "opBNB",
-            Chain::ZkSyncEra => "zkSync Era",
-            Chain::Sonic => "Sonic",
-            Chain::Berachain => "Berachain",
-            Chain::Unichain => "Unichain",
-            Chain::Ink => "Ink",
-            Chain::Dash => "Dash",
-            Chain::XLayer => "X Layer",
-            Chain::Bittensor => "Bittensor",
-            Chain::BitcoinTestnet => "Bitcoin Testnet",
-            Chain::BitcoinTestnet4 => "Bitcoin Testnet4",
-            Chain::BitcoinSignet => "Bitcoin Signet",
-            Chain::LitecoinTestnet => "Litecoin Testnet",
-            Chain::BitcoinCashTestnet => "Bitcoin Cash Testnet",
-            Chain::BitcoinSVTestnet => "Bitcoin SV Testnet",
-            Chain::DogecoinTestnet => "Dogecoin Testnet",
-            Chain::ZcashTestnet => "Zcash Testnet",
-            Chain::DecredTestnet => "Decred Testnet",
-            Chain::KaspaTestnet => "Kaspa Testnet",
-            Chain::DashTestnet => "Dash Testnet",
-            Chain::EthereumSepolia => "Ethereum Sepolia",
-            Chain::EthereumHoodi => "Ethereum Hoodi",
-            Chain::ArbitrumSepolia => "Arbitrum Sepolia",
-            Chain::OptimismSepolia => "Optimism Sepolia",
-            Chain::BaseSepolia => "Base Sepolia",
-            Chain::BnbChainTestnet => "BNB Chain Testnet",
-            Chain::AvalancheFuji => "Avalanche Fuji",
-            Chain::PolygonAmoy => "Polygon Amoy",
-            Chain::HyperliquidTestnet => "Hyperliquid Testnet",
-            Chain::EthereumClassicMordor => "Ethereum Classic Mordor",
-            Chain::TronNile => "Tron Nile",
-            Chain::SolanaDevnet => "Solana Devnet",
-            Chain::XrpTestnet => "XRP Ledger Testnet",
-            Chain::StellarTestnet => "Stellar Testnet",
-            Chain::CardanoPreprod => "Cardano Preprod",
-            Chain::SuiTestnet => "Sui Testnet",
-            Chain::AptosTestnet => "Aptos Testnet",
-            Chain::TonTestnet => "TON Testnet",
-            Chain::NearTestnet => "NEAR Testnet",
-            Chain::PolkadotWestend => "Polkadot Westend",
-            Chain::MoneroStagenet => "Monero Stagenet",
-        }
+    /// The name shown to a user — the catalog's `name`.
+    pub fn chain_display_name(self) -> &'static str {
+        self.entry().name.as_str()
     }
 
     pub fn native_decimals(self) -> u8 {
-        crate::chains::chain_by_str_id(self.str_id())
-            .map(|c| c.native_decimals as u8)
-            .unwrap_or(18)
+        self.entry().native_decimals as u8
     }
 
     pub fn coin_gecko_id(self) -> &'static str {
-        crate::chains::chain_by_str_id(self.str_id())
-            .map(|c| c.native_coingecko_id.as_str())
-            .unwrap_or("")
+        self.entry().native_coingecko_id.as_str()
     }
 
     pub const fn native_balance_field(self) -> Option<&'static str> {
@@ -896,16 +598,43 @@ impl Chain {
     /// Whether a holding on this chain can be sent given only its symbol, or
     /// whether the caller must also know it is a supported token.
     ///
-    /// Extracted verbatim from `can_send_holding`, which matched on chain-name
-    /// strings. Note the asymmetry it preserves: Ethereum, BNB Chain and
-    /// Avalanche gate non-native assets on token support, while every other EVM
-    /// chain falls through to `Any`. That is the behaviour as it stands — see
-    /// `send_rule_asymmetry_across_evm_chains` for the case it leaves open.
+    /// The networks a user can pick between for this chain: the mainnet first,
+    /// then its testnets in registry order.
+    ///
+    /// A "network mode" is not a separate concept — it is which `Chain` of a
+    /// family the user selected. Three enums used to model this in parallel
+    /// (`CoreBitcoinNetworkMode`, `CoreDogecoinNetworkMode` and a Swift-only
+    /// Ethereum one), which is why a Dogecoin testnet was quoted at mainnet
+    /// prices: the pricing rule listed two of the three by hand.
+    pub fn network_choices(self) -> Vec<Chain> {
+        let mainnet = self.mainnet_counterpart();
+        std::iter::once(mainnet)
+            .chain(Chain::all().filter(move |c| c.is_testnet() && c.mainnet_counterpart() == mainnet))
+            .collect()
+    }
+
+    /// True when this chain's family offers more than one network.
+    pub fn has_network_choice(self) -> bool {
+        self.network_choices().len() > 1
+    }
+
+    /// The EVM family gates a non-native asset on it being a supported token.
+    ///
+    /// It used to gate only Ethereum, BNB Chain and Avalanche, and fall through
+    /// to no restriction on the other twenty EVM chains — so the same
+    /// unsupported token was refused on Ethereum and offered on Arbitrum, where
+    /// it would be accepted by the UI and then fail at submit. That split was
+    /// an accident of the chain-name match this replaced, not a decision, and
+    /// a test used to pin it in place.
+    ///
+    /// One rule now, on the side that refuses early: being told no is better
+    /// than a signed transaction that cannot land.
     pub const fn send_rule(self) -> SendRule {
-        match self.mainnet_counterpart() {
-            Chain::Ethereum | Chain::BnbChain | Chain::Avalanche => SendRule::NativeOrSupportedToken,
+        let chain = self.mainnet_counterpart();
+        match chain {
             Chain::EthereumClassic | Chain::Hyperliquid => SendRule::NativeOnly,
             Chain::Solana => SendRule::SupportedSolanaCoin,
+            _ if chain.is_evm() => SendRule::NativeOrSupportedToken,
             _ => SendRule::Any,
         }
     }
@@ -965,7 +694,7 @@ impl Chain {
         )
     }
 
-    /// The `kind` string [`crate::derivation::validation::validate_address`]
+    /// The `kind` string [`crate::validation::address::validate_address`]
     /// dispatches on for this chain's address format.
     ///
     /// Address *format* families are coarser than chains: every EVM chain
@@ -1295,7 +1024,7 @@ mod tests {
     /// old per-module copies of this table had.
     #[test]
     fn every_chain_has_a_kind_validate_address_recognises() {
-        use crate::derivation::validation::{validate_address, AddressValidationRequest};
+        use crate::validation::address::{validate_address, AddressValidationRequest};
         for chain in Chain::all() {
             let kind = chain.address_validation_kind();
             assert!(!kind.is_empty(), "{} has an empty kind", chain.str_id());
@@ -1559,28 +1288,75 @@ pub fn core_evm_seed_derivation_chain_name(chain_name: String) -> Option<String>
 mod catalog_agreement_tests {
     use super::*;
 
-    /// The enum and `chains.toml` describe the same chains, so they must agree
-    /// on what each one is called.
+    /// A chain id spelled from the variant's own name, so the check below has
+    /// a source independent of the catalog it is checking.
     ///
-    /// They did not: the enum called Internet Computer "ICP" while the catalog
-    /// called it "Internet Computer". The cost was not the name — it was a
-    /// special case in `from_display_name`, a comment in `app_core` explaining
-    /// why a lookup had to be keyed by id, and the standing question of which
-    /// spelling any given call site meant.
+    /// The six exceptions are the whole list of places where the enum and
+    /// `chains.toml` spell a chain differently, which is worth being able to
+    /// read in one place.
+    fn expected_id(chain: Chain) -> String {
+        const EXCEPTIONS: &[(Chain, &str)] = &[
+            (Chain::Icp, "internet-computer"),
+            (Chain::BnbChain, "bnb"),
+            (Chain::OpBnb, "opbnb"),
+            (Chain::ZkSyncEra, "zksync-era"),
+            (Chain::BitcoinTestnet4, "bitcoin-testnet-4"),
+            (Chain::BnbChainTestnet, "bnb-testnet"),
+        ];
+        if let Some((_, id)) = EXCEPTIONS.iter().find(|(c, _)| *c == chain) {
+            return (*id).to_string();
+        }
+        let name = format!("{chain:?}");
+        let mut out = String::with_capacity(name.len() + 4);
+        let bytes: Vec<char> = name.chars().collect();
+        for (i, ch) in bytes.iter().enumerate() {
+            let starts_word = ch.is_uppercase()
+                && i > 0
+                && (bytes[i - 1].is_lowercase()
+                    || bytes[i - 1].is_ascii_digit()
+                    || bytes.get(i + 1).is_some_and(|n| n.is_lowercase()));
+            if starts_word {
+                out.push('-');
+            }
+            out.extend(ch.to_lowercase());
+        }
+        out
+    }
+
+    /// The enum is an index into `chains.toml`, so the two orders must match
+    /// exactly — position by position, not merely as sets.
+    ///
+    /// Asserting `chain.str_id() == entry.id` would prove nothing: `str_id`
+    /// *reads* the catalog now, so the two agree by construction. The variant
+    /// name is the independent source, which is why [`expected_id`] exists.
+    ///
+    /// This replaces `display_names_match_the_catalog`, which asked whether two
+    /// tables agreed on a name. There is one table now. The question worth
+    /// asking is whether the index is sound — if it is not, every chain
+    /// silently becomes a different chain, and unlike a rename that is
+    /// invisible from the outside.
     #[test]
-    fn display_names_match_the_catalog() {
+    fn chain_order_matches_the_catalog() {
         let catalog = crate::chains::list_all_chains();
-        for chain in Chain::all() {
-            let Some(entry) = catalog.iter().find(|entry| entry.id == chain.str_id()) else {
-                continue;
-            };
+        assert_eq!(
+            ALL_CHAINS.len(),
+            catalog.len(),
+            "{} chains in the enum, {} in chains.toml",
+            ALL_CHAINS.len(),
+            catalog.len()
+        );
+        for (index, entry) in catalog.iter().enumerate() {
+            let chain = ALL_CHAINS[index];
             assert_eq!(
-                chain.chain_display_name(),
-                entry.name,
-                "{} is \"{}\" in the enum and \"{}\" in chains.toml",
-                chain.str_id(),
-                chain.chain_display_name(),
-                entry.name
+                chain as usize, index,
+                "ALL_CHAINS[{index}] is {chain:?}, whose discriminant is {}",
+                chain as usize
+            );
+            assert_eq!(
+                expected_id(chain),
+                entry.id,
+                "position {index}: the enum has {chain:?}, chains.toml has \"{}\"",
+                entry.id
             );
         }
     }

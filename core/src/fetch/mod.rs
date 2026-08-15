@@ -5,7 +5,6 @@ pub mod http;
 
 pub mod price;
 pub mod refresh;
-pub mod refresh_engine;
 pub mod transactions;
 
 // Per-chain read-path clients: client struct + shared types + balance /

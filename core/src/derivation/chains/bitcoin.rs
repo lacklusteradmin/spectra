@@ -480,7 +480,6 @@ fn bitcoin_export_internal(
 }
 
 /// UniFFI export: derive Bitcoin mainnet wallet (P2PKH/P2SH-P2WPKH/P2WPKH/P2TR) from a seed phrase.
-#[uniffi::export]
 pub fn derive_bitcoin(
     seed_phrase: String,
     derivation_path: String,

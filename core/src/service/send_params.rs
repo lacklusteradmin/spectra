@@ -2,7 +2,7 @@ use serde::Deserialize;
 
 // ── Per-chain `sign_and_send` parameter shapes ────────────────────────────
 //
-// Each chain's `sign_and_send` arm in `service.rs` historically read its
+// Each chain's `sign_and_send` arm in `super::send` historically read its
 // inputs by pulling individual fields out of a `serde_json::Value` with
 // inline `.as_str()` / `.as_u64()` / `try_into()` chains. That style hides
 // the contract — a reader can't see at a glance what shape the Polkadot

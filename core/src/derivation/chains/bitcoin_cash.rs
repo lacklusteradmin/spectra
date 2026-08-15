@@ -71,7 +71,6 @@ fn bch_internal(
 }
 
 /// UniFFI export: derive Bitcoin Cash mainnet keys (P2PKH only).
-#[uniffi::export]
 pub fn derive_bitcoin_cash(
     seed_phrase: String,
     derivation_path: String,

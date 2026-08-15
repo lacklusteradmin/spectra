@@ -4,7 +4,7 @@
 
 use clap::{Args, Subcommand};
 use colored::Colorize as _;
-use spectra_core::derivation::validation::{validate_address, AddressValidationRequest};
+use spectra_core::validation::address::{validate_address, AddressValidationRequest};
 use spectra_core::store::state::{StateCommand, StateTransition};
 
 use super::resolve_chain;

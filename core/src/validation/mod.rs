@@ -1,8 +1,16 @@
-//! Field-level validation rules shared across platforms.
+//! Every "is this input acceptable" rule core owns, in one module.
 //!
-//! Each function is pure (no I/O, no mutable state) and returns an
-//! `Option<String>` error message that the UI can display inline.
-//! `None` means the field is valid.
+//! This file holds the field rules — pure functions returning an
+//! `Option<String>` the UI shows inline, where `None` means valid.
+//! [`address`] holds the per-chain address and identifier rules, which
+//! answer the same question about a much larger input.
+//!
+//! Address validation used to live under `derivation` because it borrows
+//! that module's parsers. Validating an address is not deriving one, and the
+//! split meant a caller had to know which of two modules named `validation`
+//! held the rule it wanted.
+
+pub mod address;
 
 /// Returns an error or advisory message when `word_count` is outside the
 /// set of BIP-39 standard mnemonic lengths, or `None` when it is valid.

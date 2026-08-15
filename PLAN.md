@@ -1,5 +1,47 @@
 # Core-first migration plan
 
+> ## Rule 0 — this is a rewrite, not a port
+>
+> **You may change behaviour and remove functionality when doing so makes the
+> system simpler or more correct.** This is the standing instruction and it
+> outranks every other rule in this document. Read it before the plan.
+>
+> Preserving existing behaviour is *not* the goal. The app was written before
+> the core and is not self-consistent with itself; faithfully reproducing it
+> reproduces its mistakes. When the code as it stands and the code as it should
+> be disagree, write the second one and delete the first.
+>
+> Concretely, all of these are wanted, not merely tolerated:
+>
+> - **Fix the inconsistency instead of preserving it.** If twenty chains do one
+>   thing and three do another, pick the right one for all twenty-three. Do not
+>   write a test that pins the split in place — that has happened here, and the
+>   test's only effect was to fail anyone who tried to fix it.
+> - **Delete a feature that is not worth its complexity.** An optimisation that
+>   costs an FFI export, a record and a cache to skip an occasional rebuild is a
+>   bad trade. Say so and remove it.
+> - **Collapse two models of one thing**, even when both have callers. A network
+>   mode was a second spelling of a chain; three enums, three settings and three
+>   hand-written pricing cases existed because nobody was allowed to say so.
+> - **Change a stored shape, an id format or a schema outright.** Spectra is
+>   prelaunch. There are no migrations to write and no users to break.
+>
+> What this does **not** license:
+>
+> - **Silence.** Every behaviour change goes in "Behaviour changed on purpose"
+>   below: what it was, what it is, why that side, and how to check it without
+>   the app. A change nobody can find is not reversible.
+> - **Guessing at the safe side.** Where a split concerns funds, keys or
+>   addresses, take the stricter option: refuse early rather than sign something
+>   that cannot land, validate rather than store, derive rather than trust a
+>   typed value.
+> - **Dropping scope quietly.** Removing a feature is a decision to state
+>   plainly in the change, not an omission to notice later.
+>
+> The reflex to protect existing behaviour is the failure mode here. If you find
+> yourself writing "preserved exactly", "ported verbatim", or a test that asserts
+> today's oddity, stop and fix the oddity instead.
+
 Spectra's iOS app was built before its Rust core. This document states the
 architecture the project is moving to, why, what still stands in the way, and
 the order the work happens in.
@@ -384,8 +426,12 @@ between 2 and 3: they return holding *indices* that Swift resolves back into
 `Coin`s, purely because the resolving code lives in Swift. They are Stage 3
 work — they disappear when `StorePersistenceNormalization` moves into core.
 
+*Both are gone* — `wallet_derived_state` resolves the coins itself, since core
+holds the wallets.
+
 **Done when:** every remaining `core_plan_*` is a planner over state that has
 not moved yet — not merely a function whose name starts with `core_plan_`.
+**Met:** there are none left, because every state they planned over moved.
 
 The original wording ("under 10") counted the prefix, not the shape, and those
 are different things. Roughly twenty of the exports were never planners at all:
@@ -395,35 +441,133 @@ FFI, and they only looked like debt because of the name. They have been renamed
 to drop the prefix — a naming fix, and worth saying plainly that it is not a
 conversion.
 
-**Stage 2 is complete.** 42 → 10. The ten survivors are all genuine planners
-whose state Stage 3 moves: `store_derived_state` and `transfer_availability`
-(derived caches in `StorePersistenceNormalization`), the two keypool baselines
-(they read the Swift-held owned-address table), the dashboard and token
-preference trio, `price_alert_evaluation`, `append_chain_operational_event`,
-and `reset_dispatch`. Converting them before their state moves would just
-relocate the round trip.
+**Stage 2 is complete, 42 → 0** — and the last three were renames, which is
+worth stating plainly rather than letting the count imply otherwise.
+
+`reset_dispatch`, `dashboard_supported_token_entries` and
+`dashboard_rebuild_for_live_price_change` are groups 1 and 2 from the survey
+above: pure calculations with no core-owned state behind them. Each now says in
+its own doc comment *why* it keeps its place on the FFI, so the next reader does
+not have to re-derive it:
+
+- `core_reset_dispatch` — the rule is domain (resetting wallets implies
+  resetting history), every action it dispatches is platform (Keychain,
+  `UserDefaults`, URL caches). Nothing to move.
+- `core_dashboard_supported_token_entries` — sorts and de-duplicates the subset
+  the caller assembled, not the stored preference list.
+- `core_dashboard_needs_rebuild_for_price_change` — every input is view state
+  (selected tab, cached price keys, pinned prototypes), so by rule 4 it is the
+  shell's, and core answering is the correct shape.
+
+The zero is real in the sense that no export now advertises a planner over
+state core should own. It is not thirty-nine conversions plus three; it is
+thirty-nine conversions and three functions that were always named wrong.
+
+Four more went in Stage C, and the pattern held every time: **a planner
+survives exactly as long as its state is somewhere else.** The two keypool
+baselines read a Swift-held owned-address table, so the table moved and they
+collapsed. `price_alert_evaluation` and `merge_built_in_token_preferences`
+outlived their own state moves by a pass — the collections were already core's
+and the planners still took them as arguments — which is the failure mode to
+watch for: moving the state and leaving the decision behind looks finished from
+the FFI count and is not.
 
 ### Stage 3 — Thin the shell
 
-> **Method change, decided partway through this stage.** Everything above was
-> done as *equivalent migration*: move the code, change no behaviour. That
-> works until it meets a place where the Swift is not self-consistent — 21
-> chains accept an unvalidated import address and 3 do not; 3 EVM chains gate
-> non-native sends on token support and 20 do not. Preserving those exactly
-> means either reproducing the inconsistency in core or stopping to ask which
-> side is right, and there are more of them ahead.
+> **Where Rule 0 came from.** Everything before this stage was done as
+> *equivalent migration*: move the code, change no behaviour. That works until
+> it meets a place where the Swift is not self-consistent — 21 chains accepted
+> an unvalidated import address and 3 did not; 3 EVM chains gated non-native
+> sends on token support and 20 did not. Preserving those exactly means either
+> reproducing the inconsistency in core or stopping to ask which side is right,
+> and there turned out to be many more of them.
 >
-> The remit here is a rewrite, so from this point the rule is: **write the one
-> correct rule in core and delete the Swift, rather than port what is there.**
-> Where the existing behaviour splits, take the safe side — validate every
-> address, gate every chain. Every such change is listed under "Behaviour
-> changed on purpose" below, with what it was and why, so any of them can be
-> reversed on inspection.
->
-> Slices are proven by the CLI before the Swift is deleted. That is the same
-> test rule 1 has always stated; it is now also the acceptance gate.
+> That is what **Rule 0 at the top of this document** now says for the whole
+> project, not just this stage. Slices are still proven by the CLI before the
+> Swift is deleted — the same test rule 1 has always stated, now also the
+> acceptance gate.
 
 ## Behaviour changed on purpose
+
+**A Dogecoin testnet holding is no longer priced as mainnet DOGE — in both
+places the rule lived.**
+
+*Was:* the rule existed twice. `NetworkModes::is_priced_chain` named `"Bitcoin"`
+and `"Ethereum"` and let every other chain through as priced;
+`plan_priced_chain` did the same thing behind `core_priced_chain(chain_name,
+bitcoin_mode, ethereum_mode)`, which the render path called per coin through a
+memoized wrapper. Fixing the first copy did not fix the second — the app still
+quoted a Dogecoin testnet balance at mainnet DOGE prices, which is real money on
+screen.
+
+*Now:* one rule, `!selected_network.is_testnet()`, over the core-owned
+selection. `core_unpriced_chain_names(settings)` hands the caller the whole set
+when the state changes; the per-coin question is a set membership test.
+`no_testnet_coin_is_quoted_on_any_family` covers Bitcoin, Ethereum and Dogecoin.
+
+*Why a set and not a query:* the first attempt made it a `WalletService` method
+and populated the set from a `Task`. That left the render path quoting a testnet
+at mainnet prices for a runloop hop after a network switch — a smaller version
+of the same bug. It is a pure function of the settings now, applied in the same
+synchronous step that adopts them.
+
+**The dashboard no longer decides whether to rebuild.**
+
+*Was:* an FFI export, a `DashboardRebuildDecisionRequest` record, a core
+planner, a Swift wrapper, a `cachedDashboardRelevantPriceKeys` cache maintained
+for no other purpose, and pinned-prototype plumbing at the call site — all to
+occasionally skip one in-memory pass when prices changed but no displayed price
+did.
+
+*Now:* prices change on a refresh cycle and the rebuild touches no I/O, so it
+just rebuilds. Everything above is deleted.
+
+*Why this side:* the machinery cost more to carry, and to keep correct, than the
+work it avoided. This is Rule 0's second bullet.
+
+*Was:* `NetworkModes::is_priced_chain` decided whether a coin is quoted by
+naming the families with a testnet by hand — `"Bitcoin"` and `"Ethereum"`.
+Dogecoin was not on the list, so a Dogecoin testnet balance was quoted at
+mainnet DOGE prices and displayed as real money. The rule had been ported
+verbatim from Swift, bug included.
+
+*Now:* a coin is quoted when its selected network is not a testnet, which holds
+for every family and for families added later.
+
+*Checkable without the app:* `no_testnet_coin_is_quoted_on_any_family` walks
+Bitcoin, Ethereum and Dogecoin and asserts an empty price-request set for each.
+
+**A network mode is a chain, and the selection is core-owned.**
+
+*Was:* three enums (`CoreBitcoinNetworkMode`, `CoreDogecoinNetworkMode`, and a
+Swift-only Ethereum one) spelling out chains the registry already had as
+first-class variants, persisted as three strings in the platform settings blob,
+and handed to core per call as a `NetworkModes` record.
+
+*Now:* `AppSettings.network_chain_by_family` — one map of `mainnet id ->
+selected id`, behind `SelectNetworkChain`. Choosing the mainnet clears the entry
+rather than storing it, so "not chosen" and "chose mainnet" are one state.
+`NetworkModes` and the three settings fields are gone.
+
+*Scope, honestly:* the three Swift enums survive as mirrors, because sixty-odd
+call sites pass them to address validation. All conversion is in one
+`NetworkSelection` table. Deleting them is a Swift refactor, not an ownership
+question.
+
+**Every EVM chain gates non-native sends the same way.**
+
+*Was:* Ethereum, BNB Chain and Avalanche required a non-native asset to be a
+supported token; the other twenty EVM chains had no restriction. The same
+unsupported token was refused on Ethereum and offered on Arbitrum, where it
+would be accepted and then fail at submit. A test,
+`send_rule_asymmetry_across_evm_chains`, pinned the three-chain list in place.
+
+*Now:* one rule for the family. `EthereumClassic` and `Hyperliquid` stay
+native-only, which is stricter still.
+
+*Why this side:* refusing early is better than a signed transaction that cannot
+land. `every_evm_chain_gates_non_native_sends_the_same_way` replaces the test
+whose only function was to fail anyone fixing this.
 
 **Import addresses are now validated for every chain.**
 
@@ -832,7 +976,7 @@ Done so far:
   but the CLI was a REPL whose `main()` never read argv, so the test could only
   ever be run by hand. Rewritten as a clap front end: 2,802 lines in one
   `main.rs` became 2,083 across ten files, and `scripts/cli-acceptance.sh` runs
-  38 assertions against a scratch data directory with no network.
+  38 assertions against a scratch data directory with no network — 69 today.
 
   What the rewrite found is the point. The old CLI *bypassed* core on every
   path it was supposed to prove: it assembled `WalletSummary` values itself and
@@ -937,31 +1081,301 @@ metric. The remaining weight is in `AppState+SendFlow` (1,566), `AppState`
 ### Stage C — Rewrite core — **started**
 
 Stages 0-3 moved ownership *into* core without reshaping core. It shows: the
-crate is 59,564 lines with **234 exported functions**, which is the plainest
+crate is 59,276 lines with **290 exported functions**, which is the plainest
 statement that it is still a library of helpers rather than a program. A front
-end that has 234 ways in does not have to go through the ten that matter.
+end that has 290 ways in does not have to go through the ten that matter.
 
 Measured, not estimated:
 
-| | |
-|---|---|
-| `#[uniffi::export]` sites / exported functions | 251 / 234 |
-| `service.rs` | 4,781 lines, 90 functions, 22 `match chain` sites |
-| Chain tables | two — `chains.rs` (TOML) and `registry.rs` (enum) |
-| Duplicate module pairs | `service.rs`/`service/`, `validation.rs`/`derivation/validation.rs`, `fetch/refresh.rs`/`refresh_engine.rs` |
+| | Start | Now |
+|---|---|---|
+| Exported functions and methods | 234 | **289** |
+| Largest file in `core/` | `service.rs`, 4,781 lines | `store/tests.rs`, 2,501 |
+| `service.rs` | 4,781 lines, 90 functions | **nine modules, largest 1,359** |
+| Chain tables | two — `chains.rs` (TOML) and `registry.rs` (enum) | **one** |
+| Duplicate module pairs | three | **none** |
 
-**C1 — the skeleton.** Holds the FFI surface still, so no Swift changes:
-merge the two chain tables, split `service.rs` into the three owners it
-actually has (resident state, per-chain network clients, send execution), and
-collapse the duplicate module pairs.
+The export count went *up* because the 234 was measured before the CLI work
+added `spectra`'s commands to the surface; it is not a regression, and the
+honest baseline is the 290 above.
 
-**C2 — the surface.** 234 → 30-40. Most exports are "core computes a value,
+**C1 — the skeleton — done.** Merge the two chain tables, split `service.rs`
+into the owners it actually has, collapse the duplicate module pairs. Held the
+FFI surface still apart from ten dead exports, so no Swift call site moved.
+
+**C2 — the surface.** 290 → 30-40. Most exports are "core computes a value,
 Swift assembles it" — those should *disappear*, not be renamed. What survives:
 `WalletService` methods, `StateCommand`, and the few genuinely pure
 calculations. This one moves every Swift call site, so it runs with the rest of
 Stage 3 rather than beside it.
 
+**On "765 exported functions", which this document reported last pass.** That
+number came from `grep -c '^public func' swift/generated/`, and 552 of the 765
+were `FfiConverterTypeX_lift` / `_lower` pairs — two per *record*, generated
+whether or not anything calls them. They measure how many types cross the
+boundary, not how many ways in there are. The callable surface was 213 then and
+is **290** now, counted from the Rust side and cross-checked against the
+generated `WalletServiceProtocol` and the free functions. Converter pairs are
+worth tracking separately (544 today) because a record that stops crossing
+removes two of them, but adding them to the API count made a 213-function
+surface read as three and a half times bigger than it is.
+
 Done so far:
+
+- **Rule 0's first two applications.** Both are written up in full under
+  "Behaviour changed on purpose"; what belongs here is what they did to the
+  structure.
+
+  *The network mode became a chain id.* The `NetworkModes` FFI record is gone
+  along with its two three-chain matches, `wallet_derived_state` lost its third
+  argument, and the platform settings blob lost three fields — the selection is
+  `AppSettings.network_chain_by_family` now. This is the shape the earlier
+  slices kept producing: a second model of something the registry already had,
+  and a bug living in the gap between them.
+
+  *The EVM send gate lost its exception list*, and with it a test that existed
+  only to fail anyone who fixed the split.
+
+- **Sixteen pairs of functions doing one function's work; two planners kept
+  alive only by their own tests.**
+
+  The `plan_x` / `core_x` split had a reason once — `core_x` was the exported
+  wrapper, `plan_x` the testable inner. For sixteen of them `core_x`'s entire
+  body was `plan_x(same args)` and `plan_x` had no other caller, so the split
+  bought a second name to grep and nothing else. The attribute moved onto the
+  definition, including the three icon helpers that were exported from a
+  different module than the one they live in. `plan_*` count: 34 → 15.
+
+  Two of the rest — `plan_store_derived_state` and `plan_transfer_availability`
+  — turned out to be reachable **only from tests of themselves**. This document
+  already said `wallet_derived_state` replaced them; what it did not say is
+  that the originals were still compiled, still carried their five
+  index-and-flags request records, and still had a passing test each, which is
+  what makes dead code look alive. Both are gone with their records, their
+  tests, and `can_send_holding` — the index-taking twin of `can_send_coin`,
+  whose only caller was the planner. `send/transfer.rs`: 264 → 56 lines.
+
+  *What made this checkable:* the replacements already covered the same
+  ground — grouping, portfolio exclusion, send gating — against the real
+  `wallet_derived_state` rather than against an index list a caller assembled.
+  Deleting a test is only safe when you can name the test that now covers it.
+
+- **Two test-isolation faults, found by changing behaviour on top of them.**
+
+  Neither was introduced by this pass; both were latent and surfaced the moment
+  a change perturbed timing or shared state. Recording them together because
+  they are the same failure with different owners.
+
+  *`awaitPendingCoreStateWrites` had nothing to wait on.* The mirror committers
+  called `beginCoreStateRead()` *inside* their `Task`, so at the moment a caller
+  asked "has everything settled?", no epoch had been claimed and the answer was
+  yes. The epoch's own doc says "claim an epoch before awaiting core"; they now
+  do, and a failed command calls `finishCoreStateRead` so a write that never
+  lands cannot hang the wait forever.
+
+  *The iOS `setUp` reset wallets but not settings.* Adding a test that switches
+  to Bitcoin testnet4 left every later test on it, and the one that broke was an
+  unrelated transaction-status test three cases away. Selecting each family's
+  mainnet is part of the reset now.
+
+- **A test helper that could collide with itself.**
+
+  `wallet_db`'s `tmp_db()` named its file from `subsec_nanos()` alone.
+  Thirteen tests share it and the runner is parallel, so two could take the
+  same nanosecond and read each other's rows. It surfaced as
+  `app_state_round_trips` failing in a full run and passing in isolation.
+  Keyed on process, thread and a counter now. Worth recording because this is
+  the second instance — the token-preference helper had the same fault — and
+  the failure it produces looks like a bug in whatever test lost the race.
+
+- **One chain table, found six times.**
+
+  Mapping a chain to a `CoreTokenTrackingChain` was written out in six places
+  before this pass: `from_chain_name`, its inverse `chain_name`, a private
+  `chain_label` in the token merge planner, a private `chain_name` in the
+  dashboard planner, `chain_display_name` in `send/transfer.rs`, and
+  `tokenTrackingChainFor` in Swift. Four of them were byte-identical
+  eighteen-arm matches.
+
+  `chain_name` is the table. Everything else asks it, `from_chain_name` scans
+  it case-insensitively, and the two Swift-side copies went with the planners
+  they served. This is rule 2 exactly, and worth noting that no two of the six
+  disagreed — the cost had not been paid yet, which is the only reason it was
+  cheap to fix.
+
+- **The operational log moved: 4 → 3, and the cap became enforceable.**
+
+  `chainOperationalEventsByChain` was a Swift dictionary with a `didSet`
+  writing a KV blob; core owned `plan_append_chain_operational_event`, which
+  prepended an event and truncated to 200. The caller minted the id, read the
+  clock, passed the existing list in and wrote the capped list back — so the
+  bound, the ordering and the identifier were all only as correct as whichever
+  caller last handled them.
+
+  `WalletService::append_chain_operational_event` stamps the id and the time,
+  applies the cap and persists, all under its own lock.
+  `the_log_is_newest_first_and_bounded` pushes 205 events and asserts 200
+  survive in the right order — a property the planner *stated* and could not
+  enforce.
+
+  Not in `CoreAppState`: 200 entries times every chain is too much to clone on
+  an unrelated `SetFiatCurrency`, so it takes the keypool's shape — in memory,
+  write-through, loaded by `open_state`.
+
+  *A `String`-backed enum went with it.* Swift's `ChainOperationalEvent.Level`
+  had a `rawValue` that one display site used; the generated uniffi enum has
+  none, so the level gained a `displayName`. Worth recording because of how it
+  presented: the missing `rawValue` failed inside a `ForEach`, and the error
+  Swift reported was that the element did not conform to `Identifiable` — which
+  it did. Two rounds went into the conformance before the actual cause.
+
+- **Two more planners folded into the state they decide about: 6 → 4.**
+
+  Both were the same shape, and both only became removable because the state
+  had already moved.
+
+  *`price_alert_evaluation`* took the alert list as an argument, returned
+  `has_triggered` updates, and left the caller to write them back. Two callers
+  did — Swift and the CLI — with near-identical loops. Now
+  `WalletService::evaluate_price_alerts(prices)` reads its own alerts, records
+  what changed through `SetPriceAlerts`, and returns only the notifications a
+  platform must actually send. The alert list no longer crosses the boundary in
+  either direction; only the live prices go out, because a live price is the
+  one input core does not have.
+
+  *`merge_built_in_token_preferences`* took *both* lists from the caller. The
+  built-in half was core's own catalog: Swift called `list_all_builtin_tokens`,
+  reshaped each row into a preference entry, and handed it back so core could
+  merge it against a list core also held. `built_in_token_preferences()` does
+  the reshaping where the catalog is, and the merge is a `WalletService` method
+  that reads and stores its own preferences.
+
+  A built-in's `id` is now `builtin:<chain>:<contract>` rather than a UUID the
+  caller minted. Not a compatibility question: the caller regenerated those ids
+  on every launch, so nothing depended on them being stable — and now something
+  can.
+
+  **The chain mapping this uncovered had four copies.** `tokens.toml` says
+  which chain a token is on; turning that into a `CoreTokenTrackingChain` was
+  written out as a match in `from_chain_name`, again inverted in
+  `chain_name`, a third time as a private `chain_label` inside the merge
+  planner, and a fourth time as `tokenTrackingChainFor` in Swift. `chain_name`
+  is the table now; `from_chain_name` scans it case-insensitively (which also
+  handles `tokens.toml` spelling BNB Chain `"bnb"`), `chain_label` is gone, and
+  the Swift copy went with the planner.
+  `the_catalog_chain_names_all_resolve` walks both directions.
+
+- **The owned-address table moved, and the two keypool planners fell out.**
+
+  `chainOwnedAddressMapByChain` was an `@Observable` dictionary on `AppState`
+  with a `didSet` that wrote through to `wallet_owned_addresses`. SQLite had a
+  copy, but only ever read at launch — Swift was the authority. That is what
+  made `core_plan_baseline_chain_keypool_state` necessary: core could not
+  compute the baseline, so Swift computed it and passed it in.
+
+  Which meant the guarantee `reserve_receive_index` exists to provide was
+  weaker than it looked. Core holds one write lock across the whole
+  read-modify-write so two callers cannot be handed the same receive address —
+  but the floor that reservation starts from arrived *as an argument*, computed
+  from a caller's copy of three tables. The lock protects the increment, not
+  the input.
+
+  Core owns the table now: in memory, write-through, loaded by `open_state`
+  beside the keypool. `chain_keypool_baseline` reads its own transactions, its
+  own owned addresses and the wallet's address slot, so `keypool_state`,
+  `reserve_receive_index` and `reserve_change_index` take no baseline at all.
+  `a_recorded_owned_address_raises_the_baseline` states the property that shape
+  could not: register index 7, and the next receive index is 8, with nobody
+  passing anything in.
+
+  Deleted on the Swift side: the dictionary and its `didSet`,
+  `baselineChainKeypoolState`, `parseUTXODiscoveryIndex` (ported to
+  `app_core::utxo_discovery_index`), `persistChainOwnedAddressMap`,
+  `persistOwnedAddressesForChain`, `persistOwnedAddressToRust`, and the
+  launch-time load. `AppState+SendFlow` is 1,531 → 1,470.
+
+  *Two things fell out of doing it.* `discoverUTXOAddresses` computed the
+  highest owned external index and took `max` against `nextExternalIndex` —
+  which the baseline already folds in, so the term was dead arithmetic over a
+  table it had to hold to compute. And `delete_wallet_relational_data` cleared
+  SQLite but not core's in-memory keypool rows, so a deleted wallet's indices
+  stayed in the baseline for the rest of the session; it clears both now.
+
+  *One thing this cost:* `knownOwnedAddresses` is async now, so
+  `TransactionDetailView` caches the one value its body needed rather than
+  calling into core from a computed property. That cache is view state by rule
+  4 — losing it costs a redraw — and it is the pattern this document already
+  blesses for `walletDerivedCache`.
+
+- **`service.rs` split by owner: 4,677 lines → nine files, largest 1,359.**
+
+  It had accumulated the marks of the merges that built it — six `// ── Merged
+  from service_*.rs` banners, three `#[path]` module declarations pointing at
+  files in a `service/` directory that already existed, and a block of orphaned
+  `// ── Phase 2.1` navigation comments whose methods had moved out from under
+  them. The split is by *owner*, which is the only question a reader has:
+  [`state`] holds the resident `CoreAppState` and its persistence, [`network`]
+  every read that leaves the process, [`send`] fee-to-broadcast, with
+  `helpers` / `types` / `standalone` under them.
+
+  Rust allows many `impl` blocks per type and UniFFI exports them as one, so
+  nothing about the boundary changed — the export count was identical before and
+  after.
+
+  *Done as a line-assignment with a coverage assertion* rather than by hand:
+  every one of the 4,677 lines is assigned exactly one destination and the
+  script refuses to run if the assignment double-counts or misses a line. Three
+  of the merged sections turned out to carry their own `impl` header, which the
+  assertion did not catch — it checks that lines are not lost, not that the
+  result parses — and the compiler found all three.
+
+- **Two chain tables became one, and the enum became an index into it.**
+
+  `Chain::str_id`, `Chain::chain_display_name` and `Chain::coin_symbol` were
+  78-arm matches restating the catalog's `id`, `name` and `gas_token_symbol`
+  columns, with `from_str_id` a 78-arm reverse map on top. The enum is declared
+  in `chains.toml` order, so a variant *is* an index: `Chain::entry()` returns
+  the row, and those four functions become field reads. `registry.rs` loses the
+  tables; adding a chain is a TOML edit plus one variant.
+
+  **The first version of the test that guards this proved nothing.** It
+  asserted `chain.str_id() == entry.id` — but `str_id` reads the catalog now,
+  so the two agree by construction. Swapping two entries in `chains.toml` left
+  it green. The rewrite spells the expected id from the *variant name* instead,
+  which is the one source independent of the table being checked, with six
+  named exceptions where the enum and the catalog legitimately differ
+  (`Icp`/`internet-computer`, `BnbChain`/`bnb`, and four more). Verified by
+  perturbing both sides: swapping two catalog rows and swapping two enum
+  variants each fail it, naming the chain.
+
+  Compile-time exhaustiveness survives the deletion: `address_validation_kind`
+  and `static_fee_units` still match all 78 variants with no wildcard, so a new
+  variant cannot be added without the build noticing.
+
+- **Three duplicate module pairs, and a module with three names.**
+
+  `validation.rs` (seed-phrase and password field rules) sat beside
+  `derivation/validation.rs` (per-chain address rules) — same name, different
+  module, and a caller had to know which. Address validation is not derivation;
+  both are now `validation/`, with `address.rs` under it.
+
+  Under that, `derivation/mod.rs` carried `pub use validation as addressing;`
+  and `pub use xpub_walker as utxo_hd;` — aliases from an earlier restructure,
+  so the address rules answered to *three* paths and half the call sites used
+  the alias. Both aliases are gone and every caller names the one module.
+
+  `fetch/refresh.rs` and `fetch/refresh_engine.rs` were a pair of names saying
+  which was written first. They are `refresh/policy.rs` (decides whether a
+  refresh is due — pure, no I/O) and `refresh/engine.rs` (does it).
+
+- **Ten dead exports deleted or un-exported.**
+
+  Three `WalletService` methods with no caller in Swift, the CLI or Rust
+  (`delete_owned_addresses_for_wallet` and the two address-book KV methods —
+  leftovers from before the address book moved into `CoreAppState`);
+  `http_probe`, which had none anywhere; `http_get` and five `derive_<chain>`
+  functions, which are called only from inside Rust and lost the attribute.
+  `CorePersistedAddressBookStore` / `Entry` went with the KV methods.
 
 - **Five JSON builders → one, and the caller stopped ferrying core's own data.**
 
@@ -1039,6 +1453,29 @@ Done so far:
   applying its verdict — the `core_plan_*` shape this document is removing.
   They are `CoreAppState.price_alerts` now, behind `SetPriceAlerts`, which
   refuses an alert with a non-positive target because it could never fire.
+
+  **That slice left the app behind, and for a pass it was worse than before.**
+  Core gained `price_alerts`; Swift kept its own `[PriceAlertRule]` and went on
+  loading and saving the `priceAlerts.snapshot` blob through
+  `load_price_alert_store` / `save_price_alert_store`. So the CLI and the app
+  each had a complete, authoritative, *separate* alert list — one copy of the
+  truth turned into two, which is the exact debt this document exists to
+  remove. Found by auditing the export list for dead entries, not by anything
+  failing: no test opened one list and read the other, and there was no way for
+  a user to notice from inside the app.
+
+  Now `AppState.priceAlerts` is a mirror on the `tokenPreferences` pattern —
+  assigning sends `SetPriceAlerts`, the stored list lands back through
+  `applyCoreState`. The Swift `PriceAlertRule` struct is a `typealias` for
+  core's record, so the `id` is core's opaque string rather than a
+  platform-minted `UUID`, and `evaluatePriceAlerts` stopped converting one
+  shape into the other before every call. Gone with it: two FFI methods, two
+  records (`CorePersistedPriceAlertStore` / `Rule`), two bridge wrappers, the
+  `priceAlerts.snapshot` key, and the `UserDefaults` line in the reset path.
+
+  *Worth naming the pattern:* moving state into core is not done when core can
+  hold it. It is done when nothing else does. A slice that adds the core-side
+  half and stops has not moved anything — it has forked it.
 
   **The round-trip test was written before the command this time.** The token
   list shipped unpersisted for exactly as long as nobody reopened the database
@@ -1153,19 +1590,21 @@ Not by feel. These four numbers, checked at the end of each stage:
 
 | Metric | Start | Now | Target |
 |---|---|---|---|
-| `core_plan_*` exports | 42 | 8 | 0 |
-| Swift root lines vs `views/` | 19,766 vs 11,113 | 17,922 vs 10,969 | inverted |
+| `core_plan_*` exports | 42 | **0** | 0 |
+| Swift root lines vs `views/` | 19,766 vs 11,113 | 17,324 vs 11,126 | inverted |
 | Domain collections stored on `AppState` | 3 | 0 | 0 |
 | Domain settings owned by core | 0 | 1 | all |
 | Wallet operations reachable from the CLI | partial | partial | all |
 | CLI commands drivable without a TTY | 0 of 24 | all | all |
+| Exported functions and methods | 234 | 289 | 30-40 |
+| Largest file in `core/` | 4,781 | 2,501 | — |
 
 The last row is new, and it is the one that makes the others checkable. Every
 earlier "proven by the CLI" claim in this document was proven by a person typing
-into a prompt. `scripts/cli-acceptance.sh` replaces that with 38 assertions on
+into a prompt. `scripts/cli-acceptance.sh` replaces that with 69 assertions on
 exit codes and JSON, over a scratch data directory and with no network.
 
-Both iOS suites are green as of this pass — 34 tests, 0 failures. The
+Both iOS suites are green as of this pass — 40 tests, 0 failures. The
 `testEthereumTestNetworksExposeExpectedContextsAndEndpoints` failure this
 document told readers to expect is fixed, so a red test is now a real one.
 
@@ -1175,6 +1614,11 @@ coming down as the paths it replaced are deleted.
 
 ## Rules for new work while this is in progress
 
+0. **Change behaviour and delete functionality when it makes the system simpler
+   or more correct** — see Rule 0 at the top of this document. This outranks
+   the rules below. Record every such change under "Behaviour changed on
+   purpose"; take the stricter side wherever funds, keys or addresses are
+   involved.
 1. New domain logic goes in `core/`. If it cannot be driven from the CLI, it is
    in the wrong place.
 2. New per-chain facts go on `registry::Chain`, not in a `match` in whichever

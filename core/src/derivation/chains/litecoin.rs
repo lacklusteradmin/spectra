@@ -113,7 +113,6 @@ fn ltc_internal(
 }
 
 /// UniFFI export: derive Litecoin mainnet keys (P2PKH only).
-#[uniffi::export]
 pub fn derive_litecoin(
     seed_phrase: String,
     derivation_path: String,

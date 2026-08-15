@@ -697,6 +697,39 @@ fn default_path_from_catalog_for_account(chain_name: &str, account: u32) -> Resu
         .ok_or_else(|| format!("Missing default derivation path for {chain_name}."))
 }
 
+/// The index a UTXO-discovery derivation path encodes, or `None` when the path
+/// is not one of this chain's discovery paths on that branch.
+///
+/// A discovery path is the chain's default path with its last two segments
+/// replaced by branch and index, so the test is that everything *before* those
+/// two matches and the branch is the one asked about. Ported from Swift's
+/// `parseUTXODiscoveryIndex`, which is where the keypool baseline used to be
+/// computed.
+pub(crate) fn utxo_discovery_index(raw_path: &str, chain_name: &str, branch: u32) -> Option<u32> {
+    let default_path = default_path_from_catalog(chain_name).ok()?;
+    let path = parse_derivation_path(raw_path)?;
+    let mut candidate = parse_derivation_path(&default_path)?;
+    if path.len() != candidate.len() || path.len() < 5 {
+        return None;
+    }
+    let last = path.len() - 1;
+    candidate[last - 1] = DerivationPathSegment {
+        value: branch,
+        is_hardened: false,
+    };
+    candidate[last] = DerivationPathSegment {
+        value: path[last].value,
+        is_hardened: false,
+    };
+    if derivation_path_string(&candidate[..last]) != derivation_path_string(&path[..last]) {
+        return None;
+    }
+    if path[last - 1].value != branch {
+        return None;
+    }
+    Some(path[last].value)
+}
+
 #[cfg(test)]
 pub(super) fn default_path_for_chain(chain_name: &str) -> Result<String, String> {
     default_path_from_catalog(chain_name)

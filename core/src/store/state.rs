@@ -93,6 +93,23 @@ impl WalletSummary {
             .or_else(|| self.addresses.first())
             .map(|a| a.address.as_str())
     }
+
+    /// This wallet's address on a chain, or `None` if it has none there.
+    ///
+    /// Compares address *slots*, not names, which is what the slot is for: one
+    /// derived secp256k1 address serves every EVM chain, so a wallet on
+    /// Ethereum resolves an address for Arbitrum and a name comparison would
+    /// say it does not.
+    pub fn address_on(&self, chain: crate::registry::Chain) -> Option<&str> {
+        let slot = chain.address_slot();
+        self.addresses
+            .iter()
+            .find(|a| {
+                crate::registry::Chain::from_display_name(&a.chain_name)
+                    .is_some_and(|stored| stored.address_slot() == slot)
+            })
+            .map(|a| a.address.as_str())
+    }
 }
 
 /// A saved recipient.
@@ -139,6 +156,46 @@ pub struct AppSettings {
     /// list is exactly the same as an empty one.
     #[serde(default)]
     pub pinned_dashboard_asset_symbols: Vec<String>,
+    /// Which network the user selected for each chain family that offers a
+    /// choice, as `mainnet str_id -> selected str_id`.
+    ///
+    /// Absent means mainnet, so the map is empty for most users. One field
+    /// rather than one per family: the three that had a choice were three
+    /// settings, three enums and three hand-written pricing cases, and adding
+    /// a fourth meant touching all of them.
+    #[serde(default)]
+    pub network_chain_by_family: std::collections::HashMap<String, String>,
+}
+
+impl AppSettings {
+    /// The chain the user is actually on for a family, defaulting to mainnet.
+    pub fn network_chain(&self, chain: crate::registry::Chain) -> crate::registry::Chain {
+        let family = chain.mainnet_counterpart();
+        self.network_chain_by_family
+            .get(family.str_id())
+            .and_then(|id| crate::registry::Chain::from_str_id(id))
+            .filter(|selected| selected.mainnet_counterpart() == family)
+            .unwrap_or(family)
+    }
+}
+
+/// Chains whose selected network is a testnet, by display name — their coins
+/// have no price.
+///
+/// A free function over the settings rather than a service method, so a caller
+/// can apply it in the same synchronous step that adopts a new state. Asking
+/// core asynchronously left the render path briefly quoting a testnet at
+/// mainnet prices right after a network switch.
+///
+/// This replaced `core_priced_chain(chain_name, bitcoin_mode, ethereum_mode)`,
+/// which was the *second* copy of the rule that quoted Dogecoin testnet as
+/// mainnet: it named two families and let every other chain through as priced.
+#[uniffi::export]
+pub fn core_unpriced_chain_names(settings: AppSettings) -> Vec<String> {
+    crate::registry::Chain::mainnets()
+        .filter(|chain| settings.network_chain(*chain).is_testnet())
+        .map(|chain| chain.chain_display_name().to_string())
+        .collect()
 }
 
 impl Default for AppSettings {
@@ -146,6 +203,7 @@ impl Default for AppSettings {
         Self {
             fiat_currency_code: "USD".to_string(),
             pinned_dashboard_asset_symbols: Vec::new(),
+            network_chain_by_family: std::collections::HashMap::new(),
         }
     }
 }
@@ -212,6 +270,13 @@ pub enum StateCommand {
     /// and de-duplicated, first occurrence winning, so display order is the
     /// order the user pinned them in.
     SetPinnedDashboardAssets { symbols: Vec<String> },
+    /// Pick which network of a chain family the user is on.
+    ///
+    /// `chain_id` is any chain in the family; the reducer files the choice
+    /// under the family's mainnet. Selecting the mainnet clears the entry
+    /// rather than storing it, so "no choice made" and "chose mainnet" are the
+    /// same state and cannot drift apart.
+    SelectNetworkChain { chain_id: String },
     /// Replace the tracked-token list. Core clamps the decimal fields, so a
     /// caller cannot store a token that displays more places than it has.
     SetTokenPreferences {
@@ -466,6 +531,29 @@ pub fn reduce_state_in_place(state: &mut CoreAppState, command: StateCommand) ->
                     kind: "tokenPreferencesChanged".to_string(),
                     subject_id: None,
                 });
+            }
+        }
+        StateCommand::SelectNetworkChain { chain_id } => {
+            if let Some(chosen) = crate::registry::Chain::from_str_id(&chain_id) {
+                let family = chosen.mainnet_counterpart();
+                let before = state.settings.network_chain_by_family.clone();
+                if chosen == family {
+                    state
+                        .settings
+                        .network_chain_by_family
+                        .remove(family.str_id());
+                } else {
+                    state
+                        .settings
+                        .network_chain_by_family
+                        .insert(family.str_id().to_string(), chosen.str_id().to_string());
+                }
+                if before != state.settings.network_chain_by_family {
+                    events.push(StateEvent {
+                        kind: "networkChainChanged".to_string(),
+                        subject_id: Some(chosen.str_id().to_string()),
+                    });
+                }
             }
         }
         StateCommand::SetPinnedDashboardAssets { symbols } => {

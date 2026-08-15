@@ -10,12 +10,7 @@ pub mod funds_finder;
 pub mod import;
 pub mod primitives;
 pub mod types;
-pub mod validation;
 pub mod xpub_walker;
 
 #[cfg(test)]
 mod tests;
-
-// File renames from the prior restructure round.
-pub use validation as addressing;
-pub use xpub_walker as utxo_hd;

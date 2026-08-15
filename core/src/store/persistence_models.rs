@@ -1,67 +1,16 @@
-// Rust-owned mirrors of Swift Persisted* types from PersistenceModels.swift.
+// The one record still stored as a Swift-shaped JSON blob.
 //
-// Every struct's JSON representation MUST round-trip with the matching Swift
-// Codable type byte-for-byte. If you add or rename a field, update the Swift
-// side and the roundtrip tests below in the same change.
+// Its JSON representation MUST round-trip with the matching Swift Codable type
+// byte-for-byte. If you add or rename a field, update the Swift side and the
+// roundtrip tests below in the same change.
+//
+// The price-alert and address-book records that used to sit beside it are
+// gone: both collections live in `CoreAppState` now, so there is no second
+// blob to keep in step.
 
 use serde::{Deserialize, Serialize};
 
-use crate::store::wallet_domain::{
-    CorePriceAlertCondition, CoreTransactionKind, CoreTransactionStatus,
-};
-
-/// Matches Swift `PersistedPriceAlertRule`.
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, uniffi::Record)]
-#[serde(rename_all = "camelCase")]
-pub struct CorePersistedPriceAlertRule {
-    /// UUID encoded as uppercase string (Swift default).
-    pub id: String,
-    pub holding_key: String,
-    pub asset_name: String,
-    pub symbol: String,
-    pub chain_name: String,
-    pub target_price: f64,
-    /// One of `"Above"` / `"Below"` (see Swift `PriceAlertCondition`).
-    pub condition: CorePriceAlertCondition,
-    pub is_enabled: bool,
-    pub has_triggered: bool,
-}
-
-/// Matches Swift `PersistedPriceAlertStore`. Current version constant: 1.
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, uniffi::Record)]
-#[serde(rename_all = "camelCase")]
-pub struct CorePersistedPriceAlertStore {
-    pub version: i32,
-    pub alerts: Vec<CorePersistedPriceAlertRule>,
-}
-
-impl CorePersistedPriceAlertStore {
-    pub const CURRENT_VERSION: i32 = 1;
-}
-
-/// Matches Swift `PersistedAddressBookEntry`.
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, uniffi::Record)]
-#[serde(rename_all = "camelCase")]
-pub struct CorePersistedAddressBookEntry {
-    /// UUID encoded as uppercase string (Swift default).
-    pub id: String,
-    pub name: String,
-    pub chain_name: String,
-    pub address: String,
-    pub note: String,
-}
-
-/// Matches Swift `PersistedAddressBookStore`. Current version constant: 1.
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, uniffi::Record)]
-#[serde(rename_all = "camelCase")]
-pub struct CorePersistedAddressBookStore {
-    pub version: i32,
-    pub entries: Vec<CorePersistedAddressBookEntry>,
-}
-
-impl CorePersistedAddressBookStore {
-    pub const CURRENT_VERSION: i32 = 1;
-}
+use crate::store::wallet_domain::{CoreTransactionKind, CoreTransactionStatus};
 
 /// SQLite-storage form of a transaction record. Matches Swift
 /// `PersistedTransactionRecord`.
@@ -144,34 +93,6 @@ pub struct CorePersistedTransactionRecord {
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    #[test]
-    fn price_alert_store_roundtrip() {
-        // Sample payload in the exact byte shape Swift would emit.
-        let json = r#"{"version":1,"alerts":[{"id":"3F2504E0-4F89-11D3-9A0C-0305E82C3301","holdingKey":"ethereum:ETH","assetName":"Ethereum","symbol":"ETH","chainName":"Ethereum","targetPrice":3500.0,"condition":"Above","isEnabled":true,"hasTriggered":false}]}"#;
-        let decoded: CorePersistedPriceAlertStore = serde_json::from_str(json).unwrap();
-        assert_eq!(
-            decoded.version,
-            CorePersistedPriceAlertStore::CURRENT_VERSION
-        );
-        assert_eq!(decoded.alerts.len(), 1);
-        assert_eq!(decoded.alerts[0].condition, CorePriceAlertCondition::Above);
-        let reencoded = serde_json::to_string(&decoded).unwrap();
-        assert_eq!(reencoded, json);
-    }
-
-    #[test]
-    fn address_book_store_roundtrip() {
-        let json = r#"{"version":1,"entries":[{"id":"550E8400-E29B-41D4-A716-446655440000","name":"Cold Wallet","chainName":"Bitcoin","address":"bc1qexample","note":"primary"}]}"#;
-        let decoded: CorePersistedAddressBookStore = serde_json::from_str(json).unwrap();
-        assert_eq!(
-            decoded.version,
-            CorePersistedAddressBookStore::CURRENT_VERSION
-        );
-        assert_eq!(decoded.entries[0].name, "Cold Wallet");
-        let reencoded = serde_json::to_string(&decoded).unwrap();
-        assert_eq!(reencoded, json);
-    }
 
     #[test]
     fn transaction_record_roundtrip_omits_none_fields() {

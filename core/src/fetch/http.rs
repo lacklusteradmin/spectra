@@ -586,7 +586,6 @@ pub async fn http_request(
 
 /// GET a URL and return the response body as UTF-8 text with headers.
 /// Single-shot (no retry). Use `http_request` for retry-profiled calls.
-#[uniffi::export(async_runtime = "tokio")]
 pub async fn http_get(
     url: String,
     headers: std::collections::HashMap<String, String>,
@@ -685,24 +684,6 @@ pub async fn diagnostics_probe_jsonrpc(url: String, rpc_method: String) -> JsonR
             detail: e.to_string(),
         },
     }
-}
-
-// Lightweight single-shot probe (no retry). Used by endpoint health checks.
-#[uniffi::export(async_runtime = "tokio")]
-pub async fn http_probe(url: String, timeout_secs: u32) -> bool {
-    use reqwest::Client;
-    let client = Client::builder()
-        .timeout(Duration::from_secs(timeout_secs as u64))
-        .https_only(true)
-        .user_agent("Spectra/1.0")
-        .build();
-    let Ok(client) = client else { return false };
-    client
-        .get(&url)
-        .send()
-        .await
-        .map(|r| r.status().is_success())
-        .unwrap_or(false)
 }
 
 #[cfg(test)]

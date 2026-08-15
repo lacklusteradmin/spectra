@@ -8,7 +8,7 @@ use std::sync::{Arc, Mutex};
 
 use clap::Args;
 use colored::Colorize as _;
-use spectra_core::fetch::refresh_engine::{BalanceObserver, BalanceRefreshEngine, RefreshEntry};
+use spectra_core::fetch::refresh::engine::{BalanceObserver, BalanceRefreshEngine, RefreshEntry};
 use spectra_core::service::{ChainEndpoints, WalletService};
 use spectra_core::store::state::WalletSummary;
 

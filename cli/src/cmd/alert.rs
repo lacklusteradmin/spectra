@@ -6,9 +6,7 @@ use clap::{Args, Subcommand};
 use colored::Colorize as _;
 use spectra_core::store::state::StateCommand;
 use spectra_core::store::wallet_domain::CorePriceAlertCondition;
-use spectra_core::store::{
-    core_plan_price_alert_evaluation, PriceAlertEvaluationAlert, PriceAlertEvaluationPrice,
-};
+use spectra_core::store::{PriceAlertEvaluationAlert, PriceAlertEvaluationPrice};
 
 use super::market::spot_price_usd;
 use super::resolve_chain;
@@ -174,39 +172,30 @@ fn check(ctx: &Ctx, out: Out) -> CliResult<()> {
         .collect();
     let prices = spot_price_usd(ctx, &chains)?;
 
-    let plan = core_plan_price_alert_evaluation(
-        alerts.clone(),
-        prices
-            .iter()
-            .map(|(symbol, price)| PriceAlertEvaluationPrice {
-                holding_key: symbol.clone(),
-                live_price: *price,
-            })
-            .collect(),
-    );
-
-    // Core decided which alerts changed state; storing that decision is a
-    // command, not something this side works out again.
-    if !plan.updates.is_empty() {
-        let updated: Vec<_> = alerts
-            .iter()
-            .map(|alert| {
-                let mut alert = alert.clone();
-                if let Some(update) = plan.updates.iter().find(|u| u.id == alert.id) {
-                    alert.has_triggered = update.has_triggered;
-                }
-                alert
-            })
-            .collect();
-        ctx.apply(StateCommand::SetPriceAlerts { alerts: updated })?;
-    }
+    // One call: core reads its own alerts, records what changed and hands back
+    // only what a front end has to act on.
+    let service = ctx.service()?;
+    let notifications = ctx
+        .rt
+        .block_on(
+            service.evaluate_price_alerts(
+                prices
+                    .iter()
+                    .map(|(symbol, price)| PriceAlertEvaluationPrice {
+                        holding_key: symbol.clone(),
+                        live_price: *price,
+                    })
+                    .collect(),
+            ),
+        )
+        .map_err(CliError::from)?;
 
     out.text(|| {
         println!();
-        if plan.notifications.is_empty() {
+        if notifications.is_empty() {
             println!("  {}", out::hint("nothing fired"));
         }
-        for notification in &plan.notifications {
+        for notification in &notifications {
             println!(
                 "  {}  {} crossed {:.2}",
                 out::tint("!", &notification.chain_name).bold(),
@@ -218,13 +207,13 @@ fn check(ctx: &Ctx, out: Out) -> CliResult<()> {
         println!(
             "  {} checked, {} fired",
             out::accent(&alerts.len().to_string()).bold(),
-            plan.notifications.len(),
+            notifications.len(),
         );
     });
     out.emit(serde_json::json!({
         "ok": true,
         "checked": alerts.len(),
-        "fired": plan.notifications
+        "fired": notifications
             .iter()
             .map(|n| serde_json::json!({
                 "symbol": n.symbol,

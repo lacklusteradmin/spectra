@@ -507,7 +507,6 @@ use crate::derivation::types::{parse_path_metadata, DerivationResult};
 use crate::SpectraBridgeError;
 
 /// UniFFI export: derive Decred mainnet wallet (Ds… P2PKH address) from a seed phrase.
-#[uniffi::export]
 pub fn derive_decred(
     seed_phrase: String,
     derivation_path: String,

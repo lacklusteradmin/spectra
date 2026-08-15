@@ -7,7 +7,6 @@
 
 use clap::{Args, Subcommand};
 use colored::Colorize as _;
-use spectra_core::store::ChainKeypoolStateRecord;
 
 use crate::ctx::Ctx;
 use crate::error::CliResult;
@@ -37,26 +36,12 @@ pub fn run(ctx: &Ctx, out: Out, command: PoolCommand) -> CliResult<()> {
     }
 }
 
-/// Nothing to seed the pool from on this side — core merges the stored state
-/// over it, so an all-zero baseline reads whatever is already there.
-fn baseline() -> ChainKeypoolStateRecord {
-    ChainKeypoolStateRecord {
-        next_external_index: 0,
-        next_change_index: 0,
-        reserved_receive_index: None,
-    }
-}
-
 fn show(ctx: &Ctx, out: Out, args: SelectArgs) -> CliResult<()> {
     let wallet = ctx.find_wallet(&args.wallet)?;
     let service = ctx.service()?;
     let state = ctx
         .rt
-        .block_on(service.keypool_state(
-            wallet.id.clone(),
-            wallet.chain_name.clone(),
-            baseline(),
-        ))
+        .block_on(service.keypool_state(wallet.id.clone(), wallet.chain_name.clone()))
         .map_err(crate::error::CliError::from)?;
 
     out.text(|| {
@@ -92,16 +77,11 @@ fn next(ctx: &Ctx, out: Out, args: SelectArgs, change: bool) -> CliResult<()> {
         .block_on(async {
             if change {
                 service
-                    .reserve_change_index(wallet.id.clone(), wallet.chain_name.clone(), baseline())
+                    .reserve_change_index(wallet.id.clone(), wallet.chain_name.clone())
                     .await
             } else {
                 service
-                    .reserve_receive_index(
-                        wallet.id.clone(),
-                        wallet.chain_name.clone(),
-                        baseline(),
-                        0,
-                    )
+                    .reserve_receive_index(wallet.id.clone(), wallet.chain_name.clone(), 0)
                     .await
             }
         })

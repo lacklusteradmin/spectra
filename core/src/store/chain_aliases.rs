@@ -127,11 +127,13 @@ pub(super) fn canonical_chain_component_inner(chain_name: &str, symbol: &str) ->
     normalized_chain_lower.replace(' ', "-")
 }
 
-pub fn plan_canonical_chain_component(chain_name: String, symbol: String) -> String {
+#[uniffi::export]
+pub fn core_canonical_chain_component(chain_name: String, symbol: String) -> String {
     canonical_chain_component_inner(&chain_name, &symbol)
 }
 
-pub fn plan_icon_identifier(
+#[uniffi::export]
+pub fn core_icon_identifier(
     symbol: String,
     chain_name: String,
     contract_address: Option<String>,
@@ -156,7 +158,8 @@ pub fn plan_icon_identifier(
     format!("{namespace}:{normalized_chain}:{normalized_symbol}")
 }
 
-pub fn plan_normalized_icon_identifier(identifier: String) -> String {
+#[uniffi::export]
+pub fn core_normalized_icon_identifier(identifier: String) -> String {
     let trimmed_identifier = identifier.trim().to_string();
     let components: Vec<String> = trimmed_identifier.split(':').map(String::from).collect();
     if components.len() < 3 {

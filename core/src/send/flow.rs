@@ -3,7 +3,7 @@
 //
 // Every function here is a pure transform with no platform dependencies.
 
-use crate::derivation::addressing::{validate_address, AddressValidationRequest};
+use crate::validation::address::{validate_address, AddressValidationRequest};
 use crate::registry::Chain;
 use crate::wallet_core::*;
 
@@ -475,7 +475,7 @@ pub struct HighRiskSendWarning {
 pub fn core_evaluate_high_risk_send_reasons(
     request: HighRiskSendRequest,
 ) -> Vec<HighRiskSendWarning> {
-    use crate::derivation::validation::{validate_address, AddressValidationRequest};
+    use crate::validation::address::{validate_address, AddressValidationRequest};
 
     let chain_name = &request.chain_name;
     let mut warnings: Vec<HighRiskSendWarning> = Vec::new();

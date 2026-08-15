@@ -1,4 +1,4 @@
-use crate::derivation::addressing::{validate_address, AddressValidationRequest};
+use crate::validation::address::{validate_address, AddressValidationRequest};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 

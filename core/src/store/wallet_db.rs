@@ -6,7 +6,7 @@
 //!   - `dogecoin.ownedAddressMap.snapshot`  → `wallet_owned_addresses` table
 //!   - `chain.ownedAddressMap.snapshot.v1`  → `wallet_owned_addresses` table
 //!
-//! All functions are synchronous (call from `spawn_blocking` in service.rs).
+//! All functions are synchronous (call from `spawn_blocking` in `service::state`).
 //!
 //! ## Schema
 //!
@@ -1065,14 +1065,22 @@ pub fn delete_wallet_data(db_path: &str, wallet_id: &str) -> Result<(), String> 
 mod tests {
     use super::*;
 
+    /// A database no other test can be holding.
+    ///
+    /// This used to key on `subsec_nanos()` alone. Thirteen tests share the
+    /// helper and the runner runs them in parallel, so two could land on the
+    /// same nanosecond and read each other's rows — which is exactly how
+    /// `app_state_round_trips` failed in a full run and passed on its own.
+    /// Process, thread and a counter cannot collide.
     fn tmp_db() -> String {
+        static NEXT: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
         let path = std::env::temp_dir().join(format!(
-            "wallet_db_test_{}.sqlite",
-            std::time::SystemTime::now()
-                .duration_since(std::time::UNIX_EPOCH)
-                .unwrap()
-                .subsec_nanos()
+            "wallet_db_test_{}_{:?}_{}.sqlite",
+            std::process::id(),
+            std::thread::current().id(),
+            NEXT.fetch_add(1, std::sync::atomic::Ordering::Relaxed)
         ));
+        let _ = std::fs::remove_file(&path);
         path.to_string_lossy().into_owned()
     }
 
@@ -1300,6 +1308,7 @@ mod tests {
             wallets: vec![wallet("w1", "Bitcoin"), wallet("w2", "Ethereum")],
             selected_wallet_id: Some("w2".to_string()),
             settings: AppSettings {
+                network_chain_by_family: Default::default(),
                 fiat_currency_code: "CNY".to_string(),
                 pinned_dashboard_asset_symbols: vec!["BTC".to_string()],
             },

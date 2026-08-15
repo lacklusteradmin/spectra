@@ -1,6 +1,8 @@
+//! Per-chain address and string-identifier rules.
+
 use serde::{Deserialize, Serialize};
 
-use super::chains::bitcoin::{parse_bitcoin_address, BitcoinNetworkKind};
+use crate::derivation::chains::bitcoin::{parse_bitcoin_address, BitcoinNetworkKind};
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, uniffi::Record)]
 #[serde(rename_all = "camelCase")]
@@ -243,8 +245,8 @@ fn validate_bitcoin_address(
         Err(_) => return invalid_result(),
     };
     let network = match &parsed {
-        super::chains::bitcoin::ParsedBitcoinAddress::Legacy { network, .. }
-        | super::chains::bitcoin::ParsedBitcoinAddress::SegWit { network, .. } => network,
+        crate::derivation::chains::bitcoin::ParsedBitcoinAddress::Legacy { network, .. }
+        | crate::derivation::chains::bitcoin::ParsedBitcoinAddress::SegWit { network, .. } => network,
     };
     let is_valid = match expected_network {
         BitcoinNetworkKind::Mainnet => matches!(network, BitcoinNetworkKind::Mainnet),

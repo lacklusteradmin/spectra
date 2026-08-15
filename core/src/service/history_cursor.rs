@@ -2,9 +2,8 @@
 //!
 //! These methods are thin, synchronous delegations to `self.history_pagination`
 //! (cursor/page/exhaustion bookkeeping for the per-(chain, wallet) history
-//! feed). They were split out of the main `service.rs` impl blocks to keep that
-//! file navigable. UniFFI 0.31 merges multiple `#[uniffi::export]` impl blocks
-//! for the same type, so the FFI surface is unchanged by this move.
+//! feed) — bookkeeping, not a chain read, which is why they are not in
+//! [`super::network`].
 
 use super::*;
 
