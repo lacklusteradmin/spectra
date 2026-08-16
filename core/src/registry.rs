@@ -609,13 +609,76 @@ impl Chain {
     pub fn network_choices(self) -> Vec<Chain> {
         let mainnet = self.mainnet_counterpart();
         std::iter::once(mainnet)
-            .chain(Chain::all().filter(move |c| c.is_testnet() && c.mainnet_counterpart() == mainnet))
+            .chain(
+                Chain::all().filter(move |c| c.is_testnet() && c.mainnet_counterpart() == mainnet),
+            )
             .collect()
+    }
+
+    /// The `bitcoin` crate's network for this chain.
+    ///
+    /// Replaces `bitcoin_network_for_mode(&str)`, which matched on the mode
+    /// strings — one more table saying what the registry already knows.
+    /// Non-UTXO chains answer `Bitcoin`, which is what the mode-string version
+    /// did for anything it did not recognise.
+    pub fn bitcoin_network(self) -> bitcoin::Network {
+        match self {
+            Chain::BitcoinTestnet
+            | Chain::LitecoinTestnet
+            | Chain::BitcoinCashTestnet
+            | Chain::BitcoinSVTestnet
+            | Chain::DogecoinTestnet
+            | Chain::ZcashTestnet
+            | Chain::DecredTestnet
+            | Chain::DashTestnet => bitcoin::Network::Testnet,
+            Chain::BitcoinTestnet4 => bitcoin::Network::Testnet4,
+            Chain::BitcoinSignet => bitcoin::Network::Signet,
+            _ => bitcoin::Network::Bitcoin,
+        }
     }
 
     /// True when this chain's family offers more than one network.
     pub fn has_network_choice(self) -> bool {
         self.network_choices().len() > 1
+    }
+
+    /// How this chain's pending transactions reach a final status.
+    ///
+    /// Resolved through the mainnet counterpart so a testnet cannot diverge.
+    pub fn pending_status_poll(self) -> PendingStatusPoll {
+        let chain = self.mainnet_counterpart();
+        match chain {
+            // Litecoin tracks receives too: its explorer confirms them on a
+            // different cadence than the send path assumes.
+            Chain::Litecoin => PendingStatusPoll::Utxo {
+                tracks_finality: false,
+                require_send_kind: false,
+            },
+            // Dogecoin keeps counting after confirmation — the UI shows a
+            // confirmation depth for it.
+            Chain::Dogecoin => PendingStatusPoll::Utxo {
+                tracks_finality: true,
+                require_send_kind: true,
+            },
+            Chain::Bitcoin | Chain::BitcoinCash | Chain::BitcoinSV => PendingStatusPoll::Utxo {
+                tracks_finality: false,
+                require_send_kind: true,
+            },
+            Chain::Tron
+            | Chain::Solana
+            | Chain::Cardano
+            | Chain::Xrp
+            | Chain::Stellar
+            | Chain::Monero
+            | Chain::Sui
+            | Chain::Aptos
+            | Chain::Ton
+            | Chain::Icp
+            | Chain::Near
+            | Chain::Polkadot => PendingStatusPoll::HistoryTxids,
+            other if other.is_evm() => PendingStatusPoll::EvmReceipt,
+            _ => PendingStatusPoll::None,
+        }
     }
 
     /// The EVM family gates a non-native asset on it being a supported token.
@@ -645,7 +708,9 @@ impl Chain {
     /// how its history merges, rather than silently defaulting to the wrong
     /// rule. This used to live as eighteen near-identical Swift wrappers,
     /// which is how a chain could be added and quietly get the wrong one.
-    pub const fn transaction_merge_strategy(self) -> crate::fetch::transactions::TransactionMergeStrategy {
+    pub const fn transaction_merge_strategy(
+        self,
+    ) -> crate::fetch::transactions::TransactionMergeStrategy {
         use crate::fetch::transactions::TransactionMergeStrategy as S;
         // Resolved through the mainnet counterpart so a testnet can never merge
         // differently from the chain it mirrors — listing them separately is
@@ -966,6 +1031,85 @@ impl Chain {
     }
 }
 
+/// How a chain's pending transactions are polled for confirmation.
+///
+/// A per-chain fact, so it lives here rather than as one wrapper function per
+/// chain in the shell — there were eighteen of those, each naming a chain, a
+/// chain id, an address resolver and up to two flags.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, uniffi::Enum)]
+pub enum PendingStatusPoll {
+    /// Ask the chain's own status endpoint for a txid.
+    Utxo {
+        /// Keep polling after confirmation to count confirmations.
+        tracks_finality: bool,
+        /// Only sends are tracked; receives confirm on their own.
+        require_send_kind: bool,
+    },
+    /// Fetch the address's history and treat any txid in it as confirmed.
+    HistoryTxids,
+    /// Receipt-based, through the EVM history path.
+    EvmReceipt,
+    /// Not polled.
+    None,
+}
+
+/// The networks available for a chain's family, mainnet first.
+#[derive(Debug, Clone, uniffi::Record)]
+pub struct NetworkChoice {
+    /// Registry id — what `SelectNetworkChain` takes.
+    pub chain_id: String,
+    /// What to show in a picker: "Bitcoin", "Bitcoin Testnet4", …
+    pub title: String,
+    pub is_testnet: bool,
+}
+
+/// The `kind` string `validate_address` judges this chain's addresses by.
+///
+/// Exported so a front end asks the registry instead of keeping its own
+/// mode-to-kind table — Bitcoin had one, mapping four network modes onto four
+/// kind strings the registry already assigns per chain.
+#[uniffi::export]
+pub fn core_address_validation_kind(chain_id: String) -> String {
+    Chain::from_str_id(&chain_id)
+        .map(|c| c.address_validation_kind().to_string())
+        .unwrap_or_default()
+}
+
+/// How a chain's pending transactions reach a final status.
+#[uniffi::export]
+pub fn core_pending_status_poll(chain_name: String) -> PendingStatusPoll {
+    Chain::from_display_name(&chain_name)
+        .map(Chain::pending_status_poll)
+        .unwrap_or(PendingStatusPoll::None)
+}
+
+/// A chain's display name, from its registry id.
+#[uniffi::export]
+pub fn core_chain_display_name(chain_id: String) -> String {
+    Chain::from_str_id(&chain_id)
+        .map(|c| c.chain_display_name().to_string())
+        .unwrap_or(chain_id)
+}
+
+/// The networks available for a chain's family, mainnet first.
+///
+/// A front end enumerating these itself is how the mode enums came to exist.
+#[uniffi::export]
+pub fn core_network_choices(chain_id: String) -> Vec<NetworkChoice> {
+    let Some(chain) = Chain::from_str_id(&chain_id) else {
+        return Vec::new();
+    };
+    chain
+        .network_choices()
+        .into_iter()
+        .map(|c| NetworkChoice {
+            chain_id: c.str_id().to_string(),
+            title: c.chain_display_name().to_string(),
+            is_testnet: c.is_testnet(),
+        })
+        .collect()
+}
+
 /// The record shape a chain's history diagnostics use.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, uniffi::Enum)]
 pub enum DiagnosticsShape {
@@ -1010,7 +1154,11 @@ mod tests {
             if chain.is_evm() {
                 assert_eq!(
                     kind,
-                    if chain.is_testnet() { "evmTestnet" } else { "evm" },
+                    if chain.is_testnet() {
+                        "evmTestnet"
+                    } else {
+                        "evm"
+                    },
                     "{} has the wrong EVM flavour",
                     chain.str_id(),
                 );
@@ -1034,7 +1182,6 @@ mod tests {
             let result = validate_address(AddressValidationRequest {
                 kind: kind.to_string(),
                 value: "!".to_string(),
-                network_mode: None,
             });
             assert!(!result.is_valid, "{kind} accepted a bogus address");
         }

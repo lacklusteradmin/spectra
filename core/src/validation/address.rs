@@ -9,7 +9,6 @@ use crate::derivation::chains::bitcoin::{parse_bitcoin_address, BitcoinNetworkKi
 pub struct AddressValidationRequest {
     pub kind: String,
     pub value: String,
-    pub network_mode: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, uniffi::Record)]
@@ -50,9 +49,10 @@ pub fn validate_address(request: AddressValidationRequest) -> AddressValidationR
     }
 
     // Each testnet has its own `kind` string (e.g. `"bitcoinTestnet"`,
-    // `"litecoinTestnet"`). The `network_mode` field on the request is
-    // retained for backwards compatibility with stored wallets; new code
-    // paths set the chain-name-specific kind and ignore network_mode.
+    // `"litecoinTestnet"`), so the kind says which network to judge against.
+    // The request used to also carry a `network_mode` "for backwards
+    // compatibility with stored wallets" — nothing read it, and prelaunch
+    // there are no stored wallets to be compatible with.
     match request.kind.as_str() {
         "bitcoin" => validate_bitcoin_address(&normalized_input, BitcoinNetworkKind::Mainnet),
         "bitcoinTestnet" | "bitcoinTestnet4" | "bitcoinSignet" => {
@@ -246,7 +246,9 @@ fn validate_bitcoin_address(
     };
     let network = match &parsed {
         crate::derivation::chains::bitcoin::ParsedBitcoinAddress::Legacy { network, .. }
-        | crate::derivation::chains::bitcoin::ParsedBitcoinAddress::SegWit { network, .. } => network,
+        | crate::derivation::chains::bitcoin::ParsedBitcoinAddress::SegWit { network, .. } => {
+            network
+        }
     };
     let is_valid = match expected_network {
         BitcoinNetworkKind::Mainnet => matches!(network, BitcoinNetworkKind::Mainnet),
@@ -560,7 +562,6 @@ mod tests {
         validate_address(AddressValidationRequest {
             kind: kind.to_string(),
             value,
-            network_mode: None,
         })
     }
 
@@ -577,7 +578,6 @@ mod tests {
         let result = validate_address(AddressValidationRequest {
             kind: "evm".to_string(),
             value: " 0xABCDabcdABCDabcdABCDabcdABCDabcdABCDabcd ".to_string(),
-            network_mode: None,
         });
 
         assert!(result.is_valid);
@@ -592,7 +592,6 @@ mod tests {
         let result = validate_address(AddressValidationRequest {
             kind: "aptos".to_string(),
             value: "ABCD".to_string(),
-            network_mode: None,
         });
 
         assert!(result.is_valid);
@@ -604,7 +603,6 @@ mod tests {
         let result = validate_address(AddressValidationRequest {
             kind: "near".to_string(),
             value: "bad..near".to_string(),
-            network_mode: None,
         });
 
         assert!(!result.is_valid);

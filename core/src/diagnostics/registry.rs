@@ -56,7 +56,11 @@ macro_rules! chain_keyed_registry {
 
         #[uniffi::export]
         pub fn $replace(chain_name: String, entries: HashMap<String, $ty>) {
-            registry().lock().unwrap().$field.insert(chain_name, entries);
+            registry()
+                .lock()
+                .unwrap()
+                .$field
+                .insert(chain_name, entries);
         }
     };
 }
@@ -180,5 +184,4 @@ mod tests {
         assert!(diagnostics_all_simple("Nope".into()).is_empty());
         assert!(diagnostics_all_evm("Nope".into()).is_empty());
     }
-
 }

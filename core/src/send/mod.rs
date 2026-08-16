@@ -438,11 +438,8 @@ mod tests {
 
 // ── FFI surface ─────────────────────────────────────────────────────────────
 
-
 #[uniffi::export]
-pub fn core_send_preview_routing(
-    request: SendPreviewRoutingRequest,
-) -> SendPreviewRoutingPlan {
+pub fn core_send_preview_routing(request: SendPreviewRoutingRequest) -> SendPreviewRoutingPlan {
     plan_send_preview_routing(request)
 }
 

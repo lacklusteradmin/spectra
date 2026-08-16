@@ -909,8 +909,9 @@ pub fn app_state_save(db_path: &str, state: &CoreAppState) -> Result<(), String>
                 )
                 .map_err(|e| format!("app_state_save prepare address book: {e}"))?;
             for (index, entry) in state.address_book.iter().enumerate() {
-                let payload = serde_json::to_string(entry)
-                    .map_err(|e| format!("app_state_save encode address entry {}: {e}", entry.id))?;
+                let payload = serde_json::to_string(entry).map_err(|e| {
+                    format!("app_state_save encode address entry {}: {e}", entry.id)
+                })?;
                 stmt.execute(params![
                     entry.id,
                     entry.chain_name,
@@ -1331,7 +1332,11 @@ mod tests {
         let db = tmp_db();
         // Ids deliberately out of lexicographic order, so a load that sorted by
         // id instead of position would fail here.
-        let ordered = vec![wallet("zz", "Bitcoin"), wallet("aa", "Solana"), wallet("mm", "Sui")];
+        let ordered = vec![
+            wallet("zz", "Bitcoin"),
+            wallet("aa", "Solana"),
+            wallet("mm", "Sui"),
+        ];
         let state = CoreAppState {
             wallets: ordered.clone(),
             ..CoreAppState::default()

@@ -262,15 +262,6 @@ pub fn dashboard_asset_grouping_key(
     }
 }
 
-#[uniffi::export]
-pub fn formatting_dashboard_asset_grouping_key(
-    chain_identity: String,
-    coin_gecko_id: String,
-    symbol: String,
-) -> String {
-    dashboard_asset_grouping_key(&chain_identity, &coin_gecko_id, &symbol)
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;

@@ -48,8 +48,7 @@ pub(crate) struct AppCoreCatalog {
     /// Pre-indexed `chain_name` → record-index list, keeping a chain and its
     /// testnets together. The settings screen wants exactly this: one section
     /// per chain, with the testnets as groups inside it.
-    pub(crate) endpoint_records_by_settings_chain:
-        std::collections::HashMap<String, Vec<usize>>,
+    pub(crate) endpoint_records_by_settings_chain: std::collections::HashMap<String, Vec<usize>>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, uniffi::Record)]
@@ -227,17 +226,17 @@ pub fn app_core_transaction_explorer_entry(
 
 #[uniffi::export]
 pub fn app_core_bitcoin_esplora_base_urls(
-    network: String,
+    chain_id: String,
 ) -> Result<Vec<String>, crate::SpectraBridgeError> {
-    Ok(app_core_catalog().and_then(|catalog| bitcoin_esplora_base_urls(catalog, &network))?)
+    Ok(app_core_catalog().and_then(|catalog| bitcoin_esplora_base_urls(catalog, &chain_id))?)
 }
 
 #[uniffi::export]
 pub fn app_core_bitcoin_wallet_store_default_base_urls(
-    network: String,
+    chain_id: String,
 ) -> Result<Vec<String>, crate::SpectraBridgeError> {
     Ok(app_core_catalog()
-        .and_then(|catalog| bitcoin_wallet_store_default_base_urls(catalog, &network))?)
+        .and_then(|catalog| bitcoin_wallet_store_default_base_urls(catalog, &chain_id))?)
 }
 
 #[uniffi::export]
@@ -654,7 +653,8 @@ pub(super) fn seed_derivation_paths_for_account(
         }
         // Keyed by id rather than display name — ids are the stable key, and
         // `display_names_match_the_catalog` now guarantees the names agree too.
-        if let Some(template) = crate::chains::default_derivation_path_template_by_id(chain.str_id())
+        if let Some(template) =
+            crate::chains::default_derivation_path_template_by_id(chain.str_id())
         {
             by_chain.insert(
                 chain.str_id().to_string(),
@@ -689,7 +689,9 @@ fn default_path_from_catalog_for_account(chain_name: &str, account: u32) -> Resu
     // a `fatalError`.
     let template = crate::chains::default_derivation_path_template(chain_name).or_else(|| {
         Chain::from_display_name(chain_name).and_then(|chain| {
-            crate::chains::default_derivation_path_template_by_id(chain.mainnet_counterpart().str_id())
+            crate::chains::default_derivation_path_template_by_id(
+                chain.mainnet_counterpart().str_id(),
+            )
         })
     });
     template
@@ -759,8 +761,6 @@ pub fn core_seed_derivation_path_key(chain_name: String) -> String {
         .map(|chain| chain.mainnet_counterpart().str_id().to_string())
         .unwrap_or_default()
 }
-
-
 
 #[uniffi::export]
 pub fn core_derivation_path_replacing_last_two(
@@ -1019,37 +1019,37 @@ pub(super) fn broadcast_provider_options(chain_name: &str) -> Vec<AppCoreBroadca
 
 pub(super) fn bitcoin_esplora_base_urls(
     catalog: &AppCoreCatalog,
-    network: &str,
+    chain_id: &str,
 ) -> Result<Vec<String>, String> {
-    let ids: &[&str] = match network {
-        "mainnet" => &[
+    let ids: &[&str] = match chain_id {
+        "bitcoin" => &[
             "bitcoin.mainnet.blockstream",
             "bitcoin.mainnet.mempool",
             "bitcoin.mainnet.mempool_emzy",
             "bitcoin.mainnet.maestro",
         ],
-        "testnet" => &["bitcoin.testnet.blockstream", "bitcoin.testnet.mempool"],
-        "testnet4" => &["bitcoin.testnet4.mempool"],
-        "signet" => &["bitcoin.signet.blockstream", "bitcoin.signet.mempool"],
-        _ => return Err(format!("Unsupported Bitcoin network mode: {network}")),
+        "bitcoin-testnet" => &["bitcoin.testnet.blockstream", "bitcoin.testnet.mempool"],
+        "bitcoin-testnet-4" => &["bitcoin.testnet4.mempool"],
+        "bitcoin-signet" => &["bitcoin.signet.blockstream", "bitcoin.signet.mempool"],
+        _ => return Err(format!("Not a Bitcoin network: {chain_id}")),
     };
     endpoints_for_known_ids(catalog, ids)
 }
 
 pub(super) fn bitcoin_wallet_store_default_base_urls(
     catalog: &AppCoreCatalog,
-    network: &str,
+    chain_id: &str,
 ) -> Result<Vec<String>, String> {
-    let ids: &[&str] = match network {
-        "mainnet" => &[
+    let ids: &[&str] = match chain_id {
+        "bitcoin" => &[
             "bitcoin.mainnet.blockstream",
             "bitcoin.mainnet.mempool",
             "bitcoin.mainnet.maestro",
         ],
-        "testnet" => &["bitcoin.testnet.blockstream", "bitcoin.testnet.mempool"],
-        "testnet4" => &["bitcoin.testnet4.mempool"],
-        "signet" => &["bitcoin.signet.mempool"],
-        _ => return Err(format!("Unsupported Bitcoin network mode: {network}")),
+        "bitcoin-testnet" => &["bitcoin.testnet.blockstream", "bitcoin.testnet.mempool"],
+        "bitcoin-testnet-4" => &["bitcoin.testnet4.mempool"],
+        "bitcoin-signet" => &["bitcoin.signet.mempool"],
+        _ => return Err(format!("Not a Bitcoin network: {chain_id}")),
     };
     endpoints_for_known_ids(catalog, ids)
 }
@@ -1095,14 +1095,11 @@ mod testnet_derivation_paths {
 
     #[test]
     fn a_testnet_resolves_to_the_same_path_as_its_mainnet() {
-        let testnet = super::app_core_resolve_derivation_path(
-            "Bitcoin Testnet4".to_string(),
-            String::new(),
-        )
-        .expect("testnet4");
-        let mainnet =
-            super::app_core_resolve_derivation_path("Bitcoin".to_string(), String::new())
-                .expect("bitcoin");
+        let testnet =
+            super::app_core_resolve_derivation_path("Bitcoin Testnet4".to_string(), String::new())
+                .expect("testnet4");
+        let mainnet = super::app_core_resolve_derivation_path("Bitcoin".to_string(), String::new())
+            .expect("bitcoin");
         assert_eq!(testnet.normalized_path, mainnet.normalized_path);
     }
 }

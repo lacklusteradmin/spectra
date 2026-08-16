@@ -1,9 +1,9 @@
 use super::{
-    aggregate_owned_addresses, build_persisted_snapshot, persisted_snapshot_from_json,
-    core_receive_selection, core_self_send_confirmation,
-    wallet_secret_index, OwnedAddressAggregationRequest, PendingSelfSendConfirmationInput,
-    PersistedAppSnapshot, PersistedAppSnapshotRequest, ReceiveSelectionHoldingInput,
-    ReceiveSelectionRequest, SelfSendConfirmationRequest, WalletSecretObservation,
+    aggregate_owned_addresses, build_persisted_snapshot, core_receive_selection,
+    core_self_send_confirmation, persisted_snapshot_from_json, wallet_secret_index,
+    OwnedAddressAggregationRequest, PendingSelfSendConfirmationInput, PersistedAppSnapshot,
+    PersistedAppSnapshotRequest, ReceiveSelectionHoldingInput, ReceiveSelectionRequest,
+    SelfSendConfirmationRequest, WalletSecretObservation,
 };
 use crate::state::CoreAppState;
 
@@ -27,7 +27,7 @@ fn builds_secret_catalog_for_persisted_snapshot() {
         is_watch_only: false,
         chain_name: "Bitcoin".to_string(),
         include_in_portfolio_total: true,
-        network_mode: Some("mainnet".to_string()),
+        network_mode: None,
         xpub: None,
         derivation_preset: "standard".to_string(),
         derivation_path: None,
@@ -373,7 +373,10 @@ mod address_book {
     #[tokio::test]
     async fn refuses_a_duplicate_regardless_of_case() {
         let service = service();
-        service.apply_state_command(add("1", "Cold", BTC)).await.expect("add");
+        service
+            .apply_state_command(add("1", "Cold", BTC))
+            .await
+            .expect("add");
         let transition = service
             .apply_state_command(add("2", "Cold again", &BTC.to_uppercase()))
             .await
@@ -389,7 +392,10 @@ mod address_book {
     #[tokio::test]
     async fn the_same_address_on_another_chain_is_not_a_duplicate() {
         let service = service();
-        service.apply_state_command(add("1", "BTC", BTC)).await.expect("add");
+        service
+            .apply_state_command(add("1", "BTC", BTC))
+            .await
+            .expect("add");
         let transition = service
             .apply_state_command(StateCommand::AddAddressBookEntry {
                 id: "2".to_string(),
@@ -407,7 +413,10 @@ mod address_book {
     #[tokio::test]
     async fn renames_and_removes() {
         let service = service();
-        service.apply_state_command(add("1", "Cold", BTC)).await.expect("add");
+        service
+            .apply_state_command(add("1", "Cold", BTC))
+            .await
+            .expect("add");
 
         let renamed = service
             .apply_state_command(StateCommand::RenameAddressBookEntry {
@@ -452,8 +461,14 @@ mod address_book {
 
         let first = service();
         first.open_state(db.clone()).await.expect("open");
-        first.apply_state_command(add("1", "Cold", BTC)).await.expect("add");
-        first.apply_state_command(add("2", "Hot", BTC2)).await.expect("add");
+        first
+            .apply_state_command(add("1", "Cold", BTC))
+            .await
+            .expect("add");
+        first
+            .apply_state_command(add("2", "Hot", BTC2))
+            .await
+            .expect("add");
 
         let second = service();
         let reopened = second.open_state(db.clone()).await.expect("reopen");
@@ -827,9 +842,9 @@ mod transaction_merge {
 
         let change = service
             .apply_transaction_command(merge(vec![
-                wire("tx1", "hash1", Some(1)),   // unchanged
-                wire("tx2", "hash2", Some(6)),   // confirmations advanced
-                wire("tx3", "hash3", Some(1)),   // new
+                wire("tx1", "hash1", Some(1)), // unchanged
+                wire("tx2", "hash2", Some(6)), // confirmations advanced
+                wire("tx3", "hash3", Some(1)), // new
             ]))
             .await
             .expect("merge");
@@ -870,7 +885,7 @@ mod transaction_merge {
 mod wallet_model_conversion {
     use crate::registry::Chain;
     use crate::store::wallet_domain::{
-        CoreBitcoinNetworkMode, CoreCoin, CoreImportedWallet, CoreSeedDerivationPaths,
+        CoreCoin, CoreImportedWallet, CoreSeedDerivationPaths,
         CoreSeedDerivationPreset, CoreWalletDerivationOverrides,
     };
     use std::collections::HashMap;
@@ -885,8 +900,7 @@ mod wallet_model_conversion {
         CoreImportedWallet {
             id: "w1".to_string(),
             name: "Cold".to_string(),
-            bitcoin_network_mode: CoreBitcoinNetworkMode::Testnet4,
-            dogecoin_network_mode: Default::default(),
+            network_chain_id: Some("bitcoin-testnet-4".to_string()),
             addresses: HashMap::from([("bitcoin".to_string(), "bc1qexample".to_string())]),
             bitcoin_xpub: Some("zpub123".to_string()),
             seed_derivation_preset: CoreSeedDerivationPreset::Account2,
@@ -921,9 +935,9 @@ mod wallet_model_conversion {
     }
 
     #[test]
-    fn keeps_only_the_network_mode_that_applies() {
+    fn keeps_only_the_network_that_applies_to_this_wallets_family() {
         let summary = bitcoin_wallet().to_summary(false);
-        assert_eq!(summary.network_mode.as_deref(), Some("testnet4"));
+        assert_eq!(summary.network_mode.as_deref(), Some("bitcoin-testnet-4"));
 
         // A wallet on a chain with no network variants reports none, rather
         // than the meaningless mainnet default the record always holds.
@@ -998,7 +1012,7 @@ mod wallet_view_model {
             is_watch_only: false,
             chain_name: "Bitcoin".to_string(),
             include_in_portfolio_total: true,
-            network_mode: Some("testnet4".to_string()),
+            network_mode: Some("bitcoin-testnet-4".to_string()),
             xpub: Some("zpub123".to_string()),
             derivation_preset: "account2".to_string(),
             derivation_path: Some("m/84'/0'/2'/0/0".to_string()),
@@ -1042,13 +1056,13 @@ mod wallet_view_model {
     }
 
     /// The network mode goes back into the field for the wallet's own chain and
-    /// leaves the other alone.
+    /// The wallet's network is one chain id, so there is nothing to leave
+    /// alone — a wallet on Bitcoin testnet4 says exactly that, rather than
+    /// carrying a Bitcoin mode and a Dogecoin mode and a rule for reading them.
     #[test]
-    fn only_the_wallets_own_network_mode_is_restored() {
-        use crate::store::wallet_domain::{CoreBitcoinNetworkMode, CoreDogecoinNetworkMode};
+    fn the_wallets_own_network_survives_the_round_trip() {
         let view = summary().to_imported_wallet(&defaults());
-        assert_eq!(view.bitcoin_network_mode, CoreBitcoinNetworkMode::Testnet4);
-        assert_eq!(view.dogecoin_network_mode, CoreDogecoinNetworkMode::Mainnet);
+        assert_eq!(view.network_chain_id.as_deref(), Some("bitcoin-testnet-4"));
     }
 
     /// Holding ids are derived from what identifies the asset, so rebuilding
@@ -1188,13 +1202,15 @@ mod open_state_idempotence {
 
         let second = format!("{first}.other");
         let _ = std::fs::remove_file(&second);
-        let switched = service.open_state(second.clone()).await.expect("open other");
+        let switched = service
+            .open_state(second.clone())
+            .await
+            .expect("open other");
         assert_eq!(switched.settings.fiat_currency_code, "USD");
 
         let _ = std::fs::remove_file(&first);
         let _ = std::fs::remove_file(&second);
     }
-
 }
 
 /// Confirmation-poll backoff. Core owns the tracker table; these cover the
@@ -1203,122 +1219,125 @@ mod open_state_idempotence {
 mod status_trackers {
     use crate::service::WalletService;
 
-// ── Confirmation-poll trackers (core-owned) ───────────────────────────
+    // ── Confirmation-poll trackers (core-owned) ───────────────────────────
 
-fn poll_config() -> crate::store::TransactionStatusPollConfig {
-    crate::store::TransactionStatusPollConfig {
-        pending_poll_seconds: 10.0,
-        confirmed_poll_seconds: 30.0,
-        backoff_max_seconds: 600.0,
-        finality_confirmations: 6,
-        pending_failure_timeout_seconds: 3600.0,
-        pending_failure_min_failures: 3,
+    fn poll_config() -> crate::store::TransactionStatusPollConfig {
+        crate::store::TransactionStatusPollConfig {
+            pending_poll_seconds: 10.0,
+            confirmed_poll_seconds: 30.0,
+            backoff_max_seconds: 600.0,
+            finality_confirmations: 6,
+            pending_failure_timeout_seconds: 3600.0,
+            pending_failure_min_failures: 3,
+        }
     }
-}
 
-#[tokio::test]
-async fn untracked_transaction_is_always_due_for_poll() {
-    let service = WalletService::new_typed(Vec::new()).expect("service");
-    let due = service
-        .transactions_due_for_status_poll(vec!["tx1".into(), "tx2".into()], 1_000.0)
-        .await;
-    assert_eq!(due, vec!["tx1".to_string(), "tx2".to_string()]);
-}
-
-#[tokio::test]
-async fn recorded_poll_defers_the_next_one() {
-    let service = WalletService::new_typed(Vec::new()).expect("service");
-    service
-        .record_status_poll_success("tx1".into(), false, true, None, 1_000.0, poll_config())
-        .await;
-    assert!(service
-        .transactions_due_for_status_poll(vec!["tx1".into()], 1_000.0)
-        .await
-        .is_empty());
-    // ...and becomes due again once the interval has passed.
-    assert_eq!(
-        service
-            .transactions_due_for_status_poll(vec!["tx1".into()], 2_000.0)
-            .await,
-        vec!["tx1".to_string()]
-    );
-}
-
-#[tokio::test]
-async fn manual_recheck_makes_a_deferred_transaction_due_again() {
-    let service = WalletService::new_typed(Vec::new()).expect("service");
-    service
-        .record_status_poll_success("tx1".into(), true, false, Some(99), 1_000.0, poll_config())
-        .await;
-    assert!(service
-        .transactions_due_for_status_poll(vec!["tx1".into()], 1_000.0)
-        .await
-        .is_empty());
-    service.reset_status_tracker("tx1".into(), 1_000.0, true).await;
-    assert_eq!(
-        service
-            .transactions_due_for_status_poll(vec!["tx1".into()], 1_000.0)
-            .await,
-        vec!["tx1".to_string()]
-    );
-}
-
-#[tokio::test]
-async fn stale_pending_needs_both_age_and_repeated_failures() {
-    let service = WalletService::new_typed(Vec::new()).expect("service");
-    let input = |id: &str| crate::store::StalePendingFailureTransactionInput {
-        id: id.to_string(),
-        created_at_unix: 0.0,
-        status_is_pending: true,
-    };
-    let now = 10_000.0; // well past pending_failure_timeout_seconds
-
-    // Old enough, but never failed a poll → not stale.
-    assert!(service
-        .stale_pending_failure_ids(vec![input("tx1")], now, poll_config())
-        .await
-        .is_empty());
-
-    for _ in 0..3 {
-        service
-            .record_status_poll_failure("tx1".into(), now, poll_config())
-            .await;
-    }
-    assert_eq!(
-        service
-            .stale_pending_failure_ids(vec![input("tx1")], now, poll_config())
-            .await,
-        vec!["tx1".to_string()]
-    );
-}
-
-#[tokio::test]
-async fn retaining_trackers_drops_transactions_that_no_longer_exist() {
-    let service = WalletService::new_typed(Vec::new()).expect("service");
-    for id in ["tx1", "tx2"] {
-        service
-            .record_status_poll_success(id.into(), false, true, None, 1_000.0, poll_config())
-            .await;
-    }
-    service.retain_status_trackers(vec!["tx1".into()]).await;
-    // tx2's tracker is gone, so it reads as never-polled — due immediately.
-    assert_eq!(
-        service
+    #[tokio::test]
+    async fn untracked_transaction_is_always_due_for_poll() {
+        let service = WalletService::new_typed(Vec::new()).expect("service");
+        let due = service
             .transactions_due_for_status_poll(vec!["tx1".into(), "tx2".into()], 1_000.0)
-            .await,
-        vec!["tx2".to_string()]
-    );
-}
+            .await;
+        assert_eq!(due, vec!["tx1".to_string(), "tx2".to_string()]);
+    }
+
+    #[tokio::test]
+    async fn recorded_poll_defers_the_next_one() {
+        let service = WalletService::new_typed(Vec::new()).expect("service");
+        service
+            .record_status_poll_success("tx1".into(), false, true, None, 1_000.0, poll_config())
+            .await;
+        assert!(service
+            .transactions_due_for_status_poll(vec!["tx1".into()], 1_000.0)
+            .await
+            .is_empty());
+        // ...and becomes due again once the interval has passed.
+        assert_eq!(
+            service
+                .transactions_due_for_status_poll(vec!["tx1".into()], 2_000.0)
+                .await,
+            vec!["tx1".to_string()]
+        );
+    }
+
+    #[tokio::test]
+    async fn manual_recheck_makes_a_deferred_transaction_due_again() {
+        let service = WalletService::new_typed(Vec::new()).expect("service");
+        service
+            .record_status_poll_success("tx1".into(), true, false, Some(99), 1_000.0, poll_config())
+            .await;
+        assert!(service
+            .transactions_due_for_status_poll(vec!["tx1".into()], 1_000.0)
+            .await
+            .is_empty());
+        service
+            .reset_status_tracker("tx1".into(), 1_000.0, true)
+            .await;
+        assert_eq!(
+            service
+                .transactions_due_for_status_poll(vec!["tx1".into()], 1_000.0)
+                .await,
+            vec!["tx1".to_string()]
+        );
+    }
+
+    #[tokio::test]
+    async fn stale_pending_needs_both_age_and_repeated_failures() {
+        let service = WalletService::new_typed(Vec::new()).expect("service");
+        let input = |id: &str| crate::store::StalePendingFailureTransactionInput {
+            id: id.to_string(),
+            created_at_unix: 0.0,
+            status_is_pending: true,
+        };
+        let now = 10_000.0; // well past pending_failure_timeout_seconds
+
+        // Old enough, but never failed a poll → not stale.
+        assert!(service
+            .stale_pending_failure_ids(vec![input("tx1")], now, poll_config())
+            .await
+            .is_empty());
+
+        for _ in 0..3 {
+            service
+                .record_status_poll_failure("tx1".into(), now, poll_config())
+                .await;
+        }
+        assert_eq!(
+            service
+                .stale_pending_failure_ids(vec![input("tx1")], now, poll_config())
+                .await,
+            vec!["tx1".to_string()]
+        );
+    }
+
+    #[tokio::test]
+    async fn retaining_trackers_drops_transactions_that_no_longer_exist() {
+        let service = WalletService::new_typed(Vec::new()).expect("service");
+        for id in ["tx1", "tx2"] {
+            service
+                .record_status_poll_success(id.into(), false, true, None, 1_000.0, poll_config())
+                .await;
+        }
+        service.retain_status_trackers(vec!["tx1".into()]).await;
+        // tx2's tracker is gone, so it reads as never-polled — due immediately.
+        assert_eq!(
+            service
+                .transactions_due_for_status_poll(vec!["tx1".into(), "tx2".into()], 1_000.0)
+                .await,
+            vec!["tx2".to_string()]
+        );
+    }
 }
 
 /// Importing is a core operation now: it plans, builds and stores in one call.
 #[cfg(test)]
 mod wallet_import {
-    use crate::derivation::import::{WalletImportAddresses, WalletImportCommit, WalletImportRequest};
+    use crate::derivation::import::{
+        WalletImportAddresses, WalletImportCommit, WalletImportRequest,
+    };
     use crate::service::WalletService;
     use crate::store::wallet_domain::{
-        CoreBitcoinNetworkMode, CoreDogecoinNetworkMode, CoreSeedDerivationPaths,
-        CoreSeedDerivationPreset, CoreWalletDerivationOverrides,
+        CoreSeedDerivationPaths, CoreSeedDerivationPreset, CoreWalletDerivationOverrides,
     };
     use std::collections::HashMap;
 
@@ -1356,8 +1375,7 @@ mod wallet_import {
                 is_custom_enabled: false,
             },
             derivation_overrides: CoreWalletDerivationOverrides::default(),
-            bitcoin_network_mode: CoreBitcoinNetworkMode::Mainnet,
-            dogecoin_network_mode: CoreDogecoinNetworkMode::Mainnet,
+            network_chain_by_family: Default::default(),
         }
     }
 
@@ -1374,17 +1392,20 @@ mod wallet_import {
         let stored = service.wallets_for_display().await.expect("wallets");
         assert_eq!(stored.len(), 1);
         assert_eq!(stored[0].selected_chain, "Solana");
-        assert_eq!(stored[0].addresses.get("solana").map(String::as_str), Some(SOL));
+        assert_eq!(
+            stored[0].addresses.get("solana").map(String::as_str),
+            Some(SOL)
+        );
     }
 
     #[tokio::test]
-    async fn network_mode_applies_only_to_its_own_chain() {
+    async fn a_network_selection_applies_only_to_its_own_family() {
         let service = WalletService::new_typed(Vec::new()).expect("service");
-        let mut input = commit(
-            &["Bitcoin", "Solana"],
-            &[("bitcoin", BTC), ("solana", SOL)],
-        );
-        input.bitcoin_network_mode = CoreBitcoinNetworkMode::Testnet;
+        let mut input = commit(&["Bitcoin", "Solana"], &[("bitcoin", BTC), ("solana", SOL)]);
+        input.network_chain_by_family = std::collections::HashMap::from([(
+            "bitcoin".to_string(),
+            "bitcoin-testnet".to_string(),
+        )]);
         let outcome = service.import_wallets(input).await.expect("import");
 
         let by_chain: std::collections::HashMap<_, _> = outcome
@@ -1393,20 +1414,158 @@ mod wallet_import {
             .map(|w| (w.selected_chain.as_str(), w))
             .collect();
         assert_eq!(
-            by_chain["Bitcoin"].bitcoin_network_mode,
-            CoreBitcoinNetworkMode::Testnet
+            by_chain["Bitcoin"].network_chain_id.as_deref(),
+            Some("bitcoin-testnet")
         );
-        // Selecting Bitcoin testnet must not drag the Solana wallet with it.
-        assert_eq!(
-            by_chain["Solana"].bitcoin_network_mode,
-            CoreBitcoinNetworkMode::Mainnet
-        );
+        // Choosing Bitcoin testnet must not drag the Solana wallet with it.
+        assert_eq!(by_chain["Solana"].network_chain_id, None);
     }
 }
 
 /// Keypool reservation. The property that matters is that an index is never
 /// handed out twice — so these hammer it concurrently.
 #[cfg(test)]
+/// The dashboard's rows. Grouping the same asset across chains and ordering
+/// them are domain rules; they lived in the shell and the CLI could not reach
+/// them.
+#[cfg(test)]
+mod dashboard_groups {
+    use crate::service::WalletService;
+    use crate::state::{AssetHolding, StateCommand, WalletSummary};
+    use std::collections::HashMap;
+
+    fn holding(symbol: &str, chain: &str, amount: f64, price: f64) -> AssetHolding {
+        AssetHolding {
+            name: symbol.to_string(),
+            symbol: symbol.to_string(),
+            coin_gecko_id: symbol.to_lowercase(),
+            chain_name: chain.to_string(),
+            token_standard: "Native".to_string(),
+            contract_address: None,
+            amount,
+            price_usd: price,
+        }
+    }
+
+    async fn service_with(wallets: Vec<(&str, &str, Vec<AssetHolding>)>) -> std::sync::Arc<WalletService> {
+        let service = WalletService::new_typed(Vec::new()).expect("service");
+        for (id, chain, holdings) in wallets {
+            let mut wallet = WalletSummary::single_address(id, id, chain, "addr", None, false);
+            wallet.holdings = holdings;
+            service
+                .apply_state_command(StateCommand::UpsertWallet { wallet })
+                .await
+                .expect("upsert");
+        }
+        service
+    }
+
+    /// A row is per (chain, asset), and the same asset held on two wallets of
+    /// one chain sums into it.
+    ///
+    /// Note what this does *not* say: ETH on Ethereum and ETH on Arbitrum are
+    /// two rows, because `dashboard_asset_grouping_key` includes the chain.
+    /// The record is named `…AssetGroup` and carries `chain_entries`, which
+    /// reads like cross-chain grouping was intended — see the open question in
+    /// `PLAN.md`. This pins the behaviour as it is so the answer is a decision
+    /// rather than a regression.
+    #[tokio::test]
+    async fn a_row_is_per_chain_and_sums_across_wallets() {
+        let service = service_with(vec![
+            ("w1", "Ethereum", vec![holding("ETH", "Ethereum", 1.0, 2000.0)]),
+            ("w2", "Ethereum", vec![holding("ETH", "Ethereum", 2.0, 2000.0)]),
+            ("w3", "Arbitrum", vec![holding("ETH", "Arbitrum", 5.0, 2000.0)]),
+        ])
+        .await;
+        let groups = service
+            .dashboard_asset_groups(HashMap::new())
+            .await
+            .expect("groups");
+        let eth: Vec<_> = groups
+            .iter()
+            .filter(|g| g.representative_coin.symbol == "ETH")
+            .collect();
+        assert_eq!(eth.len(), 2, "one row per chain");
+        let ethereum = eth
+            .iter()
+            .find(|g| g.representative_coin.chain_name == "Ethereum")
+            .expect("an Ethereum row");
+        assert_eq!(ethereum.total_amount, 3.0, "both wallets summed");
+        assert_eq!(ethereum.chain_entries.len(), 1, "one entry, not one per wallet");
+    }
+
+    /// Live prices win over the amount a holding was stored with.
+    #[tokio::test]
+    async fn a_live_price_beats_the_stored_one() {
+        let service = service_with(vec![("w1", "Ethereum", vec![holding("ETH", "Ethereum", 2.0, 1000.0)])]).await;
+        let stored = service
+            .dashboard_asset_groups(HashMap::new())
+            .await
+            .expect("groups");
+        assert_eq!(stored[0].total_value_usd, Some(2000.0));
+
+        let live = service
+            .dashboard_asset_groups(HashMap::from([("Ethereum|ETH".to_string(), 3000.0)]))
+            .await
+            .expect("groups");
+        assert_eq!(live[0].total_value_usd, Some(6000.0));
+    }
+
+    /// A testnet holding has no value, so its row reports none rather than
+    /// quoting it at mainnet.
+    #[tokio::test]
+    async fn a_testnet_row_has_no_value() {
+        let service = service_with(vec![("w1", "Ethereum", vec![holding("ETH", "Ethereum", 2.0, 1000.0)])]).await;
+        service
+            .apply_state_command(StateCommand::SelectNetworkChain {
+                chain_id: "ethereum-sepolia".into(),
+            })
+            .await
+            .expect("select");
+        let groups = service
+            .dashboard_asset_groups(HashMap::from([("Ethereum Sepolia|ETH".to_string(), 3000.0)]))
+            .await
+            .expect("groups");
+        assert_eq!(groups[0].total_value_usd, None);
+    }
+
+    /// Pinned rows come first, in the order they were pinned, and a pinned
+    /// symbol with no holdings still gets a row.
+    #[tokio::test]
+    async fn pinned_rows_lead_in_pin_order() {
+        let service = service_with(vec![(
+            "w1",
+            "Ethereum",
+            vec![
+                holding("ETH", "Ethereum", 1.0, 2000.0),
+                holding("BTC", "Bitcoin", 1.0, 60000.0),
+            ],
+        )])
+        .await;
+        service
+            .apply_state_command(StateCommand::SetPinnedDashboardAssets {
+                symbols: vec!["ETH".into(), "SOL".into()],
+            })
+            .await
+            .expect("pin");
+        let groups = service
+            .dashboard_asset_groups(HashMap::new())
+            .await
+            .expect("groups");
+        let symbols: Vec<_> = groups
+            .iter()
+            .map(|g| g.representative_coin.symbol.as_str())
+            .collect();
+        // ETH before SOL because that is the pin order, and both before the
+        // unpinned BTC even though BTC is worth more.
+        assert_eq!(symbols.first(), Some(&"ETH"));
+        assert!(
+            groups.iter().any(|g| g.representative_coin.symbol == "BTC" && !g.is_pinned),
+            "BTC is still shown, unpinned"
+        );
+    }
+}
+
 /// Operational events: core stamps, caps and persists them.
 #[cfg(test)]
 mod operational_events {
@@ -1446,7 +1605,10 @@ mod operational_events {
         assert_eq!(events[0].message, "broadcast deferred");
         assert_eq!(events[0].level, ChainOperationalEventLevel::Warning);
         assert_eq!(events[0].transaction_hash.as_deref(), Some("abc123"));
-        assert!(events[0].timestamp_unix > 0.0, "core did not stamp the time");
+        assert!(
+            events[0].timestamp_unix > 0.0,
+            "core did not stamp the time"
+        );
 
         let _ = std::fs::remove_file(&db);
     }
@@ -1472,7 +1634,10 @@ mod operational_events {
         assert_eq!(events[0].message, "event 204");
         assert_eq!(events[199].message, "event 5");
         // A different chain keeps its own list.
-        assert!(service.operational_events("Bitcoin".into()).await.is_empty());
+        assert!(service
+            .operational_events("Bitcoin".into())
+            .await
+            .is_empty());
     }
 
     #[tokio::test]
@@ -1493,10 +1658,16 @@ mod operational_events {
             .clear_operational_events(Some("Bitcoin".into()))
             .await
             .expect("clear one");
-        assert!(service.operational_events("Bitcoin".into()).await.is_empty());
+        assert!(service
+            .operational_events("Bitcoin".into())
+            .await
+            .is_empty());
         assert_eq!(service.operational_events("Solana".into()).await.len(), 1);
 
-        service.clear_operational_events(None).await.expect("clear all");
+        service
+            .clear_operational_events(None)
+            .await
+            .expect("clear all");
         assert!(service.operational_events("Solana".into()).await.is_empty());
     }
 }
@@ -1579,7 +1750,10 @@ mod built_in_tokens {
             .iter()
             .find(|e| e.id == id)
             .expect("the entry survived");
-        assert!(!kept.is_enabled, "the merge re-enabled a token the user turned off");
+        assert!(
+            !kept.is_enabled,
+            "the merge re-enabled a token the user turned off"
+        );
         assert_eq!(kept.display_decimals, Some(2));
     }
 }
@@ -1649,7 +1823,10 @@ mod keypool {
     async fn keypool_survives_reopening_the_database() {
         let db = {
             let mut path = std::env::temp_dir();
-            path.push(format!("spectra-keypool-reopen-{}.sqlite", std::process::id()));
+            path.push(format!(
+                "spectra-keypool-reopen-{}.sqlite",
+                std::process::id()
+            ));
             let _ = std::fs::remove_file(&path);
             path.to_string_lossy().into_owned()
         };
@@ -1798,7 +1975,10 @@ mod pinned_dashboard_assets {
         let first = service.apply_state_command(command()).await.expect("apply");
         assert_eq!(first.events.len(), 1);
         let second = service.apply_state_command(command()).await.expect("apply");
-        assert!(second.events.is_empty(), "re-pinning the same set is a no-op");
+        assert!(
+            second.events.is_empty(),
+            "re-pinning the same set is a no-op"
+        );
     }
 
     #[tokio::test]
@@ -1815,7 +1995,11 @@ mod pinned_dashboard_assets {
             .apply_state_command(StateCommand::SetPinnedDashboardAssets { symbols: vec![] })
             .await
             .expect("apply");
-        assert!(cleared.state.settings.pinned_dashboard_asset_symbols.is_empty());
+        assert!(cleared
+            .state
+            .settings
+            .pinned_dashboard_asset_symbols
+            .is_empty());
         assert_eq!(cleared.events.len(), 1, "clearing is a real change");
     }
 }
@@ -1872,8 +2056,18 @@ mod transaction_merge_strategy {
         }
         assert_eq!(strategy("Dogecoin"), S::Dogecoin);
         for name in [
-            "Tron", "Solana", "Cardano", "XRP Ledger", "Stellar", "Monero", "Sui", "Aptos", "TON",
-            "Internet Computer", "NEAR", "Polkadot",
+            "Tron",
+            "Solana",
+            "Cardano",
+            "XRP Ledger",
+            "Stellar",
+            "Monero",
+            "Sui",
+            "Aptos",
+            "TON",
+            "Internet Computer",
+            "NEAR",
+            "Polkadot",
         ] {
             assert_eq!(strategy(name), S::AccountBased, "{name}");
         }
@@ -2035,7 +2229,9 @@ mod wallet_derived_state {
         }
     }
 
-    async fn service_with(wallets: Vec<(&str, &str, Vec<CoreCoin>, bool)>) -> std::sync::Arc<WalletService> {
+    async fn service_with(
+        wallets: Vec<(&str, &str, Vec<CoreCoin>, bool)>,
+    ) -> std::sync::Arc<WalletService> {
         let service = WalletService::new_typed(Vec::new()).expect("service");
         for (id, chain, holdings, included) in wallets {
             let mut summary = crate::store::state::WalletSummary::single_address(
@@ -2132,7 +2328,10 @@ mod wallet_derived_state {
             })
             .await
             .expect("select");
-        assert_eq!(after_testnet.state.settings.network_chain_by_family.len(), 1);
+        assert_eq!(
+            after_testnet.state.settings.network_chain_by_family.len(),
+            1
+        );
 
         let after_mainnet = service
             .apply_state_command(StateCommand::SelectNetworkChain {
@@ -2163,7 +2362,10 @@ mod wallet_derived_state {
             .expect("derived");
         assert!(watch_only.send_enabled_wallet_ids.is_empty());
         // Receiving never needs a key.
-        assert_eq!(watch_only.receive_enabled_wallet_ids, vec!["w1".to_string()]);
+        assert_eq!(
+            watch_only.receive_enabled_wallet_ids,
+            vec!["w1".to_string()]
+        );
 
         let with_key = service
             .wallet_derived_state(vec!["w1".into()], vec![])
@@ -2253,7 +2455,7 @@ mod import_address_validation {
     fn validated_addresses(
         addresses: &WalletImportAddresses,
     ) -> (WalletImportAddresses, Vec<String>) {
-        crate::derivation::import::validated_addresses(addresses, Default::default())
+        crate::derivation::import::validated_addresses(addresses, &Default::default())
     }
 
     fn addresses(pairs: &[(&str, &str)]) -> WalletImportAddresses {
@@ -2318,14 +2520,15 @@ mod import_address_validation {
     /// every address on a testnet import and produced a wallet with none.
     #[test]
     fn a_derived_address_is_kept_on_a_testnet_import() {
-        use crate::store::wallet_domain::{CoreBitcoinNetworkMode, CoreDogecoinNetworkMode};
         let derived = "bc1qw508d6qejxtdg4y5r3zarvary0c5xw7kv8f3t4";
         // Even asked for testnet4, the slot map is mainnet.
         let (kept, rejected) = crate::derivation::import::validated_addresses(
             &addresses(&[("bitcoin", derived)]),
-            crate::derivation::import::ImportNetworks {
-                bitcoin: CoreBitcoinNetworkMode::Testnet4,
-                dogecoin: CoreDogecoinNetworkMode::Mainnet,
+            &crate::derivation::import::ImportNetworks {
+                by_family: std::collections::HashMap::from([(
+                    "bitcoin".to_string(),
+                    "bitcoin-testnet-4".to_string(),
+                )]),
             },
         );
         // The helper itself honours what it is told...
@@ -2335,7 +2538,10 @@ mod import_address_validation {
         // what the default does.
         let (kept, rejected) = validated_addresses(&addresses(&[("bitcoin", derived)]));
         assert!(rejected.is_empty());
-        assert_eq!(kept.by_slot.get("bitcoin").map(String::as_str), Some(derived));
+        assert_eq!(
+            kept.by_slot.get("bitcoin").map(String::as_str),
+            Some(derived)
+        );
     }
 
     #[test]
@@ -2364,7 +2570,7 @@ mod import_address_validation {
             entries: &WalletImportWatchOnlyEntries,
             networks: ImportNetworks,
         ) -> (WalletImportWatchOnlyEntries, Vec<String>) {
-            crate::derivation::import::validated_watch_only_entries(entries, networks)
+            crate::derivation::import::validated_watch_only_entries(entries, &networks)
         }
 
         fn entries(slot: &str, addresses: &[&str]) -> WalletImportWatchOnlyEntries {
@@ -2443,7 +2649,11 @@ mod import_address_validation {
             // without computing a real one, and a fixture the validator
             // rejects would test nothing.
             let cases: [(&str, &str, &str); 5] = [
-                ("Ethereum", "ethereum", "0x742D35CC6634C0532925A3B844BC454E4438F44E"),
+                (
+                    "Ethereum",
+                    "ethereum",
+                    "0x742D35CC6634C0532925A3B844BC454E4438F44E",
+                ),
                 (
                     "Sui",
                     "sui",
@@ -2455,12 +2665,20 @@ mod import_address_validation {
                     "0x0000000000000000000000000000000000000000000000000000000000000ABC",
                 ),
                 ("NEAR", "near", "Example.NEAR"),
-                ("Solana", "solana", "BLeUXTx9thHGT7VJUtF9vHEmfMDgW1nnKZ9UVer2CoLX"),
+                (
+                    "Solana",
+                    "solana",
+                    "BLeUXTx9thHGT7VJUtF9vHEmfMDgW1nnKZ9UVer2CoLX",
+                ),
             ];
             for (chain_name, slot, typed) in cases {
                 let (kept, rejected) = validated_watch_only_entries(&entries(slot, &[typed]));
                 assert!(rejected.is_empty(), "{chain_name}: rejected {typed}");
-                let imported = kept.by_slot.get(slot).and_then(|list| list.first()).unwrap();
+                let imported = kept
+                    .by_slot
+                    .get(slot)
+                    .and_then(|list| list.first())
+                    .unwrap();
                 let sent = normalized_send_address(chain_name.to_string(), typed.to_string());
                 assert_eq!(
                     imported, &sent,
@@ -2491,14 +2709,15 @@ mod import_address_validation {
         /// mainnet refuses a wallet the app has always allowed.
         #[test]
         fn a_testnet_watch_address_survives_when_the_import_is_for_testnet() {
-            use crate::store::wallet_domain::{CoreBitcoinNetworkMode, CoreDogecoinNetworkMode};
             // tb1 prefix — valid Bitcoin testnet, invalid on mainnet.
             let typed = "tb1qw508d6qejxtdg4y5r3zarvary0c5xw7kxpjzsx";
             let (kept, rejected) = validated_watch_only_entries_on(
                 &entries("bitcoin", &[typed]),
                 ImportNetworks {
-                    bitcoin: CoreBitcoinNetworkMode::Testnet,
-                    dogecoin: CoreDogecoinNetworkMode::Mainnet,
+                    by_family: std::collections::HashMap::from([(
+                        "bitcoin".to_string(),
+                        "bitcoin-testnet".to_string(),
+                    )]),
                 },
             );
             assert!(rejected.is_empty(), "testnet address refused: {rejected:?}");
@@ -2540,10 +2759,10 @@ mod import_address_validation {
 #[cfg(test)]
 mod tracked_tokens_persist {
     use crate::store::state::{CoreAppState, StateCommand};
+    use crate::store::wallet_db;
     use crate::store::wallet_domain::{
         CoreTokenPreferenceCategory, CoreTokenPreferenceEntry, CoreTokenTrackingChain,
     };
-    use crate::store::wallet_db;
 
     /// One database per test. Keyed by thread id as well as pid: two tests in
     /// the same process share a pid, and the first version of this helper did
@@ -2590,7 +2809,11 @@ mod tracked_tokens_persist {
         wallet_db::app_state_save(&db, &state).expect("save");
 
         let reloaded = wallet_db::app_state_load(&db).expect("load");
-        assert_eq!(reloaded.token_preferences.len(), 1, "tracked token was lost");
+        assert_eq!(
+            reloaded.token_preferences.len(),
+            1,
+            "tracked token was lost"
+        );
         assert_eq!(reloaded.token_preferences[0].symbol, "USDC");
         assert_eq!(reloaded.token_preferences[0].display_decimals, Some(2));
     }
@@ -2620,10 +2843,10 @@ mod tracked_tokens_persist {
 /// next field added is covered by the same test or fails it.
 #[cfg(test)]
 mod resident_state_round_trip {
-    use crate::store::state::{CoreAppState, StateCommand, reduce_state_in_place};
+    use crate::store::state::{reduce_state_in_place, CoreAppState, StateCommand};
     use crate::store::wallet_db;
-    use crate::store::PriceAlertEvaluationAlert;
     use crate::store::wallet_domain::CorePriceAlertCondition;
+    use crate::store::PriceAlertEvaluationAlert;
 
     fn tmp_db() -> String {
         let mut path = std::env::temp_dir();
@@ -2688,7 +2911,9 @@ mod resident_state_round_trip {
         let mut state = CoreAppState::default();
         reduce_state_in_place(
             &mut state,
-            StateCommand::SetPriceAlerts { alerts: vec![alert("A1", 1.0)] },
+            StateCommand::SetPriceAlerts {
+                alerts: vec![alert("A1", 1.0)],
+            },
         );
         reduce_state_in_place(
             &mut state,
@@ -2702,13 +2927,18 @@ mod resident_state_round_trip {
         );
         reduce_state_in_place(
             &mut state,
-            StateCommand::SetFiatCurrency { fiat_currency_code: "CHF".into() },
+            StateCommand::SetFiatCurrency {
+                fiat_currency_code: "CHF".into(),
+            },
         );
         wallet_db::app_state_save(&db, &state).expect("save");
         let back = wallet_db::app_state_load(&db).expect("load");
 
         assert_eq!(back.price_alerts.len(), 1, "price_alerts not persisted");
         assert_eq!(back.address_book.len(), 1, "address_book not persisted");
-        assert_eq!(back.settings.fiat_currency_code, "CHF", "settings not persisted");
+        assert_eq!(
+            back.settings.fiat_currency_code, "CHF",
+            "settings not persisted"
+        );
     }
 }

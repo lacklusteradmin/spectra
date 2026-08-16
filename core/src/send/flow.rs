@@ -3,8 +3,8 @@
 //
 // Every function here is a pure transform with no platform dependencies.
 
-use crate::validation::address::{validate_address, AddressValidationRequest};
 use crate::registry::Chain;
+use crate::validation::address::{validate_address, AddressValidationRequest};
 use crate::wallet_core::*;
 
 #[uniffi::export]
@@ -108,7 +108,6 @@ pub(crate) fn chain_kind(chain_name: &str) -> Option<&'static str> {
 pub fn is_valid_send_address(
     chain_name: String,
     address: String,
-    network_mode: Option<String>,
 ) -> bool {
     let Some(kind) = chain_kind(&chain_name) else {
         return false;
@@ -116,7 +115,6 @@ pub fn is_valid_send_address(
     validate_address(AddressValidationRequest {
         kind: kind.to_string(),
         value: address,
-        network_mode,
     })
     .is_valid
 }
@@ -176,21 +174,51 @@ pub fn is_ens_name_candidate(value: String) -> bool {
 #[derive(Debug, Clone, uniffi::Enum)]
 pub enum SendPreview {
     /// Bitcoin, Bitcoin Cash, Bitcoin SV and Litecoin share one preview shape.
-    Utxo { preview: BitcoinSendPreview },
-    Dogecoin { preview: DogecoinSendPreview },
-    Ethereum { preview: EthereumSendPreview },
-    Tron { preview: TronSendPreview },
-    Solana { preview: SolanaSendPreview },
-    Xrp { preview: XRPSendPreview },
-    Stellar { preview: StellarSendPreview },
-    Monero { preview: MoneroSendPreview },
-    Cardano { preview: CardanoSendPreview },
-    Sui { preview: SuiSendPreview },
-    Aptos { preview: AptosSendPreview },
-    Ton { preview: TONSendPreview },
-    Icp { preview: ICPSendPreview },
-    Near { preview: NearSendPreview },
-    Polkadot { preview: PolkadotSendPreview },
+    Utxo {
+        preview: BitcoinSendPreview,
+    },
+    Dogecoin {
+        preview: DogecoinSendPreview,
+    },
+    Ethereum {
+        preview: EthereumSendPreview,
+    },
+    Tron {
+        preview: TronSendPreview,
+    },
+    Solana {
+        preview: SolanaSendPreview,
+    },
+    Xrp {
+        preview: XRPSendPreview,
+    },
+    Stellar {
+        preview: StellarSendPreview,
+    },
+    Monero {
+        preview: MoneroSendPreview,
+    },
+    Cardano {
+        preview: CardanoSendPreview,
+    },
+    Sui {
+        preview: SuiSendPreview,
+    },
+    Aptos {
+        preview: AptosSendPreview,
+    },
+    Ton {
+        preview: TONSendPreview,
+    },
+    Icp {
+        preview: ICPSendPreview,
+    },
+    Near {
+        preview: NearSendPreview,
+    },
+    Polkadot {
+        preview: PolkadotSendPreview,
+    },
 }
 
 #[allow(non_snake_case)]
@@ -259,17 +287,39 @@ pub fn compute_send_preview_details(
                 None,
             ),
             // Account-model chains: balance, fee description and max sendable.
-            SendPreview::Tron { preview: p } => simple(p.spendableBalance, p.feeRateDescription, p.maxSendable),
-            SendPreview::Solana { preview: p } => simple(p.spendableBalance, p.feeRateDescription, p.maxSendable),
-            SendPreview::Xrp { preview: p } => simple(p.spendableBalance, p.feeRateDescription, p.maxSendable),
-            SendPreview::Stellar { preview: p } => simple(p.spendableBalance, p.feeRateDescription, p.maxSendable),
-            SendPreview::Monero { preview: p } => simple(p.spendableBalance, p.feeRateDescription, p.maxSendable),
-            SendPreview::Cardano { preview: p } => simple(p.spendableBalance, p.feeRateDescription, p.maxSendable),
-            SendPreview::Sui { preview: p } => simple(p.spendableBalance, p.feeRateDescription, p.maxSendable),
-            SendPreview::Aptos { preview: p } => simple(p.spendableBalance, p.feeRateDescription, p.maxSendable),
-            SendPreview::Ton { preview: p } => simple(p.spendableBalance, p.feeRateDescription, p.maxSendable),
-            SendPreview::Icp { preview: p } => simple(p.spendableBalance, p.feeRateDescription, p.maxSendable),
-            SendPreview::Near { preview: p } => simple(p.spendableBalance, p.feeRateDescription, p.maxSendable),
+            SendPreview::Tron { preview: p } => {
+                simple(p.spendableBalance, p.feeRateDescription, p.maxSendable)
+            }
+            SendPreview::Solana { preview: p } => {
+                simple(p.spendableBalance, p.feeRateDescription, p.maxSendable)
+            }
+            SendPreview::Xrp { preview: p } => {
+                simple(p.spendableBalance, p.feeRateDescription, p.maxSendable)
+            }
+            SendPreview::Stellar { preview: p } => {
+                simple(p.spendableBalance, p.feeRateDescription, p.maxSendable)
+            }
+            SendPreview::Monero { preview: p } => {
+                simple(p.spendableBalance, p.feeRateDescription, p.maxSendable)
+            }
+            SendPreview::Cardano { preview: p } => {
+                simple(p.spendableBalance, p.feeRateDescription, p.maxSendable)
+            }
+            SendPreview::Sui { preview: p } => {
+                simple(p.spendableBalance, p.feeRateDescription, p.maxSendable)
+            }
+            SendPreview::Aptos { preview: p } => {
+                simple(p.spendableBalance, p.feeRateDescription, p.maxSendable)
+            }
+            SendPreview::Ton { preview: p } => {
+                simple(p.spendableBalance, p.feeRateDescription, p.maxSendable)
+            }
+            SendPreview::Icp { preview: p } => {
+                simple(p.spendableBalance, p.feeRateDescription, p.maxSendable)
+            }
+            SendPreview::Near { preview: p } => {
+                simple(p.spendableBalance, p.feeRateDescription, p.maxSendable)
+            }
         };
 
     let fallback = est_fee.map(|fee| (coin_amount - fee).max(0.0));
@@ -364,7 +414,8 @@ mod tests {
         let mut preview = utxo_preview();
         preview.spendableBalance = Some(9.0);
         preview.maxSendable = Some(8.0);
-        let d = compute_send_preview_details(Some(SendPreview::Utxo { preview }), 2.0).expect("details");
+        let d = compute_send_preview_details(Some(SendPreview::Utxo { preview }), 2.0)
+            .expect("details");
         assert_eq!(d.spendableBalance, Some(9.0));
         assert_eq!(d.maxSendable, Some(8.0));
     }
@@ -496,7 +547,6 @@ pub fn core_evaluate_high_risk_send_reasons(
         validate_address(AddressValidationRequest {
             kind: kind.to_string(),
             value: address.to_string(),
-            network_mode: None,
         })
         .is_valid
     };
@@ -1243,7 +1293,7 @@ mod flow_helpers_tests {
                 "{chain} must resolve to the EVM validator"
             );
             assert!(
-                is_valid_send_address(chain.to_string(), evm.to_string(), None),
+                is_valid_send_address(chain.to_string(), evm.to_string()),
                 "{chain} must accept a valid EVM address"
             );
         }
@@ -1262,11 +1312,7 @@ mod flow_helpers_tests {
 
         // Still rejects what it should.
         assert_eq!(chain_kind("Not A Chain"), None);
-        assert!(!is_valid_send_address(
-            "Polygon".to_string(),
-            "not-an-address".to_string(),
-            None
-        ));
+        assert!(!is_valid_send_address("Polygon".to_string(), "not-an-address".to_string()));
     }
 
     #[test]
@@ -1409,7 +1455,6 @@ mod flow_helpers_tests {
     }
 }
 
-
 #[cfg(test)]
 mod evm_chain_context_tests {
     use super::*;
@@ -1429,12 +1474,23 @@ mod evm_chain_context_tests {
     #[test]
     fn the_ten_chains_the_swift_enum_skipped_now_resolve() {
         for name in [
-            "Sei", "Celo", "Cronos", "opBNB", "zkSync Era", "Sonic", "Berachain", "Unichain",
-            "Ink", "X Layer",
+            "Sei",
+            "Celo",
+            "Cronos",
+            "opBNB",
+            "zkSync Era",
+            "Sonic",
+            "Berachain",
+            "Unichain",
+            "Ink",
+            "X Layer",
         ] {
-            let context =
-                core_evm_chain_context(name.to_string()).unwrap_or_else(|| panic!("{name} missing"));
-            assert_eq!(context.coin_type, 60, "{name} should derive from coin type 60");
+            let context = core_evm_chain_context(name.to_string())
+                .unwrap_or_else(|| panic!("{name} missing"));
+            assert_eq!(
+                context.coin_type, 60,
+                "{name} should derive from coin type 60"
+            );
             assert!(!context.is_ethereum_family, "{name} is not Ethereum family");
         }
     }
@@ -1451,10 +1507,21 @@ mod evm_chain_context_tests {
     fn the_ethereum_family_is_mainnet_and_its_testnets() {
         for name in ["Ethereum", "Ethereum Sepolia", "Ethereum Hoodi"] {
             let context = core_evm_chain_context(name.to_string()).expect("context");
-            assert!(context.is_ethereum_family, "{name} should be Ethereum family");
+            assert!(
+                context.is_ethereum_family,
+                "{name} should be Ethereum family"
+            );
         }
-        assert!(core_evm_chain_context("Ethereum".to_string()).unwrap().is_ethereum_mainnet);
-        assert!(!core_evm_chain_context("Ethereum Sepolia".to_string()).unwrap().is_ethereum_mainnet);
+        assert!(
+            core_evm_chain_context("Ethereum".to_string())
+                .unwrap()
+                .is_ethereum_mainnet
+        );
+        assert!(
+            !core_evm_chain_context("Ethereum Sepolia".to_string())
+                .unwrap()
+                .is_ethereum_mainnet
+        );
     }
 
     #[test]

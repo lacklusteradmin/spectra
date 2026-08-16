@@ -77,7 +77,6 @@ fn validate(out: Out, args: ValidateArgs) -> CliResult<()> {
     let result = validate_address(AddressValidationRequest {
         kind: chain.address_validation_kind().to_string(),
         value: args.address.trim().to_string(),
-        network_mode: None,
     });
 
     if !result.is_valid {

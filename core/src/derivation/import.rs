@@ -2,8 +2,8 @@ use std::collections::HashMap;
 
 use serde::{Deserialize, Serialize};
 
-use crate::validation::address::{validate_address, AddressValidationRequest};
 use crate::registry::Chain;
+use crate::validation::address::{validate_address, AddressValidationRequest};
 
 /// Addresses supplied by a wallet import, keyed by [`Chain::address_slot`].
 ///
@@ -114,8 +114,10 @@ pub struct WalletImportCommit {
     pub seed_derivation_preset: crate::store::wallet_domain::CoreSeedDerivationPreset,
     pub seed_derivation_paths: crate::store::wallet_domain::CoreSeedDerivationPaths,
     pub derivation_overrides: crate::store::wallet_domain::CoreWalletDerivationOverrides,
-    pub bitcoin_network_mode: crate::store::wallet_domain::CoreBitcoinNetworkMode,
-    pub dogecoin_network_mode: crate::store::wallet_domain::CoreDogecoinNetworkMode,
+    /// The network the importer selected, per chain family, as
+    /// `mainnet id -> selected id`. Absent means mainnet. Two mode enums
+    /// before, which meant adding a third family meant a third field.
+    pub network_chain_by_family: std::collections::HashMap<String, String>,
 }
 
 /// What an import produced. `secret_instructions` is the only part the caller
@@ -142,17 +144,18 @@ pub struct WalletImportOutcome {
 /// display name, so there is no "Bitcoin Testnet" row to carry them. Without
 /// this, validating the `bitcoin` slot as mainnet refuses a testnet wallet the
 /// app has always allowed.
-#[derive(Debug, Clone, Copy, Default)]
+#[derive(Debug, Clone, Default)]
 pub(crate) struct ImportNetworks {
-    pub bitcoin: crate::store::wallet_domain::CoreBitcoinNetworkMode,
-    pub dogecoin: crate::store::wallet_domain::CoreDogecoinNetworkMode,
+    /// `mainnet id -> selected id`, absent meaning mainnet. Two mode fields
+    /// before, each with its own match to turn it back into a chain.
+    pub by_family: std::collections::HashMap<String, String>,
 }
 
 /// Keep a Bitcoin account xpub only if it carries a serialization prefix this
 /// network uses. `None` in, `None` out.
 fn validated_bitcoin_xpub(
     xpub: Option<&String>,
-    networks: ImportNetworks,
+    networks: &ImportNetworks,
 ) -> (Option<String>, Option<String>) {
     let Some(trimmed) = xpub.map(|value| value.trim()).filter(|v| !v.is_empty()) else {
         return (None, None);
@@ -175,34 +178,33 @@ impl ImportNetworks {
     /// counterparts. An xpub is not an address, so `validate_address` has
     /// nothing to say about it — but storing an arbitrary string as one means
     /// a watch wallet that derives nothing and shows no address.
-    fn bitcoin_xpub_prefixes(self) -> &'static [&'static str] {
-        use crate::store::wallet_domain::CoreBitcoinNetworkMode as Btc;
-        match self.bitcoin {
-            Btc::Mainnet => &["xpub", "ypub", "zpub"],
-            Btc::Testnet | Btc::Testnet4 | Btc::Signet => &["tpub", "upub", "vpub"],
+    fn bitcoin_xpub_prefixes(&self) -> &'static [&'static str] {
+        if self.selected(Chain::Bitcoin).is_testnet() {
+            &["tpub", "upub", "vpub"]
+        } else {
+            &["xpub", "ypub", "zpub"]
         }
     }
 
-    /// The chain whose format answers for `slot` under these network modes.
-    fn chain_for(self, slot: &str) -> Option<Chain> {
-        use crate::store::wallet_domain::{CoreBitcoinNetworkMode as Btc, CoreDogecoinNetworkMode as Doge};
-        if slot == Chain::Bitcoin.address_slot() {
-            return Some(match self.bitcoin {
-                Btc::Mainnet => Chain::Bitcoin,
-                Btc::Testnet => Chain::BitcoinTestnet,
-                Btc::Testnet4 => Chain::BitcoinTestnet4,
-                Btc::Signet => Chain::BitcoinSignet,
-            });
-        }
-        if slot == Chain::Dogecoin.address_slot() {
-            return Some(match self.dogecoin {
-                Doge::Mainnet => Chain::Dogecoin,
-                Doge::Testnet => Chain::DogecoinTestnet,
-            });
-        }
-        // Every other slot is shared by a chain family (all EVM mainnets use
-        // one), so any chain in the family answers for the format.
-        Chain::all().find(|chain| chain.address_slot() == slot)
+    /// The network selected for a family, defaulting to its mainnet.
+    fn selected(&self, chain: Chain) -> Chain {
+        let family = chain.mainnet_counterpart();
+        self.by_family
+            .get(family.str_id())
+            .and_then(|id| Chain::from_str_id(id))
+            .filter(|c| c.mainnet_counterpart() == family)
+            .unwrap_or(family)
+    }
+
+    /// The chain whose address format answers for `slot`.
+    ///
+    /// No per-family arms: find the chain that owns the slot, then apply the
+    /// selection to it. Every other slot is shared by a family (all EVM
+    /// mainnets use one), and applying a selection there is a no-op.
+    fn chain_for(&self, slot: &str) -> Option<Chain> {
+        Chain::all()
+            .find(|chain| chain.address_slot() == slot)
+            .map(|chain| self.selected(chain))
     }
 }
 
@@ -213,13 +215,12 @@ impl ImportNetworks {
 fn validated_address_in_slot(
     slot: &str,
     address: &str,
-    networks: ImportNetworks,
+    networks: &ImportNetworks,
 ) -> Result<String, ()> {
     let chain = networks.chain_for(slot).ok_or(())?;
     let result = validate_address(AddressValidationRequest {
         kind: chain.address_validation_kind().to_string(),
         value: address.to_string(),
-        network_mode: None,
     });
     if result.is_valid {
         Ok(result
@@ -240,7 +241,7 @@ fn validated_address_in_slot(
 /// worse than storing none: it renders as the wallet's receive address.
 pub(crate) fn validated_addresses(
     addresses: &WalletImportAddresses,
-    networks: ImportNetworks,
+    networks: &ImportNetworks,
 ) -> (WalletImportAddresses, Vec<String>) {
     let mut kept = HashMap::new();
     let mut rejected = Vec::new();
@@ -277,7 +278,7 @@ pub(crate) fn validated_addresses(
 /// could not fail and skipped the one that could.
 pub(crate) fn validated_watch_only_entries(
     entries: &WalletImportWatchOnlyEntries,
-    networks: ImportNetworks,
+    networks: &ImportNetworks,
 ) -> (WalletImportWatchOnlyEntries, Vec<String>) {
     let mut kept: HashMap<String, Vec<String>> = HashMap::new();
     let mut rejected = Vec::new();
@@ -312,24 +313,19 @@ pub(crate) fn wallets_for_import(
     commit: &WalletImportCommit,
     plan: &WalletImportPlan,
 ) -> Vec<crate::store::wallet_domain::CoreImportedWallet> {
-    use crate::store::wallet_domain::{CoreBitcoinNetworkMode, CoreDogecoinNetworkMode};
     plan.wallets
         .iter()
         .map(|planned| crate::store::wallet_domain::CoreImportedWallet {
             id: planned.wallet_id.clone(),
             name: planned.name.clone(),
-            // Network mode applies only to the chain it belongs to; every other
-            // wallet is mainnet regardless of what the importer had selected.
-            bitcoin_network_mode: if planned.chain_name == "Bitcoin" {
-                commit.bitcoin_network_mode
-            } else {
-                CoreBitcoinNetworkMode::Mainnet
-            },
-            dogecoin_network_mode: if planned.chain_name == "Dogecoin" {
-                commit.dogecoin_network_mode
-            } else {
-                CoreDogecoinNetworkMode::Mainnet
-            },
+            // The selection applies only to the family the wallet is on.
+            network_chain_id: crate::registry::Chain::from_display_name(&planned.chain_name)
+                .and_then(|chain| {
+                    commit
+                        .network_chain_by_family
+                        .get(chain.mainnet_counterpart().str_id())
+                        .cloned()
+                }),
             addresses: planned.addresses.by_slot.clone(),
             bitcoin_xpub: if planned.chain_name == "Bitcoin" {
                 planned.addresses.bitcoin_xpub.clone()
@@ -362,7 +358,6 @@ pub fn core_address_slot(chain_name: String) -> String {
         .map(|chain| chain.address_slot().to_string())
         .unwrap_or_default()
 }
-
 
 pub fn plan_wallet_import(request: WalletImportRequest) -> Result<WalletImportPlan, String> {
     if request.is_watch_only_import {
@@ -531,7 +526,10 @@ fn addresses_for_chain(
     // ETC wallet resolves either way.
     if chain == Chain::EthereumClassic {
         if let Some(address) = addresses.address_for(Chain::EthereumClassic) {
-            by_slot.insert(Chain::Ethereum.address_slot().to_string(), address.to_string());
+            by_slot.insert(
+                Chain::Ethereum.address_slot().to_string(),
+                address.to_string(),
+            );
         }
     }
 
@@ -544,7 +542,6 @@ fn addresses_for_chain(
         },
     }
 }
-
 
 fn wallet_display_name(
     base_name: &str,
@@ -748,14 +745,12 @@ fn validate_watch_only_draft_addresses(
                 let result = validate_address(AddressValidationRequest {
                     kind: kind.to_string(),
                     value: addr.clone(),
-                    network_mode: None,
                 });
                 if !result.is_valid {
                     if kind == "bitcoin" {
                         let testnet = validate_address(AddressValidationRequest {
                             kind: "bitcoinTestnet".to_string(),
                             value: addr.clone(),
-                            network_mode: None,
                         });
                         if !testnet.is_valid {
                             return false;
@@ -844,7 +839,11 @@ mod tests {
         for chain in ["Ethereum", "Arbitrum", "Base", "Polygon", "Ink", "X Layer"] {
             let plan = plan_wallet_import(request(chain)).expect("plan");
             assert_eq!(
-                plan.wallets[0].addresses.by_slot.get("ethereum").map(String::as_str),
+                plan.wallets[0]
+                    .addresses
+                    .by_slot
+                    .get("ethereum")
+                    .map(String::as_str),
                 Some("0xabc"),
                 "{chain} should read the shared ethereum slot"
             );
@@ -965,11 +964,19 @@ mod tests {
 
         assert_eq!(plan.wallets.len(), 2);
         assert_eq!(
-            plan.wallets[0].addresses.by_slot.get("solana").map(String::as_str),
+            plan.wallets[0]
+                .addresses
+                .by_slot
+                .get("solana")
+                .map(String::as_str),
             Some("addr1")
         );
         assert_eq!(
-            plan.wallets[1].addresses.by_slot.get("solana").map(String::as_str),
+            plan.wallets[1]
+                .addresses
+                .by_slot
+                .get("solana")
+                .map(String::as_str),
             Some("addr2")
         );
     }

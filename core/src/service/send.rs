@@ -253,7 +253,7 @@ impl WalletService {
                         sats_per_vbyte: p.fee_rate_svb.unwrap_or(10.0),
                     },
                     available_utxos: vec![],
-                    network_mode: "mainnet".to_string(),
+                    network_chain_id: crate::registry::Chain::Bitcoin.str_id().to_string(),
                     enable_rbf: true,
                     dust_threshold: p.dust_threshold_sats,
                     pinned_utxos: None,

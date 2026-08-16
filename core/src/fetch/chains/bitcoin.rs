@@ -21,22 +21,11 @@
 
 use std::sync::Arc;
 
-use bitcoin::Network;
 use serde::{Deserialize, Serialize};
 
 use crate::http::HttpClient;
 
 // ── Network helpers
-
-pub(crate) fn bitcoin_network_for_mode(mode: &str) -> Network {
-    match mode {
-        "testnet" => Network::Testnet,
-        "testnet4" => Network::Testnet4,
-        "signet" => Network::Signet,
-        _ => Network::Bitcoin, // mainnet
-    }
-}
-
 // ── Esplora API types
 
 #[derive(Debug, Deserialize)]

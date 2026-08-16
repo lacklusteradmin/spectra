@@ -6,28 +6,6 @@ use std::collections::HashMap;
 use serde::{Deserialize, Serialize};
 use zeroize::Zeroize;
 
-#[derive(
-    Debug, Clone, Copy, Default, Serialize, Deserialize, PartialEq, Eq, Hash, uniffi::Enum,
-)]
-#[serde(rename_all = "camelCase")]
-pub enum CoreBitcoinNetworkMode {
-    #[default]
-    Mainnet,
-    Testnet,
-    Testnet4,
-    Signet,
-}
-
-#[derive(
-    Debug, Clone, Copy, Default, Serialize, Deserialize, PartialEq, Eq, Hash, uniffi::Enum,
-)]
-#[serde(rename_all = "camelCase")]
-pub enum CoreDogecoinNetworkMode {
-    #[default]
-    Mainnet,
-    Testnet,
-}
-
 /// Swift `TransactionKind` — rawValues: `"send"`, `"receive"`.
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Hash, uniffi::Enum)]
 #[serde(rename_all = "camelCase")]
@@ -165,8 +143,10 @@ impl CoreSeedDerivationPaths {
 
     /// Set the path for `chain`, writing through to the mainnet slot.
     pub fn set_path_for(&mut self, chain: crate::registry::Chain, path: impl Into<String>) {
-        self.by_chain
-            .insert(chain.mainnet_counterpart().str_id().to_string(), path.into());
+        self.by_chain.insert(
+            chain.mainnet_counterpart().str_id().to_string(),
+            path.into(),
+        );
     }
 }
 
@@ -175,8 +155,11 @@ impl CoreSeedDerivationPaths {
 pub struct CoreImportedWallet {
     pub id: String,
     pub name: String,
-    pub bitcoin_network_mode: CoreBitcoinNetworkMode,
-    pub dogecoin_network_mode: CoreDogecoinNetworkMode,
+    /// The network this wallet is on, as a registry chain id. `None` for
+    /// chains whose family has only one. Replaced a `CoreBitcoinNetworkMode`
+    /// and a `CoreDogecoinNetworkMode` field, which were two enums spelling
+    /// out chains the registry already has.
+    pub network_chain_id: Option<String>,
     /// `Chain::address_slot()` → address for this wallet.
     ///
     /// A wallet belongs to one chain (`selected_chain`), so in practice this
@@ -236,21 +219,18 @@ impl CoreImportedWallet {
     ///
     /// Only one of the two stored modes applies — the one matching the wallet's
     /// chain — and every other chain is always mainnet.
-    fn active_network_mode(&self) -> Option<String> {
-        match self.selected_chain.as_str() {
-            "Bitcoin" => Some(match self.bitcoin_network_mode {
-                CoreBitcoinNetworkMode::Mainnet => "mainnet",
-                CoreBitcoinNetworkMode::Testnet => "testnet",
-                CoreBitcoinNetworkMode::Testnet4 => "testnet4",
-                CoreBitcoinNetworkMode::Signet => "signet",
-            }),
-            "Dogecoin" => Some(match self.dogecoin_network_mode {
-                CoreDogecoinNetworkMode::Mainnet => "mainnet",
-                CoreDogecoinNetworkMode::Testnet => "testnet",
-            }),
-            _ => None,
-        }
-        .map(str::to_string)
+    /// The chain this wallet is actually on, as a registry id.
+    ///
+    /// `selected_chain` names the family; this says which network of it. They
+    /// used to be a family name plus one of two mode enums, chosen by matching
+    /// the family name — so the answer lived in three places at once.
+    fn active_network_chain_id(&self) -> Option<String> {
+        use crate::registry::Chain;
+        let family = Chain::from_display_name(&self.selected_chain)?.mainnet_counterpart();
+        let selected = Chain::from_str_id(self.network_chain_id.as_deref()?)?;
+        // Scoped to the wallet's own family: a wallet on Solana reports no
+        // network even if a Bitcoin one was selected when it was imported.
+        (selected.mainnet_counterpart() == family).then(|| selected.str_id().to_string())
     }
 
     /// Convert to the model core computes with.
@@ -274,7 +254,7 @@ impl CoreImportedWallet {
             is_watch_only,
             chain_name: self.selected_chain.clone(),
             include_in_portfolio_total: self.include_in_portfolio_total,
-            network_mode: self.active_network_mode(),
+            network_mode: self.active_network_chain_id(),
             xpub: self.bitcoin_xpub.clone(),
             derivation_preset: match self.seed_derivation_preset {
                 CoreSeedDerivationPreset::Standard => "standard",
@@ -347,20 +327,10 @@ impl crate::store::state::WalletSummary {
             seed_derivation_paths.set_path_for(chain, path);
         }
 
-        let network_mode = self.network_mode.as_deref();
         CoreImportedWallet {
             id: self.id.clone(),
             name: self.name.clone(),
-            bitcoin_network_mode: match network_mode {
-                Some("testnet") => CoreBitcoinNetworkMode::Testnet,
-                Some("testnet4") => CoreBitcoinNetworkMode::Testnet4,
-                Some("signet") => CoreBitcoinNetworkMode::Signet,
-                _ => CoreBitcoinNetworkMode::Mainnet,
-            },
-            dogecoin_network_mode: match network_mode {
-                Some("testnet") => CoreDogecoinNetworkMode::Testnet,
-                _ => CoreDogecoinNetworkMode::Mainnet,
-            },
+            network_chain_id: self.network_mode.clone(),
             addresses: self
                 .addresses
                 .iter()
@@ -521,7 +491,6 @@ impl CoreTokenTrackingChain {
         }
     }
 }
-
 
 /// Swift `TokenPreferenceCategory` — rawValues: "stablecoin", "meme", "custom".
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Hash, uniffi::Enum)]

@@ -1165,76 +1165,76 @@ pub(crate) fn plan_apply_resolved_pending_transaction_statuses(
     let mut decisions = Vec::new();
     for input in inputs {
         let decision = if let Some(resolution) = input.resolution {
-                let new_status = resolution.status.clone();
-                let status_changed = input.old_status != new_status;
-                let new_confirmations = resolution.confirmations;
-                if new_status != "pending" {
-                    let tracker = trackers
-                        .entry(input.id.clone())
-                        .or_insert_with(|| TransactionStatusTrackerState::initial(now_unix));
-                    tracker.reached_finality = new_confirmations
-                        .unwrap_or(config.finality_confirmations)
-                        >= config.finality_confirmations;
-                    tracker.next_check_at_unix = now_unix + config.backoff_max_seconds;
-                }
-                let failure_reason_disposition = if new_status == "failed" {
-                    if input.old_failure_reason.is_some() {
-                        FailureReasonDisposition::Preserve
-                    } else {
-                        FailureReasonDisposition::LocalizedFallback
-                    }
-                } else {
-                    FailureReasonDisposition::None
-                };
-                let emit_event_code = if status_changed && new_status == "confirmed" {
-                    Some("confirmed".to_string())
-                } else if status_changed && new_status == "failed" {
-                    Some("failed".to_string())
-                } else {
-                    None
-                };
-                let reached_finality_confirmations =
-                    match (new_confirmations, input.old_confirmations) {
-                        (Some(new_count), old)
-                            if new_status == "confirmed"
-                                && new_count >= config.finality_confirmations
-                                && old.unwrap_or(0) < config.finality_confirmations =>
-                        {
-                            Some(new_count)
-                        }
-                        _ => None,
-                    };
-                Some(ResolvedPendingTransactionDecision {
-                    id: input.id,
-                    new_status,
-                    status_changed,
-                    failure_reason_disposition,
-                    emit_event_code,
-                    reached_finality_confirmations,
-                    send_status_notification: status_changed,
-                })
-        } else if input.is_stale_failure {
-                let new_status = "failed".to_string();
-                let status_changed = input.old_status != new_status;
-                let failure_reason_disposition = if input.old_failure_reason.is_some() {
+            let new_status = resolution.status.clone();
+            let status_changed = input.old_status != new_status;
+            let new_confirmations = resolution.confirmations;
+            if new_status != "pending" {
+                let tracker = trackers
+                    .entry(input.id.clone())
+                    .or_insert_with(|| TransactionStatusTrackerState::initial(now_unix));
+                tracker.reached_finality = new_confirmations
+                    .unwrap_or(config.finality_confirmations)
+                    >= config.finality_confirmations;
+                tracker.next_check_at_unix = now_unix + config.backoff_max_seconds;
+            }
+            let failure_reason_disposition = if new_status == "failed" {
+                if input.old_failure_reason.is_some() {
                     FailureReasonDisposition::Preserve
                 } else {
                     FailureReasonDisposition::LocalizedFallback
-                };
-                let emit_event_code = if status_changed {
-                    Some("failed".to_string())
-                } else {
-                    None
-                };
-                Some(ResolvedPendingTransactionDecision {
-                    id: input.id,
-                    new_status,
-                    status_changed,
-                    failure_reason_disposition,
-                    emit_event_code,
-                    reached_finality_confirmations: None,
-                    send_status_notification: status_changed,
-                })
+                }
+            } else {
+                FailureReasonDisposition::None
+            };
+            let emit_event_code = if status_changed && new_status == "confirmed" {
+                Some("confirmed".to_string())
+            } else if status_changed && new_status == "failed" {
+                Some("failed".to_string())
+            } else {
+                None
+            };
+            let reached_finality_confirmations = match (new_confirmations, input.old_confirmations)
+            {
+                (Some(new_count), old)
+                    if new_status == "confirmed"
+                        && new_count >= config.finality_confirmations
+                        && old.unwrap_or(0) < config.finality_confirmations =>
+                {
+                    Some(new_count)
+                }
+                _ => None,
+            };
+            Some(ResolvedPendingTransactionDecision {
+                id: input.id,
+                new_status,
+                status_changed,
+                failure_reason_disposition,
+                emit_event_code,
+                reached_finality_confirmations,
+                send_status_notification: status_changed,
+            })
+        } else if input.is_stale_failure {
+            let new_status = "failed".to_string();
+            let status_changed = input.old_status != new_status;
+            let failure_reason_disposition = if input.old_failure_reason.is_some() {
+                FailureReasonDisposition::Preserve
+            } else {
+                FailureReasonDisposition::LocalizedFallback
+            };
+            let emit_event_code = if status_changed {
+                Some("failed".to_string())
+            } else {
+                None
+            };
+            Some(ResolvedPendingTransactionDecision {
+                id: input.id,
+                new_status,
+                status_changed,
+                failure_reason_disposition,
+                emit_event_code,
+                reached_finality_confirmations: None,
+                send_status_notification: status_changed,
+            })
         } else {
             None
         };
@@ -1400,14 +1400,11 @@ pub enum HoldingMergeAction {
     Append { coin: HoldingMergeAppendPayload },
 }
 
-
-
 #[uniffi::export]
 pub fn core_resolve_derived_or_stored_address(
     derived: Option<String>,
     stored: Option<String>,
     validation_kind: String,
-    validation_network_mode: Option<String>,
     derived_post_process: DerivedAddressPostProcess,
     normalize_stored: bool,
 ) -> Option<String> {
@@ -1420,7 +1417,6 @@ pub fn core_resolve_derived_or_stored_address(
         let result = validate_address(AddressValidationRequest {
             kind: validation_kind.clone(),
             value: processed.clone(),
-            network_mode: validation_network_mode.clone(),
         });
         if result.is_valid {
             return Some(processed);
@@ -1431,7 +1427,6 @@ pub fn core_resolve_derived_or_stored_address(
         let result = validate_address(AddressValidationRequest {
             kind: validation_kind.clone(),
             value: stored.clone(),
-            network_mode: validation_network_mode.clone(),
         });
         if let Some(normalized) = result.normalized_value {
             return Some(normalized);
@@ -1441,7 +1436,6 @@ pub fn core_resolve_derived_or_stored_address(
     let result = validate_address(AddressValidationRequest {
         kind: validation_kind,
         value: trimmed.clone(),
-        network_mode: validation_network_mode,
     });
     if result.is_valid {
         Some(trimmed)
@@ -1497,10 +1491,7 @@ mod tests;
 
 // ── FFI surface ─────────────────────────────────────────────────────────────
 
-
-
 #[uniffi::export]
 pub fn core_aggregate_owned_addresses(request: OwnedAddressAggregationRequest) -> Vec<String> {
     aggregate_owned_addresses(request)
 }
-

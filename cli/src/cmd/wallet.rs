@@ -555,8 +555,8 @@ fn commit_for(
         seed_derivation_preset: Default::default(),
         seed_derivation_paths,
         derivation_overrides: Default::default(),
-        bitcoin_network_mode: Default::default(),
-        dogecoin_network_mode: Default::default(),
+        // The CLI imports on mainnet; `spectra` has no network picker.
+        network_chain_by_family: Default::default(),
     }
 }
 

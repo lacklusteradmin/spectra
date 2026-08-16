@@ -255,28 +255,44 @@ const MAX_TOKEN_DECIMALS: i32 = 30;
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, uniffi::Enum)]
 #[serde(tag = "type", rename_all = "camelCase")]
 pub enum StateCommand {
-    ReplaceState { state: CoreAppState },
-    UpsertWallet { wallet: WalletSummary },
+    ReplaceState {
+        state: CoreAppState,
+    },
+    UpsertWallet {
+        wallet: WalletSummary,
+    },
     /// Update a wallet only if it is still stored.
     ///
     /// Balance refresh uses this: a refresh result that arrives after the user
     /// deleted the wallet must not bring it back. Creating is a separate
     /// intent, and `UpsertWallet` is the command for it.
-    UpdateWalletIfPresent { wallet: WalletSummary },
-    SelectWallet { wallet_id: String },
-    RemoveWallet { wallet_id: String },
-    SetFiatCurrency { fiat_currency_code: String },
+    UpdateWalletIfPresent {
+        wallet: WalletSummary,
+    },
+    SelectWallet {
+        wallet_id: String,
+    },
+    RemoveWallet {
+        wallet_id: String,
+    },
+    SetFiatCurrency {
+        fiat_currency_code: String,
+    },
     /// Replace the pinned dashboard set. Symbols are normalised to upper case
     /// and de-duplicated, first occurrence winning, so display order is the
     /// order the user pinned them in.
-    SetPinnedDashboardAssets { symbols: Vec<String> },
+    SetPinnedDashboardAssets {
+        symbols: Vec<String>,
+    },
     /// Pick which network of a chain family the user is on.
     ///
     /// `chain_id` is any chain in the family; the reducer files the choice
     /// under the family's mainnet. Selecting the mainnet clears the entry
     /// rather than storing it, so "no choice made" and "chose mainnet" are the
     /// same state and cannot drift apart.
-    SelectNetworkChain { chain_id: String },
+    SelectNetworkChain {
+        chain_id: String,
+    },
     /// Replace the tracked-token list. Core clamps the decimal fields, so a
     /// caller cannot store a token that displays more places than it has.
     SetTokenPreferences {
@@ -296,8 +312,13 @@ pub enum StateCommand {
     SetPriceAlerts {
         alerts: Vec<crate::store::PriceAlertEvaluationAlert>,
     },
-    RenameAddressBookEntry { id: String, name: String },
-    RemoveAddressBookEntry { id: String },
+    RenameAddressBookEntry {
+        id: String,
+        name: String,
+    },
+    RemoveAddressBookEntry {
+        id: String,
+    },
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, uniffi::Record)]
@@ -420,11 +441,7 @@ pub fn reduce_state_in_place(state: &mut CoreAppState, command: StateCommand) ->
             // never saved.
             let rejection = if name.is_empty() {
                 Some(AddressBookRejection::EmptyName)
-            } else if !crate::send::flow::is_valid_send_address(
-                chain_name.clone(),
-                address.clone(),
-                None,
-            ) {
+            } else if !crate::send::flow::is_valid_send_address(chain_name.clone(), address.clone()) {
                 Some(AddressBookRejection::InvalidAddress)
             } else if address_book_contains(state, &chain_name, &address, None) {
                 Some(AddressBookRejection::DuplicateAddress)

@@ -691,7 +691,6 @@ mod tests {
 
 // ── FFI surface ─────────────────────────────────────────────────────────────
 
-
 #[cfg(test)]
 mod wire_persisted_conversion {
     use super::*;

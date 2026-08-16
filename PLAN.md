@@ -549,10 +549,37 @@ selected id`, behind `SelectNetworkChain`. Choosing the mainnet clears the entry
 rather than storing it, so "not chosen" and "chose mainnet" are one state.
 `NetworkModes` and the three settings fields are gone.
 
-*Scope, honestly:* the three Swift enums survive as mirrors, because sixty-odd
-call sites pass them to address validation. All conversion is in one
-`NetworkSelection` table. Deleting them is a Swift refactor, not an ownership
-question.
+*The enums are gone now too.* `CoreBitcoinNetworkMode`,
+`CoreDogecoinNetworkMode` and the Swift-only `EthereumNetworkMode` are deleted,
+along with the `NetworkSelection` table that converted between them and chain
+ids. What made the sixty-odd call sites tractable was finding that most of them
+did not need a network at all — see below.
+
+**`AddressValidationRequest.network_mode` was dead, and it was hiding a test.**
+
+*Was:* the request carried a `network_mode` "retained for backwards
+compatibility with stored wallets". Nothing read it — the `kind` string
+(`"bitcoin"` vs `"bitcoinTestnet4"`) had always been what decided — and
+prelaunch there are no stored wallets to be compatible with.
+
+*Now:* deleted. That removed the argument from every Swift validation call at
+once, which is most of what was holding the mode enums up.
+
+*What it exposed:* `testImportingBitcoinWalletPersistsDerivedAddressOnTestnet4`
+asserted that an imported testnet4 wallet's stored address was valid
+*testnet4* — and passed, because it said "testnet4" through the ignored
+argument while `kind` said `"bitcoin"`. It had been validating a mainnet
+address as mainnet. The real behaviour is the one this document already
+describes: import derives against the mainnet chain and the testnet address is
+re-derived for display. The test now asserts both halves separately, and is
+named for what it checks.
+
+*Five more chain tables went with it:* `bitcoin_network_for_mode`,
+`ImportNetworks`'s two per-family matches, a twenty-row chain-to-kind table in
+the send-flow scanner, and a five-case one in `isValidUTXOAddressForPolicy`.
+Each asked the registry a question the registry could already answer —
+`Chain::bitcoin_network`, `Chain::address_validation_kind`,
+`Chain::network_choices`.
 
 **Every EVM chain gates non-native sends the same way.**
 
@@ -1068,15 +1095,35 @@ nothing breaks. Its *producer* moved into core (`wallet_derived_state`); its
 consumers are views, and they are right to read a cache.
 
 **Done when:** the root of `swift/` is a minority of the Swift line count, and
-adding a chain requires no Swift change at all. Currently 17,922 root vs
-10,969 in `views/` — the number that has to invert. Down 1,023 so far, and
-worth splitting honestly: 965 of that is one dead file that was never in the
-build, so only ~60 net lines have actually been moved rather than found — the
-`resolved<Chain>` deletion took out 24 lines while the two error paths added
-back more than that, which is the right trade and still not progress on this
-metric. The remaining weight is in `AppState+SendFlow` (1,566), `AppState`
-(1,239), `AppState+ReceiveFlow` (708) and `AppState+DiagnosticsEndpoints`
-(859), and those come down only when the caches they feed stop existing.
+adding a chain requires no Swift change at all.
+
+**Not met.** Measured now, not estimated:
+
+| | Start | Now | Target |
+|---|---|---|---|
+| `swift/` root vs `views/` | 19,766 vs 11,113 | **16,934 vs 11,128** | inverted |
+| Chain-name literals in root | — | **1,124** | 0 |
+
+Root is 60% of the Swift line count, from 64%. Inverting it means moving
+roughly 5,800 more lines, which is a third of what is left there. The literal
+count is the sharper number: 1,124 places still name a chain, so adding one is
+still a Swift change.
+
+Where they are, and what shape each is:
+
+| File | Literals | Lines | Shape |
+|---|---|---|---|
+| `AppState+DiagnosticsEndpoints` | 223 | 749 | 16 descriptor rows, each naming its chain 6-8 times through key paths |
+| `AppState+SendFlow` | 177 | 1,489 | per-chain send routing and rescan wrappers |
+| `AppState+ReceiveFlow` | 118 | 707 | import slot handling |
+| `StoreLifecycleReset` | 93 | 422 | per-chain reset, one line each |
+| `CoreModels` | 89 | 949 | the 24 `wallet.<chain>Address` shims, kept for ~300 call sites |
+| `AppState+SendExecution` | 70 | 811 | per-chain broadcast arms |
+
+The pattern in every one is the same as the three collapsed this pass: a fact
+the registry holds, restated once per chain, usually as a wrapper whose body is
+one call. None of them is hard; there are just a lot of them.
+
 
 ### Stage C — Rewrite core — **started**
 
@@ -1121,6 +1168,63 @@ removes two of them, but adding them to the API count made a 213-function
 surface read as three and a half times bigger than it is.
 
 Done so far:
+
+- **Three wrapper families collapsed, and the net caught me.**
+
+  *Eighteen `refreshPending<Chain>Transactions()`* forwarded to one of two
+  generics, each naming a chain, a chain id, an address resolver and up to two
+  flags. How a chain reaches finality is `Chain::pending_status_poll` now —
+  UTXO polling with two flags, history-txid, EVM receipt, or none — and one
+  `refreshPendingTransactions(chainName:)` dispatches on it.
+
+  *Fifteen `refresh<Chain>Transactions(loadMore:)`* did the same for history.
+  All fifteen passed a `resolved<Chain>Address` function that
+  `resolvedAddress(for:chainName:)` already dispatches, so the callee looks it
+  up. Bitcoin and Dogecoin keep their own: HD xpub expansion and a
+  confirmed-fee path are real differences.
+
+  *A 24-row refresh descriptor table* named every chain twice more. With both
+  fetches taking a chain name and `supportsDeepUtxoDiscovery` on the registry,
+  the row is the chain name and the list comes from core.
+  `ChainRefreshDescriptors.swift`: 208 → 155.
+
+  *Eight diagnostics descriptor rows* were byte-identical but for the chain
+  name. A chain with no row falls through to a shared path now.
+
+  **The last one shipped a bug that a test caught.** The fall-through passed
+  `chain.title` where a chain name belongs — and `title` is
+  `"Aptos Diagnostics"`, a screen heading. Eight chains' diagnostics would have
+  resolved to nothing and silently done nothing. `StandardDiagnosticsChain`
+  gained a `chainName` alongside `title`, with a comment on both saying which
+  is which.
+
+  Worth being precise about what saved it: not the existing net.
+  `DiagnosticsChainTableTests` asserted one descriptor per chain, which this
+  change deliberately breaks, so it failed for the intended reason and had to
+  be rewritten. The bug was caught by the *replacement* I wrote for it — "a
+  chain without a descriptor must still resolve by name" — which is the
+  assertion the new shape needs and the old one could not have made.
+
+- **The dashboard's rows moved into core.**
+
+  `_rebuildDashboardDerivedStateBody` was ~100 lines of Swift reading five
+  caches to do three domain things: group holdings into rows, order the rows by
+  value, and put pinned symbols first. `WalletService::dashboard_asset_groups`
+  does it now. Only the live prices cross — core already holds the holdings,
+  the tracked tokens, the pinned list and the selected networks, and the
+  records (`CoreDashboardAssetGroup`, `CoreDashboardAssetChainEntry`) had been
+  sitting in `wallet_domain.rs` as mirrors the whole time.
+
+  `DashboardStore.swift`: 299 → 226. `formatting_dashboard_asset_grouping_key`
+  and its Swift memo went too — the key is computed where the grouping is.
+
+  *Two things worth recording.* The first test I wrote asserted that ETH on
+  Ethereum and ETH on Arbitrum are one row; it failed, and the port was right —
+  `dashboard_asset_grouping_key` includes the chain, so they are two. See the
+  open question below. And `pinned_prototype`, a private helper, landed inside
+  an `#[uniffi::export]` block and was therefore exported; the export audit
+  caught it the same pass. `lib.rs` warns about exactly this, which is not the
+  same as remembering it.
 
 - **Rule 0's first two applications.** Both are written up in full under
   "Behaviour changed on purpose"; what belongs here is what they did to the
@@ -1591,12 +1695,12 @@ Not by feel. These four numbers, checked at the end of each stage:
 | Metric | Start | Now | Target |
 |---|---|---|---|
 | `core_plan_*` exports | 42 | **0** | 0 |
-| Swift root lines vs `views/` | 19,766 vs 11,113 | 17,324 vs 11,126 | inverted |
+| Swift root lines vs `views/` | 19,766 vs 11,113 | 17,138 vs 10,975 | inverted |
 | Domain collections stored on `AppState` | 3 | 0 | 0 |
 | Domain settings owned by core | 0 | 1 | all |
 | Wallet operations reachable from the CLI | partial | partial | all |
 | CLI commands drivable without a TTY | 0 of 24 | all | all |
-| Exported functions and methods | 234 | 289 | 30-40 |
+| Exported functions and methods | 234 | 292 | 30-40 |
 | Largest file in `core/` | 4,781 | 2,501 | — |
 
 The last row is new, and it is the one that makes the others checkable. Every
@@ -1631,6 +1735,17 @@ coming down as the paths it replaced are deleted.
    needed.
 
 ## Known open items
+
+- **Is a dashboard row per asset, or per (chain, asset)?** Today it is the
+  latter: `dashboard_asset_grouping_key` includes the chain, so ETH on Ethereum
+  and ETH on Arbitrum are separate rows. But the record is named
+  `DashboardAssetGroup` and carries `chain_entries`, which reads like
+  cross-chain grouping was the intent — and with the chain in the key,
+  `chain_entries` can only ever differ by token standard or contract within one
+  chain. `a_row_is_per_chain_and_sums_across_wallets` pins the current answer so
+  changing it is a decision rather than a regression. Not changed on the way
+  past: it is visible product layout, not an inconsistency.
+
 
 Carried from the audit, not blocking the stages above but not forgotten:
 

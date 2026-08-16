@@ -18,9 +18,7 @@ use zeroize::Zeroize;
 
 use crate::http::{with_fallback, RetryProfile};
 
-use crate::fetch::chains::bitcoin::{
-    bitcoin_network_for_mode, BitcoinClient, BitcoinSendResult, EsploraUtxo, FeeRate,
-};
+use crate::fetch::chains::bitcoin::{BitcoinClient, BitcoinSendResult, EsploraUtxo, FeeRate};
 
 impl BitcoinClient {
     pub async fn broadcast_raw_tx(&self, raw_tx_hex: &str) -> Result<String, String> {
@@ -85,8 +83,11 @@ pub struct BitcoinSendParams {
     /// UTXOs available for automatic coin selection. Ignored when
     /// `pinned_utxos` is set. Fetched from Esplora if empty.
     pub available_utxos: Vec<EsploraUtxo>,
-    /// Which network.
-    pub network_mode: String,
+    /// Which network, as a registry chain id (`"bitcoin"`,
+    /// `"bitcoin-testnet-4"`, …). It was a mode string, which meant a table
+    /// mapping those strings back to a network beside the one the registry
+    /// already has.
+    pub network_chain_id: String,
     /// Whether to signal RBF (replace-by-fee) on inputs.
     pub enable_rbf: bool,
     /// Minimum change output in satoshis; dust below this is absorbed into fee.
@@ -203,7 +204,9 @@ fn tx_input_for_utxo(utxo: &EsploraUtxo, sequence: Sequence) -> Result<TxIn, Str
 /// Build, sign, and serialize a P2WPKH transaction.
 pub fn sign_p2wpkh(params: &mut BitcoinSendParams) -> Result<(Transaction, String), String> {
     let secp = Secp256k1::new();
-    let network = bitcoin_network_for_mode(&params.network_mode);
+    let network = crate::registry::Chain::from_str_id(&params.network_chain_id)
+        .unwrap_or(crate::registry::Chain::Bitcoin)
+        .bitcoin_network();
 
     // Parse private key.
     let mut key_bytes =
@@ -339,7 +342,9 @@ pub fn sign_p2wpkh(params: &mut BitcoinSendParams) -> Result<(Transaction, Strin
 /// Build, sign, and serialize a nested SegWit P2SH-P2WPKH transaction.
 pub fn sign_p2sh_p2wpkh(params: &mut BitcoinSendParams) -> Result<(Transaction, String), String> {
     let secp = Secp256k1::new();
-    let network = bitcoin_network_for_mode(&params.network_mode);
+    let network = crate::registry::Chain::from_str_id(&params.network_chain_id)
+        .unwrap_or(crate::registry::Chain::Bitcoin)
+        .bitcoin_network();
 
     let mut key_bytes =
         hex::decode(&params.private_key_hex).map_err(|e| format!("bad private key hex: {e}"))?;
@@ -470,7 +475,9 @@ pub fn sign_p2sh_p2wpkh(params: &mut BitcoinSendParams) -> Result<(Transaction, 
 /// Build, sign, and serialize a P2PKH (legacy) transaction.
 pub fn sign_p2pkh(params: &mut BitcoinSendParams) -> Result<(Transaction, String), String> {
     let secp = Secp256k1::new();
-    let network = bitcoin_network_for_mode(&params.network_mode);
+    let network = crate::registry::Chain::from_str_id(&params.network_chain_id)
+        .unwrap_or(crate::registry::Chain::Bitcoin)
+        .bitcoin_network();
 
     let mut key_bytes =
         hex::decode(&params.private_key_hex).map_err(|e| format!("bad private key hex: {e}"))?;
@@ -593,7 +600,9 @@ pub fn sign_p2pkh(params: &mut BitcoinSendParams) -> Result<(Transaction, String
 /// Build, sign, and serialize a P2TR (Taproot key-path) transaction.
 pub fn sign_p2tr(params: &mut BitcoinSendParams) -> Result<(Transaction, String), String> {
     let secp = Secp256k1::new();
-    let network = bitcoin_network_for_mode(&params.network_mode);
+    let network = crate::registry::Chain::from_str_id(&params.network_chain_id)
+        .unwrap_or(crate::registry::Chain::Bitcoin)
+        .bitcoin_network();
 
     let mut key_bytes =
         hex::decode(&params.private_key_hex).map_err(|e| format!("bad private key hex: {e}"))?;
@@ -744,8 +753,12 @@ pub async fn sign_and_broadcast(
     } else if Address::from_str(&params.from_address)
         .ok()
         .and_then(|addr| {
-            addr.require_network(bitcoin_network_for_mode(&params.network_mode))
-                .ok()
+            addr.require_network(
+                crate::registry::Chain::from_str_id(&params.network_chain_id)
+                    .unwrap_or(crate::registry::Chain::Bitcoin)
+                    .bitcoin_network(),
+            )
+            .ok()
         })
         .is_some_and(|addr| addr.script_pubkey().is_p2sh())
     {

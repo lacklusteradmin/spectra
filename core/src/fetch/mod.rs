@@ -62,8 +62,6 @@ pub trait HistoryProvider: Send + Sync {
         -> Result<Vec<NormalizedTransaction>, String>;
 }
 
-
-
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, uniffi::Record)]
 #[serde(rename_all = "camelCase")]
 pub struct EvmRefreshWalletInput {
@@ -154,10 +152,6 @@ pub struct NormalizedRefreshWalletTarget {
     pub wallet_id: String,
     pub address: String,
 }
-
-
-
-
 
 pub fn plan_evm_refresh_targets(request: EvmRefreshTargetsRequest) -> EvmRefreshPlan {
     let allowed_wallet_ids = request
@@ -312,8 +306,7 @@ fn normalize_evm_address(address: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::{
-        plan_dogecoin_refresh_targets, plan_evm_refresh_targets,
-        plan_normalized_refresh_targets,
+        plan_dogecoin_refresh_targets, plan_evm_refresh_targets, plan_normalized_refresh_targets,
         DogecoinRefreshTargetsRequest, DogecoinRefreshWalletInput, EvmRefreshTargetsRequest,
         EvmRefreshWalletInput, NormalizedRefreshTargetsRequest, NormalizedRefreshWalletInput,
     };
@@ -450,9 +443,6 @@ mod tests {
         assert_eq!(targets[0].wallet_id, "wallet-a");
         assert_eq!(targets[0].address, "SoLaNaAddr");
     }
-
-
-
 }
 
 // ── FFI surface ─────────────────────────────────────────────────────────────
@@ -475,5 +465,3 @@ pub fn core_normalized_refresh_targets(
 ) -> Vec<NormalizedRefreshWalletTarget> {
     plan_normalized_refresh_targets(request)
 }
-
-
