@@ -112,7 +112,7 @@ fn ltc_internal(
     })
 }
 
-/// UniFFI export: derive Litecoin mainnet keys (P2PKH only).
+/// Derive Litecoin mainnet keys (P2PKH only).
 pub fn derive_litecoin(
     seed_phrase: String,
     derivation_path: String,
@@ -134,7 +134,7 @@ pub fn derive_litecoin(
     )
 }
 
-/// UniFFI export: derive Litecoin testnet keys.
+/// Derive Litecoin testnet keys.
 pub fn derive_litecoin_testnet(
     seed_phrase: String,
     derivation_path: String,
@@ -156,8 +156,7 @@ pub fn derive_litecoin_testnet(
     )
 }
 
-/// UniFFI export: derive Litecoin address/pubkey directly from a hex private key.
-#[uniffi::export]
+/// Derive Litecoin address/pubkey directly from a hex private key.
 pub fn derive_litecoin_from_private_key(
     private_key_hex: String,
     want_address: bool,

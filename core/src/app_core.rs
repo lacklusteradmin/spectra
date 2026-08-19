@@ -114,18 +114,6 @@ pub struct AppCoreChainBackend {
     pub supports_send: bool,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, uniffi::Record)]
-#[serde(rename_all = "camelCase")]
-pub struct AppCoreAppChainDescriptor {
-    pub id: String,
-    pub chain_name: String,
-    pub native_symbol: String,
-    pub search_keywords: Vec<String>,
-    pub supports_diagnostics: bool,
-    pub supports_endpoint_catalog: bool,
-    pub is_evm: bool,
-}
-
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, uniffi::Record)]
 pub struct DerivationPathSegment {
     pub value: u32,
@@ -280,11 +268,6 @@ pub fn app_core_chain_backends() -> Vec<AppCoreChainBackend> {
 #[uniffi::export]
 pub fn app_core_live_chain_names() -> Vec<String> {
     live_chain_names()
-}
-
-#[uniffi::export]
-pub fn app_core_app_chain_descriptors() -> Vec<AppCoreAppChainDescriptor> {
-    app_chain_descriptors()
 }
 
 // ── Internals ─────────────────────────────────────────────────────────────
@@ -900,23 +883,6 @@ pub(super) fn live_chain_names() -> Vec<String> {
         .into_iter()
         .filter(|b| matches!(b.integration_state, AppCoreChainIntegrationState::Live))
         .map(|b| b.chain_name)
-        .collect()
-}
-
-// ── app_chain_descriptors ─────────────────────────────────────────────────
-
-pub(super) fn app_chain_descriptors() -> Vec<AppCoreAppChainDescriptor> {
-    crate::chains::catalog()
-        .iter()
-        .map(|c| AppCoreAppChainDescriptor {
-            id: c.id.clone(),
-            chain_name: c.name.clone(),
-            native_symbol: c.gas_token_symbol.clone(),
-            search_keywords: c.search_keywords.clone(),
-            supports_diagnostics: c.supports_diagnostics,
-            supports_endpoint_catalog: c.supports_endpoint_catalog,
-            is_evm: c.is_evm,
-        })
         .collect()
 }
 

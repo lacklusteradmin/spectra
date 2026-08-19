@@ -10,7 +10,7 @@ pub struct EthereumSendPreview {
     pub gasLimit: i64,
     pub maxFeePerGasGwei: f64,
     pub maxPriorityFeePerGasGwei: f64,
-    pub estimatedNetworkFeeEth: f64,
+    pub estimatedNetworkFee: f64,
     pub spendableBalance: Option<f64>,
     pub feeRateDescription: Option<String>,
     pub estimatedTransactionBytes: Option<i64>,
@@ -23,7 +23,7 @@ pub struct EthereumSendPreview {
 #[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq, uniffi::Record)]
 pub struct BitcoinSendPreview {
     pub estimatedFeeRateSatVb: u64,
-    pub estimatedNetworkFeeBtc: f64,
+    pub estimatedNetworkFee: f64,
     pub feeRateDescription: Option<String>,
     pub spendableBalance: Option<f64>,
     pub estimatedTransactionBytes: Option<i64>,
@@ -37,7 +37,7 @@ pub struct BitcoinSendPreview {
 pub struct DogecoinSendPreview {
     pub spendableBalanceDoge: f64,
     pub requestedAmountDoge: f64,
-    pub estimatedNetworkFeeDoge: f64,
+    pub estimatedNetworkFee: f64,
     pub estimatedFeeRateDogePerKb: f64,
     pub estimatedTransactionBytes: i64,
     pub selectedInputCount: i64,
@@ -52,7 +52,7 @@ pub struct DogecoinSendPreview {
 #[allow(non_snake_case)]
 #[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq, uniffi::Record)]
 pub struct TronSendPreview {
-    pub estimatedNetworkFeeTrx: f64,
+    pub estimatedNetworkFee: f64,
     pub feeLimitSun: i64,
     pub simulationUsed: bool,
     pub spendableBalance: f64,
@@ -66,7 +66,7 @@ pub struct TronSendPreview {
 #[allow(non_snake_case)]
 #[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq, uniffi::Record)]
 pub struct SolanaSendPreview {
-    pub estimatedNetworkFeeSol: f64,
+    pub estimatedNetworkFee: f64,
     pub spendableBalance: f64,
     pub feeRateDescription: Option<String>,
     pub estimatedTransactionBytes: Option<i64>,
@@ -78,7 +78,7 @@ pub struct SolanaSendPreview {
 #[allow(non_snake_case)]
 #[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq, uniffi::Record)]
 pub struct XRPSendPreview {
-    pub estimatedNetworkFeeXrp: f64,
+    pub estimatedNetworkFee: f64,
     pub feeDrops: i64,
     pub sequence: i64,
     pub lastLedgerSequence: i64,
@@ -93,7 +93,7 @@ pub struct XRPSendPreview {
 #[allow(non_snake_case)]
 #[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq, uniffi::Record)]
 pub struct StellarSendPreview {
-    pub estimatedNetworkFeeXlm: f64,
+    pub estimatedNetworkFee: f64,
     pub feeStroops: i64,
     pub sequence: i64,
     pub spendableBalance: f64,
@@ -107,7 +107,7 @@ pub struct StellarSendPreview {
 #[allow(non_snake_case)]
 #[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq, uniffi::Record)]
 pub struct MoneroSendPreview {
-    pub estimatedNetworkFeeXmr: f64,
+    pub estimatedNetworkFee: f64,
     pub priorityLabel: String,
     pub spendableBalance: f64,
     pub feeRateDescription: Option<String>,
@@ -120,7 +120,7 @@ pub struct MoneroSendPreview {
 #[allow(non_snake_case)]
 #[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq, uniffi::Record)]
 pub struct CardanoSendPreview {
-    pub estimatedNetworkFeeAda: f64,
+    pub estimatedNetworkFee: f64,
     pub ttlSlot: u64,
     pub spendableBalance: f64,
     pub feeRateDescription: Option<String>,
@@ -133,7 +133,7 @@ pub struct CardanoSendPreview {
 #[allow(non_snake_case)]
 #[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq, uniffi::Record)]
 pub struct SuiSendPreview {
-    pub estimatedNetworkFeeSui: f64,
+    pub estimatedNetworkFee: f64,
     pub gasBudgetMist: u64,
     pub referenceGasPrice: u64,
     pub spendableBalance: f64,
@@ -147,7 +147,7 @@ pub struct SuiSendPreview {
 #[allow(non_snake_case)]
 #[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq, uniffi::Record)]
 pub struct AptosSendPreview {
-    pub estimatedNetworkFeeApt: f64,
+    pub estimatedNetworkFee: f64,
     pub maxGasAmount: u64,
     pub gasUnitPriceOctas: u64,
     pub spendableBalance: f64,
@@ -161,7 +161,7 @@ pub struct AptosSendPreview {
 #[allow(non_snake_case)]
 #[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq, uniffi::Record)]
 pub struct TONSendPreview {
-    pub estimatedNetworkFeeTon: f64,
+    pub estimatedNetworkFee: f64,
     pub sequenceNumber: u32,
     pub spendableBalance: f64,
     pub feeRateDescription: Option<String>,
@@ -174,7 +174,7 @@ pub struct TONSendPreview {
 #[allow(non_snake_case)]
 #[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq, uniffi::Record)]
 pub struct ICPSendPreview {
-    pub estimatedNetworkFeeIcp: f64,
+    pub estimatedNetworkFee: f64,
     pub feeE8s: u64,
     pub spendableBalance: f64,
     pub feeRateDescription: Option<String>,
@@ -187,7 +187,7 @@ pub struct ICPSendPreview {
 #[allow(non_snake_case)]
 #[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq, uniffi::Record)]
 pub struct NearSendPreview {
-    pub estimatedNetworkFeeNear: f64,
+    pub estimatedNetworkFee: f64,
     pub gasPriceYoctoNear: String,
     pub spendableBalance: f64,
     pub feeRateDescription: Option<String>,
@@ -200,7 +200,7 @@ pub struct NearSendPreview {
 #[allow(non_snake_case)]
 #[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq, uniffi::Record)]
 pub struct PolkadotSendPreview {
-    pub estimatedNetworkFeeDot: f64,
+    pub estimatedNetworkFee: f64,
     pub spendableBalance: f64,
     pub feeRateDescription: Option<String>,
     pub estimatedTransactionBytes: Option<i64>,

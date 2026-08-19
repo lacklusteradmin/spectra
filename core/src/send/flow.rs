@@ -257,7 +257,7 @@ pub fn compute_send_preview_details(
                 p.selectedInputCount,
                 p.usesChangeOutput,
                 p.maxSendable,
-                Some(p.estimatedNetworkFeeBtc),
+                Some(p.estimatedNetworkFee),
             ),
             SendPreview::Dogecoin { preview: p } => (
                 Some(p.spendableBalance),
@@ -365,7 +365,7 @@ mod tests {
 
     fn utxo_preview() -> BitcoinSendPreview {
         BitcoinSendPreview {
-            estimatedNetworkFeeBtc: 0.5,
+            estimatedNetworkFee: 0.5,
             feeRateDescription: Some("12 sat/vB".to_string()),
             spendableBalance: None,
             estimatedTransactionBytes: Some(226),

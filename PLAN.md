@@ -105,18 +105,23 @@ already how `SecretStore` and `MaintenanceStore` work.
 
 Measured, not estimated:
 
-| | |
-|---|---|
-| Swift, non-generated, excluding tests | 30,879 lines |
-| — `views/` + `extensions/` (genuine UI) | 11,113 lines (36%) |
-| — root of `swift/` (`AppState`, stores, persistence, bridges) | 19,766 lines (64%) |
-| `core_plan_*` FFI exports (core advises, Swift applies) | 42 |
-| Swift calls to `StateCommand` / `reduce_state_in_place` | 0 |
+| | Start | Now |
+|---|---|---|
+| Swift, non-generated, excluding tests | 30,879 lines | **27,216** |
+| — `views/` + `extensions/` (genuine UI) | 11,113 (36%) | **10,788 (40%)** |
+| — root of `swift/` (`AppState`, stores, persistence, bridges) | 19,766 (64%) | **16,428 (60%)** |
+| `core_plan_*` FFI exports (core advises, Swift applies) | 42 | 10 |
+| Swift enums restating the chain list | 4 (30 / 76 / 30 / 24 cases) | **0** |
+| Swift calls to `StateCommand` / `reduce_state_in_place` | 0 | 0 |
 
-The third and fourth rows are the same fact stated twice. Rust has a state
+The last two rows are the same fact stated twice. Rust has a state
 reducer; Swift has never called it. `swift/AppState+CoreStateStore.swift` says
 so in a comment: *"Swift's `@Observable` arrays on AppState are the canonical
 store … There is no Rust round-trip."*
+
+The chain-enum row is where the root's weight actually was. Four copies of the
+list, each with its own tables keyed on it, accounted for more of `swift/`'s
+root than any single store — see "Swift has one chain type" below.
 
 That is the debt. It is not "some coupling" — it is that the app is the owner
 and the core is a library of helpers shaped by whatever the app needed that
@@ -488,6 +493,138 @@ the FFI count and is not.
 > acceptance gate.
 
 ## Behaviour changed on purpose
+
+**Swift has one chain type, and it is the registry's.**
+
+*Was:* four Swift enums each wrote out the chain list — `SpectraChainID` (30
+string ids), `SeedDerivationChain` (76 display names), `AppChainID` (30) and
+`StandardDiagnosticsChain` (24) — against a catalog of 78. No two agreed.
+`SeedDerivationChain` had `bnbChainTestnet` and `moneroStagenet` but neither
+`BNB Chain` nor `Monero`. Around them sat the tables that keyed on them: a
+24-row diagnostics dispatch of ten closures each, a 30-case endpoint-catalog
+switch, a five-row UTXO action table, a 29-row `[String: SeedDerivationChain]`
+map, and a 30-arm private-key derivation switch — every row differing only in a
+chain's own name.
+
+*Now:* `registry::Chain` derives `uniffi::Enum` and crosses the boundary
+directly. One export, `core_chain_identities()`, hands over the catalog as
+`(chain, id, name, is_testnet, diagnostics_shape)`, and
+[`swift/Chain+Registry.swift`](swift/Chain+Registry.swift) builds every lookup
+Swift needs from it. The tables are gone: which history record a chain reports
+is `Chain::diagnostics_shape`, which endpoints it has is the endpoint catalog,
+which family derives it from a private key is `Chain::is_evm` and five names.
+
+*Why this side:* rule 2. Every one of these lists was a hand-maintained subset
+of `chains.toml`, and each was wrong in a different place. There is no version
+of "keep them in sync" that is cheaper than not having them.
+
+*Checkable without the app:* `spectra chains list` is the same 78 the enum now
+carries; `core_chain_identities()` is that list plus the columns, and
+`chain_order_matches_the_catalog` fails the build if the enum and the TOML
+drift.
+
+**Diagnostics screens, and the diagnostics export, now cover every mainnet.**
+
+*Was:* the hub listed the intersection of `AppChainID` (30) and
+`StandardDiagnosticsChain` (24), and `diagnosticsBundleChainNames` was a third
+hand-typed list of the same 24 display names. `supports_diagnostics` is `true`
+for all 78 rows in the catalog, so it never selected anything — the number 24
+was whatever someone had typed.
+
+*Now:* both are `Chain.mainnets` — 46. The drivers behind the screen were
+already generic over the chain name (`runEVMChainDiagnostics`,
+`runUTXOChainDiagnostics`, `runSimpleChainDiagnostics` dispatch on registry
+facts), so the other 22 worked all along and were simply unreachable.
+
+*Why mainnets and not all 78:* a diagnostics screen per testnet is 32 rows of
+noise for a screen that reads a wallet's history, and no wallet has to be on a
+testnet for the mainnet row to be useful. This is a product judgement, not an
+inconsistency being fixed, so it is recorded as one.
+
+*Checkable without the app:* `spectra diagnostics export` writes one document
+per chain in the same set; `testTheBundleListIsTheChainsTheHubOffers` fails if
+one of the three lists is edited back into a copy.
+
+**Two screens were passing "Bitcoin Diagnostics" where a chain name belongs.**
+
+*Was:* `AppChainDescriptor` carried both `chainName` ("Bitcoin") and `title`
+("Bitcoin Diagnostics"), with a comment on the enum warning that passing one
+for the other "silently resolves to nothing". Two call sites did exactly that.
+`StandardChainDiagnosticsView.task` asked
+`chainKeypoolDiagnostics(for: chain.title)` and
+`operationalEvents(for: chain.title)` — both key on the display name, so the
+keypool and operational-event sections were empty on every chain's screen.
+`syncChainOwnedAddressManagementState()` looped over
+`diagnosticsChains.map(\.title)` and registered owned addresses under names
+like "Bitcoin Diagnostics"; `resolvedAddress` returned nil for all of them, so
+the whole loop was a no-op.
+
+*Now:* `Chain` has `displayName` and no `title`. The heading is built where it
+is displayed. Both sites read the chain name.
+
+*Why this side:* nothing was choosing between the two spellings — the code
+wanted the chain and got the heading. Deleting the type that carried both is
+what makes the mistake unavailable rather than commented.
+
+*What the second fix cost:* `syncChainOwnedAddressManagementState` had been
+free because it did nothing. Doing it costs a reserve and a write per (wallet,
+chain), and one wallet on an EVM chain resolves an address on every EVM
+mainnet, since they share a slot. Two bounds: only chains that own their
+address slot are visited — filing the same EVM address under twenty-five names
+tells the keypool nothing Ethereum's row does not — and an address core already
+holds is skipped, so the work lands on the first load after an import rather
+than on every launch. The suite is faster with the loop doing real work than it
+was with it doing none, because the skip removes the repeated writes.
+
+*Checkable without the app:* `spectra diagnostics keypool --chain Bitcoin`
+returns rows for a wallet that has an address; the failing version passed a
+name no chain has.
+
+**One private-key derivation dispatcher, in core.**
+
+*Was:* `WalletRustDerivationBridge.deriveFromPrivateKey` was a thirty-arm
+switch naming which chains derive by which algorithm, calling six per-chain
+UniFFI exports that existed only to be called from it. Which family a chain
+belongs to is a registry fact, and the switch listed `.bnbChainTestnet` under
+EVM while `BNB Chain` itself was not in the enum at all.
+
+*Now:* `core_derive_from_private_key(chain_name, …)`, matching on
+`Chain::mainnet_counterpart()` — `is_evm()` plus five named UTXO chains — so
+testnets fall out of the registry instead of needing a case each. The six
+per-chain exports are internal helpers now. Net effect on the FFI surface is
+five fewer.
+
+*Why this side:* rule 1 — the CLI can drive private-key derivation now, and it
+could not before.
+
+*A gap this made visible:* the import gate `PRIVATE_KEY_SUPPORTED_CHAINS` lists
+39 chains; derivation covers the EVM family and five UTXO chains. A private key
+imported for XRP Ledger passes the gate and produces no address. This predates
+the collapse — Swift's switch had the same arms — and is left alone on purpose:
+widening it is new derivation work, narrowing the gate removes an import path.
+`private_key_derivation_covers_the_evm_family_and_five_utxo_chains` states both
+halves so the gap cannot move without a test failing.
+
+**Sixteen mainnets now get their endpoints registered with core.**
+
+*Was:* `buildEndpoints` listed thirty rows of `chainId: SpectraChainID.x,
+chainName: "X"`, stating both halves of a fact where either determines the
+other. Thirty of the catalog's forty-seven mainnets were on it. The sixteen
+missing — Berachain, Bitcoin Gold, Bittensor, Celo, Cronos, Dash, Decred, Ink,
+Kaspa, Sei, Sonic, Unichain, X Layer, Zcash, opBNB, zkSync Era — got no
+endpoints registered at all, so any call that went through the registered list
+had nothing to reach for them.
+
+*Now:* the loop asks the catalog. A chain with no endpoint records still
+contributes nothing — both payload builders already returned empty for that —
+so the change is exactly "the chains that have endpoints get them".
+
+*Why this side:* it is the same stale-partial-copy the `EVMChainContext` entry
+below describes, with an overlapping list of victims. A hand-maintained subset
+of a catalog is wrong by default; the question is only when someone notices.
+
+*Checkable without the app:* the sixteen are the set difference between
+`core_live_chain_names()` and the thirty names the deleted rows carried.
 
 **A Dogecoin testnet holding is no longer priced as mainnet DOGE — in both
 places the rule lived.**
@@ -1101,28 +1238,42 @@ adding a chain requires no Swift change at all.
 
 | | Start | Now | Target |
 |---|---|---|---|
-| `swift/` root vs `views/` | 19,766 vs 11,113 | **16,934 vs 11,128** | inverted |
-| Chain-name literals in root | — | **1,124** | 0 |
+| `swift/` root vs `views/` | 19,766 vs 11,113 | **16,568 vs 11,128** | inverted |
+| Chain-name literals in root | — | **973** | 0 |
 
 Root is 60% of the Swift line count, from 64%. Inverting it means moving
-roughly 5,800 more lines, which is a third of what is left there. The literal
-count is the sharper number: 1,124 places still name a chain, so adding one is
-still a Swift change.
+roughly 5,600 more lines — a third of what is left there.
+
+*The literal count needs a caveat.* It greps chain names in string literals,
+which catches dispatch (`case "Bitcoin":`) and localized user-facing text
+("…while sending on Tron.") alike. The second kind is not the debt this metric
+is about — a message naming a chain is correct — so the real dispatch figure is
+lower than 1,029. `AppState+SendFlow`'s densest block turned out to be entirely
+of the second kind. Reported as-is because a metric quietly redefined mid-way
+is worse than one with a known bias, but a reader should not treat it as pure
+signal.
 
 Where they are, and what shape each is:
 
 | File | Literals | Lines | Shape |
 |---|---|---|---|
-| `AppState+DiagnosticsEndpoints` | 223 | 749 | 16 descriptor rows, each naming its chain 6-8 times through key paths |
-| `AppState+SendFlow` | 177 | 1,489 | per-chain send routing and rescan wrappers |
+| `AppState+SendFlow` | 179 | 1,489 | per-chain send routing and rescan wrappers |
+| `AppState+DiagnosticsEndpoints` | 153 | 749 | 16 descriptor rows, each naming its chain through key paths |
 | `AppState+ReceiveFlow` | 118 | 707 | import slot handling |
-| `StoreLifecycleReset` | 93 | 422 | per-chain reset, one line each |
-| `CoreModels` | 89 | 949 | the 24 `wallet.<chain>Address` shims, kept for ~300 call sites |
+| `CoreModels` | 89 | 949 | the 24 `wallet.<chain>Address` shims, over ~150 call sites |
 | `AppState+SendExecution` | 70 | 811 | per-chain broadcast arms |
+| `AppState+SendPreview` | 56 | 431 | per-chain preview arms |
 
-The pattern in every one is the same as the three collapsed this pass: a fact
-the registry holds, restated once per chain, usually as a wrapper whose body is
-one call. None of them is hard; there are just a lot of them.
+Every one is the shape collapsed four times over now: a fact the registry
+holds, restated once per chain, usually as a wrapper whose body is one call.
+None is hard. There are a lot of them, and each needs its own pass through the
+four suites — call it four to six more rounds at the rate these went.
+
+*One caveat on the `CoreModels` row.* Those 24 shims are one line each and
+serve ~150 readable call sites (`wallet.bitcoinAddress`). Deleting them saves
+24 lines and rewrites 150 sites into `address(forChainNamed:)`. That is a
+worse trade than it looks on the literal count, and it is why they are still
+here — the metric would improve and the code would not.
 
 
 ### Stage C — Rewrite core — **started**
@@ -1168,6 +1319,120 @@ removes two of them, but adding them to the API count made a 213-function
 surface read as three and a half times bigger than it is.
 
 Done so far:
+
+- **The diagnostics descriptor table: 24 rows → 8.**
+
+  Three fall-throughs replace the rows that only named a chain — the shared
+  simple shape (8 rows), the EVM family (5), and the UTXO chains (3). What is
+  left is genuinely different and says why: Bitcoin walks an xpub, Dogecoin
+  counts history entries directly, Tron and Solana have their own record
+  shapes, and Ethereum, BNB Chain, Monero, NEAR keep endpoint probes that parse
+  JSON-RPC inline rather than just reaching the host.
+
+  Chain-name literals in `swift/` root: 1,034 → 973.
+
+- **Eleven preview refreshers became one, with two real exceptions named.**
+
+  `refresh<Chain>SendPreview` existed eleven times, each building the same
+  config with a chain name, a symbol, an address resolver and a message. Two of
+  the eleven genuinely differed and now say so in one place: Solana's
+  sendable-coin rule is its own, and Polkadot refuses to preview for a wallet
+  with no seed phrase because the estimate needs the derived account.
+  `AppState+SendPreview.swift`: 431 → 358.
+
+- **Ten send arms became one, and the merge nearly broke Monero.**
+
+  `submitSend` had ten arms calling one of two helpers, each passing the same
+  four constants inline: how many decimals to show in a fee-shortfall message,
+  whether a private-key-only wallet can sign, how the estimated fee enters the
+  request (gas budget, explicit amount, satoshis, or nothing), and what fee to
+  assume with no preview. Those are `Chain::send_execution_shape` now, and the
+  two helpers are one `submitNativeChainSend`.
+
+  The values were transcribed from the call sites rather than re-derived, and
+  `the_shape_matches_what_the_call_sites_carried` pins all twelve chains —
+  these decide whether a send is refused for insufficient fee and how the fee
+  reaches the signer, so they are worth a test that fails loudly.
+  `AppState+SendExecution.swift`: 811 → 677.
+
+  **The merge introduced a failure the build did not catch.** The unified
+  helper resolved a derivation chain and bailed if there was none. Eleven of
+  the twelve chains have one; **Monero does not** — it signs from stored key
+  material, and the arm being replaced passed an empty path on purpose. Every
+  suite would have stayed green while Monero sends failed with "unable to
+  resolve derivation path".
+
+  Caught by checking, not by a test: after the build went green, listing which
+  routed chains actually resolve a `SeedDerivationChain` showed eleven OK and
+  one missing. The lesson is the ordinary one for this kind of merge — the
+  thing a per-chain arm did *differently* is the thing worth enumerating before
+  deleting it, and "it compiles" says nothing about it.
+
+- **Eighteen preview records agreed to call the fee the same thing — and a
+  round that cost more lines than it saved.**
+
+  Every send-preview record carried the estimated fee under a chain-specific
+  name: `estimatedNetworkFeeSui`, `…Apt`, `…Ton`, `…Xrp`, sixteen spellings of
+  one concept. A caller that wanted "the fee" had to know which chain it was
+  holding. They are all `estimatedNetworkFee` now, which is what let the send
+  path stop caring.
+
+  On the back of that: three identical `refresh<Chain>SendPreview` functions
+  became one `refreshSendPreview(forChainNamed:)`, three identical send arms in
+  `submitSend` became one, and `SendPreviewStore` gained
+  `apply(_:forChainNamed:)` / `estimatedFee(forChainNamed:)`.
+
+  **This round made the line count worse — 16,712 → 16,765 — and that is worth
+  stating rather than hiding.** The scattered per-chain closures it removed
+  were three or four lines each in a dozen places; the keyed switches that
+  replace them are two 20-row tables in one file. Rule 2 prefers that (a
+  per-chain fact stated once, where it can be found), and the field rename is
+  a real fix. But "collapse a wrapper family" stopped paying in lines several
+  rounds ago, and pretending otherwise would misread the next person about
+  where the remaining work is.
+
+  *What that implies for the metric.* Root-line-count moves when a subsystem
+  moves into core (the dashboard rows: -73) or a file is deleted. Folding Swift
+  wrappers into Swift dispatch reduces the number of places a chain is named —
+  which is the second Stage 3 criterion — and barely touches the first. The two
+  criteria pull in different directions at this point, and the line one is now
+  the weaker signal.
+
+- **The UTXO rescan: ten accessors and five wrappers over one keyed table.**
+
+  `AppState` had `isRunning<Chain>Rescan` and `<chain>RescanLastRunAt` for five
+  chains — ten computed properties, each four lines, each forwarding to
+  `utxoRescanStateByChain[<name>]`. The table was already keyed; only the
+  accessors named chains. One `[rescanFor:]` subscript replaces them.
+
+  On top sat five `run<Chain>Rescan()` wrappers, each passing two key paths, a
+  chain name and its ticker. The ticker is on the chain descriptor, the state
+  is keyed, and both refreshes take a chain name — so `runUTXORescan(chainName:)`
+  is the whole thing, with `supportsDeepUtxoDiscovery` as its guard.
+
+- **Twenty-two per-chain diagnostics accessors, and 82 lines of reset that
+  said nothing.**
+
+  `DiagnosticsState` had 24 `<chain>HistoryDiagnosticsByWallet` accessors and
+  `DiagnosticsStore` had 24 forwards for them — four lines each, all calling
+  one of three shape-specific functions with a chain name. Two more keyed
+  subscripts (`[utxoHistoryFor:]`, `[evmHistoryFor:]`) join the
+  `[simpleHistoryFor:]` that already existed, and 22 of the 24 collapse. Tron
+  and Solana keep theirs: their records genuinely differ.
+  `DiagnosticsState.swift`: 397 → 301, `DiagnosticsStore.swift`: 158 → 118.
+
+  *The full-reset path was 82 lines of `self[…For: "<Chain>"] = [:]`* — 22
+  chains times four — immediately above a call to `diagnosticsClearAll()`,
+  which empties the entire Rust-owned registry. A comment called the block
+  "belt-and-suspenders" over exactly that call, which is a fair description of
+  code that does nothing. It is the one call plus four lines for the two
+  Swift-held tables now. `StoreLifecycleReset.swift`: 422 → 350.
+
+  *A mistake worth recording:* the blanket deletion also took Tron's and
+  Solana's accessors, because they matched the same four-line shape while
+  calling different functions. The compiler caught it immediately, but the
+  lesson is the same one as the `sed` that matched nothing — a pattern that
+  fits the shape is not a pattern that fits the meaning.
 
 - **Three wrapper families collapsed, and the net caught me.**
 
@@ -1746,6 +2011,37 @@ coming down as the paths it replaced are deleted.
   changing it is a decision rather than a regression. Not changed on the way
   past: it is visible product layout, not an inconsistency.
 
+
+- **`supports_diagnostics` is `true` for all 78 catalog rows and
+  `supports_endpoint_catalog` for all but Bitcoin SV.** They read like
+  per-chain switches and select nothing. Either they should carry a real
+  distinction or they should go; leaving them is how the next list gets
+  filtered by something that does not filter.
+
+- **Which endpoint slot a chain's supplemental explorer endpoints go into is
+  still decided in Swift.** `WalletServiceBridge.buildEndpoints` puts
+  Polkadot's and Internet Computer's in `.secondary` and fourteen EVM chains'
+  in `.explorer`. That is a per-chain fact and belongs on `registry::Chain`; it
+  was left where it is because getting it wrong misfiles endpoints rather than
+  failing loudly.
+
+- **`PrivateKeyImportAddressResolution` still has one field per chain.** The
+  seventeen fields are address *slots*, which `Chain::address_slot` already
+  computes — the same wide-record shape the rest of the migration replaced with
+  slot-keyed maps. It is what keeps a twenty-arm name switch alive in
+  `derivePrivateKeyImportAddress`.
+
+- **A state load can delete a write made while it is in flight.**
+  `reloadPersistedStateFromSQLite()` ends with `adoptTransactionsFromCore` and
+  `pruneTransactionsForActiveWallets`, which removes any transaction whose
+  wallet is not in `wallets`. A transaction recorded after launch but before
+  that load finishes is dropped — and the drop is persisted. Found by
+  `testTransactionStatusChangeIsPersisted`, which recorded against a
+  `walletID` of `"w1"` and passed only because the launch load used to finish
+  first; the test now records against a wallet that exists, which is what it
+  meant. The race itself is untouched: it is the Swift-owns-the-list problem
+  the migration is for, and narrowing it by hand would be a guess about
+  ordering rather than a fix.
 
 Carried from the audit, not blocking the stages above but not forgotten:
 

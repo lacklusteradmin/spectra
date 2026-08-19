@@ -408,7 +408,7 @@ pub fn build_evm_send_preview_record(
         gasLimit: d.gas_limit,
         maxFeePerGasGwei: d.max_fee_per_gas_gwei,
         maxPriorityFeePerGasGwei: d.max_priority_fee_per_gas_gwei,
-        estimatedNetworkFeeEth: d.estimated_network_fee_eth,
+        estimatedNetworkFee: d.estimated_network_fee_eth,
         spendableBalance: d.spendable_balance,
         feeRateDescription: d.fee_rate_description,
         estimatedTransactionBytes: None,
@@ -427,7 +427,7 @@ pub fn build_utxo_send_preview_record(
     }
     Some(crate::wallet_core::BitcoinSendPreview {
         estimatedFeeRateSatVb: d.estimated_fee_rate_sat_vb,
-        estimatedNetworkFeeBtc: d.estimated_network_fee_coin,
+        estimatedNetworkFee: d.estimated_network_fee_coin,
         feeRateDescription: Some(d.fee_rate_description),
         spendableBalance: Some(d.spendable_balance),
         estimatedTransactionBytes: Some(d.estimated_transaction_bytes),
@@ -444,7 +444,7 @@ pub fn build_bitcoin_hd_send_preview_record(
     let d = decode_bitcoin_hd_send_preview(balance_json, fee_json)?;
     Some(crate::wallet_core::BitcoinSendPreview {
         estimatedFeeRateSatVb: d.estimated_fee_rate_sat_vb,
-        estimatedNetworkFeeBtc: d.estimated_network_fee_btc,
+        estimatedNetworkFee: d.estimated_network_fee_btc,
         feeRateDescription: Some(d.fee_rate_description),
         spendableBalance: Some(d.spendable_balance),
         estimatedTransactionBytes: Some(d.estimated_transaction_bytes),
@@ -463,7 +463,7 @@ pub fn build_dogecoin_send_preview_record(
     Some(crate::wallet_core::DogecoinSendPreview {
         spendableBalanceDoge: d.spendable_balance_doge,
         requestedAmountDoge: d.requested_amount_doge,
-        estimatedNetworkFeeDoge: d.estimated_network_fee_doge,
+        estimatedNetworkFee: d.estimated_network_fee_doge,
         estimatedFeeRateDogePerKb: d.estimated_fee_rate_doge_per_kb,
         estimatedTransactionBytes: d.estimated_transaction_bytes,
         selectedInputCount: d.selected_input_count,
@@ -479,7 +479,7 @@ pub fn build_dogecoin_send_preview_record(
 pub fn build_tron_send_preview_record(json: String) -> Option<crate::wallet_core::TronSendPreview> {
     let d = decode_tron_send_preview(json)?;
     Some(crate::wallet_core::TronSendPreview {
-        estimatedNetworkFeeTrx: d.estimated_network_fee_trx,
+        estimatedNetworkFee: d.estimated_network_fee_trx,
         feeLimitSun: d.fee_limit_sun,
         simulationUsed: false,
         spendableBalance: d.spendable_balance,
@@ -541,7 +541,7 @@ pub fn build_simple_chain_preview(json: String, chain: SimpleChain) -> SimpleCha
     match chain {
         SimpleChain::Solana => SimpleChainPreview::Solana {
             preview: SolanaSendPreview {
-                estimatedNetworkFeeSol: fee,
+                estimatedNetworkFee: fee,
                 spendableBalance: bal,
                 feeRateDescription: Some(desc),
                 estimatedTransactionBytes: None,
@@ -552,7 +552,7 @@ pub fn build_simple_chain_preview(json: String, chain: SimpleChain) -> SimpleCha
         },
         SimpleChain::Xrp => SimpleChainPreview::Xrp {
             preview: XRPSendPreview {
-                estimatedNetworkFeeXrp: fee,
+                estimatedNetworkFee: fee,
                 feeDrops: raw.parse().unwrap_or(12),
                 sequence: 0,
                 lastLedgerSequence: 0,
@@ -566,7 +566,7 @@ pub fn build_simple_chain_preview(json: String, chain: SimpleChain) -> SimpleCha
         },
         SimpleChain::Stellar => SimpleChainPreview::Stellar {
             preview: StellarSendPreview {
-                estimatedNetworkFeeXlm: fee,
+                estimatedNetworkFee: fee,
                 feeStroops: raw.parse().unwrap_or(100),
                 sequence: 0,
                 spendableBalance: bal,
@@ -579,7 +579,7 @@ pub fn build_simple_chain_preview(json: String, chain: SimpleChain) -> SimpleCha
         },
         SimpleChain::Monero => SimpleChainPreview::Monero {
             preview: MoneroSendPreview {
-                estimatedNetworkFeeXmr: fee,
+                estimatedNetworkFee: fee,
                 priorityLabel: "normal".into(),
                 spendableBalance: bal,
                 feeRateDescription: Some(desc),
@@ -591,7 +591,7 @@ pub fn build_simple_chain_preview(json: String, chain: SimpleChain) -> SimpleCha
         },
         SimpleChain::Cardano => SimpleChainPreview::Cardano {
             preview: CardanoSendPreview {
-                estimatedNetworkFeeAda: fee,
+                estimatedNetworkFee: fee,
                 ttlSlot: 0,
                 spendableBalance: bal,
                 feeRateDescription: Some(desc),
@@ -603,7 +603,7 @@ pub fn build_simple_chain_preview(json: String, chain: SimpleChain) -> SimpleCha
         },
         SimpleChain::Sui => SimpleChainPreview::Sui {
             preview: SuiSendPreview {
-                estimatedNetworkFeeSui: fee,
+                estimatedNetworkFee: fee,
                 gasBudgetMist: raw.parse().unwrap_or(3_000_000),
                 referenceGasPrice: 1_000,
                 spendableBalance: bal,
@@ -618,7 +618,7 @@ pub fn build_simple_chain_preview(json: String, chain: SimpleChain) -> SimpleCha
             let gas: u64 = raw.parse().unwrap_or(100);
             SimpleChainPreview::Aptos {
                 preview: AptosSendPreview {
-                    estimatedNetworkFeeApt: fee,
+                    estimatedNetworkFee: fee,
                     maxGasAmount: 10_000,
                     gasUnitPriceOctas: gas,
                     spendableBalance: bal,
@@ -632,7 +632,7 @@ pub fn build_simple_chain_preview(json: String, chain: SimpleChain) -> SimpleCha
         }
         SimpleChain::Ton => SimpleChainPreview::Ton {
             preview: TONSendPreview {
-                estimatedNetworkFeeTon: fee,
+                estimatedNetworkFee: fee,
                 sequenceNumber: 0,
                 spendableBalance: bal,
                 feeRateDescription: Some(desc),
@@ -644,7 +644,7 @@ pub fn build_simple_chain_preview(json: String, chain: SimpleChain) -> SimpleCha
         },
         SimpleChain::Icp => SimpleChainPreview::Icp {
             preview: ICPSendPreview {
-                estimatedNetworkFeeIcp: fee,
+                estimatedNetworkFee: fee,
                 feeE8s: raw.parse().unwrap_or(10_000),
                 spendableBalance: bal,
                 feeRateDescription: Some(desc),
@@ -656,7 +656,7 @@ pub fn build_simple_chain_preview(json: String, chain: SimpleChain) -> SimpleCha
         },
         SimpleChain::Near => SimpleChainPreview::Near {
             preview: NearSendPreview {
-                estimatedNetworkFeeNear: fee,
+                estimatedNetworkFee: fee,
                 gasPriceYoctoNear: raw.clone(),
                 spendableBalance: bal,
                 feeRateDescription: Some(raw),
@@ -668,7 +668,7 @@ pub fn build_simple_chain_preview(json: String, chain: SimpleChain) -> SimpleCha
         },
         SimpleChain::Polkadot => SimpleChainPreview::Polkadot {
             preview: PolkadotSendPreview {
-                estimatedNetworkFeeDot: fee,
+                estimatedNetworkFee: fee,
                 spendableBalance: bal,
                 feeRateDescription: Some(desc),
                 estimatedTransactionBytes: None,

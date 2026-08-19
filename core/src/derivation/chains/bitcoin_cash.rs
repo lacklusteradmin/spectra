@@ -70,7 +70,7 @@ fn bch_internal(
     })
 }
 
-/// UniFFI export: derive Bitcoin Cash mainnet keys (P2PKH only).
+/// Derive Bitcoin Cash mainnet keys (P2PKH only).
 pub fn derive_bitcoin_cash(
     seed_phrase: String,
     derivation_path: String,
@@ -92,7 +92,7 @@ pub fn derive_bitcoin_cash(
     )
 }
 
-/// UniFFI export: derive Bitcoin Cash testnet keys (P2PKH only).
+/// Derive Bitcoin Cash testnet keys (P2PKH only).
 pub fn derive_bitcoin_cash_testnet(
     seed_phrase: String,
     derivation_path: String,
@@ -114,8 +114,7 @@ pub fn derive_bitcoin_cash_testnet(
     )
 }
 
-/// UniFFI export: derive Bitcoin Cash address/pubkey directly from a hex private key.
-#[uniffi::export]
+/// Derive Bitcoin Cash address/pubkey directly from a hex private key.
 pub fn derive_bitcoin_cash_from_private_key(
     private_key_hex: String,
     want_address: bool,

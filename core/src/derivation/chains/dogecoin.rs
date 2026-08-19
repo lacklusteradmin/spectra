@@ -94,7 +94,7 @@ fn doge_internal(
     })
 }
 
-/// UniFFI export: derive Dogecoin mainnet keys (P2PKH only).
+/// Derive Dogecoin mainnet keys (P2PKH only).
 pub fn derive_dogecoin(
     seed_phrase: String,
     derivation_path: String,
@@ -116,7 +116,7 @@ pub fn derive_dogecoin(
     )
 }
 
-/// UniFFI export: derive Dogecoin testnet keys.
+/// Derive Dogecoin testnet keys.
 pub fn derive_dogecoin_testnet(
     seed_phrase: String,
     derivation_path: String,
@@ -138,8 +138,7 @@ pub fn derive_dogecoin_testnet(
     )
 }
 
-/// UniFFI export: derive Dogecoin address/pubkey directly from a hex private key.
-#[uniffi::export]
+/// Derive Dogecoin address/pubkey directly from a hex private key.
 pub fn derive_dogecoin_from_private_key(
     private_key_hex: String,
     want_address: bool,

@@ -279,8 +279,7 @@ evm_deriver! {
     derive_hyperliquid_testnet => "UniFFI export: derive Hyperliquid testnet wallet from a seed phrase."
 }
 
-/// UniFFI export: derive an EVM address and public key from a raw private key hex string.
-#[uniffi::export]
+/// Derive an EVM address and public key from a raw private key hex string.
 pub fn derive_evm_from_private_key(
     private_key_hex: String,
     want_address: bool,

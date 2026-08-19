@@ -174,9 +174,104 @@ pub fn core_derive_for_chain(
     )
 }
 
+/// Derive an address from a raw private key, whatever the chain.
+///
+/// The counterpart of [`core_derive_for_chain`], and it replaces the same
+/// shape: Swift held a thirty-arm switch listing which chains derive by which
+/// algorithm, calling six per-chain exports that existed only to be called from
+/// it. Which family a chain belongs to is a registry fact, so the arms are
+/// predicates on `Chain` rather than a typed-out list — and testnets fall out
+/// of `mainnet_counterpart` instead of needing a case each.
+///
+/// `Ok(None)` means the chain has no private-key derivation, which is not an
+/// error: the import flow offers the chain and shows no address.
+#[uniffi::export]
+pub fn core_derive_from_private_key(
+    chain_name: String,
+    private_key_hex: String,
+    want_address: bool,
+    want_public_key: bool,
+) -> Result<Option<DerivationResult>, SpectraBridgeError> {
+    use crate::derivation::chains::{
+        bitcoin as btc, bitcoin_cash as bch, decred, dogecoin as doge, evm, litecoin as ltc,
+    };
+    use crate::registry::Chain;
+
+    let Some(chain) = Chain::from_display_name(&chain_name) else {
+        return Ok(None);
+    };
+    let result = match chain.mainnet_counterpart() {
+        c if c.is_evm() => evm::derive_evm_from_private_key(private_key_hex, want_address, want_public_key)?,
+        Chain::Bitcoin => btc::derive_bitcoin_from_private_key(
+            private_key_hex,
+            BitcoinScriptType::P2wpkh,
+            want_address,
+            want_public_key,
+        )?,
+        Chain::BitcoinCash => {
+            bch::derive_bitcoin_cash_from_private_key(private_key_hex, want_address, want_public_key)?
+        }
+        Chain::Litecoin => {
+            ltc::derive_litecoin_from_private_key(private_key_hex, want_address, want_public_key)?
+        }
+        Chain::Dogecoin => {
+            doge::derive_dogecoin_from_private_key(private_key_hex, want_address, want_public_key)?
+        }
+        Chain::Decred => {
+            decred::derive_decred_from_private_key(private_key_hex, want_address, want_public_key)?
+        }
+        _ => return Ok(None),
+    };
+    Ok(Some(result))
+}
+
 #[cfg(test)]
 mod dispatch_export_tests {
     use super::*;
+
+    /// What private-key derivation actually covers, stated once.
+    ///
+    /// The import gate (`PRIVATE_KEY_SUPPORTED_CHAINS`) names thirty-nine
+    /// chains. Derivation covers the EVM family and five UTXO chains, and the
+    /// difference is older than this dispatcher — Swift's switch had the same
+    /// arms. A private key imported for XRP Ledger passes the gate and yields
+    /// no address. Asserted rather than papered over: widening it is new
+    /// derivation work and narrowing the gate removes an import path, so both
+    /// are decisions of their own rather than a side effect of this collapse.
+    #[test]
+    fn private_key_derivation_covers_the_evm_family_and_five_utxo_chains() {
+        const KEY: &str = "4c0883a69102937d6231471b5dbb6204fe5129617082792ae468d01a3f362318";
+        let derives = |name: &str| {
+            core_derive_from_private_key(name.to_string(), KEY.to_string(), true, false)
+                .expect("a valid key never errors")
+                .and_then(|r| r.address)
+        };
+
+        for chain in crate::registry::Chain::all().filter(|c| c.is_evm()) {
+            assert!(
+                derives(chain.chain_display_name()).is_some(),
+                "{} is EVM but derived no address from a private key",
+                chain.chain_display_name()
+            );
+        }
+        for name in ["Bitcoin", "Bitcoin Cash", "Litecoin", "Dogecoin", "Decred"] {
+            assert!(derives(name).is_some(), "{name} derived no address");
+        }
+        for name in [
+            "Bitcoin SV",
+            "XRP Ledger",
+            "Solana",
+            "Cardano",
+            "Polkadot",
+            "Monero",
+        ] {
+            assert!(
+                derives(name).is_none(),
+                "{name} now derives from a private key — the import gate and the \
+                 derivation table agree further than they did; update this test"
+            );
+        }
+    }
 
     /// Every chain the registry lists derives through the one export.
     ///

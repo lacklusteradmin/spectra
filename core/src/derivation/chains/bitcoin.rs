@@ -479,7 +479,7 @@ fn bitcoin_export_internal(
     })
 }
 
-/// UniFFI export: derive Bitcoin mainnet wallet (P2PKH/P2SH-P2WPKH/P2WPKH/P2TR) from a seed phrase.
+/// Derive Bitcoin mainnet wallet (P2PKH/P2SH-P2WPKH/P2WPKH/P2TR) from a seed phrase.
 pub fn derive_bitcoin(
     seed_phrase: String,
     derivation_path: String,
@@ -501,7 +501,7 @@ pub fn derive_bitcoin(
     )
 }
 
-/// UniFFI export: derive Bitcoin testnet wallet from a seed phrase.
+/// Derive Bitcoin testnet wallet from a seed phrase.
 pub fn derive_bitcoin_testnet(
     seed_phrase: String,
     derivation_path: String,
@@ -523,7 +523,7 @@ pub fn derive_bitcoin_testnet(
     )
 }
 
-/// UniFFI export: derive Bitcoin testnet4 wallet from a seed phrase.
+/// Derive Bitcoin testnet4 wallet from a seed phrase.
 pub fn derive_bitcoin_testnet4(
     seed_phrase: String,
     derivation_path: String,
@@ -545,7 +545,7 @@ pub fn derive_bitcoin_testnet4(
     )
 }
 
-/// UniFFI export: derive Bitcoin signet wallet from a seed phrase.
+/// Derive Bitcoin signet wallet from a seed phrase.
 pub fn derive_bitcoin_signet(
     seed_phrase: String,
     derivation_path: String,
@@ -567,8 +567,7 @@ pub fn derive_bitcoin_signet(
     )
 }
 
-/// UniFFI export: derive a Bitcoin mainnet address and public key from a raw private key hex string.
-#[uniffi::export]
+/// Derive a Bitcoin mainnet address and public key from a raw private key hex string.
 pub fn derive_bitcoin_from_private_key(
     private_key_hex: String,
     script_type: BitcoinScriptType,

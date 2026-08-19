@@ -8,7 +8,12 @@
 use crate::send::payload::SendChain;
 
 /// Every chain Spectra knows about.
-#[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
+///
+/// This crosses the FFI boundary as the one chain type every front end uses.
+/// Before it did, each front end kept its own copy of this list — iOS had four
+/// (`SpectraChainID`, `SeedDerivationChain`, `AppChainID`,
+/// `StandardDiagnosticsChain`), each a different subset, each drifting.
+#[derive(Copy, Clone, Debug, PartialEq, Eq, Hash, uniffi::Enum)]
 pub enum Chain {
     Bitcoin,
     Ethereum,
@@ -642,6 +647,61 @@ impl Chain {
         self.network_choices().len() > 1
     }
 
+    /// What a front end needs to assemble a send for this chain.
+    ///
+    /// Transcribed from the ten call sites that carried these inline; the
+    /// values are theirs, not new decisions. The one thing worth noticing is
+    /// that `fee_decimals` is 6 nearly everywhere and 7 for Stellar and 8 for
+    /// the UTXO chains — a display choice, unrelated to native decimals, which
+    /// is why it could not simply be looked up.
+    pub fn send_execution_shape(self) -> SendExecutionShape {
+        let chain = self.mainnet_counterpart();
+        match chain {
+            Chain::Sui => SendExecutionShape {
+                fee_decimals: 6,
+                supports_private_key: false,
+                fee_field: SendFeeField::GasBudget,
+                fee_fallback: 0.0,
+            },
+            Chain::Cardano => SendExecutionShape {
+                fee_decimals: 6,
+                supports_private_key: false,
+                fee_field: SendFeeField::FeeAmount,
+                fee_fallback: 0.0,
+            },
+            Chain::Stellar => SendExecutionShape {
+                fee_decimals: 7,
+                supports_private_key: true,
+                fee_field: SendFeeField::None,
+                fee_fallback: 0.0,
+            },
+            Chain::Xrp => SendExecutionShape {
+                fee_decimals: 6,
+                supports_private_key: true,
+                fee_field: SendFeeField::None,
+                fee_fallback: 0.0,
+            },
+            Chain::BitcoinCash | Chain::BitcoinSV => SendExecutionShape {
+                fee_decimals: 8,
+                supports_private_key: false,
+                fee_field: SendFeeField::FeeSats,
+                fee_fallback: 0.00001,
+            },
+            Chain::Litecoin => SendExecutionShape {
+                fee_decimals: 8,
+                supports_private_key: false,
+                fee_field: SendFeeField::FeeSats,
+                fee_fallback: 0.0001,
+            },
+            _ => SendExecutionShape {
+                fee_decimals: 6,
+                supports_private_key: false,
+                fee_field: SendFeeField::None,
+                fee_fallback: 0.0,
+            },
+        }
+    }
+
     /// How this chain's pending transactions reach a final status.
     ///
     /// Resolved through the mainnet counterpart so a testnet cannot diverge.
@@ -1031,6 +1091,38 @@ impl Chain {
     }
 }
 
+/// How a chain's estimated fee enters its signing request.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, uniffi::Enum)]
+pub enum SendFeeField {
+    /// Sui: the fee becomes the transaction's gas budget.
+    GasBudget,
+    /// Cardano: the fee is passed as an explicit amount.
+    FeeAmount,
+    /// UTXO chains: the fee is converted to satoshis.
+    FeeSats,
+    /// The chain computes its own fee at signing time.
+    None,
+}
+
+/// What a front end needs to assemble a send for this chain, beyond the
+/// amount and the destination.
+///
+/// Ten near-identical call sites used to carry these four values inline, which
+/// is how `fee_decimals` came to differ between chains for no stated reason
+/// and how a new chain's arm got written by copying its neighbour.
+#[derive(Debug, Clone, Copy, uniffi::Record)]
+pub struct SendExecutionShape {
+    /// Decimal places to show when reporting that the balance cannot cover
+    /// the fee. A display precision, not the chain's native decimals.
+    pub fee_decimals: u8,
+    /// Whether a wallet holding only a private key (no seed) can sign here.
+    pub supports_private_key: bool,
+    pub fee_field: SendFeeField,
+    /// Fee to assume when no preview is available, in native units. Zero
+    /// where the chain always has a preview by the time a send is submitted.
+    pub fee_fallback: f64,
+}
+
 /// How a chain's pending transactions are polled for confirmation.
 ///
 /// A per-chain fact, so it lives here rather than as one wrapper function per
@@ -1073,6 +1165,19 @@ pub fn core_address_validation_kind(chain_id: String) -> String {
     Chain::from_str_id(&chain_id)
         .map(|c| c.address_validation_kind().to_string())
         .unwrap_or_default()
+}
+
+/// What a front end needs to assemble a send for this chain.
+#[uniffi::export]
+pub fn core_send_execution_shape(chain_name: String) -> SendExecutionShape {
+    Chain::from_display_name(&chain_name)
+        .map(Chain::send_execution_shape)
+        .unwrap_or(SendExecutionShape {
+            fee_decimals: 6,
+            supports_private_key: false,
+            fee_field: SendFeeField::None,
+            fee_fallback: 0.0,
+        })
 }
 
 /// How a chain's pending transactions reach a final status.
@@ -1366,6 +1471,38 @@ mod tests {
 }
 
 // ── FFI surface ──────────────────────────────────────────────────────────
+
+/// What identifies one chain to a front end: the enum value and the three
+/// facts every screen needs to go with it.
+#[derive(Debug, Clone, PartialEq, Eq, uniffi::Record)]
+pub struct ChainIdentity {
+    pub chain: Chain,
+    /// The catalog's `id` — what endpoint tables and the FFI boundary key on.
+    pub id: String,
+    /// The catalog's `name` — the one spelling of this chain.
+    pub name: String,
+    pub is_testnet: bool,
+    pub diagnostics_shape: DiagnosticsShape,
+}
+
+/// The whole catalog as identities, in declaration order.
+///
+/// One call rather than an accessor per column: a front end builds its lookups
+/// from this once and then reads them locally, and there is no way to ask for
+/// an id without the name that goes with it. `Chain` deliberately has no
+/// `CaseIterable` on the Swift side — the order that matters is the catalog's.
+#[uniffi::export]
+pub fn core_chain_identities() -> Vec<ChainIdentity> {
+    Chain::all()
+        .map(|chain| ChainIdentity {
+            chain,
+            id: chain.str_id().to_string(),
+            name: chain.chain_display_name().to_string(),
+            is_testnet: chain.is_testnet(),
+            diagnostics_shape: chain.diagnostics_shape(),
+        })
+        .collect()
+}
 
 /// Resolve a display name to the chain's string id. Returns `None` for unknown names.
 #[uniffi::export]

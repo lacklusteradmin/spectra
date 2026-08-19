@@ -506,7 +506,7 @@ pub(crate) fn derive_from_seed_phrase_testnet(
 use crate::derivation::types::{parse_path_metadata, DerivationResult};
 use crate::SpectraBridgeError;
 
-/// UniFFI export: derive Decred mainnet wallet (Ds… P2PKH address) from a seed phrase.
+/// Derive Decred mainnet wallet (Ds… P2PKH address) from a seed phrase.
 pub fn derive_decred(
     seed_phrase: String,
     derivation_path: String,
@@ -534,7 +534,7 @@ pub fn derive_decred(
     })
 }
 
-/// UniFFI export: derive Decred testnet wallet (Ts… P2PKH address) from a seed phrase.
+/// Derive Decred testnet wallet (Ts… P2PKH address) from a seed phrase.
 pub fn derive_decred_testnet(
     seed_phrase: String,
     derivation_path: String,
@@ -562,8 +562,7 @@ pub fn derive_decred_testnet(
     })
 }
 
-/// UniFFI export: derive a Decred mainnet address and public key from a raw private key hex string.
-#[uniffi::export]
+/// Derive a Decred mainnet address and public key from a raw private key hex string.
 pub fn derive_decred_from_private_key(
     private_key_hex: String,
     want_address: bool,
