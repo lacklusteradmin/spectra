@@ -500,14 +500,14 @@ fn days_from_civil(y: i64, m: i64, d: i64) -> i64 {
     era * 146097 + doe - 719468
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, uniffi::Record)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
 pub struct HistoryWallet {
     pub wallet_id: String,
     pub selected_chain: String,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, uniffi::Record)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(rename_all = "camelCase")]
 pub struct HistoryTransaction {
     pub id: String,
@@ -524,7 +524,7 @@ pub struct HistoryTransaction {
     pub created_at_unix: f64,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, uniffi::Record)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(rename_all = "camelCase")]
 pub struct NormalizeHistoryRequest {
     pub wallets: Vec<HistoryWallet>,
@@ -859,6 +859,12 @@ fn title_case(value: &str) -> String {
         .join(" ")
 }
 
+/// Not exported: `WalletService::normalized_history` is the entry point: the records it
+/// normalizes are core's own.
+pub fn core_normalize_history(request: NormalizeHistoryRequest) -> Vec<CoreNormalizedHistoryEntry> {
+    normalize_history(request)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -948,7 +954,3 @@ mod tests {
 
 // ── FFI surface ─────────────────────────────────────────────────────────────
 
-#[uniffi::export]
-pub fn core_normalize_history(request: NormalizeHistoryRequest) -> Vec<CoreNormalizedHistoryEntry> {
-    normalize_history(request)
-}

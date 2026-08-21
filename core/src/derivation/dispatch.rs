@@ -25,6 +25,8 @@ pub fn derive_for_chain_name(
     want_public_key: bool,
     want_private_key: bool,
 ) -> Result<DerivationResult, SpectraBridgeError> {
+    use crate::registry::Chain;
+
     use crate::derivation::chains::{
         aptos, bitcoin as btc, bitcoin_cash as bch, bitcoin_gold as btg, bitcoin_sv as bsv,
         bittensor, cardano, dash, decred, dogecoin as doge, evm, icp, kaspa, litecoin as ltc,
@@ -40,100 +42,68 @@ pub fn derive_for_chain_name(
     let wp = want_public_key;
     let wk = want_private_key;
 
-    let result = match chain_name {
-        "Bitcoin" => btc::derive_bitcoin(s, p, pass, script, wa, wp, wk)?,
-        "Bitcoin Testnet" => btc::derive_bitcoin_testnet(s, p, pass, script, wa, wp, wk)?,
-        "Bitcoin Testnet4" => btc::derive_bitcoin_testnet4(s, p, pass, script, wa, wp, wk)?,
-        "Bitcoin Signet" => btc::derive_bitcoin_signet(s, p, pass, script, wa, wp, wk)?,
-        "Bitcoin Cash" => {
-            bch::derive_bitcoin_cash(s, p, pass, BitcoinScriptType::P2pkh, wa, wp, wk)?
-        }
-        "Bitcoin Cash Testnet" => {
-            bch::derive_bitcoin_cash_testnet(s, p, pass, BitcoinScriptType::P2pkh, wa, wp, wk)?
-        }
-        "Bitcoin SV" => bsv::derive_bitcoin_sv(s, p, pass, BitcoinScriptType::P2pkh, wa, wp, wk)?,
-        "Bitcoin SV Testnet" => {
-            bsv::derive_bitcoin_sv_testnet(s, p, pass, BitcoinScriptType::P2pkh, wa, wp, wk)?
-        }
-        "Litecoin" => ltc::derive_litecoin(s, p, pass, script, wa, wp, wk)?,
-        "Litecoin Testnet" => ltc::derive_litecoin_testnet(s, p, pass, script, wa, wp, wk)?,
-        "Dogecoin" => doge::derive_dogecoin(s, p, pass, BitcoinScriptType::P2pkh, wa, wp, wk)?,
-        "Dogecoin Testnet" => {
-            doge::derive_dogecoin_testnet(s, p, pass, BitcoinScriptType::P2pkh, wa, wp, wk)?
-        }
-        "Dash" => dash::derive_dash(s, p, pass, BitcoinScriptType::P2pkh, wa, wp, wk)?,
-        "Dash Testnet" => {
-            dash::derive_dash_testnet(s, p, pass, BitcoinScriptType::P2pkh, wa, wp, wk)?
-        }
-        "Bitcoin Gold" => {
-            btg::derive_bitcoin_gold(s, p, pass, BitcoinScriptType::P2pkh, wa, wp, wk)?
-        }
-        "Zcash" => zcash::derive_zcash(s, p, pass, wa, wp, wk)?,
-        "Zcash Testnet" => zcash::derive_zcash_testnet(s, p, pass, wa, wp, wk)?,
-        "Decred" => decred::derive_decred(s, p, pass, wa, wp, wk)?,
-        "Decred Testnet" => decred::derive_decred_testnet(s, p, pass, wa, wp, wk)?,
-        "Kaspa" => kaspa::derive_kaspa(s, p, pass, wa, wp, wk)?,
-        "Kaspa Testnet" => kaspa::derive_kaspa_testnet(s, p, pass, wa, wp, wk)?,
-        "Ethereum" => evm::derive_ethereum(s, p, pass, wa, wp, wk)?,
-        "Ethereum Classic" => evm::derive_ethereum_classic(s, p, pass, wa, wp, wk)?,
-        "Arbitrum" => evm::derive_arbitrum(s, p, pass, wa, wp, wk)?,
-        "Optimism" => evm::derive_optimism(s, p, pass, wa, wp, wk)?,
-        "Avalanche" => evm::derive_avalanche(s, p, pass, wa, wp, wk)?,
-        "Base" => evm::derive_base(s, p, pass, wa, wp, wk)?,
-        "BNB Chain" => evm::derive_bnb(s, p, pass, wa, wp, wk)?,
-        "Polygon" => evm::derive_polygon(s, p, pass, wa, wp, wk)?,
-        "Hyperliquid" => evm::derive_hyperliquid(s, p, pass, wa, wp, wk)?,
-        "Linea" => evm::derive_linea(s, p, pass, wa, wp, wk)?,
-        "Scroll" => evm::derive_scroll(s, p, pass, wa, wp, wk)?,
-        "Blast" => evm::derive_blast(s, p, pass, wa, wp, wk)?,
-        "Mantle" => evm::derive_mantle(s, p, pass, wa, wp, wk)?,
-        "Sei" => evm::derive_sei(s, p, pass, wa, wp, wk)?,
-        "Celo" => evm::derive_celo(s, p, pass, wa, wp, wk)?,
-        "Cronos" => evm::derive_cronos(s, p, pass, wa, wp, wk)?,
-        "opBNB" => evm::derive_op_bnb(s, p, pass, wa, wp, wk)?,
-        "zkSync Era" => evm::derive_zksync_era(s, p, pass, wa, wp, wk)?,
-        "Sonic" => evm::derive_sonic(s, p, pass, wa, wp, wk)?,
-        "Berachain" => evm::derive_berachain(s, p, pass, wa, wp, wk)?,
-        "Unichain" => evm::derive_unichain(s, p, pass, wa, wp, wk)?,
-        "Ink" => evm::derive_ink(s, p, pass, wa, wp, wk)?,
-        "X Layer" => evm::derive_x_layer(s, p, pass, wa, wp, wk)?,
-        "Ethereum Sepolia" => evm::derive_ethereum_sepolia(s, p, pass, wa, wp, wk)?,
-        "Ethereum Hoodi" => evm::derive_ethereum_hoodi(s, p, pass, wa, wp, wk)?,
-        "Ethereum Classic Mordor" => evm::derive_ethereum_classic_mordor(s, p, pass, wa, wp, wk)?,
-        "Arbitrum Sepolia" => evm::derive_arbitrum_sepolia(s, p, pass, wa, wp, wk)?,
-        "Optimism Sepolia" => evm::derive_optimism_sepolia(s, p, pass, wa, wp, wk)?,
-        "Base Sepolia" => evm::derive_base_sepolia(s, p, pass, wa, wp, wk)?,
-        "BNB Chain Testnet" => evm::derive_bnb_testnet(s, p, pass, wa, wp, wk)?,
-        "Avalanche Fuji" => evm::derive_avalanche_fuji(s, p, pass, wa, wp, wk)?,
-        "Polygon Amoy" => evm::derive_polygon_amoy(s, p, pass, wa, wp, wk)?,
-        "Hyperliquid Testnet" => evm::derive_hyperliquid_testnet(s, p, pass, wa, wp, wk)?,
-        "Tron" => tron::derive_tron(s, p, pass, wa, wp, wk)?,
-        "Tron Nile" => tron::derive_tron_nile(s, p, pass, wa, wp, wk)?,
-        "Solana" => solana::derive_solana(s, p, pass, hmac, wa, wp, wk)?,
-        "Solana Devnet" => solana::derive_solana_devnet(s, p, pass, hmac, wa, wp, wk)?,
-        "Stellar" => stellar::derive_stellar(s, p, pass, hmac, wa, wp, wk)?,
-        "Stellar Testnet" => stellar::derive_stellar_testnet(s, p, pass, hmac, wa, wp, wk)?,
-        "XRP Ledger" => xrp::derive_xrp(s, p, pass, wa, wp, wk)?,
-        "XRP Ledger Testnet" => xrp::derive_xrp_testnet(s, p, pass, wa, wp, wk)?,
-        "Cardano" => cardano::derive_cardano(s, Some(p), pass, wa, wp, wk)?,
-        "Cardano Preprod" => cardano::derive_cardano_preprod(s, Some(p), pass, wa, wp, wk)?,
-        "Sui" => sui::derive_sui(s, p, pass, wa, wp, wk)?,
-        "Sui Testnet" => sui::derive_sui_testnet(s, p, pass, wa, wp, wk)?,
-        "Aptos" => aptos::derive_aptos(s, p, pass, wa, wp, wk)?,
-        "Aptos Testnet" => aptos::derive_aptos_testnet(s, p, pass, wa, wp, wk)?,
-        "TON" => ton::derive_ton(s, pass, wa, wp, wk)?,
-        "TON Testnet" => ton::derive_ton_testnet(s, pass, wa, wp, wk)?,
-        "Internet Computer" => icp::derive_icp(s, p, pass, wa, wp, wk)?,
-        "NEAR" => near::derive_near(s, pass, wa, wp, wk)?,
-        "NEAR Testnet" => near::derive_near_testnet(s, pass, wa, wp, wk)?,
-        "Polkadot" => polkadot::derive_polkadot(s, pass, hmac, wa, wp, wk)?,
-        "Polkadot Westend" => polkadot::derive_polkadot_westend(s, pass, hmac, wa, wp, wk)?,
-        "Bittensor" => bittensor::derive_bittensor(s, pass, wa, wp, wk)?,
-        "Monero" => xmr::derive_monero(s, wa, wp, wk)?,
-        "Monero Stagenet" => xmr::derive_monero_stagenet(s, wa, wp, wk)?,
+    let Some(chain) = crate::registry::Chain::from_display_name(chain_name) else {
+        return Err(SpectraBridgeError::InvalidInput {
+            message: format!("unsupported chain: {chain_name}"),
+        });
+    };
+
+    // Keyed on `Chain`, not on the display name. The string match this replaces
+    // had seventy-eight arms and no way to say it had them all; a name with a
+    // typo fell through to the error arm and read as an unsupported chain.
+    let result = match chain {
+        Chain::Bitcoin => btc::derive_bitcoin(s, p, pass, script, wa, wp, wk)?,
+        Chain::BitcoinTestnet => btc::derive_bitcoin_testnet(s, p, pass, script, wa, wp, wk)?,
+        Chain::BitcoinTestnet4 => btc::derive_bitcoin_testnet4(s, p, pass, script, wa, wp, wk)?,
+        Chain::BitcoinSignet => btc::derive_bitcoin_signet(s, p, pass, script, wa, wp, wk)?,
+        Chain::BitcoinCash => { bch::derive_bitcoin_cash(s, p, pass, BitcoinScriptType::P2pkh, wa, wp, wk)? },
+        Chain::BitcoinCashTestnet => { bch::derive_bitcoin_cash_testnet(s, p, pass, BitcoinScriptType::P2pkh, wa, wp, wk)? },
+        Chain::BitcoinSV => bsv::derive_bitcoin_sv(s, p, pass, BitcoinScriptType::P2pkh, wa, wp, wk)?,
+        Chain::BitcoinSVTestnet => { bsv::derive_bitcoin_sv_testnet(s, p, pass, BitcoinScriptType::P2pkh, wa, wp, wk)? },
+        Chain::Litecoin => ltc::derive_litecoin(s, p, pass, script, wa, wp, wk)?,
+        Chain::LitecoinTestnet => ltc::derive_litecoin_testnet(s, p, pass, script, wa, wp, wk)?,
+        Chain::Dogecoin => doge::derive_dogecoin(s, p, pass, BitcoinScriptType::P2pkh, wa, wp, wk)?,
+        Chain::DogecoinTestnet => { doge::derive_dogecoin_testnet(s, p, pass, BitcoinScriptType::P2pkh, wa, wp, wk)? },
+        Chain::Dash => dash::derive_dash(s, p, pass, BitcoinScriptType::P2pkh, wa, wp, wk)?,
+        Chain::DashTestnet => { dash::derive_dash_testnet(s, p, pass, BitcoinScriptType::P2pkh, wa, wp, wk)? },
+        Chain::BitcoinGold => { btg::derive_bitcoin_gold(s, p, pass, BitcoinScriptType::P2pkh, wa, wp, wk)? },
+        Chain::Zcash => zcash::derive_zcash(s, p, pass, wa, wp, wk)?,
+        Chain::ZcashTestnet => zcash::derive_zcash_testnet(s, p, pass, wa, wp, wk)?,
+        Chain::Decred => decred::derive_decred(s, p, pass, wa, wp, wk)?,
+        Chain::DecredTestnet => decred::derive_decred_testnet(s, p, pass, wa, wp, wk)?,
+        Chain::Kaspa => kaspa::derive_kaspa(s, p, pass, wa, wp, wk)?,
+        Chain::KaspaTestnet => kaspa::derive_kaspa_testnet(s, p, pass, wa, wp, wk)?,
+        Chain::Tron => tron::derive_tron(s, p, pass, wa, wp, wk)?,
+        Chain::TronNile => tron::derive_tron_nile(s, p, pass, wa, wp, wk)?,
+        Chain::Solana => solana::derive_solana(s, p, pass, hmac, wa, wp, wk)?,
+        Chain::SolanaDevnet => solana::derive_solana_devnet(s, p, pass, hmac, wa, wp, wk)?,
+        Chain::Stellar => stellar::derive_stellar(s, p, pass, hmac, wa, wp, wk)?,
+        Chain::StellarTestnet => stellar::derive_stellar_testnet(s, p, pass, hmac, wa, wp, wk)?,
+        Chain::Xrp => xrp::derive_xrp(s, p, pass, wa, wp, wk)?,
+        Chain::XrpTestnet => xrp::derive_xrp_testnet(s, p, pass, wa, wp, wk)?,
+        Chain::Cardano => cardano::derive_cardano(s, Some(p), pass, wa, wp, wk)?,
+        Chain::CardanoPreprod => cardano::derive_cardano_preprod(s, Some(p), pass, wa, wp, wk)?,
+        Chain::Sui => sui::derive_sui(s, p, pass, wa, wp, wk)?,
+        Chain::SuiTestnet => sui::derive_sui_testnet(s, p, pass, wa, wp, wk)?,
+        Chain::Aptos => aptos::derive_aptos(s, p, pass, wa, wp, wk)?,
+        Chain::AptosTestnet => aptos::derive_aptos_testnet(s, p, pass, wa, wp, wk)?,
+        Chain::Ton => ton::derive_ton(s, pass, wa, wp, wk)?,
+        Chain::TonTestnet => ton::derive_ton_testnet(s, pass, wa, wp, wk)?,
+        Chain::Icp => icp::derive_icp(s, p, pass, wa, wp, wk)?,
+        Chain::Near => near::derive_near(s, pass, wa, wp, wk)?,
+        Chain::NearTestnet => near::derive_near_testnet(s, pass, wa, wp, wk)?,
+        Chain::Polkadot => polkadot::derive_polkadot(s, pass, hmac, wa, wp, wk)?,
+        Chain::PolkadotWestend => polkadot::derive_polkadot_westend(s, pass, hmac, wa, wp, wk)?,
+        Chain::Bittensor => bittensor::derive_bittensor(s, pass, wa, wp, wk)?,
+        Chain::Monero => xmr::derive_monero(s, wa, wp, wk)?,
+        Chain::MoneroStagenet => xmr::derive_monero_stagenet(s, wa, wp, wk)?,
+        // Every EVM chain derives the same address from the same path — there
+        // is no chain-specific encoding — so the thirty-three arms that stood
+        // here picked between thirty-three copies of one function.
+        c if c.is_evm() => evm::derive_evm(s, p, pass, wa, wp, wk)?,
         other => {
             return Err(SpectraBridgeError::InvalidInput {
-                message: format!("unsupported chain: {other}"),
+                message: format!("unsupported chain: {}", other.chain_display_name()),
             })
         }
     };
@@ -184,7 +154,11 @@ pub fn core_derive_for_chain(
 /// of `mainnet_counterpart` instead of needing a case each.
 ///
 /// `Ok(None)` means the chain has no private-key derivation, which is not an
-/// error: the import flow offers the chain and shows no address.
+/// error — but it is no longer something a user can reach either. The import
+/// picker is built from [`Chain::derives_from_private_key`], which
+/// `the_registry_flag_and_the_dispatcher_agree_on_every_chain` pins to this
+/// match, so a chain that lands here was named by a caller rather than chosen
+/// in the app.
 #[uniffi::export]
 pub fn core_derive_from_private_key(
     chain_name: String,
@@ -229,17 +203,16 @@ pub fn core_derive_from_private_key(
 mod dispatch_export_tests {
     use super::*;
 
-    /// What private-key derivation actually covers, stated once.
+    /// The dispatcher and `Chain::derives_from_private_key` are one answer.
     ///
-    /// The import gate (`PRIVATE_KEY_SUPPORTED_CHAINS`) names thirty-nine
-    /// chains. Derivation covers the EVM family and five UTXO chains, and the
-    /// difference is older than this dispatcher — Swift's switch had the same
-    /// arms. A private key imported for XRP Ledger passes the gate and yields
-    /// no address. Asserted rather than papered over: widening it is new
-    /// derivation work and narrowing the gate removes an import path, so both
-    /// are decisions of their own rather than a side effect of this collapse.
+    /// This match decides *which algorithm*; the registry flag decides
+    /// *whether one exists*, and the import flow reads the flag to know what to
+    /// offer. Before they were bound together there were four lists — the
+    /// picker's, the submit gate's, Swift's switch and this match — and no two
+    /// agreed, so a chain could be offered, accepted, and then produce no
+    /// address. Walking every chain is what none of the four could do.
     #[test]
-    fn private_key_derivation_covers_the_evm_family_and_five_utxo_chains() {
+    fn the_registry_flag_and_the_dispatcher_agree_on_every_chain() {
         const KEY: &str = "4c0883a69102937d6231471b5dbb6204fe5129617082792ae468d01a3f362318";
         let derives = |name: &str| {
             core_derive_from_private_key(name.to_string(), KEY.to_string(), true, false)
@@ -247,28 +220,46 @@ mod dispatch_export_tests {
                 .and_then(|r| r.address)
         };
 
-        for chain in crate::registry::Chain::all().filter(|c| c.is_evm()) {
-            assert!(
-                derives(chain.chain_display_name()).is_some(),
-                "{} is EVM but derived no address from a private key",
+        for chain in crate::registry::Chain::all() {
+            let claimed = chain.derives_from_private_key();
+            let produced = derives(chain.chain_display_name()).is_some();
+            assert_eq!(
+                claimed,
+                produced,
+                "{}: the registry says derives_from_private_key = {claimed} and the \
+                 dispatcher produced an address = {produced}",
                 chain.chain_display_name()
             );
         }
-        for name in ["Bitcoin", "Bitcoin Cash", "Litecoin", "Dogecoin", "Decred"] {
-            assert!(derives(name).is_some(), "{name} derived no address");
-        }
+    }
+
+    /// What private-key derivation does *not* cover, named rather than implied.
+    ///
+    /// Widening it is new derivation work, not a gate edit: these chains are
+    /// absent from the import picker because nothing can derive them, and the
+    /// day one of them can, it appears there without anyone editing a list.
+    #[test]
+    fn a_key_alone_is_not_enough_on_these_chains() {
         for name in [
             "Bitcoin SV",
             "XRP Ledger",
             "Solana",
+            "Stellar",
             "Cardano",
+            "Sui",
+            "Aptos",
+            "TON",
+            "Internet Computer",
+            "NEAR",
             "Polkadot",
             "Monero",
         ] {
+            let chain =
+                crate::registry::Chain::from_display_name(name).expect("a chain the registry knows");
             assert!(
-                derives(name).is_none(),
-                "{name} now derives from a private key — the import gate and the \
-                 derivation table agree further than they did; update this test"
+                !chain.derives_from_private_key(),
+                "{name} now derives from a private key — that is a widening, so say so \
+                 in PLAN.md and take it off this list"
             );
         }
     }

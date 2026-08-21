@@ -217,66 +217,30 @@ fn decode_privkey_hex(hex_str: &str) -> Result<[u8; 32], SpectraBridgeError> {
     Ok(out)
 }
 
-macro_rules! evm_deriver {
-    ($($name:ident => $doc:literal),+ $(,)?) => {
-        $(
-            #[doc = $doc]
-            #[uniffi::export]
-            pub fn $name(
-                seed_phrase: String,
-                derivation_path: String,
-                passphrase: Option<String>,
-                want_address: bool,
-                want_public_key: bool,
-                want_private_key: bool,
-            ) -> Result<DerivationResult, SpectraBridgeError> {
-                evm_internal(
-                    seed_phrase,
-                    derivation_path,
-                    passphrase,
-                    want_address,
-                    want_public_key,
-                    want_private_key,
-                )
-            }
-        )+
-    };
-}
-
-evm_deriver! {
-    derive_ethereum => "UniFFI export: derive Ethereum mainnet wallet from a seed phrase.",
-    derive_ethereum_classic => "UniFFI export: derive Ethereum Classic wallet from a seed phrase.",
-    derive_arbitrum => "UniFFI export: derive Arbitrum mainnet wallet from a seed phrase.",
-    derive_optimism => "UniFFI export: derive Optimism mainnet wallet from a seed phrase.",
-    derive_avalanche => "UniFFI export: derive Avalanche C-Chain mainnet wallet from a seed phrase.",
-    derive_base => "UniFFI export: derive Base mainnet wallet from a seed phrase.",
-    derive_bnb => "UniFFI export: derive BNB Chain mainnet wallet from a seed phrase.",
-    derive_polygon => "UniFFI export: derive Polygon mainnet wallet from a seed phrase.",
-    derive_hyperliquid => "UniFFI export: derive Hyperliquid mainnet wallet from a seed phrase.",
-    derive_linea => "UniFFI export: derive Linea mainnet wallet from a seed phrase.",
-    derive_scroll => "UniFFI export: derive Scroll mainnet wallet from a seed phrase.",
-    derive_blast => "UniFFI export: derive Blast mainnet wallet from a seed phrase.",
-    derive_mantle => "UniFFI export: derive Mantle mainnet wallet from a seed phrase.",
-    derive_sei => "UniFFI export: derive Sei EVM mainnet wallet from a seed phrase.",
-    derive_celo => "UniFFI export: derive Celo mainnet wallet from a seed phrase.",
-    derive_cronos => "UniFFI export: derive Cronos mainnet wallet from a seed phrase.",
-    derive_op_bnb => "UniFFI export: derive opBNB mainnet wallet from a seed phrase.",
-    derive_zksync_era => "UniFFI export: derive zkSync Era mainnet wallet from a seed phrase.",
-    derive_sonic => "UniFFI export: derive Sonic mainnet wallet from a seed phrase.",
-    derive_berachain => "UniFFI export: derive Berachain mainnet wallet from a seed phrase.",
-    derive_unichain => "UniFFI export: derive Unichain mainnet wallet from a seed phrase.",
-    derive_ink => "UniFFI export: derive Ink mainnet wallet from a seed phrase.",
-    derive_x_layer => "UniFFI export: derive X Layer mainnet wallet from a seed phrase.",
-    derive_ethereum_sepolia => "UniFFI export: derive Ethereum Sepolia testnet wallet from a seed phrase.",
-    derive_ethereum_hoodi => "UniFFI export: derive Ethereum Hoodi testnet wallet from a seed phrase.",
-    derive_ethereum_classic_mordor => "UniFFI export: derive Ethereum Classic Mordor testnet wallet from a seed phrase.",
-    derive_arbitrum_sepolia => "UniFFI export: derive Arbitrum Sepolia testnet wallet from a seed phrase.",
-    derive_optimism_sepolia => "UniFFI export: derive Optimism Sepolia testnet wallet from a seed phrase.",
-    derive_base_sepolia => "UniFFI export: derive Base Sepolia testnet wallet from a seed phrase.",
-    derive_bnb_testnet => "UniFFI export: derive BNB Chain testnet wallet from a seed phrase.",
-    derive_avalanche_fuji => "UniFFI export: derive Avalanche Fuji testnet wallet from a seed phrase.",
-    derive_polygon_amoy => "UniFFI export: derive Polygon Amoy testnet wallet from a seed phrase.",
-    derive_hyperliquid_testnet => "UniFFI export: derive Hyperliquid testnet wallet from a seed phrase."
+/// Derive an EVM wallet from a seed phrase.
+///
+/// One function for the family. It was a macro stamping out thirty-three
+/// exports — `derive_ethereum`, `derive_arbitrum`, `derive_x_layer` — whose
+/// bodies were the same call, because an EVM address does not depend on which
+/// EVM chain it is for. Nothing outside this crate ever called one: Swift went
+/// through `core_derive_for_chain`, and the dispatcher's thirty-three arms
+/// picked between identical functions.
+pub fn derive_evm(
+    seed_phrase: String,
+    derivation_path: String,
+    passphrase: Option<String>,
+    want_address: bool,
+    want_public_key: bool,
+    want_private_key: bool,
+) -> Result<DerivationResult, SpectraBridgeError> {
+    evm_internal(
+        seed_phrase,
+        derivation_path,
+        passphrase,
+        want_address,
+        want_public_key,
+        want_private_key,
+    )
 }
 
 /// Derive an EVM address and public key from a raw private key hex string.

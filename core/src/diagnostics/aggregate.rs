@@ -143,7 +143,6 @@ pub struct JsonRpcProbeOutcome {
 ///
 /// When unreachable the detail prefers the JSON-RPC `error.message`
 /// (if present) and falls back to `HTTP <code>`.
-#[uniffi::export]
 pub fn diagnostics_parse_jsonrpc_probe(
     status_code: Option<i32>,
     body_utf8: String,

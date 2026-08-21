@@ -6,10 +6,7 @@ use crate::derivation::chains::bitcoin_sv::derive_bitcoin_sv;
 use crate::derivation::chains::cardano::derive_cardano;
 use crate::derivation::chains::cardano::derive_cardano_icarus_xprv_root;
 use crate::derivation::chains::dogecoin::derive_dogecoin;
-use crate::derivation::chains::evm::{
-    derive_arbitrum, derive_avalanche, derive_ethereum, derive_ethereum_classic,
-    derive_hyperliquid, derive_optimism,
-};
+use crate::derivation::chains::evm::derive_evm;
 use crate::derivation::chains::icp::derive_icp;
 use crate::derivation::chains::litecoin::derive_litecoin;
 use crate::derivation::chains::monero::derive_monero;
@@ -123,29 +120,17 @@ fn derives_all_supported_chains() {
             true
         )
     );
+    // One call per coin type, not per chain: the six that stood here were the
+    // same arguments six times, because an EVM address does not depend on which
+    // EVM chain asks for it. That every EVM chain reaches this is
+    // `every_registry_chain_derives_through_one_call`.
     ok!(
-        "ethereum",
-        derive_ethereum(m.clone(), "m/44'/60'/0'/0/0".into(), None, true, true, true)
+        "evm",
+        derive_evm(m.clone(), "m/44'/60'/0'/0/0".into(), None, true, true, true)
     );
     ok!(
-        "ethereum_classic",
-        derive_ethereum_classic(m.clone(), "m/44'/61'/0'/0/0".into(), None, true, true, true)
-    );
-    ok!(
-        "arbitrum",
-        derive_arbitrum(m.clone(), "m/44'/60'/0'/0/0".into(), None, true, true, true)
-    );
-    ok!(
-        "optimism",
-        derive_optimism(m.clone(), "m/44'/60'/0'/0/0".into(), None, true, true, true)
-    );
-    ok!(
-        "avalanche",
-        derive_avalanche(m.clone(), "m/44'/60'/0'/0/0".into(), None, true, true, true)
-    );
-    ok!(
-        "hyperliquid",
-        derive_hyperliquid(m.clone(), "m/44'/60'/0'/0/0".into(), None, true, true, true)
+        "evm_ethereum_classic",
+        derive_evm(m.clone(), "m/44'/61'/0'/0/0".into(), None, true, true, true)
     );
     ok!(
         "tron",
@@ -950,7 +935,7 @@ fn canonical_external_golden_vectors_all_pass() {
         "trezor-firmware/common/tests/fixtures/ethereum/getaddress.json",
         "m/44'/60'/0'/0/0",
         true,
-        derive_ethereum(
+        derive_evm(
             ALL_ALL.into(),
             "m/44'/60'/0'/0/0".into(),
             None,
@@ -965,7 +950,7 @@ fn canonical_external_golden_vectors_all_pass() {
         "trezor-firmware/common/tests/fixtures/ethereum/getaddress.json",
         "m/44'/61'/0'/0/0",
         true,
-        derive_ethereum_classic(
+        derive_evm(
             ALL_ALL.into(),
             "m/44'/61'/0'/0/0".into(),
             None,
@@ -1071,19 +1056,19 @@ fn evm_replica_chains_share_ethereum_golden() {
     let results = [
         (
             "arbitrum",
-            derive_arbitrum(ALL_ALL.into(), path.clone(), None, true, false, false),
+            derive_evm(ALL_ALL.into(), path.clone(), None, true, false, false),
         ),
         (
             "optimism",
-            derive_optimism(ALL_ALL.into(), path.clone(), None, true, false, false),
+            derive_evm(ALL_ALL.into(), path.clone(), None, true, false, false),
         ),
         (
             "avalanche",
-            derive_avalanche(ALL_ALL.into(), path.clone(), None, true, false, false),
+            derive_evm(ALL_ALL.into(), path.clone(), None, true, false, false),
         ),
         (
             "hyperliquid",
-            derive_hyperliquid(ALL_ALL.into(), path.clone(), None, true, false, false),
+            derive_evm(ALL_ALL.into(), path.clone(), None, true, false, false),
         ),
     ];
     for (label, result) in results {

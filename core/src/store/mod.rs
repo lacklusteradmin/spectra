@@ -18,7 +18,6 @@ pub use chain_aliases::{
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 use std::collections::HashMap;
-use std::hash::{Hash, Hasher};
 
 use self::state::CoreAppState;
 use crate::validation::address::{validate_address, AddressValidationRequest};
@@ -499,14 +498,14 @@ pub fn plan_merge_built_in_token_preferences(
     merged
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, uniffi::Record)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
 pub struct WalletChainInput {
     pub wallet_id: String,
     pub selected_chain: String,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, uniffi::Record)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
 pub struct TransactionActivityInput {
     pub id: String,
@@ -514,7 +513,7 @@ pub struct TransactionActivityInput {
     pub chain_name: String,
 }
 
-#[uniffi::export]
+/// Not exported: `WalletService::active_wallet_transaction_ids` is the entry point.
 pub fn core_active_wallet_transaction_ids(
     transactions: Vec<TransactionActivityInput>,
     wallets: Vec<WalletChainInput>,
@@ -539,64 +538,19 @@ pub fn core_active_wallet_transaction_ids(
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, uniffi::Record)]
 #[serde(rename_all = "camelCase")]
-pub struct NormalizedHistorySignatureTransaction {
-    pub id: String,
-    pub wallet_id: Option<String>,
-    pub kind: String,
-    pub status: String,
-    pub chain_name: String,
-    pub symbol: String,
-    pub transaction_hash: Option<String>,
-    pub created_at_unix: f64,
-}
-
-#[uniffi::export]
-pub fn core_normalized_history_signature(
-    transactions: Vec<NormalizedHistorySignatureTransaction>,
-    wallets: Vec<WalletChainInput>,
-) -> i64 {
-    let mut hasher = std::collections::hash_map::DefaultHasher::new();
-    (transactions.len() as u64).hash(&mut hasher);
-    for transaction in &transactions {
-        transaction.id.hash(&mut hasher);
-        transaction.wallet_id.hash(&mut hasher);
-        transaction.kind.hash(&mut hasher);
-        transaction.status.hash(&mut hasher);
-        transaction.chain_name.hash(&mut hasher);
-        transaction.symbol.hash(&mut hasher);
-        transaction
-            .transaction_hash
-            .as_deref()
-            .unwrap_or("")
-            .hash(&mut hasher);
-        transaction.created_at_unix.to_bits().hash(&mut hasher);
-    }
-    let wallet_chain: BTreeMap<String, String> = wallets
-        .into_iter()
-        .map(|wallet| (wallet.wallet_id, wallet.selected_chain))
-        .collect();
-    for (wallet_id, selected_chain) in &wallet_chain {
-        wallet_id.hash(&mut hasher);
-        selected_chain.hash(&mut hasher);
-    }
-    hasher.finish() as i64
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, uniffi::Record)]
-#[serde(rename_all = "camelCase")]
 pub struct WalletEarliestTransactionDate {
     pub wallet_id: String,
     pub earliest_created_at_unix: f64,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, uniffi::Record)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(rename_all = "camelCase")]
 pub struct TransactionEarliestInput {
     pub wallet_id: Option<String>,
     pub created_at_unix: f64,
 }
 
-#[uniffi::export]
+/// Not exported: `WalletService::earliest_transaction_dates` is the entry point.
 pub fn core_earliest_transaction_dates(
     transactions: Vec<TransactionEarliestInput>,
 ) -> Vec<WalletEarliestTransactionDate> {
@@ -926,7 +880,7 @@ pub fn plan_append_chain_operational_event(
     events
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, uniffi::Record)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(rename_all = "camelCase")]
 pub struct EvmRecipientPreflightRequest {
     pub chain_name: String,
@@ -947,7 +901,8 @@ pub struct EvmRecipientPreflightWarning {
 
 /// Build warning codes for an EVM send's recipient + token contract checks.
 /// Swift localizes the codes into user-facing strings.
-#[uniffi::export]
+/// Not exported: `WalletService::evm_recipient_preflight` is the entry point,
+/// because the two contract-code probes it needs are core's own network calls.
 pub fn core_evm_recipient_preflight_warnings(
     request: EvmRecipientPreflightRequest,
 ) -> Vec<EvmRecipientPreflightWarning> {
@@ -1009,7 +964,14 @@ impl TransactionStatusTrackerState {
     }
 }
 
-#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, uniffi::Record)]
+/// How often a pending send is re-polled, and when it is given up on.
+///
+/// Policy, so it lives with the tracker table it schedules rather than crossing
+/// the boundary. These were six constants on the iOS side, packed into this
+/// record and handed to core on every one of five calls — so the schedule core
+/// applied was whatever the caller last said it was, and a second front end
+/// would have had to know the same six numbers to get the same behaviour.
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq)]
 #[serde(rename_all = "camelCase")]
 pub struct TransactionStatusPollConfig {
     pub pending_poll_seconds: f64,
@@ -1018,6 +980,19 @@ pub struct TransactionStatusPollConfig {
     pub finality_confirmations: u32,
     pub pending_failure_timeout_seconds: f64,
     pub pending_failure_min_failures: u32,
+}
+
+impl Default for TransactionStatusPollConfig {
+    fn default() -> Self {
+        Self {
+            pending_poll_seconds: 20.0,
+            confirmed_poll_seconds: 300.0,
+            backoff_max_seconds: 600.0,
+            finality_confirmations: 12,
+            pending_failure_timeout_seconds: 60.0 * 60.0,
+            pending_failure_min_failures: 6,
+        }
+    }
 }
 
 /// Matches Swift `shouldPollTransactionStatus`.

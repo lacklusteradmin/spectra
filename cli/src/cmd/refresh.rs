@@ -74,7 +74,7 @@ pub fn refresh(ctx: &Ctx, out: Out, args: RefreshArgs) -> CliResult<()> {
             skipped.push(wallet.name.clone());
             continue;
         };
-        let endpoints: Vec<String> = spectra_core::app_core_endpoint_records_for_chain(
+        let endpoints: Vec<String> = spectra_core::endpoint_records_for_chain_masked(
             chain.chain_display_name().to_string(),
             BALANCE | RPC,
             false,

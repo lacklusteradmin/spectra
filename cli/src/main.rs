@@ -62,6 +62,9 @@ enum Command {
     Portfolio(cmd::market::PortfolioArgs),
     /// Read or set the display currency.
     Currency(cmd::market::CurrencyArgs),
+    /// Settings core owns: providers, endpoints, fee priorities, alert rules.
+    #[command(subcommand)]
+    Settings(cmd::settings::SettingsCommand),
     /// Validators and staked positions.
     #[command(subcommand)]
     Staking(cmd::staking::StakingCommand),
@@ -110,6 +113,7 @@ fn dispatch(ctx: &Ctx, out: Out, command: Command) -> Result<(), CliError> {
         Command::Price(args) => cmd::market::price(ctx, out, args),
         Command::Portfolio(args) => cmd::market::portfolio(ctx, out, args),
         Command::Currency(args) => cmd::market::currency(ctx, out, args),
+        Command::Settings(command) => cmd::settings::run(ctx, out, command),
         Command::Staking(command) => cmd::staking::run(ctx, out, command),
         Command::Token(command) => cmd::token::run(ctx, out, command),
         Command::Diagnostics(command) => cmd::diagnostics::run(ctx, out, command),

@@ -55,7 +55,9 @@ pub(crate) use tokio::sync::RwLock;
 pub(crate) use serde::{Deserialize, Serialize};
 
 mod helpers;
+mod history_derived;
 mod history_cursor;
+mod maintenance;
 mod network;
 mod send;
 mod send_execution;
@@ -139,6 +141,15 @@ pub struct WalletService {
     /// as the keypool.
     pub(crate) operational_events:
         Arc<RwLock<HashMap<String, Vec<crate::store::ChainOperationalEventRecord>>>>,
+    /// When each kind of refresh last ran, in unix seconds.
+    ///
+    /// Not persisted, and that is the whole difference from the keypool: a
+    /// restart should refresh, which is exactly what an empty clock already
+    /// means. It was five `Date?` properties and two dictionaries on the iOS
+    /// side, handed back to core as arguments on every scheduling question —
+    /// so the answer was only as current as the caller's copy, and the CLI,
+    /// which has no such properties, could not ask the question at all.
+    pub(crate) refresh_clock: Arc<RwLock<crate::fetch::refresh::policy::RefreshClock>>,
 }
 #[uniffi::export(async_runtime = "tokio")]
 impl WalletService {
@@ -173,6 +184,7 @@ impl WalletService {
             status_trackers: Arc::new(RwLock::new(HashMap::new())),
             keypool: Arc::new(RwLock::new(HashMap::new())),
             owned_addresses: Arc::new(RwLock::new(HashMap::new())),
+            refresh_clock: Arc::new(RwLock::new(Default::default())),
             operational_events: Arc::new(RwLock::new(HashMap::new())),
         }))
     }

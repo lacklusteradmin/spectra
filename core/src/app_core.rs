@@ -146,8 +146,27 @@ pub fn app_core_derivation_paths_for_preset(
     Ok(seed_derivation_paths_for_account(account_index)?)
 }
 
+/// A chain's endpoint records, filtered to the roles asked for.
+///
+/// Takes role *names*. It used to take the bit mask, and the only way to get
+/// one was `core_endpoint_role_mask` — so a caller made a round trip to turn
+/// `["rpc", "balance"]` into a `u32` and handed the `u32` straight back.
+/// Rust callers keep the mask constants; the boundary does not need them.
 #[uniffi::export]
 pub fn app_core_endpoint_records_for_chain(
+    chain_name: String,
+    roles: Vec<String>,
+    settings_visible_only: bool,
+) -> Result<Vec<AppCoreEndpointRecord>, crate::SpectraBridgeError> {
+    endpoint_records_for_chain_masked(
+        chain_name,
+        core_endpoint_role_mask(roles),
+        settings_visible_only,
+    )
+}
+
+/// The same, for Rust callers that already hold the mask constants.
+pub fn endpoint_records_for_chain_masked(
     chain_name: String,
     role_mask: u32,
     settings_visible_only: bool,
@@ -161,16 +180,66 @@ pub fn app_core_endpoint_records_for_chain(
     ))
 }
 
+/// Everything the endpoint catalog holds for one chain.
+///
+/// Eight exports used to answer this one field at a time, each taking the
+/// chain and re-walking the same table — so a screen showing a chain's
+/// endpoints made six calls, and each one was a separate chance to be given a
+/// different chain's answer. The catalog is static once the embedded JSON
+/// parses, so a front end reads this once and keeps it.
+#[derive(Debug, Clone, PartialEq, uniffi::Record)]
+pub struct AppCoreChainEndpoints {
+    pub chain_id: String,
+    pub chain_name: String,
+    /// RPC endpoints, for the EVM family.
+    pub evm_rpc: Vec<String>,
+    /// Explorer endpoints that supplement the RPC list.
+    pub explorer_supplemental: Vec<String>,
+    /// What the settings screen shows, grouped by network.
+    pub grouped_settings: Vec<AppCoreGroupedSettingsEntry>,
+    pub diagnostics_checks: Vec<AppCoreDiagnosticsCheck>,
+    pub transaction_explorer: Option<AppCoreExplorerEntry>,
+    pub broadcast_providers: Vec<AppCoreBroadcastProviderOption>,
+    /// Esplora bases, for the Bitcoin family. Empty elsewhere.
+    pub bitcoin_esplora: Vec<String>,
+    /// Wallet-store defaults, for the Bitcoin family. Empty elsewhere.
+    pub bitcoin_wallet_store: Vec<String>,
+}
+
+/// The endpoint catalog, one row per chain, in catalog order.
 #[uniffi::export]
-pub fn app_core_endpoint_for_id(id: String) -> Result<String, crate::SpectraBridgeError> {
-    Ok(app_core_catalog().and_then(|catalog| {
-        catalog
-            .endpoint_records
-            .iter()
-            .find(|r| r.id == id)
-            .map(|r| r.endpoint.clone())
-            .ok_or_else(|| format!("Missing endpoint record for id: {id}"))
-    })?)
+pub fn app_core_chain_endpoints() -> Result<Vec<AppCoreChainEndpoints>, crate::SpectraBridgeError> {
+    let catalog = app_core_catalog()?;
+    Ok(crate::registry::Chain::all()
+        .map(|chain| {
+            let name = chain.chain_display_name().to_string();
+            let id = chain.str_id().to_string();
+            AppCoreChainEndpoints {
+                evm_rpc: endpoint_records_for_chain(catalog, &name, ENDPOINT_ROLE_RPC, false)
+                    .into_iter()
+                    .map(|r| r.endpoint)
+                    .collect(),
+                explorer_supplemental: endpoint_records_for_chain(
+                    catalog,
+                    &name,
+                    ENDPOINT_ROLE_EXPLORER,
+                    true,
+                )
+                .into_iter()
+                .map(|r| r.endpoint)
+                .collect(),
+                grouped_settings: grouped_settings_entries(catalog, &name),
+                diagnostics_checks: diagnostics_checks(catalog, &name),
+                transaction_explorer: transaction_explorer_entry(catalog, &name),
+                broadcast_providers: broadcast_provider_options(&name),
+                bitcoin_esplora: bitcoin_esplora_base_urls(catalog, &id).unwrap_or_default(),
+                bitcoin_wallet_store: bitcoin_wallet_store_default_base_urls(catalog, &id)
+                    .unwrap_or_default(),
+                chain_id: id,
+                chain_name: name,
+            }
+        })
+        .collect())
 }
 
 #[uniffi::export]
@@ -192,82 +261,8 @@ pub fn app_core_endpoints_for_ids(
 }
 
 #[uniffi::export]
-pub fn app_core_grouped_settings_entries(
-    chain_name: String,
-) -> Result<Vec<AppCoreGroupedSettingsEntry>, crate::SpectraBridgeError> {
-    Ok(app_core_catalog().map(|catalog| grouped_settings_entries(catalog, &chain_name))?)
-}
-
-#[uniffi::export]
-pub fn app_core_diagnostics_checks(
-    chain_name: String,
-) -> Result<Vec<AppCoreDiagnosticsCheck>, crate::SpectraBridgeError> {
-    Ok(app_core_catalog().map(|catalog| diagnostics_checks(catalog, &chain_name))?)
-}
-
-#[uniffi::export]
-pub fn app_core_transaction_explorer_entry(
-    chain_name: String,
-) -> Result<Option<AppCoreExplorerEntry>, crate::SpectraBridgeError> {
-    Ok(app_core_catalog().map(|catalog| transaction_explorer_entry(catalog, &chain_name))?)
-}
-
-#[uniffi::export]
-pub fn app_core_bitcoin_esplora_base_urls(
-    chain_id: String,
-) -> Result<Vec<String>, crate::SpectraBridgeError> {
-    Ok(app_core_catalog().and_then(|catalog| bitcoin_esplora_base_urls(catalog, &chain_id))?)
-}
-
-#[uniffi::export]
-pub fn app_core_bitcoin_wallet_store_default_base_urls(
-    chain_id: String,
-) -> Result<Vec<String>, crate::SpectraBridgeError> {
-    Ok(app_core_catalog()
-        .and_then(|catalog| bitcoin_wallet_store_default_base_urls(catalog, &chain_id))?)
-}
-
-#[uniffi::export]
-pub fn app_core_evm_rpc_endpoints(
-    chain_name: String,
-) -> Result<Vec<String>, crate::SpectraBridgeError> {
-    let catalog = app_core_catalog()?;
-    Ok(
-        endpoint_records_for_chain(catalog, &chain_name, ENDPOINT_ROLE_RPC, false)
-            .into_iter()
-            .map(|r| r.endpoint)
-            .collect(),
-    )
-}
-
-#[uniffi::export]
-pub fn app_core_explorer_supplemental_endpoints(
-    chain_name: String,
-) -> Result<Vec<String>, crate::SpectraBridgeError> {
-    let catalog = app_core_catalog()?;
-    Ok(
-        endpoint_records_for_chain(catalog, &chain_name, ENDPOINT_ROLE_EXPLORER, true)
-            .into_iter()
-            .map(|r| r.endpoint)
-            .collect(),
-    )
-}
-
-#[uniffi::export]
-pub fn app_core_broadcast_provider_options(
-    chain_name: String,
-) -> Vec<AppCoreBroadcastProviderOption> {
-    broadcast_provider_options(&chain_name)
-}
-
-#[uniffi::export]
 pub fn app_core_chain_backends() -> Vec<AppCoreChainBackend> {
     chain_backends()
-}
-
-#[uniffi::export]
-pub fn app_core_live_chain_names() -> Vec<String> {
-    live_chain_names()
 }
 
 // ── Internals ─────────────────────────────────────────────────────────────
@@ -519,7 +514,7 @@ pub fn core_transaction_explorer_url(
     chain_name: String,
     transaction_hash: String,
 ) -> Result<Option<String>, crate::SpectraBridgeError> {
-    let entry = app_core_transaction_explorer_entry(chain_name.clone())?;
+    let entry = transaction_explorer_entry(app_core_catalog()?, &chain_name);
     Ok(entry.map(|e| {
         if chain_name == "Aptos" {
             format!("{}{transaction_hash}?network=mainnet", e.endpoint)
@@ -529,7 +524,8 @@ pub fn core_transaction_explorer_url(
     }))
 }
 
-#[uniffi::export]
+/// Not exported: the boundary takes role names, and this is how they become a
+/// mask on this side.
 pub fn core_endpoint_role_mask(roles: Vec<String>) -> u32 {
     roles
         .iter()
@@ -738,7 +734,7 @@ pub fn core_derivation_path_string(segments: Vec<DerivationPathSegment>) -> Stri
 /// Testnets resolve to their mainnet counterpart: the derivation recipe is
 /// identical and only the address encoding differs, so both share one stored
 /// path. Unknown names return an empty string.
-#[uniffi::export]
+/// Not exported: a column of `core_chain_identities` now.
 pub fn core_seed_derivation_path_key(chain_name: String) -> String {
     crate::registry::Chain::from_display_name(&chain_name)
         .map(|chain| chain.mainnet_counterpart().str_id().to_string())
@@ -1074,8 +1070,15 @@ mod testnet_derivation_paths {
 mod endpoint_network_index_tests {
     use super::*;
 
+    /// Reads through the one catalog the front ends read, so the index this
+    /// asserts about is the index they get.
     fn rpc_endpoints(chain_name: &str) -> Vec<String> {
-        app_core_evm_rpc_endpoints(chain_name.to_string()).expect("catalog")
+        app_core_chain_endpoints()
+            .expect("catalog")
+            .into_iter()
+            .find(|entry| entry.chain_name == chain_name)
+            .map(|entry| entry.evm_rpc)
+            .unwrap_or_default()
     }
 
     /// A testnet's records are filed under its mainnet's `chainName`, with the

@@ -35,19 +35,7 @@ pub struct SendAssetRoutingPlan {
     pub allows_zero_amount: bool,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, uniffi::Record)]
-#[serde(rename_all = "camelCase")]
-pub struct SendPreviewRoutingRequest {
-    pub asset: Option<SendAssetRoutingInput>,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, uniffi::Record)]
-#[serde(rename_all = "camelCase")]
-pub struct SendPreviewRoutingPlan {
-    pub active_preview_kind: Option<String>,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, uniffi::Record)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(rename_all = "camelCase")]
 pub struct SendSubmitPreflightRequest {
     pub wallet_found: bool,
@@ -238,16 +226,6 @@ pub fn route_send_asset(input: &SendAssetRoutingInput) -> SendAssetRoutingPlan {
     }
 }
 
-pub fn plan_send_preview_routing(request: SendPreviewRoutingRequest) -> SendPreviewRoutingPlan {
-    let active_preview_kind = request
-        .asset
-        .as_ref()
-        .and_then(|asset| route_send_asset(asset).preview_kind);
-    SendPreviewRoutingPlan {
-        active_preview_kind,
-    }
-}
-
 pub fn plan_send_submit_preflight(
     request: SendSubmitPreflightRequest,
 ) -> Result<SendSubmitPreflightPlan, String> {
@@ -315,9 +293,8 @@ fn native_evm_symbol_for_chain(chain_name: &str) -> Option<String> {
 #[cfg(test)]
 mod tests {
     use super::{
-        plan_send_preview_routing, plan_send_submit_preflight, route_send_asset,
-        SendAssetRoutingInput, SendExecutionRequest, SendPreviewRoutingRequest,
-        SendSubmitPreflightRequest,
+        plan_send_submit_preflight, route_send_asset, SendAssetRoutingInput,
+        SendExecutionRequest, SendSubmitPreflightRequest,
     };
 
     #[test]
@@ -336,19 +313,100 @@ mod tests {
         assert!(route.allows_zero_amount);
     }
 
+    /// The preview and the submit are the same routing decision.
+    ///
+    /// They used to be two: a `plan_send_preview_routing` wrapper that read
+    /// `route_send_asset().preview_kind` and threw the rest away, and a
+    /// caller-side re-check for the submit branch. Asserting both fields of
+    /// one route is what says they cannot drift.
     #[test]
     fn routes_supported_solana_assets_to_solana_preview_and_submit() {
-        let plan = plan_send_preview_routing(SendPreviewRoutingRequest {
-            asset: Some(SendAssetRoutingInput {
-                chain_name: "Solana".to_string(),
-                symbol: "USDC".to_string(),
-                is_evm_chain: false,
-                supports_solana_send_coin: true,
-                supports_near_token_send: false,
-            }),
+        let route = route_send_asset(&SendAssetRoutingInput {
+            chain_name: "Solana".to_string(),
+            symbol: "USDC".to_string(),
+            is_evm_chain: false,
+            supports_solana_send_coin: true,
+            supports_near_token_send: false,
         });
 
-        assert_eq!(plan.active_preview_kind.as_deref(), Some("solana"));
+        assert_eq!(route.preview_kind.as_deref(), Some("solana"));
+        assert_eq!(route.submit_kind.as_deref(), Some("solana"));
+
+        // And an untracked mint routes nowhere, rather than to Solana.
+        let untracked = route_send_asset(&SendAssetRoutingInput {
+            chain_name: "Solana".to_string(),
+            symbol: "USDC".to_string(),
+            is_evm_chain: false,
+            supports_solana_send_coin: false,
+            supports_near_token_send: false,
+        });
+        assert_eq!(untracked.submit_kind, None);
+    }
+
+    /// The routing kinds are a closed set, and every chain that can send has
+    /// one.
+    ///
+    /// `submitSend` switches on these strings. It used to re-derive the route
+    /// from chain-name lists, so a kind renamed here would have changed
+    /// nothing there; now a rename drops a chain straight into "not enabled
+    /// yet" — silently, at the moment a user tries to send. This is the test
+    /// that fails instead.
+    #[test]
+    fn every_sendable_chain_has_a_routing_kind_from_the_known_set() {
+        use crate::registry::Chain;
+        const KNOWN: &[&str] = &[
+            "bitcoin",
+            "bitcoinCash",
+            "bitcoinSV",
+            "litecoin",
+            "dogecoin",
+            "tron",
+            "xrp",
+            "stellar",
+            "monero",
+            "cardano",
+            "sui",
+            "aptos",
+            "ton",
+            "icp",
+            "near",
+            "polkadot",
+            "ethereum",
+            "solana",
+        ];
+        let mut unrouted = Vec::new();
+        for chain in Chain::mainnets() {
+            let symbol = chain.entry().gas_token_symbol.clone();
+            let route = route_send_asset(&SendAssetRoutingInput {
+                chain_name: chain.chain_display_name().to_string(),
+                symbol,
+                is_evm_chain: chain.is_evm(),
+                supports_solana_send_coin: chain == Chain::Solana,
+                supports_near_token_send: false,
+            });
+            match route.submit_kind.as_deref() {
+                Some(kind) => assert!(
+                    KNOWN.contains(&kind),
+                    "{} routes to {kind:?}, which `submitSend` does not switch on",
+                    chain.chain_display_name()
+                ),
+                None => unrouted.push(chain.chain_display_name()),
+            }
+        }
+        // The chains with no send path are named, so adding one is a decision
+        // rather than something that shows up as a dead branch.
+        assert_eq!(
+            unrouted,
+            vec![
+                "Zcash",
+                "Bitcoin Gold",
+                "Decred",
+                "Kaspa",
+                "Dash",
+                "Bittensor"
+            ],
+            "the set of chains that cannot send changed"
+        );
     }
 
     #[test]
@@ -438,14 +496,4 @@ mod tests {
 
 // ── FFI surface ─────────────────────────────────────────────────────────────
 
-#[uniffi::export]
-pub fn core_send_preview_routing(request: SendPreviewRoutingRequest) -> SendPreviewRoutingPlan {
-    plan_send_preview_routing(request)
-}
 
-#[uniffi::export]
-pub fn core_send_submit_preflight(
-    request: SendSubmitPreflightRequest,
-) -> Result<SendSubmitPreflightPlan, crate::SpectraBridgeError> {
-    Ok(plan_send_submit_preflight(request)?)
-}

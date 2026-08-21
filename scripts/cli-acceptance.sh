@@ -289,6 +289,62 @@ check "refuses untracking what is not tracked"     $REJECTED spectra token untra
 # reach it — only Swift drove it — so "which chains stake" is the part worth
 # asserting without a network.
 
+section "settings"
+check "lists the settings core owns"        $OK spectra settings list
+check "sets one"                            $OK \
+    spectra settings set bitcoin-fee-priority priority
+contains "and a second process reads it back" '"value":"priority"' \
+    spectra --json settings get bitcoin-fee-priority
+# The bound is core's. A stop gap of zero finds no addresses, and this used to
+# be clamped only in an iOS `didSet` — reachable from nowhere else.
+check "bounds a number instead of storing it" $OK \
+    spectra settings set bitcoin-stop-gap 9999
+contains "clamped to the top of the range"  '"value":"200"' \
+    spectra --json settings get bitcoin-stop-gap
+contains "trims a pasted value"             '"value":"KEY"' \
+    spectra --json settings set etherscan-api-key "  KEY  "
+check "refuses a setting that does not exist" $REJECTED spectra settings set nope 1
+check "refuses a value of the wrong kind"   $REJECTED \
+    spectra settings set strict-rpc-only maybe
+
+section "private-key import"
+# The last wallet operation the CLI could not drive. Core has dispatched
+# private-key derivation by chain since `core_derive_from_private_key`; what
+# was missing was the command.
+printf '4c0883a69102937d6231471b5dbb6204fe5129617082792ae468d01a3f362318\n' > "$DATA_DIR/pk.hex"
+check "imports a wallet from a private key"  $OK \
+    with_password "correct horse" spectra wallet import --chain Ethereum \
+        --name "PK Wallet" --private-key-file "$DATA_DIR/pk.hex"
+contains "and derives the right address"     '0x2c7536e3605d9c16a7a3d7b1898e529396a65c23' \
+    spectra --json wallet show "PK Wallet"
+contains "and reports how it signs"          'private key' \
+    spectra wallet show "PK Wallet"
+check "refuses a chain that cannot derive from a key" $REJECTED \
+    with_password "correct horse" spectra wallet import --chain Cardano \
+        --name "No PK" --private-key-file "$DATA_DIR/pk.hex"
+# Which chains a private key covers is one registry fact, and this is the check
+# that the app's picker and the CLI cannot disagree about it. Polygon was in
+# neither of the app's two hand-written lists and derives the same EVM address
+# as Ethereum; Decred was in one list, absent from Swift's switch, and derives.
+contains "the same key derives on every EVM chain" '0x2c7536e3605d9c16a7a3d7b1898e529396a65c23' \
+    with_password "correct horse" spectra --json wallet import --chain Polygon \
+        --name "PK Polygon" --private-key-file "$DATA_DIR/pk.hex"
+check "and on the fifth UTXO chain"           $OK \
+    with_password "correct horse" spectra wallet import --chain Decred \
+        --name "PK Decred" --private-key-file "$DATA_DIR/pk.hex"
+contains "a chain that derives says so in the catalog" '"name":"Polygon","privateKeyImport":true' \
+    spectra --json chains --filter Polygon
+contains "and one that does not says that"    '"name":"Solana","privateKeyImport":false' \
+    spectra --json chains --filter Solana
+check "cleans up the extra key wallets"       $OK spectra wallet delete "PK Polygon" --yes
+check "and the second one"                    $OK spectra wallet delete "PK Decred" --yes
+# A key the CLI can seal but never return is a lost key, so export handles it —
+# behind the same gate as a seed phrase.
+check "will not print the key without --yes"  $USAGE spectra wallet export "PK Wallet"
+contains "returns the key it sealed"          '"privateKey":"4c0883a6' \
+    with_password "correct horse" spectra --json wallet export "PK Wallet" --yes
+check "deletes the private-key wallet"        $OK spectra wallet delete "PK Wallet" --yes
+
 section "staking"
 check "refuses staking on a chain that does not stake" $REJECTED \
     spectra staking validators --chain Bitcoin

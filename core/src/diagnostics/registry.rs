@@ -42,8 +42,9 @@ fn registry() -> &'static Mutex<DiagnosticsRegistry> {
 }
 
 macro_rules! chain_keyed_registry {
-    ($field:ident, $ty:ident, $all:ident, $replace:ident) => {
-        #[uniffi::export]
+    ($field:ident, $ty:ident, $all:ident, $record:ident) => {
+        /// The whole map for a chain. Internal: the exporter builds a document
+        /// from it, and nothing outside the crate has a use for every row.
         pub fn $all(chain_name: String) -> HashMap<String, $ty> {
             registry()
                 .lock()
@@ -54,13 +55,21 @@ macro_rules! chain_keyed_registry {
                 .unwrap_or_default()
         }
 
+        /// Record one wallet's result.
+        ///
+        /// This was `replace(chain_name, entries)`, paired with the getter
+        /// above: a caller wanting to store one wallet's row read every row
+        /// across the boundary, inserted into the copy, and sent all of them
+        /// back. Two rows written concurrently kept whichever finished second.
         #[uniffi::export]
-        pub fn $replace(chain_name: String, entries: HashMap<String, $ty>) {
+        pub fn $record(chain_name: String, wallet_id: String, entry: $ty) {
             registry()
                 .lock()
                 .unwrap()
                 .$field
-                .insert(chain_name, entries);
+                .entry(chain_name)
+                .or_default()
+                .insert(wallet_id, entry);
         }
     };
 }
@@ -69,40 +78,104 @@ chain_keyed_registry!(
     utxo,
     BitcoinHistoryDiagnostics,
     diagnostics_all_utxo,
-    diagnostics_replace_utxo
+    diagnostics_record_utxo
 );
 chain_keyed_registry!(
     evm,
     EthereumTokenTransferHistoryDiagnostics,
     diagnostics_all_evm,
-    diagnostics_replace_evm
+    diagnostics_record_evm
 );
 chain_keyed_registry!(
     simple,
     SimpleHistoryDiagnostics,
     diagnostics_all_simple,
-    diagnostics_replace_simple
+    diagnostics_record_simple
 );
 
 /// One chain each, so a chain argument could only ever hold one value.
-#[uniffi::export]
 pub fn diagnostics_all_tron() -> HashMap<String, TronHistoryDiagnostics> {
     registry().lock().unwrap().tron.clone()
 }
 
 #[uniffi::export]
-pub fn diagnostics_replace_tron(entries: HashMap<String, TronHistoryDiagnostics>) {
-    registry().lock().unwrap().tron = entries;
+pub fn diagnostics_record_tron(wallet_id: String, entry: TronHistoryDiagnostics) {
+    registry().lock().unwrap().tron.insert(wallet_id, entry);
 }
 
-#[uniffi::export]
 pub fn diagnostics_all_solana() -> HashMap<String, SolanaHistoryDiagnostics> {
     registry().lock().unwrap().solana.clone()
 }
 
 #[uniffi::export]
-pub fn diagnostics_replace_solana(entries: HashMap<String, SolanaHistoryDiagnostics>) {
-    registry().lock().unwrap().solana = entries;
+pub fn diagnostics_record_solana(wallet_id: String, entry: SolanaHistoryDiagnostics) {
+    registry().lock().unwrap().solana.insert(wallet_id, entry);
+}
+
+/// What a chain's diagnostics screen shows about its history run: how many
+/// wallets reported, and which source each used.
+///
+/// The screen used to ask for the whole registry and reduce it — five
+/// `diagnostics_all_*` calls behind a five-way switch on the record shape, to
+/// reach two numbers that every shape has. The shape is a registry fact and
+/// the records are core's, so neither needs to cross.
+#[derive(Debug, Clone, PartialEq, uniffi::Record)]
+pub struct DiagnosticsRunSummary {
+    pub wallet_count: u32,
+    /// One entry per wallet, in no particular order — the caller groups them.
+    pub sources: Vec<String>,
+}
+
+#[uniffi::export]
+pub fn diagnostics_run_summary(chain_name: String) -> DiagnosticsRunSummary {
+    use crate::registry::{Chain, DiagnosticsShape};
+    let reg = registry().lock().unwrap();
+    let sources: Vec<String> = match Chain::from_display_name(&chain_name).map(Chain::diagnostics_shape) {
+        Some(DiagnosticsShape::Utxo) => reg
+            .utxo
+            .get(&chain_name)
+            .map(|m| m.values().map(|d| d.source_used.clone()).collect())
+            .unwrap_or_default(),
+        Some(DiagnosticsShape::Evm) => reg
+            .evm
+            .get(&chain_name)
+            .map(|m| m.values().map(|d| d.source_used.clone()).collect())
+            .unwrap_or_default(),
+        Some(DiagnosticsShape::Tron) => reg.tron.values().map(|d| d.source_used.clone()).collect(),
+        Some(DiagnosticsShape::Solana) => reg.solana.values().map(|d| d.source_used.clone()).collect(),
+        Some(DiagnosticsShape::Simple) => reg
+            .simple
+            .get(&chain_name)
+            .map(|m| m.values().map(|d| d.source_used.clone()).collect())
+            .unwrap_or_default(),
+        None => Vec::new(),
+    };
+    DiagnosticsRunSummary {
+        wallet_count: sources.len() as u32,
+        sources,
+    }
+}
+
+/// Drop every diagnostics row a wallet left behind, on every chain.
+///
+/// The caller used to name the chains: twenty-seven lines of
+/// `self[utxoHistoryFor: "Bitcoin"][walletID] = nil`, one per chain per shape,
+/// each a read-modify-write of a whole map across the boundary. A wallet is
+/// gone from all of them or none.
+#[uniffi::export]
+pub fn diagnostics_forget_wallet(wallet_id: String) {
+    let mut reg = registry().lock().unwrap();
+    for by_chain in reg.utxo.values_mut() {
+        by_chain.remove(&wallet_id);
+    }
+    for by_chain in reg.evm.values_mut() {
+        by_chain.remove(&wallet_id);
+    }
+    for by_chain in reg.simple.values_mut() {
+        by_chain.remove(&wallet_id);
+    }
+    reg.tron.remove(&wallet_id);
+    reg.solana.remove(&wallet_id);
 }
 
 #[uniffi::export]
@@ -134,28 +207,54 @@ mod tests {
         }
     }
 
+    /// Recording is per wallet, and one wallet's row does not disturb another's.
+    ///
+    /// The pair this replaces was read-everything / write-everything, so this
+    /// test asserted that "replace is a replace, not a merge" — the property
+    /// that made two concurrent writers lose one of the two rows.
     #[test]
-    fn replace_and_read_back_by_chain() {
+    fn recording_one_wallet_leaves_the_others_alone() {
         let _g = test_lock();
         diagnostics_clear_all();
         assert!(diagnostics_all_utxo("Bitcoin".into()).is_empty());
 
-        let mut entries = HashMap::new();
-        entries.insert("w1".to_string(), sample_bitcoin("w1"));
-        entries.insert("w2".to_string(), sample_bitcoin("w2"));
-        diagnostics_replace_utxo("Bitcoin".into(), entries);
+        diagnostics_record_utxo("Bitcoin".into(), "w1".into(), sample_bitcoin("w1"));
+        diagnostics_record_utxo("Bitcoin".into(), "w2".into(), sample_bitcoin("w2"));
         assert_eq!(diagnostics_all_utxo("Bitcoin".into()).len(), 2);
 
-        // Replace is a replace, not a merge.
-        let mut only_w3 = HashMap::new();
-        only_w3.insert("w3".to_string(), sample_bitcoin("w3"));
-        diagnostics_replace_utxo("Bitcoin".into(), only_w3);
+        diagnostics_record_utxo("Bitcoin".into(), "w3".into(), sample_bitcoin("w3"));
         let stored = diagnostics_all_utxo("Bitcoin".into());
-        assert_eq!(stored.len(), 1);
-        assert!(stored.contains_key("w3"));
+        assert_eq!(stored.len(), 3, "recording a third wallet dropped the first two");
+        assert!(stored.contains_key("w1") && stored.contains_key("w3"));
+
+        // And a wallet that goes away takes its rows with it, on every chain.
+        diagnostics_forget_wallet("w1".into());
+        let stored = diagnostics_all_utxo("Bitcoin".into());
+        assert_eq!(stored.len(), 2);
+        assert!(!stored.contains_key("w1"));
 
         diagnostics_clear_all();
         assert!(diagnostics_all_utxo("Bitcoin".into()).is_empty());
+    }
+
+    /// The screen's two numbers come from core, whatever the record shape.
+    #[test]
+    fn the_run_summary_counts_wallets_and_lists_their_sources() {
+        let _g = test_lock();
+        diagnostics_clear_all();
+        assert_eq!(diagnostics_run_summary("Bitcoin".into()).wallet_count, 0);
+
+        diagnostics_record_utxo("Bitcoin".into(), "w1".into(), sample_bitcoin("w1"));
+        diagnostics_record_utxo("Bitcoin".into(), "w2".into(), sample_bitcoin("w2"));
+        let summary = diagnostics_run_summary("Bitcoin".into());
+        assert_eq!(summary.wallet_count, 2);
+        assert_eq!(summary.sources.len(), 2);
+
+        // A chain of another shape reads its own registry, not this one.
+        assert_eq!(diagnostics_run_summary("XRP Ledger".into()).wallet_count, 0);
+        // And a name no chain has is empty rather than a panic.
+        assert_eq!(diagnostics_run_summary("Nope".into()).wallet_count, 0);
+        diagnostics_clear_all();
     }
 
     /// Chains sharing a record shape must not share a bucket. The old macro got
@@ -165,9 +264,7 @@ mod tests {
     fn chains_of_the_same_shape_keep_separate_buckets() {
         let _g = test_lock();
         diagnostics_clear_all();
-        let mut entries = HashMap::new();
-        entries.insert("w".to_string(), sample_bitcoin("w"));
-        diagnostics_replace_utxo("Bitcoin".into(), entries);
+        diagnostics_record_utxo("Bitcoin".into(), "w".into(), sample_bitcoin("w"));
 
         assert_eq!(diagnostics_all_utxo("Bitcoin".into()).len(), 1);
         assert!(diagnostics_all_utxo("Litecoin".into()).is_empty());

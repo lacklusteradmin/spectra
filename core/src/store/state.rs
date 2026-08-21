@@ -137,7 +137,7 @@ pub enum AddressBookRejection {
     DuplicateAddress,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, uniffi::Record)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, uniffi::Record)]
 #[serde(rename_all = "camelCase")]
 /// Settings that are part of the domain — every front end must agree on them,
 /// and losing one on restart would be a bug.
@@ -145,6 +145,14 @@ pub enum AddressBookRejection {
 /// Presentation preferences (theme, which rows are pinned, diagnostic
 /// verbosity) are *not* domain state and stay on the platform. Do not add a
 /// field here that only one front end reads.
+///
+/// Eighteen of these fields arrived from `PersistedAppSettings`, a
+/// twenty-three field blob iOS loaded whole at launch and wrote back whole on
+/// every change. Four of that blob's fields stayed on iOS, where they belong —
+/// hiding balances, Face ID, auto-lock and biometric-gated sends are one front
+/// end's presentation and one platform's capability. The rest decide what gets
+/// fetched, what a send costs and when an alert fires, and the CLI had no way
+/// to read or set any of them.
 pub struct AppSettings {
     /// ISO 4217 code the user wants amounts displayed in.
     pub fiat_currency_code: String,
@@ -165,6 +173,98 @@ pub struct AppSettings {
     /// a fourth meant touching all of them.
     #[serde(default)]
     pub network_chain_by_family: std::collections::HashMap<String, String>,
+
+    // ── Providers ─────────────────────────────────────────────────────────
+    /// Which price source to quote from.
+    #[serde(default = "default_pricing_provider")]
+    pub pricing_provider: String,
+    /// Which source to take fiat cross-rates from.
+    #[serde(default = "default_fiat_rate_provider")]
+    pub fiat_rate_provider: String,
+
+    // ── Endpoints and credentials ─────────────────────────────────────────
+    /// Custom Ethereum RPC, or empty for the catalog's list.
+    #[serde(default)]
+    pub ethereum_rpc_endpoint: String,
+    #[serde(default)]
+    pub etherscan_api_key: String,
+    #[serde(default)]
+    pub monero_backend_base_url: String,
+    #[serde(default)]
+    pub monero_backend_api_key: String,
+    /// Custom Esplora bases, comma/semicolon/newline separated, or empty.
+    #[serde(default)]
+    pub bitcoin_esplora_endpoints: String,
+    /// How far past the last used address HD discovery keeps looking.
+    #[serde(default = "default_bitcoin_stop_gap")]
+    pub bitcoin_stop_gap: u32,
+
+    // ── Fees ──────────────────────────────────────────────────────────────
+    #[serde(default = "default_fee_priority")]
+    pub bitcoin_fee_priority: String,
+    #[serde(default = "default_fee_priority")]
+    pub dogecoin_fee_priority: String,
+
+    // ── Network and refresh policy ────────────────────────────────────────
+    /// Refuse endpoints the user has not vetted.
+    #[serde(default)]
+    pub use_strict_rpc_only: bool,
+    #[serde(default = "default_background_sync_profile")]
+    pub background_sync_profile: String,
+    #[serde(default = "default_refresh_frequency_minutes")]
+    pub automatic_refresh_frequency_minutes: u32,
+
+    // ── Alerting ──────────────────────────────────────────────────────────
+    #[serde(default = "default_true")]
+    pub use_price_alerts: bool,
+    #[serde(default = "default_true")]
+    pub use_transaction_status_notifications: bool,
+    #[serde(default = "default_true")]
+    pub use_large_movement_notifications: bool,
+    #[serde(default = "default_large_movement_percent")]
+    pub large_movement_alert_percent_threshold: f64,
+    #[serde(default = "default_large_movement_usd")]
+    pub large_movement_alert_usd_threshold: f64,
+}
+
+// Bounds live here rather than in a front end's `didSet`, which is where they
+// were: a value outside them is refused at the reducer, so no caller can store
+// a stop gap of zero or a refresh interval that would hammer an endpoint.
+pub const BITCOIN_STOP_GAP_RANGE: std::ops::RangeInclusive<u32> = 1..=200;
+pub const REFRESH_FREQUENCY_MINUTES_RANGE: std::ops::RangeInclusive<u32> = 5..=60;
+pub const LARGE_MOVEMENT_PERCENT_RANGE: std::ops::RangeInclusive<f64> = 1.0..=90.0;
+pub const LARGE_MOVEMENT_USD_RANGE: std::ops::RangeInclusive<f64> = 1.0..=100_000.0;
+
+// One notion of "default" per field: `AppSettings::default()` calls these, and
+// serde reads them for a field a stored row does not carry. Splitting the two
+// is how a row written before `use_price_alerts` existed would have loaded with
+// alerts silently off, rather than on as a fresh install has them.
+fn default_pricing_provider() -> String {
+    "CoinGecko".to_string()
+}
+fn default_fiat_rate_provider() -> String {
+    "Open ER".to_string()
+}
+fn default_fee_priority() -> String {
+    "normal".to_string()
+}
+fn default_background_sync_profile() -> String {
+    "balanced".to_string()
+}
+fn default_true() -> bool {
+    true
+}
+fn default_bitcoin_stop_gap() -> u32 {
+    10
+}
+fn default_refresh_frequency_minutes() -> u32 {
+    5
+}
+fn default_large_movement_percent() -> f64 {
+    10.0
+}
+fn default_large_movement_usd() -> f64 {
+    50.0
 }
 
 impl AppSettings {
@@ -204,6 +304,24 @@ impl Default for AppSettings {
             fiat_currency_code: "USD".to_string(),
             pinned_dashboard_asset_symbols: Vec::new(),
             network_chain_by_family: std::collections::HashMap::new(),
+            pricing_provider: default_pricing_provider(),
+            fiat_rate_provider: default_fiat_rate_provider(),
+            ethereum_rpc_endpoint: String::new(),
+            etherscan_api_key: String::new(),
+            monero_backend_base_url: String::new(),
+            monero_backend_api_key: String::new(),
+            bitcoin_esplora_endpoints: String::new(),
+            bitcoin_stop_gap: default_bitcoin_stop_gap(),
+            bitcoin_fee_priority: default_fee_priority(),
+            dogecoin_fee_priority: default_fee_priority(),
+            use_strict_rpc_only: false,
+            background_sync_profile: default_background_sync_profile(),
+            automatic_refresh_frequency_minutes: default_refresh_frequency_minutes(),
+            use_price_alerts: default_true(),
+            use_transaction_status_notifications: default_true(),
+            use_large_movement_notifications: default_true(),
+            large_movement_alert_percent_threshold: default_large_movement_percent(),
+            large_movement_alert_usd_threshold: default_large_movement_usd(),
         }
     }
 }
@@ -244,6 +362,36 @@ impl Default for CoreAppState {
 /// producing an unrenderable amount.
 const MAX_TOKEN_DECIMALS: i32 = 30;
 
+/// One settings field, and its new value.
+///
+/// A variant per field rather than a whole-record setter: the record was how
+/// this state used to move — iOS built all twenty-three fields from its own
+/// properties and wrote them together, so two screens changing two settings
+/// raced, and the later write carried the earlier screen's stale copy of
+/// everything else. Setting one field says one field.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, uniffi::Enum)]
+#[serde(tag = "field", rename_all = "camelCase")]
+pub enum AppSettingUpdate {
+    PricingProvider { value: String },
+    FiatRateProvider { value: String },
+    EthereumRpcEndpoint { value: String },
+    EtherscanApiKey { value: String },
+    MoneroBackendBaseUrl { value: String },
+    MoneroBackendApiKey { value: String },
+    BitcoinEsploraEndpoints { value: String },
+    BitcoinStopGap { value: u32 },
+    BitcoinFeePriority { value: String },
+    DogecoinFeePriority { value: String },
+    UseStrictRpcOnly { value: bool },
+    BackgroundSyncProfile { value: String },
+    AutomaticRefreshFrequencyMinutes { value: u32 },
+    UsePriceAlerts { value: bool },
+    UseTransactionStatusNotifications { value: bool },
+    UseLargeMovementNotifications { value: bool },
+    LargeMovementAlertPercentThreshold { value: f64 },
+    LargeMovementAlertUsdThreshold { value: f64 },
+}
+
 /// An intent to change the resident state.
 ///
 /// `ReplaceState` and `UpsertWallet` carry whole records, so every value is as
@@ -277,6 +425,11 @@ pub enum StateCommand {
     },
     SetFiatCurrency {
         fiat_currency_code: String,
+    },
+    /// Change one settings field. Values are trimmed and bounded here, so a
+    /// front end cannot store a stop gap of zero by writing to its own copy.
+    SetAppSetting {
+        update: AppSettingUpdate,
     },
     /// Replace the pinned dashboard set. Symbols are normalised to upper case
     /// and de-duplicated, first occurrence winning, so display order is the
@@ -356,6 +509,76 @@ fn address_book_contains(
 
 /// Apply a state command in place, returning only the events.
 /// Avoids deep-cloning the entire CoreAppState on every mutation.
+/// Apply one settings update, trimming strings and bounding numbers.
+///
+/// The clamps were `didSet` bodies on the iOS side — the only copy, so a value
+/// out of range was only out of range where someone had remembered to check.
+fn apply_app_setting(settings: &mut AppSettings, update: AppSettingUpdate) {
+    fn trimmed(value: String) -> String {
+        value.trim().to_string()
+    }
+    fn clamp<T: PartialOrd>(value: T, range: std::ops::RangeInclusive<T>) -> T {
+        let (low, high) = range.into_inner();
+        if value < low {
+            low
+        } else if value > high {
+            high
+        } else {
+            value
+        }
+    }
+    match update {
+        AppSettingUpdate::PricingProvider { value } => settings.pricing_provider = trimmed(value),
+        AppSettingUpdate::FiatRateProvider { value } => settings.fiat_rate_provider = trimmed(value),
+        AppSettingUpdate::EthereumRpcEndpoint { value } => {
+            settings.ethereum_rpc_endpoint = trimmed(value)
+        }
+        AppSettingUpdate::EtherscanApiKey { value } => settings.etherscan_api_key = trimmed(value),
+        AppSettingUpdate::MoneroBackendBaseUrl { value } => {
+            settings.monero_backend_base_url = trimmed(value)
+        }
+        AppSettingUpdate::MoneroBackendApiKey { value } => {
+            settings.monero_backend_api_key = trimmed(value)
+        }
+        // Not trimmed as a whole: this is a separated list, and the parser
+        // trims each entry. Trimming the list would only drop its outer edges.
+        AppSettingUpdate::BitcoinEsploraEndpoints { value } => {
+            settings.bitcoin_esplora_endpoints = value
+        }
+        AppSettingUpdate::BitcoinStopGap { value } => {
+            settings.bitcoin_stop_gap = clamp(value, BITCOIN_STOP_GAP_RANGE)
+        }
+        AppSettingUpdate::BitcoinFeePriority { value } => {
+            settings.bitcoin_fee_priority = trimmed(value)
+        }
+        AppSettingUpdate::DogecoinFeePriority { value } => {
+            settings.dogecoin_fee_priority = trimmed(value)
+        }
+        AppSettingUpdate::UseStrictRpcOnly { value } => settings.use_strict_rpc_only = value,
+        AppSettingUpdate::BackgroundSyncProfile { value } => {
+            settings.background_sync_profile = trimmed(value)
+        }
+        AppSettingUpdate::AutomaticRefreshFrequencyMinutes { value } => {
+            settings.automatic_refresh_frequency_minutes =
+                clamp(value, REFRESH_FREQUENCY_MINUTES_RANGE)
+        }
+        AppSettingUpdate::UsePriceAlerts { value } => settings.use_price_alerts = value,
+        AppSettingUpdate::UseTransactionStatusNotifications { value } => {
+            settings.use_transaction_status_notifications = value
+        }
+        AppSettingUpdate::UseLargeMovementNotifications { value } => {
+            settings.use_large_movement_notifications = value
+        }
+        AppSettingUpdate::LargeMovementAlertPercentThreshold { value } => {
+            settings.large_movement_alert_percent_threshold =
+                clamp(value, LARGE_MOVEMENT_PERCENT_RANGE)
+        }
+        AppSettingUpdate::LargeMovementAlertUsdThreshold { value } => {
+            settings.large_movement_alert_usd_threshold = clamp(value, LARGE_MOVEMENT_USD_RANGE)
+        }
+    }
+}
+
 pub fn reduce_state_in_place(state: &mut CoreAppState, command: StateCommand) -> Vec<StateEvent> {
     let mut events = Vec::new();
 
@@ -513,6 +736,16 @@ pub fn reduce_state_in_place(state: &mut CoreAppState, command: StateCommand) ->
                 events.push(StateEvent {
                     kind: "fiatCurrencyChanged".to_string(),
                     subject_id: Some(normalized),
+                });
+            }
+        }
+        StateCommand::SetAppSetting { update } => {
+            let before = state.settings.clone();
+            apply_app_setting(&mut state.settings, update);
+            if state.settings != before {
+                events.push(StateEvent {
+                    kind: "appSettingChanged".to_string(),
+                    subject_id: None,
                 });
             }
         }

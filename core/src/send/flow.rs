@@ -8,72 +8,10 @@ use crate::validation::address::{validate_address, AddressValidationRequest};
 use crate::wallet_core::*;
 
 #[uniffi::export]
-pub fn compute_background_maintenance_interval(
-    base_interval_sec: f64,
-    is_constrained_network: bool,
-    is_expensive_network: bool,
-    is_low_power_mode: bool,
-    battery_level: f32,
-) -> f64 {
-    let mut interval = base_interval_sec;
-    if is_constrained_network || is_expensive_network {
-        interval = interval.max(30.0 * 60.0);
-    }
-    if is_low_power_mode {
-        interval = interval.max(45.0 * 60.0);
-    }
-    if battery_level < 0.20 {
-        interval = interval.max(60.0 * 60.0);
-    }
-    interval
-}
-
-#[uniffi::export]
-pub fn active_pending_refresh_interval_for_profile(
-    background_sync_profile: String,
-    balanced_interval: f64,
-) -> f64 {
-    match background_sync_profile.as_str() {
-        "conservative" => 30.0,
-        "aggressive" => 10.0,
-        _ => balanced_interval,
-    }
-}
-
-#[uniffi::export]
 pub fn portfolio_composition_signature(holding_keys: Vec<String>) -> String {
     let mut sorted = holding_keys;
     sorted.sort();
     sorted.join("|")
-}
-
-#[uniffi::export]
-pub fn evaluate_heavy_refresh_gate(
-    background_sync_profile: String,
-    is_network_reachable: bool,
-    is_constrained_network: bool,
-    is_expensive_network: bool,
-    is_low_power_mode: bool,
-    battery_level: f32,
-) -> bool {
-    if !is_network_reachable {
-        return false;
-    }
-    match background_sync_profile.as_str() {
-        "conservative" => {
-            !is_constrained_network
-                && !is_expensive_network
-                && !is_low_power_mode
-                && battery_level >= 0.30
-        }
-        "balanced" => !is_constrained_network && !is_low_power_mode && battery_level >= 0.20,
-        _ => {
-            if is_low_power_mode && battery_level < 0.15 {
-                return false;
-            }
-            battery_level >= 0.15
-        }
-    }
 }
 
 #[derive(Debug, Clone, uniffi::Record)]
@@ -488,14 +426,14 @@ mod tests {
 // ── FFI: high-risk send evaluation ──────────────────────────────────────────
 
 /// A chain_name + address pair used in the high-risk send evaluation.
-#[derive(Debug, Clone, uniffi::Record)]
+#[derive(Debug, Clone)]
 pub struct HighRiskChainAddress {
     pub chain_name: String,
     pub address: String,
 }
 
 /// Typed input for high-risk send evaluation.
-#[derive(Debug, Clone, uniffi::Record)]
+#[derive(Debug, Clone)]
 pub struct HighRiskSendRequest {
     pub chain_name: String,
     pub symbol: String,
@@ -521,8 +459,10 @@ pub struct HighRiskSendWarning {
     pub symbol: Option<String>,
 }
 
-/// Typed high-risk send evaluation — replaces `core_evaluate_high_risk_send_reasons_json`.
-#[uniffi::export]
+/// Typed high-risk send evaluation.
+///
+/// Not exported: `WalletService::high_risk_send_reasons` is the entry point,
+/// because the address book and the send history this reads are core's.
 pub fn core_evaluate_high_risk_send_reasons(
     request: HighRiskSendRequest,
 ) -> Vec<HighRiskSendWarning> {
@@ -697,7 +637,7 @@ pub fn core_evm_chain_context_tag(chain_name: String, ethereum_network_mode: Str
         .unwrap_or_default()
 }
 
-#[uniffi::export]
+/// Not exported: a column of `core_chain_identities` now.
 pub fn core_is_evm_chain(chain_name: String) -> bool {
     Chain::from_display_name(&chain_name).is_some_and(Chain::is_evm)
 }
@@ -1051,9 +991,8 @@ fn sui_signed_json_remap(raw: &str) -> Option<String> {
 /// Testnets share their mainnet counterpart's derivation engine, so e.g.
 /// `"Ethereum Sepolia"` returns `"Ethereum"`. The Chain enum is the source
 /// of truth for that mapping.
-#[uniffi::export]
-pub fn core_seed_derivation_chain_raw(chain_name: String) -> Option<String> {
-    let chain = crate::registry::Chain::from_display_name(&chain_name)?;
+/// Not exported: it is a column of `core_chain_identities` now.
+pub fn seed_derivation_chain_raw(chain: crate::registry::Chain) -> Option<String> {
     let mainnet = chain.mainnet_counterpart();
     // Some EVM L1/L2/sidechains (BNB Chain, Optimism, etc.) reuse Ethereum's
     // derivation path; the historical raw-name table preserved that
@@ -1065,7 +1004,7 @@ pub fn core_seed_derivation_chain_raw(chain_name: String) -> Option<String> {
     Some(raw.to_string())
 }
 
-#[uniffi::export]
+/// Not exported: a column of `core_chain_identities` now.
 pub fn core_supports_deep_utxo_discovery(chain_name: String) -> bool {
     crate::registry::Chain::from_display_name(&chain_name)
         .is_some_and(|c| c.supports_deep_utxo_discovery())

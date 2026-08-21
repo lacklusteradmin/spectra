@@ -347,6 +347,33 @@ impl WalletService {
                     })
                     .collect()
             }
+            // The EVM family. This was `fetch_evm_token_balances_batch_typed`,
+            // a second method with the *same* signature and the complementary
+            // set of chains — so a caller holding a chain had to know which
+            // family it was in to pick the right one, which is exactly what
+            // the chain id already says.
+            c if c.is_evm() => {
+                let client = EvmClient::new(endpoints, c.evm_chain_id());
+                let mut results = Vec::with_capacity(tokens.len());
+                for token in &tokens {
+                    let contract = token.contract.to_lowercase();
+                    if contract.is_empty() {
+                        continue;
+                    }
+                    let raw = client
+                        .fetch_erc20_balance_of(&contract, &address)
+                        .await
+                        .unwrap_or(0);
+                    results.push(TokenBalanceResult {
+                        contract_address: contract,
+                        symbol: token.symbol.clone(),
+                        decimals: token.decimals,
+                        balance_raw: raw.to_string(),
+                        balance_display: format_decimals(raw, token.decimals),
+                    });
+                }
+                results
+            }
             c => {
                 return Err(SpectraBridgeError::from(format!(
                     "fetch_token_balances: unsupported chain: {c:?}"
@@ -500,38 +527,6 @@ impl WalletService {
     }
 
     // ── Typed token-array wrappers (no JSON serialization on caller side)
-
-    pub async fn fetch_evm_token_balances_batch_typed(
-        &self,
-        chain_id: String,
-        address: String,
-        tokens: Vec<TokenDescriptor>,
-    ) -> Result<Vec<TokenBalanceResult>, SpectraBridgeError> {
-        let chain = chain_for_evm_id(&chain_id)?;
-        let eps = self.endpoints_for(chain.str_id()).await;
-        let client = EvmClient::new(eps, chain.evm_chain_id());
-        let mut results = Vec::with_capacity(tokens.len());
-        for t in &tokens {
-            let contract = t.contract.to_lowercase();
-            if contract.is_empty() {
-                continue;
-            }
-            let raw = client
-                .fetch_erc20_balance_of(&contract, &address)
-                .await
-                .unwrap_or(0);
-            let decimals = t.decimals;
-            let balance_display = format_decimals(raw, decimals);
-            results.push(TokenBalanceResult {
-                contract_address: contract,
-                symbol: t.symbol.clone(),
-                decimals,
-                balance_raw: raw.to_string(),
-                balance_display,
-            });
-        }
-        Ok(results)
-    }
 
     /// Fetch EVM history for diagnostics and return a fully-built
     /// `EthereumTokenTransferHistoryDiagnostics` record. On network or

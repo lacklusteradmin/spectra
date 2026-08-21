@@ -9,7 +9,7 @@
 use crate::derivation::chains::{
     bitcoin::derive_bitcoin, bitcoin_cash::derive_bitcoin_cash, bitcoin_gold::derive_bitcoin_gold,
     bitcoin_sv::derive_bitcoin_sv, dash::derive_dash, dogecoin::derive_dogecoin,
-    evm::derive_ethereum, litecoin::derive_litecoin, polkadot::derive_polkadot,
+    evm::derive_evm, litecoin::derive_litecoin, polkadot::derive_polkadot,
     solana::derive_solana, stellar::derive_stellar, tron::derive_tron, xrp::derive_xrp,
     zcash::derive_zcash,
 };
@@ -117,7 +117,7 @@ pub fn core_generate_funds_finder_candidates(
                 (a, i) => format!("Account {a} · Address {i}"),
             };
             push_candidate(&mut out, "ethereum", "Ethereum", &path, &label, || {
-                derive_ethereum(seed.clone(), path.clone(), pass.clone(), true, false, false)
+                derive_evm(seed.clone(), path.clone(), pass.clone(), true, false, false)
             });
         }
     }
@@ -128,7 +128,7 @@ pub fn core_generate_funds_finder_candidates(
         ("m/44'/60'", "Legacy (m/44'/60')"),
     ] {
         push_candidate(&mut out, "ethereum", "Ethereum", path, label, || {
-            derive_ethereum(
+            derive_evm(
                 seed.clone(),
                 path.to_string(),
                 pass.clone(),

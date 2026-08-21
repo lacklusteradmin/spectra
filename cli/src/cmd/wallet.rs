@@ -95,6 +95,13 @@ pub struct ImportArgs {
     /// Read the seed phrase from this environment variable.
     #[arg(long, value_name = "VAR", default_value = "SPECTRA_SEED")]
     seed_env: Option<String>,
+    /// Import a raw private key instead of a phrase. Reads from this file;
+    /// `-` means stdin.
+    #[arg(long, value_name = "PATH", conflicts_with = "seed_file")]
+    private_key_file: Option<String>,
+    /// Import a raw private key instead of a phrase, from this variable.
+    #[arg(long, value_name = "VAR")]
+    private_key_env: Option<String>,
 }
 
 #[derive(Args)]
@@ -195,6 +202,9 @@ fn new(ctx: &Ctx, out: Out, args: NewArgs) -> CliResult<()> {
 
 fn import(ctx: &Ctx, out: Out, args: ImportArgs) -> CliResult<()> {
     let chain = resolve_chain(&args.creation.chain)?;
+    if args.private_key_file.is_some() || args.private_key_env.is_some() {
+        return import_private_key(ctx, out, args, chain);
+    }
     let env = args
         .seed_env
         .clone()
@@ -221,6 +231,76 @@ fn import(ctx: &Ctx, out: Out, args: ImportArgs) -> CliResult<()> {
             seed_phrase.split_whitespace().count()
         );
         print_wallet(&wallet);
+    });
+    out.emit(serde_json::json!({ "ok": true, "wallet": wallet_json(&wallet) }));
+    Ok(())
+}
+
+/// Import a wallet from a raw private key.
+///
+/// The last wallet operation the CLI could not drive. Core has dispatched
+/// private-key derivation by chain since `core_derive_from_private_key`, so
+/// what was missing was this command, not the derivation.
+fn import_private_key(ctx: &Ctx, out: Out, args: ImportArgs, chain: Chain) -> CliResult<()> {
+    let env = args
+        .private_key_env
+        .clone()
+        .filter(|name| std::env::var_os(name).is_some());
+    let private_key = SecretSource {
+        file: args.private_key_file.clone(),
+        env,
+    }
+    .resolve("private key")?;
+    let private_key = private_key.trim().trim_start_matches("0x").to_string();
+
+    // Derive before sealing anything: a chain with no private-key derivation
+    // should refuse here rather than store a key for a wallet that can never
+    // sign with it.
+    let derived = spectra_core::derivation::dispatch::core_derive_from_private_key(
+        chain.chain_display_name().to_string(),
+        private_key.clone(),
+        true,
+        false,
+    )
+    .map_err(CliError::from)?;
+    let Some(address) = derived.and_then(|result| result.address) else {
+        return Err(CliError::rejected(format!(
+            "{} cannot derive an address from a private key",
+            chain.chain_display_name()
+        )));
+    };
+
+    let password = args.creation.password()?;
+    let wallet_id = new_wallet_id();
+    wallet_secrets::seal_private_key(
+        ctx.secrets.as_ref(),
+        &wallet_id,
+        &private_key,
+        &password,
+    )?;
+
+    let name = args
+        .creation
+        .name
+        .clone()
+        .unwrap_or_else(|| format!("My {} Wallet", chain.chain_display_name()));
+    let mut commit = signing_commit(chain, &wallet_id, &name, "", &address);
+    commit.request.is_private_key_import = true;
+
+    let service = ctx.service()?;
+    let outcome = match ctx.rt.block_on(service.import_wallets(commit)) {
+        Ok(outcome) => outcome,
+        Err(error) => {
+            let _ = wallet_secrets::delete(ctx.secrets.as_ref(), &wallet_id);
+            return Err(CliError::from(error));
+        }
+    };
+
+    let wallet = first_wallet(&outcome)?;
+    out.text(|| {
+        println!();
+        println!("  {} imported a private key", out::ok_mark());
+        print_wallet_of_kind(&wallet, Some("private key"));
     });
     out.emit(serde_json::json!({ "ok": true, "wallet": wallet_json(&wallet) }));
     Ok(())
@@ -349,9 +429,13 @@ fn list(ctx: &Ctx, out: Out) -> CliResult<()> {
 
 fn show(ctx: &Ctx, out: Out, args: SelectArgs) -> CliResult<()> {
     let wallet = ctx.find_wallet(&args.wallet)?;
+    // Asked of the secret store, which is what decides whether this wallet can
+    // sign and with what.
+    let signing = wallet_secrets::is_private_key_backed(ctx.secrets.as_ref(), &wallet.id)
+        .then_some("private key");
     out.text(|| {
         println!();
-        print_wallet(&wallet);
+        print_wallet_of_kind(&wallet, signing);
         out::field("id", &out::hint(&wallet.id).to_string());
     });
     out.emit(serde_json::json!({ "ok": true, "wallet": wallet_json(&wallet) }));
@@ -438,10 +522,19 @@ fn export(ctx: &Ctx, out: Out, args: ExportArgs) -> CliResult<()> {
             "a watch-only wallet has no seed phrase",
         ));
     }
+    // A wallet imported from a raw key has no phrase, and the store is what
+    // knows which it is. Reporting "no sealed secret" for one was accurate
+    // about the phrase and wrong about the wallet.
+    let is_private_key = wallet_secrets::is_private_key_backed(ctx.secrets.as_ref(), &wallet.id);
+    let what = if is_private_key {
+        "private key"
+    } else {
+        "seed phrase"
+    };
     if !args.yes {
-        return Err(CliError::usage(
-            "this prints your seed phrase in plain text — re-run with --yes",
-        ));
+        return Err(CliError::usage(format!(
+            "this prints your {what} in plain text — re-run with --yes"
+        )));
     }
 
     let env = args
@@ -453,6 +546,25 @@ fn export(ctx: &Ctx, out: Out, args: ExportArgs) -> CliResult<()> {
         env,
     }
     .resolve("password")?;
+
+    // The key a private-key wallet was imported from is the only copy this
+    // side holds. Sealing one the CLI could never return would make it a lost
+    // key, so export handles both — behind the same gate and the same password.
+    if is_private_key {
+        let key = wallet_secrets::unlock_private_key(ctx.secrets.as_ref(), &wallet.id, &password)?;
+        out.text(|| {
+            println!();
+            println!("  {}", key.bold());
+            println!();
+            println!(
+                "  {} {}",
+                out::accent("!").bold(),
+                "store this securely and clear your terminal".bold()
+            );
+        });
+        out.emit(serde_json::json!({ "ok": true, "privateKey": *key }));
+        return Ok(());
+    }
 
     let seed_phrase = wallet_secrets::unlock(ctx.secrets.as_ref(), &wallet.id, &password)?;
 
@@ -572,6 +684,11 @@ fn first_wallet(outcome: &WalletImportOutcome) -> CliResult<WalletSummary> {
 // ─── Rendering ──────────────────────────────────────────────────────────────
 
 fn print_wallet(wallet: &WalletSummary) {
+    print_wallet_of_kind(wallet, None)
+}
+
+/// `signing` overrides the "type" line for a wallet whose key is not a phrase.
+fn print_wallet_of_kind(wallet: &WalletSummary, signing: Option<&str>) {
     out::field("name", &wallet.name.bold().to_string());
     out::field(
         "chain",
@@ -582,7 +699,7 @@ fn print_wallet(wallet: &WalletSummary) {
         if wallet.is_watch_only {
             "watch-only"
         } else {
-            "seed phrase"
+            signing.unwrap_or("seed phrase")
         },
     );
     if let Some(path) = &wallet.derivation_path {

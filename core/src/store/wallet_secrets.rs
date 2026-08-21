@@ -58,6 +58,11 @@ impl From<SecretStoreError> for WalletSecretError {
 enum Blob {
     /// The AES-GCM envelope holding the seed phrase.
     Envelope,
+    /// The AES-GCM envelope holding a raw private key, for a wallet imported
+    /// from one instead of from a phrase. Sealed exactly like the seed: a
+    /// file-backed store has no operating system protecting it, so a key left
+    /// in the clear there is a key on disk.
+    PrivateKeyEnvelope,
     /// The salt the master key was derived from.
     Salt,
     /// The password verifier, for checking a password without decrypting.
@@ -68,6 +73,7 @@ impl Blob {
     fn class(self) -> SecretClass {
         match self {
             Blob::Envelope => SecretClass::Seed,
+            Blob::PrivateKeyEnvelope => SecretClass::PrivateKey,
             Blob::Salt | Blob::Verifier => SecretClass::Generic,
         }
     }
@@ -76,6 +82,7 @@ impl Blob {
     fn suffix(self) -> &'static str {
         match self {
             Blob::Envelope => "seed",
+            Blob::PrivateKeyEnvelope => "privatekey",
             Blob::Salt => "salt",
             Blob::Verifier => "password",
         }
@@ -85,7 +92,12 @@ impl Blob {
         format!("{wallet_id}.{}", self.suffix())
     }
 
-    const ALL: [Blob; 3] = [Blob::Envelope, Blob::Salt, Blob::Verifier];
+    const ALL: [Blob; 4] = [
+        Blob::Envelope,
+        Blob::PrivateKeyEnvelope,
+        Blob::Salt,
+        Blob::Verifier,
+    ];
 }
 
 fn engine() -> base64::engine::general_purpose::GeneralPurpose {
@@ -158,6 +170,36 @@ pub fn seal(
     Ok(())
 }
 
+/// Seal a raw private key for a wallet imported from one.
+///
+/// The same envelope, salt and verifier as [`seal`] — a private-key wallet
+/// simply has no phrase to store. Sealing a wallet twice replaces whichever
+/// blob it had, so a wallet is one or the other and never both.
+pub fn seal_private_key(
+    store: &dyn SecretStore,
+    wallet_id: &str,
+    private_key_hex: &str,
+    password: &str,
+) -> Result<(), WalletSecretError> {
+    if password.trim().is_empty() {
+        return Err(WalletSecretError::Corrupt {
+            message: "password cannot be empty".to_string(),
+        });
+    }
+    let mut salt = [0u8; SALT_LEN];
+    rand::thread_rng().fill_bytes(&mut salt);
+    let master_key = derive_master_key(password, &salt);
+    let envelope = super::seed_envelope::encrypt(private_key_hex.as_bytes(), &*master_key)
+        .map_err(|message| WalletSecretError::Corrupt { message })?;
+    let verifier = super::password_verifier::create_verifier(password)
+        .map_err(|message| WalletSecretError::Corrupt { message })?;
+
+    write_blob(store, wallet_id, Blob::Salt, &salt)?;
+    write_blob(store, wallet_id, Blob::Verifier, &verifier)?;
+    write_blob(store, wallet_id, Blob::PrivateKeyEnvelope, &envelope)?;
+    Ok(())
+}
+
 /// The verifier is checked first, so a wrong password is reported as such
 /// rather than as an AES-GCM tag mismatch.
 pub fn unlock(
@@ -177,12 +219,44 @@ pub fn unlock(
         .map_err(|message| WalletSecretError::Corrupt { message })
 }
 
+/// Unseal a private-key wallet's key.
+pub fn unlock_private_key(
+    store: &dyn SecretStore,
+    wallet_id: &str,
+    password: &str,
+) -> Result<Zeroizing<String>, WalletSecretError> {
+    let verifier = read_blob(store, wallet_id, Blob::Verifier)?;
+    if !super::password_verifier::verify(password, &verifier) {
+        return Err(WalletSecretError::IncorrectPassword);
+    }
+    let salt = read_blob(store, wallet_id, Blob::Salt)?;
+    let envelope = read_blob(store, wallet_id, Blob::PrivateKeyEnvelope)?;
+    let master_key = derive_master_key(password, &salt);
+    super::seed_envelope::decrypt(&envelope, &*master_key)
+        .map(Zeroizing::new)
+        .map_err(|message| WalletSecretError::Corrupt { message })
+}
+
 /// Idempotent, like the underlying store.
 pub fn delete(store: &dyn SecretStore, wallet_id: &str) -> Result<(), WalletSecretError> {
     for blob in Blob::ALL {
         store.delete_secret(blob.class(), blob.key(wallet_id))?;
     }
     Ok(())
+}
+
+/// Whether this wallet signs from a stored private key rather than a phrase.
+///
+/// Answered from the store rather than from a field on the wallet: the two
+/// could disagree, and the store is the one that decides whether a signature
+/// is possible.
+pub fn is_private_key_backed(store: &dyn SecretStore, wallet_id: &str) -> bool {
+    store
+        .load_secret(
+            Blob::PrivateKeyEnvelope.class(),
+            Blob::PrivateKeyEnvelope.key(wallet_id),
+        )
+        .is_ok()
 }
 
 /// Answers off the envelope alone: the other two are useless without it.
@@ -289,4 +363,38 @@ mod tests {
             WalletSecretError::Corrupt { .. }
         ));
     }
+    /// A private-key wallet's key is sealed exactly like a seed.
+    ///
+    /// It matters most where there is no Keychain: the CLI's store is files on
+    /// disk, so a key written in the clear would be a key on disk.
+    #[test]
+    fn a_private_key_seals_and_unlocks_with_the_right_password() {
+        let store = InMemorySecretStore::default();
+        let key = "4c0883a69102937d6231471b5dbb6204fe5129617082792ae468d01a3f362318";
+        seal_private_key(&store, "w1", key, "hunter2").expect("seal");
+
+        assert_eq!(&*unlock_private_key(&store, "w1", "hunter2").expect("unlock"), key);
+        assert!(matches!(
+            unlock_private_key(&store, "w1", "wrong"),
+            Err(WalletSecretError::IncorrectPassword)
+        ));
+
+        // And nothing readable is left behind on disk.
+        let raw = store
+            .load_secret(SecretClass::PrivateKey, "w1.privatekey".into())
+            .expect("a stored blob");
+        assert!(!raw.contains(key), "the key is stored in the clear");
+    }
+
+    #[test]
+    fn deleting_a_wallet_takes_its_private_key_too() {
+        let store = InMemorySecretStore::default();
+        seal_private_key(&store, "w1", "aa", "hunter2").expect("seal");
+        delete(&store, "w1").expect("delete");
+        assert!(matches!(
+            unlock_private_key(&store, "w1", "hunter2"),
+            Err(WalletSecretError::NotSealed)
+        ));
+    }
+
 }

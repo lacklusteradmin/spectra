@@ -114,7 +114,7 @@ fn open_new(db_path: &str) -> Result<Connection, String> {
     Ok(conn)
 }
 
-fn now_secs() -> i64 {
+pub(crate) fn now_secs() -> i64 {
     std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .unwrap_or_default()
@@ -1309,9 +1309,11 @@ mod tests {
             wallets: vec![wallet("w1", "Bitcoin"), wallet("w2", "Ethereum")],
             selected_wallet_id: Some("w2".to_string()),
             settings: AppSettings {
-                network_chain_by_family: Default::default(),
                 fiat_currency_code: "CNY".to_string(),
                 pinned_dashboard_asset_symbols: vec!["BTC".to_string()],
+                // Every other field is a settings field the blob used to hold;
+                // `every_settings_field_round_trips` covers them together.
+                ..AppSettings::default()
             },
             token_preferences: Vec::new(),
             price_alerts: Vec::new(),

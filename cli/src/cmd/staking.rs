@@ -48,7 +48,7 @@ pub fn run(ctx: &Ctx, out: Out, command: StakingCommand) -> CliResult<()> {
 fn service_for(chain: Chain) -> CliResult<std::sync::Arc<StakingService>> {
     let name = chain.chain_display_name().to_string();
     let endpoints: Vec<String> =
-        spectra_core::app_core_endpoint_records_for_chain(name.clone(), BALANCE | RPC, false)
+        spectra_core::endpoint_records_for_chain_masked(name.clone(), BALANCE | RPC, false)
             .map_err(CliError::from)?
             .into_iter()
             .map(|record| record.endpoint)

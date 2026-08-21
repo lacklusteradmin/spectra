@@ -1220,67 +1220,61 @@ mod status_trackers {
     use crate::service::WalletService;
 
     // ── Confirmation-poll trackers (core-owned) ───────────────────────────
-
-    fn poll_config() -> crate::store::TransactionStatusPollConfig {
-        crate::store::TransactionStatusPollConfig {
-            pending_poll_seconds: 10.0,
-            confirmed_poll_seconds: 30.0,
-            backoff_max_seconds: 600.0,
-            finality_confirmations: 6,
-            pending_failure_timeout_seconds: 3600.0,
-            pending_failure_min_failures: 3,
-        }
-    }
+    //
+    // These used to inject a `TransactionStatusPollConfig` and a `now`. Both
+    // are core's now — the schedule is policy that belongs with the table it
+    // schedules, and reading the clock from an argument meant the caller
+    // decided when "now" was. So these assert against the real policy, which
+    // is what the app gets: nothing has been polled twenty seconds apart
+    // inside one test run, and a `created_at` of zero is decades stale.
 
     #[tokio::test]
     async fn untracked_transaction_is_always_due_for_poll() {
         let service = WalletService::new_typed(Vec::new()).expect("service");
         let due = service
-            .transactions_due_for_status_poll(vec!["tx1".into(), "tx2".into()], 1_000.0)
+            .transactions_due_for_status_poll(vec!["tx1".into(), "tx2".into()])
             .await;
         assert_eq!(due, vec!["tx1".to_string(), "tx2".to_string()]);
     }
 
     #[tokio::test]
-    async fn recorded_poll_defers_the_next_one() {
+    async fn a_polled_transaction_waits_out_its_interval() {
         let service = WalletService::new_typed(Vec::new()).expect("service");
         service
-            .record_status_poll_success("tx1".into(), false, true, None, 1_000.0, poll_config())
+            .record_status_poll_success("tx1".into(), false, true, None)
             .await;
-        assert!(service
-            .transactions_due_for_status_poll(vec!["tx1".into()], 1_000.0)
-            .await
-            .is_empty());
-        // ...and becomes due again once the interval has passed.
-        assert_eq!(
+        assert!(
             service
-                .transactions_due_for_status_poll(vec!["tx1".into()], 2_000.0)
-                .await,
-            vec!["tx1".to_string()]
+                .transactions_due_for_status_poll(vec!["tx1".into()])
+                .await
+                .is_empty(),
+            "polled just now, and the pending interval is twenty seconds"
         );
     }
 
+    /// A manual recheck re-opens a transaction the tracker had finished with.
     #[tokio::test]
-    async fn manual_recheck_makes_a_deferred_transaction_due_again() {
+    async fn resetting_a_tracker_makes_it_due_again() {
         let service = WalletService::new_typed(Vec::new()).expect("service");
         service
-            .record_status_poll_success("tx1".into(), true, false, Some(99), 1_000.0, poll_config())
+            .record_status_poll_success("tx1".into(), true, false, Some(99))
             .await;
         assert!(service
-            .transactions_due_for_status_poll(vec!["tx1".into()], 1_000.0)
+            .transactions_due_for_status_poll(vec!["tx1".into()])
             .await
             .is_empty());
-        service
-            .reset_status_tracker("tx1".into(), 1_000.0, true)
-            .await;
+
+        service.reset_status_tracker("tx1".into(), true).await;
         assert_eq!(
             service
-                .transactions_due_for_status_poll(vec!["tx1".into()], 1_000.0)
+                .transactions_due_for_status_poll(vec!["tx1".into()])
                 .await,
             vec!["tx1".to_string()]
         );
     }
 
+    /// Age alone is not failure. A transaction is given up on only after it is
+    /// both old and has failed to resolve repeatedly.
     #[tokio::test]
     async fn stale_pending_needs_both_age_and_repeated_failures() {
         let service = WalletService::new_typed(Vec::new()).expect("service");
@@ -1289,23 +1283,20 @@ mod status_trackers {
             created_at_unix: 0.0,
             status_is_pending: true,
         };
-        let now = 10_000.0; // well past pending_failure_timeout_seconds
 
-        // Old enough, but never failed a poll → not stale.
-        assert!(service
-            .stale_pending_failure_ids(vec![input("tx1")], now, poll_config())
-            .await
-            .is_empty());
-
-        for _ in 0..3 {
+        assert!(
             service
-                .record_status_poll_failure("tx1".into(), now, poll_config())
-                .await;
+                .stale_pending_failure_ids(vec![input("tx1")])
+                .await
+                .is_empty(),
+            "old enough, but it has never failed a poll"
+        );
+
+        for _ in 0..6 {
+            service.record_status_poll_failure("tx1".into()).await;
         }
         assert_eq!(
-            service
-                .stale_pending_failure_ids(vec![input("tx1")], now, poll_config())
-                .await,
+            service.stale_pending_failure_ids(vec![input("tx1")]).await,
             vec!["tx1".to_string()]
         );
     }
@@ -1315,14 +1306,14 @@ mod status_trackers {
         let service = WalletService::new_typed(Vec::new()).expect("service");
         for id in ["tx1", "tx2"] {
             service
-                .record_status_poll_success(id.into(), false, true, None, 1_000.0, poll_config())
+                .record_status_poll_success(id.into(), false, true, None)
                 .await;
         }
         service.retain_status_trackers(vec!["tx1".into()]).await;
         // tx2's tracker is gone, so it reads as never-polled — due immediately.
         assert_eq!(
             service
-                .transactions_due_for_status_poll(vec!["tx1".into(), "tx2".into()], 1_000.0)
+                .transactions_due_for_status_poll(vec!["tx1".into(), "tx2".into()])
                 .await,
             vec!["tx2".to_string()]
         );
@@ -2069,6 +2060,12 @@ mod settings_forward_compatibility {
             serde_json::from_str(legacy).expect("settings from before the field was added");
         assert_eq!(settings.fiat_currency_code, "EUR");
         assert!(settings.pinned_dashboard_asset_symbols.is_empty());
+        // A field's serde default and `AppSettings::default()` are the same
+        // function, so an absent field reads as a fresh install would, not as
+        // its type's zero value. Notifications off is not the same as unset.
+        assert!(settings.use_price_alerts);
+        assert_eq!(settings.pricing_provider, "CoinGecko");
+        assert_eq!(settings.bitcoin_stop_gap, 10);
     }
 
     #[test]
@@ -2485,7 +2482,9 @@ mod seed_derivation_chain_coverage {
                 "{name} is no longer a known chain"
             );
             assert!(
-                crate::send::flow::core_seed_derivation_chain_raw(name.to_string()).is_some(),
+                Chain::from_display_name(name)
+                    .and_then(crate::send::flow::seed_derivation_chain_raw)
+                    .is_some(),
                 "{name} has no seed derivation chain, so its address would resolve to nil"
             );
         }
@@ -2990,5 +2989,108 @@ mod resident_state_round_trip {
             back.settings.fiat_currency_code, "CHF",
             "settings not persisted"
         );
+    }
+
+    /// Every settings field survives a save and a reload.
+    ///
+    /// Eighteen of them arrived from a blob iOS wrote separately, and the
+    /// blob's own fields were never in this test because they were never in
+    /// this state. Written field by field so a new one that is added to
+    /// `AppSettings` and forgotten in `apply_app_setting` fails here.
+    #[test]
+    fn every_settings_field_round_trips() {
+        use crate::store::state::AppSettingUpdate as U;
+        let db = tmp_db();
+        let mut state = CoreAppState::default();
+        let updates = vec![
+            U::PricingProvider {
+                value: "CoinPaprika".into(),
+            },
+            U::FiatRateProvider {
+                value: "Frankfurter API".into(),
+            },
+            U::EthereumRpcEndpoint {
+                value: "https://rpc.example".into(),
+            },
+            U::EtherscanApiKey { value: "KEY".into() },
+            U::MoneroBackendBaseUrl {
+                value: "https://xmr.example".into(),
+            },
+            U::MoneroBackendApiKey {
+                value: "XKEY".into(),
+            },
+            U::BitcoinEsploraEndpoints {
+                value: "https://a.example,https://b.example".into(),
+            },
+            U::BitcoinStopGap { value: 42 },
+            U::BitcoinFeePriority {
+                value: "priority".into(),
+            },
+            U::DogecoinFeePriority {
+                value: "economy".into(),
+            },
+            U::UseStrictRpcOnly { value: true },
+            U::BackgroundSyncProfile {
+                value: "aggressive".into(),
+            },
+            U::AutomaticRefreshFrequencyMinutes { value: 30 },
+            U::UsePriceAlerts { value: false },
+            U::UseTransactionStatusNotifications { value: false },
+            U::UseLargeMovementNotifications { value: false },
+            U::LargeMovementAlertPercentThreshold { value: 25.0 },
+            U::LargeMovementAlertUsdThreshold { value: 2_500.0 },
+        ];
+        for update in updates {
+            reduce_state_in_place(&mut state, StateCommand::SetAppSetting { update });
+        }
+        let written = state.settings.clone();
+        wallet_db::app_state_save(&db, &state).expect("save");
+        let back = wallet_db::app_state_load(&db).expect("load");
+        assert_eq!(back.settings, written, "a settings field did not round trip");
+        assert_ne!(
+            back.settings,
+            crate::store::state::AppSettings::default(),
+            "the updates did not change anything"
+        );
+    }
+
+    /// A value outside its range is bounded rather than stored.
+    ///
+    /// These bounds were `didSet` clamps in the iOS layer — the only copy, so
+    /// a stop gap of zero was only impossible where someone had remembered to
+    /// check. A zero stop gap finds no addresses; a one-minute refresh
+    /// interval hammers whatever endpoint is configured.
+    #[test]
+    fn a_setting_outside_its_range_is_bounded() {
+        use crate::store::state::AppSettingUpdate as U;
+        let mut state = CoreAppState::default();
+        fn set(state: &mut CoreAppState, update: U) {
+            reduce_state_in_place(state, StateCommand::SetAppSetting { update });
+        }
+
+        set(&mut state, U::BitcoinStopGap { value: 0 });
+        set(&mut state, U::AutomaticRefreshFrequencyMinutes { value: 1 });
+        set(&mut state, U::LargeMovementAlertPercentThreshold { value: 0.0 });
+        set(&mut state, U::LargeMovementAlertUsdThreshold { value: 1_000_000.0 });
+        assert_eq!(state.settings.bitcoin_stop_gap, 1);
+        assert_eq!(state.settings.automatic_refresh_frequency_minutes, 5);
+        assert_eq!(state.settings.large_movement_alert_percent_threshold, 1.0);
+        assert_eq!(state.settings.large_movement_alert_usd_threshold, 100_000.0);
+
+        set(&mut state, U::BitcoinStopGap { value: 9_999 });
+        set(&mut state, U::AutomaticRefreshFrequencyMinutes { value: 9_999 });
+        set(&mut state, U::LargeMovementAlertPercentThreshold { value: 500.0 });
+        assert_eq!(state.settings.bitcoin_stop_gap, 200);
+        assert_eq!(state.settings.automatic_refresh_frequency_minutes, 60);
+        assert_eq!(state.settings.large_movement_alert_percent_threshold, 90.0);
+
+        // Trimmed, so a pasted key with a stray newline is the same key.
+        set(
+            &mut state,
+            U::EtherscanApiKey {
+                value: "  ABC123\n".into(),
+            },
+        );
+        assert_eq!(state.settings.etherscan_api_key, "ABC123");
     }
 }

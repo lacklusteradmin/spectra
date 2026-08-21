@@ -22,46 +22,6 @@ pub struct WalletDerivedState {
     pub signing_material_wallet_ids: Vec<String>,
     pub private_key_backed_wallet_ids: Vec<String>,
 }
-/// The platform-owned settings blob.
-///
-/// Anything every front end must agree on lives in `AppSettings` instead —
-/// the fiat currency, the pinned dashboard, and the selected network, which
-/// used to be three `*_network_mode` strings here and is now one core-owned
-/// chain id per family.
-#[derive(Debug, Clone, Serialize, Deserialize, uniffi::Record)]
-#[serde(rename_all = "camelCase")]
-pub struct PersistedAppSettings {
-    pub pricing_provider: String,
-    pub selected_fiat_currency: String,
-    pub fiat_rate_provider: String,
-    #[serde(rename = "ethereumRPCEndpoint")]
-    pub ethereum_rpc_endpoint: String,
-    #[serde(rename = "etherscanAPIKey")]
-    pub etherscan_api_key: String,
-    #[serde(rename = "moneroBackendBaseURL")]
-    pub monero_backend_base_url: String,
-    #[serde(rename = "moneroBackendAPIKey")]
-    pub monero_backend_api_key: String,
-    pub bitcoin_esplora_endpoints: String,
-    pub bitcoin_stop_gap: i32,
-    pub bitcoin_fee_priority: String,
-    pub dogecoin_fee_priority: String,
-    pub hide_balances: bool,
-    #[serde(rename = "useFaceID")]
-    pub use_face_id: bool,
-    pub use_auto_lock: bool,
-    #[serde(rename = "useStrictRPCOnly")]
-    pub use_strict_rpc_only: bool,
-    pub require_biometric_for_send_actions: bool,
-    pub use_price_alerts: bool,
-    pub use_transaction_status_notifications: bool,
-    pub use_large_movement_notifications: bool,
-    pub automatic_refresh_frequency_minutes: i32,
-    pub background_sync_profile: String,
-    pub large_movement_alert_percent_threshold: f64,
-    #[serde(rename = "largeMovementAlertUSDThreshold")]
-    pub large_movement_alert_usd_threshold: f64,
-}
 
 /// Token descriptor passed across UniFFI without JSON-shuttle marshalling.
 #[derive(Debug, Clone, uniffi::Record)]

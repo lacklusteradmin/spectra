@@ -195,37 +195,6 @@ pub fn next_default_wallet_name_index(existing_wallet_names: Vec<String>) -> i32
     highest + 1
 }
 
-/// Returns true when the chain supports the bip39-style private-key import
-/// flow.
-#[uniffi::export]
-pub fn chain_supports_private_key_import(chain_name: String) -> bool {
-    matches!(
-        chain_name.as_str(),
-        "Bitcoin"
-            | "Bitcoin Cash"
-            | "Bitcoin SV"
-            | "Litecoin"
-            | "Dogecoin"
-            | "Ethereum"
-            | "Ethereum Classic"
-            | "Arbitrum"
-            | "Optimism"
-            | "BNB Chain"
-            | "Avalanche"
-            | "Hyperliquid"
-            | "Tron"
-            | "Solana"
-            | "Cardano"
-            | "XRP Ledger"
-            | "Stellar"
-            | "Sui"
-            | "Aptos"
-            | "TON"
-            | "Internet Computer"
-            | "NEAR"
-            | "Polkadot"
-    )
-}
 
 #[cfg(test)]
 mod tests {
@@ -365,15 +334,6 @@ mod tests {
         ];
         assert_eq!(next_default_wallet_name_index(names), 6);
         assert_eq!(next_default_wallet_name_index(vec![]), 1);
-    }
-
-    #[test]
-    fn private_key_import_support_table() {
-        assert!(chain_supports_private_key_import("Bitcoin".into()));
-        assert!(chain_supports_private_key_import("Ethereum".into()));
-        assert!(chain_supports_private_key_import("Polkadot".into()));
-        assert!(!chain_supports_private_key_import("Monero".into()));
-        assert!(!chain_supports_private_key_import("Unknown".into()));
     }
 
     #[test]

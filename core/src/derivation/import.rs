@@ -352,7 +352,7 @@ pub fn core_validate_wallet_import_draft(request: WalletImportDraftValidationReq
 ///
 /// Exported so the UI never hardcodes slot keys or has to know that EVM chains
 /// share one. Pass a chain display name; unknown names return an empty string.
-#[uniffi::export]
+/// Not exported: a column of `core_chain_identities` now.
 pub fn core_address_slot(chain_name: String) -> String {
     Chain::from_display_name(&chain_name)
         .map(|chain| chain.address_slot().to_string())
@@ -646,60 +646,25 @@ pub fn validate_wallet_import_draft(request: WalletImportDraftValidationRequest)
     has_chains && is_backup_verified
 }
 
-const PRIVATE_KEY_SUPPORTED_CHAINS: &[&str] = &[
-    "Bitcoin",
-    "Bitcoin Cash",
-    "Bitcoin SV",
-    "Litecoin",
-    "Dogecoin",
-    "Ethereum",
-    "Ethereum Classic",
-    "Arbitrum",
-    "Optimism",
-    "BNB Chain",
-    "Avalanche",
-    "Hyperliquid",
-    "Tron",
-    "Solana",
-    "Cardano",
-    "Stellar",
-    "XRP Ledger",
-    "Sui",
-    "Aptos",
-    "TON",
-    "Internet Computer",
-    "NEAR",
-    "Polkadot",
-    "Zcash",
-    "Bitcoin Gold",
-    "Decred",
-    "Kaspa",
-    "Dash",
-    "X Layer",
-    "Bittensor",
-    "Sei",
-    "Celo",
-    "Cronos",
-    "opBNB",
-    "zkSync Era",
-    "Sonic",
-    "Berachain",
-    "Unichain",
-    "Ink",
-];
-
 fn is_private_key_chain_supported(chain_name: &str) -> bool {
-    PRIVATE_KEY_SUPPORTED_CHAINS.contains(&chain_name)
+    Chain::from_display_name(chain_name)
+        .is_some_and(|chain| chain.derives_from_private_key())
 }
 
-/// Returns the ordered list of chain display names that support private-key
-/// import. Used by both iOS and (eventually) Android to gate the PK import
-/// flow — keeping the list here means adding a new chain is one edit.
+/// The ordered list of chain display names that support private-key import.
+///
+/// Was a thirty-nine name array maintained by hand next to a registry that
+/// already knew the answer, and next to a *second* hand-written list in
+/// `receive.rs` that named twenty-three. The picker read one and the submit
+/// gate read the other, so sixteen chains could be selected and then refused.
+/// It is `Chain::derives_from_private_key` now, which is the same fact the
+/// dispatcher acts on, so a chain is offered exactly when a key produces an
+/// address for it.
 #[uniffi::export]
 pub fn core_supported_private_key_chain_names() -> Vec<String> {
-    PRIVATE_KEY_SUPPORTED_CHAINS
-        .iter()
-        .map(|s| s.to_string())
+    Chain::all()
+        .filter(|chain| !chain.is_testnet() && chain.derives_from_private_key())
+        .map(|chain| chain.chain_display_name().to_string())
         .collect()
 }
 
@@ -777,6 +742,45 @@ mod tests {
             .collect();
         pairs.sort();
         pairs
+    }
+
+    /// The picker and the submit gate read the same list.
+    ///
+    /// They did not: `core_supported_private_key_chain_names` built the picker
+    /// from a thirty-nine name array and `is_private_key_chain_supported`
+    /// checked the same one, but the app asked a *third* list in `receive.rs`
+    /// with twenty-three names before it submitted. Sixteen chains could be
+    /// picked and were then refused with a message naming only Monero.
+    #[test]
+    fn every_offered_private_key_chain_passes_the_gate() {
+        let offered = core_supported_private_key_chain_names();
+        assert!(!offered.is_empty());
+        for name in &offered {
+            assert!(
+                is_private_key_chain_supported(name),
+                "{name} is offered by the picker and refused by the gate"
+            );
+        }
+        for chain in Chain::all().filter(|c| !c.is_testnet()) {
+            assert_eq!(
+                offered.iter().any(|n| n == chain.chain_display_name()),
+                chain.derives_from_private_key(),
+                "{} is offered = {} but derives_from_private_key = {}",
+                chain.chain_display_name(),
+                offered.iter().any(|n| n == chain.chain_display_name()),
+                chain.derives_from_private_key()
+            );
+        }
+    }
+
+    /// A testnet is never offered on its own — the importer picks a mainnet and
+    /// the network selector decides which network it lands on.
+    #[test]
+    fn the_private_key_picker_offers_mainnets_only() {
+        for name in core_supported_private_key_chain_names() {
+            let chain = Chain::from_display_name(&name).expect("an offered chain the registry knows");
+            assert!(!chain.is_testnet(), "{name} is a testnet and was offered");
+        }
     }
 
     #[test]

@@ -249,6 +249,31 @@ impl Chain {
         }
     }
 
+    /// Whether a raw private key alone yields an address on this chain.
+    ///
+    /// One fact with two readers: `core_derive_from_private_key` dispatches on
+    /// it, and the import flow offers the chain because of it. They used to be
+    /// four separate lists and all four disagreed — a 39-name array gating the
+    /// picker, a 23-name `matches!` gating the submit, a 30-arm Swift switch
+    /// deciding whether an address appeared, and the dispatcher, which is the
+    /// only one that could actually produce one. Eleven chains satisfied all
+    /// four; the rest were offered and then refused somewhere downstream.
+    ///
+    /// Testnets answer for their mainnet: the key material is the same, and
+    /// which network an address is rendered for is the derivation's business.
+    pub const fn derives_from_private_key(self) -> bool {
+        let chain = self.mainnet_counterpart();
+        chain.is_evm()
+            || matches!(
+                chain,
+                Chain::Bitcoin
+                    | Chain::BitcoinCash
+                    | Chain::Litecoin
+                    | Chain::Dogecoin
+                    | Chain::Decred
+            )
+    }
+
     /// Returns `true` for chains that are testnets.
     pub const fn is_testnet(self) -> bool {
         matches!(
@@ -1160,7 +1185,7 @@ pub struct NetworkChoice {
 /// Exported so a front end asks the registry instead of keeping its own
 /// mode-to-kind table — Bitcoin had one, mapping four network modes onto four
 /// kind strings the registry already assigns per chain.
-#[uniffi::export]
+/// Not exported: a column of `core_chain_identities` now.
 pub fn core_address_validation_kind(chain_id: String) -> String {
     Chain::from_str_id(&chain_id)
         .map(|c| c.address_validation_kind().to_string())
@@ -1168,7 +1193,7 @@ pub fn core_address_validation_kind(chain_id: String) -> String {
 }
 
 /// What a front end needs to assemble a send for this chain.
-#[uniffi::export]
+/// Not exported: a column of `core_chain_identities` now.
 pub fn core_send_execution_shape(chain_name: String) -> SendExecutionShape {
     Chain::from_display_name(&chain_name)
         .map(Chain::send_execution_shape)
@@ -1181,7 +1206,7 @@ pub fn core_send_execution_shape(chain_name: String) -> SendExecutionShape {
 }
 
 /// How a chain's pending transactions reach a final status.
-#[uniffi::export]
+/// Not exported: a column of `core_chain_identities` now.
 pub fn core_pending_status_poll(chain_name: String) -> PendingStatusPoll {
     Chain::from_display_name(&chain_name)
         .map(Chain::pending_status_poll)
@@ -1189,7 +1214,7 @@ pub fn core_pending_status_poll(chain_name: String) -> PendingStatusPoll {
 }
 
 /// A chain's display name, from its registry id.
-#[uniffi::export]
+/// Not exported: a column of `core_chain_identities` now.
 pub fn core_chain_display_name(chain_id: String) -> String {
     Chain::from_str_id(&chain_id)
         .map(|c| c.chain_display_name().to_string())
@@ -1199,7 +1224,7 @@ pub fn core_chain_display_name(chain_id: String) -> String {
 /// The networks available for a chain's family, mainnet first.
 ///
 /// A front end enumerating these itself is how the mode enums came to exist.
-#[uniffi::export]
+/// Not exported: a column of `core_chain_identities` now.
 pub fn core_network_choices(chain_id: String) -> Vec<NetworkChoice> {
     let Some(chain) = Chain::from_str_id(&chain_id) else {
         return Vec::new();
@@ -1474,7 +1499,7 @@ mod tests {
 
 /// What identifies one chain to a front end: the enum value and the three
 /// facts every screen needs to go with it.
-#[derive(Debug, Clone, PartialEq, Eq, uniffi::Record)]
+#[derive(Debug, Clone, uniffi::Record)]
 pub struct ChainIdentity {
     pub chain: Chain,
     /// The catalog's `id` — what endpoint tables and the FFI boundary key on.
@@ -1482,7 +1507,28 @@ pub struct ChainIdentity {
     /// The catalog's `name` — the one spelling of this chain.
     pub name: String,
     pub is_testnet: bool,
+    pub is_evm: bool,
     pub diagnostics_shape: DiagnosticsShape,
+    /// Which chain's slot this chain's address is stored under. The EVM family
+    /// shares Ethereum's.
+    pub address_slot: String,
+    /// The address format family `validate_address` dispatches on.
+    pub address_validation_kind: String,
+    /// HD discovery walks this chain's addresses past the last used one.
+    pub supports_deep_utxo_discovery: bool,
+    pub send_execution_shape: SendExecutionShape,
+    pub pending_status_poll: PendingStatusPoll,
+    /// Which chain's derivation path this chain reuses, as a display name.
+    /// `None` for a chain with no BIP-32 path.
+    pub seed_derivation_chain: Option<String>,
+    /// The EVM chain whose derivation this chain reuses, or `None` off the
+    /// EVM family.
+    pub evm_seed_derivation_chain: Option<String>,
+    /// Where a configured derivation path for this chain is stored. Testnets
+    /// share their mainnet's slot.
+    pub seed_derivation_path_key: String,
+    /// The networks this chain's family offers, mainnet first.
+    pub network_choices: Vec<NetworkChoice>,
 }
 
 /// The whole catalog as identities, in declaration order.
@@ -1499,13 +1545,34 @@ pub fn core_chain_identities() -> Vec<ChainIdentity> {
             id: chain.str_id().to_string(),
             name: chain.chain_display_name().to_string(),
             is_testnet: chain.is_testnet(),
+            is_evm: chain.is_evm(),
             diagnostics_shape: chain.diagnostics_shape(),
+            address_slot: chain.address_slot().to_string(),
+            address_validation_kind: chain.address_validation_kind().to_string(),
+            supports_deep_utxo_discovery: chain.supports_deep_utxo_discovery(),
+            send_execution_shape: chain.send_execution_shape(),
+            pending_status_poll: chain.pending_status_poll(),
+            seed_derivation_chain: crate::send::flow::seed_derivation_chain_raw(chain),
+            evm_seed_derivation_chain: chain
+                .is_evm()
+                .then(|| evm_seed_derivation_chain(chain))
+                .flatten(),
+            seed_derivation_path_key: chain.mainnet_counterpart().str_id().to_string(),
+            network_choices: chain
+                .network_choices()
+                .into_iter()
+                .map(|c| NetworkChoice {
+                    chain_id: c.str_id().to_string(),
+                    title: c.chain_display_name().to_string(),
+                    is_testnet: c.is_testnet(),
+                })
+                .collect(),
         })
         .collect()
 }
 
 /// Resolve a display name to the chain's string id. Returns `None` for unknown names.
-#[uniffi::export]
+/// Not exported: a column of `core_chain_identities` now.
 pub fn core_chain_str_id_for_name(name: String) -> Option<String> {
     Chain::from_display_name(&name).map(|c| c.str_id().to_string())
 }
@@ -1552,10 +1619,10 @@ pub fn core_resolve_chain_id(input: String) -> String {
         .join("-")
 }
 
-#[uniffi::export]
-pub fn core_evm_seed_derivation_chain_name(chain_name: String) -> Option<String> {
+/// Not exported: it is a column of `core_chain_identities` now.
+pub fn evm_seed_derivation_chain(chain: Chain) -> Option<String> {
     Some(
-        match Chain::from_display_name(&chain_name)? {
+        match chain {
             Chain::Ethereum => "Ethereum",
             Chain::EthereumClassic => "Ethereum Classic",
             Chain::Arbitrum => "Arbitrum",

@@ -8,6 +8,7 @@ pub mod diagnostics;
 pub mod market;
 pub mod refresh;
 pub mod rescan;
+pub mod settings;
 pub mod staking;
 pub mod token;
 pub mod tx;

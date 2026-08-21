@@ -56,7 +56,7 @@ pub struct HistoryArgs {
 pub fn service_for_chain(chain: Chain, roles: u32) -> CliResult<Arc<WalletService>> {
     let name = chain.chain_display_name().to_string();
     let endpoints: Vec<String> =
-        spectra_core::app_core_endpoint_records_for_chain(name.clone(), roles, false)
+        spectra_core::endpoint_records_for_chain_masked(name.clone(), roles, false)
             .map_err(CliError::from)?
             .into_iter()
             .map(|record| record.endpoint)
@@ -112,6 +112,10 @@ pub fn chains(out: Out, args: ChainsArgs) -> CliResult<()> {
                 "name": chain.chain_display_name(),
                 "symbol": chain.coin_symbol(),
                 "isEvm": chain.is_evm(),
+                // The import picker's list, as a column rather than a second
+                // array: a chain is offered for private-key import exactly
+                // when a key derives an address on it.
+                "privateKeyImport": chain.derives_from_private_key(),
             }))
             .collect::<Vec<_>>(),
     }));

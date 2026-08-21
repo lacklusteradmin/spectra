@@ -66,9 +66,9 @@ impl WalletService {
     /// saved yet. Thread-safe: rusqlite is called in `spawn_blocking`.
     pub async fn load_state(
         &self,
-        db_path: String,
         key: String,
     ) -> Result<String, SpectraBridgeError> {
+        let db_path = self.bound_state_db_path().await?;
         tokio::task::spawn_blocking(move || sqlite_load(&db_path, &key))
             .await
             .map_err(|e| SpectraBridgeError::from(format!("spawn_blocking: {e}")))?
@@ -79,57 +79,24 @@ impl WalletService {
     /// `db_path`. Creates the file (and the `state` table) on first use.
     pub async fn save_state(
         &self,
-        db_path: String,
         key: String,
         state_json: String,
     ) -> Result<(), SpectraBridgeError> {
+        let db_path = self.bound_state_db_path().await?;
         tokio::task::spawn_blocking(move || sqlite_save(&db_path, &key, &state_json))
             .await
             .map_err(|e| SpectraBridgeError::from(format!("spawn_blocking: {e}")))?
             .map_err(Into::into)
     }
 
-    pub async fn save_app_settings_typed(
-        &self,
-        db_path: String,
-        settings: PersistedAppSettings,
-    ) -> Result<(), SpectraBridgeError> {
-        tokio::task::spawn_blocking(move || {
-            let json = serde_json::to_string(&settings)
-                .map_err(|e| format!("save_app_settings_typed serialize: {e}"))?;
-            sqlite_save(&db_path, "app.settings.v1", &json)
-        })
-        .await
-        .map_err(|e| SpectraBridgeError::from(format!("spawn_blocking: {e}")))?
-        .map_err(Into::into)
-    }
-
-    pub async fn load_app_settings_typed(
-        &self,
-        db_path: String,
-    ) -> Result<Option<PersistedAppSettings>, SpectraBridgeError> {
-        tokio::task::spawn_blocking(move || {
-            let json = sqlite_load(&db_path, "app.settings.v1")?;
-            if json == "{}" {
-                return Ok(None);
-            }
-            serde_json::from_str::<PersistedAppSettings>(&json)
-                .map(Some)
-                .map_err(|e| format!("load_app_settings_typed deserialize: {e}"))
-        })
-        .await
-        .map_err(|e| SpectraBridgeError::from(format!("spawn_blocking: {e}")))?
-        .map_err(Into::into)
-    }
-
     /// Persist keypool state using typed record (no JSON intermediate).
     pub async fn save_keypool_state_typed(
         &self,
-        db_path: String,
         wallet_id: String,
         chain_name: String,
         state: crate::wallet_db::KeypoolState,
     ) -> Result<(), SpectraBridgeError> {
+        let db_path = self.bound_state_db_path().await?;
         tokio::task::spawn_blocking(move || {
             crate::wallet_db::keypool_save(&db_path, &wallet_id, &chain_name, &state)
         })
@@ -140,7 +107,6 @@ impl WalletService {
 
     pub async fn load_all_keypool_state_typed(
         &self,
-        db_path: String,
     ) -> Result<
         std::collections::HashMap<
             String,
@@ -148,6 +114,7 @@ impl WalletService {
         >,
         SpectraBridgeError,
     > {
+        let db_path = self.bound_state_db_path().await?;
         tokio::task::spawn_blocking(move || crate::wallet_db::keypool_load_all(&db_path))
             .await
             .map_err(|e| SpectraBridgeError::from(format!("spawn_blocking: {e}")))?
@@ -157,9 +124,9 @@ impl WalletService {
     /// Remove all keypool state for a wallet (called when a wallet is deleted).
     pub async fn delete_keypool_for_wallet(
         &self,
-        db_path: String,
         wallet_id: String,
     ) -> Result<(), SpectraBridgeError> {
+        let db_path = self.bound_state_db_path().await?;
         // Drop the in-memory rows too, or a reserve after this would still see
         // the deleted wallet's indices.
         {
@@ -179,9 +146,9 @@ impl WalletService {
     /// triggering a rescan).
     pub async fn delete_keypool_for_chain(
         &self,
-        db_path: String,
         chain_name: String,
     ) -> Result<(), SpectraBridgeError> {
+        let db_path = self.bound_state_db_path().await?;
         // Switching network mode invalidates every index on the chain; the
         // in-memory copy has to go with the stored one.
         {
@@ -283,9 +250,9 @@ impl WalletService {
     /// This is the single call to make when a wallet is removed.
     pub async fn delete_wallet_relational_data(
         &self,
-        db_path: String,
         wallet_id: String,
     ) -> Result<(), SpectraBridgeError> {
+        let db_path = self.bound_state_db_path().await?;
         // Clear the in-memory rows too. Leaving them means the keypool
         // baseline still counts a deleted wallet's addresses.
         self.keypool
@@ -308,9 +275,9 @@ impl WalletService {
     /// for the SQLite TEXT column internally — no JSON crosses the FFI.
     pub async fn upsert_history_records(
         &self,
-        db_path: String,
         records: Vec<crate::wallet_db::HistoryRecord>,
     ) -> Result<(), SpectraBridgeError> {
+        let db_path = self.bound_state_db_path().await?;
         tokio::task::spawn_blocking(move || {
             crate::wallet_db::history_upsert_batch(&db_path, &records)
         })
@@ -321,8 +288,8 @@ impl WalletService {
 
     pub async fn fetch_all_history_records_typed(
         &self,
-        db_path: String,
     ) -> Result<Vec<crate::wallet_db::HistoryRecord>, SpectraBridgeError> {
+        let db_path = self.bound_state_db_path().await?;
         tokio::task::spawn_blocking(move || crate::wallet_db::history_fetch_all(&db_path))
             .await
             .map_err(|e| SpectraBridgeError::from(format!("spawn_blocking: {e}")))?
@@ -332,9 +299,9 @@ impl WalletService {
     /// Delete history records by ID.
     pub async fn delete_history_records(
         &self,
-        db_path: String,
         ids: Vec<String>,
     ) -> Result<(), SpectraBridgeError> {
+        let db_path = self.bound_state_db_path().await?;
         tokio::task::spawn_blocking(move || crate::wallet_db::history_delete(&db_path, &ids))
             .await
             .map_err(|e| SpectraBridgeError::from(format!("spawn_blocking: {e}")))?
@@ -344,9 +311,9 @@ impl WalletService {
     /// Atomically replace ALL history records with the provided batch.
     pub async fn replace_all_history_records(
         &self,
-        db_path: String,
         records: Vec<crate::wallet_db::HistoryRecord>,
     ) -> Result<(), SpectraBridgeError> {
+        let db_path = self.bound_state_db_path().await?;
         tokio::task::spawn_blocking(move || {
             crate::wallet_db::history_replace_all(&db_path, &records)
         })
@@ -358,8 +325,8 @@ impl WalletService {
     /// Delete all history records (hard reset).
     pub async fn clear_all_history_records(
         &self,
-        db_path: String,
     ) -> Result<(), SpectraBridgeError> {
+        let db_path = self.bound_state_db_path().await?;
         tokio::task::spawn_blocking(move || crate::wallet_db::history_clear(&db_path))
             .await
             .map_err(|e| SpectraBridgeError::from(format!("spawn_blocking: {e}")))?
@@ -940,24 +907,6 @@ impl WalletService {
             .map_err(Into::into)
     }
 
-    /// Stored transactions for one wallet, newest first.
-    pub async fn transactions_for_wallet(
-        &self,
-        wallet_id: String,
-    ) -> Result<
-        Vec<crate::store::persistence_models::CorePersistedTransactionRecord>,
-        SpectraBridgeError,
-    > {
-        let db_path = self.bound_state_db_path().await?;
-        tokio::task::spawn_blocking(move || {
-            crate::wallet_db::history_fetch_for_wallet(&db_path, &wallet_id)
-        })
-        .await
-        .map_err(|e| SpectraBridgeError::from(format!("spawn_blocking: {e}")))?
-        .map(|rows| rows.into_iter().map(|row| row.payload).collect())
-        .map_err(Into::into)
-    }
-
     /// Which of `transaction_ids` are due for a confirmation poll now.
     ///
     /// An untracked transaction is always due — that is what makes a fresh
@@ -965,8 +914,8 @@ impl WalletService {
     pub async fn transactions_due_for_status_poll(
         &self,
         transaction_ids: Vec<String>,
-        now_unix: f64,
     ) -> Vec<String> {
+        let now_unix = crate::store::wallet_db::now_secs() as f64;
         let trackers = self.status_trackers.read().await;
         transaction_ids
             .into_iter()
@@ -986,9 +935,8 @@ impl WalletService {
         resolved_status_confirmed: bool,
         resolved_status_pending: bool,
         reported_confirmations: Option<u32>,
-        now_unix: f64,
-        config: TransactionStatusPollConfig,
     ) {
+        let now_unix = crate::store::wallet_db::now_secs() as f64;
         let mut trackers = self.status_trackers.write().await;
         let next = crate::store::plan_transaction_status_poll_success(
             trackers.get(&transaction_id).cloned(),
@@ -996,7 +944,7 @@ impl WalletService {
             resolved_status_pending,
             reported_confirmations,
             now_unix,
-            config,
+            TransactionStatusPollConfig::default(),
         );
         trackers.insert(transaction_id, next);
     }
@@ -1005,14 +953,13 @@ impl WalletService {
     pub async fn record_status_poll_failure(
         &self,
         transaction_id: String,
-        now_unix: f64,
-        config: TransactionStatusPollConfig,
     ) {
+        let now_unix = crate::store::wallet_db::now_secs() as f64;
         let mut trackers = self.status_trackers.write().await;
         let next = crate::store::plan_transaction_status_poll_failure(
             trackers.get(&transaction_id).cloned(),
             now_unix,
-            config,
+            TransactionStatusPollConfig::default(),
         );
         trackers.insert(transaction_id, next);
     }
@@ -1024,9 +971,9 @@ impl WalletService {
     pub async fn reset_status_tracker(
         &self,
         transaction_id: String,
-        now_unix: f64,
         clear_finality: bool,
     ) {
+        let now_unix = crate::store::wallet_db::now_secs() as f64;
         let mut trackers = self.status_trackers.write().await;
         let entry = trackers
             .entry(transaction_id)
@@ -1056,8 +1003,6 @@ impl WalletService {
     pub async fn stale_pending_failure_ids(
         &self,
         transactions: Vec<crate::store::StalePendingFailureTransactionInput>,
-        now_unix: f64,
-        config: TransactionStatusPollConfig,
     ) -> Vec<String> {
         let failures: HashMap<String, u32> = self
             .status_trackers
@@ -1066,7 +1011,12 @@ impl WalletService {
             .iter()
             .map(|(id, tracker)| (id.clone(), tracker.consecutive_failures))
             .collect();
-        crate::store::plan_stale_pending_failure_ids(transactions, &failures, now_unix, config)
+        crate::store::plan_stale_pending_failure_ids(
+            transactions,
+            &failures,
+            crate::store::wallet_db::now_secs() as f64,
+            TransactionStatusPollConfig::default(),
+        )
     }
 
     /// Decide what each resolved pending transaction becomes, advancing the
@@ -1074,15 +1024,14 @@ impl WalletService {
     pub async fn apply_resolved_pending_transaction_statuses(
         &self,
         inputs: Vec<crate::store::ResolvedPendingTransactionInput>,
-        now_unix: f64,
-        config: TransactionStatusPollConfig,
     ) -> Vec<crate::store::ResolvedPendingTransactionDecision> {
+        let now_unix = crate::store::wallet_db::now_secs() as f64;
         let mut trackers = self.status_trackers.write().await;
         crate::store::plan_apply_resolved_pending_transaction_statuses(
             inputs,
             &mut trackers,
             now_unix,
-            config,
+            TransactionStatusPollConfig::default(),
         )
     }
 
@@ -1507,16 +1456,6 @@ impl WalletService {
         self.wallet_state.read().await.clone()
     }
 
-    /// Fiat currency the user has chosen, as an ISO 4217 code.
-    pub async fn fiat_currency_code(&self) -> String {
-        self.wallet_state
-            .read()
-            .await
-            .settings
-            .fiat_currency_code
-            .clone()
-    }
-
     // ── History pagination cursor methods live in `service/history_cursor.rs` ──
     // (split out to keep this file navigable; UniFFI merges the impl blocks).
 }
@@ -1528,6 +1467,40 @@ fn fingerprint(record: &crate::fetch::transactions::CoreTransactionRecord) -> St
 }
 
 impl WalletService {
+    // ── Not exported ──────────────────────────────────────────────────────
+    //
+    // Reachable from Rust — the CLI, or core itself — and from nothing across
+    // the boundary. A method in the block above is an entry point whether or
+    // not a platform uses it, and these were entry points nobody had taken.
+
+    /// Stored transactions for one wallet, newest first.
+    pub async fn transactions_for_wallet(
+        &self,
+        wallet_id: String,
+    ) -> Result<
+        Vec<crate::store::persistence_models::CorePersistedTransactionRecord>,
+        SpectraBridgeError,
+    > {
+        let db_path = self.bound_state_db_path().await?;
+        tokio::task::spawn_blocking(move || {
+            crate::wallet_db::history_fetch_for_wallet(&db_path, &wallet_id)
+        })
+        .await
+        .map_err(|e| SpectraBridgeError::from(format!("spawn_blocking: {e}")))?
+        .map(|rows| rows.into_iter().map(|row| row.payload).collect())
+        .map_err(Into::into)
+    }
+
+    /// Fiat currency the user has chosen, as an ISO 4217 code.
+    pub async fn fiat_currency_code(&self) -> String {
+        self.wallet_state
+            .read()
+            .await
+            .settings
+            .fiat_currency_code
+            .clone()
+    }
+
     /// A stand-in coin for a pinned symbol the user holds none of: a holding
     /// if one exists at zero, else a tracked token, else nothing.
     async fn pinned_prototype(
