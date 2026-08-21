@@ -274,6 +274,79 @@ impl Chain {
             )
     }
 
+    /// The decode shape this chain's send preview comes back in, for the
+    /// chains core estimates through one entry point.
+    ///
+    /// `None` means the chain has a preview path of its own — the UTXO family,
+    /// Dogecoin, Tron and the EVM family each take different inputs and return
+    /// a different record, which is why they are not one call.
+    ///
+    /// Swift held this as an eleven-entry `[String: SimpleChain]` table keyed
+    /// by display name, and passed the result back to core beside the chain id
+    /// core could have derived it from.
+    ///
+    /// Through `mainnet_counterpart` because the shape is what decoding needs
+    /// and a testnet decodes like its mainnet; which network is reached is the
+    /// chain id's business.
+    pub const fn simple_preview_chain(self) -> Option<crate::send::preview_decode::SimpleChain> {
+        use crate::send::preview_decode::SimpleChain;
+        Some(match self.mainnet_counterpart() {
+            Chain::Solana => SimpleChain::Solana,
+            Chain::Xrp => SimpleChain::Xrp,
+            Chain::Stellar => SimpleChain::Stellar,
+            Chain::Monero => SimpleChain::Monero,
+            Chain::Cardano => SimpleChain::Cardano,
+            Chain::Sui => SimpleChain::Sui,
+            Chain::Aptos => SimpleChain::Aptos,
+            Chain::Ton => SimpleChain::Ton,
+            Chain::Icp => SimpleChain::Icp,
+            Chain::Near => SimpleChain::Near,
+            Chain::Polkadot => SimpleChain::Polkadot,
+            _ => return None,
+        })
+    }
+
+    /// Whether this chain has protocol-native staking Spectra can drive.
+    ///
+    /// Exact rather than through `mainnet_counterpart`: the staking clients are
+    /// built against mainnet endpoints and mainnet contract addresses, so a
+    /// testnet answering "yes" would route to a client that cannot serve it.
+    ///
+    /// One fact with three readers before it existed here — `fetch_validators`
+    /// and `fetch_positions` each matched the same seven chain ids, and
+    /// `StakingSupportedChain` in Swift was a seven-case enum with a display
+    /// name switch and an id switch over the same seven. Widening staking is
+    /// adding a client and a variant here; it was three edits and a chance for
+    /// the picker to offer what the service refuses.
+    pub const fn supports_staking(self) -> bool {
+        matches!(
+            self,
+            Chain::Solana
+                | Chain::Cardano
+                | Chain::Sui
+                | Chain::Aptos
+                | Chain::Near
+                | Chain::Polkadot
+                | Chain::Icp
+        )
+    }
+
+    /// Whether this chain's derivation reads a BIP-32 path.
+    ///
+    /// Read from the catalog rather than restated: `derivation_path = []` is
+    /// how a row says its keys do not come from a path. Monero is the only
+    /// mainnet that says it — its spend and view keys come from the seed
+    /// directly — and the five chains whose derivation ignores the path it is
+    /// handed still carry one, so this is not "does the arm use `p`".
+    ///
+    /// The distinction matters because "no default path" was an error
+    /// everywhere it was asked, and Monero is a chain for which it is the
+    /// answer. See `default_path_from_catalog`.
+    pub fn uses_derivation_path(self) -> bool {
+        crate::chains::default_derivation_path_template_by_id(self.mainnet_counterpart().str_id())
+            .is_some()
+    }
+
     /// Returns `true` for chains that are testnets.
     pub const fn is_testnet(self) -> bool {
         matches!(
@@ -1357,6 +1430,20 @@ mod tests {
         }
     }
 
+    /// Monero is the only mainnet the flag excludes, and one piece of iOS copy
+    /// depends on that: the watch-only footer note names Monero while its
+    /// condition reads the flag. A second excluded chain means generalising the
+    /// string, which is a localisation edit rather than something to discover
+    /// from a screenshot.
+    #[test]
+    fn only_monero_is_excluded_from_watch_only_import() {
+        let excluded: Vec<&str> = Chain::all()
+            .filter(|c| !c.is_testnet() && !c.supports_watch_only_import())
+            .map(|c| c.chain_display_name())
+            .collect();
+        assert_eq!(excluded, vec!["Monero"]);
+    }
+
     #[test]
     fn str_id_roundtrips() {
         for chain in Chain::all() {
@@ -1516,6 +1603,10 @@ pub struct ChainIdentity {
     pub address_validation_kind: String,
     /// HD discovery walks this chain's addresses past the last used one.
     pub supports_deep_utxo_discovery: bool,
+    /// A watch-only import can carry addresses for this chain.
+    pub supports_watch_only_import: bool,
+    /// The chain has protocol-native staking the staking tab can drive.
+    pub supports_staking: bool,
     pub send_execution_shape: SendExecutionShape,
     pub pending_status_poll: PendingStatusPoll,
     /// Which chain's derivation path this chain reuses, as a display name.
@@ -1524,9 +1615,13 @@ pub struct ChainIdentity {
     /// The EVM chain whose derivation this chain reuses, or `None` off the
     /// EVM family.
     pub evm_seed_derivation_chain: Option<String>,
-    /// Where a configured derivation path for this chain is stored. Testnets
-    /// share their mainnet's slot.
-    pub seed_derivation_path_key: String,
+    /// The mainnet this chain belongs to, or itself.
+    ///
+    /// Was published as `seed_derivation_path_key` — the same value under a
+    /// name that described one of its callers. A testnet shares its mainnet's
+    /// derivation-path slot *because* it is that mainnet's testnet, and other
+    /// call sites want the same fact for other reasons.
+    pub mainnet_counterpart: Chain,
     /// The networks this chain's family offers, mainnet first.
     pub network_choices: Vec<NetworkChoice>,
 }
@@ -1550,6 +1645,8 @@ pub fn core_chain_identities() -> Vec<ChainIdentity> {
             address_slot: chain.address_slot().to_string(),
             address_validation_kind: chain.address_validation_kind().to_string(),
             supports_deep_utxo_discovery: chain.supports_deep_utxo_discovery(),
+            supports_watch_only_import: chain.supports_watch_only_import(),
+            supports_staking: chain.supports_staking(),
             send_execution_shape: chain.send_execution_shape(),
             pending_status_poll: chain.pending_status_poll(),
             seed_derivation_chain: crate::send::flow::seed_derivation_chain_raw(chain),
@@ -1557,7 +1654,7 @@ pub fn core_chain_identities() -> Vec<ChainIdentity> {
                 .is_evm()
                 .then(|| evm_seed_derivation_chain(chain))
                 .flatten(),
-            seed_derivation_path_key: chain.mainnet_counterpart().str_id().to_string(),
+            mainnet_counterpart: chain.mainnet_counterpart(),
             network_choices: chain
                 .network_choices()
                 .into_iter()

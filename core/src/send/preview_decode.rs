@@ -380,7 +380,13 @@ pub fn decode_simple_send_preview(json: String) -> SimpleSendPreview {
 // Per-chain default fee constants (surfaced to Swift so both sides share one source).
 // When the preview JSON omits fee_raw, callers fall back to these.
 
-#[derive(Debug, Clone, Copy, Serialize, Deserialize, uniffi::Enum)]
+/// Which decode shape a shared-path preview comes back in.
+///
+/// No longer exported: it stopped crossing the boundary when
+/// `fetch_simple_chain_send_preview_typed` started deriving it from the chain
+/// id it was already given. `Chain::simple_preview_chain` is the one place that
+/// answers it.
+#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
 pub enum SimpleChain {
     Solana,
     Xrp,

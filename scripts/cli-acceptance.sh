@@ -145,6 +145,43 @@ contains "names the address it refused" "definitely-not-an-address" \
     spectra wallet watch --chain Solana --address definitely-not-an-address
 check "refuses to export a watch-only wallet" $REJECTED \
     spectra wallet export "Acceptance Watch" --yes
+# The watch-addresses picker in the app is this flag, and it had drifted from
+# it in both directions. Ethereum Classic has its own address slot and was
+# folded into the shared EVM field, so its entries landed in a slot the planner
+# does not read; Polygon and fifteen other EVM mainnets fell outside the
+# seven-name condition that decided whether an EVM field appeared at all.
+check "watches a chain with its own slot inside the EVM family" $OK \
+    spectra wallet watch --chain "Ethereum Classic" --name "Watch ETC" \
+        --address 0x742d35Cc6634C0532925a3b844Bc454e4438f44e
+check "and one outside the seven the app used to name"        $OK \
+    spectra wallet watch --chain Polygon --name "Watch Polygon" \
+        --address 0x742d35Cc6634C0532925a3b844Bc454e4438f44e
+contains "the catalog says which chains can be watched" '"name":"Polygon","privateKeyImport":true' \
+    spectra --json chains --filter Polygon
+contains "and that Polygon is one of them"   '"watchOnlyImport":true' \
+    spectra --json chains --filter Polygon
+contains "and Monero says it cannot"      '"watchOnlyImport":false' \
+    spectra --json chains --filter Monero
+check "refuses to watch Monero"           $REJECTED \
+    spectra wallet watch --chain Monero --name "Watch XMR" \
+        --address 48ZFsbBKZAnN9Tyw7XsCakJ4dBxBpaD3wa9Az6V5ZwAK99kYQzcgckSNVv5iZhMp8o37fhNzY7eM2ERGoTWr4B282s4mcDi
+
+# ── Pathless chains ─────────────────────────────────────────────────────────
+
+section "a chain with no derivation path"
+# Monero's spend and view keys come from the seed, so its catalog row carries
+# `derivation_path = []`. "No default path" used to be an error rather than an
+# answer, and every caller read it as a broken catalog: this command exited
+# with "Missing default derivation path for Monero." and iOS dropped the chain
+# out of the batch it was deriving. Core has derived Monero the whole time.
+check "imports Monero from a seed phrase"   $OK \
+    with_seed "legal winner thank year wave sausage worth useful legal winner thank yellow" \
+    spectra wallet import --chain Monero --name "XMR Wallet"
+contains "and derives its address"          '"address":"4' \
+    spectra --json wallet show "XMR Wallet"
+contains "with no path, which is the answer rather than a failure" '"derivationPath":""' \
+    spectra --json wallet show "XMR Wallet"
+check "deletes the Monero wallet"           $OK spectra wallet delete "XMR Wallet" --yes
 
 # ── Secrets ─────────────────────────────────────────────────────────────────
 
@@ -348,8 +385,19 @@ check "deletes the private-key wallet"        $OK spectra wallet delete "PK Wall
 section "staking"
 check "refuses staking on a chain that does not stake" $REJECTED \
     spectra staking validators --chain Bitcoin
+contains "and says which chain, not which endpoint" "Bitcoin does not have protocol-native staking" \
+    spectra staking validators --chain Bitcoin
 check "refuses staking on an unknown chain"            $USAGE \
     spectra staking validators --chain Nope
+# The staking picker in the app was a seven-case Swift enum with its own
+# display-name and id switches, beside two match arms in `StakingService` over
+# the same seven ids. One registry column now, and this is the column.
+contains "the catalog says which chains stake" '"name":"Polkadot","privateKeyImport":false,"staking":true' \
+    spectra --json chains --filter Polkadot
+contains "and which do not"                   '"name":"Dogecoin","privateKeyImport":true,"staking":false' \
+    spectra --json chains --filter Dogecoin
+check "a testnet does not stake where its mainnet does" $REJECTED \
+    spectra staking validators --chain solana-devnet
 
 # ── Deletion ────────────────────────────────────────────────────────────────
 

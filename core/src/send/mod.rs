@@ -297,6 +297,76 @@ mod tests {
         SendExecutionRequest, SendSubmitPreflightRequest,
     };
 
+    /// Every chain the router sends down the shared preview path has a shape
+    /// for it.
+    ///
+    /// Swift's dispatch used to name those eleven chains one arm at a time, and
+    /// a twelfth entry in a `[String: SimpleChain]` table decided whether the
+    /// call went out at all. Both are gone: the arm says "the chain this coin is
+    /// on" and core derives the shape. What has to hold for that to be safe is
+    /// this — a routing kind outside the seven with a preview path of their own
+    /// is a chain `simple_preview_chain` answers for.
+    #[test]
+    fn every_shared_path_routing_kind_has_a_preview_shape() {
+        use crate::registry::Chain;
+
+        const DEDICATED: &[&str] = &[
+            "bitcoin",
+            "bitcoinCash",
+            "bitcoinSV",
+            "litecoin",
+            "ethereum",
+            "dogecoin",
+            "tron",
+        ];
+        for chain in Chain::all().filter(|c| !c.is_testnet()) {
+            let route = route_send_asset(&SendAssetRoutingInput {
+                chain_name: chain.chain_display_name().to_string(),
+                symbol: chain.coin_symbol().to_string(),
+                is_evm_chain: chain.is_evm(),
+                supports_solana_send_coin: false,
+                supports_near_token_send: false,
+            });
+            let Some(kind) = route.preview_kind.as_deref() else { continue };
+            if DEDICATED.contains(&kind) {
+                continue;
+            }
+            assert!(
+                chain.simple_preview_chain().is_some(),
+                "{} routes to the shared preview path as \"{kind}\" and has no shape",
+                chain.chain_display_name()
+            );
+        }
+    }
+
+    /// And nothing has a shape it cannot be routed to.
+    #[test]
+    fn every_preview_shape_belongs_to_a_chain_that_routes_there() {
+        use crate::registry::Chain;
+
+        for chain in Chain::all().filter(|c| !c.is_testnet()) {
+            if chain.simple_preview_chain().is_none() {
+                continue;
+            }
+            let route = route_send_asset(&SendAssetRoutingInput {
+                chain_name: chain.chain_display_name().to_string(),
+                symbol: chain.coin_symbol().to_string(),
+                is_evm_chain: chain.is_evm(),
+                // Native SOL has no `(chain, symbol)` arm of its own; it routes
+                // through the token rule, which the service answers `true` for
+                // the native coin. Stating that here is what keeps this test
+                // about the shape mapping rather than about the token list.
+                supports_solana_send_coin: chain == Chain::Solana,
+                supports_near_token_send: false,
+            });
+            assert!(
+                route.preview_kind.is_some(),
+                "{} has a shared preview shape and routes nowhere",
+                chain.chain_display_name()
+            );
+        }
+    }
+
     #[test]
     fn routes_evm_native_assets_with_native_symbol_metadata() {
         let route = route_send_asset(&SendAssetRoutingInput {

@@ -116,6 +116,13 @@ pub fn chains(out: Out, args: ChainsArgs) -> CliResult<()> {
                 // array: a chain is offered for private-key import exactly
                 // when a key derives an address on it.
                 "privateKeyImport": chain.derives_from_private_key(),
+                // Likewise the watch-addresses picker: the app rendered a
+                // hand-written eighteen-section list against this flag and
+                // disagreed with it in both directions.
+                "watchOnlyImport": chain.supports_watch_only_import(),
+                // And the staking tab's, which was a seven-case Swift enum and
+                // two match arms in `StakingService` before it was a column.
+                "staking": chain.supports_staking(),
             }))
             .collect::<Vec<_>>(),
     }));

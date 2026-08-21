@@ -442,6 +442,36 @@ fn transaction_explorer_entry(
 mod tests {
     use super::*;
 
+    /// "This chain has no derivation path" is an answer, not a failure.
+    ///
+    /// It used to be an `Err`, and every caller in the import pipeline read
+    /// that as a broken catalog: `spectra wallet import --chain Monero` exited
+    /// with "Missing default derivation path for Monero.", and iOS filtered
+    /// the chain out of the batch it was deriving and then demanded the user
+    /// type an address instead. Core has derived Monero from a seed the whole
+    /// time — nothing could reach it.
+    #[test]
+    fn a_chain_with_no_catalog_path_derives_without_one() {
+        use crate::registry::Chain;
+
+        assert!(!Chain::Monero.uses_derivation_path());
+        assert_eq!(default_path_for_chain("Monero").expect("an answer"), "");
+
+        // Monero is the only mainnet that says it, so a second one appearing
+        // is a catalog edit to notice rather than a silent empty path.
+        for chain in Chain::all().filter(|c| !c.is_testnet() && *c != Chain::Monero) {
+            assert!(
+                chain.uses_derivation_path(),
+                "{} has no catalog derivation path",
+                chain.chain_display_name()
+            );
+        }
+
+        // A chain the registry does not know is still an error: the fallback
+        // is for rows that say "none", not for names that say nothing.
+        assert!(default_path_for_chain("Not A Chain").is_err());
+    }
+
     #[test]
     fn resolves_bitcoin_taproot_path() {
         let default_path = default_path_for_chain("Bitcoin").expect("default path");
@@ -673,9 +703,19 @@ fn default_path_from_catalog_for_account(chain_name: &str, account: u32) -> Resu
             )
         })
     });
-    template
-        .map(|template| render_derivation_path_template(template, account))
-        .ok_or_else(|| format!("Missing default derivation path for {chain_name}."))
+    if let Some(template) = template {
+        return Ok(render_derivation_path_template(template, account));
+    }
+    // A chain the registry knows and the catalog gives no path for derives
+    // without one — that is what `derivation_path = []` says, and Monero is
+    // the mainnet that says it. Erroring here made "the answer is none"
+    // indistinguishable from "the catalog row is broken", and every caller in
+    // the import pipeline treated it as the second: the CLI refused the
+    // import, and iOS dropped the chain out of the batch it was deriving.
+    match Chain::from_display_name(chain_name) {
+        Some(chain) if !chain.uses_derivation_path() => Ok(String::new()),
+        _ => Err(format!("Missing default derivation path for {chain_name}.")),
+    }
 }
 
 /// The index a UTXO-discovery derivation path encodes, or `None` when the path

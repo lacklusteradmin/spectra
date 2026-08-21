@@ -45,7 +45,18 @@ pub fn run(ctx: &Ctx, out: Out, command: StakingCommand) -> CliResult<()> {
 }
 
 /// A staking service bound to one chain's endpoints.
+///
+/// The flag is checked before the endpoints are: a chain that does not stake
+/// should say so rather than report "no endpoints registered for Bitcoin",
+/// which is true and about the wrong thing. It is also the same flag the app's
+/// staking picker is built from, so the two refuse the same set.
 fn service_for(chain: Chain) -> CliResult<std::sync::Arc<StakingService>> {
+    if !chain.supports_staking() {
+        return Err(CliError::rejected(format!(
+            "{} does not have protocol-native staking",
+            chain.chain_display_name()
+        )));
+    }
     let name = chain.chain_display_name().to_string();
     let endpoints: Vec<String> =
         spectra_core::endpoint_records_for_chain_masked(name.clone(), BALANCE | RPC, false)

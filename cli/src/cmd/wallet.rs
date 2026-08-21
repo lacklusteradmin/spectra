@@ -340,6 +340,16 @@ fn seal_and_import(
 
 fn watch(ctx: &Ctx, out: Out, args: WatchArgs) -> CliResult<()> {
     let chain = resolve_chain(&args.chain)?;
+    // Refuse here rather than let the planner refuse: this is the same flag the
+    // app's watch-addresses picker is built from, so the two answer alike, and
+    // "core considered it and said no" is exit 3 rather than the exit 1 an
+    // error escaping the planner produced.
+    if !chain.supports_watch_only_import() {
+        return Err(CliError::rejected(format!(
+            "{} cannot be watched without its keys",
+            chain.chain_display_name()
+        )));
+    }
     let name = args
         .name
         .clone()

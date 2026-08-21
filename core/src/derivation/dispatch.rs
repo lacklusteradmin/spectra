@@ -274,13 +274,14 @@ mod dispatch_export_tests {
             "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about";
         let mut missing = Vec::new();
         for chain in crate::registry::Chain::all() {
-            // Testnets derive from their mainnet's catalog path.
-            let Some(template) = crate::chains::default_derivation_path_template_by_id(
-                chain.mainnet_counterpart().str_id(),
-            ) else {
-                continue;
-            };
-            let path = template.replace("{account}", "0");
+            // Every chain, with no `continue`. It used to skip the ones the
+            // catalog gives no path for, which is exactly the set this test
+            // most needed to cover: Monero was the only member, and it was
+            // unreachable from every front end for as long as the skip was
+            // here. `default_path_from_catalog` answers "" for those now, and
+            // the arms that ignore the path do not mind receiving one.
+            let path = crate::app_core::default_path_for_chain(chain.chain_display_name())
+                .expect("a registry chain always has an answer, even when it is none");
             let result = core_derive_for_chain(
                 chain.chain_display_name().to_string(),
                 PHRASE.to_string(),

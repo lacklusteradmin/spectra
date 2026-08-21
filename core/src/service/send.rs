@@ -123,12 +123,20 @@ impl WalletService {
 
     /// Typed simple-chain send preview: fuses `fetch_simple_chain_send_preview`
     /// + `build_simple_chain_preview` so Swift never sees the intermediate JSON.
+    /// The `chain: SimpleChain` argument is gone: it was derivable from
+    /// `chain_id`, and the only way for a caller to get one was an eleven-entry
+    /// table in Swift keyed by display name — a second spelling of the registry,
+    /// handed back to the registry's owner.
     pub async fn fetch_simple_chain_send_preview_typed(
         &self,
         chain_id: String,
         address: String,
-        chain: crate::send::preview_decode::SimpleChain,
     ) -> Result<crate::send::preview_decode::SimpleChainPreview, SpectraBridgeError> {
+        let chain = crate::registry::Chain::from_str_id(&chain_id)
+            .and_then(|chain| chain.simple_preview_chain())
+            .ok_or_else(|| SpectraBridgeError::InvalidInput {
+                message: format!("{chain_id} has no shared-path send preview"),
+            })?;
         let raw = self
             .fetch_simple_chain_send_preview(&chain_id, address)
             .await?;
