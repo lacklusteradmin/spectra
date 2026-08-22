@@ -41,7 +41,15 @@ impl StakingService {
     }
 }
 
-#[uniffi::export]
+// `async_runtime = "tokio"` is not optional on a block with `async fn`s: without
+// it UniFFI polls the future with no reactor installed and every call fails with
+// "there is no reactor running, must be called from the context of a Tokio 1.x
+// runtime". This block was the only async-exporting one in the crate without it,
+// so the staking tab could never load a validator or a position on iOS. The CLI
+// could not show it — it drives `StakingService` from inside its own runtime via
+// `ctx.rt.block_on` — and no Swift test reaches the network. Found by opening the
+// app.
+#[uniffi::export(async_runtime = "tokio")]
 impl StakingService {
     #[uniffi::constructor]
     pub fn new(endpoints: Vec<ChainEndpoints>) -> Arc<Self> {

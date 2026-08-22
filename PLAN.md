@@ -107,11 +107,11 @@ Measured, not estimated:
 
 | | Start | Now |
 |---|---|---|
-| Swift, non-generated, excluding tests | 30,879 lines | **26,806** |
-| — `views/` + `extensions/` (genuine UI) | 11,113 (36%) | **10,750 (40%)** |
-| — root of `swift/` (`AppState`, stores, persistence, bridges) | 19,766 (64%) | **16,056 (60%)** |
+| Swift, non-generated, excluding tests | 30,879 lines | **26,711** |
+| — `views/` + `extensions/` (genuine UI) | 11,113 (36%) | **10,728 (40%)** |
+| — root of `swift/` (`AppState`, stores, persistence, bridges) | 19,766 (64%) | **15,983 (60%)** |
 | `core_plan_*` FFI exports (core advises, Swift applies) | 42 | 10 |
-| Swift enums restating the chain list | 5 (30 / 76 / 30 / 24 / 7 cases) | **0** |
+| Swift enums restating the chain list | 6 (30 / 76 / 30 / 24 / 7 / 18 cases) | **0** |
 | Swift calls to `StateCommand` / `reduce_state_in_place` | 0 | 0 |
 
 The last two rows are the same fact stated twice. Rust has a state
@@ -493,6 +493,172 @@ the FFI count and is not.
 > acceptance gate.
 
 ## Behaviour changed on purpose
+
+**Staking never worked on iOS. Every call failed before it reached a client.**
+
+*Was:* `StakingService`'s exported impl block was `#[uniffi::export]` with no
+`async_runtime = "tokio"`. It is the only block in the crate with `async fn`s
+that lacked it. UniFFI polls the future with no reactor installed, so every
+staking call from Swift returned *"there is no reactor running, must be called
+from the context of a Tokio 1.x runtime"* — validators, positions, every action
+preview, on all seven chains, always. The staking tab rendered its copy and then
+put an error alert on top of it.
+
+*Now:* the attribute is there. The Solana page loads a hundred live validators
+with their real commissions.
+
+*Why this side:* there is no other side. The tab was inert.
+
+*How it was found, which is the part worth keeping:* by opening the app. Neither
+gate could see it. `cli-acceptance.sh` drives `StakingService` from inside the
+CLI's own runtime — `ctx.rt.block_on(...)` — so the missing attribute is
+invisible there, and it is *because* the CLI supplies a runtime that the Rust
+tests pass too. The iOS suite has no test that reaches the network. Three green
+suites and a dead feature, which is the honest limit of "proven by the CLI": it
+proves core's rules, not that the boundary is wired.
+
+**A keystroke that made the amount invalid dropped the guard on a send preview
+already in flight, and Tron's preview kept showing the previous amount's fee.**
+
+*Was:* the three debounced previews — Ethereum, Dogecoin, Tron — each inlined
+the same "one in flight at a time" bookkeeping, and each also called
+`preparingChains.remove(chainName)` on **every** early exit. Five of Ethereum's
+eight, three of Dogecoin's and two of Tron's run *before* the flag is set. At
+those points the call has not claimed the flag, so the `remove` did not clear
+its own: it cleared whatever call was actually on the network. Type a character
+that makes the amount momentarily invalid and the guard protecting a live
+request is gone; the next keystroke starts a second request beside it, and
+whichever finishes last wins.
+
+Tron's guard also differed from the other two: `guard !contains else { return }`
+with no `pendingSendPreviewRefreshChains.insert`, so a request arriving while one
+was in flight was **dropped** rather than retried — the preview then showed the
+fee for the amount before the one on screen.
+
+*Now:* `withSendPreviewInFlight(_:retry:body:)` owns the flag for all three.
+Nothing outside it touches `preparingChains`, so an early exit cannot reach it,
+and Tron coalesces like the others.
+
+*Why this side:* a fee preview that does not match the amount on screen is the
+kind of wrong that looks right, and this is the number a user checks before
+signing. The stricter side is the one where the last request wins and the guard
+means what it says.
+
+*Checkable without the app:* not from the CLI — this is debounce state in
+`AppState`. What changed structurally is that `preparingChains` has one writer.
+
+**A diagnostics reset put back sixteen of the rows it had just cleared.**
+
+*Was:* `resetDiagnosticsState` emptied `historyRunByChain` and
+`endpointHealthByChain`, and then ran a thirty-two entry key-path list setting
+`isRunning` and `isChecking` to `false` on sixteen named chains. Both subscripts
+insert a default row on write — `set { map[chainName] = newValue }` over a
+getter that returns `.init()` when the key is missing — so the loop did not
+clear anything. It wrote sixteen default rows back into maps the two lines above
+it had emptied, and left the other chains' rows genuinely gone. The block above
+it carries a comment saying an earlier belt-and-suspenders version of exactly
+this "said nothing it does not"; this one said something, and it was wrong.
+
+*Now:* the loop is deleted. The two map assignments reset every chain, which is
+more than the sixteen and is what the function is for.
+
+*Why this side:* a reset that reinstates rows is not a reset, and the rows it
+reinstated were the sixteen someone last remembered — a list that was already
+seven chains short of the diagnostics screens.
+
+*And ten lines naming the five UTXO chains became `utxoRescanStateByChain = [:]`,*
+which likewise clears the map rather than five keys of it.
+
+*Checkable without the app:* not from the CLI — this is `AppState`'s own reset
+path. The check is that neither map is written after being cleared.
+
+**Seven chains' stored addresses were not counted as the wallet's own, and
+eight kinds of wallet showed no address at all.**
+
+*Was:* four separate "all of this wallet's addresses" lists, each written out by
+hand, each a different length, none of them twenty-four.
+
+`knownOwnedAddresses` appended seventeen — no TON, Zcash, Bitcoin Gold, Decred,
+Kaspa, Dash or Bittensor — so an address stored on one of those was not among
+the addresses the app considers its own. The wallet detail row built sixteen and
+took `.compactMap { $0 }.first`, which is "prefer Bitcoin, then Bitcoin Cash, …"
+dressed as a fallback, and left out eight chains entirely: a Zcash or TON wallet
+had no address to show. `makeAddressSnapshots` listed eighteen, six short. And
+the receive view's `walletStaticAddress` switched over twenty-four arms, of
+which the EVM arm named twenty-three chains and read Ethereum's slot even for
+Ethereum Classic, which has its own.
+
+*Now:* all four read `address(forChainNamed:)`, which keys on
+`Chain::address_slot`. `knownOwnedAddresses` and `makeAddressSnapshots` walk the
+registry in catalog order; the detail row shows the wallet's own chain's
+address, which is what a per-chain wallet has; the receive view is one line and
+reads Ethereum Classic's own slot.
+
+*Why this side:* every one of the four was trying to say "the addresses this
+wallet has", and the storage has been a slot-keyed map since the address book
+moved. A list that has to be extended by hand when a chain is added is a list
+that will be one chain short, and all four of them were.
+
+*Checkable without the app:* `spectra wallet show` prints the addresses a wallet
+carries, and the storage it prints from is the same map all four now read.
+
+**"Load more" was offered on every chain and worked on eighteen.**
+
+*Was:* `canLoadMoreHistory` asks `history_pagination_chain_id`, which answers
+for **every** chain the registry knows — so the button appears for any wallet
+whose paging is not exhausted. `loadMoreOnChainHistory`, which answers the tap,
+iterated three hand-written lists: five UTXO names, twelve EVM names, and Tron.
+Everything else fell through and nothing happened.
+
+That is eleven EVM chains — Ethereum Classic, Sei, Celo, Cronos, opBNB, zkSync
+Era, Sonic, Berachain, Unichain, Ink and X Layer — and every account-based
+chain: Solana, XRP Ledger, Stellar, Cardano, Sui, Aptos, TON, Internet
+Computer, NEAR, Polkadot, Monero, Zcash and the rest. A user on any of them
+could tap "Load more" as often as they liked and see the same first page.
+
+*Now:* the chains to page are the chains the eligible wallets are on, and the
+function already had that set — `eligibleWalletIDs` — before throwing it away
+for the lists. Bitcoin and Dogecoin keep their own fetch, every EVM chain pages
+through the token history, and everything else goes through the normalized
+path, whose own comment already claimed it covers "any future account-based
+chain".
+
+*Why this side:* the button's presence and the button's effect were answered by
+two different rules, and the one the user sees was the more generous. Making
+the effect match the offer is the only direction that does not take a working
+control away from the eighteen.
+
+*Checkable without the app:* `every_chain_can_be_paged` in core walks all
+seventy-eight and asserts `history_pagination_chain_id` answers for each — that
+is the half deciding which wallets are offered the control, and it is now
+deliberately total rather than accidentally so.
+
+**A used Bitcoin receive address could be handed out again.**
+
+*Was:* `hasUTXOOnChainActivity` had three arms asking different questions.
+Bitcoin's asked "any UTXOs, or any confirmed balance" and never looked at
+history. Bitcoin Cash, Bitcoin SV, Litecoin and Dogecoin asked "any balance, or
+any history" and never looked at the UTXO count.
+
+An address that received and was then fully spent has no UTXOs and no balance,
+and only history. So on Bitcoin — and only on Bitcoin — that address reported
+"no activity", and the receive flow reads exactly this to decide whether a
+reserved index has been used and should be stepped past. The four chains that
+checked history stepped past it; Bitcoin re-issued it.
+
+*Now:* one question for all of them — any UTXOs, any balance, or any history —
+over the chain set `Chain::supports_deep_utxo_discovery` names, which brings
+the testnets in with their mainnets.
+
+*Why this side:* handing out a used receive address is an address-reuse leak
+that links two payments to the same person, and the strictest reading of "has
+this been used" is the union of the three signals. The widening for the other
+four (they now also count UTXOs) is in the same direction.
+
+*Checkable without the app:* not from the CLI — it takes a live address with
+spent history. What is checkable is that the chain set is
+`supports_deep_utxo_discovery`, which core tests, rather than three arms and a
+`default`.
 
 **Ten EVM mainnets got no destination-risk warning, and twenty threw their
 token-transfer diagnostics away.**
@@ -1568,8 +1734,8 @@ adding a chain requires no Swift change at all.
 
 | | Start | Now | Target |
 |---|---|---|---|
-| `swift/` root vs `views/` | 19,766 vs 11,113 | **16,056 vs 10,750** | inverted |
-| Chain-name literals in root | — | **530** | 0 |
+| `swift/` root vs `views/` | 19,766 vs 11,113 | **15,983 vs 10,728** | inverted |
+| Chain-name literals in root | — | **281** | 0 |
 
 Root is 60% of the Swift line count, from 64%. Inverting it means moving
 roughly 5,600 more lines — a third of what is left there.
@@ -1578,10 +1744,16 @@ roughly 5,600 more lines — a third of what is left there.
 which catches dispatch (`case "Bitcoin":`) and localized user-facing text
 ("…while sending on Tron.") alike. The second kind is not the debt this metric
 is about — a message naming a chain is correct — so the real dispatch figure is
-lower than 530. `AppState+SendFlow`'s densest block turned out to be entirely
+lower than 281. `AppState+SendFlow`'s densest block turned out to be entirely
 of the second kind. Reported as-is because a metric quietly redefined mid-way
 is worse than one with a known bias, but a reader should not treat it as pure
 signal.
+
+*The enum row has moved twice.* It read 4 and then 5 and now 6, each time
+because a sweep found a list scoped to one screen rather than to the app —
+`StakingSupportedChain` in the staking tab, then `CoreTokenTrackingChain`'s
+three hand-written members in `RegistryModels`. The number to trust is the
+literal count below it, which does not depend on anyone having noticed a type.
 
 *How it is counted*, since the figures above this pass were taken with a looser
 grep and are not comparable: the display names of all seventy-eight registry
@@ -1593,14 +1765,14 @@ Where they are, and what shape each is:
 
 | File | Literals | Lines | Shape |
 |---|---|---|---|
-| `AppState+SendFlow` | 93 | 1,484 | localized per-chain hint text, self-tests, Dogecoin rebroadcast |
-| `CoreModels` | 56 | 859 | the 24 `wallet.<chain>Address` shims, over ~150 call sites |
-| `AppState+SendPreview` | 35 | 359 | Ethereum/Dogecoin/Tron debounce, and three real per-chain rules |
-| `AppState+DiagnosticsEndpoints` | 46 | 736 | one name per descriptor row and per probe — mostly identity now |
-| `AppState+ReceiveFlow` | 45 | 644 | import slot handling |
-| `AppState+SendExecution` | 43 | 676 | per-chain broadcast arms |
-| `StoreHistoryRefresh` | 41 | 577 | per-chain history refresh arms |
+| `AppState+SendFlow` | 70 | 1,498 | the address-hint table, Ethereum self-tests, Dogecoin rebroadcast |
+| `AppState+DiagnosticsEndpoints` | 21 | 746 | Bitcoin's xpub walk, and the Monero/NEAR/Polkadot protocol probes |
+| `AppState+SendExecution` | 43 | 676 | per-chain broadcast arms, each a different payload |
+| `AppState+SendPreview` | 12 | 363 | three real per-chain rules: Solana's coin check, Polkadot's seed, Bitcoin's HD |
 | `SendPreviewTypes` | 35 | 291 | `SendPreviewStore`'s eighteen per-chain fields |
+| `AppState+ReceiveFlow` | 21 | 640 | Bitcoin's xpub forms and the UTXO receive-index path |
+| `StoreHistoryRefresh` | 20 | 582 | the Bitcoin and Dogecoin fetches, which are genuinely their own |
+| `CoreModels` | 13 | 806 | the five shims with a reader, and the fee-priority map |
 
 Every one is the shape collapsed five times over now: a fact the registry
 holds, restated once per chain, usually as a wrapper whose body is one call.
@@ -1703,6 +1875,156 @@ removes two of them, but adding them to the API count made a 213-function
 surface read as three and a half times bigger than it is.
 
 Done so far:
+
+- **The preview debounce: one helper for three chains, 304 → 281.**
+
+  Written up above — the bookkeeping was inlined three times and wrong in two
+  ways. `AppState+SendPreview`: 35 literals → 12.
+
+  *`AppState+SendExecution` has the same shape and is left alone.* Seven send
+  arms each write `guard !sendingChains.contains(X)`, then `insert(X)` and
+  `defer remove(X)` forty lines later, with validation in the gap — twenty-one
+  literals. Unlike the preview path there is no bug: no arm removes the flag on
+  an early exit. Collapsing it means restructuring seven signing paths so the
+  network call moves inside a closure, which is a real change to the funds path
+  bought with a metric. Assessed and declined, which is a different thing from
+  not looked at.
+
+- **The diagnostics descriptors stopped spelling their own key: 46 → 21, and
+  329 → 304 overall.**
+
+  The rows are keyed by `Chain` and every closure in them wrote the chain name
+  out again — `chainName: "Tron"` inside the `.tron` entry, twice or three times
+  per row. The chain id and the two key paths went a pass earlier; this is the
+  last column. The closures take `(AppState, Chain)` now, so a row that wants
+  its own name says `chain.displayName`.
+
+  *Two byte-identical probes became one.*
+  `runEthereumEndpointReachabilityDiagnostics` and
+  `runBNBEndpointReachabilityDiagnostics` differed in a chain name given three
+  times each and in which explorer list they appended, which is two arguments.
+
+  *And the dispatchers were converting a `Chain` to its name and back.*
+  `Chain(displayName: chain.displayName)?.isEVM ?? false` — three of them, on a
+  value that is already a `Chain`. It is `chain.isEVM`.
+
+  What is left in the file is genuinely per-chain: Bitcoin's history diagnostics
+  walk an xpub, and Monero, NEAR and Polkadot each probe a different protocol.
+  Those name their chain because they *are* that chain's.
+
+- **The address-field copy: two fourteen-arm switches saying the same fourteen
+  things in a different tense. 342 → 329, and the line count went *up*.**
+
+  `addressBookAddressValidationMessage` had one switch for "the field is empty,
+  here is what a valid address looks like" and a second for "that does not
+  parse, here is what to fix" — the same fourteen chains, twice, in two tenses.
+  One table keyed by chain now, with the EVM family and the Sui/Aptos pair
+  staying as arms because their strings take `%@`.
+
+  *This one cost 29 lines.* A dictionary of string pairs is more verbose than
+  the switch it replaces, and the metric that matters here is the duplication —
+  each sentence appears once instead of its pair being spread across two
+  functions' worth of arms — not the line count. Recorded rather than hidden:
+  the root-vs-views number moved the wrong way for a change that is still
+  right, which is the same trade the settings mirror made and the opposite of
+  the dead-code sweep's.
+
+  *And it makes a content gap visible in one place instead of two.* Ten
+  mainnets have no copy and fall back to "Enter an address for the selected
+  chain." — see the open item below. Filling that needs sentences in four
+  locales, which is authoring rather than migration, so the table names the gap
+  and leaves it.
+
+- **A sixth Swift copy of the chain list, and the `RawRepresentable` trap under
+  it. 420 literals → 342.**
+
+  `CoreTokenTrackingChain` is core's enum. Swift hand-wrote its `rawValue` (18
+  arms), its `init?(rawValue:)` (18 arms) and its `allCases` (18 entries), and
+  `StaticContentCatalog.tokenTrackingChainFor` added a fourth (18 arms plus a
+  fallback repeating the same lookup). The mapping they restate is
+  `CoreTokenTrackingChain::chain_name` and `from_chain_name`, whose own doc
+  comment already says it "had four copies … and `tokenTrackingChainFor` in
+  Swift" — Rust collapsed its own copies and left the Swift ones standing,
+  because there was no way to ask. There is now: `token_tracking_chain` is a
+  column of `core_chain_identities`.
+
+  `"bnb"` was an arm of its own in two of the four. It is BNB Chain's catalog
+  id, so `Chain(id:)` answers it without the literal.
+
+  *The interesting part is why the first attempt crashed.* Deriving `rawValue`
+  from a `[CoreTokenTrackingChain: Chain]` table trapped the app in
+  `_dispatch_once_wait` before the first frame. The extension declared
+  `RawRepresentable`, whose default `==` and `hash(into:)` route through
+  `rawValue` — and those defaults win over the conformance UniFFI generates. So
+  building a dictionary keyed by this enum hashed its keys, which called
+  `rawValue`, which waited on the `dispatch_once` it was already inside. The
+  conformance is dropped; `rawValue` stays a plain property, every call site is
+  unchanged, and hashing is the generated one again. Worth naming because the
+  hazard is invisible at the declaration and only fires once `rawValue` stops
+  being self-contained.
+
+  `RegistryModels.swift`: 36 literals → 0. `StoreLifecycleReset.swift`: 42 → 0
+  (see the behaviour change above). Found by the crash report rather than by a
+  test, which is the honest way round to say it: the iOS suite catches a wrong
+  answer, not a launch trap in a static initializer.
+
+- **Nineteen of the twenty-four `wallet.<chain>Address` shims are gone, and the
+  trade this document declined turned out to be a different trade. 499 → 420.**
+
+  The shims were kept on the grounds that they serve "~150 readable call sites",
+  and rewriting those into `address(forChainNamed:)` would improve a metric and
+  not the code. That was right about reads and wrong about the population: most
+  of those call sites were not reading a wallet's Bitcoin address, they were
+  **switching between the shims by chain name** to find out which one to read.
+  Six such switches:
+
+  - `ReceiveFlowViews.walletStaticAddress` — twenty-four arms
+  - `AppState+ReceiveFlow`'s `liveResolvers` — eighteen `(name, resolver)` pairs
+    scanned linearly, where every resolver was `resolvedAddress(for:chainName:)`
+  - `AppState+SendFlow.knownUTXOAddresses` — five arms, taken last pass
+  - `AppState+ImportLifecycle.knownOwnedAddresses` — seventeen appends
+  - `WalletFlowViews`' detail row — sixteen, then `.first`
+  - `Platform.makeAddressSnapshots` — eighteen pairs
+
+  Each is `address(forChainNamed:)` with the name it already had, and four of
+  them were short — see the behaviour change above. With the dispatch gone,
+  nineteen shims had no reader at all. The five that remain have a reason:
+  Bitcoin falls back to its account xpub, Dogecoin has a watch address, Ethereum
+  backs the EVM family, and Cardano and Monero prefer a stored address to a
+  derived one.
+
+  *And two more tables were their own keys.* `ChainAddressDescriptor` carried a
+  `KeyPath` to the shim and a validation-kind string beside the `Chain` it is
+  keyed by — both derivable, so nineteen rows lost two columns each and kept the
+  three flags that vary. `ImportedWallet`'s convenience initializer took
+  twenty-four `<chain>Address:` parameters and folded them through a
+  twenty-four row table; between them they served two call sites, both tests,
+  both passing one address. It takes `addresses:` now.
+
+  `CoreModels.swift`: 56 literals → 13. `AppState+ReceiveFlow`: 45 → 21.
+  `AppState+AddressResolution`: 6. Root lines under 16,000 for the first time.
+
+- **The history paging and the UTXO activity probe: three more lists, two of
+  them wrong. 530 literals → 499.**
+
+  Both behaviour changes are above; the shape is the same one this document has
+  now recorded a dozen times, and both cases had the answer already in hand.
+  `loadMoreOnChainHistory` computed `eligibleWalletIDs` — the wallets that can
+  page — and then iterated chain names instead of asking those wallets what
+  chain they are on. `hasUTXOOnChainActivity`'s three arms are
+  `supports_deep_utxo_discovery`'s membership, written out and disagreeing about
+  what "activity" means.
+
+  *And five arms picked between five shims.* `knownUTXOAddresses` switched on
+  the chain name to choose between `wallet.bitcoinAddress`,
+  `.bitcoinCashAddress`, `.bitcoinSvAddress`, `.litecoinAddress` and
+  `.dogecoinAddress` — which is `wallet.address(forChainNamed:)`, keyed on the
+  registry's address slot. This is the one place the `CoreModels` shims were
+  being *dispatched between* rather than read directly, which is what made it
+  worth removing where the ~150 plain reads are not.
+
+  `StoreHistoryRefresh.swift`: 41 literals → **20**. `AppState+SendFlow.swift`:
+  93 → 83.
 
 - **Which preview shape a chain uses became a registry fact, and
   `AppState+SendRouting` went to zero chain names.**
@@ -2996,7 +3318,7 @@ Not by feel. These four numbers, checked at the end of each stage:
 | Metric | Start | Now | Target |
 |---|---|---|---|
 | `core_plan_*` exports | 42 | **0** | 0 |
-| Swift root lines vs `views/` | 19,766 vs 11,113 | 16,056 vs 10,750 | inverted |
+| Swift root lines vs `views/` | 19,766 vs 11,113 | 15,983 vs 10,728 | inverted |
 | Domain collections stored on `AppState` | 3 | 0 | 0 |
 | Domain settings owned by core | 0 | **21 fields; 4 left on iOS on purpose** | all |
 | Wallet operations reachable from the CLI | partial | **all** | all |
@@ -3008,6 +3330,12 @@ The last row is new, and it is the one that makes the others checkable. Every
 earlier "proven by the CLI" claim in this document was proven by a person typing
 into a prompt. `scripts/cli-acceptance.sh` replaces that with 104 assertions on
 exit codes and JSON, over a scratch data directory and with no network.
+
+*What it still cannot see.* The CLI drives core from inside its own Tokio
+runtime, so a UniFFI export that needs `async_runtime = "tokio"` and does not
+declare it passes every assertion here and fails on the first call from Swift —
+which is how the staking tab came to be inert with all three suites green. See
+the behaviour change above. Running the app is a fourth gate, not a formality.
 
 Both iOS suites are green as of this pass — 40 tests, 0 failures, over
 consecutive full runs. (Forty rather than thirty-six: three keep the staking
@@ -3060,6 +3388,19 @@ coming down as the paths it replaced are deleted.
   **Fixed**, and it was twenty-two rather than six once the seven-name EVM
   condition and Ethereum Classic's slot were counted — see the behaviour change
   above. The sections are a `ForEach` over the flag now.
+
+- **Ten mainnets have no address-format hint.** `addressFormatHints` in
+  `AppState+SendFlow` covers eleven chains, the EVM family and the Sui/Aptos
+  pair; Bitcoin Cash, Bitcoin SV, Litecoin, Internet Computer, Zcash, Bitcoin
+  Gold, Decred, Kaspa, Dash and Bittensor fall back to "Enter an address for the
+  selected chain." and "Enter a valid %@ address." Those are true but say
+  nothing — a user pasting a Litecoin address gets no hint about what a
+  Litecoin address looks like, where a Tron user is told it starts with T.
+
+  Not filled on the way past because it is copy, in four locales
+  (`resources/strings/{base,en,zh-Hans,zh-Hant}`), and inventing user-facing
+  Chinese for ten address formats is authoring rather than migration. The table
+  is one place now, so the gap is a list rather than a search.
 
 - **`supports_diagnostics` is `true` for all 78 catalog rows and
   `supports_endpoint_catalog` for all but Bitcoin SV.** They read like

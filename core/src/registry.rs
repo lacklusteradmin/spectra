@@ -1436,6 +1436,19 @@ mod tests {
     /// string, which is a localisation edit rather than something to discover
     /// from a screenshot.
     #[test]
+    fn token_tracking_chains_map_one_to_one() {
+        let mut seen = std::collections::HashMap::new();
+        for identity in core_chain_identities() {
+            if let Some(t) = identity.token_tracking_chain {
+                if let Some(prev) = seen.insert(format!("{t:?}"), identity.name.clone()) {
+                    panic!("{t:?} claimed by both {prev} and {}", identity.name);
+                }
+            }
+        }
+        assert_eq!(seen.len(), 18, "expected eighteen token-tracking chains");
+    }
+
+    #[test]
     fn only_monero_is_excluded_from_watch_only_import() {
         let excluded: Vec<&str> = Chain::all()
             .filter(|c| !c.is_testnet() && !c.supports_watch_only_import())
@@ -1607,6 +1620,14 @@ pub struct ChainIdentity {
     pub supports_watch_only_import: bool,
     /// The chain has protocol-native staking the staking tab can drive.
     pub supports_staking: bool,
+    /// Which `CoreTokenTrackingChain` this chain is, if it can host tracked
+    /// tokens. `None` for the chains that cannot.
+    ///
+    /// `CoreTokenTrackingChain::chain_name` and its inverse already collapsed
+    /// four copies of this mapping inside Rust; publishing it here removes the
+    /// three that were left in Swift, which hand-wrote `rawValue`,
+    /// `init?(rawValue:)` and `allCases` for an enum core owns.
+    pub token_tracking_chain: Option<crate::store::wallet_domain::CoreTokenTrackingChain>,
     pub send_execution_shape: SendExecutionShape,
     pub pending_status_poll: PendingStatusPoll,
     /// Which chain's derivation path this chain reuses, as a display name.
@@ -1647,6 +1668,9 @@ pub fn core_chain_identities() -> Vec<ChainIdentity> {
             supports_deep_utxo_discovery: chain.supports_deep_utxo_discovery(),
             supports_watch_only_import: chain.supports_watch_only_import(),
             supports_staking: chain.supports_staking(),
+            token_tracking_chain: crate::store::wallet_domain::CoreTokenTrackingChain::from_chain_name(
+                chain.chain_display_name(),
+            ),
             send_execution_shape: chain.send_execution_shape(),
             pending_status_poll: chain.pending_status_poll(),
             seed_derivation_chain: crate::send::flow::seed_derivation_chain_raw(chain),

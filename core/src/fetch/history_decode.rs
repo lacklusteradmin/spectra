@@ -733,16 +733,27 @@ mod tests {
         assert!(history_evm_native_asset("Bitcoin".into()).is_none());
     }
 
+    /// Every chain the registry knows can be paged, and iOS's "load more"
+    /// covers every chain that can be paged.
+    ///
+    /// This function is what `canLoadMoreHistory` asks, so it decides which
+    /// wallets are offered a "Load more". The dispatch that answers the tap
+    /// used to be three hand-written lists — five UTXO names, twelve EVM names
+    /// and Tron — so the button appeared and did nothing on the twenty-odd
+    /// chains outside them. It iterates the registry now; this is the half that
+    /// says the registry is the right thing to iterate.
     #[test]
-    fn chain_id_mapping() {
-        assert_eq!(
-            history_pagination_chain_id("Bitcoin".into()),
-            Some("bitcoin".into())
-        );
-        assert_eq!(
-            history_pagination_chain_id("Hyperliquid".into()),
-            Some("hyperliquid".into())
-        );
+    fn every_chain_can_be_paged() {
+        use crate::registry::Chain;
+
+        for chain in Chain::all() {
+            assert_eq!(
+                history_pagination_chain_id(chain.chain_display_name().to_string()),
+                Some(chain.str_id().to_string()),
+                "{} cannot be paged",
+                chain.chain_display_name()
+            );
+        }
         assert_eq!(history_pagination_chain_id("Nope".into()), None);
     }
 }
