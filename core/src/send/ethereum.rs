@@ -97,32 +97,27 @@ fn is_valid_evm_address(address: &str) -> bool {
     a.len() == 42 && a.starts_with("0x") && a[2..].chars().all(|c| c.is_ascii_hexdigit())
 }
 
+/// Whether this asset is the one the chain pays fees in, and so moves as a
+/// plain value transfer rather than an ERC-20 call.
+///
+/// This was a table of nine `(chain, symbol)` pairs. Two of them —
+/// `("Arbitrum", "ARB")` and `("Optimism", "OP")` — named a governance token,
+/// so a preview for either built a value transfer of that many *ETH* and threw
+/// away the token contract it had been handed. `coin_symbol` is the registry's
+/// `gas_token_symbol`, which is what the question was actually asking.
 pub fn is_native_evm_asset(chain_name: &str, symbol: &str) -> bool {
-    matches!(
-        (chain_name, symbol),
-        ("Ethereum", "ETH")
-            | ("Ethereum Classic", "ETC")
-            | ("Arbitrum", "ETH")
-            | ("Arbitrum", "ARB")
-            | ("Optimism", "ETH")
-            | ("Optimism", "OP")
-            | ("BNB Chain", "BNB")
-            | ("Avalanche", "AVAX")
-            | ("Hyperliquid", "HYPE")
-    )
+    crate::registry::Chain::from_display_name(chain_name)
+        .is_some_and(|chain| chain.is_evm() && chain.coin_symbol() == symbol)
 }
 
+/// Whether an EVM send can be assembled for this chain at all.
+///
+/// This named seven chains. The registry knows twenty-three EVM mainnets, and
+/// the sixteen outside the list got `UnsupportedChain` here, no fee preview in
+/// the send sheet, and a blocked send behind "Unable to estimate network fee".
 pub fn is_supported_evm_chain(chain_name: &str) -> bool {
-    matches!(
-        chain_name,
-        "Ethereum"
-            | "Ethereum Classic"
-            | "Arbitrum"
-            | "Optimism"
-            | "BNB Chain"
-            | "Avalanche"
-            | "Hyperliquid"
-    )
+    crate::registry::Chain::from_display_name(chain_name)
+        .is_some_and(crate::registry::Chain::is_evm)
 }
 
 /// Convert a decimal amount (e.g. 1.5) to wei with 18 decimals as a decimal string.
@@ -186,7 +181,13 @@ pub fn prepare_evm_send_assembly(
     let destination = normalize_evm_address(&input.resolved_destination);
 
     if is_native_evm_asset(&input.chain_name, &input.symbol) {
-        let wei = amount_to_smallest_unit(input.amount, 18)?;
+        // Every EVM chain in the catalog is 18, but read it rather than
+        // restate it — a chain that is not would be silently off by orders of
+        // magnitude on the funds path.
+        let decimals = crate::registry::Chain::from_display_name(&input.chain_name)
+            .map(|chain| u32::from(chain.native_decimals()))
+            .unwrap_or(18);
+        let wei = amount_to_smallest_unit(input.amount, decimals)?;
         return Ok(EvmSendAssembly {
             value_wei: wei,
             to_address: destination,
@@ -436,6 +437,73 @@ pub(crate) fn decode_evm_send_result_internal(
 }
 
 #[cfg(test)]
+mod every_evm_chain_can_assemble {
+    use super::*;
+
+    /// Every EVM mainnet the registry knows can assemble a send.
+    ///
+    /// `is_supported_evm_chain` named seven of twenty-three. On the other
+    /// sixteen — Base, Polygon, Linea, Scroll, Blast, Mantle, Sei, Celo,
+    /// Cronos, opBNB, zkSync Era, Sonic, Berachain, Unichain, Ink and X Layer
+    /// — this returned `UnsupportedChain`, the send sheet showed no fee, and
+    /// the send itself stopped at "Unable to estimate network fee".
+    #[test]
+    fn every_evm_mainnet_assembles_a_native_send() {
+        let address = "0x742d35cc6634c0532925a3b844bc454e4438f44e";
+        for chain in crate::registry::Chain::all().filter(|c| c.is_evm() && !c.is_testnet()) {
+            let assembly = prepare_evm_send_assembly(EvmSendAssemblyInput {
+                chain_name: chain.chain_display_name().to_string(),
+                symbol: chain.coin_symbol().to_string(),
+                from_address: address.to_string(),
+                resolved_destination: address.to_string(),
+                amount: 1.0,
+                token: None,
+            })
+            .unwrap_or_else(|e| panic!("{} cannot assemble a send: {e:?}", chain.chain_display_name()));
+            assert!(assembly.is_native, "{}", chain.chain_display_name());
+            assert_eq!(assembly.data_hex, "0x", "{}", chain.chain_display_name());
+        }
+    }
+
+    /// A token is never assembled as the gas asset.
+    ///
+    /// `("Arbitrum", "ARB")` and `("Optimism", "OP")` were listed as native, so
+    /// a preview for either built a value transfer of that many ETH and
+    /// discarded the contract it had been given — a 21,000-gas estimate for a
+    /// transfer that is nearer 65,000, simulated against an ETH balance the
+    /// wallet may not have.
+    #[test]
+    fn a_governance_token_is_not_the_gas_asset() {
+        let address = "0x742d35cc6634c0532925a3b844bc454e4438f44e";
+        for (chain_name, symbol, contract) in [
+            ("Arbitrum", "ARB", "0x912ce59144191c1204e64559fe8253a0e49e6548"),
+            ("Optimism", "OP", "0x4200000000000000000000000000000000000042"),
+        ] {
+            assert!(
+                !is_native_evm_asset(chain_name, symbol),
+                "{symbol} is not what {chain_name} pays fees in"
+            );
+            let assembly = prepare_evm_send_assembly(EvmSendAssemblyInput {
+                chain_name: chain_name.to_string(),
+                symbol: symbol.to_string(),
+                from_address: address.to_string(),
+                resolved_destination: address.to_string(),
+                amount: 100.0,
+                token: Some(EvmSupportedToken {
+                    symbol: symbol.to_string(),
+                    contract_address: contract.to_string(),
+                    decimals: 18,
+                }),
+            })
+            .unwrap();
+            assert!(!assembly.is_native, "{symbol}");
+            assert_eq!(assembly.value_wei, "0", "{symbol} must move no gas asset");
+            assert_eq!(assembly.to_address, contract, "{symbol} goes to its contract");
+        }
+    }
+}
+
+#[cfg(test)]
 mod tests {
     use super::*;
 
@@ -615,3 +683,4 @@ mod tests {
         assert_eq!(decoded.fee_rate_description.as_deref(), Some("rpc desc"));
     }
 }
+

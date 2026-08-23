@@ -69,6 +69,8 @@ mod types;
 pub(crate) use helpers::*;
 pub(crate) use send_params::*;
 pub use standalone::*;
+/// The confirmation-poll outcome, which lives with the trackers it updates.
+pub use state::StatusPollOutcome;
 pub use types::*;
 
 // ── Endpoint index (internal — pre-indexed for O(1) chain_id lookup) ──────

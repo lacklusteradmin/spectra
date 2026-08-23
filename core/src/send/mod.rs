@@ -62,6 +62,11 @@ pub struct SendSubmitPreflightPlan {
     pub native_evm_symbol: Option<String>,
     pub is_native_evm_asset: bool,
     pub allows_zero_amount: bool,
+    /// Whether this send takes the shared submit path — see
+    /// `Chain::uses_generic_send_submit`. Decided here rather than by the
+    /// caller because NEAR qualifies for its native asset and not for a token
+    /// on it, which is a question about the asset and not only the chain.
+    pub uses_generic_submit: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -265,6 +270,13 @@ pub fn plan_send_submit_preflight(
         return Err("Amount exceeds the available balance".to_string());
     }
 
+    // NEAR is the one chain where this depends on the asset: its native send
+    // is the shared shape and a token on it is not.
+    let uses_generic_submit = crate::registry::Chain::from_display_name(&asset.chain_name)
+        .is_some_and(|chain| {
+            chain.uses_generic_send_submit() && asset.symbol == chain.coin_symbol()
+        });
+
     Ok(SendSubmitPreflightPlan {
         submit_kind,
         preview_kind: route.preview_kind,
@@ -276,18 +288,19 @@ pub fn plan_send_submit_preflight(
         native_evm_symbol: route.native_evm_symbol,
         is_native_evm_asset: route.is_native_evm_asset,
         allows_zero_amount: route.allows_zero_amount,
+        uses_generic_submit,
     })
 }
 
+/// The asset an EVM chain pays fees in, or `None` off the EVM family.
+///
+/// Seven chains were named here, so on the other sixteen EVM mainnets this
+/// answered `None` — which made `is_native_evm_asset` false for the chain's own
+/// gas token and `allows_zero_amount` false with it.
 fn native_evm_symbol_for_chain(chain_name: &str) -> Option<String> {
-    match chain_name {
-        "Ethereum" | "Arbitrum" | "Optimism" => Some("ETH".to_string()),
-        "Ethereum Classic" => Some("ETC".to_string()),
-        "BNB Chain" => Some("BNB".to_string()),
-        "Avalanche" => Some("AVAX".to_string()),
-        "Hyperliquid" => Some("HYPE".to_string()),
-        _ => None,
-    }
+    crate::registry::Chain::from_display_name(chain_name)
+        .filter(|chain| chain.is_evm())
+        .map(|chain| chain.coin_symbol().to_string())
 }
 
 #[cfg(test)]
@@ -565,5 +578,6 @@ mod tests {
 }
 
 // ── FFI surface ─────────────────────────────────────────────────────────────
+
 
 

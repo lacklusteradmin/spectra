@@ -17,7 +17,6 @@ gas_token_symbol = "BTC"
 search_keywords = ["Bitcoin", "BTC"]
 category = "bitcoin-family"
 is_evm = false
-supports_endpoint_catalog = true
 color = "orange"
 asset_name = "bitcoin"
 token_standard = ""
@@ -40,7 +39,6 @@ total_circulation_model = "Protocol-capped at 21,000,000 BTC."
 native_coingecko_id = "bitcoin"
 native_decimals = 8
 native_asset_name = "Bitcoin"
-supports_diagnostics = true
 
 # ── Ethereum ──────────────────────────────────────────────────────────────
 
@@ -52,7 +50,6 @@ gas_token_symbol = "ETH"
 search_keywords = ["Ethereum", "ETH"]
 category = "evm-l1"
 is_evm = true
-supports_endpoint_catalog = true
 color = "purple"
 asset_name = "ethereum"
 token_standard = "ERC-20"
@@ -68,7 +65,6 @@ total_circulation_model = "No fixed maximum supply. Supply changes with validato
 native_coingecko_id = "ethereum"
 native_decimals = 18
 native_asset_name = "Ethereum"
-supports_diagnostics = true
 
 # ── Solana ────────────────────────────────────────────────────────────────
 
@@ -80,7 +76,6 @@ gas_token_symbol = "SOL"
 search_keywords = ["Solana", "SOL"]
 category = "other"
 is_evm = false
-supports_endpoint_catalog = true
 color = "green"
 asset_name = "solana"
 token_standard = "SPL"
@@ -99,7 +94,6 @@ total_circulation_model = "No fixed maximum supply. Inflation, staking economics
 native_coingecko_id = "solana"
 native_decimals = 9
 native_asset_name = "Solana"
-supports_diagnostics = true
 
 # ── Dogecoin ──────────────────────────────────────────────────────────────
 
@@ -111,7 +105,6 @@ gas_token_symbol = "DOGE"
 search_keywords = ["Dogecoin", "DOGE"]
 category = "bitcoin-family"
 is_evm = false
-supports_endpoint_catalog = true
 color = "yellow"
 asset_name = "dogecoin"
 token_standard = ""
@@ -127,7 +120,6 @@ total_circulation_model = "No fixed terminal cap. Issuance is bounded per block 
 native_coingecko_id = "dogecoin"
 native_decimals = 8
 native_asset_name = "Dogecoin"
-supports_diagnostics = true
 
 # ── XRP Ledger ────────────────────────────────────────────────────────────
 
@@ -139,7 +131,6 @@ gas_token_symbol = "XRP"
 search_keywords = ["XRP Ledger", "XRP"]
 category = "other"
 is_evm = false
-supports_endpoint_catalog = true
 color = "cyan"
 asset_name = "xrp"
 token_standard = ""
@@ -158,7 +149,6 @@ total_circulation_model = "Fixed at 100,000,000,000 XRP total created supply."
 native_coingecko_id = "ripple"
 native_decimals = 6
 native_asset_name = "XRP"
-supports_diagnostics = true
 
 # ── Litecoin ──────────────────────────────────────────────────────────────
 
@@ -170,7 +160,6 @@ gas_token_symbol = "LTC"
 search_keywords = ["Litecoin", "LTC"]
 category = "bitcoin-family"
 is_evm = false
-supports_endpoint_catalog = true
 color = "blue"
 asset_name = "litecoin"
 token_standard = ""
@@ -190,7 +179,6 @@ total_circulation_model = "Protocol-capped at 84,000,000 LTC."
 native_coingecko_id = "litecoin"
 native_decimals = 8
 native_asset_name = "Litecoin"
-supports_diagnostics = true
 
 # ── Bitcoin Cash ──────────────────────────────────────────────────────────
 
@@ -202,7 +190,6 @@ gas_token_symbol = "BCH"
 search_keywords = ["Bitcoin Cash", "BCH"]
 category = "bitcoin-family"
 is_evm = false
-supports_endpoint_catalog = true
 color = "orange"
 asset_name = "bitcoincash"
 token_standard = ""
@@ -222,7 +209,6 @@ total_circulation_model = "Protocol-capped at 21,000,000 BCH."
 native_coingecko_id = "bitcoin-cash"
 native_decimals = 8
 native_asset_name = "Bitcoin Cash"
-supports_diagnostics = true
 
 # ── Tron ──────────────────────────────────────────────────────────────────
 
@@ -234,7 +220,6 @@ gas_token_symbol = "TRX"
 search_keywords = ["Tron", "TRX"]
 category = "other"
 is_evm = false
-supports_endpoint_catalog = true
 color = "red"
 asset_name = "tron"
 token_standard = "TRC-20"
@@ -254,7 +239,6 @@ total_circulation_model = "No fixed supply statement is surfaced here. Effective
 native_coingecko_id = "tron"
 native_decimals = 6
 native_asset_name = "Tron"
-supports_diagnostics = true
 
 # ── Stellar ───────────────────────────────────────────────────────────────
 
@@ -266,7 +250,6 @@ gas_token_symbol = "XLM"
 search_keywords = ["Stellar", "XLM"]
 category = "other"
 is_evm = false
-supports_endpoint_catalog = true
 color = "teal"
 asset_name = "stellar"
 token_standard = ""
@@ -282,7 +265,6 @@ total_circulation_model = "No fixed terminal cap is surfaced here. Circulating s
 native_coingecko_id = "stellar"
 native_decimals = 7
 native_asset_name = "Stellar"
-supports_diagnostics = true
 
 # ── Cardano ───────────────────────────────────────────────────────────────
 
@@ -294,7 +276,6 @@ gas_token_symbol = "ADA"
 search_keywords = ["Cardano", "ADA"]
 category = "other"
 is_evm = false
-supports_endpoint_catalog = true
 color = "indigo"
 asset_name = "cardano"
 token_standard = ""
@@ -313,7 +294,6 @@ total_circulation_model = "Protocol-capped at 45,000,000,000 ADA."
 native_coingecko_id = "cardano"
 native_decimals = 6
 native_asset_name = "Cardano"
-supports_diagnostics = true
 
 # ── Polkadot ─────────────────────────────────────────────────────────────
 
@@ -325,7 +305,6 @@ gas_token_symbol = "DOT"
 search_keywords = ["Polkadot", "DOT"]
 category = "other"
 is_evm = false
-supports_endpoint_catalog = true
 color = "pink"
 asset_name = "polkadot"
 token_standard = ""
@@ -341,7 +320,6 @@ total_circulation_model = "No fixed terminal cap is surfaced here. Supply change
 native_coingecko_id = "polkadot"
 native_decimals = 10
 native_asset_name = "Polkadot"
-supports_diagnostics = true
 
 # ── Arbitrum ─────────────────────────────────────────────────────────────
 
@@ -353,7 +331,6 @@ gas_token_symbol = "ETH"
 search_keywords = ["Arbitrum", "ARB"]
 category = "evm-l2"
 is_evm = true
-supports_endpoint_catalog = true
 color = "cyan"
 asset_name = "arbitrum"
 token_standard = "ERC-20"
@@ -369,7 +346,6 @@ total_circulation_model = "The native gas asset is ETH bridged from Ethereum mai
 native_coingecko_id = "ethereum"
 native_decimals = 18
 native_asset_name = "Ethereum"
-supports_diagnostics = true
 
 # ── Optimism ─────────────────────────────────────────────────────────────
 
@@ -381,7 +357,6 @@ gas_token_symbol = "ETH"
 search_keywords = ["Optimism", "OP"]
 category = "evm-l2"
 is_evm = true
-supports_endpoint_catalog = true
 color = "red"
 asset_name = "optimism"
 token_standard = "ERC-20"
@@ -397,7 +372,6 @@ total_circulation_model = "The native gas asset is ETH bridged from Ethereum mai
 native_coingecko_id = "ethereum"
 native_decimals = 18
 native_asset_name = "Ethereum"
-supports_diagnostics = true
 
 # ── Avalanche ────────────────────────────────────────────────────────────
 
@@ -409,7 +383,6 @@ gas_token_symbol = "AVAX"
 search_keywords = ["Avalanche", "AVAX"]
 category = "evm-l1"
 is_evm = true
-supports_endpoint_catalog = true
 color = "red"
 asset_name = "avalanche"
 token_standard = "ARC-20"
@@ -425,7 +398,6 @@ total_circulation_model = "AVAX supply is capped at 720,000,000 with live circul
 native_coingecko_id = "avalanche-2"
 native_decimals = 18
 native_asset_name = "Avalanche"
-supports_diagnostics = true
 
 # ── Sui ──────────────────────────────────────────────────────────────────
 
@@ -437,7 +409,6 @@ gas_token_symbol = "SUI"
 search_keywords = ["Sui", "SUI"]
 category = "other"
 is_evm = false
-supports_endpoint_catalog = true
 color = "mint"
 asset_name = "sui"
 token_standard = "Sui Coin"
@@ -453,7 +424,6 @@ total_circulation_model = "Total supply capped at 10,000,000,000 SUI, with circu
 native_coingecko_id = "sui"
 native_decimals = 9
 native_asset_name = "Sui"
-supports_diagnostics = true
 
 # ── Aptos ────────────────────────────────────────────────────────────────
 
@@ -465,7 +435,6 @@ gas_token_symbol = "APT"
 search_keywords = ["Aptos", "APT"]
 category = "other"
 is_evm = false
-supports_endpoint_catalog = true
 color = "cyan"
 asset_name = "aptos"
 token_standard = "AIP-21"
@@ -481,7 +450,6 @@ total_circulation_model = "APT circulation changes over time with staking emissi
 native_coingecko_id = "aptos"
 native_decimals = 8
 native_asset_name = "Aptos"
-supports_diagnostics = true
 
 # ── TON ──────────────────────────────────────────────────────────────────
 
@@ -493,7 +461,6 @@ gas_token_symbol = "TON"
 search_keywords = ["TON"]
 category = "other"
 is_evm = false
-supports_endpoint_catalog = true
 color = "blue"
 asset_name = "ton"
 token_standard = "TEP-74"
@@ -509,7 +476,6 @@ total_circulation_model = "Toncoin supply is dynamic over time, so this page tre
 native_coingecko_id = "the-open-network"
 native_decimals = 9
 native_asset_name = "Toncoin"
-supports_diagnostics = true
 
 # ── NEAR ─────────────────────────────────────────────────────────────────
 
@@ -521,7 +487,6 @@ gas_token_symbol = "NEAR"
 search_keywords = ["NEAR"]
 category = "other"
 is_evm = false
-supports_endpoint_catalog = true
 color = "indigo"
 asset_name = "near"
 token_standard = "NEP-141"
@@ -537,7 +502,6 @@ total_circulation_model = "No fixed terminal cap is surfaced here. Supply change
 native_coingecko_id = "near"
 native_decimals = 24
 native_asset_name = "NEAR"
-supports_diagnostics = true
 
 # ── Internet Computer ────────────────────────────────────────────────────
 
@@ -549,7 +513,6 @@ gas_token_symbol = "ICP"
 search_keywords = ["Internet Computer", "ICP"]
 category = "other"
 is_evm = false
-supports_endpoint_catalog = true
 color = "indigo"
 asset_name = "internetcomputer"
 token_standard = ""
@@ -565,7 +528,6 @@ total_circulation_model = "Supply is dynamic and tied to governance, staking, an
 native_coingecko_id = "internet-computer"
 native_decimals = 8
 native_asset_name = "Internet Computer"
-supports_diagnostics = true
 
 # ── Monero ───────────────────────────────────────────────────────────────
 
@@ -577,7 +539,6 @@ gas_token_symbol = "XMR"
 search_keywords = ["Monero", "XMR"]
 category = "other"
 is_evm = false
-supports_endpoint_catalog = true
 color = "orange"
 asset_name = "monero"
 token_standard = ""
@@ -593,7 +554,6 @@ total_circulation_model = "No fixed terminal cap. Monero uses tail emission afte
 native_coingecko_id = "monero"
 native_decimals = 12
 native_asset_name = "Monero"
-supports_diagnostics = true
 
 # ── Base ─────────────────────────────────────────────────────────────────
 
@@ -605,7 +565,6 @@ gas_token_symbol = "ETH"
 search_keywords = ["Base", "ETH"]
 category = "evm-l2"
 is_evm = true
-supports_endpoint_catalog = true
 color = "blue"
 asset_name = "base"
 token_standard = "ERC-20"
@@ -621,7 +580,6 @@ total_circulation_model = "Base is a Coinbase-incubated L2; the gas token is ETH
 native_coingecko_id = "ethereum"
 native_decimals = 18
 native_asset_name = "Ethereum"
-supports_diagnostics = true
 
 # ── Ethereum Classic ─────────────────────────────────────────────────────
 
@@ -633,7 +591,6 @@ gas_token_symbol = "ETC"
 search_keywords = ["Ethereum Classic", "ETC"]
 category = "evm-l1"
 is_evm = true
-supports_endpoint_catalog = true
 color = "green"
 asset_name = "ethereumclassic"
 token_standard = ""
@@ -649,7 +606,6 @@ total_circulation_model = "No fixed maximum supply. Emission declines over time 
 native_coingecko_id = "ethereum-classic"
 native_decimals = 18
 native_asset_name = "Ethereum Classic"
-supports_diagnostics = true
 
 # ── Bitcoin SV ───────────────────────────────────────────────────────────
 
@@ -661,7 +617,6 @@ gas_token_symbol = "BSV"
 search_keywords = ["Bitcoin SV", "BSV"]
 category = "bitcoin-family"
 is_evm = false
-supports_endpoint_catalog = false
 color = "orange"
 asset_name = "bitcoinsv"
 token_standard = ""
@@ -677,7 +632,6 @@ total_circulation_model = "Protocol-capped at 21,000,000 BSV."
 native_coingecko_id = "bitcoin-cash-sv"
 native_decimals = 8
 native_asset_name = "Bitcoin SV"
-supports_diagnostics = true
 
 # ── BNB Chain ────────────────────────────────────────────────────────────
 
@@ -689,7 +643,6 @@ gas_token_symbol = "BNB"
 search_keywords = ["BNB Chain", "BNB"]
 category = "evm-l1"
 is_evm = true
-supports_endpoint_catalog = true
 color = "yellow"
 asset_name = "bnb"
 token_standard = "BEP-20"
@@ -705,7 +658,6 @@ total_circulation_model = "Genesis supply began at 200,000,000 BNB, with protoco
 native_coingecko_id = "binancecoin"
 native_decimals = 18
 native_asset_name = "BNB"
-supports_diagnostics = true
 
 # ── Hyperliquid ──────────────────────────────────────────────────────────
 
@@ -717,7 +669,6 @@ gas_token_symbol = "HYPE"
 search_keywords = ["Hyperliquid", "HYPE"]
 category = "evm-l1"
 is_evm = true
-supports_endpoint_catalog = true
 color = "mint"
 asset_name = "hyperliquid"
 token_standard = "ERC-20"
@@ -733,7 +684,6 @@ total_circulation_model = "HYPE circulation is dynamic over time, so this page t
 native_coingecko_id = "hyperliquid"
 native_decimals = 18
 native_asset_name = "Hyperliquid"
-supports_diagnostics = true
 
 # ── Polygon ──────────────────────────────────────────────────────────────
 
@@ -745,7 +695,6 @@ gas_token_symbol = "POL"
 search_keywords = ["Polygon", "POL", "MATIC"]
 category = "evm-l1"
 is_evm = true
-supports_endpoint_catalog = true
 color = "purple"
 asset_name = "polygon"
 token_standard = "ERC-20"
@@ -761,7 +710,6 @@ total_circulation_model = "POL replaced MATIC as the gas/staking token following
 native_coingecko_id = "matic-network"
 native_decimals = 18
 native_asset_name = "Polygon"
-supports_diagnostics = true
 
 # ── Linea ────────────────────────────────────────────────────────────────
 
@@ -773,7 +721,6 @@ gas_token_symbol = "ETH"
 search_keywords = ["Linea"]
 category = "evm-l2"
 is_evm = true
-supports_endpoint_catalog = true
 color = "blue"
 asset_name = "linea"
 token_standard = "ERC-20"
@@ -789,7 +736,6 @@ total_circulation_model = "Linea is a ConsenSys zkEVM L2; gas token is bridged E
 native_coingecko_id = "ethereum"
 native_decimals = 18
 native_asset_name = "Ethereum"
-supports_diagnostics = true
 
 # ── Scroll ───────────────────────────────────────────────────────────────
 
@@ -801,7 +747,6 @@ gas_token_symbol = "ETH"
 search_keywords = ["Scroll"]
 category = "evm-l2"
 is_evm = true
-supports_endpoint_catalog = true
 color = "orange"
 asset_name = "scroll"
 token_standard = "ERC-20"
@@ -817,7 +762,6 @@ total_circulation_model = "Scroll is a community-built zkEVM L2; gas token is br
 native_coingecko_id = "ethereum"
 native_decimals = 18
 native_asset_name = "Ethereum"
-supports_diagnostics = true
 
 # ── Blast ────────────────────────────────────────────────────────────────
 
@@ -829,7 +773,6 @@ gas_token_symbol = "ETH"
 search_keywords = ["Blast"]
 category = "evm-l2"
 is_evm = true
-supports_endpoint_catalog = true
 color = "yellow"
 asset_name = "blast"
 token_standard = "ERC-20"
@@ -845,7 +788,6 @@ total_circulation_model = "Blast is an L2 with native ETH/USDB yield distributio
 native_coingecko_id = "ethereum"
 native_decimals = 18
 native_asset_name = "Ethereum"
-supports_diagnostics = true
 
 # ── Mantle ───────────────────────────────────────────────────────────────
 
@@ -857,7 +799,6 @@ gas_token_symbol = "MNT"
 search_keywords = ["Mantle", "MNT"]
 category = "evm-l2"
 is_evm = true
-supports_endpoint_catalog = true
 color = "green"
 asset_name = "mantle"
 token_standard = "ERC-20"
@@ -873,7 +814,6 @@ total_circulation_model = "Mantle uses MNT as its native gas/governance token (f
 native_coingecko_id = "mantle"
 native_decimals = 18
 native_asset_name = "Mantle"
-supports_diagnostics = true
 
 # ── Zcash ────────────────────────────────────────────────────────────────
 
@@ -885,7 +825,6 @@ gas_token_symbol = "ZEC"
 search_keywords = ["Zcash", "ZEC"]
 category = "other"
 is_evm = false
-supports_endpoint_catalog = true
 color = "yellow"
 asset_name = "zcash"
 token_standard = ""
@@ -901,7 +840,6 @@ total_circulation_model = "Zcash mirrors Bitcoin's 21M cap with halvings; total 
 native_coingecko_id = "zcash"
 native_decimals = 8
 native_asset_name = "Zcash"
-supports_diagnostics = true
 
 # ── Bitcoin Gold ─────────────────────────────────────────────────────────
 
@@ -913,7 +851,6 @@ gas_token_symbol = "BTG"
 search_keywords = ["Bitcoin Gold", "BTG"]
 category = "bitcoin-family"
 is_evm = false
-supports_endpoint_catalog = true
 color = "yellow"
 asset_name = "bitcoingold"
 token_standard = ""
@@ -929,7 +866,6 @@ total_circulation_model = "21,000,000 BTG cap mirroring Bitcoin's halving schedu
 native_coingecko_id = "bitcoin-gold"
 native_decimals = 8
 native_asset_name = "Bitcoin Gold"
-supports_diagnostics = true
 
 # ── Decred ───────────────────────────────────────────────────────────────
 
@@ -941,7 +877,6 @@ gas_token_symbol = "DCR"
 search_keywords = ["Decred", "DCR"]
 category = "bitcoin-family"
 is_evm = false
-supports_endpoint_catalog = true
 color = "indigo"
 asset_name = "decred"
 token_standard = ""
@@ -957,7 +892,6 @@ total_circulation_model = "Capped near 21,000,000 DCR with declining block rewar
 native_coingecko_id = "decred"
 native_decimals = 8
 native_asset_name = "Decred"
-supports_diagnostics = true
 
 # ── Kaspa ────────────────────────────────────────────────────────────────
 
@@ -969,7 +903,6 @@ gas_token_symbol = "KAS"
 search_keywords = ["Kaspa", "KAS"]
 category = "other"
 is_evm = false
-supports_endpoint_catalog = true
 color = "teal"
 asset_name = "kaspa"
 token_standard = ""
@@ -985,7 +918,6 @@ total_circulation_model = "Capped at ~28,700,000,000 KAS with monthly chromatic 
 native_coingecko_id = "kaspa"
 native_decimals = 8
 native_asset_name = "Kaspa"
-supports_diagnostics = true
 
 # ── Sei ──────────────────────────────────────────────────────────────────
 
@@ -997,7 +929,6 @@ gas_token_symbol = "SEI"
 search_keywords = ["Sei", "SEI"]
 category = "evm-l1"
 is_evm = true
-supports_endpoint_catalog = true
 color = "red"
 asset_name = "sei"
 token_standard = "ERC-20"
@@ -1013,7 +944,6 @@ total_circulation_model = "10,000,000,000 SEI cap with staking and governance un
 native_coingecko_id = "sei-network"
 native_decimals = 18
 native_asset_name = "Sei"
-supports_diagnostics = true
 
 # ── Celo ─────────────────────────────────────────────────────────────────
 
@@ -1025,7 +955,6 @@ gas_token_symbol = "CELO"
 search_keywords = ["Celo", "CELO"]
 category = "evm-l2"
 is_evm = true
-supports_endpoint_catalog = true
 color = "yellow"
 asset_name = "celo"
 token_standard = "ERC-20"
@@ -1041,7 +970,6 @@ total_circulation_model = "1,000,000,000 CELO cap with epoch rewards."
 native_coingecko_id = "celo"
 native_decimals = 18
 native_asset_name = "Celo"
-supports_diagnostics = true
 
 # ── Cronos ───────────────────────────────────────────────────────────────
 
@@ -1053,7 +981,6 @@ gas_token_symbol = "CRO"
 search_keywords = ["Cronos", "CRO"]
 category = "evm-l1"
 is_evm = true
-supports_endpoint_catalog = true
 color = "blue"
 asset_name = "cronos"
 token_standard = "ERC-20"
@@ -1069,7 +996,6 @@ total_circulation_model = "30,000,000,000 CRO cap (post-2022 burn)."
 native_coingecko_id = "crypto-com-chain"
 native_decimals = 18
 native_asset_name = "Cronos"
-supports_diagnostics = true
 
 # ── opBNB ────────────────────────────────────────────────────────────────
 
@@ -1081,7 +1007,6 @@ gas_token_symbol = "BNB"
 search_keywords = ["opBNB", "BNB L2"]
 category = "evm-l2"
 is_evm = true
-supports_endpoint_catalog = true
 color = "yellow"
 asset_name = "bnb"
 token_standard = "ERC-20"
@@ -1097,7 +1022,6 @@ total_circulation_model = "Pays gas in BNB; no separate token."
 native_coingecko_id = "binancecoin"
 native_decimals = 18
 native_asset_name = "BNB"
-supports_diagnostics = true
 
 # ── zkSync Era ───────────────────────────────────────────────────────────
 
@@ -1109,7 +1033,6 @@ gas_token_symbol = "ETH"
 search_keywords = ["zkSync Era", "zkSync"]
 category = "evm-l2"
 is_evm = true
-supports_endpoint_catalog = true
 color = "gray"
 asset_name = "zksyncera"
 token_standard = "ERC-20"
@@ -1125,7 +1048,6 @@ total_circulation_model = "Pays gas in ETH; ZK token is governance."
 native_coingecko_id = "ethereum"
 native_decimals = 18
 native_asset_name = "Ethereum"
-supports_diagnostics = true
 
 # ── Sonic ────────────────────────────────────────────────────────────────
 
@@ -1137,7 +1059,6 @@ gas_token_symbol = "S"
 search_keywords = ["Sonic", "S"]
 category = "evm-l1"
 is_evm = true
-supports_endpoint_catalog = true
 color = "gray"
 asset_name = "sonic"
 token_standard = "ERC-20"
@@ -1153,7 +1074,6 @@ total_circulation_model = "Migrated 1:1 from FTM at launch with continuing infla
 native_coingecko_id = "sonic-3"
 native_decimals = 18
 native_asset_name = "Sonic"
-supports_diagnostics = true
 
 # ── Berachain ────────────────────────────────────────────────────────────
 
@@ -1165,7 +1085,6 @@ gas_token_symbol = "BERA"
 search_keywords = ["Berachain", "BERA"]
 category = "evm-l1"
 is_evm = true
-supports_endpoint_catalog = true
 color = "orange"
 asset_name = "bera"
 token_standard = "ERC-20"
@@ -1181,7 +1100,6 @@ total_circulation_model = "500,000,000 BERA initial supply with PoL emissions."
 native_coingecko_id = "berachain-bera"
 native_decimals = 18
 native_asset_name = "Berachain"
-supports_diagnostics = true
 
 # ── Unichain ─────────────────────────────────────────────────────────────
 
@@ -1193,7 +1111,6 @@ gas_token_symbol = "ETH"
 search_keywords = ["Unichain"]
 category = "evm-l2"
 is_evm = true
-supports_endpoint_catalog = true
 color = "pink"
 asset_name = "uniswap"
 token_standard = "ERC-20"
@@ -1209,7 +1126,6 @@ total_circulation_model = "Pays gas in ETH; no separate token."
 native_coingecko_id = "ethereum"
 native_decimals = 18
 native_asset_name = "Ethereum"
-supports_diagnostics = true
 
 # ── Ink ──────────────────────────────────────────────────────────────────
 
@@ -1221,7 +1137,6 @@ gas_token_symbol = "ETH"
 search_keywords = ["Ink"]
 category = "evm-l2"
 is_evm = true
-supports_endpoint_catalog = true
 color = "purple"
 asset_name = "ink"
 token_standard = "ERC-20"
@@ -1237,7 +1152,6 @@ total_circulation_model = "Pays gas in ETH; no separate token."
 native_coingecko_id = "ethereum"
 native_decimals = 18
 native_asset_name = "Ethereum"
-supports_diagnostics = true
 
 # ── Dash ─────────────────────────────────────────────────────────────────
 
@@ -1249,7 +1163,6 @@ gas_token_symbol = "DASH"
 search_keywords = ["Dash", "DASH"]
 category = "bitcoin-family"
 is_evm = false
-supports_endpoint_catalog = true
 color = "blue"
 asset_name = "dash"
 token_standard = ""
@@ -1265,7 +1178,6 @@ total_circulation_model = "Capped near 18,900,000 DASH with -7.14% annual emissi
 native_coingecko_id = "dash"
 native_decimals = 8
 native_asset_name = "Dash"
-supports_diagnostics = true
 
 # ── X Layer ──────────────────────────────────────────────────────────────
 
@@ -1277,7 +1189,6 @@ gas_token_symbol = "OKB"
 search_keywords = ["X Layer", "OKB", "OKX"]
 category = "evm-l2"
 is_evm = true
-supports_endpoint_catalog = true
 color = "gray"
 asset_name = "okb"
 token_standard = "ERC-20"
@@ -1293,7 +1204,6 @@ total_circulation_model = "Pays gas in OKB; OKB is OKX's exchange/utility token 
 native_coingecko_id = "okb"
 native_decimals = 18
 native_asset_name = "OKB"
-supports_diagnostics = true
 
 # ── Bittensor ────────────────────────────────────────────────────────────
 
@@ -1305,7 +1215,6 @@ gas_token_symbol = "TAO"
 search_keywords = ["Bittensor", "TAO", "subtensor"]
 category = "other"
 is_evm = false
-supports_endpoint_catalog = true
 color = "gray"
 asset_name = "bittensor"
 token_standard = ""
@@ -1321,7 +1230,6 @@ total_circulation_model = "Capped at 21,000,000 TAO with 4-year halvings, mirror
 native_coingecko_id = "bittensor"
 native_decimals = 9
 native_asset_name = "Bittensor"
-supports_diagnostics = true
 
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 # Testnets (46-77) — wiki fields intentionally blank; identity + visual only.
@@ -1334,7 +1242,6 @@ gas_token_symbol = "BTC"
 search_keywords = ["Bitcoin Testnet", "tBTC", "testnet"]
 category = "testnet"
 is_evm = false
-supports_endpoint_catalog = true
 color = "orange"
 asset_name = "bitcoin"
 token_standard = ""
@@ -1350,7 +1257,6 @@ total_circulation_model = ""
 native_coingecko_id = "bitcoin"
 native_decimals = 8
 native_asset_name = "Bitcoin"
-supports_diagnostics = true
 [[chains]]
 id = "bitcoin-testnet-4"
 name = "Bitcoin Testnet4"
@@ -1359,7 +1265,6 @@ gas_token_symbol = "BTC"
 search_keywords = ["Bitcoin Testnet4", "testnet4"]
 category = "testnet"
 is_evm = false
-supports_endpoint_catalog = true
 color = "orange"
 asset_name = "bitcoin"
 token_standard = ""
@@ -1375,7 +1280,6 @@ total_circulation_model = ""
 native_coingecko_id = "bitcoin"
 native_decimals = 8
 native_asset_name = "Bitcoin"
-supports_diagnostics = true
 [[chains]]
 id = "bitcoin-signet"
 name = "Bitcoin Signet"
@@ -1384,7 +1288,6 @@ gas_token_symbol = "BTC"
 search_keywords = ["Bitcoin Signet", "signet"]
 category = "testnet"
 is_evm = false
-supports_endpoint_catalog = true
 color = "orange"
 asset_name = "bitcoin"
 token_standard = ""
@@ -1400,7 +1303,6 @@ total_circulation_model = ""
 native_coingecko_id = "bitcoin"
 native_decimals = 8
 native_asset_name = "Bitcoin"
-supports_diagnostics = true
 [[chains]]
 id = "litecoin-testnet"
 name = "Litecoin Testnet"
@@ -1409,7 +1311,6 @@ gas_token_symbol = "LTC"
 search_keywords = ["Litecoin Testnet", "tLTC"]
 category = "testnet"
 is_evm = false
-supports_endpoint_catalog = true
 color = "blue"
 asset_name = "litecoin"
 token_standard = ""
@@ -1425,7 +1326,6 @@ total_circulation_model = ""
 native_coingecko_id = "litecoin"
 native_decimals = 8
 native_asset_name = "Litecoin"
-supports_diagnostics = true
 [[chains]]
 id = "bitcoin-cash-testnet"
 name = "Bitcoin Cash Testnet"
@@ -1434,7 +1334,6 @@ gas_token_symbol = "BCH"
 search_keywords = ["Bitcoin Cash Testnet", "tBCH"]
 category = "testnet"
 is_evm = false
-supports_endpoint_catalog = true
 color = "orange"
 asset_name = "bitcoincash"
 token_standard = ""
@@ -1450,7 +1349,6 @@ total_circulation_model = ""
 native_coingecko_id = "bitcoin-cash"
 native_decimals = 8
 native_asset_name = "Bitcoin Cash"
-supports_diagnostics = true
 [[chains]]
 id = "bitcoin-sv-testnet"
 name = "Bitcoin SV Testnet"
@@ -1459,7 +1357,6 @@ gas_token_symbol = "BSV"
 search_keywords = ["Bitcoin SV Testnet", "tBSV"]
 category = "testnet"
 is_evm = false
-supports_endpoint_catalog = false
 color = "orange"
 asset_name = "bitcoinsv"
 token_standard = ""
@@ -1475,7 +1372,6 @@ total_circulation_model = ""
 native_coingecko_id = "bitcoin-cash-sv"
 native_decimals = 8
 native_asset_name = "Bitcoin SV"
-supports_diagnostics = true
 [[chains]]
 id = "dogecoin-testnet"
 name = "Dogecoin Testnet"
@@ -1484,7 +1380,6 @@ gas_token_symbol = "DOGE"
 search_keywords = ["Dogecoin Testnet", "tDOGE"]
 category = "testnet"
 is_evm = false
-supports_endpoint_catalog = true
 color = "yellow"
 asset_name = "dogecoin"
 token_standard = ""
@@ -1500,7 +1395,6 @@ total_circulation_model = ""
 native_coingecko_id = "dogecoin"
 native_decimals = 8
 native_asset_name = "Dogecoin"
-supports_diagnostics = true
 [[chains]]
 id = "zcash-testnet"
 name = "Zcash Testnet"
@@ -1509,7 +1403,6 @@ gas_token_symbol = "ZEC"
 search_keywords = ["Zcash Testnet"]
 category = "testnet"
 is_evm = false
-supports_endpoint_catalog = true
 color = "yellow"
 asset_name = "zcash"
 token_standard = ""
@@ -1525,7 +1418,6 @@ total_circulation_model = ""
 native_coingecko_id = "zcash"
 native_decimals = 8
 native_asset_name = "Zcash"
-supports_diagnostics = true
 [[chains]]
 id = "decred-testnet"
 name = "Decred Testnet"
@@ -1534,7 +1426,6 @@ gas_token_symbol = "DCR"
 search_keywords = ["Decred Testnet"]
 category = "testnet"
 is_evm = false
-supports_endpoint_catalog = true
 color = "indigo"
 asset_name = "decred"
 token_standard = ""
@@ -1550,7 +1441,6 @@ total_circulation_model = ""
 native_coingecko_id = "decred"
 native_decimals = 8
 native_asset_name = "Decred"
-supports_diagnostics = true
 [[chains]]
 id = "kaspa-testnet"
 name = "Kaspa Testnet"
@@ -1559,7 +1449,6 @@ gas_token_symbol = "KAS"
 search_keywords = ["Kaspa Testnet"]
 category = "testnet"
 is_evm = false
-supports_endpoint_catalog = true
 color = "teal"
 asset_name = "kaspa"
 token_standard = ""
@@ -1575,7 +1464,6 @@ total_circulation_model = ""
 native_coingecko_id = "kaspa"
 native_decimals = 8
 native_asset_name = "Kaspa"
-supports_diagnostics = true
 [[chains]]
 id = "dash-testnet"
 name = "Dash Testnet"
@@ -1584,7 +1472,6 @@ gas_token_symbol = "DASH"
 search_keywords = ["Dash Testnet"]
 category = "testnet"
 is_evm = false
-supports_endpoint_catalog = true
 color = "blue"
 asset_name = "dash"
 token_standard = ""
@@ -1600,7 +1487,6 @@ total_circulation_model = ""
 native_coingecko_id = "dash"
 native_decimals = 8
 native_asset_name = "Dash"
-supports_diagnostics = true
 [[chains]]
 id = "ethereum-sepolia"
 name = "Ethereum Sepolia"
@@ -1609,7 +1495,6 @@ gas_token_symbol = "ETH"
 search_keywords = ["Ethereum Sepolia", "Sepolia", "ETH"]
 category = "testnet"
 is_evm = true
-supports_endpoint_catalog = true
 color = "purple"
 asset_name = "ethereum"
 token_standard = ""
@@ -1625,7 +1510,6 @@ total_circulation_model = ""
 native_coingecko_id = "ethereum"
 native_decimals = 18
 native_asset_name = "Ethereum"
-supports_diagnostics = true
 [[chains]]
 id = "ethereum-hoodi"
 name = "Ethereum Hoodi"
@@ -1634,7 +1518,6 @@ gas_token_symbol = "ETH"
 search_keywords = ["Ethereum Hoodi", "Hoodi"]
 category = "testnet"
 is_evm = true
-supports_endpoint_catalog = true
 color = "purple"
 asset_name = "ethereum"
 token_standard = ""
@@ -1650,7 +1533,6 @@ total_circulation_model = ""
 native_coingecko_id = "ethereum"
 native_decimals = 18
 native_asset_name = "Ethereum"
-supports_diagnostics = true
 [[chains]]
 id = "arbitrum-sepolia"
 name = "Arbitrum Sepolia"
@@ -1659,7 +1541,6 @@ gas_token_symbol = "ETH"
 search_keywords = ["Arbitrum Sepolia", "Sepolia"]
 category = "testnet"
 is_evm = true
-supports_endpoint_catalog = true
 color = "cyan"
 asset_name = "arbitrum"
 token_standard = ""
@@ -1675,7 +1556,6 @@ total_circulation_model = ""
 native_coingecko_id = "ethereum"
 native_decimals = 18
 native_asset_name = "Ethereum"
-supports_diagnostics = true
 [[chains]]
 id = "optimism-sepolia"
 name = "Optimism Sepolia"
@@ -1684,7 +1564,6 @@ gas_token_symbol = "ETH"
 search_keywords = ["Optimism Sepolia", "Sepolia"]
 category = "testnet"
 is_evm = true
-supports_endpoint_catalog = true
 color = "red"
 asset_name = "optimism"
 token_standard = ""
@@ -1700,7 +1579,6 @@ total_circulation_model = ""
 native_coingecko_id = "ethereum"
 native_decimals = 18
 native_asset_name = "Ethereum"
-supports_diagnostics = true
 [[chains]]
 id = "base-sepolia"
 name = "Base Sepolia"
@@ -1709,7 +1587,6 @@ gas_token_symbol = "ETH"
 search_keywords = ["Base Sepolia", "Sepolia"]
 category = "testnet"
 is_evm = true
-supports_endpoint_catalog = true
 color = "blue"
 asset_name = "base"
 token_standard = ""
@@ -1725,7 +1602,6 @@ total_circulation_model = ""
 native_coingecko_id = "ethereum"
 native_decimals = 18
 native_asset_name = "Ethereum"
-supports_diagnostics = true
 [[chains]]
 id = "bnb-testnet"
 name = "BNB Chain Testnet"
@@ -1734,7 +1610,6 @@ gas_token_symbol = "BNB"
 search_keywords = ["BNB Chain Testnet", "Chapel"]
 category = "testnet"
 is_evm = true
-supports_endpoint_catalog = true
 color = "yellow"
 asset_name = "bnb"
 token_standard = ""
@@ -1750,7 +1625,6 @@ total_circulation_model = ""
 native_coingecko_id = "binancecoin"
 native_decimals = 18
 native_asset_name = "BNB"
-supports_diagnostics = true
 [[chains]]
 id = "avalanche-fuji"
 name = "Avalanche Fuji"
@@ -1759,7 +1633,6 @@ gas_token_symbol = "AVAX"
 search_keywords = ["Avalanche Fuji", "Fuji"]
 category = "testnet"
 is_evm = true
-supports_endpoint_catalog = true
 color = "red"
 asset_name = "avalanche"
 token_standard = ""
@@ -1775,7 +1648,6 @@ total_circulation_model = ""
 native_coingecko_id = "avalanche-2"
 native_decimals = 18
 native_asset_name = "Avalanche"
-supports_diagnostics = true
 [[chains]]
 id = "polygon-amoy"
 name = "Polygon Amoy"
@@ -1784,7 +1656,6 @@ gas_token_symbol = "POL"
 search_keywords = ["Polygon Amoy", "Amoy"]
 category = "testnet"
 is_evm = true
-supports_endpoint_catalog = true
 color = "purple"
 asset_name = "polygon"
 token_standard = ""
@@ -1800,7 +1671,6 @@ total_circulation_model = ""
 native_coingecko_id = "matic-network"
 native_decimals = 18
 native_asset_name = "Polygon"
-supports_diagnostics = true
 [[chains]]
 id = "hyperliquid-testnet"
 name = "Hyperliquid Testnet"
@@ -1809,7 +1679,6 @@ gas_token_symbol = "HYPE"
 search_keywords = ["Hyperliquid Testnet"]
 category = "testnet"
 is_evm = true
-supports_endpoint_catalog = true
 color = "mint"
 asset_name = "hyperliquid"
 token_standard = ""
@@ -1825,7 +1694,6 @@ total_circulation_model = ""
 native_coingecko_id = "hyperliquid"
 native_decimals = 18
 native_asset_name = "Hyperliquid"
-supports_diagnostics = true
 [[chains]]
 id = "ethereum-classic-mordor"
 name = "Ethereum Classic Mordor"
@@ -1834,7 +1702,6 @@ gas_token_symbol = "ETC"
 search_keywords = ["Ethereum Classic Mordor", "Mordor"]
 category = "testnet"
 is_evm = true
-supports_endpoint_catalog = true
 color = "green"
 asset_name = "ethereumclassic"
 token_standard = ""
@@ -1850,7 +1717,6 @@ total_circulation_model = ""
 native_coingecko_id = "ethereum-classic"
 native_decimals = 18
 native_asset_name = "Ethereum Classic"
-supports_diagnostics = true
 [[chains]]
 id = "tron-nile"
 name = "Tron Nile"
@@ -1859,7 +1725,6 @@ gas_token_symbol = "TRX"
 search_keywords = ["Tron Nile", "Nile"]
 category = "testnet"
 is_evm = false
-supports_endpoint_catalog = true
 color = "red"
 asset_name = "tron"
 token_standard = ""
@@ -1875,7 +1740,6 @@ total_circulation_model = ""
 native_coingecko_id = "tron"
 native_decimals = 6
 native_asset_name = "Tron"
-supports_diagnostics = true
 [[chains]]
 id = "solana-devnet"
 name = "Solana Devnet"
@@ -1884,7 +1748,6 @@ gas_token_symbol = "SOL"
 search_keywords = ["Solana Devnet", "Devnet"]
 category = "testnet"
 is_evm = false
-supports_endpoint_catalog = true
 color = "green"
 asset_name = "solana"
 token_standard = ""
@@ -1900,7 +1763,6 @@ total_circulation_model = ""
 native_coingecko_id = "solana"
 native_decimals = 9
 native_asset_name = "Solana"
-supports_diagnostics = true
 [[chains]]
 id = "xrp-testnet"
 name = "XRP Ledger Testnet"
@@ -1909,7 +1771,6 @@ gas_token_symbol = "XRP"
 search_keywords = ["XRP Ledger Testnet"]
 category = "testnet"
 is_evm = false
-supports_endpoint_catalog = true
 color = "cyan"
 asset_name = "xrp"
 token_standard = ""
@@ -1925,7 +1786,6 @@ total_circulation_model = ""
 native_coingecko_id = "ripple"
 native_decimals = 6
 native_asset_name = "XRP"
-supports_diagnostics = true
 [[chains]]
 id = "stellar-testnet"
 name = "Stellar Testnet"
@@ -1934,7 +1794,6 @@ gas_token_symbol = "XLM"
 search_keywords = ["Stellar Testnet"]
 category = "testnet"
 is_evm = false
-supports_endpoint_catalog = true
 color = "teal"
 asset_name = "stellar"
 token_standard = ""
@@ -1950,7 +1809,6 @@ total_circulation_model = ""
 native_coingecko_id = "stellar"
 native_decimals = 7
 native_asset_name = "Stellar"
-supports_diagnostics = true
 [[chains]]
 id = "cardano-preprod"
 name = "Cardano Preprod"
@@ -1959,7 +1817,6 @@ gas_token_symbol = "ADA"
 search_keywords = ["Cardano Preprod", "Preprod"]
 category = "testnet"
 is_evm = false
-supports_endpoint_catalog = true
 color = "indigo"
 asset_name = "cardano"
 token_standard = ""
@@ -1975,7 +1832,6 @@ total_circulation_model = ""
 native_coingecko_id = "cardano"
 native_decimals = 6
 native_asset_name = "Cardano"
-supports_diagnostics = true
 [[chains]]
 id = "sui-testnet"
 name = "Sui Testnet"
@@ -1984,7 +1840,6 @@ gas_token_symbol = "SUI"
 search_keywords = ["Sui Testnet"]
 category = "testnet"
 is_evm = false
-supports_endpoint_catalog = true
 color = "mint"
 asset_name = "sui"
 token_standard = ""
@@ -2000,7 +1855,6 @@ total_circulation_model = ""
 native_coingecko_id = "sui"
 native_decimals = 9
 native_asset_name = "Sui"
-supports_diagnostics = true
 [[chains]]
 id = "aptos-testnet"
 name = "Aptos Testnet"
@@ -2009,7 +1863,6 @@ gas_token_symbol = "APT"
 search_keywords = ["Aptos Testnet"]
 category = "testnet"
 is_evm = false
-supports_endpoint_catalog = true
 color = "cyan"
 asset_name = "aptos"
 token_standard = ""
@@ -2025,7 +1878,6 @@ total_circulation_model = ""
 native_coingecko_id = "aptos"
 native_decimals = 8
 native_asset_name = "Aptos"
-supports_diagnostics = true
 [[chains]]
 id = "ton-testnet"
 name = "TON Testnet"
@@ -2034,7 +1886,6 @@ gas_token_symbol = "TON"
 search_keywords = ["TON Testnet"]
 category = "testnet"
 is_evm = false
-supports_endpoint_catalog = true
 color = "blue"
 asset_name = "ton"
 token_standard = ""
@@ -2050,7 +1901,6 @@ total_circulation_model = ""
 native_coingecko_id = "the-open-network"
 native_decimals = 9
 native_asset_name = "Toncoin"
-supports_diagnostics = true
 [[chains]]
 id = "near-testnet"
 name = "NEAR Testnet"
@@ -2059,7 +1909,6 @@ gas_token_symbol = "NEAR"
 search_keywords = ["NEAR Testnet"]
 category = "testnet"
 is_evm = false
-supports_endpoint_catalog = true
 color = "indigo"
 asset_name = "near"
 token_standard = ""
@@ -2075,7 +1924,6 @@ total_circulation_model = ""
 native_coingecko_id = "near"
 native_decimals = 24
 native_asset_name = "NEAR"
-supports_diagnostics = true
 [[chains]]
 id = "polkadot-westend"
 name = "Polkadot Westend"
@@ -2084,7 +1932,6 @@ gas_token_symbol = "DOT"
 search_keywords = ["Polkadot Westend", "Westend"]
 category = "testnet"
 is_evm = false
-supports_endpoint_catalog = true
 color = "pink"
 asset_name = "polkadot"
 token_standard = ""
@@ -2100,7 +1947,6 @@ total_circulation_model = ""
 native_coingecko_id = "polkadot"
 native_decimals = 10
 native_asset_name = "Polkadot"
-supports_diagnostics = true
 [[chains]]
 id = "monero-stagenet"
 name = "Monero Stagenet"
@@ -2109,7 +1955,6 @@ gas_token_symbol = "XMR"
 search_keywords = ["Monero Stagenet", "Stagenet"]
 category = "testnet"
 is_evm = false
-supports_endpoint_catalog = true
 color = "orange"
 asset_name = "monero"
 token_standard = ""
@@ -2125,4 +1970,3 @@ total_circulation_model = ""
 native_coingecko_id = "monero"
 native_decimals = 12
 native_asset_name = "Monero"
-supports_diagnostics = true

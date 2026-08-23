@@ -64,6 +64,26 @@ subscriber writing to *stdout* in a `OnceLock` — no caller could opt out, and
 it corrupted every `spectra --json` document. Logging goes to stderr, quiet
 unless `RUST_LOG` says otherwise.
 
+**An `async fn` block needs `async_runtime = "tokio"`, and nothing says so.**
+`#[uniffi::export]` on an `impl` block containing `async fn`s compiles, links
+and generates correct-looking Swift. At runtime UniFFI polls the future with no
+reactor installed and every call fails with *"there is no reactor running, must
+be called from the context of a Tokio 1.x runtime"*. `StakingService` shipped
+that way and its whole tab was inert — and **neither gate could see it**: the
+CLI drives core from inside its own runtime (`ctx.rt.block_on`), so the Rust
+tests and `cli-acceptance.sh` both pass. If you export an `async fn`, the
+attribute is not optional.
+
+**An exported function's callers are not in the Rust tree.** Grep `core/` and
+`cli/` for a `#[uniffi::export]` function and you can get zero hits while the
+iOS app calls it on the funds path. `prepare_evm_send_assembly` reads exactly
+that way — its only caller is `AppState+SendPreview.swift`. Two consequences,
+and both have been paid: it is not dead, so do not delete it on a Rust-only
+grep; and nothing in `cargo test` or `cli-acceptance.sh` exercises it, so
+whatever is inside it can be wrong indefinitely with three green suites. Before
+concluding an export is dead, grep `swift/` for its **camelCase** name — the
+generated bindings rename it, so the Rust spelling finds nothing.
+
 **Spawned work is invisible to a short-lived caller.** `trigger_immediate` on
 the refresh engine spawns and returns; a CLI process exits before the callbacks
 arrive. Any fire-and-forget API needs an awaited sibling
@@ -88,13 +108,16 @@ Rust change → regenerate → build Swift. Skipping the middle step is what
 "Cannot find type `CoreFoo` in scope" means.
 
 `swift/generated/` is **generated**: never edit it. Change the Rust API or the
-generator patch in `scripts/bindgen-ios.sh` instead. That script applies Swift 6
-isolation patches (`nonisolated`, `nonisolated(unsafe)`) that a plain UniFFI run
-does not.
+generator patch in `scripts/bindgen-ios.sh` instead. That script applies the one
+patch a plain UniFFI run does not: `nonisolated(unsafe)` on the `vtablePtr`
+statics, which Swift 6 otherwise rejects.
 
-> Known duplication: `scripts/bindgen-ios.sh` and the Xcode "Build Rust
-> Derivation Core" phase both regenerate `swift/generated/` and apply
-> *different* patches. One should go.
+The Xcode "Build Rust Derivation Core" phase **calls this script** rather than
+repeating it. The two used to generate separately and patch *differently* — the
+script wrote `nonisolated` onto 678 declarations and the next Xcode build
+removed every one of them — so which version of `swift/generated/` was on disk
+depended on which had run last. The blanket `nonisolated` was for a UniFFI
+version this project no longer uses and is gone.
 
 ### Changes that break the boundary silently
 

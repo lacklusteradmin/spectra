@@ -54,8 +54,9 @@ enum Command {
     History(cmd::chain::HistoryArgs),
     /// Transactions recorded in the local store.
     Txs(cmd::tx::TxsArgs),
-    /// Sign and broadcast a transfer.
-    Send(cmd::tx::SendArgs),
+    /// Assemble a transfer, or sign and broadcast one.
+    #[command(subcommand)]
+    Send(cmd::tx::SendCommand),
     /// Spot price for a chain's native asset.
     Price(cmd::market::PriceArgs),
     /// Total holdings across every wallet.
@@ -109,7 +110,7 @@ fn dispatch(ctx: &Ctx, out: Out, command: Command) -> Result<(), CliError> {
         Command::Balance(args) => cmd::chain::balance(ctx, out, args),
         Command::History(args) => cmd::chain::history(ctx, out, args),
         Command::Txs(args) => cmd::tx::txs(ctx, out, args),
-        Command::Send(args) => cmd::tx::send(ctx, out, args),
+        Command::Send(command) => cmd::tx::run(ctx, out, command),
         Command::Price(args) => cmd::market::price(ctx, out, args),
         Command::Portfolio(args) => cmd::market::portfolio(ctx, out, args),
         Command::Currency(args) => cmd::market::currency(ctx, out, args),

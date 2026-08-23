@@ -326,12 +326,73 @@ check "refuses untracking what is not tracked"     $REJECTED spectra token untra
 # reach it — only Swift drove it — so "which chains stake" is the part worth
 # asserting without a network.
 
+# ── EVM send assembly ───────────────────────────────────────────────────────
+#
+# The funds-path rule this script could not reach until now, and the gap is how
+# it stayed wrong. `prepare_evm_send_assembly` builds the transaction the send
+# sheet estimates gas against; its only caller was the iOS send sheet, so it
+# greps as dead from the Rust tree and no assertion here touched it. Inside it,
+# `is_supported_evm_chain` named seven chains and `is_native_evm_asset` listed
+# nine `(chain, symbol)` pairs — two of them governance tokens. Assembling
+# takes no key, no network and no store, so it belongs here.
+
+section "EVM send assembly"
+EVM_ADDR=0x742d35Cc6634C0532925a3b844Bc454e4438f44e
+# Base is one of the sixteen mainnets that used to answer UnsupportedChain,
+# which surfaced in the app as "Unable to estimate network fee" on a send that
+# was otherwise fine.
+check "assembles on a chain outside the old seven" $OK \
+    spectra send assemble --chain Base --from $EVM_ADDR --to $EVM_ADDR --amount 1.5
+contains "as a native transfer of the gas asset" '"isNative":true' \
+    spectra --json send assemble --chain Base --from $EVM_ADDR --to $EVM_ADDR --amount 1.5
+contains "with the amount in wei"                '"valueWei":"1500000000000000000"' \
+    spectra --json send assemble --chain Base --from $EVM_ADDR --to $EVM_ADDR --amount 1.5
+# ARB is not what Arbitrum charges gas in. Listing it as native built a value
+# transfer of that many ETH and discarded the contract it was handed.
+contains "a governance token is not the gas asset" '"isNative":false' \
+    spectra --json send assemble --chain Arbitrum --from $EVM_ADDR --to $EVM_ADDR \
+        --amount 100 --symbol ARB \
+        --contract 0x912ce59144191c1204e64559fe8253a0e49e6548 --decimals 18
+contains "and moves no gas asset"                 '"valueWei":"0"' \
+    spectra --json send assemble --chain Arbitrum --from $EVM_ADDR --to $EVM_ADDR \
+        --amount 100 --symbol ARB \
+        --contract 0x912ce59144191c1204e64559fe8253a0e49e6548 --decimals 18
+contains "addressed to its contract, not the recipient" \
+    '"to":"0x912ce59144191c1204e64559fe8253a0e49e6548"' \
+    spectra --json send assemble --chain Arbitrum --from $EVM_ADDR --to $EVM_ADDR \
+        --amount 100 --symbol ARB \
+        --contract 0x912ce59144191c1204e64559fe8253a0e49e6548 --decimals 18
+check "refuses a malformed sender"          $REJECTED \
+    spectra send assemble --chain Base --from nothex --to $EVM_ADDR --amount 1
+check "refuses a malformed recipient"       $REJECTED \
+    spectra send assemble --chain Base --from $EVM_ADDR --to nothex --amount 1
+check "refuses a non-EVM chain"             $REJECTED \
+    spectra send assemble --chain Bitcoin --from $EVM_ADDR --to $EVM_ADDR --amount 1
+check "refuses half a token description"    $USAGE \
+    spectra send assemble --chain Base --from $EVM_ADDR --to $EVM_ADDR --amount 1 \
+        --contract $EVM_ADDR
+
 section "settings"
 check "lists the settings core owns"        $OK spectra settings list
 check "sets one"                            $OK \
-    spectra settings set bitcoin-fee-priority priority
-contains "and a second process reads it back" '"value":"priority"' \
-    spectra --json settings get bitcoin-fee-priority
+    spectra settings set etherscan-api-key ACCEPTANCE-KEY
+contains "and a second process reads it back" '"value":"ACCEPTANCE-KEY"' \
+    spectra --json settings get etherscan-api-key
+# Fee priority is keyed by chain rather than global: two chains had a settings
+# field each and the other seventy-six shared a dictionary iOS persisted
+# itself, so the CLI could set exactly two of the seventy-eight.
+check "sets a per-chain fee priority"       $OK \
+    spectra settings set fee-priority.Dogecoin economy
+contains "and reads it back"                '"value":"economy"' \
+    spectra --json settings get fee-priority.Dogecoin
+contains "a chain never set reads the default" '"value":"normal"' \
+    spectra --json settings get fee-priority.Solana
+# The three the picker offers, or the default. A value no send path knows how
+# to spend is not worth storing under a name that says a fee was chosen.
+contains "refuses a priority no send path spends" '"value":"normal"' \
+    spectra --json settings set fee-priority.Solana lightspeed
+check "refuses a chain the registry does not know" $REJECTED \
+    spectra settings set fee-priority.Nonsuch economy
 # The bound is core's. A stop gap of zero finds no addresses, and this used to
 # be clamped only in an iOS `didSet` — reachable from nowhere else.
 check "bounds a number instead of storing it" $OK \
@@ -381,6 +442,17 @@ check "will not print the key without --yes"  $USAGE spectra wallet export "PK W
 contains "returns the key it sealed"          '"privateKey":"4c0883a6' \
     with_password "correct horse" spectra --json wallet export "PK Wallet" --yes
 check "deletes the private-key wallet"        $OK spectra wallet delete "PK Wallet" --yes
+
+section "self-tests"
+# A suite keyed by a name no caller can type is green and unreachable at the
+# same time: `CHAIN_SPECS` had a row keyed "XRP" where the registry says "XRP
+# Ledger", and every caller resolves its input through the registry.
+contains "runs a chain's self-tests"       '"chain":"XRP Ledger"' \
+    spectra --json diagnostics self-test --chain "XRP Ledger"
+contains "and the symbol resolves to it"   '"chain":"XRP Ledger"' \
+    spectra --json diagnostics self-test --chain XRP
+contains "with no failures"                '"failed":0' \
+    spectra --json diagnostics self-test --chain "XRP Ledger"
 
 section "staking"
 check "refuses staking on a chain that does not stake" $REJECTED \

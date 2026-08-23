@@ -401,22 +401,22 @@ pub fn core_dashboard_supported_token_entries(
         .collect()
 }
 
-/// Normalize a token contract address for identity matching. Mirrors the
-/// Swift `normalizedTrackedTokenIdentifier(for:contractAddress:)` dispatch.
+/// Normalize a token contract address for identity matching.
+///
+/// This was the **third** copy of that rule — a twelve-name EVM arm, then
+/// Aptos, Sui, TON and a lowercase default — and its doc comment said so: it
+/// "mirrors the Swift `normalizedTrackedTokenIdentifier` dispatch", which was
+/// itself the second copy of `normalize_token_identifier`. Three transcriptions
+/// of one table, in two languages, one of which had TON wrong.
 fn normalize_tracked_token_identifier(
     chain: wallet_domain::CoreTokenTrackingChain,
     contract_address: &str,
 ) -> String {
-    use wallet_domain::CoreTokenTrackingChain::*;
-    let trimmed = contract_address.trim();
-    match chain {
-        Ethereum | Arbitrum | Optimism | Bnb | Avalanche | Hyperliquid | Polygon | Base | Linea
-        | Scroll | Blast | Mantle => trimmed.to_lowercase(),
-        Aptos => crate::tokens::normalize_aptos_token_identifier(trimmed.to_string()),
-        Sui => crate::tokens::normalize_sui_token_identifier(trimmed.to_string()),
-        Ton => trimmed.to_string(),
-        _ => trimmed.to_lowercase(),
-    }
+    crate::tokens::normalize_token_identifier(
+        Some(contract_address.to_string()),
+        chain.chain_name().to_string(),
+    )
+    .unwrap_or_default()
 }
 
 /// The built-in token catalog, as preference entries.

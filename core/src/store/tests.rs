@@ -1241,7 +1241,7 @@ mod status_trackers {
     async fn a_polled_transaction_waits_out_its_interval() {
         let service = WalletService::new_typed(Vec::new()).expect("service");
         service
-            .record_status_poll_success("tx1".into(), false, true, None)
+            .record_status_poll("tx1".into(), crate::service::StatusPollOutcome::Pending)
             .await;
         assert!(
             service
@@ -1257,7 +1257,7 @@ mod status_trackers {
     async fn resetting_a_tracker_makes_it_due_again() {
         let service = WalletService::new_typed(Vec::new()).expect("service");
         service
-            .record_status_poll_success("tx1".into(), true, false, Some(99))
+            .record_status_poll("tx1".into(), crate::service::StatusPollOutcome::Confirmed { confirmations: Some(99) })
             .await;
         assert!(service
             .transactions_due_for_status_poll(vec!["tx1".into()])
@@ -1293,7 +1293,7 @@ mod status_trackers {
         );
 
         for _ in 0..6 {
-            service.record_status_poll_failure("tx1".into()).await;
+            service.record_status_poll("tx1".into(), crate::service::StatusPollOutcome::Failed).await;
         }
         assert_eq!(
             service.stale_pending_failure_ids(vec![input("tx1")]).await,
@@ -1306,7 +1306,7 @@ mod status_trackers {
         let service = WalletService::new_typed(Vec::new()).expect("service");
         for id in ["tx1", "tx2"] {
             service
-                .record_status_poll_success(id.into(), false, true, None)
+                .record_status_poll(id.into(), crate::service::StatusPollOutcome::Pending)
                 .await;
         }
         service.retain_status_trackers(vec!["tx1".into()]).await;
@@ -3023,10 +3023,12 @@ mod resident_state_round_trip {
                 value: "https://a.example,https://b.example".into(),
             },
             U::BitcoinStopGap { value: 42 },
-            U::BitcoinFeePriority {
+            U::FeePriority {
+                chain: "Bitcoin".into(),
                 value: "priority".into(),
             },
-            U::DogecoinFeePriority {
+            U::FeePriority {
+                chain: "Dogecoin".into(),
                 value: "economy".into(),
             },
             U::UseStrictRpcOnly { value: true },

@@ -61,7 +61,9 @@ macro_rules! chain_keyed_registry {
         /// above: a caller wanting to store one wallet's row read every row
         /// across the boundary, inserted into the copy, and sent all of them
         /// back. Two rows written concurrently kept whichever finished second.
-        #[uniffi::export]
+        ///
+        /// Internal now: `diagnostics_record` is the one entry point, and the
+        /// shape it dispatches on is the entry's own variant.
         pub fn $record(chain_name: String, wallet_id: String, entry: $ty) {
             registry()
                 .lock()
@@ -93,12 +95,47 @@ chain_keyed_registry!(
     diagnostics_record_simple
 );
 
+/// A history-diagnostics row, in whichever shape its chain reports.
+///
+/// The five variants are the five record shapes, which genuinely differ —
+/// `DiagnosticsShape` on the registry is the same distinction. What did not
+/// need to differ is the *call*: there were five exported writers, one per
+/// shape, and every Swift call site picked between them by knowing which shape
+/// its chain used. The entry carries its own shape now.
+#[derive(Debug, Clone, uniffi::Enum)]
+pub enum HistoryDiagnosticsEntry {
+    Utxo { entry: BitcoinHistoryDiagnostics },
+    Evm { entry: EthereumTokenTransferHistoryDiagnostics },
+    Simple { entry: SimpleHistoryDiagnostics },
+    Tron { entry: TronHistoryDiagnostics },
+    Solana { entry: SolanaHistoryDiagnostics },
+}
+
+/// Record one wallet's history-diagnostics row for a chain.
+#[uniffi::export]
+pub fn diagnostics_record(chain_name: String, wallet_id: String, entry: HistoryDiagnosticsEntry) {
+    match entry {
+        HistoryDiagnosticsEntry::Utxo { entry } => {
+            diagnostics_record_utxo(chain_name, wallet_id, entry)
+        }
+        HistoryDiagnosticsEntry::Evm { entry } => {
+            diagnostics_record_evm(chain_name, wallet_id, entry)
+        }
+        HistoryDiagnosticsEntry::Simple { entry } => {
+            diagnostics_record_simple(chain_name, wallet_id, entry)
+        }
+        // Tron and Solana have one chain each, so their maps are keyed by
+        // wallet alone and the chain name has nowhere to go.
+        HistoryDiagnosticsEntry::Tron { entry } => diagnostics_record_tron(wallet_id, entry),
+        HistoryDiagnosticsEntry::Solana { entry } => diagnostics_record_solana(wallet_id, entry),
+    }
+}
+
 /// One chain each, so a chain argument could only ever hold one value.
 pub fn diagnostics_all_tron() -> HashMap<String, TronHistoryDiagnostics> {
     registry().lock().unwrap().tron.clone()
 }
 
-#[uniffi::export]
 pub fn diagnostics_record_tron(wallet_id: String, entry: TronHistoryDiagnostics) {
     registry().lock().unwrap().tron.insert(wallet_id, entry);
 }
@@ -107,7 +144,6 @@ pub fn diagnostics_all_solana() -> HashMap<String, SolanaHistoryDiagnostics> {
     registry().lock().unwrap().solana.clone()
 }
 
-#[uniffi::export]
 pub fn diagnostics_record_solana(wallet_id: String, entry: SolanaHistoryDiagnostics) {
     registry().lock().unwrap().solana.insert(wallet_id, entry);
 }

@@ -9,24 +9,6 @@ use super::*;
 
 #[uniffi::export(async_runtime = "tokio")]
 impl WalletService {
-    pub async fn fetch_solana_balance_typed(
-        &self,
-        address: String,
-    ) -> Result<crate::fetch::chains::solana::SolanaBalance, SpectraBridgeError> {
-        let endpoints = self.endpoints_for("solana").await;
-        let client = crate::fetch::chains::solana::SolanaClient::new(endpoints);
-        client.fetch_balance(&address).await.map_err(Into::into)
-    }
-
-    pub async fn fetch_near_balance_typed(
-        &self,
-        address: String,
-    ) -> Result<crate::fetch::chains::near::NearBalance, SpectraBridgeError> {
-        let endpoints = self.endpoints_for("near").await;
-        let client = crate::fetch::chains::near::NearClient::new(endpoints);
-        client.fetch_balance(&address).await.map_err(Into::into)
-    }
-
     pub async fn fetch_erc20_balance_typed(
         &self,
         chain_id: String,

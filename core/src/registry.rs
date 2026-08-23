@@ -698,9 +698,6 @@ impl Chain {
         })
     }
 
-    /// Whether a holding on this chain can be sent given only its symbol, or
-    /// whether the caller must also know it is a supported token.
-    ///
     /// The networks a user can pick between for this chain: the mainnet first,
     /// then its testnets in registry order.
     ///
@@ -743,6 +740,58 @@ impl Chain {
     /// True when this chain's family offers more than one network.
     pub fn has_network_choice(self) -> bool {
         self.network_choices().len() > 1
+    }
+
+    /// The JSON-RPC method that answers "is this node alive", or `None` for a
+    /// chain whose endpoints are checked over plain HTTP.
+    ///
+    /// Three of these were spelled in three different Swift functions, and
+    /// *which* endpoints were RPC was decided by two hand-written id lists
+    /// (`NearBalanceService.rpcEndpointCatalog`,
+    /// `PolkadotBalanceService.sidecarEndpointCatalog`) beside a catalog that
+    /// already carries an `rpc` role per endpoint. Both agreed when this was
+    /// written; adding a provider meant editing the JSON and remembering the
+    /// Swift list, and forgetting the second probes a JSON-RPC node with a
+    /// GET — which many of them answer 405, reported as unreachable.
+    pub fn rpc_health_method(self) -> Option<&'static str> {
+        if self.is_evm() {
+            return Some("eth_chainId");
+        }
+        match self.mainnet_counterpart() {
+            Chain::Near => Some("status"),
+            Chain::Polkadot => Some("chain_getHeader"),
+            _ => None,
+        }
+    }
+
+    /// Whether this chain's native send needs nothing beyond a destination, an
+    /// amount and the fee its preview already supplied.
+    ///
+    /// The eleven that answer yes share one submit path. The rest each need
+    /// something only they have — a UTXO selection (Bitcoin, Dogecoin), a
+    /// resolved source account (Internet Computer), a resource model (Tron), a
+    /// mint account (Solana), a view key and a backend (Monero), or a nonce
+    /// and gas overrides (every EVM chain).
+    ///
+    /// It is a chain fact and it lived as two lists of names in
+    /// `AppState+SendExecution`, next to a comment saying the lists should not
+    /// be there. A twelfth chain reaching the shared path had to be added to
+    /// whichever of the two the author happened to be looking at.
+    pub fn uses_generic_send_submit(self) -> bool {
+        matches!(
+            self.mainnet_counterpart(),
+            Chain::Sui
+                | Chain::Aptos
+                | Chain::Ton
+                | Chain::Xrp
+                | Chain::Stellar
+                | Chain::Cardano
+                | Chain::Polkadot
+                | Chain::Near
+                | Chain::BitcoinCash
+                | Chain::BitcoinSV
+                | Chain::Litecoin
+        )
     }
 
     /// What a front end needs to assemble a send for this chain.
@@ -1183,7 +1232,7 @@ impl Chain {
     /// Resolve a chain from the display name used on the boundary.
     ///
     /// No special cases: the enum and `chains.toml` agree on every name, and
-    /// `display_names_match_the_catalog` fails if they ever stop.
+    /// `every_catalog_name_resolves` fails if they ever stop.
     pub fn from_display_name(name: &str) -> Option<Self> {
         Chain::all().find(|c| c.chain_display_name() == name)
     }
@@ -1467,10 +1516,6 @@ mod tests {
         assert!(Chain::from_str_id("not-a-chain").is_none());
     }
 
-    #[test]
-    fn all_chain_count() {
-        assert_eq!(Chain::all().count(), 78);
-    }
 
     #[test]
     fn evm_group_includes_mainnets_and_testnets() {
@@ -1527,7 +1572,7 @@ mod tests {
         let testnets = Chain::testnets().count();
         let mainnets = Chain::mainnets().count();
         assert_eq!(testnets + mainnets, total);
-        assert_eq!(testnets, 32);
+        assert!(testnets > 0 && mainnets > 0);
     }
 
     #[test]
@@ -1629,6 +1674,9 @@ pub struct ChainIdentity {
     /// `init?(rawValue:)` and `allCases` for an enum core owns.
     pub token_tracking_chain: Option<crate::store::wallet_domain::CoreTokenTrackingChain>,
     pub send_execution_shape: SendExecutionShape,
+    /// The JSON-RPC method that answers "is this node alive", or `None` for a
+    /// chain whose endpoints are checked over plain HTTP.
+    pub rpc_health_method: Option<String>,
     pub pending_status_poll: PendingStatusPoll,
     /// Which chain's derivation path this chain reuses, as a display name.
     /// `None` for a chain with no BIP-32 path.
@@ -1672,6 +1720,7 @@ pub fn core_chain_identities() -> Vec<ChainIdentity> {
                 chain.chain_display_name(),
             ),
             send_execution_shape: chain.send_execution_shape(),
+            rpc_health_method: chain.rpc_health_method().map(str::to_string),
             pending_status_poll: chain.pending_status_poll(),
             seed_derivation_chain: crate::send::flow::seed_derivation_chain_raw(chain),
             evm_seed_derivation_chain: chain

@@ -125,15 +125,17 @@ fn strip_hex_leading_zeros(value: &str) -> String {
 
 /// Canonicalize a `0x…` hex string: strip leading zeroes, keep at least one.
 /// Unchanged if the prefix is not `0x`.
-#[uniffi::export]
-pub fn canonical_aptos_hex_address(value: String) -> String {
+/// Internal: `normalize_aptos_token_identifier` calls it. Exported until its
+/// Swift forwarder turned out to have no caller.
+pub(crate) fn canonical_aptos_hex_address(value: String) -> String {
     strip_hex_leading_zeros(&value)
 }
 
 /// Normalize an Aptos coin-type / identifier string: lowercase, then rewrite
 /// every `0x…` hex run in place with [`canonical_aptos_hex_address`].
-#[uniffi::export]
-pub fn normalize_aptos_token_identifier(value: String) -> String {
+/// Internal: `normalize_token_identifier` is the one entry point, and it
+/// dispatches here by chain.
+pub(crate) fn normalize_aptos_token_identifier(value: String) -> String {
     let lowercased = value.trim().to_lowercase();
     if lowercased.is_empty() {
         return String::new();
@@ -161,15 +163,15 @@ pub fn normalize_aptos_token_identifier(value: String) -> String {
 }
 
 /// Canonicalize just a Sui package identifier: `0x…` with trimmed zeroes.
-#[uniffi::export]
-pub fn normalize_sui_package_component(value: String) -> String {
+/// Internal: `normalize_sui_token_identifier` calls it.
+pub(crate) fn normalize_sui_package_component(value: String) -> String {
     strip_hex_leading_zeros(&value)
 }
 
 /// Normalize a Sui token identifier: lowercase, split on `::`, canonicalize
 /// the first (package) component, rejoin.
-#[uniffi::export]
-pub fn normalize_sui_token_identifier(value: String) -> String {
+/// Internal: see `normalize_aptos_token_identifier`.
+pub(crate) fn normalize_sui_token_identifier(value: String) -> String {
     let trimmed = value.trim().to_lowercase();
     if trimmed.is_empty() {
         return String::new();
@@ -192,33 +194,38 @@ pub fn normalize_sui_token_identifier(value: String) -> String {
 }
 
 /// Normalize a dashboard asset's contract address for grouping/equality.
-/// Returns `None` for empty/whitespace input. For Sui/Aptos uses the chain's
-/// canonical identifier form; otherwise lowercases the trimmed value.
+/// The canonical form of a token's contract address or identifier on a chain.
+///
+/// Sui and Aptos have structured identifiers (`package::module::type`) with
+/// their own canonicalisation; everything else is the trimmed value lowercased.
+/// TON is the exception in the other direction: a jetton master address is
+/// case-significant base64, so lowercasing it produces an address that does not
+/// resolve.
+///
+/// This existed twice. `normalizedTrackedTokenIdentifier` in `AppState` had its
+/// own copy — a twelve-name EVM arm, then Aptos, Sui, TON and a lowercase
+/// default — and the two disagreed about TON, which is the one chain where
+/// disagreeing changes the answer. One function, keyed by the chain, with the
+/// TON rule stated where the others are.
 #[uniffi::export]
-pub fn normalize_dashboard_contract_address(
+pub fn normalize_token_identifier(
     contract_address: Option<String>,
     chain_name: String,
-    _token_standard: String,
 ) -> Option<String> {
     let raw = contract_address?;
     let trimmed = raw.trim();
     if trimmed.is_empty() {
         return None;
     }
-    match chain_name.as_str() {
-        "Sui" => Some(normalize_sui_token_identifier(trimmed.to_string())),
-        "Aptos" => Some(normalize_aptos_token_identifier(trimmed.to_string())),
+    match crate::registry::Chain::from_display_name(&chain_name) {
+        Some(crate::registry::Chain::Sui) => {
+            Some(normalize_sui_token_identifier(trimmed.to_string()))
+        }
+        Some(crate::registry::Chain::Aptos) => {
+            Some(normalize_aptos_token_identifier(trimmed.to_string()))
+        }
+        Some(crate::registry::Chain::Ton) => Some(trimmed.to_string()),
         _ => Some(trimmed.to_lowercase()),
-    }
-}
-
-/// Return the package portion of a (possibly-normalized) aptos identifier.
-#[uniffi::export]
-pub fn aptos_package_identifier(value: Option<String>) -> String {
-    let normalized = normalize_aptos_token_identifier(value.unwrap_or_default());
-    match normalized.split_once(':') {
-        Some((head, _)) => head.to_string(),
-        None => normalized,
     }
 }
 
@@ -232,44 +239,44 @@ pub fn parse_bitcoin_esplora_endpoints(raw: String) -> Vec<String> {
         .collect()
 }
 
-/// Returns validation error message if any endpoint is malformed, else `None`.
+/// Which endpoint setting a value came from.
+///
+/// Decides both how the value is parsed — one URL, or a comma-separated list —
+/// and which message names it. There were three exports for this and two of
+/// them were byte-identical but for their string.
+#[derive(Debug, Clone, Copy, uniffi::Enum)]
+pub enum EndpointField {
+    /// A comma, semicolon or newline separated list.
+    BitcoinEsploraList,
+    EthereumRpc,
+    MoneroBackend,
+}
+
+/// `None` when the value is usable, otherwise the message to show under it.
 #[uniffi::export]
-pub fn bitcoin_esplora_endpoints_validation_error(raw: String) -> Option<String> {
-    for endpoint in parse_bitcoin_esplora_endpoints(raw) {
-        if !is_valid_http_url(&endpoint) {
-            return Some(
-                "Bitcoin Esplora endpoints must be valid http(s) URLs separated by commas."
-                    .to_string(),
-            );
+pub fn endpoint_validation_error(field: EndpointField, raw: String) -> Option<String> {
+    let invalid = match field {
+        EndpointField::BitcoinEsploraList => parse_bitcoin_esplora_endpoints(raw)
+            .iter()
+            .any(|endpoint| !is_valid_http_url(endpoint)),
+        EndpointField::EthereumRpc | EndpointField::MoneroBackend => {
+            let trimmed = raw.trim();
+            !trimmed.is_empty() && !is_valid_http_url(trimmed)
         }
-    }
-    None
-}
-
-#[uniffi::export]
-pub fn ethereum_rpc_endpoint_validation_error(endpoint: String) -> Option<String> {
-    let trimmed = endpoint.trim();
-    if trimmed.is_empty() {
+    };
+    if !invalid {
         return None;
     }
-    if is_valid_http_url(trimmed) {
-        None
-    } else {
-        Some("Enter a valid http or https RPC URL.".to_string())
-    }
-}
-
-#[uniffi::export]
-pub fn monero_backend_base_url_validation_error(endpoint: String) -> Option<String> {
-    let trimmed = endpoint.trim();
-    if trimmed.is_empty() {
-        return None;
-    }
-    if is_valid_http_url(trimmed) {
-        None
-    } else {
-        Some("Enter a valid http or https Monero backend URL.".to_string())
-    }
+    Some(
+        match field {
+            EndpointField::BitcoinEsploraList => {
+                "Bitcoin Esplora endpoints must be valid http(s) URLs separated by commas."
+            }
+            EndpointField::EthereumRpc => "Enter a valid http or https RPC URL.",
+            EndpointField::MoneroBackend => "Enter a valid http or https Monero backend URL.",
+        }
+        .to_string(),
+    )
 }
 
 fn is_valid_http_url(s: &str) -> bool {
@@ -343,66 +350,60 @@ mod tests {
         );
     }
 
+    /// The field decides how the value is parsed and which message names it.
     #[test]
-    fn endpoint_validation() {
+    fn endpoint_validation_is_per_field() {
+        use EndpointField::*;
         assert_eq!(
-            bitcoin_esplora_endpoints_validation_error(
-                "https://x.example,https://y.example".into()
-            ),
+            endpoint_validation_error(BitcoinEsploraList, "https://x.example,https://y.example".into()),
             None
         );
-        assert!(bitcoin_esplora_endpoints_validation_error("notaurl".into()).is_some());
-        assert_eq!(ethereum_rpc_endpoint_validation_error("".into()), None);
-        assert!(ethereum_rpc_endpoint_validation_error("ftp://x".into()).is_some());
+        assert!(endpoint_validation_error(BitcoinEsploraList, "notaurl".into()).is_some());
+        // An empty single-URL field is unset, not invalid; an empty list is too.
+        assert_eq!(endpoint_validation_error(EthereumRpc, "".into()), None);
+        assert_eq!(endpoint_validation_error(BitcoinEsploraList, "".into()), None);
+        assert!(endpoint_validation_error(EthereumRpc, "ftp://x".into()).is_some());
         assert_eq!(
-            ethereum_rpc_endpoint_validation_error("https://rpc.example/abc".into()),
+            endpoint_validation_error(EthereumRpc, "https://rpc.example/abc".into()),
             None
+        );
+        // Same check, different name in the message.
+        assert_ne!(
+            endpoint_validation_error(EthereumRpc, "ftp://x".into()),
+            endpoint_validation_error(MoneroBackend, "ftp://x".into())
         );
     }
 
+    /// One normalizer, keyed by the chain.
+    ///
+    /// TON is the arm worth stating: a jetton master address is
+    /// case-significant base64, so the lowercase default would produce an
+    /// address that does not resolve. `normalizedTrackedTokenIdentifier` in
+    /// Swift knew that and this function did not, until they became one.
     #[test]
-    fn dashboard_contract_dispatch() {
+    fn token_identifier_normalisation_is_per_chain() {
         assert_eq!(
-            normalize_dashboard_contract_address(
-                Some("  ".into()),
-                "Ethereum".into(),
-                "ERC-20".into()
-            ),
+            normalize_token_identifier(Some("  ".into()), "Ethereum".into()),
             None
         );
+        assert_eq!(normalize_token_identifier(None, "Ethereum".into()), None);
         assert_eq!(
-            normalize_dashboard_contract_address(None, "Ethereum".into(), "ERC-20".into()),
-            None
-        );
-        assert_eq!(
-            normalize_dashboard_contract_address(
-                Some("0xABCDEF".into()),
-                "Ethereum".into(),
-                "ERC-20".into()
-            ),
+            normalize_token_identifier(Some("0xABCDEF".into()), "Ethereum".into()),
             Some("0xabcdef".into())
         );
         assert_eq!(
-            normalize_dashboard_contract_address(
-                Some("0x0002::Foo::bar".into()),
-                "Sui".into(),
-                "Native".into()
-            ),
+            normalize_token_identifier(Some("0x0002::Foo::bar".into()), "Sui".into()),
             Some("0x2::foo::bar".into())
         );
         assert_eq!(
-            normalize_dashboard_contract_address(
-                Some("0x001::coin::USDC".into()),
-                "Aptos".into(),
-                "Native".into()
-            ),
+            normalize_token_identifier(Some("0x001::coin::USDC".into()), "Aptos".into()),
             Some("0x1::coin::usdc".into())
+        );
+        assert_eq!(
+            normalize_token_identifier(Some("  EQAbC  ".into()), "TON".into()),
+            Some("EQAbC".into()),
+            "a jetton master address keeps its case"
         );
     }
 
-    #[test]
-    fn aptos_package_id_splits_first_colon() {
-        assert_eq!(aptos_package_identifier(Some("0x1:coin".into())), "0x1");
-        assert_eq!(aptos_package_identifier(None), "");
-    }
 }

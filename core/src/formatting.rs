@@ -1,6 +1,5 @@
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
-use std::sync::LazyLock;
 
 #[derive(Debug, Clone, Serialize, Deserialize, uniffi::Record)]
 #[serde(rename_all = "camelCase")]
@@ -29,30 +28,6 @@ pub struct AssetDecimalsRequest {
 
 const MAX_DECIMALS: u32 = 30;
 
-const SUPPORTED_DECIMAL_CHAINS: &[(&str, u32)] = &[
-    ("Bitcoin", 8),
-    ("Bitcoin Cash", 8),
-    ("Bitcoin SV", 8),
-    ("Litecoin", 8),
-    ("Dogecoin", 8),
-    ("Aptos", 8),
-    ("Ethereum", 18),
-    ("Ethereum Classic", 18),
-    ("Arbitrum", 18),
-    ("Optimism", 18),
-    ("BNB Chain", 18),
-    ("Avalanche", 18),
-    ("Hyperliquid", 18),
-    ("Tron", 6),
-    ("Cardano", 6),
-    ("XRP Ledger", 6),
-    ("Solana", 9),
-    ("Sui", 9),
-    ("TON", 9),
-    ("Monero", 12),
-    ("NEAR", 24),
-    ("Polkadot", 10),
-];
 
 pub fn token_preference_lookup_key(chain_name: &str, symbol: &str) -> String {
     let chain_trimmed = chain_name.trim();
@@ -60,20 +35,38 @@ pub fn token_preference_lookup_key(chain_name: &str, symbol: &str) -> String {
     format!("{}|{}", chain_trimmed, symbol_trimmed)
 }
 
+/// Which chain's display-decimals setting a chain reads.
+///
+/// The EVM family shares Ethereum's, because they share a native asset the user
+/// sets decimals for once. This named **three** of the twenty-three EVM
+/// mainnets — Ethereum, Arbitrum, Optimism — so setting ETH's decimals moved
+/// Arbitrum and Optimism and left Base, Polygon, BNB Chain and the other
+/// nineteen on their own key. `Chain::is_evm` is the membership.
 pub fn native_asset_display_settings_key(chain_name: &str) -> String {
-    matches!(chain_name, "Ethereum" | "Arbitrum" | "Optimism")
-        .then(|| "Ethereum".to_string())
-        .unwrap_or_else(|| chain_name.to_string())
+    match crate::registry::Chain::from_display_name(chain_name) {
+        Some(chain) if chain.is_evm() => crate::registry::Chain::Ethereum
+            .chain_display_name()
+            .to_string(),
+        _ => chain_name.to_string(),
+    }
 }
 
-static SUPPORTED_DECIMAL_MAP: LazyLock<HashMap<&'static str, u32>> =
-    LazyLock::new(|| SUPPORTED_DECIMAL_CHAINS.iter().copied().collect());
-
+/// How many decimal places a chain's native asset actually has.
+///
+/// Read from `chains.toml`, which carries `native_decimals` on all seventy-eight
+/// rows. This used to be `SUPPORTED_DECIMAL_CHAINS`, a hand-written table of
+/// **twenty-two** of them beside the catalog, with everything else falling to a
+/// literal `6`. The twenty-two agreed with the catalog exactly — it was a
+/// correct transcription, and short by fifty-six rows.
 pub fn supported_decimal_places(chain_name: &str, override_decimals: Option<u32>) -> u32 {
     if let Some(value) = override_decimals {
         return value;
     }
-    SUPPORTED_DECIMAL_MAP.get(chain_name).copied().unwrap_or(6)
+    crate::chains::list_all_chains()
+        .iter()
+        .find(|entry| entry.name == chain_name)
+        .map(|entry| entry.native_decimals)
+        .unwrap_or(6)
 }
 
 pub fn display_decimal_places(
@@ -110,9 +103,9 @@ pub fn resolve_asset_decimals(request: &AssetDecimalsRequest) -> AssetDecimalsRe
 
 pub fn default_asset_display_decimals_by_chain(default_value: u32) -> HashMap<String, u32> {
     let normalized = default_value.min(MAX_DECIMALS);
-    SUPPORTED_DECIMAL_CHAINS
+    crate::chains::list_all_chains()
         .iter()
-        .map(|(name, _)| ((*name).to_string(), normalized))
+        .map(|entry| (entry.name.clone(), normalized))
         .collect()
 }
 
@@ -222,11 +215,6 @@ pub fn asset_minimum_visible_amount(visible_decimals: u32) -> f64 {
     }
 }
 
-#[uniffi::export]
-pub fn formatting_asset_minimum_visible_amount(visible_decimals: u32) -> f64 {
-    asset_minimum_visible_amount(visible_decimals)
-}
-
 const STABLECOIN_USD_SYMBOLS: &[&str] = &["USDC", "USDT", "FDUSD", "TUSD"];
 
 pub fn is_usd_stablecoin(symbol: &str) -> bool {
@@ -265,6 +253,29 @@ pub fn dashboard_asset_grouping_key(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// Every chain's native decimals come from the catalog.
+    ///
+    /// A hand-written table of twenty-two chains stood here and everything else
+    /// fell to a literal `6`, so an amount on Base — eighteen decimals — was
+    /// formatted to six places, as were Zcash, Dash, Decred, Kaspa, Bitcoin
+    /// Gold and Internet Computer at eight, Bittensor at nine, and every EVM L2
+    /// outside the original thirteen. Reading the catalog cannot be short.
+    #[test]
+    fn native_decimals_come_from_the_catalog_for_every_chain() {
+        for entry in crate::chains::list_all_chains() {
+            assert_eq!(
+                supported_decimal_places(&entry.name, None),
+                entry.native_decimals,
+                "{} formats at the wrong precision",
+                entry.name
+            );
+        }
+        // The override still wins, which is what the argument is for.
+        assert_eq!(supported_decimal_places("Base", Some(2)), 2);
+        // And a chain the catalog does not know keeps the old fallback.
+        assert_eq!(supported_decimal_places("Not A Chain", None), 6);
+    }
 
     #[test]
     fn lookup_key_normalizes_inputs() {

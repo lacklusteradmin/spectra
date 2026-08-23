@@ -55,24 +55,72 @@ pub fn degraded_detail_template_key(detail: &str) -> Option<String> {
     None
 }
 
-#[uniffi::export]
-pub fn diagnostics_detail_indicates_live_success(detail: String) -> bool {
-    detail_indicates_live_success(&detail)
+/// Everything core can say about one degraded-sync detail string.
+///
+/// Three exports asked three questions about the same string — is it really a
+/// success report, what does it look like with its suffix stripped, and which
+/// localization key does it match. The caller asked one, two or all three
+/// depending on the path, which is how the two paths came to disagree about
+/// whether to normalise before matching.
+#[derive(Debug, Clone, uniffi::Record)]
+pub struct DegradedDetail {
+    /// The message with its "Last good sync: …" or "No prior successful sync
+    /// yet." suffix stripped.
+    pub normalized: String,
+    /// The `localizedStoreFormat` key this detail matches, if any. Matched
+    /// against `normalized`, so a detail carrying a suffix still resolves.
+    pub template_key: Option<String>,
+    /// The "failure" detail is in fact a partial-success report.
+    pub indicates_live_success: bool,
 }
 
 #[uniffi::export]
-pub fn diagnostics_normalize_degraded_detail(message: String) -> String {
-    normalize_degraded_detail(&message)
-}
-
-#[uniffi::export]
-pub fn diagnostics_degraded_detail_template_key(detail: String) -> Option<String> {
-    degraded_detail_template_key(&detail)
+pub fn diagnostics_classify_degraded_detail(detail: String) -> DegradedDetail {
+    let normalized = normalize_degraded_detail(&detail);
+    DegradedDetail {
+        template_key: degraded_detail_template_key(&normalized),
+        indicates_live_success: detail_indicates_live_success(&detail),
+        normalized,
+    }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// A detail arriving with its suffix still attached resolves to a template.
+    ///
+    /// It did not, on one of the two paths. `markChainDegraded` matched the raw
+    /// string and `localizedDegradedMessage` normalised first, so the same
+    /// message localized on one route and fell through to the raw English on
+    /// the other. Classification normalises once and matches the normalized
+    /// form, so both routes get the same answer.
+    #[test]
+    fn a_detail_with_its_suffix_still_matches_its_template() {
+        let raw = "Ethereum providers are unavailable. Using cached balances and history. \
+                   Last good sync: 10:00 AM";
+        assert!(
+            degraded_detail_template_key(raw).is_none(),
+            "the raw form does not match — that is the bug this classification removes"
+        );
+        let classified = diagnostics_classify_degraded_detail(raw.to_string());
+        assert_eq!(
+            classified.template_key.as_deref(),
+            Some("%@ providers are unavailable. Using cached balances and history.")
+        );
+        assert!(!classified.indicates_live_success);
+    }
+
+    /// "Partially reachable" is a success report wearing a failure's clothes.
+    #[test]
+    fn a_partial_success_is_reported_as_one() {
+        let classified = diagnostics_classify_degraded_detail(
+            "Solana providers are partially reachable. Showing the latest available balances."
+                .to_string(),
+        );
+        assert!(classified.indicates_live_success);
+        assert!(classified.template_key.is_some());
+    }
 
     #[test]
     fn normalize_strips_last_good_sync_suffix() {

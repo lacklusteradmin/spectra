@@ -80,6 +80,10 @@ pub struct AppCoreDiagnosticsCheck {
     pub endpoint: String,
     #[serde(rename = "probeURL")]
     pub probe_url: String,
+    /// Set when this endpoint carries the catalog's `rpc` role and its chain
+    /// has a health method — probe it with this JSON-RPC call rather than a
+    /// GET against `probe_url`.
+    pub rpc_probe_method: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, uniffi::Record)]
@@ -94,24 +98,6 @@ pub struct AppCoreExplorerEntry {
 pub struct AppCoreBroadcastProviderOption {
     pub id: String,
     pub title: String,
-}
-
-#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, uniffi::Enum)]
-pub enum AppCoreChainIntegrationState {
-    Live,
-    Planned,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, uniffi::Record)]
-#[serde(rename_all = "camelCase")]
-pub struct AppCoreChainBackend {
-    pub chain_name: String,
-    pub supported_symbols: Vec<String>,
-    pub integration_state: AppCoreChainIntegrationState,
-    pub supports_seed_import: bool,
-    pub supports_balance_refresh: bool,
-    pub supports_receive_address: bool,
-    pub supports_send: bool,
 }
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, uniffi::Record)]
@@ -258,11 +244,6 @@ pub fn app_core_endpoints_for_ids(
             })
             .collect::<Result<Vec<_>, _>>()
     })?)
-}
-
-#[uniffi::export]
-pub fn app_core_chain_backends() -> Vec<AppCoreChainBackend> {
-    chain_backends()
 }
 
 // ── Internals ─────────────────────────────────────────────────────────────
@@ -412,13 +393,34 @@ fn grouped_settings_entries(
         .collect()
 }
 
+/// Every endpoint of a chain that can be checked, and how to check it.
+///
+/// A record qualifies two ways: it carries a `probe_url` to GET, or it is an
+/// RPC endpoint on a chain with a health method, in which case the JSON-RPC
+/// call goes to the endpoint itself and no probe URL is needed.
+///
+/// That second clause is what merged the two endpoint-diagnostics paths. This
+/// used to require a `probe_url`, and no EVM RPC record has one — so twelve
+/// mainnets had an empty list here and were probed instead by
+/// `evmEndpointChecks` in Swift, reading `evm_rpc` off the same catalog and
+/// running its own `probeEthereumRPC`. One catalog, two slices, two probes.
 fn diagnostics_checks(catalog: &AppCoreCatalog, chain_name: &str) -> Vec<AppCoreDiagnosticsCheck> {
+    let health_method = crate::registry::Chain::from_display_name(chain_name)
+        .and_then(crate::registry::Chain::rpc_health_method);
     endpoint_records_for_chain(catalog, chain_name, 0, false)
         .into_iter()
         .filter_map(|record| {
-            record.probe_url.map(|probe_url| AppCoreDiagnosticsCheck {
+            let is_rpc = record.roles.iter().any(|role| role == "rpc");
+            let rpc_probe_method = is_rpc.then_some(health_method).flatten().map(str::to_string);
+            // An RPC endpoint is probed by POSTing to itself, so `probe_url`
+            // stands in as the endpoint and the RPC branch ignores it.
+            let probe_url = record
+                .probe_url
+                .or_else(|| rpc_probe_method.is_some().then(|| record.endpoint.clone()))?;
+            Some(AppCoreDiagnosticsCheck {
                 endpoint: record.endpoint,
                 probe_url,
+                rpc_probe_method,
             })
         })
         .collect()
@@ -661,7 +663,8 @@ pub(super) fn seed_derivation_paths_for_account(
             continue;
         }
         // Keyed by id rather than display name — ids are the stable key, and
-        // `display_names_match_the_catalog` now guarantees the names agree too.
+        // `every_catalog_name_resolves` guarantees every name resolves back to
+        // the id it belongs to.
         if let Some(template) =
             crate::chains::default_derivation_path_template_by_id(chain.str_id())
         {
@@ -809,118 +812,6 @@ pub fn core_derivation_path_replacing_last_two(
 
 // ── Merged from app_core_registry_data.rs ─────────────────────────
 
-// ── chain_backends ─────────────────────────────────────────────────────────
-// Most chains are Live with full feature support, so the `live(...)` builder
-// captures the default and lets each entry collapse to a single line.
-
-fn live(name: &str, symbols: &[&str]) -> AppCoreChainBackend {
-    AppCoreChainBackend {
-        chain_name: name.to_string(),
-        supported_symbols: symbols.iter().map(|s| s.to_string()).collect(),
-        integration_state: AppCoreChainIntegrationState::Live,
-        supports_seed_import: true,
-        supports_balance_refresh: true,
-        supports_receive_address: true,
-        supports_send: true,
-    }
-}
-
-const TRACKED_ERC20: &str = "Tracked ERC-20s";
-
-pub(super) fn chain_backends() -> Vec<AppCoreChainBackend> {
-    vec![
-        live("Bitcoin", &["BTC"]),
-        live("Bitcoin Cash", &["BCH"]),
-        live("Bitcoin SV", &["BSV"]),
-        live("Litecoin", &["LTC"]),
-        live("Ethereum", &["ETH", "USDT", "USDC", "DAI"]),
-        live("Arbitrum", &["ETH", TRACKED_ERC20]),
-        live("Optimism", &["ETH", TRACKED_ERC20]),
-        live("Ethereum Classic", &["ETC"]),
-        live("Dogecoin", &["DOGE"]),
-        live("BNB Chain", &["BNB"]),
-        live("Avalanche", &["AVAX"]),
-        live("Hyperliquid", &["HYPE", TRACKED_ERC20]),
-        live("Tron", &["TRX", "USDT"]),
-        live("Solana", &["SOL"]),
-        live("XRP Ledger", &["XRP"]),
-        live("Monero", &["XMR"]),
-        live("Cardano", &["ADA"]),
-        live("Sui", &["SUI"]),
-        live("Aptos", &["APT"]),
-        live("TON", &["TON", "Tracked Jettons"]),
-        live("Internet Computer", &["ICP"]),
-        live("NEAR", &["NEAR"]),
-        live("Polkadot", &["DOT"]),
-        live("Stellar", &["XLM"]),
-        live("Polygon", &["POL", TRACKED_ERC20]),
-        live("Base", &["ETH", TRACKED_ERC20]),
-        live("Linea", &["ETH", TRACKED_ERC20]),
-        live("Scroll", &["ETH", TRACKED_ERC20]),
-        live("Blast", &["ETH", TRACKED_ERC20]),
-        live("Mantle", &["MNT", TRACKED_ERC20]),
-        live("Zcash", &["ZEC"]),
-        live("Bitcoin Gold", &["BTG"]),
-        live("Decred", &["DCR"]),
-        live("Kaspa", &["KAS"]),
-        live("Dash", &["DASH"]),
-        live("Sei", &["SEI", TRACKED_ERC20]),
-        live("Celo", &["CELO", TRACKED_ERC20]),
-        live("Cronos", &["CRO", TRACKED_ERC20]),
-        live("opBNB", &["BNB", TRACKED_ERC20]),
-        live("zkSync Era", &["ETH", TRACKED_ERC20]),
-        live("Sonic", &["S", TRACKED_ERC20]),
-        live("Berachain", &["BERA", TRACKED_ERC20]),
-        live("Unichain", &["ETH", TRACKED_ERC20]),
-        live("Ink", &["ETH", TRACKED_ERC20]),
-        live("X Layer", &["OKB", TRACKED_ERC20]),
-        live("Bittensor", &["TAO"]),
-        // ── Testnets ────────────────────────────────────────────────────
-        // Each testnet is its own first-class chain row. Same supported
-        // symbols as its mainnet counterpart (the asset is logically
-        // the same — only the chain row makes clear it isn't real money).
-        live("Bitcoin Testnet", &["BTC"]),
-        live("Bitcoin Testnet4", &["BTC"]),
-        live("Bitcoin Signet", &["BTC"]),
-        live("Litecoin Testnet", &["LTC"]),
-        live("Bitcoin Cash Testnet", &["BCH"]),
-        live("Bitcoin SV Testnet", &["BSV"]),
-        live("Dogecoin Testnet", &["DOGE"]),
-        live("Zcash Testnet", &["ZEC"]),
-        live("Decred Testnet", &["DCR"]),
-        live("Kaspa Testnet", &["KAS"]),
-        live("Dash Testnet", &["DASH"]),
-        live("Ethereum Sepolia", &["ETH", TRACKED_ERC20]),
-        live("Ethereum Hoodi", &["ETH", TRACKED_ERC20]),
-        live("Arbitrum Sepolia", &["ETH", TRACKED_ERC20]),
-        live("Optimism Sepolia", &["ETH", TRACKED_ERC20]),
-        live("Base Sepolia", &["ETH", TRACKED_ERC20]),
-        live("BNB Chain Testnet", &["BNB", TRACKED_ERC20]),
-        live("Avalanche Fuji", &["AVAX", TRACKED_ERC20]),
-        live("Polygon Amoy", &["POL", TRACKED_ERC20]),
-        live("Hyperliquid Testnet", &["HYPE", TRACKED_ERC20]),
-        live("Ethereum Classic Mordor", &["ETC"]),
-        live("Tron Nile", &["TRX"]),
-        live("Solana Devnet", &["SOL"]),
-        live("XRP Ledger Testnet", &["XRP"]),
-        live("Stellar Testnet", &["XLM"]),
-        live("Cardano Preprod", &["ADA"]),
-        live("Sui Testnet", &["SUI"]),
-        live("Aptos Testnet", &["APT"]),
-        live("TON Testnet", &["TON"]),
-        live("NEAR Testnet", &["NEAR"]),
-        live("Polkadot Westend", &["DOT"]),
-        live("Monero Stagenet", &["XMR"]),
-    ]
-}
-
-pub(super) fn live_chain_names() -> Vec<String> {
-    chain_backends()
-        .into_iter()
-        .filter(|b| matches!(b.integration_state, AppCoreChainIntegrationState::Live))
-        .map(|b| b.chain_name)
-        .collect()
-}
 
 // ── broadcast_provider_options ─────────────────────────────────────────────
 
@@ -1178,3 +1069,89 @@ mod endpoint_network_index_tests {
         }
     }
 }
+
+#[cfg(test)]
+mod rpc_health_probes {
+    /// Which endpoints get a JSON-RPC probe comes from the catalog's `rpc`
+    /// role, not from a list in Swift.
+    ///
+    /// Two hand-written id lists decided this —
+    /// `NearBalanceService.rpcEndpointCatalog` named three ids and
+    /// `PolkadotBalanceService.sidecarEndpointCatalog` named one, tested
+    /// inverted. Both agreed with the catalog when they were written. Adding a
+    /// provider meant editing `AppEndpointDirectory.json` and remembering the
+    /// Swift list; forgetting it probes a JSON-RPC node with a GET, which many
+    /// answer 405 and this reports as unreachable.
+    #[test]
+    fn the_catalog_decides_which_endpoints_are_rpc() {
+        let catalog = super::load_app_core_catalog().expect("catalog");
+        let method_for = |chain: &str, needle: &str| -> Option<String> {
+            super::diagnostics_checks(&catalog, chain)
+                .into_iter()
+                .find(|c| c.endpoint.contains(needle))
+                .unwrap_or_else(|| panic!("{chain} has no endpoint matching {needle}"))
+                .rpc_probe_method
+        };
+
+        assert_eq!(method_for("NEAR", "rpc.mainnet.near.org").as_deref(), Some("status"));
+        assert_eq!(method_for("NEAR", "fastnear").as_deref(), Some("status"));
+        assert_eq!(method_for("NEAR", "near.lava.build").as_deref(), Some("status"));
+        // The history API is not an RPC node and must keep its GET probe.
+        assert_eq!(method_for("NEAR", "nearblocks"), None);
+
+        // Polkadot's sidecar is REST; the three RPC nodes are not.
+        assert_eq!(method_for("Polkadot", "parity-chains"), None);
+        for rpc in ["onfinality", "dotters", "ibp.network"] {
+            assert_eq!(
+                method_for("Polkadot", rpc).as_deref(),
+                Some("chain_getHeader"),
+                "{rpc}"
+            );
+        }
+    }
+
+    /// Every mainnet with catalog endpoints has something to check.
+    ///
+    /// `diagnostics_checks` used to require a `probe_url`, and no EVM RPC
+    /// record has one, so twelve mainnets answered with an empty list —
+    /// Arbitrum, Optimism, Avalanche, Base, Ethereum Classic, Hyperliquid,
+    /// Polygon, Linea, Scroll, Blast, Mantle and Monero. Their endpoints
+    /// screens were not blank, because Swift probed them down a second path
+    /// (`evmEndpointChecks` over `evm_rpc`, with its own `probeEthereumRPC`
+    /// and its own hardcoded explorer URLs). That path is gone; this is the
+    /// assertion that keeps the one that replaced it honest.
+    #[test]
+    fn every_mainnet_with_endpoints_has_something_to_check() {
+        let catalog = super::load_app_core_catalog().expect("catalog");
+        for chain in crate::registry::Chain::all().filter(|c| !c.is_testnet()) {
+            let name = chain.chain_display_name();
+            // Monero is checked against the backend URL in settings, not the
+            // catalog, so it is the one mainnet with no catalog endpoints.
+            if chain == crate::registry::Chain::Monero {
+                continue;
+            }
+            assert!(
+                !super::diagnostics_checks(&catalog, name).is_empty(),
+                "{name} has no endpoint diagnostics"
+            );
+        }
+    }
+
+    /// A chain with no health method never asks for a JSON-RPC probe.
+    #[test]
+    fn a_chain_without_a_health_method_probes_over_http() {
+        let catalog = super::load_app_core_catalog().expect("catalog");
+        for chain in crate::registry::Chain::all().filter(|c| c.rpc_health_method().is_none()) {
+            for check in super::diagnostics_checks(&catalog, chain.chain_display_name()) {
+                assert_eq!(
+                    check.rpc_probe_method, None,
+                    "{} {}",
+                    chain.chain_display_name(),
+                    check.endpoint
+                );
+            }
+        }
+    }
+}
+
+

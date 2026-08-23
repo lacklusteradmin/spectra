@@ -200,10 +200,16 @@ pub struct AppSettings {
     pub bitcoin_stop_gap: u32,
 
     // ── Fees ──────────────────────────────────────────────────────────────
-    #[serde(default = "default_fee_priority")]
-    pub bitcoin_fee_priority: String,
-    #[serde(default = "default_fee_priority")]
-    pub dogecoin_fee_priority: String,
+    /// Confirmation preference per chain, as `chain display name -> one of
+    /// "economy" / "normal" / "priority"`. Absent means `normal`, so the map
+    /// is empty until the user picks something.
+    ///
+    /// One field rather than one per chain: Bitcoin and Dogecoin each had
+    /// their own settings field and their own Swift enum, while the other
+    /// seventy-six shared a dictionary iOS persisted itself — three stores for
+    /// one preference, and the front ends disagreed about which was canonical.
+    #[serde(default)]
+    pub fee_priority_by_chain: std::collections::HashMap<String, String>,
 
     // ── Network and refresh policy ────────────────────────────────────────
     /// Refuse endpoints the user has not vetted.
@@ -247,6 +253,16 @@ fn default_fiat_rate_provider() -> String {
 }
 fn default_fee_priority() -> String {
     "normal".to_string()
+}
+
+/// The three the picker offers. Anything else is the default rather than a
+/// stored value no send path knows how to spend.
+fn normalized_fee_priority(raw: &str) -> String {
+    match raw.trim().to_ascii_lowercase().as_str() {
+        "economy" => "economy".to_string(),
+        "priority" => "priority".to_string(),
+        _ => default_fee_priority(),
+    }
 }
 fn default_background_sync_profile() -> String {
     "balanced".to_string()
@@ -312,8 +328,7 @@ impl Default for AppSettings {
             monero_backend_api_key: String::new(),
             bitcoin_esplora_endpoints: String::new(),
             bitcoin_stop_gap: default_bitcoin_stop_gap(),
-            bitcoin_fee_priority: default_fee_priority(),
-            dogecoin_fee_priority: default_fee_priority(),
+            fee_priority_by_chain: std::collections::HashMap::new(),
             use_strict_rpc_only: false,
             background_sync_profile: default_background_sync_profile(),
             automatic_refresh_frequency_minutes: default_refresh_frequency_minutes(),
@@ -380,8 +395,9 @@ pub enum AppSettingUpdate {
     MoneroBackendApiKey { value: String },
     BitcoinEsploraEndpoints { value: String },
     BitcoinStopGap { value: u32 },
-    BitcoinFeePriority { value: String },
-    DogecoinFeePriority { value: String },
+    /// `chain` is a registry display name; an unknown one is refused and an
+    /// unknown `value` falls back to `normal`.
+    FeePriority { chain: String, value: String },
     UseStrictRpcOnly { value: bool },
     BackgroundSyncProfile { value: String },
     AutomaticRefreshFrequencyMinutes { value: u32 },
@@ -548,11 +564,18 @@ fn apply_app_setting(settings: &mut AppSettings, update: AppSettingUpdate) {
         AppSettingUpdate::BitcoinStopGap { value } => {
             settings.bitcoin_stop_gap = clamp(value, BITCOIN_STOP_GAP_RANGE)
         }
-        AppSettingUpdate::BitcoinFeePriority { value } => {
-            settings.bitcoin_fee_priority = trimmed(value)
-        }
-        AppSettingUpdate::DogecoinFeePriority { value } => {
-            settings.dogecoin_fee_priority = trimmed(value)
+        AppSettingUpdate::FeePriority { chain, value } => {
+            let Some(chain) = crate::registry::Chain::from_display_name(&chain) else {
+                return;
+            };
+            let value = normalized_fee_priority(&value);
+            if value == default_fee_priority() {
+                settings.fee_priority_by_chain.remove(chain.chain_display_name());
+            } else {
+                settings
+                    .fee_priority_by_chain
+                    .insert(chain.chain_display_name().to_string(), value);
+            }
         }
         AppSettingUpdate::UseStrictRpcOnly { value } => settings.use_strict_rpc_only = value,
         AppSettingUpdate::BackgroundSyncProfile { value } => {

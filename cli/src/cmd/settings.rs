@@ -114,16 +114,6 @@ const FIELDS: &[Field] = &[
         update: |v| parse_u32(v).map(|value| AppSettingUpdate::BitcoinStopGap { value }),
     },
     Field {
-        key: "bitcoin-fee-priority",
-        read: |s| s.bitcoin_fee_priority.clone(),
-        update: |v| Ok(AppSettingUpdate::BitcoinFeePriority { value: v.into() }),
-    },
-    Field {
-        key: "dogecoin-fee-priority",
-        read: |s| s.dogecoin_fee_priority.clone(),
-        update: |v| Ok(AppSettingUpdate::DogecoinFeePriority { value: v.into() }),
-    },
-    Field {
         key: "strict-rpc-only",
         read: |s| s.use_strict_rpc_only.to_string(),
         update: |v| parse_bool(v).map(|value| AppSettingUpdate::UseStrictRpcOnly { value }),
@@ -175,33 +165,95 @@ const FIELDS: &[Field] = &[
     },
 ];
 
-fn field(key: &str) -> CliResult<&'static Field> {
+/// The prefix that names a per-chain fee preference, as
+/// `fee-priority.<chain display name>`.
+///
+/// Fee priority is the one setting keyed by chain rather than global, so it
+/// cannot be a row in `FIELDS` — there would have to be seventy-eight of them,
+/// and the table would have to be regenerated whenever `chains.toml` changes.
+const FEE_PRIORITY_PREFIX: &str = "fee-priority.";
+
+/// A setting a caller can name: one of the fixed rows, or one chain's fee.
+enum Setting {
+    Scalar(&'static Field),
+    FeePriority(String),
+}
+
+impl Setting {
+    fn key(&self) -> String {
+        match self {
+            Setting::Scalar(field) => field.key.to_string(),
+            Setting::FeePriority(chain) => format!("{FEE_PRIORITY_PREFIX}{chain}"),
+        }
+    }
+
+    fn read(&self, settings: &AppSettings) -> String {
+        match self {
+            Setting::Scalar(field) => (field.read)(settings),
+            Setting::FeePriority(chain) => settings
+                .fee_priority_by_chain
+                .get(chain)
+                .cloned()
+                .unwrap_or_else(|| "normal".to_string()),
+        }
+    }
+
+    fn update(&self, raw: &str) -> Result<AppSettingUpdate, &'static str> {
+        match self {
+            Setting::Scalar(field) => (field.update)(raw),
+            Setting::FeePriority(chain) => Ok(AppSettingUpdate::FeePriority {
+                chain: chain.clone(),
+                value: raw.into(),
+            }),
+        }
+    }
+}
+
+fn field(key: &str) -> CliResult<Setting> {
+    if let Some(name) = key.strip_prefix(FEE_PRIORITY_PREFIX) {
+        let chain = spectra_core::registry::Chain::from_display_name(name)
+            .ok_or_else(|| CliError::rejected(format!("no chain named {name}")))?;
+        return Ok(Setting::FeePriority(chain.chain_display_name().to_string()));
+    }
     FIELDS
         .iter()
         .find(|field| field.key == key)
+        .map(Setting::Scalar)
         .ok_or_else(|| CliError::rejected(format!("no setting named {key}")))
+}
+
+/// Every setting that has a value to print: the fixed rows, then whichever
+/// chains have a fee preference stored. Chains at the default are left out —
+/// listing all seventy-eight would bury the seventeen that are not per-chain.
+fn settings_in_order(settings: &AppSettings) -> Vec<Setting> {
+    let mut all: Vec<Setting> = FIELDS.iter().map(Setting::Scalar).collect();
+    let mut chains: Vec<&String> = settings.fee_priority_by_chain.keys().collect();
+    chains.sort();
+    all.extend(chains.into_iter().map(|c| Setting::FeePriority(c.clone())));
+    all
 }
 
 fn list(ctx: &Ctx, out: Out) -> CliResult<()> {
     let settings = ctx.state()?.settings;
+    let all = settings_in_order(&settings);
     out.text(|| {
         println!();
-        for field in FIELDS {
+        for setting in &all {
             println!(
                 "  {:<34} {}",
-                field.key.bold(),
-                out::hint(&(field.read)(&settings))
+                setting.key().bold(),
+                out::hint(&setting.read(&settings))
             );
         }
     });
     out.emit(serde_json::json!({
         "ok": true,
-        "settings": FIELDS
+        "settings": all
             .iter()
-            .map(|field| {
+            .map(|setting| {
                 (
-                    field.key.to_string(),
-                    serde_json::Value::String((field.read)(&settings)),
+                    setting.key(),
+                    serde_json::Value::String(setting.read(&settings)),
                 )
             })
             .collect::<serde_json::Map<String, serde_json::Value>>(),
@@ -210,22 +262,24 @@ fn list(ctx: &Ctx, out: Out) -> CliResult<()> {
 }
 
 fn get(ctx: &Ctx, out: Out, args: GetArgs) -> CliResult<()> {
-    let field = field(&args.key)?;
-    let value = (field.read)(&ctx.state()?.settings);
+    let setting = field(&args.key)?;
+    let value = setting.read(&ctx.state()?.settings);
     out.text(|| println!("  {}", value.bold()));
-    out.emit(serde_json::json!({ "ok": true, "key": field.key, "value": value }));
+    out.emit(serde_json::json!({ "ok": true, "key": setting.key(), "value": value }));
     Ok(())
 }
 
 fn set(ctx: &Ctx, out: Out, args: SetArgs) -> CliResult<()> {
-    let field = field(&args.key)?;
-    let update = (field.update)(&args.value)
-        .map_err(|reason| CliError::rejected(format!("{}: {reason}", field.key)))?;
+    let setting = field(&args.key)?;
+    let key = setting.key();
+    let update = setting
+        .update(&args.value)
+        .map_err(|reason| CliError::rejected(format!("{key}: {reason}")))?;
     let transition = ctx.apply(StateCommand::SetAppSetting { update })?;
     // Report what core stored, not what was asked for: it trims strings and
     // bounds numbers, so the two differ often enough to be worth showing.
-    let stored = (field.read)(&transition.state.settings);
-    out.text(|| println!("  {} {} = {}", out::ok_mark(), field.key, stored.bold()));
-    out.emit(serde_json::json!({ "ok": true, "key": field.key, "value": stored }));
+    let stored = setting.read(&transition.state.settings);
+    out.text(|| println!("  {} {key} = {}", out::ok_mark(), stored.bold()));
+    out.emit(serde_json::json!({ "ok": true, "key": key, "value": stored }));
     Ok(())
 }

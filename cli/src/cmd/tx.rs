@@ -1,7 +1,10 @@
 //! Transactions: what core has recorded, and putting a new one on a chain.
 
-use clap::Args;
+use clap::{Args, Subcommand};
 use colored::Colorize as _;
+use spectra_core::send::ethereum::{
+    prepare_evm_send_assembly, EvmSendAssemblyInput, EvmSupportedToken,
+};
 use spectra_core::send::SendExecutionRequest;
 use spectra_core::store::wallet_domain::CoreTransactionKind;
 use spectra_core::store::wallet_secrets;
@@ -17,6 +20,50 @@ pub struct TxsArgs {
     /// Only this wallet's transactions (id, name or address).
     #[arg(long)]
     wallet: Option<String>,
+}
+
+/// Putting a transfer on a chain, and looking at one first.
+///
+/// `broadcast` is a subcommand rather than the bare verb on purpose: the
+/// irreversible half of this tool should take a word that says so.
+#[derive(Subcommand)]
+pub enum SendCommand {
+    /// Sign and broadcast a transfer.
+    Broadcast(SendArgs),
+    /// Build the transaction an EVM send would sign — no key, no network.
+    Assemble(AssembleArgs),
+}
+
+pub fn run(ctx: &Ctx, out: Out, command: SendCommand) -> CliResult<()> {
+    match command {
+        SendCommand::Broadcast(args) => send(ctx, out, args),
+        SendCommand::Assemble(args) => assemble(ctx, out, args),
+    }
+}
+
+#[derive(Args)]
+pub struct AssembleArgs {
+    /// Chain to assemble for.
+    #[arg(long)]
+    chain: String,
+    /// Sender address.
+    #[arg(long)]
+    from: String,
+    /// Recipient address.
+    #[arg(long)]
+    to: String,
+    /// Amount, in whole units of the asset being sent.
+    #[arg(long)]
+    amount: String,
+    /// Asset to send. Defaults to what the chain pays fees in.
+    #[arg(long)]
+    symbol: Option<String>,
+    /// ERC-20 contract, when sending a token rather than the gas asset.
+    #[arg(long)]
+    contract: Option<String>,
+    /// Token decimals. Required with --contract.
+    #[arg(long)]
+    decimals: Option<u32>,
 }
 
 #[derive(Args)]
@@ -198,6 +245,88 @@ pub fn send(ctx: &Ctx, out: Out, args: SendArgs) -> CliResult<()> {
         "to": args.to,
         "amount": amount,
         "symbol": chain.coin_symbol(),
+    }));
+    Ok(())
+}
+
+/// Build the transaction an EVM send would sign, and print it.
+///
+/// This is the one funds-path rule the CLI could not reach. `is_supported_evm_chain`
+/// named seven chains and `is_native_evm_asset` listed nine `(chain, symbol)`
+/// pairs, two of which named a governance token — sixteen EVM mainnets could
+/// not assemble at all, and ARB and OP assembled as the gas asset. Both are
+/// fixed and both were invisible here, because the only caller of
+/// `prepare_evm_send_assembly` is the iOS send sheet.
+///
+/// No key, no network and no store: this is a pure function over its
+/// arguments, so it runs against an empty data directory.
+pub fn assemble(_ctx: &Ctx, out: Out, args: AssembleArgs) -> CliResult<()> {
+    let chain = resolve_chain(&args.chain)?;
+    if !chain.is_evm() {
+        return Err(CliError::rejected(format!(
+            "{} is not an EVM chain; only EVM sends are assembled here",
+            chain.chain_display_name()
+        )));
+    }
+
+    let amount: f64 = args
+        .amount
+        .trim()
+        .parse()
+        .ok()
+        .filter(|value: &f64| value.is_finite() && *value >= 0.0)
+        .ok_or_else(|| CliError::usage(format!("{:?} is not an amount", args.amount)))?;
+
+    let symbol = args
+        .symbol
+        .clone()
+        .unwrap_or_else(|| chain.coin_symbol().to_string());
+
+    let token = match (&args.contract, args.decimals) {
+        (Some(contract), Some(decimals)) => Some(EvmSupportedToken {
+            symbol: symbol.clone(),
+            contract_address: contract.clone(),
+            decimals,
+        }),
+        (Some(_), None) => return Err(CliError::usage("--contract needs --decimals")),
+        (None, Some(_)) => return Err(CliError::usage("--decimals needs --contract")),
+        (None, None) => None,
+    };
+
+    let assembly = prepare_evm_send_assembly(EvmSendAssemblyInput {
+        chain_name: chain.chain_display_name().to_string(),
+        symbol: symbol.clone(),
+        from_address: args.from.clone(),
+        resolved_destination: args.to.clone(),
+        amount,
+        token,
+    })
+    .map_err(|e| CliError::rejected(e.to_string()))?;
+
+    out.text(|| {
+        println!();
+        out::field("chain", chain.chain_display_name());
+        out::field("asset", &symbol);
+        out::field(
+            "kind",
+            if assembly.is_native {
+                "native value transfer"
+            } else {
+                "ERC-20 transfer"
+            },
+        );
+        out::field("to", &assembly.to_address);
+        out::field("value (wei)", &assembly.value_wei);
+        out::field("data", &assembly.data_hex);
+    });
+    out.emit(serde_json::json!({
+        "ok": true,
+        "chain": chain.chain_display_name(),
+        "symbol": symbol,
+        "isNative": assembly.is_native,
+        "to": assembly.to_address,
+        "valueWei": assembly.value_wei,
+        "data": assembly.data_hex,
     }));
     Ok(())
 }

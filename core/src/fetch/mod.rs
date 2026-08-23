@@ -62,20 +62,47 @@ pub trait HistoryProvider: Send + Sync {
         -> Result<Vec<NormalizedTransaction>, String>;
 }
 
+/// A wallet a refresh might visit, and the addresses it would visit it at.
+///
+/// One record for all three families. There were three — `EvmRefreshWalletInput`,
+/// `DogecoinRefreshWalletInput`, `NormalizedRefreshWalletInput` — differing in
+/// `address: Option<String>` versus `addresses: Vec<String>`, which is one
+/// address and many of them.
+///
+/// The `index` field is gone. It was the caller's position in its own array,
+/// passed in so it could be passed back, and **no call site ever read it**:
+/// every one of them mapped the results by `wallet_id`.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, uniffi::Record)]
 #[serde(rename_all = "camelCase")]
-pub struct EvmRefreshWalletInput {
-    pub index: u64,
+pub struct RefreshWalletInput {
     pub wallet_id: String,
     pub selected_chain: String,
-    pub address: Option<String>,
+    /// One entry for most chains; a UTXO chain supplies its known address set.
+    pub addresses: Vec<String>,
+}
+
+/// Which wallets a refresh on `chain_name` should visit.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, uniffi::Record)]
+#[serde(rename_all = "camelCase")]
+pub struct RefreshTargetsRequest {
+    pub chain_name: String,
+    pub wallets: Vec<RefreshWalletInput>,
+    /// `None` refreshes every wallet on the chain.
+    pub allowed_wallet_ids: Option<Vec<String>>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, uniffi::Record)]
+#[serde(rename_all = "camelCase")]
+pub struct RefreshWalletTarget {
+    pub wallet_id: String,
+    pub addresses: Vec<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, uniffi::Record)]
 #[serde(rename_all = "camelCase")]
 pub struct EvmRefreshTargetsRequest {
     pub chain_name: String,
-    pub wallets: Vec<EvmRefreshWalletInput>,
+    pub wallets: Vec<RefreshWalletInput>,
     pub allowed_wallet_ids: Option<Vec<String>>,
     pub group_by_normalized_address: bool,
 }
@@ -83,7 +110,6 @@ pub struct EvmRefreshTargetsRequest {
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, uniffi::Record)]
 #[serde(rename_all = "camelCase")]
 pub struct EvmRefreshWalletTarget {
-    pub index: u64,
     pub wallet_id: String,
     pub address: String,
     pub normalized_address: String,
@@ -104,55 +130,6 @@ pub struct EvmRefreshPlan {
     pub grouped_targets: Vec<EvmGroupedTarget>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, uniffi::Record)]
-#[serde(rename_all = "camelCase")]
-pub struct DogecoinRefreshWalletInput {
-    pub index: u64,
-    pub wallet_id: String,
-    pub selected_chain: String,
-    pub addresses: Vec<String>,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, uniffi::Record)]
-#[serde(rename_all = "camelCase")]
-pub struct DogecoinRefreshTargetsRequest {
-    pub wallets: Vec<DogecoinRefreshWalletInput>,
-    pub allowed_wallet_ids: Option<Vec<String>>,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, uniffi::Record)]
-#[serde(rename_all = "camelCase")]
-pub struct DogecoinRefreshWalletTarget {
-    pub index: u64,
-    pub wallet_id: String,
-    pub addresses: Vec<String>,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, uniffi::Record)]
-#[serde(rename_all = "camelCase")]
-pub struct NormalizedRefreshWalletInput {
-    pub index: u64,
-    pub wallet_id: String,
-    pub selected_chain: String,
-    pub address: Option<String>,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, uniffi::Record)]
-#[serde(rename_all = "camelCase")]
-pub struct NormalizedRefreshTargetsRequest {
-    pub chain_name: String,
-    pub wallets: Vec<NormalizedRefreshWalletInput>,
-    pub allowed_wallet_ids: Option<Vec<String>>,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, uniffi::Record)]
-#[serde(rename_all = "camelCase")]
-pub struct NormalizedRefreshWalletTarget {
-    pub index: u64,
-    pub wallet_id: String,
-    pub address: String,
-}
-
 pub fn plan_evm_refresh_targets(request: EvmRefreshTargetsRequest) -> EvmRefreshPlan {
     let allowed_wallet_ids = request
         .allowed_wallet_ids
@@ -168,12 +145,16 @@ pub fn plan_evm_refresh_targets(request: EvmRefreshTargetsRequest) -> EvmRefresh
                 .unwrap_or(true)
         })
         .filter_map(|wallet| {
-            let address = trim_optional(wallet.address.as_deref())?;
+            let address = wallet
+                .addresses
+                .iter()
+                .find_map(|address| trim_optional(Some(address)))?
+                .to_string();
+            let normalized_address = normalize_evm_address(&address);
             Some(EvmRefreshWalletTarget {
-                index: wallet.index,
                 wallet_id: wallet.wallet_id,
-                address: address.to_string(),
-                normalized_address: normalize_evm_address(address),
+                address,
+                normalized_address,
             })
         })
         .collect::<Vec<_>>();
@@ -223,9 +204,15 @@ pub fn plan_evm_refresh_targets(request: EvmRefreshTargetsRequest) -> EvmRefresh
     }
 }
 
-pub fn plan_normalized_refresh_targets(
-    request: NormalizedRefreshTargetsRequest,
-) -> Vec<NormalizedRefreshWalletTarget> {
+/// Which wallets a refresh on `chain_name` should visit, and at which
+/// addresses.
+///
+/// Two functions before. The Dogecoin one hardcoded
+/// `selected_chain == "Dogecoin"` — a chain name written into core for a caller
+/// that only ever called it for Dogecoin — and returned `addresses: Vec<String>`
+/// where the other returned one `address`. The filters were otherwise
+/// identical: on the chain, in the allowed set, and having somewhere to look.
+pub fn plan_refresh_targets(request: RefreshTargetsRequest) -> Vec<RefreshWalletTarget> {
     let allowed_wallet_ids = request
         .allowed_wallet_ids
         .map(|wallet_ids| wallet_ids.into_iter().collect::<BTreeSet<_>>());
@@ -241,46 +228,15 @@ pub fn plan_normalized_refresh_targets(
                 .unwrap_or(true)
         })
         .filter_map(|wallet| {
-            let address = trim_optional(wallet.address.as_deref())?.to_string();
-            Some(NormalizedRefreshWalletTarget {
-                index: wallet.index,
-                wallet_id: wallet.wallet_id,
-                address,
-            })
-        })
-        .collect()
-}
-
-pub fn plan_dogecoin_refresh_targets(
-    request: DogecoinRefreshTargetsRequest,
-) -> Vec<DogecoinRefreshWalletTarget> {
-    let allowed_wallet_ids = request
-        .allowed_wallet_ids
-        .map(|wallet_ids| wallet_ids.into_iter().collect::<BTreeSet<_>>());
-
-    request
-        .wallets
-        .into_iter()
-        .filter(|wallet| wallet.selected_chain == "Dogecoin")
-        .filter(|wallet| {
-            allowed_wallet_ids
-                .as_ref()
-                .map(|wallet_ids| wallet_ids.contains(&wallet.wallet_id))
-                .unwrap_or(true)
-        })
-        .filter_map(|wallet| {
             let addresses = wallet
                 .addresses
-                .into_iter()
-                .filter_map(|address| {
-                    trim_optional(Some(address.as_str())).map(|value| value.to_string())
-                })
+                .iter()
+                .filter_map(|address| trim_optional(Some(address)).map(str::to_string))
                 .collect::<Vec<_>>();
             if addresses.is_empty() {
                 return None;
             }
-            Some(DogecoinRefreshWalletTarget {
-                index: wallet.index,
+            Some(RefreshWalletTarget {
                 wallet_id: wallet.wallet_id,
                 addresses,
             })
@@ -306,34 +262,26 @@ fn normalize_evm_address(address: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::{
-        plan_dogecoin_refresh_targets, plan_evm_refresh_targets, plan_normalized_refresh_targets,
-        DogecoinRefreshTargetsRequest, DogecoinRefreshWalletInput, EvmRefreshTargetsRequest,
-        EvmRefreshWalletInput, NormalizedRefreshTargetsRequest, NormalizedRefreshWalletInput,
+        plan_evm_refresh_targets, plan_refresh_targets, EvmRefreshTargetsRequest,
+        RefreshTargetsRequest, RefreshWalletInput,
     };
+
+    fn wallet(id: &str, chain: &str, addresses: &[&str]) -> RefreshWalletInput {
+        RefreshWalletInput {
+            wallet_id: id.to_string(),
+            selected_chain: chain.to_string(),
+            addresses: addresses.iter().map(|a| a.to_string()).collect(),
+        }
+    }
 
     #[test]
     fn groups_evm_targets_by_normalized_address() {
         let plan = plan_evm_refresh_targets(EvmRefreshTargetsRequest {
             chain_name: "Ethereum".to_string(),
             wallets: vec![
-                EvmRefreshWalletInput {
-                    index: 0,
-                    wallet_id: "wallet-a".to_string(),
-                    selected_chain: "Ethereum".to_string(),
-                    address: Some(" 0xABC ".to_string()),
-                },
-                EvmRefreshWalletInput {
-                    index: 1,
-                    wallet_id: "wallet-b".to_string(),
-                    selected_chain: "Ethereum".to_string(),
-                    address: Some("0xabc".to_string()),
-                },
-                EvmRefreshWalletInput {
-                    index: 2,
-                    wallet_id: "wallet-c".to_string(),
-                    selected_chain: "Arbitrum".to_string(),
-                    address: Some("0xdef".to_string()),
-                },
+                wallet("wallet-a", "Ethereum", &[" 0xABC "]),
+                wallet("wallet-b", "Ethereum", &["0xabc"]),
+                wallet("wallet-c", "Arbitrum", &["0xdef"]),
             ],
             allowed_wallet_ids: None,
             group_by_normalized_address: true,
@@ -353,18 +301,8 @@ mod tests {
         let plan = plan_evm_refresh_targets(EvmRefreshTargetsRequest {
             chain_name: "Ethereum".to_string(),
             wallets: vec![
-                EvmRefreshWalletInput {
-                    index: 0,
-                    wallet_id: "wallet-a".to_string(),
-                    selected_chain: "Ethereum".to_string(),
-                    address: Some("0xABC".to_string()),
-                },
-                EvmRefreshWalletInput {
-                    index: 1,
-                    wallet_id: "wallet-b".to_string(),
-                    selected_chain: "Ethereum".to_string(),
-                    address: Some("0xabc".to_string()),
-                },
+                wallet("wallet-a", "Ethereum", &["0xABC"]),
+                wallet("wallet-b", "Ethereum", &["0xabc"]),
             ],
             allowed_wallet_ids: None,
             group_by_normalized_address: false,
@@ -375,73 +313,49 @@ mod tests {
         assert_eq!(plan.grouped_targets[1].wallet_ids, vec!["wallet-b"]);
     }
 
+    /// One planner for every family: on the chain, in the allowed set, and
+    /// having somewhere to look.
+    ///
+    /// This was two tests over two functions, one of which hardcoded
+    /// `"Dogecoin"`. A wallet with many addresses and a wallet with one go
+    /// through the same filter now, which is what says they always did.
     #[test]
-    fn filters_dogecoin_targets_by_allowed_wallets_and_nonempty_addresses() {
-        let targets = plan_dogecoin_refresh_targets(DogecoinRefreshTargetsRequest {
-            wallets: vec![
-                DogecoinRefreshWalletInput {
-                    index: 0,
-                    wallet_id: "wallet-a".to_string(),
-                    selected_chain: "Dogecoin".to_string(),
-                    addresses: vec!["Dabc".to_string(), " ".to_string()],
-                },
-                DogecoinRefreshWalletInput {
-                    index: 1,
-                    wallet_id: "wallet-b".to_string(),
-                    selected_chain: "Dogecoin".to_string(),
-                    addresses: vec![],
-                },
-                DogecoinRefreshWalletInput {
-                    index: 2,
-                    wallet_id: "wallet-c".to_string(),
-                    selected_chain: "Bitcoin".to_string(),
-                    addresses: vec!["Dskip".to_string()],
-                },
-            ],
-            allowed_wallet_ids: Some(vec!["wallet-a".to_string(), "wallet-b".to_string()]),
-        });
+    fn refresh_targets_filter_by_chain_allowed_set_and_having_an_address() {
+        let wallets = vec![
+            wallet("wallet-a", "Dogecoin", &["D1", " D2 "]),
+            wallet("wallet-b", "Dogecoin", &["  ", ""]),
+            wallet("wallet-c", "Dogecoin", &["D3"]),
+            wallet("wallet-d", "Litecoin", &["L1"]),
+        ];
 
-        assert_eq!(targets.len(), 1);
-        assert_eq!(targets[0].wallet_id, "wallet-a");
-        assert_eq!(targets[0].addresses, vec!["Dabc"]);
-    }
-
-    #[test]
-    fn filters_normalized_targets_by_chain_and_nonempty_address() {
-        let targets = plan_normalized_refresh_targets(NormalizedRefreshTargetsRequest {
-            chain_name: "Solana".to_string(),
-            wallets: vec![
-                NormalizedRefreshWalletInput {
-                    index: 0,
-                    wallet_id: "wallet-a".to_string(),
-                    selected_chain: "Solana".to_string(),
-                    address: Some(" SoLaNaAddr ".to_string()),
-                },
-                NormalizedRefreshWalletInput {
-                    index: 1,
-                    wallet_id: "wallet-b".to_string(),
-                    selected_chain: "Solana".to_string(),
-                    address: Some("".to_string()),
-                },
-                NormalizedRefreshWalletInput {
-                    index: 2,
-                    wallet_id: "wallet-c".to_string(),
-                    selected_chain: "Tron".to_string(),
-                    address: Some("T123".to_string()),
-                },
-                NormalizedRefreshWalletInput {
-                    index: 3,
-                    wallet_id: "wallet-d".to_string(),
-                    selected_chain: "Solana".to_string(),
-                    address: None,
-                },
-            ],
+        let all = plan_refresh_targets(RefreshTargetsRequest {
+            chain_name: "Dogecoin".to_string(),
+            wallets: wallets.clone(),
             allowed_wallet_ids: None,
         });
+        assert_eq!(
+            all.iter().map(|t| t.wallet_id.as_str()).collect::<Vec<_>>(),
+            vec!["wallet-a", "wallet-c"],
+            "wallet-b has no usable address and wallet-d is on another chain"
+        );
+        assert_eq!(all[0].addresses, vec!["D1", "D2"], "entries are trimmed");
 
-        assert_eq!(targets.len(), 1);
-        assert_eq!(targets[0].wallet_id, "wallet-a");
-        assert_eq!(targets[0].address, "SoLaNaAddr");
+        let restricted = plan_refresh_targets(RefreshTargetsRequest {
+            chain_name: "Dogecoin".to_string(),
+            wallets: wallets.clone(),
+            allowed_wallet_ids: Some(vec!["wallet-c".to_string()]),
+        });
+        assert_eq!(restricted.len(), 1);
+        assert_eq!(restricted[0].wallet_id, "wallet-c");
+
+        // The single-address family is the same call with one entry.
+        let single = plan_refresh_targets(RefreshTargetsRequest {
+            chain_name: "Litecoin".to_string(),
+            wallets,
+            allowed_wallet_ids: None,
+        });
+        assert_eq!(single.len(), 1);
+        assert_eq!(single[0].addresses, vec!["L1"]);
     }
 }
 
@@ -452,16 +366,8 @@ pub fn core_evm_refresh_targets(request: EvmRefreshTargetsRequest) -> EvmRefresh
     plan_evm_refresh_targets(request)
 }
 
+/// One export for the Dogecoin and normalized families, which were two.
 #[uniffi::export]
-pub fn core_dogecoin_refresh_targets(
-    request: DogecoinRefreshTargetsRequest,
-) -> Vec<DogecoinRefreshWalletTarget> {
-    plan_dogecoin_refresh_targets(request)
-}
-
-#[uniffi::export]
-pub fn core_normalized_refresh_targets(
-    request: NormalizedRefreshTargetsRequest,
-) -> Vec<NormalizedRefreshWalletTarget> {
-    plan_normalized_refresh_targets(request)
+pub fn core_refresh_targets(request: RefreshTargetsRequest) -> Vec<RefreshWalletTarget> {
+    plan_refresh_targets(request)
 }

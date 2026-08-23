@@ -92,7 +92,6 @@ pub mod fetch;
 pub mod formatting;
 pub mod receive;
 pub mod registry;
-pub mod resources;
 pub mod send;
 pub mod service;
 pub mod staking;

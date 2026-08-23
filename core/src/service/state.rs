@@ -59,6 +59,24 @@ fn keypool_from_record(
         reserved_receive_index: record.reserved_receive_index.map(|i| i as i64),
     }
 }
+/// What one confirmation poll found.
+///
+/// Replaces a pair of methods and, inside the success arm, a pair of booleans:
+/// `resolved_status_confirmed` and `resolved_status_pending` encoded three
+/// states in two flags, so "confirmed and pending" type-checked and meant
+/// nothing.
+#[derive(Debug, Clone, Copy, uniffi::Enum)]
+pub enum StatusPollOutcome {
+    /// The provider reported the transaction confirmed.
+    Confirmed { confirmations: Option<u32> },
+    /// The provider reported it still pending.
+    Pending,
+    /// The provider answered without resolving it either way.
+    Unresolved,
+    /// The poll itself failed — a network or provider error, not a verdict.
+    Failed,
+}
+
 #[uniffi::export(async_runtime = "tokio")]
 impl WalletService {
     /// Load the JSON state blob stored under `key` in the SQLite database at
@@ -89,37 +107,7 @@ impl WalletService {
             .map_err(Into::into)
     }
 
-    /// Persist keypool state using typed record (no JSON intermediate).
-    pub async fn save_keypool_state_typed(
-        &self,
-        wallet_id: String,
-        chain_name: String,
-        state: crate::wallet_db::KeypoolState,
-    ) -> Result<(), SpectraBridgeError> {
-        let db_path = self.bound_state_db_path().await?;
-        tokio::task::spawn_blocking(move || {
-            crate::wallet_db::keypool_save(&db_path, &wallet_id, &chain_name, &state)
-        })
-        .await
-        .map_err(|e| SpectraBridgeError::from(format!("spawn_blocking: {e}")))?
-        .map_err(Into::into)
-    }
 
-    pub async fn load_all_keypool_state_typed(
-        &self,
-    ) -> Result<
-        std::collections::HashMap<
-            String,
-            std::collections::HashMap<String, crate::wallet_db::KeypoolState>,
-        >,
-        SpectraBridgeError,
-    > {
-        let db_path = self.bound_state_db_path().await?;
-        tokio::task::spawn_blocking(move || crate::wallet_db::keypool_load_all(&db_path))
-            .await
-            .map_err(|e| SpectraBridgeError::from(format!("spawn_blocking: {e}")))?
-            .map_err(Into::into)
-    }
 
     /// Remove all keypool state for a wallet (called when a wallet is deleted).
     pub async fn delete_keypool_for_wallet(
@@ -309,6 +297,11 @@ impl WalletService {
     }
 
     /// Atomically replace ALL history records with the provided batch.
+    /// Replace the whole history table.
+    ///
+    /// `clear_all_history_records()` was a second export for this with an empty
+    /// slice: `history_replace_all` deletes every row before inserting, so the
+    /// two ran the same `DELETE` and differed only in what followed it.
     pub async fn replace_all_history_records(
         &self,
         records: Vec<crate::wallet_db::HistoryRecord>,
@@ -322,16 +315,6 @@ impl WalletService {
         .map_err(Into::into)
     }
 
-    /// Delete all history records (hard reset).
-    pub async fn clear_all_history_records(
-        &self,
-    ) -> Result<(), SpectraBridgeError> {
-        let db_path = self.bound_state_db_path().await?;
-        tokio::task::spawn_blocking(move || crate::wallet_db::history_clear(&db_path))
-            .await
-            .map_err(|e| SpectraBridgeError::from(format!("spawn_blocking: {e}")))?
-            .map_err(Into::into)
-    }
 
     // ── Owned application state ───────────────────────────────────────────
     //
@@ -582,10 +565,9 @@ impl WalletService {
             let mut by_chain: HashMap<String, crate::store::wallet_domain::CoreCoin> =
                 HashMap::new();
             for coin in coins {
-                let contract = crate::tokens::normalize_dashboard_contract_address(
+                let contract = crate::tokens::normalize_token_identifier(
                     coin.contract_address.clone(),
                     coin.chain_name.clone(),
-                    coin.token_standard.clone(),
                 )
                 .unwrap_or_else(|| "native".to_string());
                 let chain_key = format!(
@@ -928,39 +910,49 @@ impl WalletService {
             .collect()
     }
 
-    /// Record that a status poll returned, and advance the backoff.
-    pub async fn record_status_poll_success(
-        &self,
-        transaction_id: String,
-        resolved_status_confirmed: bool,
-        resolved_status_pending: bool,
-        reported_confirmations: Option<u32>,
-    ) {
+    /// Record the outcome of one confirmation poll.
+    ///
+    /// Two methods before, and the success arm took `resolved_status_confirmed`
+    /// and `resolved_status_pending` as separate booleans — a three-state
+    /// written as two, so "confirmed and pending" was representable and had no
+    /// meaning. The outcome is the outcome.
+    pub async fn record_status_poll(&self, transaction_id: String, outcome: StatusPollOutcome) {
         let now_unix = crate::store::wallet_db::now_secs() as f64;
         let mut trackers = self.status_trackers.write().await;
-        let next = crate::store::plan_transaction_status_poll_success(
-            trackers.get(&transaction_id).cloned(),
-            resolved_status_confirmed,
-            resolved_status_pending,
-            reported_confirmations,
-            now_unix,
-            TransactionStatusPollConfig::default(),
-        );
-        trackers.insert(transaction_id, next);
-    }
-
-    /// Record that a status poll failed, and back off further.
-    pub async fn record_status_poll_failure(
-        &self,
-        transaction_id: String,
-    ) {
-        let now_unix = crate::store::wallet_db::now_secs() as f64;
-        let mut trackers = self.status_trackers.write().await;
-        let next = crate::store::plan_transaction_status_poll_failure(
-            trackers.get(&transaction_id).cloned(),
-            now_unix,
-            TransactionStatusPollConfig::default(),
-        );
+        let previous = trackers.get(&transaction_id).cloned();
+        let next = match outcome {
+            StatusPollOutcome::Failed => crate::store::plan_transaction_status_poll_failure(
+                previous,
+                now_unix,
+                TransactionStatusPollConfig::default(),
+            ),
+            StatusPollOutcome::Confirmed { confirmations } => {
+                crate::store::plan_transaction_status_poll_success(
+                    previous,
+                    true,
+                    false,
+                    confirmations,
+                    now_unix,
+                    TransactionStatusPollConfig::default(),
+                )
+            }
+            StatusPollOutcome::Pending => crate::store::plan_transaction_status_poll_success(
+                previous,
+                false,
+                true,
+                None,
+                now_unix,
+                TransactionStatusPollConfig::default(),
+            ),
+            StatusPollOutcome::Unresolved => crate::store::plan_transaction_status_poll_success(
+                previous,
+                false,
+                false,
+                None,
+                now_unix,
+                TransactionStatusPollConfig::default(),
+            ),
+        };
         trackers.insert(transaction_id, next);
     }
 
@@ -985,6 +977,10 @@ impl WalletService {
     }
 
     /// Drop trackers for transactions that no longer exist.
+    /// Keep only these trackers and forget the rest.
+    ///
+    /// `clear_status_trackers()` was a second name for this with an empty list,
+    /// and one call site already spelled it that way.
     pub async fn retain_status_trackers(&self, transaction_ids: Vec<String>) {
         let keep: std::collections::HashSet<String> = transaction_ids.into_iter().collect();
         self.status_trackers
@@ -993,10 +989,6 @@ impl WalletService {
             .retain(|id, _| keep.contains(id));
     }
 
-    /// Forget all confirmation-poll state (wallet reset / sign-out).
-    pub async fn clear_status_trackers(&self) {
-        self.status_trackers.write().await.clear();
-    }
 
     /// Pending transactions old enough, and failing often enough, to be treated
     /// as failed. Failure counts come from core's own trackers.
@@ -1262,23 +1254,6 @@ impl WalletService {
         ))
     }
 
-    /// Every wallet's keypool, for the diagnostics screen. Read-only.
-    pub async fn keypool_snapshot(
-        &self,
-    ) -> HashMap<String, HashMap<String, crate::wallet_db::KeypoolState>> {
-        let keypool = self.keypool.read().await;
-        let mut out: HashMap<String, HashMap<String, crate::wallet_db::KeypoolState>> =
-            HashMap::new();
-        for (key, state) in keypool.iter() {
-            let Some((wallet_id, chain_name)) = key.split_once('|') else {
-                continue;
-            };
-            out.entry(chain_name.to_string())
-                .or_default()
-                .insert(wallet_id.to_string(), state.clone());
-        }
-        out
-    }
 
     /// Everything the wallet list implies, rendered.
     ///
@@ -1319,14 +1294,6 @@ impl WalletService {
             .map(String::as_str)
             .collect();
 
-        let live_chains: HashSet<String> =
-            crate::app_core::live_chain_names().into_iter().collect();
-        let backends: HashMap<String, crate::app_core::AppCoreChainBackend> =
-            crate::app_core::chain_backends()
-                .into_iter()
-                .map(|b| (b.chain_name.clone(), b))
-                .collect();
-
         let mut included_portfolio_holdings = Vec::new();
         let mut unique_price_request_coins = Vec::new();
         let mut seen_price_keys = HashSet::new();
@@ -1355,7 +1322,13 @@ impl WalletService {
                     .map(|chain| chain.chain_display_name().to_string())
                     .unwrap_or_else(|| holding.chain_name.clone());
                 let identity_key = format!("{}|{}", title, holding.symbol);
-                let backend = backends.get(&holding.chain_name);
+                // `chain_backends()` was a 78-row table beside `chains.toml`,
+                // with the same 78 names and `Live` on every one — so
+                // "has a backend", "supports send", "supports receive" and "is
+                // a live chain" were four spellings of "the registry knows this
+                // chain". Verified identical before it was deleted.
+                let chain_is_known =
+                    crate::registry::Chain::from_display_name(&holding.chain_name).is_some();
 
                 if network.is_none_or(|chain| !chain.is_testnet())
                     && seen_price_keys.insert(identity_key.clone())
@@ -1375,13 +1348,13 @@ impl WalletService {
                 if crate::send::transfer::can_send_coin(
                     holding,
                     has_signing_material,
-                    backend.is_some_and(|b| b.supports_send),
-                    live_chains.contains(&holding.chain_name),
+                    chain_is_known,
+                    chain_is_known,
                     &token_preferences,
                 ) {
                     send_coins.push(holding.clone());
                 }
-                if backend.is_some_and(|b| b.supports_receive_address) {
+                if chain_is_known {
                     receive_coins.push(holding.clone());
                     if !receive_chains.contains(&holding.chain_name) {
                         receive_chains.push(holding.chain_name.clone());

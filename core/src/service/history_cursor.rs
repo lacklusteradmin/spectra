@@ -63,20 +63,25 @@ impl WalletService {
             .advance_cursor(&chain_id, &wallet_id, next_cursor);
     }
 
-    /// Directly set the page counter to `page`. For page-based chains (EVM)
-    /// where Swift tracks absolute page numbers (1-indexed). Swift sets the
-    /// page to 1 on reset and stores the page that was just fetched after each
-    /// successful request.
-    pub fn set_history_page(&self, chain_id: String, wallet_id: String, page: u32) {
+    /// Record the page just fetched, and whether it was the last one.
+    ///
+    /// For the page-based family (EVM), where a page number is absolute rather
+    /// than a cursor. This was two exports — `set_history_page` and
+    /// `set_history_exhausted` — and the caller invoked both, in that order,
+    /// at its one call site: the page it fetched and whether the page came back
+    /// short. Two writes to one three-field cursor, so two chances for a reader
+    /// to see half an update.
+    pub fn set_history_page(
+        &self,
+        chain_id: String,
+        wallet_id: String,
+        page: u32,
+        is_exhausted: bool,
+    ) {
         self.history_pagination
             .set_page(&chain_id, &wallet_id, page);
-    }
-
-    /// Explicitly mark a (chain, wallet) pair as exhausted or not. Used when
-    /// Swift detects an empty page without going through `advance_history_*`.
-    pub fn set_history_exhausted(&self, chain_id: String, wallet_id: String, exhausted: bool) {
         self.history_pagination
-            .set_exhausted(&chain_id, &wallet_id, exhausted);
+            .set_exhausted(&chain_id, &wallet_id, is_exhausted);
     }
 
     /// Forget history pagination, for as much of it as `scope` names.

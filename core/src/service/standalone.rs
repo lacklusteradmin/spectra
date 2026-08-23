@@ -109,18 +109,12 @@ pub fn validate_mnemonic(phrase: String) -> bool {
         || Mnemonic::parse_in(Language::English, phrase.trim()).is_ok()
 }
 
-/// Return the full BIP-39 English word list as a newline-delimited string
-/// (2048 words, alphabetically sorted).
-#[uniffi::export]
-pub fn bip39_english_wordlist() -> String {
-    static WORDLIST: std::sync::LazyLock<String> =
-        std::sync::LazyLock::new(|| bip39::Language::English.word_list().join("\n"));
-    WORDLIST.clone()
-}
-
-/// Return the full BIP-39 word list for the given language as a newline-delimited string.
-/// Accepts the same language codes as the derivation functions ("en", "zh-cn", etc.).
-/// Falls back to English for unrecognised codes.
+/// The full BIP-39 word list for a language, newline-delimited.
+///
+/// Accepts the same language codes as the derivation functions ("en", "zh-cn",
+/// …) and falls back to English for anything else — which is why
+/// `bip39_english_wordlist` was this function with one argument bound, and is
+/// gone.
 #[uniffi::export]
 pub fn bip39_wordlist(language: String) -> String {
     use bip39::Language;

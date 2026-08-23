@@ -628,7 +628,7 @@ use crate::SpectraBridgeError;
 ///
 /// Derived from `Chain::str_id()` rather than transcribed, so it cannot fall
 /// behind the registry.
-#[uniffi::export]
+/// Internal: its Swift wrapper had no caller.
 pub fn core_evm_chain_context_tag(chain_name: String, ethereum_network_mode: String) -> String {
     let _ = ethereum_network_mode; // legacy argument, ignored
     Chain::from_display_name(&chain_name)
