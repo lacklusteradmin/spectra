@@ -890,13 +890,6 @@ impl Chain {
 
     /// The EVM family gates a non-native asset on it being a supported token.
     ///
-    /// It used to gate only Ethereum, BNB Chain and Avalanche, and fall through
-    /// to no restriction on the other twenty EVM chains — so the same
-    /// unsupported token was refused on Ethereum and offered on Arbitrum, where
-    /// it would be accepted by the UI and then fail at submit. That split was
-    /// an accident of the chain-name match this replaced, not a decision, and
-    /// a test used to pin it in place.
-    ///
     /// One rule now, on the side that refuses early: being told no is better
     /// than a signed transaction that cannot land.
     pub const fn send_rule(self) -> SendRule {
@@ -1253,10 +1246,6 @@ pub enum SendFeeField {
 
 /// What a front end needs to assemble a send for this chain, beyond the
 /// amount and the destination.
-///
-/// Ten near-identical call sites used to carry these four values inline, which
-/// is how `fee_decimals` came to differ between chains for no stated reason
-/// and how a new chain's arm got written by copying its neighbour.
 #[derive(Debug, Clone, Copy, uniffi::Record)]
 pub struct SendExecutionShape {
     /// Decimal places to show when reporting that the balance cannot cover
@@ -1685,11 +1674,6 @@ pub struct ChainIdentity {
     /// EVM family.
     pub evm_seed_derivation_chain: Option<String>,
     /// The mainnet this chain belongs to, or itself.
-    ///
-    /// Was published as `seed_derivation_path_key` — the same value under a
-    /// name that described one of its callers. A testnet shares its mainnet's
-    /// derivation-path slot *because* it is that mainnet's testnet, and other
-    /// call sites want the same fact for other reasons.
     pub mainnet_counterpart: Chain,
     /// The networks this chain's family offers, mainnet first.
     pub network_choices: Vec<NetworkChoice>,
@@ -1897,5 +1881,6 @@ mod catalog_agreement_tests {
         }
     }
 }
+
 
 

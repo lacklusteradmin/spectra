@@ -185,7 +185,7 @@ pub struct AppSettings {
     // ── Endpoints and credentials ─────────────────────────────────────────
     /// Custom RPC per chain, as `chain display name -> url`. Absent means the
     /// catalog's list.
-    ///
+    //
     /// One field rather than one per chain: this was `ethereum_rpc_endpoint`,
     /// a single String, and the Swift accessor that read it was
     /// `chainName == "Ethereum" ? … : nil` — so twenty-two of the twenty-three
@@ -209,7 +209,7 @@ pub struct AppSettings {
     /// Confirmation preference per chain, as `chain display name -> one of
     /// "economy" / "normal" / "priority"`. Absent means `normal`, so the map
     /// is empty until the user picks something.
-    ///
+    //
     /// One field rather than one per chain: Bitcoin and Dogecoin each had
     /// their own settings field and their own Swift enum, while the other
     /// seventy-six shared a dictionary iOS persisted itself — three stores for
@@ -308,10 +308,6 @@ impl AppSettings {
 /// can apply it in the same synchronous step that adopts a new state. Asking
 /// core asynchronously left the render path briefly quoting a testnet at
 /// mainnet prices right after a network switch.
-///
-/// This replaced `core_priced_chain(chain_name, bitcoin_mode, ethereum_mode)`,
-/// which was the *second* copy of the rule that quoted Dogecoin testnet as
-/// mainnet: it named two families and let every other chain through as priced.
 #[uniffi::export]
 pub fn core_unpriced_chain_names(settings: AppSettings) -> Vec<String> {
     crate::registry::Chain::mainnets()

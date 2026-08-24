@@ -34,8 +34,6 @@ pub(crate) fn btg_p2pkh_script(pubkey_hash: &[u8; 20]) -> Vec<u8> {
     s
 }
 
-// ── Derivation ────────────────────────────────────────────────────────────
-
 use crate::derivation::chains::bitcoin::{base58check_encode, derive_secp_keypair, hash160};
 use crate::derivation::types::{parse_path_metadata, BitcoinScriptType, DerivationResult};
 use crate::SpectraBridgeError;

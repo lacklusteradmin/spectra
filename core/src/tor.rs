@@ -46,8 +46,6 @@ pub enum TorStatus {
     Error { message: String },
 }
 
-// ── Internal state ───────────────────────────────────────────────────────────
-
 enum TorInternalState {
     Stopped,
     Bootstrapping {

@@ -66,8 +66,6 @@ pub fn is_mweb_address(address: &str) -> bool {
     address.starts_with("ltcmweb1") || address.starts_with("tmweb1")
 }
 
-// ── Derivation ────────────────────────────────────────────────────────────
-
 use crate::derivation::chains::bitcoin::{base58check_encode, derive_secp_keypair, hash160};
 use crate::derivation::types::{parse_path_metadata, BitcoinScriptType, DerivationResult};
 use crate::SpectraBridgeError;
@@ -134,7 +132,6 @@ pub fn derive_litecoin(
     )
 }
 
-/// Derive Litecoin testnet keys.
 pub fn derive_litecoin_testnet(
     seed_phrase: String,
     derivation_path: String,

@@ -402,12 +402,6 @@ pub fn core_dashboard_supported_token_entries(
 }
 
 /// Normalize a token contract address for identity matching.
-///
-/// This was the **third** copy of that rule — a twelve-name EVM arm, then
-/// Aptos, Sui, TON and a lowercase default — and its doc comment said so: it
-/// "mirrors the Swift `normalizedTrackedTokenIdentifier` dispatch", which was
-/// itself the second copy of `normalize_token_identifier`. Three transcriptions
-/// of one table, in two languages, one of which had TON wrong.
 fn normalize_tracked_token_identifier(
     chain: wallet_domain::CoreTokenTrackingChain,
     contract_address: &str,
@@ -1218,8 +1212,6 @@ pub(crate) fn plan_apply_resolved_pending_transaction_statuses(
     decisions
 }
 
-// ─── M: Ethereum send error classification ────────────────────────────────────
-//
 // Matches Swift `mapEthereumSendError`. Swift passes the lowercased error
 // message; Rust returns a code. Swift materializes the localized string.
 

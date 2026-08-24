@@ -67,13 +67,6 @@ impl WalletService {
     }
 
     /// Can this send be made, and how should it be routed?
-    ///
-    /// The caller used to answer most of this itself: `walletFound`,
-    /// `assetFound`, the balance, and — on the funds path — whether the chain
-    /// is EVM and whether the asset is one this build can send on Solana or
-    /// NEAR. Core owns the wallets, the holdings, the registry and the token
-    /// preferences all three of those are derived from, so it was trusting a
-    /// caller's answer about its own state. It derives them now.
     pub async fn send_submit_preflight(
         &self,
         wallet_id: String,
@@ -128,12 +121,6 @@ impl WalletService {
     }
 
     /// Reasons this send looks risky, as codes the platform localizes.
-    ///
-    /// The caller used to pass the address book and every address it had ever
-    /// sent this chain — both of which are core's own store — along with the
-    /// wallet's chain and the holding's symbol and balance. What is genuinely
-    /// the caller's is here: the destination, what the user typed, and whether
-    /// an ENS name was resolved to get from one to the other.
     pub async fn high_risk_send_reasons(
         &self,
         wallet_id: String,

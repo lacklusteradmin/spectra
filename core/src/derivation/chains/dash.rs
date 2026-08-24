@@ -39,8 +39,6 @@ pub fn validate_dash_address(address: &str) -> bool {
     decode_dash_address(address).is_ok()
 }
 
-// ── Derivation ────────────────────────────────────────────────────────────
-
 use crate::derivation::chains::bitcoin::{base58check_encode, derive_secp_keypair, hash160};
 use crate::derivation::types::{parse_path_metadata, BitcoinScriptType, DerivationResult};
 use crate::SpectraBridgeError;

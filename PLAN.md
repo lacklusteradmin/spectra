@@ -108,8 +108,8 @@ Measured, not estimated:
 | | Start | Now |
 |---|---|---|
 | Swift, non-generated, excluding tests | 30,879 lines | **26,660** |
-| — `views/` + `extensions/` (genuine UI) | 11,113 (36%) | **11,272 (43%)** |
-| — root of `swift/` (`AppState`, stores, persistence, bridges) | 19,766 (64%) | **15,231 (57%)** |
+| — `views/` + `extensions/` (genuine UI) | 11,113 (36%) | **11,194 (43%)** |
+| — root of `swift/` (`AppState`, stores, persistence, bridges) | 19,766 (64%) | **15,033 (57%)** |
 | `core_plan_*` FFI exports (core advises, Swift applies) | 42 | 10 |
 | Swift enums restating the chain list | 6 (30 / 76 / 30 / 24 / 7 / 18 cases) | **0** |
 | Swift enums duplicating one core-owned setting | 2 (`BitcoinFeePriority`, `DogecoinFeePriority`) | **0** |
@@ -557,6 +557,139 @@ reports three checks (`Address Validation`, `Address Rejects Invalid`,
 
 What stays in the rows is what the registry genuinely cannot supply:
 `valid_address` and `invalid_address` are fixtures, not derivations.
+
+**416 lines of comment removed: changelog entries, banners that named the
+function below them, and doc comments that restated a signature.**
+
+Three kinds, found by three sweeps.
+
+**Changelog paragraphs — 379 lines.** Most doc comments written during this
+migration open with what the code does and then continue with what it used to
+be: *"It replaced `ethereumRPCEndpoint`, one String read through an accessor
+that was…"*, *"Ten forwarding accessors used to name five chains twice each"*,
+*"This tail was written out eight times"*. That history belongs here, in this
+document, at greater length — in the source it is a diff pinned to a line that
+has moved on. Removed by taking any paragraph that *opens* with history and
+carries no forward-looking constraint.
+
+*The anchoring matters.* A first pass matched paragraphs that merely
+**contained** history and would have removed 709 lines — including
+`networkChainByFamily`'s *"Core owns it; this is the mirror the UI binds to…
+**Absent means mainnet**. It replaced three typed properties…"*, where a fact
+the reader needs sits in the same paragraph as the history. Opening-anchored,
+that paragraph survives. Paragraphs that say **must**, **never**, **cannot**,
+**on purpose**, **stricter**, **drift** or **absent means** were kept
+regardless.
+
+**Divider banners — 28 lines.** `// ─── Dogecoin derivation index parser ───`
+directly above `pub fn core_parse_dogecoin_derivation_index`. Removed where
+70% or more of the banner's words appear in the declaration under it; the ones
+that name a *group* of following items are untouched.
+
+**Doc comments restating a signature — 9 lines.** *"Delete history records by
+ID."* on `delete_history_records`, *"Derive Litecoin testnet keys."* on
+`derive_litecoin_testnet`.
+
+*What was kept, and why it is not the same thing.* `// XRP amount:
+0x4000000000000000 | drops`, `// args: Vec<u8> (u32 len + bytes)`,
+`// yoctoNEAR (1 NEAR = 10^24 yoctoNEAR)`, the CBOR shapes in
+`cardano.rs` — wire formats, unit conversions and magic constants that the
+code cannot state itself. A comment earns its line when a reader who has the
+code still does not have the fact.
+
+*The whitelist was protecting the worst offenders.* The first pass kept any
+history paragraph containing **drift**, **wins**, **stricter**, **on purpose**
+or **deliberate** — on the theory that those words mark a constraint. They do
+not. They are the words a comment uses when it is **announcing a bug it
+defeated**, which is the least useful thing a comment can do: the reader has
+the fixed code in front of them and does not need to be told what the broken
+version looked like. `settingsIconTint` kept six lines about two colours that
+had disagreed; the reader needs one line saying it reads the catalog.
+
+Narrowed to genuine imperatives — **must**, **never**, **do not**, **cannot**,
+**beware**, **absent means** — a second pass removed 47 more lines across eight
+files, and four bare `///` markers left where a first line had been deleted.
+
+Density: Swift 9.5% → **8.4%**, Rust 11.2% → **11.0%**. Total removed: **463
+lines**.
+
+**The sweep itself was the bug. Fixing it found four more.**
+
+*What was wrong with it.* The chain-list scan required an array literal on
+**one line** with three or more chain names. Real lists wrap. Rewritten as a
+six-line sliding window counting *distinct* registry names or ids, it found
+four more production sites the single-line version had reported clean for
+several passes.
+
+**`AdvancedSettingsView.singleChainRefreshNames` was the same twenty-two names
+again**, byte-identical to `AddressBookView.supportedChains` including their
+ordering — one list, copied, gating two unrelated features. It decides which
+chains get a "refresh this chain" button, and
+`performUserInitiatedRefresh(forChain:)` takes any name, so twenty-four
+mainnets simply had no button. Now `Chain.mainnets`.
+
+**`ChainWikiEntry.accentColor` was a twenty-arm switch that could not run.**
+It was the fallback for `ChainRegistryEntry.entry(id:)` returning nil. A wiki
+entry is built from `listAllChains()` with `id: chain.id`, and
+`ChainRegistryEntry` is built from the same call filtered on a non-empty name —
+no catalog chain has an empty name, so the lookup always resolves. Dead, and
+five chains short of the registry, which is what it would have been wrong about
+had it ever run.
+
+**`TokenTrackingChain.settingsIconSlug` returned its own case name.** Eighteen
+arms of `case .ethereum: return "ethereum"` — the registry id, written out.
+Now `chain?.id`.
+
+**And `settingsIconTint` had actually drifted.** A second eighteen-arm switch,
+this one assigning a colour per chain, where the catalog already carries
+`color`. Two arms disagree: **Ethereum is `.blue` here and `purple` in
+`chains.toml`; Solana is `.purple` here and `green` there.** Every other screen
+reads the catalog through `ChainRegistryEntry.color`, so the same chain was
+tinted differently depending on which screen you were looking at. The catalog
+wins.
+
+*Left alone: `SetupView.popularChainSelectionIDs`.* Eight ids, hand-written —
+but "popular" is a curation decision, not a registry fact. A list is the right
+shape for it.
+
+**Three multi-line chain lists in `views/`, each gating a feature to a subset
+of the registry.**
+
+*How they were missed.* The chain-list sweep this document has leaned on
+required the array literal to sit on **one line** with three or more chain
+names on it. These three span three or four lines each, so a scan that had
+reported "clean" for several passes was reporting on its own regex.
+
+**The address book offered twenty-two chains of forty-six.** `supportedChains`
+was a hand-written picker list, so a recipient on Base, Polygon, Bitcoin Cash,
+Zcash or twenty others could not be saved — not because saving would fail, but
+because there was no row to select. `addressBookAddressValidationMessage` and
+`canSaveAddressBookEntry` would have accepted all of them, and every mainnet
+has an `address_validation_kind`, so none of the twenty-four could have gone
+unchecked. Now `Chain.mainnets.map(\.displayName)`.
+
+**The decimal-display screen listed twenty-one chains of forty-six.**
+`decimalExamples` was twenty-one `(symbol, chain)` pairs, so twenty-five
+chains' native display precision could not be adjusted at all — including
+every one of the thirty-five whose decimals this document fixed earlier. Every
+symbol in the list agreed with `gasTokenSymbol`: a correct transcription,
+twenty-five rows short. Now derived from `Chain.mainnets`.
+
+**The send sheet named thirteen EVM chains among thirty.**
+`networkSendChainNames` decided card-versus-`noNetworkPreviewCard`, and
+`estimatedNetworkFeeText` had the same thirteen names in a `case`. All
+twenty-three EVM chains share `ethereumSendPreview`, so the other ten — Sei,
+Celo, Cronos, opBNB, zkSync Era, Sonic, Berachain, Unichain, Ink, X Layer —
+had a preview to show and were shown the degraded card with no fee line. Both
+now test `chain.isEVM`. The seventeen non-EVM names stay: they are
+`SendPreviewStore`'s per-chain fields, which this document has already assessed
+and kept.
+
+*What was left.* `addressPrompt`'s terse format examples ("bc1q…", "r…") stay
+incomplete. Writing one per chain is content in four locales, which is the
+authoring gap already recorded — a chain without an entry gets an empty
+placeholder and still validates, which is the same trade as before and now
+covers more chains rather than fewer.
 
 **Nine copies of four helpers, found by hashing function bodies rather than by
 reading.**
@@ -4283,7 +4416,7 @@ Not by feel. These four numbers, checked at the end of each stage:
 | Metric | Start | Now | Target |
 |---|---|---|---|
 | `core_plan_*` exports | 42 | **0** | 0 |
-| Swift root lines vs `views/` | 19,766 vs 11,113 | 15,231 vs 11,272 | inverted |
+| Swift root lines vs `views/` | 19,766 vs 11,113 | 15,033 vs 11,194 | inverted |
 | Domain collections stored on `AppState` | 3 | 0 | 0 |
 | Domain settings owned by core | 0 | **21 fields; 4 left on iOS on purpose** | all |
 | Wallet operations reachable from the CLI | partial | **all** | all |

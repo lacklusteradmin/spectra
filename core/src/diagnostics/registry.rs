@@ -57,11 +57,6 @@ macro_rules! chain_keyed_registry {
 
         /// Record one wallet's result.
         ///
-        /// This was `replace(chain_name, entries)`, paired with the getter
-        /// above: a caller wanting to store one wallet's row read every row
-        /// across the boundary, inserted into the copy, and sent all of them
-        /// back. Two rows written concurrently kept whichever finished second.
-        ///
         /// Internal now: `diagnostics_record` is the one entry point, and the
         /// shape it dispatches on is the entry's own variant.
         pub fn $record(chain_name: String, wallet_id: String, entry: $ty) {
@@ -150,11 +145,6 @@ pub fn diagnostics_record_solana(wallet_id: String, entry: SolanaHistoryDiagnost
 
 /// What a chain's diagnostics screen shows about its history run: how many
 /// wallets reported, and which source each used.
-///
-/// The screen used to ask for the whole registry and reduce it — five
-/// `diagnostics_all_*` calls behind a five-way switch on the record shape, to
-/// reach two numbers that every shape has. The shape is a registry fact and
-/// the records are core's, so neither needs to cross.
 #[derive(Debug, Clone, PartialEq, uniffi::Record)]
 pub struct DiagnosticsRunSummary {
     pub wallet_count: u32,
@@ -193,11 +183,6 @@ pub fn diagnostics_run_summary(chain_name: String) -> DiagnosticsRunSummary {
 }
 
 /// Drop every diagnostics row a wallet left behind, on every chain.
-///
-/// The caller used to name the chains: twenty-seven lines of
-/// `self[utxoHistoryFor: "Bitcoin"][walletID] = nil`, one per chain per shape,
-/// each a read-modify-write of a whole map across the boundary. A wallet is
-/// gone from all of them or none.
 #[uniffi::export]
 pub fn diagnostics_forget_wallet(wallet_id: String) {
     let mut reg = registry().lock().unwrap();

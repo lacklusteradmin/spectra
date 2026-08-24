@@ -1806,8 +1806,6 @@ pub(crate) fn monero_base58_encode(data: &[u8]) -> String {
     out
 }
 
-// ── BIP-39 ───────────────────────────────────────────────────────────────
-
 // Map locale string ("en", "zh-cn", etc.) to BIP-39 wordlist; defaults to English.
 fn resolve_bip39_language(name: Option<&str>) -> Result<Language, String> {
     let value = match name {

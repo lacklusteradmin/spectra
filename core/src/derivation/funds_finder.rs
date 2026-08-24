@@ -60,7 +60,6 @@ pub fn core_generate_funds_finder_candidates(
         .map(str::to_string);
     let mut out: Vec<FundsFinderCandidate> = Vec::new();
 
-    // ── Bitcoin ───────────────────────────────────────────────────────────────
     // Four script types × accounts 0-2
     let btc_variants: &[(BitcoinScriptType, &str, &str)] = &[
         (

@@ -92,8 +92,6 @@ fn decode_key(name: &str) -> Option<String> {
     String::from_utf8(out).ok()
 }
 
-// ── In-memory ────────────────────────────────────────────────────────────────
-
 /// Non-persistent [`SecretStore`], backed by a map. Contents vanish on drop.
 ///
 /// Use it in tests: it lets a test drive any core path that needs secret I/O

@@ -16,12 +16,6 @@ use crate::diagnostics::sanitizer::sanitize_diagnostics_string;
 
 /// One endpoint's reachability, for every chain.
 ///
-/// There used to be two of these — a plain one and an `EndpointHealthRow`
-/// that added `label` — which is a field, not a type. Carrying both forced the
-/// per-chain diagnostics state to keep two differently-typed slots for the same
-/// thing, which is why the endpoint-health properties could not be keyed by
-/// chain until now.
-///
 /// `label` stays out of the non-EVM JSON: `endpoint_row_value` does not emit it
 /// and `evm_endpoint_row_value` does, so the bundle shape is unchanged.
 #[derive(uniffi::Record, serde::Serialize, serde::Deserialize, Clone, Debug, PartialEq)]

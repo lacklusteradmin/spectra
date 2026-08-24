@@ -167,12 +167,6 @@ pub fn endpoint_records_for_chain_masked(
 }
 
 /// Everything the endpoint catalog holds for one chain.
-///
-/// Eight exports used to answer this one field at a time, each taking the
-/// chain and re-walking the same table — so a screen showing a chain's
-/// endpoints made six calls, and each one was a separate chance to be given a
-/// different chain's answer. The catalog is static once the embedded JSON
-/// parses, so a front end reads this once and keeps it.
 #[derive(Debug, Clone, PartialEq, uniffi::Record)]
 pub struct AppCoreChainEndpoints {
     pub chain_id: String,
@@ -445,13 +439,6 @@ mod tests {
     use super::*;
 
     /// "This chain has no derivation path" is an answer, not a failure.
-    ///
-    /// It used to be an `Err`, and every caller in the import pipeline read
-    /// that as a broken catalog: `spectra wallet import --chain Monero` exited
-    /// with "Missing default derivation path for Monero.", and iOS filtered
-    /// the chain out of the batch it was deriving and then demanded the user
-    /// type an address instead. Core has derived Monero from a seed the whole
-    /// time — nothing could reach it.
     #[test]
     fn a_chain_with_no_catalog_path_derives_without_one() {
         use crate::registry::Chain;
@@ -812,8 +799,6 @@ pub fn core_derivation_path_replacing_last_two(
 
 // ── Merged from app_core_registry_data.rs ─────────────────────────
 
-
-// ── broadcast_provider_options ─────────────────────────────────────────────
 
 pub(super) fn broadcast_provider_options(chain_name: &str) -> Vec<AppCoreBroadcastProviderOption> {
     let resolved = crate::registry::Chain::from_display_name(chain_name)

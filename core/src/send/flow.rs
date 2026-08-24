@@ -619,7 +619,6 @@ pub fn core_evaluate_high_risk_send_reasons(
 
 use crate::SpectraBridgeError;
 
-// ─── EVM chain context string mapping ────────────────────────────────────────
 /// Snake-cased chain identifier for EVM chains; empty string for everything
 /// else. Swift maps the result onto its `EVMChainContext` enum.
 ///
@@ -678,8 +677,6 @@ pub fn core_evm_chain_context(chain_name: String) -> Option<EvmChainContextInfo>
     })
 }
 
-// ─── Dogecoin derivation index parser ─────────────────────────────────────────
-
 pub fn core_parse_dogecoin_derivation_index(
     path: Option<String>,
     expected_prefix: String,
@@ -692,7 +689,6 @@ pub fn core_parse_dogecoin_derivation_index(
     suffix.parse::<i32>().ok()
 }
 
-// ─── Simple chain risk probe config ──────────────────────────────────────────
 // Per-chain static config for the Litecoin/Dogecoin/Solana/XRP/Monero/Sui/Aptos
 // branch of Swift's destination-risk probe: display chain name and balance
 // label for messages.
@@ -724,7 +720,6 @@ pub fn core_simple_chain_risk_probe_config(
     })
 }
 
-// ─── Broadcast rebroadcast dispatch table ─────────────────────────────────────
 // Maps Swift's BroadcastEntry payload format → (chain_id, result_field, wrap_key,
 // extract_field). Returns an error for unknown formats.
 
@@ -985,8 +980,6 @@ fn sui_signed_json_remap(raw: &str) -> Option<String> {
     serde_json::to_string(&remapped).ok()
 }
 
-// ─── Seed derivation chain raw lookup ────────────────────────────────────────
-
 /// Returns the canonical "raw" derivation-chain name for a given chain row.
 /// Testnets share their mainnet counterpart's derivation engine, so e.g.
 /// `"Ethereum Sepolia"` returns `"Ethereum"`. The Chain enum is the source
@@ -1010,7 +1003,6 @@ pub fn core_supports_deep_utxo_discovery(chain_name: String) -> bool {
         .is_some_and(|c| c.supports_deep_utxo_discovery())
 }
 
-// ─── Receive address resolver dispatch ───────────────────────────────────────
 // Routes `(symbol, chain_name, is_evm_chain)` to the resolver that produces the
 // receive address for that combination.
 
@@ -1084,7 +1076,6 @@ pub fn core_receive_address_resolver(
     }
 }
 
-// ─── EVM contract-code detection ─────────────────────────────────────────────
 // Lifted from Swift `evmHasContractCode`: a nonempty `eth_getCode` result
 // (anything other than "0x" or "0x0") indicates deployed bytecode.
 
@@ -1095,7 +1086,6 @@ pub fn core_evm_has_contract_code(code: String) -> bool {
         && !trimmed.eq_ignore_ascii_case("0x0")
 }
 
-// ─── EVM replacement fee bump calculator ─────────────────────────────────────
 // When preparing a speed-up / cancel replacement, Swift bumps existing custom
 // fees by 20% with a 0.1 gwei floor (or falls back to defaults if either input
 // is missing / blank). Returns formatted strings (3 decimals) the way Swift

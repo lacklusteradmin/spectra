@@ -8,10 +8,6 @@
 use super::*;
 
 /// Where the next history page for one (chain, wallet) starts.
-///
-/// Three getters used to answer this one field at a time, so a caller that
-/// wanted the whole position made three calls and could see it change between
-/// them.
 #[derive(Debug, Clone, PartialEq, uniffi::Record)]
 pub struct HistoryCursor {
     /// Cursor chains (the UTXO family). `None` before the first fetch.

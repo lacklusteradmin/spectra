@@ -102,8 +102,6 @@ fn parse_bip32_path_segments(path: &str) -> Result<Vec<u32>, String> {
     Ok(out)
 }
 
-// ── HMAC-SHA512 ──────────────────────────────────────────────────────────
-
 // HMAC-SHA512 over concatenated chunks; used by the BIP-32-Ed25519 child derivation.
 fn hmac_sha512(key: &[u8], chunks: &[&[u8]]) -> Result<Zeroizing<[u8; 64]>, String> {
     let mut mac = HmacSha512::new_from_slice(key)
@@ -267,8 +265,6 @@ fn cardano_icarus_derive_child(xprv: &[u8; 96], index: u32) -> Result<Zeroizing<
     child_xprv[64..96].copy_from_slice(&child_cc_full[32..64]);
     Ok(child_xprv)
 }
-
-// ── CIP-19 Shelley enterprise address ────────────────────────────────────
 
 // Build a CIP-19 Shelley enterprise address: Blake2b-224(pubkey) as the payment key hash, bech32-encoded.
 pub(crate) fn derive_cardano_shelley_enterprise_address(

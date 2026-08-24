@@ -284,7 +284,6 @@ impl WalletService {
             .map_err(Into::into)
     }
 
-    /// Delete history records by ID.
     pub async fn delete_history_records(
         &self,
         ids: Vec<String>,
@@ -499,10 +498,6 @@ impl WalletService {
     /// symbols are pinned, which networks are unpriced, how a chain identifies
     /// an asset) is core's already. `prices` is keyed the way core keys an
     /// asset: `"<network title>|<symbol>"`.
-    ///
-    /// This was ~100 lines of grouping and sorting in the shell, reading five
-    /// Swift caches. Grouping the same asset across chains and deciding row
-    /// order are domain rules; the CLI could not reach either.
     pub async fn dashboard_asset_groups(
         &self,
         prices: HashMap<String, f64>,
@@ -1102,8 +1097,6 @@ impl WalletService {
         })
     }
 
-    // ── Keypool ───────────────────────────────────────────────────────────
-    //
     // Reserving an index is read-modify-write. Doing that across an FFI round
     // trip is a race — two callers read the same index and both hand it out,
     // which on a UTXO chain means the same receive address given to two
@@ -1265,12 +1258,6 @@ impl WalletService {
     /// The two inputs are the things core genuinely cannot know: which wallets
     /// have signing material and which have a private key. Both are the
     /// platform keystore's answer.
-    ///
-    /// The selected network used to be a third input, passed as a
-    /// `NetworkModes` record of three chain names. It is a core-owned setting
-    /// now, so core reads it — which also means a testnet on *any* family is
-    /// unpriced, where the record's rule listed two families by hand and quoted
-    /// Dogecoin testnet at mainnet prices.
     pub async fn wallet_derived_state(
         &self,
         signing_material_wallet_ids: Vec<String>,

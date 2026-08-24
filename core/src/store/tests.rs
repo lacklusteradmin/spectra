@@ -1220,13 +1220,6 @@ mod status_trackers {
     use crate::service::WalletService;
 
     // ── Confirmation-poll trackers (core-owned) ───────────────────────────
-    //
-    // These used to inject a `TransactionStatusPollConfig` and a `now`. Both
-    // are core's now — the schedule is policy that belongs with the table it
-    // schedules, and reading the clock from an argument meant the caller
-    // decided when "now" was. So these assert against the real policy, which
-    // is what the app gets: nothing has been polled twenty seconds apart
-    // inside one test run, and a `created_at` of zero is decades stale.
 
     #[tokio::test]
     async fn untracked_transaction_is_always_due_for_poll() {
@@ -2652,13 +2645,6 @@ mod import_address_validation {
         }
 
         /// Core normalises on the way in, so a caller does not have to.
-        ///
-        /// The iOS import path used to lower-case Sui, NEAR and Kaspa by hand,
-        /// call `normalizedSendAddress` for Aptos / TON / Internet Computer,
-        /// and `normalizeEVMAddress` for the EVM slot — all of it upstream of
-        /// a core call that normalises again. This pins the property those
-        /// call sites were duplicating, so deleting them is a provable no-op
-        /// rather than a hopeful one.
         #[test]
         fn every_slot_normalises_without_help_from_the_caller() {
             let padded = "0x0000000000000000000000000000000000000000000000000000000000000ABC";

@@ -161,11 +161,6 @@ mod tests {
     }
 
     /// Writes land in the database the service was opened on.
-    ///
-    /// Twelve exported methods used to take a `db_path` the service already
-    /// held. Nothing checked it against the binding, so a caller passing a
-    /// different path wrote to a different file — and read back from the one
-    /// core thought it was on, which reads as data silently disappearing.
     #[tokio::test]
     async fn records_land_in_the_database_the_service_was_opened_on() {
         let service = WalletService::new_typed(Vec::new()).expect("service");

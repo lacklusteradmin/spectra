@@ -6,7 +6,6 @@ use crate::derivation::chains::dogecoin::{decode_doge_address, p2pkh_script};
 use crate::fetch::chains::dogecoin::{DogeSendResult, DogecoinClient};
 
 impl DogecoinClient {
-    /// Broadcast a raw hex transaction.
     pub async fn broadcast_raw_tx(&self, hex_tx: &str) -> Result<DogeSendResult, String> {
         let hex = hex_tx.to_string();
         with_fallback(&self.endpoints, |base| {

@@ -315,10 +315,6 @@ mod tests {
 
     /// One planner for every family: on the chain, in the allowed set, and
     /// having somewhere to look.
-    ///
-    /// This was two tests over two functions, one of which hardcoded
-    /// `"Dogecoin"`. A wallet with many addresses and a wallet with one go
-    /// through the same filter now, which is what says they always did.
     #[test]
     fn refresh_targets_filter_by_chain_allowed_set_and_having_an_address() {
         let wallets = vec![

@@ -297,8 +297,6 @@ impl TronClient {
         Ok(entries)
     }
 
-    /// Fetch a TRC-20 token balance.
-    ///
     /// Issues three constant calls (`balanceOf`, `decimals`, `symbol`) against
     /// the provided contract via `/wallet/triggerconstantcontract`.
     pub async fn fetch_trc20_balance(

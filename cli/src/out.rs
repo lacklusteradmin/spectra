@@ -117,8 +117,6 @@ pub fn wallet_dot(chain_name: &str, is_watch_only: bool) -> colored::ColoredStri
     }
 }
 
-// ─── Relative time ──────────────────────────────────────────────────────────
-
 pub fn relative_time(ts: i64) -> String {
     if ts <= 0 {
         return "—".to_string();

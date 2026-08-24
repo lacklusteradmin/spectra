@@ -48,8 +48,6 @@ pub(crate) fn p2pkh_script(pubkey_hash: &[u8; 20]) -> Result<Vec<u8>, String> {
     ])
 }
 
-// ── Derivation ────────────────────────────────────────────────────────────
-
 use crate::derivation::chains::bitcoin::{base58check_encode, derive_secp_keypair, hash160};
 use crate::derivation::types::{parse_path_metadata, BitcoinScriptType, DerivationResult};
 use crate::SpectraBridgeError;
@@ -116,7 +114,6 @@ pub fn derive_dogecoin(
     )
 }
 
-/// Derive Dogecoin testnet keys.
 pub fn derive_dogecoin_testnet(
     seed_phrase: String,
     derivation_path: String,

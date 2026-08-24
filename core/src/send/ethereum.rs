@@ -99,12 +99,6 @@ fn is_valid_evm_address(address: &str) -> bool {
 
 /// Whether this asset is the one the chain pays fees in, and so moves as a
 /// plain value transfer rather than an ERC-20 call.
-///
-/// This was a table of nine `(chain, symbol)` pairs. Two of them —
-/// `("Arbitrum", "ARB")` and `("Optimism", "OP")` — named a governance token,
-/// so a preview for either built a value transfer of that many *ETH* and threw
-/// away the token contract it had been handed. `coin_symbol` is the registry's
-/// `gas_token_symbol`, which is what the question was actually asking.
 pub fn is_native_evm_asset(chain_name: &str, symbol: &str) -> bool {
     crate::registry::Chain::from_display_name(chain_name)
         .is_some_and(|chain| chain.is_evm() && chain.coin_symbol() == symbol)

@@ -23,8 +23,6 @@ pub(crate) fn decode_bch_to_hash20(address: &str) -> Result<[u8; 20], String> {
     Err(format!("cannot decode BCH address: {address}"))
 }
 
-// ── Derivation ────────────────────────────────────────────────────────────
-
 use crate::derivation::chains::bitcoin::{base58check_encode, derive_secp_keypair, hash160};
 use crate::derivation::types::{parse_path_metadata, DerivationResult};
 use crate::SpectraBridgeError;

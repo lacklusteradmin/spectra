@@ -18,7 +18,6 @@ use crate::http::{with_fallback, HttpClient, RetryProfile};
 
 // ── Constants
 
-/// ICP e8s per ICP.
 pub(crate) const E8S_PER_ICP: u64 = 100_000_000;
 
 // ── Public result types

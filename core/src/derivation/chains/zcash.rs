@@ -37,8 +37,6 @@ pub fn validate_zcash_address(address: &str) -> bool {
     decode_zcash_address(address).is_ok()
 }
 
-// ── Derivation ────────────────────────────────────────────────────────────
-
 use crate::derivation::chains::bitcoin::{base58check_encode, derive_secp_keypair, hash160};
 use crate::derivation::types::{parse_path_metadata, DerivationResult};
 use crate::SpectraBridgeError;

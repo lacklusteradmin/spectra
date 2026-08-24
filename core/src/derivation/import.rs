@@ -652,14 +652,6 @@ fn is_private_key_chain_supported(chain_name: &str) -> bool {
 }
 
 /// The ordered list of chain display names that support private-key import.
-///
-/// Was a thirty-nine name array maintained by hand next to a registry that
-/// already knew the answer, and next to a *second* hand-written list in
-/// `receive.rs` that named twenty-three. The picker read one and the submit
-/// gate read the other, so sixteen chains could be selected and then refused.
-/// It is `Chain::derives_from_private_key` now, which is the same fact the
-/// dispatcher acts on, so a chain is offered exactly when a key produces an
-/// address for it.
 #[uniffi::export]
 pub fn core_supported_private_key_chain_names() -> Vec<String> {
     Chain::all()

@@ -22,8 +22,6 @@ use std::collections::HashMap;
 
 use super::state::{AddressBookEntry, CoreAppState, WalletSummary};
 
-// ── Connection pool ──────────────────────────────────────────────────────────
-//
 // Re-uses a single Connection per db_path instead of opening (and running DDL)
 // on every call.  The Mutex is uncontended in practice because all wallet_db
 // callers already run inside `spawn_blocking`.
@@ -1060,8 +1058,6 @@ pub fn delete_wallet_data(db_path: &str, wallet_id: &str) -> Result<(), String> 
     })
 }
 
-// ── Tests ─────────────────────────────────────────────────────────────────────
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1240,8 +1236,6 @@ mod tests {
         assert!(keypool_load(&db, "w1", "Dogecoin").unwrap().is_none());
         assert!(address_load_all(&db, "w1", "Dogecoin").unwrap().is_empty());
     }
-
-    // ── App state ────────────────────────────────────────────────────────────
 
     use super::super::state::{AppSettings, WalletAddress};
 
