@@ -63,6 +63,9 @@ enum Command {
     Portfolio(cmd::market::PortfolioArgs),
     /// Read or set the display currency.
     Currency(cmd::market::CurrencyArgs),
+    /// Which network of a family each chain is on.
+    #[command(subcommand)]
+    Network(cmd::network::NetworkCommand),
     /// Settings core owns: providers, endpoints, fee priorities, alert rules.
     #[command(subcommand)]
     Settings(cmd::settings::SettingsCommand),
@@ -114,6 +117,7 @@ fn dispatch(ctx: &Ctx, out: Out, command: Command) -> Result<(), CliError> {
         Command::Price(args) => cmd::market::price(ctx, out, args),
         Command::Portfolio(args) => cmd::market::portfolio(ctx, out, args),
         Command::Currency(args) => cmd::market::currency(ctx, out, args),
+        Command::Network(command) => cmd::network::run(ctx, out, command),
         Command::Settings(command) => cmd::settings::run(ctx, out, command),
         Command::Staking(command) => cmd::staking::run(ctx, out, command),
         Command::Token(command) => cmd::token::run(ctx, out, command),

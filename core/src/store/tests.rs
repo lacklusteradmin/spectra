@@ -2991,6 +2991,59 @@ mod resident_state_round_trip {
         );
     }
 
+    /// Resetting puts every field back to core's own default.
+    ///
+    /// The defaults were duplicated in Swift: `resetSettingsAndEndpointsState`
+    /// assigned twelve literals and `AppUserPreferences.resetToDefaults`
+    /// another seven, none of which any test could compare against
+    /// `AppSettings::default()`. Written by mutating *every* field first, so a
+    /// new field added to `AppSettings` and forgotten in the reducer fails
+    /// here rather than silently surviving a reset.
+    #[test]
+    fn resetting_settings_restores_every_default() {
+        use crate::store::state::{reduce_state_in_place, AppSettingUpdate as U, StateCommand};
+        let mut state = CoreAppState::default();
+        let defaults = state.settings.clone();
+
+        for update in [
+            U::PricingProvider { value: "Coinbase".into() },
+            U::FiatRateProvider { value: "Frankfurter API".into() },
+            U::RpcEndpoint { chain: "Base".into(), value: "https://x.example".into() },
+            U::EtherscanApiKey { value: "KEY".into() },
+            U::MoneroBackendBaseUrl { value: "https://xmr.example".into() },
+            U::MoneroBackendApiKey { value: "XKEY".into() },
+            U::BitcoinEsploraEndpoints { value: "https://a.example".into() },
+            U::BitcoinStopGap { value: 42 },
+            U::FeePriority { chain: "Dogecoin".into(), value: "economy".into() },
+            U::UseStrictRpcOnly { value: true },
+            U::BackgroundSyncProfile { value: "aggressive".into() },
+            U::AutomaticRefreshFrequencyMinutes { value: 30 },
+            U::UsePriceAlerts { value: false },
+            U::UseTransactionStatusNotifications { value: false },
+            U::UseLargeMovementNotifications { value: false },
+            U::LargeMovementAlertPercentThreshold { value: 25.0 },
+            U::LargeMovementAlertUsdThreshold { value: 500.0 },
+        ] {
+            reduce_state_in_place(&mut state, StateCommand::SetAppSetting { update });
+        }
+        reduce_state_in_place(
+            &mut state,
+            StateCommand::SetFiatCurrency { fiat_currency_code: "EUR".into() },
+        );
+        reduce_state_in_place(
+            &mut state,
+            StateCommand::SelectNetworkChain { chain_id: "bitcoin-testnet".into() },
+        );
+        assert_ne!(state.settings, defaults, "nothing was actually changed");
+
+        let events = reduce_state_in_place(&mut state, StateCommand::ResetAppSettings);
+        assert_eq!(state.settings, defaults);
+        assert!(events.iter().any(|e| e.kind == "appSettingChanged"));
+
+        // Resetting what is already default is not a change.
+        assert!(reduce_state_in_place(&mut state, StateCommand::ResetAppSettings).is_empty());
+    }
+
     /// Every settings field survives a save and a reload.
     ///
     /// Eighteen of them arrived from a blob iOS wrote separately, and the
@@ -3009,8 +3062,15 @@ mod resident_state_round_trip {
             U::FiatRateProvider {
                 value: "Frankfurter API".into(),
             },
-            U::EthereumRpcEndpoint {
+            U::RpcEndpoint {
+                chain: "Ethereum".into(),
                 value: "https://rpc.example".into(),
+            },
+            // The second one is the point: this was a single String, so a
+            // second chain's override had nowhere to go.
+            U::RpcEndpoint {
+                chain: "Base".into(),
+                value: "https://base.example".into(),
             },
             U::EtherscanApiKey { value: "KEY".into() },
             U::MoneroBackendBaseUrl {

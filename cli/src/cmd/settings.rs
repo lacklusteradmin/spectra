@@ -21,6 +21,15 @@ pub enum SettingsCommand {
     Get(GetArgs),
     /// Change one setting.
     Set(SetArgs),
+    /// Put every setting back to its default.
+    Reset(ResetArgs),
+}
+
+#[derive(Args)]
+pub struct ResetArgs {
+    /// Reset without asking for confirmation.
+    #[arg(long)]
+    yes: bool,
 }
 
 #[derive(Args)]
@@ -42,6 +51,7 @@ pub fn run(ctx: &Ctx, out: Out, command: SettingsCommand) -> CliResult<()> {
         SettingsCommand::List => list(ctx, out),
         SettingsCommand::Get(args) => get(ctx, out, args),
         SettingsCommand::Set(args) => set(ctx, out, args),
+        SettingsCommand::Reset(args) => reset(ctx, out, args),
     }
 }
 
@@ -82,11 +92,6 @@ const FIELDS: &[Field] = &[
         key: "fiat-rate-provider",
         read: |s| s.fiat_rate_provider.clone(),
         update: |v| Ok(AppSettingUpdate::FiatRateProvider { value: v.into() }),
-    },
-    Field {
-        key: "ethereum-rpc-endpoint",
-        read: |s| s.ethereum_rpc_endpoint.clone(),
-        update: |v| Ok(AppSettingUpdate::EthereumRpcEndpoint { value: v.into() }),
     },
     Field {
         key: "etherscan-api-key",
@@ -165,55 +170,86 @@ const FIELDS: &[Field] = &[
     },
 ];
 
-/// The prefix that names a per-chain fee preference, as
-/// `fee-priority.<chain display name>`.
+/// A setting keyed by chain rather than global, named `<prefix><chain>`.
 ///
-/// Fee priority is the one setting keyed by chain rather than global, so it
-/// cannot be a row in `FIELDS` — there would have to be seventy-eight of them,
-/// and the table would have to be regenerated whenever `chains.toml` changes.
-const FEE_PRIORITY_PREFIX: &str = "fee-priority.";
+/// These cannot be rows in `FIELDS` — there would have to be seventy-eight of
+/// each, regenerated whenever `chains.toml` changes. Each one replaced a
+/// scalar field that served a single hard-coded chain.
+struct ChainKeyedField {
+    prefix: &'static str,
+    read: fn(&AppSettings, &str) -> String,
+    update: fn(&str, &str) -> AppSettingUpdate,
+    /// The chains that currently have a value stored, so `list` can show them.
+    stored: fn(&AppSettings) -> Vec<String>,
+}
 
-/// A setting a caller can name: one of the fixed rows, or one chain's fee.
+const CHAIN_KEYED: &[ChainKeyedField] = &[
+    ChainKeyedField {
+        prefix: "fee-priority.",
+        read: |s, chain| {
+            s.fee_priority_by_chain
+                .get(chain)
+                .cloned()
+                .unwrap_or_else(|| "normal".to_string())
+        },
+        update: |chain, value| AppSettingUpdate::FeePriority {
+            chain: chain.to_string(),
+            value: value.to_string(),
+        },
+        stored: |s| s.fee_priority_by_chain.keys().cloned().collect(),
+    },
+    ChainKeyedField {
+        prefix: "rpc-endpoint.",
+        read: |s, chain| s.rpc_endpoint_by_chain.get(chain).cloned().unwrap_or_default(),
+        update: |chain, value| AppSettingUpdate::RpcEndpoint {
+            chain: chain.to_string(),
+            value: value.to_string(),
+        },
+        stored: |s| s.rpc_endpoint_by_chain.keys().cloned().collect(),
+    },
+];
+
+/// A setting a caller can name: one of the fixed rows, or one chain's value
+/// under one of the keyed families.
 enum Setting {
     Scalar(&'static Field),
-    FeePriority(String),
+    ChainKeyed(&'static ChainKeyedField, String),
 }
 
 impl Setting {
     fn key(&self) -> String {
         match self {
             Setting::Scalar(field) => field.key.to_string(),
-            Setting::FeePriority(chain) => format!("{FEE_PRIORITY_PREFIX}{chain}"),
+            Setting::ChainKeyed(field, chain) => format!("{}{chain}", field.prefix),
         }
     }
 
     fn read(&self, settings: &AppSettings) -> String {
         match self {
             Setting::Scalar(field) => (field.read)(settings),
-            Setting::FeePriority(chain) => settings
-                .fee_priority_by_chain
-                .get(chain)
-                .cloned()
-                .unwrap_or_else(|| "normal".to_string()),
+            Setting::ChainKeyed(field, chain) => (field.read)(settings, chain),
         }
     }
 
     fn update(&self, raw: &str) -> Result<AppSettingUpdate, &'static str> {
         match self {
             Setting::Scalar(field) => (field.update)(raw),
-            Setting::FeePriority(chain) => Ok(AppSettingUpdate::FeePriority {
-                chain: chain.clone(),
-                value: raw.into(),
-            }),
+            Setting::ChainKeyed(field, chain) => Ok((field.update)(chain, raw)),
         }
     }
 }
 
 fn field(key: &str) -> CliResult<Setting> {
-    if let Some(name) = key.strip_prefix(FEE_PRIORITY_PREFIX) {
+    for keyed in CHAIN_KEYED {
+        let Some(name) = key.strip_prefix(keyed.prefix) else {
+            continue;
+        };
         let chain = spectra_core::registry::Chain::from_display_name(name)
             .ok_or_else(|| CliError::rejected(format!("no chain named {name}")))?;
-        return Ok(Setting::FeePriority(chain.chain_display_name().to_string()));
+        return Ok(Setting::ChainKeyed(
+            keyed,
+            chain.chain_display_name().to_string(),
+        ));
     }
     FIELDS
         .iter()
@@ -223,13 +259,19 @@ fn field(key: &str) -> CliResult<Setting> {
 }
 
 /// Every setting that has a value to print: the fixed rows, then whichever
-/// chains have a fee preference stored. Chains at the default are left out —
-/// listing all seventy-eight would bury the seventeen that are not per-chain.
+/// chains have a value stored under each keyed family. Chains at the default
+/// are left out — listing all seventy-eight of each would bury the rest.
 fn settings_in_order(settings: &AppSettings) -> Vec<Setting> {
     let mut all: Vec<Setting> = FIELDS.iter().map(Setting::Scalar).collect();
-    let mut chains: Vec<&String> = settings.fee_priority_by_chain.keys().collect();
-    chains.sort();
-    all.extend(chains.into_iter().map(|c| Setting::FeePriority(c.clone())));
+    for keyed in CHAIN_KEYED {
+        let mut chains = (keyed.stored)(settings);
+        chains.sort();
+        all.extend(
+            chains
+                .into_iter()
+                .map(|chain| Setting::ChainKeyed(keyed, chain)),
+        );
+    }
     all
 }
 
@@ -281,5 +323,25 @@ fn set(ctx: &Ctx, out: Out, args: SetArgs) -> CliResult<()> {
     let stored = setting.read(&transition.state.settings);
     out.text(|| println!("  {} {key} = {}", out::ok_mark(), stored.bold()));
     out.emit(serde_json::json!({ "ok": true, "key": key, "value": stored }));
+    Ok(())
+}
+
+/// Put every setting core owns back to its default.
+///
+/// The defaults live in `AppSettings::default()`. This is the only way to ask
+/// for all of them at once, and it is what makes the rule testable — iOS reset
+/// settings by assigning each mirror a literal it believed was the default,
+/// which no test on either side could check against core.
+fn reset(ctx: &Ctx, out: Out, args: ResetArgs) -> CliResult<()> {
+    if !args.yes {
+        return Err(CliError::usage(
+            "this discards every setting, including endpoints and API keys — re-run with --yes",
+        ));
+    }
+    let transition = ctx.apply(StateCommand::ResetAppSettings)?;
+    let settings = transition.state.settings;
+    let count = settings_in_order(&settings).len();
+    out.text(|| println!("  {} {count} settings at their defaults", out::ok_mark()));
+    out.emit(serde_json::json!({ "ok": true, "settings": count }));
     Ok(())
 }

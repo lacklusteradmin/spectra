@@ -183,9 +183,15 @@ pub struct AppSettings {
     pub fiat_rate_provider: String,
 
     // ── Endpoints and credentials ─────────────────────────────────────────
-    /// Custom Ethereum RPC, or empty for the catalog's list.
+    /// Custom RPC per chain, as `chain display name -> url`. Absent means the
+    /// catalog's list.
+    ///
+    /// One field rather than one per chain: this was `ethereum_rpc_endpoint`,
+    /// a single String, and the Swift accessor that read it was
+    /// `chainName == "Ethereum" ? … : nil` — so twenty-two of the twenty-three
+    /// EVM mainnets could not be pointed at a private node at all.
     #[serde(default)]
-    pub ethereum_rpc_endpoint: String,
+    pub rpc_endpoint_by_chain: std::collections::HashMap<String, String>,
     #[serde(default)]
     pub etherscan_api_key: String,
     #[serde(default)]
@@ -322,7 +328,7 @@ impl Default for AppSettings {
             network_chain_by_family: std::collections::HashMap::new(),
             pricing_provider: default_pricing_provider(),
             fiat_rate_provider: default_fiat_rate_provider(),
-            ethereum_rpc_endpoint: String::new(),
+            rpc_endpoint_by_chain: std::collections::HashMap::new(),
             etherscan_api_key: String::new(),
             monero_backend_base_url: String::new(),
             monero_backend_api_key: String::new(),
@@ -389,7 +395,9 @@ const MAX_TOKEN_DECIMALS: i32 = 30;
 pub enum AppSettingUpdate {
     PricingProvider { value: String },
     FiatRateProvider { value: String },
-    EthereumRpcEndpoint { value: String },
+    /// `chain` is a registry display name; an unknown one is refused. An empty
+    /// value clears the override and falls back to the catalog.
+    RpcEndpoint { chain: String, value: String },
     EtherscanApiKey { value: String },
     MoneroBackendBaseUrl { value: String },
     MoneroBackendApiKey { value: String },
@@ -447,6 +455,14 @@ pub enum StateCommand {
     SetAppSetting {
         update: AppSettingUpdate,
     },
+    /// Put every setting core owns back to its default.
+    ///
+    /// The defaults are `AppSettings::default()` and nowhere else. iOS used to
+    /// reset them by assigning each mirror the value it believed was the
+    /// default — twelve literals restating `default_pricing_provider()`,
+    /// `default_bitcoin_stop_gap()` and the rest, in a file that had no way to
+    /// know when one of them changed.
+    ResetAppSettings,
     /// Replace the pinned dashboard set. Symbols are normalised to upper case
     /// and de-duplicated, first occurrence winning, so display order is the
     /// order the user pinned them in.
@@ -546,8 +562,18 @@ fn apply_app_setting(settings: &mut AppSettings, update: AppSettingUpdate) {
     match update {
         AppSettingUpdate::PricingProvider { value } => settings.pricing_provider = trimmed(value),
         AppSettingUpdate::FiatRateProvider { value } => settings.fiat_rate_provider = trimmed(value),
-        AppSettingUpdate::EthereumRpcEndpoint { value } => {
-            settings.ethereum_rpc_endpoint = trimmed(value)
+        AppSettingUpdate::RpcEndpoint { chain, value } => {
+            let Some(chain) = crate::registry::Chain::from_display_name(&chain) else {
+                return;
+            };
+            let value = trimmed(value);
+            if value.is_empty() {
+                settings.rpc_endpoint_by_chain.remove(chain.chain_display_name());
+            } else {
+                settings
+                    .rpc_endpoint_by_chain
+                    .insert(chain.chain_display_name().to_string(), value);
+            }
         }
         AppSettingUpdate::EtherscanApiKey { value } => settings.etherscan_api_key = trimmed(value),
         AppSettingUpdate::MoneroBackendBaseUrl { value } => {
@@ -765,6 +791,15 @@ pub fn reduce_state_in_place(state: &mut CoreAppState, command: StateCommand) ->
         StateCommand::SetAppSetting { update } => {
             let before = state.settings.clone();
             apply_app_setting(&mut state.settings, update);
+            if state.settings != before {
+                events.push(StateEvent {
+                    kind: "appSettingChanged".to_string(),
+                    subject_id: None,
+                });
+            }
+        }
+        StateCommand::ResetAppSettings => {
+            let before = std::mem::replace(&mut state.settings, AppSettings::default());
             if state.settings != before {
                 events.push(StateEvent {
                     kind: "appSettingChanged".to_string(),

@@ -108,8 +108,8 @@ Measured, not estimated:
 | | Start | Now |
 |---|---|---|
 | Swift, non-generated, excluding tests | 30,879 lines | **26,660** |
-| — `views/` + `extensions/` (genuine UI) | 11,113 (36%) | **11,302 (43%)** |
-| — root of `swift/` (`AppState`, stores, persistence, bridges) | 19,766 (64%) | **15,167 (57%)** |
+| — `views/` + `extensions/` (genuine UI) | 11,113 (36%) | **11,272 (43%)** |
+| — root of `swift/` (`AppState`, stores, persistence, bridges) | 19,766 (64%) | **15,231 (57%)** |
 | `core_plan_*` FFI exports (core advises, Swift applies) | 42 | 10 |
 | Swift enums restating the chain list | 6 (30 / 76 / 30 / 24 / 7 / 18 cases) | **0** |
 | Swift enums duplicating one core-owned setting | 2 (`BitcoinFeePriority`, `DogecoinFeePriority`) | **0** |
@@ -557,6 +557,225 @@ reports three checks (`Address Validation`, `Address Rejects Invalid`,
 
 What stays in the rows is what the registry genuinely cannot supply:
 `valid_address` and `invalid_address` are fixtures, not derivations.
+
+**Nine copies of four helpers, found by hashing function bodies rather than by
+reading.**
+
+*How they were found.* The chain-name sweep that has driven most of this
+document returns nothing in production code any more, so this pass hashed every
+normalised function body in `swift/` and `swift/views/` and looked for
+collisions. That found four groups the eye had missed, in files nobody had
+reason to open together.
+
+**Four ways to format a localized string.** `AppLocalization.format`,
+`localizedStoreFormat`, `walletFlowLocalizedFormat` and
+`dashboardComponentsLocalizedFormat` — all four
+`String(format:locale:arguments:)` over `AppLocalization.string(key)`, byte for
+byte, with 103 / 46 / 8 / 1 callers. Now one: `AppLocalization.format`, which
+already had the most callers and sits with the rest of the localization code.
+
+**Three copies of the address-slot fold.** `CoreImportedWallet.addressMap` and
+`WalletImportAddresses.slotMap` were byte-identical down to near-identical doc
+comments; `WalletImportWatchOnlyEntries.slotMap` is the list-valued variant.
+And `Chain(displayName:)?.addressSlot ?? ""` followed by an is-empty guard was
+written five times. Now `addressSlot(forChainNamed:)` plus two overloads of
+`addressSlotMap` — two rather than one because the list variant concatenates
+where the scalar overwrites, which is a real difference and the only one.
+
+**Three page headers.** `sendPageHeader`, `receivePageHeader` and `pageHeader`,
+identical to the pixel. One `spectraPageHeader` in `ViewExtensions`.
+
+**Two copies of the EVM endpoint list.** Both view files built "RPC endpoints
+plus explorer supplements" privately. It is catalog access rather than view
+code, so it moved to `AppEndpointDirectory.evmEndpointsWithSupplemental` beside
+the two lists it reads.
+
+*One group was left alone.* `go(to:)` in the send and receive flows normalises
+to the same body, but its parameter is `SendFlowStep` in one and
+`ReceiveFlowStep` in the other, and it mutates `@State` on different view
+structs. A protocol and a generic to share five lines is worse than the five
+lines. The detector cannot see the type difference; a person has to.
+
+**`spectra network` — the axis that hid the reset bug now has a command.**
+
+*Was:* nothing read or set `network_chain_by_family` outside the iOS picker.
+`StateCommand::SelectNetworkChain` existed and `AppSettings::network_chain`
+resolved it, but no CLI command reached either, so neither
+`cli-acceptance.sh` nor any Rust test covered the axis. That is how "reset to
+defaults" came to put **three** families back to mainnet where the registry has
+**twenty-nine**, and stay that way.
+
+*Now:* `network list` prints every family with a choice, what it is on, and
+what it could be on; `network set <chain-id>` selects one, refusing an id the
+registry does not know. A family's own id selects its mainnet, which is the
+same rule the reset uses.
+
+Nine assertions in `cli-acceptance.sh`, **131 → 140**. Three of them are the
+previous bug, stated as a test: move two families onto testnets, run
+`settings reset --yes`, assert both are back on mainnet. Before this command
+that sequence was untypeable.
+
+*It does not fit the `CHAIN_KEYED` settings table*, which is why it is its own
+command rather than `settings set network.<family>`: that table's `update`
+returns an `AppSettingUpdate`, and this is a `StateCommand` — a different
+reducer arm with side effects of its own (reserved indices and discovered
+addresses belong to the network they were derived on).
+
+*One trap, hit twice now.* Two of the nine assertions failed first time because
+their needles assumed JSON field order. `--json` output sorts keys, so
+`"selected":"bitcoin","isTestnet":false` is never a substring — `isTestnet`
+sorts first. Needles here must be key-local or written in sorted order.
+
+**Resetting settings was iOS-only, and it worked by restating nineteen
+defaults core already defines.**
+
+*Was:* `resetSettingsAndEndpointsState` put settings back by assigning each
+mirror the value it believed was the default — `.coinGecko`, `.usd`,
+`.openER`, `""` four times, `10`, `.balanced`, and the network families — and
+`AppUserPreferences.resetToDefaults` added seven more: strict RPC, three
+notification toggles, the refresh cadence and the two large-movement
+thresholds. **Nineteen literals across two Swift files, every one a second copy
+of a `default_*` in `state.rs`**, and nothing on either side could compare them.
+They agreed when checked; the network-family list in the middle of them did
+not, which is the previous entry.
+
+`core_reset_dispatch`'s doc comment argued the reset should stay in Swift:
+*"every action it dispatches is platform (Keychain deletes, `UserDefaults`,
+URL caches). There is no core-owned state behind it to move."* That was true
+when written and stopped being true as settings, alerts, the address book,
+token preferences and pinned assets moved into core. The dispatch rule — which
+scopes imply which — is still a calculation the caller applies, and that part
+of the comment stands.
+
+*Now:* `StateCommand::ResetAppSettings` sets `settings = AppSettings::default()`,
+so the defaults exist once. Swift sends the command and applies the answer;
+`resetToDefaults` keeps only the five preferences this platform owns —
+hiding balances, appearance, Face ID, auto-lock, biometric-gated sends — which
+have no core default to be a copy of.
+
+*Awaited, not spawned.* The seven mirrored preferences are no longer assigned
+locally, so they are only correct once core's answer lands.
+`resetSettingsAndEndpointsState` is `async` and awaits the round-trip rather
+than firing a `Task`, which removes the window where the mirrors and core
+disagree.
+
+*Check it from the CLI:*
+
+```
+spectra settings reset --yes
+```
+
+Without `--yes` it exits 2 naming what would be discarded. Four assertions in
+`cli-acceptance.sh`, **127 → 131**. In Rust,
+`resetting_settings_restores_every_default` mutates *every* field, asserts the
+reset returns each to `AppSettings::default()`, and asserts a second reset
+emits no event — so a field added to `AppSettings` and forgotten in the reducer
+fails there rather than quietly surviving a reset.
+
+*Why this side:* rule 3. Core owning a value's default and a front end owning
+its reset is the split that lets the two disagree, and this is the last place
+in the settings path where they could.
+
+**A received Litecoin transaction still could not be rechecked, because the fix
+landed one layer below the gate.**
+
+*Was:* `retryUTXOTransactionStatus` was fixed in an earlier pass to read
+`Chain::pending_status_poll` instead of a five-name list, and its comment
+records why: Litecoin is `require_send_kind: false` because its explorer
+confirms receives on its own cadence, so a received Litecoin transaction should
+be recheckable. The **context menu that offers the button** was not touched. It
+read:
+
+```swift
+if row.transaction.kind == .send, row.transaction.status == .pending || .failed {
+    if ["Bitcoin", "Bitcoin Cash", "Bitcoin SV", "Litecoin", "Dogecoin"].contains(…) {
+```
+
+The five names were a correct transcription — the registry has exactly those
+five. The bug is the outer `kind == .send`, which is the rule the fix removed,
+still enforced one layer up. **The function accepted the case; nothing could
+reach it.**
+
+*Now:* `TransactionRecord.supportsStatusRecheck` — a sibling of the existing
+`supportsSignedRebroadcast` — carries the whole rule, and both the menu and the
+function read it. The outer gate is `status == .pending || .failed` only;
+`kind == .send` lives inside the property, for the chains whose registry row
+asks for it.
+
+*Why this side:* a predicate with two readers should have one definition. Both
+copies were right when written and the fix only reached one of them, which is
+the argument for not having two.
+
+**"Reset to defaults" reset three chain families out of twenty-nine.**
+
+*Was:* `for family in ["bitcoin", "ethereum", "dogecoin"] { selectNetworkChain(family) }`.
+Twenty-nine mainnets have a network choice, so a user who had switched Solana
+to devnet, XRP or Litecoin to testnet, or any of twenty-three others, kept that
+selection through a full reset. Network selection decides which chain's
+addresses and balances are shown, so a reset that silently leaves it is worse
+than one that fails loudly.
+
+*Now:* `for family in Array(networkChainByFamily.keys) { selectNetworkChain(family) }`.
+The map is keyed by family and absent means mainnet, so its keys are exactly
+the families with something to reset, and selecting a family's own id selects
+its mainnet. No list, and **less** work than before: each `selectNetworkChain`
+is an async round-trip to core, and the old code fired three unconditionally
+where this fires none when nothing is off mainnet.
+
+*Why this side:* the state already knows which families moved. Naming three was
+a guess about which ones a user would change.
+
+*Not checkable from the CLI.* There is no command for network selection or for
+reset — see "Known open items".
+
+**Twenty-two of twenty-three EVM mainnets could not be pointed at a private
+node.**
+
+*Was:* `AppSettings.ethereum_rpc_endpoint` was one `String`, and the accessor
+that read it was
+`chainName == "Ethereum" ? configuredEthereumRPCEndpointURL() : nil`. So the
+setting existed for Ethereum and for nothing else — Base, Polygon, Arbitrum and
+the rest were pinned to the catalog's public RPC pool with no way to override,
+from any front end. `DiagnosticsViews` had a `case .ethereum:` that prepended
+the override to the endpoint list, and every other EVM chain fell through to
+the catalog list without one.
+
+*Now:* `rpc_endpoint_by_chain`, on the same `HashMap` pattern
+`fee_priority_by_chain` and `network_chain_by_family` already use, with
+`AppSettingUpdate::RpcEndpoint { chain, value }`. An unknown chain is refused;
+an empty value clears the override rather than storing a blank. Swift mirrors
+the map and `configuredEVMRPCEndpointURL(for:)` reads it for any chain, so the
+`case .ethereum:` folds into the EVM default.
+
+*The UI followed, rather than being left behind.* `customRPCField(for:)` is one
+field used by both the Ethereum section and the EVM default case, so all
+twenty-three chains have it on the endpoints screen. Its placeholder was
+`customEthereumRPCURLPlaceholder` — "Custom Ethereum RPC URL" — now
+`customRPCURLPlaceholder`, generalised in all four locale files. That is a
+one-word deletion per locale, not new copy.
+
+*And the CLI's keyed-setting support stopped being a special case.* The
+fee-priority slice added a single `FEE_PRIORITY_PREFIX` branch to `field()`.
+A second keyed family would have been a second branch, so there is now a
+`CHAIN_KEYED` table of `{prefix, read, update, stored}` and `Setting::ChainKeyed`
+covers both. `list` walks the table, so a third family is a row.
+
+*`EndpointField::EthereumRpc` was renamed `EvmRpc`.* Its rule is
+`is_valid_http_url` — it was never Ethereum-specific; the name was.
+
+*Why this side:* a setting the user picks per chain is one fact keyed by chain,
+which is the third time this document has said so. One field per chain is how
+the count of chains that have the feature comes to be one.
+
+*Check it from the CLI:*
+
+```
+spectra settings set rpc-endpoint.Base https://base.internal.example
+```
+
+`settings get rpc-endpoint.Polygon` reads `""` for a chain never set; setting
+`""` clears an override; `rpc-endpoint.Nonsuch` exits 3. Five assertions in
+`cli-acceptance.sh`, **122 → 127**.
 
 **Endpoint diagnostics ran down two paths over the same catalog. Now there is
 one.**
@@ -4064,17 +4283,17 @@ Not by feel. These four numbers, checked at the end of each stage:
 | Metric | Start | Now | Target |
 |---|---|---|---|
 | `core_plan_*` exports | 42 | **0** | 0 |
-| Swift root lines vs `views/` | 19,766 vs 11,113 | 15,167 vs 11,302 | inverted |
+| Swift root lines vs `views/` | 19,766 vs 11,113 | 15,231 vs 11,272 | inverted |
 | Domain collections stored on `AppState` | 3 | 0 | 0 |
 | Domain settings owned by core | 0 | **21 fields; 4 left on iOS on purpose** | all |
 | Wallet operations reachable from the CLI | partial | **all** | all |
-| CLI commands drivable without a TTY | 0 of 24 | all | all |
+| CLI commands drivable without a TTY | 0 of 24 | all (25 now) | all |
 | Exported functions and methods | 234 | **189** (105 free + 84 methods) | ~60 (see C2) |
 | Largest file in `core/` | 4,781 | 2,501 | — |
 
 The last row is new, and it is the one that makes the others checkable. Every
 earlier "proven by the CLI" claim in this document was proven by a person typing
-into a prompt. `scripts/cli-acceptance.sh` replaces that with 122 assertions on
+into a prompt. `scripts/cli-acceptance.sh` replaces that with 140 assertions on
 exit codes and JSON, over a scratch data directory and with no network.
 
 *What it still cannot see.* The CLI drives core from inside its own Tokio
@@ -4118,17 +4337,6 @@ coming down as the paths it replaced are deleted.
    needed.
 
 ## Known open items
-
-- **Only Ethereum has a configurable RPC endpoint.**
-  `configuredEVMRPCEndpointURL(for:)` is
-  `chainName == "Ethereum" ? configuredEthereumRPCEndpointURL() : nil`, and the
-  setting behind it is the single `ethereum_rpc_endpoint` field. The other
-  twenty-two EVM mainnets cannot be pointed at a private node at all. This is
-  the same shape as `fee_priority_by_chain` — one field per chain where a map
-  keyed by chain belongs — and the fix is the same: `rpc_endpoint_by_chain` on
-  `AppSettings`, with `AppSettingUpdate::RpcEndpoint { chain, value }` and a
-  `spectra settings set rpc-endpoint.<Chain>` to drive it. Deliberately left
-  out of the endpoint-diagnostics merge so that slice stayed verifiable.
 
 - **Is a dashboard row per asset, or per (chain, asset)?** Today it is the
   latter: `dashboard_asset_grouping_key` includes the chain, so ETH on Ethereum

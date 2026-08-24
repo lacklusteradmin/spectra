@@ -372,6 +372,30 @@ check "refuses half a token description"    $USAGE \
     spectra send assemble --chain Base --from $EVM_ADDR --to $EVM_ADDR --amount 1 \
         --contract $EVM_ADDR
 
+# ── Network selection ───────────────────────────────────────────────────────
+#
+# Which `Chain` of a family the user is on. This had no command until now, and
+# that is how "reset to defaults" came to reset three families where the
+# registry has twenty-nine — the axis was reachable only from the iOS picker,
+# so nothing here could see it.
+
+section "network selection"
+check "lists the families that have a choice" $OK spectra network list
+contains "and defaults to mainnet"          '"family":"bitcoin","isTestnet":false,"selected":"bitcoin"' \
+    spectra --json network list
+check "puts a family on a testnet"          $OK spectra network set solana-devnet
+contains "and reads it back"                '"selected":"solana-devnet"' \
+    spectra --json network list
+check "and another, on a different family"  $OK spectra network set bitcoin-signet
+check "refuses an id the registry does not know" $REJECTED \
+    spectra network set nonsuch
+# The bug this axis hid: the reset named bitcoin, ethereum and dogecoin.
+check "resetting settings clears every family" $OK spectra settings reset --yes
+contains "including the two just moved"     '"family":"solana","isTestnet":false,"selected":"solana"' \
+    spectra --json network list
+contains "and the other one"                '"family":"bitcoin","isTestnet":false,"selected":"bitcoin"' \
+    spectra --json network list
+
 section "settings"
 check "lists the settings core owns"        $OK spectra settings list
 check "sets one"                            $OK \
@@ -393,6 +417,31 @@ contains "refuses a priority no send path spends" '"value":"normal"' \
     spectra --json settings set fee-priority.Solana lightspeed
 check "refuses a chain the registry does not know" $REJECTED \
     spectra settings set fee-priority.Nonsuch economy
+# The same keyed shape, for the setting that decides which node a chain talks
+# to. It was one `ethereum_rpc_endpoint` string, read through an accessor that
+# was `chainName == "Ethereum" ? … : nil`, so twenty-two EVM mainnets could not
+# be pointed at a private node from any front end.
+check "points a second EVM chain at a private node" $OK \
+    spectra settings set rpc-endpoint.Base https://base.internal.example
+contains "and reads it back"                '"value":"https://base.internal.example"' \
+    spectra --json settings get rpc-endpoint.Base
+contains "a chain never set falls back to the catalog" '"value":""' \
+    spectra --json settings get rpc-endpoint.Polygon
+contains "an empty value clears the override" '"value":""' \
+    spectra --json settings set rpc-endpoint.Base ""
+check "refuses a chain the registry does not know" $REJECTED \
+    spectra settings set rpc-endpoint.Nonsuch https://x.example
+# Resetting was iOS-only, and it reset settings by assigning each mirror a
+# literal it believed was the default — nineteen of them across two files, none
+# checkable against `AppSettings::default()`. It is a command now.
+check "refuses to reset without --yes"      $USAGE \
+    spectra settings reset
+check "resets every setting"                $OK \
+    spectra settings reset --yes
+contains "a changed number is back at its default" '"value":"10"' \
+    spectra --json settings get bitcoin-stop-gap
+contains "and a per-chain override is gone" '"value":""' \
+    spectra --json settings get rpc-endpoint.Base
 # The bound is core's. A stop gap of zero finds no addresses, and this used to
 # be clamped only in an iOS `didSet` — reachable from nowhere else.
 check "bounds a number instead of storing it" $OK \

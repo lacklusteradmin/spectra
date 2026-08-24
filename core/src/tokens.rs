@@ -248,7 +248,9 @@ pub fn parse_bitcoin_esplora_endpoints(raw: String) -> Vec<String> {
 pub enum EndpointField {
     /// A comma, semicolon or newline separated list.
     BitcoinEsploraList,
-    EthereumRpc,
+    /// Any EVM chain's custom RPC. The rule is "a valid http(s) URL" and was
+    /// never Ethereum-specific; the name was.
+    EvmRpc,
     MoneroBackend,
 }
 
@@ -259,7 +261,7 @@ pub fn endpoint_validation_error(field: EndpointField, raw: String) -> Option<St
         EndpointField::BitcoinEsploraList => parse_bitcoin_esplora_endpoints(raw)
             .iter()
             .any(|endpoint| !is_valid_http_url(endpoint)),
-        EndpointField::EthereumRpc | EndpointField::MoneroBackend => {
+        EndpointField::EvmRpc | EndpointField::MoneroBackend => {
             let trimmed = raw.trim();
             !trimmed.is_empty() && !is_valid_http_url(trimmed)
         }
@@ -272,7 +274,7 @@ pub fn endpoint_validation_error(field: EndpointField, raw: String) -> Option<St
             EndpointField::BitcoinEsploraList => {
                 "Bitcoin Esplora endpoints must be valid http(s) URLs separated by commas."
             }
-            EndpointField::EthereumRpc => "Enter a valid http or https RPC URL.",
+            EndpointField::EvmRpc => "Enter a valid http or https RPC URL.",
             EndpointField::MoneroBackend => "Enter a valid http or https Monero backend URL.",
         }
         .to_string(),
@@ -360,16 +362,16 @@ mod tests {
         );
         assert!(endpoint_validation_error(BitcoinEsploraList, "notaurl".into()).is_some());
         // An empty single-URL field is unset, not invalid; an empty list is too.
-        assert_eq!(endpoint_validation_error(EthereumRpc, "".into()), None);
+        assert_eq!(endpoint_validation_error(EvmRpc, "".into()), None);
         assert_eq!(endpoint_validation_error(BitcoinEsploraList, "".into()), None);
-        assert!(endpoint_validation_error(EthereumRpc, "ftp://x".into()).is_some());
+        assert!(endpoint_validation_error(EvmRpc, "ftp://x".into()).is_some());
         assert_eq!(
-            endpoint_validation_error(EthereumRpc, "https://rpc.example/abc".into()),
+            endpoint_validation_error(EvmRpc, "https://rpc.example/abc".into()),
             None
         );
         // Same check, different name in the message.
         assert_ne!(
-            endpoint_validation_error(EthereumRpc, "ftp://x".into()),
+            endpoint_validation_error(EvmRpc, "ftp://x".into()),
             endpoint_validation_error(MoneroBackend, "ftp://x".into())
         );
     }
