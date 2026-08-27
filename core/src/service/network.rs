@@ -7,22 +7,9 @@
 
 use super::*;
 
+
 #[uniffi::export(async_runtime = "tokio")]
 impl WalletService {
-    pub async fn fetch_erc20_balance_typed(
-        &self,
-        chain_id: String,
-        contract: String,
-        holder: String,
-    ) -> Result<crate::fetch::chains::evm::Erc20Balance, SpectraBridgeError> {
-        let chain = chain_for_evm_id(&chain_id)?;
-        let endpoints = self.endpoints_for(chain.str_id()).await;
-        let client = crate::fetch::chains::evm::EvmClient::new(endpoints, chain.evm_chain_id());
-        client
-            .fetch_erc20_balance(&contract, &holder)
-            .await
-            .map_err(Into::into)
-    }
 
     /// Unified per-chain native balance summary, replacing chain-specific JSON
     /// decoding on the Swift side. Smallest unit is returned as a decimal
@@ -68,38 +55,19 @@ impl WalletService {
             .collect())
     }
 
-    /// Fetch history JSON for `address` on `chain_id` and return
-    /// `true` when the response is a non-empty JSON array. Lets Swift
-    /// avoid parsing the chain-specific history shape just to answer
-    /// "has this address seen any activity?".
-    pub async fn fetch_history_has_activity(
+    /// One history fetch, and everything the callers ask about it.
+    ///
+    /// Three methods did this — `fetch_history_has_activity`,
+    /// `fetch_history_entry_count` and `fetch_history_confirmed_txids` — each
+    /// running the same `fetch_history` and applying one projection, and the
+    /// first was `entry_count > 0`.
+    pub async fn fetch_history_summary(
         &self,
         chain_id: String,
         address: String,
-    ) -> Result<bool, SpectraBridgeError> {
+    ) -> Result<crate::diagnostics::HistorySummary, SpectraBridgeError> {
         let raw = self.fetch_history(&chain_id, address).await?;
-        Ok(crate::diagnostics::diagnostics_history_entry_count(raw) > 0)
-    }
-
-    /// Fetch history JSON and return the top-level entry count.
-    pub async fn fetch_history_entry_count(
-        &self,
-        chain_id: String,
-        address: String,
-    ) -> Result<u32, SpectraBridgeError> {
-        let raw = self.fetch_history(&chain_id, address).await?;
-        Ok(crate::diagnostics::diagnostics_history_entry_count(raw))
-    }
-
-    /// Fetch history JSON and return the set of confirmed `txid`s.
-    /// Used to reconcile pending transactions with on-chain confirmations.
-    pub async fn fetch_history_confirmed_txids(
-        &self,
-        chain_id: String,
-        address: String,
-    ) -> Result<Vec<String>, SpectraBridgeError> {
-        let raw = self.fetch_history(&chain_id, address).await?;
-        Ok(crate::diagnostics::diagnostics_history_confirmed_txids(raw))
+        Ok(crate::diagnostics::diagnostics_history_summary(raw))
     }
 
     /// Fused Bitcoin HD history page: derive external+change addresses from

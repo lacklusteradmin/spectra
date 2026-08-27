@@ -503,7 +503,7 @@ pub struct HistoryRecord {
 /// other table and every chain API uses. The conversion lives here so no
 /// front end has to remember which side of the boundary it is on — getting it
 /// wrong silently misorders history by 31 years.
-const SWIFT_REFERENCE_EPOCH_OFFSET_SECS: f64 = 978_307_200.0;
+use crate::store::persistence_models::SWIFT_REFERENCE_EPOCH_OFFSET_SECS;
 
 /// Build the indexed row for a transaction from the record itself.
 ///

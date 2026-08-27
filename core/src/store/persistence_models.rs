@@ -27,6 +27,11 @@ use crate::store::wallet_domain::{CoreTransactionKind, CoreTransactionStatus};
 /// All optional fields are emitted when present and omitted (not encoded as
 /// `null`) when absent — Swift `decodeIfPresent` accepts both, and `serde`
 /// with `skip_serializing_if` preserves the "omit when none" shape.
+/// Seconds between the Unix epoch and the Swift reference date, for the
+/// `created_at` above. Defined once; `fetch/transactions.rs` and
+/// `store/wallet_db.rs` each had a private copy.
+pub(crate) const SWIFT_REFERENCE_EPOCH_OFFSET_SECS: f64 = 978_307_200.0;
+
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, uniffi::Record)]
 #[serde(rename_all = "camelCase")]
 pub struct CorePersistedTransactionRecord {

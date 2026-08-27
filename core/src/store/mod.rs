@@ -210,15 +210,6 @@ pub fn build_persisted_snapshot_typed(
     }
 }
 
-pub fn wallet_secret_index_from_observations(
-    app_state: CoreAppState,
-    secret_observations: Vec<WalletSecretObservation>,
-) -> WalletSecretIndex {
-    wallet_secret_index(&build_persisted_snapshot_typed(
-        app_state,
-        secret_observations,
-    ))
-}
 
 pub fn persisted_snapshot_from_json(json: &str) -> Result<PersistedAppSnapshot, String> {
     if let Ok(snapshot) = serde_json::from_str::<PersistedAppSnapshot>(json) {
@@ -585,33 +576,6 @@ pub struct WalletChainEligibilityInput {
     pub resolved_address_for_chain: Option<String>,
 }
 
-#[uniffi::export]
-pub fn core_has_wallet_for_chain(
-    chain_name: String,
-    wallets: Vec<WalletChainEligibilityInput>,
-) -> bool {
-    wallets.into_iter().any(|wallet| {
-        if wallet.selected_chain != chain_name {
-            return false;
-        }
-        if chain_name == "Bitcoin" {
-            if wallet.has_seed_phrase {
-                return true;
-            }
-            if wallet.bitcoin_address.is_some() && wallet.bitcoin_address_is_valid {
-                return true;
-            }
-            if let Some(xpub) = wallet.bitcoin_xpub.as_ref() {
-                if xpub.starts_with("xpub") || xpub.starts_with("ypub") || xpub.starts_with("zpub")
-                {
-                    return true;
-                }
-            }
-            return false;
-        }
-        wallet.resolved_address_for_chain.is_some()
-    })
-}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, uniffi::Enum)]
 pub enum DerivedAddressPostProcess {
@@ -1047,7 +1011,9 @@ pub fn plan_transaction_status_poll_failure(
     tracker
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, uniffi::Record)]
+/// No longer crosses the boundary: core reads its own transactions to build
+/// these, so the caller does not hand them over.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(rename_all = "camelCase")]
 pub struct StalePendingFailureTransactionInput {
     pub id: String,
@@ -1081,14 +1047,14 @@ pub(crate) fn plan_stale_pending_failure_ids(
         .collect()
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, uniffi::Record)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(rename_all = "camelCase")]
 pub struct ResolvedPendingStatusInput {
     pub status: String,
     pub confirmations: Option<u32>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, uniffi::Record)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(rename_all = "camelCase")]
 pub struct ResolvedPendingTransactionInput {
     pub id: String,
@@ -1099,7 +1065,7 @@ pub struct ResolvedPendingTransactionInput {
     pub is_stale_failure: bool,
 }
 
-#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, uniffi::Enum)]
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
 pub enum FailureReasonDisposition {
     None,
@@ -1107,7 +1073,7 @@ pub enum FailureReasonDisposition {
     LocalizedFallback,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, uniffi::Record)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(rename_all = "camelCase")]
 pub struct ResolvedPendingTransactionDecision {
     pub id: String,
@@ -1125,6 +1091,42 @@ pub struct ResolvedPendingTransactionDecision {
 /// Matches Swift `applyResolvedPendingTransactionStatuses` decision logic. Swift keeps
 /// the `setTransactions` mutation and notification/event emission; Rust returns a
 /// per-transaction decision describing what changed.
+/// Stored in `failure_reason` when a pending transaction is given up on.
+///
+/// A code rather than a sentence: the front end localizes it at render, so a
+/// user who changes language does not keep the old one on old records.
+pub const FAILURE_REASON_STUCK: &str = "stuckAfterRetries";
+
+/// One chain's resolved statuses, as the network reported them.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, uniffi::Record)]
+#[serde(rename_all = "camelCase")]
+pub struct ResolvedPendingStatus {
+    pub id: String,
+    /// `"pending"` / `"confirmed"` / `"failed"`.
+    pub status: String,
+    pub confirmations: Option<u32>,
+    pub receipt_block_number: Option<i64>,
+    pub dogecoin_network_fee_doge: Option<f64>,
+}
+
+/// What changed when resolved statuses were applied — enough for a front end
+/// to write an operational event and a notification, and nothing more. The
+/// records themselves are already stored.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, uniffi::Record)]
+#[serde(rename_all = "camelCase")]
+pub struct TransactionStatusChange {
+    pub id: String,
+    pub chain_name: String,
+    pub transaction_hash: Option<String>,
+    pub old_status: String,
+    pub new_status: String,
+    pub status_changed: bool,
+    pub send_status_notification: bool,
+    /// `"confirmed"` or `"failed"` when the change is worth an event.
+    pub emit_event_code: Option<String>,
+    pub reached_finality_confirmations: Option<u32>,
+}
+
 pub(crate) fn plan_apply_resolved_pending_transaction_statuses(
     inputs: Vec<ResolvedPendingTransactionInput>,
     trackers: &mut std::collections::HashMap<String, TransactionStatusTrackerState>,

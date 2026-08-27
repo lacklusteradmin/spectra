@@ -758,18 +758,6 @@ pub fn core_derivation_path_string(segments: Vec<DerivationPathSegment>) -> Stri
     derivation_path_string(&segments)
 }
 
-/// Key under which a chain's derivation path is stored in
-/// `CoreSeedDerivationPaths::by_chain`.
-///
-/// Testnets resolve to their mainnet counterpart: the derivation recipe is
-/// identical and only the address encoding differs, so both share one stored
-/// path. Unknown names return an empty string.
-/// Not exported: a column of `core_chain_identities` now.
-pub fn core_seed_derivation_path_key(chain_name: String) -> String {
-    crate::registry::Chain::from_display_name(&chain_name)
-        .map(|chain| chain.mainnet_counterpart().str_id().to_string())
-        .unwrap_or_default()
-}
 
 #[uniffi::export]
 pub fn core_derivation_path_replacing_last_two(

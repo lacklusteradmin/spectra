@@ -118,6 +118,63 @@ pub struct WalletImportCommit {
     /// `mainnet id -> selected id`. Absent means mainnet. Two mode enums
     /// before, which meant adding a third family meant a third field.
     pub network_chain_by_family: std::collections::HashMap<String, String>,
+    /// The seed to derive each selected chain's address from, when the caller
+    /// has not derived them itself.
+    ///
+    /// A signing import that leaves `resolved_addresses` empty gets its
+    /// addresses here. Both front ends used to derive first and pass the
+    /// result in, which meant the rule that every EVM chain derives from
+    /// Ethereum's path lived in whichever front end imported more than one
+    /// chain at a time — iOS — and not in the registry that owns it.
+    pub seed_phrase: Option<String>,
+}
+
+/// Derive one address per selected chain, keyed by chain display name.
+///
+/// The path comes from `CoreSeedDerivationPaths::path_for`, which resolves a
+/// testnet through its mainnet. A chain whose derivation fails is skipped
+/// rather than failing the import: `validated_addresses` reports what is
+/// missing, and an import left with nothing is refused by the planner.
+pub fn derive_import_addresses(
+    seed_phrase: &str,
+    selected_chain_names: &[String],
+    paths: &crate::store::wallet_domain::CoreSeedDerivationPaths,
+    overrides: &crate::store::wallet_domain::CoreWalletDerivationOverrides,
+) -> std::collections::HashMap<String, String> {
+    use crate::registry::Chain;
+    let mut by_chain_name = std::collections::HashMap::new();
+    // Every EVM chain's address is derived under Ethereum's entry, because the
+    // family shares one address slot. Including Ethereum when only an L2 was
+    // selected is what makes that slot get filled.
+    let mut chains: Vec<Chain> = selected_chain_names
+        .iter()
+        .filter_map(|name| Chain::from_display_name(name))
+        .collect();
+    if chains.iter().any(|c| c.is_evm()) && !chains.contains(&Chain::Ethereum) {
+        chains.push(Chain::Ethereum);
+    }
+    for chain in chains {
+        let Some(path) = paths.path_for(chain) else {
+            continue;
+        };
+        let derived = crate::derivation::dispatch::derive_for_chain_name(
+            chain.chain_display_name(),
+            seed_phrase,
+            path,
+            overrides.passphrase.as_deref(),
+            overrides.hmac_key.as_deref(),
+            None,
+            true,
+            false,
+            false,
+        );
+        if let Ok(result) = derived {
+            if let Some(address) = result.address {
+                by_chain_name.insert(chain.chain_display_name().to_string(), address);
+            }
+        }
+    }
+    by_chain_name
 }
 
 /// What an import produced. `secret_instructions` is the only part the caller
@@ -347,17 +404,6 @@ pub fn core_validate_wallet_import_draft(request: WalletImportDraftValidationReq
     validate_wallet_import_draft(request)
 }
 
-/// Key under which a chain's address belongs in [`WalletImportAddresses`] and
-/// [`WalletImportWatchOnlyEntries`].
-///
-/// Exported so the UI never hardcodes slot keys or has to know that EVM chains
-/// share one. Pass a chain display name; unknown names return an empty string.
-/// Not exported: a column of `core_chain_identities` now.
-pub fn core_address_slot(chain_name: String) -> String {
-    Chain::from_display_name(&chain_name)
-        .map(|chain| chain.address_slot().to_string())
-        .unwrap_or_default()
-}
 
 pub fn plan_wallet_import(request: WalletImportRequest) -> Result<WalletImportPlan, String> {
     if request.is_watch_only_import {

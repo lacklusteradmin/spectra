@@ -88,7 +88,7 @@ use crate::store::persistence_models::CorePersistedTransactionRecord;
 use crate::store::wallet_domain::{CoreTransactionKind, CoreTransactionStatus};
 
 /// Seconds between the Unix epoch and Swift's reference date (2001-01-01 UTC).
-const SWIFT_REFERENCE_EPOCH_OFFSET_SECS: f64 = 978_307_200.0;
+use crate::store::persistence_models::SWIFT_REFERENCE_EPOCH_OFFSET_SECS;
 
 fn kind_from_raw(raw: &str) -> CoreTransactionKind {
     match raw {

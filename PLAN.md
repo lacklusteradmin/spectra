@@ -108,10 +108,11 @@ Measured, not estimated:
 | | Start | Now |
 |---|---|---|
 | Swift, non-generated, excluding tests | 30,879 lines | **26,660** |
-| — `views/` + `extensions/` (genuine UI) | 11,113 (36%) | **11,194 (43%)** |
-| — root of `swift/` (`AppState`, stores, persistence, bridges) | 19,766 (64%) | **15,033 (57%)** |
+| — `views/` + `extensions/` (genuine UI) | 11,113 (36%) | **11,120 (44%)** |
+| — root of `swift/` (`AppState`, stores, persistence, bridges) | 19,766 (64%) | **14,457 (56%)** |
 | `core_plan_*` FFI exports (core advises, Swift applies) | 42 | 10 |
 | Swift enums restating the chain list | 6 (30 / 76 / 30 / 24 / 7 / 18 cases) | **0** |
+| Chain-name dispatch sites in Swift | 743 literals, ~400 dispatch | **98** |
 | Swift enums duplicating one core-owned setting | 2 (`BitcoinFeePriority`, `DogecoinFeePriority`) | **0** |
 | Hand-written chain tables in `core/` beside `chains.toml` | 2 (78 + 22 rows) | **0** |
 | Hand-written EVM-chain lists in `core/`, shorter than the registry | 3 (7 / 9 / 7 rows vs 23 chains) | **0** |
@@ -558,7 +559,468 @@ reports three checks (`Address Validation`, `Address Rejects Invalid`,
 What stays in the rows is what the registry genuinely cannot supply:
 `valid_address` and `invalid_address` are fixtures, not derivations.
 
-**416 lines of comment removed: changelog entries, banners that named the
+**Litecoin, Bitcoin Cash and Bitcoin SV only ever fetched the first address's
+history.**
+
+Asked why Dogecoin is special, the answer turned out to be that it is not — it
+is the chain that was finished first, and the generic paths were built later
+around the chains that came after. Two of its "special" pieces were a generic
+function wearing a chain's name, and the third was a real capability that only
+Dogecoin had been given.
+
+**Two were nothing.** `parseDogecoinAmountInput(_:)` was
+`parseAmountInput(text:maxDecimals: 8)` — a generic parser with one chain's
+`native_decimals` written into it and that chain's name on the front.
+`isValidDogecoinAddressForPolicy(_:wallet:)` and
+`isValidUTXOAddressForPolicy(_:chainName:)` were the same function twice; the
+only difference was that the Dogecoin one took a **wallet**, so it judged an
+address against *that wallet's* network rather than the family's global
+selection — a distinction all twenty-nine chains with a network choice have.
+Merged into `isValidAddressForPolicy(_:chainName:wallet:requireDeepUTXODiscovery:)`.
+
+**The third was a bug.** Five chains walk their addresses —
+`supports_deep_utxo_discovery` says Bitcoin, Dogecoin, Litecoin, Bitcoin Cash
+and Bitcoin SV — so a wallet on any of them holds many. History came in three
+shapes:
+
+| shape | who got it |
+|---|---|
+| xpub HD page, cursor-paginated | Bitcoin |
+| **many addresses, netted per transaction** | **Dogecoin only** |
+| one address per wallet | everything else, *including Litecoin, Bitcoin Cash and Bitcoin SV* |
+
+So on those three chains, a wallet's history was fetched for its **first
+address and no other**. Anything received on a discovered address beyond the
+first was simply absent.
+
+*The aggregation was never Dogecoin's.* `history_aggregate_dogecoin` groups
+`NormalizedHistoryItem` by transaction hash and signs each leg against the
+wallet's own addresses — netting a send against its own change output so one
+transaction is one row. Nothing in the body mentions a chain. It is
+`history_aggregate_by_transaction` now, over
+`MultiAddressAggregateInput` / `AggregatedTransaction`, and
+`refreshDogecoinTransactions` is
+`refreshMultiAddressUTXOTransactions(chainName:)`.
+
+Routing is by capability rather than by name: Bitcoin (the only chain with a
+stored xpub) keeps the HD path, `supportsDeepUTXODiscovery` takes the
+multi-address path, EVM its own, everything else the single-address one.
+`two_legs_of_one_transaction_become_one_record` pins the netting with a
+Litecoin fixture — a chain that could not reach the function before.
+
+*Why this kept happening, stated plainly.* Every short list this document has
+found was written by starting from the chains that already worked and copying
+outwards. Bitcoin and Dogecoin were finished first and never folded back in, so
+the generic paths were derived from the chains that came after them — and the
+two originals stayed outside, taking the newer chains' features with them
+whenever a capability was scoped by name instead of by column.
+
+**Chain-name dispatch: 169 → 98, in five passes.**
+
+Asked to remove all of it, including two things this document had recorded as
+deliberate keeps. Both turned out to be worth doing; one of them found a
+display bug on the way.
+
+**`SendPreviewStore` is keyed now — 34 → 30, and four switches → none.**
+Eighteen `var <chain>SendPreview` fields had the chain list written out four
+times: an eighteen-arm `apply`, an eighteen-arm `taggedPreview`, an
+eighteen-line `resetAll` and an eleven-arm `apply(SimpleChainPreview)`. Storage
+is `previewBySlot: [String: SendPreview]` keyed by
+`previewSlot(forChainNamed:)`, which asks the registry — so the EVM family
+shares Ethereum's slot without anyone naming its members.
+
+*The eighteen typed accessors are fifteen, and that is the floor.* Measuring
+what callers actually read off a preview: **36 of the reads are
+`estimatedNetworkFee`**, which every preview carries, and everything else is
+one or two reads of a chain-specific field — Ethereum's nonce, Dogecoin's
+max-sendable, Sui's gas budget. Three fields (ICP, NEAR, Polkadot) had no
+reader left at all once the generic ones moved to
+`estimatedFee(forChainNamed:)`. What remains names its slot twice, in a getter
+and a setter, which is less than four switch arms per chain.
+
+**The send sheet's seventeen-arm fee formatter is one line — and two of its
+arms were right where the registry was wrong.** Each arm named a chain, its fee
+symbol and a format specifier. Both are registry columns. Checking all
+seventeen before collapsing: **Bitcoin and Internet Computer** formatted at
+eight decimals while `send_execution_shape` said six. Satoshis and e8s both
+need eight, so the view was right — `fee_decimals` had been transcribed from
+"the ten call sites that carried these inline", and **Bitcoin's call site was
+its own bespoke arm, not one of the ten**, so the UTXO chain the table's own
+comment is about was missing from it. Fixed in the registry and pinned by
+`utxo_and_e8s_chains_use_eight`; collapsing the view before checking would have
+shipped a truncated Bitcoin fee.
+
+**Eleven fee cards stopped passing what the chain name implies.**
+`simpleFeeContent` took `isPreparing` and a `(fee, symbol, specifier)` triple at
+every call site; all four follow from the chain. What a caller still supplies is
+the footer sentence and whatever that chain shows beside its fee — content the
+registry has no column for.
+
+**Both address-hint tables are gone — 48 literals — and the fact went where it
+belongs.** A fifteen-arm switch of terse examples ("bc1q…", "r…", one arm
+naming nine EVM chains) and an eleven-entry dictionary of translated sentences
+said the same thing: what an address on this chain looks like. The terse form
+is a chain fact and is now `address_prefix_hint` in `chains.toml`, which the
+EVM family gets from `is_evm` rather than from a nine-name arm that was missing
+Base, Polygon, Linea and the rest. The sentences are **content**, so they moved
+into the locale files keyed by chain id — with their existing zh-Hans and
+zh-Hant translations carried across, not rewritten. A chain with no sentence
+falls back to a template built from its prefix hint, so the fallback now covers
+every chain that has an example rather than the eleven that had a sentence.
+
+*This is the answer to "it is content, not migration".* It was content — and
+content belongs in the content files, keyed by the thing it is about. Moving it
+there is migration.
+
+**Four more derived from columns that already existed.**
+`transactionIconChainSlug` named six chains out of the eighteen
+`tokenTrackingChain` knows, so a token on Polygon, Base, Sui, TON or NEAR got
+no icon lookup at all; the slug is never parsed, so `chain.id` serves.
+`displayNetworkName(for transaction:)` and its title twin tested
+`chainName == "Bitcoin" || == "Dogecoin"` where `hasNetworkChoice` is the
+column. And the receive path's four `(symbol, chain)` pairs are
+`supportsDeepUTXODiscovery && symbol == gasTokenSymbol`.
+
+**What is left, and why it is not the same thing.** 98 sites, and the two
+largest groups are honest:
+
+- **30 in `SendPreviewStore`** — fifteen accessors naming their slot, which is
+  what a typed accessor over a keyed store costs.
+- **20 in `AppState+SendFlow`** — Ethereum's ENS resolution, nonce and
+  replacement transactions, and its self-test suite. Ethereum genuinely has
+  ENS; naming it is not a list that can drift.
+
+The rest are per-chain risk-probe messages and Dogecoin's own diagnostics —
+features one chain has, not a subset of a feature every chain has. **The test
+that matters is not the count: it is whether adding a chain requires touching
+the display layer, and for everything above the answer is now no.**
+
+**A zero-amount send of eleven chains' own gas token was refused by iOS after
+core had permitted it.**
+
+`submitSend`'s EVM arm opened with:
+
+```swift
+if holding.symbol != "ETH" && holding.symbol != "BNB", amount <= 0 { … refuse }
+```
+
+Whether a zero amount is allowed is `allows_zero_amount`, which
+`plan_send_submit_preflight` computes as `is_native_evm_asset` and **already
+refuses on** two dozen lines earlier. So the check was redundant where it
+agreed and wrong where it did not: a zero-amount send of AVAX, HYPE, ETC, POL,
+MNT, S, BERA, CELO, CRO, SEI or OKB reached Swift with core's blessing and was
+turned away by a two-symbol list. Deleted; core's answer stands.
+
+*Two redundant guards went with it.* `guard evmChainContext(for:) != nil`
+opened the arm, but `EVMChainContext(chainName:)` is nil exactly when the chain
+is not EVM, and `submitKind == "ethereum"` is core's statement that it is.
+And `let rustSupportsChain = spectraEvmChainId != nil; guard rustSupportsChain,
+let chainId = spectraEvmChainId` asks the same question twice in one statement.
+
+*And `feeDecimals: 6` became `sendExecutionShape.feeDecimals`.* The registry
+answers 6 for every EVM chain today, so nothing moves — but the literal was the
+last thing in this arm that a chain could disagree with silently.
+
+*Five more dead functions*, found by re-running the sweep after the import
+slice: `classifySolanaDerivationPreference`, `loadResourceUncached`,
+`runTimedChainRefresh`, `settingAddress`, `normalizeJettonMasterAddress` — 49
+lines. Re-running the sweep after each structural change is now worth doing by
+default; it has found something every time.
+
+*What was looked at and left.* The ICP arm is the closest of the remaining
+seven to `submitNativeChainSend`: same address resolver, same request shape,
+no fee field. Two things stop it folding. Its `send_execution_shape` says
+`supports_private_key: false` while the arm accepts a private key, and the
+generic path **requires a fee estimate** where the ICP arm requires none — so
+folding would refuse a send whenever the ICP preview was unavailable. The
+second is a real behaviour change on a funds path with no offline test, and
+`fee_fallback` would have to carry ICP's fixed fee for it to be safe. Left
+until that is worth doing on its own.
+
+**`import_wallets` derives its own addresses now, and `spectra wallet import`
+takes more than one `--chain`.**
+
+*Was:* `WalletImportCommit` carried `resolved_addresses`, so core stored what it
+was handed rather than deriving what it needed. Both front ends derived first:
+the CLI in Rust for one chain, iOS in Swift for many. The rule that **every EVM
+chain derives from Ethereum's path** — because the family shares one address
+slot — therefore lived only on the iOS side, since the CLI imported one chain
+at a time and never met it. A registry fact, kept in whichever caller happened
+to need it.
+
+*Now:* the commit carries an optional `seed_phrase`, and a signing import that
+leaves `resolved_addresses` empty gets them from
+`derive_import_addresses(seed, selected_chains, paths, overrides)` — which adds
+Ethereum whenever any EVM chain is selected, reads each path through
+`CoreSeedDerivationPaths::path_for` (so a testnet resolves to its mainnet), and
+skips a chain that will not derive rather than failing the import.
+
+**`--chain` is repeatable**, which it could not be while the caller derived:
+`spectra wallet import --chain Bitcoin --chain Ethereum --chain Solana` seals
+the seed once per wallet and creates three. `wallet new` still refuses more
+than one and says why.
+
+*The addresses check against a fixture this document already trusted.* The
+three-chain import derives
+`BLeUXTx9thHGT7VJUtF9vHEmfMDgW1nnKZ9UVer2CoLX` for Solana — the same address
+`cli-acceptance.sh` has asserted for that mnemonic since the single-chain path
+existed. Four new assertions, **140 → 144**.
+
+*iOS lost about seventy lines and a rule it should not have owned.* The path
+table, the "add Ethereum if any EVM is selected" line and the per-chain loop
+are gone; `importWallet` passes the seed and core does the rest. The CLI lost
+`derive_address`, dead once nothing called it.
+
+**Two ways to derive an import's addresses, on the key path, and neither
+branch could tell you why.**
+
+`importWallet` is the second-largest function in `swift/` at 321 lines, and its
+derivation block forked:
+
+- a **fast path** calling `WalletRustDerivationBridge.deriveAllAddresses`, and
+- an **advanced path** looping per chain through
+  `WalletDerivationLayer.deriveAddress` with the user's overrides,
+
+chosen on `overrides.isEmpty`. Followed to the bottom, both reach the same
+`WalletRustDerivationBridge.derive(chain:seedPhrase:derivationPath:passphrase:
+hmacKey:…)`. The fast path passes `nil` for the two override fields; the
+advanced path passes `overrides?.passphrase` and `overrides?.hmacKey` — which
+are `nil` exactly when the overrides are empty, which is the only time the fast
+path ran. **The same call, twice, with the same arguments.**
+
+*And the error handling around it could not fire.* `deriveAllAddresses` was
+declared `throws`, so the block sat in a `do/catch` that set "Wallet
+initialization failed. Check the seed phrase." Its body used `try?` on every
+chain, so it returned a partial map rather than throwing. The `catch`, and the
+`(null)`-message normalisation inside it, were unreachable. A bad seed never
+gets there anyway — `canImportWallet` requires `hasValidSeedPhraseChecksum` and
+`importWallet` guards on it — so what the dead branch cost was not a bug but the
+appearance of a check.
+
+*Now:* one loop, always with the overrides, and an explicit guard — deriving
+**nothing at all** now fails with that message instead of importing a wallet
+with no addresses. That is the stricter side, and it is the check the dead
+`catch` looked like it was making.
+
+`deriveAllAddresses` went with it, and so did a no-op that surfaced once the
+block around it was gone:
+
+```swift
+if selectedChains.contains("Bitcoin") {
+    guard let bitcoinWalletID else { importError = "…"; return }
+    _ = bitcoinWalletID
+}
+```
+
+`selectedChains` is `Set(selectedChainNames)` and `bitcoinWalletID` is built by
+zipping over `selectedChainNames`, so the guard could not fail; the binding was
+discarded on the next line. Both it and the `createdWalletIDs` array that
+existed only to build it are gone.
+
+*What this did not do.* Both the CLI and iOS still derive an import's addresses
+**outside** `import_wallets` and pass them in as `resolved_addresses` — the CLI
+in Rust for one chain, iOS in Swift for many, with the "every EVM chain derives
+from Ethereum's path" rule living only on the iOS side because the CLI imports
+one chain at a time. Folding derivation into `import_wallets` would delete that
+rule from Swift and give the CLI multi-chain import; it is the larger slice this
+one sits inside. See "Known open items".
+
+**Nine `core_*` functions whose own doc comment said why they should not
+exist.**
+
+The same sweep, run over Rust. It reports 493 candidates and almost all of them
+are wrong — the trap this document already records twice: an
+`#[uniffi::export]` function's callers are in Swift, a `#[test]` function's
+caller is the harness, and a `fn` inside a `trait` block is a declaration, not
+an implementation. Counting Swift by camelCase name, excluding test attributes
+and trait bodies leaves twelve real ones.
+
+Nine are the same thing: `core_address_validation_kind`,
+`core_send_execution_shape`, `core_pending_status_poll`,
+`core_chain_display_name`, `core_network_choices`, `core_chain_str_id_for_name`,
+`core_seed_derivation_path_key`, `core_address_slot` and
+`core_supports_deep_utxo_discovery`. Every one carries the line **"Not
+exported: a column of `core_chain_identities` now."** The `#[uniffi::export]`
+was removed when the identity table absorbed them and the function was left
+behind — nine times, by nine passes, each of which wrote down exactly why the
+body had no reason to remain.
+
+Two more were **exported and had no Swift caller**:
+`fetch_erc20_balance_typed` and `core_has_wallet_for_chain`. Dead FFI surface,
+which is the kind that does not show up as dead anywhere: the binding
+generator emits it, Swift compiles against it, nothing calls it.
+
+Exports **187 → 185**, 138 lines of Rust.
+
+*The rate of false positives is the finding.* Three sweeps this session —
+comments, Swift functions, Rust functions — each needed a correction before its
+output was usable, and in every case the first version was confidently wrong.
+The pattern that works: run the detector, **verify a handful by hand**, then let
+the compiler arbitrate the batch.
+
+**Fifty-one dead functions, 417 lines, and 52 orphaned locale keys.**
+
+Having found four dead functions in one file by hand, the same count run over
+all of `swift/` found fifty-eight candidates. Two clusters stood out and both
+are shapes this document has named before:
+
+- **Six `enabled<Chain>TrackedTokens` on `AppState`** — one wrapper per chain
+  over `enabledTokenPreferences(for:)`, every one unreferenced.
+- **Fourteen error-message builders in `StaticContentCatalog`** —
+  `invalidAmount`, `networkError`, `broadcastFailed` and the rest, each
+  formatting a localized string nothing read. Removing them orphaned thirteen
+  `CommonLocalizationContent` fields, which orphaned **52 keys across four
+  locale files**. Dead code that carries dead translations with it.
+
+Two more were dead because of the previous rounds' own edits:
+`clearRPCEndpoints` and `clearFeePriorities` lost their only caller when
+`resetSettingsAndEndpointsState` became a single core command.
+
+*Two false positives, and both say something.* The compiler rejected the
+deletion of `WalletBalanceObserver.onRefreshCycleComplete` and four
+`SpectraSecretStoreAdapter` methods: they satisfy `BalanceObserver` and
+`SecretStore`, **protocols declared in the generated UniFFI bindings**, which a
+scan of `swift/*.swift` does not see. Restored. The rule for next time: a
+protocol requirement can come from `swift/generated/`, so run the build before
+believing the list — which is what happened here, and is why the deletion was
+done in one batch with the compiler as the oracle rather than file by file.
+
+*The disk again.* `cargo clean -p spectra_core -p spectra-cli` removed
+**282,141 files and 182.5 GiB** — our own two crates' artifacts, rebuilt
+hundreds of times this session, with third-party dependencies left alone. That
+is the surgical version of the earlier `incremental` delete and worth reaching
+for first.
+
+**Four functions the previous round left dead.**
+
+Moving the apply loop into core stranded `updatedTransaction`,
+`updateTransactionStatus`, `statusMapByTransactionHash` and
+`consumePendingSelfSendConfirmation` in
+`AppState+OperationalTelemetry` — 65 lines with no caller anywhere, including
+the tests. Found by listing every function in the file and counting call sites
+across `swift/`, which is worth doing after any slice that replaces a loop:
+**the compiler does not warn about an unused method on a type.**
+
+**The status-poll apply was a full round trip through the caller. Core owns it
+now.**
+
+*Was:* six steps, five of them moving data core already had.
+
+1. Swift read its transaction projection
+2. built a `ResolvedPendingTransactionInput` per transaction — old status, old
+   failure reason, old confirmations, all fields of a stored record
+3. core computed a `ResolvedPendingTransactionDecision` per transaction
+4. Swift applied each decision to build a new record
+5. Swift upserted those back into core
+6. Swift updated its projection
+
+Only the resolutions in step 2 came from outside — they are what the network
+said. Everything else went out of the store and came back to it.
+
+*Now:* `apply_resolved_pending_statuses(chain_name, resolutions,
+stale_failure_reason)`. Core reads its own transactions, computes its own stale
+failures — the previous entry's method, now internal and no longer exported —
+runs the same planner, **writes the results**, and returns a
+`TransactionStatusChange` per record: what it was, what it is, whether that is
+worth an event or a notification.
+
+Swift builds the resolutions, makes one call, and does the two things this
+platform owns: the localized text of an operational event, and the
+notification. Its projection is re-read from core rather than reconstructed.
+
+*What crossed the boundary and no longer does.*
+`ResolvedPendingTransactionInput`, `ResolvedPendingStatusInput`,
+`ResolvedPendingTransactionDecision`, `FailureReasonDisposition` and
+`StalePendingFailureTransactionInput` all lost their `uniffi::Record` /
+`uniffi::Enum` derives. Two `ResolvedPendingStatus` and
+`TransactionStatusChange` replaced them: **five records and one enum out, two
+records in**. Two service methods became one.
+
+*The one thing the caller still supplies is the right one.*
+`stale_failure_reason` is the text stored when a transaction is given up on,
+and it is localized, which core cannot be.
+
+*The localized-text-in-storage bug is fixed in the same place.* That reason was
+being stored **as a localized sentence**, so a user who changed language kept
+the old one on old records. Core stores `FAILURE_REASON_STUCK` — a code —
+and `TransactionRecord.localizedFailureReason` makes the text at render. The
+`stale_failure_reason` parameter is gone with it, so the caller supplies
+nothing here at all.
+
+That the previous round could not see it is the point: with the reason
+travelling through Swift as a string, "the caller owns the localization" was a
+reasonable-sounding conclusion. Once core wrote the record, the question became
+what belongs *in* the record, and text does not.
+
+*Now assertable, which it was not.*
+`applying_a_resolution_stores_it_and_reports_the_change` writes a pending send,
+applies a confirmation, and reads the record back out of the database. Nothing
+on either side used to assert that what the planner decided ever reached
+storage — the write happened in Swift, and the Rust tests stopped at the
+decision.
+
+**`stale_pending_failure_ids` was handed a copy of transactions core stores.**
+
+The caller built a `StalePendingFailureTransactionInput` per transaction out of
+an id, a creation time and a pending flag — three fields of
+`CorePersistedTransactionRecord`, which core writes and reads. Rule 3's shape:
+core computes over state the caller keeps a copy of.
+
+Now it takes a chain name and reads its own transactions. The chain stays a
+parameter on purpose — the sweep is per chain, and reading every transaction
+would mark sends failed on chains the caller was not polling.
+
+*The filter came from the registry, not from a new parameter.* Two of the three
+call sites tracked sends only; the third passed `requireSendKind: false` for
+Litecoin, whose explorer confirms receives on its own cadence. That flag is
+already `Chain::pending_status_poll`'s `require_send_kind`, so core reads it
+rather than taking it — the same fact that decides whether the Recheck button
+appears.
+
+`StalePendingFailureTransactionInput` no longer crosses the boundary; its
+`uniffi::Record` derive is gone.
+
+*Two private copies of one constant, found on the way.*
+`SWIFT_REFERENCE_EPOCH_OFFSET_SECS = 978_307_200.0` was defined in both
+`fetch/transactions.rs` and `store/wallet_db.rs`, each `const` and private, and
+needed a third time here. It now sits once in `persistence_models.rs`, beside
+the doc comment that explains why `created_at` is on the Swift reference date
+at all.
+
+*The test had to change shape, which is the point.* It used to hand the service
+a synthetic input list. It now opens a store, writes a pending send, and asserts
+the same rule — age alone is not failure — plus that another chain's sweep does
+not pick it up. A test that could still pass a list would no longer be
+exercising the path the app takes.
+
+**Three history questions, one fetch each, asking about the same response.**
+
+`fetch_history_has_activity`, `fetch_history_entry_count` and
+`fetch_history_confirmed_txids` each ran the same `fetch_history` and applied a
+different projection to the result — and the first was `entry_count > 0`, so it
+could have been computed by any caller holding the second. No caller wanted two
+of them at once, so this was surface area rather than a duplicated round trip,
+but it is the shape C2 means by "seventeen questions".
+
+Now one `fetch_history_summary`. It does not compute anything new:
+`diagnostics_history_summary(json) -> HistorySummary { entry_count,
+confirmed_txids }` already existed in `diagnostics/aggregate.rs`, exported and
+unused by this path. **A first attempt defined a `HistorySummary` record in
+`service/network.rs` with the same two fields and failed to compile on a
+duplicate UniFFI symbol** — the boundary caught a duplicate a person had just
+written, which is the one place in this codebase where that happens
+automatically.
+
+Exports **189 → 187**; the three `WalletServiceBridge` wrappers became one.
+
+*A note on the machine this runs on.* The iOS suite failed mid-slice with
+`lipo: No space left on device`. `target/debug` had reached 111 GB across
+hundreds of builds this session — 98 GB of `deps` and 16 GB of rustc
+incremental cache. Deleting `target/debug/incremental` freed 13 GB and cost
+nothing but a slower next build. Worth knowing before a long session: the three
+gates are cheap in time and expensive in disk.
+
+**416 lines of comment removed**416 lines of comment removed: changelog entries, banners that named the
 function below them, and doc comments that restated a signature.**
 
 Three kinds, found by three sweeps.
@@ -2671,7 +3133,7 @@ Measured, not estimated:
 
 | | Start | Now |
 |---|---|---|
-| Exported functions and methods | 234 | **189** |
+| Exported functions and methods | 234 | **185** |
 | Largest file in `core/` | `service.rs`, 4,781 lines | `store/tests.rs`, 2,501 |
 | `service.rs` | 4,781 lines, 90 functions | **nine modules, largest 1,359** |
 | Chain tables | two — `chains.rs` (TOML) and `registry.rs` (enum) | **one** |
@@ -4416,17 +4878,17 @@ Not by feel. These four numbers, checked at the end of each stage:
 | Metric | Start | Now | Target |
 |---|---|---|---|
 | `core_plan_*` exports | 42 | **0** | 0 |
-| Swift root lines vs `views/` | 19,766 vs 11,113 | 15,033 vs 11,194 | inverted |
+| Swift root lines vs `views/` | 19,766 vs 11,113 | 14,457 vs 11,120 | inverted |
 | Domain collections stored on `AppState` | 3 | 0 | 0 |
 | Domain settings owned by core | 0 | **21 fields; 4 left on iOS on purpose** | all |
 | Wallet operations reachable from the CLI | partial | **all** | all |
 | CLI commands drivable without a TTY | 0 of 24 | all (25 now) | all |
-| Exported functions and methods | 234 | **189** (105 free + 84 methods) | ~60 (see C2) |
+| Exported functions and methods | 234 | **185** (103 free + 82 methods) | ~60 (see C2) |
 | Largest file in `core/` | 4,781 | 2,501 | — |
 
 The last row is new, and it is the one that makes the others checkable. Every
 earlier "proven by the CLI" claim in this document was proven by a person typing
-into a prompt. `scripts/cli-acceptance.sh` replaces that with 140 assertions on
+into a prompt. `scripts/cli-acceptance.sh` replaces that with 144 assertions on
 exit codes and JSON, over a scratch data directory and with no network.
 
 *What it still cannot see.* The CLI drives core from inside its own Tokio

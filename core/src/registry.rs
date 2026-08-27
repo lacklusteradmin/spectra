@@ -828,7 +828,12 @@ impl Chain {
                 fee_field: SendFeeField::None,
                 fee_fallback: 0.0,
             },
-            Chain::BitcoinCash | Chain::BitcoinSV => SendExecutionShape {
+            // Bitcoin was missing from a table whose own comment says the
+            // UTXO chains are 8, because the ten call sites it was transcribed
+            // from did not include Bitcoin's — Bitcoin has an arm of its own.
+            // It fell to the default 6, which truncates a satoshi-denominated
+            // fee by two digits.
+            Chain::Bitcoin | Chain::BitcoinCash | Chain::BitcoinSV => SendExecutionShape {
                 fee_decimals: 8,
                 supports_private_key: false,
                 fee_field: SendFeeField::FeeSats,
@@ -839,6 +844,13 @@ impl Chain {
                 supports_private_key: false,
                 fee_field: SendFeeField::FeeSats,
                 fee_fallback: 0.0001,
+            },
+            // e8s, like the UTXO chains. Same omission, same cause.
+            Chain::Icp => SendExecutionShape {
+                fee_decimals: 8,
+                supports_private_key: true,
+                fee_field: SendFeeField::None,
+                fee_fallback: 0.0,
             },
             _ => SendExecutionShape {
                 fee_decimals: 6,
@@ -1291,65 +1303,10 @@ pub struct NetworkChoice {
     pub is_testnet: bool,
 }
 
-/// The `kind` string `validate_address` judges this chain's addresses by.
-///
-/// Exported so a front end asks the registry instead of keeping its own
-/// mode-to-kind table — Bitcoin had one, mapping four network modes onto four
-/// kind strings the registry already assigns per chain.
-/// Not exported: a column of `core_chain_identities` now.
-pub fn core_address_validation_kind(chain_id: String) -> String {
-    Chain::from_str_id(&chain_id)
-        .map(|c| c.address_validation_kind().to_string())
-        .unwrap_or_default()
-}
 
-/// What a front end needs to assemble a send for this chain.
-/// Not exported: a column of `core_chain_identities` now.
-pub fn core_send_execution_shape(chain_name: String) -> SendExecutionShape {
-    Chain::from_display_name(&chain_name)
-        .map(Chain::send_execution_shape)
-        .unwrap_or(SendExecutionShape {
-            fee_decimals: 6,
-            supports_private_key: false,
-            fee_field: SendFeeField::None,
-            fee_fallback: 0.0,
-        })
-}
 
-/// How a chain's pending transactions reach a final status.
-/// Not exported: a column of `core_chain_identities` now.
-pub fn core_pending_status_poll(chain_name: String) -> PendingStatusPoll {
-    Chain::from_display_name(&chain_name)
-        .map(Chain::pending_status_poll)
-        .unwrap_or(PendingStatusPoll::None)
-}
 
-/// A chain's display name, from its registry id.
-/// Not exported: a column of `core_chain_identities` now.
-pub fn core_chain_display_name(chain_id: String) -> String {
-    Chain::from_str_id(&chain_id)
-        .map(|c| c.chain_display_name().to_string())
-        .unwrap_or(chain_id)
-}
 
-/// The networks available for a chain's family, mainnet first.
-///
-/// A front end enumerating these itself is how the mode enums came to exist.
-/// Not exported: a column of `core_chain_identities` now.
-pub fn core_network_choices(chain_id: String) -> Vec<NetworkChoice> {
-    let Some(chain) = Chain::from_str_id(&chain_id) else {
-        return Vec::new();
-    };
-    chain
-        .network_choices()
-        .into_iter()
-        .map(|c| NetworkChoice {
-            chain_id: c.str_id().to_string(),
-            title: c.chain_display_name().to_string(),
-            is_testnet: c.is_testnet(),
-        })
-        .collect()
-}
 
 /// The record shape a chain's history diagnostics use.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, uniffi::Enum)]
@@ -1725,11 +1682,6 @@ pub fn core_chain_identities() -> Vec<ChainIdentity> {
         .collect()
 }
 
-/// Resolve a display name to the chain's string id. Returns `None` for unknown names.
-/// Not exported: a column of `core_chain_identities` now.
-pub fn core_chain_str_id_for_name(name: String) -> Option<String> {
-    Chain::from_display_name(&name).map(|c| c.str_id().to_string())
-}
 
 /// Endpoint-table key for a given chain + slot combination.
 #[uniffi::export]
@@ -1883,4 +1835,26 @@ mod catalog_agreement_tests {
 }
 
 
+
+
+
+#[cfg(test)]
+mod fee_decimals_match_the_asset {
+    /// A fee is shown and validated at the asset's own precision.
+    ///
+    /// Bitcoin and Internet Computer fell to the default six while the send
+    /// sheet formatted them at eight: satoshis and e8s both need eight, and a
+    /// six-decimal fee drops the last two digits.
+    #[test]
+    fn utxo_and_e8s_chains_use_eight() {
+        for name in ["Bitcoin", "Bitcoin Cash", "Bitcoin SV", "Litecoin", "Internet Computer"] {
+            let c = super::Chain::from_display_name(name).unwrap();
+            assert_eq!(c.send_execution_shape().fee_decimals, 8, "{name}");
+        }
+        assert_eq!(
+            super::Chain::Stellar.send_execution_shape().fee_decimals,
+            7
+        );
+    }
+}
 

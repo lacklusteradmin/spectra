@@ -24,6 +24,8 @@ struct TomlChain {
     search_keywords: Vec<String>,
     category: String,
     is_evm: bool,
+    #[serde(default)]
+    address_prefix_hint: String,
     color: String,
     asset_name: String,
     token_standard: String,
@@ -66,6 +68,12 @@ pub struct ChainEntry {
     pub id: String,
     pub name: String,
     pub symbol: String,
+    /// A terse example of what an address on this chain looks like, or empty.
+    ///
+    /// Two Swift tables held this: a fourteen-arm switch of format examples
+    /// and an eleven-entry dictionary of sentences built around them. It is a
+    /// fact about the chain, so it is a catalog column.
+    pub address_prefix_hint: String,
     pub gas_token_symbol: String,
     pub search_keywords: Vec<String>,
     pub category: String,
@@ -110,6 +118,7 @@ static CATALOG: LazyLock<Vec<ChainEntry>> = LazyLock::new(|| {
             id: c.id,
             name: c.name,
             symbol: c.symbol,
+            address_prefix_hint: c.address_prefix_hint,
             gas_token_symbol: c.gas_token_symbol,
             search_keywords: c.search_keywords,
             category: c.category,

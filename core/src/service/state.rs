@@ -987,10 +987,27 @@ impl WalletService {
 
     /// Pending transactions old enough, and failing often enough, to be treated
     /// as failed. Failure counts come from core's own trackers.
-    pub async fn stale_pending_failure_ids(
+    /// Sends on `chain_name` that have been pending too long and failed to
+    /// resolve often enough to call it.
+    ///
+    /// The chain is a parameter because the sweep is per chain: reading every
+    /// transaction here would mark sends on chains the caller was not polling.
+    pub(crate) async fn stale_pending_failure_ids(
         &self,
-        transactions: Vec<crate::store::StalePendingFailureTransactionInput>,
-    ) -> Vec<String> {
+        chain_name: String,
+    ) -> Result<Vec<String>, SpectraBridgeError> {
+        use crate::store::wallet_domain::CoreTransactionKind::Send;
+        // Whether receives count is `Chain::pending_status_poll`'s
+        // `require_send_kind` — Litecoin's explorer confirms receives on its
+        // own cadence, so its sweep tracks them too.
+        let require_send_kind = crate::registry::Chain::from_display_name(&chain_name)
+            .map(|chain| match chain.pending_status_poll() {
+                crate::registry::PendingStatusPoll::Utxo {
+                    require_send_kind, ..
+                } => require_send_kind,
+                _ => true,
+            })
+            .unwrap_or(true);
         let failures: HashMap<String, u32> = self
             .status_trackers
             .read()
@@ -998,28 +1015,148 @@ impl WalletService {
             .iter()
             .map(|(id, tracker)| (id.clone(), tracker.consecutive_failures))
             .collect();
-        crate::store::plan_stale_pending_failure_ids(
-            transactions,
+        let inputs: Vec<crate::store::StalePendingFailureTransactionInput> = self
+            .transactions()
+            .await?
+            .into_iter()
+            .filter(|t| t.chain_name == chain_name && (!require_send_kind || t.kind == Send))
+            .map(|t| crate::store::StalePendingFailureTransactionInput {
+                id: t.id,
+                created_at_unix: t.created_at + crate::store::persistence_models::SWIFT_REFERENCE_EPOCH_OFFSET_SECS,
+                status_is_pending: t.status
+                    == Some(crate::store::wallet_domain::CoreTransactionStatus::Pending),
+            })
+            .collect();
+        Ok(crate::store::plan_stale_pending_failure_ids(
+            inputs,
             &failures,
             crate::store::wallet_db::now_secs() as f64,
             TransactionStatusPollConfig::default(),
-        )
+        ))
     }
 
     /// Decide what each resolved pending transaction becomes, advancing the
     /// confirmation trackers as a side effect.
-    pub async fn apply_resolved_pending_transaction_statuses(
+    /// Apply one chain's resolved statuses, store the results, and report
+    /// what changed.
+    ///
+    /// The caller used to send core an input per transaction built from its own
+    /// projection — old status, old failure reason, old confirmations — take
+    /// back a decision per transaction, apply it to build new records, and
+    /// upsert those into core. Every value in that round trip except the
+    /// resolutions came from the store it ended up back in.
+    ///
+    /// A transaction given up on stores `FAILURE_REASON_STUCK`, a code. The
+    /// text a user reads is localized at render — a localized string written
+    /// into the database keeps its language when the user changes theirs.
+    pub async fn apply_resolved_pending_statuses(
         &self,
-        inputs: Vec<crate::store::ResolvedPendingTransactionInput>,
-    ) -> Vec<crate::store::ResolvedPendingTransactionDecision> {
+        chain_name: String,
+        resolutions: Vec<crate::store::ResolvedPendingStatus>,
+    ) -> Result<Vec<crate::store::TransactionStatusChange>, SpectraBridgeError> {
+        use super::history_derived::{parse_status, status_string};
+        let stale: std::collections::HashSet<String> = self
+            .stale_pending_failure_ids(chain_name.clone())
+            .await?
+            .into_iter()
+            .collect();
+        let by_id: HashMap<String, crate::store::ResolvedPendingStatus> = resolutions
+            .into_iter()
+            .map(|r| (r.id.clone(), r))
+            .collect();
+        if by_id.is_empty() && stale.is_empty() {
+            return Ok(Vec::new());
+        }
+
+        let stored: Vec<_> = self
+            .transactions()
+            .await?
+            .into_iter()
+            .filter(|t| t.chain_name == chain_name && (by_id.contains_key(&t.id) || stale.contains(&t.id)))
+            .collect();
+
+        let inputs: Vec<crate::store::ResolvedPendingTransactionInput> = stored
+            .iter()
+            .map(|t| crate::store::ResolvedPendingTransactionInput {
+                id: t.id.clone(),
+                old_status: status_string(t.status),
+                old_failure_reason: t.failure_reason.clone(),
+                old_confirmations: t.confirmation_count.map(|c| c.max(0) as u32),
+                resolution: by_id.get(&t.id).map(|r| crate::store::ResolvedPendingStatusInput {
+                    status: r.status.clone(),
+                    confirmations: r.confirmations,
+                }),
+                is_stale_failure: stale.contains(&t.id),
+            })
+            .collect();
+
         let now_unix = crate::store::wallet_db::now_secs() as f64;
-        let mut trackers = self.status_trackers.write().await;
-        crate::store::plan_apply_resolved_pending_transaction_statuses(
-            inputs,
-            &mut trackers,
-            now_unix,
-            TransactionStatusPollConfig::default(),
-        )
+        let decisions = {
+            let mut trackers = self.status_trackers.write().await;
+            crate::store::plan_apply_resolved_pending_transaction_statuses(
+                inputs,
+                &mut trackers,
+                now_unix,
+                TransactionStatusPollConfig::default(),
+            )
+        };
+
+        let stored_by_id: HashMap<&str, &crate::store::persistence_models::CorePersistedTransactionRecord> =
+            stored.iter().map(|t| (t.id.as_str(), t)).collect();
+        let mut writes = Vec::new();
+        let mut changes = Vec::new();
+        for decision in decisions {
+            let Some(old) = stored_by_id.get(decision.id.as_str()).copied() else {
+                continue;
+            };
+            let Some(new_status) = parse_status(&decision.new_status) else {
+                continue;
+            };
+            let resolution = by_id.get(&decision.id);
+            let mut updated = old.clone();
+            updated.status = Some(new_status);
+            updated.failure_reason = match decision.failure_reason_disposition {
+                crate::store::FailureReasonDisposition::None => None,
+                crate::store::FailureReasonDisposition::Preserve => old.failure_reason.clone(),
+                crate::store::FailureReasonDisposition::LocalizedFallback => {
+                    Some(crate::store::FAILURE_REASON_STUCK.to_string())
+                }
+            };
+            if let Some(r) = resolution {
+                if let Some(block) = r.receipt_block_number {
+                    updated.receipt_block_number = Some(block);
+                }
+                if let Some(c) = r.confirmations {
+                    updated.confirmation_count = Some(i64::from(c));
+                }
+                if let Some(fee) = r.dogecoin_network_fee_doge {
+                    updated.dogecoin_confirmed_network_fee_doge = Some(fee);
+                }
+            }
+            changes.push(crate::store::TransactionStatusChange {
+                id: decision.id.clone(),
+                chain_name: updated.chain_name.clone(),
+                transaction_hash: updated.transaction_hash.clone(),
+                old_status: status_string(old.status),
+                new_status: decision.new_status.clone(),
+                status_changed: decision.status_changed,
+                send_status_notification: decision.send_status_notification,
+                emit_event_code: decision.emit_event_code.clone(),
+                reached_finality_confirmations: decision.reached_finality_confirmations,
+            });
+            writes.push(crate::wallet_db::HistoryRecord {
+                id: updated.id.clone(),
+                wallet_id: updated.wallet_id.clone(),
+                chain_name: updated.chain_name.clone(),
+                tx_hash: updated.transaction_hash.clone(),
+                created_at: updated.created_at,
+                payload: updated,
+            });
+        }
+        if !writes.is_empty() {
+            self.upsert_history_records(writes).await?;
+        }
+        Ok(changes)
     }
 
     /// Import wallets: plan them, build them, and store them.
@@ -1039,6 +1176,30 @@ impl WalletService {
         // address core derived itself and skipped the path where the user
         // typed it.
         let mut commit = commit;
+        // Derive here when the caller did not. Both front ends used to derive
+        // first and hand the result over; the CLI could only do one chain, so
+        // the multi-chain rule — every EVM chain derives from Ethereum's path
+        // — existed on the iOS side alone.
+        if commit.request.resolved_addresses.by_slot.is_empty()
+            && !commit.request.is_watch_only_import
+            && !commit.request.is_private_key_import
+        {
+            if let Some(seed) = commit.seed_phrase.clone().filter(|s| !s.trim().is_empty()) {
+                let derived = crate::derivation::import::derive_import_addresses(
+                    &seed,
+                    &commit.request.selected_chain_names,
+                    &commit.seed_derivation_paths,
+                    &commit.derivation_overrides,
+                );
+                commit.request.resolved_addresses.by_slot = derived
+                    .into_iter()
+                    .filter_map(|(chain_name, address)| {
+                        crate::registry::Chain::from_display_name(&chain_name)
+                            .map(|chain| (chain.address_slot().to_string(), address))
+                    })
+                    .collect();
+            }
+        }
         // The two inputs carry addresses of different provenance, so they are
         // judged against different networks.
         //

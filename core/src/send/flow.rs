@@ -997,11 +997,6 @@ pub fn seed_derivation_chain_raw(chain: crate::registry::Chain) -> Option<String
     Some(raw.to_string())
 }
 
-/// Not exported: a column of `core_chain_identities` now.
-pub fn core_supports_deep_utxo_discovery(chain_name: String) -> bool {
-    crate::registry::Chain::from_display_name(&chain_name)
-        .is_some_and(|c| c.supports_deep_utxo_discovery())
-}
 
 // Routes `(symbol, chain_name, is_evm_chain)` to the resolver that produces the
 // receive address for that combination.

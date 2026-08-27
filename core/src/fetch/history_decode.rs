@@ -354,13 +354,13 @@ pub fn plan_evm_transaction_records(
 // ────────────────────────────────────────────────────────────────────
 
 #[derive(Debug, Clone, uniffi::Record)]
-pub struct DogecoinAggregateInput {
+pub struct MultiAddressAggregateInput {
     pub own_addresses: Vec<String>,
     pub entries: Vec<NormalizedHistoryItem>,
 }
 
 #[derive(Debug, Clone, uniffi::Record)]
-pub struct DogecoinAggregatedTx {
+pub struct AggregatedTransaction {
     pub hash: String,
     pub kind: String,
     pub status: String,
@@ -371,8 +371,16 @@ pub struct DogecoinAggregatedTx {
     pub created_at_unix: f64,
 }
 
+/// Net a wallet's own addresses together into one record per transaction.
+///
+/// A UTXO transaction can touch several of a wallet's addresses; without this
+/// it appears once per address, with each leg's amount instead of the net.
+/// Nothing here is chain-specific — it groups `NormalizedHistoryItem` by hash
+/// and signs each leg against `own_addresses` — but it was named
+/// `history_aggregate_dogecoin` and called only by Dogecoin's refresh, so
+/// Litecoin, Bitcoin Cash and Bitcoin SV went down the single-address path.
 #[uniffi::export]
-pub fn history_aggregate_dogecoin(input: DogecoinAggregateInput) -> Vec<DogecoinAggregatedTx> {
+pub fn history_aggregate_by_transaction(input: MultiAddressAggregateInput) -> Vec<AggregatedTransaction> {
     use std::collections::HashMap;
     let own: std::collections::HashSet<String> = input
         .own_addresses
@@ -436,7 +444,7 @@ pub fn history_aggregate_dogecoin(input: DogecoinAggregateInput) -> Vec<Dogecoin
                 !trimmed.is_empty() && !own.contains(&c.to_lowercase())
             })
             .unwrap_or_else(|| first.counterparty.clone());
-        out.push(DogecoinAggregatedTx {
+        out.push(AggregatedTransaction {
             hash: first.tx_hash.clone(),
             kind: kind.into(),
             status: status.into(),
@@ -710,7 +718,7 @@ mod tests {
                 block_height: Some(100),
                 timestamp: ts,
             };
-        let out = history_aggregate_dogecoin(DogecoinAggregateInput {
+        let out = history_aggregate_by_transaction(MultiAddressAggregateInput {
             own_addresses: vec!["Own1".into()],
             entries: vec![
                 entry("receive", 10.0, "External", 1700000000.0, "confirmed"),
@@ -755,5 +763,41 @@ mod tests {
             );
         }
         assert_eq!(history_pagination_chain_id("Nope".into()), None);
+    }
+}
+
+#[cfg(test)]
+mod aggregation_is_not_chain_specific {
+    use super::*;
+
+    /// One record per transaction, netted across the wallet's own addresses.
+    ///
+    /// This was `history_aggregate_dogecoin` and Dogecoin's refresh was its
+    /// only caller, so Litecoin, Bitcoin Cash and Bitcoin SV — which also walk
+    /// many addresses — went down the single-address path and only ever had
+    /// their first address's history fetched. Nothing in the body was ever
+    /// about Dogecoin.
+    #[test]
+    fn two_legs_of_one_transaction_become_one_record() {
+        let leg = |addr: &str, kind: &str, amount: f64| NormalizedHistoryItem {
+            kind: kind.to_string(),
+            status: "confirmed".to_string(),
+            asset_name: "Litecoin".to_string(),
+            symbol: "LTC".to_string(),
+            chain_name: "Litecoin".to_string(),
+            amount,
+            counterparty: addr.to_string(),
+            tx_hash: "abc".to_string(),
+            block_height: Some(10),
+            timestamp: 1_700_000_000.0,
+        };
+        let out = history_aggregate_by_transaction(MultiAddressAggregateInput {
+            own_addresses: vec!["ltc1own".into(), "ltc1change".into()],
+            entries: vec![leg("ltc1own", "send", 5.0), leg("ltc1change", "receive", 2.0)],
+        });
+        assert_eq!(out.len(), 1, "one transaction, one record");
+        assert_eq!(out[0].hash, "abc");
+        // Net of the legs: 5 out, 2 back as change.
+        assert!((out[0].amount - 3.0).abs() < 1e-9, "amount was {}", out[0].amount);
     }
 }

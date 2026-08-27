@@ -127,13 +127,23 @@ fn kind_string(kind: CoreTransactionKind) -> String {
     .to_string()
 }
 
-fn status_string(status: Option<CoreTransactionStatus>) -> String {
+pub(crate) fn status_string(status: Option<CoreTransactionStatus>) -> String {
     match status {
         Some(CoreTransactionStatus::Pending) | None => "pending",
         Some(CoreTransactionStatus::Confirmed) => "confirmed",
         Some(CoreTransactionStatus::Failed) => "failed",
     }
     .to_string()
+}
+
+/// The inverse of `status_string`, for reading a decision back.
+pub(crate) fn parse_status(raw: &str) -> Option<CoreTransactionStatus> {
+    match raw {
+        "pending" => Some(CoreTransactionStatus::Pending),
+        "confirmed" => Some(CoreTransactionStatus::Confirmed),
+        "failed" => Some(CoreTransactionStatus::Failed),
+        _ => None,
+    }
 }
 
 #[cfg(test)]

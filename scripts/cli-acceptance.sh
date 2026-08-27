@@ -121,6 +121,21 @@ check "imports a known mnemonic"            $OK \
 contains "derives the documented address for that mnemonic" \
     "BLeUXTx9thHGT7VJUtF9vHEmfMDgW1nnKZ9UVer2CoLX" \
     spectra --json wallet show "Acceptance SOL"
+# One seed, several chains, in one command. `--chain` could only be given once
+# because the CLI derived the address itself before handing it to
+# `import_wallets`; core derives them now, so the multi-chain rule — every EVM
+# chain derives from Ethereum's path — lives with the registry rather than in
+# whichever front end happened to import more than one chain.
+check "imports one seed across three chains" $OK \
+    with_seed "legal winner thank year wave sausage worth useful legal winner thank yellow" \
+    spectra wallet import --chain Bitcoin --chain Ethereum --chain Solana --name "Multi"
+contains "and derives each chain's own address" \
+    "BLeUXTx9thHGT7VJUtF9vHEmfMDgW1nnKZ9UVer2CoLX" \
+    spectra --json wallet show "Multi 3"
+contains "the Bitcoin one too"                "bc1qgkju4yvvtuz0s8vqn837q396jezu2h8ex7gk98" \
+    spectra --json wallet show "Multi 1"
+check "but `new` still takes exactly one"   $USAGE \
+    spectra wallet new --chain Bitcoin --chain Ethereum --name Two
 check "refuses a mnemonic that fails its checksum" $REJECTED \
     with_seed "not a real seed phrase at all here" \
     spectra wallet import --chain Solana --name Bad
