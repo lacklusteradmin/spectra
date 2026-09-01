@@ -675,7 +675,7 @@ impl WalletService {
     /// Fold this build's built-in token catalog into the stored preferences
     /// and keep the result.
     ///
-    /// A user's `is_enabled` and `display_decimals` survive; tokens the build
+    /// A user's `is_enabled` survives; tokens the build
     /// added appear; tokens the user added stay. The caller used to fetch the
     /// catalog from core, reshape it, send both lists back for merging and
     /// assign the answer — core owns both sides, so it does all of it.
@@ -1623,7 +1623,7 @@ impl WalletService {
     }
 
     /// A stand-in coin for a pinned symbol the user holds none of: a holding
-    /// if one exists at zero, else a tracked token, else nothing.
+    /// if one exists at zero, else a known token, else nothing.
     async fn pinned_prototype(
         &self,
         symbol: &str,

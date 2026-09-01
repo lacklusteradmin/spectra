@@ -407,9 +407,9 @@ pub enum SimpleChain {
 
 pub fn build_evm_send_preview_record(
     input: crate::ethereum_send::EvmPreviewDecodeInput,
-) -> Option<crate::wallet_core::EthereumSendPreview> {
+) -> Option<crate::wallet_core::EvmSendPreview> {
     let d = crate::ethereum_send::decode_evm_send_preview(input)?;
-    Some(crate::wallet_core::EthereumSendPreview {
+    Some(crate::wallet_core::EvmSendPreview {
         nonce: d.nonce,
         gasLimit: d.gas_limit,
         maxFeePerGasGwei: d.max_fee_per_gas_gwei,

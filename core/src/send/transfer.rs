@@ -32,7 +32,7 @@ pub(crate) fn can_send_coin(
     let Some(chain) = crate::registry::Chain::from_display_name(&coin.chain_name) else {
         return true;
     };
-    let is_tracked_token = || {
+    let is_known_token = || {
         token_preferences.iter().any(|entry| {
             entry.is_enabled
                 && entry.symbol == coin.symbol
@@ -47,9 +47,9 @@ pub(crate) fn can_send_coin(
         SendRule::Any => true,
         SendRule::NativeOnly => coin.symbol == chain.coin_symbol(),
         SendRule::NativeOrSupportedToken => {
-            coin.symbol == chain.coin_symbol() || is_tracked_token()
+            coin.symbol == chain.coin_symbol() || is_known_token()
         }
-        SendRule::SupportedSolanaCoin => coin.symbol == chain.coin_symbol() || is_tracked_token(),
+        SendRule::SupportedSolanaCoin => coin.symbol == chain.coin_symbol() || is_known_token(),
     }
 }
 // ── FFI surface ─────────────────────────────────────────────────────────────

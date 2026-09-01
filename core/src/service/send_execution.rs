@@ -64,7 +64,8 @@ impl WalletService {
             // 2. Build payload JSON and route to sign_and_send or sign_and_send_token.
             let is_token = request.contract_address.is_some();
             let params_json =
-                self.build_execute_send_payload(&request, priv_hex.as_str(), &pub_hex)?;
+                self.build_execute_send_payload(&request, priv_hex.as_str(), &pub_hex)
+                    .await?;
 
             let result_json = if is_token {
                 self.sign_and_send_token(&request.chain_id, params_json)
@@ -114,7 +115,30 @@ impl WalletService {
 }
 
 impl WalletService {
-    fn build_execute_send_payload(
+    /// What the contract says its token is denominated in, or `None` when the
+    /// family does not expose it or the node will not answer.
+    async fn token_contract_decimals(&self, chain: Chain, contract: &str) -> Option<u32> {
+        let endpoints = self.endpoints_for(chain.str_id()).await;
+        if chain.is_evm() {
+            let client = crate::fetch::chains::evm::EvmClient::new(endpoints, chain.evm_chain_id());
+            return client
+                .fetch_erc20_metadata(contract)
+                .await
+                .ok()
+                .map(|m| u32::from(m.decimals));
+        }
+        if chain == Chain::Tron {
+            let client = crate::fetch::chains::tron::TronClient::new(endpoints);
+            return client
+                .fetch_trc20_metadata(contract)
+                .await
+                .ok()
+                .map(|m| u32::from(m.decimals));
+        }
+        None
+    }
+
+    async fn build_execute_send_payload(
         &self,
         req: &crate::send::SendExecutionRequest,
         priv_hex: &str,
@@ -153,7 +177,26 @@ impl WalletService {
         // internally; parse to `Value` on exit so `sign_and_send` receives the
         // same typed representation as the legacy path.
         let json_string: String = if let Some(ref contract) = req.contract_address {
-            let decimals = req.token_decimals.unwrap_or(6);
+            // The contract's own `decimals`, read before signing.
+            //
+            // This was `req.token_decimals.unwrap_or(6)` — a caller that did
+            // not supply the count got a transfer denominated at six places
+            // whatever the contract says, and a caller that supplied a stale
+            // one was believed. Both are the same mistake the Tron send arm
+            // made one layer up, and the cost of not making it is one constant
+            // call on a path that is about to move funds.
+            //
+            // The caller's value is the fallback for a family that does not
+            // expose the count, and for a node that will not answer.
+            let decimals = self
+                .token_contract_decimals(chain, contract)
+                .await
+                .or(req.token_decimals)
+                .ok_or_else(|| {
+                    SpectraBridgeError::from(format!(
+                        "execute_send: {contract} did not report its decimals and none were supplied"
+                    ))
+                })?;
             match chain {
                 c if c.is_evm() => {
                     let amount_raw = to_raw(decimals);
@@ -408,5 +451,45 @@ impl WalletService {
             }
         };
         serde_json::from_str(&json_string).map_err(Into::into)
+    }
+}
+
+#[cfg(test)]
+mod token_decimals_come_from_the_contract {
+    use crate::registry::Chain;
+    use crate::service::WalletService;
+
+    /// Which families core can ask, and which still take the caller's word.
+    ///
+    /// `build_execute_send_payload` used `req.token_decimals.unwrap_or(6)`, so
+    /// a caller that supplied nothing denominated its transfer at six places
+    /// whatever the contract said. It reads `decimals()` off the token now,
+    /// and the caller's value is only a fallback.
+    ///
+    /// This asserts the gate, not the network read: a chain the helper has no
+    /// client for must answer `None` without attempting a call, which is what
+    /// keeps the fallback reachable for Solana, TON, Sui, Aptos and NEAR.
+    #[tokio::test]
+    async fn a_family_core_cannot_ask_falls_back_to_the_caller() {
+        let service = WalletService::new_typed(Vec::new()).expect("service");
+        for chain in [Chain::Solana, Chain::Ton, Chain::Sui, Chain::Aptos, Chain::Near] {
+            assert_eq!(
+                service.token_contract_decimals(chain, "whatever").await,
+                None,
+                "{} has no metadata client, so the caller's value must stand",
+                chain.chain_display_name()
+            );
+        }
+    }
+
+    /// The families that are asked are the ones with a metadata call.
+    #[test]
+    fn the_families_core_asks_are_evm_and_tron() {
+        let asks: Vec<_> = Chain::all()
+            .filter(|c| !c.is_testnet() && (c.is_evm() || *c == Chain::Tron))
+            .collect();
+        assert!(asks.len() >= 24, "expected the EVM family plus Tron, got {}", asks.len());
+        assert!(asks.contains(&Chain::Tron));
+        assert!(asks.contains(&Chain::Ethereum));
     }
 }

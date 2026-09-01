@@ -377,7 +377,7 @@ impl Default for CoreAppState {
 
 /// Most tokens use 18 or fewer; the ceiling exists to stop a typo from
 /// producing an unrenderable amount.
-const MAX_TOKEN_DECIMALS: i32 = 30;
+pub(crate) const MAX_TOKEN_DECIMALS: i32 = 30;
 
 /// One settings field, and its new value.
 ///
@@ -821,11 +821,6 @@ pub fn reduce_state_in_place(state: &mut CoreAppState, command: StateCommand) ->
                 .into_iter()
                 .map(|mut entry| {
                     entry.decimals = entry.decimals.clamp(0, MAX_TOKEN_DECIMALS);
-                    // Displaying more places than the token has is meaningless,
-                    // and negative places are not a thing.
-                    entry.display_decimals = entry
-                        .display_decimals
-                        .map(|display| display.clamp(0, entry.decimals));
                     entry
                 })
                 .collect();

@@ -36,10 +36,21 @@ pub struct TokenDescriptor {
 #[derive(Debug, Clone, uniffi::Record)]
 pub struct TokenBalanceResult {
     pub contract_address: String,
+    /// The catalog's symbol, or empty when the catalog does not know this
+    /// contract.
+    ///
+    /// Empty is the anti-phishing property, not an omission: a discovered
+    /// token's on-chain name and symbol are written by whoever deployed it, so
+    /// rendering them would let an airdrop call itself "USDC". A front end
+    /// showing the contract address instead is showing the one thing the
+    /// attacker cannot forge.
     pub symbol: String,
     pub decimals: u8,
     pub balance_raw: String,
     pub balance_display: String,
+    /// The catalog has an entry for this contract. False for anything found by
+    /// discovery that nobody has vouched for.
+    pub is_known: bool,
 }
 
 /// Unified per-chain native balance projection used by `fetch_native_balance_summary`.

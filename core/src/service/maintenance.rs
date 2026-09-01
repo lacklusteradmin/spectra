@@ -278,7 +278,7 @@ impl WalletService {
     }
 }
 
-/// The tracked EVM token a holding is, as `(symbol, contract)`.
+/// The known EVM token a holding is, as `(symbol, contract)`.
 ///
 /// `None` for a chain's own gas asset — a chain's native asset is never one of
 /// its tokens — and for a token the user does not track.
@@ -286,17 +286,17 @@ fn supported_evm_token(
     holding: &crate::store::state::AssetHolding,
     preferences: &[crate::store::wallet_domain::CoreTokenPreferenceEntry],
 ) -> Option<(String, String)> {
-    use crate::store::wallet_domain::CoreTokenTrackingChain;
+    use crate::store::wallet_domain::CoreTokenHostingChain;
     let chain = crate::registry::Chain::from_display_name(&holding.chain_name)?;
     if !chain.is_evm() || chain.entry().gas_token_symbol == holding.symbol {
         return None;
     }
-    let tracking = CoreTokenTrackingChain::from_chain_name(&holding.chain_name)?;
+    let hosting = CoreTokenHostingChain::from_chain_name(&holding.chain_name)?;
     let contract = holding.contract_address.as_deref().map(str::to_lowercase);
     preferences
         .iter()
         .find(|entry| {
-            entry.chain == tracking
+            entry.chain == hosting
                 && entry.is_enabled
                 && entry.symbol == holding.symbol
                 && contract
@@ -330,14 +330,14 @@ fn supports_solana_send(
     holding: &crate::store::state::AssetHolding,
     preferences: &[crate::store::wallet_domain::CoreTokenPreferenceEntry],
 ) -> bool {
-    use crate::store::wallet_domain::CoreTokenTrackingChain;
+    use crate::store::wallet_domain::CoreTokenHostingChain;
     if holding.chain_name != "Solana" {
         return false;
     }
     if holding.symbol == "SOL" {
         return true;
     }
-    if holding.token_standard != token_standard_for(CoreTokenTrackingChain::Solana) {
+    if holding.token_standard != token_standard_for(CoreTokenHostingChain::Solana) {
         return false;
     }
     let Some(mint) = holding
@@ -357,7 +357,7 @@ fn supports_solana_send(
     };
     preferences
         .iter()
-        .any(|entry| entry.chain == CoreTokenTrackingChain::Solana && entry.contract_address == mint)
+        .any(|entry| entry.chain == CoreTokenHostingChain::Solana && entry.contract_address == mint)
 }
 
 /// Whether a NEAR holding is a token this build can send. NEAR itself is not:
@@ -366,24 +366,24 @@ fn supports_near_token_send(
     holding: &crate::store::state::AssetHolding,
     preferences: &[crate::store::wallet_domain::CoreTokenPreferenceEntry],
 ) -> bool {
-    use crate::store::wallet_domain::CoreTokenTrackingChain;
+    use crate::store::wallet_domain::CoreTokenHostingChain;
     if holding.chain_name != "NEAR" || holding.symbol == "NEAR" {
         return false;
     }
-    if holding.token_standard != token_standard_for(CoreTokenTrackingChain::Near) {
+    if holding.token_standard != token_standard_for(CoreTokenHostingChain::Near) {
         return false;
     }
     let Some(contract) = holding.contract_address.as_deref().filter(|c| !c.is_empty()) else {
         return false;
     };
     preferences.iter().any(|entry| {
-        entry.chain == CoreTokenTrackingChain::Near
+        entry.chain == CoreTokenHostingChain::Near
             && entry.contract_address.eq_ignore_ascii_case(contract)
     })
 }
 
 /// The catalog's token standard for a chain, e.g. `SPL Token` for Solana.
-fn token_standard_for(chain: crate::store::wallet_domain::CoreTokenTrackingChain) -> String {
+fn token_standard_for(chain: crate::store::wallet_domain::CoreTokenHostingChain) -> String {
     let name = chain.chain_name();
     crate::registry::Chain::from_display_name(name)
         .map(|chain| chain.entry().token_standard.clone())
@@ -395,7 +395,7 @@ mod preflight_tests {
     use super::*;
     use crate::store::state::{AssetHolding, WalletSummary};
     use crate::store::wallet_domain::{
-        CoreTokenPreferenceCategory, CoreTokenPreferenceEntry, CoreTokenTrackingChain,
+        CoreTokenPreferenceCategory, CoreTokenPreferenceEntry, CoreTokenHostingChain,
     };
 
     fn holding(chain: &str, symbol: &str, standard: &str, contract: Option<&str>) -> AssetHolding {
@@ -411,7 +411,7 @@ mod preflight_tests {
         }
     }
 
-    fn tracked(chain: CoreTokenTrackingChain, contract: &str) -> CoreTokenPreferenceEntry {
+    fn known(chain: CoreTokenHostingChain, contract: &str) -> CoreTokenPreferenceEntry {
         CoreTokenPreferenceEntry {
             id: format!("t:{contract}"),
             chain,
@@ -421,7 +421,6 @@ mod preflight_tests {
             contract_address: contract.to_string(),
             coin_gecko_id: String::new(),
             decimals: 6,
-            display_decimals: None,
             category: CoreTokenPreferenceCategory::Stablecoin,
             is_built_in: false,
             is_enabled: true,
@@ -434,29 +433,29 @@ mod preflight_tests {
     /// preflight — so on the funds path core took a caller's word about which
     /// assets core itself knows how to send.
     #[test]
-    fn solana_sends_sol_always_and_a_token_only_when_tracked() {
+    fn solana_sends_sol_always_and_a_token_only_when_known() {
         let sol = holding("Solana", "SOL", "", None);
         assert!(supports_solana_send(&sol, &[]));
 
-        let standard = token_standard_for(CoreTokenTrackingChain::Solana);
+        let standard = token_standard_for(CoreTokenHostingChain::Solana);
         let mint = "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v";
         let usdc = holding("Solana", "USDC", &standard, Some(mint));
-        assert!(!supports_solana_send(&usdc, &[]), "untracked mint");
+        assert!(!supports_solana_send(&usdc, &[]), "unknown mint");
         assert!(supports_solana_send(
             &usdc,
-            &[tracked(CoreTokenTrackingChain::Solana, mint)]
+            &[known(CoreTokenHostingChain::Solana, mint)]
         ));
 
         let wrong_standard = holding("Solana", "USDC", "ERC-20", Some(mint));
         assert!(!supports_solana_send(
             &wrong_standard,
-            &[tracked(CoreTokenTrackingChain::Solana, mint)]
+            &[known(CoreTokenHostingChain::Solana, mint)]
         ));
     }
 
     #[test]
-    fn near_sends_tracked_tokens_but_not_near_itself() {
-        let standard = token_standard_for(CoreTokenTrackingChain::Near);
+    fn near_sends_known_tokens_but_not_near_itself() {
+        let standard = token_standard_for(CoreTokenHostingChain::Near);
         let native = holding("NEAR", "NEAR", &standard, Some("wrap.near"));
         assert!(!supports_near_token_send(&native, &[]), "native is not a token send");
 
@@ -464,11 +463,11 @@ mod preflight_tests {
         assert!(!supports_near_token_send(&token, &[]));
         assert!(supports_near_token_send(
             &token,
-            &[tracked(CoreTokenTrackingChain::Near, "USDC.NEAR")]
+            &[known(CoreTokenHostingChain::Near, "USDC.NEAR")]
         ), "contract matching is case-insensitive");
     }
 
-    /// Tracking a mint is what makes a Solana token routable — through the
+    /// Knowing a mint is what makes a Solana token routable — through the
     /// service, from core's own token list.
     ///
     /// The preview path and the submit path both asked this on their own side
@@ -478,7 +477,7 @@ mod preflight_tests {
     async fn routing_follows_the_token_list_core_holds() {
         let service = WalletService::new_typed(Vec::new()).expect("service");
         let mint = "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v";
-        let standard = token_standard_for(CoreTokenTrackingChain::Solana);
+        let standard = token_standard_for(CoreTokenHostingChain::Solana);
         {
             let mut state = service.wallet_state.write().await;
             let mut wallet =
@@ -494,14 +493,14 @@ mod preflight_tests {
         assert_eq!(untracked.submit_kind, None, "an untracked mint is not sendable");
 
         service.wallet_state.write().await.token_preferences =
-            vec![tracked(CoreTokenTrackingChain::Solana, mint)];
-        let tracked_now = service
+            vec![known(CoreTokenHostingChain::Solana, mint)];
+        let known_now = service
             .send_asset_routing("w1".into(), "Solana|USDC".into())
             .await
             .expect("the holding is there");
-        assert_eq!(tracked_now.submit_kind.as_deref(), Some("solana"));
+        assert_eq!(known_now.submit_kind.as_deref(), Some("solana"));
         assert_eq!(
-            tracked_now.preview_kind, tracked_now.submit_kind,
+            known_now.preview_kind, known_now.submit_kind,
             "the preview and the submit are one decision"
         );
     }

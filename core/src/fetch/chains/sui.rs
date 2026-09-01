@@ -151,6 +151,65 @@ impl SuiClient {
             .collect())
     }
 
+    /// Every coin type the address holds, as the node reports it.
+    ///
+    /// `suix_getAllBalances` returns coin types and totals but no decimals, so
+    /// each type's metadata is read concurrently; a type whose metadata is
+    /// missing is reported unnamed rather than dropped.
+    pub async fn fetch_all_coin_balances(
+        &self,
+        address: &str,
+    ) -> Result<Vec<super::HeldToken>, String> {
+        let result = self
+            .call("suix_getAllBalances", json!([address]))
+            .await?;
+        let mut held: Vec<(String, u128)> = Vec::new();
+        for entry in result.as_array().map(|v| v.as_slice()).unwrap_or_default() {
+            let Some(coin_type) = entry.get("coinType").and_then(|v| v.as_str()) else {
+                continue;
+            };
+            if coin_type.ends_with("::sui::SUI") {
+                continue;
+            }
+            let raw = entry
+                .get("totalBalance")
+                .and_then(|v| v.as_str())
+                .and_then(|s| s.parse::<u128>().ok())
+                .unwrap_or(0);
+            if raw == 0 {
+                continue;
+            }
+            held.push((coin_type.to_string(), raw));
+        }
+
+        let metadata = futures::future::join_all(
+            held.iter()
+                .map(|(coin_type, _)| self.call("suix_getCoinMetadata", json!([coin_type]))),
+        )
+        .await;
+        Ok(held
+            .into_iter()
+            .zip(metadata)
+            .map(|((contract, balance_raw), meta)| {
+                let meta = meta.ok();
+                super::HeldToken {
+                    contract,
+                    balance_raw,
+                    decimals: meta
+                        .as_ref()
+                        .and_then(|m| m.get("decimals"))
+                        .and_then(|v| v.as_u64())
+                        .map(|d| d as u8),
+                    symbol: meta
+                        .as_ref()
+                        .and_then(|m| m.get("symbol"))
+                        .and_then(|v| v.as_str())
+                        .map(str::to_string),
+                }
+            })
+            .collect())
+    }
+
     /// Fetch the balance for a specific coin type (e.g. `0x5d4b...::coin::COIN`).
     /// Returns the raw balance in the coin's smallest unit.
     pub async fn fetch_coin_balance(&self, address: &str, coin_type: &str) -> Result<u64, String> {

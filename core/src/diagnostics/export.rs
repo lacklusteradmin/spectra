@@ -39,8 +39,8 @@ pub struct EvmHistoryEntry {
 }
 
 /// UTXO history entry. `wallet_id` is carried by
-/// `BitcoinHistoryDiagnostics.wallet_id`, so we just pass the value.
-pub type UtxoHistoryEntry = BitcoinHistoryDiagnostics;
+/// `UtxoHistoryDiagnostics.wallet_id`, so we just pass the value.
+pub type UtxoHistoryEntry = UtxoHistoryDiagnostics;
 
 /// Simple (address/source/count/error) entry paired with the wallet id.
 #[derive(uniffi::Record, serde::Serialize, serde::Deserialize, Clone, Debug, PartialEq)]

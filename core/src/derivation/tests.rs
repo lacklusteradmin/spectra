@@ -120,9 +120,8 @@ fn derives_all_supported_chains() {
             true
         )
     );
-    // One call per coin type, not per chain: the six that stood here were the
-    // same arguments six times, because an EVM address does not depend on which
-    // EVM chain asks for it. That every EVM chain reaches this is
+    // One call per coin type, not per chain: an EVM address does not depend on
+    // which EVM chain asks for it. That every EVM chain reaches this is
     // `every_registry_chain_derives_through_one_call`.
     ok!(
         "evm",

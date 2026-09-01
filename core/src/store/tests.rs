@@ -1837,7 +1837,7 @@ mod operational_events {
 mod built_in_tokens {
     use crate::service::WalletService;
     use crate::store::state::StateCommand;
-    use crate::store::wallet_domain::CoreTokenTrackingChain;
+    use crate::store::wallet_domain::CoreTokenHostingChain;
 
     #[test]
     fn every_built_in_has_a_unique_id() {
@@ -1861,14 +1861,14 @@ mod built_in_tokens {
         for token in crate::tokens::catalog() {
             if token.chain.eq_ignore_ascii_case("bnb") {
                 assert_eq!(
-                    CoreTokenTrackingChain::from_chain_name(&token.chain),
-                    Some(CoreTokenTrackingChain::Bnb)
+                    CoreTokenHostingChain::from_chain_name(&token.chain),
+                    Some(CoreTokenHostingChain::Bnb)
                 );
             }
         }
-        for chain in CoreTokenTrackingChain::ALL {
+        for chain in CoreTokenHostingChain::ALL {
             assert_eq!(
-                CoreTokenTrackingChain::from_chain_name(chain.chain_name()),
+                CoreTokenHostingChain::from_chain_name(chain.chain_name()),
                 Some(*chain),
                 "{} does not round-trip",
                 chain.chain_name()
@@ -1886,14 +1886,13 @@ mod built_in_tokens {
             .expect("merge");
         assert!(!state.token_preferences.is_empty());
 
-        // Turn one off and clamp its display width, then merge again.
+        // Turn one off, then merge again.
         let mut entries = state.token_preferences.clone();
         let target = entries
             .iter_mut()
             .find(|e| e.is_built_in && e.is_enabled)
             .expect("an enabled built-in");
         target.is_enabled = false;
-        target.display_decimals = Some(2);
         let id = target.id.clone();
         service
             .apply_state_command(StateCommand::SetTokenPreferences { entries })
@@ -1913,7 +1912,6 @@ mod built_in_tokens {
             !kept.is_enabled,
             "the merge re-enabled a token the user turned off"
         );
-        assert_eq!(kept.display_decimals, Some(2));
     }
 }
 
@@ -2556,7 +2554,7 @@ mod wallet_derived_state {
             .iter()
             .map(|c| c.symbol.as_str())
             .collect();
-        assert_eq!(sendable, vec!["ETH"], "SHIB is not a tracked token");
+        assert_eq!(sendable, vec!["ETH"], "SHIB is not a known token");
     }
 }
 
@@ -2647,11 +2645,18 @@ mod import_address_validation {
         assert_eq!(rejected.len(), 3);
     }
 
+    /// A valid address survives import and is stored in core's normal form.
+    ///
+    /// The fixture was `0x742D35CC…bC454E…` — arbitrary mixed case, which the
+    /// validator accepted because it lowercased before looking. It is a
+    /// **broken EIP-55 checksum** and is refused now, so the fixture is the
+    /// all-uppercase form: no checksum to verify, still valid, and it still
+    /// demonstrates the normalisation this test is about.
     #[test]
     fn a_valid_address_survives_and_is_normalised() {
         let (kept, rejected) = validated_addresses(&addresses(&[(
             "ethereum",
-            "0x742D35CC6634C0532925A3B844bC454E4438F44E",
+            "0X742D35CC6634C0532925A3B844BC454E4438F44E",
         )]));
         assert!(rejected.is_empty());
         let stored = kept.by_slot.get("ethereum").expect("kept");
@@ -2761,7 +2766,7 @@ mod import_address_validation {
         fn valid_watch_addresses_survive_and_are_normalised() {
             let (kept, rejected) = validated_watch_only_entries(&entries(
                 "ethereum",
-                &["0x742D35CC6634C0532925A3B844bC454E4438F44E"],
+                &["0X742D35CC6634C0532925A3B844BC454E4438F44E"],
             ));
             assert!(rejected.is_empty());
             let stored = kept.by_slot.get("ethereum").expect("kept");
@@ -2897,7 +2902,7 @@ mod import_address_validation {
             let (kept, rejected) = validated_watch_only_entries(&entries(
                 "ethereum",
                 &[
-                    "0x742D35CC6634C0532925A3B844bC454E4438F44E",
+                    "0X742D35CC6634C0532925A3B844BC454E4438F44E",
                     "0xnothex",
                     "0x0000000000000000000000000000000000000001",
                 ],
@@ -2908,7 +2913,7 @@ mod import_address_validation {
     }
 }
 
-/// Tracked tokens survive a reopen.
+/// Known tokens survive a reopen.
 ///
 /// They did not. `token_preferences` is a field on `CoreAppState`, but
 /// `app_state_save` wrote `settings`, `wallets` and the address book and never
@@ -2921,7 +2926,7 @@ mod tracked_tokens_persist {
     use crate::store::state::{CoreAppState, StateCommand};
     use crate::store::wallet_db;
     use crate::store::wallet_domain::{
-        CoreTokenPreferenceCategory, CoreTokenPreferenceEntry, CoreTokenTrackingChain,
+        CoreTokenPreferenceCategory, CoreTokenPreferenceEntry, CoreTokenHostingChain,
     };
 
     /// One database per test. Keyed by thread id as well as pid: two tests in
@@ -2939,17 +2944,16 @@ mod tracked_tokens_persist {
         path.to_string_lossy().into_owned()
     }
 
-    fn entry(symbol: &str, decimals: i32, display: Option<i32>) -> CoreTokenPreferenceEntry {
+    fn entry(symbol: &str, decimals: i32) -> CoreTokenPreferenceEntry {
         CoreTokenPreferenceEntry {
             id: format!("id-{symbol}"),
-            chain: CoreTokenTrackingChain::Ethereum,
+            chain: CoreTokenHostingChain::Ethereum,
             name: symbol.to_string(),
             symbol: symbol.to_string(),
             token_standard: "ERC-20".to_string(),
             contract_address: "0x0000000000000000000000000000000000000001".to_string(),
             coin_gecko_id: symbol.to_lowercase(),
             decimals,
-            display_decimals: display,
             category: CoreTokenPreferenceCategory::Custom,
             is_built_in: false,
             is_enabled: true,
@@ -2963,7 +2967,7 @@ mod tracked_tokens_persist {
         crate::store::state::reduce_state_in_place(
             &mut state,
             StateCommand::SetTokenPreferences {
-                entries: vec![entry("USDC", 6, Some(2))],
+                entries: vec![entry("USDC", 6)],
             },
         );
         wallet_db::app_state_save(&db, &state).expect("save");
@@ -2972,10 +2976,9 @@ mod tracked_tokens_persist {
         assert_eq!(
             reloaded.token_preferences.len(),
             1,
-            "tracked token was lost"
+            "known token was lost"
         );
         assert_eq!(reloaded.token_preferences[0].symbol, "USDC");
-        assert_eq!(reloaded.token_preferences[0].display_decimals, Some(2));
     }
 
     #[test]
@@ -2985,13 +2988,13 @@ mod tracked_tokens_persist {
         crate::store::state::reduce_state_in_place(
             &mut state,
             StateCommand::SetTokenPreferences {
-                // More places than the token has.
-                entries: vec![entry("USDT", 6, Some(99))],
+                // More decimals than any token has.
+                entries: vec![entry("USDT", 99)],
             },
         );
         wallet_db::app_state_save(&db, &state).expect("save");
         let reloaded = wallet_db::app_state_load(&db).expect("load");
-        assert_eq!(reloaded.token_preferences[0].display_decimals, Some(6));
+        assert_eq!(reloaded.token_preferences[0].decimals, crate::store::state::MAX_TOKEN_DECIMALS);
     }
 }
 

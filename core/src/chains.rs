@@ -29,6 +29,8 @@ struct TomlChain {
     color: String,
     asset_name: String,
     token_standard: String,
+    #[serde(default)]
+    enumerates_holdings: bool,
     contract_address_prompt: String,
     native_coingecko_id: String,
     native_decimals: u32,
@@ -81,6 +83,11 @@ pub struct ChainEntry {
     pub color: String,
     pub asset_name: String,
     pub token_standard: String,
+    /// Whether the chain has an RPC that answers "what tokens does this
+    /// address hold?" without being told what to look for. False for the EVM
+    /// family and NEAR, where a token contract only answers about a holder you
+    /// name, so listing holdings needs an indexer rather than a node.
+    pub enumerates_holdings: bool,
     pub contract_address_prompt: String,
     pub native_coingecko_id: String,
     pub native_decimals: u32,
@@ -126,6 +133,7 @@ static CATALOG: LazyLock<Vec<ChainEntry>> = LazyLock::new(|| {
             color: c.color,
             asset_name: c.asset_name,
             token_standard: c.token_standard,
+            enumerates_holdings: c.enumerates_holdings,
             contract_address_prompt: c.contract_address_prompt,
             native_coingecko_id: c.native_coingecko_id,
             native_decimals: c.native_decimals,

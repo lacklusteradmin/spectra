@@ -90,6 +90,16 @@ impl TronClient {
         }
     }
 
+    pub(crate) async fn get_val(&self, path: &str) -> Result<Value, String> {
+        let path = path.to_string();
+        with_fallback(&self.endpoints, |base| {
+            let client = self.client.clone();
+            let url = format!("{}{}", base.trim_end_matches('/'), path);
+            async move { client.get_json(&url, RetryProfile::ChainRead).await }
+        })
+        .await
+    }
+
     pub(crate) async fn post(&self, path: &str, body: &Value) -> Result<Value, String> {
         let path = path.to_string();
         let body = std::sync::Arc::new(body.clone());
@@ -353,6 +363,56 @@ impl TronClient {
 
         // The result is a 32-byte big-endian integer hex string.
         parse_hex_u256_low_u128(hex_str)
+    }
+
+    /// Every TRC-20 the account holds, as TronGrid reports it.
+    ///
+    /// `/v1/accounts` returns contract addresses and raw balances but no
+    /// decimals, so each holding needs its own `decimals()`/`symbol()` read;
+    /// those run concurrently and a contract that will not answer is reported
+    /// unnamed rather than dropped.
+    pub async fn fetch_all_trc20_balances(
+        &self,
+        address: &str,
+    ) -> Result<Vec<super::HeldToken>, String> {
+        let resp = self.get_val(&format!("/v1/accounts/{address}")).await?;
+        let mut held: Vec<(String, u128)> = Vec::new();
+        for entry in resp
+            .pointer("/data/0/trc20")
+            .and_then(|v| v.as_array())
+            .map(|v| v.as_slice())
+            .unwrap_or_default()
+        {
+            let Some(map) = entry.as_object() else { continue };
+            for (contract, balance) in map {
+                let Some(raw) = balance.as_str().and_then(|s| s.parse::<u128>().ok()) else {
+                    continue;
+                };
+                if raw == 0 {
+                    continue;
+                }
+                held.push((contract.clone(), raw));
+            }
+        }
+
+        let metadata = futures::future::join_all(
+            held.iter()
+                .map(|(contract, _)| self.fetch_trc20_metadata(contract)),
+        )
+        .await;
+        Ok(held
+            .into_iter()
+            .zip(metadata)
+            .map(|((contract, balance_raw), meta)| {
+                let meta = meta.ok();
+                super::HeldToken {
+                    contract,
+                    balance_raw,
+                    decimals: meta.as_ref().map(|m| m.decimals),
+                    symbol: meta.map(|m| m.symbol),
+                }
+            })
+            .collect())
     }
 
     /// Fetch token symbol + decimals.

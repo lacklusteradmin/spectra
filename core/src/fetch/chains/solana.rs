@@ -142,6 +142,84 @@ impl SolanaClient {
     }
 
     /// Fetch SPL token balances for a list of mint addresses.
+    /// Every SPL token account the owner holds, in one call.
+    ///
+    /// `getTokenAccountsByOwner` filtered by `programId` rather than by mint
+    /// returns the lot, and the parsed account carries the mint's own
+    /// `decimals` — so discovery answers "what does this address hold" and
+    /// "how is it denominated" together, without a catalog and without an
+    /// indexer.
+    pub async fn fetch_all_spl_balances(&self, owner: &str) -> Result<Vec<SplBalance>, String> {
+        const TOKEN_PROGRAM: &str = "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA";
+        const TOKEN_2022_PROGRAM: &str = "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb";
+        let mut out: Vec<SplBalance> = Vec::new();
+        for program in [TOKEN_PROGRAM, TOKEN_2022_PROGRAM] {
+            // A program that will not answer is not a program the owner holds
+            // nothing under, and skipping it would report the difference as an
+            // empty wallet.
+            let val = self
+                .call(
+                    "getTokenAccountsByOwner",
+                    json!([
+                        owner,
+                        {"programId": program},
+                        {"encoding": "jsonParsed", "commitment": "confirmed"}
+                    ]),
+                )
+                .await?;
+            let Some(accounts) = val.get("value").and_then(|v| v.as_array()) else {
+                continue;
+            };
+            for account in accounts {
+                let Some(info) = account.pointer("/account/data/parsed/info") else {
+                    continue;
+                };
+                let Some(mint) = info.get("mint").and_then(|v| v.as_str()) else {
+                    continue;
+                };
+                let Some(token_amount) = info.get("tokenAmount") else {
+                    continue;
+                };
+                let balance_raw = token_amount
+                    .get("amount")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("0")
+                    .to_string();
+                // A closed or emptied account is not a holding.
+                if balance_raw == "0" {
+                    continue;
+                }
+                let decimals = token_amount
+                    .get("decimals")
+                    .and_then(|v| v.as_u64())
+                    .unwrap_or(0) as u8;
+                let balance_display = token_amount
+                    .get("uiAmountString")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("0")
+                    .to_string();
+                // One mint can have several accounts; sum them.
+                if let Some(existing) = out.iter_mut().find(|b| b.mint == mint) {
+                    let a: u128 = existing.balance_raw.parse().unwrap_or(0);
+                    let b: u128 = balance_raw.parse().unwrap_or(0);
+                    existing.balance_raw = (a + b).to_string();
+                    existing.balance_display =
+                        crate::fetch::chains::evm::format_token_amount(a + b, decimals);
+                } else {
+                    out.push(SplBalance {
+                        mint: mint.to_string(),
+                        owner: owner.to_string(),
+                        balance_raw,
+                        balance_display,
+                        decimals,
+                        symbol: String::new(),
+                    });
+                }
+            }
+        }
+        Ok(out)
+    }
+
     pub async fn fetch_spl_balances(
         &self,
         owner: &str,

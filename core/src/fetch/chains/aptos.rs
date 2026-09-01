@@ -113,6 +113,72 @@ impl AptosClient {
         })
     }
 
+    /// Every legacy `0x1::coin::CoinStore<T>` the account carries.
+    ///
+    /// An Aptos account stores its coins as its own resources, so one read
+    /// enumerates them. Decimals live in `CoinInfo<T>` on the account that
+    /// published `T`; those reads run concurrently and a coin whose `CoinInfo`
+    /// is unreadable is reported unnamed rather than dropped. Fungible-asset
+    /// stores (the newer standard) are not covered here.
+    pub async fn fetch_all_coin_balances(
+        &self,
+        address: &str,
+    ) -> Result<Vec<super::HeldToken>, String> {
+        let resources: Value = self.get(&format!("/accounts/{address}/resources")).await?;
+        let mut held: Vec<(String, u128)> = Vec::new();
+        for res in resources.as_array().map(|v| v.as_slice()).unwrap_or_default() {
+            let Some(ty) = res.get("type").and_then(|v| v.as_str()) else {
+                continue;
+            };
+            let Some(inner) = ty
+                .strip_prefix("0x1::coin::CoinStore<")
+                .and_then(|rest| rest.strip_suffix('>'))
+            else {
+                continue;
+            };
+            if inner == "0x1::aptos_coin::AptosCoin" {
+                continue;
+            }
+            let raw = res
+                .pointer("/data/coin/value")
+                .and_then(|v| v.as_str())
+                .and_then(|s| s.parse::<u128>().ok())
+                .unwrap_or(0);
+            if raw == 0 {
+                continue;
+            }
+            held.push((inner.to_string(), raw));
+        }
+
+        let metadata =
+            futures::future::join_all(held.iter().map(|(coin_type, _)| async move {
+                let publisher = coin_type.split("::").next()?;
+                let encoded = coin_type.replace('<', "%3C").replace('>', "%3E");
+                let path =
+                    format!("/accounts/{publisher}/resource/0x1::coin::CoinInfo%3C{encoded}%3E");
+                self.get::<Value>(&path).await.ok()
+            }))
+            .await;
+        Ok(held
+            .into_iter()
+            .zip(metadata)
+            .map(|((contract, balance_raw), meta)| super::HeldToken {
+                contract,
+                balance_raw,
+                decimals: meta
+                    .as_ref()
+                    .and_then(|m| m.pointer("/data/decimals"))
+                    .and_then(|v| v.as_u64())
+                    .map(|d| d as u8),
+                symbol: meta
+                    .as_ref()
+                    .and_then(|m| m.pointer("/data/symbol"))
+                    .and_then(|v| v.as_str())
+                    .map(str::to_string),
+            })
+            .collect())
+    }
+
     /// Fetch the balance for a specific coin type stored in
     /// `0x1::coin::CoinStore<{coin_type}>` (the legacy Aptos coin standard).
     /// Returns the raw balance in octas (or smallest unit).

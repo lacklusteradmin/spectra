@@ -362,12 +362,33 @@ fn validate_dogecoin_address(value: &str, testnet: bool) -> AddressValidationRes
 }
 
 fn validate_evm_address(value: &str) -> AddressValidationResult {
-    let normalized = value.to_lowercase();
+    let trimmed = value.trim();
+    let normalized = trimmed.to_lowercase();
     if normalized.len() != 42 || !normalized.starts_with("0x") {
         return invalid_result();
     }
     if !is_lower_hex(&normalized[2..]) {
         return invalid_result();
+    }
+    // An address whose letters are not all one case carries an EIP-55
+    // checksum, and the point of that checksum is to catch a mistyped or
+    // corrupted character. Lowercasing first and never checking discards it:
+    // any forty hex digits passed, so a pasted address with one letter changed
+    // was accepted and the funds went somewhere nobody owns.
+    //
+    // All-lowercase and all-uppercase carry no checksum — that is the
+    // pre-EIP-55 form, and it is still valid — so only the mixed case is
+    // verified.
+    let body = &trimmed[2..];
+    let has_upper = body.chars().any(|c| c.is_ascii_uppercase());
+    let has_lower = body.chars().any(|c| c.is_ascii_lowercase());
+    if has_upper && has_lower {
+        let Ok(bytes) = hex::decode(&normalized[2..]) else {
+            return invalid_result();
+        };
+        if crate::derivation::chains::evm::eip55_checksum(&bytes) != trimmed {
+            return invalid_result();
+        }
     }
     make_result(normalized)
 }
@@ -577,7 +598,9 @@ mod tests {
     fn normalizes_evm_addresses() {
         let result = validate_address(AddressValidationRequest {
             kind: "evm".to_string(),
-            value: " 0xABCDabcdABCDabcdABCDabcdABCDabcdABCDabcd ".to_string(),
+            // All one case: no EIP-55 checksum to verify, so this stays a
+            // test about trimming and lowercasing.
+            value: " 0XABCDABCDABCDABCDABCDABCDABCDABCDABCDABCD ".to_string(),
         });
 
         assert!(result.is_valid);
@@ -599,6 +622,51 @@ mod tests {
     }
 
     #[test]
+    /// A mixed-case EVM address is checked against its EIP-55 checksum.
+    ///
+    /// The validator lowercased first and never looked, so any forty hex
+    /// digits passed. A checksummed address with one letter's case changed —
+    /// which is what a mistyped or corrupted paste looks like — was accepted,
+    /// and a send to it goes to an address nobody holds a key for.
+    #[test]
+    fn a_mixed_case_evm_address_must_checksum() {
+        let valid = "0x742d35Cc6634C0532925a3b844Bc454e4438f44e";
+        assert!(
+            validate_address(AddressValidationRequest {
+                kind: "evm".to_string(),
+                value: valid.to_string(),
+            })
+            .is_valid
+        );
+
+        // One letter's case flipped: still forty hex digits, no longer a
+        // checksum.
+        let corrupted = "0x742d35cC6634C0532925a3b844Bc454e4438f44e";
+        assert!(
+            !validate_address(AddressValidationRequest {
+                kind: "evm".to_string(),
+                value: corrupted.to_string(),
+            })
+            .is_valid,
+            "a broken checksum must be refused"
+        );
+
+        // All one case carries no checksum — the pre-EIP-55 form, still valid.
+        for unchecked in [
+            "0x742d35cc6634c0532925a3b844bc454e4438f44e",
+            "0X742D35CC6634C0532925A3B844BC454E4438F44E",
+        ] {
+            assert!(
+                validate_address(AddressValidationRequest {
+                    kind: "evm".to_string(),
+                    value: unchecked.to_string(),
+                })
+                .is_valid,
+                "{unchecked}"
+            );
+        }
+    }
+
     fn rejects_invalid_near_addresses() {
         let result = validate_address(AddressValidationRequest {
             kind: "near".to_string(),
@@ -716,5 +784,65 @@ mod tests {
         .unwrap();
         assert!(validate("litecoin", ltc.clone()).is_valid);
         assert!(!validate("litecoinTestnet", ltc).is_valid);
+    }
+}
+
+#[cfg(test)]
+mod every_chain_accepts_what_it_derives {
+    use crate::registry::Chain;
+
+    const MNEMONIC: &str =
+        "legal winner thank year wave sausage worth useful legal winner thank yellow";
+
+    /// A chain's validator accepts the address that chain derives.
+    ///
+    /// The two halves are written separately — `derivation/chains/*` produces
+    /// the address, `validation/address.rs` judges it — so nothing made them
+    /// agree. A chain whose derived address its own validator refuses can be
+    /// imported and then cannot be sent to, and neither side's tests would
+    /// show it.
+    #[test]
+    fn a_derived_address_passes_its_own_validator() {
+        let mut checked = 0;
+        let mut failures: Vec<String> = Vec::new();
+        for chain in Chain::all().filter(|c| !c.is_testnet()) {
+            let Some(path) = crate::store::wallet_domain::CoreSeedDerivationPaths::default()
+                .path_for(chain)
+                .map(str::to_string)
+                .or_else(|| crate::app_core::default_path_from_catalog(chain.chain_display_name()).ok())
+            else {
+                continue;
+            };
+            let derived = crate::derivation::dispatch::derive_for_chain_name(
+                chain.chain_display_name(),
+                MNEMONIC,
+                &path,
+                None,
+                None,
+                None,
+                true,
+                false,
+                false,
+            );
+            let Ok(result) = derived else { continue };
+            let Some(address) = result.address.filter(|a| !a.is_empty()) else {
+                continue;
+            };
+            checked += 1;
+            let verdict = super::validate_address(super::AddressValidationRequest {
+                kind: chain.address_validation_kind().to_string(),
+                value: address.clone(),
+            });
+            if !verdict.is_valid {
+                failures.push(format!(
+                    "{} derived {address} and its own `{}` validator refuses it",
+                    chain.chain_display_name(),
+                    chain.address_validation_kind()
+                ));
+            }
+        }
+        // Every mainnet that derives at all, which is most of them.
+        assert!(checked >= 40, "only {checked} chains derived — the probe is broken");
+        assert!(failures.is_empty(), "{}", failures.join("\n"));
     }
 }

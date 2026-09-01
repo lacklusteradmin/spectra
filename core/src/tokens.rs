@@ -26,7 +26,6 @@ struct TomlToken {
     contract: String,
     coingecko_id: String,
     decimals: u32,
-    display_decimals: Option<u32>,
     tags: Vec<String>,
     comment: String,
     color: String,
@@ -45,7 +44,6 @@ pub struct TokenEntry {
     pub contract: String,
     pub coingecko_id: String,
     pub decimals: u32,
-    pub display_decimals: Option<u32>,
     pub tags: Vec<String>,
     pub comment: String,
     pub color: String,
@@ -69,7 +67,6 @@ static CATALOG: LazyLock<Vec<TokenEntry>> = LazyLock::new(|| {
             contract: t.contract,
             coingecko_id: t.coingecko_id,
             decimals: t.decimals,
-            display_decimals: t.display_decimals,
             tags: t.tags,
             comment: t.comment,
             color: t.color,
@@ -202,7 +199,7 @@ pub(crate) fn normalize_sui_token_identifier(value: String) -> String {
 /// case-significant base64, so lowercasing it produces an address that does not
 /// resolve.
 ///
-/// This existed twice. `normalizedTrackedTokenIdentifier` in `AppState` had its
+/// This existed twice. `normalizedKnownTokenIdentifier` in `AppState` had its
 /// own copy — a twelve-name EVM arm, then Aptos, Sui, TON and a lowercase
 /// default — and the two disagreed about TON, which is the one chain where
 /// disagreeing changes the answer. One function, keyed by the chain, with the
@@ -380,7 +377,7 @@ mod tests {
     ///
     /// TON is the arm worth stating: a jetton master address is
     /// case-significant base64, so the lowercase default would produce an
-    /// address that does not resolve. `normalizedTrackedTokenIdentifier` in
+    /// address that does not resolve. `normalizedKnownTokenIdentifier` in
     /// Swift knew that and this function did not, until they became one.
     #[test]
     fn token_identifier_normalisation_is_per_chain() {

@@ -52,7 +52,7 @@ impl super::SignedSubmission for TonSendResult {
 /// One jetton (token) balance entry returned by the v3 API.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TonJettonBalance {
-    /// Jetton master contract address (matches the tracked-token `contract` field).
+    /// Jetton master contract address (matches the known-token `contract` field).
     pub master_address: String,
     /// Jetton wallet contract address (holder's personal wallet for this token).
     pub wallet_address: String,
@@ -167,6 +167,69 @@ impl TonClient {
                     wallet_address,
                     balance_raw,
                 })
+            })
+            .collect())
+    }
+
+    /// Every jetton the address holds, with each jetton master's own decimals.
+    ///
+    /// `/jetton/wallets` enumerates the holdings but carries no content, so
+    /// each master's metadata is read concurrently; a master that will not
+    /// answer is reported unnamed rather than dropped.
+    pub async fn fetch_all_jetton_balances(
+        &self,
+        address: &str,
+    ) -> Result<Vec<super::HeldToken>, String> {
+        #[derive(Deserialize)]
+        struct MasterEnvelope {
+            jetton_masters: Option<Vec<Master>>,
+        }
+        #[derive(Deserialize)]
+        struct Master {
+            jetton_content: Option<Content>,
+        }
+        #[derive(Deserialize)]
+        struct Content {
+            decimals: Option<serde_json::Value>,
+            symbol: Option<String>,
+        }
+
+        let wallets: Vec<TonJettonBalance> = self
+            .fetch_jetton_balances(address)
+            .await?
+            .into_iter()
+            .filter(|w| w.balance_raw > 0)
+            .collect();
+
+        let metadata = futures::future::join_all(wallets.iter().map(|w| {
+            let path = format!("/jetton/masters?address={}&limit=1", w.master_address);
+            async move { self.get_v3::<MasterEnvelope>(&path).await.ok() }
+        }))
+        .await;
+
+        Ok(wallets
+            .into_iter()
+            .zip(metadata)
+            .map(|(w, meta)| {
+                let content = meta
+                    .and_then(|m| m.jetton_masters)
+                    .and_then(|mut v| if v.is_empty() { None } else { Some(v.remove(0)) })
+                    .and_then(|m| m.jetton_content);
+                super::HeldToken {
+                    contract: w.master_address,
+                    balance_raw: w.balance_raw,
+                    // TON metadata carries decimals as a string as often as a
+                    // number, and both mean the same count.
+                    decimals: content
+                        .as_ref()
+                        .and_then(|c| c.decimals.as_ref())
+                        .and_then(|v| {
+                            v.as_u64()
+                                .or_else(|| v.as_str().and_then(|s| s.parse().ok()))
+                        })
+                        .map(|d| d as u8),
+                    symbol: content.and_then(|c| c.symbol),
+                }
             })
             .collect())
     }

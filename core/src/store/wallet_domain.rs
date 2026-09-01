@@ -383,9 +383,9 @@ fn holding_identity(holding: &crate::store::state::AssetHolding) -> String {
     )
 }
 
-/// Swift `TokenTrackingChain` — rawValues are chain display names.
+/// Swift `TokenHostingChain` — rawValues are chain display names.
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Hash, uniffi::Enum)]
-pub enum CoreTokenTrackingChain {
+pub enum CoreTokenHostingChain {
     #[serde(rename = "Ethereum")]
     Ethereum,
     #[serde(rename = "Arbitrum")]
@@ -424,7 +424,7 @@ pub enum CoreTokenTrackingChain {
     Tron,
 }
 
-impl CoreTokenTrackingChain {
+impl CoreTokenHostingChain {
     /// Every variant, in declaration order.
     pub const ALL: &'static [Self] = &[
         Self::Ethereum,
@@ -447,14 +447,14 @@ impl CoreTokenTrackingChain {
         Self::Tron,
     ];
 
-    /// The chain a tracked token belongs to, from its display name.
+    /// The chain a known token belongs to, from its display name.
     ///
     /// Matches case-insensitively and accepts `tokens.toml`'s `"bnb"` for BNB
     /// Chain. Derived from [`chain_name`] rather than tabulated again: this
     /// mapping had four copies — here, its inverse below, a `chain_label`
     /// helper in the merge planner, and `tokenTrackingChainFor` in Swift.
     ///
-    /// Not every chain can host tracked tokens, so this returns `None` rather
+    /// Not every chain can host known tokens, so this returns `None` rather
     /// than guessing.
     pub fn from_chain_name(name: &str) -> Option<Self> {
         let needle = name.trim();
@@ -506,7 +506,7 @@ pub enum CoreTokenPreferenceCategory {
 #[serde(rename_all = "camelCase")]
 pub struct CoreTokenPreferenceEntry {
     pub id: String,
-    pub chain: CoreTokenTrackingChain,
+    pub chain: CoreTokenHostingChain,
     pub name: String,
     pub symbol: String,
     pub token_standard: String,
@@ -514,7 +514,6 @@ pub struct CoreTokenPreferenceEntry {
     #[serde(rename = "coinGeckoID")]
     pub coin_gecko_id: String,
     pub decimals: i32,
-    pub display_decimals: Option<i32>,
     pub category: CoreTokenPreferenceCategory,
     pub is_built_in: bool,
     pub is_enabled: bool,
@@ -571,14 +570,13 @@ mod roundtrip_tests {
     fn token_preference_entry_roundtrip_matches_swift_keys() {
         let entry = CoreTokenPreferenceEntry {
             id: "11111111-1111-1111-1111-111111111111".to_string(),
-            chain: CoreTokenTrackingChain::Bnb,
+            chain: CoreTokenHostingChain::Bnb,
             name: "Tether USD".to_string(),
             symbol: "USDT".to_string(),
             token_standard: "BEP-20".to_string(),
             contract_address: "0x55d39897".to_string(),
             coin_gecko_id: "tether".to_string(),
             decimals: 18,
-            display_decimals: Some(6),
             category: CoreTokenPreferenceCategory::Stablecoin,
             is_built_in: true,
             is_enabled: true,
@@ -612,36 +610,36 @@ mod roundtrip_tests {
 }
 
 #[cfg(test)]
-mod token_tracking_chain_tests {
-    use super::CoreTokenTrackingChain;
+mod token_hosting_chain_tests {
+    use super::CoreTokenHostingChain;
     use crate::registry::Chain;
 
-    /// Every chain that can host tracked tokens resolves both ways, and the
+    /// Every chain that can host known tokens resolves both ways, and the
     /// name it round-trips through is one the registry recognises.
     #[test]
     fn every_tracking_chain_round_trips_through_the_registry() {
         for variant in [
-            CoreTokenTrackingChain::Ethereum,
-            CoreTokenTrackingChain::Arbitrum,
-            CoreTokenTrackingChain::Optimism,
-            CoreTokenTrackingChain::Bnb,
-            CoreTokenTrackingChain::Avalanche,
-            CoreTokenTrackingChain::Hyperliquid,
-            CoreTokenTrackingChain::Polygon,
-            CoreTokenTrackingChain::Base,
-            CoreTokenTrackingChain::Linea,
-            CoreTokenTrackingChain::Scroll,
-            CoreTokenTrackingChain::Blast,
-            CoreTokenTrackingChain::Mantle,
-            CoreTokenTrackingChain::Solana,
-            CoreTokenTrackingChain::Sui,
-            CoreTokenTrackingChain::Aptos,
-            CoreTokenTrackingChain::Ton,
-            CoreTokenTrackingChain::Near,
-            CoreTokenTrackingChain::Tron,
+            CoreTokenHostingChain::Ethereum,
+            CoreTokenHostingChain::Arbitrum,
+            CoreTokenHostingChain::Optimism,
+            CoreTokenHostingChain::Bnb,
+            CoreTokenHostingChain::Avalanche,
+            CoreTokenHostingChain::Hyperliquid,
+            CoreTokenHostingChain::Polygon,
+            CoreTokenHostingChain::Base,
+            CoreTokenHostingChain::Linea,
+            CoreTokenHostingChain::Scroll,
+            CoreTokenHostingChain::Blast,
+            CoreTokenHostingChain::Mantle,
+            CoreTokenHostingChain::Solana,
+            CoreTokenHostingChain::Sui,
+            CoreTokenHostingChain::Aptos,
+            CoreTokenHostingChain::Ton,
+            CoreTokenHostingChain::Near,
+            CoreTokenHostingChain::Tron,
         ] {
             let name = variant.chain_name();
-            assert_eq!(CoreTokenTrackingChain::from_chain_name(name), Some(variant));
+            assert_eq!(CoreTokenHostingChain::from_chain_name(name), Some(variant));
             assert!(
                 Chain::from_display_name(name).is_some(),
                 "{name} is not a chain the registry knows"
@@ -651,7 +649,7 @@ mod token_tracking_chain_tests {
 
     #[test]
     fn a_chain_without_tracked_tokens_has_no_variant() {
-        assert_eq!(CoreTokenTrackingChain::from_chain_name("Bitcoin"), None);
-        assert_eq!(CoreTokenTrackingChain::from_chain_name("Monero"), None);
+        assert_eq!(CoreTokenHostingChain::from_chain_name("Bitcoin"), None);
+        assert_eq!(CoreTokenHostingChain::from_chain_name("Monero"), None);
     }
 }

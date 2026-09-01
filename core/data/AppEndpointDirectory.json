@@ -944,7 +944,8 @@
     ],
     "probeURL": null,
     "settingsVisible": false,
-    "explorerLabel": "Open In Aptos Explorer"
+    "explorerLabel": "Open In Aptos Explorer",
+    "txSuffix": "?network=mainnet"
   },
   {
     "id": "ton.api.v2",

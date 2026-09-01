@@ -4,8 +4,7 @@
 //! Synchronous and free of I/O, so Swift can call them from a `static let`.
 
 /// Trim + lowercase + strip leading `0x` from a private-key hex string.
-#[uniffi::export]
-pub fn core_private_key_hex_normalized(raw_value: String) -> String {
+pub(crate) fn core_private_key_hex_normalized(raw_value: String) -> String {
     let trimmed = raw_value.trim().to_lowercase();
     match trimmed.strip_prefix("0x") {
         Some(stripped) => stripped.to_string(),
@@ -13,12 +12,18 @@ pub fn core_private_key_hex_normalized(raw_value: String) -> String {
     }
 }
 
-/// Heuristic check for a 32-byte hex private key.
+/// The normalised 32-byte hex key, or `None` when the input is not one.
+///
+/// Was two exports: a normaliser and a predicate over the normaliser's own
+/// result. A caller that wanted the key had to call both and hope they agreed
+/// about what "normalised" meant.
 #[uniffi::export]
-pub fn core_private_key_hex_is_likely(raw_value: String) -> bool {
+pub fn core_private_key_hex(raw_value: String) -> Option<String> {
     let normalized = core_private_key_hex_normalized(raw_value);
-    normalized.len() == 64 && normalized.chars().all(|c| c.is_ascii_hexdigit())
+    (normalized.len() == 64 && normalized.chars().all(|c| c.is_ascii_hexdigit()))
+        .then_some(normalized)
 }
+
 
 #[derive(Debug, Clone, uniffi::Record)]
 pub struct LargeMovementEvaluation {

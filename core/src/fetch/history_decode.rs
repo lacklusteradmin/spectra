@@ -483,12 +483,6 @@ pub fn history_evm_native_asset(chain_name: String) -> Option<EvmNativeAsset> {
     })
 }
 
-/// Map a user-visible chain name to the string chain id used by the
-/// history pagination store. Returns `None` for unsupported names.
-#[uniffi::export]
-pub fn history_pagination_chain_id(chain_name: String) -> Option<String> {
-    crate::registry::Chain::from_display_name(&chain_name).map(|c| c.str_id().to_string())
-}
 
 // ────────────────────────────────────────────────────────────────────
 // Bitcoin raw-history decode: turns the `fetch_history` Bitcoin JSON
@@ -754,15 +748,19 @@ mod tests {
     fn every_chain_can_be_paged() {
         use crate::registry::Chain;
 
+        // The export this used to call was `Chain::from_display_name(name)
+        // .map(str_id)` and nothing else — the caller already had that lookup.
+        // What is worth asserting is the lookup itself round-trips for every
+        // chain, which is what the paging needs.
         for chain in Chain::all() {
             assert_eq!(
-                history_pagination_chain_id(chain.chain_display_name().to_string()),
-                Some(chain.str_id().to_string()),
+                Chain::from_display_name(chain.chain_display_name()).map(|c| c.str_id()),
+                Some(chain.str_id()),
                 "{} cannot be paged",
                 chain.chain_display_name()
             );
         }
-        assert_eq!(history_pagination_chain_id("Nope".into()), None);
+        assert!(Chain::from_display_name("Nope").is_none());
     }
 }
 

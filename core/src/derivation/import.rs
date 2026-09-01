@@ -697,14 +697,6 @@ fn is_private_key_chain_supported(chain_name: &str) -> bool {
         .is_some_and(|chain| chain.derives_from_private_key())
 }
 
-/// The ordered list of chain display names that support private-key import.
-#[uniffi::export]
-pub fn core_supported_private_key_chain_names() -> Vec<String> {
-    Chain::all()
-        .filter(|chain| !chain.is_testnet() && chain.derives_from_private_key())
-        .map(|chain| chain.chain_display_name().to_string())
-        .collect()
-}
 
 fn validate_watch_only_draft_addresses(
     selected_chains: &[String],
@@ -791,7 +783,12 @@ mod tests {
     /// picked and were then refused with a message naming only Monero.
     #[test]
     fn every_offered_private_key_chain_passes_the_gate() {
-        let offered = core_supported_private_key_chain_names();
+        // The picker is `Chain.mainnets.filter(\.derivesFromPrivateKey)` on the
+        // Swift side now, so this is the same list it builds.
+        let offered: Vec<String> = Chain::all()
+            .filter(|c| !c.is_testnet() && c.derives_from_private_key())
+            .map(|c| c.chain_display_name().to_string())
+            .collect();
         assert!(!offered.is_empty());
         for name in &offered {
             assert!(
@@ -815,9 +812,12 @@ mod tests {
     /// the network selector decides which network it lands on.
     #[test]
     fn the_private_key_picker_offers_mainnets_only() {
-        for name in core_supported_private_key_chain_names() {
-            let chain = Chain::from_display_name(&name).expect("an offered chain the registry knows");
-            assert!(!chain.is_testnet(), "{name} is a testnet and was offered");
+        for chain in Chain::all().filter(|c| c.derives_from_private_key()) {
+            assert!(
+                !chain.is_testnet() || chain.mainnet_counterpart() != chain,
+                "{} is a testnet and would be offered",
+                chain.chain_display_name()
+            );
         }
     }
 

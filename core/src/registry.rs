@@ -791,6 +791,11 @@ impl Chain {
                 | Chain::BitcoinCash
                 | Chain::BitcoinSV
                 | Chain::Litecoin
+                | Chain::Zcash
+                | Chain::BitcoinGold
+                | Chain::Decred
+                | Chain::Kaspa
+                | Chain::Dash
         )
     }
 
@@ -844,6 +849,24 @@ impl Chain {
                 supports_private_key: false,
                 fee_field: SendFeeField::FeeSats,
                 fee_fallback: 0.0001,
+            },
+            // The five whose send existed but was unroutable. `fee_fallback`
+            // is the default `execute_send` already applies when the request
+            // carries no `fee_sat`, in the chain's own units — so the fee the
+            // sheet shows and validates against is the fee core will use.
+            // None of them has a shared-path preview, and without a fallback
+            // the generic submit refuses for want of an estimate.
+            Chain::Zcash | Chain::BitcoinGold | Chain::Kaspa => SendExecutionShape {
+                fee_decimals: 8,
+                supports_private_key: true,
+                fee_field: SendFeeField::FeeSats,
+                fee_fallback: 0.00001,
+            },
+            Chain::Decred | Chain::Dash => SendExecutionShape {
+                fee_decimals: 8,
+                supports_private_key: true,
+                fee_field: SendFeeField::FeeSats,
+                fee_fallback: 0.00002,
             },
             // e8s, like the UTXO chains. Same omission, same cause.
             Chain::Icp => SendExecutionShape {
@@ -1431,16 +1454,16 @@ mod tests {
     /// string, which is a localisation edit rather than something to discover
     /// from a screenshot.
     #[test]
-    fn token_tracking_chains_map_one_to_one() {
+    fn token_hosting_chains_map_one_to_one() {
         let mut seen = std::collections::HashMap::new();
         for identity in core_chain_identities() {
-            if let Some(t) = identity.token_tracking_chain {
+            if let Some(t) = identity.token_hosting_chain {
                 if let Some(prev) = seen.insert(format!("{t:?}"), identity.name.clone()) {
                     panic!("{t:?} claimed by both {prev} and {}", identity.name);
                 }
             }
         }
-        assert_eq!(seen.len(), 18, "expected eighteen token-tracking chains");
+        assert_eq!(seen.len(), 18, "expected eighteen token-hosting chains");
     }
 
     #[test]
@@ -1609,16 +1632,22 @@ pub struct ChainIdentity {
     pub supports_deep_utxo_discovery: bool,
     /// A watch-only import can carry addresses for this chain.
     pub supports_watch_only_import: bool,
+    /// A private key alone yields an address on this chain.
+    ///
+    /// Was `core_supported_private_key_chain_names`, an export whose whole
+    /// body was `Chain::all().filter(…).map(display_name)` — a filter over
+    /// this column, made into a call.
+    pub derives_from_private_key: bool,
     /// The chain has protocol-native staking the staking tab can drive.
     pub supports_staking: bool,
-    /// Which `CoreTokenTrackingChain` this chain is, if it can host tracked
+    /// Which `CoreTokenHostingChain` this chain is, if it can host known
     /// tokens. `None` for the chains that cannot.
     ///
-    /// `CoreTokenTrackingChain::chain_name` and its inverse already collapsed
+    /// `CoreTokenHostingChain::chain_name` and its inverse already collapsed
     /// four copies of this mapping inside Rust; publishing it here removes the
     /// three that were left in Swift, which hand-wrote `rawValue`,
     /// `init?(rawValue:)` and `allCases` for an enum core owns.
-    pub token_tracking_chain: Option<crate::store::wallet_domain::CoreTokenTrackingChain>,
+    pub token_hosting_chain: Option<crate::store::wallet_domain::CoreTokenHostingChain>,
     pub send_execution_shape: SendExecutionShape,
     /// The JSON-RPC method that answers "is this node alive", or `None` for a
     /// chain whose endpoints are checked over plain HTTP.
@@ -1656,8 +1685,9 @@ pub fn core_chain_identities() -> Vec<ChainIdentity> {
             address_validation_kind: chain.address_validation_kind().to_string(),
             supports_deep_utxo_discovery: chain.supports_deep_utxo_discovery(),
             supports_watch_only_import: chain.supports_watch_only_import(),
+            derives_from_private_key: chain.derives_from_private_key(),
             supports_staking: chain.supports_staking(),
-            token_tracking_chain: crate::store::wallet_domain::CoreTokenTrackingChain::from_chain_name(
+            token_hosting_chain: crate::store::wallet_domain::CoreTokenHostingChain::from_chain_name(
                 chain.chain_display_name(),
             ),
             send_execution_shape: chain.send_execution_shape(),
@@ -1857,4 +1887,3 @@ mod fee_decimals_match_the_asset {
         );
     }
 }
-

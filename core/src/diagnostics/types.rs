@@ -20,7 +20,7 @@ macro_rules! diagnostics_record {
 }
 
 diagnostics_record! {
-    BitcoinHistoryDiagnostics {
+    UtxoHistoryDiagnostics {
         #[serde(rename = "walletID")]
         wallet_id: String,
         identifier: String,
@@ -144,7 +144,7 @@ mod tests {
 
     #[test]
     fn bitcoin_roundtrip() {
-        roundtrip::<BitcoinHistoryDiagnostics>(
+        roundtrip::<UtxoHistoryDiagnostics>(
             r#"{"walletID":"w1","identifier":"addr","sourceUsed":"rust","transactionCount":5,"nextCursor":"c","error":null}"#,
         );
     }

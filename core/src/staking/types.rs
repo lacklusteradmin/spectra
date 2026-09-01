@@ -96,7 +96,7 @@ pub struct StakingPosition {
 }
 
 /// Amount preview for a staking action — what Swift renders before sign.
-/// Mirrors `EthereumSendPreview` etc. but with staking-specific fields.
+/// Mirrors `EvmSendPreview` etc. but with staking-specific fields.
 #[derive(Debug, Clone, Serialize, Deserialize, uniffi::Record)]
 pub struct StakingActionPreview {
     pub kind: StakingActionKind,

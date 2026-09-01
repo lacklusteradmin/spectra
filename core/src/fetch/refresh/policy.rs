@@ -206,9 +206,7 @@ pub fn history_plans(
     now_unix: f64,
 ) -> Vec<String> {
     let mut chain_ids = chain_ids;
-    // Ordered by display name, which the registry answers. A twenty-four arm
-    // match stood here doing the same thing for the ids it happened to list,
-    // and passing anything else through unchanged.
+    // Ordered by display name, which the registry answers for every id.
     chain_ids.sort_by_key(|id| {
         crate::registry::Chain::from_str_id(id)
             .map(|chain| chain.chain_display_name().to_string())

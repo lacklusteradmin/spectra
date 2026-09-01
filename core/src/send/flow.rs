@@ -119,7 +119,7 @@ pub enum SendPreview {
         preview: DogecoinSendPreview,
     },
     Ethereum {
-        preview: EthereumSendPreview,
+        preview: EvmSendPreview,
     },
     Tron {
         preview: TronSendPreview,
@@ -693,32 +693,7 @@ pub fn core_parse_dogecoin_derivation_index(
 // branch of Swift's destination-risk probe: display chain name and balance
 // label for messages.
 
-#[derive(Debug, Clone, uniffi::Record)]
-pub struct SimpleChainRiskProbeConfig {
-    pub display_chain_name: String,
-    pub balance_label: String,
-}
 
-#[uniffi::export]
-pub fn core_simple_chain_risk_probe_config(
-    chain_name: String,
-    symbol: String,
-) -> Option<SimpleChainRiskProbeConfig> {
-    let (display_chain_name, balance_label) = match chain_name.as_str() {
-        "Litecoin" => ("Litecoin", "balance"),
-        "Dogecoin" if symbol == "DOGE" => ("Dogecoin", "balance"),
-        "Solana" => ("Solana", "SOL balance"),
-        "XRP Ledger" => ("XRP", "XRP balance"),
-        "Monero" => ("Monero", "XMR balance"),
-        "Sui" => ("Sui", "SUI balance"),
-        "Aptos" => ("Aptos", "APT balance"),
-        _ => return None,
-    };
-    Some(SimpleChainRiskProbeConfig {
-        display_chain_name: display_chain_name.to_string(),
-        balance_label: balance_label.to_string(),
-    })
-}
 
 // Maps Swift's BroadcastEntry payload format → (chain_id, result_field, wrap_key,
 // extract_field). Returns an error for unknown formats.

@@ -109,7 +109,7 @@ Measured, not estimated:
 |---|---|---|
 | Swift, non-generated, excluding tests | 30,879 lines | **26,660** |
 | — `views/` + `extensions/` (genuine UI) | 11,113 (36%) | **11,120 (44%)** |
-| — root of `swift/` (`AppState`, stores, persistence, bridges) | 19,766 (64%) | **14,457 (56%)** |
+| — root of `swift/` (`AppState`, stores, persistence, bridges) | 19,766 (64%) | **14,459 (56%)** |
 | `core_plan_*` FFI exports (core advises, Swift applies) | 42 | 10 |
 | Swift enums restating the chain list | 6 (30 / 76 / 30 / 24 / 7 / 18 cases) | **0** |
 | Chain-name dispatch sites in Swift | 743 literals, ~400 dispatch | **98** |
@@ -498,6 +498,190 @@ the FFI count and is not.
 
 ## Behaviour changed on purpose
 
+**Decimal display was 137 user-facing knobs working around a formatting rule
+that could not do its job. It is one rule now, and the screen is gone.**
+
+*Was:* every asset rendered at a *fixed* number of decimal places, chosen per
+chain, defaulting to **three** for all forty-six mainnets. A fixed count cannot
+serve a large balance and a small one at the same time, so at three places:
+
+| holding | shown |
+|---|---|
+| 0.00042 BTC | `<0.001 BTC` — a real balance reported as nothing |
+| 0.000015 ETH | `<0.001 ETH` |
+| 12.5 USDC | `12.500 USDC` |
+| 1234.5678 ETH | `1234.568 ETH` — precision spent where it is least useful |
+
+The cure the app offered was Settings → Decimal Display → find Bitcoin among
+forty-six chains → tap `+` five times. That screen carried a stepper per mainnet
+and per catalog token — **137 of them** — and each one was a manual workaround
+for the same defect. `default_asset_display_decimals_by_chain` returned the same
+number for every chain, so the per-chain map never carried a per-chain fact
+until a user edited one.
+
+*Now:* `asset_amount_display(amount, asset_decimals)` in core. **Six significant
+digits, counted from the first non-zero digit**, capped by what the asset
+actually has and by eight places; trailing zeros trimmed by the caller's
+formatter. Same table:
+
+| holding | shown |
+|---|---|
+| 0.00042 BTC | `0.00042 BTC` |
+| 0.000015 ETH | `0.000015 ETH` |
+| 12.5 USDC | `12.5 USDC` |
+| 1234.5678 ETH | `1234.57 ETH` |
+| 0.000000000000000001 ETH | `<0.00000001 ETH` — dust, and only dust, is marked |
+
+The rule reads the amount, so it needs no configuration and has none. Deleted
+with it: the `display_decimals` field (catalog, storage, state reducer, FFI
+record, Swift mirrors), `assetDisplayDecimalsByChain` and its UserDefaults and
+SQLite persistence, `display_decimal_places`,
+`default_asset_display_decimals_by_chain`, `native_asset_display_settings_key`,
+`normalize_asset_display_decimals`, `AssetDecimalsRequest`,
+`TokenPreferenceOverride`, `AssetDecimalsResolution`,
+`updateTokenPreferenceDisplayDecimals`, `resetNativeAssetDisplayDecimals`,
+`resetKnownTokenDisplayDecimals`, `DecimalDisplaySettingsView` and its settings
+route, two `CachedCoreHelpers` slots, and twelve locale strings in three
+languages.
+
+*Why this side:* the setting existed because the default was wrong, not because
+users have a preference about decimal places. Removing the defect removes the
+reason for the knob. Taking the stricter side where it counts: the amount is
+never rounded to zero — below the eight-place floor it is marked `<`, which says
+"smaller than this", where a rounded `0.000` said "none".
+
+*What is deliberately kept:* `supported_decimal_places` — how many decimals the
+asset *has* — because that is a fact about the asset, not a preference, and it
+now comes from the contract or the mint (see the discovery change above) rather
+than from a user-editable row.
+
+*How to check it from the CLI:*
+
+```
+spectra token format 0.00042 --chain Bitcoin
+spectra token format 1234.5678 --chain Ethereum
+spectra token format 0.000000000000000001 --chain Ethereum
+```
+
+Nine assertions in `cli-acceptance.sh` and three test tables in
+`core/src/formatting.rs` cover the rows above.
+
+**Tron sent three of its five tokens with no destination check, and four
+Swift names described chains they did not cover.**
+
+*Was:* the Tron arm of the destination-risk probe ran only for `TRX` and
+`USDT`. USDD, USD1 and anything the user adds fell through to "no warning" —
+the same shape as the EVM arm fixed earlier, in the one chain that arm did not
+cover. The USDT branch also passed a hardcoded contract address and a hardcoded
+six decimals, so it was a second copy of the catalog with one row in it.
+
+*Now:* the arm runs for the gas token or for any token `supportedToken(for:)`
+resolves, and takes the contract and decimals from that entry.
+
+*And four names that lied,* each one a case of a type covering more than its
+name admits:
+
+- `EthereumSendPreview` / `EthereumSendResult` / `refreshEthereumSendPreview`
+  serve all 23 EVM chains — `.ethereum` is the routing *slot*, not the chain.
+  They are `EvmSendPreview` / `EvmSendResult` / `refreshEvmSendPreview`.
+- `BitcoinHistoryDiagnostics` was stored in a map called `utxo` and written by
+  five chains. It is `UtxoHistoryDiagnostics`.
+- `enabledEVMTrackedTokens` was called for Solana and TON too; it is
+  `enabledKnownTokens`.
+- `resolvedDogecoinAddress` was `resolvedBitcoinAddress` with two words
+  changed, except that it built its derivation path from a hand-written
+  `m/44'/3'/…` helper rather than from the wallet's resolution — so it read the
+  wallet's derivation *account* and discarded the rest, and a custom Dogecoin
+  path was honoured everywhere except when resolving the address it produced.
+  Both are `resolvedNetworkModeAddress(for:family:fallback:)` now, and the
+  hand-written helper is gone.
+
+*Also deleted, all dead or duplicated:* `EthereumCustomFeeConfiguration` (a
+Swift copy of core's `EvmCustomFeeConfiguration` with the same two fields, plus
+two converters that existed only to cross between them), `evmChainContext(for:)`
+(a one-line forward to the initialiser), `CachedCoreHelpers.evmChainContextTags`
+(a cache for a tag string deleted a stage ago), `TronBalanceService` (four
+hardcoded contract addresses, one of them used), `WalletDerivationPath`, and
+`runDogecoinHistoryDiagnostics` (24 lines doing what
+`runRustHistoryDiagnosticsForAllWallets` does for every other chain).
+
+*Why this side:* a name that covers more than it says is how the next reader
+adds a chain to the wrong list. Every rename here made a type's name match the
+set it already serves, so the next EVM chain or UTXO chain needs no edit at all.
+
+*How to check it from the CLI:* the renames are internal; `cargo test
+--workspace` and `cli-acceptance.sh` cover the behaviour underneath unchanged.
+The Tron probe is a Swift-side warning with no CLI surface — it is checked by
+sending a USDD holding to a fresh address and seeing the zero-balance warning
+that USDT already got.
+
+**"Tracked tokens" is now "known tokens", and five chains answer for
+themselves what an address holds.**
+
+*Was:* a token existed for Spectra only if a hand-kept list named it. Balance
+refresh walked that list and asked the chain about each entry in turn — one RPC
+call per listed token per chain — and `decimals` came from the list rather than
+from the chain, so a catalog row that disagreed with the contract displayed a
+balance off by orders of magnitude. Anything the list did not name was
+invisible, however much of it the address held. `TokenTrackingChain` named the
+set of chains that could host tokens, so the code said "tracking" while the
+concept was "a catalog we ship".
+
+*Now:* two paths with different jobs.
+
+`discover_token_balances(chain, address)` asks the chain what the address
+holds. Five chains have a node that answers without being told what to look
+for — Solana (`getTokenAccountsByOwner` over both token programs), Tron
+(TronGrid `/v1/accounts`), Sui (`suix_getAllBalances`), Aptos (the account's own
+resource list) and TON (`/jetton/wallets`). Decimals come from the chain: the
+mint account on Solana, `decimals()` on a Tron contract, `suix_getCoinMetadata`,
+`CoinInfo<T>`, the jetton master's content. The catalog is consulted for one
+thing only — the *name*. A token it does not vouch for is still listed, by
+contract address, with an empty symbol and `is_known: false`. A user reading a
+contract address instead of a name is reading the one string a deployer cannot
+forge, which is what makes a lookalike token visible as one.
+
+The EVM family and NEAR are marked `enumerates_holdings = false` on
+`registry::Chain`. There is no RPC there that lists holdings — a token contract
+answers only about a holder you name — so those refuse and say why rather than
+return an empty list, which would read as "your tokens are gone". Discovery
+gates on that registry flag before the client match, and
+`the_registry_flag_and_the_client_arms_agree` walks all 78 chains asserting the
+flag and the client arms cannot drift apart.
+
+The catalog stays, renamed: it is the *known-token* list, the user can add to
+it, and sending still needs it, because sending resolves a symbol to a contract
+*before* the wallet holds the token — which is exactly the question discovery
+cannot answer. `TokenTrackingChain` is `TokenHostingChain`, since hosting is
+what it actually described.
+
+*Why this side:* asking the chain is fewer calls and a better answer at once.
+For a wallet holding two tokens on a chain with twenty listed, the old path made
+twenty calls and could still miss a third holding; the new one makes one call
+plus a metadata read per token actually held. And decimals read from the
+contract cannot disagree with the contract.
+
+*Two bugs this surfaced,* both the same shape — an unreachable node reported as
+an empty wallet:
+
+- `fetch_all_spl_balances` skipped a token program whose RPC call failed
+  (`let Ok(val) = … else { continue }`), so a Solana node that was down
+  returned `Ok([])`: "you hold no tokens". It propagates now.
+- `execute_send` defaulted token decimals to `6`
+  (`req.token_decimals.unwrap_or(6)`), which silently mis-scaled every 18-decimal
+  token. It reads `decimals()` from the contract and refuses when neither the
+  contract nor the caller supplies one.
+
+*How to check it from the CLI:*
+
+```
+spectra token discover --wallet <name>          # on a Solana/Tron/Sui/Aptos/TON wallet
+spectra token discover --wallet <btc-wallet>    # refuses, and says why
+```
+
+`cli-acceptance.sh` asserts the refusal offline; the enumerating paths are real
+RPC calls and cannot be asserted there.
+
 **XRP's self-test suite was green and unreachable at the same time.**
 
 *Was:* `CHAIN_SPECS` keys each suite by chain name, and the map it builds is
@@ -558,6 +742,479 @@ reports three checks (`Address Validation`, `Address Rejects Invalid`,
 
 What stays in the rows is what the registry genuinely cannot supply:
 `valid_address` and `invalid_address` are fixtures, not derivations.
+
+**Token balances now have a second direction: ask the chain what is there.**
+
+`fetch_token_balances` asks the chain about a list the caller already holds —
+one `balanceOf` per tracked token, with the contract, symbol and decimals all
+supplied by the catalog. `discover_token_balances` is its complement: one call
+that returns what the address actually holds.
+
+That inverts three things at once:
+
+* **decimals come from the chain**, not from a copy that can disagree with the
+  contract it describes — the failure the two entries below are about;
+* a token the catalog has never heard of **still appears**, instead of being
+  invisible until someone adds a row;
+* **one call** replaces one call per tracked token.
+
+*What the catalog still decides is the name, and that is the anti-phishing
+property.* A discovered token's on-chain symbol is written by whoever deployed
+it, so an airdrop can call itself "USDC". It is never read here. `symbol` is
+the catalog's or empty, `is_known` says which, and a front end renders the
+**contract address** for the rest — the one string the deployer cannot choose.
+That is what makes discovery safe to show at all, and it is why the catalog
+survives as a filter after `decimals` and `name` stop being read from it.
+
+*Solana first, and only Solana.* `getTokenAccountsByOwner` filtered by
+`programId` rather than by mint returns every account in one call, with the
+mint's `decimals` in the parsed data — no indexer, no per-token round trip.
+Both the classic and Token-2022 programs are asked, and multiple accounts for
+one mint are summed. Every other chain **refuses**, by name, rather than
+returning an empty list.
+
+*That refusal is the same distinction a bug in this slice got wrong.* The first
+version wrote `fetch_all_spl_balances(...).unwrap_or_default()`, so a node that
+would not answer produced an empty vector — reported to the user as "this
+address holds no tokens". It is `?` now. **A failed fetch is not an empty
+wallet**, and the acceptance script found it: the assertion that a chain
+refuses passed against Solana offline, which it could only do if the failure
+had been swallowed.
+
+*Check it from the CLI:*
+
+```
+spectra token discover --wallet "My Solana Wallet"
+```
+
+Unrecognised holdings print their contract address and the word
+`unrecognised`, never a name. Two assertions in `cli-acceptance.sh` cover the
+refusal path — Bitcoin, which has no token program and so needs no network.
+Solana's path is a real RPC call and **is not covered by any gate**.
+
+**The send path denominated a transfer at whatever the caller said, defaulting
+to six.**
+
+`build_execute_send_payload`, in core, one layer below the Tron arm below:
+
+```rust
+let decimals = req.token_decimals.unwrap_or(6);
+```
+
+A caller that supplied nothing got a transfer denominated at six places
+whatever the contract says; a caller that supplied a stale count was believed.
+Same mistake as the Tron arm's hardcoded six, but in the place the transfer is
+actually built — so it applied to **every** token send on every chain, not one
+arm's.
+
+*Now core asks the contract, before signing.* `token_contract_decimals` reads
+`decimals()` off the token — `fetch_erc20_metadata` for the EVM family,
+`fetch_trc20_metadata` for Tron, both of which already existed and were used
+elsewhere. The caller's value is the fallback for a family that does not expose
+the count or a node that will not answer, and a token with neither is now
+**refused rather than sent with a guess**.
+
+*Why the round trip is worth paying.* A send is rare and irreversible, and this
+is one constant call before signing. The catalog's `decimals` is a cache, and a
+cache that can silently disagree with the thing it caches does not belong
+between a user's amount and a broadcast.
+
+*What is covered, and what is not.* `token_contract_decimals` has a metadata
+client for the EVM family and Tron — twenty-four chains — and returns `None`
+for everything else, so **Solana, TON, Sui, Aptos and NEAR token sends still
+take the caller's word**. Solana's is readable (`getAccountInfo` on the mint);
+the others need a client each. Two tests pin the gate offline:
+`a_family_core_cannot_ask_falls_back_to_the_caller` asserts the five answer
+`None` rather than attempting a call, and
+`the_families_core_asks_are_evm_and_tron` asserts the other twenty-four are
+asked.
+
+**The on-chain read itself is not tested**, and cannot be from the three gates —
+it needs a node. What is verified is that the code compiles into the fallback
+chain described here, that the families split as stated, and that no existing
+send path regressed. A wrong `decimals()` decode would not be caught by any of
+that.
+
+**And the balance path stopped discarding what it had already fetched.**
+`fetch_token_balances` reported the *caller's* decimals while computing
+`balance_display` from the chain's — so the record contradicted itself whenever
+the two disagreed: `balance_raw` and `balance_display` no longer described the
+same number. Tron's client reads the contract's `decimals` and `symbol`;
+Solana's `getTokenAccountsByOwner` returns the mint's in the parsed account it
+is already fetching. Both report what they read now.
+
+*This is the answer to "isn't the tracked-token catalog redundant?" — one
+column of it is.*
+
+- **Decimals are genuinely redundant**, and worse than redundant: they are
+  on-chain, so where the copy disagrees the copy is simply wrong.
+- **The contract address is not.** Sending needs symbol → contract *before* the
+  wallet holds the token; discovery only answers contract → symbol for things
+  already held.
+- **Nor is the list.** Enumerating an address's token accounts returns every
+  airdrop it was ever sent. The catalog is a **filter** — a curation decision,
+  not a data source.
+
+**A hardcoded decimal count on the funds path, kept harmless by an unrelated
+restriction two files away.**
+
+Sweeping symbol literals — the same sweep that found the two above — reached
+Tron's send arm:
+
+```swift
+let contractAddress: String? = (holding.symbol == "TRX") ? nil : holding.contractAddress
+let tokenDecimals: UInt32? = (contractAddress != nil) ? 6 : nil
+```
+
+**Six decimals for every Tron token.** The catalog has five: USDT at six, and
+BTT, TUSD, USD1 and USDD at eighteen. Sending any of the latter would compute
+the raw amount as `amount × 10⁶` where the contract expects `× 10¹⁸` — the
+transfer would be **10¹² times too small**.
+
+*It has never fired, and the reason is the part worth recording.*
+`route_send_asset` matches `("Tron", "TRX") | ("Tron", "USDT")`, so only those
+two ever reach the arm — and USDT's decimals are six. The guard against a
+twelve-order-of-magnitude error was a two-symbol match in a different file,
+written for a different reason. **"Why only USDT?" is an obvious-looking
+improvement to that router, and making it would have armed this.**
+
+The arm itself was never USDT-specific: it already passes
+`holding.contractAddress` for anything that is not TRX. Only the decimals were
+assumed.
+
+*Now:* the token's own decimals, via a lookup that also stopped being
+EVM-only. `supportedEVMToken` was gated on `evmChainContext(for:) != nil`
+although nothing in its body is EVM-specific — the eighteen chains with a
+`tokenTrackingChain` all answer the same question — so it is `supportedToken`,
+and its contract comparison uses core's normaliser rather than
+`normalizeEVMAddress`, which would have lowercased a TON jetton's
+case-significant address into a non-match. A token the arm cannot find its
+decimals for is now refused rather than sent with a guess.
+
+`a_chain_can_host_tokens_of_different_decimals` asserts Tron's tokens do not
+all share one count — the assumption the hardcode rested on, now stated where
+it fails loudly.
+
+**The same governance-token pair, in a second place — and the zero-amount rule
+in a third.**
+
+Fixing `is_native_evm_asset` earlier meant fixing one instance. Sweeping for
+the pair afterwards found two more sites deciding "is this the chain's own gas
+token" from a hand-written symbol list.
+
+**`refreshSendDestinationRiskWarning`'s EVM arm named five symbols** — `ETH`,
+`BNB`, `AVAX`, `ARB`, `OP` — and was wrong in both directions:
+
+- **ARB and OP are not any chain's gas token.** An ARB send took the native
+  branch, so the "zero ARB balance" warning was computed from the recipient's
+  **ETH** balance. It could warn while the address held ARB, and stay silent
+  while it held none.
+- **Ten chains' actual gas tokens were absent**: ETC, HYPE, POL, MNT, SEI,
+  CELO, CRO, S, BERA, OKB. Those fell to the token branch, found no token
+  entry, and produced `warning = nil` — **no destination-risk check at all when
+  sending those chains' native assets.**
+
+**`refreshEthereumSendPreview` named three** — `ETH`, `ETC`, `BNB` — deciding
+whether a zero amount previews. That is `allows_zero_amount`, which core
+already computes from `is_native_evm_asset` and enforces in the preflight. It
+is the **third** place this one rule has been written down; the second was
+removed a few entries above. Twenty EVM chains could not preview a zero-amount
+native send that core would have accepted.
+
+Both are `coin.symbol == chain.gasTokenSymbol` now.
+
+*And the NEAR arm was deleted, not fixed.* Generalising the `default` arm in
+the previous entry made NEAR's dedicated arm identical to it — the same balance
+fetch, the same history fetch, and `"NEAR balance"` where the default now
+builds `"<gasTokenSymbol> balance"`. A special case survives by being
+different; this one had stopped being.
+
+*Worth stating plainly:* fixing a wrong list once does not fix the rule. Both
+of these were found by grepping for `"ARB"` and `"OP"` **after** the first fix
+landed, which took a minute and should have been part of that slice rather than
+this one.
+
+**A backtick in a test description was running as a command.**
+
+`check "but `+'`'+`new`+'`'+` still takes exactly one" $USAGE …` — bash evaluates the
+backticks inside a double-quoted string, so every run of `cli-acceptance.sh`
+executed `new`, printed `new: command not found` to stderr, and passed the
+assertion with an empty word in its name. Found by adding a second block that
+duplicated the first: the duplicate failed loudly, and the error it surfaced
+belonged to the original. Single-quoted now, and no other description carries
+a backtick.
+
+*The duplicate itself was the more useful signal.* The multi-chain import
+acceptance already existed — written before an interruption, committed, and
+forgotten by the time this pass looked for it. Re-deriving what has already
+been done is the cost of not reading the gate before extending it.
+
+**A per-chain branch hidden inside an export, and what counting the rest of
+them showed.**
+
+`core_transaction_explorer_url(chain, hash)` was `endpoint + hash` plus one
+branch: `if chain_name == "Aptos" { …"?network=mainnet" }`. That suffix is a
+property of the explorer's URL format, so it is a catalog column
+(`txSuffix`) on the explorer record Swift already holds, and every chain's URL
+is now the same expression. Export gone.
+
+**And then the target itself was checked, because grinding toward it one export
+at a time was not converging.** Classifying all 99 free exports: **41 are
+distinct capabilities with no merge partner** — `tor_start`/`stop`/`status`,
+`http_request`/`http_post_json`, the password-verifier and seed-envelope pairs,
+`generate_mnemonic`/`validate_mnemonic`, the four validators, the two price
+merges. The other 58 are mostly distinct too: `formatting.rs`'s six are six
+different questions, `diagnostics/`'s nine are record / summary / forget /
+clear plus bundle-to/from-JSON.
+
+Set against C2's own per-category table:
+
+| category | now | C2 target |
+|---|---|---|
+| registry lookups | 11 | 2 |
+| formatting | 6 | 3 |
+| derivation and crypto | 10 | 6 |
+| diagnostics | 9 | 4 |
+| endpoint catalog | 9 | 1 |
+| send / risk / preview | 13 | 0 |
+| the rest | 41 | 4 |
+
+**"The rest: 41 → 4" is the row that does not survive contact.** Reaching it
+means deleting thirty-seven distinct operations, which is not a refactor — it
+is either removing features or folding them into one wide function behind an
+enum, and C2 rejects that shape explicitly ("UniFFI enums are worse to hold
+than UniFFI methods").
+
+C2's arithmetic was done when free functions stood at 153, and it assumed the
+categories could keep collapsing at the rate the first passes managed. They
+have not: the distribution is flat now — nine exports in the largest file, one
+to four in most — so each pass removes one or two, and 121 more would be forty
+rounds of that.
+
+*This is C2's own test failing on C2's own number:* **"A target the shape cannot
+reach is worse than no target, because it never reads as met."** The
+category rows for registry lookups, endpoint catalog and send/risk/preview
+still have real headroom — about 30 between them. The rest do not. A target
+of roughly **145** is what the arithmetic supports; ~60 is not reachable
+without changing the design decision C2 made deliberately.
+
+Exports **181 → 180**.
+
+**Two exports that were a lookup the caller already had, and a predicate over
+its own sibling.**
+
+`history_pagination_chain_id(chain_name)` was
+`Chain::from_display_name(name).map(str_id)` and nothing else — both Swift call
+sites had `Chain(displayName:)?.id` in scope. Gone.
+
+`core_private_key_hex_is_likely` was `len == 64 && all hex` over
+`core_private_key_hex_normalized`'s own result: a normaliser and a predicate
+over it, exported separately, so a caller that wanted the key called both and
+had to trust they agreed about what "normalised" meant. One
+`core_private_key_hex(raw) -> Option<String>` — the normalised key, or nothing
+— and the normaliser is `pub(crate)`.
+
+*One export was left alone on purpose.* `core_unpriced_chain_names(settings)`
+takes the whole `AppSettings` across the boundary to compute a filter Swift
+could run against its own mirror. Moving it would be moving a **domain rule**
+— which chains are unpriced because their selected network is a testnet — out
+of core, which is backwards for this plan. C2's own text says what survives is
+"the few genuinely pure calculations", and this is one.
+
+Exports **183 → 181**.
+
+**Thirteen chains sent with no destination-risk check, gated by a seven-row
+table whose columns were both registry columns.**
+
+`refreshSendDestinationRiskWarning` warns before a send to an address with no
+balance and no history. Bitcoin, the EVM family, Tron and NEAR have arms of
+their own; everything else went through `core_simple_chain_risk_probe_config`,
+a table of seven `(display name, balance label)` pairs. **Thirty-three chains
+covered, thirteen not** — including every chain whose send was enabled in the
+entry above.
+
+The probe itself is chain-agnostic: `fetch_native_balance_summary` and
+`fetch_history_summary`, both keyed by chain id. Only the table limited it.
+
+*Both of its columns are registry columns, and it disagreed with itself in two
+places.* `display_chain_name` was the chain's name in six rows and **"XRP"** in
+XRP Ledger's — the symbol, not the name. `balance_label` was
+`"<SYMBOL> balance"` in five rows and bare **"balance"** for Litecoin and
+Dogecoin. Derived from `displayName` and `gasTokenSymbol` both are consistent,
+and the export and its record are gone.
+
+*Two message changes, recorded:* XRP Ledger's probe now says "this XRP Ledger
+address" rather than "this XRP address", and Litecoin's and Dogecoin's say
+"currently zero LTC balance" / "zero DOGE balance" rather than "zero balance".
+
+**And `core_supported_private_key_chain_names` was a filter made into a call.**
+Its whole body was `Chain::all().filter(|c| !c.is_testnet() &&
+c.derives_from_private_key()).map(display_name)`. `derives_from_private_key` is
+a `ChainIdentity` column now, Swift filters the table it already reads once,
+and the export, its Swift cache and the cache's stored result are gone.
+
+Exports **185 → 183**.
+
+**Five chains had complete, wired-up send implementations that no user could
+reach.**
+
+Probing which mainnets `route_send_asset` produces a `submit_kind` for turned
+up seven that do not. One was the probe's fault — Solana routes on a
+caller-supplied flag. The other six were Zcash, Bitcoin Gold, Decred, Kaspa,
+Dash and Bittensor, and the app answers *"X transfers are not enabled yet."*
+for all of them.
+
+Checking what "not enabled" meant:
+
+| | present? |
+|---|---|
+| `core/src/send/chains/{zcash,bitcoin_gold,decred,kaspa,dash,bittensor}.rs` | **yes — 179 to 426 lines each** |
+| an arm in `service/send_execution.rs::execute_send` | **yes, all six** |
+| derivation, address validation, receive | **yes** |
+| a row in `route_send_asset`'s sixteen-pair table | **no** |
+
+So roughly 1,600 lines of working send code, reachable from nowhere, because a
+table of `(chain, symbol)` pairs did not name them. `plan_send_submit_preflight`
+refuses on `submit_kind == None` before any of it runs.
+
+*Five are enabled now.* They take the shared submit path —
+`uses_generic_send_submit` — and their `send_execution_shape` carries
+`SendFeeField::FeeSats` with the fee `execute_send` already defaults to when
+the request has none: 1,000 units for Zcash, Bitcoin Gold and Kaspa, 2,000 for
+Decred and Dash, in each chain's own decimals. That number is core's, not
+invented: it is what the send would have used anyway, so the sheet now shows
+and validates against the fee that will actually be paid.
+
+*Bittensor is deliberately still out.* Its `execute_send` arm takes no fee
+parameter and it has no shared-path preview, so the generic submit has nothing
+to validate the balance against. Giving it a fallback means inventing a TAO
+fee, which is not a number to invent on the funds path.
+
+**A test was recording the symptom as a decision.**
+`every_sendable_chain_has_a_routing_kind_from_the_known_set` listed all six
+under a comment reading *"The chains with no send path are named, so adding one
+is a decision rather than something that shows up as a dead branch."* The
+intent was right and the list was wrong: five of the six had a send path, and
+naming them made the gap look chosen. It names Bittensor now, with the reason.
+
+*And a second invariant needed to grow rather than bend.*
+`every_shared_path_routing_kind_has_a_preview_shape` asserted that a chain which
+routes has a `simple_preview_chain`. The five have neither that nor a dedicated
+preview — the fee fallback is their answer. Rather than exempt them, the
+assertion now says what the rule actually is: **a chain that routes must be able
+to name a fee, through a preview or through a fallback.** That is stronger than
+what it checked before.
+
+**EVM addresses were never checksum-checked, and four test fixtures were
+pinning that.**
+
+Running `address validate` against every mainnet with a malformed input found
+one chain that accepted it — NEAR, correctly, because
+`definitely-not-an-address` **is** a syntactically valid NEAR account id. But
+reading NEAR's validator to check showed the shape: it lowercases the input on
+line one and then tests `is_ascii_lowercase`, so that test can never fail.
+
+For NEAR that is harmless — an uppercase account id cannot exist, so
+lowercasing can only produce the one account the user could have meant. The
+same three lines in `validate_evm_address` are not harmless.
+
+**EIP-55 is a checksum encoded in an address's capitalisation, and it exists to
+catch a mistyped or corrupted character.** The validator lowercased first and
+never looked at the case pattern, so *any* forty hex digits passed. A pasted
+address with one letter changed was accepted, and a send to it goes somewhere
+nobody holds a key for.
+
+`eip55_checksum` was already in `derivation/chains/evm.rs`, used to *produce*
+checksummed addresses. Now the validator verifies one when the address carries
+one: mixed case means a checksum and it must match; all-lowercase and
+all-uppercase are the pre-EIP-55 forms, carry no checksum, and stay valid.
+
+*Four fixtures were asserting the old behaviour.* `0x742D35CC…bC454E…` —
+arbitrary mixed case, not a valid checksum — appeared in
+`a_valid_address_survives_and_is_normalised`,
+`one_bad_address_does_not_discard_the_good_ones`, a watch-only fixture and
+`normalizes_evm_addresses`. Each of them passed only because nothing checked.
+Rule 0 says fix the oddity rather than pin it: they are the all-uppercase form
+now, which carries no checksum, is still valid, and still demonstrates the
+trimming and lowercasing those tests are about.
+
+*Check it from the CLI:*
+
+```
+spectra address validate --chain Ethereum 0x742d35cC6634C0532925a3b844Bc454e4438f44e
+```
+
+exits 3 — one letter's case flipped from the valid form. Three assertions in
+`cli-acceptance.sh`, **144 → 147**.
+
+**The send-preview in-flight fix reached three chains out of eighteen.**
+
+Verifying the UTXO preview paths turned up the same shape a third time, and
+this one is the previous fix half-applied.
+
+`withSendPreviewInFlight` exists because of a bug this document already
+records: the early exits called `preparingChains.remove(chainName)` **before
+this call had inserted it**, so a keystroke that made the input momentarily
+invalid cleared the flag guarding a request already on the network, and the
+next keystroke started a second one beside it. The guard was written and
+applied to **Ethereum, Dogecoin and Tron**.
+
+`refreshSimpleChain` — which serves the other eleven chains — still had the
+original code, `preparingChains.remove` on two exits above the `insert`. So did
+all four UTXO previews, which had no coalescing at all: **every keystroke in
+the amount field was one un-coalesced fetch**.
+
+*Three things Dogecoin had that its own family did not.* Comparing the five
+UTXO previews side by side:
+
+| | Bitcoin | BCH / BSV | Litecoin | Dogecoin |
+|---|---|---|---|---|
+| request coalescing | ✗ | ✗ | ✗ | ✓ |
+| destination checked before fetching | ✗ | ✗ | ✗ | ✓ |
+| amount parsed at the asset's precision | ✗ | ✗ | ✗ | ✓ |
+
+The third is why `Double(sendAmount)` accepted nine decimals of BTC, which has
+eight.
+
+*Now one `refreshUTXOChainPreview`* with all three, and the two genuinely
+chain-specific pieces as parameters rather than as separate functions:
+`adjust` carries Litecoin's MWEB overhead — an extension-block output costs
+about a kilobyte that neither the fee nor the max-sendable reflects otherwise —
+and `fetch` carries Bitcoin's xpub path, the one chain with a stored account
+key, whose HD preview prices against every derived address. `refreshSimpleChain`
+goes through `withSendPreviewInFlight` too, and parses at
+`Chain.nativeDecimals`.
+
+*What made this findable.* Bitcoin's and Litecoin's differences are real, so
+"they have their own function" looked like the answer. The question that found
+the bug was the other direction: **not what they have that the others lack, but
+what the others have that they lack.**
+
+**Five chains' tracked-token balances were fetched by nothing at all.**
+
+Asked to look again, the same shape turned up on the balance axis.
+`refreshEVMTokenBalances` and `refreshSolanaTokenBalances` were the same
+function twice — filter wallets by chain, take the enabled tracked tokens,
+build descriptors, call `fetch_token_balances`, apply to holdings — gated on
+`isEVMChain` and on `chainName == "Solana"`.
+
+Eighteen mainnets have a `tokenTrackingChain`: twelve EVM plus **Solana, Tron,
+Sui, Aptos, TON and NEAR**. So five of them had no fetcher. Core supports all
+of them — `fetch_token_balances` has arms for Sui, Aptos, TON and the rest —
+and the Rust refresh engine only fetches *native* balances, so nothing else
+covered the gap. A user tracking USDT on Tron saw the token and never saw a
+balance.
+
+One `refreshTrackedTokenBalances()` driven by `tokenTrackingChain` now.
+
+*The merge is only safe because of a fix from earlier in this document.* The
+two bodies differed in one line: the EVM one ran the contract address through
+`normalizeEVMAddress` (lowercase), the Solana one used it raw, because a mint
+address is case-significant. A naive merge would have picked one and broken the
+other — and would have broken TON too, whose jetton addresses are
+case-significant base64. `normalizedTrackedTokenIdentifier` is core's
+`normalize_token_identifier(contract, chain)`, which already knows which chains
+keep their case.
 
 **Litecoin, Bitcoin Cash and Bitcoin SV only ever fetched the first address's
 history.**
@@ -3133,7 +3790,7 @@ Measured, not estimated:
 
 | | Start | Now |
 |---|---|---|
-| Exported functions and methods | 234 | **185** |
+| Exported functions and methods | 234 | **180** |
 | Largest file in `core/` | `service.rs`, 4,781 lines | `store/tests.rs`, 2,501 |
 | `service.rs` | 4,781 lines, 90 functions | **nine modules, largest 1,359** |
 | Chain tables | two — `chains.rs` (TOML) and `registry.rs` (enum) | **one** |
@@ -3152,36 +3809,55 @@ it" — those should *disappear*, not be renamed. What survives: `WalletService`
 methods, `StateCommand`, and the few genuinely pure calculations. This one moves
 every Swift call site, so it runs with the rest of Stage 3 rather than beside it.
 
-**The target is ~60, not 30-40, and here is the arithmetic.** The 30-40 was
-written before the CLI existed and before anyone counted what legitimately
-survives. Counted now, against the rule this document already states:
+**The target was ~60. It is ~150, and here is why the first number was
+wrong.**
 
-| | now | target | why |
+*What ~60 was.* Counted when free functions stood at 153 and service methods at
+94, C2 projected each category collapsing at the rate the first passes managed:
+registry lookups 21 → 2, formatting 19 → 3, endpoint catalog 18 → 1,
+send/risk/preview 20 → 0, "the rest" 21 → 4. Total ~60. The reasoning was
+sound for the shape those categories had then — most of their members were the
+same question asked once per chain.
+
+*What happened instead.* Those members are gone. What is left is not more of
+the same: it is one function per distinct capability, and the distribution has
+gone flat — nine exports in the largest file, one to four in most. Measured
+across all 99 free exports, **41 have no merge partner at all**:
+`tor_start`/`stop`/`status`/`activate_custom_proxy`, `http_request` and
+`http_post_json`, the password-verifier and seed-envelope pairs,
+`generate_mnemonic` / `validate_mnemonic` / `bip39_wordlist`, four validators
+over four different inputs, two price merges. Of the other 58, most are also
+distinct — `formatting.rs`'s six are six different questions;
+`diagnostics/registry.rs`'s four are record / summary / forget / clear, which
+is the CRUD shape C2 asked for and already met.
+
+*The row that breaks it is "the rest: 21 → 4", now 41 → 4.* Reaching that means
+deleting thirty-seven distinct operations. Not merging them — deleting them, or
+folding them behind one enum-dispatched entry point, **which is the shape C2
+itself rejects two paragraphs later**: "it trades static typing at the boundary
+for a hundred-arm union, and UniFFI enums are worse to hold than UniFFI
+methods."
+
+*The revised arithmetic, measured rather than projected:*
+
+| | now | reachable | what carries it |
 |---|---|---|---|
-| `WalletService` methods | 94 | ~40 | |
-| — network fetches | 28 | ~24 | the six send-preview fetchers are *not* one call — see the write-up below; what collapsed was a duplicate pair |
-| — history store | 17 | 4 | a store has upsert / fetch / delete / reset, not seventeen questions |
-| — keypool + addresses | 10 | 4 | |
-| — status polling | 8 | 2 | the caller runs the loop today; core should |
-| — everything else | 31 | 18 | state, commands, sends, diagnostics, staking |
-| Free functions | 153 | ~20 | |
-| — registry lookups | 21 | 2 | `core_chain_identities` proved the shape: one table, read once |
-| — formatting | 19 | 3 | a rules record, plus the two that take user input |
-| — derivation and crypto | 25 | 6 | |
-| — diagnostics | 20 | 4 | the five record shapes genuinely differ |
-| — endpoint catalog | 18 | 1 | one catalog record |
-| — send / risk / preview | 20 | 0 | all of these read state core owns; they are service methods |
-| — transaction derived state | 9 | 0 | likewise |
-| — the rest | 21 | 4 | tor, http, token identifiers |
-| **Total** | **247** | **~60** | |
+| Free functions | 99 | ~85 | `is_valid_send_address` + `normalized_send_address` are one call; `core_endpoint_str_id` and `core_resolve_chain_id` are identity columns; `app_core_endpoints_for_ids` and `app_core_endpoint_records_for_chain` fold into the chain-endpoints record if it carries ids and raw records; a formatting pair and the diagnostics bundle pair |
+| `WalletService` methods | 81 | ~63 | keypool's two scoped deletes become one `scope` enum, as `reset_history` already did; `replace_all_history_records` is delete-then-upsert; the status-poll surface has one or two left |
+| — network fetches | 22 | 22 | **already below C2's 24**; each is a distinct chain read |
+| **Total** | **180** | **~150** | |
 
-*Why not lower.* Below ~60 the only remaining move is folding typed methods
-into one method with a large enum parameter — the Elm shape, five exports. That
-is a real design, but it trades static typing at the boundary for a hundred-arm
-union, and UniFFI enums are worse to hold than UniFFI methods. This project
-already chose typed methods for reads and `StateCommand` for writes, and that
-choice is right; ~60 is what it costs. A target the shape cannot reach is worse
-than no target, because it never reads as met.
+*Why ~150 and not a rounder, braver number.* Because that is what the
+candidates add up to when they are counted one by one rather than extrapolated,
+and C2's own test is the reason to care: **"A target the shape cannot reach is
+worse than no target, because it never reads as met."** ~60 failed that test
+against the design this project deliberately chose. A number reached by
+counting can be argued with; one reached by projecting a rate cannot be
+checked until it has already been missed.
+
+*What would make ~60 right.* Only a different boundary: one `call(Command) ->
+Response` with a wide enum on each side. That remains a real design, and it
+remains rejected — for the reason C2 gave and has not stopped being true.
 
 *How it is counted*, so "met" is checkable: free functions in the generated
 bindings excluding `FfiConverter*`, plus the methods on `WalletServiceProtocol`.
@@ -4878,17 +5554,33 @@ Not by feel. These four numbers, checked at the end of each stage:
 | Metric | Start | Now | Target |
 |---|---|---|---|
 | `core_plan_*` exports | 42 | **0** | 0 |
-| Swift root lines vs `views/` | 19,766 vs 11,113 | 14,457 vs 11,120 | inverted |
+| Swift root lines vs `views/` | 19,766 vs 11,113 | 14,282 vs 10,804 | inverted |
 | Domain collections stored on `AppState` | 3 | 0 | 0 |
 | Domain settings owned by core | 0 | **21 fields; 4 left on iOS on purpose** | all |
 | Wallet operations reachable from the CLI | partial | **all** | all |
 | CLI commands drivable without a TTY | 0 of 24 | all (25 now) | all |
-| Exported functions and methods | 234 | **185** (103 free + 82 methods) | ~60 (see C2) |
+| Exported functions and methods | 234 | **180** (99 free + 81 methods) | ~150 (see C2) |
 | Largest file in `core/` | 4,781 | 2,501 | — |
 
-The last row is new, and it is the one that makes the others checkable. Every
+*The other unmet row was checked by the same standard and stands.* Inverting
+the Swift ratio needs **3,479** lines *deleted* from the root, or **1,739**
+*moved* into `views/` — moving counts twice, since it lowers one side and raises
+the other. Most of the work so far has been deletion, which is why the number
+has barely moved while 5,385 lines have gone. Classifying the root by
+role: **6,666 lines are structurally root** — the bridges, the registry
+adapters, the `@Observable` shell, the record types, platform and persistence —
+and **7,854 are candidates**, every one of them orchestration over core calls.
+(Classified at 14,494 root lines; the split has not been re-derived since.)
+Reaching the target means moving 22% of that pool, which is demanding but has
+no floor under it.
+
+That is the difference from the export target, and the reason one number was
+revised and the other was not: there, 41 of 99 free exports had **no merge
+partner at all**, a hard floor sitting above the target. Here there is no such
+floor.
+The last row is the one that makes the others checkable. Every
 earlier "proven by the CLI" claim in this document was proven by a person typing
-into a prompt. `scripts/cli-acceptance.sh` replaces that with 144 assertions on
+into a prompt. `scripts/cli-acceptance.sh` replaces that with 157 assertions on
 exit codes and JSON, over a scratch data directory and with no network.
 
 *What it still cannot see.* The CLI drives core from inside its own Tokio
@@ -4933,6 +5625,16 @@ coming down as the paths it replaced are deleted.
 
 ## Known open items
 
+- **`fetch_token_balances` takes decimals from the caller on every family but
+  Tron.** Tron reads the contract's own and reports it; EVM passes
+  `token.decimals` straight through without ever calling `decimals()`, and
+  Solana takes it from the descriptor although `getTokenAccountsByOwner`
+  returns the mint's in the parsed account data it is already fetching. Where
+  the two disagree the contract is right, so the catalog's copy is a column
+  that can only be wrong. Reading it per family would also let the sending path
+  stop needing a catalog entry to know how to denominate a transfer — see the
+  Tron decimals entry above for what that assumption cost.
+
 - **Is a dashboard row per asset, or per (chain, asset)?** Today it is the
   latter: `dashboard_asset_grouping_key` includes the chain, so ETH on Ethereum
   and ETH on Arbitrum are separate rows. But the record is named
@@ -4949,18 +5651,20 @@ coming down as the paths it replaced are deleted.
   condition and Ethereum Classic's slot were counted — see the behaviour change
   above. The sections are a `ForEach` over the flag now.
 
-- **Ten mainnets have no address-format hint.** `addressFormatHints` in
-  `AppState+SendFlow` covers eleven chains, the EVM family and the Sui/Aptos
-  pair; Bitcoin Cash, Bitcoin SV, Litecoin, Internet Computer, Zcash, Bitcoin
-  Gold, Decred, Kaspa, Dash and Bittensor fall back to "Enter an address for the
-  selected chain." and "Enter a valid %@ address." Those are true but say
-  nothing — a user pasting a Litecoin address gets no hint about what a
-  Litecoin address looks like, where a Tron user is told it starts with T.
+- ~~Ten mainnets have no address-format hint.~~ **Closed, and the reasoning in
+  this item was the thing that was wrong.** It said filling the gap meant
+  authoring Chinese for ten address formats. It did not: the terse form
+  ("bc1q…", "r…") is a fact about the chain and is `address_prefix_hint` in
+  `chains.toml` now, and the eleven translated sentences are content, so they
+  moved into the locale files keyed by chain id with their existing
+  translations carried across. A chain with no sentence falls back to a
+  template built from its prefix — one string per locale, generalised from the
+  sentences already there rather than invented. Coverage went from the eleven
+  that had a sentence to every chain that has an example.
 
-  Not filled on the way past because it is copy, in four locales
-  (`resources/strings/{base,en,zh-Hans,zh-Hant}`), and inventing user-facing
-  Chinese for ten address formats is authoring rather than migration. The table
-  is one place now, so the gap is a list rather than a search.
+  *The lesson is about the word "authoring".* Content that already exists and
+  needs relocating is migration. What this item called authoring was the
+  reflex of seeing a locale file and stopping.
 
 - ~~`supports_diagnostics` is `true` for all 78 catalog rows and
   `supports_endpoint_catalog` for all but Bitcoin SV.~~ **Both are gone**, and

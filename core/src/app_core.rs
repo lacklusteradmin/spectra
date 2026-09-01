@@ -65,6 +65,10 @@ pub struct AppCoreEndpointRecord {
     pub probe_url: Option<String>,
     pub settings_visible: bool,
     pub explorer_label: Option<String>,
+    /// Appended after the transaction hash, for an explorer whose URL needs
+    /// more than a prefix. Aptos wants `?network=mainnet`; nothing else does.
+    #[serde(default)]
+    pub tx_suffix: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, uniffi::Record)]
@@ -91,6 +95,11 @@ pub struct AppCoreDiagnosticsCheck {
 pub struct AppCoreExplorerEntry {
     pub endpoint: String,
     pub label: String,
+    /// Appended after the transaction hash. Empty for every explorer but
+    /// Aptos's, which was a `chain_name == "Aptos"` branch inside
+    /// `core_transaction_explorer_url` — the one thing that export did that a
+    /// caller holding this record could not.
+    pub tx_suffix: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, uniffi::Record)]
@@ -430,6 +439,7 @@ fn transaction_explorer_entry(
             record.explorer_label.map(|label| AppCoreExplorerEntry {
                 endpoint: record.endpoint,
                 label,
+                tx_suffix: record.tx_suffix,
             })
         })
 }
@@ -524,24 +534,6 @@ mod tests {
 
 // ── FFI surface ─────────────────────────────────────────────────────────────
 
-/// Build the full transaction-explorer URL for a chain. Encapsulates the
-/// per-chain URL format (Aptos appends `?network=mainnet`, every other chain
-/// just concatenates the hash to the base URL). Returns `None` when the chain
-/// has no explorer entry.
-#[uniffi::export]
-pub fn core_transaction_explorer_url(
-    chain_name: String,
-    transaction_hash: String,
-) -> Result<Option<String>, crate::SpectraBridgeError> {
-    let entry = transaction_explorer_entry(app_core_catalog()?, &chain_name);
-    Ok(entry.map(|e| {
-        if chain_name == "Aptos" {
-            format!("{}{transaction_hash}?network=mainnet", e.endpoint)
-        } else {
-            format!("{}{transaction_hash}", e.endpoint)
-        }
-    }))
-}
 
 /// Not exported: the boundary takes role names, and this is how they become a
 /// mask on this side.

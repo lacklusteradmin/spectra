@@ -105,6 +105,16 @@ check "refuses a malformed EVM address"     $REJECTED \
     spectra address validate --chain Ethereum 0xnothex
 contains "normalises EVM case" '"normalized":"0x742d35cc6634c0532925a3b844bc454e4438f44e"' \
     spectra --json address validate --chain Ethereum 0x742D35CC6634C0532925A3B844BC454E4438F44E
+# An EVM address whose letters are not all one case carries an EIP-55
+# checksum, and that checksum exists to catch a mistyped or corrupted paste.
+# The validator used to lowercase first and never look, so any forty hex digits
+# passed.
+check "accepts a correct EIP-55 checksum"   $OK \
+    spectra address validate --chain Ethereum 0x742d35Cc6634C0532925a3b844Bc454e4438f44e
+check "refuses a broken EIP-55 checksum"    $REJECTED \
+    spectra address validate --chain Ethereum 0x742d35cC6634C0532925a3b844Bc454e4438f44e
+check "accepts the unchecksummed lower-case form" $OK \
+    spectra address validate --chain Ethereum 0x742d35cc6634c0532925a3b844bc454e4438f44e
 
 # ── Wallet lifecycle ────────────────────────────────────────────────────────
 
@@ -134,7 +144,7 @@ contains "and derives each chain's own address" \
     spectra --json wallet show "Multi 3"
 contains "the Bitcoin one too"                "bc1qgkju4yvvtuz0s8vqn837q396jezu2h8ex7gk98" \
     spectra --json wallet show "Multi 1"
-check "but `new` still takes exactly one"   $USAGE \
+check 'but wallet new still takes exactly one' $USAGE \
     spectra wallet new --chain Bitcoin --chain Ethereum --name Two
 check "refuses a mnemonic that fails its checksum" $REJECTED \
     with_seed "not a real seed phrase at all here" \
@@ -325,15 +335,44 @@ check "refuses a token the catalog does not have" $REJECTED \
 check "refuses tracking on a chain without tokens" $REJECTED \
     spectra token track --chain Bitcoin USDC
 check "tracks a catalog token"                     $OK \
-    spectra token track --chain Ethereum USDC --display-decimals 2
+    spectra token track --chain Ethereum USDC
 check "refuses tracking the same token twice"      $REJECTED \
     spectra token track --chain Ethereum USDC
-contains "the tracked token survives a new process" '"symbol":"USDC"' \
+contains "the known token survives a new process" '"symbol":"USDC"' \
     spectra --json token list
-contains "clamps a display width the token cannot have" '"displayDecimals":6' \
-    spectra --json token track --chain Ethereum USDT --display-decimals 99
 check "untracks"                                   $OK spectra token untrack USDC
 check "refuses untracking what is not tracked"     $REJECTED spectra token untrack USDC
+
+# ── Amount display ──────────────────────────────────────────────────────────
+#
+# Decimal places follow the amount, not a per-chain setting. There used to be
+# one setting per chain and one per token — 137 steppers — because a fixed count
+# cannot serve both a large balance and a small one: at the old default of three
+# places, 0.00042 BTC read "<0.001 BTC", and the only cure was to find Bitcoin in
+# a list of forty-six and tap "+" five times.
+#
+# Six significant digits, counted from the first non-zero digit, capped by what
+# the asset has and by eight places.
+
+section "amount display"
+contains "a small balance keeps its digits" '"shows":"0.00042"' \
+    spectra --json token format 0.00042 --chain Bitcoin
+contains "and is not marked as below a threshold" '"belowThreshold":false' \
+    spectra --json token format 0.00042 --chain Bitcoin
+contains "an eighteen-decimal chain does the same" '"shows":"0.000015"' \
+    spectra --json token format 0.000015 --chain Ethereum
+contains "a large balance spends its budget on the integer" '"shows":"1234.57"' \
+    spectra --json token format 1234.5678 --chain Ethereum
+contains "trailing zeros are trimmed, not padded" '"shows":"12.5"' \
+    spectra --json token format 12.5 --chain Ethereum --symbol USDC
+contains "a token never shows more places than it has" '"assetDecimals":6' \
+    spectra --json token format 12.5 --chain Ethereum --symbol USDC
+contains "one wei is dust and says so" '"belowThreshold":true' \
+    spectra --json token format 0.000000000000000001 --chain Ethereum
+contains "and the marker is the eight-place floor" '"shows":"<0.00000001"' \
+    spectra --json token format 0.000000000000000001 --chain Ethereum
+check "refuses a token the chain does not have"    $REJECTED \
+    spectra token format 1 --chain Bitcoin --symbol USDC
 
 # ── Staking ─────────────────────────────────────────────────────────────────
 #
@@ -410,6 +449,28 @@ contains "including the two just moved"     '"family":"solana","isTestnet":false
     spectra --json network list
 contains "and the other one"                '"family":"bitcoin","isTestnet":false,"selected":"bitcoin"' \
     spectra --json network list
+
+# ── Token discovery ─────────────────────────────────────────────────────────
+#
+# The complement of the known-token list: ask the chain what an address holds
+# rather than asking it about a list the caller already has. Decimals come from
+# the chain, an unlisted token still appears, and one call replaces one per
+# known token.
+#
+# Five chains have a node that answers "what does this address hold?" — Solana,
+# Tron, Sui, Aptos and TON. The EVM family and NEAR do not: a token contract
+# only answers about a holder you name, so listing holdings there needs an
+# indexer. Those must say so rather than return an empty list, which would read
+# as "holds nothing".
+
+section "token discovery"
+# Bitcoin and Ethereum refuse from the registry flag alone, so these assert
+# without touching a network. The enumerable chains' paths are real RPC calls
+# and cannot be asserted here.
+check "refuses a chain with no token program" 1 \
+    spectra token discover --wallet "Renamed BTC"
+contains "and says so rather than reporting an empty wallet" "cannot enumerate holdings" \
+    spectra token discover --wallet "Renamed BTC"
 
 section "settings"
 check "lists the settings core owns"        $OK spectra settings list

@@ -360,7 +360,7 @@ pub fn core_self_send_confirmation(
     }
 }
 
-/// De-duplicate and order the tracked tokens a dashboard row may show.
+/// De-duplicate and order the known tokens a dashboard row may show.
 ///
 /// A pure sort and filter over the subset the caller assembled, not over the
 /// stored preference list — so there is no state here to own.
@@ -393,8 +393,8 @@ pub fn core_dashboard_supported_token_entries(
 }
 
 /// Normalize a token contract address for identity matching.
-fn normalize_tracked_token_identifier(
-    chain: wallet_domain::CoreTokenTrackingChain,
+fn normalize_known_token_identifier(
+    chain: wallet_domain::CoreTokenHostingChain,
     contract_address: &str,
 ) -> String {
     crate::tokens::normalize_token_identifier(
@@ -418,7 +418,7 @@ pub fn built_in_token_preferences() -> Vec<wallet_domain::CoreTokenPreferenceEnt
     crate::tokens::catalog()
         .iter()
         .filter_map(|token| {
-            let chain = wallet_domain::CoreTokenTrackingChain::from_chain_name(&token.chain)?;
+            let chain = wallet_domain::CoreTokenHostingChain::from_chain_name(&token.chain)?;
             let category = token
                 .tags
                 .iter()
@@ -437,7 +437,6 @@ pub fn built_in_token_preferences() -> Vec<wallet_domain::CoreTokenPreferenceEnt
                 contract_address: token.contract.clone(),
                 coin_gecko_id: token.coingecko_id.clone(),
                 decimals: token.decimals as i32,
-                display_decimals: token.display_decimals.map(|d| d as i32),
                 category,
                 is_built_in: true,
                 is_enabled: token.enabled,
@@ -447,7 +446,7 @@ pub fn built_in_token_preferences() -> Vec<wallet_domain::CoreTokenPreferenceEnt
 }
 
 /// Merge built-in token registry entries with persisted user preferences:
-/// copies `is_enabled` + `display_decimals` from matching persisted built-ins,
+/// copies `is_enabled` from matching persisted built-ins,
 /// appends all non-built-in (custom) persisted entries, and returns the list
 /// sorted by (chain-label, built-in first, symbol).
 pub fn plan_merge_built_in_token_preferences(
@@ -457,17 +456,16 @@ pub fn plan_merge_built_in_token_preferences(
     let mut merged: Vec<wallet_domain::CoreTokenPreferenceEntry> = Vec::new();
     for built_in in built_ins.into_iter() {
         let built_in_key =
-            normalize_tracked_token_identifier(built_in.chain, &built_in.contract_address);
+            normalize_known_token_identifier(built_in.chain, &built_in.contract_address);
         let existing = persisted.iter().find(|entry| {
             entry.is_built_in
                 && entry.chain == built_in.chain
-                && normalize_tracked_token_identifier(entry.chain, &entry.contract_address)
+                && normalize_known_token_identifier(entry.chain, &entry.contract_address)
                     == built_in_key
         });
         let mut updated = built_in;
         if let Some(existing) = existing {
             updated.is_enabled = existing.is_enabled;
-            updated.display_decimals = existing.display_decimals;
         }
         merged.push(updated);
     }

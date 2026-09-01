@@ -739,7 +739,7 @@ pub fn history_clear(db_path: &str) -> Result<(), String> {
 const META_SCHEMA_VERSION: &str = "schema_version";
 const META_SELECTED_WALLET_ID: &str = "selected_wallet_id";
 const META_SETTINGS: &str = "settings";
-/// Tracked tokens. A separate meta row rather than a field inside `settings`,
+/// Known tokens. A separate meta row rather than a field inside `settings`,
 /// because `AppSettings` is the "every front end must agree" bag and this is a
 /// list the user edits.
 const META_TOKEN_PREFERENCES: &str = "token_preferences";

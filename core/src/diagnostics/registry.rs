@@ -18,7 +18,7 @@ use super::types::*;
 /// on either side.
 #[derive(Default)]
 struct DiagnosticsRegistry {
-    utxo: HashMap<String, HashMap<String, BitcoinHistoryDiagnostics>>,
+    utxo: HashMap<String, HashMap<String, UtxoHistoryDiagnostics>>,
     evm: HashMap<String, HashMap<String, EthereumTokenTransferHistoryDiagnostics>>,
     simple: HashMap<String, HashMap<String, SimpleHistoryDiagnostics>>,
     tron: HashMap<String, TronHistoryDiagnostics>,
@@ -73,7 +73,7 @@ macro_rules! chain_keyed_registry {
 
 chain_keyed_registry!(
     utxo,
-    BitcoinHistoryDiagnostics,
+    UtxoHistoryDiagnostics,
     diagnostics_all_utxo,
     diagnostics_record_utxo
 );
@@ -99,7 +99,7 @@ chain_keyed_registry!(
 /// its chain used. The entry carries its own shape now.
 #[derive(Debug, Clone, uniffi::Enum)]
 pub enum HistoryDiagnosticsEntry {
-    Utxo { entry: BitcoinHistoryDiagnostics },
+    Utxo { entry: UtxoHistoryDiagnostics },
     Evm { entry: EthereumTokenTransferHistoryDiagnostics },
     Simple { entry: SimpleHistoryDiagnostics },
     Tron { entry: TronHistoryDiagnostics },
@@ -217,8 +217,8 @@ mod tests {
             .unwrap_or_else(|e| e.into_inner())
     }
 
-    fn sample_bitcoin(id: &str) -> BitcoinHistoryDiagnostics {
-        BitcoinHistoryDiagnostics {
+    fn sample_utxo(id: &str) -> UtxoHistoryDiagnostics {
+        UtxoHistoryDiagnostics {
             wallet_id: id.to_string(),
             identifier: "addr".into(),
             source_used: "rust".into(),
@@ -239,11 +239,11 @@ mod tests {
         diagnostics_clear_all();
         assert!(diagnostics_all_utxo("Bitcoin".into()).is_empty());
 
-        diagnostics_record_utxo("Bitcoin".into(), "w1".into(), sample_bitcoin("w1"));
-        diagnostics_record_utxo("Bitcoin".into(), "w2".into(), sample_bitcoin("w2"));
+        diagnostics_record_utxo("Bitcoin".into(), "w1".into(), sample_utxo("w1"));
+        diagnostics_record_utxo("Bitcoin".into(), "w2".into(), sample_utxo("w2"));
         assert_eq!(diagnostics_all_utxo("Bitcoin".into()).len(), 2);
 
-        diagnostics_record_utxo("Bitcoin".into(), "w3".into(), sample_bitcoin("w3"));
+        diagnostics_record_utxo("Bitcoin".into(), "w3".into(), sample_utxo("w3"));
         let stored = diagnostics_all_utxo("Bitcoin".into());
         assert_eq!(stored.len(), 3, "recording a third wallet dropped the first two");
         assert!(stored.contains_key("w1") && stored.contains_key("w3"));
@@ -265,8 +265,8 @@ mod tests {
         diagnostics_clear_all();
         assert_eq!(diagnostics_run_summary("Bitcoin".into()).wallet_count, 0);
 
-        diagnostics_record_utxo("Bitcoin".into(), "w1".into(), sample_bitcoin("w1"));
-        diagnostics_record_utxo("Bitcoin".into(), "w2".into(), sample_bitcoin("w2"));
+        diagnostics_record_utxo("Bitcoin".into(), "w1".into(), sample_utxo("w1"));
+        diagnostics_record_utxo("Bitcoin".into(), "w2".into(), sample_utxo("w2"));
         let summary = diagnostics_run_summary("Bitcoin".into());
         assert_eq!(summary.wallet_count, 2);
         assert_eq!(summary.sources.len(), 2);
@@ -285,7 +285,7 @@ mod tests {
     fn chains_of_the_same_shape_keep_separate_buckets() {
         let _g = test_lock();
         diagnostics_clear_all();
-        diagnostics_record_utxo("Bitcoin".into(), "w".into(), sample_bitcoin("w"));
+        diagnostics_record_utxo("Bitcoin".into(), "w".into(), sample_utxo("w"));
 
         assert_eq!(diagnostics_all_utxo("Bitcoin".into()).len(), 1);
         assert!(diagnostics_all_utxo("Litecoin".into()).is_empty());

@@ -5,7 +5,7 @@ use serde::{Deserialize, Serialize};
 
 #[allow(non_snake_case)]
 #[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq, uniffi::Record)]
-pub struct EthereumSendPreview {
+pub struct EvmSendPreview {
     pub nonce: i64,
     pub gasLimit: i64,
     pub maxFeePerGasGwei: f64,

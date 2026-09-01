@@ -26,7 +26,7 @@ impl WalletService {
         ))
     }
     /// Typed EVM send preview: fetches the raw preview JSON then decodes it
-    /// into `EthereumSendPreview` with the caller-supplied nonce / fee
+    /// into `EvmSendPreview` with the caller-supplied nonce / fee
     /// overrides applied. Returns `None` when the decoder rejects the payload.
     pub async fn fetch_evm_send_preview_typed(
         &self,
@@ -37,7 +37,7 @@ impl WalletService {
         data_hex: String,
         explicit_nonce: Option<i64>,
         custom_fees: Option<crate::ethereum_send::EvmCustomFeeConfiguration>,
-    ) -> Result<Option<crate::wallet_core::EthereumSendPreview>, SpectraBridgeError> {
+    ) -> Result<Option<crate::wallet_core::EvmSendPreview>, SpectraBridgeError> {
         let raw = self
             .fetch_evm_send_preview(&chain_id, from, to, value_wei, data_hex)
             .await?;

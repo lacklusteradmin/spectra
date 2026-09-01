@@ -123,6 +123,131 @@ impl WalletService {
     ///
     /// Tokens that fail to fetch are returned with `balance_raw = "0"` so the
     /// caller always gets back the full list.
+    /// Every token this address actually holds, named where the catalog knows
+    /// the contract and left unnamed where it does not.
+    ///
+    /// The complement of `fetch_token_balances`, which asks the chain about a
+    /// list the caller already has: this asks the chain what is there. That
+    /// inverts three things at once —
+    ///
+    /// * **decimals come from the chain**, not from a copy that can disagree
+    ///   with the contract it describes;
+    /// * a token the catalog has never heard of still appears, instead of
+    ///   being invisible until someone adds a row;
+    /// * one call replaces one call per known token.
+    ///
+    /// What the catalog still decides is the **name**. A discovered token's
+    /// on-chain symbol is written by whoever deployed it, so it is never read
+    /// here — `symbol` is the catalog's or empty, and `is_known` says which.
+    /// A front end renders the contract address for the rest, which is the one
+    /// string an attacker cannot choose.
+    pub async fn discover_token_balances(
+        &self,
+        chain_id: String,
+        address: String,
+    ) -> Result<Vec<TokenBalanceResult>, SpectraBridgeError> {
+        let chain = Chain::from_str_id(&chain_id).ok_or_else(|| {
+            SpectraBridgeError::from(format!(
+                "discover_token_balances: unsupported chain_id: {chain_id}"
+            ))
+        })?;
+        // The registry says which chains have a node that answers "what does
+        // this address hold?". Refusing here rather than in the match below
+        // keeps the two from drifting apart, which is how a chain ends up
+        // silently reporting an empty wallet.
+        if !chain.entry().enumerates_holdings {
+            return Err(SpectraBridgeError::from(format!(
+                "discover_token_balances: {} cannot enumerate holdings; \
+                 a token contract only answers about a holder you name, so \
+                 listing them needs an indexer",
+                chain.str_id()
+            )));
+        }
+        let endpoints = self.endpoints_for(chain.str_id()).await;
+        // Not `unwrap_or_default()` on any arm: a node that will not answer is
+        // not an address that holds nothing, and the difference is what a user
+        // reads as "my tokens are gone".
+        let held: Vec<crate::fetch::chains::HeldToken> = match chain {
+            Chain::Solana | Chain::SolanaDevnet => SolanaClient::new(endpoints)
+                .fetch_all_spl_balances(&address)
+                .await
+                .map_err(SpectraBridgeError::from)?
+                .into_iter()
+                .map(|b| crate::fetch::chains::HeldToken {
+                    contract: b.mint,
+                    balance_raw: b.balance_raw.parse().unwrap_or(0),
+                    decimals: Some(b.decimals),
+                    symbol: None,
+                })
+                .collect(),
+            Chain::Tron | Chain::TronNile => TronClient::new(endpoints)
+                .fetch_all_trc20_balances(&address)
+                .await
+                .map_err(SpectraBridgeError::from)?,
+            Chain::Sui | Chain::SuiTestnet => SuiClient::new(endpoints)
+                .fetch_all_coin_balances(&address)
+                .await
+                .map_err(SpectraBridgeError::from)?,
+            Chain::Aptos | Chain::AptosTestnet => AptosClient::new(endpoints)
+                .fetch_all_coin_balances(&address)
+                .await
+                .map_err(SpectraBridgeError::from)?,
+            Chain::Ton | Chain::TonTestnet => {
+                // The v3 API is the only one that enumerates jetton wallets; it
+                // lives in the chain's Secondary endpoint slot.
+                let v3 = self
+                    .endpoints_for(&chain.endpoint_str_id(EndpointSlot::Secondary))
+                    .await;
+                let api_key = self.api_key_for(chain.str_id()).await;
+                TonClient::new(endpoints, api_key)
+                    .with_v3_endpoints(v3)
+                    .fetch_all_jetton_balances(&address)
+                    .await
+                    .map_err(SpectraBridgeError::from)?
+            }
+            // Unreachable: the registry gate above rejects every chain that
+            // has no client arm here, and the test below holds the two together.
+            c => {
+                return Err(SpectraBridgeError::from(format!(
+                    "discover_token_balances: {c:?} is marked enumerable but has no client"
+                )))
+            }
+        };
+        let known: std::collections::HashMap<String, crate::tokens::TokenEntry> =
+            crate::tokens::list_tokens(chain.str_id().to_string())
+                .into_iter()
+                .map(|t| (t.contract.clone(), t))
+                .collect();
+        Ok(held
+            .into_iter()
+            .map(|b| {
+                let entry = known.get(&b.contract);
+                // The chain's own count wins over the catalog's, and where
+                // neither vouches for one, zero is the only honest answer: the
+                // display then reads as the raw base-unit count it is, next to
+                // a contract address and no name.
+                let decimals: u8 = b
+                    .decimals
+                    .or_else(|| entry.and_then(|e| u8::try_from(e.decimals).ok()))
+                    .unwrap_or(0);
+                TokenBalanceResult {
+                    contract_address: b.contract,
+                    symbol: entry
+                        .map(|e| e.symbol.clone())
+                        .or_else(|| b.symbol.filter(|s| !s.is_empty()))
+                        .unwrap_or_default(),
+                    decimals,
+                    balance_raw: b.balance_raw.to_string(),
+                    balance_display: crate::fetch::chains::evm::format_token_amount(
+                        b.balance_raw,
+                        decimals,
+                    ),
+                    is_known: entry.is_some(),
+                }
+            })
+            .collect())
+    }
+
     pub async fn fetch_token_balances(
         &self,
         chain_id: String,
@@ -163,6 +288,7 @@ impl WalletService {
                                 decimals,
                                 balance_raw: raw.to_string(),
                                 balance_display: format_decimals(raw as u128, decimals),
+                                is_known: true,
                             }
                         }
                     })
@@ -185,12 +311,22 @@ impl WalletService {
                         let decimals = t.decimals;
                         async move {
                             match client.fetch_trc20_balance(&contract, &holder).await {
+                                // The contract's own `decimals` and `symbol`,
+                                // which this call already paid a round trip to
+                                // read. Reporting the caller's instead left the
+                                // record self-contradicting whenever the two
+                                // disagreed: `balance_display` was formatted
+                                // with the contract's count and `decimals` said
+                                // the catalog's, so `balance_raw` and
+                                // `balance_display` no longer described the same
+                                // number.
                                 Ok(b) => TokenBalanceResult {
                                     contract_address: contract,
-                                    symbol,
-                                    decimals,
+                                    symbol: if b.symbol.is_empty() { symbol } else { b.symbol },
+                                    decimals: b.decimals,
                                     balance_raw: b.balance_raw,
                                     balance_display: b.balance_display,
+                                    is_known: true,
                                 },
                                 Err(_) => TokenBalanceResult {
                                     contract_address: contract,
@@ -198,6 +334,7 @@ impl WalletService {
                                     decimals,
                                     balance_raw: "0".to_string(),
                                     balance_display: "0".to_string(),
+                                    is_known: true,
                                 },
                             }
                         }
@@ -223,13 +360,18 @@ impl WalletService {
                         TokenBalanceResult {
                             contract_address: t.contract.clone(),
                             symbol: t.symbol.clone(),
-                            decimals: t.decimals,
+                            // The mint's own count, which `getTokenAccountsByOwner`
+                            // returns in the parsed account this call already
+                            // fetched. The caller's is the fallback for a mint
+                            // the owner holds no account for.
+                            decimals: b.map(|b| b.decimals).unwrap_or(t.decimals),
                             balance_raw: b
                                 .map(|b| b.balance_raw.clone())
                                 .unwrap_or_else(|| "0".to_string()),
                             balance_display: b
                                 .map(|b| b.balance_display.clone())
                                 .unwrap_or_else(|| "0".to_string()),
+                            is_known: true,
                         }
                     })
                     .collect()
@@ -257,6 +399,7 @@ impl WalletService {
                                 decimals,
                                 balance_raw: raw.to_string(),
                                 balance_display: display,
+                                is_known: true,
                             }
                         }
                     })
@@ -293,6 +436,7 @@ impl WalletService {
                             decimals: t.decimals,
                             balance_raw: raw.to_string(),
                             balance_display: display,
+                            is_known: true,
                         }
                     })
                     .collect()
@@ -320,6 +464,7 @@ impl WalletService {
                         decimals: token.decimals,
                         balance_raw: raw.to_string(),
                         balance_display: format_decimals(raw, token.decimals),
+                        is_known: true,
                     });
                 }
                 results
@@ -356,8 +501,8 @@ impl WalletService {
     ///   1. `txlist` — native ETH/EVM transfers
     ///   2. `tokentx` — ERC-20 token transfers
     ///
-    /// `tokens` lists the tracked tokens to include. Only transfers whose
-    /// contract matches a tracked token are returned; pass an empty list to
+    /// `tokens` lists the known tokens to include. Only transfers whose
+    /// contract matches a known token are returned; pass an empty list to
     /// skip token transfers entirely.
     pub async fn fetch_evm_history_page(
         &self,
@@ -411,7 +556,7 @@ impl WalletService {
         let native_entries = native_result.unwrap_or_default();
         let raw_tokens = token_result.unwrap_or_default();
 
-        // Build a lookup map from contract address (lowercased) → tracked token metadata.
+        // Build a lookup map from contract address (lowercased) → known token metadata.
         let addr_lower = address.to_lowercase();
         let token_map: std::collections::HashMap<String, (String, String, u8)> = tokens
             .iter()
@@ -1249,7 +1394,7 @@ impl WalletService {
     /// Fetch USD spot prices for the supplied coins from `provider`.
     ///
     /// `provider` is the Swift-side display name (e.g. "CoinGecko").
-    /// `coins` are the tracked tokens. All providers use their public
+    /// `coins` are the known tokens. All providers use their public
     /// endpoints — no API key plumbing.
     pub async fn fetch_prices_typed(
         &self,
@@ -1300,5 +1445,76 @@ impl WalletService {
                 Err(SpectraBridgeError::from(e))
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod discovery_names_only_what_the_catalog_vouches_for {
+    use crate::registry::Chain;
+
+    /// Discovery dispatches on a registry flag, so the flag and the client arms
+    /// must agree. Offline the enumerable chains fail on their empty endpoint
+    /// list; what matters is that they fail there and not on the gate.
+    #[tokio::test]
+    async fn the_registry_flag_and_the_client_arms_agree() {
+        let service = crate::service::WalletService::new_typed(Vec::new()).expect("service");
+        for chain in Chain::all() {
+            let err = service
+                .discover_token_balances(chain.str_id().into(), "whatever".into())
+                .await
+                .expect_err("no endpoints are configured, so nothing can succeed")
+                .to_string();
+            if chain.entry().enumerates_holdings {
+                assert!(
+                    !err.contains("cannot enumerate"),
+                    "{} is marked enumerable but discovery refused it",
+                    chain.str_id()
+                );
+                assert!(
+                    !err.contains("no client"),
+                    "{} is marked enumerable but has no client arm",
+                    chain.str_id()
+                );
+            } else {
+                assert!(
+                    err.contains("cannot enumerate"),
+                    "{} is not enumerable, so it must say so rather than \
+                     return a list that reads as 'holds nothing': {err}",
+                    chain.str_id()
+                );
+            }
+        }
+    }
+
+    /// Every chain whose node can list holdings is marked, and no chain whose
+    /// node cannot is. The EVM family and NEAR are the ones that cannot.
+    #[test]
+    fn only_the_chains_with_an_enumerating_rpc_are_marked() {
+        let marked: Vec<&str> = Chain::all()
+            .filter(|c| c.entry().enumerates_holdings)
+            .map(|c| c.str_id())
+            .collect();
+        assert_eq!(
+            marked,
+            vec![
+                "solana",
+                "tron",
+                "sui",
+                "aptos",
+                "ton",
+                "tron-nile",
+                "solana-devnet",
+                "sui-testnet",
+                "aptos-testnet",
+                "ton-testnet",
+            ]
+        );
+        assert!(
+            Chain::all()
+                .filter(|c| c.is_evm())
+                .all(|c| !c.entry().enumerates_holdings),
+            "an EVM token contract only answers about a holder you name"
+        );
+        assert!(!Chain::Near.entry().enumerates_holdings);
     }
 }

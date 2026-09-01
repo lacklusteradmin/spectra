@@ -209,6 +209,16 @@ pub fn route_send_asset(input: &SendAssetRoutingInput) -> SendAssetRoutingPlan {
         ("Internet Computer", "ICP") => Some("icp"),
         ("NEAR", "NEAR") => Some("near"),
         ("Polkadot", "DOT") => Some("polkadot"),
+        // Five chains whose send was written, wired into `execute_send`, and
+        // then never named here — so `submit_kind` was `None` and the
+        // preflight answered "transfers are not enabled yet" for all of them.
+        // `core/src/send/chains/{zcash,bitcoin_gold,decred,kaspa,dash}.rs` are
+        // 179 to 426 lines each.
+        ("Zcash", "ZEC") => Some("zcash"),
+        ("Bitcoin Gold", "BTG") => Some("bitcoin-gold"),
+        ("Decred", "DCR") => Some("decred"),
+        ("Kaspa", "KAS") => Some("kaspa"),
+        ("Dash", "DASH") => Some("dash"),
         _ if input.is_evm_chain => Some("ethereum"),
         _ if input.supports_solana_send_coin => Some("solana"),
         _ if input.supports_near_token_send => Some("near"),
@@ -344,9 +354,16 @@ mod tests {
             if DEDICATED.contains(&kind) {
                 continue;
             }
+            // A chain that routes must be able to name a fee: through a
+            // shared-path preview, or through the fallback the generic submit
+            // uses when there is no preview to ask. Zcash, Bitcoin Gold,
+            // Decred, Kaspa and Dash are the second kind — their sends were
+            // written and wired into `execute_send`, and only this table was
+            // missing them.
             assert!(
-                chain.simple_preview_chain().is_some(),
-                "{} routes to the shared preview path as \"{kind}\" and has no shape",
+                chain.simple_preview_chain().is_some()
+                    || chain.send_execution_shape().fee_fallback > 0.0,
+                "{} routes as \"{kind}\" with neither a preview shape nor a fee fallback",
                 chain.chain_display_name()
             );
         }
@@ -456,7 +473,12 @@ mod tests {
             "polkadot",
             "ethereum",
             "solana",
-        ];
+                    "zcash",
+            "bitcoin-gold",
+            "decred",
+            "kaspa",
+            "dash",
+];
         let mut unrouted = Vec::new();
         for chain in Chain::mainnets() {
             let symbol = chain.entry().gas_token_symbol.clone();
@@ -478,16 +500,22 @@ mod tests {
         }
         // The chains with no send path are named, so adding one is a decision
         // rather than something that shows up as a dead branch.
+        //
+        // This list held six. Five of them — Zcash, Bitcoin Gold, Decred,
+        // Kaspa and Dash — had complete send implementations under
+        // `send/chains/` and arms in `service/send_execution.rs`; what they
+        // did not have was a row in `route_send_asset`, so the preflight
+        // refused before any of it ran. The list was recording the symptom,
+        // not a decision.
+        //
+        // Bittensor is genuinely still out: its `execute_send` arm takes no
+        // fee parameter, it has no shared-path preview, and the generic submit
+        // needs a fee to validate the balance against. Giving it a fallback
+        // would mean inventing a TAO fee, which is not this document's to
+        // invent.
         assert_eq!(
             unrouted,
-            vec![
-                "Zcash",
-                "Bitcoin Gold",
-                "Decred",
-                "Kaspa",
-                "Dash",
-                "Bittensor"
-            ],
+            vec!["Bittensor"],
             "the set of chains that cannot send changed"
         );
     }
@@ -581,3 +609,85 @@ mod tests {
 
 
 
+
+
+#[cfg(test)]
+mod every_chain_with_a_send_implementation_can_route {
+    /// A chain `execute_send` can broadcast is a chain the preflight routes.
+    ///
+    /// `route_send_asset` is a table of `(chain, symbol)` pairs, and five
+    /// chains with complete send implementations were missing from it: Zcash,
+    /// Bitcoin Gold, Decred, Kaspa and Dash. Each has a module under
+    /// `send/chains/`, an arm in `service/send_execution.rs`, and derivation —
+    /// and the preflight answered "transfers are not enabled yet" before any
+    /// of it was reached.
+    #[test]
+    fn the_five_that_were_unroutable_now_route() {
+        for (name, symbol, kind) in [
+            ("Zcash", "ZEC", "zcash"),
+            ("Bitcoin Gold", "BTG", "bitcoin-gold"),
+            ("Decred", "DCR", "decred"),
+            ("Kaspa", "KAS", "kaspa"),
+            ("Dash", "DASH", "dash"),
+        ] {
+            let route = super::route_send_asset(&super::SendAssetRoutingInput {
+                chain_name: name.to_string(),
+                symbol: symbol.to_string(),
+                is_evm_chain: false,
+                supports_solana_send_coin: false,
+                supports_near_token_send: false,
+            });
+            assert_eq!(route.submit_kind.as_deref(), Some(kind), "{name}");
+
+            let chain = crate::registry::Chain::from_display_name(name).unwrap();
+            assert!(chain.uses_generic_send_submit(), "{name} must take the shared submit path");
+            // Without a fallback the generic submit refuses for want of a fee
+            // estimate, and none of these has a shared-path preview.
+            assert!(
+                chain.send_execution_shape().fee_fallback > 0.0,
+                "{name} needs a fee fallback"
+            );
+            assert!(chain.simple_preview_chain().is_none(), "{name}");
+        }
+    }
+}
+
+
+#[cfg(test)]
+mod token_decimals_are_not_assumed {
+    /// No chain's tokens all share one decimal count.
+    ///
+    /// Tron's send arm hardcoded six, which is USDT's and not BTT's, TUSD's,
+    /// USD1's or USDD's — all eighteen. It never fired because
+    /// `route_send_asset` lets only TRX and USDT reach it, so the guard against
+    /// a 10^12 error was an unrelated restriction two files away.
+    #[test]
+    fn a_chain_can_host_tokens_of_different_decimals() {
+        use std::collections::{HashMap, HashSet};
+        let mut by_chain: HashMap<String, HashSet<u32>> = HashMap::new();
+        for token in crate::tokens::list_tokens(String::new()) {
+            by_chain
+                .entry(token.chain.clone())
+                .or_default()
+                .insert(token.decimals);
+        }
+        let mixed: Vec<_> = by_chain
+            .iter()
+            .filter(|(_, d)| d.len() > 1)
+            .map(|(c, d)| {
+                let mut v: Vec<_> = d.iter().copied().collect();
+                v.sort_unstable();
+                (c.clone(), v)
+            })
+            .collect();
+        assert!(
+            !mixed.is_empty(),
+            "if this ever holds, the assumption a caller could make is at least true"
+        );
+        let tron = by_chain.get("tron").expect("tron hosts tokens");
+        assert!(
+            tron.len() > 1,
+            "tron's tokens are all {tron:?} decimals — the hardcoded 6 would have been harmless"
+        );
+    }
+}
