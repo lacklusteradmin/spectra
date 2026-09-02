@@ -1639,11 +1639,9 @@ mod dashboard_groups {
     /// one chain sums into it.
     ///
     /// Note what this does *not* say: ETH on Ethereum and ETH on Arbitrum are
-    /// two rows, because `dashboard_asset_grouping_key` includes the chain.
-    /// The record is named `…AssetGroup` and carries `chain_entries`, which
-    /// reads like cross-chain grouping was intended — see the open question in
-    /// `PLAN.md`. This pins the behaviour as it is so the answer is a decision
-    /// rather than a regression.
+    /// two rows, because the row key includes the network. Whether that is the
+    /// right product answer is still open — see `PLAN.md`. This pins the
+    /// behaviour as it is so the answer is a decision rather than a regression.
     #[tokio::test]
     async fn a_row_is_per_chain_and_sums_across_wallets() {
         let service = service_with(vec![
@@ -1658,15 +1656,52 @@ mod dashboard_groups {
             .expect("groups");
         let eth: Vec<_> = groups
             .iter()
-            .filter(|g| g.representative_coin.symbol == "ETH")
+            .filter(|g| g.coin.symbol == "ETH")
             .collect();
         assert_eq!(eth.len(), 2, "one row per chain");
         let ethereum = eth
             .iter()
-            .find(|g| g.representative_coin.chain_name == "Ethereum")
+            .find(|g| g.coin.chain_name == "Ethereum")
             .expect("an Ethereum row");
-        assert_eq!(ethereum.total_amount, 3.0, "both wallets summed");
-        assert_eq!(ethereum.chain_entries.len(), 1, "one entry, not one per wallet");
+        assert_eq!(ethereum.coin.amount, 3.0, "both wallets summed");
+    }
+
+    /// Two contracts of one asset on one chain are two rows, not one row with
+    /// two entries.
+    ///
+    /// The row used to be keyed on `(chain, coingecko id)` while its contents
+    /// were keyed on `(chain, standard, contract)` — two keys for one question.
+    /// A coingecko id can cover two contracts on a chain, and an *empty* id
+    /// made every unidentified token on a chain one row with the amounts added
+    /// together. The row is keyed on the contract now, which is what a token
+    /// is.
+    #[tokio::test]
+    async fn two_contracts_on_one_chain_are_two_rows() {
+        let mut a = holding("USDX", "Ethereum", 1.0, 1.0);
+        a.contract_address = Some("0xaaaa".into());
+        a.coin_gecko_id = String::new();
+        let mut b = holding("USDX", "Ethereum", 2.0, 1.0);
+        b.contract_address = Some("0xbbbb".into());
+        b.coin_gecko_id = String::new();
+
+        let service = service_with(vec![("w1", "Ethereum", vec![a, b])]).await;
+        let groups = service
+            .dashboard_asset_groups(HashMap::new())
+            .await
+            .expect("groups");
+        let usdx: Vec<_> = groups
+            .iter()
+            .filter(|g| g.coin.symbol == "USDX")
+            .collect();
+        assert_eq!(
+            usdx.len(),
+            2,
+            "two contracts merged into one row, so one balance is invisible and \
+             the other reads as the sum"
+        );
+        let mut amounts: Vec<f64> = usdx.iter().map(|g| g.coin.amount).collect();
+        amounts.sort_by(f64::total_cmp);
+        assert_eq!(amounts, vec![1.0, 2.0]);
     }
 
     /// Live prices win over the amount a holding was stored with.
@@ -1677,13 +1712,13 @@ mod dashboard_groups {
             .dashboard_asset_groups(HashMap::new())
             .await
             .expect("groups");
-        assert_eq!(stored[0].total_value_usd, Some(2000.0));
+        assert_eq!(stored[0].value_usd, Some(2000.0));
 
         let live = service
             .dashboard_asset_groups(HashMap::from([("Ethereum|ETH".to_string(), 3000.0)]))
             .await
             .expect("groups");
-        assert_eq!(live[0].total_value_usd, Some(6000.0));
+        assert_eq!(live[0].value_usd, Some(6000.0));
     }
 
     /// A testnet holding has no value, so its row reports none rather than
@@ -1701,7 +1736,7 @@ mod dashboard_groups {
             .dashboard_asset_groups(HashMap::from([("Ethereum Sepolia|ETH".to_string(), 3000.0)]))
             .await
             .expect("groups");
-        assert_eq!(groups[0].total_value_usd, None);
+        assert_eq!(groups[0].value_usd, None);
     }
 
     /// Pinned rows come first, in the order they were pinned, and a pinned
@@ -1729,13 +1764,13 @@ mod dashboard_groups {
             .expect("groups");
         let symbols: Vec<_> = groups
             .iter()
-            .map(|g| g.representative_coin.symbol.as_str())
+            .map(|g| g.coin.symbol.as_str())
             .collect();
         // ETH before SOL because that is the pin order, and both before the
         // unpinned BTC even though BTC is worth more.
         assert_eq!(symbols.first(), Some(&"ETH"));
         assert!(
-            groups.iter().any(|g| g.representative_coin.symbol == "BTC" && !g.is_pinned),
+            groups.iter().any(|g| g.coin.symbol == "BTC" && !g.is_pinned),
             "BTC is still shown, unpinned"
         );
     }

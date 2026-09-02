@@ -1159,3 +1159,91 @@ mod broadcast_provider_coverage {
         );
     }
 }
+
+
+#[cfg(test)]
+mod supplemental_endpoints_are_data {
+    use crate::registry::{Chain, EndpointSlot};
+
+    fn supplemental(chain: Chain) -> Vec<String> {
+        super::app_core_chain_endpoints()
+            .unwrap_or_default()
+            .into_iter()
+            .find(|c| c.chain_name == chain.chain_display_name())
+            .map(|c| c.explorer_supplemental)
+            .unwrap_or_default()
+    }
+
+    /// Which chains have a supplement is the catalog's answer, not a list.
+    ///
+    /// The front end held sixteen names. Twelve of them have no supplement at
+    /// all, so those entries registered nothing; Hyperliquid has one and was
+    /// not named, so its endpoints never reached the service.
+    #[test]
+    fn hyperliquid_has_a_supplement_and_most_named_chains_did_not() {
+        assert!(
+            !supplemental(Chain::Hyperliquid).is_empty(),
+            "Hyperliquid has a supplemental endpoint and was not in the table"
+        );
+        for chain in [
+            Chain::Arbitrum,
+            Chain::Optimism,
+            Chain::Base,
+            Chain::Polygon,
+            Chain::Linea,
+            Chain::Scroll,
+            Chain::Blast,
+            Chain::Mantle,
+            Chain::Avalanche,
+            Chain::Near,
+            Chain::Tron,
+            Chain::EthereumClassic,
+        ] {
+            assert!(
+                supplemental(chain).is_empty(),
+                "{} has a supplement after all; the table was not as inert as it looked",
+                chain.chain_display_name()
+            );
+        }
+    }
+
+    /// Where a supplement lands is a registry column, and only two chains
+    /// differ: Polkadot's and ICP's are a working API the send path queries
+    /// (Subscan, the ICP dashboard), so they go in `Secondary` rather than
+    /// `Explorer`.
+    #[test]
+    fn only_polkadot_and_icp_use_the_secondary_slot() {
+        for chain in Chain::all() {
+            let expected = match chain.mainnet_counterpart() {
+                Chain::Polkadot | Chain::Icp => EndpointSlot::Secondary,
+                _ => EndpointSlot::Explorer,
+            };
+            assert_eq!(
+                chain.supplemental_endpoint_slot(),
+                expected,
+                "{} put its supplement in the wrong slot",
+                chain.chain_display_name()
+            );
+        }
+    }
+
+    /// Every chain with a supplement is reachable, because the loop walks the
+    /// registry rather than a table.
+    #[test]
+    fn every_chain_with_a_supplement_has_a_slot_to_put_it_in() {
+        let mut found = 0;
+        for chain in Chain::all() {
+            if supplemental(chain).is_empty() {
+                continue;
+            }
+            found += 1;
+            let slot_id = chain.endpoint_str_id(chain.supplemental_endpoint_slot());
+            assert!(
+                slot_id.contains(':'),
+                "{} would write its supplement over its own primary endpoints",
+                chain.chain_display_name()
+            );
+        }
+        assert!(found > 0, "no chain has a supplemental endpoint at all");
+    }
+}

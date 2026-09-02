@@ -195,18 +195,26 @@ pub fn asset_minimum_visible_amount(visible_decimals: u32) -> f64 {
     }
 }
 
+/// What makes two holdings one dashboard row: the same token, on the same
+/// network.
+///
+/// Was keyed on `(chain, coingecko id)` — falling back to the symbol where a
+/// token has no id — while the row's *contents* were keyed on
+/// `(chain, standard, contract)`. Two keys for one question, and the second was
+/// the more precise one: a coingecko id can cover two contracts on one chain,
+/// and an empty id made every unidentified token on a chain one row with the
+/// amounts added together. The contract is what a token is.
 pub fn dashboard_asset_grouping_key(
     chain_identity: &str,
-    coin_gecko_id: &str,
-    symbol: &str,
+    token_standard: &str,
+    contract: &str,
 ) -> String {
-    let normalized_cg = coin_gecko_id.trim().to_lowercase();
-    let chain_lc = chain_identity.to_lowercase();
-    if !normalized_cg.is_empty() {
-        format!("chain:{chain_lc}|cg:{normalized_cg}")
-    } else {
-        format!("chain:{chain_lc}|symbol:{}", symbol.to_lowercase())
-    }
+    format!(
+        "chain:{}|{}|{}",
+        chain_identity.to_lowercase(),
+        token_standard.to_lowercase(),
+        contract.to_lowercase()
+    )
 }
 
 #[cfg(test)]

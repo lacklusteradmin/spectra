@@ -13,8 +13,10 @@ static CHAINS_TOML: &str = include_str!("../data/chains.toml");
 #[derive(Debug, Deserialize)]
 struct TomlFile {
     chains: Vec<TomlChain>,
+    networks: Vec<TomlNetwork>,
 }
 
+/// What a chain is — one row however many networks it runs.
 #[derive(Debug, Deserialize)]
 struct TomlChain {
     id: String,
@@ -23,26 +25,35 @@ struct TomlChain {
     gas_token_symbol: String,
     search_keywords: Vec<String>,
     category: String,
-    is_evm: bool,
-    #[serde(default)]
-    address_prefix_hint: String,
     color: String,
     asset_name: String,
-    token_standard: String,
     #[serde(default)]
-    enumerates_holdings: bool,
-    contract_address_prompt: String,
-    native_coingecko_id: String,
-    native_decimals: u32,
-    native_asset_name: String,
+    address_prefix_hint: String,
+    token_standard: String,
     tags: Vec<String>,
     comment: String,
     family: String,
     consensus: String,
     state_model: String,
-    primary_use: String,
-    derivation_path: Vec<TomlDerivationPathEntry>,
     total_circulation_model: String,
+    native_coingecko_id: String,
+    native_decimals: u32,
+    native_asset_name: String,
+    #[serde(default)]
+    enumerates_holdings: bool,
+    derivation_path: Vec<TomlDerivationPathEntry>,
+}
+
+/// One network of a chain — a testnet. Inherits everything it does not state.
+#[derive(Debug, Deserialize)]
+struct TomlNetwork {
+    chain: String,
+    id: String,
+    name: String,
+    search_keywords: Vec<String>,
+    #[serde(default)]
+    address_prefix_hint: Option<String>,
+    derivation_path: Vec<TomlDerivationPathEntry>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -53,6 +64,34 @@ struct TomlDerivationPathEntry {
     is_default: bool,
     #[serde(default)]
     note: String,
+}
+
+/// The prompt shown above a contract-address field, from the standard the
+/// chain hosts.
+///
+/// Was a column: seventy-eight rows carrying one of seven strings, computable
+/// from the `token_standard` beside it.
+fn contract_address_prompt_for(token_standard: &str) -> String {
+    match token_standard {
+        "" => "",
+        "AIP-21" => "Fungible Asset Metadata or Package Address",
+        "NEP-141" => "Contract Account ID",
+        "SPL" => "Mint Address",
+        "Sui Coin" => "Coin Standard Type",
+        "TEP-74" => "Jetton Master Address",
+        // ARC-20, BEP-20, ERC-20, TRC-20 — the contract-address families.
+        _ => "Contract Address",
+    }
+    .to_string()
+}
+
+/// Whether the chain is EVM-compatible, from the family it belongs to.
+///
+/// Was a column. It could not be derived while `category` doubled as a
+/// network-kind flag — every testnet's category was `"testnet"`, whatever
+/// family it actually belonged to.
+fn is_evm_for(category: &str) -> bool {
+    matches!(category, "evm-l1" | "evm-l2")
 }
 
 // ── Public serialized shape — exposed to Swift via UniFFI
@@ -97,7 +136,6 @@ pub struct ChainEntry {
     pub family: String,
     pub consensus: String,
     pub state_model: String,
-    pub primary_use: String,
     pub derivation_path: Vec<ChainDerivationPathEntry>,
     pub total_circulation_model: String,
 }
@@ -118,36 +156,99 @@ impl From<TomlDerivationPathEntry> for ChainDerivationPathEntry {
 static CATALOG: LazyLock<Vec<ChainEntry>> = LazyLock::new(|| {
     let parsed: TomlFile = toml::from_str(CHAINS_TOML)
         .expect("chains.toml is embedded at compile time and must be valid TOML");
-    parsed
+
+    let entry_of = |c: &TomlChain| ChainEntry {
+        id: c.id.clone(),
+        name: c.name.clone(),
+        symbol: c.symbol.clone(),
+        address_prefix_hint: c.address_prefix_hint.clone(),
+        gas_token_symbol: c.gas_token_symbol.clone(),
+        search_keywords: c.search_keywords.clone(),
+        category: c.category.clone(),
+        is_evm: is_evm_for(&c.category),
+        color: c.color.clone(),
+        asset_name: c.asset_name.clone(),
+        token_standard: c.token_standard.clone(),
+        enumerates_holdings: c.enumerates_holdings,
+        contract_address_prompt: contract_address_prompt_for(&c.token_standard),
+        native_coingecko_id: c.native_coingecko_id.clone(),
+        native_decimals: c.native_decimals,
+        native_asset_name: c.native_asset_name.clone(),
+        tags: c.tags.clone(),
+        comment: c.comment.clone(),
+        family: c.family.clone(),
+        consensus: c.consensus.clone(),
+        state_model: c.state_model.clone(),
+        derivation_path: c
+            .derivation_path
+            .iter()
+            .map(|d| ChainDerivationPathEntry {
+                tag: d.tag.clone(),
+                path: d.path.clone(),
+                is_default: d.is_default,
+                note: d.note.clone(),
+            })
+            .collect(),
+        total_circulation_model: c.total_circulation_model.clone(),
+    };
+
+    let by_id: std::collections::HashMap<&str, &TomlChain> = parsed
         .chains
-        .into_iter()
-        .map(|c| ChainEntry {
-            id: c.id,
-            name: c.name,
-            symbol: c.symbol,
-            address_prefix_hint: c.address_prefix_hint,
-            gas_token_symbol: c.gas_token_symbol,
-            search_keywords: c.search_keywords,
-            category: c.category,
-            is_evm: c.is_evm,
-            color: c.color,
-            asset_name: c.asset_name,
-            token_standard: c.token_standard,
-            enumerates_holdings: c.enumerates_holdings,
-            contract_address_prompt: c.contract_address_prompt,
-            native_coingecko_id: c.native_coingecko_id,
-            native_decimals: c.native_decimals,
-            native_asset_name: c.native_asset_name,
-            tags: c.tags,
-            comment: c.comment,
-            family: c.family,
-            consensus: c.consensus,
-            state_model: c.state_model,
-            primary_use: c.primary_use,
-            derivation_path: c.derivation_path.into_iter().map(Into::into).collect(),
-            total_circulation_model: c.total_circulation_model,
-        })
-        .collect()
+        .iter()
+        .map(|c| (c.id.as_str(), c))
+        .collect();
+
+    let mut out: Vec<ChainEntry> = parsed.chains.iter().map(entry_of).collect();
+
+    for n in &parsed.networks {
+        // A network naming a chain the file does not define is a build-time
+        // mistake, not a row to skip: the entry would carry an id and nothing
+        // that says what it is.
+        let chain = by_id.get(n.chain.as_str()).unwrap_or_else(|| {
+            panic!("chains.toml: network {} names unknown chain {}", n.id, n.chain)
+        });
+        let mut entry = entry_of(chain);
+        entry.id = n.id.clone();
+        entry.name = n.name.clone();
+        entry.search_keywords = n.search_keywords.clone();
+        entry.derivation_path = n
+            .derivation_path
+            .iter()
+            .map(|d| ChainDerivationPathEntry {
+                tag: d.tag.clone(),
+                path: d.path.clone(),
+                is_default: d.is_default,
+                note: d.note.clone(),
+            })
+            .collect();
+
+        // What a network does *not* inherit.
+        //
+        // A testnet hosts no tokens, and a testnet asset has no price. The
+        // coingecko id used to be copied from the mainnet and then overridden
+        // elsewhere — a field that could only ever be wrong.
+        entry.token_standard = String::new();
+        entry.contract_address_prompt = String::new();
+        entry.native_coingecko_id = String::new();
+
+        // An address hint describes a network's address format, and a
+        // testnet's differs — Bitcoin's is `tb1…`, not `bc1q…`. A network
+        // states its own or has none.
+        entry.address_prefix_hint = n.address_prefix_hint.clone().unwrap_or_default();
+
+        // The editorial block documents a *chain*. The wiki iterates entries
+        // and skips those with no `family`, so leaving these empty is what
+        // keeps a chain from appearing once per network.
+        entry.tags = Vec::new();
+        entry.comment = String::new();
+        entry.family = String::new();
+        entry.consensus = String::new();
+        entry.state_model = String::new();
+        entry.total_circulation_model = String::new();
+
+        out.push(entry);
+    }
+    out
 });
 
 // ── Public API
@@ -205,4 +306,149 @@ pub(crate) fn derivation_paths_for_chain(
         .iter()
         .find(|c| c.name == chain_name)
         .map(|chain| chain.derivation_path.as_slice())
+}
+
+
+#[cfg(test)]
+mod the_catalog_is_two_tables {
+    use super::*;
+    use crate::registry::Chain;
+
+    fn entry(id: &str) -> &'static ChainEntry {
+        CATALOG.iter().find(|c| c.id == id).expect("a catalog row")
+    }
+
+    /// Every network resolves to a chain, and every chain runs at least the
+    /// network it is.
+    #[test]
+    fn the_two_tables_cover_each_other() {
+        let parsed: TomlFile = toml::from_str(CHAINS_TOML).expect("valid TOML");
+        let ids: std::collections::HashSet<&str> =
+            parsed.chains.iter().map(|c| c.id.as_str()).collect();
+        for n in &parsed.networks {
+            assert!(
+                ids.contains(n.chain.as_str()),
+                "{} names unknown chain {}",
+                n.id,
+                n.chain
+            );
+        }
+        assert_eq!(CATALOG.len(), parsed.chains.len() + parsed.networks.len());
+        // And the registry agrees about which is which.
+        for n in &parsed.networks {
+            let chain = Chain::from_str_id(&n.id).expect("the registry knows it");
+            assert!(chain.is_testnet(), "{} is a network row and not a testnet", n.id);
+            assert_eq!(chain.mainnet_counterpart().str_id(), n.chain);
+        }
+    }
+
+    /// A network inherits its chain's technical facts.
+    ///
+    /// They were columns on every testnet row — eight of them restated
+    /// verbatim, which is eight chances for one to drift.
+    #[test]
+    fn a_network_inherits_what_it_does_not_state() {
+        let (main, net) = (entry("ethereum"), entry("ethereum-sepolia"));
+        for (field, a, b) in [
+            ("symbol", &main.symbol, &net.symbol),
+            ("gas_token_symbol", &main.gas_token_symbol, &net.gas_token_symbol),
+            ("color", &main.color, &net.color),
+            ("asset_name", &main.asset_name, &net.asset_name),
+            ("native_asset_name", &main.native_asset_name, &net.native_asset_name),
+            ("category", &main.category, &net.category),
+        ] {
+            assert_eq!(a, b, "{field} did not carry through to the network");
+        }
+        assert_eq!(main.native_decimals, net.native_decimals);
+        assert_eq!(main.is_evm, net.is_evm);
+        // And it states its own name and derivation path — a testnet derives
+        // down a different coin type.
+        assert_ne!(main.name, net.name);
+        let paths = |e: &ChainEntry| -> Vec<String> {
+            e.derivation_path.iter().map(|d| d.path.clone()).collect()
+        };
+        assert_ne!(
+            paths(main),
+            paths(net),
+            "the network inherited its chain's derivation path"
+        );
+    }
+
+    /// A testnet asset has no price and hosts no tokens, structurally.
+    ///
+    /// The coingecko id used to be copied from the mainnet — Sepolia's said
+    /// `"ethereum"` — and something else had to override it. A field that can
+    /// only ever be wrong.
+    #[test]
+    fn a_network_never_inherits_a_price_or_a_token_standard() {
+        for chain in Chain::all().filter(|c| c.is_testnet()) {
+            let e = entry(chain.str_id());
+            assert!(
+                e.native_coingecko_id.is_empty(),
+                "{} carries a price id",
+                e.id
+            );
+            assert!(e.token_standard.is_empty(), "{} claims to host tokens", e.id);
+            assert!(e.contract_address_prompt.is_empty());
+        }
+    }
+
+    /// An address hint describes a network's format, so it is never inherited:
+    /// Bitcoin's is `bc1q…` and its testnet's is not.
+    #[test]
+    fn an_address_hint_is_never_inherited() {
+        assert_eq!(entry("bitcoin").address_prefix_hint, "bc1q…");
+        assert_ne!(
+            entry("bitcoin-testnet").address_prefix_hint,
+            entry("bitcoin").address_prefix_hint,
+            "a testnet showed its mainnet's address format"
+        );
+    }
+
+    /// The wiki documents chains, not networks — it skips rows with no
+    /// `family`, and a network has none.
+    #[test]
+    fn only_chains_carry_the_editorial_block() {
+        for chain in Chain::all() {
+            let e = entry(chain.str_id());
+            if chain.is_testnet() {
+                assert!(e.family.is_empty(), "{} would appear in the wiki", e.id);
+                assert!(e.comment.is_empty());
+                assert!(e.tags.is_empty());
+            } else {
+                assert!(!e.family.is_empty(), "{} has no wiki entry", e.id);
+            }
+        }
+    }
+
+    /// `is_evm` and the contract prompt are computed, not stored.
+    ///
+    /// `is_evm` could not be derived while `category` doubled as a
+    /// network-kind flag: every testnet's category was `"testnet"`, whatever
+    /// family it belonged to.
+    #[test]
+    fn the_derived_columns_agree_with_what_they_derive_from() {
+        for e in CATALOG.iter() {
+            assert_eq!(e.is_evm, is_evm_for(&e.category), "{}", e.id);
+            assert_eq!(
+                e.contract_address_prompt,
+                if e.token_standard.is_empty() {
+                    String::new()
+                } else {
+                    contract_address_prompt_for(&e.token_standard)
+                },
+                "{}",
+                e.id
+            );
+        }
+        // The EVM family is exactly the two EVM categories.
+        for chain in Chain::all() {
+            assert_eq!(
+                chain.is_evm(),
+                matches!(entry(chain.str_id()).category.as_str(), "evm-l1" | "evm-l2"),
+                "{} disagrees about being EVM",
+                chain.str_id()
+            );
+        }
+    }
 }

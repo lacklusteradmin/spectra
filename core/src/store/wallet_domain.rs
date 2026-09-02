@@ -528,21 +528,19 @@ impl CoreTokenPreferenceEntry {
     }
 }
 
-/// Swift `DashboardAssetChainEntry` — Color omitted (derived in Swift).
-#[derive(Debug, Clone, PartialEq, uniffi::Record)]
-pub struct CoreDashboardAssetChainEntry {
-    pub coin: AssetHolding,
-    pub value_usd: Option<f64>,
-}
 
 /// Swift `DashboardAssetGroup` — Color omitted (derived from representative coin in Swift).
 #[derive(Debug, Clone, PartialEq, uniffi::Record)]
 pub struct CoreDashboardAssetGroup {
     pub id: String,
-    pub representative_coin: AssetHolding,
-    pub total_amount: f64,
-    pub total_value_usd: Option<f64>,
-    pub chain_entries: Vec<CoreDashboardAssetChainEntry>,
+    /// The holding this row is, with amounts summed across wallets.
+    ///
+    /// Was `representative_coin` beside `total_amount`, `total_value_usd` and
+    /// `chain_entries: Vec<_>` — a vector that could hold only one thing, since
+    /// the row key already fixed the network, and three fields derived from
+    /// that one thing.
+    pub coin: AssetHolding,
+    pub value_usd: Option<f64>,
     pub is_pinned: bool,
 }
 

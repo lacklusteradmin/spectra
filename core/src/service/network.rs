@@ -276,12 +276,17 @@ impl WalletService {
                         let address = address.clone();
                         let coin_type = t.contract.clone();
                         let symbol = t.symbol.clone();
-                        let decimals = t.decimals;
+                        let fallback = t.decimals;
                         async move {
-                            let raw = client
-                                .fetch_coin_balance(&address, &coin_type)
-                                .await
-                                .unwrap_or(0u64);
+                            // Balance and decimals together: the coin's own
+                            // count wins over the catalog's, which can only
+                            // ever be the one that is wrong.
+                            let (raw, own) = tokio::join!(
+                                client.fetch_coin_balance(&address, &coin_type),
+                                client.fetch_coin_decimals(&coin_type)
+                            );
+                            let raw = raw.unwrap_or(0u64);
+                            let decimals = own.unwrap_or(fallback);
                             TokenBalanceResult {
                                 contract_address: coin_type,
                                 symbol,
@@ -308,7 +313,7 @@ impl WalletService {
                         let contract = t.contract.clone();
                         let holder = address.clone();
                         let symbol = t.symbol.clone();
-                        let decimals = t.decimals;
+                        let fallback = t.decimals;
                         async move {
                             match client.fetch_trc20_balance(&contract, &holder).await {
                                 // The contract's own `decimals` and `symbol`,
@@ -331,7 +336,7 @@ impl WalletService {
                                 Err(_) => TokenBalanceResult {
                                     contract_address: contract,
                                     symbol,
-                                    decimals,
+                                    decimals: fallback,
                                     balance_raw: "0".to_string(),
                                     balance_display: "0".to_string(),
                                     is_known: true,
@@ -386,12 +391,14 @@ impl WalletService {
                         let contract = t.contract.clone();
                         let holder = address.clone();
                         let symbol = t.symbol.clone();
-                        let decimals = t.decimals;
+                        let fallback = t.decimals;
                         async move {
-                            let raw = client
-                                .fetch_ft_balance_of(&contract, &holder)
-                                .await
-                                .unwrap_or(0u128);
+                            let (raw, meta) = tokio::join!(
+                                client.fetch_ft_balance_of(&contract, &holder),
+                                client.fetch_ft_metadata(&contract)
+                            );
+                            let raw = raw.unwrap_or(0u128);
+                            let decimals = meta.map(|m| m.decimals).unwrap_or(fallback);
                             let display = format_decimals(raw, decimals);
                             TokenBalanceResult {
                                 contract_address: contract,
@@ -421,21 +428,27 @@ impl WalletService {
                     .await
                     .unwrap_or_default();
 
+                let own_decimals = futures::future::join_all(
+                    tokens.iter().map(|t| client.fetch_jetton_decimals(&t.contract)),
+                )
+                .await;
+
                 tokens
                     .iter()
-                    .map(|t| {
+                    .zip(own_decimals)
+                    .map(|(t, own)| {
                         let raw = jetton_balances
                             .iter()
                             .find(|j| j.master_address.eq_ignore_ascii_case(&t.contract))
                             .map(|j| j.balance_raw)
                             .unwrap_or(0u128);
-                        let display = format_decimals(raw, t.decimals);
+                        let decimals = own.unwrap_or(t.decimals);
                         TokenBalanceResult {
                             contract_address: t.contract.clone(),
                             symbol: t.symbol.clone(),
-                            decimals: t.decimals,
+                            decimals,
                             balance_raw: raw.to_string(),
-                            balance_display: display,
+                            balance_display: format_decimals(raw, decimals),
                             is_known: true,
                         }
                     })
@@ -454,16 +467,22 @@ impl WalletService {
                     if contract.is_empty() {
                         continue;
                     }
-                    let raw = client
-                        .fetch_erc20_balance_of(&contract, &address)
-                        .await
-                        .unwrap_or(0);
+                    // The contract's own `decimals()`, alongside the balance.
+                    // A catalog row that disagrees with the contract can only
+                    // be the one that is wrong, and the two numbers together
+                    // are what a balance means.
+                    let (raw, meta) = tokio::join!(
+                        client.fetch_erc20_balance_of(&contract, &address),
+                        client.fetch_erc20_metadata(&contract)
+                    );
+                    let raw = raw.unwrap_or(0);
+                    let decimals = meta.map(|m| m.decimals).unwrap_or(token.decimals);
                     results.push(TokenBalanceResult {
                         contract_address: contract,
                         symbol: token.symbol.clone(),
-                        decimals: token.decimals,
+                        decimals,
                         balance_raw: raw.to_string(),
-                        balance_display: format_decimals(raw, token.decimals),
+                        balance_display: format_decimals(raw, decimals),
                         is_known: true,
                     });
                 }
@@ -1482,5 +1501,71 @@ mod discovery_names_only_what_the_catalog_vouches_for {
             "an EVM token contract only answers about a holder you name"
         );
         assert!(!Chain::Near.entry().enumerates_holdings);
+    }
+}
+
+
+#[cfg(test)]
+mod decimals_come_from_the_chain {
+    use crate::registry::Chain;
+    use crate::service::{TokenDescriptor, WalletService};
+
+    /// A balance's decimals are the contract's, not the caller's.
+    ///
+    /// Tron read its contract and Solana its mint; the EVM family, NEAR, TON,
+    /// Sui and Aptos passed the caller's number straight through. Where the
+    /// catalog disagreed with the contract, the catalog was the one that could
+    /// only be wrong — and `balance_display` was formatted with one number
+    /// while `decimals` reported the other, so the two no longer described the
+    /// same balance.
+    ///
+    /// Offline nothing answers, so what this asserts is the fallback: an
+    /// unreadable contract must report **what the caller said**, not zero.
+    /// Zero would render 1 USDC as 1,000,000.
+    #[tokio::test]
+    async fn an_unreadable_contract_falls_back_rather_than_reporting_zero() {
+        let service = WalletService::new_typed(Vec::new()).expect("service");
+        for chain in [
+            Chain::Ethereum,
+            Chain::Tron,
+            Chain::Near,
+            Chain::Ton,
+            Chain::Sui,
+            Chain::Aptos,
+            Chain::Solana,
+        ] {
+            let results = service
+                .fetch_token_balances(
+                    chain.str_id().into(),
+                    "whoever".into(),
+                    vec![TokenDescriptor {
+                        contract: "0xdeadbeef".into(),
+                        symbol: "TEST".into(),
+                        decimals: 18,
+                        name: None,
+                    }],
+                )
+                .await;
+            let Ok(results) = results else { continue };
+            for r in results {
+                assert_eq!(
+                    r.decimals,
+                    18,
+                    "{} lost the caller's decimals when the contract would not answer",
+                    chain.chain_display_name()
+                );
+            }
+        }
+    }
+
+    /// An empty list is not a fetch.
+    #[tokio::test]
+    async fn no_tokens_is_no_round_trip() {
+        let service = WalletService::new_typed(Vec::new()).expect("service");
+        let out = service
+            .fetch_token_balances("ethereum".into(), "whoever".into(), Vec::new())
+            .await
+            .expect("an empty request cannot fail");
+        assert!(out.is_empty());
     }
 }

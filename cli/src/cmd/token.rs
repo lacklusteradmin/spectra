@@ -5,7 +5,7 @@ use clap::{Args, Subcommand};
 use colored::Colorize as _;
 use spectra_core::store::state::StateCommand;
 use spectra_core::store::wallet_domain::{
-    CoreTokenPreferenceCategory, CoreTokenPreferenceEntry, CoreTokenHostingChain,
+    CoreTokenPreferenceEntry, CoreTokenHostingChain,
 };
 
 use super::resolve_chain;
@@ -169,7 +169,7 @@ fn track(ctx: &Ctx, out: Out, args: TrackArgs) -> CliResult<()> {
             ))
         })?;
 
-    let tracking_chain = CoreTokenHostingChain::from_chain_name(chain.chain_display_name())
+    let _ = CoreTokenHostingChain::from_chain_name(chain.chain_display_name())
         .ok_or_else(|| {
             CliError::rejected(format!(
                 "{} does not support known tokens",

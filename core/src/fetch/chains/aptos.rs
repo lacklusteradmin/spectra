@@ -113,6 +113,20 @@ impl AptosClient {
         })
     }
 
+    /// A coin type's own decimals, from the `CoinInfo<T>` the publishing
+    /// account holds. `None` when it is unreadable.
+    pub async fn fetch_coin_decimals(&self, coin_type: &str) -> Option<u8> {
+        let publisher = coin_type.split("::").next()?;
+        let encoded = coin_type.replace('<', "%3C").replace('>', "%3E");
+        let path = format!("/accounts/{publisher}/resource/0x1::coin::CoinInfo%3C{encoded}%3E");
+        self.get::<Value>(&path)
+            .await
+            .ok()?
+            .pointer("/data/decimals")?
+            .as_u64()
+            .map(|d| d as u8)
+    }
+
     /// Every legacy `0x1::coin::CoinStore<T>` the account carries.
     ///
     /// An Aptos account stores its coins as its own resources, so one read
@@ -150,31 +164,18 @@ impl AptosClient {
             held.push((inner.to_string(), raw));
         }
 
-        let metadata =
-            futures::future::join_all(held.iter().map(|(coin_type, _)| async move {
-                let publisher = coin_type.split("::").next()?;
-                let encoded = coin_type.replace('<', "%3C").replace('>', "%3E");
-                let path =
-                    format!("/accounts/{publisher}/resource/0x1::coin::CoinInfo%3C{encoded}%3E");
-                self.get::<Value>(&path).await.ok()
-            }))
-            .await;
+        let metadata = futures::future::join_all(
+            held.iter().map(|(coin_type, _)| self.fetch_coin_decimals(coin_type)),
+        )
+        .await;
         Ok(held
             .into_iter()
             .zip(metadata)
-            .map(|((contract, balance_raw), meta)| super::HeldToken {
+            .map(|((contract, balance_raw), decimals)| super::HeldToken {
                 contract,
                 balance_raw,
-                decimals: meta
-                    .as_ref()
-                    .and_then(|m| m.pointer("/data/decimals"))
-                    .and_then(|v| v.as_u64())
-                    .map(|d| d as u8),
-                symbol: meta
-                    .as_ref()
-                    .and_then(|m| m.pointer("/data/symbol"))
-                    .and_then(|v| v.as_str())
-                    .map(str::to_string),
+                decimals,
+                symbol: None,
             })
             .collect())
     }

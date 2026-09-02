@@ -346,6 +346,24 @@ impl Chain {
         }
     }
 
+    /// Which endpoint slot this chain's supplemental explorer endpoints are
+    /// registered under.
+    ///
+    /// For most chains they supplement the RPC list and go in `Explorer`. For
+    /// Polkadot and Internet Computer they are a working API — Subscan and the
+    /// ICP dashboard, which the send path queries — so they go in `Secondary`,
+    /// where `send.rs` looks for them.
+    ///
+    /// The front end held this as a fourteen-name table beside a two-name one.
+    /// Twelve of the fourteen named chains have no supplement at all, and
+    /// Hyperliquid, which has one, was not in either.
+    pub fn supplemental_endpoint_slot(self) -> EndpointSlot {
+        match self.mainnet_counterpart() {
+            Chain::Polkadot | Chain::Icp => EndpointSlot::Secondary,
+            _ => EndpointSlot::Explorer,
+        }
+    }
+
     pub fn has_send_preview(self) -> bool {
         // The EVM family and the chains with a preview path of their own —
         // everything that does not go through the generic submit — always have
@@ -1689,6 +1707,8 @@ pub struct ChainIdentity {
     /// The send screen has a network card to show for this chain — a fee, a
     /// preview, or both. False only where core routes no send at all.
     pub has_send_preview: bool,
+    /// Which endpoint slot this chain's supplemental explorer endpoints go in.
+    pub supplemental_endpoint_slot: crate::app_core::AppCoreEndpointSlot,
     /// Which `CoreTokenHostingChain` this chain is, if it can host known
     /// tokens. `None` for the chains that cannot.
     ///
@@ -1736,6 +1756,11 @@ pub fn core_chain_identities() -> Vec<ChainIdentity> {
             derives_from_private_key: chain.derives_from_private_key(),
             supports_staking: chain.supports_staking(),
             has_send_preview: chain.has_send_preview(),
+            supplemental_endpoint_slot: match chain.supplemental_endpoint_slot() {
+                EndpointSlot::Primary => crate::app_core::AppCoreEndpointSlot::Primary,
+                EndpointSlot::Secondary => crate::app_core::AppCoreEndpointSlot::Secondary,
+                EndpointSlot::Explorer => crate::app_core::AppCoreEndpointSlot::Explorer,
+            },
             token_hosting_chain: crate::store::wallet_domain::CoreTokenHostingChain::from_chain_name(
                 chain.chain_display_name(),
             ),

@@ -171,15 +171,9 @@ impl TonClient {
             .collect())
     }
 
-    /// Every jetton the address holds, with each jetton master's own decimals.
-    ///
-    /// `/jetton/wallets` enumerates the holdings but carries no content, so
-    /// each master's metadata is read concurrently; a master that will not
-    /// answer is reported unnamed rather than dropped.
-    pub async fn fetch_all_jetton_balances(
-        &self,
-        address: &str,
-    ) -> Result<Vec<super::HeldToken>, String> {
+    /// A jetton master's own decimals, from its content. `None` when the
+    /// master will not answer.
+    pub async fn fetch_jetton_decimals(&self, master_address: &str) -> Option<u8> {
         #[derive(Deserialize)]
         struct MasterEnvelope {
             jetton_masters: Option<Vec<Master>>,
@@ -191,9 +185,33 @@ impl TonClient {
         #[derive(Deserialize)]
         struct Content {
             decimals: Option<serde_json::Value>,
-            symbol: Option<String>,
         }
+        let path = format!("/jetton/masters?address={master_address}&limit=1");
+        let content = self
+            .get_v3::<MasterEnvelope>(&path)
+            .await
+            .ok()?
+            .jetton_masters?
+            .into_iter()
+            .next()?
+            .jetton_content?;
+        // TON metadata carries decimals as a string as often as a number, and
+        // both mean the same count.
+        let raw = content.decimals?;
+        raw.as_u64()
+            .or_else(|| raw.as_str().and_then(|s| s.parse().ok()))
+            .map(|d| d as u8)
+    }
 
+    /// Every jetton the address holds, with each jetton master's own decimals.
+    ///
+    /// `/jetton/wallets` enumerates the holdings but carries no content, so
+    /// each master's metadata is read concurrently; a master that will not
+    /// answer is reported unnamed rather than dropped.
+    pub async fn fetch_all_jetton_balances(
+        &self,
+        address: &str,
+    ) -> Result<Vec<super::HeldToken>, String> {
         let wallets: Vec<TonJettonBalance> = self
             .fetch_jetton_balances(address)
             .await?
@@ -201,35 +219,19 @@ impl TonClient {
             .filter(|w| w.balance_raw > 0)
             .collect();
 
-        let metadata = futures::future::join_all(wallets.iter().map(|w| {
-            let path = format!("/jetton/masters?address={}&limit=1", w.master_address);
-            async move { self.get_v3::<MasterEnvelope>(&path).await.ok() }
-        }))
+        let metadata = futures::future::join_all(
+            wallets.iter().map(|w| self.fetch_jetton_decimals(&w.master_address)),
+        )
         .await;
 
         Ok(wallets
             .into_iter()
             .zip(metadata)
-            .map(|(w, meta)| {
-                let content = meta
-                    .and_then(|m| m.jetton_masters)
-                    .and_then(|mut v| if v.is_empty() { None } else { Some(v.remove(0)) })
-                    .and_then(|m| m.jetton_content);
-                super::HeldToken {
-                    contract: w.master_address,
-                    balance_raw: w.balance_raw,
-                    // TON metadata carries decimals as a string as often as a
-                    // number, and both mean the same count.
-                    decimals: content
-                        .as_ref()
-                        .and_then(|c| c.decimals.as_ref())
-                        .and_then(|v| {
-                            v.as_u64()
-                                .or_else(|| v.as_str().and_then(|s| s.parse().ok()))
-                        })
-                        .map(|d| d as u8),
-                    symbol: content.and_then(|c| c.symbol),
-                }
+            .map(|(w, decimals)| super::HeldToken {
+                contract: w.master_address,
+                balance_raw: w.balance_raw,
+                decimals,
+                symbol: None,
             })
             .collect())
     }

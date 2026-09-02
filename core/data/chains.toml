@@ -1,33 +1,45 @@
-# Spectra chain registry — single source of truth for chain metadata.
-# Replaces: ChainWikiEntries.json, ChainVisualRegistry.json,
-#   app_chain_descriptors() in app_core.rs, chainSelectionDescriptors in
-#   WalletSetupViews.swift, TokenTrackingChain.tokenStandard/.contractAddressPrompt.
+# Spectra built-in chain registry — the source of truth for both front ends.
 #
-# Ordered to match Chain::all() in registry.rs.
-# The string `id` values are stable registry keys — avoid renaming them.
-# To add a chain: append it in the matching registry order.
-
-# ── Bitcoin ───────────────────────────────────────────────────────────────
+# Two tables, because a chain catalog holds two different kinds of fact:
+#
+#   [[chains]]   what a chain *is*        — one row per chain
+#   [[networks]] which network of it      — one row per testnet
+#
+# It was one table of seventy-eight rows, so every testnet restated eight of
+# its mainnet's columns verbatim, left six more empty, and carried a
+# `native_coingecko_id` that must never be used — a testnet asset has no price,
+# and something else had to override it.
+#
+# A network inherits everything from its chain except:
+#   * `token_standard` — a testnet hosts no tokens
+#   * `native_coingecko_id` — a testnet asset has no price
+#   * whatever it states below
+#
+# Three columns are gone. `primary_use` held the same string as `comment` on
+# all seventy-eight rows and was never rendered. `contract_address_prompt` is a
+# function of `token_standard`. `is_evm` is a function of `category`, once
+# `category` stops doubling as a network-kind flag.
 
 [[chains]]
 id = "bitcoin"
 name = "Bitcoin"
 symbol = "BTC"
-address_prefix_hint = "bc1q…"
 gas_token_symbol = "BTC"
 search_keywords = ["Bitcoin", "BTC"]
 category = "bitcoin-family"
-is_evm = false
 color = "orange"
 asset_name = "bitcoin"
+address_prefix_hint = "bc1q…"
 token_standard = ""
-contract_address_prompt = ""
 tags = ["UTXO", "PoW", "Settlement"]
 comment = "Final settlement, long-horizon self-custody, and simple native BTC transfers."
 family = "UTXO / base-layer settlement network"
 consensus = "Proof of Work (SHA-256)"
 state_model = "UTXO set"
-primary_use = "Final settlement, long-horizon self-custody, and simple native BTC transfers."
+total_circulation_model = "Protocol-capped at 21,000,000 BTC."
+native_coingecko_id = "bitcoin"
+native_decimals = 8
+native_asset_name = "Bitcoin"
 derivation_path = [
     { tag = "nativeSegWit", path = "m/84'/0'/{account}'/0/0", is_default = true },
     { tag = "legacy", path = "m/44'/0'/{account}'/0/0" },
@@ -36,158 +48,127 @@ derivation_path = [
     { tag = "electrumLegacy", path = "m/0'/0" },
     { tag = "electrumLegacy", path = "m/0'/0/0" },
 ]
-total_circulation_model = "Protocol-capped at 21,000,000 BTC."
-native_coingecko_id = "bitcoin"
-native_decimals = 8
-native_asset_name = "Bitcoin"
-
-# ── Ethereum ──────────────────────────────────────────────────────────────
 
 [[chains]]
 id = "ethereum"
 name = "Ethereum"
 symbol = "ETH"
-address_prefix_hint = "0x…"
 gas_token_symbol = "ETH"
 search_keywords = ["Ethereum", "ETH"]
 category = "evm-l1"
-is_evm = true
 color = "purple"
 asset_name = "ethereum"
+address_prefix_hint = "0x…"
 token_standard = "ERC-20"
-contract_address_prompt = "Contract Address"
 tags = ["EVM", "PoS", "Smart Contracts"]
 comment = "General-purpose smart contracts, DeFi, ERC-20 tokens, and on-chain execution."
 family = "Account-based smart contract network"
 consensus = "Proof of Stake"
 state_model = "Account state + contract storage"
-primary_use = "General-purpose smart contracts, DeFi, ERC-20 tokens, and on-chain execution."
-derivation_path = [ { tag = "standard", path = "m/44'/60'/{account}'/0/0", is_default = true } ]
 total_circulation_model = "No fixed maximum supply. Supply changes with validator issuance and fee burn, so long-run circulation is not statically estimatable."
 native_coingecko_id = "ethereum"
 native_decimals = 18
 native_asset_name = "Ethereum"
-
-# ── Solana ────────────────────────────────────────────────────────────────
+derivation_path = [ { tag = "standard", path = "m/44'/60'/{account}'/0/0", is_default = true } ]
 
 [[chains]]
 id = "solana"
 name = "Solana"
 symbol = "SOL"
-address_prefix_hint = "So111…"
 gas_token_symbol = "SOL"
 search_keywords = ["Solana", "SOL"]
 category = "other"
-is_evm = false
 color = "green"
 asset_name = "solana"
+address_prefix_hint = "So111…"
 token_standard = "SPL"
-enumerates_holdings = true
-contract_address_prompt = "Mint Address"
 tags = ["PoS", "High Throughput", "Smart Contracts"]
 comment = "High-throughput transfers, SPL tokens, and latency-sensitive on-chain applications."
 family = "Account-based high-throughput network"
 consensus = "Proof of Stake with Proof of History timing"
 state_model = "Account state + program-owned token accounts"
-primary_use = "High-throughput transfers, SPL tokens, and latency-sensitive on-chain applications."
-derivation_path = [
-    { tag = "standard", path = "m/44'/501'/{account}'/0'", is_default = true },
-    { tag = "legacy", path = "m/44'/501'/{account}'" },
-]
 total_circulation_model = "No fixed maximum supply. Inflation, staking economics, and unlock schedules make long-run live circulation dynamic."
 native_coingecko_id = "solana"
 native_decimals = 9
 native_asset_name = "Solana"
-
-# ── Dogecoin ──────────────────────────────────────────────────────────────
+enumerates_holdings = true
+derivation_path = [
+    { tag = "standard", path = "m/44'/501'/{account}'/0'", is_default = true },
+    { tag = "legacy", path = "m/44'/501'/{account}'" },
+]
 
 [[chains]]
 id = "dogecoin"
 name = "Dogecoin"
 symbol = "DOGE"
-address_prefix_hint = "D…"
 gas_token_symbol = "DOGE"
 search_keywords = ["Dogecoin", "DOGE"]
 category = "bitcoin-family"
-is_evm = false
 color = "yellow"
 asset_name = "dogecoin"
+address_prefix_hint = "D…"
 token_standard = ""
-contract_address_prompt = ""
 tags = ["UTXO", "PoW", "Payments"]
 comment = "Low-friction payments, transfers, and broad exchange support."
 family = "UTXO payments network"
 consensus = "Proof of Work with AuxPoW merged-mining ecosystem support"
 state_model = "UTXO set"
-primary_use = "Low-friction payments, transfers, and broad exchange support."
-derivation_path = [ { tag = "standard", path = "m/44'/3'/{account}'/0/0", is_default = true } ]
 total_circulation_model = "No fixed terminal cap. Issuance is bounded per block and per year, but the lifetime supply is not protocol-capped."
 native_coingecko_id = "dogecoin"
 native_decimals = 8
 native_asset_name = "Dogecoin"
-
-# ── XRP Ledger ────────────────────────────────────────────────────────────
+derivation_path = [ { tag = "standard", path = "m/44'/3'/{account}'/0/0", is_default = true } ]
 
 [[chains]]
 id = "xrp"
 name = "XRP Ledger"
 symbol = "XRP"
-address_prefix_hint = "r…"
 gas_token_symbol = "XRP"
 search_keywords = ["XRP Ledger", "XRP"]
 category = "other"
-is_evm = false
 color = "cyan"
 asset_name = "xrp"
+address_prefix_hint = "r…"
 token_standard = ""
-contract_address_prompt = ""
 tags = ["Payments", "Settlement"]
 comment = "Fast payments, issued assets, and order-book based transfers."
 family = "Account-based payments ledger"
 consensus = "XRPL consensus protocol"
 state_model = "Account state + trust line objects"
-primary_use = "Fast payments, issued assets, and order-book based transfers."
-derivation_path = [
-    { tag = "standard", path = "m/44'/144'/{account}'/0/0", is_default = true },
-    { tag = "legacy", path = "m/44'/144'/{account}'" },
-]
 total_circulation_model = "Fixed at 100,000,000,000 XRP total created supply."
 native_coingecko_id = "ripple"
 native_decimals = 6
 native_asset_name = "XRP"
-
-# ── Litecoin ──────────────────────────────────────────────────────────────
+derivation_path = [
+    { tag = "standard", path = "m/44'/144'/{account}'/0/0", is_default = true },
+    { tag = "legacy", path = "m/44'/144'/{account}'" },
+]
 
 [[chains]]
 id = "litecoin"
 name = "Litecoin"
 symbol = "LTC"
-address_prefix_hint = "ltc1… / L… / M…"
 gas_token_symbol = "LTC"
 search_keywords = ["Litecoin", "LTC"]
 category = "bitcoin-family"
-is_evm = false
 color = "blue"
 asset_name = "litecoin"
+address_prefix_hint = "ltc1… / L… / M…"
 token_standard = ""
-contract_address_prompt = ""
 tags = ["UTXO", "PoW", "Payments"]
 comment = "Lower-fee payments and faster block cadence than Bitcoin."
 family = "UTXO payments network"
 consensus = "Proof of Work (Scrypt)"
 state_model = "UTXO set"
-primary_use = "Lower-fee payments and faster block cadence than Bitcoin."
+total_circulation_model = "Protocol-capped at 84,000,000 LTC."
+native_coingecko_id = "litecoin"
+native_decimals = 8
+native_asset_name = "Litecoin"
 derivation_path = [
     { tag = "legacy", path = "m/44'/2'/{account}'/0/0", is_default = true },
     { tag = "nativeSegWit", path = "m/84'/2'/{account}'/0/0" },
     { tag = "nestedSegWit", path = "m/49'/2'/{account}'/0/0" },
 ]
-total_circulation_model = "Protocol-capped at 84,000,000 LTC."
-native_coingecko_id = "litecoin"
-native_decimals = 8
-native_asset_name = "Litecoin"
-
-# ── Bitcoin Cash ──────────────────────────────────────────────────────────
 
 [[chains]]
 id = "bitcoin-cash"
@@ -196,444 +177,364 @@ symbol = "BCH"
 gas_token_symbol = "BCH"
 search_keywords = ["Bitcoin Cash", "BCH"]
 category = "bitcoin-family"
-is_evm = false
 color = "orange"
 asset_name = "bitcoincash"
 token_standard = ""
-contract_address_prompt = ""
 tags = ["UTXO", "PoW", "Payments"]
 comment = "Peer-to-peer payments with a Bitcoin-derived UTXO model and distinct address/network rules."
 family = "UTXO payments network"
 consensus = "Proof of Work (SHA-256)"
 state_model = "UTXO set"
-primary_use = "Peer-to-peer payments with a Bitcoin-derived UTXO model and distinct address/network rules."
+total_circulation_model = "Protocol-capped at 21,000,000 BCH."
+native_coingecko_id = "bitcoin-cash"
+native_decimals = 8
+native_asset_name = "Bitcoin Cash"
 derivation_path = [
     { tag = "standard", path = "m/44'/145'/{account}'/0/0", is_default = true },
     { tag = "legacy", path = "m/44'/0'/{account}'/0/0" },
     { tag = "electrumLegacy", path = "m/0" },
 ]
-total_circulation_model = "Protocol-capped at 21,000,000 BCH."
-native_coingecko_id = "bitcoin-cash"
-native_decimals = 8
-native_asset_name = "Bitcoin Cash"
-
-# ── Tron ──────────────────────────────────────────────────────────────────
 
 [[chains]]
 id = "tron"
 name = "Tron"
 symbol = "TRX"
-address_prefix_hint = "T…"
 gas_token_symbol = "TRX"
 search_keywords = ["Tron", "TRX"]
 category = "other"
-is_evm = false
 color = "red"
 asset_name = "tron"
+address_prefix_hint = "T…"
 token_standard = "TRC-20"
-enumerates_holdings = true
-contract_address_prompt = "Contract Address"
 tags = ["PoS", "Payments", "Smart Contracts"]
 comment = "Transfers, TRC-20 token activity, and resource-metered smart contract execution."
 family = "Account-based smart contract network"
 consensus = "Delegated Proof of Stake"
 state_model = "Account state + contract storage"
-primary_use = "Transfers, TRC-20 token activity, and resource-metered smart contract execution."
+total_circulation_model = "No fixed supply statement is surfaced here. Effective circulating supply changes over time, so it is treated as not statically estimatable in this wiki."
+native_coingecko_id = "tron"
+native_decimals = 6
+native_asset_name = "Tron"
+enumerates_holdings = true
 derivation_path = [
     { tag = "standard", path = "m/44'/195'/{account}'/0/0", is_default = true },
     { tag = "legacy", path = "m/44'/195'/{account}'" },
     { tag = "legacy", path = "m/44'/60'/{account}'/0/0" },
 ]
-total_circulation_model = "No fixed supply statement is surfaced here. Effective circulating supply changes over time, so it is treated as not statically estimatable in this wiki."
-native_coingecko_id = "tron"
-native_decimals = 6
-native_asset_name = "Tron"
-
-# ── Stellar ───────────────────────────────────────────────────────────────
 
 [[chains]]
 id = "stellar"
 name = "Stellar"
 symbol = "XLM"
-address_prefix_hint = "G…"
 gas_token_symbol = "XLM"
 search_keywords = ["Stellar", "XLM"]
 category = "other"
-is_evm = false
 color = "teal"
 asset_name = "stellar"
+address_prefix_hint = "G…"
 token_standard = ""
-contract_address_prompt = ""
 tags = ["Payments", "Settlement"]
 comment = "Native XLM transfers, issued-asset settlement, and low-fee payment routing on Stellar."
 family = "Account-based payments network"
 consensus = "Stellar Consensus Protocol"
 state_model = "Account state + trustline objects"
-primary_use = "Native XLM transfers, issued-asset settlement, and low-fee payment routing on Stellar."
-derivation_path = [ { tag = "standard", path = "m/44'/148'/{account}'", is_default = true } ]
 total_circulation_model = "No fixed terminal cap is surfaced here. Circulating supply is dynamic and partly shaped by foundation-controlled holdings and burns, so this page treats live circulation as non-static."
 native_coingecko_id = "stellar"
 native_decimals = 7
 native_asset_name = "Stellar"
-
-# ── Cardano ───────────────────────────────────────────────────────────────
+derivation_path = [ { tag = "standard", path = "m/44'/148'/{account}'", is_default = true } ]
 
 [[chains]]
 id = "cardano"
 name = "Cardano"
 symbol = "ADA"
-address_prefix_hint = "addr1…"
 gas_token_symbol = "ADA"
 search_keywords = ["Cardano", "ADA"]
 category = "other"
-is_evm = false
 color = "indigo"
 asset_name = "cardano"
+address_prefix_hint = "addr1…"
 token_standard = ""
-contract_address_prompt = ""
 tags = ["eUTXO", "PoS", "Smart Contracts"]
 comment = "Native-asset transfers, staking, and eUTXO-based smart contract workflows."
 family = "Extended-UTXO smart contract network"
 consensus = "Ouroboros Proof of Stake"
 state_model = "eUTXO"
-primary_use = "Native-asset transfers, staking, and eUTXO-based smart contract workflows."
-derivation_path = [
-    { tag = "standard", path = "m/1852'/1815'/{account}'/0/0", is_default = true },
-    { tag = "legacy", path = "m/44'/1815'/{account}'/0/0" },
-]
 total_circulation_model = "Protocol-capped at 45,000,000,000 ADA."
 native_coingecko_id = "cardano"
 native_decimals = 6
 native_asset_name = "Cardano"
-
-# ── Polkadot ─────────────────────────────────────────────────────────────
+derivation_path = [
+    { tag = "standard", path = "m/1852'/1815'/{account}'/0/0", is_default = true },
+    { tag = "legacy", path = "m/44'/1815'/{account}'/0/0" },
+]
 
 [[chains]]
 id = "polkadot"
 name = "Polkadot"
 symbol = "DOT"
-address_prefix_hint = "1…"
 gas_token_symbol = "DOT"
 search_keywords = ["Polkadot", "DOT"]
 category = "other"
-is_evm = false
 color = "pink"
 asset_name = "polkadot"
+address_prefix_hint = "1…"
 token_standard = ""
-contract_address_prompt = ""
 tags = ["Relay Chain", "PoS", "Smart Contracts"]
 comment = "Native DOT transfers, staking, governance, and relay-chain security participation."
 family = "Relay-chain / nominated proof-of-stake network"
 consensus = "Nominated Proof of Stake"
 state_model = "Account state + runtime pallets"
-primary_use = "Native DOT transfers, staking, governance, and relay-chain security participation."
-derivation_path = [ { tag = "standard", path = "m/44'/354'/{account}'", is_default = true } ]
 total_circulation_model = "No fixed terminal cap is surfaced here. Supply changes over time through staking-era issuance and protocol economics, so live circulation is treated as dynamic."
 native_coingecko_id = "polkadot"
 native_decimals = 10
 native_asset_name = "Polkadot"
-
-# ── Arbitrum ─────────────────────────────────────────────────────────────
+derivation_path = [ { tag = "standard", path = "m/44'/354'/{account}'", is_default = true } ]
 
 [[chains]]
 id = "arbitrum"
 name = "Arbitrum"
 symbol = "ARB"
-address_prefix_hint = "0x…"
 gas_token_symbol = "ETH"
 search_keywords = ["Arbitrum", "ARB"]
 category = "evm-l2"
-is_evm = true
 color = "cyan"
 asset_name = "arbitrum"
+address_prefix_hint = "0x…"
 token_standard = "ERC-20"
-contract_address_prompt = "Contract Address"
 tags = ["EVM", "L2", "Rollup"]
 comment = "Lower-cost EVM execution, ERC-20 tokens, and Ethereum-compatible activity on Arbitrum One."
 family = "EVM-compatible layer-2 smart contract network"
 consensus = "Ethereum-secured optimistic rollup"
 state_model = "Account state + contract storage"
-primary_use = "Lower-cost EVM execution, ERC-20 tokens, and Ethereum-compatible activity on Arbitrum One."
-derivation_path = [ { tag = "standard", path = "m/44'/60'/{account}'/0/0", is_default = true } ]
 total_circulation_model = "The native gas asset is ETH bridged from Ethereum mainnet, so supply is not a chain-native fixed-cap figure for Arbitrum itself."
 native_coingecko_id = "ethereum"
 native_decimals = 18
 native_asset_name = "Ethereum"
-
-# ── Optimism ─────────────────────────────────────────────────────────────
+derivation_path = [ { tag = "standard", path = "m/44'/60'/{account}'/0/0", is_default = true } ]
 
 [[chains]]
 id = "optimism"
 name = "Optimism"
 symbol = "OP"
-address_prefix_hint = "0x…"
 gas_token_symbol = "ETH"
 search_keywords = ["Optimism", "OP"]
 category = "evm-l2"
-is_evm = true
 color = "red"
 asset_name = "optimism"
+address_prefix_hint = "0x…"
 token_standard = "ERC-20"
-contract_address_prompt = "Contract Address"
 tags = ["EVM", "L2", "Rollup"]
 comment = "Lower-cost EVM execution, ERC-20 tokens, and Ethereum-compatible activity on Optimism mainnet."
 family = "EVM-compatible layer-2 smart contract network"
 consensus = "Ethereum-secured optimistic rollup"
 state_model = "Account state + contract storage"
-primary_use = "Lower-cost EVM execution, ERC-20 tokens, and Ethereum-compatible activity on Optimism mainnet."
-derivation_path = [ { tag = "standard", path = "m/44'/60'/{account}'/0/0", is_default = true } ]
 total_circulation_model = "The native gas asset is ETH bridged from Ethereum mainnet, so supply is not a chain-native fixed-cap figure for Optimism itself."
 native_coingecko_id = "ethereum"
 native_decimals = 18
 native_asset_name = "Ethereum"
-
-# ── Avalanche ────────────────────────────────────────────────────────────
+derivation_path = [ { tag = "standard", path = "m/44'/60'/{account}'/0/0", is_default = true } ]
 
 [[chains]]
 id = "avalanche"
 name = "Avalanche"
 symbol = "AVAX"
-address_prefix_hint = "0x…"
 gas_token_symbol = "AVAX"
 search_keywords = ["Avalanche", "AVAX"]
 category = "evm-l1"
-is_evm = true
 color = "red"
 asset_name = "avalanche"
+address_prefix_hint = "0x…"
 token_standard = "ARC-20"
-contract_address_prompt = "Contract Address"
 tags = ["EVM", "PoS", "Smart Contracts"]
 comment = "Native AVAX transfers and C-Chain EVM activity on Avalanche mainnet."
 family = "EVM-compatible smart contract network"
 consensus = "Proof of Stake with Avalanche consensus"
 state_model = "Account state + contract storage"
-primary_use = "Native AVAX transfers and C-Chain EVM activity on Avalanche mainnet."
-derivation_path = [ { tag = "standard", path = "m/44'/60'/{account}'/0/0", is_default = true } ]
 total_circulation_model = "AVAX supply is capped at 720,000,000 with live circulating supply changing over time as issuance and fee burn continue."
 native_coingecko_id = "avalanche-2"
 native_decimals = 18
 native_asset_name = "Avalanche"
-
-# ── Sui ──────────────────────────────────────────────────────────────────
+derivation_path = [ { tag = "standard", path = "m/44'/60'/{account}'/0/0", is_default = true } ]
 
 [[chains]]
 id = "sui"
 name = "Sui"
 symbol = "SUI"
-address_prefix_hint = "0x…"
 gas_token_symbol = "SUI"
 search_keywords = ["Sui", "SUI"]
 category = "other"
-is_evm = false
 color = "mint"
 asset_name = "sui"
+address_prefix_hint = "0x…"
 token_standard = "Sui Coin"
-enumerates_holdings = true
-contract_address_prompt = "Coin Standard Type"
 tags = ["Move", "Object", "PoS"]
 comment = "Move-based applications, object transfers, and asset-centric execution."
 family = "Object-centric smart contract network"
 consensus = "Delegated Proof of Stake"
 state_model = "Owned objects + shared objects"
-primary_use = "Move-based applications, object transfers, and asset-centric execution."
-derivation_path = [ { tag = "standard", path = "m/44'/784'/{account}'/0'/0'", is_default = true } ]
 total_circulation_model = "Total supply capped at 10,000,000,000 SUI, with circulation released over time."
 native_coingecko_id = "sui"
 native_decimals = 9
 native_asset_name = "Sui"
-
-# ── Aptos ────────────────────────────────────────────────────────────────
+enumerates_holdings = true
+derivation_path = [ { tag = "standard", path = "m/44'/784'/{account}'/0'/0'", is_default = true } ]
 
 [[chains]]
 id = "aptos"
 name = "Aptos"
 symbol = "APT"
-address_prefix_hint = "0x…"
 gas_token_symbol = "APT"
 search_keywords = ["Aptos", "APT"]
 category = "other"
-is_evm = false
 color = "cyan"
 asset_name = "aptos"
+address_prefix_hint = "0x…"
 token_standard = "AIP-21"
-enumerates_holdings = true
-contract_address_prompt = "Fungible Asset Metadata or Package Address"
 tags = ["Move", "PoS", "Smart Contracts"]
 comment = "Native APT transfers, Move-based applications, and account/resource-oriented on-chain execution."
 family = "Account-based Move smart contract network"
 consensus = "Proof of Stake with AptosBFT"
 state_model = "Account state + Move resources"
-primary_use = "Native APT transfers, Move-based applications, and account/resource-oriented on-chain execution."
-derivation_path = [ { tag = "standard", path = "m/44'/637'/{account}'/0'/0'", is_default = true } ]
 total_circulation_model = "APT circulation changes over time with staking emissions, unlocks, and protocol economics, so this page treats live circulation as dynamic."
 native_coingecko_id = "aptos"
 native_decimals = 8
 native_asset_name = "Aptos"
-
-# ── TON ──────────────────────────────────────────────────────────────────
+enumerates_holdings = true
+derivation_path = [ { tag = "standard", path = "m/44'/637'/{account}'/0'/0'", is_default = true } ]
 
 [[chains]]
 id = "ton"
 name = "TON"
 symbol = "TON"
-address_prefix_hint = "UQ… / EQ…"
 gas_token_symbol = "TON"
 search_keywords = ["TON"]
 category = "other"
-is_evm = false
 color = "blue"
 asset_name = "ton"
+address_prefix_hint = "UQ… / EQ…"
 token_standard = "TEP-74"
-enumerates_holdings = true
-contract_address_prompt = "Jetton Master Address"
 tags = ["PoS", "Messaging", "Smart Contracts"]
 comment = "Native Toncoin transfers, jettons, and asynchronous contract interactions on The Open Network."
 family = "Account-based message-driven smart contract network"
 consensus = "Proof of Stake with validator-set finality"
 state_model = "Account state + contracts/messages"
-primary_use = "Native Toncoin transfers, jettons, and asynchronous contract interactions on The Open Network."
-derivation_path = [ { tag = "standard", path = "m/44'/607'/{account}'/0/0", is_default = true } ]
 total_circulation_model = "Toncoin supply is dynamic over time, so this page treats live circulation as non-static."
 native_coingecko_id = "the-open-network"
 native_decimals = 9
 native_asset_name = "Toncoin"
-
-# ── NEAR ─────────────────────────────────────────────────────────────────
+enumerates_holdings = true
+derivation_path = [ { tag = "standard", path = "m/44'/607'/{account}'/0/0", is_default = true } ]
 
 [[chains]]
 id = "near"
 name = "NEAR"
 symbol = "NEAR"
-address_prefix_hint = "alice.near / 64-char hex"
 gas_token_symbol = "NEAR"
 search_keywords = ["NEAR"]
 category = "other"
-is_evm = false
 color = "indigo"
 asset_name = "near"
+address_prefix_hint = "alice.near / 64-char hex"
 token_standard = "NEP-141"
-contract_address_prompt = "Contract Account ID"
 tags = ["PoS", "Smart Contracts", "Sharding"]
 comment = "Named-account transfers, smart contracts, and user-friendly account-based activity."
 family = "Account-based smart contract network"
 consensus = "Proof of Stake with Doomslug / Nightshade architecture"
 state_model = "Account state + contract storage"
-primary_use = "Named-account transfers, smart contracts, and user-friendly account-based activity."
-derivation_path = [ { tag = "standard", path = "m/44'/397'/{account}'", is_default = true } ]
 total_circulation_model = "No fixed terminal cap is surfaced here. Supply changes over time, so live circulation is treated as dynamic."
 native_coingecko_id = "near"
 native_decimals = 24
 native_asset_name = "NEAR"
-
-# ── Internet Computer ────────────────────────────────────────────────────
+derivation_path = [ { tag = "standard", path = "m/44'/397'/{account}'", is_default = true } ]
 
 [[chains]]
 id = "internet-computer"
 name = "Internet Computer"
 symbol = "ICP"
-address_prefix_hint = "64-char account identifier"
 gas_token_symbol = "ICP"
 search_keywords = ["Internet Computer", "ICP"]
 category = "other"
-is_evm = false
 color = "indigo"
 asset_name = "internetcomputer"
+address_prefix_hint = "64-char account identifier"
 token_standard = ""
-contract_address_prompt = ""
 tags = ["Canisters", "PoS", "Smart Contracts"]
 comment = "Native ICP transfers, governance participation, and canister-powered applications."
 family = "Account-based canister network"
 consensus = "Threshold Relay + chain-key cryptography"
 state_model = "Account identifiers + canister-managed state"
-primary_use = "Native ICP transfers, governance participation, and canister-powered applications."
-derivation_path = [ { tag = "standard", path = "m/44'/223'/{account}'/0/0", is_default = true } ]
 total_circulation_model = "Supply is dynamic and tied to governance, staking, and protocol economics, so this page treats live circulation as non-static."
 native_coingecko_id = "internet-computer"
 native_decimals = 8
 native_asset_name = "Internet Computer"
-
-# ── Monero ───────────────────────────────────────────────────────────────
+derivation_path = [ { tag = "standard", path = "m/44'/223'/{account}'/0/0", is_default = true } ]
 
 [[chains]]
 id = "monero"
 name = "Monero"
 symbol = "XMR"
-address_prefix_hint = "4… / 8…"
 gas_token_symbol = "XMR"
 search_keywords = ["Monero", "XMR"]
 category = "other"
-is_evm = false
 color = "orange"
 asset_name = "monero"
+address_prefix_hint = "4… / 8…"
 token_standard = ""
-contract_address_prompt = ""
 tags = ["Privacy", "PoW", "Payments"]
 comment = "Private value transfer with sender, receiver, and amount obfuscation."
 family = "Privacy-preserving account/one-time-output network"
 consensus = "Proof of Work (RandomX)"
 state_model = "Private output model with one-time stealth addresses"
-primary_use = "Private value transfer with sender, receiver, and amount obfuscation."
-derivation_path = []
 total_circulation_model = "No fixed terminal cap. Monero uses tail emission after main emission, so long-run lifetime supply is not capped."
 native_coingecko_id = "monero"
 native_decimals = 12
 native_asset_name = "Monero"
-
-# ── Base ─────────────────────────────────────────────────────────────────
+derivation_path = []
 
 [[chains]]
 id = "base"
 name = "Base"
 symbol = "BASE"
-address_prefix_hint = "0x…"
 gas_token_symbol = "ETH"
 search_keywords = ["Base", "ETH"]
 category = "evm-l2"
-is_evm = true
 color = "blue"
 asset_name = "base"
+address_prefix_hint = "0x…"
 token_standard = "ERC-20"
-contract_address_prompt = "Contract Address"
 tags = ["EVM", "L2", "Optimistic Rollup"]
 comment = "Low-fee Ethereum-compatible transfers and ERC-20 settlement on Base."
 family = "Ethereum layer-2 (Optimism stack)"
 consensus = "Optimistic rollup posting to Ethereum"
 state_model = "EVM account state"
-primary_use = "Low-fee Ethereum-compatible transfers and ERC-20 settlement on Base."
-derivation_path = [ { tag = "standard", path = "m/44'/60'/{account}'/0/0", is_default = true } ]
 total_circulation_model = "Base is a Coinbase-incubated L2; the gas token is ETH bridged from Ethereum mainnet."
 native_coingecko_id = "ethereum"
 native_decimals = 18
 native_asset_name = "Ethereum"
-
-# ── Ethereum Classic ─────────────────────────────────────────────────────
+derivation_path = [ { tag = "standard", path = "m/44'/60'/{account}'/0/0", is_default = true } ]
 
 [[chains]]
 id = "ethereum-classic"
 name = "Ethereum Classic"
 symbol = "ETC"
-address_prefix_hint = "0x…"
 gas_token_symbol = "ETC"
 search_keywords = ["Ethereum Classic", "ETC"]
 category = "evm-l1"
-is_evm = true
 color = "green"
 asset_name = "ethereumclassic"
+address_prefix_hint = "0x…"
 token_standard = ""
-contract_address_prompt = ""
 tags = ["EVM", "PoW", "Smart Contracts"]
 comment = "Native ETC transfers and conservative EVM-compatible contract execution on the original Ethereum chain lineage."
 family = "Account-based smart contract network"
 consensus = "Proof of Work (Etchash)"
 state_model = "Account state + contract storage"
-primary_use = "Native ETC transfers and conservative EVM-compatible contract execution on the original Ethereum chain lineage."
-derivation_path = [ { tag = "standard", path = "m/44'/61'/{account}'/0/0", is_default = true } ]
 total_circulation_model = "No fixed maximum supply. Emission declines over time under the ETC monetary policy, so live circulation changes and is treated as dynamic in this wiki."
 native_coingecko_id = "ethereum-classic"
 native_decimals = 18
 native_asset_name = "Ethereum Classic"
-
-# ── Bitcoin SV ───────────────────────────────────────────────────────────
+derivation_path = [ { tag = "standard", path = "m/44'/61'/{account}'/0/0", is_default = true } ]
 
 [[chains]]
 id = "bitcoin-sv"
@@ -642,213 +543,173 @@ symbol = "BSV"
 gas_token_symbol = "BSV"
 search_keywords = ["Bitcoin SV", "BSV"]
 category = "bitcoin-family"
-is_evm = false
 color = "orange"
 asset_name = "bitcoinsv"
 token_standard = ""
-contract_address_prompt = ""
 tags = ["UTXO", "PoW", "Payments"]
 comment = "Bitcoin-derived UTXO transfers on the BSV network with chain-specific address, policy, and provider behavior."
 family = "UTXO payments network"
 consensus = "Proof of Work (SHA-256)"
 state_model = "UTXO set"
-primary_use = "Bitcoin-derived UTXO transfers on the BSV network with chain-specific address, policy, and provider behavior."
-derivation_path = [ { tag = "standard", path = "m/44'/236'/{account}'/0/0", is_default = true } ]
 total_circulation_model = "Protocol-capped at 21,000,000 BSV."
 native_coingecko_id = "bitcoin-cash-sv"
 native_decimals = 8
 native_asset_name = "Bitcoin SV"
-
-# ── BNB Chain ────────────────────────────────────────────────────────────
+derivation_path = [ { tag = "standard", path = "m/44'/236'/{account}'/0/0", is_default = true } ]
 
 [[chains]]
 id = "bnb"
 name = "BNB Chain"
 symbol = "BNB"
-address_prefix_hint = "0x…"
 gas_token_symbol = "BNB"
 search_keywords = ["BNB Chain", "BNB"]
 category = "evm-l1"
-is_evm = true
 color = "yellow"
 asset_name = "bnb"
+address_prefix_hint = "0x…"
 token_standard = "BEP-20"
-contract_address_prompt = "Contract Address"
 tags = ["EVM", "PoS", "Smart Contracts"]
 comment = "Lower-cost EVM execution, BEP-20 assets, and exchange-adjacent on-chain activity."
 family = "EVM-compatible smart contract network"
 consensus = "Validator-based BNB Chain consensus"
 state_model = "Account state + contract storage"
-primary_use = "Lower-cost EVM execution, BEP-20 assets, and exchange-adjacent on-chain activity."
-derivation_path = [ { tag = "standard", path = "m/44'/60'/{account}'/0/0", is_default = true } ]
 total_circulation_model = "Genesis supply began at 200,000,000 BNB, with protocol and ecosystem burn mechanisms targeting a lower long-run supply. Live circulation is dynamic, so this page treats it as not statically estimatable."
 native_coingecko_id = "binancecoin"
 native_decimals = 18
 native_asset_name = "BNB"
-
-# ── Hyperliquid ──────────────────────────────────────────────────────────
+derivation_path = [ { tag = "standard", path = "m/44'/60'/{account}'/0/0", is_default = true } ]
 
 [[chains]]
 id = "hyperliquid"
 name = "Hyperliquid"
 symbol = "HYPE"
-address_prefix_hint = "0x…"
 gas_token_symbol = "HYPE"
 search_keywords = ["Hyperliquid", "HYPE"]
 category = "evm-l1"
-is_evm = true
 color = "mint"
 asset_name = "hyperliquid"
+address_prefix_hint = "0x…"
 token_standard = "ERC-20"
-contract_address_prompt = "Contract Address"
 tags = ["EVM", "PoS", "Smart Contracts"]
 comment = "Native HYPE transfers and HyperEVM activity on Hyperliquid mainnet."
 family = "EVM-compatible smart contract network"
 consensus = "HyperBFT-backed HyperEVM settlement on Hyperliquid"
 state_model = "Account state + contract storage"
-primary_use = "Native HYPE transfers and HyperEVM activity on Hyperliquid mainnet."
-derivation_path = [ { tag = "standard", path = "m/44'/60'/{account}'/0/0", is_default = true } ]
 total_circulation_model = "HYPE circulation is dynamic over time, so this page treats live circulating supply as non-static."
 native_coingecko_id = "hyperliquid"
 native_decimals = 18
 native_asset_name = "Hyperliquid"
-
-# ── Polygon ──────────────────────────────────────────────────────────────
+derivation_path = [ { tag = "standard", path = "m/44'/60'/{account}'/0/0", is_default = true } ]
 
 [[chains]]
 id = "polygon"
 name = "Polygon"
 symbol = "POL"
-address_prefix_hint = "0x…"
 gas_token_symbol = "POL"
 search_keywords = ["Polygon", "POL", "MATIC"]
 category = "evm-l1"
-is_evm = true
 color = "purple"
 asset_name = "polygon"
+address_prefix_hint = "0x…"
 token_standard = "ERC-20"
-contract_address_prompt = "Contract Address"
 tags = ["EVM", "L1", "PoS"]
 comment = "Low-fee EVM transfers, ERC-20 settlement, and DeFi on Polygon PoS."
 family = "EVM-compatible proof-of-stake network"
 consensus = "Proof of Stake (Heimdall + Bor)"
 state_model = "EVM account state"
-primary_use = "Low-fee EVM transfers, ERC-20 settlement, and DeFi on Polygon PoS."
-derivation_path = [ { tag = "standard", path = "m/44'/60'/{account}'/0/0", is_default = true } ]
 total_circulation_model = "POL replaced MATIC as the gas/staking token following the 2024 token migration; circulating supply is dynamic."
 native_coingecko_id = "matic-network"
 native_decimals = 18
 native_asset_name = "Polygon"
-
-# ── Linea ────────────────────────────────────────────────────────────────
+derivation_path = [ { tag = "standard", path = "m/44'/60'/{account}'/0/0", is_default = true } ]
 
 [[chains]]
 id = "linea"
 name = "Linea"
 symbol = "LINEA"
-address_prefix_hint = "0x…"
 gas_token_symbol = "ETH"
 search_keywords = ["Linea"]
 category = "evm-l2"
-is_evm = true
 color = "blue"
 asset_name = "linea"
+address_prefix_hint = "0x…"
 token_standard = "ERC-20"
-contract_address_prompt = "Contract Address"
 tags = ["EVM", "L2", "ZK Rollup"]
 comment = "ZK-secured EVM transfers and ERC-20 settlement on Linea."
 family = "Ethereum layer-2 (zkEVM)"
 consensus = "zkEVM rollup posting to Ethereum"
 state_model = "EVM account state"
-primary_use = "ZK-secured EVM transfers and ERC-20 settlement on Linea."
-derivation_path = [ { tag = "standard", path = "m/44'/60'/{account}'/0/0", is_default = true } ]
 total_circulation_model = "Linea is a ConsenSys zkEVM L2; gas token is bridged ETH."
 native_coingecko_id = "ethereum"
 native_decimals = 18
 native_asset_name = "Ethereum"
-
-# ── Scroll ───────────────────────────────────────────────────────────────
+derivation_path = [ { tag = "standard", path = "m/44'/60'/{account}'/0/0", is_default = true } ]
 
 [[chains]]
 id = "scroll"
 name = "Scroll"
 symbol = "SCRL"
-address_prefix_hint = "0x…"
 gas_token_symbol = "ETH"
 search_keywords = ["Scroll"]
 category = "evm-l2"
-is_evm = true
 color = "orange"
 asset_name = "scroll"
+address_prefix_hint = "0x…"
 token_standard = "ERC-20"
-contract_address_prompt = "Contract Address"
 tags = ["EVM", "L2", "ZK Rollup"]
 comment = "ZK-secured EVM transfers and ERC-20 settlement on Scroll."
 family = "Ethereum layer-2 (zkEVM)"
 consensus = "zkEVM rollup posting to Ethereum"
 state_model = "EVM account state"
-primary_use = "ZK-secured EVM transfers and ERC-20 settlement on Scroll."
-derivation_path = [ { tag = "standard", path = "m/44'/60'/{account}'/0/0", is_default = true } ]
 total_circulation_model = "Scroll is a community-built zkEVM L2; gas token is bridged ETH."
 native_coingecko_id = "ethereum"
 native_decimals = 18
 native_asset_name = "Ethereum"
-
-# ── Blast ────────────────────────────────────────────────────────────────
+derivation_path = [ { tag = "standard", path = "m/44'/60'/{account}'/0/0", is_default = true } ]
 
 [[chains]]
 id = "blast"
 name = "Blast"
 symbol = "BLAST"
-address_prefix_hint = "0x…"
 gas_token_symbol = "ETH"
 search_keywords = ["Blast"]
 category = "evm-l2"
-is_evm = true
 color = "yellow"
 asset_name = "blast"
+address_prefix_hint = "0x…"
 token_standard = "ERC-20"
-contract_address_prompt = "Contract Address"
 tags = ["EVM", "L2", "Optimistic Rollup"]
 comment = "EVM transfers and yield-bearing ETH/USDB on Blast."
 family = "Ethereum layer-2 (yield-bearing)"
 consensus = "Optimistic rollup posting to Ethereum"
 state_model = "EVM account state"
-primary_use = "EVM transfers and yield-bearing ETH/USDB on Blast."
-derivation_path = [ { tag = "standard", path = "m/44'/60'/{account}'/0/0", is_default = true } ]
 total_circulation_model = "Blast is an L2 with native ETH/USDB yield distribution; circulating supply is dynamic."
 native_coingecko_id = "ethereum"
 native_decimals = 18
 native_asset_name = "Ethereum"
-
-# ── Mantle ───────────────────────────────────────────────────────────────
+derivation_path = [ { tag = "standard", path = "m/44'/60'/{account}'/0/0", is_default = true } ]
 
 [[chains]]
 id = "mantle"
 name = "Mantle"
 symbol = "MNT"
-address_prefix_hint = "0x…"
 gas_token_symbol = "MNT"
 search_keywords = ["Mantle", "MNT"]
 category = "evm-l2"
-is_evm = true
 color = "green"
 asset_name = "mantle"
+address_prefix_hint = "0x…"
 token_standard = "ERC-20"
-contract_address_prompt = "Contract Address"
 tags = ["EVM", "L2", "Modular"]
 comment = "Low-fee EVM transfers and ERC-20 settlement on Mantle."
 family = "Ethereum layer-2 (modular rollup)"
 consensus = "Modular rollup with EigenDA data availability"
 state_model = "EVM account state"
-primary_use = "Low-fee EVM transfers and ERC-20 settlement on Mantle."
-derivation_path = [ { tag = "standard", path = "m/44'/60'/{account}'/0/0", is_default = true } ]
 total_circulation_model = "Mantle uses MNT as its native gas/governance token (formerly BIT). Circulating supply is dynamic."
 native_coingecko_id = "mantle"
 native_decimals = 18
 native_asset_name = "Mantle"
-
-# ── Zcash ────────────────────────────────────────────────────────────────
+derivation_path = [ { tag = "standard", path = "m/44'/60'/{account}'/0/0", is_default = true } ]
 
 [[chains]]
 id = "zcash"
@@ -857,24 +718,19 @@ symbol = "ZEC"
 gas_token_symbol = "ZEC"
 search_keywords = ["Zcash", "ZEC"]
 category = "other"
-is_evm = false
 color = "yellow"
 asset_name = "zcash"
 token_standard = ""
-contract_address_prompt = ""
 tags = ["UTXO", "Privacy", "PoW"]
 comment = "Optionally-shielded payments. Spectra uses transparent (t1) addresses only; shielded sends are not supported."
 family = "Zcash (Halo 2 + transparent UTXO)"
 consensus = "Proof-of-Work (Equihash 200,9)"
 state_model = "UTXO (transparent) + zk-SNARK shielded notes (Sapling, Orchard)"
-primary_use = "Optionally-shielded payments. Spectra uses transparent (t1) addresses only; shielded sends are not supported."
-derivation_path = [ { tag = "standard", path = "m/44'/133'/{account}'/0/0", is_default = true } ]
 total_circulation_model = "Zcash mirrors Bitcoin's 21M cap with halvings; total ZEC supply is capped at 21,000,000."
 native_coingecko_id = "zcash"
 native_decimals = 8
 native_asset_name = "Zcash"
-
-# ── Bitcoin Gold ─────────────────────────────────────────────────────────
+derivation_path = [ { tag = "standard", path = "m/44'/133'/{account}'/0/0", is_default = true } ]
 
 [[chains]]
 id = "bitcoin-gold"
@@ -883,24 +739,19 @@ symbol = "BTG"
 gas_token_symbol = "BTG"
 search_keywords = ["Bitcoin Gold", "BTG"]
 category = "bitcoin-family"
-is_evm = false
 color = "yellow"
 asset_name = "bitcoingold"
 token_standard = ""
-contract_address_prompt = ""
 tags = ["UTXO", "PoW"]
 comment = "Bitcoin-style payments with GPU-friendly Equihash mining."
 family = "Bitcoin fork (Equihash 144,5)"
 consensus = "Proof-of-Work (Equihash 144,5)"
 state_model = "UTXO"
-primary_use = "Bitcoin-style payments with GPU-friendly Equihash mining."
-derivation_path = [ { tag = "standard", path = "m/44'/156'/{account}'/0/0", is_default = true } ]
 total_circulation_model = "21,000,000 BTG cap mirroring Bitcoin's halving schedule."
 native_coingecko_id = "bitcoin-gold"
 native_decimals = 8
 native_asset_name = "Bitcoin Gold"
-
-# ── Decred ───────────────────────────────────────────────────────────────
+derivation_path = [ { tag = "standard", path = "m/44'/156'/{account}'/0/0", is_default = true } ]
 
 [[chains]]
 id = "decred"
@@ -909,24 +760,19 @@ symbol = "DCR"
 gas_token_symbol = "DCR"
 search_keywords = ["Decred", "DCR"]
 category = "bitcoin-family"
-is_evm = false
 color = "indigo"
 asset_name = "decred"
 token_standard = ""
-contract_address_prompt = ""
 tags = ["UTXO", "Hybrid", "PoW", "PoS"]
 comment = "Self-funded protocol with stakeholder-governed on-chain decisions."
 family = "Decred (BLAKE-256, hybrid PoW + PoS)"
 consensus = "Hybrid PoW (BLAKE-256) + PoS ticket voting"
 state_model = "UTXO with on-chain governance"
-primary_use = "Self-funded protocol with stakeholder-governed on-chain decisions."
-derivation_path = [ { tag = "standard", path = "m/44'/42'/{account}'/0/0", is_default = true } ]
 total_circulation_model = "Capped near 21,000,000 DCR with declining block reward and PoS subsidy."
 native_coingecko_id = "decred"
 native_decimals = 8
 native_asset_name = "Decred"
-
-# ── Kaspa ────────────────────────────────────────────────────────────────
+derivation_path = [ { tag = "standard", path = "m/44'/42'/{account}'/0/0", is_default = true } ]
 
 [[chains]]
 id = "kaspa"
@@ -935,267 +781,217 @@ symbol = "KAS"
 gas_token_symbol = "KAS"
 search_keywords = ["Kaspa", "KAS"]
 category = "other"
-is_evm = false
 color = "teal"
 asset_name = "kaspa"
 token_standard = ""
-contract_address_prompt = ""
 tags = ["BlockDAG", "PoW"]
 comment = "Sub-second confirmation payments via parallel-block PoW."
 family = "Kaspa (GHOSTDAG protocol)"
 consensus = "Proof-of-Work (kHeavyHash) on a blockDAG"
 state_model = "UTXO over GHOSTDAG topological ordering"
-primary_use = "Sub-second confirmation payments via parallel-block PoW."
-derivation_path = [ { tag = "standard", path = "m/44'/111111'/{account}'/0/0", is_default = true } ]
 total_circulation_model = "Capped at ~28,700,000,000 KAS with monthly chromatic emission decay."
 native_coingecko_id = "kaspa"
 native_decimals = 8
 native_asset_name = "Kaspa"
-
-# ── Sei ──────────────────────────────────────────────────────────────────
+derivation_path = [ { tag = "standard", path = "m/44'/111111'/{account}'/0/0", is_default = true } ]
 
 [[chains]]
 id = "sei"
 name = "Sei"
 symbol = "SEI"
-address_prefix_hint = "0x…"
 gas_token_symbol = "SEI"
 search_keywords = ["Sei", "SEI"]
 category = "evm-l1"
-is_evm = true
 color = "red"
 asset_name = "sei"
+address_prefix_hint = "0x…"
 token_standard = "ERC-20"
-contract_address_prompt = "Contract Address"
 tags = ["EVM", "L1", "PoS"]
 comment = "High-throughput EVM with parallel execution and Cosmos-native interop."
 family = "Cosmos-SDK with EVM v2 module"
 consensus = "Tendermint BFT (Sei v2 with EVM execution)"
 state_model = "EVM account state"
-primary_use = "High-throughput EVM with parallel execution and Cosmos-native interop."
-derivation_path = [ { tag = "standard", path = "m/44'/60'/{account}'/0/0", is_default = true } ]
 total_circulation_model = "10,000,000,000 SEI cap with staking and governance unlocks."
 native_coingecko_id = "sei-network"
 native_decimals = 18
 native_asset_name = "Sei"
-
-# ── Celo ─────────────────────────────────────────────────────────────────
+derivation_path = [ { tag = "standard", path = "m/44'/60'/{account}'/0/0", is_default = true } ]
 
 [[chains]]
 id = "celo"
 name = "Celo"
 symbol = "CELO"
-address_prefix_hint = "0x…"
 gas_token_symbol = "CELO"
 search_keywords = ["Celo", "CELO"]
 category = "evm-l2"
-is_evm = true
 color = "yellow"
 asset_name = "celo"
+address_prefix_hint = "0x…"
 token_standard = "ERC-20"
-contract_address_prompt = "Contract Address"
 tags = ["EVM", "L2", "Mobile"]
 comment = "Mobile-first stablecoin payments and DeFi on a low-fee EVM L2."
 family = "Ethereum L2 (Celo migrated to OP Stack 2025)"
 consensus = "Optimistic rollup on Ethereum"
 state_model = "EVM account state"
-primary_use = "Mobile-first stablecoin payments and DeFi on a low-fee EVM L2."
-derivation_path = [ { tag = "standard", path = "m/44'/60'/{account}'/0/0", is_default = true } ]
 total_circulation_model = "1,000,000,000 CELO cap with epoch rewards."
 native_coingecko_id = "celo"
 native_decimals = 18
 native_asset_name = "Celo"
-
-# ── Cronos ───────────────────────────────────────────────────────────────
+derivation_path = [ { tag = "standard", path = "m/44'/60'/{account}'/0/0", is_default = true } ]
 
 [[chains]]
 id = "cronos"
 name = "Cronos"
 symbol = "CRO"
-address_prefix_hint = "0x…"
 gas_token_symbol = "CRO"
 search_keywords = ["Cronos", "CRO"]
 category = "evm-l1"
-is_evm = true
 color = "blue"
 asset_name = "cronos"
+address_prefix_hint = "0x…"
 token_standard = "ERC-20"
-contract_address_prompt = "Contract Address"
 tags = ["EVM", "L1"]
 comment = "Crypto.com's L1 EVM for stablecoin payments and DeFi."
 family = "Cronos EVM (Cosmos-SDK + Ethermint)"
 consensus = "Tendermint BFT"
 state_model = "EVM account state"
-primary_use = "Crypto.com's L1 EVM for stablecoin payments and DeFi."
-derivation_path = [ { tag = "standard", path = "m/44'/60'/{account}'/0/0", is_default = true } ]
 total_circulation_model = "30,000,000,000 CRO cap (post-2022 burn)."
 native_coingecko_id = "crypto-com-chain"
 native_decimals = 18
 native_asset_name = "Cronos"
-
-# ── opBNB ────────────────────────────────────────────────────────────────
+derivation_path = [ { tag = "standard", path = "m/44'/60'/{account}'/0/0", is_default = true } ]
 
 [[chains]]
 id = "opbnb"
 name = "opBNB"
 symbol = "opBNB"
-address_prefix_hint = "0x…"
 gas_token_symbol = "BNB"
 search_keywords = ["opBNB", "BNB L2"]
 category = "evm-l2"
-is_evm = true
 color = "yellow"
 asset_name = "bnb"
+address_prefix_hint = "0x…"
 token_standard = "ERC-20"
-contract_address_prompt = "Contract Address"
 tags = ["EVM", "L2", "Optimistic Rollup"]
 comment = "Cheap BNB-denominated rollup throughput for BSC users."
 family = "BNB Chain L2 (OP Stack)"
 consensus = "Optimistic rollup on BNB Chain"
 state_model = "EVM account state"
-primary_use = "Cheap BNB-denominated rollup throughput for BSC users."
-derivation_path = [ { tag = "standard", path = "m/44'/60'/{account}'/0/0", is_default = true } ]
 total_circulation_model = "Pays gas in BNB; no separate token."
 native_coingecko_id = "binancecoin"
 native_decimals = 18
 native_asset_name = "BNB"
-
-# ── zkSync Era ───────────────────────────────────────────────────────────
+derivation_path = [ { tag = "standard", path = "m/44'/60'/{account}'/0/0", is_default = true } ]
 
 [[chains]]
 id = "zksync-era"
 name = "zkSync Era"
 symbol = "zkSync"
-address_prefix_hint = "0x…"
 gas_token_symbol = "ETH"
 search_keywords = ["zkSync Era", "zkSync"]
 category = "evm-l2"
-is_evm = true
 color = "gray"
 asset_name = "zksyncera"
+address_prefix_hint = "0x…"
 token_standard = "ERC-20"
-contract_address_prompt = "Contract Address"
 tags = ["EVM", "L2", "ZK Rollup"]
 comment = "Validity-proofed L2 with full EVM equivalence."
 family = "Ethereum L2 (zkSync Era validium/rollup)"
 consensus = "ZK rollup with EVM-equivalent execution"
 state_model = "EVM account state"
-primary_use = "Validity-proofed L2 with full EVM equivalence."
-derivation_path = [ { tag = "standard", path = "m/44'/60'/{account}'/0/0", is_default = true } ]
 total_circulation_model = "Pays gas in ETH; ZK token is governance."
 native_coingecko_id = "ethereum"
 native_decimals = 18
 native_asset_name = "Ethereum"
-
-# ── Sonic ────────────────────────────────────────────────────────────────
+derivation_path = [ { tag = "standard", path = "m/44'/60'/{account}'/0/0", is_default = true } ]
 
 [[chains]]
 id = "sonic"
 name = "Sonic"
 symbol = "S"
-address_prefix_hint = "0x…"
 gas_token_symbol = "S"
 search_keywords = ["Sonic", "S"]
 category = "evm-l1"
-is_evm = true
 color = "gray"
 asset_name = "sonic"
+address_prefix_hint = "0x…"
 token_standard = "ERC-20"
-contract_address_prompt = "Contract Address"
 tags = ["EVM", "L1"]
 comment = "High-TPS EVM L1, the rebranded Fantom network."
 family = "Sonic Labs (Fantom successor)"
 consensus = "Lachesis aBFT"
 state_model = "EVM account state"
-primary_use = "High-TPS EVM L1, the rebranded Fantom network."
-derivation_path = [ { tag = "standard", path = "m/44'/60'/{account}'/0/0", is_default = true } ]
 total_circulation_model = "Migrated 1:1 from FTM at launch with continuing inflation."
 native_coingecko_id = "sonic-3"
 native_decimals = 18
 native_asset_name = "Sonic"
-
-# ── Berachain ────────────────────────────────────────────────────────────
+derivation_path = [ { tag = "standard", path = "m/44'/60'/{account}'/0/0", is_default = true } ]
 
 [[chains]]
 id = "berachain"
 name = "Berachain"
 symbol = "BERA"
-address_prefix_hint = "0x…"
 gas_token_symbol = "BERA"
 search_keywords = ["Berachain", "BERA"]
 category = "evm-l1"
-is_evm = true
 color = "orange"
 asset_name = "bera"
+address_prefix_hint = "0x…"
 token_standard = "ERC-20"
-contract_address_prompt = "Contract Address"
 tags = ["EVM", "L1", "Proof-of-Liquidity"]
 comment = "DeFi-native EVM L1 where validators earn from on-chain liquidity provision."
 family = "Berachain (Cosmos-SDK + EVM)"
 consensus = "Proof-of-Liquidity (BeaconKit + Tendermint)"
 state_model = "EVM account state with parallel liquidity rewards"
-primary_use = "DeFi-native EVM L1 where validators earn from on-chain liquidity provision."
-derivation_path = [ { tag = "standard", path = "m/44'/60'/{account}'/0/0", is_default = true } ]
 total_circulation_model = "500,000,000 BERA initial supply with PoL emissions."
 native_coingecko_id = "berachain-bera"
 native_decimals = 18
 native_asset_name = "Berachain"
-
-# ── Unichain ─────────────────────────────────────────────────────────────
+derivation_path = [ { tag = "standard", path = "m/44'/60'/{account}'/0/0", is_default = true } ]
 
 [[chains]]
 id = "unichain"
 name = "Unichain"
 symbol = "UNI L2"
-address_prefix_hint = "0x…"
 gas_token_symbol = "ETH"
 search_keywords = ["Unichain"]
 category = "evm-l2"
-is_evm = true
 color = "pink"
 asset_name = "uniswap"
+address_prefix_hint = "0x…"
 token_standard = "ERC-20"
-contract_address_prompt = "Contract Address"
 tags = ["EVM", "L2", "Optimistic Rollup"]
 comment = "Uniswap's dedicated L2 for DEX-native fast settlement."
 family = "Ethereum L2 (OP Stack)"
 consensus = "Optimistic rollup on Ethereum"
 state_model = "EVM account state"
-primary_use = "Uniswap's dedicated L2 for DEX-native fast settlement."
-derivation_path = [ { tag = "standard", path = "m/44'/60'/{account}'/0/0", is_default = true } ]
 total_circulation_model = "Pays gas in ETH; no separate token."
 native_coingecko_id = "ethereum"
 native_decimals = 18
 native_asset_name = "Ethereum"
-
-# ── Ink ──────────────────────────────────────────────────────────────────
+derivation_path = [ { tag = "standard", path = "m/44'/60'/{account}'/0/0", is_default = true } ]
 
 [[chains]]
 id = "ink"
 name = "Ink"
 symbol = "INK"
-address_prefix_hint = "0x…"
 gas_token_symbol = "ETH"
 search_keywords = ["Ink"]
 category = "evm-l2"
-is_evm = true
 color = "purple"
 asset_name = "ink"
+address_prefix_hint = "0x…"
 token_standard = "ERC-20"
-contract_address_prompt = "Contract Address"
 tags = ["EVM", "L2", "Optimistic Rollup"]
 comment = "Kraken's L2 for low-fee DeFi and exchange flows."
 family = "Ethereum L2 (OP Stack)"
 consensus = "Optimistic rollup on Ethereum"
 state_model = "EVM account state"
-primary_use = "Kraken's L2 for low-fee DeFi and exchange flows."
-derivation_path = [ { tag = "standard", path = "m/44'/60'/{account}'/0/0", is_default = true } ]
 total_circulation_model = "Pays gas in ETH; no separate token."
 native_coingecko_id = "ethereum"
 native_decimals = 18
 native_asset_name = "Ethereum"
-
-# ── Dash ─────────────────────────────────────────────────────────────────
+derivation_path = [ { tag = "standard", path = "m/44'/60'/{account}'/0/0", is_default = true } ]
 
 [[chains]]
 id = "dash"
@@ -1204,51 +1000,41 @@ symbol = "DASH"
 gas_token_symbol = "DASH"
 search_keywords = ["Dash", "DASH"]
 category = "bitcoin-family"
-is_evm = false
 color = "blue"
 asset_name = "dash"
 token_standard = ""
-contract_address_prompt = ""
 tags = ["UTXO", "PoW", "Masternodes"]
 comment = "Fast-finality payments via InstantSend; masternode-secured ChainLocks resist 51% reorgs."
 family = "Bitcoin fork (X11 + masternode tier)"
 consensus = "Proof-of-Work (X11) with masternode quorum services"
 state_model = "UTXO with InstantSend + ChainLocks"
-primary_use = "Fast-finality payments via InstantSend; masternode-secured ChainLocks resist 51% reorgs."
-derivation_path = [ { tag = "standard", path = "m/44'/5'/{account}'/0/0", is_default = true } ]
 total_circulation_model = "Capped near 18,900,000 DASH with -7.14% annual emission decay."
 native_coingecko_id = "dash"
 native_decimals = 8
 native_asset_name = "Dash"
-
-# ── X Layer ──────────────────────────────────────────────────────────────
+derivation_path = [ { tag = "standard", path = "m/44'/5'/{account}'/0/0", is_default = true } ]
 
 [[chains]]
 id = "x-layer"
 name = "X Layer"
 symbol = "X Layer"
-address_prefix_hint = "0x…"
 gas_token_symbol = "OKB"
 search_keywords = ["X Layer", "OKB", "OKX"]
 category = "evm-l2"
-is_evm = true
 color = "gray"
 asset_name = "okb"
+address_prefix_hint = "0x…"
 token_standard = "ERC-20"
-contract_address_prompt = "Contract Address"
 tags = ["EVM", "L2", "ZK Rollup"]
 comment = "OKX-anchored zkEVM L2 for low-fee EVM transfers and DeFi denominated in OKB."
 family = "Ethereum L2 (Polygon CDK zkEVM)"
 consensus = "ZK rollup with Polygon CDK validity proofs"
 state_model = "EVM account state"
-primary_use = "OKX-anchored zkEVM L2 for low-fee EVM transfers and DeFi denominated in OKB."
-derivation_path = [ { tag = "standard", path = "m/44'/60'/{account}'/0/0", is_default = true } ]
 total_circulation_model = "Pays gas in OKB; OKB is OKX's exchange/utility token with periodic burns."
 native_coingecko_id = "okb"
 native_decimals = 18
 native_asset_name = "OKB"
-
-# ── Bittensor ────────────────────────────────────────────────────────────
+derivation_path = [ { tag = "standard", path = "m/44'/60'/{account}'/0/0", is_default = true } ]
 
 [[chains]]
 id = "bittensor"
@@ -1257,774 +1043,252 @@ symbol = "TAO"
 gas_token_symbol = "TAO"
 search_keywords = ["Bittensor", "TAO", "subtensor"]
 category = "other"
-is_evm = false
 color = "gray"
 asset_name = "bittensor"
 token_standard = ""
-contract_address_prompt = ""
 tags = ["L1", "PoW", "AI", "Substrate"]
 comment = "Decentralized machine-learning marketplace where subnets stake TAO and earn emissions for serving AI inferences."
 family = "Substrate (subtensor; Polkadot-style runtime)"
 consensus = "Proof-of-Work + subnet validator scoring (Yuma consensus)"
 state_model = "Substrate account/balances; subnets and neurons modeled as on-chain state"
-primary_use = "Decentralized machine-learning marketplace where subnets stake TAO and earn emissions for serving AI inferences."
-derivation_path = [ { tag = "standard", path = "m/44'/1005'/{account}'/0'/0'", is_default = true, note = "substrate-bip39 ignores BIP-32 nodes; this is the canonical display path." } ]
 total_circulation_model = "Capped at 21,000,000 TAO with 4-year halvings, mirroring Bitcoin emission economics."
 native_coingecko_id = "bittensor"
 native_decimals = 9
 native_asset_name = "Bittensor"
+derivation_path = [ { tag = "standard", path = "m/44'/1005'/{account}'/0'/0'", is_default = true, note = "substrate-bip39 ignores BIP-32 nodes; this is the canonical display path." } ]
 
-# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-# Testnets (46-77) — wiki fields intentionally blank; identity + visual only.
-# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-[[chains]]
+# ── Networks ────────────────────────────────────────────────────────────────
+
+[[networks]]
+chain = "bitcoin"
 id = "bitcoin-testnet"
 name = "Bitcoin Testnet"
-symbol = "BTC"
-gas_token_symbol = "BTC"
 search_keywords = ["Bitcoin Testnet", "tBTC", "testnet"]
-category = "testnet"
-is_evm = false
-color = "orange"
-asset_name = "bitcoin"
-token_standard = ""
-contract_address_prompt = ""
-tags = []
-comment = ""
-family = ""
-consensus = ""
-state_model = ""
-primary_use = ""
 derivation_path = []
-total_circulation_model = ""
-native_coingecko_id = "bitcoin"
-native_decimals = 8
-native_asset_name = "Bitcoin"
-[[chains]]
+
+[[networks]]
+chain = "bitcoin"
 id = "bitcoin-testnet-4"
 name = "Bitcoin Testnet4"
-symbol = "BTC"
-gas_token_symbol = "BTC"
 search_keywords = ["Bitcoin Testnet4", "testnet4"]
-category = "testnet"
-is_evm = false
-color = "orange"
-asset_name = "bitcoin"
-token_standard = ""
-contract_address_prompt = ""
-tags = []
-comment = ""
-family = ""
-consensus = ""
-state_model = ""
-primary_use = ""
 derivation_path = []
-total_circulation_model = ""
-native_coingecko_id = "bitcoin"
-native_decimals = 8
-native_asset_name = "Bitcoin"
-[[chains]]
+
+[[networks]]
+chain = "bitcoin"
 id = "bitcoin-signet"
 name = "Bitcoin Signet"
-symbol = "BTC"
-gas_token_symbol = "BTC"
 search_keywords = ["Bitcoin Signet", "signet"]
-category = "testnet"
-is_evm = false
-color = "orange"
-asset_name = "bitcoin"
-token_standard = ""
-contract_address_prompt = ""
-tags = []
-comment = ""
-family = ""
-consensus = ""
-state_model = ""
-primary_use = ""
 derivation_path = []
-total_circulation_model = ""
-native_coingecko_id = "bitcoin"
-native_decimals = 8
-native_asset_name = "Bitcoin"
-[[chains]]
+
+[[networks]]
+chain = "litecoin"
 id = "litecoin-testnet"
 name = "Litecoin Testnet"
-symbol = "LTC"
-gas_token_symbol = "LTC"
 search_keywords = ["Litecoin Testnet", "tLTC"]
-category = "testnet"
-is_evm = false
-color = "blue"
-asset_name = "litecoin"
-token_standard = ""
-contract_address_prompt = ""
-tags = []
-comment = ""
-family = ""
-consensus = ""
-state_model = ""
-primary_use = ""
 derivation_path = []
-total_circulation_model = ""
-native_coingecko_id = "litecoin"
-native_decimals = 8
-native_asset_name = "Litecoin"
-[[chains]]
+
+[[networks]]
+chain = "bitcoin-cash"
 id = "bitcoin-cash-testnet"
 name = "Bitcoin Cash Testnet"
-symbol = "BCH"
-gas_token_symbol = "BCH"
 search_keywords = ["Bitcoin Cash Testnet", "tBCH"]
-category = "testnet"
-is_evm = false
-color = "orange"
-asset_name = "bitcoincash"
-token_standard = ""
-contract_address_prompt = ""
-tags = []
-comment = ""
-family = ""
-consensus = ""
-state_model = ""
-primary_use = ""
 derivation_path = []
-total_circulation_model = ""
-native_coingecko_id = "bitcoin-cash"
-native_decimals = 8
-native_asset_name = "Bitcoin Cash"
-[[chains]]
+
+[[networks]]
+chain = "bitcoin-sv"
 id = "bitcoin-sv-testnet"
 name = "Bitcoin SV Testnet"
-symbol = "BSV"
-gas_token_symbol = "BSV"
 search_keywords = ["Bitcoin SV Testnet", "tBSV"]
-category = "testnet"
-is_evm = false
-color = "orange"
-asset_name = "bitcoinsv"
-token_standard = ""
-contract_address_prompt = ""
-tags = []
-comment = ""
-family = ""
-consensus = ""
-state_model = ""
-primary_use = ""
 derivation_path = []
-total_circulation_model = ""
-native_coingecko_id = "bitcoin-cash-sv"
-native_decimals = 8
-native_asset_name = "Bitcoin SV"
-[[chains]]
+
+[[networks]]
+chain = "dogecoin"
 id = "dogecoin-testnet"
 name = "Dogecoin Testnet"
-symbol = "DOGE"
-gas_token_symbol = "DOGE"
 search_keywords = ["Dogecoin Testnet", "tDOGE"]
-category = "testnet"
-is_evm = false
-color = "yellow"
-asset_name = "dogecoin"
-token_standard = ""
-contract_address_prompt = ""
-tags = []
-comment = ""
-family = ""
-consensus = ""
-state_model = ""
-primary_use = ""
 derivation_path = []
-total_circulation_model = ""
-native_coingecko_id = "dogecoin"
-native_decimals = 8
-native_asset_name = "Dogecoin"
-[[chains]]
+
+[[networks]]
+chain = "zcash"
 id = "zcash-testnet"
 name = "Zcash Testnet"
-symbol = "ZEC"
-gas_token_symbol = "ZEC"
 search_keywords = ["Zcash Testnet"]
-category = "testnet"
-is_evm = false
-color = "yellow"
-asset_name = "zcash"
-token_standard = ""
-contract_address_prompt = ""
-tags = []
-comment = ""
-family = ""
-consensus = ""
-state_model = ""
-primary_use = ""
 derivation_path = []
-total_circulation_model = ""
-native_coingecko_id = "zcash"
-native_decimals = 8
-native_asset_name = "Zcash"
-[[chains]]
+
+[[networks]]
+chain = "decred"
 id = "decred-testnet"
 name = "Decred Testnet"
-symbol = "DCR"
-gas_token_symbol = "DCR"
 search_keywords = ["Decred Testnet"]
-category = "testnet"
-is_evm = false
-color = "indigo"
-asset_name = "decred"
-token_standard = ""
-contract_address_prompt = ""
-tags = []
-comment = ""
-family = ""
-consensus = ""
-state_model = ""
-primary_use = ""
 derivation_path = []
-total_circulation_model = ""
-native_coingecko_id = "decred"
-native_decimals = 8
-native_asset_name = "Decred"
-[[chains]]
+
+[[networks]]
+chain = "kaspa"
 id = "kaspa-testnet"
 name = "Kaspa Testnet"
-symbol = "KAS"
-gas_token_symbol = "KAS"
 search_keywords = ["Kaspa Testnet"]
-category = "testnet"
-is_evm = false
-color = "teal"
-asset_name = "kaspa"
-token_standard = ""
-contract_address_prompt = ""
-tags = []
-comment = ""
-family = ""
-consensus = ""
-state_model = ""
-primary_use = ""
 derivation_path = []
-total_circulation_model = ""
-native_coingecko_id = "kaspa"
-native_decimals = 8
-native_asset_name = "Kaspa"
-[[chains]]
+
+[[networks]]
+chain = "dash"
 id = "dash-testnet"
 name = "Dash Testnet"
-symbol = "DASH"
-gas_token_symbol = "DASH"
 search_keywords = ["Dash Testnet"]
-category = "testnet"
-is_evm = false
-color = "blue"
-asset_name = "dash"
-token_standard = ""
-contract_address_prompt = ""
-tags = []
-comment = ""
-family = ""
-consensus = ""
-state_model = ""
-primary_use = ""
 derivation_path = []
-total_circulation_model = ""
-native_coingecko_id = "dash"
-native_decimals = 8
-native_asset_name = "Dash"
-[[chains]]
+
+[[networks]]
+chain = "ethereum"
 id = "ethereum-sepolia"
 name = "Ethereum Sepolia"
-symbol = "ETH"
-address_prefix_hint = "0x…"
-gas_token_symbol = "ETH"
 search_keywords = ["Ethereum Sepolia", "Sepolia", "ETH"]
-category = "testnet"
-is_evm = true
-color = "purple"
-asset_name = "ethereum"
-token_standard = ""
-contract_address_prompt = ""
-tags = []
-comment = ""
-family = ""
-consensus = ""
-state_model = ""
-primary_use = ""
+address_prefix_hint = "0x…"
 derivation_path = []
-total_circulation_model = ""
-native_coingecko_id = "ethereum"
-native_decimals = 18
-native_asset_name = "Ethereum"
-[[chains]]
+
+[[networks]]
+chain = "ethereum"
 id = "ethereum-hoodi"
 name = "Ethereum Hoodi"
-symbol = "ETH"
-address_prefix_hint = "0x…"
-gas_token_symbol = "ETH"
 search_keywords = ["Ethereum Hoodi", "Hoodi"]
-category = "testnet"
-is_evm = true
-color = "purple"
-asset_name = "ethereum"
-token_standard = ""
-contract_address_prompt = ""
-tags = []
-comment = ""
-family = ""
-consensus = ""
-state_model = ""
-primary_use = ""
+address_prefix_hint = "0x…"
 derivation_path = []
-total_circulation_model = ""
-native_coingecko_id = "ethereum"
-native_decimals = 18
-native_asset_name = "Ethereum"
-[[chains]]
+
+[[networks]]
+chain = "arbitrum"
 id = "arbitrum-sepolia"
 name = "Arbitrum Sepolia"
-symbol = "ARB"
-address_prefix_hint = "0x…"
-gas_token_symbol = "ETH"
 search_keywords = ["Arbitrum Sepolia", "Sepolia"]
-category = "testnet"
-is_evm = true
-color = "cyan"
-asset_name = "arbitrum"
-token_standard = ""
-contract_address_prompt = ""
-tags = []
-comment = ""
-family = ""
-consensus = ""
-state_model = ""
-primary_use = ""
+address_prefix_hint = "0x…"
 derivation_path = []
-total_circulation_model = ""
-native_coingecko_id = "ethereum"
-native_decimals = 18
-native_asset_name = "Ethereum"
-[[chains]]
+
+[[networks]]
+chain = "optimism"
 id = "optimism-sepolia"
 name = "Optimism Sepolia"
-symbol = "OP"
-address_prefix_hint = "0x…"
-gas_token_symbol = "ETH"
 search_keywords = ["Optimism Sepolia", "Sepolia"]
-category = "testnet"
-is_evm = true
-color = "red"
-asset_name = "optimism"
-token_standard = ""
-contract_address_prompt = ""
-tags = []
-comment = ""
-family = ""
-consensus = ""
-state_model = ""
-primary_use = ""
+address_prefix_hint = "0x…"
 derivation_path = []
-total_circulation_model = ""
-native_coingecko_id = "ethereum"
-native_decimals = 18
-native_asset_name = "Ethereum"
-[[chains]]
+
+[[networks]]
+chain = "base"
 id = "base-sepolia"
 name = "Base Sepolia"
-symbol = "BASE"
-address_prefix_hint = "0x…"
-gas_token_symbol = "ETH"
 search_keywords = ["Base Sepolia", "Sepolia"]
-category = "testnet"
-is_evm = true
-color = "blue"
-asset_name = "base"
-token_standard = ""
-contract_address_prompt = ""
-tags = []
-comment = ""
-family = ""
-consensus = ""
-state_model = ""
-primary_use = ""
+address_prefix_hint = "0x…"
 derivation_path = []
-total_circulation_model = ""
-native_coingecko_id = "ethereum"
-native_decimals = 18
-native_asset_name = "Ethereum"
-[[chains]]
+
+[[networks]]
+chain = "bnb"
 id = "bnb-testnet"
 name = "BNB Chain Testnet"
-symbol = "BNB"
-address_prefix_hint = "0x…"
-gas_token_symbol = "BNB"
 search_keywords = ["BNB Chain Testnet", "Chapel"]
-category = "testnet"
-is_evm = true
-color = "yellow"
-asset_name = "bnb"
-token_standard = ""
-contract_address_prompt = ""
-tags = []
-comment = ""
-family = ""
-consensus = ""
-state_model = ""
-primary_use = ""
+address_prefix_hint = "0x…"
 derivation_path = []
-total_circulation_model = ""
-native_coingecko_id = "binancecoin"
-native_decimals = 18
-native_asset_name = "BNB"
-[[chains]]
+
+[[networks]]
+chain = "avalanche"
 id = "avalanche-fuji"
 name = "Avalanche Fuji"
-symbol = "AVAX"
-address_prefix_hint = "0x…"
-gas_token_symbol = "AVAX"
 search_keywords = ["Avalanche Fuji", "Fuji"]
-category = "testnet"
-is_evm = true
-color = "red"
-asset_name = "avalanche"
-token_standard = ""
-contract_address_prompt = ""
-tags = []
-comment = ""
-family = ""
-consensus = ""
-state_model = ""
-primary_use = ""
+address_prefix_hint = "0x…"
 derivation_path = []
-total_circulation_model = ""
-native_coingecko_id = "avalanche-2"
-native_decimals = 18
-native_asset_name = "Avalanche"
-[[chains]]
+
+[[networks]]
+chain = "polygon"
 id = "polygon-amoy"
 name = "Polygon Amoy"
-symbol = "POL"
-address_prefix_hint = "0x…"
-gas_token_symbol = "POL"
 search_keywords = ["Polygon Amoy", "Amoy"]
-category = "testnet"
-is_evm = true
-color = "purple"
-asset_name = "polygon"
-token_standard = ""
-contract_address_prompt = ""
-tags = []
-comment = ""
-family = ""
-consensus = ""
-state_model = ""
-primary_use = ""
+address_prefix_hint = "0x…"
 derivation_path = []
-total_circulation_model = ""
-native_coingecko_id = "matic-network"
-native_decimals = 18
-native_asset_name = "Polygon"
-[[chains]]
+
+[[networks]]
+chain = "hyperliquid"
 id = "hyperliquid-testnet"
 name = "Hyperliquid Testnet"
-symbol = "HYPE"
-address_prefix_hint = "0x…"
-gas_token_symbol = "HYPE"
 search_keywords = ["Hyperliquid Testnet"]
-category = "testnet"
-is_evm = true
-color = "mint"
-asset_name = "hyperliquid"
-token_standard = ""
-contract_address_prompt = ""
-tags = []
-comment = ""
-family = ""
-consensus = ""
-state_model = ""
-primary_use = ""
+address_prefix_hint = "0x…"
 derivation_path = []
-total_circulation_model = ""
-native_coingecko_id = "hyperliquid"
-native_decimals = 18
-native_asset_name = "Hyperliquid"
-[[chains]]
+
+[[networks]]
+chain = "ethereum-classic"
 id = "ethereum-classic-mordor"
 name = "Ethereum Classic Mordor"
-symbol = "ETC"
-address_prefix_hint = "0x…"
-gas_token_symbol = "ETC"
 search_keywords = ["Ethereum Classic Mordor", "Mordor"]
-category = "testnet"
-is_evm = true
-color = "green"
-asset_name = "ethereumclassic"
-token_standard = ""
-contract_address_prompt = ""
-tags = []
-comment = ""
-family = ""
-consensus = ""
-state_model = ""
-primary_use = ""
+address_prefix_hint = "0x…"
 derivation_path = []
-total_circulation_model = ""
-native_coingecko_id = "ethereum-classic"
-native_decimals = 18
-native_asset_name = "Ethereum Classic"
-[[chains]]
+
+[[networks]]
+chain = "tron"
 id = "tron-nile"
 name = "Tron Nile"
-symbol = "TRX"
-gas_token_symbol = "TRX"
 search_keywords = ["Tron Nile", "Nile"]
-category = "testnet"
-is_evm = false
-color = "red"
-asset_name = "tron"
-token_standard = ""
-enumerates_holdings = true
-contract_address_prompt = ""
-tags = []
-comment = ""
-family = ""
-consensus = ""
-state_model = ""
-primary_use = ""
 derivation_path = []
-total_circulation_model = ""
-native_coingecko_id = "tron"
-native_decimals = 6
-native_asset_name = "Tron"
-[[chains]]
+
+[[networks]]
+chain = "solana"
 id = "solana-devnet"
 name = "Solana Devnet"
-symbol = "SOL"
-gas_token_symbol = "SOL"
 search_keywords = ["Solana Devnet", "Devnet"]
-category = "testnet"
-is_evm = false
-color = "green"
-asset_name = "solana"
-token_standard = ""
-enumerates_holdings = true
-contract_address_prompt = ""
-tags = []
-comment = ""
-family = ""
-consensus = ""
-state_model = ""
-primary_use = ""
 derivation_path = []
-total_circulation_model = ""
-native_coingecko_id = "solana"
-native_decimals = 9
-native_asset_name = "Solana"
-[[chains]]
+
+[[networks]]
+chain = "xrp"
 id = "xrp-testnet"
 name = "XRP Ledger Testnet"
-symbol = "XRP"
-gas_token_symbol = "XRP"
 search_keywords = ["XRP Ledger Testnet"]
-category = "testnet"
-is_evm = false
-color = "cyan"
-asset_name = "xrp"
-token_standard = ""
-contract_address_prompt = ""
-tags = []
-comment = ""
-family = ""
-consensus = ""
-state_model = ""
-primary_use = ""
 derivation_path = []
-total_circulation_model = ""
-native_coingecko_id = "ripple"
-native_decimals = 6
-native_asset_name = "XRP"
-[[chains]]
+
+[[networks]]
+chain = "stellar"
 id = "stellar-testnet"
 name = "Stellar Testnet"
-symbol = "XLM"
-gas_token_symbol = "XLM"
 search_keywords = ["Stellar Testnet"]
-category = "testnet"
-is_evm = false
-color = "teal"
-asset_name = "stellar"
-token_standard = ""
-contract_address_prompt = ""
-tags = []
-comment = ""
-family = ""
-consensus = ""
-state_model = ""
-primary_use = ""
 derivation_path = []
-total_circulation_model = ""
-native_coingecko_id = "stellar"
-native_decimals = 7
-native_asset_name = "Stellar"
-[[chains]]
+
+[[networks]]
+chain = "cardano"
 id = "cardano-preprod"
 name = "Cardano Preprod"
-symbol = "ADA"
-gas_token_symbol = "ADA"
 search_keywords = ["Cardano Preprod", "Preprod"]
-category = "testnet"
-is_evm = false
-color = "indigo"
-asset_name = "cardano"
-token_standard = ""
-contract_address_prompt = ""
-tags = []
-comment = ""
-family = ""
-consensus = ""
-state_model = ""
-primary_use = ""
 derivation_path = []
-total_circulation_model = ""
-native_coingecko_id = "cardano"
-native_decimals = 6
-native_asset_name = "Cardano"
-[[chains]]
+
+[[networks]]
+chain = "sui"
 id = "sui-testnet"
 name = "Sui Testnet"
-symbol = "SUI"
-gas_token_symbol = "SUI"
 search_keywords = ["Sui Testnet"]
-category = "testnet"
-is_evm = false
-color = "mint"
-asset_name = "sui"
-token_standard = ""
-enumerates_holdings = true
-contract_address_prompt = ""
-tags = []
-comment = ""
-family = ""
-consensus = ""
-state_model = ""
-primary_use = ""
 derivation_path = []
-total_circulation_model = ""
-native_coingecko_id = "sui"
-native_decimals = 9
-native_asset_name = "Sui"
-[[chains]]
+
+[[networks]]
+chain = "aptos"
 id = "aptos-testnet"
 name = "Aptos Testnet"
-symbol = "APT"
-gas_token_symbol = "APT"
 search_keywords = ["Aptos Testnet"]
-category = "testnet"
-is_evm = false
-color = "cyan"
-asset_name = "aptos"
-token_standard = ""
-enumerates_holdings = true
-contract_address_prompt = ""
-tags = []
-comment = ""
-family = ""
-consensus = ""
-state_model = ""
-primary_use = ""
 derivation_path = []
-total_circulation_model = ""
-native_coingecko_id = "aptos"
-native_decimals = 8
-native_asset_name = "Aptos"
-[[chains]]
+
+[[networks]]
+chain = "ton"
 id = "ton-testnet"
 name = "TON Testnet"
-symbol = "TON"
-gas_token_symbol = "TON"
 search_keywords = ["TON Testnet"]
-category = "testnet"
-is_evm = false
-color = "blue"
-asset_name = "ton"
-token_standard = ""
-enumerates_holdings = true
-contract_address_prompt = ""
-tags = []
-comment = ""
-family = ""
-consensus = ""
-state_model = ""
-primary_use = ""
 derivation_path = []
-total_circulation_model = ""
-native_coingecko_id = "the-open-network"
-native_decimals = 9
-native_asset_name = "Toncoin"
-[[chains]]
+
+[[networks]]
+chain = "near"
 id = "near-testnet"
 name = "NEAR Testnet"
-symbol = "NEAR"
-gas_token_symbol = "NEAR"
 search_keywords = ["NEAR Testnet"]
-category = "testnet"
-is_evm = false
-color = "indigo"
-asset_name = "near"
-token_standard = ""
-contract_address_prompt = ""
-tags = []
-comment = ""
-family = ""
-consensus = ""
-state_model = ""
-primary_use = ""
 derivation_path = []
-total_circulation_model = ""
-native_coingecko_id = "near"
-native_decimals = 24
-native_asset_name = "NEAR"
-[[chains]]
+
+[[networks]]
+chain = "polkadot"
 id = "polkadot-westend"
 name = "Polkadot Westend"
-symbol = "DOT"
-gas_token_symbol = "DOT"
 search_keywords = ["Polkadot Westend", "Westend"]
-category = "testnet"
-is_evm = false
-color = "pink"
-asset_name = "polkadot"
-token_standard = ""
-contract_address_prompt = ""
-tags = []
-comment = ""
-family = ""
-consensus = ""
-state_model = ""
-primary_use = ""
 derivation_path = []
-total_circulation_model = ""
-native_coingecko_id = "polkadot"
-native_decimals = 10
-native_asset_name = "Polkadot"
-[[chains]]
+
+[[networks]]
+chain = "monero"
 id = "monero-stagenet"
 name = "Monero Stagenet"
-symbol = "XMR"
-gas_token_symbol = "XMR"
 search_keywords = ["Monero Stagenet", "Stagenet"]
-category = "testnet"
-is_evm = false
-color = "orange"
-asset_name = "monero"
-token_standard = ""
-contract_address_prompt = ""
-tags = []
-comment = ""
-family = ""
-consensus = ""
-state_model = ""
-primary_use = ""
 derivation_path = []
-total_circulation_model = ""
-native_coingecko_id = "monero"
-native_decimals = 12
-native_asset_name = "Monero"

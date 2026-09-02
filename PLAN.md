@@ -498,6 +498,223 @@ the FFI count and is not.
 
 ## Behaviour changed on purpose
 
+**The chain catalog was one table for two kinds of fact, and a testnet restated
+eight of its mainnet's columns.**
+
+*Was:* 78 rows × 24 columns in one `[[chains]]` table. 32 of those rows are
+testnets, and a testnet row was:
+
+- **eight columns copied verbatim** from its mainnet — symbol, gas symbol,
+  `is_evm`, colour, asset name, native decimals, native asset name, and a
+  coingecko id;
+- **six empty strings** — comment, family, consensus, state model, primary use,
+  circulation model — plus empty `tags`;
+- `category = "testnet"`, a *network kind* in a column of chain families.
+
+*Now:* two tables, the same shape the token catalog took.
+
+```toml
+[[chains]]     # 46 — what a chain is
+[[networks]]   # 32 — which network of it: chain, id, name, keywords,
+               #      address hint, derivation path
+```
+
+A network inherits its chain's technical facts and states the rest. What it
+**never** inherits is as important as what it does:
+
+- `native_coingecko_id` — a testnet asset has no price. Sepolia's used to read
+  `"ethereum"`, and something else had to override it: a field that could only
+  ever be wrong.
+- `token_standard` — a testnet hosts no tokens.
+- `address_prefix_hint` — a testnet's address format differs. Bitcoin's is
+  `bc1q…` and its testnet's is not.
+- the editorial block — the wiki documents chains, and skips rows with no
+  `family`. Inheriting it would have listed every chain once per network.
+
+**Three columns are gone.**
+
+- `primary_use` held **the same string as `comment` on all 78 rows**, and was
+  never rendered — the wiki record carried it, the search did not search it,
+  and no view displayed it. 47 distinct sentences, written twice.
+- `contract_address_prompt` is a function of `token_standard`: ten standards,
+  seven prompts, no ambiguity.
+- `is_evm` is a function of `category` — which it could not be while `category`
+  doubled as a network-kind flag, because every testnet's category was
+  `"testnet"` whatever family it belonged to.
+
+Two Swift sites asked `category == "testnet"`: the setup screen's section
+grouping and the dashboard's pin list. Both ask `Chain::is_testnet` now, which
+is the question they meant.
+
+*How this was checked:* a field-by-field diff of all 78 entries against the old
+catalog, through a real TOML parser on both sides. Exactly two columns differ,
+and both are the intended ones — `category` and `native_coingecko_id`.
+`derivation_path` is identical for all 78, `address_prefix_hint` for all 78, and
+so is every other column.
+
+*Two mistakes caught by that diff, worth recording because the test suite did
+not catch either:* the first cut had a network inherit `address_prefix_hint`, so
+sixteen testnets advertised their mainnet's address format; and inherit the
+editorial block, which would have put 32 duplicate entries in the chain wiki.
+Both were green on all three suites — nothing asserted them until
+`an_address_hint_is_never_inherited` and `only_chains_carry_the_editorial_block`
+did.
+
+*Why this side:* eight verbatim copies per testnet is eight chances for one to
+drift, which is exactly what had already happened in the token catalog. The
+inheritance makes the copies impossible rather than merely currently-correct,
+and it turns "a testnet asset has no price" from an override applied elsewhere
+into something the data cannot say.
+
+*How to check it:* `the_catalog_is_two_tables` in `core/src/chains.rs` — the
+two tables cover each other and agree with the registry about which rows are
+testnets; a network inherits the technical facts and states its own path; it
+never inherits a price, a token standard, an address hint or the editorial
+block; and the derived columns agree with what they derive from.
+
+**A dashboard row carried a list of one.**
+
+*Was:* two keys for one question. A row was grouped by
+`(network, coingecko id)`, and then the row's *contents* were regrouped by
+`(network, standard, contract)` into `chain_entries: Vec<_>`, with a
+`representative_coin`, a `total_amount` and a `total_value_usd` computed from
+that list.
+
+The outer key already fixed the network, so the list could only ever differ by
+standard or contract — and measured over the whole catalog, **not one of the 92
+row keys produced more than one entry**. The vector always held exactly one
+thing, and three fields were derived from it. On the Swift side that meant a
+`"Networks"` metric that read `1`, a count badge that read `1`, a divider
+between entries that never rendered, an empty state that never showed, and a
+caption reading "Balances merge across chains" — which was never true, because
+the key includes the network.
+
+*Now:* one key, and it is the more precise of the two —
+`(network, standard, contract)`. `CoreDashboardAssetGroup` is
+`{ id, coin, value_usd, is_pinned }`; `CoreDashboardAssetChainEntry` is gone,
+and so is the two-pass grouping.
+
+**The old key had a real hole.** `dashboard_asset_grouping_key` fell back to the
+*symbol* when a token has no coingecko id — so every unidentified token on a
+chain shared one key and merged into one row with the amounts added together.
+That was latent while every catalog token had an id or a distinct symbol, and
+the discovery work made it reachable: a token the catalog does not vouch for is
+reported with an **empty symbol** on purpose, so the front end shows its
+contract rather than a name it cannot trust. Wiring discovery into the dashboard
+would have collapsed every unknown token on a chain into a single row. Keying on
+the contract closes it before that path is connected.
+
+*Why this side:* whichever way the product question is answered, the old shape
+was wrong for it. Per (chain, asset) — the current answer — makes the vector
+dead structure. Per asset would require taking the network *out* of the key,
+which is a different change. A record that implies an answer the code does not
+give hides the fact that the question is unanswered.
+
+*How to check it:* `two_contracts_on_one_chain_are_two_rows` in
+`store/tests.rs`, checked against a contract-blind key first — it fails with
+"two contracts merged into one row, so one balance is invisible and the other
+reads as the sum". `a_row_is_per_chain_and_sums_across_wallets` still pins the
+product behaviour.
+
+**The launch load dropped a wallet imported while it was reading.**
+
+*Was:* `reloadPersistedStateFromSQLite` — one long `async` function with a dozen
+awaits, run once from `warmUpAfterLaunch` — ends by adopting core's wallet and
+transaction lists:
+
+```swift
+if let stored = try? await bridge.storedWallets(), !stored.isEmpty {
+    adoptWalletsFromCore(stored)      // wholesale replace
+}
+```
+
+A wholesale replace, with nothing ordering it against the optimistic writes the
+command helpers make. `applyCoreState` has an ordering guard for exactly this —
+the caller takes an epoch before its await and a stale state is refused — but
+the wallet and transaction projections do not go through it, and the command
+helpers never bump the epoch, so extending that guard would not have seen them.
+
+The window: the read returns a snapshot taken before the import; between the
+snapshot and the continuation resuming, `recordWallets` writes the wallet into
+the projection and sends its command. The continuation then replaces the
+projection with the older snapshot.
+
+**And this entry understated it.** It said the wallet reappears "until the next
+command lands". It does not: `updateWalletsIfPresent` — the path a balance
+refresh takes — starts *from* the projection, so it cannot resurrect what the
+projection has lost, and the only other readers of `storedWallets()` are the
+import tail and "clear all". The wallet stayed missing **until the next
+launch**.
+
+*Now:* the adoption merges instead of replacing.
+`mergeAdoptedProjection(stored:keepingLocal:identity:)` keeps whatever the
+projection holds and adds everything core has that it does not.
+
+*Why that rule is right here rather than a guess:* the load runs **once**, from
+`warmUpAfterLaunch`, so the projection starts empty. The only local write that
+can interleave is an insert — there is nothing yet to update or delete — and an
+insert is newer than the snapshot by construction. So "local wins on a
+collision, core supplies the rest" is exact for every interleaving this path
+can produce, rather than a heuristic that trades one race for another.
+
+*What is not fixed:* the projection is still a second copy of a list core owns,
+with two writers and no shared ordering. That is the Swift-owns-the-list problem
+the migration exists to remove, and it goes when the projection does.
+
+*How to check it:*
+`testAdoptionKeepsAWalletWrittenWhileTheReadWasInFlight` in `AppStateTests`,
+checked against the old behaviour first — with the merge replaced by
+`return stored` it fails on the mid-read import.
+
+**A balance's decimals are the contract's, and the supplemental-endpoint table
+was sixteen names for three chains.**
+
+*Two `Known open items`, closed.*
+
+**Decimals.** `fetch_token_balances` took the count from the caller on every
+family but Tron and Solana. Where the catalog disagreed with the contract the
+catalog could only be the one that was wrong — and worse, the record contradicted
+itself: `balance_display` was formatted with one number while `decimals`
+reported another, so `balance_raw` and `balance_display` stopped describing the
+same balance.
+
+Every family reads its own now, alongside the balance rather than after it:
+`fetch_erc20_metadata` for the EVM family, `fetch_ft_metadata` for NEAR, and
+three metadata reads extracted out of the discovery paths that already did it —
+`SuiClient::fetch_coin_decimals`, `AptosClient::fetch_coin_decimals`,
+`TonClient::fetch_jetton_decimals`. Discovery and the balance fetch share them,
+so the two cannot answer differently about the same token.
+
+*Taking the stricter side:* a contract that will not answer falls back to what
+the caller said, **not to zero**. Zero renders 1 USDC as 1,000,000, and a
+failed round trip is not a reason to show a number six orders of magnitude out.
+`an_unreadable_contract_falls_back_rather_than_reporting_zero` walks seven
+chains asserting it.
+
+**Endpoint slots.** `buildEndpoints` held a sixteen-name table of chains with
+supplemental explorer endpoints and the slot each writes into. Two facts, both
+misplaced:
+
+- *Which chains have one* is data. The catalog answers, and `explorerPayloads`
+  returns nothing for a chain without — so **twelve of the sixteen names
+  registered nothing at all**, and Hyperliquid, which does have one, was not in
+  the table. Its endpoints never reached the service.
+- *Which slot it lands in* is a registry column now,
+  `Chain::supplemental_endpoint_slot()`. Only Polkadot and Internet Computer
+  differ: theirs are a working API the send path queries — Subscan, the ICP
+  dashboard — so they go in `Secondary`, where `send.rs` looks, rather than
+  `Explorer`.
+
+The loop walks `Chain.all`.
+
+*How to check it:* `decimals_come_from_the_chain` in `service/network.rs`, and
+`supplemental_endpoints_are_data` in `app_core.rs` —
+`hyperliquid_has_a_supplement_and_most_named_chains_did_not` asserts both halves
+of the finding (Hyperliquid has one; the twelve named chains do not, so the
+table really was that inert), and
+`every_chain_with_a_supplement_has_a_slot_to_put_it_in` checks the slot id keeps
+its suffix, so a supplement can never overwrite a chain's own primary endpoints.
+
 **One token had four records and eleven copies of its name.**
 
 *The catalog was one table of ninety-one rows for thirty-one tokens.* Most of
@@ -6156,7 +6373,7 @@ which is how the staking tab came to be inert with all three suites green. See
 the behaviour change above. Running the app is a fourth gate, not a formality.
 
 Both iOS suites are green as of this pass — 40 tests, 0 failures, over
-consecutive full runs. (Forty-one rather than thirty-six: three keep the staking
+consecutive full runs. (Forty-two rather than thirty-six: three keep the staking
 tab's editorial copy in step with `Chain::supports_staking` in both directions,
 and one walks every EVM mainnet asserting none of them falls back to the generic
 address hint.) (Thirty-six rather than thirty-nine: the refresh-planner
@@ -6209,8 +6426,9 @@ so the case was weaker than the five and it was not queued.
 
 ## Known open items
 
-- **`fetch_token_balances` takes decimals from the caller on every family but
-  Tron.** Tron reads the contract's own and reports it; EVM passes
+- ~~`fetch_token_balances` takes decimals from the caller on every family but
+  Tron.~~ **Fixed** — see "A balance's decimals are the contract's" below. The
+  original text: Tron reads the contract's own and reports it; EVM passes
   `token.decimals` straight through without ever calling `decimals()`, and
   Solana takes it from the descriptor although `getTokenAccountsByOwner`
   returns the mint's in the parsed account data it is already fetching. Where
@@ -6219,15 +6437,16 @@ so the case was weaker than the five and it was not queued.
   stop needing a catalog entry to know how to denominate a transfer — see the
   Tron decimals entry above for what that assumption cost.
 
-- **Is a dashboard row per asset, or per (chain, asset)?** Today it is the
-  latter: `dashboard_asset_grouping_key` includes the chain, so ETH on Ethereum
-  and ETH on Arbitrum are separate rows. But the record is named
-  `DashboardAssetGroup` and carries `chain_entries`, which reads like
-  cross-chain grouping was the intent — and with the chain in the key,
-  `chain_entries` can only ever differ by token standard or contract within one
-  chain. `a_row_is_per_chain_and_sums_across_wallets` pins the current answer so
-  changing it is a decision rather than a regression. Not changed on the way
-  past: it is visible product layout, not an inconsistency.
+- **Is a dashboard row per asset, or per (chain, asset)?** Still open, and now
+  it is only that question. Today it is the latter: the row key includes the
+  network, so ETH on Ethereum and ETH on Arbitrum are separate rows, and
+  `a_row_is_per_chain_and_sums_across_wallets` pins it so changing it is a
+  decision rather than a regression. That much is visible product layout.
+
+  What was *not* a product question — a `chain_entries` vector that could only
+  ever hold one thing, and a `DashboardAssetGroup` shaped for a cross-chain
+  grouping that never happened — is fixed; see "A dashboard row carried a list
+  of one" below. The record no longer implies an answer the code does not give.
 
 
 - ~~Six chains claim watch-only support and have nowhere to type an address.~~
@@ -6264,12 +6483,11 @@ so the case was weaker than the five and it was not queued.
   156 lines out of `chains.toml`, two fields off the `ChainEntry` record that
   crosses the FFI on every row, and two Swift accessors.
 
-- **Which endpoint slot a chain's supplemental explorer endpoints go into is
-  still decided in Swift.** `WalletServiceBridge.buildEndpoints` puts
-  Polkadot's and Internet Computer's in `.secondary` and fourteen EVM chains'
-  in `.explorer`. That is a per-chain fact and belongs on `registry::Chain`; it
-  was left where it is because getting it wrong misfiles endpoints rather than
-  failing loudly.
+- ~~Which endpoint slot a chain's supplemental explorer endpoints go into is
+  still decided in Swift.~~ **Fixed** — `Chain::supplemental_endpoint_slot()`.
+  The table also turned out to be wrong in both directions: twelve of its
+  sixteen names had no supplement to register, and Hyperliquid, which has one,
+  was not in it. See "A balance's decimals are the contract's" above.
 
 - ~~`PrivateKeyImportAddressResolution` still has one field per chain.~~
   **Fixed**, and the record turned out to be the smaller half. The seventeen
@@ -6308,15 +6526,12 @@ so the case was weaker than the five and it was not queued.
   view state and `dashboardAssetGroups` already accepts. Recorded here rather
   than done, because it belongs to the transaction slice.</details>
 
-- **A state load still overwrites a projection newer than itself.** The
-  destructive half is fixed — see "A transaction recorded during launch" above,
-  where the load's prune was deleting data. What remains is benign and still
-  wrong: `reloadPersistedStateFromSQLite` adopts core's wallet and transaction
-  lists over whatever the projection holds, so a wallet recorded while the load
-  was in flight briefly disappears from the UI until the next command lands.
-  Untouched on purpose: it is the Swift-owns-the-list problem the migration is
-  for, and narrowing the window by hand would be a guess about ordering rather
-  than a fix.
+- ~~A state load still overwrites a projection newer than itself.~~ **Fixed**
+  — see "The launch load dropped a wallet imported while it was reading" below.
+  It was not "briefly, until the next command lands" as this entry claimed: the
+  wallet stayed missing until the next launch. The underlying
+  Swift-owns-the-list problem is still what the migration is for; what is fixed
+  is that losing the race no longer loses data from the screen.
 
 Carried from the audit, not blocking the stages above but not forgotten:
 

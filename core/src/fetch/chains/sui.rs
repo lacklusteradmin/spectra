@@ -151,6 +151,19 @@ impl SuiClient {
             .collect())
     }
 
+    /// A coin type's own decimals, as the node reports them.
+    ///
+    /// `None` when the type has no metadata — a caller then falls back to what
+    /// it was told, which is the only case where a catalog number is used.
+    pub async fn fetch_coin_decimals(&self, coin_type: &str) -> Option<u8> {
+        self.call("suix_getCoinMetadata", json!([coin_type]))
+            .await
+            .ok()?
+            .get("decimals")?
+            .as_u64()
+            .map(|d| d as u8)
+    }
+
     /// Every coin type the address holds, as the node reports it.
     ///
     /// `suix_getAllBalances` returns coin types and totals but no decimals, so
@@ -183,29 +196,17 @@ impl SuiClient {
         }
 
         let metadata = futures::future::join_all(
-            held.iter()
-                .map(|(coin_type, _)| self.call("suix_getCoinMetadata", json!([coin_type]))),
+            held.iter().map(|(coin_type, _)| self.fetch_coin_decimals(coin_type)),
         )
         .await;
         Ok(held
             .into_iter()
             .zip(metadata)
-            .map(|((contract, balance_raw), meta)| {
-                let meta = meta.ok();
-                super::HeldToken {
-                    contract,
-                    balance_raw,
-                    decimals: meta
-                        .as_ref()
-                        .and_then(|m| m.get("decimals"))
-                        .and_then(|v| v.as_u64())
-                        .map(|d| d as u8),
-                    symbol: meta
-                        .as_ref()
-                        .and_then(|m| m.get("symbol"))
-                        .and_then(|v| v.as_str())
-                        .map(str::to_string),
-                }
+            .map(|((contract, balance_raw), decimals)| super::HeldToken {
+                contract,
+                balance_raw,
+                decimals,
+                symbol: None,
             })
             .collect())
     }
