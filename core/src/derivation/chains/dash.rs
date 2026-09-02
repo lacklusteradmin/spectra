@@ -35,8 +35,30 @@ pub(crate) fn dash_p2pkh_script(pubkey_hash: &[u8; 20]) -> Vec<u8> {
 }
 
 /// True if address passes Dash base58check decode with a recognised version byte.
-pub fn validate_dash_address(address: &str) -> bool {
-    decode_dash_address(address).is_ok()
+/// Whether `address` is valid on the network asked about.
+///
+/// Took no network, so the testnet arm of the dispatcher ran the mainnet
+/// decoder: a derived testnet address failed the app's own validator, which
+/// means the receive screen showed an address the send screen would refuse.
+/// Testnet addresses carry their own version byte.
+pub(crate) fn decode_dash_testnet_address(address: &str) -> Result<[u8; 20], String> {
+    let decoded = bs58::decode(address)
+        .with_check(None)
+        .into_vec()
+        .map_err(|e| format!("invalid dash testnet address: {e}"))?;
+    if decoded.len() != 21 || decoded[0] != DASH_TESTNET_P2PKH {
+        return Err("not a dash testnet address".to_string());
+    }
+    let mut hash = [0u8; 20];
+    hash.copy_from_slice(&decoded[1..21]);
+    Ok(hash)
+}
+
+pub fn validate_dash_address(address: &str, testnet: bool) -> bool {
+    match decode_dash_address(address) {
+        Ok(_) => !testnet,
+        Err(_) => testnet && decode_dash_testnet_address(address).is_ok(),
+    }
 }
 
 use crate::derivation::chains::bitcoin::{base58check_encode, derive_secp_keypair, hash160};
@@ -132,7 +154,7 @@ mod tests {
 
     #[test]
     fn rejects_btc_p2pkh() {
-        assert!(!validate_dash_address("1A1zP1eP5QGefi2DMPTfTL5SLmv7DivfNa"));
+        assert!(!validate_dash_address("1A1zP1eP5QGefi2DMPTfTL5SLmv7DivfNa", false));
     }
 
     #[test]

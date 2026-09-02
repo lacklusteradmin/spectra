@@ -885,7 +885,7 @@ mod transaction_merge {
 mod wallet_model_conversion {
     use crate::registry::Chain;
     use crate::store::wallet_domain::{
-        CoreCoin, CoreImportedWallet, CoreSeedDerivationPaths,
+        AssetHolding, CoreImportedWallet, CoreSeedDerivationPaths,
         CoreSeedDerivationPreset, CoreWalletDerivationOverrides,
     };
     use std::collections::HashMap;
@@ -910,8 +910,7 @@ mod wallet_model_conversion {
                 ..Default::default()
             },
             selected_chain: "Bitcoin".to_string(),
-            holdings: vec![CoreCoin {
-                id: "some-uuid".to_string(),
+            holdings: vec![AssetHolding {
                 name: "Bitcoin".to_string(),
                 symbol: "BTC".to_string(),
                 coin_gecko_id: "bitcoin".to_string(),
@@ -998,7 +997,8 @@ mod wallet_model_conversion {
 #[cfg(test)]
 mod wallet_view_model {
     use crate::registry::Chain;
-    use crate::store::state::{AssetHolding, WalletAddress, WalletSummary};
+    use crate::store::wallet_domain::AssetHolding;
+    use crate::store::state::{WalletAddress, WalletSummary};
     use crate::store::wallet_domain::CoreSeedDerivationPaths;
 
     fn defaults() -> CoreSeedDerivationPaths {
@@ -1069,17 +1069,24 @@ mod wallet_view_model {
     /// the view model does not make SwiftUI think every row is new.
     #[test]
     fn holding_ids_are_stable_across_rebuilds() {
+        use crate::store::wallet_domain::holding_identity;
         let first = summary().to_imported_wallet(&defaults());
         let second = summary().to_imported_wallet(&defaults());
-        assert_eq!(first.holdings[0].id, second.holdings[0].id);
-        assert!(!first.holdings[0].id.is_empty());
+        assert_eq!(
+            holding_identity(&first.holdings[0]),
+            holding_identity(&second.holdings[0])
+        );
+        assert!(!holding_identity(&first.holdings[0]).is_empty());
 
         // Two different assets do not collide.
         let mut other = summary();
         other.holdings[0].symbol = "USDT".to_string();
         other.holdings[0].contract_address = Some("0xdac1".to_string());
         let third = other.to_imported_wallet(&defaults());
-        assert_ne!(first.holdings[0].id, third.holdings[0].id);
+        assert_ne!(
+            holding_identity(&first.holdings[0]),
+            holding_identity(&third.holdings[0])
+        );
     }
 
     /// Round trip through both conversions preserves everything the summary
@@ -1418,21 +1425,29 @@ mod status_trackers {
         );
     }
 
+    /// Pruning drops trackers for transactions core does not hold.
+    ///
+    /// It took the ids to keep, which meant the front end filtered core's own
+    /// transaction table and told core the answer.
     #[tokio::test]
-    async fn retaining_trackers_drops_transactions_that_no_longer_exist() {
+    async fn pruning_drops_trackers_for_transactions_that_no_longer_exist() {
         let service = WalletService::new_typed(Vec::new()).expect("service");
         for id in ["tx1", "tx2"] {
             service
                 .record_status_poll(id.into(), crate::service::StatusPollOutcome::Pending)
                 .await;
         }
-        service.retain_status_trackers(vec!["tx1".into()]).await;
-        // tx2's tracker is gone, so it reads as never-polled — due immediately.
-        assert_eq!(
+        // No database is bound, so core cannot say which transactions exist.
+        // It refuses rather than reading that as "none exist" — dropping a live
+        // tracker stops a pending send from ever being polled again, and a
+        // stale one only costs a poll.
+        assert!(service.prune_status_trackers().await.is_err());
+        assert!(
             service
                 .transactions_due_for_status_poll(vec!["tx1".into(), "tx2".into()])
-                .await,
-            vec!["tx2".to_string()]
+                .await
+                .is_empty(),
+            "a failed prune dropped trackers it could not verify"
         );
     }
 }
@@ -1590,7 +1605,8 @@ mod send_execution_shape {
 #[cfg(test)]
 mod dashboard_groups {
     use crate::service::WalletService;
-    use crate::state::{AssetHolding, StateCommand, WalletSummary};
+    use crate::store::wallet_domain::AssetHolding;
+    use crate::state::{StateCommand, WalletSummary};
     use std::collections::HashMap;
 
     fn holding(symbol: &str, chain: &str, amount: f64, price: f64) -> AssetHolding {
@@ -1843,7 +1859,7 @@ mod built_in_tokens {
     fn every_built_in_has_a_unique_id() {
         let entries = crate::store::built_in_token_preferences();
         assert!(!entries.is_empty(), "the catalog produced nothing");
-        let mut ids: Vec<_> = entries.iter().map(|e| e.id.as_str()).collect();
+        let mut ids: Vec<String> = entries.iter().map(|e| e.id()).collect();
         ids.sort_unstable();
         let count = ids.len();
         ids.dedup();
@@ -1893,7 +1909,7 @@ mod built_in_tokens {
             .find(|e| e.is_built_in && e.is_enabled)
             .expect("an enabled built-in");
         target.is_enabled = false;
-        let id = target.id.clone();
+        let id = target.id().clone();
         service
             .apply_state_command(StateCommand::SetTokenPreferences { entries })
             .await
@@ -1906,7 +1922,7 @@ mod built_in_tokens {
         let kept = after
             .token_preferences
             .iter()
-            .find(|e| e.id == id)
+            .find(|e| e.id() == id)
             .expect("the entry survived");
         assert!(
             !kept.is_enabled,
@@ -2180,7 +2196,6 @@ mod settings_forward_compatibility {
         // function, so an absent field reads as a fresh install would, not as
         // its type's zero value. Notifications off is not the same as unset.
         assert!(settings.use_price_alerts);
-        assert_eq!(settings.pricing_provider, "CoinGecko");
         assert_eq!(settings.bitcoin_stop_gap, 10);
     }
 
@@ -2376,11 +2391,10 @@ mod send_rules {
 mod wallet_derived_state {
     use crate::service::WalletService;
     use crate::state::StateCommand;
-    use crate::store::wallet_domain::CoreCoin;
+    use crate::store::wallet_domain::AssetHolding;
 
-    fn coin(symbol: &str, chain: &str, amount: f64) -> CoreCoin {
-        CoreCoin {
-            id: format!("{chain}-{symbol}"),
+    fn coin(symbol: &str, chain: &str, amount: f64) -> AssetHolding {
+        AssetHolding {
             name: symbol.to_string(),
             symbol: symbol.to_string(),
             coin_gecko_id: symbol.to_lowercase(),
@@ -2393,7 +2407,7 @@ mod wallet_derived_state {
     }
 
     async fn service_with(
-        wallets: Vec<(&str, &str, Vec<CoreCoin>, bool)>,
+        wallets: Vec<(&str, &str, Vec<AssetHolding>, bool)>,
     ) -> std::sync::Arc<WalletService> {
         let service = WalletService::new_typed(Vec::new()).expect("service");
         for (id, chain, holdings, included) in wallets {
@@ -2403,7 +2417,7 @@ mod wallet_derived_state {
             summary.include_in_portfolio_total = included;
             summary.holdings = holdings
                 .into_iter()
-                .map(|c| crate::store::state::AssetHolding {
+                .map(|c| crate::store::wallet_domain::AssetHolding {
                     name: c.name,
                     symbol: c.symbol,
                     coin_gecko_id: c.coin_gecko_id,
@@ -2944,19 +2958,25 @@ mod tracked_tokens_persist {
         path.to_string_lossy().into_owned()
     }
 
-    fn entry(symbol: &str, decimals: i32) -> CoreTokenPreferenceEntry {
+    fn entry(symbol: &str, decimals: u32) -> CoreTokenPreferenceEntry {
         CoreTokenPreferenceEntry {
-            id: format!("id-{symbol}"),
-            chain: CoreTokenHostingChain::Ethereum,
-            name: symbol.to_string(),
-            symbol: symbol.to_string(),
-            token_standard: "ERC-20".to_string(),
-            contract_address: "0x0000000000000000000000000000000000000001".to_string(),
-            coin_gecko_id: symbol.to_lowercase(),
-            decimals,
             category: CoreTokenPreferenceCategory::Custom,
             is_built_in: false,
             is_enabled: true,
+            token: crate::tokens::TokenEntry {
+                chain: CoreTokenHostingChain::Ethereum.chain_name().to_string(),
+                name: symbol.to_string(),
+                symbol: symbol.to_string(),
+                token_standard: "ERC-20".to_string(),
+                contract: "0x0000000000000000000000000000000000000001".to_string(),
+                coingecko_id: symbol.to_lowercase(),
+                decimals,
+                tags: Vec::new(),
+                comment: String::new(),
+                color: String::new(),
+                asset_name: String::new(),
+                enabled: true,
+            },
         }
     }
 
@@ -2978,7 +2998,7 @@ mod tracked_tokens_persist {
             1,
             "known token was lost"
         );
-        assert_eq!(reloaded.token_preferences[0].symbol, "USDC");
+        assert_eq!(reloaded.token_preferences[0].token.symbol, "USDC");
     }
 
     #[test]
@@ -2994,7 +3014,10 @@ mod tracked_tokens_persist {
         );
         wallet_db::app_state_save(&db, &state).expect("save");
         let reloaded = wallet_db::app_state_load(&db).expect("load");
-        assert_eq!(reloaded.token_preferences[0].decimals, crate::store::state::MAX_TOKEN_DECIMALS);
+        assert_eq!(
+            reloaded.token_preferences[0].token.decimals,
+            crate::store::state::MAX_TOKEN_DECIMALS as u32
+        );
     }
 }
 
@@ -3120,8 +3143,6 @@ mod resident_state_round_trip {
         let defaults = state.settings.clone();
 
         for update in [
-            U::PricingProvider { value: "Coinbase".into() },
-            U::FiatRateProvider { value: "Frankfurter API".into() },
             U::RpcEndpoint { chain: "Base".into(), value: "https://x.example".into() },
             U::EtherscanApiKey { value: "KEY".into() },
             U::MoneroBackendBaseUrl { value: "https://xmr.example".into() },
@@ -3170,12 +3191,6 @@ mod resident_state_round_trip {
         let db = tmp_db();
         let mut state = CoreAppState::default();
         let updates = vec![
-            U::PricingProvider {
-                value: "CoinPaprika".into(),
-            },
-            U::FiatRateProvider {
-                value: "Frankfurter API".into(),
-            },
             U::RpcEndpoint {
                 chain: "Ethereum".into(),
                 value: "https://rpc.example".into(),
@@ -3268,5 +3283,70 @@ mod resident_state_round_trip {
             },
         );
         assert_eq!(state.settings.etherscan_api_key, "ABC123");
+    }
+}
+
+
+/// One unreadable collection must not take the wallet list with it.
+#[cfg(test)]
+mod a_bad_row_is_not_a_bad_database {
+    use super::*;
+
+    /// A `token_preferences` blob this build cannot parse is dropped; the
+    /// wallets load.
+    ///
+    /// It was fatal: `app_state_load` returned `Err` and the app came up with
+    /// nothing at all. Token preferences rebuild from the catalog and price
+    /// alerts re-evaluate on the next refresh, so losing them costs a rebuild —
+    /// where losing the wallet list cannot be undone from anything.
+    #[test]
+    fn an_unreadable_token_preferences_row_does_not_lose_the_wallets() {
+        let db = {
+            let mut path = std::env::temp_dir();
+            path.push(format!(
+                "spectra-badrow-{}-{:?}.sqlite",
+                std::process::id(),
+                std::thread::current().id()
+            ));
+            let _ = std::fs::remove_file(&path);
+            path.to_string_lossy().into_owned()
+        };
+
+        let mut state = CoreAppState::default();
+        state.wallets.push(crate::store::state::WalletSummary {
+            id: "w1".into(),
+            name: "Kept".into(),
+            is_watch_only: false,
+            chain_name: "Bitcoin".into(),
+            include_in_portfolio_total: true,
+            network_mode: None,
+            xpub: None,
+            derivation_preset: "standard".into(),
+            derivation_path: None,
+            derivation_overrides: Default::default(),
+            holdings: Vec::new(),
+            addresses: Vec::new(),
+        });
+        crate::store::wallet_db::app_state_save(&db, &state).expect("save");
+
+        // Overwrite the token-preferences blob with a shape this build cannot
+        // read — an older row, or a newer one.
+        // Straight into the meta table, the way an older build would have left
+        // it — no helper, so the test cannot accidentally go through a path
+        // that normalises the row on the way in.
+        {
+            let conn = rusqlite::Connection::open(&db).expect("open");
+            conn.execute(
+                "INSERT OR REPLACE INTO app_state_meta (key, value) VALUES (?1, ?2)",
+                rusqlite::params!["token_preferences", r#"[{"legacy":true}]"#],
+            )
+            .expect("write the bad row");
+        }
+
+        let reloaded =
+            crate::store::wallet_db::app_state_load(&db).expect("the load survives a bad row");
+        assert_eq!(reloaded.wallets.len(), 1, "the wallet list went with the row");
+        assert_eq!(reloaded.wallets[0].name, "Kept");
+        assert!(reloaded.token_preferences.is_empty());
     }
 }

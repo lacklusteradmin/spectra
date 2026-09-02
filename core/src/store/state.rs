@@ -9,18 +9,6 @@ pub struct WalletAddress {
     pub derivation_path: Option<String>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, uniffi::Record)]
-#[serde(rename_all = "camelCase")]
-pub struct AssetHolding {
-    pub name: String,
-    pub symbol: String,
-    pub coin_gecko_id: String,
-    pub chain_name: String,
-    pub token_standard: String,
-    pub contract_address: Option<String>,
-    pub amount: f64,
-    pub price_usd: f64,
-}
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, uniffi::Record)]
 #[serde(rename_all = "camelCase")]
@@ -38,7 +26,7 @@ pub struct WalletSummary {
     pub derivation_path: Option<String>,
     /// Power-user derivation overrides, if the wallet was imported with any.
     pub derivation_overrides: crate::store::wallet_domain::CoreWalletDerivationOverrides,
-    pub holdings: Vec<AssetHolding>,
+    pub holdings: Vec<crate::store::wallet_domain::AssetHolding>,
     pub addresses: Vec<WalletAddress>,
 }
 
@@ -176,11 +164,7 @@ pub struct AppSettings {
 
     // ── Providers ─────────────────────────────────────────────────────────
     /// Which price source to quote from.
-    #[serde(default = "default_pricing_provider")]
-    pub pricing_provider: String,
     /// Which source to take fiat cross-rates from.
-    #[serde(default = "default_fiat_rate_provider")]
-    pub fiat_rate_provider: String,
 
     // ── Endpoints and credentials ─────────────────────────────────────────
     /// Custom RPC per chain, as `chain display name -> url`. Absent means the
@@ -251,12 +235,6 @@ pub const LARGE_MOVEMENT_USD_RANGE: std::ops::RangeInclusive<f64> = 1.0..=100_00
 // serde reads them for a field a stored row does not carry. Splitting the two
 // is how a row written before `use_price_alerts` existed would have loaded with
 // alerts silently off, rather than on as a fresh install has them.
-fn default_pricing_provider() -> String {
-    "CoinGecko".to_string()
-}
-fn default_fiat_rate_provider() -> String {
-    "Open ER".to_string()
-}
 fn default_fee_priority() -> String {
     "normal".to_string()
 }
@@ -322,8 +300,6 @@ impl Default for AppSettings {
             fiat_currency_code: "USD".to_string(),
             pinned_dashboard_asset_symbols: Vec::new(),
             network_chain_by_family: std::collections::HashMap::new(),
-            pricing_provider: default_pricing_provider(),
-            fiat_rate_provider: default_fiat_rate_provider(),
             rpc_endpoint_by_chain: std::collections::HashMap::new(),
             etherscan_api_key: String::new(),
             monero_backend_base_url: String::new(),
@@ -389,8 +365,6 @@ pub(crate) const MAX_TOKEN_DECIMALS: i32 = 30;
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, uniffi::Enum)]
 #[serde(tag = "field", rename_all = "camelCase")]
 pub enum AppSettingUpdate {
-    PricingProvider { value: String },
-    FiatRateProvider { value: String },
     /// `chain` is a registry display name; an unknown one is refused. An empty
     /// value clears the override and falls back to the catalog.
     RpcEndpoint { chain: String, value: String },
@@ -455,9 +429,8 @@ pub enum StateCommand {
     ///
     /// The defaults are `AppSettings::default()` and nowhere else. iOS used to
     /// reset them by assigning each mirror the value it believed was the
-    /// default — twelve literals restating `default_pricing_provider()`,
-    /// `default_bitcoin_stop_gap()` and the rest, in a file that had no way to
-    /// know when one of them changed.
+    /// default — a literal per setting, in a file that had no way to know when
+    /// one of them changed.
     ResetAppSettings,
     /// Replace the pinned dashboard set. Symbols are normalised to upper case
     /// and de-duplicated, first occurrence winning, so display order is the
@@ -556,8 +529,6 @@ fn apply_app_setting(settings: &mut AppSettings, update: AppSettingUpdate) {
         }
     }
     match update {
-        AppSettingUpdate::PricingProvider { value } => settings.pricing_provider = trimmed(value),
-        AppSettingUpdate::FiatRateProvider { value } => settings.fiat_rate_provider = trimmed(value),
         AppSettingUpdate::RpcEndpoint { chain, value } => {
             let Some(chain) = crate::registry::Chain::from_display_name(&chain) else {
                 return;
@@ -820,7 +791,7 @@ pub fn reduce_state_in_place(state: &mut CoreAppState, command: StateCommand) ->
             let normalized: Vec<_> = entries
                 .into_iter()
                 .map(|mut entry| {
-                    entry.decimals = entry.decimals.clamp(0, MAX_TOKEN_DECIMALS);
+                    entry.token.decimals = entry.token.decimals.min(MAX_TOKEN_DECIMALS as u32);
                     entry
                 })
                 .collect();

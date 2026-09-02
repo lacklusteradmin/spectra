@@ -84,16 +84,6 @@ fn parse_f64(raw: &str) -> Result<f64, &'static str> {
 
 const FIELDS: &[Field] = &[
     Field {
-        key: "pricing-provider",
-        read: |s| s.pricing_provider.clone(),
-        update: |v| Ok(AppSettingUpdate::PricingProvider { value: v.into() }),
-    },
-    Field {
-        key: "fiat-rate-provider",
-        read: |s| s.fiat_rate_provider.clone(),
-        update: |v| Ok(AppSettingUpdate::FiatRateProvider { value: v.into() }),
-    },
-    Field {
         key: "etherscan-api-key",
         read: |s| s.etherscan_api_key.clone(),
         update: |v| Ok(AppSettingUpdate::EtherscanApiKey { value: v.into() }),

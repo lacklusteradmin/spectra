@@ -318,6 +318,44 @@ impl Chain {
     /// name switch and an id switch over the same seven. Widening staking is
     /// adding a client and a variant here; it was three edits and a chance for
     /// the picker to offer what the service refuses.
+    /// Whether the send screen has a network card to show for this chain.
+    ///
+    /// A chain qualifies if core can name a fee for it — through the EVM path,
+    /// through a shared-path preview shape, or through the fee fallback the
+    /// generic submit uses when there is no preview to ask. The send screen
+    /// used to decide this from a seventeen-name set beside the EVM check,
+    /// described as "the chains `SendPreviewStore` keeps a field for" — a field
+    /// list that no longer exists, and one that never named Zcash, Bitcoin
+    /// Gold, Decred, Kaspa, Dash or Bittensor, so those six showed "no network
+    /// preview" on a screen that could have priced their send.
+    /// Extra transaction bytes a destination on this chain costs beyond a
+    /// plain output.
+    ///
+    /// Litecoin's MWEB is the only case: an extension-block output is about a
+    /// kilobyte larger, and neither the fee nor the max sendable reflects it
+    /// unless it is added. Kept here rather than in the one preview path that
+    /// knew about it, so a chain with its own extension output is a row rather
+    /// than a fourth copy of a preview function.
+    pub fn extra_output_overhead_bytes(self, destination: &str) -> u64 {
+        let lowered = destination.trim().to_lowercase();
+        match self.mainnet_counterpart() {
+            Chain::Litecoin if lowered.starts_with("ltcmweb1") || lowered.starts_with("tmweb1") => {
+                1017
+            }
+            _ => 0,
+        }
+    }
+
+    pub fn has_send_preview(self) -> bool {
+        // The EVM family and the chains with a preview path of their own —
+        // everything that does not go through the generic submit — always have
+        // one. The rest need either a shared-path shape or a fee fallback.
+        self.is_evm()
+            || !self.uses_generic_send_submit()
+            || self.simple_preview_chain().is_some()
+            || self.send_execution_shape().fee_fallback > 0.0
+    }
+
     pub const fn supports_staking(self) -> bool {
         matches!(
             self,
@@ -1007,6 +1045,26 @@ impl Chain {
     /// compile until someone states its address format. The EVM arms duplicate
     /// [`Chain::is_evm`]'s list to keep that property; a test asserts the two
     /// never disagree.
+    /// How an address on this chain is folded to its canonical form before it
+    /// is stored or compared.
+    ///
+    /// Testnets follow their mainnet, so a new network needs no row. This was a
+    /// match in `send::flow` over seventeen spelled-out names, and it named
+    /// seven of the twenty-three EVM mainnets: an address on Base, Polygon,
+    /// Linea, Scroll, Blast, Mantle, Sei, Celo, Cronos, opBNB, zkSync Era,
+    /// Sonic, Berachain, Unichain, Ink or X Layer went into the address book
+    /// with whatever case the user typed.
+    pub fn address_normalization(self) -> AddressNormalization {
+        if self.is_evm() {
+            return AddressNormalization::Lowercase;
+        }
+        match self.mainnet_counterpart() {
+            Chain::Sui | Chain::Aptos => AddressNormalization::LowercaseHexPrefixed,
+            Chain::Icp | Chain::Near => AddressNormalization::Lowercase,
+            _ => AddressNormalization::None,
+        }
+    }
+
     pub const fn address_validation_kind(self) -> &'static str {
         match self {
             // EVM: one format, network-agnostic on the wire.
@@ -1243,19 +1301,6 @@ impl Chain {
     ///
     /// A per-chain fact, so it lives here rather than in a `match` inside the
     /// exporter — and it is what lets one JSON builder replace five.
-    pub const fn diagnostics_shape(self) -> DiagnosticsShape {
-        match self.mainnet_counterpart() {
-            Chain::Bitcoin
-            | Chain::BitcoinCash
-            | Chain::BitcoinSV
-            | Chain::Litecoin
-            | Chain::Dogecoin => DiagnosticsShape::Utxo,
-            Chain::Tron => DiagnosticsShape::Tron,
-            Chain::Solana => DiagnosticsShape::Solana,
-            other if other.is_evm() => DiagnosticsShape::Evm,
-            _ => DiagnosticsShape::Simple,
-        }
-    }
 
     /// Resolve a chain from the display name used on the boundary.
     ///
@@ -1331,15 +1376,6 @@ pub struct NetworkChoice {
 
 
 
-/// The record shape a chain's history diagnostics use.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, uniffi::Enum)]
-pub enum DiagnosticsShape {
-    Utxo,
-    Evm,
-    Simple,
-    Tron,
-    Solana,
-}
 
 /// Newtype wrapper that proves the inner `Chain` is EVM-family.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -1613,6 +1649,17 @@ mod tests {
 
 /// What identifies one chain to a front end: the enum value and the three
 /// facts every screen needs to go with it.
+/// The canonical form an address is folded to before storage or comparison.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum AddressNormalization {
+    /// Case and shape are significant — a Bitcoin or Solana address is used
+    /// exactly as the user typed it.
+    None,
+    Lowercase,
+    /// Lowercase, and prefixed with `0x` when the input omitted it.
+    LowercaseHexPrefixed,
+}
+
 #[derive(Debug, Clone, uniffi::Record)]
 pub struct ChainIdentity {
     pub chain: Chain,
@@ -1622,7 +1669,6 @@ pub struct ChainIdentity {
     pub name: String,
     pub is_testnet: bool,
     pub is_evm: bool,
-    pub diagnostics_shape: DiagnosticsShape,
     /// Which chain's slot this chain's address is stored under. The EVM family
     /// shares Ethereum's.
     pub address_slot: String,
@@ -1640,6 +1686,9 @@ pub struct ChainIdentity {
     pub derives_from_private_key: bool,
     /// The chain has protocol-native staking the staking tab can drive.
     pub supports_staking: bool,
+    /// The send screen has a network card to show for this chain — a fee, a
+    /// preview, or both. False only where core routes no send at all.
+    pub has_send_preview: bool,
     /// Which `CoreTokenHostingChain` this chain is, if it can host known
     /// tokens. `None` for the chains that cannot.
     ///
@@ -1680,13 +1729,13 @@ pub fn core_chain_identities() -> Vec<ChainIdentity> {
             name: chain.chain_display_name().to_string(),
             is_testnet: chain.is_testnet(),
             is_evm: chain.is_evm(),
-            diagnostics_shape: chain.diagnostics_shape(),
             address_slot: chain.address_slot().to_string(),
             address_validation_kind: chain.address_validation_kind().to_string(),
             supports_deep_utxo_discovery: chain.supports_deep_utxo_discovery(),
             supports_watch_only_import: chain.supports_watch_only_import(),
             derives_from_private_key: chain.derives_from_private_key(),
             supports_staking: chain.supports_staking(),
+            has_send_preview: chain.has_send_preview(),
             token_hosting_chain: crate::store::wallet_domain::CoreTokenHostingChain::from_chain_name(
                 chain.chain_display_name(),
             ),

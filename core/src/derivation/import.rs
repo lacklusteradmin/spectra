@@ -110,7 +110,7 @@ pub struct WalletImportPlan {
 pub struct WalletImportCommit {
     pub request: WalletImportRequest,
     /// Holdings each created wallet starts with, from the chain picker.
-    pub holdings: Vec<crate::store::wallet_domain::CoreCoin>,
+    pub holdings: Vec<crate::store::wallet_domain::AssetHolding>,
     pub seed_derivation_preset: crate::store::wallet_domain::CoreSeedDerivationPreset,
     pub seed_derivation_paths: crate::store::wallet_domain::CoreSeedDerivationPaths,
     pub derivation_overrides: crate::store::wallet_domain::CoreWalletDerivationOverrides,

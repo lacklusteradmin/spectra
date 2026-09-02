@@ -1019,13 +1019,16 @@ pub fn app_state_load(db_path: &str) -> Result<CoreAppState, String> {
                     state.settings = serde_json::from_str(&value)
                         .map_err(|e| format!("app_state_load settings: {e}"))?;
                 }
+                // A row this build cannot read is dropped, not fatal. These
+                // two are rebuilt from the catalog and re-evaluated on the next
+                // refresh, so losing them costs a rebuild — where failing the
+                // whole load loses the wallet list, which cannot be rebuilt
+                // from anything.
                 META_TOKEN_PREFERENCES => {
-                    state.token_preferences = serde_json::from_str(&value)
-                        .map_err(|e| format!("app_state_load token_preferences: {e}"))?;
+                    state.token_preferences = serde_json::from_str(&value).unwrap_or_default();
                 }
                 META_PRICE_ALERTS => {
-                    state.price_alerts = serde_json::from_str(&value)
-                        .map_err(|e| format!("app_state_load price_alerts: {e}"))?;
+                    state.price_alerts = serde_json::from_str(&value).unwrap_or_default();
                 }
                 // Forward compatibility: a newer build's extra meta keys are
                 // ignored rather than treated as corruption.

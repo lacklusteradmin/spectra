@@ -472,6 +472,16 @@ check "refuses a chain with no token program" 1 \
 contains "and says so rather than reporting an empty wallet" "cannot enumerate holdings" \
     spectra token discover --wallet "Renamed BTC"
 
+# ── FFI surface ─────────────────────────────────────────────────────────────
+#
+# An export nothing calls still costs: it is generated into the bindings, it
+# has to keep compiling, and it reads as API. Three had been unreachable long
+# enough that two of them were only kept alive by their own tests.
+
+section "ffi surface"
+check "no export is unreachable from both front ends" $OK \
+    "$(cd "$(dirname "$0")" && pwd)/unreachable-exports.sh"
+
 section "settings"
 check "lists the settings core owns"        $OK spectra settings list
 check "sets one"                            $OK \

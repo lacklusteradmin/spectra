@@ -41,8 +41,9 @@ pub(crate) use crate::send::chains::bitcoin::{
     sign_and_broadcast as bitcoin_sign_and_broadcast, BitcoinSendParams,
 };
 pub(crate) use crate::state::{
-    reduce_state_in_place, AssetHolding, CoreAppState, StateCommand, StateTransition,
+    reduce_state_in_place, CoreAppState, StateCommand, StateTransition,
 };
+pub(crate) use crate::store::wallet_domain::AssetHolding;
 pub(crate) use crate::store::secret_store::SecretStore;
 pub(crate) use crate::store::{TransactionStatusPollConfig, TransactionStatusTrackerState};
 pub(crate) use crate::SpectraBridgeError;

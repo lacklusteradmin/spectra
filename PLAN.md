@@ -498,6 +498,565 @@ the FFI count and is not.
 
 ## Behaviour changed on purpose
 
+**One token had four records and eleven copies of its name.**
+
+*The catalog was one table of ninety-one rows for thirty-one tokens.* Most of
+what a row said is a property of the *token*, not of the deployment, so a token
+that ships on ten chains wrote its name, colour, coingecko id, tags and comment
+ten times. `comment` had ninety-one rows and thirty-one distinct values.
+
+**Two had already come apart.** DAI read `"Dai"` in orange on Ethereum and
+`"Dai Stablecoin"` in yellow on Base and Polygon — the same token, two names and
+two colours depending on which chain you held it on.
+
+`tokens.toml` is two tables now:
+
+```toml
+[[assets]]       # 31 rows — what a token is
+symbol, name, coingecko_id, color, asset_name, tags, comment
+
+[[deployments]]  # 91 rows — where it lives
+asset, chain, contract, decimals, standard, enabled
+```
+
+`decimals` stays on the deployment, and that is not an oversight: a bridged
+token really does differ by chain — ENA is 18 on Ethereum and 9 on Solana, LINK
+is 18 on Ethereum and 8 on Solana. Folding it would silently mis-scale a
+balance, so `decimals_are_allowed_to_differ_by_chain` asserts it still can.
+
+*And one token had four records.*
+
+| | `TokenEntry` | `CoreTokenPreferenceEntry` | `ChainTokenRegistryEntry` | `TokenDescriptor` |
+|---|---|---|---|---|
+| contract | `contract` | `contract_address` | `contractAddress` | `contract` |
+| decimals | `u32` | `i32` | `Int` | `u8` |
+| coingecko | `coingecko_id` | `coin_gecko_id` | `coinGeckoId` | — |
+| enabled | `enabled` | `is_enabled` | `isEnabledByDefault` | — |
+
+Four spellings of a contract and four types for a decimal count, with a
+conversion at every boundary between them.
+
+`CoreTokenPreferenceEntry` **embeds** the token now — `{ token, category,
+is_built_in, is_enabled }` — so there is one spelling because there is one
+record. `ChainTokenRegistryEntry` is gone, and with it a hand-written `Codable`
+conformance that restated all eleven fields twice and a legacy UUID initializer.
+`id` is derived (`chain|contract`, replacing a stored UUID regenerated on every
+rebuild) and `category` is derived from the tags it was stored beside.
+
+*A load that failed on one bad row.* The iOS suite went red on a simulator
+database written before the split: `app_state_load` returned `Err` on
+`token_preferences`, and the app came up with **nothing at all** — no wallets.
+A collection this build cannot read is dropped now rather than fatal. Token
+preferences rebuild from the catalog and price alerts re-evaluate on the next
+refresh; the wallet list cannot be rebuilt from anything, so it must not go down
+with them. `an_unreadable_token_preferences_row_does_not_lose_the_wallets`
+writes a bad row straight into the meta table and asserts the wallets survive.
+
+*Why this side:* four records is four chances for one of them to be the odd one
+out, and the catalog had already proved it — DAI drifted with nobody noticing
+because nothing could notice. `every_deployment_of_a_token_agrees_about_the_token`
+now makes that unrepresentable rather than merely unlikely.
+
+*How to check it:* `the_catalog_is_two_tables` in `core/src/tokens.rs` — the
+agreement test, the decimals test, and `the_two_tables_cover_each_other` (no
+asset without a deployment, no deployment without an asset).
+
+**Eight exports nothing could call, and a settings screen that changed nothing.**
+
+*`scripts/unreachable-exports.sh`* lists exports whose name appears nowhere in
+hand-written Swift or in the CLI, and exits non-zero when it finds any.
+`cli-acceptance.sh` runs it, so the surface cannot grow one back quietly. An
+export nothing calls still costs: it is generated into the bindings, it has to
+keep compiling, and it reads as API.
+
+It found three at the boundary and a sweep of `WalletServiceBridge` found five
+more one layer up — wrappers whose only "caller" was themselves:
+
+- `fetch_evm_receipt_classification` — no caller anywhere. Deleted.
+- `replace_all_history_records` — reached only by `clearAllHistoryRecords`,
+  which passed it an empty list. `TransactionCommand::Clear` already exists;
+  the clear goes through it and the export is gone.
+- `delete_history_records` — no caller. Deleted.
+- `upsert_history_records`, `fetch_evm_has_contract_code`,
+  `derive_bitcoin_hd_address_strings` — used inside core, never across the
+  boundary. `pub(crate)` now.
+- `wallet_display_name` and `near_parse_history_response` — kept alive only by
+  their own tests. Deleted, and with the NEAR one six helper functions and a
+  record type that had no other user.
+
+**The NEAR deletion is worth a note.** There were two NEAR history parsers: the
+live one inside `fetch_history`, which reads `transaction_hash` and nothing
+else, and this dead one, which also tried `hash` and `receipt_id` and several
+signer keys. The more tolerant parser was the one nobody had wired. If NEAR
+history ever comes back with empty transaction ids, that is the first place to
+look — the tolerance went with the deletion.
+
+*And the export that should not have been unreachable.* `update_endpoints_typed`
+existed to push a rebuilt endpoint list into the service, and nothing called it.
+`WalletServiceBridge` builds its `WalletService` once, lazily, from
+`buildEndpoints()` — which reads the **catalog** and never the user's
+`rpcEndpointByChain`. So a custom RPC endpoint set in Settings reached exactly
+one thing: the diagnostics reachability probe. Balances, history and sends all
+used the catalog's list and never saw it.
+
+It is wired now: `rpcEndpointByChain.didSet` rebuilds and pushes. The user's
+endpoint goes **first** in the chain's list rather than replacing it — the
+fetchers walk the list with `with_fallback`, so "configured" means tried before
+the catalog's, and a typo degrades to the catalog rather than taking the chain
+offline.
+
+*Also found: a test that had never run.* `rejects_invalid_near_addresses` in
+`core/src/validation/address.rs` was missing its `#[test]`, which is why the
+dead-code warning surfaced it at all. It passes; it had simply never been asked.
+
+*Why this side:* every one of these was invisible while nothing looked. The
+sweep is cheap and now runs on every acceptance pass, so the answer to "does
+anything call this?" stops being a question somebody has to think to ask.
+
+*How to check it:* `./scripts/unreachable-exports.sh` (exit 0 when clean), and
+the "ffi surface" section of `cli-acceptance.sh`. `scripts/count-exports.sh`
+shows 192 → 184.
+
+**Two exports for one question, and one that asked the front end to answer for
+core.**
+
+*`core_validate_address` and `core_validate_string_identifier` were the same
+function.* `AddressValidationRequest` and `StringValidationRequest` were both
+`{ kind, value }`; `AddressValidationResult` and `StringValidationResult` were
+both `{ is_valid, normalized_value }`. The string one dispatched on **one** kind
+— `aptosTokenType` — and had its own export, its own request record and its own
+result record to do it. Swift mirrored the split with two identically-typed,
+identically-keyed caches.
+
+One export, one record pair, one cache; `aptosTokenType` is a kind in the same
+match as every address format. Not an address, but the same question in the same
+shape: a typed string, is it well formed, and what is its canonical spelling.
+
+*`retain_status_trackers(ids)` asked the caller which trackers to keep.* To
+answer, the front end filtered **core's own transaction table** — by kind, by
+chain, by whether a hash exists, by status — and sent the ids back. It is
+`prune_status_trackers()` now, with no argument: core reads its transactions and
+each chain's `pending_status_poll` and works out the live set.
+
+**The Swift filter had the poll shape wrong.** It kept `pending` *or*
+`confirmed` for every chain, but only a chain that counts confirmation depth
+keeps polling past the first confirmation — Dogecoin does, Bitcoin and Litecoin
+do not. So every confirmed send on those chains held a tracker nothing would
+ever poll again.
+
+*Taking the stricter side:* pruning **refuses** when no database is bound rather
+than reading "core holds no transactions" as "none exist". Dropping a live
+tracker stops a pending send from ever being polled again; keeping a stale one
+costs a poll. `pruning_drops_trackers_for_transactions_that_no_longer_exist`
+asserts the refusal leaves the trackers alone.
+
+*How to check it:* `pruning_reads_cores_own_tables` in
+`core/src/service/state.rs` — `only_chains_that_count_depth_keep_confirmed_transactions`
+states the rule the Swift filter got wrong, and `pruning_refuses_rather_than_guessing`
+the strict side. `scripts/count-exports.sh` shows 193 → 192.
+
+**Staking exported twenty-three functions for one operation, and the two Swift
+layers above it repeated all twenty-three each.**
+
+*Was:* `StakingService` exported `solana_build_stake_tx`,
+`cardano_build_delegate_tx`, `near_build_unstake_tx`,
+`icp_build_increase_dissolve_delay_tx` and nineteen more — a chain × action
+matrix flattened into names. `StakingBridge.swift` wrapped each in a one-line
+forward, and `StakingViewModel.swift` wrapped *those* in a third layer whose
+every body was `beginTx()`, one call, `catch { error }`, `isLoading = false`.
+
+Adding a chain meant three edits in three files, and which pairs existed was
+discoverable only by reading which names did.
+
+*Now:* one `build_staking_tx(StakingActionRequest)`. The request is
+`{ chain_id, action, wallet_address, amount, targets, months }` — the chain and
+the action are data, and the match on the pair lives in core. `amount` is a
+decimal string because a chain's smallest unit does not always fit in 64 bits
+(NEAR's yoctoNEAR and Polkadot's Planck are `u128`), and one field that is
+always lossless beats two that are sometimes not. `targets` is a list because
+Polkadot's nominate names a set.
+
+A pair no chain supports returns `UnsupportedAction { chain, action }` rather
+than being a function that does not exist.
+
+**None of the twenty-three view-model wrappers had a caller.** The staking view
+reads `validators`, `positions`, `preview` and `error`; nothing ever asked the
+model to build. They were three layers of wrapper over a path the UI had not
+been wired to. `StakingBridge.swift` went 164 → 69 lines and
+`StakingViewModel.swift` 258 → 54.
+
+*Also merged:* `keypool_state` and `keypool_state_for_display` returned the same
+value — the first took the **write** lock and persisted the merge, the second
+took the read lock and did not. The persist was a cache write of a pure
+function's result, and it made a read block writers; `reserve_*` recomputes the
+merge before it writes, so nothing depended on it. One read now.
+
+*Why this side:* twenty-three names cannot say what the matrix is. A table can,
+and `the_supported_matrix_is_exactly_this` is that table — which is also where
+Cardano stops being an exception nobody wrote down: its model is delegate /
+claim / deregister, with no separate unstake or withdraw, because deregistering
+is how you stop and it reclaims the key deposit at the same time.
+
+*How to check it:* `one_entry_point` in `core/src/staking/service.rs` —
+`every_staking_chain_accepts_a_stake`, `the_supported_matrix_is_exactly_this`
+(both directions: every supported pair is recognised and every unsupported one
+is refused, and every staking chain is in the table),
+`an_action_a_chain_does_not_have_is_refused_by_name`, and
+`an_unknown_chain_is_a_malformed_request`. `scripts/count-exports.sh` shows
+215 → 193.
+
+**Three more from the queue: one record for a holding, one preview path for the
+UTXO chains, and self-tests that cover the catalog instead of twenty rows.**
+
+*`AssetHolding` and `CoreCoin` were the same eight fields,* in the same order,
+`CoreCoin` adding an `id`. That id was produced in **five formats** by different
+callers — `UUID().uuidString`, `"t:{contract}"`, `"pinned:{symbol}"`,
+`"tracked:{chain}:{symbol}"`, `"{chain}-{symbol}"` — and read only as a SwiftUI
+list key. A fresh `UUID` per build makes SwiftUI treat every row as new, losing
+selection and re-animating the list.
+
+One record now, named `AssetHolding`; Swift keeps its `Coin` alias. The list key
+is `holding_identity(chain, symbol, contract)`, exported from core and computed
+from the holding, so it cannot drift between producers.
+
+*Three UTXO preview functions were shells of one.* Bitcoin Cash, Bitcoin SV and
+Litecoin each called `refreshUTXOChainPreview` with four arguments, three of
+them registry facts. The fourth was Litecoin's MWEB overhead — 1,017 bytes on an
+extension-block output — which is a fact about the chain and is now
+`Chain::extra_output_overhead_bytes(destination)`, pinned by
+`only_litecoin_mweb_destinations_cost_extra_bytes`.
+
+**And the view read the wrong preview.** `utxoPreview(for:)` had an arm for
+Litecoin and one for Bitcoin Cash and fell through `default:` to Bitcoin's — so
+a send on Bitcoin SV, Dogecoin, Zcash, Dash, Decred or Bitcoin Gold displayed
+**Bitcoin's fee**. It reads the coin's own slot now.
+
+*Self-tests covered twenty of seventy-eight chains.* `CHAIN_SPECS` was twenty
+rows of `(chain, valid address, invalid address)` with Dogecoin and Ethereum
+given hand-written suites beside it; twenty-six mainnets had no self-test at all
+— in the one subsystem whose job is to notice when something is wrong.
+
+The fixture a chain needs is an address that is genuinely its own, and core can
+make one: derive from the canonical mnemonic down the chain's catalog path. That
+is stronger than a typed-in sample, because it checks that derivation and
+validation *agree* rather than that a constant still parses — and it cannot be
+short by a chain. Sixty-eight chains have suites now, generated.
+
+**Three real defects it found immediately,** which is the argument for the
+change:
+
+- **Zcash, Decred and Dash Testnet derived correct testnet addresses that their
+  own validators refused.** The dispatcher sent `"zcash" | "zcashTestnet"` to
+  one mainnet-only decoder, and likewise for the other two — Dogecoin's
+  validator already took a network flag and these three did not. So the receive
+  screen showed a `tm…`, `Ts…` or `y…` address that the send screen would have
+  rejected as invalid. Each now decodes against the network it was asked about.
+- **`validate_solana_address` checked the length range and the base58 alphabet
+  and never decoded.** Any base58 string of 32–44 characters passed, including
+  one three characters short of a real address. It decodes and requires 32 bytes.
+- **`validate_cardano_address` checked the prefix and a minimum length and never
+  verified the bech32 checksum** — the one thing the checksum exists for. It
+  decodes now.
+
+*Left as correct after checking:* Aptos, Sui and NEAR accept "truncated"
+addresses because their formats permit them — `0x1` is Aptos's framework
+account, and a NEAR account id is an arbitrary name with no checksum. The
+self-test's invalid fixture is a string outside every format's alphabet rather
+than a truncation, so it claims only what is true everywhere.
+
+*Why this side:* each of the three was a place where the shape of the code, not
+the shape of the problem, decided how many copies there were — and each copy was
+a chance for one of them to be missed. The self-test change is the strongest
+case: a fixture table can only cover the chains someone remembered, and the
+chains nobody remembered are the ones most likely to be broken.
+
+*How to check it:* `every_chain_that_derives_has_a_suite` and
+`the_suite_covers_the_catalog` for coverage,
+`a_chain_accepts_the_address_it_derives` for the validator/derivation agreement
+(it fails with "Zcash Testnet derives tm… and its own validator refuses it"
+against the old code), `every_self_test_passes` for the suites themselves, and
+`holding_ids_are_stable_across_rebuilds` for the list key.
+
+**Diagnostics had five record shapes for one row, and three of them were the
+same shape.**
+
+*Was:* every chain reported its history run in one of five records, picked by a
+`DiagnosticsShape` enum on `registry::Chain`:
+
+| record | fields |
+|---|---|
+| `SimpleHistoryDiagnostics` | address, source_used, transaction_count, error |
+| `SolanaHistoryDiagnostics` | address, **rpc_count**, source_used, error — the same four with one renamed |
+| `TronHistoryDiagnostics` | the same four plus a second count |
+| `UtxoHistoryDiagnostics` | the same four plus `wallet_id` and `next_cursor` |
+| `EthereumTokenTransferHistoryDiagnostics` | four × (count, error) plus six more |
+
+Only the last was a different shape, and its difference was a list of backends
+flattened into eight fields — plus `unsupported_transfer_drop_count` and
+`decoding_completeness_ratio`, both derivable from the two counts beside them.
+
+The split cost five `HashMap`s in the registry, five exported writers, five
+export wrapper types, five JSON builders, and a Swift call site that had to know
+which shape its chain used in order to pick between them.
+
+*Now:* one `HistoryDiagnostics` — wallet id, identifier, source, count, an
+optional scanned count, an optional cursor, an optional error, and
+`per_source: Vec<HistoryDiagnosticsSource>` for the chains that ask more than
+one backend. `undecoded_count()` and `decoding_completeness()` are methods, not
+fields, so they cannot disagree with the numbers they come from.
+
+Gone with it: `DiagnosticsShape` and its registry column, the
+`HistoryDiagnosticsEntry` enum, four of the five registry maps, four of the five
+JSON builders, all five export wrapper types, and on the Swift side three
+`record*HistoryDiagnostics` functions, two generic runners' `make`/`record`
+closure parameters, `runUTXOStyleHistoryDiagnostics{,ForWallet}` (duplicates of
+the Rust-backed pair once the record types matched), and the
+`runUTXOChainDiagnostics` / `runSimpleChainDiagnostics` split, which had become
+the same function twice. The diagnostics subsystem went from 4,051 lines to
+3,612.
+
+*Two bugs the collapse surfaced,* both invisible while the shapes differed:
+
+- **Every successful EVM refresh reported nothing decoded.**
+  `diagnostics_make_evm_success_record` put the count in
+  `etherscan_transfer_count` and left `decoded_transfer_count` at `0`, so the
+  screen showed "0 decoded" and a decoding completeness of 0% on every run that
+  worked. The count now goes where the run's result goes as well as against the
+  backend that produced it.
+- **The EVM token-transfer row was written once and stored under every wallet
+  id.** `StoreHistoryRefresh` built one record from `normalizedAddress` and
+  looped `recordEVMHistoryDiagnostics(walletID: wallet.id, entry)` over the
+  target wallets, so every wallet's row held the first wallet's address. The row
+  carries the id it belongs to now, so it is built per wallet.
+
+*Also renamed:* `runUtxoHistoryDiagnostics` is `runBitcoinXpubHistoryDiagnostics`
+— it filters `selectedChain == "Bitcoin"` and walks an xpub, and the earlier
+`Bitcoin` → `Utxo` record rename had carried the function name along with it.
+
+*Why this side:* the shapes were a distinction the data did not have. Three of
+five were literally the same four fields, and the fourth and fifth were that
+plus optional extras — which is what an optional field is for. A row that
+carries its own shape needs no enum to dispatch on and no second writer to pick.
+
+*How to check it:* `core/src/diagnostics/` — `history_roundtrip` and
+`history_with_sources_roundtrip` for the record,
+`undecoded_and_completeness_are_derived` for the two computed numbers,
+`optional_keys_are_absent_when_the_chain_has_none` for the document (an absent
+key reads as "this chain has no such thing", a present empty one as "it has one
+and it is empty"), `chains_keep_separate_buckets` and
+`one_wallet_on_two_chains_keeps_a_row_on_each` for the single map — the five-map
+version got that keying for free and could not have got it wrong, so the one-map
+version has to be asked. `every_chain_produces_a_document` walks every mainnet.
+
+**Prices came from one provider the user had to choose, and a provider that
+failed meant no prices at all.**
+
+*Was:* `fetch_prices` and `fetch_fiat_rates` were each one `match provider { … }`
+— a single arm ran, and its `Err` propagated through `service::network` to the
+caller unchanged. A provider that was down, rate limited, or simply did not list
+an asset produced **no prices**, and the user's only recourse was Settings →
+Pricing → pick a different one. Three price providers and four fiat-rate
+providers sat behind two `Picker`s that existed for that reason.
+
+The same shape as the decimal-display setting: a knob that is there because the
+default cannot do its job. And the answer was already in the codebase —
+`http::with_fallback` walks an endpoint list until one answers, and every chain
+client uses it. Price providers were the one place that knew the pattern and did
+not use it.
+
+*Now:* all providers run concurrently and their answers merge.
+`merge_in_preference_order` keeps the first answer for each key in provider
+order, so coverage is the **union** rather than whichever provider was selected,
+and a repeated refresh gives the same number rather than drifting between
+sources. CoinGecko is first because the catalog carries a `coingecko_id` for
+every asset, so it is the one provider that can be asked precisely rather than
+by symbol.
+
+A provider that fails contributes nothing and does not fail the fetch — that is
+the point of asking more than one. The error is reserved for the case where
+*every* provider failed, which is a different thing from every provider
+answering "I do not list that": the first is a fetch that could not happen, the
+second is an asset with no market, and the second must not read as the first.
+That distinction pairs with the unpriced-holdings change above, where an asset
+nobody quotes is excluded from the total and counted rather than valued at zero.
+
+*Deleted with it:* the `pricing_provider` and `fiat_rate_provider` settings
+(core state, `AppSettingUpdate` variants, the two CLI fields), `PriceProvider::
+from_raw` / `FiatRateProvider::from_raw`, the Swift `PricingProvider` and
+`FiatRateProvider` enums and their `AppState` properties, both `Picker`s, the
+`fiatRateProviderNote` copy, and `DiagnosticsEnvironmentMetadata.
+pricing_provider` — a bundle field recording a choice that no longer exists.
+The `pricingIntro` copy said "choose a provider" and "falls back to a built-in
+reference price"; neither had been true since the stablecoin pin was removed, so
+it is rewritten.
+
+*Why this side:* a user cannot know which price provider lists their obscure
+token, and should not have to. Merging is strictly more coverage than any single
+choice, and the failure mode it removes — a blank portfolio because one host is
+having a bad day — is the kind a wallet should not have.
+
+*How to check it:* `merging_beats_choosing` in `core/src/fetch/price.rs` — four
+tests over `merge_in_preference_order`, checked against the old semantics first:
+with a failing provider aborting the merge they fail with "the second provider
+answered: \"first\": 429 rate limited". `spectra settings list` no longer offers
+`pricing-provider` or `fiat-rate-provider`.
+
+**A sweep for the hand-written-list pattern found six more, four of them
+user-visible.**
+
+The detector: slide a window over every production file, collect the string
+literals, and flag any run where every literal is a registry chain name or id
+and the set is smaller than the registry. It reported 64 candidates; the ones
+that survived reading were these.
+
+*1. `send::flow::normalize_address` named seven of twenty-three EVM mainnets.*
+Base, Polygon, Linea, Scroll, Blast, Mantle, Sei, Celo, Cronos, opBNB, zkSync
+Era, Sonic, Berachain, Unichain, Ink and X Layer were not lowercased, so an
+address book entry on any of them kept whatever case the user typed, while the
+same address on Ethereum was folded. Two internal callers lowercase both sides
+before comparing and so hid it; `store::state`, which writes the entry, does
+not. Now `Chain::address_normalization() -> AddressNormalization`
+(`None` / `Lowercase` / `LowercaseHexPrefixed`), read from `is_evm()` and the
+mainnet counterpart so testnets follow without a row.
+`every_evm_chain_lowercases_its_addresses` walks all thirty-three EVM networks
+and `case_significant_chains_are_untouched` walks the rest — folding a Bitcoin
+or Solana address destroys it, so the second test matters as much as the first.
+
+*2. The EVM destination checks were behind two nested name lists.* The outer
+one, `is_evm`, named seven of the twenty-three EVM mainnets and gated the whole
+block — so on Base, Polygon, Linea, Scroll, Blast, Mantle, Sei, Celo, Cronos,
+opBNB, zkSync Era, Sonic, Berachain, Unichain, Ink and X Layer, **a Bitcoin
+address pasted into the destination field raised no warning at all**. Inside it,
+a five-name list called `is_l2` gated the ENS warning; two of the five (BNB
+Chain, Avalanche) are not L2s, and the sixteen that are got nothing.
+
+Both read the registry now: `is_evm` is `Chain::is_evm()`, and the ENS gate is
+every EVM chain whose mainnet counterpart is not Ethereum — that being where ENS
+resolves. The warning key says `ens_off_ethereum`.
+
+*This one was missed on the first pass.* The sweep flagged the outer list and
+the fix went to the inner one, which the outer gate made unreachable anyway.
+`every_evm_chain_runs_the_evm_destination_checks` walks all thirty-three EVM
+networks asserting both warnings, and was checked against the old code first: it
+fails with "Base accepted a Bitcoin address with no warning".
+
+*3. `broadcast_provider_options` split the EVM family across two arms* of
+thirteen and ten names. Together they covered the twenty-three mainnets exactly,
+so nothing was broken today — but a twenty-fourth EVM chain would have reached
+`_ => &[]` and had no broadcast provider at all. One `is_evm()` guard now, with
+`every_sendable_chain_names_a_broadcast_provider` walking the registry.
+
+*4. `history_evm_native_asset` transcribed two catalog columns for nine chain
+names* and returned `None` for the other twenty-four EVM networks, so a history
+row on Base, Polygon, Linea and the rest had no asset name or symbol to show. It
+reads `native_asset_name` and `gas_token_symbol` now, pinned by
+`every_evm_chain_names_its_native_asset`.
+
+*5. `SendFlowViews.previewChainNames` — seventeen names described as "the chains
+`SendPreviewStore` keeps a field for".* That field list stopped existing when
+`SendPreviewStore` became `previewBySlot`; the set outlived it. It never named
+Zcash, Bitcoin Gold, Decred, Kaspa, Dash or Bittensor, so those six showed "no
+network preview" on a screen that could have priced their send. Replaced by
+`Chain::has_send_preview()`, pinned to the router by
+`every_routable_chain_has_a_send_preview`.
+
+*6. `chain_aliases` kept two tables in front of a registry lookup that was
+already two lines below.* Forty name pairs and thirty-five symbol pairs, over
+forty of seventy-eight chains. Thirty-five of the forty were the registry id
+spelled a second time. The five that differed — `zcash → zec`, `bitcoin gold →
+btg`, `zksync era → zksync`, `x layer → okb`, `bittensor → tao` — were compared
+against `NativeChainIconDescriptor.registryID`, which *is* the registry id, so
+they matched nothing and fell through to the chain-name comparison that would
+have answered anyway. Both tables are gone; the symbol path is derived from
+`gas_token_symbol` in catalog order, so ETH still resolves to Ethereum.
+
+*Also:* `StakingBridge.buildEndpoints` listed seven staking chains by hand while
+`Chain.supportsStaking` existed — the staking tab could offer a chain whose
+endpoints this list had not been told about.
+
+*What the sweep left alone,* having read them: per-chain dispatch tables where
+each arm maps to a *different* value (`receive_address_resolver_kind`,
+`CoreTokenHostingChain::chain_name`), the eight-chain "popular" list on the
+setup screen, which is curation rather than a registry fact, and every list
+inside a `#[test]` — a test that names the set it expects is doing its job.
+
+*Why this side:* the pattern is always the same and always silent. The list is
+written when the registry is smaller, the registry grows, and the code keeps
+answering for the chains someone last remembered. Nothing fails; a feature just
+stops applying. Each fix here replaces the list with the registry column that
+already held the fact, and adds a test that walks every chain rather than the
+ones the author thought of.
+
+*How to check it from the CLI:* these are internal predicates with no direct
+command; `cargo test --workspace` covers each with a test that walks the whole
+registry. Every one of those tests was run against the old code before being
+kept — a test that passes both before and after a fix is not evidence of
+anything. They fail with "Base left a mixed-case address as typed", "Base
+accepted a Bitcoin address with no warning", "Sei can be sent from but offers no
+broadcast provider", "Dogecoin routes a send but the screen would say it has no
+network preview", "Zcash did not resolve to its own id" and "Base has no native
+asset".
+
+**Two stablecoin lists pinned prices to $1.00, and one of them threw away the
+market's answer to do it.**
+
+*Was:* the same question — "is this a dollar stablecoin?" — answered in four
+places, three of them differently.
+
+| where | list | what it did |
+|---|---|---|
+| `formatting.rs::STABLECOIN_USD_SYMBOLS` | 4 symbols | returned `1.0` as a display fallback when the feed was silent |
+| `fetch/price.rs::USD_STABLECOINS` | 12 symbols | inserted `1.0` into the quote map |
+| the CoinGecko provider | — | no pin at all; real quotes |
+| Swift `currentOrFallbackPriceIfAvailable` | — | read the fabricated `priceUsd` when no live price existed |
+
+The price-fetcher pin was the harmful one. `stablecoin_quotes` ran **first**, and
+the loop that follows opens `if resolved.contains_key(&coin.holding_key) {
+continue; }` — so on CoinPaprika and CoinLore a USD stablecoin's real market
+price was never read. Those two providers could not report a depeg at all, while
+CoinGecko could, so the same USDC holding showed a different price depending on
+which provider the user had selected. USDC traded near $0.87 in March 2023;
+USDe, USDD and USDB carry considerably more peg risk than that.
+
+The lists were also the usual shape — hand-written and shorter than the catalog.
+Of the thirteen USD stablecoins in `tokens.toml`, `formatting.rs` named four and
+`price.rs` named eleven; **RLUSD and USDB** were in neither, and `price.rs`
+carried **BUSD**, which the catalog does not have and which was wound down in
+2024. `stablecoin_fallback_price_usd` returned `0.0` for everything else, and
+Swift's `guard coin.priceUsd > 0` reads `0.0` as "unknown" — so one return value
+meant both "worth a dollar" and "no idea", and the caller guessed.
+
+The fabricated dollar reached the headline number: `totalBalanceIfAvailable` →
+`sumLiveQuotedValues` → `currentOrFallbackPriceIfAvailable`. The name said "live
+quoted"; the value included the constant.
+
+*Now:* nothing substitutes a constant for a missing quote. Both lists, both
+pins, `is_usd_stablecoin` (both copies), `stablecoin_fallback_price_usd`, its
+FFI export, the `CachedCoreHelpers` slot and
+`currentOrFallbackPriceIfAvailable` are gone. A coin the provider does not quote
+is absent from the map, and a pinned dashboard prototype carries `price_usd:
+0.0`.
+
+The two disagreeing totals are one. `currentTotal` counted an unpriced holding
+as **zero**; `currentTotalIfAvailable` returned **nil** if any holding was
+unpriced. Both are `quotedTotal(for:) -> QuotedTotal { total, unpricedCount }`:
+unquoted holdings are left out of the total and counted, and the portfolio
+header says "N without a price" beneath the figure. A holding on a chain the app
+never prices — a testnet — is not counted as a hole, since it was never going to
+have one.
+
+*Why this side:* a wallet's job during a depeg is to show the depeg. Pinning is
+backwards — it is most confident exactly when it is most wrong. And a total the
+user cannot tell apart from a complete one is worse than a total that says what
+it is missing. Every catalog stablecoin but USD1 carries a `coingecko_id`, so
+the primary provider prices them for real; the honest fix for a provider that
+does not list a token is the provider chain, not a constant.
+
+*How to check it:* `testUnquotedHoldingsAreExcludedFromTheTotalAndCounted` in
+`AppStateTests` — a priced ETH holding and an unquoted USDC one; the total
+covers the first and the count reports the second. The fetch paths need a
+network and are not assertable in `cli-acceptance.sh`.
+
 **Decimal display was 137 user-facing knobs working around a formatting rule
 that could not do its job. It is one rule now, and the screen is gone.**
 
@@ -5554,13 +6113,20 @@ Not by feel. These four numbers, checked at the end of each stage:
 | Metric | Start | Now | Target |
 |---|---|---|---|
 | `core_plan_*` exports | 42 | **0** | 0 |
-| Swift root lines vs `views/` | 19,766 vs 11,113 | 14,282 vs 10,804 | inverted |
+| Swift root lines vs `views/` | 19,766 vs 11,113 | 13,961 vs 10,590 | inverted |
 | Domain collections stored on `AppState` | 3 | 0 | 0 |
 | Domain settings owned by core | 0 | **21 fields; 4 left on iOS on purpose** | all |
 | Wallet operations reachable from the CLI | partial | **all** | all |
 | CLI commands drivable without a TTY | 0 of 24 | all (25 now) | all |
-| Exported functions and methods | 234 | **180** (99 free + 81 methods) | ~150 (see C2) |
+| Exported functions and methods | 234 | **184** (95 free + 89 methods) | ~150 (see C2) |
 | Largest file in `core/` | 4,781 | 2,501 | — |
+
+*The export row is counted by `scripts/count-exports.sh`,* which states the
+definition so the number is reproducible: a free function carrying
+`#[uniffi::export]`, plus every `pub fn` inside an `#[uniffi::export] impl`
+block — UniFFI exports all of them whether or not anyone calls them. The 180
+recorded before was counted by hand and by a narrower rule, which is why it did
+not match; the script's number is the one to compare against from here.
 
 *The other unmet row was checked by the same standard and stands.* Inverting
 the Swift ratio needs **3,479** lines *deleted* from the root, or **1,739**
@@ -5580,7 +6146,7 @@ partner at all**, a hard floor sitting above the target. Here there is no such
 floor.
 The last row is the one that makes the others checkable. Every
 earlier "proven by the CLI" claim in this document was proven by a person typing
-into a prompt. `scripts/cli-acceptance.sh` replaces that with 157 assertions on
+into a prompt. `scripts/cli-acceptance.sh` replaces that with 158 assertions on
 exit codes and JSON, over a scratch data directory and with no network.
 
 *What it still cannot see.* The CLI drives core from inside its own Tokio
@@ -5590,7 +6156,7 @@ which is how the staking tab came to be inert with all three suites green. See
 the behaviour change above. Running the app is a fourth gate, not a formality.
 
 Both iOS suites are green as of this pass — 40 tests, 0 failures, over
-consecutive full runs. (Forty rather than thirty-six: three keep the staking
+consecutive full runs. (Forty-one rather than thirty-six: three keep the staking
 tab's editorial copy in step with `Chain::supports_staking` in both directions,
 and one walks every EVM mainnet asserting none of them falls back to the generic
 address hint.) (Thirty-six rather than thirty-nine: the refresh-planner
@@ -5622,6 +6188,24 @@ coming down as the paths it replaced are deleted.
 5. Prefer deleting a Swift file over porting it. Much of the root of `swift/`
    exists only to reconcile two copies of the truth; with one copy it is not
    needed.
+
+## Queued: features with a more elegant shape
+
+*Empty.* The five entries this section held are all done — see "Prices came from
+one provider", "Diagnostics had five record shapes", "`AssetHolding` and
+`CoreCoin`", "Three UTXO preview functions" and "Self-tests covered twenty of
+seventy-eight chains" under "Behaviour changed on purpose".
+
+The survey that produced them also read and left alone:
+`AppEndpointDirectory.json` (2,813 lines over 182 records — real data, several
+providers per chain with roles and probe URLs, not duplication); Tor (sixteen
+references and a proxy switch); `receive_address_resolver_kind`'s dispatch table
+(each arm maps to a *different* resolver — an enumeration, not a subset); the
+eight-chain "popular" list on the setup screen (curation, not a registry fact);
+and the two alert systems (per-holding absolute price alerts, global
+percent/USD movement alerts) — one rule engine with an absolute-or-relative
+condition would cover both, but they differ in scope as well as in condition,
+so the case was weaker than the five and it was not queued.
 
 ## Known open items
 

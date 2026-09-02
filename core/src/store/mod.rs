@@ -370,13 +370,13 @@ pub fn core_dashboard_supported_token_entries(
 ) -> Vec<wallet_domain::CoreTokenPreferenceEntry> {
     let mut filtered: Vec<wallet_domain::CoreTokenPreferenceEntry> = entries
         .into_iter()
-        .filter(|entry| !entry.contract_address.is_empty())
+        .filter(|entry| !entry.token.contract.is_empty())
         .collect();
     filtered.sort_by(|lhs, rhs| {
-        lhs.chain
-            .chain_name()
+        lhs.token
+            .chain
             .to_lowercase()
-            .cmp(&rhs.chain.chain_name().to_lowercase())
+            .cmp(&rhs.token.chain.to_lowercase())
     });
     let mut seen_keys = std::collections::BTreeSet::<String>::new();
     filtered
@@ -384,8 +384,8 @@ pub fn core_dashboard_supported_token_entries(
         .filter(|entry| {
             let key = format!(
                 "{}|{}",
-                entry.chain.chain_name().to_lowercase(),
-                entry.contract_address.to_lowercase()
+                entry.token.chain.to_lowercase(),
+                entry.token.contract.to_lowercase()
             );
             seen_keys.insert(key)
         })
@@ -418,28 +418,14 @@ pub fn built_in_token_preferences() -> Vec<wallet_domain::CoreTokenPreferenceEnt
     crate::tokens::catalog()
         .iter()
         .filter_map(|token| {
-            let chain = wallet_domain::CoreTokenHostingChain::from_chain_name(&token.chain)?;
-            let category = token
-                .tags
-                .iter()
-                .find_map(|tag| match tag.as_str() {
-                    "stablecoin" => Some(wallet_domain::CoreTokenPreferenceCategory::Stablecoin),
-                    "meme" => Some(wallet_domain::CoreTokenPreferenceCategory::Meme),
-                    _ => None,
-                })
-                .unwrap_or(wallet_domain::CoreTokenPreferenceCategory::Custom);
+            // A catalog row on a chain that cannot host tokens is a data
+            // mistake, and skipping it is how it stays one.
+            wallet_domain::CoreTokenHostingChain::from_chain_name(&token.chain)?;
             Some(wallet_domain::CoreTokenPreferenceEntry {
-                id: format!("builtin:{}:{}", chain.chain_name(), token.contract),
-                chain,
-                name: token.name.clone(),
-                symbol: token.symbol.clone(),
-                token_standard: token.token_standard.clone(),
-                contract_address: token.contract.clone(),
-                coin_gecko_id: token.coingecko_id.clone(),
-                decimals: token.decimals as i32,
-                category,
+                category: wallet_domain::CoreTokenPreferenceEntry::category_from_tags(&token.tags),
                 is_built_in: true,
                 is_enabled: token.enabled,
+                token: token.clone(),
             })
         })
         .collect()
@@ -455,13 +441,17 @@ pub fn plan_merge_built_in_token_preferences(
 ) -> Vec<wallet_domain::CoreTokenPreferenceEntry> {
     let mut merged: Vec<wallet_domain::CoreTokenPreferenceEntry> = Vec::new();
     for built_in in built_ins.into_iter() {
+        let Some(built_in_chain) = built_in.hosting_chain() else {
+            continue;
+        };
         let built_in_key =
-            normalize_known_token_identifier(built_in.chain, &built_in.contract_address);
+            normalize_known_token_identifier(built_in_chain, &built_in.token.contract);
         let existing = persisted.iter().find(|entry| {
             entry.is_built_in
-                && entry.chain == built_in.chain
-                && normalize_known_token_identifier(entry.chain, &entry.contract_address)
-                    == built_in_key
+                && entry.token.chain == built_in.token.chain
+                && entry.hosting_chain().is_some_and(|c| {
+                    normalize_known_token_identifier(c, &entry.token.contract) == built_in_key
+                })
         });
         let mut updated = built_in;
         if let Some(existing) = existing {
@@ -471,12 +461,11 @@ pub fn plan_merge_built_in_token_preferences(
     }
     merged.extend(persisted.into_iter().filter(|entry| !entry.is_built_in));
     merged.sort_by(|lhs, rhs| {
-        let lhs_chain = lhs.chain.chain_name();
-        let rhs_chain = rhs.chain.chain_name();
-        lhs_chain
-            .cmp(rhs_chain)
+        lhs.token
+            .chain
+            .cmp(&rhs.token.chain)
             .then_with(|| rhs.is_built_in.cmp(&lhs.is_built_in))
-            .then_with(|| lhs.symbol.cmp(&rhs.symbol))
+            .then_with(|| lhs.token.symbol.cmp(&rhs.token.symbol))
     });
     merged
 }
@@ -1324,7 +1313,7 @@ pub fn plan_chain_keypool_state(
 // ─── O: Wallet holdings merge from balance summary ────────────────────────────
 //
 // Matches Swift `holdingsAppliedFromSummary`. Rust owns the match-by-key
-// policy; Swift applies the actions to its `CoreCoin` array, preserving
+// policy; Swift applies the actions to its `AssetHolding` array, preserving
 // visual properties (id, priceUsd) on updates and providing defaults on
 // inserts.
 

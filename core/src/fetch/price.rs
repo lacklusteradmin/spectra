@@ -1,9 +1,13 @@
 //! Price and fiat-rate fetching service.
 //!
 //! Handles every supported provider end-to-end: build the URL, fetch with
-//! retry, decode the JSON, resolve each requested coin to a USD price keyed
-//! by its `holding_key`, and
-//! fold in stablecoin pinning where the provider doesn't list the token.
+//! retry, decode the JSON, and resolve each requested coin to a USD price keyed
+//! by its `holding_key`.
+//!
+//! A coin the provider does not quote is simply absent from the map. Nothing
+//! here substitutes a constant for a missing quote — a stablecoin's price is
+//! the market's answer, and a wallet that cannot show a depeg is wrong exactly
+//! when being right matters.
 //!
 //! Fiat rates follow the same shape: provider → `HashMap<currency, rate>`
 //! where every rate is USD-relative (`USD == 1.0`).
@@ -16,8 +20,22 @@ use crate::http::{HttpClient, RetryProfile};
 
 // ── Provider catalog
 
-/// Market-data providers Swift currently supports. Matches the Swift
-/// `PricingProvider` enum raw values so existing settings round-trip.
+/// Market-data providers, in the order their answers are preferred.
+///
+/// This used to be a user setting with one arm selected and no fallback: a
+/// provider that was down, rate limited, or simply did not list a coin yielded
+/// no prices at all, and the only cure was a trip to Settings. All three run
+/// now and their answers merge, so coverage is the union.
+///
+/// CoinGecko comes first because the catalog already carries a `coingecko_id`
+/// for every asset, so it is the one provider that can be asked precisely
+/// rather than by symbol.
+const PRICE_PROVIDERS: &[PriceProvider] = &[
+    PriceProvider::CoinGecko,
+    PriceProvider::CoinPaprika,
+    PriceProvider::CoinLore,
+];
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum PriceProvider {
     CoinGecko,
@@ -26,15 +44,22 @@ pub enum PriceProvider {
 }
 
 impl PriceProvider {
-    pub fn from_raw(value: &str) -> Option<Self> {
-        match value {
-            "CoinGecko" | "coingecko" => Some(Self::CoinGecko),
-            "CoinPaprika" | "coinpaprika" => Some(Self::CoinPaprika),
-            "CoinLore" | "coinlore" => Some(Self::CoinLore),
-            _ => None,
+    pub const fn label(self) -> &'static str {
+        match self {
+            Self::CoinGecko => "CoinGecko",
+            Self::CoinPaprika => "CoinPaprika",
+            Self::CoinLore => "CoinLore",
         }
     }
 }
+
+/// Fiat-rate providers, likewise in preference order.
+const FIAT_RATE_PROVIDERS: &[FiatRateProvider] = &[
+    FiatRateProvider::OpenER,
+    FiatRateProvider::ExchangeRateHost,
+    FiatRateProvider::Frankfurter,
+    FiatRateProvider::FawazAhmed,
+];
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum FiatRateProvider {
@@ -45,13 +70,12 @@ pub enum FiatRateProvider {
 }
 
 impl FiatRateProvider {
-    pub fn from_raw(value: &str) -> Option<Self> {
-        match value {
-            "Open ER" | "openER" => Some(Self::OpenER),
-            "ExchangeRate.host" | "exchangeRateHost" => Some(Self::ExchangeRateHost),
-            "Frankfurter API" | "frankfurter" => Some(Self::Frankfurter),
-            "Fawaz Ahmed Currency API" | "fawazAhmed" => Some(Self::FawazAhmed),
-            _ => None,
+    pub const fn label(self) -> &'static str {
+        match self {
+            Self::OpenER => "Open ER",
+            Self::ExchangeRateHost => "ExchangeRate.host",
+            Self::Frankfurter => "Frankfurter API",
+            Self::FawazAhmed => "Fawaz Ahmed Currency API",
         }
     }
 }
@@ -73,27 +97,6 @@ pub struct PriceRequestCoin {
 /// Keyed by `holding_key`. Value is USD price.
 pub type PriceQuoteMap = HashMap<String, f64>;
 
-// ── Stablecoin pinning
-
-const USD_STABLECOINS: &[&str] = &[
-    "USDT", "USDC", "DAI", "FDUSD", "TUSD", "BUSD", "USDE", "PYUSD", "USDS", "USDD", "USDG", "USD1",
-];
-
-fn is_usd_stablecoin(symbol: &str) -> bool {
-    let upper = symbol.trim().to_uppercase();
-    USD_STABLECOINS.iter().any(|s| *s == upper)
-}
-
-fn stablecoin_quotes(coins: &[PriceRequestCoin]) -> PriceQuoteMap {
-    let mut out = PriceQuoteMap::new();
-    for c in coins {
-        if is_usd_stablecoin(&c.symbol) {
-            out.insert(c.holding_key.clone(), 1.0);
-        }
-    }
-    out
-}
-
 // ── Market-data endpoints (mirror ChainBackendRegistry)
 
 const COINGECKO_SIMPLE_PRICE_URL: &str = "https://api.coingecko.com/api/v3/simple/price";
@@ -113,23 +116,51 @@ const FAWAZ_AHMED_USD_RATES_URL: &str =
 /// Returns a map keyed by `holding_key` so the caller can diff against its
 /// existing price cache. Missing coins are simply absent from the map —
 /// callers should fall back to their last known price instead of erroring.
-pub async fn fetch_prices(
-    provider: PriceProvider,
-    coins: &[PriceRequestCoin],
-) -> Result<PriceQuoteMap, String> {
-    match provider {
-        PriceProvider::CoinGecko => fetch_coingecko_quotes(coins).await,
-        PriceProvider::CoinPaprika => fetch_coinpaprika_quotes(coins).await,
-        PriceProvider::CoinLore => fetch_coinlore_quotes(coins).await,
+pub async fn fetch_prices(coins: &[PriceRequestCoin]) -> Result<PriceQuoteMap, String> {
+    let answers = futures::future::join_all(PRICE_PROVIDERS.iter().map(|provider| async move {
+        let result = match provider {
+            PriceProvider::CoinGecko => fetch_coingecko_quotes(coins).await,
+            PriceProvider::CoinPaprika => fetch_coinpaprika_quotes(coins).await,
+            PriceProvider::CoinLore => fetch_coinlore_quotes(coins).await,
+        };
+        (*provider, result)
+    }))
+    .await;
+    merge_in_preference_order(answers, "no price provider answered")
+}
+
+/// Fold provider answers into one map, keeping the first answer for each key in
+/// provider order.
+///
+/// A provider that fails contributes nothing rather than failing the whole
+/// fetch — that is the point of asking more than one. The error is reserved for
+/// the case where every provider failed, which is a different thing from every
+/// provider answering "I do not list that".
+fn merge_in_preference_order<P: Copy + std::fmt::Debug, V>(
+    answers: Vec<(P, Result<HashMap<String, V>, String>)>,
+    nobody_answered: &str,
+) -> Result<HashMap<String, V>, String> {
+    let mut merged: HashMap<String, V> = HashMap::new();
+    let mut failures: Vec<String> = Vec::new();
+    for (provider, result) in answers {
+        match result {
+            Ok(values) => {
+                for (key, value) in values {
+                    merged.entry(key).or_insert(value);
+                }
+            }
+            Err(e) => failures.push(format!("{provider:?}: {e}")),
+        }
     }
+    if merged.is_empty() && !failures.is_empty() {
+        return Err(format!("{nobody_answered} ({})", failures.join("; ")));
+    }
+    Ok(merged)
 }
 
 /// Fetch USD-relative fiat rates for the requested non-USD currencies.
 /// USD itself is always returned as `1.0`.
-pub async fn fetch_fiat_rates(
-    provider: FiatRateProvider,
-    currencies: &[String],
-) -> Result<HashMap<String, f64>, String> {
+pub async fn fetch_fiat_rates(currencies: &[String]) -> Result<HashMap<String, f64>, String> {
     // Strip USD from the query list but always include it in the output.
     let targets: Vec<String> = currencies
         .iter()
@@ -137,12 +168,21 @@ pub async fn fetch_fiat_rates(
         .cloned()
         .collect();
 
-    let mut rates = match provider {
-        FiatRateProvider::OpenER => fetch_open_er_rates(&targets).await?,
-        FiatRateProvider::ExchangeRateHost => fetch_exchange_rate_host_rates(&targets).await?,
-        FiatRateProvider::Frankfurter => fetch_frankfurter_rates(&targets).await?,
-        FiatRateProvider::FawazAhmed => fetch_fawaz_ahmed_rates(&targets).await?,
-    };
+    let targets = &targets;
+    let answers =
+        futures::future::join_all(FIAT_RATE_PROVIDERS.iter().map(|provider| async move {
+            let result = match provider {
+                FiatRateProvider::OpenER => fetch_open_er_rates(targets).await,
+                FiatRateProvider::ExchangeRateHost => {
+                    fetch_exchange_rate_host_rates(targets).await
+                }
+                FiatRateProvider::Frankfurter => fetch_frankfurter_rates(targets).await,
+                FiatRateProvider::FawazAhmed => fetch_fawaz_ahmed_rates(targets).await,
+            };
+            (*provider, result)
+        }))
+        .await;
+    let mut rates = merge_in_preference_order(answers, "no fiat-rate provider answered")?;
     rates.insert("USD".to_string(), 1.0);
     Ok(rates)
 }
@@ -232,7 +272,7 @@ struct PaprikaTicker {
 }
 
 async fn fetch_coinpaprika_quotes(coins: &[PriceRequestCoin]) -> Result<PriceQuoteMap, String> {
-    let mut resolved = stablecoin_quotes(coins);
+    let mut resolved = PriceQuoteMap::new();
 
     let tickers: Vec<PaprikaTicker> = HttpClient::shared()
         .get_json(COINPAPRIKA_TICKERS_URL, RetryProfile::ChainRead)
@@ -392,7 +432,7 @@ struct CoinLoreResponse {
 }
 
 async fn fetch_coinlore_quotes(coins: &[PriceRequestCoin]) -> Result<PriceQuoteMap, String> {
-    let mut resolved = stablecoin_quotes(coins);
+    let mut resolved = PriceQuoteMap::new();
 
     let resp: CoinLoreResponse = HttpClient::shared()
         .get_json(COINLORE_TICKERS_URL, RetryProfile::ChainRead)
@@ -648,5 +688,86 @@ mod merge_tests {
         );
         assert_eq!(out.get("USD"), Some(&1.0));
         assert!(!out.contains_key("EUR"));
+    }
+}
+
+
+#[cfg(test)]
+mod merging_beats_choosing {
+    use super::merge_in_preference_order;
+    use std::collections::HashMap;
+
+    fn ok(pairs: &[(&str, f64)]) -> Result<HashMap<String, f64>, String> {
+        Ok(pairs.iter().map(|(k, v)| (k.to_string(), *v)).collect())
+    }
+
+    /// Coverage is the union: a coin only one provider lists still gets a
+    /// price. Under the old single-select this depended on which provider the
+    /// user had picked in Settings.
+    #[test]
+    fn every_provider_contributes_what_only_it_has() {
+        let merged = merge_in_preference_order(
+            vec![
+                ("first", ok(&[("btc", 1.0)])),
+                ("second", ok(&[("obscure", 7.0)])),
+                ("third", ok(&[("rarer", 9.0)])),
+            ],
+            "nobody",
+        )
+        .expect("some provider answered");
+        assert_eq!(merged.len(), 3);
+        assert_eq!(merged["obscure"], 7.0);
+        assert_eq!(merged["rarer"], 9.0);
+    }
+
+    /// Where several answer for one coin, the earlier provider wins, so the
+    /// answer does not drift between refreshes.
+    #[test]
+    fn the_first_provider_in_order_wins_a_contested_key() {
+        let merged = merge_in_preference_order(
+            vec![
+                ("first", ok(&[("btc", 100.0)])),
+                ("second", ok(&[("btc", 101.0)])),
+            ],
+            "nobody",
+        )
+        .expect("some provider answered");
+        assert_eq!(merged["btc"], 100.0);
+    }
+
+    /// A provider that fails contributes nothing and does not fail the fetch —
+    /// that is the whole point of asking more than one. Under the old code this
+    /// was an `Err` all the way to the caller and no prices at all.
+    #[test]
+    fn one_failure_does_not_lose_the_others_answers() {
+        let merged = merge_in_preference_order(
+            vec![
+                ("first", Err("429 rate limited".to_string())),
+                ("second", ok(&[("btc", 100.0)])),
+            ],
+            "nobody",
+        )
+        .expect("the second provider answered");
+        assert_eq!(merged["btc"], 100.0);
+    }
+
+    /// Only when every provider failed is it an error — which is a different
+    /// thing from every provider answering "I do not list that".
+    #[test]
+    fn all_failing_is_an_error_but_all_answering_empty_is_not() {
+        let err = merge_in_preference_order::<&str, f64>(
+            vec![
+                ("first", Err("down".to_string())),
+                ("second", Err("timeout".to_string())),
+            ],
+            "no price provider answered",
+        )
+        .expect_err("nobody answered");
+        assert!(err.contains("no price provider answered"));
+        assert!(err.contains("down") && err.contains("timeout"));
+
+        let empty = merge_in_preference_order(vec![("first", ok(&[]))], "nobody")
+            .expect("answering with nothing is an answer");
+        assert!(empty.is_empty());
     }
 }

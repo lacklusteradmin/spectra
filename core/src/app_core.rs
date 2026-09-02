@@ -802,10 +802,6 @@ pub(super) fn broadcast_provider_options(chain_name: &str) -> Vec<AppCoreBroadca
             ("blockcypher", "BlockCypher"),
         ],
         "Dogecoin" => &[("blockcypher", "BlockCypher")],
-        "Ethereum" | "Ethereum Classic" | "Arbitrum" | "Optimism" | "BNB Chain" | "Avalanche"
-        | "Hyperliquid" | "Polygon" | "Base" | "Linea" | "Scroll" | "Blast" | "Mantle" => {
-            &[("rpc", "RPC Broadcast")]
-        }
         "Tron" => &[
             ("trongrid-io", "TronGrid"),
             ("trongrid-pro", "TronGrid Pro"),
@@ -860,8 +856,13 @@ pub(super) fn broadcast_provider_options(chain_name: &str) -> Vec<AppCoreBroadca
         "Kaspa" => &[("kaspaorg", "api.kaspa.org")],
         "Dash" => &[("trezor-blockbook", "Trezor Blockbook")],
         "Bittensor" => &[("opentensor", "OpenTensor RPC")],
-        "Sei" | "Celo" | "Cronos" | "opBNB" | "zkSync Era" | "Sonic" | "Berachain" | "Unichain"
-        | "Ink" | "X Layer" => &[("rpc", "RPC Broadcast")],
+        // Every EVM chain broadcasts through its RPC. This was two arms of
+        // thirteen and ten names — the twenty-three mainnets split by whichever
+        // half the author was looking at — and a twenty-fourth would have
+        // reached `_ => &[]`: no broadcast provider at all.
+        name if crate::registry::Chain::from_display_name(name).is_some_and(|c| c.is_evm()) => {
+            &[("rpc", "RPC Broadcast")]
+        }
         _ => &[],
     };
     pairs
@@ -1120,3 +1121,41 @@ mod rpc_health_probes {
 }
 
 
+
+#[cfg(test)]
+mod broadcast_provider_coverage {
+    use super::broadcast_provider_options;
+    use crate::registry::Chain;
+
+    /// Every chain that can be sent from offers somewhere to broadcast it.
+    ///
+    /// The EVM arm was two hand-written halves; a chain outside both fell to
+    /// `_ => &[]` and the send screen had no provider to name.
+    #[test]
+    fn every_sendable_chain_names_a_broadcast_provider() {
+        for chain in Chain::all() {
+            if !chain.has_send_preview() {
+                continue;
+            }
+            let options = broadcast_provider_options(chain.chain_display_name());
+            assert!(
+                !options.is_empty(),
+                "{} can be sent from but offers no broadcast provider",
+                chain.chain_display_name()
+            );
+        }
+    }
+
+    /// A testnet folds onto its mainnet's providers rather than needing rows.
+    #[test]
+    fn a_testnet_reads_its_mainnets_providers() {
+        assert_eq!(
+            broadcast_provider_options("Ethereum Sepolia"),
+            broadcast_provider_options("Ethereum")
+        );
+        assert_eq!(
+            broadcast_provider_options("Bitcoin Testnet4"),
+            broadcast_provider_options("Bitcoin")
+        );
+    }
+}

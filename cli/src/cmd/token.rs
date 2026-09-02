@@ -133,9 +133,9 @@ fn list(ctx: &Ctx, out: Out) -> CliResult<()> {
             println!(
                 "  {}  {:<8} {:<22} {}",
                 out::accent("●").bold(),
-                entry.symbol.bold(),
-                entry.name,
-                out::hint(&format!("{} decimals", entry.decimals)),
+                entry.token.symbol.bold(),
+                entry.token.name,
+                out::hint(&format!("{} decimals", entry.token.decimals)),
             );
         }
     });
@@ -144,11 +144,11 @@ fn list(ctx: &Ctx, out: Out) -> CliResult<()> {
         "tokens": tracked
             .iter()
             .map(|entry| serde_json::json!({
-                "id": entry.id,
-                "symbol": entry.symbol,
-                "name": entry.name,
-                "contract": entry.contract_address,
-                "decimals": entry.decimals,
+                "id": entry.id(),
+                "symbol": entry.token.symbol,
+                "name": entry.token.name,
+                "contract": entry.token.contract,
+                "decimals": entry.token.decimals,
             }))
             .collect::<Vec<_>>(),
     }));
@@ -180,7 +180,7 @@ fn track(ctx: &Ctx, out: Out, args: TrackArgs) -> CliResult<()> {
     let mut entries = ctx.state()?.token_preferences;
     if entries
         .iter()
-        .any(|entry| entry.symbol.eq_ignore_ascii_case(&token.symbol))
+        .any(|entry| entry.token.symbol.eq_ignore_ascii_case(&token.symbol))
     {
         return Err(CliError::rejected(format!(
             "{} is already tracked",
@@ -188,17 +188,10 @@ fn track(ctx: &Ctx, out: Out, args: TrackArgs) -> CliResult<()> {
         )));
     }
     entries.push(CoreTokenPreferenceEntry {
-        id: uuid::Uuid::new_v4().to_string().to_uppercase(),
-        chain: tracking_chain,
-        name: token.name.clone(),
-        symbol: token.symbol.clone(),
-        token_standard: token.token_standard.clone(),
-        contract_address: token.contract.clone(),
-        coin_gecko_id: token.coingecko_id.clone(),
-        decimals: token.decimals as i32,
-        category: CoreTokenPreferenceCategory::Custom,
+        category: CoreTokenPreferenceEntry::category_from_tags(&token.tags),
         is_built_in: true,
         is_enabled: true,
+        token: token.clone(),
     });
 
     let transition = ctx.apply(StateCommand::SetTokenPreferences { entries })?;
@@ -206,18 +199,18 @@ fn track(ctx: &Ctx, out: Out, args: TrackArgs) -> CliResult<()> {
         .state
         .token_preferences
         .iter()
-        .find(|entry| entry.symbol.eq_ignore_ascii_case(&token.symbol))
+        .find(|entry| entry.token.symbol.eq_ignore_ascii_case(&token.symbol))
         .cloned()
         .ok_or_else(|| CliError::failure("core accepted the token but did not store it"))?;
 
     out.text(|| {
-        println!("  {} tracking {}", out::ok_mark(), stored.symbol.bold());
-        out::field("decimals", &stored.decimals.to_string());
+        println!("  {} tracking {}", out::ok_mark(), stored.token.symbol.bold());
+        out::field("decimals", &stored.token.decimals.to_string());
     });
     out.emit(serde_json::json!({
         "ok": true,
-        "symbol": stored.symbol,
-        "decimals": stored.decimals,
+        "symbol": stored.token.symbol,
+        "decimals": stored.token.decimals,
     }));
     Ok(())
 }
@@ -226,7 +219,7 @@ fn untrack(ctx: &Ctx, out: Out, args: UntrackArgs) -> CliResult<()> {
     let entries = ctx.state()?.token_preferences;
     let remaining: Vec<_> = entries
         .iter()
-        .filter(|entry| !entry.symbol.eq_ignore_ascii_case(&args.symbol))
+        .filter(|entry| !entry.token.symbol.eq_ignore_ascii_case(&args.symbol))
         .cloned()
         .collect();
     if remaining.len() == entries.len() {

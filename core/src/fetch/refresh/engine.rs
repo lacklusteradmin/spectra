@@ -357,7 +357,8 @@ mod tests {
     }
 }
 
-use crate::store::state::{AssetHolding, WalletSummary};
+use crate::store::wallet_domain::AssetHolding;
+    use crate::store::state::{WalletSummary};
 
 /// Callback interface implemented by Swift. Rust calls these from the tokio
 /// task that owns the refresh timer loop. Implementations must be

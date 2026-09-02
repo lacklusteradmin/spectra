@@ -275,8 +275,27 @@ pub(crate) fn dcr_p2pkh_script(pubkey_hash: &[u8; 20]) -> Vec<u8> {
 }
 
 /// True if address is a valid Decred mainnet address (Ds… P2PKH or Dc… P2SH).
-pub fn validate_decred_address(address: &str) -> bool {
-    decode_dcr_address(address).is_ok()
+/// Whether `address` is valid on the network asked about.
+///
+/// Took no network, so the testnet arm of the dispatcher ran the mainnet
+/// decoder: a derived testnet address failed the app's own validator, which
+/// means the receive screen showed an address the send screen would refuse.
+/// Testnet addresses carry their own version bytes.
+pub(crate) fn decode_decred_testnet_address(address: &str) -> Result<[u8; 20], String> {
+    let decoded = dcr_base58check_decode(address)?;
+    if decoded.len() != 22 || [decoded[0], decoded[1]] != DCR_TESTNET_P2PKH_VERSION {
+        return Err("not a decred testnet address".to_string());
+    }
+    let mut hash = [0u8; 20];
+    hash.copy_from_slice(&decoded[2..22]);
+    Ok(hash)
+}
+
+pub fn validate_decred_address(address: &str, testnet: bool) -> bool {
+    match decode_dcr_address(address) {
+        Ok(_) => !testnet,
+        Err(_) => testnet && decode_decred_testnet_address(address).is_ok(),
+    }
 }
 
 // ── BIP-39 ───────────────────────────────────────────────────────────────
@@ -621,11 +640,11 @@ mod tests {
 
     #[test]
     fn rejects_garbage() {
-        assert!(!validate_decred_address(""));
-        assert!(!validate_decred_address("not-a-decred-address"));
+        assert!(!validate_decred_address("", false));
+        assert!(!validate_decred_address("not-a-decred-address", false));
         // Bitcoin P2PKH starts with "1" — wrong version byte for DCR.
         assert!(!validate_decred_address(
             "1A1zP1eP5QGefi2DMPTfTL5SLmv7DivfNa"
-        ));
+        , false));
     }
 }

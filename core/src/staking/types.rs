@@ -133,6 +133,10 @@ pub struct StakingActionPreview {
 pub enum StakingError {
     #[error("staking is not yet implemented for this chain")]
     NotYetImplemented,
+    #[error("{chain} does not support {action}")]
+    UnsupportedAction { chain: String, action: String },
+    #[error("{field}: {detail}")]
+    MalformedRequest { field: String, detail: String },
     #[error("invalid validator identifier: {0}")]
     InvalidValidator(String),
     #[error("amount below minimum: {0}")]
@@ -143,4 +147,113 @@ pub enum StakingError {
     Network(String),
     #[error("provider returned malformed response: {0}")]
     MalformedResponse(String),
+}
+
+
+/// What a staking action does, across every chain that stakes.
+///
+/// The service exported twenty-three `<chain>_build_<action>_tx` functions —
+/// a chain × action matrix flattened into names, repeated again in the Swift
+/// bridge and a third time in the view model, each wrapper identical but for
+/// which one it called. The chain and the action are data.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, uniffi::Enum)]
+pub enum StakingAction {
+    /// Begin staking: delegate, bond and nominate, deposit-and-stake, create a
+    /// neuron.
+    Stake,
+    /// Stake into a nomination pool rather than nominating directly. Polkadot's
+    /// second way in, and a different extrinsic.
+    JoinPool,
+    /// Stop staking, beginning whatever unbonding the chain requires.
+    Unstake,
+    /// Take out what has finished unbonding.
+    Withdraw,
+    /// Collect accrued rewards without unstaking.
+    ClaimRewards,
+    /// Give up the stake registration entirely.
+    Deregister,
+    /// Extend a lockup already in place.
+    ExtendLockup,
+}
+
+impl StakingAction {
+    pub const fn label(self) -> &'static str {
+        match self {
+            Self::Stake => "stake",
+            Self::JoinPool => "join pool",
+            Self::Unstake => "unstake",
+            Self::Withdraw => "withdraw",
+            Self::ClaimRewards => "claim rewards",
+            Self::Deregister => "deregister",
+            Self::ExtendLockup => "extend lockup",
+        }
+    }
+}
+
+/// One staking action to build a transaction for.
+#[derive(Debug, Clone, uniffi::Record)]
+pub struct StakingActionRequest {
+    /// Registry id of the chain to stake on.
+    pub chain_id: String,
+    pub action: StakingAction,
+    pub wallet_address: String,
+    /// Amount in the chain's smallest unit, as a decimal string.
+    ///
+    /// A string because a chain's smallest unit does not always fit in 64 bits
+    /// — NEAR's yoctoNEAR and Polkadot's Planck are both u128 — and one field
+    /// that is always lossless beats two that are sometimes not. Empty where
+    /// the action takes no amount.
+    pub amount: String,
+    /// What the action targets: a validator, a pool, a stake account, a neuron.
+    /// More than one for Polkadot's nominate, which names a set. Empty where
+    /// the action targets nothing.
+    pub targets: Vec<String>,
+    /// Months of lockup. ICP's create-neuron and extend-lockup only.
+    pub months: Option<u32>,
+}
+
+impl StakingActionRequest {
+    pub fn malformed(&self, field: &str, detail: &str) -> StakingError {
+        StakingError::MalformedRequest {
+            field: field.to_string(),
+            detail: detail.to_string(),
+        }
+    }
+
+    pub fn amount_u64(&self) -> Result<u64, StakingError> {
+        self.amount
+            .parse()
+            .map_err(|_| self.malformed("amount", "expected a whole number of the smallest unit"))
+    }
+
+    pub fn amount_u128(&self) -> Result<u128, StakingError> {
+        self.amount
+            .parse()
+            .map_err(|_| self.malformed("amount", "expected a whole number of the smallest unit"))
+    }
+
+    /// The single thing this action targets.
+    pub fn target(&self) -> Result<&str, StakingError> {
+        self.targets
+            .first()
+            .map(String::as_str)
+            .ok_or_else(|| self.malformed("targets", "this action needs one target"))
+    }
+
+    pub fn target_u64(&self) -> Result<u64, StakingError> {
+        self.target()?
+            .parse()
+            .map_err(|_| self.malformed("targets", "expected a numeric id"))
+    }
+
+    pub fn target_u32(&self) -> Result<u32, StakingError> {
+        self.target()?
+            .parse()
+            .map_err(|_| self.malformed("targets", "expected a numeric id"))
+    }
+
+    pub fn months(&self) -> Result<u32, StakingError> {
+        self.months
+            .ok_or_else(|| self.malformed("months", "this action needs a lockup length"))
+    }
 }

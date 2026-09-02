@@ -9,12 +9,12 @@ use super::*;
 /// Everything the wallet list implies, with holdings already resolved.
 #[derive(Debug, Clone, uniffi::Record)]
 pub struct WalletDerivedState {
-    pub included_portfolio_holdings: Vec<crate::store::wallet_domain::CoreCoin>,
-    pub unique_price_request_coins: Vec<crate::store::wallet_domain::CoreCoin>,
+    pub included_portfolio_holdings: Vec<crate::store::wallet_domain::AssetHolding>,
+    pub unique_price_request_coins: Vec<crate::store::wallet_domain::AssetHolding>,
     /// One entry per asset, amounts summed across wallets.
-    pub portfolio: Vec<crate::store::wallet_domain::CoreCoin>,
-    pub send_coins_by_wallet_id: HashMap<String, Vec<crate::store::wallet_domain::CoreCoin>>,
-    pub receive_coins_by_wallet_id: HashMap<String, Vec<crate::store::wallet_domain::CoreCoin>>,
+    pub portfolio: Vec<crate::store::wallet_domain::AssetHolding>,
+    pub send_coins_by_wallet_id: HashMap<String, Vec<crate::store::wallet_domain::AssetHolding>>,
+    pub receive_coins_by_wallet_id: HashMap<String, Vec<crate::store::wallet_domain::AssetHolding>>,
     pub receive_chains_by_wallet_id: HashMap<String, Vec<String>>,
     pub send_enabled_wallet_ids: Vec<String>,
     pub receive_enabled_wallet_ids: Vec<String>,

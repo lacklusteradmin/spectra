@@ -58,36 +58,22 @@ pub fn is_valid_send_address(
 }
 
 pub(crate) fn normalize_address(chain_name: &str, address: &str) -> String {
+    use crate::registry::AddressNormalization;
     let t = address.trim();
-    match chain_name {
-        // EVM mainnets + testnets — same lowercase normalization.
-        "Ethereum"
-        | "Ethereum Classic"
-        | "Arbitrum"
-        | "Optimism"
-        | "BNB Chain"
-        | "Avalanche"
-        | "Hyperliquid"
-        | "Ethereum Sepolia"
-        | "Ethereum Hoodi"
-        | "Arbitrum Sepolia"
-        | "Optimism Sepolia"
-        | "Base Sepolia"
-        | "BNB Chain Testnet"
-        | "Avalanche Fuji"
-        | "Polygon Amoy"
-        | "Hyperliquid Testnet"
-        | "Ethereum Classic Mordor" => t.to_lowercase(),
-        "Sui" | "Aptos" | "Sui Testnet" | "Aptos Testnet" => {
+    let Some(chain) = crate::registry::Chain::from_display_name(chain_name) else {
+        return t.to_string();
+    };
+    match chain.address_normalization() {
+        AddressNormalization::None => t.to_string(),
+        AddressNormalization::Lowercase => t.to_lowercase(),
+        AddressNormalization::LowercaseHexPrefixed => {
             let l = t.to_lowercase();
             if l.starts_with("0x") {
                 l
             } else {
-                format!("0x{}", l)
+                format!("0x{l}")
             }
         }
-        "Internet Computer" | "NEAR" | "NEAR Testnet" => t.to_lowercase(),
-        _ => t.to_string(),
     }
 }
 
@@ -539,20 +525,16 @@ pub fn core_evaluate_high_risk_send_reasons(
 
     // 5-10. Cross-chain prefix mismatch checks.
     let lowered = request.destination_input.to_lowercase();
-    let is_evm = matches!(
-        chain_name.as_str(),
-        "Ethereum"
-            | "Ethereum Classic"
-            | "Arbitrum"
-            | "Optimism"
-            | "BNB Chain"
-            | "Avalanche"
-            | "Hyperliquid"
-    );
-    let is_l2 = matches!(
-        chain_name.as_str(),
-        "Arbitrum" | "Optimism" | "BNB Chain" | "Avalanche" | "Hyperliquid"
-    );
+    let chain = crate::registry::Chain::from_display_name(chain_name);
+    // Membership is the registry's. Seven of the twenty-three EVM mainnets were
+    // named here, and this gate decides whether the EVM destination checks run
+    // at all — a name list here silently means "no warning" for whichever
+    // chains it forgets.
+    let is_evm = chain.is_some_and(|c| c.is_evm());
+    // ENS resolves on Ethereum; anywhere else the resolved address is worth a
+    // second look.
+    let is_ens_foreign_chain =
+        is_evm && chain.is_some_and(|c| c.mainnet_counterpart() != crate::registry::Chain::Ethereum);
     let is_ens_candidate =
         lowered.ends_with(".eth") && !lowered.contains(' ') && !lowered.starts_with("0x");
 
@@ -570,10 +552,10 @@ pub fn core_evaluate_high_risk_send_reasons(
                 ..make("non_evm_on_evm")
             });
         }
-        if is_l2 && is_ens_candidate {
+        if is_ens_foreign_chain && is_ens_candidate {
             warnings.push(HighRiskSendWarning {
                 chain: Some(chain_name.clone()),
-                ..make("ens_on_l2")
+                ..make("ens_off_ethereum")
             });
         }
     } else if crate::registry::Chain::from_display_name(chain_name)
@@ -1428,4 +1410,12 @@ mod evm_chain_context_tests {
         assert!(core_evm_chain_context("Bitcoin".to_string()).is_none());
         assert!(core_evm_chain_context("Nope".to_string()).is_none());
     }
+}
+
+/// Extra transaction bytes a destination costs beyond a plain output, by chain.
+#[uniffi::export]
+pub fn extra_output_overhead_bytes(chain_name: String, destination: String) -> u64 {
+    crate::registry::Chain::from_display_name(&chain_name)
+        .map(|c| c.extra_output_overhead_bytes(&destination))
+        .unwrap_or(0)
 }

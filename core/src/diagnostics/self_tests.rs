@@ -30,120 +30,19 @@ pub struct ChainSelfTestResult {
     pub outcome: ChainSelfTestOutcome,
 }
 
-/// One chain's self-test fixtures.
+/// Every chain's self-tests, derived rather than tabulated.
 ///
-/// `chain_key` is the registry's display name, which is what a caller can type
-/// and what the map this builds is keyed by. `chain_label` used to sit beside
-/// it, identical in all twenty rows.
-struct ChainSpec {
-    chain_key: &'static str,
-    valid_address: &'static str,
-    invalid_address: &'static str,
-}
-
-const CHAIN_SPECS: &[ChainSpec] = &[
-    ChainSpec {
-        chain_key: "Bitcoin",
-        valid_address: "bc1qgkju4yvvtuz0s8vqn837q396jezu2h8ex7gk98",
-        invalid_address: "bc1_not_valid",
-    },
-    ChainSpec {
-        chain_key: "Bitcoin Cash",
-        valid_address: "19GmUu4QnfGirbAxnpDviczXKZ8LVCvvq8",
-        invalid_address: "bitcoincash:not_valid",
-    },
-    ChainSpec {
-        chain_key: "Bitcoin SV",
-        valid_address: "1MirQ9bwyQcGVJPwKUgapu5ouK2E2Ey4gX",
-        invalid_address: "bsv_not_valid",
-    },
-    ChainSpec {
-        chain_key: "Litecoin",
-        valid_address: "LZHamZCxNf71EmnHgUkztqMyaWyBc5nrkb",
-        invalid_address: "ltc_not_valid",
-    },
-    ChainSpec {
-        chain_key: "Cardano",
-        valid_address: "addr1q9d6m0vxj4j6f0r2k6zk6n6w6r0v9x9k5n0d5u7r3q8v9w7c5m0h2g8t7u6k5a4s3d2f1g0h9j8k7l6m5n4p3q2r1s",
-        invalid_address: "addr_not_valid",
-    },
-    ChainSpec {
-        chain_key: "Solana",
-        valid_address: "Vote111111111111111111111111111111111111111",
-        invalid_address: "sol_not_valid",
-    },
-    ChainSpec {
-        chain_key: "Stellar",
-        valid_address: "GAFOIIMIXWLSN66RYL32JHCI7AMKWZ3TYYSZTOXSTLPHJWPMZDERMXUO",
-        invalid_address: "stellar_not_valid",
-    },
-    ChainSpec {
-        chain_key: "XRP Ledger",
-        valid_address: "rHb9CJAWyB4rj91VRWn96DkukG4bwdtyTh",
-        invalid_address: "xrp_not_valid",
-    },
-    ChainSpec {
-        chain_key: "Tron",
-        valid_address: "TNPeeaaFB7K9cmo4uQpcU32zGK8G1NYqeL",
-        invalid_address: "tron_not_valid",
-    },
-    ChainSpec {
-        chain_key: "Sui",
-        valid_address: "0x5f1e6bc4b4f4d7e4d4b5e7a6c3b2a1f0e9d8c7b6a5f4e3d2c1b0a9876543210f",
-        invalid_address: "0xnotvalid",
-    },
-    ChainSpec {
-        chain_key: "Aptos",
-        valid_address: "0x1",
-        invalid_address: "aptos_not_valid",
-    },
-    ChainSpec {
-        chain_key: "TON",
-        valid_address: "UQBm--PFwDv1yCeS-QTJ-L8oiUpqo9IT1BwgVptlSq3ts4DV",
-        invalid_address: "ton_not_valid",
-    },
-    ChainSpec {
-        chain_key: "Internet Computer",
-        valid_address: "3d67a090082c446abb79b91cfa4937cb69256d23b23c72d6fa0461e62d8b3fe3",
-        invalid_address: "icp_not_valid",
-    },
-    ChainSpec {
-        chain_key: "NEAR",
-        valid_address: "example.near",
-        invalid_address: "-not-valid.near",
-    },
-    ChainSpec {
-        chain_key: "Polkadot",
-        valid_address: "13DyfGHEWo6GF98AxoBbovBHy82rrr4H3LrWaxggtEpgku8o",
-        invalid_address: "dot_not_valid",
-    },
-    ChainSpec {
-        chain_key: "Monero",
-        valid_address: "46pWvmHcWgbDZDhzkgqMN52rq4tJZGZv26qDTiZW4Jg21tqEyrDaQMjVVACuC59gc9Ma3LM9CqD44Cn8XVqjAnPxEnP1PrZ",
-        invalid_address: "xmr_not_valid",
-    },
-    ChainSpec {
-        chain_key: "BNB Chain",
-        valid_address: "0xd8dA6BF26964aF9D7eEd9e03E53415D37aA96045",
-        invalid_address: "0x_not_valid",
-    },
-    ChainSpec {
-        chain_key: "Avalanche",
-        valid_address: "0xd8dA6BF26964aF9D7eEd9e03E53415D37aA96045",
-        invalid_address: "0x_not_valid",
-    },
-    ChainSpec {
-        chain_key: "Ethereum Classic",
-        valid_address: "0xd8dA6BF26964aF9D7eEd9e03E53415D37aA96045",
-        invalid_address: "0x_not_valid",
-    },
-    ChainSpec {
-        chain_key: "Hyperliquid",
-        valid_address: "0xd8dA6BF26964aF9D7eEd9e03E53415D37aA96045",
-        invalid_address: "0x_not_valid",
-    },
-];
-
+/// `CHAIN_SPECS` stood here: twenty rows of `(chain, valid address, invalid
+/// address)`, with Dogecoin and Ethereum given hand-written suites beside it.
+/// Twenty-six mainnets — Zcash, Dash, Decred, Kaspa, Bitcoin Gold, Bittensor
+/// and every EVM chain outside four — had no self-test at all, in the one
+/// subsystem whose job is to notice when something is wrong.
+///
+/// The fixture a chain needs is an address that is genuinely its own, and core
+/// can produce one: derive from the canonical mnemonic down the chain's own
+/// catalog path. That is stronger than a typed-in sample, because it checks
+/// that derivation and validation agree rather than that a constant still
+/// parses — and it cannot be short by a chain.
 fn validate(kind: &str, value: &str) -> bool {
     validate_address(AddressValidationRequest {
         kind: kind.to_string(),
@@ -152,51 +51,6 @@ fn validate(kind: &str, value: &str) -> bool {
     .is_valid
 }
 
-fn spec_chain(spec: &ChainSpec) -> Option<crate::registry::Chain> {
-    crate::registry::Chain::from_display_name(spec.chain_key)
-}
-
-fn spec_address_kind(spec: &ChainSpec) -> &'static str {
-    spec_chain(spec)
-        .map(|chain| chain.address_validation_kind())
-        .unwrap_or("")
-}
-
-fn run_address_accepts(spec: &ChainSpec) -> ChainSelfTestResult {
-    let passed = validate(spec_address_kind(spec), spec.valid_address);
-    ChainSelfTestResult {
-        name: format!("{} Address Validation", spec.chain_key),
-        passed,
-        chain_label: spec.chain_key.to_string(),
-        outcome: if passed {
-            ChainSelfTestOutcome::ValidAddressAccepted
-        } else {
-            ChainSelfTestOutcome::ValidAddressRejected
-        },
-    }
-}
-
-fn run_address_rejects(spec: &ChainSpec) -> ChainSelfTestResult {
-    let passed = !validate(spec_address_kind(spec), spec.invalid_address);
-    ChainSelfTestResult {
-        name: format!("{} Address Rejects Invalid", spec.chain_key),
-        passed,
-        chain_label: spec.chain_key.to_string(),
-        outcome: if passed {
-            ChainSelfTestOutcome::InvalidAddressRejected
-        } else {
-            ChainSelfTestOutcome::InvalidAddressUnexpectedlyAccepted
-        },
-    }
-}
-
-/// Derive the address a chain's self-test compares against.
-///
-/// This was an eighteen-arm match — a third copy of the dispatch that
-/// `derive_for_chain_name` has always been, and the smallest of the three, so
-/// it silently returned `None` for the chains it had never been extended to
-/// cover. The script types it forced are the ones the dispatcher derives from
-/// each spec's path anyway: `m/84'` is P2WPKH, `m/44'` is P2PKH.
 fn derive_one(chain_name: &str, path: &str) -> Option<String> {
     crate::derivation::dispatch::derive_for_chain_name(
         chain_name,
@@ -213,152 +67,106 @@ fn derive_one(chain_name: &str, path: &str) -> Option<String> {
     .address
 }
 
-fn run_derivation(spec: &ChainSpec) -> Option<ChainSelfTestResult> {
-    let chain = spec_chain(spec)?;
-    let derivation_chain = crate::send::flow::seed_derivation_chain_raw(chain)?;
-    let derivation_path = crate::app_core::default_path_from_catalog(spec.chain_key).ok()?;
-    let derived = derive_one(&derivation_chain, &derivation_path);
-    let name = format!("{} Seed Derivation", spec.chain_key);
-    let Some(address) = derived else {
-        return Some(ChainSelfTestResult {
-            name,
-            passed: false,
-            chain_label: spec.chain_key.to_string(),
-            outcome: ChainSelfTestOutcome::DerivationFailed,
-        });
-    };
-    let passed = validate(spec_address_kind(spec), &address);
-    Some(ChainSelfTestResult {
-        name,
+/// A string no chain's address format permits.
+///
+/// Not a truncation of a real address: some formats carry a checksum and would
+/// catch that, but Aptos genuinely accepts short forms (`0x1` is the framework
+/// account) and a NEAR account id is an arbitrary name, so on those chains a
+/// truncated address is a different valid address rather than a broken one.
+/// `@` is outside every format's alphabet.
+const IMPOSSIBLE_ADDRESS: &str = "@@not-an-address@@";
+
+fn result(
+    chain: crate::registry::Chain,
+    suffix: &str,
+    passed: bool,
+    yes: ChainSelfTestOutcome,
+    no: ChainSelfTestOutcome,
+) -> ChainSelfTestResult {
+    ChainSelfTestResult {
+        name: format!("{} {suffix}", chain.chain_display_name()),
         passed,
-        chain_label: spec.chain_key.to_string(),
-        outcome: if passed {
-            ChainSelfTestOutcome::DerivedAddressValid
-        } else {
-            ChainSelfTestOutcome::DerivedAddressInvalid
-        },
-    })
-}
-
-fn run_spec(spec: &ChainSpec) -> Vec<ChainSelfTestResult> {
-    let mut results = vec![run_address_accepts(spec), run_address_rejects(spec)];
-    if let Some(derivation_result) = run_derivation(spec) {
-        results.push(derivation_result);
+        chain_label: chain.chain_display_name().to_string(),
+        outcome: if passed { yes } else { no },
     }
-    results
-}
-
-fn run_dogecoin() -> Vec<ChainSelfTestResult> {
-    let valid_mainnet = "DBus3bamQjgJULBJtYXpEzDWQRwF5iwxgC";
-    let mainnet_passed = validate("dogecoin", valid_mainnet);
-    let garbage_rejected = !validate("dogecoin", "not_a_real_address");
-    let mutated = "DA7Q2K7f1k3wX6sVzP8fCBxNf31xHn3v7H";
-    let checksum_rejected = !validate("dogecoin", mutated);
-    vec![
-        ChainSelfTestResult {
-            name: "DOGE Address Mainnet Validation".to_string(),
-            passed: mainnet_passed,
-            chain_label: "Dogecoin".to_string(),
-            outcome: if mainnet_passed {
-                ChainSelfTestOutcome::ValidAddressAccepted
-            } else {
-                ChainSelfTestOutcome::ValidAddressRejected
-            },
-        },
-        ChainSelfTestResult {
-            name: "DOGE Address Rejects Invalid".to_string(),
-            passed: garbage_rejected,
-            chain_label: "Dogecoin".to_string(),
-            outcome: if garbage_rejected {
-                ChainSelfTestOutcome::InvalidAddressRejected
-            } else {
-                ChainSelfTestOutcome::InvalidAddressUnexpectedlyAccepted
-            },
-        },
-        ChainSelfTestResult {
-            name: "DOGE Address Rejects Bad Checksum".to_string(),
-            passed: checksum_rejected,
-            chain_label: "Dogecoin".to_string(),
-            outcome: if checksum_rejected {
-                ChainSelfTestOutcome::ChecksumMutationRejected
-            } else {
-                ChainSelfTestOutcome::ChecksumMutationAccepted
-            },
-        },
-    ]
-}
-
-fn run_ethereum() -> Vec<ChainSelfTestResult> {
-    let valid = "0xd8dA6BF26964aF9D7eEd9e03E53415D37aA96045";
-    let valid_passed = validate("evm", valid);
-    let garbage_rejected = !validate("evm", "0x_not_valid");
-    let mixed_case = "0x52908400098527886E0F7030069857D2E4169EE7";
-    let normalized_pass = validate_address(AddressValidationRequest {
-        kind: "evm".to_string(),
-        value: mixed_case.to_string(),
-    })
-    .normalized_value
-    .map(|v| v == mixed_case.to_lowercase())
-    .unwrap_or(false);
-    let derived = derive_one("Ethereum", "m/44'/60'/0'/0/0");
-    let derivation_passed = derived
-        .as_deref()
-        .map(|address| validate("evm", address))
-        .unwrap_or(false);
-    vec![
-        ChainSelfTestResult {
-            name: "ETH Address Validation".to_string(),
-            passed: valid_passed,
-            chain_label: "Ethereum".to_string(),
-            outcome: if valid_passed {
-                ChainSelfTestOutcome::ValidAddressAccepted
-            } else {
-                ChainSelfTestOutcome::ValidAddressRejected
-            },
-        },
-        ChainSelfTestResult {
-            name: "ETH Address Rejects Invalid".to_string(),
-            passed: garbage_rejected,
-            chain_label: "Ethereum".to_string(),
-            outcome: if garbage_rejected {
-                ChainSelfTestOutcome::InvalidAddressRejected
-            } else {
-                ChainSelfTestOutcome::InvalidAddressUnexpectedlyAccepted
-            },
-        },
-        ChainSelfTestResult {
-            name: "ETH Receive Address Normalization".to_string(),
-            passed: normalized_pass,
-            chain_label: "Ethereum".to_string(),
-            outcome: if normalized_pass {
-                ChainSelfTestOutcome::NormalizationSuccess
-            } else {
-                ChainSelfTestOutcome::NormalizationFailure
-            },
-        },
-        ChainSelfTestResult {
-            name: "ETH Seed Derivation".to_string(),
-            passed: derivation_passed,
-            chain_label: "Ethereum".to_string(),
-            outcome: if derivation_passed {
-                ChainSelfTestOutcome::DerivedAddressValid
-            } else {
-                ChainSelfTestOutcome::DerivedAddressInvalid
-            },
-        },
-    ]
 }
 
 fn run_for_chain(chain_key: &str) -> Vec<ChainSelfTestResult> {
-    match chain_key {
-        "Dogecoin" => run_dogecoin(),
-        "Ethereum" => run_ethereum(),
-        _ => CHAIN_SPECS
-            .iter()
-            .find(|spec| spec.chain_key == chain_key)
-            .map(run_spec)
-            .unwrap_or_default(),
+    let Some(chain) = crate::registry::Chain::from_display_name(chain_key) else {
+        return Vec::new();
+    };
+    let kind = chain.address_validation_kind();
+    let mut results = Vec::new();
+
+    // A chain that does not derive has nothing to build a fixture from, and
+    // says so rather than reporting an empty suite.
+    if crate::send::flow::seed_derivation_chain_raw(chain).is_none() {
+        return results;
     }
+    // The chain itself, not its mainnet counterpart: `seed_derivation_chain_raw`
+    // folds testnets onto their mainnet, and deriving Bitcoin Testnet that way
+    // yields a `bc1q…` mainnet address that Bitcoin Testnet's own validator
+    // correctly rejects.
+    let derivation_chain = chain.chain_display_name().to_string();
+    let Ok(path) = crate::app_core::default_path_from_catalog(chain.chain_display_name()) else {
+        return results;
+    };
+    let Some(address) = derive_one(&derivation_chain, &path) else {
+        results.push(result(
+            chain,
+            "Seed Derivation",
+            false,
+            ChainSelfTestOutcome::DerivationFailed,
+            ChainSelfTestOutcome::DerivationFailed,
+        ));
+        return results;
+    };
+
+    let accepted = validate(kind, &address);
+    results.push(result(
+        chain,
+        "Seed Derivation",
+        accepted,
+        ChainSelfTestOutcome::DerivedAddressValid,
+        ChainSelfTestOutcome::DerivedAddressInvalid,
+    ));
+    results.push(result(
+        chain,
+        "Address Validation",
+        accepted,
+        ChainSelfTestOutcome::ValidAddressAccepted,
+        ChainSelfTestOutcome::ValidAddressRejected,
+    ));
+
+    let rejected = !validate(kind, IMPOSSIBLE_ADDRESS);
+    results.push(result(
+        chain,
+        "Address Rejects Invalid",
+        rejected,
+        ChainSelfTestOutcome::InvalidAddressRejected,
+        ChainSelfTestOutcome::InvalidAddressUnexpectedlyAccepted,
+    ));
+
+    // Where a chain folds addresses to a canonical form, the derived address
+    // must already be in it — otherwise a receive address and the same address
+    // typed back in are two different strings.
+    if chain.address_normalization() != crate::registry::AddressNormalization::None {
+        let normalized = validate_address(AddressValidationRequest {
+            kind: kind.to_string(),
+            value: address.clone(),
+        })
+        .normalized_value
+        .map(|v| v == crate::send::flow::normalize_address(chain.chain_display_name(), &address))
+        .unwrap_or(false);
+        results.push(result(
+            chain,
+            "Receive Address Normalization",
+            normalized,
+            ChainSelfTestOutcome::NormalizationSuccess,
+            ChainSelfTestOutcome::NormalizationFailure,
+        ));
+    }
+    results
 }
 
 #[derive(Debug, Deserialize)]
@@ -438,56 +246,103 @@ pub fn self_tests_run_chain(chain_key: String) -> Vec<ChainSelfTestResult> {
 
 #[uniffi::export]
 pub fn self_tests_run_all() -> HashMap<String, Vec<ChainSelfTestResult>> {
-    let mut all: Vec<(&str, Vec<ChainSelfTestResult>)> = Vec::new();
-    all.push(("Dogecoin", run_dogecoin()));
-    all.push(("Ethereum", run_ethereum()));
-    for spec in CHAIN_SPECS {
-        all.push((spec.chain_key, run_spec(spec)));
-    }
-    all.into_iter().map(|(k, v)| (k.to_string(), v)).collect()
+    crate::registry::Chain::all()
+        .map(|chain| {
+            (
+                chain.chain_display_name().to_string(),
+                run_for_chain(chain.chain_display_name()),
+            )
+        })
+        .filter(|(_, results)| !results.is_empty())
+        .collect()
 }
 
 #[cfg(test)]
 mod fixtures_are_real_tests {
     use super::*;
 
-    /// A suite for a chain that derives includes the derivation check.
+    /// Every chain that can derive has a suite, and the suite checks that it
+    /// derives.
     ///
-    /// The three columns this test replaces — `address_kind`,
-    /// `derivation_chain` and `derivation_path` — were the row restating facts
-    /// the registry holds. Nineteen of twenty agreed; Monero's
-    /// `derivation_chain: None` said "this chain does not derive", which was
-    /// true when it was written and stopped being true when
-    /// `uses_derivation_path` landed. So Monero ran two checks where every
-    /// other chain ran three, and nothing said so. Reading the registry means
-    /// the stale answer cannot survive the fact changing.
+    /// A twenty-row fixture table stood here and twenty-six mainnets were not
+    /// in it, so the chains with no self-test were exactly the chains nobody
+    /// had thought to add — which is the set most likely to need one.
     #[test]
-    fn a_chain_that_derives_has_a_derivation_self_test() {
-        for spec in CHAIN_SPECS {
-            let chain = crate::registry::Chain::from_display_name(spec.chain_key)
-                .expect("keyed by a name the registry knows");
+    fn every_chain_that_derives_has_a_suite() {
+        use crate::registry::Chain;
+        for chain in Chain::all() {
             if crate::send::flow::seed_derivation_chain_raw(chain).is_none() {
                 continue;
             }
-            let names: Vec<String> = run_spec(spec).into_iter().map(|r| r.name).collect();
+            if crate::app_core::default_path_from_catalog(chain.chain_display_name()).is_err() {
+                continue;
+            }
+            let names: Vec<String> = run_for_chain(chain.chain_display_name())
+                .into_iter()
+                .map(|r| r.name)
+                .collect();
             assert!(
                 names.iter().any(|n| n.ends_with("Seed Derivation")),
                 "{} derives and has no derivation self-test; it has {names:?}",
-                spec.chain_key
+                chain.chain_display_name()
+            );
+            assert!(names.iter().any(|n| n.ends_with("Address Rejects Invalid")));
+        }
+    }
+
+    /// The suite covers far more than the table did.
+    #[test]
+    fn the_suite_covers_the_catalog() {
+        let suites = self_tests_run_all();
+        assert!(
+            suites.len() >= 60,
+            "only {} chains have a self-test suite; the table this replaced had 20",
+            suites.len()
+        );
+    }
+
+    /// A chain accepts the address it derives, on the network it derives it
+    /// for.
+    ///
+    /// Zcash, Decred and Dash Testnet each derived a correct testnet address —
+    /// `tm…`, `Ts…`, `y…` — and their own validator refused it, because the
+    /// dispatcher sent both networks to the mainnet decoder. The receive screen
+    /// showed an address the send screen would have rejected.
+    #[test]
+    fn a_chain_accepts_the_address_it_derives() {
+        use crate::registry::Chain;
+        use crate::validation::address::{validate_address, AddressValidationRequest};
+
+        for chain in Chain::all() {
+            if crate::send::flow::seed_derivation_chain_raw(chain).is_none() {
+                continue;
+            }
+            let Ok(path) = crate::app_core::default_path_from_catalog(chain.chain_display_name())
+            else {
+                continue;
+            };
+            let Some(address) = derive_one(chain.chain_display_name(), &path) else {
+                continue;
+            };
+            assert!(
+                validate_address(AddressValidationRequest {
+                    kind: chain.address_validation_kind().to_string(),
+                    value: address.clone(),
+                })
+                .is_valid,
+                "{} derives {address} and its own validator refuses it",
+                chain.chain_display_name()
             );
         }
     }
 
     /// Every suite is reachable by a name a caller can type.
     ///
-    /// `CHAIN_SPECS` is keyed by chain name and the map it builds is what both
-    /// front ends look a chain up in — and every caller resolves its input
-    /// through the registry first. One row was keyed `"XRP"`, which the registry
-    /// spells `"XRP Ledger"`, so `spectra diagnostics self-test --chain "XRP
-    /// Ledger"` answered *"XRP Ledger has no self-tests"* and no spelling
-    /// reached the suite. `every_self_test_passes` walks the map directly, so it
-    /// ran those tests and passed — a suite can be green and unreachable at the
-    /// same time, and only this asserts it is not.
+    /// The map both front ends look a chain up in is keyed by chain name, and
+    /// every caller resolves its input through the registry first. A key the
+    /// registry does not know reaches nothing, and `every_self_test_passes`
+    /// walks the map directly, so such a suite is green and unreachable at the
+    /// same time. Only this asserts it is not.
     #[test]
     fn every_self_test_suite_is_keyed_by_a_name_the_registry_knows() {
         for chain_key in self_tests_run_all().keys() {
@@ -534,3 +389,4 @@ mod fixtures_are_real_tests {
         }
     }
 }
+

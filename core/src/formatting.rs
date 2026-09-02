@@ -1,5 +1,4 @@
 use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
 
 /// How to render one amount of one asset.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, uniffi::Record)]
@@ -194,27 +193,6 @@ pub fn asset_minimum_visible_amount(visible_decimals: u32) -> f64 {
     } else {
         10f64.powi(-(visible_decimals as i32))
     }
-}
-
-const STABLECOIN_USD_SYMBOLS: &[&str] = &["USDC", "USDT", "FDUSD", "TUSD"];
-
-pub fn is_usd_stablecoin(symbol: &str) -> bool {
-    STABLECOIN_USD_SYMBOLS
-        .iter()
-        .any(|s| s.eq_ignore_ascii_case(symbol))
-}
-
-pub fn stablecoin_fallback_price_usd(symbol: &str) -> f64 {
-    if is_usd_stablecoin(symbol) {
-        1.0
-    } else {
-        0.0
-    }
-}
-
-#[uniffi::export]
-pub fn formatting_stablecoin_fallback_price_usd(symbol: String) -> f64 {
-    stablecoin_fallback_price_usd(&symbol)
 }
 
 pub fn dashboard_asset_grouping_key(

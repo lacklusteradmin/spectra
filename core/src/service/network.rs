@@ -623,14 +623,14 @@ impl WalletService {
 
     // ── Typed token-array wrappers (no JSON serialization on caller side)
 
-    /// Fetch EVM history for diagnostics and return a fully-built
-    /// `EthereumTokenTransferHistoryDiagnostics` record. On network or
-    /// chain-support failure the record is seeded with an error description.
+    /// Fetch EVM history for diagnostics and return a fully-built row. On
+    /// network or chain-support failure the row is seeded with the error.
     pub async fn fetch_evm_history_diagnostics(
         &self,
         chain_id: String,
+        wallet_id: String,
         address: String,
-    ) -> crate::diagnostics::EthereumTokenTransferHistoryDiagnostics {
+    ) -> crate::diagnostics::HistoryDiagnostics {
         use crate::diagnostics::aggregate::{
             diagnostics_make_evm_error, diagnostics_make_evm_success_record,
         };
@@ -638,8 +638,8 @@ impl WalletService {
             .fetch_evm_history_page(chain_id, address.clone(), Vec::new(), 1, 50)
             .await
         {
-            Ok(page) => diagnostics_make_evm_success_record(address, &page),
-            Err(err) => diagnostics_make_evm_error(address, err.to_string()),
+            Ok(page) => diagnostics_make_evm_success_record(wallet_id, address, &page),
+            Err(err) => diagnostics_make_evm_error(wallet_id, address, err.to_string()),
         }
     }
 
@@ -660,7 +660,7 @@ impl WalletService {
     // ── EVM utilities (contract detection, nonce lookup)
 
     /// Returns true iff `address` has deployed bytecode on the given EVM chain.
-    pub async fn fetch_evm_has_contract_code(
+    pub(crate) async fn fetch_evm_has_contract_code(
         &self,
         chain_id: String,
         address: String,
@@ -689,24 +689,6 @@ impl WalletService {
     // block below (JSON shuttles — kept internal, not exported to Swift).
 
     // ── EVM receipt polling
-
-    /// Fused fetch + classification for an EVM receipt: returns
-    /// `Some(classification)` once the receipt has been mined, or `None`
-    /// while the transaction is still pending.
-    pub async fn fetch_evm_receipt_classification(
-        &self,
-        chain_id: String,
-        tx_hash: String,
-    ) -> Result<Option<crate::send::flow::EvmReceiptClassification>, SpectraBridgeError> {
-        let chain = chain_for_evm_id(&chain_id)?;
-        let eps = self.endpoints_for(chain.str_id()).await;
-        let client = EvmClient::new(eps, chain.evm_chain_id());
-        let Some(receipt) = client.fetch_receipt(&tx_hash).await? else {
-            return Ok(None);
-        };
-        let json = serde_json::to_string(&receipt)?;
-        Ok(crate::send::flow::classify_evm_receipt_json(json))
-    }
 
     // `fetch_evm_send_preview` / `fetch_tron_send_preview` /
     // `fetch_simple_chain_send_preview` live in the plain-impl block below
@@ -1361,7 +1343,7 @@ impl WalletService {
     ///
     /// - `change` — 0 for external/receive, 1 for internal/change.
     /// - `start_index`, `count` — [start, start+count) scan window.
-    pub async fn derive_bitcoin_hd_address_strings(
+    pub(crate) async fn derive_bitcoin_hd_address_strings(
         &self,
         xpub: String,
         change: u32,
@@ -1398,24 +1380,16 @@ impl WalletService {
     /// endpoints — no API key plumbing.
     pub async fn fetch_prices_typed(
         &self,
-        provider: String,
         coins: Vec<crate::price::PriceRequestCoin>,
     ) -> Result<std::collections::HashMap<String, f64>, SpectraBridgeError> {
-        tracing::debug!(provider = %provider, coins = coins.len(), "fetch_prices enter");
-        let parsed_provider = match crate::price::PriceProvider::from_raw(&provider) {
-            Some(p) => p,
-            None => {
-                tracing::warn!(provider = %provider, "unknown price provider");
-                return Err(format!("unknown price provider: {provider}").into());
-            }
-        };
-        match crate::price::fetch_prices(parsed_provider, &coins).await {
+        tracing::debug!(coins = coins.len(), "fetch_prices enter");
+        match crate::price::fetch_prices(&coins).await {
             Ok(quotes) => {
-                tracing::debug!(provider = %provider, returned = quotes.len(), "fetch_prices ok");
+                tracing::debug!(returned = quotes.len(), "fetch_prices ok");
                 Ok(quotes)
             }
             Err(e) => {
-                tracing::error!(provider = %provider, error = %e, "fetch_prices failed");
+                tracing::error!(error = %e, "fetch_prices failed");
                 Err(SpectraBridgeError::from(e))
             }
         }
@@ -1424,24 +1398,16 @@ impl WalletService {
     /// Typed variant — accepts typed currency list and returns typed map directly.
     pub async fn fetch_fiat_rates_typed(
         &self,
-        provider: String,
         currencies: Vec<String>,
     ) -> Result<std::collections::HashMap<String, f64>, SpectraBridgeError> {
-        tracing::debug!(provider = %provider, currencies = currencies.len(), "fetch_fiat_rates enter");
-        let parsed_provider = match crate::price::FiatRateProvider::from_raw(&provider) {
-            Some(p) => p,
-            None => {
-                tracing::warn!(provider = %provider, "unknown fiat rate provider");
-                return Err(format!("unknown fiat rate provider: {provider}").into());
-            }
-        };
-        match crate::price::fetch_fiat_rates(parsed_provider, &currencies).await {
+        tracing::debug!(currencies = currencies.len(), "fetch_fiat_rates enter");
+        match crate::price::fetch_fiat_rates(&currencies).await {
             Ok(rates) => {
-                tracing::debug!(provider = %provider, returned = rates.len(), "fetch_fiat_rates ok");
+                tracing::debug!(returned = rates.len(), "fetch_fiat_rates ok");
                 Ok(rates)
             }
             Err(e) => {
-                tracing::error!(provider = %provider, error = %e, "fetch_fiat_rates failed");
+                tracing::error!(error = %e, "fetch_fiat_rates failed");
                 Err(SpectraBridgeError::from(e))
             }
         }

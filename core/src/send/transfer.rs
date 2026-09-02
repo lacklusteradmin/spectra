@@ -17,7 +17,7 @@ use crate::registry::SendRule;
 /// took an index-and-flags record the caller assembled; that twin and the
 /// planner it served are gone.
 pub(crate) fn can_send_coin(
-    coin: &crate::store::wallet_domain::CoreCoin,
+    coin: &crate::store::wallet_domain::AssetHolding,
     has_signing_material: bool,
     chain_supports_send: bool,
     is_live_chain: bool,
@@ -35,10 +35,10 @@ pub(crate) fn can_send_coin(
     let is_known_token = || {
         token_preferences.iter().any(|entry| {
             entry.is_enabled
-                && entry.symbol == coin.symbol
-                && entry.chain.chain_name() == coin.chain_name
+                && entry.token.symbol == coin.symbol
+                && entry.token.chain == coin.chain_name
                 && match coin.contract_address.as_deref() {
-                    Some(contract) => entry.contract_address.eq_ignore_ascii_case(contract),
+                    Some(contract) => entry.token.contract.eq_ignore_ascii_case(contract),
                     None => true,
                 }
         })

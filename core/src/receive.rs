@@ -159,25 +159,6 @@ pub fn receive_address_message(input: ReceiveAddressMessageInput) -> String {
     "Receive is not enabled for this chain.".to_string()
 }
 
-/// Picks the user-visible wallet display name given import batch context.
-#[uniffi::export]
-pub fn wallet_display_name(
-    base_name: String,
-    batch_position: i32,
-    default_wallet_index: i32,
-    selected_chain_count: i32,
-) -> String {
-    let trimmed = base_name.trim();
-    if trimmed.is_empty() {
-        return format!("Wallet {default_wallet_index}");
-    }
-    if selected_chain_count > 1 {
-        format!("{trimmed} {batch_position}")
-    } else {
-        trimmed.to_string()
-    }
-}
-
 /// Returns the next integer to use for a default "Wallet N" name, given the
 /// set of existing wallet names.
 #[uniffi::export]
@@ -314,14 +295,6 @@ mod tests {
         i.symbol = "TRX".into();
         i.chain_address = Some("TXYZ".into());
         assert_eq!(receive_address_message(i), "TXYZ");
-    }
-
-    #[test]
-    fn wallet_display_name_variants() {
-        assert_eq!(wallet_display_name("".into(), 2, 5, 3), "Wallet 5");
-        assert_eq!(wallet_display_name("   ".into(), 2, 7, 3), "Wallet 7");
-        assert_eq!(wallet_display_name("Main".into(), 2, 1, 3), "Main 2");
-        assert_eq!(wallet_display_name("Main".into(), 2, 1, 1), "Main");
     }
 
     #[test]

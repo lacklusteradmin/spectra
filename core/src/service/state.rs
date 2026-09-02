@@ -261,7 +261,7 @@ impl WalletService {
     /// Upsert a batch of transaction history records. `records[*].payload`
     /// is the typed `CorePersistedTransactionRecord`; Rust serializes to JSON
     /// for the SQLite TEXT column internally — no JSON crosses the FFI.
-    pub async fn upsert_history_records(
+    pub(crate) async fn upsert_history_records(
         &self,
         records: Vec<crate::wallet_db::HistoryRecord>,
     ) -> Result<(), SpectraBridgeError> {
@@ -283,37 +283,6 @@ impl WalletService {
             .map_err(|e| SpectraBridgeError::from(format!("spawn_blocking: {e}")))?
             .map_err(Into::into)
     }
-
-    pub async fn delete_history_records(
-        &self,
-        ids: Vec<String>,
-    ) -> Result<(), SpectraBridgeError> {
-        let db_path = self.bound_state_db_path().await?;
-        tokio::task::spawn_blocking(move || crate::wallet_db::history_delete(&db_path, &ids))
-            .await
-            .map_err(|e| SpectraBridgeError::from(format!("spawn_blocking: {e}")))?
-            .map_err(Into::into)
-    }
-
-    /// Atomically replace ALL history records with the provided batch.
-    /// Replace the whole history table.
-    ///
-    /// `clear_all_history_records()` was a second export for this with an empty
-    /// slice: `history_replace_all` deletes every row before inserting, so the
-    /// two ran the same `DELETE` and differed only in what followed it.
-    pub async fn replace_all_history_records(
-        &self,
-        records: Vec<crate::wallet_db::HistoryRecord>,
-    ) -> Result<(), SpectraBridgeError> {
-        let db_path = self.bound_state_db_path().await?;
-        tokio::task::spawn_blocking(move || {
-            crate::wallet_db::history_replace_all(&db_path, &records)
-        })
-        .await
-        .map_err(|e| SpectraBridgeError::from(format!("spawn_blocking: {e}")))?
-        .map_err(Into::into)
-    }
-
 
     // ── Owned application state ───────────────────────────────────────────
     //
@@ -515,7 +484,7 @@ impl WalletService {
         };
         // Unpriced on a testnet, then the live quote, then the amount the
         // holding was last stored with. Same order the shell applied.
-        let value_of = |coin: &crate::store::wallet_domain::CoreCoin| -> Option<f64> {
+        let value_of = |coin: &crate::store::wallet_domain::AssetHolding| -> Option<f64> {
             let title = network_title(&coin.chain_name);
             if crate::registry::Chain::from_display_name(&coin.chain_name)
                 .is_some_and(|chain| settings.network_chain(chain).is_testnet())
@@ -531,7 +500,7 @@ impl WalletService {
         };
 
         let mut order: Vec<String> = Vec::new();
-        let mut grouped: HashMap<String, Vec<crate::store::wallet_domain::CoreCoin>> =
+        let mut grouped: HashMap<String, Vec<crate::store::wallet_domain::AssetHolding>> =
             HashMap::new();
         for coin in derived
             .included_portfolio_holdings
@@ -557,7 +526,7 @@ impl WalletService {
             // One row per (chain, standard, contract): the same token held on
             // two wallets is one entry with the amounts summed.
             let mut chain_order: Vec<String> = Vec::new();
-            let mut by_chain: HashMap<String, crate::store::wallet_domain::CoreCoin> =
+            let mut by_chain: HashMap<String, crate::store::wallet_domain::AssetHolding> =
                 HashMap::new();
             for coin in coins {
                 let contract = crate::tokens::normalize_token_identifier(
@@ -976,12 +945,55 @@ impl WalletService {
     ///
     /// `clear_status_trackers()` was a second name for this with an empty list,
     /// and one call site already spelled it that way.
-    pub async fn retain_status_trackers(&self, transaction_ids: Vec<String>) {
-        let keep: std::collections::HashSet<String> = transaction_ids.into_iter().collect();
+    /// Drop trackers for transactions nothing polls any more.
+    ///
+    /// Refuses when no database is bound rather than reading "core holds no
+    /// transactions" as "none exist": dropping a live tracker stops a pending
+    /// send from ever being polled again, where keeping a stale one costs a
+    /// poll.
+    ///
+    /// Took the ids to keep, which meant the front end filtered core's own
+    /// transaction table — by kind, by chain, by status, and by the chain's
+    /// `pending_status_poll` shape — and told core the answer. Every one of
+    /// those is core's, so core works it out.
+    pub async fn prune_status_trackers(&self) -> Result<(), SpectraBridgeError> {
+        use crate::registry::{Chain, PendingStatusPoll};
+        let live: std::collections::HashSet<String> = self
+            .transactions()
+            .await?
+            .into_iter()
+            .filter(|record| {
+                let Some(chain) = Chain::from_display_name(&record.chain_name) else {
+                    return false;
+                };
+                if record.transaction_hash.as_deref().unwrap_or("").is_empty() {
+                    return false;
+                }
+                let PendingStatusPoll::Utxo {
+                    tracks_finality,
+                    require_send_kind,
+                } = chain.pending_status_poll()
+                else {
+                    return false;
+                };
+                if require_send_kind
+                    && record.kind != crate::store::wallet_domain::CoreTransactionKind::Send
+                {
+                    return false;
+                }
+                // A chain that counts confirmation depth keeps watching after
+                // the first confirmation; one that does not stops there.
+                use crate::store::wallet_domain::CoreTransactionStatus as S;
+                record.status == Some(S::Pending)
+                    || (tracks_finality && record.status == Some(S::Confirmed))
+            })
+            .map(|record| record.id)
+            .collect();
         self.status_trackers
             .write()
             .await
-            .retain(|id, _| keep.contains(id));
+            .retain(|id, _| live.contains(id));
+        Ok(())
     }
 
 
@@ -1270,29 +1282,26 @@ impl WalletService {
     /// addresses and wallet addresses core already holds. A caller used to
     /// compute it and pass it in, which meant the guarantee this lock provides
     /// depended on the caller's copy of three tables being current.
+    /// The keypool state for a wallet on a chain.
+    ///
+    /// A read. There were two of these — one that merged the baseline with the
+    /// stored record and *persisted* the merge, and one that merged without
+    /// persisting — returning the same value either way. The persist was a
+    /// cache write of a pure function's result, and it made a read take the
+    /// write lock. `reserve_*` recomputes the merge before it writes, so
+    /// nothing depended on it.
     pub async fn keypool_state(
         &self,
         wallet_id: String,
         chain_name: String,
-    ) -> Result<crate::wallet_db::KeypoolState, SpectraBridgeError> {
+    ) -> crate::wallet_db::KeypoolState {
         let baseline = self.chain_keypool_baseline(&wallet_id, &chain_name).await;
         let key = keypool_key(&wallet_id, &chain_name);
-        let mut keypool = self.keypool.write().await;
-        let merged = crate::store::plan_chain_keypool_state(
+        let keypool = self.keypool.read().await;
+        keypool_from_record(&crate::store::plan_chain_keypool_state(
             baseline,
             keypool.get(&key).map(record_from_keypool),
-        );
-        let next = keypool_from_record(&merged);
-        persist_keypool(
-            &self.state_db_path,
-            &mut keypool,
-            key,
-            &wallet_id,
-            &chain_name,
-            next.clone(),
-        )
-        .await?;
-        Ok(next)
+        ))
     }
 
     /// Reserve the next receive index, or return the one already reserved.
@@ -1390,23 +1399,6 @@ impl WalletService {
         .await
     }
 
-    /// The keypool a wallet would get, recording nothing.
-    ///
-    /// The mutating `keypool_state` writes, and a SwiftUI `body` that calls it
-    /// to report state ends up changing what it reports.
-    pub async fn keypool_state_for_display(
-        &self,
-        wallet_id: String,
-        chain_name: String,
-    ) -> crate::wallet_db::KeypoolState {
-        let baseline = self.chain_keypool_baseline(&wallet_id, &chain_name).await;
-        let key = keypool_key(&wallet_id, &chain_name);
-        let keypool = self.keypool.read().await;
-        keypool_from_record(&crate::store::plan_chain_keypool_state(
-            baseline,
-            keypool.get(&key).map(record_from_keypool),
-        ))
-    }
 
 
     /// Everything the wallet list implies, rendered.
@@ -1447,7 +1439,7 @@ impl WalletService {
         let mut seen_price_keys = HashSet::new();
         let mut grouped_order: Vec<String> = Vec::new();
         let mut grouped_totals: BTreeMap<String, f64> = BTreeMap::new();
-        let mut grouped_representative: BTreeMap<String, crate::store::wallet_domain::CoreCoin> =
+        let mut grouped_representative: BTreeMap<String, crate::store::wallet_domain::AssetHolding> =
             BTreeMap::new();
 
         let mut send_coins_by_wallet_id = HashMap::new();
@@ -1628,7 +1620,7 @@ impl WalletService {
         &self,
         symbol: &str,
         derived: &WalletDerivedState,
-    ) -> Option<crate::store::wallet_domain::CoreCoin> {
+    ) -> Option<crate::store::wallet_domain::AssetHolding> {
         if let Some(coin) = derived
             .included_portfolio_holdings
             .iter()
@@ -1639,18 +1631,20 @@ impl WalletService {
         let preferences = self.wallet_state.read().await.token_preferences.clone();
         let entry = preferences
             .iter()
-            .find(|e| e.symbol.eq_ignore_ascii_case(symbol))?;
-        Some(crate::store::wallet_domain::CoreCoin {
-            id: format!("tracked:{}:{}", entry.chain.chain_name(), entry.symbol),
-            name: entry.name.clone(),
-            symbol: entry.symbol.clone(),
-            coin_gecko_id: entry.coin_gecko_id.clone(),
-            chain_name: entry.chain.chain_name().to_string(),
-            token_standard: entry.token_standard.clone(),
-            contract_address: Some(entry.contract_address.clone())
+            .find(|e| e.token.symbol.eq_ignore_ascii_case(symbol))?;
+        Some(crate::store::wallet_domain::AssetHolding {
+            name: entry.token.name.clone(),
+            symbol: entry.token.symbol.clone(),
+            coin_gecko_id: entry.token.coingecko_id.clone(),
+            chain_name: entry.token.chain.clone(),
+            token_standard: entry.token.token_standard.clone(),
+            contract_address: Some(entry.token.contract.clone())
                 .filter(|c| !c.is_empty()),
             amount: 0.0,
-            price_usd: crate::formatting::stablecoin_fallback_price_usd(&entry.symbol),
+            // No quote. A pinned asset the wallet does not hold has no price
+            // until the feed answers for it, and inventing one puts a number
+            // the user cannot tell from a real quote next to their funds.
+            price_usd: 0.0,
         })
     }
 
@@ -1752,5 +1746,45 @@ impl WalletService {
                 "transaction store not opened: call open_state first".to_string(),
             )
         })
+    }
+}
+
+
+#[cfg(test)]
+mod pruning_reads_cores_own_tables {
+    use crate::registry::{Chain, PendingStatusPoll};
+
+    /// A chain that stops at the first confirmation must not keep a tracker for
+    /// a confirmed transaction.
+    ///
+    /// The filter this replaced lived in Swift and kept `pending` **or**
+    /// `confirmed` for every chain, without asking the chain's poll shape — so
+    /// on the chains that stop at one confirmation, every confirmed send held a
+    /// tracker nothing would ever poll again.
+    #[test]
+    fn only_chains_that_count_depth_keep_confirmed_transactions() {
+        let keeps_confirmed = |chain: Chain| {
+            matches!(
+                chain.pending_status_poll(),
+                PendingStatusPoll::Utxo {
+                    tracks_finality: true,
+                    ..
+                }
+            )
+        };
+        assert!(keeps_confirmed(Chain::Dogecoin), "Dogecoin shows a depth");
+        assert!(!keeps_confirmed(Chain::Litecoin));
+        assert!(!keeps_confirmed(Chain::Bitcoin));
+
+        // And a chain with no UTXO poll at all keeps nothing.
+        assert!(!keeps_confirmed(Chain::Ethereum));
+        assert!(!keeps_confirmed(Chain::Solana));
+    }
+
+    /// Pruning takes the stricter side when it cannot see the transactions.
+    #[tokio::test]
+    async fn pruning_refuses_rather_than_guessing() {
+        let service = crate::service::WalletService::new_typed(Vec::new()).expect("service");
+        assert!(service.prune_status_trackers().await.is_err());
     }
 }

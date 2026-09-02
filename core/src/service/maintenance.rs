@@ -283,7 +283,7 @@ impl WalletService {
 /// `None` for a chain's own gas asset — a chain's native asset is never one of
 /// its tokens — and for a token the user does not track.
 fn supported_evm_token(
-    holding: &crate::store::state::AssetHolding,
+    holding: &crate::store::wallet_domain::AssetHolding,
     preferences: &[crate::store::wallet_domain::CoreTokenPreferenceEntry],
 ) -> Option<(String, String)> {
     use crate::store::wallet_domain::CoreTokenHostingChain;
@@ -296,19 +296,19 @@ fn supported_evm_token(
     preferences
         .iter()
         .find(|entry| {
-            entry.chain == hosting
+            entry.hosting_chain() == Some(hosting)
                 && entry.is_enabled
-                && entry.symbol == holding.symbol
+                && entry.token.symbol == holding.symbol
                 && contract
                     .as_deref()
-                    .is_none_or(|c| entry.contract_address.to_lowercase() == c)
+                    .is_none_or(|c| entry.token.contract.to_lowercase() == c)
         })
-        .map(|entry| (entry.symbol.clone(), entry.contract_address.clone()))
+        .map(|entry| (entry.token.symbol.clone(), entry.token.contract.clone()))
 }
 
 /// What routing needs to know about a holding, derived from core's own state.
 fn routing_input(
-    holding: &crate::store::state::AssetHolding,
+    holding: &crate::store::wallet_domain::AssetHolding,
     preferences: &[crate::store::wallet_domain::CoreTokenPreferenceEntry],
 ) -> crate::send::SendAssetRoutingInput {
     crate::send::SendAssetRoutingInput {
@@ -327,7 +327,7 @@ fn routing_input(
 /// the holding's contract, or from the catalog by symbol when the holding does
 /// not carry one.
 fn supports_solana_send(
-    holding: &crate::store::state::AssetHolding,
+    holding: &crate::store::wallet_domain::AssetHolding,
     preferences: &[crate::store::wallet_domain::CoreTokenPreferenceEntry],
 ) -> bool {
     use crate::store::wallet_domain::CoreTokenHostingChain;
@@ -357,13 +357,13 @@ fn supports_solana_send(
     };
     preferences
         .iter()
-        .any(|entry| entry.chain == CoreTokenHostingChain::Solana && entry.contract_address == mint)
+        .any(|entry| entry.hosting_chain() == Some(CoreTokenHostingChain::Solana) && entry.token.contract == mint)
 }
 
 /// Whether a NEAR holding is a token this build can send. NEAR itself is not:
 /// the native path handles it.
 fn supports_near_token_send(
-    holding: &crate::store::state::AssetHolding,
+    holding: &crate::store::wallet_domain::AssetHolding,
     preferences: &[crate::store::wallet_domain::CoreTokenPreferenceEntry],
 ) -> bool {
     use crate::store::wallet_domain::CoreTokenHostingChain;
@@ -377,8 +377,8 @@ fn supports_near_token_send(
         return false;
     };
     preferences.iter().any(|entry| {
-        entry.chain == CoreTokenHostingChain::Near
-            && entry.contract_address.eq_ignore_ascii_case(contract)
+        entry.hosting_chain() == Some(CoreTokenHostingChain::Near)
+            && entry.token.contract.eq_ignore_ascii_case(contract)
     })
 }
 
@@ -393,7 +393,8 @@ fn token_standard_for(chain: crate::store::wallet_domain::CoreTokenHostingChain)
 #[cfg(test)]
 mod preflight_tests {
     use super::*;
-    use crate::store::state::{AssetHolding, WalletSummary};
+    use crate::store::wallet_domain::AssetHolding;
+    use crate::store::state::{WalletSummary};
     use crate::store::wallet_domain::{
         CoreTokenPreferenceCategory, CoreTokenPreferenceEntry, CoreTokenHostingChain,
     };
@@ -413,17 +414,23 @@ mod preflight_tests {
 
     fn known(chain: CoreTokenHostingChain, contract: &str) -> CoreTokenPreferenceEntry {
         CoreTokenPreferenceEntry {
-            id: format!("t:{contract}"),
-            chain,
-            name: "Token".into(),
-            symbol: "TOK".into(),
-            token_standard: String::new(),
-            contract_address: contract.to_string(),
-            coin_gecko_id: String::new(),
-            decimals: 6,
             category: CoreTokenPreferenceCategory::Stablecoin,
             is_built_in: false,
             is_enabled: true,
+            token: crate::tokens::TokenEntry {
+                chain: chain.chain_name().to_string(),
+                name: "Token".into(),
+                symbol: "TOK".into(),
+                token_standard: String::new(),
+                contract: contract.to_string(),
+                coingecko_id: String::new(),
+                decimals: 6,
+                tags: Vec::new(),
+                comment: String::new(),
+                color: String::new(),
+                asset_name: String::new(),
+                enabled: true,
+            },
         }
     }
 

@@ -14,28 +14,37 @@ static TOKENS_TOML: &str = include_str!("../data/tokens.toml");
 
 #[derive(Debug, Deserialize)]
 struct TomlFile {
-    tokens: Vec<TomlToken>,
+    assets: Vec<TomlAsset>,
+    deployments: Vec<TomlDeployment>,
 }
 
+/// What a token is — one row however many chains it ships on.
 #[derive(Debug, Deserialize)]
-struct TomlToken {
-    chain: String,
-    name: String,
+struct TomlAsset {
     symbol: String,
-    standard: String,
-    contract: String,
+    name: String,
     coingecko_id: String,
-    decimals: u32,
-    tags: Vec<String>,
-    comment: String,
     color: String,
     asset_name: String,
+    tags: Vec<String>,
+    comment: String,
+}
+
+/// Where it lives, and what is true only there.
+#[derive(Debug, Deserialize)]
+struct TomlDeployment {
+    asset: String,
+    chain: String,
+    contract: String,
+    decimals: u32,
+    standard: String,
     enabled: bool,
 }
 
-// ── Public serialized shape (mirrors ChainTokenRegistryEntry in Swift)
+// ── Public shape: one deployment, with its asset's facts joined in.
 
-#[derive(Debug, Clone, Serialize, uniffi::Record)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, uniffi::Record)]
+#[serde(rename_all = "camelCase")]
 pub struct TokenEntry {
     pub chain: String,
     pub name: String,
@@ -56,22 +65,35 @@ pub struct TokenEntry {
 static CATALOG: LazyLock<Vec<TokenEntry>> = LazyLock::new(|| {
     let parsed: TomlFile = toml::from_str(TOKENS_TOML)
         .expect("tokens.toml is embedded at compile time and must be valid TOML");
+    let assets: std::collections::HashMap<&str, &TomlAsset> = parsed
+        .assets
+        .iter()
+        .map(|a| (a.symbol.as_str(), a))
+        .collect();
     parsed
-        .tokens
-        .into_iter()
-        .map(|t| TokenEntry {
-            chain: t.chain,
-            name: t.name,
-            symbol: t.symbol,
-            token_standard: t.standard,
-            contract: t.contract,
-            coingecko_id: t.coingecko_id,
-            decimals: t.decimals,
-            tags: t.tags,
-            comment: t.comment,
-            color: t.color,
-            asset_name: t.asset_name,
-            enabled: t.enabled,
+        .deployments
+        .iter()
+        .map(|d| {
+            // A deployment naming an asset the file does not define is a
+            // build-time mistake, not a row to skip: the entry would carry a
+            // symbol and nothing else.
+            let a = assets.get(d.asset.as_str()).unwrap_or_else(|| {
+                panic!("tokens.toml: deployment on {} names unknown asset {}", d.chain, d.asset)
+            });
+            TokenEntry {
+                chain: d.chain.clone(),
+                name: a.name.clone(),
+                symbol: a.symbol.clone(),
+                token_standard: d.standard.clone(),
+                contract: d.contract.clone(),
+                coingecko_id: a.coingecko_id.clone(),
+                decimals: d.decimals,
+                tags: a.tags.clone(),
+                comment: a.comment.clone(),
+                color: a.color.clone(),
+                asset_name: a.asset_name.clone(),
+                enabled: d.enabled,
+            }
         })
         .collect()
 });
@@ -405,4 +427,87 @@ mod tests {
         );
     }
 
+}
+
+
+#[cfg(test)]
+mod the_catalog_is_two_tables {
+    use super::*;
+    use std::collections::{HashMap, HashSet};
+
+    /// A token's non-deployment facts are one fact, whatever it is deployed on.
+    ///
+    /// They were columns on every deployment row, so a token on ten chains
+    /// carried ten names and ten colours — and DAI's had already come apart:
+    /// "Dai" in orange on Ethereum, "Dai Stablecoin" in yellow on Base and
+    /// Polygon. The join makes that unrepresentable; this asserts it.
+    #[test]
+    fn every_deployment_of_a_token_agrees_about_the_token() {
+        let mut seen: HashMap<&str, &TokenEntry> = HashMap::new();
+        for entry in CATALOG.iter() {
+            let first = seen.entry(entry.symbol.as_str()).or_insert(entry);
+            for (field, a, b) in [
+                ("name", &first.name, &entry.name),
+                ("coingecko_id", &first.coingecko_id, &entry.coingecko_id),
+                ("color", &first.color, &entry.color),
+                ("asset_name", &first.asset_name, &entry.asset_name),
+                ("comment", &first.comment, &entry.comment),
+            ] {
+                assert_eq!(
+                    a, b,
+                    "{}'s {field} differs between {} and {}",
+                    entry.symbol, first.chain, entry.chain
+                );
+            }
+            assert_eq!(first.tags, entry.tags, "{}'s tags differ", entry.symbol);
+        }
+    }
+
+    /// Decimals stay per deployment, and the catalog still says so.
+    ///
+    /// This is the field the split must *not* fold up: a bridged token really
+    /// does differ by chain, and folding it would silently mis-scale a balance.
+    #[test]
+    fn decimals_are_allowed_to_differ_by_chain() {
+        let mut by_symbol: HashMap<&str, HashSet<u32>> = HashMap::new();
+        for entry in CATALOG.iter() {
+            by_symbol
+                .entry(entry.symbol.as_str())
+                .or_default()
+                .insert(entry.decimals);
+        }
+        let differing: Vec<&str> = by_symbol
+            .iter()
+            .filter(|(_, d)| d.len() > 1)
+            .map(|(s, _)| *s)
+            .collect();
+        assert!(
+            differing.len() >= 5,
+            "expected several bridged tokens to differ in decimals, found {differing:?}"
+        );
+        // LINK is 18 on Ethereum and 8 on Solana; if that ever reads the same
+        // on both, the split folded a field it should not have.
+        let link: HashSet<u32> = CATALOG
+            .iter()
+            .filter(|e| e.symbol == "LINK")
+            .map(|e| e.decimals)
+            .collect();
+        assert!(link.len() > 1, "LINK's decimals collapsed to one value");
+    }
+
+    /// Every deployment resolves to an asset, and every asset is deployed
+    /// somewhere. A row on either side with no partner is dead data.
+    #[test]
+    fn the_two_tables_cover_each_other() {
+        let parsed: TomlFile = toml::from_str(TOKENS_TOML).expect("valid TOML");
+        let deployed: HashSet<&str> = parsed.deployments.iter().map(|d| d.asset.as_str()).collect();
+        for asset in &parsed.assets {
+            assert!(
+                deployed.contains(asset.symbol.as_str()),
+                "{} is an asset with no deployment",
+                asset.symbol
+            );
+        }
+        assert_eq!(CATALOG.len(), parsed.deployments.len());
+    }
 }

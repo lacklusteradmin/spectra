@@ -467,19 +467,16 @@ pub struct EvmNativeAsset {
 /// the chain name is not a known EVM chain.
 #[uniffi::export]
 pub fn history_evm_native_asset(chain_name: String) -> Option<EvmNativeAsset> {
-    let (name, symbol) = match chain_name.as_str() {
-        "Ethereum" | "Ethereum Sepolia" | "Ethereum Hoodi" | "Arbitrum" | "Optimism" => {
-            ("Ether", "ETH")
-        }
-        "Avalanche" => ("Avalanche", "AVAX"),
-        "BNB Chain" => ("BNB", "BNB"),
-        "Ethereum Classic" => ("Ethereum Classic", "ETC"),
-        "Hyperliquid" => ("Hyperliquid", "HYPE"),
-        _ => return None,
-    };
+    // Both halves are catalog columns. Nine names were written out here and the
+    // other twenty-four EVM networks returned `None`, so a history row on Base,
+    // Polygon, Linea and the rest had no asset to name.
+    let chain = crate::registry::Chain::from_display_name(&chain_name)?;
+    if !chain.is_evm() {
+        return None;
+    }
     Some(EvmNativeAsset {
-        asset_name: name.into(),
-        symbol: symbol.into(),
+        asset_name: chain.entry().native_asset_name.clone(),
+        symbol: chain.entry().gas_token_symbol.clone(),
     })
 }
 

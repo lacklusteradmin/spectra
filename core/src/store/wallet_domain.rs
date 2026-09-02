@@ -45,8 +45,7 @@ pub enum CoreSeedDerivationPreset {
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq, uniffi::Record)]
 #[serde(rename_all = "camelCase")]
-pub struct CoreCoin {
-    pub id: String,
+pub struct AssetHolding {
     pub name: String,
     pub symbol: String,
     pub coin_gecko_id: String,
@@ -176,7 +175,7 @@ pub struct CoreImportedWallet {
     #[serde(default)]
     pub derivation_overrides: CoreWalletDerivationOverrides,
     pub selected_chain: String,
-    pub holdings: Vec<CoreCoin>,
+    pub holdings: Vec<AssetHolding>,
     pub include_in_portfolio_total: bool,
 }
 
@@ -239,7 +238,7 @@ impl CoreImportedWallet {
     /// whether the Keychain holds signing material — so the caller supplies it.
     pub fn to_summary(&self, is_watch_only: bool) -> crate::store::state::WalletSummary {
         use crate::registry::Chain;
-        use crate::store::state::{AssetHolding, WalletAddress, WalletSummary};
+        use crate::store::state::{WalletAddress, WalletSummary};
 
         let chain = Chain::from_display_name(&self.selected_chain);
         let derivation_path = chain.and_then(|chain| {
@@ -264,22 +263,7 @@ impl CoreImportedWallet {
             .to_string(),
             derivation_path: derivation_path.clone(),
             derivation_overrides: self.derivation_overrides.clone(),
-            holdings: self
-                .holdings
-                .iter()
-                .map(|coin| AssetHolding {
-                    // `CoreCoin::id` is a SwiftUI `Identifiable` key, not
-                    // domain data, so it does not survive into the summary.
-                    name: coin.name.clone(),
-                    symbol: coin.symbol.clone(),
-                    coin_gecko_id: coin.coin_gecko_id.clone(),
-                    chain_name: coin.chain_name.clone(),
-                    token_standard: coin.token_standard.clone(),
-                    contract_address: coin.contract_address.clone(),
-                    amount: coin.amount,
-                    price_usd: coin.price_usd,
-                })
-                .collect(),
+            holdings: self.holdings.clone(),
             addresses: chain
                 .and_then(|chain| {
                     self.addresses
@@ -351,12 +335,7 @@ impl crate::store::state::WalletSummary {
             holdings: self
                 .holdings
                 .iter()
-                .map(|holding| CoreCoin {
-                    // Derived from what identifies the holding, not random.
-                    // A view model is rebuilt on every projection refresh, and
-                    // a fresh id each time would make SwiftUI treat every row
-                    // as new — losing selection and animating the whole list.
-                    id: holding_identity(holding),
+                .map(|holding| AssetHolding {
                     name: holding.name.clone(),
                     symbol: holding.symbol.clone(),
                     coin_gecko_id: holding.coin_gecko_id.clone(),
@@ -374,7 +353,13 @@ impl crate::store::state::WalletSummary {
 
 /// Stable identity for a holding: chain, symbol and contract are what make two
 /// holdings the same asset.
-fn holding_identity(holding: &crate::store::state::AssetHolding) -> String {
+///
+/// The front end's list key. It used to be an `id` field on the record, filled
+/// by whoever built it — five different formats across the callers, one of them
+/// a fresh `UUID` per build, which makes SwiftUI treat every row as new and
+/// re-animate the whole list. Derived from the holding, it cannot drift.
+#[uniffi::export]
+pub fn holding_identity(holding: &crate::store::wallet_domain::AssetHolding) -> String {
     format!(
         "{}|{}|{}",
         holding.chain_name,
@@ -501,28 +486,52 @@ pub enum CoreTokenPreferenceCategory {
     Custom,
 }
 
-/// Swift `TokenPreferenceEntry`. UUID id is encoded as its standard string form.
+/// A token the app knows about, and what the user has done to it.
+///
+/// Held seven copies of the catalog's fields under different names —
+/// `contract_address` for `contract`, `coin_gecko_id` for `coingecko_id`,
+/// `decimals: i32` for `decimals: u32` — so a token had four spellings of its
+/// contract across the catalog, the state, the Swift mirror and the fetch
+/// descriptor. It embeds the token now: there is one spelling because there is
+/// one record.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, uniffi::Record)]
 #[serde(rename_all = "camelCase")]
 pub struct CoreTokenPreferenceEntry {
-    pub id: String,
-    pub chain: CoreTokenHostingChain,
-    pub name: String,
-    pub symbol: String,
-    pub token_standard: String,
-    pub contract_address: String,
-    #[serde(rename = "coinGeckoID")]
-    pub coin_gecko_id: String,
-    pub decimals: i32,
+    pub token: crate::tokens::TokenEntry,
     pub category: CoreTokenPreferenceCategory,
+    /// The catalog ships it; the user cannot edit or delete it.
     pub is_built_in: bool,
     pub is_enabled: bool,
+}
+
+impl CoreTokenPreferenceEntry {
+    /// Identity: a token *is* its contract on its chain. The id used to be a
+    /// stored `builtin:{chain}:{contract}` string, regenerated on every launch.
+    pub fn id(&self) -> String {
+        format!("{}|{}", self.token.chain, self.token.contract)
+    }
+
+    /// The category the catalog's tags imply. It was stored beside the tags it
+    /// is computed from, which is a second encoding of one fact.
+    pub fn category_from_tags(tags: &[String]) -> CoreTokenPreferenceCategory {
+        tags.iter()
+            .find_map(|tag| match tag.as_str() {
+                "stablecoin" => Some(CoreTokenPreferenceCategory::Stablecoin),
+                "meme" => Some(CoreTokenPreferenceCategory::Meme),
+                _ => None,
+            })
+            .unwrap_or(CoreTokenPreferenceCategory::Custom)
+    }
+
+    pub fn hosting_chain(&self) -> Option<CoreTokenHostingChain> {
+        CoreTokenHostingChain::from_chain_name(&self.token.chain)
+    }
 }
 
 /// Swift `DashboardAssetChainEntry` — Color omitted (derived in Swift).
 #[derive(Debug, Clone, PartialEq, uniffi::Record)]
 pub struct CoreDashboardAssetChainEntry {
-    pub coin: CoreCoin,
+    pub coin: AssetHolding,
     pub value_usd: Option<f64>,
 }
 
@@ -530,7 +539,7 @@ pub struct CoreDashboardAssetChainEntry {
 #[derive(Debug, Clone, PartialEq, uniffi::Record)]
 pub struct CoreDashboardAssetGroup {
     pub id: String,
-    pub representative_coin: CoreCoin,
+    pub representative_coin: AssetHolding,
     pub total_amount: f64,
     pub total_value_usd: Option<f64>,
     pub chain_entries: Vec<CoreDashboardAssetChainEntry>,
@@ -569,25 +578,40 @@ mod roundtrip_tests {
     #[test]
     fn token_preference_entry_roundtrip_matches_swift_keys() {
         let entry = CoreTokenPreferenceEntry {
-            id: "11111111-1111-1111-1111-111111111111".to_string(),
-            chain: CoreTokenHostingChain::Bnb,
-            name: "Tether USD".to_string(),
-            symbol: "USDT".to_string(),
-            token_standard: "BEP-20".to_string(),
-            contract_address: "0x55d39897".to_string(),
-            coin_gecko_id: "tether".to_string(),
-            decimals: 18,
             category: CoreTokenPreferenceCategory::Stablecoin,
             is_built_in: true,
             is_enabled: true,
+            token: crate::tokens::TokenEntry {
+                chain: "BNB Chain".to_string(),
+                name: "Tether USD".to_string(),
+                symbol: "USDT".to_string(),
+                token_standard: "BEP-20".to_string(),
+                contract: "0x55d39897".to_string(),
+                coingecko_id: "tether".to_string(),
+                decimals: 18,
+                tags: vec!["stablecoin".to_string()],
+                comment: String::new(),
+                color: "green".to_string(),
+                asset_name: "usdt".to_string(),
+                enabled: true,
+            },
         };
         let json = serde_json::to_string(&entry).unwrap();
         assert!(json.contains("\"chain\":\"BNB Chain\""));
         assert!(json.contains("\"category\":\"stablecoin\""));
-        assert!(json.contains("\"coinGeckoID\""));
+        assert!(json.contains("\"coingeckoId\""));
         assert!(json.contains("\"isBuiltIn\":true"));
         let decoded: CoreTokenPreferenceEntry = serde_json::from_str(&json).unwrap();
         assert_eq!(decoded, entry);
+
+        // Identity is the token's, not a stored string. It used to be a
+        // `builtin:{chain}:{contract}` id regenerated on every launch.
+        assert_eq!(entry.id(), "BNB Chain|0x55d39897");
+        // And the category the tags imply, rather than a second copy of it.
+        assert_eq!(
+            CoreTokenPreferenceEntry::category_from_tags(&entry.token.tags),
+            entry.category
+        );
     }
 
     #[test]

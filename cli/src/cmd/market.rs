@@ -211,7 +211,7 @@ pub(super) fn spot_price_usd(
     // Pricing needs no chain endpoints — it is not a per-chain RPC call.
     let service = WalletService::new_typed(Vec::new()).map_err(CliError::from)?;
     ctx.rt
-        .block_on(service.fetch_prices_typed("CoinGecko".to_string(), requests))
+        .block_on(service.fetch_prices_typed(requests))
         .map_err(CliError::from)
 }
 
@@ -239,7 +239,7 @@ fn fiat_conversion(ctx: &Ctx) -> CliResult<(f64, String)> {
     let service = WalletService::new_typed(Vec::new()).map_err(CliError::from)?;
     let rates = ctx
         .rt
-        .block_on(service.fetch_fiat_rates_typed("OpenER".to_string(), vec![code.clone()]));
+        .block_on(service.fetch_fiat_rates_typed(vec![code.clone()]));
     Ok(match rates.map(|rates| rates.get(&code).copied()) {
         Ok(Some(rate)) if rate > 0.0 => (rate, code),
         _ => (1.0, "USD".to_string()),

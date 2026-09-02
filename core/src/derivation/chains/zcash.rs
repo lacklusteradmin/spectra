@@ -33,8 +33,30 @@ pub(crate) fn zcash_p2pkh_script(pubkey_hash: &[u8; 20]) -> Vec<u8> {
 }
 
 /// True if address passes Zcash base58check decode with a recognised t1/t3 version prefix.
-pub fn validate_zcash_address(address: &str) -> bool {
-    decode_zcash_address(address).is_ok()
+/// Whether `address` is valid on the network asked about.
+///
+/// Took no network, so the testnet arm of the dispatcher ran the mainnet
+/// decoder: a derived testnet address failed the app's own validator, which
+/// means the receive screen showed an address the send screen would refuse.
+/// Testnet transparent addresses carry their own version bytes.
+pub(crate) fn decode_zcash_testnet_address(address: &str) -> Result<[u8; 20], String> {
+    let decoded = bs58::decode(address)
+        .with_check(None)
+        .into_vec()
+        .map_err(|e| format!("invalid zcash testnet address: {e}"))?;
+    if decoded.len() != 22 || [decoded[0], decoded[1]] != ZCASH_TESTNET_VERSION {
+        return Err("not a zcash testnet transparent address".to_string());
+    }
+    let mut hash = [0u8; 20];
+    hash.copy_from_slice(&decoded[2..22]);
+    Ok(hash)
+}
+
+pub fn validate_zcash_address(address: &str, testnet: bool) -> bool {
+    match decode_zcash_address(address) {
+        Ok(_) => !testnet,
+        Err(_) => testnet && decode_zcash_testnet_address(address).is_ok(),
+    }
 }
 
 use crate::derivation::chains::bitcoin::{base58check_encode, derive_secp_keypair, hash160};
@@ -120,15 +142,15 @@ mod tests {
 
     #[test]
     fn rejects_random_garbage() {
-        assert!(!validate_zcash_address(""));
-        assert!(!validate_zcash_address("not-a-zec-address"));
+        assert!(!validate_zcash_address("", false));
+        assert!(!validate_zcash_address("not-a-zec-address", false));
     }
 
     #[test]
     fn rejects_btc_p2pkh() {
         assert!(!validate_zcash_address(
             "1A1zP1eP5QGefi2DMPTfTL5SLmv7DivfNa"
-        ));
+        , false));
     }
 
     #[test]

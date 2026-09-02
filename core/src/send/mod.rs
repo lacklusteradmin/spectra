@@ -369,6 +369,167 @@ mod tests {
         }
     }
 
+    /// `has_send_preview` and the router agree: a chain the router gives a
+    /// preview kind is a chain the send screen can show a network card for.
+    #[test]
+    fn every_routable_chain_has_a_send_preview() {
+        use crate::registry::Chain;
+
+        for chain in Chain::all() {
+            let route = route_send_asset(&SendAssetRoutingInput {
+                chain_name: chain.chain_display_name().to_string(),
+                symbol: chain.coin_symbol().to_string(),
+                is_evm_chain: chain.is_evm(),
+                supports_solana_send_coin: false,
+                supports_near_token_send: false,
+            });
+            if route.preview_kind.is_some() {
+                assert!(
+                    chain.has_send_preview(),
+                    "{} routes a send but the screen would say it has no network preview",
+                    chain.chain_display_name()
+                );
+            }
+        }
+    }
+
+    /// Every EVM chain folds its addresses the same way, mainnets and testnets
+    /// alike. Seven of twenty-three were named before, so an address book entry
+    /// on the other sixteen kept whatever case was typed.
+    #[test]
+    fn every_evm_chain_lowercases_its_addresses() {
+        use crate::registry::Chain;
+        use crate::send::flow::normalize_address;
+
+        let mixed = "0xAbCdEf0123456789AbCdEf0123456789AbCdEf01";
+        for chain in Chain::all().filter(|c| c.is_evm()) {
+            assert_eq!(
+                normalize_address(chain.chain_display_name(), mixed),
+                mixed.to_lowercase(),
+                "{} left a mixed-case address as typed",
+                chain.chain_display_name()
+            );
+        }
+    }
+
+    /// And a chain whose addresses are case-significant is left alone. Folding
+    /// a Bitcoin or Solana address destroys it.
+    #[test]
+    fn case_significant_chains_are_untouched() {
+        use crate::registry::{AddressNormalization, Chain};
+        use crate::send::flow::normalize_address;
+
+        for chain in Chain::all() {
+            if chain.address_normalization() != AddressNormalization::None {
+                continue;
+            }
+            let sample = "1BvBMSEYstWetqTFn5Au4m4GFg7xJaNVN2";
+            assert_eq!(
+                normalize_address(chain.chain_display_name(), sample),
+                sample,
+                "{} altered an address whose case is significant",
+                chain.chain_display_name()
+            );
+        }
+    }
+
+    /// Every EVM chain runs the EVM destination checks, and every one that is
+    /// not Ethereum flags an ENS name.
+    ///
+    /// Two nested lists gated this: an outer `is_evm` naming seven of the
+    /// twenty-three EVM mainnets, and inside it an `is_l2` naming five. So a
+    /// Bitcoin address pasted while sending on Base raised nothing at all, and
+    /// an ENS name on Base raised nothing either.
+    #[test]
+    fn every_evm_chain_runs_the_evm_destination_checks() {
+        use crate::registry::Chain;
+        use crate::send::flow::{core_evaluate_high_risk_send_reasons, HighRiskSendRequest};
+
+        let request = |chain: Chain, destination: &str| HighRiskSendRequest {
+            chain_name: chain.chain_display_name().to_string(),
+            symbol: chain.coin_symbol().to_string(),
+            amount: 1.0,
+            holding_amount: 100.0,
+            destination_address: destination.to_string(),
+            destination_input: destination.to_string(),
+            used_ens_resolution: false,
+            wallet_selected_chain: chain.chain_display_name().to_string(),
+            address_book_entries: Vec::new(),
+            tx_addresses: Vec::new(),
+        };
+        let codes = |w: Vec<crate::send::flow::HighRiskSendWarning>| -> Vec<String> {
+            w.into_iter().map(|w| w.code).collect()
+        };
+
+        for chain in Chain::all().filter(|c| c.is_evm()) {
+            // A native SegWit address is not an EVM address on any chain.
+            let bitcoin_address = "bc1qar0srrr7xfkvy5l643lydnw9re59gtzzwf5mdq";
+            assert!(
+                codes(core_evaluate_high_risk_send_reasons(request(chain, bitcoin_address)))
+                    .contains(&"non_evm_on_evm".to_string()),
+                "{} accepted a Bitcoin address with no warning",
+                chain.chain_display_name()
+            );
+
+            let ens = "vitalik.eth";
+            let raised = codes(core_evaluate_high_risk_send_reasons(request(chain, ens)));
+            let expected = chain.mainnet_counterpart() != Chain::Ethereum;
+            assert_eq!(
+                raised.contains(&"ens_off_ethereum".to_string()),
+                expected,
+                "{} handled an ENS name wrongly",
+                chain.chain_display_name()
+            );
+        }
+    }
+
+    /// Every EVM chain can name the asset its history is denominated in. Nine
+    /// chain names were written out; the other twenty-four returned `None`.
+    #[test]
+    fn every_evm_chain_names_its_native_asset() {
+        use crate::registry::Chain;
+
+        for chain in Chain::all().filter(|c| c.is_evm()) {
+            let asset = crate::fetch::history_decode::history_evm_native_asset(
+                chain.chain_display_name().to_string(),
+            )
+            .unwrap_or_else(|| panic!("{} has no native asset", chain.chain_display_name()));
+            assert_eq!(asset.symbol, chain.entry().gas_token_symbol);
+            assert!(!asset.asset_name.is_empty());
+        }
+        // And a chain that is not EVM is still refused.
+        assert!(crate::fetch::history_decode::history_evm_native_asset("Bitcoin".into()).is_none());
+    }
+
+    /// The MWEB overhead belongs to Litecoin and to MWEB destinations only.
+    ///
+    /// It lived inside `refreshLitecoinSendPreview`, which is why the other
+    /// UTXO chains needed their own preview functions to not have it.
+    #[test]
+    fn only_litecoin_mweb_destinations_cost_extra_bytes() {
+        use crate::registry::Chain;
+
+        let mweb = "ltcmweb1qq0000000000000000000000000000000000000000000000000000000";
+        assert_eq!(Chain::Litecoin.extra_output_overhead_bytes(mweb), 1017);
+        // A testnet MWEB address on the same chain family, and the mainnet
+        // prefix on the testnet chain.
+        assert_eq!(Chain::LitecoinTestnet.extra_output_overhead_bytes("tmweb1qq"), 1017);
+        // A plain Litecoin address costs nothing extra.
+        assert_eq!(
+            Chain::Litecoin.extra_output_overhead_bytes("ltc1qw508d6qejxtdg4y5r3zarvary0c5xw7kv8f3t4"),
+            0
+        );
+        // And no other chain charges it, whatever the destination looks like.
+        for chain in Chain::all().filter(|c| c.mainnet_counterpart() != Chain::Litecoin) {
+            assert_eq!(
+                chain.extra_output_overhead_bytes(mweb),
+                0,
+                "{} charged Litecoin's MWEB overhead",
+                chain.chain_display_name()
+            );
+        }
+    }
+
     /// And nothing has a shape it cannot be routed to.
     #[test]
     fn every_preview_shape_belongs_to_a_chain_that_routes_there() {

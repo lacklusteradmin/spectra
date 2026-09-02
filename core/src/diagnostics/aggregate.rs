@@ -5,7 +5,7 @@
 
 use serde_json::Value;
 
-use super::types::EthereumTokenTransferHistoryDiagnostics;
+use super::types::{HistoryDiagnostics, HistoryDiagnosticsSource};
 
 /// EVM address normalization used by the diagnostics layer. Mirrors
 /// `normalizeEVMAddress` in `Send/SendPreviewTypes.swift`: lowercase
@@ -57,74 +57,93 @@ pub fn diagnostics_history_confirmed_txids(json: String) -> Vec<String> {
         .collect()
 }
 
-/// EVM diagnostics record seeded to the "running" placeholder shown
-/// while a refresh is in flight.
-#[uniffi::export]
-pub fn diagnostics_make_evm_running(address: String) -> EthereumTokenTransferHistoryDiagnostics {
-    EthereumTokenTransferHistoryDiagnostics {
-        address: normalize_evm_address(&address),
-        rpc_transfer_count: 0,
-        rpc_error: Some("Running...".into()),
-        blockscout_transfer_count: 0,
-        blockscout_error: None,
-        etherscan_transfer_count: 0,
-        etherscan_error: None,
-        ethplorer_transfer_count: 0,
-        ethplorer_error: None,
-        source_used: "running".into(),
-        transfer_scan_count: 0,
-        decoded_transfer_count: 0,
-        unsupported_transfer_drop_count: 0,
-        decoding_completeness_ratio: 0.0,
+/// The four backends an EVM history run asks, in the order it asks them.
+const EVM_HISTORY_SOURCES: &[&str] = &["rpc", "blockscout", "etherscan", "ethplorer"];
+
+fn evm_record(
+    wallet_id: String,
+    address: String,
+    source_used: &str,
+    counts: &[i32; 4],
+    errors: [Option<String>; 4],
+    scanned: Option<i32>,
+    decoded: i32,
+) -> HistoryDiagnostics {
+    HistoryDiagnostics {
+        wallet_id,
+        identifier: normalize_evm_address(&address),
+        source_used: source_used.to_string(),
+        transaction_count: decoded,
+        scanned_count: scanned,
+        next_cursor: None,
+        error: errors.iter().flatten().next().cloned(),
+        per_source: EVM_HISTORY_SOURCES
+            .iter()
+            .zip(counts)
+            .zip(errors)
+            .map(|((name, count), error)| HistoryDiagnosticsSource {
+                name: (*name).to_string(),
+                count: *count,
+                error,
+            })
+            .collect(),
     }
 }
 
-/// EVM diagnostics record seeded when a refresh failed. `error_description`
-/// is the message the caller would normally surface (e.g. `error.localizedDescription`).
+/// The placeholder shown while a refresh is in flight.
+#[uniffi::export]
+pub fn diagnostics_make_evm_running(wallet_id: String, address: String) -> HistoryDiagnostics {
+    evm_record(
+        wallet_id,
+        address,
+        "running",
+        &[0; 4],
+        [Some("Running...".into()), None, None, None],
+        None,
+        0,
+    )
+}
+
+/// Seeded when a refresh failed. `error_description` is the message the caller
+/// would otherwise surface.
 pub fn diagnostics_make_evm_error(
+    wallet_id: String,
     address: String,
     error_description: String,
-) -> EthereumTokenTransferHistoryDiagnostics {
-    EthereumTokenTransferHistoryDiagnostics {
-        address: normalize_evm_address(&address),
-        rpc_transfer_count: 0,
-        rpc_error: Some(error_description),
-        blockscout_transfer_count: 0,
-        blockscout_error: None,
-        etherscan_transfer_count: 0,
-        etherscan_error: None,
-        ethplorer_transfer_count: 0,
-        ethplorer_error: None,
-        source_used: "none".into(),
-        transfer_scan_count: 0,
-        decoded_transfer_count: 0,
-        unsupported_transfer_drop_count: 0,
-        decoding_completeness_ratio: 0.0,
-    }
+) -> HistoryDiagnostics {
+    evm_record(
+        wallet_id,
+        address,
+        "none",
+        &[0; 4],
+        [Some(error_description), None, None, None],
+        None,
+        0,
+    )
 }
 
-/// Build an EVM diagnostics record from a decoded history page.
-/// Used by `WalletService::fetch_evm_history_diagnostics`.
+/// Built from a decoded history page.
+///
+/// The count goes in `transaction_count` — what the run ended up with — as well
+/// as against the backend that produced it. The old record put it in
+/// `etherscan_transfer_count` alone and left `decoded_transfer_count` at zero,
+/// so every successful EVM refresh reported "0 decoded" and a decoding
+/// completeness of 0%.
 pub fn diagnostics_make_evm_success_record(
+    wallet_id: String,
     address: String,
     page: &crate::fetch::history_decode::EvmHistoryPageDecoded,
-) -> EthereumTokenTransferHistoryDiagnostics {
-    EthereumTokenTransferHistoryDiagnostics {
-        address: normalize_evm_address(&address),
-        rpc_transfer_count: 0,
-        rpc_error: None,
-        blockscout_transfer_count: 0,
-        blockscout_error: None,
-        etherscan_transfer_count: page.native.len() as i32,
-        etherscan_error: None,
-        ethplorer_transfer_count: 0,
-        ethplorer_error: None,
-        source_used: "rust".into(),
-        transfer_scan_count: 0,
-        decoded_transfer_count: 0,
-        unsupported_transfer_drop_count: 0,
-        decoding_completeness_ratio: 0.0,
-    }
+) -> HistoryDiagnostics {
+    let decoded = page.native.len() as i32;
+    evm_record(
+        wallet_id,
+        address,
+        "rust",
+        &[0, 0, decoded, 0],
+        [None, None, None, None],
+        Some(decoded),
+        decoded,
+    )
 }
 
 /// Outcome of a JSON-RPC reachability probe: whether the endpoint answered,
@@ -242,15 +261,16 @@ mod tests {
 
     #[test]
     fn evm_running_and_error_records() {
-        let r = diagnostics_make_evm_running("0xAbCDef".into());
-        assert_eq!(r.address, "0xabcdef");
+        let r = diagnostics_make_evm_running("w".into(), "0xAbCDef".into());
+        assert_eq!(r.identifier, "0xabcdef");
         assert_eq!(r.source_used, "running");
-        assert_eq!(r.rpc_error.as_deref(), Some("Running..."));
+        assert_eq!(r.error.as_deref(), Some("Running..."));
+        assert_eq!(r.per_source.len(), 4, "one entry per backend asked");
 
-        let e = diagnostics_make_evm_error("0xAA".into(), "boom".into());
-        assert_eq!(e.address, "0xaa");
+        let e = diagnostics_make_evm_error("w".into(), "0xAA".into(), "boom".into());
+        assert_eq!(e.identifier, "0xaa");
         assert_eq!(e.source_used, "none");
-        assert_eq!(e.rpc_error.as_deref(), Some("boom"));
+        assert_eq!(e.error.as_deref(), Some("boom"));
     }
 
     #[test]
@@ -269,10 +289,18 @@ mod tests {
                 })
                 .collect(),
         };
-        let s = diagnostics_make_evm_success_record("0xAB".into(), &page);
-        assert_eq!(s.etherscan_transfer_count, 3);
+        let s = diagnostics_make_evm_success_record("w".into(), "0xAB".into(), &page);
         assert_eq!(s.source_used, "rust");
-        assert_eq!(s.address, "0xab");
+        assert_eq!(s.identifier, "0xab");
+        // The count is what the run ended up with, not only a per-backend
+        // number: the old record left `decoded_transfer_count` at zero here,
+        // so a successful refresh reported nothing decoded.
+        assert_eq!(s.transaction_count, 3);
+        assert_eq!(s.decoding_completeness(), 1.0);
+        assert_eq!(
+            s.per_source.iter().find(|p| p.name == "etherscan").map(|p| p.count),
+            Some(3)
+        );
     }
 
     #[test]

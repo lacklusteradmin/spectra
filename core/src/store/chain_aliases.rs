@@ -2,91 +2,6 @@
 
 use std::collections::HashMap;
 
-fn known_chain_aliases() -> &'static [(&'static str, &'static str)] {
-    &[
-        ("bitcoin", "bitcoin"),
-        ("bitcoin cash", "bitcoin-cash"),
-        ("bitcoin sv", "bitcoin-sv"),
-        ("litecoin", "litecoin"),
-        ("dogecoin", "dogecoin"),
-        ("ethereum", "ethereum"),
-        ("ethereum classic", "ethereum-classic"),
-        ("arbitrum", "arbitrum"),
-        ("optimism", "optimism"),
-        ("bnb chain", "bnb"),
-        ("avalanche", "avalanche"),
-        ("hyperliquid", "hyperliquid"),
-        ("tron", "tron"),
-        ("solana", "solana"),
-        ("stellar", "stellar"),
-        ("cardano", "cardano"),
-        ("xrp ledger", "xrp"),
-        ("monero", "monero"),
-        ("sui", "sui"),
-        ("aptos", "aptos"),
-        ("ton", "ton"),
-        ("internet computer", "internet-computer"),
-        ("near", "near"),
-        ("polkadot", "polkadot"),
-        ("zcash", "zec"),
-        ("bitcoin gold", "btg"),
-        ("decred", "decred"),
-        ("kaspa", "kaspa"),
-        ("sei", "sei"),
-        ("celo", "celo"),
-        ("cronos", "cronos"),
-        ("opbnb", "opbnb"),
-        ("zksync era", "zksync"),
-        ("sonic", "sonic"),
-        ("berachain", "berachain"),
-        ("unichain", "unichain"),
-        ("ink", "ink"),
-        ("dash", "dash"),
-        ("x layer", "okb"),
-        ("bittensor", "tao"),
-    ]
-}
-
-fn native_symbol_chain_aliases() -> &'static [(&'static str, &'static str)] {
-    &[
-        ("BTC", "bitcoin"),
-        ("BCH", "bitcoin-cash"),
-        ("BSV", "bitcoin-sv"),
-        ("LTC", "litecoin"),
-        ("DOGE", "dogecoin"),
-        ("ETH", "ethereum"),
-        ("ETC", "ethereum-classic"),
-        ("ARB", "arbitrum"),
-        ("OP", "optimism"),
-        ("BNB", "bnb"),
-        ("AVAX", "avalanche"),
-        ("HYPE", "hyperliquid"),
-        ("TRX", "tron"),
-        ("SOL", "solana"),
-        ("XLM", "stellar"),
-        ("ADA", "cardano"),
-        ("XRP", "xrp"),
-        ("XMR", "monero"),
-        ("SUI", "sui"),
-        ("APT", "aptos"),
-        ("TON", "ton"),
-        ("ICP", "internet-computer"),
-        ("NEAR", "near"),
-        ("DOT", "polkadot"),
-        ("ZEC", "zec"),
-        ("BTG", "btg"),
-        ("DCR", "decred"),
-        ("KAS", "kaspa"),
-        ("SEI", "sei"),
-        ("CELO", "celo"),
-        ("CRO", "cronos"),
-        ("BERA", "berachain"),
-        ("DASH", "dash"),
-        ("OKB", "okb"),
-        ("TAO", "tao"),
-    ]
-}
-
 fn chain_id_by_chain_name() -> &'static HashMap<String, String> {
     use std::sync::OnceLock;
     static LOOKUP: OnceLock<HashMap<String, String>> = OnceLock::new();
@@ -99,32 +14,47 @@ fn chain_id_by_chain_name() -> &'static HashMap<String, String> {
     })
 }
 
+/// The registry id a chain name or native symbol stands for.
+///
+/// Two hand-written tables sat in front of this — forty name pairs and
+/// thirty-five symbol pairs. Thirty-five of the forty were the registry id
+/// spelled again; the other five (`zcash → zec`, `bitcoin gold → btg`,
+/// `zksync era → zksync`, `x layer → okb`, `bittensor → tao`) were compared
+/// against `NativeChainIconDescriptor.registryID`, which *is* the registry id,
+/// so they matched nothing and fell through to the chain-name comparison that
+/// would have answered anyway. Both tables covered forty of seventy-eight
+/// chains; the registry covers all of them.
 pub(super) fn canonical_chain_component_inner(chain_name: &str, symbol: &str) -> String {
-    // Most lookups hit `known_chain_aliases` on the first pass, so defer the
-    // String allocations as far as possible. Was: unconditional `.to_lowercase()`
-    // on the chain name + `.to_uppercase()` on the symbol — two heap allocs
-    // per call. Now: zero allocs in the hot path (alias hit), one in the
-    // wiki-lookup path, none in the symbol-alias path.
-    let trimmed_chain = chain_name.trim();
-    let trimmed_symbol = symbol.trim();
-    if let Some((_, alias)) = known_chain_aliases()
-        .iter()
-        .find(|(name, _)| name.eq_ignore_ascii_case(trimmed_chain))
-    {
-        return (*alias).to_string();
-    }
     // HashMap<String, String> requires an owned key for lookup; allocate once.
-    let normalized_chain_lower = trimmed_chain.to_lowercase();
+    let normalized_chain_lower = chain_name.trim().to_lowercase();
     if let Some(id) = chain_id_by_chain_name().get(&normalized_chain_lower) {
         return id.clone();
     }
-    if let Some((_, alias)) = native_symbol_chain_aliases()
-        .iter()
-        .find(|(sym, _)| sym.eq_ignore_ascii_case(trimmed_symbol))
-    {
-        return (*alias).to_string();
+    let trimmed_symbol = symbol.trim();
+    if !trimmed_symbol.is_empty() {
+        if let Some(id) = chain_id_by_native_symbol().get(&trimmed_symbol.to_uppercase()) {
+            return id.clone();
+        }
     }
     normalized_chain_lower.replace(' ', "-")
+}
+
+/// Native gas symbol → the id of the first chain in catalog order that pays
+/// its fees in it. The EVM family shares ETH, and Ethereum comes first.
+fn chain_id_by_native_symbol() -> &'static HashMap<String, String> {
+    use std::sync::OnceLock;
+    static LOOKUP: OnceLock<HashMap<String, String>> = OnceLock::new();
+    LOOKUP.get_or_init(|| {
+        let mut out = HashMap::new();
+        for c in crate::chains::catalog() {
+            if c.gas_token_symbol.is_empty() {
+                continue;
+            }
+            out.entry(c.gas_token_symbol.trim().to_uppercase())
+                .or_insert_with(|| c.id.clone());
+        }
+        out
+    })
 }
 
 #[uniffi::export]
@@ -182,5 +112,45 @@ pub fn core_normalized_icon_identifier(identifier: String) -> String {
             normalized.join(":")
         }
         _ => trimmed_identifier,
+    }
+}
+
+
+#[cfg(test)]
+mod canonical_component_covers_the_catalog {
+    use super::canonical_chain_component_inner;
+    use crate::registry::Chain;
+
+    /// Every chain resolves to its own registry id, by name and by native
+    /// symbol. The tables this replaced covered forty of seventy-eight.
+    #[test]
+    fn every_chain_name_resolves_to_its_registry_id() {
+        for chain in Chain::all() {
+            assert_eq!(
+                canonical_chain_component_inner(chain.chain_display_name(), ""),
+                chain.str_id(),
+                "{} did not resolve to its own id",
+                chain.chain_display_name()
+            );
+        }
+    }
+
+    /// A symbol with no chain name still finds a chain, and where several
+    /// chains share a symbol it is the first in catalog order.
+    #[test]
+    fn a_bare_native_symbol_resolves() {
+        assert_eq!(canonical_chain_component_inner("", "BTC"), "bitcoin");
+        assert_eq!(canonical_chain_component_inner("", "ETH"), "ethereum");
+        assert_eq!(canonical_chain_component_inner("", "ZEC"), "zcash");
+        assert_eq!(canonical_chain_component_inner("", "TAO"), "bittensor");
+    }
+
+    /// Something the registry has never heard of is slugged, not dropped.
+    #[test]
+    fn an_unknown_name_falls_back_to_a_slug() {
+        assert_eq!(
+            canonical_chain_component_inner("Some New Chain", ""),
+            "some-new-chain"
+        );
     }
 }

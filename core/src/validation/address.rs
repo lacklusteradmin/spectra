@@ -18,28 +18,11 @@ pub struct AddressValidationResult {
     pub normalized_value: Option<String>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, uniffi::Record)]
-#[serde(rename_all = "camelCase")]
-pub struct StringValidationRequest {
-    pub kind: String,
-    pub value: String,
-}
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, uniffi::Record)]
-#[serde(rename_all = "camelCase")]
-pub struct StringValidationResult {
-    pub is_valid: bool,
-    pub normalized_value: Option<String>,
-}
 
 #[uniffi::export]
 pub fn core_validate_address(request: AddressValidationRequest) -> AddressValidationResult {
     validate_address(request)
-}
-
-#[uniffi::export]
-pub fn core_validate_string_identifier(request: StringValidationRequest) -> StringValidationResult {
-    validate_string_identifier(request)
 }
 
 pub fn validate_address(request: AddressValidationRequest) -> AddressValidationResult {
@@ -82,33 +65,24 @@ pub fn validate_address(request: AddressValidationRequest) -> AddressValidationR
         "monero" => validate_monero_address(&normalized_input, false),
         "moneroStagenet" => validate_monero_address(&normalized_input, true),
         "cardano" | "cardanoTestnet" => validate_cardano_address(&normalized_input),
-        "zcash" | "zcashTestnet" => validate_zcash_address(&normalized_input),
+        "zcash" => validate_zcash_address(&normalized_input, false),
+        "zcashTestnet" => validate_zcash_address(&normalized_input, true),
         "bitcoinGold" => validate_bitcoin_gold_address(&normalized_input),
-        "decred" | "decredTestnet" => validate_decred_address(&normalized_input),
+        "decred" => validate_decred_address(&normalized_input, false),
+        "decredTestnet" => validate_decred_address(&normalized_input, true),
         "kaspa" | "kaspaTestnet" => validate_kaspa_address(&normalized_input),
-        "dash" | "dashTestnet" => validate_dash_address(&normalized_input),
+        "dash" => validate_dash_address(&normalized_input, false),
+        "dashTestnet" => validate_dash_address(&normalized_input, true),
         "bittensor" => validate_bittensor_address(&normalized_input),
+        // Not an address, but the same question in the same shape: a typed
+        // string, is it well formed, and what is its canonical spelling. It had
+        // its own export, its own request record and its own result record,
+        // each identical to these, to dispatch on one kind.
+        "aptosTokenType" => validate_aptos_token_type(&normalized_input),
         _ => invalid_result(),
     }
 }
 
-pub fn validate_string_identifier(request: StringValidationRequest) -> StringValidationResult {
-    let normalized_input = trim_string(&request.value);
-    if normalized_input.is_empty() {
-        return StringValidationResult {
-            is_valid: false,
-            normalized_value: None,
-        };
-    }
-
-    match request.kind.as_str() {
-        "aptosTokenType" => validate_aptos_token_type(&normalized_input),
-        _ => StringValidationResult {
-            is_valid: false,
-            normalized_value: None,
-        },
-    }
-}
 
 fn invalid_result() -> AddressValidationResult {
     AddressValidationResult {
@@ -128,8 +102,8 @@ fn make_result(normalized_value: String) -> AddressValidationResult {
     }
 }
 
-fn make_string_result(normalized_value: String) -> StringValidationResult {
-    StringValidationResult {
+fn make_string_result(normalized_value: String) -> AddressValidationResult {
+    AddressValidationResult {
         is_valid: true,
         normalized_value: Some(normalized_value),
     }
@@ -307,8 +281,8 @@ fn validate_litecoin_address(value: &str, testnet: bool) -> AddressValidationRes
     invalid_result()
 }
 
-fn validate_zcash_address(value: &str) -> AddressValidationResult {
-    if crate::derivation::chains::zcash::validate_zcash_address(value) {
+fn validate_zcash_address(value: &str, testnet: bool) -> AddressValidationResult {
+    if crate::derivation::chains::zcash::validate_zcash_address(value, testnet) {
         return make_result(value.to_string());
     }
     invalid_result()
@@ -321,8 +295,8 @@ fn validate_bitcoin_gold_address(value: &str) -> AddressValidationResult {
     invalid_result()
 }
 
-fn validate_decred_address(value: &str) -> AddressValidationResult {
-    if crate::derivation::chains::decred::validate_decred_address(value) {
+fn validate_decred_address(value: &str, testnet: bool) -> AddressValidationResult {
+    if crate::derivation::chains::decred::validate_decred_address(value, testnet) {
         return make_result(value.to_string());
     }
     invalid_result()
@@ -335,8 +309,8 @@ fn validate_kaspa_address(value: &str) -> AddressValidationResult {
     invalid_result()
 }
 
-fn validate_dash_address(value: &str) -> AddressValidationResult {
-    if crate::derivation::chains::dash::validate_dash_address(value) {
+fn validate_dash_address(value: &str, testnet: bool) -> AddressValidationResult {
+    if crate::derivation::chains::dash::validate_dash_address(value, testnet) {
         return make_result(value.to_string());
     }
     invalid_result()
@@ -400,11 +374,19 @@ fn validate_tron_address(value: &str) -> AddressValidationResult {
     invalid_result()
 }
 
+/// A Solana address is the base58 of a 32-byte public key.
+///
+/// This checked the length range and the alphabet, which any base58 string of
+/// the right length passes — including one three characters short of a real
+/// address. Decoding is what tells them apart.
 fn validate_solana_address(value: &str) -> AddressValidationResult {
-    if (32..=44).contains(&value.len()) && is_base58(value) {
-        return make_result(value.to_string());
+    if !(32..=44).contains(&value.len()) || !is_base58(value) {
+        return invalid_result();
     }
-    invalid_result()
+    match bs58::decode(value).into_vec() {
+        Ok(bytes) if bytes.len() == 32 => make_result(value.to_string()),
+        _ => invalid_result(),
+    }
 }
 
 fn validate_stellar_address(value: &str) -> AddressValidationResult {
@@ -532,18 +514,28 @@ fn validate_monero_address(value: &str, stagenet: bool) -> AddressValidationResu
     }
 }
 
+/// A Shelley address is bech32, and bech32 carries a checksum.
+///
+/// This checked the prefix and a minimum length and nothing else, so a
+/// truncated or mistyped address passed — which is the one thing the checksum
+/// exists to catch.
 fn validate_cardano_address(value: &str) -> AddressValidationResult {
     let lowered = value.to_lowercase();
-    if (lowered.starts_with("addr1") || lowered.starts_with("addr_test1")) && value.len() >= 40 {
-        return make_result(value.to_string());
+    if !(lowered.starts_with("addr1") || lowered.starts_with("addr_test1")) {
+        return invalid_result();
     }
-    invalid_result()
+    match bech32::decode(&lowered) {
+        Ok((hrp, data)) if !data.is_empty() && (hrp.as_str() == "addr" || hrp.as_str() == "addr_test") => {
+            make_result(value.to_string())
+        }
+        _ => invalid_result(),
+    }
 }
 
-fn validate_aptos_token_type(value: &str) -> StringValidationResult {
+fn validate_aptos_token_type(value: &str) -> AddressValidationResult {
     let normalized = value.trim().to_lowercase();
     if normalized.is_empty() {
-        return StringValidationResult {
+        return AddressValidationResult {
             is_valid: false,
             normalized_value: None,
         };
@@ -555,7 +547,7 @@ fn validate_aptos_token_type(value: &str) -> StringValidationResult {
     }
 
     if !normalized.contains("::") {
-        return StringValidationResult {
+        return AddressValidationResult {
             is_valid: false,
             normalized_value: None,
         };
@@ -563,7 +555,7 @@ fn validate_aptos_token_type(value: &str) -> StringValidationResult {
 
     let address_component = normalized.split("::").next().unwrap_or_default();
     if !validate_aptos_address(address_component).is_valid {
-        return StringValidationResult {
+        return AddressValidationResult {
             is_valid: false,
             normalized_value: None,
         };
@@ -667,6 +659,7 @@ mod tests {
         }
     }
 
+    #[test]
     fn rejects_invalid_near_addresses() {
         let result = validate_address(AddressValidationRequest {
             kind: "near".to_string(),
@@ -678,7 +671,7 @@ mod tests {
 
     #[test]
     fn validates_aptos_token_types() {
-        let result = validate_string_identifier(StringValidationRequest {
+        let result = validate_address(AddressValidationRequest {
             kind: "aptosTokenType".to_string(),
             value: "0x1::aptos_coin::AptosCoin".to_string(),
         });
