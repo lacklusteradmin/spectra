@@ -349,7 +349,7 @@ fn paprika_id_for(gecko_id: &str, symbol: &str) -> Option<&'static str> {
                 ("shiba-inu", "shib-shiba-inu"),
                 ("bitget-token", "bgb-bitget-token"),
                 ("leo-token", "leo-unus-sed-leo"),
-                ("cronos", "cro-cronos"),
+                ("crypto-com-chain", "cro-cronos"),
                 ("ethena-usde", "usde-ethena-usde"),
                 ("ripple-usd", "rlusd-ripple-usd"),
                 ("pax-gold", "paxg-pax-gold"),

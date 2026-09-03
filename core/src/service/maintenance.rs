@@ -426,7 +426,6 @@ mod preflight_tests {
                 coingecko_id: String::new(),
                 decimals: 6,
                 tags: Vec::new(),
-                comment: String::new(),
                 color: String::new(),
                 asset_name: String::new(),
                 enabled: true,

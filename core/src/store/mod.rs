@@ -360,38 +360,6 @@ pub fn core_self_send_confirmation(
     }
 }
 
-/// De-duplicate and order the known tokens a dashboard row may show.
-///
-/// A pure sort and filter over the subset the caller assembled, not over the
-/// stored preference list — so there is no state here to own.
-#[uniffi::export]
-pub fn core_dashboard_supported_token_entries(
-    entries: Vec<wallet_domain::CoreTokenPreferenceEntry>,
-) -> Vec<wallet_domain::CoreTokenPreferenceEntry> {
-    let mut filtered: Vec<wallet_domain::CoreTokenPreferenceEntry> = entries
-        .into_iter()
-        .filter(|entry| !entry.token.contract.is_empty())
-        .collect();
-    filtered.sort_by(|lhs, rhs| {
-        lhs.token
-            .chain
-            .to_lowercase()
-            .cmp(&rhs.token.chain.to_lowercase())
-    });
-    let mut seen_keys = std::collections::BTreeSet::<String>::new();
-    filtered
-        .into_iter()
-        .filter(|entry| {
-            let key = format!(
-                "{}|{}",
-                entry.token.chain.to_lowercase(),
-                entry.token.contract.to_lowercase()
-            );
-            seen_keys.insert(key)
-        })
-        .collect()
-}
-
 /// Normalize a token contract address for identity matching.
 fn normalize_known_token_identifier(
     chain: wallet_domain::CoreTokenHostingChain,

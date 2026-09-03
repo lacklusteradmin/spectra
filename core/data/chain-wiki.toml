@@ -1,0 +1,388 @@
+# Spectra chain wiki — what a chain *is*, for a reader.
+#
+# A separate table from `chains.toml` because these six fields have exactly one
+# consumer, the chain wiki screen, and nothing computes anything from them. A
+# wrong value here is a wrong sentence on a page; a wrong value in `chains.toml`
+# is a wrong address or a wrong balance. Keeping them apart means an editorial
+# edit never touches the file that decides derivation paths.
+#
+# The split is enforced by the type, not by this comment: these fields live on
+# `ChainWikiEntry` and are reachable only from `list_chain_wiki()`, so nothing
+# in the send, derive or fetch paths can read them.
+#
+# `total_circulation_model` left for `crypto-wiki.toml`: a supply cap is a fact
+# about the coin, not about the network that mints it. What stays here is what
+# has no coin to belong to — ten chains share ETH, and "Base is an optimistic
+# rollup" is not a fact about ETH.
+#
+# One row per chain, joined to `chains.toml` by `chain`. Networks have no row:
+# a testnet is not a different chain, and the wiki used to filter them out by
+# testing `family` for emptiness. The table is the filter now.
+
+[[chains]]
+chain = "bitcoin"
+tags = ["UTXO", "PoW", "Settlement"]
+comment = "Final settlement, long-horizon self-custody, and simple native BTC transfers."
+family = "UTXO / base-layer settlement network"
+consensus = "Proof of Work (SHA-256)"
+state_model = "UTXO set"
+
+[[chains]]
+chain = "ethereum"
+tags = ["EVM", "PoS", "Smart Contracts"]
+comment = "General-purpose smart contracts, DeFi, ERC-20 tokens, and on-chain execution."
+family = "Account-based smart contract network"
+consensus = "Proof of Stake"
+state_model = "Account state + contract storage"
+
+[[chains]]
+chain = "solana"
+tags = ["PoS", "High Throughput", "Smart Contracts"]
+comment = "High-throughput transfers, SPL tokens, and latency-sensitive on-chain applications."
+family = "Account-based high-throughput network"
+consensus = "Proof of Stake with Proof of History timing"
+state_model = "Account state + program-owned token accounts"
+
+[[chains]]
+chain = "dogecoin"
+tags = ["UTXO", "PoW", "Payments"]
+comment = "Low-friction payments, transfers, and broad exchange support."
+family = "UTXO payments network"
+consensus = "Proof of Work with AuxPoW merged-mining ecosystem support"
+state_model = "UTXO set"
+
+[[chains]]
+chain = "xrp"
+tags = ["Payments", "Settlement"]
+comment = "Fast payments, issued assets, and order-book based transfers."
+family = "Account-based payments ledger"
+consensus = "XRPL consensus protocol"
+state_model = "Account state + trust line objects"
+
+[[chains]]
+chain = "litecoin"
+tags = ["UTXO", "PoW", "Payments"]
+comment = "Lower-fee payments and faster block cadence than Bitcoin."
+family = "UTXO payments network"
+consensus = "Proof of Work (Scrypt)"
+state_model = "UTXO set"
+
+[[chains]]
+chain = "bitcoin-cash"
+tags = ["UTXO", "PoW", "Payments"]
+comment = "Peer-to-peer payments with a Bitcoin-derived UTXO model and distinct address/network rules."
+family = "UTXO payments network"
+consensus = "Proof of Work (SHA-256)"
+state_model = "UTXO set"
+
+[[chains]]
+chain = "tron"
+tags = ["PoS", "Payments", "Smart Contracts"]
+comment = "Transfers, TRC-20 token activity, and resource-metered smart contract execution."
+family = "Account-based smart contract network"
+consensus = "Delegated Proof of Stake"
+state_model = "Account state + contract storage"
+
+[[chains]]
+chain = "stellar"
+tags = ["Payments", "Settlement"]
+comment = "Native XLM transfers, issued-asset settlement, and low-fee payment routing on Stellar."
+family = "Account-based payments network"
+consensus = "Stellar Consensus Protocol"
+state_model = "Account state + trustline objects"
+
+[[chains]]
+chain = "cardano"
+tags = ["eUTXO", "PoS", "Smart Contracts"]
+comment = "Native-asset transfers, staking, and eUTXO-based smart contract workflows."
+family = "Extended-UTXO smart contract network"
+consensus = "Ouroboros Proof of Stake"
+state_model = "eUTXO"
+
+[[chains]]
+chain = "polkadot"
+tags = ["Relay Chain", "PoS", "Smart Contracts"]
+comment = "Native DOT transfers, staking, governance, and relay-chain security participation. substrate-bip39 ignores BIP-32 nodes, so the derivation path shown is the canonical display form."
+family = "Relay-chain / nominated proof-of-stake network"
+consensus = "Nominated Proof of Stake"
+state_model = "Account state + runtime pallets"
+
+[[chains]]
+chain = "arbitrum"
+tags = ["EVM", "L2", "Rollup"]
+comment = "Lower-cost EVM execution, ERC-20 tokens, and Ethereum-compatible activity on Arbitrum One."
+family = "EVM-compatible layer-2 smart contract network"
+consensus = "Ethereum-secured optimistic rollup"
+state_model = "Account state + contract storage"
+
+[[chains]]
+chain = "optimism"
+tags = ["EVM", "L2", "Rollup"]
+comment = "Lower-cost EVM execution, ERC-20 tokens, and Ethereum-compatible activity on Optimism mainnet."
+family = "EVM-compatible layer-2 smart contract network"
+consensus = "Ethereum-secured optimistic rollup"
+state_model = "Account state + contract storage"
+
+[[chains]]
+chain = "avalanche"
+tags = ["EVM", "PoS", "Smart Contracts"]
+comment = "Native AVAX transfers and C-Chain EVM activity on Avalanche mainnet."
+family = "EVM-compatible smart contract network"
+consensus = "Proof of Stake with Avalanche consensus"
+state_model = "Account state + contract storage"
+
+[[chains]]
+chain = "sui"
+tags = ["Move", "Object", "PoS"]
+comment = "Move-based applications, object transfers, and asset-centric execution."
+family = "Object-centric smart contract network"
+consensus = "Delegated Proof of Stake"
+state_model = "Owned objects + shared objects"
+
+[[chains]]
+chain = "aptos"
+tags = ["Move", "PoS", "Smart Contracts"]
+comment = "Native APT transfers, Move-based applications, and account/resource-oriented on-chain execution."
+family = "Account-based Move smart contract network"
+consensus = "Proof of Stake with AptosBFT"
+state_model = "Account state + Move resources"
+
+[[chains]]
+chain = "ton"
+tags = ["PoS", "Messaging", "Smart Contracts"]
+comment = "Native Toncoin transfers, jettons, and asynchronous contract interactions on The Open Network."
+family = "Account-based message-driven smart contract network"
+consensus = "Proof of Stake with validator-set finality"
+state_model = "Account state + contracts/messages"
+
+[[chains]]
+chain = "near"
+tags = ["PoS", "Smart Contracts", "Sharding"]
+comment = "Named-account transfers, smart contracts, and user-friendly account-based activity."
+family = "Account-based smart contract network"
+consensus = "Proof of Stake with Doomslug / Nightshade architecture"
+state_model = "Account state + contract storage"
+
+[[chains]]
+chain = "internet-computer"
+tags = ["Canisters", "PoS", "Smart Contracts"]
+comment = "Native ICP transfers, governance participation, and canister-powered applications."
+family = "Account-based canister network"
+consensus = "Threshold Relay + chain-key cryptography"
+state_model = "Account identifiers + canister-managed state"
+
+[[chains]]
+chain = "monero"
+tags = ["Privacy", "PoW", "Payments"]
+comment = "Private value transfer with sender, receiver, and amount obfuscation."
+family = "Privacy-preserving account/one-time-output network"
+consensus = "Proof of Work (RandomX)"
+state_model = "Private output model with one-time stealth addresses"
+
+[[chains]]
+chain = "base"
+tags = ["EVM", "L2", "Optimistic Rollup"]
+comment = "Low-fee Ethereum-compatible transfers and ERC-20 settlement on Base."
+family = "Ethereum layer-2 (Optimism stack)"
+consensus = "Optimistic rollup posting to Ethereum"
+state_model = "EVM account state"
+
+[[chains]]
+chain = "ethereum-classic"
+tags = ["EVM", "PoW", "Smart Contracts"]
+comment = "Native ETC transfers and conservative EVM-compatible contract execution on the original Ethereum chain lineage."
+family = "Account-based smart contract network"
+consensus = "Proof of Work (Etchash)"
+state_model = "Account state + contract storage"
+
+[[chains]]
+chain = "bitcoin-sv"
+tags = ["UTXO", "PoW", "Payments"]
+comment = "Bitcoin-derived UTXO transfers on the BSV network with chain-specific address, policy, and provider behavior."
+family = "UTXO payments network"
+consensus = "Proof of Work (SHA-256)"
+state_model = "UTXO set"
+
+[[chains]]
+chain = "bnb"
+tags = ["EVM", "PoS", "Smart Contracts"]
+comment = "Lower-cost EVM execution, BEP-20 assets, and exchange-adjacent on-chain activity."
+family = "EVM-compatible smart contract network"
+consensus = "Validator-based BNB Chain consensus"
+state_model = "Account state + contract storage"
+
+[[chains]]
+chain = "hyperliquid"
+tags = ["EVM", "PoS", "Smart Contracts"]
+comment = "Native HYPE transfers and HyperEVM activity on Hyperliquid mainnet."
+family = "EVM-compatible smart contract network"
+consensus = "HyperBFT-backed HyperEVM settlement on Hyperliquid"
+state_model = "Account state + contract storage"
+
+[[chains]]
+chain = "polygon"
+tags = ["EVM", "L1", "PoS"]
+comment = "Low-fee EVM transfers, ERC-20 settlement, and DeFi on Polygon PoS."
+family = "EVM-compatible proof-of-stake network"
+consensus = "Proof of Stake (Heimdall + Bor)"
+state_model = "EVM account state"
+
+[[chains]]
+chain = "linea"
+tags = ["EVM", "L2", "ZK Rollup"]
+comment = "ZK-secured EVM transfers and ERC-20 settlement on Linea."
+family = "Ethereum layer-2 (zkEVM)"
+consensus = "zkEVM rollup posting to Ethereum"
+state_model = "EVM account state"
+
+[[chains]]
+chain = "scroll"
+tags = ["EVM", "L2", "ZK Rollup"]
+comment = "ZK-secured EVM transfers and ERC-20 settlement on Scroll."
+family = "Ethereum layer-2 (zkEVM)"
+consensus = "zkEVM rollup posting to Ethereum"
+state_model = "EVM account state"
+
+[[chains]]
+chain = "blast"
+tags = ["EVM", "L2", "Optimistic Rollup"]
+comment = "EVM transfers and yield-bearing ETH/USDB on Blast."
+family = "Ethereum layer-2 (yield-bearing)"
+consensus = "Optimistic rollup posting to Ethereum"
+state_model = "EVM account state"
+
+[[chains]]
+chain = "mantle"
+tags = ["EVM", "L2", "Modular"]
+comment = "Low-fee EVM transfers and ERC-20 settlement on Mantle."
+family = "Ethereum layer-2 (modular rollup)"
+consensus = "Modular rollup with EigenDA data availability"
+state_model = "EVM account state"
+
+[[chains]]
+chain = "zcash"
+tags = ["UTXO", "Privacy", "PoW"]
+comment = "Optionally-shielded payments. Spectra uses transparent (t1) addresses only; shielded sends are not supported."
+family = "Zcash (Halo 2 + transparent UTXO)"
+consensus = "Proof-of-Work (Equihash 200,9)"
+state_model = "UTXO (transparent) + zk-SNARK shielded notes (Sapling, Orchard)"
+
+[[chains]]
+chain = "bitcoin-gold"
+tags = ["UTXO", "PoW"]
+comment = "Bitcoin-style payments with GPU-friendly Equihash mining."
+family = "Bitcoin fork (Equihash 144,5)"
+consensus = "Proof-of-Work (Equihash 144,5)"
+state_model = "UTXO"
+
+[[chains]]
+chain = "decred"
+tags = ["UTXO", "Hybrid", "PoW", "PoS"]
+comment = "Self-funded protocol with stakeholder-governed on-chain decisions."
+family = "Decred (BLAKE-256, hybrid PoW + PoS)"
+consensus = "Hybrid PoW (BLAKE-256) + PoS ticket voting"
+state_model = "UTXO with on-chain governance"
+
+[[chains]]
+chain = "kaspa"
+tags = ["BlockDAG", "PoW"]
+comment = "Sub-second confirmation payments via parallel-block PoW."
+family = "Kaspa (GHOSTDAG protocol)"
+consensus = "Proof-of-Work (kHeavyHash) on a blockDAG"
+state_model = "UTXO over GHOSTDAG topological ordering"
+
+[[chains]]
+chain = "sei"
+tags = ["EVM", "L1", "PoS"]
+comment = "High-throughput EVM with parallel execution and Cosmos-native interop."
+family = "Cosmos-SDK with EVM v2 module"
+consensus = "Tendermint BFT (Sei v2 with EVM execution)"
+state_model = "EVM account state"
+
+[[chains]]
+chain = "celo"
+tags = ["EVM", "L2", "Mobile"]
+comment = "Mobile-first stablecoin payments and DeFi on a low-fee EVM L2."
+family = "Ethereum L2 (Celo migrated to OP Stack 2025)"
+consensus = "Optimistic rollup on Ethereum"
+state_model = "EVM account state"
+
+[[chains]]
+chain = "cronos"
+tags = ["EVM", "L1"]
+comment = "Crypto.com's L1 EVM for stablecoin payments and DeFi."
+family = "Cronos EVM (Cosmos-SDK + Ethermint)"
+consensus = "Tendermint BFT"
+state_model = "EVM account state"
+
+[[chains]]
+chain = "opbnb"
+tags = ["EVM", "L2", "Optimistic Rollup"]
+comment = "Cheap BNB-denominated rollup throughput for BSC users."
+family = "BNB Chain L2 (OP Stack)"
+consensus = "Optimistic rollup on BNB Chain"
+state_model = "EVM account state"
+
+[[chains]]
+chain = "zksync-era"
+tags = ["EVM", "L2", "ZK Rollup"]
+comment = "Validity-proofed L2 with full EVM equivalence."
+family = "Ethereum L2 (zkSync Era validium/rollup)"
+consensus = "ZK rollup with EVM-equivalent execution"
+state_model = "EVM account state"
+
+[[chains]]
+chain = "sonic"
+tags = ["EVM", "L1"]
+comment = "High-TPS EVM L1, the rebranded Fantom network."
+family = "Sonic Labs (Fantom successor)"
+consensus = "Lachesis aBFT"
+state_model = "EVM account state"
+
+[[chains]]
+chain = "berachain"
+tags = ["EVM", "L1", "Proof-of-Liquidity"]
+comment = "DeFi-native EVM L1 where validators earn from on-chain liquidity provision."
+family = "Berachain (Cosmos-SDK + EVM)"
+consensus = "Proof-of-Liquidity (BeaconKit + Tendermint)"
+state_model = "EVM account state with parallel liquidity rewards"
+
+[[chains]]
+chain = "unichain"
+tags = ["EVM", "L2", "Optimistic Rollup"]
+comment = "Uniswap's dedicated L2 for DEX-native fast settlement."
+family = "Ethereum L2 (OP Stack)"
+consensus = "Optimistic rollup on Ethereum"
+state_model = "EVM account state"
+
+[[chains]]
+chain = "ink"
+tags = ["EVM", "L2", "Optimistic Rollup"]
+comment = "Kraken's L2 for low-fee DeFi and exchange flows."
+family = "Ethereum L2 (OP Stack)"
+consensus = "Optimistic rollup on Ethereum"
+state_model = "EVM account state"
+
+[[chains]]
+chain = "dash"
+tags = ["UTXO", "PoW", "Masternodes"]
+comment = "Fast-finality payments via InstantSend; masternode-secured ChainLocks resist 51% reorgs."
+family = "Bitcoin fork (X11 + masternode tier)"
+consensus = "Proof-of-Work (X11) with masternode quorum services"
+state_model = "UTXO with InstantSend + ChainLocks"
+
+[[chains]]
+chain = "x-layer"
+tags = ["EVM", "L2", "ZK Rollup"]
+comment = "OKX-anchored zkEVM L2 for low-fee EVM transfers and DeFi denominated in OKB."
+family = "Ethereum L2 (Polygon CDK zkEVM)"
+consensus = "ZK rollup with Polygon CDK validity proofs"
+state_model = "EVM account state"
+
+[[chains]]
+chain = "bittensor"
+tags = ["L1", "PoW", "AI", "Substrate"]
+comment = "Decentralized machine-learning marketplace where subnets stake TAO and earn emissions for serving AI inferences."
+family = "Substrate (subtensor; Polkadot-style runtime)"
+consensus = "Proof-of-Work + subnet validator scoring (Yuma consensus)"
+state_model = "Substrate account/balances; subnets and neurons modeled as on-chain state"

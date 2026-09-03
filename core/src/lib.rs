@@ -99,6 +99,7 @@ pub mod store;
 pub mod tokens;
 pub mod tor;
 pub mod validation;
+pub mod wiki;
 
 // Crate-root shortcuts for the heavily-used internal modules. Other paths use
 // the folder-qualified `crate::fetch::http`, `crate::store::state`, etc.

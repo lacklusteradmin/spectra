@@ -27,7 +27,6 @@ struct TomlAsset {
     color: String,
     asset_name: String,
     tags: Vec<String>,
-    comment: String,
 }
 
 /// Where it lives, and what is true only there.
@@ -54,7 +53,6 @@ pub struct TokenEntry {
     pub coingecko_id: String,
     pub decimals: u32,
     pub tags: Vec<String>,
-    pub comment: String,
     pub color: String,
     pub asset_name: String,
     pub enabled: bool,
@@ -89,7 +87,6 @@ static CATALOG: LazyLock<Vec<TokenEntry>> = LazyLock::new(|| {
                 coingecko_id: a.coingecko_id.clone(),
                 decimals: d.decimals,
                 tags: a.tags.clone(),
-                comment: a.comment.clone(),
                 color: a.color.clone(),
                 asset_name: a.asset_name.clone(),
                 enabled: d.enabled,
@@ -451,7 +448,6 @@ mod the_catalog_is_two_tables {
                 ("coingecko_id", &first.coingecko_id, &entry.coingecko_id),
                 ("color", &first.color, &entry.color),
                 ("asset_name", &first.asset_name, &entry.asset_name),
-                ("comment", &first.comment, &entry.comment),
             ] {
                 assert_eq!(
                     a, b,
@@ -460,6 +456,53 @@ mod the_catalog_is_two_tables {
                 );
             }
             assert_eq!(first.tags, entry.tags, "{}'s tags differ", entry.symbol);
+        }
+    }
+
+    /// One symbol, one market-data id — across *both* catalogs.
+    ///
+    /// CRO was two: `chains.toml` called the native coin `crypto-com-chain`
+    /// and `tokens.toml` called the ERC-20 at CoinGecko's own contract for
+    /// that coin `cronos`. Both ids answer `simple/price`, which is why
+    /// nothing looked broken — `cronos` returned $0.00010, `crypto-com-chain`
+    /// $0.054, a factor of five hundred on the same holding.
+    ///
+    /// Since a dashboard row is keyed by coingecko id, two ids for one coin is
+    /// also two rows for it. This is the invariant that makes both impossible.
+    #[test]
+    fn a_symbol_has_one_market_data_id_across_both_catalogs() {
+        let mut by_symbol: HashMap<&str, (&str, &str)> = HashMap::new();
+        for chain in crate::chains::catalog() {
+            if chain.native_coingecko_id.is_empty() {
+                continue;
+            }
+            // `gas_token_symbol`, not `symbol`: on eleven chains they differ,
+            // because `symbol` is the chain's ticker and the native coin is
+            // something else — Arbitrum is ARB and runs on ETH.
+            let (id, source) = by_symbol
+                .entry(chain.gas_token_symbol.as_str())
+                .or_insert((chain.native_coingecko_id.as_str(), chain.name.as_str()));
+            assert_eq!(
+                *id,
+                chain.native_coingecko_id.as_str(),
+                "{} is {id} as {source} and {} as {}",
+                chain.gas_token_symbol,
+                chain.native_coingecko_id,
+                chain.name
+            );
+        }
+        for entry in CATALOG.iter() {
+            if entry.coingecko_id.is_empty() {
+                continue;
+            }
+            let (id, source) = by_symbol
+                .entry(entry.symbol.as_str())
+                .or_insert((entry.coingecko_id.as_str(), entry.chain.as_str()));
+            assert_eq!(
+                *id, entry.coingecko_id,
+                "{} is {id} as {source} and {} in the token catalog",
+                entry.symbol, entry.coingecko_id
+            );
         }
     }
 

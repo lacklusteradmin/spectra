@@ -23,7 +23,6 @@ coingecko_id = "aave"
 color = "indigo"
 asset_name = "aave"
 tags = []
-comment = "Governance token for Aave, a decentralized liquidity protocol for lending and borrowing crypto assets."
 
 [[assets]]
 symbol = "BGB"
@@ -32,16 +31,14 @@ coingecko_id = "bitget-token"
 color = "yellow"
 asset_name = "bgb"
 tags = []
-comment = "Utility token for the Bitget exchange and Bitget Wallet ecosystem, used for platform perks and services."
 
 [[assets]]
 symbol = "CRO"
 name = "Cronos"
-coingecko_id = "cronos"
+coingecko_id = "crypto-com-chain"
 color = "blue"
 asset_name = "cronos"
 tags = []
-comment = "Utility token for the Cronos and Crypto.com ecosystem, used across network fees, staking, and platform services."
 
 [[assets]]
 symbol = "DAI"
@@ -50,7 +47,6 @@ coingecko_id = "dai"
 color = "yellow"
 asset_name = "skydai"
 tags = ["stablecoin"]
-comment = "Decentralized U.S. dollar stablecoin from Sky, formerly MakerDAO, backed by crypto and real-world collateral."
 
 [[assets]]
 symbol = "ENA"
@@ -59,7 +55,6 @@ coingecko_id = "ethena"
 color = "blue"
 asset_name = "ethena"
 tags = []
-comment = "Governance token for Ethena, the protocol behind the USDe crypto-native synthetic dollar."
 
 [[assets]]
 symbol = "EURC"
@@ -68,7 +63,6 @@ coingecko_id = "euro-coin"
 color = "blue"
 asset_name = "circleeurc"
 tags = ["stablecoin"]
-comment = "Euro-backed stablecoin issued by Circle and designed to be redeemable 1:1 for euros through supported channels."
 
 [[assets]]
 symbol = "FDUSD"
@@ -77,7 +71,6 @@ coingecko_id = "first-digital-usd"
 color = "green"
 asset_name = "firstdigitalfdusd"
 tags = ["stablecoin"]
-comment = "U.S. dollar stablecoin issued by First Digital, designed for trading, payments, and DeFi settlement."
 
 [[assets]]
 symbol = "KCS"
@@ -86,7 +79,6 @@ coingecko_id = "kucoin-shares"
 color = "yellow"
 asset_name = "kcs"
 tags = []
-comment = "Native utility token of the KuCoin exchange ecosystem, used for platform rewards, fees, and services."
 
 [[assets]]
 symbol = "LEO"
@@ -95,7 +87,6 @@ coingecko_id = "leo-token"
 color = "orange"
 asset_name = "leo"
 tags = []
-comment = "Utility token for the iFinex and Bitfinex ecosystem, built around exchange fee benefits and platform utility."
 
 [[assets]]
 symbol = "LINK"
@@ -104,7 +95,6 @@ coingecko_id = "chainlink"
 color = "blue"
 asset_name = "chainlink"
 tags = []
-comment = "Token for Chainlink, the decentralized oracle network that connects smart contracts with external data and services."
 
 [[assets]]
 symbol = "PAXG"
@@ -113,7 +103,6 @@ coingecko_id = "pax-gold"
 color = "yellow"
 asset_name = "paxospaxg"
 tags = []
-comment = "Gold-backed token from Paxos, with each token representing one fine troy ounce of London Good Delivery gold."
 
 [[assets]]
 symbol = "PYUSD"
@@ -122,7 +111,6 @@ coingecko_id = "paypal-usd"
 color = "blue"
 asset_name = "paypalpyusd"
 tags = ["stablecoin"]
-comment = "PayPal USD stablecoin issued by Paxos, designed as a fully backed U.S. dollar payment token."
 
 [[assets]]
 symbol = "RLUSD"
@@ -131,7 +119,6 @@ coingecko_id = "ripple-usd"
 color = "indigo"
 asset_name = "ripplerlusd"
 tags = ["stablecoin"]
-comment = "Ripple USD stablecoin, a U.S. dollar-backed token designed for payments, trading, and settlement use cases."
 
 [[assets]]
 symbol = "SHIB"
@@ -140,7 +127,6 @@ coingecko_id = "shiba-inu"
 color = "orange"
 asset_name = "shibainu"
 tags = ["meme"]
-comment = "Community-driven meme token at the center of the Shiba Inu ecosystem."
 
 [[assets]]
 symbol = "SKY"
@@ -149,7 +135,6 @@ coingecko_id = "sky"
 color = "blue"
 asset_name = "sky"
 tags = []
-comment = "Governance token of the Sky Protocol, replacing MKR for protocol voting and parameter decisions."
 
 [[assets]]
 symbol = "TUSD"
@@ -158,7 +143,6 @@ coingecko_id = "true-usd"
 color = "blue"
 asset_name = "tusd"
 tags = ["stablecoin"]
-comment = "TrueUSD stablecoin, a U.S. dollar-pegged token designed for trading, payments, and DeFi use."
 
 [[assets]]
 symbol = "UNI"
@@ -167,16 +151,14 @@ coingecko_id = "uniswap"
 color = "pink"
 asset_name = "uniswap"
 tags = []
-comment = "Governance token of the Uniswap protocol, letting holders participate in protocol decision-making."
 
 [[assets]]
 symbol = "USD1"
 name = "USD1"
-coingecko_id = ""
+coingecko_id = "usd1-wlfi"
 color = "green"
 asset_name = "wlfiusd1"
 tags = ["stablecoin"]
-comment = "U.S. dollar stablecoin from World Liberty Financial, backed by cash and short-duration U.S. Treasury assets."
 
 [[assets]]
 symbol = "USDC"
@@ -185,7 +167,6 @@ coingecko_id = "usd-coin"
 color = "blue"
 asset_name = "circleusdc"
 tags = ["stablecoin"]
-comment = "Circle-issued U.S. dollar stablecoin, designed to be fully reserved and redeemable 1:1 for dollars."
 
 [[assets]]
 symbol = "USDD"
@@ -194,7 +175,6 @@ coingecko_id = "usdd"
 color = "green"
 asset_name = "usdd"
 tags = ["stablecoin"]
-comment = "Over-collateralized decentralized U.S. dollar stablecoin managed by TRON DAO Reserve."
 
 [[assets]]
 symbol = "USDE"
@@ -203,7 +183,6 @@ coingecko_id = "ethena-usde"
 color = "cyan"
 asset_name = "ethenausde"
 tags = ["stablecoin"]
-comment = "Ethena USDe synthetic dollar, backed through crypto collateral, stable assets, and delta-hedging strategies."
 
 [[assets]]
 symbol = "USDG"
@@ -212,16 +191,14 @@ coingecko_id = "global-dollar"
 color = "teal"
 asset_name = "paxosusdg"
 tags = ["stablecoin"]
-comment = "Global Dollar stablecoin issued by Paxos Digital Singapore for the Global Dollar Network."
 
 [[assets]]
 symbol = "USDS"
 name = "Sky Dollar"
-coingecko_id = "sky-dollar"
+coingecko_id = "usds"
 color = "teal"
 asset_name = "skyusds"
 tags = ["stablecoin"]
-comment = "Sky Dollar stablecoin, the upgraded dollar asset of the Sky Protocol and successor path for DAI users."
 
 [[assets]]
 symbol = "USDT"
@@ -230,7 +207,6 @@ coingecko_id = "tether"
 color = "green"
 asset_name = "tetherusdt"
 tags = ["stablecoin"]
-comment = "Tether USD stablecoin, a widely used dollar-pegged token for trading, payments, and on-chain settlement."
 
 [[assets]]
 symbol = "WBTC"
@@ -239,16 +215,14 @@ coingecko_id = "wrapped-bitcoin"
 color = "orange"
 asset_name = "wrappedbitcoin"
 tags = []
-comment = "Wrapped Bitcoin token backed 1:1 by BTC, bringing Bitcoin liquidity into Ethereum-compatible DeFi."
 
 [[assets]]
 symbol = "WLFI"
 name = "World Liberty Financial"
-coingecko_id = ""
+coingecko_id = "world-liberty-financial"
 color = "gray"
 asset_name = "wlfi"
 tags = []
-comment = "Governance token of World Liberty Financial, used for protocol participation and voting."
 
 [[assets]]
 symbol = "XAUT"
@@ -257,7 +231,6 @@ coingecko_id = "tether-gold"
 color = "yellow"
 asset_name = "tetherxaut"
 tags = []
-comment = "Tether Gold token, with each token representing one fine troy ounce of physical gold."
 
 [[assets]]
 symbol = "JUP"
@@ -266,7 +239,6 @@ coingecko_id = "jupiter-exchange-solana"
 color = "orange"
 asset_name = "jupiter"
 tags = []
-comment = "Governance token for Jupiter, a Solana DeFi platform best known for swap aggregation and liquidity routing."
 
 [[assets]]
 symbol = "PUMP"
@@ -275,7 +247,6 @@ coingecko_id = "pump-fun"
 color = "pink"
 asset_name = "pumpfun"
 tags = ["meme"]
-comment = "Token for pump.fun, the Solana memecoin launchpad and trading ecosystem."
 
 [[assets]]
 symbol = "BTT"
@@ -284,7 +255,6 @@ coingecko_id = "bittorrent"
 color = "red"
 asset_name = "btt"
 tags = ["meme"]
-comment = "Utility token for the BitTorrent ecosystem, designed around peer-to-peer file sharing, bandwidth, and storage incentives."
 
 [[assets]]
 symbol = "USDB"
@@ -293,7 +263,6 @@ coingecko_id = "usdb"
 color = "yellow"
 asset_name = "usdb"
 tags = ["stablecoin"]
-comment = "Blast native stablecoin, an automatically rebasing dollar asset used across the Blast ecosystem."
 
 # ── Deployments: where it lives, and what is true only there.
 #

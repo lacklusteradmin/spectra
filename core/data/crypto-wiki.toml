@@ -1,0 +1,319 @@
+# Spectra crypto wiki — what a coin *is*, for a reader.
+#
+# One row per asset: the 36 distinct coins the catalog's 46 chains run on, plus
+# the 31 tokens it ships. They are one table because a holder does not sort them
+# into two — BTC and USDC are both "a coin I hold", and the only real difference
+# is that one of them has a contract address.
+#
+# Keyed by `asset`, the coin's own symbol — `gas_token_symbol` for a native coin,
+# not the chain's ticker. Eleven chains differ: Arbitrum is ARB and runs on ETH.
+# One symbol has one market-data id across both catalogs, so the key is
+# unambiguous; `a_symbol_has_one_market_data_id_across_both_catalogs` holds it.
+#
+# ETH is native to ten chains and BNB to two, which is why there are 36 coins
+# and not 46. Their comment is written once here rather than ten times there.
+#
+# `comment` says what the coin is. What a *chain* is stays in `chain-wiki.toml`:
+# "Base is an optimistic rollup" is not a fact about ETH. `total_circulation_model`
+# came the other way — "Protocol-capped at 21,000,000 BTC" is a fact about BTC,
+# not about the Bitcoin network — and tokens do not carry one.
+
+[[assets]]
+asset = "BTC"
+comment = "The first cryptocurrency, and what Bitcoin's miners are paid in. Held mostly as a long-horizon store of value and moved for final settlement rather than day-to-day spending."
+total_circulation_model = "Protocol-capped at 21,000,000 BTC."
+
+[[assets]]
+asset = "ETH"
+comment = "Pays for computation on Ethereum and on every rollup that settles to it, and is staked by the validators securing the network. A holder usually needs some simply to transact."
+total_circulation_model = "No fixed maximum supply. Supply changes with validator issuance and fee burn, so long-run circulation is not statically estimatable."
+
+[[assets]]
+asset = "SOL"
+comment = "Pays fees and account rent on Solana and is staked to validators. Fees are small enough that it is spent freely rather than budgeted."
+total_circulation_model = "No fixed maximum supply. Inflation, staking economics, and unlock schedules make long-run live circulation dynamic."
+
+[[assets]]
+asset = "DOGE"
+comment = "Began as a joke in 2013 and became a widely held payments coin. Issuance is a fixed number of new coins per block, so it inflates slowly and never stops."
+total_circulation_model = "No fixed terminal cap. Issuance is bounded per block and per year, but the lifetime supply is not protocol-capped."
+
+[[assets]]
+asset = "XRP"
+comment = "Pays the XRP Ledger's very small transaction fees and acts as a bridge asset between issued currencies. The fee is destroyed rather than paid to anyone."
+total_circulation_model = "Fixed at 100,000,000,000 XRP total created supply."
+
+[[assets]]
+asset = "LTC"
+comment = "An early fork of Bitcoin aimed at faster and cheaper transfers, keeping the supply-capped design and changing the mining algorithm."
+total_circulation_model = "Protocol-capped at 84,000,000 LTC."
+
+[[assets]]
+asset = "BCH"
+comment = "A 2017 fork of Bitcoin that raised the block size to keep on-chain payments cheap. It shares Bitcoin's supply cap and halving schedule."
+total_circulation_model = "Protocol-capped at 21,000,000 BCH."
+
+[[assets]]
+asset = "TRX"
+comment = "Pays for bandwidth and energy on Tron, the network carrying a large share of the world's USDT transfers. Staking it grants those resources instead of paying per transaction."
+total_circulation_model = "No fixed supply statement is surfaced here. Effective circulating supply changes over time, so it is treated as not statically estimatable in this wiki."
+
+[[assets]]
+asset = "XLM"
+comment = "Pays Stellar's tiny fees and the minimum reserve every account must hold, and bridges between currencies issued on the network."
+total_circulation_model = "No fixed terminal cap is surfaced here. Circulating supply is dynamic and partly shaped by foundation-controlled holdings and burns, so this page treats live circulation as non-static."
+
+[[assets]]
+asset = "ADA"
+comment = "Staked to Cardano's delegated proof-of-stake and used to pay fees. Delegating does not lock the coins or hand them to anyone."
+total_circulation_model = "Protocol-capped at 45,000,000,000 ADA."
+
+[[assets]]
+asset = "DOT"
+comment = "Secures Polkadot through staking, votes on protocol changes, and is bonded to lease the parachain slots that other networks run in."
+total_circulation_model = "No fixed terminal cap is surfaced here. Supply changes over time through staking-era issuance and protocol economics, so live circulation is treated as dynamic."
+
+[[assets]]
+asset = "AVAX"
+comment = "Pays fees across Avalanche's chains and is staked by its validators. Fees paid in AVAX are burned rather than collected."
+total_circulation_model = "AVAX supply is capped at 720,000,000 with live circulating supply changing over time as issuance and fee burn continue."
+
+[[assets]]
+asset = "SUI"
+comment = "Pays gas and storage on Sui and is staked to validators. Part of the storage fee is returned when the data it paid for is deleted."
+total_circulation_model = "Total supply capped at 10,000,000,000 SUI, with circulation released over time."
+
+[[assets]]
+asset = "APT"
+comment = "Pays gas on Aptos and is staked to the validators securing it."
+total_circulation_model = "APT circulation changes over time with staking emissions, unlocks, and protocol economics, so this page treats live circulation as dynamic."
+
+[[assets]]
+asset = "TON"
+comment = "Pays fees on TON and buys its name-service and storage services. Widely distributed through Telegram-linked wallets."
+total_circulation_model = "Toncoin supply is dynamic over time, so this page treats live circulation as non-static."
+
+[[assets]]
+asset = "NEAR"
+comment = "Pays gas on NEAR and is staked to validators. Contracts can cover a user's fees, so holding it is not always required to transact."
+total_circulation_model = "No fixed terminal cap is surfaced here. Supply changes over time, so live circulation is treated as dynamic."
+
+[[assets]]
+asset = "ICP"
+comment = "Converted into cycles to pay for computation and storage on the Internet Computer, and locked in neurons to vote on governance."
+total_circulation_model = "Supply is dynamic and tied to governance, staking, and protocol economics, so this page treats live circulation as non-static."
+
+[[assets]]
+asset = "XMR"
+comment = "A privacy coin where amounts, senders and recipients are concealed by default rather than by choice. Emission never reaches zero, so mining stays rewarded."
+total_circulation_model = "No fixed terminal cap. Monero uses tail emission after main emission, so long-run lifetime supply is not capped."
+
+[[assets]]
+asset = "ETC"
+comment = "The coin of the original Ethereum chain, which kept proof-of-work after the 2016 fork and again after Ethereum moved to proof-of-stake."
+total_circulation_model = "No fixed maximum supply. Emission declines over time under the ETC monetary policy, so live circulation changes and is treated as dynamic in this wiki."
+
+[[assets]]
+asset = "BSV"
+comment = "A 2018 fork of Bitcoin Cash pursuing very large blocks and on-chain data storage."
+total_circulation_model = "Protocol-capped at 21,000,000 BSV."
+
+[[assets]]
+asset = "BNB"
+comment = "Pays fees on BNB Chain and opBNB and is used throughout the surrounding exchange ecosystem. Periodic burns reduce the supply over time."
+total_circulation_model = "Genesis supply began at 200,000,000 BNB, with protocol and ecosystem burn mechanisms targeting a lower long-run supply. Live circulation is dynamic, so this page treats it as not statically estimatable."
+
+[[assets]]
+asset = "HYPE"
+comment = "Pays fees and is staked on Hyperliquid, a chain built around an on-chain order-book exchange."
+total_circulation_model = "HYPE circulation is dynamic over time, so this page treats live circulating supply as non-static."
+
+[[assets]]
+asset = "POL"
+comment = "Polygon's native coin for fees and staking. It replaced MATIC one-for-one."
+total_circulation_model = "POL replaced MATIC as the gas/staking token following the 2024 token migration; circulating supply is dynamic."
+
+[[assets]]
+asset = "MNT"
+comment = "Pays gas on Mantle and carries its governance rights."
+total_circulation_model = "Mantle uses MNT as its native gas/governance token (formerly BIT). Circulating supply is dynamic."
+
+[[assets]]
+asset = "ZEC"
+comment = "A privacy coin with shielded addresses whose amounts and parties are encrypted, alongside transparent ones that behave much like Bitcoin's."
+total_circulation_model = "Zcash mirrors Bitcoin's 21M cap with halvings; total ZEC supply is capped at 21,000,000."
+
+[[assets]]
+asset = "BTG"
+comment = "A 2017 fork of Bitcoin that changed the mining algorithm to favour consumer graphics cards over purpose-built hardware."
+total_circulation_model = "21,000,000 BTG cap mirroring Bitcoin's halving schedule."
+
+[[assets]]
+asset = "DCR"
+comment = "Combines proof-of-work with proof-of-stake: ticket holders vote on the blocks miners produce and on changes to the protocol."
+total_circulation_model = "Capped near 21,000,000 DCR with declining block reward and PoS subsidy."
+
+[[assets]]
+asset = "KAS"
+comment = "Mined on a block DAG rather than a single chain, so blocks are produced in parallel and confirm in about a second."
+total_circulation_model = "Capped at ~28,700,000,000 KAS with monthly chromatic emission decay."
+
+[[assets]]
+asset = "SEI"
+comment = "Pays gas on Sei and is staked to its validators on a chain built for trading."
+total_circulation_model = "10,000,000,000 SEI cap with staking and governance unlocks."
+
+[[assets]]
+asset = "CELO"
+comment = "Pays fees on Celo — which also accepts its stablecoins as fee currency — and is staked to validators."
+total_circulation_model = "1,000,000,000 CELO cap with epoch rewards."
+
+[[assets]]
+asset = "CRO"
+comment = "Utility token for the Cronos and Crypto.com ecosystem, used across network fees, staking, and platform services."
+total_circulation_model = "30,000,000,000 CRO cap (post-2022 burn)."
+
+[[assets]]
+asset = "S"
+comment = "Sonic's coin for fees and staking. It replaced FTM one-for-one when Fantom relaunched as Sonic."
+total_circulation_model = "Migrated 1:1 from FTM at launch with continuing inflation."
+
+[[assets]]
+asset = "BERA"
+comment = "Pays gas on Berachain and is staked under its proof-of-liquidity design, where providing liquidity is what earns block rewards."
+total_circulation_model = "500,000,000 BERA initial supply with PoL emissions."
+
+[[assets]]
+asset = "DASH"
+comment = "A payments coin whose masternodes provide near-instant settlement and optional coin mixing."
+total_circulation_model = "Capped near 18,900,000 DASH with -7.14% annual emission decay."
+
+[[assets]]
+asset = "OKB"
+comment = "An exchange token that also pays gas on X Layer."
+total_circulation_model = "Pays gas in OKB; OKB is OKX's exchange/utility token with periodic burns."
+
+[[assets]]
+asset = "TAO"
+comment = "Pays for and rewards machine-learning work contributed to Bittensor's subnets, on an issuance schedule modelled on Bitcoin's."
+total_circulation_model = "Capped at 21,000,000 TAO with 4-year halvings, mirroring Bitcoin emission economics."
+
+[[assets]]
+asset = "AAVE"
+comment = "Governance token for Aave, a decentralized liquidity protocol for lending and borrowing crypto assets."
+
+[[assets]]
+asset = "BGB"
+comment = "Utility token for the Bitget exchange and Bitget Wallet ecosystem, used for platform perks and services."
+
+[[assets]]
+asset = "DAI"
+comment = "Decentralized U.S. dollar stablecoin from Sky, formerly MakerDAO, backed by crypto and real-world collateral."
+
+[[assets]]
+asset = "ENA"
+comment = "Governance token for Ethena, the protocol behind the USDe crypto-native synthetic dollar."
+
+[[assets]]
+asset = "EURC"
+comment = "Euro-backed stablecoin issued by Circle and designed to be redeemable 1:1 for euros through supported channels."
+
+[[assets]]
+asset = "FDUSD"
+comment = "U.S. dollar stablecoin issued by First Digital, designed for trading, payments, and DeFi settlement."
+
+[[assets]]
+asset = "KCS"
+comment = "Native utility token of the KuCoin exchange ecosystem, used for platform rewards, fees, and services."
+
+[[assets]]
+asset = "LEO"
+comment = "Utility token for the iFinex and Bitfinex ecosystem, built around exchange fee benefits and platform utility."
+
+[[assets]]
+asset = "LINK"
+comment = "Token for Chainlink, the decentralized oracle network that connects smart contracts with external data and services."
+
+[[assets]]
+asset = "PAXG"
+comment = "Gold-backed token from Paxos, with each token representing one fine troy ounce of London Good Delivery gold."
+
+[[assets]]
+asset = "PYUSD"
+comment = "PayPal USD stablecoin issued by Paxos, designed as a fully backed U.S. dollar payment token."
+
+[[assets]]
+asset = "RLUSD"
+comment = "Ripple USD stablecoin, a U.S. dollar-backed token designed for payments, trading, and settlement use cases."
+
+[[assets]]
+asset = "SHIB"
+comment = "Community-driven meme token at the center of the Shiba Inu ecosystem."
+
+[[assets]]
+asset = "SKY"
+comment = "Governance token of the Sky Protocol, replacing MKR for protocol voting and parameter decisions."
+
+[[assets]]
+asset = "TUSD"
+comment = "TrueUSD stablecoin, a U.S. dollar-pegged token designed for trading, payments, and DeFi use."
+
+[[assets]]
+asset = "UNI"
+comment = "Governance token of the Uniswap protocol, letting holders participate in protocol decision-making."
+
+[[assets]]
+asset = "USD1"
+comment = "U.S. dollar stablecoin from World Liberty Financial, backed by cash and short-duration U.S. Treasury assets."
+
+[[assets]]
+asset = "USDC"
+comment = "Circle-issued U.S. dollar stablecoin, designed to be fully reserved and redeemable 1:1 for dollars."
+
+[[assets]]
+asset = "USDD"
+comment = "Over-collateralized decentralized U.S. dollar stablecoin managed by TRON DAO Reserve."
+
+[[assets]]
+asset = "USDE"
+comment = "Ethena USDe synthetic dollar, backed through crypto collateral, stable assets, and delta-hedging strategies."
+
+[[assets]]
+asset = "USDG"
+comment = "Global Dollar stablecoin issued by Paxos Digital Singapore for the Global Dollar Network."
+
+[[assets]]
+asset = "USDS"
+comment = "Sky Dollar stablecoin, the upgraded dollar asset of the Sky Protocol and successor path for DAI users."
+
+[[assets]]
+asset = "USDT"
+comment = "Tether USD stablecoin, a widely used dollar-pegged token for trading, payments, and on-chain settlement."
+
+[[assets]]
+asset = "WBTC"
+comment = "Wrapped Bitcoin token backed 1:1 by BTC, bringing Bitcoin liquidity into Ethereum-compatible DeFi."
+
+[[assets]]
+asset = "WLFI"
+comment = "Governance token of World Liberty Financial, used for protocol participation and voting."
+
+[[assets]]
+asset = "XAUT"
+comment = "Tether Gold token, with each token representing one fine troy ounce of physical gold."
+
+[[assets]]
+asset = "JUP"
+comment = "Governance token for Jupiter, a Solana DeFi platform best known for swap aggregation and liquidity routing."
+
+[[assets]]
+asset = "PUMP"
+comment = "Token for pump.fun, the Solana memecoin launchpad and trading ecosystem."
+
+[[assets]]
+asset = "BTT"
+comment = "Utility token for the BitTorrent ecosystem, designed around peer-to-peer file sharing, bandwidth, and storage incentives."
+
+[[assets]]
+asset = "USDB"
+comment = "Blast native stablecoin, an automatically rebasing dollar asset used across the Blast ecosystem."

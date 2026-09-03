@@ -471,7 +471,7 @@ impl WalletService {
         &self,
         prices: HashMap<String, f64>,
     ) -> Result<Vec<crate::store::wallet_domain::CoreDashboardAssetGroup>, SpectraBridgeError> {
-        use crate::store::wallet_domain::CoreDashboardAssetGroup;
+        use crate::store::wallet_domain::{CoreDashboardAssetGroup, CoreDashboardAssetHolding};
 
         let settings = self.wallet_state.read().await.settings.clone();
         let derived = self.wallet_derived_state(Vec::new(), Vec::new()).await?;
@@ -499,19 +499,13 @@ impl WalletService {
             Some(coin.amount * price)
         };
 
-        // One row per (network, standard, contract). The same token held on
-        // two wallets is one row with the amounts summed.
+        // One row per asset, wherever it is held. The same asset on two
+        // chains, or on one chain across two wallets, is one row.
         //
-        // This used to be two passes: group by (chain, coingecko id), then
-        // regroup the group's contents by (chain, standard, contract) into a
-        // `chain_entries` list. The outer key already fixed the network, so
-        // that list could only ever differ by standard or contract — and over
-        // the whole catalog, no group produced more than one entry. The row
-        // carried a vector that always held exactly one thing, and a
-        // "representative", a summed amount and a summed value computed from
-        // it.
+        // Two passes: group holdings by asset, then split each group by
+        // (network, standard, contract) so the row can show where it lives.
         let mut order: Vec<String> = Vec::new();
-        let mut grouped: HashMap<String, crate::store::wallet_domain::AssetHolding> =
+        let mut grouped: HashMap<String, Vec<crate::store::wallet_domain::AssetHolding>> =
             HashMap::new();
         for coin in derived
             .included_portfolio_holdings
@@ -524,48 +518,105 @@ impl WalletService {
             )
             .unwrap_or_else(|| "native".to_string());
             let key = crate::formatting::dashboard_asset_grouping_key(
+                &coin.coin_gecko_id,
                 &network_title(&coin.chain_name),
-                &coin.token_standard,
                 &contract,
             );
-            match grouped.get_mut(&key) {
-                Some(existing) => {
-                    existing.amount += coin.amount;
-                    existing.price_usd = coin.price_usd;
-                }
-                None => {
-                    order.push(key.clone());
-                    grouped.insert(key, coin.clone());
-                }
+            if !grouped.contains_key(&key) {
+                order.push(key.clone());
             }
+            grouped.entry(key).or_default().push(coin.clone());
         }
 
         let mut groups: Vec<CoreDashboardAssetGroup> = Vec::new();
         for key in order {
-            let Some(coin) = grouped.get(&key) else {
+            let Some(coins) = grouped.get(&key) else {
+                continue;
+            };
+            // Within a row, one entry per place: the same asset held on one
+            // chain by two wallets is one entry with the amounts summed.
+            let mut place_order: Vec<String> = Vec::new();
+            let mut by_place: HashMap<String, crate::store::wallet_domain::AssetHolding> =
+                HashMap::new();
+            for coin in coins {
+                let contract = crate::tokens::normalize_token_identifier(
+                    coin.contract_address.clone(),
+                    coin.chain_name.clone(),
+                )
+                .unwrap_or_else(|| "native".to_string());
+                let place = format!(
+                    "{}|{}|{contract}",
+                    network_title(&coin.chain_name).to_lowercase(),
+                    coin.token_standard.to_lowercase()
+                );
+                match by_place.get_mut(&place) {
+                    Some(existing) => {
+                        existing.amount += coin.amount;
+                        existing.price_usd = coin.price_usd;
+                    }
+                    None => {
+                        place_order.push(place.clone());
+                        by_place.insert(place, coin.clone());
+                    }
+                }
+            }
+            let mut holdings: Vec<CoreDashboardAssetHolding> = place_order
+                .iter()
+                .filter_map(|p| by_place.get(p))
+                .map(|coin| CoreDashboardAssetHolding {
+                    value_usd: value_of(coin),
+                    coin: coin.clone(),
+                })
+                .collect();
+            // Largest value first, so the row is presented as the place most of
+            // it is. Ties break on chain name so the order does not wander.
+            holdings.sort_by(|lhs, rhs| {
+                let (l, r) = (lhs.value_usd.unwrap_or(-1.0), rhs.value_usd.unwrap_or(-1.0));
+                if (l - r).abs() > 0.000_001 {
+                    return r.total_cmp(&l);
+                }
+                lhs.coin
+                    .chain_name
+                    .to_lowercase()
+                    .cmp(&rhs.coin.chain_name.to_lowercase())
+            });
+            let Some(first) = holdings.first() else {
                 continue;
             };
             groups.push(CoreDashboardAssetGroup {
-                is_pinned: pinned.contains(&coin.symbol.to_uppercase()),
-                value_usd: value_of(coin),
-                coin: coin.clone(),
+                is_pinned: pinned.contains(&first.coin.symbol.to_uppercase()),
+                holdings,
                 id: key,
             });
         }
 
         // A pinned symbol the user holds none of still gets a row.
-        let present: std::collections::HashSet<String> = groups
-            .iter()
-            .map(|g| g.coin.symbol.to_uppercase())
-            .collect();
+        // The row is presented as its first holding, so that is where its
+        // symbol comes from.
+        let row_symbol = |g: &CoreDashboardAssetGroup| -> String {
+            g.holdings
+                .first()
+                .map(|h| h.coin.symbol.to_uppercase())
+                .unwrap_or_default()
+        };
+        let row_value = |g: &CoreDashboardAssetGroup| -> Option<f64> {
+            g.holdings
+                .iter()
+                .map(|h| h.value_usd)
+                .try_fold(0.0, |sum, v| v.map(|v| sum + v))
+        };
+        let present: std::collections::HashSet<String> =
+            groups.iter().map(row_symbol).collect();
         for symbol in pinned.iter().filter(|s| !present.contains(*s)) {
             let Some(prototype) = self.pinned_prototype(symbol, &derived).await else {
                 continue;
             };
             groups.push(CoreDashboardAssetGroup {
                 id: format!("pinned:{}", symbol.to_lowercase()),
-                coin: prototype,
-                value_usd: Some(0.0),
+                holdings: vec![CoreDashboardAssetHolding {
+                    coin: prototype,
+                    value_usd: Some(0.0),
+                }],
                 is_pinned: true,
             });
         }
@@ -581,11 +632,11 @@ impl WalletService {
                 (false, true) => return std::cmp::Ordering::Greater,
                 (true, true) => {
                     let l = pin_order
-                        .get(lhs.coin.symbol.to_uppercase().as_str())
+                        .get(row_symbol(lhs).as_str())
                         .copied()
                         .unwrap_or(usize::MAX);
                     let r = pin_order
-                        .get(rhs.coin.symbol.to_uppercase().as_str())
+                        .get(row_symbol(rhs).as_str())
                         .copied()
                         .unwrap_or(usize::MAX);
                     return l.cmp(&r);
@@ -593,16 +644,13 @@ impl WalletService {
                 (false, false) => {}
             }
             let (l, r) = (
-                lhs.value_usd.unwrap_or(-1.0),
-                rhs.value_usd.unwrap_or(-1.0),
+                row_value(lhs).unwrap_or(-1.0),
+                row_value(rhs).unwrap_or(-1.0),
             );
             if (l - r).abs() > 0.000_001 {
                 return r.total_cmp(&l);
             }
-            lhs.coin
-                .symbol
-                .to_lowercase()
-                .cmp(&rhs.coin.symbol.to_lowercase())
+            row_symbol(lhs).cmp(&row_symbol(rhs))
         });
         Ok(groups)
     }

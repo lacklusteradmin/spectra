@@ -529,18 +529,27 @@ impl CoreTokenPreferenceEntry {
 }
 
 
-/// Swift `DashboardAssetGroup` — Color omitted (derived from representative coin in Swift).
+/// One place an asset is held: a chain, a token standard, a contract.
+#[derive(Debug, Clone, PartialEq, uniffi::Record)]
+pub struct CoreDashboardAssetHolding {
+    pub coin: AssetHolding,
+    pub value_usd: Option<f64>,
+}
+
+/// One dashboard row: an asset, and everywhere it is held.
+///
+/// A row is per **asset**, not per (chain, asset) — ETH on Ethereum and ETH on
+/// Arbitrum are one row. `holdings` is where it lives, largest value first, and
+/// the first is what the row is presented as.
+///
+/// The name, symbol, icon, total amount and total value are all derived from
+/// `holdings` and are not stored beside it. They used to be: a
+/// `representative_coin`, a `total_amount` and a `total_value_usd`, three
+/// fields that could disagree with the list they came from.
 #[derive(Debug, Clone, PartialEq, uniffi::Record)]
 pub struct CoreDashboardAssetGroup {
     pub id: String,
-    /// The holding this row is, with amounts summed across wallets.
-    ///
-    /// Was `representative_coin` beside `total_amount`, `total_value_usd` and
-    /// `chain_entries: Vec<_>` — a vector that could hold only one thing, since
-    /// the row key already fixed the network, and three fields derived from
-    /// that one thing.
-    pub coin: AssetHolding,
-    pub value_usd: Option<f64>,
+    pub holdings: Vec<CoreDashboardAssetHolding>,
     pub is_pinned: bool,
 }
 
@@ -588,7 +597,6 @@ mod roundtrip_tests {
                 coingecko_id: "tether".to_string(),
                 decimals: 18,
                 tags: vec!["stablecoin".to_string()],
-                comment: String::new(),
                 color: "green".to_string(),
                 asset_name: "usdt".to_string(),
                 enabled: true,

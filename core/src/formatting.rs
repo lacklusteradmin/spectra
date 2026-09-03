@@ -195,24 +195,35 @@ pub fn asset_minimum_visible_amount(visible_decimals: u32) -> f64 {
     }
 }
 
-/// What makes two holdings one dashboard row: the same token, on the same
-/// network.
+/// What makes two holdings one dashboard row: the same asset, wherever it is
+/// held.
 ///
-/// Was keyed on `(chain, coingecko id)` — falling back to the symbol where a
-/// token has no id — while the row's *contents* were keyed on
-/// `(chain, standard, contract)`. Two keys for one question, and the second was
-/// the more precise one: a coingecko id can cover two contracts on one chain,
-/// and an empty id made every unidentified token on a chain one row with the
-/// amounts added together. The contract is what a token is.
+/// A row is per asset, so ETH on Ethereum and ETH on Arbitrum are one row with
+/// the amounts summed and a per-chain breakdown inside it.
+///
+/// The identity is the **coingecko id**, because that is the only thing that
+/// says "these are the same asset on two chains" — and every EVM L2 carries
+/// Ethereum's, so ETH on Base and ETH on Arbitrum are the ETH row.
+///
+/// Without one, a holding is its own row, keyed by contract. Falling back to
+/// the *symbol* would be the dangerous choice: symbols are not unique and
+/// nobody vouches for them, so a real holding would merge with a lookalike on
+/// another chain and be shown as one balance. A token the catalog does not
+/// vouch for is reported with an empty symbol on purpose — the front end shows
+/// its contract, the one string a deployer cannot forge — and grouping must not
+/// undo that.
 pub fn dashboard_asset_grouping_key(
+    coin_gecko_id: &str,
     chain_identity: &str,
-    token_standard: &str,
     contract: &str,
 ) -> String {
+    let cg = coin_gecko_id.trim().to_lowercase();
+    if !cg.is_empty() {
+        return format!("cg:{cg}");
+    }
     format!(
-        "chain:{}|{}|{}",
+        "contract:{}|{}",
         chain_identity.to_lowercase(),
-        token_standard.to_lowercase(),
         contract.to_lowercase()
     )
 }

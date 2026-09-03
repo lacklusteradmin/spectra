@@ -569,8 +569,60 @@ into something the data cannot say.
 *How to check it:* `the_catalog_is_two_tables` in `core/src/chains.rs` — the
 two tables cover each other and agree with the registry about which rows are
 testnets; a network inherits the technical facts and states its own path; it
-never inherits a price, a token standard, an address hint or the editorial
-block; and the derived columns agree with what they derive from.
+never inherits a price, a token standard or an address hint; and the derived
+columns agree with what they derive from.
+
+**The editorial block left the catalog.**
+
+*Was:* `chains.toml` carried `tags`, `comment`, `family`, `consensus`,
+`state_model` and `total_circulation_model` on every chain row. Grepping every
+reader: **zero in Rust**, and in Swift a single consumer — `ChainRegistryEntry`,
+a struct that exists to feed the chain wiki, plus the wiki's own tag filter.
+Nothing computes anything from any of them.
+
+They were 276 of the file's 1,294 lines and, because five of the six are prose,
+**61% of the chain data's bytes** — all of it marshalled across the FFI on every
+`list_all_chains()` call, to serve one screen.
+
+*Now:* two files. `core/data/chains.toml` holds what the app computes with;
+`core/data/chain-wiki.toml` holds what a reader reads, one row per chain, joined
+by `chain`. The six fields live on a new `ChainWikiEntry` reachable only from
+`list_chain_wiki()`, so nothing in the send, derive or fetch paths can read
+them. `ChainEntry` goes from 24 fields to 18.
+
+*Why this side, and it is not tidiness.* The strongest argument is a bug this
+plan already recorded: the first cut of the chain/network split had networks
+inherit the editorial block, which would have put 32 duplicate entries in the
+wiki, and the same cause put `bc1q…` on sixteen testnets. It was caught by a
+hand diff, not by any test, because the inheritance rule was a hand-written list
+of which columns carry and which do not — the shape this codebase gets wrong
+over and over. A network has no wiki row to inherit. The failure mode is gone
+rather than watched.
+
+The second is that the wiki's list *was* `listAllChains().filter { !$0.family.isEmpty }`
+— an emptiness test standing in for "is this row a chain rather than a network".
+The table is the filter now.
+
+*The axis is not cosmetic vs practical.* `color` is decorative and load-bearing
+in 41 Swift call sites; `total_circulation_model` is not decorative and has one
+reader. What separates them is how many things read the field, and whether
+anything computes from it. A wrong value in `chains.toml` is a wrong address or
+a wrong balance; a wrong value in `chain-wiki.toml` is a wrong sentence.
+
+*Also deleted:* `note` on `ChainDerivationPathEntry`. 59 derivation paths, **one**
+with a note — a field carried by the whole catalog and both front ends for a
+single row. Polkadot's sentence moved into its wiki `comment`.
+
+*How this was checked:* a field-by-field diff of all 46 chains and 32 networks
+against `HEAD`, through a real TOML parser on both sides — every editorial value
+present and unchanged in the new file, every practical value unchanged in the
+old one, no key added or dropped anywhere else.
+
+*How to check it:* `the_wiki_covers_every_chain_and_no_network` — every mainnet
+has exactly one wiki row and no testnet has any, and the count matches the
+registry's mainnet count. And `a_wiki_row_takes_its_name_from_the_catalog` — the
+name, symbol and derivation paths on a wiki row come from the join, not from a
+second copy in the wiki file.
 
 **A dashboard row carried a list of one.**
 
@@ -589,10 +641,12 @@ between entries that never rendered, an empty state that never showed, and a
 caption reading "Balances merge across chains" — which was never true, because
 the key includes the network.
 
-*Now:* one key, and it is the more precise of the two —
-`(network, standard, contract)`. `CoreDashboardAssetGroup` is
-`{ id, coin, value_usd, is_pinned }`; `CoreDashboardAssetChainEntry` is gone,
-and so is the two-pass grouping.
+*Then:* one key, and it was the more precise of the two —
+`(network, standard, contract)`. `CoreDashboardAssetGroup` became
+`{ id, coin, value_usd, is_pinned }`; `CoreDashboardAssetChainEntry` went, and
+so did the two-pass grouping. That collapse was correct about the *shape* — a
+list of one and three fields derived from it — and it left the layout question
+open, which is where the next entry picks it up.
 
 **The old key had a real hole.** `dashboard_asset_grouping_key` fell back to the
 *symbol* when a token has no coingecko id — so every unidentified token on a
@@ -603,6 +657,260 @@ reported with an **empty symbol** on purpose, so the front end shows its
 contract rather than a name it cannot trust. Wiring discovery into the dashboard
 would have collapsed every unknown token on a chain into a single row. Keying on
 the contract closes it before that path is connected.
+
+**The sweep found five things and one of them was a miscount.**
+
+A survey for inefficiency and for names that lie, run after the wiki work.
+
+*Four per-render FFI scans, three of them written the same day.*
+`AssetPlacesCard` called `listChainWiki()` **inside its `ForEach`** — 46 records
+cloned across the FFI per row, and USDC has 13 rows.
+`AssetGroupDetailView` and `AssetContractsDetailView` each read a `places`
+computed property calling `listAssetWiki()`, three times per body evaluation,
+and `CryptoWikiLibraryView` did the same twice. All four now go through
+`CachedCoreHelpers`, which is where this codebase already keeps exactly this —
+its own header says "Don't call the raw UniFFI symbol from a view body
+directly", and the wiki work did it anyway. The two by-key forms
+(`assetWikiEntry(symbol:)`, `chainWikiEntry(id:)`) also turn the per-row linear
+search into a dictionary hit, because the callers were lookups, not iterations.
+
+*`cachesRevision`: twelve writers, zero readers.* Twelve of `AppState`'s 26
+`cached*` properties carried `didSet { bumpCachesRevision() }`, with a
+`cacheBatchDepth` and a `batchCacheUpdates` wrapper to coalesce the bumps, and
+`StoreHistoryRefresh` had a `notifyHistoryMutation()` calling it from six sites.
+**Nothing read the counter.** Its comment claimed "SwiftUI views observing it
+refresh"; no view observed it, and under `@Observable` a view already tracks
+the properties it reads. It could only ever have made things worse — a reader
+added on the strength of that comment would have invalidated on every unrelated
+cache write. `walletsRevision` beside it is genuinely read, by two `onChange`
+handlers, and stays.
+
+*`displayColor(for:)`'s four hardcoded symbols.* `MATIC` is in neither catalog
+since POL replaced it. `ARB` was unreachable — the line above it,
+`nativeChainIconDescriptor(symbol:)`, matches Arbitrum first. `TRX` and `USDT`
+restated the colour the catalogs already give, `red` and `green`. Four arms,
+none doing anything the catalogs do not; the same hand-written-list shape this
+plan has removed around thirty times.
+
+*Three dead functions, not four.* `rpcError`, `derivationAccount` and
+`canonicalAddressIdentifier` had no callers and are gone. The fourth,
+`TokenVisualRegistryEntry.entry(matchingAssetIdentifier:)`, **was not dead** —
+the survey counted references by bare name, and `entry` is overloaded, so a
+call written as `entry(matchingAssetIdentifier:)` did not match. The compiler
+caught it at `ImageRendering.swift:32` and it was restored. Worth recording:
+name-frequency is not a reachability check for an overloaded name.
+`StakingViewModel.buildTx` is also uncalled but documents itself as not yet
+wired, so it stays.
+
+*Two names that lied.* `ChainWikiViews.swift` had become the crypto wiki; it is
+three files now — `CryptoWikiViews.swift` (the coin index and a coin's page),
+`ChainWikiViews.swift` (a chain's page, one level down), and
+`WikiCoinViews.swift` for the coin chrome both use, whose types take a
+`WikiCoinFace` so neither view knows which kind of thing it was handed.
+`ChainWikiStampedCoinLogo` stopped taking a chain some time ago and is
+`WikiStampedCoinLogo`. On the Rust side `chains.rs` was loading
+`crypto-wiki.toml` — `ASSET_WIKI`, `TomlWikiAsset`, `asset_wiki_prose` — so
+`wiki.rs` had to call back into the chain module for its own data; the loader
+and its coverage test moved to `wiki.rs`.
+
+*How to check it:* `the_file_documents_no_coin_the_app_does_not_have` in
+`core/src/wiki.rs` — the file and the catalogs name the same coins, checked from
+the file's side, which is the direction the table's own tests cannot see.
+
+**The wiki is indexed by coin, and a chain is one level down.**
+
+*Was:* the chain wiki was the only screen in the app organised by chain.
+Everything else — the dashboard row, the pin list, holdings — is organised by
+asset. A holder who tapped their USDC and wanted to know what it was had
+nowhere to go: there was a page for Base and none for USDC.
+
+Two half-pages each did half the job. The wiki had the prose and no contract
+table. `AssetGroupDetailView` had the contract table and no prose — and was
+reachable only for coins the user already **held**, so the one screen listing
+"USDC's contract on each chain" was hidden behind owning some.
+
+*Now:* `list_asset_wiki()` returns one row per coin — 66 of them, the 36
+distinct coins the 46 chains run on plus the 31 tokens, minus CRO which is
+both. A row carries what the coin is and `lives_on`, every place it exists:
+a chain, a standard, and either a contract or nothing because it is native
+there. Native places sort first and in catalog order, so ETH leads with
+Ethereum rather than alphabetically with Arbitrum.
+
+`AssetPlacesCard` is one card with two callers now, the wiki and the held-asset
+page. The dashboard's own `cachedDashboardSupportedTokenEntriesBySymbol` and
+the `core_dashboard_supported_token_entries` export it fed both went: the join
+they were doing is the wiki's, and one copy of it is enough.
+
+*Chains keep pages, reached from a coin's lives-on rows.* Ten chains share ETH,
+so "Base is an optimistic rollup" has no coin to live on — deleting chain pages
+would have lost the content for ten of them. What stays on a chain page is what
+is genuinely about a chain: `family`, `consensus`, `state_model`, derivation
+paths. `total_circulation_model` went the other way, to the coin.
+
+*Why the contract table is the useful half.* This plan already took the
+position that an unvouched holding is shown by its contract, because that is
+the one string a deployer cannot forge. A page listing the vouched contract for
+a coin on every chain is where a holder checks the address they were handed —
+the reference side of the same property.
+
+*Search covers chain names*, so typing "arbitrum" still lists every coin that
+lives there. That was the old wiki's axis and it did not have to be lost to
+change the index.
+
+*How to check it:* `the_wiki_is_one_asset_table` in `core/src/wiki.rs` — 66
+rows, no duplicates, every row with prose, a market id and at least one place;
+ETH is one row over ten chains and leads with Ethereum; CRO is one row that is
+native in one place and a contract in another; USDC lists 13 contracts with
+per-chain decimals intact.
+
+**The wiki learned what a coin is.**
+
+*Was:* nothing in the app described an asset. `chain-wiki.toml` described 46
+chains; `tokens.toml` carried a `comment` per token with **no reader at all**
+outside a drift test; and the 36 coins those chains run on had no description
+anywhere, because a chain's comment is about the chain — "Lower-cost EVM
+execution … on Arbitrum One" is not a sentence about ETH.
+
+*Now:* `core/data/crypto-wiki.toml`, one row per coin. 66 rows: the 36 distinct
+coins the 46 chains run on, plus the 31 tokens, minus CRO which is both. ETH is
+native to **ten** chains and BNB to two, so their description is written once
+here instead of ten times there.
+
+Keyed on the coin's own symbol, which is `gas_token_symbol` and **not** the
+chain's `symbol` — eleven chains disagree, Arbitrum being ARB and running on
+ETH. The key is unambiguous because a symbol has exactly one market-data id
+across both catalogs, which is now an invariant rather than a coincidence.
+
+*What moved, and which direction each went.* `total_circulation_model` left the
+chain for the coin: "Protocol-capped at 21,000,000 BTC" is a fact about BTC. It
+is a join now, so the ten ETH chains cannot disagree about ETH's supply — they
+used to hold ten copies of the sentence. The token `comment` left `tokens.toml`
+the same way the chain editorial left `chains.toml`: no computation reads it.
+What stayed in `chain-wiki.toml` is what has no coin to belong to — `family`,
+`consensus`, `state_model`, and a comment about the chain.
+
+*What was written:* descriptions for the 36 native coins, which did not exist in
+any form. The 31 token descriptions moved unchanged.
+
+*How to check it:* `every_coin_has_an_asset_wiki_row_and_nothing_else_does` —
+the wiki's key set equals the union of both catalogs' coins exactly, no row is
+duplicated, and no description is empty. Delete BTC's row and it fails naming
+BTC. And `a_chains_circulation_model_comes_from_its_native_coin` — Ethereum,
+Arbitrum, Base and Optimism report one supply model between them, not four.
+
+**CRO was priced as a different coin, five hundred times cheaper.**
+
+*Was:* the catalog named the same coin twice. `chains.toml` gave Cronos's native
+coin `native_coingecko_id = "crypto-com-chain"`; `tokens.toml` gave the CRO
+ERC-20 `coingecko_id = "cronos"`. They are the same asset — CoinGecko's own
+record for `crypto-com-chain` lists its Ethereum contract as
+`0xa0b73e1ff0b80914ab6fe0444e65848c4c34450b`, byte for byte the contract in our
+deployment row.
+
+Nothing looked broken because **both ids answer `simple/price`**: `cronos`
+returns $0.00010174 and `crypto-com-chain` returns $0.054357. A holding priced
+through the token row was reported at **1/530th of its value**. `/coins/cronos`
+returns "coin not found", so the id is not a coin at all — only the loose
+`simple/price` lookup resolves it, to something else.
+
+A second one fell out of the same sweep: `USDS` carried `sky-dollar`, which
+resolves to **nothing** — no price from the first provider at all. CoinGecko's
+contract endpoint answers `usds` for the contract in our own deployment row.
+
+*Now:* `crypto-com-chain` and `usds`. `paprika_id_for`'s `("cronos",
+"cro-cronos")` moved with it; nothing mapped `sky-dollar`, so USDS had been
+reaching CoinLore by symbol or not at all.
+
+*How this was found:* asked CoinGecko about all 65 ids in the two catalogs at
+once. 64 resolved; `sky-dollar` did not. CRO needed the contract check rather
+than the resolve check, because a wrong id that still returns a number is the
+worse failure — nothing upstream reports an error.
+
+*Why it matters more now:* a dashboard row is keyed by coingecko id, so two ids
+for one coin is also two rows for it, which is the shape the per-asset row was
+built to remove.
+
+*How to check it:* `a_symbol_has_one_market_data_id_across_both_catalogs` in
+`core/src/tokens.rs` — one symbol, one id, across both catalogs. Restore
+`cronos` and it fails naming both sides.
+
+**A renamed wallet came back after being deleted.**
+
+*Was:* `renameWallet` and the portfolio-inclusion toggle both went through
+`recordWalletDetached`, which updated the projection and then sent
+`.upsertWallet` from a `Task.detached(priority: .utility)` — fire and forget.
+`importWallet()` returns as soon as it has called `renameWallet`, so the durable
+write is still in flight when the caller moves on.
+
+Delete the wallet in that window and the upsert lands afterwards, and an upsert
+creates what it cannot find. **The deleted wallet reappears.** `AppState`
+already carried this exact reasoning for balance refresh — "a refresh result can
+arrive after the user deleted the wallet, and an upsert would bring it back",
+which is why `updateWalletsIfPresent` sends `.updateWalletIfPresent` — but the
+detached path had kept the create-or-update command.
+
+*Now:* `updateWalletDetached`, sending `.updateWalletIfPresent`. Both callers
+edit a wallet they just found in the projection, so neither ever needs to create
+one, and an edit of a wallet that no longer exists correctly does nothing. The
+name says what it does; `recordWallet*` means create-or-update everywhere else
+in this file.
+
+*How it was found, and it is worth recording because the symptom was somewhere
+else entirely.* The iOS suite went red once on
+`testImportingBitcoinWalletOnTestnet4StoresTheMainnetDerivedAddress` — two
+wallets where it asserted one — and was green on the immediate re-run and on six
+more iterations of that class. The tests' `setUp` clears core before each test,
+so a stale wallet should be impossible. It was not: the rename test five methods
+earlier ends with an in-flight detached upsert, `setUp` clears core, the upsert
+lands, and the next test that reads core inherits a wallet nobody created. A
+flaky test in one file, caused by a real resurrection bug in another.
+
+*How to check it:* `testARenameThatLandsAfterADeleteDoesNotResurrectTheWallet` —
+rename a wallet, delete it while the rename write is still in flight, and core
+holds no wallets afterwards. With `.upsertWallet` restored it fails, naming the
+resurrected id.
+
+**A dashboard row is an asset, not an asset on a chain.**
+
+*Was:* the row key included the network, so ETH on Ethereum, ETH on Arbitrum,
+ETH on Optimism and ETH on Base were four rows of the same asset, each with its
+own price line, and the balance a holder thinks of as "my ETH" was never shown
+anywhere. USDC across three chains was three rows.
+
+*Now:* a row is an asset, wherever it is held. The identity is the **coingecko
+id** — the only thing that says two holdings are the same asset, and every EVM
+L2 in the catalog carries Ethereum's, which is what makes the four ETH rows one.
+`CoreDashboardAssetGroup` is `{ id, holdings: Vec<CoreDashboardAssetHolding>,
+is_pinned }`, and `holdings` is every place the asset is held — one entry per
+`(network, standard, contract)` — largest value first, so the first is what the
+row presents itself as. The name, symbol, icon, total amount and total value are
+computed from that list on both sides of the FFI rather than stored beside it;
+that is the same discipline as the previous entry, applied to a list that now
+genuinely holds more than one thing.
+
+**The symbol fallback is still gone, and this is why it matters more now.** With
+one key per chain, a symbol collision could only merge holdings on the same
+chain. With one key per asset it would merge *across* chains, so a real holding
+and a lookalike deployed on another chain with the same three letters would be
+added together and shown as one balance. A token the catalog does not vouch for
+is reported with an empty symbol on purpose, so grouping falls back to
+`contract:{chain}|{contract}` — the one string a deployer cannot forge — and an
+unvouched token is its own row, always.
+
+*Check it from the CLI:* `cargo test --workspace
+a_row_is_per_asset_and_breaks_down_by_chain` — ETH held 1 and 2 on Ethereum
+across two wallets and 5 on Arbitrum is one row totalling 8, with two breakdown
+entries, presented as Arbitrum because that is where most of it is. And
+`an_unvouched_token_is_never_merged_by_symbol` — three contracts sharing the
+symbol `USDX`, two chains between them, none with a coingecko id, are three
+rows. Both go red if the key is reverted: the first to `1 != 3` on the row
+count, the second to `1 != 3` on the unvouched rows.
+
+*What came back on the Swift side:* the `"Networks"` hub metric reads the real
+count again, the chain-breakdown card is a `ForEach` with a count badge and
+dividers, and the row subtitle reads "On Arbitrum +1 more". Those were removed
+in the previous entry as decorations of a list that could only hold one thing;
+they are load-bearing again.
 
 *Why this side:* whichever way the product question is answered, the old shape
 was wrong for it. Per (chain, asset) — the current answer — makes the vector
@@ -6330,12 +6638,12 @@ Not by feel. These four numbers, checked at the end of each stage:
 | Metric | Start | Now | Target |
 |---|---|---|---|
 | `core_plan_*` exports | 42 | **0** | 0 |
-| Swift root lines vs `views/` | 19,766 vs 11,113 | 13,961 vs 10,590 | inverted |
+| Swift root lines vs `views/` | 19,766 vs 11,113 | 13,995 vs 10,560 | inverted |
 | Domain collections stored on `AppState` | 3 | 0 | 0 |
 | Domain settings owned by core | 0 | **21 fields; 4 left on iOS on purpose** | all |
 | Wallet operations reachable from the CLI | partial | **all** | all |
 | CLI commands drivable without a TTY | 0 of 24 | all (25 now) | all |
-| Exported functions and methods | 234 | **184** (95 free + 89 methods) | ~150 (see C2) |
+| Exported functions and methods | 234 | **185** (96 free + 89 methods) | ~150 (see C2) |
 | Largest file in `core/` | 4,781 | 2,501 | — |
 
 *The export row is counted by `scripts/count-exports.sh`,* which states the
@@ -6408,8 +6716,58 @@ coming down as the paths it replaced are deleted.
 
 ## Queued: features with a more elegant shape
 
-*Empty.* The five entries this section held are all done — see "Prices came from
-one provider", "Diagnostics had five record shapes", "`AssetHolding` and
+### The wiki becomes an asset wiki
+
+The chain wiki is the only screen in the app organised by chain; everything else
+— the dashboard row, the pin list, holdings — is organised by asset. A user who
+taps their USDC and wants to know what USDC is has nowhere to go: there is a
+page for Base and none for USDC.
+
+Half of it is already built and gated on the wrong thing. `AssetContractsCard`
+in `DashboardViews.swift` already renders chain / standard / contract per asset
+— but only inside `AssetGroupDetailView`, so only for assets the user *holds*.
+The chain wiki has the editorial content and no contract table; the asset detail
+has the contract table and no editorial content. This joins them.
+
+It is also the reference side of a safety property this plan already took: an
+unvouched token is shown by contract because a deployer cannot forge one, and a
+per-asset page listing the vouched contract on every chain is where a holder
+checks the one they were given.
+
+Scale: 46 chain pages become ~66 asset pages — 36 distinct native assets (ETH is
+native on **ten** chains, BNB on two) plus 31 token assets. The 31 already have
+`comment`.
+
+1. ~~**`chain-wiki.toml` → `crypto-wiki.toml`, one row per asset.**~~ **Done** —
+   see "The wiki learned what a coin is" under "Behaviour changed on purpose".
+2. ~~**One asset table in core.**~~ **Done** — `core/src/wiki.rs`.
+3. ~~**Chain pages stay, one level down.**~~ **Done.**
+4. ~~**Swift: lift `AssetContractsCard` out of the detail view.**~~ **Done.**
+
+All four are recorded together under "The wiki is indexed by coin" in
+"Behaviour changed on purpose".
+
+### The sweep after it
+
+A survey for inefficiency and for names that lie, run once the wiki work
+landed. Five findings, ordered by cost.
+
+All five are done — see "The sweep found five things and one of them was a
+miscount" under "Behaviour changed on purpose".
+
+1. ~~Four per-render FFI scans.~~ Routed through `CachedCoreHelpers`.
+2. ~~`cachesRevision`: twelve writers, zero readers.~~ Deleted.
+3. ~~`displayColor(for:)`'s four hardcoded symbols.~~ Deleted.
+4. ~~Four functions with no callers.~~ Three, and they are deleted; the fourth
+   was a miscount.
+5. ~~Two names that lie.~~ Split and moved.
+
+*Prerequisite, done:* CRO carried two market-data ids, which would have made it
+two entries in an asset-keyed wiki — see "CRO was priced as a different coin"
+above.
+
+The five entries this section previously held are all done — see "Prices came
+from one provider", "Diagnostics had five record shapes", "`AssetHolding` and
 `CoreCoin`", "Three UTXO preview functions" and "Self-tests covered twenty of
 seventy-eight chains" under "Behaviour changed on purpose".
 
@@ -6437,16 +6795,12 @@ so the case was weaker than the five and it was not queued.
   stop needing a catalog entry to know how to denominate a transfer — see the
   Tron decimals entry above for what that assumption cost.
 
-- **Is a dashboard row per asset, or per (chain, asset)?** Still open, and now
-  it is only that question. Today it is the latter: the row key includes the
-  network, so ETH on Ethereum and ETH on Arbitrum are separate rows, and
-  `a_row_is_per_chain_and_sums_across_wallets` pins it so changing it is a
-  decision rather than a regression. That much is visible product layout.
-
-  What was *not* a product question — a `chain_entries` vector that could only
-  ever hold one thing, and a `DashboardAssetGroup` shaped for a cross-chain
-  grouping that never happened — is fixed; see "A dashboard row carried a list
-  of one" below. The record no longer implies an answer the code does not give.
+- ~~Is a dashboard row per asset, or per (chain, asset)?~~ **Answered: per
+  asset.** ETH on Ethereum and ETH on Arbitrum are one row with a per-chain
+  breakdown; see "A dashboard row is an asset, not an asset on a chain" below.
+  The layout question was the only thing left open here — the shape problem
+  underneath it (a `chain_entries` vector that could only ever hold one thing,
+  and three fields derived from it) was fixed first, in the entry above that.
 
 
 - ~~Six chains claim watch-only support and have nowhere to type an address.~~

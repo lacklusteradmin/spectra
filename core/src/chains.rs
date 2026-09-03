@@ -1,12 +1,24 @@
 //! Built-in chain registry.
 //!
-//! The source of truth is `core/data/chains.toml`, embedded at compile time.
-//! Call [`list_all_chains`] to get all chain entries (mainnet + testnet).
+//! Two files, embedded at compile time. `core/data/chains.toml` holds what the
+//! app *computes* with — derivation paths, decimals, address formats, token
+//! standards. `core/data/chain-wiki.toml` holds what a reader reads, and
+//! nothing computes anything from it.
+//!
+//! They are separate because a wrong value in the first is a wrong address or
+//! a wrong balance, and a wrong value in the second is a wrong sentence on a
+//! page. The boundary is a type, not a convention: the editorial fields exist
+//! only on [`ChainWikiEntry`], so no code outside the wiki can reach them.
+//!
+//! Call [`list_all_chains`] for all chain entries (mainnet + testnet), and
+//! [`list_chain_wiki`] for the wiki rows (chains only — a testnet is not a
+//! different chain).
 
 use serde::{Deserialize, Serialize};
 use std::sync::LazyLock;
 
 static CHAINS_TOML: &str = include_str!("../data/chains.toml");
+static CHAIN_WIKI_TOML: &str = include_str!("../data/chain-wiki.toml");
 
 // ── Parsed TOML shape
 
@@ -30,12 +42,6 @@ struct TomlChain {
     #[serde(default)]
     address_prefix_hint: String,
     token_standard: String,
-    tags: Vec<String>,
-    comment: String,
-    family: String,
-    consensus: String,
-    state_model: String,
-    total_circulation_model: String,
     native_coingecko_id: String,
     native_decimals: u32,
     native_asset_name: String,
@@ -62,8 +68,22 @@ struct TomlDerivationPathEntry {
     path: String,
     #[serde(default)]
     is_default: bool,
-    #[serde(default)]
-    note: String,
+}
+
+/// The wiki file: one row per chain, joined to `chains.toml` by `chain`.
+#[derive(Debug, Deserialize)]
+struct TomlWikiFile {
+    chains: Vec<TomlWikiChain>,
+}
+
+#[derive(Debug, Deserialize)]
+struct TomlWikiChain {
+    chain: String,
+    tags: Vec<String>,
+    comment: String,
+    family: String,
+    consensus: String,
+    state_model: String,
 }
 
 /// The prompt shown above a contract-address field, from the standard the
@@ -101,7 +121,6 @@ pub struct ChainDerivationPathEntry {
     pub tag: String,
     pub path: String,
     pub is_default: bool,
-    pub note: String,
 }
 
 #[derive(Debug, Clone, Serialize, uniffi::Record)]
@@ -131,13 +150,33 @@ pub struct ChainEntry {
     pub native_coingecko_id: String,
     pub native_decimals: u32,
     pub native_asset_name: String,
+    pub derivation_path: Vec<ChainDerivationPathEntry>,
+}
+
+/// What a *chain* is — the facts that have no coin to belong to.
+///
+/// Ten chains share ETH, so "Base is an optimistic rollup" cannot live on an
+/// asset page; that is what this is for. What a *coin* is lives on
+/// [`crate::wiki::AssetWikiEntry`], which is the wiki's index — a holder thinks
+/// in coins, and this is one level down from there.
+///
+/// Kept out of [`ChainEntry`] so that nothing in the send, derive or fetch
+/// paths can read it — sixty-one percent of the catalog's bytes used to travel
+/// the FFI on every `list_all_chains()` call to serve one screen.
+///
+/// There is a row per chain and none per network, so the wiki no longer filters
+/// networks out by testing `family` for emptiness. The table is the filter.
+#[derive(Debug, Clone, Serialize, uniffi::Record)]
+pub struct ChainWikiEntry {
+    pub id: String,
+    pub name: String,
+    pub symbol: String,
     pub tags: Vec<String>,
     pub comment: String,
     pub family: String,
     pub consensus: String,
     pub state_model: String,
     pub derivation_path: Vec<ChainDerivationPathEntry>,
-    pub total_circulation_model: String,
 }
 
 impl From<TomlDerivationPathEntry> for ChainDerivationPathEntry {
@@ -146,7 +185,6 @@ impl From<TomlDerivationPathEntry> for ChainDerivationPathEntry {
             tag: value.tag,
             path: value.path,
             is_default: value.is_default,
-            note: value.note,
         }
     }
 }
@@ -174,11 +212,6 @@ static CATALOG: LazyLock<Vec<ChainEntry>> = LazyLock::new(|| {
         native_coingecko_id: c.native_coingecko_id.clone(),
         native_decimals: c.native_decimals,
         native_asset_name: c.native_asset_name.clone(),
-        tags: c.tags.clone(),
-        comment: c.comment.clone(),
-        family: c.family.clone(),
-        consensus: c.consensus.clone(),
-        state_model: c.state_model.clone(),
         derivation_path: c
             .derivation_path
             .iter()
@@ -186,10 +219,8 @@ static CATALOG: LazyLock<Vec<ChainEntry>> = LazyLock::new(|| {
                 tag: d.tag.clone(),
                 path: d.path.clone(),
                 is_default: d.is_default,
-                note: d.note.clone(),
             })
             .collect(),
-        total_circulation_model: c.total_circulation_model.clone(),
     };
 
     let by_id: std::collections::HashMap<&str, &TomlChain> = parsed
@@ -218,7 +249,6 @@ static CATALOG: LazyLock<Vec<ChainEntry>> = LazyLock::new(|| {
                 tag: d.tag.clone(),
                 path: d.path.clone(),
                 is_default: d.is_default,
-                note: d.note.clone(),
             })
             .collect();
 
@@ -236,19 +266,37 @@ static CATALOG: LazyLock<Vec<ChainEntry>> = LazyLock::new(|| {
         // states its own or has none.
         entry.address_prefix_hint = n.address_prefix_hint.clone().unwrap_or_default();
 
-        // The editorial block documents a *chain*. The wiki iterates entries
-        // and skips those with no `family`, so leaving these empty is what
-        // keeps a chain from appearing once per network.
-        entry.tags = Vec::new();
-        entry.comment = String::new();
-        entry.family = String::new();
-        entry.consensus = String::new();
-        entry.state_model = String::new();
-        entry.total_circulation_model = String::new();
-
         out.push(entry);
     }
     out
+});
+
+static WIKI: LazyLock<Vec<ChainWikiEntry>> = LazyLock::new(|| {
+    let parsed: TomlWikiFile = toml::from_str(CHAIN_WIKI_TOML)
+        .expect("chain-wiki.toml is embedded at compile time and must be valid TOML");
+
+    parsed
+        .chains
+        .into_iter()
+        .map(|w| {
+            // A wiki row naming a chain the catalog does not define is a
+            // build-time mistake, not a row to skip: the page would have prose
+            // and no name to put it under.
+            let chain = chain_by_str_id(&w.chain)
+                .unwrap_or_else(|| panic!("chain-wiki.toml: unknown chain {}", w.chain));
+            ChainWikiEntry {
+                id: chain.id.clone(),
+                name: chain.name.clone(),
+                symbol: chain.symbol.clone(),
+                tags: w.tags,
+                comment: w.comment,
+                family: w.family,
+                consensus: w.consensus,
+                state_model: w.state_model,
+                derivation_path: chain.derivation_path.clone(),
+            }
+        })
+        .collect()
 });
 
 // ── Public API
@@ -257,6 +305,12 @@ static CATALOG: LazyLock<Vec<ChainEntry>> = LazyLock::new(|| {
 #[uniffi::export]
 pub fn list_all_chains() -> Vec<ChainEntry> {
     CATALOG.clone()
+}
+
+/// Return the chain wiki rows — one per chain, never one per network.
+#[uniffi::export]
+pub fn list_chain_wiki() -> Vec<ChainWikiEntry> {
+    WIKI.clone()
 }
 
 /// Return a reference to the static catalog slice.
@@ -405,20 +459,38 @@ mod the_catalog_is_two_tables {
         );
     }
 
-    /// The wiki documents chains, not networks — it skips rows with no
-    /// `family`, and a network has none.
+    /// The wiki documents chains, not networks, and it says so by having a
+    /// table rather than by testing a field for emptiness.
+    ///
+    /// The editorial block used to be six columns on the chain row, which
+    /// meant the network loop had to remember to blank all six — and when it
+    /// did not, thirty-two testnets appeared in the wiki as duplicate chains.
+    /// That is not a bug you can have when networks have no wiki row to
+    /// inherit.
     #[test]
-    fn only_chains_carry_the_editorial_block() {
+    fn the_wiki_covers_every_chain_and_no_network() {
+        let ids: std::collections::HashSet<&str> = WIKI.iter().map(|w| w.id.as_str()).collect();
+        assert_eq!(ids.len(), WIKI.len(), "a chain has two wiki rows");
         for chain in Chain::all() {
-            let e = entry(chain.str_id());
+            let documented = ids.contains(chain.str_id());
             if chain.is_testnet() {
-                assert!(e.family.is_empty(), "{} would appear in the wiki", e.id);
-                assert!(e.comment.is_empty());
-                assert!(e.tags.is_empty());
+                assert!(!documented, "{} is a network and has a wiki row", chain.str_id());
             } else {
-                assert!(!e.family.is_empty(), "{} has no wiki entry", e.id);
+                assert!(documented, "{} has no wiki row", chain.str_id());
             }
         }
+        assert_eq!(WIKI.len(), Chain::all().filter(|c| !c.is_testnet()).count());
+    }
+
+    /// The wiki joins to the catalog rather than restating it.
+    #[test]
+    fn a_wiki_row_takes_its_name_from_the_catalog() {
+        let dot = WIKI.iter().find(|w| w.id == "polkadot").expect("a wiki row");
+        let catalog = entry("polkadot");
+        assert_eq!(dot.name, catalog.name);
+        assert_eq!(dot.symbol, catalog.symbol);
+        assert_eq!(dot.derivation_path.len(), catalog.derivation_path.len());
+        assert!(!dot.family.is_empty());
     }
 
     /// `is_evm` and the contract prompt are computed, not stored.
