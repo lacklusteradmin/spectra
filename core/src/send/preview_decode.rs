@@ -247,18 +247,17 @@ pub struct BitcoinHdSendPreview {
     pub max_sendable: f64,
 }
 
+/// The Bitcoin HD send preview, from the two numbers it actually needs.
+///
+/// Took two JSON strings before — the serialized xpub balance and the
+/// serialized fee rate — and dug `confirmed_sats` and `sats_per_vbyte` back
+/// out of them. Both were produced typed one call away and serialized only to
+/// reach this function.
 pub fn decode_bitcoin_hd_send_preview(
-    balance_json: String,
-    fee_json: String,
+    confirmed_sats: u64,
+    sats_per_vbyte: f64,
 ) -> Option<BitcoinHdSendPreview> {
-    let bv: serde_json::Value = serde_json::from_str(&balance_json).ok()?;
-    let bo = bv.as_object()?;
-    let confirmed_sats = obj_u64(bo, "confirmed_sats").unwrap_or(0);
-
-    let fv: serde_json::Value = serde_json::from_str(&fee_json).ok()?;
-    let fo = fv.as_object()?;
-    let raw = obj_f64(fo, "sats_per_vbyte").unwrap_or(1.0);
-    let rate = raw.ceil().max(1.0) as u64;
+    let rate = sats_per_vbyte.ceil().max(1.0) as u64;
     let bytes: u64 = 250;
     let fee_sat = rate * bytes;
     let spendable_sat = confirmed_sats.saturating_sub(fee_sat);
@@ -444,10 +443,10 @@ pub fn build_utxo_send_preview_record(
 }
 
 pub fn build_bitcoin_hd_send_preview_record(
-    balance_json: String,
-    fee_json: String,
+    confirmed_sats: u64,
+    sats_per_vbyte: f64,
 ) -> Option<crate::wallet_core::BitcoinSendPreview> {
-    let d = decode_bitcoin_hd_send_preview(balance_json, fee_json)?;
+    let d = decode_bitcoin_hd_send_preview(confirmed_sats, sats_per_vbyte)?;
     Some(crate::wallet_core::BitcoinSendPreview {
         estimatedFeeRateSatVb: d.estimated_fee_rate_sat_vb,
         estimatedNetworkFee: d.estimated_network_fee_btc,
@@ -505,7 +504,7 @@ pub enum SimpleChainPreview {
         preview: crate::wallet_core::SolanaSendPreview,
     },
     Xrp {
-        preview: crate::wallet_core::XRPSendPreview,
+        preview: crate::wallet_core::XrpSendPreview,
     },
     Stellar {
         preview: crate::wallet_core::StellarSendPreview,
@@ -523,10 +522,10 @@ pub enum SimpleChainPreview {
         preview: crate::wallet_core::AptosSendPreview,
     },
     Ton {
-        preview: crate::wallet_core::TONSendPreview,
+        preview: crate::wallet_core::TonSendPreview,
     },
     Icp {
-        preview: crate::wallet_core::ICPSendPreview,
+        preview: crate::wallet_core::IcpSendPreview,
     },
     Near {
         preview: crate::wallet_core::NearSendPreview,
@@ -557,7 +556,7 @@ pub fn build_simple_chain_preview(json: String, chain: SimpleChain) -> SimpleCha
             },
         },
         SimpleChain::Xrp => SimpleChainPreview::Xrp {
-            preview: XRPSendPreview {
+            preview: XrpSendPreview {
                 estimatedNetworkFee: fee,
                 feeDrops: raw.parse().unwrap_or(12),
                 sequence: 0,
@@ -637,7 +636,7 @@ pub fn build_simple_chain_preview(json: String, chain: SimpleChain) -> SimpleCha
             }
         }
         SimpleChain::Ton => SimpleChainPreview::Ton {
-            preview: TONSendPreview {
+            preview: TonSendPreview {
                 estimatedNetworkFee: fee,
                 sequenceNumber: 0,
                 spendableBalance: bal,
@@ -649,7 +648,7 @@ pub fn build_simple_chain_preview(json: String, chain: SimpleChain) -> SimpleCha
             },
         },
         SimpleChain::Icp => SimpleChainPreview::Icp {
-            preview: ICPSendPreview {
+            preview: IcpSendPreview {
                 estimatedNetworkFee: fee,
                 feeE8s: raw.parse().unwrap_or(10_000),
                 spendableBalance: bal,
@@ -718,9 +717,7 @@ mod tests {
 
     #[test]
     fn bitcoin_hd_decode() {
-        let bal = r#"{"confirmed_sats":100000}"#;
-        let fee = r#"{"sats_per_vbyte":"2.3"}"#;
-        let d = decode_bitcoin_hd_send_preview(bal.into(), fee.into()).unwrap();
+        let d = decode_bitcoin_hd_send_preview(100_000, 2.3).unwrap();
         assert_eq!(d.estimated_fee_rate_sat_vb, 3); // ceil(2.3)
         assert_eq!(d.estimated_transaction_bytes, 250);
         // spendable = 100000 - 3*250 = 99250

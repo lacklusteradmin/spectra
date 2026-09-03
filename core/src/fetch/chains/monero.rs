@@ -188,7 +188,6 @@ impl MoneroClient {
             }
         }
 
-        // Sort by timestamp descending.
         entries.sort_by(|a, b| b.timestamp.cmp(&a.timestamp));
         Ok(entries)
     }

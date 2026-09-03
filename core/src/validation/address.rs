@@ -613,7 +613,6 @@ mod tests {
         assert_eq!(result.normalized_value.as_deref(), Some("0xabcd"));
     }
 
-    #[test]
     /// A mixed-case EVM address is checked against its EIP-55 checksum.
     ///
     /// The validator lowercased first and never looked, so any forty hex

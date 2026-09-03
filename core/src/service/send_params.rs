@@ -2,18 +2,62 @@ use serde::Deserialize;
 
 // ── Per-chain `sign_and_send` parameter shapes ────────────────────────────
 //
-// Each chain's `sign_and_send` arm in `super::send` historically read its
-// inputs by pulling individual fields out of a `serde_json::Value` with
-// inline `.as_str()` / `.as_u64()` / `try_into()` chains. That style hides
-// the contract — a reader can't see at a glance what shape the Polkadot
-// endpoint expects without scanning the full arm body.
+// One struct per chain, naming exactly what that chain's signer needs. They
+// still implement `Deserialize` — `broadcast_raw` and a couple of other
+// JSON-in call sites parse a caller-supplied blob into one of these — but
+// `execute_send`'s path no longer goes through JSON to reach them: it builds
+// one directly, matching `Chain` exactly once, in `build_send_params`.
 //
-// Defining a typed struct per chain reverses that: the type doc *is* the
-// API contract, serde gives field-name-aware error messages for free, and
-// the dispatch arm collapses to one `parse_params` call.
-//
-// These structs accept the same JSON shape Swift already produces so this
-// migration is internal — no FFI signature changes.
+// `SendParams` and `SendTokenParams` below are what makes that one match
+// possible. Each variant just names which of these structs the arm produced;
+// nothing here is new data, only a name for "which chain this already is."
+
+/// What `execute_send` signs, once `build_send_params` has resolved which
+/// chain and which struct. One `match` — in `sign_and_broadcast_send` — reads
+/// this; nothing downstream re-derives `Chain` from a string to find out.
+#[derive(Debug)]
+pub(crate) enum SendParams {
+    Bitcoin(BitcoinNativeSendParams),
+    /// Carries the overrides alongside the params: they cross to the client
+    /// call as a separate argument (`sign_and_broadcast_with_overrides`), not
+    /// through a field on `EvmNativeSendParams`.
+    Evm(EvmNativeSendParams, crate::send::chains::evm::EvmSendOverrides),
+    Solana(SolanaNativeSendParams),
+    Xrp(XrpSendParams),
+    Tron(TronNativeSendParams),
+    Sui(SuiSendParams),
+    Aptos(AptosSendParams),
+    Near(NearNativeSendParams),
+    Utxo(UtxoFixedFeeSendParams),
+    Zcash(ZcashSendParams),
+    Decred(DecredSendParams),
+    Kaspa(KaspaSendParams),
+    Stellar(StellarSendParams),
+    Cardano(CardanoSendParams),
+    Polkadot(PolkadotSendParams),
+    Bittensor(BittensorSendParams),
+    Ton(TonSendParams),
+    Icp(IcpSendParams),
+    Monero(MoneroSendParams),
+}
+
+/// The token-send counterpart of [`SendParams`]. Fewer variants: only the
+/// families `execute_send` can build a token transfer for today.
+#[derive(Debug)]
+pub(crate) enum SendTokenParams {
+    Evm(TokenAmountSendParams, crate::send::chains::evm::EvmSendOverrides),
+    Tron(TronTokenSendParams),
+    Near(NearTokenSendParams),
+    Solana(SolanaTokenSendParams),
+}
+
+/// What `build_send_params` hands `sign_and_broadcast_send`: which of the two
+/// kinds this send is, carrying the one already-typed struct that decides.
+#[derive(Debug)]
+pub(crate) enum ExecuteSendParams {
+    Native(SendParams),
+    Token(SendTokenParams),
+}
 
 /// `Chain::Polkadot` send parameters. `planck` is the smallest unit
 /// (10⁻¹⁰ DOT). The 32-byte `private_key_hex` is the sr25519 mini-secret
@@ -332,6 +376,17 @@ pub(crate) struct TronTokenSendParams {
     pub private_key_hex: String,
 }
 
+/// Stellar's custom-asset (token) send params.
+///
+/// Not built by `build_send_params` — no chain reaches `SendTokenParams` for
+/// `Chain::Stellar`, because `execute_send`'s contract-address branch never
+/// had a Stellar arm (contract-address sends assume an EVM-shaped identifier;
+/// Stellar identifies an asset by code + issuer account, not a contract).
+/// This struct, and `StellarClient::sign_and_submit_asset` that consumes it,
+/// are the signing half of a feature `execute_send` was never wired up to
+/// reach — not leftover plumbing, a real gap. Kept rather than deleted so the
+/// shape survives for whoever wires it up.
+#[allow(dead_code)]
 #[derive(Debug, Clone, Deserialize)]
 pub(crate) struct StellarTokenSendParams {
     pub from: String,

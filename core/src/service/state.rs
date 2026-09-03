@@ -28,7 +28,7 @@ fn record_from_keypool(
 /// Store one keypool entry in memory and in SQLite. Caller holds the lock, so
 /// the read-modify-write around this call stays atomic.
 async fn persist_keypool(
-    state_db_path: &Arc<RwLock<Option<String>>>,
+    state_db_path: &Arc<AsyncRwLock<Option<String>>>,
     keypool: &mut HashMap<String, crate::wallet_db::KeypoolState>,
     key: String,
     wallet_id: &str,
@@ -766,8 +766,15 @@ impl WalletService {
                         .ok_or_else(|| format!("merge: unknown chain {chain_name:?}"))?;
                     let strategy = chain.transaction_merge_strategy();
                     let include_symbol_in_identity = chain.merge_identity_includes_symbol();
+                    // Scoped to this chain: a merge only ever matches within
+                    // one chain (`matches_identity` checks it before anything
+                    // else), so every other chain's history — every other
+                    // wallet's, too — was fetched, JSON-decoded and then
+                    // discarded by that check on every refresh. `idx_hr_chain`
+                    // exists in the schema for exactly this query and this
+                    // path was the one call site not using it.
                     let existing: Vec<crate::fetch::transactions::CoreTransactionRecord> =
-                        crate::wallet_db::history_fetch_all(&db_path)?
+                        crate::wallet_db::history_fetch_for_chain(&db_path, &chain_name)?
                             .into_iter()
                             .map(|row| row.payload.into())
                             .collect();
@@ -1458,7 +1465,6 @@ impl WalletService {
 
         let mut send_coins_by_wallet_id = HashMap::new();
         let mut receive_coins_by_wallet_id = HashMap::new();
-        let mut receive_chains_by_wallet_id = HashMap::new();
         let mut send_enabled_wallet_ids = Vec::new();
         let mut receive_enabled_wallet_ids = Vec::new();
 
@@ -1466,7 +1472,6 @@ impl WalletService {
             let has_signing_material = signing.contains(wallet.id.as_str());
             let mut send_coins = Vec::new();
             let mut receive_coins = Vec::new();
-            let mut receive_chains: Vec<String> = Vec::new();
 
             for holding in &wallet.holdings {
                 let network = network_of(&holding.chain_name);
@@ -1510,9 +1515,6 @@ impl WalletService {
                 }
                 if chain_is_known {
                     receive_coins.push(holding.clone());
-                    if !receive_chains.contains(&holding.chain_name) {
-                        receive_chains.push(holding.chain_name.clone());
-                    }
                 }
             }
 
@@ -1524,7 +1526,6 @@ impl WalletService {
             }
             send_coins_by_wallet_id.insert(wallet.id.clone(), send_coins);
             receive_coins_by_wallet_id.insert(wallet.id.clone(), receive_coins);
-            receive_chains_by_wallet_id.insert(wallet.id.clone(), receive_chains);
         }
 
         let portfolio = grouped_order
@@ -1542,7 +1543,6 @@ impl WalletService {
             portfolio,
             send_coins_by_wallet_id,
             receive_coins_by_wallet_id,
-            receive_chains_by_wallet_id,
             send_enabled_wallet_ids,
             receive_enabled_wallet_ids,
             refreshable_chain_names: wallets

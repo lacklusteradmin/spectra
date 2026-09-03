@@ -96,22 +96,18 @@ pub struct OwnedAddressAggregationRequest {
 #[serde(rename_all = "camelCase")]
 pub struct ReceiveSelectionHoldingInput {
     pub holding_index: u64,
-    pub chain_name: String,
     pub has_contract_address: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, uniffi::Record)]
 #[serde(rename_all = "camelCase")]
 pub struct ReceiveSelectionRequest {
-    pub receive_chain_name: String,
-    pub available_receive_chains: Vec<String>,
     pub available_receive_holdings: Vec<ReceiveSelectionHoldingInput>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, uniffi::Record)]
 #[serde(rename_all = "camelCase")]
 pub struct ReceiveSelectionPlan {
-    pub resolved_chain_name: String,
     pub selected_receive_holding_index: Option<u64>,
 }
 
@@ -266,40 +262,36 @@ pub fn aggregate_owned_addresses(request: OwnedAddressAggregationRequest) -> Vec
     ordered
 }
 
+/// Which of a wallet's holdings the receive screen should present itself as:
+/// the native one, or the first token if it somehow has no native holding.
+///
+/// This used to resolve a *chain* first — the caller passed a
+/// `receive_chain_name` and an `available_receive_chains` list, and holdings on
+/// other chains were filtered out. A wallet belongs to one chain: it is
+/// imported per chain (a seed across three chains makes three wallets), and its
+/// balances arrive from a single refresh entry built from `selected_chain`, so
+/// every holding it has carries that chain's name. The list always held one
+/// entry, the filter never excluded anything, and the resolved chain was always
+/// the wallet's own.
+///
+/// Note the address does not depend on this choice at all — every holding on a
+/// chain is received at the same address. The pick only decides which symbol
+/// and icon the screen shows.
 #[uniffi::export]
 pub fn core_receive_selection(request: ReceiveSelectionRequest) -> ReceiveSelectionPlan {
-    let resolved_chain_name = if request
-        .available_receive_chains
-        .iter()
-        .any(|chain| chain == &request.receive_chain_name)
-    {
-        request.receive_chain_name
-    } else {
-        request
-            .available_receive_chains
-            .first()
-            .cloned()
-            .unwrap_or_default()
-    };
-
-    let mut first_matching = None;
-    let mut selected_receive_holding_index = None;
+    let mut first = None;
     for holding in request.available_receive_holdings {
-        if holding.chain_name != resolved_chain_name {
-            continue;
-        }
-        if first_matching.is_none() {
-            first_matching = Some(holding.holding_index);
+        if first.is_none() {
+            first = Some(holding.holding_index);
         }
         if !holding.has_contract_address {
-            selected_receive_holding_index = Some(holding.holding_index);
-            break;
+            return ReceiveSelectionPlan {
+                selected_receive_holding_index: Some(holding.holding_index),
+            };
         }
     }
-
     ReceiveSelectionPlan {
-        resolved_chain_name,
-        selected_receive_holding_index: selected_receive_holding_index.or(first_matching),
+        selected_receive_holding_index: first,
     }
 }
 

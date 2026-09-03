@@ -1,5 +1,6 @@
 use serde::{Deserialize, Serialize};
 use std::cmp::Ordering;
+use std::collections::HashMap;
 
 /// Wire/merge form of a transaction record.
 ///
@@ -215,20 +216,40 @@ pub fn merge_transactions(request: TransactionMergeRequest) -> Vec<CoreTransacti
     } = request;
     let mut merged_transactions = existing_transactions;
 
+    // `matches_identity` always requires exact equality on these four before
+    // it looks at anything strategy-specific, so they bucket every candidate
+    // an incoming record could possibly match. Buckets hold one entry in
+    // practice — a (hash, kind, wallet) rarely repeats — so the scan below is
+    // over a handful of candidates, not the whole stored history.
+    //
+    // Was a `.position()` over all of `merged_transactions` per incoming
+    // record: on a chain with a real history and a refresh page of new
+    // transactions, that is existing × incoming exact-equality checks for a
+    // relationship a hash map answers in one lookup.
+    let mut index: HashMap<IdentityBucketKey, Vec<usize>> = HashMap::new();
+    for (i, existing) in merged_transactions.iter().enumerate() {
+        index.entry(bucket_key(existing)).or_default().push(i);
+    }
+
     for incoming in incoming_transactions {
         if !incoming_is_relevant(&incoming, &strategy, &chain_name) {
             continue;
         }
 
-        if let Some(existing_index) = merged_transactions.iter().position(|existing| {
-            matches_identity(
-                existing,
-                &incoming,
-                &strategy,
-                &chain_name,
-                include_symbol_in_identity,
-            )
-        }) {
+        let candidates = index.get(&bucket_key(&incoming));
+        let existing_index = candidates.and_then(|indices| {
+            indices.iter().copied().find(|&i| {
+                matches_identity(
+                    &merged_transactions[i],
+                    &incoming,
+                    &strategy,
+                    &chain_name,
+                    include_symbol_in_identity,
+                )
+            })
+        });
+
+        if let Some(existing_index) = existing_index {
             let existing = merged_transactions[existing_index].clone();
             merged_transactions[existing_index] = merge_record(
                 existing,
@@ -237,7 +258,9 @@ pub fn merge_transactions(request: TransactionMergeRequest) -> Vec<CoreTransacti
                 preserve_created_at_sentinel_unix,
             );
         } else {
+            let key = bucket_key(&incoming);
             merged_transactions.push(incoming);
+            index.entry(key).or_default().push(merged_transactions.len() - 1);
         }
     }
 
@@ -247,6 +270,20 @@ pub fn merge_transactions(request: TransactionMergeRequest) -> Vec<CoreTransacti
             .unwrap_or(Ordering::Equal)
     });
     merged_transactions
+}
+
+/// The four fields every merge strategy checks for exact equality before its
+/// own finer-grained rule — everything `matches_identity` could possibly
+/// match narrows to records sharing this key.
+type IdentityBucketKey = (String, Option<String>, String, Option<String>);
+
+fn bucket_key(record: &CoreTransactionRecord) -> IdentityBucketKey {
+    (
+        record.chain_name.clone(),
+        record.transaction_hash.clone(),
+        record.kind.clone(),
+        record.wallet_id.clone(),
+    )
 }
 
 fn incoming_is_relevant(
@@ -646,6 +683,54 @@ mod tests {
             Some("esplora")
         );
         assert_eq!(record.created_at_unix, 500.0);
+    }
+
+    /// Two existing records share `matches_identity`'s coarse key — same
+    /// chain, hash, kind and wallet — and only the finer EVM-strategy check
+    /// (symbol, address, amount) tells them apart. An incoming record must
+    /// still find *its* match and leave the other one alone.
+    ///
+    /// This is the case the bucketed index has to get right: bucketing on the
+    /// coarse key narrows the candidates, but `matches_identity`'s full check
+    /// still has to run inside the bucket, not stop at the first candidate.
+    #[test]
+    fn a_bucket_collision_still_matches_the_right_record() {
+        let mut usdc = sample_transaction("Ethereum");
+        usdc.id = "tx-usdc".to_string();
+        usdc.symbol = "USDC".to_string();
+        usdc.amount = 100.0;
+        usdc.address = "0xAAAA".to_string();
+
+        let mut usdt = sample_transaction("Ethereum");
+        usdt.id = "tx-usdt".to_string();
+        usdt.symbol = "USDT".to_string();
+        usdt.amount = 50.0;
+        usdt.address = "0xBBBB".to_string();
+        // Same chain, hash, kind, wallet as `usdc` — same bucket key.
+        // Different symbol/address/amount is the only thing that
+        // distinguishes them under the Evm strategy.
+
+        let mut incoming = sample_transaction("Ethereum");
+        incoming.id = "tx-usdt-incoming".to_string();
+        incoming.symbol = "USDT".to_string();
+        incoming.amount = 50.0;
+        incoming.address = "0xBBBB".to_string();
+        incoming.status = "confirmed".to_string();
+
+        let merged = merge_transactions(TransactionMergeRequest {
+            existing_transactions: vec![usdc, usdt],
+            incoming_transactions: vec![incoming],
+            strategy: TransactionMergeStrategy::Evm,
+            chain_name: "Ethereum".to_string(),
+            include_symbol_in_identity: true,
+            preserve_created_at_sentinel_unix: None,
+        });
+
+        assert_eq!(merged.len(), 2, "no new row — the incoming record matched an existing one");
+        let usdc_row = merged.iter().find(|r| r.id == "tx-usdc").expect("USDC untouched");
+        assert_eq!(usdc_row.status, "pending", "the USDC row must not have been touched");
+        let usdt_row = merged.iter().find(|r| r.id == "tx-usdt").expect("USDT updated");
+        assert_eq!(usdt_row.status, "confirmed", "the USDT row is the one that should have merged");
     }
 
     #[test]

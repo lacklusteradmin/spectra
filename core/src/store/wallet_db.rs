@@ -552,11 +552,40 @@ pub fn history_fetch_for_wallet(
     db_path: &str,
     wallet_id: &str,
 ) -> Result<Vec<HistoryRecord>, String> {
-    let wallet_id = wallet_id.to_lowercase();
-    Ok(history_fetch_all(db_path)?
-        .into_iter()
-        .filter(|record| record.wallet_id.as_deref() == Some(wallet_id.as_str()))
-        .collect())
+    history_fetch_where(db_path, "wallet_id = ?1", params![wallet_id.to_lowercase()])
+}
+
+/// Every stored record for one chain, across every wallet — what a history
+/// merge needs to compare an incoming page against.
+///
+/// A merge only ever matches within one chain (`matches_identity` checks
+/// `chain_name` first, before anything else), so fetching every other chain's
+/// history alongside it was pure waste: rows this call will reject, paid for
+/// in a SQL round trip and a JSON decode each, on every refresh cycle.
+pub fn history_fetch_for_chain(db_path: &str, chain_name: &str) -> Result<Vec<HistoryRecord>, String> {
+    history_fetch_where(db_path, "chain_name = ?1", params![chain_name])
+}
+
+/// Shared body for `history_fetch_all` and the scoped fetches: same query,
+/// same row decode, a different `WHERE` — pushed to SQL and `idx_hr_wallet` /
+/// `idx_hr_chain` rather than fetched whole and filtered in Rust, which is
+/// what every caller here did until each was found reading the whole table
+/// for one wallet's or one chain's worth of rows.
+fn history_fetch_where(
+    db_path: &str,
+    predicate: &str,
+    query_params: impl rusqlite::Params,
+) -> Result<Vec<HistoryRecord>, String> {
+    with_conn(db_path, |conn| {
+        let sql = format!(
+            "SELECT id, wallet_id, chain_name, tx_hash, created_at, payload
+             FROM history_records WHERE {predicate} ORDER BY created_at DESC, id ASC"
+        );
+        let mut stmt = conn
+            .prepare(&sql)
+            .map_err(|e| format!("history_fetch_where prepare: {e}"))?;
+        decode_history_rows(&mut stmt, query_params, "history_fetch_where")
+    })
 }
 
 /// Upsert a batch of history records. Existing rows (matched by `id`) are overwritten.
@@ -608,36 +637,47 @@ pub fn history_fetch_all(db_path: &str) -> Result<Vec<HistoryRecord>, String> {
                  FROM history_records ORDER BY created_at DESC, id ASC",
             )
             .map_err(|e| format!("history_fetch_all prepare: {e}"))?;
-        let rows = stmt
-            .query_map([], |row| {
-                let payload_json: String = row.get(5)?;
-                Ok((
-                    row.get::<_, String>(0)?,
-                    row.get::<_, Option<String>>(1)?,
-                    row.get::<_, String>(2)?,
-                    row.get::<_, Option<String>>(3)?,
-                    row.get::<_, f64>(4)?,
-                    payload_json,
-                ))
-            })
-            .map_err(|e| format!("history_fetch_all query: {e}"))?;
-        let mut records = Vec::new();
-        for row in rows {
-            let (id, wallet_id, chain_name, tx_hash, created_at, payload_json) =
-                row.map_err(|e| format!("history_fetch_all row: {e}"))?;
-            let payload = serde_json::from_str(&payload_json)
-                .map_err(|e| format!("history_fetch_all decode payload: {e}"))?;
-            records.push(HistoryRecord {
-                id,
-                wallet_id,
-                chain_name,
-                tx_hash,
-                created_at,
-                payload,
-            });
-        }
-        Ok(records)
+        decode_history_rows(&mut stmt, [], "history_fetch_all")
     })
+}
+
+/// Run a prepared history-row query and decode every row. Shared by
+/// `history_fetch_all` and `history_fetch_where` so the six-column decode and
+/// the JSON payload parse exist once.
+fn decode_history_rows(
+    stmt: &mut rusqlite::Statement,
+    query_params: impl rusqlite::Params,
+    context: &str,
+) -> Result<Vec<HistoryRecord>, String> {
+    let rows = stmt
+        .query_map(query_params, |row| {
+            let payload_json: String = row.get(5)?;
+            Ok((
+                row.get::<_, String>(0)?,
+                row.get::<_, Option<String>>(1)?,
+                row.get::<_, String>(2)?,
+                row.get::<_, Option<String>>(3)?,
+                row.get::<_, f64>(4)?,
+                payload_json,
+            ))
+        })
+        .map_err(|e| format!("{context} query: {e}"))?;
+    let mut records = Vec::new();
+    for row in rows {
+        let (id, wallet_id, chain_name, tx_hash, created_at, payload_json) =
+            row.map_err(|e| format!("{context} row: {e}"))?;
+        let payload = serde_json::from_str(&payload_json)
+            .map_err(|e| format!("{context} decode payload: {e}"))?;
+        records.push(HistoryRecord {
+            id,
+            wallet_id,
+            chain_name,
+            tx_hash,
+            created_at,
+            payload,
+        });
+    }
+    Ok(records)
 }
 
 /// Delete history records by ID list.
@@ -1247,14 +1287,18 @@ mod tests {
     /// which only these are required, and going through serde keeps the helper
     /// honest about which ones those are.
     fn history_record(id: &str, wallet_id: &str) -> HistoryRecord {
+        history_record_on(id, wallet_id, "Bitcoin")
+    }
+
+    fn history_record_on(id: &str, wallet_id: &str, chain_name: &str) -> HistoryRecord {
         let payload = serde_json::from_value(serde_json::json!({
             "id": id,
             "walletId": wallet_id,
             "kind": "send",
             "walletName": "Wallet",
-            "assetName": "Bitcoin",
+            "assetName": chain_name,
             "symbol": "BTC",
-            "chainName": "Bitcoin",
+            "chainName": chain_name,
             "amount": 1.0,
             "address": "bc1qexample",
             "createdAt": 0.0,
@@ -1263,7 +1307,7 @@ mod tests {
         HistoryRecord {
             id: id.to_string(),
             wallet_id: Some(wallet_id.to_string()),
-            chain_name: "Bitcoin".to_string(),
+            chain_name: chain_name.to_string(),
             tx_hash: Some(format!("hash-{id}")),
             created_at: 0.0,
             payload,
@@ -1398,6 +1442,47 @@ mod tests {
         assert_eq!(all[0].name, "Renamed");
         assert!(!all[0].include_in_portfolio_total);
         assert_eq!(all[1].id, "w2");
+    }
+
+    /// `history_fetch_for_wallet` and `history_fetch_for_chain` filter in
+    /// SQL, not by fetching every row and discarding most of them in Rust.
+    ///
+    /// Both used to be implemented as `history_fetch_all(..).filter(..)` (the
+    /// chain-scoped one didn't exist at all — every caller fetched
+    /// everything). A wallet's or a chain's worth of rows is what a caller
+    /// asking for one should pay for.
+    #[test]
+    fn scoped_history_fetches_return_only_their_own_rows() {
+        let db = tmp_db();
+        history_upsert_batch(
+            &db,
+            &[
+                history_record_on("btc-w1", "w1", "Bitcoin"),
+                history_record_on("btc-w2", "w2", "Bitcoin"),
+                history_record_on("eth-w1", "w1", "Ethereum"),
+            ],
+        )
+        .unwrap();
+
+        let w1: Vec<String> = history_fetch_for_wallet(&db, "w1")
+            .unwrap()
+            .into_iter()
+            .map(|r| r.id)
+            .collect();
+        assert_eq!(
+            std::collections::BTreeSet::from_iter(w1),
+            std::collections::BTreeSet::from(["btc-w1".to_string(), "eth-w1".to_string()])
+        );
+
+        let btc: Vec<String> = history_fetch_for_chain(&db, "Bitcoin")
+            .unwrap()
+            .into_iter()
+            .map(|r| r.id)
+            .collect();
+        assert_eq!(
+            std::collections::BTreeSet::from_iter(btc),
+            std::collections::BTreeSet::from(["btc-w1".to_string(), "btc-w2".to_string()])
+        );
     }
 
     #[test]

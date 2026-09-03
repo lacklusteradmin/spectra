@@ -114,7 +114,7 @@ pub enum SendPreview {
         preview: SolanaSendPreview,
     },
     Xrp {
-        preview: XRPSendPreview,
+        preview: XrpSendPreview,
     },
     Stellar {
         preview: StellarSendPreview,
@@ -132,10 +132,10 @@ pub enum SendPreview {
         preview: AptosSendPreview,
     },
     Ton {
-        preview: TONSendPreview,
+        preview: TonSendPreview,
     },
     Icp {
-        preview: ICPSendPreview,
+        preview: IcpSendPreview,
     },
     Near {
         preview: NearSendPreview,

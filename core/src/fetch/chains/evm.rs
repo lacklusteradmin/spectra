@@ -290,7 +290,6 @@ impl EvmClient {
     /// Bump a base fee by +10% (the minimum EIP-1559 replacement rule).
     /// Used by the UI to compute "speed up" / "cancel" suggested fees.
     pub fn bumped_for_replacement(&self, base: u128) -> u128 {
-        // base * 110 / 100, saturating.
         base.saturating_mul(110) / 100
     }
 }

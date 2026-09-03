@@ -18,9 +18,9 @@ pub struct EvmCustomFeeConfiguration {
     pub max_priority_fee_per_gas_gwei: f64,
 }
 
-/// Typed EVM overrides crossing the FFI from Swift. Internal-only on the
-/// Rust side: `build_execute_send_payload` projects this into the comma-prefix
-/// JSON fragment that `build_evm_*_send_payload` expects.
+/// Typed EVM overrides crossing the FFI from Swift. Internal-only on the Rust
+/// side: `evm_send_overrides` (service/send_execution.rs) projects this into
+/// the `EvmSendOverrides` the chain send paths take.
 #[derive(Debug, Clone, Default, Serialize, Deserialize, uniffi::Record)]
 #[serde(rename_all = "camelCase")]
 pub struct EvmSendOverridesInput {
@@ -286,60 +286,6 @@ pub fn decode_evm_send_preview(input: EvmPreviewDecodeInput) -> Option<EvmPrevie
     })
 }
 
-fn json_escape(s: &str) -> String {
-    let mut out = String::with_capacity(s.len());
-    for c in s.chars() {
-        match c {
-            '"' => out.push_str("\\\""),
-            '\\' => out.push_str("\\\\"),
-            '\n' => out.push_str("\\n"),
-            '\r' => out.push_str("\\r"),
-            '\t' => out.push_str("\\t"),
-            c if (c as u32) < 0x20 => out.push_str(&format!("\\u{:04x}", c as u32)),
-            c => out.push(c),
-        }
-    }
-    out
-}
-
-/// Build the JSON payload for a native EVM send. `overrides_fragment` is the
-/// comma-prefixed string from `build_evm_overrides_json_fragment` (may be empty).
-pub fn build_evm_native_send_payload(
-    from_address: String,
-    to_address: String,
-    value_wei: String,
-    private_key_hex: String,
-    overrides_fragment: String,
-) -> String {
-    format!(
-        "{{\"from\":\"{}\",\"to\":\"{}\",\"value_wei\":\"{}\",\"private_key_hex\":\"{}\"{}}}",
-        json_escape(&from_address),
-        json_escape(&to_address),
-        json_escape(&value_wei),
-        json_escape(&private_key_hex),
-        overrides_fragment
-    )
-}
-
-pub fn build_evm_token_send_payload(
-    from_address: String,
-    contract_address: String,
-    to_address: String,
-    amount_raw: String,
-    private_key_hex: String,
-    overrides_fragment: String,
-) -> String {
-    format!(
-        "{{\"from\":\"{}\",\"contract\":\"{}\",\"to\":\"{}\",\"amount_raw\":\"{}\",\"private_key_hex\":\"{}\"{}}}",
-        json_escape(&from_address),
-        json_escape(&contract_address),
-        json_escape(&to_address),
-        json_escape(&amount_raw),
-        json_escape(&private_key_hex),
-        overrides_fragment
-    )
-}
-
 #[derive(Debug, Clone, Default, Serialize, Deserialize, uniffi::Record)]
 #[serde(rename_all = "camelCase")]
 pub struct EvmSendResultDecoded {
@@ -347,42 +293,6 @@ pub struct EvmSendResultDecoded {
     pub raw_tx_hex: String,
     pub nonce: i64,
     pub gas_limit: i64,
-}
-
-/// Internal helper: render the typed overrides into the comma-prefix JSON
-/// fragment consumed by `build_evm_native_send_payload` /
-/// `build_evm_token_send_payload`. Not UniFFI-exported — Swift now passes the
-/// typed `EvmSendOverridesInput` on `SendExecutionRequest` instead.
-pub(crate) fn render_evm_overrides_fragment(input: Option<&EvmSendOverridesInput>) -> String {
-    let Some(o) = input else { return String::new() };
-    let mut fragments: Vec<String> = Vec::new();
-    if let Some(n) = o.nonce {
-        fragments.push(format!("\"nonce\":{}", n));
-    }
-    if let Some(ref cf) = o.custom_fees {
-        let max_fee_wei = (cf.max_fee_per_gas_gwei * 1e9).round() as u64;
-        let prio_wei = (cf.max_priority_fee_per_gas_gwei * 1e9).round() as u64;
-        fragments.push(format!("\"max_fee_per_gas_wei\":\"{}\"", max_fee_wei));
-        fragments.push(format!("\"max_priority_fee_per_gas_wei\":\"{}\"", prio_wei));
-    }
-    if let Some(gl) = o.gas_limit {
-        fragments.push(format!("\"gas_limit\":{}", gl));
-    }
-    if let Some(ref cd) = o.calldata_hex {
-        let cd_clean = cd.trim_start_matches("0x");
-        fragments.push(format!("\"calldata_hex\":\"{}\"", json_escape(cd_clean)));
-    }
-    if o.sign_only == Some(true) {
-        fragments.push("\"sign_only\":true".to_string());
-    }
-    if let Some(ref al) = o.access_list_json {
-        fragments.push(format!("\"access_list_json\":{}", al));
-    }
-    if fragments.is_empty() {
-        String::new()
-    } else {
-        format!(",{}", fragments.join(","))
-    }
 }
 
 /// Internal helper: parse the broadcast result JSON into the typed EVM record.
@@ -583,77 +493,12 @@ mod tests {
     }
 
     #[test]
-    fn overrides_fragment_builds_comma_prefixed() {
-        let s = render_evm_overrides_fragment(Some(&EvmSendOverridesInput {
-            nonce: Some(9),
-            custom_fees: Some(EvmCustomFeeConfiguration {
-                max_fee_per_gas_gwei: 50.0,
-                max_priority_fee_per_gas_gwei: 3.0,
-            }),
-            ..Default::default()
-        }));
-        assert!(s.starts_with(","));
-        assert!(s.contains("\"nonce\":9"));
-        assert!(s.contains("\"max_fee_per_gas_wei\":\"50000000000\""));
-        assert!(s.contains("\"max_priority_fee_per_gas_wei\":\"3000000000\""));
-    }
-
-    #[test]
-    fn overrides_fragment_empty_when_none() {
-        assert!(render_evm_overrides_fragment(None).is_empty());
-        assert!(render_evm_overrides_fragment(Some(&EvmSendOverridesInput::default())).is_empty());
-    }
-
-    #[test]
     fn decode_send_result_pulls_fields() {
         let json = r#"{"txid":"0xabc","raw_tx_hex":"0xf86...","nonce":12,"gas_limit":21000}"#;
         let r = decode_evm_send_result_internal(json, 0);
         assert_eq!(r.txid, "0xabc");
         assert_eq!(r.nonce, 12);
         assert_eq!(r.gas_limit, 21000);
-    }
-
-    #[test]
-    fn native_payload_escapes_and_overrides() {
-        let p = build_evm_native_send_payload(
-            "0xfrom".into(),
-            "0xto".into(),
-            "1000".into(),
-            "aa".into(),
-            ",\"nonce\":5".into(),
-        );
-        assert!(p.contains("\"value_wei\":\"1000\""));
-        assert!(p.contains("\"private_key_hex\":\"aa\""));
-        assert!(p.ends_with(",\"nonce\":5}"));
-    }
-
-    #[test]
-    fn native_payload_escapes_quotes() {
-        let p = build_evm_native_send_payload(
-            "0xfr\"om".into(),
-            "0xto".into(),
-            "0".into(),
-            "k".into(),
-            "".into(),
-        );
-        assert!(p.contains("0xfr\\\"om"));
-        let v: serde_json::Value = serde_json::from_str(&p).unwrap();
-        assert_eq!(v["from"], "0xfr\"om");
-    }
-
-    #[test]
-    fn token_payload_shape() {
-        let p = build_evm_token_send_payload(
-            "0xfrom".into(),
-            "0xcontract".into(),
-            "0xto".into(),
-            "1000000".into(),
-            "k".into(),
-            "".into(),
-        );
-        let v: serde_json::Value = serde_json::from_str(&p).unwrap();
-        assert_eq!(v["contract"], "0xcontract");
-        assert_eq!(v["amount_raw"], "1000000");
     }
 
     #[test]

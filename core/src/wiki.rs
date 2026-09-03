@@ -189,16 +189,12 @@ pub fn list_asset_wiki() -> Vec<AssetWikiEntry> {
     ASSETS.clone()
 }
 
-pub(crate) fn asset_wiki() -> &'static [AssetWikiEntry] {
-    &ASSETS
-}
-
 #[cfg(test)]
 mod the_wiki_is_one_asset_table {
     use super::*;
 
     fn asset(symbol: &str) -> &'static AssetWikiEntry {
-        asset_wiki()
+        ASSETS
             .iter()
             .find(|a| a.symbol == symbol)
             .unwrap_or_else(|| panic!("{symbol} has no wiki row"))
@@ -208,10 +204,10 @@ mod the_wiki_is_one_asset_table {
     #[test]
     fn one_row_per_coin() {
         let symbols: std::collections::BTreeSet<&str> =
-            asset_wiki().iter().map(|a| a.symbol.as_str()).collect();
-        assert_eq!(symbols.len(), asset_wiki().len(), "a coin has two rows");
-        assert_eq!(asset_wiki().len(), 66);
-        for a in asset_wiki() {
+            ASSETS.iter().map(|a| a.symbol.as_str()).collect();
+        assert_eq!(symbols.len(), ASSETS.len(), "a coin has two rows");
+        assert_eq!(ASSETS.len(), 66);
+        for a in ASSETS.iter() {
             assert!(!a.comment.is_empty(), "{} has no description", a.symbol);
             assert!(!a.lives_on.is_empty(), "{} lives nowhere", a.symbol);
             // A coin enabled anywhere must be priceable. USD1 and WLFI once
@@ -282,7 +278,7 @@ mod the_wiki_is_one_asset_table {
             PROSE.iter().map(|a| a.asset.as_str()).collect();
         assert_eq!(documented.len(), PROSE.len(), "a coin has two rows in the file");
         let held: std::collections::BTreeSet<&str> =
-            asset_wiki().iter().map(|a| a.symbol.as_str()).collect();
+            ASSETS.iter().map(|a| a.symbol.as_str()).collect();
         assert_eq!(documented, held, "the file and the catalogs disagree");
     }
 
@@ -296,7 +292,7 @@ mod the_wiki_is_one_asset_table {
             .collect();
         expected.extend(crate::tokens::catalog().iter().map(|t| t.symbol.as_str()));
         let got: std::collections::BTreeSet<&str> =
-            asset_wiki().iter().map(|a| a.symbol.as_str()).collect();
+            ASSETS.iter().map(|a| a.symbol.as_str()).collect();
         assert_eq!(expected, got);
     }
 }

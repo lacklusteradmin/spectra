@@ -119,27 +119,52 @@ fn aggregates_owned_addresses_in_order_without_duplicates() {
     );
 }
 
+/// The receive screen presents itself as the native holding, whatever order
+/// the tokens come in.
 #[test]
-fn prefers_native_receive_holding_for_resolved_chain() {
+fn prefers_the_native_receive_holding() {
     let plan = core_receive_selection(ReceiveSelectionRequest {
-        receive_chain_name: "Ethereum".to_string(),
-        available_receive_chains: vec!["Ethereum".to_string()],
         available_receive_holdings: vec![
             ReceiveSelectionHoldingInput {
                 holding_index: 0,
-                chain_name: "Ethereum".to_string(),
                 has_contract_address: true,
             },
             ReceiveSelectionHoldingInput {
                 holding_index: 1,
-                chain_name: "Ethereum".to_string(),
                 has_contract_address: false,
             },
         ],
     });
-
-    assert_eq!(plan.resolved_chain_name, "Ethereum");
     assert_eq!(plan.selected_receive_holding_index, Some(1));
+}
+
+/// A wallet holding only tokens still shows something — the first of them.
+#[test]
+fn falls_back_to_the_first_holding_when_none_is_native() {
+    let plan = core_receive_selection(ReceiveSelectionRequest {
+        available_receive_holdings: vec![
+            ReceiveSelectionHoldingInput {
+                holding_index: 3,
+                has_contract_address: true,
+            },
+            ReceiveSelectionHoldingInput {
+                holding_index: 4,
+                has_contract_address: true,
+            },
+        ],
+    });
+    assert_eq!(plan.selected_receive_holding_index, Some(3));
+}
+
+/// No holdings, no pick — and no panic. A wallet in this state is not
+/// receive-enabled, so the screen never asks, but the guard is the answer
+/// rather than an unwrap.
+#[test]
+fn no_holdings_selects_nothing() {
+    let plan = core_receive_selection(ReceiveSelectionRequest {
+        available_receive_holdings: vec![],
+    });
+    assert_eq!(plan.selected_receive_holding_index, None);
 }
 
 #[test]

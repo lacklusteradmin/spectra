@@ -658,6 +658,473 @@ contract rather than a name it cannot trust. Wiring discovery into the dashboard
 would have collapsed every unknown token on a chain into a single row. Keying on
 the contract closes it before that path is connected.
 
+**A history merge fetched the whole database to compare against one page.**
+
+*Was:* `TransactionCommand::Merge` — run on every history-refresh cycle, for
+every (wallet, chain) — read `history_fetch_all`, which has no `WHERE` clause:
+
+```sql
+SELECT id, wallet_id, chain_name, tx_hash, created_at, payload
+FROM history_records ORDER BY created_at DESC, id ASC
+```
+
+Every wallet's history on every chain, ever stored, deserialized whole, to
+compare against one freshly fetched page. The schema already had
+`idx_hr_chain` and `idx_hr_wallet` for exactly this shape of query; this call
+site was the one still doing a full scan and filtering in Rust instead. Then
+`merge_transactions` walked that whole set with `.iter().position(...)` per
+incoming record — `matches_identity`'s first check is `existing.chain_name !=
+chain_name`, so the overwhelming majority of what had just been fetched and
+decoded existed only to be immediately rejected by a string comparison. O(all
+history ever stored × page size), on a timer, forever — the class of
+inefficiency that gets worse the longer someone uses the app, not better.
+
+`history_fetch_for_wallet` had the same shape one level down:
+`history_fetch_all(..).filter(|r| r.wallet_id == wallet_id)` — fetch
+everything, keep a sliver, in Rust, with `idx_hr_wallet` sitting unused.
+
+*Now:* `history_fetch_where`, a shared query body parameterized on a SQL
+predicate; `history_fetch_for_wallet` filters by `wallet_id = ?1`,
+`history_fetch_for_chain` (new) by `chain_name = ?1`, and `history_fetch_all`
+and both scoped fetches share one row-decode function instead of three copies
+of the same six-column, JSON-payload parse. `Merge` reads
+`history_fetch_for_chain` — the command only ever carries a `chain_name`, not
+a `wallet_id`, so chain is as far as the fetch itself can narrow.
+
+Inside `merge_transactions`, the O(existing × incoming) `.position()` scan is
+now a `HashMap<(chain, hash, kind, wallet_id), Vec<usize>>` built once — the
+four fields every strategy checks for exact equality before anything
+strategy-specific, so they bucket every record an incoming one could possibly
+match. A bucket holds one entry in the overwhelming majority of real data (a
+given hash+kind+wallet identifies one transaction); the full `matches_identity`
+check still runs, just over that handful of candidates instead of the whole
+table.
+
+*Why the bucket key is safe, and where it deliberately still falls back to a
+linear check.* `matches_identity`'s finer-grained rules — `Evm`'s exact-float
+`amount` comparison, `AccountBased`'s optional `symbol` — do not go into the
+key. Hashing on an epsilon-compared float would be wrong; instead the bucket
+narrows the search to the (typically one, occasionally a handful of) candidates
+sharing the coarse identity, and the existing linear predicate decides among
+them, unchanged.
+
+*How this was checked:* the full workspace suite — 511 tests, all pre-existing
+merge behavior — passes unchanged, which is the evidence the algorithmic
+rewrite didn't change what a merge decides, only how many comparisons it takes
+to decide it. Two tests target the two properties that changed:
+
+`scoped_history_fetches_return_only_their_own_rows` — three records across two
+wallets and two chains; `history_fetch_for_wallet` and `history_fetch_for_chain`
+each return exactly their own two, never the third. Reverted to
+`history_fetch_all(db_path)` for both, it fails: `{btc-w1, btc-w2, eth-w1} !=
+{btc-w1, eth-w1}`.
+
+`a_bucket_collision_still_matches_the_right_record` — two existing records
+sharing chain, hash, kind and wallet (the whole bucket key), distinguished only
+by symbol/address/amount under the `Evm` strategy; an incoming record for one
+of them must update that one and leave the other untouched. Changed to take a
+bucket's first candidate rather than confirm one with `matches_identity`, it
+fails: the wrong row's status flips.
+
+*How to check it:* both tests above, in `core/src/store/wallet_db.rs` and
+`core/src/fetch/transactions.rs`.
+
+**Every EVM chain's balance never loaded, because its address never resolved.**
+
+*Was:* `resolvedAddress(for:chainName:)` asked two questions in the wrong
+order.
+
+```swift
+if let chain = seedDerivationChain(for: chainName) {
+    return resolvedChainAddress(for: wallet, chain: chain)
+}
+if isEVMChain(chainName) { return resolvedEVMAddress(...) }   // unreachable
+```
+
+`seed_derivation_chain_raw` in core returns `Option<String>` and **never
+returns `None`** — every chain in the catalog has an answer, EVM chains
+included, because the EVM family shares Ethereum's derivation. So the first
+branch was always taken and always returned. `resolvedChainAddress` opens with
+`guard let desc = Self.addressDescriptors[chain] else { return nil }`, and that
+table is a hand-written list of **19 chains with no EVM entry**. Four more
+chains are handled explicitly above it. 23 of the catalog's 46 mainnets fell
+through to `nil` — and they are exactly the 23 EVM ones.
+
+A wallet whose address does not resolve is **dropped from the refresh engine's
+entry list**, so nothing was ever fetched for it. Not a wrong balance: no
+request at all.
+
+*Now:* the EVM test runs first, and the descriptor lookup binds its result
+(`let address = resolvedChainAddress(...)`) so a chain the table does not cover
+falls through instead of ending the function — the second half of the same bug,
+which would have hidden any future gap the same way.
+
+*How it was found:* the user reported balances not loading. Core was cleared
+first — `spectra balance` on a watch-only Bitfinex address returned
+13001007903066 sats, matching `mempool.space` exactly, and `spectra refresh`
+swept four entries with zero errors — so the break was above core. Running the
+app against the simulator with `simctl launch --console-pty` printed it
+directly:
+
+```
+[BalanceRefresh] dropped wallet 'Wallet 1' chain=Ethereum chainId=ethereum addr=nil
+[BalanceRefresh] setEntries count=0 walletCount=1
+```
+
+*Why no suite caught it.* The CLI drives core, and core was never wrong. The
+iOS tests imported wallets and asserted on the stored address, which is written
+at import; none of them asked `resolvedAddress` for a chain other than the one
+imported on. This is the fourth gate the plan already names — running the app —
+catching what the three cannot.
+
+*How to check it:* `testEveryEVMMainnetResolvesAWalletAddress` — over
+`Chain.mainnets.filter(\.isEVM)`, not a list written in the test, so a new EVM
+chain is covered by adding it to the catalog. Put the branch back in its old
+order and it fails naming all 23.
+
+**A wallet is on one chain, and four places did not believe it.**
+
+A wallet is created per chain — importing a seed across three chains makes
+three wallets, not one with three chains — and its balances arrive from a
+single refresh entry built from `selected_chain`, so every holding it has
+carries that one chain's name. Verified rather than assumed: `spectra
+portfolio` over four wallets shows each one's holdings on exactly one chain.
+Four places were written as if that were not so.
+
+**1. The receive flow resolved a chain before picking a holding.**
+`core_receive_selection` took a `receive_chain_name` plus an
+`available_receive_chains` list and filtered holdings against the resolved
+one. The list always held a single entry, the filter never excluded anything,
+and the resolved chain was always the wallet's own. It picks a holding now —
+the native one, or the first token if there is none — and the address does not
+depend on that pick at all, since every holding on a chain is received at the
+same address; it only decides which symbol and icon the screen shows. Gone with
+it: `receive_chains_by_wallet_id` on `WalletDerivedState` and the accumulation
+that filled it, `receiveChainName`, `availableReceiveChains(for:)`,
+`cachedAvailableReceiveChainsByWalletID`, `WalletDerivedCache
+.availableReceiveChainsByWalletID`, and the two reset sites that cleared the
+first.
+
+**2. `WalletTransferAvailability` carried a `receive_chains: Vec<String>`** —
+a `uniffi::Record` generated into the Swift bindings with **no constructor and
+no reader anywhere in the workspace**. Deleted whole.
+
+**3. History refresh derived an address for every wallet, on a chain most of
+them are not on.** `refreshNormalizedChainTransactions` called
+`resolveAddress(wallet)` for every wallet in the snapshot and let
+`plan_refresh_targets` drop the ones whose `selected_chain` did not match.
+Resolving is not free — it reads the seed out of the Keychain and derives a
+key — so refreshing one chain's history did that work once per wallet and
+discarded all but the matching ones. It resolves only for wallets on the chain
+now; core's filter stays as the second line. The two diagnostics scans next to
+it already guarded this way (`guard wallet.selectedChain == chainName, let
+address = resolveAddress(wallet)`), which is what made the odd one out visible.
+
+**4. `knownOwnedAddresses` walked all 78 chains and then derived seventeen
+more addresses.** It ran `wallet.address(forChainNamed:)` over `Chain.all` to
+find the one or two slots the wallet actually has, then called seventeen
+`resolved<Chain>Address(for:)` helpers — one per chain family, each a Keychain
+read and a key derivation. Sixteen of those derive addresses on chains the
+wallet is not on: they belong to whatever separate wallet the same seed was
+imported as there, and they could never match anyway, because the question is
+always asked about one chain's transaction. It reads the address map directly
+and derives once, for the wallet's own chain. This runs before every send and
+on opening any transaction detail.
+
+Nine of the seventeen per-chain shims had no other caller and went with it.
+
+*Left alone, with the reason:* `CoreImportedWallet.addresses` and
+`CoreSeedDerivationPaths.by_chain` stay maps. The first is keyed by address
+*slot*, holds one entry (two for Ethereum Classic, which occupies both the
+shared EVM slot and its own), and is documented as a map so that adding a chain
+is a registry edit rather than a schema change in four places. The second is a
+copy of the app's default paths with this wallet's own path written over its
+chain's entry — it is how a wallet derives an address for a chain on request,
+which is a real capability the send and diagnostics paths use deliberately.
+Neither is a claim that a wallet spans chains.
+
+*Still open, not changed because it may be deliberate:*
+`makeAddressSnapshots()` in `Platform.swift` maps `Chain.all` to
+`address(forChainNamed:)`, and since every EVM chain shares one address slot,
+an Ethereum wallet exports roughly twenty-three snapshots of the same address,
+one per EVM chain name. That is either a bug or the point — an EVM address
+genuinely is valid on all of them — and it is a question about what the
+platform surface should say, not about what a wallet is.
+
+*How to check it:* `prefers_the_native_receive_holding`,
+`falls_back_to_the_first_holding_when_none_is_native` and
+`no_holdings_selects_nothing` in `core/src/store/tests.rs` — the selection with
+the chain machinery gone.
+
+**The receive flow showed the same address twice, on two screens, behind two
+buttons that did the same thing.**
+
+*Was:* the Receive flow's address step already rendered the QR, the wallet
+name, the chain and the address. Under it sat a "Network" card and an
+"Open Full QR" button; the bottom bar's primary action was "Show QR". Both
+buttons set the same state and opened the same sheet — a second screen with
+the same QR, the same wallet name and chain, and the same address again. Its
+only content the first screen did not already have was **Share QR Code** and
+**Save QR Code**.
+
+*And the Network card could not do anything.* It was a `Picker` over
+`availableReceiveChains(for:)`, which core builds from the distinct
+`chain_name` values across that wallet's holdings. A wallet is imported per
+chain — importing a seed across three chains creates three wallets, not one
+with three chains — and its balances are fetched from one refresh entry
+built from `wallet.selectedChain`, so every holding it has carries that one
+chain name. Checked rather than assumed: dumping `spectra portfolio` for four
+wallets shows each one's holdings on exactly one chain. The picker had one
+option, always, and the chain it named was already printed twice on the same
+screen — once under the wallet name in the hero, once in the card's own coin
+row.
+
+*Now:* one screen. The address step keeps the QR, wallet, chain and address;
+Share and Save moved onto it; the bottom bar's primary action is **Copy
+Address**, which is what most visits are for and was previously a secondary
+button. `ReceiveQRSheet` (170 lines), the `Network` card, the "Open Full QR"
+button and the `qrWallet` state are gone, along with two localization keys
+nothing renders any more. `receiveChainName` stays — `syncReceiveAssetSelection`
+still resolves it to the wallet's one chain, which is what it always actually
+held; it just is not offered as a choice.
+
+The copy confirmation the sheet had (button icon turning to a checkmark for
+1.5s) came along rather than being dropped — it was the better of the two
+copy buttons, and the one that survived was the screen's.
+
+*How this was checked:* built, installed and driven in the simulator — a
+watch-only wallet added, Receive opened, both steps walked. The address step
+renders the QR, the full address on one line (it was truncated to two before
+the Network card left), and both export buttons a short scroll down; tapping
+Copy Address puts the address on the pasteboard, confirmed with
+`simctl pbpaste`.
+
+**One of the three per-chain fetch dispatches existed only to be re-parsed.**
+
+Asked where per-chain "vertical splitting" — the same decision written once
+per chain, in parallel, several times over — still costs something.
+`service/network.rs` had the clearest instance:
+
+```
+fn fetch_balance                 24 client constructions
+fn fetch_native_balance_summary  24 client constructions
+fn fetch_history                 24 client constructions
+```
+
+Three functions, each matching all 24 supported chains to build the same
+client with the same per-chain auth wiring — `Chain::Cardano`'s six lines of
+`api_key_for(...).await.unwrap_or_default()` are character-for-character
+identical in all three, as are Polkadot's subscan lookup, Ton's api key and
+Bittensor's taostats. The file says this was deliberate: *"Three free
+functions replace the old ChainClient enum … Adding a chain means one new arm
+per function."* Git confirms a `service/chain_client.rs` did exist (274 lines,
+one `build()` plus a `match self` per method) and was deleted in Beta Commit
+73 — a bulk module-flattening commit, with no recorded reason. So this was
+not a considered trade so much as fallout.
+
+*What the audit found underneath it:* `fetch_balance` — the JSON one — had
+**exactly one caller in the whole codebase**, `fetch_simple_chain_send_preview`,
+which immediately did `serde_json::from_str` on the result and handed it to
+`simple_chain_balance_display`, a second per-chain table that dug the number
+back out by JSON field name. That table needed `Chain::native_balance_field`,
+a 48-line registry method mapping every chain to a JSON key
+(`lamports`, `stroops`, `planck`, `nanotons`, …). Forty-eight lines of
+per-chain data whose only job was to undo a serialization performed moments
+earlier in the same call — the same shape as the send-params round trip
+above, in a different corner.
+
+And `fetch_native_balance_summary` already returned those numbers typed, for
+exactly the same 24 chains (verified arm-set equal, not assumed).
+
+*Now:* `fetch_simple_chain_send_preview` calls
+`fetch_native_balance_summary`. Deleted: `WalletService::fetch_balance`, the
+free `fetch_balance` (the whole 24-arm dispatch), `simple_chain_balance_display`,
+and `Chain::native_balance_field`. What replaces them is
+`summary_display_balance(chain_id, &summary)` — `smallest_unit / 10^decimals`,
+no JSON, no field names. Three per-chain dispatches became two, and a
+fourth per-chain table went with the one that left.
+
+*The NEAR exception is preserved, and it is the reason it exists:* the old
+code preferred NEAR's `near_display` string over dividing `yocto_near`,
+because 10^24 does not survive an f64 division intact. That preference is
+kept, now reading `amount_display` off the typed summary.
+
+*What was deliberately left alone.* The two remaining dispatches
+(`fetch_native_balance_summary`, `fetch_history`) still duplicate the auth
+wiring for the four or five chains that need it. Extracting that into a
+shared "wiring" struct would remove about five duplicated blocks and add a
+lookup layer between "which chain" and "which client" — roughly break-even,
+and the same shape as the `ChainClient` intermediary already removed once.
+The projections they wrap (`bal.confirmed_sats` vs `bal.lamports` vs
+`bal.balance_wei`) genuinely differ per chain and no abstraction collapses
+them; the old enum did not either. Two arms per chain for two real
+operations is the floor, and the code is at it.
+
+*The same shape in the fee path, done next — and the third shape turned out
+not to exist.* `fetch_fee_estimate` returned a `String` carrying one of three
+JSON shapes by chain: Bitcoin's `FeeRate`, EVM's `EvmFeeEstimate`, and a flat
+`FeePreview` for everyone else. Checking which callers could reach which
+shape: `fetch_bitcoin_hd_send_preview_typed` only ever passes
+`Chain::Bitcoin`, and `fetch_simple_chain_send_preview` is reached only
+through `simple_preview_chain()`, which answers for eleven chains and
+**neither Bitcoin nor any EVM chain**. So the EVM arm had no caller that
+could reach it — EVM previews build their own `EvmClient` and call
+`fetch_fee_estimate()` on the client directly, never going through this
+function. Three shapes in one `String` was really two, plus a dead arm.
+
+*Now:* two functions, one per caller, each typed — `bitcoin_fee_rate() ->
+FeeRate` and `native_fee_estimate(chain) -> NativeFeeEstimate`. Gone with the
+JSON: the dead EVM arm, `fee_preview`, `fee_preview_str`, and `FeePreview`
+itself — whose five fields included `chain_id` and `unit`, serialized on
+every call and read by no caller.
+
+The same round trip on the Bitcoin preview's other input went too:
+`fetch_bitcoin_xpub_balance` serialized an `HdXpubBalance` that both of its
+callers parsed back for `confirmed_sats` (one also `utxo_count`) — a comment
+in `fetch_native_balance_summary_auto` even said so ("xpub path stays
+JSON-based; parse once and project"). It returns the struct now, and
+`decode_bitcoin_hd_send_preview` takes `(confirmed_sats: u64,
+sats_per_vbyte: f64)` — the two numbers it always wanted — instead of two
+JSON strings it dug them out of.
+
+*How to check the fee half:* `fee_estimates_are_typed` in `service/send.rs` —
+five static-fee chains quote the catalog's units scaled by their own
+decimals (Solana 5000 → "0.000005", Cardano 170000 → "0.17", Polkadot
+160000000 → "0.016"), NEAR still carries its 10^21 fee as a string, and a
+chain with no fee to quote is an error naming it rather than a `{"note": …}`
+the caller read zeros out of. `bitcoin_hd_decode` still covers the Bitcoin
+preview arithmetic on the typed inputs — change its `ceil` to `floor` and it
+fails 2 vs 3.
+
+*How to check it:* `display_balance_from_a_typed_summary` in
+`service/helpers.rs` — seven chains' smallest units divided by their own
+decimals land on the same numbers the field-name table produced, NEAR still
+reads its display string, and an unknown chain is `0.0` rather than a panic.
+
+**Three confusing structures, found by reading the code cold and verified independently.**
+
+Asked to look at `core/` for confusing structure without relying on any
+existing comment or this document — three findings, all fixed.
+
+**1. `WalletService`'s ten locked fields used two different lock types, and
+only two of them said so.** Eight fields were `Arc<RwLock<_>>` where `RwLock`
+was a bare re-export of tokio's async lock; two — `secret_store`,
+`etherscan_api_key` — were `Arc<std::sync::RwLock<_>>`, a synchronous lock
+that must never be held across an `.await`. The only visual difference was
+whether a field spelled out `std::sync::` or not, easy to miss skimming ten
+field declarations, and a reader who did notice had to check the file's
+`use` statements to learn what the bare name resolved to.
+
+*Why the two kinds exist, and why unifying them was not the fix:*
+`set_secret_store` and `set_etherscan_api_key` are plain, synchronous
+`pub fn`s — Swift calls them without `await`, including from a non-async
+`private func service() throws`. Converting their lock to the async kind
+would force both into `async fn`, cascading into every synchronous call site
+that reaches them. The two kinds of lock are the right choice for what they
+guard; what was wrong was that nothing about the field's own type said which
+kind it was.
+
+*Now:* the tokio re-export is `AsyncRwLock`, not the bare `RwLock` — a name
+that says what it is without requiring a trip to the top of the file. The two
+`std::sync::RwLock` fields are unchanged; they were already the more
+explicit spelling of the two, and are now the only ones still called
+`RwLock`. A field's own type answers the question now.
+
+*How to check it:* `grep -n "RwLock<" core/src/service/mod.rs` — eight
+`AsyncRwLock<_>` fields, two `std::sync::RwLock<_>`, nothing spelled just
+`RwLock<_>`.
+
+**2. Three FFI-exported preview types spelled the same chain's acronym two
+different ways.** `send/preview_types.rs` had `XRPSendPreview`,
+`TONSendPreview`, `ICPSendPreview` — all-caps acronyms — while
+`fetch/chains/{xrp,ton,icp}.rs` had `XrpSendResult`, `TonSendResult`,
+`IcpSendResult` for the exact same three chains, Pascal-cased. Guessing the
+Result type's name from the Preview type's (or the reverse) is wrong for
+exactly these three chains, and not for the other 22.
+
+*Now:* `XrpSendPreview`, `TonSendPreview`, `IcpSendPreview` — Pascal-case,
+matching the Result types and the other 22 chains' own Preview types, which
+were never inconsistent. No Swift call site named these types directly (they
+flow through `SendPreview`/decoded records), so the rename cost nothing on
+that side beyond a bindings regeneration.
+
+**3. `execute_send` erased a typed request to JSON, and read it back one
+function away, twice.** `build_execute_send_payload` matched on `Chain`,
+building each chain's send parameters by hand-formatting a JSON string —
+`format!("{{\"from\":\"{}\",...", json_escape(&from), ...)` — then parsed that
+string back into a `serde_json::Value`, which crossed to `sign_and_send` (or
+`sign_and_send_token`), each of which matched on `Chain` *again* — a second,
+independently-maintained 24-arm match — and called `parse_params::<T>` to
+deserialize the same data back into a typed struct. Every step of this
+happened on one thread inside one `execute_send` call; nothing here ever
+crossed the FFI or a process boundary. Two matches over the same enum, kept
+in sync by hand, is a shape this plan has already named as a hazard
+elsewhere; this was a live instance, not a hypothetical.
+
+*The instance was real: `sign_and_send_token` had a `Chain::Stellar` arm —
+real signing code, `StellarClient::sign_and_submit_asset` — that
+`build_execute_send_payload`'s token branch had no arm to ever reach. Stellar
+custom-asset sends have looked reachable, from `sign_and_send_token`'s own
+source, for as long as this dispatch has existed, and were not — the two
+matches had already drifted apart. Not introduced by this change and not
+fixed by it: `execute_send` still has no path to a Stellar token send, and
+now says so structurally (`StellarTokenSendParams` and
+`sign_and_submit_asset` are `#[allow(dead_code)]`, documented, kept rather
+than deleted, for whoever wires it up).*
+
+*A second latent bug, also found and also preserved rather than silently
+fixed:* EVM overrides crossed this same JSON boundary — `render_evm_overrides_
+fragment` wrote a caller's `access_list_json` into the outer JSON as a raw,
+unquoted array, and `read_evm_overrides` read it back with `.as_str()`, which
+returns `None` for anything that is not a JSON string. An access list a
+caller supplied was silently dropped on every real send. No Swift call site
+sets `accessListJson` to anything but `nil` today, so this has never had a
+visible effect — but it is a real bug baked into the shape, not a hypothetical
+one, and it is exactly the class of thing a same-process JSON round trip
+makes possible: two sides that agree on nothing but a string.
+
+*Now:* one match. `build_send_params` builds a typed `SendParams` /
+`SendTokenParams` directly — the same per-chain arithmetic as before
+(`amount_u64`, `amount_i64`, the string-exact `to_raw` path), landing in a
+struct field instead of a formatted string. `sign_and_broadcast_send` reads
+the variant it produced and signs — no `parse_params`, no second `Chain`
+match, because the enum variant already says which chain this is.
+`execute_send` resolves `Chain` once and passes it to both, so the two
+cannot disagree about which chain a send is. Two chains' amount conversions
+that used *different* precision paths before this change (Tron and Solana
+token amounts stayed on the f64-scaled path; EVM and NEAR token amounts on
+the string-exact one) still do — preserved deliberately, not unified, since
+this is a structural cleanup and unifying precision paths is a behavior
+decision.
+
+The JSON-building layer this eliminated the need for — 21
+`build_*_send_payload` functions hand-formatting and hand-escaping JSON,
+`parse_params`, `read_evm_overrides`, `render_evm_overrides_fragment` — is
+deleted along with their tests, not left behind: every one of them had
+exactly zero production callers once `build_execute_send_payload` was gone,
+reachable only from their own test module. Two `json_escape` functions
+(payload.rs, ethereum.rs) went the same way once nothing called them.
+
+*How this was checked:* `cargo test --workspace` before and after this
+change passes the same 505 pre-existing tests unchanged — evidence the
+algorithmic rewrite did not change what any chain's send decides, only how
+it gets there. Nine new tests target `build_send_params` directly, something
+this path had zero coverage of before — Bitcoin's `1e8` scale, Dogecoin's
+*different* literal scale and kb-rate fee (the arm most likely to be merged
+into the shared shape by mistake), Litecoin's shared-shape-with-its-own-fee-
+default, EVM's string-exact `value_wei` and direct overrides conversion,
+Polkadot/Bittensor's string-exact path, Monero's default priority, a non-EVM
+testnet's named error, and both token-amount precision paths side by side.
+Reverted Dogecoin's arm to the (wrong) shared formula and the test for it
+fails: `left: Some(200000) right: Some(35000000)`.
+
+*How to check it:* the nine tests in
+`service::send_execution::build_send_params_tests`, and
+`cargo build -p spectra_core --release` — zero warnings, where before this
+entry there was one (`asset_wiki` — see the miscount entry below — was
+already fixed; this confirms the release profile, which the CLI acceptance
+gate does not build, stays clean).
+
 **The sweep found five things and one of them was a miscount.**
 
 A survey for inefficiency and for names that lie, run after the wiki work.
@@ -4874,8 +5341,8 @@ Measured, not estimated:
 
 | | Start | Now |
 |---|---|---|
-| Exported functions and methods | 234 | **180** |
-| Largest file in `core/` | `service.rs`, 4,781 lines | `store/tests.rs`, 2,501 |
+| Exported functions and methods | 234 | **185** |
+| Largest file in `core/` | `service.rs`, 4,781 lines | `store/tests.rs`, 3,418 |
 | `service.rs` | 4,781 lines, 90 functions | **nine modules, largest 1,359** |
 | Chain tables | two — `chains.rs` (TOML) and `registry.rs` (enum) | **one** |
 | Duplicate module pairs | three | **none** |
@@ -6624,6 +7091,116 @@ Done so far:
   the only drift — and `every_catalog_name_resolves` means the next one
   fails the build.
 
+**A snapshot surface nobody read, whose one address per wallet came out
+twenty-three times.**
+
+*Was:* `swift/Platform.swift` — 165 lines defining `PlatformSnapshotEnvelope`
+and six `Codable` structs, plus `makeAddressSnapshots()`,
+`makePlatformSnapshotEnvelope` and `exportPlatformSnapshotJSON`.
+
+*Is:* deleted, along with the one test that exercised it
+(`testExportsPlatformSnapshotEnvelopeWithStableFoundationModels`) and its three
+`project.pbxproj` references.
+
+*Why that side:* it had no production consumer. Every one of its seven types
+had zero references outside the file, so the test was the only caller and the
+only thing keeping the compiler quiet about it.
+
+The address multiplication is worth recording because it is what made the
+surface worth looking at. `makeAddressSnapshots()` said in a comment that every
+*slot* the wallet has gets a snapshot and that `WalletChainID` narrows those to
+the ones the platform surface knows. Neither half held: it iterated chain
+*names*, so a single EVM wallet — which stores one address in the `ethereum`
+slot — emitted about twenty-three identical snapshots, one per EVM mainnet; and
+the `WalletChainID` filter narrowed nothing, because every name it iterated was
+already a `WalletChainID`. The test passed only because Ethereum sorts first in
+`Chain.all`, so the first of the twenty-three duplicates happened to be the one
+it asserted on.
+
+That reads as an accident, not a design: the comment describes slot
+granularity, and slot granularity is what the rest of the app uses. It is moot
+either way with the file gone — but if the surface is ever wanted back, it
+should be built from `wallet.addresses` (slots) rather than from `Chain.all`.
+
+*How to check:* `grep -rn Platform swift/ --include='*.swift'` finds no
+`PlatformSnapshot*` type, and the iOS suite is green at 43 tests.
+
+**Comments that only restate the line under them.**
+
+*Was:* the house style here is *why*, and what the code used to be. A handful
+of comments broke it by describing the present, which the code already shows.
+
+- `service/network.rs` carried three `// ── ` section headers over an empty
+  region — "Bitcoin HD — seed → account xpub derivation", "Price / fiat rate
+  service" and "EVM receipt polling". The first two name work that lives seven
+  hundred lines further down in the plain-impl block, which has no dividers of
+  its own; the third names work this file does not do at all — `receipt` did
+  not appear anywhere else in it. Deleted. The neighbouring headers that do
+  have a section, and the `… lives in the plain-impl block below` pointers,
+  are left as they are.
+- `fetch/chains/evm.rs` had `// base * 110 / 100, saturating.` directly above
+  `base.saturating_mul(110) / 100`, under a doc comment already saying "+10%
+  (the minimum EIP-1559 replacement rule)". Deleted.
+- `fetch/chains/monero.rs` had `// Sort by timestamp descending.` over
+  `entries.sort_by(|a, b| b.timestamp.cmp(&a.timestamp))`. Deleted.
+- `AppState.networkChainID(forFamily:)` was documented "The chain id this
+  family is on", which is the signature read aloud. It now says the part the
+  signature does not: a family with no selection reports itself, so the
+  mainnet id is the default without being stored as one.
+
+*Why that side:* a comment that restates its line costs a reader the time to
+check whether it says anything, every time. A section header over an empty
+region costs more than that — it is a claim about how the file is organized,
+and it was wrong.
+
+*Not changed, on purpose:* two things that look like this class and are not.
+The byte-layout markers in `send/chains/` (`// nonce: u64`, `// asset`,
+`// Header.`) name wire-format fields, so they describe the spec rather than
+the code. And `store/wallet_db.rs` puts a one-line doc on every public
+function, most of them a restatement of the name — that is uniform across the
+file, and for a thin SQL layer "what it does" is the whole contract, with no
+why to give. Deleting one of twenty would only make the file less predictable.
+
+**Comments that named code which had moved or gone.**
+
+*Was:* five comments describing a version of the code that no longer exists —
+found by checking every comment that makes a mechanically verifiable claim
+(a count, or a `lives in` / `projects into` pointer at a named symbol).
+
+- `formatting.rs` said `chains.toml` "carries `native_decimals` on all
+  seventy-eight rows". Since the catalog split, forty-six chain rows carry the
+  column and thirty-two network rows inherit it from their mainnet. The
+  *catalog* still answers for all seventy-eight; the *file* does not.
+- `service/mod.rs` pointed at `fetch_balance`, deleted with the JSON balance
+  shuttle.
+- `service/network.rs` pointed at `sign_and_send` / `sign_and_send_token`,
+  which are now one `sign_and_broadcast_send`.
+- `service/network.rs` called `fetch_bitcoin_xpub_balance` a "JSON shuttle". It
+  is `bitcoin_xpub_balance` now and returns a typed `HdXpubBalance`.
+- `send/ethereum.rs` said `EvmSendOverridesInput` is projected by
+  `build_execute_send_payload` into a JSON fragment for
+  `build_evm_*_send_payload`. All three names are gone; `evm_send_overrides`
+  builds an `EvmSendOverrides` value.
+
+*Is:* each rewritten to describe the code that is there.
+
+*Why that side:* a pointer comment that names a deleted symbol is worse than no
+comment — it sends a reader looking for something that cannot be found, and it
+is the kind of error that compounds, because the next person to move that code
+has no way to tell the stale pointer from the live ones.
+
+*How to check:* nothing in `core/src` or `swift/` outside a "was" clause names
+a symbol that `cargo build --release` cannot resolve. Two classes deliberately
+survive: comments in the past tense recording what a function *used to* do
+(`send_execution.rs` keeps several, and they are the record of the JSON
+boundary coming out), and byte-layout comments in `send/chains/` that restate
+the line below them — `// nonce: u64` above a `to_le_bytes()` call is the wire
+format, not a description of the code.
+
+There are no `TODO`, `FIXME`, `HACK` or `XXX` comments anywhere in `core/`,
+`cli/` or `swift/`.
+
+
 ### Stage 4 — Android
 
 Only meaningful once the above holds. If Kotlin can be brought up against the
@@ -6638,13 +7215,13 @@ Not by feel. These four numbers, checked at the end of each stage:
 | Metric | Start | Now | Target |
 |---|---|---|---|
 | `core_plan_*` exports | 42 | **0** | 0 |
-| Swift root lines vs `views/` | 19,766 vs 11,113 | 13,995 vs 10,560 | inverted |
+| Swift root lines vs `views/` | 19,766 vs 11,113 | 14,003 vs 10,687 | inverted |
 | Domain collections stored on `AppState` | 3 | 0 | 0 |
 | Domain settings owned by core | 0 | **21 fields; 4 left on iOS on purpose** | all |
 | Wallet operations reachable from the CLI | partial | **all** | all |
 | CLI commands drivable without a TTY | 0 of 24 | all (25 now) | all |
 | Exported functions and methods | 234 | **185** (96 free + 89 methods) | ~150 (see C2) |
-| Largest file in `core/` | 4,781 | 2,501 | — |
+| Largest file in `core/` | 4,781 | 3,418 (`store/tests.rs`); largest non-test 1,972 | — |
 
 *The export row is counted by `scripts/count-exports.sh`,* which states the
 definition so the number is reproducible: a free function carrying
@@ -6654,7 +7231,7 @@ recorded before was counted by hand and by a narrower rule, which is why it did
 not match; the script's number is the one to compare against from here.
 
 *The other unmet row was checked by the same standard and stands.* Inverting
-the Swift ratio needs **3,479** lines *deleted* from the root, or **1,739**
+the Swift ratio needs **3,316** lines *deleted* from the root, or **1,658**
 *moved* into `views/` — moving counts twice, since it lowers one side and raises
 the other. Most of the work so far has been deletion, which is why the number
 has barely moved while 5,385 lines have gone. Classifying the root by
@@ -6680,7 +7257,7 @@ declare it passes every assertion here and fails on the first call from Swift �
 which is how the staking tab came to be inert with all three suites green. See
 the behaviour change above. Running the app is a fourth gate, not a formality.
 
-Both iOS suites are green as of this pass — 40 tests, 0 failures, over
+Both iOS suites are green as of this pass — 43 tests, 0 failures, over
 consecutive full runs. (Forty-two rather than thirty-six: three keep the staking
 tab's editorial copy in step with `Chain::supports_staking` in both directions,
 and one walks every EVM mainnet asserting none of them falls back to the generic
@@ -6783,6 +7360,25 @@ condition would cover both, but they differ in scope as well as in condition,
 so the case was weaker than the five and it was not queued.
 
 ## Known open items
+
+- **Bittensor is excluded from the shared submit path, and nothing explains
+  why.** `Chain::uses_generic_send_submit` answers yes for sixteen mainnets.
+  Bittensor is one of seven non-EVM chains that answer no, and it is the only
+  one of the seven without a reason: the other six need a UTXO selection
+  (Bitcoin, Dogecoin), a resolved source account (Internet Computer), a
+  resource model (Tron), a mint account (Solana), or a view key and a backend
+  (Monero). Bittensor's `SendParams` arm is `{from, to, rao, private_key_hex,
+  public_key_hex}` — strictly *fewer* fields than Polkadot's, which adds `era`
+  and `tip` and does take the shared path.
+
+  Not changed here, because the flag is on a funds path and flipping it is not
+  a no-op: `has_send_preview` currently returns true for Bittensor through its
+  `!uses_generic_send_submit()` branch, and Bittensor is not in
+  `simple_preview_chain`, so a flip would make its preview depend on
+  `send_execution_shape().fee_fallback > 0.0` — the exact condition
+  `send::mod`'s shared-path test asserts for the other sixteen. Whoever picks
+  this up should check that fallback first, then flip the flag and let that
+  test cover it.
 
 - ~~`fetch_token_balances` takes decimals from the caller on every family but
   Tron.~~ **Fixed** — see "A balance's decimals are the contract's" below. The

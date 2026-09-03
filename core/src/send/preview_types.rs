@@ -77,7 +77,7 @@ pub struct SolanaSendPreview {
 
 #[allow(non_snake_case)]
 #[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq, uniffi::Record)]
-pub struct XRPSendPreview {
+pub struct XrpSendPreview {
     pub estimatedNetworkFee: f64,
     pub feeDrops: i64,
     pub sequence: i64,
@@ -160,7 +160,7 @@ pub struct AptosSendPreview {
 
 #[allow(non_snake_case)]
 #[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq, uniffi::Record)]
-pub struct TONSendPreview {
+pub struct TonSendPreview {
     pub estimatedNetworkFee: f64,
     pub sequenceNumber: u32,
     pub spendableBalance: f64,
@@ -173,7 +173,7 @@ pub struct TONSendPreview {
 
 #[allow(non_snake_case)]
 #[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq, uniffi::Record)]
-pub struct ICPSendPreview {
+pub struct IcpSendPreview {
     pub estimatedNetworkFee: f64,
     pub feeE8s: u64,
     pub spendableBalance: f64,

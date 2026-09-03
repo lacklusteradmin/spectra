@@ -1,14 +1,3 @@
-use serde::{Deserialize, Serialize};
-
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, uniffi::Record)]
-#[serde(rename_all = "camelCase")]
-pub struct WalletTransferAvailability {
-    pub wallet_id: String,
-    pub send_holding_indices: Vec<u64>,
-    pub receive_holding_indices: Vec<u64>,
-    pub receive_chains: Vec<String>,
-}
-
 use crate::registry::SendRule;
 
 /// Whether a holding can be sent.

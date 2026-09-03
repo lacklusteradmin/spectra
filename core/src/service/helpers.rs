@@ -34,23 +34,6 @@ pub(super) fn json_response<T: Serialize>(value: &T) -> Result<String, SpectraBr
     serde_json::to_string(value).map_err(Into::into)
 }
 
-/// Parse `params` as a typed payload. Lets a chain dispatch arm collapse
-/// six lines of ad-hoc `params["x"].as_y()` extraction into one decode step:
-///
-/// ```ignore
-/// let p: PolkadotSendParams = parse_params(&params)?;
-/// ```
-///
-/// Serde populates the error message with the offending field name, so each
-/// missing-field error is "<chain>: missing field `planck` at line N column M"
-/// instead of an inscrutable `"missing planck"`.
-pub(super) fn parse_params<T: for<'de> serde::Deserialize<'de>>(
-    params: &serde_json::Value,
-) -> Result<T, SpectraBridgeError> {
-    serde_json::from_value(params.clone())
-        .map_err(|e| SpectraBridgeError::from(format!("invalid params: {e}")))
-}
-
 /// Decode a hex string of an exact byte length. Replaces repeated
 /// per-arm hex decoding and fixed-length conversion boilerplate. Includes
 /// the field name in both the
@@ -106,122 +89,59 @@ pub(super) fn format_decimals(raw: u128, decimals: u8) -> String {
     format_units(raw, decimals as u32, 6)
 }
 
-// ── Balance JSON parsing ──────────────────────────────────────────────────
+// ── Balance projection ────────────────────────────────────────────────────
 
-/// Extract the normalised native balance (in display units) from a balance
-/// JSON value. Returns 0.0 for unknown / unsupported chains.
-pub(super) fn simple_chain_balance_display(chain_id: &str, obj: &serde_json::Value) -> f64 {
-    let u64_field = |key: &str| -> f64 {
-        obj[key]
-            .as_u64()
-            .map(|n| n as f64)
-            .or_else(|| {
-                obj[key]
-                    .as_str()
-                    .and_then(|s| s.parse::<u64>().ok())
-                    .map(|n| n as f64)
-            })
-            .unwrap_or(0.0)
-    };
-    let i64_field = |key: &str| -> f64 {
-        obj[key]
-            .as_i64()
-            .map(|n| n as f64)
-            .or_else(|| {
-                obj[key]
-                    .as_str()
-                    .and_then(|s| s.parse::<i64>().ok())
-                    .map(|n| n as f64)
-            })
-            .unwrap_or(0.0)
-    };
+/// The native balance in display units, from the typed summary.
+///
+/// This read a `serde_json::Value` before — `fetch_balance` serialized a
+/// chain's typed balance struct to JSON and this dug the number back out by
+/// field name, which is why `Chain::native_balance_field` existed: a table of
+/// twenty JSON key names (`lamports`, `stroops`, `planck`, `nanotons`, …)
+/// whose only job was to undo a serialization that had just happened in the
+/// same call. `fetch_native_balance_summary` already returns the same numbers
+/// typed, so both the second 24-arm dispatch and the field-name table are
+/// gone; what is left is the arithmetic they were wrapped around.
+pub(super) fn summary_display_balance(
+    chain_id: &str,
+    summary: &crate::service::types::NativeBalanceSummary,
+) -> f64 {
     let Some(chain) = Chain::from_str_id(chain_id) else {
         return 0.0;
     };
-    let factor = 10f64.powi(chain.native_decimals() as i32);
-    match chain {
-        Chain::Stellar => i64_field("stroops") / factor,
-        Chain::Polkadot => {
-            obj["planck"]
-                .as_u64()
-                .map(|n| n as f64)
-                .or_else(|| obj["planck"].as_str().and_then(|s| s.parse::<f64>().ok()))
-                .unwrap_or(0.0)
-                / factor
-        }
-        Chain::Near => {
-            if let Some(s) = obj["near_display"].as_str() {
-                s.parse::<f64>().unwrap_or(0.0)
-            } else {
-                obj["yocto_near"]
-                    .as_str()
-                    .and_then(|s| s.parse::<f64>().ok())
-                    .map(|y| y / factor)
-                    .unwrap_or(0.0)
-            }
-        }
-        Chain::Solana
-        | Chain::Xrp
-        | Chain::Cardano
-        | Chain::Sui
-        | Chain::Aptos
-        | Chain::Ton
-        | Chain::Icp
-        | Chain::Monero => match chain.native_balance_field() {
-            Some(field) => u64_field(field) / factor,
-            None => 0.0,
-        },
-        _ => 0.0,
+    // NEAR's smallest unit is 10^24 yocto. Dividing that through an f64 loses
+    // precision well before the decimal point, so the client's own display
+    // string is the better source — the one chain where the old JSON version
+    // also preferred `near_display` over dividing `yocto_near` itself.
+    if chain == Chain::Near {
+        return summary.amount_display.parse::<f64>().unwrap_or(0.0);
     }
+    let factor = 10f64.powi(chain.native_decimals() as i32);
+    summary
+        .smallest_unit
+        .parse::<f64>()
+        .map(|units| units / factor)
+        .unwrap_or(0.0)
 }
 
-// ── Fee preview JSON shapes ───────────────────────────────────────────────
+// ── Fee estimate ──────────────────────────────────────────────────────────
 
-/// Flat struct for direct serialization — avoids the intermediate
-/// `serde_json::Value` + `Map` heap allocation that `json!()` would produce.
-#[derive(Serialize)]
-pub(crate) struct FeePreview<'a> {
-    chain_id: &'a str,
-    native_fee_raw: &'a str,
-    native_fee_display: &'a str,
-    unit: &'a str,
-    source: &'a str,
-}
-
-pub(super) fn fee_preview(
-    chain_id: &str,
-    raw: u128,
-    decimals: u8,
-    unit: &str,
-    source: &str,
-) -> String {
-    let display = format_decimals(raw, decimals);
-    let raw_str = raw.to_string();
-    serde_json::to_string(&FeePreview {
-        chain_id,
-        native_fee_raw: &raw_str,
-        native_fee_display: &display,
-        unit,
-        source,
-    })
-    .unwrap()
-}
-
-pub(super) fn fee_preview_str(
-    chain_id: &str,
-    raw: &str,
-    display: &str,
-    unit: &str,
-    source: &str,
-) -> String {
-    serde_json::to_string(&FeePreview {
-        chain_id,
-        native_fee_raw: raw,
-        native_fee_display: display,
-        unit,
-        source,
-    })
-    .unwrap()
+/// A chain's fee, quoted in that chain's own native unit.
+///
+/// Was a `FeePreview<'a>` serialized to JSON by `fee_preview` /
+/// `fee_preview_str` so that the one caller could parse it back and read
+/// three of its fields by name. The struct is the value now; nothing
+/// serializes it on the way between two functions in the same call.
+///
+/// Two of `FeePreview`'s five fields are gone with the JSON: `chain_id` and
+/// `unit` were serialized on every call and read by nobody.
+#[derive(Debug, Clone)]
+pub(crate) struct NativeFeeEstimate {
+    /// Smallest units, as a decimal string — some chains' fees do not fit u64.
+    pub raw: String,
+    /// The same amount at display scale.
+    pub display: String,
+    /// `"rpc"` when a node quoted it, `"static"` when the catalog did.
+    pub source: &'static str,
 }
 
 /// Compute a UTXO capacity fee preview using P2PKH sizing (148 B/input,
@@ -264,83 +184,6 @@ pub(super) fn utxo_fee_preview_json(utxo_values: Vec<u64>, fee_rate: u64) -> Str
         "max_sendable_sat": max_sendable,
     })
     .to_string()
-}
-
-// ── EVM overrides parser ──────────────────────────────────────────────────
-
-/// Parse optional EVM transaction overrides from a `sign_and_send` params blob.
-/// All fields default to `None` — the Rust client then falls back to its
-/// standard pending-nonce / recommended-fee / estimated-gas behavior.
-pub(super) fn read_evm_overrides(
-    params: &serde_json::Value,
-) -> crate::send::chains::evm::EvmSendOverrides {
-    use crate::send::chains::evm::AccessListEntry;
-
-    let nonce = params["nonce"]
-        .as_u64()
-        .or_else(|| params["nonce"].as_str().and_then(|s| s.parse().ok()));
-    let gas_limit = params["gas_limit"]
-        .as_u64()
-        .or_else(|| params["gas_limit"].as_str().and_then(|s| s.parse().ok()));
-    let max_fee_per_gas_wei = params["max_fee_per_gas_wei"]
-        .as_str()
-        .and_then(|s| s.parse().ok())
-        .or_else(|| params["max_fee_per_gas_wei"].as_u64().map(|n| n as u128));
-    let max_priority_fee_per_gas_wei = params["max_priority_fee_per_gas_wei"]
-        .as_str()
-        .and_then(|s| s.parse().ok())
-        .or_else(|| {
-            params["max_priority_fee_per_gas_wei"]
-                .as_u64()
-                .map(|n| n as u128)
-        });
-    let calldata = params["calldata_hex"]
-        .as_str()
-        .and_then(|s| hex::decode(s.trim_start_matches("0x")).ok());
-    let sign_only = params["sign_only"].as_bool().unwrap_or(false);
-    let access_list = params["access_list_json"]
-        .as_str()
-        .and_then(|s| serde_json::from_str::<serde_json::Value>(s).ok())
-        .and_then(|v| v.as_array().cloned())
-        .map(|arr| {
-            arr.into_iter()
-                .filter_map(|entry| {
-                    let addr_str = entry["address"].as_str()?;
-                    let addr_bytes = hex::decode(addr_str.trim_start_matches("0x")).ok()?;
-                    let addr: [u8; 20] = addr_bytes.try_into().ok()?;
-                    let keys = entry["storageKeys"]
-                        .as_array()
-                        .map(|ks| {
-                            ks.iter()
-                                .filter_map(|k| {
-                                    let kb =
-                                        hex::decode(k.as_str()?.trim_start_matches("0x")).ok()?;
-                                    kb.try_into().ok()
-                                })
-                                .collect::<Vec<[u8; 32]>>()
-                        })
-                        .unwrap_or_default();
-                    Some(AccessListEntry {
-                        address: addr,
-                        storage_keys: keys,
-                    })
-                })
-                .collect::<Vec<_>>()
-        })
-        .unwrap_or_default();
-
-    let gas_buffer_pct = params["gas_buffer_pct"].as_u64().map(|n| n as u32);
-
-    crate::send::chains::evm::EvmSendOverrides {
-        nonce,
-        max_fee_per_gas_wei,
-        max_priority_fee_per_gas_wei,
-        gas_limit,
-        calldata,
-        sign_only,
-        access_list,
-        gas_buffer_pct,
-    }
 }
 
 // ── SQLite blocking helpers ───────────────────────────────────────────────
@@ -445,4 +288,64 @@ pub(super) fn is_extended_public_key(s: &str) -> bool {
         s.get(..4),
         Some("xpub") | Some("ypub") | Some("zpub") | Some("Ypub") | Some("Zpub")
     )
+}
+
+#[cfg(test)]
+mod display_balance_from_a_typed_summary {
+    use super::summary_display_balance;
+    use crate::service::types::NativeBalanceSummary;
+
+    fn summary(smallest: &str, display: &str) -> NativeBalanceSummary {
+        NativeBalanceSummary {
+            smallest_unit: smallest.to_string(),
+            amount_display: display.to_string(),
+            utxo_count: 0,
+        }
+    }
+
+    /// Every chain divides its smallest unit by its own decimals — the same
+    /// arithmetic the JSON version did after digging the number out by field
+    /// name. The point of this test is that the *numbers* did not move when
+    /// the field-name table went away.
+    #[test]
+    fn each_chain_divides_by_its_own_decimals() {
+        // (chain_id, smallest unit, expected display)
+        for (chain_id, smallest, expected) in [
+            ("solana", "1500000000", 1.5),           // 9 decimals, was "lamports"
+            ("stellar", "15000000", 1.5),            // 7 decimals, was "stroops"
+            ("polkadot", "12500000000", 1.25),       // 10 decimals, was "planck"
+            ("bitcoin", "150000000", 1.5),           // 8 decimals, was "confirmed_sats"
+            ("ton", "1500000000", 1.5),              // 9 decimals, was "nanotons"
+            ("cardano", "1500000", 1.5),             // 6 decimals, was "lovelace"
+            ("tron", "1500000", 1.5),                // 6 decimals, was "sun"
+        ] {
+            let got = summary_display_balance(chain_id, &summary(smallest, "ignored"));
+            assert!(
+                (got - expected).abs() < 1e-9,
+                "{chain_id}: {smallest} -> {got}, expected {expected}"
+            );
+        }
+    }
+
+    /// NEAR is the exception, and it is the reason the exception exists:
+    /// 10^24 yocto does not survive an f64 division intact, so the client's
+    /// own display string is read instead — exactly what the JSON version
+    /// did when it preferred `near_display` over dividing `yocto_near`.
+    #[test]
+    fn near_reads_the_display_string_rather_than_dividing_yocto() {
+        let s = summary("100000000000000000000000", "0.1");
+        assert_eq!(summary_display_balance("near", &s), 0.1);
+        // And the smallest-unit path would not have produced it exactly.
+        let divided = 1e23 / 10f64.powi(24);
+        assert!(
+            (divided - 0.1).abs() > 0.0 || divided != 0.1,
+            "if f64 division were exact here the special case would be unnecessary"
+        );
+    }
+
+    /// An unknown chain is 0.0, not a panic — same as before.
+    #[test]
+    fn an_unknown_chain_is_zero() {
+        assert_eq!(summary_display_balance("not-a-chain", &summary("100", "1")), 0.0);
+    }
 }

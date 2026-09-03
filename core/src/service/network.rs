@@ -109,10 +109,10 @@ impl WalletService {
         ))
     }
 
-    // sign_and_send / sign_and_send_token live in the plain `impl WalletService`
-    // block below. UniFFI exports every method of a `#[uniffi::export]` impl
-    // block regardless of `pub(crate)` visibility, so chain-dispatch helpers
-    // consumed only by execute_send must be outside this block.
+    // `sign_and_broadcast_send` lives in the plain `impl WalletService` block
+    // in `service/send.rs`. UniFFI exports every method of a `#[uniffi::export]`
+    // impl block regardless of `pub(crate)` visibility, so chain-dispatch
+    // helpers consumed only by `execute_send` must be outside this block.
 
     // ── Token balance (ERC-20 / SPL / NEP-141 / TRC-20 / Stellar assets)
 
@@ -502,14 +502,10 @@ impl WalletService {
 
     // `execute_send` lives in `service/send_execution.rs`.
 
-    // ── Bitcoin HD — seed → account xpub derivation
-
     // ── Bitcoin HD multi-address (xpub / ypub / zpub)
 
-    // `fetch_bitcoin_xpub_balance` lives in the plain-impl block below
-    // (JSON shuttle — kept internal, not exported to Swift).
-
-    // ── Price / fiat rate service
+    // `bitcoin_xpub_balance` lives in the plain-impl block below: it returns a
+    // typed `HdXpubBalance` to Rust callers only, not across the FFI.
 
     // ── EVM paginated history (native + ERC-20 token transfers)
 
@@ -707,8 +703,6 @@ impl WalletService {
     // `fetch_utxo_fee_preview` and `broadcast_raw` live in the plain-impl
     // block below (JSON shuttles — kept internal, not exported to Swift).
 
-    // ── EVM receipt polling
-
     // `fetch_evm_send_preview` / `fetch_tron_send_preview` /
     // `fetch_simple_chain_send_preview` live in the plain-impl block below
     // (JSON shuttles — kept internal, not exported to Swift). Their typed
@@ -824,15 +818,6 @@ impl WalletService {
     // wrappers above in the exported impl block call these and translate
     // the JSON into UniFFI records at the boundary).
 
-    pub(crate) async fn fetch_balance(
-        &self,
-        chain_id: &str,
-        address: String,
-    ) -> Result<String, SpectraBridgeError> {
-        let chain = chain_for_id(chain_id)?;
-        fetch_balance(&address, chain, None, self).await
-    }
-
     /// Typed end-to-end balance fetch used by the refresh engine. Returns a
     /// parsed `NativeBalanceSummary` directly — no JSON-string intermediate.
     ///
@@ -845,16 +830,11 @@ impl WalletService {
         address: String,
     ) -> Result<NativeBalanceSummary, SpectraBridgeError> {
         if chain_id == "bitcoin" && is_extended_public_key(&address) {
-            // xpub path stays JSON-based; parse once and project into the
-            // unified summary shape.
-            let json = self.fetch_bitcoin_xpub_balance(address, 20, 20).await?;
-            let value: serde_json::Value = serde_json::from_str(&json)?;
-            let confirmed_sats = value["confirmed_sats"].as_u64().unwrap_or(0);
-            let utxo_count = value["utxo_count"].as_u64().unwrap_or(0) as u32;
+            let bal = self.bitcoin_xpub_balance(address, 20, 20).await?;
             return Ok(NativeBalanceSummary {
-                smallest_unit: confirmed_sats.to_string(),
-                amount_display: format_smallest_unit_decimal(confirmed_sats as u128, 8),
-                utxo_count,
+                smallest_unit: bal.confirmed_sats.to_string(),
+                amount_display: format_smallest_unit_decimal(bal.confirmed_sats as u128, 8),
+                utxo_count: bal.utxo_count as u32,
             });
         }
         let chain = chain_for_id(chain_id)?;
@@ -870,22 +850,27 @@ impl WalletService {
         fetch_history(&address, chain, None, self).await
     }
 
-    pub(crate) async fn fetch_bitcoin_xpub_balance(
+    /// The aggregated balance across an xpub's derived addresses.
+    ///
+    /// Returned the serialized `HdXpubBalance` as a JSON string before, which
+    /// both callers immediately parsed back for `confirmed_sats` (and one of
+    /// them `utxo_count`) — a serialization and a re-parse between two
+    /// functions in the same call. The struct is what crosses now.
+    pub(crate) async fn bitcoin_xpub_balance(
         &self,
         xpub: String,
         receive_count: u32,
         change_count: u32,
-    ) -> Result<String, SpectraBridgeError> {
+    ) -> Result<crate::derivation::xpub_walker::HdXpubBalance, SpectraBridgeError> {
         let endpoints = self.endpoints_for("bitcoin").await;
         let client = BitcoinClient::new(HttpClient::shared(), endpoints);
-        let bal = crate::derivation::xpub_walker::fetch_xpub_balance(
+        Ok(crate::derivation::xpub_walker::fetch_xpub_balance(
             &client,
             &xpub,
             receive_count,
             change_count,
         )
-        .await?;
-        Ok(serde_json::to_string(&bal)?)
+        .await?)
     }
 }
 
@@ -893,112 +878,6 @@ impl WalletService {
 // Three free functions replace the old ChainClient enum. Each builds the
 // right client inline and runs the fetch — no enum intermediary.
 // Adding a chain means one new arm per function.
-
-async fn fetch_balance(
-    address: &str,
-    chain: Chain,
-    _token: Option<&str>,
-    service: &WalletService,
-) -> Result<String, SpectraBridgeError> {
-    let endpoints = service.endpoints_for(chain.str_id()).await;
-    let dispatch = chain.mainnet_counterpart();
-    match dispatch {
-        Chain::Bitcoin => json_response(
-            &BitcoinClient::new(HttpClient::shared(), endpoints)
-                .fetch_balance(address)
-                .await?,
-        ),
-        Chain::BitcoinCash => json_response(
-            &BitcoinCashClient::new(endpoints)
-                .fetch_balance(address)
-                .await?,
-        ),
-        Chain::BitcoinSV => json_response(
-            &BitcoinSvClient::new(endpoints)
-                .fetch_balance(address)
-                .await?,
-        ),
-        Chain::Litecoin => json_response(
-            &LitecoinClient::new(endpoints)
-                .fetch_balance(address)
-                .await?,
-        ),
-        Chain::Dogecoin => json_response(
-            &DogecoinClient::new(endpoints)
-                .fetch_balance(address)
-                .await?,
-        ),
-        c if c.is_evm() => json_response(
-            &EvmClient::new(endpoints, chain.evm_chain_id())
-                .fetch_balance(address)
-                .await?,
-        ),
-        Chain::Solana => json_response(&SolanaClient::new(endpoints).fetch_balance(address).await?),
-        Chain::Tron => json_response(&TronClient::new(endpoints).fetch_balance(address).await?),
-        Chain::Stellar => {
-            json_response(&StellarClient::new(endpoints).fetch_balance(address).await?)
-        }
-        Chain::Xrp => json_response(&XrpClient::new(endpoints).fetch_balance(address).await?),
-        Chain::Cardano => {
-            let api_key = service
-                .api_key_for(chain.str_id())
-                .await
-                .unwrap_or_default();
-            json_response(
-                &CardanoClient::new(endpoints, api_key)
-                    .fetch_balance(address)
-                    .await?,
-            )
-        }
-        Chain::Polkadot => {
-            let subscan = service
-                .endpoints_for(&chain.endpoint_str_id(EndpointSlot::Secondary))
-                .await;
-            let api_key = service.api_key_for(chain.str_id()).await;
-            json_response(
-                &PolkadotClient::new(endpoints, subscan, api_key)
-                    .fetch_balance(address)
-                    .await?,
-            )
-        }
-        Chain::Sui => json_response(&SuiClient::new(endpoints).fetch_balance(address).await?),
-        Chain::Aptos => json_response(&AptosClient::new(endpoints).fetch_balance(address).await?),
-        Chain::Ton => {
-            let api_key = service.api_key_for(chain.str_id()).await;
-            json_response(
-                &TonClient::new(endpoints, api_key)
-                    .fetch_balance(address)
-                    .await?,
-            )
-        }
-        Chain::Near => json_response(&NearClient::new(endpoints).fetch_balance(address).await?),
-        Chain::Icp => json_response(&IcpClient::new(endpoints).fetch_balance(address).await?),
-        Chain::Monero => json_response(&MoneroClient::new(endpoints).fetch_balance(0).await?),
-        Chain::Zcash => json_response(&ZcashClient::new(endpoints).fetch_balance(address).await?),
-        Chain::BitcoinGold => json_response(
-            &BitcoinGoldClient::new(endpoints)
-                .fetch_balance(address)
-                .await?,
-        ),
-        Chain::Decred => json_response(&DecredClient::new(endpoints).fetch_balance(address).await?),
-        Chain::Kaspa => json_response(&KaspaClient::new(endpoints).fetch_balance(address).await?),
-        Chain::Dash => json_response(&DashClient::new(endpoints).fetch_balance(address).await?),
-        Chain::Bittensor => {
-            let taostats = service
-                .endpoints_for(&chain.endpoint_str_id(EndpointSlot::Secondary))
-                .await;
-            let api_key = service.api_key_for(chain.str_id()).await;
-            json_response(
-                &BittensorClient::new(endpoints, taostats, api_key)
-                    .fetch_balance(address)
-                    .await?,
-            )
-        }
-        c => Err(SpectraBridgeError::from(format!(
-            "unsupported chain: {c:?}"
-        ))),
-    }
-}
 
 async fn fetch_native_balance_summary(
     address: &str,

@@ -705,55 +705,6 @@ impl Chain {
         self.entry().native_coingecko_id.as_str()
     }
 
-    pub const fn native_balance_field(self) -> Option<&'static str> {
-        Some(match self {
-            Chain::Bitcoin => "confirmed_sats",
-            Chain::Solana => "lamports",
-            Chain::Dogecoin => "balance_koin",
-            Chain::Xrp => "drops",
-            Chain::Litecoin
-            | Chain::BitcoinCash
-            | Chain::BitcoinSV
-            | Chain::Zcash
-            | Chain::BitcoinGold
-            | Chain::Dash => "balance_sat",
-            Chain::Decred => "balance_atoms",
-            Chain::Kaspa => "balance_sompi",
-            Chain::Tron => "sun",
-            Chain::Stellar => "stroops",
-            Chain::Cardano => "lovelace",
-            Chain::Polkadot => "planck",
-            Chain::Bittensor => "rao",
-            Chain::Sui => "mist",
-            Chain::Aptos => "octas",
-            Chain::Ton => "nanotons",
-            Chain::Icp => "e8s",
-            Chain::Monero => "piconeros",
-            Chain::BitcoinTestnet | Chain::BitcoinTestnet4 | Chain::BitcoinSignet => {
-                "confirmed_sats"
-            }
-            Chain::SolanaDevnet => "lamports",
-            Chain::DogecoinTestnet => "balance_koin",
-            Chain::XrpTestnet => "drops",
-            Chain::LitecoinTestnet
-            | Chain::BitcoinCashTestnet
-            | Chain::BitcoinSVTestnet
-            | Chain::ZcashTestnet
-            | Chain::DashTestnet => "balance_sat",
-            Chain::DecredTestnet => "balance_atoms",
-            Chain::KaspaTestnet => "balance_sompi",
-            Chain::TronNile => "sun",
-            Chain::StellarTestnet => "stroops",
-            Chain::CardanoPreprod => "lovelace",
-            Chain::PolkadotWestend => "planck",
-            Chain::SuiTestnet => "mist",
-            Chain::AptosTestnet => "octas",
-            Chain::TonTestnet => "nanotons",
-            Chain::MoneroStagenet => "piconeros",
-            _ => return None,
-        })
-    }
-
     /// The networks a user can pick between for this chain: the mainnet first,
     /// then its testnets in registry order.
     ///
@@ -823,16 +774,21 @@ impl Chain {
     /// Whether this chain's native send needs nothing beyond a destination, an
     /// amount and the fee its preview already supplied.
     ///
-    /// The eleven that answer yes share one submit path. The rest each need
-    /// something only they have — a UTXO selection (Bitcoin, Dogecoin), a
-    /// resolved source account (Internet Computer), a resource model (Tron), a
-    /// mint account (Solana), a view key and a backend (Monero), or a nonce
-    /// and gas overrides (every EVM chain).
+    /// Sixteen of the forty-six mainnets answer yes and share one submit path.
+    /// Of the thirty that do not, twenty-three are EVM chains, which need a
+    /// nonce and gas overrides. The other seven each need something only they
+    /// have — a UTXO selection (Bitcoin, Dogecoin), a resolved source account
+    /// (Internet Computer), a resource model (Tron), a mint account (Solana),
+    /// a view key and a backend (Monero) — except Bittensor, which is here
+    /// without a reason of that kind. Its `SendParams` arm is strictly smaller
+    /// than Polkadot's, which does take the shared path; see "Bittensor is
+    /// excluded from the shared submit path" under Known open items in
+    /// `PLAN.md`.
     ///
     /// It is a chain fact and it lived as two lists of names in
     /// `AppState+SendExecution`, next to a comment saying the lists should not
-    /// be there. A twelfth chain reaching the shared path had to be added to
-    /// whichever of the two the author happened to be looking at.
+    /// be there. A seventeenth chain reaching the shared path had to be added
+    /// to whichever of the two the author happened to be looking at.
     pub fn uses_generic_send_submit(self) -> bool {
         matches!(
             self.mainnet_counterpart(),

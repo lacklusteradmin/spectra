@@ -15,7 +15,6 @@ pub struct WalletDerivedState {
     pub portfolio: Vec<crate::store::wallet_domain::AssetHolding>,
     pub send_coins_by_wallet_id: HashMap<String, Vec<crate::store::wallet_domain::AssetHolding>>,
     pub receive_coins_by_wallet_id: HashMap<String, Vec<crate::store::wallet_domain::AssetHolding>>,
-    pub receive_chains_by_wallet_id: HashMap<String, Vec<String>>,
     pub send_enabled_wallet_ids: Vec<String>,
     pub receive_enabled_wallet_ids: Vec<String>,
     pub refreshable_chain_names: Vec<String>,

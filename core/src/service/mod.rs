@@ -51,7 +51,20 @@ pub(crate) use crate::SpectraBridgeError;
 pub(crate) use serde_json::json;
 pub(crate) use std::collections::HashMap;
 pub(crate) use std::sync::Arc;
-pub(crate) use tokio::sync::RwLock;
+/// `WalletService`'s own resident state uses this — tokio's async lock,
+/// held across `.await` where a mutation needs to write through to SQLite
+/// before releasing it.
+///
+/// Named `AsyncRwLock` rather than re-exported as the bare `RwLock` on
+/// purpose: two of `WalletService`'s ten locked fields
+/// (`secret_store`, `etherscan_api_key`) are `std::sync::RwLock` instead —
+/// a synchronous lock, because `set_secret_store` and `set_etherscan_api_key`
+/// are plain `pub fn`s Swift calls without `await`, and switching their lock
+/// would force them async and cascade into every synchronous call site that
+/// reaches them. A bare `RwLock<T>` field type reads as "the normal one" no
+/// matter which it is; spelling out which kind a field holds means a reader
+/// never has to open this file's imports to find out.
+pub(crate) use tokio::sync::RwLock as AsyncRwLock;
 
 pub(crate) use serde::{Deserialize, Serialize};
 
@@ -68,7 +81,6 @@ mod state;
 mod types;
 
 pub(crate) use helpers::*;
-pub(crate) use send_params::*;
 pub use standalone::*;
 /// The confirmation-poll outcome, which lives with the trackers it updates.
 pub use state::StatusPollOutcome;
@@ -104,31 +116,31 @@ impl EndpointIndex {
 /// Swift holds one instance for the lifetime of the app session.
 #[derive(uniffi::Object)]
 pub struct WalletService {
-    pub(crate) endpoints: Arc<RwLock<EndpointIndex>>,
+    pub(crate) endpoints: Arc<AsyncRwLock<EndpointIndex>>,
     /// Per-wallet history pagination state (cursor / page / exhaustion).
     pub(crate) history_pagination: Arc<HistoryPaginationStore>,
     /// Optional Keychain delegate (set via `set_secret_store`).
     pub(crate) secret_store: Arc<std::sync::RwLock<Option<Arc<dyn SecretStore>>>>,
     /// Canonical in-memory wallet + holdings state.
-    pub(crate) wallet_state: Arc<RwLock<CoreAppState>>,
+    pub(crate) wallet_state: Arc<AsyncRwLock<CoreAppState>>,
     /// Where `wallet_state` is persisted. `None` until `open_state` is called,
     /// in which case commands apply in memory only — the shape tests and
     /// short-lived tools want.
-    pub(crate) state_db_path: Arc<RwLock<Option<String>>>,
+    pub(crate) state_db_path: Arc<AsyncRwLock<Option<String>>>,
     /// User's Etherscan V2 API key. Shared across all EVM chains: Etherscan v2
     /// dispatches by `chainid` parameter against a single host.
     pub(crate) etherscan_api_key: Arc<std::sync::RwLock<String>>,
     /// Confirmation-poll backoff state, keyed by transaction id. Not persisted:
     /// a restart should re-poll every pending transaction immediately, which is
     /// what an absent tracker already means.
-    pub(crate) status_trackers: Arc<RwLock<HashMap<String, TransactionStatusTrackerState>>>,
+    pub(crate) status_trackers: Arc<AsyncRwLock<HashMap<String, TransactionStatusTrackerState>>>,
     /// Keypool indices, keyed by `wallet_id|chain_name`.
     ///
     /// Unlike `status_trackers` this IS persisted — losing it means reissuing
     /// an address that was already handed out. Held in memory so that
     /// reserve-and-increment can happen atomically under one lock; every
     /// mutation writes through to `wallet_keypool` before returning.
-    pub(crate) keypool: Arc<RwLock<HashMap<String, crate::wallet_db::KeypoolState>>>,
+    pub(crate) keypool: Arc<AsyncRwLock<HashMap<String, crate::wallet_db::KeypoolState>>>,
     /// Addresses this wallet is known to own, keyed by chain name.
     ///
     /// Persisted like the keypool and for the same reason: the keypool
@@ -136,14 +148,14 @@ pub struct WalletService {
     /// losing the table means reissuing an address. Held in memory because
     /// every keypool operation reads it under the keypool's own lock.
     pub(crate) owned_addresses:
-        Arc<RwLock<HashMap<String, Vec<crate::wallet_db::OwnedAddressRecord>>>>,
+        Arc<AsyncRwLock<HashMap<String, Vec<crate::wallet_db::OwnedAddressRecord>>>>,
     /// Per-chain operational log, newest first, capped per chain.
     ///
     /// Not in `CoreAppState`: 200 entries × every chain is too much to clone
     /// on an unrelated `SetFiatCurrency`. Same in-memory + write-through shape
     /// as the keypool.
     pub(crate) operational_events:
-        Arc<RwLock<HashMap<String, Vec<crate::store::ChainOperationalEventRecord>>>>,
+        Arc<AsyncRwLock<HashMap<String, Vec<crate::store::ChainOperationalEventRecord>>>>,
     /// When each kind of refresh last ran, in unix seconds.
     ///
     /// Not persisted, and that is the whole difference from the keypool: a
@@ -152,7 +164,7 @@ pub struct WalletService {
     /// side, handed back to core as arguments on every scheduling question —
     /// so the answer was only as current as the caller's copy, and the CLI,
     /// which has no such properties, could not ask the question at all.
-    pub(crate) refresh_clock: Arc<RwLock<crate::fetch::refresh::policy::RefreshClock>>,
+    pub(crate) refresh_clock: Arc<AsyncRwLock<crate::fetch::refresh::policy::RefreshClock>>,
 }
 #[uniffi::export(async_runtime = "tokio")]
 impl WalletService {
@@ -178,17 +190,17 @@ impl WalletService {
                 .try_init();
         });
         Ok(Arc::new(Self {
-            endpoints: Arc::new(RwLock::new(EndpointIndex::from_list(endpoints))),
+            endpoints: Arc::new(AsyncRwLock::new(EndpointIndex::from_list(endpoints))),
             history_pagination: Arc::new(HistoryPaginationStore::new()),
             secret_store: Arc::new(std::sync::RwLock::new(None)),
-            wallet_state: Arc::new(RwLock::new(CoreAppState::default())),
-            state_db_path: Arc::new(RwLock::new(None)),
+            wallet_state: Arc::new(AsyncRwLock::new(CoreAppState::default())),
+            state_db_path: Arc::new(AsyncRwLock::new(None)),
             etherscan_api_key: Arc::new(std::sync::RwLock::new(String::new())),
-            status_trackers: Arc::new(RwLock::new(HashMap::new())),
-            keypool: Arc::new(RwLock::new(HashMap::new())),
-            owned_addresses: Arc::new(RwLock::new(HashMap::new())),
-            refresh_clock: Arc::new(RwLock::new(Default::default())),
-            operational_events: Arc::new(RwLock::new(HashMap::new())),
+            status_trackers: Arc::new(AsyncRwLock::new(HashMap::new())),
+            keypool: Arc::new(AsyncRwLock::new(HashMap::new())),
+            owned_addresses: Arc::new(AsyncRwLock::new(HashMap::new())),
+            refresh_clock: Arc::new(AsyncRwLock::new(Default::default())),
+            operational_events: Arc::new(AsyncRwLock::new(HashMap::new())),
         }))
     }
 
@@ -210,8 +222,9 @@ impl WalletService {
         }
     }
 
-    // `fetch_balance` and `fetch_native_balance_summary_auto` live in the
-    // plain-impl block below — internal helpers, not exported to Swift.
+    // `fetch_native_balance_summary_auto` lives in the plain-impl block below
+    // — an internal helper, not exported to Swift.
+
     /// Register the platform Keychain implementation. Must be called once at
     /// app start before any code path that reads or writes secrets. Rust code
     /// that needs secret I/O calls the delegate directly via `self.secret_store`;

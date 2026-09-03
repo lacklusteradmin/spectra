@@ -31,6 +31,10 @@ impl StellarClient {
 
     /// Sign and submit a custom-asset (credit_alphanum4 / credit_alphanum12)
     /// Payment transaction.
+    ///
+    /// Not reachable from `execute_send` today — see `StellarTokenSendParams`
+    /// in `service/send_params.rs` for why.
+    #[allow(dead_code)]
     pub async fn sign_and_submit_asset(
         &self,
         from_address: &str,

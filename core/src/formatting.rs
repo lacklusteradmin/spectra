@@ -39,11 +39,12 @@ pub fn token_preference_lookup_key(chain_name: &str, symbol: &str) -> String {
 
 /// How many decimal places a chain's native asset actually has.
 ///
-/// Read from `chains.toml`, which carries `native_decimals` on all seventy-eight
-/// rows. This used to be `SUPPORTED_DECIMAL_CHAINS`, a hand-written table of
-/// **twenty-two** of them beside the catalog, with everything else falling to a
-/// literal `6`. The twenty-two agreed with the catalog exactly — it was a
-/// correct transcription, and short by fifty-six rows.
+/// Read from the catalog, which answers for all seventy-eight entries: the
+/// forty-six chain rows carry `native_decimals` and the thirty-two network rows
+/// inherit their parent's. This used to be `SUPPORTED_DECIMAL_CHAINS`, a
+/// hand-written table of **twenty-two** of them beside the catalog, with
+/// everything else falling to a literal `6`. The twenty-two agreed with the
+/// catalog exactly — it was a correct transcription, and short by fifty-six.
 pub fn supported_decimal_places(chain_name: &str, override_decimals: Option<u32>) -> u32 {
     if let Some(value) = override_decimals {
         return value;
