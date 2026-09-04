@@ -181,7 +181,7 @@ check "watches a chain with its own slot inside the EVM family" $OK \
 check "and one outside the seven the app used to name"        $OK \
     spectra wallet watch --chain Polygon --name "Watch Polygon" \
         --address 0x742d35Cc6634C0532925a3b844Bc454e4438f44e
-contains "the catalog says which chains can be watched" '"name":"Polygon","privateKeyImport":true' \
+contains "the catalog says which chains can be watched" '"name":"Polygon"' \
     spectra --json chains --filter Polygon
 contains "and that Polygon is one of them"   '"watchOnlyImport":true' \
     spectra --json chains --filter Polygon
@@ -217,6 +217,68 @@ check "refuses the wrong password"          $REJECTED \
     with_password wrong spectra wallet export "Renamed BTC" --yes
 check "will not print a seed without --yes" $USAGE \
     spectra wallet export "Renamed BTC"
+
+section "endpoint kinds"
+# `roles` held two things at once: what an endpoint is, and what it is used
+# for. Nothing kept them consistent, and both drifted — ten EVM chains' RPC
+# nodes lost the `rpc` marker, and forty-six claimed a `history` capability no
+# EVM node can serve, because `eth_getTransactionsByAddress` is not a method.
+contains "an EVM node is an rpc-node"        '"kind":"rpc-node"' \
+    spectra --json endpoints --chain Ethereum
+contains "and does not claim address history" '"capabilities":["read","balance","fee","broadcast"]' \
+    spectra --json endpoints --chain Ethereum
+
+section "evm history source"
+# Fourteen EVM mainnets read history from a keyless explorer; seven still need
+# an Etherscan key because V2 has no keyless tier and V1 is shut down across
+# the whole family; two are served by nobody. Offline assertions only — the
+# table itself, not the fetch.
+contains "a keyless chain names no api key"   '"needsApiKey":false' \
+    spectra --json chains --filter Ethereum
+contains "and a key-only chain says so"       '"needsApiKey":true' \
+    spectra --json chains --filter "BNB Chain"
+contains "a chain nobody serves says that"    '"historySource":"none"' \
+    spectra --json chains --filter Cronos
+
+section "utxo address discovery"
+# The derive-and-probe walk the app runs on every UTXO refresh. It lived in
+# Swift because the seed phrase was only readable there; core reads the seed,
+# the derivation path, the keypool bound, the balance and the history.
+contains "lists what a UTXO wallet already holds" '"addressCount"' \
+    spectra --json pool discover "Renamed BTC"
+# A chain with no walk answers empty rather than failing: the refresh loop asks
+# for every chain a wallet is on.
+contains "a non-UTXO chain discovers nothing" '"addressCount":0' \
+    spectra --json pool discover "Acceptance SOL"
+# Reserving, deriving and recording are one call now. The floor of 1 is core's
+# rule: a deep-UTXO chain never hands out index 0 as a receive address.
+contains "a UTXO wallet's receive address is never index 0" '"index":1' \
+    spectra --json pool next "Renamed BTC"
+
+section "wallets with no password"
+# The state the iOS app has always had and core could not represent: a wallet
+# whose material is stored without a password. Core held one key layout for
+# sealed wallets and the app held another for unsealed ones, in the same
+# keychain, neither able to read the other's.
+check "imports without a password"          $OK \
+    with_seed "legal winner thank year wave sausage worth useful legal winner thank yellow" \
+    spectra wallet import --chain Solana --name "Open SOL" --no-password
+contains "and derives the same address as the sealed import" \
+    "BLeUXTx9thHGT7VJUtF9vHEmfMDgW1nnKZ9UVer2CoLX" \
+    spectra --json wallet show "Open SOL"
+check "exports with no password asked"      $OK \
+    spectra wallet export "Open SOL" --yes
+contains "and the phrase is the one imported" \
+    '"seedPhrase":"legal winner thank year wave sausage worth useful legal winner thank yellow"' \
+    spectra --json wallet export "Open SOL" --yes
+# A password and no password are different states, not the same one with a
+# blank field: the sealed wallet still demands its password.
+check "the sealed wallet still wants its password" $REJECTED \
+    with_password wrong spectra wallet export "Acceptance SOL" --yes
+check "and --no-password refuses to also take a password file" $USAGE \
+    spectra wallet import --chain Solana --name Nope --no-password --password-file /dev/null
+check "deletes the unsealed wallet"         $OK \
+    spectra wallet delete "Open SOL" --yes
 
 # ── Address book ────────────────────────────────────────────────────────────
 
@@ -426,6 +488,42 @@ check "refuses half a token description"    $USAGE \
     spectra send assemble --chain Base --from $EVM_ADDR --to $EVM_ADDR --amount 1 \
         --contract $EVM_ADDR
 
+section "send affordability"
+# The fee half of "can this send land". `route_send_asset` already refuses
+# amount > balance; this is the part that was in Swift, where four callers each
+# decided whether the asset was the chain's own — spelled `== "TRX"`, `== "SOL"`,
+# a literal `true`, and a preflight field.
+contains "counts the fee against a native balance" '"verdict":"amountPlusFeeExceedsBalance"' \
+    spectra --json send affordability --chain Bitcoin --symbol BTC --amount 1 --fee 0.5 --balance 1.2
+contains "and quotes it to the chain's own decimals" '"required":"1.50000000"' \
+    spectra --json send affordability --chain Bitcoin --symbol BTC --amount 1 --fee 0.5 --balance 1.2
+# Arbitrum charges gas in ETH, not ARB. A caller that took the governance token
+# for the native asset would check the fee against the wrong balance.
+contains "a governance token is not the gas asset" '"verdict":"feeExceedsGasBalance"' \
+    spectra --json send affordability --chain Arbitrum --symbol ARB --amount 1 --fee 0.5 \
+        --balance 1.2 --gas-balance 0.1
+contains "and the fee is named in what gas is paid in" '"gasSymbol":"ETH"' \
+    spectra --json send affordability --chain Arbitrum --symbol ARB --amount 1 --fee 0.5 \
+        --balance 1.2 --gas-balance 0.1
+contains "a token over its own balance is refused first" '"verdict":"amountExceedsBalance"' \
+    spectra --json send affordability --chain Ethereum --symbol USDC --amount 5 --fee 0.5 \
+        --balance 1.2 --gas-balance 0.1
+contains "and both fitting is affordable" '"verdict":"affordable"' \
+    spectra --json send affordability --chain Ethereum --symbol USDC --amount 1 --fee 0.5 \
+        --balance 1.2 --gas-balance 2
+
+section "send destination probe"
+# The recipient check the composer runs. Swift held it as four chain arms that
+# fetched different things and worded the answer three ways; core answers with
+# two booleans and the front end supplies the sentence. Only the offline half
+# is assertable here — the verdict itself is a balance and a history read.
+check "refuses a chain the registry does not know" $USAGE \
+    spectra send probe --chain NotAChain --address $EVM_ADDR
+check "refuses half a token description"           $USAGE \
+    spectra send probe --chain Base --address $EVM_ADDR --contract $EVM_ADDR
+check "refuses a token description with no contract" $USAGE \
+    spectra send probe --chain Base --address $EVM_ADDR --symbol USDC --decimals 6
+
 # ── Network selection ───────────────────────────────────────────────────────
 #
 # Which `Chain` of a family the user is on. This had no command until now, and
@@ -565,9 +663,9 @@ contains "the same key derives on every EVM chain" '0x2c7536e3605d9c16a7a3d7b189
 check "and on the fifth UTXO chain"           $OK \
     with_password "correct horse" spectra wallet import --chain Decred \
         --name "PK Decred" --private-key-file "$DATA_DIR/pk.hex"
-contains "a chain that derives says so in the catalog" '"name":"Polygon","privateKeyImport":true' \
+contains "a chain that derives says so in the catalog" '"name":"Polygon"' \
     spectra --json chains --filter Polygon
-contains "and one that does not says that"    '"name":"Solana","privateKeyImport":false' \
+contains "and one that does not says that"    '"privateKeyImport":false' \
     spectra --json chains --filter Solana
 check "cleans up the extra key wallets"       $OK spectra wallet delete "PK Polygon" --yes
 check "and the second one"                    $OK spectra wallet delete "PK Decred" --yes
@@ -599,9 +697,9 @@ check "refuses staking on an unknown chain"            $USAGE \
 # The staking picker in the app was a seven-case Swift enum with its own
 # display-name and id switches, beside two match arms in `StakingService` over
 # the same seven ids. One registry column now, and this is the column.
-contains "the catalog says which chains stake" '"name":"Polkadot","privateKeyImport":false,"staking":true' \
+contains "the catalog says which chains stake" '"staking":true' \
     spectra --json chains --filter Polkadot
-contains "and which do not"                   '"name":"Dogecoin","privateKeyImport":true,"staking":false' \
+contains "and which do not"                   '"staking":false' \
     spectra --json chains --filter Dogecoin
 check "a testnet does not stake where its mainnet does" $REJECTED \
     spectra staking validators --chain solana-devnet

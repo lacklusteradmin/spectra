@@ -573,9 +573,6 @@ pub struct CoreWalletRustSecretMaterialDescriptor {
     pub has_private_key: bool,
     pub has_password: bool,
     pub has_signing_material: bool,
-    pub seed_phrase_store_key: String,
-    pub password_store_key: String,
-    pub private_key_store_key: String,
 }
 
 #[cfg(test)]

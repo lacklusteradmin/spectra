@@ -48,6 +48,8 @@ enum Command {
     Address(cmd::address::AddressCommand),
     /// Chains this build supports.
     Chains(cmd::chain::ChainsArgs),
+    /// Call every registered endpoint and report which ones answer.
+    Endpoints(cmd::chain::EndpointsArgs),
     /// Fetch a wallet's on-chain balance.
     Balance(cmd::chain::BalanceArgs),
     /// Fetch a wallet's on-chain transaction history.
@@ -110,6 +112,7 @@ fn dispatch(ctx: &Ctx, out: Out, command: Command) -> Result<(), CliError> {
         Command::Wallet(command) => cmd::wallet::run(ctx, out, command),
         Command::Address(command) => cmd::address::run(ctx, out, command),
         Command::Chains(args) => cmd::chain::chains(out, args),
+        Command::Endpoints(args) => cmd::chain::endpoints(ctx, out, args),
         Command::Balance(args) => cmd::chain::balance(ctx, out, args),
         Command::History(args) => cmd::chain::history(ctx, out, args),
         Command::Txs(args) => cmd::tx::txs(ctx, out, args),

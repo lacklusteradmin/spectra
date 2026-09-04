@@ -5,6 +5,7 @@
 //! signs EIP-1559 transactions in Rust using secp256k1 + RLP encoding.
 
 use serde::{Deserialize, Serialize};
+use crate::registry::EvmHistorySource;
 use serde_json::{json, Value};
 
 use crate::http::{with_fallback, HttpClient, RetryProfile};
@@ -144,6 +145,57 @@ pub struct EvmHistoryEntry {
     pub value_wei: String,
     pub fee_wei: String,
     pub is_incoming: bool,
+}
+
+/// Build an explorer query for `action`, whichever source the chain has.
+///
+/// The two shapes differ only in the path and whether a `chainid` and an
+/// `apikey` ride along, so the callers below name an action and its arguments
+/// and never see which provider answered.
+pub fn explorer_query_url(
+    source: EvmHistorySource,
+    chain_id: u64,
+    api_key: Option<&str>,
+    params: &str,
+) -> Result<String, String> {
+    match source {
+        EvmHistorySource::Open(base) => Ok(format!("{base}/api?{params}")),
+        EvmHistorySource::EtherscanV2 => {
+            // No keyless tier: without this the call comes back NOTOK, and a
+            // NOTOK read as an empty list is what made a missing key look like
+            // an address with no history.
+            let key = api_key
+                .map(str::trim)
+                .filter(|k| !k.is_empty())
+                .ok_or_else(|| "this chain's history needs an Etherscan API key".to_string())?;
+            Ok(format!(
+                "https://api.etherscan.io/v2/api?chainid={chain_id}&{params}&apikey={key}"
+            ))
+        }
+        EvmHistorySource::Unavailable => {
+            Err("no explorer serves this chain's transaction history".to_string())
+        }
+    }
+}
+
+/// Separate "no transactions" from "the explorer refused".
+///
+/// Both answer `status: "0"`, which is why the two call sites below used to
+/// return an empty list for either and a caller could not tell an address with
+/// no history from an explorer that would not talk to it. The difference is in
+/// `result`: an empty history carries an empty **array**, and every refusal —
+/// Etherscan's `"Missing/Invalid API Key"`, Blockscout's transient
+/// `"Something went wrong."` with a null result — carries something that is not
+/// an array.
+///
+/// Judged on the shape rather than on `message`, so it does not depend on an
+/// explorer's wording staying put.
+fn etherscan_result_rows(status: &str, message: &str, result: Value) -> Result<Vec<Value>, String> {
+    match result {
+        Value::Array(rows) => Ok(rows),
+        _ if status == "1" => Err(format!("explorer returned a non-list result: {message}")),
+        _ => Err(format!("explorer refused: {message}")),
+    }
 }
 
 /// Transaction receipt returned by `eth_getTransactionReceipt`.
@@ -605,22 +657,25 @@ impl EvmClient {
     pub async fn fetch_history(
         &self,
         address: &str,
-        etherscan_api_base: &str,
+        source: EvmHistorySource,
         api_key: Option<&str>,
         etherscan_chain_id: u64,
     ) -> Result<Vec<EvmHistoryEntry>, String> {
         let addr_lower = address.to_lowercase();
-        let mut url = format!(
-            "{}/v2/api?chainid={}&module=account&action=txlist&address={}&sort=desc&page=1&offset=50",
-            etherscan_api_base, etherscan_chain_id, addr_lower
-        );
-        if let Some(key) = api_key {
-            url.push_str(&format!("&apikey={key}"));
-        }
+        let url = explorer_query_url(
+            source,
+            etherscan_chain_id,
+            api_key,
+            &format!(
+                "module=account&action=txlist&address={addr_lower}&sort=desc&page=1&offset=50"
+            ),
+        )?;
 
         #[derive(Deserialize)]
         struct ApiResp {
             status: String,
+            #[serde(default)]
+            message: String,
             result: Value,
         }
         #[derive(Deserialize)]
@@ -637,14 +692,9 @@ impl EvmClient {
         }
 
         let resp: ApiResp = self.client.get_json(&url, RetryProfile::ChainRead).await?;
-
-        if resp.status != "1" {
-            // Empty history returns status "0" — not an error.
-            return Ok(vec![]);
-        }
-
-        let items: Vec<TxItem> =
-            serde_json::from_value(resp.result).map_err(|e| format!("history parse: {e}"))?;
+        let rows = etherscan_result_rows(&resp.status, &resp.message, resp.result)?;
+        let items: Vec<TxItem> = serde_json::from_value(Value::Array(rows))
+            .map_err(|e| format!("history parse: {e}"))?;
 
         let addr_norm = address.to_lowercase();
         let entries = items
@@ -676,7 +726,7 @@ impl EvmClient {
     pub async fn fetch_token_transfers(
         &self,
         address: &str,
-        etherscan_api_base: &str,
+        source: EvmHistorySource,
         api_key: Option<&str>,
         etherscan_chain_id: u64,
         page: u32,
@@ -685,18 +735,20 @@ impl EvmClient {
         let addr_lower = address.to_lowercase();
         let safe_page = page.max(1);
         let safe_size = page_size.clamp(1, 500);
-
-        let mut url = format!(
-            "{}/v2/api?chainid={}&module=account&action=tokentx&address={}&page={}&offset={}&sort=desc",
-            etherscan_api_base, etherscan_chain_id, addr_lower, safe_page, safe_size
-        );
-        if let Some(key) = api_key {
-            url.push_str(&format!("&apikey={key}"));
-        }
+        let url = explorer_query_url(
+            source,
+            etherscan_chain_id,
+            api_key,
+            &format!(
+                "module=account&action=tokentx&address={addr_lower}&page={safe_page}&offset={safe_size}&sort=desc"
+            ),
+        )?;
 
         #[derive(Deserialize)]
         struct ApiResp {
             status: String,
+            #[serde(default)]
+            message: String,
             result: serde_json::Value,
         }
         #[derive(Deserialize)]
@@ -717,13 +769,9 @@ impl EvmClient {
         }
 
         let resp: ApiResp = self.client.get_json(&url, RetryProfile::ChainRead).await?;
+        let rows = etherscan_result_rows(&resp.status, &resp.message, resp.result)?;
 
-        if resp.status != "1" {
-            // status "0" = empty history or rate limit — treat as empty.
-            return Ok(vec![]);
-        }
-
-        let items: Vec<TxItem> = serde_json::from_value(resp.result)
+        let items: Vec<TxItem> = serde_json::from_value(serde_json::Value::Array(rows))
             .map_err(|e| format!("token transfer parse: {e}"))?;
 
         let entries = items
@@ -899,3 +947,118 @@ fn percent_encode(s: &str) -> String {
         })
         .collect()
 }
+
+#[cfg(test)]
+mod a_refusal_is_not_an_empty_history {
+    use super::etherscan_result_rows;
+    use serde_json::json;
+
+    /// The payloads are the ones these explorers actually return — captured
+    /// from `api.etherscan.io` and `base.blockscout.com` rather than guessed.
+    ///
+    /// All three answer `status: "0"`, which is why the call sites used to
+    /// return an empty list for every one of them and an EVM wallet with no
+    /// API key showed "no transactions" instead of an error.
+    #[test]
+    fn the_three_shapes_that_all_say_status_zero() {
+        // Etherscan V2 with no key. The V2 API has no keyless tier at all, so
+        // this is what every EVM history call returned once the key was blank.
+        assert!(etherscan_result_rows(
+            "0",
+            "NOTOK",
+            json!("Missing/Invalid API Key")
+        )
+        .is_err());
+
+        // Blockscout, intermittently — one call in three during this survey.
+        assert!(etherscan_result_rows("0", "Something went wrong.", json!(null)).is_err());
+
+        // An address that genuinely has no transactions. The only one of the
+        // three that is data.
+        assert_eq!(
+            etherscan_result_rows("0", "No transactions found", json!([])).expect("empty is data"),
+            Vec::<serde_json::Value>::new()
+        );
+    }
+
+    /// Judged on the shape, so it does not depend on an explorer's wording.
+    #[test]
+    fn a_populated_result_passes_whatever_the_message_says() {
+        let rows = etherscan_result_rows("1", "OK", json!([{"hash": "0x1"}])).expect("rows");
+        assert_eq!(rows.len(), 1);
+    }
+
+    /// `status: "1"` with a non-list result is malformed, not empty.
+    #[test]
+    fn success_with_the_wrong_shape_is_still_a_failure() {
+        assert!(etherscan_result_rows("1", "OK", json!("not a list")).is_err());
+    }
+}
+
+#[cfg(test)]
+mod every_evm_chain_says_where_its_history_comes_from {
+    use super::explorer_query_url;
+    use crate::registry::{Chain, EvmHistorySource};
+
+    /// A keyless source carries the chain in its base, so no `chainid` and no
+    /// key go on the query.
+    #[test]
+    fn an_open_source_sends_neither_a_chainid_nor_a_key() {
+        let url = explorer_query_url(
+            EvmHistorySource::Open("https://eth.blockscout.com"),
+            1,
+            Some("SHOULD-NOT-APPEAR"),
+            "module=account&action=txlist&address=0xabc",
+        )
+        .expect("open sources never refuse");
+        assert_eq!(
+            url,
+            "https://eth.blockscout.com/api?module=account&action=txlist&address=0xabc"
+        );
+    }
+
+    /// Etherscan V2 has no keyless tier. Refusing here is the whole point: the
+    /// call it replaces returned `NOTOK`, which the caller read as an address
+    /// with no transactions.
+    #[test]
+    fn etherscan_v2_refuses_without_a_key_rather_than_asking_and_being_told_no() {
+        assert!(explorer_query_url(EvmHistorySource::EtherscanV2, 56, None, "module=account").is_err());
+        assert!(explorer_query_url(EvmHistorySource::EtherscanV2, 56, Some("   "), "module=account").is_err());
+        let url = explorer_query_url(EvmHistorySource::EtherscanV2, 56, Some("KEY"), "module=account")
+            .expect("a key is all it wants");
+        assert!(url.contains("chainid=56") && url.ends_with("&apikey=KEY"), "{url}");
+    }
+
+    /// Cronos and X Layer are in neither Etherscan V2's chain list nor any
+    /// keyless indexer. They were pointed at Etherscan like every other EVM
+    /// chain and have never returned a transaction; saying so beats a key that
+    /// cannot help.
+    #[test]
+    fn a_chain_no_indexer_serves_is_an_error_and_not_a_missing_key() {
+        for chain in [Chain::Cronos, Chain::XLayer] {
+            assert_eq!(chain.evm_history_source(), EvmHistorySource::Unavailable);
+            assert!(explorer_query_url(chain.evm_history_source(), 1, Some("KEY"), "m=a").is_err());
+        }
+    }
+
+    /// Every EVM chain answers, and a testnet answers as its mainnet does.
+    #[test]
+    fn the_table_covers_the_family_and_testnets_follow_their_mainnet() {
+        let evm: Vec<Chain> = Chain::all().filter(|c| c.is_evm()).collect();
+        assert!(evm.len() > 23, "mainnets and testnets");
+        for chain in &evm {
+            assert_eq!(
+                chain.evm_history_source(),
+                chain.mainnet_counterpart().evm_history_source(),
+                "{chain:?} must not diverge from its mainnet"
+            );
+        }
+        let keyless = evm
+            .iter()
+            .filter(|c| c.mainnet_counterpart() == **c)
+            .filter(|c| matches!(c.evm_history_source(), EvmHistorySource::Open(_)))
+            .count();
+        assert_eq!(keyless, 14, "fourteen mainnets need no API key");
+    }
+}
+

@@ -45,10 +45,7 @@ fn builds_secret_catalog_for_persisted_snapshot() {
     assert_eq!(snapshot.secrets.len(), 1);
     assert_eq!(snapshot.secrets[0].wallet_id, "wallet-1");
     assert!(snapshot.secrets[0].has_signing_material);
-    assert_eq!(
-        snapshot.secrets[0].password_store_key,
-        "wallet.seed.password.wallet-1"
-    );
+    assert!(snapshot.secrets[0].has_password);
 }
 
 #[test]
@@ -64,9 +61,6 @@ fn computes_wallet_secret_index_from_snapshot() {
                 has_private_key: false,
                 has_password: true,
                 has_signing_material: true,
-                seed_phrase_store_key: "wallet.seed.seed-wallet".to_string(),
-                password_store_key: "wallet.seed.password.seed-wallet".to_string(),
-                private_key_store_key: "wallet.privatekey.seed-wallet".to_string(),
             },
             super::SecretMaterialDescriptor {
                 wallet_id: "watch-wallet".to_string(),
@@ -75,9 +69,6 @@ fn computes_wallet_secret_index_from_snapshot() {
                 has_private_key: false,
                 has_password: false,
                 has_signing_material: false,
-                seed_phrase_store_key: "wallet.seed.watch-wallet".to_string(),
-                password_store_key: "wallet.seed.password.watch-wallet".to_string(),
-                private_key_store_key: "wallet.privatekey.watch-wallet".to_string(),
             },
         ],
     };

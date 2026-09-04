@@ -62,9 +62,52 @@ pub struct NativeBalanceSummary {
     pub utxo_count: u32,
 }
 
-/// EVM-address probe output. Used by chain-risk warnings to decide whether a
-/// destination looks "fresh" (zero balance + zero nonce).
+/// What a send destination looks like, for the composer's recipient warning.
+///
+/// Two booleans rather than a sentence. Swift held four chain arms that each
+/// built their own wording — three different templates for one verdict, two of
+/// them hardcoded English that never reached the locale files. The verdict is
+/// the chain question and belongs here; which words carry it is the front
+/// end's, because the strings live in its bundle.
+#[derive(Debug, Clone, PartialEq, Eq, uniffi::Record)]
+pub struct SendDestinationRisk {
+    /// The destination holds none of the asset being sent.
+    pub balance_is_zero: bool,
+    /// The destination has been used on this chain before.
+    pub has_history: bool,
+}
+
+/// What signing material a wallet has, and whether a password guards it.
+#[derive(Debug, Clone, PartialEq, Eq, uniffi::Record)]
+pub struct WalletSecretState {
+    /// A seed phrase or a private key is stored.
+    pub has_signing_material: bool,
+    /// The material is a raw private key rather than a phrase.
+    pub has_private_key: bool,
+    /// The material is encrypted under a password, which reads and writes need.
+    pub is_sealed: bool,
+}
+
+/// One endpoint and whether it answered.
 #[derive(Debug, Clone, uniffi::Record)]
+pub struct EndpointProbe {
+    pub chain_name: String,
+    pub endpoint: String,
+    /// What the endpoint is: `rpc-node`, `indexer`, `web-link` or `backend`.
+    pub kind: String,
+    pub capabilities: Vec<String>,
+    /// False when nothing knows how to probe this endpoint. Not a pass.
+    pub checked: bool,
+    pub reachable: bool,
+    pub detail: String,
+}
+
+/// EVM-address probe output: the nonce and native balance a chain-risk check
+/// needs, fetched in one round trip.
+///
+/// Not a `uniffi::Record` any more — `send_destination_risk` is the only
+/// caller, so this stops at the crate boundary.
+#[derive(Debug, Clone)]
 pub struct EvmAddressProbe {
     pub nonce: i64,
     pub balance_eth: f64,

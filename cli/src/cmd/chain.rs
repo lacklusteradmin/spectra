@@ -123,8 +123,94 @@ pub fn chains(out: Out, args: ChainsArgs) -> CliResult<()> {
                 // And the staking tab's, which was a seven-case Swift enum and
                 // two match arms in `StakingService` before it was a column.
                 "staking": chain.supports_staking(),
+                // Where this chain's transaction history comes from. One
+                // hardcoded Etherscan base used to answer for every EVM chain,
+                // and Etherscan V2 refuses without a key — which the caller
+                // read as "this address has no transactions".
+                // Only for the EVM family: `evm_history_source` is a fact
+                // about explorers, and a non-EVM chain reading "none" here
+                // would say it has no history when it simply has another
+                // route to it.
+                "historySource": chain.is_evm().then(|| match chain.evm_history_source() {
+                    spectra_core::registry::EvmHistorySource::Open(base) => base,
+                    spectra_core::registry::EvmHistorySource::EtherscanV2 => "etherscan-v2",
+                    spectra_core::registry::EvmHistorySource::Unavailable => "none",
+                }),
+                "needsApiKey": chain.is_evm().then(|| matches!(
+                    chain.evm_history_source(),
+                    spectra_core::registry::EvmHistorySource::EtherscanV2
+                )),
             }))
             .collect::<Vec<_>>(),
+    }));
+    Ok(())
+}
+
+#[derive(Args)]
+pub struct EndpointsArgs {
+    /// Chain to probe. Omit to probe every chain the catalog knows.
+    #[arg(long)]
+    chain: Option<String>,
+}
+
+/// Call every registered endpoint and report which ones answer.
+///
+/// The catalog is static JSON: an endpoint that dies stays in it, and every
+/// call that reaches it pays a full timeout plus `with_fallback`'s 180 ms
+/// before moving on. Eleven were dead when this command was written, and
+/// finding them meant opening the diagnostics screen for one chain at a time.
+pub fn endpoints(ctx: &Ctx, out: Out, args: EndpointsArgs) -> CliResult<()> {
+    let chains: Vec<Chain> = match &args.chain {
+        Some(name) => vec![super::resolve_chain(name)?],
+        None => Chain::all().filter(|c| c.mainnet_counterpart() == *c).collect(),
+    };
+    let service = ctx.service()?;
+
+    let mut rows = Vec::new();
+    for chain in chains {
+        let probes = ctx
+            .rt
+            .block_on(service.probe_chain_endpoints(chain.str_id().to_string()))
+            .unwrap_or_default();
+        rows.extend(probes);
+    }
+
+    let unreachable = rows.iter().filter(|r| r.checked && !r.reachable).count();
+    let unchecked = rows.iter().filter(|r| !r.checked).count();
+
+    out.text(|| {
+        println!();
+        for r in &rows {
+            let mark = if !r.checked {
+                out::hint("?").to_string()
+            } else if r.reachable {
+                "✓".green().to_string()
+            } else {
+                "✗".red().to_string()
+            };
+            println!("  {mark}  {:<18} {}", r.chain_name, r.endpoint);
+            if r.checked && !r.reachable {
+                println!("       {}", out::hint(&r.detail));
+            }
+        }
+        println!();
+        println!(
+            "  {} reachable, {} unreachable, {} with no probe",
+            rows.len() - unreachable - unchecked,
+            unreachable,
+            unchecked
+        );
+    });
+    out.emit(serde_json::json!({
+        "ok": unreachable == 0,
+        "total": rows.len(),
+        "unreachable": unreachable,
+        "unchecked": unchecked,
+        "endpoints": rows.iter().map(|r| serde_json::json!({
+            "chain": r.chain_name, "endpoint": r.endpoint,
+            "kind": r.kind, "capabilities": r.capabilities,
+            "checked": r.checked, "reachable": r.reachable, "detail": r.detail,
+        })).collect::<Vec<_>>(),
     }));
     Ok(())
 }

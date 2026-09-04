@@ -537,12 +537,7 @@ impl WalletService {
         let eps = self.endpoints_for(chain.str_id()).await;
         let client = EvmClient::new(eps, chain.evm_chain_id());
 
-        let explorer_base = chain.evm_explorer_api_base().ok_or_else(|| {
-            SpectraBridgeError::from(format!(
-                "{} does not support Etherscan history",
-                chain.chain_display_name()
-            ))
-        })?;
+        let source = chain.evm_history_source();
         let etherscan_chain_id = chain.evm_chain_id();
         let api_key_owned: String = self
             .etherscan_api_key
@@ -557,10 +552,10 @@ impl WalletService {
 
         // Fetch native and token transfers concurrently.
         let (native_result, token_result) = tokio::join!(
-            client.fetch_history(&address, explorer_base, api_key_str, etherscan_chain_id),
+            client.fetch_history(&address, source, api_key_str, etherscan_chain_id),
             client.fetch_token_transfers(
                 &address,
-                explorer_base,
+                source,
                 api_key_str,
                 etherscan_chain_id,
                 page,
@@ -708,30 +703,145 @@ impl WalletService {
     // (JSON shuttles — kept internal, not exported to Swift). Their typed
     // wrappers below call into those internal helpers.
 
-    // ── Typed send-preview wrappers (fuse fetch + decode in Rust)
-
-    /// Lightweight EVM address probe used for send-flow chain-risk warnings.
-    /// Fetches nonce + native balance concurrently and returns both typed,
-    /// skipping the fee/gas work of the full preview.
-    pub async fn fetch_evm_address_probe(
+    /// Call every registered endpoint and report which ones answer.
+    ///
+    /// The catalog is static JSON, so an endpoint that dies stays in the list
+    /// and costs a full timeout plus the 180 ms `with_fallback` pause on every
+    /// call that reaches it. Eleven were dead when this was written, and the
+    /// only way anyone would have found out was opening the diagnostics screen
+    /// for each chain in turn.
+    ///
+    /// A chain with no `rpc_health_method` and no `probe_url` reports
+    /// `checked: false` rather than a pass — Aptos and Tron are REST rather
+    /// than JSON-RPC, and calling them a success because nothing asked is how
+    /// a dead endpoint hides.
+    pub async fn probe_chain_endpoints(
         &self,
         chain_id: String,
-        address: String,
-    ) -> Result<EvmAddressProbe, SpectraBridgeError> {
+    ) -> Result<Vec<EndpointProbe>, SpectraBridgeError> {
+        let chain = chain_for_id(&chain_id)?;
+        let name = chain.chain_display_name().to_string();
+        let method = chain.rpc_health_method();
+        let records =
+            crate::endpoint_records_for_chain_masked(name.clone(), 0, false).map_err(|e| {
+                SpectraBridgeError::from(format!("endpoints for {name}: {e}"))
+            })?;
+
+        let mut out = Vec::with_capacity(records.len());
+        for record in records {
+            // The `rpc` role means "JSON-RPC node", and only that: Bitcoin's
+            // Esplora, Cardano's Koios and Stellar's Horizon are REST and
+            // correctly lack it. Ten EVM chains were missing it while being
+            // exactly that, so a role-gated probe GET a JSON-RPC endpoint and
+            // called it dead — on this command and on the app's diagnostics
+            // screen, which gates the same way through `diagnostics_checks`.
+            // The role is on those records now.
+            //
+            // A record with only the `explorer` role is a `/tx/` link for a
+            // person to tap, not an API. Nothing knows how to probe it, which
+            // is `checked: false` rather than a failure.
+            let is_rpc = record.kind == "rpc-node";
+            let is_link_only = record.kind == "web-link";
+            let distinct_probe = record
+                .probe_url
+                .as_deref()
+                .filter(|url| *url != record.endpoint);
+            let rpc_method = is_rpc.then_some(method).flatten();
+            if is_link_only && distinct_probe.is_none() {
+                out.push(EndpointProbe {
+                    chain_name: name.clone(),
+                    endpoint: record.endpoint,
+                    kind: record.kind.clone(),
+                capabilities: record.capabilities.clone(),
+                    checked: false,
+                    reachable: false,
+                    detail: "an explorer link, not an API".to_string(),
+                });
+                continue;
+            }
+            let (checked, reachable, detail) = match (rpc_method, &distinct_probe) {
+                (Some(method), _) => {
+                    // Confirmed before it accuses. Sweeping every chain fires
+                    // well over a hundred requests, and a burst produces
+                    // transport errors that have nothing to do with the
+                    // endpoint — the first version of this command reported
+                    // four BNB seeds, Polygon, Hyperliquid and Ethereum
+                    // Classic as dead, and all of them answered when asked
+                    // again on their own. A probe that cries wolf is worse
+                    // than no probe, because it is the one people learn to
+                    // scroll past.
+                    let mut verdict = probe_json_rpc(&record.endpoint, method).await;
+                    if verdict.is_err() {
+                        tokio::time::sleep(std::time::Duration::from_millis(600)).await;
+                        verdict = probe_json_rpc(&record.endpoint, method).await;
+                    }
+                    match verdict {
+                        Ok(()) => (true, true, method.to_string()),
+                        Err(e) => (true, false, e),
+                    }
+                }
+                (None, Some(url)) => {
+                    let ok = crate::fetch::http::probe_endpoints(
+                        std::slice::from_ref(&url.to_string()),
+                        8,
+                    )
+                    .await
+                    .first()
+                    .map(|(_, ok)| *ok)
+                    .unwrap_or(false);
+                    (true, ok, "GET".to_string())
+                }
+                (None, None) => (false, false, "no probe for this endpoint".to_string()),
+            };
+            out.push(EndpointProbe {
+                chain_name: name.clone(),
+                endpoint: record.endpoint,
+                kind: record.kind.clone(),
+                capabilities: record.capabilities.clone(),
+                checked,
+                reachable,
+                detail,
+            });
+        }
+        Ok(out)
+    }
+
+    // ── EVM receipt polling
+
+    /// Where a broadcast EVM transaction has got to.
+    ///
+    /// `Ok(None)` means the node has no receipt yet, which is what pending
+    /// looks like and is not an error. A receipt with `status: "0x0"` is a
+    /// transaction that was mined and reverted — confirmed *and* failed — and
+    /// the distinction matters, because a history summary can only say the
+    /// hash appeared and would show a reverted send as successful.
+    ///
+    /// There was a `classify_evm_receipt_json` beside this that took the
+    /// receipt as a JSON string and re-parsed it for three fields core had
+    /// already decoded. It had no callers; the projection is direct now.
+    pub async fn evm_transaction_status(
+        &self,
+        chain_id: String,
+        tx_hash: String,
+    ) -> Result<Option<crate::send::flow::EvmReceiptClassification>, SpectraBridgeError> {
         let chain = chain_for_evm_id(&chain_id)?;
         let eps = self.endpoints_for(chain.str_id()).await;
         let client = EvmClient::new(eps, chain.evm_chain_id());
-        let (nonce_res, bal_res) =
-            tokio::join!(client.fetch_nonce(&address), client.fetch_balance(&address));
-        let nonce = nonce_res.unwrap_or(0) as i64;
-        let balance_wei: u128 = bal_res
-            .map(|b| b.balance_wei.parse::<u128>().unwrap_or(0))
-            .unwrap_or(0);
-        Ok(EvmAddressProbe {
-            nonce,
-            balance_eth: balance_wei as f64 / 1e18,
-        })
+        let receipt = client
+            .fetch_receipt(&tx_hash)
+            .await
+            .map_err(SpectraBridgeError::from)?;
+        Ok(receipt.map(|receipt| crate::send::flow::EvmReceiptClassification {
+            is_confirmed: receipt.is_confirmed,
+            is_failed: receipt.is_failed,
+            block_number: receipt.block_number.map(|n| n as i64),
+        }))
     }
+
+    // ── Typed send-preview wrappers (fuse fetch + decode in Rust)
+
+    // `fetch_evm_address_probe` lives in the plain-impl block below: with
+    // `send_destination_risk` asking it, Swift no longer does.
 
     // ── UTXO tx status
 
@@ -824,6 +934,29 @@ impl WalletService {
     /// For `chain_id == 0` extended-public-key cases we still go through the
     /// xpub balance JSON path — that one's deeply UTXO-aware and not worth
     /// retyping for the marginal saving.
+    /// Lightweight EVM address probe used for send-flow chain-risk warnings.
+    /// Fetches nonce + native balance concurrently and returns both typed,
+    /// skipping the fee/gas work of the full preview.
+    pub(crate) async fn fetch_evm_address_probe(
+        &self,
+        chain_id: String,
+        address: String,
+    ) -> Result<EvmAddressProbe, SpectraBridgeError> {
+        let chain = chain_for_evm_id(&chain_id)?;
+        let eps = self.endpoints_for(chain.str_id()).await;
+        let client = EvmClient::new(eps, chain.evm_chain_id());
+        let (nonce_res, bal_res) =
+            tokio::join!(client.fetch_nonce(&address), client.fetch_balance(&address));
+        let nonce = nonce_res.unwrap_or(0) as i64;
+        let balance_wei: u128 = bal_res
+            .map(|b| b.balance_wei.parse::<u128>().unwrap_or(0))
+            .unwrap_or(0);
+        Ok(EvmAddressProbe {
+            nonce,
+            balance_eth: balance_wei as f64 / 1e18,
+        })
+    }
+
     pub(crate) async fn fetch_native_balance_summary_auto(
         &self,
         chain_id: &str,
@@ -871,6 +1004,24 @@ impl WalletService {
             change_count,
         )
         .await?)
+    }
+}
+
+/// One JSON-RPC health call. `Err` carries what went wrong, transport or
+/// protocol; a JSON-RPC `error` object counts as a failure because an endpoint
+/// that answers "you need an API key" is not one this app can use.
+async fn probe_json_rpc(endpoint: &str, method: &str) -> Result<(), String> {
+    let body = serde_json::json!({ "jsonrpc": "2.0", "id": 1, "method": method, "params": [] });
+    let value = crate::fetch::http::HttpClient::shared()
+        .post_json::<serde_json::Value, serde_json::Value>(
+            endpoint,
+            &body,
+            crate::fetch::http::RetryProfile::Diagnostics,
+        )
+        .await?;
+    match value.get("error") {
+        Some(err) => Err(err.to_string()),
+        None => Ok(()),
     }
 }
 
@@ -1090,9 +1241,7 @@ async fn fetch_history(
                 .await?,
         ),
         c if c.is_evm() => {
-            let Some(explorer_base) = chain.evm_explorer_api_base() else {
-                return json_response(&Vec::<crate::fetch::chains::evm::EvmHistoryEntry>::new());
-            };
+            let source = chain.evm_history_source();
             let api_key_owned = service
                 .etherscan_api_key
                 .read()
@@ -1105,7 +1254,7 @@ async fn fetch_history(
                 Some(api_key_owned.as_str())
             };
             let h = EvmClient::new(endpoints, chain.evm_chain_id())
-                .fetch_history(address, explorer_base, api_key_str, chain.evm_chain_id())
+                .fetch_history(address, source, api_key_str, chain.evm_chain_id())
                 .await?;
             json_response(&h)
         }

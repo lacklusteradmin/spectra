@@ -21,19 +21,6 @@ pub struct EvmReceiptClassification {
     pub block_number: Option<i64>,
 }
 
-pub fn classify_evm_receipt_json(json: String) -> Option<EvmReceiptClassification> {
-    let v: serde_json::Value = serde_json::from_str(&json).ok()?;
-    let block_number = v.get("block_number").and_then(|x| x.as_i64());
-    let status = v.get("status").and_then(|x| x.as_str());
-    let is_confirmed = block_number.is_some();
-    let is_failed = matches!(status, Some("0x0"));
-    Some(EvmReceiptClassification {
-        is_confirmed,
-        is_failed,
-        block_number,
-    })
-}
-
 /// Address-format kind for a chain *display name*.
 ///
 /// Thin wrapper over [`Chain::address_validation_kind`]; the mapping itself

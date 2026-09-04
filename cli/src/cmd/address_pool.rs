@@ -20,6 +20,8 @@ pub enum PoolCommand {
     Next(SelectArgs),
     /// Reserve the next change index. Always consumes one.
     NextChange(SelectArgs),
+    /// Walk this wallet's derived addresses and record the used ones.
+    Discover(SelectArgs),
 }
 
 #[derive(Args)]
@@ -33,7 +35,41 @@ pub fn run(ctx: &Ctx, out: Out, command: PoolCommand) -> CliResult<()> {
         PoolCommand::Show(args) => show(ctx, out, args),
         PoolCommand::Next(args) => next(ctx, out, args, false),
         PoolCommand::NextChange(args) => next(ctx, out, args, true),
+        PoolCommand::Discover(args) => discover(ctx, out, args),
     }
+}
+
+/// The address walk the app runs on every UTXO refresh.
+///
+/// It lived in Swift because it needed the seed phrase there. Core reads the
+/// seed, the derivation path, the keypool bound, the balance and the history,
+/// so the loop is here and the phrase does not leave the crate.
+fn discover(ctx: &Ctx, out: Out, args: SelectArgs) -> CliResult<()> {
+    let wallet = ctx.find_wallet(&args.wallet)?;
+    let chain = super::resolve_chain(&wallet.chain_name)?;
+    let service = super::chain::service_for_chain(chain, super::chain::BALANCE | super::chain::HISTORY | super::chain::RPC)?;
+
+    let addresses = ctx
+        .rt
+        .block_on(service.discover_utxo_addresses(wallet.id.clone(), chain.str_id().to_string()))
+        .map_err(crate::error::CliError::from)?;
+
+    out.text(|| {
+        println!();
+        out::field("wallet", &wallet.name.bold().to_string());
+        out::field("addresses", &addresses.len().to_string());
+        for address in &addresses {
+            println!("  {}", out::hint(address));
+        }
+    });
+    out.emit(serde_json::json!({
+        "ok": true,
+        "wallet": wallet.id,
+        "chain": chain.chain_display_name(),
+        "addressCount": addresses.len(),
+        "addresses": addresses,
+    }));
+    Ok(())
 }
 
 fn show(ctx: &Ctx, out: Out, args: SelectArgs) -> CliResult<()> {

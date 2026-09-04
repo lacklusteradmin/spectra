@@ -201,6 +201,24 @@ const ALL_CHAINS: &[Chain] = &[
     Chain::MoneroStagenet,
 ];
 
+/// Where an EVM chain's transaction history can be read from.
+///
+/// Two request shapes, not two providers: `Open` is the Etherscan **V1** query
+/// (`{base}/api?module=…`) that Blockscout and Routescan both serve without a
+/// key, and `EtherscanV2` is the multichain one (`/v2/api?chainid=…`) that
+/// needs a key and is the only thing covering the rest.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum EvmHistorySource {
+    /// A keyless endpoint. The base already identifies the chain, so no
+    /// `chainid` is sent.
+    Open(&'static str),
+    /// Etherscan V2 — one host for many chains, selected by `chainid`, and it
+    /// refuses without an API key.
+    EtherscanV2,
+    /// No indexer serves this chain. Asking is an error, not an empty list.
+    Unavailable,
+}
+
 impl Chain {
     /// Stable string id matching `chains.toml` `id` field.
     /// This chain's row in the catalog.
@@ -572,14 +590,69 @@ impl Chain {
     /// (`/v2/api?chainid=X`) — all Etherscan-family chains share the same host.
     /// Chains using other explorers (Blockscout for ETC, Hyperliquid's own
     /// explorer) return `None` and history falls back to empty.
-    pub const fn evm_explorer_api_base(self) -> Option<&'static str> {
-        match self {
-            Chain::EthereumClassic
-            | Chain::EthereumClassicMordor
+    /// Where this chain's transaction history comes from.
+    ///
+    /// This was one constant — `Some("https://api.etherscan.io")` for every
+    /// EVM chain — which meant every chain needed an Etherscan API key, and
+    /// Etherscan V2 has no keyless tier: without a key the call returns
+    /// `NOTOK / Missing-Invalid API Key`, which the caller read as "this
+    /// address has no transactions".
+    ///
+    /// The hosts below were each called three times while writing this table;
+    /// only ones that answered on all three are listed. Etherscan's own V1
+    /// endpoints are not an option for any chain — `api.etherscan.io`,
+    /// `api.bscscan.com`, `api.lineascan.build`, `api.sonicscan.org`,
+    /// `api.basescan.org` and `api.hyperevmscan.io` all answer "You are using
+    /// a deprecated V1 endpoint, switch to Etherscan API V2".
+    pub const fn evm_history_source(self) -> EvmHistorySource {
+        match self.mainnet_counterpart() {
+            // Blockscout, from its own instance directory at
+            // `chains.blockscout.com/api/chains`.
+            Chain::Ethereum => EvmHistorySource::Open("https://eth.blockscout.com"),
+            Chain::Arbitrum => EvmHistorySource::Open("https://arbitrum.blockscout.com"),
+            Chain::Optimism => EvmHistorySource::Open("https://explorer.optimism.io"),
+            Chain::EthereumClassic => EvmHistorySource::Open("https://etc.blockscout.com"),
+            Chain::Polygon => EvmHistorySource::Open("https://polygon.blockscout.com"),
+            Chain::Scroll => EvmHistorySource::Open("https://scroll.blockscout.com"),
+            Chain::Celo => EvmHistorySource::Open("https://celo.blockscout.com"),
+            Chain::ZkSyncEra => EvmHistorySource::Open("https://zksync.blockscout.com"),
+            Chain::Unichain => EvmHistorySource::Open("https://unichain.blockscout.com"),
+            Chain::Ink => EvmHistorySource::Open("https://explorer.inkonchain.com"),
+
+            // Routescan serves several chains Blockscout does not, in the same
+            // Etherscan-V1 request shape, with the chain id in the path rather
+            // than in a query parameter.
+            Chain::Avalanche => EvmHistorySource::Open(
+                "https://api.routescan.io/v2/network/mainnet/evm/43114/etherscan",
+            ),
+            Chain::Berachain => EvmHistorySource::Open(
+                "https://api.routescan.io/v2/network/mainnet/evm/80094/etherscan",
+            ),
+            Chain::Blast => EvmHistorySource::Open(
+                "https://api.routescan.io/v2/network/mainnet/evm/81457/etherscan",
+            ),
+            Chain::Mantle => EvmHistorySource::Open(
+                "https://api.routescan.io/v2/network/mainnet/evm/5000/etherscan",
+            ),
+
+            // Nothing keyless serves these. Base has a Blockscout instance
+            // that answered one call in three, which is worse than a source
+            // that says so; the rest have no public indexer at all and their
+            // own explorers are Etherscan-family clones behind their own keys.
+            Chain::BnbChain
+            | Chain::Sonic
+            | Chain::OpBnb
+            | Chain::Sei
+            | Chain::Linea
             | Chain::Hyperliquid
-            | Chain::HyperliquidTestnet => None,
-            _ if self.is_evm() => Some("https://api.etherscan.io"),
-            _ => None,
+            | Chain::Base => EvmHistorySource::EtherscanV2,
+
+            // Not in Etherscan V2's chain list either, so no key helps. This
+            // was always true — they were pointed at Etherscan like everything
+            // else and have never returned a transaction.
+            Chain::Cronos | Chain::XLayer => EvmHistorySource::Unavailable,
+
+            _ => EvmHistorySource::Unavailable,
         }
     }
 
@@ -767,6 +840,11 @@ impl Chain {
         match self.mainnet_counterpart() {
             Chain::Near => Some("status"),
             Chain::Polkadot => Some("chain_getHeader"),
+            // Both speak JSON-RPC and both had a dead endpoint in the catalog
+            // that nothing could see, because a chain with no method here is
+            // never probed. Verified against the live endpoints.
+            Chain::Solana => Some("getHealth"),
+            Chain::Sui => Some("sui_getLatestCheckpointSequenceNumber"),
             _ => None,
         }
     }

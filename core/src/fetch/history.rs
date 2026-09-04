@@ -440,6 +440,37 @@ pub fn normalize_chain_history(chain_id: &str, raw_json: &str) -> Vec<ChainHisto
             })
             .collect(),
 
+        // Every EVM chain. `EvmHistoryEntry` is one shape for all of them,
+        // which is why this is a guard rather than twenty-three names.
+        //
+        // There was no arm here at all: fifteen chains had one and the EVM
+        // family fell to `_ => vec![]`, so `fetch_normalized_history` returned
+        // nothing for Ethereum and every chain like it however well the fetch
+        // itself had gone. It was invisible while the fetch was also returning
+        // nothing — the explorer refusing without an API key — and only shows
+        // up once that is fixed.
+        c if c.is_evm() => arr
+            .iter()
+            .filter_map(|e| {
+                let txid = e["txid"].as_str()?;
+                let is_incoming = e["is_incoming"].as_bool().unwrap_or(false);
+                let wei = e["value_wei"].as_str().unwrap_or("0").parse::<f64>().unwrap_or(0.0);
+                let counterparty = if is_incoming { &e["from"] } else { &e["to"] };
+                Some(ChainHistoryEntry {
+                    kind: if is_incoming { "receive" } else { "send" }.to_string(),
+                    status: "confirmed".to_string(),
+                    asset_name: asset_name.to_string(),
+                    symbol: symbol.to_string(),
+                    chain_name: chain_name.to_string(),
+                    amount: wei / factor,
+                    counterparty: counterparty.as_str().unwrap_or_default().to_string(),
+                    tx_hash: txid.to_string(),
+                    block_height: e["block_number"].as_i64(),
+                    timestamp: e["timestamp"].as_f64().unwrap_or(0.0),
+                })
+            })
+            .collect(),
+
         _ => vec![],
     }
 }

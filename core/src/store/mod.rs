@@ -31,9 +31,6 @@ pub struct SecretMaterialDescriptor {
     pub has_private_key: bool,
     pub has_password: bool,
     pub has_signing_material: bool,
-    pub seed_phrase_store_key: String,
-    pub password_store_key: String,
-    pub private_key_store_key: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, uniffi::Record)]
@@ -1392,9 +1389,6 @@ fn secret_descriptor_for_wallet(
         has_private_key,
         has_password,
         has_signing_material: has_seed_phrase || has_private_key,
-        seed_phrase_store_key: format!("wallet.seed.{wallet_id}"),
-        password_store_key: format!("wallet.seed.password.{wallet_id}"),
-        private_key_store_key: format!("wallet.privatekey.{wallet_id}"),
     }
 }
 

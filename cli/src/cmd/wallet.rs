@@ -61,9 +61,23 @@ pub struct CreationArgs {
     /// Read the wallet password from this environment variable.
     #[arg(long, value_name = "VAR", default_value = "SPECTRA_PASSWORD")]
     password_env: Option<String>,
+    /// Store the seed without a password. The material is not encrypted, so
+    /// anything that can read the secret store can read the phrase.
+    #[arg(long, conflicts_with_all = ["password_file"])]
+    no_password: bool,
 }
 
 impl CreationArgs {
+    /// `None` means store unsealed — the state the iOS app has always had for
+    /// a wallet the user gave no password, and which core could not represent
+    /// until it grew one.
+    fn optional_password(&self) -> CliResult<Option<String>> {
+        if self.no_password {
+            return Ok(None);
+        }
+        self.password().map(Some)
+    }
+
     fn password(&self) -> CliResult<String> {
         // The env default only counts when set, so an interactive run still
         // reaches the prompt.
@@ -341,11 +355,16 @@ fn seal_and_import(
     seed_phrase: &str,
 ) -> CliResult<WalletImportOutcome> {
     let chain = chains[0];
-    let password = args.password()?;
+    let password = args.optional_password()?;
     let wallet_ids: Vec<String> = chains.iter().map(|_| new_wallet_id()).collect();
 
     for wallet_id in &wallet_ids {
-        wallet_secrets::seal(ctx.secrets.as_ref(), wallet_id, seed_phrase, &password)?;
+        wallet_secrets::store_seed_phrase(
+            ctx.secrets.as_ref(),
+            wallet_id,
+            seed_phrase,
+            password.as_deref(),
+        )?;
     }
 
     let name = args
@@ -586,17 +605,29 @@ fn export(ctx: &Ctx, out: Out, args: ExportArgs) -> CliResult<()> {
         .password_env
         .clone()
         .filter(|name| std::env::var_os(name).is_some());
-    let password = SecretSource {
-        file: args.password_file.clone(),
-        env,
-    }
-    .resolve("password")?;
+    // Asked for only when there is something to unlock: a wallet stored
+    // without a password has nothing for it to decrypt.
+    let password = if wallet_secrets::is_sealed(ctx.secrets.as_ref(), &wallet.id) {
+        Some(
+            SecretSource {
+                file: args.password_file.clone(),
+                env,
+            }
+            .resolve("password")?,
+        )
+    } else {
+        None
+    };
 
     // The key a private-key wallet was imported from is the only copy this
     // side holds. Sealing one the CLI could never return would make it a lost
     // key, so export handles both — behind the same gate and the same password.
     if is_private_key {
-        let key = wallet_secrets::unlock_private_key(ctx.secrets.as_ref(), &wallet.id, &password)?;
+        let key = wallet_secrets::load_private_key(
+            ctx.secrets.as_ref(),
+            &wallet.id,
+            password.as_deref(),
+        )?;
         out.text(|| {
             println!();
             println!("  {}", key.bold());
@@ -611,7 +642,8 @@ fn export(ctx: &Ctx, out: Out, args: ExportArgs) -> CliResult<()> {
         return Ok(());
     }
 
-    let seed_phrase = wallet_secrets::unlock(ctx.secrets.as_ref(), &wallet.id, &password)?;
+    let seed_phrase =
+        wallet_secrets::load_seed_phrase(ctx.secrets.as_ref(), &wallet.id, password.as_deref())?;
 
     out.text(|| {
         println!();

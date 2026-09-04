@@ -5,11 +5,14 @@ use colored::Colorize as _;
 use spectra_core::send::ethereum::{
     prepare_evm_send_assembly, EvmSendAssemblyInput, EvmSupportedToken,
 };
-use spectra_core::send::SendExecutionRequest;
+use spectra_core::send::{
+    send_affordability, SendAffordability, SendAffordabilityInput, SendExecutionRequest,
+};
 use spectra_core::store::wallet_domain::CoreTransactionKind;
+use spectra_core::service::TokenDescriptor;
 use spectra_core::store::wallet_secrets;
 
-use super::chain::{service_for_chain, BALANCE, BROADCAST, FEE, RPC, UTXO};
+use super::chain::{service_for_chain, BALANCE, BROADCAST, FEE, HISTORY, RPC, UTXO};
 use super::resolve_chain;
 use crate::ctx::{wallet_address, Ctx, SecretSource};
 use crate::error::{CliError, CliResult};
@@ -32,13 +35,161 @@ pub enum SendCommand {
     Broadcast(SendArgs),
     /// Build the transaction an EVM send would sign — no key, no network.
     Assemble(AssembleArgs),
+    /// Ask what a recipient address looks like before sending to it.
+    Probe(ProbeArgs),
+    /// Ask whether a send can land once the fee is counted.
+    Affordability(AffordabilityArgs),
 }
 
 pub fn run(ctx: &Ctx, out: Out, command: SendCommand) -> CliResult<()> {
     match command {
         SendCommand::Broadcast(args) => send(ctx, out, args),
         SendCommand::Assemble(args) => assemble(ctx, out, args),
+        SendCommand::Probe(args) => probe(ctx, out, args),
+        SendCommand::Affordability(args) => affordability(out, args),
     }
+}
+
+#[derive(Args)]
+pub struct AffordabilityArgs {
+    /// Chain the send is on.
+    #[arg(long)]
+    chain: String,
+    /// Asset being sent.
+    #[arg(long)]
+    symbol: String,
+    /// Amount, in whole units of that asset.
+    #[arg(long)]
+    amount: f64,
+    /// Network fee, in whole units of the chain's gas asset.
+    #[arg(long)]
+    fee: f64,
+    /// What the wallet holds of the asset being sent.
+    #[arg(long)]
+    balance: f64,
+    /// What it holds of the gas asset. Omit for a send of the chain's own asset.
+    #[arg(long)]
+    gas_balance: Option<f64>,
+}
+
+/// The fee half of "can this send land", on the command line.
+///
+/// Whether the asset is the chain's own, what the gas asset is called and how
+/// many decimals a fee is quoted to are all read from the registry — naming
+/// the chain is the whole input.
+fn affordability(out: Out, args: AffordabilityArgs) -> CliResult<()> {
+    let chain = resolve_chain(&args.chain)?;
+    let verdict = send_affordability(SendAffordabilityInput {
+        chain_name: chain.chain_display_name().to_string(),
+        symbol: args.symbol,
+        amount: args.amount,
+        network_fee: args.fee,
+        holding_balance: args.balance,
+        gas_balance: args.gas_balance,
+    });
+
+    let body = match &verdict {
+        SendAffordability::Affordable => serde_json::json!({ "verdict": "affordable" }),
+        SendAffordability::AmountPlusFeeExceedsBalance { symbol, required } => serde_json::json!({
+            "verdict": "amountPlusFeeExceedsBalance", "symbol": symbol, "required": required,
+        }),
+        SendAffordability::AmountExceedsBalance { symbol } => serde_json::json!({
+            "verdict": "amountExceedsBalance", "symbol": symbol,
+        }),
+        SendAffordability::FeeExceedsGasBalance { gas_symbol, fee, chain_name } => {
+            serde_json::json!({
+                "verdict": "feeExceedsGasBalance", "gasSymbol": gas_symbol,
+                "fee": fee, "chainName": chain_name,
+            })
+        }
+    };
+
+    out.text(|| {
+        println!();
+        match &verdict {
+            SendAffordability::Affordable => println!("  {}  the send fits", "\u{2713}".green()),
+            SendAffordability::AmountPlusFeeExceedsBalance { symbol, required } => {
+                println!("  {}  needs ~{required} {symbol} for the amount plus the fee", "\u{2717}".red())
+            }
+            SendAffordability::AmountExceedsBalance { symbol } => {
+                println!("  {}  more {symbol} than the wallet holds", "\u{2717}".red())
+            }
+            SendAffordability::FeeExceedsGasBalance { gas_symbol, fee, chain_name } => {
+                println!("  {}  not enough {gas_symbol} for the ~{fee} {chain_name} fee", "\u{2717}".red())
+            }
+        }
+    });
+    out.emit(body);
+    Ok(())
+}
+
+#[derive(Args)]
+pub struct ProbeArgs {
+    /// Chain the destination is on.
+    #[arg(long)]
+    chain: String,
+    /// Recipient address to look at.
+    #[arg(long)]
+    address: String,
+    /// Token contract, when sending a token rather than the chain's own asset.
+    #[arg(long)]
+    contract: Option<String>,
+    /// Token symbol. Required with --contract.
+    #[arg(long)]
+    symbol: Option<String>,
+    /// Token decimals. Required with --contract.
+    #[arg(long)]
+    decimals: Option<u8>,
+}
+
+/// The recipient check the send composer runs, on the command line.
+///
+/// Core answers with two booleans and nothing else; the sentence a user reads
+/// is built by whichever front end asked, from its own strings.
+fn probe(ctx: &Ctx, out: Out, args: ProbeArgs) -> CliResult<()> {
+    let chain = resolve_chain(&args.chain)?;
+    let service = service_for_chain(chain, BALANCE | HISTORY | RPC)?;
+
+    let token = match (args.contract, args.symbol, args.decimals) {
+        (Some(contract), Some(symbol), Some(decimals)) => {
+            Some(TokenDescriptor { contract, symbol, decimals, name: None })
+        }
+        (Some(_), _, _) => return Err(CliError::usage("--contract needs --symbol and --decimals")),
+        (None, Some(_), _) | (None, _, Some(_)) => {
+            return Err(CliError::usage("--symbol and --decimals need --contract"))
+        }
+        (None, None, None) => None,
+    };
+    let asset = token
+        .as_ref()
+        .map(|t| t.symbol.clone())
+        .unwrap_or_else(|| chain.coin_symbol().to_string());
+
+    let risk = ctx
+        .rt
+        .block_on(service.send_destination_risk(
+            chain.str_id().to_string(),
+            args.address.clone(),
+            token,
+        ))
+        .map_err(CliError::from)?;
+
+    out.text(|| {
+        println!();
+        out::field("address", &args.address);
+        out::field("asset", &asset);
+        out::field("balance", if risk.balance_is_zero { "zero" } else { "non-zero" });
+        out::field("history", if risk.has_history { "yes" } else { "none" });
+    });
+    out.emit(serde_json::json!({
+        "ok": true,
+        "chain": chain.chain_display_name(),
+        "address": args.address,
+        "asset": asset,
+        "balanceIsZero": risk.balance_is_zero,
+        "hasHistory": risk.has_history,
+    }));
+    Ok(())
 }
 
 #[derive(Args)]
@@ -192,16 +343,26 @@ pub fn send(ctx: &Ctx, out: Out, args: SendArgs) -> CliResult<()> {
         )));
     }
 
-    let env = args
-        .password_env
-        .clone()
-        .filter(|name| std::env::var_os(name).is_some());
-    let password = SecretSource {
-        file: args.password_file.clone(),
-        env,
-    }
-    .resolve("password")?;
-    let seed_phrase = wallet_secrets::unlock(ctx.secrets.as_ref(), &wallet.id, &password)?;
+    // The password is asked for only when there is something to unlock. A
+    // wallet stored without one has nothing for it to decrypt, and prompting
+    // anyway would suggest the material is protected when it is not.
+    let password = if wallet_secrets::is_sealed(ctx.secrets.as_ref(), &wallet.id) {
+        let env = args
+            .password_env
+            .clone()
+            .filter(|name| std::env::var_os(name).is_some());
+        Some(
+            SecretSource {
+                file: args.password_file.clone(),
+                env,
+            }
+            .resolve("password")?,
+        )
+    } else {
+        None
+    };
+    let seed_phrase =
+        wallet_secrets::load_seed_phrase(ctx.secrets.as_ref(), &wallet.id, password.as_deref())?;
 
     let service = service_for_chain(chain, BALANCE | RPC | BROADCAST | FEE | UTXO)?;
     let request = SendExecutionRequest {

@@ -191,6 +191,97 @@ pub trait TransactionBroadcaster: Send + Sync {
     fn broadcast(&self, signed_transfer: &SignedTransfer) -> Result<BroadcastReceipt, String>;
 }
 
+/// Why a send cannot land, once the fee is counted.
+///
+/// `route_send_asset`'s preflight already refuses `amount > available_balance`.
+/// That is half the question: the fee comes out of the chain's gas asset,
+/// which for a token send is a different balance entirely, and the half that
+/// knew about it lived in Swift.
+#[derive(Debug, Clone, PartialEq, uniffi::Enum)]
+pub enum SendAffordability {
+    /// Amount and fee both fit.
+    Affordable,
+    /// A native send: amount plus fee is more than the wallet holds.
+    AmountPlusFeeExceedsBalance { symbol: String, required: String },
+    /// A token send: the amount alone is more than the token balance.
+    AmountExceedsBalance { symbol: String },
+    /// A token send whose amount fits, with too little gas asset for the fee.
+    FeeExceedsGasBalance {
+        gas_symbol: String,
+        fee: String,
+        chain_name: String,
+    },
+}
+
+/// What the caller knows. Everything else — whether this is the chain's own
+/// asset, what that asset is called, how many decimals a fee is quoted to —
+/// is read from the registry here.
+#[derive(Debug, Clone, uniffi::Record)]
+pub struct SendAffordabilityInput {
+    pub chain_name: String,
+    /// The asset being sent.
+    pub symbol: String,
+    pub amount: f64,
+    pub network_fee: f64,
+    /// What the wallet holds of the asset being sent.
+    pub holding_balance: f64,
+    /// What it holds of the chain's gas asset. Ignored for a native send,
+    /// where that is `holding_balance`.
+    pub gas_balance: Option<f64>,
+}
+
+/// Can this send land?
+///
+/// This was `AppState.validateSendBalance`, a nine-parameter method returning
+/// a formatted sentence, with four callers that each supplied `isNativeAsset`,
+/// the native symbol, the fee decimals and a chain label by hand. Those are
+/// four registry facts, and the four callers spelled the first one four
+/// different ways — `== "TRX"`, `== "SOL"`, a literal `true`, and a preflight
+/// field — while two of them wrote `6` for the fee decimals rather than asking
+/// `send_execution_shape`. Naming the chain is enough.
+///
+/// The verdict is an enum, not a sentence: the wording is localized in the
+/// front end's own bundle.
+#[uniffi::export]
+pub fn send_affordability(input: SendAffordabilityInput) -> SendAffordability {
+    let chain = crate::registry::Chain::from_display_name(&input.chain_name);
+    let gas_symbol = chain.map(|c| c.coin_symbol().to_string()).unwrap_or_default();
+    let decimals =
+        chain.map(|c| c.send_execution_shape().fee_decimals).unwrap_or(6) as usize;
+
+    // A chain whose gas asset we cannot name is not a chain we can judge a
+    // token send on, so treat the send as native: that path needs no gas
+    // symbol and still refuses amount + fee over the balance.
+    let is_native = gas_symbol.is_empty() || input.symbol == gas_symbol;
+
+    if is_native {
+        let total = input.amount + input.network_fee;
+        if total > input.holding_balance {
+            return SendAffordability::AmountPlusFeeExceedsBalance {
+                symbol: input.symbol,
+                required: format!("{total:.decimals$}"),
+            };
+        }
+        return SendAffordability::Affordable;
+    }
+
+    if input.amount > input.holding_balance {
+        return SendAffordability::AmountExceedsBalance {
+            symbol: input.symbol,
+        };
+    }
+    match input.gas_balance {
+        Some(gas_balance) if input.network_fee > gas_balance => {
+            SendAffordability::FeeExceedsGasBalance {
+                gas_symbol,
+                fee: format!("{:.decimals$}", input.network_fee),
+                chain_name: input.chain_name,
+            }
+        }
+        _ => SendAffordability::Affordable,
+    }
+}
+
 pub fn route_send_asset(input: &SendAssetRoutingInput) -> SendAssetRoutingPlan {
     let submit_kind = match (input.chain_name.as_str(), input.symbol.as_str()) {
         ("Bitcoin", "BTC") => Some("bitcoin"),
@@ -850,5 +941,94 @@ mod token_decimals_are_not_assumed {
             tron.len() > 1,
             "tron's tokens are all {tron:?} decimals — the hardcoded 6 would have been harmless"
         );
+    }
+}
+
+#[cfg(test)]
+mod affordability_reads_the_chain_rather_than_the_caller {
+    use super::{send_affordability, SendAffordability, SendAffordabilityInput};
+
+    fn input(chain: &str, symbol: &str) -> SendAffordabilityInput {
+        SendAffordabilityInput {
+            chain_name: chain.to_string(),
+            symbol: symbol.to_string(),
+            amount: 1.0,
+            network_fee: 0.5,
+            holding_balance: 1.2,
+            gas_balance: Some(0.1),
+        }
+    }
+
+    /// The four Swift call sites each decided "is this the chain's own asset"
+    /// themselves, and spelled it four ways. Naming the chain is enough, and
+    /// the answer comes from the same column a balance is denominated in.
+    #[test]
+    fn a_governance_token_is_not_the_asset_the_fee_comes_out_of() {
+        // Arbitrum charges gas in ETH. A caller that took ARB for the native
+        // asset would check the fee against the ARB balance — the same pair,
+        // and the same mistake, the destination probe's five-symbol list made.
+        assert_eq!(
+            send_affordability(input("Arbitrum", "ARB")),
+            SendAffordability::FeeExceedsGasBalance {
+                gas_symbol: "ETH".to_string(),
+                fee: "0.500000".to_string(),
+                chain_name: "Arbitrum".to_string(),
+            }
+        );
+        // Tron's own asset, which its Swift caller matched with a literal.
+        assert_eq!(
+            send_affordability(input("Tron", "TRX")),
+            SendAffordability::AmountPlusFeeExceedsBalance {
+                symbol: "TRX".to_string(),
+                required: "1.500000".to_string(),
+            }
+        );
+    }
+
+    /// `fee_decimals` is a display choice per chain, and two of the four
+    /// callers wrote `6` rather than asking for it. Bitcoin's is 8.
+    #[test]
+    fn the_fee_is_quoted_to_the_chains_own_decimals() {
+        let mut btc = input("Bitcoin", "BTC");
+        btc.amount = 2.0;
+        assert_eq!(
+            send_affordability(btc),
+            SendAffordability::AmountPlusFeeExceedsBalance {
+                symbol: "BTC".to_string(),
+                required: "2.50000000".to_string(),
+            }
+        );
+    }
+
+    #[test]
+    fn a_token_send_is_refused_on_its_own_balance_before_the_fee_is_looked_at() {
+        let mut over = input("Ethereum", "USDC");
+        over.amount = 5.0;
+        assert_eq!(
+            send_affordability(over),
+            SendAffordability::AmountExceedsBalance { symbol: "USDC".to_string() }
+        );
+    }
+
+    #[test]
+    fn both_fitting_is_affordable() {
+        let mut ok = input("Ethereum", "USDC");
+        ok.gas_balance = Some(2.0);
+        assert_eq!(send_affordability(ok), SendAffordability::Affordable);
+
+        let mut native = input("Ethereum", "ETH");
+        native.holding_balance = 10.0;
+        assert_eq!(send_affordability(native), SendAffordability::Affordable);
+    }
+
+    /// A chain nobody can resolve has no gas symbol to check a token against,
+    /// so it takes the native path — which still refuses amount + fee over the
+    /// balance rather than answering `Affordable` by default.
+    #[test]
+    fn an_unresolvable_chain_still_refuses_rather_than_waving_it_through() {
+        assert!(matches!(
+            send_affordability(input("Not A Chain", "WAT")),
+            SendAffordability::AmountPlusFeeExceedsBalance { .. }
+        ));
     }
 }

@@ -107,10 +107,10 @@ Measured, not estimated:
 
 | | Start | Now |
 |---|---|---|
-| Swift, non-generated, excluding tests | 30,879 lines | **26,660** |
-| — `views/` + `extensions/` (genuine UI) | 11,113 (36%) | **11,120 (44%)** |
-| — root of `swift/` (`AppState`, stores, persistence, bridges) | 19,766 (64%) | **14,459 (56%)** |
-| `core_plan_*` FFI exports (core advises, Swift applies) | 42 | 10 |
+| Swift, non-generated, excluding tests | 30,879 lines | **24,340** |
+| — `views/` + `extensions/` (genuine UI) | 11,113 (36%) | **10,679 (44%)** |
+| — root of `swift/` (`AppState`, stores, persistence, bridges) | 19,766 (64%) | **13,661 (56%)** |
+| `core_plan_*` FFI exports (core advises, Swift applies) | 42 | **0** |
 | Swift enums restating the chain list | 6 (30 / 76 / 30 / 24 / 7 / 18 cases) | **0** |
 | Chain-name dispatch sites in Swift | 743 literals, ~400 dispatch | **98** |
 | Swift enums duplicating one core-owned setting | 2 (`BitcoinFeePriority`, `DogecoinFeePriority`) | **0** |
@@ -7125,6 +7125,576 @@ should be built from `wallet.addresses` (slots) rather than from `Chain.all`.
 *How to check:* `grep -rn Platform swift/ --include='*.swift'` finds no
 `PlatformSnapshot*` type, and the iOS suite is green at 43 tests.
 
+**An endpoint's `roles` said what it *is* and what it is *for* in one array,
+and forty-six records lied as a result.**
+
+*Was:* one `roles: [...]` per record, mixing two vocabularies — `rpc`,
+`explorer`, `backend` (what the endpoint **is**) alongside `read`, `balance`,
+`history`, `utxo`, `fee`, `broadcast`, `verification` (what it is **used
+for**). Nothing kept the two consistent, because nothing could tell them apart.
+
+*Is:* `kind` — one of `rpc-node`, `indexer`, `web-link`, `backend` — and
+`capabilities`, the seven use-for names. `kind` decides how to talk to an
+endpoint; `capabilities` decides what to ask it.
+
+*Why that side:* both halves had already drifted, and each cost something real.
+
+- **Ten EVM chains' JSON-RPC nodes were missing the `rpc` marker** while their
+  capabilities looked complete, so the diagnostics screen GET a JSON-RPC
+  endpoint and reported nine chains unreachable. Fixed in the pass above; this
+  is the shape that stops it recurring.
+- **Forty-six EVM node records claimed a `history` capability.** No EVM node
+  can serve address history: `eth_getTransactionsByAddress` is not a method,
+  because a node indexes transactions by block and answering per-address means
+  scanning every block ever produced. Verified against a live node — the reply
+  is `does not exist/is not available`. The claim went unread (EVM history
+  comes from `Chain::evm_history_source`) but it was false, and the next reader
+  would have inherited it.
+
+Non-EVM nodes are deliberately untouched: Solana's `getSignaturesForAddress`
+and XRP's `account_tx` are real node methods, verified live, so those nodes do
+carry `history`. Whether a node can index by address is a protocol fact, not a
+provider one, which is exactly why it belongs on the record rather than in a
+reader's head.
+
+*Four assertions hold the shape:* an EVM `rpc-node` may not claim `history`;
+every record's `kind` is one of the four names; the two vocabularies never
+overlap; and a `web-link` claims nothing. The first was checked by putting
+`history` back on `ethereum-rpc.publicnode.com` and watching it fail.
+
+*One concept did not survive the split, and was replaced rather than
+reinterpreted.* `explorer_supplemental` — endpoints registered alongside a
+chain's RPC list — filtered on the `explorer` tag, which four records carried:
+`api.etherscan.io`, `api.bscscan.com`, `api.hyperevmscan.io` and
+`api.ethplorer.io`. The first three are Etherscan V1 endpoints shut down since,
+so the tag was down to one member, while XRP's `xrpscan` and NEAR's
+`nearblocks` are the same kind of thing and never carried it. Deriving it from
+`kind` instead swept in every settings-visible indexer — twenty chains,
+including Bitcoin's nine Esplora endpoints, which are already registered by
+their own path. So it is an explicit `supplementsRpcList` boolean on the one
+record that means it. A tag describing one member was not describing anything.
+
+*How to check:* `spectra endpoints --chain Ethereum` prints each endpoint's
+kind and capabilities — three `rpc-node`s with `read,balance,fee,broadcast`,
+two `indexer`s with `read,history`, one `web-link` with none. Two acceptance
+assertions (182 now) pin that an EVM node is an `rpc-node` and does not claim
+history.
+
+**Sixteen dead RPC endpoints, and no way to find out except opening the
+diagnostics screen one chain at a time.**
+
+*Was:* `AppEndpointDirectory.json` is static, and `with_fallback` walks a
+chain's endpoints in order — so a dead entry costs a full timeout plus 180 ms
+on every call that reaches it, forever, silently. Nothing checked.
+
+*Is:* `spectra endpoints [--chain X]` calls every registered endpoint and
+reports which answer, and sixteen dead ones are out of the catalog.
+
+**What was dead** — Ethereum `eth.llamarpc.com` (521) and `rpc.ankr.com/eth`
+(now demands a key), Polygon `polygon.llamarpc.com`, Ethereum Classic
+`etc.rivet.link` / `besu-at.etc-network.info` / `geth-at.etc-network.info`,
+Blast and Aptos's `blastapi.io` hosts, Mantle `1rpc.io/mantle`, Solana
+`rpc.ankr.com/solana`, NEAR `near.lava.build` (410 Gone), Tron
+`api.trongrid.pro` and `.network`, Polkadot `polkadot.dotters.network` and
+`rpc.ibp.network/polkadot`, and Sui's `fullnode.mainnet.sui.io` — that last one
+answers **"JSON-RPC on public fullnodes has been deprecated. Please migrate to
+gRPC or GraphQL"**, which is a change in Sui rather than an outage.
+
+Polkadot had three RPCs and two of them were dead; the official
+`rpc.polkadot.io` was not in the catalog and answers fine, so it is now.
+Ethereum Classic and Tron were left on one endpoint each by the removals and
+got a verified replacement — `etc.etcdesktop.com` (returns chain id `0x3d`) and
+`tron-rpc.publicnode.com`.
+
+*Two probe bugs found by writing the probe:*
+
+**`rpc.ankr.com/eth` answers HTTP 200 with a JSON-RPC error body.** A status-code
+probe passes it; the app then gets "Unauthorized: you must authenticate" on
+every real call. The probe reads the `error` member, which is the only way to
+see it.
+
+**Ten EVM chains' JSON-RPC nodes were missing the `rpc` role** — Sei, Celo,
+Cronos, opBNB, zkSync Era, Sonic, Berachain, Unichain, Ink and X Layer carried
+`read,balance,history,fee,broadcast` and no `rpc`, while the same kind of
+endpoint on other chains carries it. `diagnostics_checks` gates on that role,
+so **the app's own diagnostics screen was GETting those ten JSON-RPC endpoints
+and reporting them unreachable**. The role is on them now, which fixes the
+screen as well as this command. `Chain::rpc_health_method` also grew Solana
+(`getHealth`) and Sui (`sui_getLatestCheckpointSequenceNumber`); both had a
+dead endpoint that nothing could see, because a chain with no method there is
+never probed.
+
+*The probe confirms before it accuses.* Sweeping every chain fires 161
+requests, and the first version reported four BNB seeds, Polygon, Hyperliquid
+and Ethereum Classic as dead — every one of which answered when asked again on
+its own. A failed probe now waits 600 ms and asks a second time. That took the
+sweep from 39 reported failures to 10, and the ones that remain are real. A
+probe that cries wolf is worse than no probe: it is the one people learn to
+scroll past.
+
+*A record with only the `explorer` role is not probed at all.* Those are `/tx/`
+links for a person to tap. The first version POSTed JSON-RPC at them.
+
+*Known weak spots, left as they are:* three `probeURL`s answer 404/403 on their
+own — `api.blockchair.com/bitcoin-sv/stats`, `rosetta-api.internetcomputer.org/network/list`,
+`zec1.trezor.io/api/v2`. The trezor one looks like user-agent blocking rather
+than an outage. They are reported honestly as failing their configured probe,
+but the probe URL is the more likely thing to be wrong.
+
+*Eleven chains have no RPC failover*: Ethereum Classic, Sei, Celo, Cronos,
+opBNB, zkSync Era, Sonic, Berachain, Unichain, Ink and X Layer each have a
+single endpoint. That is pre-existing — giving those ten the `rpc` role is what
+made it countable.
+
+*How to check:* `spectra endpoints` sweeps every chain; `spectra endpoints
+--chain Ethereum` does one. `--json` reports `unreachable` and `unchecked`
+counts, and exits `ok: false` when anything is unreachable, so this can run on a
+schedule rather than waiting for someone to open a screen.
+
+**EVM history needed an Etherscan key for every chain, and answered "no
+transactions" when it did not have one.**
+
+*Was:* `evm_explorer_api_base()` returned `Some("https://api.etherscan.io")`
+for all twenty-three EVM chains, and the caller built an Etherscan **V2** URL.
+V2 has no keyless tier — with a blank key it answers
+`{"status":"0","message":"NOTOK","result":"Missing/Invalid API Key"}`. Both
+call sites in `fetch/chains/evm.rs` then did this:
+
+```rust
+if resp.status != "1" {
+    // Empty history returns status "0" — not an error.
+    return Ok(vec![]);
+}
+```
+
+An empty history *is* `status: "0"`. So is a refusal. **An EVM wallet with no
+API key showed "no transactions" — indistinguishable from an address that
+genuinely had none**, with no error anywhere. `ApiResp` did not even decode
+`message`.
+
+*Is:* two changes.
+
+**The refusal is told apart from the empty result by the shape of `result`.**
+An empty history carries an empty array; every refusal carries something else —
+Etherscan's `"Missing/Invalid API Key"` string, Blockscout's transient
+`"Something went wrong."` with a null. Judged on the type rather than on
+`message`, so it does not depend on an explorer's wording. Three tests use the
+payloads captured live from `api.etherscan.io` and `base.blockscout.com` rather
+than invented ones.
+
+**Where history comes from is a per-chain registry fact**,
+`Chain::evm_history_source() -> EvmHistorySource`, replacing the one constant:
+
+| | chains | needs a key |
+|---|---|---|
+| `Open` — Blockscout | Ethereum, Arbitrum, Optimism, Ethereum Classic, Polygon, Scroll, Celo, zkSync Era, Unichain, Ink | no |
+| `Open` — Routescan | Avalanche, Berachain, Blast, Mantle | no |
+| `EtherscanV2` | BNB Chain, Sonic, opBNB, Sei, Linea, Hyperliquid, Base | yes |
+| `Unavailable` | Cronos, X Layer | no key helps |
+
+**Fourteen of the twenty-three need no API key at all now.** `Open` and
+`EtherscanV2` are two request shapes rather than two vendors: Blockscout and
+Routescan both serve the Etherscan **V1** query (`{base}/api?module=…`), and
+the base already identifies the chain, so no `chainid` and no key are sent.
+
+*How the table was built:* every host was called three times and only ones that
+answered all three are in it. Base has a Blockscout instance that answered one
+call in three — worse than a source that says so, hence `EtherscanV2` for it.
+Cronos and X Layer are in neither Etherscan V2's published chain list nor any
+keyless indexer; they were pointed at Etherscan like everything else and have
+**never** returned a transaction, which the old code showed as "no
+transactions".
+
+*Etherscan V1 is not a fallback for anything.* `api.etherscan.io`,
+`api.bscscan.com`, `api.lineascan.build`, `api.sonicscan.org`,
+`api.basescan.org` and `api.hyperevmscan.io` all answer "You are using a
+deprecated V1 endpoint, switch to Etherscan API V2". It was shut down across
+the family at once, key or no key.
+
+**And nothing normalized EVM history even when the fetch worked.**
+`normalize_chain_history` had fifteen chain arms and no EVM one, so all
+twenty-three fell to `_ => vec![]`. It was invisible while the fetch was also
+returning nothing, and only surfaced once the key requirement was gone: the raw
+call came back with fifty rows and `fetch_normalized_history` still returned
+zero. There is a `c if c.is_evm()` arm now — one guard, not twenty-three names,
+because `EvmHistoryEntry` is one shape for the family.
+
+*Three dead records left the endpoint directory.* Its only three entries with
+an API endpoint and the `history` role — `api.etherscan.io/api`,
+`api.bscscan.com/api`, `api.hyperevmscan.io/api` — were all deprecated V1
+addresses. 182 records → 179. Hyperliquid's supplemental-endpoint slot was the
+`hyperevmscan` one, so the test that asserted it had a supplement now asserts
+the same property through Ethereum's `api.ethplorer.io`, which is the surviving
+one.
+
+*How to check:* `spectra --json chains --filter Ethereum` reports
+`"historySource":"https://eth.blockscout.com"` and `"needsApiKey":false`; BNB
+Chain reports `needsApiKey: true`; Cronos reports `"historySource":"none"`.
+Verified end to end against the live network: a watch-only Ethereum wallet's
+`spectra history` returns **50 transactions with no API key configured**, where
+before it returned 0. Three acceptance assertions (180 now) and seven core
+tests.
+
+*Five acceptance assertions were brittle and are fixed on the way.* They
+matched adjacent JSON keys (`'"name":"Polygon","privateKeyImport":true'`), so
+adding a field between them broke tests that had nothing to do with the change.
+They assert one fact each now.
+
+*Considered and deliberately not taken:* every other wallet solves this by
+running a backend that holds the key — MetaMask's
+`accounts.api.cx.metamask.io/v1/accounts/{addr}/transactions` is exactly that,
+is reachable without a key today, covers fourteen chains including BNB, Linea,
+Sei, Hyperliquid and Base, and returns native and ERC-20 transfers in one call.
+It is infrastructure MetaMask runs for its own client: no agreement, no SLA,
+and blockable by user agent or origin at any time. Building a wallet's history
+on a competitor's server is a dependency whose failure mode is silent — the
+user would see "no transactions" again. If the key is to disappear for the
+remaining seven chains, the answer is the same one everyone else reached: a
+thin backend of our own.
+
+**Reserving a receive address was five steps in Swift with a window in the
+middle.**
+
+*Was:* `refreshUTXOReceiveReservationState` reserved an index, derived its
+address, registered it, checked whether it had been used, and if so released
+the reservation and took the next one — from the front end, with an `await` at
+every step. `reservedReceiveAddress` and `reservedReceiveAddressForDisplay` did
+the first three again for the receive screen.
+
+*Is:* `utxo_receive_address(wallet_id, chain_id, reserve)` and
+`advance_used_utxo_reservations(chain_id)`. The three Swift methods are shims;
+`deriveUTXOAddress`, `utxoDiscoveryDerivationPath`, `hasUTXOOnChainActivity`
+and `utxoDiscoveryDerivationChain` are deleted.
+
+*Why that side:* the comment already on the release-and-retake pair said *"both
+halves run in core, so nothing else can slip in between and reissue what we
+just used"* — and that was true of the two calls it named and of nothing
+around them. Between `clearReservedReceiveIndex` and the next
+`reserveReceiveIndex` the front end held no lock at all, so a refresh landing
+there could hand the same address to two people. All five steps are one call
+now, and the floor of 1 — a deep-UTXO chain never issues index 0 as a receive
+address — is core's rule rather than an argument each caller passed.
+
+*A shared context, not a repeated one.* The scan resolved the seed and the base
+path per index; `UtxoDerivation` resolves them once and `derive(index)` is the
+only thing the loops call. Forty indices used to mean forty phrase loads and
+forty path resolutions.
+
+*How to check:* `spectra pool next <wallet>` reserves and reports the index —
+an assertion now pins it to 1 for a UTXO wallet (177 assertions). A core test
+covers every entry point answering empty for a chain without the walk, since
+the refresh loop asks for each chain a wallet is on.
+
+*One export came off by itself.* `cli-acceptance.sh`'s unreachable-export check
+failed after the Swift deletions: `core_derivation_path_replacing_last_two` had
+one Swift caller, `utxoDiscoveryDerivationPath`, and nothing else. It is
+`pub(crate)` now — core still builds paths with it. That check is the reason
+this was noticed at all rather than left as a dead FFI entry.
+
+*Exports:* 193 → 194 (two methods on, one free function off). Swift root:
+13,752 → **13,661**; `AppState+SendFlow.swift` 1,193 → 1,107.
+
+**The address walk ran in Swift because the seed phrase only opened there.**
+
+*Was:* `AppState.discoverUTXOAddresses` plus the four methods under it —
+`knownUTXOAddresses`, `deriveUTXOAddress`, `utxoDiscoveryDerivationPath` and
+`hasUTXOOnChainActivity` — derived an address per index from the wallet's
+phrase and probed each one. Every input it needed was core's except the phrase,
+and the phrase was only readable from Swift because the front end owned a
+secret layout of its own.
+
+*Is:* `WalletService::known_utxo_addresses` and
+`discover_utxo_addresses(wallet_id, chain_id)`. The two Swift methods are
+four-line shims. Core reads the seed, the wallet's derivation path, the keypool
+bound, the balance and the history — all of which it already held.
+
+*Why split in two:* the walk costs a balance and a history call per index, and
+three callers — `StoreHistoryRefresh` twice and `AppState+OperationalTelemetry`
+once — want only the addresses already on record. `known_utxo_addresses` is
+that answer with no network in it; `discover_utxo_addresses` calls it and then
+scans. The Swift original had the same split and it was worth keeping.
+
+**`hasUTXOOnChainActivity` asked one question three ways.** Bitcoin looked at
+the UTXO count and a confirmed balance and never at history; Bitcoin Cash,
+Bitcoin SV, Litecoin and Dogecoin looked at balance and history and never at
+the UTXO count. It is one question — any balance, any UTXO, or any history —
+and `utxo_address_has_activity` asks it once for all twelve chains.
+
+**And discovery was dead on every UTXO testnet.** `deriveUTXOAddress` required
+both `supportsDeepUTXODiscovery` *and* `utxoDiscoveryDerivationChain`, and the
+second was a five-name dictionary in `AppState+ReceiveFlow` while the registry
+answers for twelve — the five mainnets **and their seven testnets**. The
+shorter list won every time, so the registry said a testnet supported the walk
+and the table returned nil. The dictionary is gone; the function asks
+`supportsDeepUtxoDiscovery`. A core test pins the count at twelve and names all
+five mainnet/testnet pairs, so a sixth chain cannot be added to one and not the
+other.
+
+*A sealed wallet does not scan.* `discover_utxo_addresses` reads the phrase
+with no password, which is exactly what the previous change made meaningful: a
+password-protected wallet has nothing readable here, so the walk returns the
+addresses already known and skips the derivation. That is the consequence of
+the password becoming a key rather than a gate, and it is stated in the code at
+the point where it happens.
+
+*How to check:* `spectra pool discover <wallet>` runs the walk and prints what
+it found. Two acceptance assertions (176 now) and two core tests — one that a
+chain without the walk answers empty rather than failing, because the refresh
+loop asks for every chain a wallet is on.
+
+*Exports:* 191 → 193. Swift root: 13,777 → **13,752**.
+
+*The reservation path followed in the next pass* — see "Reserving a receive
+address was five steps in Swift" above.
+
+**One keychain held two secret layouts, and neither side could read the
+other's wallets.**
+
+*Was:* the same `SecretStore` delegate, the same `SecretClass::Seed` bucket,
+two schemes inside `core/` itself.
+
+| | key | value | written by |
+|---|---|---|---|
+| `store/mod.rs`'s `SecretMaterialDescriptor` | `wallet.seed.<id>` | the phrase in the clear | the iOS app |
+| `store/wallet_secrets.rs`'s `Blob` | `<id>.seed` + `<id>.salt` + `<id>.password` | AES-GCM envelope under a PBKDF2 key | the CLI |
+
+Core computed the *app's* keys in one file, handed them over the FFI as three
+`String` fields, and used its own in another. A wallet imported in the app was
+invisible to `wallet_secrets`; a wallet imported by the CLI was invisible to the
+app.
+
+*Is:* one layout — `wallet_secrets`' — and core does every read and write.
+`store_seed_phrase` / `store_private_key` seal when given a password and store
+unsealed when not; `load_seed_phrase` / `load_private_key` require the password
+exactly when the wallet is sealed. Six `WalletService` methods carry it, and the
+three `*_store_key` fields are off `SecretMaterialDescriptor`, so the front end
+cannot compute a keychain key at all. `AGENTS.md` already said this was the
+intent — *"all secret traffic is driven by Rust"* — and the app had simply never
+been moved over.
+
+*Why that side:* core's scheme is the stricter one and it was already written.
+The app's password was **not** encrypting anything: it stored a verifier beside
+a plaintext phrase, so it gated the reveal screen and nothing else, and anything
+that could read the keychain could read the seed whether or not a password was
+set. Under core's scheme the password *is* the key, so a wrong one cannot
+produce a phrase rather than merely failing a check.
+
+**The state core was missing was the one the app used most.** `seal` required a
+non-empty password, so a wallet without one had no home in `wallet_secrets` —
+which is why the front end grew a layout of its own rather than a bug being
+noticed. Sealed and unsealed are told apart by the **verifier's presence**,
+never by looking at the seed value: identifying key material by its shape is
+how a corrupt read becomes a wrong answer. Storing unsealed deletes any salt and
+verifier, because a stale verifier would make `is_sealed` claim material is
+encrypted when it is not, and `is_sealed` moved from the envelope to the
+verifier for the same reason — both states now write a seed blob.
+
+Supplying a password for an unsealed wallet is `PasswordNotRequired` rather
+than something to ignore: a caller that thinks it is unlocking something has a
+wrong idea of what it is holding.
+
+*What changed for a user:* a password-protected wallet's seed now genuinely
+needs the password. Background work that reads a phrase — the UTXO address
+discovery loop — gets `nil` for such a wallet until it is unlocked, where before
+it read the plaintext regardless. That is the point of the change rather than a
+side effect of it, and it is the behaviour a user with a password already
+believed they had.
+
+*Deleted on the way:* Swift's `SecureSeedPasswordStore` (25 lines) had no
+callers left once core owned the verifier — core files salt and verifier under
+`SecretClass::Generic`. Its two FFI exports, `create_password_verifier` and
+`verify_password_verifier`, existed only to serve it; both doc comments named it
+by name. Gone, with two `SecureSeedStoreTests` cases. `SecureSeedStore` and
+`SecurePrivateKeyStore` stay, now purely as the adapter's backend for the two
+buckets — which is the layering that was wanted.
+
+*How to check:* `spectra wallet import --no-password` stores unsealed, and
+`wallet export` on it asks for nothing while the sealed wallet beside it still
+refuses a wrong password. Seven acceptance assertions (174 now) and five core
+tests, including that adding a password replaces the cleartext blob and that
+dropping one clears the verifier rather than leaving a lie behind.
+
+*Cost:* exports 187 → 191. Six new `WalletService` methods, two deleted free
+functions, and three fields off a record. That is the wrong direction for the
+export target and the right one for this plan: the alternative is a front end
+that computes keychain keys.
+
+*Still to do:* the UTXO discovery loop can now move into core, which is what
+this unblocks. `wallet_seed_phrase` is exported for the reveal path and for that
+loop's remaining Swift caller; when the loop moves, no phrase crosses the FFI
+for derivation at all.
+
+**Every EVM pending refresh recursed until the process died.**
+
+*Was:* `AppState.refreshPendingTransactions(chainName:)` dispatches on
+`Chain::pending_status_poll`. Its `.evmReceipt` arm was
+
+```swift
+case .evmReceipt:
+    await refreshPendingTransactions(chainName: chainName)
+```
+
+— the function containing it, called with the argument it was given. There is
+only one declaration of that name taking `chainName:`, and `pending_status_poll`
+is a pure function of the chain, so nothing between the entry and the recursive
+call can change the outcome. No path terminates.
+
+*Is:* a real receipt poll. `WalletService::evm_transaction_status(chain_id,
+tx_hash)` fetches the receipt and returns an `EvmReceiptClassification`;
+`refreshPendingEVMChainTransactions` walks the chain's pending sends and
+forwards each outcome to core's poll schedule.
+
+*Why it matters more than the shape of it:* `pending_status_poll` answers
+`EvmReceipt` for every EVM chain — the `other if other.is_evm()` arm, so all
+twenty-three mainnets and their testnets — and `ChainRefreshDescriptors` gives
+every chain an `executePendingOnly`, with `executeRefresh` also calling it
+unconditionally. So this was on the routine refresh path, not a corner: **an
+EVM balance refresh could not complete.** Confirmed rather than reasoned: with
+the arm put back, the test below does not fail, it takes the test runner down
+with it — `Restarting after unexpected exit, crash, or test timeout`.
+
+*Where it came from.* Beta Commit 113, the one that collapsed eighteen
+per-chain pending wrappers into this registry switch. It deleted
+`refreshPendingEVMTransactions` from `AppState+BalanceRefresh.swift` and wired
+the arm to the enclosing function instead of to its replacement. The two
+sibling arms got real callees; this one got the name of the switch.
+
+*Why a receipt and not the history summary:* the `.historyTxids` sibling asks
+whether the hash appeared in history, and that cannot tell a mined-and-reverted
+send from a successful one — a revert would read as a confirmation. A receipt
+carries `status: "0x0"`, so a reverted send resolves to `.failed`. That is the
+stricter side, and it is the reason this arm existed separately at all.
+
+A `classify_evm_receipt_json` sat next to the new method in `send/flow.rs`,
+taking the receipt as a JSON string and re-parsing it for three fields core had
+already decoded. It had no callers in `core/`, `cli/` or `swift/`. Deleted; the
+projection is direct.
+
+*How to check:* `testAnEVMPendingRefreshTerminates` starts an empty store, runs
+the refresh for Ethereum under a five-second deadline and asserts it returned.
+With no wallets the fixed code stops at the first guard in 0.1s; the old code
+never reached that guard. iOS suite 43 → 44. This one *added* 50 lines to the
+root rather than removing them — the poll it replaced had been deleted, so the
+ratio went the wrong way on purpose.
+
+**The fee half of "can this send land" was on `AppState`.**
+
+*Was:* `route_send_asset`'s preflight refuses `amount > available_balance` and
+stops there. The other half — the fee, which comes out of the chain's gas asset
+and so, for a token send, out of a different balance entirely — was
+`AppState.validateSendBalance`: nine parameters in, a formatted sentence out,
+four callers.
+
+*Is:* `send_affordability(SendAffordabilityInput)` returns a
+`SendAffordability` enum. Six inputs, and four of the nine are gone because
+they were registry facts the callers were passing by hand.
+
+*Why that side:* the four callers each decided *"is this the chain's own
+asset"* themselves, and spelled it four ways — `holding.symbol == "TRX"`,
+`holding.symbol == "SOL"`, a literal `true`, and `preflight.isNativeEvmAsset`.
+That is the `gas_token_symbol` question, and it is the same pair that the
+destination probe's five-symbol list got wrong in both directions: Arbitrum's
+catalog `symbol` is ARB and its `gas_token_symbol` is ETH, so anything reading
+the wrong column checks an ARB send's fee against the ARB balance. Two of the
+four also wrote `feeDecimals: 6` rather than asking `send_execution_shape()`,
+which is 8 on the UTXO chains and 7 on Stellar. Naming the chain is the whole
+input now.
+
+One message went with it. The token-fee refusal had two spellings — "to cover
+%@ network fee" when the caller passed a chain label and "to cover the network
+fee" when it passed `nil` — and which one a user saw depended on which of the
+four callers asked, not on anything about the send. Core names the chain on
+every token verdict, so the unlabelled template is deleted from all three
+locale files.
+
+An unresolvable chain takes the native path rather than answering
+`Affordable`: that path needs no gas symbol and still refuses amount + fee over
+the balance, which is the stricter side of not being able to name the asset.
+
+*How to check:* `spectra send affordability --chain <c> --symbol <s> --amount
+<a> --fee <f> --balance <b> [--gas-balance <g>]`. Six assertions in
+`cli-acceptance.sh` (167 now), including that ARB on Arbitrum is a token send
+whose fee is quoted in ETH; five core tests, one of which is that same
+governance-token case. The assertion is not vacuous — the catalog really does
+carry ARB in `symbol` and ETH in `gas_token_symbol` for that row.
+
+*Exports:* 185 → 186. `send_affordability` is a new free function with no merge
+partner; it buys four registry lookups back from the call sites. Swift root:
+13,739 → **13,721**.
+
+*Not taken, and why.* Two other candidates in this file were looked at and left:
+
+- **The UTXO discovery block (~340 lines) is blocked on a real fork.** Moving
+  `discoverUTXOAddresses` into core means core reading the wallet's seed, and
+  **Swift and core do not store seeds the same way**. Swift reads a raw
+  Keychain value at `cachedSecretDescriptorsByWalletID[id].seedPhraseStoreKey`;
+  core's `wallet_secrets` writes a salt / verifier / envelope triple under its
+  own layout and `unlock` needs a password. Both use the same `SecretStore`
+  delegate, and neither can read the other's wallets. That is a slice worth
+  taking — it is the last thing keeping address derivation in Swift — but it is
+  key material, it wants its own pass, and prelaunch means it can be settled by
+  picking one layout rather than bridging two. Filed under Known open items.
+- **The address-book pre-check is not the same kind of duplication.**
+  `canSaveAddressBookEntry` does repeat core's three rules, but core re-checks
+  and refuses authoritatively; the Swift copy only disables a button, which
+  rule 4 calls view state. Making it authoritative would mean an `await` inside
+  a SwiftUI `.disabled(...)`, so the honest version is view-state plumbing for
+  no change in behaviour. Left alone deliberately.
+
+**The recipient warning was four chain arms wording one verdict three ways.**
+
+*Was:* `AppState.refreshSendDestinationRiskWarning` — 163 lines in
+`AppState+SendFlow.swift` — switched on chain name into four arms. Bitcoin
+fetched a native balance summary; "every EVM chain" fetched the address probe
+and then branched again on gas token vs catalog token; Tron fetched a balance,
+a history summary and possibly a token balance; everything else went through a
+private `fetchChainRiskWarning`. Each arm then built its own sentence.
+
+*Is:* `WalletService::send_destination_risk(chain_id, address, token)` returns
+`SendDestinationRisk { balance_is_zero, has_history }` and nothing else. Swift
+picks the token descriptor — which contract a symbol means is a catalog
+question it already answers with `supportedToken(for:)` — awaits once, and
+renders one sentence pair. 142 lines out of the root, 44 back in.
+
+*Why that side:* three of the four arms were the same two fetches with
+different spellings, and the differences between them were not decisions
+anyone had made:
+
+- **Two of the three sentence templates were interpolated in Swift**, so they
+  never reached `RuntimeStrings.*.json`. A Tron send, or an EVM token send, showed
+  an English warning inside a Chinese app. There is one template pair now, both
+  localized, and both name the asset — which the two interpolated ones did and
+  the localized one did not, so no information is lost by merging onto it.
+- **Bitcoin asked `utxo_count > 0` for "has history"**, which is a different
+  question. An address that received and later spent everything has history and
+  no UTXOs, and got the warning that says in so many words that it has "no
+  transaction history" — a claim the app could see was false. The history
+  signal is `entry_count > 0` for every chain now, with the EVM nonce OR-ed in
+  because the balance probe returns it anyway and it needs no explorer key.
+- **The three non-EVM arms probed the chain's own asset regardless of what was
+  being sent.** Sending USDC on a chain in the `default` arm checked the
+  destination's *gas token* balance and reported it as though it were the
+  asset. Core now takes the token or `None`, and an asset with no catalog entry
+  gets no check rather than a check of the wrong thing — which is what the EVM
+  arm already did.
+
+An unresolvable chain is an error rather than a clean verdict. The `default`
+arm answered "no warning" for anything it could not resolve, which looks
+identical to a destination that passed; the caller has to be able to tell that
+the question was not asked.
+
+*How to check:* `spectra send probe --chain <c> --address <a>` runs it, with
+`--contract/--symbol/--decimals` for a token. Three offline assertions in
+`cli-acceptance.sh` (161 now) cover the refusals; the verdict itself is two
+network reads and is not assertable there. One core test
+(`an_unknown_chain_is_an_error_and_not_a_clean_verdict`) pins the refusal.
+
+*Exports:* net zero, deliberately. `send_destination_risk` is new on the FFI,
+and `fetch_evm_address_probe` came off it — with core asking it, Swift no
+longer does, so it moved to the plain-impl block and its bridge wrapper is
+deleted. `EvmAddressProbe` is no longer a `uniffi::Record`; it stops at the
+crate boundary. Swift root: 13,837 → **13,739**.
+
 **Comments that only restate the line under them.**
 
 *Was:* the house style here is *why*, and what the code used to be. A handful
@@ -7215,12 +7785,12 @@ Not by feel. These four numbers, checked at the end of each stage:
 | Metric | Start | Now | Target |
 |---|---|---|---|
 | `core_plan_*` exports | 42 | **0** | 0 |
-| Swift root lines vs `views/` | 19,766 vs 11,113 | 14,003 vs 10,687 | inverted |
+| Swift root lines vs `views/` | 19,766 vs 11,113 | **13,661 vs 10,679** | inverted |
 | Domain collections stored on `AppState` | 3 | 0 | 0 |
 | Domain settings owned by core | 0 | **21 fields; 4 left on iOS on purpose** | all |
 | Wallet operations reachable from the CLI | partial | **all** | all |
 | CLI commands drivable without a TTY | 0 of 24 | all (25 now) | all |
-| Exported functions and methods | 234 | **185** (96 free + 89 methods) | ~150 (see C2) |
+| Exported functions and methods | 234 | **194** (94 free + 100 methods) | ~150 (see C2) |
 | Largest file in `core/` | 4,781 | 3,418 (`store/tests.rs`); largest non-test 1,972 | — |
 
 *The export row is counted by `scripts/count-exports.sh`,* which states the
@@ -7231,7 +7801,7 @@ recorded before was counted by hand and by a narrower rule, which is why it did
 not match; the script's number is the one to compare against from here.
 
 *The other unmet row was checked by the same standard and stands.* Inverting
-the Swift ratio needs **3,316** lines *deleted* from the root, or **1,658**
+the Swift ratio needs **2,982** lines *deleted* from the root, or **1,491**
 *moved* into `views/` — moving counts twice, since it lowers one side and raises
 the other. Most of the work so far has been deletion, which is why the number
 has barely moved while 5,385 lines have gone. Classifying the root by
@@ -7360,6 +7930,22 @@ condition would cover both, but they differ in scope as well as in condition,
 so the case was weaker than the five and it was not queued.
 
 ## Known open items
+
+- ~~**Swift and core store seeds in two different layouts, and neither can read
+  the other's wallets.**~~ **Fixed** — see "One keychain held two secret
+  layouts" under "Behaviour changed on purpose". The original text: Swift's `storedSeedPhrase(for:)` reads a raw phrase
+  from the Keychain under
+  `cachedSecretDescriptorsByWalletID[id]?.seedPhraseStoreKey`. Core's
+  `store::wallet_secrets` writes three blobs — salt, password verifier,
+  encrypted envelope — under a key it derives from `wallet_id` itself, and
+  `unlock` needs the password. Both go through the same `SecretStore`
+  delegate, so this is one keychain holding two schemes.
+
+  It is what keeps UTXO address derivation and discovery in Swift: about 340
+  lines in `AppState+SendFlow.swift` that derive an address per index and probe
+  each one, all of which core has the pieces for except the seed. Prelaunch
+  means the fix is to pick one layout outright rather than bridge two. Take the
+  stricter side when picking: core's is sealed and Swift's is not.
 
 - **Bittensor is excluded from the shared submit path, and nothing explains
   why.** `Chain::uses_generic_send_submit` answers yes for sixteen mainnets.

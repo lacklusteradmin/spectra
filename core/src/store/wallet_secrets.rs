@@ -33,6 +33,13 @@ pub enum WalletSecretError {
     /// The password did not match the stored verifier.
     #[error("incorrect password")]
     IncorrectPassword,
+    /// The wallet is sealed and no password was supplied.
+    #[error("this wallet is sealed and needs its password")]
+    PasswordRequired,
+    /// A password was supplied for a wallet that is not sealed. Reported
+    /// rather than ignored: the caller believes it is unlocking something.
+    #[error("this wallet is not sealed and takes no password")]
+    PasswordNotRequired,
     /// Something is stored, but it is not what this module writes.
     #[error("stored secret is corrupt: {message}")]
     Corrupt { message: String },
@@ -56,13 +63,14 @@ impl From<SecretStoreError> for WalletSecretError {
 /// salt and verifier — neither secret alone — sit in the generic one.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum Blob {
-    /// The AES-GCM envelope holding the seed phrase.
-    Envelope,
-    /// The AES-GCM envelope holding a raw private key, for a wallet imported
-    /// from one instead of from a phrase. Sealed exactly like the seed: a
-    /// file-backed store has no operating system protecting it, so a key left
-    /// in the clear there is a key on disk.
-    PrivateKeyEnvelope,
+    /// The seed phrase. Sealed wallets hold an AES-GCM envelope here;
+    /// unsealed ones hold the phrase itself. Which it is is answered by
+    /// [`Blob::Verifier`]'s presence, never by looking at this value — key
+    /// material is not something to identify by shape.
+    Seed,
+    /// A raw private key, for a wallet imported from one instead of from a
+    /// phrase. Same two states as [`Blob::Seed`].
+    PrivateKey,
     /// The salt the master key was derived from.
     Salt,
     /// The password verifier, for checking a password without decrypting.
@@ -72,8 +80,8 @@ enum Blob {
 impl Blob {
     fn class(self) -> SecretClass {
         match self {
-            Blob::Envelope => SecretClass::Seed,
-            Blob::PrivateKeyEnvelope => SecretClass::PrivateKey,
+            Blob::Seed => SecretClass::Seed,
+            Blob::PrivateKey => SecretClass::PrivateKey,
             Blob::Salt | Blob::Verifier => SecretClass::Generic,
         }
     }
@@ -81,8 +89,8 @@ impl Blob {
     /// Part of the on-disk layout: frozen.
     fn suffix(self) -> &'static str {
         match self {
-            Blob::Envelope => "seed",
-            Blob::PrivateKeyEnvelope => "privatekey",
+            Blob::Seed => "seed",
+            Blob::PrivateKey => "privatekey",
             Blob::Salt => "salt",
             Blob::Verifier => "password",
         }
@@ -92,12 +100,7 @@ impl Blob {
         format!("{wallet_id}.{}", self.suffix())
     }
 
-    const ALL: [Blob; 4] = [
-        Blob::Envelope,
-        Blob::PrivateKeyEnvelope,
-        Blob::Salt,
-        Blob::Verifier,
-    ];
+    const ALL: [Blob; 4] = [Blob::Seed, Blob::PrivateKey, Blob::Salt, Blob::Verifier];
 }
 
 fn engine() -> base64::engine::general_purpose::GeneralPurpose {
@@ -166,7 +169,7 @@ pub fn seal(
     // with a salt it was not derived from.
     write_blob(store, wallet_id, Blob::Salt, &salt)?;
     write_blob(store, wallet_id, Blob::Verifier, &verifier)?;
-    write_blob(store, wallet_id, Blob::Envelope, &envelope)?;
+    write_blob(store, wallet_id, Blob::Seed, &envelope)?;
     Ok(())
 }
 
@@ -196,7 +199,7 @@ pub fn seal_private_key(
 
     write_blob(store, wallet_id, Blob::Salt, &salt)?;
     write_blob(store, wallet_id, Blob::Verifier, &verifier)?;
-    write_blob(store, wallet_id, Blob::PrivateKeyEnvelope, &envelope)?;
+    write_blob(store, wallet_id, Blob::PrivateKey, &envelope)?;
     Ok(())
 }
 
@@ -212,7 +215,7 @@ pub fn unlock(
         return Err(WalletSecretError::IncorrectPassword);
     }
     let salt = read_blob(store, wallet_id, Blob::Salt)?;
-    let envelope = read_blob(store, wallet_id, Blob::Envelope)?;
+    let envelope = read_blob(store, wallet_id, Blob::Seed)?;
     let master_key = derive_master_key(password, &salt);
     super::seed_envelope::decrypt(&envelope, &*master_key)
         .map(Zeroizing::new)
@@ -230,7 +233,7 @@ pub fn unlock_private_key(
         return Err(WalletSecretError::IncorrectPassword);
     }
     let salt = read_blob(store, wallet_id, Blob::Salt)?;
-    let envelope = read_blob(store, wallet_id, Blob::PrivateKeyEnvelope)?;
+    let envelope = read_blob(store, wallet_id, Blob::PrivateKey)?;
     let master_key = derive_master_key(password, &salt);
     super::seed_envelope::decrypt(&envelope, &*master_key)
         .map(Zeroizing::new)
@@ -253,17 +256,127 @@ pub fn delete(store: &dyn SecretStore, wallet_id: &str) -> Result<(), WalletSecr
 pub fn is_private_key_backed(store: &dyn SecretStore, wallet_id: &str) -> bool {
     store
         .load_secret(
-            Blob::PrivateKeyEnvelope.class(),
-            Blob::PrivateKeyEnvelope.key(wallet_id),
+            Blob::PrivateKey.class(),
+            Blob::PrivateKey.key(wallet_id),
         )
         .is_ok()
 }
 
-/// Answers off the envelope alone: the other two are useless without it.
+/// Whether this wallet's material is encrypted under a password.
+///
+/// Answered off the **verifier**, not the seed blob: both states store a seed
+/// blob, and only a sealed wallet has a verifier and a salt beside it. Reading
+/// the seed value to decide would mean identifying key material by its shape.
 pub fn is_sealed(store: &dyn SecretStore, wallet_id: &str) -> bool {
     store
-        .load_secret(Blob::Envelope.class(), Blob::Envelope.key(wallet_id))
+        .load_secret(Blob::Verifier.class(), Blob::Verifier.key(wallet_id))
         .is_ok()
+}
+
+/// Whether this wallet has any signing material at all.
+pub fn has_signing_material(store: &dyn SecretStore, wallet_id: &str) -> bool {
+    store
+        .load_secret(Blob::Seed.class(), Blob::Seed.key(wallet_id))
+        .is_ok()
+        || is_private_key_backed(store, wallet_id)
+}
+
+/// Store material for a wallet with no password.
+///
+/// The other half of [`seal`]. The app has always had two kinds of wallet —
+/// one with a password and one without — and only the first had a home here,
+/// so the second was written by the front end under a key scheme of its own.
+/// Salt and verifier are removed rather than left behind: a stale verifier
+/// would make [`is_sealed`] answer yes for material that is not encrypted.
+fn store_unsealed(
+    store: &dyn SecretStore,
+    wallet_id: &str,
+    blob: Blob,
+    value: &str,
+) -> Result<(), WalletSecretError> {
+    store.delete_secret(Blob::Salt.class(), Blob::Salt.key(wallet_id))?;
+    store.delete_secret(Blob::Verifier.class(), Blob::Verifier.key(wallet_id))?;
+    write_blob(store, wallet_id, blob, value.trim().as_bytes())
+}
+
+/// Store a seed phrase, sealed under `password` when one is given.
+pub fn store_seed_phrase(
+    store: &dyn SecretStore,
+    wallet_id: &str,
+    seed_phrase: &str,
+    password: Option<&str>,
+) -> Result<(), WalletSecretError> {
+    match password.map(str::trim).filter(|p| !p.is_empty()) {
+        Some(password) => seal(store, wallet_id, seed_phrase, password),
+        None => store_unsealed(store, wallet_id, Blob::Seed, seed_phrase),
+    }
+}
+
+/// Store a raw private key, sealed under `password` when one is given.
+pub fn store_private_key(
+    store: &dyn SecretStore,
+    wallet_id: &str,
+    private_key: &str,
+    password: Option<&str>,
+) -> Result<(), WalletSecretError> {
+    match password.map(str::trim).filter(|p| !p.is_empty()) {
+        Some(password) => seal_private_key(store, wallet_id, private_key, password),
+        None => store_unsealed(store, wallet_id, Blob::PrivateKey, private_key),
+    }
+}
+
+/// Read a wallet's seed phrase.
+///
+/// `password` is required exactly when the wallet is sealed. Supplying one for
+/// an unsealed wallet is an error rather than something to ignore: a caller
+/// that thinks it is unlocking something is a caller with a wrong idea of what
+/// it is holding.
+pub fn load_seed_phrase(
+    store: &dyn SecretStore,
+    wallet_id: &str,
+    password: Option<&str>,
+) -> Result<Zeroizing<String>, WalletSecretError> {
+    load_material(store, wallet_id, Blob::Seed, password)
+}
+
+/// Read a wallet's raw private key. Same password rule as
+/// [`load_seed_phrase`].
+pub fn load_private_key(
+    store: &dyn SecretStore,
+    wallet_id: &str,
+    password: Option<&str>,
+) -> Result<Zeroizing<String>, WalletSecretError> {
+    load_material(store, wallet_id, Blob::PrivateKey, password)
+}
+
+fn load_material(
+    store: &dyn SecretStore,
+    wallet_id: &str,
+    blob: Blob,
+    password: Option<&str>,
+) -> Result<Zeroizing<String>, WalletSecretError> {
+    let password = password.map(str::trim).filter(|p| !p.is_empty());
+    if !is_sealed(store, wallet_id) {
+        if password.is_some() {
+            return Err(WalletSecretError::PasswordNotRequired);
+        }
+        let raw = read_blob(store, wallet_id, blob)?;
+        return String::from_utf8(raw)
+            .map(Zeroizing::new)
+            .map_err(|e| WalletSecretError::Corrupt {
+                message: format!("{} is not utf-8: {e}", blob.suffix()),
+            });
+    }
+    let Some(password) = password else {
+        return Err(WalletSecretError::PasswordRequired);
+    };
+    match blob {
+        Blob::Seed => unlock(store, wallet_id, password),
+        Blob::PrivateKey => unlock_private_key(store, wallet_id, password),
+        Blob::Salt | Blob::Verifier => Err(WalletSecretError::Corrupt {
+            message: "salt and verifier are not material".to_string(),
+        }),
+    }
 }
 
 #[cfg(test)]
@@ -299,6 +412,82 @@ mod tests {
             WalletSecretError::NotSealed
         );
         assert!(!is_sealed(&store, "missing"));
+    }
+
+    /// The state the app has always had and core did not.
+    #[test]
+    fn a_wallet_with_no_password_stores_and_reads_back_without_one() {
+        let store = InMemorySecretStore::new();
+        store_seed_phrase(&store, "w", PHRASE, None).expect("store");
+        assert!(!is_sealed(&store, "w"), "no password means not sealed");
+        assert!(has_signing_material(&store, "w"));
+        assert_eq!(&*load_seed_phrase(&store, "w", None).expect("load"), PHRASE);
+    }
+
+    /// Sealed and unsealed are told apart by the verifier, not by looking at
+    /// the seed value. A password promotes a wallet from one to the other and
+    /// the old plaintext must not survive it.
+    #[test]
+    fn adding_a_password_seals_what_was_stored_in_the_clear() {
+        let store = InMemorySecretStore::new();
+        store_seed_phrase(&store, "w", PHRASE, None).expect("store");
+        let plain = store
+            .load_secret(Blob::Seed.class(), Blob::Seed.key("w"))
+            .expect("raw");
+
+        store_seed_phrase(&store, "w", PHRASE, Some("hunter2")).expect("seal");
+        assert!(is_sealed(&store, "w"));
+        let sealed = store
+            .load_secret(Blob::Seed.class(), Blob::Seed.key("w"))
+            .expect("raw");
+        assert_ne!(plain, sealed, "sealing must replace the cleartext blob");
+        assert_eq!(
+            &*load_seed_phrase(&store, "w", Some("hunter2")).expect("load"),
+            PHRASE
+        );
+    }
+
+    /// And back the other way: dropping the password must not leave a verifier
+    /// behind, or `is_sealed` would claim material is encrypted when it is not.
+    #[test]
+    fn dropping_the_password_clears_the_verifier_and_salt() {
+        let store = InMemorySecretStore::new();
+        store_seed_phrase(&store, "w", PHRASE, Some("hunter2")).expect("seal");
+        assert!(is_sealed(&store, "w"));
+
+        store_seed_phrase(&store, "w", PHRASE, None).expect("unseal");
+        assert!(!is_sealed(&store, "w"), "a stale verifier would lie here");
+        assert!(store
+            .load_secret(Blob::Salt.class(), Blob::Salt.key("w"))
+            .is_err());
+        assert_eq!(&*load_seed_phrase(&store, "w", None).expect("load"), PHRASE);
+    }
+
+    /// Neither direction is allowed to guess.
+    #[test]
+    fn the_password_is_required_exactly_when_the_wallet_is_sealed() {
+        let store = InMemorySecretStore::new();
+        store_seed_phrase(&store, "sealed", PHRASE, Some("hunter2")).expect("seal");
+        store_seed_phrase(&store, "open", PHRASE, None).expect("store");
+
+        assert_eq!(
+            load_seed_phrase(&store, "sealed", None).unwrap_err(),
+            WalletSecretError::PasswordRequired
+        );
+        assert_eq!(
+            load_seed_phrase(&store, "open", Some("hunter2")).unwrap_err(),
+            WalletSecretError::PasswordNotRequired
+        );
+    }
+
+    /// A private key takes the same two states as a phrase.
+    #[test]
+    fn a_private_key_stores_unsealed_too() {
+        let store = InMemorySecretStore::new();
+        store_private_key(&store, "w", "0xabc", None).expect("store");
+        assert!(!is_sealed(&store, "w"));
+        assert!(is_private_key_backed(&store, "w"));
+        assert_eq!(&*load_private_key(&store, "w", None).expect("load"), "0xabc");
     }
 
     #[test]

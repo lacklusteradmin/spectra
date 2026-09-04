@@ -10,6 +10,70 @@ use super::*;
 
 #[uniffi::export(async_runtime = "tokio")]
 impl WalletService {
+    /// Does this destination address look unused for the asset being sent?
+    ///
+    /// `token` is `None` for the chain's own asset and the descriptor for a
+    /// token on it; that is the one thing the caller knows and this does not,
+    /// because which contract a symbol means is a catalog question.
+    ///
+    /// Swift ran this as four chain arms — Bitcoin, "every EVM chain", Tron,
+    /// and everything else — that fetched different things and worded the
+    /// answer three different ways. Two of the three wordings were built by
+    /// string interpolation and never reached the locale files, so a Tron or
+    /// EVM token send showed an English warning in a Chinese app.
+    ///
+    /// The history signal is one question now: has this address transacted on
+    /// this chain. EVM adds the nonce because the balance probe returns it
+    /// anyway and it needs no explorer key. Bitcoin used to ask
+    /// `utxo_count > 0`, which is not that question — an address that received
+    /// and later spent everything has history and no UTXOs, and got a warning
+    /// stating it had "no transaction history", which was false.
+    pub async fn send_destination_risk(
+        &self,
+        chain_id: String,
+        address: String,
+        token: Option<TokenDescriptor>,
+    ) -> Result<SendDestinationRisk, SpectraBridgeError> {
+        let chain = chain_for_id(&chain_id)?;
+
+        let balance = match &token {
+            Some(descriptor) => self
+                .fetch_token_balances(chain_id.clone(), address.clone(), vec![descriptor.clone()])
+                .await?
+                .first()
+                .and_then(|result| result.balance_display.parse::<f64>().ok())
+                .unwrap_or(0.0),
+            None => self
+                .fetch_native_balance_summary(chain_id.clone(), address.clone())
+                .await?
+                .amount_display
+                .parse::<f64>()
+                .unwrap_or(0.0),
+        };
+
+        // A failed history read is not evidence of no history, but the caller
+        // has nothing better to show than the warning, and warning on a
+        // used address costs less than staying quiet about a fresh one.
+        let entries = self
+            .fetch_history_summary(chain_id.clone(), address.clone())
+            .await
+            .map(|summary| summary.entry_count)
+            .unwrap_or(0);
+        let mut has_history = entries > 0;
+        if !has_history && chain.is_evm() {
+            has_history = self
+                .fetch_evm_address_probe(chain_id, address)
+                .await
+                .map(|probe| probe.nonce > 0)
+                .unwrap_or(false);
+        }
+
+        Ok(SendDestinationRisk {
+            balance_is_zero: balance <= 0.0,
+            has_history,
+        })
+    }
+
     /// Typed wrapper around `broadcast_raw`: runs the broadcast then extracts
     /// the named field (typically `"txid"` or `"digest"`) from the result JSON.
     /// Returns the field value as a string, or an empty string when missing.
@@ -1150,5 +1214,27 @@ mod fee_estimates_are_typed {
             .await
             .expect_err("EVM has its own preview path, not this one");
         assert!(format!("{err:?}").contains("Ethereum"));
+    }
+}
+
+#[cfg(test)]
+mod a_destination_probe_refuses_before_it_guesses {
+    use crate::service::WalletService;
+
+    /// An unknown chain is an error, not a verdict.
+    ///
+    /// The shape this replaces had a `default` arm that answered
+    /// `(nil, nil)` — no warning — for anything it did not recognise, so a
+    /// chain the front end could not resolve looked exactly like a
+    /// destination that had passed the check. Silence is the wrong answer to
+    /// "is this address safe to send to"; the caller has to know the question
+    /// was not asked. No network: this fails on the chain lookup.
+    #[tokio::test]
+    async fn an_unknown_chain_is_an_error_and_not_a_clean_verdict() {
+        let service = WalletService::new_typed(Vec::new()).expect("service");
+        let result = service
+            .send_destination_risk("not-a-chain".into(), "whatever".into(), None)
+            .await;
+        assert!(result.is_err(), "an unresolvable chain must not answer with a verdict");
     }
 }

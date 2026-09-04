@@ -235,6 +235,19 @@ impl WalletService {
             *guard = Some(store);
         }
     }
+
+    /// The registered delegate, or an error naming the reason.
+    ///
+    /// Every secret read and write goes through this rather than through a
+    /// key the front end computed: the key layout is core's, and there were
+    /// two of them for as long as the front end owned one.
+    pub(crate) fn secrets(&self) -> Result<Arc<dyn SecretStore>, SpectraBridgeError> {
+        self.secret_store
+            .read()
+            .ok()
+            .and_then(|guard| guard.clone())
+            .ok_or_else(|| SpectraBridgeError::from("secret store not registered".to_string()))
+    }
 }
 
 impl WalletService {

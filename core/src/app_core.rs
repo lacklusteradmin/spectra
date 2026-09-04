@@ -13,6 +13,10 @@ const ENDPOINT_ROLE_BROADCAST: u32 = 1 << 5;
 const ENDPOINT_ROLE_VERIFICATION: u32 = 1 << 6;
 const ENDPOINT_ROLE_RPC: u32 = 1 << 7;
 const ENDPOINT_ROLE_EXPLORER: u32 = 1 << 8;
+/// An address-indexed API. Its own bit because an indexer is not a `/tx/`
+/// link, and the two were sharing one — which is how `explorer_supplemental`
+/// briefly picked up every Esplora endpoint Bitcoin has.
+const ENDPOINT_ROLE_INDEXER: u32 = 1 << 9;
 const ENDPOINT_ROLE_BACKEND: u32 = 1 << 9;
 
 /// Endpoint-table slot for a given chain. Mirrors `crate::registry::EndpointSlot`
@@ -60,10 +64,30 @@ pub struct AppCoreEndpointRecord {
     #[serde(rename = "providerID")]
     pub provider_id: String,
     pub endpoint: String,
-    pub roles: Vec<String>,
+    /// What this endpoint *is*, which decides how to talk to it: a JSON-RPC
+    /// node, an address-indexed API, a Monero light-wallet backend, or a
+    /// `/tx/` link for a person to tap.
+    ///
+    /// Split out of `roles`, which held this alongside what the endpoint is
+    /// *used for*. Nothing forced the two to stay consistent, and both drifted:
+    /// ten EVM chains' JSON-RPC nodes were missing the `rpc` marker, so the
+    /// diagnostics screen probed them with a GET and called them unreachable.
+    pub kind: String,
+    /// What this endpoint is used for. A capability is a claim about the
+    /// endpoint that has to be true — see `no_evm_node_claims_history`.
+    pub capabilities: Vec<String>,
     #[serde(rename = "probeURL")]
     pub probe_url: Option<String>,
     pub settings_visible: bool,
+    /// Registered alongside the chain's RPC list rather than instead of it.
+    ///
+    /// Was inferred from an `explorer` tag that four records carried — three
+    /// of them Etherscan V1 endpoints that have since been shut down — while
+    /// XRP's `xrpscan` and NEAR's `nearblocks`, which are the same kind of
+    /// thing, did not. A tag that describes one member is not describing
+    /// anything, so this says it outright.
+    #[serde(default)]
+    pub supplements_rpc_list: bool,
     pub explorer_label: Option<String>,
     /// Appended after the transaction hash, for an explorer whose URL needs
     /// more than a prefix. Aptos wants `?network=mainnet`; nothing else does.
@@ -208,15 +232,20 @@ pub fn app_core_chain_endpoints() -> Result<Vec<AppCoreChainEndpoints>, crate::S
                     .into_iter()
                     .map(|r| r.endpoint)
                     .collect(),
-                explorer_supplemental: endpoint_records_for_chain(
-                    catalog,
-                    &name,
-                    ENDPOINT_ROLE_EXPLORER,
-                    true,
-                )
-                .into_iter()
-                .map(|r| r.endpoint)
-                .collect(),
+                // Settings-visible indexers: the address-indexed APIs a user
+                // can see and switch, registered alongside the RPC list.
+                //
+                // This filtered on an `explorer` tag that four records carried
+                // and others just as much deserved — XRP's `xrpscan` and
+                // NEAR's `nearblocks` are the same kind of thing and were not
+                // tagged. Three of the four were Etherscan V1 endpoints that
+                // have since been shut down, so the tag was down to one member
+                // and was not describing anything. The kind does.
+                explorer_supplemental: endpoint_records_for_chain(catalog, &name, 0, false)
+                    .into_iter()
+                    .filter(|r| r.supplements_rpc_list)
+                    .map(|r| r.endpoint)
+                    .collect(),
                 grouped_settings: grouped_settings_entries(catalog, &name),
                 diagnostics_checks: diagnostics_checks(catalog, &name),
                 transaction_explorer: transaction_explorer_entry(catalog, &name),
@@ -266,8 +295,9 @@ fn load_app_core_catalog() -> Result<AppCoreCatalog, String> {
     let endpoint_role_masks: Vec<u32> = endpoint_records
         .iter()
         .map(|r| {
-            r.roles
+            r.capabilities
                 .iter()
+                .chain(std::iter::once(&r.kind))
                 .fold(0u32, |acc, role| acc | endpoint_role_bit(role))
         })
         .collect();
@@ -316,8 +346,11 @@ pub(crate) fn endpoint_role_bit(role: &str) -> u32 {
         "fee" => ENDPOINT_ROLE_FEE,
         "broadcast" => ENDPOINT_ROLE_BROADCAST,
         "verification" => ENDPOINT_ROLE_VERIFICATION,
-        "rpc" => ENDPOINT_ROLE_RPC,
-        "explorer" => ENDPOINT_ROLE_EXPLORER,
+        // Kinds map onto the same mask so a caller can still ask for "the RPC
+        // nodes" in one filter. `rpc` is the name the old data used.
+        "rpc" | "rpc-node" => ENDPOINT_ROLE_RPC,
+        "explorer" | "web-link" => ENDPOINT_ROLE_EXPLORER,
+        "indexer" => ENDPOINT_ROLE_INDEXER,
         "backend" => ENDPOINT_ROLE_BACKEND,
         _ => 0,
     }
@@ -413,7 +446,7 @@ fn diagnostics_checks(catalog: &AppCoreCatalog, chain_name: &str) -> Vec<AppCore
     endpoint_records_for_chain(catalog, chain_name, 0, false)
         .into_iter()
         .filter_map(|record| {
-            let is_rpc = record.roles.iter().any(|role| role == "rpc");
+            let is_rpc = record.kind == "rpc-node";
             let rpc_probe_method = is_rpc.then_some(health_method).flatten().map(str::to_string);
             // An RPC endpoint is probed by POSTing to itself, so `probe_url`
             // stands in as the endpoint and the RPC branch ignores it.
@@ -433,6 +466,7 @@ fn transaction_explorer_entry(
     catalog: &AppCoreCatalog,
     chain_name: &str,
 ) -> Option<AppCoreExplorerEntry> {
+    // A `/tx/` link for a person to open, which is exactly `web-link`.
     endpoint_records_for_chain(catalog, chain_name, ENDPOINT_ROLE_EXPLORER, false)
         .into_iter()
         .find_map(|record| {
@@ -751,8 +785,10 @@ pub fn core_derivation_path_string(segments: Vec<DerivationPathSegment>) -> Stri
 }
 
 
-#[uniffi::export]
-pub fn core_derivation_path_replacing_last_two(
+/// No longer on the FFI: its only Swift caller was
+/// `AppState.utxoDiscoveryDerivationPath`, and address derivation moved into
+/// `WalletService::discover_utxo_addresses`. Core still builds paths with it.
+pub(crate) fn core_derivation_path_replacing_last_two(
     raw_path: String,
     branch: u32,
     index: u32,
@@ -1051,29 +1087,43 @@ mod rpc_health_probes {
     #[test]
     fn the_catalog_decides_which_endpoints_are_rpc() {
         let catalog = super::load_app_core_catalog().expect("catalog");
-        let method_for = |chain: &str, needle: &str| -> Option<String> {
-            super::diagnostics_checks(&catalog, chain)
-                .into_iter()
-                .find(|c| c.endpoint.contains(needle))
-                .unwrap_or_else(|| panic!("{chain} has no endpoint matching {needle}"))
-                .rpc_probe_method
-        };
+        let mut checked_any = false;
 
-        assert_eq!(method_for("NEAR", "rpc.mainnet.near.org").as_deref(), Some("status"));
-        assert_eq!(method_for("NEAR", "fastnear").as_deref(), Some("status"));
-        assert_eq!(method_for("NEAR", "near.lava.build").as_deref(), Some("status"));
-        // The history API is not an RPC node and must keep its GET probe.
-        assert_eq!(method_for("NEAR", "nearblocks"), None);
-
-        // Polkadot's sidecar is REST; the three RPC nodes are not.
-        assert_eq!(method_for("Polkadot", "parity-chains"), None);
-        for rpc in ["onfinality", "dotters", "ibp.network"] {
-            assert_eq!(
-                method_for("Polkadot", rpc).as_deref(),
-                Some("chain_getHeader"),
-                "{rpc}"
-            );
+        // Named endpoints used to stand here — `near.lava.build`, Polkadot's
+        // `dotters` and `ibp.network` — and all three have since gone dead and
+        // been removed, which broke a test whose subject was the rule and not
+        // those hosts. The rule, asserted over whatever the catalog holds: a
+        // record with the `rpc` role on a chain with a health method gets that
+        // method, and a record without the role never does.
+        for chain in crate::registry::Chain::all().filter(|c| !c.is_testnet()) {
+            let Some(method) = chain.rpc_health_method() else {
+                continue;
+            };
+            let name = chain.chain_display_name();
+            let records = super::endpoint_records_for_chain(&catalog, name, 0, false);
+            for check in super::diagnostics_checks(&catalog, name) {
+                let Some(record) = records.iter().find(|r| r.endpoint == check.endpoint) else {
+                    continue;
+                };
+                let is_rpc = record.kind == "rpc-node";
+                checked_any = true;
+                if is_rpc {
+                    assert_eq!(
+                        check.rpc_probe_method.as_deref(),
+                        Some(method),
+                        "{name} {} carries the rpc role and must be probed as one",
+                        check.endpoint
+                    );
+                } else {
+                    assert_eq!(
+                        check.rpc_probe_method, None,
+                        "{name} {} is not an rpc node and must keep its GET probe",
+                        check.endpoint
+                    );
+                }
+            }
         }
+        assert!(checked_any, "no chain with a health method had any endpoint");
     }
 
     /// Every mainnet with catalog endpoints has something to check.
@@ -1177,14 +1227,22 @@ mod supplemental_endpoints_are_data {
     /// Which chains have a supplement is the catalog's answer, not a list.
     ///
     /// The front end held sixteen names. Twelve of them have no supplement at
-    /// all, so those entries registered nothing; Hyperliquid has one and was
+    /// all, so those entries registered nothing; Hyperliquid had one and was
     /// not named, so its endpoints never reached the service.
+    ///
+    /// Hyperliquid's supplement was `api.hyperevmscan.io`, which Etherscan has
+    /// since shut down along with the rest of its V1 family — the record is
+    /// deleted and the chain reads its history through Etherscan V2 now. The
+    /// property under test is unchanged: the catalog decides, and a chain with
+    /// a supplement gets it without being named anywhere.
     #[test]
-    fn hyperliquid_has_a_supplement_and_most_named_chains_did_not() {
-        assert!(
-            !supplemental(Chain::Hyperliquid).is_empty(),
-            "Hyperliquid has a supplemental endpoint and was not in the table"
+    fn a_supplement_comes_from_the_catalog_and_most_chains_have_none() {
+        assert_eq!(
+            supplemental(Chain::Ethereum),
+            vec!["https://api.ethplorer.io".to_string()],
+            "Ethereum's supplement is catalog data and was not in the sixteen-name table either"
         );
+        assert!(supplemental(Chain::Hyperliquid).is_empty());
         for chain in [
             Chain::Arbitrum,
             Chain::Optimism,
@@ -1245,5 +1303,109 @@ mod supplemental_endpoints_are_data {
             );
         }
         assert!(found > 0, "no chain has a supplemental endpoint at all");
+    }
+}
+
+
+#[cfg(test)]
+mod an_endpoints_kind_is_not_its_capabilities {
+    use crate::registry::Chain;
+
+    fn records() -> Vec<super::AppCoreEndpointRecord> {
+        serde_json::from_str(super::APP_ENDPOINT_DIRECTORY_JSON).expect("directory parses")
+    }
+
+    /// An EVM node cannot answer "every transaction for this address".
+    ///
+    /// There is no such JSON-RPC method — `eth_getTransactionsByAddress` does
+    /// not exist, because a node stores blocks and state, and transactions are
+    /// indexed by block rather than by address. Answering it means scanning
+    /// every block ever produced, which is why the job belongs to a separate
+    /// indexer.
+    ///
+    /// Forty-six EVM RPC records claimed the `history` capability anyway. It
+    /// went unnoticed because nothing reads the field to decide where EVM
+    /// history comes from — `Chain::evm_history_source` does — but it was a
+    /// false statement in the data, and the next thing to trust the field
+    /// would have inherited it.
+    ///
+    /// Non-EVM chains are a different matter and deliberately not covered
+    /// here: Solana's `getSignaturesForAddress` and XRP's `account_tx` are
+    /// real node methods, so those nodes genuinely do carry `history`.
+    #[test]
+    fn no_evm_node_claims_history() {
+        for record in records() {
+            let Some(chain) = Chain::from_display_name(&record.chain_name) else {
+                continue;
+            };
+            if !chain.is_evm() || record.kind != "rpc-node" {
+                continue;
+            }
+            assert!(
+                !record.capabilities.iter().any(|c| c == "history"),
+                "{} {} is an EVM node and cannot serve address history",
+                record.chain_name,
+                record.endpoint
+            );
+        }
+    }
+
+    /// Every record says what it is, and says it with one of the four names
+    /// the readers switch on.
+    #[test]
+    fn every_record_has_a_kind_the_readers_understand() {
+        for record in records() {
+            assert!(
+                matches!(
+                    record.kind.as_str(),
+                    "rpc-node" | "indexer" | "web-link" | "backend"
+                ),
+                "{} {} has kind {:?}",
+                record.chain_name,
+                record.endpoint,
+                record.kind
+            );
+        }
+    }
+
+    /// A kind is never a capability and a capability is never a kind. Holding
+    /// both in one array is what let the `rpc` marker go missing on ten chains
+    /// while their capabilities looked complete.
+    #[test]
+    fn the_two_vocabularies_do_not_overlap() {
+        const CAPABILITIES: [&str; 7] = [
+            "read",
+            "balance",
+            "history",
+            "utxo",
+            "fee",
+            "broadcast",
+            "verification",
+        ];
+        for record in records() {
+            assert!(!CAPABILITIES.contains(&record.kind.as_str()), "{}", record.kind);
+            for capability in &record.capabilities {
+                assert!(
+                    CAPABILITIES.contains(&capability.as_str()),
+                    "{} {} lists {capability:?} as a capability",
+                    record.chain_name,
+                    record.endpoint
+                );
+            }
+        }
+    }
+
+    /// A web link is a URL for a person, so it claims nothing.
+    #[test]
+    fn a_web_link_has_no_capabilities() {
+        for record in records().iter().filter(|r| r.kind == "web-link") {
+            assert!(
+                record.capabilities.is_empty(),
+                "{} {} is a link and claims {:?}",
+                record.chain_name,
+                record.endpoint,
+                record.capabilities
+            );
+        }
     }
 }
