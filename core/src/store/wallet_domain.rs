@@ -562,7 +562,7 @@ pub struct CoreDashboardPinOption {
     pub asset_identifier: Option<String>,
 }
 
-/// Swift `WalletRustSecretMaterialDescriptor`. JSON keys preserved for decode compat.
+/// What signing material a wallet has, and whether a password guards it.
 #[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq, uniffi::Record)]
 #[serde(rename_all = "camelCase")]
 pub struct CoreWalletRustSecretMaterialDescriptor {

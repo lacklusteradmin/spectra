@@ -3,12 +3,15 @@ use blake2::digest::consts::U64;
 use blake2::digest::Digest;
 use blake2::Blake2b;
 use pbkdf2::pbkdf2_hmac;
+use hmac::{Hmac, Mac};
+use secp256k1::{All, PublicKey, Scalar, Secp256k1, SecretKey};
 use sha2::Sha512;
 use unicode_normalization::UnicodeNormalization;
 use zeroize::Zeroizing;
 
 pub(crate) const HARDENED_OFFSET: u32 = 0x80000000;
 type Blake2b512 = Blake2b<U64>;
+type HmacSha512 = Hmac<Sha512>;
 
 pub(crate) type OptionalKeyMaterial = (Option<String>, Option<String>, Option<String>);
 
@@ -245,4 +248,146 @@ pub(crate) fn decode_ss58(
         .try_into()
         .map_err(|_| "ss58 key slice error".to_string())?;
     Ok((prefix, key_bytes))
+}
+
+/// BIP-32 secp256k1 extended private key: the 32-byte scalar and its chain code.
+///
+/// One copy, not one per chain. Decred, EVM, Kaspa, Tron and XRP each carried a
+/// byte-identical 60-line version of this; the derivation is BIP-32's, not any
+/// of theirs, and five copies is five places for a fix to miss four. Bitcoin
+/// keeps its own in `chains/bitcoin.rs` because it also serialises xpubs.
+#[derive(Clone)]
+pub(crate) struct ExtendedPrivateKey {
+    pub(crate) private_key: SecretKey,
+    pub(crate) chain_code: [u8; 32],
+}
+
+impl ExtendedPrivateKey {
+    /// BIP-32 master key: HMAC-SHA512(hmac_key, seed) → private key (IL) + chain code (IR).
+    pub(crate) fn master_from_seed(hmac_key: &[u8], seed: &[u8]) -> Result<Self, String> {
+        let mut mac =
+            HmacSha512::new_from_slice(hmac_key).map_err(|e| format!("HMAC init: {e}"))?;
+        mac.update(seed);
+        let tag = mac.finalize().into_bytes();
+        let private_key =
+            SecretKey::from_slice(&tag[..32]).map_err(|e| format!("Master key invalid: {e}"))?;
+        let mut chain_code = [0u8; 32];
+        chain_code.copy_from_slice(&tag[32..]);
+        Ok(Self {
+            private_key,
+            chain_code,
+        })
+    }
+
+    /// Hardened indices feed the private key into the HMAC, non-hardened the public key.
+    pub(crate) fn derive_child(&self, secp: &Secp256k1<All>, index: u32) -> Result<Self, String> {
+        let mut mac =
+            HmacSha512::new_from_slice(&self.chain_code).map_err(|e| format!("HMAC init: {e}"))?;
+        if index >= HARDENED_OFFSET {
+            mac.update(&[0x00]);
+            mac.update(&self.private_key.secret_bytes());
+        } else {
+            let pk = PublicKey::from_secret_key(secp, &self.private_key);
+            mac.update(&pk.serialize());
+        }
+        mac.update(&index.to_be_bytes());
+        let tag = mac.finalize().into_bytes();
+        let tweak =
+            Scalar::from_be_bytes(tag[..32].try_into().map_err(|_| "tag slice".to_string())?)
+                .map_err(|_| "BIP-32 IL out of range".to_string())?;
+        let private_key = self
+            .private_key
+            .add_tweak(&tweak)
+            .map_err(|e| format!("BIP-32 tweak failed: {e}"))?;
+        let mut chain_code = [0u8; 32];
+        chain_code.copy_from_slice(&tag[32..]);
+        Ok(Self {
+            private_key,
+            chain_code,
+        })
+    }
+
+    pub(crate) fn derive_path(&self, secp: &Secp256k1<All>, path: &[u32]) -> Result<Self, String> {
+        let mut key = self.clone();
+        for &index in path {
+            key = key.derive_child(secp, index)?;
+        }
+        Ok(key)
+    }
+}
+
+/// HMAC-SHA512 over concatenated chunks; returns a 64-byte `Zeroizing` buffer.
+///
+/// Aptos, Cardano, Internet Computer, Solana, Stellar, Sui and TON each had a
+/// byte-identical copy of this and the two functions below.
+pub(crate) fn hmac_sha512(key: &[u8], chunks: &[&[u8]]) -> Result<Zeroizing<[u8; 64]>, String> {
+    let mut mac = HmacSha512::new_from_slice(key)
+        .map_err(|error| format!("Invalid HMAC-SHA512 key: {error}"))?;
+    for chunk in chunks {
+        mac.update(chunk);
+    }
+    let tag = mac.finalize().into_bytes();
+    let mut out = Zeroizing::new([0u8; 64]);
+    out.copy_from_slice(&tag);
+    Ok(out)
+}
+
+/// Parse a SLIP-10 derivation path and force every segment to hardened.
+///
+/// Separate from [`parse_bip32_path`] on purpose: SLIP-10 over ed25519 has no
+/// non-hardened derivation, so a path that omits the `'` still means hardened.
+pub(crate) fn parse_slip10_ed25519_path(path: &str) -> Result<Vec<u32>, String> {
+    let trimmed = path.trim();
+    let body = trimmed
+        .strip_prefix("m/")
+        .or_else(|| trimmed.strip_prefix("M/"))
+        .unwrap_or_else(|| {
+            if trimmed == "m" || trimmed == "M" {
+                ""
+            } else {
+                trimmed
+            }
+        });
+    if body.is_empty() {
+        return Ok(Vec::new());
+    }
+    let mut indices = Vec::new();
+    for segment in body.split('/') {
+        let cleaned = segment.trim_end_matches('\'').trim_end_matches('h');
+        let raw: u32 = cleaned
+            .parse()
+            .map_err(|_| format!("Invalid derivation path segment: {segment}"))?;
+        if raw & 0x8000_0000 != 0 {
+            return Err(format!("Derivation path segment out of range: {segment}"));
+        }
+        indices.push(raw | 0x8000_0000);
+    }
+    Ok(indices)
+}
+
+/// Walk SLIP-10 hardened child derivation from seed to a 32-byte ed25519 key.
+pub(crate) fn derive_slip10_ed25519_key(
+    seed: &[u8],
+    derivation_path: &str,
+    hmac_key: Option<&str>,
+) -> Result<Zeroizing<[u8; 32]>, String> {
+    let key_bytes = hmac_key
+        .filter(|value| !value.is_empty())
+        .map(|value| value.as_bytes())
+        .unwrap_or(b"ed25519 seed");
+    let master = hmac_sha512(key_bytes, &[seed])?;
+    let mut private_key = Zeroizing::new([0u8; 32]);
+    let mut chain_code = Zeroizing::new([0u8; 32]);
+    private_key.copy_from_slice(&master[..32]);
+    chain_code.copy_from_slice(&master[32..]);
+    for index in parse_slip10_ed25519_path(derivation_path)? {
+        let index_bytes = index.to_be_bytes();
+        let child = hmac_sha512(
+            &*chain_code,
+            &[&[0x00], &*private_key as &[u8], &index_bytes],
+        )?;
+        private_key.copy_from_slice(&child[..32]);
+        chain_code.copy_from_slice(&child[32..]);
+    }
+    Ok(private_key)
 }

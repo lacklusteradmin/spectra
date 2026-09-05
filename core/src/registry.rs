@@ -853,21 +853,15 @@ impl Chain {
     /// Whether this chain's native send needs nothing beyond a destination, an
     /// amount and the fee its preview already supplied.
     ///
-    /// Sixteen of the forty-six mainnets answer yes and share one submit path.
-    /// Of the thirty that do not, twenty-three are EVM chains, which need a
-    /// nonce and gas overrides. The other seven each need something only they
-    /// have — a UTXO selection (Bitcoin, Dogecoin), a resolved source account
-    /// (Internet Computer), a resource model (Tron), a mint account (Solana),
-    /// a view key and a backend (Monero) — except Bittensor, which is here
-    /// without a reason of that kind. Its `SendParams` arm is strictly smaller
-    /// than Polkadot's, which does take the shared path; see "Bittensor is
-    /// excluded from the shared submit path" under Known open items in
-    /// `PLAN.md`.
+    /// The mainnets that answer no are the EVM family, which needs a nonce and
+    /// gas overrides, and five that each need something only they have: a UTXO
+    /// selection (Bitcoin, Dogecoin), a resolved source account (Internet
+    /// Computer), a resource model (Tron) and a mint account (Solana).
     ///
     /// It is a chain fact and it lived as two lists of names in
     /// `AppState+SendExecution`, next to a comment saying the lists should not
-    /// be there. A seventeenth chain reaching the shared path had to be added
-    /// to whichever of the two the author happened to be looking at.
+    /// be there. A chain reaching the shared path had to be added to whichever
+    /// of the two the author happened to be looking at.
     pub fn uses_generic_send_submit(self) -> bool {
         matches!(
             self.mainnet_counterpart(),
@@ -888,6 +882,12 @@ impl Chain {
                 | Chain::Kaspa
                 | Chain::Dash
                 | Chain::Bittensor
+                // Its Swift branch was `submitNativeChainSend` plus
+                // `moneroPriority: 2` — the same default `build_send_params`
+                // already applies with `unwrap_or(2)`, so the branch existed to
+                // pass a value core would have supplied. It has a shared-path
+                // preview like the rest.
+                | Chain::Monero
         )
     }
 
@@ -1995,5 +1995,67 @@ mod fee_decimals_match_the_asset {
             super::Chain::Stellar.send_execution_shape().fee_decimals,
             7
         );
+    }
+}
+
+#[cfg(test)]
+mod the_post_send_refresh_set_is_the_registrys {
+    use super::{Chain, PendingStatusPoll};
+
+    /// After a send, a chain either polls for a pending status or refreshes
+    /// history. Which it does is `pending_status_poll`, and a testnet does what
+    /// its mainnet does.
+    ///
+    /// Swift held `utxoPostSendChains`, a five-name `Set<String>` of the
+    /// mainnets, so a send on any of the seven UTXO testnets took the history
+    /// refresh instead of the pending one. Same shape as the five-name table
+    /// that made address discovery dead on those chains — a hand-written list
+    /// shorter than the registry.
+    #[test]
+    fn every_utxo_testnet_polls_the_way_its_mainnet_does() {
+        let utxo = |c: Chain| matches!(c.pending_status_poll(), PendingStatusPoll::Utxo { .. });
+        for (mainnet, testnets) in [
+            (
+                Chain::Bitcoin,
+                vec![Chain::BitcoinTestnet, Chain::BitcoinTestnet4, Chain::BitcoinSignet],
+            ),
+            (Chain::Litecoin, vec![Chain::LitecoinTestnet]),
+            (Chain::BitcoinCash, vec![Chain::BitcoinCashTestnet]),
+            (Chain::BitcoinSV, vec![Chain::BitcoinSVTestnet]),
+            (Chain::Dogecoin, vec![Chain::DogecoinTestnet]),
+        ] {
+            assert!(utxo(mainnet), "{mainnet:?}");
+            for testnet in testnets {
+                assert!(utxo(testnet), "{testnet:?} must poll like {mainnet:?}");
+            }
+        }
+        assert_eq!(
+            Chain::all().filter(|c| utxo(*c)).count(),
+            12,
+            "five mainnets and seven testnets"
+        );
+    }
+}
+
+#[cfg(test)]
+mod monero_takes_the_shared_submit_path {
+    use super::Chain;
+
+    /// Monero's send is the generic one.
+    ///
+    /// Its Swift branch was four lines — `submitNativeChainSend(...,
+    /// moneroPriority: 2)` — and that `2` is the same default
+    /// `build_send_params` applies with `req.monero_priority.unwrap_or(2)`.
+    /// Two copies of one default, and a branch whose only job was to carry
+    /// one of them.
+    ///
+    /// It has a shared-path preview, which is what the flag needs: without one
+    /// `has_send_preview` would answer through the `!uses_generic_send_submit`
+    /// branch and go false the moment the flag flipped.
+    #[test]
+    fn it_has_the_preview_the_shared_path_needs() {
+        assert!(Chain::Monero.uses_generic_send_submit());
+        assert!(Chain::Monero.simple_preview_chain().is_some());
+        assert!(Chain::Monero.has_send_preview());
     }
 }

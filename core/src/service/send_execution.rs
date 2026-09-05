@@ -822,3 +822,81 @@ mod build_send_params_tests {
         assert!(format!("{err:?}").contains("token.near"));
     }
 }
+
+#[cfg(test)]
+mod the_router_and_the_builder_agree {
+    use crate::registry::Chain;
+    use crate::send::{route_send_asset, SendAssetRoutingInput};
+    use crate::service::WalletService;
+
+    /// A chain the router says can send must be one the builder can build for.
+    ///
+    /// These are two tables consulted in sequence: `route_send_asset` decides
+    /// in the preflight whether a send is offered, and `build_send_params`
+    /// turns the request into a signable shape. Nothing made them agree. A
+    /// chain in the first and missing from the second passes every check the
+    /// UI runs — destination valid, amount affordable, secret present,
+    /// biometrics cleared — and fails at the last step, after the user has
+    /// authorised it.
+    ///
+    /// The send path has no end-to-end coverage: the CLI acceptance run has no
+    /// network and the iOS suite does not broadcast. This is the assertion that
+    /// can be made offline, and it is the one that catches a chain added to one
+    /// table and not the other.
+    #[tokio::test]
+    async fn every_routable_mainnet_builds_send_params() {
+        let service = WalletService::new_typed(Vec::new()).expect("service");
+        let mut unbuildable = Vec::new();
+        let mut checked = 0usize;
+
+        for chain in Chain::mainnets() {
+            let route = route_send_asset(&SendAssetRoutingInput {
+                chain_name: chain.chain_display_name().to_string(),
+                symbol: chain.coin_symbol().to_string(),
+                is_evm_chain: chain.is_evm(),
+                supports_solana_send_coin: chain == Chain::Solana,
+                supports_near_token_send: false,
+            });
+            if route.submit_kind.is_none() {
+                continue;
+            }
+            let request = crate::send::SendExecutionRequest {
+                chain_id: chain.str_id().to_string(),
+                chain_name: chain.chain_display_name().to_string(),
+                derivation_path: String::new(),
+                seed_phrase: None,
+                private_key_hex: None,
+                from_address: "from".to_string(),
+                to_address: "to".to_string(),
+                amount: 1.5,
+                amount_str: None,
+                contract_address: None,
+                token_decimals: None,
+                fee_rate_svb: None,
+                fee_sat: None,
+                gas_budget: None,
+                fee_amount: None,
+                evm_overrides: None,
+                monero_priority: None,
+                derivation_overrides: None,
+            };
+            checked += 1;
+            if let Err(e) = service.build_send_params(chain, &request, "priv", &None).await {
+                unbuildable.push(format!("{} ({e})", chain.chain_display_name()));
+            }
+        }
+
+        assert!(
+            unbuildable.is_empty(),
+            "the router offers these sends and the builder cannot build them: {unbuildable:#?}"
+        );
+        // Not a vacuous pass: every mainnet is routable, so every mainnet was
+        // built. If the router stops offering one, the assertion above would
+        // still hold while checking nothing.
+        assert_eq!(
+            checked,
+            Chain::mainnets().count(),
+            "some mainnet is no longer routable and was skipped here"
+        );
+    }
+}

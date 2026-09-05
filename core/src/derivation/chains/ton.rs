@@ -9,12 +9,10 @@
 //!   v4R2 code hash.
 
 use ed25519_dalek::SigningKey;
-use hmac::{Hmac, Mac};
 use pbkdf2::pbkdf2_hmac;
 use sha2::{Digest, Sha256, Sha512};
 use zeroize::Zeroizing;
 
-type HmacSha512 = Hmac<Sha512>;
 
 // SHA-256 hash of input bytes, returning a fixed 32-byte array.
 fn sha256_bytes(input: &[u8]) -> [u8; 32] {
@@ -24,19 +22,6 @@ fn sha256_bytes(input: &[u8]) -> [u8; 32] {
     let mut buf = [0u8; 32];
     buf.copy_from_slice(&out);
     buf
-}
-
-// HMAC-SHA512 over concatenated chunks; returns a 64-byte Zeroizing buffer.
-fn hmac_sha512(key: &[u8], chunks: &[&[u8]]) -> Result<Zeroizing<[u8; 64]>, String> {
-    let mut mac = HmacSha512::new_from_slice(key)
-        .map_err(|error| format!("Invalid HMAC-SHA512 key: {error}"))?;
-    for chunk in chunks {
-        mac.update(chunk);
-    }
-    let tag = mac.finalize().into_bytes();
-    let mut out = Zeroizing::new([0u8; 64]);
-    out.copy_from_slice(&tag);
-    Ok(out)
 }
 
 // Decode a TON address (raw workchain:hex form or 36-byte base64url user-friendly form) → (workchain, account_id).
@@ -357,6 +342,7 @@ pub(crate) fn derive_ton_standard(
 
 use crate::derivation::types::DerivationResult;
 use crate::SpectraBridgeError;
+use crate::derivation::primitives::{hmac_sha512};
 
 // Shared derivation logic for all TON networks (mainnet and testnet addresses are identical).
 fn ton_internal(

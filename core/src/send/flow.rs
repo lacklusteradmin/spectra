@@ -37,9 +37,18 @@ pub fn is_valid_send_address(
     let Some(kind) = chain_kind(&chain_name) else {
         return false;
     };
+    // Normalized first, because the authoritative path already does.
+    // `AddAddressBookEntry` normalizes and *then* validates, while every
+    // caller of this validated the raw string — and on Sui the two disagree:
+    // a 64-hex address typed without its `0x` prefix is invalid raw and valid
+    // once `AddressNormalization::LowercaseHexPrefixed` has added the prefix.
+    // So the composer refused an address the store would have accepted.
+    //
+    // Answering about the normalized form makes the two orders agree by
+    // construction, and it is the form that gets stored and sent either way.
     validate_address(AddressValidationRequest {
         kind: kind.to_string(),
-        value: address,
+        value: normalize_address(&chain_name, &address),
     })
     .is_valid
 }
@@ -599,26 +608,9 @@ pub fn core_evaluate_high_risk_send_reasons(
     warnings
 }
 
-// ── Merged from flow_helpers.rs ───────────────────────────────────
+// ── Chain predicates ──────────────────────────────────────────────
 
 use crate::SpectraBridgeError;
-
-/// Snake-cased chain identifier for EVM chains; empty string for everything
-/// else. Swift maps the result onto its `EVMChainContext` enum.
-///
-/// Each testnet is its own chain row, so `ethereum_network_mode` is retained
-/// only for FFI back-compat — `chain_name` alone identifies the network.
-///
-/// Derived from `Chain::str_id()` rather than transcribed, so it cannot fall
-/// behind the registry.
-/// Internal: its Swift wrapper had no caller.
-pub fn core_evm_chain_context_tag(chain_name: String, ethereum_network_mode: String) -> String {
-    let _ = ethereum_network_mode; // legacy argument, ignored
-    Chain::from_display_name(&chain_name)
-        .filter(|chain| chain.is_evm())
-        .map(|chain| chain.str_id().replace('-', "_"))
-        .unwrap_or_default()
-}
 
 /// Not exported: a column of `core_chain_identities` now.
 pub fn core_is_evm_chain(chain_name: String) -> bool {
@@ -1088,61 +1080,6 @@ pub fn core_evm_replacement_fee_bump(
 mod flow_helpers_tests {
     use super::*;
 
-    /// Every tag the hand-written table used to emit, pinned. Regenerating
-    /// these from `str_id` must not change a single existing value — Swift
-    /// switches on these strings.
-    #[test]
-    fn evm_context_tags_match_the_legacy_table() {
-        for (chain_name, expected) in [
-            ("Ethereum", "ethereum"),
-            ("Ethereum Sepolia", "ethereum_sepolia"),
-            ("Ethereum Hoodi", "ethereum_hoodi"),
-            ("Ethereum Classic", "ethereum_classic"),
-            ("Ethereum Classic Mordor", "ethereum_classic_mordor"),
-            ("Arbitrum", "arbitrum"),
-            ("Arbitrum Sepolia", "arbitrum_sepolia"),
-            ("Optimism", "optimism"),
-            ("Optimism Sepolia", "optimism_sepolia"),
-            ("Base Sepolia", "base_sepolia"),
-            ("BNB Chain", "bnb"),
-            ("BNB Chain Testnet", "bnb_testnet"),
-            ("Avalanche", "avalanche"),
-            ("Avalanche Fuji", "avalanche_fuji"),
-            ("Polygon Amoy", "polygon_amoy"),
-            ("Hyperliquid", "hyperliquid"),
-            ("Hyperliquid Testnet", "hyperliquid_testnet"),
-        ] {
-            assert_eq!(
-                core_evm_chain_context_tag(chain_name.to_string(), String::new()),
-                expected,
-                "{chain_name} tag changed"
-            );
-        }
-        // Non-EVM stays empty.
-        assert!(core_evm_chain_context_tag("Bitcoin".to_string(), String::new()).is_empty());
-        assert!(core_evm_chain_context_tag("Nope".to_string(), String::new()).is_empty());
-    }
-
-    /// The mainnets the old table skipped. Swift already has
-    /// `EVMChainContext` cases for these tags; Rust simply never produced them.
-    #[test]
-    fn evm_mainnets_the_legacy_table_skipped_now_produce_tags() {
-        for (chain_name, expected) in [
-            ("Base", "base"),
-            ("Polygon", "polygon"),
-            ("Linea", "linea"),
-            ("Scroll", "scroll"),
-            ("Blast", "blast"),
-            ("Mantle", "mantle"),
-        ] {
-            assert_eq!(
-                core_evm_chain_context_tag(chain_name.to_string(), String::new()),
-                expected
-            );
-            assert!(core_is_evm_chain(chain_name.to_string()), "{chain_name}");
-        }
-    }
-
     /// `chain_kind` used to carry its own display-name table, and that table
     /// omitted 22 mainnet chains — Base, Polygon, Zcash, Kaspa, Dash and the
     /// newer EVM rollups among them. `chain_kind` returned `None` for each, so
@@ -1196,29 +1133,6 @@ mod flow_helpers_tests {
         // Still rejects what it should.
         assert_eq!(chain_kind("Not A Chain"), None);
         assert!(!is_valid_send_address("Polygon".to_string(), "not-an-address".to_string()));
-    }
-
-    #[test]
-    fn evm_chain_context_ethereum_sepolia() {
-        // After the testnet-as-separate-chain migration, Sepolia is its own
-        // chain row. The legacy `network_mode` argument is preserved for
-        // FFI back-compat but no longer used.
-        assert_eq!(
-            core_evm_chain_context_tag("Ethereum Sepolia".to_string(), String::new()),
-            "ethereum_sepolia"
-        );
-        assert_eq!(
-            core_evm_chain_context_tag("Ethereum".to_string(), "ignored".to_string()),
-            "ethereum"
-        );
-    }
-
-    #[test]
-    fn evm_chain_context_non_evm() {
-        assert_eq!(
-            core_evm_chain_context_tag("Bitcoin".to_string(), "mainnet".to_string()),
-            ""
-        );
     }
 
     #[test]
@@ -1420,4 +1334,51 @@ pub fn extra_output_overhead_bytes(chain_name: String, destination: String) -> u
     crate::registry::Chain::from_display_name(&chain_name)
         .map(|c| c.extra_output_overhead_bytes(&destination))
         .unwrap_or(0)
+}
+
+#[cfg(test)]
+mod validating_and_normalising_cannot_disagree {
+    use super::{is_valid_send_address, normalize_address};
+    use crate::registry::Chain;
+
+    /// The order a caller happens to use must not change the answer.
+    ///
+    /// `AddAddressBookEntry` normalizes and then validates; every Swift caller
+    /// validated the raw string. On Sui those disagreed — a 64-hex address
+    /// typed without its `0x` prefix is invalid raw and valid once
+    /// `LowercaseHexPrefixed` has added the prefix — so the composer and the
+    /// address book refused what the store would have accepted.
+    #[test]
+    fn a_sui_address_without_its_prefix_is_accepted_either_way() {
+        let bare = "1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef";
+        let normalized = normalize_address("Sui", bare);
+        assert!(normalized.starts_with("0x"), "{normalized}");
+        assert!(is_valid_send_address("Sui".into(), bare.to_string()));
+        assert!(is_valid_send_address("Sui".into(), normalized));
+    }
+
+    /// Every chain, both orders, one answer. Whitespace and case are part of
+    /// what normalizing settles, so they are in the input here.
+    #[test]
+    fn no_chain_answers_differently_before_and_after_normalising() {
+        for chain in Chain::mainnets() {
+            let name = chain.chain_display_name().to_string();
+            for sample in [
+                "  0x742d35Cc6634C0532925a3b844Bc454e4438f44e  ",
+                "1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef",
+                "not-an-address",
+                "",
+            ] {
+                let direct = is_valid_send_address(name.clone(), sample.to_string());
+                let after = is_valid_send_address(
+                    name.clone(),
+                    normalize_address(&name, sample),
+                );
+                assert_eq!(
+                    direct, after,
+                    "{name} answers {direct} for {sample:?} and {after} once normalized"
+                );
+            }
+        }
+    }
 }

@@ -178,10 +178,10 @@ impl BalanceRefreshEngine {
             let obs = inner.observer.read().unwrap().clone();
 
             // Fan out balance fetches with bounded concurrency (up to 8 in flight).
-            // Rust fetches the native balance from the network, then constructs a
-            // minimal WalletSummary (one holding) from the coin template and the
-            // fetched amount. Swift owns the authoritative wallet model and applies
-            // the update via its merge logic — Rust no longer mirrors wallet state.
+            // Fetch the native balance, then build a minimal WalletSummary (one
+            // holding) from the coin template and the fetched amount. The observer
+            // carries it to the front end, which merges it into the holding rather
+            // than replacing the wallet: this summary knows only the native asset.
             let ws = Arc::clone(&inner.wallet_service);
             let results: Vec<Result<(String, String, WalletSummary), ()>> = stream::iter(entries)
                 .map(|entry| {

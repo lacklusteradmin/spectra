@@ -76,13 +76,26 @@ attribute is not optional.
 
 **An exported function's callers are not in the Rust tree.** Grep `core/` and
 `cli/` for a `#[uniffi::export]` function and you can get zero hits while the
-iOS app calls it on the funds path. `prepare_evm_send_assembly` reads exactly
-that way — its only caller is `AppState+SendPreview.swift`. Two consequences,
-and both have been paid: it is not dead, so do not delete it on a Rust-only
-grep; and nothing in `cargo test` or `cli-acceptance.sh` exercises it, so
-whatever is inside it can be wrong indefinitely with three green suites. Before
-concluding an export is dead, grep `swift/` for its **camelCase** name — the
-generated bindings rename it, so the Rust spelling finds nothing.
+iOS app calls it on the funds path. Two consequences, and both have been paid.
+
+*It is not dead.* Before concluding an export is unused, grep `swift/` for its
+**camelCase** name — the generated bindings rename it, so the Rust spelling
+finds nothing. Also check for `#[uniffi::export(with_foreign)]` traits: Swift
+*implements* those and Rust calls them, so even the camelCase name appears only
+as a protocol conformance.
+
+*It may have no coverage at all.* Seventy-two exports currently have no caller
+in `core/` or `cli/` outside tests, and about half of those are not reached by
+a Rust test either — `core_ethereum_custom_fee_validation` parses and compares
+two EIP-1559 fee fields on the funds path with nothing but the iOS app calling
+it. Whatever is inside one of those can be wrong indefinitely with three green
+suites.
+
+The remedy is a CLI command, not a mock. `prepare_evm_send_assembly` was the
+worst case here — sixteen EVM mainnets could not assemble at all and two
+assembled the wrong asset, invisibly — until `spectra tx assemble` gave it a
+caller the gates can run. It is a pure function over its arguments, so the
+command needs no key, no network and no store.
 
 **Spawned work is invisible to a short-lived caller.** `trigger_immediate` on
 the refresh engine spawns and returns; a CLI process exits before the callbacks

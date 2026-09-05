@@ -35,8 +35,7 @@ struct TomlWikiAsset {
     total_circulation_model: String,
 }
 
-/// The prose, keyed by coin symbol. It used to be loaded in `chains.rs`, so
-/// this module had to call back into the chain module for its own data.
+/// The prose, keyed by coin symbol.
 static PROSE: LazyLock<Vec<TomlWikiAsset>> = LazyLock::new(|| {
     let parsed: TomlAssetWikiFile = toml::from_str(CRYPTO_WIKI_TOML)
         .expect("crypto-wiki.toml is embedded at compile time and must be valid TOML");

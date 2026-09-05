@@ -840,8 +840,8 @@ impl WalletService {
 
     // ── Typed send-preview wrappers (fuse fetch + decode in Rust)
 
-    // `fetch_evm_address_probe` lives in the plain-impl block below: with
-    // `send_destination_risk` asking it, Swift no longer does.
+    // `fetch_evm_address_probe` lives in the plain-impl block below —
+    // `send_destination_risk` is its only caller.
 
     // ── UTXO tx status
 

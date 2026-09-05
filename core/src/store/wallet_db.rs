@@ -413,7 +413,6 @@ pub fn address_load_all(
     })
 }
 
-/// Load ALL owned address records across all wallets and chains.
 /// Used at startup to bulk-restore the in-memory map.
 pub fn address_load_all_chains(db_path: &str) -> Result<Vec<OwnedAddressRecord>, String> {
     with_conn(db_path, |conn| {
@@ -829,7 +828,6 @@ pub fn wallet_upsert(db_path: &str, wallet: &WalletSummary) -> Result<(), String
     })
 }
 
-/// Load one wallet by id.
 pub fn wallet_load(db_path: &str, wallet_id: &str) -> Result<Option<WalletSummary>, String> {
     with_conn(db_path, |conn| {
         let result = conn.query_row(

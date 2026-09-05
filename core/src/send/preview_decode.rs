@@ -1,10 +1,10 @@
-// Send-preview decoders for the 17 non-EVM chains.
+// Send-preview decoders for the non-EVM chains: a provider's JSON in, a typed
+// preview record out.
 //
-// Pure-logic: Swift fetches JSON over HTTP and hands it here; Rust parses and
-// returns a typed decoded record. Mirrors ethereum_send.rs but for each of:
-// Bitcoin / BCH / BSV / Litecoin (shared UTXO), Bitcoin HD (xpub),
-// Dogecoin, Tron, and the 11 simple-fee chains
-// (Solana / XRP / Stellar / Monero / Cardano / Sui / Aptos / TON / ICP / NEAR / Polkadot).
+// Four shapes — the shared UTXO one (Bitcoin, BCH, BSV, Litecoin), Bitcoin's
+// xpub variant, Dogecoin and Tron — plus the shared simple-fee path, whose
+// members are `SimpleChain` below and `Chain::simple_preview_chain` in the
+// registry.
 
 use serde::{Deserialize, Serialize};
 
@@ -376,15 +376,10 @@ pub fn decode_simple_send_preview(json: String) -> SimpleSendPreview {
     }
 }
 
-// Per-chain default fee constants (surfaced to Swift so both sides share one source).
-// When the preview JSON omits fee_raw, callers fall back to these.
-
 /// Which decode shape a shared-path preview comes back in.
 ///
-/// No longer exported: it stopped crossing the boundary when
-/// `fetch_simple_chain_send_preview_typed` started deriving it from the chain
-/// id it was already given. `Chain::simple_preview_chain` is the one place that
-/// answers it.
+/// `Chain::simple_preview_chain` is the one place that answers it; this does
+/// not cross the FFI.
 #[derive(Debug, Clone, Copy, Serialize, Deserialize)]
 pub enum SimpleChain {
     Solana,

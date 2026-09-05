@@ -412,12 +412,12 @@ pub fn send(ctx: &Ctx, out: Out, args: SendArgs) -> CliResult<()> {
 
 /// Build the transaction an EVM send would sign, and print it.
 ///
-/// This is the one funds-path rule the CLI could not reach. `is_supported_evm_chain`
-/// named seven chains and `is_native_evm_asset` listed nine `(chain, symbol)`
-/// pairs, two of which named a governance token — sixteen EVM mainnets could
-/// not assemble at all, and ARB and OP assembled as the gas asset. Both are
-/// fixed and both were invisible here, because the only caller of
-/// `prepare_evm_send_assembly` is the iOS send sheet.
+/// This exists because `prepare_evm_send_assembly` had only one caller — the
+/// iOS send sheet — so no suite could see it. `is_supported_evm_chain` named
+/// seven chains and `is_native_evm_asset` listed nine `(chain, symbol)` pairs,
+/// two of which named a governance token: sixteen EVM mainnets could not
+/// assemble at all, and ARB and OP assembled as the gas asset. Both were fixed
+/// and neither was visible from a green suite until this command existed.
 ///
 /// No key, no network and no store: this is a pure function over its
 /// arguments, so it runs against an empty data directory.

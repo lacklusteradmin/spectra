@@ -6,10 +6,8 @@
 //!   prepend 0x41                                  → 21-byte payload
 //!   base58check (default alphabet)                → "T…" address
 
-use crate::derivation::primitives::{derive_bip39_seed, parse_bip32_path, HARDENED_OFFSET};
-use hmac::{Hmac, Mac};
-use secp256k1::{All, PublicKey, Scalar, Secp256k1, SecretKey};
-use sha2::Sha512;
+use crate::derivation::primitives::{derive_bip39_seed, parse_bip32_path};
+use secp256k1::{PublicKey, Secp256k1};
 
 // ── Address validation + helpers (preserved) ─────────────────────────────
 
@@ -46,68 +44,6 @@ fn keccak256(data: &[u8]) -> [u8; 32] {
     Keccak256::digest(data).into()
 }
 
-type HmacSha512 = Hmac<Sha512>;
-
-#[derive(Clone)]
-struct ExtendedPrivateKey {
-    private_key: SecretKey,
-    chain_code: [u8; 32],
-}
-
-impl ExtendedPrivateKey {
-    // Derive BIP-32 master key: HMAC-SHA512(hmac_key, seed) → private key (IL) + chain code (IR).
-    fn master_from_seed(hmac_key: &[u8], seed: &[u8]) -> Result<Self, String> {
-        let mut mac =
-            HmacSha512::new_from_slice(hmac_key).map_err(|e| format!("HMAC init: {e}"))?;
-        mac.update(seed);
-        let tag = mac.finalize().into_bytes();
-        let private_key =
-            SecretKey::from_slice(&tag[..32]).map_err(|e| format!("Master key invalid: {e}"))?;
-        let mut chain_code = [0u8; 32];
-        chain_code.copy_from_slice(&tag[32..]);
-        Ok(Self {
-            private_key,
-            chain_code,
-        })
-    }
-
-    // Derive a BIP-32 child key; hardened indices use private key as input, non-hardened use public key.
-    fn derive_child(&self, secp: &Secp256k1<All>, index: u32) -> Result<Self, String> {
-        let mut mac =
-            HmacSha512::new_from_slice(&self.chain_code).map_err(|e| format!("HMAC init: {e}"))?;
-        if index >= HARDENED_OFFSET {
-            mac.update(&[0x00]);
-            mac.update(&self.private_key.secret_bytes());
-        } else {
-            let pk = PublicKey::from_secret_key(secp, &self.private_key);
-            mac.update(&pk.serialize());
-        }
-        mac.update(&index.to_be_bytes());
-        let tag = mac.finalize().into_bytes();
-        let tweak =
-            Scalar::from_be_bytes(tag[..32].try_into().map_err(|_| "tag slice".to_string())?)
-                .map_err(|_| "BIP-32 IL out of range".to_string())?;
-        let private_key = self
-            .private_key
-            .add_tweak(&tweak)
-            .map_err(|e| format!("BIP-32 tweak failed: {e}"))?;
-        let mut chain_code = [0u8; 32];
-        chain_code.copy_from_slice(&tag[32..]);
-        Ok(Self {
-            private_key,
-            chain_code,
-        })
-    }
-
-    // Walk the full BIP-32 derivation path by applying derive_child for each index.
-    fn derive_path(&self, secp: &Secp256k1<All>, path: &[u32]) -> Result<Self, String> {
-        let mut key = self.clone();
-        for &index in path {
-            key = key.derive_child(secp, index)?;
-        }
-        Ok(key)
-    }
-}
 
 // Derive Tron address, public key, and private key from a mnemonic via BIP-39 + BIP-32 secp256k1.
 pub(crate) fn derive_from_seed_phrase(
@@ -147,6 +83,7 @@ pub(crate) fn derive_from_seed_phrase(
 
 use crate::derivation::types::{parse_path_metadata, DerivationResult};
 use crate::SpectraBridgeError;
+use crate::derivation::primitives::ExtendedPrivateKey;
 
 // Shared derivation logic for all Tron networks.
 fn tron_internal(

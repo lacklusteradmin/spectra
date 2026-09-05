@@ -1,90 +1,14 @@
 //! Internet Computer (ICP): address validation, BIP-39 + SLIP-10 ed25519
 //! derivation, double-SHA-256 address encoding
 //!
-//! Derived address: `hex(sha256(sha256(pubkey || "icp")))`. Note: the
-//! `pubkey_der_to_icp_address` watch-only encoder below is preserved for
-//! callers that already have a DER-encoded secp256k1 public key on hand —
-//! the seed-phrase path uses the simpler ed25519-pubkey scheme above.
+//! Derived address: `hex(sha256(sha256(pubkey || "icp")))`.
 
 use crate::derivation::primitives::derive_bip39_seed;
 use ed25519_dalek::SigningKey;
-use hmac::{Hmac, Mac};
-use sha2::{Digest, Sha256, Sha512};
-use zeroize::Zeroizing;
+use sha2::{Digest, Sha256};
 
-type HmacSha512 = Hmac<Sha512>;
 
 // ── SLIP-10 ed25519 ──────────────────────────────────────────────────────
-
-// HMAC-SHA512 over concatenated chunks; returns a 64-byte Zeroizing buffer.
-fn hmac_sha512(key: &[u8], chunks: &[&[u8]]) -> Result<Zeroizing<[u8; 64]>, String> {
-    let mut mac = HmacSha512::new_from_slice(key)
-        .map_err(|error| format!("Invalid HMAC-SHA512 key: {error}"))?;
-    for chunk in chunks {
-        mac.update(chunk);
-    }
-    let tag = mac.finalize().into_bytes();
-    let mut out = Zeroizing::new([0u8; 64]);
-    out.copy_from_slice(&tag);
-    Ok(out)
-}
-
-// Parse a SLIP-10 derivation path and force every segment to hardened.
-fn parse_slip10_ed25519_path(path: &str) -> Result<Vec<u32>, String> {
-    let trimmed = path.trim();
-    let body = trimmed
-        .strip_prefix("m/")
-        .or_else(|| trimmed.strip_prefix("M/"))
-        .unwrap_or_else(|| {
-            if trimmed == "m" || trimmed == "M" {
-                ""
-            } else {
-                trimmed
-            }
-        });
-    if body.is_empty() {
-        return Ok(Vec::new());
-    }
-    let mut indices = Vec::new();
-    for segment in body.split('/') {
-        let cleaned = segment.trim_end_matches('\'').trim_end_matches('h');
-        let raw: u32 = cleaned
-            .parse()
-            .map_err(|_| format!("Invalid derivation path segment: {segment}"))?;
-        if raw & 0x8000_0000 != 0 {
-            return Err(format!("Derivation path segment out of range: {segment}"));
-        }
-        indices.push(raw | 0x8000_0000);
-    }
-    Ok(indices)
-}
-
-// Walk SLIP-10 hardened child derivation from seed to produce a 32-byte ed25519 private key.
-fn derive_slip10_ed25519_key(
-    seed: &[u8],
-    derivation_path: &str,
-    hmac_key: Option<&str>,
-) -> Result<Zeroizing<[u8; 32]>, String> {
-    let key_bytes = hmac_key
-        .filter(|value| !value.is_empty())
-        .map(|value| value.as_bytes())
-        .unwrap_or(b"ed25519 seed");
-    let master = hmac_sha512(key_bytes, &[seed])?;
-    let mut private_key = Zeroizing::new([0u8; 32]);
-    let mut chain_code = Zeroizing::new([0u8; 32]);
-    private_key.copy_from_slice(&master[..32]);
-    chain_code.copy_from_slice(&master[32..]);
-    for index in parse_slip10_ed25519_path(derivation_path)? {
-        let index_bytes = index.to_be_bytes();
-        let child = hmac_sha512(
-            &*chain_code,
-            &[&[0x00], &*private_key as &[u8], &index_bytes],
-        )?;
-        private_key.copy_from_slice(&child[..32]);
-        chain_code.copy_from_slice(&child[32..]);
-    }
-    Ok(private_key)
-}
 
 // SHA-256 of the input; a helper to avoid repeated Sha256::new() boilerplate.
 fn sha256_bytes(input: &[u8]) -> [u8; 32] {
@@ -131,6 +55,7 @@ pub(crate) fn derive_from_seed_phrase(
 
 use crate::derivation::types::{parse_path_metadata, DerivationResult};
 use crate::SpectraBridgeError;
+use crate::derivation::primitives::derive_slip10_ed25519_key;
 
 /// UniFFI export: derive Internet Computer keys from a BIP-39 seed phrase.
 pub fn derive_icp(

@@ -17,10 +17,6 @@
 //! Address encoding uses Monero's chunked Base58 with the chain-specific
 //! network byte (0x12 = mainnet, 0x18 = stagenet).
 
-use bip39::{Language, Mnemonic};
-use pbkdf2::pbkdf2_hmac;
-use sha2::Sha512;
-use unicode_normalization::UnicodeNormalization;
 use zeroize::Zeroizing;
 
 // ── Monero Electrum 25-word seed ─────────────────────────────────────────
@@ -1806,67 +1802,6 @@ pub(crate) fn monero_base58_encode(data: &[u8]) -> String {
     out
 }
 
-// Map locale string ("en", "zh-cn", etc.) to BIP-39 wordlist; defaults to English.
-fn resolve_bip39_language(name: Option<&str>) -> Result<Language, String> {
-    let value = match name {
-        Some(value) if !value.trim().is_empty() => value.trim().to_ascii_lowercase(),
-        _ => return Ok(Language::English),
-    };
-    match value.as_str() {
-        "english" | "en" => Ok(Language::English),
-        "czech" | "cs" => Ok(Language::Czech),
-        "french" | "fr" => Ok(Language::French),
-        "italian" | "it" => Ok(Language::Italian),
-        "japanese" | "ja" | "jp" => Ok(Language::Japanese),
-        "korean" | "ko" | "kr" => Ok(Language::Korean),
-        "portuguese" | "pt" => Ok(Language::Portuguese),
-        "spanish" | "es" => Ok(Language::Spanish),
-        "simplified-chinese" | "chinese-simplified" | "simplified_chinese" | "zh-hans"
-        | "zh-cn" | "zh" => Ok(Language::SimplifiedChinese),
-        "traditional-chinese"
-        | "chinese-traditional"
-        | "traditional_chinese"
-        | "zh-hant"
-        | "zh-tw" => Ok(Language::TraditionalChinese),
-        other => Err(format!("Unsupported mnemonic wordlist: {other}")),
-    }
-}
-
-// BIP-39 mnemonic → 64-byte seed via NFKD normalization and PBKDF2-HMAC-SHA512.
-fn derive_bip39_seed(
-    seed_phrase: &str,
-    passphrase: &str,
-    iteration_count: u32,
-    mnemonic_wordlist: Option<&str>,
-    salt_prefix: Option<&str>,
-) -> Result<Zeroizing<[u8; 64]>, String> {
-    let language = resolve_bip39_language(mnemonic_wordlist)?;
-    let mnemonic =
-        Mnemonic::parse_in_normalized(language, seed_phrase).map_err(|e| e.to_string())?;
-    let iterations = if iteration_count == 0 {
-        2048
-    } else {
-        iteration_count
-    };
-    let prefix = salt_prefix.unwrap_or("mnemonic");
-    let normalized_mnemonic = Zeroizing::new(mnemonic.to_string().nfkd().collect::<String>());
-    let normalized_passphrase = Zeroizing::new(passphrase.nfkd().collect::<String>());
-    let normalized_prefix = Zeroizing::new(prefix.nfkd().collect::<String>());
-    let salt = Zeroizing::new(format!(
-        "{}{}",
-        normalized_prefix.as_str(),
-        normalized_passphrase.as_str()
-    ));
-    let mut seed = Zeroizing::new([0u8; 64]);
-    pbkdf2_hmac::<Sha512>(
-        normalized_mnemonic.as_bytes(),
-        salt.as_bytes(),
-        iterations,
-        &mut *seed,
-    );
-    Ok(seed)
-}
-
 /// Dispatch on word count: 25 words → Monero Electrum (no PBKDF2), otherwise BIP-39.
 pub(crate) fn derive_from_seed_phrase(
     is_mainnet: bool,
@@ -1922,6 +1857,7 @@ pub(crate) fn derive_from_seed_phrase(
 
 use crate::derivation::types::DerivationResult;
 use crate::SpectraBridgeError;
+use crate::derivation::primitives::derive_bip39_seed;
 
 /// UniFFI export: derive Monero mainnet keys from a BIP-39 seed phrase.
 pub fn derive_monero(

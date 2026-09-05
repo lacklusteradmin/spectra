@@ -662,7 +662,7 @@ pub fn core_endpoint_role_mask(roles: Vec<String>) -> u32 {
         .fold(0u32, |mask, role| mask | endpoint_role_bit(role))
 }
 
-// ── Merged from app_core_derivation_paths.rs ──────────────────────
+// ── Derivation paths ──────────────────────────────────────────────
 
 pub(crate) fn parse_derivation_path(raw_path: &str) -> Option<Vec<DerivationPathSegment>> {
     let trimmed = raw_path.trim();
@@ -870,9 +870,8 @@ pub fn core_derivation_path_string(segments: Vec<DerivationPathSegment>) -> Stri
 }
 
 
-/// No longer on the FFI: its only Swift caller was
-/// `AppState.utxoDiscoveryDerivationPath`, and address derivation moved into
-/// `WalletService::discover_utxo_addresses`. Core still builds paths with it.
+/// A discovery path: the chain's default path with its last two segments
+/// replaced by branch and index.
 pub(crate) fn core_derivation_path_replacing_last_two(
     raw_path: String,
     branch: u32,
@@ -898,8 +897,7 @@ pub(crate) fn core_derivation_path_replacing_last_two(
     derivation_path_string(&segments)
 }
 
-// ── Merged from app_core_registry_data.rs ─────────────────────────
-
+// ── Registry-backed catalog lookups ───────────────────────────────
 
 pub(super) fn broadcast_provider_options(chain_name: &str) -> Vec<AppCoreBroadcastProviderOption> {
     let resolved = crate::registry::Chain::from_display_name(chain_name)

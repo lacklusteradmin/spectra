@@ -170,7 +170,6 @@ mod tests {
         serde_json::from_str(&json).expect("a persisted record")
     }
 
-    /// Writes land in the database the service was opened on.
     #[tokio::test]
     async fn records_land_in_the_database_the_service_was_opened_on() {
         let service = WalletService::new_typed(Vec::new()).expect("service");

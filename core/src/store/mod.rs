@@ -11,9 +11,7 @@ pub mod wallet_db;
 pub mod wallet_domain;
 pub mod wallet_secrets;
 
-pub use chain_aliases::{
-    core_canonical_chain_component, core_icon_identifier, core_normalized_icon_identifier,
-};
+pub use chain_aliases::{core_canonical_chain_component, core_icon_asset_name, core_icon_identifier};
 
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
@@ -955,8 +953,8 @@ pub fn plan_transaction_status_poll_failure(
     tracker
 }
 
-/// No longer crosses the boundary: core reads its own transactions to build
-/// these, so the caller does not hand them over.
+/// Core reads its own transactions to build these; the caller hands over
+/// nothing.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(rename_all = "camelCase")]
 pub struct StalePendingFailureTransactionInput {

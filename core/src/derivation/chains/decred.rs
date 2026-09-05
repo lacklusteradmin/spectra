@@ -9,14 +9,9 @@
 //! Mainnet P2PKH addresses use the 2-byte version prefix `0x073F` (the
 //! `Ds…` family). Testnet (`Ts…`) and simnet are out of scope.
 
-use bip39::{Language, Mnemonic};
-use hmac::{Hmac, Mac};
-use pbkdf2::pbkdf2_hmac;
 use ripemd::{Digest as RipemdDigest, Ripemd160};
-use secp256k1::{All, PublicKey, Scalar, Secp256k1, SecretKey};
-use sha2::Sha512;
-use unicode_normalization::UnicodeNormalization;
-use zeroize::Zeroizing;
+use secp256k1::{PublicKey, Secp256k1, SecretKey};
+use crate::derivation::primitives::derive_bip39_seed;
 
 pub(crate) const DCR_P2PKH_VERSION: [u8; 2] = [0x07, 0x3F];
 pub(crate) const DCR_P2SH_VERSION: [u8; 2] = [0x07, 0x1A];
@@ -300,68 +295,6 @@ pub fn validate_decred_address(address: &str, testnet: bool) -> bool {
 
 // ── BIP-39 ───────────────────────────────────────────────────────────────
 
-type HmacSha512 = Hmac<Sha512>;
-
-// Map locale string ("en", "zh-cn", etc.) to BIP-39 wordlist; defaults to English.
-fn resolve_bip39_language(name: Option<&str>) -> Result<Language, String> {
-    let value = match name {
-        Some(value) if !value.trim().is_empty() => value.trim().to_ascii_lowercase(),
-        _ => return Ok(Language::English),
-    };
-    match value.as_str() {
-        "english" | "en" => Ok(Language::English),
-        "czech" | "cs" => Ok(Language::Czech),
-        "french" | "fr" => Ok(Language::French),
-        "italian" | "it" => Ok(Language::Italian),
-        "japanese" | "ja" | "jp" => Ok(Language::Japanese),
-        "korean" | "ko" | "kr" => Ok(Language::Korean),
-        "portuguese" | "pt" => Ok(Language::Portuguese),
-        "spanish" | "es" => Ok(Language::Spanish),
-        "simplified-chinese" | "chinese-simplified" | "simplified_chinese" | "zh-hans"
-        | "zh-cn" | "zh" => Ok(Language::SimplifiedChinese),
-        "traditional-chinese"
-        | "chinese-traditional"
-        | "traditional_chinese"
-        | "zh-hant"
-        | "zh-tw" => Ok(Language::TraditionalChinese),
-        other => Err(format!("Unsupported mnemonic wordlist: {other}")),
-    }
-}
-
-// BIP-39 mnemonic → 64-byte seed via NFKD normalization and PBKDF2-HMAC-SHA512.
-fn derive_bip39_seed(
-    seed_phrase: &str,
-    passphrase: &str,
-    iteration_count: u32,
-    mnemonic_wordlist: Option<&str>,
-    salt_prefix: Option<&str>,
-) -> Result<Zeroizing<[u8; 64]>, String> {
-    let language = resolve_bip39_language(mnemonic_wordlist)?;
-    let mnemonic =
-        Mnemonic::parse_in_normalized(language, seed_phrase).map_err(|e| e.to_string())?;
-    let iterations = if iteration_count == 0 {
-        2048
-    } else {
-        iteration_count
-    };
-    let prefix = salt_prefix.unwrap_or("mnemonic");
-    let normalized_mnemonic = Zeroizing::new(mnemonic.to_string().nfkd().collect::<String>());
-    let normalized_passphrase = Zeroizing::new(passphrase.nfkd().collect::<String>());
-    let normalized_prefix = Zeroizing::new(prefix.nfkd().collect::<String>());
-    let salt = Zeroizing::new(format!(
-        "{}{}",
-        normalized_prefix.as_str(),
-        normalized_passphrase.as_str()
-    ));
-    let mut seed = Zeroizing::new([0u8; 64]);
-    pbkdf2_hmac::<Sha512>(
-        normalized_mnemonic.as_bytes(),
-        salt.as_bytes(),
-        iterations,
-        &mut *seed,
-    );
-    Ok(seed)
-}
 
 // ── BIP-32 ───────────────────────────────────────────────────────────────
 
@@ -394,67 +327,6 @@ fn parse_bip32_path(path: &str) -> Result<Vec<u32>, String> {
         out.push(if hardened { raw | HARDENED_OFFSET } else { raw });
     }
     Ok(out)
-}
-
-#[derive(Clone)]
-struct ExtendedPrivateKey {
-    private_key: SecretKey,
-    chain_code: [u8; 32],
-}
-
-impl ExtendedPrivateKey {
-    // Derive BIP-32 master key: HMAC-SHA512(hmac_key, seed) → private key (IL) + chain code (IR).
-    fn master_from_seed(hmac_key: &[u8], seed: &[u8]) -> Result<Self, String> {
-        let mut mac =
-            HmacSha512::new_from_slice(hmac_key).map_err(|e| format!("HMAC init: {e}"))?;
-        mac.update(seed);
-        let tag = mac.finalize().into_bytes();
-        let private_key =
-            SecretKey::from_slice(&tag[..32]).map_err(|e| format!("Master key invalid: {e}"))?;
-        let mut chain_code = [0u8; 32];
-        chain_code.copy_from_slice(&tag[32..]);
-        Ok(Self {
-            private_key,
-            chain_code,
-        })
-    }
-
-    // Derive a BIP-32 child key; hardened indices use private key as input, non-hardened use public key.
-    fn derive_child(&self, secp: &Secp256k1<All>, index: u32) -> Result<Self, String> {
-        let mut mac =
-            HmacSha512::new_from_slice(&self.chain_code).map_err(|e| format!("HMAC init: {e}"))?;
-        if index >= HARDENED_OFFSET {
-            mac.update(&[0x00]);
-            mac.update(&self.private_key.secret_bytes());
-        } else {
-            let pk = PublicKey::from_secret_key(secp, &self.private_key);
-            mac.update(&pk.serialize());
-        }
-        mac.update(&index.to_be_bytes());
-        let tag = mac.finalize().into_bytes();
-        let tweak =
-            Scalar::from_be_bytes(tag[..32].try_into().map_err(|_| "tag slice".to_string())?)
-                .map_err(|_| "BIP-32 IL out of range".to_string())?;
-        let private_key = self
-            .private_key
-            .add_tweak(&tweak)
-            .map_err(|e| format!("BIP-32 tweak failed: {e}"))?;
-        let mut chain_code = [0u8; 32];
-        chain_code.copy_from_slice(&tag[32..]);
-        Ok(Self {
-            private_key,
-            chain_code,
-        })
-    }
-
-    // Walk the full BIP-32 derivation path by applying derive_child for each index.
-    fn derive_path(&self, secp: &Secp256k1<All>, path: &[u32]) -> Result<Self, String> {
-        let mut key = self.clone();
-        for &index in path {
-            key = key.derive_child(secp, index)?;
-        }
-        Ok(key)
-    }
 }
 
 // BIP-39 → BIP-32 path walk → (compressed secp256k1 pubkey, raw 32-byte private key).
@@ -524,6 +396,7 @@ pub(crate) fn derive_from_seed_phrase_testnet(
 
 use crate::derivation::types::{parse_path_metadata, DerivationResult};
 use crate::SpectraBridgeError;
+use crate::derivation::primitives::ExtendedPrivateKey;
 
 /// Derive Decred mainnet wallet (Ds… P2PKH address) from a seed phrase.
 pub fn derive_decred(

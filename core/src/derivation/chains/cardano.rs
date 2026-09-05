@@ -10,11 +10,11 @@
 //!   payment key hash) bech32-encoded under HRP `addr` (mainnet) or
 //!   `addr_test` (Cardano Preprod testnet).
 
-use bip39::{Language, Mnemonic};
-use hmac::{Hmac, Mac};
+use bip39::Mnemonic;
 use pbkdf2::pbkdf2_hmac;
 use sha2::Sha512;
 use zeroize::Zeroizing;
+use crate::derivation::primitives::resolve_bip39_language;
 
 // ── Address validation + decoding (preserved) ────────────────────────────
 
@@ -35,33 +35,6 @@ pub(crate) fn decode_cardano_addr_bytes(address: &str) -> Result<Vec<u8>, String
 
 // ── BIP-39 ───────────────────────────────────────────────────────────────
 
-type HmacSha512 = Hmac<Sha512>;
-
-// Map locale string ("en", "zh-cn", etc.) to BIP-39 wordlist; defaults to English.
-fn resolve_bip39_language(name: Option<&str>) -> Result<Language, String> {
-    let value = match name {
-        Some(value) if !value.trim().is_empty() => value.trim().to_ascii_lowercase(),
-        _ => return Ok(Language::English),
-    };
-    match value.as_str() {
-        "english" | "en" => Ok(Language::English),
-        "czech" | "cs" => Ok(Language::Czech),
-        "french" | "fr" => Ok(Language::French),
-        "italian" | "it" => Ok(Language::Italian),
-        "japanese" | "ja" | "jp" => Ok(Language::Japanese),
-        "korean" | "ko" | "kr" => Ok(Language::Korean),
-        "portuguese" | "pt" => Ok(Language::Portuguese),
-        "spanish" | "es" => Ok(Language::Spanish),
-        "simplified-chinese" | "chinese-simplified" | "simplified_chinese" | "zh-hans"
-        | "zh-cn" | "zh" => Ok(Language::SimplifiedChinese),
-        "traditional-chinese"
-        | "chinese-traditional"
-        | "traditional_chinese"
-        | "zh-hant"
-        | "zh-tw" => Ok(Language::TraditionalChinese),
-        other => Err(format!("Unsupported mnemonic wordlist: {other}")),
-    }
-}
 
 // ── BIP-32 path parsing ──────────────────────────────────────────────────
 
@@ -99,19 +72,6 @@ fn parse_bip32_path_segments(path: &str) -> Result<Vec<u32>, String> {
         }
         out.push(if hardened { raw | 0x8000_0000 } else { raw });
     }
-    Ok(out)
-}
-
-// HMAC-SHA512 over concatenated chunks; used by the BIP-32-Ed25519 child derivation.
-fn hmac_sha512(key: &[u8], chunks: &[&[u8]]) -> Result<Zeroizing<[u8; 64]>, String> {
-    let mut mac = HmacSha512::new_from_slice(key)
-        .map_err(|error| format!("Invalid HMAC-SHA512 key: {error}"))?;
-    for chunk in chunks {
-        mac.update(chunk);
-    }
-    let tag = mac.finalize().into_bytes();
-    let mut out = Zeroizing::new([0u8; 64]);
-    out.copy_from_slice(&tag);
     Ok(out)
 }
 
@@ -330,6 +290,7 @@ pub(crate) fn derive_from_seed_phrase(
 
 use crate::derivation::types::{parse_path_metadata, DerivationResult};
 use crate::SpectraBridgeError;
+use crate::derivation::primitives::{hmac_sha512};
 
 // Shared derivation logic for Cardano networks; mainnet flag selects addr/addr_test HRP.
 fn cardano_internal(

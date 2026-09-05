@@ -88,33 +88,155 @@ pub fn core_icon_identifier(
     format!("{namespace}:{normalized_chain}:{normalized_symbol}")
 }
 
+/// The bundled artwork an icon identifier names, or empty when none ships.
+///
+/// Resolution is by the coin's own symbol, because that is the only component
+/// of an identifier that says what to *draw*. The chain component says where a
+/// coin is held, and coins are routinely held away from home — USDC on Aptos,
+/// ETH on Base — so artwork keyed on the chain drew a letter for thirty-one of
+/// the wiki's sixty-six coins and for every per-chain breakdown row whose coin
+/// is not its chain's own ticker.
 #[uniffi::export]
-pub fn core_normalized_icon_identifier(identifier: String) -> String {
-    let trimmed_identifier = identifier.trim().to_string();
-    let components: Vec<String> = trimmed_identifier.split(':').map(String::from).collect();
-    if components.len() < 3 {
-        return trimmed_identifier;
-    }
-    let namespace = &components[0];
-    let chain_component = &components[1];
-    let symbol_component = &components[2];
-    match namespace.as_str() {
-        "native" | "asset" | "token" => {
-            let canonical_chain =
-                canonical_chain_component_inner(chain_component, symbol_component);
-            let mut normalized = components.clone();
-            normalized[0] = namespace.clone();
-            normalized[1] = canonical_chain;
-            normalized[2] = symbol_component.to_lowercase();
-            if normalized.len() >= 4 {
-                normalized[3] = normalized[3].to_lowercase();
-            }
-            normalized.join(":")
-        }
-        _ => trimmed_identifier,
+pub fn core_icon_asset_name(identifier: String) -> String {
+    let symbol = icon_identifier_symbol(&identifier).trim().to_uppercase();
+    asset_name_by_symbol()
+        .get(&symbol)
+        .cloned()
+        .unwrap_or_default()
+}
+
+/// The symbol an icon identifier carries: the third component of
+/// `<namespace>:<chain>:<symbol>[:<contract>]`, or the last one of anything
+/// shorter, so a bare symbol resolves as itself.
+fn icon_identifier_symbol(identifier: &str) -> &str {
+    let mut components = identifier.trim().split(':');
+    match (components.next(), components.next(), components.next()) {
+        (_, _, Some(symbol)) => symbol,
+        (_, Some(symbol), None) => symbol,
+        (Some(symbol), None, None) => symbol,
+        _ => "",
     }
 }
 
+/// Coin symbol → the artwork that ships for it.
+///
+/// Three passes, most specific first. A chain's own ticker wins, so BASE draws
+/// Base; then the token catalog, so UNI draws Uniswap; then the gas token of
+/// the first chain in catalog order that pays fees in it, so OKB draws X
+/// Layer's mark and ETH draws Ethereum's rather than one of its nine rollups'.
+fn asset_name_by_symbol() -> &'static HashMap<String, String> {
+    use std::sync::OnceLock;
+    static LOOKUP: OnceLock<HashMap<String, String>> = OnceLock::new();
+    LOOKUP.get_or_init(|| {
+        let mut out: HashMap<String, String> = HashMap::new();
+        for chain in crate::chains::catalog() {
+            claim_artwork(&mut out, &chain.symbol, &chain.asset_name);
+        }
+        for token in crate::tokens::catalog() {
+            claim_artwork(&mut out, &token.symbol, &token.asset_name);
+        }
+        for chain in crate::chains::catalog() {
+            claim_artwork(&mut out, &chain.gas_token_symbol, &chain.asset_name);
+        }
+        out
+    })
+}
+
+fn claim_artwork(out: &mut HashMap<String, String>, symbol: &str, asset_name: &str) {
+    let key = symbol.trim().to_uppercase();
+    let artwork = asset_name.trim();
+    if key.is_empty() || artwork.is_empty() {
+        return;
+    }
+    out.entry(key).or_insert_with(|| artwork.to_string());
+}
+
+#[cfg(test)]
+mod artwork_follows_the_coin_not_the_chain {
+    use super::core_icon_asset_name;
+
+    /// A coin held away from home draws itself. Every one of these resolved to
+    /// nothing before: the identifier says `native:<host chain>:<symbol>`, and
+    /// the lookup in front of it was keyed on the host chain's own ticker.
+    #[test]
+    fn a_token_draws_its_own_mark_on_every_chain_it_lives_on() {
+        for chain in ["ethereum", "base", "aptos", "solana"] {
+            assert_eq!(
+                core_icon_asset_name(format!("native:{chain}:usdc")),
+                "circleusdc"
+            );
+        }
+        assert_eq!(
+            core_icon_asset_name("token:ethereum:usdc:0xa0b8".to_string()),
+            "circleusdc"
+        );
+        assert_eq!(core_icon_asset_name("native:base:eth".to_string()), "ethereum");
+        assert_eq!(core_icon_asset_name("native:ethereum:shib".to_string()), "shibainu");
+        assert_eq!(core_icon_asset_name("native:base:dai".to_string()), "skydai");
+    }
+
+    /// A chain's own ticker draws the chain. Base's gas is ETH, so the two
+    /// live side by side and neither may answer for the other.
+    #[test]
+    fn a_chain_ticker_draws_the_chain() {
+        assert_eq!(core_icon_asset_name("native:base:base".to_string()), "base");
+        assert_eq!(core_icon_asset_name("native:ethereum:eth".to_string()), "ethereum");
+        assert_eq!(core_icon_asset_name("native:arbitrum:arb".to_string()), "arbitrum");
+    }
+
+    /// A gas token nothing else claims falls back to the chain that pays in
+    /// it. OKB is X Layer's gas and no chain's ticker — X Layer's is the
+    /// string "X Layer" — so this was the one native coin drawn as a letter.
+    #[test]
+    fn a_gas_token_falls_back_to_the_chain_that_pays_in_it() {
+        assert_eq!(core_icon_asset_name("native:x-layer:okb".to_string()), "okb");
+        assert_eq!(core_icon_asset_name("native:x-layer:x layer".to_string()), "okb");
+    }
+
+    /// Every coin the wiki lists has artwork, and the wiki is every coin the
+    /// app can hold. This is the assertion the bug would have failed on 31 of
+    /// 66 rows.
+    #[test]
+    fn every_wiki_coin_has_artwork() {
+        for asset in crate::wiki::list_asset_wiki() {
+            assert_eq!(
+                core_icon_asset_name(asset.symbol.clone()),
+                asset.asset_name,
+                "{} draws the wrong mark",
+                asset.symbol
+            );
+            assert!(!asset.asset_name.is_empty(), "{} has no mark", asset.symbol);
+        }
+    }
+
+    /// Every mark a catalog names ships as a file. USDB named `usdb` and no
+    /// such icon existed, so the one coin whose artwork was genuinely missing
+    /// looked exactly like the thirty-one that were only looked up wrong.
+    #[test]
+    fn every_named_mark_ships_a_file() {
+        let icons = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../resources/coinicon");
+        for asset in crate::wiki::list_asset_wiki() {
+            let file = icons.join(format!("{}.svg", asset.asset_name));
+            assert!(
+                file.is_file(),
+                "{} names the mark {} and {} does not exist",
+                asset.symbol,
+                asset.asset_name,
+                file.display()
+            );
+        }
+    }
+
+    /// A symbol nothing ships gets nothing, so the caller draws its letter
+    /// rather than someone else's logo. The substring match this replaced
+    /// would have handed `usdce` the USDC mark.
+    #[test]
+    fn an_unknown_symbol_resolves_to_nothing() {
+        assert_eq!(core_icon_asset_name("token:ethereum:usdce:0x00".to_string()), "");
+        assert_eq!(core_icon_asset_name("".to_string()), "");
+        assert_eq!(core_icon_asset_name("Wallet name".to_string()), "");
+    }
+}
 
 #[cfg(test)]
 mod canonical_component_covers_the_catalog {
