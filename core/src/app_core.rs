@@ -2,7 +2,7 @@ use crate::store::wallet_domain::CoreSeedDerivationPaths;
 use serde::{Deserialize, Serialize};
 use std::sync::OnceLock;
 
-const APP_ENDPOINT_DIRECTORY_JSON: &str = include_str!("../data/AppEndpointDirectory.json");
+const APP_ENDPOINT_DIRECTORY_TOML: &str = include_str!("../data/endpoints.toml");
 
 const ENDPOINT_ROLE_READ: u32 = 1 << 0;
 const ENDPOINT_ROLE_BALANCE: u32 = 1 << 1;
@@ -55,6 +55,57 @@ pub(crate) struct AppCoreCatalog {
     pub(crate) endpoint_records_by_settings_chain: std::collections::HashMap<String, Vec<usize>>,
 }
 
+/// The file's shape, kept separate from the record that crosses the FFI —
+/// `chains.rs` splits `TomlChain` from `ChainEntry` for the same reason. The
+/// file gets to omit anything empty and to carry comments; the record stays a
+/// plain struct with every field present.
+#[derive(Debug, Deserialize)]
+struct TomlEndpointFile {
+    endpoints: Vec<TomlEndpoint>,
+}
+
+#[derive(Debug, Deserialize)]
+struct TomlEndpoint {
+    id: String,
+    chain_name: String,
+    /// Omitted when it is the chain's own name, which is all but the testnets.
+    #[serde(default)]
+    group_title: Option<String>,
+    provider_id: String,
+    endpoint: String,
+    kind: String,
+    capabilities: Vec<String>,
+    #[serde(default)]
+    probe_url: Option<String>,
+    #[serde(default)]
+    settings_visible: bool,
+    #[serde(default)]
+    supplements_rpc_list: bool,
+    #[serde(default)]
+    explorer_label: Option<String>,
+    #[serde(default)]
+    tx_suffix: String,
+}
+
+impl From<TomlEndpoint> for AppCoreEndpointRecord {
+    fn from(e: TomlEndpoint) -> Self {
+        AppCoreEndpointRecord {
+            group_title: e.group_title.unwrap_or_else(|| e.chain_name.clone()),
+            id: e.id,
+            chain_name: e.chain_name,
+            provider_id: e.provider_id,
+            endpoint: e.endpoint,
+            kind: e.kind,
+            capabilities: e.capabilities,
+            probe_url: e.probe_url,
+            settings_visible: e.settings_visible,
+            supplements_rpc_list: e.supplements_rpc_list,
+            explorer_label: e.explorer_label,
+            tx_suffix: e.tx_suffix,
+        }
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, uniffi::Record)]
 #[serde(rename_all = "camelCase")]
 pub struct AppCoreEndpointRecord {
@@ -93,6 +144,21 @@ pub struct AppCoreEndpointRecord {
     /// more than a prefix. Aptos wants `?network=mainnet`; nothing else does.
     #[serde(default)]
     pub tx_suffix: String,
+}
+
+/// What one endpoint is and what it is used for, looked up by URL.
+///
+/// A lookup rather than a field on `AppCoreGroupedSettingsEntry`, because the
+/// settings screen assembles some of its groups itself — Bitcoin's Esplora
+/// bases, and whatever RPC the user typed in. Those have no catalog row, and
+/// asking by URL lets them come back `None` instead of forcing the caller to
+/// invent a kind for an endpoint it knows nothing about.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, uniffi::Record)]
+#[serde(rename_all = "camelCase")]
+pub struct AppCoreEndpointTag {
+    /// `rpc-node`, `indexer`, `web-link` or `backend`.
+    pub kind: String,
+    pub capabilities: Vec<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, uniffi::Record)]
@@ -288,10 +354,13 @@ pub(crate) fn app_core_catalog() -> Result<&'static AppCoreCatalog, String> {
 }
 
 fn load_app_core_catalog() -> Result<AppCoreCatalog, String> {
-    let display_error = |e: serde_json::Error| e.to_string();
     let endpoint_records =
-        serde_json::from_str::<Vec<AppCoreEndpointRecord>>(APP_ENDPOINT_DIRECTORY_JSON)
-            .map_err(display_error)?;
+        toml::from_str::<TomlEndpointFile>(APP_ENDPOINT_DIRECTORY_TOML)
+            .map_err(|e| e.to_string())?
+            .endpoints
+            .into_iter()
+            .map(AppCoreEndpointRecord::from)
+            .collect::<Vec<_>>();
     let endpoint_role_masks: Vec<u32> = endpoint_records
         .iter()
         .map(|r| {
@@ -568,6 +637,22 @@ mod tests {
 
 // ── FFI surface ─────────────────────────────────────────────────────────────
 
+
+/// What the catalog knows about one endpoint URL. `None` for anything it does
+/// not list — a user's own RPC, or a runtime-assembled Esplora base.
+#[uniffi::export]
+pub fn app_core_endpoint_tag(endpoint: String) -> Option<AppCoreEndpointTag> {
+    let trimmed = endpoint.trim().trim_end_matches('/');
+    load_app_core_catalog()
+        .ok()?
+        .endpoint_records
+        .iter()
+        .find(|r| r.endpoint.trim_end_matches('/') == trimmed)
+        .map(|r| AppCoreEndpointTag {
+            kind: r.kind.clone(),
+            capabilities: r.capabilities.clone(),
+        })
+}
 
 /// Not exported: the boundary takes role names, and this is how they become a
 /// mask on this side.
@@ -1081,7 +1166,7 @@ mod rpc_health_probes {
     /// `NearBalanceService.rpcEndpointCatalog` named three ids and
     /// `PolkadotBalanceService.sidecarEndpointCatalog` named one, tested
     /// inverted. Both agreed with the catalog when they were written. Adding a
-    /// provider meant editing `AppEndpointDirectory.json` and remembering the
+    /// provider meant editing `endpoints.toml` and remembering the
     /// Swift list; forgetting it probes a JSON-RPC node with a GET, which many
     /// answer 405 and this reports as unreachable.
     #[test]
@@ -1312,7 +1397,12 @@ mod an_endpoints_kind_is_not_its_capabilities {
     use crate::registry::Chain;
 
     fn records() -> Vec<super::AppCoreEndpointRecord> {
-        serde_json::from_str(super::APP_ENDPOINT_DIRECTORY_JSON).expect("directory parses")
+        toml::from_str::<super::TomlEndpointFile>(super::APP_ENDPOINT_DIRECTORY_TOML)
+            .expect("directory parses")
+            .endpoints
+            .into_iter()
+            .map(super::AppCoreEndpointRecord::from)
+            .collect()
     }
 
     /// An EVM node cannot answer "every transaction for this address".
@@ -1407,5 +1497,43 @@ mod an_endpoints_kind_is_not_its_capabilities {
                 record.capabilities
             );
         }
+    }
+}
+
+#[cfg(test)]
+mod an_endpoint_can_be_asked_what_it_is {
+    /// The settings screen shows a URL per row and nothing else. The catalog
+    /// knows what each one is; this is how the row asks.
+    #[test]
+    fn a_catalog_endpoint_reports_its_kind_and_capabilities() {
+        let node = super::app_core_endpoint_tag("https://ethereum-rpc.publicnode.com".into())
+            .expect("Ethereum's node is in the catalog");
+        assert_eq!(node.kind, "rpc-node");
+        assert!(node.capabilities.contains(&"balance".to_string()));
+        assert!(
+            !node.capabilities.contains(&"history".to_string()),
+            "an EVM node cannot serve address history"
+        );
+
+        let indexer = super::app_core_endpoint_tag("https://eth.blockscout.com".into())
+            .expect("Ethereum's indexer is in the catalog");
+        assert_eq!(indexer.kind, "indexer");
+        assert!(indexer.capabilities.contains(&"history".to_string()));
+    }
+
+    /// A trailing slash is not a different endpoint.
+    #[test]
+    fn the_lookup_ignores_a_trailing_slash() {
+        assert_eq!(
+            super::app_core_endpoint_tag("https://eth.blockscout.com/".into()),
+            super::app_core_endpoint_tag("https://eth.blockscout.com".into()),
+        );
+    }
+
+    /// An endpoint the user typed has no catalog row, and saying so beats
+    /// guessing a kind for it.
+    #[test]
+    fn an_endpoint_the_catalog_does_not_list_has_no_tag() {
+        assert!(super::app_core_endpoint_tag("https://my-own-node.example".into()).is_none());
     }
 }

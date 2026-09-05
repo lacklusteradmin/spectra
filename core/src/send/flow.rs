@@ -130,6 +130,12 @@ pub enum SendPreview {
     Polkadot {
         preview: PolkadotSendPreview,
     },
+    /// Substrate like Polkadot, and the same record — but its own tag, because
+    /// the front end keys its preview slots on this and a Bittensor preview
+    /// filed under Polkadot would be shown for the wrong chain.
+    Bittensor {
+        preview: PolkadotSendPreview,
+    },
 }
 
 #[allow(non_snake_case)]
@@ -189,6 +195,15 @@ pub fn compute_send_preview_details(
                 None,
             ),
             SendPreview::Polkadot { preview: p } => (
+                Some(p.spendableBalance),
+                p.feeRateDescription,
+                p.estimatedTransactionBytes,
+                None,
+                None,
+                Some(p.maxSendable),
+                None,
+            ),
+            SendPreview::Bittensor { preview: p } => (
                 Some(p.spendableBalance),
                 p.feeRateDescription,
                 p.estimatedTransactionBytes,

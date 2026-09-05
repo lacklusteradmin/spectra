@@ -398,6 +398,7 @@ pub enum SimpleChain {
     Icp,
     Near,
     Polkadot,
+    Bittensor,
 }
 
 // Unified record builders: return the final UniFFI preview Record directly so
@@ -531,6 +532,12 @@ pub enum SimpleChainPreview {
         preview: crate::wallet_core::NearSendPreview,
     },
     Polkadot {
+        preview: crate::wallet_core::PolkadotSendPreview,
+    },
+    /// Substrate, like Polkadot, so the same record shape. Its fee is the
+    /// catalog's static 125,000 rao rather than an on-chain quote — the same
+    /// arrangement Polkadot's preview has had.
+    Bittensor {
         preview: crate::wallet_core::PolkadotSendPreview,
     },
 }
@@ -671,6 +678,17 @@ pub fn build_simple_chain_preview(json: String, chain: SimpleChain) -> SimpleCha
                 maxSendable: max,
             },
         },
+        SimpleChain::Bittensor => SimpleChainPreview::Bittensor {
+            preview: PolkadotSendPreview {
+                estimatedNetworkFee: fee,
+                spendableBalance: bal,
+                feeRateDescription: Some(desc),
+                estimatedTransactionBytes: None,
+                selectedInputCount: None,
+                usesChangeOutput: None,
+                maxSendable: max,
+            },
+        },
         SimpleChain::Polkadot => SimpleChainPreview::Polkadot {
             preview: PolkadotSendPreview {
                 estimatedNetworkFee: fee,
@@ -685,21 +703,6 @@ pub fn build_simple_chain_preview(json: String, chain: SimpleChain) -> SimpleCha
     }
 }
 
-pub fn simple_chain_default_fee_raw(chain: SimpleChain) -> String {
-    match chain {
-        SimpleChain::Solana => "5000".into(), // lamports
-        SimpleChain::Xrp => "12".into(),      // drops
-        SimpleChain::Stellar => "100".into(), // stroops
-        SimpleChain::Monero => "0".into(),
-        SimpleChain::Cardano => "170000".into(), // lovelace
-        SimpleChain::Sui => "3000000".into(),    // mist gas budget
-        SimpleChain::Aptos => "100".into(),      // octas (gas unit)
-        SimpleChain::Ton => "10000000".into(),   // nano ton
-        SimpleChain::Icp => "10000".into(),      // e8s
-        SimpleChain::Near => "100000000".into(), // yocto gas price
-        SimpleChain::Polkadot => "10000000000".into(), // planck
-    }
-}
 
 #[cfg(test)]
 mod tests {
@@ -863,9 +866,5 @@ mod tests {
 
     #[test]
     fn simple_chain_default_fees() {
-        assert_eq!(simple_chain_default_fee_raw(SimpleChain::Solana), "5000");
-        assert_eq!(simple_chain_default_fee_raw(SimpleChain::Xrp), "12");
-        assert_eq!(simple_chain_default_fee_raw(SimpleChain::Stellar), "100");
-        assert_eq!(simple_chain_default_fee_raw(SimpleChain::Icp), "10000");
     }
 }

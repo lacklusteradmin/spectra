@@ -300,6 +300,11 @@ pub fn route_send_asset(input: &SendAssetRoutingInput) -> SendAssetRoutingPlan {
         ("Internet Computer", "ICP") => Some("icp"),
         ("NEAR", "NEAR") => Some("near"),
         ("Polkadot", "DOT") => Some("polkadot"),
+        // Bittensor was wired into `execute_send` and never named here, so it
+        // had no `submit_kind` and no preview — which is why it sat outside
+        // the shared submit path with no reason recorded. Its extrinsic is
+        // Polkadot's with fewer fields.
+        ("Bittensor", "TAO") => Some("bittensor"),
         // Five chains whose send was written, wired into `execute_send`, and
         // then never named here — so `submit_kind` was `None` and the
         // preflight answered "transfers are not enabled yet" for all of them.
@@ -723,9 +728,10 @@ mod tests {
             "icp",
             "near",
             "polkadot",
+            "bittensor",
             "ethereum",
             "solana",
-                    "zcash",
+            "zcash",
             "bitcoin-gold",
             "decred",
             "kaspa",
@@ -760,15 +766,19 @@ mod tests {
         // refused before any of it ran. The list was recording the symptom,
         // not a decision.
         //
-        // Bittensor is genuinely still out: its `execute_send` arm takes no
-        // fee parameter, it has no shared-path preview, and the generic submit
-        // needs a fee to validate the balance against. Giving it a fallback
-        // would mean inventing a TAO fee, which is not this document's to
-        // invent.
-        assert_eq!(
-            unrouted,
-            vec!["Bittensor"],
-            "the set of chains that cannot send changed"
+        // Bittensor was the seventh, and its reason had expired. The comment
+        // here said a fallback "would mean inventing a TAO fee" — but
+        // `Chain::static_fee_units` has carried `Bittensor => 125_000` for
+        // some time, so the fee was decided and nobody came back to the
+        // exclusion. It has a `SimpleChain` shape and a router row now, and
+        // takes the shared submit path like Polkadot, whose extrinsic its own
+        // is a smaller version of.
+        //
+        // The list is empty, and that is the assertion: every mainnet the app
+        // offers can send.
+        assert!(
+            unrouted.is_empty(),
+            "these chains cannot send: {unrouted:?}"
         );
     }
 

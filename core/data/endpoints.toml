@@ -1,0 +1,1598 @@
+# Spectra endpoint directory — every service the app talks to, per chain.
+#
+# Two vocabularies, deliberately separate. They used to share one `roles` array
+# and nothing kept them consistent: ten EVM chains' JSON-RPC nodes lost their
+# marker and were probed with a GET, and forty-six records claimed a `history`
+# capability no EVM node can serve.
+#
+#   kind          what the endpoint *is*, which decides how to talk to it
+#     rpc-node    JSON-RPC. POST a method to it.
+#     indexer     an address-indexed API. Its rows are keyed by address.
+#     web-link    a /tx/ URL for a person to open. Not an API; claims nothing.
+#     backend     a Monero light-wallet server.
+#
+#   capabilities  what it is used *for*, and a claim that has to be true
+#     read balance history utxo fee broadcast verification
+#
+# `history` is the one that needs care. An EVM node cannot serve it — there is
+# no `eth_getTransactionsByAddress`, because a node indexes transactions by
+# block, and answering per-address means scanning every block ever produced.
+# Solana's `getSignaturesForAddress` and XRP's `account_tx` are real node
+# methods, so those nodes do carry it. Whether a node can index by address is a
+# protocol fact, not a provider one. `no_evm_node_claims_history` asserts it.
+#
+# Order matters: `with_fallback` tries a chain's endpoints top to bottom, so a
+# dead one costs a timeout plus 180 ms on every call that reaches it. Run
+# `spectra endpoints` to find them.
+
+[[endpoints]]
+id = "bitcoin.blockchain_info.multiaddr"
+chain_name = "Bitcoin"
+provider_id = "blockchain-info"
+endpoint = "https://blockchain.info/multiaddr"
+kind = "indexer"
+capabilities = ["read", "balance", "history"]
+
+[[endpoints]]
+id = "bitcoin.blockchair.xpub"
+chain_name = "Bitcoin"
+provider_id = "blockchair"
+endpoint = "https://api.blockchair.com/bitcoin/dashboards/xpub/"
+kind = "indexer"
+capabilities = ["read", "balance", "history"]
+
+[[endpoints]]
+id = "bitcoin.mainnet.blockstream"
+chain_name = "Bitcoin"
+provider_id = "esplora"
+endpoint = "https://blockstream.info/api"
+kind = "indexer"
+capabilities = ["read", "balance", "history", "utxo", "fee", "broadcast", "verification"]
+probe_url = "https://blockstream.info/api"
+settings_visible = true
+
+[[endpoints]]
+id = "bitcoin.mainnet.mempool"
+chain_name = "Bitcoin"
+provider_id = "esplora"
+endpoint = "https://mempool.space/api"
+kind = "indexer"
+capabilities = ["read", "balance", "history", "utxo", "fee", "broadcast", "verification"]
+probe_url = "https://mempool.space/api"
+settings_visible = true
+
+[[endpoints]]
+id = "bitcoin.mainnet.mempool_emzy"
+chain_name = "Bitcoin"
+provider_id = "esplora"
+endpoint = "https://mempool.emzy.de/api"
+kind = "indexer"
+capabilities = ["read", "balance", "history", "utxo", "fee", "broadcast", "verification"]
+probe_url = "https://mempool.emzy.de/api"
+settings_visible = true
+
+[[endpoints]]
+id = "bitcoin.mainnet.maestro"
+chain_name = "Bitcoin"
+provider_id = "maestro-esplora"
+endpoint = "https://xbt-mainnet.gomaestro-api.org/v0/esplora"
+kind = "indexer"
+capabilities = ["read", "balance", "history", "utxo", "fee", "broadcast", "verification"]
+probe_url = "https://xbt-mainnet.gomaestro-api.org/v0/esplora"
+settings_visible = true
+
+[[endpoints]]
+id = "bitcoin.explorer.tx"
+chain_name = "Bitcoin"
+provider_id = "mempool"
+endpoint = "https://mempool.space/tx/"
+kind = "web-link"
+capabilities = []
+explorer_label = "Open In Mempool"
+
+[[endpoints]]
+id = "bitcoin.testnet.blockstream"
+chain_name = "Bitcoin"
+group_title = "Bitcoin Testnet"
+provider_id = "esplora"
+endpoint = "https://blockstream.info/testnet/api"
+kind = "indexer"
+capabilities = ["read", "balance", "history", "utxo", "fee", "broadcast", "verification"]
+probe_url = "https://blockstream.info/testnet/api"
+settings_visible = true
+
+[[endpoints]]
+id = "bitcoin.testnet.mempool"
+chain_name = "Bitcoin"
+group_title = "Bitcoin Testnet"
+provider_id = "esplora"
+endpoint = "https://mempool.space/testnet/api"
+kind = "indexer"
+capabilities = ["read", "balance", "history", "utxo", "fee", "broadcast", "verification"]
+probe_url = "https://mempool.space/testnet/api"
+settings_visible = true
+
+[[endpoints]]
+id = "bitcoin.testnet4.mempool"
+chain_name = "Bitcoin"
+group_title = "Bitcoin Testnet4"
+provider_id = "esplora"
+endpoint = "https://mempool.space/testnet4/api"
+kind = "indexer"
+capabilities = ["read", "balance", "history", "utxo", "fee", "broadcast", "verification"]
+probe_url = "https://mempool.space/testnet4/api"
+settings_visible = true
+
+[[endpoints]]
+id = "bitcoin.signet.blockstream"
+chain_name = "Bitcoin"
+group_title = "Bitcoin Signet"
+provider_id = "esplora"
+endpoint = "https://blockstream.info/signet/api"
+kind = "indexer"
+capabilities = ["read", "balance", "history", "utxo", "fee", "broadcast", "verification"]
+probe_url = "https://blockstream.info/signet/api"
+settings_visible = true
+
+[[endpoints]]
+id = "bitcoin.signet.mempool"
+chain_name = "Bitcoin"
+group_title = "Bitcoin Signet"
+provider_id = "esplora"
+endpoint = "https://mempool.space/signet/api"
+kind = "indexer"
+capabilities = ["read", "balance", "history", "utxo", "fee", "broadcast", "verification"]
+probe_url = "https://mempool.space/signet/api"
+settings_visible = true
+
+[[endpoints]]
+id = "bitcoincash.blockchair.api"
+chain_name = "Bitcoin Cash"
+provider_id = "blockchair"
+endpoint = "https://api.blockchair.com/bitcoin-cash"
+kind = "indexer"
+capabilities = ["read", "balance", "history", "utxo", "fee", "verification"]
+probe_url = "https://api.blockchair.com/bitcoin-cash/stats"
+settings_visible = true
+
+[[endpoints]]
+id = "bitcoincash.blockchair.push"
+chain_name = "Bitcoin Cash"
+provider_id = "blockchair"
+endpoint = "https://api.blockchair.com/bitcoin-cash/push/transaction"
+kind = "indexer"
+capabilities = ["broadcast"]
+probe_url = "https://api.blockchair.com/bitcoin-cash/stats"
+
+[[endpoints]]
+id = "bitcoincash.blockchair.txprefix"
+chain_name = "Bitcoin Cash"
+provider_id = "blockchair"
+endpoint = "https://api.blockchair.com/bitcoin-cash/dashboards/transaction/"
+kind = "indexer"
+capabilities = ["verification"]
+probe_url = "https://api.blockchair.com/bitcoin-cash/stats"
+
+[[endpoints]]
+id = "bitcoincash.actorforth.api"
+chain_name = "Bitcoin Cash"
+provider_id = "actorforth"
+endpoint = "https://rest.bch.actorforth.org/v2"
+kind = "indexer"
+capabilities = ["read", "balance", "history", "utxo", "verification"]
+probe_url = "https://rest.bch.actorforth.org/v2/blockchain/getBlockchainInfo"
+settings_visible = true
+
+[[endpoints]]
+id = "bitcoincash.actorforth.broadcast"
+chain_name = "Bitcoin Cash"
+provider_id = "actorforth"
+endpoint = "https://rest.bch.actorforth.org/v2/rawtransactions/sendRawTransaction/"
+kind = "indexer"
+capabilities = ["broadcast"]
+probe_url = "https://rest.bch.actorforth.org/v2/blockchain/getBlockchainInfo"
+
+[[endpoints]]
+id = "bitcoincash.actorforth.txprefix"
+chain_name = "Bitcoin Cash"
+provider_id = "actorforth"
+endpoint = "https://rest.bch.actorforth.org/v2/transaction/details/"
+kind = "indexer"
+capabilities = ["verification"]
+probe_url = "https://rest.bch.actorforth.org/v2/blockchain/getBlockchainInfo"
+
+[[endpoints]]
+id = "bitcoincash.explorer.tx"
+chain_name = "Bitcoin Cash"
+provider_id = "blockchair"
+endpoint = "https://blockchair.com/bitcoin-cash/transaction/"
+kind = "web-link"
+capabilities = []
+explorer_label = "Open In Blockchair"
+
+[[endpoints]]
+id = "bitcoinsv.whatsonchain.api"
+chain_name = "Bitcoin SV"
+provider_id = "whatsonchain"
+endpoint = "https://api.whatsonchain.com/v1/bsv/main"
+kind = "indexer"
+capabilities = ["read", "balance", "history", "utxo", "verification"]
+probe_url = "https://api.whatsonchain.com/v1/bsv/main/chain/info"
+settings_visible = true
+
+[[endpoints]]
+id = "bitcoinsv.whatsonchain.chaininfo"
+chain_name = "Bitcoin SV"
+provider_id = "whatsonchain"
+endpoint = "https://api.whatsonchain.com/v1/bsv/main/chain/info"
+kind = "indexer"
+capabilities = ["verification"]
+probe_url = "https://api.whatsonchain.com/v1/bsv/main/chain/info"
+
+[[endpoints]]
+id = "bitcoinsv.whatsonchain.broadcast"
+chain_name = "Bitcoin SV"
+provider_id = "whatsonchain"
+endpoint = "https://api.whatsonchain.com/v1/bsv/main/tx/raw"
+kind = "indexer"
+capabilities = ["broadcast"]
+probe_url = "https://api.whatsonchain.com/v1/bsv/main/chain/info"
+
+[[endpoints]]
+id = "bitcoinsv.whatsonchain.txprefix"
+chain_name = "Bitcoin SV"
+provider_id = "whatsonchain"
+endpoint = "https://api.whatsonchain.com/v1/bsv/main/tx/hash/"
+kind = "indexer"
+capabilities = ["verification"]
+probe_url = "https://api.whatsonchain.com/v1/bsv/main/chain/info"
+
+[[endpoints]]
+id = "bitcoinsv.blockchair.api"
+chain_name = "Bitcoin SV"
+provider_id = "blockchair"
+endpoint = "https://api.blockchair.com/bitcoin-sv"
+kind = "indexer"
+capabilities = ["read", "balance", "history", "utxo", "fee", "verification"]
+probe_url = "https://api.blockchair.com/bitcoin-sv/stats"
+settings_visible = true
+
+[[endpoints]]
+id = "bitcoinsv.blockchair.push"
+chain_name = "Bitcoin SV"
+provider_id = "blockchair"
+endpoint = "https://api.blockchair.com/bitcoin-sv/push/transaction"
+kind = "indexer"
+capabilities = ["broadcast"]
+probe_url = "https://api.blockchair.com/bitcoin-sv/stats"
+
+[[endpoints]]
+id = "bitcoinsv.blockchair.txprefix"
+chain_name = "Bitcoin SV"
+provider_id = "blockchair"
+endpoint = "https://api.blockchair.com/bitcoin-sv/dashboards/transaction/"
+kind = "indexer"
+capabilities = ["verification"]
+probe_url = "https://api.blockchair.com/bitcoin-sv/stats"
+
+[[endpoints]]
+id = "bitcoinsv.explorer.tx"
+chain_name = "Bitcoin SV"
+provider_id = "whatsonchain"
+endpoint = "https://whatsonchain.com/tx/"
+kind = "web-link"
+capabilities = []
+explorer_label = "Open In WhatsOnChain"
+
+[[endpoints]]
+id = "litecoin.litecoinspace.api"
+chain_name = "Litecoin"
+provider_id = "litecoinspace"
+endpoint = "https://litecoinspace.org/api"
+kind = "indexer"
+capabilities = ["read", "balance", "history", "utxo", "fee", "broadcast", "verification"]
+probe_url = "https://litecoinspace.org/api"
+settings_visible = true
+
+[[endpoints]]
+id = "litecoin.blockcypher.api"
+chain_name = "Litecoin"
+provider_id = "blockcypher"
+endpoint = "https://api.blockcypher.com/v1/ltc/main"
+kind = "indexer"
+capabilities = ["read", "balance", "history", "utxo", "fee", "broadcast", "verification"]
+probe_url = "https://api.blockcypher.com/v1/ltc/main"
+settings_visible = true
+
+[[endpoints]]
+id = "litecoin.sochain.api"
+chain_name = "Litecoin"
+provider_id = "sochain"
+endpoint = "https://sochain.com/api/v2"
+kind = "indexer"
+capabilities = ["read", "balance", "history", "utxo", "verification"]
+probe_url = "https://sochain.com/api/v2"
+settings_visible = true
+
+[[endpoints]]
+id = "litecoin.explorer.tx"
+chain_name = "Litecoin"
+provider_id = "litecoinspace"
+endpoint = "https://litecoinspace.org/tx/"
+kind = "web-link"
+capabilities = []
+explorer_label = "Open In LitecoinSpace"
+
+[[endpoints]]
+id = "dogecoin.mainnet.blockcypher"
+chain_name = "Dogecoin"
+provider_id = "blockcypher"
+endpoint = "https://api.blockcypher.com/v1/doge/main"
+kind = "indexer"
+capabilities = ["read", "balance", "history", "utxo", "fee", "broadcast", "verification"]
+probe_url = "https://api.blockcypher.com/v1/doge/main"
+settings_visible = true
+
+[[endpoints]]
+id = "dogecoin.testnet.blockcypher"
+chain_name = "Dogecoin"
+group_title = "Dogecoin Testnet"
+provider_id = "blockcypher"
+endpoint = "https://api.blockcypher.com/v1/doge/test3"
+kind = "indexer"
+capabilities = ["read", "balance", "history", "utxo", "fee", "broadcast", "verification"]
+probe_url = "https://api.blockcypher.com/v1/doge/test3"
+settings_visible = true
+
+[[endpoints]]
+id = "dogecoin.explorer.tx"
+chain_name = "Dogecoin"
+provider_id = "dogechain"
+endpoint = "https://dogechain.info/tx/"
+kind = "web-link"
+capabilities = []
+explorer_label = "Open In Dogechain"
+
+[[endpoints]]
+id = "tron.tronscan.account"
+chain_name = "Tron"
+provider_id = "tronscan"
+endpoint = "https://apilist.tronscanapi.com/api/accountv2"
+kind = "indexer"
+capabilities = ["read", "balance", "history"]
+probe_url = "https://apilist.tronscanapi.com/api/system/status"
+settings_visible = true
+
+[[endpoints]]
+id = "tron.trongrid.accounts.io"
+chain_name = "Tron"
+provider_id = "trongrid-accounts"
+endpoint = "https://api.trongrid.io/v1/accounts"
+kind = "indexer"
+capabilities = ["read", "balance", "history"]
+probe_url = "https://api.trongrid.io/wallet/getnowblock"
+settings_visible = true
+
+[[endpoints]]
+id = "tron.trongrid.accounts.pro"
+chain_name = "Tron"
+provider_id = "trongrid-accounts"
+endpoint = "https://api.trongrid.pro/v1/accounts"
+kind = "indexer"
+capabilities = ["read", "balance", "history"]
+probe_url = "https://api.trongrid.io/wallet/getnowblock"
+settings_visible = true
+
+[[endpoints]]
+id = "tron.trongrid.accounts.network"
+chain_name = "Tron"
+provider_id = "trongrid-accounts"
+endpoint = "https://api.trongrid.network/v1/accounts"
+kind = "indexer"
+capabilities = ["read", "balance", "history"]
+probe_url = "https://api.trongrid.io/wallet/getnowblock"
+settings_visible = true
+
+[[endpoints]]
+id = "tron.trongrid.rpc.io"
+chain_name = "Tron"
+provider_id = "trongrid-rpc"
+endpoint = "https://api.trongrid.io"
+kind = "rpc-node"
+capabilities = ["fee", "broadcast", "verification"]
+probe_url = "https://api.trongrid.io/wallet/getnowblock"
+settings_visible = true
+
+[[endpoints]]
+id = "tron.rpc.publicnode"
+chain_name = "Tron"
+provider_id = "rpc"
+endpoint = "https://tron-rpc.publicnode.com"
+# Replaced api.trongrid.pro and .network, both unreachable.
+kind = "rpc-node"
+capabilities = ["fee", "broadcast", "verification"]
+settings_visible = true
+
+[[endpoints]]
+id = "tron.explorer.tx"
+chain_name = "Tron"
+provider_id = "tronscan"
+endpoint = "https://tronscan.org/#/transaction/"
+kind = "web-link"
+capabilities = []
+explorer_label = "Open In TronScan"
+
+[[endpoints]]
+id = "solana.rpc.mainnet"
+chain_name = "Solana"
+provider_id = "solana-mainnet-beta"
+endpoint = "https://api.mainnet-beta.solana.com"
+kind = "rpc-node"
+capabilities = ["read", "balance", "history", "fee", "broadcast"]
+probe_url = "https://api.mainnet-beta.solana.com"
+settings_visible = true
+
+[[endpoints]]
+id = "solana.rpc.publicnode"
+chain_name = "Solana"
+provider_id = "solana-publicnode"
+endpoint = "https://solana-rpc.publicnode.com"
+kind = "rpc-node"
+capabilities = ["read", "balance", "history", "fee"]
+probe_url = "https://solana-rpc.publicnode.com"
+settings_visible = true
+
+[[endpoints]]
+id = "xrp.history.xrpscan_api"
+chain_name = "XRP Ledger"
+provider_id = "xrpscan"
+endpoint = "https://api.xrpscan.com/api/v1/account"
+kind = "indexer"
+capabilities = ["read", "balance", "history"]
+settings_visible = true
+
+[[endpoints]]
+id = "xrp.history.xrpscan"
+chain_name = "XRP Ledger"
+provider_id = "xrpscan"
+endpoint = "https://xrpscan.com/api/v1/account"
+kind = "indexer"
+capabilities = ["read", "history"]
+settings_visible = true
+
+[[endpoints]]
+id = "xrp.rpc.s1"
+chain_name = "XRP Ledger"
+provider_id = "ripple-s1"
+endpoint = "https://s1.ripple.com:51234/"
+kind = "rpc-node"
+capabilities = ["read", "balance", "history", "fee", "broadcast"]
+probe_url = "https://s1.ripple.com:51234/"
+settings_visible = true
+
+[[endpoints]]
+id = "xrp.rpc.s2"
+chain_name = "XRP Ledger"
+provider_id = "ripple-s2"
+endpoint = "https://s2.ripple.com:51234/"
+kind = "rpc-node"
+capabilities = ["read", "balance", "history", "fee", "broadcast"]
+probe_url = "https://s2.ripple.com:51234/"
+settings_visible = true
+
+[[endpoints]]
+id = "xrp.rpc.cluster"
+chain_name = "XRP Ledger"
+provider_id = "xrpl-cluster"
+endpoint = "https://xrplcluster.com/"
+kind = "rpc-node"
+capabilities = ["read", "balance", "history", "fee", "broadcast"]
+probe_url = "https://xrplcluster.com/"
+settings_visible = true
+
+[[endpoints]]
+id = "xrp.explorer.tx"
+chain_name = "XRP Ledger"
+provider_id = "xrpscan"
+endpoint = "https://livenet.xrpl.org/transactions/"
+kind = "web-link"
+capabilities = []
+explorer_label = "Open In XRP Explorer"
+
+[[endpoints]]
+id = "cardano.koios.primary"
+chain_name = "Cardano"
+provider_id = "koios"
+endpoint = "https://api.koios.rest/api/v1"
+kind = "indexer"
+capabilities = ["read", "balance", "history", "fee", "broadcast"]
+probe_url = "https://api.koios.rest/api/v1/tip"
+settings_visible = true
+
+[[endpoints]]
+id = "cardano.koios.xray"
+chain_name = "Cardano"
+provider_id = "koios"
+endpoint = "https://graph.xray.app/output/services/koios/mainnet/api/v1"
+kind = "indexer"
+capabilities = ["read", "balance", "history", "fee", "broadcast"]
+probe_url = "https://graph.xray.app/output/services/koios/mainnet/api/v1/tip"
+settings_visible = true
+
+[[endpoints]]
+id = "cardano.koios.happystaking"
+chain_name = "Cardano"
+provider_id = "koios"
+endpoint = "https://koios.happystaking.io:8453/api/v1"
+kind = "indexer"
+capabilities = ["read", "balance", "history", "fee", "broadcast"]
+probe_url = "https://koios.happystaking.io:8453/api/v1/tip"
+settings_visible = true
+
+[[endpoints]]
+id = "cardano.explorer.tx"
+chain_name = "Cardano"
+provider_id = "cexplorer"
+endpoint = "https://cexplorer.io/tx/"
+kind = "web-link"
+capabilities = []
+explorer_label = "Open In Cardano Explorer"
+
+[[endpoints]]
+id = "aptos.rpc.aptoslabs"
+chain_name = "Aptos"
+provider_id = "aptos-mainnet-rpc"
+endpoint = "https://api.mainnet.aptoslabs.com/v1"
+kind = "rpc-node"
+capabilities = ["read", "balance", "history", "fee", "broadcast"]
+probe_url = "https://api.mainnet.aptoslabs.com/v1/spec"
+settings_visible = true
+
+[[endpoints]]
+id = "aptos.rpc.mainnet"
+chain_name = "Aptos"
+provider_id = "aptoslabs-mainnet"
+endpoint = "https://mainnet.aptoslabs.com/v1"
+kind = "rpc-node"
+capabilities = ["read", "balance", "history", "fee", "broadcast"]
+probe_url = "https://mainnet.aptoslabs.com/v1/spec"
+settings_visible = true
+
+[[endpoints]]
+id = "aptos.explorer.tx"
+chain_name = "Aptos"
+provider_id = "aptoslabs-explorer"
+endpoint = "https://explorer.aptoslabs.com/txn/"
+kind = "web-link"
+capabilities = []
+explorer_label = "Open In Aptos Explorer"
+tx_suffix = "?network=mainnet"
+
+[[endpoints]]
+id = "ton.api.v2"
+chain_name = "TON"
+provider_id = "toncenter-v2"
+endpoint = "https://toncenter.com/api/v2"
+kind = "indexer"
+capabilities = ["read", "balance", "history", "fee", "broadcast", "verification"]
+probe_url = "https://toncenter.com/api/v2/getMasterchainInfo"
+settings_visible = true
+
+[[endpoints]]
+id = "ton.api.v3"
+chain_name = "TON"
+provider_id = "toncenter-v3"
+endpoint = "https://toncenter.com/api/v3"
+kind = "indexer"
+capabilities = ["read", "balance", "history"]
+probe_url = "https://toncenter.com/api/v3/jetton/wallets"
+settings_visible = true
+
+[[endpoints]]
+id = "ton.explorer.tx"
+chain_name = "TON"
+provider_id = "tonviewer"
+endpoint = "https://tonviewer.com/"
+kind = "web-link"
+capabilities = []
+explorer_label = "Open In Tonviewer"
+
+[[endpoints]]
+id = "sui.rpc.publicnode"
+chain_name = "Sui"
+provider_id = "sui-publicnode"
+endpoint = "https://sui-rpc.publicnode.com"
+kind = "rpc-node"
+capabilities = ["read", "balance", "history", "fee", "broadcast"]
+probe_url = "https://sui-rpc.publicnode.com"
+settings_visible = true
+
+[[endpoints]]
+id = "sui.rpc.blockvision"
+chain_name = "Sui"
+provider_id = "sui-blockvision"
+endpoint = "https://sui-mainnet-endpoint.blockvision.org"
+kind = "rpc-node"
+capabilities = ["read", "balance", "history", "fee", "broadcast"]
+probe_url = "https://sui-mainnet-endpoint.blockvision.org"
+settings_visible = true
+
+[[endpoints]]
+id = "sui.rpc.blockpi"
+chain_name = "Sui"
+provider_id = "sui-blockpi"
+endpoint = "https://sui.blockpi.network/v1/rpc/public"
+kind = "rpc-node"
+capabilities = ["read", "balance", "history", "fee", "broadcast"]
+probe_url = "https://sui.blockpi.network/v1/rpc/public"
+settings_visible = true
+
+[[endpoints]]
+id = "sui.rpc.suiscan"
+chain_name = "Sui"
+provider_id = "sui-suiscan"
+endpoint = "https://rpc-mainnet.suiscan.xyz"
+kind = "rpc-node"
+capabilities = ["read", "balance", "history", "fee", "broadcast"]
+probe_url = "https://rpc-mainnet.suiscan.xyz"
+settings_visible = true
+
+[[endpoints]]
+id = "near.rpc.mainnet"
+chain_name = "NEAR"
+provider_id = "near-mainnet-rpc"
+endpoint = "https://rpc.mainnet.near.org"
+kind = "rpc-node"
+capabilities = ["read", "balance", "history", "fee", "broadcast"]
+probe_url = "https://rpc.mainnet.near.org"
+settings_visible = true
+
+[[endpoints]]
+id = "near.rpc.fastnear"
+chain_name = "NEAR"
+provider_id = "fastnear-rpc"
+endpoint = "https://free.rpc.fastnear.com"
+kind = "rpc-node"
+capabilities = ["read", "balance", "history", "fee", "broadcast"]
+probe_url = "https://free.rpc.fastnear.com"
+settings_visible = true
+
+[[endpoints]]
+id = "near.history.nearblocks"
+chain_name = "NEAR"
+provider_id = "nearblocks"
+endpoint = "https://api.nearblocks.io/v1"
+kind = "indexer"
+capabilities = ["read", "history"]
+probe_url = "https://api.nearblocks.io/v1/stats"
+settings_visible = true
+
+[[endpoints]]
+id = "near.explorer.tx"
+chain_name = "NEAR"
+provider_id = "nearblocks"
+endpoint = "https://nearblocks.io/txns/"
+kind = "web-link"
+capabilities = []
+explorer_label = "Open In NearBlocks"
+
+[[endpoints]]
+id = "polkadot.sidecar.parity"
+chain_name = "Polkadot"
+provider_id = "sidecar"
+endpoint = "https://polkadot-public-sidecar.parity-chains.parity.io"
+kind = "indexer"
+capabilities = ["read", "balance", "history", "fee", "broadcast"]
+probe_url = "https://polkadot-public-sidecar.parity-chains.parity.io/transaction/material"
+settings_visible = true
+
+[[endpoints]]
+id = "polkadot.rpc.onfinality"
+chain_name = "Polkadot"
+provider_id = "rpc"
+endpoint = "https://polkadot.api.onfinality.io/public"
+kind = "rpc-node"
+capabilities = ["read", "balance", "fee", "broadcast"]
+probe_url = "https://polkadot.api.onfinality.io/public"
+settings_visible = true
+
+[[endpoints]]
+id = "polkadot.rpc.official"
+chain_name = "Polkadot"
+provider_id = "rpc"
+endpoint = "https://rpc.polkadot.io"
+# The official node, which was not in this file while two of the three
+# listed for Polkadot were dead.
+kind = "rpc-node"
+capabilities = ["read", "balance", "fee", "broadcast"]
+settings_visible = true
+
+[[endpoints]]
+id = "polkadot.explorer.tx"
+chain_name = "Polkadot"
+provider_id = "subscan"
+endpoint = "https://polkadot.subscan.io/extrinsic/"
+kind = "web-link"
+capabilities = []
+explorer_label = "Open In Subscan"
+
+[[endpoints]]
+id = "stellar.horizon.primary"
+chain_name = "Stellar"
+provider_id = "horizon"
+endpoint = "https://horizon.stellar.org"
+kind = "indexer"
+capabilities = ["read", "balance", "history", "fee", "broadcast"]
+probe_url = "https://horizon.stellar.org/fee_stats"
+settings_visible = true
+
+[[endpoints]]
+id = "stellar.horizon.lobstr"
+chain_name = "Stellar"
+provider_id = "horizon"
+endpoint = "https://horizon.stellar.lobstr.co"
+kind = "indexer"
+capabilities = ["read", "balance", "history", "fee", "broadcast"]
+probe_url = "https://horizon.stellar.lobstr.co/fee_stats"
+settings_visible = true
+
+[[endpoints]]
+id = "stellar.explorer.tx"
+chain_name = "Stellar"
+provider_id = "stellar-expert"
+endpoint = "https://stellar.expert/explorer/public/tx/"
+kind = "web-link"
+capabilities = []
+explorer_label = "Open In Stellar Expert"
+
+[[endpoints]]
+id = "monero.backend.1"
+chain_name = "Monero"
+provider_id = "trusted-backend"
+endpoint = "https://monerolws1.edge.app"
+kind = "backend"
+capabilities = ["read", "balance", "history", "fee", "broadcast"]
+settings_visible = true
+
+[[endpoints]]
+id = "monero.backend.2"
+chain_name = "Monero"
+provider_id = "trusted-backend"
+endpoint = "https://monerolws2.edge.app"
+kind = "backend"
+capabilities = ["read", "balance", "history", "fee", "broadcast"]
+settings_visible = true
+
+[[endpoints]]
+id = "monero.backend.3"
+chain_name = "Monero"
+provider_id = "trusted-backend"
+endpoint = "https://monerolws3.edge.app"
+kind = "backend"
+capabilities = ["read", "balance", "history", "fee", "broadcast"]
+settings_visible = true
+
+[[endpoints]]
+id = "monero.explorer.tx"
+chain_name = "Monero"
+provider_id = "xmrchain"
+endpoint = "https://xmrchain.net/tx/"
+kind = "web-link"
+capabilities = []
+explorer_label = "Open In Monero Explorer"
+
+[[endpoints]]
+id = "icp.rosetta"
+chain_name = "Internet Computer"
+provider_id = "rosetta"
+endpoint = "https://rosetta-api.internetcomputer.org"
+kind = "indexer"
+capabilities = ["read", "balance", "history", "fee", "broadcast"]
+probe_url = "https://rosetta-api.internetcomputer.org/network/list"
+settings_visible = true
+
+[[endpoints]]
+id = "icp.explorer.tx"
+chain_name = "Internet Computer"
+provider_id = "dashboard"
+endpoint = "https://dashboard.internetcomputer.org/transaction/"
+kind = "web-link"
+capabilities = []
+explorer_label = "Open In ICP Dashboard"
+
+[[endpoints]]
+id = "ethereum.rpc.publicnode"
+chain_name = "Ethereum"
+provider_id = "rpc"
+endpoint = "https://ethereum-rpc.publicnode.com"
+kind = "rpc-node"
+capabilities = ["read", "balance", "fee", "broadcast"]
+settings_visible = true
+
+[[endpoints]]
+id = "ethereum.rpc.cloudflare"
+chain_name = "Ethereum"
+provider_id = "rpc"
+endpoint = "https://cloudflare-eth.com"
+kind = "rpc-node"
+capabilities = ["read", "balance", "fee", "broadcast"]
+settings_visible = true
+
+[[endpoints]]
+id = "ethereum.rpc.1rpc"
+chain_name = "Ethereum"
+provider_id = "rpc"
+endpoint = "https://1rpc.io/eth"
+kind = "rpc-node"
+capabilities = ["read", "balance", "fee", "broadcast"]
+settings_visible = true
+
+[[endpoints]]
+id = "ethereum.explorer.ethplorer"
+chain_name = "Ethereum"
+provider_id = "ethplorer"
+endpoint = "https://api.ethplorer.io"
+# The one endpoint registered alongside an RPC list rather than instead
+# of it — see supplements_rpc_list.
+kind = "indexer"
+capabilities = ["read", "history"]
+probe_url = "https://api.ethplorer.io/getAddressInfo/0x0000000000000000000000000000000000000000?apiKey=freekey"
+settings_visible = true
+supplements_rpc_list = true
+
+[[endpoints]]
+id = "ethereum.explorer.blockscout"
+chain_name = "Ethereum"
+provider_id = "blockscout"
+endpoint = "https://eth.blockscout.com"
+# Keyless. Etherscan-V1 request shape; 3/3 in the 2026-09 sweep.
+kind = "indexer"
+capabilities = ["read", "history"]
+
+[[endpoints]]
+id = "ethereum.explorer.tx"
+chain_name = "Ethereum"
+provider_id = "etherscan-web"
+endpoint = "https://etherscan.io/tx/"
+kind = "web-link"
+capabilities = []
+explorer_label = "Open In Etherscan"
+
+[[endpoints]]
+id = "ethereum.sepolia.rpc.publicnode"
+chain_name = "Ethereum"
+group_title = "Ethereum Sepolia"
+provider_id = "rpc"
+endpoint = "https://ethereum-sepolia-rpc.publicnode.com"
+kind = "rpc-node"
+capabilities = ["read", "balance", "fee", "broadcast"]
+settings_visible = true
+
+[[endpoints]]
+id = "ethereum.hoodi.rpc.publicnode"
+chain_name = "Ethereum"
+group_title = "Ethereum Hoodi"
+provider_id = "rpc"
+endpoint = "https://ethereum-hoodi-rpc.publicnode.com"
+kind = "rpc-node"
+capabilities = ["read", "balance", "fee", "broadcast"]
+settings_visible = true
+
+[[endpoints]]
+id = "ethereumclassic.rpc.etcdesktop"
+chain_name = "Ethereum Classic"
+provider_id = "rpc"
+endpoint = "https://etc.etcdesktop.com"
+# Replaced geth-at.etc-network.info, which stopped answering. Returns
+# chain id 0x3d.
+kind = "rpc-node"
+capabilities = ["read", "balance", "fee", "broadcast"]
+settings_visible = true
+
+[[endpoints]]
+id = "ethereumclassic.explorer.blockscout"
+chain_name = "Ethereum Classic"
+provider_id = "blockscout"
+endpoint = "https://blockscout.com/etc/mainnet"
+kind = "indexer"
+capabilities = ["read", "history"]
+
+[[endpoints]]
+id = "ethereumclassic.explorer.tx"
+chain_name = "Ethereum Classic"
+provider_id = "blockscout-web"
+endpoint = "https://blockscout.com/etc/mainnet/tx/"
+kind = "web-link"
+capabilities = []
+explorer_label = "Open In Blockscout"
+
+[[endpoints]]
+id = "arbitrum.rpc.publicnode"
+chain_name = "Arbitrum"
+provider_id = "rpc"
+endpoint = "https://arbitrum-one-rpc.publicnode.com"
+kind = "rpc-node"
+capabilities = ["read", "balance", "fee", "broadcast"]
+settings_visible = true
+
+[[endpoints]]
+id = "arbitrum.rpc.arb1"
+chain_name = "Arbitrum"
+provider_id = "rpc"
+endpoint = "https://arb1.arbitrum.io/rpc"
+kind = "rpc-node"
+capabilities = ["read", "balance", "fee", "broadcast"]
+settings_visible = true
+
+[[endpoints]]
+id = "arbitrum.rpc.1rpc"
+chain_name = "Arbitrum"
+provider_id = "rpc"
+endpoint = "https://1rpc.io/arb"
+kind = "rpc-node"
+capabilities = ["read", "balance", "fee", "broadcast"]
+settings_visible = true
+
+[[endpoints]]
+id = "arbitrum.explorer.tx"
+chain_name = "Arbitrum"
+provider_id = "arbiscan"
+endpoint = "https://arbiscan.io/tx/"
+kind = "web-link"
+capabilities = []
+explorer_label = "Open In Arbiscan"
+
+[[endpoints]]
+id = "optimism.rpc.mainnet"
+chain_name = "Optimism"
+provider_id = "rpc"
+endpoint = "https://mainnet.optimism.io"
+kind = "rpc-node"
+capabilities = ["read", "balance", "fee", "broadcast"]
+settings_visible = true
+
+[[endpoints]]
+id = "optimism.rpc.publicnode"
+chain_name = "Optimism"
+provider_id = "rpc"
+endpoint = "https://optimism-rpc.publicnode.com"
+kind = "rpc-node"
+capabilities = ["read", "balance", "fee", "broadcast"]
+settings_visible = true
+
+[[endpoints]]
+id = "optimism.rpc.1rpc"
+chain_name = "Optimism"
+provider_id = "rpc"
+endpoint = "https://1rpc.io/op"
+kind = "rpc-node"
+capabilities = ["read", "balance", "fee", "broadcast"]
+settings_visible = true
+
+[[endpoints]]
+id = "optimism.explorer.tx"
+chain_name = "Optimism"
+provider_id = "optimistic-etherscan"
+endpoint = "https://optimistic.etherscan.io/tx/"
+kind = "web-link"
+capabilities = []
+explorer_label = "Open In Optimism Etherscan"
+
+[[endpoints]]
+id = "bnb.rpc.primary"
+chain_name = "BNB Chain"
+provider_id = "rpc"
+endpoint = "https://bsc-dataseed.bnbchain.org"
+kind = "rpc-node"
+capabilities = ["read", "balance", "fee", "broadcast"]
+settings_visible = true
+
+[[endpoints]]
+id = "bnb.rpc.binance"
+chain_name = "BNB Chain"
+provider_id = "rpc"
+endpoint = "https://bsc-dataseed1.binance.org"
+kind = "rpc-node"
+capabilities = ["read", "balance", "fee", "broadcast"]
+settings_visible = true
+
+[[endpoints]]
+id = "bnb.rpc.defibit"
+chain_name = "BNB Chain"
+provider_id = "rpc"
+endpoint = "https://bsc-dataseed1.defibit.io"
+kind = "rpc-node"
+capabilities = ["read", "balance", "fee", "broadcast"]
+settings_visible = true
+
+[[endpoints]]
+id = "bnb.rpc.ninicoin"
+chain_name = "BNB Chain"
+provider_id = "rpc"
+endpoint = "https://bsc-dataseed1.ninicoin.io"
+kind = "rpc-node"
+capabilities = ["read", "balance", "fee", "broadcast"]
+settings_visible = true
+
+[[endpoints]]
+id = "bnb.explorer.tx"
+chain_name = "BNB Chain"
+provider_id = "bscscan-web"
+endpoint = "https://bscscan.com/tx/"
+kind = "web-link"
+capabilities = []
+explorer_label = "Open In BscScan"
+
+[[endpoints]]
+id = "avalanche.rpc.primary"
+chain_name = "Avalanche"
+provider_id = "rpc"
+endpoint = "https://api.avax.network/ext/bc/C/rpc"
+kind = "rpc-node"
+capabilities = ["read", "balance", "fee", "broadcast"]
+settings_visible = true
+
+[[endpoints]]
+id = "avalanche.rpc.publicnode"
+chain_name = "Avalanche"
+provider_id = "rpc"
+endpoint = "https://avalanche-c-chain-rpc.publicnode.com"
+kind = "rpc-node"
+capabilities = ["read", "balance", "fee", "broadcast"]
+settings_visible = true
+
+[[endpoints]]
+id = "avalanche.rpc.1rpc"
+chain_name = "Avalanche"
+provider_id = "rpc"
+endpoint = "https://1rpc.io/avax/c"
+kind = "rpc-node"
+capabilities = ["read", "balance", "fee", "broadcast"]
+settings_visible = true
+
+[[endpoints]]
+id = "avalanche.explorer.tx"
+chain_name = "Avalanche"
+provider_id = "snowtrace-web"
+endpoint = "https://snowtrace.io/tx/"
+kind = "web-link"
+capabilities = []
+explorer_label = "Open In Snowtrace"
+
+[[endpoints]]
+id = "hyperliquid.rpc.primary"
+chain_name = "Hyperliquid"
+provider_id = "rpc"
+endpoint = "https://rpc.hyperliquid.xyz/evm"
+kind = "rpc-node"
+capabilities = ["read", "balance", "fee", "broadcast"]
+settings_visible = true
+
+[[endpoints]]
+id = "hyperliquid.rpc.onfinality"
+chain_name = "Hyperliquid"
+provider_id = "rpc"
+endpoint = "https://hyperliquid.api.onfinality.io/evm/public"
+kind = "rpc-node"
+capabilities = ["read", "balance", "fee", "broadcast"]
+settings_visible = true
+
+[[endpoints]]
+id = "hyperliquid.explorer.web"
+chain_name = "Hyperliquid"
+provider_id = "hyperevmscan"
+endpoint = "https://hyperevmscan.io"
+kind = "indexer"
+capabilities = ["read", "history"]
+
+[[endpoints]]
+id = "hyperliquid.explorer.tx"
+chain_name = "Hyperliquid"
+provider_id = "hyperliquid-web"
+endpoint = "https://app.hyperliquid.xyz/explorer/tx/"
+kind = "web-link"
+capabilities = []
+explorer_label = "Open In Hyperliquid Explorer"
+
+[[endpoints]]
+id = "base.rpc.publicnode"
+chain_name = "Base"
+provider_id = "rpc"
+endpoint = "https://base-rpc.publicnode.com"
+kind = "rpc-node"
+capabilities = ["read", "balance", "fee", "broadcast"]
+settings_visible = true
+
+[[endpoints]]
+id = "base.rpc.mainnet"
+chain_name = "Base"
+provider_id = "rpc"
+endpoint = "https://mainnet.base.org"
+kind = "rpc-node"
+capabilities = ["read", "balance", "fee", "broadcast"]
+settings_visible = true
+
+[[endpoints]]
+id = "base.rpc.1rpc"
+chain_name = "Base"
+provider_id = "rpc"
+endpoint = "https://1rpc.io/base"
+kind = "rpc-node"
+capabilities = ["read", "balance", "fee", "broadcast"]
+settings_visible = true
+
+[[endpoints]]
+id = "base.explorer.tx"
+chain_name = "Base"
+provider_id = "basescan"
+endpoint = "https://basescan.org/tx/"
+kind = "web-link"
+capabilities = []
+explorer_label = "Open In BaseScan"
+
+[[endpoints]]
+id = "linea.rpc.linea-rpc"
+chain_name = "Linea"
+provider_id = "rpc"
+endpoint = "https://linea-rpc.publicnode.com"
+kind = "rpc-node"
+capabilities = ["read", "balance", "fee", "broadcast"]
+settings_visible = true
+
+[[endpoints]]
+id = "linea.rpc.rpc"
+chain_name = "Linea"
+provider_id = "rpc"
+endpoint = "https://rpc.linea.build"
+kind = "rpc-node"
+capabilities = ["read", "balance", "fee", "broadcast"]
+settings_visible = true
+
+[[endpoints]]
+id = "linea.rpc.1rpc"
+chain_name = "Linea"
+provider_id = "rpc"
+endpoint = "https://1rpc.io/linea"
+kind = "rpc-node"
+capabilities = ["read", "balance", "fee", "broadcast"]
+settings_visible = true
+
+[[endpoints]]
+id = "linea.explorer.tx"
+chain_name = "Linea"
+provider_id = "lineascan"
+endpoint = "https://lineascan.build/tx/"
+kind = "web-link"
+capabilities = []
+explorer_label = "Open In LineaScan"
+
+[[endpoints]]
+id = "scroll.rpc.scroll-rpc"
+chain_name = "Scroll"
+provider_id = "rpc"
+endpoint = "https://scroll-rpc.publicnode.com"
+kind = "rpc-node"
+capabilities = ["read", "balance", "fee", "broadcast"]
+settings_visible = true
+
+[[endpoints]]
+id = "scroll.rpc.rpc"
+chain_name = "Scroll"
+provider_id = "rpc"
+endpoint = "https://rpc.scroll.io"
+kind = "rpc-node"
+capabilities = ["read", "balance", "fee", "broadcast"]
+settings_visible = true
+
+[[endpoints]]
+id = "scroll.rpc.1rpc"
+chain_name = "Scroll"
+provider_id = "rpc"
+endpoint = "https://1rpc.io/scroll"
+kind = "rpc-node"
+capabilities = ["read", "balance", "fee", "broadcast"]
+settings_visible = true
+
+[[endpoints]]
+id = "scroll.explorer.tx"
+chain_name = "Scroll"
+provider_id = "scrollscan"
+endpoint = "https://scrollscan.com/tx/"
+kind = "web-link"
+capabilities = []
+explorer_label = "Open In ScrollScan"
+
+[[endpoints]]
+id = "blast.rpc.blast-rpc"
+chain_name = "Blast"
+provider_id = "rpc"
+endpoint = "https://blast-rpc.publicnode.com"
+kind = "rpc-node"
+capabilities = ["read", "balance", "fee", "broadcast"]
+settings_visible = true
+
+[[endpoints]]
+id = "blast.rpc.rpc"
+chain_name = "Blast"
+provider_id = "rpc"
+endpoint = "https://rpc.blast.io"
+kind = "rpc-node"
+capabilities = ["read", "balance", "fee", "broadcast"]
+settings_visible = true
+
+[[endpoints]]
+id = "blast.explorer.tx"
+chain_name = "Blast"
+provider_id = "blastscan"
+endpoint = "https://blastscan.io/tx/"
+kind = "web-link"
+capabilities = []
+explorer_label = "Open In BlastScan"
+
+[[endpoints]]
+id = "mantle.rpc.mantle-rpc"
+chain_name = "Mantle"
+provider_id = "rpc"
+endpoint = "https://mantle-rpc.publicnode.com"
+kind = "rpc-node"
+capabilities = ["read", "balance", "fee", "broadcast"]
+settings_visible = true
+
+[[endpoints]]
+id = "mantle.rpc.rpc"
+chain_name = "Mantle"
+provider_id = "rpc"
+endpoint = "https://rpc.mantle.xyz"
+kind = "rpc-node"
+capabilities = ["read", "balance", "fee", "broadcast"]
+settings_visible = true
+
+[[endpoints]]
+id = "mantle.explorer.tx"
+chain_name = "Mantle"
+provider_id = "mantlescan"
+endpoint = "https://mantlescan.xyz/tx/"
+kind = "web-link"
+capabilities = []
+explorer_label = "Open In MantleScan"
+
+[[endpoints]]
+id = "polygon.rpc.publicnode"
+chain_name = "Polygon"
+provider_id = "rpc"
+endpoint = "https://polygon-bor-rpc.publicnode.com"
+kind = "rpc-node"
+capabilities = ["read", "balance", "fee", "broadcast"]
+settings_visible = true
+
+[[endpoints]]
+id = "polygon.rpc.1rpc"
+chain_name = "Polygon"
+provider_id = "rpc"
+endpoint = "https://1rpc.io/matic"
+kind = "rpc-node"
+capabilities = ["read", "balance", "fee", "broadcast"]
+settings_visible = true
+
+[[endpoints]]
+id = "polygon.explorer.tx"
+chain_name = "Polygon"
+provider_id = "polygonscan"
+endpoint = "https://polygonscan.com/tx/"
+kind = "web-link"
+capabilities = []
+explorer_label = "Open In PolygonScan"
+
+[[endpoints]]
+id = "zcash.mainnet.trezor_blockbook"
+chain_name = "Zcash"
+provider_id = "trezor-blockbook"
+endpoint = "https://zec1.trezor.io"
+kind = "indexer"
+capabilities = ["read", "balance", "history", "utxo", "fee", "broadcast", "verification"]
+probe_url = "https://zec1.trezor.io/api/v2"
+settings_visible = true
+
+[[endpoints]]
+id = "zcash.explorer.tx"
+chain_name = "Zcash"
+provider_id = "zcashblockexplorer"
+endpoint = "https://zcashblockexplorer.com/transactions/"
+kind = "web-link"
+capabilities = []
+explorer_label = "Open In Zcash Block Explorer"
+
+[[endpoints]]
+id = "bitcoinGold.mainnet.trezor_blockbook"
+chain_name = "Bitcoin Gold"
+provider_id = "trezor-blockbook"
+endpoint = "https://btg1.trezor.io"
+kind = "indexer"
+capabilities = ["read", "balance", "history", "utxo", "fee", "broadcast", "verification"]
+probe_url = "https://btg1.trezor.io/api/v2"
+settings_visible = true
+
+[[endpoints]]
+id = "bitcoinGold.explorer.tx"
+chain_name = "Bitcoin Gold"
+provider_id = "btgexplorer"
+endpoint = "https://explorer.bitcoingold.org/insight/tx/"
+kind = "web-link"
+capabilities = []
+explorer_label = "Open In BTG Explorer"
+
+[[endpoints]]
+id = "decred.mainnet.dcrdata"
+chain_name = "Decred"
+provider_id = "dcrdata"
+endpoint = "https://dcrdata.decred.org/insight/api"
+kind = "indexer"
+capabilities = ["read", "balance", "history", "utxo", "fee", "broadcast", "verification"]
+probe_url = "https://dcrdata.decred.org/insight/api/status"
+settings_visible = true
+
+[[endpoints]]
+id = "decred.explorer.tx"
+chain_name = "Decred"
+provider_id = "dcrdata"
+endpoint = "https://dcrdata.decred.org/tx/"
+kind = "web-link"
+capabilities = []
+explorer_label = "Open In dcrdata"
+
+[[endpoints]]
+id = "kaspa.mainnet.kaspaorg"
+chain_name = "Kaspa"
+provider_id = "kaspaorg"
+endpoint = "https://api.kaspa.org"
+kind = "indexer"
+capabilities = ["read", "balance", "history", "utxo", "fee", "broadcast", "verification"]
+probe_url = "https://api.kaspa.org/info/network"
+settings_visible = true
+
+[[endpoints]]
+id = "kaspa.explorer.tx"
+chain_name = "Kaspa"
+provider_id = "explorer-kaspaorg"
+endpoint = "https://explorer.kaspa.org/txs/"
+kind = "web-link"
+capabilities = []
+explorer_label = "Open In Kaspa Explorer"
+
+[[endpoints]]
+id = "sei.mainnet.evm"
+chain_name = "Sei"
+provider_id = "rpc"
+endpoint = "https://evm-rpc.sei-apis.com"
+kind = "rpc-node"
+capabilities = ["read", "balance", "fee", "broadcast"]
+probe_url = "https://evm-rpc.sei-apis.com"
+settings_visible = true
+
+[[endpoints]]
+id = "sei.explorer.tx"
+chain_name = "Sei"
+provider_id = "seitrace"
+endpoint = "https://seitrace.com/tx/"
+kind = "web-link"
+capabilities = []
+explorer_label = "Open In Seitrace"
+
+[[endpoints]]
+id = "celo.mainnet.evm"
+chain_name = "Celo"
+provider_id = "rpc"
+endpoint = "https://forno.celo.org"
+kind = "rpc-node"
+capabilities = ["read", "balance", "fee", "broadcast"]
+probe_url = "https://forno.celo.org"
+settings_visible = true
+
+[[endpoints]]
+id = "celo.explorer.tx"
+chain_name = "Celo"
+provider_id = "celoscan"
+endpoint = "https://celoscan.io/tx/"
+kind = "web-link"
+capabilities = []
+explorer_label = "Open In CeloScan"
+
+[[endpoints]]
+id = "cronos.mainnet.evm"
+chain_name = "Cronos"
+provider_id = "rpc"
+endpoint = "https://evm.cronos.org"
+kind = "rpc-node"
+capabilities = ["read", "balance", "fee", "broadcast"]
+probe_url = "https://evm.cronos.org"
+settings_visible = true
+
+[[endpoints]]
+id = "cronos.explorer.tx"
+chain_name = "Cronos"
+provider_id = "cronoscan"
+endpoint = "https://cronoscan.com/tx/"
+kind = "web-link"
+capabilities = []
+explorer_label = "Open In CronoScan"
+
+[[endpoints]]
+id = "opBNB.mainnet.evm"
+chain_name = "opBNB"
+provider_id = "rpc"
+endpoint = "https://opbnb-mainnet-rpc.bnbchain.org"
+kind = "rpc-node"
+capabilities = ["read", "balance", "fee", "broadcast"]
+probe_url = "https://opbnb-mainnet-rpc.bnbchain.org"
+settings_visible = true
+
+[[endpoints]]
+id = "opBNB.explorer.tx"
+chain_name = "opBNB"
+provider_id = "opbnbscan"
+endpoint = "https://opbnbscan.com/tx/"
+kind = "web-link"
+capabilities = []
+explorer_label = "Open In opBNBScan"
+
+[[endpoints]]
+id = "zkSyncEra.mainnet.evm"
+chain_name = "zkSync Era"
+provider_id = "rpc"
+endpoint = "https://mainnet.era.zksync.io"
+kind = "rpc-node"
+capabilities = ["read", "balance", "fee", "broadcast"]
+probe_url = "https://mainnet.era.zksync.io"
+settings_visible = true
+
+[[endpoints]]
+id = "zkSyncEra.explorer.tx"
+chain_name = "zkSync Era"
+provider_id = "zksyncscan"
+endpoint = "https://explorer.zksync.io/tx/"
+kind = "web-link"
+capabilities = []
+explorer_label = "Open In zkSync Explorer"
+
+[[endpoints]]
+id = "sonic.mainnet.evm"
+chain_name = "Sonic"
+provider_id = "rpc"
+endpoint = "https://rpc.soniclabs.com"
+kind = "rpc-node"
+capabilities = ["read", "balance", "fee", "broadcast"]
+probe_url = "https://rpc.soniclabs.com"
+settings_visible = true
+
+[[endpoints]]
+id = "sonic.explorer.tx"
+chain_name = "Sonic"
+provider_id = "sonicscan"
+endpoint = "https://sonicscan.org/tx/"
+kind = "web-link"
+capabilities = []
+explorer_label = "Open In SonicScan"
+
+[[endpoints]]
+id = "berachain.mainnet.evm"
+chain_name = "Berachain"
+provider_id = "rpc"
+endpoint = "https://rpc.berachain.com"
+kind = "rpc-node"
+capabilities = ["read", "balance", "fee", "broadcast"]
+probe_url = "https://rpc.berachain.com"
+settings_visible = true
+
+[[endpoints]]
+id = "berachain.explorer.tx"
+chain_name = "Berachain"
+provider_id = "berascan"
+endpoint = "https://berascan.com/tx/"
+kind = "web-link"
+capabilities = []
+explorer_label = "Open In BeraScan"
+
+[[endpoints]]
+id = "unichain.mainnet.evm"
+chain_name = "Unichain"
+provider_id = "rpc"
+endpoint = "https://mainnet.unichain.org"
+kind = "rpc-node"
+capabilities = ["read", "balance", "fee", "broadcast"]
+probe_url = "https://mainnet.unichain.org"
+settings_visible = true
+
+[[endpoints]]
+id = "unichain.explorer.tx"
+chain_name = "Unichain"
+provider_id = "uniscan"
+endpoint = "https://uniscan.xyz/tx/"
+kind = "web-link"
+capabilities = []
+explorer_label = "Open In UniScan"
+
+[[endpoints]]
+id = "ink.mainnet.evm"
+chain_name = "Ink"
+provider_id = "rpc"
+endpoint = "https://rpc-gel.inkonchain.com"
+kind = "rpc-node"
+capabilities = ["read", "balance", "fee", "broadcast"]
+probe_url = "https://rpc-gel.inkonchain.com"
+settings_visible = true
+
+[[endpoints]]
+id = "ink.explorer.tx"
+chain_name = "Ink"
+provider_id = "inkscan"
+endpoint = "https://explorer.inkonchain.com/tx/"
+kind = "web-link"
+capabilities = []
+explorer_label = "Open In Ink Explorer"
+
+[[endpoints]]
+id = "dash.mainnet.trezor_blockbook"
+chain_name = "Dash"
+provider_id = "trezor-blockbook"
+endpoint = "https://dash1.trezor.io"
+kind = "indexer"
+capabilities = ["read", "balance", "history", "utxo", "fee", "broadcast", "verification"]
+probe_url = "https://dash1.trezor.io/api/v2"
+settings_visible = true
+
+[[endpoints]]
+id = "dash.explorer.tx"
+chain_name = "Dash"
+provider_id = "insight"
+endpoint = "https://insight.dash.org/insight/tx/"
+kind = "web-link"
+capabilities = []
+explorer_label = "Open In Dash Insight"
+
+[[endpoints]]
+id = "xLayer.mainnet.evm"
+chain_name = "X Layer"
+provider_id = "rpc"
+endpoint = "https://rpc.xlayer.tech"
+kind = "rpc-node"
+capabilities = ["read", "balance", "fee", "broadcast"]
+probe_url = "https://rpc.xlayer.tech"
+settings_visible = true
+
+[[endpoints]]
+id = "xLayer.explorer.tx"
+chain_name = "X Layer"
+provider_id = "okxscan"
+endpoint = "https://www.okx.com/web3/explorer/xlayer/tx/"
+kind = "web-link"
+capabilities = []
+explorer_label = "Open In OKX X Layer Explorer"
+
+[[endpoints]]
+id = "bittensor.mainnet.opentensor"
+chain_name = "Bittensor"
+provider_id = "opentensor"
+endpoint = "https://entrypoint-finney.opentensor.ai"
+kind = "indexer"
+capabilities = ["read", "balance", "fee", "broadcast"]
+probe_url = "https://entrypoint-finney.opentensor.ai"
+settings_visible = true
+
+[[endpoints]]
+id = "bittensor.mainnet.taostats"
+chain_name = "Bittensor"
+provider_id = "taostats"
+endpoint = "https://api.taostats.io"
+kind = "indexer"
+capabilities = ["history", "verification"]
+probe_url = "https://api.taostats.io"
+settings_visible = true
+
+[[endpoints]]
+id = "bittensor.explorer.tx"
+chain_name = "Bittensor"
+provider_id = "taostats"
+endpoint = "https://taostats.io/extrinsic/"
+kind = "web-link"
+capabilities = []
+explorer_label = "Open In Taostats"

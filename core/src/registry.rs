@@ -320,6 +320,7 @@ impl Chain {
             Chain::Icp => SimpleChain::Icp,
             Chain::Near => SimpleChain::Near,
             Chain::Polkadot => SimpleChain::Polkadot,
+            Chain::Bittensor => SimpleChain::Bittensor,
             _ => return None,
         })
     }
@@ -886,6 +887,7 @@ impl Chain {
                 | Chain::Decred
                 | Chain::Kaspa
                 | Chain::Dash
+                | Chain::Bittensor
         )
     }
 

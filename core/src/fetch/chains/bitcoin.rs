@@ -2,7 +2,7 @@
 //! P2WPKH/P2PKH/P2SH-P2WPKH/P2TR transaction construction, signing,
 //! and broadcast.
 //!
-//! ## Network providers (Esplora endpoints from AppEndpointDirectory.json)
+//! ## Network providers (Esplora endpoints from endpoints.toml)
 //!
 //! Mainnet:  blockstream.info/api, mempool.space/api, emzy.de/...
 //! Testnet:  mempool.space/testnet/api, blockstream.info/testnet/api

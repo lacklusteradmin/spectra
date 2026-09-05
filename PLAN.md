@@ -107,9 +107,9 @@ Measured, not estimated:
 
 | | Start | Now |
 |---|---|---|
-| Swift, non-generated, excluding tests | 30,879 lines | **24,340** |
-| — `views/` + `extensions/` (genuine UI) | 11,113 (36%) | **10,679 (44%)** |
-| — root of `swift/` (`AppState`, stores, persistence, bridges) | 19,766 (64%) | **13,661 (56%)** |
+| Swift, non-generated, excluding tests | 30,879 lines | **24,258** |
+| — `views/` + `extensions/` (genuine UI) | 11,113 (36%) | **10,693 (44%)** |
+| — root of `swift/` (`AppState`, stores, persistence, bridges) | 19,766 (64%) | **13,565 (56%)** |
 | `core_plan_*` FFI exports (core advises, Swift applies) | 42 | **0** |
 | Swift enums restating the chain list | 6 (30 / 76 / 30 / 24 / 7 / 18 cases) | **0** |
 | Chain-name dispatch sites in Swift | 743 literals, ~400 dispatch | **98** |
@@ -7125,6 +7125,134 @@ should be built from `wallet.addresses` (slots) rather than from `Chain.all`.
 *How to check:* `grep -rn Platform swift/ --include='*.swift'` finds no
 `PlatformSnapshot*` type, and the iOS suite is green at 43 tests.
 
+**Thirty-one declarations in the root that nothing read.**
+
+*Was:* `AppState.swift` and eleven other root files carried constants,
+accessors and helpers with no caller left. Most were orphaned by earlier
+passes of this plan rather than born dead.
+
+*Is:* deleted. Swift root 13,673 → **13,565**; `AppState.swift` 1,086 → 1,060.
+
+**Nine of them were one thing: the maintenance schedule.**
+`activeMaintenancePollSeconds`, `inactiveMaintenancePollSeconds`,
+`activePendingRefreshInterval`, `activePriceRefreshInterval`,
+`backgroundMaintenanceInterval` and its constrained / low-power / low-battery
+variants, and `automaticChainRefreshStalenessInterval`. Core owns that schedule
+now — `core_active_maintenance_plan` hands back a `pollSeconds` the app reads —
+and the constants it replaced were left behind. A reader would have taken them
+for the live values.
+
+`utxoDiscoveryGapLimit` and `utxoDiscoveryMaxIndex` went the same way: they are
+`GAP_LIMIT` and `MAX_INDEX` inside `discover_utxo_addresses` now, and
+`deriveSeedPhraseAddress` in `AppState+ReceiveFlow` was the derivation the same
+move took into core.
+
+*What the scan got wrong, twice, in the same way.* The sweep flagged
+`SecureStores`' `loadSecret` / `saveSecret` / `deleteSecret` / `listKeys` and
+`WalletBalanceObserver`'s `onRefreshCycleComplete` as unused. They are
+implementations of `SecretStore` and `BalanceObserver`, the two
+`#[uniffi::export(with_foreign)]` traits **Rust** calls — no Swift caller
+exists by design. Any scan for dead Swift has that blind spot; both were kept.
+
+*Left alone on purpose:* six `StaticContentCatalog` fields — `heroTitle`,
+`crossChainSectionTitle`, `rpcErrorFormat`, `publicAddressOnlyMessage` and the
+two import-method descriptions — are `Codable` `let`s whose keys carry
+translated copy in `resources/strings/`. Nothing reads them, which means either
+a screen should be showing that copy and does not, or the copy is surplus.
+Deleting translated content is not a call to make from a usage count.
+
+*How to check:* the compiler. Every deletion here is a declaration, so a
+protocol conformance or key-path use fails the build — which is how the
+multi-line signature this first pass mangled was caught. Three suites green.
+
+**Bittensor could not send, because a reason that had expired was never
+revisited.**
+
+*Was:* `Chain::uses_generic_send_submit` answered no for Bittensor, and
+`route_send_asset` had no row for it, so `submit_kind` was `None` and the
+preflight refused. It was the one chain in the "cannot send" list.
+
+*Is:* it routes to `"bittensor"`, has a `SimpleChain` shape, takes the shared
+submit path, and the list of chains that cannot send is empty. The assertion
+says so directly rather than naming a survivor.
+
+*Why that side, and a correction.* An earlier entry of mine said "nothing
+explains why". That was wrong — the explanation was in
+`send::tests::every_sendable_chain_has_a_routing_kind_from_the_known_set`,
+which is not where I looked:
+
+> Bittensor is genuinely still out: its `execute_send` arm takes no fee
+> parameter, it has no shared-path preview, and the generic submit needs a fee
+> to validate the balance against. Giving it a fallback would mean inventing a
+> TAO fee, which is not this document's to invent.
+
+Sound when written, and **expired**. `Chain::static_fee_units` carries
+`Bittensor => 125_000` — the fee had been decided, and nobody came back to the
+exclusion that depended on it not existing. `native_fee_estimate` already
+answered `("125000", "0.000125", "static")` before this change.
+
+Everything else was already in place: `fetch_simple_chain_send_preview` has no
+per-chain arm at all, `execute_send` has had a `SendParams::Bittensor` arm, and
+Swift's dispatch checks `usesGenericSubmit` before the `submitKind` switch, so
+a chain joining the shared path needs no Swift arm. What was missing was three
+registry rows and a preview tag.
+
+*Its own preview tag, not Polkadot's.* The record shape is Polkadot's — same
+Substrate extrinsic with fewer fields — but `SendPreview::Bittensor` is a
+separate variant because the front end keys its preview slots on the tag, and a
+Bittensor preview filed under Polkadot would be shown for the wrong chain.
+
+*The compiler found the rest.* Adding the variant broke four exhaustive
+matches in turn — `send::flow`'s projection, `SendPreviewTypes`' two switches,
+and the routing-kind set. Each one is a place that would have silently
+mishandled the new chain if the enum had been open.
+
+**A second static-fee table, dead and drifted.** `simple_chain_default_fee_raw`
+in `send/preview_decode.rs` held one row per `SimpleChain`. It had no caller
+outside its own four assertions, and it disagreed with `Chain::static_fee_units`
+on **eight of the twelve** chains they shared — Polkadot 160,000,000 against
+10,000,000,000, a factor of sixty-two, and Monero 500,000,000 against zero.
+Deleted. It is the same two-copies shape this plan keeps finding, caught here
+only because adding a chain meant writing a row into both.
+
+*How to check:* `spectra send affordability --chain Bittensor --symbol TAO`
+prices a send; the routing-kind test asserts no mainnet is unsendable.
+
+**The endpoint directory moved to TOML, and the settings screen shows what
+each endpoint is.**
+
+*Was:* `core/data/AppEndpointDirectory.json` — 166 records beside
+`chains.toml`, in a format that cannot hold a comment. And the settings screen
+rendered `Text(endpoint)` and nothing else, so six identical-looking URLs under
+one chain gave no way to tell the node that answers balances from the indexer
+that answers history.
+
+*Is:* `core/data/endpoints.toml`, read the way `chains.toml` already is — a
+file-shaped `TomlEndpoint` that converts into the FFI record, so the file may
+omit anything empty and the record still has every field. And each settings row
+carries a caption: `Node · Balance · Fees · Broadcast`, or `Indexer · History`.
+
+*Why TOML:* the file wanted comments more than any other data in the repo.
+Sixteen endpoints were deleted, three replaced and ten re-tagged over the last
+two passes, and every one of those decisions had a reason that could only be
+written down in `PLAN.md`, a long way from the row it explains. The header now
+carries the two vocabularies and the reason `history` needs care; individual
+rows carry what was verified and when — `etc.etcdesktop.com` says which dead
+endpoint it replaced and that it returns chain id `0x3d`.
+
+*Why a lookup rather than a field:* the settings screen assembles some of its
+groups itself — Bitcoin's Esplora bases, and whatever RPC the user typed. Those
+have no catalog row. `app_core_endpoint_tag(url)` returns `None` for them and
+the row shows the URL alone, which is honest; putting `kind` on
+`AppCoreGroupedSettingsEntry` would have forced those call sites to invent one.
+
+*How to check:* `spectra endpoints --chain Ethereum` prints the same
+kind/capabilities the screen now shows. Three core tests cover the lookup — a
+catalog endpoint reports its kind, a trailing slash is not a different
+endpoint, and an unlisted URL has no tag. The four schema assertions from the
+pass above still hold against the TOML, which is the real check that the
+conversion changed nothing: 549 tests pass on the new file.
+
 **An endpoint's `roles` said what it *is* and what it is *for* in one array,
 and forty-six records lied as a result.**
 
@@ -7785,7 +7913,7 @@ Not by feel. These four numbers, checked at the end of each stage:
 | Metric | Start | Now | Target |
 |---|---|---|---|
 | `core_plan_*` exports | 42 | **0** | 0 |
-| Swift root lines vs `views/` | 19,766 vs 11,113 | **13,661 vs 10,679** | inverted |
+| Swift root lines vs `views/` | 19,766 vs 11,113 | **13,565 vs 10,693** | inverted |
 | Domain collections stored on `AppState` | 3 | 0 | 0 |
 | Domain settings owned by core | 0 | **21 fields; 4 left on iOS on purpose** | all |
 | Wallet operations reachable from the CLI | partial | **all** | all |
@@ -7801,7 +7929,7 @@ recorded before was counted by hand and by a narrower rule, which is why it did
 not match; the script's number is the one to compare against from here.
 
 *The other unmet row was checked by the same standard and stands.* Inverting
-the Swift ratio needs **2,982** lines *deleted* from the root, or **1,491**
+the Swift ratio needs **2,872** lines *deleted* from the root, or **1,436**
 *moved* into `views/` — moving counts twice, since it lowers one side and raises
 the other. Most of the work so far has been deletion, which is why the number
 has barely moved while 5,385 lines have gone. Classifying the root by
@@ -7947,8 +8075,10 @@ so the case was weaker than the five and it was not queued.
   means the fix is to pick one layout outright rather than bridge two. Take the
   stricter side when picking: core's is sealed and Swift's is not.
 
-- **Bittensor is excluded from the shared submit path, and nothing explains
-  why.** `Chain::uses_generic_send_submit` answers yes for sixteen mainnets.
+- ~~**Bittensor is excluded from the shared submit path, and nothing explains
+  why.**~~ **Fixed**, and the second half of that title was wrong — the
+  explanation was in a test comment, and it had expired. See "Bittensor could
+  not send" under "Behaviour changed on purpose". The original text: `Chain::uses_generic_send_submit` answers yes for sixteen mainnets.
   Bittensor is one of seven non-EVM chains that answer no, and it is the only
   one of the seven without a reason: the other six need a UTXO selection
   (Bitcoin, Dogecoin), a resolved source account (Internet Computer), a
