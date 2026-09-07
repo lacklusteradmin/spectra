@@ -14,6 +14,15 @@ impl WalletService {
         mut request: crate::send::SendExecutionRequest,
     ) -> Result<crate::send::SendExecutionResult, SpectraBridgeError> {
         let result: Result<crate::send::SendExecutionResult, SpectraBridgeError> = async {
+            let chain = Chain::from_str_id(&request.chain_id).ok_or_else(|| {
+                SpectraBridgeError::InvalidInput {
+                    message: format!("execute_send: unsupported chain_id: {}", request.chain_id),
+                }
+            })?;
+            // Refuse malformed overrides before reading or deriving signing material.
+            if let Some(input) = &request.evm_overrides {
+                input.resolve(chain)?;
+            }
             // 1. Derive key material (or use provided private key).
             let (priv_hex, pub_hex) = if let Some(ref seed_phrase) = request.seed_phrase {
                 use crate::derivation::types::BitcoinScriptType;
@@ -61,16 +70,6 @@ impl WalletService {
             };
             let priv_hex = Zeroizing::new(priv_hex);
 
-            // 2. Resolve the chain once — `build_send_params` and
-            // `sign_and_broadcast_send` both take it as a parameter rather
-            // than each re-deriving it from `chain_id`, so the two can never
-            // disagree about which chain this is.
-            let chain = Chain::from_str_id(&request.chain_id).ok_or_else(|| {
-                SpectraBridgeError::from(format!(
-                    "execute_send: unsupported chain_id: {}",
-                    request.chain_id
-                ))
-            })?;
             let params = self
                 .build_send_params(chain, &request, priv_hex.as_str(), &pub_hex)
                 .await?;
@@ -167,6 +166,9 @@ impl WalletService {
         use crate::send::preview_decode::{amount_to_raw_units_string, decimal_str_to_raw_units};
         use crate::service::send_params::*;
 
+        let overrides = req.evm_overrides.as_ref()
+            .map(|input| input.resolve(chain)).transpose()?.unwrap_or_default();
+
         let from = req.from_address.clone();
         let to = req.to_address.clone();
         let amount = req.amount;
@@ -222,7 +224,7 @@ impl WalletService {
                         amount_raw: raw_u128(decimals, "amount_raw")?,
                         private_key_hex,
                     },
-                    evm_send_overrides(req.evm_overrides.as_ref()),
+                    overrides,
                 ),
                 Chain::Tron => SendTokenParams::Tron(TronTokenSendParams {
                     from,
@@ -303,7 +305,7 @@ impl WalletService {
                     value_wei: raw_u128(18, "value_wei")?,
                     private_key_hex,
                 },
-                evm_send_overrides(req.evm_overrides.as_ref()),
+                overrides,
             ),
             Chain::Solana => SendParams::Solana(SolanaNativeSendParams {
                 from_pubkey_hex: public_key_hex.unwrap_or_default(),
@@ -483,56 +485,6 @@ impl WalletService {
     }
 }
 
-/// Direct equivalent of `render_evm_overrides_fragment` (send/ethereum.rs)
-/// composed with `read_evm_overrides` (service/helpers.rs) — what those two
-/// functions did together by writing a JSON fragment and reading it back,
-/// with no JSON in between.
-///
-/// `access_list` is always empty here, matching what the pair actually
-/// produced: `render_evm_overrides_fragment` wrote `access_list_json` as a
-/// raw, unquoted JSON array, but `read_evm_overrides` read it back with
-/// `.as_str()`, which returns `None` for anything that is not a JSON
-/// string — so a caller-supplied access list was silently dropped on every
-/// real send. No Swift call site sets it today (`EvmSendOverridesInput` is
-/// always constructed with `accessListJson: nil`), so this has never had a
-/// visible effect, but it is a pre-existing bug, not something this refactor
-/// should silently fix — preserved as-is.
-///
-/// `gas_buffer_pct` is likewise always `None`: `EvmSendOverridesInput` has no
-/// such field, so `read_evm_overrides`'s `params["gas_buffer_pct"]` lookup
-/// never found one on this path either.
-fn evm_send_overrides(
-    input: Option<&crate::send::ethereum::EvmSendOverridesInput>,
-) -> crate::send::chains::evm::EvmSendOverrides {
-    use crate::send::chains::evm::EvmSendOverrides;
-    let Some(o) = input else {
-        return EvmSendOverrides::default();
-    };
-    let max_fee_per_gas_wei = o
-        .custom_fees
-        .as_ref()
-        .map(|cf| (cf.max_fee_per_gas_gwei * 1e9).round() as u64 as u128);
-    let max_priority_fee_per_gas_wei = o
-        .custom_fees
-        .as_ref()
-        .map(|cf| (cf.max_priority_fee_per_gas_gwei * 1e9).round() as u64 as u128);
-    let calldata = o
-        .calldata_hex
-        .as_deref()
-        .and_then(|s| hex::decode(s.trim_start_matches("0x")).ok());
-    EvmSendOverrides {
-        nonce: o.nonce.map(|n| n as u64),
-        max_fee_per_gas_wei,
-        max_priority_fee_per_gas_wei,
-        gas_limit: o.gas_limit.map(|n| n as u64),
-        calldata,
-        access_list: Vec::new(),
-        sign_only: o.sign_only.unwrap_or(false),
-        gas_buffer_pct: None,
-    }
-}
-
-
 #[cfg(test)]
 mod token_decimals_come_from_the_contract {
     use crate::registry::Chain;
@@ -700,6 +652,69 @@ mod build_send_params_tests {
         assert_eq!(overrides.nonce, Some(9));
         assert_eq!(overrides.max_fee_per_gas_wei, Some(50_000_000_000));
         assert_eq!(overrides.max_priority_fee_per_gas_wei, Some(3_000_000_000));
+    }
+
+    #[tokio::test]
+    async fn evm_builder_refuses_invalid_typed_fees_without_the_ui_parser() {
+        let service = WalletService::new_typed(Vec::new()).expect("service");
+        for (max, priority) in [
+            (f64::INFINITY, 1.0), (30.0, f64::NAN), (1e100, 1.0),
+            (1.0, 2.0), (1e-10, 1e-10),
+        ] {
+            let mut request = req("ethereum", "Ethereum");
+            request.evm_overrides = Some(EvmSendOverridesInput {
+                custom_fees: Some(EvmCustomFeeConfiguration {
+                    max_fee_per_gas_gwei: max,
+                    max_priority_fee_per_gas_gwei: priority,
+                }),
+                ..Default::default()
+            });
+            assert!(matches!(
+                service.build_send_params(Chain::Ethereum, &request, "priv", &None).await,
+                Err(crate::SpectraBridgeError::InvalidInput { .. })
+            ), "{max}/{priority} must fail before signing");
+        }
+    }
+
+    #[tokio::test]
+    async fn evm_overrides_reach_native_and_token_builders() {
+        let service = WalletService::new_typed(Vec::new()).expect("service");
+        for token in [false, true] {
+            let mut request = req("ethereum", "Ethereum");
+            if token {
+                request.contract_address = Some("0x1111111111111111111111111111111111111111".into());
+                request.token_decimals = Some(6);
+            }
+            request.evm_overrides = Some(EvmSendOverridesInput {
+                nonce: Some(7), gas_limit: Some(50_000), calldata_hex: Some("0x0102ff".into()),
+                access_list_json: Some(format!(r#"[{{"address":"0x{}","storageKeys":["0x{}"]}}]"#,
+                    "11".repeat(20), "22".repeat(32))),
+                sign_only: Some(true), ..Default::default()
+            });
+            let params = service.build_send_params(Chain::Ethereum, &request, "priv", &None).await.unwrap();
+            let overrides = match params {
+                ExecuteSendParams::Native(SendParams::Evm(_, overrides)) if !token => overrides,
+                ExecuteSendParams::Token(SendTokenParams::Evm(_, overrides)) if token => overrides,
+                other => panic!("wrong send shape: {other:?}"),
+            };
+            assert_eq!(overrides.nonce, Some(7));
+            assert_eq!(overrides.gas_limit, Some(50_000));
+            assert_eq!(overrides.calldata, Some(vec![1, 2, 255]));
+            assert_eq!(overrides.access_list[0].address, [0x11; 20]);
+            assert_eq!(overrides.access_list[0].storage_keys, vec![[0x22; 32]]);
+            assert!(overrides.sign_only);
+        }
+    }
+
+    #[tokio::test]
+    async fn malformed_evm_overrides_are_refused_before_keys_or_network() {
+        let service = WalletService::new_typed(Vec::new()).expect("service");
+        let mut request = req("ethereum", "Ethereum");
+        request.evm_overrides = Some(EvmSendOverridesInput {
+            nonce: Some(-1), ..Default::default()
+        });
+        assert!(matches!(service.execute_send(request).await,
+            Err(crate::SpectraBridgeError::InvalidInput { message }) if message.contains("nonce")));
     }
 
     /// Polkadot and Bittensor both go through the string-exact `to_raw`

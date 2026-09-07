@@ -3,7 +3,7 @@
 use clap::{Args, Subcommand};
 use colored::Colorize as _;
 use spectra_core::send::ethereum::{
-    prepare_evm_send_assembly, EvmSendAssemblyInput, EvmSupportedToken,
+    parse_evm_custom_fees, prepare_evm_send_assembly, EvmSendAssemblyInput, EvmSendOverridesInput, EvmSupportedToken,
 };
 use spectra_core::send::{
     send_affordability, SendAffordability, SendAffordabilityInput, SendExecutionRequest,
@@ -39,6 +39,10 @@ pub enum SendCommand {
     Probe(ProbeArgs),
     /// Ask whether a send can land once the fee is counted.
     Affordability(AffordabilityArgs),
+    /// Validate custom EVM gas fees in gwei, without keys or network.
+    Fees(FeesArgs),
+    /// Validate EVM nonce, gas, calldata and access-list overrides offline.
+    Overrides(OverridesArgs),
 }
 
 pub fn run(ctx: &Ctx, out: Out, command: SendCommand) -> CliResult<()> {
@@ -47,7 +51,74 @@ pub fn run(ctx: &Ctx, out: Out, command: SendCommand) -> CliResult<()> {
         SendCommand::Assemble(args) => assemble(ctx, out, args),
         SendCommand::Probe(args) => probe(ctx, out, args),
         SendCommand::Affordability(args) => affordability(out, args),
+        SendCommand::Fees(args) => fees(out, args),
+        SendCommand::Overrides(args) => overrides(out, args),
     }
+}
+
+#[derive(Args)]
+pub struct OverridesArgs {
+    #[arg(long, default_value = "Ethereum")]
+    chain: String,
+    #[arg(long, allow_hyphen_values = true)]
+    nonce: Option<i64>,
+    #[arg(long, allow_hyphen_values = true)]
+    gas_limit: Option<i64>,
+    /// Hex calldata, with or without 0x. Requires --gas-limit.
+    #[arg(long)]
+    calldata: Option<String>,
+    /// JSON array of {address, storageKeys}; non-empty lists require --gas-limit.
+    #[arg(long)]
+    access_list: Option<String>,
+    #[arg(long)]
+    sign_only: bool,
+}
+
+fn overrides(out: Out, args: OverridesArgs) -> CliResult<()> {
+    let chain = resolve_chain(&args.chain)?;
+    let resolved = EvmSendOverridesInput {
+        nonce: args.nonce,
+        gas_limit: args.gas_limit,
+        calldata_hex: args.calldata,
+        access_list_json: args.access_list,
+        sign_only: Some(args.sign_only),
+        ..Default::default()
+    }.resolve(chain)?;
+    out.text(|| println!("  {} valid EVM overrides (no signing or broadcast)", out::ok_mark()));
+    out.emit(serde_json::json!({
+        "ok": true,
+        "nonce": resolved.nonce,
+        "gasLimit": resolved.gas_limit,
+        "calldataBytes": resolved.calldata.as_ref().map(Vec::len),
+        "accessListEntries": resolved.access_list.len(),
+        "storageKeys": resolved.access_list.iter().map(|entry| entry.storage_keys.len()).sum::<usize>(),
+        "signOnly": resolved.sign_only,
+    }));
+    Ok(())
+}
+
+#[derive(Args)]
+pub struct FeesArgs {
+    /// Maximum total fee per gas, in gwei.
+    #[arg(long, allow_hyphen_values = true)]
+    max_fee: String,
+    /// Priority fee per gas, in gwei.
+    #[arg(long, allow_hyphen_values = true)]
+    priority_fee: String,
+}
+
+fn fees(out: Out, args: FeesArgs) -> CliResult<()> {
+    let fees = parse_evm_custom_fees(args.max_fee, args.priority_fee)
+        .map_err(|error| CliError::rejected(error.to_string()))?;
+    out.text(|| {
+        out::field("max fee (gwei)", &fees.max_fee_per_gas_gwei.to_string());
+        out::field(
+            "priority fee (gwei)",
+            &fees.max_priority_fee_per_gas_gwei.to_string(),
+        );
+    });
+    out.emit(serde_json::json!({ "ok": true, "fees": fees }));
+    Ok(())
 }
 
 #[derive(Args)]

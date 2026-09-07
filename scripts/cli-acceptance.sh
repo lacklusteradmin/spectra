@@ -488,6 +488,56 @@ check "refuses half a token description"    $USAGE \
     spectra send assemble --chain Base --from $EVM_ADDR --to $EVM_ADDR --amount 1 \
         --contract $EVM_ADDR
 
+section "EVM overrides"
+check "default overrides are valid" $OK spectra send overrides
+contains "keeps a zero nonce" '"nonce":0' spectra --json send overrides --nonce 0
+check "refuses negative nonce" $REJECTED spectra send overrides --nonce -1
+check "refuses zero gas" $REJECTED spectra send overrides --gas-limit 0
+check "refuses negative gas" $REJECTED spectra send overrides --gas-limit -1
+check "refuses EVM overrides on Bitcoin" $REJECTED spectra send overrides --chain Bitcoin
+check "refuses incomplete calldata bytes" $REJECTED \
+    spectra send overrides --gas-limit 50000 --calldata 0x0
+check "refuses invalid calldata hex" $REJECTED \
+    spectra send overrides --gas-limit 50000 --calldata 0xzz
+check "custom calldata needs explicit gas" $REJECTED \
+    spectra send overrides --calldata 0x0102
+contains "keeps calldata bytes" '"calldataBytes":3' \
+    spectra --json send overrides --gas-limit 50000 --calldata 0x0102ff
+contains "explicit empty calldata stays explicit" '"calldataBytes":0' \
+    spectra --json send overrides --gas-limit 21000 --calldata 0x
+check "refuses a non-array access list" $REJECTED \
+    spectra send overrides --gas-limit 50000 --access-list '{}'
+check "refuses a malformed access-list address" $REJECTED \
+    spectra send overrides --gas-limit 50000 --access-list '[{"address":"0x11","storageKeys":[]}]'
+check "refuses short storage keys" $REJECTED \
+    spectra send overrides --gas-limit 50000 --access-list '[{"address":"0x1111111111111111111111111111111111111111","storageKeys":["0x01"]}]'
+contains "empty access list needs no custom gas" '"accessListEntries":0' \
+    spectra --json send overrides --access-list '[]'
+access_list_fixture='[{"address":"0x1111111111111111111111111111111111111111","storageKeys":["0x2222222222222222222222222222222222222222222222222222222222222222"]}]'
+contains "keeps access-list entries" '"accessListEntries":1' \
+    spectra --json send overrides --gas-limit 50000 --access-list "$access_list_fixture"
+contains "keeps access-list storage keys" '"storageKeys":1' \
+    spectra --json send overrides --gas-limit 50000 --access-list "$access_list_fixture"
+check "non-empty access list needs explicit gas" $REJECTED \
+    spectra send overrides --access-list "$access_list_fixture"
+contains "keeps sign-only intent" '"signOnly":true' spectra --json send overrides --sign-only
+
+section "custom EVM fees"
+contains "returns parsed fees from core" '"maxFeePerGasGwei":30.25' \
+    spectra --json send fees --max-fee ' 30.25 ' --priority-fee 1
+check "accepts a one-wei priority fee" $OK \
+    spectra send fees --max-fee 1 --priority-fee 0.000000001
+check "accepts equal max and priority fees" $OK \
+    spectra send fees --max-fee 2 --priority-fee 2
+check "refuses priority above max" $REJECTED \
+    spectra send fees --max-fee 1 --priority-fee 2
+for bad_fee in inf NaN -1 0 1e-10 1e100; do
+    check "refuses max fee $bad_fee" $REJECTED \
+        spectra send fees --max-fee "$bad_fee" --priority-fee 1
+    check "refuses priority fee $bad_fee" $REJECTED \
+        spectra send fees --max-fee 30 --priority-fee "$bad_fee"
+done
+
 section "send affordability"
 # The fee half of "can this send land". `route_send_asset` already refuses
 # amount > balance; this is the part that was in Swift, where four callers each

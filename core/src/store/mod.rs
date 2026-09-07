@@ -663,37 +663,6 @@ pub fn plan_price_alert_evaluation(
 }
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, uniffi::Enum)]
-pub enum EthereumCustomFeeValidationCode {
-    InvalidMaxFee,
-    InvalidPriorityFee,
-    MaxBelowPriority,
-}
-
-#[uniffi::export]
-pub fn core_ethereum_custom_fee_validation(
-    use_custom_fees: bool,
-    is_ethereum_chain: bool,
-    max_fee_gwei_raw: String,
-    priority_fee_gwei_raw: String,
-) -> Option<EthereumCustomFeeValidationCode> {
-    if !use_custom_fees || !is_ethereum_chain {
-        return None;
-    }
-    let max_trimmed = max_fee_gwei_raw.trim();
-    let priority_trimmed = priority_fee_gwei_raw.trim();
-    let Some(max_fee) = max_trimmed.parse::<f64>().ok().filter(|v| *v > 0.0) else {
-        return Some(EthereumCustomFeeValidationCode::InvalidMaxFee);
-    };
-    let Some(priority_fee) = priority_trimmed.parse::<f64>().ok().filter(|v| *v > 0.0) else {
-        return Some(EthereumCustomFeeValidationCode::InvalidPriorityFee);
-    };
-    if max_fee < priority_fee {
-        return Some(EthereumCustomFeeValidationCode::MaxBelowPriority);
-    }
-    None
-}
-
-#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, uniffi::Enum)]
 pub enum EthereumManualNonceValidationCode {
     Empty,
     NotNonNegativeInteger,

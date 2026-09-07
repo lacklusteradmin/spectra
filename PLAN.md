@@ -85,7 +85,8 @@ Other completed ownership slices: settings, token preferences, price alerts,
 keypool, owned addresses, operational events, refresh scheduling, send routing,
 recipient checks, dashboard grouping and transaction-derived data. UTXO discovery
 and receive reservation now run in core through the shared secret layout.
-The asset wiki and its follow-up cleanup are also complete.
+The asset wiki and its follow-up cleanup are also complete. The unused
+`LoadingTaskRegistry` and its Xcode references have been removed.
 
 ### Remaining direction
 
@@ -136,17 +137,12 @@ assembly cannot verify a broadcast.
   treating send orchestration as end-to-end tested. Registry/router/builder
   agreement is an offline check, not evidence that a send lands.
 - **App-only domain exports:** some rules still lack a CLI caller or direct Rust
-  coverage. Audit callers before counting coverage; the previous audit named
-  `core_ethereum_custom_fee_validation` as one such funds-path rule.
+  coverage. Audit callers before counting coverage. Custom EVM fees now have
+  a shared parser, CLI entry point and Swift binding tests.
 - **Decred and Kaspa mnemonic vectors:** no independent known-mnemonic →
   known-address test was identified. Existing address-validation and Decred
   private-key-import checks do not substitute. Use published or independently
   derived vectors, not this implementation's output as its own expected value.
-- **Dead Swift file:** `swift/LoadingTaskRegistry.swift` has no callers but is
-  still in the Xcode project. Remove the file and project references together.
-- **Unused presentation data:** review `TokenVisualRegistryEntry`'s unread
-  fields and unused translated `StaticContentCatalog` properties. Decide whether
-  the UI is missing content or the data is surplus before deleting it.
 - **Endpoint probes and redundancy:** the earlier sweep flagged probe URLs for
   Bitcoin SV, Internet Computer and Zcash, plus chains with only one RPC node.
   Recheck through `spectra endpoints` before changing rows; recorded failures
@@ -232,6 +228,28 @@ The entries below summarize the retained decisions, not a fresh test run.
 
 ### Sending and refresh
 
+- **EVM override validation:** access lists were discarded, malformed calldata
+  became absent, and negative nonce/gas values wrapped to unsigned integers.
+  `EvmSendOverridesInput::resolve` now validates the chain, numeric signs, hex
+  bytes and access-list schema/address/storage-key sizes, and carries accepted
+  bytes into both native and token sends. Explicit empty calldata stays distinct
+  from absent calldata. Custom calldata or a non-empty access list requires an
+  explicit gas limit, avoiding the default native limit or an estimate for
+  different token calldata. Unknown chains and malformed overrides fail before
+  key derivation or network reads. Check `spectra send overrides --nonce 0
+  --gas-limit 50000 --calldata 0x0102`; invalid inputs exit 3. Core and CLI tests
+  cover validation and builder propagation; gas sufficiency and live broadcast
+  remain outside these offline checks. No new FFI export was added.
+- **Custom EVM fees:** core previously returned validation advice, accepted
+  infinity, and left Swift to parse again. `parse_evm_custom_fees` now returns
+  the configuration or a typed error. Both fees must be finite, at least one
+  wei, within the current u64-wei conversion range, and max must cover priority.
+  Preview and send construction enforce the same checks, preventing zero or
+  saturated fees when a caller bypasses the parser. Whole-wei rounding remains.
+  Check `spectra send fees --max-fee 30 --priority-fee 1`; `inf`, sub-wei and
+  overflow values exit 3. CLI acceptance, direct send-builder regression tests
+  and `EvmCustomFeesBridgeTests` cover the paths without a broadcast.
+
 - **Routing and gates:** preview/submit paths used different lists; some submit
   branches bypassed shared biometric/risk checks or sent unroutable tokens.
   Core now derives routing from its wallets, registry and tracked contracts;
@@ -273,6 +291,15 @@ The entries below summarize the retained decisions, not a fresh test run.
   one document. Check CLI acceptance and `spectra diagnostics self-test`.
 
 ### Networks, assets and UI
+
+- **Presentation catalog:** token colors previously required a Swift hosting-chain
+  mapping and a full unused display record; they now come directly from core's
+  token catalog into a color cache. Native-chain colors still take precedence.
+  This removes a platform-specific filter from asset styling. Six unused
+  copy fields and their four locale variants were surplus and have been removed,
+  including the outdated private-key support claim. Check catalog metadata with
+  `spectra token catalog --chain Ethereum`; color lookup and resource decoding
+  require the Swift tests, not the CLI.
 
 - **Network selection:** duplicated network-mode models became registry chain
   ids in `network_chain_by_family`. Endpoint indexing separates per-network

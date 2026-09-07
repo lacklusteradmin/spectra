@@ -1,13 +1,4 @@
-// Ethereum / EVM send — pure-logic core.
-//
-// HTTP (fetch preview JSON), ENS resolution, Keychain (seed access), and
-// broadcast stay in Swift by architectural decision. This module owns:
-// 1. Input validation (address format, amount parsing, native-vs-token choice)
-// 2. Request assembly (value_wei, to, data_hex for native vs ERC-20 transfer)
-// 3. Preview JSON decoding with optional custom fee / nonce overrides
-//
-// The goal: Swift becomes a thin caller — validate + assemble in Rust,
-// HTTP in Swift, decode in Rust, state write via WalletCore (already Rust).
+// EVM input validation, transaction assembly and preview decoding.
 
 use serde::{Deserialize, Serialize};
 
@@ -18,9 +9,58 @@ pub struct EvmCustomFeeConfiguration {
     pub max_priority_fee_per_gas_gwei: f64,
 }
 
-/// Typed EVM overrides crossing the FFI from Swift. Internal-only on the Rust
-/// side: `evm_send_overrides` (service/send_execution.rs) projects this into
-/// the `EvmSendOverrides` the chain send paths take.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, thiserror::Error, uniffi::Error)]
+pub enum EvmCustomFeeError {
+    #[error("Enter a valid Max Fee in gwei.")]
+    InvalidMaxFee,
+    #[error("Enter a valid Priority Fee in gwei.")]
+    InvalidPriorityFee,
+    #[error("Max Fee must be greater than or equal to Priority Fee.")]
+    MaxBelowPriority,
+}
+
+impl EvmCustomFeeConfiguration {
+    /// The send path uses whole wei. Reject values that would round to zero or
+    /// saturate its u64 conversion; checking only `> 0` also accepts infinity.
+    /// Reject sub-wei inputs rather than quietly rounding them up.
+    pub(crate) fn to_wei(&self) -> Result<(u128, u128), EvmCustomFeeError> {
+        fn wei(gwei: f64) -> Option<u128> {
+            let scaled = (gwei * 1e9).round();
+            (gwei.is_finite() && gwei >= 1e-9 && scaled < u64::MAX as f64)
+                .then(|| scaled as u64 as u128)
+        }
+        let max = wei(self.max_fee_per_gas_gwei).ok_or(EvmCustomFeeError::InvalidMaxFee)?;
+        let priority = wei(self.max_priority_fee_per_gas_gwei)
+            .ok_or(EvmCustomFeeError::InvalidPriorityFee)?;
+        if self.max_fee_per_gas_gwei < self.max_priority_fee_per_gas_gwei {
+            return Err(EvmCustomFeeError::MaxBelowPriority);
+        }
+        Ok((max, priority))
+    }
+}
+
+/// Parse once in core; front ends render errors or use the returned fees.
+#[uniffi::export]
+pub fn parse_evm_custom_fees(
+    max_fee_gwei_raw: String,
+    priority_fee_gwei_raw: String,
+) -> Result<EvmCustomFeeConfiguration, EvmCustomFeeError> {
+    let fees = EvmCustomFeeConfiguration {
+        max_fee_per_gas_gwei: max_fee_gwei_raw
+            .trim()
+            .parse()
+            .map_err(|_| EvmCustomFeeError::InvalidMaxFee)?,
+        max_priority_fee_per_gas_gwei: priority_fee_gwei_raw
+            .trim()
+            .parse()
+            .map_err(|_| EvmCustomFeeError::InvalidPriorityFee)?,
+    };
+    fees.to_wei()?;
+    Ok(fees)
+}
+
+/// Typed EVM overrides crossing the FFI from Swift. `resolve` validates them
+/// and produces the overrides the signer consumes.
 #[derive(Debug, Clone, Default, Serialize, Deserialize, uniffi::Record)]
 #[serde(rename_all = "camelCase")]
 pub struct EvmSendOverridesInput {
@@ -40,7 +80,8 @@ pub struct EvmSendOverridesInput {
     pub sign_only: Option<bool>,
     /// EIP-2930 access list as a flat JSON string (array of
     /// `{address, storageKeys}` objects). Pre-warms storage slots to reduce
-    /// gas cost for contracts with known read patterns.
+    /// gas cost for contracts with known read patterns. Non-empty lists require
+    /// an explicit gas limit.
     pub access_list_json: Option<String>,
 }
 
@@ -248,6 +289,7 @@ pub fn decode_evm_send_preview(input: EvmPreviewDecodeInput) -> Option<EvmPrevie
         .unwrap_or(0.0);
     let (max_fee_gwei, prio_gwei, fee_eth, fee_desc) = match input.custom_fees {
         Some(cf) => {
+            cf.to_wei().ok()?;
             let fee_wei = (gas_limit as f64) * cf.max_fee_per_gas_gwei * 1_000_000_000.0;
             let fee_eth = fee_wei / 1_000_000_000_000_000_000.0;
             let desc = format!(
@@ -523,3 +565,50 @@ mod tests {
     }
 }
 
+#[cfg(test)]
+mod custom_fee_tests {
+    use super::*;
+
+    #[test]
+    fn parsed_fees_convert_to_the_expected_wei() {
+        let fees = parse_evm_custom_fees(" 30.25 ".into(), "0.000000001".into()).unwrap();
+        assert_eq!(fees.to_wei().unwrap(), (30_250_000_000, 1));
+        let equal = parse_evm_custom_fees("2".into(), "2".into()).unwrap();
+        assert_eq!(equal.to_wei().unwrap(), (2_000_000_000, 2_000_000_000));
+    }
+
+    #[test]
+    fn nonfinite_underflow_and_overflow_fees_are_refused() {
+        for raw in [
+            "", "nonsense", "NaN", "inf", "-inf", "0", "-1", "1e-10", "1e100", "18446744074",
+        ] {
+            assert_eq!(
+                parse_evm_custom_fees(raw.into(), "1".into()).unwrap_err(),
+                EvmCustomFeeError::InvalidMaxFee,
+                "max: {raw}"
+            );
+            assert_eq!(
+                parse_evm_custom_fees("30".into(), raw.into()).unwrap_err(),
+                EvmCustomFeeError::InvalidPriorityFee,
+                "priority: {raw}"
+            );
+        }
+        assert_eq!(
+            parse_evm_custom_fees("1".into(), "2".into()).unwrap_err(),
+            EvmCustomFeeError::MaxBelowPriority
+        );
+    }
+
+    #[test]
+    fn preview_refuses_invalid_typed_fees() {
+        let preview = decode_evm_send_preview(EvmPreviewDecodeInput {
+            raw_json: r#"{"gas_limit":21000}"#.into(),
+            explicit_nonce: None,
+            custom_fees: Some(EvmCustomFeeConfiguration {
+                max_fee_per_gas_gwei: f64::INFINITY,
+                max_priority_fee_per_gas_gwei: 1.0,
+            }),
+        });
+        assert!(preview.is_none());
+    }
+}
