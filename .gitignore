@@ -1,19 +1,8 @@
 # macOS
 .DS_Store
 
-# Cloud-sync placeholder/partial-download files (OneDrive, Synology Drive, etc.)
-.!*!*
-
 # Xcode / Swift
-DerivedData/
 build/
-*.xcuserstate
-*.xcscmblueprint
-*.moved-aside
-*.pbxuser
-*.mode1v3
-*.mode2v3
-*.perspectivev3
 
 # Xcode user data
 xcuserdata/
@@ -21,40 +10,12 @@ xcuserdata/
 *.xcodeproj/xcuserdata/
 *.xcodeproj/project.xcworkspace/xcuserdata/
 
-# Swift Package Manager
-.build/
-Packages/
-Package.resolved
-
-# AI assistants / coding agents
+# AI
 AGENTS.md
 CLAUDE.md
-CLAUDE.local.md
-GEMINI.md
-GEMINI.local.md
-.aider*
-.claude/
-.claude.json
-.claude.local.json
-.codex/
-.continue/
-.cursor/
-.cursorignore
-.cursorindexingignore
-.gemini/
-.goose/
-.kiro/
-.mcp/
-.mcp.json
-.roo/
-.roocode/
-.trae/
-.windsurf/
 
 # Rust
-**/target/
-.rust-build/
-**/*.rs.bk
+target/
 
 # UniFFI-generated Swift bindings (regenerated from the Rust core)
 swift/generated/
@@ -63,16 +24,5 @@ swift/generated/
 kotlin/app/src/main/kotlin/uniffi/
 kotlin/app/src/main/jniLibs/
 
-# Test / diagnostics
-*.log
-*.tmp
-*.swp
-*.swo
-*.orig
-
-# Local secrets / environment files
-.env
-.env.*
-*.pem
-*.key
-*.p12
+# Gradle cache
+.gradle/

@@ -1,88 +1,38 @@
 # Spectra
 
-Spectra is intended to be the Swiss Army knife of crypto wallets: powerful enough for serious users, but direct and approachable for everyday use.
+Spectra is a prelaunch, multi-chain self-custodial crypto wallet focused on
+custody, payments, recovery and staking. It aims to be approachable for everyday
+use while exposing the network settings, diagnostics and logs advanced users need.
 
-It is built around a simple idea: a wallet should first be a wallet. It should help people hold assets safely, send payments quickly, recover access to legacy funds when possible, and understand what the software is doing under the hood. It should not bury core money movement behind hype features, noisy finance gimmicks, or "get rich quick" product clutter.
+## Product direction
 
-## Ethos
+- Local-first, privacy-conscious software that keeps users in control of their
+  keys and wallet data.
+- Consistent send, receive, history and backup flows across chains.
+- Broad import and recovery support, including legacy wallet conventions and
+  watch-only wallets.
+- Configurable endpoints and providers, exportable diagnostics, and clear
+  transaction verification states.
+- Biometric protection, optional wallet passwords, customizable dashboards and
+  staking where chain support makes sense.
 
-- Professional without being hostile. Spectra should expose meaningful diagnostics, logs, and network details for advanced users, while still feeling clean and usable for people who just want to hold and send crypto.
-- Fast and practical. The app is designed for holding assets and making swift transactions, which is what crypto wallets were originally meant to do well.
-- Minimal and lightweight. Spectra avoids bloated surfaces and unnecessary moving parts so the product stays understandable, responsive, and easier to trust.
-- Privacy-first and decentralized. The wallet is built as open source local-first software, with a strong bias toward user control, low data exposure, and minimal trust assumptions.
-- Safer by staying focused. Spectra deliberately avoids risky product sprawl such as trading, swap funnels, credit-card purchase flows, and similar integrations that expand attack surface and create more paths for scams or theft.
-- Customizable and inspectable. Users should be able to adapt the wallet to their workflow and inspect diagnostics when something goes wrong instead of being locked into a black box.
-- Broad compatibility. Spectra aims to support legacy wallet conventions, recovery patterns, and backward-compatible import paths wherever practical, including cases where that helps users recover old or stranded funds.
+Spectra is intended to be open source. It does not aim to become a trading
+terminal or a swap-first product; custody and payments take priority over
+speculative features and purchase upsells.
 
-## What Spectra Is
+## Development
 
-Spectra is meant to be:
+One Rust wallet core serves several front ends: the `spectra` CLI, a native
+SwiftUI iOS app, and an Android skeleton. The iOS app predates the core; work is
+underway to finish moving domain state and decisions into Rust.
 
-- a self-custodial wallet for holding crypto securely
-- a practical payment tool for quick transfers
-- a staking-capable wallet where chain support makes sense
-- a recovery-oriented wallet with strong compatibility across older formats and wallet conventions
-- a transparent tool that exposes diagnostics and logs instead of hiding operational detail
+- [PLAN.md](PLAN.md): current stages, remaining work and intentional behaviour changes.
+- [Architecture](docs/ARCHITECTURE.md): design decisions and ownership boundaries.
+- [FFI boundary](docs/FFI-BOUNDARY.md): UniFFI 0.31 and Swift 6 integration.
+- [iOS UI](docs/iosUI.md): layout, typography and Liquid Glass rules.
 
-## What Spectra Is Not
+To inspect the command-line interface:
 
-Spectra is not trying to be:
-
-- a trading terminal
-- a DeFi casino
-- a swap-first funnel
-- a speculative "financial entertainment" app
-- a platform built around credit-card on-ramp upsells and other high-risk surface area
-
-The goal is restraint. Fewer gimmicks means fewer distractions, fewer attack paths, and a clearer safety model.
-
-## Product Direction
-
-Features that fit this ethos well:
-
-- Multi-chain wallet support with consistent send, receive, history, and backup flows
-- Broad wallet import and recovery support, including legacy derivation and compatibility modes
-- Strong watch-only support for users who want visibility without exposing signing keys
-- Rich diagnostics pages with endpoint health, history-source confidence, provider status, and exportable logs
-- Local-first security features such as biometric protection, optional wallet passwording, and careful secret storage
-- Clear transaction verification states after broadcast so users can tell whether a send is pending, indexed, or failed
-- Customizable dashboards, pinned assets, visibility controls, and advanced network settings
-- Flexible endpoint and provider configuration for users who want to bring their own infrastructure
-- Simple staking surfaces for supported chains without turning the wallet into a speculative product maze
-- Lightweight live operational tooling for support, troubleshooting, and self-serve debugging
-- Plain-text content and registries where appropriate to improve portability across platforms
-- Open-source development with readable architecture and low-obfuscation behavior
-
-## Security Philosophy
-
-Spectra reduces risk by reducing unnecessary complexity.
-
-Every added integration can create new trust assumptions, new exploit surface, and new ways for users to be tricked. By staying focused on custody, payments, staking, diagnostics, and recovery, the app can remain safer and easier to reason about than feature-heavy wallets chasing every trend.
-
-## Architecture
-
-Spectra is one program with several front ends. The wallet itself — key
-derivation, signing, chain registry, network access, persistence — is a Rust
-core in `core/`. A command-line front end in `cli/` drives that same core, which
-is both a useful tool and the check that the core carries no hidden dependency
-on a phone. The iOS app in `swift/` (and Android in `kotlin/`) renders what the
-core reports and forwards what the user does.
-
-Doing it this way means the security-critical code has exactly one
-implementation to review rather than one per platform.
-
-The app was written before the core, so that separation is not finished:
-`swift/` still owns state and decisions that belong in `core/`.
-[`PLAN.md`](PLAN.md) states the target, the staged work to get there, and how
-far along it is; [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) records the
-architectural decisions and why they were made.
-
-## Open Source
-
-Spectra is intended to be truly open source, privacy-conscious, and decentralized in spirit. Users should be able to inspect how it works, understand the network paths it uses, and keep control over their own keys and wallet data.
-
-## Support
-
-If you find the project useful, please consider donating.
-
-More detail on the philosophy, design decisions, and long-form explanations belongs on the project website.
+```sh
+cargo run -p spectra-cli -- --help
+```
