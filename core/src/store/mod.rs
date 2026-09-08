@@ -663,37 +663,6 @@ pub fn plan_price_alert_evaluation(
 }
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, uniffi::Enum)]
-pub enum EthereumManualNonceValidationCode {
-    Empty,
-    NotNonNegativeInteger,
-    TooLarge,
-}
-
-#[uniffi::export]
-pub fn core_ethereum_manual_nonce_validation(
-    manual_nonce_enabled: bool,
-    nonce_raw: String,
-) -> Option<EthereumManualNonceValidationCode> {
-    if !manual_nonce_enabled {
-        return None;
-    }
-    let trimmed = nonce_raw.trim();
-    if trimmed.is_empty() {
-        return Some(EthereumManualNonceValidationCode::Empty);
-    }
-    let Ok(parsed) = trimmed.parse::<i64>() else {
-        return Some(EthereumManualNonceValidationCode::NotNonNegativeInteger);
-    };
-    if parsed < 0 {
-        return Some(EthereumManualNonceValidationCode::NotNonNegativeInteger);
-    }
-    if parsed > i32::MAX as i64 {
-        return Some(EthereumManualNonceValidationCode::TooLarge);
-    }
-    None
-}
-
-#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, uniffi::Enum)]
 #[serde(rename_all = "camelCase")]
 pub enum ChainOperationalEventLevel {
     Info,

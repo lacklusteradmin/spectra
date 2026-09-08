@@ -159,6 +159,38 @@ CLI check. If a check needs network, a simulator or new coverage, say so.
 Completed refactor diaries and old test/line counts do not belong here.
 The entries below summarize the retained decisions, not a fresh test run.
 
+### Atomic writes, exact send amounts and receive advancement
+
+- **Persistent mutations:** app-state and event snapshots could be saved out of
+  order; keypool/address writes and deletes changed memory before SQLite could
+  fail. Persistent mutations now share a service writer, save candidates before
+  publishing, and finish admitted writes even when the caller cancels its wait.
+  Opening a database uses the same writer and loads all tables before publishing;
+  malformed event data is refused instead of silently cleared. Combined wallet
+  deletion uses one SQLite transaction. Check `spectra currency EUR` followed by
+  `spectra currency` in a separate process and the CLI keypool checks. Failure,
+  cancellation and concurrent-write coverage: `cargo test -p spectra_core
+  service::state::tests` (offline).
+- **Send amount:** `SendExecutionRequest` had both a float and optional decimal
+  string; different chains rounded, truncated or ignored the exact input.
+  It now requires one decimal string, uses checked integer arithmetic for every
+  native/token builder, and refuses invalid syntax, excess precision and integer
+  overflow. Supported precision is bounded to 38 digits for the u128 conversion;
+  protocol u64/i64 limits are checked before signing. Zero remains allowed for
+  native EVM transactions; other transfers require positive amounts. Check
+  `spectra send amount --chain Solana --amount 9007199.254740993` (raw units
+  `9007199254740993`); Bitcoin `0.000000001`, negative/nonfinite values and u128
+  overflow exit 3. CLI acceptance, Rust builder tests and `SendAmountBridgeTests`
+  exercise the change offline; live broadcast remains outside these checks.
+- **Receive advancement:** probing an address then clearing the current reservation
+  could discard a newer reservation created while the probe was in flight.
+  Advancement now atomically compares the checked index and reserves its successor;
+  stale results do nothing and the successor respects addresses discovered during
+  the probe. Check `spectra pool next <wallet>` for stable receive
+  reservations and `cargo test -p spectra_core
+  concurrent_probes_advance_only_the_reservation_they_checked` for concurrent/stale
+  probe results and persisted successors. Live activity probes still need network.
+
 ### State and persistence
 
 - **Collections and settings:** Swift arrays, snapshots and separate settings
@@ -227,6 +259,14 @@ The entries below summarize the retained decisions, not a fresh test run.
   `spectra pool next <wallet>`; CLI acceptance checks the floor.
 
 ### Sending and refresh
+
+- **Manual EVM nonce:** a Swift reparse and Int32-only validation became one
+  core decimal parser returning the nonce. The range now matches the signed
+  Int64 preview/FFI fields; signed, fractional, hexadecimal and overflowing
+  text is refused. Invalid manual input throws instead of becoming an automatic
+  nonce, and previews reject negative caller/RPC nonces. Check `spectra send
+  overrides --nonce 2147483648` and refusal of `--nonce +1`; CLI acceptance and
+  Swift binding tests cover the parser and its errors.
 
 - **EVM override validation:** access lists were discarded, malformed calldata
   became absent, and negative nonce/gas values wrapped to unsigned integers.

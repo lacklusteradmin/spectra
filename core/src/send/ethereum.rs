@@ -59,6 +59,29 @@ pub fn parse_evm_custom_fees(
     Ok(fees)
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, thiserror::Error, uniffi::Error)]
+pub enum EvmNonceError {
+    #[error("Enter a nonce value for manual nonce mode.")]
+    Empty,
+    #[error("Nonce must be a non-negative integer.")]
+    InvalidInteger,
+    #[error("Nonce value is too large.")]
+    TooLarge,
+}
+
+/// Decimal nonce within the signed 64-bit range used by the preview and FFI.
+#[uniffi::export]
+pub fn parse_evm_nonce(raw: String) -> Result<i64, EvmNonceError> {
+    let raw = raw.trim();
+    if raw.is_empty() {
+        return Err(EvmNonceError::Empty);
+    }
+    if !raw.bytes().all(|byte| byte.is_ascii_digit()) {
+        return Err(EvmNonceError::InvalidInteger);
+    }
+    raw.parse().map_err(|_| EvmNonceError::TooLarge)
+}
+
 /// Typed EVM overrides crossing the FFI from Swift. `resolve` validates them
 /// and produces the overrides the signer consumes.
 #[derive(Debug, Clone, Default, Serialize, Deserialize, uniffi::Record)]
@@ -275,6 +298,9 @@ pub fn decode_evm_send_preview(input: EvmPreviewDecodeInput) -> Option<EvmPrevie
 
     let rpc_nonce = obj.get("nonce").and_then(|v| v.as_i64()).unwrap_or(0);
     let nonce = input.explicit_nonce.unwrap_or(rpc_nonce);
+    if nonce < 0 {
+        return None;
+    }
     let gas_limit = obj
         .get("gas_limit")
         .and_then(|v| v.as_i64())
@@ -610,5 +636,38 @@ mod custom_fee_tests {
             }),
         });
         assert!(preview.is_none());
+    }
+}
+
+#[cfg(test)]
+mod nonce_tests {
+    use super::*;
+
+    #[test]
+    fn parses_decimal_nonce_across_the_ffi_range() {
+        for (raw, expected) in [(" 00012 ", 12), ("0", 0), ("2147483648", 2147483648),
+            ("9223372036854775807", i64::MAX)] {
+            assert_eq!(parse_evm_nonce(raw.into()), Ok(expected));
+        }
+    }
+
+    #[test]
+    fn preview_refuses_negative_nonce_from_caller_or_rpc() {
+        for (raw, explicit) in [(r#"{"nonce":1}"#, Some(-1)), (r#"{"nonce":-1}"#, None)] {
+            assert!(decode_evm_send_preview(EvmPreviewDecodeInput {
+                raw_json: raw.into(), explicit_nonce: explicit, custom_fees: None,
+            }).is_none());
+        }
+    }
+
+    #[test]
+    fn refuses_malformed_or_overflowing_manual_nonce() {
+        assert_eq!(parse_evm_nonce(" ".into()), Err(EvmNonceError::Empty));
+        for raw in ["-1", "+1", "1.0", "1e2", "0x10", "1 2", "１２"] {
+            assert_eq!(parse_evm_nonce(raw.into()), Err(EvmNonceError::InvalidInteger));
+        }
+        for raw in ["9223372036854775808", "18446744073709551616"] {
+            assert_eq!(parse_evm_nonce(raw.into()), Err(EvmNonceError::TooLarge));
+        }
     }
 }

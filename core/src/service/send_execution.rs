@@ -1,6 +1,30 @@
 use super::*;
 use zeroize::Zeroizing;
 
+/// Validate before keys or network reads; token precision is checked again
+/// after metadata resolution. Native precision belongs to the registry.
+fn validate_execution_amount(
+    chain: Chain,
+    request: &crate::send::SendExecutionRequest,
+) -> Result<(), SpectraBridgeError> {
+    let decimals = if request.contract_address.is_none() {
+        u32::from(chain.native_decimals())
+    } else {
+        request
+            .amount_str
+            .trim()
+            .split_once('.')
+            .map_or(0, |(_, f)| f.len() as u32)
+    };
+    let raw = crate::send::amount_input::parse_raw_amount(&request.amount_str, decimals)?;
+    if raw == 0 && (!chain.is_evm() || request.contract_address.is_some()) {
+        return Err(SpectraBridgeError::InvalidInput {
+            message: "amount must be positive".into(),
+        });
+    }
+    Ok(())
+}
+
 #[uniffi::export(async_runtime = "tokio")]
 impl WalletService {
     /// Derive key material, build the chain-specific payload, sign, and
@@ -23,6 +47,7 @@ impl WalletService {
             if let Some(input) = &request.evm_overrides {
                 input.resolve(chain)?;
             }
+            validate_execution_amount(chain, &request)?;
             // 1. Derive key material (or use provided private key).
             let (priv_hex, pub_hex) = if let Some(ref seed_phrase) = request.seed_phrase {
                 use crate::derivation::types::BitcoinScriptType;
@@ -135,26 +160,7 @@ impl WalletService {
         None
     }
 
-    /// Build what this send needs to sign, directly as a typed [`SendParams`]
-    /// or [`SendTokenParams`] — no JSON in the middle.
-    ///
-    /// This is what `build_execute_send_payload` used to do by formatting a
-    /// JSON string per chain, which `sign_and_send` / `sign_and_send_token`
-    /// then re-parsed one match away. Two matches over the same 24-chain enum,
-    /// hand-kept in sync, for a value that never left the process: building it
-    /// and reading it back happened in the same `execute_send` call, on the
-    /// same thread. This match is now the only one; `sign_and_broadcast_send`
-    /// reads the variant it produced instead of re-deriving `Chain` from a
-    /// string and re-parsing a blob it was just handed.
-    ///
-    /// Every per-chain amount conversion below is unchanged from what the old
-    /// JSON builders computed — same function, same scale, same rounding —
-    /// only the destination changed, from a formatted string to a struct
-    /// field. Where two chains used to convert the same kind of amount two
-    /// different ways (the string-exact `to_raw` path for EVM/NEAR token
-    /// amounts, the f64-scaled `amount_u64` path for Tron/Solana token
-    /// amounts), that difference is preserved exactly, not unified — this is
-    /// a structural cleanup, not a precision change.
+    /// Resolve an exact decimal amount into the protocol's integer units.
     async fn build_send_params(
         &self,
         chain: Chain,
@@ -162,37 +168,29 @@ impl WalletService {
         priv_hex: &str,
         pub_hex: &Option<String>,
     ) -> Result<crate::service::send_params::ExecuteSendParams, SpectraBridgeError> {
-        use crate::send::payload::{amount_i64, amount_u64};
-        use crate::send::preview_decode::{amount_to_raw_units_string, decimal_str_to_raw_units};
+        use crate::send::amount_input::parse_raw_amount;
+        use crate::send::payload::amount_u64;
         use crate::service::send_params::*;
 
-        let overrides = req.evm_overrides.as_ref()
-            .map(|input| input.resolve(chain)).transpose()?.unwrap_or_default();
+        let overrides = req
+            .evm_overrides
+            .as_ref()
+            .map(|input| input.resolve(chain))
+            .transpose()?
+            .unwrap_or_default();
 
         let from = req.from_address.clone();
         let to = req.to_address.clone();
-        let amount = req.amount;
         let private_key_hex = priv_hex.to_string();
         let public_key_hex = pub_hex.clone();
 
-        // Same string-exact conversion `build_execute_send_payload` used: the
-        // caller's original decimal string when it supplied one, otherwise
-        // `amount` formatted to `dec` places first so the f64 path also goes
-        // through pure string arithmetic rather than binary-float scaling.
-        let to_raw = |dec: u32| -> String {
-            match req.amount_str.as_deref() {
-                Some(s) => decimal_str_to_raw_units(s, dec),
-                None => amount_to_raw_units_string(amount, dec),
-            }
+        let raw_u128 = |dec: u32| parse_raw_amount(&req.amount_str, dec);
+        let raw_u64 = |dec: u32| -> Result<u64, SpectraBridgeError> {
+            u64::try_from(raw_u128(dec)?).map_err(|_| SpectraBridgeError::InvalidInput {
+                message: "amount exceeds this protocol's u64 range".into(),
+            })
         };
-        // What `deserialize_u128_from_string_or_number` did to a JSON string
-        // produced by `to_raw`: parse it, and turn a parse failure into the
-        // same kind of error `parse_params` would have raised.
-        let raw_u128 = |dec: u32, field: &'static str| -> Result<u128, SpectraBridgeError> {
-            to_raw(dec)
-                .parse::<u128>()
-                .map_err(|e| SpectraBridgeError::from(format!("{field}: {e}")))
-        };
+        validate_execution_amount(chain, req)?;
 
         if let Some(ref contract) = req.contract_address {
             // The contract's own `decimals`, read before signing.
@@ -221,7 +219,7 @@ impl WalletService {
                         from,
                         contract: contract.clone(),
                         to,
-                        amount_raw: raw_u128(decimals, "amount_raw")?,
+                        amount_raw: raw_u128(decimals)?,
                         private_key_hex,
                     },
                     overrides,
@@ -230,9 +228,7 @@ impl WalletService {
                     from,
                     contract: contract.clone(),
                     to,
-                    // Tron's token send always took the f64-scaled path, not
-                    // `to_raw`'s string-exact one — preserved as-is.
-                    amount_raw: u128::from(amount_u64(amount, 10f64.powi(decimals as i32))),
+                    amount_raw: raw_u128(decimals)?,
                     fee_limit_sun: None,
                     private_key_hex,
                 }),
@@ -240,16 +236,16 @@ impl WalletService {
                     from_pubkey_hex: public_key_hex.unwrap_or_default(),
                     to,
                     mint: contract.clone(),
-                    // Also f64-scaled, like Tron — never went through `to_raw`.
-                    amount_raw: amount_u64(amount, 10f64.powi(decimals as i32)),
-                    decimals: decimals as u8,
+                    amount_raw: raw_u64(decimals)?,
+                    decimals: u8::try_from(decimals)
+                        .map_err(|_| SpectraBridgeError::from("token decimals out of range"))?,
                     private_key_hex,
                 }),
                 Chain::Near => SendTokenParams::Near(NearTokenSendParams {
                     from,
                     contract: contract.clone(),
                     to,
-                    amount_raw: raw_u128(decimals, "amount_raw")?,
+                    amount_raw: raw_u128(decimals)?,
                     private_key_hex,
                     public_key_hex: public_key_hex.unwrap_or_default(),
                     gas_tgas: None,
@@ -268,7 +264,11 @@ impl WalletService {
         // bindings by value (building a different struct), and a closure
         // that borrowed them for `.clone()` would hold that borrow live
         // across the whole match, conflicting with the moves.
-        let utxo = |from: String, to: String, private_key_hex: String, amount_sat: u64, fee_sat: Option<u64>| {
+        let utxo = |from: String,
+                    to: String,
+                    private_key_hex: String,
+                    amount_sat: u64,
+                    fee_sat: Option<u64>| {
             UtxoFixedFeeSendParams {
                 from,
                 to,
@@ -278,21 +278,18 @@ impl WalletService {
                 dust_threshold_sats: None,
             }
         };
-        // The `Chain::X => amount_sat = (amount * 10^native_decimals).round()`
-        // shape six chains below share — same rounding `build_utxo_sat_send_payload`
-        // received, computed once here. `amount` and `chain` are `Copy`, so
-        // this closure captures them freely with no borrow/move conflict.
-        let scaled_amount = |fee_default: u64| -> (u64, u64) {
-            let amount_units =
-                (amount * 10f64.powi(chain.native_decimals() as i32)).round() as u64;
-            (amount_units, req.fee_sat.unwrap_or(fee_default))
+        let scaled_amount = |fee_default: u64| -> Result<(u64, u64), SpectraBridgeError> {
+            Ok((
+                raw_u64(u32::from(chain.native_decimals()))?,
+                req.fee_sat.unwrap_or(fee_default),
+            ))
         };
 
         let params = match chain {
             Chain::Bitcoin => SendParams::Bitcoin(BitcoinNativeSendParams {
                 from,
                 to,
-                amount_sat: amount_u64(amount, 1e8),
+                amount_sat: raw_u64(8)?,
                 fee_rate_svb: Some(req.fee_rate_svb.unwrap_or(10.0)),
                 private_key_hex,
                 dust_threshold_sats: None,
@@ -302,7 +299,7 @@ impl WalletService {
                 EvmNativeSendParams {
                     from,
                     to,
-                    value_wei: raw_u128(18, "value_wei")?,
+                    value_wei: raw_u128(18)?,
                     private_key_hex,
                 },
                 overrides,
@@ -310,20 +307,16 @@ impl WalletService {
             Chain::Solana => SendParams::Solana(SolanaNativeSendParams {
                 from_pubkey_hex: public_key_hex.unwrap_or_default(),
                 to,
-                lamports: amount_u64(amount, 1e9),
+                lamports: raw_u64(9)?,
                 private_key_hex,
             }),
             Chain::Dogecoin => {
-                // Doge's own builder used a literal 1e8 scale (not
-                // `chain.native_decimals()`, which every other UTXO arm
-                // below uses) and a kb-rate → tx-size-estimate fee, not a
-                // flat `req.fee_sat` — both preserved exactly, not folded
-                // into the shared `scaled_amount`/`utxo` shapes below.
+                // Dogecoin estimates a 350-byte fee from DOGE/kB.
                 let fee_rate_doge_per_kb = req.fee_rate_svb.unwrap_or(0.01);
                 SendParams::Utxo(UtxoFixedFeeSendParams {
                     from,
                     to,
-                    amount_sat: amount_u64(amount, 1e8),
+                    amount_sat: raw_u64(8)?,
                     fee_sat: Some(amount_u64(fee_rate_doge_per_kb * 350.0 / 1000.0, 1e8)),
                     private_key_hex,
                     dust_threshold_sats: None,
@@ -332,28 +325,30 @@ impl WalletService {
             Chain::Xrp => SendParams::Xrp(XrpSendParams {
                 from,
                 to,
-                drops: amount_u64(amount, 1e6),
+                drops: raw_u64(6)?,
                 private_key_hex,
                 public_key_hex,
             }),
             Chain::Litecoin => {
-                let (amount_sat, fee_sat) = scaled_amount(10_000);
+                let (amount_sat, fee_sat) = scaled_amount(10_000)?;
                 SendParams::Utxo(utxo(from, to, private_key_hex, amount_sat, Some(fee_sat)))
             }
             Chain::BitcoinCash => {
-                let (amount_sat, fee_sat) = scaled_amount(1_000);
+                let (amount_sat, fee_sat) = scaled_amount(1_000)?;
                 SendParams::Utxo(utxo(from, to, private_key_hex, amount_sat, Some(fee_sat)))
             }
             Chain::Tron => SendParams::Tron(TronNativeSendParams {
                 from,
                 to,
-                amount_sun: amount_u64(amount, 1e6),
+                amount_sun: raw_u64(6)?,
                 private_key_hex,
             }),
             Chain::Stellar => SendParams::Stellar(StellarSendParams {
                 from,
                 to,
-                stroops: amount_i64(amount, 1e7),
+                stroops: i64::try_from(raw_u128(7)?).map_err(|_| {
+                    SpectraBridgeError::from("amount exceeds Stellar integer range")
+                })?,
                 private_key_hex,
                 public_key_hex,
                 network_passphrase: None,
@@ -361,7 +356,7 @@ impl WalletService {
             Chain::Cardano => SendParams::Cardano(CardanoSendParams {
                 from,
                 to,
-                amount_lovelace: amount_u64(amount, 1e6),
+                amount_lovelace: raw_u64(6)?,
                 fee_lovelace: Some(amount_u64(req.fee_amount.unwrap_or(0.17), 1e6)),
                 private_key_hex,
                 public_key_hex: public_key_hex.unwrap_or_default(),
@@ -371,7 +366,7 @@ impl WalletService {
             Chain::Polkadot => SendParams::Polkadot(PolkadotSendParams {
                 from,
                 to,
-                planck: raw_u128(10, "planck")?,
+                planck: raw_u128(10)?,
                 private_key_hex,
                 public_key_hex: public_key_hex.unwrap_or_default(),
                 era: None,
@@ -380,14 +375,14 @@ impl WalletService {
             Chain::Bittensor => SendParams::Bittensor(BittensorSendParams {
                 from,
                 to,
-                rao: raw_u128(9, "rao")?,
+                rao: raw_u128(9)?,
                 private_key_hex,
                 public_key_hex: public_key_hex.unwrap_or_default(),
             }),
             Chain::Sui => SendParams::Sui(SuiSendParams {
                 from,
                 to,
-                mist: amount_u64(amount, 1e9),
+                mist: raw_u64(9)?,
                 gas_budget: Some(amount_u64(req.gas_budget.unwrap_or(0.01), 1e9)),
                 private_key_hex,
                 public_key_hex: public_key_hex.unwrap_or_default(),
@@ -395,14 +390,14 @@ impl WalletService {
             Chain::Aptos => SendParams::Aptos(AptosSendParams {
                 from,
                 to,
-                octas: amount_u64(amount, 1e8),
+                octas: raw_u64(8)?,
                 private_key_hex,
                 public_key_hex: public_key_hex.unwrap_or_default(),
             }),
             Chain::Ton => SendParams::Ton(TonSendParams {
                 from,
                 to,
-                nanotons: amount_u64(amount, 1e9),
+                nanotons: raw_u64(9)?,
                 comment: None,
                 private_key_hex,
                 public_key_hex: public_key_hex.unwrap_or_default(),
@@ -413,28 +408,28 @@ impl WalletService {
             Chain::Near => SendParams::Near(NearNativeSendParams {
                 from,
                 to,
-                yocto_near: raw_u128(24, "yocto_near")?,
+                yocto_near: raw_u128(24)?,
                 private_key_hex,
                 public_key_hex: public_key_hex.unwrap_or_default(),
             }),
             Chain::Icp => SendParams::Icp(IcpSendParams {
                 from,
                 to,
-                e8s: amount_u64(amount, 1e8),
+                e8s: raw_u64(8)?,
                 private_key_hex,
                 public_key_hex,
             }),
             Chain::Monero => SendParams::Monero(MoneroSendParams {
                 to,
-                piconeros: amount_u64(amount, 1e12),
+                piconeros: raw_u64(12)?,
                 priority: Some(u64::from(req.monero_priority.unwrap_or(2))),
             }),
             Chain::BitcoinSV => {
-                let (amount_sat, fee_sat) = scaled_amount(1_000);
+                let (amount_sat, fee_sat) = scaled_amount(1_000)?;
                 SendParams::Utxo(utxo(from, to, private_key_hex, amount_sat, Some(fee_sat)))
             }
             Chain::Zcash => {
-                let (amount_sat, fee_sat) = scaled_amount(1_000);
+                let (amount_sat, fee_sat) = scaled_amount(1_000)?;
                 SendParams::Zcash(ZcashSendParams {
                     from,
                     to,
@@ -445,11 +440,11 @@ impl WalletService {
                 })
             }
             Chain::BitcoinGold => {
-                let (amount_sat, fee_sat) = scaled_amount(1_000);
+                let (amount_sat, fee_sat) = scaled_amount(1_000)?;
                 SendParams::Utxo(utxo(from, to, private_key_hex, amount_sat, Some(fee_sat)))
             }
             Chain::Decred => {
-                let (amount_sat, fee_sat) = scaled_amount(2_000);
+                let (amount_sat, fee_sat) = scaled_amount(2_000)?;
                 SendParams::Decred(DecredSendParams {
                     from,
                     to,
@@ -460,7 +455,7 @@ impl WalletService {
                 })
             }
             Chain::Kaspa => {
-                let (amount_sat, fee_sat) = scaled_amount(1_000);
+                let (amount_sat, fee_sat) = scaled_amount(1_000)?;
                 SendParams::Kaspa(KaspaSendParams {
                     from,
                     to,
@@ -472,7 +467,7 @@ impl WalletService {
                 })
             }
             Chain::Dash => {
-                let (amount_sat, fee_sat) = scaled_amount(2_000);
+                let (amount_sat, fee_sat) = scaled_amount(2_000)?;
                 SendParams::Utxo(utxo(from, to, private_key_hex, amount_sat, Some(fee_sat)))
             }
             c => {
@@ -503,7 +498,13 @@ mod token_decimals_come_from_the_contract {
     #[tokio::test]
     async fn a_family_core_cannot_ask_falls_back_to_the_caller() {
         let service = WalletService::new_typed(Vec::new()).expect("service");
-        for chain in [Chain::Solana, Chain::Ton, Chain::Sui, Chain::Aptos, Chain::Near] {
+        for chain in [
+            Chain::Solana,
+            Chain::Ton,
+            Chain::Sui,
+            Chain::Aptos,
+            Chain::Near,
+        ] {
             assert_eq!(
                 service.token_contract_decimals(chain, "whatever").await,
                 None,
@@ -519,7 +520,11 @@ mod token_decimals_come_from_the_contract {
         let asks: Vec<_> = Chain::all()
             .filter(|c| !c.is_testnet() && (c.is_evm() || *c == Chain::Tron))
             .collect();
-        assert!(asks.len() >= 24, "expected the EVM family plus Tron, got {}", asks.len());
+        assert!(
+            asks.len() >= 24,
+            "expected the EVM family plus Tron, got {}",
+            asks.len()
+        );
         assert!(asks.contains(&Chain::Tron));
         assert!(asks.contains(&Chain::Ethereum));
     }
@@ -542,8 +547,7 @@ mod build_send_params_tests {
             private_key_hex: None,
             from_address: "from".to_string(),
             to_address: "to".to_string(),
-            amount: 1.5,
-            amount_str: None,
+            amount_str: "1.5".into(),
             contract_address: None,
             token_decimals: None,
             fee_rate_svb: None,
@@ -556,7 +560,75 @@ mod build_send_params_tests {
         }
     }
 
-    /// Bitcoin: `amount_u64(amount, 1e8)`, and an absent `fee_rate_svb`
+    #[tokio::test]
+    async fn exact_amounts_reach_native_and_token_signing_params() {
+        let service = WalletService::new_typed(vec![]).unwrap();
+        let mut r = req("solana", "Solana");
+        r.amount_str = "9007199.254740993".into();
+        let ExecuteSendParams::Native(SendParams::Solana(p)) = service
+            .build_send_params(Chain::Solana, &r, "priv", &None)
+            .await
+            .unwrap()
+        else {
+            panic!("wrong native params")
+        };
+        assert_eq!(p.lamports, 9_007_199_254_740_993);
+        r.contract_address = Some("mint".into());
+        r.token_decimals = Some(9);
+        let ExecuteSendParams::Token(SendTokenParams::Solana(p)) = service
+            .build_send_params(Chain::Solana, &r, "priv", &None)
+            .await
+            .unwrap()
+        else {
+            panic!("wrong token params")
+        };
+        assert_eq!(p.amount_raw, 9_007_199_254_740_993);
+        r.amount_str = "9007199254.740993".into();
+        r.token_decimals = Some(6);
+        let ExecuteSendParams::Token(SendTokenParams::Tron(p)) = service
+            .build_send_params(Chain::Tron, &r, "priv", &None)
+            .await
+            .unwrap()
+        else {
+            panic!("wrong Tron params")
+        };
+        assert_eq!(p.amount_raw, 9_007_199_254_740_993);
+    }
+
+    #[tokio::test]
+    async fn amount_precision_and_integer_overflow_are_refused() {
+        let service = WalletService::new_typed(vec![]).unwrap();
+        for (chain, amount) in [
+            (Chain::Bitcoin, "0.000000001"),
+            (Chain::Solana, "18446744073.709551616"),
+            (Chain::Stellar, "922337203685.4775808"),
+            (Chain::Ethereum, "1.0000000000000000001"),
+            (Chain::Bitcoin, "0"),
+        ] {
+            let mut r = req(chain.str_id(), chain.chain_display_name());
+            r.amount_str = amount.into();
+            assert!(
+                service
+                    .build_send_params(chain, &r, "priv", &None)
+                    .await
+                    .is_err(),
+                "{chain:?}/{amount}"
+            );
+        }
+        for invalid in ["-1", "NaN", "inf", "1e3", "1.é", ""] {
+            let mut r = req("bitcoin", "Bitcoin");
+            r.amount_str = invalid.into();
+            assert!(
+                matches!(
+                    service.execute_send(r).await,
+                    Err(crate::SpectraBridgeError::InvalidInput { .. })
+                ),
+                "{invalid}"
+            );
+        }
+    }
+
+    /// Bitcoin: `raw_u64(8)?`, and an absent `fee_rate_svb`
     /// defaults to 10 — same as the JSON builder this replaced, which set
     /// `fee_rate_svb` unconditionally rather than leaving it absent for
     /// `BitcoinSendParams`'s own `.unwrap_or(10.0)` to apply.
@@ -587,7 +659,7 @@ mod build_send_params_tests {
     async fn dogecoin_uses_its_own_scale_and_kb_rate_fee() {
         let service = WalletService::new_typed(Vec::new()).expect("service");
         let mut r = req("dogecoin", "Dogecoin");
-        r.amount = 2.0;
+        r.amount_str = "2.0".into();
         r.fee_rate_svb = Some(1.0); // 1 DOGE/kb
         let params = service
             .build_send_params(Chain::Dogecoin, &r, "priv", &None)
@@ -608,7 +680,7 @@ mod build_send_params_tests {
     async fn litecoin_scales_by_native_decimals_with_its_own_fee_default() {
         let service = WalletService::new_typed(Vec::new()).expect("service");
         let mut r = req("litecoin", "Litecoin");
-        r.amount = 1.0;
+        r.amount_str = "1.0".into();
         let params = service
             .build_send_params(Chain::Litecoin, &r, "priv", &None)
             .await
@@ -617,7 +689,11 @@ mod build_send_params_tests {
             panic!("expected Utxo params")
         };
         assert_eq!(p.amount_sat, 100_000_000);
-        assert_eq!(p.fee_sat, Some(10_000), "Litecoin's own default, not BCH's 1_000");
+        assert_eq!(
+            p.fee_sat,
+            Some(10_000),
+            "Litecoin's own default, not BCH's 1_000"
+        );
     }
 
     /// EVM native: `value_wei` goes through the string-exact `to_raw(18)`
@@ -627,7 +703,7 @@ mod build_send_params_tests {
     async fn evm_native_uses_string_exact_wei_and_carries_overrides() {
         let service = WalletService::new_typed(Vec::new()).expect("service");
         let mut r = req("ethereum", "Ethereum");
-        r.amount_str = Some("0.1".to_string());
+        r.amount_str = "0.1".to_string();
         r.evm_overrides = Some(EvmSendOverridesInput {
             nonce: Some(9),
             custom_fees: Some(EvmCustomFeeConfiguration {
@@ -658,8 +734,11 @@ mod build_send_params_tests {
     async fn evm_builder_refuses_invalid_typed_fees_without_the_ui_parser() {
         let service = WalletService::new_typed(Vec::new()).expect("service");
         for (max, priority) in [
-            (f64::INFINITY, 1.0), (30.0, f64::NAN), (1e100, 1.0),
-            (1.0, 2.0), (1e-10, 1e-10),
+            (f64::INFINITY, 1.0),
+            (30.0, f64::NAN),
+            (1e100, 1.0),
+            (1.0, 2.0),
+            (1e-10, 1e-10),
         ] {
             let mut request = req("ethereum", "Ethereum");
             request.evm_overrides = Some(EvmSendOverridesInput {
@@ -669,10 +748,15 @@ mod build_send_params_tests {
                 }),
                 ..Default::default()
             });
-            assert!(matches!(
-                service.build_send_params(Chain::Ethereum, &request, "priv", &None).await,
-                Err(crate::SpectraBridgeError::InvalidInput { .. })
-            ), "{max}/{priority} must fail before signing");
+            assert!(
+                matches!(
+                    service
+                        .build_send_params(Chain::Ethereum, &request, "priv", &None)
+                        .await,
+                    Err(crate::SpectraBridgeError::InvalidInput { .. })
+                ),
+                "{max}/{priority} must fail before signing"
+            );
         }
     }
 
@@ -682,16 +766,26 @@ mod build_send_params_tests {
         for token in [false, true] {
             let mut request = req("ethereum", "Ethereum");
             if token {
-                request.contract_address = Some("0x1111111111111111111111111111111111111111".into());
+                request.contract_address =
+                    Some("0x1111111111111111111111111111111111111111".into());
                 request.token_decimals = Some(6);
             }
             request.evm_overrides = Some(EvmSendOverridesInput {
-                nonce: Some(7), gas_limit: Some(50_000), calldata_hex: Some("0x0102ff".into()),
-                access_list_json: Some(format!(r#"[{{"address":"0x{}","storageKeys":["0x{}"]}}]"#,
-                    "11".repeat(20), "22".repeat(32))),
-                sign_only: Some(true), ..Default::default()
+                nonce: Some(7),
+                gas_limit: Some(50_000),
+                calldata_hex: Some("0x0102ff".into()),
+                access_list_json: Some(format!(
+                    r#"[{{"address":"0x{}","storageKeys":["0x{}"]}}]"#,
+                    "11".repeat(20),
+                    "22".repeat(32)
+                )),
+                sign_only: Some(true),
+                ..Default::default()
             });
-            let params = service.build_send_params(Chain::Ethereum, &request, "priv", &None).await.unwrap();
+            let params = service
+                .build_send_params(Chain::Ethereum, &request, "priv", &None)
+                .await
+                .unwrap();
             let overrides = match params {
                 ExecuteSendParams::Native(SendParams::Evm(_, overrides)) if !token => overrides,
                 ExecuteSendParams::Token(SendTokenParams::Evm(_, overrides)) if token => overrides,
@@ -711,7 +805,8 @@ mod build_send_params_tests {
         let service = WalletService::new_typed(Vec::new()).expect("service");
         let mut request = req("ethereum", "Ethereum");
         request.evm_overrides = Some(EvmSendOverridesInput {
-            nonce: Some(-1), ..Default::default()
+            nonce: Some(-1),
+            ..Default::default()
         });
         assert!(matches!(service.execute_send(request).await,
             Err(crate::SpectraBridgeError::InvalidInput { message }) if message.contains("nonce")));
@@ -725,7 +820,7 @@ mod build_send_params_tests {
     async fn polkadot_and_bittensor_use_string_exact_raw_units() {
         let service = WalletService::new_typed(Vec::new()).expect("service");
         let mut r = req("polkadot", "Polkadot");
-        r.amount_str = Some("1.25".to_string());
+        r.amount_str = "1.25".to_string();
         let params = service
             .build_send_params(Chain::Polkadot, &r, "priv", &None)
             .await
@@ -736,7 +831,7 @@ mod build_send_params_tests {
         assert_eq!(p.planck, 12_500_000_000);
 
         let mut r = req("bittensor", "Bittensor");
-        r.amount_str = Some("1.25".to_string());
+        r.amount_str = "1.25".to_string();
         let params = service
             .build_send_params(Chain::Bittensor, &r, "priv", &None)
             .await
@@ -753,7 +848,7 @@ mod build_send_params_tests {
     async fn monero_defaults_priority_to_2() {
         let service = WalletService::new_typed(Vec::new()).expect("service");
         let mut r = req("monero", "Monero");
-        r.amount = 2.0;
+        r.amount_str = "2.0".into();
         let params = service
             .build_send_params(Chain::Monero, &r, "priv", &None)
             .await
@@ -783,19 +878,15 @@ mod build_send_params_tests {
         assert!(format!("{err:?}").contains("unsupported chain"));
     }
 
-    /// Token sends: NEAR takes the string-exact `to_raw` path, Solana takes
-    /// the f64-scaled `amount_u64` path — the same split as the native side,
-    /// preserved rather than unified. Both chains have no decimals client
-    /// (confirmed by `a_family_core_cannot_ask_falls_back_to_the_caller`
-    /// above), so `token_decimals` is what resolves it, with no network call.
+    /// Both token families use exact decimal input.
     #[tokio::test]
-    async fn token_sends_preserve_the_two_different_amount_paths() {
+    async fn token_sends_use_exact_integer_amounts() {
         let service = WalletService::new_typed(Vec::new()).expect("service");
 
         let mut r = req("near", "NEAR");
         r.contract_address = Some("token.near".to_string());
         r.token_decimals = Some(24);
-        r.amount_str = Some("0.1".to_string());
+        r.amount_str = "0.1".to_string();
         let params = service
             .build_send_params(Chain::Near, &r, "priv", &None)
             .await
@@ -808,7 +899,7 @@ mod build_send_params_tests {
         let mut r = req("solana", "Solana");
         r.contract_address = Some("mint111".to_string());
         r.token_decimals = Some(6);
-        r.amount = 1.5;
+        r.amount_str = "1.5".into();
         let params = service
             .build_send_params(Chain::Solana, &r, "priv", &Some("pub".to_string()))
             .await
@@ -883,8 +974,7 @@ mod the_router_and_the_builder_agree {
                 private_key_hex: None,
                 from_address: "from".to_string(),
                 to_address: "to".to_string(),
-                amount: 1.5,
-                amount_str: None,
+                amount_str: "1.5".into(),
                 contract_address: None,
                 token_decimals: None,
                 fee_rate_svb: None,
@@ -896,7 +986,10 @@ mod the_router_and_the_builder_agree {
                 derivation_overrides: None,
             };
             checked += 1;
-            if let Err(e) = service.build_send_params(chain, &request, "priv", &None).await {
+            if let Err(e) = service
+                .build_send_params(chain, &request, "priv", &None)
+                .await
+            {
                 unbuildable.push(format!("{} ({e})", chain.chain_display_name()));
             }
         }

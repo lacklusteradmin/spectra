@@ -81,6 +81,17 @@ readonly OK=0 USAGE=2 REJECTED=3
 
 # ── Registry ────────────────────────────────────────────────────────────────
 
+section "exact send amounts"
+contains "Solana preserves units beyond f64 precision" '"rawAmount":"9007199254740993"' \
+    spectra --json send amount --chain Solana --amount 9007199.254740993
+contains "token precision uses exact units" '"rawAmount":"9007199254740993"' \
+    spectra --json send amount --chain Tron --decimals 6 --amount 9007199254.740993
+check "rejects excess amount precision" $REJECTED spectra send amount --chain Bitcoin --amount 0.000000001
+check "rejects negative amount" $REJECTED spectra send amount --chain Ethereum --amount -1
+check "rejects non-finite amount" $REJECTED spectra send amount --chain Ethereum --amount inf
+check "rejects integer overflow" $REJECTED spectra send amount --chain Ethereum --decimals 0 --amount 340282366920938463463374607431768211456
+check "rejects unreasonable token precision" $REJECTED spectra send amount --chain Solana --decimals 4294967295 --amount 1
+
 section "chain registry"
 check "lists chains"                        $OK spectra chains
 contains "resolves a chain by symbol"  '"symbol":"BTC"' \
@@ -487,6 +498,14 @@ check "refuses a non-EVM chain"             $REJECTED \
 check "refuses half a token description"    $USAGE \
     spectra send assemble --chain Base --from $EVM_ADDR --to $EVM_ADDR --amount 1 \
         --contract $EVM_ADDR
+
+section "EVM manual nonce"
+contains "parses whitespace and leading zeros" '"nonce":12' spectra --json send overrides --nonce ' 0012 '
+contains "accepts nonce above Int32" '"nonce":2147483648' spectra --json send overrides --nonce 2147483648
+contains "accepts signed FFI maximum nonce" '"nonce":9223372036854775807' spectra --json send overrides --nonce 9223372036854775807
+for nonce in '' ' ' '+1' '1.0' '1e2' '0x10' '1 2' '１２' '9223372036854775808'; do
+    check "refuses invalid manual nonce [$nonce]" $REJECTED spectra send overrides --nonce "$nonce"
+done
 
 section "EVM overrides"
 check "default overrides are valid" $OK spectra send overrides

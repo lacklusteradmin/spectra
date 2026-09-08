@@ -40,11 +40,9 @@ pub(crate) use crate::registry::{Chain, EndpointSlot};
 pub(crate) use crate::send::chains::bitcoin::{
     sign_and_broadcast as bitcoin_sign_and_broadcast, BitcoinSendParams,
 };
-pub(crate) use crate::state::{
-    reduce_state_in_place, CoreAppState, StateCommand, StateTransition,
-};
-pub(crate) use crate::store::wallet_domain::AssetHolding;
+pub(crate) use crate::state::{reduce_state_in_place, CoreAppState, StateCommand, StateTransition};
 pub(crate) use crate::store::secret_store::SecretStore;
+pub(crate) use crate::store::wallet_domain::AssetHolding;
 pub(crate) use crate::store::{TransactionStatusPollConfig, TransactionStatusTrackerState};
 pub(crate) use crate::SpectraBridgeError;
 
@@ -69,8 +67,8 @@ pub(crate) use tokio::sync::RwLock as AsyncRwLock;
 pub(crate) use serde::{Deserialize, Serialize};
 
 mod helpers;
-mod history_derived;
 mod history_cursor;
+mod history_derived;
 mod maintenance;
 mod network;
 mod send;
@@ -114,8 +112,10 @@ impl EndpointIndex {
 // ── WalletService — primary UniFFI-exported object ────────────────────────
 
 /// Swift holds one instance for the lifetime of the app session.
-#[derive(uniffi::Object)]
+#[derive(Clone, uniffi::Object)]
 pub struct WalletService {
+    /// Serializes persistent mutations, including database binding.
+    pub(crate) state_writer: Arc<tokio::sync::Mutex<()>>,
     pub(crate) endpoints: Arc<AsyncRwLock<EndpointIndex>>,
     /// Per-wallet history pagination state (cursor / page / exhaustion).
     pub(crate) history_pagination: Arc<HistoryPaginationStore>,
@@ -190,6 +190,7 @@ impl WalletService {
                 .try_init();
         });
         Ok(Arc::new(Self {
+            state_writer: Arc::new(tokio::sync::Mutex::new(())),
             endpoints: Arc::new(AsyncRwLock::new(EndpointIndex::from_list(endpoints))),
             history_pagination: Arc::new(HistoryPaginationStore::new()),
             secret_store: Arc::new(std::sync::RwLock::new(None)),

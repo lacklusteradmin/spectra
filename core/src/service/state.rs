@@ -35,19 +35,22 @@ async fn persist_keypool(
     chain_name: &str,
     state: crate::wallet_db::KeypoolState,
 ) -> Result<(), SpectraBridgeError> {
-    keypool.insert(key, state.clone());
     // Without a bound database the service runs in memory only — the shape
     // tests and short-lived tools. Nothing to write.
     let Some(db_path) = state_db_path.read().await.clone() else {
+        keypool.insert(key, state);
         return Ok(());
     };
     let (wallet_id, chain_name) = (wallet_id.to_string(), chain_name.to_string());
+    let to_save = state.clone();
     tokio::task::spawn_blocking(move || {
-        crate::wallet_db::keypool_save(&db_path, &wallet_id, &chain_name, &state)
+        crate::wallet_db::keypool_save(&db_path, &wallet_id, &chain_name, &to_save)
     })
     .await
     .map_err(|e| SpectraBridgeError::from(format!("spawn_blocking: {e}")))?
-    .map_err(Into::into)
+    .map_err(SpectraBridgeError::from)?;
+    keypool.insert(key, state);
+    Ok(())
 }
 
 fn keypool_from_record(
@@ -177,10 +180,7 @@ impl WalletService {
     /// Load the JSON state blob stored under `key` in the SQLite database at
     /// `db_path`. Returns an empty JSON object `"{}"` when no value has been
     /// saved yet. Thread-safe: rusqlite is called in `spawn_blocking`.
-    pub async fn load_state(
-        &self,
-        key: String,
-    ) -> Result<String, SpectraBridgeError> {
+    pub async fn load_state(&self, key: String) -> Result<String, SpectraBridgeError> {
         let db_path = self.bound_state_db_path().await?;
         tokio::task::spawn_blocking(move || sqlite_load(&db_path, &key))
             .await
@@ -202,27 +202,30 @@ impl WalletService {
             .map_err(Into::into)
     }
 
-
-
     /// Remove all keypool state for a wallet (called when a wallet is deleted).
     pub async fn delete_keypool_for_wallet(
         &self,
         wallet_id: String,
     ) -> Result<(), SpectraBridgeError> {
-        let db_path = self.bound_state_db_path().await?;
-        // Drop the in-memory rows too, or a reserve after this would still see
-        // the deleted wallet's indices.
-        {
-            let suffix_owner = wallet_id.clone();
-            let mut keypool = self.keypool.write().await;
-            keypool.retain(|key, _| !key.starts_with(&format!("{suffix_owner}|")));
-        }
-        tokio::task::spawn_blocking(move || {
-            crate::wallet_db::keypool_delete_for_wallet(&db_path, &wallet_id)
+        self.write_persisted(move |service| async move {
+            let db_path = service.bound_state_db_path().await?;
+            let to_delete = wallet_id.clone();
+            tokio::task::spawn_blocking(move || {
+                crate::wallet_db::keypool_delete_for_wallet(&db_path, &to_delete)
+            })
+            .await
+            .map_err(|e| SpectraBridgeError::from(format!("spawn_blocking: {e}")))?
+            .map_err(SpectraBridgeError::from)?;
+            // Drop the in-memory rows too, or a reserve after this would still see
+            // the deleted wallet's indices.
+            {
+                let suffix_owner = wallet_id.clone();
+                let mut keypool = service.keypool.write().await;
+                keypool.retain(|key, _| !key.starts_with(&format!("{suffix_owner}|")));
+            }
+            Ok(())
         })
         .await
-        .map_err(|e| SpectraBridgeError::from(format!("spawn_blocking: {e}")))?
-        .map_err(Into::into)
     }
 
     /// Remove all keypool state for a chain (called when the user switches network modes,
@@ -231,20 +234,25 @@ impl WalletService {
         &self,
         chain_name: String,
     ) -> Result<(), SpectraBridgeError> {
-        let db_path = self.bound_state_db_path().await?;
-        // Switching network mode invalidates every index on the chain; the
-        // in-memory copy has to go with the stored one.
-        {
-            let suffix = format!("|{chain_name}");
-            let mut keypool = self.keypool.write().await;
-            keypool.retain(|key, _| !key.ends_with(&suffix));
-        }
-        tokio::task::spawn_blocking(move || {
-            crate::wallet_db::keypool_delete_for_chain(&db_path, &chain_name)
+        self.write_persisted(move |service| async move {
+            let db_path = service.bound_state_db_path().await?;
+            let to_delete = chain_name.clone();
+            tokio::task::spawn_blocking(move || {
+                crate::wallet_db::keypool_delete_for_chain(&db_path, &to_delete)
+            })
+            .await
+            .map_err(|e| SpectraBridgeError::from(format!("spawn_blocking: {e}")))?
+            .map_err(SpectraBridgeError::from)?;
+            // Switching network mode invalidates every index on the chain; the
+            // in-memory copy has to go with the stored one.
+            {
+                let suffix = format!("|{chain_name}");
+                let mut keypool = service.keypool.write().await;
+                keypool.retain(|key, _| !key.ends_with(&suffix));
+            }
+            Ok(())
         })
         .await
-        .map_err(|e| SpectraBridgeError::from(format!("spawn_blocking: {e}")))?
-        .map_err(Into::into)
     }
 
     /// Record an address this wallet owns.
@@ -261,33 +269,38 @@ impl WalletService {
         branch: Option<String>,
         branch_index: Option<i64>,
     ) -> Result<(), SpectraBridgeError> {
-        let address = address.trim().to_string();
-        if address.is_empty() || wallet_id.is_empty() {
-            return Ok(());
-        }
-        let record = crate::wallet_db::OwnedAddressRecord {
-            wallet_id,
-            chain_name: chain_name.clone(),
-            address,
-            derivation_path,
-            branch,
-            branch_index,
-        };
-        let mut table = self.owned_addresses.write().await;
-        let rows = table.entry(chain_name).or_default();
-        match rows.iter_mut().find(|existing| {
-            existing.wallet_id == record.wallet_id && existing.address == record.address
-        }) {
-            Some(existing) => *existing = record.clone(),
-            None => rows.push(record.clone()),
-        }
-        let Some(db_path) = self.state_db_path.read().await.clone() else {
-            return Ok(());
-        };
-        tokio::task::spawn_blocking(move || crate::wallet_db::address_save(&db_path, &record))
-            .await
-            .map_err(|e| SpectraBridgeError::from(format!("spawn_blocking: {e}")))?
-            .map_err(Into::into)
+        self.write_persisted(move |service| async move {
+            let address = address.trim().to_string();
+            if address.is_empty() || wallet_id.is_empty() {
+                return Ok(());
+            }
+            let record = crate::wallet_db::OwnedAddressRecord {
+                wallet_id,
+                chain_name: chain_name.clone(),
+                address,
+                derivation_path,
+                branch,
+                branch_index,
+            };
+            let mut table = service.owned_addresses.read().await.clone();
+            let rows = table.entry(chain_name).or_default();
+            match rows.iter_mut().find(|existing| {
+                existing.wallet_id == record.wallet_id && existing.address == record.address
+            }) {
+                Some(existing) => *existing = record.clone(),
+                None => rows.push(record.clone()),
+            }
+            if let Some(db_path) = service.state_db_path.read().await.clone() {
+                tokio::task::spawn_blocking(move || {
+                    crate::wallet_db::address_save(&db_path, &record)
+                })
+                .await
+                .map_err(|e| SpectraBridgeError::from(format!("spawn_blocking: {e}")))??;
+            }
+            *service.owned_addresses.write().await = table;
+            Ok(())
+        })
+        .await
     }
 
     /// The addresses this wallet owns — on one chain, or on every chain when
@@ -317,16 +330,22 @@ impl WalletService {
         &self,
         chain_name: String,
     ) -> Result<(), SpectraBridgeError> {
-        self.owned_addresses.write().await.remove(&chain_name);
-        let Some(db_path) = self.state_db_path.read().await.clone() else {
-            return Ok(());
-        };
-        tokio::task::spawn_blocking(move || {
-            crate::wallet_db::address_delete_for_chain(&db_path, &chain_name)
+        self.write_persisted(move |service| async move {
+            let Some(db_path) = service.state_db_path.read().await.clone() else {
+                service.owned_addresses.write().await.remove(&chain_name);
+                return Ok(());
+            };
+            let to_delete = chain_name.clone();
+            tokio::task::spawn_blocking(move || {
+                crate::wallet_db::address_delete_for_chain(&db_path, &to_delete)
+            })
+            .await
+            .map_err(|e| SpectraBridgeError::from(format!("spawn_blocking: {e}")))?
+            .map_err(SpectraBridgeError::from)?;
+            service.owned_addresses.write().await.remove(&chain_name);
+            Ok(())
         })
         .await
-        .map_err(|e| SpectraBridgeError::from(format!("spawn_blocking: {e}")))?
-        .map_err(Into::into)
     }
 
     /// Remove all relational wallet state (keypool + addresses) for a deleted wallet.
@@ -335,22 +354,28 @@ impl WalletService {
         &self,
         wallet_id: String,
     ) -> Result<(), SpectraBridgeError> {
-        let db_path = self.bound_state_db_path().await?;
-        // Clear the in-memory rows too. Leaving them means the keypool
-        // baseline still counts a deleted wallet's addresses.
-        self.keypool
-            .write()
+        self.write_persisted(move |service| async move {
+            let db_path = service.bound_state_db_path().await?;
+            let to_delete = wallet_id.clone();
+            tokio::task::spawn_blocking(move || {
+                crate::wallet_db::delete_wallet_data(&db_path, &to_delete)
+            })
             .await
-            .retain(|key, _| key.split_once('|').is_none_or(|(id, _)| id != wallet_id));
-        for rows in self.owned_addresses.write().await.values_mut() {
-            rows.retain(|row| row.wallet_id != wallet_id);
-        }
-        tokio::task::spawn_blocking(move || {
-            crate::wallet_db::delete_wallet_data(&db_path, &wallet_id)
+            .map_err(|e| SpectraBridgeError::from(format!("spawn_blocking: {e}")))?
+            .map_err(SpectraBridgeError::from)?;
+            // Clear the in-memory rows too. Leaving them means the keypool
+            // baseline still counts a deleted wallet's addresses.
+            service
+                .keypool
+                .write()
+                .await
+                .retain(|key, _| key.split_once('|').is_none_or(|(id, _)| id != wallet_id));
+            for rows in service.owned_addresses.write().await.values_mut() {
+                rows.retain(|row| row.wallet_id != wallet_id);
+            }
+            Ok(())
         })
         .await
-        .map_err(|e| SpectraBridgeError::from(format!("spawn_blocking: {e}")))?
-        .map_err(Into::into)
     }
 
     /// Upsert a batch of transaction history records. `records[*].payload`
@@ -394,64 +419,71 @@ impl WalletService {
     /// An untouched database yields `CoreAppState::default()`. Call once at
     /// startup; the returned state is the caller's initial snapshot.
     pub async fn open_state(&self, db_path: String) -> Result<CoreAppState, SpectraBridgeError> {
-        // Opening is idempotent. A second call with the same database returns
-        // what is already held rather than re-reading — a late `open_state`
-        // (the app's launch reload racing a user action) would otherwise
-        // replace the in-memory state with a snapshot taken before the newer
-        // command, silently reverting it.
-        if self.state_db_path.read().await.as_deref() == Some(db_path.as_str()) {
-            return Ok(self.wallet_state.read().await.clone());
-        }
+        self.write_persisted(move |service| async move {
+            // Opening is idempotent. A second call with the same database returns
+            // what is already held rather than re-reading — a late `open_state`
+            // (the app's launch reload racing a user action) would otherwise
+            // replace the in-memory state with a snapshot taken before the newer
+            // command, silently reverting it.
+            if service.state_db_path.read().await.as_deref() == Some(db_path.as_str()) {
+                return Ok(service.wallet_state.read().await.clone());
+            }
 
-        let loaded = {
-            let path = db_path.clone();
-            tokio::task::spawn_blocking(move || crate::wallet_db::app_state_load(&path))
+            let loaded = {
+                let path = db_path.clone();
+                tokio::task::spawn_blocking(move || crate::wallet_db::app_state_load(&path))
+                    .await
+                    .map_err(|e| SpectraBridgeError::from(format!("spawn_blocking: {e}")))??
+            };
+            let keypool = {
+                let path = db_path.clone();
+                tokio::task::spawn_blocking(move || crate::wallet_db::keypool_load_all(&path))
+                    .await
+                    .map_err(|e| SpectraBridgeError::from(format!("spawn_blocking: {e}")))??
+            };
+            let keypool = keypool
+                .into_iter()
+                .flat_map(|(chain, per_wallet)| {
+                    per_wallet
+                        .into_iter()
+                        .map(move |(wallet, state)| (keypool_key(&wallet, &chain), state))
+                })
+                .collect();
+
+            let owned = {
+                let path = db_path.clone();
+                tokio::task::spawn_blocking(move || {
+                    crate::wallet_db::address_load_all_chains(&path)
+                })
                 .await
                 .map_err(|e| SpectraBridgeError::from(format!("spawn_blocking: {e}")))??
-        };
-        let keypool = {
-            let path = db_path.clone();
-            tokio::task::spawn_blocking(move || crate::wallet_db::keypool_load_all(&path))
-                .await
-                .map_err(|e| SpectraBridgeError::from(format!("spawn_blocking: {e}")))??
-        };
-        *self.keypool.write().await = keypool
-            .into_iter()
-            .flat_map(|(chain, per_wallet)| {
-                per_wallet
-                    .into_iter()
-                    .map(move |(wallet, state)| (keypool_key(&wallet, &chain), state))
-            })
-            .collect();
+            };
+            let mut by_chain: HashMap<String, Vec<crate::wallet_db::OwnedAddressRecord>> =
+                HashMap::new();
+            for record in owned {
+                by_chain
+                    .entry(record.chain_name.clone())
+                    .or_default()
+                    .push(record);
+            }
 
-        let owned = {
-            let path = db_path.clone();
-            tokio::task::spawn_blocking(move || crate::wallet_db::address_load_all_chains(&path))
-                .await
-                .map_err(|e| SpectraBridgeError::from(format!("spawn_blocking: {e}")))??
-        };
-        let mut by_chain: HashMap<String, Vec<crate::wallet_db::OwnedAddressRecord>> =
-            HashMap::new();
-        for record in owned {
-            by_chain
-                .entry(record.chain_name.clone())
-                .or_default()
-                .push(record);
-        }
-        *self.owned_addresses.write().await = by_chain;
+            let events = {
+                let path = db_path.clone();
+                tokio::task::spawn_blocking(move || sqlite_load(&path, OPERATIONAL_EVENTS_KEY))
+                    .await
+                    .map_err(|e| SpectraBridgeError::from(format!("spawn_blocking: {e}")))??
+            };
+            let events = serde_json::from_str(&events)?;
+            *service.keypool.write().await = keypool;
+            *service.owned_addresses.write().await = by_chain;
+            *service.operational_events.write().await = events;
 
-        let events = {
-            let path = db_path.clone();
-            tokio::task::spawn_blocking(move || sqlite_load(&path, OPERATIONAL_EVENTS_KEY))
-                .await
-                .map_err(|e| SpectraBridgeError::from(format!("spawn_blocking: {e}")))??
-        };
-        *self.operational_events.write().await = serde_json::from_str(&events).unwrap_or_default();
-
-        *self.state_db_path.write().await = Some(db_path);
-        let mut state = self.wallet_state.write().await;
-        *state = loaded;
-        Ok(state.clone())
+            *service.state_db_path.write().await = Some(db_path);
+            let mut state = service.wallet_state.write().await;
+            *state = loaded;
+            Ok(state.clone())
+        })
+        .await
     }
 
     /// Apply a command to the owned state, persist it, and return the result.
@@ -464,27 +496,31 @@ impl WalletService {
         &self,
         command: StateCommand,
     ) -> Result<StateTransition, SpectraBridgeError> {
-        let (snapshot, events) = {
-            let mut state = self.wallet_state.write().await;
-            let events = reduce_state_in_place(&mut state, command);
-            (state.clone(), events)
-        };
+        self.write_persisted(move |service| async move {
+            let (snapshot, events) = {
+                let mut state = service.wallet_state.read().await.clone();
+                let events = reduce_state_in_place(&mut state, command);
+                (state.clone(), events)
+            };
 
-        if !events.is_empty() {
-            if let Some(path) = self.state_db_path.read().await.clone() {
-                let to_save = snapshot.clone();
-                tokio::task::spawn_blocking(move || {
-                    crate::wallet_db::app_state_save(&path, &to_save)
-                })
-                .await
-                .map_err(|e| SpectraBridgeError::from(format!("spawn_blocking: {e}")))??;
+            if !events.is_empty() {
+                if let Some(path) = service.state_db_path.read().await.clone() {
+                    let to_save = snapshot.clone();
+                    tokio::task::spawn_blocking(move || {
+                        crate::wallet_db::app_state_save(&path, &to_save)
+                    })
+                    .await
+                    .map_err(|e| SpectraBridgeError::from(format!("spawn_blocking: {e}")))??;
+                }
             }
-        }
 
-        Ok(StateTransition {
-            state: snapshot,
-            events,
+            *service.wallet_state.write().await = snapshot.clone();
+            Ok(StateTransition {
+                state: snapshot,
+                events,
+            })
         })
+        .await
     }
 
     // ── Operational events ────────────────────────────────────────────────
@@ -503,24 +539,29 @@ impl WalletService {
         message: String,
         transaction_hash: Option<String>,
     ) -> Result<(), SpectraBridgeError> {
-        let event = crate::store::ChainOperationalEventRecord {
-            id: crate::store::new_event_id(),
-            timestamp_unix: crate::store::now_unix(),
-            chain_name: chain_name.clone(),
-            level,
-            message,
-            transaction_hash: transaction_hash.filter(|hash| !hash.trim().is_empty()),
-        };
-        let snapshot = {
-            let mut table = self.operational_events.write().await;
-            let existing = table.remove(&chain_name).unwrap_or_default();
-            table.insert(
-                chain_name,
-                crate::store::plan_append_chain_operational_event(existing, event),
-            );
-            serde_json::to_string(&*table)?
-        };
-        self.persist_operational_events(snapshot).await
+        self.write_persisted(move |service| async move {
+            let event = crate::store::ChainOperationalEventRecord {
+                id: crate::store::new_event_id(),
+                timestamp_unix: crate::store::now_unix(),
+                chain_name: chain_name.clone(),
+                level,
+                message,
+                transaction_hash: transaction_hash.filter(|hash| !hash.trim().is_empty()),
+            };
+            let snapshot = {
+                let mut table = service.operational_events.read().await.clone();
+                let existing = table.remove(&chain_name).unwrap_or_default();
+                table.insert(
+                    chain_name,
+                    crate::store::plan_append_chain_operational_event(existing, event),
+                );
+                (serde_json::to_string(&table)?, table)
+            };
+            service.persist_operational_events(snapshot.0).await?;
+            *service.operational_events.write().await = snapshot.1;
+            Ok(())
+        })
+        .await
     }
 
     /// This chain's events, newest first.
@@ -541,17 +582,22 @@ impl WalletService {
         &self,
         chain_name: Option<String>,
     ) -> Result<(), SpectraBridgeError> {
-        let snapshot = {
-            let mut table = self.operational_events.write().await;
-            match chain_name {
-                Some(chain) => {
-                    table.remove(&chain);
+        self.write_persisted(move |service| async move {
+            let snapshot = {
+                let mut table = service.operational_events.read().await.clone();
+                match chain_name {
+                    Some(chain) => {
+                        table.remove(&chain);
+                    }
+                    None => table.clear(),
                 }
-                None => table.clear(),
-            }
-            serde_json::to_string(&*table)?
-        };
-        self.persist_operational_events(snapshot).await
+                (serde_json::to_string(&table)?, table)
+            };
+            service.persist_operational_events(snapshot.0).await?;
+            *service.operational_events.write().await = snapshot.1;
+            Ok(())
+        })
+        .await
     }
 
     /// The dashboard's asset rows: holdings grouped across chains, ordered,
@@ -574,7 +620,12 @@ impl WalletService {
 
         let network_title = |chain_name: &str| -> String {
             crate::registry::Chain::from_display_name(chain_name)
-                .map(|chain| settings.network_chain(chain).chain_display_name().to_string())
+                .map(|chain| {
+                    settings
+                        .network_chain(chain)
+                        .chain_display_name()
+                        .to_string()
+                })
                 .unwrap_or_else(|| chain_name.to_string())
         };
         // Unpriced on a testnet, then the live quote, then the amount the
@@ -700,8 +751,7 @@ impl WalletService {
                 .map(|h| h.value_usd)
                 .try_fold(0.0, |sum, v| v.map(|v| sum + v))
         };
-        let present: std::collections::HashSet<String> =
-            groups.iter().map(row_symbol).collect();
+        let present: std::collections::HashSet<String> = groups.iter().map(row_symbol).collect();
         for symbol in pinned.iter().filter(|s| !present.contains(*s)) {
             let Some(prototype) = self.pinned_prototype(symbol, &derived).await else {
                 continue;
@@ -1040,11 +1090,7 @@ impl WalletService {
     ///
     /// `clear_finality` re-opens a transaction that had already been treated as
     /// final — the UTXO chains do this when a reorg is suspected.
-    pub async fn reset_status_tracker(
-        &self,
-        transaction_id: String,
-        clear_finality: bool,
-    ) {
+    pub async fn reset_status_tracker(&self, transaction_id: String, clear_finality: bool) {
         let now_unix = crate::store::wallet_db::now_secs() as f64;
         let mut trackers = self.status_trackers.write().await;
         let entry = trackers
@@ -1112,7 +1158,6 @@ impl WalletService {
         Ok(())
     }
 
-
     /// Pending transactions old enough, and failing often enough, to be treated
     /// as failed. Failure counts come from core's own trackers.
     /// Sends on `chain_name` that have been pending too long and failed to
@@ -1150,7 +1195,8 @@ impl WalletService {
             .filter(|t| t.chain_name == chain_name && (!require_send_kind || t.kind == Send))
             .map(|t| crate::store::StalePendingFailureTransactionInput {
                 id: t.id,
-                created_at_unix: t.created_at + crate::store::persistence_models::SWIFT_REFERENCE_EPOCH_OFFSET_SECS,
+                created_at_unix: t.created_at
+                    + crate::store::persistence_models::SWIFT_REFERENCE_EPOCH_OFFSET_SECS,
                 status_is_pending: t.status
                     == Some(crate::store::wallet_domain::CoreTransactionStatus::Pending),
             })
@@ -1188,10 +1234,8 @@ impl WalletService {
             .await?
             .into_iter()
             .collect();
-        let by_id: HashMap<String, crate::store::ResolvedPendingStatus> = resolutions
-            .into_iter()
-            .map(|r| (r.id.clone(), r))
-            .collect();
+        let by_id: HashMap<String, crate::store::ResolvedPendingStatus> =
+            resolutions.into_iter().map(|r| (r.id.clone(), r)).collect();
         if by_id.is_empty() && stale.is_empty() {
             return Ok(Vec::new());
         }
@@ -1200,7 +1244,9 @@ impl WalletService {
             .transactions()
             .await?
             .into_iter()
-            .filter(|t| t.chain_name == chain_name && (by_id.contains_key(&t.id) || stale.contains(&t.id)))
+            .filter(|t| {
+                t.chain_name == chain_name && (by_id.contains_key(&t.id) || stale.contains(&t.id))
+            })
             .collect();
 
         let inputs: Vec<crate::store::ResolvedPendingTransactionInput> = stored
@@ -1210,10 +1256,12 @@ impl WalletService {
                 old_status: status_string(t.status),
                 old_failure_reason: t.failure_reason.clone(),
                 old_confirmations: t.confirmation_count.map(|c| c.max(0) as u32),
-                resolution: by_id.get(&t.id).map(|r| crate::store::ResolvedPendingStatusInput {
-                    status: r.status.clone(),
-                    confirmations: r.confirmations,
-                }),
+                resolution: by_id
+                    .get(&t.id)
+                    .map(|r| crate::store::ResolvedPendingStatusInput {
+                        status: r.status.clone(),
+                        confirmations: r.confirmations,
+                    }),
                 is_stale_failure: stale.contains(&t.id),
             })
             .collect();
@@ -1229,8 +1277,10 @@ impl WalletService {
             )
         };
 
-        let stored_by_id: HashMap<&str, &crate::store::persistence_models::CorePersistedTransactionRecord> =
-            stored.iter().map(|t| (t.id.as_str(), t)).collect();
+        let stored_by_id: HashMap<
+            &str,
+            &crate::store::persistence_models::CorePersistedTransactionRecord,
+        > = stored.iter().map(|t| (t.id.as_str(), t)).collect();
         let mut writes = Vec::new();
         let mut changes = Vec::new();
         for decision in decisions {
@@ -1427,19 +1477,36 @@ impl WalletService {
         chain_name: String,
         minimum_index: i64,
     ) -> Result<i64, SpectraBridgeError> {
-        let baseline = self.chain_keypool_baseline(&wallet_id, &chain_name).await;
-        let key = keypool_key(&wallet_id, &chain_name);
-        let mut keypool = self.keypool.write().await;
-        let merged = crate::store::plan_chain_keypool_state(
-            baseline,
-            keypool.get(&key).map(record_from_keypool),
-        );
-        let mut state = keypool_from_record(&merged);
-        if let Some(reserved) = state.reserved_receive_index {
-            // Already reserved: hand back the same index rather than burning a
-            // new one every time the receive sheet opens.
+        self.write_persisted(move |service| async move {
+            let baseline = service
+                .chain_keypool_baseline(&wallet_id, &chain_name)
+                .await;
+            let key = keypool_key(&wallet_id, &chain_name);
+            let mut keypool = service.keypool.write().await;
+            let merged = crate::store::plan_chain_keypool_state(
+                baseline,
+                keypool.get(&key).map(record_from_keypool),
+            );
+            let mut state = keypool_from_record(&merged);
+            if let Some(reserved) = state.reserved_receive_index {
+                // Already reserved: hand back the same index rather than burning a
+                // new one every time the receive sheet opens.
+                persist_keypool(
+                    &service.state_db_path,
+                    &mut keypool,
+                    key,
+                    &wallet_id,
+                    &chain_name,
+                    state,
+                )
+                .await?;
+                return Ok(reserved);
+            }
+            let reserved = state.next_external_index.max(minimum_index);
+            state.reserved_receive_index = Some(reserved);
+            state.next_external_index = state.next_external_index.max(reserved + 1);
             persist_keypool(
-                &self.state_db_path,
+                &service.state_db_path,
                 &mut keypool,
                 key,
                 &wallet_id,
@@ -1447,21 +1514,9 @@ impl WalletService {
                 state,
             )
             .await?;
-            return Ok(reserved);
-        }
-        let reserved = state.next_external_index.max(minimum_index);
-        state.reserved_receive_index = Some(reserved);
-        state.next_external_index = state.next_external_index.max(reserved + 1);
-        persist_keypool(
-            &self.state_db_path,
-            &mut keypool,
-            key,
-            &wallet_id,
-            &chain_name,
-            state,
-        )
-        .await?;
-        Ok(reserved)
+            Ok(reserved)
+        })
+        .await
     }
 
     /// Reserve the next change index. Always consumes one.
@@ -1470,26 +1525,31 @@ impl WalletService {
         wallet_id: String,
         chain_name: String,
     ) -> Result<i64, SpectraBridgeError> {
-        let baseline = self.chain_keypool_baseline(&wallet_id, &chain_name).await;
-        let key = keypool_key(&wallet_id, &chain_name);
-        let mut keypool = self.keypool.write().await;
-        let merged = crate::store::plan_chain_keypool_state(
-            baseline,
-            keypool.get(&key).map(record_from_keypool),
-        );
-        let mut state = keypool_from_record(&merged);
-        let reserved = state.next_change_index.max(0);
-        state.next_change_index = reserved + 1;
-        persist_keypool(
-            &self.state_db_path,
-            &mut keypool,
-            key,
-            &wallet_id,
-            &chain_name,
-            state,
-        )
-        .await?;
-        Ok(reserved)
+        self.write_persisted(move |service| async move {
+            let baseline = service
+                .chain_keypool_baseline(&wallet_id, &chain_name)
+                .await;
+            let key = keypool_key(&wallet_id, &chain_name);
+            let mut keypool = service.keypool.write().await;
+            let merged = crate::store::plan_chain_keypool_state(
+                baseline,
+                keypool.get(&key).map(record_from_keypool),
+            );
+            let mut state = keypool_from_record(&merged);
+            let reserved = state.next_change_index.max(0);
+            state.next_change_index = reserved + 1;
+            persist_keypool(
+                &service.state_db_path,
+                &mut keypool,
+                key,
+                &wallet_id,
+                &chain_name,
+                state,
+            )
+            .await?;
+            Ok(reserved)
+        })
+        .await
     }
 
     /// Release the reserved receive index once its address has been used.
@@ -1498,24 +1558,25 @@ impl WalletService {
         wallet_id: String,
         chain_name: String,
     ) -> Result<(), SpectraBridgeError> {
-        let key = keypool_key(&wallet_id, &chain_name);
-        let mut keypool = self.keypool.write().await;
-        let Some(mut state) = keypool.get(&key).cloned() else {
-            return Ok(());
-        };
-        state.reserved_receive_index = None;
-        persist_keypool(
-            &self.state_db_path,
-            &mut keypool,
-            key,
-            &wallet_id,
-            &chain_name,
-            state,
-        )
+        self.write_persisted(move |service| async move {
+            let key = keypool_key(&wallet_id, &chain_name);
+            let mut keypool = service.keypool.write().await;
+            let Some(mut state) = keypool.get(&key).cloned() else {
+                return Ok(());
+            };
+            state.reserved_receive_index = None;
+            persist_keypool(
+                &service.state_db_path,
+                &mut keypool,
+                key,
+                &wallet_id,
+                &chain_name,
+                state,
+            )
+            .await
+        })
         .await
     }
-
-
 
     /// Everything the wallet list implies, rendered.
     ///
@@ -1555,8 +1616,10 @@ impl WalletService {
         let mut seen_price_keys = HashSet::new();
         let mut grouped_order: Vec<String> = Vec::new();
         let mut grouped_totals: BTreeMap<String, f64> = BTreeMap::new();
-        let mut grouped_representative: BTreeMap<String, crate::store::wallet_domain::AssetHolding> =
-            BTreeMap::new();
+        let mut grouped_representative: BTreeMap<
+            String,
+            crate::store::wallet_domain::AssetHolding,
+        > = BTreeMap::new();
 
         let mut send_coins_by_wallet_id = HashMap::new();
         let mut receive_coins_by_wallet_id = HashMap::new();
@@ -1846,9 +1909,8 @@ impl WalletService {
 
     /// Move each wallet's reservation past a receive address that has been used.
     ///
-    /// Reserving, deriving, checking and re-reserving all happen here, so
-    /// nothing can slip between releasing an index and taking the next one and
-    /// hand the same address to two people.
+    /// Network reads happen outside the writer. Advance only the exact index
+    /// whose address was checked; a stale probe cannot clear a newer reservation.
     pub async fn advance_used_utxo_reservations(
         &self,
         chain_id: String,
@@ -1870,26 +1932,25 @@ impl WalletService {
         };
 
         for wallet_id in wallet_ids {
-            let Some(address) = self
-                .utxo_receive_address(wallet_id.clone(), chain_id.clone(), true)
-                .await?
-            else {
+            let Some(context) = self.utxo_derivation_context(&wallet_id, chain).await else {
+                continue;
+            };
+            let used = self
+                .reserve_receive_index(wallet_id.clone(), chain_name.clone(), 1)
+                .await?;
+            let Some((address, _)) = context.derive(
+                u32::try_from(used)
+                    .map_err(|_| SpectraBridgeError::from("receive index is out of range"))?,
+            ) else {
                 continue;
             };
             if !self.utxo_address_has_activity(chain, &address).await {
                 continue;
             }
-            let used = self
-                .keypool_state(wallet_id.clone(), chain_name.clone())
-                .await
-                .reserved_receive_index
-                .unwrap_or(0);
-            self.clear_reserved_receive_index(wallet_id.clone(), chain_name.clone())
-                .await?;
-            let next = self
-                .reserve_receive_index(wallet_id.clone(), chain_name.clone(), used + 1)
-                .await?;
-            let Some(context) = self.utxo_derivation_context(&wallet_id, chain).await else {
+            let Some(next) = self
+                .advance_receive_index_if_current(wallet_id.clone(), chain_name.clone(), used)
+                .await?
+            else {
                 continue;
             };
             if let Some((next_address, path)) = context.derive(next.max(0) as u32) {
@@ -1980,6 +2041,72 @@ fn fingerprint(record: &crate::fetch::transactions::CoreTransactionRecord) -> St
 }
 
 impl WalletService {
+    /// Once submitted, a persistent mutation finishes even if the caller cancels.
+    /// The worker owns the serialization guard through both commit and publication.
+    /// Do not call this recursively from another persistent mutation.
+    async fn write_persisted<T, F, Fut>(&self, operation: F) -> Result<T, SpectraBridgeError>
+    where
+        T: Send + 'static,
+        F: FnOnce(Self) -> Fut + Send + 'static,
+        Fut: std::future::Future<Output = Result<T, SpectraBridgeError>> + Send,
+    {
+        let service = self.clone();
+        tokio::spawn(async move {
+            let writer = service.state_writer.clone();
+            let _guard = writer.lock().await;
+            operation(service).await
+        })
+        .await
+        .map_err(|e| SpectraBridgeError::from(format!("state writer: {e}")))?
+    }
+
+    async fn advance_receive_index_if_current(
+        &self,
+        wallet_id: String,
+        chain_name: String,
+        expected: i64,
+    ) -> Result<Option<i64>, SpectraBridgeError> {
+        self.write_persisted(move |service| async move {
+            let baseline = service
+                .chain_keypool_baseline(&wallet_id, &chain_name)
+                .await;
+            let key = keypool_key(&wallet_id, &chain_name);
+            let mut keypool = service.keypool.write().await;
+            let Some(mut state) = keypool.get(&key).cloned() else {
+                return Ok(None);
+            };
+            if state.reserved_receive_index != Some(expected) {
+                return Ok(None);
+            }
+            state.next_external_index = state
+                .next_external_index
+                .max(i64::from(baseline.next_external_index));
+            state.next_change_index = state
+                .next_change_index
+                .max(i64::from(baseline.next_change_index));
+            let next = state.next_external_index.max(
+                expected
+                    .checked_add(1)
+                    .ok_or_else(|| SpectraBridgeError::from("receive index overflow"))?,
+            );
+            state.next_external_index = next
+                .checked_add(1)
+                .ok_or_else(|| SpectraBridgeError::from("receive index overflow"))?;
+            state.reserved_receive_index = Some(next);
+            persist_keypool(
+                &service.state_db_path,
+                &mut keypool,
+                key,
+                &wallet_id,
+                &chain_name,
+                state,
+            )
+            .await?;
+            Ok(Some(next))
+        })
+        .await
+    }
+
     /// Has this address ever been used on chain?
     ///
     /// Swift asked this three ways: Bitcoin looked at UTXOs and a confirmed
@@ -2036,7 +2163,8 @@ impl WalletService {
             .cloned()
             .unwrap_or_default();
         let chain_name = chain.chain_display_name().to_string();
-        let resolved = crate::app_core_resolve_derivation_path(chain_name.clone(), raw_path).ok()?;
+        let resolved =
+            crate::app_core_resolve_derivation_path(chain_name.clone(), raw_path).ok()?;
 
         Some(UtxoDerivation {
             chain_name,
@@ -2103,8 +2231,7 @@ impl WalletService {
             coin_gecko_id: entry.token.coingecko_id.clone(),
             chain_name: entry.token.chain.clone(),
             token_standard: entry.token.token_standard.clone(),
-            contract_address: Some(entry.token.contract.clone())
-                .filter(|c| !c.is_empty()),
+            contract_address: Some(entry.token.contract.clone()).filter(|c| !c.is_empty()),
             amount: 0.0,
             // No quote. A pinned asset the wallet does not hold has no price
             // until the feed answers for it, and inventing one puts a number
@@ -2214,7 +2341,6 @@ impl WalletService {
     }
 }
 
-
 #[cfg(test)]
 mod pruning_reads_cores_own_tables {
     use crate::registry::{Chain, PendingStatusPoll};
@@ -2313,3 +2439,6 @@ mod utxo_discovery_is_the_registrys_chain_set {
             .expect("a chain without the walk is a no-op, not an error");
     }
 }
+
+#[cfg(test)]
+mod tests;

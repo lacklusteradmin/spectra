@@ -561,7 +561,10 @@ pub fn history_fetch_for_wallet(
 /// `chain_name` first, before anything else), so fetching every other chain's
 /// history alongside it was pure waste: rows this call will reject, paid for
 /// in a SQL round trip and a JSON decode each, on every refresh cycle.
-pub fn history_fetch_for_chain(db_path: &str, chain_name: &str) -> Result<Vec<HistoryRecord>, String> {
+pub fn history_fetch_for_chain(
+    db_path: &str,
+    chain_name: &str,
+) -> Result<Vec<HistoryRecord>, String> {
     history_fetch_where(db_path, "chain_name = ?1", params![chain_name])
 }
 
@@ -1083,19 +1086,23 @@ pub fn app_state_load(db_path: &str) -> Result<CoreAppState, String> {
 /// and history records.
 pub fn delete_wallet_data(db_path: &str, wallet_id: &str) -> Result<(), String> {
     with_conn(db_path, |conn| {
+        let tx = conn
+            .unchecked_transaction()
+            .map_err(|e| format!("delete_wallet_data begin: {e}"))?;
         for (table, column) in [
             ("wallets", "id"),
             ("wallet_keypool", "wallet_id"),
             ("wallet_owned_addresses", "wallet_id"),
             ("history_records", "wallet_id"),
         ] {
-            conn.execute(
+            tx.execute(
                 &format!("DELETE FROM {table} WHERE {column} = ?1"),
                 params![wallet_id],
             )
             .map_err(|e| format!("delete_wallet_data {table}: {e}"))?;
         }
-        Ok(())
+        tx.commit()
+            .map_err(|e| format!("delete_wallet_data commit: {e}"))
     })
 }
 

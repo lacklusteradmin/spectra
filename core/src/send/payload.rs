@@ -12,10 +12,6 @@ pub(crate) fn amount_u64(amount: f64, scale: f64) -> u64 {
     (amount * scale).round() as u64
 }
 
-pub(crate) fn amount_i64(amount: f64, scale: f64) -> i64 {
-    (amount * scale).round() as i64
-}
-
 // --- Broadcast-result classification ---
 
 #[derive(Debug, Clone, Copy, uniffi::Enum)]

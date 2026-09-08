@@ -118,64 +118,6 @@ pub fn extract_json_string_field(json: String, key: String) -> String {
     }
 }
 
-/// Convert a decimal amount string to its smallest-unit integer representation
-/// using pure string arithmetic — no f64 involved at any point.
-///
-/// This is the canonical conversion for send flows where the user's original
-/// input string is available. Prefer this over `amount_to_raw_units_string`
-/// whenever the string form of the amount is accessible.
-///
-/// - Extra fractional digits beyond `decimals` are truncated (not rounded).
-/// - Invalid or empty input returns "0".
-///
-/// Examples:
-/// - `decimal_str_to_raw_units("0.1", 18)` → `"100000000000000000"` (exact)
-/// - `decimal_str_to_raw_units("1.5", 9)`  → `"1500000000"`
-/// - `decimal_str_to_raw_units("100", 6)`  → `"100000000"`
-pub fn decimal_str_to_raw_units(amount_str: &str, decimals: u32) -> String {
-    let s = amount_str.trim();
-    if s.is_empty() {
-        return "0".to_string();
-    }
-    let decimals = decimals as usize;
-    let (int_part, frac_part) = match s.split_once('.') {
-        Some((i, f)) => (i, f),
-        None => (s, ""),
-    };
-    let frac_len = frac_part.len();
-    let mut digits = String::with_capacity(int_part.len() + decimals);
-    digits.push_str(int_part);
-    if decimals >= frac_len {
-        digits.push_str(frac_part);
-        for _ in 0..(decimals - frac_len) {
-            digits.push('0');
-        }
-    } else {
-        // More fractional digits than the chain supports — truncate.
-        digits.push_str(&frac_part[..decimals]);
-    }
-    let trimmed = digits.trim_start_matches('0');
-    if trimmed.is_empty() {
-        "0".to_string()
-    } else {
-        trimmed.to_string()
-    }
-}
-
-/// Convert a decimal f64 amount to its smallest-unit string representation.
-///
-/// Inherits f64 representation error (≤ 2 ULP, typically negligible).
-/// For send flows where the user's original input string is available,
-/// prefer `decimal_str_to_raw_units` to avoid this error entirely.
-pub fn amount_to_raw_units_string(amount: f64, decimals: u32) -> String {
-    if !amount.is_finite() || amount < 0.0 {
-        return "0".to_string();
-    }
-    // Format to a fixed-decimal string then use the exact string-arithmetic path.
-    let formatted = format!("{:.prec$}", amount, prec = decimals as usize);
-    decimal_str_to_raw_units(&formatted, decimals)
-}
-
 fn obj_f64(o: &serde_json::Map<String, serde_json::Value>, k: &str) -> Option<f64> {
     o.get(k).and_then(|v| {
         v.as_f64()
@@ -698,7 +640,6 @@ pub fn build_simple_chain_preview(json: String, chain: SimpleChain) -> SimpleCha
     }
 }
 
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -823,43 +764,5 @@ mod tests {
     }
 
     #[test]
-    fn amount_to_raw_units_handles_decimals() {
-        assert_eq!(amount_to_raw_units_string(1.5, 18), "1500000000000000000");
-        assert_eq!(amount_to_raw_units_string(0.0, 18), "0");
-        assert_eq!(amount_to_raw_units_string(100.0, 6), "100000000");
-        assert_eq!(amount_to_raw_units_string(-1.0, 18), "0");
-    }
-
-    #[test]
-    fn decimal_str_to_raw_units_exact() {
-        // Values that f64 cannot represent exactly — must be exact via string path.
-        assert_eq!(decimal_str_to_raw_units("0.1", 18), "100000000000000000");
-        assert_eq!(decimal_str_to_raw_units("0.3", 18), "300000000000000000");
-        assert_eq!(
-            decimal_str_to_raw_units("1.234567890123456789", 18),
-            "1234567890123456789"
-        );
-        // NEAR: 24 decimals
-        assert_eq!(
-            decimal_str_to_raw_units("0.1", 24),
-            "100000000000000000000000"
-        );
-        assert_eq!(
-            decimal_str_to_raw_units("1", 24),
-            "1000000000000000000000000"
-        );
-        // Low-decimal chains
-        assert_eq!(decimal_str_to_raw_units("1.5", 9), "1500000000");
-        assert_eq!(decimal_str_to_raw_units("100", 6), "100000000");
-        assert_eq!(decimal_str_to_raw_units("0.000001", 6), "1");
-        // Edge cases
-        assert_eq!(decimal_str_to_raw_units("0", 18), "0");
-        assert_eq!(decimal_str_to_raw_units("", 18), "0");
-        // Extra fractional digits are truncated, not rounded.
-        assert_eq!(decimal_str_to_raw_units("1.999", 2), "199");
-    }
-
-    #[test]
-    fn simple_chain_default_fees() {
-    }
+    fn simple_chain_default_fees() {}
 }

@@ -3,7 +3,7 @@
 use clap::{Args, Subcommand};
 use colored::Colorize as _;
 use spectra_core::send::ethereum::{
-    parse_evm_custom_fees, prepare_evm_send_assembly, EvmSendAssemblyInput, EvmSendOverridesInput, EvmSupportedToken,
+    parse_evm_custom_fees, parse_evm_nonce, prepare_evm_send_assembly, EvmSendAssemblyInput, EvmSendOverridesInput, EvmSupportedToken,
 };
 use spectra_core::send::{
     send_affordability, SendAffordability, SendAffordabilityInput, SendExecutionRequest,
@@ -31,6 +31,8 @@ pub struct TxsArgs {
 /// irreversible half of this tool should take a word that says so.
 #[derive(Subcommand)]
 pub enum SendCommand {
+    /// Validate exact decimal input and show integer units, without keys or network.
+    Amount(AmountArgs),
     /// Sign and broadcast a transfer.
     Broadcast(SendArgs),
     /// Build the transaction an EVM send would sign — no key, no network.
@@ -47,6 +49,7 @@ pub enum SendCommand {
 
 pub fn run(ctx: &Ctx, out: Out, command: SendCommand) -> CliResult<()> {
     match command {
+        SendCommand::Amount(args) => exact_amount(out, args),
         SendCommand::Broadcast(args) => send(ctx, out, args),
         SendCommand::Assemble(args) => assemble(ctx, out, args),
         SendCommand::Probe(args) => probe(ctx, out, args),
@@ -57,11 +60,31 @@ pub fn run(ctx: &Ctx, out: Out, command: SendCommand) -> CliResult<()> {
 }
 
 #[derive(Args)]
+pub struct AmountArgs {
+    #[arg(long)]
+    chain: String,
+    /// Override precision for a token amount.
+    #[arg(long)]
+    decimals: Option<u32>,
+    #[arg(long, allow_hyphen_values = true)]
+    amount: String,
+}
+
+fn exact_amount(out: Out, args: AmountArgs) -> CliResult<()> {
+    let chain = resolve_chain(&args.chain)?;
+    let decimals = args.decimals.unwrap_or(u32::from(chain.native_decimals()));
+    let raw = spectra_core::send::amount_input::parse_raw_amount(&args.amount, decimals)?;
+    out.text(|| println!("  {raw} integer units ({decimals} decimals)"));
+    out.emit(serde_json::json!({ "chain": chain.str_id(), "decimals": decimals, "rawAmount": raw.to_string() }));
+    Ok(())
+}
+
+#[derive(Args)]
 pub struct OverridesArgs {
     #[arg(long, default_value = "Ethereum")]
     chain: String,
     #[arg(long, allow_hyphen_values = true)]
-    nonce: Option<i64>,
+    nonce: Option<String>,
     #[arg(long, allow_hyphen_values = true)]
     gas_limit: Option<i64>,
     /// Hex calldata, with or without 0x. Requires --gas-limit.
@@ -77,7 +100,8 @@ pub struct OverridesArgs {
 fn overrides(out: Out, args: OverridesArgs) -> CliResult<()> {
     let chain = resolve_chain(&args.chain)?;
     let resolved = EvmSendOverridesInput {
-        nonce: args.nonce,
+        nonce: args.nonce.map(parse_evm_nonce).transpose()
+            .map_err(|error| CliError::rejected(error.to_string()))?,
         gas_limit: args.gas_limit,
         calldata_hex: args.calldata,
         access_list_json: args.access_list,
@@ -444,8 +468,7 @@ pub fn send(ctx: &Ctx, out: Out, args: SendArgs) -> CliResult<()> {
         private_key_hex: None,
         from_address: wallet_address(&wallet).to_string(),
         to_address: args.to.clone(),
-        amount,
-        amount_str: Some(args.amount.trim().to_string()),
+        amount_str: args.amount.trim().to_string(),
         contract_address: None,
         token_decimals: None,
         fee_rate_svb: None,

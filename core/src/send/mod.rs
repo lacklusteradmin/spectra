@@ -122,14 +122,8 @@ pub struct SendExecutionRequest {
     pub from_address: String,
     /// Destination/recipient address.
     pub to_address: String,
-    /// Human-scale amount (e.g. 0.5 BTC, 1.0 ETH).
-    pub amount: f64,
-    /// Exact decimal string from the user's input (e.g. "0.1", "1.5"). When
-    /// present, raw-unit conversion uses pure string arithmetic via
-    /// `decimal_str_to_raw_units` — avoiding the f64 precision loss that
-    /// occurs when `amount` is used directly. Always set this from
-    /// `SendSubmitPreflightPlan.amount_str`; `None` falls back to the f64 path.
-    pub amount_str: Option<String>,
+    /// Exact decimal input, validated and converted to integer units in core.
+    pub amount_str: String,
     // ── Token-specific ──────────────────────────────────────────────────
     /// Contract/mint address for token sends (ERC-20, SPL, TRC-20, NEP-141).
     pub contract_address: Option<String>,
@@ -246,9 +240,12 @@ pub struct SendAffordabilityInput {
 #[uniffi::export]
 pub fn send_affordability(input: SendAffordabilityInput) -> SendAffordability {
     let chain = crate::registry::Chain::from_display_name(&input.chain_name);
-    let gas_symbol = chain.map(|c| c.coin_symbol().to_string()).unwrap_or_default();
-    let decimals =
-        chain.map(|c| c.send_execution_shape().fee_decimals).unwrap_or(6) as usize;
+    let gas_symbol = chain
+        .map(|c| c.coin_symbol().to_string())
+        .unwrap_or_default();
+    let decimals = chain
+        .map(|c| c.send_execution_shape().fee_decimals)
+        .unwrap_or(6) as usize;
 
     // A chain whose gas asset we cannot name is not a chain we can judge a
     // token send on, so treat the send as native: that path needs no gas
@@ -413,8 +410,8 @@ fn native_evm_symbol_for_chain(chain_name: &str) -> Option<String> {
 #[cfg(test)]
 mod tests {
     use super::{
-        plan_send_submit_preflight, route_send_asset, SendAssetRoutingInput,
-        SendExecutionRequest, SendSubmitPreflightRequest,
+        plan_send_submit_preflight, route_send_asset, SendAssetRoutingInput, SendExecutionRequest,
+        SendSubmitPreflightRequest,
     };
 
     /// Every chain the router sends down the shared preview path has a shape
@@ -447,7 +444,9 @@ mod tests {
                 supports_solana_send_coin: false,
                 supports_near_token_send: false,
             });
-            let Some(kind) = route.preview_kind.as_deref() else { continue };
+            let Some(kind) = route.preview_kind.as_deref() else {
+                continue;
+            };
             if DEDICATED.contains(&kind) {
                 continue;
             }
@@ -562,8 +561,11 @@ mod tests {
             // A native SegWit address is not an EVM address on any chain.
             let bitcoin_address = "bc1qar0srrr7xfkvy5l643lydnw9re59gtzzwf5mdq";
             assert!(
-                codes(core_evaluate_high_risk_send_reasons(request(chain, bitcoin_address)))
-                    .contains(&"non_evm_on_evm".to_string()),
+                codes(core_evaluate_high_risk_send_reasons(request(
+                    chain,
+                    bitcoin_address
+                )))
+                .contains(&"non_evm_on_evm".to_string()),
                 "{} accepted a Bitcoin address with no warning",
                 chain.chain_display_name()
             );
@@ -610,10 +612,14 @@ mod tests {
         assert_eq!(Chain::Litecoin.extra_output_overhead_bytes(mweb), 1017);
         // A testnet MWEB address on the same chain family, and the mainnet
         // prefix on the testnet chain.
-        assert_eq!(Chain::LitecoinTestnet.extra_output_overhead_bytes("tmweb1qq"), 1017);
+        assert_eq!(
+            Chain::LitecoinTestnet.extra_output_overhead_bytes("tmweb1qq"),
+            1017
+        );
         // A plain Litecoin address costs nothing extra.
         assert_eq!(
-            Chain::Litecoin.extra_output_overhead_bytes("ltc1qw508d6qejxtdg4y5r3zarvary0c5xw7kv8f3t4"),
+            Chain::Litecoin
+                .extra_output_overhead_bytes("ltc1qw508d6qejxtdg4y5r3zarvary0c5xw7kv8f3t4"),
             0
         );
         // And no other chain charges it, whatever the destination looks like.
@@ -737,7 +743,7 @@ mod tests {
             "decred",
             "kaspa",
             "dash",
-];
+        ];
         let mut unrouted = Vec::new();
         for chain in Chain::mainnets() {
             let symbol = chain.entry().gas_token_symbol.clone();
@@ -837,8 +843,7 @@ mod tests {
             private_key_hex: Some("0123456789abcdef".repeat(4)),
             from_address: "0xfrom".to_string(),
             to_address: "0xto".to_string(),
-            amount: 1.0,
-            amount_str: Some("1".to_string()),
+            amount_str: "1".to_string(),
             contract_address: None,
             token_decimals: None,
             fee_rate_svb: None,
@@ -870,10 +875,6 @@ mod tests {
 
 // ── FFI surface ─────────────────────────────────────────────────────────────
 
-
-
-
-
 #[cfg(test)]
 mod every_chain_with_a_send_implementation_can_route {
     /// A chain `execute_send` can broadcast is a chain the preflight routes.
@@ -903,7 +904,10 @@ mod every_chain_with_a_send_implementation_can_route {
             assert_eq!(route.submit_kind.as_deref(), Some(kind), "{name}");
 
             let chain = crate::registry::Chain::from_display_name(name).unwrap();
-            assert!(chain.uses_generic_send_submit(), "{name} must take the shared submit path");
+            assert!(
+                chain.uses_generic_send_submit(),
+                "{name} must take the shared submit path"
+            );
             // Without a fallback the generic submit refuses for want of a fee
             // estimate, and none of these has a shared-path preview.
             assert!(
@@ -914,7 +918,6 @@ mod every_chain_with_a_send_implementation_can_route {
         }
     }
 }
-
 
 #[cfg(test)]
 mod token_decimals_are_not_assumed {
@@ -1017,7 +1020,9 @@ mod affordability_reads_the_chain_rather_than_the_caller {
         over.amount = 5.0;
         assert_eq!(
             send_affordability(over),
-            SendAffordability::AmountExceedsBalance { symbol: "USDC".to_string() }
+            SendAffordability::AmountExceedsBalance {
+                symbol: "USDC".to_string()
+            }
         );
     }
 
