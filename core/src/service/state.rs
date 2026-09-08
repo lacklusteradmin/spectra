@@ -35,6 +35,9 @@ async fn persist_keypool(
     chain_name: &str,
     state: crate::wallet_db::KeypoolState,
 ) -> Result<(), SpectraBridgeError> {
+    if keypool.get(&key) == Some(&state) {
+        return Ok(());
+    }
     // Without a bound database the service runs in memory only — the shape
     // tests and short-lived tools. Nothing to write.
     let Some(db_path) = state_db_path.read().await.clone() else {
@@ -429,6 +432,7 @@ impl WalletService {
                 return Ok(service.wallet_state.read().await.clone());
             }
 
+            let database = crate::wallet_db::WalletDatabase::acquire(&db_path);
             let loaded = {
                 let path = db_path.clone();
                 tokio::task::spawn_blocking(move || crate::wallet_db::app_state_load(&path))
@@ -478,6 +482,7 @@ impl WalletService {
             *service.owned_addresses.write().await = by_chain;
             *service.operational_events.write().await = events;
 
+            *service.state_database.write().await = Some(database);
             *service.state_db_path.write().await = Some(db_path);
             let mut state = service.wallet_state.write().await;
             *state = loaded;
@@ -497,21 +502,32 @@ impl WalletService {
         command: StateCommand,
     ) -> Result<StateTransition, SpectraBridgeError> {
         self.write_persisted(move |service| async move {
-            let (snapshot, events) = {
-                let mut state = service.wallet_state.read().await.clone();
+            let path = service.state_db_path.read().await.clone();
+            let (snapshot, events, changes) = {
+                let before = service.wallet_state.read().await;
+                let mut state = before.clone();
                 let events = reduce_state_in_place(&mut state, command);
-                (state.clone(), events)
+                let changes = if path.is_some() && !events.is_empty() {
+                    Some(crate::wallet_db::AppStateChanges::between(
+                        Some(&before),
+                        &state,
+                    )?)
+                } else {
+                    None
+                };
+                (state, events, changes)
             };
 
-            if !events.is_empty() {
-                if let Some(path) = service.state_db_path.read().await.clone() {
-                    let to_save = snapshot.clone();
-                    tokio::task::spawn_blocking(move || {
-                        crate::wallet_db::app_state_save(&path, &to_save)
-                    })
+            if let (Some(path), Some(changes)) = (path, changes) {
+                tokio::task::spawn_blocking(move || changes.save(&path))
                     .await
                     .map_err(|e| SpectraBridgeError::from(format!("spawn_blocking: {e}")))??;
-                }
+            }
+            if events.is_empty() {
+                return Ok(StateTransition {
+                    state: snapshot,
+                    events,
+                });
             }
 
             *service.wallet_state.write().await = snapshot.clone();
@@ -1833,13 +1849,23 @@ impl WalletService {
         let upper =
             MAX_INDEX.min((state.next_external_index.max(0) as u32).max(reserved + 1) + GAP_LIMIT);
 
-        for index in 0..=upper {
-            let Some((address, path)) = context.derive(index) else {
-                continue;
-            };
+        use futures::stream::{self, StreamExt};
+        let candidates: Vec<_> = (0..=upper)
+            .filter_map(|index| {
+                context
+                    .derive(index)
+                    .map(|(address, path)| (index, address, path))
+            })
+            .collect();
+        let mut probes = stream::iter(candidates)
+            .map(|(index, address, path)| async move {
+                let active = self.utxo_address_has_activity(chain, &address).await;
+                (index, address, path, active)
+            })
+            .buffered(4);
+        while let Some((index, address, path, active)) = probes.next().await {
             push_utxo_address(&chain_name, &address, &mut ordered, &mut seen);
-
-            if self.utxo_address_has_activity(chain, &address).await {
+            if active? {
                 self.register_owned_address(
                     wallet_id.clone(),
                     chain_name.clone(),
@@ -1944,7 +1970,7 @@ impl WalletService {
             ) else {
                 continue;
             };
-            if !self.utxo_address_has_activity(chain, &address).await {
+            if !self.utxo_address_has_activity(chain, &address).await? {
                 continue;
             }
             let Some(next) = self
@@ -1977,18 +2003,39 @@ impl WalletService {
     // (split out to keep this file navigable; UniFFI merges the impl blocks).
 }
 
-/// Seed and base path for one wallet on one chain, resolved once.
-///
-/// Held rather than passed around so a scan of forty indices does not reload
-/// the phrase and re-resolve the path forty times.
+/// Scan-local external xpub. No mnemonic or private key is kept while probing.
 pub(crate) struct UtxoDerivation {
-    chain_name: String,
-    seed_phrase: String,
+    chain: crate::registry::Chain,
+    branch: crate::derivation::chains::bitcoin::ExtendedPublicKey,
+    secp: secp256k1::Secp256k1<secp256k1::All>,
     base_path: String,
 }
 
 impl UtxoDerivation {
-    /// The external address at `index`, with the path it came from.
+    fn new(chain: crate::registry::Chain, phrase: &str, base_path: String) -> Result<Self, String> {
+        use crate::derivation::chains::bitcoin::{
+            derive_bip39_seed, parse_bip32_path, ExtendedPrivateKey,
+        };
+        let path = crate::app_core::core_derivation_path_replacing_last_two(
+            base_path.clone(),
+            0,
+            0,
+            base_path.clone(),
+        );
+        let mut indices = parse_bip32_path(&path)?;
+        indices.pop().ok_or("missing address index")?;
+        let secp = secp256k1::Secp256k1::new();
+        let seed = derive_bip39_seed(phrase, "", 0, None, None)?;
+        let master = ExtendedPrivateKey::master_from_seed(b"Bitcoin seed", seed.as_ref())?;
+        let branch = master.derive_path(&secp, &indices)?.to_neutered(&secp);
+        Ok(Self {
+            chain,
+            branch,
+            secp,
+            base_path,
+        })
+    }
+
     pub(crate) fn derive(&self, index: u32) -> Option<(String, String)> {
         let path = crate::app_core::core_derivation_path_replacing_last_two(
             self.base_path.clone(),
@@ -1996,19 +2043,14 @@ impl UtxoDerivation {
             index,
             self.base_path.clone(),
         );
-        let derived = crate::derivation::dispatch::derive_for_chain_name(
-            &self.chain_name,
-            &self.seed_phrase,
-            &path,
-            None,
-            None,
-            None,
-            true,
-            false,
-            false,
-        )
-        .ok()?;
-        let address = derived.address.filter(|a| !a.trim().is_empty())?;
+        let child = self.branch.derive_child(&self.secp, index).ok()?;
+        let address = self
+            .chain
+            .encode_discovery_address(
+                &child.public_key,
+                crate::derivation::dispatch::script_type_for_path(&path),
+            )
+            .ok()?;
         Some((address, path))
     }
 }
@@ -2116,19 +2158,41 @@ impl WalletService {
         &self,
         chain: crate::registry::Chain,
         address: &str,
-    ) -> bool {
-        if let Ok(summary) = self
-            .fetch_native_balance_summary(chain.str_id().to_string(), address.to_string())
-            .await
-        {
-            if summary.utxo_count > 0 || summary.smallest_unit.parse::<u128>().unwrap_or(0) > 0 {
-                return true;
+    ) -> Result<bool, SpectraBridgeError> {
+        use crate::fetch::chains::{
+            bitcoin::BitcoinClient, bitcoin_cash::BitcoinCashClient, bitcoin_sv::BitcoinSvClient,
+            dogecoin::DogecoinClient, litecoin::LitecoinClient,
+        };
+        let endpoints = self.endpoints_for(chain.str_id()).await;
+        let active = match chain.mainnet_counterpart() {
+            crate::registry::Chain::Bitcoin => {
+                BitcoinClient::new(crate::http::HttpClient::shared(), endpoints)
+                    .has_activity(address)
+                    .await?
             }
-        }
-        self.fetch_history_summary(chain.str_id().to_string(), address.to_string())
-            .await
-            .map(|summary| summary.entry_count > 0)
-            .unwrap_or(false)
+            crate::registry::Chain::BitcoinCash => {
+                BitcoinCashClient::new(endpoints)
+                    .has_activity(address)
+                    .await?
+            }
+            crate::registry::Chain::BitcoinSV => {
+                BitcoinSvClient::new(endpoints)
+                    .has_activity(address)
+                    .await?
+            }
+            crate::registry::Chain::Litecoin => {
+                LitecoinClient::new(endpoints).has_activity(address).await?
+            }
+            crate::registry::Chain::Dogecoin => {
+                DogecoinClient::new(endpoints).has_activity(address).await?
+            }
+            _ => {
+                return Err(SpectraBridgeError::from(
+                    "chain does not support UTXO discovery",
+                ))
+            }
+        };
+        Ok(active)
     }
 
     /// The seed and base derivation path this wallet derives UTXO addresses
@@ -2166,11 +2230,12 @@ impl WalletService {
         let resolved =
             crate::app_core_resolve_derivation_path(chain_name.clone(), raw_path).ok()?;
 
-        Some(UtxoDerivation {
-            chain_name,
-            seed_phrase: seed_phrase.to_string(),
-            base_path: resolved.normalized_path,
+        tokio::task::spawn_blocking(move || {
+            UtxoDerivation::new(chain, &seed_phrase, resolved.normalized_path)
         })
+        .await
+        .ok()?
+        .ok()
     }
 
     // ── Not exported ──────────────────────────────────────────────────────
@@ -2289,43 +2354,37 @@ impl WalletService {
             return crate::store::plan_baseline_chain_keypool_state(input);
         }
 
-        let records = self
-            .transactions_for_wallet(wallet_id.to_string())
+        if let Some(db_path) = self.state_db_path.read().await.clone() {
+            let wallet = wallet_id.to_owned();
+            let chain = chain_name.to_owned();
+            if let Ok(Ok((external, change))) = tokio::task::spawn_blocking(move || {
+                crate::wallet_db::history_keypool_indices(&db_path, &wallet, &chain)
+            })
             .await
-            .unwrap_or_default();
-        let index_of = |path: &Option<String>, branch: u32| -> Option<u32> {
-            path.as_deref()
-                .and_then(|p| crate::app_core::utxo_discovery_index(p, chain_name, branch))
-        };
-        input.max_transaction_external_index = records
-            .iter()
-            .filter(|r| r.chain_name == chain_name)
-            .filter_map(|r| index_of(&r.source_derivation_path, 0))
-            .max()
-            .map(|v| v as i32);
-        input.max_transaction_change_index = records
-            .iter()
-            .filter(|r| r.chain_name == chain_name)
-            .filter_map(|r| index_of(&r.change_derivation_path, 1))
-            .max()
-            .map(|v| v as i32);
+            {
+                input.max_transaction_external_index = external;
+                input.max_transaction_change_index = change;
+            }
+        }
 
         let owned = self.owned_addresses.read().await;
         if let Some(rows) = owned.get(chain_name) {
             let for_wallet = rows.iter().filter(|r| r.wallet_id == wallet_id);
-            let (mut external, mut change) = (Vec::new(), Vec::new());
+            let (mut external, mut change): (Option<i64>, Option<i64>) = (None, None);
             for row in for_wallet {
                 let Some(index) = row.branch_index else {
                     continue;
                 };
                 match row.branch.as_deref() {
-                    Some("external") => external.push(index),
-                    Some("change") => change.push(index),
+                    Some("external") => {
+                        external = Some(external.map_or(index, |old| old.max(index)))
+                    }
+                    Some("change") => change = Some(change.map_or(index, |old| old.max(index))),
                     _ => {}
                 }
             }
-            input.max_owned_external_index = external.into_iter().max().map(|v| v as i32);
-            input.max_owned_change_index = change.into_iter().max().map(|v| v as i32);
+            input.max_owned_external_index = external.map(|v| v as i32);
+            input.max_owned_change_index = change.map(|v| v as i32);
         }
 
         crate::store::plan_baseline_chain_keypool_state(input)
@@ -2442,3 +2501,6 @@ mod utxo_discovery_is_the_registrys_chain_set {
 
 #[cfg(test)]
 mod tests;
+
+#[cfg(test)]
+mod performance_tests;

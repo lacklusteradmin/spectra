@@ -389,7 +389,7 @@ pub(crate) fn derive_secp_keypair(
 }
 
 // Dispatch to the correct address encoder (P2PKH / P2SH-P2WPKH / P2WPKH / P2TR) by script type.
-fn encode_address_inner(
+pub(crate) fn encode_address_inner(
     params: BitcoinNetworkParams,
     script_type: BitcoinScriptType,
     public_key: &PublicKey,

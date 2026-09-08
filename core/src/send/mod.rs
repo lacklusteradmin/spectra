@@ -110,16 +110,10 @@ pub struct BroadcastReceipt {
 pub struct SendExecutionRequest {
     /// Spectra chain ID string (e.g. "bitcoin", "ethereum").
     pub chain_id: String,
-    /// Chain display name used to select the derivation function ("Bitcoin", "Ethereum", …).
-    pub chain_name: String,
-    /// BIP-32/SLIP-10 derivation path (e.g. "m/84'/0'/0'/0/0").
-    pub derivation_path: String,
-    /// Seed phrase for HD derivation (mutually exclusive with `private_key_hex`).
-    pub seed_phrase: Option<String>,
-    /// Raw private key hex for non-HD wallets (mutually exclusive with `seed_phrase`).
-    pub private_key_hex: Option<String>,
-    /// Source/sender address.
-    pub from_address: String,
+    /// Core-owned wallet whose stored signing identity is used.
+    pub wallet_id: String,
+    /// Required only for a password-sealed wallet. No seed or raw key crosses here.
+    pub password: Option<String>,
     /// Destination/recipient address.
     pub to_address: String,
     /// Exact decimal input, validated and converted to integer units in core.
@@ -143,20 +137,12 @@ pub struct SendExecutionRequest {
     pub evm_overrides: Option<crate::send::ethereum::EvmSendOverridesInput>,
     /// Monero priority level.
     pub monero_priority: Option<u32>,
-    /// Power-user derivation overrides (passphrase, hmac key, script type, etc.).
-    pub derivation_overrides: Option<crate::store::wallet_domain::CoreWalletDerivationOverrides>,
 }
 
 impl SendExecutionRequest {
     pub(crate) fn zeroize_sensitive_fields(&mut self) {
-        if let Some(value) = &mut self.seed_phrase {
-            value.zeroize();
-        }
-        if let Some(value) = &mut self.private_key_hex {
-            value.zeroize();
-        }
-        if let Some(overrides) = &mut self.derivation_overrides {
-            overrides.zeroize_sensitive_fields();
+        if let Some(password) = &mut self.password {
+            password.zeroize();
         }
     }
 }
@@ -836,14 +822,11 @@ mod tests {
     #[test]
     fn send_execution_request_scrubs_secret_fields() {
         let mut request = SendExecutionRequest {
-            chain_id: "ethereum".to_string(),
-            chain_name: "Ethereum".to_string(),
-            derivation_path: "m/44'/60'/0'/0/0".to_string(),
-            seed_phrase: Some("abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about".to_string()),
-            private_key_hex: Some("0123456789abcdef".repeat(4)),
-            from_address: "0xfrom".to_string(),
-            to_address: "0xto".to_string(),
-            amount_str: "1".to_string(),
+            chain_id: "ethereum".into(),
+            wallet_id: "w".into(),
+            password: Some("password".into()),
+            to_address: "0xto".into(),
+            amount_str: "1".into(),
             contract_address: None,
             token_decimals: None,
             fee_rate_svb: None,
@@ -852,24 +835,9 @@ mod tests {
             fee_amount: None,
             evm_overrides: None,
             monero_priority: None,
-            derivation_overrides: Some(
-                crate::store::wallet_domain::CoreWalletDerivationOverrides {
-                    passphrase: Some("wallet passphrase".to_string()),
-                    hmac_key: Some("custom hmac".to_string()),
-                    salt_prefix: Some("mnemonic".to_string()),
-                    ..Default::default()
-                },
-            ),
         };
-
         request.zeroize_sensitive_fields();
-
-        assert_eq!(request.seed_phrase.as_deref(), Some(""));
-        assert_eq!(request.private_key_hex.as_deref(), Some(""));
-        let overrides = request.derivation_overrides.as_ref().expect("overrides");
-        assert_eq!(overrides.passphrase.as_deref(), Some(""));
-        assert_eq!(overrides.hmac_key.as_deref(), Some(""));
-        assert_eq!(overrides.salt_prefix.as_deref(), Some(""));
+        assert_eq!(request.password.as_deref(), Some(""));
     }
 }
 

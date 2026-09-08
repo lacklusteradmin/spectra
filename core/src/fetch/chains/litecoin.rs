@@ -133,6 +133,20 @@ impl LitecoinClient {
 // history, and tx-status lookup.
 
 impl LitecoinClient {
+    pub(crate) async fn has_activity(&self, address: &str) -> Result<bool, String> {
+        // Blockbook basic details provide counts without transaction bodies.
+        #[derive(Deserialize)]
+        #[serde(rename_all = "camelCase")]
+        struct Activity {
+            txs: u64,
+            unconfirmed_txs: u64,
+        }
+        let info: Activity = self
+            .get(&format!("/api/v2/address/{address}?details=basic"))
+            .await?;
+        Ok(info.txs > 0 || info.unconfirmed_txs > 0)
+    }
+
     pub async fn fetch_balance(&self, address: &str) -> Result<LtcBalance, String> {
         let info: BlockbookAddress = self
             .get(&format!("/api/v2/address/{address}?details=basic"))

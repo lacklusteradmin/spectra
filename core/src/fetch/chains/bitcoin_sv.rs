@@ -165,6 +165,15 @@ impl BitcoinSvClient {
 // enrichment), and tx status.
 
 impl BitcoinSvClient {
+    pub(crate) async fn has_activity(&self, address: &str) -> Result<bool, String> {
+        if self.fetch_balance(address).await?.balance_sat > 0 {
+            return Ok(true);
+        }
+        // Only the history index is needed; never enrich every transaction.
+        let list: Vec<WocHistoryItem> = self.get(&format!("/address/{address}/history")).await?;
+        Ok(!list.is_empty())
+    }
+
     pub async fn fetch_balance(&self, address: &str) -> Result<BsvBalance, String> {
         let bal: WocBalance = self.get(&format!("/address/{address}/balance")).await?;
         let confirmed = bal.confirmed.max(0) as u64;

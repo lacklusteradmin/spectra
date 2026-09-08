@@ -28,11 +28,11 @@ use crate::derivation::types::{parse_path_metadata, DerivationResult};
 use crate::SpectraBridgeError;
 use secp256k1::{PublicKey, Secp256k1, SecretKey};
 
-const BCH_MAINNET_VERSION: u8 = 0x00;
-const BCH_TESTNET_VERSION: u8 = 0x6f;
+pub(crate) const BCH_MAINNET_VERSION: u8 = 0x00;
+pub(crate) const BCH_TESTNET_VERSION: u8 = 0x6f;
 
 // Build a BCH P2PKH address: base58check(version || hash160(pubkey)).
-fn p2pkh_address(version: u8, pubkey: &PublicKey) -> String {
+pub(crate) fn p2pkh_address(version: u8, pubkey: &PublicKey) -> String {
     let mut payload = vec![version];
     payload.extend_from_slice(&hash160(&pubkey.serialize()));
     base58check_encode(&payload)

@@ -47,7 +47,14 @@ pub fn run(ctx: &Ctx, out: Out, command: PoolCommand) -> CliResult<()> {
 fn discover(ctx: &Ctx, out: Out, args: SelectArgs) -> CliResult<()> {
     let wallet = ctx.find_wallet(&args.wallet)?;
     let chain = super::resolve_chain(&wallet.chain_name)?;
-    let service = super::chain::service_for_chain(chain, super::chain::BALANCE | super::chain::HISTORY | super::chain::RPC)?;
+    let service = super::chain::service_for_chain(
+        chain,
+        super::chain::BALANCE | super::chain::HISTORY | super::chain::RPC,
+    )?;
+    service.set_secret_store(ctx.secrets.clone());
+    ctx.rt
+        .block_on(service.open_state(ctx.db_path()))
+        .map_err(crate::error::CliError::from)?;
 
     let addresses = ctx
         .rt
@@ -82,7 +89,10 @@ fn show(ctx: &Ctx, out: Out, args: SelectArgs) -> CliResult<()> {
     out.text(|| {
         println!();
         out::field("wallet", &wallet.name.bold().to_string());
-        out::field("chain", &out::tint(&wallet.chain_name, &wallet.chain_name).to_string());
+        out::field(
+            "chain",
+            &out::tint(&wallet.chain_name, &wallet.chain_name).to_string(),
+        );
         out::field("receive", &state.next_external_index.to_string());
         out::field("change", &state.next_change_index.to_string());
         out::field(
@@ -107,6 +117,7 @@ fn show(ctx: &Ctx, out: Out, args: SelectArgs) -> CliResult<()> {
 fn next(ctx: &Ctx, out: Out, args: SelectArgs, change: bool) -> CliResult<()> {
     let wallet = ctx.find_wallet(&args.wallet)?;
     let service = ctx.service()?;
+    service.set_secret_store(ctx.secrets.clone());
     let reserved = ctx
         .rt
         .block_on(async {
@@ -122,6 +133,15 @@ fn next(ctx: &Ctx, out: Out, args: SelectArgs, change: bool) -> CliResult<()> {
         })
         .map_err(crate::error::CliError::from)?;
 
+    let address = if change {
+        None
+    } else {
+        let chain = super::resolve_chain(&wallet.chain_name)?;
+        ctx.rt
+            .block_on(service.utxo_receive_address(wallet.id.clone(), chain.str_id().into(), false))
+            .map_err(crate::error::CliError::from)?
+    };
+
     out.text(|| {
         println!(
             "  {} reserved {} index {}",
@@ -135,6 +155,7 @@ fn next(ctx: &Ctx, out: Out, args: SelectArgs, change: bool) -> CliResult<()> {
         "wallet": wallet.id,
         "kind": if change { "change" } else { "receive" },
         "index": reserved,
+        "address": address,
     }));
     Ok(())
 }

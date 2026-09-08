@@ -22,31 +22,54 @@ use std::collections::HashMap;
 
 use super::state::{AddressBookEntry, CoreAppState, WalletSummary};
 
-// Re-uses a single Connection per db_path instead of opening (and running DDL)
-// on every call.  The Mutex is uncontended in practice because all wallet_db
-// callers already run inside `spawn_blocking`.
-//
-// Uses `parking_lot::Mutex` — no poisoning, smaller footprint, and faster
-// uncontended lock/unlock than `std::sync::Mutex`.
+/// A connection lives as long as a service or an in-flight operation owns it.
+/// The weak index only locates handles; it never owns a connection or covers SQL.
+pub(crate) struct WalletDatabase {
+    path: String,
+    connection: Mutex<Option<Connection>>,
+}
 
-static POOL: std::sync::LazyLock<Mutex<HashMap<String, Connection>>> =
+static DATABASES: std::sync::LazyLock<Mutex<HashMap<String, std::sync::Weak<WalletDatabase>>>> =
     std::sync::LazyLock::new(|| Mutex::new(HashMap::new()));
+
+impl WalletDatabase {
+    pub(crate) fn acquire(db_path: &str) -> std::sync::Arc<Self> {
+        let mut databases = DATABASES.lock();
+        databases.retain(|_, handle| handle.strong_count() > 0);
+        if let Some(database) = databases.get(db_path).and_then(std::sync::Weak::upgrade) {
+            return database;
+        }
+        let database = std::sync::Arc::new(Self {
+            path: db_path.to_string(),
+            connection: Mutex::new(None),
+        });
+        databases.insert(db_path.to_string(), std::sync::Arc::downgrade(&database));
+        database
+    }
+
+    fn with_connection<T>(
+        &self,
+        f: impl FnOnce(&Connection) -> Result<T, String>,
+    ) -> Result<T, String> {
+        let mut guard = self.connection.lock();
+        if guard.is_none() {
+            *guard = Some(open_new(&self.path)?);
+        }
+        f(guard.as_ref().expect("connection initialized"))
+    }
+}
 
 fn with_conn<T>(
     db_path: &str,
     f: impl FnOnce(&Connection) -> Result<T, String>,
 ) -> Result<T, String> {
-    use std::collections::hash_map::Entry;
-    let mut pool = POOL.lock();
-    let conn = match pool.entry(db_path.to_string()) {
-        Entry::Occupied(e) => e.into_mut(),
-        Entry::Vacant(e) => e.insert(open_new(db_path)?),
-    };
-    f(conn)
+    WalletDatabase::acquire(db_path).with_connection(f)
 }
 
 fn open_new(db_path: &str) -> Result<Connection, String> {
     let conn = Connection::open(db_path).map_err(|e| format!("wallet_db open {db_path}: {e}"))?;
+    conn.busy_timeout(std::time::Duration::from_secs(5))
+        .map_err(|e| format!("wallet_db busy timeout: {e}"))?;
     conn.execute_batch(
         "PRAGMA journal_mode = WAL;
          PRAGMA synchronous = NORMAL;
@@ -81,6 +104,10 @@ fn open_new(db_path: &str) -> Result<Connection, String> {
          CREATE INDEX IF NOT EXISTS idx_hr_wallet  ON history_records(wallet_id);
          CREATE INDEX IF NOT EXISTS idx_hr_chain   ON history_records(chain_name);
          CREATE INDEX IF NOT EXISTS idx_hr_created ON history_records(created_at DESC);
+         CREATE INDEX IF NOT EXISTS idx_hr_source_path ON history_records
+             (wallet_id, chain_name, json_extract(payload, '$.sourceDerivationPath'));
+         CREATE INDEX IF NOT EXISTS idx_hr_change_path ON history_records
+             (wallet_id, chain_name, json_extract(payload, '$.changeDerivationPath'));
          CREATE TABLE IF NOT EXISTS wallets (
              id                         TEXT    NOT NULL PRIMARY KEY,
              name                       TEXT    NOT NULL,
@@ -121,7 +148,7 @@ pub(crate) fn now_secs() -> i64 {
 
 // ── Keypool types ─────────────────────────────────────────────────────────────
 
-#[derive(Debug, Clone, Serialize, Deserialize, uniffi::Record)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, uniffi::Record)]
 #[serde(rename_all = "camelCase")]
 pub struct KeypoolState {
     pub next_external_index: i64,
@@ -521,6 +548,46 @@ pub fn history_record_from_payload(
     }
 }
 
+/// Project distinct indexed paths, not transaction payloads. Repeated transactions
+/// on one address produce one path to parse, scoped to this wallet and chain.
+pub(crate) fn history_keypool_indices(
+    db_path: &str,
+    wallet_id: &str,
+    chain_name: &str,
+) -> Result<(Option<i32>, Option<i32>), String> {
+    with_conn(db_path, |conn| {
+        let mut maxima = [None, None];
+        for (branch, field) in ["sourceDerivationPath", "changeDerivationPath"]
+            .into_iter()
+            .enumerate()
+        {
+            let sql = format!(
+                "SELECT DISTINCT json_extract(payload, '$.{field}')
+                FROM history_records WHERE wallet_id = ?1 AND chain_name = ?2"
+            );
+            let mut stmt = conn.prepare(&sql).map_err(|e| e.to_string())?;
+            let rows = stmt
+                .query_map(params![wallet_id.to_lowercase(), chain_name], |row| {
+                    row.get::<_, Option<String>>(0)
+                })
+                .map_err(|e| e.to_string())?;
+            for path in rows {
+                if let Some(index) = path
+                    .map_err(|e| e.to_string())?
+                    .as_deref()
+                    .and_then(|path| {
+                        crate::app_core::utxo_discovery_index(path, chain_name, branch as u32)
+                    })
+                {
+                    let index = i32::try_from(index).map_err(|_| "keypool index out of range")?;
+                    maxima[branch] = Some(maxima[branch].map_or(index, |old: i32| old.max(index)));
+                }
+            }
+        }
+        Ok((maxima[0], maxima[1]))
+    })
+}
+
 /// Which of `ids` already exist, lowercased.
 pub fn history_existing_ids(db_path: &str, ids: &[String]) -> Result<Vec<String>, String> {
     if ids.is_empty() {
@@ -881,125 +948,148 @@ pub fn wallet_delete(db_path: &str, wallet_id: &str) -> Result<(), String> {
     })
 }
 
-/// Persist a whole [`CoreAppState`] snapshot.
-///
-/// Replaces the stored wallet set: wallets absent from `state` are removed, and
-/// `sort_index` is rewritten so the stored order matches `state.wallets`. Runs
-/// in one transaction, so a failure part-way leaves the previous snapshot
-/// intact rather than a half-written wallet list.
-pub fn app_state_save(db_path: &str, state: &CoreAppState) -> Result<(), String> {
-    let settings = serde_json::to_string(&state.settings)
-        .map_err(|e| format!("app_state_save encode settings: {e}"))?;
-    let token_preferences = serde_json::to_string(&state.token_preferences)
-        .map_err(|e| format!("app_state_save encode token_preferences: {e}"))?;
-    let price_alerts = serde_json::to_string(&state.price_alerts)
-        .map_err(|e| format!("app_state_save encode price_alerts: {e}"))?;
-    let payloads: Vec<(usize, &WalletSummary, String)> = state
-        .wallets
-        .iter()
-        .enumerate()
-        .map(|(index, wallet)| {
-            serde_json::to_string(wallet)
-                .map(|payload| (index, wallet, payload))
-                .map_err(|e| format!("app_state_save encode wallet {}: {e}", wallet.id))
+/// Serialized write set, prepared against the last committed state while the
+/// service writer is held. Unchanged collections are neither encoded nor written.
+pub(crate) struct AppStateChanges {
+    replace: bool,
+    wallets: Vec<(usize, WalletSummary, String)>,
+    removed_wallets: Vec<String>,
+    addresses: Vec<(usize, AddressBookEntry, String)>,
+    removed_addresses: Vec<String>,
+    meta: Vec<(&'static str, Option<String>)>,
+}
+
+impl AppStateChanges {
+    pub(crate) fn between(
+        before: Option<&CoreAppState>,
+        after: &CoreAppState,
+    ) -> Result<Self, String> {
+        let old_wallets: std::collections::HashMap<_, _> = before
+            .into_iter()
+            .flat_map(|state| state.wallets.iter().enumerate())
+            .map(|(index, wallet)| (wallet.id.as_str(), (index, wallet)))
+            .collect();
+        let old_addresses: std::collections::HashMap<_, _> = before
+            .into_iter()
+            .flat_map(|state| state.address_book.iter().enumerate())
+            .map(|(index, entry)| (entry.id.as_str(), (index, entry)))
+            .collect();
+        let mut changes = Self {
+            replace: before.is_none(),
+            wallets: vec![],
+            removed_wallets: vec![],
+            addresses: vec![],
+            removed_addresses: vec![],
+            meta: vec![],
+        };
+        let mut remaining_wallets = old_wallets;
+        for (index, wallet) in after.wallets.iter().enumerate() {
+            if remaining_wallets.remove(wallet.id.as_str()) != Some((index, wallet)) {
+                changes.wallets.push((
+                    index,
+                    wallet.clone(),
+                    serde_json::to_string(wallet).map_err(|e| e.to_string())?,
+                ));
+            }
+        }
+        changes
+            .removed_wallets
+            .extend(remaining_wallets.into_keys().map(str::to_owned));
+        let mut remaining_addresses = old_addresses;
+        for (index, entry) in after.address_book.iter().enumerate() {
+            if remaining_addresses.remove(entry.id.as_str()) != Some((index, entry)) {
+                changes.addresses.push((
+                    index,
+                    entry.clone(),
+                    serde_json::to_string(entry).map_err(|e| e.to_string())?,
+                ));
+            }
+        }
+        changes
+            .removed_addresses
+            .extend(remaining_addresses.into_keys().map(str::to_owned));
+        macro_rules! json_field {
+            ($field:ident, $key:expr) => {
+                if before.map(|state| &state.$field) != Some(&after.$field) {
+                    changes.meta.push((
+                        $key,
+                        Some(serde_json::to_string(&after.$field).map_err(|e| e.to_string())?),
+                    ));
+                }
+            };
+        }
+        json_field!(schema_version, META_SCHEMA_VERSION);
+        json_field!(settings, META_SETTINGS);
+        json_field!(token_preferences, META_TOKEN_PREFERENCES);
+        json_field!(price_alerts, META_PRICE_ALERTS);
+        if before.map(|state| &state.selected_wallet_id) != Some(&after.selected_wallet_id) {
+            changes
+                .meta
+                .push((META_SELECTED_WALLET_ID, after.selected_wallet_id.clone()));
+        }
+        Ok(changes)
+    }
+
+    pub(crate) fn save(self, db_path: &str) -> Result<(), String> {
+        with_conn(db_path, |conn| {
+            let tx = conn.unchecked_transaction().map_err(|e| e.to_string())?;
+            let updated_at = now_secs();
+            if self.replace {
+                tx.execute("DELETE FROM wallets", [])
+                    .map_err(|e| e.to_string())?;
+                tx.execute("DELETE FROM address_book", [])
+                    .map_err(|e| e.to_string())?;
+            }
+            for id in self.removed_wallets {
+                tx.execute("DELETE FROM wallets WHERE id = ?1", params![id])
+                    .map_err(|e| e.to_string())?;
+            }
+            for id in self.removed_addresses {
+                tx.execute("DELETE FROM address_book WHERE id = ?1", params![id])
+                    .map_err(|e| e.to_string())?;
+            }
+            for (index, wallet, payload) in self.wallets {
+                tx.execute("INSERT INTO wallets
+                    (id, name, chain_name, is_watch_only, include_in_portfolio_total, sort_index, payload, updated_at)
+                    VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)
+                    ON CONFLICT(id) DO UPDATE SET name=excluded.name, chain_name=excluded.chain_name,
+                    is_watch_only=excluded.is_watch_only, include_in_portfolio_total=excluded.include_in_portfolio_total,
+                    sort_index=excluded.sort_index, payload=excluded.payload, updated_at=excluded.updated_at",
+                    params![wallet.id, wallet.name, wallet.chain_name, wallet.is_watch_only,
+                        wallet.include_in_portfolio_total, index as i64, payload, updated_at])
+                    .map_err(|e| format!("app_state_save wallet: {e}"))?;
+            }
+            for (index, entry, payload) in self.addresses {
+                tx.execute("INSERT INTO address_book (id, chain_name, address, sort_index, payload, updated_at)
+                    VALUES (?1, ?2, ?3, ?4, ?5, ?6)
+                    ON CONFLICT(id) DO UPDATE SET chain_name=excluded.chain_name, address=excluded.address,
+                    sort_index=excluded.sort_index, payload=excluded.payload, updated_at=excluded.updated_at",
+                    params![entry.id, entry.chain_name, entry.address, index as i64, payload, updated_at])
+                    .map_err(|e| format!("app_state_save address: {e}"))?;
+            }
+            for (key, value) in self.meta {
+                if let Some(value) = value {
+                    tx.execute(
+                        "INSERT INTO app_state_meta (key, value) VALUES (?1, ?2)
+                        ON CONFLICT(key) DO UPDATE SET value=excluded.value",
+                        params![key, value],
+                    )
+                    .map_err(|e| format!("app_state_save {key}: {e}"))?;
+                } else {
+                    tx.execute("DELETE FROM app_state_meta WHERE key = ?1", params![key])
+                        .map_err(|e| format!("app_state_save clear {key}: {e}"))?;
+                }
+            }
+            tx.commit()
+                .map_err(|e| format!("app_state_save commit: {e}"))
         })
-        .collect::<Result<_, _>>()?;
+    }
+}
 
-    with_conn(db_path, |conn| {
-        let tx = conn
-            .unchecked_transaction()
-            .map_err(|e| format!("app_state_save begin: {e}"))?;
-        let updated_at = now_secs();
-
-        tx.execute("DELETE FROM wallets", [])
-            .map_err(|e| format!("app_state_save clear wallets: {e}"))?;
-        {
-            let mut stmt = tx
-                .prepare(
-                    "INSERT INTO wallets
-                         (id, name, chain_name, is_watch_only, include_in_portfolio_total,
-                          sort_index, payload, updated_at)
-                     VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
-                )
-                .map_err(|e| format!("app_state_save prepare: {e}"))?;
-            for (index, wallet, payload) in &payloads {
-                stmt.execute(params![
-                    wallet.id,
-                    wallet.name,
-                    wallet.chain_name,
-                    wallet.is_watch_only,
-                    wallet.include_in_portfolio_total,
-                    *index as i64,
-                    payload,
-                    updated_at,
-                ])
-                .map_err(|e| format!("app_state_save insert {}: {e}", wallet.id))?;
-            }
-        }
-
-        tx.execute("DELETE FROM address_book", [])
-            .map_err(|e| format!("app_state_save clear address book: {e}"))?;
-        {
-            let mut stmt = tx
-                .prepare(
-                    "INSERT INTO address_book
-                         (id, chain_name, address, sort_index, payload, updated_at)
-                     VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
-                )
-                .map_err(|e| format!("app_state_save prepare address book: {e}"))?;
-            for (index, entry) in state.address_book.iter().enumerate() {
-                let payload = serde_json::to_string(entry).map_err(|e| {
-                    format!("app_state_save encode address entry {}: {e}", entry.id)
-                })?;
-                stmt.execute(params![
-                    entry.id,
-                    entry.chain_name,
-                    entry.address,
-                    index as i64,
-                    payload,
-                    updated_at,
-                ])
-                .map_err(|e| format!("app_state_save insert address entry {}: {e}", entry.id))?;
-            }
-        }
-
-        let mut meta = tx
-            .prepare(
-                "INSERT INTO app_state_meta (key, value) VALUES (?1, ?2)
-                 ON CONFLICT(key) DO UPDATE SET value = excluded.value",
-            )
-            .map_err(|e| format!("app_state_save prepare meta: {e}"))?;
-        meta.execute(params![
-            META_SCHEMA_VERSION,
-            state.schema_version.to_string()
-        ])
-        .map_err(|e| format!("app_state_save schema_version: {e}"))?;
-        meta.execute(params![META_PRICE_ALERTS, price_alerts])
-            .map_err(|e| format!("app_state_save price_alerts: {e}"))?;
-        meta.execute(params![META_TOKEN_PREFERENCES, token_preferences])
-            .map_err(|e| format!("app_state_save token_preferences: {e}"))?;
-        meta.execute(params![META_SETTINGS, settings])
-            .map_err(|e| format!("app_state_save settings: {e}"))?;
-        // Absent selection is stored as an absent row, not an empty string, so
-        // "no wallet selected" and "a wallet whose id is empty" stay distinct.
-        match &state.selected_wallet_id {
-            Some(id) => meta
-                .execute(params![META_SELECTED_WALLET_ID, id])
-                .map(|_| ())
-                .map_err(|e| format!("app_state_save selected_wallet_id: {e}"))?,
-            None => tx
-                .execute(
-                    "DELETE FROM app_state_meta WHERE key = ?1",
-                    params![META_SELECTED_WALLET_ID],
-                )
-                .map(|_| ())
-                .map_err(|e| format!("app_state_save clear selected_wallet_id: {e}"))?,
-        }
-        drop(meta);
-
-        tx.commit()
-            .map_err(|e| format!("app_state_save commit: {e}"))
-    })
+/// Explicit snapshot replacement (imports and standalone store callers).
+/// Service commands use a delta against their serialized committed state.
+pub fn app_state_save(db_path: &str, state: &CoreAppState) -> Result<(), String> {
+    AppStateChanges::between(None, state)?.save(db_path)
 }
 
 /// Load every saved recipient, in the stored display order.
@@ -1127,6 +1217,61 @@ mod tests {
         ));
         let _ = std::fs::remove_file(&path);
         path.to_string_lossy().into_owned()
+    }
+
+    #[test]
+    fn keypool_history_projection_is_scoped_indexed_and_tracks_edits() {
+        let db = tmp_db();
+        with_conn(&db, |conn| {
+            // Only paths: deliberately not a decodable full transaction record.
+            // The baseline query must not fetch/decode transaction bodies.
+            for (id, wallet, chain, external, change) in [
+                ("a", "w", "Bitcoin", 4, 2), ("b", "w", "Bitcoin", 4, 2),
+                ("c", "w", "Bitcoin", 8, 3), ("d", "other", "Bitcoin", 90, 90),
+                ("e", "w", "Litecoin", 99, 99),
+            ] {
+                let payload = serde_json::json!({
+                    "sourceDerivationPath": format!("m/84'/0'/0'/0/{external}"),
+                    "changeDerivationPath": format!("m/84'/0'/0'/1/{change}"),
+                }).to_string();
+                conn.execute("INSERT INTO history_records (id,wallet_id,chain_name,created_at,payload) VALUES (?1,?2,?3,0,?4)",
+                    params![id,wallet,chain,payload]).unwrap();
+            }
+            for (field, index) in [("sourceDerivationPath", "idx_hr_source_path"), ("changeDerivationPath", "idx_hr_change_path")] {
+                let plan: Vec<String> = conn.prepare(&format!("EXPLAIN QUERY PLAN SELECT DISTINCT json_extract(payload, '$.{field}') FROM history_records WHERE wallet_id = 'w' AND chain_name = 'Bitcoin'"))
+                    .unwrap().query_map([], |r| r.get(3)).unwrap().map(Result::unwrap).collect();
+                assert!(plan.iter().any(|p| p.contains(index)), "{plan:?}");
+                assert!(!plan.iter().any(|p| p.contains("TEMP B-TREE")), "{plan:?}");
+            }
+            Ok(())
+        }).unwrap();
+        assert_eq!(
+            history_keypool_indices(&db, "W", "Bitcoin").unwrap(),
+            (Some(8), Some(3))
+        );
+        history_delete(&db, &["c".into()]).unwrap();
+        assert_eq!(
+            history_keypool_indices(&db, "w", "Bitcoin").unwrap(),
+            (Some(4), Some(2))
+        );
+        with_conn(&db, |conn| {
+            conn.execute(
+                "UPDATE history_records SET payload = ?1 WHERE id = 'a'",
+                params![serde_json::json!({"sourceDerivationPath":"m/84'/0'/0'/0/12"}).to_string()],
+            )
+            .unwrap();
+            Ok(())
+        })
+        .unwrap();
+        assert_eq!(
+            history_keypool_indices(&db, "w", "Bitcoin").unwrap(),
+            (Some(12), Some(2))
+        );
+        history_clear(&db).unwrap();
+        assert_eq!(
+            history_keypool_indices(&db, "w", "Bitcoin").unwrap(),
+            (None, None)
+        );
     }
 
     #[test]
@@ -1430,6 +1575,51 @@ mod tests {
     }
 
     #[test]
+    fn incremental_state_reorders_deletes_and_rolls_back_as_one_transaction() {
+        let db = tmp_db();
+        let before = CoreAppState {
+            wallets: vec![
+                wallet("a", "Bitcoin"),
+                wallet("b", "Solana"),
+                wallet("c", "Sui"),
+            ],
+            selected_wallet_id: Some("a".into()),
+            address_book: vec![AddressBookEntry {
+                id: "a".into(),
+                name: "Alice".into(),
+                chain_name: "Bitcoin".into(),
+                address: "recipient".into(),
+                note: "".into(),
+            }],
+            ..CoreAppState::default()
+        };
+        app_state_save(&db, &before).unwrap();
+        let mut after = before.clone();
+        after.wallets.remove(0);
+        after.wallets.reverse();
+        after.wallets[0].name = "Renamed".into();
+        after.selected_wallet_id = None;
+        after.address_book.clear();
+        after.settings.fiat_currency_code = "EUR".into();
+        with_conn(&db, |conn| conn.execute_batch("CREATE TRIGGER reject_meta BEFORE INSERT ON app_state_meta BEGIN SELECT RAISE(FAIL, 'injected'); END;").map_err(|e| e.to_string())).unwrap();
+        assert!(AppStateChanges::between(Some(&before), &after)
+            .unwrap()
+            .save(&db)
+            .is_err());
+        assert_eq!(app_state_load(&db).unwrap(), before);
+        with_conn(&db, |conn| {
+            conn.execute_batch("DROP TRIGGER reject_meta;")
+                .map_err(|e| e.to_string())
+        })
+        .unwrap();
+        AppStateChanges::between(Some(&before), &after)
+            .unwrap()
+            .save(&db)
+            .unwrap();
+        assert_eq!(app_state_load(&db).unwrap(), after);
+    }
+
+    #[test]
     fn wallet_upsert_appends_then_updates_in_place() {
         let db = tmp_db();
         wallet_upsert(&db, &wallet("w1", "Bitcoin")).unwrap();
@@ -1517,5 +1707,104 @@ mod tests {
             .map(|r| r.id)
             .collect();
         assert_eq!(remaining, vec!["tx2"], "only w1's history should be gone");
+    }
+}
+
+#[cfg(test)]
+mod connection_lifecycle_tests {
+    use super::*;
+    use std::sync::{mpsc, Arc};
+    use std::time::Duration;
+
+    fn path() -> String {
+        std::env::temp_dir()
+            .join(format!(
+                "spectra-connection-{}.sqlite",
+                crate::store::new_event_id()
+            ))
+            .to_string_lossy()
+            .into_owned()
+    }
+
+    #[test]
+    fn one_blocked_database_does_not_block_another_database() {
+        let a = WalletDatabase::acquire(&path());
+        let b = WalletDatabase::acquire(&path());
+        let (started_tx, started_rx) = mpsc::channel();
+        let (release_tx, release_rx) = mpsc::channel();
+        let worker = std::thread::spawn(move || {
+            a.with_connection(|_| {
+                started_tx.send(()).unwrap();
+                release_rx.recv().unwrap();
+                Ok(())
+            })
+        });
+        started_rx.recv_timeout(Duration::from_secs(5)).unwrap();
+        let (done_tx, done_rx) = mpsc::channel();
+        let second = std::thread::spawn(move || {
+            let result = b.with_connection(|conn| {
+                conn.query_row("SELECT 1", [], |row| row.get::<_, i32>(0))
+                    .map_err(|e| e.to_string())
+            });
+            done_tx.send(result).unwrap();
+        });
+        let result = done_rx.recv_timeout(Duration::from_secs(5));
+        release_tx.send(()).unwrap();
+        worker.join().unwrap().unwrap();
+        second.join().unwrap();
+        assert_eq!(result.unwrap().unwrap(), 1);
+    }
+
+    #[test]
+    fn same_database_shares_a_handle_and_last_owner_releases_connection() {
+        let path = path();
+        let first = WalletDatabase::acquire(&path);
+        let second = WalletDatabase::acquire(&path);
+        assert!(Arc::ptr_eq(&first, &second));
+        first
+            .with_connection(|conn| {
+                conn.execute_batch("CREATE TEMP TABLE lifetime_marker (id INTEGER)")
+                    .map_err(|e| e.to_string())
+            })
+            .unwrap();
+        let weak = Arc::downgrade(&first);
+        drop(first);
+        assert!(weak.upgrade().is_some());
+        drop(second);
+        assert!(weak.upgrade().is_none());
+        let reopened = WalletDatabase::acquire(&path);
+        reopened
+            .with_connection(|conn| {
+                let count: i32 = conn
+                    .query_row(
+                        "SELECT count(*) FROM sqlite_temp_master WHERE name = 'lifetime_marker'",
+                        [],
+                        |row| row.get(0),
+                    )
+                    .unwrap();
+                assert_eq!(count, 0);
+                Ok(())
+            })
+            .unwrap();
+    }
+
+    #[tokio::test]
+    async fn service_holds_connection_until_rebind_or_drop() {
+        let service = crate::service::WalletService::new_typed(vec![]).unwrap();
+        let first_path = path();
+        service.open_state(first_path.clone()).await.unwrap();
+        let weak = Arc::downgrade(&WalletDatabase::acquire(&first_path));
+        assert!(weak.upgrade().is_some());
+        service.open_state(path()).await.unwrap();
+        assert!(weak.upgrade().is_none());
+        let active = service
+            .state_database
+            .read()
+            .await
+            .as_ref()
+            .map(Arc::downgrade)
+            .unwrap();
+        drop(service);
+        assert!(active.upgrade().is_none());
     }
 }

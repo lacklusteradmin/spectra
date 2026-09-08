@@ -178,6 +178,19 @@ impl BitcoinClient {
 use crate::http::{with_fallback, RetryProfile};
 
 impl BitcoinClient {
+    /// Address counters include spent history and pending transactions, without tx bodies.
+    pub(crate) async fn has_activity(&self, address: &str) -> Result<bool, String> {
+        with_fallback(&self.endpoints, |base| {
+            let url = format!("{base}/address/{address}");
+            async move {
+                let stats: EsploraAddressStats =
+                    self.http.get_json(&url, RetryProfile::ChainRead).await?;
+                Ok(stats.chain_stats.tx_count > 0 || stats.mempool_stats.tx_count > 0)
+            }
+        })
+        .await
+    }
+
     // ── Fetch: balance
 
     pub async fn fetch_balance(&self, address: &str) -> Result<BitcoinBalance, String> {

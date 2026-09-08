@@ -73,6 +73,7 @@ mod maintenance;
 mod network;
 mod send;
 mod send_execution;
+mod send_identity;
 mod send_params;
 mod standalone;
 mod state;
@@ -114,6 +115,9 @@ impl EndpointIndex {
 /// Swift holds one instance for the lifetime of the app session.
 #[derive(Clone, uniffi::Object)]
 pub struct WalletService {
+    pub(crate) trc20_metadata: Arc<crate::fetch::chains::tron::MetadataCache>,
+    /// Retains the opened database connection for this service lifetime.
+    pub(crate) state_database: Arc<AsyncRwLock<Option<Arc<crate::wallet_db::WalletDatabase>>>>,
     /// Serializes persistent mutations, including database binding.
     pub(crate) state_writer: Arc<tokio::sync::Mutex<()>>,
     pub(crate) endpoints: Arc<AsyncRwLock<EndpointIndex>>,
@@ -190,6 +194,8 @@ impl WalletService {
                 .try_init();
         });
         Ok(Arc::new(Self {
+            trc20_metadata: Arc::new(crate::fetch::chains::tron::MetadataCache::default()),
+            state_database: Arc::new(AsyncRwLock::new(None)),
             state_writer: Arc::new(tokio::sync::Mutex::new(())),
             endpoints: Arc::new(AsyncRwLock::new(EndpointIndex::from_list(endpoints))),
             history_pagination: Arc::new(HistoryPaginationStore::new()),

@@ -255,10 +255,7 @@ pub fn delete(store: &dyn SecretStore, wallet_id: &str) -> Result<(), WalletSecr
 /// is possible.
 pub fn is_private_key_backed(store: &dyn SecretStore, wallet_id: &str) -> bool {
     store
-        .load_secret(
-            Blob::PrivateKey.class(),
-            Blob::PrivateKey.key(wallet_id),
-        )
+        .load_secret(Blob::PrivateKey.class(), Blob::PrivateKey.key(wallet_id))
         .is_ok()
 }
 
@@ -349,6 +346,42 @@ pub fn load_private_key(
     load_material(store, wallet_id, Blob::PrivateKey, password)
 }
 
+/// A stored wallet must have exactly one signing source. Never silently prefer
+/// one blob when both exist, or turn a backend failure into "no key".
+pub(crate) enum SigningMaterial {
+    Mnemonic(Zeroizing<String>),
+    PrivateKey(Zeroizing<String>),
+}
+
+pub(crate) fn load_signing_material(
+    store: &dyn SecretStore,
+    wallet_id: &str,
+    password: Option<&str>,
+) -> Result<SigningMaterial, WalletSecretError> {
+    let present = |blob: Blob| -> Result<bool, WalletSecretError> {
+        match store.load_secret(blob.class(), blob.key(wallet_id)) {
+            Ok(value) => {
+                let _value = Zeroizing::new(value);
+                Ok(true)
+            }
+            Err(SecretStoreError::NotFound) => Ok(false),
+            Err(error) => Err(error.into()),
+        }
+    };
+    match (present(Blob::Seed)?, present(Blob::PrivateKey)?) {
+        (true, false) => {
+            load_seed_phrase(store, wallet_id, password).map(SigningMaterial::Mnemonic)
+        }
+        (false, true) => {
+            load_private_key(store, wallet_id, password).map(SigningMaterial::PrivateKey)
+        }
+        (false, false) => Err(WalletSecretError::NotSealed),
+        (true, true) => Err(WalletSecretError::Corrupt {
+            message: "wallet contains both mnemonic and private key".into(),
+        }),
+    }
+}
+
 fn load_material(
     store: &dyn SecretStore,
     wallet_id: &str,
@@ -361,11 +394,11 @@ fn load_material(
             return Err(WalletSecretError::PasswordNotRequired);
         }
         let raw = read_blob(store, wallet_id, blob)?;
-        return String::from_utf8(raw)
-            .map(Zeroizing::new)
-            .map_err(|e| WalletSecretError::Corrupt {
+        return String::from_utf8(raw).map(Zeroizing::new).map_err(|e| {
+            WalletSecretError::Corrupt {
                 message: format!("{} is not utf-8: {e}", blob.suffix()),
-            });
+            }
+        });
     }
     let Some(password) = password else {
         return Err(WalletSecretError::PasswordRequired);
@@ -487,7 +520,10 @@ mod tests {
         store_private_key(&store, "w", "0xabc", None).expect("store");
         assert!(!is_sealed(&store, "w"));
         assert!(is_private_key_backed(&store, "w"));
-        assert_eq!(&*load_private_key(&store, "w", None).expect("load"), "0xabc");
+        assert_eq!(
+            &*load_private_key(&store, "w", None).expect("load"),
+            "0xabc"
+        );
     }
 
     #[test]
@@ -562,7 +598,10 @@ mod tests {
         let key = "4c0883a69102937d6231471b5dbb6204fe5129617082792ae468d01a3f362318";
         seal_private_key(&store, "w1", key, "hunter2").expect("seal");
 
-        assert_eq!(&*unlock_private_key(&store, "w1", "hunter2").expect("unlock"), key);
+        assert_eq!(
+            &*unlock_private_key(&store, "w1", "hunter2").expect("unlock"),
+            key
+        );
         assert!(matches!(
             unlock_private_key(&store, "w1", "wrong"),
             Err(WalletSecretError::IncorrectPassword)
@@ -585,5 +624,4 @@ mod tests {
             Err(WalletSecretError::NotSealed)
         ));
     }
-
 }

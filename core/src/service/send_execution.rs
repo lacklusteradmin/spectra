@@ -30,13 +30,13 @@ impl WalletService {
     /// Derive key material, build the chain-specific payload, sign, and
     /// broadcast in a single call.
     ///
-    /// This eliminates the Swift↔Rust trampoline where Swift held a closure
-    /// between derivation and signing. Swift now passes the seed phrase (or
-    /// raw private key) directly, and Rust handles the entire pipeline.
+    /// The caller selects a stored wallet. Core resolves and validates its
+    /// signing identity; callers cannot supply a competing chain name or key.
     pub async fn execute_send(
         &self,
         mut request: crate::send::SendExecutionRequest,
     ) -> Result<crate::send::SendExecutionResult, SpectraBridgeError> {
+        let password = request.password.take().map(Zeroizing::new);
         let result: Result<crate::send::SendExecutionResult, SpectraBridgeError> = async {
             let chain = Chain::from_str_id(&request.chain_id).ok_or_else(|| {
                 SpectraBridgeError::InvalidInput {
@@ -48,55 +48,21 @@ impl WalletService {
                 input.resolve(chain)?;
             }
             validate_execution_amount(chain, &request)?;
-            // 1. Derive key material (or use provided private key).
-            let (priv_hex, pub_hex) = if let Some(ref seed_phrase) = request.seed_phrase {
-                use crate::derivation::types::BitcoinScriptType;
-                let ov = request.derivation_overrides.as_ref();
-                let pass = ov
-                    .and_then(|o| o.passphrase.as_deref())
-                    .filter(|s| !s.is_empty());
-                let hmac = ov
-                    .and_then(|o| o.hmac_key.as_deref())
-                    .filter(|s| !s.is_empty());
-                let script = ov
-                    .and_then(|o| o.script_type.as_deref())
-                    .and_then(|s| match s.to_lowercase().as_str() {
-                        "p2pkh" => Some(BitcoinScriptType::P2pkh),
-                        "p2shp2wpkh" | "p2sh-p2wpkh" => Some(BitcoinScriptType::P2shP2wpkh),
-                        "p2wpkh" => Some(BitcoinScriptType::P2wpkh),
-                        "p2tr" => Some(BitcoinScriptType::P2tr),
-                        _ => None,
-                    })
-                    .unwrap_or_else(|| {
-                        crate::derivation::dispatch::script_type_for_path(&request.derivation_path)
-                    });
-                let r = crate::derivation::dispatch::derive_for_chain_name(
-                    &request.chain_name,
-                    seed_phrase,
-                    &request.derivation_path,
-                    pass,
-                    hmac,
-                    Some(script),
-                    false,
-                    true,
-                    true,
-                )?;
-                let priv_h = r.private_key_hex.ok_or_else(|| {
-                    SpectraBridgeError::from("derivation returned no private key")
-                })?;
-                (priv_h, r.public_key_hex)
-            } else if let Some(ref pk) = request.private_key_hex {
-                let normalized = pk.strip_prefix("0x").unwrap_or(pk).to_string();
-                (normalized, None)
-            } else {
-                return Err(SpectraBridgeError::from(
-                    "execute_send: neither seed_phrase nor private_key_hex provided",
-                ));
-            };
-            let priv_hex = Zeroizing::new(priv_hex);
-
+            let signer = self
+                .resolve_send_identity(
+                    chain,
+                    &request.wallet_id,
+                    password.as_ref().map(|p| p.as_str()),
+                )
+                .await?;
             let params = self
-                .build_send_params(chain, &request, priv_hex.as_str(), &pub_hex)
+                .build_send_params(
+                    chain,
+                    &request,
+                    &signer.from_address,
+                    &signer.private_key_hex,
+                    &signer.public_key_hex,
+                )
                 .await?;
             let result_json = self.sign_and_broadcast_send(chain, params).await?;
 
@@ -165,6 +131,7 @@ impl WalletService {
         &self,
         chain: Chain,
         req: &crate::send::SendExecutionRequest,
+        from_address: &str,
         priv_hex: &str,
         pub_hex: &Option<String>,
     ) -> Result<crate::service::send_params::ExecuteSendParams, SpectraBridgeError> {
@@ -179,7 +146,7 @@ impl WalletService {
             .transpose()?
             .unwrap_or_default();
 
-        let from = req.from_address.clone();
+        let from = from_address.to_string();
         let to = req.to_address.clone();
         let private_key_hex = priv_hex.to_string();
         let public_key_hex = pub_hex.clone();
@@ -420,6 +387,7 @@ impl WalletService {
                 public_key_hex,
             }),
             Chain::Monero => SendParams::Monero(MoneroSendParams {
+                from,
                 to,
                 piconeros: raw_u64(12)?,
                 priority: Some(u64::from(req.monero_priority.unwrap_or(2))),
@@ -538,14 +506,11 @@ mod build_send_params_tests {
     use crate::service::send_params::{ExecuteSendParams, SendParams, SendTokenParams};
     use crate::service::WalletService;
 
-    fn req(chain_id: &str, chain_name: &str) -> SendExecutionRequest {
+    fn req(chain_id: &str, _chain_name: &str) -> SendExecutionRequest {
         SendExecutionRequest {
             chain_id: chain_id.to_string(),
-            chain_name: chain_name.to_string(),
-            derivation_path: String::new(),
-            seed_phrase: None,
-            private_key_hex: None,
-            from_address: "from".to_string(),
+            wallet_id: "w".into(),
+            password: None,
             to_address: "to".to_string(),
             amount_str: "1.5".into(),
             contract_address: None,
@@ -556,7 +521,6 @@ mod build_send_params_tests {
             fee_amount: None,
             evm_overrides: None,
             monero_priority: None,
-            derivation_overrides: None,
         }
     }
 
@@ -566,7 +530,7 @@ mod build_send_params_tests {
         let mut r = req("solana", "Solana");
         r.amount_str = "9007199.254740993".into();
         let ExecuteSendParams::Native(SendParams::Solana(p)) = service
-            .build_send_params(Chain::Solana, &r, "priv", &None)
+            .build_send_params(Chain::Solana, &r, "from", "priv", &None)
             .await
             .unwrap()
         else {
@@ -576,7 +540,7 @@ mod build_send_params_tests {
         r.contract_address = Some("mint".into());
         r.token_decimals = Some(9);
         let ExecuteSendParams::Token(SendTokenParams::Solana(p)) = service
-            .build_send_params(Chain::Solana, &r, "priv", &None)
+            .build_send_params(Chain::Solana, &r, "from", "priv", &None)
             .await
             .unwrap()
         else {
@@ -586,7 +550,7 @@ mod build_send_params_tests {
         r.amount_str = "9007199254.740993".into();
         r.token_decimals = Some(6);
         let ExecuteSendParams::Token(SendTokenParams::Tron(p)) = service
-            .build_send_params(Chain::Tron, &r, "priv", &None)
+            .build_send_params(Chain::Tron, &r, "from", "priv", &None)
             .await
             .unwrap()
         else {
@@ -609,7 +573,7 @@ mod build_send_params_tests {
             r.amount_str = amount.into();
             assert!(
                 service
-                    .build_send_params(chain, &r, "priv", &None)
+                    .build_send_params(chain, &r, "from", "priv", &None)
                     .await
                     .is_err(),
                 "{chain:?}/{amount}"
@@ -637,7 +601,7 @@ mod build_send_params_tests {
         let service = WalletService::new_typed(Vec::new()).expect("service");
         let r = req("bitcoin", "Bitcoin");
         let params = service
-            .build_send_params(Chain::Bitcoin, &r, "priv", &None)
+            .build_send_params(Chain::Bitcoin, &r, "from", "priv", &None)
             .await
             .expect("params");
         let ExecuteSendParams::Native(SendParams::Bitcoin(p)) = params else {
@@ -662,7 +626,7 @@ mod build_send_params_tests {
         r.amount_str = "2.0".into();
         r.fee_rate_svb = Some(1.0); // 1 DOGE/kb
         let params = service
-            .build_send_params(Chain::Dogecoin, &r, "priv", &None)
+            .build_send_params(Chain::Dogecoin, &r, "from", "priv", &None)
             .await
             .expect("params");
         let ExecuteSendParams::Native(SendParams::Utxo(p)) = params else {
@@ -682,7 +646,7 @@ mod build_send_params_tests {
         let mut r = req("litecoin", "Litecoin");
         r.amount_str = "1.0".into();
         let params = service
-            .build_send_params(Chain::Litecoin, &r, "priv", &None)
+            .build_send_params(Chain::Litecoin, &r, "from", "priv", &None)
             .await
             .expect("params");
         let ExecuteSendParams::Native(SendParams::Utxo(p)) = params else {
@@ -716,7 +680,7 @@ mod build_send_params_tests {
             access_list_json: None,
         });
         let params = service
-            .build_send_params(Chain::Ethereum, &r, "priv", &None)
+            .build_send_params(Chain::Ethereum, &r, "from", "priv", &None)
             .await
             .expect("params");
         let ExecuteSendParams::Native(SendParams::Evm(p, overrides)) = params else {
@@ -751,7 +715,7 @@ mod build_send_params_tests {
             assert!(
                 matches!(
                     service
-                        .build_send_params(Chain::Ethereum, &request, "priv", &None)
+                        .build_send_params(Chain::Ethereum, &request, "from", "priv", &None)
                         .await,
                     Err(crate::SpectraBridgeError::InvalidInput { .. })
                 ),
@@ -783,7 +747,7 @@ mod build_send_params_tests {
                 ..Default::default()
             });
             let params = service
-                .build_send_params(Chain::Ethereum, &request, "priv", &None)
+                .build_send_params(Chain::Ethereum, &request, "from", "priv", &None)
                 .await
                 .unwrap();
             let overrides = match params {
@@ -822,7 +786,7 @@ mod build_send_params_tests {
         let mut r = req("polkadot", "Polkadot");
         r.amount_str = "1.25".to_string();
         let params = service
-            .build_send_params(Chain::Polkadot, &r, "priv", &None)
+            .build_send_params(Chain::Polkadot, &r, "from", "priv", &None)
             .await
             .expect("params");
         let ExecuteSendParams::Native(SendParams::Polkadot(p)) = params else {
@@ -833,7 +797,7 @@ mod build_send_params_tests {
         let mut r = req("bittensor", "Bittensor");
         r.amount_str = "1.25".to_string();
         let params = service
-            .build_send_params(Chain::Bittensor, &r, "priv", &None)
+            .build_send_params(Chain::Bittensor, &r, "from", "priv", &None)
             .await
             .expect("params");
         let ExecuteSendParams::Native(SendParams::Bittensor(p)) = params else {
@@ -842,20 +806,20 @@ mod build_send_params_tests {
         assert_eq!(p.rao, 1_250_000_000);
     }
 
-    /// Monero: no `from` field (the send doesn't name a source address) and
-    /// a default priority of 2 when the caller does not set one.
+    /// Monero binds wallet-rpc to the resolved sender and defaults to priority 2.
     #[tokio::test]
     async fn monero_defaults_priority_to_2() {
         let service = WalletService::new_typed(Vec::new()).expect("service");
         let mut r = req("monero", "Monero");
         r.amount_str = "2.0".into();
         let params = service
-            .build_send_params(Chain::Monero, &r, "priv", &None)
+            .build_send_params(Chain::Monero, &r, "from", "priv", &None)
             .await
             .expect("params");
         let ExecuteSendParams::Native(SendParams::Monero(p)) = params else {
             panic!("expected Monero params")
         };
+        assert_eq!(p.from, "from");
         assert_eq!(p.piconeros, 2_000_000_000_000);
         assert_eq!(p.priority, Some(2));
     }
@@ -872,7 +836,7 @@ mod build_send_params_tests {
         let service = WalletService::new_typed(Vec::new()).expect("service");
         let r = req("bitcoin-testnet", "Bitcoin Testnet");
         let err = service
-            .build_send_params(Chain::BitcoinTestnet, &r, "priv", &None)
+            .build_send_params(Chain::BitcoinTestnet, &r, "from", "priv", &None)
             .await
             .expect_err("BitcoinTestnet has no exact arm");
         assert!(format!("{err:?}").contains("unsupported chain"));
@@ -888,7 +852,7 @@ mod build_send_params_tests {
         r.token_decimals = Some(24);
         r.amount_str = "0.1".to_string();
         let params = service
-            .build_send_params(Chain::Near, &r, "priv", &None)
+            .build_send_params(Chain::Near, &r, "from", "priv", &None)
             .await
             .expect("params");
         let ExecuteSendParams::Token(SendTokenParams::Near(p)) = params else {
@@ -901,7 +865,7 @@ mod build_send_params_tests {
         r.token_decimals = Some(6);
         r.amount_str = "1.5".into();
         let params = service
-            .build_send_params(Chain::Solana, &r, "priv", &Some("pub".to_string()))
+            .build_send_params(Chain::Solana, &r, "from", "priv", &Some("pub".to_string()))
             .await
             .expect("params");
         let ExecuteSendParams::Token(SendTokenParams::Solana(p)) = params else {
@@ -922,7 +886,7 @@ mod build_send_params_tests {
         r.contract_address = Some("token.near".to_string());
         r.token_decimals = None;
         let err = service
-            .build_send_params(Chain::Near, &r, "priv", &None)
+            .build_send_params(Chain::Near, &r, "from", "priv", &None)
             .await
             .expect_err("no decimals source at all");
         assert!(format!("{err:?}").contains("token.near"));
@@ -968,11 +932,8 @@ mod the_router_and_the_builder_agree {
             }
             let request = crate::send::SendExecutionRequest {
                 chain_id: chain.str_id().to_string(),
-                chain_name: chain.chain_display_name().to_string(),
-                derivation_path: String::new(),
-                seed_phrase: None,
-                private_key_hex: None,
-                from_address: "from".to_string(),
+                wallet_id: "w".into(),
+                password: None,
                 to_address: "to".to_string(),
                 amount_str: "1.5".into(),
                 contract_address: None,
@@ -983,11 +944,10 @@ mod the_router_and_the_builder_agree {
                 fee_amount: None,
                 evm_overrides: None,
                 monero_priority: None,
-                derivation_overrides: None,
             };
             checked += 1;
             if let Err(e) = service
-                .build_send_params(chain, &request, "priv", &None)
+                .build_send_params(chain, &request, "from", "priv", &None)
                 .await
             {
                 unbuildable.push(format!("{} ({e})", chain.chain_display_name()));

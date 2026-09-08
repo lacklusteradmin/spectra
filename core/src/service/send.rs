@@ -276,7 +276,6 @@ impl WalletService {
         }
     }
 
-
     /// Sign and broadcast, from an already-typed [`ExecuteSendParams`] —
     /// what `sign_and_send` and `sign_and_send_token` did as two separate
     /// JSON-in functions, merged into the one match their data now carries
@@ -308,7 +307,8 @@ impl WalletService {
                         dust_threshold: p.dust_threshold_sats,
                         pinned_utxos: None,
                         extra_outputs: vec![],
-                        coin_selection: crate::send::chains::bitcoin::CoinSelectionStrategy::default(),
+                        coin_selection:
+                            crate::send::chains::bitcoin::CoinSelectionStrategy::default(),
                         sign_only: p.sign_only,
                     };
                     let r = bitcoin_sign_and_broadcast(&client, send_params).await?;
@@ -347,7 +347,8 @@ impl WalletService {
                     })?;
                     // public_key_hex is optional: derive compressed secp256k1 pubkey when absent.
                     let derived_pub: String;
-                    let pub_hex: &str = match p.public_key_hex.as_deref().filter(|s| !s.is_empty()) {
+                    let pub_hex: &str = match p.public_key_hex.as_deref().filter(|s| !s.is_empty())
+                    {
                         Some(s) => s,
                         None => {
                             use secp256k1::{PublicKey as SecpPubKey, Secp256k1, SecretKey};
@@ -379,8 +380,7 @@ impl WalletService {
                 SendParams::Sui(p) => {
                     let priv_arr: [u8; 64] =
                         decode_hex_array(&p.private_key_hex, "private_key_hex")?;
-                    let pub_arr: [u8; 32] =
-                        decode_hex_array(&p.public_key_hex, "public_key_hex")?;
+                    let pub_arr: [u8; 32] = decode_hex_array(&p.public_key_hex, "public_key_hex")?;
                     let client = SuiClient::new(endpoints);
                     let r = client
                         .sign_and_send(
@@ -397,8 +397,7 @@ impl WalletService {
                 SendParams::Aptos(p) => {
                     let priv_arr: [u8; 64] =
                         decode_hex_array(&p.private_key_hex, "private_key_hex")?;
-                    let pub_arr: [u8; 32] =
-                        decode_hex_array(&p.public_key_hex, "public_key_hex")?;
+                    let pub_arr: [u8; 32] = decode_hex_array(&p.public_key_hex, "public_key_hex")?;
                     let client = AptosClient::new(endpoints);
                     let r = client
                         .sign_and_submit(&p.from, &p.to, p.octas, &priv_arr, &pub_arr)
@@ -408,8 +407,7 @@ impl WalletService {
                 SendParams::Near(p) => {
                     let priv_arr: [u8; 64] =
                         decode_hex_array(&p.private_key_hex, "private_key_hex")?;
-                    let pub_arr: [u8; 32] =
-                        decode_hex_array(&p.public_key_hex, "public_key_hex")?;
+                    let pub_arr: [u8; 32] = decode_hex_array(&p.public_key_hex, "public_key_hex")?;
                     let client = NearClient::new(endpoints);
                     let r = client
                         .sign_and_broadcast(&p.from, &p.to, p.yocto_near, &priv_arr, &pub_arr)
@@ -615,8 +613,7 @@ impl WalletService {
                 SendParams::Cardano(p) => {
                     let priv_arr: [u8; 64] =
                         decode_hex_array(&p.private_key_hex, "private_key_hex")?;
-                    let pub_arr: [u8; 32] =
-                        decode_hex_array(&p.public_key_hex, "public_key_hex")?;
+                    let pub_arr: [u8; 32] = decode_hex_array(&p.public_key_hex, "public_key_hex")?;
                     let api_key = self.api_key_for(chain.str_id()).await.unwrap_or_default();
                     let client = CardanoClient::new(endpoints, api_key);
                     let r = client
@@ -636,23 +633,23 @@ impl WalletService {
                 SendParams::Polkadot(p) => {
                     let priv_arr: [u8; 32] =
                         decode_hex_array(&p.private_key_hex, "private_key_hex")?;
-                    let pub_arr: [u8; 32] =
-                        decode_hex_array(&p.public_key_hex, "public_key_hex")?;
+                    let pub_arr: [u8; 32] = decode_hex_array(&p.public_key_hex, "public_key_hex")?;
                     let subscan = self
                         .endpoints_for(&chain.endpoint_str_id(EndpointSlot::Secondary))
                         .await;
                     let api_key = self.api_key_for(chain.str_id()).await;
                     let client = PolkadotClient::new(endpoints, subscan, api_key);
                     let r = client
-                        .sign_and_submit(&p.from, &p.to, p.planck, &priv_arr, &pub_arr, p.era, p.tip)
+                        .sign_and_submit(
+                            &p.from, &p.to, p.planck, &priv_arr, &pub_arr, p.era, p.tip,
+                        )
                         .await?;
                     json_response(&r)
                 }
                 SendParams::Bittensor(p) => {
                     let priv_arr: [u8; 32] =
                         decode_hex_array(&p.private_key_hex, "private_key_hex")?;
-                    let pub_arr: [u8; 32] =
-                        decode_hex_array(&p.public_key_hex, "public_key_hex")?;
+                    let pub_arr: [u8; 32] = decode_hex_array(&p.public_key_hex, "public_key_hex")?;
                     let taostats = self
                         .endpoints_for(&chain.endpoint_str_id(EndpointSlot::Secondary))
                         .await;
@@ -666,8 +663,7 @@ impl WalletService {
                 SendParams::Ton(p) => {
                     let priv_arr: [u8; 64] =
                         decode_hex_array(&p.private_key_hex, "private_key_hex")?;
-                    let pub_arr: [u8; 32] =
-                        decode_hex_array(&p.public_key_hex, "public_key_hex")?;
+                    let pub_arr: [u8; 32] = decode_hex_array(&p.public_key_hex, "public_key_hex")?;
                     let api_key = self.api_key_for(chain.str_id()).await;
                     let client = TonClient::new(endpoints, api_key);
                     let seqno = client.fetch_seqno(&p.from).await?;
@@ -717,11 +713,32 @@ impl WalletService {
                     Ok(serde_json::to_string(&r)?)
                 }
                 SendParams::Monero(p) => {
-                    let client = MoneroClient::new(endpoints);
-                    let r = client
-                        .send(&p.to, p.piconeros, 0, p.priority.unwrap_or(2) as u32)
-                        .await?;
-                    Ok(serde_json::to_string(&r)?)
+                    // Probe and submit through the same endpoint: fallback to a
+                    // different wallet-rpc after the check could sign as another wallet.
+                    let mut unavailable =
+                        SpectraBridgeError::from("no Monero wallet-rpc endpoint available");
+                    for endpoint in endpoints.iter() {
+                        let client = MoneroClient::new(Arc::new(vec![endpoint.clone()]));
+                        let address = match client.fetch_address(0).await {
+                            Ok(address) => address,
+                            Err(error) => {
+                                unavailable = error.into();
+                                continue;
+                            }
+                        };
+                        if address != p.from {
+                            return Err(SpectraBridgeError::InvalidInput {
+                                message:
+                                    "Monero wallet-rpc sender does not match the selected wallet"
+                                        .into(),
+                            });
+                        }
+                        let result = client
+                            .send(&p.to, p.piconeros, 0, p.priority.unwrap_or(2) as u32)
+                            .await?;
+                        return Ok(serde_json::to_string(&result)?);
+                    }
+                    Err(unavailable)
                 }
             },
             ExecuteSendParams::Token(token) => match token {
@@ -767,8 +784,7 @@ impl WalletService {
                     // NEAR — NEP-141 fungible token transfer (ft_transfer).
                     let priv_arr: [u8; 64] =
                         decode_hex_array(&p.private_key_hex, "private_key_hex")?;
-                    let pub_arr: [u8; 32] =
-                        decode_hex_array(&p.public_key_hex, "public_key_hex")?;
+                    let pub_arr: [u8; 32] = decode_hex_array(&p.public_key_hex, "public_key_hex")?;
                     let client = NearClient::new(endpoints);
                     let r = client
                         .sign_and_broadcast_ft_transfer(
@@ -1135,9 +1151,8 @@ impl WalletService {
         chain_id: &str,
         address: String,
     ) -> Result<String, SpectraBridgeError> {
-        let chain = Chain::from_str_id(chain_id).ok_or_else(|| {
-            SpectraBridgeError::from(format!("unknown chain_id: {chain_id}"))
-        })?;
+        let chain = Chain::from_str_id(chain_id)
+            .ok_or_else(|| SpectraBridgeError::from(format!("unknown chain_id: {chain_id}")))?;
         let (fee, balance) = tokio::try_join!(
             self.native_fee_estimate(chain),
             self.fetch_native_balance_summary(chain_id.to_string(), address),
@@ -1176,11 +1191,11 @@ mod fee_estimates_are_typed {
         let service = WalletService::new_typed(Vec::new()).expect("service");
         // (chain, raw units, display)
         for (chain, raw, display) in [
-            (Chain::Solana, "5000", "0.000005"),      // 9 decimals
-            (Chain::Cardano, "170000", "0.17"),       // 6 decimals
-            (Chain::Sui, "1000", "0.000001"),         // 9 decimals
-            (Chain::Icp, "10000", "0.0001"),          // 8 decimals
-            (Chain::Polkadot, "160000000", "0.016"),  // 10 decimals
+            (Chain::Solana, "5000", "0.000005"),     // 9 decimals
+            (Chain::Cardano, "170000", "0.17"),      // 6 decimals
+            (Chain::Sui, "1000", "0.000001"),        // 9 decimals
+            (Chain::Icp, "10000", "0.0001"),         // 8 decimals
+            (Chain::Polkadot, "160000000", "0.016"), // 10 decimals
         ] {
             let fee = service.native_fee_estimate(chain).await.expect("fee");
             assert_eq!(fee.raw, raw, "{}", chain.chain_display_name());
@@ -1235,6 +1250,9 @@ mod a_destination_probe_refuses_before_it_guesses {
         let result = service
             .send_destination_risk("not-a-chain".into(), "whatever".into(), None)
             .await;
-        assert!(result.is_err(), "an unresolvable chain must not answer with a verdict");
+        assert!(
+            result.is_err(),
+            "an unresolvable chain must not answer with a verdict"
+        );
     }
 }

@@ -166,6 +166,18 @@ check "refuses an empty name"               $REJECTED \
     spectra wallet rename "Renamed BTC" "   "
 check "reports an unknown wallet"           1 spectra wallet show "no such wallet"
 
+section "stored signing identity"
+contains "core resolves stored Bitcoin identity" 'bc1qgkju4yvvtuz0s8vqn837q396jezu2h8ex7gk98' \
+    spectra --json send identity --from "Multi 1"
+contains "core resolves stored Solana identity" 'BLeUXTx9thHGT7VJUtF9vHEmfMDgW1nnKZ9UVer2CoLX' \
+    spectra --json send identity --from "Multi 3"
+check "EVM sender identity works on shared-address chains" $OK \
+    spectra send identity --from "Multi 2" --chain Arbitrum
+check "refuses unrelated sender chain" $REJECTED \
+    spectra send identity --from "Multi 1" --chain Solana
+check "wrong password cannot unlock sender identity" $REJECTED \
+    with_password wrong spectra send identity --from "Multi 2"
+
 # ── Watch-only import ───────────────────────────────────────────────────────
 #
 # The path where the address is typed rather than derived, so the one that
@@ -179,6 +191,8 @@ check "refuses a malformed watch address"   $REJECTED \
     spectra wallet watch --chain Solana --address definitely-not-an-address
 contains "names the address it refused" "definitely-not-an-address" \
     spectra wallet watch --chain Solana --address definitely-not-an-address
+check "watch-only sender cannot resolve signing identity" $REJECTED \
+    spectra send identity --from "Acceptance Watch"
 check "refuses to export a watch-only wallet" $REJECTED \
     spectra wallet export "Acceptance Watch" --yes
 # The watch-addresses picker in the app is this flag, and it had drifted from
@@ -255,7 +269,7 @@ section "utxo address discovery"
 # The derive-and-probe walk the app runs on every UTXO refresh. It lived in
 # Swift because the seed phrase was only readable there; core reads the seed,
 # the derivation path, the keypool bound, the balance and the history.
-contains "lists what a UTXO wallet already holds" '"addressCount"' \
+contains "lists what a sealed UTXO wallet already holds" '"addressCount":1' \
     spectra --json pool discover "Renamed BTC"
 # A chain with no walk answers empty rather than failing: the refresh loop asks
 # for every chain a wallet is on.
@@ -290,6 +304,16 @@ check "and --no-password refuses to also take a password file" $USAGE \
     spectra wallet import --chain Solana --name Nope --no-password --password-file /dev/null
 check "deletes the unsealed wallet"         $OK \
     spectra wallet delete "Open SOL" --yes
+
+section "public-child receive derivation"
+check "imports an unsealed BTC wallet" $OK \
+    with_seed "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about" \
+    spectra wallet import --chain Bitcoin --name "Open BTC" --no-password
+contains "derives the reserved receive address offline" '"address":"bc1q' \
+    spectra --json pool next "Open BTC"
+contains "the receive index remains reserved on reopen" '"index":1' \
+    spectra --json pool next "Open BTC"
+check "deletes the temporary BTC wallet" $OK spectra wallet delete "Open BTC" --yes
 
 # ── Address book ────────────────────────────────────────────────────────────
 
@@ -736,6 +760,8 @@ contains "a chain that derives says so in the catalog" '"name":"Polygon"' \
     spectra --json chains --filter Polygon
 contains "and one that does not says that"    '"privateKeyImport":false' \
     spectra --json chains --filter Solana
+check "private-key sender resolves without a seed or derivation path" $OK \
+    with_password "correct horse" spectra send identity --from "PK Wallet"
 check "cleans up the extra key wallets"       $OK spectra wallet delete "PK Polygon" --yes
 check "and the second one"                    $OK spectra wallet delete "PK Decred" --yes
 # A key the CLI can seal but never return is a lost key, so export handles it —

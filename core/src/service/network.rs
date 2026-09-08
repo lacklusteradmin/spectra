@@ -180,7 +180,9 @@ impl WalletService {
                     symbol: None,
                 })
                 .collect(),
-            Chain::Tron | Chain::TronNile => TronClient::new(endpoints)
+            Chain::Tron | Chain::TronNile => TronClient::with_metadata_cache(
+                endpoints, chain.str_id(), self.trc20_metadata.clone(),
+            )
                 .fetch_all_trc20_balances(&address)
                 .await
                 .map_err(SpectraBridgeError::from)?,
@@ -305,7 +307,9 @@ impl WalletService {
         let results: Vec<TokenBalanceResult> = match chain {
             Chain::Tron => {
                 use futures::future::join_all;
-                let client = std::sync::Arc::new(TronClient::new(endpoints));
+                let client = std::sync::Arc::new(TronClient::with_metadata_cache(
+                    endpoints, chain.str_id(), self.trc20_metadata.clone(),
+                ));
                 let futs: Vec<_> = tokens
                     .iter()
                     .map(|t| {

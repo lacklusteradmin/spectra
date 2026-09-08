@@ -266,3 +266,98 @@ async fn advancement_respects_addresses_discovered_while_probe_was_in_flight() {
         Some(11)
     );
 }
+
+#[tokio::test]
+async fn a_setting_update_only_writes_its_metadata_and_noop_writes_nothing() {
+    use crate::store::state::WalletSummary;
+    let s = service();
+    let db = database();
+    s.open_state(db.clone()).await.unwrap();
+    s.apply_state_command(StateCommand::UpsertWallet {
+        wallet: WalletSummary::single_address(
+            "w",
+            "Wallet",
+            "Bitcoin",
+            "bc1qcr8te4kr609gcawutmrza0j4xv80jy8z306fyu",
+            None,
+            true,
+        ),
+    })
+    .await
+    .unwrap();
+    sql(&db, "CREATE TABLE write_audit (name TEXT);\
+        CREATE TRIGGER wallet_insert AFTER INSERT ON wallets BEGIN INSERT INTO write_audit VALUES ('wallet'); END;\
+        CREATE TRIGGER wallet_update AFTER UPDATE ON wallets BEGIN INSERT INTO write_audit VALUES ('wallet'); END;\
+        CREATE TRIGGER wallet_delete AFTER DELETE ON wallets BEGIN INSERT INTO write_audit VALUES ('wallet'); END;\
+        CREATE TRIGGER book_insert AFTER INSERT ON address_book BEGIN INSERT INTO write_audit VALUES ('book'); END;\
+        CREATE TRIGGER book_update AFTER UPDATE ON address_book BEGIN INSERT INTO write_audit VALUES ('book'); END;\
+        CREATE TRIGGER book_delete AFTER DELETE ON address_book BEGIN INSERT INTO write_audit VALUES ('book'); END;\
+        CREATE TRIGGER meta_insert AFTER INSERT ON app_state_meta BEGIN INSERT INTO write_audit VALUES (NEW.key); END;\
+        CREATE TRIGGER meta_update AFTER UPDATE ON app_state_meta BEGIN INSERT INTO write_audit VALUES (NEW.key); END;\
+        CREATE TRIGGER meta_delete AFTER DELETE ON app_state_meta BEGIN INSERT INTO write_audit VALUES (OLD.key); END;");
+    s.apply_state_command(currency("EUR")).await.unwrap();
+    s.apply_state_command(currency("EUR")).await.unwrap();
+    let conn = rusqlite::Connection::open(&db).unwrap();
+    let names: Vec<String> = conn
+        .prepare("SELECT name FROM write_audit")
+        .unwrap()
+        .query_map([], |row| row.get(0))
+        .unwrap()
+        .map(Result::unwrap)
+        .collect();
+    assert_eq!(names.len(), 1, "{names:?}");
+    assert_eq!(service().open_state(db).await.unwrap(), s.app_state().await);
+}
+
+#[tokio::test]
+async fn unchanged_receive_reservation_skips_sql_but_merges_newly_owned_indices() {
+    let s = service();
+    let db = database();
+    s.open_state(db.clone()).await.unwrap();
+    let reserved = s
+        .reserve_receive_index("w".into(), "Bitcoin".into(), 1)
+        .await
+        .unwrap();
+    sql(&db, "CREATE TABLE pool_writes (n INTEGER); CREATE TRIGGER audit_pool AFTER UPDATE ON wallet_keypool BEGIN INSERT INTO pool_writes VALUES (1); END;");
+    for _ in 0..3 {
+        assert_eq!(
+            s.reserve_receive_index("w".into(), "Bitcoin".into(), 1)
+                .await
+                .unwrap(),
+            reserved
+        );
+    }
+    let count = || {
+        rusqlite::Connection::open(&db)
+            .unwrap()
+            .query_row("SELECT COUNT(*) FROM pool_writes", [], |r| {
+                r.get::<_, i64>(0)
+            })
+            .unwrap()
+    };
+    assert_eq!(count(), 0);
+    s.register_owned_address(
+        "w".into(),
+        "Bitcoin".into(),
+        "bc1qcr8te4kr609gcawutmrza0j4xv80jy8z306fyu".into(),
+        Some("m/84'/0'/0'/0/10".into()),
+        Some("external".into()),
+        Some(10),
+    )
+    .await
+    .unwrap();
+    assert_eq!(
+        s.reserve_receive_index("w".into(), "Bitcoin".into(), 1)
+            .await
+            .unwrap(),
+        reserved
+    );
+    assert_eq!(count(), 1);
+    let state = service().open_state(db.clone()).await.unwrap();
+    assert_eq!(state.wallets.len(), 0);
+    let pool = crate::wallet_db::keypool_load(&db, "w", "Bitcoin")
+        .unwrap()
+        .unwrap();
+    assert_eq!(pool.next_external_index, 11);
+    assert_eq!(pool.reserved_receive_index, Some(reserved));
+}

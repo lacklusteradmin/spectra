@@ -14,7 +14,7 @@ use spectra_core::store::wallet_secrets;
 
 use super::chain::{service_for_chain, BALANCE, BROADCAST, FEE, HISTORY, RPC, UTXO};
 use super::resolve_chain;
-use crate::ctx::{wallet_address, Ctx, SecretSource};
+use crate::ctx::{Ctx, SecretSource};
 use crate::error::{CliError, CliResult};
 use crate::out::{self, Out};
 
@@ -31,6 +31,8 @@ pub struct TxsArgs {
 /// irreversible half of this tool should take a word that says so.
 #[derive(Subcommand)]
 pub enum SendCommand {
+    /// Resolve the stored sender and check its signing identity offline.
+    Identity(IdentityArgs),
     /// Validate exact decimal input and show integer units, without keys or network.
     Amount(AmountArgs),
     /// Sign and broadcast a transfer.
@@ -49,6 +51,7 @@ pub enum SendCommand {
 
 pub fn run(ctx: &Ctx, out: Out, command: SendCommand) -> CliResult<()> {
     match command {
+        SendCommand::Identity(args) => identity(ctx, out, args),
         SendCommand::Amount(args) => exact_amount(out, args),
         SendCommand::Broadcast(args) => send(ctx, out, args),
         SendCommand::Assemble(args) => assemble(ctx, out, args),
@@ -57,6 +60,37 @@ pub fn run(ctx: &Ctx, out: Out, command: SendCommand) -> CliResult<()> {
         SendCommand::Fees(args) => fees(out, args),
         SendCommand::Overrides(args) => overrides(out, args),
     }
+}
+
+#[derive(Args)]
+pub struct IdentityArgs {
+    #[arg(long)]
+    from: String,
+    /// Defaults to the wallet's chain; EVM wallets may select another shared-address chain.
+    #[arg(long)]
+    chain: Option<String>,
+    #[arg(long, value_name = "PATH")]
+    password_file: Option<String>,
+    #[arg(long, value_name = "VAR", default_value = "SPECTRA_PASSWORD")]
+    password_env: Option<String>,
+}
+
+fn signing_password(ctx: &Ctx, wallet_id: &str, file: Option<String>, env: Option<String>) -> CliResult<Option<String>> {
+    if !wallet_secrets::is_sealed(ctx.secrets.as_ref(), wallet_id) { return Ok(None); }
+    let env = env.filter(|name| std::env::var_os(name).is_some());
+    Ok(Some(SecretSource { file, env }.resolve("password")?))
+}
+
+fn identity(ctx: &Ctx, out: Out, args: IdentityArgs) -> CliResult<()> {
+    let wallet = ctx.find_wallet(&args.from)?;
+    let chain = resolve_chain(args.chain.as_deref().unwrap_or(&wallet.chain_name))?;
+    let password = signing_password(ctx, &wallet.id, args.password_file, args.password_env)?;
+    let service = ctx.service()?;
+    service.set_secret_store(ctx.secrets.clone());
+    let address = ctx.rt.block_on(service.send_identity_address(wallet.id.clone(), chain.str_id().into(), password))?;
+    out.text(|| println!("  {} sender: {address}", chain.chain_display_name()));
+    out.emit(serde_json::json!({ "walletId": wallet.id, "chain": chain.str_id(), "address": address }));
+    Ok(())
 }
 
 #[derive(Args)]
@@ -414,9 +448,6 @@ pub fn send(ctx: &Ctx, out: Out, args: SendArgs) -> CliResult<()> {
         return Err(CliError::rejected("a watch-only wallet cannot send"));
     }
     let chain = resolve_chain(&wallet.chain_name)?;
-    let derivation_path = wallet.derivation_path.clone().ok_or_else(|| {
-        CliError::failure("this wallet has no derivation path stored, so it cannot be signed with")
-    })?;
 
     let amount: f64 = args
         .amount
@@ -438,35 +469,14 @@ pub fn send(ctx: &Ctx, out: Out, args: SendArgs) -> CliResult<()> {
         )));
     }
 
-    // The password is asked for only when there is something to unlock. A
-    // wallet stored without one has nothing for it to decrypt, and prompting
-    // anyway would suggest the material is protected when it is not.
-    let password = if wallet_secrets::is_sealed(ctx.secrets.as_ref(), &wallet.id) {
-        let env = args
-            .password_env
-            .clone()
-            .filter(|name| std::env::var_os(name).is_some());
-        Some(
-            SecretSource {
-                file: args.password_file.clone(),
-                env,
-            }
-            .resolve("password")?,
-        )
-    } else {
-        None
-    };
-    let seed_phrase =
-        wallet_secrets::load_seed_phrase(ctx.secrets.as_ref(), &wallet.id, password.as_deref())?;
-
+    let password = signing_password(ctx, &wallet.id, args.password_file, args.password_env)?;
     let service = service_for_chain(chain, BALANCE | RPC | BROADCAST | FEE | UTXO)?;
+    service.set_secret_store(ctx.secrets.clone());
+    ctx.rt.block_on(service.open_state(ctx.db_path()))?;
     let request = SendExecutionRequest {
         chain_id: chain.str_id().to_string(),
-        chain_name: wallet.chain_name.clone(),
-        derivation_path,
-        seed_phrase: Some(seed_phrase.to_string()),
-        private_key_hex: None,
-        from_address: wallet_address(&wallet).to_string(),
+        wallet_id: wallet.id.clone(),
+        password,
         to_address: args.to.clone(),
         amount_str: args.amount.trim().to_string(),
         contract_address: None,
@@ -477,7 +487,6 @@ pub fn send(ctx: &Ctx, out: Out, args: SendArgs) -> CliResult<()> {
         fee_amount: None,
         evm_overrides: None,
         monero_priority: None,
-        derivation_overrides: None,
     };
 
     out.text(|| println!("  {} signing and broadcasting…", out::hint("→")));

@@ -118,6 +118,16 @@ impl DogecoinClient {
 }
 
 impl DogecoinClient {
+    pub(crate) async fn has_activity(&self, address: &str) -> Result<bool, String> {
+        #[derive(Deserialize)]
+        struct Activity {
+            n_tx: u64,
+            unconfirmed_n_tx: u64,
+        }
+        let info: Activity = self.get(&format!("/addrs/{address}/balance")).await?;
+        Ok(info.n_tx > 0 || info.unconfirmed_n_tx > 0)
+    }
+
     pub async fn fetch_balance(&self, address: &str) -> Result<DogeBalance, String> {
         let info: BlockcypherBalance = self.get(&format!("/addrs/{address}/balance")).await?;
         Ok(DogeBalance {

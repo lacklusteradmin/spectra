@@ -159,6 +159,109 @@ CLI check. If a check needs network, a simulator or new coverage, say so.
 Completed refactor diaries and old test/line counts do not belong here.
 The entries below summarize the retained decisions, not a fresh test run.
 
+### Keypool history projections and TRC-20 read metadata
+
+- **Keypool reads:** every read/reservation loaded and decoded a wallet's full
+  transaction history, then filtered by chain and parsed repeated paths. Core
+  now reads distinct source/change paths scoped to the wallet and chain through
+  SQLite expression indexes. Only those paths are decoded; transaction bodies
+  are not loaded. This is an indexed projection, not a constant-time cached
+  maximum. Indexes follow transaction edits/deletions automatically. Owned-address
+  maxima are folded without temporary vectors. Check `spectra pool show <wallet>`
+  and `cargo test -p spectra_core keypool_history_projection` (offline; checks
+  chain/wallet isolation, query plans and mutations).
+- **Repeated reservations:** an existing reservation used to write the same row
+  again. Core still merges the latest discovered floor, then skips persistence
+  when the complete merged record is unchanged. New discoveries still raise the
+  persisted floor without replacing the held reservation. Check consecutive
+  `spectra pool next <wallet>` calls and
+  `cargo test -p spectra_core unchanged_receive_reservation` for zero redundant
+  SQL updates and persistence of newly owned indices.
+- **TRC-20 metadata:** each balance/enumeration read queried symbol and decimals
+  again, including concurrent reads of the same contract from different wallets.
+  A service now shares up to 256 cached metadata entries for five minutes, keyed
+  by chain, endpoint list and contract. In-flight cached requests share one result;
+  failures are discarded and cancelled initialization can be retried. Changing
+  endpoints or chain uses a separate entry. Read metadata can now remain unchanged
+  for up to five minutes after a contract update; balances remain live. Send
+  preparation uses the uncached metadata API and still fetches current decimals.
+  Check `cargo test -p spectra_core metadata_cache` for mock-RPC call counts,
+  source isolation, send bypass, expiry, capacity and cancellation (no live chain).
+  Live `spectra token discover --wallet <wallet>` needs network;
+  cross-wallet reuse occurs within the long-lived core service, not across CLI
+  processes. CLI acceptance continues to check the offline token/state paths.
+
+### Bounded discovery and incremental state writes
+
+- **Address derivation:** every external index repeated BIP-39 and the complete
+  BIP-32 path. A scan now derives its external xpub once on a blocking worker,
+  then derives public children; no mnemonic is retained during network probes.
+  Check `cargo test -p spectra_core public_children_match_full_derivation`
+  for every discovery network, Bitcoin script types and the BIP-84 vector.
+  `spectra pool next <unsealed-Bitcoin-wallet>` now includes the derived receive
+  address; CLI acceptance checks this offline and checks a stable reservation
+  after reopening.
+- **Activity:** scans waited for each address and sometimes fetched full histories
+  (BSV also enriched every transaction). Four probes can now be in flight, with
+  index-ordered results. Esplora, Blockbook and BlockCypher use confirmed/pending
+  counters; BSV uses balance plus its history index without transaction details.
+  Missing counters, malformed responses and provider failures now return errors
+  instead of claiming an address is unused. A failed scan may have recorded earlier
+  successful probes; it never advances a reservation from a failed probe.
+  Check `cargo test -p spectra_core service::state::performance_tests` using local
+  mock HTTP only. Counter schemas: [Blockbook](https://github.com/trezor/blockbook/blob/master/openapi.yaml),
+  [BlockCypher](https://www.blockcypher.com/dev/bitcoin/#address-balance-endpoint).
+- **CLI discovery:** `pool discover` used a fresh endpoint-only service, so it had
+  no wallets or secrets to scan. It now opens the selected database and secret
+  store. Check `spectra pool discover <wallet>`: sealed wallets list their known
+  addresses offline (CLI acceptance); unsealed discovery needs network or a mock
+  provider. Live provider interoperability is outside the offline gates.
+- **State commits:** small commands cloned intermediate snapshots and replaced
+  every wallet/address-book row. Commands now build an incremental write set,
+  serialize changed records only, and save it in one transaction before publishing.
+  Settings changes write only their metadata; no-op commands do not write.
+  Snapshot replacement remains available for standalone store callers. Check
+  `spectra currency EUR` then `spectra currency` in separate processes, CLI
+  acceptance, and `cargo test -p spectra_core a_setting_update_only_writes` plus
+  `cargo test -p spectra_core incremental_state_reorders` for SQL write counts,
+  reordering, removals and transaction rollback. Existing cancellation/concurrent
+  writer tests still apply.
+
+### Stored send identity and database connection ownership
+
+- **Send identity:** the execution request separately accepted chain id/name,
+  sender, derivation data and two optional secrets, preferring the seed when both
+  were supplied. It now accepts a wallet id and optional unlock password; core
+  resolves its stored path/overrides and exactly one signing source. Missing or
+  watch-only wallets, unrelated chains, ambiguous secret blobs and addresses
+  disagreeing with the derived key are refused before provider reads. Private-key
+  wallets no longer require a caller-supplied seed/path. Check `spectra send
+  identity --from <wallet>` (offline, using the usual password file/environment
+  options), including `--chain Arbitrum` for an Ethereum wallet and refusal of
+  `--chain Solana`. CLI acceptance and `service::send_identity::tests` cover seed,
+  private-key, password, mismatch and ambiguity cases; Swift tests cover the
+  new request and missing-wallet refusal across the async binding. Swift passes
+  no password today, so sealed-wallet sends still refuse until a password is
+  provided; the CLI supports the password path.
+- **Account-based signers:** NEAR named-account key authorization remains the
+  protocol client's access-key lookup before signing; offline identity resolution
+  only resolves that name, while implicit account ids must match the derived key.
+  Monero previously sent through any configured wallet-rpc without checking which
+  wallet it held. It now checks account 0 against the resolved sender and submits
+  through that same endpoint; a mismatch refuses and a failed transfer is not
+  retried through a different endpoint. The local mock-RPC test
+  `monero_rpc_is_bound_to_the_checked_sender_and_endpoint` checks refusal and
+  matched submission. Actual broadcasts still require controlled network testing.
+- **Database connections:** a process-global connection map held one mutex through
+  every SQL operation and retained connections forever. It now indexes weak
+  handles, with each database independently locking initialization and SQL; the
+  service retains its active connection and releases it on rebind/drop. Standalone
+  path-based operations close their connection when their last owner finishes.
+  SQLite waits up to five seconds for file-lock contention. Check ordinary
+  `spectra currency` / `spectra pool` persistence in CLI acceptance, and
+  `cargo test -p spectra_core connection_lifecycle_tests` for independent-database
+  progress, shared handles and connection release (all offline).
+
 ### Atomic writes, exact send amounts and receive advancement
 
 - **Persistent mutations:** app-state and event snapshots could be saved out of

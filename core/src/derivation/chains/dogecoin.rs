@@ -53,11 +53,11 @@ use crate::derivation::types::{parse_path_metadata, BitcoinScriptType, Derivatio
 use crate::SpectraBridgeError;
 use secp256k1::{PublicKey, Secp256k1, SecretKey};
 
-const DOGE_MAINNET_VERSION: u8 = 0x1e;
-const DOGE_TESTNET_VERSION: u8 = 0x71;
+pub(crate) const DOGE_MAINNET_VERSION: u8 = 0x1e;
+pub(crate) const DOGE_TESTNET_VERSION: u8 = 0x71;
 
 // Build a DOGE P2PKH address: base58check(version || hash160(pubkey)).
-fn doge_p2pkh_address(version: u8, pubkey: &PublicKey) -> String {
+pub(crate) fn doge_p2pkh_address(version: u8, pubkey: &PublicKey) -> String {
     let mut payload = vec![version];
     payload.extend_from_slice(&hash160(&pubkey.serialize()));
     base58check_encode(&payload)

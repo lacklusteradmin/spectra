@@ -34,11 +34,11 @@ use crate::derivation::chains::bitcoin::{base58check_encode, derive_secp_keypair
 use crate::derivation::types::{parse_path_metadata, BitcoinScriptType, DerivationResult};
 use crate::SpectraBridgeError;
 
-const BSV_MAINNET_VERSION: u8 = 0x00;
-const BSV_TESTNET_VERSION: u8 = 0x6f;
+pub(crate) const BSV_MAINNET_VERSION: u8 = 0x00;
+pub(crate) const BSV_TESTNET_VERSION: u8 = 0x6f;
 
 // Build a BSV P2PKH address: base58check(version || hash160(pubkey)).
-fn p2pkh_address(version: u8, pubkey: &secp256k1::PublicKey) -> String {
+pub(crate) fn p2pkh_address(version: u8, pubkey: &secp256k1::PublicKey) -> String {
     let mut payload = vec![version];
     payload.extend_from_slice(&hash160(&pubkey.serialize()));
     base58check_encode(&payload)

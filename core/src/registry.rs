@@ -220,6 +220,11 @@ pub enum EvmHistorySource {
 }
 
 impl Chain {
+    /// Named accounts authorize keys on chain instead of encoding the key in their address.
+    pub const fn supports_named_sender_accounts(self) -> bool {
+        matches!(self, Self::Near | Self::NearTestnet)
+    }
+
     /// Stable string id matching `chains.toml` `id` field.
     /// This chain's row in the catalog.
     ///
@@ -1066,6 +1071,45 @@ impl Chain {
     /// not a unique key there.
     pub const fn merge_identity_includes_symbol(self) -> bool {
         matches!(self.mainnet_counterpart(), Chain::Tron)
+    }
+
+    /// Encode a discovered public child using this chain's supported address format.
+    pub(crate) fn encode_discovery_address(
+        self,
+        key: &secp256k1::PublicKey,
+        script: crate::derivation::types::BitcoinScriptType,
+    ) -> Result<String, String> {
+        use crate::derivation::chains::{
+            bitcoin as btc, bitcoin_cash as bch, bitcoin_sv as bsv, dogecoin as doge,
+            litecoin as ltc,
+        };
+        use crate::derivation::types::BitcoinScriptType;
+        Ok(match self {
+            Self::Bitcoin => return btc::encode_address_inner(btc::BTC_MAINNET, script, key),
+            Self::BitcoinTestnet | Self::BitcoinTestnet4 | Self::BitcoinSignet => {
+                return btc::encode_address_inner(btc::BTC_TESTNET, script, key)
+            }
+            Self::BitcoinCash => bch::p2pkh_address(bch::BCH_MAINNET_VERSION, key),
+            Self::BitcoinCashTestnet => bch::p2pkh_address(bch::BCH_TESTNET_VERSION, key),
+            Self::BitcoinSV => bsv::p2pkh_address(bsv::BSV_MAINNET_VERSION, key),
+            Self::BitcoinSVTestnet => bsv::p2pkh_address(bsv::BSV_TESTNET_VERSION, key),
+            Self::Dogecoin => doge::doge_p2pkh_address(doge::DOGE_MAINNET_VERSION, key),
+            Self::DogecoinTestnet => doge::doge_p2pkh_address(doge::DOGE_TESTNET_VERSION, key),
+            Self::Litecoin | Self::LitecoinTestnet => {
+                if !matches!(script, BitcoinScriptType::P2pkh) {
+                    return Err("Litecoin discovery only supports P2PKH paths".into());
+                }
+                ltc::p2pkh_address(
+                    if self == Self::Litecoin {
+                        ltc::LTC_MAINNET_VERSION
+                    } else {
+                        ltc::LTC_TESTNET_VERSION
+                    },
+                    key,
+                )
+            }
+            _ => return Err("chain does not support UTXO discovery".into()),
+        })
     }
 
     pub const fn supports_deep_utxo_discovery(self) -> bool {

@@ -77,7 +77,11 @@ pub struct Trc20Metadata {
 
 // ── Client
 
+mod metadata_cache;
+pub(crate) use metadata_cache::MetadataCache;
+
 pub struct TronClient {
+    metadata_cache: Option<(String, std::sync::Arc<MetadataCache>)>,
     pub(crate) endpoints: std::sync::Arc<Vec<String>>,
     pub(crate) client: std::sync::Arc<HttpClient>,
 }
@@ -85,8 +89,39 @@ pub struct TronClient {
 impl TronClient {
     pub fn new(endpoints: std::sync::Arc<Vec<String>>) -> Self {
         Self {
+            metadata_cache: None,
             endpoints,
             client: HttpClient::shared(),
+        }
+    }
+
+    /// Balance reads share metadata across wallets; signing uses `new` and fresh metadata.
+    pub(crate) fn with_metadata_cache(
+        endpoints: std::sync::Arc<Vec<String>>,
+        chain: &str,
+        cache: std::sync::Arc<MetadataCache>,
+    ) -> Self {
+        Self {
+            metadata_cache: Some((chain.to_owned(), cache)),
+            ..Self::new(endpoints)
+        }
+    }
+
+    async fn read_metadata(&self, contract: &str) -> Result<Trc20Metadata, String> {
+        match &self.metadata_cache {
+            Some((chain, cache)) => {
+                cache
+                    .get_or_fetch(
+                        metadata_cache::Key {
+                            chain: chain.clone(),
+                            endpoints: self.endpoints.clone(),
+                            contract: contract.to_owned(),
+                        },
+                        self.fetch_trc20_metadata(contract),
+                    )
+                    .await
+            }
+            None => self.fetch_trc20_metadata(contract).await,
         }
     }
 
@@ -307,8 +342,8 @@ impl TronClient {
         Ok(entries)
     }
 
-    /// Issues three constant calls (`balanceOf`, `decimals`, `symbol`) against
-    /// the provided contract via `/wallet/triggerconstantcontract`.
+    /// Read the live balance and share cached symbol/decimals when this client
+    /// belongs to a service read path. A standalone client reads all three.
     pub async fn fetch_trc20_balance(
         &self,
         contract_base58: &str,
@@ -317,7 +352,7 @@ impl TronClient {
         let raw = self
             .fetch_trc20_balance_of(contract_base58, holder_base58)
             .await?;
-        let metadata = self.fetch_trc20_metadata(contract_base58).await?;
+        let metadata = self.read_metadata(contract_base58).await?;
         let balance_display =
             crate::fetch::chains::evm::format_token_amount(raw, metadata.decimals);
         Ok(Trc20Balance {
@@ -397,7 +432,7 @@ impl TronClient {
 
         let metadata = futures::future::join_all(
             held.iter()
-                .map(|(contract, _)| self.fetch_trc20_metadata(contract)),
+                .map(|(contract, _)| self.read_metadata(contract)),
         )
         .await;
         Ok(held
