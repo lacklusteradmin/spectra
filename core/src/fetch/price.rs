@@ -173,9 +173,7 @@ pub async fn fetch_fiat_rates(currencies: &[String]) -> Result<HashMap<String, f
         futures::future::join_all(FIAT_RATE_PROVIDERS.iter().map(|provider| async move {
             let result = match provider {
                 FiatRateProvider::OpenER => fetch_open_er_rates(targets).await,
-                FiatRateProvider::ExchangeRateHost => {
-                    fetch_exchange_rate_host_rates(targets).await
-                }
+                FiatRateProvider::ExchangeRateHost => fetch_exchange_rate_host_rates(targets).await,
                 FiatRateProvider::Frankfurter => fetch_frankfurter_rates(targets).await,
                 FiatRateProvider::FawazAhmed => fetch_fawaz_ahmed_rates(targets).await,
             };
@@ -629,16 +627,6 @@ pub fn merge_fiat_rate_updates(
     out
 }
 
-#[uniffi::export]
-pub fn price_merge_fiat_rate_updates(
-    fetched: HashMap<String, f64>,
-    existing: HashMap<String, f64>,
-    currencies: Vec<String>,
-    base_currency: String,
-) -> HashMap<String, f64> {
-    merge_fiat_rate_updates(fetched, existing, currencies, base_currency)
-}
-
 #[cfg(test)]
 mod merge_tests {
     use super::*;
@@ -690,7 +678,6 @@ mod merge_tests {
         assert!(!out.contains_key("EUR"));
     }
 }
-
 
 #[cfg(test)]
 mod merging_beats_choosing {

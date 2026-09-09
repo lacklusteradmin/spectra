@@ -7,10 +7,35 @@
 
 use super::*;
 
+/// Keep the tokens that answered; leave out the ones that did not.
+///
+/// A token read has three outcomes and they are not interchangeable: a
+/// balance, a legitimate zero, and "the chain did not say". Reporting the
+/// third as zero is what this code used to do, and a zero is a claim about
+/// funds — a max-send computes from it and a user reads it as "gone". So
+/// the fabricated zeros went. Collecting the batch into one `Result` went
+/// too far the other way: one self-destructed contract failed every other
+/// token with it, and the only caller does `try?`, so a wallet's whole
+/// token list silently stopped updating until that contract was removed.
+///
+/// A token missing from this list is not updated by the caller, which
+/// leaves its last known balance in place — the one answer that claims
+/// nothing.
+fn readable_tokens(results: Vec<Result<TokenBalanceResult, String>>) -> Vec<TokenBalanceResult> {
+    results
+        .into_iter()
+        .filter_map(|result| match result {
+            Ok(balance) => Some(balance),
+            Err(error) => {
+                tracing::warn!(%error, "token balance unavailable; leaving it unchanged");
+                None
+            }
+        })
+        .collect()
+}
 
 #[uniffi::export(async_runtime = "tokio")]
 impl WalletService {
-
     /// Unified per-chain native balance summary, replacing chain-specific JSON
     /// decoding on the Swift side. Smallest unit is returned as a decimal
     /// string (sats / wei / lamports / yocto-NEAR / ...) so callers can `UInt64`
@@ -181,11 +206,13 @@ impl WalletService {
                 })
                 .collect(),
             Chain::Tron | Chain::TronNile => TronClient::with_metadata_cache(
-                endpoints, chain.str_id(), self.trc20_metadata.clone(),
+                endpoints,
+                chain.str_id(),
+                self.trc20_metadata.clone(),
             )
-                .fetch_all_trc20_balances(&address)
-                .await
-                .map_err(SpectraBridgeError::from)?,
+            .fetch_all_trc20_balances(&address)
+            .await
+            .map_err(SpectraBridgeError::from)?,
             Chain::Sui | Chain::SuiTestnet => SuiClient::new(endpoints)
                 .fetch_all_coin_balances(&address)
                 .await
@@ -278,7 +305,6 @@ impl WalletService {
                         let address = address.clone();
                         let coin_type = t.contract.clone();
                         let symbol = t.symbol.clone();
-                        let fallback = t.decimals;
                         async move {
                             // Balance and decimals together: the coin's own
                             // count wins over the catalog's, which can only
@@ -287,20 +313,22 @@ impl WalletService {
                                 client.fetch_coin_balance(&address, &coin_type),
                                 client.fetch_coin_decimals(&coin_type)
                             );
-                            let raw = raw.unwrap_or(0u64);
-                            let decimals = own.unwrap_or(fallback);
-                            TokenBalanceResult {
+                            let raw = raw?;
+                            let decimals = crate::fetch::chains::checked_token_decimals(
+                                u128::from(own.ok_or("token decimals unavailable")?),
+                            )?;
+                            Ok::<_, String>(TokenBalanceResult {
                                 contract_address: coin_type,
                                 symbol,
                                 decimals,
                                 balance_raw: raw.to_string(),
                                 balance_display: format_decimals(raw as u128, decimals),
                                 is_known: true,
-                            }
+                            })
                         }
                     })
                     .collect();
-                join_all(futs).await
+                readable_tokens(join_all(futs).await)
             }};
         }
 
@@ -308,7 +336,9 @@ impl WalletService {
             Chain::Tron => {
                 use futures::future::join_all;
                 let client = std::sync::Arc::new(TronClient::with_metadata_cache(
-                    endpoints, chain.str_id(), self.trc20_metadata.clone(),
+                    endpoints,
+                    chain.str_id(),
+                    self.trc20_metadata.clone(),
                 ));
                 let futs: Vec<_> = tokens
                     .iter()
@@ -317,73 +347,69 @@ impl WalletService {
                         let contract = t.contract.clone();
                         let holder = address.clone();
                         let symbol = t.symbol.clone();
-                        let fallback = t.decimals;
                         async move {
-                            match client.fetch_trc20_balance(&contract, &holder).await {
-                                // The contract's own `decimals` and `symbol`,
-                                // which this call already paid a round trip to
-                                // read. Reporting the caller's instead left the
-                                // record self-contradicting whenever the two
-                                // disagreed: `balance_display` was formatted
-                                // with the contract's count and `decimals` said
-                                // the catalog's, so `balance_raw` and
-                                // `balance_display` no longer described the same
-                                // number.
-                                Ok(b) => TokenBalanceResult {
-                                    contract_address: contract,
-                                    symbol: if b.symbol.is_empty() { symbol } else { b.symbol },
-                                    decimals: b.decimals,
-                                    balance_raw: b.balance_raw,
-                                    balance_display: b.balance_display,
-                                    is_known: true,
+                            let b = client.fetch_trc20_balance(&contract, &holder).await?;
+                            Ok::<_, String>(TokenBalanceResult {
+                                contract_address: contract,
+                                symbol: if b.symbol.is_empty() {
+                                    symbol
+                                } else {
+                                    b.symbol
                                 },
-                                Err(_) => TokenBalanceResult {
-                                    contract_address: contract,
-                                    symbol,
-                                    decimals: fallback,
-                                    balance_raw: "0".to_string(),
-                                    balance_display: "0".to_string(),
-                                    is_known: true,
-                                },
-                            }
+                                decimals: b.decimals,
+                                balance_raw: b.balance_raw,
+                                balance_display: b.balance_display,
+                                is_known: true,
+                            })
                         }
                     })
                     .collect();
-                join_all(futs).await
+                readable_tokens(join_all(futs).await)
             }
             Chain::Solana => {
-                let client = SolanaClient::new(endpoints);
-                let mints: Vec<String> = tokens.iter().map(|t| t.contract.clone()).collect();
-                let spl = client
-                    .fetch_spl_balances(&address, &mints)
-                    .await
-                    .unwrap_or_default();
-                let by_mint: std::collections::HashMap<
-                    &str,
-                    &crate::fetch::chains::solana::SplBalance,
-                > = spl.iter().map(|b| (b.mint.as_str(), b)).collect();
-                tokens
+                use futures::future::join_all;
+                // One request per mint, which is what `fetch_spl_balances`
+                // fans out to anyway — asked separately so an unreadable mint
+                // is that mint's answer and not the whole wallet's.
+                let client = std::sync::Arc::new(SolanaClient::new(endpoints));
+                let futs: Vec<_> = tokens
                     .iter()
                     .map(|t| {
-                        let b = by_mint.get(t.contract.as_str());
-                        TokenBalanceResult {
-                            contract_address: t.contract.clone(),
-                            symbol: t.symbol.clone(),
-                            // The mint's own count, which `getTokenAccountsByOwner`
-                            // returns in the parsed account this call already
-                            // fetched. The caller's is the fallback for a mint
-                            // the owner holds no account for.
-                            decimals: b.map(|b| b.decimals).unwrap_or(t.decimals),
-                            balance_raw: b
-                                .map(|b| b.balance_raw.clone())
-                                .unwrap_or_else(|| "0".to_string()),
-                            balance_display: b
-                                .map(|b| b.balance_display.clone())
-                                .unwrap_or_else(|| "0".to_string()),
-                            is_known: true,
+                        let client = client.clone();
+                        let address = address.clone();
+                        let mint = t.contract.clone();
+                        let symbol = t.symbol.clone();
+                        let catalog_decimals = t.decimals;
+                        async move {
+                            let found = client
+                                .fetch_spl_balances(&address, std::slice::from_ref(&mint))
+                                .await?;
+                            // An empty answer is the owner holding no account
+                            // for this mint, which is a real zero. The mint's
+                            // own decimal count comes with the parsed account
+                            // when there is one; the catalog's only has to
+                            // stand in for a balance that is zero either way.
+                            let balance = found.into_iter().next();
+                            Ok::<_, String>(TokenBalanceResult {
+                                contract_address: mint,
+                                symbol,
+                                decimals: balance
+                                    .as_ref()
+                                    .map(|b| b.decimals)
+                                    .unwrap_or(catalog_decimals),
+                                balance_raw: balance
+                                    .as_ref()
+                                    .map(|b| b.balance_raw.clone())
+                                    .unwrap_or_else(|| "0".to_string()),
+                                balance_display: balance
+                                    .map(|b| b.balance_display)
+                                    .unwrap_or_else(|| "0".to_string()),
+                                is_known: true,
+                            })
                         }
                     })
-                    .collect()
+                    .collect();
+                readable_tokens(join_all(futs).await)
             }
             Chain::Near => {
                 use futures::future::join_all;
@@ -395,27 +421,28 @@ impl WalletService {
                         let contract = t.contract.clone();
                         let holder = address.clone();
                         let symbol = t.symbol.clone();
-                        let fallback = t.decimals;
                         async move {
                             let (raw, meta) = tokio::join!(
                                 client.fetch_ft_balance_of(&contract, &holder),
                                 client.fetch_ft_metadata(&contract)
                             );
-                            let raw = raw.unwrap_or(0u128);
-                            let decimals = meta.map(|m| m.decimals).unwrap_or(fallback);
+                            let raw = raw?;
+                            let decimals = crate::fetch::chains::checked_token_decimals(
+                                u128::from(meta?.decimals),
+                            )?;
                             let display = format_decimals(raw, decimals);
-                            TokenBalanceResult {
+                            Ok::<_, String>(TokenBalanceResult {
                                 contract_address: contract,
                                 symbol,
                                 decimals,
                                 balance_raw: raw.to_string(),
                                 balance_display: display,
                                 is_known: true,
-                            }
+                            })
                         }
                     })
                     .collect();
-                join_all(futs).await
+                readable_tokens(join_all(futs).await)
             }
             Chain::Sui => coin_token_balances!(SuiClient, endpoints),
             Chain::Aptos => coin_token_balances!(AptosClient, endpoints),
@@ -427,17 +454,16 @@ impl WalletService {
                     .await;
                 let api_key = self.api_key_for(chain.str_id()).await;
                 let client = TonClient::new(endpoints, api_key).with_v3_endpoints(v3_endpoints);
-                let jetton_balances = client
-                    .fetch_jetton_balances(&address)
-                    .await
-                    .unwrap_or_default();
+                let jetton_balances = client.fetch_jetton_balances(&address).await?;
 
                 let own_decimals = futures::future::join_all(
-                    tokens.iter().map(|t| client.fetch_jetton_decimals(&t.contract)),
+                    tokens
+                        .iter()
+                        .map(|t| client.fetch_jetton_decimals(&t.contract)),
                 )
                 .await;
 
-                tokens
+                let rows: Vec<Result<TokenBalanceResult, String>> = tokens
                     .iter()
                     .zip(own_decimals)
                     .map(|(t, own)| {
@@ -446,17 +472,20 @@ impl WalletService {
                             .find(|j| j.master_address.eq_ignore_ascii_case(&t.contract))
                             .map(|j| j.balance_raw)
                             .unwrap_or(0u128);
-                        let decimals = own.unwrap_or(t.decimals);
-                        TokenBalanceResult {
+                        let decimals = crate::fetch::chains::checked_token_decimals(u128::from(
+                            own.ok_or("token decimals unavailable")?,
+                        ))?;
+                        Ok::<_, String>(TokenBalanceResult {
                             contract_address: t.contract.clone(),
                             symbol: t.symbol.clone(),
                             decimals,
                             balance_raw: raw.to_string(),
                             balance_display: format_decimals(raw, decimals),
                             is_known: true,
-                        }
+                        })
                     })
-                    .collect()
+                    .collect();
+                readable_tokens(rows)
             }
             // The EVM family. This was `fetch_evm_token_balances_batch_typed`,
             // a second method with the *same* signature and the complementary
@@ -469,6 +498,10 @@ impl WalletService {
                 for token in &tokens {
                     let contract = token.contract.to_lowercase();
                     if contract.is_empty() {
+                        // A row with no contract is a bad row, not a bad
+                        // chain: it cannot be read, and failing the request
+                        // over it would take every other token with it.
+                        tracing::warn!(symbol = %token.symbol, "token row has no contract");
                         continue;
                     }
                     // The contract's own `decimals()`, alongside the balance.
@@ -479,18 +512,22 @@ impl WalletService {
                         client.fetch_erc20_balance_of(&contract, &address),
                         client.fetch_erc20_metadata(&contract)
                     );
-                    let raw = raw.unwrap_or(0);
-                    let decimals = meta.map(|m| m.decimals).unwrap_or(token.decimals);
-                    results.push(TokenBalanceResult {
-                        contract_address: contract,
-                        symbol: token.symbol.clone(),
-                        decimals,
-                        balance_raw: raw.to_string(),
-                        balance_display: format_decimals(raw, decimals),
-                        is_known: true,
+                    let read = raw.and_then(|raw| {
+                        let decimals = crate::fetch::chains::checked_token_decimals(u128::from(
+                            meta?.decimals,
+                        ))?;
+                        Ok(TokenBalanceResult {
+                            contract_address: contract,
+                            symbol: token.symbol.clone(),
+                            decimals,
+                            balance_raw: raw.to_string(),
+                            balance_display: format_decimals(raw, decimals),
+                            is_known: true,
+                        })
                     });
+                    results.push(read);
                 }
-                results
+                readable_tokens(results)
             }
             c => {
                 return Err(SpectraBridgeError::from(format!(
@@ -556,19 +593,34 @@ impl WalletService {
 
         // Fetch native and token transfers concurrently.
         let (native_result, token_result) = tokio::join!(
-            client.fetch_history(&address, source, api_key_str, etherscan_chain_id),
-            client.fetch_token_transfers(
+            client.fetch_history(
                 &address,
                 source,
                 api_key_str,
                 etherscan_chain_id,
                 page,
-                page_size,
-            )
+                page_size
+            ),
+            async {
+                if tokens.is_empty() {
+                    Ok(Vec::new())
+                } else {
+                    client
+                        .fetch_token_transfers(
+                            &address,
+                            source,
+                            api_key_str,
+                            etherscan_chain_id,
+                            page,
+                            page_size,
+                        )
+                        .await
+                }
+            }
         );
 
-        let native_entries = native_result.unwrap_or_default();
-        let raw_tokens = token_result.unwrap_or_default();
+        let native_entries = native_result?;
+        let raw_tokens = token_result?;
 
         // Build a lookup map from contract address (lowercased) → known token metadata.
         let addr_lower = address.to_lowercase();
@@ -726,10 +778,8 @@ impl WalletService {
         let chain = chain_for_id(&chain_id)?;
         let name = chain.chain_display_name().to_string();
         let method = chain.rpc_health_method();
-        let records =
-            crate::endpoint_records_for_chain_masked(name.clone(), 0, false).map_err(|e| {
-                SpectraBridgeError::from(format!("endpoints for {name}: {e}"))
-            })?;
+        let records = crate::endpoint_records_for_chain_masked(name.clone(), 0, false)
+            .map_err(|e| SpectraBridgeError::from(format!("endpoints for {name}: {e}")))?;
 
         let mut out = Vec::with_capacity(records.len());
         for record in records {
@@ -756,7 +806,7 @@ impl WalletService {
                     chain_name: name.clone(),
                     endpoint: record.endpoint,
                     kind: record.kind.clone(),
-                capabilities: record.capabilities.clone(),
+                    capabilities: record.capabilities.clone(),
                     checked: false,
                     reachable: false,
                     detail: "an explorer link, not an API".to_string(),
@@ -835,11 +885,13 @@ impl WalletService {
             .fetch_receipt(&tx_hash)
             .await
             .map_err(SpectraBridgeError::from)?;
-        Ok(receipt.map(|receipt| crate::send::flow::EvmReceiptClassification {
-            is_confirmed: receipt.is_confirmed,
-            is_failed: receipt.is_failed,
-            block_number: receipt.block_number.map(|n| n as i64),
-        }))
+        Ok(
+            receipt.map(|receipt| crate::send::flow::EvmReceiptClassification {
+                is_confirmed: receipt.is_confirmed,
+                is_failed: receipt.is_failed,
+                block_number: receipt.block_number.map(|n| n as i64),
+            }),
+        )
     }
 
     // ── Typed send-preview wrappers (fuse fetch + decode in Rust)
@@ -1258,7 +1310,7 @@ async fn fetch_history(
                 Some(api_key_owned.as_str())
             };
             let h = EvmClient::new(endpoints, chain.evm_chain_id())
-                .fetch_history(address, source, api_key_str, chain.evm_chain_id())
+                .fetch_history(address, source, api_key_str, chain.evm_chain_id(), 1, 50)
                 .await?;
             json_response(&h)
         }
@@ -1447,6 +1499,38 @@ impl WalletService {
     }
 
     /// Typed variant — accepts typed currency list and returns typed map directly.
+    /// Fetch the display-currency cross rates and store them.
+    ///
+    /// The rates are core's state: every quoted amount passes through them and
+    /// they are what the app shows while a refresh is in flight. iOS fetched
+    /// them, merged them with `price_merge_fiat_rate_updates`, and wrote the
+    /// result to its own SQLite blob — so the CLI could neither read nor
+    /// refresh them, and a launch could seed the merge from an older
+    /// `UserDefaults` copy that still won the race. The fetch, the merge and
+    /// the write are one operation here; a provider failure leaves the stored
+    /// rates alone and says so.
+    pub async fn refresh_fiat_rates(
+        &self,
+    ) -> Result<std::collections::HashMap<String, f64>, SpectraBridgeError> {
+        let codes = crate::store::state::fiat_currency_codes();
+        let existing = self.app_state().await.fiat_rates_from_usd;
+        let fetched = crate::price::fetch_fiat_rates(&codes)
+            .await
+            .map_err(SpectraBridgeError::from)?;
+        let merged = crate::price::merge_fiat_rate_updates(
+            fetched,
+            existing.clone(),
+            codes,
+            crate::store::state::FIAT_BASE_CURRENCY.to_string(),
+        );
+        if merged == existing {
+            return Ok(merged);
+        }
+        let stored = merged.clone();
+        self.store_fiat_rates(stored).await?;
+        Ok(merged)
+    }
+
     pub async fn fetch_fiat_rates_typed(
         &self,
         currencies: Vec<String>,
@@ -1536,11 +1620,11 @@ mod discovery_names_only_what_the_catalog_vouches_for {
     }
 }
 
-
 #[cfg(test)]
 mod decimals_come_from_the_chain {
     use crate::registry::Chain;
-    use crate::service::{TokenDescriptor, WalletService};
+    use crate::service::{ChainEndpoints, TokenDescriptor, WalletService};
+    use serde_json::json;
 
     /// A balance's decimals are the contract's, not the caller's.
     ///
@@ -1551,11 +1635,9 @@ mod decimals_come_from_the_chain {
     /// while `decimals` reported the other, so the two no longer described the
     /// same balance.
     ///
-    /// Offline nothing answers, so what this asserts is the fallback: an
-    /// unreadable contract must report **what the caller said**, not zero.
-    /// Zero would render 1 USDC as 1,000,000.
+    /// A provider failure must remain an error, not an invented zero balance.
     #[tokio::test]
-    async fn an_unreadable_contract_falls_back_rather_than_reporting_zero() {
+    async fn an_unreadable_contract_is_left_out_rather_than_reported_as_zero() {
         let service = WalletService::new_typed(Vec::new()).expect("service");
         for chain in [
             Chain::Ethereum,
@@ -1578,16 +1660,85 @@ mod decimals_come_from_the_chain {
                     }],
                 )
                 .await;
-            let Ok(results) = results else { continue };
-            for r in results {
-                assert_eq!(
-                    r.decimals,
-                    18,
-                    "{} lost the caller's decimals when the contract would not answer",
+            match chain {
+                // TON reads every jetton the address holds in one call, so a
+                // failure there is the chain's answer and not one token's.
+                Chain::Ton => assert!(results.is_err(), "TON"),
+                _ => assert!(
+                    results
+                        .unwrap_or_else(|e| panic!("{}: {e}", chain.chain_display_name()))
+                        .is_empty(),
+                    "{} fabricated a balance for a contract it could not read",
                     chain.chain_display_name()
-                );
+                ),
             }
         }
+    }
+
+    /// One unreadable contract is that contract's answer, not the wallet's.
+    /// Collecting the batch into a single `Result` meant a self-destructed
+    /// token stopped every other token in the wallet from refreshing, and the
+    /// only caller discards the error, so it stopped silently.
+    #[tokio::test]
+    async fn an_unreadable_token_does_not_take_the_readable_ones_with_it() {
+        use wiremock::{matchers::any, Mock, MockServer, Request, ResponseTemplate};
+        let holder = format!("0x{}", "33".repeat(20));
+        let good = format!("0x{}", "11".repeat(20));
+        let bad = format!("0x{}", "22".repeat(20));
+        let server = MockServer::start().await;
+        let refused = bad.clone();
+        Mock::given(any())
+            .respond_with(move |req: &Request| {
+                let body: serde_json::Value = req.body_json().unwrap();
+                let calls = body
+                    .as_array()
+                    .cloned()
+                    .unwrap_or_else(|| vec![body.clone()]);
+                let replies: Vec<_> = calls
+                    .iter()
+                    .map(|call| {
+                        let to = call["params"][0]["to"].as_str().unwrap_or_default();
+                        if to.eq_ignore_ascii_case(&refused) {
+                            return json!({"jsonrpc":"2.0","id":call["id"],
+                                   "error":{"code":-32000,"message":"no code at address"}});
+                        }
+                        // balanceOf and decimals are both plain uint256 words;
+                        // symbol decodes to empty, which the catalog covers.
+                        json!({"jsonrpc":"2.0","id":call["id"],
+                               "result":format!("0x{:064x}", 6)})
+                    })
+                    .collect();
+                ResponseTemplate::new(200).set_body_json(if body.is_array() {
+                    json!(replies)
+                } else {
+                    replies[0].clone()
+                })
+            })
+            .mount(&server)
+            .await;
+
+        let service = WalletService::new_typed(vec![ChainEndpoints {
+            chain_id: "ethereum".into(),
+            endpoints: vec![server.uri()],
+            api_key: None,
+        }])
+        .unwrap();
+        let descriptor = |contract: &str| TokenDescriptor {
+            contract: contract.into(),
+            symbol: "TEST".into(),
+            decimals: 18,
+            name: None,
+        };
+        let rows = service
+            .fetch_token_balances(
+                "ethereum".into(),
+                holder,
+                vec![descriptor(&bad), descriptor(&good), descriptor("")],
+            )
+            .await
+            .expect("one bad contract is not a failed request");
+        assert_eq!(rows.len(), 1, "only the readable contract answers");
+        assert!(rows[0].contract_address.eq_ignore_ascii_case(&good));
     }
 
     /// An empty list is not a fetch.
@@ -1599,5 +1750,20 @@ mod decimals_come_from_the_chain {
             .await
             .expect("an empty request cannot fail");
         assert!(out.is_empty());
+    }
+}
+
+#[cfg(test)]
+mod history_page_failures {
+    use super::*;
+    #[tokio::test]
+    async fn history_page_without_required_provider_credentials_is_an_error() {
+        let service = WalletService::new_typed(vec![]).unwrap();
+        // BSC's registry source requires an explorer key. This fails offline,
+        // before HTTP, and must not masquerade as an empty successful page.
+        let result = service
+            .fetch_evm_history_page(Chain::BnbChain.str_id().into(), "from".into(), vec![], 2, 7)
+            .await;
+        assert!(result.unwrap_err().to_string().contains("key"));
     }
 }

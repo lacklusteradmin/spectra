@@ -29,6 +29,7 @@ pub mod bitcoin_cash;
 pub mod bitcoin_gold;
 pub mod bitcoin_sv;
 pub mod bittensor;
+pub mod blockbook;
 pub mod cardano;
 pub mod dash;
 pub mod decred;
@@ -98,4 +99,12 @@ pub struct HeldToken {
     pub balance_raw: u128,
     pub decimals: Option<u8>,
     pub symbol: Option<String>,
+}
+
+/// Core amounts use u128 and decimal scaling up to 10^38.
+pub(crate) fn checked_token_decimals(value: u128) -> Result<u8, String> {
+    if value > 38 {
+        return Err("token decimals exceed core precision limit (38)".into());
+    }
+    Ok(value as u8)
 }

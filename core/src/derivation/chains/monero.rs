@@ -1855,9 +1855,9 @@ pub(crate) fn derive_from_seed_phrase(
 
 // ── UniFFI exports ────────────────────────────────────────────────────────
 
+use crate::derivation::primitives::derive_bip39_seed;
 use crate::derivation::types::DerivationResult;
 use crate::SpectraBridgeError;
-use crate::derivation::primitives::derive_bip39_seed;
 
 /// UniFFI export: derive Monero mainnet keys from a BIP-39 seed phrase.
 pub fn derive_monero(

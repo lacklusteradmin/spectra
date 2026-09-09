@@ -371,7 +371,11 @@ mod tests {
 
         // Overwrite replaces.
         store
-            .save_secret(SecretClass::Seed, "wallet-1.seed".into(), "envelope-2".into())
+            .save_secret(
+                SecretClass::Seed,
+                "wallet-1.seed".into(),
+                "envelope-2".into(),
+            )
             .unwrap();
         assert_eq!(
             store
@@ -390,7 +394,9 @@ mod tests {
         let mut all = store.list_keys(SecretClass::Seed, String::new()).unwrap();
         all.sort();
         assert_eq!(all, vec!["other.seed", "wallet-1.seed", "wallet-2.seed"]);
-        let mut filtered = store.list_keys(SecretClass::Seed, "wallet-".into()).unwrap();
+        let mut filtered = store
+            .list_keys(SecretClass::Seed, "wallet-".into())
+            .unwrap();
         filtered.sort();
         assert_eq!(filtered, vec!["wallet-1.seed", "wallet-2.seed"]);
 
@@ -418,14 +424,14 @@ mod tests {
                 .save_secret(SecretClass::Generic, key.into(), "v".into())
                 .unwrap();
             assert_eq!(
-                store
-                    .load_secret(SecretClass::Generic, key.into())
-                    .unwrap(),
+                store.load_secret(SecretClass::Generic, key.into()).unwrap(),
                 "v",
                 "round trip failed for key {key:?}"
             );
         }
-        let mut generic = store.list_keys(SecretClass::Generic, String::new()).unwrap();
+        let mut generic = store
+            .list_keys(SecretClass::Generic, String::new())
+            .unwrap();
         generic.sort();
         let mut expected = vec!["a/b", "..", ".", "空格 key", "%41", "a\\b"];
         expected.sort();

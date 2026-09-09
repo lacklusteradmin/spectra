@@ -92,6 +92,13 @@ check "rejects non-finite amount" $REJECTED spectra send amount --chain Ethereum
 check "rejects integer overflow" $REJECTED spectra send amount --chain Ethereum --decimals 0 --amount 340282366920938463463374607431768211456
 check "rejects unreasonable token precision" $REJECTED spectra send amount --chain Solana --decimals 4294967295 --amount 1
 
+section "checked fee units"
+contains "Cardano fee is exact" '"rawFee":"170000"' spectra --json send fee-units --chain Cardano --amount 0.17
+contains "Sui budget is exact" '"rawFee":"10000000"' spectra --json send fee-units --chain Sui --amount 0.01
+for bad_fee in -1 0 NaN inf 0.0000001 18446744073710.0; do
+    check "rejects invalid native fee $bad_fee" $REJECTED spectra send fee-units --chain Cardano --amount "$bad_fee"
+done
+
 section "chain registry"
 check "lists chains"                        $OK spectra chains
 contains "resolves a chain by symbol"  '"symbol":"BTC"' \
@@ -305,6 +312,31 @@ check "and --no-password refuses to also take a password file" $USAGE \
 check "deletes the unsealed wallet"         $OK \
     spectra wallet delete "Open SOL" --yes
 
+# ── Addresses per network ───────────────────────────────────────────────────
+#
+# A wallet on a family with testnets holds one address per network, derived
+# once at import. The app used to re-derive the testnet address from the seed
+# on every read — so nothing outside the app could see it, and a
+# password-sealed wallet, which has no seed to read, showed the mainnet address
+# on testnet instead.
+
+section "addresses per network"
+contains "a Bitcoin wallet stores its testnet4 address too" '"Bitcoin Testnet4"' \
+    spectra --json wallet show "Multi 1"
+contains "and its signet one" '"Bitcoin Signet"' spectra --json wallet show "Multi 1"
+contains "the mainnet address is the primary" 'bc1q' spectra --json wallet show "Multi 1"
+# One key, two encodings: a testnet address is not the mainnet one.
+check "the testnet address differs from the mainnet address" $OK \
+    bash -c '"$1" --data-dir "$2" --json wallet show "Multi 1" | grep -q "tb1"' _ "$BIN" "$DATA_DIR"
+# The EVM family shares one address, and Ethereum Classic has a slot of its own
+# holding the same key — so an Ethereum wallet answers on both.
+contains "an EVM wallet fills the Ethereum Classic slot too" '"Ethereum Classic"' \
+    spectra --json wallet show "Multi 2"
+# A chain the wallet was never imported for has no address, and no seed is read
+# to invent one.
+check "a Solana wallet holds no Bitcoin address" $OK \
+    bash -c '! "$1" --data-dir "$2" --json wallet show "Multi 3" | grep -q "bc1q"' _ "$BIN" "$DATA_DIR"
+
 section "public-child receive derivation"
 check "imports an unsealed BTC wallet" $OK \
     with_seed "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about" \
@@ -342,6 +374,17 @@ section "display currency"
 contains "defaults to USD"  '"currency":"USD"' spectra --json currency
 check "sets a currency"                     $OK spectra currency CHF
 contains "reads it back from the store" '"currency":"CHF"' spectra --json currency
+# The twelve codes are core's. They were a Swift enum and nothing else, so this
+# command stored whatever string it was handed — and every amount then rendered
+# unconverted with that code beside it.
+check "refuses a code nothing quotes"       $REJECTED spectra currency ZZZ
+check "and one that is not a code at all"   $REJECTED spectra currency bitcoin
+contains "the refusal changed nothing"  '"currency":"CHF"' spectra --json currency
+# Cross-rates are core state now, not a blob one front end kept: this reads the
+# same store the app does. Fetching them needs network, so what is offline is
+# the empty answer.
+contains "no rates stored until one is fetched" '"count":0' \
+    spectra --json currency --rates
 
 # ── Price alerts ────────────────────────────────────────────────────────────
 #
@@ -522,6 +565,16 @@ check "refuses a non-EVM chain"             $REJECTED \
 check "refuses half a token description"    $USAGE \
     spectra send assemble --chain Base --from $EVM_ADDR --to $EVM_ADDR --amount 1 \
         --contract $EVM_ADDR
+
+# Which pending sends can still be replaced is core's rule, over core's own
+# records. Recording one needs a broadcast, so what is offline is the empty
+# answer and the wallet filter; the rule itself is covered by
+# `cargo test -p spectra_core replaceable` and the Swift bridge tests.
+section "replaceable sends"
+check "lists nothing to replace" $OK spectra txs --replaceable
+contains "answers as an empty list" '"replaceable":[]' spectra --json txs --replaceable
+contains "scopes to one wallet" '"count":0' spectra --json txs --replaceable --wallet "Multi 2"
+check "reports an unknown wallet" 1 spectra txs --replaceable --wallet "no such wallet"
 
 section "EVM manual nonce"
 contains "parses whitespace and leading zeros" '"nonce":12' spectra --json send overrides --nonce ' 0012 '
@@ -730,6 +783,41 @@ contains "trims a pasted value"             '"value":"KEY"' \
 check "refuses a setting that does not exist" $REJECTED spectra settings set nope 1
 check "refuses a value of the wrong kind"   $REJECTED \
     spectra settings set strict-rpc-only maybe
+
+# ── Tor routing ─────────────────────────────────────────────────────────────
+#
+# The four Tor settings were `UserDefaults` keys in one front end, so no other
+# front end, no test and no script could read or set them. They are settings
+# like any other now. The kill switch is enforced in core's HTTP layer, which
+# is why the address is validated here rather than handed to a proxy builder
+# that fails closed and says nothing.
+
+section "tor routing"
+check "turns Tor on"                        $OK spectra settings set tor-enabled true
+contains "and a second process reads it back" '"value":"true"' \
+    spectra --json settings get tor-enabled
+check "selects a custom proxy"              $OK spectra settings set tor-custom-proxy true
+check "refuses an address with no scheme"   $REJECTED \
+    spectra settings set tor-proxy-address 127.0.0.1:9150
+check "refuses a scheme that is not socks5" $REJECTED \
+    spectra settings set tor-proxy-address http://127.0.0.1:9150
+check "refuses an address with no port"     $REJECTED \
+    spectra settings set tor-proxy-address socks5://127.0.0.1
+check "refuses port zero"                   $REJECTED \
+    spectra settings set tor-proxy-address socks5://127.0.0.1:0
+contains "the refusals stored nothing"      '"value":"socks5://127.0.0.1:9150"' \
+    spectra --json settings get tor-proxy-address
+contains "accepts a remote-DNS proxy"       '"value":"socks5h://10.0.0.2:9050"' \
+    spectra --json settings set tor-proxy-address socks5h://10.0.0.2:9050
+contains "an empty value restores the default" '"value":"socks5://127.0.0.1:9150"' \
+    spectra --json settings set tor-proxy-address ""
+check "arms the kill switch"                $OK spectra settings set tor-kill-switch true
+# Turned off again so the rest of this run is not behind a kill switch with Tor
+# stopped: core refuses outbound requests in exactly that state, which is the
+# point of the setting.
+check "turns Tor off again"                 $OK spectra settings set tor-enabled false
+contains "the switch is still armed"        '"value":"true"' \
+    spectra --json settings get tor-kill-switch
 
 section "private-key import"
 # The last wallet operation the CLI could not drive. Core has dispatched

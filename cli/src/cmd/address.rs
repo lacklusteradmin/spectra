@@ -4,8 +4,8 @@
 
 use clap::{Args, Subcommand};
 use colored::Colorize as _;
-use spectra_core::validation::address::{validate_address, AddressValidationRequest};
 use spectra_core::store::state::{StateCommand, StateTransition};
+use spectra_core::validation::address::{validate_address, AddressValidationRequest};
 
 use super::resolve_chain;
 use crate::ctx::Ctx;
@@ -86,7 +86,9 @@ fn validate(out: Out, args: ValidateArgs) -> CliResult<()> {
         )));
     }
 
-    let normalized = result.normalized_value.unwrap_or_else(|| args.address.clone());
+    let normalized = result
+        .normalized_value
+        .unwrap_or_else(|| args.address.clone());
     out.text(|| {
         if normalized == args.address.trim() {
             println!("  {} valid", out::ok_mark());

@@ -11,14 +11,15 @@ pub mod wallet_db;
 pub mod wallet_domain;
 pub mod wallet_secrets;
 
-pub use chain_aliases::{core_canonical_chain_component, core_icon_asset_name, core_icon_identifier};
+pub use chain_aliases::{
+    core_canonical_chain_component, core_icon_asset_name, core_icon_identifier,
+};
 
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 use std::collections::HashMap;
 
 use self::state::CoreAppState;
-use crate::validation::address::{validate_address, AddressValidationRequest};
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, uniffi::Record)]
 #[serde(rename_all = "camelCase")]
@@ -200,7 +201,6 @@ pub fn build_persisted_snapshot_typed(
         secrets,
     }
 }
-
 
 pub fn persisted_snapshot_from_json(json: &str) -> Result<PersistedAppSnapshot, String> {
     if let Ok(snapshot) = serde_json::from_str::<PersistedAppSnapshot>(json) {
@@ -518,14 +518,6 @@ pub struct WalletChainEligibilityInput {
     pub resolved_address_for_chain: Option<String>,
 }
 
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, uniffi::Enum)]
-pub enum DerivedAddressPostProcess {
-    None,
-    Lowercase,
-    Trim,
-}
-
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, uniffi::Record)]
 #[serde(rename_all = "camelCase")]
 pub struct CoreResetPlan {
@@ -694,6 +686,30 @@ pub fn now_unix() -> f64 {
 /// Random hex rather than a UUID: nothing parses these, and the shape is not
 /// worth a dependency. Callers must treat it as opaque — the platform used to
 /// mint UUIDs here and no reader depended on that either.
+/// A random v4 UUID in the canonical dashed form.
+///
+/// Transaction ids have to parse as UUIDs: a front end reads them back with
+/// `UUID(uuidString:)` and drops a row whose id does not parse, so a record
+/// core minted with a bare hex id would vanish from the history list rather
+/// than fail where it was made.
+pub fn new_transaction_id() -> String {
+    use rand::RngCore as _;
+    let mut bytes = [0u8; 16];
+    rand::thread_rng().fill_bytes(&mut bytes);
+    // Version 4, variant 1, as RFC 4122 asks.
+    bytes[6] = (bytes[6] & 0x0f) | 0x40;
+    bytes[8] = (bytes[8] & 0x3f) | 0x80;
+    let hex = hex::encode(bytes);
+    format!(
+        "{}-{}-{}-{}-{}",
+        &hex[0..8],
+        &hex[8..12],
+        &hex[12..16],
+        &hex[16..20],
+        &hex[20..32]
+    )
+}
+
 pub fn new_event_id() -> String {
     use rand::RngCore as _;
     let mut bytes = [0u8; 16];
@@ -1249,49 +1265,6 @@ pub enum HoldingMergeAction {
     Append { coin: HoldingMergeAppendPayload },
 }
 
-#[uniffi::export]
-pub fn core_resolve_derived_or_stored_address(
-    derived: Option<String>,
-    stored: Option<String>,
-    validation_kind: String,
-    derived_post_process: DerivedAddressPostProcess,
-    normalize_stored: bool,
-) -> Option<String> {
-    if let Some(raw) = derived {
-        let processed = match derived_post_process {
-            DerivedAddressPostProcess::Lowercase => raw.to_lowercase(),
-            DerivedAddressPostProcess::Trim => raw.trim().to_string(),
-            DerivedAddressPostProcess::None => raw,
-        };
-        let result = validate_address(AddressValidationRequest {
-            kind: validation_kind.clone(),
-            value: processed.clone(),
-        });
-        if result.is_valid {
-            return Some(processed);
-        }
-    }
-    let stored = stored?;
-    if normalize_stored {
-        let result = validate_address(AddressValidationRequest {
-            kind: validation_kind.clone(),
-            value: stored.clone(),
-        });
-        if let Some(normalized) = result.normalized_value {
-            return Some(normalized);
-        }
-    }
-    let trimmed = stored.trim().to_string();
-    let result = validate_address(AddressValidationRequest {
-        kind: validation_kind,
-        value: trimmed.clone(),
-    });
-    if result.is_valid {
-        Some(trimmed)
-    } else {
-        None
-    }
-}
 
 fn secret_descriptor_for_wallet(
     wallet_id: &str,

@@ -69,6 +69,7 @@ pub(crate) use serde::{Deserialize, Serialize};
 mod helpers;
 mod history_cursor;
 mod history_derived;
+mod history_refresh;
 mod maintenance;
 mod network;
 mod send;

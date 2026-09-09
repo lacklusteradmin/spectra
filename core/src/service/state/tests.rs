@@ -114,6 +114,7 @@ async fn failed_keypool_and_address_writes_leave_memory_unchanged() {
     assert_eq!(
         s.keypool_state("w".into(), "Bitcoin".into())
             .await
+            .unwrap()
             .reserved_receive_index,
         Some(1)
     );
@@ -204,6 +205,7 @@ async fn concurrent_probes_advance_only_the_reservation_they_checked() {
         reopened
             .keypool_state("w".into(), "Bitcoin".into())
             .await
+            .unwrap()
             .reserved_receive_index,
         Some(2)
     );
@@ -226,6 +228,7 @@ async fn concurrent_probes_advance_only_the_reservation_they_checked() {
     assert_eq!(
         s.keypool_state("w".into(), "Bitcoin".into())
             .await
+            .unwrap()
             .reserved_receive_index,
         Some(3)
     );
@@ -262,6 +265,7 @@ async fn advancement_respects_addresses_discovered_while_probe_was_in_flight() {
         reopened
             .keypool_state("w".into(), "Bitcoin".into())
             .await
+            .unwrap()
             .reserved_receive_index,
         Some(11)
     );
@@ -360,4 +364,224 @@ async fn unchanged_receive_reservation_skips_sql_but_merges_newly_owned_indices(
         .unwrap();
     assert_eq!(pool.next_external_index, 11);
     assert_eq!(pool.reserved_receive_index, Some(reserved));
+}
+
+#[tokio::test]
+async fn unreadable_history_refuses_keypool_reads_and_mutations() {
+    let s = service();
+    let db = database();
+    s.open_state(db.clone()).await.unwrap();
+    let held = s
+        .reserve_receive_index("w".into(), "Bitcoin".into(), 1)
+        .await
+        .unwrap();
+    let before = s.keypool.read().await.clone();
+    sql(&db, "DROP TABLE history_records;");
+    assert!(s.keypool_state("w".into(), "Bitcoin".into()).await.is_err());
+    assert!(s
+        .reserve_receive_index("w".into(), "Bitcoin".into(), 1)
+        .await
+        .is_err());
+    assert!(s
+        .reserve_change_index("w".into(), "Bitcoin".into())
+        .await
+        .is_err());
+    assert!(s
+        .advance_receive_index_if_current("w".into(), "Bitcoin".into(), held)
+        .await
+        .is_err());
+    assert_eq!(*s.keypool.read().await, before);
+    assert_eq!(
+        crate::wallet_db::keypool_load(&db, "w", "Bitcoin")
+            .unwrap()
+            .unwrap(),
+        before[&keypool_key("w", "Bitcoin")]
+    );
+}
+
+/// Tor policy, the display-currency catalog and the fiat rates are core state
+/// now: a front end kept all three, two of them in `UserDefaults`.
+mod tor_and_rates {
+    use super::*;
+    use crate::store::state::AppSettingUpdate;
+
+    fn setting(update: AppSettingUpdate) -> StateCommand {
+        StateCommand::SetAppSetting { update }
+    }
+
+    /// The four Tor fields survive reopening the database, which is the whole
+    /// point of moving them: a second front end and the CLI read what the app
+    /// set.
+    ///
+    /// `tor_enabled` and `tor_kill_switch` are never true together here. The
+    /// policy is process-wide — the HTTP layer reads it per request — so a test
+    /// that engaged the switch would refuse every other test's HTTP call for as
+    /// long as it held it. What the switch itself does is
+    /// `the_kill_switch_engages_only_while_tor_is_wanted_and_not_ready`, over
+    /// values rather than globals.
+    #[tokio::test]
+    async fn tor_settings_persist_and_refuse_an_address_that_is_not_socks5() {
+        let s = service();
+        let db = database();
+        s.open_state(db.clone()).await.unwrap();
+        for update in [
+            AppSettingUpdate::TorEnabled { value: true },
+            AppSettingUpdate::TorUseCustomProxy { value: true },
+            AppSettingUpdate::TorCustomProxyAddress {
+                value: "socks5h://10.0.0.2:9050".into(),
+            },
+        ] {
+            s.apply_state_command(setting(update)).await.unwrap();
+        }
+
+        for bad in [
+            "127.0.0.1:9150",
+            "http://127.0.0.1:9150",
+            "socks5://127.0.0.1",
+            "socks5://:9150",
+            "socks5://127.0.0.1:0",
+            "socks5://127.0.0.1:notaport",
+        ] {
+            let transition = s
+                .apply_state_command(setting(AppSettingUpdate::TorCustomProxyAddress {
+                    value: bad.into(),
+                }))
+                .await
+                .unwrap();
+            assert!(
+                transition
+                    .events
+                    .iter()
+                    .any(|event| event.kind == "appSettingRejected"),
+                "{bad} was not refused"
+            );
+            assert_eq!(
+                transition.state.settings.tor_custom_proxy_address,
+                "socks5h://10.0.0.2:9050"
+            );
+        }
+
+        // Empty restores the default rather than storing nothing.
+        let transition = s
+            .apply_state_command(setting(AppSettingUpdate::TorCustomProxyAddress {
+                value: "   ".into(),
+            }))
+            .await
+            .unwrap();
+        assert_eq!(
+            transition.state.settings.tor_custom_proxy_address,
+            "socks5://127.0.0.1:9150"
+        );
+
+        // Turn Tor off before turning the switch on, so the two are never both
+        // set while this test holds the process-wide policy.
+        s.apply_state_command(setting(AppSettingUpdate::TorEnabled { value: false }))
+            .await
+            .unwrap();
+        s.apply_state_command(setting(AppSettingUpdate::TorKillSwitch { value: true }))
+            .await
+            .unwrap();
+        assert!(!crate::tor::kill_switch_engaged());
+
+        let reopened = service();
+        let state = reopened.open_state(db).await.unwrap();
+        assert!(!state.settings.tor_enabled);
+        assert!(state.settings.tor_use_custom_proxy);
+        assert!(state.settings.tor_kill_switch);
+        assert_eq!(
+            state.settings.tor_custom_proxy_address,
+            "socks5://127.0.0.1:9150"
+        );
+        assert!(!crate::tor::kill_switch_engaged());
+    }
+
+    /// The switch blocks exactly when the user asked for Tor, asked for the
+    /// switch, and Tor is not carrying traffic.
+    #[test]
+    fn the_kill_switch_engages_only_while_tor_is_wanted_and_not_ready() {
+        use crate::tor::kill_switch_verdict;
+        use crate::tor::TorStatus;
+        for (wanted, switch, ready, expected) in [
+            (true, true, false, true),
+            (true, true, true, false),
+            (true, false, false, false),
+            (false, true, false, false),
+            (false, false, false, false),
+        ] {
+            let status = if ready {
+                TorStatus::Ready
+            } else {
+                TorStatus::Stopped
+            };
+            assert_eq!(
+                kill_switch_verdict(switch, wanted, &status),
+                expected,
+                "wanted={wanted} switch={switch} ready={ready}"
+            );
+        }
+        // Bootstrapping is not ready: the window this switch exists for.
+        assert!(kill_switch_verdict(
+            true,
+            true,
+            &TorStatus::Bootstrapping { percent: 90 }
+        ));
+    }
+
+    /// A display currency the app cannot quote in is refused. It used to be
+    /// stored, and every amount then rendered unconverted beside that code.
+    #[tokio::test]
+    async fn only_a_currency_the_app_quotes_in_can_be_selected() {
+        let s = service();
+        s.open_state(database()).await.unwrap();
+        for code in ["EUR", "jpy", " aed "] {
+            let transition = s
+                .apply_state_command(StateCommand::SetFiatCurrency {
+                    fiat_currency_code: code.into(),
+                })
+                .await
+                .unwrap();
+            assert_eq!(
+                transition.state.settings.fiat_currency_code,
+                code.trim().to_uppercase()
+            );
+        }
+        for code in ["ZZZ", "", "US", "BITCOIN"] {
+            let transition = s
+                .apply_state_command(StateCommand::SetFiatCurrency {
+                    fiat_currency_code: code.into(),
+                })
+                .await
+                .unwrap();
+            assert!(
+                transition
+                    .events
+                    .iter()
+                    .any(|event| event.kind == "fiatCurrencyRejected"),
+                "{code:?} was not refused"
+            );
+            assert_eq!(transition.state.settings.fiat_currency_code, "AED");
+        }
+    }
+
+    /// Rates are stored where the state is, so a reopened service quotes the
+    /// same amounts without a network call.
+    #[tokio::test]
+    async fn stored_fiat_rates_survive_reopening() {
+        let s = service();
+        let db = database();
+        s.open_state(db.clone()).await.unwrap();
+        assert!(s.app_state().await.fiat_rates_from_usd.is_empty());
+
+        let rates =
+            std::collections::HashMap::from([("USD".to_string(), 1.0), ("EUR".to_string(), 0.9)]);
+        s.store_fiat_rates(rates.clone()).await.unwrap();
+        // Storing what is already stored writes nothing.
+        s.store_fiat_rates(rates.clone()).await.unwrap();
+
+        let reopened = service();
+        assert_eq!(
+            reopened.open_state(db).await.unwrap().fiat_rates_from_usd,
+            rates
+        );
+    }
 }

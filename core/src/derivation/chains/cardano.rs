@@ -10,11 +10,11 @@
 //!   payment key hash) bech32-encoded under HRP `addr` (mainnet) or
 //!   `addr_test` (Cardano Preprod testnet).
 
+use crate::derivation::primitives::resolve_bip39_language;
 use bip39::Mnemonic;
 use pbkdf2::pbkdf2_hmac;
 use sha2::Sha512;
 use zeroize::Zeroizing;
-use crate::derivation::primitives::resolve_bip39_language;
 
 // ── Address validation + decoding (preserved) ────────────────────────────
 
@@ -34,7 +34,6 @@ pub(crate) fn decode_cardano_addr_bytes(address: &str) -> Result<Vec<u8>, String
 }
 
 // ── BIP-39 ───────────────────────────────────────────────────────────────
-
 
 // ── BIP-32 path parsing ──────────────────────────────────────────────────
 
@@ -288,9 +287,9 @@ pub(crate) fn derive_from_seed_phrase(
 
 // ── UniFFI exports ────────────────────────────────────────────────────────
 
+use crate::derivation::primitives::hmac_sha512;
 use crate::derivation::types::{parse_path_metadata, DerivationResult};
 use crate::SpectraBridgeError;
-use crate::derivation::primitives::{hmac_sha512};
 
 // Shared derivation logic for Cardano networks; mainnet flag selects addr/addr_test HRP.
 fn cardano_internal(

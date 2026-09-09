@@ -52,6 +52,13 @@ fn build_reqwest_client(proxy_url: Option<&str>) -> Client {
     }
 }
 
+/// The blocked client, built once — the kill switch reaches for it per request.
+static BLOCKED_CLIENT: LazyLock<Client> = LazyLock::new(build_blocked_client);
+
+/// The message a caller sees when the Tor kill switch stopped the request.
+pub(crate) const KILL_SWITCH_MESSAGE: &str =
+    "Tor kill switch: the circuit is not ready, so the request was not sent.";
+
 /// A client that cannot reach the network: every request is routed to a dead
 /// loopback port. Used when a proxy was requested but could not be applied, so
 /// connectivity breaks loudly instead of leaking over a direct connection.
@@ -83,6 +90,12 @@ impl HttpClient {
     /// Clone the inner reqwest client (cheap — it is an Arc internally).
     /// Callers must NOT hold this across a lock boundary.
     fn get_client(&self) -> Client {
+        // The one choke point every request passes through, so a caller that
+        // reaches for a client without checking the guards below still cannot
+        // send in the clear.
+        if crate::tor::kill_switch_engaged() {
+            return BLOCKED_CLIENT.clone();
+        }
         self.inner.read().clone()
     }
 
@@ -102,6 +115,9 @@ impl HttpClient {
         headers: &HashMap<&str, &str>,
         profile: RetryProfile,
     ) -> Result<T, String> {
+        if crate::tor::kill_switch_engaged() {
+            return Err(KILL_SWITCH_MESSAGE.to_string());
+        }
         let max_attempts = profile.max_attempts();
         let mut last_err = String::new();
 
@@ -173,6 +189,9 @@ impl HttpClient {
 
     /// GET raw text (for providers that return non-JSON).
     pub async fn get_text(&self, url: &str, profile: RetryProfile) -> Result<String, String> {
+        if crate::tor::kill_switch_engaged() {
+            return Err(KILL_SWITCH_MESSAGE.to_string());
+        }
         let max_attempts = profile.max_attempts();
         let mut last_err = String::new();
 
@@ -243,6 +262,9 @@ impl HttpClient {
         body: String,
         profile: RetryProfile,
     ) -> Result<String, String> {
+        if crate::tor::kill_switch_engaged() {
+            return Err(KILL_SWITCH_MESSAGE.to_string());
+        }
         let max_attempts = profile.max_attempts();
         let mut last_err = String::new();
 
@@ -517,6 +539,11 @@ pub async fn http_request(
     profile: HttpRetryProfile,
 ) -> Result<HttpResponse, HttpError> {
     let method = parse_method(&method)?;
+    if crate::tor::kill_switch_engaged() {
+        return Err(HttpError::Transport {
+            message: KILL_SWITCH_MESSAGE.to_string(),
+        });
+    }
     let retry: RetryProfile = profile.into();
     let client = HttpClient::shared();
     let inner = client.reqwest_client();

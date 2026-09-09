@@ -27,11 +27,11 @@ impl EvmCustomFeeConfiguration {
         fn wei(gwei: f64) -> Option<u128> {
             let scaled = (gwei * 1e9).round();
             (gwei.is_finite() && gwei >= 1e-9 && scaled < u64::MAX as f64)
-                .then(|| scaled as u64 as u128)
+                .then_some(scaled as u64 as u128)
         }
         let max = wei(self.max_fee_per_gas_gwei).ok_or(EvmCustomFeeError::InvalidMaxFee)?;
-        let priority = wei(self.max_priority_fee_per_gas_gwei)
-            .ok_or(EvmCustomFeeError::InvalidPriorityFee)?;
+        let priority =
+            wei(self.max_priority_fee_per_gas_gwei).ok_or(EvmCustomFeeError::InvalidPriorityFee)?;
         if self.max_fee_per_gas_gwei < self.max_priority_fee_per_gas_gwei {
             return Err(EvmCustomFeeError::MaxBelowPriority);
         }
@@ -431,7 +431,12 @@ mod every_evm_chain_can_assemble {
                 amount: 1.0,
                 token: None,
             })
-            .unwrap_or_else(|e| panic!("{} cannot assemble a send: {e:?}", chain.chain_display_name()));
+            .unwrap_or_else(|e| {
+                panic!(
+                    "{} cannot assemble a send: {e:?}",
+                    chain.chain_display_name()
+                )
+            });
             assert!(assembly.is_native, "{}", chain.chain_display_name());
             assert_eq!(assembly.data_hex, "0x", "{}", chain.chain_display_name());
         }
@@ -448,8 +453,16 @@ mod every_evm_chain_can_assemble {
     fn a_governance_token_is_not_the_gas_asset() {
         let address = "0x742d35cc6634c0532925a3b844bc454e4438f44e";
         for (chain_name, symbol, contract) in [
-            ("Arbitrum", "ARB", "0x912ce59144191c1204e64559fe8253a0e49e6548"),
-            ("Optimism", "OP", "0x4200000000000000000000000000000000000042"),
+            (
+                "Arbitrum",
+                "ARB",
+                "0x912ce59144191c1204e64559fe8253a0e49e6548",
+            ),
+            (
+                "Optimism",
+                "OP",
+                "0x4200000000000000000000000000000000000042",
+            ),
         ] {
             assert!(
                 !is_native_evm_asset(chain_name, symbol),
@@ -470,7 +483,10 @@ mod every_evm_chain_can_assemble {
             .unwrap();
             assert!(!assembly.is_native, "{symbol}");
             assert_eq!(assembly.value_wei, "0", "{symbol} must move no gas asset");
-            assert_eq!(assembly.to_address, contract, "{symbol} goes to its contract");
+            assert_eq!(
+                assembly.to_address, contract,
+                "{symbol} goes to its contract"
+            );
         }
     }
 }
@@ -606,7 +622,16 @@ mod custom_fee_tests {
     #[test]
     fn nonfinite_underflow_and_overflow_fees_are_refused() {
         for raw in [
-            "", "nonsense", "NaN", "inf", "-inf", "0", "-1", "1e-10", "1e100", "18446744074",
+            "",
+            "nonsense",
+            "NaN",
+            "inf",
+            "-inf",
+            "0",
+            "-1",
+            "1e-10",
+            "1e100",
+            "18446744074",
         ] {
             assert_eq!(
                 parse_evm_custom_fees(raw.into(), "1".into()).unwrap_err(),
@@ -645,8 +670,12 @@ mod nonce_tests {
 
     #[test]
     fn parses_decimal_nonce_across_the_ffi_range() {
-        for (raw, expected) in [(" 00012 ", 12), ("0", 0), ("2147483648", 2147483648),
-            ("9223372036854775807", i64::MAX)] {
+        for (raw, expected) in [
+            (" 00012 ", 12),
+            ("0", 0),
+            ("2147483648", 2147483648),
+            ("9223372036854775807", i64::MAX),
+        ] {
             assert_eq!(parse_evm_nonce(raw.into()), Ok(expected));
         }
     }
@@ -655,8 +684,11 @@ mod nonce_tests {
     fn preview_refuses_negative_nonce_from_caller_or_rpc() {
         for (raw, explicit) in [(r#"{"nonce":1}"#, Some(-1)), (r#"{"nonce":-1}"#, None)] {
             assert!(decode_evm_send_preview(EvmPreviewDecodeInput {
-                raw_json: raw.into(), explicit_nonce: explicit, custom_fees: None,
-            }).is_none());
+                raw_json: raw.into(),
+                explicit_nonce: explicit,
+                custom_fees: None,
+            })
+            .is_none());
         }
     }
 
@@ -664,7 +696,10 @@ mod nonce_tests {
     fn refuses_malformed_or_overflowing_manual_nonce() {
         assert_eq!(parse_evm_nonce(" ".into()), Err(EvmNonceError::Empty));
         for raw in ["-1", "+1", "1.0", "1e2", "0x10", "1 2", "１２"] {
-            assert_eq!(parse_evm_nonce(raw.into()), Err(EvmNonceError::InvalidInteger));
+            assert_eq!(
+                parse_evm_nonce(raw.into()),
+                Err(EvmNonceError::InvalidInteger)
+            );
         }
         for raw in ["9223372036854775808", "18446744073709551616"] {
             assert_eq!(parse_evm_nonce(raw.into()), Err(EvmNonceError::TooLarge));

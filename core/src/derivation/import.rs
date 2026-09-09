@@ -129,7 +129,15 @@ pub struct WalletImportCommit {
     pub seed_phrase: Option<String>,
 }
 
-/// Derive one address per selected chain, keyed by chain display name.
+/// Derive an address for every network of every selected chain, keyed by chain
+/// display name.
+///
+/// Every network, not just the mainnet: a wallet on Bitcoin Testnet4 has a
+/// different key and a different address, and it used to be derived on demand
+/// by whichever front end was rendering — from the seed, per read, which a
+/// password-sealed wallet cannot do at all. Deriving them here means the seed
+/// is needed once, at import, and the address for a network the user switches
+/// to later is already stored under that network's own slot.
 ///
 /// The path comes from `CoreSeedDerivationPaths::path_for`, which resolves a
 /// testnet through its mainnet. A chain whose derivation fails is skipped
@@ -152,6 +160,16 @@ pub fn derive_import_addresses(
         .collect();
     if chains.iter().any(|c| c.is_evm()) && !chains.contains(&Chain::Ethereum) {
         chains.push(Chain::Ethereum);
+    }
+    // The testnets of each selected family, so switching network is a read.
+    for network in chains
+        .iter()
+        .flat_map(|chain| chain.network_choices())
+        .collect::<Vec<_>>()
+    {
+        if !chains.contains(&network) {
+            chains.push(network);
+        }
     }
     for chain in chains {
         let Some(path) = paths.path_for(chain) else {
@@ -258,10 +276,19 @@ impl ImportNetworks {
     /// No per-family arms: find the chain that owns the slot, then apply the
     /// selection to it. Every other slot is shared by a family (all EVM
     /// mainnets use one), and applying a selection there is a no-op.
+    ///
+    /// A testnet's slot is its own id, so it names a network rather than a
+    /// family and the selection does not apply: an address stored under
+    /// `bitcoin-testnet-4` is a testnet address whatever network the importer
+    /// is currently looking at. The selection still applies to the family slot,
+    /// which is where a *typed* testnet address arrives — the import draft has
+    /// no testnet row to put one in.
     fn chain_for(&self, slot: &str) -> Option<Chain> {
-        Chain::all()
-            .find(|chain| chain.address_slot() == slot)
-            .map(|chain| self.selected(chain))
+        let owner = Chain::all().find(|chain| chain.address_slot() == slot)?;
+        if owner.is_testnet() {
+            return Some(owner);
+        }
+        Some(self.selected(owner))
     }
 }
 
@@ -403,7 +430,6 @@ pub(crate) fn wallets_for_import(
 pub fn core_validate_wallet_import_draft(request: WalletImportDraftValidationRequest) -> bool {
     validate_wallet_import_draft(request)
 }
-
 
 pub fn plan_wallet_import(request: WalletImportRequest) -> Result<WalletImportPlan, String> {
     if request.is_watch_only_import {
@@ -564,18 +590,33 @@ fn addresses_for_chain(
     };
 
     let mut by_slot = HashMap::new();
-    if let Some(address) = addresses.address_for(chain) {
-        by_slot.insert(chain.address_slot().to_string(), address.to_string());
+    // Every network of this wallet's family, each under its own slot. The
+    // address a user sees after switching to Testnet4 is a different key from
+    // the mainnet one, and it used to be re-derived from the seed on every
+    // read — which a password-sealed wallet cannot do, so it silently showed
+    // the mainnet address instead.
+    for network in chain.network_choices() {
+        if let Some(address) = addresses.address_for(network) {
+            by_slot.insert(network.address_slot().to_string(), address.to_string());
+        }
     }
-    // Ethereum Classic is EVM-shaped but has its own slot, and downstream code
-    // reads the generic `"ethereum"` slot for any EVM wallet. Fill both so an
-    // ETC wallet resolves either way.
-    if chain == Chain::EthereumClassic {
-        if let Some(address) = addresses.address_for(Chain::EthereumClassic) {
-            by_slot.insert(
-                Chain::Ethereum.address_slot().to_string(),
-                address.to_string(),
-            );
+    // Ethereum Classic is EVM-shaped but has its own slot, while every other
+    // EVM chain shares Ethereum's. A derived EVM wallet holds one key, and its
+    // address is that key's on either side, so both slots are filled in both
+    // directions. Filling only the ETC→Ethereum direction meant an Ethereum
+    // wallet answered for twenty-two EVM mainnets and not for the
+    // twenty-third.
+    if chain.is_evm() {
+        let sibling = if chain == Chain::EthereumClassic {
+            Chain::Ethereum
+        } else {
+            Chain::EthereumClassic
+        };
+        // This wallet's own address, in both EVM slots — not the other slot's,
+        // which belongs to a different wallet. An ETC wallet must not show the
+        // plain Ethereum address, and an Ethereum wallet must not show ETC's.
+        if let Some(address) = addresses.address_for(chain) {
+            by_slot.insert(sibling.address_slot().to_string(), address.to_string());
         }
     }
 
@@ -693,10 +734,8 @@ pub fn validate_wallet_import_draft(request: WalletImportDraftValidationRequest)
 }
 
 fn is_private_key_chain_supported(chain_name: &str) -> bool {
-    Chain::from_display_name(chain_name)
-        .is_some_and(|chain| chain.derives_from_private_key())
+    Chain::from_display_name(chain_name).is_some_and(|chain| chain.derives_from_private_key())
 }
-
 
 fn validate_watch_only_draft_addresses(
     selected_chains: &[String],
@@ -847,15 +886,21 @@ mod tests {
         assert_eq!(plan.wallets.len(), 2);
         assert_eq!(plan.wallets[0].name, "Main 1");
         assert_eq!(plan.secret_instructions[0].secret_kind, "seedPhrase");
-        // Each wallet carries only its own chain's slot — the Bitcoin wallet
-        // must not receive the Ethereum address.
+        // A wallet carries its own family's slots and no others — the Bitcoin
+        // wallet must not receive the Ethereum address. The EVM wallet carries
+        // both EVM slots with *its own* address, because one key answers on
+        // Ethereum and on Ethereum Classic; the `0x5678` supplied for the ETC
+        // slot belongs to an ETC wallet, and this import created none.
         assert_eq!(
             slots(&plan.wallets[0].addresses),
             vec![("bitcoin".to_string(), "bc1qexample".to_string())]
         );
         assert_eq!(
             slots(&plan.wallets[1].addresses),
-            vec![("ethereum".to_string(), "0x1234".to_string())]
+            vec![
+                ("ethereum".to_string(), "0x1234".to_string()),
+                ("ethereum-classic".to_string(), "0x1234".to_string()),
+            ]
         );
     }
 

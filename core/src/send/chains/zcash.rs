@@ -9,8 +9,7 @@
 //! consensus_branch_id `0xC2D6D0B4`. We hardcode NU5 because the next
 //! upgrade (NU6) requires a fresh sighash table and a code update anyway.
 
-use crate::http::{with_fallback, RetryProfile};
-
+use super::wire::{decode_txid_le, varint};
 use crate::derivation::chains::zcash::{decode_zcash_address, zcash_p2pkh_script};
 use crate::fetch::chains::zcash::{ZcashClient, ZecSendResult};
 
@@ -44,24 +43,6 @@ const BLAKE2B_PERSONALIZED_LEN: usize = 32;
 // ── Public broadcast + signing entrypoint ─────────────────────────────────
 
 impl ZcashClient {
-    pub async fn broadcast_raw_tx(&self, hex_tx: &str) -> Result<ZecSendResult, String> {
-        let hex = hex_tx.to_string();
-        with_fallback(&self.endpoints, |base| {
-            let client = self.client.clone();
-            let hex = hex.clone();
-            let url = format!("{}/api/v2/sendtx/", base.trim_end_matches('/'));
-            async move {
-                let raw_tx_hex = hex.clone();
-                let txid: String = client
-                    .post_text(&url, hex, RetryProfile::ChainWrite)
-                    .await?;
-                let txid = txid.trim().to_string();
-                Ok(ZecSendResult { txid, raw_tx_hex })
-            }
-        })
-        .await
-    }
-
     /// Fetch UTXOs + chain tip, sign a V5 transparent transaction, broadcast.
     pub async fn sign_and_broadcast(
         &self,
@@ -74,9 +55,9 @@ impl ZcashClient {
         dust_threshold_zats: u64,
     ) -> Result<ZecSendResult, String> {
         let utxos = self.fetch_utxos(from_address).await?;
-        let tip = self.fetch_chain_tip_height().await.unwrap_or(0);
+        let tip = self.fetch_chain_tip_height().await?;
         // Match zcashd default: 40-block expiry window.
-        let expiry_height = (tip + 40) as u32;
+        let expiry_height = expiry_height(tip)?;
         let from_hash = decode_zcash_address(from_address)?;
         let from_script = zcash_p2pkh_script(&from_hash);
         let utxo_tuples: Vec<(String, u32, u64, Vec<u8>)> = utxos
@@ -99,33 +80,6 @@ impl ZcashClient {
 }
 
 // ── Encoding helpers ──────────────────────────────────────────────────────
-
-fn varint(n: usize) -> Vec<u8> {
-    match n {
-        0..=0xfc => vec![n as u8],
-        0xfd..=0xffff => {
-            let mut v = vec![0xfd];
-            v.extend_from_slice(&(n as u16).to_le_bytes());
-            v
-        }
-        _ => {
-            let mut v = vec![0xfe];
-            v.extend_from_slice(&(n as u32).to_le_bytes());
-            v
-        }
-    }
-}
-
-fn decode_txid(txid: &str) -> Result<Vec<u8>, String> {
-    let mut bytes = hex::decode(txid).map_err(|e| format!("txid decode: {e}"))?;
-    bytes.reverse();
-    Ok(bytes)
-}
-
-fn dsha256(data: &[u8]) -> [u8; 32] {
-    use sha2::{Digest, Sha256};
-    Sha256::digest(Sha256::digest(data)).into()
-}
 
 /// Personalised BLAKE2b-256. Personalisation is exactly 16 bytes (right-padded
 /// with zero bytes if shorter) — this is how every ZIP-244 sub-digest is keyed.
@@ -177,8 +131,11 @@ fn sign_zcash_v5_p2pkh(
         SecretKey::from_slice(private_key_bytes).map_err(|e| format!("invalid key: {e}"))?;
     let pubkey_bytes = secp256k1::PublicKey::from_secret_key(&secp, &secret_key).serialize();
 
-    let total_in: u64 = utxos.iter().map(|(_, _, v, _)| v).sum();
-    let change = total_in.saturating_sub(amount_sat + fee_sat);
+    let change = super::accounting::checked_change(
+        utxos.iter().map(|(_, _, v, _)| *v),
+        amount_sat,
+        fee_sat,
+    )?;
 
     let mut outputs: Vec<(Vec<u8>, u64)> = vec![(
         zcash_p2pkh_script(&decode_zcash_address(to_address)?),
@@ -234,7 +191,7 @@ fn sign_zcash_v5_p2pkh(
         script_sig.extend_from_slice(&pubkey_bytes);
 
         let mut inp = Vec::new();
-        inp.extend_from_slice(&decode_txid(txid)?);
+        inp.extend_from_slice(&decode_txid_le(txid)?);
         inp.extend_from_slice(&vout.to_le_bytes());
         inp.extend_from_slice(&varint(script_sig.len()));
         inp.extend_from_slice(&script_sig);
@@ -290,7 +247,7 @@ fn compute_header_digest(expiry_height: u32, nu: ZcashNetworkUpgrade) -> [u8; 32
 fn compute_prevouts_digest(utxos: &[(String, u32, u64, Vec<u8>)]) -> Result<[u8; 32], String> {
     let mut buf = Vec::with_capacity(36 * utxos.len());
     for (txid, vout, _, _) in utxos {
-        buf.extend_from_slice(&decode_txid(txid)?);
+        buf.extend_from_slice(&decode_txid_le(txid)?);
         buf.extend_from_slice(&vout.to_le_bytes());
     }
     Ok(blake2b_personalized(PERSONAL_TX_PREVOUTS, &buf))
@@ -342,7 +299,7 @@ fn compute_txin_sig_digest(
     //   prevout (36) || value (8) || script_pubkey (with varint length) ||
     //   nSequence (4) || input_index (4) || hash_type (4)
     let mut buf = Vec::new();
-    buf.extend_from_slice(&decode_txid(txid)?);
+    buf.extend_from_slice(&decode_txid_le(txid)?);
     buf.extend_from_slice(&vout.to_le_bytes());
     buf.extend_from_slice(&value.to_le_bytes());
     buf.extend_from_slice(&varint(script_pubkey.len()));
@@ -402,10 +359,53 @@ fn compute_zip244_txid_digest(
     blake2b_personalized(&personal, &buf)
 }
 
-// Suppress unused-warning for the legacy double-sha helper imported above.
-// (We don't use it in V5 but `dsha256` is still referenced symbolically by
-// readers comparing against the Bitcoin/Litecoin path.)
-#[allow(dead_code)]
-fn _legacy_dsha_unused(data: &[u8]) -> [u8; 32] {
-    dsha256(data)
+fn expiry_height(tip: u64) -> Result<u32, String> {
+    let height = tip.checked_add(40).ok_or("expiry height overflow")?;
+    u32::try_from(height).map_err(|_| "expiry height out of range".into())
+}
+
+#[cfg(test)]
+mod expiry_tests {
+    use super::*;
+    use std::sync::Arc;
+    use wiremock::{matchers::path, Mock, MockServer, ResponseTemplate};
+    #[test]
+    fn expiry_is_checked() {
+        assert_eq!(expiry_height(2000000).unwrap(), 2000040);
+        assert_eq!(expiry_height(u64::from(u32::MAX) - 40).unwrap(), u32::MAX);
+        assert!(expiry_height(u64::from(u32::MAX) - 39).is_err());
+        assert!(expiry_height(u64::MAX).is_err());
+    }
+    #[tokio::test]
+    async fn unavailable_tip_never_broadcasts() {
+        let server = MockServer::start().await;
+        Mock::given(path("/api/v2/utxo/from"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!([])))
+            .mount(&server)
+            .await;
+        Mock::given(path("/api/v2"))
+            .respond_with(
+                ResponseTemplate::new(200).set_body_json(serde_json::json!({"backend":{}})),
+            )
+            .mount(&server)
+            .await;
+        let client = ZcashClient::new(Arc::new(vec![server.uri()]));
+        let err = client
+            .sign_and_broadcast("from", "to", 1, 1, &[1; 32], ZcashNetworkUpgrade::NU5, 546)
+            .await
+            .unwrap_err();
+        assert!(err.contains("json decode"), "{err}");
+        assert!(server
+            .received_requests()
+            .await
+            .unwrap()
+            .iter()
+            .any(|r| r.url.path() == "/api/v2"));
+        assert!(server
+            .received_requests()
+            .await
+            .unwrap()
+            .iter()
+            .all(|r| !r.url.path().contains("sendtx")));
+    }
 }

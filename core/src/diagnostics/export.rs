@@ -147,20 +147,6 @@ fn history_row_value(row: &HistoryDiagnostics) -> Value {
     Value::Object(out)
 }
 
-/// True iff the JSON parses as an object carrying the top-level `history` and
-/// `endpoints` keys `diagnostics_build_history_json` produces. Used by the
-/// self-test to check the bundle shape without parsing JSON in Swift.
-#[uniffi::export]
-pub fn core_diagnostics_json_shape_ok(json: String) -> bool {
-    let Ok(v) = serde_json::from_str::<Value>(&json) else {
-        return false;
-    };
-    let Some(obj) = v.as_object() else {
-        return false;
-    };
-    obj.contains_key("history") && obj.contains_key("endpoints")
-}
-
 // ---------- UTXO (Bitcoin-shape) ----------
 
 // ---------- Full diagnostics bundle ----------
@@ -218,9 +204,11 @@ mod tests {
 
     #[test]
     fn a_document_carries_history_and_endpoints() {
-        let s = diagnostics_build_history_json(vec![row("w1")], vec![], None, None, None, None, None)
-            .expect("builds");
-        assert!(core_diagnostics_json_shape_ok(s.clone()));
+        let s =
+            diagnostics_build_history_json(vec![row("w1")], vec![], None, None, None, None, None)
+                .expect("builds");
+        assert!(s.contains("\"history\""));
+        assert!(s.contains("\"endpoints\""));
         assert!(s.contains("\"walletID\""));
         assert!(s.contains("\"identifier\""));
         assert!(s.contains("\"transactionCount\""));
@@ -329,5 +317,4 @@ mod one_builder_tests {
             );
         }
     }
-
 }

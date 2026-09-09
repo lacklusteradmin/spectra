@@ -140,7 +140,11 @@ impl AptosClient {
     ) -> Result<Vec<super::HeldToken>, String> {
         let resources: Value = self.get(&format!("/accounts/{address}/resources")).await?;
         let mut held: Vec<(String, u128)> = Vec::new();
-        for res in resources.as_array().map(|v| v.as_slice()).unwrap_or_default() {
+        for res in resources
+            .as_array()
+            .map(|v| v.as_slice())
+            .unwrap_or_default()
+        {
             let Some(ty) = res.get("type").and_then(|v| v.as_str()) else {
                 continue;
             };
@@ -165,7 +169,8 @@ impl AptosClient {
         }
 
         let metadata = futures::future::join_all(
-            held.iter().map(|(coin_type, _)| self.fetch_coin_decimals(coin_type)),
+            held.iter()
+                .map(|(coin_type, _)| self.fetch_coin_decimals(coin_type)),
         )
         .await;
         Ok(held

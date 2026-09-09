@@ -13,7 +13,6 @@ use pbkdf2::pbkdf2_hmac;
 use sha2::{Digest, Sha256, Sha512};
 use zeroize::Zeroizing;
 
-
 // SHA-256 hash of input bytes, returning a fixed 32-byte array.
 fn sha256_bytes(input: &[u8]) -> [u8; 32] {
     let mut hasher = Sha256::new();
@@ -340,9 +339,9 @@ pub(crate) fn derive_ton_standard(
 
 // ── UniFFI exports ────────────────────────────────────────────────────────
 
+use crate::derivation::primitives::hmac_sha512;
 use crate::derivation::types::DerivationResult;
 use crate::SpectraBridgeError;
-use crate::derivation::primitives::{hmac_sha512};
 
 // Shared derivation logic for all TON networks (mainnet and testnet addresses are identical).
 fn ton_internal(

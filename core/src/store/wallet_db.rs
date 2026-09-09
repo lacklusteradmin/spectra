@@ -853,6 +853,11 @@ const META_SETTINGS: &str = "settings";
 /// list the user edits.
 const META_TOKEN_PREFERENCES: &str = "token_preferences";
 const META_PRICE_ALERTS: &str = "price_alerts";
+/// USD → display-currency cross rates. Its own row for the same reason as the
+/// two above: it is written by a refresh rather than by a settings edit, so
+/// folding it into `settings` would make every rate refresh rewrite the bag
+/// every front end agrees on.
+const META_FIAT_RATES: &str = "fiat_rates_from_usd";
 
 /// Insert or replace one wallet, keeping its existing position when it is
 /// already stored and appending it to the end when it is new.
@@ -1022,6 +1027,7 @@ impl AppStateChanges {
         json_field!(settings, META_SETTINGS);
         json_field!(token_preferences, META_TOKEN_PREFERENCES);
         json_field!(price_alerts, META_PRICE_ALERTS);
+        json_field!(fiat_rates_from_usd, META_FIAT_RATES);
         if before.map(|state| &state.selected_wallet_id) != Some(&after.selected_wallet_id) {
             changes
                 .meta
@@ -1119,6 +1125,20 @@ pub fn address_book_load_all(db_path: &str) -> Result<Vec<AddressBookEntry>, Str
 ///
 /// An untouched database loads as `CoreAppState::default()`, so first run needs
 /// no special-casing at the call site.
+/// Decode a rebuildable metadata row, or say so and start it over.
+///
+/// Separate from the `?` the wallet rows use: what is lost here is a cache,
+/// and what a hard failure would lose with it is not.
+fn drop_unreadable<T: Default + serde::de::DeserializeOwned>(value: &str, key: &str) -> T {
+    match serde_json::from_str(value) {
+        Ok(parsed) => parsed,
+        Err(error) => {
+            tracing::warn!(%key, %error, "unreadable state row; rebuilding it");
+            T::default()
+        }
+    }
+}
+
 pub fn app_state_load(db_path: &str) -> Result<CoreAppState, String> {
     let wallets = wallet_load_all(db_path)?;
     let address_book = address_book_load_all(db_path)?;
@@ -1151,15 +1171,23 @@ pub fn app_state_load(db_path: &str) -> Result<CoreAppState, String> {
                         .map_err(|e| format!("app_state_load settings: {e}"))?;
                 }
                 // A row this build cannot read is dropped, not fatal. These
-                // two are rebuilt from the catalog and re-evaluated on the next
-                // refresh, so losing them costs a rebuild — where failing the
+                // three are rebuilt — token preferences and alerts from the
+                // catalog on the next evaluation, fiat rates on the next
+                // refresh — so losing one costs a rebuild, where failing the
                 // whole load loses the wallet list, which cannot be rebuilt
-                // from anything.
+                // from anything. `settings` and the wallet rows above stay
+                // fatal for exactly that reason.
+                //
+                // The row itself is left on disk untouched, so a build that
+                // can read it still will.
                 META_TOKEN_PREFERENCES => {
-                    state.token_preferences = serde_json::from_str(&value).unwrap_or_default();
+                    state.token_preferences = drop_unreadable(&value, "token_preferences");
                 }
                 META_PRICE_ALERTS => {
-                    state.price_alerts = serde_json::from_str(&value).unwrap_or_default();
+                    state.price_alerts = drop_unreadable(&value, "price_alerts");
+                }
+                META_FIAT_RATES => {
+                    state.fiat_rates_from_usd = drop_unreadable(&value, "fiat_rates_from_usd");
                 }
                 // Forward compatibility: a newer build's extra meta keys are
                 // ignored rather than treated as corruption.
@@ -1272,6 +1300,76 @@ mod tests {
             history_keypool_indices(&db, "w", "Bitcoin").unwrap(),
             (None, None)
         );
+    }
+
+    /// A rebuildable row this build cannot read costs that row, not the
+    /// wallet list. Failing the load over a price alert would lose the one
+    /// thing in the file that cannot be rebuilt from anything.
+    #[test]
+    fn unreadable_rebuildable_metadata_costs_only_that_row() {
+        for key in [META_TOKEN_PREFERENCES, META_PRICE_ALERTS, META_FIAT_RATES] {
+            let db = tmp_db();
+            let saved = CoreAppState {
+                wallets: vec![wallet("w1", "Bitcoin")],
+                selected_wallet_id: Some("w1".to_string()),
+                ..CoreAppState::default()
+            };
+            app_state_save(&db, &saved).unwrap();
+            for raw in ["{broken", "{}", "null"] {
+                with_conn(&db, |conn| {
+                    conn.execute(
+                        "INSERT INTO app_state_meta (key, value) VALUES (?2, ?1)
+                         ON CONFLICT(key) DO UPDATE SET value = ?1",
+                        params![raw, key],
+                    )
+                    .unwrap();
+                    Ok(())
+                })
+                .unwrap();
+
+                let loaded = app_state_load(&db).expect("a cache row cannot fail the load");
+                assert_eq!(
+                    loaded.wallets, saved.wallets,
+                    "{key} took the wallets with it"
+                );
+                assert_eq!(loaded.selected_wallet_id, saved.selected_wallet_id);
+                match key {
+                    META_TOKEN_PREFERENCES => assert!(loaded.token_preferences.is_empty()),
+                    META_PRICE_ALERTS => assert!(loaded.price_alerts.is_empty()),
+                    _ => assert!(loaded.fiat_rates_from_usd.is_empty()),
+                }
+
+                // Left on disk, so a build that can read it still will.
+                let stored: String = with_conn(&db, |conn| {
+                    conn.query_row(
+                        "SELECT value FROM app_state_meta WHERE key = ?1",
+                        params![key],
+                        |row| row.get(0),
+                    )
+                    .map_err(|e| e.to_string())
+                })
+                .unwrap();
+                assert_eq!(stored, raw);
+            }
+        }
+    }
+
+    /// Settings and the wallet rows stay fatal: they are the state, not a
+    /// cache of it.
+    #[test]
+    fn unreadable_settings_still_fail_the_load() {
+        let db = tmp_db();
+        app_state_save(&db, &CoreAppState::default()).unwrap();
+        with_conn(&db, |conn| {
+            conn.execute(
+                "UPDATE app_state_meta SET value = ?1 WHERE key = ?2",
+                params!["{broken", META_SETTINGS],
+            )
+            .unwrap();
+            Ok(())
+        })
+        .unwrap();
+        assert!(app_state_load(&db).unwrap_err().contains("settings"));
     }
 
     #[test]
@@ -1508,6 +1606,7 @@ mod tests {
             },
             token_preferences: Vec::new(),
             price_alerts: Vec::new(),
+            fiat_rates_from_usd: std::collections::HashMap::new(),
             address_book: vec![AddressBookEntry {
                 id: "ab1".to_string(),
                 name: "Cold".to_string(),

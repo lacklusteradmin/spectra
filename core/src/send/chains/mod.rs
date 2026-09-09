@@ -1,6 +1,7 @@
 //! Per-chain implementations. Each file in this folder owns one chain's code
 //! for this axis (derivation / fetch / send).
 
+mod accounting;
 pub mod aptos;
 pub mod bitcoin;
 pub mod bitcoin_cash;
@@ -25,5 +26,6 @@ pub mod substrate;
 pub mod sui;
 pub mod ton;
 pub mod tron;
+mod wire;
 pub mod xrp;
 pub mod zcash;

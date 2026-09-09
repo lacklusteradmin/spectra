@@ -171,8 +171,8 @@ mod rpc_tests {
     async fn concurrent_balance_reads_share_metadata_but_sends_and_new_sources_read_fresh() {
         let server = MockServer::start().await;
         for (selector, result, expected) in [
-            ("balanceOf(address)", "0f4240".to_string(), 8),
-            ("decimals()", "06".to_string(), 4),
+            ("balanceOf(address)", format!("{:064x}", 1_000_000), 8),
+            ("decimals()", format!("{:064x}", 6), 4),
             ("symbol()", format!("{:0<64}", hex::encode("TOKEN")), 4),
         ] {
             Mock::given(body_partial_json(json!({"function_selector":selector})))

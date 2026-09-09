@@ -220,7 +220,9 @@ impl TonClient {
             .collect();
 
         let metadata = futures::future::join_all(
-            wallets.iter().map(|w| self.fetch_jetton_decimals(&w.master_address)),
+            wallets
+                .iter()
+                .map(|w| self.fetch_jetton_decimals(&w.master_address)),
         )
         .await;
 

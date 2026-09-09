@@ -397,7 +397,7 @@ impl TronClient {
             .ok_or("triggerconstantcontract balanceOf: missing result")?;
 
         // The result is a 32-byte big-endian integer hex string.
-        parse_hex_u256_low_u128(hex_str)
+        parse_abi_u128(hex_str)
     }
 
     /// Every TRC-20 the account holds, as TronGrid reports it.
@@ -418,7 +418,9 @@ impl TronClient {
             .map(|v| v.as_slice())
             .unwrap_or_default()
         {
-            let Some(map) = entry.as_object() else { continue };
+            let Some(map) = entry.as_object() else {
+                continue;
+            };
             for (contract, balance) in map {
                 let Some(raw) = balance.as_str().and_then(|s| s.parse::<u128>().ok()) else {
                     continue;
@@ -474,7 +476,7 @@ impl TronClient {
             .and_then(|arr| arr.first())
             .and_then(|v| v.as_str())
             .ok_or("triggerconstantcontract decimals: missing result")?;
-        let decimals = parse_hex_u256_low_u128(decimals_hex)? as u8;
+        let decimals = super::checked_token_decimals(parse_abi_u128(decimals_hex)?)?;
 
         // symbol()
         let resp = self
@@ -495,8 +497,8 @@ impl TronClient {
             .and_then(|arr| arr.first())
             .and_then(|v| v.as_str())
             .ok_or("triggerconstantcontract symbol: missing result")?;
-        let symbol =
-            crate::fetch::chains::evm::decode_abi_string_or_bytes32(symbol_hex).unwrap_or_default();
+        let symbol = crate::fetch::chains::evm::decode_abi_string_or_bytes32(symbol_hex)
+            .ok_or("TRC20 symbol: malformed ABI string")?;
 
         Ok(Trc20Metadata { symbol, decimals })
     }
@@ -504,19 +506,16 @@ impl TronClient {
 
 // ── TRC-20 helpers
 
-/// Parse a 32-byte big-endian hex integer return value (no `0x` prefix) and
-/// return its low 128 bits. TRC-20 balances and u256 decimals fit comfortably.
-pub(crate) fn parse_hex_u256_low_u128(hex_str: &str) -> Result<u128, String> {
-    let stripped = hex_str.strip_prefix("0x").unwrap_or(hex_str);
-    // Take last 32 hex chars (16 bytes = 128 bits). TRC-20 u256s that exceed
-    // u128 are vanishingly rare for user balances, but we deliberately truncate
-    // high bits rather than error out so the caller still gets *something*.
-    let low = if stripped.len() > 32 {
-        &stripped[stripped.len() - 32..]
-    } else {
-        stripped
-    };
-    u128::from_str_radix(low, 16).map_err(|e| format!("parse u128 hex: {e}"))
+/// A uint256 ABI word must be complete and fit the core's u128 amount type.
+pub(crate) fn parse_abi_u128(hex_str: &str) -> Result<u128, String> {
+    let word = hex_str.strip_prefix("0x").unwrap_or(hex_str);
+    if word.len() != 64 || !word.bytes().all(|b| b.is_ascii_hexdigit()) {
+        return Err("TRC20 integer: expected one 32-byte hex ABI word".into());
+    }
+    if !word[..32].bytes().all(|b| b == b'0') {
+        return Err("TRC20 integer exceeds u128 range".into());
+    }
+    u128::from_str_radix(&word[32..], 16).map_err(|e| format!("TRC20 integer: {e}"))
 }
 
 fn format_trx(sun: u64) -> String {
@@ -534,4 +533,52 @@ fn format_trx_f64(trx: f64) -> String {
     // Format with up to 6 decimal places, trimming trailing zeros.
     let sun = (trx * 1_000_000.0).round() as u64;
     format_trx(sun)
+}
+
+#[cfg(test)]
+mod integer_tests {
+    use super::*;
+    #[test]
+    fn abi_integers_never_truncate_or_accept_malformed_words() {
+        assert_eq!(
+            parse_abi_u128(&format!("{:064x}", u128::MAX)).unwrap(),
+            u128::MAX
+        );
+        assert_eq!(parse_abi_u128(&"0".repeat(64)).unwrap(), 0);
+        for bad in [
+            "01".into(),
+            "0".repeat(63),
+            "0".repeat(65),
+            format!("1{}", "0".repeat(63)),
+            format!("{}z", "0".repeat(63)),
+            format!("{}é", "0".repeat(62)),
+        ] {
+            assert!(parse_abi_u128(&bad).is_err(), "{bad}");
+        }
+    }
+
+    #[tokio::test]
+    async fn invalid_decimals_are_refused_before_reading_the_symbol() {
+        use wiremock::{matchers::body_partial_json, Mock, MockServer, ResponseTemplate};
+        for result in [
+            format!("{:064x}", 39),
+            format!("{:064x}", 256),
+            format!("1{}", "0".repeat(63)),
+            "06".into(),
+        ] {
+            let server = MockServer::start().await;
+            Mock::given(body_partial_json(json!({"function_selector":"decimals()"})))
+                .respond_with(
+                    ResponseTemplate::new(200).set_body_json(json!({"constant_result":[result]})),
+                )
+                .expect(1)
+                .mount(&server)
+                .await;
+            assert!(TronClient::new(std::sync::Arc::new(vec![server.uri()]))
+                .fetch_trc20_metadata("contract")
+                .await
+                .is_err());
+            assert_eq!(server.received_requests().await.unwrap().len(), 1);
+        }
+    }
 }

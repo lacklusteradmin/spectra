@@ -56,17 +56,31 @@ pub fn derive_for_chain_name(
         Chain::BitcoinTestnet => btc::derive_bitcoin_testnet(s, p, pass, script, wa, wp, wk)?,
         Chain::BitcoinTestnet4 => btc::derive_bitcoin_testnet4(s, p, pass, script, wa, wp, wk)?,
         Chain::BitcoinSignet => btc::derive_bitcoin_signet(s, p, pass, script, wa, wp, wk)?,
-        Chain::BitcoinCash => { bch::derive_bitcoin_cash(s, p, pass, BitcoinScriptType::P2pkh, wa, wp, wk)? },
-        Chain::BitcoinCashTestnet => { bch::derive_bitcoin_cash_testnet(s, p, pass, BitcoinScriptType::P2pkh, wa, wp, wk)? },
-        Chain::BitcoinSV => bsv::derive_bitcoin_sv(s, p, pass, BitcoinScriptType::P2pkh, wa, wp, wk)?,
-        Chain::BitcoinSVTestnet => { bsv::derive_bitcoin_sv_testnet(s, p, pass, BitcoinScriptType::P2pkh, wa, wp, wk)? },
+        Chain::BitcoinCash => {
+            bch::derive_bitcoin_cash(s, p, pass, BitcoinScriptType::P2pkh, wa, wp, wk)?
+        }
+        Chain::BitcoinCashTestnet => {
+            bch::derive_bitcoin_cash_testnet(s, p, pass, BitcoinScriptType::P2pkh, wa, wp, wk)?
+        }
+        Chain::BitcoinSV => {
+            bsv::derive_bitcoin_sv(s, p, pass, BitcoinScriptType::P2pkh, wa, wp, wk)?
+        }
+        Chain::BitcoinSVTestnet => {
+            bsv::derive_bitcoin_sv_testnet(s, p, pass, BitcoinScriptType::P2pkh, wa, wp, wk)?
+        }
         Chain::Litecoin => ltc::derive_litecoin(s, p, pass, script, wa, wp, wk)?,
         Chain::LitecoinTestnet => ltc::derive_litecoin_testnet(s, p, pass, script, wa, wp, wk)?,
         Chain::Dogecoin => doge::derive_dogecoin(s, p, pass, BitcoinScriptType::P2pkh, wa, wp, wk)?,
-        Chain::DogecoinTestnet => { doge::derive_dogecoin_testnet(s, p, pass, BitcoinScriptType::P2pkh, wa, wp, wk)? },
+        Chain::DogecoinTestnet => {
+            doge::derive_dogecoin_testnet(s, p, pass, BitcoinScriptType::P2pkh, wa, wp, wk)?
+        }
         Chain::Dash => dash::derive_dash(s, p, pass, BitcoinScriptType::P2pkh, wa, wp, wk)?,
-        Chain::DashTestnet => { dash::derive_dash_testnet(s, p, pass, BitcoinScriptType::P2pkh, wa, wp, wk)? },
-        Chain::BitcoinGold => { btg::derive_bitcoin_gold(s, p, pass, BitcoinScriptType::P2pkh, wa, wp, wk)? },
+        Chain::DashTestnet => {
+            dash::derive_dash_testnet(s, p, pass, BitcoinScriptType::P2pkh, wa, wp, wk)?
+        }
+        Chain::BitcoinGold => {
+            btg::derive_bitcoin_gold(s, p, pass, BitcoinScriptType::P2pkh, wa, wp, wk)?
+        }
         Chain::Zcash => zcash::derive_zcash(s, p, pass, wa, wp, wk)?,
         Chain::ZcashTestnet => zcash::derive_zcash_testnet(s, p, pass, wa, wp, wk)?,
         Chain::Decred => decred::derive_decred(s, p, pass, wa, wp, wk)?,
@@ -175,16 +189,20 @@ pub fn core_derive_from_private_key(
         return Ok(None);
     };
     let result = match chain.mainnet_counterpart() {
-        c if c.is_evm() => evm::derive_evm_from_private_key(private_key_hex, want_address, want_public_key)?,
+        c if c.is_evm() => {
+            evm::derive_evm_from_private_key(private_key_hex, want_address, want_public_key)?
+        }
         Chain::Bitcoin => btc::derive_bitcoin_from_private_key(
             private_key_hex,
             BitcoinScriptType::P2wpkh,
             want_address,
             want_public_key,
         )?,
-        Chain::BitcoinCash => {
-            bch::derive_bitcoin_cash_from_private_key(private_key_hex, want_address, want_public_key)?
-        }
+        Chain::BitcoinCash => bch::derive_bitcoin_cash_from_private_key(
+            private_key_hex,
+            want_address,
+            want_public_key,
+        )?,
         Chain::Litecoin => {
             ltc::derive_litecoin_from_private_key(private_key_hex, want_address, want_public_key)?
         }
@@ -254,8 +272,8 @@ mod dispatch_export_tests {
             "Polkadot",
             "Monero",
         ] {
-            let chain =
-                crate::registry::Chain::from_display_name(name).expect("a chain the registry knows");
+            let chain = crate::registry::Chain::from_display_name(name)
+                .expect("a chain the registry knows");
             assert!(
                 !chain.derives_from_private_key(),
                 "{name} now derives from a private key — that is a widening, so say so \

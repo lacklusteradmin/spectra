@@ -84,7 +84,8 @@ fn show(ctx: &Ctx, out: Out, args: SelectArgs) -> CliResult<()> {
     let service = ctx.service()?;
     let state = ctx
         .rt
-        .block_on(service.keypool_state(wallet.id.clone(), wallet.chain_name.clone()));
+        .block_on(service.keypool_state(wallet.id.clone(), wallet.chain_name.clone()))
+        .map_err(crate::error::CliError::from)?;
 
     out.text(|| {
         println!();

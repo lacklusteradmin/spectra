@@ -9,9 +9,9 @@
 //! Mainnet P2PKH addresses use the 2-byte version prefix `0x073F` (the
 //! `Ds…` family). Testnet (`Ts…`) and simnet are out of scope.
 
+use crate::derivation::primitives::derive_bip39_seed;
 use ripemd::{Digest as RipemdDigest, Ripemd160};
 use secp256k1::{PublicKey, Secp256k1, SecretKey};
-use crate::derivation::primitives::derive_bip39_seed;
 
 pub(crate) const DCR_P2PKH_VERSION: [u8; 2] = [0x07, 0x3F];
 pub(crate) const DCR_P2SH_VERSION: [u8; 2] = [0x07, 0x1A];
@@ -295,7 +295,6 @@ pub fn validate_decred_address(address: &str, testnet: bool) -> bool {
 
 // ── BIP-39 ───────────────────────────────────────────────────────────────
 
-
 // ── BIP-32 ───────────────────────────────────────────────────────────────
 
 const HARDENED_OFFSET: u32 = 0x80000000;
@@ -394,9 +393,9 @@ pub(crate) fn derive_from_seed_phrase_testnet(
 
 // ── UniFFI exports ────────────────────────────────────────────────────────
 
+use crate::derivation::primitives::ExtendedPrivateKey;
 use crate::derivation::types::{parse_path_metadata, DerivationResult};
 use crate::SpectraBridgeError;
-use crate::derivation::primitives::ExtendedPrivateKey;
 
 /// Derive Decred mainnet wallet (Ds… P2PKH address) from a seed phrase.
 pub fn derive_decred(
@@ -517,7 +516,8 @@ mod tests {
         assert!(!validate_decred_address("not-a-decred-address", false));
         // Bitcoin P2PKH starts with "1" — wrong version byte for DCR.
         assert!(!validate_decred_address(
-            "1A1zP1eP5QGefi2DMPTfTL5SLmv7DivfNa"
-        , false));
+            "1A1zP1eP5QGefi2DMPTfTL5SLmv7DivfNa",
+            false
+        ));
     }
 }

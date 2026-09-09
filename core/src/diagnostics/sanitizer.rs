@@ -151,7 +151,6 @@ pub fn sanitize_diagnostics_string(input: &str) -> String {
     redact_seed_word_sequences(&stage2)
 }
 
-
 #[cfg(test)]
 mod tests {
     use super::*;

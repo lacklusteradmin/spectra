@@ -21,424 +21,190 @@ pub struct ChainHistoryEntry {
     pub block_height: Option<i64>,
     pub timestamp: f64, // Unix seconds
 }
+/// Where the transaction id lives. ICP has no hash — it identifies a transfer
+/// by ledger block index, which arrives as a number.
+enum HashField {
+    Text(&'static str),
+    Number(&'static str),
+}
 
-/// Convert a raw history JSON string (as returned by `fetch_history`) into
-/// normalized `ChainHistoryEntry` records that Swift can consume without
-/// any chain-specific parsing logic.
-pub fn normalize_chain_history(chain_id: &str, raw_json: &str) -> Vec<ChainHistoryEntry> {
-    let Ok(value) = serde_json::from_str::<Value>(raw_json) else {
-        return vec![];
-    };
-    let Value::Array(arr) = &value else {
-        return vec![];
-    };
-    let Some(chain) = Chain::from_str_id(chain_id) else {
-        return vec![];
-    };
-    let (asset_name, symbol, chain_name) = history_chain_meta(chain);
-    let factor = 10f64.powi(chain.native_decimals() as i32);
+/// What an entry means when it carries no `is_incoming` flag. The UTXO clients
+/// signal direction by the sign of the net amount instead.
+enum DirectionFallback {
+    Outgoing,
+    AmountSign,
+}
 
-    match chain {
-        // Bitcoin: {txid, confirmed, block_height, block_time, net_sats}
-        Chain::Bitcoin => arr
-            .iter()
-            .filter_map(|e| {
-                let txid = e["txid"].as_str()?;
-                let net_sats = e["net_sats"].as_i64()?;
-                let confirmed = e["confirmed"].as_bool().unwrap_or(false);
-                let block_height = e["block_height"].as_i64();
-                let timestamp = e["block_time"].as_f64().unwrap_or(0.0);
-                Some(ChainHistoryEntry {
-                    kind: if net_sats >= 0 { "receive" } else { "send" }.to_string(),
-                    status: if confirmed { "confirmed" } else { "pending" }.to_string(),
-                    asset_name: asset_name.to_string(),
-                    symbol: symbol.to_string(),
-                    chain_name: chain_name.to_string(),
-                    amount: net_sats.unsigned_abs() as f64 / factor,
-                    counterparty: String::new(),
-                    tx_hash: txid.to_string(),
-                    block_height,
-                    timestamp,
-                })
-            })
-            .collect(),
+enum StatusRule {
+    /// The chain only reports finalized transfers.
+    AlwaysConfirmed,
+    /// Esplora's `confirmed` boolean.
+    ConfirmedFlag,
+    /// Blockbook reports height 0 (or none) until the transaction is mined.
+    ConfirmedWhenMined,
+}
 
-        // LTC / BCH / BSV: {txid, amount_sat, block_height, timestamp, is_incoming}
-        Chain::Litecoin | Chain::BitcoinCash | Chain::BitcoinSV => arr
-            .iter()
-            .filter_map(|e| {
-                let txid = e["txid"].as_str()?;
-                let amount_sat = e["amount_sat"].as_i64()?;
-                let block_height = e["block_height"].as_i64();
-                let timestamp = e["timestamp"].as_f64().unwrap_or(0.0);
-                let is_incoming = e["is_incoming"].as_bool().unwrap_or(amount_sat >= 0);
-                Some(ChainHistoryEntry {
-                    kind: if is_incoming { "receive" } else { "send" }.to_string(),
-                    status: if block_height.unwrap_or(0) > 0 {
-                        "confirmed"
-                    } else {
-                        "pending"
-                    }
-                    .to_string(),
-                    asset_name: asset_name.to_string(),
-                    symbol: symbol.to_string(),
-                    chain_name: chain_name.to_string(),
-                    amount: amount_sat.unsigned_abs() as f64 / factor,
-                    counterparty: String::new(),
-                    tx_hash: txid.to_string(),
-                    block_height,
-                    timestamp,
-                })
-            })
-            .collect(),
+/// Whether a row may name an asset other than the chain's native one.
+enum SymbolOverride {
+    /// Native asset only.
+    None,
+    /// A row's `symbol` replaces the native one, and doubles as the asset name
+    /// — as Solana's SPL transfers need.
+    NativeOrSymbol,
+    /// As above, but the display name comes from Tron's token table.
+    TronAssetTable,
+}
 
-        // Dogecoin: {txid, amount_koin, block_height, timestamp, is_incoming}
-        Chain::Dogecoin => arr
-            .iter()
-            .filter_map(|e| {
-                let txid = e["txid"].as_str()?;
-                let amount_koin = e["amount_koin"].as_i64().unwrap_or(0);
-                let block_height = e["block_height"].as_i64();
-                let timestamp = e["timestamp"].as_f64().unwrap_or(0.0);
-                let is_incoming = e["is_incoming"].as_bool().unwrap_or(amount_koin >= 0);
-                Some(ChainHistoryEntry {
-                    kind: if is_incoming { "receive" } else { "send" }.to_string(),
-                    status: if block_height.unwrap_or(0) > 0 {
-                        "confirmed"
-                    } else {
-                        "pending"
-                    }
-                    .to_string(),
-                    asset_name: asset_name.to_string(),
-                    symbol: symbol.to_string(),
-                    chain_name: chain_name.to_string(),
-                    amount: amount_koin.unsigned_abs() as f64 / factor,
-                    counterparty: String::new(),
-                    tx_hash: txid.to_string(),
-                    block_height,
-                    timestamp,
-                })
-            })
-            .collect(),
+/// Where one chain's history JSON keeps the fields a normalized entry needs,
+/// and what units they arrive in.
+///
+/// This was fifteen match arms of twenty near-identical lines: they differed
+/// in field names, in one divisor, and in nothing else, while each re-derived
+/// the same `if is_incoming { "receive" } else { "send" }`. A chain with no arm
+/// of its own returned an empty history however well its fetch had gone, which
+/// is what every UTXO testnet did.
+struct HistoryShape {
+    hash: HashField,
+    /// Field holding the amount.
+    amount: &'static str,
+    /// Whether `amount` is in the chain's smallest unit — satoshis, wei,
+    /// planck — and so has to be divided by the native factor. Solana and Tron
+    /// hand over a display-unit string that is already divided.
+    amount_in_base_units: bool,
+    /// Timestamp field, and what divides it into Unix seconds.
+    time: &'static str,
+    time_divisor: f64,
+    direction_fallback: DirectionFallback,
+    status: StatusRule,
+    block_height: Option<&'static str>,
+    /// Fields naming the other party, as `(when incoming, when outgoing)`.
+    counterparty: Option<(&'static str, &'static str)>,
+    symbol_override: SymbolOverride,
+}
 
-        // XRP: {txid, timestamp, from, to, amount_drops, is_incoming}
-        Chain::Xrp => arr
-            .iter()
-            .filter_map(|e| {
-                let txid = e["txid"].as_str()?;
-                let drops = e["amount_drops"].as_u64().unwrap_or(0);
-                let is_incoming = e["is_incoming"].as_bool().unwrap_or(false);
-                let timestamp = e["timestamp"].as_f64().unwrap_or(0.0);
-                let from = e["from"].as_str().unwrap_or("");
-                let to = e["to"].as_str().unwrap_or("");
-                Some(ChainHistoryEntry {
-                    kind: if is_incoming { "receive" } else { "send" }.to_string(),
-                    status: "confirmed".to_string(),
-                    asset_name: asset_name.to_string(),
-                    symbol: symbol.to_string(),
-                    chain_name: chain_name.to_string(),
-                    amount: drops as f64 / factor,
-                    counterparty: (if is_incoming { from } else { to }).to_string(),
-                    tx_hash: txid.to_string(),
-                    block_height: None,
-                    timestamp,
-                })
-            })
-            .collect(),
+impl HistoryShape {
+    /// The shape shared by every chain that reports finalized native transfers
+    /// with second-resolution timestamps — the majority, which then override
+    /// only what they actually do differently.
+    const fn confirmed_native(amount: &'static str) -> Self {
+        Self {
+            hash: HashField::Text("txid"),
+            amount,
+            amount_in_base_units: true,
+            time: "timestamp",
+            time_divisor: 1.0,
+            direction_fallback: DirectionFallback::Outgoing,
+            status: StatusRule::AlwaysConfirmed,
+            block_height: None,
+            counterparty: None,
+            symbol_override: SymbolOverride::None,
+        }
+    }
 
-        // Stellar: {txid, timestamp (ISO or unix), from/to, amount_stroops, is_incoming}
-        Chain::Stellar => arr
-            .iter()
-            .filter_map(|e| {
-                let txid = e["txid"].as_str()?;
-                let stroops = e["amount_stroops"].as_i64().unwrap_or(0);
-                let is_incoming = e["is_incoming"].as_bool().unwrap_or(false);
-                let from = e["from"].as_str().unwrap_or("");
-                let to = e["to"].as_str().unwrap_or("");
-                let timestamp: f64 = if let Some(n) = e["timestamp"].as_f64() {
-                    n
-                } else if let Some(s) = e["timestamp"].as_str() {
-                    parse_iso8601_timestamp(s)
-                } else {
-                    0.0
-                };
-                Some(ChainHistoryEntry {
-                    kind: if is_incoming { "receive" } else { "send" }.to_string(),
-                    status: "confirmed".to_string(),
-                    asset_name: asset_name.to_string(),
-                    symbol: symbol.to_string(),
-                    chain_name: chain_name.to_string(),
-                    amount: stroops.unsigned_abs() as f64 / factor,
-                    counterparty: (if is_incoming { from } else { to }).to_string(),
-                    tx_hash: txid.to_string(),
-                    block_height: None,
-                    timestamp,
-                })
-            })
-            .collect(),
+    const fn with_counterparty(mut self, incoming: &'static str, outgoing: &'static str) -> Self {
+        self.counterparty = Some((incoming, outgoing));
+        self
+    }
 
-        // Cardano: {txid, block_time, amount_lovelace, is_incoming}
-        Chain::Cardano => arr
-            .iter()
-            .filter_map(|e| {
-                let txid = e["txid"].as_str()?;
-                let lovelace = e["amount_lovelace"].as_i64().unwrap_or(0);
-                let is_incoming = e["is_incoming"].as_bool().unwrap_or(false);
-                let timestamp = e["block_time"].as_f64().unwrap_or(0.0);
-                Some(ChainHistoryEntry {
-                    kind: if is_incoming { "receive" } else { "send" }.to_string(),
-                    status: "confirmed".to_string(),
-                    asset_name: asset_name.to_string(),
-                    symbol: symbol.to_string(),
-                    chain_name: chain_name.to_string(),
-                    amount: lovelace.unsigned_abs() as f64 / factor,
-                    counterparty: String::new(),
-                    tx_hash: txid.to_string(),
-                    block_height: None,
-                    timestamp,
-                })
-            })
-            .collect(),
+    const fn with_time(mut self, field: &'static str, divisor: f64) -> Self {
+        self.time = field;
+        self.time_divisor = divisor;
+        self
+    }
+}
 
-        // Polkadot: {txid, amount_planck, timestamp, from, to, is_incoming}
-        Chain::Polkadot => arr
-            .iter()
-            .filter_map(|e| {
-                let txid = e["txid"].as_str()?;
-                let planck = e["amount_planck"].as_f64().unwrap_or(0.0);
-                let is_incoming = e["is_incoming"].as_bool().unwrap_or(false);
-                let timestamp = e["timestamp"].as_f64().unwrap_or(0.0);
-                let from = e["from"].as_str().unwrap_or("");
-                let to = e["to"].as_str().unwrap_or("");
-                Some(ChainHistoryEntry {
-                    kind: if is_incoming { "receive" } else { "send" }.to_string(),
-                    status: "confirmed".to_string(),
-                    asset_name: asset_name.to_string(),
-                    symbol: symbol.to_string(),
-                    chain_name: chain_name.to_string(),
-                    amount: planck / factor,
-                    counterparty: (if is_incoming { from } else { to }).to_string(),
-                    tx_hash: txid.to_string(),
-                    block_height: None,
-                    timestamp,
-                })
-            })
-            .collect(),
+/// A testnet reads its mainnet's shape: the client behind it is the same code
+/// returning the same JSON.
+fn history_shape(chain: Chain) -> Option<HistoryShape> {
+    use DirectionFallback::AmountSign;
+    use StatusRule::{ConfirmedFlag, ConfirmedWhenMined};
 
-        // Solana: SolanaTransfer {signature, timestamp, is_incoming, amount_display, symbol, mint, from, to}
-        // Per-entry `symbol` may override for SPL tokens; asset_name tracks it.
-        Chain::Solana => arr
-            .iter()
-            .filter_map(|e| {
-                let sig = e["signature"].as_str()?;
-                let is_incoming = e["is_incoming"].as_bool().unwrap_or(false);
-                let amount: f64 = e["amount_display"]
-                    .as_str()
-                    .and_then(|s| s.parse().ok())
-                    .unwrap_or(0.0);
-                let entry_symbol = e["symbol"].as_str().unwrap_or(symbol);
-                let from = e["from"].as_str().unwrap_or("");
-                let to = e["to"].as_str().unwrap_or("");
-                let timestamp = e["timestamp"].as_f64().unwrap_or(0.0);
-                let entry_asset = if entry_symbol == symbol {
-                    asset_name
-                } else {
-                    entry_symbol
-                };
-                Some(ChainHistoryEntry {
-                    kind: if is_incoming { "receive" } else { "send" }.to_string(),
-                    status: "confirmed".to_string(),
-                    asset_name: entry_asset.to_string(),
-                    symbol: entry_symbol.to_string(),
-                    chain_name: chain_name.to_string(),
-                    amount,
-                    counterparty: (if is_incoming { from } else { to }).to_string(),
-                    tx_hash: sig.to_string(),
-                    block_height: None,
-                    timestamp,
-                })
-            })
-            .collect(),
+    let shape = match chain.mainnet_counterpart() {
+        // Esplora: {txid, confirmed, block_height, block_time, net_sats}
+        Chain::Bitcoin => HistoryShape {
+            direction_fallback: AmountSign,
+            status: ConfirmedFlag,
+            block_height: Some("block_height"),
+            ..HistoryShape::confirmed_native("net_sats").with_time("block_time", 1.0)
+        },
 
-        // Tron: TronTransfer {txid, timestamp_ms, from, to, amount_display, symbol}
-        // Per-entry `symbol` may be TRC20; `tron_asset_name` maps it to the display name.
-        Chain::Tron => arr
-            .iter()
-            .filter_map(|e| {
-                let txid = e["txid"].as_str()?;
-                let is_incoming = e["is_incoming"].as_bool().unwrap_or(false);
-                let amount: f64 = e["amount_display"]
-                    .as_str()
-                    .and_then(|s| s.parse().ok())
-                    .unwrap_or(0.0);
-                let entry_symbol = e["symbol"].as_str().unwrap_or(symbol);
-                let from = e["from"].as_str().unwrap_or("");
-                let to = e["to"].as_str().unwrap_or("");
-                let timestamp_ms = e["timestamp_ms"].as_f64().unwrap_or(0.0);
-                let entry_asset = tron_asset_name(entry_symbol);
-                Some(ChainHistoryEntry {
-                    kind: if is_incoming { "receive" } else { "send" }.to_string(),
-                    status: "confirmed".to_string(),
-                    asset_name: entry_asset.to_string(),
-                    symbol: entry_symbol.to_string(),
-                    chain_name: chain_name.to_string(),
-                    amount,
-                    counterparty: (if is_incoming { from } else { to }).to_string(),
-                    tx_hash: txid.to_string(),
-                    block_height: None,
-                    timestamp: timestamp_ms / 1000.0,
-                })
-            })
-            .collect(),
+        // Blockbook: {txid, amount_sat, block_height, timestamp, is_incoming}
+        Chain::Litecoin | Chain::BitcoinCash | Chain::BitcoinSV => HistoryShape {
+            direction_fallback: AmountSign,
+            status: ConfirmedWhenMined,
+            block_height: Some("block_height"),
+            ..HistoryShape::confirmed_native("amount_sat")
+        },
 
-        // Sui: {digest, amount_mist, timestamp_ms, is_incoming}
-        Chain::Sui => arr
-            .iter()
-            .filter_map(|e| {
-                let digest = e["digest"].as_str()?;
-                let mist = e["amount_mist"].as_f64().unwrap_or(0.0);
-                let is_incoming = e["is_incoming"].as_bool().unwrap_or(false);
-                let timestamp_ms = e["timestamp_ms"].as_f64().unwrap_or(0.0);
-                Some(ChainHistoryEntry {
-                    kind: if is_incoming { "receive" } else { "send" }.to_string(),
-                    status: "confirmed".to_string(),
-                    asset_name: asset_name.to_string(),
-                    symbol: symbol.to_string(),
-                    chain_name: chain_name.to_string(),
-                    amount: mist / factor,
-                    counterparty: String::new(),
-                    tx_hash: digest.to_string(),
-                    block_height: None,
-                    timestamp: timestamp_ms / 1000.0,
-                })
-            })
-            .collect(),
+        // Dogecoin reports the same shape under a name of its own.
+        Chain::Dogecoin => HistoryShape {
+            direction_fallback: AmountSign,
+            status: ConfirmedWhenMined,
+            block_height: Some("block_height"),
+            ..HistoryShape::confirmed_native("amount_koin")
+        },
 
-        // Aptos: {txid, amount_octas, timestamp_us, from, to, is_incoming}
-        Chain::Aptos => arr
-            .iter()
-            .filter_map(|e| {
-                let txid = e["txid"].as_str()?;
-                let octas = e["amount_octas"].as_f64().unwrap_or(0.0);
-                let is_incoming = e["is_incoming"].as_bool().unwrap_or(false);
-                let timestamp_us = e["timestamp_us"].as_f64().unwrap_or(0.0);
-                let from = e["from"].as_str().unwrap_or("");
-                let to = e["to"].as_str().unwrap_or("");
-                Some(ChainHistoryEntry {
-                    kind: if is_incoming { "receive" } else { "send" }.to_string(),
-                    status: "confirmed".to_string(),
-                    asset_name: asset_name.to_string(),
-                    symbol: symbol.to_string(),
-                    chain_name: chain_name.to_string(),
-                    amount: octas / factor,
-                    counterparty: (if is_incoming { from } else { to }).to_string(),
-                    tx_hash: txid.to_string(),
-                    block_height: None,
-                    timestamp: timestamp_us / 1e6,
-                })
-            })
-            .collect(),
+        Chain::Xrp => {
+            HistoryShape::confirmed_native("amount_drops").with_counterparty("from", "to")
+        }
 
-        // TON: {txid, amount_nanotons, timestamp, from, to, is_incoming}
-        Chain::Ton => arr
-            .iter()
-            .filter_map(|e| {
-                let txid = e["txid"].as_str()?;
-                let nanotons = e["amount_nanotons"].as_f64().unwrap_or(0.0);
-                let is_incoming = e["is_incoming"].as_bool().unwrap_or(false);
-                let timestamp = e["timestamp"].as_f64().unwrap_or(0.0);
-                let from = e["from"].as_str().unwrap_or("");
-                let to = e["to"].as_str().unwrap_or("");
-                Some(ChainHistoryEntry {
-                    kind: if is_incoming { "receive" } else { "send" }.to_string(),
-                    status: "confirmed".to_string(),
-                    asset_name: asset_name.to_string(),
-                    symbol: symbol.to_string(),
-                    chain_name: chain_name.to_string(),
-                    amount: nanotons / factor,
-                    counterparty: (if is_incoming { from } else { to }).to_string(),
-                    tx_hash: txid.to_string(),
-                    block_height: None,
-                    timestamp,
-                })
-            })
-            .collect(),
+        // Stellar's timestamp may be ISO-8601 rather than a number; every
+        // shape accepts either.
+        Chain::Stellar => {
+            HistoryShape::confirmed_native("amount_stroops").with_counterparty("from", "to")
+        }
 
-        // NEAR: {txid, timestamp_ns, signer_id, receiver_id, amount_yocto, is_incoming}
-        Chain::Near => arr
-            .iter()
-            .filter_map(|e| {
-                let txid = e["txid"].as_str()?;
-                let yocto: f64 = e["amount_yocto"]
-                    .as_str()
-                    .and_then(|s| s.parse().ok())
-                    .unwrap_or(0.0);
-                let is_incoming = e["is_incoming"].as_bool().unwrap_or(false);
-                let timestamp_ns = e["timestamp_ns"].as_f64().unwrap_or(0.0);
-                let signer = e["signer_id"].as_str().unwrap_or("");
-                let receiver = e["receiver_id"].as_str().unwrap_or("");
-                Some(ChainHistoryEntry {
-                    kind: if is_incoming { "receive" } else { "send" }.to_string(),
-                    status: "confirmed".to_string(),
-                    asset_name: asset_name.to_string(),
-                    symbol: symbol.to_string(),
-                    chain_name: chain_name.to_string(),
-                    amount: yocto / factor,
-                    counterparty: (if is_incoming { signer } else { receiver }).to_string(),
-                    tx_hash: txid.to_string(),
-                    block_height: None,
-                    timestamp: timestamp_ns / 1e9,
-                })
-            })
-            .collect(),
+        Chain::Cardano => {
+            HistoryShape::confirmed_native("amount_lovelace").with_time("block_time", 1.0)
+        }
 
-        // ICP: {block_index, amount_e8s, timestamp_ns, from, to, is_incoming}
-        Chain::Icp => arr
-            .iter()
-            .map(|e| {
-                let block_index = e["block_index"].as_i64().unwrap_or(0);
-                let e8s = e["amount_e8s"].as_f64().unwrap_or(0.0);
-                let is_incoming = e["is_incoming"].as_bool().unwrap_or(false);
-                let timestamp_ns = e["timestamp_ns"].as_f64().unwrap_or(0.0);
-                let from = e["from"].as_str().unwrap_or("");
-                let to = e["to"].as_str().unwrap_or("");
-                ChainHistoryEntry {
-                    kind: if is_incoming { "receive" } else { "send" }.to_string(),
-                    status: "confirmed".to_string(),
-                    asset_name: asset_name.to_string(),
-                    symbol: symbol.to_string(),
-                    chain_name: chain_name.to_string(),
-                    amount: e8s / factor,
-                    counterparty: (if is_incoming { from } else { to }).to_string(),
-                    tx_hash: block_index.to_string(),
-                    block_height: None,
-                    timestamp: timestamp_ns / 1e9,
-                }
-            })
-            .collect(),
+        Chain::Polkadot => {
+            HistoryShape::confirmed_native("amount_planck").with_counterparty("from", "to")
+        }
 
-        // Monero: {txid, amount_piconeros, timestamp, is_incoming}
-        Chain::Monero => arr
-            .iter()
-            .filter_map(|e| {
-                let txid = e["txid"].as_str()?;
-                let piconeros = e["amount_piconeros"].as_f64().unwrap_or(0.0);
-                let is_incoming = e["is_incoming"].as_bool().unwrap_or(false);
-                let timestamp = e["timestamp"].as_f64().unwrap_or(0.0);
-                Some(ChainHistoryEntry {
-                    kind: if is_incoming { "receive" } else { "send" }.to_string(),
-                    status: "confirmed".to_string(),
-                    asset_name: asset_name.to_string(),
-                    symbol: symbol.to_string(),
-                    chain_name: chain_name.to_string(),
-                    amount: piconeros / factor,
-                    counterparty: String::new(),
-                    tx_hash: txid.to_string(),
-                    block_height: None,
-                    timestamp,
-                })
-            })
-            .collect(),
+        // SPL transfers ride the same feed as native ones, carrying their own
+        // symbol and an amount already in display units.
+        Chain::Solana => HistoryShape {
+            hash: HashField::Text("signature"),
+            amount_in_base_units: false,
+            symbol_override: SymbolOverride::NativeOrSymbol,
+            ..HistoryShape::confirmed_native("amount_display").with_counterparty("from", "to")
+        },
+
+        // TRC20 transfers, likewise.
+        Chain::Tron => HistoryShape {
+            amount_in_base_units: false,
+            symbol_override: SymbolOverride::TronAssetTable,
+            ..HistoryShape::confirmed_native("amount_display")
+                .with_counterparty("from", "to")
+                .with_time("timestamp_ms", 1e3)
+        },
+
+        Chain::Sui => HistoryShape {
+            hash: HashField::Text("digest"),
+            ..HistoryShape::confirmed_native("amount_mist").with_time("timestamp_ms", 1e3)
+        },
+
+        Chain::Aptos => HistoryShape::confirmed_native("amount_octas")
+            .with_counterparty("from", "to")
+            .with_time("timestamp_us", 1e6),
+
+        Chain::Ton => {
+            HistoryShape::confirmed_native("amount_nanotons").with_counterparty("from", "to")
+        }
+
+        Chain::Near => HistoryShape::confirmed_native("amount_yocto")
+            .with_counterparty("signer_id", "receiver_id")
+            .with_time("timestamp_ns", 1e9),
+
+        Chain::Icp => HistoryShape {
+            hash: HashField::Number("block_index"),
+            ..HistoryShape::confirmed_native("amount_e8s")
+                .with_counterparty("from", "to")
+                .with_time("timestamp_ns", 1e9)
+        },
+
+        Chain::Monero => HistoryShape::confirmed_native("amount_piconeros"),
 
         // Every EVM chain. `EvmHistoryEntry` is one shape for all of them,
         // which is why this is a guard rather than twenty-three names.
@@ -449,30 +215,125 @@ pub fn normalize_chain_history(chain_id: &str, raw_json: &str) -> Vec<ChainHisto
         // itself had gone. It was invisible while the fetch was also returning
         // nothing — the explorer refusing without an API key — and only shows
         // up once that is fixed.
-        c if c.is_evm() => arr
-            .iter()
-            .filter_map(|e| {
-                let txid = e["txid"].as_str()?;
-                let is_incoming = e["is_incoming"].as_bool().unwrap_or(false);
-                let wei = e["value_wei"].as_str().unwrap_or("0").parse::<f64>().unwrap_or(0.0);
-                let counterparty = if is_incoming { &e["from"] } else { &e["to"] };
-                Some(ChainHistoryEntry {
-                    kind: if is_incoming { "receive" } else { "send" }.to_string(),
-                    status: "confirmed".to_string(),
-                    asset_name: asset_name.to_string(),
-                    symbol: symbol.to_string(),
-                    chain_name: chain_name.to_string(),
-                    amount: wei / factor,
-                    counterparty: counterparty.as_str().unwrap_or_default().to_string(),
-                    tx_hash: txid.to_string(),
-                    block_height: e["block_number"].as_i64(),
-                    timestamp: e["timestamp"].as_f64().unwrap_or(0.0),
-                })
-            })
-            .collect(),
+        c if c.is_evm() => HistoryShape {
+            block_height: Some("block_number"),
+            ..HistoryShape::confirmed_native("value_wei").with_counterparty("from", "to")
+        },
 
-        _ => vec![],
-    }
+        _ => return None,
+    };
+    Some(shape)
+}
+
+/// A JSON number, or a decimal string holding one. NEAR's yocto amounts and
+/// every EVM `value_wei` overflow an `f64`'s integer range and so arrive as
+/// strings.
+fn json_number(value: &Value) -> Option<f64> {
+    value
+        .as_f64()
+        .or_else(|| value.as_str().and_then(|s| s.parse().ok()))
+}
+
+/// Convert a raw history JSON string (as returned by `fetch_history`) into
+/// normalized `ChainHistoryEntry` records that Swift can consume without
+/// any chain-specific parsing logic.
+pub fn normalize_chain_history(chain_id: &str, raw_json: &str) -> Vec<ChainHistoryEntry> {
+    let Ok(Value::Array(entries)) = serde_json::from_str::<Value>(raw_json) else {
+        return vec![];
+    };
+    let Some(chain) = Chain::from_str_id(chain_id) else {
+        return vec![];
+    };
+    let Some(shape) = history_shape(chain) else {
+        return vec![];
+    };
+
+    let (asset_name, symbol, chain_name) = history_chain_meta(chain);
+    let factor = 10f64.powi(chain.native_decimals() as i32);
+
+    entries
+        .iter()
+        .filter_map(|entry| {
+            let tx_hash = match shape.hash {
+                HashField::Text(field) => entry[field].as_str()?.to_string(),
+                HashField::Number(field) => entry[field].as_i64().unwrap_or(0).to_string(),
+            };
+
+            // Signed while direction is still being decided; the entry itself
+            // reports a magnitude and says which way it went in `kind`.
+            let signed_amount = json_number(&entry[shape.amount]).unwrap_or(0.0);
+            let is_incoming =
+                entry["is_incoming"]
+                    .as_bool()
+                    .unwrap_or(match shape.direction_fallback {
+                        DirectionFallback::Outgoing => false,
+                        DirectionFallback::AmountSign => signed_amount >= 0.0,
+                    });
+
+            let block_height = shape.block_height.and_then(|field| entry[field].as_i64());
+            let status = match shape.status {
+                StatusRule::AlwaysConfirmed => "confirmed",
+                StatusRule::ConfirmedFlag => {
+                    if entry["confirmed"].as_bool().unwrap_or(false) {
+                        "confirmed"
+                    } else {
+                        "pending"
+                    }
+                }
+                StatusRule::ConfirmedWhenMined => {
+                    if block_height.unwrap_or(0) > 0 {
+                        "confirmed"
+                    } else {
+                        "pending"
+                    }
+                }
+            };
+
+            let (entry_asset, entry_symbol) = match shape.symbol_override {
+                SymbolOverride::None => (asset_name, symbol),
+                SymbolOverride::NativeOrSymbol => {
+                    let found = entry["symbol"].as_str().unwrap_or(symbol);
+                    (if found == symbol { asset_name } else { found }, found)
+                }
+                SymbolOverride::TronAssetTable => {
+                    let found = entry["symbol"].as_str().unwrap_or(symbol);
+                    (tron_asset_name(found), found)
+                }
+            };
+
+            let raw_time = &entry[shape.time];
+            let timestamp = raw_time
+                .as_f64()
+                .or_else(|| raw_time.as_str().map(parse_iso8601_timestamp))
+                .unwrap_or(0.0)
+                / shape.time_divisor;
+
+            Some(ChainHistoryEntry {
+                kind: if is_incoming { "receive" } else { "send" }.to_string(),
+                status: status.to_string(),
+                asset_name: entry_asset.to_string(),
+                symbol: entry_symbol.to_string(),
+                chain_name: chain_name.to_string(),
+                amount: if shape.amount_in_base_units {
+                    signed_amount.abs() / factor
+                } else {
+                    signed_amount.abs()
+                },
+                counterparty: shape
+                    .counterparty
+                    .map(|(incoming, outgoing)| {
+                        entry[if is_incoming { incoming } else { outgoing }]
+                            .as_str()
+                            .unwrap_or_default()
+                    })
+                    .unwrap_or_default()
+                    .to_string(),
+                tx_hash,
+                block_height,
+                timestamp,
+            })
+        })
+        .collect()
 }
 
 /// Returns (asset_name, symbol, chain_name) used on `ChainHistoryEntry` rows.
@@ -985,3 +846,219 @@ mod tests {
 
 // ── FFI surface ─────────────────────────────────────────────────────────────
 
+#[cfg(test)]
+mod normalize_chain_history_tests {
+    use super::*;
+
+    /// One populated entry per chain shape, in the JSON that chain's client
+    /// serializes, against the row it must normalize to. Field names, units
+    /// and timestamp scales all live in `history_shape`, so this is where a
+    /// wrong one shows up.
+    const CASES: &[(&str, &str, &str)] = &[
+        (
+            "bitcoin",
+            r#"[{"txid":"a1","confirmed":true,"block_height":800000,"block_time":1700000000,"net_sats":-12345}]"#,
+            r#"[{"kind":"send","status":"confirmed","asset_name":"Bitcoin","symbol":"BTC","chain_name":"Bitcoin","amount":0.00012345,"counterparty":"","tx_hash":"a1","block_height":800000,"timestamp":1700000000.0}]"#,
+        ),
+        (
+            "bitcoin",
+            r#"[{"txid":"a2","confirmed":false,"block_height":null,"block_time":1700000001,"net_sats":6789}]"#,
+            r#"[{"kind":"receive","status":"pending","asset_name":"Bitcoin","symbol":"BTC","chain_name":"Bitcoin","amount":0.00006789,"counterparty":"","tx_hash":"a2","block_height":null,"timestamp":1700000001.0}]"#,
+        ),
+        (
+            "litecoin",
+            r#"[{"txid":"b1","amount_sat":-500000,"block_height":250000,"timestamp":1700000002,"is_incoming":false}]"#,
+            r#"[{"kind":"send","status":"confirmed","asset_name":"Litecoin","symbol":"LTC","chain_name":"Litecoin","amount":0.005,"counterparty":"","tx_hash":"b1","block_height":250000,"timestamp":1700000002.0}]"#,
+        ),
+        (
+            "bitcoin-cash",
+            r#"[{"txid":"b2","amount_sat":700000,"block_height":0,"timestamp":1700000003}]"#,
+            r#"[{"kind":"receive","status":"pending","asset_name":"Bitcoin Cash","symbol":"BCH","chain_name":"Bitcoin Cash","amount":0.007,"counterparty":"","tx_hash":"b2","block_height":0,"timestamp":1700000003.0}]"#,
+        ),
+        (
+            "bitcoin-sv",
+            r#"[{"txid":"b3","amount_sat":900000,"block_height":10,"timestamp":1700000004,"is_incoming":true}]"#,
+            r#"[{"kind":"receive","status":"confirmed","asset_name":"Bitcoin SV","symbol":"BSV","chain_name":"Bitcoin SV","amount":0.009,"counterparty":"","tx_hash":"b3","block_height":10,"timestamp":1700000004.0}]"#,
+        ),
+        (
+            "dogecoin",
+            r#"[{"txid":"c1","amount_koin":-123456789,"block_height":5,"timestamp":1700000005,"is_incoming":false}]"#,
+            r#"[{"kind":"send","status":"confirmed","asset_name":"Dogecoin","symbol":"DOGE","chain_name":"Dogecoin","amount":1.23456789,"counterparty":"","tx_hash":"c1","block_height":5,"timestamp":1700000005.0}]"#,
+        ),
+        (
+            "xrp",
+            r#"[{"txid":"d1","timestamp":1700000006,"from":"rFrom","to":"rTo","amount_drops":250000,"is_incoming":true}]"#,
+            r#"[{"kind":"receive","status":"confirmed","asset_name":"XRP","symbol":"XRP","chain_name":"XRP Ledger","amount":0.25,"counterparty":"rFrom","tx_hash":"d1","block_height":null,"timestamp":1700000006.0}]"#,
+        ),
+        (
+            "stellar",
+            r#"[{"txid":"e1","timestamp":"2023-11-14T22:13:20Z","from":"GFrom","to":"GTo","amount_stroops":3000000,"is_incoming":false}]"#,
+            r#"[{"kind":"send","status":"confirmed","asset_name":"Stellar Lumens","symbol":"XLM","chain_name":"Stellar","amount":0.3,"counterparty":"GTo","tx_hash":"e1","block_height":null,"timestamp":1700000000.0}]"#,
+        ),
+        (
+            "stellar",
+            r#"[{"txid":"e2","timestamp":1700000008,"from":"GFrom","to":"GTo","amount_stroops":-4000000,"is_incoming":true}]"#,
+            r#"[{"kind":"receive","status":"confirmed","asset_name":"Stellar Lumens","symbol":"XLM","chain_name":"Stellar","amount":0.4,"counterparty":"GFrom","tx_hash":"e2","block_height":null,"timestamp":1700000008.0}]"#,
+        ),
+        (
+            "cardano",
+            r#"[{"txid":"f1","block_time":1700000009,"amount_lovelace":-5000000,"is_incoming":false}]"#,
+            r#"[{"kind":"send","status":"confirmed","asset_name":"Cardano","symbol":"ADA","chain_name":"Cardano","amount":5.0,"counterparty":"","tx_hash":"f1","block_height":null,"timestamp":1700000009.0}]"#,
+        ),
+        (
+            "polkadot",
+            r#"[{"txid":"g1","amount_planck":60000000000.0,"timestamp":1700000010,"from":"5From","to":"5To","is_incoming":true}]"#,
+            r#"[{"kind":"receive","status":"confirmed","asset_name":"Polkadot","symbol":"DOT","chain_name":"Polkadot","amount":6.0,"counterparty":"5From","tx_hash":"g1","block_height":null,"timestamp":1700000010.0}]"#,
+        ),
+        (
+            "solana",
+            r#"[{"signature":"h1","timestamp":1700000011,"is_incoming":false,"amount_display":"1.25","symbol":"SOL","mint":null,"from":"sFrom","to":"sTo"}]"#,
+            r#"[{"kind":"send","status":"confirmed","asset_name":"Solana","symbol":"SOL","chain_name":"Solana","amount":1.25,"counterparty":"sTo","tx_hash":"h1","block_height":null,"timestamp":1700000011.0}]"#,
+        ),
+        (
+            "solana",
+            r#"[{"signature":"h2","timestamp":1700000012,"is_incoming":true,"amount_display":"42.5","symbol":"USDC","from":"sFrom","to":"sTo"}]"#,
+            r#"[{"kind":"receive","status":"confirmed","asset_name":"USDC","symbol":"USDC","chain_name":"Solana","amount":42.5,"counterparty":"sFrom","tx_hash":"h2","block_height":null,"timestamp":1700000012.0}]"#,
+        ),
+        (
+            "tron",
+            r#"[{"txid":"i1","timestamp_ms":1700000013000,"from":"TFrom","to":"TTo","amount_display":"7.5","symbol":"USDT","is_incoming":true}]"#,
+            r#"[{"kind":"receive","status":"confirmed","asset_name":"Tether USD","symbol":"USDT","chain_name":"Tron","amount":7.5,"counterparty":"TFrom","tx_hash":"i1","block_height":null,"timestamp":1700000013.0}]"#,
+        ),
+        (
+            "tron",
+            r#"[{"txid":"i2","timestamp_ms":1700000014000,"from":"TFrom","to":"TTo","amount_display":"3.5","symbol":"TRX","is_incoming":false}]"#,
+            r#"[{"kind":"send","status":"confirmed","asset_name":"Tron","symbol":"TRX","chain_name":"Tron","amount":3.5,"counterparty":"TTo","tx_hash":"i2","block_height":null,"timestamp":1700000014.0}]"#,
+        ),
+        (
+            "sui",
+            r#"[{"digest":"j1","amount_mist":800000000.0,"timestamp_ms":1700000015000,"is_incoming":true}]"#,
+            r#"[{"kind":"receive","status":"confirmed","asset_name":"Sui","symbol":"SUI","chain_name":"Sui","amount":0.8,"counterparty":"","tx_hash":"j1","block_height":null,"timestamp":1700000015.0}]"#,
+        ),
+        (
+            "aptos",
+            r#"[{"txid":"k1","amount_octas":900000000.0,"timestamp_us":1700000016000000,"from":"aFrom","to":"aTo","is_incoming":false}]"#,
+            r#"[{"kind":"send","status":"confirmed","asset_name":"Aptos","symbol":"APT","chain_name":"Aptos","amount":9.0,"counterparty":"aTo","tx_hash":"k1","block_height":null,"timestamp":1700000016.0}]"#,
+        ),
+        (
+            "ton",
+            r#"[{"txid":"l1","amount_nanotons":1000000000.0,"timestamp":1700000017,"from":"tFrom","to":"tTo","is_incoming":true}]"#,
+            r#"[{"kind":"receive","status":"confirmed","asset_name":"Toncoin","symbol":"TON","chain_name":"TON","amount":1.0,"counterparty":"tFrom","tx_hash":"l1","block_height":null,"timestamp":1700000017.0}]"#,
+        ),
+        (
+            "near",
+            r#"[{"txid":"m1","timestamp_ns":1700000018000000000,"signer_id":"nSigner","receiver_id":"nReceiver","amount_yocto":"1500000000000000000000000","is_incoming":false}]"#,
+            r#"[{"kind":"send","status":"confirmed","asset_name":"NEAR Protocol","symbol":"NEAR","chain_name":"NEAR","amount":1.5,"counterparty":"nReceiver","tx_hash":"m1","block_height":null,"timestamp":1700000018.0}]"#,
+        ),
+        (
+            "internet-computer",
+            r#"[{"block_index":42,"amount_e8s":250000000.0,"timestamp_ns":1700000019000000000,"from":"iFrom","to":"iTo","is_incoming":true}]"#,
+            r#"[{"kind":"receive","status":"confirmed","asset_name":"Internet Computer","symbol":"ICP","chain_name":"Internet Computer","amount":2.5,"counterparty":"iFrom","tx_hash":"42","block_height":null,"timestamp":1700000019.0}]"#,
+        ),
+        (
+            "monero",
+            r#"[{"txid":"o1","amount_piconeros":1250000000000.0,"timestamp":1700000020,"is_incoming":false}]"#,
+            r#"[{"kind":"send","status":"confirmed","asset_name":"Monero","symbol":"XMR","chain_name":"Monero","amount":1.25,"counterparty":"","tx_hash":"o1","block_height":null,"timestamp":1700000020.0}]"#,
+        ),
+        (
+            "ethereum",
+            r#"[{"txid":"p1","is_incoming":true,"value_wei":"1500000000000000000","from":"0xFrom","to":"0xTo","block_number":18000000,"timestamp":1700000021}]"#,
+            r#"[{"kind":"receive","status":"confirmed","asset_name":"Ethereum","symbol":"ETH","chain_name":"Ethereum","amount":1.5,"counterparty":"0xFrom","tx_hash":"p1","block_height":18000000,"timestamp":1700000021.0}]"#,
+        ),
+        (
+            "polygon",
+            r#"[{"txid":"p2","is_incoming":false,"value_wei":"250000000000000000","from":"0xFrom","to":"0xTo","block_number":49000000,"timestamp":1700000022}]"#,
+            r#"[{"kind":"send","status":"confirmed","asset_name":"Polygon","symbol":"POL","chain_name":"Polygon","amount":0.25,"counterparty":"0xTo","tx_hash":"p2","block_height":49000000,"timestamp":1700000022.0}]"#,
+        ),
+        (
+            "bitcoin-testnet",
+            r#"[{"txid":"q1","confirmed":true,"block_height":2500000,"block_time":1700000023,"net_sats":4242}]"#,
+            r#"[{"kind":"receive","status":"confirmed","asset_name":"Bitcoin","symbol":"BTC","chain_name":"Bitcoin Testnet","amount":0.00004242,"counterparty":"","tx_hash":"q1","block_height":2500000,"timestamp":1700000023.0}]"#,
+        ),
+        (
+            "litecoin-testnet",
+            r#"[{"txid":"q2","amount_sat":31337,"block_height":9,"timestamp":1700000024,"is_incoming":true}]"#,
+            r#"[{"kind":"receive","status":"confirmed","asset_name":"Litecoin","symbol":"LTC","chain_name":"Litecoin Testnet","amount":0.00031337,"counterparty":"","tx_hash":"q2","block_height":9,"timestamp":1700000024.0}]"#,
+        ),
+    ];
+
+    #[test]
+    fn every_chain_shape_normalizes_to_its_expected_row() {
+        for (chain, raw, expected) in CASES {
+            let rows = normalize_chain_history(chain, raw);
+            assert_eq!(
+                &serde_json::to_string(&rows).unwrap(),
+                expected,
+                "{chain} normalized differently"
+            );
+        }
+    }
+
+    /// A testnet's client is its mainnet's client returning the same JSON, so
+    /// its history has to normalize the same way. Every UTXO testnet used to
+    /// fall through to an empty result.
+    #[test]
+    fn testnets_normalize_like_their_mainnets() {
+        for (testnet, mainnet) in [
+            ("bitcoin-testnet", "bitcoin"),
+            ("bitcoin-testnet-4", "bitcoin"),
+            ("bitcoin-signet", "bitcoin"),
+            ("litecoin-testnet", "litecoin"),
+            ("bitcoin-cash-testnet", "bitcoin-cash"),
+            ("dogecoin-testnet", "dogecoin"),
+            ("ethereum-sepolia", "ethereum"),
+        ] {
+            let raw = CASES
+                .iter()
+                .find(|(chain, _, _)| *chain == mainnet)
+                .map(|(_, raw, _)| *raw)
+                .expect("mainnet fixture");
+            let rows = normalize_chain_history(testnet, raw);
+            assert_eq!(rows.len(), 1, "{testnet} normalized nothing");
+            let mainnet_rows = normalize_chain_history(mainnet, raw);
+            assert_eq!(rows[0].kind, mainnet_rows[0].kind);
+            assert_eq!(rows[0].amount, mainnet_rows[0].amount);
+            assert_eq!(rows[0].tx_hash, mainnet_rows[0].tx_hash);
+            assert_eq!(rows[0].timestamp, mainnet_rows[0].timestamp);
+        }
+    }
+
+    /// `amount` is a magnitude and `kind` says which way the transfer went.
+    /// The sign of the raw field only decides direction where the chain sends
+    /// no `is_incoming` flag.
+    #[test]
+    fn amounts_are_magnitudes_whatever_sign_the_chain_reports() {
+        let negative = r#"[{"txid":"x","amount_planck":-60000000000.0,"timestamp":1,"from":"a","to":"b","is_incoming":true}]"#;
+        let rows = normalize_chain_history("polkadot", negative);
+        assert_eq!(rows[0].amount, 6.0);
+        assert_eq!(rows[0].kind, "receive");
+
+        let unsigned = r#"[{"txid":"y","net_sats":-500,"confirmed":true,"block_time":1}]"#;
+        let rows = normalize_chain_history("bitcoin", unsigned);
+        assert_eq!(rows[0].amount, 0.000005);
+        assert_eq!(
+            rows[0].kind, "send",
+            "no is_incoming flag: the sign decides"
+        );
+    }
+
+    /// An unknown chain, unparsable JSON, or a JSON document that is not an
+    /// array all yield nothing rather than a panic.
+    #[test]
+    fn malformed_input_yields_no_rows() {
+        assert!(normalize_chain_history("not-a-chain", "[]").is_empty());
+        assert!(normalize_chain_history("bitcoin", "not json").is_empty());
+        assert!(normalize_chain_history("bitcoin", r#"{"txid":"a"}"#).is_empty());
+        assert!(normalize_chain_history("bitcoin", r#"[{"no_txid":1}]"#).is_empty());
+    }
+
+    /// Stellar reports ISO-8601 where every other chain reports a number.
+    #[test]
+    fn iso8601_timestamps_parse() {
+        let rows = normalize_chain_history(
+            "stellar",
+            r#"[{"txid":"e","timestamp":"2023-11-14T22:13:20Z","amount_stroops":1,"is_incoming":true}]"#,
+        );
+        assert_eq!(rows[0].timestamp, 1_700_000_000.0);
+    }
+}

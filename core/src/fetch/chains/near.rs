@@ -67,7 +67,6 @@ pub struct NearFtMetadata {
 
 // ── UniFFI-exported history parsed snapshot
 
-
 // ── Client
 
 pub struct NearClient {
@@ -360,4 +359,3 @@ fn format_ft_amount(raw: u128, decimals: u8) -> String {
     };
     format!("{}.{}", whole, capped)
 }
-

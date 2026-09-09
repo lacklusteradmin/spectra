@@ -170,9 +170,18 @@ mod artwork_follows_the_coin_not_the_chain {
             core_icon_asset_name("token:ethereum:usdc:0xa0b8".to_string()),
             "circleusdc"
         );
-        assert_eq!(core_icon_asset_name("native:base:eth".to_string()), "ethereum");
-        assert_eq!(core_icon_asset_name("native:ethereum:shib".to_string()), "shibainu");
-        assert_eq!(core_icon_asset_name("native:base:dai".to_string()), "skydai");
+        assert_eq!(
+            core_icon_asset_name("native:base:eth".to_string()),
+            "ethereum"
+        );
+        assert_eq!(
+            core_icon_asset_name("native:ethereum:shib".to_string()),
+            "shibainu"
+        );
+        assert_eq!(
+            core_icon_asset_name("native:base:dai".to_string()),
+            "skydai"
+        );
     }
 
     /// A chain's own ticker draws the chain. Base's gas is ETH, so the two
@@ -180,8 +189,14 @@ mod artwork_follows_the_coin_not_the_chain {
     #[test]
     fn a_chain_ticker_draws_the_chain() {
         assert_eq!(core_icon_asset_name("native:base:base".to_string()), "base");
-        assert_eq!(core_icon_asset_name("native:ethereum:eth".to_string()), "ethereum");
-        assert_eq!(core_icon_asset_name("native:arbitrum:arb".to_string()), "arbitrum");
+        assert_eq!(
+            core_icon_asset_name("native:ethereum:eth".to_string()),
+            "ethereum"
+        );
+        assert_eq!(
+            core_icon_asset_name("native:arbitrum:arb".to_string()),
+            "arbitrum"
+        );
     }
 
     /// A gas token nothing else claims falls back to the chain that pays in
@@ -189,8 +204,14 @@ mod artwork_follows_the_coin_not_the_chain {
     /// string "X Layer" — so this was the one native coin drawn as a letter.
     #[test]
     fn a_gas_token_falls_back_to_the_chain_that_pays_in_it() {
-        assert_eq!(core_icon_asset_name("native:x-layer:okb".to_string()), "okb");
-        assert_eq!(core_icon_asset_name("native:x-layer:x layer".to_string()), "okb");
+        assert_eq!(
+            core_icon_asset_name("native:x-layer:okb".to_string()),
+            "okb"
+        );
+        assert_eq!(
+            core_icon_asset_name("native:x-layer:x layer".to_string()),
+            "okb"
+        );
     }
 
     /// Every coin the wiki lists has artwork, and the wiki is every coin the
@@ -232,7 +253,10 @@ mod artwork_follows_the_coin_not_the_chain {
     /// would have handed `usdce` the USDC mark.
     #[test]
     fn an_unknown_symbol_resolves_to_nothing() {
-        assert_eq!(core_icon_asset_name("token:ethereum:usdce:0x00".to_string()), "");
+        assert_eq!(
+            core_icon_asset_name("token:ethereum:usdce:0x00".to_string()),
+            ""
+        );
         assert_eq!(core_icon_asset_name("".to_string()), "");
         assert_eq!(core_icon_asset_name("Wallet name".to_string()), "");
     }

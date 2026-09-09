@@ -245,40 +245,62 @@ impl SolanaClient {
                                 {"encoding": "jsonParsed", "commitment": "confirmed"}
                             ]),
                         )
-                        .await;
-                    let val = result.ok()?;
-                    let accounts = val.get("value")?.as_array()?;
-                    let account = accounts.first()?;
-                    let info = account.pointer("/account/data/parsed/info")?;
-                    let token_amount = info.get("tokenAmount")?;
-                    let balance_raw = token_amount
-                        .get("amount")
-                        .and_then(|v| v.as_str())
-                        .unwrap_or("0")
-                        .to_string();
-                    let decimals = token_amount
-                        .get("decimals")
-                        .and_then(|v| v.as_u64())
-                        .unwrap_or(0) as u8;
-                    let balance_display = token_amount
-                        .get("uiAmountString")
-                        .and_then(|v| v.as_str())
-                        .unwrap_or("0")
-                        .to_string();
-                    Some(SplBalance {
+                        .await?;
+                    let accounts = result
+                        .get("value")
+                        .and_then(|v| v.as_array())
+                        .ok_or("getTokenAccountsByOwner: missing account list")?;
+                    if accounts.is_empty() {
+                        return Ok::<_, String>(None);
+                    }
+                    let mut raw = 0u128;
+                    let mut own_decimals = None;
+                    for account in accounts {
+                        let amount = account
+                            .pointer("/account/data/parsed/info/tokenAmount")
+                            .ok_or("SPL account: missing tokenAmount")?;
+                        let value: u64 = amount
+                            .get("amount")
+                            .and_then(|v| v.as_str())
+                            .ok_or("SPL account: missing amount")?
+                            .parse()
+                            .map_err(|_| "SPL account: invalid amount")?;
+                        let decimals = super::checked_token_decimals(u128::from(
+                            amount
+                                .get("decimals")
+                                .and_then(|v| v.as_u64())
+                                .ok_or("SPL account: missing decimals")?,
+                        ))?;
+                        if own_decimals.is_some_and(|previous| previous != decimals) {
+                            return Err("SPL accounts disagree on mint decimals".into());
+                        }
+                        own_decimals = Some(decimals);
+                        raw = raw
+                            .checked_add(u128::from(value))
+                            .ok_or("SPL balance overflow")?;
+                    }
+                    let decimals = own_decimals.ok_or("SPL mint decimals unavailable")?;
+                    Ok(Some(SplBalance {
                         mint,
                         owner,
-                        balance_raw,
-                        balance_display,
+                        balance_raw: raw.to_string(),
+                        balance_display: crate::fetch::chains::evm::format_token_amount(
+                            raw, decimals,
+                        ),
                         decimals,
                         symbol: String::new(),
-                    })
+                    }))
                 }
             })
             .collect();
 
         let results = join_all(futs).await;
-        Ok(results.into_iter().flatten().collect())
+        Ok(results
+            .into_iter()
+            .collect::<Result<Vec<_>, String>>()?
+            .into_iter()
+            .flatten()
+            .collect())
     }
 
     pub async fn fetch_recent_blockhash(&self) -> Result<String, String> {
@@ -773,4 +795,46 @@ fn format_ft_amount(raw: u128, decimals: u8) -> String {
         trimmed
     };
     format!("{}.{}", whole, capped)
+}
+
+#[cfg(test)]
+mod balance_read_tests {
+    use super::*;
+    use wiremock::{matchers::any, Mock, MockServer, Request, ResponseTemplate};
+
+    #[tokio::test]
+    async fn spl_empty_accounts_are_zero_but_malformed_accounts_are_errors() {
+        fn account(raw: &str, decimals: u64) -> Value {
+            json!({"account":{"data":{"parsed":{"info":{"tokenAmount":{"amount":raw,"decimals":decimals}}}}}})
+        }
+        for (accounts, expected) in [
+            (json!([]), Some(None)),
+            (
+                json!([account("10", 6), account("20", 6)]),
+                Some(Some("30")),
+            ),
+            (json!([{}]), None),
+            (json!([account("bad", 6)]), None),
+            (json!([account("1", 6), account("1", 9)]), None),
+            (json!([account("1", 39)]), None),
+        ] {
+            let server = MockServer::start().await;
+            Mock::given(any())
+                .respond_with(move |req: &Request| {
+                    let body: Value = req.body_json().unwrap();
+                    ResponseTemplate::new(200).set_body_json(
+                        json!({"jsonrpc":"2.0","id":body["id"],"result":{"value":accounts}}),
+                    )
+                })
+                .mount(&server)
+                .await;
+            let client = SolanaClient::new(std::sync::Arc::new(vec![server.uri()]));
+            let result = client.fetch_spl_balances("owner", &["mint".into()]).await;
+            match expected {
+                None => assert!(result.is_err()),
+                Some(None) => assert!(result.unwrap().is_empty()),
+                Some(Some(raw)) => assert_eq!(result.unwrap()[0].balance_raw, raw),
+            }
+        }
+    }
 }

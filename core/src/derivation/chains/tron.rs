@@ -44,7 +44,6 @@ fn keccak256(data: &[u8]) -> [u8; 32] {
     Keccak256::digest(data).into()
 }
 
-
 // Derive Tron address, public key, and private key from a mnemonic via BIP-39 + BIP-32 secp256k1.
 pub(crate) fn derive_from_seed_phrase(
     seed_phrase: &str,
@@ -81,9 +80,9 @@ pub(crate) fn derive_from_seed_phrase(
 
 // ── UniFFI exports ────────────────────────────────────────────────────────
 
+use crate::derivation::primitives::ExtendedPrivateKey;
 use crate::derivation::types::{parse_path_metadata, DerivationResult};
 use crate::SpectraBridgeError;
-use crate::derivation::primitives::ExtendedPrivateKey;
 
 // Shared derivation logic for all Tron networks.
 fn tron_internal(

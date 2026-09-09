@@ -901,8 +901,8 @@ mod transaction_merge {
 mod wallet_model_conversion {
     use crate::registry::Chain;
     use crate::store::wallet_domain::{
-        AssetHolding, CoreImportedWallet, CoreSeedDerivationPaths,
-        CoreSeedDerivationPreset, CoreWalletDerivationOverrides,
+        AssetHolding, CoreImportedWallet, CoreSeedDerivationPaths, CoreSeedDerivationPreset,
+        CoreWalletDerivationOverrides,
     };
     use std::collections::HashMap;
 
@@ -998,23 +998,34 @@ mod wallet_model_conversion {
         assert!(bitcoin_wallet().to_summary(true).is_watch_only);
     }
 
-    /// A wallet whose chain the registry does not know converts without an
-    /// address rather than panicking or inventing one.
+    /// A wallet whose chain the registry does not know converts without
+    /// inventing anything.
+    ///
+    /// It used to convert with no addresses at all, because the conversion
+    /// emitted one entry — the selected chain's. It emits every slot the record
+    /// holds now, since a wallet carries one address per network of its family,
+    /// and each entry names the chain whose slot it came from. An unknown chain
+    /// owns no slot, so it contributes neither an address nor a path.
     #[test]
-    fn an_unknown_chain_yields_no_address() {
+    fn an_unknown_chain_yields_no_address_of_its_own() {
         let mut wallet = bitcoin_wallet();
         wallet.selected_chain = "Nonexistent Chain".to_string();
         let summary = wallet.to_summary(false);
-        assert!(summary.addresses.is_empty());
         assert_eq!(summary.derivation_path, None);
+        assert!(summary
+            .addresses
+            .iter()
+            .all(|entry| entry.chain_name != "Nonexistent Chain"));
+        assert_eq!(summary.addresses.len(), 1);
+        assert_eq!(summary.addresses[0].chain_name, "Bitcoin");
     }
 }
 
 #[cfg(test)]
 mod wallet_view_model {
     use crate::registry::Chain;
-    use crate::store::wallet_domain::AssetHolding;
     use crate::store::state::{WalletAddress, WalletSummary};
+    use crate::store::wallet_domain::AssetHolding;
     use crate::store::wallet_domain::CoreSeedDerivationPaths;
 
     fn defaults() -> CoreSeedDerivationPaths {
@@ -1294,7 +1305,12 @@ mod status_trackers {
     async fn resetting_a_tracker_makes_it_due_again() {
         let service = WalletService::new_typed(Vec::new()).expect("service");
         service
-            .record_status_poll("tx1".into(), crate::service::StatusPollOutcome::Confirmed { confirmations: Some(99) })
+            .record_status_poll(
+                "tx1".into(),
+                crate::service::StatusPollOutcome::Confirmed {
+                    confirmations: Some(99),
+                },
+            )
             .await;
         assert!(service
             .transactions_due_for_status_poll(vec!["tx1".into()])
@@ -1319,7 +1335,10 @@ mod status_trackers {
     async fn applying_a_resolution_stores_it_and_reports_the_change() {
         use crate::store::ResolvedPendingStatus;
         let service = WalletService::new_typed(Vec::new()).expect("service");
-        service.open_state(tmp_db("apply-resolved")).await.expect("open");
+        service
+            .open_state(tmp_db("apply-resolved"))
+            .await
+            .expect("open");
         service
             .upsert_history_records(vec![crate::wallet_db::HistoryRecord {
                 id: "tx1".into(),
@@ -1432,13 +1451,11 @@ mod status_trackers {
         );
 
         // Another chain's sweep must not pick it up.
-        assert!(
-            service
-                .stale_pending_failure_ids("Litecoin".into())
-                .await
-                .expect("read")
-                .is_empty()
-        );
+        assert!(service
+            .stale_pending_failure_ids("Litecoin".into())
+            .await
+            .expect("read")
+            .is_empty());
     }
 
     /// Pruning drops trackers for transactions core does not hold.
@@ -1484,6 +1501,8 @@ mod wallet_import {
     // placeholder would simply be dropped.
     const BTC: &str = "bc1qcr8te4kr609gcawutmrza0j4xv80jy8z306fyu";
     const SOL: &str = "11111111111111111111111111111111";
+    const MNEMONIC: &str =
+        "test test test test test test test test test test test junk";
 
     fn commit(chains: &[&str], addresses: &[(&str, &str)]) -> WalletImportCommit {
         WalletImportCommit {
@@ -1535,6 +1554,50 @@ mod wallet_import {
         assert_eq!(
             stored[0].addresses.get("solana").map(String::as_str),
             Some(SOL)
+        );
+    }
+
+    /// A seed import stores an address for every network of the family, so
+    /// switching to a testnet is a read rather than a derivation.
+    ///
+    /// The app used to re-derive the testnet address from the seed on every
+    /// read, which a password-sealed wallet cannot do — it fell back to the
+    /// mainnet address and showed that on testnet instead. The addresses
+    /// survive into the stored record, which is what makes the switch work
+    /// after a restart.
+    #[tokio::test]
+    async fn a_seed_import_stores_one_address_per_network_of_its_family() {
+        let service = WalletService::new_typed(Vec::new()).expect("service");
+        let mut commit = commit(&["Bitcoin"], &[]);
+        commit.seed_phrase = Some(MNEMONIC.to_string());
+        commit.seed_derivation_paths =
+            crate::app_core::seed_derivation_paths_for_account(0).expect("default paths");
+        service.import_wallets(commit).await.expect("import");
+
+        let stored = service.wallets_for_display().await.expect("wallets");
+        assert_eq!(stored.len(), 1);
+        let addresses = &stored[0].addresses;
+        for network in crate::registry::Chain::Bitcoin.network_choices() {
+            let address = addresses
+                .get(network.address_slot())
+                .unwrap_or_else(|| panic!("no address for {}", network.chain_display_name()));
+            let verdict = crate::validation::address::validate_address(
+                crate::validation::address::AddressValidationRequest {
+                    kind: network.address_validation_kind().to_string(),
+                    value: address.clone(),
+                },
+            );
+            assert!(
+                verdict.is_valid,
+                "{} stored {address}, which its own validator refuses",
+                network.chain_display_name()
+            );
+        }
+        // The networks are different keys, so the mainnet address is not the
+        // testnet one.
+        assert_ne!(
+            addresses.get(crate::registry::Chain::Bitcoin.address_slot()),
+            addresses.get(crate::registry::Chain::BitcoinTestnet4.address_slot())
         );
     }
 
@@ -1593,7 +1656,10 @@ mod send_execution_shape {
             let chain = Chain::from_display_name(name).expect(name);
             let shape = chain.send_execution_shape();
             assert_eq!(shape.fee_decimals, *decimals, "{name} fee_decimals");
-            assert_eq!(shape.supports_private_key, *private_key, "{name} private key");
+            assert_eq!(
+                shape.supports_private_key, *private_key,
+                "{name} private key"
+            );
             assert_eq!(shape.fee_field, *field, "{name} fee_field");
             assert_eq!(shape.fee_fallback, *fallback, "{name} fee_fallback");
         }
@@ -1621,8 +1687,8 @@ mod send_execution_shape {
 #[cfg(test)]
 mod dashboard_groups {
     use crate::service::WalletService;
-    use crate::store::wallet_domain::AssetHolding;
     use crate::state::{StateCommand, WalletSummary};
+    use crate::store::wallet_domain::AssetHolding;
     use std::collections::HashMap;
 
     fn holding(symbol: &str, chain: &str, amount: f64, price: f64) -> AssetHolding {
@@ -1638,7 +1704,9 @@ mod dashboard_groups {
         }
     }
 
-    async fn service_with(wallets: Vec<(&str, &str, Vec<AssetHolding>)>) -> std::sync::Arc<WalletService> {
+    async fn service_with(
+        wallets: Vec<(&str, &str, Vec<AssetHolding>)>,
+    ) -> std::sync::Arc<WalletService> {
         let service = WalletService::new_typed(Vec::new()).expect("service");
         for (id, chain, holdings) in wallets {
             let mut wallet = WalletSummary::single_address(id, id, chain, "addr", None, false);
@@ -1660,9 +1728,21 @@ mod dashboard_groups {
     #[tokio::test]
     async fn a_row_is_per_asset_and_breaks_down_by_chain() {
         let service = service_with(vec![
-            ("w1", "Ethereum", vec![holding("ETH", "Ethereum", 1.0, 2000.0)]),
-            ("w2", "Ethereum", vec![holding("ETH", "Ethereum", 2.0, 2000.0)]),
-            ("w3", "Arbitrum", vec![holding("ETH", "Arbitrum", 5.0, 2000.0)]),
+            (
+                "w1",
+                "Ethereum",
+                vec![holding("ETH", "Ethereum", 1.0, 2000.0)],
+            ),
+            (
+                "w2",
+                "Ethereum",
+                vec![holding("ETH", "Ethereum", 2.0, 2000.0)],
+            ),
+            (
+                "w3",
+                "Arbitrum",
+                vec![holding("ETH", "Arbitrum", 5.0, 2000.0)],
+            ),
         ])
         .await;
         let groups = service
@@ -1738,7 +1818,10 @@ mod dashboard_groups {
 
     /// A row is presented as the place most of it is held.
     fn row_symbol(g: &crate::store::wallet_domain::CoreDashboardAssetGroup) -> &str {
-        g.holdings.first().map(|h| h.coin.symbol.as_str()).unwrap_or_default()
+        g.holdings
+            .first()
+            .map(|h| h.coin.symbol.as_str())
+            .unwrap_or_default()
     }
 
     /// A row's value: the sum of its holdings', or none when any is unpriced.
@@ -1755,7 +1838,12 @@ mod dashboard_groups {
     /// Live prices win over the amount a holding was stored with.
     #[tokio::test]
     async fn a_live_price_beats_the_stored_one() {
-        let service = service_with(vec![("w1", "Ethereum", vec![holding("ETH", "Ethereum", 2.0, 1000.0)])]).await;
+        let service = service_with(vec![(
+            "w1",
+            "Ethereum",
+            vec![holding("ETH", "Ethereum", 2.0, 1000.0)],
+        )])
+        .await;
         let stored = service
             .dashboard_asset_groups(HashMap::new())
             .await
@@ -1773,7 +1861,12 @@ mod dashboard_groups {
     /// quoting it at mainnet.
     #[tokio::test]
     async fn a_testnet_row_has_no_value() {
-        let service = service_with(vec![("w1", "Ethereum", vec![holding("ETH", "Ethereum", 2.0, 1000.0)])]).await;
+        let service = service_with(vec![(
+            "w1",
+            "Ethereum",
+            vec![holding("ETH", "Ethereum", 2.0, 1000.0)],
+        )])
+        .await;
         service
             .apply_state_command(StateCommand::SelectNetworkChain {
                 chain_id: "ethereum-sepolia".into(),
@@ -1781,7 +1874,10 @@ mod dashboard_groups {
             .await
             .expect("select");
         let groups = service
-            .dashboard_asset_groups(HashMap::from([("Ethereum Sepolia|ETH".to_string(), 3000.0)]))
+            .dashboard_asset_groups(HashMap::from([(
+                "Ethereum Sepolia|ETH".to_string(),
+                3000.0,
+            )]))
             .await
             .expect("groups");
         assert_eq!(row_value(&groups[0]), None);
@@ -1810,15 +1906,14 @@ mod dashboard_groups {
             .dashboard_asset_groups(HashMap::new())
             .await
             .expect("groups");
-        let symbols: Vec<_> = groups
-            .iter()
-            .map(row_symbol)
-            .collect();
+        let symbols: Vec<_> = groups.iter().map(row_symbol).collect();
         // ETH before SOL because that is the pin order, and both before the
         // unpinned BTC even though BTC is worth more.
         assert_eq!(symbols.first(), Some(&"ETH"));
         assert!(
-            groups.iter().any(|g| row_symbol(g) == "BTC" && !g.is_pinned),
+            groups
+                .iter()
+                .any(|g| row_symbol(g) == "BTC" && !g.is_pinned),
             "BTC is still shown, unpinned"
         );
     }
@@ -3023,7 +3118,7 @@ mod tracked_tokens_persist {
     use crate::store::state::{CoreAppState, StateCommand};
     use crate::store::wallet_db;
     use crate::store::wallet_domain::{
-        CoreTokenPreferenceCategory, CoreTokenPreferenceEntry, CoreTokenHostingChain,
+        CoreTokenHostingChain, CoreTokenPreferenceCategory, CoreTokenPreferenceEntry,
     };
 
     /// One database per test. Keyed by thread id as well as pid: two tests in
@@ -3075,11 +3170,7 @@ mod tracked_tokens_persist {
         wallet_db::app_state_save(&db, &state).expect("save");
 
         let reloaded = wallet_db::app_state_load(&db).expect("load");
-        assert_eq!(
-            reloaded.token_preferences.len(),
-            1,
-            "known token was lost"
-        );
+        assert_eq!(reloaded.token_preferences.len(), 1, "known token was lost");
         assert_eq!(reloaded.token_preferences[0].token.symbol, "USDC");
     }
 
@@ -3225,15 +3316,31 @@ mod resident_state_round_trip {
         let defaults = state.settings.clone();
 
         for update in [
-            U::RpcEndpoint { chain: "Base".into(), value: "https://x.example".into() },
-            U::EtherscanApiKey { value: "KEY".into() },
-            U::MoneroBackendBaseUrl { value: "https://xmr.example".into() },
-            U::MoneroBackendApiKey { value: "XKEY".into() },
-            U::BitcoinEsploraEndpoints { value: "https://a.example".into() },
+            U::RpcEndpoint {
+                chain: "Base".into(),
+                value: "https://x.example".into(),
+            },
+            U::EtherscanApiKey {
+                value: "KEY".into(),
+            },
+            U::MoneroBackendBaseUrl {
+                value: "https://xmr.example".into(),
+            },
+            U::MoneroBackendApiKey {
+                value: "XKEY".into(),
+            },
+            U::BitcoinEsploraEndpoints {
+                value: "https://a.example".into(),
+            },
             U::BitcoinStopGap { value: 42 },
-            U::FeePriority { chain: "Dogecoin".into(), value: "economy".into() },
+            U::FeePriority {
+                chain: "Dogecoin".into(),
+                value: "economy".into(),
+            },
             U::UseStrictRpcOnly { value: true },
-            U::BackgroundSyncProfile { value: "aggressive".into() },
+            U::BackgroundSyncProfile {
+                value: "aggressive".into(),
+            },
             U::AutomaticRefreshFrequencyMinutes { value: 30 },
             U::UsePriceAlerts { value: false },
             U::UseTransactionStatusNotifications { value: false },
@@ -3245,11 +3352,15 @@ mod resident_state_round_trip {
         }
         reduce_state_in_place(
             &mut state,
-            StateCommand::SetFiatCurrency { fiat_currency_code: "EUR".into() },
+            StateCommand::SetFiatCurrency {
+                fiat_currency_code: "EUR".into(),
+            },
         );
         reduce_state_in_place(
             &mut state,
-            StateCommand::SelectNetworkChain { chain_id: "bitcoin-testnet".into() },
+            StateCommand::SelectNetworkChain {
+                chain_id: "bitcoin-testnet".into(),
+            },
         );
         assert_ne!(state.settings, defaults, "nothing was actually changed");
 
@@ -3283,7 +3394,9 @@ mod resident_state_round_trip {
                 chain: "Base".into(),
                 value: "https://base.example".into(),
             },
-            U::EtherscanApiKey { value: "KEY".into() },
+            U::EtherscanApiKey {
+                value: "KEY".into(),
+            },
             U::MoneroBackendBaseUrl {
                 value: "https://xmr.example".into(),
             },
@@ -3319,7 +3432,10 @@ mod resident_state_round_trip {
         let written = state.settings.clone();
         wallet_db::app_state_save(&db, &state).expect("save");
         let back = wallet_db::app_state_load(&db).expect("load");
-        assert_eq!(back.settings, written, "a settings field did not round trip");
+        assert_eq!(
+            back.settings, written,
+            "a settings field did not round trip"
+        );
         assert_ne!(
             back.settings,
             crate::store::state::AppSettings::default(),
@@ -3343,16 +3459,28 @@ mod resident_state_round_trip {
 
         set(&mut state, U::BitcoinStopGap { value: 0 });
         set(&mut state, U::AutomaticRefreshFrequencyMinutes { value: 1 });
-        set(&mut state, U::LargeMovementAlertPercentThreshold { value: 0.0 });
-        set(&mut state, U::LargeMovementAlertUsdThreshold { value: 1_000_000.0 });
+        set(
+            &mut state,
+            U::LargeMovementAlertPercentThreshold { value: 0.0 },
+        );
+        set(
+            &mut state,
+            U::LargeMovementAlertUsdThreshold { value: 1_000_000.0 },
+        );
         assert_eq!(state.settings.bitcoin_stop_gap, 1);
         assert_eq!(state.settings.automatic_refresh_frequency_minutes, 5);
         assert_eq!(state.settings.large_movement_alert_percent_threshold, 1.0);
         assert_eq!(state.settings.large_movement_alert_usd_threshold, 100_000.0);
 
         set(&mut state, U::BitcoinStopGap { value: 9_999 });
-        set(&mut state, U::AutomaticRefreshFrequencyMinutes { value: 9_999 });
-        set(&mut state, U::LargeMovementAlertPercentThreshold { value: 500.0 });
+        set(
+            &mut state,
+            U::AutomaticRefreshFrequencyMinutes { value: 9_999 },
+        );
+        set(
+            &mut state,
+            U::LargeMovementAlertPercentThreshold { value: 500.0 },
+        );
         assert_eq!(state.settings.bitcoin_stop_gap, 200);
         assert_eq!(state.settings.automatic_refresh_frequency_minutes, 60);
         assert_eq!(state.settings.large_movement_alert_percent_threshold, 90.0);
@@ -3368,21 +3496,14 @@ mod resident_state_round_trip {
     }
 }
 
-
 /// One unreadable collection must not take the wallet list with it.
 #[cfg(test)]
 mod a_bad_row_is_not_a_bad_database {
     use super::*;
 
-    /// A `token_preferences` blob this build cannot parse is dropped; the
-    /// wallets load.
-    ///
-    /// It was fatal: `app_state_load` returned `Err` and the app came up with
-    /// nothing at all. Token preferences rebuild from the catalog and price
-    /// alerts re-evaluate on the next refresh, so losing them costs a rebuild —
-    /// where losing the wallet list cannot be undone from anything.
+    /// Refusing corrupt metadata must leave every wallet and the bad bytes on disk.
     #[test]
-    fn an_unreadable_token_preferences_row_does_not_lose_the_wallets() {
+    fn unreadable_preferences_refuse_loading_without_deleting_wallets() {
         let db = {
             let mut path = std::env::temp_dir();
             path.push(format!(
@@ -3425,10 +3546,23 @@ mod a_bad_row_is_not_a_bad_database {
             .expect("write the bad row");
         }
 
-        let reloaded =
-            crate::store::wallet_db::app_state_load(&db).expect("the load survives a bad row");
-        assert_eq!(reloaded.wallets.len(), 1, "the wallet list went with the row");
-        assert_eq!(reloaded.wallets[0].name, "Kept");
-        assert!(reloaded.token_preferences.is_empty());
+        // The row is dropped and rebuilt from the catalog on the next
+        // evaluation; the load itself succeeds, because what it would take
+        // down with it — the wallet list — cannot be rebuilt from anything.
+        let loaded = crate::store::wallet_db::app_state_load(&db).expect("load");
+        assert!(loaded.token_preferences.is_empty());
+        assert_eq!(loaded.wallets.len(), 1);
+        let wallets = crate::store::wallet_db::wallet_load_all(&db).unwrap();
+        assert_eq!(wallets.len(), 1);
+        assert_eq!(wallets[0].name, "Kept");
+        let conn = rusqlite::Connection::open(&db).unwrap();
+        let raw: String = conn
+            .query_row(
+                "SELECT value FROM app_state_meta WHERE key = 'token_preferences'",
+                [],
+                |r| r.get(0),
+            )
+            .unwrap();
+        assert_eq!(raw, r#"[{"legacy":true}]"#);
     }
 }

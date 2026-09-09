@@ -3,32 +3,13 @@
 //! `/api/v2/sendtx`. The wire format is identical to Bitcoin/Litecoin
 //! legacy — Dash never adopted SegWit on mainnet.
 
-use crate::http::{with_fallback, RetryProfile};
-
+use super::wire::{decode_txid_le, dsha256, varint};
 use crate::derivation::chains::dash::{dash_p2pkh_script, decode_dash_address};
 use crate::fetch::chains::dash::{DashClient, DashSendResult};
 
 const SIGHASH_ALL: u32 = 1;
 
 impl DashClient {
-    pub async fn broadcast_raw_tx(&self, hex_tx: &str) -> Result<DashSendResult, String> {
-        let hex = hex_tx.to_string();
-        with_fallback(&self.endpoints, |base| {
-            let client = self.client.clone();
-            let hex = hex.clone();
-            let url = format!("{}/api/v2/sendtx/", base.trim_end_matches('/'));
-            async move {
-                let raw_tx_hex = hex.clone();
-                let txid: String = client
-                    .post_text(&url, hex, RetryProfile::ChainWrite)
-                    .await?;
-                let txid = txid.trim().to_string();
-                Ok(DashSendResult { txid, raw_tx_hex })
-            }
-        })
-        .await
-    }
-
     pub async fn sign_and_broadcast(
         &self,
         from_address: &str,
@@ -58,33 +39,6 @@ impl DashClient {
     }
 }
 
-fn varint(n: usize) -> Vec<u8> {
-    match n {
-        0..=0xfc => vec![n as u8],
-        0xfd..=0xffff => {
-            let mut v = vec![0xfd];
-            v.extend_from_slice(&(n as u16).to_le_bytes());
-            v
-        }
-        _ => {
-            let mut v = vec![0xfe];
-            v.extend_from_slice(&(n as u32).to_le_bytes());
-            v
-        }
-    }
-}
-
-fn decode_txid(txid: &str) -> Result<Vec<u8>, String> {
-    let mut bytes = hex::decode(txid).map_err(|e| format!("dash txid decode: {e}"))?;
-    bytes.reverse();
-    Ok(bytes)
-}
-
-fn dsha256(data: &[u8]) -> [u8; 32] {
-    use sha2::{Digest, Sha256};
-    Sha256::digest(Sha256::digest(data)).into()
-}
-
 fn sign_dash_p2pkh(
     utxos: &[(String, u32, u64, Vec<u8>)],
     to_address: &str,
@@ -101,8 +55,11 @@ fn sign_dash_p2pkh(
         .map_err(|e| format!("dash invalid privkey: {e}"))?;
     let pubkey_bytes = secp256k1::PublicKey::from_secret_key(&secp, &secret_key).serialize();
 
-    let total_in: u64 = utxos.iter().map(|(_, _, v, _)| v).sum();
-    let change = total_in.saturating_sub(amount_sat + fee_sat);
+    let change = super::accounting::checked_change(
+        utxos.iter().map(|(_, _, v, _)| *v),
+        amount_sat,
+        fee_sat,
+    )?;
 
     let mut outputs: Vec<(Vec<u8>, u64)> = vec![(
         dash_p2pkh_script(&decode_dash_address(to_address)?),
@@ -122,7 +79,7 @@ fn sign_dash_p2pkh(
         pre.extend_from_slice(&1u32.to_le_bytes()); // version
         pre.extend_from_slice(&varint(utxos.len()));
         for (t, v, _, spk) in utxos {
-            pre.extend_from_slice(&decode_txid(t)?);
+            pre.extend_from_slice(&decode_txid_le(t)?);
             pre.extend_from_slice(&v.to_le_bytes());
             if v == vout && t == txid {
                 pre.extend_from_slice(&varint(spk.len()));
@@ -154,7 +111,7 @@ fn sign_dash_p2pkh(
         script_sig.extend_from_slice(&pubkey_bytes);
 
         let mut inp = Vec::new();
-        inp.extend_from_slice(&decode_txid(txid)?);
+        inp.extend_from_slice(&decode_txid_le(txid)?);
         inp.extend_from_slice(&vout.to_le_bytes());
         inp.extend_from_slice(&varint(script_sig.len()));
         inp.extend_from_slice(&script_sig);

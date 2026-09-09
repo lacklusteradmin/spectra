@@ -79,7 +79,11 @@ fn list(ctx: &Ctx, out: Out) -> CliResult<()> {
                 "  {}  {:<22} {}",
                 out::tint("●", &alert.chain_name).bold(),
                 describe(alert).bold(),
-                out::hint(if alert.has_triggered { "triggered" } else { "armed" }),
+                out::hint(if alert.has_triggered {
+                    "triggered"
+                } else {
+                    "armed"
+                }),
             );
         }
     });

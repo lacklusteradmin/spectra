@@ -8,13 +8,13 @@ use std::sync::{Arc, Mutex};
 
 use clap::Args;
 use colored::Colorize as _;
-use spectra_core::fetch::refresh::engine::{BalanceObserver, BalanceRefreshEngine, RefreshEntry};
+use spectra_core::fetch::refresh::engine::{BalanceObserver, BalanceRefreshEngine};
 use spectra_core::service::{ChainEndpoints, WalletService};
 use spectra_core::store::state::WalletSummary;
 
 use super::chain::{BALANCE, RPC};
 use super::resolve_chain;
-use crate::ctx::{wallet_address, Ctx};
+use crate::ctx::Ctx;
 use crate::error::{CliError, CliResult};
 use crate::out::{self, Out};
 
@@ -67,7 +67,7 @@ pub fn refresh(ctx: &Ctx, out: Out, args: RefreshArgs) -> CliResult<()> {
     // Endpoints for every chain represented, gathered once. The engine takes
     // them at construction the same way the app supplies them.
     let mut chain_endpoints = Vec::new();
-    let mut entries = Vec::new();
+    let mut refreshable = 0usize;
     let mut skipped = Vec::new();
     for wallet in &wallets {
         let Ok(chain) = resolve_chain(&wallet.chain_name) else {
@@ -97,17 +97,9 @@ pub fn refresh(ctx: &Ctx, out: Out, args: RefreshArgs) -> CliResult<()> {
                 api_key: None,
             });
         }
-        entries.push(RefreshEntry {
-            chain_id: chain.str_id().to_string(),
-            wallet_id: wallet.id.clone(),
-            // Bitcoin HD wallets refresh by xpub; the engine detects that.
-            address: wallet
-                .xpub
-                .clone()
-                .unwrap_or_else(|| wallet_address(wallet).to_string()),
-        });
+        refreshable += 1;
     }
-    if entries.is_empty() {
+    if refreshable == 0 {
         return Err(CliError::rejected(
             "no wallet has a chain with balance endpoints",
         ));
@@ -121,14 +113,28 @@ pub fn refresh(ctx: &Ctx, out: Out, args: RefreshArgs) -> CliResult<()> {
     let engine = BalanceRefreshEngine::new(service);
     let collector = Arc::new(Collector(Mutex::new(Collected::default())));
     engine.set_observer(collector.clone());
-    engine.set_entries_typed(entries);
+    // Core builds the list from the wallets it holds. This command used to
+    // build its own — a third copy of the rule beside the app's and core's, and
+    // it disagreed with both: it took any wallet's `xpub` as the fetch key
+    // rather than only Bitcoin's, and the wallet's first stored address rather
+    // than the one for the network it is on.
+    let entry_count = ctx.rt.block_on(
+        engine.sync_entries(args.wallet.as_ref().map(|_| wallets[0].id.clone())),
+    );
+    if entry_count == 0 {
+        return Err(CliError::rejected("no wallet has an address to refresh"));
+    }
 
     out.text(|| {
         println!(
             "  {} refreshing {} wallet{}…",
             out::hint("→"),
             wallets.len() - skipped.len(),
-            if wallets.len() - skipped.len() == 1 { "" } else { "s" }
+            if wallets.len() - skipped.len() == 1 {
+                ""
+            } else {
+                "s"
+            }
         )
     });
     // One sweep, awaited: this process is about to exit, so a spawned
@@ -152,11 +158,21 @@ pub fn refresh(ctx: &Ctx, out: Out, args: RefreshArgs) -> CliResult<()> {
                     name,
                     out::hint(&summary.chain_name),
                 ),
-                None => println!("  {}  {:<18} {}", out::fail_mark(), name, out::hint("no balance")),
+                None => println!(
+                    "  {}  {:<18} {}",
+                    out::fail_mark(),
+                    name,
+                    out::hint("no balance")
+                ),
             }
         }
         for name in &skipped {
-            println!("  {}  {:<18} {}", out::hint("·"), name, out::hint("skipped"));
+            println!(
+                "  {}  {:<18} {}",
+                out::hint("·"),
+                name,
+                out::hint("skipped")
+            );
         }
         println!();
         println!(

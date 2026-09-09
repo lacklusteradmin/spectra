@@ -202,7 +202,11 @@ fn new(ctx: &Ctx, out: Out, args: NewArgs) -> CliResult<()> {
     let wallet = first_wallet(&outcome)?;
     out.text(|| {
         println!();
-        println!("  {}  {}", out::accent("!").bold(), "save these words — anyone holding them can spend your funds".bold());
+        println!(
+            "  {}  {}",
+            out::accent("!").bold(),
+            "save these words — anyone holding them can spend your funds".bold()
+        );
         println!();
         print_words(&seed_phrase);
         println!();
@@ -290,12 +294,7 @@ fn import_private_key(ctx: &Ctx, out: Out, args: ImportArgs, chain: Chain) -> Cl
 
     let password = args.creation.password()?;
     let wallet_id = new_wallet_id();
-    wallet_secrets::seal_private_key(
-        ctx.secrets.as_ref(),
-        &wallet_id,
-        &private_key,
-        &password,
-    )?;
+    wallet_secrets::seal_private_key(ctx.secrets.as_ref(), &wallet_id, &private_key, &password)?;
 
     let name = args
         .creation
@@ -515,7 +514,10 @@ fn receive(ctx: &Ctx, out: Out, args: SelectArgs) -> CliResult<()> {
         println!();
         println!("  {}", wallet_address(&wallet).bold());
         println!();
-        out::field("chain", &out::tint(&wallet.chain_name, &wallet.chain_name).to_string());
+        out::field(
+            "chain",
+            &out::tint(&wallet.chain_name, &wallet.chain_name).to_string(),
+        );
         out::field("symbol", &symbol);
     });
     out.emit(serde_json::json!({
@@ -582,9 +584,7 @@ fn delete(ctx: &Ctx, out: Out, args: DeleteArgs) -> CliResult<()> {
 fn export(ctx: &Ctx, out: Out, args: ExportArgs) -> CliResult<()> {
     let wallet = ctx.find_wallet(&args.wallet)?;
     if wallet.is_watch_only {
-        return Err(CliError::rejected(
-            "a watch-only wallet has no seed phrase",
-        ));
+        return Err(CliError::rejected("a watch-only wallet has no seed phrase"));
     }
     // A wallet imported from a raw key has no phrase, and the store is what
     // knows which it is. Reporting "no sealed secret" for one was accurate
@@ -675,7 +675,6 @@ fn derivation_path(chain: Chain, requested: Option<&str>) -> CliResult<String> {
     .map_err(CliError::from)?;
     Ok(resolution.normalized_path)
 }
-
 
 /// A signing import across one or more chains, with the addresses left for
 /// core to derive from `seed_phrase`.
@@ -820,8 +819,17 @@ fn wallet_json(wallet: &WalletSummary) -> serde_json::Value {
         "name": wallet.name,
         "chain": wallet.chain_name,
         "address": wallet_address(wallet),
+        // Every network of this wallet's family, by chain name. A wallet on a
+        // family with testnets holds one address per network: the app used to
+        // re-derive the testnet one from the seed on every read, so nothing
+        // outside that app could see it and a sealed wallet could not produce
+        // it at all.
+        "addresses": wallet
+            .addresses
+            .iter()
+            .map(|entry| (entry.chain_name.clone(), serde_json::json!(entry.address)))
+            .collect::<serde_json::Map<String, serde_json::Value>>(),
         "derivationPath": wallet.derivation_path,
         "isWatchOnly": wallet.is_watch_only,
     })
 }
-

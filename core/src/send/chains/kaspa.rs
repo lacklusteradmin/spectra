@@ -25,6 +25,7 @@
 
 use serde::Serialize;
 
+use super::wire::{decode_txid_le, varint};
 use crate::derivation::chains::kaspa::{decode_kaspa_address, encode_kaspa_schnorr};
 use crate::fetch::chains::kaspa::{KasSendResult, KaspaClient};
 
@@ -179,29 +180,6 @@ fn blake2b256_keyed(key: &[u8], data: &[u8]) -> [u8; 32] {
     let mut out = [0u8; 32];
     out.copy_from_slice(hash.as_bytes());
     out
-}
-
-fn varint(n: usize) -> Vec<u8> {
-    // Kaspa uses BTC-style varint for script lengths.
-    match n {
-        0..=0xfc => vec![n as u8],
-        0xfd..=0xffff => {
-            let mut v = vec![0xfd];
-            v.extend_from_slice(&(n as u16).to_le_bytes());
-            v
-        }
-        _ => {
-            let mut v = vec![0xfe];
-            v.extend_from_slice(&(n as u32).to_le_bytes());
-            v
-        }
-    }
-}
-
-fn decode_txid_le(txid: &str) -> Result<Vec<u8>, String> {
-    let mut bytes = hex::decode(txid).map_err(|e| format!("kaspa txid hex: {e}"))?;
-    bytes.reverse();
-    Ok(bytes)
 }
 
 fn prev_outputs_hash(inputs: &[KaspaInputBuild]) -> Result<[u8; 32], String> {

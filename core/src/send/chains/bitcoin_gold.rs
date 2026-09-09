@@ -6,8 +6,7 @@
 //! the field value is `0x00004F41`. The signature itself appends only the
 //! low byte (`0x41`) to the DER per standard P2PKH script.
 
-use crate::http::{with_fallback, RetryProfile};
-
+use super::wire::{dsha256, varint};
 use crate::derivation::chains::bitcoin_gold::{btg_p2pkh_script, decode_btg_address};
 use crate::fetch::chains::bitcoin_gold::{BitcoinGoldClient, BtgSendResult};
 
@@ -16,24 +15,6 @@ const SIGHASH_ALL_FORKID_BYTE: u8 = 0x41;
 const SIGHASH_PREIMAGE_HASH_TYPE: u32 = 0x0000_4F41;
 
 impl BitcoinGoldClient {
-    pub async fn broadcast_raw_tx(&self, hex_tx: &str) -> Result<BtgSendResult, String> {
-        let hex = hex_tx.to_string();
-        with_fallback(&self.endpoints, |base| {
-            let client = self.client.clone();
-            let hex = hex.clone();
-            let url = format!("{}/api/v2/sendtx/", base.trim_end_matches('/'));
-            async move {
-                let raw_tx_hex = hex.clone();
-                let txid: String = client
-                    .post_text(&url, hex, RetryProfile::ChainWrite)
-                    .await?;
-                let txid = txid.trim().to_string();
-                Ok(BtgSendResult { txid, raw_tx_hex })
-            }
-        })
-        .await
-    }
-
     pub async fn sign_and_broadcast(
         &self,
         from_address: &str,
@@ -79,8 +60,11 @@ fn sign_btg_tx(
         SecretKey::from_slice(private_key_bytes).map_err(|e| format!("invalid key: {e}"))?;
     let pubkey_bytes = secp256k1::PublicKey::from_secret_key(&secp, &secret_key).serialize();
 
-    let total_in: u64 = utxos.iter().map(|(_, _, v, _)| v).sum();
-    let change = total_in.saturating_sub(amount_sat + fee_sat);
+    let change = super::accounting::checked_change(
+        utxos.iter().map(|(_, _, v, _)| *v),
+        amount_sat,
+        fee_sat,
+    )?;
 
     let to_hash = decode_btg_address(to_address)?;
     let change_hash = decode_btg_address(change_address)?;
@@ -164,26 +148,4 @@ fn sign_btg_tx(
     }
     raw.extend_from_slice(&0u32.to_le_bytes());
     Ok(raw)
-}
-
-fn dsha256(data: &[u8]) -> [u8; 32] {
-    use sha2::{Digest, Sha256};
-    let first = Sha256::digest(data);
-    Sha256::digest(first).into()
-}
-
-fn varint(n: usize) -> Vec<u8> {
-    match n {
-        0..=0xfc => vec![n as u8],
-        0xfd..=0xffff => {
-            let mut v = vec![0xfd];
-            v.extend_from_slice(&(n as u16).to_le_bytes());
-            v
-        }
-        _ => {
-            let mut v = vec![0xfe];
-            v.extend_from_slice(&(n as u32).to_le_bytes());
-            v
-        }
-    }
 }

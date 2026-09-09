@@ -55,7 +55,6 @@ fn base32_decode_rfc4648(s: &str) -> Option<Vec<u8>> {
     Some(out)
 }
 
-
 // ── SLIP-10 ed25519 ──────────────────────────────────────────────────────
 
 // ── strkey (CRC-16/XMODEM + base32) ──────────────────────────────────────
@@ -105,9 +104,9 @@ pub(crate) fn derive_from_seed_phrase(
 
 // ── UniFFI exports ────────────────────────────────────────────────────────
 
+use crate::derivation::primitives::derive_slip10_ed25519_key;
 use crate::derivation::types::{parse_path_metadata, DerivationResult};
 use crate::SpectraBridgeError;
-use crate::derivation::primitives::derive_slip10_ed25519_key;
 
 // Shared derivation logic for all Stellar networks.
 fn stellar_internal(

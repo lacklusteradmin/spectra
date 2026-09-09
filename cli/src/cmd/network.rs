@@ -54,7 +54,11 @@ fn list(ctx: &Ctx, out: Out) -> CliResult<()> {
             } else {
                 out::accent(selected.chain_display_name())
             };
-            println!("  {:<20} {:<24} {mark}", family.str_id().bold(), selected.str_id());
+            println!(
+                "  {:<20} {:<24} {mark}",
+                family.str_id().bold(),
+                selected.str_id()
+            );
         }
     });
     out.emit(serde_json::json!({

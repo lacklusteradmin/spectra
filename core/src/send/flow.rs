@@ -30,10 +30,7 @@ pub(crate) fn chain_kind(chain_name: &str) -> Option<&'static str> {
 }
 
 #[uniffi::export]
-pub fn is_valid_send_address(
-    chain_name: String,
-    address: String,
-) -> bool {
+pub fn is_valid_send_address(chain_name: String, address: String) -> bool {
     let Some(kind) = chain_kind(&chain_name) else {
         return false;
     };
@@ -544,8 +541,8 @@ pub fn core_evaluate_high_risk_send_reasons(
     let is_evm = chain.is_some_and(|c| c.is_evm());
     // ENS resolves on Ethereum; anywhere else the resolved address is worth a
     // second look.
-    let is_ens_foreign_chain =
-        is_evm && chain.is_some_and(|c| c.mainnet_counterpart() != crate::registry::Chain::Ethereum);
+    let is_ens_foreign_chain = is_evm
+        && chain.is_some_and(|c| c.mainnet_counterpart() != crate::registry::Chain::Ethereum);
     let is_ens_candidate =
         lowered.ends_with(".eth") && !lowered.contains(' ') && !lowered.starts_with("0x");
 
@@ -668,8 +665,6 @@ pub fn core_parse_dogecoin_derivation_index(
 // Per-chain static config for the Litecoin/Dogecoin/Solana/XRP/Monero/Sui/Aptos
 // branch of Swift's destination-risk probe: display chain name and balance
 // label for messages.
-
-
 
 // Maps Swift's BroadcastEntry payload format → (chain_id, result_field, wrap_key,
 // extract_field). Returns an error for unknown formats.
@@ -948,7 +943,6 @@ pub fn seed_derivation_chain_raw(chain: crate::registry::Chain) -> Option<String
     Some(raw.to_string())
 }
 
-
 // Routes `(symbol, chain_name, is_evm_chain)` to the resolver that produces the
 // receive address for that combination.
 
@@ -1132,7 +1126,10 @@ mod flow_helpers_tests {
 
         // Still rejects what it should.
         assert_eq!(chain_kind("Not A Chain"), None);
-        assert!(!is_valid_send_address("Polygon".to_string(), "not-an-address".to_string()));
+        assert!(!is_valid_send_address(
+            "Polygon".to_string(),
+            "not-an-address".to_string()
+        ));
     }
 
     #[test]
@@ -1370,10 +1367,7 @@ mod validating_and_normalising_cannot_disagree {
                 "",
             ] {
                 let direct = is_valid_send_address(name.clone(), sample.to_string());
-                let after = is_valid_send_address(
-                    name.clone(),
-                    normalize_address(&name, sample),
-                );
+                let after = is_valid_send_address(name.clone(), normalize_address(&name, sample));
                 assert_eq!(
                     direct, after,
                     "{name} answers {direct} for {sample:?} and {after} once normalized"

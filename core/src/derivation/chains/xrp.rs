@@ -32,7 +32,6 @@ pub(crate) fn decode_xrp_address(address: &str) -> Result<Vec<u8>, String> {
 
 // ── Hashing primitives ───────────────────────────────────────────────────
 
-
 // RIPEMD-160(SHA-256(bytes)) — the XRP address hash primitive.
 fn hash160_bytes(bytes: &[u8]) -> [u8; 20] {
     let sha = {
@@ -92,9 +91,9 @@ pub(crate) fn derive_from_seed_phrase(
 
 // ── UniFFI exports ────────────────────────────────────────────────────────
 
+use crate::derivation::primitives::ExtendedPrivateKey;
 use crate::derivation::types::{parse_path_metadata, DerivationResult};
 use crate::SpectraBridgeError;
-use crate::derivation::primitives::ExtendedPrivateKey;
 
 // Shared derivation logic for all XRP Ledger networks.
 fn xrp_internal(

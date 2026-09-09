@@ -5,6 +5,5 @@
 //! refresh: it holds the timer, fetches, writes the result into core's own
 //! wallet state, and calls the observer back.
 
-
 pub mod engine;
 pub mod policy;

@@ -354,13 +354,12 @@ pub(crate) fn app_core_catalog() -> Result<&'static AppCoreCatalog, String> {
 }
 
 fn load_app_core_catalog() -> Result<AppCoreCatalog, String> {
-    let endpoint_records =
-        toml::from_str::<TomlEndpointFile>(APP_ENDPOINT_DIRECTORY_TOML)
-            .map_err(|e| e.to_string())?
-            .endpoints
-            .into_iter()
-            .map(AppCoreEndpointRecord::from)
-            .collect::<Vec<_>>();
+    let endpoint_records = toml::from_str::<TomlEndpointFile>(APP_ENDPOINT_DIRECTORY_TOML)
+        .map_err(|e| e.to_string())?
+        .endpoints
+        .into_iter()
+        .map(AppCoreEndpointRecord::from)
+        .collect::<Vec<_>>();
     let endpoint_role_masks: Vec<u32> = endpoint_records
         .iter()
         .map(|r| {
@@ -516,7 +515,10 @@ fn diagnostics_checks(catalog: &AppCoreCatalog, chain_name: &str) -> Vec<AppCore
         .into_iter()
         .filter_map(|record| {
             let is_rpc = record.kind == "rpc-node";
-            let rpc_probe_method = is_rpc.then_some(health_method).flatten().map(str::to_string);
+            let rpc_probe_method = is_rpc
+                .then_some(health_method)
+                .flatten()
+                .map(str::to_string);
             // An RPC endpoint is probed by POSTing to itself, so `probe_url`
             // stands in as the endpoint and the RPC branch ignores it.
             let probe_url = record
@@ -636,7 +638,6 @@ mod tests {
 }
 
 // ── FFI surface ─────────────────────────────────────────────────────────────
-
 
 /// What the catalog knows about one endpoint URL. `None` for anything it does
 /// not list — a user's own RPC, or a runtime-assembled Esplora base.
@@ -868,7 +869,6 @@ pub fn core_parse_derivation_path(raw_path: String) -> Option<Vec<DerivationPath
 pub fn core_derivation_path_string(segments: Vec<DerivationPathSegment>) -> String {
     derivation_path_string(&segments)
 }
-
 
 /// A discovery path: the chain's default path with its last two segments
 /// replaced by branch and index.
@@ -1206,7 +1206,10 @@ mod rpc_health_probes {
                 }
             }
         }
-        assert!(checked_any, "no chain with a health method had any endpoint");
+        assert!(
+            checked_any,
+            "no chain with a health method had any endpoint"
+        );
     }
 
     /// Every mainnet with catalog endpoints has something to check.
@@ -1243,7 +1246,8 @@ mod rpc_health_probes {
         for chain in crate::registry::Chain::all().filter(|c| c.rpc_health_method().is_none()) {
             for check in super::diagnostics_checks(&catalog, chain.chain_display_name()) {
                 assert_eq!(
-                    check.rpc_probe_method, None,
+                    check.rpc_probe_method,
+                    None,
                     "{} {}",
                     chain.chain_display_name(),
                     check.endpoint
@@ -1252,8 +1256,6 @@ mod rpc_health_probes {
         }
     }
 }
-
-
 
 #[cfg(test)]
 mod broadcast_provider_coverage {
@@ -1292,7 +1294,6 @@ mod broadcast_provider_coverage {
         );
     }
 }
-
 
 #[cfg(test)]
 mod supplemental_endpoints_are_data {
@@ -1389,7 +1390,6 @@ mod supplemental_endpoints_are_data {
     }
 }
 
-
 #[cfg(test)]
 mod an_endpoints_kind_is_not_its_capabilities {
     use crate::registry::Chain;
@@ -1471,7 +1471,11 @@ mod an_endpoints_kind_is_not_its_capabilities {
             "verification",
         ];
         for record in records() {
-            assert!(!CAPABILITIES.contains(&record.kind.as_str()), "{}", record.kind);
+            assert!(
+                !CAPABILITIES.contains(&record.kind.as_str()),
+                "{}",
+                record.kind
+            );
             for capability in &record.capabilities {
                 assert!(
                     CAPABILITIES.contains(&capability.as_str()),

@@ -7,7 +7,6 @@ use crate::derivation::primitives::derive_bip39_seed;
 use ed25519_dalek::SigningKey;
 use sha2::{Digest, Sha256};
 
-
 // ── SLIP-10 ed25519 ──────────────────────────────────────────────────────
 
 // SHA-256 of the input; a helper to avoid repeated Sha256::new() boilerplate.
@@ -53,9 +52,9 @@ pub(crate) fn derive_from_seed_phrase(
 
 // ── UniFFI exports ────────────────────────────────────────────────────────
 
+use crate::derivation::primitives::derive_slip10_ed25519_key;
 use crate::derivation::types::{parse_path_metadata, DerivationResult};
 use crate::SpectraBridgeError;
-use crate::derivation::primitives::derive_slip10_ed25519_key;
 
 /// UniFFI export: derive Internet Computer keys from a BIP-39 seed phrase.
 pub fn derive_icp(

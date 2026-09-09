@@ -32,6 +32,12 @@ pub struct PortfolioArgs {
 pub struct CurrencyArgs {
     /// ISO 4217 code to switch to. Omit to print the current one.
     code: Option<String>,
+    /// Fetch the cross-rates and store them (needs network).
+    #[arg(long)]
+    refresh_rates: bool,
+    /// Print the stored cross-rates rather than the selected currency.
+    #[arg(long)]
+    rates: bool,
 }
 
 pub fn price(ctx: &Ctx, out: Out, args: PriceArgs) -> CliResult<()> {
@@ -150,6 +156,9 @@ pub fn portfolio(ctx: &Ctx, out: Out, args: PortfolioArgs) -> CliResult<()> {
 }
 
 pub fn currency(ctx: &Ctx, out: Out, args: CurrencyArgs) -> CliResult<()> {
+    if args.refresh_rates || args.rates {
+        return rates(ctx, out, args.refresh_rates);
+    }
     let current = ctx.state()?.settings.fiat_currency_code;
     let Some(requested) = args.code else {
         out.text(|| {
@@ -165,8 +174,20 @@ pub fn currency(ctx: &Ctx, out: Out, args: CurrencyArgs) -> CliResult<()> {
     };
 
     let transition = ctx.apply(StateCommand::SetFiatCurrency {
-        fiat_currency_code: requested,
+        fiat_currency_code: requested.clone(),
     })?;
+    // A code no rate table carries is refused rather than stored: it used to
+    // be accepted, and every amount then rendered unconverted with that code
+    // beside it.
+    if transition
+        .events
+        .iter()
+        .any(|event| event.kind == "fiatCurrencyRejected")
+    {
+        return Err(CliError::rejected(format!(
+            "{requested:?} is not a currency this app quotes in"
+        )));
+    }
     let updated = transition.state.settings.fiat_currency_code;
 
     out.text(|| {
@@ -186,6 +207,46 @@ pub fn currency(ctx: &Ctx, out: Out, args: CurrencyArgs) -> CliResult<()> {
         "ok": true,
         "from": current,
         "currency": updated,
+    }));
+    Ok(())
+}
+
+/// The stored USD cross-rates, optionally refreshed first.
+///
+/// The rates are core's state, so this reads them from the same store the app
+/// does. iOS held them in a blob of its own, which is why they had no CLI at
+/// all.
+fn rates(ctx: &Ctx, out: Out, refresh: bool) -> CliResult<()> {
+    let service = ctx.service()?;
+    if refresh {
+        ctx.rt
+            .block_on(service.refresh_fiat_rates())
+            .map_err(CliError::from)?;
+    }
+    let stored = ctx.state()?.fiat_rates_from_usd;
+    let mut rows: Vec<(String, f64)> = stored.into_iter().collect();
+    rows.sort_by(|a, b| a.0.cmp(&b.0));
+
+    out.text(|| {
+        println!();
+        if rows.is_empty() {
+            println!(
+                "  {}",
+                out::hint("no rates stored — run with --refresh-rates")
+            );
+            return;
+        }
+        for (code, rate) in &rows {
+            out::field(code, &format!("{rate:.6}"));
+        }
+        println!();
+        println!("  {}", out::hint("per 1 USD"));
+    });
+    out.emit(serde_json::json!({
+        "ok": true,
+        "base": "USD",
+        "count": rows.len(),
+        "rates": rows.iter().cloned().collect::<std::collections::HashMap<String, f64>>(),
     }));
     Ok(())
 }
@@ -219,10 +280,9 @@ fn native_balance(ctx: &Ctx, chain: Chain, address: &str) -> CliResult<f64> {
     let service = service_for_chain(chain, BALANCE | RPC)?;
     let summary = ctx
         .rt
-        .block_on(service.fetch_native_balance_summary(
-            chain.str_id().to_string(),
-            address.to_string(),
-        ))
+        .block_on(
+            service.fetch_native_balance_summary(chain.str_id().to_string(), address.to_string()),
+        )
         .map_err(CliError::from)?;
     Ok(summary.amount_display.parse().unwrap_or(0.0))
 }

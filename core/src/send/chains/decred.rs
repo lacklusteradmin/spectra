@@ -11,9 +11,8 @@
 //! Spectra ships SIGHASH_ALL only — the dominant case for normal transfers.
 //! Tree-stake (PoS) inputs and split-tx flows are out of scope.
 
-use crate::derivation::chains::decred::{
-    blake256, dcr_p2pkh_script, decode_dcr_address, encode_dcr_p2pkh,
-};
+use super::wire::{decode_txid_le, varint};
+use crate::derivation::chains::decred::{blake256, dcr_p2pkh_script, decode_dcr_address};
 use crate::fetch::chains::decred::{DcrSendResult, DecredClient};
 
 /// Decred wire `version | serType` 32-bit header, encoded little-endian. The
@@ -44,30 +43,36 @@ impl DecredClient {
         let from_script = dcr_p2pkh_script(&from_hash);
         let to_hash = decode_dcr_address(to_address)?;
 
-        let total_in: u64 = utxos.iter().map(|u| u.value_atoms).sum();
-        let change = total_in.saturating_sub(amount_atoms + fee_atoms);
+        let change = super::accounting::checked_change(
+            utxos.iter().map(|u| u.value_atoms),
+            amount_atoms,
+            fee_atoms,
+        )?;
 
         let mut outputs: Vec<(Vec<u8>, u64)> = vec![(dcr_p2pkh_script(&to_hash), amount_atoms)];
         if change > dust_threshold.unwrap_or(6_030) {
+            // Change goes back to the sender's own script, built from the
+            // hash the address decodes to — so the caller's spelling of that
+            // address, canonical or not, cannot reach the wire.
             let change_hash = decode_dcr_address(from_address)?;
-            // Re-encode the same change address from its hash; ensures the
-            // wire output uses the canonical encoding even if the caller
-            // passed a normalized variant.
-            let _ = encode_dcr_p2pkh(&change_hash);
             outputs.push((dcr_p2pkh_script(&change_hash), change));
         }
 
         let inputs: Vec<DcrInputBuild> = utxos
             .iter()
-            .map(|u| DcrInputBuild {
-                txid: u.txid.clone(),
-                vout: u.vout,
-                tree: TX_TREE_REGULAR,
-                sequence: 0xFFFF_FFFF,
-                amount: u.value_atoms,
-                script_pubkey: from_script.clone(),
+            .map(|u| {
+                Ok(DcrInputBuild {
+                    // Decoded here rather than at each of the two
+                    // serializations, which have nowhere to report a bad txid.
+                    outpoint_txid: decode_txid_le(&u.txid)?,
+                    vout: u.vout,
+                    tree: TX_TREE_REGULAR,
+                    sequence: 0xFFFF_FFFF,
+                    amount: u.value_atoms,
+                    script_pubkey: from_script.clone(),
+                })
             })
-            .collect();
+            .collect::<Result<_, String>>()?;
 
         let raw = sign_dcr_tx(&inputs, &outputs, private_key_bytes)?;
         self.broadcast_raw_tx(&hex::encode(&raw)).await
@@ -75,7 +80,8 @@ impl DecredClient {
 }
 
 struct DcrInputBuild {
-    txid: String,
+    /// The outpoint txid in wire (little-endian) order.
+    outpoint_txid: Vec<u8>,
     vout: u32,
     tree: u8,
     sequence: u32,
@@ -130,28 +136,6 @@ fn sign_dcr_tx(
     Ok(serialize_full(inputs, outputs, &signed_sig_scripts, 0, 0))
 }
 
-fn varint(n: usize) -> Vec<u8> {
-    match n {
-        0..=0xfc => vec![n as u8],
-        0xfd..=0xffff => {
-            let mut v = vec![0xfd];
-            v.extend_from_slice(&(n as u16).to_le_bytes());
-            v
-        }
-        _ => {
-            let mut v = vec![0xfe];
-            v.extend_from_slice(&(n as u32).to_le_bytes());
-            v
-        }
-    }
-}
-
-fn decode_txid_le(txid: &str) -> Vec<u8> {
-    let mut bytes = hex::decode(txid).unwrap_or_default();
-    bytes.reverse();
-    bytes
-}
-
 fn serialize_outputs(buf: &mut Vec<u8>, outputs: &[(Vec<u8>, u64)]) {
     buf.extend_from_slice(&varint(outputs.len()));
     for (script, value) in outputs {
@@ -174,7 +158,7 @@ fn serialize_prefix(
     buf.extend_from_slice(&VERSION_NO_WITNESS.to_le_bytes());
     buf.extend_from_slice(&varint(inputs.len()));
     for input in inputs {
-        buf.extend_from_slice(&decode_txid_le(&input.txid));
+        buf.extend_from_slice(&input.outpoint_txid);
         buf.extend_from_slice(&input.vout.to_le_bytes());
         buf.push(input.tree);
         buf.extend_from_slice(&input.sequence.to_le_bytes());
@@ -222,7 +206,7 @@ fn serialize_full(
     buf.extend_from_slice(&VERSION_FULL.to_le_bytes());
     buf.extend_from_slice(&varint(inputs.len()));
     for input in inputs {
-        buf.extend_from_slice(&decode_txid_le(&input.txid));
+        buf.extend_from_slice(&input.outpoint_txid);
         buf.extend_from_slice(&input.vout.to_le_bytes());
         buf.push(input.tree);
         buf.extend_from_slice(&input.sequence.to_le_bytes());

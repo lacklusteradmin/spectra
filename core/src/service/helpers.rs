@@ -52,6 +52,25 @@ pub(super) fn decode_hex_array<const N: usize>(
     })
 }
 
+/// Decode a variable-length private key. Eleven signing arms carried this
+/// same three-line closure; `decode_hex_array` covers only the fixed-length
+/// keys.
+pub(super) fn decode_private_key(hex_str: &str) -> Result<Vec<u8>, SpectraBridgeError> {
+    hex::decode(hex_str)
+        .map_err(|e| SpectraBridgeError::from(format!("private_key_hex hex decode: {e}")))
+}
+
+/// The fee to sign with: whatever the preview settled on, and otherwise the
+/// chain's own [`Chain::static_fee_units`] — which is where the fee the user
+/// was shown comes from.
+///
+/// Three tables used to answer this question: a literal per signing arm, a
+/// second literal per arm of `build_send_params`, and the registry. Litecoin
+/// and Bitcoin Cash disagreed across them.
+pub(super) fn fee_or_static(chain: crate::registry::Chain, fee: Option<u64>) -> u64 {
+    fee.unwrap_or_else(|| chain.static_fee_units().unwrap_or_default() as u64)
+}
+
 // ── Decimal scaling ───────────────────────────────────────────────────────
 
 /// Format a smallest-unit `u128` amount as a fixed-decimal string. Used for
@@ -311,13 +330,13 @@ mod display_balance_from_a_typed_summary {
     fn each_chain_divides_by_its_own_decimals() {
         // (chain_id, smallest unit, expected display)
         for (chain_id, smallest, expected) in [
-            ("solana", "1500000000", 1.5),           // 9 decimals, was "lamports"
-            ("stellar", "15000000", 1.5),            // 7 decimals, was "stroops"
-            ("polkadot", "12500000000", 1.25),       // 10 decimals, was "planck"
-            ("bitcoin", "150000000", 1.5),           // 8 decimals, was "confirmed_sats"
-            ("ton", "1500000000", 1.5),              // 9 decimals, was "nanotons"
-            ("cardano", "1500000", 1.5),             // 6 decimals, was "lovelace"
-            ("tron", "1500000", 1.5),                // 6 decimals, was "sun"
+            ("solana", "1500000000", 1.5),     // 9 decimals, was "lamports"
+            ("stellar", "15000000", 1.5),      // 7 decimals, was "stroops"
+            ("polkadot", "12500000000", 1.25), // 10 decimals, was "planck"
+            ("bitcoin", "150000000", 1.5),     // 8 decimals, was "confirmed_sats"
+            ("ton", "1500000000", 1.5),        // 9 decimals, was "nanotons"
+            ("cardano", "1500000", 1.5),       // 6 decimals, was "lovelace"
+            ("tron", "1500000", 1.5),          // 6 decimals, was "sun"
         ] {
             let got = summary_display_balance(chain_id, &summary(smallest, "ignored"));
             assert!(
@@ -346,6 +365,9 @@ mod display_balance_from_a_typed_summary {
     /// An unknown chain is 0.0, not a panic — same as before.
     #[test]
     fn an_unknown_chain_is_zero() {
-        assert_eq!(summary_display_balance("not-a-chain", &summary("100", "1")), 0.0);
+        assert_eq!(
+            summary_display_balance("not-a-chain", &summary("100", "1")),
+            0.0
+        );
     }
 }

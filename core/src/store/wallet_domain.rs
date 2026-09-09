@@ -264,19 +264,37 @@ impl CoreImportedWallet {
             derivation_path: derivation_path.clone(),
             derivation_overrides: self.derivation_overrides.clone(),
             holdings: self.holdings.clone(),
-            addresses: chain
-                .and_then(|chain| {
-                    self.addresses
-                        .get(chain.address_slot())
-                        .map(|address| WalletAddress {
-                            chain_name: self.selected_chain.clone(),
+            // Every slot this wallet holds, not only its own chain's. A wallet
+            // on a family that has testnets holds one address per network, and
+            // dropping the rest here is what left a network switch re-deriving
+            // from the seed on every read — which a sealed wallet cannot do, so
+            // it silently showed the mainnet address instead.
+            //
+            // The wallet's own slot comes first and the rest follow by slot id:
+            // `primary_address` takes the first `receive` entry, and a
+            // `HashMap`'s order would make that whichever network the iterator
+            // happened to yield.
+            addresses: {
+                let own_slot = chain.map(|chain| chain.address_slot());
+                let mut slots: Vec<(&str, &String)> = self
+                    .addresses
+                    .iter()
+                    .map(|(slot, address)| (slot.as_str(), address))
+                    .collect();
+                slots.sort_by_key(|(slot, _)| (Some(*slot) != own_slot, *slot));
+                slots
+                    .into_iter()
+                    .filter_map(|(slot, address)| {
+                        let owner = Chain::all().find(|candidate| candidate.address_slot() == slot)?;
+                        Some(WalletAddress {
+                            chain_name: owner.chain_display_name().to_string(),
                             address: address.clone(),
                             kind: "receive".to_string(),
-                            derivation_path,
+                            derivation_path: derivation_path.clone(),
                         })
-                })
-                .into_iter()
-                .collect(),
+                    })
+                    .collect()
+            },
         }
     }
 }
@@ -527,7 +545,6 @@ impl CoreTokenPreferenceEntry {
         CoreTokenHostingChain::from_chain_name(&self.token.chain)
     }
 }
-
 
 /// One place an asset is held: a chain, a token standard, a contract.
 #[derive(Debug, Clone, PartialEq, uniffi::Record)]

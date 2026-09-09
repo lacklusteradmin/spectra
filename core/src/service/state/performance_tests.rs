@@ -231,6 +231,7 @@ async fn malformed_activity_is_an_error_and_does_not_advance_or_register() {
         service
             .keypool_state("scan".into(), "Bitcoin".into())
             .await
+            .unwrap()
             .reserved_receive_index,
         Some(before)
     );

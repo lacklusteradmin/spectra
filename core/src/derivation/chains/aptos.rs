@@ -4,7 +4,6 @@
 use crate::derivation::primitives::derive_bip39_seed;
 use ed25519_dalek::SigningKey;
 
-
 // ── SLIP-10 ed25519 ──────────────────────────────────────────────────────
 
 /// Full pipeline: BIP-39 seed → SLIP-10 ed25519 key → Aptos address (Keccak256 with 0x00 auth tag).
@@ -42,9 +41,9 @@ pub(crate) fn derive_from_seed_phrase(
 
 // ── UniFFI exports ────────────────────────────────────────────────────────
 
+use crate::derivation::primitives::derive_slip10_ed25519_key;
 use crate::derivation::types::{parse_path_metadata, DerivationResult};
 use crate::SpectraBridgeError;
-use crate::derivation::primitives::derive_slip10_ed25519_key;
 
 // Shared body for derive_aptos / derive_aptos_testnet: runs derivation and packs DerivationResult.
 fn aptos_internal(

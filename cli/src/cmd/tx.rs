@@ -3,13 +3,14 @@
 use clap::{Args, Subcommand};
 use colored::Colorize as _;
 use spectra_core::send::ethereum::{
-    parse_evm_custom_fees, parse_evm_nonce, prepare_evm_send_assembly, EvmSendAssemblyInput, EvmSendOverridesInput, EvmSupportedToken,
+    parse_evm_custom_fees, parse_evm_nonce, prepare_evm_send_assembly, EvmSendAssemblyInput,
+    EvmSendOverridesInput, EvmSupportedToken,
 };
 use spectra_core::send::{
     send_affordability, SendAffordability, SendAffordabilityInput, SendExecutionRequest,
 };
-use spectra_core::store::wallet_domain::CoreTransactionKind;
 use spectra_core::service::TokenDescriptor;
+use spectra_core::store::wallet_domain::CoreTransactionKind;
 use spectra_core::store::wallet_secrets;
 
 use super::chain::{service_for_chain, BALANCE, BROADCAST, FEE, HISTORY, RPC, UTXO};
@@ -23,6 +24,9 @@ pub struct TxsArgs {
     /// Only this wallet's transactions (id, name or address).
     #[arg(long)]
     wallet: Option<String>,
+    /// Only the pending sends that can still be replaced on their chain.
+    #[arg(long)]
+    replaceable: bool,
 }
 
 /// Putting a transfer on a chain, and looking at one first.
@@ -35,6 +39,8 @@ pub enum SendCommand {
     Identity(IdentityArgs),
     /// Validate exact decimal input and show integer units, without keys or network.
     Amount(AmountArgs),
+    /// Validate a fee or gas budget in native units, without keys or network.
+    FeeUnits(FeeUnitsArgs),
     /// Sign and broadcast a transfer.
     Broadcast(SendArgs),
     /// Build the transaction an EVM send would sign — no key, no network.
@@ -53,6 +59,7 @@ pub fn run(ctx: &Ctx, out: Out, command: SendCommand) -> CliResult<()> {
     match command {
         SendCommand::Identity(args) => identity(ctx, out, args),
         SendCommand::Amount(args) => exact_amount(out, args),
+        SendCommand::FeeUnits(args) => fee_units(out, args),
         SendCommand::Broadcast(args) => send(ctx, out, args),
         SendCommand::Assemble(args) => assemble(ctx, out, args),
         SendCommand::Probe(args) => probe(ctx, out, args),
@@ -75,8 +82,15 @@ pub struct IdentityArgs {
     password_env: Option<String>,
 }
 
-fn signing_password(ctx: &Ctx, wallet_id: &str, file: Option<String>, env: Option<String>) -> CliResult<Option<String>> {
-    if !wallet_secrets::is_sealed(ctx.secrets.as_ref(), wallet_id) { return Ok(None); }
+fn signing_password(
+    ctx: &Ctx,
+    wallet_id: &str,
+    file: Option<String>,
+    env: Option<String>,
+) -> CliResult<Option<String>> {
+    if !wallet_secrets::is_sealed(ctx.secrets.as_ref(), wallet_id) {
+        return Ok(None);
+    }
     let env = env.filter(|name| std::env::var_os(name).is_some());
     Ok(Some(SecretSource { file, env }.resolve("password")?))
 }
@@ -87,9 +101,15 @@ fn identity(ctx: &Ctx, out: Out, args: IdentityArgs) -> CliResult<()> {
     let password = signing_password(ctx, &wallet.id, args.password_file, args.password_env)?;
     let service = ctx.service()?;
     service.set_secret_store(ctx.secrets.clone());
-    let address = ctx.rt.block_on(service.send_identity_address(wallet.id.clone(), chain.str_id().into(), password))?;
+    let address = ctx.rt.block_on(service.send_identity_address(
+        wallet.id.clone(),
+        chain.str_id().into(),
+        password,
+    ))?;
     out.text(|| println!("  {} sender: {address}", chain.chain_display_name()));
-    out.emit(serde_json::json!({ "walletId": wallet.id, "chain": chain.str_id(), "address": address }));
+    out.emit(
+        serde_json::json!({ "walletId": wallet.id, "chain": chain.str_id(), "address": address }),
+    );
     Ok(())
 }
 
@@ -114,6 +134,23 @@ fn exact_amount(out: Out, args: AmountArgs) -> CliResult<()> {
 }
 
 #[derive(Args)]
+pub struct FeeUnitsArgs {
+    #[arg(long)]
+    chain: String,
+    #[arg(long, allow_hyphen_values = true)]
+    amount: f64,
+}
+
+fn fee_units(out: Out, args: FeeUnitsArgs) -> CliResult<()> {
+    let chain = resolve_chain(&args.chain)?;
+    let raw =
+        spectra_core::send::payload::fee_units(args.amount, u32::from(chain.native_decimals()))?;
+    out.text(|| println!("  {raw} native integer units"));
+    out.emit(serde_json::json!({"ok": true, "rawFee": raw.to_string()}));
+    Ok(())
+}
+
+#[derive(Args)]
 pub struct OverridesArgs {
     #[arg(long, default_value = "Ethereum")]
     chain: String,
@@ -134,15 +171,24 @@ pub struct OverridesArgs {
 fn overrides(out: Out, args: OverridesArgs) -> CliResult<()> {
     let chain = resolve_chain(&args.chain)?;
     let resolved = EvmSendOverridesInput {
-        nonce: args.nonce.map(parse_evm_nonce).transpose()
+        nonce: args
+            .nonce
+            .map(parse_evm_nonce)
+            .transpose()
             .map_err(|error| CliError::rejected(error.to_string()))?,
         gas_limit: args.gas_limit,
         calldata_hex: args.calldata,
         access_list_json: args.access_list,
         sign_only: Some(args.sign_only),
         ..Default::default()
-    }.resolve(chain)?;
-    out.text(|| println!("  {} valid EVM overrides (no signing or broadcast)", out::ok_mark()));
+    }
+    .resolve(chain)?;
+    out.text(|| {
+        println!(
+            "  {} valid EVM overrides (no signing or broadcast)",
+            out::ok_mark()
+        )
+    });
     out.emit(serde_json::json!({
         "ok": true,
         "nonce": resolved.nonce,
@@ -225,7 +271,11 @@ fn affordability(out: Out, args: AffordabilityArgs) -> CliResult<()> {
         SendAffordability::AmountExceedsBalance { symbol } => serde_json::json!({
             "verdict": "amountExceedsBalance", "symbol": symbol,
         }),
-        SendAffordability::FeeExceedsGasBalance { gas_symbol, fee, chain_name } => {
+        SendAffordability::FeeExceedsGasBalance {
+            gas_symbol,
+            fee,
+            chain_name,
+        } => {
             serde_json::json!({
                 "verdict": "feeExceedsGasBalance", "gasSymbol": gas_symbol,
                 "fee": fee, "chainName": chain_name,
@@ -238,13 +288,26 @@ fn affordability(out: Out, args: AffordabilityArgs) -> CliResult<()> {
         match &verdict {
             SendAffordability::Affordable => println!("  {}  the send fits", "\u{2713}".green()),
             SendAffordability::AmountPlusFeeExceedsBalance { symbol, required } => {
-                println!("  {}  needs ~{required} {symbol} for the amount plus the fee", "\u{2717}".red())
+                println!(
+                    "  {}  needs ~{required} {symbol} for the amount plus the fee",
+                    "\u{2717}".red()
+                )
             }
             SendAffordability::AmountExceedsBalance { symbol } => {
-                println!("  {}  more {symbol} than the wallet holds", "\u{2717}".red())
+                println!(
+                    "  {}  more {symbol} than the wallet holds",
+                    "\u{2717}".red()
+                )
             }
-            SendAffordability::FeeExceedsGasBalance { gas_symbol, fee, chain_name } => {
-                println!("  {}  not enough {gas_symbol} for the ~{fee} {chain_name} fee", "\u{2717}".red())
+            SendAffordability::FeeExceedsGasBalance {
+                gas_symbol,
+                fee,
+                chain_name,
+            } => {
+                println!(
+                    "  {}  not enough {gas_symbol} for the ~{fee} {chain_name} fee",
+                    "\u{2717}".red()
+                )
             }
         }
     });
@@ -280,9 +343,12 @@ fn probe(ctx: &Ctx, out: Out, args: ProbeArgs) -> CliResult<()> {
     let service = service_for_chain(chain, BALANCE | HISTORY | RPC)?;
 
     let token = match (args.contract, args.symbol, args.decimals) {
-        (Some(contract), Some(symbol), Some(decimals)) => {
-            Some(TokenDescriptor { contract, symbol, decimals, name: None })
-        }
+        (Some(contract), Some(symbol), Some(decimals)) => Some(TokenDescriptor {
+            contract,
+            symbol,
+            decimals,
+            name: None,
+        }),
         (Some(_), _, _) => return Err(CliError::usage("--contract needs --symbol and --decimals")),
         (None, Some(_), _) | (None, _, Some(_)) => {
             return Err(CliError::usage("--symbol and --decimals need --contract"))
@@ -307,7 +373,14 @@ fn probe(ctx: &Ctx, out: Out, args: ProbeArgs) -> CliResult<()> {
         println!();
         out::field("address", &args.address);
         out::field("asset", &asset);
-        out::field("balance", if risk.balance_is_zero { "zero" } else { "non-zero" });
+        out::field(
+            "balance",
+            if risk.balance_is_zero {
+                "zero"
+            } else {
+                "non-zero"
+            },
+        );
         out::field("history", if risk.has_history { "yes" } else { "none" });
     });
     out.emit(serde_json::json!({
@@ -372,6 +445,9 @@ pub struct SendArgs {
 /// the chain.
 pub fn txs(ctx: &Ctx, out: Out, args: TxsArgs) -> CliResult<()> {
     let service = ctx.service()?;
+    if args.replaceable {
+        return replaceable(ctx, out, args);
+    }
     let records = match &args.wallet {
         Some(needle) => {
             let wallet = ctx.find_wallet(needle)?;
@@ -436,6 +512,79 @@ pub fn txs(ctx: &Ctx, out: Out, args: TxsArgs) -> CliResult<()> {
                 "symbol": record.symbol,
                 "chain": record.chain_name,
                 "address": record.address,
+            }))
+            .collect::<Vec<_>>(),
+    }));
+    Ok(())
+}
+
+/// The pending sends core says can still be replaced, and how.
+///
+/// The rule — an EVM chain, a send, still pending, with a hash to read its
+/// nonce by — is `replaceable_sends`, derived where the records are. iOS asked
+/// it of its own projection, and asked it of the chain *named* "Ethereum".
+fn replaceable(ctx: &Ctx, out: Out, args: TxsArgs) -> CliResult<()> {
+    let service = ctx.service()?;
+    let wallet_id = match &args.wallet {
+        Some(needle) => Some(ctx.find_wallet(needle)?.id),
+        None => None,
+    };
+    let sends: Vec<_> = ctx
+        .rt
+        .block_on(service.replaceable_sends())
+        .into_iter()
+        .filter(|send| {
+            wallet_id
+                .as_deref()
+                .is_none_or(|id| send.wallet_id.eq_ignore_ascii_case(id))
+        })
+        .collect();
+
+    out.text(|| {
+        println!();
+        if sends.is_empty() {
+            println!("  {}", out::hint("nothing to replace"));
+            return;
+        }
+        for send in &sends {
+            println!(
+                "  {:>12}  {}  {}",
+                format!("{:.6}", send.amount),
+                out::tint(&send.symbol, &send.chain_name).bold(),
+                out::hint(&out::short_hash(&send.transaction_hash)),
+            );
+            println!(
+                "     {}",
+                out::hint(&match send.recorded_nonce {
+                    Some(nonce) => format!(
+                        "nonce {nonce} · {}",
+                        if send.can_speed_up {
+                            "speed up or cancel"
+                        } else {
+                            "cancel only"
+                        }
+                    ),
+                    None => "cancel only".to_string(),
+                })
+            );
+        }
+        println!();
+    });
+    out.emit(serde_json::json!({
+        "ok": true,
+        "count": sends.len(),
+        "replaceable": sends
+            .iter()
+            .map(|send| serde_json::json!({
+                "transaction": send.transaction_id,
+                "wallet": send.wallet_id,
+                "chain": send.chain_id,
+                "symbol": send.symbol,
+                "amount": send.amount,
+                "to": send.to_address,
+                "hash": send.transaction_hash,
+                "nonce": send.recorded_nonce,
+                "canSpeedUp": send.can_speed_up,
             }))
             .collect::<Vec<_>>(),
     }));

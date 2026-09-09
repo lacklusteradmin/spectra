@@ -192,8 +192,7 @@ pub fn maintenance_plan(
         refresh_pending_transactions: false,
         refresh_live_prices: false,
         run_background_tick,
-        allow_heavy_background_work: run_background_tick
-            && allows_heavy_work(settings, conditions),
+        allow_heavy_background_work: run_background_tick && allows_heavy_work(settings, conditions),
         poll_seconds: INACTIVE_POLL_SECONDS,
     }
 }
@@ -273,7 +272,10 @@ mod tests {
         clock.record(RefreshKind::LivePrices, 1_000.0);
         let settings = AppSettings::default();
         let soon = maintenance_plan(&clock, &settings, &conditions(true), true, 1_030.0);
-        assert!(!soon.refresh_pending_transactions, "60s interval, 30s elapsed");
+        assert!(
+            !soon.refresh_pending_transactions,
+            "60s interval, 30s elapsed"
+        );
         assert!(!soon.refresh_live_prices);
         let later = maintenance_plan(&clock, &settings, &conditions(true), true, 1_400.0);
         assert!(later.refresh_pending_transactions);
@@ -287,12 +289,24 @@ mod tests {
         let mut low = conditions(false);
         low.battery_level = 0.05;
         let plan = maintenance_plan(&RefreshClock::default(), &settings, &low, false, 1_000.0);
-        assert!(plan.run_background_tick, "watching pending sends is still fine");
-        assert!(!plan.allow_heavy_background_work, "sweeping balances is not");
+        assert!(
+            plan.run_background_tick,
+            "watching pending sends is still fine"
+        );
+        assert!(
+            !plan.allow_heavy_background_work,
+            "sweeping balances is not"
+        );
 
         let mut offline = conditions(false);
         offline.is_network_reachable = false;
-        let plan = maintenance_plan(&RefreshClock::default(), &settings, &offline, false, 1_000.0);
+        let plan = maintenance_plan(
+            &RefreshClock::default(),
+            &settings,
+            &offline,
+            false,
+            1_000.0,
+        );
         assert!(!plan.run_background_tick, "no network, nothing to do");
     }
 

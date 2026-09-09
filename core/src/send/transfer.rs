@@ -35,9 +35,7 @@ pub(crate) fn can_send_coin(
     match chain.send_rule() {
         SendRule::Any => true,
         SendRule::NativeOnly => coin.symbol == chain.coin_symbol(),
-        SendRule::NativeOrSupportedToken => {
-            coin.symbol == chain.coin_symbol() || is_known_token()
-        }
+        SendRule::NativeOrSupportedToken => coin.symbol == chain.coin_symbol() || is_known_token(),
         SendRule::SupportedSolanaCoin => coin.symbol == chain.coin_symbol() || is_known_token(),
     }
 }

@@ -152,6 +152,26 @@ const FIELDS: &[Field] = &[
         },
     },
     Field {
+        key: "tor-enabled",
+        read: |s| s.tor_enabled.to_string(),
+        update: |v| parse_bool(v).map(|value| AppSettingUpdate::TorEnabled { value }),
+    },
+    Field {
+        key: "tor-custom-proxy",
+        read: |s| s.tor_use_custom_proxy.to_string(),
+        update: |v| parse_bool(v).map(|value| AppSettingUpdate::TorUseCustomProxy { value }),
+    },
+    Field {
+        key: "tor-proxy-address",
+        read: |s| s.tor_custom_proxy_address.clone(),
+        update: |v| Ok(AppSettingUpdate::TorCustomProxyAddress { value: v.into() }),
+    },
+    Field {
+        key: "tor-kill-switch",
+        read: |s| s.tor_kill_switch.to_string(),
+        update: |v| parse_bool(v).map(|value| AppSettingUpdate::TorKillSwitch { value }),
+    },
+    Field {
         key: "large-movement-usd",
         read: |s| s.large_movement_alert_usd_threshold.to_string(),
         update: |v| {
@@ -190,7 +210,12 @@ const CHAIN_KEYED: &[ChainKeyedField] = &[
     },
     ChainKeyedField {
         prefix: "rpc-endpoint.",
-        read: |s, chain| s.rpc_endpoint_by_chain.get(chain).cloned().unwrap_or_default(),
+        read: |s, chain| {
+            s.rpc_endpoint_by_chain
+                .get(chain)
+                .cloned()
+                .unwrap_or_default()
+        },
         update: |chain, value| AppSettingUpdate::RpcEndpoint {
             chain: chain.to_string(),
             value: value.to_string(),
@@ -308,6 +333,19 @@ fn set(ctx: &Ctx, out: Out, args: SetArgs) -> CliResult<()> {
         .update(&args.value)
         .map_err(|reason| CliError::rejected(format!("{key}: {reason}")))?;
     let transition = ctx.apply(StateCommand::SetAppSetting { update })?;
+    // Core refuses a value it cannot store — an unknown chain, an address that
+    // is not a SOCKS5 URL — and says so rather than leaving the caller to
+    // notice that the read-back is the old value.
+    if transition
+        .events
+        .iter()
+        .any(|event| event.kind == "appSettingRejected")
+    {
+        return Err(CliError::rejected(format!(
+            "{key}: core refused {:?}",
+            args.value
+        )));
+    }
     // Report what core stored, not what was asked for: it trims strings and
     // bounds numbers, so the two differ often enough to be worth showing.
     let stored = setting.read(&transition.state.settings);

@@ -154,7 +154,10 @@ mod tests {
 
     #[test]
     fn rejects_btc_p2pkh() {
-        assert!(!validate_dash_address("1A1zP1eP5QGefi2DMPTfTL5SLmv7DivfNa", false));
+        assert!(!validate_dash_address(
+            "1A1zP1eP5QGefi2DMPTfTL5SLmv7DivfNa",
+            false
+        ));
     }
 
     #[test]

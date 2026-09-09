@@ -1395,11 +1395,6 @@ impl Chain {
         Self::all().filter(|c| c.is_testnet())
     }
 
-    /// Which diagnostics record shape this chain reports.
-    ///
-    /// A per-chain fact, so it lives here rather than in a `match` inside the
-    /// exporter — and it is what lets one JSON builder replace five.
-
     /// Resolve a chain from the display name used on the boundary.
     ///
     /// No special cases: the enum and `chains.toml` agree on every name, and
@@ -1468,12 +1463,6 @@ pub struct NetworkChoice {
     pub title: String,
     pub is_testnet: bool,
 }
-
-
-
-
-
-
 
 /// Newtype wrapper that proves the inner `Chain` is EVM-family.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -1618,7 +1607,6 @@ mod tests {
         }
         assert!(Chain::from_str_id("not-a-chain").is_none());
     }
-
 
     #[test]
     fn evm_group_includes_mainnets_and_testnets() {
@@ -1841,9 +1829,10 @@ pub fn core_chain_identities() -> Vec<ChainIdentity> {
                 EndpointSlot::Secondary => crate::app_core::AppCoreEndpointSlot::Secondary,
                 EndpointSlot::Explorer => crate::app_core::AppCoreEndpointSlot::Explorer,
             },
-            token_hosting_chain: crate::store::wallet_domain::CoreTokenHostingChain::from_chain_name(
-                chain.chain_display_name(),
-            ),
+            token_hosting_chain:
+                crate::store::wallet_domain::CoreTokenHostingChain::from_chain_name(
+                    chain.chain_display_name(),
+                ),
             send_execution_shape: chain.send_execution_shape(),
             rpc_health_method: chain.rpc_health_method().map(str::to_string),
             pending_status_poll: chain.pending_status_poll(),
@@ -1865,7 +1854,6 @@ pub fn core_chain_identities() -> Vec<ChainIdentity> {
         })
         .collect()
 }
-
 
 /// Endpoint-table key for a given chain + slot combination.
 #[uniffi::export]
@@ -2018,10 +2006,6 @@ mod catalog_agreement_tests {
     }
 }
 
-
-
-
-
 #[cfg(test)]
 mod fee_decimals_match_the_asset {
     /// A fee is shown and validated at the asset's own precision.
@@ -2031,14 +2015,17 @@ mod fee_decimals_match_the_asset {
     /// six-decimal fee drops the last two digits.
     #[test]
     fn utxo_and_e8s_chains_use_eight() {
-        for name in ["Bitcoin", "Bitcoin Cash", "Bitcoin SV", "Litecoin", "Internet Computer"] {
+        for name in [
+            "Bitcoin",
+            "Bitcoin Cash",
+            "Bitcoin SV",
+            "Litecoin",
+            "Internet Computer",
+        ] {
             let c = super::Chain::from_display_name(name).unwrap();
             assert_eq!(c.send_execution_shape().fee_decimals, 8, "{name}");
         }
-        assert_eq!(
-            super::Chain::Stellar.send_execution_shape().fee_decimals,
-            7
-        );
+        assert_eq!(super::Chain::Stellar.send_execution_shape().fee_decimals, 7);
     }
 }
 
@@ -2061,7 +2048,11 @@ mod the_post_send_refresh_set_is_the_registrys {
         for (mainnet, testnets) in [
             (
                 Chain::Bitcoin,
-                vec![Chain::BitcoinTestnet, Chain::BitcoinTestnet4, Chain::BitcoinSignet],
+                vec![
+                    Chain::BitcoinTestnet,
+                    Chain::BitcoinTestnet4,
+                    Chain::BitcoinSignet,
+                ],
             ),
             (Chain::Litecoin, vec![Chain::LitecoinTestnet]),
             (Chain::BitcoinCash, vec![Chain::BitcoinCashTestnet]),

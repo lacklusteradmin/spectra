@@ -18,8 +18,6 @@ pub struct AddressValidationResult {
     pub normalized_value: Option<String>,
 }
 
-
-
 #[uniffi::export]
 pub fn core_validate_address(request: AddressValidationRequest) -> AddressValidationResult {
     validate_address(request)
@@ -82,7 +80,6 @@ pub fn validate_address(request: AddressValidationRequest) -> AddressValidationR
         _ => invalid_result(),
     }
 }
-
 
 fn invalid_result() -> AddressValidationResult {
     AddressValidationResult {
@@ -525,7 +522,9 @@ fn validate_cardano_address(value: &str) -> AddressValidationResult {
         return invalid_result();
     }
     match bech32::decode(&lowered) {
-        Ok((hrp, data)) if !data.is_empty() && (hrp.as_str() == "addr" || hrp.as_str() == "addr_test") => {
+        Ok((hrp, data))
+            if !data.is_empty() && (hrp.as_str() == "addr" || hrp.as_str() == "addr_test") =>
+        {
             make_result(value.to_string())
         }
         _ => invalid_result(),
@@ -801,7 +800,9 @@ mod every_chain_accepts_what_it_derives {
             let Some(path) = crate::store::wallet_domain::CoreSeedDerivationPaths::default()
                 .path_for(chain)
                 .map(str::to_string)
-                .or_else(|| crate::app_core::default_path_from_catalog(chain.chain_display_name()).ok())
+                .or_else(|| {
+                    crate::app_core::default_path_from_catalog(chain.chain_display_name()).ok()
+                })
             else {
                 continue;
             };
@@ -834,7 +835,10 @@ mod every_chain_accepts_what_it_derives {
             }
         }
         // Every mainnet that derives at all, which is most of them.
-        assert!(checked >= 40, "only {checked} chains derived — the probe is broken");
+        assert!(
+            checked >= 40,
+            "only {checked} chains derived — the probe is broken"
+        );
         assert!(failures.is_empty(), "{}", failures.join("\n"));
     }
 }

@@ -46,10 +46,9 @@ fn self_test(out: Out, args: SelfTestArgs) -> CliResult<()> {
     let by_chain = match &args.chain {
         Some(name) => {
             let chain = resolve_chain(name)?;
-            let results =
-                spectra_core::diagnostics::self_tests::self_tests_run_chain(
-                    chain.chain_display_name().to_string(),
-                );
+            let results = spectra_core::diagnostics::self_tests::self_tests_run_chain(
+                chain.chain_display_name().to_string(),
+            );
             if results.is_empty() {
                 return Err(CliError::rejected(format!(
                     "{} has no self-tests",
@@ -142,6 +141,8 @@ fn show(ctx: &Ctx, out: Out, args: ShowArgs) -> CliResult<()> {
     })?;
 
     out.text(|| println!("{json}"));
-    out.emit(serde_json::json!({ "ok": true, "chain": chain.chain_display_name(), "document": json }));
+    out.emit(
+        serde_json::json!({ "ok": true, "chain": chain.chain_display_name(), "document": json }),
+    );
     Ok(())
 }

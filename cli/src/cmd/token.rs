@@ -4,9 +4,7 @@
 use clap::{Args, Subcommand};
 use colored::Colorize as _;
 use spectra_core::store::state::StateCommand;
-use spectra_core::store::wallet_domain::{
-    CoreTokenPreferenceEntry, CoreTokenHostingChain,
-};
+use spectra_core::store::wallet_domain::{CoreTokenHostingChain, CoreTokenPreferenceEntry};
 
 use super::resolve_chain;
 use crate::ctx::{wallet_address, Ctx};
@@ -169,8 +167,8 @@ fn track(ctx: &Ctx, out: Out, args: TrackArgs) -> CliResult<()> {
             ))
         })?;
 
-    let _ = CoreTokenHostingChain::from_chain_name(chain.chain_display_name())
-        .ok_or_else(|| {
+    let _ =
+        CoreTokenHostingChain::from_chain_name(chain.chain_display_name()).ok_or_else(|| {
             CliError::rejected(format!(
                 "{} does not support known tokens",
                 chain.chain_display_name()
@@ -204,7 +202,11 @@ fn track(ctx: &Ctx, out: Out, args: TrackArgs) -> CliResult<()> {
         .ok_or_else(|| CliError::failure("core accepted the token but did not store it"))?;
 
     out.text(|| {
-        println!("  {} tracking {}", out::ok_mark(), stored.token.symbol.bold());
+        println!(
+            "  {} tracking {}",
+            out::ok_mark(),
+            stored.token.symbol.bold()
+        );
         out::field("decimals", &stored.token.decimals.to_string());
     });
     out.emit(serde_json::json!({
@@ -312,10 +314,9 @@ fn format_amount(ctx: &Ctx, out: Out, args: FormatArgs) -> CliResult<()> {
                 })?;
             entry.decimals
         }
-        None => spectra_core::formatting::supported_decimal_places(
-            chain.chain_display_name(),
-            None,
-        ),
+        None => {
+            spectra_core::formatting::supported_decimal_places(chain.chain_display_name(), None)
+        }
     };
     let display = spectra_core::formatting::asset_amount_display(args.amount, asset_decimals);
     let rendered = if display.below_threshold {

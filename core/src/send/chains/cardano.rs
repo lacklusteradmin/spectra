@@ -96,12 +96,18 @@ pub fn build_signed_ada_tx(
 ) -> Result<String, String> {
     use ed25519_dalek::{Signer, SigningKey};
 
-    let total_in: u64 = utxos.iter().map(|(_, _, v)| v).sum();
-    let change = total_in.saturating_sub(amount_lovelace + fee_lovelace);
+    let change = super::accounting::checked_change(
+        utxos.iter().map(|(_, _, v)| *v),
+        amount_lovelace,
+        fee_lovelace,
+    )?;
 
     // Encode transaction body (map with fields 0-3).
     let mut outputs: Vec<(&[u8], u64)> = vec![(to_address_bytes, amount_lovelace)];
-    if change > min_change_lovelace.unwrap_or(1_000_000) {
+    if change > 0 && change < min_change_lovelace.unwrap_or(1_000_000) {
+        return Err("change below minimum output; choose an exact amount or fee".into());
+    }
+    if change > 0 {
         outputs.push((change_address_bytes, change));
     }
 
@@ -255,4 +261,40 @@ fn blake2b_256(data: &[u8]) -> [u8; 32] {
     let mut h = Blake2b::<U32>::new();
     h.update(data);
     h.finalize().into()
+}
+
+#[cfg(test)]
+mod accounting_tests {
+    use super::*;
+    fn build(values: &[u64], amount: u64, fee: u64) -> Result<String, String> {
+        let inputs: Vec<_> = values
+            .iter()
+            .enumerate()
+            .map(|(i, v)| ("00".repeat(32), i as u32, *v))
+            .collect();
+        build_signed_ada_tx(
+            &inputs,
+            &[0x61; 29],
+            amount,
+            fee,
+            &[0x62; 29],
+            &[1; 64],
+            &[2; 32],
+            100,
+            Some(1000000),
+        )
+    }
+    #[test]
+    fn cardano_refuses_unbalanced_or_dust_transactions() {
+        assert!(build(&[2000000], 2000000, 1).is_err());
+        assert!(build(&[2000000], 1000000, 170000).is_err());
+        assert!(build(&[u64::MAX, 1], 1, 1).is_err());
+        assert!(build(&[u64::MAX], u64::MAX, 1).is_err());
+        assert!(build(&[], 1, 1).is_err());
+        assert!(build(&[1170000], 1000000, 170000).is_ok());
+        assert!(
+            build(&[2170000], 1000000, 170000).is_ok(),
+            "minimum change is valid"
+        );
+    }
 }

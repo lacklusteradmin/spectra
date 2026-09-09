@@ -149,7 +149,6 @@ pub enum StakingError {
     MalformedResponse(String),
 }
 
-
 /// What a staking action does, across every chain that stakes.
 ///
 /// The service exported twenty-three `<chain>_build_<action>_tx` functions —

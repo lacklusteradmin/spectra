@@ -43,9 +43,19 @@ impl EvmClient {
             None => self.fetch_nonce(from_address).await?,
         };
         let (max_fee, max_priority) = resolve_fees(self, &overrides).await?;
-        let gas_limit = overrides.gas_limit.unwrap_or(21_000);
-
         let native_data = overrides.calldata.as_deref().unwrap_or(&[]);
+        let gas_limit = resolve_gas(
+            self,
+            from_address,
+            to_address,
+            value_wei,
+            native_data,
+            nonce,
+            max_fee,
+            max_priority,
+            &overrides,
+        )
+        .await?;
         let raw_tx = build_eip1559_tx(
             self.chain_id,
             nonce,
@@ -126,23 +136,19 @@ impl EvmClient {
         let (max_fee, max_priority) = resolve_fees(self, &overrides).await?;
 
         let data = encode_erc20_transfer(to_address, amount_raw)?;
-        let data_hex = format!("0x{}", hex::encode(&data));
-
-        // Ask the node for the real gas limit unless the caller pinned one.
-        let gas_limit = match overrides.gas_limit {
-            Some(g) => g,
-            None => self
-                .estimate_gas(from_address, contract, 0u128, Some(&data_hex))
-                .await
-                .map(|g| g.saturating_add(g * overrides.gas_buffer_pct.unwrap_or(20) as u64 / 100))
-                .unwrap_or(65_000),
-        };
-
-        // If calldata override is set, use it instead of the auto-encoded transfer.
-        let call_data = match overrides.calldata {
-            Some(ref cd) => cd.as_slice(),
-            None => &data,
-        };
+        let call_data = overrides.calldata.as_deref().unwrap_or(&data);
+        let gas_limit = resolve_gas(
+            self,
+            from_address,
+            contract,
+            0,
+            call_data,
+            nonce,
+            max_fee,
+            max_priority,
+            &overrides,
+        )
+        .await?;
 
         let raw_tx = build_eip1559_tx(
             self.chain_id,
@@ -239,6 +245,50 @@ pub struct EvmSendOverrides {
     /// Percentage buffer added to the `eth_estimateGas` result when
     /// `gas_limit` is not pinned. Default `20` (i.e. +20%).
     pub gas_buffer_pct: Option<u32>,
+}
+
+/// Estimate the final transaction, including calldata, fees and access list.
+async fn resolve_gas(
+    client: &EvmClient,
+    from: &str,
+    to: &str,
+    value: u128,
+    data: &[u8],
+    nonce: u64,
+    max_fee: u128,
+    priority: u128,
+    overrides: &EvmSendOverrides,
+) -> Result<u64, String> {
+    if let Some(gas) = overrides.gas_limit {
+        return if gas > 0 {
+            Ok(gas)
+        } else {
+            Err("gas limit must be positive".into())
+        };
+    }
+    let access_list: Vec<_> = overrides.access_list.iter().map(|entry| json!({
+        "address": format!("0x{}", hex::encode(entry.address)),
+        "storageKeys": entry.storage_keys.iter().map(|key| format!("0x{}", hex::encode(key))).collect::<Vec<_>>(),
+    })).collect();
+    let result = client
+        .call(
+            "eth_estimateGas",
+            json!([{
+                "from": from, "to": to, "value": format!("0x{value:x}"),
+                "data": format!("0x{}", hex::encode(data)), "nonce": format!("0x{nonce:x}"),
+                "maxFeePerGas": format!("0x{max_fee:x}"),
+                "maxPriorityFeePerGas": format!("0x{priority:x}"), "accessList": access_list,
+            }]),
+        )
+        .await?;
+    let gas = crate::fetch::chains::evm::parse_hex_u64(
+        result.as_str().ok_or("eth_estimateGas: expected string")?,
+    )?;
+    if gas == 0 {
+        return Err("gas estimate must be positive".into());
+    }
+    let buffered = u128::from(gas) * (100 + u128::from(overrides.gas_buffer_pct.unwrap_or(20)));
+    u64::try_from(buffered.div_ceil(100)).map_err(|_| "buffered gas limit out of range".into())
 }
 
 /// Resolve (max_fee_per_gas, max_priority_fee_per_gas) from overrides plus
@@ -499,4 +549,99 @@ pub fn encode_erc20_transfer_from(from: &str, to: &str, amount: u128) -> Result<
     amount_bytes[16..].copy_from_slice(&amount.to_be_bytes());
     out.extend_from_slice(&amount_bytes);
     Ok(out)
+}
+
+#[cfg(test)]
+mod gas_tests {
+    use super::*;
+    use std::sync::Arc;
+    use wiremock::{matchers::any, Mock, MockServer, Request, ResponseTemplate};
+
+    #[tokio::test]
+    async fn signing_estimates_final_payload_and_refuses_failed_gas() {
+        let address = "0x1111111111111111111111111111111111111111";
+        for token in [false, true] {
+            for estimate in [
+                Some("0x7531"),
+                None,
+                Some("0x0"),
+                Some("0xffffffffffffffff"),
+            ] {
+                let server = MockServer::start().await;
+                Mock::given(any()).respond_with(move |req: &Request| {
+                    let body: serde_json::Value = req.body_json().unwrap();
+                    assert_eq!(body["method"], "eth_estimateGas", "must not broadcast after estimate failure");
+                    let tx = &body["params"][0];
+                    assert_eq!(tx["data"], "0xaabb");
+                    assert_eq!(tx["to"], address);
+                    assert_eq!(tx["value"], if token { "0x0" } else { "0x7" });
+                    assert_eq!(tx["nonce"], "0x3");
+                    assert_eq!(tx["maxFeePerGas"], "0xa");
+                    assert_eq!(tx["accessList"][0]["address"], address);
+                    assert_eq!(tx["accessList"][0]["storageKeys"][0], format!("0x{}", "22".repeat(32)));
+                    ResponseTemplate::new(200).set_body_json(match estimate {
+                        Some(gas) => json!({"jsonrpc":"2.0", "id":body["id"], "result":gas}),
+                        None => json!({"jsonrpc":"2.0", "id":body["id"], "error":{"code":-32000,"message":"reverted"}}),
+                    })
+                }).mount(&server).await;
+                let client = EvmClient::new(Arc::new(vec![server.uri()]), 1);
+                let overrides = EvmSendOverrides {
+                    nonce: Some(3),
+                    max_fee_per_gas_wei: Some(10),
+                    max_priority_fee_per_gas_wei: Some(1),
+                    calldata: Some(vec![0xaa, 0xbb]),
+                    access_list: vec![AccessListEntry {
+                        address: [0x11; 20],
+                        storage_keys: vec![[0x22; 32]],
+                    }],
+                    sign_only: true,
+                    ..Default::default()
+                };
+                let result = if token {
+                    client
+                        .sign_and_broadcast_erc20_with_overrides(
+                            address, address, address, 7, &[1; 32], overrides,
+                        )
+                        .await
+                } else {
+                    client
+                        .sign_and_broadcast_with_overrides(address, address, 7, &[1; 32], overrides)
+                        .await
+                };
+                if estimate == Some("0x7531") {
+                    let tx = result.unwrap();
+                    assert_eq!(tx.gas_limit, 36002);
+                    assert!(!tx.raw_tx_hex.is_empty());
+                } else {
+                    assert!(result.is_err(), "{estimate:?}");
+                }
+                assert!(!server.received_requests().await.unwrap().is_empty());
+            }
+        }
+    }
+
+    #[tokio::test]
+    async fn explicit_gas_signs_offline_and_zero_is_refused() {
+        let client = EvmClient::new(Arc::new(vec![]), 1);
+        let address = "0x1111111111111111111111111111111111111111";
+        for gas in [0, 21000] {
+            let result = client
+                .sign_and_broadcast_with_overrides(
+                    address,
+                    address,
+                    1,
+                    &[1; 32],
+                    EvmSendOverrides {
+                        nonce: Some(0),
+                        max_fee_per_gas_wei: Some(2),
+                        max_priority_fee_per_gas_wei: Some(1),
+                        gas_limit: Some(gas),
+                        sign_only: true,
+                        ..Default::default()
+                    },
+                )
+                .await;
+            assert_eq!(result.is_ok(), gas > 0);
+        }
+    }
 }

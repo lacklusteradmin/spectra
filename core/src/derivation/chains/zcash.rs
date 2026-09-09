@@ -149,8 +149,9 @@ mod tests {
     #[test]
     fn rejects_btc_p2pkh() {
         assert!(!validate_zcash_address(
-            "1A1zP1eP5QGefi2DMPTfTL5SLmv7DivfNa"
-        , false));
+            "1A1zP1eP5QGefi2DMPTfTL5SLmv7DivfNa",
+            false
+        ));
     }
 
     #[test]

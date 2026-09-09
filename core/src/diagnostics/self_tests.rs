@@ -186,51 +186,69 @@ async fn fetch_eth_rpc_hex(url: &str, method: &str, id: u32) -> Result<u64, Stri
     u64::from_str_radix(trimmed, 16).map_err(|e| e.to_string())
 }
 
+/// Check that an endpoint serves the chain it was configured for, and that it
+/// has a block height.
+///
+/// This was `self_tests_run_ethereum_rpc`, which compared the reported id with
+/// a literal `1` and labelled every row "Ethereum" — one chain of the 23 in the
+/// family, and the only one whose diagnostics screen offered the check. The id
+/// to expect is `Chain::evm_chain_id`, so every EVM chain can be asked whether
+/// the node it is pointed at is the node it means.
 #[uniffi::export(async_runtime = "tokio")]
-pub async fn self_tests_run_ethereum_rpc(
+pub async fn self_tests_run_evm_rpc(
+    chain_id: String,
     rpc_url: String,
     rpc_label: String,
 ) -> Vec<ChainSelfTestResult> {
-    let chain_id_result = fetch_eth_rpc_hex(&rpc_url, "eth_chainId", 1).await;
-    let block_result = fetch_eth_rpc_hex(&rpc_url, "eth_blockNumber", 2).await;
-    match (chain_id_result, block_result) {
-        (Ok(chain_id), Ok(latest_block)) => {
-            let chain_pass = chain_id == 1;
-            vec![
-                ChainSelfTestResult {
-                    name: "ETH RPC Chain ID".to_string(),
-                    passed: chain_pass,
-                    chain_label: "Ethereum".to_string(),
-                    outcome: ChainSelfTestOutcome::Custom {
-                        text: if chain_pass {
-                            "RPC reports Ethereum mainnet (chain id 1).".to_string()
-                        } else {
-                            format!(
-                                "RPC returned chain id {chain_id}. Configure an Ethereum mainnet endpoint."
-                            )
-                        },
+    let Some(chain) = crate::registry::Chain::from_str_id(&chain_id).filter(|c| c.is_evm()) else {
+        return vec![ChainSelfTestResult {
+            name: "RPC Chain ID".to_string(),
+            passed: false,
+            chain_label: chain_id.clone(),
+            outcome: ChainSelfTestOutcome::Custom {
+                text: format!("{chain_id} is not an EVM chain, so it has no JSON-RPC chain id."),
+            },
+        }];
+    };
+    let label = chain.chain_display_name();
+    let expected = chain.evm_chain_id();
+    let reported = fetch_eth_rpc_hex(&rpc_url, "eth_chainId", 1).await;
+    let block = fetch_eth_rpc_hex(&rpc_url, "eth_blockNumber", 2).await;
+    match (reported, block) {
+        (Ok(reported), Ok(latest_block)) => vec![
+            ChainSelfTestResult {
+                name: "RPC Chain ID".to_string(),
+                passed: reported == expected,
+                chain_label: label.to_string(),
+                outcome: ChainSelfTestOutcome::Custom {
+                    text: if reported == expected {
+                        format!("RPC reports {label} (chain id {expected}).")
+                    } else {
+                        format!(
+                            "RPC returned chain id {reported}, not {label}'s {expected}. Configure a {label} endpoint."
+                        )
                     },
                 },
-                ChainSelfTestResult {
-                    name: "ETH RPC Latest Block".to_string(),
-                    passed: latest_block > 0,
-                    chain_label: "Ethereum".to_string(),
-                    outcome: ChainSelfTestOutcome::Custom {
-                        text: if latest_block > 0 {
-                            format!("RPC latest block height: {latest_block} via {rpc_label}.")
-                        } else {
-                            "RPC returned an invalid latest block value.".to_string()
-                        },
+            },
+            ChainSelfTestResult {
+                name: "RPC Latest Block".to_string(),
+                passed: latest_block > 0,
+                chain_label: label.to_string(),
+                outcome: ChainSelfTestOutcome::Custom {
+                    text: if latest_block > 0 {
+                        format!("RPC latest block height: {latest_block} via {rpc_label}.")
+                    } else {
+                        "RPC returned an invalid latest block value.".to_string()
                     },
                 },
-            ]
-        }
-        (chain_id, block) => {
-            let detail = chain_id.err().or_else(|| block.err()).unwrap_or_default();
+            },
+        ],
+        (reported, block) => {
+            let detail = reported.err().or_else(|| block.err()).unwrap_or_default();
             vec![ChainSelfTestResult {
-                name: "ETH RPC Health".to_string(),
+                name: "RPC Health".to_string(),
                 passed: false,
-                chain_label: "Ethereum".to_string(),
+                chain_label: label.to_string(),
                 outcome: ChainSelfTestOutcome::Custom {
                     text: format!("RPC health check failed for {rpc_label}: {detail}"),
                 },
@@ -260,6 +278,29 @@ pub fn self_tests_run_all() -> HashMap<String, Vec<ChainSelfTestResult>> {
 #[cfg(test)]
 mod fixtures_are_real_tests {
     use super::*;
+
+    /// The chain id decides which id the node must report, so a chain that has
+    /// no JSON-RPC id is refused rather than probed and compared with a
+    /// literal. Offline: the guard answers before any request is made.
+    #[tokio::test]
+    async fn only_an_evm_chain_has_a_json_rpc_id_to_check() {
+        let refused = self_tests_run_evm_rpc(
+            "bitcoin".into(),
+            "http://127.0.0.1:1/".into(),
+            "unused".into(),
+        )
+        .await;
+        assert_eq!(refused.len(), 1);
+        assert!(!refused[0].passed);
+        assert!(matches!(
+            &refused[0].outcome,
+            ChainSelfTestOutcome::Custom { text } if text.contains("not an EVM chain")
+        ));
+        // Every EVM chain has one, which is what the caller passes.
+        for chain in crate::registry::Chain::all().filter(|c| c.is_evm()) {
+            assert!(chain.evm_chain_id() > 0, "{}", chain.chain_display_name());
+        }
+    }
 
     /// Every chain that can derive has a suite, and the suite checks that it
     /// derives.
@@ -389,4 +430,3 @@ mod fixtures_are_real_tests {
         }
     }
 }
-

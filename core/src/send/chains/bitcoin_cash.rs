@@ -1,29 +1,10 @@
 //! BCH send: SIGHASH_FORKID P2PKH signer (BIP143-variant) and Blockbook broadcast.
 
-use crate::http::{with_fallback, RetryProfile};
-
+use super::wire::{build_input, build_tx, dsha256, p2pkh_script, p2pkh_script_sig, varint};
 use crate::derivation::chains::bitcoin_cash::decode_bch_to_hash20;
 use crate::fetch::chains::bitcoin_cash::{BchSendResult, BitcoinCashClient};
 
 impl BitcoinCashClient {
-    pub async fn broadcast_raw_tx(&self, hex_tx: &str) -> Result<BchSendResult, String> {
-        let hex = hex_tx.to_string();
-        with_fallback(&self.endpoints, |base| {
-            let client = self.client.clone();
-            let hex = hex.clone();
-            let url = format!("{}/api/v2/sendtx/", base.trim_end_matches('/'));
-            async move {
-                let raw_tx_hex = hex.clone();
-                let txid: String = client
-                    .post_text(&url, hex, RetryProfile::ChainWrite)
-                    .await?;
-                let txid = txid.trim().to_string();
-                Ok(BchSendResult { txid, raw_tx_hex })
-            }
-        })
-        .await
-    }
-
     /// Fetch UTXOs for `from_address`, sign a BCH P2PKH (SIGHASH_FORKID) transaction,
     /// and broadcast.
     pub async fn sign_and_broadcast(
@@ -80,8 +61,11 @@ pub fn sign_bch_tx(
     let pubkey = secp256k1::PublicKey::from_secret_key(&secp, &secret_key);
     let pubkey_bytes = pubkey.serialize();
 
-    let total_in: u64 = utxos.iter().map(|(_, _, v, _)| v).sum();
-    let change = total_in.saturating_sub(amount_sat + fee_sat);
+    let change = super::accounting::checked_change(
+        utxos.iter().map(|(_, _, v, _)| *v),
+        amount_sat,
+        fee_sat,
+    )?;
 
     let to_hash = decode_bch_to_hash20(to_address)?;
     let change_hash = decode_bch_to_hash20(change_address)?;
@@ -138,79 +122,11 @@ pub fn sign_bch_tx(
         let mut der = sig.serialize_der().to_vec();
         der.push(SIGHASH_ALL_FORKID as u8);
 
-        let script_sig = build_p2pkh_script_sig(&der, &pubkey_bytes);
-        signed_inputs.push(build_input(txid, *vout, &script_sig));
+        let script_sig = p2pkh_script_sig(&der, &pubkey_bytes);
+        signed_inputs.push(build_input(txid, *vout, &script_sig, 0xffff_ffff)?);
     }
 
     Ok(build_tx(&signed_inputs, &outputs))
 }
 
 // ── Script / tx helpers
-
-fn p2pkh_script(hash: &[u8; 20]) -> Vec<u8> {
-    let mut s = vec![0x76u8, 0xa9, 0x14];
-    s.extend_from_slice(hash);
-    s.push(0x88);
-    s.push(0xac);
-    s
-}
-
-fn build_p2pkh_script_sig(der: &[u8], pubkey: &[u8]) -> Vec<u8> {
-    let mut out = Vec::new();
-    out.push(der.len() as u8);
-    out.extend_from_slice(der);
-    out.push(pubkey.len() as u8);
-    out.extend_from_slice(pubkey);
-    out
-}
-
-fn build_input(txid: &str, vout: u32, script_sig: &[u8]) -> Vec<u8> {
-    let mut out = Vec::new();
-    let mut txid_bytes = hex::decode(txid).unwrap_or_default();
-    txid_bytes.reverse();
-    out.extend_from_slice(&txid_bytes);
-    out.extend_from_slice(&vout.to_le_bytes());
-    out.extend_from_slice(&varint(script_sig.len()));
-    out.extend_from_slice(script_sig);
-    out.extend_from_slice(&0xffffffff_u32.to_le_bytes());
-    out
-}
-
-fn build_tx(inputs: &[Vec<u8>], outputs: &[(Vec<u8>, u64)]) -> Vec<u8> {
-    let mut raw = Vec::new();
-    raw.extend_from_slice(&1u32.to_le_bytes());
-    raw.extend_from_slice(&varint(inputs.len()));
-    for inp in inputs {
-        raw.extend_from_slice(inp);
-    }
-    raw.extend_from_slice(&varint(outputs.len()));
-    for (script, value) in outputs {
-        raw.extend_from_slice(&value.to_le_bytes());
-        raw.extend_from_slice(&varint(script.len()));
-        raw.extend_from_slice(script);
-    }
-    raw.extend_from_slice(&0u32.to_le_bytes());
-    raw
-}
-
-fn dsha256(data: &[u8]) -> [u8; 32] {
-    use sha2::{Digest, Sha256};
-    let first = Sha256::digest(data);
-    Sha256::digest(first).into()
-}
-
-fn varint(n: usize) -> Vec<u8> {
-    match n {
-        0..=0xfc => vec![n as u8],
-        0xfd..=0xffff => {
-            let mut v = vec![0xfd];
-            v.extend_from_slice(&(n as u16).to_le_bytes());
-            v
-        }
-        _ => {
-            let mut v = vec![0xfe];
-            v.extend_from_slice(&(n as u32).to_le_bytes());
-            v
-        }
-    }
-}

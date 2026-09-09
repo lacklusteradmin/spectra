@@ -50,6 +50,9 @@ pub struct HistoryArgs {
     /// Most entries to show.
     #[arg(long, default_value_t = 20)]
     limit: usize,
+    /// Merge what is fetched into the stored history, as the app does.
+    #[arg(long)]
+    save: bool,
 }
 
 /// A service bound to one chain's endpoints for the roles a command needs.
@@ -62,7 +65,9 @@ pub fn service_for_chain(chain: Chain, roles: u32) -> CliResult<Arc<WalletServic
             .map(|record| record.endpoint)
             .collect();
     if endpoints.is_empty() {
-        return Err(CliError::failure(format!("no endpoints registered for {name}")));
+        return Err(CliError::failure(format!(
+            "no endpoints registered for {name}"
+        )));
     }
     WalletService::new_typed(vec![ChainEndpoints {
         chain_id: chain.str_id().to_string(),
@@ -162,7 +167,9 @@ pub struct EndpointsArgs {
 pub fn endpoints(ctx: &Ctx, out: Out, args: EndpointsArgs) -> CliResult<()> {
     let chains: Vec<Chain> = match &args.chain {
         Some(name) => vec![super::resolve_chain(name)?],
-        None => Chain::all().filter(|c| c.mainnet_counterpart() == *c).collect(),
+        None => Chain::all()
+            .filter(|c| c.mainnet_counterpart() == *c)
+            .collect(),
     };
     let service = ctx.service()?;
 
@@ -253,10 +260,57 @@ pub fn balance(ctx: &Ctx, out: Out, args: BalanceArgs) -> CliResult<()> {
     Ok(())
 }
 
+/// Fetch this wallet's history and merge it into the store, the way the app
+/// does — one core operation that plans, fetches, builds the records and
+/// merges. The listing above is a read; this is the write.
+fn save_history(
+    ctx: &Ctx,
+    out: Out,
+    service: &Arc<WalletService>,
+    chain: Chain,
+    wallet_id: &str,
+) -> CliResult<()> {
+    ctx.rt
+        .block_on(service.open_state(ctx.db_path()))
+        .map_err(CliError::from)?;
+    let outcome = ctx
+        .rt
+        .block_on(service.refresh_chain_history(
+            chain.str_id().to_string(),
+            vec![wallet_id.to_string()],
+        ))
+        .map_err(CliError::from)?;
+
+    out.text(|| {
+        println!();
+        println!(
+            "  {} {} added, {} updated",
+            out::ok_mark(),
+            outcome.added.to_string().bold(),
+            outcome.updated.to_string().bold()
+        );
+        if outcome.wallets_failed > 0 {
+            println!("  {}", out::hint("a provider did not answer"));
+        }
+    });
+    out.emit(serde_json::json!({
+        "ok": true,
+        "chain": chain.str_id(),
+        "walletsRefreshed": outcome.wallets_refreshed,
+        "walletsFailed": outcome.wallets_failed,
+        "added": outcome.added,
+        "updated": outcome.updated,
+    }));
+    Ok(())
+}
+
 pub fn history(ctx: &Ctx, out: Out, args: HistoryArgs) -> CliResult<()> {
     let wallet = ctx.find_wallet(&args.wallet)?;
     let chain = resolve_chain(&wallet.chain_name)?;
     let service = service_for_chain(chain, HISTORY | BALANCE | RPC)?;
+    if args.save {
+        return save_history(ctx, out, &service, chain, &wallet.id);
+    }
 
     let entries = ctx
         .rt
@@ -275,9 +329,15 @@ pub fn history(ctx: &Ctx, out: Out, args: HistoryArgs) -> CliResult<()> {
         for entry in entries.iter().take(args.limit) {
             let incoming = entry.kind.eq_ignore_ascii_case("receive");
             let (mark, amount) = if incoming {
-                ("↓", format!("{:>12.4}", entry.amount).truecolor(120, 230, 160))
+                (
+                    "↓",
+                    format!("{:>12.4}", entry.amount).truecolor(120, 230, 160),
+                )
             } else {
-                ("↑", format!("{:>12.4}", entry.amount).truecolor(255, 110, 130))
+                (
+                    "↑",
+                    format!("{:>12.4}", entry.amount).truecolor(255, 110, 130),
+                )
             };
             println!(
                 "  {}  {} {}  {}  {}",

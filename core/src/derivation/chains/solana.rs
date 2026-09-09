@@ -14,7 +14,6 @@ pub(crate) fn decode_b58_32(b58: &str) -> Result<[u8; 32], String> {
         .map_err(|v: Vec<u8>| format!("b58 {b58} not 32 bytes: {}", v.len()))
 }
 
-
 // ── HMAC-SHA512 + SLIP-10 ed25519 ────────────────────────────────────────
 
 /// BIP-39 → SLIP-10 ed25519 → Solana address (base58 pubkey).
@@ -41,9 +40,9 @@ pub(crate) fn derive_from_seed_phrase(
 
 // ── UniFFI exports ────────────────────────────────────────────────────────
 
+use crate::derivation::primitives::derive_slip10_ed25519_key;
 use crate::derivation::types::{parse_path_metadata, DerivationResult};
 use crate::SpectraBridgeError;
-use crate::derivation::primitives::derive_slip10_ed25519_key;
 
 // Shared body for derive_solana / derive_solana_devnet.
 fn solana_internal(

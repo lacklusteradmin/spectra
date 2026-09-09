@@ -263,7 +263,6 @@ pub struct EvmTransactionRecordRequest {
     pub unknown_timestamp_sentinel_unix: f64,
 }
 
-#[uniffi::export]
 pub fn plan_evm_transaction_records(
     request: EvmTransactionRecordRequest,
 ) -> Vec<EvmPlannedTransactionRecord> {
@@ -380,7 +379,9 @@ pub struct AggregatedTransaction {
 /// `history_aggregate_dogecoin` and called only by Dogecoin's refresh, so
 /// Litecoin, Bitcoin Cash and Bitcoin SV went down the single-address path.
 #[uniffi::export]
-pub fn history_aggregate_by_transaction(input: MultiAddressAggregateInput) -> Vec<AggregatedTransaction> {
+pub fn history_aggregate_by_transaction(
+    input: MultiAddressAggregateInput,
+) -> Vec<AggregatedTransaction> {
     use std::collections::HashMap;
     let own: std::collections::HashSet<String> = input
         .own_addresses
@@ -465,7 +466,6 @@ pub struct EvmNativeAsset {
 
 /// Native asset name/symbol for an EVM `chain_name`. Returns `None` when
 /// the chain name is not a known EVM chain.
-#[uniffi::export]
 pub fn history_evm_native_asset(chain_name: String) -> Option<EvmNativeAsset> {
     // Both halves are catalog columns. Nine names were written out here and the
     // other twenty-four EVM networks returned `None`, so a history row on Base,
@@ -479,7 +479,6 @@ pub fn history_evm_native_asset(chain_name: String) -> Option<EvmNativeAsset> {
         symbol: chain.entry().gas_token_symbol.clone(),
     })
 }
-
 
 // ────────────────────────────────────────────────────────────────────
 // Bitcoin raw-history decode: turns the `fetch_history` Bitcoin JSON
@@ -788,11 +787,18 @@ mod aggregation_is_not_chain_specific {
         };
         let out = history_aggregate_by_transaction(MultiAddressAggregateInput {
             own_addresses: vec!["ltc1own".into(), "ltc1change".into()],
-            entries: vec![leg("ltc1own", "send", 5.0), leg("ltc1change", "receive", 2.0)],
+            entries: vec![
+                leg("ltc1own", "send", 5.0),
+                leg("ltc1change", "receive", 2.0),
+            ],
         });
         assert_eq!(out.len(), 1, "one transaction, one record");
         assert_eq!(out[0].hash, "abc");
         // Net of the legs: 5 out, 2 back as change.
-        assert!((out[0].amount - 3.0).abs() < 1e-9, "amount was {}", out[0].amount);
+        assert!(
+            (out[0].amount - 3.0).abs() < 1e-9,
+            "amount was {}",
+            out[0].amount
+        );
     }
 }

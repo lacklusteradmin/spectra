@@ -298,7 +298,10 @@ mod tests {
         assert_eq!(s.transaction_count, 3);
         assert_eq!(s.decoding_completeness(), 1.0);
         assert_eq!(
-            s.per_source.iter().find(|p| p.name == "etherscan").map(|p| p.count),
+            s.per_source
+                .iter()
+                .find(|p| p.name == "etherscan")
+                .map(|p| p.count),
             Some(3)
         );
     }

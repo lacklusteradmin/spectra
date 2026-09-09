@@ -223,11 +223,8 @@ static CATALOG: LazyLock<Vec<ChainEntry>> = LazyLock::new(|| {
             .collect(),
     };
 
-    let by_id: std::collections::HashMap<&str, &TomlChain> = parsed
-        .chains
-        .iter()
-        .map(|c| (c.id.as_str(), c))
-        .collect();
+    let by_id: std::collections::HashMap<&str, &TomlChain> =
+        parsed.chains.iter().map(|c| (c.id.as_str(), c)).collect();
 
     let mut out: Vec<ChainEntry> = parsed.chains.iter().map(entry_of).collect();
 
@@ -236,7 +233,10 @@ static CATALOG: LazyLock<Vec<ChainEntry>> = LazyLock::new(|| {
         // mistake, not a row to skip: the entry would carry an id and nothing
         // that says what it is.
         let chain = by_id.get(n.chain.as_str()).unwrap_or_else(|| {
-            panic!("chains.toml: network {} names unknown chain {}", n.id, n.chain)
+            panic!(
+                "chains.toml: network {} names unknown chain {}",
+                n.id, n.chain
+            )
         });
         let mut entry = entry_of(chain);
         entry.id = n.id.clone();
@@ -362,7 +362,6 @@ pub(crate) fn derivation_paths_for_chain(
         .map(|chain| chain.derivation_path.as_slice())
 }
 
-
 #[cfg(test)]
 mod the_catalog_is_two_tables {
     use super::*;
@@ -391,7 +390,11 @@ mod the_catalog_is_two_tables {
         // And the registry agrees about which is which.
         for n in &parsed.networks {
             let chain = Chain::from_str_id(&n.id).expect("the registry knows it");
-            assert!(chain.is_testnet(), "{} is a network row and not a testnet", n.id);
+            assert!(
+                chain.is_testnet(),
+                "{} is a network row and not a testnet",
+                n.id
+            );
             assert_eq!(chain.mainnet_counterpart().str_id(), n.chain);
         }
     }
@@ -405,10 +408,18 @@ mod the_catalog_is_two_tables {
         let (main, net) = (entry("ethereum"), entry("ethereum-sepolia"));
         for (field, a, b) in [
             ("symbol", &main.symbol, &net.symbol),
-            ("gas_token_symbol", &main.gas_token_symbol, &net.gas_token_symbol),
+            (
+                "gas_token_symbol",
+                &main.gas_token_symbol,
+                &net.gas_token_symbol,
+            ),
             ("color", &main.color, &net.color),
             ("asset_name", &main.asset_name, &net.asset_name),
-            ("native_asset_name", &main.native_asset_name, &net.native_asset_name),
+            (
+                "native_asset_name",
+                &main.native_asset_name,
+                &net.native_asset_name,
+            ),
             ("category", &main.category, &net.category),
         ] {
             assert_eq!(a, b, "{field} did not carry through to the network");
@@ -442,7 +453,11 @@ mod the_catalog_is_two_tables {
                 "{} carries a price id",
                 e.id
             );
-            assert!(e.token_standard.is_empty(), "{} claims to host tokens", e.id);
+            assert!(
+                e.token_standard.is_empty(),
+                "{} claims to host tokens",
+                e.id
+            );
             assert!(e.contract_address_prompt.is_empty());
         }
     }
@@ -474,7 +489,11 @@ mod the_catalog_is_two_tables {
         for chain in Chain::all() {
             let documented = ids.contains(chain.str_id());
             if chain.is_testnet() {
-                assert!(!documented, "{} is a network and has a wiki row", chain.str_id());
+                assert!(
+                    !documented,
+                    "{} is a network and has a wiki row",
+                    chain.str_id()
+                );
             } else {
                 assert!(documented, "{} has no wiki row", chain.str_id());
             }
@@ -485,7 +504,10 @@ mod the_catalog_is_two_tables {
     /// The wiki joins to the catalog rather than restating it.
     #[test]
     fn a_wiki_row_takes_its_name_from_the_catalog() {
-        let dot = WIKI.iter().find(|w| w.id == "polkadot").expect("a wiki row");
+        let dot = WIKI
+            .iter()
+            .find(|w| w.id == "polkadot")
+            .expect("a wiki row");
         let catalog = entry("polkadot");
         assert_eq!(dot.name, catalog.name);
         assert_eq!(dot.symbol, catalog.symbol);

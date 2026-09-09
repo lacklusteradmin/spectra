@@ -260,7 +260,10 @@ pub fn merge_transactions(request: TransactionMergeRequest) -> Vec<CoreTransacti
         } else {
             let key = bucket_key(&incoming);
             merged_transactions.push(incoming);
-            index.entry(key).or_default().push(merged_transactions.len() - 1);
+            index
+                .entry(key)
+                .or_default()
+                .push(merged_transactions.len() - 1);
         }
     }
 
@@ -726,11 +729,27 @@ mod tests {
             preserve_created_at_sentinel_unix: None,
         });
 
-        assert_eq!(merged.len(), 2, "no new row — the incoming record matched an existing one");
-        let usdc_row = merged.iter().find(|r| r.id == "tx-usdc").expect("USDC untouched");
-        assert_eq!(usdc_row.status, "pending", "the USDC row must not have been touched");
-        let usdt_row = merged.iter().find(|r| r.id == "tx-usdt").expect("USDT updated");
-        assert_eq!(usdt_row.status, "confirmed", "the USDT row is the one that should have merged");
+        assert_eq!(
+            merged.len(),
+            2,
+            "no new row — the incoming record matched an existing one"
+        );
+        let usdc_row = merged
+            .iter()
+            .find(|r| r.id == "tx-usdc")
+            .expect("USDC untouched");
+        assert_eq!(
+            usdc_row.status, "pending",
+            "the USDC row must not have been touched"
+        );
+        let usdt_row = merged
+            .iter()
+            .find(|r| r.id == "tx-usdt")
+            .expect("USDT updated");
+        assert_eq!(
+            usdt_row.status, "confirmed",
+            "the USDT row is the one that should have merged"
+        );
     }
 
     #[test]

@@ -8,7 +8,9 @@
 
 use clap::Args;
 use colored::Colorize as _;
-use spectra_core::derivation::funds_finder::{core_generate_funds_finder_candidates, FundsFinderRequest};
+use spectra_core::derivation::funds_finder::{
+    core_generate_funds_finder_candidates, FundsFinderRequest,
+};
 
 use super::chain::{service_for_chain, BALANCE, RPC};
 use super::resolve_chain;
@@ -118,10 +120,11 @@ pub fn rescan(ctx: &Ctx, out: Out, args: RescanArgs) -> CliResult<()> {
             unreachable += 1;
             continue;
         };
-        let summary = ctx.rt.block_on(service.fetch_native_balance_summary(
-            candidate.chain_id.clone(),
-            candidate.address.clone(),
-        ));
+        let summary =
+            ctx.rt.block_on(service.fetch_native_balance_summary(
+                candidate.chain_id.clone(),
+                candidate.address.clone(),
+            ));
         let Ok(summary) = summary else {
             unreachable += 1;
             continue;

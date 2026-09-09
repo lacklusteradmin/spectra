@@ -4,8 +4,8 @@
 //! Implements JSON-RPC over HTTPS using the shared `HttpClient`. Builds and
 //! signs EIP-1559 transactions in Rust using secp256k1 + RLP encoding.
 
-use serde::{Deserialize, Serialize};
 use crate::registry::EvmHistorySource;
+use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 
 use crate::http::{with_fallback, HttpClient, RetryProfile};
@@ -363,16 +363,31 @@ fn parse_fee_history(result: &Value) -> Result<EvmFeeEstimate, String> {
     let base_fee_wei = parse_hex_u128(base_fee_hex)?;
 
     // 25th-percentile reward from the most recent block as priority fee.
-    let priority_fee_wei: u128 = result
+    //
+    // Two different things look alike here and only one of them is a failure.
+    // A node that answers without a `reward` array did not answer the question
+    // this call asked — the request always names percentiles — and there is
+    // nothing to infer from that, so it is an error. A node that answers with
+    // an *empty* sample list for the block did answer: no transaction in it
+    // paid a priority fee, which is the normal state of a quiet L2 or testnet.
+    // The priority fee there is zero, not a number picked to stand in for one:
+    // `max_fee` still covers the base fee, so the transaction lands, and a
+    // fabricated gwei would only overpay. Refusing that case instead left the
+    // send screen unable to quote a fee at all on those chains.
+    let samples = result
         .get("reward")
         .and_then(|r| r.as_array())
-        .and_then(|arr| arr.last())
-        .and_then(|r| r.as_array())
-        .and_then(|r| r.first())
-        .and_then(|v| v.as_str())
-        .map(parse_hex_u128)
-        .transpose()?
-        .unwrap_or(1_000_000_000); // 1 gwei fallback
+        .and_then(|blocks| blocks.last())
+        .and_then(|block| block.as_array())
+        .ok_or("feeHistory: missing reward")?;
+    let priority_fee_wei: u128 = match samples.first() {
+        Some(sample) => parse_hex_u128(
+            sample
+                .as_str()
+                .ok_or("feeHistory: reward sample is not a hex string")?,
+        )?,
+        None => 0,
+    };
 
     // maxFeePerGas = 2 * baseFee + priorityFee (EIP-1559 recommended).
     let max_fee_per_gas_wei = base_fee_wei
@@ -614,11 +629,11 @@ impl EvmClient {
                 ),
             ])
             .await?;
-        let decimals = parse_hex_u128(
+        let decimals = super::checked_token_decimals(parse_hex_u128(
             results[0]
                 .as_str()
                 .ok_or("eth_call decimals: expected string")?,
-        )? as u8;
+        )?)?;
         let symbol = results[1]
             .as_str()
             .and_then(decode_abi_string_or_bytes32)
@@ -660,14 +675,18 @@ impl EvmClient {
         source: EvmHistorySource,
         api_key: Option<&str>,
         etherscan_chain_id: u64,
+        page: u32,
+        page_size: u32,
     ) -> Result<Vec<EvmHistoryEntry>, String> {
         let addr_lower = address.to_lowercase();
+        let page = page.max(1);
+        let page_size = page_size.clamp(1, 500);
         let url = explorer_query_url(
             source,
             etherscan_chain_id,
             api_key,
             &format!(
-                "module=account&action=txlist&address={addr_lower}&sort=desc&page=1&offset=50"
+                "module=account&action=txlist&address={addr_lower}&sort=desc&page={page}&offset={page_size}"
             ),
         )?;
 
@@ -963,12 +982,7 @@ mod a_refusal_is_not_an_empty_history {
     fn the_three_shapes_that_all_say_status_zero() {
         // Etherscan V2 with no key. The V2 API has no keyless tier at all, so
         // this is what every EVM history call returned once the key was blank.
-        assert!(etherscan_result_rows(
-            "0",
-            "NOTOK",
-            json!("Missing/Invalid API Key")
-        )
-        .is_err());
+        assert!(etherscan_result_rows("0", "NOTOK", json!("Missing/Invalid API Key")).is_err());
 
         // Blockscout, intermittently — one call in three during this survey.
         assert!(etherscan_result_rows("0", "Something went wrong.", json!(null)).is_err());
@@ -1022,11 +1036,27 @@ mod every_evm_chain_says_where_its_history_comes_from {
     /// with no transactions.
     #[test]
     fn etherscan_v2_refuses_without_a_key_rather_than_asking_and_being_told_no() {
-        assert!(explorer_query_url(EvmHistorySource::EtherscanV2, 56, None, "module=account").is_err());
-        assert!(explorer_query_url(EvmHistorySource::EtherscanV2, 56, Some("   "), "module=account").is_err());
-        let url = explorer_query_url(EvmHistorySource::EtherscanV2, 56, Some("KEY"), "module=account")
-            .expect("a key is all it wants");
-        assert!(url.contains("chainid=56") && url.ends_with("&apikey=KEY"), "{url}");
+        assert!(
+            explorer_query_url(EvmHistorySource::EtherscanV2, 56, None, "module=account").is_err()
+        );
+        assert!(explorer_query_url(
+            EvmHistorySource::EtherscanV2,
+            56,
+            Some("   "),
+            "module=account"
+        )
+        .is_err());
+        let url = explorer_query_url(
+            EvmHistorySource::EtherscanV2,
+            56,
+            Some("KEY"),
+            "module=account",
+        )
+        .expect("a key is all it wants");
+        assert!(
+            url.contains("chainid=56") && url.ends_with("&apikey=KEY"),
+            "{url}"
+        );
     }
 
     /// Cronos and X Layer are in neither Etherscan V2's chain list nor any
@@ -1062,3 +1092,112 @@ mod every_evm_chain_says_where_its_history_comes_from {
     }
 }
 
+#[cfg(test)]
+mod history_page_tests {
+    use super::*;
+    use std::sync::Arc;
+    use wiremock::{matchers::any, Mock, MockServer, Request, ResponseTemplate};
+
+    #[tokio::test]
+    async fn native_history_obeys_page_and_size_and_propagates_errors() {
+        let server = MockServer::start().await;
+        Mock::given(any()).respond_with(|request: &Request| {
+            let query: std::collections::HashMap<_,_> = request.url.query_pairs().into_owned().collect();
+            let page = &query["page"];
+            if page == "3" {
+                return ResponseTemplate::new(200).set_body_json(json!({"status":"0","message":"NOTOK","result":"rate limited"}));
+            }
+            ResponseTemplate::new(200).set_body_json(json!({"status":"1","message":"OK","result":[{
+                "hash":format!("page-{page}"), "blockNumber":"123", "timeStamp":"456", "from":"from", "to":"to",
+                "value":"1", "gasPrice":"1", "gasUsed":"21000"
+            }]}))
+        }).mount(&server).await;
+        let source = EvmHistorySource::Open(Box::leak(server.uri().into_boxed_str()));
+        let client = EvmClient::new(Arc::new(vec![]), 1);
+        for page in [1, 2] {
+            let rows = client
+                .fetch_history("FROM", source, None, 1, page, 7)
+                .await
+                .unwrap();
+            assert_eq!(rows[0].txid, format!("page-{page}"));
+        }
+        assert!(client
+            .fetch_history("from", source, None, 1, 3, 7)
+            .await
+            .is_err());
+        for request in server.received_requests().await.unwrap() {
+            let query: std::collections::HashMap<_, _> =
+                request.url.query_pairs().into_owned().collect();
+            assert_eq!(query["offset"], "7");
+            assert_eq!(query["action"], "txlist");
+        }
+    }
+}
+
+#[cfg(test)]
+mod fee_history_tests {
+    use super::*;
+
+    /// The reward array is per block, and each block's entry is one sample per
+    /// requested percentile. The last block's 25th percentile is the one this
+    /// reads.
+    #[test]
+    fn the_last_blocks_lowest_percentile_is_the_priority_fee() {
+        let fees = parse_fee_history(&json!({
+            "baseFeePerGas": ["0x3b9aca00", "0x77359400"],
+            "reward": [["0x1", "0x2"], ["0x5f5e100", "0xbebc200"]],
+        }))
+        .unwrap();
+        assert_eq!(fees.base_fee_wei, 0x7735_9400);
+        assert_eq!(fees.priority_fee_wei, 0x5f5_e100);
+        assert_eq!(fees.max_fee_per_gas_wei, 0x7735_9400 * 2 + 0x5f5_e100);
+        assert_eq!(fees.estimated_fee_wei, fees.max_fee_per_gas_wei * 21_000);
+    }
+
+    /// A block nobody transacted in reports no sample, and the honest priority
+    /// fee for it is zero — `max_fee` still covers the base fee, so the
+    /// transaction lands. Refusing this case left the send screen unable to
+    /// quote a fee at all on a quiet L2 or testnet.
+    #[test]
+    fn an_empty_reward_sample_is_a_zero_priority_fee() {
+        let fees = parse_fee_history(&json!({
+            "baseFeePerGas": ["0x3b9aca00"],
+            "reward": [[]],
+        }))
+        .unwrap();
+        assert_eq!(fees.priority_fee_wei, 0);
+        assert_eq!(fees.base_fee_wei, 0x3b9a_ca00);
+        assert_eq!(fees.max_fee_per_gas_wei, 0x3b9a_ca00 * 2);
+    }
+
+    /// No `reward` array at all is a node that did not answer what was asked —
+    /// the request always names percentiles — so there is nothing to infer.
+    #[test]
+    fn a_missing_reward_array_is_refused() {
+        for body in [
+            json!({"baseFeePerGas": ["0x3b9aca00"]}),
+            json!({"baseFeePerGas": ["0x3b9aca00"], "reward": []}),
+            json!({"baseFeePerGas": ["0x3b9aca00"], "reward": Value::Null}),
+            json!({"baseFeePerGas": ["0x3b9aca00"], "reward": ["0x1"]}),
+        ] {
+            assert!(parse_fee_history(&body).is_err(), "{body}");
+        }
+    }
+
+    /// A malformed response is still a refusal — the base fee is the estimate
+    /// and there is nothing to fall back to.
+    #[test]
+    fn a_malformed_response_is_refused() {
+        for body in [
+            json!({}),
+            json!({"baseFeePerGas": []}),
+            json!({"baseFeePerGas": ["zz"]}),
+            json!({"baseFeePerGas": [1]}),
+            json!({"baseFeePerGas": ["0x1"], "reward": [["zz"]]}),
+            json!({"baseFeePerGas": ["0x1"], "reward": [[7]]}),
+            json!({"baseFeePerGas": ["0x1"], "reward": [["0x1"], "nope"]}),
+        ] {
+            assert!(parse_fee_history(&body).is_err(), "{body}");
+        }
+    }
+}

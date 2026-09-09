@@ -24,7 +24,6 @@ pub fn core_private_key_hex(raw_value: String) -> Option<String> {
         .then_some(normalized)
 }
 
-
 #[derive(Debug, Clone, uniffi::Record)]
 pub struct LargeMovementEvaluation {
     pub should_alert: bool,

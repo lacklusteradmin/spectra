@@ -69,11 +69,13 @@ fn service_for(chain: Chain) -> CliResult<std::sync::Arc<StakingService>> {
             "no endpoints registered for {name}"
         )));
     }
-    Ok(StakingService::new(vec![spectra_core::service::ChainEndpoints {
-        chain_id: chain.str_id().to_string(),
-        endpoints,
-        api_key: None,
-    }]))
+    Ok(StakingService::new(vec![
+        spectra_core::service::ChainEndpoints {
+            chain_id: chain.str_id().to_string(),
+            endpoints,
+            api_key: None,
+        },
+    ]))
 }
 
 /// "This chain does not stake" is core considering the request and saying no,

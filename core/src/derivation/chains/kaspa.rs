@@ -181,7 +181,6 @@ pub fn validate_kaspa_address(address: &str) -> bool {
 
 use secp256k1::{PublicKey, Secp256k1};
 
-
 const HARDENED_OFFSET: u32 = 0x80000000;
 
 // Parse a BIP-32 derivation path string ("m/44'/111111'/0'/0/0") into a list of child index integers.
@@ -253,10 +252,10 @@ pub(crate) fn derive_from_seed_phrase(
 
 // ── UniFFI exports ────────────────────────────────────────────────────────
 
-use crate::derivation::types::{parse_path_metadata, DerivationResult};
-use crate::SpectraBridgeError;
 use crate::derivation::primitives::derive_bip39_seed;
 use crate::derivation::primitives::ExtendedPrivateKey;
+use crate::derivation::types::{parse_path_metadata, DerivationResult};
+use crate::SpectraBridgeError;
 
 /// UniFFI export: derive Kaspa mainnet wallet (kaspa:… Schnorr address) from a seed phrase.
 pub fn derive_kaspa(

@@ -267,8 +267,10 @@ impl WalletService {
         };
         rows.iter().any(|row| {
             let payload = &row.payload;
-            matches!(payload.kind, crate::store::wallet_domain::CoreTransactionKind::Send)
-                && payload.transaction_hash.is_some()
+            matches!(
+                payload.kind,
+                crate::store::wallet_domain::CoreTransactionKind::Send
+            ) && payload.transaction_hash.is_some()
                 && matches!(
                     payload.status,
                     Some(crate::store::wallet_domain::CoreTransactionStatus::Pending)
@@ -355,9 +357,9 @@ fn supports_solana_send(
     else {
         return false;
     };
-    preferences
-        .iter()
-        .any(|entry| entry.hosting_chain() == Some(CoreTokenHostingChain::Solana) && entry.token.contract == mint)
+    preferences.iter().any(|entry| {
+        entry.hosting_chain() == Some(CoreTokenHostingChain::Solana) && entry.token.contract == mint
+    })
 }
 
 /// Whether a NEAR holding is a token this build can send. NEAR itself is not:
@@ -373,7 +375,11 @@ fn supports_near_token_send(
     if holding.token_standard != token_standard_for(CoreTokenHostingChain::Near) {
         return false;
     }
-    let Some(contract) = holding.contract_address.as_deref().filter(|c| !c.is_empty()) else {
+    let Some(contract) = holding
+        .contract_address
+        .as_deref()
+        .filter(|c| !c.is_empty())
+    else {
         return false;
     };
     preferences.iter().any(|entry| {
@@ -393,10 +399,10 @@ fn token_standard_for(chain: crate::store::wallet_domain::CoreTokenHostingChain)
 #[cfg(test)]
 mod preflight_tests {
     use super::*;
+    use crate::store::state::WalletSummary;
     use crate::store::wallet_domain::AssetHolding;
-    use crate::store::state::{WalletSummary};
     use crate::store::wallet_domain::{
-        CoreTokenPreferenceCategory, CoreTokenPreferenceEntry, CoreTokenHostingChain,
+        CoreTokenHostingChain, CoreTokenPreferenceCategory, CoreTokenPreferenceEntry,
     };
 
     fn holding(chain: &str, symbol: &str, standard: &str, contract: Option<&str>) -> AssetHolding {
@@ -463,14 +469,17 @@ mod preflight_tests {
     fn near_sends_known_tokens_but_not_near_itself() {
         let standard = token_standard_for(CoreTokenHostingChain::Near);
         let native = holding("NEAR", "NEAR", &standard, Some("wrap.near"));
-        assert!(!supports_near_token_send(&native, &[]), "native is not a token send");
+        assert!(
+            !supports_near_token_send(&native, &[]),
+            "native is not a token send"
+        );
 
         let token = holding("NEAR", "USDC", &standard, Some("usdc.near"));
         assert!(!supports_near_token_send(&token, &[]));
-        assert!(supports_near_token_send(
-            &token,
-            &[known(CoreTokenHostingChain::Near, "USDC.NEAR")]
-        ), "contract matching is case-insensitive");
+        assert!(
+            supports_near_token_send(&token, &[known(CoreTokenHostingChain::Near, "USDC.NEAR")]),
+            "contract matching is case-insensitive"
+        );
     }
 
     /// Knowing a mint is what makes a Solana token routable — through the
@@ -496,7 +505,10 @@ mod preflight_tests {
             .send_asset_routing("w1".into(), "Solana|USDC".into())
             .await
             .expect("the holding is there");
-        assert_eq!(untracked.submit_kind, None, "an untracked mint is not sendable");
+        assert_eq!(
+            untracked.submit_kind, None,
+            "an untracked mint is not sendable"
+        );
 
         service.wallet_state.write().await.token_preferences =
             vec![known(CoreTokenHostingChain::Solana, mint)];

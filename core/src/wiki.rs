@@ -275,7 +275,11 @@ mod the_wiki_is_one_asset_table {
     fn the_file_documents_no_coin_the_app_does_not_have() {
         let documented: std::collections::BTreeSet<&str> =
             PROSE.iter().map(|a| a.asset.as_str()).collect();
-        assert_eq!(documented.len(), PROSE.len(), "a coin has two rows in the file");
+        assert_eq!(
+            documented.len(),
+            PROSE.len(),
+            "a coin has two rows in the file"
+        );
         let held: std::collections::BTreeSet<&str> =
             ASSETS.iter().map(|a| a.symbol.as_str()).collect();
         assert_eq!(documented, held, "the file and the catalogs disagree");

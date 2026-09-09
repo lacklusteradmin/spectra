@@ -486,6 +486,7 @@ impl WalletService {
             *service.state_db_path.write().await = Some(db_path);
             let mut state = service.wallet_state.write().await;
             *state = loaded;
+            crate::tor::apply_policy(state.settings.tor_enabled, state.settings.tor_kill_switch);
             Ok(state.clone())
         })
         .await
@@ -501,42 +502,8 @@ impl WalletService {
         &self,
         command: StateCommand,
     ) -> Result<StateTransition, SpectraBridgeError> {
-        self.write_persisted(move |service| async move {
-            let path = service.state_db_path.read().await.clone();
-            let (snapshot, events, changes) = {
-                let before = service.wallet_state.read().await;
-                let mut state = before.clone();
-                let events = reduce_state_in_place(&mut state, command);
-                let changes = if path.is_some() && !events.is_empty() {
-                    Some(crate::wallet_db::AppStateChanges::between(
-                        Some(&before),
-                        &state,
-                    )?)
-                } else {
-                    None
-                };
-                (state, events, changes)
-            };
-
-            if let (Some(path), Some(changes)) = (path, changes) {
-                tokio::task::spawn_blocking(move || changes.save(&path))
-                    .await
-                    .map_err(|e| SpectraBridgeError::from(format!("spawn_blocking: {e}")))??;
-            }
-            if events.is_empty() {
-                return Ok(StateTransition {
-                    state: snapshot,
-                    events,
-                });
-            }
-
-            *service.wallet_state.write().await = snapshot.clone();
-            Ok(StateTransition {
-                state: snapshot,
-                events,
-            })
-        })
-        .await
+        self.mutate_persisted_state(move |state| reduce_state_in_place(state, command))
+            .await
     }
 
     // ── Operational events ────────────────────────────────────────────────
@@ -1476,13 +1443,15 @@ impl WalletService {
         &self,
         wallet_id: String,
         chain_name: String,
-    ) -> crate::wallet_db::KeypoolState {
-        let baseline = self.chain_keypool_baseline(&wallet_id, &chain_name).await;
+    ) -> Result<crate::wallet_db::KeypoolState, SpectraBridgeError> {
+        let baseline = self.chain_keypool_baseline(&wallet_id, &chain_name).await?;
         let key = keypool_key(&wallet_id, &chain_name);
         let keypool = self.keypool.read().await;
-        keypool_from_record(&crate::store::plan_chain_keypool_state(
-            baseline,
-            keypool.get(&key).map(record_from_keypool),
+        Ok(keypool_from_record(
+            &crate::store::plan_chain_keypool_state(
+                baseline,
+                keypool.get(&key).map(record_from_keypool),
+            ),
         ))
     }
 
@@ -1496,7 +1465,7 @@ impl WalletService {
         self.write_persisted(move |service| async move {
             let baseline = service
                 .chain_keypool_baseline(&wallet_id, &chain_name)
-                .await;
+                .await?;
             let key = keypool_key(&wallet_id, &chain_name);
             let mut keypool = service.keypool.write().await;
             let merged = crate::store::plan_chain_keypool_state(
@@ -1544,7 +1513,7 @@ impl WalletService {
         self.write_persisted(move |service| async move {
             let baseline = service
                 .chain_keypool_baseline(&wallet_id, &chain_name)
-                .await;
+                .await?;
             let key = keypool_key(&wallet_id, &chain_name);
             let mut keypool = service.keypool.write().await;
             let merged = crate::store::plan_chain_keypool_state(
@@ -1844,7 +1813,7 @@ impl WalletService {
 
         let state = self
             .keypool_state(wallet_id.clone(), chain_name.clone())
-            .await;
+            .await?;
         let reserved = state.reserved_receive_index.unwrap_or(0).max(0) as u32;
         let upper =
             MAX_INDEX.min((state.next_external_index.max(0) as u32).max(reserved + 1) + GAP_LIMIT);
@@ -1908,7 +1877,7 @@ impl WalletService {
             )
         } else {
             self.keypool_state(wallet_id.clone(), chain_name.clone())
-                .await
+                .await?
                 .reserved_receive_index
         };
         let Some(index) = index.filter(|i| *i >= 0) else {
@@ -2083,6 +2052,87 @@ fn fingerprint(record: &crate::fetch::transactions::CoreTransactionRecord) -> St
 }
 
 impl WalletService {
+    /// Store freshly fetched fiat cross-rates.
+    ///
+    /// Not a `StateCommand`: the rates are a fetch result, not an intent, so
+    /// no front end gets a way to write arbitrary ones.
+    pub(crate) async fn store_fiat_rates(
+        &self,
+        rates: std::collections::HashMap<String, f64>,
+    ) -> Result<(), SpectraBridgeError> {
+        self.mutate_persisted_state(move |state| {
+            if state.fiat_rates_from_usd == rates {
+                return Vec::new();
+            }
+            state.fiat_rates_from_usd = rates;
+            vec![crate::store::state::StateEvent {
+                kind: "fiatRatesChanged".to_string(),
+                subject_id: None,
+            }]
+        })
+        .await
+        .map(|_| ())
+    }
+
+    /// Apply one mutation to the resident state, persist what it changed, and
+    /// publish the result.
+    ///
+    /// `apply_state_command` is this with the reducer as the mutation. Core's
+    /// own writes use it directly — fiat rates come from a fetch rather than
+    /// from an intent, so they take the same writer, the same incremental diff
+    /// and the same publish order without becoming a command a front end could
+    /// send arbitrary values through.
+    async fn mutate_persisted_state<F>(
+        &self,
+        mutate: F,
+    ) -> Result<StateTransition, SpectraBridgeError>
+    where
+        F: FnOnce(&mut CoreAppState) -> Vec<crate::store::state::StateEvent> + Send + 'static,
+    {
+        self.write_persisted(move |service| async move {
+            let path = service.state_db_path.read().await.clone();
+            let (snapshot, events, changes) = {
+                let before = service.wallet_state.read().await;
+                let mut state = before.clone();
+                let events = mutate(&mut state);
+                let changes = if path.is_some() && !events.is_empty() {
+                    Some(crate::wallet_db::AppStateChanges::between(
+                        Some(&before),
+                        &state,
+                    )?)
+                } else {
+                    None
+                };
+                (state, events, changes)
+            };
+
+            if let (Some(path), Some(changes)) = (path, changes) {
+                tokio::task::spawn_blocking(move || changes.save(&path))
+                    .await
+                    .map_err(|e| SpectraBridgeError::from(format!("spawn_blocking: {e}")))??;
+            }
+            if events.is_empty() {
+                return Ok(StateTransition {
+                    state: snapshot,
+                    events,
+                });
+            }
+
+            *service.wallet_state.write().await = snapshot.clone();
+            // The HTTP layer reads the Tor policy per request rather than the
+            // store, so a change to either flag is pushed as it lands.
+            crate::tor::apply_policy(
+                snapshot.settings.tor_enabled,
+                snapshot.settings.tor_kill_switch,
+            );
+            Ok(StateTransition {
+                state: snapshot,
+                events,
+            })
+        })
+        .await
+    }
+
     /// Once submitted, a persistent mutation finishes even if the caller cancels.
     /// The worker owns the serialization guard through both commit and publication.
     /// Do not call this recursively from another persistent mutation.
@@ -2111,7 +2161,7 @@ impl WalletService {
         self.write_persisted(move |service| async move {
             let baseline = service
                 .chain_keypool_baseline(&wallet_id, &chain_name)
-                .await;
+                .await?;
             let key = keypool_key(&wallet_id, &chain_name);
             let mut keypool = service.keypool.write().await;
             let Some(mut state) = keypool.get(&key).cloned() else {
@@ -2328,7 +2378,7 @@ impl WalletService {
         &self,
         wallet_id: &str,
         chain_name: &str,
-    ) -> crate::store::ChainKeypoolStateRecord {
+    ) -> Result<crate::store::ChainKeypoolStateRecord, SpectraBridgeError> {
         let supports_deep = crate::registry::Chain::from_display_name(chain_name)
             .is_some_and(|chain| chain.supports_deep_utxo_discovery());
 
@@ -2351,20 +2401,19 @@ impl WalletService {
                     .and_then(|w| w.address_on(chain))
                     .is_some_and(|address| !address.trim().is_empty());
             }
-            return crate::store::plan_baseline_chain_keypool_state(input);
+            return Ok(crate::store::plan_baseline_chain_keypool_state(input));
         }
 
         if let Some(db_path) = self.state_db_path.read().await.clone() {
             let wallet = wallet_id.to_owned();
             let chain = chain_name.to_owned();
-            if let Ok(Ok((external, change))) = tokio::task::spawn_blocking(move || {
+            let (external, change) = tokio::task::spawn_blocking(move || {
                 crate::wallet_db::history_keypool_indices(&db_path, &wallet, &chain)
             })
             .await
-            {
-                input.max_transaction_external_index = external;
-                input.max_transaction_change_index = change;
-            }
+            .map_err(|e| SpectraBridgeError::from(format!("keypool history task: {e}")))??;
+            input.max_transaction_external_index = external;
+            input.max_transaction_change_index = change;
         }
 
         let owned = self.owned_addresses.read().await;
@@ -2383,11 +2432,32 @@ impl WalletService {
                     _ => {}
                 }
             }
-            input.max_owned_external_index = external.map(|v| v as i32);
-            input.max_owned_change_index = change.map(|v| v as i32);
+            input.max_owned_external_index = external
+                .map(i32::try_from)
+                .transpose()
+                .map_err(|_| SpectraBridgeError::from("owned external index out of range"))?;
+            input.max_owned_change_index = change
+                .map(i32::try_from)
+                .transpose()
+                .map_err(|_| SpectraBridgeError::from("owned change index out of range"))?;
         }
 
-        crate::store::plan_baseline_chain_keypool_state(input)
+        for index in [
+            input.max_transaction_external_index,
+            input.max_transaction_change_index,
+            input.max_owned_external_index,
+            input.max_owned_change_index,
+        ]
+        .into_iter()
+        .flatten()
+        {
+            if index < 0 || index == i32::MAX {
+                return Err(SpectraBridgeError::from(
+                    "keypool index has no valid successor",
+                ));
+            }
+        }
+        Ok(crate::store::plan_baseline_chain_keypool_state(input))
     }
 
     /// The bound state database, or an error naming what the caller skipped.

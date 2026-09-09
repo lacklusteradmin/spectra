@@ -357,7 +357,6 @@ mod tests {
 
 // ── FFI surface ─────────────────────────────────────────────────────────────
 
-#[uniffi::export]
 pub fn core_evm_refresh_targets(request: EvmRefreshTargetsRequest) -> EvmRefreshPlan {
     plan_evm_refresh_targets(request)
 }

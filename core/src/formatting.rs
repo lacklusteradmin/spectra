@@ -29,13 +29,11 @@ const SIGNIFICANT_DIGITS: u32 = 6;
 /// rather than eighteen digits.
 const MAX_DISPLAY_PLACES: u32 = 8;
 
-
 pub fn token_preference_lookup_key(chain_name: &str, symbol: &str) -> String {
     let chain_trimmed = chain_name.trim();
     let symbol_trimmed = symbol.trim().to_uppercase();
     format!("{}|{}", chain_trimmed, symbol_trimmed)
 }
-
 
 /// How many decimal places a chain's native asset actually has.
 ///
@@ -96,7 +94,6 @@ pub fn asset_amount_display(amount: f64, asset_decimals: u32) -> AssetAmountDisp
         threshold,
     }
 }
-
 
 pub fn normalized_history_source_tag(raw_source: Option<&str>, unknown_label: &str) -> String {
     let trimmed = raw_source

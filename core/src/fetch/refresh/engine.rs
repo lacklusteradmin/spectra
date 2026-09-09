@@ -62,9 +62,25 @@ impl BalanceRefreshEngine {
         *self.inner.observer.write().unwrap() = None;
     }
 
-    /// Replace the full list of (chain, wallet, address) entries to refresh each cycle.
-    pub fn set_entries_typed(&self, entries: Vec<RefreshEntry>) {
+    /// Rebuild the entry list from the wallets core holds, and answer how many
+    /// there are. `wallet_id` scopes it to one wallet.
+    ///
+    /// A front end used to build this list: it walked its own wallet
+    /// projection, resolved each address — by reading the seed out of the
+    /// Keychain and deriving it — and handed the triples back. So what the
+    /// engine refreshed was one platform's copy of core's own state, and a
+    /// wallet that copy could not resolve an address for was dropped from the
+    /// refresh with a `print`. Core reads its wallets and its selected
+    /// networks directly.
+    pub async fn sync_entries(&self, wallet_id: Option<String>) -> u32 {
+        let state = self.inner.wallet_service.app_state().await;
+        let mut entries = refresh_entries_for(&state);
+        if let Some(wallet_id) = wallet_id {
+            entries.retain(|entry| entry.wallet_id.eq_ignore_ascii_case(&wallet_id));
+        }
+        let count = entries.len() as u32;
         *self.inner.entries.write().unwrap() = entries;
+        count
     }
 
     /// Start the periodic refresh loop.
@@ -357,8 +373,8 @@ mod tests {
     }
 }
 
+use crate::store::state::WalletSummary;
 use crate::store::wallet_domain::AssetHolding;
-    use crate::store::state::{WalletSummary};
 
 /// Callback interface implemented by Swift. Rust calls these from the tokio
 /// task that owns the refresh timer loop. Implementations must be
@@ -384,6 +400,42 @@ pub trait BalanceObserver: Send + Sync {
     fn on_refresh_cycle_complete(&self, refreshed: u32, errors: u32);
 }
 
+/// What to refresh for the wallets in `state`, one entry per wallet that has an
+/// address to fetch.
+///
+/// A wallet with no address is not an error and not a log line — it is a
+/// watch-only import that stored nothing, or a wallet on a chain the registry
+/// does not know, and either way there is nothing to fetch.
+pub(crate) fn refresh_entries_for(state: &crate::store::state::CoreAppState) -> Vec<RefreshEntry> {
+    use crate::registry::Chain;
+    state
+        .wallets
+        .iter()
+        .filter_map(|wallet| {
+            let chain = Chain::from_display_name(&wallet.chain_name)?;
+            // A Bitcoin account xpub covers every address the wallet derives,
+            // so it is the fetch key when the wallet has one. Otherwise it is
+            // the address for the network the wallet is on.
+            let address = wallet
+                .xpub
+                .as_deref()
+                .map(str::trim)
+                .filter(|xpub| chain == Chain::Bitcoin && !xpub.is_empty())
+                .or_else(|| wallet.active_address(&state.settings))?;
+            Some(RefreshEntry {
+                // The chain the balance is fetched and filed under. Not the
+                // selected network: the holding it produces is merged by chain
+                // name, so filing a testnet balance under the testnet's name
+                // would create a second holding rather than update the one the
+                // wallet shows. See "Known open items".
+                chain_id: chain.str_id().to_string(),
+                wallet_id: wallet.id.clone(),
+                address: address.to_string(),
+            })
+        })
+        .collect()
+}
+
 /// One (chain, wallet, address) triple registered for periodic refresh.
 ///
 /// For Bitcoin HD wallets: set `address` to the xpub/ypub/zpub.
@@ -396,4 +448,105 @@ pub struct RefreshEntry {
     /// The canonical fetch key: a wallet address for most chains, or an
     /// xpub/ypub/zpub for Bitcoin HD wallets.
     pub address: String,
+}
+
+
+#[cfg(test)]
+mod refresh_entry_tests {
+    use super::refresh_entries_for;
+    use crate::registry::Chain;
+    use crate::store::state::{CoreAppState, WalletAddress, WalletSummary};
+
+    fn wallet(id: &str, chain: Chain, addresses: &[(Chain, &str)]) -> WalletSummary {
+        WalletSummary {
+            id: id.to_string(),
+            name: id.to_string(),
+            is_watch_only: false,
+            chain_name: chain.chain_display_name().to_string(),
+            include_in_portfolio_total: true,
+            network_mode: None,
+            xpub: None,
+            derivation_preset: "standard".to_string(),
+            derivation_path: None,
+            derivation_overrides: Default::default(),
+            holdings: Vec::new(),
+            addresses: addresses
+                .iter()
+                .map(|(chain, address)| WalletAddress {
+                    chain_name: chain.chain_display_name().to_string(),
+                    address: (*address).to_string(),
+                    kind: "receive".to_string(),
+                    derivation_path: None,
+                })
+                .collect(),
+        }
+    }
+
+    /// One entry per wallet that has an address, and the address is the one for
+    /// the network that wallet is on.
+    #[test]
+    fn an_entry_carries_the_address_for_the_network_the_wallet_is_on() {
+        let mut state = CoreAppState::default();
+        state.wallets = vec![wallet(
+            "w1",
+            Chain::Bitcoin,
+            &[(Chain::Bitcoin, "bc1main"), (Chain::BitcoinTestnet4, "tb1test")],
+        )];
+
+        let mainnet = refresh_entries_for(&state);
+        assert_eq!(mainnet.len(), 1);
+        assert_eq!(mainnet[0].address, "bc1main");
+
+        // The app's selection moves the whole family.
+        state.settings.network_chain_by_family.insert(
+            Chain::Bitcoin.str_id().to_string(),
+            Chain::BitcoinTestnet4.str_id().to_string(),
+        );
+        assert_eq!(refresh_entries_for(&state)[0].address, "tb1test");
+
+        // A wallet's own network wins over the app's selection.
+        state.wallets[0].network_mode = Some(Chain::Bitcoin.str_id().to_string());
+        assert_eq!(refresh_entries_for(&state)[0].address, "bc1main");
+    }
+
+    /// A Bitcoin account xpub covers every address the wallet derives, so it is
+    /// the fetch key. Only Bitcoin has one.
+    #[test]
+    fn a_bitcoin_xpub_is_the_fetch_key() {
+        let mut state = CoreAppState::default();
+        let mut btc = wallet("w1", Chain::Bitcoin, &[(Chain::Bitcoin, "bc1main")]);
+        btc.xpub = Some("zpub6rFR7y4Q2AijBEqTUquhVz398htDFrtymD9xYYfG1m4wAcvPhXNfE3EfH1r1ADqtfSdVCToUG868RvUUkgDKf31mGDtKsAYz2oz2AGutZYs".to_string());
+        state.wallets = vec![btc];
+        assert!(refresh_entries_for(&state)[0].address.starts_with("zpub"));
+
+        // An empty one is not a key.
+        state.wallets[0].xpub = Some("   ".to_string());
+        assert_eq!(refresh_entries_for(&state)[0].address, "bc1main");
+    }
+
+    /// A wallet with no address is left out rather than refreshed with nothing.
+    #[test]
+    fn a_wallet_with_no_address_is_not_an_entry() {
+        let mut state = CoreAppState::default();
+        state.wallets = vec![
+            wallet("w1", Chain::Solana, &[]),
+            wallet("w2", Chain::Solana, &[(Chain::Solana, "So1")]),
+        ];
+        let entries = refresh_entries_for(&state);
+        assert_eq!(entries.len(), 1);
+        assert_eq!(entries[0].wallet_id, "w2");
+        assert_eq!(entries[0].chain_id, Chain::Solana.str_id());
+    }
+
+    /// The EVM family shares one address, so an Ethereum wallet's entry is its
+    /// own — and an Arbitrum wallet reads the same slot.
+    #[test]
+    fn the_evm_family_shares_one_address() {
+        let mut state = CoreAppState::default();
+        state.wallets = vec![wallet("w1", Chain::Arbitrum, &[(Chain::Ethereum, "0xabc")])];
+        let entries = refresh_entries_for(&state);
+        assert_eq!(entries.len(), 1);
+        assert_eq!(entries[0].address, "0xabc");
+        assert_eq!(entries[0].chain_id, Chain::Arbitrum.str_id());
+    }
 }

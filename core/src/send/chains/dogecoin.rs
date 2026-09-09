@@ -2,6 +2,7 @@
 
 use crate::http::{with_fallback, RetryProfile};
 
+use super::wire::{build_input, build_tx, decode_txid_le, dsha256, p2pkh_script_sig, varint};
 use crate::derivation::chains::dogecoin::{decode_doge_address, p2pkh_script};
 use crate::fetch::chains::dogecoin::{DogeSendResult, DogecoinClient};
 
@@ -78,8 +79,11 @@ pub fn sign_doge_p2pkh(
     let pubkey = secp256k1::PublicKey::from_secret_key(&secp, &secret_key);
     let pubkey_bytes = pubkey.serialize(); // compressed
 
-    let total_in: u64 = utxos.iter().map(|(_, _, v, _)| v).sum();
-    let change = total_in.saturating_sub(amount_koin + fee_koin);
+    let change = super::accounting::checked_change(
+        utxos.iter().map(|(_, _, v, _)| *v),
+        amount_koin,
+        fee_koin,
+    )?;
 
     // Build outputs.
     let mut outputs: Vec<(Vec<u8>, u64)> = vec![(
@@ -101,8 +105,8 @@ pub fn sign_doge_p2pkh(
         let mut der = sig.serialize_der().to_vec();
         der.push(0x01); // SIGHASH_ALL
 
-        let script_sig = build_p2pkh_script_sig(&der, &pubkey_bytes);
-        signed_inputs.push(build_input(txid, *vout, &script_sig, 0xffffffff));
+        let script_sig = p2pkh_script_sig(&der, &pubkey_bytes);
+        signed_inputs.push(build_input(txid, *vout, &script_sig, 0xffff_ffff)?);
     }
 
     Ok(build_tx(&signed_inputs, &outputs))
@@ -122,7 +126,7 @@ fn build_sighash_preimage(
     // inputs
     raw.extend_from_slice(&varint(utxos.len()));
     for (txid, vout, _, spk) in utxos {
-        let txid_bytes = decode_txid(txid)?;
+        let txid_bytes = decode_txid_le(txid)?;
         raw.extend_from_slice(&txid_bytes);
         raw.extend_from_slice(&vout.to_le_bytes());
         if vout == &signing_vout && txid == signing_txid {
@@ -145,70 +149,4 @@ fn build_sighash_preimage(
     // sighash type
     raw.extend_from_slice(&sighash_type.to_le_bytes());
     Ok(raw)
-}
-
-fn build_input(txid: &str, vout: u32, script_sig: &[u8], sequence: u32) -> Vec<u8> {
-    let mut out = Vec::new();
-    let txid_bytes = decode_txid(txid).unwrap_or_default();
-    out.extend_from_slice(&txid_bytes);
-    out.extend_from_slice(&vout.to_le_bytes());
-    out.extend_from_slice(&varint(script_sig.len()));
-    out.extend_from_slice(script_sig);
-    out.extend_from_slice(&sequence.to_le_bytes());
-    out
-}
-
-fn build_p2pkh_script_sig(der_sig: &[u8], pubkey: &[u8]) -> Vec<u8> {
-    let mut out = Vec::new();
-    out.push(der_sig.len() as u8);
-    out.extend_from_slice(der_sig);
-    out.push(pubkey.len() as u8);
-    out.extend_from_slice(pubkey);
-    out
-}
-
-fn build_tx(inputs: &[Vec<u8>], outputs: &[(Vec<u8>, u64)]) -> Vec<u8> {
-    let mut raw = Vec::new();
-    raw.extend_from_slice(&1u32.to_le_bytes()); // version
-    raw.extend_from_slice(&varint(inputs.len()));
-    for inp in inputs {
-        raw.extend_from_slice(inp);
-    }
-    raw.extend_from_slice(&varint(outputs.len()));
-    for (script, value) in outputs {
-        raw.extend_from_slice(&value.to_le_bytes());
-        raw.extend_from_slice(&varint(script.len()));
-        raw.extend_from_slice(script);
-    }
-    raw.extend_from_slice(&0u32.to_le_bytes()); // locktime
-    raw
-}
-
-fn decode_txid(txid: &str) -> Result<Vec<u8>, String> {
-    let mut bytes = hex::decode(txid).map_err(|e| format!("txid decode: {e}"))?;
-    bytes.reverse(); // little-endian
-    Ok(bytes)
-}
-
-fn dsha256(data: &[u8]) -> [u8; 32] {
-    use sha2::{Digest, Sha256};
-    let first = Sha256::digest(data);
-    let second = Sha256::digest(first);
-    second.into()
-}
-
-fn varint(n: usize) -> Vec<u8> {
-    match n {
-        0..=0xfc => vec![n as u8],
-        0xfd..=0xffff => {
-            let mut v = vec![0xfd];
-            v.extend_from_slice(&(n as u16).to_le_bytes());
-            v
-        }
-        _ => {
-            let mut v = vec![0xfe];
-            v.extend_from_slice(&(n as u32).to_le_bytes());
-            v
-        }
-    }
 }

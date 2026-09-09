@@ -7,6 +7,15 @@ fn validate_execution_amount(
     chain: Chain,
     request: &crate::send::SendExecutionRequest,
 ) -> Result<(), SpectraBridgeError> {
+    if let Some(fee) = request.fee_amount {
+        crate::send::payload::fee_units(fee, u32::from(chain.native_decimals()))?;
+    }
+    if let Some(budget) = request.gas_budget {
+        crate::send::payload::fee_units(budget, u32::from(chain.native_decimals()))?;
+    }
+    if let Some(rate) = request.fee_rate_svb {
+        crate::send::payload::fee_units(rate, 8)?;
+    }
     let decimals = if request.contract_address.is_none() {
         u32::from(chain.native_decimals())
     } else {
@@ -103,27 +112,26 @@ impl WalletService {
 }
 
 impl WalletService {
-    /// What the contract says its token is denominated in, or `None` when the
-    /// family does not expose it or the node will not answer.
-    async fn token_contract_decimals(&self, chain: Chain, contract: &str) -> Option<u32> {
+    /// None means no metadata reader for this family; provider failures are errors.
+    async fn token_contract_decimals(
+        &self,
+        chain: Chain,
+        contract: &str,
+    ) -> Result<Option<u32>, SpectraBridgeError> {
         let endpoints = self.endpoints_for(chain.str_id()).await;
         if chain.is_evm() {
             let client = crate::fetch::chains::evm::EvmClient::new(endpoints, chain.evm_chain_id());
-            return client
-                .fetch_erc20_metadata(contract)
-                .await
-                .ok()
-                .map(|m| u32::from(m.decimals));
+            return Ok(Some(u32::from(
+                client.fetch_erc20_metadata(contract).await?.decimals,
+            )));
         }
-        if chain == Chain::Tron {
+        if chain.mainnet_counterpart() == Chain::Tron {
             let client = crate::fetch::chains::tron::TronClient::new(endpoints);
-            return client
-                .fetch_trc20_metadata(contract)
-                .await
-                .ok()
-                .map(|m| u32::from(m.decimals));
+            return Ok(Some(u32::from(
+                client.fetch_trc20_metadata(contract).await?.decimals,
+            )));
         }
-        None
+        Ok(None)
     }
 
     /// Resolve an exact decimal amount into the protocol's integer units.
@@ -136,7 +144,7 @@ impl WalletService {
         pub_hex: &Option<String>,
     ) -> Result<crate::service::send_params::ExecuteSendParams, SpectraBridgeError> {
         use crate::send::amount_input::parse_raw_amount;
-        use crate::send::payload::amount_u64;
+        use crate::send::payload::{dogecoin_fee, fee_units};
         use crate::service::send_params::*;
 
         let overrides = req
@@ -160,20 +168,11 @@ impl WalletService {
         validate_execution_amount(chain, req)?;
 
         if let Some(ref contract) = req.contract_address {
-            // The contract's own `decimals`, read before signing.
-            //
-            // This was `req.token_decimals.unwrap_or(6)` — a caller that did
-            // not supply the count got a transfer denominated at six places
-            // whatever the contract says, and a caller that supplied a stale
-            // one was believed. Both are the same mistake the Tron send arm
-            // made one layer up, and the cost of not making it is one constant
-            // call on a path that is about to move funds.
-            //
-            // The caller's value is the fallback for a family that does not
-            // expose the count, and for a node that will not answer.
+            // Only families without a metadata reader may use caller-supplied
+            // precision. A failed read on EVM/Tron must stop the send.
             let decimals = self
                 .token_contract_decimals(chain, contract)
-                .await
+                .await?
                 .or(req.token_decimals)
                 .ok_or_else(|| {
                     SpectraBridgeError::from(format!(
@@ -245,10 +244,16 @@ impl WalletService {
                 dust_threshold_sats: None,
             }
         };
-        let scaled_amount = |fee_default: u64| -> Result<(u64, u64), SpectraBridgeError> {
+        // The fallback fee is the chain's own — `Chain::static_fee_units`, which
+        // is where the fee shown on the send screen comes from. It used to be a
+        // literal per call site, and two of them disagreed with what the user
+        // had just been shown: Litecoin signed 10_000 against a 1_000 estimate,
+        // Bitcoin Cash 1_000 against 2_000.
+        let scaled_amount = || -> Result<(u64, u64), SpectraBridgeError> {
             Ok((
                 raw_u64(u32::from(chain.native_decimals()))?,
-                req.fee_sat.unwrap_or(fee_default),
+                req.fee_sat
+                    .unwrap_or_else(|| chain.static_fee_units().unwrap_or_default() as u64),
             ))
         };
 
@@ -284,7 +289,7 @@ impl WalletService {
                     from,
                     to,
                     amount_sat: raw_u64(8)?,
-                    fee_sat: Some(amount_u64(fee_rate_doge_per_kb * 350.0 / 1000.0, 1e8)),
+                    fee_sat: Some(dogecoin_fee(fee_rate_doge_per_kb)?),
                     private_key_hex,
                     dust_threshold_sats: None,
                 })
@@ -297,11 +302,11 @@ impl WalletService {
                 public_key_hex,
             }),
             Chain::Litecoin => {
-                let (amount_sat, fee_sat) = scaled_amount(10_000)?;
+                let (amount_sat, fee_sat) = scaled_amount()?;
                 SendParams::Utxo(utxo(from, to, private_key_hex, amount_sat, Some(fee_sat)))
             }
             Chain::BitcoinCash => {
-                let (amount_sat, fee_sat) = scaled_amount(1_000)?;
+                let (amount_sat, fee_sat) = scaled_amount()?;
                 SendParams::Utxo(utxo(from, to, private_key_hex, amount_sat, Some(fee_sat)))
             }
             Chain::Tron => SendParams::Tron(TronNativeSendParams {
@@ -324,7 +329,7 @@ impl WalletService {
                 from,
                 to,
                 amount_lovelace: raw_u64(6)?,
-                fee_lovelace: Some(amount_u64(req.fee_amount.unwrap_or(0.17), 1e6)),
+                fee_lovelace: Some(fee_units(req.fee_amount.unwrap_or(0.17), 6)?),
                 private_key_hex,
                 public_key_hex: public_key_hex.unwrap_or_default(),
                 ttl_slots: None,
@@ -350,7 +355,7 @@ impl WalletService {
                 from,
                 to,
                 mist: raw_u64(9)?,
-                gas_budget: Some(amount_u64(req.gas_budget.unwrap_or(0.01), 1e9)),
+                gas_budget: Some(fee_units(req.gas_budget.unwrap_or(0.01), 9)?),
                 private_key_hex,
                 public_key_hex: public_key_hex.unwrap_or_default(),
             }),
@@ -393,11 +398,11 @@ impl WalletService {
                 priority: Some(u64::from(req.monero_priority.unwrap_or(2))),
             }),
             Chain::BitcoinSV => {
-                let (amount_sat, fee_sat) = scaled_amount(1_000)?;
+                let (amount_sat, fee_sat) = scaled_amount()?;
                 SendParams::Utxo(utxo(from, to, private_key_hex, amount_sat, Some(fee_sat)))
             }
             Chain::Zcash => {
-                let (amount_sat, fee_sat) = scaled_amount(1_000)?;
+                let (amount_sat, fee_sat) = scaled_amount()?;
                 SendParams::Zcash(ZcashSendParams {
                     from,
                     to,
@@ -408,11 +413,11 @@ impl WalletService {
                 })
             }
             Chain::BitcoinGold => {
-                let (amount_sat, fee_sat) = scaled_amount(1_000)?;
+                let (amount_sat, fee_sat) = scaled_amount()?;
                 SendParams::Utxo(utxo(from, to, private_key_hex, amount_sat, Some(fee_sat)))
             }
             Chain::Decred => {
-                let (amount_sat, fee_sat) = scaled_amount(2_000)?;
+                let (amount_sat, fee_sat) = scaled_amount()?;
                 SendParams::Decred(DecredSendParams {
                     from,
                     to,
@@ -423,7 +428,7 @@ impl WalletService {
                 })
             }
             Chain::Kaspa => {
-                let (amount_sat, fee_sat) = scaled_amount(1_000)?;
+                let (amount_sat, fee_sat) = scaled_amount()?;
                 SendParams::Kaspa(KaspaSendParams {
                     from,
                     to,
@@ -435,7 +440,7 @@ impl WalletService {
                 })
             }
             Chain::Dash => {
-                let (amount_sat, fee_sat) = scaled_amount(2_000)?;
+                let (amount_sat, fee_sat) = scaled_amount()?;
                 SendParams::Utxo(utxo(from, to, private_key_hex, amount_sat, Some(fee_sat)))
             }
             c => {
@@ -458,7 +463,7 @@ mod token_decimals_come_from_the_contract {
     /// `build_execute_send_payload` used `req.token_decimals.unwrap_or(6)`, so
     /// a caller that supplied nothing denominated its transfer at six places
     /// whatever the contract said. It reads `decimals()` off the token now,
-    /// and the caller's value is only a fallback.
+    /// and only a family without a reader may fall back to caller precision.
     ///
     /// This asserts the gate, not the network read: a chain the helper has no
     /// client for must answer `None` without attempting a call, which is what
@@ -474,7 +479,10 @@ mod token_decimals_come_from_the_contract {
             Chain::Near,
         ] {
             assert_eq!(
-                service.token_contract_decimals(chain, "whatever").await,
+                service
+                    .token_contract_decimals(chain, "whatever")
+                    .await
+                    .unwrap(),
                 None,
                 "{} has no metadata client, so the caller's value must stand",
                 chain.chain_display_name()
@@ -525,6 +533,68 @@ mod build_send_params_tests {
     }
 
     #[tokio::test]
+    async fn invalid_fees_are_refused_before_signing_identity() {
+        let service = WalletService::new_typed(vec![]).unwrap();
+        for bad in [f64::NAN, f64::INFINITY, -1.0, 0.0, 0.0000000001, f64::MAX] {
+            for chain in [Chain::Cardano, Chain::Sui, Chain::Dogecoin] {
+                let mut request = req(chain.str_id(), "");
+                match chain {
+                    Chain::Cardano => request.fee_amount = Some(bad),
+                    Chain::Sui => request.gas_budget = Some(bad),
+                    _ => request.fee_rate_svb = Some(bad),
+                }
+                let error = service.execute_send(request).await.unwrap_err();
+                assert!(matches!(
+                    error,
+                    crate::SpectraBridgeError::InvalidInput { .. }
+                ));
+                assert!(error.to_string().contains("fee"), "{chain:?}: {error}");
+            }
+        }
+    }
+
+    async fn metadata_service(
+        chain: Chain,
+    ) -> (std::sync::Arc<WalletService>, wiremock::MockServer) {
+        use wiremock::{matchers::any, Mock, MockServer, Request, ResponseTemplate};
+        let server = MockServer::start().await;
+        Mock::given(any()).respond_with(|request: &Request| {
+            let body: serde_json::Value = request.body_json().unwrap();
+            let decimals = format!("{:064x}", 6);
+            let symbol = format!("{:0<64}", hex::encode("TOKEN"));
+            let response = if let Some(batch) = body.as_array() {
+                serde_json::Value::Array(batch.iter().enumerate().map(|(i, item)| serde_json::json!({
+                    "jsonrpc":"2.0", "id":item["id"], "result":format!("0x{}", if i == 0 { &decimals } else { &symbol })
+                })).collect())
+            } else {
+                serde_json::json!({"constant_result": [if body["function_selector"] == "decimals()" { decimals } else { symbol }]})
+            };
+            ResponseTemplate::new(200).set_body_json(response)
+        }).mount(&server).await;
+        let service = WalletService::new_typed(vec![crate::service::ChainEndpoints {
+            chain_id: chain.str_id().into(),
+            endpoints: vec![server.uri()],
+            api_key: None,
+        }])
+        .unwrap();
+        (service, server)
+    }
+
+    #[tokio::test]
+    async fn failed_metadata_never_uses_supplied_precision() {
+        let service = WalletService::new_typed(vec![]).unwrap();
+        for chain in [Chain::Ethereum, Chain::Tron] {
+            let mut request = req(chain.str_id(), chain.chain_display_name());
+            request.contract_address = Some("contract".into());
+            request.token_decimals = Some(18);
+            assert!(service
+                .build_send_params(chain, &request, "from", "priv", &None)
+                .await
+                .is_err());
+        }
+    }
+
+    #[tokio::test]
     async fn exact_amounts_reach_native_and_token_signing_params() {
         let service = WalletService::new_typed(vec![]).unwrap();
         let mut r = req("solana", "Solana");
@@ -548,7 +618,8 @@ mod build_send_params_tests {
         };
         assert_eq!(p.amount_raw, 9_007_199_254_740_993);
         r.amount_str = "9007199254.740993".into();
-        r.token_decimals = Some(6);
+        r.token_decimals = Some(18); // The chain's 6 must win over stale caller data.
+        let (service, _server) = metadata_service(Chain::Tron).await;
         let ExecuteSendParams::Token(SendTokenParams::Tron(p)) = service
             .build_send_params(Chain::Tron, &r, "from", "priv", &None)
             .await
@@ -640,6 +711,12 @@ mod build_send_params_tests {
     /// Litecoin shares the `UtxoFixedFeeSendParams` shape with four other
     /// chains, scaled by `chain.native_decimals()` (not a literal `1e8`) —
     /// the thing that distinguishes it from Dogecoin above.
+    ///
+    /// The fee a caller does not supply is the chain's own, and "the chain's
+    /// own" means the registry's: the fee estimate the user was shown comes
+    /// from `static_fee_units`, so anything else signs for a different amount
+    /// than the send screen quoted. This asserted a literal `10_000` against a
+    /// registry that says `1_000`.
     #[tokio::test]
     async fn litecoin_scales_by_native_decimals_with_its_own_fee_default() {
         let service = WalletService::new_typed(Vec::new()).expect("service");
@@ -654,10 +731,48 @@ mod build_send_params_tests {
         };
         assert_eq!(p.amount_sat, 100_000_000);
         assert_eq!(
-            p.fee_sat,
-            Some(10_000),
-            "Litecoin's own default, not BCH's 1_000"
+            p.fee_sat.map(u128::from),
+            Chain::Litecoin.static_fee_units(),
+            "the signed fee is the one the estimate quoted"
         );
+    }
+
+    /// Every chain on the shared UTXO shape falls back to the fee its own
+    /// estimate reports. Litecoin used to sign 10_000 against a 1_000 quote
+    /// and Bitcoin Cash 1_000 against 2_000.
+    #[tokio::test]
+    async fn an_unquoted_fee_falls_back_to_what_the_estimate_reports() {
+        let service = WalletService::new_typed(Vec::new()).expect("service");
+        for (chain, id, name) in [
+            (Chain::Litecoin, "litecoin", "Litecoin"),
+            (Chain::BitcoinCash, "bitcoin-cash", "Bitcoin Cash"),
+            (Chain::BitcoinSV, "bitcoin-sv", "Bitcoin SV"),
+            (Chain::BitcoinGold, "bitcoin-gold", "Bitcoin Gold"),
+            (Chain::Zcash, "zcash", "Zcash"),
+            (Chain::Decred, "decred", "Decred"),
+            (Chain::Kaspa, "kaspa", "Kaspa"),
+            (Chain::Dash, "dash", "Dash"),
+        ] {
+            let mut r = req(id, name);
+            r.amount_str = "1.0".into();
+            r.fee_sat = None;
+            let params = service
+                .build_send_params(chain, &r, "from", "priv", &None)
+                .await
+                .unwrap_or_else(|e| panic!("{name}: {e}"));
+            let fee = match params {
+                ExecuteSendParams::Native(SendParams::Utxo(p)) => p.fee_sat,
+                ExecuteSendParams::Native(SendParams::Zcash(p)) => p.fee_sat,
+                ExecuteSendParams::Native(SendParams::Decred(p)) => p.fee_sat,
+                ExecuteSendParams::Native(SendParams::Kaspa(p)) => p.fee_sat,
+                other => panic!("{name}: unexpected shape {other:?}"),
+            };
+            assert_eq!(
+                fee.map(u128::from),
+                chain.static_fee_units(),
+                "{name} signs a fee its own estimate does not report"
+            );
+        }
     }
 
     /// EVM native: `value_wei` goes through the string-exact `to_raw(18)`
@@ -726,7 +841,7 @@ mod build_send_params_tests {
 
     #[tokio::test]
     async fn evm_overrides_reach_native_and_token_builders() {
-        let service = WalletService::new_typed(Vec::new()).expect("service");
+        let (service, _server) = metadata_service(Chain::Ethereum).await;
         for token in [false, true] {
             let mut request = req("ethereum", "Ethereum");
             if token {

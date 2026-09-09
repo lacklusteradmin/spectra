@@ -6,15 +6,15 @@ use std::sync::Arc;
 
 use crate::registry::Chain;
 use crate::service::ChainEndpoints;
-use crate::staking::{StakingAction, StakingActionRequest,
+use crate::staking::{
     chains::{
         aptos::AptosStakingClient, cardano::CardanoStakingClient, icp::IcpStakingClient,
         near::NearStakingClient, polkadot::PolkadotStakingClient, solana::SolanaStakingClient,
         sui::SuiStakingClient,
     },
-    StakingActionPreview, StakingError, StakingPosition, StakingValidator,
+    StakingAction, StakingActionPreview, StakingActionRequest, StakingError, StakingPosition,
+    StakingValidator,
 };
-
 
 #[derive(uniffi::Object)]
 pub struct StakingService {
@@ -161,7 +161,9 @@ impl StakingService {
                     .await
             }
             (Chain::Solana, A::Unstake) => {
-                self.solana.build_deactivate_tx(who, request.target()?).await
+                self.solana
+                    .build_deactivate_tx(who, request.target()?)
+                    .await
             }
             (Chain::Solana, A::Withdraw) => {
                 self.solana
@@ -239,9 +241,7 @@ impl StakingService {
                     .build_unbond_tx(who, request.amount_u128()?)
                     .await
             }
-            (Chain::Polkadot, A::Withdraw) => {
-                self.polkadot.build_withdraw_unbonded_tx(who).await
-            }
+            (Chain::Polkadot, A::Withdraw) => self.polkadot.build_withdraw_unbonded_tx(who).await,
 
             (Chain::Icp, A::Stake) => {
                 self.icp
@@ -272,7 +272,6 @@ impl StakingService {
             _ => Err(unsupported()),
         }
     }
-
 }
 
 #[cfg(test)]
@@ -326,7 +325,13 @@ mod tests {
     /// What staking does *not* cover, named rather than implied.
     #[test]
     fn these_chains_do_not_stake() {
-        for chain in [Chain::Bitcoin, Chain::Ethereum, Chain::Tron, Chain::Xrp, Chain::Monero] {
+        for chain in [
+            Chain::Bitcoin,
+            Chain::Ethereum,
+            Chain::Tron,
+            Chain::Xrp,
+            Chain::Monero,
+        ] {
             assert!(
                 !chain.supports_staking(),
                 "{} now stakes — that is a new client, so say so in PLAN.md and \
@@ -336,7 +341,6 @@ mod tests {
         }
     }
 }
-
 
 #[cfg(test)]
 mod one_entry_point {

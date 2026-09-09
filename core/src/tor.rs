@@ -24,7 +24,7 @@ use arti_client::config::CfgPath;
 use arti_client::{TorClient, TorClientConfig};
 use parking_lot::Mutex;
 use std::io;
-use std::sync::atomic::{AtomicU8, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU8, Ordering};
 use std::sync::{Arc, LazyLock};
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::{TcpListener, TcpStream};
@@ -65,6 +65,44 @@ enum TorInternalState {
 
 static TOR_STATE: LazyLock<Mutex<TorInternalState>> =
     LazyLock::new(|| Mutex::new(TorInternalState::Stopped));
+
+// ── Policy ───────────────────────────────────────────────────────────────────
+//
+// What the user asked for, as opposed to what Tor is currently doing. Both are
+// core state (`AppSettings::tor_enabled` / `tor_kill_switch`); the service
+// pushes them here whenever that state changes, so the HTTP layer can consult
+// them without reading the store on every request.
+
+static TOR_WANTED: AtomicBool = AtomicBool::new(false);
+static KILL_SWITCH: AtomicBool = AtomicBool::new(false);
+
+/// Adopt the stored Tor policy. Called by the service on load and on change.
+pub(crate) fn apply_policy(tor_enabled: bool, kill_switch: bool) {
+    TOR_WANTED.store(tor_enabled, Ordering::Relaxed);
+    KILL_SWITCH.store(kill_switch, Ordering::Relaxed);
+}
+
+/// True when the user asked for Tor with the kill switch on and Tor is not
+/// carrying traffic — the moment a request would otherwise go out in the
+/// clear.
+///
+/// The switch had no reader at all: it was a toggle in one front end's
+/// settings, written to `UserDefaults`, and the screen's own footer promised
+/// that "network requests are paused if the Tor circuit drops instead of
+/// falling back to a direct connection". Nothing paused anything.
+pub(crate) fn kill_switch_engaged() -> bool {
+    // The loads short-circuit before the status lock, so a request pays only
+    // an atomic read when the switch is off — which is every request until a
+    // user turns it on.
+    KILL_SWITCH.load(Ordering::Relaxed)
+        && kill_switch_verdict(true, TOR_WANTED.load(Ordering::Relaxed), &tor_status())
+}
+
+/// The rule itself, over values rather than globals, so it can be asserted
+/// without engaging a process-wide switch other tests share.
+pub(crate) fn kill_switch_verdict(kill_switch: bool, tor_wanted: bool, status: &TorStatus) -> bool {
+    kill_switch && tor_wanted && !matches!(status, TorStatus::Ready)
+}
 
 // ── FFI surface ──────────────────────────────────────────────────────────────
 
@@ -167,6 +205,17 @@ async fn bootstrap_tor(data_dir: String, percent: Arc<AtomicU8>) {
             let tor_for_proxy = client.clone();
             let proxy_task = tokio::spawn(run_socks5_proxy(tor_for_proxy));
 
+            // The proxy goes on before the status says Ready, and not after.
+            // The kill switch reads the status: with the old order there was a
+            // window where `tor_status()` already answered Ready while the
+            // shared client still had no proxy, so a refresh landing in it went
+            // to the provider over a direct connection — the one thing the
+            // switch exists to prevent. This way the window fails the other
+            // way, and a request in it is blocked a moment longer than needed.
+            //
+            // socks5h:// → Tor resolves DNS; socks5:// would leak lookups locally.
+            crate::fetch::http::set_socks5_proxy(Some("socks5h://127.0.0.1:19050"));
+
             {
                 let mut guard = TOR_STATE.lock();
                 *guard = TorInternalState::Running {
@@ -174,9 +223,6 @@ async fn bootstrap_tor(data_dir: String, percent: Arc<AtomicU8>) {
                     proxy_task,
                 };
             }
-
-            // socks5h:// → Tor resolves DNS; socks5:// would leak lookups locally.
-            crate::fetch::http::set_socks5_proxy(Some("socks5h://127.0.0.1:19050"));
         }
         Err(message) => {
             let mut guard = TOR_STATE.lock();

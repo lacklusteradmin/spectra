@@ -76,7 +76,10 @@ static CATALOG: LazyLock<Vec<TokenEntry>> = LazyLock::new(|| {
             // build-time mistake, not a row to skip: the entry would carry a
             // symbol and nothing else.
             let a = assets.get(d.asset.as_str()).unwrap_or_else(|| {
-                panic!("tokens.toml: deployment on {} names unknown asset {}", d.chain, d.asset)
+                panic!(
+                    "tokens.toml: deployment on {} names unknown asset {}",
+                    d.chain, d.asset
+                )
             });
             TokenEntry {
                 chain: d.chain.clone(),
@@ -373,13 +376,19 @@ mod tests {
     fn endpoint_validation_is_per_field() {
         use EndpointField::*;
         assert_eq!(
-            endpoint_validation_error(BitcoinEsploraList, "https://x.example,https://y.example".into()),
+            endpoint_validation_error(
+                BitcoinEsploraList,
+                "https://x.example,https://y.example".into()
+            ),
             None
         );
         assert!(endpoint_validation_error(BitcoinEsploraList, "notaurl".into()).is_some());
         // An empty single-URL field is unset, not invalid; an empty list is too.
         assert_eq!(endpoint_validation_error(EvmRpc, "".into()), None);
-        assert_eq!(endpoint_validation_error(BitcoinEsploraList, "".into()), None);
+        assert_eq!(
+            endpoint_validation_error(BitcoinEsploraList, "".into()),
+            None
+        );
         assert!(endpoint_validation_error(EvmRpc, "ftp://x".into()).is_some());
         assert_eq!(
             endpoint_validation_error(EvmRpc, "https://rpc.example/abc".into()),
@@ -423,9 +432,7 @@ mod tests {
             "a jetton master address keeps its case"
         );
     }
-
 }
-
 
 #[cfg(test)]
 mod the_catalog_is_two_tables {
@@ -543,7 +550,11 @@ mod the_catalog_is_two_tables {
     #[test]
     fn the_two_tables_cover_each_other() {
         let parsed: TomlFile = toml::from_str(TOKENS_TOML).expect("valid TOML");
-        let deployed: HashSet<&str> = parsed.deployments.iter().map(|d| d.asset.as_str()).collect();
+        let deployed: HashSet<&str> = parsed
+            .deployments
+            .iter()
+            .map(|d| d.asset.as_str())
+            .collect();
         for asset in &parsed.assets {
             assert!(
                 deployed.contains(asset.symbol.as_str()),

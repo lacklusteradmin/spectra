@@ -9,7 +9,6 @@ pub struct WalletAddress {
     pub derivation_path: Option<String>,
 }
 
-
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, uniffi::Record)]
 #[serde(rename_all = "camelCase")]
 pub struct WalletSummary {
@@ -88,6 +87,35 @@ impl WalletSummary {
     /// derived secp256k1 address serves every EVM chain, so a wallet on
     /// Ethereum resolves an address for Arbitrum and a name comparison would
     /// say it does not.
+    /// The network this wallet is on for its own family: the one it recorded
+    /// at import if that is still a network of the family, otherwise whatever
+    /// the app is set to.
+    ///
+    /// One rule, read by everything that fetches for a wallet — balances,
+    /// history, diagnostics. Each of them used to work it out again, and they
+    /// did not agree.
+    pub fn network_chain(&self, settings: &AppSettings) -> Option<crate::registry::Chain> {
+        let chain = crate::registry::Chain::from_display_name(&self.chain_name)?;
+        Some(
+            self.network_mode
+                .as_deref()
+                .and_then(crate::registry::Chain::from_str_id)
+                .filter(|selected| {
+                    selected.mainnet_counterpart() == chain.mainnet_counterpart()
+                })
+                .unwrap_or_else(|| settings.network_chain(chain)),
+        )
+    }
+
+    /// This wallet's address on the network it is on, falling back to its own
+    /// chain's slot.
+    pub fn active_address(&self, settings: &AppSettings) -> Option<&str> {
+        let chain = crate::registry::Chain::from_display_name(&self.chain_name)?;
+        self.network_chain(settings)
+            .and_then(|network| self.address_on(network))
+            .or_else(|| self.address_on(chain))
+    }
+
     pub fn address_on(&self, chain: crate::registry::Chain) -> Option<&str> {
         let slot = chain.address_slot();
         self.addresses
@@ -210,6 +238,25 @@ pub struct AppSettings {
     #[serde(default = "default_refresh_frequency_minutes")]
     pub automatic_refresh_frequency_minutes: u32,
 
+    // ── Tor ───────────────────────────────────────────────────────────────
+    /// Route traffic through Tor. The platform starts and stops the client —
+    /// the embedded one needs a writable directory only it can name — but
+    /// whether Tor is wanted at all is state, and it used to live in one front
+    /// end's `UserDefaults`, where no other front end and no test could see it.
+    #[serde(default)]
+    pub tor_enabled: bool,
+    /// Use a SOCKS5 proxy the user runs (Orbot) instead of the embedded client.
+    #[serde(default)]
+    pub tor_use_custom_proxy: bool,
+    /// Where that proxy is. Validated on write, so a value that cannot be a
+    /// SOCKS5 endpoint is never stored and cannot be handed to the HTTP layer.
+    #[serde(default = "default_tor_custom_proxy_address")]
+    pub tor_custom_proxy_address: String,
+    /// Refuse network requests while Tor is wanted but not ready, rather than
+    /// falling back to a direct connection.
+    #[serde(default)]
+    pub tor_kill_switch: bool,
+
     // ── Alerting ──────────────────────────────────────────────────────────
     #[serde(default = "default_true")]
     pub use_price_alerts: bool,
@@ -257,6 +304,35 @@ fn default_true() -> bool {
 fn default_bitcoin_stop_gap() -> u32 {
     10
 }
+/// Orbot's SOCKS5 port, which is what a user running their own proxy on a
+/// phone almost always has.
+fn default_tor_custom_proxy_address() -> String {
+    "socks5://127.0.0.1:9150".to_string()
+}
+
+/// A SOCKS5 endpoint this app can actually hand to the HTTP layer: a
+/// `socks5://` or `socks5h://` URL with a host and a port.
+///
+/// Validated here rather than at the toggle: a front end that stored
+/// "127.0.0.1:9150" or a typo would leave Tor enabled and every request going
+/// out of a proxy that cannot be built. The HTTP layer fails closed on an
+/// unusable proxy, so the visible result is that nothing loads and nothing
+/// says why.
+pub(crate) fn parsed_socks5_proxy(raw: &str) -> Option<String> {
+    let trimmed = raw.trim();
+    let rest = trimmed
+        .strip_prefix("socks5://")
+        .or_else(|| trimmed.strip_prefix("socks5h://"))?;
+    let (host, port) = rest.rsplit_once(':')?;
+    if host.is_empty() || host.contains('/') {
+        return None;
+    }
+    let port: u16 = port.parse().ok()?;
+    if port == 0 {
+        return None;
+    }
+    Some(trimmed.to_string())
+}
 fn default_refresh_frequency_minutes() -> u32 {
     5
 }
@@ -277,6 +353,27 @@ impl AppSettings {
             .filter(|selected| selected.mainnet_counterpart() == family)
             .unwrap_or(family)
     }
+}
+
+/// The display currencies this app quotes in.
+///
+/// The list was a twelve-case Swift enum and nothing else, so
+/// `SetFiatCurrency` stored whatever string it was handed — `spectra currency
+/// ZZZ` set the display currency to `ZZZ`, which no rate table has, and every
+/// amount then rendered unconverted. The codes are the domain's, so they are
+/// here, and the reducer refuses one that is not in them.
+pub const FIAT_CURRENCY_CODES: [&str; 12] = [
+    "USD", "EUR", "GBP", "JPY", "CNY", "INR", "CAD", "AUD", "CHF", "BRL", "SGD", "AED",
+];
+
+/// The base every stored rate is expressed against.
+pub const FIAT_BASE_CURRENCY: &str = "USD";
+
+pub fn fiat_currency_codes() -> Vec<String> {
+    FIAT_CURRENCY_CODES
+        .iter()
+        .map(|code| code.to_string())
+        .collect()
 }
 
 /// Chains whose selected network is a testnet, by display name — their coins
@@ -315,6 +412,10 @@ impl Default for AppSettings {
             use_large_movement_notifications: default_true(),
             large_movement_alert_percent_threshold: default_large_movement_percent(),
             large_movement_alert_usd_threshold: default_large_movement_usd(),
+            tor_enabled: false,
+            tor_use_custom_proxy: false,
+            tor_custom_proxy_address: default_tor_custom_proxy_address(),
+            tor_kill_switch: false,
         }
     }
 }
@@ -335,6 +436,15 @@ pub struct CoreAppState {
     /// alert the user set never fires.
     #[serde(default)]
     pub price_alerts: Vec<crate::store::PriceAlertEvaluationAlert>,
+    /// USD → display-currency cross rates, as `code -> rate`.
+    ///
+    /// Every quoted amount passes through these, and they are what the app
+    /// shows while a refresh is in flight or the provider is down — so losing
+    /// them on restart means every non-USD balance renders as USD until a
+    /// network call lands. One front end kept them in its own SQLite blob,
+    /// seeded from an older `UserDefaults` key that still won a race at launch.
+    #[serde(default)]
+    pub fiat_rates_from_usd: std::collections::HashMap<String, f64>,
 }
 
 impl Default for CoreAppState {
@@ -347,6 +457,7 @@ impl Default for CoreAppState {
             address_book: Vec::new(),
             token_preferences: Vec::new(),
             price_alerts: Vec::new(),
+            fiat_rates_from_usd: std::collections::HashMap::new(),
         }
     }
 }
@@ -367,23 +478,69 @@ pub(crate) const MAX_TOKEN_DECIMALS: i32 = 30;
 pub enum AppSettingUpdate {
     /// `chain` is a registry display name; an unknown one is refused. An empty
     /// value clears the override and falls back to the catalog.
-    RpcEndpoint { chain: String, value: String },
-    EtherscanApiKey { value: String },
-    MoneroBackendBaseUrl { value: String },
-    MoneroBackendApiKey { value: String },
-    BitcoinEsploraEndpoints { value: String },
-    BitcoinStopGap { value: u32 },
+    RpcEndpoint {
+        chain: String,
+        value: String,
+    },
+    EtherscanApiKey {
+        value: String,
+    },
+    MoneroBackendBaseUrl {
+        value: String,
+    },
+    MoneroBackendApiKey {
+        value: String,
+    },
+    BitcoinEsploraEndpoints {
+        value: String,
+    },
+    BitcoinStopGap {
+        value: u32,
+    },
     /// `chain` is a registry display name; an unknown one is refused and an
     /// unknown `value` falls back to `normal`.
-    FeePriority { chain: String, value: String },
-    UseStrictRpcOnly { value: bool },
-    BackgroundSyncProfile { value: String },
-    AutomaticRefreshFrequencyMinutes { value: u32 },
-    UsePriceAlerts { value: bool },
-    UseTransactionStatusNotifications { value: bool },
-    UseLargeMovementNotifications { value: bool },
-    LargeMovementAlertPercentThreshold { value: f64 },
-    LargeMovementAlertUsdThreshold { value: f64 },
+    FeePriority {
+        chain: String,
+        value: String,
+    },
+    UseStrictRpcOnly {
+        value: bool,
+    },
+    BackgroundSyncProfile {
+        value: String,
+    },
+    AutomaticRefreshFrequencyMinutes {
+        value: u32,
+    },
+    UsePriceAlerts {
+        value: bool,
+    },
+    UseTransactionStatusNotifications {
+        value: bool,
+    },
+    UseLargeMovementNotifications {
+        value: bool,
+    },
+    LargeMovementAlertPercentThreshold {
+        value: f64,
+    },
+    LargeMovementAlertUsdThreshold {
+        value: f64,
+    },
+    TorEnabled {
+        value: bool,
+    },
+    TorUseCustomProxy {
+        value: bool,
+    },
+    /// An empty value restores the default port. A value that is not a
+    /// SOCKS5 URL is refused and nothing is stored.
+    TorCustomProxyAddress {
+        value: String,
+    },
+    TorKillSwitch {
+        value: bool,
+    },
 }
 
 /// An intent to change the resident state.
@@ -514,7 +671,14 @@ fn address_book_contains(
 ///
 /// The clamps were `didSet` bodies on the iOS side — the only copy, so a value
 /// out of range was only out of range where someone had remembered to check.
-fn apply_app_setting(settings: &mut AppSettings, update: AppSettingUpdate) {
+/// Apply one settings update, answering whether it was accepted.
+///
+/// An update naming a chain the registry does not have, or a proxy address
+/// that is not a SOCKS5 URL, changes nothing — and used to say nothing either,
+/// so a front end or a script could set a value, be told the command
+/// succeeded, and read back the old one. The caller turns `false` into a
+/// refusal event.
+fn apply_app_setting(settings: &mut AppSettings, update: AppSettingUpdate) -> bool {
     fn trimmed(value: String) -> String {
         value.trim().to_string()
     }
@@ -531,11 +695,13 @@ fn apply_app_setting(settings: &mut AppSettings, update: AppSettingUpdate) {
     match update {
         AppSettingUpdate::RpcEndpoint { chain, value } => {
             let Some(chain) = crate::registry::Chain::from_display_name(&chain) else {
-                return;
+                return false;
             };
             let value = trimmed(value);
             if value.is_empty() {
-                settings.rpc_endpoint_by_chain.remove(chain.chain_display_name());
+                settings
+                    .rpc_endpoint_by_chain
+                    .remove(chain.chain_display_name());
             } else {
                 settings
                     .rpc_endpoint_by_chain
@@ -559,11 +725,13 @@ fn apply_app_setting(settings: &mut AppSettings, update: AppSettingUpdate) {
         }
         AppSettingUpdate::FeePriority { chain, value } => {
             let Some(chain) = crate::registry::Chain::from_display_name(&chain) else {
-                return;
+                return false;
             };
             let value = normalized_fee_priority(&value);
             if value == default_fee_priority() {
-                settings.fee_priority_by_chain.remove(chain.chain_display_name());
+                settings
+                    .fee_priority_by_chain
+                    .remove(chain.chain_display_name());
             } else {
                 settings
                     .fee_priority_by_chain
@@ -585,6 +753,19 @@ fn apply_app_setting(settings: &mut AppSettings, update: AppSettingUpdate) {
         AppSettingUpdate::UseLargeMovementNotifications { value } => {
             settings.use_large_movement_notifications = value
         }
+        AppSettingUpdate::TorEnabled { value } => settings.tor_enabled = value,
+        AppSettingUpdate::TorUseCustomProxy { value } => settings.tor_use_custom_proxy = value,
+        AppSettingUpdate::TorCustomProxyAddress { value } => {
+            if value.trim().is_empty() {
+                settings.tor_custom_proxy_address = default_tor_custom_proxy_address();
+            } else {
+                let Some(parsed) = parsed_socks5_proxy(&value) else {
+                    return false;
+                };
+                settings.tor_custom_proxy_address = parsed;
+            }
+        }
+        AppSettingUpdate::TorKillSwitch { value } => settings.tor_kill_switch = value,
         AppSettingUpdate::LargeMovementAlertPercentThreshold { value } => {
             settings.large_movement_alert_percent_threshold =
                 clamp(value, LARGE_MOVEMENT_PERCENT_RANGE)
@@ -593,6 +774,7 @@ fn apply_app_setting(settings: &mut AppSettings, update: AppSettingUpdate) {
             settings.large_movement_alert_usd_threshold = clamp(value, LARGE_MOVEMENT_USD_RANGE)
         }
     }
+    true
 }
 
 pub fn reduce_state_in_place(state: &mut CoreAppState, command: StateCommand) -> Vec<StateEvent> {
@@ -680,7 +862,8 @@ pub fn reduce_state_in_place(state: &mut CoreAppState, command: StateCommand) ->
             // never saved.
             let rejection = if name.is_empty() {
                 Some(AddressBookRejection::EmptyName)
-            } else if !crate::send::flow::is_valid_send_address(chain_name.clone(), address.clone()) {
+            } else if !crate::send::flow::is_valid_send_address(chain_name.clone(), address.clone())
+            {
                 Some(AddressBookRejection::InvalidAddress)
             } else if address_book_contains(state, &chain_name, &address, None) {
                 Some(AddressBookRejection::DuplicateAddress)
@@ -747,6 +930,13 @@ pub fn reduce_state_in_place(state: &mut CoreAppState, command: StateCommand) ->
         }
         StateCommand::SetFiatCurrency { fiat_currency_code } => {
             let normalized = fiat_currency_code.trim().to_uppercase();
+            if !FIAT_CURRENCY_CODES.contains(&normalized.as_str()) {
+                events.push(StateEvent {
+                    kind: "fiatCurrencyRejected".to_string(),
+                    subject_id: Some(normalized),
+                });
+                return events;
+            }
             if normalized != state.settings.fiat_currency_code {
                 state.settings.fiat_currency_code = normalized.clone();
                 events.push(StateEvent {
@@ -757,8 +947,13 @@ pub fn reduce_state_in_place(state: &mut CoreAppState, command: StateCommand) ->
         }
         StateCommand::SetAppSetting { update } => {
             let before = state.settings.clone();
-            apply_app_setting(&mut state.settings, update);
-            if state.settings != before {
+            let accepted = apply_app_setting(&mut state.settings, update);
+            if !accepted {
+                events.push(StateEvent {
+                    kind: "appSettingRejected".to_string(),
+                    subject_id: None,
+                });
+            } else if state.settings != before {
                 events.push(StateEvent {
                     kind: "appSettingChanged".to_string(),
                     subject_id: None,
@@ -766,7 +961,7 @@ pub fn reduce_state_in_place(state: &mut CoreAppState, command: StateCommand) ->
             }
         }
         StateCommand::ResetAppSettings => {
-            let before = std::mem::replace(&mut state.settings, AppSettings::default());
+            let before = std::mem::take(&mut state.settings);
             if state.settings != before {
                 events.push(StateEvent {
                     kind: "appSettingChanged".to_string(),

@@ -173,9 +173,7 @@ impl SuiClient {
         &self,
         address: &str,
     ) -> Result<Vec<super::HeldToken>, String> {
-        let result = self
-            .call("suix_getAllBalances", json!([address]))
-            .await?;
+        let result = self.call("suix_getAllBalances", json!([address])).await?;
         let mut held: Vec<(String, u128)> = Vec::new();
         for entry in result.as_array().map(|v| v.as_slice()).unwrap_or_default() {
             let Some(coin_type) = entry.get("coinType").and_then(|v| v.as_str()) else {
@@ -196,7 +194,8 @@ impl SuiClient {
         }
 
         let metadata = futures::future::join_all(
-            held.iter().map(|(coin_type, _)| self.fetch_coin_decimals(coin_type)),
+            held.iter()
+                .map(|(coin_type, _)| self.fetch_coin_decimals(coin_type)),
         )
         .await;
         Ok(held

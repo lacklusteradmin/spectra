@@ -35,9 +35,8 @@ impl SecretSource {
             return read_secret_file(path);
         }
         if let Some(name) = &self.env {
-            return std::env::var(name).map_err(|_| {
-                CliError::usage(format!("environment variable {name} is not set"))
-            });
+            return std::env::var(name)
+                .map_err(|_| CliError::usage(format!("environment variable {name} is not set")));
         }
         if std::io::stdin().is_terminal() {
             return rpassword::prompt_password(format!("  {prompt}: "))

@@ -176,7 +176,6 @@ pub fn next_default_wallet_name_index(existing_wallet_names: Vec<String>) -> i32
     highest + 1
 }
 
-
 #[cfg(test)]
 mod tests {
     use super::*;

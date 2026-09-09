@@ -1,8 +1,8 @@
 //! One module per noun. Each asks core for every decision it reports.
 
 pub mod address;
-pub mod alert;
 pub mod address_pool;
+pub mod alert;
 pub mod chain;
 pub mod diagnostics;
 pub mod market;
