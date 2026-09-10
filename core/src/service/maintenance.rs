@@ -89,6 +89,9 @@ impl WalletService {
             amount_input,
             available_balance: holding.map(|h| h.amount).unwrap_or(0.0),
             asset: holding.map(|holding| routing_input(holding, &state.token_preferences)),
+            token: holding.and_then(|holding| {
+                send_token_identity(holding, &state.token_preferences)
+            }),
         };
         Ok(crate::send::plan_send_submit_preflight(request)?)
     }
@@ -309,6 +312,48 @@ fn supported_evm_token(
 }
 
 /// What routing needs to know about a holding, derived from core's own state.
+/// The token a holding is, with the decimals the catalog gives it.
+///
+/// A holding whose symbol is the chain's gas asset is native and has none. A
+/// token the user does not track has none either, which is what makes the
+/// send refuse rather than guess a scale — every submit branch used to look
+/// this up itself, and Tron's branch hard-coded six decimals for every token
+/// on it.
+fn send_token_identity(
+    holding: &crate::store::wallet_domain::AssetHolding,
+    preferences: &[crate::store::wallet_domain::CoreTokenPreferenceEntry],
+) -> Option<crate::send::SendTokenIdentity> {
+    use crate::store::wallet_domain::CoreTokenHostingChain;
+    let chain = crate::registry::Chain::from_display_name(&holding.chain_name)?;
+    if holding.symbol == chain.coin_symbol() {
+        return None;
+    }
+    let hosting = CoreTokenHostingChain::from_chain_name(&holding.chain_name)?;
+    let contract = crate::tokens::normalize_token_identifier(
+        holding.contract_address.clone(),
+        holding.chain_name.clone(),
+    );
+    preferences
+        .iter()
+        .filter(|entry| entry.hosting_chain() == Some(hosting))
+        .filter(|entry| entry.token.symbol.eq_ignore_ascii_case(&holding.symbol))
+        .find(|entry| match &contract {
+            // A holding that names its contract must match on it; one that does
+            // not is identified by its symbol on that chain.
+            Some(contract) => crate::tokens::normalize_token_identifier(
+                Some(entry.token.contract.clone()),
+                holding.chain_name.clone(),
+            )
+            .as_deref()
+                == Some(contract.as_str()),
+            None => true,
+        })
+        .map(|entry| crate::send::SendTokenIdentity {
+            contract: entry.token.contract.clone(),
+            decimals: entry.token.decimals,
+        })
+}
+
 fn routing_input(
     holding: &crate::store::wallet_domain::AssetHolding,
     preferences: &[crate::store::wallet_domain::CoreTokenPreferenceEntry],
@@ -560,5 +605,97 @@ mod preflight_tests {
         assert_eq!(plan.chain_name, "Bitcoin");
         assert_eq!(plan.symbol, "BTC");
         assert_eq!(plan.amount, 1.0);
+    }
+}
+
+#[cfg(test)]
+mod send_token_identity_tests {
+    use super::send_token_identity;
+    use crate::store::wallet_domain::{
+        AssetHolding, CoreTokenPreferenceCategory, CoreTokenPreferenceEntry,
+    };
+
+    fn entry(chain: &str, symbol: &str, contract: &str, decimals: u32) -> CoreTokenPreferenceEntry {
+        CoreTokenPreferenceEntry {
+            token: crate::tokens::TokenEntry {
+                chain: chain.to_string(),
+                name: symbol.to_string(),
+                symbol: symbol.to_string(),
+                token_standard: "trc20".to_string(),
+                contract: contract.to_string(),
+                coingecko_id: String::new(),
+                decimals,
+                tags: Vec::new(),
+                color: String::new(),
+                asset_name: String::new(),
+                enabled: true,
+            },
+            category: CoreTokenPreferenceCategory::Stablecoin,
+            is_built_in: true,
+            is_enabled: true,
+        }
+    }
+
+    fn holding(chain: &str, symbol: &str, contract: Option<&str>) -> AssetHolding {
+        AssetHolding {
+            name: symbol.to_string(),
+            symbol: symbol.to_string(),
+            coin_gecko_id: String::new(),
+            chain_name: chain.to_string(),
+            token_standard: "trc20".to_string(),
+            contract_address: contract.map(str::to_string),
+            amount: 1.0,
+            price_usd: 0.0,
+        }
+    }
+
+    /// A token carries its own decimals, and a native asset carries none.
+    ///
+    /// Every submit branch resolved this itself. Tron's hard-coded six for
+    /// every token on it — right for USDT, wrong for the four
+    /// eighteen-decimal ones — and NEAR's fell back to six for a token it
+    /// could not find, which is a scale guessed on the funds path.
+    #[test]
+    fn a_token_carries_its_own_decimals_and_a_native_asset_none() {
+        let preferences = vec![
+            entry("tron", "USDT", "TR7NHqjeKQxGTCi8q8ZY4pL8otSzgjLj6t", 6),
+            entry("tron", "USDD", "TPYmHEhy5n8TCEfYGqW2rPxsghSfzghPDn", 18),
+        ];
+
+        // The native asset is not a token.
+        assert!(send_token_identity(&holding("Tron", "TRX", None), &preferences).is_none());
+
+        // Each token's own scale, matched by contract.
+        let usdd = send_token_identity(
+            &holding("Tron", "USDD", Some("TPYmHEhy5n8TCEfYGqW2rPxsghSfzghPDn")),
+            &preferences,
+        )
+        .expect("USDD is tracked");
+        assert_eq!(usdd.decimals, 18);
+        let usdt = send_token_identity(
+            &holding("Tron", "USDT", Some("TR7NHqjeKQxGTCi8q8ZY4pL8otSzgjLj6t")),
+            &preferences,
+        )
+        .expect("USDT is tracked");
+        assert_eq!(usdt.decimals, 6);
+
+        // A holding with no contract is identified by its symbol on the chain.
+        assert_eq!(
+            send_token_identity(&holding("Tron", "USDD", None), &preferences)
+                .expect("matched by symbol")
+                .decimals,
+            18
+        );
+
+        // A token nothing tracks has no identity, so the send refuses rather
+        // than guessing a scale.
+        assert!(send_token_identity(&holding("Tron", "NOPE", None), &preferences).is_none());
+        assert!(send_token_identity(
+            &holding("Tron", "USDT", Some("TSomeOtherContractAddressEntirely")),
+            &preferences
+        )
+        .is_none());
+        // And a chain that hosts no known tokens has none either.
+        assert!(send_token_identity(&holding("Monero", "XMR", None), &preferences).is_none());
     }
 }

@@ -126,9 +126,10 @@ pub struct WatchArgs {
     /// Chain display name, registry id or symbol.
     #[arg(long)]
     chain: String,
-    /// Address to track.
-    #[arg(long)]
-    address: String,
+    /// Address to track. Repeat it to watch several: an import creates one
+    /// wallet per address, which is what the app's multi-line input does.
+    #[arg(long, required = true)]
+    address: Vec<String>,
     /// Wallet name (default: "<chain> (watch)").
     #[arg(long)]
     name: Option<String>,
@@ -413,13 +414,15 @@ fn watch(ctx: &Ctx, out: Out, args: WatchArgs) -> CliResult<()> {
         default_wallet_name_start_index: 0,
         primary_selected_chain_name: chain.chain_display_name().to_string(),
         selected_chain_names: vec![chain.chain_display_name().to_string()],
-        planned_wallet_ids: vec![new_wallet_id()],
+        // Core mints one id per wallet it plans, which for a watch-only import
+        // is one per address entry.
+        planned_wallet_ids: Vec::new(),
         is_watch_only_import: true,
         is_private_key_import: false,
         has_wallet_password: false,
         resolved_addresses: WalletImportAddresses::default(),
         watch_only_entries: WalletImportWatchOnlyEntries {
-            by_slot: [(chain.address_slot().to_string(), vec![args.address.clone()])]
+            by_slot: [(chain.address_slot().to_string(), args.address.clone())]
                 .into_iter()
                 .collect(),
             bitcoin_xpub: None,
@@ -432,13 +435,32 @@ fn watch(ctx: &Ctx, out: Out, args: WatchArgs) -> CliResult<()> {
         .block_on(service.import_wallets(commit_for(request, CoreSeedDerivationPaths::default())))
         .map_err(CliError::from)?;
 
-    let wallet = first_wallet(&outcome)?;
+    // One wallet per address entry, which is what the planner expanded them
+    // into — printing only the first hid the rest.
+    let created: Vec<WalletSummary> = outcome
+        .wallets
+        .iter()
+        .map(|wallet| wallet.to_summary(true))
+        .collect();
+    let first = first_wallet(&outcome)?;
     out.text(|| {
         println!();
-        println!("  {} watch-only wallet added", out::ok_mark());
-        print_wallet(&wallet);
+        println!(
+            "  {} {} watch-only wallet{} added",
+            out::ok_mark(),
+            created.len(),
+            if created.len() == 1 { "" } else { "s" }
+        );
+        for wallet in &created {
+            print_wallet(wallet);
+        }
     });
-    out.emit(serde_json::json!({ "ok": true, "wallet": wallet_json(&wallet) }));
+    out.emit(serde_json::json!({
+        "ok": true,
+        "count": created.len(),
+        "wallet": wallet_json(&first),
+        "wallets": created.iter().map(wallet_json).collect::<Vec<_>>(),
+    }));
     Ok(())
 }
 

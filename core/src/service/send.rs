@@ -150,13 +150,16 @@ impl WalletService {
         chain_id: String,
         address: String,
         fee_rate_svb: u64,
+        destination_address: String,
     ) -> Result<Option<crate::wallet_core::BitcoinSendPreview>, SpectraBridgeError> {
         let raw = self
             .fetch_utxo_fee_preview(&chain_id, address, fee_rate_svb)
             .await?;
-        Ok(crate::send::preview_decode::build_utxo_send_preview_record(
-            raw,
-        ))
+        let preview = crate::send::preview_decode::build_utxo_send_preview_record(raw);
+        let overhead = Chain::from_str_id(&chain_id)
+            .map(|chain| chain.extra_output_overhead_bytes(&destination_address))
+            .unwrap_or(0);
+        Ok(preview.map(|preview| crate::send::preview_decode::with_extra_output_overhead(preview, overhead)))
     }
 
     /// Typed Dogecoin send preview: runs the UTXO fee-preview fetch on the

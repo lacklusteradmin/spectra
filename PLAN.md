@@ -522,6 +522,20 @@ for the core-owned settings and reset paths.
 
 ### Keys, import and receive addresses
 
+- **Core mints the ids for the wallets it creates.** A caller supplied them,
+  which meant predicting how many wallets an import would make — and for a
+  watch-only import that meant parsing the address entries the same way the
+  planner does, under a second copy of the "which chain's input holds them"
+  rule, with a refusal when the two counts disagreed. An empty id plan is
+  minted here now; a supplied one must still match, because silently ignoring
+  a mismatch would file a wallet under an id nothing else knows. The private-key
+  import also stopped filling both EVM slots by hand — core fills the sibling
+  from the wallet's own address, in both directions. `spectra wallet watch`
+  takes `--address` more than once for the same reason: one wallet per entry is
+  what the planner does, and the CLI could only ever drive one. Check
+  `cargo test -p spectra_core minted_wallet_id` and CLI acceptance's
+  multi-address watch import.
+
 - **A wallet's address is stored, not derived on read:** resolving "this
   wallet's address on this chain" was a Swift function that read the seed out
   of the Keychain, resolved a derivation path, called the deriver and validated
@@ -611,6 +625,46 @@ for the core-owned settings and reset paths.
   `spectra pool next <wallet>`; CLI acceptance checks the floor.
 
 ### Sending and refresh
+
+- **An extra output is priced where the fact lives.** A destination that costs
+  more than a plain output — Litecoin's MWEB peg-in is the one the registry
+  names — pays for those bytes at the previewed rate, and both the estimate and
+  what is left sendable move with it. The front end fetched
+  `extra_output_overhead_bytes` and did that arithmetic on its side, untested;
+  `fetch_utxo_fee_preview_typed` takes the destination and returns a preview
+  that already includes it. The export lost its caller and is internal. Check
+  `cargo test -p spectra_core extra_output_overhead` — the bytes at the rate,
+  no overhead leaving the preview untouched, and what is left sendable stopping
+  at zero.
+- **Which Tron assets have a preview** was `TRX || USDT` written out in the
+  refresher — a third copy of `route_send_asset`'s answer, beside the submit
+  path's and the dispatcher's, and the one that would have kept refusing if
+  core's router were widened. It asks for the route now, as the Solana
+  refresher already did.
+
+- **Which token a send moves:** every submit branch resolved this on the
+  caller's side, from its own mirror of the tracked-token list, with its own
+  refusal message — and each got it slightly differently. Tron hard-coded six
+  decimals for every token on it, right for USDT and wrong for the four
+  eighteen-decimal ones in the catalog, so a raw amount would have been 10^12
+  too small; NEAR fell back to six for a token it could not find, which is a
+  scale guessed on the funds path; Solana read a token map built with
+  `includeDisabled: true`, so a token the user had switched off could still be
+  sent. The preflight carries `token_contract_address` and `token_decimals` as
+  core resolved them: matched by contract where the holding names one and by
+  symbol on the chain where it does not, and absent for a native asset or a
+  token nothing tracks — which is what makes the send refuse rather than guess.
+  Check `cargo test -p spectra_core send_token_identity` for the two scales,
+  both match paths, the native asset and the two refusals.
+- **A chain that computes its own fee can send without an estimate.** The
+  generic submit refused unless a preview had produced a fee or the registry
+  gave a fallback — but a chain whose `SendFeeField` is `None` computes its fee
+  when it signs, so the estimate is a display and an affordability input, not
+  something the send needs. Stellar, XRP and Internet Computer were blocked
+  whenever no preview had loaded, which is why Internet Computer had a submit
+  arm of its own that skipped the generic path entirely. That arm is gone: with
+  the requirement scoped to the chains that actually take a fee field, it is
+  exactly what the generic path does.
 
 - **Pending-status polling:** how a chain reaches finality is a registry fact,
   and the three shapes it takes — a UTXO status endpoint, an address history

@@ -229,7 +229,7 @@ mod artwork_follows_the_coin_not_the_chain {
     /// looked exactly like the thirty-one that were only looked up wrong.
     #[test]
     fn every_named_mark_ships_a_file() {
-        let icons = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../resources/cryptoicon");
+        let icons = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../icons/cryptoicon");
         for asset in crate::wiki::list_asset_wiki() {
             let file = icons.join(format!("{}.svg", asset.asset_name));
             assert!(

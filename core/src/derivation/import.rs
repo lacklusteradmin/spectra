@@ -66,6 +66,14 @@ pub struct WalletImportRequest {
     pub default_wallet_name_start_index: u64,
     pub primary_selected_chain_name: String,
     pub selected_chain_names: Vec<String>,
+    /// Ids for the wallets this import will create, or empty to have core mint
+    /// them.
+    ///
+    /// A caller supplying them has to predict how many wallets the import
+    /// makes — which for a watch-only import means parsing the address entries
+    /// the same way the planner does, and being refused when the two counts
+    /// disagree. That rule had a second copy on the front end's side for
+    /// exactly that reason.
     pub planned_wallet_ids: Vec<String>,
     pub is_watch_only_import: bool,
     pub is_private_key_import: bool,
@@ -443,7 +451,14 @@ fn plan_signing_import(request: WalletImportRequest) -> Result<WalletImportPlan,
     if request.selected_chain_names.is_empty() {
         return Err("Select a chain first.".to_string());
     }
-    if request.selected_chain_names.len() != request.planned_wallet_ids.len() {
+    let mut request = request;
+    if request.planned_wallet_ids.is_empty() {
+        request.planned_wallet_ids = request
+            .selected_chain_names
+            .iter()
+            .map(|_| crate::store::new_transaction_id())
+            .collect();
+    } else if request.selected_chain_names.len() != request.planned_wallet_ids.len() {
         return Err("Wallet ID plan did not match selected chains.".to_string());
     }
 
@@ -498,7 +513,13 @@ fn plan_watch_only_import(request: WalletImportRequest) -> Result<WalletImportPl
     if watch_entries.is_empty() {
         return Err("Enter at least one valid address to import.".to_string());
     }
-    if request.planned_wallet_ids.len() != watch_entries.len() {
+    let mut request = request;
+    if request.planned_wallet_ids.is_empty() {
+        request.planned_wallet_ids = watch_entries
+            .iter()
+            .map(|_| crate::store::new_transaction_id())
+            .collect();
+    } else if request.planned_wallet_ids.len() != watch_entries.len() {
         return Err("Watch-only wallet ID plan did not match expanded requests.".to_string());
     }
 
@@ -1122,5 +1143,66 @@ mod tests {
         };
         assert_eq!(addresses.address_for(Chain::BitcoinTestnet), None);
         assert_eq!(addresses.address_for(Chain::Bitcoin), Some("bc1qexample"));
+    }
+}
+
+#[cfg(test)]
+mod minted_wallet_id_tests {
+    use super::*;
+
+    fn request(chains: &[&str], planned: Vec<String>) -> WalletImportRequest {
+        WalletImportRequest {
+            wallet_name: "Main".to_string(),
+            default_wallet_name_start_index: 0,
+            primary_selected_chain_name: chains[0].to_string(),
+            selected_chain_names: chains.iter().map(|c| c.to_string()).collect(),
+            planned_wallet_ids: planned,
+            is_watch_only_import: false,
+            is_private_key_import: false,
+            has_wallet_password: false,
+            resolved_addresses: WalletImportAddresses {
+                by_slot: [(
+                    "bitcoin".to_string(),
+                    "bc1qcr8te4kr609gcawutmrza0j4xv80jy8z306fyu".to_string(),
+                )]
+                .into_iter()
+                .collect(),
+                bitcoin_xpub: None,
+            },
+            watch_only_entries: WalletImportWatchOnlyEntries::default(),
+        }
+    }
+
+    /// Core mints an id per wallet it plans, so a caller does not have to
+    /// predict how many there will be.
+    #[test]
+    fn an_empty_id_plan_is_minted_here() {
+        let plan = plan_wallet_import(request(&["Bitcoin"], Vec::new())).expect("plan");
+        assert_eq!(plan.wallets.len(), 1);
+        let id = &plan.wallets[0].wallet_id;
+        // Parseable as a UUID, like every other id that crosses the boundary.
+        assert_eq!(id.len(), 36, "{id}");
+        assert_eq!(id.chars().filter(|c| *c == '-').count(), 4, "{id}");
+        // The secret instruction names the same wallet.
+        assert_eq!(plan.secret_instructions[0].wallet_id, *id);
+
+        // Two chains, two distinct ids.
+        let plan = plan_wallet_import(request(&["Bitcoin", "Bitcoin"], Vec::new())).expect("plan");
+        assert_ne!(plan.wallets[0].wallet_id, plan.wallets[1].wallet_id);
+    }
+
+    /// A caller that does supply ids still has to supply the right number:
+    /// silently ignoring a mismatched plan would file a wallet under an id
+    /// nothing else knows.
+    #[test]
+    fn a_supplied_id_plan_must_match() {
+        let plan = plan_wallet_import(request(&["Bitcoin"], vec!["given-id".to_string()]))
+            .expect("plan");
+        assert_eq!(plan.wallets[0].wallet_id, "given-id");
+        assert!(plan_wallet_import(request(
+            &["Bitcoin"],
+            vec!["one".to_string(), "two".to_string()]
+        ))
+        .is_err());
     }
 }

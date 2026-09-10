@@ -73,7 +73,7 @@ impl WalletService {
         }
         // Trackers for records nothing polls any more go first: the set is read
         // from the store here rather than computed by a caller and sent over.
-        self.prune_status_trackers().await;
+        let _ = self.prune_status_trackers().await;
 
         let records = {
             let stored = self

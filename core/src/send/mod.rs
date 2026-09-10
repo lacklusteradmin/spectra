@@ -45,6 +45,16 @@ pub struct SendSubmitPreflightRequest {
     pub amount_input: String,
     pub available_balance: f64,
     pub asset: Option<SendAssetRoutingInput>,
+    /// The token the holding is, from the user's tracked list. `None` for a
+    /// native asset — and for a token nothing tracks, which is refused.
+    pub token: Option<SendTokenIdentity>,
+}
+
+/// A token's contract and its own decimals.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct SendTokenIdentity {
+    pub contract: String,
+    pub decimals: u32,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, uniffi::Record)]
@@ -68,6 +78,17 @@ pub struct SendSubmitPreflightPlan {
     /// caller because NEAR qualifies for its native asset and not for a token
     /// on it, which is a question about the asset and not only the chain.
     pub uses_generic_submit: bool,
+    /// The token this send moves, as core resolved it, or `None` for a native
+    /// asset.
+    ///
+    /// Every submit branch used to resolve this again on the caller's side,
+    /// from its own mirror of the token preferences, with its own refusal
+    /// message — and Tron's hard-coded six decimals for every token on it,
+    /// right for USDT and wrong for the four eighteen-decimal ones in the
+    /// catalog. The token is core's; a send that names one core cannot
+    /// identify is refused here rather than sent with a guessed scale.
+    pub token_contract_address: Option<String>,
+    pub token_decimals: Option<u32>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -357,6 +378,7 @@ pub fn route_send_asset(input: &SendAssetRoutingInput) -> SendAssetRoutingPlan {
 pub fn plan_send_submit_preflight(
     request: SendSubmitPreflightRequest,
 ) -> Result<SendSubmitPreflightPlan, String> {
+    let token = request.token.clone();
     if !request.wallet_found {
         return Err("Select a wallet".to_string());
     }
@@ -412,6 +434,8 @@ pub fn plan_send_submit_preflight(
         is_native_evm_asset: route.is_native_evm_asset,
         allows_zero_amount: route.allows_zero_amount,
         uses_generic_submit,
+        token_contract_address: token.as_ref().map(|token| token.contract.clone()),
+        token_decimals: token.map(|token| token.decimals),
     })
 }
 
@@ -823,6 +847,7 @@ mod tests {
                 supports_solana_send_coin: false,
                 supports_near_token_send: false,
             }),
+            token: None,
         })
         .expect_err("bitcoin zero-value sends should be rejected in preflight");
 
@@ -844,6 +869,7 @@ mod tests {
                 supports_solana_send_coin: false,
                 supports_near_token_send: false,
             }),
+            token: None,
         })
         .expect("native EVM zero-value sends remain allowed");
 

@@ -225,6 +225,14 @@ check "refuses to watch Monero"           $REJECTED \
 
 # ── Pathless chains ─────────────────────────────────────────────────────────
 
+# A watch-only import creates one wallet per address entry, and core mints the
+# ids: a caller supplying them had to predict the count, which meant parsing
+# the entries the same way the planner does.
+contains "a multi-address watch import creates one wallet each" '"count":2' \
+    spectra --json wallet watch --chain Bitcoin \
+    --address bc1qcr8te4kr609gcawutmrza0j4xv80jy8z306fyu \
+    --address bc1qgkju4yvvtuz0s8vqn837q396jezu2h8ex7gk98 --name "Watch Pair"
+
 section "a chain with no derivation path"
 # Monero's spend and view keys come from the seed, so its catalog row carries
 # `derivation_path = []`. "No default path" used to be an error rather than an

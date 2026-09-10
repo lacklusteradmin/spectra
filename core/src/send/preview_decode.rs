@@ -766,3 +766,81 @@ mod tests {
     #[test]
     fn simple_chain_default_fees() {}
 }
+
+/// Add an extra output's bytes to a UTXO preview.
+///
+/// A destination that costs more than a standard output — Litecoin's MWEB
+/// peg-in is the one the registry names — pays for those bytes at the same
+/// rate, and both the estimate and what is left sendable move with it. The
+/// arithmetic was on the front end's side, beside a registry fact it fetched
+/// to do it, and had no test.
+pub fn with_extra_output_overhead(
+    preview: crate::wallet_core::BitcoinSendPreview,
+    overhead_bytes: u64,
+) -> crate::wallet_core::BitcoinSendPreview {
+    if overhead_bytes == 0 {
+        return preview;
+    }
+    let additional_fee =
+        overhead_bytes as f64 * preview.estimatedFeeRateSatVb as f64 / 100_000_000.0;
+    crate::wallet_core::BitcoinSendPreview {
+        estimatedNetworkFee: preview.estimatedNetworkFee + additional_fee,
+        estimatedTransactionBytes: Some(
+            preview.estimatedTransactionBytes.unwrap_or(0) + overhead_bytes as i64,
+        ),
+        maxSendable: preview
+            .maxSendable
+            .map(|max| (max - additional_fee).max(0.0)),
+        ..preview
+    }
+}
+
+#[cfg(test)]
+mod extra_output_overhead_tests {
+    use super::with_extra_output_overhead;
+    use crate::wallet_core::BitcoinSendPreview;
+
+    fn preview() -> BitcoinSendPreview {
+        BitcoinSendPreview {
+            estimatedFeeRateSatVb: 10,
+            estimatedNetworkFee: 0.000_02,
+            feeRateDescription: None,
+            spendableBalance: Some(1.0),
+            estimatedTransactionBytes: Some(200),
+            selectedInputCount: Some(1),
+            usesChangeOutput: Some(true),
+            maxSendable: Some(0.5),
+        }
+    }
+
+    /// The extra bytes are paid for at the preview's own rate, and what is
+    /// left sendable comes down by the same amount.
+    #[test]
+    fn an_extra_output_costs_its_bytes_at_the_previewed_rate() {
+        // Litecoin's MWEB peg-in: 1017 bytes at 10 sat/vB is 10,170 sats.
+        let adjusted = with_extra_output_overhead(preview(), 1017);
+        assert_eq!(adjusted.estimatedTransactionBytes, Some(1217));
+        assert!((adjusted.estimatedNetworkFee - (0.000_02 + 0.000_101_7)).abs() < 1e-12);
+        assert!((adjusted.maxSendable.unwrap() - (0.5 - 0.000_101_7)).abs() < 1e-12);
+        // Untouched fields stay put.
+        assert_eq!(adjusted.spendableBalance, Some(1.0));
+        assert_eq!(adjusted.selectedInputCount, Some(1));
+    }
+
+    /// No overhead is no change at all, not a recomputation that rounds.
+    #[test]
+    fn no_overhead_leaves_the_preview_alone() {
+        assert_eq!(with_extra_output_overhead(preview(), 0), preview());
+    }
+
+    /// What is left sendable cannot go negative.
+    #[test]
+    fn max_sendable_stops_at_zero() {
+        let mut small = preview();
+        small.maxSendable = Some(0.000_01);
+        assert_eq!(
+            with_extra_output_overhead(small, 1017).maxSendable,
+            Some(0.0)
+        );
+    }
+}

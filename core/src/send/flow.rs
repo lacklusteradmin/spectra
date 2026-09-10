@@ -1326,7 +1326,9 @@ mod evm_chain_context_tests {
 }
 
 /// Extra transaction bytes a destination costs beyond a plain output, by chain.
-#[uniffi::export]
+///
+/// Not exported: the preview core builds prices these bytes itself. The front
+/// end fetched the number to do that arithmetic on its side.
 pub fn extra_output_overhead_bytes(chain_name: String, destination: String) -> u64 {
     crate::registry::Chain::from_display_name(&chain_name)
         .map(|c| c.extra_output_overhead_bytes(&destination))
