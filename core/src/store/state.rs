@@ -100,9 +100,7 @@ impl WalletSummary {
             self.network_mode
                 .as_deref()
                 .and_then(crate::registry::Chain::from_str_id)
-                .filter(|selected| {
-                    selected.mainnet_counterpart() == chain.mainnet_counterpart()
-                })
+                .filter(|selected| selected.mainnet_counterpart() == chain.mainnet_counterpart())
                 .unwrap_or_else(|| settings.network_chain(chain)),
         )
     }

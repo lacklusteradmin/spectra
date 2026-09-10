@@ -203,9 +203,11 @@ impl BalanceRefreshEngine {
                 .map(|entry| {
                     let ws = Arc::clone(&ws);
                     async move {
+                        // Fetched from the network the wallet is on, filed
+                        // under its family below.
                         let fetched = ws
                             .fetch_native_balance_summary_auto(
-                                &entry.chain_id,
+                                &entry.network_chain_id,
                                 entry.address.clone(),
                             )
                             .await
@@ -423,12 +425,12 @@ pub(crate) fn refresh_entries_for(state: &crate::store::state::CoreAppState) -> 
                 .filter(|xpub| chain == Chain::Bitcoin && !xpub.is_empty())
                 .or_else(|| wallet.active_address(&state.settings))?;
             Some(RefreshEntry {
-                // The chain the balance is fetched and filed under. Not the
-                // selected network: the holding it produces is merged by chain
-                // name, so filing a testnet balance under the testnet's name
-                // would create a second holding rather than update the one the
-                // wallet shows. See "Known open items".
                 chain_id: chain.str_id().to_string(),
+                network_chain_id: wallet
+                    .network_chain(&state.settings)
+                    .unwrap_or(chain)
+                    .str_id()
+                    .to_string(),
                 wallet_id: wallet.id.clone(),
                 address: address.to_string(),
             })
@@ -443,13 +445,22 @@ pub(crate) fn refresh_entries_for(state: &crate::store::state::CoreAppState) -> 
 /// automatically.
 #[derive(Debug, Clone, serde::Deserialize, uniffi::Record)]
 pub struct RefreshEntry {
+    /// The chain the balance is *filed* under: the wallet's family, which is
+    /// what its holding is named after and what pricing keys on.
     pub chain_id: String,
+    /// The chain the balance is *fetched* from: the network the wallet is on.
+    ///
+    /// The two differ on a testnet, and they used to be one field — so a
+    /// wallet on Testnet4 fetched its testnet address from Bitcoin's *mainnet*
+    /// endpoints and read zero. Filing under the network instead would have
+    /// renamed the holding and left the mainnet one beside it, which is why
+    /// this is a second field rather than a change to the first.
+    pub network_chain_id: String,
     pub wallet_id: String,
     /// The canonical fetch key: a wallet address for most chains, or an
     /// xpub/ypub/zpub for Bitcoin HD wallets.
     pub address: String,
 }
-
 
 #[cfg(test)]
 mod refresh_entry_tests {
@@ -490,7 +501,10 @@ mod refresh_entry_tests {
         state.wallets = vec![wallet(
             "w1",
             Chain::Bitcoin,
-            &[(Chain::Bitcoin, "bc1main"), (Chain::BitcoinTestnet4, "tb1test")],
+            &[
+                (Chain::Bitcoin, "bc1main"),
+                (Chain::BitcoinTestnet4, "tb1test"),
+            ],
         )];
 
         let mainnet = refresh_entries_for(&state);

@@ -45,7 +45,7 @@ symbol = "DAI"
 name = "Dai Stablecoin"
 coingecko_id = "dai"
 color = "yellow"
-asset_name = "skydai"
+asset_name = "dai"
 tags = ["stablecoin"]
 
 [[assets]]
@@ -61,7 +61,7 @@ symbol = "EURC"
 name = "Euro Coin"
 coingecko_id = "euro-coin"
 color = "blue"
-asset_name = "circleeurc"
+asset_name = "eurc"
 tags = ["stablecoin"]
 
 [[assets]]
@@ -69,7 +69,7 @@ symbol = "FDUSD"
 name = "First Digital USD"
 coingecko_id = "first-digital-usd"
 color = "green"
-asset_name = "firstdigitalfdusd"
+asset_name = "fdusd"
 tags = ["stablecoin"]
 
 [[assets]]
@@ -101,7 +101,7 @@ symbol = "PAXG"
 name = "PAX Gold"
 coingecko_id = "pax-gold"
 color = "yellow"
-asset_name = "paxospaxg"
+asset_name = "paxg"
 tags = []
 
 [[assets]]
@@ -109,7 +109,7 @@ symbol = "PYUSD"
 name = "PayPal USD"
 coingecko_id = "paypal-usd"
 color = "blue"
-asset_name = "paypalpyusd"
+asset_name = "pyusd"
 tags = ["stablecoin"]
 
 [[assets]]
@@ -117,7 +117,7 @@ symbol = "RLUSD"
 name = "Ripple USD"
 coingecko_id = "ripple-usd"
 color = "indigo"
-asset_name = "ripplerlusd"
+asset_name = "rlusd"
 tags = ["stablecoin"]
 
 [[assets]]
@@ -157,7 +157,7 @@ symbol = "USD1"
 name = "USD1"
 coingecko_id = "usd1-wlfi"
 color = "green"
-asset_name = "wlfiusd1"
+asset_name = "usd1"
 tags = ["stablecoin"]
 
 [[assets]]
@@ -165,7 +165,7 @@ symbol = "USDC"
 name = "USD Coin"
 coingecko_id = "usd-coin"
 color = "blue"
-asset_name = "circleusdc"
+asset_name = "usdc"
 tags = ["stablecoin"]
 
 [[assets]]
@@ -181,7 +181,7 @@ symbol = "USDE"
 name = "Ethena USDe"
 coingecko_id = "ethena-usde"
 color = "cyan"
-asset_name = "ethenausde"
+asset_name = "usde"
 tags = ["stablecoin"]
 
 [[assets]]
@@ -189,7 +189,7 @@ symbol = "USDG"
 name = "Global Dollar"
 coingecko_id = "global-dollar"
 color = "teal"
-asset_name = "paxosusdg"
+asset_name = "usdg"
 tags = ["stablecoin"]
 
 [[assets]]
@@ -197,7 +197,7 @@ symbol = "USDS"
 name = "Sky Dollar"
 coingecko_id = "usds"
 color = "teal"
-asset_name = "skyusds"
+asset_name = "usds"
 tags = ["stablecoin"]
 
 [[assets]]
@@ -205,7 +205,7 @@ symbol = "USDT"
 name = "Tether USD"
 coingecko_id = "tether"
 color = "green"
-asset_name = "tetherusdt"
+asset_name = "usdt"
 tags = ["stablecoin"]
 
 [[assets]]
@@ -229,7 +229,7 @@ symbol = "XAUT"
 name = "Tether Gold"
 coingecko_id = "tether-gold"
 color = "yellow"
-asset_name = "tetherxaut"
+asset_name = "xaut"
 tags = []
 
 [[assets]]

@@ -1002,73 +1002,6 @@ impl WalletService {
             .map_err(Into::into)
     }
 
-    /// Which of `transaction_ids` are due for a confirmation poll now.
-    ///
-    /// An untracked transaction is always due — that is what makes a fresh
-    /// launch re-poll everything pending.
-    pub async fn transactions_due_for_status_poll(
-        &self,
-        transaction_ids: Vec<String>,
-    ) -> Vec<String> {
-        let now_unix = crate::store::wallet_db::now_secs() as f64;
-        let trackers = self.status_trackers.read().await;
-        transaction_ids
-            .into_iter()
-            .filter(|id| {
-                crate::store::plan_transaction_status_should_poll(
-                    trackers.get(id).cloned(),
-                    now_unix,
-                )
-            })
-            .collect()
-    }
-
-    /// Record the outcome of one confirmation poll.
-    ///
-    /// Two methods before, and the success arm took `resolved_status_confirmed`
-    /// and `resolved_status_pending` as separate booleans — a three-state
-    /// written as two, so "confirmed and pending" was representable and had no
-    /// meaning. The outcome is the outcome.
-    pub async fn record_status_poll(&self, transaction_id: String, outcome: StatusPollOutcome) {
-        let now_unix = crate::store::wallet_db::now_secs() as f64;
-        let mut trackers = self.status_trackers.write().await;
-        let previous = trackers.get(&transaction_id).cloned();
-        let next = match outcome {
-            StatusPollOutcome::Failed => crate::store::plan_transaction_status_poll_failure(
-                previous,
-                now_unix,
-                TransactionStatusPollConfig::default(),
-            ),
-            StatusPollOutcome::Confirmed { confirmations } => {
-                crate::store::plan_transaction_status_poll_success(
-                    previous,
-                    true,
-                    false,
-                    confirmations,
-                    now_unix,
-                    TransactionStatusPollConfig::default(),
-                )
-            }
-            StatusPollOutcome::Pending => crate::store::plan_transaction_status_poll_success(
-                previous,
-                false,
-                true,
-                None,
-                now_unix,
-                TransactionStatusPollConfig::default(),
-            ),
-            StatusPollOutcome::Unresolved => crate::store::plan_transaction_status_poll_success(
-                previous,
-                false,
-                false,
-                None,
-                now_unix,
-                TransactionStatusPollConfig::default(),
-            ),
-        };
-        trackers.insert(transaction_id, next);
-    }
-
     /// Force `transaction_id` to be polled on the next sweep.
     ///
     /// `clear_finality` re-opens a transaction that had already been treated as
@@ -1190,134 +1123,6 @@ impl WalletService {
             crate::store::wallet_db::now_secs() as f64,
             TransactionStatusPollConfig::default(),
         ))
-    }
-
-    /// Decide what each resolved pending transaction becomes, advancing the
-    /// confirmation trackers as a side effect.
-    /// Apply one chain's resolved statuses, store the results, and report
-    /// what changed.
-    ///
-    /// The caller used to send core an input per transaction built from its own
-    /// projection — old status, old failure reason, old confirmations — take
-    /// back a decision per transaction, apply it to build new records, and
-    /// upsert those into core. Every value in that round trip except the
-    /// resolutions came from the store it ended up back in.
-    ///
-    /// A transaction given up on stores `FAILURE_REASON_STUCK`, a code. The
-    /// text a user reads is localized at render — a localized string written
-    /// into the database keeps its language when the user changes theirs.
-    pub async fn apply_resolved_pending_statuses(
-        &self,
-        chain_name: String,
-        resolutions: Vec<crate::store::ResolvedPendingStatus>,
-    ) -> Result<Vec<crate::store::TransactionStatusChange>, SpectraBridgeError> {
-        use super::history_derived::{parse_status, status_string};
-        let stale: std::collections::HashSet<String> = self
-            .stale_pending_failure_ids(chain_name.clone())
-            .await?
-            .into_iter()
-            .collect();
-        let by_id: HashMap<String, crate::store::ResolvedPendingStatus> =
-            resolutions.into_iter().map(|r| (r.id.clone(), r)).collect();
-        if by_id.is_empty() && stale.is_empty() {
-            return Ok(Vec::new());
-        }
-
-        let stored: Vec<_> = self
-            .transactions()
-            .await?
-            .into_iter()
-            .filter(|t| {
-                t.chain_name == chain_name && (by_id.contains_key(&t.id) || stale.contains(&t.id))
-            })
-            .collect();
-
-        let inputs: Vec<crate::store::ResolvedPendingTransactionInput> = stored
-            .iter()
-            .map(|t| crate::store::ResolvedPendingTransactionInput {
-                id: t.id.clone(),
-                old_status: status_string(t.status),
-                old_failure_reason: t.failure_reason.clone(),
-                old_confirmations: t.confirmation_count.map(|c| c.max(0) as u32),
-                resolution: by_id
-                    .get(&t.id)
-                    .map(|r| crate::store::ResolvedPendingStatusInput {
-                        status: r.status.clone(),
-                        confirmations: r.confirmations,
-                    }),
-                is_stale_failure: stale.contains(&t.id),
-            })
-            .collect();
-
-        let now_unix = crate::store::wallet_db::now_secs() as f64;
-        let decisions = {
-            let mut trackers = self.status_trackers.write().await;
-            crate::store::plan_apply_resolved_pending_transaction_statuses(
-                inputs,
-                &mut trackers,
-                now_unix,
-                TransactionStatusPollConfig::default(),
-            )
-        };
-
-        let stored_by_id: HashMap<
-            &str,
-            &crate::store::persistence_models::CorePersistedTransactionRecord,
-        > = stored.iter().map(|t| (t.id.as_str(), t)).collect();
-        let mut writes = Vec::new();
-        let mut changes = Vec::new();
-        for decision in decisions {
-            let Some(old) = stored_by_id.get(decision.id.as_str()).copied() else {
-                continue;
-            };
-            let Some(new_status) = parse_status(&decision.new_status) else {
-                continue;
-            };
-            let resolution = by_id.get(&decision.id);
-            let mut updated = old.clone();
-            updated.status = Some(new_status);
-            updated.failure_reason = match decision.failure_reason_disposition {
-                crate::store::FailureReasonDisposition::None => None,
-                crate::store::FailureReasonDisposition::Preserve => old.failure_reason.clone(),
-                crate::store::FailureReasonDisposition::LocalizedFallback => {
-                    Some(crate::store::FAILURE_REASON_STUCK.to_string())
-                }
-            };
-            if let Some(r) = resolution {
-                if let Some(block) = r.receipt_block_number {
-                    updated.receipt_block_number = Some(block);
-                }
-                if let Some(c) = r.confirmations {
-                    updated.confirmation_count = Some(i64::from(c));
-                }
-                if let Some(fee) = r.dogecoin_network_fee_doge {
-                    updated.dogecoin_confirmed_network_fee_doge = Some(fee);
-                }
-            }
-            changes.push(crate::store::TransactionStatusChange {
-                id: decision.id.clone(),
-                chain_name: updated.chain_name.clone(),
-                transaction_hash: updated.transaction_hash.clone(),
-                old_status: status_string(old.status),
-                new_status: decision.new_status.clone(),
-                status_changed: decision.status_changed,
-                send_status_notification: decision.send_status_notification,
-                emit_event_code: decision.emit_event_code.clone(),
-                reached_finality_confirmations: decision.reached_finality_confirmations,
-            });
-            writes.push(crate::wallet_db::HistoryRecord {
-                id: updated.id.clone(),
-                wallet_id: updated.wallet_id.clone(),
-                chain_name: updated.chain_name.clone(),
-                tx_hash: updated.transaction_hash.clone(),
-                created_at: updated.created_at,
-                payload: updated,
-            });
-        }
-        if !writes.is_empty() {
-            self.upsert_history_records(writes).await?;
-        }
-        Ok(changes)
     }
 
     /// Import wallets: plan them, build them, and store them.
@@ -2052,6 +1857,210 @@ fn fingerprint(record: &crate::fetch::transactions::CoreTransactionRecord) -> St
 }
 
 impl WalletService {
+    // Not exported: the pending-status poll is core's own loop now, and it
+    // is the only caller. It was an export because a front end drove the
+    // loop and asked for each piece.
+    /// Which of `transaction_ids` are due for a confirmation poll now.
+    ///
+    /// An untracked transaction is always due — that is what makes a fresh
+    /// launch re-poll everything pending.
+    pub async fn transactions_due_for_status_poll(
+        &self,
+        transaction_ids: Vec<String>,
+    ) -> Vec<String> {
+        let now_unix = crate::store::wallet_db::now_secs() as f64;
+        let trackers = self.status_trackers.read().await;
+        transaction_ids
+            .into_iter()
+            .filter(|id| {
+                crate::store::plan_transaction_status_should_poll(
+                    trackers.get(id).cloned(),
+                    now_unix,
+                )
+            })
+            .collect()
+    }
+
+    // Not exported: the pending-status poll is core's own loop now, and it
+    // is the only caller. It was an export because a front end drove the
+    // loop and asked for each piece.
+    /// Record the outcome of one confirmation poll.
+    ///
+    /// Two methods before, and the success arm took `resolved_status_confirmed`
+    /// and `resolved_status_pending` as separate booleans — a three-state
+    /// written as two, so "confirmed and pending" was representable and had no
+    /// meaning. The outcome is the outcome.
+    pub async fn record_status_poll(&self, transaction_id: String, outcome: StatusPollOutcome) {
+        let now_unix = crate::store::wallet_db::now_secs() as f64;
+        let mut trackers = self.status_trackers.write().await;
+        let previous = trackers.get(&transaction_id).cloned();
+        let next = match outcome {
+            StatusPollOutcome::Failed => crate::store::plan_transaction_status_poll_failure(
+                previous,
+                now_unix,
+                TransactionStatusPollConfig::default(),
+            ),
+            StatusPollOutcome::Confirmed { confirmations } => {
+                crate::store::plan_transaction_status_poll_success(
+                    previous,
+                    true,
+                    false,
+                    confirmations,
+                    now_unix,
+                    TransactionStatusPollConfig::default(),
+                )
+            }
+            StatusPollOutcome::Pending => crate::store::plan_transaction_status_poll_success(
+                previous,
+                false,
+                true,
+                None,
+                now_unix,
+                TransactionStatusPollConfig::default(),
+            ),
+            StatusPollOutcome::Unresolved => crate::store::plan_transaction_status_poll_success(
+                previous,
+                false,
+                false,
+                None,
+                now_unix,
+                TransactionStatusPollConfig::default(),
+            ),
+        };
+        trackers.insert(transaction_id, next);
+    }
+
+    // Not exported: the pending-status poll is core's own loop now, and it
+    // is the only caller. It was an export because a front end drove the
+    // loop and asked for each piece.
+    /// Decide what each resolved pending transaction becomes, advancing the
+    /// confirmation trackers as a side effect.
+    /// Apply one chain's resolved statuses, store the results, and report
+    /// what changed.
+    ///
+    /// The caller used to send core an input per transaction built from its own
+    /// projection — old status, old failure reason, old confirmations — take
+    /// back a decision per transaction, apply it to build new records, and
+    /// upsert those into core. Every value in that round trip except the
+    /// resolutions came from the store it ended up back in.
+    ///
+    /// A transaction given up on stores `FAILURE_REASON_STUCK`, a code. The
+    /// text a user reads is localized at render — a localized string written
+    /// into the database keeps its language when the user changes theirs.
+    pub async fn apply_resolved_pending_statuses(
+        &self,
+        chain_name: String,
+        resolutions: Vec<crate::store::ResolvedPendingStatus>,
+    ) -> Result<Vec<crate::store::TransactionStatusChange>, SpectraBridgeError> {
+        use super::history_derived::{parse_status, status_string};
+        let stale: std::collections::HashSet<String> = self
+            .stale_pending_failure_ids(chain_name.clone())
+            .await?
+            .into_iter()
+            .collect();
+        let by_id: HashMap<String, crate::store::ResolvedPendingStatus> =
+            resolutions.into_iter().map(|r| (r.id.clone(), r)).collect();
+        if by_id.is_empty() && stale.is_empty() {
+            return Ok(Vec::new());
+        }
+
+        let stored: Vec<_> = self
+            .transactions()
+            .await?
+            .into_iter()
+            .filter(|t| {
+                t.chain_name == chain_name && (by_id.contains_key(&t.id) || stale.contains(&t.id))
+            })
+            .collect();
+
+        let inputs: Vec<crate::store::ResolvedPendingTransactionInput> = stored
+            .iter()
+            .map(|t| crate::store::ResolvedPendingTransactionInput {
+                id: t.id.clone(),
+                old_status: status_string(t.status),
+                old_failure_reason: t.failure_reason.clone(),
+                old_confirmations: t.confirmation_count.map(|c| c.max(0) as u32),
+                resolution: by_id
+                    .get(&t.id)
+                    .map(|r| crate::store::ResolvedPendingStatusInput {
+                        status: r.status.clone(),
+                        confirmations: r.confirmations,
+                    }),
+                is_stale_failure: stale.contains(&t.id),
+            })
+            .collect();
+
+        let now_unix = crate::store::wallet_db::now_secs() as f64;
+        let decisions = {
+            let mut trackers = self.status_trackers.write().await;
+            crate::store::plan_apply_resolved_pending_transaction_statuses(
+                inputs,
+                &mut trackers,
+                now_unix,
+                TransactionStatusPollConfig::default(),
+            )
+        };
+
+        let stored_by_id: HashMap<
+            &str,
+            &crate::store::persistence_models::CorePersistedTransactionRecord,
+        > = stored.iter().map(|t| (t.id.as_str(), t)).collect();
+        let mut writes = Vec::new();
+        let mut changes = Vec::new();
+        for decision in decisions {
+            let Some(old) = stored_by_id.get(decision.id.as_str()).copied() else {
+                continue;
+            };
+            let Some(new_status) = parse_status(&decision.new_status) else {
+                continue;
+            };
+            let resolution = by_id.get(&decision.id);
+            let mut updated = old.clone();
+            updated.status = Some(new_status);
+            updated.failure_reason = match decision.failure_reason_disposition {
+                crate::store::FailureReasonDisposition::None => None,
+                crate::store::FailureReasonDisposition::Preserve => old.failure_reason.clone(),
+                crate::store::FailureReasonDisposition::LocalizedFallback => {
+                    Some(crate::store::FAILURE_REASON_STUCK.to_string())
+                }
+            };
+            if let Some(r) = resolution {
+                if let Some(block) = r.receipt_block_number {
+                    updated.receipt_block_number = Some(block);
+                }
+                if let Some(c) = r.confirmations {
+                    updated.confirmation_count = Some(i64::from(c));
+                }
+                if let Some(fee) = r.dogecoin_network_fee_doge {
+                    updated.dogecoin_confirmed_network_fee_doge = Some(fee);
+                }
+            }
+            changes.push(crate::store::TransactionStatusChange {
+                id: decision.id.clone(),
+                chain_name: updated.chain_name.clone(),
+                transaction_hash: updated.transaction_hash.clone(),
+                old_status: status_string(old.status),
+                new_status: decision.new_status.clone(),
+                status_changed: decision.status_changed,
+                send_status_notification: decision.send_status_notification,
+                emit_event_code: decision.emit_event_code.clone(),
+                reached_finality_confirmations: decision.reached_finality_confirmations,
+            });
+            writes.push(crate::wallet_db::HistoryRecord {
+                id: updated.id.clone(),
+                wallet_id: updated.wallet_id.clone(),
+                chain_name: updated.chain_name.clone(),
+                tx_hash: updated.transaction_hash.clone(),
+                created_at: updated.created_at,
+                payload: updated,
+            });
+        }
+        if !writes.is_empty() {
+            self.upsert_history_records(writes).await?;
+        }
+        Ok(changes)
+    }
+
     /// Store freshly fetched fiat cross-rates.
     ///
     /// Not a `StateCommand`: the rates are a fetch result, not an intent, so

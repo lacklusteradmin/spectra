@@ -1501,8 +1501,7 @@ mod wallet_import {
     // placeholder would simply be dropped.
     const BTC: &str = "bc1qcr8te4kr609gcawutmrza0j4xv80jy8z306fyu";
     const SOL: &str = "11111111111111111111111111111111";
-    const MNEMONIC: &str =
-        "test test test test test test test test test test test junk";
+    const MNEMONIC: &str = "test test test test test test test test test test test junk";
 
     fn commit(chains: &[&str], addresses: &[(&str, &str)]) -> WalletImportCommit {
         WalletImportCommit {

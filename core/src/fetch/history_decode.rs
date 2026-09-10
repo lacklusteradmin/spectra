@@ -378,7 +378,6 @@ pub struct AggregatedTransaction {
 /// and signs each leg against `own_addresses` — but it was named
 /// `history_aggregate_dogecoin` and called only by Dogecoin's refresh, so
 /// Litecoin, Bitcoin Cash and Bitcoin SV went down the single-address path.
-#[uniffi::export]
 pub fn history_aggregate_by_transaction(
     input: MultiAddressAggregateInput,
 ) -> Vec<AggregatedTransaction> {

@@ -95,45 +95,6 @@ impl WalletService {
         Ok(crate::diagnostics::diagnostics_history_summary(raw))
     }
 
-    /// Fused Bitcoin HD history page: derive external+change addresses from
-    /// `xpub`, concurrently fetch each address's history, and merge into a
-    /// deduplicated page truncated to `limit`. Scan window is 20 external +
-    /// 10 change.
-    pub async fn fetch_bitcoin_hd_history_page(
-        &self,
-        xpub: String,
-        limit: u64,
-    ) -> Result<Vec<crate::history::CoreBitcoinHistorySnapshot>, SpectraBridgeError> {
-        use futures::stream::{self, StreamExt};
-        const RECEIVE_COUNT: u32 = 20;
-        const CHANGE_COUNT: u32 = 10;
-
-        let mut addresses = self
-            .derive_bitcoin_hd_address_strings(xpub.clone(), 0, 0, RECEIVE_COUNT)
-            .await?;
-        addresses.extend(
-            self.derive_bitcoin_hd_address_strings(xpub, 1, 0, CHANGE_COUNT)
-                .await?,
-        );
-
-        let fetched: Vec<Vec<crate::history::CoreBitcoinHistorySnapshot>> =
-            stream::iter(addresses.clone())
-                .map(|address| self.fetch_bitcoin_history_snapshots(address))
-                .buffered(4)
-                .collect::<Vec<_>>()
-                .await
-                .into_iter()
-                .collect::<Result<Vec<_>, _>>()?;
-
-        Ok(crate::history::merge_bitcoin_history_snapshots(
-            crate::history::MergeBitcoinHistorySnapshotsRequest {
-                snapshots: fetched.into_iter().flatten().collect(),
-                owned_addresses: addresses,
-                limit,
-            },
-        ))
-    }
-
     // `sign_and_broadcast_send` lives in the plain `impl WalletService` block
     // in `service/send.rs`. UniFFI exports every method of a `#[uniffi::export]`
     // impl block regardless of `pub(crate)` visibility, so chain-dispatch
@@ -862,45 +823,18 @@ impl WalletService {
 
     // ── EVM receipt polling
 
-    /// Where a broadcast EVM transaction has got to.
-    ///
-    /// `Ok(None)` means the node has no receipt yet, which is what pending
-    /// looks like and is not an error. A receipt with `status: "0x0"` is a
-    /// transaction that was mined and reverted — confirmed *and* failed — and
-    /// the distinction matters, because a history summary can only say the
-    /// hash appeared and would show a reverted send as successful.
-    ///
-    /// There was a `classify_evm_receipt_json` beside this that took the
-    /// receipt as a JSON string and re-parsed it for three fields core had
-    /// already decoded. It had no callers; the projection is direct now.
-    pub async fn evm_transaction_status(
-        &self,
-        chain_id: String,
-        tx_hash: String,
-    ) -> Result<Option<crate::send::flow::EvmReceiptClassification>, SpectraBridgeError> {
-        let chain = chain_for_evm_id(&chain_id)?;
-        let eps = self.endpoints_for(chain.str_id()).await;
-        let client = EvmClient::new(eps, chain.evm_chain_id());
-        let receipt = client
-            .fetch_receipt(&tx_hash)
-            .await
-            .map_err(SpectraBridgeError::from)?;
-        Ok(
-            receipt.map(|receipt| crate::send::flow::EvmReceiptClassification {
-                is_confirmed: receipt.is_confirmed,
-                is_failed: receipt.is_failed,
-                block_number: receipt.block_number.map(|n| n as i64),
-            }),
-        )
-    }
-
     // ── Typed send-preview wrappers (fuse fetch + decode in Rust)
 
     // `fetch_evm_address_probe` lives in the plain-impl block below —
     // `send_destination_risk` is its only caller.
 
     // ── UTXO tx status
+}
 
+impl WalletService {
+    // Not exported: the pending-status poll is core's own loop now, and it
+    // is the only caller. It was an export because a front end drove the
+    // loop and asked for each piece.
     /// Fetch confirmation status for a UTXO chain transaction.
     /// Returns a typed record so Swift can read `confirmed`/`block_height`/
     /// `confirmations` fields without bouncing through JSON.
@@ -965,9 +899,83 @@ impl WalletService {
         };
         Ok(status)
     }
-}
 
-impl WalletService {
+    // Not exported: the pending-status poll is core's own loop now, and it
+    // is the only caller. It was an export because a front end drove the
+    // loop and asked for each piece.
+    /// Where a broadcast EVM transaction has got to.
+    ///
+    /// `Ok(None)` means the node has no receipt yet, which is what pending
+    /// looks like and is not an error. A receipt with `status: "0x0"` is a
+    /// transaction that was mined and reverted — confirmed *and* failed — and
+    /// the distinction matters, because a history summary can only say the
+    /// hash appeared and would show a reverted send as successful.
+    ///
+    /// There was a `classify_evm_receipt_json` beside this that took the
+    /// receipt as a JSON string and re-parsed it for three fields core had
+    /// already decoded. It had no callers; the projection is direct now.
+    pub async fn evm_transaction_status(
+        &self,
+        chain_id: String,
+        tx_hash: String,
+    ) -> Result<Option<crate::send::flow::EvmReceiptClassification>, SpectraBridgeError> {
+        let chain = chain_for_evm_id(&chain_id)?;
+        let eps = self.endpoints_for(chain.str_id()).await;
+        let client = EvmClient::new(eps, chain.evm_chain_id());
+        let receipt = client
+            .fetch_receipt(&tx_hash)
+            .await
+            .map_err(SpectraBridgeError::from)?;
+        Ok(
+            receipt.map(|receipt| crate::send::flow::EvmReceiptClassification {
+                is_confirmed: receipt.is_confirmed,
+                is_failed: receipt.is_failed,
+                block_number: receipt.block_number.map(|n| n as i64),
+            }),
+        )
+    }
+
+    /// Not exported: the history refresh is the only caller, and it is core's
+    /// own. It was an export because a front end walked the HD range itself.
+    /// Fused Bitcoin HD history page: derive external+change addresses from
+    /// `xpub`, concurrently fetch each address's history, and merge into a
+    /// deduplicated page truncated to `limit`. Scan window is 20 external +
+    /// 10 change.
+    pub async fn fetch_bitcoin_hd_history_page(
+        &self,
+        xpub: String,
+        limit: u64,
+    ) -> Result<Vec<crate::history::CoreBitcoinHistorySnapshot>, SpectraBridgeError> {
+        use futures::stream::{self, StreamExt};
+        const RECEIVE_COUNT: u32 = 20;
+        const CHANGE_COUNT: u32 = 10;
+
+        let mut addresses = self
+            .derive_bitcoin_hd_address_strings(xpub.clone(), 0, 0, RECEIVE_COUNT)
+            .await?;
+        addresses.extend(
+            self.derive_bitcoin_hd_address_strings(xpub, 1, 0, CHANGE_COUNT)
+                .await?,
+        );
+
+        let fetched: Vec<Vec<crate::history::CoreBitcoinHistorySnapshot>> =
+            stream::iter(addresses.clone())
+                .map(|address| self.fetch_bitcoin_history_snapshots(address))
+                .buffered(4)
+                .collect::<Vec<_>>()
+                .await
+                .into_iter()
+                .collect::<Result<Vec<_>, _>>()?;
+
+        Ok(crate::history::merge_bitcoin_history_snapshots(
+            crate::history::MergeBitcoinHistorySnapshotsRequest {
+                snapshots: fetched.into_iter().flatten().collect(),
+                owned_addresses: addresses,
+                limit,
+            },
+        ))
+    }
+
     /// Fetch Bitcoin history JSON for `address` and decode it into typed
     /// `CoreBitcoinHistorySnapshot` records. Now internal-only — callers go
     /// through `fetch_bitcoin_hd_history_page` for the full HD scan or
@@ -1018,8 +1026,13 @@ impl WalletService {
         chain_id: &str,
         address: String,
     ) -> Result<NativeBalanceSummary, SpectraBridgeError> {
-        if chain_id == "bitcoin" && is_extended_public_key(&address) {
-            let bal = self.bitcoin_xpub_balance(address, 20, 20).await?;
+        // The Bitcoin family, not the literal id: a wallet on Testnet4 arrives
+        // as `bitcoin-testnet-4`, and comparing the string meant its xpub was
+        // walked as a plain address instead.
+        let is_bitcoin_family = crate::registry::Chain::from_str_id(chain_id)
+            .is_some_and(|chain| chain.mainnet_counterpart() == crate::registry::Chain::Bitcoin);
+        if is_bitcoin_family && is_extended_public_key(&address) {
+            let bal = self.bitcoin_xpub_balance(chain_id, address, 20, 20).await?;
             return Ok(NativeBalanceSummary {
                 smallest_unit: bal.confirmed_sats.to_string(),
                 amount_display: format_smallest_unit_decimal(bal.confirmed_sats as u128, 8),
@@ -1047,11 +1060,14 @@ impl WalletService {
     /// functions in the same call. The struct is what crosses now.
     pub(crate) async fn bitcoin_xpub_balance(
         &self,
+        chain_id: &str,
         xpub: String,
         receive_count: u32,
         change_count: u32,
     ) -> Result<crate::derivation::xpub_walker::HdXpubBalance, SpectraBridgeError> {
-        let endpoints = self.endpoints_for("bitcoin").await;
+        // The network's endpoints, not Bitcoin's: an xpub on Testnet4 is
+        // walked against Testnet4.
+        let endpoints = self.endpoints_for(chain_id).await;
         let client = BitcoinClient::new(HttpClient::shared(), endpoints);
         Ok(crate::derivation::xpub_walker::fetch_xpub_balance(
             &client,

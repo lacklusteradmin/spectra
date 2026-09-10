@@ -362,7 +362,6 @@ pub fn core_evm_refresh_targets(request: EvmRefreshTargetsRequest) -> EvmRefresh
 }
 
 /// One export for the Dogecoin and normalized families, which were two.
-#[uniffi::export]
 pub fn core_refresh_targets(request: RefreshTargetsRequest) -> Vec<RefreshWalletTarget> {
     plan_refresh_targets(request)
 }

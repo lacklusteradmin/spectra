@@ -398,6 +398,25 @@ impl Chain {
             || self.send_execution_shape().fee_fallback > 0.0
     }
 
+    /// This chain's send builder can sign a transaction and stop, without
+    /// putting it on the chain.
+    ///
+    /// Two families can: the EVM builder returns the signed RLP and the
+    /// Bitcoin builder the signed raw transaction. Asking any other chain to
+    /// sign-only is refused rather than quietly broadcast — a caller that
+    /// wanted a dry run and got a real transfer is the worst way to find out
+    /// the flag was ignored.
+    pub const fn supports_sign_only(self) -> bool {
+        self.is_evm()
+            || matches!(
+                self,
+                Chain::Bitcoin
+                    | Chain::BitcoinTestnet
+                    | Chain::BitcoinTestnet4
+                    | Chain::BitcoinSignet
+            )
+    }
+
     pub const fn supports_staking(self) -> bool {
         matches!(
             self,

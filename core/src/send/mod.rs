@@ -137,9 +137,36 @@ pub struct SendExecutionRequest {
     pub evm_overrides: Option<crate::send::ethereum::EvmSendOverridesInput>,
     /// Monero priority level.
     pub monero_priority: Option<u32>,
+    /// Sign the transaction and stop, without putting it on the chain.
+    ///
+    /// Everything a send does except the irreversible step: the stored
+    /// identity is resolved, the amount and fees are converted, the live nonce
+    /// or UTXO set is read, the transaction is built and signed, and the raw
+    /// payload comes back. It is how the send path is exercised end to end
+    /// without moving funds — see "Known open items". The EVM builder already
+    /// had this behind `EvmSendOverridesInput::sign_only`; the Bitcoin builder
+    /// had it and the execution path hard-coded it to `false`.
+    #[uniffi(default = false)]
+    pub sign_only: bool,
 }
 
 impl SendExecutionRequest {
+    /// Whether this asks to sign and stop, by either route.
+    ///
+    /// One function rather than the expression written out wherever the
+    /// question came up: the refusal read both routes and the result field
+    /// read only `sign_only`, so a caller asking through the EVM overrides got
+    /// a signed transaction and a `None` where it should be. Four readers, one
+    /// answer, and they cannot drift apart again.
+    pub(crate) fn wants_sign_only(&self) -> bool {
+        self.sign_only
+            || self
+                .evm_overrides
+                .as_ref()
+                .and_then(|input| input.sign_only)
+                .unwrap_or(false)
+    }
+
     pub(crate) fn zeroize_sensitive_fields(&mut self) {
         if let Some(password) = &mut self.password {
             password.zeroize();
@@ -162,6 +189,12 @@ pub struct SendExecutionResult {
     /// when the chain is EVM; `None` for non-EVM chains. Lets Swift skip the
     /// `decode_evm_send_result(json:)` round-trip.
     pub evm: Option<crate::send::ethereum::EvmSendResultDecoded>,
+    /// The signed transaction, hex-encoded, when `sign_only` was asked for.
+    ///
+    /// A typed field rather than something to dig out of `rebroadcast_payload`:
+    /// that is an opaque per-chain blob, and a caller reading it for business
+    /// state is what this record's own comment warns against.
+    pub signed_payload: Option<String>,
 }
 
 pub trait TransferPlanner: Send + Sync {
@@ -835,6 +868,7 @@ mod tests {
             fee_amount: None,
             evm_overrides: None,
             monero_priority: None,
+            sign_only: false,
         };
         request.zeroize_sensitive_fields();
         assert_eq!(request.password.as_deref(), Some(""));

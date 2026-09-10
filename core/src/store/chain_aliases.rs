@@ -161,14 +161,11 @@ mod artwork_follows_the_coin_not_the_chain {
     #[test]
     fn a_token_draws_its_own_mark_on_every_chain_it_lives_on() {
         for chain in ["ethereum", "base", "aptos", "solana"] {
-            assert_eq!(
-                core_icon_asset_name(format!("native:{chain}:usdc")),
-                "circleusdc"
-            );
+            assert_eq!(core_icon_asset_name(format!("native:{chain}:usdc")), "usdc");
         }
         assert_eq!(
             core_icon_asset_name("token:ethereum:usdc:0xa0b8".to_string()),
-            "circleusdc"
+            "usdc"
         );
         assert_eq!(
             core_icon_asset_name("native:base:eth".to_string()),
@@ -178,10 +175,7 @@ mod artwork_follows_the_coin_not_the_chain {
             core_icon_asset_name("native:ethereum:shib".to_string()),
             "shibainu"
         );
-        assert_eq!(
-            core_icon_asset_name("native:base:dai".to_string()),
-            "skydai"
-        );
+        assert_eq!(core_icon_asset_name("native:base:dai".to_string()), "dai");
     }
 
     /// A chain's own ticker draws the chain. Base's gas is ETH, so the two
@@ -235,7 +229,7 @@ mod artwork_follows_the_coin_not_the_chain {
     /// looked exactly like the thirty-one that were only looked up wrong.
     #[test]
     fn every_named_mark_ships_a_file() {
-        let icons = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../resources/coinicon");
+        let icons = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../resources/cryptoicon");
         for asset in crate::wiki::list_asset_wiki() {
             let file = icons.join(format!("{}.svg", asset.asset_name));
             assert!(

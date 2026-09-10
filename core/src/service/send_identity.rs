@@ -1,6 +1,7 @@
 //! Resolve a stored wallet into one signing identity before any provider reads.
 use super::*;
 use crate::derivation::types::BitcoinScriptType;
+use crate::store::wallet_domain::SensitiveOverrides;
 use crate::store::wallet_secrets::{load_signing_material, SigningMaterial};
 use zeroize::Zeroizing;
 
@@ -8,13 +9,6 @@ pub(super) struct ResolvedSendIdentity {
     pub from_address: String,
     pub private_key_hex: Zeroizing<String>,
     pub public_key_hex: Option<String>,
-}
-
-struct SensitiveOverrides(crate::store::wallet_domain::CoreWalletDerivationOverrides);
-impl Drop for SensitiveOverrides {
-    fn drop(&mut self) {
-        self.0.zeroize_sensitive_fields();
-    }
 }
 
 fn invalid(message: &str) -> SpectraBridgeError {
@@ -56,8 +50,7 @@ impl WalletService {
             .find(|wallet| wallet.id == wallet_id)
             .cloned()
             .ok_or_else(|| invalid("send wallet does not exist"))?;
-        let sensitive_overrides =
-            SensitiveOverrides(std::mem::take(&mut wallet.derivation_overrides));
+        let sensitive_overrides = SensitiveOverrides::take_from(&mut wallet);
         if wallet.is_watch_only {
             return Err(invalid("a watch-only wallet cannot send"));
         }
@@ -107,7 +100,7 @@ impl WalletService {
                     name,
                     &seed,
                     &path,
-                    overrides.passphrase.as_deref().filter(|s| !s.is_empty()),
+                    sensitive_overrides.passphrase(),
                     overrides.hmac_key.as_deref().filter(|s| !s.is_empty()),
                     Some(script),
                     true,

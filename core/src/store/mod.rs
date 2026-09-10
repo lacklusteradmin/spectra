@@ -1265,7 +1265,6 @@ pub enum HoldingMergeAction {
     Append { coin: HoldingMergeAppendPayload },
 }
 
-
 fn secret_descriptor_for_wallet(
     wallet_id: &str,
     observation: Option<&WalletSecretObservation>,

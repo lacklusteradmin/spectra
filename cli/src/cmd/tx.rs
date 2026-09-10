@@ -433,6 +433,18 @@ pub struct SendArgs {
     /// Broadcast without asking for confirmation.
     #[arg(long)]
     yes: bool,
+    /// Sign the transaction and stop, printing the raw payload. Reads the live
+    /// nonce or UTXO set, moves nothing, and needs no `--yes`.
+    #[arg(long)]
+    sign_only: bool,
+    /// EVM gas limit. Given explicitly, the builder skips estimation — which
+    /// is what lets an unfunded address sign, since a node refuses to estimate
+    /// a transfer it cannot pay for.
+    #[arg(long)]
+    gas_limit: Option<i64>,
+    /// EVM nonce. Omitted, the live one is read from the node.
+    #[arg(long)]
+    nonce: Option<i64>,
     /// Read the wallet password from this file; `-` means stdin.
     #[arg(long, value_name = "PATH")]
     password_file: Option<String>,
@@ -596,7 +608,13 @@ pub fn send(ctx: &Ctx, out: Out, args: SendArgs) -> CliResult<()> {
     if wallet.is_watch_only {
         return Err(CliError::rejected("a watch-only wallet cannot send"));
     }
-    let chain = resolve_chain(&wallet.chain_name)?;
+    // The network this wallet is on, not its family's mainnet: it decides
+    // which chain id is signed and which endpoints the send reads. Core
+    // resolves it the same way, so the two agree on one rule
+    // (`WalletSummary::network_chain`) rather than each having its own.
+    let chain = wallet
+        .network_chain(&ctx.state()?.settings)
+        .unwrap_or(resolve_chain(&wallet.chain_name)?);
 
     let amount: f64 = args
         .amount
@@ -608,8 +626,9 @@ pub fn send(ctx: &Ctx, out: Out, args: SendArgs) -> CliResult<()> {
 
     // Broadcasting is irreversible, so it takes an explicit --yes rather than
     // a prompt: a prompt cannot be answered by a script, and a script that
-    // sends funds by accident is the failure worth designing against.
-    if !args.yes {
+    // sends funds by accident is the failure worth designing against. Signing
+    // without broadcasting moves nothing, so it does not ask.
+    if !args.yes && !args.sign_only {
         return Err(CliError::usage(format!(
             "this broadcasts {} {} to {} — re-run with --yes",
             amount,
@@ -634,11 +653,31 @@ pub fn send(ctx: &Ctx, out: Out, args: SendArgs) -> CliResult<()> {
         fee_sat: None,
         gas_budget: None,
         fee_amount: None,
-        evm_overrides: None,
+        evm_overrides: (args.gas_limit.is_some() || args.nonce.is_some()).then(|| {
+            EvmSendOverridesInput {
+                nonce: args.nonce,
+                custom_fees: None,
+                gas_limit: args.gas_limit,
+                calldata_hex: None,
+                sign_only: None,
+                access_list_json: None,
+            }
+        }),
         monero_priority: None,
+        sign_only: args.sign_only,
     };
 
-    out.text(|| println!("  {} signing and broadcasting…", out::hint("→")));
+    out.text(|| {
+        println!(
+            "  {} {}…",
+            out::hint("→"),
+            if args.sign_only {
+                "signing"
+            } else {
+                "signing and broadcasting"
+            }
+        )
+    });
     let result = ctx
         .rt
         .block_on(service.execute_send(request))
@@ -646,14 +685,28 @@ pub fn send(ctx: &Ctx, out: Out, args: SendArgs) -> CliResult<()> {
 
     out.text(|| {
         println!();
-        println!("  {} broadcast", out::ok_mark());
+        if args.sign_only {
+            println!("  {} signed, not broadcast", out::ok_mark());
+        } else {
+            println!("  {} broadcast", out::ok_mark());
+        }
         if !result.transaction_hash.is_empty() {
             out::field("tx", &out::info(&result.transaction_hash).to_string());
+        }
+        if let Some(payload) = result.signed_payload.as_deref().filter(|p| !p.is_empty()) {
+            out::field(
+                "bytes",
+                &(payload.trim_start_matches("0x").len() / 2).to_string(),
+            );
+            println!();
+            println!("  {}", out::hint(payload));
         }
     });
     out.emit(serde_json::json!({
         "ok": true,
+        "signOnly": args.sign_only,
         "hash": result.transaction_hash,
+        "signedPayload": result.signed_payload,
         "from": wallet.id,
         "to": args.to,
         "amount": amount,

@@ -181,15 +181,27 @@ impl WalletService {
 
     /// Typed Bitcoin HD send preview: concurrently fetches the xpub balance
     /// and the Bitcoin fee estimate then decodes into `BitcoinSendPreview`.
+    ///
+    /// `chain_id` is the network the wallet is on, the way the balance refresh
+    /// takes it. It used to be Bitcoin's mainnet whatever was selected, which
+    /// only ever cost a wrong fee estimate — until `execute_send` started
+    /// following the wallet's network: a testnet send was then priced, and its
+    /// spendable balance read, against mainnet.
     pub async fn fetch_bitcoin_hd_send_preview_typed(
         &self,
+        chain_id: String,
         xpub: String,
         receive_count: u32,
         change_count: u32,
     ) -> Result<Option<crate::wallet_core::BitcoinSendPreview>, SpectraBridgeError> {
+        let chain = Chain::from_str_id(&chain_id)
+            .filter(|chain| chain.mainnet_counterpart() == Chain::Bitcoin)
+            .ok_or_else(|| SpectraBridgeError::InvalidInput {
+                message: format!("{chain_id:?} is not a Bitcoin network"),
+            })?;
         let (balance, rate) = tokio::try_join!(
-            self.bitcoin_xpub_balance(xpub, receive_count, change_count),
-            self.bitcoin_fee_rate(),
+            self.bitcoin_xpub_balance(chain.str_id(), xpub, receive_count, change_count),
+            self.bitcoin_fee_rate(chain),
         )?;
         Ok(
             crate::send::preview_decode::build_bitcoin_hd_send_preview_record(
@@ -235,10 +247,14 @@ impl WalletService {
     /// ever asked this function for an EVM chain. What is left is two shapes
     /// with one caller each, so each caller gets its own typed function and
     /// neither goes through JSON.
+    ///
+    /// `chain` is the Bitcoin network to quote for: a testnet's fees are its
+    /// own, and reading mainnet's for it was a number about a different chain.
     pub(crate) async fn bitcoin_fee_rate(
         &self,
+        chain: Chain,
     ) -> Result<crate::fetch::chains::bitcoin::FeeRate, SpectraBridgeError> {
-        let endpoints = self.endpoints_for(Chain::Bitcoin.str_id()).await;
+        let endpoints = self.endpoints_for(chain.str_id()).await;
         let client = BitcoinClient::new(HttpClient::shared(), endpoints);
         Ok(client.fetch_fee_rate(6).await?)
     }

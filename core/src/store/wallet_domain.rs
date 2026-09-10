@@ -117,6 +117,38 @@ impl CoreWalletDerivationOverrides {
     }
 }
 
+/// A wallet's derivation overrides, wiped when they go out of scope.
+///
+/// The passphrase, HMAC key and salt prefix are derivation secrets, and a
+/// cloned `WalletSummary` carries them in the clear — so whatever takes them
+/// out of one owes them a wipe. Two paths derive from a stored wallet, the
+/// send identity and Bitcoin's history xpub, and this is how both hold them.
+pub(crate) struct SensitiveOverrides(pub(crate) CoreWalletDerivationOverrides);
+
+impl SensitiveOverrides {
+    /// Take the overrides out of a wallet record, leaving it with none.
+    pub(crate) fn take_from(wallet: &mut crate::store::state::WalletSummary) -> Self {
+        Self(std::mem::take(&mut wallet.derivation_overrides))
+    }
+
+    /// The BIP39 passphrase, when there is a non-empty one.
+    ///
+    /// It belongs to the derivation as much as the phrase does: without it a
+    /// seed derives a different wallet's keys entirely.
+    pub(crate) fn passphrase(&self) -> Option<&str> {
+        self.0
+            .passphrase
+            .as_deref()
+            .filter(|value| !value.is_empty())
+    }
+}
+
+impl Drop for SensitiveOverrides {
+    fn drop(&mut self) {
+        self.0.zeroize_sensitive_fields();
+    }
+}
+
 #[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq, uniffi::Record)]
 #[serde(rename_all = "camelCase")]
 pub struct CoreSeedDerivationPaths {
@@ -285,7 +317,8 @@ impl CoreImportedWallet {
                 slots
                     .into_iter()
                     .filter_map(|(slot, address)| {
-                        let owner = Chain::all().find(|candidate| candidate.address_slot() == slot)?;
+                        let owner =
+                            Chain::all().find(|candidate| candidate.address_slot() == slot)?;
                         Some(WalletAddress {
                             chain_name: owner.chain_display_name().to_string(),
                             address: address.clone(),

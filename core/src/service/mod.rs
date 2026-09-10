@@ -72,6 +72,7 @@ mod history_derived;
 mod history_refresh;
 mod maintenance;
 mod network;
+mod pending_status;
 mod send;
 mod send_execution;
 mod send_identity;

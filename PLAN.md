@@ -132,10 +132,14 @@ assembly cannot verify a broadcast.
 
 ## Known open items
 
-- **Broadcast coverage:** `spectra send broadcast` exists, but the offline CLI
-  gate and iOS suites do not broadcast. Add controlled testnet coverage before
-  treating send orchestration as end-to-end tested. Registry/router/builder
-  agreement is an offline check, not evidence that a send lands.
+- **Broadcast coverage:** every step of a send but the last is now exercisable
+  without moving funds — `spectra send broadcast --sign-only` resolves the
+  stored identity, converts the amount and fees, reads the live nonce, builds
+  and signs the transaction, and stops with the raw payload. What remains
+  unproven is `sendRawTransaction` itself: that a signed transaction is
+  accepted by a node and mines. That needs a funded testnet wallet and a person
+  willing to run the irreversible command, so it stays open. The offline gate
+  checks the refusals; the signing itself needs network.
 - **App-only domain exports:** some rules still lack a CLI caller or direct Rust
   coverage. Audit callers before counting coverage. Custom EVM fees now have
   a shared parser, CLI entry point and Swift binding tests.
@@ -152,14 +156,6 @@ assembly cannot verify a broadcast.
   chains need supported infrastructure if keyless history is required. Do not
   silently depend on another wallet's private backend.
 
-- **Testnet balances query mainnet endpoints:** a refresh entry files its
-  balance under the wallet's own chain id, not the network it is on, because
-  the holding it produces is merged by chain name — filing a Testnet4 balance
-  under "Bitcoin Testnet4" would add a second holding rather than update the
-  one the wallet shows. So a wallet on a testnet fetches its testnet address
-  from that chain's *mainnet* endpoints and reads zero. Fixing it means
-  deciding what a testnet holding is called and how it merges, which is a UI
-  question as much as a core one. `refresh_entries_for` marks the spot.
 
 ## Behaviour changed on purpose
 
@@ -615,6 +611,167 @@ for the core-owned settings and reset paths.
   `spectra pool next <wallet>`; CLI acceptance checks the floor.
 
 ### Sending and refresh
+
+- **Pending-status polling:** how a chain reaches finality is a registry fact,
+  and the three shapes it takes — a UTXO status endpoint, an address history
+  naming confirmed txids, an EVM receipt — were three loops on the front end's
+  side of the boundary. Each selected the records to poll from its own
+  projection of core's store, asked core whether each was due, fetched, told
+  core the outcome, collected the resolutions and handed them back to be
+  applied: five crossings per transaction, for a store, a schedule and a fetch
+  core already owned. `poll_pending_transactions` is the loop, and it answers
+  with what changed — which is what a front end needs to write an operational
+  event and send a notification, the two things that are genuinely a
+  platform's. The poll now follows the network the wallet is on, like the rest
+  of the fetches. Five exports lost their last caller and became internal:
+  `transactions_due_for_status_poll`, `record_status_poll`,
+  `apply_resolved_pending_statuses`, `fetch_utxo_tx_status_typed` and
+  `evm_transaction_status`; the export surface is 189. Check `cargo test -p
+  spectra_core pending_status` for which records each shape tracks — a receive
+  where the chain tracks only sends, a confirmed record where it counts
+  confirmations, a missing or blank hash, another chain's record — and for the
+  unpolled and unknown chains. The polling itself needs network.
+
+- **Fetched from the network, filed under the family.** A wallet on a testnet
+  fetched its testnet address from the family's *mainnet* endpoints and read
+  zero — balances and history both — because one chain id answered two
+  questions: where to fetch from, and what to file the result under. They are
+  different answers. The fetch follows the network the wallet is on
+  (`WalletSummary::network_chain`, the same rule the send path now uses); the
+  record is filed under the family, because that is what the store groups by,
+  what the holding is named after, and what pricing keys on — and pricing
+  already marks a family unpriced while it is on a testnet, so a testnet
+  balance shows no fiat value without any renaming. `RefreshEntry` carries both
+  ids for that reason rather than one. Two things fell out of it: the Bitcoin
+  xpub arm compared the chain id to the literal `"bitcoin"`, so a Testnet4
+  wallet's xpub was walked as a plain address, and the xpub balance always read
+  Bitcoin's endpoints. Both take the network now. Check `cargo test -p
+  spectra_core history_refresh` —
+  `a_testnet_wallet_fetches_its_network_and_files_under_its_family` asserts the
+  two answers separately — and `refresh_entry_tests`. **Still mainnet-only:**
+  the Bitcoin HD walk (`fetch_bitcoin_hd_history_page`) reads Bitcoin's
+  endpoints whatever network the wallet is on; it needs a chain argument.
+
+
+- **A send follows the network the wallet is on.** It was signed for the
+  family's mainnet whatever network was selected: with the app switched to
+  Sepolia, a send still signed chain id 1 and read mainnet endpoints, so a
+  transaction the user believed was a testnet one was a valid mainnet one, and
+  broadcasting it would have moved real funds. `execute_send` resolves the
+  chain through `WalletSummary::network_chain` — the same rule the balance and
+  history refreshes use — and the CLI resolves its endpoints the same way. This
+  was found by reading what `--sign-only` signed: the chain id in the payload
+  was `01`. Check `cargo test -p spectra_core send_chain_tests` for the
+  selection, the wallet's own record winning over it, another family's
+  selection not moving this one, and an unknown wallet keeping the requested
+  chain.
+- **Sign without broadcasting:** `sign_only` was a field on the EVM overrides
+  and a flag the Bitcoin builder had while the execution path hard-coded it to
+  `false`, so "sign but do not broadcast" was reachable on one family by one
+  route. It is one field on `SendExecutionRequest` now, honoured by both
+  builders, and the signed payload comes back as a typed
+  `SendExecutionResult::signed_payload` rather than something to dig out of the
+  opaque rebroadcast blob. Both routes ask through one function,
+  `SendExecutionRequest::wants_sign_only` — written out at each of the four
+  places that asked, they disagreed: the refusal read both routes while the
+  result field and the Bitcoin builder read only the new one, so a caller
+  asking through the EVM overrides got a signed transaction and a
+  `signed_payload` of `None`. A run that stops without a payload to show is an
+  error rather than an empty string that reads like one. A chain whose builder
+  cannot stop before
+  broadcasting refuses the request before any key is read, rather than
+  broadcasting a caller's dry run — `Chain::supports_sign_only` says which. The
+  CLI's `send broadcast` gained `--sign-only` (no `--yes`, since nothing
+  irreversible happens) plus `--gas-limit` and `--nonce`, which is what lets an
+  unfunded address sign: a node refuses to estimate gas for a transfer it
+  cannot pay for. Check CLI acceptance's "sign without broadcasting" section
+  and `spectra send broadcast --from <wallet> --to <address> --amount 0.001
+  --sign-only --gas-limit 21000` against a testnet (network).
+
+
+- **Bitcoin history:** Bitcoin is the one chain with an account xpub, so its
+  history is the HD range's rather than one address's, and three arms decided
+  which: derive the account xpub from the seed and walk the range, else fetch
+  the stored address, else walk a stored xpub. The front end held all three —
+  it read the seed out of the Keychain, cut the account path out of the
+  wallet's derivation path by string surgery, derived the xpub, chose between
+  the results and built the records. `refresh_bitcoin_history` does it over the
+  seed, paths and cursors core holds; a sealed wallet derives no xpub and falls
+  through to its stored address, as it did before. Three things change with it.
+  An entry with no timestamp keeps the sentinel the merge recognises instead of
+  being stamped with the time of the refresh, which sorted an undated
+  transaction to the top of the list and moved it there again on every refresh.
+  The Bitcoin *diagnostics* run was a second copy of the same source selection
+  that fetched a page, read a row off it and threw the page away; it runs the
+  refresh now, so what it fetched is merged — which is what the button says it
+  is for. And the refresh reports one diagnostics row per wallet in the shape
+  every history path now uses, `HistoryWalletDiagnostics`. The account xpub is
+  derived with the wallet's own BIP39 passphrase, not the empty string the
+  front end passed: derived without it the xpub belongs to a different wallet,
+  so the range walked came back empty and the refresh fell through to the
+  single stored address — a passphrase wallet never had HD history at all,
+  though the send identity has always derived with it. The phrase itself never
+  leaves a `Zeroizing`: `wallet_seed_phrase` hands back a plain `String` copy
+  that drops unwiped, and this runs on every refresh rather than only at send
+  time, so it reads through `load_signing_material` like the send identity
+  does. The derivation secrets a cloned `WalletSummary` carries are wiped at
+  the end of each wallet's turn through `SensitiveOverrides`, which was
+  `send_identity`'s private guard and is now shared with this, its second
+  caller. A wallet whose fetch
+  failed keeps the cursor it had: writing `None` there is how a caller says
+  "the chain confirms there is no more", which a fetch that failed did not say,
+  and it marked the wallet exhausted — so the outcome reported more to load
+  while the wallet's own cursor refused to load it, and "load more" did nothing
+  until a pull-to-refresh reset it. Two exports lost
+  their last caller: `fetch_bitcoin_hd_history_page` is internal, and the Swift
+  `BitcoinHistoryPage` type is gone. Check `cargo test -p spectra_core
+  history_refresh` for the wallet with nothing to fetch for, the cursor a
+  failure leaves alone, and the empty case; the three sources need network. **Not fixed:** the stored cursor still does
+  not page. `next_cursor` is written and read back, but the address arm refetches
+  the same history and re-caps it, so "load more" on a Bitcoin wallet with more
+  than a page of history returns what it already had. That was true before this
+  moved and is now visible in one place.
+
+- **Multi-address UTXO history:** a UTXO wallet spends from many addresses, so
+  one transaction arrives once per address it touched and the records are
+  netted per transaction before they are stored. The front end asked core for
+  each wallet's known addresses, handed them straight back inside a planning
+  request, fetched per address, called core's aggregator, built the records and
+  sent them to be merged — six crossings for data core already had, since the
+  addresses are its keypool. `refresh_utxo_chain_history` does it where they
+  are. An aggregate with no known timestamp keeps the sentinel the merge
+  recognises rather than being stamped with the time of the refresh. A wallet
+  one of whose addresses did not answer now merges nothing rather than what it
+  managed to fetch: netting is over the whole address set, so a missing address
+  is a wrong amount rather than a missing row — a transaction whose change went
+  there nets to the legs that did answer, and the figure stored was one no
+  address agreed with. The wallet counts as failed and its cursor is left
+  loadable, so a later refresh nets the whole set again. Two more
+  exports lost their only caller and became ordinary functions:
+  `core_refresh_targets` and `history_aggregate_by_transaction`. Check `cargo
+  test -p spectra_core history_refresh` for the skip and refusal cases and for
+  the wallet with one address answering and one refusing, which runs against a
+  mock backend because the offline gate cannot produce a half-answered fetch.
+
+- **A send preview is priced on the network the wallet is on.** The chain id
+  reached `refreshUTXOChainPreview` from its callers as the family's mainnet.
+  While a send signed for mainnet too, that cost only a wrong fee estimate;
+  once `execute_send` began following `WalletSummary::network_chain`, the two
+  disagreed — a testnet send was priced, and its spendable balance read,
+  against mainnet. The preview resolves the network from the wallet it is
+  previewing, so the parameter is gone and both callers lost an argument, and
+  `fetch_bitcoin_hd_send_preview_typed` takes the network id the way the
+  balance refresh does (its own comment had already said it should). Its fee
+  read, `bitcoin_fee_rate`, takes the chain rather than assuming mainnet, and
+  a chain id outside the Bitcoin family is refused rather than quietly priced.
+  Check `cargo test --workspace`; the preview itself needs network.
+
+- **Bitcoin's diagnostics run is bounded.** It runs the real refresh now, and
+  ran it unbounded: a refresh that never answered left the screen's `isRunning`
+  flag set and the button dead for the rest of the session. It is wrapped in
+  the same `withTimeout(seconds: 20)` every other probe on that screen uses.
+  The rows the refresh already wrote stand; the timeout only releases the
+  button. This is an iOS screen and needs network.
 
 - **EVM history refresh:** eight steps stood on the front end's side of the
   boundary — plan the wallets, group them by normalized address, reset or

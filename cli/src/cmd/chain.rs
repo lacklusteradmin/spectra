@@ -275,10 +275,9 @@ fn save_history(
         .map_err(CliError::from)?;
     let outcome = ctx
         .rt
-        .block_on(service.refresh_chain_history(
-            chain.str_id().to_string(),
-            vec![wallet_id.to_string()],
-        ))
+        .block_on(
+            service.refresh_chain_history(chain.str_id().to_string(), vec![wallet_id.to_string()]),
+        )
         .map_err(CliError::from)?;
 
     out.text(|| {

@@ -530,6 +530,26 @@ check "refuses a token the chain does not have"    $REJECTED \
 # nine `(chain, symbol)` pairs — two of them governance tokens. Assembling
 # takes no key, no network and no store, so it belongs here.
 
+# ── Signing without broadcasting ────────────────────────────────────────────
+#
+# The send path's last unproven step is the broadcast itself. `--sign-only`
+# runs everything before it — stored identity, amount, fees, live nonce, the
+# built and signed payload — and stops, so the path can be exercised without
+# moving funds. Signing needs the network, so what is checked here is the
+# refusal: a chain whose builder cannot stop before broadcasting must say so
+# rather than broadcast a caller's dry run.
+
+section "sign without broadcasting"
+check "refuses sign-only where the builder cannot stop" $REJECTED \
+    spectra send broadcast --from "Multi 3" --to "BLeUXTx9thHGT7VJUtF9vHEmfMDgW1nnKZ9UVer2CoLX" \
+    --amount 0.001 --sign-only
+contains "and says which chain" "Solana" \
+    spectra send broadcast --from "Multi 3" --to "BLeUXTx9thHGT7VJUtF9vHEmfMDgW1nnKZ9UVer2CoLX" \
+    --amount 0.001 --sign-only
+# A broadcast still takes --yes; signing does not, because it moves nothing.
+check "a broadcast without --yes is refused" $USAGE \
+    spectra send broadcast --from "Multi 1" --to bc1qgkju4yvvtuz0s8vqn837q396jezu2h8ex7gk98 --amount 0.001
+
 section "EVM send assembly"
 EVM_ADDR=0x742d35Cc6634C0532925a3b844Bc454e4438f44e
 # Base is one of the sixteen mainnets that used to answer UnsupportedChain,

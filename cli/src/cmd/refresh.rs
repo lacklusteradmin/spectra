@@ -118,9 +118,9 @@ pub fn refresh(ctx: &Ctx, out: Out, args: RefreshArgs) -> CliResult<()> {
     // it disagreed with both: it took any wallet's `xpub` as the fetch key
     // rather than only Bitcoin's, and the wallet's first stored address rather
     // than the one for the network it is on.
-    let entry_count = ctx.rt.block_on(
-        engine.sync_entries(args.wallet.as_ref().map(|_| wallets[0].id.clone())),
-    );
+    let entry_count = ctx
+        .rt
+        .block_on(engine.sync_entries(args.wallet.as_ref().map(|_| wallets[0].id.clone())));
     if entry_count == 0 {
         return Err(CliError::rejected("no wallet has an address to refresh"));
     }

@@ -52,9 +52,29 @@ impl WalletService {
                     message: format!("execute_send: unsupported chain_id: {}", request.chain_id),
                 }
             })?;
+            // The network this wallet is on decides what is signed and where it
+            // goes. Without this the chain came straight from the request —
+            // the family's mainnet — so with the app switched to Sepolia a
+            // send still signed chain id 1 and went to mainnet endpoints: a
+            // transaction the user believed was a testnet one, valid on
+            // mainnet. `spectra send broadcast --sign-only` shows the signed
+            // chain id, which is how this was found.
+            let chain = send_chain_for(&self.app_state().await, &request.wallet_id, chain);
             // Refuse malformed overrides before reading or deriving signing material.
             if let Some(input) = &request.evm_overrides {
                 input.resolve(chain)?;
+            }
+            // A caller that asked for a dry run must not get a real transfer
+            // because this chain's builder has no way to stop before
+            // broadcasting.
+            let wants_sign_only = request.wants_sign_only();
+            if wants_sign_only && !chain.supports_sign_only() {
+                return Err(SpectraBridgeError::InvalidInput {
+                    message: format!(
+                        "{} cannot sign without broadcasting",
+                        chain.chain_display_name()
+                    ),
+                });
             }
             validate_execution_amount(chain, &request)?;
             let signer = self
@@ -98,17 +118,70 @@ impl WalletService {
                 None
             };
 
+            // What was signed, for a run that stopped there. The EVM builder
+            // decodes it above; the Bitcoin builder puts it in its result JSON
+            // under the same name.
+            //
+            // `wants_sign_only`, the same question the gate above asked: a
+            // caller asking through the EVM overrides is owed the payload too.
+            let signed_payload = if wants_sign_only {
+                let hex = match &evm {
+                    Some(evm) => evm.raw_tx_hex.clone(),
+                    None => crate::send::preview_decode::extract_json_string_field(
+                        result_json.clone(),
+                        "raw_tx_hex".to_string(),
+                    ),
+                };
+                if hex.is_empty() {
+                    // Nothing was broadcast, so there is nothing to undo — but
+                    // a dry run that reported success with no transaction to
+                    // show would be `supports_sign_only` promising what this
+                    // builder does not do. Say so rather than hand back an
+                    // empty string that reads like a payload.
+                    return Err(SpectraBridgeError::Failure {
+                        message: format!(
+                            "{} signed without broadcasting but returned no payload",
+                            chain.chain_display_name()
+                        ),
+                    });
+                }
+                Some(hex)
+            } else {
+                None
+            };
+
             Ok(crate::send::SendExecutionResult {
                 rebroadcast_payload: result_json,
                 transaction_hash: outcome.transaction_hash,
                 payload_format: outcome.payload_format,
                 evm,
+                signed_payload,
             })
         }
         .await;
         request.zeroize_sensitive_fields();
         result
     }
+}
+
+/// The chain a send is signed for: the network the wallet is on, within the
+/// family the request named.
+///
+/// A wallet with no record of its own follows the app's selection. A request
+/// naming a different family — which `resolve_send_identity` refuses anyway —
+/// keeps the requested chain, so this cannot move a send onto another chain.
+pub(crate) fn send_chain_for(
+    state: &crate::store::state::CoreAppState,
+    wallet_id: &str,
+    requested: Chain,
+) -> Chain {
+    state
+        .wallets
+        .iter()
+        .find(|wallet| wallet.id.eq_ignore_ascii_case(wallet_id))
+        .and_then(|wallet| wallet.network_chain(&state.settings))
+        .filter(|network| network.mainnet_counterpart() == requested.mainnet_counterpart())
+        .unwrap_or(requested)
 }
 
 impl WalletService {
@@ -147,12 +220,17 @@ impl WalletService {
         use crate::send::payload::{dogecoin_fee, fee_units};
         use crate::service::send_params::*;
 
-        let overrides = req
+        let mut overrides = req
             .evm_overrides
             .as_ref()
             .map(|input| input.resolve(chain))
             .transpose()?
             .unwrap_or_default();
+        // One question for every chain and every route. The EVM builder read
+        // it off the overrides and the Bitcoin builder had it hard-coded to
+        // `false`, so "sign but do not broadcast" was reachable on one family
+        // and by one route.
+        overrides.sign_only = req.wants_sign_only();
 
         let from = from_address.to_string();
         let to = req.to_address.clone();
@@ -265,7 +343,7 @@ impl WalletService {
                 fee_rate_svb: Some(req.fee_rate_svb.unwrap_or(10.0)),
                 private_key_hex,
                 dust_threshold_sats: None,
-                sign_only: false,
+                sign_only: req.wants_sign_only(),
             }),
             c if c.is_evm() => SendParams::Evm(
                 EvmNativeSendParams {
@@ -514,7 +592,7 @@ mod build_send_params_tests {
     use crate::service::send_params::{ExecuteSendParams, SendParams, SendTokenParams};
     use crate::service::WalletService;
 
-    fn req(chain_id: &str, _chain_name: &str) -> SendExecutionRequest {
+    pub(super) fn req(chain_id: &str, _chain_name: &str) -> SendExecutionRequest {
         SendExecutionRequest {
             chain_id: chain_id.to_string(),
             wallet_id: "w".into(),
@@ -529,6 +607,7 @@ mod build_send_params_tests {
             fee_amount: None,
             evm_overrides: None,
             monero_priority: None,
+            sign_only: false,
         }
     }
 
@@ -1059,6 +1138,7 @@ mod the_router_and_the_builder_agree {
                 fee_amount: None,
                 evm_overrides: None,
                 monero_priority: None,
+                sign_only: false,
             };
             checked += 1;
             if let Err(e) = service
@@ -1080,6 +1160,124 @@ mod the_router_and_the_builder_agree {
             checked,
             Chain::mainnets().count(),
             "some mainnet is no longer routable and was skipped here"
+        );
+    }
+}
+
+#[cfg(test)]
+mod sign_only_tests {
+    use super::build_send_params_tests::req;
+
+    /// "Sign and stop" is one question however it was asked.
+    ///
+    /// It had two routes and four readers, and they disagreed: the refusal
+    /// read both routes, the result field read only `sign_only`, and the
+    /// Bitcoin builder read only `sign_only` too. So a caller asking through
+    /// the EVM overrides — the route that existed first, and the one the
+    /// field's own doc comment still points at — got a signed transaction
+    /// back with `signed_payload: None`.
+    #[test]
+    fn either_route_asks_the_same_thing() {
+        let plain = req("ethereum", "Ethereum");
+        assert!(!plain.wants_sign_only(), "a send is not a dry run");
+
+        let mut by_field = req("ethereum", "Ethereum");
+        by_field.sign_only = true;
+        assert!(by_field.wants_sign_only());
+
+        let mut by_overrides = req("ethereum", "Ethereum");
+        by_overrides.evm_overrides = Some(crate::send::ethereum::EvmSendOverridesInput {
+            sign_only: Some(true),
+            ..Default::default()
+        });
+        assert!(
+            by_overrides.wants_sign_only(),
+            "the older route asks for a dry run just as much"
+        );
+
+        // Overrides that say nothing about it do not unsay the field.
+        let mut both = req("ethereum", "Ethereum");
+        both.sign_only = true;
+        both.evm_overrides = Some(crate::send::ethereum::EvmSendOverridesInput {
+            sign_only: None,
+            ..Default::default()
+        });
+        assert!(both.wants_sign_only());
+    }
+}
+
+#[cfg(test)]
+mod send_chain_tests {
+    use super::send_chain_for;
+    use crate::registry::Chain;
+    use crate::store::state::{CoreAppState, WalletSummary};
+
+    fn wallet(id: &str, chain: Chain, network_mode: Option<&str>) -> WalletSummary {
+        WalletSummary {
+            id: id.to_string(),
+            name: id.to_string(),
+            is_watch_only: false,
+            chain_name: chain.chain_display_name().to_string(),
+            include_in_portfolio_total: true,
+            network_mode: network_mode.map(str::to_string),
+            xpub: None,
+            derivation_preset: "standard".to_string(),
+            derivation_path: None,
+            derivation_overrides: Default::default(),
+            holdings: Vec::new(),
+            addresses: Vec::new(),
+        }
+    }
+
+    /// A send is signed for the network the wallet is on.
+    ///
+    /// It used to be signed for the family's mainnet whatever network was
+    /// selected: with the app on Sepolia, a send still signed chain id 1 and
+    /// read mainnet endpoints, so what the user believed was a testnet
+    /// transaction was a valid mainnet one. `spectra send broadcast
+    /// --sign-only` prints the signed chain id, which is how it was found.
+    #[test]
+    fn a_send_follows_the_network_the_wallet_is_on() {
+        let mut state = CoreAppState::default();
+        state.wallets = vec![wallet("w1", Chain::Ethereum, None)];
+        assert_eq!(
+            send_chain_for(&state, "w1", Chain::Ethereum),
+            Chain::Ethereum
+        );
+
+        // The app's selection moves the family.
+        state.settings.network_chain_by_family.insert(
+            Chain::Ethereum.str_id().to_string(),
+            Chain::EthereumSepolia.str_id().to_string(),
+        );
+        assert_eq!(
+            send_chain_for(&state, "w1", Chain::Ethereum),
+            Chain::EthereumSepolia
+        );
+        // Ids cross the boundary in whichever case a front end holds them.
+        assert_eq!(
+            send_chain_for(&state, "W1", Chain::Ethereum),
+            Chain::EthereumSepolia
+        );
+
+        // A wallet's own record wins over the app's selection.
+        state.wallets[0].network_mode = Some(Chain::Ethereum.str_id().to_string());
+        assert_eq!(
+            send_chain_for(&state, "w1", Chain::Ethereum),
+            Chain::Ethereum
+        );
+
+        // A selection for another family does not move this one, and an
+        // unknown wallet keeps the requested chain rather than guessing.
+        state.wallets[0].network_mode = None;
+        assert_eq!(
+            send_chain_for(&state, "w1", Chain::Bitcoin),
+            Chain::Bitcoin,
+            "the Ethereum selection must not move a Bitcoin send"
+        );
+        assert_eq!(
+            send_chain_for(&state, "nobody", Chain::Ethereum),
+            Chain::Ethereum
         );
     }
 }
