@@ -66,7 +66,6 @@ pub struct SendBroadcastOutcome {
 fn hash_field_for(chain: SendChain) -> &'static str {
     match chain {
         SendChain::Sui => "digest",
-        SendChain::Icp => "block_index",
         SendChain::Solana => "signature",
         _ => "txid",
     }
@@ -106,14 +105,10 @@ pub fn classify_send_broadcast_result(
     result_json: String,
 ) -> SendBroadcastOutcome {
     let field = hash_field_for(chain);
-    let mut hash = crate::send::preview_decode::extract_json_string_field(
+    let hash = crate::send::preview_decode::extract_json_string_field(
         result_json.clone(),
         field.to_string(),
     );
-    // ICP: fallback to raw JSON when block_index is absent (matches Swift behavior).
-    if matches!(chain, SendChain::Icp) && hash.is_empty() {
-        hash = result_json.clone();
-    }
     SendBroadcastOutcome {
         transaction_hash: hash,
         payload_format: format_key_for(chain).to_string(),
@@ -132,9 +127,9 @@ mod tests {
     }
 
     #[test]
-    fn classify_icp_fallback_when_no_block_index() {
-        let o = classify_send_broadcast_result(SendChain::Icp, r#"{"other":1}"#.into());
-        assert_eq!(o.transaction_hash, r#"{"other":1}"#);
+    fn classify_icp_transaction_hash() {
+        let o = classify_send_broadcast_result(SendChain::Icp, r#"{"txid":"abc"}"#.into());
+        assert_eq!(o.transaction_hash, "abc");
     }
 }
 

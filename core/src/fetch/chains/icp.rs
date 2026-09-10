@@ -42,14 +42,12 @@ pub struct IcpHistoryEntry {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct IcpSendResult {
-    pub block_index: u64,
+    pub txid: String,
 }
 
 impl super::SignedSubmission for IcpSendResult {
     fn submission_id(&self) -> &str {
-        // ICP exposes only an opaque block index post-confirmation; there is
-        // no string-form txid before the ledger commits the block.
-        ""
+        &self.txid
     }
     fn signed_payload(&self) -> &str {
         ""

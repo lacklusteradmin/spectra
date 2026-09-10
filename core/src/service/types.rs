@@ -102,17 +102,6 @@ pub struct EndpointProbe {
     pub detail: String,
 }
 
-/// EVM-address probe output: the nonce and native balance a chain-risk check
-/// needs, fetched in one round trip.
-///
-/// Not a `uniffi::Record` any more — `send_destination_risk` is the only
-/// caller, so this stops at the crate boundary.
-#[derive(Debug, Clone)]
-pub struct EvmAddressProbe {
-    pub nonce: i64,
-    pub balance_eth: f64,
-}
-
 /// What a [`TransactionCommand`] changed, by id.
 ///
 /// Deliberately not the resulting list: history is unbounded, so a command that

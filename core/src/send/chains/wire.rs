@@ -35,6 +35,9 @@ pub(crate) fn dsha256(data: &[u8]) -> [u8; 32] {
 /// carries.
 pub(crate) fn decode_txid_le(txid: &str) -> Result<Vec<u8>, String> {
     let mut bytes = hex::decode(txid).map_err(|e| format!("txid decode: {e}"))?;
+    if bytes.len() != 32 {
+        return Err("txid must contain exactly 32 bytes".into());
+    }
     bytes.reverse();
     Ok(bytes)
 }
@@ -120,10 +123,19 @@ mod tests {
     fn a_bad_txid_is_refused() {
         assert!(decode_txid_le("not hex").is_err());
         assert!(build_input("not hex", 0, &[], 0xffff_ffff).is_err());
+        for bad in [
+            String::new(),
+            "0102".into(),
+            "00".repeat(31),
+            "00".repeat(33),
+        ] {
+            assert!(decode_txid_le(&bad).is_err());
+        }
+        let mut expected = vec![0; 32];
+        expected[0] = 1;
         assert_eq!(
-            decode_txid_le("0102").unwrap(),
-            vec![0x02, 0x01],
-            "display order reverses on the wire"
+            decode_txid_le(&format!("{}01", "00".repeat(31))).unwrap(),
+            expected
         );
     }
 

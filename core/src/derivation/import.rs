@@ -135,6 +135,38 @@ pub struct WalletImportCommit {
     /// Ethereum's path lived in whichever front end imported more than one
     /// chain at a time — iOS — and not in the registry that owns it.
     pub seed_phrase: Option<String>,
+    /// The key to derive a private-key import's address from, when the caller
+    /// has not derived it itself.
+    ///
+    /// The same rule as `seed_phrase`, for the one import path that still had
+    /// both front ends deriving first and passing the result over. A key that
+    /// derives no address must not reach a sealed wallet, and that refusal
+    /// belongs beside the derivation, not in each caller.
+    pub private_key: Option<String>,
+}
+
+/// The address a private-key import stores, keyed by chain display name.
+///
+/// One chain: `plan_signing_import` refuses more than one for this path. A
+/// chain with no private-key derivation refuses here, before the key is
+/// sealed, rather than storing a wallet that could never sign with it.
+pub fn derive_private_key_import_address(
+    private_key: &str,
+    selected_chain_names: &[String],
+) -> Result<std::collections::HashMap<String, String>, String> {
+    let Some(name) = selected_chain_names.first() else {
+        return Err("Select a chain first.".to_string());
+    };
+    let address = crate::derivation::dispatch::core_derive_from_private_key(
+        name.clone(),
+        private_key.trim().trim_start_matches("0x").to_string(),
+        true,
+        false,
+    )
+    .map_err(|error| error.to_string())?
+    .and_then(|result| result.address)
+    .ok_or_else(|| format!("{name} cannot derive an address from a private key."))?;
+    Ok(std::iter::once((name.clone(), address)).collect())
 }
 
 /// Derive an address for every network of every selected chain, keyed by chain

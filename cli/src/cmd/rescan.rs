@@ -48,9 +48,7 @@ pub fn rescan(ctx: &Ctx, out: Out, args: RescanArgs) -> CliResult<()> {
     }
     .resolve("seed phrase")?;
 
-    if !spectra_core::service::validate_mnemonic(seed_phrase.clone()) {
-        return Err(CliError::rejected("not a valid BIP-39 English mnemonic"));
-    }
+    crate::cmd::reject_bad_seed_phrase(&seed_phrase)?;
 
     let mut candidates = core_generate_funds_finder_candidates(FundsFinderRequest {
         seed_phrase,

@@ -36,51 +36,49 @@ impl WalletService {
     ) -> Result<SendDestinationRisk, SpectraBridgeError> {
         let chain = chain_for_id(&chain_id)?;
 
-        let balance = match &token {
-            // `fetch_token_balances` leaves out a token it could not read,
-            // which is the right answer for a balance refresh — the last known
-            // amount stays on screen. A send is the caller that must not read
-            // that absence as a zero: a zero here is what a "sending your whole
-            // balance" check and everything downstream of it is computed from.
-            Some(descriptor) => self
-                .fetch_token_balances(chain_id.clone(), address.clone(), vec![descriptor.clone()])
-                .await?
-                .first()
-                .ok_or_else(|| {
-                    SpectraBridgeError::from(format!(
-                        "token balance unavailable for {}",
-                        descriptor.contract
-                    ))
-                })?
-                .balance_display
+        let balance_read = async {
+            let display = match token {
+                Some(descriptor) => self
+                    .fetch_token_balances(chain_id.clone(), address.clone(), vec![descriptor])
+                    .await?
+                    .first()
+                    .ok_or_else(|| SpectraBridgeError::from("token balance unavailable"))?
+                    .balance_display
+                    .clone(),
+                None => {
+                    self.fetch_native_balance_summary(chain_id.clone(), address.clone())
+                        .await?
+                        .amount_display
+                }
+            };
+            let balance = display
                 .parse::<f64>()
-                .map_err(|e| {
-                    SpectraBridgeError::from(format!("token balance is not a number: {e}"))
-                })?,
-            None => self
-                .fetch_native_balance_summary(chain_id.clone(), address.clone())
-                .await?
-                .amount_display
-                .parse::<f64>()
-                .unwrap_or(0.0),
+                .map_err(|_| SpectraBridgeError::from("invalid destination balance"))?;
+            if !balance.is_finite() || balance < 0.0 {
+                return Err(SpectraBridgeError::from("invalid destination balance"));
+            }
+            Ok::<_, SpectraBridgeError>(balance)
         };
-
-        // A failed history read is not evidence of no history, but the caller
-        // has nothing better to show than the warning, and warning on a
-        // used address costs less than staying quiet about a fresh one.
-        let entries = self
-            .fetch_history_summary(chain_id.clone(), address.clone())
-            .await
-            .map(|summary| summary.entry_count)
-            .unwrap_or(0);
-        let mut has_history = entries > 0;
-        if !has_history && chain.is_evm() {
-            has_history = self
-                .fetch_evm_address_probe(chain_id, address)
-                .await
-                .map(|probe| probe.nonce > 0)
-                .unwrap_or(false);
-        }
+        let history_read = async {
+            // A positive nonce proves activity without an explorer lookup. Zero
+            // alone cannot rule out incoming transfers; ask history in that case.
+            if chain.is_evm() {
+                let client = EvmClient::new(
+                    self.endpoints_for(chain.str_id()).await,
+                    chain.evm_chain_id(),
+                );
+                if client.fetch_nonce(&address).await? > 0 {
+                    return Ok(true);
+                }
+            }
+            Ok::<_, SpectraBridgeError>(
+                self.fetch_history_summary(chain_id.clone(), address.clone())
+                    .await?
+                    .entry_count
+                    > 0,
+            )
+        };
+        let (balance, has_history) = tokio::try_join!(balance_read, history_read)?;
 
         Ok(SendDestinationRisk {
             balance_is_zero: balance <= 0.0,
@@ -1270,13 +1268,22 @@ mod failed_reads {
     #[tokio::test]
     async fn an_unreadable_token_balance_is_not_an_empty_wallet() {
         let server = MockServer::start().await;
+        // Only the token read fails. The balance and the history run
+        // concurrently and `try_join!` reports whichever errors first, so a
+        // mock that failed both would be asserting on which future lost a
+        // race — and did, intermittently, under a loaded test run.
         Mock::given(any())
             .respond_with(|req: &Request| {
                 let body: serde_json::Value = req.body_json().unwrap();
-                ResponseTemplate::new(200).set_body_json(json!({
-                    "jsonrpc": "2.0", "id": body["id"],
-                    "error": {"code": -32000, "message": "no code at address"},
-                }))
+                let is_token_read = body["method"] == "eth_call";
+                ResponseTemplate::new(200).set_body_json(if is_token_read {
+                    json!({
+                        "jsonrpc": "2.0", "id": body["id"],
+                        "error": {"code": -32000, "message": "no code at address"},
+                    })
+                } else {
+                    json!({"jsonrpc": "2.0", "id": body["id"], "result": "0x1"})
+                })
             })
             .mount(&server)
             .await;
@@ -1420,5 +1427,87 @@ mod failed_reads {
                 assert!(rows.is_empty(), "{rows:?}");
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod destination_probe_tests {
+    use super::*;
+    use wiremock::{matchers::any, Mock, MockServer, Request, ResponseTemplate};
+    #[tokio::test]
+    async fn evm_activity_uses_one_balance_read_and_never_guesses_after_failure() {
+        for nonce in [Some("0x1"), Some("0x0"), None] {
+            let server = MockServer::start().await;
+            Mock::given(any()).respond_with(move |request: &Request| {
+                let body: serde_json::Value = request.body_json().unwrap();
+                let method = body["method"].as_str().unwrap();
+                let value = match method {
+                    "eth_getBalance" => Some("0x0"),
+                    "eth_getTransactionCount" => nonce,
+                    _ => panic!("unexpected RPC {method}")
+                };
+                ResponseTemplate::new(200).set_body_json(match value {
+                    Some(value) => json!({"jsonrpc":"2.0","id":body["id"],"result":value}),
+                    None => json!({"jsonrpc":"2.0","id":body["id"],"error":{"code":-32000,"message":"offline"}})
+                })
+            }).mount(&server).await;
+            // Zero nonce on BNB needs its keyed explorer: without a key the
+            // result is unknown/error, rather than an invented empty history.
+            let service = WalletService::new_typed(vec![ChainEndpoints {
+                chain_id: Chain::BnbChain.str_id().into(),
+                endpoints: vec![server.uri()],
+                api_key: None,
+            }])
+            .unwrap();
+            let result = service
+                .send_destination_risk(Chain::BnbChain.str_id().into(), "holder".into(), None)
+                .await;
+            if nonce == Some("0x1") {
+                let risk = result.unwrap();
+                assert!(risk.has_history);
+                assert!(risk.balance_is_zero);
+            } else {
+                assert!(result.is_err());
+            }
+            let requests = server.received_requests().await.unwrap();
+            let balances = requests
+                .iter()
+                .filter(|r| {
+                    r.body_json::<serde_json::Value>().unwrap()["method"] == "eth_getBalance"
+                })
+                .count();
+            assert!(balances <= 1, "duplicate balance request");
+            if nonce == Some("0x1") {
+                assert_eq!(balances, 1);
+                assert_eq!(requests.len(), 2);
+            }
+        }
+    }
+    #[tokio::test]
+    async fn successful_empty_history_is_distinct_from_unknown() {
+        let server = MockServer::start().await;
+        Mock::given(any())
+            .respond_with(|request: &Request| {
+                let is_history = request.url.query().unwrap_or("").contains("details=txs");
+                ResponseTemplate::new(200).set_body_json(if is_history {
+                    json!({"transactions":[]})
+                } else {
+                    json!({"balance":"0"})
+                })
+            })
+            .mount(&server)
+            .await;
+        let service = WalletService::new_typed(vec![ChainEndpoints {
+            chain_id: "litecoin".into(),
+            endpoints: vec![server.uri()],
+            api_key: None,
+        }])
+        .unwrap();
+        let risk = service
+            .send_destination_risk("litecoin".into(), "holder".into(), None)
+            .await
+            .unwrap();
+        assert!(!risk.has_history);
+        assert!(risk.balance_is_zero);
     }
 }

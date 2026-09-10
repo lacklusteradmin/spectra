@@ -126,7 +126,10 @@ cargo test --workspace
 ```
 
 CLI acceptance uses a throwaway directory without network. There are no
-expected-red iOS tests. Exercise changed FFI/UI paths in the app too: CLI tests
+expected-red iOS tests, and no flaky ones: a test that asserted which of two
+concurrent reads reported its error first passed alone and failed under a
+loaded parallel run, which is the run the gate does. Assert the rule, not the
+race — mock the reads the test is not about so they succeed. Exercise changed FFI/UI paths in the app too: CLI tests
 cannot detect a missing Tokio runtime on a Swift async export, and offline
 assembly cannot verify a broadcast.
 
@@ -158,6 +161,50 @@ assembly cannot verify a broadcast.
 
 
 ## Behaviour changed on purpose
+
+### Refuse malformed signing data and failed history reads
+
+- **ICP signing and results:** invalid/missing hex became an empty preimage,
+  missing payload arrays became empty signature lists, and the returned hash
+  was parsed as a numeric block index with zero fallback. Payload arrays must
+  now be nonempty, each payload must be valid hex with the IC request domain
+  prefix and 32-byte request id, and the signature type must be ECDSA. The
+  public key is derived and checked against the supplied key. Submission keeps
+  the actual 32-byte transaction hash in `txid`, including across result
+  classification; missing/malformed hashes fail. This follows the
+  [ICP request signing specification](https://docs.internetcomputer.org/references/ic-interface-spec/https-interface/)
+  and [Rosetta construction flow](https://docs.internetcomputer.org/guides/digital-assets/rosetta/).
+  CLI check: `cargo test -p spectra_core strict_payload_tests` (local mock
+  construction API, signature verification, no live transfer).
+- **Input txids:** the shared Bitcoin-family decoder accepted arbitrary hex
+  lengths; BCH/BSV/BTG signature preimages and Cardano input encoding also
+  swallowed invalid hex. All these paths now reject malformed/non-32-byte
+  hashes instead of constructing invalid transactions. CLI checks:
+  `cargo test -p spectra_core a_bad_txid_is_refused` and
+  `cargo test -p spectra_core cardano_refuses_malformed_input_hashes`.
+- **Blockbook amounts:** malformed, negative and overflowing balance/UTXO
+  strings previously became zero. A balance read or complete UTXO list now
+  fails if any amount is invalid; actual zero and u64 maximum still parse.
+  CLI check: `cargo test -p spectra_core strict_amount_tests` uses mock HTTP.
+- **Derived history:** normalized history, earliest dates, active-wallet IDs
+  and replaceable sends previously hid storage errors as empty lists. All four
+  now return Result/throw across UniFFI, including an unopened store. An open,
+  empty store remains a successful empty result. Swift keeps its existing
+  derived views and shows an error; pruning aborts on failure so a read error
+  cannot delete transaction records. CLI `spectra txs --replaceable` fails
+  rather than claiming nothing can be replaced. `./scripts/cli-acceptance.sh`
+  injects a corrupt row into an isolated database and verifies refusal plus
+  unchanged bytes. `cargo test -p spectra_core read_failure_tests` covers all
+  four reads; Swift `testUnopenedHistoryReadsThrowAcrossBinding` tests the FFI.
+- **Destination activity:** the EVM fallback probe re-fetched balance and
+  collapsed history/nonce failures into "unused". Balance and activity now run
+  concurrently with one balance read; a positive EVM nonce proves activity
+  without an explorer call, otherwise history must answer. A failed read is an
+  error/unknown result, not a successful no-history verdict. CLI `spectra send
+  probe` propagates the error; Swift displays that activity could not be
+  verified. CLI check: `cargo test -p spectra_core destination_probe_tests`
+  verifies request counts, provider failures and successful empty history.
+
 
 Keep entries to the previous behaviour, the new behaviour, the reason and a
 CLI check. If a check needs network, a simulator or new coverage, say so.
@@ -521,6 +568,52 @@ for the core-owned settings and reset paths.
   that bound has a Rust test rather than a dedicated CLI assertion.
 
 ### Keys, import and receive addresses
+
+- **Core derives a private-key import's address too.** The seed path stopped
+  having its front ends derive first and hand the result over; the private-key
+  path had not, so both front ends still derived it, each with its own refusal
+  when the chain could not — two copies of a rule core already owned, and a
+  wallet stored with whatever address the caller passed. `WalletImportCommit`
+  carries the key the way it carries the seed, and
+  `derive_private_key_import_address` is the one place that refuses. The CLI
+  still asks it before sealing, because a refusal after sealing leaves a key
+  stored under an id no wallet references — a check of order, not of the rule.
+  Swift keeps only the field check on the key's shape, and
+  `WalletRustDerivationBridge.deriveFromPrivateKey` is gone. Check CLI
+  acceptance's "refuses a chain that cannot derive from a key" and the sealing
+  check beside it.
+
+- **A seed phrase gets one verdict.** Whether an entry was finished, which of
+  its words were off the list, whether the count was right, whether the
+  checksum held and what to say about it were five separate reads assembled in
+  Swift from three exports and a wordlist Swift cached itself — so the order
+  they had to be asked in was a Swift rule, and `BIP39WordList` was a second
+  copy of core's word list. `core_check_seed_phrase` answers all of it in one
+  pass, in that order: an unfinished entry says nothing, words off the list are
+  their own message, and only a phrase of real words is worth checksumming.
+  `validate_mnemonic`, `bip39_wordlist` and
+  `core_validate_seed_phrase_word_count` are gone with it, and so is
+  `WalletImportDraftValidation`, which nothing called.
+
+  Two things the one verdict changed. **A mnemonic is read in the language its
+  words are in.** `Mnemonic::from_str` refuses a phrase it cannot pin to a
+  single language, and the Simplified and Traditional Chinese lists overlap
+  almost entirely — so Chinese mnemonics were exactly the phrases it refused,
+  and derivation, which assumed English whenever no wordlist was named,
+  refused every non-English phrase outright. A caller that names a language
+  now gets that language and only that language, which is the stricter side
+  where a picker exists (English and French share about a hundred words); a
+  caller with no picker — the CLI, reading a phrase from a file — gets any
+  BIP-39 language. An explicitly named wordlist that is not a language is
+  still an error, because it comes from the Advanced-mode override field and a
+  typo there would otherwise derive a different wallet under English.
+
+  **And an import that derives no address refuses.** A phrase the deriver
+  could not read produced a stored wallet with an empty address that read to
+  the user as "imported" — the same mistake watch-only imports were already
+  fixed not to make. Check CLI acceptance's "imports a Chinese mnemonic" and
+  the two refusal messages beside it, plus `cargo test -p spectra_core
+  seed_phrase_tests mnemonic_language_tests`.
 
 - **Core mints the ids for the wallets it creates.** A caller supplied them,
   which meant predicting how many wallets an import would make — and for a

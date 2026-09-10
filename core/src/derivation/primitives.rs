@@ -41,6 +41,22 @@ pub(crate) fn resolve_bip39_language(name: Option<&str>) -> Result<Language, Str
     }
 }
 
+/// Read a phrase under an explicitly chosen wordlist, or under whichever
+/// BIP-39 language holds its words when the caller chose none.
+///
+/// A named wordlist that is not a BIP-39 language is still an error: it comes
+/// from the Advanced-mode override field, and silently deriving under English
+/// because of a typo there produces a different wallet.
+fn parse_mnemonic(phrase: &str, wordlist: Option<&str>) -> Result<Mnemonic, String> {
+    match wordlist {
+        Some(name) if !name.trim().is_empty() => {
+            Mnemonic::parse_in(resolve_bip39_language(Some(name))?, phrase.trim())
+                .map_err(|e| e.to_string())
+        }
+        _ => crate::validation::parse_seed_phrase(phrase, None),
+    }
+}
+
 /// BIP-39 mnemonic -> 64-byte seed via NFKD normalization and PBKDF2-HMAC-SHA512.
 pub(crate) fn derive_bip39_seed(
     seed_phrase: &str,
@@ -49,9 +65,7 @@ pub(crate) fn derive_bip39_seed(
     mnemonic_wordlist: Option<&str>,
     salt_prefix: Option<&str>,
 ) -> Result<Zeroizing<[u8; 64]>, String> {
-    let language = resolve_bip39_language(mnemonic_wordlist)?;
-    let mnemonic =
-        Mnemonic::parse_in_normalized(language, seed_phrase).map_err(|e| e.to_string())?;
+    let mnemonic = parse_mnemonic(seed_phrase, mnemonic_wordlist)?;
     let iterations = if iteration_count == 0 {
         2048
     } else {
@@ -112,8 +126,7 @@ pub(crate) fn derive_substrate_mini_secret(
     salt_prefix: Option<&str>,
     iteration_count: u32,
 ) -> Result<Zeroizing<[u8; 32]>, String> {
-    let language = resolve_bip39_language(wordlist)?;
-    let parsed = Mnemonic::parse_in_normalized(language, mnemonic).map_err(|e| e.to_string())?;
+    let parsed = parse_mnemonic(mnemonic, wordlist)?;
     let entropy = Zeroizing::new(parsed.to_entropy());
     let prefix = salt_prefix.unwrap_or("mnemonic");
     let normalized_passphrase = Zeroizing::new(passphrase.nfkd().collect::<String>());
@@ -390,4 +403,46 @@ pub(crate) fn derive_slip10_ed25519_key(
         chain_code.copy_from_slice(&child[32..]);
     }
     Ok(private_key)
+}
+
+#[cfg(test)]
+mod mnemonic_language_tests {
+    use super::*;
+
+    // The all-zero entropy in two languages. Same entropy, different words —
+    // and BIP-39 seeds from the words, so the two must not agree.
+    const ENGLISH: &str = "abandon abandon abandon abandon abandon abandon \
+                           abandon abandon abandon abandon abandon about";
+    const CHINESE: &str = "的 的 的 的 的 的 的 的 的 的 的 在";
+
+    fn seed(phrase: &str, wordlist: Option<&str>) -> Result<[u8; 64], String> {
+        derive_bip39_seed(phrase, "", 0, wordlist, None).map(|s| *s)
+    }
+
+    #[test]
+    fn a_phrase_with_no_wordlist_chosen_is_read_in_its_own_language() {
+        // Assuming English here refused every other language's mnemonic, and
+        // an import that derives nothing used to store a blank wallet.
+        assert!(seed(CHINESE, None).is_ok());
+        assert!(seed(ENGLISH, None).is_ok());
+    }
+
+    #[test]
+    fn the_words_seed_the_wallet_not_the_entropy_they_encode() {
+        assert_ne!(seed(CHINESE, None).unwrap(), seed(ENGLISH, None).unwrap());
+    }
+
+    #[test]
+    fn a_named_wordlist_is_the_only_one_the_phrase_may_come_from() {
+        assert!(seed(CHINESE, Some("zh-Hans")).is_ok());
+        assert!(seed(CHINESE, Some("en")).is_err());
+    }
+
+    #[test]
+    fn a_wordlist_that_is_not_a_language_is_an_error_not_a_fallback() {
+        // It comes from the Advanced-mode override field; deriving under
+        // English because of a typo there produces a different wallet.
+        let error = seed(ENGLISH, Some("klingon")).unwrap_err();
+        assert!(error.contains("Unsupported mnemonic wordlist"), "{error}");
+    }
 }

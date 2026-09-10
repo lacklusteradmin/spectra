@@ -1534,6 +1534,7 @@ mod wallet_import {
             derivation_overrides: CoreWalletDerivationOverrides::default(),
             network_chain_by_family: Default::default(),
             seed_phrase: None,
+            private_key: None,
         }
     }
 

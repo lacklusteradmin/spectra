@@ -1142,21 +1142,41 @@ impl WalletService {
         // address core derived itself and skipped the path where the user
         // typed it.
         let mut commit = commit;
-        // Derive here when the caller did not. Both front ends used to derive
-        // first and hand the result over; the CLI could only do one chain, so
-        // the multi-chain rule — every EVM chain derives from Ethereum's path
-        // — existed on the iOS side alone.
+        // Derive here when the caller did not — from a seed phrase or from a
+        // private key, whichever this import carries. Both front ends used to
+        // derive first and hand the result over; the CLI could only do one
+        // chain, so the multi-chain rule — every EVM chain derives from
+        // Ethereum's path — existed on the iOS side alone.
         if commit.request.resolved_addresses.by_slot.is_empty()
             && !commit.request.is_watch_only_import
-            && !commit.request.is_private_key_import
         {
-            if let Some(seed) = commit.seed_phrase.clone().filter(|s| !s.trim().is_empty()) {
-                let derived = crate::derivation::import::derive_import_addresses(
-                    &seed,
+            let key = commit
+                .private_key
+                .clone()
+                .filter(|k| !k.trim().is_empty())
+                .filter(|_| commit.request.is_private_key_import);
+            let seed = commit
+                .seed_phrase
+                .clone()
+                .filter(|s| !s.trim().is_empty())
+                .filter(|_| !commit.request.is_private_key_import);
+            let derived = match (&key, &seed) {
+                (Some(key), _) => Some(
+                    crate::derivation::import::derive_private_key_import_address(
+                        key,
+                        &commit.request.selected_chain_names,
+                    )
+                    .map_err(|message| SpectraBridgeError::InvalidInput { message })?,
+                ),
+                (None, Some(seed)) => Some(crate::derivation::import::derive_import_addresses(
+                    seed,
                     &commit.request.selected_chain_names,
                     &commit.seed_derivation_paths,
                     &commit.derivation_overrides,
-                );
+                )),
+                (None, None) => None,
+            };
+            if let Some(derived) = derived {
                 commit.request.resolved_addresses.by_slot = derived
                     .into_iter()
                     .filter_map(|(chain_name, address)| {
@@ -1164,6 +1184,18 @@ impl WalletService {
                             .map(|chain| (chain.address_slot().to_string(), address))
                     })
                     .collect();
+                // Deriving nothing is a refusal, not an import. A secret the
+                // deriver cannot read — the wrong wordlist, an override that
+                // does not apply — produced a stored wallet with an empty
+                // address that read to the user as "imported", which is the
+                // mistake watch-only imports already refuse to make.
+                if commit.request.resolved_addresses.by_slot.is_empty() {
+                    return Err(SpectraBridgeError::InvalidInput {
+                        message: "Could not derive an address from this secret for any \
+                                  selected chain."
+                            .to_string(),
+                    });
+                }
             }
         }
         // The two inputs carry addresses of different provenance, so they are

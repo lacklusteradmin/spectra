@@ -73,6 +73,22 @@ contains() {
     fi
 }
 
+# lacks <description> <needle> <command...>
+lacks() {
+    local description="$1" needle="$2"
+    shift 2
+    local output
+    output="$("$@" 2>&1)"
+    if [[ "$output" != *"$needle"* ]]; then
+        PASSED=$((PASSED + 1))
+        printf '  \033[32m✓\033[0m %s\n' "$description"
+    else
+        FAILED=$((FAILED + 1))
+        printf '  \033[31m✗\033[0m %s \033[2m(found %s)\033[0m\n' "$description" "$needle"
+        printf '    %s\n' "$output"
+    fi
+}
+
 section() { printf '\n\033[1m%s\033[0m\n' "$1"; }
 
 # Exit codes are part of the interface: 0 done, 2 the caller asked wrongly,
@@ -80,6 +96,10 @@ section() { printf '\n\033[1m%s\033[0m\n' "$1"; }
 readonly OK=0 USAGE=2 REJECTED=3
 
 # ── Registry ────────────────────────────────────────────────────────────────
+
+section "history read failures"
+check "corrupt history is refused without deleting records" $OK \
+    python3 "$(dirname "$0")/cli-history-corruption.py" "$BIN"
 
 section "exact send amounts"
 contains "Solana preserves units beyond f64 precision" '"rawAmount":"9007199254740993"' \
@@ -167,6 +187,29 @@ check 'but wallet new still takes exactly one' $USAGE \
 check "refuses a mnemonic that fails its checksum" $REJECTED \
     with_seed "not a real seed phrase at all here" \
     spectra wallet import --chain Solana --name Bad
+# One verdict decides a seed phrase, and it says which of the two things is
+# wrong: words that are in no wordlist are named, and only a phrase built
+# entirely of real words is worth checksumming.
+contains "names the words that are in no wordlist" "not in any BIP-39 word list" \
+    with_seed "not a real seed phrase at all here" \
+    spectra wallet import --chain Solana --name Bad
+contains "and blames the checksum when the words are real" "checksum" \
+    with_seed "legal winner thank year wave sausage worth useful legal winner thank legal" \
+    spectra wallet import --chain Solana --name Bad
+# Simplified and Traditional Chinese share most of their word list, so a
+# Chinese mnemonic cannot be pinned to one of them. Language detection used
+# to refuse exactly those phrases; a phrase valid in some language is valid.
+check "imports a Chinese mnemonic" $OK \
+    with_seed "的 的 的 的 的 的 的 的 的 的 的 在" \
+    spectra wallet import --chain Bitcoin --name Chinese
+contains "and derives a Bitcoin address for it" '"address":"bc1q' \
+    spectra --json wallet show Chinese
+# BIP-39 seeds the wallet from the *words*, not from the entropy they encode,
+# so the Chinese phrase for the all-zero entropy must not land on the English
+# phrase's address. Deriving under the wrong wordlist is how it would.
+lacks "not the address the English phrase for the same entropy gives" \
+    "bc1qcr8te4kr609gcawutmrza0j4xv80jy8z306fyu" \
+    spectra --json wallet show Chinese
 check "renames through the reducer"         $OK \
     spectra wallet rename "Acceptance BTC" "Renamed BTC"
 check "refuses an empty name"               $REJECTED \
@@ -859,9 +902,21 @@ contains "and derives the right address"     '0x2c7536e3605d9c16a7a3d7b1898e5293
     spectra --json wallet show "PK Wallet"
 contains "and reports how it signs"          'private key' \
     spectra wallet show "PK Wallet"
+# Core derives the address from the key on the commit now, the way it already
+# did from a seed phrase — neither front end derives an import address itself
+# any more. The CLI still asks core the same question before sealing, because
+# a refusal after sealing leaves a key stored under an id no wallet references.
+SECRETS_BEFORE="$(find "$DATA_DIR/secrets" -type f 2>/dev/null | wc -l | tr -d ' ')"
 check "refuses a chain that cannot derive from a key" $REJECTED \
     with_password "correct horse" spectra wallet import --chain Cardano \
         --name "No PK" --private-key-file "$DATA_DIR/pk.hex"
+if [[ "$(find "$DATA_DIR/secrets" -type f 2>/dev/null | wc -l | tr -d ' ')" == "$SECRETS_BEFORE" ]]; then
+    PASSED=$((PASSED + 1))
+    printf '  \033[32m✓\033[0m and seals no key on the way to refusing\n'
+else
+    FAILED=$((FAILED + 1))
+    printf '  \033[31m✗\033[0m and seals no key on the way to refusing\n'
+fi
 # Which chains a private key covers is one registry fact, and this is the check
 # that the app's picker and the CLI cannot disagree about it. Polygon was in
 # neither of the app's two hand-written lists and derives the same EVM address

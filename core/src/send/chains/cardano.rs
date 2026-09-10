@@ -111,7 +111,7 @@ pub fn build_signed_ada_tx(
         outputs.push((change_address_bytes, change));
     }
 
-    let tx_body = encode_tx_body(utxos, &outputs, fee_lovelace, ttl);
+    let tx_body = encode_tx_body(utxos, &outputs, fee_lovelace, ttl)?;
 
     // Transaction body hash (Blake2b-256).
     let body_hash = blake2b_256(&tx_body);
@@ -138,7 +138,7 @@ fn encode_tx_body(
     outputs: &[(&[u8], u64)],
     fee: u64,
     ttl: u64,
-) -> Vec<u8> {
+) -> Result<Vec<u8>, String> {
     // CBOR map {0: inputs, 1: outputs, 2: fee, 3: ttl}
     let mut map_entries = Vec::new();
 
@@ -146,10 +146,16 @@ fn encode_tx_body(
     let encoded_inputs: Vec<Vec<u8>> = inputs
         .iter()
         .map(|(hash, idx, _)| {
-            let hash_bytes = hex::decode(hash).unwrap_or_default();
-            cbor_array(&[cbor_bytes(&hash_bytes), cbor_uint(*idx as u64)])
+            let hash_bytes = hex::decode(hash).map_err(|e| format!("input txid: {e}"))?;
+            if hash_bytes.len() != 32 {
+                return Err("input txid must contain exactly 32 bytes".into());
+            }
+            Ok(cbor_array(&[
+                cbor_bytes(&hash_bytes),
+                cbor_uint(*idx as u64),
+            ]))
         })
-        .collect();
+        .collect::<Result<_, String>>()?;
     map_entries.push((cbor_uint(0), cbor_tagged_set(&encoded_inputs)));
 
     // Outputs (field 1): array of [address, lovelace]
@@ -165,7 +171,7 @@ fn encode_tx_body(
     // TTL (field 3)
     map_entries.push((cbor_uint(3), cbor_uint(ttl)));
 
-    cbor_map(&map_entries)
+    Ok(cbor_map(&map_entries))
 }
 
 fn encode_witness_set(vkey: &[u8], sig: &[u8]) -> Vec<u8> {
@@ -283,6 +289,28 @@ mod accounting_tests {
             100,
             Some(1000000),
         )
+    }
+    #[test]
+    fn cardano_refuses_malformed_input_hashes() {
+        for hash in [
+            String::new(),
+            "not hex".into(),
+            "00".repeat(31),
+            "00".repeat(33),
+        ] {
+            let result = build_signed_ada_tx(
+                &[(hash, 0, 1170000)],
+                &[0x61; 29],
+                1000000,
+                170000,
+                &[0x62; 29],
+                &[1; 64],
+                &[2; 32],
+                100,
+                None,
+            );
+            assert!(result.unwrap_err().contains("txid"));
+        }
     }
     #[test]
     fn cardano_refuses_unbalanced_or_dust_transactions() {

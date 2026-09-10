@@ -543,7 +543,7 @@ fn replaceable(ctx: &Ctx, out: Out, args: TxsArgs) -> CliResult<()> {
     };
     let sends: Vec<_> = ctx
         .rt
-        .block_on(service.replaceable_sends())
+        .block_on(service.replaceable_sends())?
         .into_iter()
         .filter(|send| {
             wallet_id

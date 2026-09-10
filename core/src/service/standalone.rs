@@ -104,35 +104,3 @@ pub fn generate_mnemonic(word_count: u32) -> String {
         .to_string()
 }
 
-/// Validate a BIP-39 mnemonic phrase. Returns `true` only for a valid
-/// English BIP-39 mnemonic with correct word count + checksum.
-#[uniffi::export]
-pub fn validate_mnemonic(phrase: String) -> bool {
-    use bip39::{Language, Mnemonic};
-    phrase.trim().parse::<Mnemonic>().is_ok()
-        || Mnemonic::parse_in(Language::English, phrase.trim()).is_ok()
-}
-
-/// The full BIP-39 word list for a language, newline-delimited.
-///
-/// Accepts the same language codes as the derivation functions ("en", "zh-cn",
-/// …) and falls back to English for anything else — which is why
-/// `bip39_english_wordlist` was this function with one argument bound, and is
-/// gone.
-#[uniffi::export]
-pub fn bip39_wordlist(language: String) -> String {
-    use bip39::Language;
-    let lang = match language.trim().to_ascii_lowercase().as_str() {
-        "czech" | "cs" => Language::Czech,
-        "french" | "fr" => Language::French,
-        "italian" | "it" => Language::Italian,
-        "japanese" | "ja" | "jp" => Language::Japanese,
-        "korean" | "ko" | "kr" => Language::Korean,
-        "portuguese" | "pt" => Language::Portuguese,
-        "spanish" | "es" => Language::Spanish,
-        "simplified-chinese" | "zh-hans" | "zh-cn" | "zh" => Language::SimplifiedChinese,
-        "traditional-chinese" | "zh-hant" | "zh-tw" => Language::TraditionalChinese,
-        _ => Language::English,
-    };
-    lang.word_list().join("\n")
-}

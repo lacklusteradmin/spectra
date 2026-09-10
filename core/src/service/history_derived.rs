@@ -10,6 +10,7 @@
 
 use crate::service::WalletService;
 use crate::store::wallet_domain::{CoreTransactionKind, CoreTransactionStatus};
+use crate::SpectraBridgeError;
 
 #[uniffi::export(async_runtime = "tokio")]
 impl WalletService {
@@ -21,40 +22,45 @@ impl WalletService {
     pub async fn normalized_history(
         &self,
         unknown_label: String,
-    ) -> Vec<crate::fetch::history::CoreNormalizedHistoryEntry> {
-        let (records, wallets) = self.history_and_wallets().await;
-        crate::fetch::history::normalize_history(crate::fetch::history::NormalizeHistoryRequest {
-            wallets,
-            transactions: records
-                .iter()
-                .map(|record| crate::fetch::history::HistoryTransaction {
-                    id: record.payload.id.to_lowercase(),
-                    wallet_id: record.payload.wallet_id.as_deref().map(str::to_lowercase),
-                    kind: kind_string(record.payload.kind),
-                    status: status_string(record.payload.status),
-                    wallet_name: record.payload.wallet_name.clone(),
-                    asset_name: record.payload.asset_name.clone(),
-                    symbol: record.payload.symbol.clone(),
-                    chain_name: record.payload.chain_name.clone(),
-                    address: record.payload.address.clone(),
-                    transaction_hash: record.payload.transaction_hash.clone(),
-                    transaction_history_source: record.payload.transaction_history_source.clone(),
-                    // The row's timestamp, which is Unix. The payload's is in
-                    // Swift reference time, and reading the wrong one shifts
-                    // every entry by thirty-one years.
-                    created_at_unix: record.created_at,
-                })
-                .collect(),
-            unknown_label,
-        })
+    ) -> Result<Vec<crate::fetch::history::CoreNormalizedHistoryEntry>, SpectraBridgeError> {
+        let (records, wallets) = self.history_and_wallets().await?;
+        Ok(crate::fetch::history::normalize_history(
+            crate::fetch::history::NormalizeHistoryRequest {
+                wallets,
+                transactions: records
+                    .iter()
+                    .map(|record| crate::fetch::history::HistoryTransaction {
+                        id: record.payload.id.to_lowercase(),
+                        wallet_id: record.payload.wallet_id.as_deref().map(str::to_lowercase),
+                        kind: kind_string(record.payload.kind),
+                        status: status_string(record.payload.status),
+                        wallet_name: record.payload.wallet_name.clone(),
+                        asset_name: record.payload.asset_name.clone(),
+                        symbol: record.payload.symbol.clone(),
+                        chain_name: record.payload.chain_name.clone(),
+                        address: record.payload.address.clone(),
+                        transaction_hash: record.payload.transaction_hash.clone(),
+                        transaction_history_source: record
+                            .payload
+                            .transaction_history_source
+                            .clone(),
+                        // The row's timestamp, which is Unix. The payload's is in
+                        // Swift reference time, and reading the wrong one shifts
+                        // every entry by thirty-one years.
+                        created_at_unix: record.created_at,
+                    })
+                    .collect(),
+                unknown_label,
+            },
+        ))
     }
 
     /// The earliest recorded activity per wallet, in unix seconds.
     pub async fn earliest_transaction_dates(
         &self,
-    ) -> Vec<crate::store::WalletEarliestTransactionDate> {
-        let (records, _) = self.history_and_wallets().await;
-        crate::store::core_earliest_transaction_dates(
+    ) -> Result<Vec<crate::store::WalletEarliestTransactionDate>, SpectraBridgeError> {
+        let (records, _) = self.history_and_wallets().await?;
+        Ok(crate::store::core_earliest_transaction_dates(
             records
                 .iter()
                 .map(|record| crate::store::TransactionEarliestInput {
@@ -62,14 +68,14 @@ impl WalletService {
                     created_at_unix: record.created_at,
                 })
                 .collect(),
-        )
+        ))
     }
 
     /// Transaction ids whose wallet is still active, for a caller pruning the
     /// ones whose wallet is gone.
-    pub async fn active_wallet_transaction_ids(&self) -> Vec<String> {
-        let (records, wallets) = self.history_and_wallets().await;
-        crate::store::core_active_wallet_transaction_ids(
+    pub async fn active_wallet_transaction_ids(&self) -> Result<Vec<String>, SpectraBridgeError> {
+        let (records, wallets) = self.history_and_wallets().await?;
+        Ok(crate::store::core_active_wallet_transaction_ids(
             records
                 .iter()
                 .map(|record| crate::store::TransactionActivityInput {
@@ -85,7 +91,7 @@ impl WalletService {
                     selected_chain: wallet.selected_chain.clone(),
                 })
                 .collect(),
-        )
+        ))
     }
 
     /// The pending sends a caller may replace by resubmitting their nonce,
@@ -95,13 +101,13 @@ impl WalletService {
     /// chain *named* "Ethereum" — so a pending Arbitrum or Base send, which
     /// replaces exactly the way a mainnet one does, offered neither speed-up
     /// nor cancel. The family is the registry's, and the rule is here.
-    pub async fn replaceable_sends(&self) -> Vec<ReplaceableSend> {
-        self.fetch_all_history_records_typed()
-            .await
-            .unwrap_or_default()
+    pub async fn replaceable_sends(&self) -> Result<Vec<ReplaceableSend>, SpectraBridgeError> {
+        Ok(self
+            .fetch_all_history_records_typed()
+            .await?
             .iter()
             .filter_map(|record| replaceable_send(&record.payload))
-            .collect()
+            .collect())
     }
 }
 
@@ -109,10 +115,13 @@ impl WalletService {
     /// The store's records and the wallets they belong to, read together.
     async fn history_and_wallets(
         &self,
-    ) -> (
-        Vec<crate::wallet_db::HistoryRecord>,
-        Vec<crate::fetch::history::HistoryWallet>,
-    ) {
+    ) -> Result<
+        (
+            Vec<crate::wallet_db::HistoryRecord>,
+            Vec<crate::fetch::history::HistoryWallet>,
+        ),
+        SpectraBridgeError,
+    > {
         let wallets = self
             .wallet_state
             .read()
@@ -124,12 +133,9 @@ impl WalletService {
                 selected_chain: wallet.chain_name.clone(),
             })
             .collect();
-        // The store knows where it is; an unopened one simply has no records.
-        let records = self
-            .fetch_all_history_records_typed()
-            .await
-            .unwrap_or_default();
-        (records, wallets)
+        // An unreadable or unopened store is not evidence of an empty history.
+        let records = self.fetch_all_history_records_typed().await?;
+        Ok((records, wallets))
     }
 }
 
@@ -316,7 +322,7 @@ mod tests {
             .await
             .expect("upsert");
 
-        let earliest = service.earliest_transaction_dates().await;
+        let earliest = service.earliest_transaction_dates().await.unwrap();
         assert_eq!(earliest.len(), 1);
         // 745200000 Swift-reference seconds is 2024-08-12 in Unix terms. Read
         // as Unix it would be 1993.
@@ -483,6 +489,7 @@ mod replaceable_tests {
         let chains: Vec<String> = service
             .replaceable_sends()
             .await
+            .unwrap()
             .into_iter()
             .map(|send| send.chain_id)
             .collect();
@@ -491,15 +498,62 @@ mod replaceable_tests {
         let reopened = Arc::new(WalletService::new_typed(vec![]).unwrap());
         reopened.open_state(db).await.unwrap();
         assert_eq!(
-            reopened.replaceable_sends().await,
-            service.replaceable_sends().await
+            reopened.replaceable_sends().await.unwrap(),
+            service.replaceable_sends().await.unwrap()
         );
     }
 
-    /// An unopened store has nothing to replace rather than failing.
+    /// An unopened store cannot answer whether it has replaceable sends.
     #[tokio::test]
-    async fn an_unopened_store_is_empty() {
+    async fn an_unopened_store_is_an_error() {
         let service = WalletService::new_typed(vec![]).unwrap();
-        assert!(service.replaceable_sends().await.is_empty());
+        assert!(service.replaceable_sends().await.is_err());
+    }
+}
+
+#[cfg(test)]
+mod read_failure_tests {
+    use super::*;
+    #[tokio::test]
+    async fn corrupt_history_refuses_every_derived_read_without_changing_storage() {
+        let service = WalletService::new_typed(vec![]).unwrap();
+        let path = std::env::temp_dir().join(format!(
+            "history-refusal-{}.sqlite",
+            crate::store::new_event_id()
+        ));
+        service
+            .open_state(path.to_string_lossy().into_owned())
+            .await
+            .unwrap();
+        assert!(service
+            .normalized_history("Unknown".into())
+            .await
+            .unwrap()
+            .is_empty());
+        assert!(service
+            .earliest_transaction_dates()
+            .await
+            .unwrap()
+            .is_empty());
+        assert!(service
+            .active_wallet_transaction_ids()
+            .await
+            .unwrap()
+            .is_empty());
+        assert!(service.replaceable_sends().await.unwrap().is_empty());
+        let db = rusqlite::Connection::open(&path).unwrap();
+        db.execute("INSERT INTO history_records(id,chain_name,created_at,payload) VALUES('fault','Bitcoin',0,'{\"id\":42}')",[]).unwrap();
+        assert!(service.normalized_history("Unknown".into()).await.is_err());
+        assert!(service.earliest_transaction_dates().await.is_err());
+        assert!(service.active_wallet_transaction_ids().await.is_err());
+        assert!(service.replaceable_sends().await.is_err());
+        let raw: String = db
+            .query_row(
+                "SELECT payload FROM history_records WHERE id='fault'",
+                [],
+                |r| r.get(0),
+            )
+            .unwrap();
+        assert_eq!(raw, r#"{"id":42}"#);
     }
 }

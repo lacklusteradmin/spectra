@@ -78,8 +78,7 @@ fn sign_btg_tx(
     let mut prevouts_data = Vec::new();
     let mut sequences_data = Vec::new();
     for (txid, vout, _, _) in utxos {
-        let mut txid_bytes = hex::decode(txid).unwrap_or_default();
-        txid_bytes.reverse();
+        let txid_bytes = super::wire::decode_txid_le(txid)?;
         prevouts_data.extend_from_slice(&txid_bytes);
         prevouts_data.extend_from_slice(&vout.to_le_bytes());
         sequences_data.extend_from_slice(&0xffff_ffffu32.to_le_bytes());
@@ -101,8 +100,7 @@ fn sign_btg_tx(
         preimage.extend_from_slice(&1u32.to_le_bytes()); // nVersion
         preimage.extend_from_slice(&hash_prevouts);
         preimage.extend_from_slice(&hash_sequence);
-        let mut txid_bytes = hex::decode(txid).unwrap_or_default();
-        txid_bytes.reverse();
+        let txid_bytes = super::wire::decode_txid_le(txid)?;
         preimage.extend_from_slice(&txid_bytes);
         preimage.extend_from_slice(&vout.to_le_bytes());
         preimage.extend_from_slice(&varint(script_code.len()));

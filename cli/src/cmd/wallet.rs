@@ -238,11 +238,7 @@ fn import(ctx: &Ctx, out: Out, args: ImportArgs) -> CliResult<()> {
     }
     .resolve("seed phrase")?;
 
-    if !spectra_core::service::validate_mnemonic(seed_phrase.clone()) {
-        return Err(CliError::rejected(
-            "not a valid BIP-39 English mnemonic (check the words and the count)",
-        ));
-    }
+    crate::cmd::reject_bad_seed_phrase(&seed_phrase)?;
 
     let outcome = seal_and_import(ctx, &args.creation, &chains, &seed_phrase)?;
     let wallet = first_wallet(&outcome)?;
@@ -276,22 +272,15 @@ fn import_private_key(ctx: &Ctx, out: Out, args: ImportArgs, chain: Chain) -> Cl
     .resolve("private key")?;
     let private_key = private_key.trim().trim_start_matches("0x").to_string();
 
-    // Derive before sealing anything: a chain with no private-key derivation
-    // should refuse here rather than store a key for a wallet that can never
-    // sign with it.
-    let derived = spectra_core::derivation::dispatch::core_derive_from_private_key(
-        chain.chain_display_name().to_string(),
-        private_key.clone(),
-        true,
-        false,
+    // Refuse before sealing anything: a chain with no private-key derivation
+    // must not leave a key stored for a wallet that can never sign with it.
+    // Core does the deriving — this call is the same rule the commit below
+    // applies, asked early enough to keep the key out of the store.
+    spectra_core::derivation::import::derive_private_key_import_address(
+        &private_key,
+        &[chain.chain_display_name().to_string()],
     )
-    .map_err(CliError::from)?;
-    let Some(address) = derived.and_then(|result| result.address) else {
-        return Err(CliError::rejected(format!(
-            "{} cannot derive an address from a private key",
-            chain.chain_display_name()
-        )));
-    };
+    .map_err(CliError::rejected)?;
 
     let password = args.creation.password()?;
     let wallet_id = new_wallet_id();
@@ -302,8 +291,10 @@ fn import_private_key(ctx: &Ctx, out: Out, args: ImportArgs, chain: Chain) -> Cl
         .name
         .clone()
         .unwrap_or_else(|| format!("My {} Wallet", chain.chain_display_name()));
-    let mut commit = signing_commit(chain, &wallet_id, &name, "", &address);
+    let mut commit = signing_commit(chain, &wallet_id, &name, "", "");
     commit.request.is_private_key_import = true;
+    commit.request.resolved_addresses = Default::default();
+    commit.private_key = Some(private_key.clone());
 
     let service = ctx.service()?;
     let outcome = match ctx.rt.block_on(service.import_wallets(commit)) {
@@ -730,6 +721,7 @@ fn seed_commit(
         derivation_overrides: CoreWalletDerivationOverrides::default(),
         network_chain_by_family: std::collections::HashMap::new(),
         seed_phrase: Some(seed_phrase.to_string()),
+        private_key: None,
     }
 }
 
@@ -782,6 +774,7 @@ fn commit_for(
         // The CLI imports on mainnet; `spectra` has no network picker.
         network_chain_by_family: Default::default(),
         seed_phrase: None,
+        private_key: None,
     }
 }
 

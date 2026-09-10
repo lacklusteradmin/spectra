@@ -188,7 +188,7 @@ impl<N: BlockbookNetwork> BlockbookClient<N> {
         let info: BlockbookAddress = self
             .get(&format!("/api/v2/address/{address}?details=basic"))
             .await?;
-        let sat: u64 = info.balance.parse().unwrap_or(0);
+        let sat = parse_units(&info.balance)?;
         Ok(BlockbookBalance {
             balance_sat: sat,
             balance_display: format_sats(sat),
@@ -200,13 +200,15 @@ impl<N: BlockbookNetwork> BlockbookClient<N> {
         let utxos: Vec<BlockbookUtxo> = self.get(&format!("/api/v2/utxo/{address}")).await?;
         Ok(utxos
             .into_iter()
-            .map(|u| BlockbookUtxoEntry {
-                txid: u.txid,
-                vout: u.vout,
-                value_sat: u.value.parse().unwrap_or(0),
-                confirmations: u.confirmations,
+            .map(|u| {
+                Ok(BlockbookUtxoEntry {
+                    txid: u.txid,
+                    vout: u.vout,
+                    value_sat: parse_units(&u.value)?,
+                    confirmations: u.confirmations,
+                })
             })
-            .collect())
+            .collect::<Result<_, String>>()?)
     }
 
     /// Fetch recommended fee rate for `blocks` confirmation target.
@@ -347,5 +349,62 @@ mod tests {
         assert!(client.fetch_balance("addr").await.is_err());
         assert!(client.fetch_utxos("addr").await.is_err());
         assert_eq!(client.fetch_fee_rate(6).await, 1, "fee estimate falls back");
+    }
+}
+
+fn parse_units(value: &str) -> Result<u64, String> {
+    if value.is_empty() || !value.bytes().all(|b| b.is_ascii_digit()) {
+        return Err("Blockbook amount must be unsigned integer digits".into());
+    }
+    value
+        .parse()
+        .map_err(|_| "Blockbook amount exceeds u64".into())
+}
+
+#[cfg(test)]
+mod strict_amount_tests {
+    use super::*;
+    use crate::fetch::chains::litecoin::LitecoinClient;
+    use wiremock::{matchers::any, Mock, MockServer, Request, ResponseTemplate};
+    #[tokio::test]
+    async fn malformed_balances_and_utxos_are_errors() {
+        for amount in [
+            "0",
+            "18446744073709551615",
+            "",
+            "-1",
+            "+1",
+            "1.0",
+            "junk",
+            "18446744073709551616",
+        ] {
+            let server = MockServer::start().await;
+            Mock::given(any())
+                .respond_with(move |request: &Request| {
+                    let body = if request.url.path().contains("/utxo/") {
+                        serde_json::json!([
+                            {"txid":"aa".repeat(32),"vout":0,"value":"1"},
+                            {"txid":"bb".repeat(32),"vout":1,"value":amount}
+                        ])
+                    } else {
+                        serde_json::json!({"balance":amount})
+                    };
+                    ResponseTemplate::new(200).set_body_json(body)
+                })
+                .mount(&server)
+                .await;
+            let client = LitecoinClient::new(Arc::new(vec![server.uri()]));
+            let valid = ["0", "18446744073709551615"].contains(&amount);
+            assert_eq!(
+                client.fetch_balance("holder").await.is_ok(),
+                valid,
+                "{amount}"
+            );
+            assert_eq!(
+                client.fetch_utxos("holder").await.is_ok(),
+                valid,
+                "{amount}"
+            );
+        }
     }
 }

@@ -825,7 +825,6 @@ impl WalletService {
 
     // ── Typed send-preview wrappers (fuse fetch + decode in Rust)
 
-    // `fetch_evm_address_probe` lives in the plain-impl block below —
     // `send_destination_risk` is its only caller.
 
     // ── UTXO tx status
@@ -991,35 +990,6 @@ impl WalletService {
     // Internal JSON-returning helpers (not exported to Swift — the typed
     // wrappers above in the exported impl block call these and translate
     // the JSON into UniFFI records at the boundary).
-
-    /// Typed end-to-end balance fetch used by the refresh engine. Returns a
-    /// parsed `NativeBalanceSummary` directly — no JSON-string intermediate.
-    ///
-    /// For `chain_id == 0` extended-public-key cases we still go through the
-    /// xpub balance JSON path — that one's deeply UTXO-aware and not worth
-    /// retyping for the marginal saving.
-    /// Lightweight EVM address probe used for send-flow chain-risk warnings.
-    /// Fetches nonce + native balance concurrently and returns both typed,
-    /// skipping the fee/gas work of the full preview.
-    pub(crate) async fn fetch_evm_address_probe(
-        &self,
-        chain_id: String,
-        address: String,
-    ) -> Result<EvmAddressProbe, SpectraBridgeError> {
-        let chain = chain_for_evm_id(&chain_id)?;
-        let eps = self.endpoints_for(chain.str_id()).await;
-        let client = EvmClient::new(eps, chain.evm_chain_id());
-        let (nonce_res, bal_res) =
-            tokio::join!(client.fetch_nonce(&address), client.fetch_balance(&address));
-        let nonce = nonce_res.unwrap_or(0) as i64;
-        let balance_wei: u128 = bal_res
-            .map(|b| b.balance_wei.parse::<u128>().unwrap_or(0))
-            .unwrap_or(0);
-        Ok(EvmAddressProbe {
-            nonce,
-            balance_eth: balance_wei as f64 / 1e18,
-        })
-    }
 
     pub(crate) async fn fetch_native_balance_summary_auto(
         &self,

@@ -36,3 +36,31 @@ pub fn resolve_chain(needle: &str) -> CliResult<Chain> {
             ))
         })
 }
+
+/// Refuse a seed phrase core would not accept, naming what is wrong with it.
+///
+/// The CLI reads phrases from a file or the environment, so it has no
+/// language picker and no expected length: the phrase's own word count is
+/// what it claims to be, and core checks that claim against every BIP-39
+/// language.
+pub fn reject_bad_seed_phrase(phrase: &str) -> CliResult<()> {
+    use spectra_core::validation::{core_check_seed_phrase, SeedPhraseCheck};
+    let words: Vec<String> = phrase.split_whitespace().map(str::to_string).collect();
+    let verdict = core_check_seed_phrase(SeedPhraseCheck {
+        expected_word_count: words.len() as u32,
+        words,
+        language: None,
+    });
+    if !verdict.invalid_words.is_empty() {
+        return Err(CliError::rejected(format!(
+            "not in any BIP-39 word list: {}",
+            verdict.invalid_words.join(", ")
+        )));
+    }
+    if !verdict.checksum_valid {
+        return Err(CliError::rejected(verdict.error.unwrap_or_else(|| {
+            "not a valid BIP-39 mnemonic (check the words and the count)".to_string()
+        })));
+    }
+    Ok(())
+}

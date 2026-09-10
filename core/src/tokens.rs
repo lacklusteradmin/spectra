@@ -14,13 +14,13 @@ static TOKENS_TOML: &str = include_str!("../data/tokens.toml");
 
 #[derive(Debug, Deserialize)]
 struct TomlFile {
-    assets: Vec<TomlAsset>,
+    tokens: Vec<TomlToken>,
     deployments: Vec<TomlDeployment>,
 }
 
 /// What a token is — one row however many chains it ships on.
 #[derive(Debug, Deserialize)]
-struct TomlAsset {
+struct TomlToken {
     symbol: String,
     name: String,
     coingecko_id: String,
@@ -32,7 +32,7 @@ struct TomlAsset {
 /// Where it lives, and what is true only there.
 #[derive(Debug, Deserialize)]
 struct TomlDeployment {
-    asset: String,
+    token: String,
     chain: String,
     contract: String,
     decimals: u32,
@@ -40,7 +40,7 @@ struct TomlDeployment {
     enabled: bool,
 }
 
-// ── Public shape: one deployment, with its asset's facts joined in.
+// ── Public shape: one deployment, with its token's facts joined in.
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, uniffi::Record)]
 #[serde(rename_all = "camelCase")]
@@ -63,35 +63,35 @@ pub struct TokenEntry {
 static CATALOG: LazyLock<Vec<TokenEntry>> = LazyLock::new(|| {
     let parsed: TomlFile = toml::from_str(TOKENS_TOML)
         .expect("tokens.toml is embedded at compile time and must be valid TOML");
-    let assets: std::collections::HashMap<&str, &TomlAsset> = parsed
-        .assets
+    let tokens: std::collections::HashMap<&str, &TomlToken> = parsed
+        .tokens
         .iter()
-        .map(|a| (a.symbol.as_str(), a))
+        .map(|t| (t.symbol.as_str(), t))
         .collect();
     parsed
         .deployments
         .iter()
         .map(|d| {
-            // A deployment naming an asset the file does not define is a
+            // A deployment naming a token the file does not define is a
             // build-time mistake, not a row to skip: the entry would carry a
             // symbol and nothing else.
-            let a = assets.get(d.asset.as_str()).unwrap_or_else(|| {
+            let t = tokens.get(d.token.as_str()).unwrap_or_else(|| {
                 panic!(
-                    "tokens.toml: deployment on {} names unknown asset {}",
-                    d.chain, d.asset
+                    "tokens.toml: deployment on {} names unknown token {}",
+                    d.chain, d.token
                 )
             });
             TokenEntry {
                 chain: d.chain.clone(),
-                name: a.name.clone(),
-                symbol: a.symbol.clone(),
+                name: t.name.clone(),
+                symbol: t.symbol.clone(),
                 token_standard: d.standard.clone(),
                 contract: d.contract.clone(),
-                coingecko_id: a.coingecko_id.clone(),
+                coingecko_id: t.coingecko_id.clone(),
                 decimals: d.decimals,
-                tags: a.tags.clone(),
-                color: a.color.clone(),
-                asset_name: a.asset_name.clone(),
+                tags: t.tags.clone(),
+                color: t.color.clone(),
+                asset_name: t.asset_name.clone(),
                 enabled: d.enabled,
             }
         })
@@ -545,7 +545,7 @@ mod the_catalog_is_two_tables {
         assert!(link.len() > 1, "LINK's decimals collapsed to one value");
     }
 
-    /// Every deployment resolves to an asset, and every asset is deployed
+    /// Every deployment resolves to a token, and every token is deployed
     /// somewhere. A row on either side with no partner is dead data.
     #[test]
     fn the_two_tables_cover_each_other() {
@@ -553,13 +553,13 @@ mod the_catalog_is_two_tables {
         let deployed: HashSet<&str> = parsed
             .deployments
             .iter()
-            .map(|d| d.asset.as_str())
+            .map(|d| d.token.as_str())
             .collect();
-        for asset in &parsed.assets {
+        for token in &parsed.tokens {
             assert!(
-                deployed.contains(asset.symbol.as_str()),
-                "{} is an asset with no deployment",
-                asset.symbol
+                deployed.contains(token.symbol.as_str()),
+                "{} is a token with no deployment",
+                token.symbol
             );
         }
         assert_eq!(CATALOG.len(), parsed.deployments.len());

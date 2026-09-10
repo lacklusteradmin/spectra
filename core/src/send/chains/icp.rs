@@ -15,6 +15,15 @@ impl IcpClient {
         private_key_bytes: &[u8],
         public_key_bytes: &[u8],
     ) -> Result<IcpSendResult, String> {
+        let key = secp256k1::SecretKey::from_slice(private_key_bytes)
+            .map_err(|e| format!("invalid key: {e}"))?;
+        let derived = secp256k1::PublicKey::from_secret_key(&secp256k1::Secp256k1::new(), &key);
+        let supplied = secp256k1::PublicKey::from_slice(public_key_bytes)
+            .map_err(|e| format!("invalid public key: {e}"))?;
+        if supplied != derived {
+            return Err("public key does not match signing key".into());
+        }
+        let public_key_bytes = derived.serialize();
         let network = json!({
             "blockchain": "Internet Computer",
             "network": "00000000000000020101"
@@ -63,17 +72,23 @@ impl IcpClient {
         let to_sign_payloads = payloads
             .get("payloads")
             .and_then(|v| v.as_array())
-            .cloned()
-            .unwrap_or_default();
+            .ok_or("payloads: missing payload array")?;
+        if to_sign_payloads.is_empty() {
+            return Err("payloads: empty payload array".into());
+        }
 
         // Step 4: Sign each payload.
         let mut signatures = Vec::new();
-        for payload_item in &to_sign_payloads {
+        for payload_item in to_sign_payloads {
             let hex_bytes = payload_item
                 .get("hex_bytes")
                 .and_then(|v| v.as_str())
-                .unwrap_or("");
-            let hash_bytes = hex::decode(hex_bytes).unwrap_or_default();
+                .ok_or("payloads: missing hex_bytes")?;
+            if payload_item.get("signature_type").and_then(Value::as_str) != Some("ecdsa") {
+                return Err("payloads: expected ecdsa signature type".into());
+            }
+            let hash_bytes =
+                hex::decode(hex_bytes).map_err(|e| format!("payloads: invalid hex: {e}"))?;
             let sig_hex = sign_icp_payload(&hash_bytes, private_key_bytes)?;
             signatures.push(json!({
                 "signing_payload": payload_item,
@@ -112,13 +127,16 @@ impl IcpClient {
                 }),
             )
             .await?;
-        let block_index: u64 = submit
+        let txid = submit
             .pointer("/transaction_identifier/hash")
-            .and_then(|v| v.as_str())
-            .and_then(|s| s.parse().ok())
-            .unwrap_or(0);
-
-        Ok(IcpSendResult { block_index })
+            .and_then(Value::as_str)
+            .ok_or("submit: missing transaction hash")?;
+        if txid.len() != 64 || !txid.bytes().all(|b| b.is_ascii_hexdigit()) {
+            return Err("submit: invalid transaction hash".into());
+        }
+        Ok(IcpSendResult {
+            txid: txid.to_lowercase(),
+        })
     }
 }
 
@@ -150,15 +168,107 @@ fn sign_icp_payload(hash_bytes: &[u8], private_key_bytes: &[u8]) -> Result<Strin
     let secp = Secp256k1::new();
     let secret_key =
         SecretKey::from_slice(private_key_bytes).map_err(|e| format!("invalid key: {e}"))?;
-    let msg_hash = if hash_bytes.len() == 32 {
-        let mut arr = [0u8; 32];
-        arr.copy_from_slice(hash_bytes);
-        arr
-    } else {
-        use sha2::{Digest, Sha256};
-        Sha256::digest(hash_bytes).into()
-    };
+    // ICP signs the domain-separated request id (11-byte prefix + 32-byte id).
+    // https://docs.internetcomputer.org/references/ic-interface-spec/https-interface/
+    if hash_bytes.len() != 43 || !hash_bytes.starts_with(b"\x0aic-request") {
+        return Err("payloads: expected an IC request signing preimage".into());
+    }
+    use sha2::{Digest, Sha256};
+    let msg_hash: [u8; 32] = Sha256::digest(hash_bytes).into();
     let msg = Message::from_digest_slice(&msg_hash).map_err(|e| format!("msg: {e}"))?;
     let sig = secp.sign_ecdsa(&msg, &secret_key);
     Ok(hex::encode(sig.serialize_compact()))
+}
+
+#[cfg(test)]
+mod strict_payload_tests {
+    use super::*;
+    use std::sync::Arc;
+    use wiremock::{matchers::any, Mock, MockServer, Request, ResponseTemplate};
+
+    #[test]
+    fn icp_signing_requires_a_domain_separated_request() {
+        for bytes in [vec![], vec![0; 32], vec![0; 43], vec![0; 44]] {
+            assert!(sign_icp_payload(&bytes, &[1; 32]).is_err());
+        }
+        let mut bytes = b"\x0aic-request".to_vec();
+        bytes.extend_from_slice(&[7; 32]);
+        let sig = sign_icp_payload(&bytes, &[1; 32]).unwrap();
+        use sha2::{Digest, Sha256};
+        let key = secp256k1::SecretKey::from_slice(&[1; 32]).unwrap();
+        let secp = secp256k1::Secp256k1::new();
+        let signature =
+            secp256k1::ecdsa::Signature::from_compact(&hex::decode(sig).unwrap()).unwrap();
+        let message = secp256k1::Message::from_digest_slice(&Sha256::digest(&bytes)).unwrap();
+        secp.verify_ecdsa(
+            &message,
+            &signature,
+            &secp256k1::PublicKey::from_secret_key(&secp, &key),
+        )
+        .unwrap();
+    }
+
+    #[tokio::test]
+    async fn icp_rejects_malformed_payloads_before_combine_and_preserves_transaction_hash() {
+        for fault in [
+            "ok",
+            "missing",
+            "empty",
+            "hex",
+            "prefix",
+            "type",
+            "missing_hash",
+            "bad_hash",
+        ] {
+            let server = MockServer::start().await;
+            Mock::given(any()).respond_with(move |request: &Request| {
+                let body: Value = request.body_json().unwrap();
+                let response = match request.url.path() {
+                    "/construction/preprocess" => json!({"options":{}}),
+                    "/construction/metadata" => json!({"metadata":{}}),
+                    "/construction/payloads" => {
+                        let mut bytes = b"\x0aic-request".to_vec(); bytes.extend_from_slice(&[7;32]);
+                        let mut result = json!({"unsigned_transaction":"unsigned","payloads":[{"hex_bytes":hex::encode(bytes),"signature_type":"ecdsa"}]});
+                        match fault {
+                            "missing" => { result.as_object_mut().unwrap().remove("payloads"); },
+                            "empty" => result["payloads"] = json!([]),
+                            "hex" => result["payloads"][0]["hex_bytes"] = json!("zz"),
+                            "prefix" => result["payloads"][0]["hex_bytes"] = json!("00".repeat(43)),
+                            "type" => result["payloads"][0]["signature_type"] = json!("ed25519"),
+                            _ => {}
+                        } result
+                    },
+                    "/construction/combine" => {
+                        assert_eq!(body["signatures"].as_array().unwrap().len(),1);
+                        json!({"signed_transaction":"signed"})
+                    },
+                    "/construction/submit" => match fault {
+                        "missing_hash" => json!({}),
+                        "bad_hash" => json!({"transaction_identifier":{"hash":"0"}}),
+                        _ => json!({"transaction_identifier":{"hash":"ab".repeat(32)}})
+                    },
+                    p => panic!("unexpected request {p}"),
+                };
+                ResponseTemplate::new(200).set_body_json(response)
+            }).mount(&server).await;
+            let key = secp256k1::SecretKey::from_slice(&[1; 32]).unwrap();
+            let public = secp256k1::PublicKey::from_secret_key(&secp256k1::Secp256k1::new(), &key)
+                .serialize();
+            let result = IcpClient::new(Arc::new(vec![server.uri()]))
+                .sign_and_submit("from", "to", 1, &[1; 32], &public)
+                .await;
+            if fault == "ok" {
+                assert_eq!(result.unwrap().txid, "ab".repeat(32));
+            } else {
+                assert!(result.is_err(), "{fault}");
+            }
+            if ["missing", "empty", "hex", "prefix", "type"].contains(&fault) {
+                assert!(server.received_requests().await.unwrap().iter().all(|r| ![
+                    "/construction/combine",
+                    "/construction/submit"
+                ]
+                .contains(&r.url.path())));
+            }
+        }
+    }
 }
