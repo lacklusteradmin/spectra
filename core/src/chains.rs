@@ -17,6 +17,8 @@
 use serde::{Deserialize, Serialize};
 use std::sync::LazyLock;
 
+use crate::price::AssetMarketIds;
+
 static CHAINS_TOML: &str = include_str!("../data/chains.toml");
 static CHAIN_WIKI_TOML: &str = include_str!("../data/chain-wiki.toml");
 
@@ -43,6 +45,9 @@ struct TomlChain {
     address_prefix_hint: String,
     token_standard: String,
     native_coingecko_id: String,
+    native_coinpaprika_id: String,
+    #[serde(default)]
+    native_coinlore_nameid: String,
     native_decimals: u32,
     native_asset_name: String,
     #[serde(default)]
@@ -151,6 +156,28 @@ pub struct ChainEntry {
     pub native_decimals: u32,
     pub native_asset_name: String,
     pub derivation_path: Vec<ChainDerivationPathEntry>,
+}
+
+/// The native asset's ids at the market-data providers, one row per chain.
+///
+/// Kept out of [`ChainEntry`] for the reason [`ChainWikiEntry`] is: nothing
+/// that renders a chain prices one, so these would be bytes crossing the FFI
+/// on every `list_all_chains()` call for a caller that never reads them.
+pub(crate) fn native_market_ids() -> &'static [AssetMarketIds] {
+    static IDS: LazyLock<Vec<AssetMarketIds>> = LazyLock::new(|| {
+        let parsed: TomlFile = toml::from_str(CHAINS_TOML)
+            .expect("chains.toml is embedded at compile time and must be valid TOML");
+        parsed
+            .chains
+            .iter()
+            .map(|c| AssetMarketIds {
+                coingecko_id: c.native_coingecko_id.clone(),
+                coinpaprika_id: c.native_coinpaprika_id.clone(),
+                coinlore_nameid: c.native_coinlore_nameid.clone(),
+            })
+            .collect()
+    });
+    &IDS
 }
 
 /// What a *chain* is — the facts that have no coin to belong to.

@@ -24,6 +24,9 @@ struct TomlToken {
     symbol: String,
     name: String,
     coingecko_id: String,
+    coinpaprika_id: String,
+    #[serde(default)]
+    coinlore_nameid: String,
     color: String,
     asset_name: String,
     tags: Vec<String>,
@@ -117,6 +120,43 @@ pub fn list_tokens(chain_id: String) -> Vec<TokenEntry> {
 /// Return a reference to the static catalog slice.
 pub fn catalog() -> &'static [TokenEntry] {
     &CATALOG
+}
+
+/// The catalog's name for the token a chain's own feed calls `symbol`.
+///
+/// A history row names its asset by ticker, and a ticker is unique only within
+/// a chain — which is why this takes one. `None` when the catalog does not
+/// carry the token, and the caller shows the ticker itself.
+///
+/// Enabled or not does not enter into it: what a token is called is a fact
+/// about the token, not about whether this wallet tracks it.
+pub(crate) fn token_name_on_chain(chain_id: &str, symbol: &str) -> Option<&'static str> {
+    CATALOG
+        .iter()
+        .find(|t| t.chain == chain_id && t.symbol.eq_ignore_ascii_case(symbol))
+        .map(|t| t.name.as_str())
+}
+
+/// Each token's ids at the market-data providers, one row per token.
+///
+/// Kept out of [`TokenEntry`] the way the chain catalog keeps them out of
+/// `ChainEntry`: no front end prices anything, so these would cross the FFI on
+/// every `list_tokens` call for a caller that never reads them.
+pub(crate) fn market_ids() -> &'static [crate::price::AssetMarketIds] {
+    static IDS: LazyLock<Vec<crate::price::AssetMarketIds>> = LazyLock::new(|| {
+        let parsed: TomlFile = toml::from_str(TOKENS_TOML)
+            .expect("tokens.toml is embedded at compile time and must be valid TOML");
+        parsed
+            .tokens
+            .iter()
+            .map(|t| crate::price::AssetMarketIds {
+                coingecko_id: t.coingecko_id.clone(),
+                coinpaprika_id: t.coinpaprika_id.clone(),
+                coinlore_nameid: t.coinlore_nameid.clone(),
+            })
+            .collect()
+    });
+    &IDS
 }
 
 // ── Token-id + endpoint URL normalization helpers ─────────────────

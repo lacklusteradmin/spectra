@@ -208,11 +208,18 @@ mod artwork_follows_the_coin_not_the_chain {
         );
     }
 
-    /// Every coin the wiki lists has artwork, and the wiki is every coin the
-    /// app can hold. This is the assertion the bug would have failed on 31 of
-    /// 66 rows.
+    /// Every coin the wiki lists resolves to the mark its row names, and the
+    /// wiki is every coin the app can hold. This is the assertion the bug
+    /// would have failed on 31 of 66 rows: they resolved to *something else*,
+    /// which is the failure worth catching.
+    ///
+    /// Naming no mark is allowed and means the letter badge — `CoinBadge`
+    /// draws that for an empty name, and `an_unknown_symbol_resolves_to_nothing`
+    /// below is the other half. The rule used to be "every coin has artwork",
+    /// which is a stricter thing than the bug, and it made adding a token
+    /// wait on drawing its logo.
     #[test]
-    fn every_wiki_coin_has_artwork() {
+    fn every_wiki_coin_resolves_to_its_own_mark() {
         for asset in crate::wiki::list_asset_wiki() {
             assert_eq!(
                 core_icon_asset_name(asset.symbol.clone()),
@@ -220,17 +227,32 @@ mod artwork_follows_the_coin_not_the_chain {
                 "{} draws the wrong mark",
                 asset.symbol
             );
-            assert!(!asset.asset_name.is_empty(), "{} has no mark", asset.symbol);
+        }
+    }
+
+    /// A chain always ships one. There are forty-six of them, every one has a
+    /// mark today, and a chain drawn as a letter in the network picker is a
+    /// hole in the app rather than a token nobody has drawn yet.
+    #[test]
+    fn every_chain_names_a_mark() {
+        for chain in crate::chains::catalog() {
+            assert!(!chain.asset_name.is_empty(), "{} has no mark", chain.name);
         }
     }
 
     /// Every mark a catalog names ships as a file. USDB named `usdb` and no
     /// such icon existed, so the one coin whose artwork was genuinely missing
     /// looked exactly like the thirty-one that were only looked up wrong.
+    ///
+    /// A row naming no mark is skipped rather than failed: that is the letter
+    /// badge, chosen, and `""` has no file to ship.
     #[test]
     fn every_named_mark_ships_a_file() {
         let icons = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../icons/cryptoicon");
         for asset in crate::wiki::list_asset_wiki() {
+            if asset.asset_name.is_empty() {
+                continue;
+            }
             let file = icons.join(format!("{}.svg", asset.asset_name));
             assert!(
                 file.is_file(),

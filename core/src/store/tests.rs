@@ -2332,6 +2332,34 @@ mod pinned_dashboard_assets {
         );
     }
 
+    /// The four iOS used to keep to itself, so its pin cards and core's
+    /// grouping disagreed about what a fresh wallet pins.
+    #[tokio::test]
+    async fn an_unpinned_dashboard_reads_as_the_default_four() {
+        let service = WalletService::new_typed(Vec::new()).expect("service");
+        let settings = service
+            .apply_state_command(StateCommand::SetPinnedDashboardAssets { symbols: vec![] })
+            .await
+            .expect("read")
+            .state
+            .settings;
+        assert!(settings.pinned_dashboard_asset_symbols.is_empty());
+        assert_eq!(
+            settings.pinned_dashboard_assets(),
+            vec!["BTC", "ETH", "USDT", "USDC"]
+        );
+
+        let chosen = service
+            .apply_state_command(StateCommand::SetPinnedDashboardAssets {
+                symbols: vec!["sol".into()],
+            })
+            .await
+            .expect("apply")
+            .state
+            .settings;
+        assert_eq!(chosen.pinned_dashboard_assets(), vec!["SOL".to_string()]);
+    }
+
     #[tokio::test]
     async fn clearing_pins_is_distinguishable_from_never_pinning() {
         let service = WalletService::new_typed(Vec::new()).expect("service");

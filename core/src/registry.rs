@@ -1131,6 +1131,20 @@ impl Chain {
         })
     }
 
+    /// What a token send on this chain needs in the gas asset before it can
+    /// land, when no preview estimates the fee for that path.
+    ///
+    /// NEAR is the one chain that routes a token send with no fee estimate to
+    /// check against, so the floor is the whole check. It was `0.001` written
+    /// into the iOS submit branch, next to the NEAR balance it was compared
+    /// with — a number about a chain, held by the front end.
+    pub const fn token_send_gas_reserve(self) -> Option<f64> {
+        match self {
+            Chain::Near => Some(0.001),
+            _ => None,
+        }
+    }
+
     pub const fn supports_deep_utxo_discovery(self) -> bool {
         matches!(
             self,
@@ -1147,6 +1161,22 @@ impl Chain {
                 | Chain::LitecoinTestnet
                 | Chain::DogecoinTestnet
         )
+    }
+
+    /// Does a name typed as a destination resolve to an address on this chain?
+    ///
+    /// ENS is a registry deployed on Ethereum mainnet, so that is the only
+    /// chain a `.eth` name is looked up for. The address it returns is a plain
+    /// EVM address that would spend anywhere, but a name pointing at a mainnet
+    /// contract need not point at anything on an L2 — a destination reached by
+    /// name is accepted only where the registry that named it lives, which is
+    /// the stricter of the two readings.
+    ///
+    /// Swift asked `chainName == "Ethereum"` for this in three places: the
+    /// composer's recipient probe, the EVM preview and the submit path. One
+    /// fact stated three times is three chances for them to disagree.
+    pub const fn resolves_ens_names(self) -> bool {
+        matches!(self, Chain::Ethereum)
     }
 
     /// The `kind` string [`crate::validation::address::validate_address`]
@@ -1590,11 +1620,10 @@ mod tests {
         }
     }
 
-    /// Monero is the only mainnet the flag excludes, and one piece of iOS copy
-    /// depends on that: the watch-only footer note names Monero while its
-    /// condition reads the flag. A second excluded chain means generalising the
-    /// string, which is a localisation edit rather than something to discover
-    /// from a screenshot.
+    /// No two chains answer to the same hosting variant, and no variant goes
+    /// unclaimed. The count was written as `18`, so growing the enum failed
+    /// here with a number rather than a name; `ALL` is the same assertion
+    /// without the copy.
     #[test]
     fn token_hosting_chains_map_one_to_one() {
         let mut seen = std::collections::HashMap::new();
@@ -1605,9 +1634,18 @@ mod tests {
                 }
             }
         }
-        assert_eq!(seen.len(), 18, "expected eighteen token-hosting chains");
+        assert_eq!(
+            seen.len(),
+            crate::store::wallet_domain::CoreTokenHostingChain::ALL.len(),
+            "a hosting variant is claimed by no chain"
+        );
     }
 
+    /// Monero is the only mainnet the flag excludes, and one piece of iOS copy
+    /// depends on that: the watch-only footer note names Monero while its
+    /// condition reads the flag. A second excluded chain means generalising the
+    /// string, which is a localisation edit rather than something to discover
+    /// from a screenshot.
     #[test]
     fn only_monero_is_excluded_from_watch_only_import() {
         let excluded: Vec<&str> = Chain::all()

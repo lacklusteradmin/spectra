@@ -162,6 +162,126 @@ assembly cannot verify a broadcast.
 
 ## Behaviour changed on purpose
 
+### One typed amount, one conversion into integer units
+
+- **What was wrong:** core had two decimal→units conversions. `execute_send`
+  takes the typed string and shifts it exactly with `parse_raw_amount`, so the
+  amount a transaction is *signed* for has always been correct. The EVM
+  assembler took an `f64` and shifted that, with a doc comment claiming to
+  "avoid float rounding by doing string arithmetic" — but the rounding had
+  already happened in the caller's `f64`, and `format!("{:.18}", …)` then wrote
+  it out in full. `1.1` assembled 1100000000000000089 wei, `0.1`
+  100000000000000006. An `f64` also cannot represent an 18-decimal amount at
+  all: it runs out of significant digits around the sixteenth.
+- **What that reached:** the assembler feeds the send *preview* — the gas
+  estimate, and an ERC-20 transfer's calldata — and `spectra send assemble`,
+  the command whose stated purpose is printing the transaction a send would
+  sign. So the preview priced a transaction differing from the one made, and
+  the CLI printed a wei figure `spectra send broadcast` would not use. It never
+  reached a signature.
+- **What changed:** `EvmSendAssemblyInput.amount` is a `String`, the assembler
+  calls `parse_raw_amount`, and `amount_to_smallest_unit` / `u128_str_to_hex`
+  are gone. Swift's send sheet passes the typed `sendAmount` through; its
+  `Double(sendAmount)` now only decides *whether* to preview (the zero-amount
+  rule), never what is assembled. The CLI passes `--amount` through untouched.
+- **Stricter, on purpose:** the assembler now refuses whatever the signing path
+  refuses. `1e3` previously assembled as a thousand and over-precision was
+  truncated by `format!`, so a preview could succeed for an amount
+  `execute_send` would then reject; both are refused at the preview now.
+- **Not changed:** the `f64` money fields on the *display* side — balances,
+  fees, spendable, max-sendable — stay as they are. Those are numbers to render,
+  not to commit to a transaction, and moving all of them is a separate change.
+  CLI checks: `cargo test -p spectra_core one_amount_one_conversion`, and
+  `spectra send assemble --chain ethereum --amount 1.1 …` prints
+  1100000000000000000.
+
+### A Bitcoin transaction pays out no more than it spends
+
+- **Batch sends:** `build_unsigned_spend` sized the fee for `extra_outputs`
+  but funded none of them. Coin selection targeted the recipient amount alone,
+  the extras were appended after change was computed, and `saturating_sub`
+  turned the resulting shortfall into a change of zero rather than a refusal.
+  A signed batch therefore paid out more than it spent — 200_000 sats in and
+  204_980 out in the case the tests pinned — and the node rejected it with
+  `bad-txns-in-belowout`. Extras are now built before selection, their values
+  are part of the target on both the selected and the pinned branch, and the
+  change subtraction is `checked_sub`. Nothing in the app reaches this yet:
+  every production caller passes `extra_outputs: vec![]`, so this is a latent
+  path made correct rather than a live bug fixed.
+- **The invariant, stated:** the builder now refuses if the outputs it laid out
+  exceed the inputs it selected, on every path — pinned or selected, change
+  kept or absorbed. It cannot fire given the arithmetic above, which is the
+  point: it is what the next change to that arithmetic has to keep true.
+  UTXO value sums are `checked_add` for the same reason, since release builds
+  wrap and the values come from an endpoint.
+- **The test that pinned the bug:** `extra_outputs_are_appended_after_change`
+  asserted the unfunded change figure and passed, because it read output
+  values and never asked whether the inputs covered them. It is now
+  `extra_outputs_are_funded_and_not_conjured` and asserts outputs plus fee
+  equal the inputs. CLI checks: `cargo test -p spectra_core
+  a_batch_the_inputs_cannot_cover_is_refused` and
+  `cargo test -p spectra_core no_layout_pays_out_more_than_it_spends`.
+
+### A provider's timestamp is parsed as the untrusted string it is
+
+- **Char boundaries:** `parse_iso8601_timestamp` indexed a `&str` by byte
+  offset at 4, 7, 10, 13 and 16 after checking only that the string was
+  nineteen *bytes* long. Any non-ASCII character in a history response —
+  full-width digits, a stray ellipsis, an Arabic-Indic numeral — split a
+  multi-byte character and panicked inside core. It now refuses a non-ASCII
+  string up front, which is also what makes every index below it sound.
+- **Zone offsets:** it read the wall clock and dropped the offset its own
+  comment claimed to handle, so a `+08:00` stamp was filed eight hours early.
+  `Z`, an absent suffix, `±HH:MM`, `±HHMM` and `±HH` are now all read, and
+  fractional seconds are skipped rather than confusing the zone.
+- **Refusal instead of 1970:** it answered `0.0` for everything it could not
+  read, which is a real date that sorts and renders as one. It returns
+  `Option` now. The history caller still files an unreadable stamp as `0.0`
+  — a transaction shown with a wrong date beats one the history omits — but
+  that is now the caller's stated choice rather than the parser's silence.
+  Field ranges (month, day, hour, minute, second) are checked, so a malformed
+  field can no longer roll the date somewhere plausible.
+- **The divisor:** a string timestamp parses straight to seconds, so the
+  shape's `time_divisor` never applied to it; the call site applied it anyway.
+  No shipped chain hit this — the three scaled shapes all read numeric
+  `timestamp_ms` / `_us` / `_ns` fields — but a nanosecond chain that answered
+  with a string would have dated every row to 1970. The divisor is now on the
+  numeric branch only. CLI check: `cargo test -p spectra_core iso8601_tests`.
+
+### A send preview quotes the asset the amount field moves
+
+- **EVM token previews:** `fetch_evm_send_preview` answered `spendable` and
+  `max_sendable` with the *native* balance whatever was being sent, so an
+  ERC-20 send offered the sender's gas-coin balance as its maximum and the
+  send sheet rendered it through the token's own formatter — 1 ETH shown as
+  "1 USDC", with "Max" filling in a number the transfer could not move. The
+  preview now reads the token's `balanceOf` and `decimals` and quotes those.
+  Which case it is comes off the calldata, not off a caller-supplied
+  descriptor: an ERC-20 transfer *is* `transfer(address,uint256)` addressed to
+  the token contract, so the selector names the case (`is_erc20_transfer`,
+  shared with the assembler that writes it) and nothing on the funds path is
+  trusted from a typed value. A native send is unchanged: it pays the fee out
+  of the balance it is moving, so its spendable is still `balance - fee`. The
+  wire field is `spendable_balance` rather than `spendable_eth`, and the dead
+  `balance_eth` it also emitted is gone. No FFI shape changed —
+  `EvmSendPreview.spendableBalance` already had that name. CLI check:
+  `cargo test -p spectra_core a_preview_quotes_the_asset_it_moves` (mock
+  JSON-RPC node, no live chain).
+- **TRC-20 previews:** the Tron preview divided every token balance by a fixed
+  `1e6`, which is TRX's scale, not the contract's — an 18-decimal TRC-20 was
+  quoted at 10^12 times the holding it is, and "Max" offered it. It now reads
+  the contract's `decimals()` alongside the balance. It also no longer fetches
+  the TRX balance on the token path, where nothing looked at the result.
+- **Unread balances on both:** a failed token read became `0.0`, so a network
+  failure looked like an empty wallet and quoted a maximum of zero. Both
+  previews now fail instead, matching the rule the rest of the send path
+  already follows — everything a send decides is computed from this number, so
+  it must not be one nobody read. CLI check:
+  `cargo test -p spectra_core an_unreadable_trc20_balance_refuses_rather_than_quoting_zero`.
+- **Still not checked:** neither preview verifies that the gas coin covers the
+  fee for a token send. That needs a second field on `EvmSendPreview` and is
+  not in this change.
+
 ### Refuse malformed signing data and failed history reads
 
 - **ICP signing and results:** invalid/missing hex became an empty preimage,
@@ -1219,3 +1339,288 @@ for the core-owned settings and reset paths.
   in iOS: MoonPay and Kraken were previously opened successfully. The reported
   “none of the links work” issue was not reproduced on the old clean simulator;
   unstable row identity remains the proposed explanation, not proven causation.
+
+### Omnichain Tether tokens and the hosting-chain list
+
+- **Token hosting:** `CoreTokenHostingChain` listed eighteen chains while
+  `chains.toml` gives twenty-eight a `token_standard`. Berachain, Sei, Celo,
+  Cronos, opBNB, zkSync Era, Sonic, Unichain, Ink and X Layer were therefore
+  chains the app could select but not hold a token on: a catalog row there was
+  dropped by `built_in_token_preferences`, and the "add custom token" picker
+  did not offer them. The variants are now exactly that column, which is where
+  the fact already lived. Balance reads need nothing new — the EVM arm of
+  `fetch_token_balances` is generic over `Chain::is_evm`. Check
+  `cargo test -p spectra_core token_hosting_chain_tests` and
+  `spectra token catalog --chain Berachain`.
+- **Polygon USDT is USDT0:** the row for `0xc2132D05…` read symbol `USDT`,
+  name "Tether USD", priced from CoinGecko `tether`. Tether upgraded that
+  contract in place — it answers `symbol()` with "USDT0" now, and CoinGecko
+  moved it from `tether` to `usdt0` — so the row is `USDT0` and prices from
+  `usdt0`. It stays enabled by default, as the same holding. Check
+  `spectra token catalog --chain Polygon`.
+- **New tokens:** USDT0 on Arbitrum, Optimism, Polygon, Mantle, Hyperliquid,
+  Berachain, Sei, Unichain, Ink and X Layer; XAUT0 on Arbitrum, Avalanche, BNB
+  Chain, Polygon, Hyperliquid, Solana, TON, Celo and Ink; USAT on Ethereum and
+  Celo; BUSD (Bera USD, formerly HONEY) on Berachain. Addresses come from the
+  [USDT0 deployments API](https://docs.usdt0.to/api/deployments) — the token
+  contract, not the OFT adapter beside it — cross-checked against CoinGecko's
+  platform lists, and `symbol()`/`decimals()` were read from the chain for the
+  ones that decide a label. USDT0 is enabled by default where it is the chain's
+  canonical dollar; XAUT0, USAT and the rest follow the catalog's habit of
+  shipping disabled. Check `spectra token catalog --chain <chain>` and
+  `cargo test -p spectra_core wiki`.
+- **Swift lists that shadowed the hosting enum:** `addCustomTokenPreference`
+  validated contract addresses through a switch that hand-listed twelve EVM
+  chains, and `TokenRegistrySettingsView` had a parallel `TokenRegistryChainFilter`
+  enum with a case per chain. Both would have silently ignored the ten chains
+  the hosting list gained — the first by failing to compile, the second by
+  offering eighteen networks in the filter. Validation now reads the registry's
+  `addressValidationKind` for anything not named (a Sui or Aptos coin type, or a
+  chain with its own wording), and the filter is `TokenHostingChain?` over
+  `allCases`. The view's unused `entries(for:)` helper went with it. Check the
+  Known Tokens filter and the New Token form in iOS.
+
+### One owner for "what address is this send going to"
+
+- **Destination resolution:** the composer's recipient probe, the EVM preview
+  and the submit path each turned the destination field into an address
+  themselves, and each spelled the ENS rule as `chainName == "Ethereum"`. Two
+  of the three normalized a typed address and none normalized a resolved one;
+  one kept a resolved-name cache and the other two re-asked the ENS API on
+  every debounced keystroke. `WalletService::resolve_send_destination` is the
+  one answer now: the rule is `Chain::resolves_ens_names`, the cache is the
+  service's, and the address comes back normalized for the chain either way —
+  so a name-reached destination compares equal to the same address in the
+  address book and is no longer reported as `new_address`. Anything that is
+  neither a valid address for the chain nor a name that chain registers is
+  `InvalidInput`; nothing guesses a destination. Off-Ethereum `.eth` input is
+  still refused rather than resolved through mainnet, which is the stricter
+  reading and leaves `ens_off_ethereum` a warning nothing can currently raise.
+  `is_ens_name_candidate` and `resolve_ens_name_typed` are no longer exported —
+  each answered half the question — and the evaluator's inline copy of the
+  `.eth` heuristic now calls the one function. CLI check: `spectra send
+  destination --chain <chain> --to <input>`; `./scripts/cli-acceptance.sh`
+  covers the normalized form, the empty and wrong-family refusals and the name
+  refused on Arbitrum, Base, Polygon and Bitcoin without a request leaving the
+  machine. `cargo test -p spectra_core destination_resolution_tests` covers the
+  same plus a cache hit reporting `used_ens`. Swift
+  `SendDestinationBridgeTests` runs the refusals and the normalized answer
+  across the async binding, which is the half no CLI run can vouch for.
+
+### The destination probe names an asset, not a token descriptor
+
+- **`send_destination_risk`:** took `(chain_id, address, token: Option<TokenDescriptor>)`
+  and takes `(wallet_id, holding_key, destination_input)`. Which contract a
+  symbol means on a chain is a catalog question and the catalog is core's, so
+  both callers were reading core's token preferences only to hand the answer
+  straight back: the composer decided native vs token, built the descriptor,
+  and clamped the catalog's precision into a `u8` with `UInt8(clamping:)` —
+  which turns an impossible 300 into a plausible 255 and reads a balance off by
+  45 decimal places. Core derives the descriptor from the holding now, and an
+  out-of-range precision is a refusal rather than a clamp.
+- **An unidentifiable asset is an error, not silence:** a token no preference
+  row vouches for made the composer clear the probe and show nothing, which
+  reads as "checked, and fine". It is now `InvalidInput` naming the asset, and
+  the composer shows "Unable to verify this address's activity" — the same
+  thing a failed read shows, because it is the same fact.
+- **The destination is resolved rather than trusted:** the probe runs
+  `resolve_send_destination` on what it is given, so it asks about the address
+  a send would actually reach. For an already-resolved address that is
+  re-validation and nothing more.
+- CLI check: `spectra send probe --wallet <w> [--asset SYM] [--chain C] --to <input>`;
+  the descriptor flags are gone. `./scripts/cli-acceptance.sh` covers the
+  missing wallet, the asset the wallet does not hold and the unknown chain —
+  the verdict itself needs a balance and a history read, and a holding only
+  exists after one. `cargo test -p spectra_core a_destination_probe_refuses_before_it_guesses`
+  covers the unfindable holding and the unvouched token; the existing mock-RPC
+  probe tests now seed a wallet holding. Swift
+  `SendDestinationBridgeTests.testAProbeForAnUnknownHoldingThrowsRatherThanProbingAcrossAsyncBinding`
+  checks the refusal across the async binding.
+
+### A fallback price quote names the asset it prices
+
+- **CoinPaprika and CoinLore ids are catalog columns:** `price.rs` carried two
+  hand-written tables — 38 gecko-id and 32 symbol entries — mapping a third of
+  the token catalog to CoinPaprika ids, plus a `match` for CoinLore's one
+  `nameid` exception. They are `coinpaprika_id` and `coinlore_nameid` in
+  `tokens.toml` and `chains.toml` now, beside the `coingecko_id` they belong
+  with, and `price.rs` knows no asset by name. Three of the retired ids
+  resolved to nothing at CoinPaprika (`aave-aave`, `cro-cronos`,
+  `leo-unus-sed-leo`), and 23 of the 35 tokens were in neither table —
+  including USDT0, USAT and XAUT0.
+- **Nothing matches a quote to a holding by ticker symbol:** both fallback
+  providers took the first listing sharing the holding's symbol when the id
+  lookup missed. CoinPaprika lists several thousand coins, so BUSD — Bera USD
+  here — priced as Binance USD, and TON priced as TONToken. A ticker is not an
+  identity, and this is the funds path: an asset the catalog cannot name at a
+  provider now goes unpriced there rather than being quoted as something else.
+  The other two providers still answer for it, and an unpriced asset keeps its
+  last known price.
+- **Empty is a decision:** `coinpaprika_id = ""` means "not listed there under
+  an identity we verified", and one row says it — BUSD, because ours is Bera
+  USD and paprika's BUSD is Binance USD.
+  `only_deliberately_unlisted_assets_have_no_paprika_id` holds the list to that
+  one, so adding a token is a decision about where it is priced rather than a
+  blank nobody notices.
+- **`PriceRequestCoin` lost `symbol`:** it existed for the symbol fallback and
+  nothing else reads it, so the record is `{holding_key, coin_gecko_id}` and
+  the front ends stop sending a field that could only be used to guess.
+- The ids are off the FFI records for the reason `ChainWikiEntry` exists: no
+  front end prices anything, so `chains::native_market_ids()` and
+  `tokens::market_ids()` serve core, and `ChainEntry` and `TokenEntry` are
+  unchanged.
+- CLI check: `cargo test -p spectra_core market_id_tests` — the catalogs agree
+  where a gecko id repeats, no two assets claim one listing, ids are plain
+  lowercase, and `paprika_id_for` resolves the ones no table would have
+  guessed (`aave-new`, `cro-cryptocom-chain`, `bttc-bittorrent-chain`, bare
+  `usat`) while answering `None` for unlisted, unknown and empty alike. The
+  quotes themselves are a live provider read, so `spectra price <chain>` is the
+  online check.
+
+### Chain tokens: ARB, OP and the rest of the L2 slate
+
+- **New tokens:** ARB on Arbitrum and Ethereum, OP on Optimism, LINEA on Linea
+  and Ethereum, SCR on Scroll, BLAST on Blast, ZK on ZKsync Era and Ethereum,
+  UNI on Unichain, and the Ethereum contracts for MNT and POL — gas tokens the
+  wiki already carried as native coins, which now list the L1 contract holding
+  effectively all of their supply, the same shape CRO has. Every contract was
+  read on-chain for `symbol()` and `decimals()` before being written down; all
+  are 18 decimals. They ship disabled, as every non-dollar built-in does.
+  Check `spectra token catalog --chain Arbitrum`.
+- **Polygon priced MATIC, not POL:** `native_coingecko_id` was `matic-network`,
+  which CoinGecko now titles "MATIC (migrated to POL)" and lists on no chain,
+  while the `native_coinpaprika_id` beside it already said
+  `pol-polygon-ecosystem-token`. The two disagreed about which coin Polygon
+  runs on, and the ids quote different prices — $0.126 against $0.092 on the
+  same balance. It is `polygon-ecosystem-token` now, which is also what the new
+  POL token row must say for
+  `a_symbol_has_one_market_data_id_across_both_catalogs` to hold. Check
+  `spectra price --chain Polygon` (network).
+- **Scroll's ticker:** the chain's `symbol` read `SCRL`, which is Wizarre
+  Scroll — an unrelated token. Scroll's own ticker is `SCR`, and that is now
+  both the chain's symbol and the token's. Check `spectra chains`.
+- **Not added, and why:** Base has no token; Ink's does not appear in either
+  price catalog, so a row for it would carry no market id and the wiki refuses
+  that; opBNB runs on BNB and X Layer on OKB, which are native coins already —
+  and OKB's Ethereum contract holds 429,065 of a ~21M supply after the X Layer
+  migration, so it is a remnant rather than the token. BERA, CELO, SEI, S, CRO,
+  AVAX and HYPE are gas tokens the registry already carries as native coins.
+
+### Held assets: wrapped, staked and protocol tokens
+
+- **A coin may ship without a mark.** `every_wiki_coin_has_artwork` asserted
+  that every catalog row names artwork *and* that the file exists, which is a
+  stricter rule than the bug it was written for — that bug was 31 of 66 coins
+  resolving to *someone else's* mark, and the equality assertion is what caught
+  it. A row may now name nothing: `CoinBadge` already draws the coin's letter
+  for an empty name, and `an_unknown_symbol_resolves_to_nothing` is the other
+  half of that contract. The test keeps the equality, `every_named_mark_ships_a_file`
+  skips unnamed rows, and a new `every_chain_names_a_mark` holds the old rule
+  where it still belongs — a chain drawn as a letter in the network picker is a
+  hole, not a pending drawing. Swift's `CoinBadgeArtworkTests` gained the same
+  branch. Check `cargo test -p spectra_core artwork_follows_the_coin_not_the_chain`.
+- **23 new tokens, 66 deployments.** Wrapped and staked forms of coins already
+  in the catalog — stETH, wstETH, WETH, cbBTC, LBTC, rETH, sUSDS, sUSDe — and
+  the tokens of protocols people hold balances in: GHO, ONDO, MORPHO, AERO,
+  CRV, CAKE, PENDLE, ETHFI, LDO, ENS, PYTH, RAY, ZRO, WLD, PEPE. Base carried
+  two tokens before this and carries fifteen now; Solana gained six. Every one
+  of the 66 contracts was read on-chain for `symbol()` and `decimals()` before
+  being written down, which is how the per-chain decimals came out right —
+  cbBTC and LBTC are 8, and sUSDe and CAKE are 9 on Solana against 18 on the
+  EVM chains. All ship disabled. Check `spectra token catalog --chain Base`.
+- **Which chains each token lands on:** its home chain, then the largest venues
+  CoinGecko lists it on, capped at four. sUSDe is on seventeen chains Spectra
+  supports and PENDLE on eight; carrying every one would add rows for places
+  the token barely trades, and a holder there can still add it as a custom
+  token. The cap is a judgement call, not a fact — it is written down here so
+  it can be revisited rather than rediscovered.
+- **Symbols are uppercase**, as all 43 existing rows are: `STETH`, not `stETH`.
+  The contracts say `stETH`, `cbBTC`, `sUSDe`; the catalog has never carried a
+  mixed-case symbol and `holding_identity` keys on the string, so matching the
+  file beats matching the brand.
+- **Not added:** permissioned RWA funds — BUIDL ($2.8B), USYC, USTB, JTRSY,
+  JAAA, EUTBL, OUSG, YLDS, BCAP, FIGR_HELOC — transfer only between whitelisted
+  addresses, so a self-custody wallet cannot hold them. RAIN ranks 13th by
+  market cap at $11.15B and trades $34M a day, a ratio roughly fifty times
+  worse than anything else considered.
+
+### The catalog names an asset and the registry answers for a chain
+
+- **History rows are named from the token catalog:** a four-entry
+  `tron_asset_name` table gave TRX, USDT, USDC and BTT their display names on
+  Tron — the same strings `tokens.toml` carries, for four of the tokens it
+  carries, and USDC is not deployed on Tron at all. The row's own ticker is
+  looked up in the catalog for the chain it arrived on now, so every token on
+  every chain has its name, and a ticker the catalog does not carry stays the
+  ticker rather than being invented. The three-armed `SymbolOverride` is two:
+  Solana and Tron were "a row names its own asset" spelled twice, so an SPL
+  USDC transfer now reads "USD Coin" rather than "USDC", as the Tron rows
+  already did.
+- **A chain has one name for its coin:** `history_chain_meta` overrode four
+  chains with "history-specific" names. Two (`Toncoin`, `Internet Computer`)
+  were what the catalog already said. The other two were a second source of
+  truth for one asset's name, so history rows read "Stellar Lumens" and "NEAR
+  Protocol" while every other screen read "Stellar" and "NEAR"; they read the
+  catalog's name now. CLI check:
+  `cargo test -p spectra_core every_chain_shape_normalizes_to_its_expected_row`,
+  which gained a TRC-20 the old table could not name and a ticker nothing can.
+- **The receive message asks the registry, not the symbol:** the input carried
+  the coin's symbol and an `is_evm_chain` flag Swift computed from its own
+  catalog, and the branches matched `symbol == "BTC"` and `("BCH", "Bitcoin
+  Cash")` pairs. It takes the chain name, resolves it once, and reads the
+  family off `supports_deep_utxo_discovery` and `is_evm` — so the testnets of
+  Bitcoin Cash, Bitcoin SV, Litecoin and Dogecoin, which matched none of those
+  pairs and were told "Receive is not enabled for this chain", get their
+  family's message, and a testnet names itself rather than its mainnet. The
+  per-chain hint copy stays a table, keyed by `Chain` so that renaming a chain
+  in the catalog cannot silently drop it. An address of blanks is no longer
+  returned as the receive address. iOS passes the shown chain's watch address
+  rather than Dogecoin's, which is what the flag was always named. CLI check:
+  `cargo test -p spectra_core receive::tests`.
+- **NEAR's gas floor is core's:** a NEP-141 send refused below `0.001` NEAR,
+  written into the iOS submit branch beside the balance it compared. It is
+  `Chain::token_send_gas_reserve` and rides on the preflight, so the number is
+  stated once, for the chain it is about, and only on the path that needs it —
+  a native send pays its fee from the amount it moves. The three gas-balance
+  lookups that spelled out `("Tron", "TRX")`, `("Solana", "SOL")` and
+  `("NEAR", "NEAR")` read the catalog's pair. CLI check:
+  `cargo test -p spectra_core a_near_token_send_carries_the_chains_gas_floor`.
+- **The dashboard's default pins are core's:** iOS held `["BTC", "ETH",
+  "USDT", "USDC"]`, so a fresh wallet's pin cards showed four assets that
+  core's own grouping did not mark pinned, did not order first, and gave no row
+  to when the wallet held none of them. `AppSettings::pinned_dashboard_assets`
+  answers with `DEFAULT_PINNED_DASHBOARD_ASSETS` while nothing is pinned, and
+  both sides read that. Storage is unchanged: empty still means "not chosen",
+  and clearing the pins is still a real change with an event. CLI check:
+  `cargo test -p spectra_core an_unpinned_dashboard_reads_as_the_default_four`.
+- **Symbols that were chain facts:** the Tron send preview's `symbol == "TRX"`,
+  and `supports_solana_send` / `supports_near_token_send` testing `"Solana"`,
+  `"SOL"`, `"NEAR"`, now read `chain_display_name`, `coin_symbol` and
+  `str_id` off the registry entry. No behaviour change — the strings agreed
+  with the catalog. They are the ones that would not have, later.
+
+### The receive screen asks where an address comes from, not which chain it is
+
+- **`ReceiveAddressResolverKind` is `ReceiveAddressSource`:** twenty-five
+  variants, one per chain, picked from a table of `(symbol, chain display
+  name, is_evm_chain)` — and the single caller switched on four of them and
+  sent two of those four down the same path. The chains a variant named have
+  nothing in common but the rule they land on, so the enum is the three rules:
+  the wallet's stored Bitcoin account address, the address stored for the
+  chain, or nothing. `core_receive_address_source` takes the chain name alone.
+- **A ticker is not a chain:** the table's first arm was `("BTC", _)`, so any
+  holding whose symbol read BTC — on any chain — was shown the wallet's
+  Bitcoin address as its receive address. Nine other arms required the ticker
+  to agree with the chain (`("ZEC", "Zcash")`, `("LTC", "Litecoin")`, …), so a
+  holding whose symbol did not spell its chain's resolved to no address at all
+  and the screen said receive was not enabled. What a receive address is read
+  from is a fact about the chain, and a token is received at the same address
+  as its chain's coin.
+- **`is_evm_chain` is gone from this boundary too:** Swift passed its own
+  answer and core dispatched the whole EVM family off it. The family reads the
+  registry's `address_slot`, which already says the EVM chains share
+  Ethereum's, so the EVM arm and the general one were the same address by two
+  routes. iOS no longer computes `isEvmChain` here at all.
+- CLI check: `cargo test -p spectra_core a_receive_address_source_is_the_chains_rule_not_its_ticker`,
+  which also holds every chain in the registry to answering a rule — Dogecoin's
+  family aside, which is the one deliberate "nothing to read".

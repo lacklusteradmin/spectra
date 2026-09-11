@@ -142,6 +142,16 @@ pub(super) fn summary_display_balance(
         .unwrap_or(0.0)
 }
 
+/// The same scaling for a token, whose decimals come off its contract rather
+/// than the catalog.
+///
+/// Both send previews that quote a token holding used to divide by a literal:
+/// the EVM one never read a token balance at all, and the Tron one divided
+/// every TRC-20 by `1e6`. A contract's decimals are the contract's.
+pub(super) fn token_display_balance(raw: u128, decimals: u8) -> f64 {
+    raw as f64 / 10f64.powi(i32::from(decimals))
+}
+
 // ── Fee estimate ──────────────────────────────────────────────────────────
 
 /// A chain's fee, quoted in that chain's own native unit.

@@ -155,6 +155,13 @@ pub struct WalletService {
     /// every keypool operation reads it under the keypool's own lock.
     pub(crate) owned_addresses:
         Arc<AsyncRwLock<HashMap<String, Vec<crate::wallet_db::OwnedAddressRecord>>>>,
+    /// ENS names already resolved this run, keyed by the lowercased name.
+    ///
+    /// Not persisted and not authoritative: a name's registration can change,
+    /// and a restart re-asking is correct. It is here because the composer
+    /// resolves on every keystroke of a debounced probe, and the front end
+    /// that used to hold this map also held the rule about when to consult it.
+    pub(crate) ens_resolutions: Arc<AsyncRwLock<HashMap<String, String>>>,
     /// Per-chain operational log, newest first, capped per chain.
     ///
     /// Not in `CoreAppState`: 200 entries × every chain is too much to clone
@@ -210,6 +217,7 @@ impl WalletService {
             owned_addresses: Arc::new(AsyncRwLock::new(HashMap::new())),
             refresh_clock: Arc::new(AsyncRwLock::new(Default::default())),
             operational_events: Arc::new(AsyncRwLock::new(HashMap::new())),
+            ens_resolutions: Arc::new(AsyncRwLock::new(HashMap::new())),
         }))
     }
 

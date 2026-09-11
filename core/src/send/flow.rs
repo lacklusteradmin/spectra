@@ -77,8 +77,12 @@ pub fn normalized_send_address(chain_name: String, address: String) -> String {
 
 /// Heuristic: does the trimmed input look like an ENS name (`foo.eth`, no
 /// spaces, not an 0x-prefixed hex address)?
-#[uniffi::export]
-pub fn is_ens_name_candidate(value: String) -> bool {
+///
+/// Not exported: whether a name is looked up at all is
+/// `Chain::resolves_ens_names`, and `WalletService::resolve_send_destination`
+/// asks both questions together. A caller that could only ask this one had to
+/// supply the other half itself.
+pub(crate) fn is_ens_name_candidate(value: &str) -> bool {
     let normalized = value.trim().to_lowercase();
     normalized.ends_with(".eth") && !normalized.contains(' ') && !normalized.starts_with("0x")
 }
@@ -295,6 +299,58 @@ fn simple(
 mod tests {
     use super::*;
 
+    /// The rule is the chain's, so a testnet takes its family's and a token
+    /// takes its chain's. Twenty-five variants and a `(symbol, chain)` table
+    /// used to decide this, and the table's first arm matched a ticker alone.
+    #[test]
+    fn a_receive_address_source_is_the_chains_rule_not_its_ticker() {
+        use crate::registry::Chain;
+        let source = |chain: Chain| core_receive_address_source(chain.chain_display_name().into());
+
+        assert_eq!(source(Chain::Bitcoin), ReceiveAddressSource::BitcoinAccount);
+        assert_eq!(
+            source(Chain::BitcoinSignet),
+            ReceiveAddressSource::BitcoinAccount
+        );
+        assert_eq!(source(Chain::Dogecoin), ReceiveAddressSource::Unavailable);
+        assert_eq!(
+            source(Chain::DogecoinTestnet),
+            ReceiveAddressSource::Unavailable
+        );
+        for chain in [
+            Chain::Ethereum,
+            Chain::Base,
+            Chain::Tron,
+            Chain::Solana,
+            Chain::Monero,
+            Chain::Zcash,
+            Chain::LitecoinTestnet,
+        ] {
+            assert_eq!(
+                source(chain),
+                ReceiveAddressSource::StoredForChain,
+                "{chain:?}"
+            );
+        }
+        assert_eq!(
+            core_receive_address_source("Nowhere".into()),
+            ReceiveAddressSource::Unavailable
+        );
+
+        // Every chain the registry knows answers a rule, Dogecoin's family
+        // aside. The old table's arms required the ticker to agree with the
+        // chain, so a symbol that did not spell its chain's — a token on one
+        // of the UTXO chains, a renamed coin — fell through to no address at
+        // all, which the receive screen shows as "not enabled".
+        for chain in Chain::all().filter(|c| c.mainnet_counterpart() != Chain::Dogecoin) {
+            assert_ne!(
+                source(chain),
+                ReceiveAddressSource::Unavailable,
+                "{chain:?} has no receive address source",
+            );
+        }
+    }
+
     fn utxo_preview() -> BitcoinSendPreview {
         BitcoinSendPreview {
             estimatedNetworkFee: 0.5,
@@ -405,15 +461,15 @@ mod tests {
 
     #[test]
     fn ens_candidate_positive() {
-        assert!(is_ens_name_candidate("vitalik.eth".into()));
-        assert!(is_ens_name_candidate("  Foo.ETH  ".into()));
+        assert!(is_ens_name_candidate("vitalik.eth"));
+        assert!(is_ens_name_candidate("  Foo.ETH  "));
     }
 
     #[test]
     fn ens_candidate_negative() {
-        assert!(!is_ens_name_candidate("0xabc.eth".into()));
-        assert!(!is_ens_name_candidate("foo .eth".into()));
-        assert!(!is_ens_name_candidate("foo.com".into()));
+        assert!(!is_ens_name_candidate("0xabc.eth"));
+        assert!(!is_ens_name_candidate("foo .eth"));
+        assert!(!is_ens_name_candidate("foo.com"));
     }
 }
 
@@ -543,8 +599,7 @@ pub fn core_evaluate_high_risk_send_reasons(
     // second look.
     let is_ens_foreign_chain = is_evm
         && chain.is_some_and(|c| c.mainnet_counterpart() != crate::registry::Chain::Ethereum);
-    let is_ens_candidate =
-        lowered.ends_with(".eth") && !lowered.contains(' ') && !lowered.starts_with("0x");
+    let is_ens_candidate = is_ens_name_candidate(&lowered);
 
     if is_evm {
         let looks_non_evm = lowered.starts_with("bc1")
@@ -943,76 +998,42 @@ pub fn seed_derivation_chain_raw(chain: crate::registry::Chain) -> Option<String
     Some(raw.to_string())
 }
 
-// Routes `(symbol, chain_name, is_evm_chain)` to the resolver that produces the
-// receive address for that combination.
-
-#[derive(Debug, Clone, PartialEq, Eq, uniffi::Enum)]
-pub enum ReceiveAddressResolverKind {
-    BitcoinLegacy,
-    BitcoinCash,
-    BitcoinSv,
-    Litecoin,
-    DogecoinNone,
-    Evm,
-    Tron,
-    Solana,
-    Cardano,
-    Xrp,
-    Stellar,
-    Monero,
-    Sui,
-    Aptos,
-    Ton,
-    Icp,
-    Near,
-    Polkadot,
-    Zcash,
-    BitcoinGold,
-    Decred,
-    Kaspa,
-    Dash,
-    Bittensor,
-    None,
+/// Where the receive screen reads the address it shows for a chain.
+///
+/// This was `ReceiveAddressResolverKind`: twenty-five variants, one per chain,
+/// chosen by a table of `(symbol, chain display name)` pairs — and the one
+/// caller switched on four of them, because the chains a variant named have
+/// nothing in common but the rule they land on. The rule is what this says.
+///
+/// Dispatching on the symbol was also wrong in a way the chains cannot be: the
+/// first arm was `("BTC", _)`, so any holding whose ticker read BTC — on any
+/// chain — was shown the wallet's Bitcoin address.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, uniffi::Enum)]
+pub enum ReceiveAddressSource {
+    /// The wallet's stored Bitcoin address, whichever Bitcoin network is
+    /// selected.
+    BitcoinAccount,
+    /// The address stored for the chain — by its mainnet counterpart, since a
+    /// testnet shares its family's slot, and the EVM family shares Ethereum's.
+    StoredForChain,
+    /// Nothing to read. Dogecoin resolves no address of its own, so a typed
+    /// watch address is all it ever shows, and a chain the registry does not
+    /// know has no slot at all.
+    Unavailable,
 }
 
+/// Which of those a chain uses. Takes the chain and nothing else: what a
+/// receive address is read from is a fact about the chain, and a token on one
+/// is received at the same address as its coin.
 #[uniffi::export]
-pub fn core_receive_address_resolver(
-    symbol: String,
-    chain_name: String,
-    is_evm_chain: bool,
-) -> ReceiveAddressResolverKind {
-    // Collapse testnets onto their mainnet counterpart so the resolver
-    // dispatch table stays mainnet-only. Both share the same derivation
-    // engine + address shape; only the network parameter differs.
-    let dispatch_name: String = crate::registry::Chain::from_display_name(&chain_name)
-        .map(|c| c.mainnet_counterpart().chain_display_name().to_string())
-        .unwrap_or(chain_name.clone());
-    match (symbol.as_str(), dispatch_name.as_str()) {
-        ("BTC", _) => ReceiveAddressResolverKind::BitcoinLegacy,
-        ("BCH", "Bitcoin Cash") => ReceiveAddressResolverKind::BitcoinCash,
-        ("BSV", "Bitcoin SV") => ReceiveAddressResolverKind::BitcoinSv,
-        ("LTC", "Litecoin") => ReceiveAddressResolverKind::Litecoin,
-        ("DOGE", "Dogecoin") => ReceiveAddressResolverKind::DogecoinNone,
-        _ if is_evm_chain => ReceiveAddressResolverKind::Evm,
-        (_, "Tron") => ReceiveAddressResolverKind::Tron,
-        (_, "Solana") => ReceiveAddressResolverKind::Solana,
-        (_, "Cardano") => ReceiveAddressResolverKind::Cardano,
-        (_, "XRP Ledger") => ReceiveAddressResolverKind::Xrp,
-        (_, "Stellar") => ReceiveAddressResolverKind::Stellar,
-        (_, "Monero") => ReceiveAddressResolverKind::Monero,
-        (_, "Sui") => ReceiveAddressResolverKind::Sui,
-        (_, "Aptos") => ReceiveAddressResolverKind::Aptos,
-        (_, "TON") => ReceiveAddressResolverKind::Ton,
-        (_, "Internet Computer") => ReceiveAddressResolverKind::Icp,
-        (_, "NEAR") => ReceiveAddressResolverKind::Near,
-        (_, "Polkadot") => ReceiveAddressResolverKind::Polkadot,
-        ("ZEC", "Zcash") => ReceiveAddressResolverKind::Zcash,
-        ("BTG", "Bitcoin Gold") => ReceiveAddressResolverKind::BitcoinGold,
-        ("DCR", "Decred") => ReceiveAddressResolverKind::Decred,
-        ("KAS", "Kaspa") => ReceiveAddressResolverKind::Kaspa,
-        ("DASH", "Dash") => ReceiveAddressResolverKind::Dash,
-        ("TAO", "Bittensor") => ReceiveAddressResolverKind::Bittensor,
-        _ => ReceiveAddressResolverKind::None,
+pub fn core_receive_address_source(chain_name: String) -> ReceiveAddressSource {
+    let Some(chain) = crate::registry::Chain::from_display_name(&chain_name) else {
+        return ReceiveAddressSource::Unavailable;
+    };
+    match chain.mainnet_counterpart() {
+        crate::registry::Chain::Bitcoin => ReceiveAddressSource::BitcoinAccount,
+        crate::registry::Chain::Dogecoin => ReceiveAddressSource::Unavailable,
+        _ => ReceiveAddressSource::StoredForChain,
     }
 }
 

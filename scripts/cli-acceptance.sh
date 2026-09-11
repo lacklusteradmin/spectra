@@ -732,14 +732,39 @@ contains "and both fitting is affordable" '"verdict":"affordable"' \
 section "send destination probe"
 # The recipient check the composer runs. Swift held it as four chain arms that
 # fetched different things and worded the answer three ways; core answers with
-# two booleans and the front end supplies the sentence. Only the offline half
-# is assertable here — the verdict itself is a balance and a history read.
+# two booleans and the front end supplies the sentence.
+#
+# Named by wallet and asset now, not by a token descriptor the caller builds:
+# which contract an asset is on a chain is a catalog question, and both front
+# ends were reading core's token list to hand it back. Only the offline half is
+# assertable here — the verdict itself is a balance and a history read, and a
+# holding only exists after one.
+check "refuses a wallet that is not there"         1 \
+    spectra send probe --wallet "no such wallet" --to $EVM_ADDR
+check "refuses an asset the wallet does not hold"  $REJECTED \
+    spectra send probe --wallet "Multi 2" --asset ETH --to $EVM_ADDR
 check "refuses a chain the registry does not know" $USAGE \
-    spectra send probe --chain NotAChain --address $EVM_ADDR
-check "refuses half a token description"           $USAGE \
-    spectra send probe --chain Base --address $EVM_ADDR --contract $EVM_ADDR
-check "refuses a token description with no contract" $USAGE \
-    spectra send probe --chain Base --address $EVM_ADDR --symbol USDC --decimals 6
+    spectra send probe --wallet "Multi 2" --asset ETH --chain NotAChain --to $EVM_ADDR
+
+section "send destination resolution"
+# What the composer does with the destination field. Swift asked
+# `chainName == "Ethereum"` in three places to decide whether a `.eth` name is
+# looked up; it is `Chain::resolves_ens_names` now, so the refusals are
+# assertable offline — a name off Ethereum never reaches the network.
+contains "a typed address comes back in the chain's own form" \
+    '"address":"0x742d35cc6634c0532925a3b844bc454e4438f44e"' \
+    spectra --json send destination --chain Base --to $EVM_ADDR
+contains "a typed address is not a name lookup" '"usedEns":false' \
+    spectra --json send destination --chain Bitcoin \
+        --to bc1qar0srrr7xfkvy5l643lydnw9re59gtzzwf5mdq
+check "refuses an empty destination"                 $REJECTED \
+    spectra send destination --chain Ethereum --to "   "
+check "refuses an address from another family"       $REJECTED \
+    spectra send destination --chain Bitcoin --to $EVM_ADDR
+for ens_chain in Arbitrum Base Polygon Bitcoin; do
+    check "refuses a .eth name on $ens_chain"        $REJECTED \
+        spectra send destination --chain $ens_chain --to vitalik.eth
+done
 
 # ── Network selection ───────────────────────────────────────────────────────
 #

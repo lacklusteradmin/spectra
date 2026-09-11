@@ -9,7 +9,7 @@ use spectra_core::send::ethereum::{
 use spectra_core::send::{
     send_affordability, SendAffordability, SendAffordabilityInput, SendExecutionRequest,
 };
-use spectra_core::service::TokenDescriptor;
+use spectra_core::service::WalletService;
 use spectra_core::store::wallet_domain::CoreTransactionKind;
 use spectra_core::store::wallet_secrets;
 
@@ -47,6 +47,8 @@ pub enum SendCommand {
     Assemble(AssembleArgs),
     /// Ask what a recipient address looks like before sending to it.
     Probe(ProbeArgs),
+    /// Resolve what was typed into the address a send would go to.
+    Destination(DestinationArgs),
     /// Ask whether a send can land once the fee is counted.
     Affordability(AffordabilityArgs),
     /// Validate custom EVM gas fees in gwei, without keys or network.
@@ -63,6 +65,7 @@ pub fn run(ctx: &Ctx, out: Out, command: SendCommand) -> CliResult<()> {
         SendCommand::Broadcast(args) => send(ctx, out, args),
         SendCommand::Assemble(args) => assemble(ctx, out, args),
         SendCommand::Probe(args) => probe(ctx, out, args),
+        SendCommand::Destination(args) => destination(ctx, out, args),
         SendCommand::Affordability(args) => affordability(out, args),
         SendCommand::Fees(args) => fees(out, args),
         SendCommand::Overrides(args) => overrides(out, args),
@@ -317,62 +320,85 @@ fn affordability(out: Out, args: AffordabilityArgs) -> CliResult<()> {
 
 #[derive(Args)]
 pub struct ProbeArgs {
-    /// Chain the destination is on.
+    /// Wallet the send would come from (id, name or address).
     #[arg(long)]
-    chain: String,
-    /// Recipient address to look at.
+    wallet: String,
+    /// Asset symbol being sent. Defaults to the wallet chain's own asset.
     #[arg(long)]
-    address: String,
-    /// Token contract, when sending a token rather than the chain's own asset.
+    asset: Option<String>,
+    /// Narrows the asset to one chain, for a symbol the wallet holds on several.
     #[arg(long)]
-    contract: Option<String>,
-    /// Token symbol. Required with --contract.
+    chain: Option<String>,
+    /// Recipient, as the user would type it.
     #[arg(long)]
-    symbol: Option<String>,
-    /// Token decimals. Required with --contract.
-    #[arg(long)]
-    decimals: Option<u8>,
+    to: String,
 }
 
 /// The recipient check the send composer runs, on the command line.
 ///
+/// Named by wallet and asset, because which contract an asset is on a chain is
+/// a catalog question and the catalog is core's. The composer used to answer it
+/// — reading core's token preferences to hand a descriptor straight back — and
+/// so did this command, through three flags a caller had to keep consistent
+/// with the row core already had.
+///
 /// Core answers with two booleans and nothing else; the sentence a user reads
 /// is built by whichever front end asked, from its own strings.
 fn probe(ctx: &Ctx, out: Out, args: ProbeArgs) -> CliResult<()> {
-    let chain = resolve_chain(&args.chain)?;
-    let service = service_for_chain(chain, BALANCE | HISTORY | RPC)?;
+    let wallet = ctx.find_wallet(&args.wallet)?;
+    let wallet_chain = resolve_chain(&wallet.chain_name)?;
+    let symbol = args
+        .asset
+        .clone()
+        .unwrap_or_else(|| wallet_chain.coin_symbol().to_string());
+    let on_chain = args.chain.as_deref().map(resolve_chain).transpose()?;
 
-    let token = match (args.contract, args.symbol, args.decimals) {
-        (Some(contract), Some(symbol), Some(decimals)) => Some(TokenDescriptor {
-            contract,
-            symbol,
-            decimals,
-            name: None,
-        }),
-        (Some(_), _, _) => return Err(CliError::usage("--contract needs --symbol and --decimals")),
-        (None, Some(_), _) | (None, _, Some(_)) => {
-            return Err(CliError::usage("--symbol and --decimals need --contract"))
+    let candidates: Vec<&spectra_core::store::wallet_domain::AssetHolding> = wallet
+        .holdings
+        .iter()
+        .filter(|h| h.symbol.eq_ignore_ascii_case(&symbol))
+        .filter(|h| on_chain.is_none_or(|c| c.chain_display_name() == h.chain_name))
+        .collect();
+    let holding = match candidates.as_slice() {
+        [] => {
+            return Err(CliError::rejected(format!(
+                "wallet {} holds no {symbol}",
+                wallet.id
+            )))
         }
-        (None, None, None) => None,
+        [one] => *one,
+        many => {
+            let chains: Vec<&str> = many.iter().map(|h| h.chain_name.as_str()).collect();
+            return Err(CliError::usage(format!(
+                "{symbol} is held on {} — narrow it with --chain",
+                chains.join(", ")
+            )));
+        }
     };
-    let asset = token
-        .as_ref()
-        .map(|t| t.symbol.clone())
-        .unwrap_or_else(|| chain.coin_symbol().to_string());
+    let chain = resolve_chain(&holding.chain_name)?;
 
+    // Both halves in one service: the holding and the token row come from the
+    // opened state, the balance and history reads from the chain's endpoints.
+    let service = service_for_chain(chain, BALANCE | HISTORY | RPC)?;
+    ctx.rt
+        .block_on(service.open_state(ctx.db_path()))
+        .map_err(CliError::from)?;
+
+    let holding_key = format!("{}|{}", holding.chain_name, holding.symbol);
     let risk = ctx
         .rt
         .block_on(service.send_destination_risk(
-            chain.str_id().to_string(),
-            args.address.clone(),
-            token,
+            wallet.id.clone(),
+            holding_key,
+            args.to.clone(),
         ))
         .map_err(CliError::from)?;
 
     out.text(|| {
         println!();
-        out::field("address", &args.address);
-        out::field("asset", &asset);
+        out::field("destination", &args.to);
+        out::field("asset", &holding.symbol);
+        out::field("chain", chain.chain_display_name());
         out::field(
             "balance",
             if risk.balance_is_zero {
@@ -385,11 +411,59 @@ fn probe(ctx: &Ctx, out: Out, args: ProbeArgs) -> CliResult<()> {
     });
     out.emit(serde_json::json!({
         "ok": true,
+        "wallet": wallet.id,
         "chain": chain.chain_display_name(),
-        "address": args.address,
-        "asset": asset,
+        "destination": args.to,
+        "asset": holding.symbol,
         "balanceIsZero": risk.balance_is_zero,
         "hasHistory": risk.has_history,
+    }));
+    Ok(())
+}
+
+#[derive(Args)]
+pub struct DestinationArgs {
+    /// Chain the send is on.
+    #[arg(long)]
+    chain: String,
+    /// What the user typed: an address, or a name on a chain that resolves one.
+    #[arg(long)]
+    to: String,
+}
+
+/// What the composer does with the destination field, on the command line.
+///
+/// Whether a `.eth` name is looked up is the chain's, not the caller's, so
+/// this needs no flag to say "try ENS": ask any other chain and the name is
+/// refused without a request leaving the machine.
+fn destination(ctx: &Ctx, out: Out, args: DestinationArgs) -> CliResult<()> {
+    let chain = resolve_chain(&args.chain)?;
+    // Only the name lookup needs a node, and only the chain that registers
+    // names does one — everywhere else this is address validation, so binding
+    // endpoints would refuse chains that have no RPC role for a question that
+    // never asks a node anything.
+    let service = if chain.resolves_ens_names() {
+        service_for_chain(chain, RPC)?
+    } else {
+        WalletService::new_typed(Vec::new()).map_err(CliError::from)?
+    };
+    let resolved = ctx
+        .rt
+        .block_on(service.resolve_send_destination(chain.str_id().to_string(), args.to.clone()))
+        .map_err(CliError::from)?;
+
+    out.text(|| {
+        println!();
+        out::field("typed", &args.to);
+        out::field("address", &resolved.address);
+        out::field("via", if resolved.used_ens { "ENS" } else { "typed" });
+    });
+    out.emit(serde_json::json!({
+        "ok": true,
+        "chain": chain.chain_display_name(),
+        "typed": args.to,
+        "address": resolved.address,
+        "usedEns": resolved.used_ens,
     }));
     Ok(())
 }
@@ -735,13 +809,12 @@ pub fn assemble(_ctx: &Ctx, out: Out, args: AssembleArgs) -> CliResult<()> {
         )));
     }
 
-    let amount: f64 = args
-        .amount
-        .trim()
-        .parse()
-        .ok()
-        .filter(|value: &f64| value.is_finite() && *value >= 0.0)
-        .ok_or_else(|| CliError::usage(format!("{:?} is not an amount", args.amount)))?;
+    // The typed decimal goes through untouched. Parsing it to an `f64` here
+    // and letting the assembler shift that is what printed `--amount 1.1` as
+    // 1100000000000000089 wei — 89 more than `spectra send broadcast` signs for
+    // the same input, from the command whose whole job is showing what a send
+    // would sign. The assembler validates it against the asset's precision.
+    let amount = args.amount.trim().to_string();
 
     let symbol = args
         .symbol

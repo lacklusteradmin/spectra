@@ -1,16 +1,23 @@
 // Builds the user-facing string shown on the receive screen — the address
 // itself, or an explanation of why there isn't one yet.
 
+use crate::registry::Chain;
+
+/// Said for a chain the registry does not know and for one with no receive
+/// path — the screen has nothing to show either way.
+const NOT_ENABLED: &str = "Receive is not enabled for this chain.";
+
 /// Inputs needed to render the user-facing receive-address string for the
 /// current wallet + chain selection.
+///
+/// It also carried the coin's symbol and an `is_evm_chain` flag Swift computed
+/// from its own catalog — a chain fact answered off-registry, and the reason
+/// the branches below matched on `("BCH", "Bitcoin Cash")` string pairs while
+/// the enum that knows both sat one call away.
 #[derive(Debug, Clone, uniffi::Record)]
 pub struct ReceiveAddressMessageInput {
     /// The selected coin's chain name (e.g. "Bitcoin", "Ethereum").
     pub chain_name: String,
-    /// The selected coin's symbol (e.g. "BTC", "ETH").
-    pub symbol: String,
-    /// True if `chain_name` is an EVM chain per Swift's catalog.
-    pub is_evm_chain: bool,
     /// Address resolved live (via refresh). Empty if not yet resolved.
     pub resolved_address: String,
     /// Persisted / derived address for the chain on this wallet. `None` if
@@ -18,18 +25,40 @@ pub struct ReceiveAddressMessageInput {
     pub chain_address: Option<String>,
     /// True if a seed phrase is stored for the wallet.
     pub has_seed: bool,
-    /// True if a watch-only address was typed / imported for the chain.
+    /// True if a watch-only address was typed / imported for this chain.
     pub has_watch_address: bool,
     /// True while a live resolve request is in flight.
     pub is_resolving: bool,
+}
+
+/// What the receive screen tells a user to add when a chain has no address.
+///
+/// Copy rather than a chain fact, which is why it is a table and not a catalog
+/// column — but keyed by the chain, so renaming one in the catalog cannot
+/// silently drop it to "Receive is not enabled for this chain" the way a table
+/// of display-name strings did.
+fn receive_watch_hint(chain: Chain) -> Option<&'static str> {
+    Some(match chain {
+        Chain::Tron => "seed phrase or TRON watch address",
+        Chain::Solana => "seed phrase or SOL watch address",
+        Chain::Cardano => "seed phrase",
+        Chain::Xrp => "seed phrase or XRP watch address",
+        Chain::Stellar => "seed phrase or Stellar watch address",
+        Chain::Monero => "a Monero address",
+        Chain::Sui => "seed phrase or Sui watch address",
+        Chain::Aptos => "seed phrase or Aptos watch address",
+        Chain::Ton => "seed phrase or TON watch address",
+        Chain::Icp => "seed phrase or ICP watch address",
+        Chain::Near => "seed phrase or NEAR watch address",
+        Chain::Polkadot => "seed phrase or Polkadot watch address",
+        _ => return None,
+    })
 }
 
 #[uniffi::export]
 pub fn receive_address_message(input: ReceiveAddressMessageInput) -> String {
     let ReceiveAddressMessageInput {
         chain_name,
-        symbol,
-        is_evm_chain,
         resolved_address,
         chain_address,
         has_seed,
@@ -37,126 +66,79 @@ pub fn receive_address_message(input: ReceiveAddressMessageInput) -> String {
         is_resolving,
     } = input;
 
-    // Helper: build the UTXO-style message (BTC, BCH, BSV, LTC) which share a
-    // common pattern: resolved-first, then fallback address, then missing-seed
-    // message, then loading/tap message.
-    let utxo_missing_seed_msg = |name: &str, symbol_label: &str| -> String {
-        format!(
-            "{name} receive unavailable. Open Edit Name and add the seed phrase or {symbol_label} watch address."
-        )
+    let Some(chain) = Chain::from_display_name(&chain_name) else {
+        return NOT_ENABLED.to_string();
     };
-    let utxo_loading_msg = |name: &str| -> String {
+    let name = chain.chain_display_name();
+    let loading = || {
         if is_resolving {
             format!("Loading {name} receive address...")
         } else {
             format!("Tap Refresh or reopen Receive to resolve a {name} address.")
         }
     };
+    let missing =
+        |what: &str| format!("{name} receive unavailable. Open Edit Name and add the {what}.");
 
-    let chain_address_trimmed = chain_address
-        .as_deref()
+    // An address of blanks is not an address. The EVM and "simple" arms used
+    // to return the untrimmed value, so a stored `" "` rendered as the receive
+    // address itself.
+    let chain_address = chain_address
         .map(|s| s.trim().to_string())
         .filter(|s| !s.is_empty());
 
-    // Bitcoin.
-    if symbol == "BTC" {
+    // The UTXO family — one branch, from the same flag that decides whether a
+    // receive index is reserved at all. Four `(symbol, chain name)` pairs used
+    // to spell it, so the testnets of three of them fell past every arm to
+    // "Receive is not enabled for this chain".
+    if chain.supports_deep_utxo_discovery() {
         if !resolved_address.is_empty() {
             return resolved_address;
         }
-        if let Some(addr) = chain_address_trimmed {
+        if let Some(addr) = chain_address {
             return addr;
         }
-        if !has_seed {
-            return utxo_missing_seed_msg("Bitcoin", "BTC");
+        // Dogecoin resolves no address of its own, so a typed watch address is
+        // the only thing it can show and the seed is not required.
+        let can_resolve = if chain.mainnet_counterpart() == Chain::Dogecoin {
+            has_seed || has_watch_address
+        } else {
+            has_seed
+        };
+        if !can_resolve {
+            return missing(&format!(
+                "seed phrase or {} watch address",
+                chain.coin_symbol()
+            ));
         }
-        return utxo_loading_msg("Bitcoin");
+        return loading();
     }
 
-    // BCH / BSV / LTC share the same template.
-    let utxo_match: Option<(&str, &str)> = match (symbol.as_str(), chain_name.as_str()) {
-        ("BCH", "Bitcoin Cash") => Some(("Bitcoin Cash", "BCH")),
-        ("BSV", "Bitcoin SV") => Some(("Bitcoin SV", "BSV")),
-        ("LTC", "Litecoin") => Some(("Litecoin", "LTC")),
-        _ => None,
+    // EVM: one derived address serves every chain in the family.
+    if chain.is_evm() {
+        let Some(evm) = chain_address else {
+            return missing("seed phrase");
+        };
+        return if resolved_address.is_empty() {
+            evm
+        } else {
+            resolved_address
+        };
+    }
+
+    // Everything else resolves one address, and differs only in what a user
+    // has to add for it to exist. A testnet asks for its mainnet's.
+    let Some(hint) = receive_watch_hint(chain.mainnet_counterpart()) else {
+        return NOT_ENABLED.to_string();
     };
-    if let Some((name, sym)) = utxo_match {
-        if !resolved_address.is_empty() {
-            return resolved_address;
-        }
-        if let Some(addr) = chain_address_trimmed {
-            return addr;
-        }
-        if !has_seed {
-            return utxo_missing_seed_msg(name, sym);
-        }
-        return utxo_loading_msg(name);
-    }
-
-    // Dogecoin has a slightly different guard (seed OR watch address).
-    if symbol == "DOGE" && chain_name == "Dogecoin" {
-        if !resolved_address.is_empty() {
-            return resolved_address;
-        }
-        if !has_seed && !has_watch_address {
-            return "Dogecoin receive unavailable. Open Edit Name and add a seed phrase or DOGE watch address.".to_string();
-        }
-        return utxo_loading_msg("Dogecoin");
-    }
-
-    // EVM: `chain_address` carries the resolved EVM address if derivable; if
-    // absent we return the missing-seed prompt.
-    if is_evm_chain {
-        match chain_address {
-            None => {
-                return format!(
-                    "{chain_name} receive unavailable. Open Edit Name and add the seed phrase."
-                );
-            }
-            Some(evm) => {
-                return if resolved_address.is_empty() {
-                    evm
-                } else {
-                    resolved_address
-                };
-            }
-        }
-    }
-
-    // "Simple" chains: Swift passes a resolver hint string; we embed it here
-    // per chain.
-    let simple: Option<&str> = match chain_name.as_str() {
-        "Tron" => Some("seed phrase or TRON watch address"),
-        "Solana" => Some("seed phrase or SOL watch address"),
-        "Cardano" => Some("seed phrase"),
-        "XRP Ledger" => Some("seed phrase or XRP watch address"),
-        "Stellar" => Some("seed phrase or Stellar watch address"),
-        "Monero" => Some("a Monero address"),
-        "Sui" => Some("seed phrase or Sui watch address"),
-        "Aptos" => Some("seed phrase or Aptos watch address"),
-        "TON" => Some("seed phrase or TON watch address"),
-        "Internet Computer" => Some("seed phrase or ICP watch address"),
-        "NEAR" => Some("seed phrase or NEAR watch address"),
-        "Polkadot" => Some("seed phrase or Polkadot watch address"),
-        _ => None,
+    let Some(addr) = chain_address else {
+        return missing(hint);
     };
-    if let Some(hint) = simple {
-        match chain_address {
-            None => {
-                return format!(
-                    "{chain_name} receive unavailable. Open Edit Name and add the {hint}."
-                );
-            }
-            Some(addr) => {
-                return if resolved_address.is_empty() {
-                    addr
-                } else {
-                    resolved_address
-                };
-            }
-        }
+    if resolved_address.is_empty() {
+        addr
+    } else {
+        resolved_address
     }
-
-    "Receive is not enabled for this chain.".to_string()
 }
 
 /// Returns the next integer to use for a default "Wallet N" name, given the
@@ -183,8 +165,6 @@ mod tests {
     fn base() -> ReceiveAddressMessageInput {
         ReceiveAddressMessageInput {
             chain_name: "Bitcoin".into(),
-            symbol: "BTC".into(),
-            is_evm_chain: false,
             resolved_address: String::new(),
             chain_address: None,
             has_seed: false,
@@ -227,7 +207,6 @@ mod tests {
     #[test]
     fn bch_template() {
         let mut i = base();
-        i.symbol = "BCH".into();
         i.chain_name = "Bitcoin Cash".into();
         i.has_seed = true;
         let msg = receive_address_message(i);
@@ -240,7 +219,6 @@ mod tests {
     #[test]
     fn doge_requires_seed_or_watch() {
         let mut i = base();
-        i.symbol = "DOGE".into();
         i.chain_name = "Dogecoin".into();
         let msg = receive_address_message(i);
         assert!(msg.contains("Dogecoin receive unavailable"));
@@ -249,7 +227,6 @@ mod tests {
     #[test]
     fn doge_watch_only_is_enough() {
         let mut i = base();
-        i.symbol = "DOGE".into();
         i.chain_name = "Dogecoin".into();
         i.has_watch_address = true;
         assert_eq!(
@@ -258,12 +235,46 @@ mod tests {
         );
     }
 
+    /// Four `(symbol, chain name)` pairs spelled this family, so Litecoin's
+    /// testnet matched none of them and was told receive is not enabled.
+    #[test]
+    fn a_utxo_testnet_gets_its_family_message() {
+        let mut i = base();
+        i.chain_name = "Litecoin Testnet".into();
+        assert_eq!(
+            receive_address_message(i),
+            "Litecoin Testnet receive unavailable. Open Edit Name and add the seed phrase or LTC watch address."
+        );
+    }
+
+    /// A chain the registry does not know, and one it knows with no receive
+    /// path, say the same thing.
+    #[test]
+    fn an_unknown_chain_and_a_pathless_one_both_refuse() {
+        let mut unknown = base();
+        unknown.chain_name = "Nowhere".into();
+        assert_eq!(receive_address_message(unknown), NOT_ENABLED);
+        let mut kaspa = base();
+        kaspa.chain_name = "Kaspa".into();
+        assert_eq!(receive_address_message(kaspa), NOT_ENABLED);
+    }
+
+    /// An address of blanks used to be returned as the receive address.
+    #[test]
+    fn a_blank_stored_address_is_not_an_address() {
+        let mut i = base();
+        i.chain_name = "Ethereum".into();
+        i.chain_address = Some("   ".into());
+        assert_eq!(
+            receive_address_message(i),
+            "Ethereum receive unavailable. Open Edit Name and add the seed phrase."
+        );
+    }
+
     #[test]
     fn evm_returns_derived_address_when_resolved_empty() {
         let mut i = base();
         i.chain_name = "Ethereum".into();
-        i.symbol = "ETH".into();
-        i.is_evm_chain = true;
         i.chain_address = Some("0xabc".into());
         assert_eq!(receive_address_message(i), "0xabc");
     }
@@ -272,8 +283,6 @@ mod tests {
     fn evm_unresolvable() {
         let mut i = base();
         i.chain_name = "Arbitrum".into();
-        i.symbol = "ETH".into();
-        i.is_evm_chain = true;
         let msg = receive_address_message(i);
         assert!(msg.starts_with("Arbitrum receive unavailable"));
     }
@@ -282,7 +291,6 @@ mod tests {
     fn simple_chain_tron_unresolvable() {
         let mut i = base();
         i.chain_name = "Tron".into();
-        i.symbol = "TRX".into();
         let msg = receive_address_message(i);
         assert!(msg.contains("seed phrase or TRON watch address"));
     }
@@ -291,7 +299,6 @@ mod tests {
     fn simple_chain_tron_resolved() {
         let mut i = base();
         i.chain_name = "Tron".into();
-        i.symbol = "TRX".into();
         i.chain_address = Some("TXYZ".into());
         assert_eq!(receive_address_message(i), "TXYZ");
     }
@@ -312,7 +319,6 @@ mod tests {
     fn unknown_chain_disabled() {
         let mut i = base();
         i.chain_name = "Nothing".into();
-        i.symbol = "XYZ".into();
         assert_eq!(
             receive_address_message(i),
             "Receive is not enabled for this chain."

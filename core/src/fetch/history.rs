@@ -48,11 +48,10 @@ enum StatusRule {
 enum SymbolOverride {
     /// Native asset only.
     None,
-    /// A row's `symbol` replaces the native one, and doubles as the asset name
-    /// — as Solana's SPL transfers need.
-    NativeOrSymbol,
-    /// As above, but the display name comes from Tron's token table.
-    TronAssetTable,
+    /// A row's `symbol` names its own asset — as Solana's SPL and Tron's
+    /// TRC-20 transfers do. The display name is the token catalog's, and the
+    /// ticker itself for a token the catalog does not carry.
+    RowNamesAsset,
 }
 
 /// Where one chain's history JSON keeps the fields a normalized entry needs,
@@ -167,14 +166,14 @@ fn history_shape(chain: Chain) -> Option<HistoryShape> {
         Chain::Solana => HistoryShape {
             hash: HashField::Text("signature"),
             amount_in_base_units: false,
-            symbol_override: SymbolOverride::NativeOrSymbol,
+            symbol_override: SymbolOverride::RowNamesAsset,
             ..HistoryShape::confirmed_native("amount_display").with_counterparty("from", "to")
         },
 
         // TRC20 transfers, likewise.
         Chain::Tron => HistoryShape {
             amount_in_base_units: false,
-            symbol_override: SymbolOverride::TronAssetTable,
+            symbol_override: SymbolOverride::RowNamesAsset,
             ..HistoryShape::confirmed_native("amount_display")
                 .with_counterparty("from", "to")
                 .with_time("timestamp_ms", 1e3)
@@ -248,7 +247,11 @@ pub fn normalize_chain_history(chain_id: &str, raw_json: &str) -> Vec<ChainHisto
         return vec![];
     };
 
-    let (asset_name, symbol, chain_name) = history_chain_meta(chain);
+    let (asset_name, symbol, chain_name) = (
+        chain.coin_name(),
+        chain.coin_symbol(),
+        chain.chain_display_name(),
+    );
     let factor = 10f64.powi(chain.native_decimals() as i32);
 
     entries
@@ -291,22 +294,31 @@ pub fn normalize_chain_history(chain_id: &str, raw_json: &str) -> Vec<ChainHisto
 
             let (entry_asset, entry_symbol) = match shape.symbol_override {
                 SymbolOverride::None => (asset_name, symbol),
-                SymbolOverride::NativeOrSymbol => {
+                SymbolOverride::RowNamesAsset => {
                     let found = entry["symbol"].as_str().unwrap_or(symbol);
-                    (if found == symbol { asset_name } else { found }, found)
-                }
-                SymbolOverride::TronAssetTable => {
-                    let found = entry["symbol"].as_str().unwrap_or(symbol);
-                    (tron_asset_name(found), found)
+                    if found == symbol {
+                        (asset_name, found)
+                    } else {
+                        let named = crate::tokens::token_name_on_chain(chain.str_id(), found);
+                        (named.unwrap_or(found), found)
+                    }
                 }
             };
 
             let raw_time = &entry[shape.time];
-            let timestamp = raw_time
-                .as_f64()
-                .or_else(|| raw_time.as_str().map(parse_iso8601_timestamp))
-                .unwrap_or(0.0)
-                / shape.time_divisor;
+            // A number is in the shape's own unit — `timestamp_ms`,
+            // `timestamp_ns` — and needs the divisor. A string is RFC 3339 and
+            // parses straight to seconds, so applying the divisor to it too
+            // would put a nanosecond chain's dates in 1970. An unreadable
+            // stamp still yields the row: a transaction with a wrong date is
+            // worth more than a transaction the history does not show.
+            let timestamp = match raw_time.as_f64() {
+                Some(units) => units / shape.time_divisor,
+                None => raw_time
+                    .as_str()
+                    .and_then(parse_iso8601_timestamp)
+                    .unwrap_or(0.0),
+            };
 
             Some(ChainHistoryEntry {
                 kind: if is_incoming { "receive" } else { "send" }.to_string(),
@@ -336,51 +348,109 @@ pub fn normalize_chain_history(chain_id: &str, raw_json: &str) -> Vec<ChainHisto
         .collect()
 }
 
-/// Returns (asset_name, symbol, chain_name) used on `ChainHistoryEntry` rows.
-/// Mostly forwards to Chain's coin/chain display methods; the outliers use
-/// longer history-specific names that Swift expects in transaction lists.
-fn history_chain_meta(chain: Chain) -> (&'static str, &'static str, &'static str) {
-    match chain {
-        Chain::Stellar => ("Stellar Lumens", "XLM", "Stellar"),
-        Chain::Ton => ("Toncoin", "TON", "TON"),
-        Chain::Near => ("NEAR Protocol", "NEAR", "NEAR"),
-        Chain::Icp => ("Internet Computer", "ICP", "Internet Computer"),
-        c => (c.coin_name(), c.coin_symbol(), c.chain_display_name()),
-    }
-}
-
-fn tron_asset_name(symbol: &str) -> &str {
-    match symbol {
-        "TRX" => "Tron",
-        "USDT" => "Tether USD",
-        "USDC" => "USD Coin",
-        "BTT" => "BitTorrent",
-        _ => symbol,
-    }
-}
-
-/// Parse an ISO-8601 timestamp string to Unix seconds.
-/// Falls back to 0.0 on failure.
-fn parse_iso8601_timestamp(s: &str) -> f64 {
-    // Try common formats: "2023-01-01T00:00:00Z" and "2023-01-01T00:00:00+00:00"
-    // Use a manual parser to avoid heavy dependencies.
+/// Parse an RFC 3339 / ISO-8601 timestamp to Unix seconds, or `None` when the
+/// string is not one. The caller decides what an unreadable stamp becomes.
+///
+/// Hand-rolled to keep a date-time crate out of the tree, and hand-rolled
+/// carefully — the parser this replaces got two things wrong that a provider's
+/// response could reach:
+///
+/// - it indexed the string by byte offset without checking char boundaries, so
+///   any non-ASCII character in a response of nineteen bytes or more panicked
+///   inside core rather than failing to parse;
+/// - it read every stamp as UTC, including the `+00:00` form its own comment
+///   claimed to support, so an offset stamp landed hours away from its instant.
+///
+/// It also answered `0.0` for anything it could not read, which is a real date
+/// and not a refusal.
+fn parse_iso8601_timestamp(s: &str) -> Option<f64> {
     let s = s.trim();
-    // Expect at minimum: "YYYY-MM-DDTHH:MM:SS"
-    if s.len() < 19 {
-        return 0.0;
+    // Every byte index below is sound exactly because of this check: a
+    // timestamp is ASCII by definition, and anything else is not one.
+    if !s.is_ascii() {
+        return None;
     }
-    let year: i64 = s[0..4].parse().unwrap_or(0);
-    let month: i64 = s[5..7].parse().unwrap_or(0);
-    let day: i64 = s[8..10].parse().unwrap_or(0);
-    let hour: i64 = s[11..13].parse().unwrap_or(0);
-    let min: i64 = s[14..16].parse().unwrap_or(0);
-    let sec: i64 = s[17..19].parse().unwrap_or(0);
-    if year == 0 || month == 0 || day == 0 {
-        return 0.0;
+    let bytes = s.as_bytes();
+    // `YYYY-MM-DDTHH:MM:SS` is the shortest form read. Fractional seconds and
+    // a zone offset may follow, and are handled by `zone_offset_seconds`.
+    if bytes.len() < 19
+        || bytes[4] != b'-'
+        || bytes[7] != b'-'
+        || !matches!(bytes[10], b'T' | b't' | b' ')
+        || bytes[13] != b':'
+        || bytes[16] != b':'
+    {
+        return None;
     }
-    // Days since Unix epoch (1970-01-01)
-    let days = days_from_civil(year, month, day);
-    (days * 86400 + hour * 3600 + min * 60 + sec) as f64
+
+    let field = |range: std::ops::Range<usize>| -> Option<i64> {
+        let text = s.get(range)?;
+        // `parse` would take a sign, and `+123-01-01…` is not a date.
+        text.bytes()
+            .all(|byte| byte.is_ascii_digit())
+            .then(|| text.parse().ok())
+            .flatten()
+    };
+    let year = field(0..4)?;
+    let month = field(5..7)?;
+    let day = field(8..10)?;
+    let hour = field(11..13)?;
+    let minute = field(14..16)?;
+    let second = field(17..19)?;
+    // Ranges, so a malformed field cannot roll the date somewhere plausible.
+    // Second 60 stays in: a leap second is a real reading.
+    if !(1..=12).contains(&month)
+        || !(1..=31).contains(&day)
+        || hour > 23
+        || minute > 59
+        || second > 60
+    {
+        return None;
+    }
+
+    let wall = days_from_civil(year, month, day) * 86_400 + hour * 3600 + minute * 60 + second;
+    // The fields above are a wall clock in the stamp's own zone; the offset is
+    // how far that zone runs ahead of UTC.
+    Some((wall - zone_offset_seconds(&s[19..])?) as f64)
+}
+
+/// How far the stamp's zone runs ahead of UTC, in seconds.
+///
+/// Accepts `Z`, an empty suffix (both UTC) and `±HH:MM` / `±HHMM` / `±HH`,
+/// each optionally preceded by fractional seconds. Anything else means the
+/// string was not the timestamp it looked like, so it is `None` rather than a
+/// silent zero.
+fn zone_offset_seconds(suffix: &str) -> Option<i64> {
+    // Fractional seconds sit between the seconds field and the zone. Their
+    // precision is below what a history row renders, so they are skipped.
+    let suffix = match suffix.strip_prefix('.') {
+        Some(rest) => rest.trim_start_matches(|c: char| c.is_ascii_digit()),
+        None => suffix,
+    };
+    if suffix.is_empty() || suffix.eq_ignore_ascii_case("Z") {
+        return Some(0);
+    }
+    let (sign, body) = match suffix.as_bytes()[0] {
+        b'+' => (1, &suffix[1..]),
+        b'-' => (-1, &suffix[1..]),
+        _ => return None,
+    };
+    let digits: String = body.chars().filter(|c| *c != ':').collect();
+    if !digits.bytes().all(|byte| byte.is_ascii_digit()) {
+        return None;
+    }
+    let (hours, minutes) = match digits.len() {
+        2 => (digits.parse::<i64>().ok()?, 0),
+        4 => (
+            digits[..2].parse::<i64>().ok()?,
+            digits[2..].parse::<i64>().ok()?,
+        ),
+        _ => return None,
+    };
+    if hours > 23 || minutes > 59 {
+        return None;
+    }
+    Some(sign * (hours * 3600 + minutes * 60))
 }
 
 fn days_from_civil(y: i64, m: i64, d: i64) -> i64 {
@@ -893,12 +963,12 @@ mod normalize_chain_history_tests {
         (
             "stellar",
             r#"[{"txid":"e1","timestamp":"2023-11-14T22:13:20Z","from":"GFrom","to":"GTo","amount_stroops":3000000,"is_incoming":false}]"#,
-            r#"[{"kind":"send","status":"confirmed","asset_name":"Stellar Lumens","symbol":"XLM","chain_name":"Stellar","amount":0.3,"counterparty":"GTo","tx_hash":"e1","block_height":null,"timestamp":1700000000.0}]"#,
+            r#"[{"kind":"send","status":"confirmed","asset_name":"Stellar","symbol":"XLM","chain_name":"Stellar","amount":0.3,"counterparty":"GTo","tx_hash":"e1","block_height":null,"timestamp":1700000000.0}]"#,
         ),
         (
             "stellar",
             r#"[{"txid":"e2","timestamp":1700000008,"from":"GFrom","to":"GTo","amount_stroops":-4000000,"is_incoming":true}]"#,
-            r#"[{"kind":"receive","status":"confirmed","asset_name":"Stellar Lumens","symbol":"XLM","chain_name":"Stellar","amount":0.4,"counterparty":"GFrom","tx_hash":"e2","block_height":null,"timestamp":1700000008.0}]"#,
+            r#"[{"kind":"receive","status":"confirmed","asset_name":"Stellar","symbol":"XLM","chain_name":"Stellar","amount":0.4,"counterparty":"GFrom","tx_hash":"e2","block_height":null,"timestamp":1700000008.0}]"#,
         ),
         (
             "cardano",
@@ -918,7 +988,7 @@ mod normalize_chain_history_tests {
         (
             "solana",
             r#"[{"signature":"h2","timestamp":1700000012,"is_incoming":true,"amount_display":"42.5","symbol":"USDC","from":"sFrom","to":"sTo"}]"#,
-            r#"[{"kind":"receive","status":"confirmed","asset_name":"USDC","symbol":"USDC","chain_name":"Solana","amount":42.5,"counterparty":"sFrom","tx_hash":"h2","block_height":null,"timestamp":1700000012.0}]"#,
+            r#"[{"kind":"receive","status":"confirmed","asset_name":"USD Coin","symbol":"USDC","chain_name":"Solana","amount":42.5,"counterparty":"sFrom","tx_hash":"h2","block_height":null,"timestamp":1700000012.0}]"#,
         ),
         (
             "tron",
@@ -929,6 +999,21 @@ mod normalize_chain_history_tests {
             "tron",
             r#"[{"txid":"i2","timestamp_ms":1700000014000,"from":"TFrom","to":"TTo","amount_display":"3.5","symbol":"TRX","is_incoming":false}]"#,
             r#"[{"kind":"send","status":"confirmed","asset_name":"Tron","symbol":"TRX","chain_name":"Tron","amount":3.5,"counterparty":"TTo","tx_hash":"i2","block_height":null,"timestamp":1700000014.0}]"#,
+        ),
+        // The token catalog names a TRC-20, so every token on the chain has a
+        // name. A four-entry table in this file used to, and TrueUSD was one
+        // of the ones it did not reach.
+        (
+            "tron",
+            r#"[{"txid":"i3","timestamp_ms":1700000014000,"from":"TFrom","to":"TTo","amount_display":"2.0","symbol":"TUSD","is_incoming":true}]"#,
+            r#"[{"kind":"receive","status":"confirmed","asset_name":"TrueUSD","symbol":"TUSD","chain_name":"Tron","amount":2.0,"counterparty":"TFrom","tx_hash":"i3","block_height":null,"timestamp":1700000014.0}]"#,
+        ),
+        // A ticker the catalog does not carry stays the ticker: a row nobody
+        // can name is still a row, and inventing a name for it would be worse.
+        (
+            "tron",
+            r#"[{"txid":"i4","timestamp_ms":1700000014000,"from":"TFrom","to":"TTo","amount_display":"1.0","symbol":"NOTATOKEN","is_incoming":true}]"#,
+            r#"[{"kind":"receive","status":"confirmed","asset_name":"NOTATOKEN","symbol":"NOTATOKEN","chain_name":"Tron","amount":1.0,"counterparty":"TFrom","tx_hash":"i4","block_height":null,"timestamp":1700000014.0}]"#,
         ),
         (
             "sui",
@@ -948,7 +1033,7 @@ mod normalize_chain_history_tests {
         (
             "near",
             r#"[{"txid":"m1","timestamp_ns":1700000018000000000,"signer_id":"nSigner","receiver_id":"nReceiver","amount_yocto":"1500000000000000000000000","is_incoming":false}]"#,
-            r#"[{"kind":"send","status":"confirmed","asset_name":"NEAR Protocol","symbol":"NEAR","chain_name":"NEAR","amount":1.5,"counterparty":"nReceiver","tx_hash":"m1","block_height":null,"timestamp":1700000018.0}]"#,
+            r#"[{"kind":"send","status":"confirmed","asset_name":"NEAR","symbol":"NEAR","chain_name":"NEAR","amount":1.5,"counterparty":"nReceiver","tx_hash":"m1","block_height":null,"timestamp":1700000018.0}]"#,
         ),
         (
             "internet-computer",
@@ -1060,5 +1145,95 @@ mod normalize_chain_history_tests {
             r#"[{"txid":"e","timestamp":"2023-11-14T22:13:20Z","amount_stroops":1,"is_incoming":true}]"#,
         );
         assert_eq!(rows[0].timestamp, 1_700_000_000.0);
+    }
+}
+
+/// A provider's timestamp is a string from the network, so the parser has to
+/// treat it as one: it may be malformed, it may carry a zone, and it may not
+/// be ASCII at all.
+#[cfg(test)]
+mod iso8601_tests {
+    use super::parse_iso8601_timestamp;
+
+    /// `2023-11-14T22:13:20Z` is Unix 1700000000, and every spelling of that
+    /// instant has to reach the same number. The parser this replaces read
+    /// the wall clock and dropped the offset, so the last two of these landed
+    /// eight and five hours away from the first.
+    #[test]
+    fn one_instant_spelled_five_ways_is_one_number() {
+        for spelling in [
+            "2023-11-14T22:13:20Z",
+            "2023-11-14T22:13:20",
+            "2023-11-14t22:13:20z",
+            "2023-11-14 22:13:20",
+            "2023-11-14T22:13:20.123456Z",
+            "2023-11-15T06:13:20+08:00",
+            "2023-11-15T06:13:20+0800",
+            "2023-11-15T06:13:20+08",
+            "2023-11-14T17:13:20-05:00",
+            "  2023-11-14T22:13:20Z  ",
+        ] {
+            assert_eq!(
+                parse_iso8601_timestamp(spelling),
+                Some(1_700_000_000.0),
+                "{spelling}"
+            );
+        }
+    }
+
+    /// The regression: byte-indexing a `&str` at 4, 7, 10, 13 and 16 panics
+    /// when one of those offsets falls inside a multi-byte character. These
+    /// are all at least nineteen bytes, so the old length guard let every one
+    /// of them through and core aborted on a provider's response.
+    #[test]
+    fn a_non_ascii_response_is_refused_and_does_not_panic() {
+        for hostile in [
+            "２０２３-11-14T22:13:20Z",
+            "2023-11-14T22:13:20Z…………",
+            "日本語日本語日本語日本語日本語日本語",
+            "2023-11-14T22:13:2\u{0660}Z",
+        ] {
+            assert_eq!(parse_iso8601_timestamp(hostile), None, "{hostile}");
+        }
+    }
+
+    /// Refusal, not the epoch. `0.0` is 1 January 1970 — a real date that a
+    /// history row renders as one and sorts by.
+    #[test]
+    fn what_is_not_a_timestamp_is_none_rather_than_1970() {
+        for malformed in [
+            "",
+            "2023-11-14",
+            "not a timestamp at all",
+            "2023/11/14T22:13:20Z",
+            "2023-11-14X22:13:20Z",
+            "2023-13-14T22:13:20Z", // month 13
+            "2023-11-32T22:13:20Z", // day 32
+            "2023-11-14T24:13:20Z", // hour 24
+            "2023-11-14T22:60:20Z", // minute 60
+            "2023-11-14T22:13:61Z", // second 61
+            "20a3-11-14T22:13:20Z",
+            "+023-11-14T22:13:20Z",
+            "2023-11-14T22:13:20+24:00", // offset out of range
+            "2023-11-14T22:13:20+8",     // offset too short to read
+            "2023-11-14T22:13:20 UTC",
+        ] {
+            assert_eq!(parse_iso8601_timestamp(malformed), None, "{malformed}");
+        }
+    }
+
+    /// A leap second is a real reading at :60, and the epoch itself is a real
+    /// timestamp rather than the failure value it used to share.
+    #[test]
+    fn leap_seconds_and_the_epoch_itself_parse() {
+        assert_eq!(
+            parse_iso8601_timestamp("2016-12-31T23:59:60Z"),
+            Some(1_483_228_800.0)
+        );
+        assert_eq!(
+            parse_iso8601_timestamp("1970-01-01T00:00:00Z"),
+            Some(0.0),
+            "the epoch parses; it is no longer also the error value"
+        );
     }
 }

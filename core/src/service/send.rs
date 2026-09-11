@@ -10,17 +10,20 @@ use super::*;
 
 #[uniffi::export(async_runtime = "tokio")]
 impl WalletService {
-    /// Does this destination address look unused for the asset being sent?
+    /// Does this destination look unused for the asset this holding sends?
     ///
-    /// `token` is `None` for the chain's own asset and the descriptor for a
-    /// token on it; that is the one thing the caller knows and this does not,
-    /// because which contract a symbol means is a catalog question.
+    /// Named by wallet and holding, not by chain and token descriptor. Which
+    /// contract a symbol means is a catalog question and the catalog is core's,
+    /// so the caller that used to answer it was reading core's token
+    /// preferences to hand them straight back: the composer decided native vs
+    /// token, built the descriptor, clamped its decimals into a `u8`, and
+    /// silently showed no verdict at all when it could not identify the token.
     ///
-    /// Swift ran this as four chain arms — Bitcoin, "every EVM chain", Tron,
-    /// and everything else — that fetched different things and worded the
-    /// answer three different ways. Two of the three wordings were built by
-    /// string interpolation and never reached the locale files, so a Tron or
-    /// EVM token send showed an English warning in a Chinese app.
+    /// Swift also ran the read itself as four chain arms — Bitcoin, "every EVM
+    /// chain", Tron, and everything else — that fetched different things and
+    /// worded the answer three different ways. Two of the three wordings were
+    /// built by string interpolation and never reached the locale files, so a
+    /// Tron or EVM token send showed an English warning in a Chinese app.
     ///
     /// The history signal is one question now: has this address transacted on
     /// this chain. EVM adds the nonce because the balance probe returns it
@@ -28,13 +31,39 @@ impl WalletService {
     /// `utxo_count > 0`, which is not that question — an address that received
     /// and later spent everything has history and no UTXOs, and got a warning
     /// stating it had "no transaction history", which was false.
+    ///
+    /// `destination_input` is what the user typed. Resolving it here rather
+    /// than trusting a caller-supplied address keeps the probe asking about
+    /// the address a send would actually reach; for one already resolved it is
+    /// re-validation and nothing more.
     pub async fn send_destination_risk(
         &self,
-        chain_id: String,
-        address: String,
-        token: Option<TokenDescriptor>,
+        wallet_id: String,
+        holding_key: String,
+        destination_input: String,
     ) -> Result<SendDestinationRisk, SpectraBridgeError> {
-        let chain = chain_for_id(&chain_id)?;
+        let (chain, token) = {
+            let state = self.wallet_state.read().await;
+            let holding = state
+                .wallets
+                .iter()
+                .find(|w| w.id == wallet_id)
+                .and_then(|wallet| {
+                    wallet
+                        .holdings
+                        .iter()
+                        .find(|h| format!("{}|{}", h.chain_name, h.symbol) == holding_key)
+                })
+                .ok_or_else(|| SpectraBridgeError::InvalidInput {
+                    message: format!("no holding {holding_key} on wallet {wallet_id}"),
+                })?;
+            destination_probe_asset(holding, &state.token_preferences)?
+        };
+        let chain_id = chain.str_id().to_string();
+        let address = self
+            .resolve_send_destination(chain_id.clone(), destination_input)
+            .await?
+            .address;
 
         let balance_read = async {
             let display = match token {
@@ -83,6 +112,71 @@ impl WalletService {
         Ok(SendDestinationRisk {
             balance_is_zero: balance <= 0.0,
             has_history,
+        })
+    }
+
+    /// The address this send is going to, from whatever the user typed.
+    ///
+    /// Three Swift call sites answered this — the recipient probe, the EVM
+    /// preview and submit — and each spelled the ENS rule as
+    /// `chainName == "Ethereum"`, kept its own resolved-name cache or went
+    /// without one, and normalized a resolved address in two of the three.
+    /// The rule is `Chain::resolves_ens_names`, the cache is this service's,
+    /// and the address comes back in the form everything downstream compares
+    /// against: an address the address book holds and one a name resolved to
+    /// now match, so a name-reached destination is no longer reported as new.
+    ///
+    /// A name that does not resolve, and any input that is neither a valid
+    /// address for the chain nor a name it will look up, is an error. Nothing
+    /// here guesses a destination.
+    pub async fn resolve_send_destination(
+        &self,
+        chain_id: String,
+        input: String,
+    ) -> Result<SendDestinationResolution, SpectraBridgeError> {
+        let chain = chain_for_id(&chain_id)?;
+        let chain_name = chain.chain_display_name();
+        let typed = input.trim().to_string();
+        if typed.is_empty() {
+            return Err(SpectraBridgeError::InvalidInput {
+                message: format!("enter a {chain_name} destination address"),
+            });
+        }
+        if crate::send::flow::is_valid_send_address(chain_name.to_string(), typed.clone()) {
+            return Ok(SendDestinationResolution {
+                address: crate::send::flow::normalized_send_address(chain_name.to_string(), typed),
+                used_ens: false,
+            });
+        }
+        if !(chain.resolves_ens_names() && crate::send::flow::is_ens_name_candidate(&typed)) {
+            return Err(SpectraBridgeError::InvalidInput {
+                message: format!("enter a valid {chain_name} destination address"),
+            });
+        }
+        let key = typed.to_lowercase();
+        if let Some(hit) = self.ens_resolutions.read().await.get(&key).cloned() {
+            return Ok(SendDestinationResolution {
+                address: hit,
+                used_ens: true,
+            });
+        }
+        let resolved = self
+            .resolve_ens_name_typed(typed.clone())
+            .await?
+            .ok_or_else(|| SpectraBridgeError::InvalidInput {
+                message: format!("unable to resolve ENS name '{typed}'"),
+            })?;
+        // The resolver answers in whatever case it likes; store and return the
+        // chain's own form so a cache hit and a fresh lookup are the same
+        // string.
+        let address = crate::send::flow::normalized_send_address(chain_name.to_string(), resolved);
+        self.ens_resolutions
+            .write()
+            .await
+            .insert(key, address.clone());
+        Ok(SendDestinationResolution {
+            address,
+            used_ens: true,
         })
     }
 
@@ -157,7 +251,9 @@ impl WalletService {
         let overhead = Chain::from_str_id(&chain_id)
             .map(|chain| chain.extra_output_overhead_bytes(&destination_address))
             .unwrap_or(0);
-        Ok(preview.map(|preview| crate::send::preview_decode::with_extra_output_overhead(preview, overhead)))
+        Ok(preview.map(|preview| {
+            crate::send::preview_decode::with_extra_output_overhead(preview, overhead)
+        }))
     }
 
     /// Typed Dogecoin send preview: runs the UTXO fee-preview fetch on the
@@ -1036,6 +1132,23 @@ impl WalletService {
         }
     }
 
+    /// Quote an EVM send: nonce, fee, gas limit, and what is spendable.
+    ///
+    /// "Spendable" is a fact about the asset the amount field moves, and this
+    /// used to answer it with the native balance whatever was being sent — so
+    /// a USDC send offered the sender's ETH balance as its maximum, rendered
+    /// with USDC's own formatter. Gas is always paid in the chain's coin, but
+    /// the amount is not always denominated in it:
+    ///
+    /// - a native transfer spends one asset for both, so its spendable is
+    ///   `balance - fee`;
+    /// - an ERC-20 transfer spends two, so the whole token balance is
+    ///   spendable and the fee is a separate claim on the gas coin.
+    ///
+    /// Which case this is comes off the calldata, not off a caller-supplied
+    /// descriptor: an ERC-20 transfer *is* `transfer(address,uint256)`
+    /// addressed to the token contract, so the selector names the case and
+    /// the contract's own `decimals()` scales the answer.
     pub(crate) async fn fetch_evm_send_preview(
         &self,
         chain_id: &str,
@@ -1061,12 +1174,23 @@ impl WalletService {
         } else {
             Some(&data_hex)
         };
+        // An ERC-20 transfer is addressed to the token contract, so the
+        // destination *is* the token whose balance this send spends.
+        let token_contract = data_opt
+            .filter(|data| crate::fetch::chains::evm::is_erc20_transfer(data))
+            .map(|_| to.as_str());
 
-        let (nonce_res, fee_res, gas_res, bal_res) = tokio::join!(
+        let (nonce_res, fee_res, gas_res, bal_res, token_res) = tokio::join!(
             client.fetch_nonce(&from),
             client.fetch_fee_estimate(),
             client.estimate_gas(&from, &to, value_u128, data_opt),
-            client.fetch_balance(&from)
+            client.fetch_balance(&from),
+            async {
+                match token_contract {
+                    Some(contract) => Some(client.fetch_erc20_balance(contract, &from).await),
+                    None => None,
+                }
+            }
         );
 
         let nonce = nonce_res?;
@@ -1080,9 +1204,22 @@ impl WalletService {
         let estimated_fee_wei: u128 = (gas_limit as u128).saturating_mul(fee.max_fee_per_gas_wei);
         let max_fee_gwei = fee.max_fee_per_gas_wei as f64 / 1_000_000_000.0;
         let priority_fee_gwei = fee.priority_fee_wei as f64 / 1_000_000_000.0;
-        let balance_eth = balance_wei_val as f64 / 1e18;
         let estimated_fee_eth = estimated_fee_wei as f64 / 1e18;
-        let spendable_eth = (balance_wei_val.saturating_sub(estimated_fee_wei)) as f64 / 1e18;
+
+        // A token read that failed is not a zero holding: everything the send
+        // sheet decides from this — whether the amount fits, whether it is the
+        // whole balance — would be decided against a number nobody read.
+        let spendable_balance = match token_res {
+            Some(token) => {
+                let token = token.map_err(SpectraBridgeError::from)?;
+                let raw: u128 = token
+                    .balance_raw
+                    .parse()
+                    .map_err(|_| SpectraBridgeError::from("invalid ERC-20 balance"))?;
+                token_display_balance(raw, token.decimals)
+            }
+            None => (balance_wei_val.saturating_sub(estimated_fee_wei)) as f64 / 1e18,
+        };
 
         Ok(json!({
             "nonce": nonce,
@@ -1090,8 +1227,7 @@ impl WalletService {
             "max_fee_per_gas_gwei": max_fee_gwei,
             "max_priority_fee_per_gas_gwei": priority_fee_gwei,
             "estimated_fee_eth": estimated_fee_eth,
-            "balance_eth": balance_eth,
-            "spendable_eth": spendable_eth,
+            "spendable_balance": spendable_balance,
             "fee_rate_description": format!("Max {:.2} gwei / Priority {:.2} gwei",
                 max_fee_gwei, priority_fee_gwei),
         })
@@ -1107,13 +1243,18 @@ impl WalletService {
         let eps = self.endpoints_for("tron").await;
         let client = TronClient::new(eps);
 
-        let trx_balance = client
-            .fetch_balance(&address)
-            .await
-            .map(|b| b.sun as f64 / 1_000_000.0)
-            .unwrap_or(0.0);
-
-        if symbol == "TRX" || contract_address.is_empty() {
+        // The native asset, by the catalog's gas token rather than the string
+        // "TRX" — the same fact the rest of the send path routes on.
+        if symbol == Chain::Tron.coin_symbol() || contract_address.is_empty() {
+            // TRX is the fee asset as well as the amount, so the fee comes out
+            // of what is spendable. Only this branch needs the TRX balance;
+            // reading it for a token send too was a wasted call whose result
+            // nothing looked at.
+            let trx_balance = client
+                .fetch_balance(&address)
+                .await
+                .map(|b| b.sun as f64 / 1_000_000.0)
+                .map_err(SpectraBridgeError::from)?;
             let fee_trx = 1.0_f64;
             let spendable = (trx_balance - fee_trx).max(0.0);
             return Ok(json!({
@@ -1126,11 +1267,20 @@ impl WalletService {
             .to_string());
         }
 
-        let token_balance = client
-            .fetch_trc20_balance_of(&contract_address, &address)
+        // A TRC-20's decimals are the contract's. `fetch_trc20_balance` reads
+        // `decimals()` alongside the balance; the fixed `1e6` that stood here
+        // is TRX's own scale, and reported an 18-decimal token as 10^12 times
+        // the holding it actually is. Energy is paid in TRX, so the whole
+        // token balance is spendable.
+        let token = client
+            .fetch_trc20_balance(&contract_address, &address)
             .await
-            .map(|raw| raw as f64 / 1_000_000.0)
-            .unwrap_or(0.0);
+            .map_err(SpectraBridgeError::from)?;
+        let raw: u128 = token
+            .balance_raw
+            .parse()
+            .map_err(|_| SpectraBridgeError::from("invalid TRC-20 balance"))?;
+        let token_balance = token_display_balance(raw, token.decimals);
 
         let fee_trx = 15.0_f64;
         let fee_limit_sun: i64 = 15_000_000;
@@ -1230,28 +1380,262 @@ mod fee_estimates_are_typed {
     }
 }
 
+/// A wallet holding one asset, so a probe named by wallet and holding has
+/// something to look up. `token` is `None` for the chain's own asset, and
+/// otherwise the contract and precision of the row that vouches for it —
+/// which goes into the token preferences beside the holding, because an
+/// unvouched token is a refusal rather than a probe.
+#[cfg(test)]
+async fn seed_probe_holding(
+    service: &WalletService,
+    chain: Chain,
+    symbol: &str,
+    token: Option<(&str, u32)>,
+) -> String {
+    use crate::store::state::WalletSummary;
+    use crate::store::wallet_domain::{
+        AssetHolding, CoreTokenHostingChain, CoreTokenPreferenceCategory, CoreTokenPreferenceEntry,
+    };
+    let chain_name = chain.chain_display_name().to_string();
+    let mut state = service.wallet_state.write().await;
+    let mut wallet = WalletSummary::single_address(
+        "probe-wallet",
+        "Probe",
+        chain_name.clone(),
+        "sender",
+        None,
+        false,
+    );
+    wallet.holdings = vec![AssetHolding {
+        name: symbol.to_string(),
+        symbol: symbol.to_string(),
+        coin_gecko_id: String::new(),
+        chain_name: chain_name.clone(),
+        token_standard: String::new(),
+        contract_address: token.map(|(contract, _)| contract.to_string()),
+        amount: 1.0,
+        price_usd: 0.0,
+    }];
+    state.wallets.push(wallet);
+    if let Some((contract, decimals)) = token {
+        let hosting =
+            CoreTokenHostingChain::from_chain_name(&chain_name).expect("the chain hosts tokens");
+        state.token_preferences.push(CoreTokenPreferenceEntry {
+            category: CoreTokenPreferenceCategory::Stablecoin,
+            is_built_in: false,
+            is_enabled: true,
+            token: crate::tokens::TokenEntry {
+                chain: hosting.chain_name().to_string(),
+                name: symbol.to_string(),
+                symbol: symbol.to_string(),
+                token_standard: String::new(),
+                contract: contract.to_string(),
+                coingecko_id: String::new(),
+                decimals,
+                tags: Vec::new(),
+                color: String::new(),
+                asset_name: String::new(),
+                enabled: true,
+            },
+        });
+    }
+    format!("{chain_name}|{symbol}")
+}
+
 #[cfg(test)]
 mod a_destination_probe_refuses_before_it_guesses {
     use crate::service::WalletService;
 
-    /// An unknown chain is an error, not a verdict.
+    /// An asset core cannot identify is an error, not a verdict.
     ///
     /// The shape this replaces had a `default` arm that answered
     /// `(nil, nil)` — no warning — for anything it did not recognise, so a
     /// chain the front end could not resolve looked exactly like a
     /// destination that had passed the check. Silence is the wrong answer to
     /// "is this address safe to send to"; the caller has to know the question
-    /// was not asked. No network: this fails on the chain lookup.
+    /// was not asked. The composer that named the token itself had the same
+    /// hole from the other side: it cleared the probe and showed nothing when
+    /// it could not identify one. No network: both refusals precede the reads.
     #[tokio::test]
-    async fn an_unknown_chain_is_an_error_and_not_a_clean_verdict() {
+    async fn an_unfindable_holding_is_an_error_and_not_a_clean_verdict() {
         let service = WalletService::new_typed(Vec::new()).expect("service");
-        let result = service
-            .send_destination_risk("not-a-chain".into(), "whatever".into(), None)
+        let missing = service
+            .send_destination_risk(
+                "no-such-wallet".into(),
+                "Bitcoin|BTC".into(),
+                "bc1qar0srrr7xfkvy5l643lydnw9re59gtzzwf5mdq".into(),
+            )
             .await;
         assert!(
-            result.is_err(),
-            "an unresolvable chain must not answer with a verdict"
+            missing.is_err(),
+            "a holding core does not have must not answer with a verdict"
         );
+
+        // The wallet is there and holds the asset, but nothing vouches for the
+        // contract — so there is no balance to ask about, and saying so is the
+        // answer.
+        let service = WalletService::new_typed(Vec::new()).expect("service");
+        let key = super::seed_probe_holding(
+            &service,
+            crate::registry::Chain::Ethereum,
+            "TOK",
+            Some((&format!("0x{}", "22".repeat(20)), 6)),
+        )
+        .await;
+        service.wallet_state.write().await.token_preferences.clear();
+        let untracked = service
+            .send_destination_risk("probe-wallet".into(), key, format!("0x{}", "33".repeat(20)))
+            .await;
+        let refusal = untracked
+            .expect_err("an unvouched token has no balance to report")
+            .to_string();
+        assert!(
+            refusal.contains("TOK") && refusal.contains("tracks"),
+            "the refusal names the asset and why: {refusal}"
+        );
+    }
+}
+
+/// What a destination probe asks about, from the holding being sent.
+///
+/// `None` is the chain's own asset. A token the user does not track has no
+/// descriptor and is a refusal rather than a fallback: the probe would
+/// otherwise read the *chain's* balance and report it as the token's, which is
+/// what three of Swift's four arms did, or read nothing and show no verdict,
+/// which is what the EVM arm did. Neither says "we could not check".
+fn destination_probe_asset(
+    holding: &crate::store::wallet_domain::AssetHolding,
+    preferences: &[crate::store::wallet_domain::CoreTokenPreferenceEntry],
+) -> Result<(Chain, Option<TokenDescriptor>), SpectraBridgeError> {
+    let chain = Chain::from_display_name(&holding.chain_name).ok_or_else(|| {
+        SpectraBridgeError::InvalidInput {
+            message: format!("unknown chain: {}", holding.chain_name),
+        }
+    })?;
+    if holding.symbol == chain.coin_symbol() {
+        return Ok((chain, None));
+    }
+    let identity =
+        super::maintenance::send_token_identity(holding, preferences).ok_or_else(|| {
+            SpectraBridgeError::InvalidInput {
+                message: format!(
+                    "{} on {} is not a token this wallet tracks",
+                    holding.symbol, holding.chain_name
+                ),
+            }
+        })?;
+    // The catalog's precision, not a clamp of it. The caller that used to build
+    // this descriptor wrote `UInt8(clamping:)`, which turns an impossible 300
+    // into a plausible 255 and reads a balance off by 45 decimal places.
+    let decimals =
+        u8::try_from(identity.decimals).map_err(|_| SpectraBridgeError::InvalidInput {
+            message: format!(
+                "{} on {} declares {} decimals",
+                holding.symbol, holding.chain_name, identity.decimals
+            ),
+        })?;
+    Ok((
+        chain,
+        Some(TokenDescriptor {
+            contract: identity.contract,
+            symbol: holding.symbol.clone(),
+            decimals,
+            name: None,
+        }),
+    ))
+}
+
+#[cfg(test)]
+mod destination_resolution_tests {
+    use crate::service::WalletService;
+
+    /// A valid address comes back in the chain's own form, and says no name
+    /// was involved.
+    ///
+    /// The EVM branch this replaces lowercased through `normalizeEVMAddress`,
+    /// which is the same answer here — but it was Swift's spelling of a
+    /// registry rule, applied on EVM chains only. Offline: no branch that
+    /// touches the network is reached.
+    #[tokio::test]
+    async fn a_valid_address_is_normalized_and_not_a_name() {
+        let service = WalletService::new_typed(Vec::new()).expect("service");
+        let resolved = service
+            .resolve_send_destination(
+                "ethereum".into(),
+                "  0xAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA  ".into(),
+            )
+            .await
+            .expect("a valid EVM address resolves to itself");
+        assert_eq!(
+            resolved.address,
+            "0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+        );
+        assert!(!resolved.used_ens);
+    }
+
+    /// Nothing typed is refused rather than resolved to the empty string.
+    #[tokio::test]
+    async fn an_empty_destination_is_refused() {
+        let service = WalletService::new_typed(Vec::new()).expect("service");
+        let err = service
+            .resolve_send_destination("bitcoin".into(), "   ".into())
+            .await
+            .expect_err("an empty destination is not an address");
+        assert!(format!("{err:?}").contains("Bitcoin"));
+    }
+
+    /// A `.eth` name on a chain that does not run the registry is refused
+    /// before any lookup, which is the stricter of the two readings and what
+    /// `Chain::resolves_ens_names` now states once.
+    ///
+    /// Offline by construction: the refusal happens before the resolver is
+    /// called, so a network-less test proves the branch and not the timeout.
+    #[tokio::test]
+    async fn a_name_is_not_looked_up_off_the_chain_that_registers_it() {
+        let service = WalletService::new_typed(Vec::new()).expect("service");
+        for chain_id in ["arbitrum", "base", "polygon", "bitcoin"] {
+            let err = service
+                .resolve_send_destination(chain_id.into(), "vitalik.eth".into())
+                .await
+                .expect_err("a name off Ethereum is not a destination");
+            assert!(
+                format!("{err:?}").contains("valid"),
+                "{chain_id} should refuse the name, got {err:?}"
+            );
+        }
+    }
+
+    /// An unknown chain is an error, not a destination.
+    #[tokio::test]
+    async fn an_unknown_chain_resolves_nothing() {
+        let service = WalletService::new_typed(Vec::new()).expect("service");
+        assert!(service
+            .resolve_send_destination("not-a-chain".into(), "0xabc".into())
+            .await
+            .is_err());
+    }
+
+    /// A cached name answers without a lookup, in the normalized form.
+    ///
+    /// The cache is seeded directly because the lookup itself needs the ENS
+    /// API; what this pins is that a hit reports `used_ens` and does not fall
+    /// through to the network, which a service with no endpoints would fail.
+    #[tokio::test]
+    async fn a_cached_name_answers_without_the_network() {
+        let service = WalletService::new_typed(Vec::new()).expect("service");
+        service.ens_resolutions.write().await.insert(
+            "vitalik.eth".into(),
+            "0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa".into(),
+        );
+        let resolved = service
+            .resolve_send_destination("ethereum".into(), "  Vitalik.ETH ".into())
+            .await
+            .expect("a cached name resolves");
+        assert_eq!(
+            resolved.address,
+            "0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+        );
+        assert!(resolved.used_ens, "a name lookup must say it was one");
     }
 }
 
@@ -1293,17 +1677,11 @@ mod failed_reads {
             api_key: None,
         }])
         .unwrap();
+        let contract = format!("0x{}", "22".repeat(20));
+        let key =
+            seed_probe_holding(&service, Chain::Ethereum, "TEST", Some((&contract, 18))).await;
         let risk = service
-            .send_destination_risk(
-                "ethereum".into(),
-                format!("0x{}", "33".repeat(20)),
-                Some(TokenDescriptor {
-                    contract: format!("0x{}", "22".repeat(20)),
-                    symbol: "TEST".into(),
-                    decimals: 18,
-                    name: None,
-                }),
-            )
+            .send_destination_risk("probe-wallet".into(), key, format!("0x{}", "33".repeat(20)))
             .await;
         assert!(
             risk.unwrap_err().to_string().contains("unavailable"),
@@ -1430,6 +1808,207 @@ mod failed_reads {
     }
 }
 
+/// A send preview's "spendable" is a fact about the asset the amount field
+/// moves, not about whatever the chain pays gas in. Both previews here used to
+/// answer with the gas coin's own arithmetic whatever was being sent.
+#[cfg(test)]
+mod a_preview_quotes_the_asset_it_moves {
+    use super::*;
+    use wiremock::{matchers::any, Mock, MockServer, Request, ResponseTemplate};
+
+    /// One ETH held, and 250 of an 8-decimal token.
+    const ETH_BALANCE_WEI: &str = "0xde0b6b3a7640000";
+    const TOKEN_DECIMALS: u128 = 8;
+    const TOKEN_RAW: u128 = 25_000_000_000; // 250.0 at 8 decimals
+    const TOKEN_DISPLAY: f64 = 250.0;
+
+    /// Answer one JSON-RPC call. `eth_call` dispatches on the ABI selector so
+    /// the token contract can hold a balance the account does not.
+    fn rpc_result(method: &str, params: &serde_json::Value) -> serde_json::Value {
+        match method {
+            "eth_getTransactionCount" => json!("0x7"),
+            "eth_getBalance" => json!(ETH_BALANCE_WEI),
+            "eth_estimateGas" => json!("0x7530"),
+            "eth_feeHistory" => json!({"baseFeePerGas": ["0x1"], "reward": [["0x2"]]}),
+            "eth_call" => {
+                let data = params[0]["data"].as_str().unwrap_or_default();
+                let selector = data.trim_start_matches("0x").get(..8).unwrap_or_default();
+                match selector {
+                    "70a08231" => json!(format!("0x{TOKEN_RAW:064x}")),
+                    "313ce567" => json!(format!("0x{TOKEN_DECIMALS:064x}")),
+                    "95d89b41" => json!(format!("0x{:0<64}", hex::encode("TEST"))),
+                    other => panic!("unexpected eth_call selector {other}"),
+                }
+            }
+            other => panic!("unexpected method {other}"),
+        }
+    }
+
+    /// A node that answers single calls and JSON-RPC batches alike —
+    /// `fetch_erc20_metadata` batches its two reads and `balanceOf` does not.
+    async fn evm_node() -> MockServer {
+        let server = MockServer::start().await;
+        Mock::given(any())
+            .respond_with(|req: &Request| {
+                let body: serde_json::Value = req.body_json().unwrap();
+                let answer = |call: &serde_json::Value| {
+                    json!({
+                        "jsonrpc": "2.0",
+                        "id": call["id"],
+                        "result": rpc_result(call["method"].as_str().unwrap(), &call["params"]),
+                    })
+                };
+                ResponseTemplate::new(200).set_body_json(match body.as_array() {
+                    Some(batch) => json!(batch.iter().map(answer).collect::<Vec<_>>()),
+                    None => answer(&body),
+                })
+            })
+            .mount(&server)
+            .await;
+        server
+    }
+
+    /// `value_wei` and `data_hex` are what `prepare_evm_send_assembly` hands
+    /// this call for the send in question — a token transfer carries its
+    /// amount in the calldata and moves no ether, so its value is zero.
+    async fn preview(
+        server: &MockServer,
+        to: String,
+        value_wei: &str,
+        data_hex: String,
+    ) -> serde_json::Value {
+        let service = WalletService::new_typed(vec![ChainEndpoints {
+            chain_id: "ethereum".into(),
+            endpoints: vec![server.uri()],
+            api_key: None,
+        }])
+        .unwrap();
+        let raw = service
+            .fetch_evm_send_preview(
+                "ethereum",
+                format!("0x{}", "11".repeat(20)),
+                to,
+                value_wei.into(),
+                data_hex,
+            )
+            .await
+            .expect("preview");
+        serde_json::from_str(&raw).unwrap()
+    }
+
+    /// An ERC-20 send moves the token, so the token's balance — scaled by the
+    /// contract's own decimals — is what is spendable. This answered with the
+    /// sender's ETH balance, which the send sheet then rendered through the
+    /// token's formatter: 1 ETH shown as "1 USDC", and "Max" filling in a
+    /// number the token transfer could not move.
+    #[tokio::test]
+    async fn an_erc20_send_is_limited_by_the_token_and_not_by_the_ether() {
+        let server = evm_node().await;
+        let contract = format!("0x{}", "22".repeat(20));
+        // transfer(0x33…, 1)
+        let data = format!("0xa9059cbb{:0>64}{:0>64}", "33".repeat(20), "1");
+        let value = preview(&server, contract, "0", data).await;
+
+        assert_eq!(value["spendable_balance"], json!(TOKEN_DISPLAY));
+        assert_ne!(
+            value["spendable_balance"].as_f64().unwrap().round(),
+            1.0,
+            "the gas coin's balance is not the token's"
+        );
+        // The fee is still quoted in the gas coin: it is a separate claim.
+        assert!(value["estimated_fee_eth"].as_f64().unwrap() > 0.0);
+    }
+
+    /// A native send pays its fee out of the balance it is moving, so the fee
+    /// still comes off the top. Unchanged — asserted here so the token arm
+    /// cannot be made to swallow this one.
+    #[tokio::test]
+    async fn a_native_send_still_nets_the_fee_off_its_own_balance() {
+        let server = evm_node().await;
+        let value = preview(
+            &server,
+            format!("0x{}", "33".repeat(20)),
+            "1000000000000000",
+            "0x".into(),
+        )
+        .await;
+
+        let fee = value["estimated_fee_eth"].as_f64().unwrap();
+        assert!(fee > 0.0);
+        assert_eq!(value["spendable_balance"].as_f64().unwrap(), 1.0 - fee);
+    }
+
+    /// TRC-20 decimals are the contract's. The fixed `1e6` that stood here is
+    /// TRX's own scale, so an 18-decimal token was quoted at 10^12 times the
+    /// holding it is — and "Max" offered it.
+    #[tokio::test]
+    async fn a_trc20_preview_scales_by_the_contract_and_not_by_trx() {
+        use wiremock::matchers::body_partial_json;
+
+        let server = MockServer::start().await;
+        // 4.2 of an 18-decimal token.
+        let raw: u128 = 4_200_000_000_000_000_000;
+        for (selector, result) in [
+            ("balanceOf(address)", format!("{raw:064x}")),
+            ("decimals()", format!("{:064x}", 18)),
+            ("symbol()", format!("{:0<64}", hex::encode("TEST"))),
+        ] {
+            Mock::given(body_partial_json(json!({"function_selector": selector})))
+                .respond_with(
+                    ResponseTemplate::new(200).set_body_json(json!({"constant_result": [result]})),
+                )
+                .mount(&server)
+                .await;
+        }
+        let service = WalletService::new_typed(vec![ChainEndpoints {
+            chain_id: "tron".into(),
+            endpoints: vec![server.uri()],
+            api_key: None,
+        }])
+        .unwrap();
+        let raw_json = service
+            .fetch_tron_send_preview(
+                "TLa2f6VPqDgRE67v1736s7bJ8Ray5wYjU7".into(),
+                "TEST".into(),
+                "TR7NHqjeKQxGTCi8q8ZY4pL8otgjLj6t".into(),
+            )
+            .await
+            .expect("preview");
+        let value: serde_json::Value = serde_json::from_str(&raw_json).unwrap();
+
+        assert_eq!(value["spendable_balance"], json!(4.2));
+        assert_eq!(value["max_sendable"], json!(4.2));
+    }
+
+    /// A token balance nobody could read is not a zero holding — the send
+    /// sheet decides whether the amount fits from this number.
+    #[tokio::test]
+    async fn an_unreadable_trc20_balance_refuses_rather_than_quoting_zero() {
+        let server = MockServer::start().await;
+        Mock::given(any())
+            .respond_with(ResponseTemplate::new(500))
+            .mount(&server)
+            .await;
+        let service = WalletService::new_typed(vec![ChainEndpoints {
+            chain_id: "tron".into(),
+            endpoints: vec![server.uri()],
+            api_key: None,
+        }])
+        .unwrap();
+        let result = service
+            .fetch_tron_send_preview(
+                "TLa2f6VPqDgRE67v1736s7bJ8Ray5wYjU7".into(),
+                "TEST".into(),
+                "TR7NHqjeKQxGTCi8q8ZY4pL8otgjLj6t".into(),
+            )
+            .await;
+        assert!(
+            result.is_err(),
+            "an unread balance must not quote a maximum"
+        );
+    }
+}
+
 #[cfg(test)]
 mod destination_probe_tests {
     use super::*;
@@ -1459,8 +2038,9 @@ mod destination_probe_tests {
                 api_key: None,
             }])
             .unwrap();
+            let key = seed_probe_holding(&service, Chain::BnbChain, "BNB", None).await;
             let result = service
-                .send_destination_risk(Chain::BnbChain.str_id().into(), "holder".into(), None)
+                .send_destination_risk("probe-wallet".into(), key, format!("0x{}", "44".repeat(20)))
                 .await;
             if nonce == Some("0x1") {
                 let risk = result.unwrap();
@@ -1503,8 +2083,13 @@ mod destination_probe_tests {
             api_key: None,
         }])
         .unwrap();
+        let key = seed_probe_holding(&service, Chain::Litecoin, "LTC", None).await;
         let risk = service
-            .send_destination_risk("litecoin".into(), "holder".into(), None)
+            .send_destination_risk(
+                "probe-wallet".into(),
+                key,
+                "ltc1qw508d6qejxtdg4y5r3zarvary0c5xw7kgmn4n9".into(),
+            )
             .await
             .unwrap();
         assert!(!risk.has_history);

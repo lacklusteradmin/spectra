@@ -599,7 +599,7 @@ impl WalletService {
 
         let settings = self.wallet_state.read().await.settings.clone();
         let derived = self.wallet_derived_state(Vec::new(), Vec::new()).await?;
-        let pinned = &settings.pinned_dashboard_asset_symbols;
+        let pinned = settings.pinned_dashboard_assets();
 
         let network_title = |chain_name: &str| -> String {
             crate::registry::Chain::from_display_name(chain_name)

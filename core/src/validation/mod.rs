@@ -74,7 +74,11 @@ pub fn core_check_seed_phrase(check: SeedPhraseCheck) -> SeedPhraseVerdict {
     // With none, a word is unknown only when no BIP-39 language has it —
     // the caller is reading a phrase, not offering a picker.
     let wordlist: std::collections::HashSet<&'static str> = match check.language.as_deref() {
-        Some(code) => bip39_language(Some(code)).word_list().iter().copied().collect(),
+        Some(code) => bip39_language(Some(code))
+            .word_list()
+            .iter()
+            .copied()
+            .collect(),
         None => bip39::Language::ALL
             .iter()
             .flat_map(|lang| lang.word_list().iter().copied())
@@ -285,7 +289,10 @@ mod seed_phrase_tests {
     #[test]
     fn entries_are_normalized_the_way_bip39_reads_them() {
         let verdict = check(" ABANDON  abandon ", Some("en"), 2);
-        assert_eq!(verdict.words, vec!["abandon".to_string(), "abandon".to_string()]);
+        assert_eq!(
+            verdict.words,
+            vec!["abandon".to_string(), "abandon".to_string()]
+        );
         assert!(verdict.invalid_words.is_empty());
     }
 

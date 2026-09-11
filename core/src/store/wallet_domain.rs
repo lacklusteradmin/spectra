@@ -420,6 +420,13 @@ pub fn holding_identity(holding: &crate::store::wallet_domain::AssetHolding) -> 
 }
 
 /// Swift `TokenHostingChain` — rawValues are chain display names.
+///
+/// Exactly the chains `chains.toml` gives a `token_standard`, which is the
+/// fact this used to disagree with: eighteen of the twenty-eight were listed,
+/// so a catalog row on Berachain or Ink was dropped from
+/// `built_in_token_preferences` and a custom token could not be added there.
+/// `the_hosting_chains_are_the_chains_with_a_token_standard` holds the two
+/// together.
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Hash, uniffi::Enum)]
 pub enum CoreTokenHostingChain {
     #[serde(rename = "Ethereum")]
@@ -446,6 +453,26 @@ pub enum CoreTokenHostingChain {
     Blast,
     #[serde(rename = "Mantle")]
     Mantle,
+    #[serde(rename = "Sei")]
+    Sei,
+    #[serde(rename = "Celo")]
+    Celo,
+    #[serde(rename = "Cronos")]
+    Cronos,
+    #[serde(rename = "opBNB")]
+    OpBnb,
+    #[serde(rename = "zkSync Era")]
+    ZkSyncEra,
+    #[serde(rename = "Sonic")]
+    Sonic,
+    #[serde(rename = "Berachain")]
+    Berachain,
+    #[serde(rename = "Unichain")]
+    Unichain,
+    #[serde(rename = "Ink")]
+    Ink,
+    #[serde(rename = "X Layer")]
+    XLayer,
     #[serde(rename = "Solana")]
     Solana,
     #[serde(rename = "Sui")]
@@ -475,6 +502,16 @@ impl CoreTokenHostingChain {
         Self::Scroll,
         Self::Blast,
         Self::Mantle,
+        Self::Sei,
+        Self::Celo,
+        Self::Cronos,
+        Self::OpBnb,
+        Self::ZkSyncEra,
+        Self::Sonic,
+        Self::Berachain,
+        Self::Unichain,
+        Self::Ink,
+        Self::XLayer,
         Self::Solana,
         Self::Sui,
         Self::Aptos,
@@ -518,6 +555,16 @@ impl CoreTokenHostingChain {
             Self::Scroll => "Scroll",
             Self::Blast => "Blast",
             Self::Mantle => "Mantle",
+            Self::Sei => "Sei",
+            Self::Celo => "Celo",
+            Self::Cronos => "Cronos",
+            Self::OpBnb => "opBNB",
+            Self::ZkSyncEra => "zkSync Era",
+            Self::Sonic => "Sonic",
+            Self::Berachain => "Berachain",
+            Self::Unichain => "Unichain",
+            Self::Ink => "Ink",
+            Self::XLayer => "X Layer",
             Self::Solana => "Solana",
             Self::Sui => "Sui",
             Self::Aptos => "Aptos",
@@ -692,36 +739,36 @@ mod token_hosting_chain_tests {
     use crate::registry::Chain;
 
     /// Every chain that can host known tokens resolves both ways, and the
-    /// name it round-trips through is one the registry recognises.
+    /// name it round-trips through is one the registry recognises. The list
+    /// this walks is `ALL` rather than a copy of it: the copy was the reason
+    /// adding a variant left a test still asserting eighteen.
     #[test]
     fn every_tracking_chain_round_trips_through_the_registry() {
-        for variant in [
-            CoreTokenHostingChain::Ethereum,
-            CoreTokenHostingChain::Arbitrum,
-            CoreTokenHostingChain::Optimism,
-            CoreTokenHostingChain::Bnb,
-            CoreTokenHostingChain::Avalanche,
-            CoreTokenHostingChain::Hyperliquid,
-            CoreTokenHostingChain::Polygon,
-            CoreTokenHostingChain::Base,
-            CoreTokenHostingChain::Linea,
-            CoreTokenHostingChain::Scroll,
-            CoreTokenHostingChain::Blast,
-            CoreTokenHostingChain::Mantle,
-            CoreTokenHostingChain::Solana,
-            CoreTokenHostingChain::Sui,
-            CoreTokenHostingChain::Aptos,
-            CoreTokenHostingChain::Ton,
-            CoreTokenHostingChain::Near,
-            CoreTokenHostingChain::Tron,
-        ] {
+        for variant in CoreTokenHostingChain::ALL {
             let name = variant.chain_name();
-            assert_eq!(CoreTokenHostingChain::from_chain_name(name), Some(variant));
+            assert_eq!(CoreTokenHostingChain::from_chain_name(name), Some(*variant));
             assert!(
                 Chain::from_display_name(name).is_some(),
                 "{name} is not a chain the registry knows"
             );
         }
+    }
+
+    /// The variants are exactly the chains `chains.toml` gives a token
+    /// standard to. Hosting is not a second opinion about which chains carry
+    /// tokens; it is that column, spelled as an enum for the FFI.
+    #[test]
+    fn the_hosting_chains_are_the_chains_with_a_token_standard() {
+        let listed: std::collections::BTreeSet<&str> = CoreTokenHostingChain::ALL
+            .iter()
+            .map(|c| c.chain_name())
+            .collect();
+        let with_standard: std::collections::BTreeSet<&str> = crate::chains::catalog()
+            .iter()
+            .filter(|c| !c.token_standard.is_empty())
+            .map(|c| c.name.as_str())
+            .collect();
+        assert_eq!(listed, with_standard);
     }
 
     #[test]

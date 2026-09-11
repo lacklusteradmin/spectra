@@ -95,8 +95,9 @@ pub struct BitcoinSendParams {
     pub dust_threshold: Option<u64>,
     // ── Professional controls ────────────────────────────────────────────────
     /// Manually selected UTXOs to spend. When `Some`, bypasses automatic coin
-    /// selection entirely — the caller is responsible for ensuring the total
-    /// input value covers `amount_sats` plus fee.
+    /// selection entirely. Their total still has to cover `amount_sats`, every
+    /// `extra_outputs` payment and the fee — the builder refuses rather than
+    /// signing a transaction that pays out more than it spends.
     pub pinned_utxos: Option<Vec<EsploraUtxo>>,
     /// Additional outputs appended after the primary recipient and change.
     /// Enables batch sends (multiple recipients in one tx) and OP_RETURN memos.
@@ -179,7 +180,10 @@ fn select_coins<'a>(
 
     for utxo in sorted {
         selected.push(utxo);
-        total += utxo.value;
+        // Values come from an endpoint, so they are checked rather than
+        // trusted to stay inside a sum: release builds wrap on overflow, and a
+        // wrapped total is a wallet that thinks it can afford the spend.
+        total = total.checked_add(utxo.value).ok_or("utxo.amountOverflow")?;
 
         let fee = sizing.fee(selected.len(), output_count, fee_rate);
         if total >= target_sats.saturating_add(fee) {
@@ -188,6 +192,21 @@ fn select_coins<'a>(
     }
 
     Err("utxo.insufficientFunds".to_string())
+}
+
+/// Sum UTXO values, refusing an overflow rather than wrapping past it.
+///
+/// The fixed-fee signers get this and their change subtraction together from
+/// [`super::accounting::checked_change`]. Bitcoin's does not fit that shape:
+/// its fee is derived from an output count it only knows after the extras are
+/// built, the dust rule changes what is actually paid out, and its shortfall
+/// is the localized `utxo.insufficientFunds` rather than prose. What is shared
+/// is the refusal to let an endpoint's numbers wrap a sum.
+fn total_value<'a>(utxos: impl IntoIterator<Item = &'a EsploraUtxo>) -> Result<u64, String> {
+    utxos
+        .into_iter()
+        .try_fold(0u64, |total, utxo| total.checked_add(utxo.value))
+        .ok_or_else(|| "utxo.amountOverflow".to_string())
 }
 
 /// Build `TxOut` items for `extra_outputs`. OP_RETURN outputs are zero-value.
@@ -316,22 +335,37 @@ fn build_unsigned_spend(
     identity: &SpendIdentity,
     sizing: SpendSizing,
 ) -> Result<UnsignedSpend, String> {
+    // Built before coin selection, because what they pay out is part of what
+    // has to be funded. Selection used to target the recipient amount alone
+    // and the extras were appended afterwards, so a batch send laid out a
+    // transaction whose outputs exceeded its inputs: 200_000 sats in, 60_000
+    // to the recipient, 7_000 to an extra, and change computed as if the
+    // extra were free. `saturating_sub` then hid it — the shortfall became a
+    // change of zero instead of a refusal — and the node rejected the signed
+    // result with `bad-txns-in-belowout`.
+    let extra = build_extra_outputs(&params.extra_outputs, identity.network)?;
+    let spend_sats = extra
+        .iter()
+        .try_fold(params.amount_sats, |total, out| {
+            total.checked_add(out.value.to_sat())
+        })
+        .ok_or("utxo.amountOverflow")?;
+
     // The fee is sized for recipient + change + extras whether or not the
     // change output survives the dust check below.
-    let output_count = 2 + params.extra_outputs.len();
+    let output_count = 2 + extra.len();
 
     let (selected, fee) = match params.pinned_utxos.as_deref() {
         Some(pinned) => {
             let fee = sizing.fee(pinned.len(), output_count, params.fee_rate);
-            let total_in: u64 = pinned.iter().map(|u| u.value).sum();
-            if total_in < params.amount_sats.saturating_add(fee) {
+            if total_value(pinned)? < spend_sats.saturating_add(fee) {
                 return Err("utxo.insufficientFunds".to_string());
             }
             (pinned.iter().collect::<Vec<_>>(), fee)
         }
         None => select_coins(
             &params.available_utxos,
-            params.amount_sats,
+            spend_sats,
             params.fee_rate,
             sizing,
             output_count,
@@ -339,10 +373,14 @@ fn build_unsigned_spend(
         )?,
     };
 
-    let total_in: u64 = selected.iter().map(|u| u.value).sum();
+    let total_in = total_value(selected.iter().copied())?;
+    // Both branches above refuse unless the inputs cover this, so an underflow
+    // here is a bug in one of them rather than a small change. Saying so
+    // costs a `checked_sub` and keeps the failure from becoming a signature.
     let change_sats = total_in
-        .saturating_sub(params.amount_sats)
-        .saturating_sub(fee);
+        .checked_sub(spend_sats)
+        .and_then(|rest| rest.checked_sub(fee))
+        .ok_or("utxo.insufficientFunds")?;
 
     let sequence = if params.enable_rbf {
         Sequence::ENABLE_RBF_NO_LOCKTIME
@@ -364,10 +402,20 @@ fn build_unsigned_spend(
             script_pubkey: identity.spent_script(),
         });
     }
-    output.extend(build_extra_outputs(
-        &params.extra_outputs,
-        identity.network,
-    )?);
+    output.extend(extra);
+
+    // What a transaction pays out cannot exceed what it spends. This is the
+    // property the batch-send arithmetic broke, and it holds for every path
+    // through this function — pinned or selected, change kept or dropped — so
+    // stating it here catches the next arithmetic change before it is signed
+    // rather than at the node.
+    let total_out: u64 = output
+        .iter()
+        .try_fold(0u64, |total, out| total.checked_add(out.value.to_sat()))
+        .ok_or("utxo.amountOverflow")?;
+    if total_out > total_in {
+        return Err("utxo.insufficientFunds".to_string());
+    }
 
     Ok(UnsignedSpend {
         input_values: selected.iter().map(|u| u.value).collect(),
@@ -623,7 +671,7 @@ mod tests {
     /// A recipient nobody here holds the key for; only its script pubkey matters.
     const TO: &str = "bc1qw508d6qejxtdg4y5r3zarvary0c5xw7kv8f3t4";
 
-    #[derive(Clone, Copy)]
+    #[derive(Clone, Copy, Debug)]
     enum Kind {
         P2wpkh,
         P2sh,
@@ -706,6 +754,12 @@ mod tests {
         tx.output[1].value.to_sat()
     }
 
+    /// Everything the transaction hands out. What is left of the inputs is the
+    /// fee, so this must never exceed what it spends.
+    fn paid_out(tx: &Transaction) -> u64 {
+        tx.output.iter().map(|out| out.value.to_sat()).sum()
+    }
+
     /// The three deterministic (ECDSA, RFC6979) script types, byte for byte.
     /// Taproot is absent on purpose: `sign_schnorr` mixes in auxiliary
     /// randomness, so its serialization differs run to run.
@@ -774,8 +828,14 @@ mod tests {
         assert_eq!(change_of(&tx), 490);
     }
 
+    /// What an extra output pays is funded like any other output.
+    ///
+    /// This asserted `change == 200_000 - 60_000 - fee`, leaving the 7_000 an
+    /// extra output paid out of nowhere: the transaction it pinned spent
+    /// 200_000 and paid out 204_980. It passed because it only ever read the
+    /// output values and never asked whether the inputs covered them.
     #[test]
-    fn extra_outputs_are_appended_after_change() {
+    fn extra_outputs_are_funded_and_not_conjured() {
         let mut p = params(Kind::P2wpkh, vec![utxo(0, 200_000)], 60_000);
         p.extra_outputs = vec![
             BitcoinExtraOutput::Address {
@@ -793,7 +853,76 @@ mod tests {
         assert!(tx.output[3].script_pubkey.is_op_return());
         // Fee is sized for the extra outputs even before they are built.
         let fee = 10 * (10 + 68 + 4 * 31);
-        assert_eq!(change_of(&tx), 200_000 - 60_000 - fee);
+        assert_eq!(change_of(&tx), 200_000 - 60_000 - 7_000 - fee);
+        assert_eq!(
+            paid_out(&tx) + fee,
+            200_000,
+            "outputs plus fee are the inputs"
+        );
+    }
+
+    /// The extras are part of the target, so coins that cover the recipient
+    /// but not the batch are insufficient funds — a refusal, not a change
+    /// output of zero and a transaction the network will not take.
+    #[test]
+    fn a_batch_the_inputs_cannot_cover_is_refused() {
+        // Three outputs at 10 sat/vB cost 10 × (10 + 68 + 3 × 31) = 1_710, so
+        // 60_000 + 7_000 + 1_710 needs 68_710 and this holds 68_000. Targeting
+        // the recipient alone, 68_000 cleared 60_000 + 1_710 and signed a
+        // transaction paying out 73_290.
+        let mut p = params(Kind::P2wpkh, vec![utxo(0, 68_000)], 60_000);
+        p.extra_outputs = vec![BitcoinExtraOutput::Address {
+            address: TO.to_string(),
+            amount_sats: 7_000,
+        }];
+        assert_eq!(sign_p2wpkh(&mut p).unwrap_err(), "utxo.insufficientFunds");
+
+        // Pinning the same coin reaches the same verdict by the other branch.
+        let mut pinned = params(Kind::P2wpkh, vec![], 60_000);
+        pinned.extra_outputs = p.extra_outputs.clone();
+        pinned.pinned_utxos = Some(vec![utxo(0, 68_000)]);
+        assert_eq!(
+            sign_p2wpkh(&mut pinned).unwrap_err(),
+            "utxo.insufficientFunds"
+        );
+    }
+
+    /// Every path through the builder — pinned or selected, change kept or
+    /// absorbed, extras or none — pays out no more than it spends.
+    #[test]
+    fn no_layout_pays_out_more_than_it_spends() {
+        for kind in [Kind::P2wpkh, Kind::P2sh, Kind::P2pkh, Kind::P2tr] {
+            for (values, amount, dust, extras) in [
+                (&[200_000u64] as &[u64], 60_000u64, None, false),
+                (&[200_000], 60_000, None, true),
+                (&[100_000, 50_000], 120_000, None, false),
+                // Change under the threshold is dropped into the fee.
+                (&[60_630], 60_000, Some(10_000u64), false),
+            ] {
+                let utxos = values
+                    .iter()
+                    .enumerate()
+                    .map(|(vout, value)| utxo(vout as u32, *value))
+                    .collect();
+                let mut p = params(kind, utxos, amount);
+                p.dust_threshold = dust;
+                if extras {
+                    p.extra_outputs = vec![BitcoinExtraOutput::Address {
+                        address: TO.to_string(),
+                        amount_sats: 7_000,
+                    }];
+                }
+                let Ok((tx, _)) = kind.sign(&mut p) else {
+                    continue; // insufficient funds is its own assertion above
+                };
+                let spent: u64 = values.iter().sum();
+                assert!(
+                    paid_out(&tx) <= spent,
+                    "{kind:?} paid out {} of {spent}",
+                    paid_out(&tx)
+                );
+            }
+        }
     }
 
     #[test]

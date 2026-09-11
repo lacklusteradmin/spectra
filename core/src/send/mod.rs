@@ -89,6 +89,11 @@ pub struct SendSubmitPreflightPlan {
     /// identify is refused here rather than sent with a guessed scale.
     pub token_contract_address: Option<String>,
     pub token_decimals: Option<u32>,
+    /// The gas-asset balance this send needs before it can land, where the
+    /// chain routes a token send with no fee estimate — see
+    /// `Chain::token_send_gas_reserve`. `None` for a native send, and for a
+    /// chain whose preview supplies a real fee.
+    pub token_send_gas_reserve: Option<f64>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -417,10 +422,16 @@ pub fn plan_send_submit_preflight(
 
     // NEAR is the one chain where this depends on the asset: its native send
     // is the shared shape and a token on it is not.
-    let uses_generic_submit = crate::registry::Chain::from_display_name(&asset.chain_name)
-        .is_some_and(|chain| {
-            chain.uses_generic_send_submit() && asset.symbol == chain.coin_symbol()
-        });
+    let chain = crate::registry::Chain::from_display_name(&asset.chain_name);
+    let uses_generic_submit = chain.is_some_and(|chain| {
+        chain.uses_generic_send_submit() && asset.symbol == chain.coin_symbol()
+    });
+    // Only a token send needs it: the native asset pays its own fee out of the
+    // amount, which the balance check above already covers.
+    let token_send_gas_reserve = token
+        .as_ref()
+        .and_then(|_| chain)
+        .and_then(|chain| chain.token_send_gas_reserve());
 
     Ok(SendSubmitPreflightPlan {
         submit_kind,
@@ -436,6 +447,7 @@ pub fn plan_send_submit_preflight(
         uses_generic_submit,
         token_contract_address: token.as_ref().map(|token| token.contract.clone()),
         token_decimals: token.map(|token| token.decimals),
+        token_send_gas_reserve,
     })
 }
 
@@ -454,7 +466,7 @@ fn native_evm_symbol_for_chain(chain_name: &str) -> Option<String> {
 mod tests {
     use super::{
         plan_send_submit_preflight, route_send_asset, SendAssetRoutingInput, SendExecutionRequest,
-        SendSubmitPreflightRequest,
+        SendSubmitPreflightRequest, SendTokenIdentity,
     };
 
     /// Every chain the router sends down the shared preview path has a shape
@@ -876,6 +888,63 @@ mod tests {
         assert_eq!(plan.submit_kind, "ethereum");
         assert_eq!(plan.amount, 0.0);
         assert!(plan.allows_zero_amount);
+    }
+
+    /// The gas floor a NEP-141 send has to clear was `0.001` in the iOS
+    /// submit branch. It is a fact about NEAR, so core states it — and states
+    /// it only where it applies: a native NEAR send pays its fee out of the
+    /// amount, and every other chain estimates one.
+    #[test]
+    fn a_near_token_send_carries_the_chains_gas_floor() {
+        let near = |symbol: &str, token: Option<SendTokenIdentity>| {
+            plan_send_submit_preflight(SendSubmitPreflightRequest {
+                wallet_found: true,
+                asset_found: true,
+                destination_address: "receiver.near".to_string(),
+                amount_input: "1".to_string(),
+                available_balance: 10.0,
+                asset: Some(SendAssetRoutingInput {
+                    chain_name: "NEAR".to_string(),
+                    symbol: symbol.to_string(),
+                    is_evm_chain: false,
+                    supports_solana_send_coin: false,
+                    supports_near_token_send: token.is_some(),
+                }),
+                token,
+            })
+            .expect("a routable NEAR send")
+        };
+
+        let token = near(
+            "USDC",
+            Some(SendTokenIdentity {
+                contract: "usdc.near".to_string(),
+                decimals: 6,
+            }),
+        );
+        assert_eq!(token.token_send_gas_reserve, Some(0.001));
+        assert_eq!(near("NEAR", None).token_send_gas_reserve, None);
+
+        let tron = plan_send_submit_preflight(SendSubmitPreflightRequest {
+            wallet_found: true,
+            asset_found: true,
+            destination_address: "TLa2f6VPqDgRE67v1736s7bJ8Ray5wYjU7".to_string(),
+            amount_input: "1".to_string(),
+            available_balance: 10.0,
+            asset: Some(SendAssetRoutingInput {
+                chain_name: "Tron".to_string(),
+                symbol: "USDT".to_string(),
+                is_evm_chain: false,
+                supports_solana_send_coin: false,
+                supports_near_token_send: false,
+            }),
+            token: Some(SendTokenIdentity {
+                contract: "TR7NHqjeKQxGTCi8q8ZY4pL8otSzgjLj6t".to_string(),
+                decimals: 6,
+            }),
+        })
+        .expect("a routable Tron token send");
+        assert_eq!(tron.token_send_gas_reserve, None);
     }
 
     #[test]

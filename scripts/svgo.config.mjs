@@ -66,11 +66,56 @@ const explicitBackgroundFill = {
   }),
 };
 
+// An icon dropped in at its source size (512x512, 140x140, ...) still draws
+// correctly, so nothing downstream complains — it just is not a member of the
+// library. Rescale a square viewBox onto 0 0 64 64 and let convertPathData bake
+// the factor into the coordinates. A viewBox that is not square, or does not
+// start at 0 0, is left alone: fitting that artwork onto the disc is a design
+// decision, not a rewrite.
+const SCALES = { circle: ['cx', 'cy', 'r'] };
+const scaleToLibraryViewBox = {
+  name: 'scaleToLibraryViewBox',
+  fn: () => ({
+    element: {
+      enter: (node, parentNode) => {
+        if (parentNode.type !== 'root' || node.name !== 'svg') return;
+        const box = /^0 0 (\d*\.?\d+) (\d*\.?\d+)$/.exec(node.attributes.viewBox ?? '');
+        if (!box || box[1] !== box[2] || box[1] === '64') return;
+        const k = 64 / Number(box[1]);
+        const num = (v) => String(Number((Number(v) * k).toFixed(6)));
+        for (const child of node.children) {
+          if (child.type !== 'element') continue;
+          const geometry = SCALES[child.name];
+          if (geometry && child.attributes.transform === undefined) {
+            for (const attr of geometry) {
+              if (child.attributes[attr] !== undefined) {
+                child.attributes[attr] = num(child.attributes[attr]);
+              }
+            }
+            continue;
+          }
+          const scale = `scale(${String(Number(k.toFixed(8)))})`;
+          child.attributes.transform = child.attributes.transform
+            ? `${scale} ${child.attributes.transform}`
+            : scale;
+        }
+        node.attributes.viewBox = '0 0 64 64';
+      },
+    },
+  }),
+};
+
 export default {
   multipass: true,
   js2svg: { pretty: true, indent: 2, eol: 'lf', finalNewline: true },
   plugins: [
-    'preset-default',
+    scaleToLibraryViewBox,
+    // keepDataAttrs would otherwise preserve exporter leftovers like data-name.
+    { name: 'preset-default', params: { overrides: { removeUnknownsAndDefaults: { keepDataAttrs: false } } } },
+    // inlineStyles (inside the preset) lands CSS classes in a style attribute;
+    // this turns those into the presentation attributes the rest of the config
+    // reads. It has to run after the preset, so multipass does the baking.
+    'convertStyleToAttrs',
     'removeDimensions',
     'sortAttrs',
     removeRootFillNone,

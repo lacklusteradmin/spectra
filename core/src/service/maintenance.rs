@@ -89,9 +89,8 @@ impl WalletService {
             amount_input,
             available_balance: holding.map(|h| h.amount).unwrap_or(0.0),
             asset: holding.map(|holding| routing_input(holding, &state.token_preferences)),
-            token: holding.and_then(|holding| {
-                send_token_identity(holding, &state.token_preferences)
-            }),
+            token: holding
+                .and_then(|holding| send_token_identity(holding, &state.token_preferences)),
         };
         Ok(crate::send::plan_send_submit_preflight(request)?)
     }
@@ -319,7 +318,7 @@ fn supported_evm_token(
 /// send refuse rather than guess a scale — every submit branch used to look
 /// this up itself, and Tron's branch hard-coded six decimals for every token
 /// on it.
-fn send_token_identity(
+pub(super) fn send_token_identity(
     holding: &crate::store::wallet_domain::AssetHolding,
     preferences: &[crate::store::wallet_domain::CoreTokenPreferenceEntry],
 ) -> Option<crate::send::SendTokenIdentity> {
@@ -340,12 +339,14 @@ fn send_token_identity(
         .find(|entry| match &contract {
             // A holding that names its contract must match on it; one that does
             // not is identified by its symbol on that chain.
-            Some(contract) => crate::tokens::normalize_token_identifier(
-                Some(entry.token.contract.clone()),
-                holding.chain_name.clone(),
-            )
-            .as_deref()
-                == Some(contract.as_str()),
+            Some(contract) => {
+                crate::tokens::normalize_token_identifier(
+                    Some(entry.token.contract.clone()),
+                    holding.chain_name.clone(),
+                )
+                .as_deref()
+                    == Some(contract.as_str())
+            }
             None => true,
         })
         .map(|entry| crate::send::SendTokenIdentity {
@@ -378,10 +379,11 @@ fn supports_solana_send(
     preferences: &[crate::store::wallet_domain::CoreTokenPreferenceEntry],
 ) -> bool {
     use crate::store::wallet_domain::CoreTokenHostingChain;
-    if holding.chain_name != "Solana" {
+    let chain = crate::registry::Chain::Solana;
+    if holding.chain_name != chain.chain_display_name() {
         return false;
     }
-    if holding.symbol == "SOL" {
+    if holding.symbol == chain.coin_symbol() {
         return true;
     }
     if holding.token_standard != token_standard_for(CoreTokenHostingChain::Solana) {
@@ -395,7 +397,8 @@ fn supports_solana_send(
             crate::tokens::catalog()
                 .iter()
                 .find(|token| {
-                    token.chain == "solana" && token.symbol.eq_ignore_ascii_case(&holding.symbol)
+                    token.chain == chain.str_id()
+                        && token.symbol.eq_ignore_ascii_case(&holding.symbol)
                 })
                 .map(|token| token.contract.clone())
         })
@@ -414,7 +417,8 @@ fn supports_near_token_send(
     preferences: &[crate::store::wallet_domain::CoreTokenPreferenceEntry],
 ) -> bool {
     use crate::store::wallet_domain::CoreTokenHostingChain;
-    if holding.chain_name != "NEAR" || holding.symbol == "NEAR" {
+    let chain = crate::registry::Chain::Near;
+    if holding.chain_name != chain.chain_display_name() || holding.symbol == chain.coin_symbol() {
         return false;
     }
     if holding.token_standard != token_standard_for(CoreTokenHostingChain::Near) {

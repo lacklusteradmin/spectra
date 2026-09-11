@@ -265,7 +265,6 @@ pub(super) fn spot_price_usd(
         .iter()
         .map(|chain| PriceRequestCoin {
             holding_key: chain.coin_symbol().to_string(),
-            symbol: chain.coin_symbol().to_string(),
             coin_gecko_id: chain.coin_gecko_id().to_string(),
         })
         .collect();

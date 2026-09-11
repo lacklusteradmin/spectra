@@ -821,6 +821,25 @@ impl EvmClient {
 
 // ── ERC-20 ABI helpers (shared with send.rs)
 
+/// The `transfer(address,uint256)` selector as its hex spelling.
+///
+/// [`is_erc20_transfer`] and the assembler in [`crate::send::ethereum`] both
+/// need it, and `a9059cbb` was written out by hand in the second of them.
+pub(crate) fn erc20_transfer_selector_hex() -> String {
+    hex::encode(SEL_TRANSFER)
+}
+
+/// Whether this calldata is an ERC-20 `transfer(address,uint256)`.
+///
+/// The inverse of the assembler: a transfer is addressed *to the token
+/// contract*, so a caller holding both the destination and the calldata can
+/// name the token being moved from this alone, without being told.
+pub(crate) fn is_erc20_transfer(data_hex: &str) -> bool {
+    let body = data_hex.strip_prefix("0x").unwrap_or(data_hex);
+    body.get(..8)
+        .is_some_and(|selector| selector.eq_ignore_ascii_case(&erc20_transfer_selector_hex()))
+}
+
 /// Encode a `balanceOf(address)` call.
 pub fn encode_erc20_balance_of(holder: &str) -> Result<Vec<u8>, String> {
     let holder_bytes = decode_hex(holder)?;

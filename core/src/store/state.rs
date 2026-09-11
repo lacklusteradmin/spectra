@@ -171,7 +171,9 @@ pub struct AppSettings {
     /// ISO 4217 code the user wants amounts displayed in.
     pub fiat_currency_code: String,
     /// Asset symbols the user pinned to the dashboard, in display order.
-    /// Empty means "not chosen yet" — the front end shows its own defaults.
+    /// Empty means "not chosen yet" — read it through
+    /// [`AppSettings::pinned_dashboard_assets`], which answers with
+    /// [`DEFAULT_PINNED_DASHBOARD_ASSETS`] in that case.
     ///
     /// `default` so that a state file written before this field existed still
     /// loads. Not a migration shim — the struct simply grows, and an absent
@@ -387,6 +389,38 @@ pub fn core_unpriced_chain_names(settings: AppSettings) -> Vec<String> {
         .filter(|chain| settings.network_chain(*chain).is_testnet())
         .map(|chain| chain.chain_display_name().to_string())
         .collect()
+}
+
+/// What a dashboard pins before the user has pinned anything.
+///
+/// A product default, and one every front end has to agree on: iOS held this
+/// list, so its pin cards showed four assets that core's own grouping did not
+/// order first, did not mark pinned, and gave no row to when the wallet held
+/// none of them.
+pub const DEFAULT_PINNED_DASHBOARD_ASSETS: [&str; 4] = ["BTC", "ETH", "USDT", "USDC"];
+
+/// The pinned symbols as a dashboard should read them.
+#[uniffi::export]
+pub fn dashboard_default_pinned_assets() -> Vec<String> {
+    DEFAULT_PINNED_DASHBOARD_ASSETS
+        .iter()
+        .map(|s| s.to_string())
+        .collect()
+}
+
+impl AppSettings {
+    /// What the user pinned, or the default when they have pinned nothing.
+    ///
+    /// Unpinning everything is not a choice to show nothing — it is what a
+    /// fresh wallet looks like, which is what `SetPinnedDashboardAssets` with
+    /// an empty list has always meant.
+    pub fn pinned_dashboard_assets(&self) -> Vec<String> {
+        if self.pinned_dashboard_asset_symbols.is_empty() {
+            dashboard_default_pinned_assets()
+        } else {
+            self.pinned_dashboard_asset_symbols.clone()
+        }
+    }
 }
 
 impl Default for AppSettings {

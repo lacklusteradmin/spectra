@@ -670,20 +670,6 @@ impl WalletService {
         }
     }
 
-    // ── ENS resolution
-
-    /// Resolve an ENS name to an Ethereum address via the ENS Ideas public API.
-    /// Returns the resolved address, or `None` if the name has no registered address.
-    pub async fn resolve_ens_name_typed(
-        &self,
-        name: String,
-    ) -> Result<Option<String>, SpectraBridgeError> {
-        let eps = self.endpoints_for("ethereum").await;
-        let client = EvmClient::new(eps, 1);
-        let address = client.resolve_ens(&name).await?;
-        Ok(address.filter(|a| !a.is_empty()))
-    }
-
     // ── EVM utilities (contract detection, nonce lookup)
 
     /// Returns true iff `address` has deployed bytecode on the given EVM chain.
@@ -831,6 +817,26 @@ impl WalletService {
 }
 
 impl WalletService {
+    // ── ENS resolution
+
+    /// Resolve an ENS name to an Ethereum address via the ENS Ideas public API.
+    /// Returns the resolved address, or `None` if the name has no registered
+    /// address.
+    ///
+    /// Not exported: `WalletService::resolve_send_destination` is the entry
+    /// point, because *when* a typed name is a name to look up is
+    /// `Chain::resolves_ens_names` and the answer is cached here. A front end
+    /// calling this directly is a front end deciding both.
+    pub(crate) async fn resolve_ens_name_typed(
+        &self,
+        name: String,
+    ) -> Result<Option<String>, SpectraBridgeError> {
+        let eps = self.endpoints_for("ethereum").await;
+        let client = EvmClient::new(eps, 1);
+        let address = client.resolve_ens(&name).await?;
+        Ok(address.filter(|a| !a.is_empty()))
+    }
+
     // Not exported: the pending-status poll is core's own loop now, and it
     // is the only caller. It was an export because a front end drove the
     // loop and asked for each piece.

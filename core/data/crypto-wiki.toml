@@ -317,3 +317,135 @@ comment = "Utility token for the BitTorrent ecosystem, designed around peer-to-p
 [[assets]]
 asset = "USDB"
 comment = "Blast native stablecoin, an automatically rebasing dollar asset used across the Blast ecosystem."
+
+[[assets]]
+asset = "BUSD"
+comment = "Berachain's native stablecoin, minted against whitelisted collateral deposited on the chain. It launched as HONEY and was renamed Bera USD; it is unrelated to the discontinued Binance BUSD."
+
+[[assets]]
+asset = "USAT"
+comment = "Tether's US-regulated dollar stablecoin, issued by a federally chartered bank under the GENIUS Act. It is a separate token from USDT, with its own reserves and its own contract."
+
+[[assets]]
+asset = "USDT0"
+comment = "The omnichain form of USDT: it crosses chains by being burned on one and minted on the next rather than by a wrapped copy, so one supply spans them all. On the chains Tether upgraded in place, such as Polygon and Arbitrum, it is the contract that used to be USDT."
+
+[[assets]]
+asset = "XAUT0"
+comment = "The omnichain form of Tether Gold, each token representing one fine troy ounce of physical gold and moving between chains by burn and mint."
+
+[[assets]]
+asset = "ARB"
+comment = "Governs Arbitrum through its DAO, which controls the chain's treasury and protocol upgrades. It does not pay gas — Arbitrum charges fees in ETH."
+
+[[assets]]
+asset = "OP"
+comment = "Governs the OP Stack chains through the Optimism Collective's token house. Gas on Optimism is paid in ETH, so holding OP is a vote rather than a fuel."
+
+[[assets]]
+asset = "LINEA"
+comment = "Linea's ecosystem token, distributed to fund builders and users on the network. It carries no governance rights and does not pay gas; Linea charges fees in ETH."
+
+[[assets]]
+asset = "SCR"
+comment = "Governs Scroll through its DAO. The chain itself runs on ETH, so SCR is held for votes and ecosystem programs rather than to transact."
+
+[[assets]]
+asset = "BLAST"
+comment = "Governs the Blast rollup and directs its incentive programs. Blast charges gas in ETH, and its native yield accrues to ETH and USDB rather than to this token."
+
+[[assets]]
+asset = "ZK"
+comment = "Governs ZKsync through its token assembly, which decides upgrades and treasury spending across the ZK Stack. Fees on ZKsync Era are paid in ETH."
+
+[[assets]]
+asset = "STETH"
+comment = "Lido's liquid staking receipt for ETH. The balance rebases upward as staking rewards accrue, and the token can be traded or lent while the ETH behind it stays staked."
+
+[[assets]]
+asset = "WSTETH"
+comment = "The non-rebasing form of stETH: the balance stays fixed and each token comes to be worth more ETH instead. Most lending markets accept this shape and not the rebasing one."
+
+[[assets]]
+asset = "WETH"
+comment = "Ether wrapped as an ERC-20, so contracts that only understand the token interface can hold it. One WETH is redeemable for one ETH at any time, in either direction."
+
+[[assets]]
+asset = "CBBTC"
+comment = "Coinbase's wrapped Bitcoin, backed one-for-one by BTC the exchange custodies. Redemption runs through Coinbase, so holding it is a claim on the company rather than on the chain."
+
+[[assets]]
+asset = "LBTC"
+comment = "Lombard's receipt for Bitcoin staked through Babylon. It earns staking rewards and can be used as collateral while the BTC behind it stays locked."
+
+[[assets]]
+asset = "RETH"
+comment = "Rocket Pool's liquid staking receipt for ETH, issued against validators run by a permissionless operator set. It does not rebase; each token grows in ETH terms."
+
+[[assets]]
+asset = "SUSDS"
+comment = "The savings form of USDS. The balance stays fixed and the redemption value grows at the Sky Savings Rate, so the price sits above a dollar and climbs rather than holding the peg."
+
+[[assets]]
+asset = "SUSDE"
+comment = "The staked form of USDe, which collects the funding-rate yield behind Ethena's position. Like sUSDS it appreciates rather than rebasing, so its price drifts above a dollar."
+
+[[assets]]
+asset = "GHO"
+comment = "Aave's dollar stablecoin. It is minted by borrowing against collateral already deposited in the protocol and burned when the loan is repaid, so its supply is Aave's loan book."
+
+[[assets]]
+asset = "ONDO"
+comment = "Governance token for Ondo Finance, which issues tokenized US Treasury and money-market funds on-chain."
+
+[[assets]]
+asset = "MORPHO"
+comment = "Governs Morpho, a lending protocol whose markets are isolated — each pair sets its own collateral and rate curve instead of sharing one pool's risk."
+
+[[assets]]
+asset = "AERO"
+comment = "The emission and governance token of Aerodrome, Base's largest decentralized exchange. Locking it directs where trading incentives go."
+
+[[assets]]
+asset = "CRV"
+comment = "Governs Curve, the exchange built for assets meant to hold the same price as one another. Locking it votes on which pools receive emissions."
+
+[[assets]]
+asset = "CAKE"
+comment = "Governs PancakeSwap, the largest decentralized exchange on BNB Chain, and is staked to direct its liquidity rewards."
+
+[[assets]]
+asset = "PENDLE"
+comment = "Governs Pendle, which splits a yield-bearing token into its principal and its future yield so the two can be traded and priced separately."
+
+[[assets]]
+asset = "ETHFI"
+comment = "Governs ether.fi, a liquid restaking protocol whose stakers keep control of their own validator withdrawal keys."
+
+[[assets]]
+asset = "LDO"
+comment = "Governs Lido, the largest ETH staking protocol, including which node operators run its validators and what they are paid."
+
+[[assets]]
+asset = "ENS"
+comment = "Governs the Ethereum Name Service, the registry behind .eth names. A name is a record that resolves to an address, so it can stand in for one when sending."
+
+[[assets]]
+asset = "PYTH"
+comment = "Governs Pyth, an oracle network whose prices are published by the trading firms and exchanges that see the orders, rather than by anonymous relayers."
+
+[[assets]]
+asset = "RAY"
+comment = "Governs Raydium, a Solana automated market maker, and is earned by providing liquidity to its pools."
+
+[[assets]]
+asset = "ZRO"
+comment = "Governs LayerZero, the messaging protocol that moves a token across chains by burning it on one and minting it on the next. USDT0 and XAUT0 are built on it."
+
+[[assets]]
+asset = "WLD"
+comment = "Worldcoin's token, distributed to people who verify a unique human identity with its iris-scanning orb. Issuance and eligibility are controlled by the World Foundation."
+
+[[assets]]
+asset = "PEPE"
+comment = "A 2023 memecoin with no stated utility, no team allocation and no presale. It is among the most widely held tokens on Ethereum by holder count."

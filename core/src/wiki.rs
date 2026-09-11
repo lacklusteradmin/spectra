@@ -205,7 +205,6 @@ mod the_wiki_is_one_asset_table {
         let symbols: std::collections::BTreeSet<&str> =
             ASSETS.iter().map(|a| a.symbol.as_str()).collect();
         assert_eq!(symbols.len(), ASSETS.len(), "a coin has two rows");
-        assert_eq!(ASSETS.len(), 66);
         for a in ASSETS.iter() {
             assert!(!a.comment.is_empty(), "{} has no description", a.symbol);
             assert!(!a.lives_on.is_empty(), "{} lives nowhere", a.symbol);

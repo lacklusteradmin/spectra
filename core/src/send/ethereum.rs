@@ -124,7 +124,14 @@ pub struct EvmSendAssemblyInput {
     pub from_address: String,
     // Caller passes the already-resolved destination (ENS resolved in Swift).
     pub resolved_destination: String,
-    pub amount: f64,
+    /// The amount as the user typed it, exactly. This was an `f64`, so an
+    /// amount of `1.1` assembled 1100000000000000089 wei while `execute_send`
+    /// — which has always taken the decimal string — signed
+    /// 1100000000000000000. The preview priced one transaction and the send
+    /// made another. A decimal string is also the only form that can carry an
+    /// 18-decimal amount at all: an `f64` runs out of significant digits six
+    /// orders of magnitude above a wei.
+    pub amount: String,
     // If set, this is an ERC-20 transfer (symbol is the token symbol).
     pub token: Option<EvmSupportedToken>,
 }
@@ -178,32 +185,25 @@ pub fn is_supported_evm_chain(chain_name: &str) -> bool {
         .is_some_and(crate::registry::Chain::is_evm)
 }
 
-/// Convert a decimal amount (e.g. 1.5) to wei with 18 decimals as a decimal string.
-/// Avoids float rounding by doing string arithmetic with up to 18 fractional digits.
-fn amount_to_smallest_unit(amount: f64, decimals: u32) -> Result<String, EvmSendError> {
-    if !amount.is_finite() || amount < 0.0 {
-        return Err(EvmSendError::InvalidAmount);
-    }
-    // Format with up to `decimals` fractional digits, then shift.
-    let formatted = format!("{:.*}", decimals as usize, amount);
-    let (int_part, frac_part) = match formatted.split_once('.') {
-        Some((i, f)) => (i.to_string(), f.to_string()),
-        None => (formatted.clone(), "0".repeat(decimals as usize)),
-    };
-    let mut digits = int_part;
-    digits.push_str(&frac_part);
-    // Strip leading zeros but keep at least "0".
-    let trimmed = digits.trim_start_matches('0').to_string();
-    Ok(if trimmed.is_empty() {
-        "0".to_string()
-    } else {
-        trimmed
-    })
+/// Shift a typed decimal amount into the asset's smallest unit.
+///
+/// This is [`crate::send::amount_input::parse_raw_amount`], which is the same
+/// conversion `execute_send` performs on the amount it signs. The function that
+/// stood here took an `f64` and claimed in its own doc comment to "avoid float
+/// rounding by doing string arithmetic" — but the rounding had already happened
+/// in the caller's `f64`, and `format!("{:.18}", …)` then wrote it out in full:
+/// `1.1` assembled as `1100000000000000089` wei, `0.1` as `100000000000000006`.
+/// Two conversions of one thing, one exact and one not, and the inexact one was
+/// what the preview priced and what `spectra send assemble` printed as the
+/// transaction a send would sign.
+fn amount_to_smallest_unit(amount: &str, decimals: u32) -> Result<u128, EvmSendError> {
+    crate::send::amount_input::parse_raw_amount(amount, decimals)
+        .map_err(|_| EvmSendError::InvalidAmount)
 }
 
 fn encode_erc20_transfer_data(
     destination: &str,
-    amount_smallest: &str,
+    amount_smallest: u128,
 ) -> Result<String, EvmSendError> {
     let dst = normalize_evm_address(destination);
     if !is_valid_evm_address(&dst) {
@@ -211,16 +211,18 @@ fn encode_erc20_transfer_data(
     }
     let addr_body = &dst[2..];
     let addr_padded = format!("{:0>64}", addr_body);
-    // amount as hex, zero-padded to 32 bytes.
-    let amount_hex = u128_str_to_hex(amount_smallest)?;
-    let amount_padded = format!("{:0>64}", amount_hex);
-    Ok(format!("0xa9059cbb{}{}", addr_padded, amount_padded))
-}
-
-fn u128_str_to_hex(decimal: &str) -> Result<String, EvmSendError> {
-    // Token amounts generally fit in u128 even with 18 decimals up to ~3.4e20 tokens.
-    let value: u128 = decimal.parse().map_err(|_| EvmSendError::InvalidAmount)?;
-    Ok(format!("{:x}", value))
+    // amount as hex, zero-padded to 32 bytes. A `uint256` is wider than a
+    // `u128`, but `parse_raw_amount` caps there and no real token holding
+    // reaches it, so the padding always has room.
+    let amount_padded = format!("{:0>64x}", amount_smallest);
+    // The selector is the fetch layer's, so the preview that reads this
+    // calldata back and the code that writes it cannot drift apart.
+    Ok(format!(
+        "0x{}{}{}",
+        crate::fetch::chains::evm::erc20_transfer_selector_hex(),
+        addr_padded,
+        amount_padded
+    ))
 }
 
 #[uniffi::export]
@@ -245,9 +247,9 @@ pub fn prepare_evm_send_assembly(
         let decimals = crate::registry::Chain::from_display_name(&input.chain_name)
             .map(|chain| u32::from(chain.native_decimals()))
             .unwrap_or(18);
-        let wei = amount_to_smallest_unit(input.amount, decimals)?;
+        let wei = amount_to_smallest_unit(&input.amount, decimals)?;
         return Ok(EvmSendAssembly {
-            value_wei: wei,
+            value_wei: wei.to_string(),
             to_address: destination,
             data_hex: "0x".to_string(),
             is_native: true,
@@ -257,8 +259,8 @@ pub fn prepare_evm_send_assembly(
     let Some(token) = input.token else {
         return Err(EvmSendError::UnsupportedAsset);
     };
-    let smallest = amount_to_smallest_unit(input.amount, token.decimals)?;
-    let data_hex = encode_erc20_transfer_data(&destination, &smallest)?;
+    let smallest = amount_to_smallest_unit(&input.amount, token.decimals)?;
+    let data_hex = encode_erc20_transfer_data(&destination, smallest)?;
     let contract = normalize_evm_address(&token.contract_address);
     if !is_valid_evm_address(&contract) {
         return Err(EvmSendError::UnsupportedAsset);
@@ -341,7 +343,7 @@ pub fn decode_evm_send_preview(input: EvmPreviewDecodeInput) -> Option<EvmPrevie
             (live_fee_gwei, live_prio_gwei, fee_eth, desc)
         }
     };
-    let spendable = obj.get("spendable_eth").and_then(|v| v.as_f64());
+    let spendable = obj.get("spendable_balance").and_then(|v| v.as_f64());
     Some(EvmPreviewDecoded {
         nonce,
         gas_limit,
@@ -408,6 +410,122 @@ pub(crate) fn decode_evm_send_result_internal(
     }
 }
 
+/// The assembler and `execute_send` shift the same typed decimal into the same
+/// integer. They used not to: this one took an `f64`.
+#[cfg(test)]
+mod one_amount_one_conversion {
+    use super::*;
+
+    const FROM: &str = "0x1111111111111111111111111111111111111111";
+    const TO: &str = "0x2222222222222222222222222222222222222222";
+
+    fn native_wei(amount: &str) -> Result<String, EvmSendError> {
+        prepare_evm_send_assembly(EvmSendAssemblyInput {
+            chain_name: "Ethereum".into(),
+            symbol: "ETH".into(),
+            from_address: FROM.into(),
+            resolved_destination: TO.into(),
+            amount: amount.into(),
+            token: None,
+        })
+        .map(|assembly| assembly.value_wei)
+    }
+
+    /// The amounts an `f64` gets wrong. Every one of these came out of
+    /// `format!("{:.18}", amount)` carrying the double's own error: `1.1`
+    /// assembled 89 wei above the amount typed, and the send then signed the
+    /// exact one — the preview priced a transaction that was never made.
+    #[test]
+    fn a_typed_decimal_becomes_exactly_its_own_integer() {
+        for (typed, wei) in [
+            ("1.1", "1100000000000000000"),
+            ("0.1", "100000000000000000"),
+            ("0.07", "70000000000000000"),
+            ("1234.5678", "1234567800000000000000"),
+            ("12345678.9", "12345678900000000000000000"),
+            ("1.5", "1500000000000000000"),
+            ("0", "0"),
+            (" 2.25 ", "2250000000000000000"),
+            (".25", "250000000000000000"),
+        ] {
+            assert_eq!(native_wei(typed).unwrap(), wei, "{typed}");
+        }
+    }
+
+    /// Eighteen significant decimals do not fit in an `f64` at all — it runs
+    /// out around the sixteenth — so this amount was unrepresentable before,
+    /// not merely rounded.
+    #[test]
+    fn the_smallest_unit_of_an_eighteen_decimal_asset_survives() {
+        assert_eq!(
+            native_wei("1.234567890123456789").unwrap(),
+            "1234567890123456789"
+        );
+        assert_eq!(native_wei("0.000000000000000001").unwrap(), "1");
+    }
+
+    /// Whatever the signing path refuses, the assembler refuses. Scientific
+    /// notation and over-precision both used to assemble: `parse` took `1e3`
+    /// as a thousand and `format!` truncated the extra digit, so a preview
+    /// succeeded for an amount `execute_send` would then reject.
+    #[test]
+    fn what_the_send_refuses_the_preview_refuses() {
+        for refused in [
+            "1e3",
+            "1.1234567890123456789", // 19 decimals against 18
+            "-1",
+            "NaN",
+            "inf",
+            "",
+            "1..0",
+            "abc",
+        ] {
+            assert!(native_wei(refused).is_err(), "{refused}");
+        }
+    }
+
+    /// A token is shifted by its own contract's decimals, not the chain's.
+    #[test]
+    fn a_token_amount_uses_the_contract_precision() {
+        let assembly = prepare_evm_send_assembly(EvmSendAssemblyInput {
+            chain_name: "Ethereum".into(),
+            symbol: "USDC".into(),
+            from_address: FROM.into(),
+            resolved_destination: TO.into(),
+            amount: "1234.567891".into(),
+            token: Some(EvmSupportedToken {
+                symbol: "USDC".into(),
+                contract_address: "0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48".into(),
+                decimals: 6,
+            }),
+        })
+        .unwrap();
+        // 1234.567891 at 6 decimals is 1_234_567_891 = 0x499602d3, right
+        // aligned in the call's 32-byte amount word.
+        assert!(
+            assembly
+                .data_hex
+                .ends_with(&format!("{:0>64x}", 1_234_567_891u64)),
+            "{}",
+            assembly.data_hex
+        );
+        // One decimal past the contract's precision is refused, not truncated.
+        assert!(prepare_evm_send_assembly(EvmSendAssemblyInput {
+            chain_name: "Ethereum".into(),
+            symbol: "USDC".into(),
+            from_address: FROM.into(),
+            resolved_destination: TO.into(),
+            amount: "1.1234567".into(),
+            token: Some(EvmSupportedToken {
+                symbol: "USDC".into(),
+                contract_address: "0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48".into(),
+                decimals: 6,
+            }),
+        })
+        .is_err());
+    }
+}
+
 #[cfg(test)]
 mod every_evm_chain_can_assemble {
     use super::*;
@@ -428,7 +546,7 @@ mod every_evm_chain_can_assemble {
                 symbol: chain.coin_symbol().to_string(),
                 from_address: address.to_string(),
                 resolved_destination: address.to_string(),
-                amount: 1.0,
+                amount: "1".into(),
                 token: None,
             })
             .unwrap_or_else(|e| {
@@ -473,7 +591,7 @@ mod every_evm_chain_can_assemble {
                 symbol: symbol.to_string(),
                 from_address: address.to_string(),
                 resolved_destination: address.to_string(),
-                amount: 100.0,
+                amount: "100".into(),
                 token: Some(EvmSupportedToken {
                     symbol: symbol.to_string(),
                     contract_address: contract.to_string(),
@@ -502,7 +620,7 @@ mod tests {
             symbol: "ETH".into(),
             from_address: "0x1111111111111111111111111111111111111111".into(),
             resolved_destination: "0x2222222222222222222222222222222222222222".into(),
-            amount: 1.5,
+            amount: "1.5".into(),
             token: None,
         })
         .unwrap();
@@ -520,7 +638,7 @@ mod tests {
             symbol: "USDC".into(),
             from_address: "0x1111111111111111111111111111111111111111".into(),
             resolved_destination: "0x2222222222222222222222222222222222222222".into(),
-            amount: 100.0,
+            amount: "100".into(),
             token: Some(EvmSupportedToken {
                 symbol: "USDC".into(),
                 contract_address: "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48".into(),
@@ -545,7 +663,7 @@ mod tests {
             symbol: "ETH".into(),
             from_address: "0x1111111111111111111111111111111111111111".into(),
             resolved_destination: "not-an-address".into(),
-            amount: 1.0,
+            amount: "1".into(),
             token: None,
         })
         .unwrap_err();
@@ -554,7 +672,7 @@ mod tests {
 
     #[test]
     fn preview_decode_with_custom_fees() {
-        let json = r#"{"nonce":7,"gas_limit":21000,"max_fee_per_gas_gwei":30.0,"max_priority_fee_per_gas_gwei":2.0,"estimated_fee_eth":0.00063,"fee_rate_description":"live desc","spendable_eth":4.2}"#;
+        let json = r#"{"nonce":7,"gas_limit":21000,"max_fee_per_gas_gwei":30.0,"max_priority_fee_per_gas_gwei":2.0,"estimated_fee_eth":0.00063,"fee_rate_description":"live desc","spendable_balance":4.2}"#;
         let decoded = decode_evm_send_preview(EvmPreviewDecodeInput {
             raw_json: json.into(),
             explicit_nonce: Some(12),
@@ -594,7 +712,7 @@ mod tests {
 
     #[test]
     fn preview_decode_without_overrides_uses_rpc() {
-        let json = r#"{"nonce":3,"gas_limit":21000,"max_fee_per_gas_gwei":20.0,"max_priority_fee_per_gas_gwei":1.5,"estimated_fee_eth":0.00042,"fee_rate_description":"rpc desc","spendable_eth":2.0}"#;
+        let json = r#"{"nonce":3,"gas_limit":21000,"max_fee_per_gas_gwei":20.0,"max_priority_fee_per_gas_gwei":1.5,"estimated_fee_eth":0.00042,"fee_rate_description":"rpc desc","spendable_balance":2.0}"#;
         let decoded = decode_evm_send_preview(EvmPreviewDecodeInput {
             raw_json: json.into(),
             explicit_nonce: None,

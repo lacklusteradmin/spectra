@@ -15,6 +15,10 @@
 #   * `native_coingecko_id` — a testnet asset has no price
 #   * whatever it states below
 #
+# `native_coinpaprika_id` and `native_coinlore_nameid` sit beside the gecko id
+# and follow the same rules; `tokens.toml` documents what they are and when
+# they are empty. A testnet inherits none of the three, for the reason above.
+#
 # Three columns are gone. `primary_use` held the same string as `comment` on
 # all seventy-eight rows and was never rendered. `contract_address_prompt` is a
 # function of `token_standard`. `is_evm` is a function of `category`, once
@@ -32,6 +36,7 @@ asset_name = "bitcoin"
 address_prefix_hint = "bc1q…"
 token_standard = ""
 native_coingecko_id = "bitcoin"
+native_coinpaprika_id = "btc-bitcoin"
 native_decimals = 8
 native_asset_name = "Bitcoin"
 derivation_path = [
@@ -55,6 +60,7 @@ asset_name = "ethereum"
 address_prefix_hint = "0x…"
 token_standard = "ERC-20"
 native_coingecko_id = "ethereum"
+native_coinpaprika_id = "eth-ethereum"
 native_decimals = 18
 native_asset_name = "Ethereum"
 derivation_path = [ { tag = "standard", path = "m/44'/60'/{account}'/0/0", is_default = true } ]
@@ -71,6 +77,7 @@ asset_name = "solana"
 address_prefix_hint = "So111…"
 token_standard = "SPL"
 native_coingecko_id = "solana"
+native_coinpaprika_id = "sol-solana"
 native_decimals = 9
 native_asset_name = "Solana"
 enumerates_holdings = true
@@ -91,6 +98,7 @@ asset_name = "dogecoin"
 address_prefix_hint = "D…"
 token_standard = ""
 native_coingecko_id = "dogecoin"
+native_coinpaprika_id = "doge-dogecoin"
 native_decimals = 8
 native_asset_name = "Dogecoin"
 derivation_path = [ { tag = "standard", path = "m/44'/3'/{account}'/0/0", is_default = true } ]
@@ -107,6 +115,7 @@ asset_name = "xrp"
 address_prefix_hint = "r…"
 token_standard = ""
 native_coingecko_id = "ripple"
+native_coinpaprika_id = "xrp-xrp"
 native_decimals = 6
 native_asset_name = "XRP"
 derivation_path = [
@@ -126,6 +135,7 @@ asset_name = "litecoin"
 address_prefix_hint = "ltc1… / L… / M…"
 token_standard = ""
 native_coingecko_id = "litecoin"
+native_coinpaprika_id = "ltc-litecoin"
 native_decimals = 8
 native_asset_name = "Litecoin"
 derivation_path = [
@@ -145,6 +155,7 @@ color = "orange"
 asset_name = "bitcoincash"
 token_standard = ""
 native_coingecko_id = "bitcoin-cash"
+native_coinpaprika_id = "bch-bitcoin-cash"
 native_decimals = 8
 native_asset_name = "Bitcoin Cash"
 derivation_path = [
@@ -165,6 +176,7 @@ asset_name = "tron"
 address_prefix_hint = "T…"
 token_standard = "TRC-20"
 native_coingecko_id = "tron"
+native_coinpaprika_id = "trx-tron"
 native_decimals = 6
 native_asset_name = "Tron"
 enumerates_holdings = true
@@ -186,6 +198,7 @@ asset_name = "stellar"
 address_prefix_hint = "G…"
 token_standard = ""
 native_coingecko_id = "stellar"
+native_coinpaprika_id = "xlm-stellar"
 native_decimals = 7
 native_asset_name = "Stellar"
 derivation_path = [ { tag = "standard", path = "m/44'/148'/{account}'", is_default = true } ]
@@ -202,6 +215,7 @@ asset_name = "cardano"
 address_prefix_hint = "addr1…"
 token_standard = ""
 native_coingecko_id = "cardano"
+native_coinpaprika_id = "ada-cardano"
 native_decimals = 6
 native_asset_name = "Cardano"
 derivation_path = [
@@ -221,6 +235,7 @@ asset_name = "polkadot"
 address_prefix_hint = "1…"
 token_standard = ""
 native_coingecko_id = "polkadot"
+native_coinpaprika_id = "dot-polkadot-token"
 native_decimals = 10
 native_asset_name = "Polkadot"
 derivation_path = [ { tag = "standard", path = "m/44'/354'/{account}'", is_default = true } ]
@@ -237,6 +252,7 @@ asset_name = "arbitrum"
 address_prefix_hint = "0x…"
 token_standard = "ERC-20"
 native_coingecko_id = "ethereum"
+native_coinpaprika_id = "eth-ethereum"
 native_decimals = 18
 native_asset_name = "Ethereum"
 derivation_path = [ { tag = "standard", path = "m/44'/60'/{account}'/0/0", is_default = true } ]
@@ -253,6 +269,7 @@ asset_name = "optimism"
 address_prefix_hint = "0x…"
 token_standard = "ERC-20"
 native_coingecko_id = "ethereum"
+native_coinpaprika_id = "eth-ethereum"
 native_decimals = 18
 native_asset_name = "Ethereum"
 derivation_path = [ { tag = "standard", path = "m/44'/60'/{account}'/0/0", is_default = true } ]
@@ -269,6 +286,8 @@ asset_name = "avalanche"
 address_prefix_hint = "0x…"
 token_standard = "ARC-20"
 native_coingecko_id = "avalanche-2"
+native_coinpaprika_id = "avax-avalanche"
+native_coinlore_nameid = "avalanche"
 native_decimals = 18
 native_asset_name = "Avalanche"
 derivation_path = [ { tag = "standard", path = "m/44'/60'/{account}'/0/0", is_default = true } ]
@@ -285,6 +304,7 @@ asset_name = "sui"
 address_prefix_hint = "0x…"
 token_standard = "Sui Coin"
 native_coingecko_id = "sui"
+native_coinpaprika_id = "sui-sui"
 native_decimals = 9
 native_asset_name = "Sui"
 enumerates_holdings = true
@@ -302,6 +322,7 @@ asset_name = "aptos"
 address_prefix_hint = "0x…"
 token_standard = "AIP-21"
 native_coingecko_id = "aptos"
+native_coinpaprika_id = "apt-aptos"
 native_decimals = 8
 native_asset_name = "Aptos"
 enumerates_holdings = true
@@ -319,6 +340,8 @@ asset_name = "ton"
 address_prefix_hint = "UQ… / EQ…"
 token_standard = "TEP-74"
 native_coingecko_id = "the-open-network"
+native_coinpaprika_id = "ton-tontoken"
+native_coinlore_nameid = "toncoin"
 native_decimals = 9
 native_asset_name = "Toncoin"
 enumerates_holdings = true
@@ -336,6 +359,8 @@ asset_name = "near"
 address_prefix_hint = "alice.near / 64-char hex"
 token_standard = "NEP-141"
 native_coingecko_id = "near"
+native_coinpaprika_id = "near-near-protocol"
+native_coinlore_nameid = "near-protocol"
 native_decimals = 24
 native_asset_name = "NEAR"
 derivation_path = [ { tag = "standard", path = "m/44'/397'/{account}'", is_default = true } ]
@@ -352,6 +377,8 @@ asset_name = "internetcomputer"
 address_prefix_hint = "64-char account identifier"
 token_standard = ""
 native_coingecko_id = "internet-computer"
+native_coinpaprika_id = "icp-internet-computer"
+native_coinlore_nameid = "dfinity"
 native_decimals = 8
 native_asset_name = "Internet Computer"
 derivation_path = [ { tag = "standard", path = "m/44'/223'/{account}'/0/0", is_default = true } ]
@@ -368,6 +395,7 @@ asset_name = "monero"
 address_prefix_hint = "4… / 8…"
 token_standard = ""
 native_coingecko_id = "monero"
+native_coinpaprika_id = "xmr-monero"
 native_decimals = 12
 native_asset_name = "Monero"
 derivation_path = []
@@ -384,6 +412,7 @@ asset_name = "base"
 address_prefix_hint = "0x…"
 token_standard = "ERC-20"
 native_coingecko_id = "ethereum"
+native_coinpaprika_id = "eth-ethereum"
 native_decimals = 18
 native_asset_name = "Ethereum"
 derivation_path = [ { tag = "standard", path = "m/44'/60'/{account}'/0/0", is_default = true } ]
@@ -400,6 +429,7 @@ asset_name = "ethereumclassic"
 address_prefix_hint = "0x…"
 token_standard = ""
 native_coingecko_id = "ethereum-classic"
+native_coinpaprika_id = "etc-ethereum-classic"
 native_decimals = 18
 native_asset_name = "Ethereum Classic"
 derivation_path = [ { tag = "standard", path = "m/44'/61'/{account}'/0/0", is_default = true } ]
@@ -415,6 +445,7 @@ color = "orange"
 asset_name = "bitcoinsv"
 token_standard = ""
 native_coingecko_id = "bitcoin-cash-sv"
+native_coinpaprika_id = "bsv-bitcoin-sv"
 native_decimals = 8
 native_asset_name = "Bitcoin SV"
 derivation_path = [ { tag = "standard", path = "m/44'/236'/{account}'/0/0", is_default = true } ]
@@ -431,6 +462,8 @@ asset_name = "bnb"
 address_prefix_hint = "0x…"
 token_standard = "BEP-20"
 native_coingecko_id = "binancecoin"
+native_coinpaprika_id = "bnb-binance-coin"
+native_coinlore_nameid = "binance-coin"
 native_decimals = 18
 native_asset_name = "BNB"
 derivation_path = [ { tag = "standard", path = "m/44'/60'/{account}'/0/0", is_default = true } ]
@@ -447,6 +480,7 @@ asset_name = "hyperliquid"
 address_prefix_hint = "0x…"
 token_standard = "ERC-20"
 native_coingecko_id = "hyperliquid"
+native_coinpaprika_id = "hype-hyperliquid"
 native_decimals = 18
 native_asset_name = "Hyperliquid"
 derivation_path = [ { tag = "standard", path = "m/44'/60'/{account}'/0/0", is_default = true } ]
@@ -462,7 +496,8 @@ color = "purple"
 asset_name = "polygon"
 address_prefix_hint = "0x…"
 token_standard = "ERC-20"
-native_coingecko_id = "matic-network"
+native_coingecko_id = "polygon-ecosystem-token"
+native_coinpaprika_id = "pol-polygon-ecosystem-token"
 native_decimals = 18
 native_asset_name = "Polygon"
 derivation_path = [ { tag = "standard", path = "m/44'/60'/{account}'/0/0", is_default = true } ]
@@ -479,6 +514,7 @@ asset_name = "linea"
 address_prefix_hint = "0x…"
 token_standard = "ERC-20"
 native_coingecko_id = "ethereum"
+native_coinpaprika_id = "eth-ethereum"
 native_decimals = 18
 native_asset_name = "Ethereum"
 derivation_path = [ { tag = "standard", path = "m/44'/60'/{account}'/0/0", is_default = true } ]
@@ -486,7 +522,7 @@ derivation_path = [ { tag = "standard", path = "m/44'/60'/{account}'/0/0", is_de
 [[chains]]
 id = "scroll"
 name = "Scroll"
-symbol = "SCRL"
+symbol = "SCR"
 gas_token_symbol = "ETH"
 search_keywords = ["Scroll"]
 category = "evm-l2"
@@ -495,6 +531,7 @@ asset_name = "scroll"
 address_prefix_hint = "0x…"
 token_standard = "ERC-20"
 native_coingecko_id = "ethereum"
+native_coinpaprika_id = "eth-ethereum"
 native_decimals = 18
 native_asset_name = "Ethereum"
 derivation_path = [ { tag = "standard", path = "m/44'/60'/{account}'/0/0", is_default = true } ]
@@ -511,6 +548,7 @@ asset_name = "blast"
 address_prefix_hint = "0x…"
 token_standard = "ERC-20"
 native_coingecko_id = "ethereum"
+native_coinpaprika_id = "eth-ethereum"
 native_decimals = 18
 native_asset_name = "Ethereum"
 derivation_path = [ { tag = "standard", path = "m/44'/60'/{account}'/0/0", is_default = true } ]
@@ -527,6 +565,7 @@ asset_name = "mantle"
 address_prefix_hint = "0x…"
 token_standard = "ERC-20"
 native_coingecko_id = "mantle"
+native_coinpaprika_id = "mnt-mantle"
 native_decimals = 18
 native_asset_name = "Mantle"
 derivation_path = [ { tag = "standard", path = "m/44'/60'/{account}'/0/0", is_default = true } ]
@@ -542,6 +581,7 @@ color = "yellow"
 asset_name = "zcash"
 token_standard = ""
 native_coingecko_id = "zcash"
+native_coinpaprika_id = "zec-zcash"
 native_decimals = 8
 native_asset_name = "Zcash"
 derivation_path = [ { tag = "standard", path = "m/44'/133'/{account}'/0/0", is_default = true } ]
@@ -557,6 +597,7 @@ color = "yellow"
 asset_name = "bitcoingold"
 token_standard = ""
 native_coingecko_id = "bitcoin-gold"
+native_coinpaprika_id = "btg-bitcoin-gold"
 native_decimals = 8
 native_asset_name = "Bitcoin Gold"
 derivation_path = [ { tag = "standard", path = "m/44'/156'/{account}'/0/0", is_default = true } ]
@@ -572,6 +613,7 @@ color = "indigo"
 asset_name = "decred"
 token_standard = ""
 native_coingecko_id = "decred"
+native_coinpaprika_id = "dcr-decred"
 native_decimals = 8
 native_asset_name = "Decred"
 derivation_path = [ { tag = "standard", path = "m/44'/42'/{account}'/0/0", is_default = true } ]
@@ -587,6 +629,7 @@ color = "teal"
 asset_name = "kaspa"
 token_standard = ""
 native_coingecko_id = "kaspa"
+native_coinpaprika_id = "kas-kaspa"
 native_decimals = 8
 native_asset_name = "Kaspa"
 derivation_path = [ { tag = "standard", path = "m/44'/111111'/{account}'/0/0", is_default = true } ]
@@ -603,6 +646,7 @@ asset_name = "sei"
 address_prefix_hint = "0x…"
 token_standard = "ERC-20"
 native_coingecko_id = "sei-network"
+native_coinpaprika_id = "sei-sei"
 native_decimals = 18
 native_asset_name = "Sei"
 derivation_path = [ { tag = "standard", path = "m/44'/60'/{account}'/0/0", is_default = true } ]
@@ -619,6 +663,7 @@ asset_name = "celo"
 address_prefix_hint = "0x…"
 token_standard = "ERC-20"
 native_coingecko_id = "celo"
+native_coinpaprika_id = "celo-celo"
 native_decimals = 18
 native_asset_name = "Celo"
 derivation_path = [ { tag = "standard", path = "m/44'/60'/{account}'/0/0", is_default = true } ]
@@ -635,6 +680,7 @@ asset_name = "cronos"
 address_prefix_hint = "0x…"
 token_standard = "ERC-20"
 native_coingecko_id = "crypto-com-chain"
+native_coinpaprika_id = "cro-cryptocom-chain"
 native_decimals = 18
 native_asset_name = "Cronos"
 derivation_path = [ { tag = "standard", path = "m/44'/60'/{account}'/0/0", is_default = true } ]
@@ -651,6 +697,8 @@ asset_name = "bnb"
 address_prefix_hint = "0x…"
 token_standard = "ERC-20"
 native_coingecko_id = "binancecoin"
+native_coinpaprika_id = "bnb-binance-coin"
+native_coinlore_nameid = "binance-coin"
 native_decimals = 18
 native_asset_name = "BNB"
 derivation_path = [ { tag = "standard", path = "m/44'/60'/{account}'/0/0", is_default = true } ]
@@ -667,6 +715,7 @@ asset_name = "zksyncera"
 address_prefix_hint = "0x…"
 token_standard = "ERC-20"
 native_coingecko_id = "ethereum"
+native_coinpaprika_id = "eth-ethereum"
 native_decimals = 18
 native_asset_name = "Ethereum"
 derivation_path = [ { tag = "standard", path = "m/44'/60'/{account}'/0/0", is_default = true } ]
@@ -683,6 +732,7 @@ asset_name = "sonic"
 address_prefix_hint = "0x…"
 token_standard = "ERC-20"
 native_coingecko_id = "sonic-3"
+native_coinpaprika_id = "s-sonic"
 native_decimals = 18
 native_asset_name = "Sonic"
 derivation_path = [ { tag = "standard", path = "m/44'/60'/{account}'/0/0", is_default = true } ]
@@ -699,6 +749,7 @@ asset_name = "bera"
 address_prefix_hint = "0x…"
 token_standard = "ERC-20"
 native_coingecko_id = "berachain-bera"
+native_coinpaprika_id = "bera-berachain"
 native_decimals = 18
 native_asset_name = "Berachain"
 derivation_path = [ { tag = "standard", path = "m/44'/60'/{account}'/0/0", is_default = true } ]
@@ -715,6 +766,7 @@ asset_name = "uniswap"
 address_prefix_hint = "0x…"
 token_standard = "ERC-20"
 native_coingecko_id = "ethereum"
+native_coinpaprika_id = "eth-ethereum"
 native_decimals = 18
 native_asset_name = "Ethereum"
 derivation_path = [ { tag = "standard", path = "m/44'/60'/{account}'/0/0", is_default = true } ]
@@ -731,6 +783,7 @@ asset_name = "ink"
 address_prefix_hint = "0x…"
 token_standard = "ERC-20"
 native_coingecko_id = "ethereum"
+native_coinpaprika_id = "eth-ethereum"
 native_decimals = 18
 native_asset_name = "Ethereum"
 derivation_path = [ { tag = "standard", path = "m/44'/60'/{account}'/0/0", is_default = true } ]
@@ -746,6 +799,7 @@ color = "blue"
 asset_name = "dash"
 token_standard = ""
 native_coingecko_id = "dash"
+native_coinpaprika_id = "dash-dash"
 native_decimals = 8
 native_asset_name = "Dash"
 derivation_path = [ { tag = "standard", path = "m/44'/5'/{account}'/0/0", is_default = true } ]
@@ -762,6 +816,7 @@ asset_name = "okb"
 address_prefix_hint = "0x…"
 token_standard = "ERC-20"
 native_coingecko_id = "okb"
+native_coinpaprika_id = "okb-okb"
 native_decimals = 18
 native_asset_name = "OKB"
 derivation_path = [ { tag = "standard", path = "m/44'/60'/{account}'/0/0", is_default = true } ]
@@ -777,6 +832,7 @@ color = "gray"
 asset_name = "bittensor"
 token_standard = ""
 native_coingecko_id = "bittensor"
+native_coinpaprika_id = "tao-bittensor"
 native_decimals = 9
 native_asset_name = "Bittensor"
 derivation_path = [ { tag = "standard", path = "m/44'/1005'/{account}'/0'/0'", is_default = true } ]

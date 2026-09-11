@@ -27,9 +27,11 @@ use crate::http::{HttpClient, RetryProfile};
 /// no prices at all, and the only cure was a trip to Settings. All three run
 /// now and their answers merge, so coverage is the union.
 ///
-/// CoinGecko comes first because the catalog already carries a `coingecko_id`
-/// for every asset, so it is the one provider that can be asked precisely
-/// rather than by symbol.
+/// CoinGecko comes first because it prices every asset the catalog carries an
+/// id for; the other two are asked about whatever they also list. All three
+/// are asked by id. Matching a quote to a holding by ticker symbol was how
+/// BUSD — Bera USD here — priced as Binance USD, so nothing does it now: an
+/// asset the catalog cannot name at a provider goes unpriced there.
 const PRICE_PROVIDERS: &[PriceProvider] = &[
     PriceProvider::CoinGecko,
     PriceProvider::CoinPaprika,
@@ -82,15 +84,17 @@ impl FiatRateProvider {
 
 // ── Inputs / outputs
 
-/// One coin the caller wants priced. `holding_key` is the Swift-side
-/// identifier returned in the quote map, `symbol` is used as a provider
-/// fallback, and `coin_gecko_id` is the canonical market-data id used by
-/// id-indexed providers (CoinGecko, CoinPaprika, CoinLore).
+/// One coin the caller wants priced. `holding_key` is the caller's own
+/// identifier, returned in the quote map; `coin_gecko_id` is the catalog id
+/// every provider is resolved from.
+///
+/// It also carried the ticker symbol, for providers to match on when the id
+/// missed. Nothing matches on symbol any more, so a front end no longer sends
+/// one — see [`PRICE_PROVIDERS`].
 #[derive(Debug, Clone, Serialize, Deserialize, uniffi::Record)]
 #[serde(rename_all = "camelCase")]
 pub struct PriceRequestCoin {
     pub holding_key: String,
-    pub symbol: String,
     pub coin_gecko_id: String,
 }
 
@@ -264,7 +268,6 @@ struct PaprikaUsd {
 #[derive(Debug, Deserialize)]
 struct PaprikaTicker {
     id: String,
-    symbol: String,
     #[serde(default)]
     quotes: Option<PaprikaQuotes>,
 }
@@ -276,35 +279,21 @@ async fn fetch_coinpaprika_quotes(coins: &[PriceRequestCoin]) -> Result<PriceQuo
         .get_json(COINPAPRIKA_TICKERS_URL, RetryProfile::ChainRead)
         .await?;
 
-    let by_id: HashMap<String, &PaprikaTicker> =
-        tickers.iter().map(|t| (t.id.clone(), t)).collect();
-    let mut by_symbol: HashMap<String, &PaprikaTicker> = HashMap::new();
-    for t in &tickers {
-        by_symbol.entry(t.symbol.to_uppercase()).or_insert(t);
-    }
+    let by_id: HashMap<&str, &PaprikaTicker> = tickers.iter().map(|t| (t.id.as_str(), t)).collect();
 
     for coin in coins {
         if resolved.contains_key(&coin.holding_key) {
             continue;
         }
-        // Try the gecko-id → paprika-id lookup first, then fall back to
-        // the symbol index.
-        if let Some(id) = paprika_id_for(&coin.coin_gecko_id, &coin.symbol) {
-            if let Some(ticker) = by_id.get(id) {
-                if let Some(price) = ticker.quotes.as_ref().and_then(|q| q.usd.as_ref()?.price) {
-                    if price > 0.0 {
-                        resolved.insert(coin.holding_key.clone(), price);
-                        continue;
-                    }
-                }
-            }
-        }
-        let symbol = coin.symbol.trim().to_uppercase();
-        if let Some(ticker) = by_symbol.get(&symbol) {
-            if let Some(price) = ticker.quotes.as_ref().and_then(|q| q.usd.as_ref()?.price) {
-                if price > 0.0 {
-                    resolved.insert(coin.holding_key.clone(), price);
-                }
+        let Some(id) = paprika_id_for(&coin.coin_gecko_id) else {
+            continue;
+        };
+        let Some(ticker) = by_id.get(id) else {
+            continue;
+        };
+        if let Some(price) = ticker.quotes.as_ref().and_then(|q| q.usd.as_ref()?.price) {
+            if price > 0.0 {
+                resolved.insert(coin.holding_key.clone(), price);
             }
         }
     }
@@ -312,113 +301,79 @@ async fn fetch_coinpaprika_quotes(coins: &[PriceRequestCoin]) -> Result<PriceQuo
     Ok(resolved)
 }
 
-fn paprika_id_for(gecko_id: &str, symbol: &str) -> Option<&'static str> {
-    static GECKO_MAP: std::sync::LazyLock<HashMap<&'static str, &'static str>> =
+/// One asset's ids at the market-data providers, as the catalogs state them.
+///
+/// Kept off `ChainEntry` and `TokenEntry`: no front end prices anything, so a
+/// column there would only be bytes crossing the FFI on every catalog call.
+#[derive(Debug, Clone)]
+pub(crate) struct AssetMarketIds {
+    pub coingecko_id: String,
+    /// CoinPaprika's own slug, or empty where it lists nothing the catalog
+    /// could identify. Not derivable: Aave is `aave-new` and Cronos is
+    /// `cro-cryptocom-chain`.
+    pub coinpaprika_id: String,
+    /// CoinLore's `nameid`, or empty where it is the CoinGecko id — the two
+    /// are the same name slug for every asset but seven.
+    pub coinlore_nameid: String,
+}
+
+/// The catalogs' market-data ids, indexed by CoinGecko id.
+///
+/// That is the key because a price request identifies its asset by that id and
+/// nothing else. Chains and tokens that share one agree on the rest of the
+/// row, which `market_ids_agree_on_shared_gecko_ids` holds them to.
+fn market_ids_for(gecko_id: &str) -> Option<&'static AssetMarketIds> {
+    static BY_GECKO_ID: std::sync::LazyLock<HashMap<&'static str, &'static AssetMarketIds>> =
         std::sync::LazyLock::new(|| {
-            HashMap::from([
-                ("bitcoin", "btc-bitcoin"),
-                ("ethereum", "eth-ethereum"),
-                ("optimism", "op-optimism"),
-                ("binancecoin", "bnb-binance-coin"),
-                ("bitcoin-cash", "bch-bitcoin-cash"),
-                ("bitcoin-cash-sv", "bsv-bitcoin-sv"),
-                ("litecoin", "ltc-litecoin"),
-                ("dogecoin", "doge-dogecoin"),
-                ("cardano", "ada-cardano"),
-                ("solana", "sol-solana"),
-                ("tron", "trx-tron"),
-                ("stellar", "xlm-stellar"),
-                ("ripple", "xrp-xrp"),
-                ("xrp", "xrp-xrp"),
-                ("monero", "xmr-monero"),
-                ("ethereum-classic", "etc-ethereum-classic"),
-                ("sui", "sui-sui"),
-                ("internet-computer", "icp-internet-computer"),
-                ("near", "near-near-protocol"),
-                ("polkadot", "dot-polkadot-token"),
-                ("hyperliquid", "hype-hyperliquid"),
-                ("tether", "usdt-tether"),
-                ("usd-coin", "usdc-usd-coin"),
-                ("dai", "dai-dai"),
-                ("wrapped-bitcoin", "wbtc-wrapped-bitcoin"),
-                ("chainlink", "link-chainlink"),
-                ("uniswap", "uni-uniswap"),
-                ("aave", "aave-aave"),
-                ("shiba-inu", "shib-shiba-inu"),
-                ("bitget-token", "bgb-bitget-token"),
-                ("leo-token", "leo-unus-sed-leo"),
-                ("crypto-com-chain", "cro-cronos"),
-                ("ethena-usde", "usde-ethena-usde"),
-                ("ripple-usd", "rlusd-ripple-usd"),
-                ("pax-gold", "paxg-pax-gold"),
-                ("tether-gold", "xaut-tether-gold"),
-                ("usdd", "usdd-usdd"),
-                ("global-dollar", "usdg-global-dollar"),
-            ])
-        });
-    static SYMBOL_MAP: std::sync::LazyLock<HashMap<&'static str, &'static str>> =
-        std::sync::LazyLock::new(|| {
-            HashMap::from([
-                ("BTC", "btc-bitcoin"),
-                ("ETH", "eth-ethereum"),
-                ("OP", "op-optimism"),
-                ("BNB", "bnb-binance-coin"),
-                ("BCH", "bch-bitcoin-cash"),
-                ("BSV", "bsv-bitcoin-sv"),
-                ("LTC", "ltc-litecoin"),
-                ("DOGE", "doge-dogecoin"),
-                ("ADA", "ada-cardano"),
-                ("SOL", "sol-solana"),
-                ("TRX", "trx-tron"),
-                ("XLM", "xlm-stellar"),
-                ("XRP", "xrp-xrp"),
-                ("XMR", "xmr-monero"),
-                ("ETC", "etc-ethereum-classic"),
-                ("SUI", "sui-sui"),
-                ("ICP", "icp-internet-computer"),
-                ("NEAR", "near-near-protocol"),
-                ("DOT", "dot-polkadot-token"),
-                ("HYPE", "hype-hyperliquid"),
-                ("USDT", "usdt-tether"),
-                ("USDC", "usdc-usd-coin"),
-                ("DAI", "dai-dai"),
-                ("BGB", "bgb-bitget-token"),
-                ("LEO", "leo-unus-sed-leo"),
-                ("CRO", "cro-cronos"),
-                ("USDE", "usde-ethena-usde"),
-                ("RLUSD", "rlusd-ripple-usd"),
-                ("PAXG", "paxg-pax-gold"),
-                ("XAUT", "xaut-tether-gold"),
-                ("USDD", "usdd-usdd"),
-                ("USDG", "usdg-global-dollar"),
-            ])
+            crate::chains::native_market_ids()
+                .iter()
+                .chain(crate::tokens::market_ids())
+                .filter(|m| !m.coingecko_id.is_empty())
+                .map(|m| (m.coingecko_id.as_str(), m))
+                .collect()
         });
 
     let gecko = gecko_id.trim();
-    // All keys are lowercase ASCII, so only lowercase if needed.
+    if gecko.is_empty() {
+        return None;
+    }
+    // Catalog ids are lowercase, so only lowercase when the caller's is not.
     if gecko.bytes().any(|b| b.is_ascii_uppercase()) {
-        let lower = gecko.to_lowercase();
-        if let Some(v) = GECKO_MAP.get(lower.as_str()) {
-            return Some(v);
-        }
-    } else if let Some(v) = GECKO_MAP.get(gecko) {
-        return Some(v);
-    }
-
-    let sym = symbol.trim();
-    if sym.bytes().any(|b| b.is_ascii_lowercase()) {
-        let upper = sym.to_uppercase();
-        SYMBOL_MAP.get(upper.as_str()).copied()
+        BY_GECKO_ID.get(gecko.to_lowercase().as_str()).copied()
     } else {
-        SYMBOL_MAP.get(sym).copied()
+        BY_GECKO_ID.get(gecko).copied()
     }
+}
+
+/// The CoinPaprika id for an asset, or `None` when the catalogs do not name
+/// one — an unlisted asset, or one whose identity there we could not verify.
+///
+/// This was a pair of hand-written tables covering a third of the token
+/// catalog, three of whose ids no longer resolved (`aave-aave`, `cro-cronos`,
+/// `leo-unus-sed-leo`). Whatever they missed fell through to a symbol match
+/// against several thousand paprika listings, which is a wrong asset's price,
+/// not a missing one.
+fn paprika_id_for(gecko_id: &str) -> Option<&'static str> {
+    let ids = market_ids_for(gecko_id)?;
+    (!ids.coinpaprika_id.is_empty()).then_some(ids.coinpaprika_id.as_str())
+}
+
+/// The CoinLore `nameid` for an asset, or `None` for one the catalogs do not
+/// carry. Empty in the catalog means "the CoinGecko id", which is what it is
+/// for all but seven assets.
+fn coinlore_nameid_for(gecko_id: &str) -> Option<&'static str> {
+    let ids = market_ids_for(gecko_id)?;
+    Some(if ids.coinlore_nameid.is_empty() {
+        ids.coingecko_id.as_str()
+    } else {
+        ids.coinlore_nameid.as_str()
+    })
 }
 
 // ── CoinLore
 
 #[derive(Debug, Deserialize)]
 struct CoinLoreTicker {
-    symbol: String,
     nameid: String,
     #[serde(rename = "price_usd")]
     price_usd: String,
@@ -440,22 +395,17 @@ async fn fetch_coinlore_quotes(coins: &[PriceRequestCoin]) -> Result<PriceQuoteM
     for t in &resp.data {
         by_nameid.entry(t.nameid.to_lowercase()).or_insert(t);
     }
-    let mut by_symbol: HashMap<String, &CoinLoreTicker> = HashMap::new();
-    for t in &resp.data {
-        by_symbol.entry(t.symbol.to_uppercase()).or_insert(t);
-    }
 
     for coin in coins {
         if resolved.contains_key(&coin.holding_key) {
             continue;
         }
-        let gecko = coin.coin_gecko_id.trim().to_lowercase();
-        let nameid = coinlore_nameid_for(&gecko);
-        let ticker = by_nameid.get(nameid).copied().or_else(|| {
-            let sym = coin.symbol.trim().to_uppercase();
-            by_symbol.get(&sym).copied()
-        });
-        let Some(ticker) = ticker else { continue };
+        let Some(nameid) = coinlore_nameid_for(&coin.coin_gecko_id) else {
+            continue;
+        };
+        let Some(ticker) = by_nameid.get(nameid).copied() else {
+            continue;
+        };
         let Ok(price) = ticker.price_usd.parse::<f64>() else {
             continue;
         };
@@ -465,13 +415,6 @@ async fn fetch_coinlore_quotes(coins: &[PriceRequestCoin]) -> Result<PriceQuoteM
     }
 
     Ok(resolved)
-}
-
-fn coinlore_nameid_for(gecko_id: &str) -> &str {
-    match gecko_id {
-        "ripple" | "xrp" => "ripple",
-        other => other,
-    }
 }
 
 // ── Fiat rates
@@ -756,5 +699,122 @@ mod merging_beats_choosing {
         let empty = merge_in_preference_order(vec![("first", ok(&[]))], "nobody")
             .expect("answering with nothing is an answer");
         assert!(empty.is_empty());
+    }
+}
+
+#[cfg(test)]
+mod market_id_tests {
+    use super::*;
+    use std::collections::HashSet;
+
+    fn all_rows() -> Vec<&'static AssetMarketIds> {
+        crate::chains::native_market_ids()
+            .iter()
+            .chain(crate::tokens::market_ids())
+            .collect()
+    }
+
+    /// Ten chains share ETH and the CRO token shares Cronos's coin, so one
+    /// CoinGecko id appears on several catalog rows. They are one asset, so
+    /// they must name one listing — `market_ids_for` keys on the gecko id and
+    /// would otherwise answer whichever row it indexed last.
+    #[test]
+    fn market_ids_agree_on_shared_gecko_ids() {
+        let mut seen: HashMap<&str, &AssetMarketIds> = HashMap::new();
+        for row in all_rows() {
+            if let Some(first) = seen.insert(row.coingecko_id.as_str(), row) {
+                assert_eq!(
+                    (&first.coinpaprika_id, &first.coinlore_nameid),
+                    (&row.coinpaprika_id, &row.coinlore_nameid),
+                    "catalog rows for {} disagree about where it is listed",
+                    row.coingecko_id
+                );
+            }
+        }
+    }
+
+    /// The other direction: two different assets pinned to one listing means
+    /// one of them is priced as the other. XAUT and XAUT0 are separate
+    /// listings, and a copied line is how they would stop being.
+    #[test]
+    fn no_two_assets_claim_one_listing() {
+        let picks: [(fn(&AssetMarketIds) -> &String, &str); 2] = [
+            (|r| &r.coinpaprika_id, "coinpaprika"),
+            (|r| &r.coinlore_nameid, "coinlore"),
+        ];
+        for (id_of, provider) in picks {
+            let mut owner: HashMap<&str, &str> = HashMap::new();
+            for row in all_rows() {
+                let id = id_of(row);
+                if id.is_empty() {
+                    continue;
+                }
+                let claimant = owner.entry(id).or_insert(&row.coingecko_id);
+                assert_eq!(
+                    *claimant, row.coingecko_id,
+                    "{provider} listing {id} is claimed by both {claimant} and {}",
+                    row.coingecko_id
+                );
+            }
+        }
+    }
+
+    /// Ids go to the provider as written, and both index theirs in lowercase.
+    #[test]
+    fn catalog_ids_are_lowercase_and_trimmed() {
+        for row in all_rows() {
+            for id in [&row.coingecko_id, &row.coinpaprika_id, &row.coinlore_nameid] {
+                assert_eq!(id.trim().to_lowercase(), *id, "{id} is not a plain id");
+            }
+        }
+    }
+
+    /// A token added without deciding where it is listed used to price as
+    /// whatever else shared its ticker. Blank is now a decision, and this is
+    /// the list of assets it has been made for.
+    #[test]
+    fn only_deliberately_unlisted_assets_have_no_paprika_id() {
+        let blank: HashSet<&str> = all_rows()
+            .iter()
+            .filter(|r| r.coinpaprika_id.is_empty())
+            .map(|r| r.coingecko_id.as_str())
+            .collect();
+        // honey-3 is Bera USD. CoinPaprika's BUSD is Binance USD, a different
+        // token, and it has no listing for ours — so it prices this nowhere
+        // rather than pricing it as something else.
+        assert_eq!(blank, HashSet::from(["honey-3"]));
+    }
+
+    /// The ids the old hand-written table got wrong (`aave-aave`,
+    /// `cro-cronos`, `leo-unus-sed-leo` resolve to nothing at CoinPaprika) and
+    /// the ones no table would have guessed.
+    #[test]
+    fn paprika_ids_come_from_the_catalog() {
+        assert_eq!(paprika_id_for("aave"), Some("aave-new"));
+        assert_eq!(
+            paprika_id_for("crypto-com-chain"),
+            Some("cro-cryptocom-chain")
+        );
+        assert_eq!(paprika_id_for("leo-token"), Some("leo-leo-token"));
+        assert_eq!(paprika_id_for("bittorrent"), Some("bttc-bittorrent-chain"));
+        assert_eq!(paprika_id_for("usa"), Some("usat"));
+        // A caller's id is not required to be normalized; a catalog's is.
+        assert_eq!(paprika_id_for("  Bitcoin "), Some("btc-bitcoin"));
+        // Unlisted, unknown and absent all mean the same thing: ask nobody.
+        assert_eq!(paprika_id_for("honey-3"), None);
+        assert_eq!(paprika_id_for("not-a-coin"), None);
+        assert_eq!(paprika_id_for(""), None);
+    }
+
+    /// CoinLore's `nameid` is the CoinGecko id for every asset but the seven
+    /// the catalog states, which is why it is a default and not a column of
+    /// eighty repetitions.
+    #[test]
+    fn coinlore_nameids_default_to_the_gecko_id() {
+        assert_eq!(coinlore_nameid_for("bitcoin"), Some("bitcoin"));
+        assert_eq!(coinlore_nameid_for("near"), Some("near-protocol"));
+        assert_eq!(coinlore_nameid_for("avalanche-2"), Some("avalanche"));
+        assert_eq!(coinlore_nameid_for("the-open-network"), Some("toncoin"));
+        assert_eq!(coinlore_nameid_for("not-a-coin"), None);
     }
 }

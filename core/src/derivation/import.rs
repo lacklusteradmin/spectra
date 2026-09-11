@@ -1228,8 +1228,8 @@ mod minted_wallet_id_tests {
     /// nothing else knows.
     #[test]
     fn a_supplied_id_plan_must_match() {
-        let plan = plan_wallet_import(request(&["Bitcoin"], vec!["given-id".to_string()]))
-            .expect("plan");
+        let plan =
+            plan_wallet_import(request(&["Bitcoin"], vec!["given-id".to_string()])).expect("plan");
         assert_eq!(plan.wallets[0].wallet_id, "given-id");
         assert!(plan_wallet_import(request(
             &["Bitcoin"],

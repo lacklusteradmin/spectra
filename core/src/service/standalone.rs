@@ -103,4 +103,3 @@ pub fn generate_mnemonic(word_count: u32) -> String {
         .expect("valid entropy length")
         .to_string()
 }
-

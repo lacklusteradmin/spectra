@@ -77,6 +77,20 @@ pub struct SendDestinationRisk {
     pub has_history: bool,
 }
 
+/// The address a send is actually going to, from what the user typed.
+///
+/// `used_ens` is not decoration: it is one of the high-risk signals, and it is
+/// the difference between showing the user the string they typed and showing
+/// them the address it stood for. A caller that resolved the name itself had
+/// to remember to say so; one that asks for a destination is told.
+#[derive(Debug, Clone, PartialEq, Eq, uniffi::Record)]
+pub struct SendDestinationResolution {
+    /// Normalized for the chain, so it compares equal to a stored address.
+    pub address: String,
+    /// A name lookup, rather than the user, produced `address`.
+    pub used_ens: bool,
+}
+
 /// What signing material a wallet has, and whether a password guards it.
 #[derive(Debug, Clone, PartialEq, Eq, uniffi::Record)]
 pub struct WalletSecretState {
