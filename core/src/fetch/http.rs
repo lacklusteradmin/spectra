@@ -187,43 +187,6 @@ impl HttpClient {
             .await
     }
 
-    /// GET raw text (for providers that return non-JSON).
-    pub async fn get_text(&self, url: &str, profile: RetryProfile) -> Result<String, String> {
-        if crate::tor::kill_switch_engaged() {
-            return Err(KILL_SWITCH_MESSAGE.to_string());
-        }
-        let max_attempts = profile.max_attempts();
-        let mut last_err = String::new();
-
-        for attempt in 0..max_attempts {
-            if attempt > 0 {
-                sleep(profile.delay_for_attempt(attempt)).await;
-            }
-
-            let result = self.get_client().get(url).send().await;
-            match result {
-                Err(e) => {
-                    last_err = format_reqwest_error(&e);
-                    if !profile.is_retryable_error(&e) {
-                        break;
-                    }
-                }
-                Ok(resp) => {
-                    let status = resp.status();
-                    if status == StatusCode::TOO_MANY_REQUESTS || status.is_server_error() {
-                        last_err = format!("HTTP {status}");
-                        continue;
-                    }
-                    if !status.is_success() {
-                        return Err(format!("HTTP {status}"));
-                    }
-                    return resp.text().await.map_err(|e| e.to_string());
-                }
-            }
-        }
-        Err(format!("all {max_attempts} attempts failed: {last_err}"))
-    }
-
     /// POST a JSON body and decode the JSON response.
     pub async fn post_json<B: Serialize, T: DeserializeOwned>(
         &self,

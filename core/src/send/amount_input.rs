@@ -40,47 +40,12 @@ pub fn parse_raw_amount(text: &str, decimals: u32) -> Result<u128, SpectraBridge
 
 #[uniffi::export]
 pub fn parse_amount_input(text: String, max_decimals: u32) -> Option<f64> {
-    let trimmed = text.trim();
-    if trimmed.is_empty() {
+    let raw = parse_raw_amount(&text, max_decimals).ok()?;
+    if raw == 0 {
         return None;
     }
-    let mut chars = trimmed.chars().peekable();
-    let mut saw_digit_int = false;
-    let mut saw_dot = false;
-    let mut frac_digits: u32 = 0;
-    while let Some(&c) = chars.peek() {
-        if c.is_ascii_digit() {
-            if saw_dot {
-                frac_digits += 1;
-                if frac_digits > max_decimals {
-                    return None;
-                }
-            } else {
-                saw_digit_int = true;
-            }
-            chars.next();
-        } else if c == '.' {
-            if saw_dot {
-                return None;
-            }
-            saw_dot = true;
-            chars.next();
-        } else {
-            return None;
-        }
-    }
-    if saw_dot && frac_digits == 0 && !saw_digit_int {
-        return None; // lone "."
-    }
-    if !saw_digit_int && !saw_dot {
-        return None;
-    }
-    let value: f64 = trimmed.parse().ok()?;
-    if value > 0.0 {
-        Some(value)
-    } else {
-        None
-    }
+    let value: f64 = text.trim().parse().ok()?;
+    value.is_finite().then_some(value)
 }
 
 #[cfg(test)]
@@ -167,5 +132,71 @@ mod exact_tests {
                 "{input}/{decimals}"
             );
         }
+    }
+}
+
+/// Turn a fee-adjusted estimate into editable decimal input. Integer arithmetic
+/// floors at asset precision and again at the requested percentage; it never
+/// rounds a shortcut up past its quote. This is an estimate, not a promise that
+/// a later network fee will be unchanged.
+#[uniffi::export]
+pub fn send_amount_shortcut(maximum: f64, decimals: u32, percentage: u32) -> Option<String> {
+    if !maximum.is_finite() || maximum <= 0.0 || decimals > 38 || !(1..=100).contains(&percentage) {
+        return None;
+    }
+    // Use the preceding representable value: a display f64 may have rounded
+    // the provider's integer balance upwards. Reserving one ULP keeps that
+    // uncertainty on the safe side instead of manufacturing spendable units.
+    let bits = maximum.to_bits().checked_sub(1)?;
+    let exponent = ((bits >> 52) & 0x7ff) as i32 - 1023 - 52;
+    let mantissa = (bits & ((1u64 << 52) - 1)) | (1u64 << 52);
+    let scale = 10u128.checked_pow(decimals)?;
+    // Split powers of ten so the intermediate fits for 24-decimal chains.
+    let scaled = u128::from(mantissa).checked_mul(5u128.checked_pow(decimals)?)?;
+    let shift = exponent + decimals as i32;
+    let units = if shift >= 0 {
+        scaled.checked_mul(1u128.checked_shl(shift as u32)?)?
+    } else {
+        scaled.checked_shr((-shift) as u32).unwrap_or(0)
+    };
+    let percent = u128::from(percentage);
+    let units = (units / 100).checked_mul(percent)? + (units % 100) * percent / 100;
+    if units == 0 {
+        return None;
+    }
+    let whole = units / scale;
+    let fraction = units % scale;
+    if fraction == 0 {
+        return Some(whole.to_string());
+    }
+    Some(
+        format!("{whole}.{:0width$}", fraction, width = decimals as usize)
+            .trim_end_matches('0')
+            .to_string(),
+    )
+}
+
+#[cfg(test)]
+mod shortcut_tests {
+    use super::*;
+    #[test]
+    fn shortcuts_never_exceed_the_fee_adjusted_quote() {
+        assert_eq!(
+            send_amount_shortcut(0.99999, 8, 100).as_deref(),
+            Some("0.99998999")
+        );
+        assert_eq!(
+            send_amount_shortcut(1.0, 8, 50).as_deref(),
+            Some("0.49999999")
+        );
+        let near = send_amount_shortcut(1.0, 24, 100).unwrap();
+        assert!(parse_raw_amount(&near, 24).unwrap() < 10u128.pow(24));
+        assert!(!near.contains('e'));
+        for maximum in [f64::NAN, f64::INFINITY, -1.0, 0.0, 1e-30] {
+            assert!(send_amount_shortcut(maximum, 8, 100).is_none());
+        }
+        assert!(send_amount_shortcut(1.0, 8, 0).is_none());
+        assert!(send_amount_shortcut(1.0, 8, 101).is_none());
+        assert!(send_amount_shortcut(1.0, 39, 100).is_none());
     }
 }

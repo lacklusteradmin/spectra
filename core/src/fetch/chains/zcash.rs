@@ -6,16 +6,10 @@
 //! in [`super::blockbook`] — including `fetch_chain_tip_height`, which the V5
 //! transaction builder needs and which used to live only here.
 
-use super::blockbook::{
-    BlockbookBalance, BlockbookClient, BlockbookHistoryEntry, BlockbookNetwork,
-    BlockbookSendResult, BlockbookUtxoEntry,
-};
+use super::blockbook::{BlockbookClient, BlockbookNetwork, BlockbookSendResult};
 
 pub struct Zcash;
 impl BlockbookNetwork for Zcash {}
 
 pub type ZcashClient = BlockbookClient<Zcash>;
-pub type ZecBalance = BlockbookBalance;
-pub type ZecUtxo = BlockbookUtxoEntry;
-pub type ZecHistoryEntry = BlockbookHistoryEntry;
 pub type ZecSendResult = BlockbookSendResult;

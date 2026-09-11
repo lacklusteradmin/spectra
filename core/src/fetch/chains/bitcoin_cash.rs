@@ -10,10 +10,7 @@
 //! SIGHASH_FORKID = 0x40 rather than the BIP143 SegWit digest — and lives in
 //! `crate::send::chains::bitcoin_cash`.
 
-use super::blockbook::{
-    BlockbookBalance, BlockbookClient, BlockbookHistoryEntry, BlockbookNetwork,
-    BlockbookSendResult, BlockbookUtxoEntry,
-};
+use super::blockbook::{BlockbookClient, BlockbookNetwork, BlockbookSendResult};
 
 pub struct BitcoinCash;
 
@@ -24,7 +21,4 @@ impl BlockbookNetwork for BitcoinCash {
 }
 
 pub type BitcoinCashClient = BlockbookClient<BitcoinCash>;
-pub type BchBalance = BlockbookBalance;
-pub type BchUtxo = BlockbookUtxoEntry;
-pub type BchHistoryEntry = BlockbookHistoryEntry;
 pub type BchSendResult = BlockbookSendResult;

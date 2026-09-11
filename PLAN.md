@@ -162,6 +162,275 @@ assembly cannot verify a broadcast.
 
 ## Behaviour changed on purpose
 
+### Protocol encoders and Bitcoin history pagination (second core audit)
+
+- **Kaspa signing:** the encoder used Bitcoin CompactSize lengths, reversed
+  transaction IDs and a hash of empty payload bytes. It now uses Kaspa's u64-LE
+  lengths, original transaction-ID bytes and zero native-payload hash. Sender
+  keys must match the requested address, zero amounts and arithmetic overflow
+  refuse before signing. The native-all-0 digest is checked against rusty-kaspa's
+  independent consensus vector. CLI check: `cargo test -p spectra_core kaspa_official_native_sighash_vector`.
+- **Solana account aliases:** SOL/SPL self-transfers emitted duplicate account
+  keys and were rejected by account locking. A shared local message compiler
+  merges identities and writable privileges, then remaps instruction indices.
+  CLI check: `cargo test -p spectra_core audit_solana_self_transfers` (the usual
+  SDK vectors still exercise distinct-recipient transfers).
+- **Bitcoin pagination:** single-address continuation ignored its saved cursor;
+  HD aggregation truncated results and marked them exhausted. Both now use one
+  buffered `HistoryPage<T>` pager. Each source retains its Esplora continuation
+  and unread rows; complete block cohorts merge across addresses before UI
+  pagination, with integer satoshi accounting. A failed read or persistence
+  write cannot advance the cursor. Exactly full provider pages are probed for
+  continuation; repeated cursors refuse instead of looping. CLI check:
+  `python3 scripts/cli-bitcoin-history.py target/debug/spectra` uses only a local
+  fixture and a temporary directory, and proves 61 persisted transactions over
+  seven UI pages and three provider pages. It is part of CLI acceptance.
+- **Bitcoin HD network and script:** history used mainnet endpoints, mainnet
+  addresses and the canonical xpub's BIP44 interpretation even for other
+  derivation purposes. History now carries the selected network through address
+  derivation and HTTP reads; mnemonic wallets use their recorded address path's
+  BIP44/49/84/86 script, while imported extended keys retain their prefix's script
+  type. The scan window remains 20 receive and 10 change addresses. CLI check:
+  `cargo test -p spectra_core stored_testnet_hd_history` and
+  `cargo test -p spectra_core hd_history_addresses_match_individual_derivation`.
+- **CLI history:** `history --save` for Bitcoin now uses the same HD-aware core
+  operation as iOS; `--pages N` drives continuation within the process and
+  `--endpoint URL` permits an explicit history provider or loopback fixture.
+  Reads resolve the wallet's active network instead of assuming mainnet.
+
+- **Contact projection ordering (found by iOS verification):** fire-and-forget
+  address-book writes could race each other or a launch read, leaving deleted
+  contacts visible after core had removed them. Swift now forwards these intents
+  in order and invalidates older reads at commit completion. Core remains the
+  only domain store. The regression queues three additions/deletions, then
+  attempts to adopt the stale pre-delete snapshot; iOS check:
+  `testQueuedContactWritesCannotBeUndoneByAnOlderRead`. Existing CLI address-book
+  persistence checks continue to cover the core commands.
+
+The refactor scopes Bitcoin wire helpers to `bitcoin_wire`, separates network
+balances/tokens/history/HD/prices, isolates Bitcoin history orchestration, and
+splits SQLite CRUD and store tests by domain. Connection ownership and atomic
+cross-table writes remain shared. No storage migration or compatibility shim
+was added.
+
+
+
+### Audited signing boundaries, fresh recipients and service ownership
+
+- **Aptos receiving:** mnemonic addresses used Keccak-256(public key || 0),
+  which does not identify the Ed25519 account. Derivation now uses SHA3-256,
+  matching the official Aptos SDK. No compatibility path preserves the wrong
+  address. Existing incorrectly derived sender records are refused by the
+  identity check; reimport the mnemonic to derive its correct address.
+- **Tron signing:** CreateTransaction/TriggerSmartContract responses supplied
+  both the transaction and the hash that core blindly signed. Core now reads
+  only a block reference and locally encodes the one requested TRX transfer or
+  TRC-20 transfer call, hashes it, checks the signing key's owner and signs.
+  Node-supplied contracts, destinations, amounts and txIDs never enter signing.
+  Positive int64 amounts/fees, coherent block references and fixed one-minute
+  expiry are enforced. The old trigger simulation is removed; token execution
+  can still fail on chain and a successful broadcast is not confirmation.
+- **Solana/Sui/Aptos seeds:** mnemonic derivation returns a 32-byte seed, while
+  these sending branches demanded a 64-byte keypair and failed before signing.
+  They now accept only the explicit Ed25519Seed type, derive the verifying key
+  and refuse a competing sender. Secret-bearing internal params no longer
+  deserialize JSON or derive Clone; their hex strings zeroize and Debug is
+  redacted. Decoded signing buffers are zeroizing too. The unused Stellar token
+  parameter placeholder and legacy number/string deserializers are deleted.
+- **Sui receiving:** the independent SDK fixture also exposed Keccak-256
+  address derivation. This is now Blake2b-256(flag || public key), matching the
+  signer and official SDK. Reimporting derives the correct address; stale sender
+  records fail closed. The acceptance gate checks this receiving address too.
+- **Sui transaction correctness:** SHA-256 intent signatures are replaced with
+  Blake2b-256. The malformed unsafe_transferSui request and blind signing of
+  returned bytes are replaced by a local BCS programmable transfer: split the
+  exact MIST amount from gas and transfer that result to the requested owner.
+  Paginated coin references fund amount plus gas budget, up to 256 gas objects;
+  duplicates, overflow and insufficient funding refuse. Failed execution effects
+  and absent transaction digests no longer look like success.
+- **Aptos transaction construction:** /transactions/encode_submission is no
+  longer trusted with signing bytes. A local BCS native APT entry-function
+  transfer includes sequence, gas, expiry and chain id. The routed mainnet
+  sender refuses a node reporting another network. Broadcast-only functions
+  consume signed payloads and require transaction ids.
+- **ENS destinations:** the service-lifetime cache is removed outright. Each
+  resolution asks the provider again and a failed lookup cannot reuse an older
+  address. The review screen captures the resolved address as view state;
+  submit calls core's verify_send_destination, which resolves afresh and refuses
+  a different address. The user must return to Review before retrying. CLI:
+  `spectra send destination --chain Ethereum --to <input> --expected <address>`.
+- **Structure:** state persistence retains its single serialized writer;
+  keypool, address discovery, transaction tracking, wallet import and operational
+  events have sibling service modules. Send previews, recipient resolution,
+  signing dispatch and rebroadcast are separate modules, with internal typed
+  params and offline protocol builders. The unused Solana ATA existence read
+  is deleted: the transaction already creates it idempotently.
+- **Independent checks:** `scripts/generate-send-audit-vectors.cjs` pins the
+  official Aptos, Sui, Solana and Tron SDKs and generates offline fixtures under
+  `core/testdata/`. `cargo test -p spectra_core audit_` compares real mnemonic
+  derivation, exact protocol bytes/signatures or decoded SPL instructions, and
+  drives stored-wallet execute_send through mock submission. The CLI acceptance
+  gate checks the Aptos address and reviewed-destination mismatch without a
+  network; Swift tests cover the new async verification binding. These prove
+  local encoding and signing, not funded live broadcast or mining.
+
+### Remove the redundant Asset Hub card
+
+- Before: My Assets detail inserted an Asset Hub card with a repeated symbol,
+  a holding count labelled Networks, catalog contract count and pinned badge.
+  After: the hero leads directly into totals and chain holdings; contract
+  information remains available through Details. The card offered no action
+  and mixed catalog metadata with the user's holdings, so it and its private
+  rendering helpers are deleted rather than redesigned.
+- Presentation-only removal; no domain rule moved. CLI check:
+  `! rg -n 'AssetDetailHubCard|Asset Hub' swift/views/DashboardViews.swift`.
+  The existing core/CLI suites continue to cover asset data and pinning.
+
+### A stored password verifier is input, not a promise
+
+- **Work factor:** `verify` read `rounds` out of the envelope and handed it
+  straight to PBKDF2, which does exactly as many iterations as it is told. An
+  envelope edited to `1` turned the verifier into a single precomputable HMAC;
+  one edited to `u32::MAX` made unlocking run for hours on the calling thread,
+  so the app never came back. `rounds` is now bounded by `MINIMUM_ROUNDS` and
+  `MAXIMUM_ROUNDS` (twenty times the default), and salt and digest lengths are
+  checked the same way — an empty salt is the same weakening by another field.
+  The version was already checked; these were not.
+- **Two constants, on purpose:** `DEFAULT_ROUNDS` is what `create_verifier`
+  writes today, `MINIMUM_ROUNDS` is the floor `verify` will honour. Keeping
+  them apart is what lets the cost rise later without locking anyone out of a
+  verifier sealed at the old one. CLI check:
+  `cargo test -p spectra_core a_stored_envelope_is_not_trusted`.
+
+### A BSV address belongs to one network
+
+- **Validation:** `validate_bsv_address` took no network and accepted all four
+  version bytes (`0x00`/`0x05` mainnet, `0x6f`/`0xc4` testnet), while both
+  `"bitcoinSV"` and `"bitcoinSVTestnet"` dispatched to it — so the testnet kind
+  decided nothing, a mainnet send accepted an `m…`/`n…`/`2…` destination and a
+  testnet send accepted a `1…`/`3…` one. It takes the network now, the way
+  Litecoin, Dash, Decred and Zcash already did in the same file.
+- **One table:** a `BsvNetwork` enum owns the version bytes, and
+  `BSV_MAINNET_VERSION` / `BSV_TESTNET_VERSION` derive from it, so the
+  validator, the decoder and the deriver cannot disagree about which byte
+  belongs where.
+- **Signing:** `decode_bsv_address` returned only the hash, discarding the
+  version byte it had just checked — which is why the bug was possible. It
+  returns the network alongside, and the signer refuses a transaction whose
+  destination and change name different networks. CLI check:
+  `cargo test -p spectra_core a_bsv_address_belongs_to_one_network`.
+
+### The high-risk send check asks the address question the same way
+
+- `is_valid_send_address` validates the *normalized* address, with a comment
+  explaining why: on Sui a 64-hex address typed without its `0x` is invalid raw
+  and valid once `LowercaseHexPrefixed` has added the prefix. The high-risk
+  evaluator kept its own copy of that question and validated the raw string, so
+  the composer accepted such an address, the store accepted it, and the warning
+  sheet called it `invalid_format` at the same time. It calls
+  `is_valid_send_address` now — one question, one form, one answer, and the
+  local `hrsr_validate` duplicate is gone. CLI check:
+  `cargo test -p spectra_core validating_and_normalising_cannot_disagree`.
+
+### Integer overflow panics in release instead of wrapping
+
+- Rust checks overflow in debug and wraps in release, so every arithmetic bug
+  in this workspace was invisible to the suites — which run in debug — and
+  silent in the build that ships. For satoshis, wei and planck a wrapped total
+  is a wallet that believes it can afford a spend; the crash is a bug report
+  and the wrap is a wrong transaction.
+- Set per package (`spectra_core`, `spectra_core_ffi`, `spectra-cli`) rather
+  than on `[profile.release]`, which would apply it to the whole dependency
+  graph. The crypto crates below us do deliberate wrapping arithmetic, and
+  whether every one of them spells it `wrapping_add` is not a property this
+  workspace should bet a panic on. CLI check:
+  `cargo test --release -p spectra_core`.
+
+### Send composer and everyday navigation
+
+- **Amount shortcuts:** Swift's `balance * fraction` is replaced by core's
+  fee-adjusted preview maximum, quantized down with integer arithmetic. An
+  unready or unsupported asset quote offers no shortcut. The UI calls it an
+  estimated maximum: existing preview balances are floating-point estimates,
+  so core reserves one representable step before flooring to asset precision;
+  fees may change before submission. Native gas quotes cannot populate token
+  amount fields (currently only EVM/TRC-20 previews quote tokens). Custom EVM
+  fees now recompute the native maximum from the original balance, leaving
+  token balances in token units; lowering a fee never reconstructs a balance
+  from a previously zero-clamped spendable quote.
+  Before typing, a provisional 10% amount loads a fee quote without changing
+  the field. Checks: `spectra send shortcut --maximum 0.99999 --decimals 8`,
+  `cargo test -p spectra_core shortcut_tests`; the CLI acceptance gate exercises
+  MAX, percentage rounding and refusal. `parse_amount_input` now uses the same
+  bounded exact parser as `spectra send amount`, refusing integer overflow.
+- **Send UX:** five composer pages become four; Review shows the fee and offers
+  fee/advanced settings in a disclosure. Recipient resolution runs before Next
+  using core's destination service (including ENS), and invalid amounts receive
+  inline feedback. Input changes invalidate shortcut readiness until the new
+  preview finishes. CLI: `spectra send destination --help` drives the same
+  destination resolver; offline address refusal remains in acceptance.
+- **Layout and navigation:** send/receive bottom controls use safe-area insets,
+  amount entry uses system Dynamic Type and a keyboard Done action, and progress
+  is a readable step count. Home has a visible Assets/Wallets picker and an
+  Add Wallet empty-state action. Receive emphasizes the network and wraps the
+  complete address; send review also displays its complete recipient.
+- **History:** replace ten-row page switching with cumulative batches of twenty
+  and Load more, retain earlier rows, offer history-read Retry and visible
+  per-transaction Recheck. Fetch eligibility follows selected wallets even when
+  filters have no matches. These are presentation changes; core history and
+  pagination persistence remain exercised by `spectra txs` and the existing
+  offline acceptance checks. Verify layouts, keyboard, larger text and history
+  interactions in the iOS simulator in addition to the three required suites.
+
+### TON/NEAR wire correctness and pending-poll integrity
+
+- **TON sends:** flat byte concatenation with an invalid BoC header is replaced
+  by ordinary TON cells, representation-hash signatures, a complete external
+  message addressed to the derived V4R2 wallet, and StateInit for seqno zero.
+  Remarks are encoded as text-comment cells (including snake continuations),
+  rather than discarded. A single cell implementation now also computes the
+  derivation StateInit, keeping the receiving and signing identities identical.
+  Explicitly supported: workchain-zero V4R2 sender, fixed-value mode 3, comments
+  up to 4096 UTF-8 bytes; other modes and longer comments are refused. Raw
+  destinations default to non-bounceable, friendly destinations retain bounce
+  flags. Sender key mismatch and mainnet test-only recipients are refused.
+- **TON submission prerequisites:** the derived 32-byte signing seed is consumed
+  as 32 bytes, not rejected by a 64-byte decoder. A successful uninitialized
+  account read alone selects seqno zero; active accounts read the numeric stack
+  from runGetMethod, and failed reads no longer become zero. Submission uses
+  sendBocReturnHash and requires a successful envelope and 32-byte message hash,
+  rather than treating an error or absent hash as success.
+- **NEAR wire format:** public-key and signature tags are one-byte Borsh enum
+  discriminants instead of four-byte integers. Native and FunctionCall builders
+  consume the actual 32-byte derived seed and verify its public key before
+  signing. CLI checks: `cargo test -p spectra_core protocol_tests`. Fixtures
+  for both chains come from the pinned official SDKs, independently of Rust;
+  `scripts/generate-protocol-vectors.cjs` documents regeneration. These checks
+  prove encoding and signing, not live acceptance or mining.
+- **TON addresses:** the shared parser now verifies checksum, flags and
+  workchain, supports standard and URL-safe base64, and rejects test-only
+  recipients on mainnet. Previously any 48-character alphanumeric string was
+  accepted and the send decoder ignored its checksum. Validation, persistence
+  and sends now use the checked parser. CLI: `spectra address validate --chain
+  TON <address>`; the offline acceptance gate covers typo and network refusals.
+- **NEAR token amounts:** contract ft_metadata decimals replace caller-supplied
+  precision, using the reader already present in core. A missing, malformed or
+  failed metadata read refuses the send even if caller decimals exist. This
+  prevents a typed amount from being scaled into a different quantity. CLI:
+  `cargo test -p spectra_core build_send_params_tests` includes conflicting
+  precision and provider-failure checks.
+- **Pending polling:** pruning now shares the same tracked-record predicate as
+  polling, retaining EVM/history trackers and their failure backoff as well as
+  UTXO trackers. History polls only fetch addresses with due records. Previously
+  every prune erased non-UTXO schedules. Both storage reads now propagate errors
+  instead of returning a successful empty result; a corrupt read leaves trackers
+  and records intact. CLI: `cargo test -p spectra_core pending_status::tests`;
+  `spectra txs --poll-chain Ethereum` drives the operation, and the offline
+  corruption acceptance check verifies refusal before any network request.
+- Swift bridge regressions cover TON destination refusal and polling an unopened
+  store. No FFI record or exported method signature changes.
+
+
 ### One typed amount, one conversion into integer units
 
 - **What was wrong:** core had two decimal→units conversions. `execute_send`
@@ -1624,3 +1893,112 @@ for the core-owned settings and reset paths.
 - CLI check: `cargo test -p spectra_core a_receive_address_source_is_the_chains_rule_not_its_ticker`,
   which also holds every chain in the registry to answering a rule — Dogecoin's
   family aside, which is the one deliberate "nothing to read".
+
+### A failed address lookup is not an empty wallet
+
+- **Self-send confirmation:** `knownUTXOAddresses` returned `(try? …) ?? []`,
+  so a failed read of a wallet's Dogecoin addresses arrived at the self-send
+  guard as "this wallet owns no addresses" and the guard waved the send
+  through. The lookup now returns `[String]?` and the guard treats `nil` as
+  unknown ownership: it asks for confirmation and says why, rather than
+  assuming the destination is not yours. Ownership that cannot be established
+  is the stricter side, and the cost of asking is a tap.
+- **Discovery caching:** `refreshUTXOAddressDiscovery` wrote whatever the
+  discovery returned, so one failed refresh replaced a wallet's previously
+  discovered addresses with an empty list until the next successful one. A
+  wallet whose discovery fails now keeps what it had.
+- Both failures are recorded under the `Owned Addresses` operational-log
+  category instead of being dropped, so a repeated failure is visible in a
+  diagnostics export rather than only in its consequences.
+- No FFI record or exported method signature changes; `knownUTXOAddresses` and
+  `discoverUTXOAddresses` are Swift-side wrappers. CLI check: the core reads
+  behind them already propagate errors — `cargo test -p spectra_core
+  pending_status::tests` covers the same "error is not an empty success" rule
+  on the storage reads this pair calls.
+
+### A network switch takes the chain's derivation state with it
+
+- **One operation, one transaction:** `delete_keypool_for_chain` and
+  `delete_owned_addresses_for_chain` are replaced by
+  `reset_chain_derivation_state`, which takes both tables in a single SQLite
+  transaction and drops the in-memory copies with them. iOS used to issue the
+  two deletes itself, each swallowing its own error, so a failure on the second
+  left a keypool handing out indices for addresses the new network never
+  derived while the addresses it did derive were attributed to a network they
+  did not come from. Half-applied is the one outcome this cannot have, and no
+  sequence on the caller's side can prevent it; the guarantee only exists where
+  the transaction does.
+- **The CLI drives the switch, not just the setting:** `spectra network set`
+  applied `SelectNetworkChain` and stopped, so the reset existed only on iOS
+  and this axis could not see it. It now performs the same reset and reports
+  `clearedDerivationState`. Both sides of a family are cleared — the network
+  being left holds indices that no longer describe anything, and the one being
+  entered may hold stale rows from the last time it was selected.
+- **Exports removed:** the two superseded methods are deleted rather than kept
+  beside the combined one; they had a single caller between them. FFI methods
+  go from 101 to 100.
+- CLI checks: `cargo test -p spectra_core chain_derivation` covers the
+  transaction taking both tables and leaving other chains alone, and a no-op
+  delete for a chain nothing derived on. The offline acceptance gate asserts
+  `clearedDerivationState` on a real switch.
+
+### The tracked-token list is edited by intent, not replaced wholesale
+
+`SetTokenPreferences { entries }` — replace the list with the one the caller
+built — is gone. Five intents took its place: `AddCustomToken`,
+`RemoveCustomToken`, `SetCustomTokenDecimals`, `SetTokenPreferencesEnabled`,
+`ResetTokenPreferences`, plus `MergeBuiltInTokens` for core's own catalog fold.
+Refusals arrive as a `tokenPreferenceRejected` event carrying a
+`TokenPreferenceRejection`, the way the address book already worked; each front
+end supplies the wording.
+
+- **The rules were the caller's, in two disagreeing copies.** Swift validated
+  the symbol, judged the contract with a seven-arm switch over hosting chains,
+  checked for a duplicate by normalized contract, clamped the decimals and
+  re-sorted; the CLI checked none of that and called a duplicate a matching
+  *symbol*, case-insensitively. So a Solana mint could be added to the Base
+  list from the command line, and two contracts sharing a symbol on one chain
+  were a duplicate there and not in the app. One rule now, in the reducer.
+- **A contract is judged by the chain that would host it:**
+  `CoreTokenHostingChain::contract_validation_kind`. Swift's switch named six
+  chains and let a `default` arm assume EVM, which is how the ten hosting
+  chains added with the omnichain work would have been validated by whichever
+  arm was written last. Sui gets a real validator: `"suiCoinType"` accepts a
+  package address or `address::module::NAME`, where the composer's
+  `hasPrefix("0x") && (contains("::") || count > 2)` accepted `0xzz` and
+  `0x::::`. Check `cargo test -p spectra_core validates_sui_coin_types`.
+- **An impossible precision is refused, not clamped.** `min(max(decimals, 0), 30)`
+  in Swift and `.min(MAX_TOKEN_DECIMALS)` in the reducer both stored a number
+  the user did not type, and every later balance read at that scale. Over 30
+  places is now `tooManyDecimals` and nothing is stored. Check
+  `cargo test -p spectra_core an_impossible_precision_is_refused_rather_than_clamped`.
+- **Opening seeds the catalog.** `open_state` applies `MergeBuiltInTokens` and
+  persists the result, so the stored list is always the catalog plus what the
+  user added. The app happened to ask for the merge and the CLI never did, so
+  `spectra token track` had no row to turn on and `token track` had grown into
+  "append a built-in entry" — a second model of tracking. Tracking is
+  `is_enabled` on a row that always exists; untracking keeps the row, which is
+  what carries the choice through the next merge.
+- **Swift's `tokenPreferences` is a projection**, `private(set)` like
+  `coreAddressBook`, and the debounced whole-list commit is gone with
+  `commitTokenPreferences`. `AppState.addCustomTokenPreference` is `async` now:
+  the answer is core's, so it arrives with the state it changed.
+- **Wording:** the two chain-named refusals ("%@ already knows this token.",
+  "Enter a valid %@ token contract address.") became chain-agnostic sentences,
+  since the reason core reports does not name a chain and the form's own chain
+  picker is beside the field. Eight per-chain contract-hint strings went with
+  them; eight reason strings replace them in all three locale files.
+- CLI check: `spectra token add|remove|decimals|reset` and
+  `spectra token track|untrack --chain <c> <SYM>`.
+  `./scripts/cli-acceptance.sh` covers the seeded catalog, tracking as a flag
+  that survives a new process, the cross-family contract in both directions,
+  the case-insensitive duplicate, the pasted symbol, both precision refusals
+  and the reset. `cargo test -p spectra_core store::state::tests` covers the
+  reducer; Swift `TokenPreferenceBridgeTests` covers the same across the async
+  binding.
+
+Left in place: `TokenPreferenceEntry.builtIn`, Swift's own build of the catalog
+list, still backs the `cachedResolvedTokenPreferences` fallback for the moment
+between launch and core's first answer. It is a second builder of a list core
+owns and should go, but deleting it trades a duplicated rule for an empty
+Known Tokens screen on that hop, which is a UI decision rather than this one.

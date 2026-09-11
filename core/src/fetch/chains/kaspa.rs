@@ -77,13 +77,6 @@ struct ApiTxOutput {
     script_public_key_address: Option<String>,
 }
 
-#[derive(Debug, Deserialize)]
-#[serde(rename_all = "camelCase")]
-struct ApiNetworkInfo {
-    #[serde(default)]
-    virtual_daa_score: Option<u64>,
-}
-
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct KasBalance {
     pub balance_sompi: u64,
@@ -276,11 +269,6 @@ impl KaspaClient {
             }
         })
         .await
-    }
-
-    pub async fn fetch_chain_tip_daa_score(&self) -> Result<u64, String> {
-        let info: ApiNetworkInfo = self.get("/info/network").await?;
-        Ok(info.virtual_daa_score.unwrap_or(0))
     }
 
     /// POST a constructed transaction body to `/transactions`. Body must be

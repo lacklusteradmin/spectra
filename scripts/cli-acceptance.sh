@@ -9,7 +9,8 @@
 # app uses. A slice of Swift is not deleted until the rule it held is provable
 # from this script.
 #
-# No network. Everything here is state, crypto and validation, so it runs in CI
+# No external network. State, crypto and validation run offline; the Bitcoin
+# pagination check uses an isolated loopback fixture. This runs in CI
 # and in an offline checkout. Balance, history, price and send are deliberately
 # absent: they need a live chain and would make this flaky.
 #
@@ -73,6 +74,11 @@ contains() {
     fi
 }
 
+# Fee-adjusted shortcuts are floored in core, not multiplied as Swift Doubles.
+contains "MAX stays below its quoted budget" '0.99998999' spectra send shortcut --maximum 0.99999 --decimals 8
+contains "half is a plain decimal within precision" '0.49999999' spectra send shortcut --maximum 1 --decimals 8 --percentage 50
+check "shortcut refuses percentages over 100" 1 spectra send shortcut --maximum 1 --decimals 8 --percentage 101
+
 # lacks <description> <needle> <command...>
 lacks() {
     local description="$1" needle="$2"
@@ -94,6 +100,9 @@ section() { printf '\n\033[1m%s\033[0m\n' "$1"; }
 # Exit codes are part of the interface: 0 done, 2 the caller asked wrongly,
 # 3 core considered it and said no.
 readonly OK=0 USAGE=2 REJECTED=3
+
+# One well-formed EVM address, used wherever a check needs a real one.
+readonly EVM_ADDR=0x742d35Cc6634C0532925a3b844Bc454e4438f44e
 
 # ── Registry ────────────────────────────────────────────────────────────────
 
@@ -118,6 +127,13 @@ contains "Sui budget is exact" '"rawFee":"10000000"' spectra --json send fee-uni
 for bad_fee in -1 0 NaN inf 0.0000001 18446744073710.0; do
     check "rejects invalid native fee $bad_fee" $REJECTED spectra send fee-units --chain Cardano --amount "$bad_fee"
 done
+
+section "TON address integrity"
+check "TON valid friendly address" $OK spectra address validate --chain TON EQDKbjIcfM6ezt8KjKJJLshZJJSqX7XOA4ff-W72r5gqPrHF
+check "TON refuses arbitrary 48 characters" $REJECTED spectra address validate --chain TON AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+check "TON refuses checksum typo" $REJECTED spectra address validate --chain TON EQDKbjIcfM6ezt8KjKJJLshZJJSqX7XOA4ff-W72r5gqPrHA
+check "TON mainnet refuses test-only address" $REJECTED spectra address validate --chain TON kQDKbjIcfM6ezt8KjKJJLshZJJSqX7XOA4ff-W72r5gqPgpP
+check "TON testnet accepts test-only address" $OK spectra address validate --chain ton-testnet kQDKbjIcfM6ezt8KjKJJLshZJJSqX7XOA4ff-W72r5gqPgpP
 
 section "chain registry"
 check "lists chains"                        $OK spectra chains
@@ -519,20 +535,62 @@ contains "builds a diagnostics document"  '"endpoints"' \
 # test.
 
 section "tracked tokens"
+# Tracking is `is_enabled` on a row core already holds — opening the store seeds
+# the catalog — not a row the caller assembles and writes back. Both front ends
+# used to do the latter, with duplicate rules that disagreed: the composer
+# compared normalized contracts and this command compared symbols.
 contains "lists the built-in catalog" '"symbol":"USDC"' \
     spectra --json token catalog --chain Ethereum
+contains "opening seeds the catalog's own rows" '"symbol":"USDC"' \
+    spectra --json token list
 check "refuses a token the catalog does not have" $REJECTED \
     spectra token track --chain Ethereum NOTACOIN
 check "refuses tracking on a chain without tokens" $REJECTED \
     spectra token track --chain Bitcoin USDC
-check "tracks a catalog token"                     $OK \
-    spectra token track --chain Ethereum USDC
-check "refuses tracking the same token twice"      $REJECTED \
-    spectra token track --chain Ethereum USDC
-contains "the known token survives a new process" '"symbol":"USDC"' \
-    spectra --json token list
-check "untracks"                                   $OK spectra token untrack USDC
-check "refuses untracking what is not tracked"     $REJECTED spectra token untrack USDC
+check "untracks a catalog token"                   $OK \
+    spectra token untrack --chain Ethereum USDC
+check "refuses untracking it twice"                $REJECTED \
+    spectra token untrack --chain Ethereum USDC
+contains "and the choice survives a new process"   '"isEnabled":true' \
+    spectra --json token track --chain Ethereum USDC
+
+section "custom tokens"
+# Every rule is the reducer's: the symbol, the contract judged by the chain that
+# would host it, the duplicate, and the precision. The composer held all four
+# and this command held none of them, so a Solana mint went into the Base list.
+contains "adds one, upper-casing the symbol" '"symbol":"MOON"' \
+    spectra --json token add --chain Base --symbol " moon " --name "Moon Coin" \
+        --contract $EVM_ADDR --decimals 18
+check "refuses the same contract in another case"  $REJECTED \
+    spectra token add --chain Base --symbol SUN --name Sun \
+        --contract 0x742D35CC6634C0532925A3B844BC454E4438F44E --decimals 18
+check "refuses a contract from another family"     $REJECTED \
+    spectra token add --chain Base --symbol SOL2 --name Sol \
+        --contract EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v --decimals 6
+check "and the other way round"                    $REJECTED \
+    spectra token add --chain Solana --symbol EVM2 --name Evm \
+        --contract $EVM_ADDR --decimals 6
+check "refuses a pasted name as a symbol"          $REJECTED \
+    spectra token add --chain Base --symbol "Moonbeam Network Token" --name Moon \
+        --contract 0x1111111111111111111111111111111111111111 --decimals 18
+check "refuses a precision no token has"           $REJECTED \
+    spectra token add --chain Base --symbol DEEP --name Deep \
+        --contract 0x1111111111111111111111111111111111111111 --decimals 31
+check "refuses a chain that hosts no tokens"       $REJECTED \
+    spectra token add --chain Bitcoin --symbol NOPE --name Nope \
+        --contract $EVM_ADDR --decimals 8
+check "rescales the one it accepted"               $OK \
+    spectra token decimals --chain Base --contract $EVM_ADDR --decimals 9
+check "but not past what a token has"              $REJECTED \
+    spectra token decimals --chain Base --contract $EVM_ADDR --decimals 31
+check "removes it"                                 $OK \
+    spectra token remove --chain Base --contract $EVM_ADDR
+check "and will not remove it twice"               $REJECTED \
+    spectra token remove --chain Base --contract $EVM_ADDR
+check "will not reset without --yes"               $USAGE spectra token reset
+check "resets to the catalog"                      $OK spectra token reset --yes
+contains "which turns the untracked one back on"   '"isEnabled":false' \
+    spectra --json token untrack --chain Ethereum USDC
 
 # ── Amount display ──────────────────────────────────────────────────────────
 #
@@ -602,7 +660,6 @@ check "a broadcast without --yes is refused" $USAGE \
     spectra send broadcast --from "Multi 1" --to bc1qgkju4yvvtuz0s8vqn837q396jezu2h8ex7gk98 --amount 0.001
 
 section "EVM send assembly"
-EVM_ADDR=0x742d35Cc6634C0532925a3b844Bc454e4438f44e
 # Base is one of the sixteen mainnets that used to answer UnsupportedChain,
 # which surfaced in the app as "Unable to estimate network fee" on a send that
 # was otherwise fine.
@@ -783,6 +840,17 @@ contains "and reads it back"                '"selected":"solana-devnet"' \
 check "and another, on a different family"  $OK spectra network set bitcoin-signet
 check "refuses an id the registry does not know" $REJECTED \
     spectra network set nonsuch
+# A switch has to take the family's derivation state with it. Reserved keypool
+# indices and discovered addresses belong to the network they were derived on;
+# iOS cleared them and the CLI did not, so this axis could not see a switch
+# that left them behind.
+contains "clears the family's derivation state with the switch" \
+    '"clearedDerivationState":["Solana","Solana Devnet"]' \
+    spectra --json network set solana-devnet
+contains "and names both sides of a bitcoin switch" '"clearedDerivationState":[' \
+    spectra --json network set bitcoin-signet
+check "clearing a chain nothing derived on still succeeds" $OK \
+    spectra network set solana
 # The bug this axis hid: the reset named bitcoin, ethereum and dogecoin.
 check "resetting settings clears every family" $OK spectra settings reset --yes
 contains "including the two just moved"     '"family":"solana","isTestnet":false,"selected":"solana"' \
@@ -1011,6 +1079,19 @@ else
     FAILED=$((FAILED + 1))
     printf '  \033[31m✗\033[0m its sealed seed went with it \033[2m(a .seed blob survived)\033[0m\n'
 fi
+
+section "reviewed destinations and Aptos derivation"
+check "accepts the reviewed destination" $OK spectra send destination --chain Ethereum --to 0x1111111111111111111111111111111111111111 --expected 0x1111111111111111111111111111111111111111
+check "refuses a destination changed since review" $REJECTED spectra send destination --chain Ethereum --to 0x2222222222222222222222222222222222222222 --expected 0x1111111111111111111111111111111111111111
+contains "Aptos address matches the official SDK" "0xeb663b681209e7087d681c5d3eed12aaa8e1915e7c87794542c3f96e94b3d3bf" with_seed "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about" spectra --json wallet import --chain Aptos --name "Audit Aptos"
+check "removes the audit wallet" $OK spectra wallet delete "Audit Aptos" --yes
+
+contains "Sui address matches the official SDK" "0x5e93a736d04fbb25737aa40bee40171ef79f65fae833749e3c089fe7cc2161f1" with_seed "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about" spectra --json wallet import --chain Sui --name "Audit Sui"
+check "removes the Sui audit wallet" $OK spectra wallet delete "Audit Sui" --yes
+
+section "Bitcoin history pagination"
+check "loads and persists every Bitcoin history page against local fixtures" $OK \
+    python3 "$(dirname "$0")/cli-bitcoin-history.py" "$BIN"
 
 # ── Result ──────────────────────────────────────────────────────────────────
 

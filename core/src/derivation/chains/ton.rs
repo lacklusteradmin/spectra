@@ -1,6 +1,6 @@
 //! TON address decode + validation + derivation
 //!
-//! - `decode_ton_address` / `validate_ton_address`: parse raw or
+//! - `parse_ton_address`: parse raw or
 //!   base64url user-friendly addresses.
 //! - `derive_ton_seed`: TON mnemonic (ton-crypto / TonKeeper / Tonhub) PBKDF2.
 //! - The v4R2 path computes the wallet's account id from the embedded
@@ -8,49 +8,77 @@
 //!   by `v4r2_code_hash_and_depth`'s self-test against the published
 //!   v4R2 code hash.
 
+pub(crate) mod cell;
+use cell::Cell;
 use ed25519_dalek::SigningKey;
 use pbkdf2::pbkdf2_hmac;
-use sha2::{Digest, Sha256, Sha512};
+use sha2::Sha512;
 use zeroize::Zeroizing;
 
-// SHA-256 hash of input bytes, returning a fixed 32-byte array.
-fn sha256_bytes(input: &[u8]) -> [u8; 32] {
-    let mut hasher = Sha256::new();
-    hasher.update(input);
-    let out = hasher.finalize();
-    let mut buf = [0u8; 32];
-    buf.copy_from_slice(&out);
-    buf
+/// A checked TON address retains routing flags until the send is encoded.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct TonAddress {
+    pub workchain: i8,
+    pub account_id: [u8; 32],
+    pub bounceable: bool,
+    pub test_only: bool,
 }
 
-// Decode a TON address (raw workchain:hex form or 36-byte base64url user-friendly form) → (workchain, account_id).
-pub(crate) fn decode_ton_address(address: &str) -> Result<(i8, [u8; 32]), String> {
-    // TON addresses can be in raw form (workchain:hex) or user-friendly base64url.
-    if address.contains(':') {
-        let parts: Vec<&str> = address.splitn(2, ':').collect();
-        let workchain: i8 = parts[0].parse().map_err(|e| format!("wc: {e}"))?;
-        let bytes = hex::decode(parts[1]).map_err(|e| format!("addr hex: {e}"))?;
-        if bytes.len() != 32 {
-            return Err("addr wrong len".to_string());
-        }
-        let mut arr = [0u8; 32];
-        arr.copy_from_slice(&bytes);
-        return Ok((workchain, arr));
-    }
+pub(crate) fn parse_ton_address(address: &str) -> Result<TonAddress, String> {
+    let (workchain, account_id, bounceable, test_only) =
+        if let Some((wc, hash)) = address.split_once(':') {
+            if !matches!(wc, "0" | "-1") || hash.len() != 64 {
+                return Err("TON: invalid raw address".into());
+            }
+            let account_id: [u8; 32] = hex::decode(hash)
+                .map_err(|_| "TON: invalid account id")?
+                .try_into()
+                .map_err(|_| "TON: invalid account id length")?;
+            (
+                wc.parse::<i8>().map_err(|_| "TON: invalid workchain")?,
+                account_id,
+                false,
+                false,
+            )
+        } else {
+            use base64::Engine;
+            if address.len() != 48 {
+                return Err("TON: friendly address must be 48 characters".into());
+            }
+            let bytes = base64::engine::general_purpose::STANDARD
+                .decode(address.replace('-', "+").replace('_', "/"))
+                .map_err(|_| "TON: invalid base64 address")?;
+            if bytes.len() != 36 || crc16_xmodem(&bytes[..34]).to_be_bytes() != bytes[34..] {
+                return Err("TON: invalid address checksum".into());
+            }
+            let tag = bytes[0] & 0x7f;
+            if !matches!(tag, 0x11 | 0x51) || !matches!(bytes[1], 0 | 255) {
+                return Err("TON: invalid address flags or workchain".into());
+            }
+            (
+                bytes[1] as i8,
+                bytes[2..34]
+                    .try_into()
+                    .map_err(|_| "TON: invalid address")?,
+                tag == 0x11,
+                bytes[0] & 0x80 != 0,
+            )
+        };
+    Ok(TonAddress {
+        workchain,
+        account_id,
+        bounceable,
+        test_only,
+    })
+}
 
-    // User-friendly: 36 bytes base64url = [flags(1)] + [wc(1)] + [addr(32)] + [crc(2)]
-    let normalized = address.replace('-', "+").replace('_', "/");
-    use base64::Engine;
-    let decoded = base64::engine::general_purpose::STANDARD
-        .decode(&normalized)
-        .map_err(|e| format!("base64 decode: {e}"))?;
-    if decoded.len() != 36 {
-        return Err(format!("TON address wrong length: {}", decoded.len()));
+impl TonAddress {
+    pub(crate) fn for_network(self, testnet: bool) -> Result<Self, String> {
+        if self.test_only && !testnet {
+            return Err("TON: testnet-only address refused on mainnet".into());
+        }
+        Ok(self)
     }
-    let workchain = decoded[1] as i8;
-    let mut arr = [0u8; 32];
-    arr.copy_from_slice(&decoded[2..34]);
-    Ok((workchain, arr))
 }
 
 // ── TON mnemonic seed expansion ──────────────────────────────────────────
@@ -124,7 +152,6 @@ const V4R2_DEFAULT_WALLET_ID: u32 = 698983191;
 
 #[derive(Clone)]
 struct ParsedCell {
-    d1: u8,
     d2: u8,
     data: Vec<u8>,
     refs: Vec<usize>,
@@ -201,92 +228,63 @@ fn parse_boc(bytes: &[u8]) -> Result<(Vec<ParsedCell>, usize), String> {
             refs.push(read_uint(bytes, cursor, ref_size)? as usize);
             cursor += ref_size;
         }
-        cells.push(ParsedCell { d1, d2, data, refs });
+        cells.push(ParsedCell { d2, data, refs });
     }
     Ok((cells, root_idx))
 }
 
-/// Recursively compute SHA-256 cell hashes and depths for every cell,
-/// bottom-up. BOC v0 orders cells such that every ref points to a higher
-/// index, so iterating from the tail means every ref is resolved by the
-/// time we reach the cell that uses it.
-fn compute_cell_hashes(cells: &[ParsedCell]) -> Vec<([u8; 32], u16)> {
-    let mut out = vec![([0u8; 32], 0u16); cells.len()];
-    for i in (0..cells.len()).rev() {
-        let cell = &cells[i];
-        let mut repr = Vec::with_capacity(2 + cell.data.len() + cell.refs.len() * 34);
-        repr.push(cell.d1);
-        repr.push(cell.d2);
-        repr.extend_from_slice(&cell.data);
-        let mut depth = 0u16;
-        for &r in &cell.refs {
-            repr.extend_from_slice(&out[r].1.to_be_bytes());
-            depth = depth.max(out[r].1.saturating_add(1));
-        }
-        for &r in &cell.refs {
-            repr.extend_from_slice(&out[r].0);
-        }
-        let hash = sha256_bytes(&repr);
-        out[i] = (hash, depth);
+fn cell_from_rows(cells: &[ParsedCell], i: usize) -> Result<Cell, String> {
+    let row = cells.get(i).ok_or("TON: invalid embedded reference")?;
+    if row.refs.iter().any(|r| *r <= i) {
+        return Err("TON: invalid embedded cell order".into());
     }
-    out
+    Cell::from_padded(
+        row.data.clone(),
+        row.d2,
+        row.refs
+            .iter()
+            .map(|r| cell_from_rows(cells, *r))
+            .collect::<Result<_, _>>()?,
+    )
 }
 
-/// Returns (code_hash, code_depth) for the embedded v4R2 wallet code
-/// cell, computed once per process.
-pub(crate) fn v4r2_code_hash_and_depth() -> Result<([u8; 32], u16), String> {
+/// Decode only the embedded code and verify its independently published hash.
+fn v4r2_code() -> Result<Cell, String> {
     use std::sync::OnceLock;
-    static CACHE: OnceLock<Result<([u8; 32], u16), String>> = OnceLock::new();
-    CACHE
-        .get_or_init(|| {
-            let boc = hex::decode(V4R2_CODE_BOC_HEX)
-                .map_err(|e| format!("TON v4R2: invalid embedded BOC hex: {e}"))?;
-            let (cells, root) = parse_boc(&boc)?;
-            let hashes = compute_cell_hashes(&cells);
-            let (hash, depth) = hashes[root];
-            if hash != V4R2_KNOWN_CODE_HASH {
-                return Err(format!(
-                    "TON v4R2: computed code hash {} does not match known constant",
-                    hex::encode(hash)
-                ));
-            }
-            Ok((hash, depth))
-        })
-        .clone()
+    static CODE: OnceLock<Result<Cell, String>> = OnceLock::new();
+    CODE.get_or_init(|| {
+        let (cells, root) = parse_boc(&hex::decode(V4R2_CODE_BOC_HEX).map_err(|e| e.to_string())?)?;
+        let code = cell_from_rows(&cells, root)?;
+        if code.hash_depth().0 != V4R2_KNOWN_CODE_HASH {
+            return Err("TON: invalid V4R2 code hash".into());
+        }
+        Ok(code)
+    })
+    .clone()
 }
 
-/// Build the v4R2 data cell (321 bits, no refs) carrying the initial
-/// seqno, subwallet id, public key, and empty plugin dict, and return its
-/// cell hash and depth.
-fn v4r2_data_cell_hash(public_key: &[u8; 32]) -> ([u8; 32], u16) {
-    let mut data = Vec::with_capacity(41);
-    data.extend_from_slice(&0u32.to_be_bytes());
-    data.extend_from_slice(&V4R2_DEFAULT_WALLET_ID.to_be_bytes());
-    data.extend_from_slice(public_key);
-    data.push(0x40);
-    let mut repr = Vec::with_capacity(2 + data.len());
-    repr.push(0x00);
-    repr.push(81);
-    repr.extend_from_slice(&data);
-    let hash = sha256_bytes(&repr);
-    (hash, 0)
+#[cfg(test)]
+pub(crate) fn v4r2_code_hash_and_depth() -> Result<([u8; 32], u16), String> {
+    Ok(v4r2_code()?.hash_depth())
 }
 
-/// Build the state_init cell for v4R2 (5 header bits + 2 refs: code,
-/// data) and return its cell hash — which is the TON account id.
+pub(crate) fn v4r2_state_init(public_key: &[u8; 32], wallet_id: u32) -> Result<Cell, String> {
+    let mut data = Cell::default();
+    data.uint(0, 32)?
+        .uint(u64::from(wallet_id), 32)?
+        .bytes(public_key)?
+        .uint(0, 1)?;
+    let mut init = Cell::default();
+    init.uint(0b00110, 5)?
+        .reference(v4r2_code()?)?
+        .reference(data)?;
+    Ok(init)
+}
+
 fn v4r2_state_init_account_id(public_key: &[u8; 32]) -> Result<[u8; 32], String> {
-    let (code_hash, code_depth) = v4r2_code_hash_and_depth()?;
-    let (data_hash, data_depth) = v4r2_data_cell_hash(public_key);
-    let header_byte: u8 = 0x34;
-    let mut repr = Vec::with_capacity(2 + 1 + 2 * (2 + 32));
-    repr.push(0x02);
-    repr.push(0x01);
-    repr.push(header_byte);
-    repr.extend_from_slice(&code_depth.to_be_bytes());
-    repr.extend_from_slice(&data_depth.to_be_bytes());
-    repr.extend_from_slice(&code_hash);
-    repr.extend_from_slice(&data_hash);
-    Ok(sha256_bytes(&repr))
+    Ok(v4r2_state_init(public_key, V4R2_DEFAULT_WALLET_ID)?
+        .hash_depth()
+        .0)
 }
 
 /// CRC-16/XMODEM (poly=0x1021, init=0x0000, no reflection, no xor-out),
@@ -400,4 +398,10 @@ pub fn derive_ton_testnet(
         want_public_key,
         want_private_key,
     )
+}
+
+#[cfg(test)]
+pub(crate) fn boc_root_hash(bytes: &[u8]) -> Result<[u8; 32], String> {
+    let (cells, root) = parse_boc(bytes)?;
+    Ok(cell_from_rows(&cells, root)?.hash_depth().0)
 }

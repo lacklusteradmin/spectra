@@ -3,10 +3,14 @@
 
 mod accounting;
 pub mod aptos;
+#[cfg(test)]
+mod audit_tests;
+mod bcs;
 pub mod bitcoin;
 pub mod bitcoin_cash;
 pub mod bitcoin_gold;
 pub mod bitcoin_sv;
+mod bitcoin_wire;
 pub mod bittensor;
 pub mod cardano;
 pub mod dash;
@@ -26,6 +30,5 @@ pub mod substrate;
 pub mod sui;
 pub mod ton;
 pub mod tron;
-mod wire;
 pub mod xrp;
 pub mod zcash;

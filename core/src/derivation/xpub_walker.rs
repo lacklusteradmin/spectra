@@ -46,6 +46,7 @@ pub enum HdScriptType {
     P2shP2wpkh,
     /// BIP84 native SegWit P2WPKH (zpub).
     P2wpkh,
+    P2tr,
 }
 
 impl HdScriptType {
@@ -140,11 +141,25 @@ pub fn derive_children(
     start_index: u32,
     count: u32,
 ) -> Result<Vec<HdChildAddress>, String> {
+    let (_, _, network) = normalize_xpub(xpub_input)?;
+    derive_children_on_network(xpub_input, change, start_index, count, network, None)
+}
+
+/// Explicit network and optional script type for a mnemonic-derived account.
+/// A canonical xpub alone does not encode the account's BIP49/84/86 purpose.
+pub(crate) fn derive_children_on_network(
+    xpub_input: &str,
+    change: u32,
+    start_index: u32,
+    count: u32,
+    network: HdNetwork,
+    script: Option<HdScriptType>,
+) -> Result<Vec<HdChildAddress>, String> {
     if count == 0 {
         return Ok(Vec::new());
     }
-
-    let (canon, script_type, network) = normalize_xpub(xpub_input)?;
+    let (canon, inferred_script, _) = normalize_xpub(xpub_input)?;
+    let script_type = script.unwrap_or(inferred_script);
     let (xpub, _version) =
         ExtendedPublicKey::from_xpub_string(&canon).map_err(|e| format!("bad xpub: {e}"))?;
     let secp = Secp256k1::<All>::new();
@@ -180,6 +195,9 @@ fn address_from_pubkey(
         HdScriptType::P2pkh => Ok(encode_p2pkh(&params, &compressed)),
         HdScriptType::P2shP2wpkh => Ok(encode_p2sh_p2wpkh(&params, &compressed)),
         HdScriptType::P2wpkh => encode_p2wpkh(&params, &compressed),
+        HdScriptType::P2tr => {
+            super::chains::bitcoin::encode_p2tr(&params, &Secp256k1::new(), &child.public_key)
+        }
     }
 }
 

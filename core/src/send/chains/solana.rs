@@ -1,6 +1,7 @@
 //! Solana send: native SOL transfer + SPL TransferChecked (with idempotent ATA
 //! create). Ed25519 signing + sendTransaction RPC broadcast.
 
+use crate::send::keys::Ed25519Seed;
 use base64::Engine as _;
 use serde_json::json;
 
@@ -14,7 +15,7 @@ impl SolanaClient {
         from_pubkey_bytes: &[u8; 32],
         to_address: &str,
         lamports: u64,
-        private_key_bytes: &[u8; 64],
+        private_key_bytes: &Ed25519Seed,
     ) -> Result<SolanaSendResult, String> {
         let blockhash = self.fetch_recent_blockhash().await?;
         let to_pubkey = bs58::decode(to_address)
@@ -33,21 +34,8 @@ impl SolanaClient {
             private_key_bytes,
         )?;
 
-        let encoded = base64::engine::general_purpose::STANDARD.encode(&raw_tx);
-        let result = self
-            .call(
-                "sendTransaction",
-                json!([encoded.clone(), {"encoding": "base64", "preflightCommitment": "confirmed"}]),
-            )
-            .await?;
-        let signature = result
-            .as_str()
-            .ok_or("sendTransaction: expected string")?
-            .to_string();
-        Ok(SolanaSendResult {
-            signature,
-            signed_tx_base64: encoded,
-        })
+        self.broadcast_raw(&base64::engine::general_purpose::STANDARD.encode(&raw_tx))
+            .await
     }
 
     /// Sign and broadcast an SPL token transfer. Derives the source and
@@ -62,20 +50,13 @@ impl SolanaClient {
         mint_b58: &str,
         amount_raw: u64,
         decimals: u8,
-        private_key_bytes: &[u8; 64],
+        private_key_bytes: &Ed25519Seed,
     ) -> Result<SolanaSendResult, String> {
         let to_owner = decode_b58_32(to_owner_b58)?;
         let mint = decode_b58_32(mint_b58)?;
 
         let source_ata = derive_associated_token_account(from_owner_pubkey, &mint)?;
         let dest_ata = derive_associated_token_account(&to_owner, &mint)?;
-
-        let source_ata_b58 = bs58::encode(&source_ata).into_string();
-        let dest_ata_b58 = bs58::encode(&dest_ata).into_string();
-
-        // Destination ATA may not exist yet; we always emit the idempotent
-        // create instruction so it's a no-op if the account already exists.
-        let _dest_exists = self.account_exists(&dest_ata_b58).await.unwrap_or(false);
 
         let blockhash = self.fetch_recent_blockhash().await?;
         let raw_tx = build_spl_transfer_checked(
@@ -90,22 +71,8 @@ impl SolanaClient {
             private_key_bytes,
         )?;
 
-        let encoded = base64::engine::general_purpose::STANDARD.encode(&raw_tx);
-        let result = self
-            .call(
-                "sendTransaction",
-                json!([encoded.clone(), {"encoding": "base64", "preflightCommitment": "confirmed"}]),
-            )
-            .await?;
-        let signature = result
-            .as_str()
-            .ok_or("sendTransaction: expected string")?
-            .to_string();
-        let _ = source_ata_b58;
-        Ok(SolanaSendResult {
-            signature,
-            signed_tx_base64: encoded,
-        })
+        self.broadcast_raw(&base64::engine::general_purpose::STANDARD.encode(&raw_tx))
+            .await
     }
 
     /// Broadcast an already-signed transaction given as a base64 string.
@@ -142,65 +109,17 @@ pub fn build_sol_transfer(
     to: &[u8; 32],
     lamports: u64,
     recent_blockhash_b58: &str,
-    private_key: &[u8; 64],
+    private_key: &Ed25519Seed,
 ) -> Result<Vec<u8>, String> {
-    use ed25519_dalek::{Signer, SigningKey};
-
-    let blockhash_bytes = bs58::decode(recent_blockhash_b58)
-        .into_vec()
-        .map_err(|e| format!("invalid blockhash: {e}"))?;
-    if blockhash_bytes.len() != 32 {
-        return Err("blockhash must be 32 bytes".to_string());
-    }
-    let blockhash: [u8; 32] = blockhash_bytes.try_into().unwrap();
-
-    // System program ID (all zeros except last byte = 0).
-    let system_program: [u8; 32] = [0u8; 32];
-
-    // Accounts: [from (signer+writable), to (writable), system_program]
-    // Header: [num_required_signatures=1, num_readonly_signed=0, num_readonly_unsigned=1]
-    let header = [1u8, 0u8, 1u8];
-
-    // Build message.
-    let mut msg = Vec::new();
-    msg.extend_from_slice(&header);
-    // Account list (3 accounts).
-    msg.extend_from_slice(&compact_u16(3));
-    msg.extend_from_slice(from);
-    msg.extend_from_slice(to);
-    msg.extend_from_slice(&system_program);
-    // Recent blockhash.
-    msg.extend_from_slice(&blockhash);
-    // Instructions (1).
-    msg.extend_from_slice(&compact_u16(1));
-    // Instruction: program id index = 2 (system program).
-    msg.push(2u8);
-    // Account indices: [0 (from), 1 (to)].
-    msg.extend_from_slice(&compact_u16(2));
-    msg.push(0u8); // from index
-    msg.push(1u8); // to index
-                   // Data: SystemInstruction::Transfer = [2,0,0,0] + lamports as le u64
-    let mut data = Vec::new();
-    data.extend_from_slice(&2u32.to_le_bytes()); // Transfer instruction
+    let mut data = 2u32.to_le_bytes().to_vec();
     data.extend_from_slice(&lamports.to_le_bytes());
-    msg.extend_from_slice(&compact_u16(data.len()));
-    msg.extend_from_slice(&data);
-
-    // Sign.
-    let signing_key = SigningKey::from_bytes(
-        &private_key[..32]
-            .try_into()
-            .map_err(|_| "privkey too short")?,
-    );
-    let signature = signing_key.sign(&msg);
-
-    // Serialize: compact_u16(1) || sig || message
-    let mut tx = Vec::new();
-    tx.extend_from_slice(&compact_u16(1)); // 1 signature
-    tx.extend_from_slice(signature.to_bytes().as_ref());
-    tx.extend_from_slice(&msg);
-
-    Ok(tx)
+    compile_and_sign(
+        from,
+        &[(*from, true), (*to, true), ([0; 32], false)],
+        &[(2, vec![0, 1], data)],
+        recent_blockhash_b58,
+        private_key,
+    )
 }
 
 // ── SPL helpers: ATA derivation and SPL Transfer transaction builder
@@ -268,77 +187,78 @@ pub fn build_spl_transfer_checked(
     amount_raw: u64,
     decimals: u8,
     recent_blockhash_b58: &str,
-    private_key: &[u8; 64],
+    private_key: &Ed25519Seed,
 ) -> Result<Vec<u8>, String> {
-    use ed25519_dalek::{Signer, SigningKey};
-
-    let blockhash_bytes = bs58::decode(recent_blockhash_b58)
-        .into_vec()
-        .map_err(|e| format!("invalid blockhash: {e}"))?;
-    if blockhash_bytes.len() != 32 {
-        return Err("blockhash must be 32 bytes".to_string());
-    }
-    let blockhash: [u8; 32] = blockhash_bytes.try_into().unwrap();
-
-    // Account list order (all distinct pubkeys used anywhere).
-    let system_program: [u8; 32] = [0u8; 32];
-    let accounts: [&[u8; 32]; 8] = [
+    let mut data = vec![12];
+    data.extend_from_slice(&amount_raw.to_le_bytes());
+    data.push(decimals);
+    compile_and_sign(
         from_owner,
-        dest_ata,
-        source_ata,
-        to_owner,
-        mint,
-        &system_program,
-        &SPL_TOKEN_PROGRAM_ID,
-        &ASSOCIATED_TOKEN_PROGRAM_ID,
-    ];
+        &[
+            (*from_owner, true),
+            (*dest_ata, true),
+            (*source_ata, true),
+            (*to_owner, false),
+            (*mint, false),
+            ([0; 32], false),
+            (SPL_TOKEN_PROGRAM_ID, false),
+            (ASSOCIATED_TOKEN_PROGRAM_ID, false),
+        ],
+        &[
+            (7, vec![0, 1, 3, 4, 5, 6], vec![1]),
+            (6, vec![2, 4, 1, 0], data),
+        ],
+        recent_blockhash_b58,
+        private_key,
+    )
+}
 
-    let header = [1u8, 0u8, 5u8];
-
-    let mut msg = Vec::new();
-    msg.extend_from_slice(&header);
-    msg.extend_from_slice(&compact_u16(accounts.len()));
-    for a in &accounts {
-        msg.extend_from_slice(a.as_ref());
+/// Compile account identities once across all instructions. Aliases merge
+/// writable privileges, then every instruction is remapped to the unique keys.
+/// These transfer instructions have exactly one signer: the fee payer.
+fn compile_and_sign(
+    payer: &[u8; 32],
+    account_metas: &[([u8; 32], bool)],
+    instructions: &[(usize, Vec<usize>, Vec<u8>)],
+    blockhash: &str,
+    key: &Ed25519Seed,
+) -> Result<Vec<u8>, String> {
+    key.require_public_key(payer)?;
+    let blockhash = decode_b58_32(blockhash)?;
+    let mut accounts = vec![(*payer, true)];
+    for (pubkey, writable) in account_metas {
+        if let Some(existing) = accounts.iter_mut().find(|a| a.0 == *pubkey) {
+            existing.1 |= writable;
+        } else {
+            accounts.push((*pubkey, *writable));
+        }
     }
-    msg.extend_from_slice(&blockhash);
-
-    // 2 instructions.
-    msg.extend_from_slice(&compact_u16(2));
-
-    // -- Instruction 1: CreateIdempotent on ATA program --------------------
-    msg.push(7u8); // program id index (ata program)
-    let ata_accts: [u8; 6] = [0, 1, 3, 4, 5, 6];
-    msg.extend_from_slice(&compact_u16(ata_accts.len()));
-    msg.extend_from_slice(&ata_accts);
-    let ata_data: [u8; 1] = [1u8];
-    msg.extend_from_slice(&compact_u16(ata_data.len()));
-    msg.extend_from_slice(&ata_data);
-
-    // -- Instruction 2: SPL TransferChecked ------------------------------
-    msg.push(6u8); // program id index (spl token)
-    let xfer_accts: [u8; 4] = [2, 4, 1, 0];
-    msg.extend_from_slice(&compact_u16(xfer_accts.len()));
-    msg.extend_from_slice(&xfer_accts);
-    let mut xfer_data = Vec::with_capacity(1 + 8 + 1);
-    xfer_data.push(12u8); // TransferChecked
-    xfer_data.extend_from_slice(&amount_raw.to_le_bytes());
-    xfer_data.push(decimals);
-    msg.extend_from_slice(&compact_u16(xfer_data.len()));
-    msg.extend_from_slice(&xfer_data);
-
-    // Sign the message bytes.
-    let signing_key = SigningKey::from_bytes(
-        &private_key[..32]
-            .try_into()
-            .map_err(|_| "privkey too short")?,
-    );
-    let signature = signing_key.sign(&msg);
-
-    let mut tx = Vec::new();
-    tx.extend_from_slice(&compact_u16(1)); // 1 signature
-    tx.extend_from_slice(signature.to_bytes().as_ref());
-    tx.extend_from_slice(&msg);
+    // Stable sort: signer first, followed by writable and readonly unsigned.
+    accounts.sort_by_key(|(pubkey, writable)| (pubkey != payer, !writable));
+    let readonly = accounts.iter().filter(|a| !a.1).count();
+    let mut msg = vec![1, 0, readonly as u8];
+    msg.extend(compact_u16(accounts.len()));
+    for (pubkey, _) in &accounts {
+        msg.extend(pubkey);
+    }
+    msg.extend(blockhash);
+    msg.extend(compact_u16(instructions.len()));
+    let index = |original: usize| -> u8 {
+        accounts
+            .iter()
+            .position(|a| a.0 == account_metas[original].0)
+            .expect("registered account") as u8
+    };
+    for (program, metas, data) in instructions {
+        msg.push(index(*program));
+        msg.extend(compact_u16(metas.len()));
+        msg.extend(metas.iter().map(|i| index(*i)));
+        msg.extend(compact_u16(data.len()));
+        msg.extend(data);
+    }
+    let mut tx = vec![1];
+    tx.extend(key.sign(&msg));
+    tx.extend(msg);
     Ok(tx)
 }
 

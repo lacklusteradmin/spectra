@@ -9,7 +9,7 @@
 //! consensus_branch_id `0xC2D6D0B4`. We hardcode NU5 because the next
 //! upgrade (NU6) requires a fresh sighash table and a code update anyway.
 
-use super::wire::{decode_txid_le, varint};
+use super::bitcoin_wire::{decode_txid_le, varint};
 use crate::derivation::chains::zcash::{decode_zcash_address, zcash_p2pkh_script};
 use crate::fetch::chains::zcash::{ZcashClient, ZecSendResult};
 

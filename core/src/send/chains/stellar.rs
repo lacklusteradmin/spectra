@@ -32,8 +32,8 @@ impl StellarClient {
     /// Sign and submit a custom-asset (credit_alphanum4 / credit_alphanum12)
     /// Payment transaction.
     ///
-    /// Not reachable from `execute_send` today — see `StellarTokenSendParams`
-    /// in `service/send_params.rs` for why.
+    /// Not routed by `execute_send`: a Stellar asset needs code and issuer,
+    /// rather than the contract-address input used by the token send flow.
     #[allow(dead_code)]
     pub async fn sign_and_submit_asset(
         &self,
@@ -167,31 +167,6 @@ pub enum StellarAsset {
         code: String,
         issuer: [u8; 32],
     },
-}
-
-/// Build a signed Stellar Payment transaction in XDR binary (native XLM).
-#[allow(clippy::too_many_arguments)]
-pub fn build_signed_payment_xdr(
-    from: &str,
-    to: &str,
-    stroops: i64,
-    base_fee: u64,
-    sequence: u64,
-    network_passphrase: &[u8],
-    private_key: &[u8; 64],
-    public_key: &[u8; 32],
-) -> Result<Vec<u8>, String> {
-    build_signed_payment_xdr_with_asset(
-        from,
-        to,
-        stroops,
-        &StellarAsset::Native,
-        base_fee,
-        sequence,
-        network_passphrase,
-        private_key,
-        public_key,
-    )
 }
 
 /// Build a signed Stellar Payment transaction with an arbitrary asset.

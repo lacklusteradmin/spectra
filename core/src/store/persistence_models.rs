@@ -29,7 +29,7 @@ use crate::store::wallet_domain::{CoreTransactionKind, CoreTransactionStatus};
 /// with `skip_serializing_if` preserves the "omit when none" shape.
 /// Seconds between the Unix epoch and the Swift reference date, for the
 /// `created_at` above. Defined once; `fetch/transactions.rs` and
-/// `store/wallet_db.rs` each had a private copy.
+/// `store/wallet_db/` each had a private copy.
 pub(crate) const SWIFT_REFERENCE_EPOCH_OFFSET_SECS: f64 = 978_307_200.0;
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, uniffi::Record)]

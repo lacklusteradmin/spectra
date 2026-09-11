@@ -6,3 +6,24 @@ resolver = "2"
 lto = true
 codegen-units = 1
 strip = "symbols"
+
+# Integer overflow is a panic in release, not a wrap.
+#
+# Rust checks overflow in debug and wraps in release, so every arithmetic bug
+# this workspace has is invisible to the suites — they run in debug — and
+# silent in the build that ships. For satoshis, wei and planck a wrapped total
+# is a wallet that believes it can afford a spend, which is worse than a crash:
+# the crash is a bug report and the wrap is a wrong transaction.
+#
+# Scoped to our own crates rather than set on the profile, which would apply it
+# to the whole dependency graph. The crypto crates below us do deliberate
+# wrapping arithmetic, and whether every one of them spells it `wrapping_add`
+# is not a property this workspace should be betting a panic on.
+[profile.release.package.spectra_core]
+overflow-checks = true
+
+[profile.release.package.spectra_core_ffi]
+overflow-checks = true
+
+[profile.release.package.spectra-cli]
+overflow-checks = true

@@ -1,5 +1,6 @@
 use super::*;
 use crate::registry::Chain;
+use crate::service::address_discovery::UtxoDerivation;
 use crate::store::state::WalletSummary;
 use std::sync::Arc;
 

@@ -87,27 +87,3 @@ impl From<SubstrateSignError> for String {
         err.to_string()
     }
 }
-
-// ── Typed byte-array wrappers ─────────────────────────────────────────
-//
-// `[u8; 32]` arguments to `build_signed_transfer` were positionally
-// distinguishable but type-indistinguishable: a caller could pass
-// (public_key, mini_secret) instead of (mini_secret, public_key) and
-// produce a useless signature without a compile error. These wrappers
-// tag each role so swaps fail to type-check.
-
-/// 32-byte sr25519 mini-secret produced by `derive_polkadot` /
-/// `derive_substrate_sr25519_material`. NOT an ed25519 secret — schnorrkel
-/// expansion happens inside `build_signed_transfer`.
-#[derive(Debug, Clone, Copy)]
-pub struct Sr25519MiniSecret(pub [u8; 32]);
-
-/// 32-byte sr25519 public key encoded in the SS58 address.
-#[derive(Debug, Clone, Copy)]
-pub struct Sr25519PublicKey(pub [u8; 32]);
-
-/// 32-byte chain identifier (genesis hash, block hash). Tagged so swaps
-/// at the call site fail to compile instead of producing a bad signing
-/// payload.
-#[derive(Debug, Clone, Copy)]
-pub struct SubstrateChainHash(pub [u8; 32]);

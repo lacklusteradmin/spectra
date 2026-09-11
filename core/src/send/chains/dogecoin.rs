@@ -2,7 +2,9 @@
 
 use crate::http::{with_fallback, RetryProfile};
 
-use super::wire::{build_input, build_tx, decode_txid_le, dsha256, p2pkh_script_sig, varint};
+use super::bitcoin_wire::{
+    build_input, build_tx, decode_txid_le, dsha256, p2pkh_script_sig, varint,
+};
 use crate::derivation::chains::dogecoin::{decode_doge_address, p2pkh_script};
 use crate::fetch::chains::dogecoin::{DogeSendResult, DogecoinClient};
 

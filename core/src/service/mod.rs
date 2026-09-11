@@ -7,9 +7,13 @@
 //!
 //! | module | owns |
 //! |---|---|
-//! | [`state`] | the resident `CoreAppState`, its persistence, transactions, keypool |
-//! | [`network`] | every read that talks to a chain, and the per-chain dispatch |
-//! | [`send`] | fee estimation, signing, broadcast, and send previews |
+//! | [`state`] | resident `CoreAppState` projections and serialized persistence |
+//! | [`network`] | endpoint health and transaction status |
+//! | `network_balance`, `network_tokens`, `network_history`, `network_hd`, `network_prices` | chain reads grouped by responsibility |
+//! | [`send_preview`] | fee estimates and send previews |
+//! | [`send_signing`] | protocol signing and submission dispatch |
+//! | [`send_broadcast`] | rebroadcast of signed payloads |
+//! | [`send_destination`] | resolution and review verification |
 //! | [`helpers`] | parsing, scaling and SQLite plumbing the three share |
 //! | [`types`] | the records and enums that cross the FFI |
 //! | [`standalone`] | exports that need no service state at all |
@@ -66,25 +70,43 @@ pub(crate) use tokio::sync::RwLock as AsyncRwLock;
 
 pub(crate) use serde::{Deserialize, Serialize};
 
+mod address_discovery;
 mod helpers;
+mod history_bitcoin;
 mod history_cursor;
 mod history_derived;
 mod history_refresh;
+mod keypool;
 mod maintenance;
 mod network;
+mod network_balance;
+mod network_hd;
+mod network_history;
+mod network_prices;
+mod network_tokens;
+mod operational_events;
 mod pending_status;
-mod send;
+mod send_broadcast;
+mod send_destination;
 mod send_execution;
 mod send_identity;
 mod send_params;
+mod send_preview;
+mod send_signing;
 mod standalone;
 mod state;
+mod transactions;
 mod types;
+mod wallet_import;
 
 pub(crate) use helpers::*;
+use keypool::keypool_key;
+use operational_events::OPERATIONAL_EVENTS_KEY;
+#[cfg(test)]
+use send_destination::{resolve_destination, verify_reviewed_destination};
 pub use standalone::*;
 /// The confirmation-poll outcome, which lives with the trackers it updates.
-pub use state::StatusPollOutcome;
+pub use transactions::StatusPollOutcome;
 pub use types::*;
 
 // ── Endpoint index (internal — pre-indexed for O(1) chain_id lookup) ──────
@@ -155,13 +177,6 @@ pub struct WalletService {
     /// every keypool operation reads it under the keypool's own lock.
     pub(crate) owned_addresses:
         Arc<AsyncRwLock<HashMap<String, Vec<crate::wallet_db::OwnedAddressRecord>>>>,
-    /// ENS names already resolved this run, keyed by the lowercased name.
-    ///
-    /// Not persisted and not authoritative: a name's registration can change,
-    /// and a restart re-asking is correct. It is here because the composer
-    /// resolves on every keystroke of a debounced probe, and the front end
-    /// that used to hold this map also held the rule about when to consult it.
-    pub(crate) ens_resolutions: Arc<AsyncRwLock<HashMap<String, String>>>,
     /// Per-chain operational log, newest first, capped per chain.
     ///
     /// Not in `CoreAppState`: 200 entries × every chain is too much to clone
@@ -217,7 +232,6 @@ impl WalletService {
             owned_addresses: Arc::new(AsyncRwLock::new(HashMap::new())),
             refresh_clock: Arc::new(AsyncRwLock::new(Default::default())),
             operational_events: Arc::new(AsyncRwLock::new(HashMap::new())),
-            ens_resolutions: Arc::new(AsyncRwLock::new(HashMap::new())),
         }))
     }
 

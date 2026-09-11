@@ -24,32 +24,33 @@ fn tracked(
     chain: Chain,
     poll: PendingStatusPoll,
 ) -> Vec<crate::store::persistence_models::CorePersistedTransactionRecord> {
-    use crate::store::wallet_domain::{CoreTransactionKind, CoreTransactionStatus};
-    let (tracks_finality, require_send_kind) = match poll {
+    records
+        .iter()
+        .filter(|r| r.chain_name == chain.chain_display_name())
+        .filter(|r| needs_status_poll(r.kind, r.status, r.transaction_hash.as_deref(), poll))
+        .cloned()
+        .collect()
+}
+
+/// Shared by polling and pruning: a tracker lives as long as its transaction is tracked.
+pub(super) fn needs_status_poll(
+    kind: crate::store::wallet_domain::CoreTransactionKind,
+    status: Option<crate::store::wallet_domain::CoreTransactionStatus>,
+    hash: Option<&str>,
+    poll: PendingStatusPoll,
+) -> bool {
+    use crate::store::wallet_domain::{CoreTransactionKind as K, CoreTransactionStatus as S};
+    let (finality, sends_only) = match poll {
         PendingStatusPoll::Utxo {
             tracks_finality,
             require_send_kind,
         } => (tracks_finality, require_send_kind),
-        PendingStatusPoll::HistoryTxids | PendingStatusPoll::EvmReceipt => (false, true),
-        PendingStatusPoll::None => return Vec::new(),
+        PendingStatusPoll::EvmReceipt | PendingStatusPoll::HistoryTxids => (false, true),
+        PendingStatusPoll::None => return false,
     };
-    records
-        .iter()
-        .filter(|record| record.chain_name == chain.chain_display_name())
-        .filter(|record| !require_send_kind || record.kind == CoreTransactionKind::Send)
-        .filter(|record| {
-            record
-                .transaction_hash
-                .as_deref()
-                .is_some_and(|hash| !hash.trim().is_empty())
-        })
-        .filter(|record| match record.status {
-            Some(CoreTransactionStatus::Pending) => true,
-            Some(CoreTransactionStatus::Confirmed) => tracks_finality,
-            _ => false,
-        })
-        .cloned()
-        .collect()
+    hash.is_some_and(|h| !h.trim().is_empty())
+        && (!sends_only || kind == K::Send)
+        && (status == Some(S::Pending) || (finality && status == Some(S::Confirmed)))
 }
 
 #[uniffi::export(async_runtime = "tokio")]
@@ -73,13 +74,10 @@ impl WalletService {
         }
         // Trackers for records nothing polls any more go first: the set is read
         // from the store here rather than computed by a caller and sent over.
-        let _ = self.prune_status_trackers().await;
+        self.prune_status_trackers().await?;
 
         let records = {
-            let stored = self
-                .fetch_all_history_records_typed()
-                .await
-                .unwrap_or_default();
+            let stored = self.fetch_all_history_records_typed().await?;
             let all: Vec<_> = stored.into_iter().map(|row| row.payload).collect();
             tracked(&all, chain, poll)
         };
@@ -218,7 +216,7 @@ impl WalletService {
                 let state = self.app_state().await;
                 let mut by_address: std::collections::HashMap<String, Vec<&_>> =
                     std::collections::HashMap::new();
-                for record in &records {
+                for record in records.iter().filter(|r| due.contains(&r.id)) {
                     let Some(address) = record
                         .wallet_id
                         .as_deref()
@@ -421,5 +419,138 @@ mod tests {
             .poll_pending_transactions("not-a-chain".to_string())
             .await
             .is_err());
+    }
+    async fn stored_service() -> (std::sync::Arc<WalletService>, String) {
+        let service = WalletService::new_typed(vec![]).unwrap();
+        let path = std::env::temp_dir()
+            .join(format!(
+                "spectra-poll-{}.sqlite",
+                crate::store::new_event_id()
+            ))
+            .to_string_lossy()
+            .into_owned();
+        service.open_state(path.clone()).await.unwrap();
+        (service, path)
+    }
+
+    #[tokio::test]
+    async fn pruning_preserves_backoff_for_every_poll_shape() {
+        let (service, _) = stored_service().await;
+        let chains: Vec<_> = Chain::mainnets()
+            .filter(|c| !matches!(c.pending_status_poll(), PendingStatusPoll::None))
+            .collect();
+        let rows = chains
+            .iter()
+            .map(|c| {
+                crate::wallet_db::history_record_from_payload(record(c.str_id(), *c, json!({})))
+            })
+            .collect();
+        service.upsert_history_records(rows).await.unwrap();
+        let ids: Vec<_> = chains.iter().map(|c| c.str_id().to_string()).collect();
+        for id in &ids {
+            service
+                .record_status_poll(id.clone(), crate::service::StatusPollOutcome::Failed)
+                .await;
+            service
+                .record_status_poll(id.clone(), crate::service::StatusPollOutcome::Failed)
+                .await;
+        }
+        service
+            .record_status_poll("deleted".into(), crate::service::StatusPollOutcome::Failed)
+            .await;
+        service.prune_status_trackers().await.unwrap();
+        assert!(service
+            .transactions_due_for_status_poll(ids.clone())
+            .await
+            .is_empty());
+        let trackers = service.status_trackers.read().await;
+        assert!(!trackers.contains_key("deleted"));
+        for id in ids {
+            assert_eq!(trackers[&id].consecutive_failures, 2, "{id}");
+        }
+    }
+
+    #[tokio::test]
+    async fn consecutive_evm_polls_do_not_repeat_the_request() {
+        use wiremock::{matchers::any, Mock, MockServer, Request, ResponseTemplate};
+        let server = MockServer::start().await;
+        Mock::given(any()).respond_with(|request: &Request| {
+            let body: serde_json::Value = request.body_json().unwrap();
+            ResponseTemplate::new(200).set_body_json(json!({"jsonrpc":"2.0", "id":body["id"],
+                "result":if body["method"] == "eth_chainId" { json!("0x1") } else { serde_json::Value::Null }}))
+        }).mount(&server).await;
+        let service = WalletService::new_typed(vec![crate::service::ChainEndpoints {
+            chain_id: "ethereum".into(),
+            endpoints: vec![server.uri()],
+            api_key: None,
+        }])
+        .unwrap();
+        let db = std::env::temp_dir().join(format!(
+            "spectra-poll-rounds-{}.sqlite",
+            crate::store::new_event_id()
+        ));
+        service
+            .open_state(db.to_string_lossy().into_owned())
+            .await
+            .unwrap();
+        service
+            .upsert_history_records(vec![crate::wallet_db::history_record_from_payload(record(
+                "pending",
+                Chain::Ethereum,
+                json!({}),
+            ))])
+            .await
+            .unwrap();
+        service
+            .poll_pending_transactions("ethereum".into())
+            .await
+            .unwrap();
+        let requests = server.received_requests().await.unwrap().len();
+        assert!(requests > 0);
+        service
+            .poll_pending_transactions("ethereum".into())
+            .await
+            .unwrap();
+        assert_eq!(server.received_requests().await.unwrap().len(), requests);
+    }
+
+    #[tokio::test]
+    async fn polling_propagates_unopened_and_corrupt_storage() {
+        let unopened = WalletService::new_typed(vec![]).unwrap();
+        assert!(unopened
+            .poll_pending_transactions("ethereum".into())
+            .await
+            .is_err());
+        let (service, path) = stored_service().await;
+        assert!(service
+            .poll_pending_transactions("ethereum".into())
+            .await
+            .unwrap()
+            .is_empty());
+        service
+            .upsert_history_records(vec![crate::wallet_db::history_record_from_payload(record(
+                "broken",
+                Chain::Ethereum,
+                json!({}),
+            ))])
+            .await
+            .unwrap();
+        service
+            .record_status_poll("broken".into(), crate::service::StatusPollOutcome::Failed)
+            .await;
+        rusqlite::Connection::open(&path)
+            .unwrap()
+            .execute("UPDATE history_records SET payload = '{}'", [])
+            .unwrap();
+        assert!(service
+            .poll_pending_transactions("ethereum".into())
+            .await
+            .is_err());
+        assert!(service.status_trackers.read().await.contains_key("broken"));
+        let count: i64 = rusqlite::Connection::open(&path)
+            .unwrap()
+            .query_row("SELECT COUNT(*) FROM history_records", [], |r| r.get(0))
+            .unwrap();
+        assert_eq!(count, 1);
     }
 }

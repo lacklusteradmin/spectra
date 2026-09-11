@@ -573,6 +573,42 @@ impl CoreTokenHostingChain {
             Self::Tron => "Tron",
         }
     }
+
+    /// The catalog's token standard for this chain, e.g. `SPL Token` for
+    /// Solana. Read from the registry entry rather than tabulated again.
+    pub fn token_standard(self) -> String {
+        crate::registry::Chain::from_display_name(self.chain_name())
+            .map(|chain| chain.entry().token_standard.clone())
+            .unwrap_or_default()
+    }
+
+    /// Which validator a *token contract* on this chain is judged by.
+    ///
+    /// Not the same question as [`crate::registry::Chain::address_validation_kind`]
+    /// for two of them: a Sui or Aptos token is named by a coin *type*
+    /// (`0xADDR::module::NAME`), not by an address, and a package address is
+    /// only the degenerate case of one. Everywhere else the contract is an
+    /// address in the chain's own format.
+    ///
+    /// Swift wrote this as a seven-arm switch with a `default` that assumed
+    /// EVM, and the CLI did not check the contract at all. Stating it here
+    /// means a chain joining the hosting list arrives with its validator
+    /// rather than falling into whichever arm was written last.
+    pub fn contract_validation_kind(self) -> &'static str {
+        match self {
+            Self::Solana => "solana",
+            Self::Sui => "suiCoinType",
+            Self::Aptos => "aptosTokenType",
+            Self::Ton => "ton",
+            Self::Near => "near",
+            Self::Tron => "tron",
+            // Every remaining variant is an EVM chain, which the registry is
+            // the authority on — asking it keeps the two from drifting.
+            other => crate::registry::Chain::from_display_name(other.chain_name())
+                .map(crate::registry::Chain::address_validation_kind)
+                .unwrap_or("evm"),
+        }
+    }
 }
 
 /// Swift `TokenPreferenceCategory` — rawValues: "stablecoin", "meme", "custom".

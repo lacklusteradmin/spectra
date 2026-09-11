@@ -1,108 +1,129 @@
-//! Aptos send: sign and submit APT transfers via the REST API encoder.
-
-use serde_json::{json, Value};
-
+//! APT: read sequence/gas, construct the BCS signing message locally, sign, submit.
+use super::bcs;
 use crate::fetch::chains::aptos::{AptosClient, AptosSendResult};
+use crate::send::keys::Ed25519Seed;
+use serde_json::{json, Value};
+use sha3::{Digest, Sha3_256};
 
+pub(crate) struct PreparedAptosTransfer {
+    sender: [u8; 32],
+    message: Vec<u8>,
+    body: Value,
+}
+
+#[allow(clippy::too_many_arguments)]
+pub(crate) fn prepare_transfer(
+    from: &str,
+    to: &str,
+    amount: u64,
+    sequence: u64,
+    gas_price: u64,
+    max_gas: u64,
+    expiration: u64,
+    chain_id: u8,
+) -> Result<PreparedAptosTransfer, String> {
+    let sender = bcs::address(from)?;
+    let recipient = bcs::address(to)?;
+    if amount == 0 || gas_price == 0 || max_gas == 0 || expiration == 0 {
+        return Err("invalid Aptos amount, gas or expiration".into());
+    }
+    let mut message = Sha3_256::digest(b"APTOS::RawTransaction").to_vec();
+    message.extend_from_slice(&sender);
+    message.extend_from_slice(&sequence.to_le_bytes());
+    message.push(2); // TransactionPayload::EntryFunction
+    let one = bcs::address("0x1")?;
+    message.extend_from_slice(&one);
+    bcs::bytes(b"coin", &mut message);
+    bcs::bytes(b"transfer", &mut message);
+    message.push(1); // one type argument
+    message.push(7); // TypeTag::Struct
+    message.extend_from_slice(&one);
+    bcs::bytes(b"aptos_coin", &mut message);
+    bcs::bytes(b"AptosCoin", &mut message);
+    message.push(0);
+    message.push(2); // arguments: recipient and octas
+    bcs::bytes(&recipient, &mut message);
+    bcs::bytes(&amount.to_le_bytes(), &mut message);
+    message.extend_from_slice(&max_gas.to_le_bytes());
+    message.extend_from_slice(&gas_price.to_le_bytes());
+    message.extend_from_slice(&expiration.to_le_bytes());
+    message.push(chain_id);
+    let body = json!({"sender":format!("0x{}",hex::encode(sender)),"sequence_number":sequence.to_string(),"max_gas_amount":max_gas.to_string(),"gas_unit_price":gas_price.to_string(),"expiration_timestamp_secs":expiration.to_string(),"payload":{"type":"entry_function_payload","function":"0x1::coin::transfer","type_arguments":["0x1::aptos_coin::AptosCoin"],"arguments":[format!("0x{}",hex::encode(recipient)),amount.to_string()]}});
+    Ok(PreparedAptosTransfer {
+        sender,
+        message,
+        body,
+    })
+}
+impl PreparedAptosTransfer {
+    pub(crate) fn sign(mut self, key: &Ed25519Seed) -> Result<String, String> {
+        let public = key.public_key();
+        let address: [u8; 32] = Sha3_256::new()
+            .chain_update(public)
+            .chain_update([0])
+            .finalize()
+            .into();
+        if self.sender != address {
+            return Err("Aptos sender does not match signing seed".into());
+        }
+        self.body["signature"] = json!({"type":"ed25519_signature","public_key":format!("0x{}",hex::encode(public)),"signature":format!("0x{}",hex::encode(key.sign(&self.message)))});
+        Ok(self.body.to_string())
+    }
+}
 impl AptosClient {
-    /// Sign and submit an APT coin transfer.
     pub async fn sign_and_submit(
         &self,
-        from_address: &str,
-        to_address: &str,
+        from: &str,
+        to: &str,
         octas: u64,
-        private_key_bytes: &[u8; 64],
-        public_key_bytes: &[u8; 32],
+        key: &Ed25519Seed,
+        public: &[u8; 32],
+        expected_chain_id: u8,
     ) -> Result<AptosSendResult, String> {
-        let (sequence_number, _) = self.fetch_account_info(from_address).await?;
-        let (_chain_id, _) = self.fetch_ledger_info().await?;
-        let gas_unit_price = self.fetch_gas_price().await?;
-
-        // Use the REST API to encode the transaction (simpler than full BCS).
-        let payload = json!({
-            "type": "entry_function_payload",
-            "function": "0x1::coin::transfer",
-            "type_arguments": ["0x1::aptos_coin::AptosCoin"],
-            "arguments": [to_address, octas.to_string()]
-        });
-
-        let raw_tx_body = json!({
-            "sender": from_address,
-            "sequence_number": sequence_number.to_string(),
-            "max_gas_amount": "10000",
-            "gas_unit_price": gas_unit_price.to_string(),
-            "expiration_timestamp_secs": (std::time::SystemTime::now()
-                .duration_since(std::time::UNIX_EPOCH)
-                .unwrap_or_default()
-                .as_secs() + 600).to_string(),
-            "payload": payload,
-        });
-
-        // Encode signing message via /transactions/encode_submission.
-        let encode_resp: Value = self
-            .post_val("/transactions/encode_submission", &raw_tx_body)
-            .await?;
-        let signing_msg_hex = encode_resp
-            .as_str()
-            .ok_or("encode_submission: expected string")?;
-        let signing_bytes = hex::decode(
-            signing_msg_hex
-                .strip_prefix("0x")
-                .unwrap_or(signing_msg_hex),
-        )
-        .map_err(|e| format!("hex: {e}"))?;
-
-        use ed25519_dalek::{Signer, SigningKey};
-        let seed: [u8; 32] = private_key_bytes[..32]
-            .try_into()
-            .map_err(|_| "privkey too short")?;
-        let signing_key = SigningKey::from_bytes(&seed);
-        let signature = signing_key.sign(&signing_bytes);
-
-        let mut submit_body = raw_tx_body.clone();
-        submit_body["signature"] = json!({
-            "type": "ed25519_signature",
-            "public_key": format!("0x{}", hex::encode(public_key_bytes)),
-            "signature": format!("0x{}", hex::encode(signature.to_bytes()))
-        });
-
-        let signed_body_json = submit_body.to_string();
-        let submit_resp: Value = self.post_val("/transactions", &submit_body).await?;
-        let txid = submit_resp
-            .get("hash")
-            .and_then(|v| v.as_str())
-            .ok_or("submit: missing hash")?
-            .to_string();
-        let version = submit_resp
-            .get("version")
-            .and_then(|v| v.as_str())
-            .and_then(|s| s.parse().ok());
-
-        Ok(AptosSendResult {
-            txid,
-            version,
-            signed_body_json,
-        })
+        key.require_public_key(public)?;
+        bcs::address(from)?;
+        bcs::address(to)?;
+        if octas == 0 {
+            return Err("Aptos amount must be positive".into());
+        }
+        let (sequence, _) = self.fetch_account_info(from).await?;
+        let (chain_id, _) = self.fetch_ledger_info().await?;
+        if chain_id != u64::from(expected_chain_id) {
+            return Err("Aptos endpoint network does not match the requested chain".into());
+        }
+        let gas_price = self.fetch_gas_price().await?;
+        let expiration = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map_err(|_| "clock before epoch")?
+            .as_secs()
+            .checked_add(600)
+            .ok_or("expiration overflow")?;
+        let prepared = prepare_transfer(
+            from,
+            to,
+            octas,
+            sequence,
+            gas_price,
+            10_000,
+            expiration,
+            expected_chain_id,
+        )?;
+        self.submit_signed_body(&prepared.sign(key)?).await
     }
-
-    /// Submit a pre-signed transaction body JSON (for rebroadcast).
     pub async fn submit_signed_body(&self, signed_json: &str) -> Result<AptosSendResult, String> {
-        let body: Value =
-            serde_json::from_str(signed_json).map_err(|e| format!("json parse: {e}"))?;
-        let submit_resp: Value = self.post_val("/transactions", &body).await?;
-        let txid = submit_resp
-            .get("hash")
-            .and_then(|v| v.as_str())
-            .unwrap_or("")
+        let body: Value = serde_json::from_str(signed_json)
+            .map_err(|e| format!("invalid Aptos transaction: {e}"))?;
+        let response = self.post_val("/transactions", &body).await?;
+        let txid = response["hash"]
+            .as_str()
+            .filter(|s| !s.is_empty())
+            .ok_or("Aptos submit: missing hash")?
             .to_string();
-        let version = submit_resp
-            .get("version")
-            .and_then(|v| v.as_str())
-            .and_then(|s| s.parse().ok());
+        let version = response["version"].as_str().and_then(|s| s.parse().ok());
         Ok(AptosSendResult {
             txid,
             version,
-            signed_body_json: signed_json.to_string(),
+            signed_body_json: signed_json.into(),
         })
     }
 }

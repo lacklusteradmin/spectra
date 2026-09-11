@@ -39,25 +39,4 @@ impl MoneroClient {
             amount_piconeros: amount,
         })
     }
-
-    /// Estimate the fee for a transfer.
-    pub async fn estimate_fee(
-        &self,
-        to_address: &str,
-        piconeros: u64,
-        priority: u32,
-    ) -> Result<u64, String> {
-        let result = self
-            .call(
-                "transfer",
-                json!({
-                    "destinations": [{"amount": piconeros, "address": to_address}],
-                    "priority": priority,
-                    "do_not_relay": true,
-                    "get_tx_metadata": false
-                }),
-            )
-            .await?;
-        Ok(result.get("fee").and_then(|v| v.as_u64()).unwrap_or(0))
-    }
 }

@@ -55,9 +55,12 @@ pub(super) fn decode_hex_array<const N: usize>(
 /// Decode a variable-length private key. Eleven signing arms carried this
 /// same three-line closure; `decode_hex_array` covers only the fixed-length
 /// keys.
-pub(super) fn decode_private_key(hex_str: &str) -> Result<Vec<u8>, SpectraBridgeError> {
+pub(super) fn decode_private_key(
+    hex_str: &str,
+) -> Result<zeroize::Zeroizing<Vec<u8>>, SpectraBridgeError> {
     hex::decode(hex_str)
-        .map_err(|e| SpectraBridgeError::from(format!("private_key_hex hex decode: {e}")))
+        .map(zeroize::Zeroizing::new)
+        .map_err(|_| SpectraBridgeError::from("invalid private key hex"))
 }
 
 /// The fee to sign with: whatever the preview settled on, and otherwise the
@@ -219,7 +222,7 @@ pub(super) fn utxo_fee_preview_json(utxo_values: Vec<u64>, fee_rate: u64) -> Str
 //
 // Key/value `state` table backing AppState persistence (wallets, settings,
 // fiat rates, live prices, etc.). Mirrors the `with_conn` pool already in
-// `store/wallet_db.rs` — re-uses a single `Connection` per `db_path` instead
+// `store/wallet_db/` — re-uses a single `Connection` per `db_path` instead
 // of opening + running DDL + closing on every load/save. With ~5–10 persists
 // per refresh cycle, the previous open-per-call cost was meaningful.
 //
@@ -380,4 +383,15 @@ mod display_balance_from_a_typed_summary {
             0.0
         );
     }
+}
+
+pub(super) fn decode_secret_array<const N: usize>(
+    value: &str,
+) -> Result<zeroize::Zeroizing<[u8; N]>, SpectraBridgeError> {
+    let bytes = decode_private_key(value)?;
+    let array: &[u8; N] = bytes
+        .as_slice()
+        .try_into()
+        .map_err(|_| SpectraBridgeError::from(format!("private key must be {N} bytes")))?;
+    Ok(zeroize::Zeroizing::new(*array))
 }

@@ -11,7 +11,7 @@
 //! Spectra ships SIGHASH_ALL only — the dominant case for normal transfers.
 //! Tree-stake (PoS) inputs and split-tx flows are out of scope.
 
-use super::wire::{decode_txid_le, varint};
+use super::bitcoin_wire::{decode_txid_le, varint};
 use crate::derivation::chains::decred::{blake256, dcr_p2pkh_script, decode_dcr_address};
 use crate::fetch::chains::decred::{DcrSendResult, DecredClient};
 

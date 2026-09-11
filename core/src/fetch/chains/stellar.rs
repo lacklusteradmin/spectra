@@ -18,15 +18,6 @@ pub struct StellarBalance {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct StellarAssetBalance {
-    pub asset_code: String,
-    pub asset_issuer: String,
-    /// Fixed 7-decimal stroop units (same precision as XLM).
-    pub amount_stroops: i64,
-    pub amount_display: String,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct StellarHistoryEntry {
     pub txid: String,
     pub ledger: u64,
@@ -69,10 +60,6 @@ pub(crate) struct HorizonAccount {
 pub(crate) struct HorizonBalance {
     pub(crate) balance: String,
     pub(crate) asset_type: String,
-    #[serde(default)]
-    pub(crate) asset_code: String,
-    #[serde(default)]
-    pub(crate) asset_issuer: String,
 }
 
 #[derive(Debug, Deserialize)]
@@ -155,38 +142,6 @@ impl StellarClient {
             stroops,
             xlm_display: native.balance.clone(),
         })
-    }
-
-    /// Fetch a custom (issued) asset balance. `asset_code` is the alphanumeric
-    /// asset code (e.g. "USDC"); `asset_issuer` is the G... issuer account.
-    /// If the account has no trustline to this asset, returns a zero balance.
-    pub async fn fetch_asset_balance(
-        &self,
-        address: &str,
-        asset_code: &str,
-        asset_issuer: &str,
-    ) -> Result<StellarAssetBalance, String> {
-        let account: HorizonAccount = self.get(&format!("/accounts/{address}")).await?;
-        let entry = account.balances.iter().find(|b| {
-            b.asset_type != "native" && b.asset_code == asset_code && b.asset_issuer == asset_issuer
-        });
-        match entry {
-            Some(b) => {
-                let stroops = parse_stellar_amount(&b.balance)?;
-                Ok(StellarAssetBalance {
-                    asset_code: asset_code.to_string(),
-                    asset_issuer: asset_issuer.to_string(),
-                    amount_stroops: stroops,
-                    amount_display: b.balance.clone(),
-                })
-            }
-            None => Ok(StellarAssetBalance {
-                asset_code: asset_code.to_string(),
-                asset_issuer: asset_issuer.to_string(),
-                amount_stroops: 0,
-                amount_display: "0.0000000".to_string(),
-            }),
-        }
     }
 
     pub async fn fetch_sequence(&self, address: &str) -> Result<u64, String> {

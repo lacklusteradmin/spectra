@@ -151,6 +151,40 @@ pub enum AddressBookRejection {
     DuplicateAddress,
 }
 
+/// Why a token-preference change was refused. Front ends map these to their
+/// own wording; the decision itself is core's.
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, uniffi::Enum)]
+#[serde(rename_all = "camelCase")]
+pub enum TokenPreferenceRejection {
+    /// The chain does not host tokens at all.
+    UnknownChain,
+    EmptySymbol,
+    /// Longer than a symbol is ever spelled; almost always a pasted name.
+    SymbolTooLong,
+    EmptyName,
+    EmptyContract,
+    /// Not a well-formed contract for the chain that would host it.
+    InvalidContract,
+    /// The chain already has a row for this contract.
+    DuplicateToken,
+    /// More places than any token has. A clamp here would silently read a
+    /// balance at the wrong scale.
+    TooManyDecimals,
+    /// The catalog ships it, so it is not the user's to edit or remove.
+    BuiltInToken,
+    /// No row for that chain and contract.
+    UnknownToken,
+}
+
+/// A token preference addressed by what it actually is, rather than by an id
+/// two front ends have to spell the same way.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, uniffi::Record)]
+#[serde(rename_all = "camelCase")]
+pub struct CoreTokenPreferenceKey {
+    pub chain_name: String,
+    pub contract: String,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, uniffi::Record)]
 #[serde(rename_all = "camelCase")]
 /// Settings that are part of the domain — every front end must agree on them,
@@ -636,11 +670,48 @@ pub enum StateCommand {
     SelectNetworkChain {
         chain_id: String,
     },
-    /// Replace the tracked-token list. Core clamps the decimal fields, so a
-    /// caller cannot store a token that displays more places than it has.
-    SetTokenPreferences {
-        entries: Vec<crate::store::wallet_domain::CoreTokenPreferenceEntry>,
+    /// Add a token the catalog does not ship.
+    ///
+    /// The reducer trims, upper-cases the symbol, validates the contract with
+    /// the chain's own `contract_validation_kind` and refuses a duplicate; a
+    /// rejected token produces a `tokenPreferenceRejected` event and no
+    /// change. Both front ends used to assemble the whole list and hand it
+    /// back — with different duplicate rules, and only one of them checking
+    /// the contract at all.
+    AddCustomToken {
+        chain_name: String,
+        symbol: String,
+        name: String,
+        contract: String,
+        coingecko_id: String,
+        decimals: u32,
     },
+    /// Forget a custom token. A built-in is the catalog's, not the user's.
+    RemoveCustomToken {
+        chain_name: String,
+        contract: String,
+    },
+    /// Change a custom token's precision. Out of range is refused, not
+    /// clamped: a clamp reads every later balance at the wrong scale.
+    SetCustomTokenDecimals {
+        chain_name: String,
+        contract: String,
+        decimals: u32,
+    },
+    /// Turn tokens on or off for balance reads and display. Takes a list
+    /// because the registry screen toggles a whole group at once.
+    SetTokenPreferencesEnabled {
+        tokens: Vec<CoreTokenPreferenceKey>,
+        is_enabled: bool,
+    },
+    /// Back to the catalog's own list, with every custom token dropped.
+    ResetTokenPreferences,
+    /// Fold this build's catalog into the stored preferences: a user's
+    /// `is_enabled` survives, tokens the build added appear, and tokens the
+    /// user added stay. Both lists are core's, so neither crosses the
+    /// boundary — the caller used to fetch the catalog, reshape it and send
+    /// both back for merging.
+    MergeBuiltInTokens,
     /// Add a recipient. `address` is normalized and validated by the reducer;
     /// a rejected entry produces an `addressBookRejected` event and no change.
     AddAddressBookEntry {
@@ -695,6 +766,68 @@ fn address_book_contains(
             && entry.chain_name == chain_name
             && entry.address.eq_ignore_ascii_case(normalized_address)
     })
+}
+
+/// Longer than any token symbol is spelled. Past this the field holds a pasted
+/// name or a whole contract address.
+pub(crate) const MAX_TOKEN_SYMBOL_CHARS: usize = 12;
+
+/// Where a (chain, contract) pair sits in the preference list, if at all.
+///
+/// Matched on the *normalized* contract, which is the chain's own rule — a TON
+/// jetton address is case-significant and an EVM one is not. Swift compared
+/// normalized identifiers and the CLI compared symbols case-insensitively, so
+/// the two front ends disagreed about what a duplicate even was.
+fn token_preference_index(state: &CoreAppState, chain_name: &str, contract: &str) -> Option<usize> {
+    let hosting = crate::store::wallet_domain::CoreTokenHostingChain::from_chain_name(chain_name)?;
+    token_preference_row(state, hosting, contract)
+}
+
+fn token_preference_row(
+    state: &CoreAppState,
+    hosting: crate::store::wallet_domain::CoreTokenHostingChain,
+    contract: &str,
+) -> Option<usize> {
+    let needle = crate::tokens::normalize_token_identifier(
+        Some(contract.to_string()),
+        hosting.chain_name().to_string(),
+    )?;
+    state.token_preferences.iter().position(|entry| {
+        entry.hosting_chain() == Some(hosting)
+            && crate::tokens::normalize_token_identifier(
+                Some(entry.token.contract.clone()),
+                hosting.chain_name().to_string(),
+            )
+            .as_deref()
+                == Some(needle.as_str())
+    })
+}
+
+fn token_preference_rejected(reason: TokenPreferenceRejection) -> StateEvent {
+    StateEvent {
+        kind: "tokenPreferenceRejected".to_string(),
+        subject_id: Some(
+            serde_json::to_value(reason)
+                .ok()
+                .and_then(|v| v.as_str().map(str::to_string))
+                .unwrap_or_default(),
+        ),
+    }
+}
+
+/// Chain, then the catalog's own rows before the user's, then symbol.
+///
+/// The same order `plan_merge_built_in_token_preferences` produces, so a list
+/// that has just been added to still matches the one a reload builds. Swift
+/// re-sorted with its own copy of this comparator after every insert.
+fn sort_token_preferences(entries: &mut [crate::store::wallet_domain::CoreTokenPreferenceEntry]) {
+    entries.sort_by(|lhs, rhs| {
+        lhs.token
+            .chain
+            .cmp(&rhs.token.chain)
+            .then_with(|| rhs.is_built_in.cmp(&lhs.is_built_in))
+            .then_with(|| lhs.token.symbol.cmp(&rhs.token.symbol))
+    });
 }
 
 /// Apply a state command in place, returning only the events.
@@ -1014,16 +1147,167 @@ pub fn reduce_state_in_place(state: &mut CoreAppState, command: StateCommand) ->
                 });
             }
         }
-        StateCommand::SetTokenPreferences { entries } => {
-            let normalized: Vec<_> = entries
-                .into_iter()
-                .map(|mut entry| {
-                    entry.token.decimals = entry.token.decimals.min(MAX_TOKEN_DECIMALS as u32);
-                    entry
-                })
-                .collect();
-            if normalized != state.token_preferences {
-                state.token_preferences = normalized;
+        StateCommand::AddCustomToken {
+            chain_name,
+            symbol,
+            name,
+            contract,
+            coingecko_id,
+            decimals,
+        } => {
+            let symbol = symbol.trim().to_uppercase();
+            let name = name.trim().to_string();
+            let contract = contract.trim().to_string();
+            let hosting =
+                crate::store::wallet_domain::CoreTokenHostingChain::from_chain_name(&chain_name);
+
+            let rejection = match hosting {
+                None => Some(TokenPreferenceRejection::UnknownChain),
+                Some(_) if symbol.is_empty() => Some(TokenPreferenceRejection::EmptySymbol),
+                // Twelve characters is longer than any symbol is spelled; past
+                // it the field has a pasted name or a whole address in it.
+                Some(_) if symbol.chars().count() > MAX_TOKEN_SYMBOL_CHARS => {
+                    Some(TokenPreferenceRejection::SymbolTooLong)
+                }
+                Some(_) if name.is_empty() => Some(TokenPreferenceRejection::EmptyName),
+                Some(_) if contract.is_empty() => Some(TokenPreferenceRejection::EmptyContract),
+                Some(_) if decimals > MAX_TOKEN_DECIMALS as u32 => {
+                    Some(TokenPreferenceRejection::TooManyDecimals)
+                }
+                Some(hosting)
+                    if !crate::validation::address::validate_address(
+                        crate::validation::address::AddressValidationRequest {
+                            kind: hosting.contract_validation_kind().to_string(),
+                            value: contract.clone(),
+                        },
+                    )
+                    .is_valid =>
+                {
+                    Some(TokenPreferenceRejection::InvalidContract)
+                }
+                Some(hosting) if token_preference_row(state, hosting, &contract).is_some() => {
+                    Some(TokenPreferenceRejection::DuplicateToken)
+                }
+                Some(_) => None,
+            };
+
+            match (rejection, hosting) {
+                (Some(reason), _) => events.push(token_preference_rejected(reason)),
+                (None, Some(hosting)) => {
+                    state.token_preferences.push(
+                        crate::store::wallet_domain::CoreTokenPreferenceEntry {
+                            category:
+                                crate::store::wallet_domain::CoreTokenPreferenceCategory::Custom,
+                            is_built_in: false,
+                            is_enabled: true,
+                            token: crate::tokens::TokenEntry {
+                                chain: hosting.chain_name().to_string(),
+                                name,
+                                symbol: symbol.clone(),
+                                token_standard: hosting.token_standard().to_string(),
+                                contract,
+                                coingecko_id: coingecko_id.trim().to_string(),
+                                decimals,
+                                tags: Vec::new(),
+                                color: String::new(),
+                                asset_name: String::new(),
+                                enabled: true,
+                            },
+                        },
+                    );
+                    sort_token_preferences(&mut state.token_preferences);
+                    events.push(StateEvent {
+                        kind: "tokenPreferencesChanged".to_string(),
+                        subject_id: Some(symbol),
+                    });
+                }
+                (None, None) => unreachable!("an unknown chain is rejected above"),
+            }
+        }
+        StateCommand::RemoveCustomToken {
+            chain_name,
+            contract,
+        } => match token_preference_index(state, &chain_name, &contract) {
+            None => events.push(token_preference_rejected(
+                TokenPreferenceRejection::UnknownToken,
+            )),
+            Some(index) if state.token_preferences[index].is_built_in => events.push(
+                token_preference_rejected(TokenPreferenceRejection::BuiltInToken),
+            ),
+            Some(index) => {
+                let removed = state.token_preferences.remove(index);
+                events.push(StateEvent {
+                    kind: "tokenPreferencesChanged".to_string(),
+                    subject_id: Some(removed.token.symbol),
+                });
+            }
+        },
+        StateCommand::SetCustomTokenDecimals {
+            chain_name,
+            contract,
+            decimals,
+        } => match token_preference_index(state, &chain_name, &contract) {
+            None => events.push(token_preference_rejected(
+                TokenPreferenceRejection::UnknownToken,
+            )),
+            Some(index) if state.token_preferences[index].is_built_in => events.push(
+                token_preference_rejected(TokenPreferenceRejection::BuiltInToken),
+            ),
+            Some(_) if decimals > MAX_TOKEN_DECIMALS as u32 => events.push(
+                token_preference_rejected(TokenPreferenceRejection::TooManyDecimals),
+            ),
+            Some(index) => {
+                if state.token_preferences[index].token.decimals != decimals {
+                    state.token_preferences[index].token.decimals = decimals;
+                    events.push(StateEvent {
+                        kind: "tokenPreferencesChanged".to_string(),
+                        subject_id: Some(state.token_preferences[index].token.symbol.clone()),
+                    });
+                }
+            }
+        },
+        StateCommand::SetTokenPreferencesEnabled { tokens, is_enabled } => {
+            let mut changed = false;
+            for key in tokens {
+                let Some(index) = token_preference_index(state, &key.chain_name, &key.contract)
+                else {
+                    events.push(token_preference_rejected(
+                        TokenPreferenceRejection::UnknownToken,
+                    ));
+                    continue;
+                };
+                if state.token_preferences[index].is_enabled != is_enabled {
+                    state.token_preferences[index].is_enabled = is_enabled;
+                    changed = true;
+                }
+            }
+            if changed {
+                events.push(StateEvent {
+                    kind: "tokenPreferencesChanged".to_string(),
+                    subject_id: None,
+                });
+            }
+        }
+        StateCommand::MergeBuiltInTokens => {
+            let merged = crate::store::plan_merge_built_in_token_preferences(
+                crate::store::built_in_token_preferences(),
+                std::mem::take(&mut state.token_preferences),
+            );
+            if merged != state.token_preferences {
+                state.token_preferences = merged;
+                events.push(StateEvent {
+                    kind: "tokenPreferencesChanged".to_string(),
+                    subject_id: None,
+                });
+            } else {
+                state.token_preferences = merged;
+            }
+        }
+        StateCommand::ResetTokenPreferences => {
+            let defaults = crate::store::built_in_token_preferences();
+            if defaults != state.token_preferences {
+                state.token_preferences = defaults;
+                sort_token_preferences(&mut state.token_preferences);
                 events.push(StateEvent {
                     kind: "tokenPreferencesChanged".to_string(),
                     subject_id: None,
@@ -1111,6 +1395,225 @@ mod tests {
                 derivation_path: Some("m/84'/0'/0'/0/0".to_string()),
             }],
         }
+    }
+
+    fn add_token(chain: &str, symbol: &str, contract: &str, decimals: u32) -> StateCommand {
+        StateCommand::AddCustomToken {
+            chain_name: chain.to_string(),
+            symbol: symbol.to_string(),
+            name: "A Token".to_string(),
+            contract: contract.to_string(),
+            coingecko_id: String::new(),
+            decimals,
+        }
+    }
+
+    fn rejection(transition: &StateTransition) -> Option<&str> {
+        transition
+            .events
+            .iter()
+            .find(|event| event.kind == "tokenPreferenceRejected")
+            .and_then(|event| event.subject_id.as_deref())
+    }
+
+    const EVM_CONTRACT: &str = "0x742d35cc6634c0532925a3b844bc454e4438f44e";
+
+    /// A contract is judged by the chain that would host it, not by whichever
+    /// arm a switch fell into. The composer's `default` assumed EVM and the
+    /// CLI checked nothing at all, so a Solana mint went into the Base list
+    /// and every balance read for it failed.
+    #[test]
+    fn a_contract_is_judged_by_the_chain_that_hosts_it() {
+        let solana_mint = "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v";
+        let wrong_chain = reduce_state(
+            CoreAppState::default(),
+            add_token("Base", "USDC", solana_mint, 6),
+        );
+        assert_eq!(rejection(&wrong_chain), Some("invalidContract"));
+        assert!(wrong_chain.state.token_preferences.is_empty());
+
+        let wrong_way_round = reduce_state(
+            CoreAppState::default(),
+            add_token("Solana", "USDC", EVM_CONTRACT, 6),
+        );
+        assert_eq!(rejection(&wrong_way_round), Some("invalidContract"));
+
+        let right = reduce_state(
+            CoreAppState::default(),
+            add_token("Solana", "USDC", solana_mint, 6),
+        );
+        assert_eq!(rejection(&right), None);
+        assert_eq!(right.state.token_preferences.len(), 1);
+    }
+
+    /// The symbol is trimmed and upper-cased, and a pasted name is refused
+    /// rather than stored as one.
+    #[test]
+    fn a_symbol_is_normalized_and_a_pasted_name_is_not_one() {
+        let added = reduce_state(
+            CoreAppState::default(),
+            add_token("Base", "  moon ", EVM_CONTRACT, 18),
+        );
+        assert_eq!(added.state.token_preferences[0].token.symbol, "MOON");
+        // The catalog's standard comes from the chain, not the caller.
+        assert_eq!(
+            added.state.token_preferences[0].token.token_standard,
+            crate::store::wallet_domain::CoreTokenHostingChain::Base.token_standard()
+        );
+        assert!(!added.state.token_preferences[0].is_built_in);
+
+        let pasted = reduce_state(
+            CoreAppState::default(),
+            add_token("Base", "Moonbeam Network Token", EVM_CONTRACT, 18),
+        );
+        assert_eq!(rejection(&pasted), Some("symbolTooLong"));
+
+        let empty = reduce_state(
+            CoreAppState::default(),
+            add_token("Base", "  ", EVM_CONTRACT, 18),
+        );
+        assert_eq!(rejection(&empty), Some("emptySymbol"));
+    }
+
+    /// A duplicate is the same *contract* on the same chain, under the chain's
+    /// own normalization — so an EVM address in another case is one and the
+    /// CLI's symbol compare was answering a different question.
+    #[test]
+    fn a_duplicate_is_the_same_contract_however_it_is_spelled() {
+        let first = reduce_state(
+            CoreAppState::default(),
+            add_token("Base", "MOON", EVM_CONTRACT, 18),
+        );
+        let again = reduce_state(
+            first.state.clone(),
+            add_token("Base", "SUN", &EVM_CONTRACT.to_uppercase(), 18),
+        );
+        assert_eq!(rejection(&again), Some("duplicateToken"));
+        assert_eq!(again.state.token_preferences.len(), 1);
+
+        // Same contract string, different chain: two different tokens.
+        let elsewhere = reduce_state(first.state, add_token("Arbitrum", "MOON", EVM_CONTRACT, 18));
+        assert_eq!(rejection(&elsewhere), None);
+        assert_eq!(elsewhere.state.token_preferences.len(), 2);
+    }
+
+    /// The catalog's rows are not the user's to edit or delete.
+    #[test]
+    fn a_built_in_token_is_not_editable() {
+        let mut state = CoreAppState::default();
+        reduce_state_in_place(&mut state, StateCommand::MergeBuiltInTokens);
+        let built_in = state
+            .token_preferences
+            .iter()
+            .find(|entry| entry.is_built_in)
+            .expect("the catalog ships tokens")
+            .clone();
+        let count = state.token_preferences.len();
+
+        let removed = reduce_state(
+            state.clone(),
+            StateCommand::RemoveCustomToken {
+                chain_name: built_in.token.chain.clone(),
+                contract: built_in.token.contract.clone(),
+            },
+        );
+        assert_eq!(rejection(&removed), Some("builtInToken"));
+        assert_eq!(removed.state.token_preferences.len(), count);
+
+        let rescaled = reduce_state(
+            state,
+            StateCommand::SetCustomTokenDecimals {
+                chain_name: built_in.token.chain.clone(),
+                contract: built_in.token.contract.clone(),
+                decimals: 2,
+            },
+        );
+        assert_eq!(rejection(&rescaled), Some("builtInToken"));
+    }
+
+    /// Turning a token off is not deleting it: the row stays, so the catalog
+    /// merge keeps the choice and the list does not have to be rebuilt.
+    #[test]
+    fn tracking_is_a_flag_and_a_group_moves_together() {
+        let mut state = CoreAppState::default();
+        reduce_state_in_place(&mut state, StateCommand::MergeBuiltInTokens);
+        let count = state.token_preferences.len();
+        let keys: Vec<CoreTokenPreferenceKey> = state
+            .token_preferences
+            .iter()
+            .filter(|entry| entry.is_enabled)
+            .take(3)
+            .map(|entry| CoreTokenPreferenceKey {
+                chain_name: entry.token.chain.clone(),
+                contract: entry.token.contract.clone(),
+            })
+            .collect();
+        assert_eq!(keys.len(), 3, "the catalog ships enabled tokens");
+
+        let disabled_before = state
+            .token_preferences
+            .iter()
+            .filter(|entry| !entry.is_enabled)
+            .count();
+
+        let off = reduce_state(
+            state,
+            StateCommand::SetTokenPreferencesEnabled {
+                tokens: keys.clone(),
+                is_enabled: false,
+            },
+        );
+        assert_eq!(
+            off.state.token_preferences.len(),
+            count,
+            "untracking is not deleting"
+        );
+        assert_eq!(
+            off.state
+                .token_preferences
+                .iter()
+                .filter(|entry| !entry.is_enabled)
+                .count(),
+            disabled_before + keys.len(),
+            "the whole group moved"
+        );
+        assert_eq!(
+            off.events
+                .iter()
+                .filter(|event| event.kind == "tokenPreferencesChanged")
+                .count(),
+            1,
+            "one change, however many rows it touched"
+        );
+
+        // Applying the same value again changes nothing and says so.
+        let again = reduce_state(
+            off.state,
+            StateCommand::SetTokenPreferencesEnabled {
+                tokens: keys,
+                is_enabled: false,
+            },
+        );
+        assert!(again.events.is_empty());
+    }
+
+    /// A reset goes back to the catalog and takes the custom rows with it.
+    #[test]
+    fn a_reset_drops_what_the_user_added() {
+        let added = reduce_state(
+            CoreAppState::default(),
+            add_token("Base", "MOON", EVM_CONTRACT, 18),
+        );
+        let reset = reduce_state(added.state, StateCommand::ResetTokenPreferences);
+        assert!(
+            !reset
+                .state
+                .token_preferences
+                .iter()
+                .any(|entry| entry.token.symbol == "MOON"),
+            "a custom token survived the reset"
+        );
+        assert!(reset.state.token_preferences.iter().all(|e| e.is_built_in));
     }
 
     #[test]

@@ -122,9 +122,7 @@ fn rpc(method: &str, params: Value) -> Value {
     json!({ "jsonrpc": "2.0", "id": 1, "method": method, "params": params })
 }
 // Solana fetch paths: native balance, SPL balances, recent blockhash,
-// unified history, account existence, mint decimals.
-
-use base64::Engine as _;
+// unified history, account existence.
 
 impl SolanaClient {
     pub async fn fetch_balance(&self, address: &str) -> Result<SolanaBalance, String> {
@@ -666,81 +664,6 @@ impl SolanaClient {
         Ok(result)
     }
 
-    /// Fetch the SPL token balance for `owner` holding `mint`.
-    pub async fn fetch_spl_balance(&self, mint: &str, owner: &str) -> Result<SplBalance, String> {
-        let result = self
-            .call(
-                "getTokenAccountsByOwner",
-                json!([
-                    owner,
-                    { "mint": mint },
-                    { "encoding": "jsonParsed", "commitment": "confirmed" }
-                ]),
-            )
-            .await?;
-
-        // Sum balances across all accounts the owner has for this mint.
-        let accounts = result
-            .get("value")
-            .and_then(|v| v.as_array())
-            .cloned()
-            .unwrap_or_default();
-
-        let mut total: u128 = 0;
-        let mut decimals: u8 = 0;
-        for acct in &accounts {
-            let info = acct.pointer("/account/data/parsed/info/tokenAmount");
-            if let Some(info) = info {
-                let amt_str = info.get("amount").and_then(|v| v.as_str()).unwrap_or("0");
-                let amt: u128 = amt_str.parse().unwrap_or(0);
-                total = total.saturating_add(amt);
-                if let Some(d) = info.get("decimals").and_then(|v| v.as_u64()) {
-                    decimals = d as u8;
-                }
-            }
-        }
-
-        // If the owner has no token account, decimals are unknown. Fetch the
-        // mint account directly to determine decimals so the display is sane.
-        if accounts.is_empty() {
-            decimals = self.fetch_spl_mint_decimals(mint).await.unwrap_or(0);
-        }
-
-        Ok(SplBalance {
-            mint: mint.to_string(),
-            owner: owner.to_string(),
-            balance_raw: total.to_string(),
-            balance_display: format_ft_amount(total, decimals),
-            decimals,
-            symbol: String::new(),
-        })
-    }
-
-    /// Fetch a mint's decimals via `getAccountInfo` + base64 parse.
-    pub async fn fetch_spl_mint_decimals(&self, mint: &str) -> Result<u8, String> {
-        let result = self
-            .call(
-                "getAccountInfo",
-                json!([mint, {"encoding": "base64", "commitment": "confirmed"}]),
-            )
-            .await?;
-        let data = result
-            .pointer("/value/data/0")
-            .and_then(|v| v.as_str())
-            .ok_or("getAccountInfo: missing data")?;
-        let bytes = base64::engine::general_purpose::STANDARD
-            .decode(data)
-            .map_err(|e| format!("mint data b64: {e}"))?;
-        // Mint layout: first 82 bytes.
-        // [0..36]: mint authority (COption<Pubkey>)
-        // [36..44]: supply (u64 le)
-        // [44]: decimals (u8)
-        bytes
-            .get(44)
-            .copied()
-            .ok_or_else(|| "mint data short".to_string())
-    }
-
     /// Check whether an account exists on-chain.
     pub async fn account_exists(&self, address: &str) -> Result<bool, String> {
         let result = self
@@ -767,27 +690,6 @@ fn format_sol(lamports: u64) -> String {
         return whole.to_string();
     }
     let frac_str = format!("{:09}", frac);
-    let trimmed = frac_str.trim_end_matches('0');
-    let capped = if trimmed.len() > 6 {
-        &trimmed[..6]
-    } else {
-        trimmed
-    };
-    format!("{}.{}", whole, capped)
-}
-
-/// Format a raw SPL token amount using its `decimals`.
-fn format_ft_amount(raw: u128, decimals: u8) -> String {
-    if decimals == 0 {
-        return raw.to_string();
-    }
-    let divisor: u128 = 10u128.pow(decimals as u32);
-    let whole = raw / divisor;
-    let frac = raw % divisor;
-    if frac == 0 {
-        return whole.to_string();
-    }
-    let frac_str = format!("{:0>width$}", frac, width = decimals as usize);
     let trimmed = frac_str.trim_end_matches('0');
     let capped = if trimmed.len() > 6 {
         &trimmed[..6]

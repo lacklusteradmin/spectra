@@ -173,25 +173,6 @@ impl TronClient {
         })
     }
 
-    pub async fn fetch_latest_block(&self) -> Result<(u64, String), String> {
-        let resp = self.post("/wallet/getnowblock", &json!({})).await?;
-        let block_num = resp
-            .pointer("/block_header/raw_data/number")
-            .and_then(|v| v.as_u64())
-            .ok_or("getnowblock: missing number")?;
-        let _timestamp = resp
-            .pointer("/block_header/raw_data/timestamp")
-            .and_then(|v| v.as_u64())
-            .unwrap_or(0);
-        // blockID is the hash; use its hex string.
-        let block_hash = resp
-            .get("blockID")
-            .and_then(|v| v.as_str())
-            .unwrap_or("")
-            .to_string();
-        Ok((block_num, block_hash))
-    }
-
     /// Fetch up to `limit` recent transfers combining native TRX and TRC-20
     /// token transfers from TronScan. Results are sorted newest-first.
     pub async fn fetch_unified_history(

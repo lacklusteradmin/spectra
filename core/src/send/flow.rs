@@ -516,8 +516,6 @@ pub struct HighRiskSendWarning {
 pub fn core_evaluate_high_risk_send_reasons(
     request: HighRiskSendRequest,
 ) -> Vec<HighRiskSendWarning> {
-    use crate::validation::address::{validate_address, AddressValidationRequest};
-
     let chain_name = &request.chain_name;
     let mut warnings: Vec<HighRiskSendWarning> = Vec::new();
 
@@ -530,19 +528,16 @@ pub fn core_evaluate_high_risk_send_reasons(
         symbol: None,
     };
 
-    let hrsr_validate = |chain_name: &str, address: &str| -> bool {
-        let Some(kind) = chain_kind(chain_name) else {
-            return false;
-        };
-        validate_address(AddressValidationRequest {
-            kind: kind.to_string(),
-            value: address.to_string(),
-        })
-        .is_valid
-    };
-
     // 1. Address format validation.
-    if !hrsr_validate(chain_name, &request.destination_address) {
+    //
+    // Asked of the normalized address, because that is the form the store
+    // keeps and the send transmits, and `is_valid_send_address` — the other
+    // caller of this same question — already asks it that way. This asked the
+    // raw string: on Sui a 64-hex address typed without its `0x` is valid once
+    // `AddressNormalization::LowercaseHexPrefixed` has added the prefix, so
+    // the composer accepted it, the store accepted it, and this stood beside
+    // them calling it `invalid_format`. One question, one form, one answer.
+    if !is_valid_send_address(chain_name.clone(), request.destination_address.clone()) {
         warnings.push(HighRiskSendWarning {
             chain: Some(chain_name.clone()),
             ..make("invalid_format")
@@ -663,11 +658,6 @@ pub fn core_evaluate_high_risk_send_reasons(
 // ── Chain predicates ──────────────────────────────────────────────
 
 use crate::SpectraBridgeError;
-
-/// Not exported: a column of `core_chain_identities` now.
-pub fn core_is_evm_chain(chain_name: String) -> bool {
-    Chain::from_display_name(&chain_name).is_some_and(Chain::is_evm)
-}
 
 /// The per-chain facts an EVM send needs, for any EVM chain in the registry.
 ///
@@ -1358,8 +1348,55 @@ pub fn extra_output_overhead_bytes(chain_name: String, destination: String) -> u
 
 #[cfg(test)]
 mod validating_and_normalising_cannot_disagree {
-    use super::{is_valid_send_address, normalize_address};
+    use super::{
+        core_evaluate_high_risk_send_reasons, is_valid_send_address, normalize_address,
+        HighRiskSendRequest,
+    };
     use crate::registry::Chain;
+
+    fn high_risk_codes(chain_name: &str, destination: &str) -> Vec<String> {
+        core_evaluate_high_risk_send_reasons(HighRiskSendRequest {
+            chain_name: chain_name.to_string(),
+            symbol: "SUI".to_string(),
+            amount: 1.0,
+            holding_amount: 1000.0,
+            destination_address: destination.to_string(),
+            destination_input: destination.to_string(),
+            used_ens_resolution: false,
+            wallet_selected_chain: chain_name.to_string(),
+            address_book_entries: vec![],
+            tx_addresses: vec![],
+        })
+        .into_iter()
+        .map(|warning| warning.code)
+        .collect()
+    }
+
+    /// The third caller of the same question.
+    ///
+    /// The fix above landed in `is_valid_send_address` and the high-risk check
+    /// kept validating the raw string, so a Sui address typed without its `0x`
+    /// was accepted by the composer, accepted by the store, and called
+    /// `invalid_format` by the warning sheet at the same time. Both orders,
+    /// one answer — including here.
+    #[test]
+    fn the_high_risk_check_asks_the_same_question_the_composer_does() {
+        let bare = "1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef";
+        for form in [bare.to_string(), normalize_address("Sui", bare)] {
+            assert!(is_valid_send_address("Sui".into(), form.clone()));
+            assert!(
+                !high_risk_codes("Sui", &form).contains(&"invalid_format".to_string()),
+                "{form} validates but was flagged invalid_format"
+            );
+        }
+    }
+
+    /// It still says so when the address really is malformed.
+    #[test]
+    fn a_malformed_destination_is_still_flagged() {
+        assert!(high_risk_codes("Sui", "definitely-not-an-address")
+            .contains(&"invalid_format".to_string()));
+    }
 
     /// The order a caller happens to use must not change the answer.
     ///
@@ -1397,5 +1434,69 @@ mod validating_and_normalising_cannot_disagree {
                 );
             }
         }
+    }
+}
+
+/// Only a quote for the selected asset can populate its amount field. Generic
+/// simple-chain previews quote the native gas asset even for token holdings.
+#[uniffi::export]
+pub fn quoted_send_amount(
+    preview: Option<SendPreview>,
+    chain_name: String,
+    symbol: String,
+    token_decimals: Option<u32>,
+    percentage: u32,
+) -> Option<String> {
+    let chain = Chain::from_display_name(&chain_name)?;
+    let preview = preview?;
+    let decimals = if symbol == chain.coin_symbol() {
+        u32::from(chain.native_decimals())
+    } else {
+        match &preview {
+            SendPreview::Ethereum { .. } if chain.is_evm() => {}
+            SendPreview::Tron { .. } if chain == Chain::Tron => {}
+            _ => return None,
+        }
+        token_decimals?
+    };
+    // No fallback to a caller's portfolio balance: a missing maximum is a
+    // missing quote, not permission to offer the whole holding.
+    let maximum = compute_send_preview_details(Some(preview), f64::NAN)?.maxSendable?;
+    crate::send::amount_input::send_amount_shortcut(maximum, decimals, percentage)
+}
+
+#[cfg(test)]
+mod shortcut_preview_tests {
+    use super::*;
+    #[test]
+    fn no_quote_and_gas_coin_quotes_cannot_fill_token_amounts() {
+        assert!(quoted_send_amount(None, "Bitcoin".into(), "BTC".into(), None, 100).is_none());
+        let preview = SendPreview::Solana {
+            preview: SolanaSendPreview {
+                maxSendable: 12.0,
+                ..Default::default()
+            },
+        };
+        assert!(
+            quoted_send_amount(Some(preview), "Solana".into(), "USDC".into(), Some(6), 100)
+                .is_none()
+        );
+        let preview = SendPreview::Ethereum {
+            preview: EvmSendPreview {
+                maxSendable: Some(4.2),
+                ..Default::default()
+            },
+        };
+        assert_eq!(
+            quoted_send_amount(
+                Some(preview),
+                "Ethereum".into(),
+                "USDC".into(),
+                Some(6),
+                100
+            )
+            .as_deref(),
+            Some("4.199999")
+        );
     }
 }

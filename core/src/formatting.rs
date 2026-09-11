@@ -117,15 +117,6 @@ pub fn normalized_history_source_tag(raw_source: Option<&str>, unknown_label: &s
     }
 }
 
-pub fn normalized_status_rank(status: &str) -> u32 {
-    match status {
-        "confirmed" => 3,
-        "pending" => 2,
-        "failed" => 1,
-        _ => 0,
-    }
-}
-
 fn capitalize_words(value: &str) -> String {
     value
         .split(|c: char| !c.is_alphanumeric())

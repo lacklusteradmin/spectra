@@ -73,7 +73,7 @@ pub struct BitcoinSendParams {
     /// From address (used to find the script type).
     pub from_address: String,
     /// WIF or hex-encoded 32-byte private key.
-    pub private_key_hex: String,
+    pub private_key_hex: crate::send::keys::SecretHex,
     /// Primary recipient address.
     pub to_address: String,
     /// Primary send amount in satoshis.
@@ -290,8 +290,10 @@ fn parse_spend_identity(
         .unwrap_or(crate::registry::Chain::Bitcoin)
         .bitcoin_network();
 
-    let mut key_bytes =
-        hex::decode(&params.private_key_hex).map_err(|e| format!("bad private key hex: {e}"))?;
+    let mut key_bytes = zeroize::Zeroizing::new(
+        hex::decode(params.private_key_hex.as_bytes())
+            .map_err(|e| format!("bad private key hex: {e}"))?,
+    );
     let secret_key =
         SecretKey::from_slice(&key_bytes).map_err(|e| format!("bad private key: {e}"))?;
     key_bytes.zeroize();
@@ -733,7 +735,7 @@ mod tests {
     fn params(kind: Kind, utxos: Vec<EsploraUtxo>, amount: u64) -> BitcoinSendParams {
         BitcoinSendParams {
             from_address: kind.address(),
-            private_key_hex: KEY_HEX.to_string(),
+            private_key_hex: KEY_HEX.to_string().into(),
             to_address: TO.to_string(),
             amount_sats: amount,
             fee_rate: FeeRate {

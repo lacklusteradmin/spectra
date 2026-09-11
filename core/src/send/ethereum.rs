@@ -343,7 +343,18 @@ pub fn decode_evm_send_preview(input: EvmPreviewDecodeInput) -> Option<EvmPrevie
             (live_fee_gwei, live_prio_gwei, fee_eth, desc)
         }
     };
-    let spendable = obj.get("spendable_balance").and_then(|v| v.as_f64());
+    let spendable = if obj.get("is_token").and_then(|v| v.as_bool()) == Some(false) {
+        // The quoted spendable may already be clamped to zero. Adding its old
+        // fee back would invent balance when a custom fee is lower.
+        let balance = obj
+            .get("native_balance_wei")?
+            .as_str()?
+            .parse::<u128>()
+            .ok()?;
+        Some((balance as f64 / 1e18 - fee_eth).max(0.0))
+    } else {
+        obj.get("spendable_balance").and_then(|v| v.as_f64())
+    };
     Some(EvmPreviewDecoded {
         nonce,
         gas_limit,
@@ -821,6 +832,45 @@ mod nonce_tests {
         }
         for raw in ["9223372036854775808", "18446744073709551616"] {
             assert_eq!(parse_evm_nonce(raw.into()), Err(EvmNonceError::TooLarge));
+        }
+    }
+}
+
+#[cfg(test)]
+mod shortcut_fee_tests {
+    use super::*;
+    #[test]
+    fn lowering_fees_does_not_reconstruct_balance_from_a_clamped_quote() {
+        let preview = decode_evm_send_preview(EvmPreviewDecodeInput {
+            raw_json: serde_json::json!({"gas_limit":21000,"spendable_balance":0.0,
+                "estimated_fee_eth":0.1,"is_token":false,"native_balance_wei":"1000000000000"})
+            .to_string(),
+            explicit_nonce: None,
+            custom_fees: Some(EvmCustomFeeConfiguration {
+                max_fee_per_gas_gwei: 20.0,
+                max_priority_fee_per_gas_gwei: 1.0,
+            }),
+        })
+        .unwrap();
+        assert_eq!(preview.max_sendable, Some(0.0));
+    }
+    #[test]
+    fn custom_fees_reduce_native_maximum_but_not_token_units() {
+        for is_token in [false, true] {
+            let preview = decode_evm_send_preview(EvmPreviewDecodeInput {
+                raw_json: serde_json::json!({"gas_limit":21000,"spendable_balance":1.0,
+                    "estimated_fee_eth":0.00021,"is_token":is_token,
+                    "native_balance_wei":"1000210000000000000"})
+                .to_string(),
+                explicit_nonce: None,
+                custom_fees: Some(EvmCustomFeeConfiguration {
+                    max_fee_per_gas_gwei: 20.0,
+                    max_priority_fee_per_gas_gwei: 1.0,
+                }),
+            })
+            .unwrap();
+            let expected = if is_token { 1.0 } else { 0.99979 };
+            assert!((preview.max_sendable.unwrap() - expected).abs() < 1e-12);
         }
     }
 }

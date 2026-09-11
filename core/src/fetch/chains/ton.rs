@@ -254,17 +254,55 @@ impl TonClient {
     }
 
     pub async fn fetch_seqno(&self, address: &str) -> Result<u32, String> {
-        #[derive(Deserialize)]
-        struct Resp {
-            result: u32,
+        use serde_json::{json, Value};
+        // A failed read is not an undeployed wallet. Only a positive state
+        // response may select seqno zero and the deployment path.
+        let info: Value = self
+            .get(&format!("/getAddressInformation?address={address}"))
+            .await?;
+        if info["ok"].as_bool() != Some(true) {
+            return Err("TON: cannot read account state".into());
         }
-        let resp: Resp = self
-            .get(&format!(
-                "/runGetMethod?address={address}&method=seqno&stack=[]"
-            ))
-            .await
-            .unwrap_or(Resp { result: 0 });
-        Ok(resp.result)
+        match info["result"]["state"].as_str() {
+            Some("uninitialized") => return Ok(0),
+            Some("active") => {}
+            _ => return Err("TON: account is frozen or state is unreadable".into()),
+        }
+        with_fallback(&self.endpoints, |base| {
+            let client = self.client.clone();
+            let url = format!("{}/runGetMethod", base.trim_end_matches('/'));
+            let body = json!({"address": address, "method": "seqno", "stack": []});
+            let key = self.api_key.clone();
+            async move {
+                let mut headers = std::collections::HashMap::new();
+                if let Some(ref key) = key {
+                    headers.insert("X-API-Key", key.as_str());
+                }
+                let response: Value = client
+                    .post_json_with_headers(&url, &body, &headers, RetryProfile::ChainRead)
+                    .await?;
+                if response["ok"].as_bool() != Some(true)
+                    || response["result"]["exit_code"].as_i64() != Some(0)
+                {
+                    return Err("TON: seqno get method failed".into());
+                }
+                let stack = response["result"]["stack"]
+                    .as_array()
+                    .ok_or("TON: missing seqno stack")?;
+                if stack.len() != 1 || stack[0][0].as_str() != Some("num") {
+                    return Err("TON: invalid seqno stack".into());
+                }
+                let value = stack[0][1].as_str().ok_or("TON: missing seqno value")?;
+                u32::from_str_radix(
+                    value
+                        .strip_prefix("0x")
+                        .ok_or("TON: invalid seqno encoding")?,
+                    16,
+                )
+                .map_err(|_| "TON: invalid seqno range".into())
+            }
+        })
+        .await
     }
 
     pub async fn fetch_history(&self, address: &str) -> Result<Vec<TonHistoryEntry>, String> {

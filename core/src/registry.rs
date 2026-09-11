@@ -570,6 +570,15 @@ impl Chain {
         )
     }
 
+    /// Aptos network identity bound into each locally constructed transaction.
+    pub const fn aptos_chain_id(self) -> Option<u8> {
+        match self {
+            Self::Aptos => Some(1),
+            Self::AptosTestnet => Some(2),
+            _ => None,
+        }
+    }
+
     /// EIP-155 chain id. Non-EVM chains return `1` (legacy fallback).
     pub const fn evm_chain_id(self) -> u64 {
         match self {

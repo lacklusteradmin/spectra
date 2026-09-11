@@ -90,6 +90,14 @@ fn set(ctx: &Ctx, out: Out, args: SetArgs) -> CliResult<()> {
         chain_id: chain.str_id().to_string(),
     })?;
     let selected = transition.state.settings.network_chain(family);
+
+    // A switch invalidates what the family derived on the network it left:
+    // reserved keypool indices belong to that network, and so do the addresses
+    // discovered under them. iOS did this and the CLI did not, which is the
+    // divergence this command exists to close — the reset is part of the
+    // switch, not something a front end remembers to do afterwards.
+    let cleared = reset_derivation_state(ctx, family, selected)?;
+
     out.text(|| {
         println!(
             "  {} {} is on {}",
@@ -97,12 +105,44 @@ fn set(ctx: &Ctx, out: Out, args: SetArgs) -> CliResult<()> {
             family.str_id(),
             selected.chain_display_name().bold()
         );
+        for name in &cleared {
+            println!("  {} cleared derivation state for {name}", out::ok_mark());
+        }
     });
     out.emit(serde_json::json!({
         "ok": true,
         "family": family.str_id(),
         "selected": selected.str_id(),
         "isTestnet": selected.is_testnet(),
+        "clearedDerivationState": cleared,
     }));
     Ok(())
+}
+
+/// Drop the derivation state of every chain in the family whose network the
+/// switch just changed, and report which ones were cleared.
+///
+/// Both sides of the switch are cleared: the network being left holds indices
+/// that no longer describe anything, and the one being entered may hold stale
+/// rows from the last time it was selected.
+fn reset_derivation_state(ctx: &Ctx, family: Chain, selected: Chain) -> CliResult<Vec<String>> {
+    let service = ctx.service()?;
+    let mut cleared = Vec::new();
+    let mut names: Vec<String> = family
+        .network_choices()
+        .iter()
+        .map(|chain| chain.chain_display_name().to_string())
+        .collect();
+    if !names.iter().any(|n| n == selected.chain_display_name()) {
+        names.push(selected.chain_display_name().to_string());
+    }
+    names.sort();
+    names.dedup();
+    for name in names {
+        ctx.rt
+            .block_on(service.reset_chain_derivation_state(name.clone()))
+            .map_err(CliError::from)?;
+        cleared.push(name);
+    }
+    Ok(cleared)
 }

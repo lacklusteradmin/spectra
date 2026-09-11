@@ -22,7 +22,8 @@ with tempfile.TemporaryDirectory(prefix="spectra-history-check-") as directory:
             "INSERT INTO history_records(id,chain_name,created_at,payload) VALUES(?,?,?,?)",
             ("fault", "Bitcoin", 0, raw),
         )
-    result = run("txs", "--replaceable")
-    assert result.returncode != 0, result.stdout
+    for args in [("txs", "--replaceable"), ("txs", "--poll-chain", "Ethereum")]:
+        result = run(*args)
+        assert result.returncode != 0, result.stdout
     with sqlite3.connect(pathlib.Path(directory) / "spectra.sqlite") as db:
         assert db.execute("SELECT payload FROM history_records WHERE id='fault'").fetchone() == (raw,)

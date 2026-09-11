@@ -1,16 +1,6 @@
-use serde::Deserialize;
+use crate::send::keys::SecretHex;
 
-// ── Per-chain `sign_and_send` parameter shapes ────────────────────────────
-//
-// One struct per chain, naming exactly what that chain's signer needs. They
-// still implement `Deserialize` — `broadcast_raw` and a couple of other
-// JSON-in call sites parse a caller-supplied blob into one of these — but
-// `execute_send`'s path no longer goes through JSON to reach them: it builds
-// one directly, matching `Chain` exactly once, in `build_send_params`.
-//
-// `SendParams` and `SendTokenParams` below are what makes that one match
-// possible. Each variant just names which of these structs the arm produced;
-// nothing here is new data, only a name for "which chain this already is."
+// Internal typed requests. No JSON deserialization or secret serialization.
 
 /// What `execute_send` signs, once `build_send_params` has resolved which
 /// chain and which struct. One `match` — in `sign_and_broadcast_send` — reads
@@ -68,473 +58,231 @@ pub(crate) enum ExecuteSendParams {
 /// `Chain::Polkadot` send parameters. `planck` is the smallest unit
 /// (10⁻¹⁰ DOT). The 32-byte `private_key_hex` is the sr25519 mini-secret
 /// produced by `derive_polkadot`, *not* a 64-byte ed25519 secret.
-#[derive(Debug, Clone, Deserialize)]
-#[serde(rename_all = "camelCase")]
+#[derive(Debug)]
 pub(crate) struct PolkadotSendParams {
     pub from: String,
     pub to: String,
-    /// Accepts either a JSON string ("12500000000") or a JSON number for
-    /// backward compatibility with Swift call sites that emitted both forms.
-    #[serde(deserialize_with = "deserialize_u128_from_string_or_number")]
     pub planck: u128,
-    pub private_key_hex: String,
+    pub private_key_hex: SecretHex,
     pub public_key_hex: String,
     /// SCALE-encoded era bytes. `None` → immortal (`[0x00]`).
-    #[serde(default)]
     pub era: Option<Vec<u8>>,
     /// Tip in planck. `None` → 0.
-    #[serde(
-        default,
-        deserialize_with = "deserialize_option_u128_from_string_or_number"
-    )]
     pub tip: Option<u128>,
 }
 
 /// `Chain::Bittensor` send parameters. `rao` is the smallest unit
 /// (10⁻⁹ TAO). Same sr25519 32-byte mini-secret rules as Polkadot.
-#[derive(Debug, Clone, Deserialize)]
-#[serde(rename_all = "camelCase")]
+#[derive(Debug)]
 pub(crate) struct BittensorSendParams {
     pub from: String,
     pub to: String,
-    #[serde(deserialize_with = "deserialize_u128_from_string_or_number")]
     pub rao: u128,
-    pub private_key_hex: String,
+    pub private_key_hex: SecretHex,
     pub public_key_hex: String,
 }
 
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug)]
 pub(crate) struct BitcoinNativeSendParams {
     pub from: String,
     pub to: String,
-    #[serde(deserialize_with = "deserialize_u64_from_string_or_number")]
     pub amount_sat: u64,
-    #[serde(default)]
     pub fee_rate_svb: Option<f64>,
-    pub private_key_hex: String,
-    #[serde(default)]
+    pub private_key_hex: SecretHex,
     pub dust_threshold_sats: Option<u64>,
-    #[serde(default)]
     pub sign_only: bool,
 }
 
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug)]
 pub(crate) struct EvmNativeSendParams {
     pub from: String,
     pub to: String,
-    #[serde(deserialize_with = "deserialize_u128_from_string_or_number")]
     pub value_wei: u128,
-    pub private_key_hex: String,
+    pub private_key_hex: SecretHex,
 }
 
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug)]
 pub(crate) struct SolanaNativeSendParams {
     pub from_pubkey_hex: String,
     pub to: String,
-    #[serde(deserialize_with = "deserialize_u64_from_string_or_number")]
     pub lamports: u64,
-    pub private_key_hex: String,
+    pub private_key_hex: SecretHex,
 }
 
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug)]
 pub(crate) struct XrpSendParams {
     pub from: String,
     pub to: String,
-    #[serde(deserialize_with = "deserialize_u64_from_string_or_number")]
     pub drops: u64,
-    pub private_key_hex: String,
-    #[serde(default)]
+    pub private_key_hex: SecretHex,
     pub public_key_hex: Option<String>,
 }
 
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug)]
 pub(crate) struct TronNativeSendParams {
     pub from: String,
     pub to: String,
-    #[serde(deserialize_with = "deserialize_u64_from_string_or_number")]
     pub amount_sun: u64,
-    pub private_key_hex: String,
+    pub private_key_hex: SecretHex,
 }
 
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug)]
 pub(crate) struct SuiSendParams {
     pub from: String,
     pub to: String,
-    #[serde(deserialize_with = "deserialize_u64_from_string_or_number")]
     pub mist: u64,
-    #[serde(default)]
     pub gas_budget: Option<u64>,
-    pub private_key_hex: String,
+    pub private_key_hex: SecretHex,
     pub public_key_hex: String,
 }
 
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug)]
 pub(crate) struct AptosSendParams {
     pub from: String,
     pub to: String,
-    #[serde(deserialize_with = "deserialize_u64_from_string_or_number")]
     pub octas: u64,
-    pub private_key_hex: String,
+    pub private_key_hex: SecretHex,
     pub public_key_hex: String,
 }
 
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug)]
 pub(crate) struct NearNativeSendParams {
     pub from: String,
     pub to: String,
-    #[serde(deserialize_with = "deserialize_u128_from_string_or_number")]
     pub yocto_near: u128,
-    pub private_key_hex: String,
+    pub private_key_hex: SecretHex,
     pub public_key_hex: String,
 }
 
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug)]
 pub(crate) struct UtxoFixedFeeSendParams {
     pub from: String,
     pub to: String,
-    #[serde(deserialize_with = "deserialize_u64_from_string_or_number")]
     pub amount_sat: u64,
-    #[serde(
-        default,
-        deserialize_with = "deserialize_option_u64_from_string_or_number"
-    )]
     pub fee_sat: Option<u64>,
-    pub private_key_hex: String,
-    #[serde(
-        default,
-        deserialize_with = "deserialize_option_u64_from_string_or_number"
-    )]
+    pub private_key_hex: SecretHex,
     pub dust_threshold_sats: Option<u64>,
 }
 
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug)]
 pub(crate) struct ZcashSendParams {
     pub from: String,
     pub to: String,
-    #[serde(deserialize_with = "deserialize_u64_from_string_or_number")]
     pub amount_sat: u64,
-    #[serde(
-        default,
-        deserialize_with = "deserialize_option_u64_from_string_or_number"
-    )]
     pub fee_sat: Option<u64>,
-    pub private_key_hex: String,
-    #[serde(
-        default,
-        deserialize_with = "deserialize_option_u64_from_string_or_number"
-    )]
+    pub private_key_hex: SecretHex,
     pub dust_threshold_zats: Option<u64>,
 }
 
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug)]
 pub(crate) struct DecredSendParams {
     pub from: String,
     pub to: String,
-    #[serde(deserialize_with = "deserialize_u64_from_string_or_number")]
     pub amount_sat: u64,
-    #[serde(
-        default,
-        deserialize_with = "deserialize_option_u64_from_string_or_number"
-    )]
     pub fee_sat: Option<u64>,
-    pub private_key_hex: String,
-    #[serde(
-        default,
-        deserialize_with = "deserialize_option_u64_from_string_or_number"
-    )]
+    pub private_key_hex: SecretHex,
     pub dust_threshold_atoms: Option<u64>,
 }
 
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug)]
 pub(crate) struct KaspaSendParams {
     pub from: String,
     pub to: String,
-    #[serde(deserialize_with = "deserialize_u64_from_string_or_number")]
     pub amount_sat: u64,
-    #[serde(
-        default,
-        deserialize_with = "deserialize_option_u64_from_string_or_number"
-    )]
     pub fee_sat: Option<u64>,
-    pub private_key_hex: String,
-    #[serde(
-        default,
-        deserialize_with = "deserialize_option_u64_from_string_or_number"
-    )]
+    pub private_key_hex: SecretHex,
     pub min_fee_sompi: Option<u64>,
-    #[serde(
-        default,
-        deserialize_with = "deserialize_option_u64_from_string_or_number"
-    )]
     pub dust_threshold_sompi: Option<u64>,
 }
 
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug)]
 pub(crate) struct StellarSendParams {
     pub from: String,
     pub to: String,
-    #[serde(deserialize_with = "deserialize_i64_from_string_or_number")]
     pub stroops: i64,
-    pub private_key_hex: String,
-    #[serde(default)]
+    pub private_key_hex: SecretHex,
     pub public_key_hex: Option<String>,
-    #[serde(default)]
     pub network_passphrase: Option<String>,
 }
 
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug)]
 pub(crate) struct CardanoSendParams {
     pub from: String,
     pub to: String,
-    #[serde(deserialize_with = "deserialize_u64_from_string_or_number")]
     pub amount_lovelace: u64,
-    #[serde(
-        default,
-        deserialize_with = "deserialize_option_u64_from_string_or_number"
-    )]
     pub fee_lovelace: Option<u64>,
-    pub private_key_hex: String,
+    pub private_key_hex: SecretHex,
     pub public_key_hex: String,
-    #[serde(
-        default,
-        deserialize_with = "deserialize_option_u64_from_string_or_number"
-    )]
     pub ttl_slots: Option<u64>,
-    #[serde(
-        default,
-        deserialize_with = "deserialize_option_u64_from_string_or_number"
-    )]
     pub min_change_lovelace: Option<u64>,
 }
 
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug)]
 pub(crate) struct TonSendParams {
     pub from: String,
     pub to: String,
-    #[serde(deserialize_with = "deserialize_u64_from_string_or_number")]
     pub nanotons: u64,
-    #[serde(default)]
     pub comment: Option<String>,
-    pub private_key_hex: String,
+    pub private_key_hex: SecretHex,
     pub public_key_hex: String,
-    #[serde(
-        default,
-        deserialize_with = "deserialize_option_u64_from_string_or_number"
-    )]
     pub subwallet_id: Option<u64>,
-    #[serde(
-        default,
-        deserialize_with = "deserialize_option_u64_from_string_or_number"
-    )]
     pub expiry_seconds: Option<u64>,
-    #[serde(
-        default,
-        deserialize_with = "deserialize_option_u64_from_string_or_number"
-    )]
     pub send_mode: Option<u64>,
 }
 
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug)]
 pub(crate) struct IcpSendParams {
     pub from: String,
     pub to: String,
-    #[serde(deserialize_with = "deserialize_u64_from_string_or_number")]
     pub e8s: u64,
-    pub private_key_hex: String,
-    #[serde(default)]
+    pub private_key_hex: SecretHex,
     pub public_key_hex: Option<String>,
 }
 
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug)]
 pub(crate) struct MoneroSendParams {
     pub from: String,
     pub to: String,
-    #[serde(deserialize_with = "deserialize_u64_from_string_or_number")]
     pub piconeros: u64,
-    #[serde(
-        default,
-        deserialize_with = "deserialize_option_u64_from_string_or_number"
-    )]
     pub priority: Option<u64>,
 }
 
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug)]
 pub(crate) struct TokenAmountSendParams {
     pub from: String,
     pub contract: String,
     pub to: String,
-    #[serde(deserialize_with = "deserialize_u128_from_string_or_number")]
     pub amount_raw: u128,
-    pub private_key_hex: String,
+    pub private_key_hex: SecretHex,
 }
 
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug)]
 pub(crate) struct TronTokenSendParams {
     pub from: String,
     pub contract: String,
     pub to: String,
-    #[serde(deserialize_with = "deserialize_u128_from_string_or_number")]
     pub amount_raw: u128,
-    #[serde(
-        default,
-        deserialize_with = "deserialize_option_u64_from_string_or_number"
-    )]
     pub fee_limit_sun: Option<u64>,
-    pub private_key_hex: String,
+    pub private_key_hex: SecretHex,
 }
 
-/// Stellar's custom-asset (token) send params.
-///
-/// Not built by `build_send_params` — no chain reaches `SendTokenParams` for
-/// `Chain::Stellar`, because `execute_send`'s contract-address branch never
-/// had a Stellar arm (contract-address sends assume an EVM-shaped identifier;
-/// Stellar identifies an asset by code + issuer account, not a contract).
-/// This struct, and `StellarClient::sign_and_submit_asset` that consumes it,
-/// are the signing half of a feature `execute_send` was never wired up to
-/// reach — not leftover plumbing, a real gap. Kept rather than deleted so the
-/// shape survives for whoever wires it up.
-#[allow(dead_code)]
-#[derive(Debug, Clone, Deserialize)]
-pub(crate) struct StellarTokenSendParams {
-    pub from: String,
-    pub to: String,
-    #[serde(deserialize_with = "deserialize_i64_from_string_or_number")]
-    pub stroops: i64,
-    pub asset_code: String,
-    pub asset_issuer: String,
-    pub private_key_hex: String,
-    pub public_key_hex: String,
-    #[serde(default)]
-    pub network_passphrase: Option<String>,
-}
-
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug)]
 pub(crate) struct NearTokenSendParams {
     pub from: String,
     pub contract: String,
     pub to: String,
-    #[serde(deserialize_with = "deserialize_u128_from_string_or_number")]
     pub amount_raw: u128,
-    pub private_key_hex: String,
+    pub private_key_hex: SecretHex,
     pub public_key_hex: String,
-    #[serde(
-        default,
-        deserialize_with = "deserialize_option_u64_from_string_or_number"
-    )]
     pub gas_tgas: Option<u64>,
 }
 
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug)]
 pub(crate) struct SolanaTokenSendParams {
     pub from_pubkey_hex: String,
     pub to: String,
     pub mint: String,
-    #[serde(deserialize_with = "deserialize_u64_from_string_or_number")]
     pub amount_raw: u64,
-    #[serde(deserialize_with = "deserialize_u8_from_string_or_number")]
     pub decimals: u8,
-    pub private_key_hex: String,
-}
-
-/// Accepts JSON `"12345"` or `12345` for u128 fields. Swift sends planck
-/// values as strings (since u128 doesn't round-trip safely through JSON
-/// numbers) but legacy call sites emitted them as `as_u64`-able numbers.
-fn deserialize_u128_from_string_or_number<'de, D>(deserializer: D) -> Result<u128, D::Error>
-where
-    D: serde::Deserializer<'de>,
-{
-    use serde::de::Error;
-    let value = serde_json::Value::deserialize(deserializer)?;
-    if let Some(s) = value.as_str() {
-        return s.parse::<u128>().map_err(D::Error::custom);
-    }
-    if let Some(n) = value.as_u64() {
-        return Ok(n as u128);
-    }
-    Err(D::Error::custom("expected u128 as string or number"))
-}
-
-fn deserialize_option_u128_from_string_or_number<'de, D>(
-    deserializer: D,
-) -> Result<Option<u128>, D::Error>
-where
-    D: serde::Deserializer<'de>,
-{
-    use serde::de::Error;
-    let value = serde_json::Value::deserialize(deserializer)?;
-    if value.is_null() {
-        return Ok(None);
-    }
-    if let Some(s) = value.as_str() {
-        return s.parse::<u128>().map(Some).map_err(D::Error::custom);
-    }
-    if let Some(n) = value.as_u64() {
-        return Ok(Some(n as u128));
-    }
-    Err(D::Error::custom("expected u128 as string, number, or null"))
-}
-
-fn deserialize_u64_from_string_or_number<'de, D>(deserializer: D) -> Result<u64, D::Error>
-where
-    D: serde::Deserializer<'de>,
-{
-    use serde::de::Error;
-    let value = serde_json::Value::deserialize(deserializer)?;
-    if let Some(s) = value.as_str() {
-        return s.parse::<u64>().map_err(D::Error::custom);
-    }
-    if let Some(n) = value.as_u64() {
-        return Ok(n);
-    }
-    Err(D::Error::custom("expected u64 as string or number"))
-}
-
-fn deserialize_option_u64_from_string_or_number<'de, D>(
-    deserializer: D,
-) -> Result<Option<u64>, D::Error>
-where
-    D: serde::Deserializer<'de>,
-{
-    use serde::de::Error;
-    let value = serde_json::Value::deserialize(deserializer)?;
-    if value.is_null() {
-        return Ok(None);
-    }
-    if let Some(s) = value.as_str() {
-        return s.parse::<u64>().map(Some).map_err(D::Error::custom);
-    }
-    if let Some(n) = value.as_u64() {
-        return Ok(Some(n));
-    }
-    Err(D::Error::custom("expected u64 as string, number, or null"))
-}
-
-fn deserialize_i64_from_string_or_number<'de, D>(deserializer: D) -> Result<i64, D::Error>
-where
-    D: serde::Deserializer<'de>,
-{
-    use serde::de::Error;
-    let value = serde_json::Value::deserialize(deserializer)?;
-    if let Some(s) = value.as_str() {
-        return s.parse::<i64>().map_err(D::Error::custom);
-    }
-    if let Some(n) = value.as_i64() {
-        return Ok(n);
-    }
-    Err(D::Error::custom("expected i64 as string or number"))
-}
-
-fn deserialize_u8_from_string_or_number<'de, D>(deserializer: D) -> Result<u8, D::Error>
-where
-    D: serde::Deserializer<'de>,
-{
-    use serde::de::Error;
-    let value = serde_json::Value::deserialize(deserializer)?;
-    if let Some(s) = value.as_str() {
-        return s.parse::<u8>().map_err(D::Error::custom);
-    }
-    if let Some(n) = value.as_u64() {
-        return u8::try_from(n).map_err(D::Error::custom);
-    }
-    Err(D::Error::custom("expected u8 as string or number"))
+    pub private_key_hex: SecretHex,
 }

@@ -11,18 +11,6 @@ use secp256k1::{PublicKey, Secp256k1};
 
 // ── Address validation + helpers (preserved) ─────────────────────────────
 
-/// Derive a Tron address from a 65-byte uncompressed pubkey: keccak256 → last 20 bytes → 0x41 prefix → base58check.
-pub fn pubkey_to_tron_address(pubkey_uncompressed: &[u8]) -> Result<String, String> {
-    if pubkey_uncompressed.len() != 65 || pubkey_uncompressed[0] != 0x04 {
-        return Err("expected 65-byte uncompressed public key".to_string());
-    }
-    let hash = keccak256(&pubkey_uncompressed[1..]);
-    let addr_bytes = &hash[12..];
-    let mut versioned = vec![0x41u8];
-    versioned.extend_from_slice(addr_bytes);
-    Ok(bs58::encode(&versioned).with_check().into_string())
-}
-
 /// Decode a Tron base58check address and return the 20-byte EVM-style hex account hash (without 0x41 prefix).
 pub fn tron_base58_to_evm_hex(address: &str) -> Result<String, String> {
     let decoded = bs58::decode(address)

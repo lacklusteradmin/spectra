@@ -21,13 +21,13 @@ pub(crate) fn derive_from_seed_phrase(
     let public_key = signing_key.verifying_key().to_bytes();
 
     let address = if want_address {
-        use sha3::{Digest, Keccak256};
-        let digest: [u8; 32] = Keccak256::new()
-            .chain_update([0x00])
-            .chain_update(public_key)
-            .finalize()
-            .into();
-        Some(format!("0x{}", hex::encode(digest)))
+        let digest = blake2b_simd::Params::new()
+            .hash_length(32)
+            .to_state()
+            .update(&[0x00])
+            .update(&public_key)
+            .finalize();
+        Some(format!("0x{}", hex::encode(digest.as_bytes())))
     } else {
         None
     };

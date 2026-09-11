@@ -12,7 +12,7 @@ impl NearClient {
         from_account_id: &str,
         to_account_id: &str,
         yocto_near: u128,
-        private_key_bytes: &[u8; 64],
+        private_key_bytes: &[u8; 32],
         public_key_bytes: &[u8; 32],
     ) -> Result<NearSendResult, String> {
         let public_key_b58 = bs58::encode(public_key_bytes).into_string();
@@ -81,7 +81,7 @@ impl NearClient {
         token_contract: &str,
         to_account_id: &str,
         amount_raw: u128,
-        private_key_bytes: &[u8; 64],
+        private_key_bytes: &[u8; 32],
         public_key_bytes: &[u8; 32],
         gas_tgas: Option<u64>,
     ) -> Result<NearSendResult, String> {
@@ -144,7 +144,7 @@ pub fn build_near_transfer_tx(
     receiver_id: &str,
     yocto_amount: u128,
     block_hash: &[u8; 32],
-    private_key: &[u8; 64],
+    private_key: &[u8; 32],
 ) -> Result<Vec<u8>, String> {
     use ed25519_dalek::{Signer, SigningKey};
     use sha2::{Digest, Sha256};
@@ -162,17 +162,16 @@ pub fn build_near_transfer_tx(
     // Hash the transaction for signing.
     let tx_hash: [u8; 32] = Sha256::digest(&tx).into();
 
-    let signing_key = SigningKey::from_bytes(
-        &private_key[..32]
-            .try_into()
-            .map_err(|_| "privkey too short")?,
-    );
+    let signing_key = SigningKey::from_bytes(private_key);
+    if signing_key.verifying_key().as_bytes() != public_key {
+        return Err("NEAR: public key does not match signer".into());
+    }
     let signature = signing_key.sign(&tx_hash);
 
     // SignedTransaction = Transaction || Signature
-    // Signature in NEAR is: [key_type(4)] + [sig(64)]
+    // Signature in NEAR is: [key_type(1)] + [sig(64)]
     let mut signed = tx;
-    signed.extend_from_slice(&0u32.to_le_bytes()); // key type = ED25519
+    signed.push(0); // key type = ED25519
     signed.extend_from_slice(signature.to_bytes().as_ref());
 
     Ok(signed)
@@ -191,8 +190,8 @@ fn borsh_encode_transfer(
 
     // signer_id: string (u32 len + bytes)
     borsh_string(&mut out, signer_id);
-    // public_key: key_type(u32) + bytes(32)
-    out.extend_from_slice(&0u32.to_le_bytes()); // ED25519
+    // public_key: key_type(u8) + bytes(32)
+    out.push(0); // ED25519
     out.extend_from_slice(public_key);
     // nonce: u64
     out.extend_from_slice(&nonce.to_le_bytes());
@@ -222,7 +221,7 @@ pub fn build_near_function_call_tx(
     gas: u64,
     deposit: u128,
     block_hash: &[u8; 32],
-    private_key: &[u8; 64],
+    private_key: &[u8; 32],
 ) -> Result<Vec<u8>, String> {
     use ed25519_dalek::{Signer, SigningKey};
     use sha2::{Digest, Sha256};
@@ -240,16 +239,15 @@ pub fn build_near_function_call_tx(
     );
 
     let tx_hash: [u8; 32] = Sha256::digest(&tx).into();
-    let signing_key = SigningKey::from_bytes(
-        &private_key[..32]
-            .try_into()
-            .map_err(|_| "privkey too short")?,
-    );
+    let signing_key = SigningKey::from_bytes(private_key);
+    if signing_key.verifying_key().as_bytes() != public_key {
+        return Err("NEAR: public key does not match signer".into());
+    }
     let signature = signing_key.sign(&tx_hash);
 
-    // SignedTransaction = Transaction || Signature (key_type(4) + sig(64))
+    // SignedTransaction = Transaction || Signature (key_type(1) + sig(64))
     let mut signed = tx;
-    signed.extend_from_slice(&0u32.to_le_bytes()); // ED25519
+    signed.push(0); // ED25519
     signed.extend_from_slice(signature.to_bytes().as_ref());
     Ok(signed)
 }
@@ -270,8 +268,8 @@ fn borsh_encode_function_call(
 
     // signer_id: string
     borsh_string(&mut out, signer_id);
-    // public_key: key_type(u32) + bytes(32)
-    out.extend_from_slice(&0u32.to_le_bytes()); // ED25519
+    // public_key: key_type(u8) + bytes(32)
+    out.push(0); // ED25519
     out.extend_from_slice(public_key);
     // nonce: u64
     out.extend_from_slice(&nonce.to_le_bytes());
@@ -300,4 +298,58 @@ fn borsh_string(out: &mut Vec<u8>, s: &str) {
     let bytes = s.as_bytes();
     out.extend_from_slice(&(bytes.len() as u32).to_le_bytes());
     out.extend_from_slice(bytes);
+}
+
+#[cfg(test)]
+mod protocol_tests {
+    use super::*;
+    #[test]
+    fn near_transactions_match_official_sdk_vectors() {
+        let fixtures: serde_json::Value =
+            serde_json::from_str(include_str!("../../../testdata/protocol/transactions.json"))
+                .unwrap();
+        let public: [u8; 32] = hex::decode(fixtures["public_key"].as_str().unwrap())
+            .unwrap()
+            .try_into()
+            .unwrap();
+        let transfer = build_near_transfer_tx(
+            "alice.near",
+            &public,
+            42,
+            "token.near",
+            123456789,
+            &[2; 32],
+            &[1; 32],
+        )
+        .unwrap();
+        let call = build_near_function_call_tx(
+            "alice.near",
+            &public,
+            42,
+            "token.near",
+            "ft_transfer",
+            br#"{"amount":"123456","receiver_id":"bob.near"}"#,
+            30_000_000_000_000,
+            1,
+            &[2; 32],
+            &[1; 32],
+        )
+        .unwrap();
+        for (bytes, vector) in [transfer, call]
+            .iter()
+            .zip(fixtures["near"].as_array().unwrap())
+        {
+            assert_eq!(hex::encode(bytes), vector["signed_hex"].as_str().unwrap());
+        }
+        assert!(build_near_transfer_tx(
+            "alice.near",
+            &[9; 32],
+            42,
+            "token.near",
+            1,
+            &[2; 32],
+            &[1; 32]
+        )
+        .is_err());
+    }
 }

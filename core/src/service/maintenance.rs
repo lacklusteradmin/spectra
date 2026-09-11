@@ -439,10 +439,7 @@ fn supports_near_token_send(
 
 /// The catalog's token standard for a chain, e.g. `SPL Token` for Solana.
 fn token_standard_for(chain: crate::store::wallet_domain::CoreTokenHostingChain) -> String {
-    let name = chain.chain_name();
-    crate::registry::Chain::from_display_name(name)
-        .map(|chain| chain.entry().token_standard.clone())
-        .unwrap_or_default()
+    chain.token_standard()
 }
 
 #[cfg(test)]

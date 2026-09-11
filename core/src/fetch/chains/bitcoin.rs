@@ -152,12 +152,6 @@ pub struct FeeRate {
     pub sats_per_vbyte: f64,
 }
 
-impl FeeRate {
-    pub fn sats_per_kwu(self) -> u64 {
-        (self.sats_per_vbyte * 250.0) as u64
-    }
-}
-
 // ── BitcoinClient
 
 /// Stateless client for all Bitcoin Esplora interactions.

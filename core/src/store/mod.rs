@@ -175,33 +175,6 @@ pub fn build_persisted_snapshot(
     })
 }
 
-pub fn build_persisted_snapshot_typed(
-    app_state: CoreAppState,
-    secret_observations: Vec<WalletSecretObservation>,
-) -> PersistedAppSnapshot {
-    let observations_by_wallet_id = secret_observations
-        .into_iter()
-        .map(|observation| (observation.wallet_id.clone(), observation))
-        .collect::<HashMap<_, _>>();
-
-    let secrets = app_state
-        .wallets
-        .iter()
-        .map(|wallet| {
-            secret_descriptor_for_wallet(
-                wallet.id.as_str(),
-                observations_by_wallet_id.get(&wallet.id),
-            )
-        })
-        .collect::<Vec<_>>();
-
-    PersistedAppSnapshot {
-        schema_version: 1,
-        app_state,
-        secrets,
-    }
-}
-
 pub fn persisted_snapshot_from_json(json: &str) -> Result<PersistedAppSnapshot, String> {
     if let Ok(snapshot) = serde_json::from_str::<PersistedAppSnapshot>(json) {
         return Ok(snapshot);

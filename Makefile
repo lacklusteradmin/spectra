@@ -6,12 +6,13 @@ XCODE_PROJECT := swift/Spectra.xcodeproj
 XCODE_SCHEME ?= Spectra
 IOS_SIM_DEST ?= generic/platform=iOS Simulator
 
-.PHONY: help check test ios iosr ios-artifacts ios-artifacts-release android androidr bindgen-ios bindgen-android clean clean-generated
+.PHONY: help check check-ui test ios iosr ios-artifacts ios-artifacts-release android androidr bindgen-ios bindgen-android clean clean-generated
 
 help:
 	@printf "Spectra build targets\n"
 	@printf "\n"
 	@printf "  make check                 Cargo check the full Rust workspace\n"
+	@printf "  make check-ui              Check Swift views against the design tokens\n"
 	@printf "  make test                  Run spectra_core Rust tests\n"
 	@printf "  make ios                   Build the iOS app through Xcode (Debug simulator)\n"
 	@printf "  make iosr                  Build the iOS app through Xcode (Release simulator)\n"
@@ -25,6 +26,9 @@ help:
 
 check:
 	cargo check --workspace
+
+check-ui:
+	scripts/check-design-tokens.sh
 
 test:
 	cargo test -p spectra_core

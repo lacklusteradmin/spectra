@@ -53,6 +53,12 @@ pub struct HistoryArgs {
     /// Merge what is fetched into the stored history, as the app does.
     #[arg(long)]
     save: bool,
+    /// Maximum Bitcoin history pages to merge in this session.
+    #[arg(long, default_value_t = 1, value_parser = clap::value_parser!(u32).range(1..=1000), requires = "save")]
+    pages: u32,
+    /// Override the selected network's history endpoint (also useful for local fixtures).
+    #[arg(long)]
+    endpoint: Option<String>,
 }
 
 /// A service bound to one chain's endpoints for the roles a command needs.
@@ -269,16 +275,42 @@ fn save_history(
     service: &Arc<WalletService>,
     chain: Chain,
     wallet_id: &str,
+    pages: u32,
+    limit: usize,
 ) -> CliResult<()> {
     ctx.rt
         .block_on(service.open_state(ctx.db_path()))
         .map_err(CliError::from)?;
-    let outcome = ctx
-        .rt
-        .block_on(
-            service.refresh_chain_history(chain.str_id().to_string(), vec![wallet_id.to_string()]),
-        )
-        .map_err(CliError::from)?;
+    if chain.mainnet_counterpart() != Chain::Bitcoin && pages != 1 {
+        return Err(CliError::rejected(
+            "--pages is currently supported for Bitcoin history",
+        ));
+    }
+    service.set_secret_store(ctx.secrets.clone());
+    let fetch = |load_more| {
+        if chain.mainnet_counterpart() == Chain::Bitcoin {
+            ctx.rt.block_on(service.refresh_bitcoin_history(
+                vec![wallet_id.into()],
+                load_more,
+                Some(limit.min(100) as u32),
+            ))
+        } else {
+            ctx.rt.block_on(service.refresh_chain_history(
+                chain.mainnet_counterpart().str_id().into(),
+                vec![wallet_id.into()],
+            ))
+        }
+    };
+    let mut outcome = fetch(false).map_err(CliError::from)?;
+    let mut fetched_pages = 1;
+    while fetched_pages < pages && !outcome.exhausted && outcome.wallets_failed == 0 {
+        let next = fetch(true).map_err(CliError::from)?;
+        outcome.added += next.added;
+        outcome.updated += next.updated;
+        outcome.wallets_failed += next.wallets_failed;
+        outcome.exhausted = next.exhausted;
+        fetched_pages += 1;
+    }
 
     out.text(|| {
         println!();
@@ -299,6 +331,8 @@ fn save_history(
         "walletsFailed": outcome.wallets_failed,
         "added": outcome.added,
         "updated": outcome.updated,
+        "pages": fetched_pages,
+        "exhausted": outcome.exhausted,
     }));
     Ok(())
 }
@@ -306,17 +340,36 @@ fn save_history(
 pub fn history(ctx: &Ctx, out: Out, args: HistoryArgs) -> CliResult<()> {
     let wallet = ctx.find_wallet(&args.wallet)?;
     let chain = resolve_chain(&wallet.chain_name)?;
-    let service = service_for_chain(chain, HISTORY | BALANCE | RPC)?;
+    let network = wallet
+        .network_chain(&ctx.state()?.settings)
+        .unwrap_or(chain);
+    let service = if let Some(endpoint) = args.endpoint {
+        WalletService::new_typed(vec![ChainEndpoints {
+            chain_id: network.str_id().into(),
+            endpoints: vec![endpoint],
+            api_key: None,
+        }])
+        .map_err(CliError::from)?
+    } else {
+        service_for_chain(network, HISTORY | BALANCE | RPC)?
+    };
     if args.save {
-        return save_history(ctx, out, &service, chain, &wallet.id);
+        return save_history(
+            ctx, out, &service, chain, &wallet.id, args.pages, args.limit,
+        );
     }
 
     let entries = ctx
         .rt
-        .block_on(service.fetch_normalized_history(
-            chain.str_id().to_string(),
-            wallet_address(&wallet).to_string(),
-        ))
+        .block_on(
+            service.fetch_normalized_history(
+                network.str_id().to_string(),
+                wallet
+                    .active_address(&ctx.state()?.settings)
+                    .ok_or_else(|| CliError::rejected("wallet has no address on selected network"))?
+                    .to_string(),
+            ),
+        )
         .map_err(CliError::from)?;
 
     out.text(|| {

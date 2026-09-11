@@ -21,6 +21,9 @@ use crate::out::{self, Out};
 
 #[derive(Args)]
 pub struct TxsArgs {
+    /// Poll pending transactions for this chain and persist status changes.
+    #[arg(long, conflicts_with_all = ["wallet", "replaceable"])]
+    poll_chain: Option<String>,
     /// Only this wallet's transactions (id, name or address).
     #[arg(long)]
     wallet: Option<String>,
@@ -39,6 +42,8 @@ pub enum SendCommand {
     Identity(IdentityArgs),
     /// Validate exact decimal input and show integer units, without keys or network.
     Amount(AmountArgs),
+    /// Convert a fee-adjusted estimate to a conservative decimal shortcut offline.
+    Shortcut(ShortcutArgs),
     /// Validate a fee or gas budget in native units, without keys or network.
     FeeUnits(FeeUnitsArgs),
     /// Sign and broadcast a transfer.
@@ -61,6 +66,7 @@ pub fn run(ctx: &Ctx, out: Out, command: SendCommand) -> CliResult<()> {
     match command {
         SendCommand::Identity(args) => identity(ctx, out, args),
         SendCommand::Amount(args) => exact_amount(out, args),
+        SendCommand::Shortcut(args) => shortcut(out, args),
         SendCommand::FeeUnits(args) => fee_units(out, args),
         SendCommand::Broadcast(args) => send(ctx, out, args),
         SendCommand::Assemble(args) => assemble(ctx, out, args),
@@ -133,6 +139,29 @@ fn exact_amount(out: Out, args: AmountArgs) -> CliResult<()> {
     let raw = spectra_core::send::amount_input::parse_raw_amount(&args.amount, decimals)?;
     out.text(|| println!("  {raw} integer units ({decimals} decimals)"));
     out.emit(serde_json::json!({ "chain": chain.str_id(), "decimals": decimals, "rawAmount": raw.to_string() }));
+    Ok(())
+}
+
+#[derive(Args)]
+pub struct ShortcutArgs {
+    #[arg(long)]
+    maximum: f64,
+    #[arg(long)]
+    decimals: u32,
+    #[arg(long, default_value_t = 100)]
+    percentage: u32,
+}
+fn shortcut(out: Out, args: ShortcutArgs) -> CliResult<()> {
+    let amount = spectra_core::send::amount_input::send_amount_shortcut(
+        args.maximum,
+        args.decimals,
+        args.percentage,
+    )
+    .ok_or_else(|| {
+        spectra_core::SpectraBridgeError::from("no positive amount within the quoted maximum")
+    })?;
+    out.text(|| println!("  {amount}"));
+    out.emit(serde_json::json!({"amount": amount}));
     Ok(())
 }
 
@@ -387,11 +416,7 @@ fn probe(ctx: &Ctx, out: Out, args: ProbeArgs) -> CliResult<()> {
     let holding_key = format!("{}|{}", holding.chain_name, holding.symbol);
     let risk = ctx
         .rt
-        .block_on(service.send_destination_risk(
-            wallet.id.clone(),
-            holding_key,
-            args.to.clone(),
-        ))
+        .block_on(service.send_destination_risk(wallet.id.clone(), holding_key, args.to.clone()))
         .map_err(CliError::from)?;
 
     out.text(|| {
@@ -429,6 +454,9 @@ pub struct DestinationArgs {
     /// What the user typed: an address, or a name on a chain that resolves one.
     #[arg(long)]
     to: String,
+    /// Address shown in a previous review; refuse if the destination changed.
+    #[arg(long)]
+    expected: Option<String>,
 }
 
 /// What the composer does with the destination field, on the command line.
@@ -449,7 +477,20 @@ fn destination(ctx: &Ctx, out: Out, args: DestinationArgs) -> CliResult<()> {
     };
     let resolved = ctx
         .rt
-        .block_on(service.resolve_send_destination(chain.str_id().to_string(), args.to.clone()))
+        .block_on(async {
+            match args.expected {
+                Some(expected) => {
+                    service
+                        .verify_send_destination(chain.str_id().into(), args.to.clone(), expected)
+                        .await
+                }
+                None => {
+                    service
+                        .resolve_send_destination(chain.str_id().into(), args.to.clone())
+                        .await
+                }
+            }
+        })
         .map_err(CliError::from)?;
 
     out.text(|| {
@@ -530,6 +571,48 @@ pub struct SendArgs {
 /// Transactions core has recorded locally. Distinct from `history`, which asks
 /// the chain.
 pub fn txs(ctx: &Ctx, out: Out, args: TxsArgs) -> CliResult<()> {
+    if let Some(name) = &args.poll_chain {
+        let chain = resolve_chain(name)?;
+        let state = ctx.state()?;
+        let network = state.settings.network_chain(chain);
+        let records = spectra_core::endpoint_records_for_chain_masked(
+            network.chain_display_name().into(),
+            RPC | HISTORY | UTXO,
+            false,
+        )
+        .map_err(CliError::from)?;
+        let service = WalletService::new_typed(vec![
+            spectra_core::service::ChainEndpoints {
+                chain_id: network.str_id().into(),
+                endpoints: records
+                    .iter()
+                    .filter(|r| !r.supplements_rpc_list)
+                    .map(|r| r.endpoint.clone())
+                    .collect(),
+                api_key: None,
+            },
+            spectra_core::service::ChainEndpoints {
+                chain_id: network.endpoint_str_id(network.supplemental_endpoint_slot()),
+                endpoints: records
+                    .iter()
+                    .filter(|r| r.supplements_rpc_list)
+                    .map(|r| r.endpoint.clone())
+                    .collect(),
+                api_key: None,
+            },
+        ])
+        .map_err(CliError::from)?;
+        ctx.rt
+            .block_on(service.open_state(ctx.db_path()))
+            .map_err(CliError::from)?;
+        let changes = ctx
+            .rt
+            .block_on(service.poll_pending_transactions(chain.str_id().into()))
+            .map_err(CliError::from)?;
+        out.text(|| println!("  {} transaction status changes", changes.len()));
+        out.emit(serde_json::json!({"ok":true,"changes":changes}));
+        return Ok(());
+    }
     let service = ctx.service()?;
     if args.replaceable {
         return replaceable(ctx, out, args);

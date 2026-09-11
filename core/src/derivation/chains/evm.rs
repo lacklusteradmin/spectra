@@ -1,16 +1,6 @@
 //! EVM address derivation (keccak256 over uncompressed pubkey) + EIP-55
 //! checksum formatting + address validation.
 
-/// Derive the Ethereum address (checksum-cased) from an uncompressed public key.
-pub fn pubkey_to_eth_address(pubkey_uncompressed: &[u8]) -> Result<String, String> {
-    if pubkey_uncompressed.len() != 65 || pubkey_uncompressed[0] != 0x04 {
-        return Err("expected 65-byte uncompressed public key".to_string());
-    }
-    let hash = keccak256(&pubkey_uncompressed[1..]);
-    let addr_bytes = &hash[12..]; // last 20 bytes
-    Ok(eip55_checksum(addr_bytes))
-}
-
 /// EIP-55 mixed-case checksum address.
 pub fn eip55_checksum(addr_bytes: &[u8]) -> String {
     let hex = hex::encode(addr_bytes);

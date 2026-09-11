@@ -1,3 +1,4 @@
+pub(crate) mod bitcoin_history;
 pub mod history;
 pub mod history_decode;
 pub mod history_store;
@@ -13,54 +14,6 @@ pub mod chains;
 
 use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, BTreeSet};
-
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
-#[serde(rename_all = "camelCase")]
-pub struct BalanceRequest {
-    pub chain_name: String,
-    pub address: String,
-    pub asset_id: Option<String>,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
-#[serde(rename_all = "camelCase")]
-pub struct BalanceSnapshot {
-    pub chain_name: String,
-    pub address: String,
-    pub asset_id: Option<String>,
-    pub amount: String,
-    pub block_height: Option<u64>,
-    pub source_id: String,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
-#[serde(rename_all = "camelCase")]
-pub struct HistoryRequest {
-    pub chain_name: String,
-    pub address: String,
-    pub cursor: Option<String>,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
-#[serde(rename_all = "camelCase")]
-pub struct NormalizedTransaction {
-    pub txid: String,
-    pub chain_name: String,
-    pub status: String,
-    pub sent_amount: Option<String>,
-    pub received_amount: Option<String>,
-    pub fee_amount: Option<String>,
-    pub timestamp_unix: Option<u64>,
-}
-
-pub trait BalanceProvider: Send + Sync {
-    fn fetch_balance(&self, request: &BalanceRequest) -> Result<BalanceSnapshot, String>;
-}
-
-pub trait HistoryProvider: Send + Sync {
-    fn fetch_history(&self, request: &HistoryRequest)
-        -> Result<Vec<NormalizedTransaction>, String>;
-}
 
 /// A wallet a refresh might visit, and the addresses it would visit it at.
 ///
@@ -353,15 +306,4 @@ mod tests {
         assert_eq!(single.len(), 1);
         assert_eq!(single[0].addresses, vec!["L1"]);
     }
-}
-
-// ── FFI surface ─────────────────────────────────────────────────────────────
-
-pub fn core_evm_refresh_targets(request: EvmRefreshTargetsRequest) -> EvmRefreshPlan {
-    plan_evm_refresh_targets(request)
-}
-
-/// One export for the Dogecoin and normalized families, which were two.
-pub fn core_refresh_targets(request: RefreshTargetsRequest) -> Vec<RefreshWalletTarget> {
-    plan_refresh_targets(request)
 }

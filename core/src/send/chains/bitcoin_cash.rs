@@ -1,6 +1,6 @@
 //! BCH send: SIGHASH_FORKID P2PKH signer (BIP143-variant) and Blockbook broadcast.
 
-use super::wire::{build_input, build_tx, dsha256, p2pkh_script, p2pkh_script_sig, varint};
+use super::bitcoin_wire::{build_input, build_tx, dsha256, p2pkh_script, p2pkh_script_sig, varint};
 use crate::derivation::chains::bitcoin_cash::decode_bch_to_hash20;
 use crate::fetch::chains::bitcoin_cash::{BchSendResult, BitcoinCashClient};
 
@@ -79,7 +79,7 @@ pub fn sign_bch_tx(
     let mut prevouts_data = Vec::new();
     let mut sequences_data = Vec::new();
     for (txid, vout, _, _) in utxos {
-        let txid_bytes = super::wire::decode_txid_le(txid)?;
+        let txid_bytes = super::bitcoin_wire::decode_txid_le(txid)?;
         prevouts_data.extend_from_slice(&txid_bytes);
         prevouts_data.extend_from_slice(&vout.to_le_bytes());
         sequences_data.extend_from_slice(&0xffffffff_u32.to_le_bytes());
@@ -103,7 +103,7 @@ pub fn sign_bch_tx(
         preimage.extend_from_slice(&1u32.to_le_bytes()); // nVersion
         preimage.extend_from_slice(&hash_prevouts);
         preimage.extend_from_slice(&hash_sequence);
-        let txid_bytes = super::wire::decode_txid_le(txid)?;
+        let txid_bytes = super::bitcoin_wire::decode_txid_le(txid)?;
         preimage.extend_from_slice(&txid_bytes);
         preimage.extend_from_slice(&vout.to_le_bytes());
         preimage.extend_from_slice(&varint(script_code.len()));

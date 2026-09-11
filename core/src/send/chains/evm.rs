@@ -4,9 +4,7 @@
 
 use serde_json::json;
 
-use crate::fetch::chains::evm::{
-    decode_hex, EvmClient, EvmSendResult, SEL_APPROVE, SEL_TRANSFER, SEL_TRANSFER_FROM,
-};
+use crate::fetch::chains::evm::{decode_hex, EvmClient, EvmSendResult, SEL_TRANSFER};
 
 impl EvmClient {
     /// Sign and broadcast an EIP-1559 ETH transfer.
@@ -97,26 +95,6 @@ impl EvmClient {
             max_fee_per_gas_wei: max_fee.to_string(),
             max_priority_fee_per_gas_wei: max_priority.to_string(),
         })
-    }
-
-    /// Sign and broadcast an ERC-20 `transfer(to, amount)` from `from`.
-    pub async fn sign_and_broadcast_erc20(
-        &self,
-        from_address: &str,
-        contract: &str,
-        to_address: &str,
-        amount_raw: u128,
-        private_key_bytes: &[u8],
-    ) -> Result<EvmSendResult, String> {
-        self.sign_and_broadcast_erc20_with_overrides(
-            from_address,
-            contract,
-            to_address,
-            amount_raw,
-            private_key_bytes,
-            EvmSendOverrides::default(),
-        )
-        .await
     }
 
     /// Sign and broadcast an ERC-20 transfer with fee/nonce overrides.
@@ -500,49 +478,6 @@ pub(crate) fn encode_erc20_transfer(to: &str, amount: u128) -> Result<Vec<u8>, S
     }
     let mut out = Vec::with_capacity(4 + 32 + 32);
     out.extend_from_slice(&SEL_TRANSFER);
-    out.extend_from_slice(&[0u8; 12]);
-    out.extend_from_slice(&to_bytes);
-    let mut amount_bytes = [0u8; 32];
-    amount_bytes[16..].copy_from_slice(&amount.to_be_bytes());
-    out.extend_from_slice(&amount_bytes);
-    Ok(out)
-}
-
-/// Encode an `approve(address spender, uint256 amount)` call.
-/// Use this to grant a contract (DEX, bridge, etc.) permission to spend tokens.
-pub fn encode_erc20_approve(spender: &str, amount: u128) -> Result<Vec<u8>, String> {
-    let spender_bytes = decode_hex(spender)?;
-    if spender_bytes.len() != 20 {
-        return Err(format!(
-            "invalid EVM spender length: {}",
-            spender_bytes.len()
-        ));
-    }
-    let mut out = Vec::with_capacity(4 + 32 + 32);
-    out.extend_from_slice(&SEL_APPROVE);
-    out.extend_from_slice(&[0u8; 12]);
-    out.extend_from_slice(&spender_bytes);
-    let mut amount_bytes = [0u8; 32];
-    amount_bytes[16..].copy_from_slice(&amount.to_be_bytes());
-    out.extend_from_slice(&amount_bytes);
-    Ok(out)
-}
-
-/// Encode a `transferFrom(address from, address to, uint256 amount)` call.
-/// Used for allowance-based pulls (escrow, bridge withdrawal, etc.).
-pub fn encode_erc20_transfer_from(from: &str, to: &str, amount: u128) -> Result<Vec<u8>, String> {
-    let from_bytes = decode_hex(from)?;
-    let to_bytes = decode_hex(to)?;
-    if from_bytes.len() != 20 {
-        return Err(format!("invalid EVM from length: {}", from_bytes.len()));
-    }
-    if to_bytes.len() != 20 {
-        return Err(format!("invalid EVM to length: {}", to_bytes.len()));
-    }
-    let mut out = Vec::with_capacity(4 + 32 + 32 + 32);
-    out.extend_from_slice(&SEL_TRANSFER_FROM);
-    out.extend_from_slice(&[0u8; 12]);
-    out.extend_from_slice(&from_bytes);
     out.extend_from_slice(&[0u8; 12]);
     out.extend_from_slice(&to_bytes);
     let mut amount_bytes = [0u8; 32];

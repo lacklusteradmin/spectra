@@ -94,7 +94,7 @@ pub(crate) struct KoiosTxInfo {
 
 pub struct CardanoClient {
     pub(crate) endpoints: std::sync::Arc<Vec<String>>,
-    #[allow(dead_code)]
+    /// Blockfrost `project_id`, sent as a header by `submit_tx`.
     pub(crate) api_key: String,
     pub(crate) client: std::sync::Arc<HttpClient>,
 }

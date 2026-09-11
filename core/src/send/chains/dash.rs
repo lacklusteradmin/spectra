@@ -3,7 +3,7 @@
 //! `/api/v2/sendtx`. The wire format is identical to Bitcoin/Litecoin
 //! legacy — Dash never adopted SegWit on mainnet.
 
-use super::wire::{decode_txid_le, dsha256, varint};
+use super::bitcoin_wire::{decode_txid_le, dsha256, varint};
 use crate::derivation::chains::dash::{dash_p2pkh_script, decode_dash_address};
 use crate::fetch::chains::dash::{DashClient, DashSendResult};
 

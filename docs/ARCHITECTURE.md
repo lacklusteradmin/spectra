@@ -66,3 +66,42 @@ nonce and fee configuration.
 The native UIs share domain code, not a cross-platform UI framework. Core must
 not exit the process or install a global logger; the executable owns logging
 configuration and keeps stdout available for CLI JSON.
+
+## Signing and service modules
+
+`service/state.rs` owns the serialized state writer and app projections.
+`keypool`, `address_discovery`, `transactions`, `wallet_import` and
+`operational_events` hold cohesive operations on that state; all persistent
+mutations still use the same writer rather than creating per-file owners.
+
+The send service is split into `send_execution` (stored identity and exact
+amount conversion), `send_destination` (fresh resolution and review binding),
+`send_preview` (quotes), `send_signing` (protocol dispatch) and `send_broadcast`
+(rebroadcast). Internal `send_params` are Rust records, not a second JSON API.
+Secrets use redacted, zeroizing storage; an Ed25519 seed is a distinct type
+rather than an unlabelled 32/64-byte array.
+
+The Tron, Aptos and Sui protocols build their transaction bytes locally from
+explicit transfer inputs and fetched chain metadata. Their prepared values
+keep bytes private and expose offline signing; network submission accepts the
+signed output. Solana's local builders likewise feed a broadcast-only stage.
+Independent SDK fixtures test real mnemonic derivation through these signing
+boundaries; mock-node tests exercise the stored-wallet execution route.
+
+
+## Core module boundaries
+
+- `service/network.rs` owns endpoint health and status probes. Its siblings
+  `network_balance`, `network_tokens`, `network_history`, `network_hd` and
+  `network_prices` own the corresponding reads and dispatch.
+- `service/history_bitcoin.rs` selects wallet/network/HD scope and persists
+  results. `fetch/bitcoin_history.rs` owns provider pagination and buffered
+  block-cohort aggregation; a display limit never means provider exhaustion.
+- `send/chains/bitcoin_wire.rs` contains only Bitcoin-format serialization.
+  Other UTXO protocols must establish byte compatibility before reusing it.
+  Kaspa owns its own hash preimage encoding. Solana compiles a unique account
+  list across all instructions before signing.
+- `store/wallet_db/` separates connection/schema, keypool, addresses, history,
+  wallets, state and teardown. `state` and `teardown` keep their cross-table
+  transactions; splitting files does not split commits. `store/tests/` groups
+  regressions by domain.

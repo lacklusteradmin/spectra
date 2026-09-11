@@ -5,7 +5,7 @@ use serde_json::json;
 
 use crate::http::{with_fallback, RetryProfile};
 
-use super::wire::{build_input, build_tx, dsha256, p2pkh_script, p2pkh_script_sig, varint};
+use super::bitcoin_wire::{build_input, build_tx, dsha256, p2pkh_script, p2pkh_script_sig, varint};
 use crate::derivation::chains::bitcoin_sv::decode_bsv_address;
 use crate::fetch::chains::bitcoin_sv::{BitcoinSvClient, BsvSendResult};
 
@@ -45,7 +45,7 @@ impl BitcoinSvClient {
         dust_threshold: Option<u64>,
     ) -> Result<BsvSendResult, String> {
         let utxos = self.fetch_utxos(from_address).await?;
-        let hash20 = decode_bsv_address(from_address)?;
+        let (hash20, _) = decode_bsv_address(from_address)?;
         let script_pubkey = p2pkh_script(&hash20);
         let utxo_tuples: Vec<(String, u32, u64, Vec<u8>)> = utxos
             .iter()
@@ -95,8 +95,16 @@ pub fn sign_bsv_tx(
         fee_sat,
     )?;
 
-    let to_hash = decode_bsv_address(to_address)?;
-    let change_hash = decode_bsv_address(change_address)?;
+    // A transaction's outputs must all be on the chain its inputs are on. The
+    // decoder used to accept any of the four version bytes and hand back only
+    // the hash, so a mainnet send to an `m…` destination built a perfectly
+    // valid output paying a hash the user never meant — the address they typed
+    // names a different chain, and nothing along the way said so.
+    let (to_hash, to_network) = decode_bsv_address(to_address)?;
+    let (change_hash, change_network) = decode_bsv_address(change_address)?;
+    if to_network != change_network {
+        return Err("bsv destination and change are on different networks".to_string());
+    }
 
     let mut outputs: Vec<(Vec<u8>, u64)> = vec![(p2pkh_script(&to_hash), amount_sat)];
     if change > dust_threshold.unwrap_or(546) {
@@ -107,7 +115,7 @@ pub fn sign_bsv_tx(
     let mut prevouts_data = Vec::new();
     let mut sequences_data = Vec::new();
     for (txid, vout, _, _) in utxos {
-        let txid_bytes = super::wire::decode_txid_le(txid)?;
+        let txid_bytes = super::bitcoin_wire::decode_txid_le(txid)?;
         prevouts_data.extend_from_slice(&txid_bytes);
         prevouts_data.extend_from_slice(&vout.to_le_bytes());
         sequences_data.extend_from_slice(&0xffffffff_u32.to_le_bytes());
@@ -131,7 +139,7 @@ pub fn sign_bsv_tx(
         preimage.extend_from_slice(&1u32.to_le_bytes()); // nVersion
         preimage.extend_from_slice(&hash_prevouts);
         preimage.extend_from_slice(&hash_sequence);
-        let txid_bytes = super::wire::decode_txid_le(txid)?;
+        let txid_bytes = super::bitcoin_wire::decode_txid_le(txid)?;
         preimage.extend_from_slice(&txid_bytes);
         preimage.extend_from_slice(&vout.to_le_bytes());
         preimage.extend_from_slice(&varint(script_code.len()));

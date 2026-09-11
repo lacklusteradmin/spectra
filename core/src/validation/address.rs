@@ -41,8 +41,8 @@ pub fn validate_address(request: AddressValidationRequest) -> AddressValidationR
         }
         "bitcoinCash" => validate_bitcoin_cash_address(&normalized_input, false),
         "bitcoinCashTestnet" => validate_bitcoin_cash_address(&normalized_input, true),
-        "bitcoinSV" => validate_bitcoin_sv_address(&normalized_input),
-        "bitcoinSVTestnet" => validate_bitcoin_sv_address(&normalized_input),
+        "bitcoinSV" => validate_bitcoin_sv_address(&normalized_input, false),
+        "bitcoinSVTestnet" => validate_bitcoin_sv_address(&normalized_input, true),
         "litecoin" => validate_litecoin_address(&normalized_input, false),
         "litecoinTestnet" => validate_litecoin_address(&normalized_input, true),
         "dogecoin" => validate_dogecoin_address(&normalized_input, false),
@@ -56,7 +56,8 @@ pub fn validate_address(request: AddressValidationRequest) -> AddressValidationR
         "xrp" | "xrpTestnet" => validate_xrp_address(&normalized_input),
         "sui" | "suiTestnet" => validate_sui_address(&normalized_input),
         "aptos" | "aptosTestnet" => validate_aptos_address(&normalized_input),
-        "ton" | "tonTestnet" => validate_ton_address(&normalized_input),
+        "ton" => validate_ton_address(&normalized_input, false),
+        "tonTestnet" => validate_ton_address(&normalized_input, true),
         "internetComputer" => validate_icp_address(&normalized_input),
         "near" | "nearTestnet" => validate_near_address(&normalized_input),
         "polkadot" | "polkadotTestnet" => validate_polkadot_address(&normalized_input),
@@ -77,6 +78,7 @@ pub fn validate_address(request: AddressValidationRequest) -> AddressValidationR
         // its own export, its own request record and its own result record,
         // each identical to these, to dispatch on one kind.
         "aptosTokenType" => validate_aptos_token_type(&normalized_input),
+        "suiCoinType" => validate_sui_coin_type(&normalized_input),
         _ => invalid_result(),
     }
 }
@@ -246,10 +248,11 @@ fn validate_bitcoin_cash_address(value: &str, testnet: bool) -> AddressValidatio
     invalid_result()
 }
 
-fn validate_bitcoin_sv_address(value: &str) -> AddressValidationResult {
-    // BSV is legacy-only: base58check P2PKH (version 0x00) or P2SH (0x05),
-    // plus the testnet variants 0x6f / 0xc4. SegWit/Taproot are not valid.
-    if crate::derivation::chains::bitcoin_sv::validate_bsv_address(value) {
+fn validate_bitcoin_sv_address(value: &str, testnet: bool) -> AddressValidationResult {
+    // BSV is legacy-only: base58check P2PKH / P2SH, whose version bytes are
+    // 0x00 / 0x05 on mainnet and 0x6f / 0xc4 on testnet. SegWit and Taproot
+    // are not valid on either.
+    if crate::derivation::chains::bitcoin_sv::validate_bsv_address(value, testnet) {
         return make_result(value.to_string());
     }
     invalid_result()
@@ -421,21 +424,17 @@ fn validate_aptos_address(value: &str) -> AddressValidationResult {
     make_result(format!("0x{body}"))
 }
 
-fn validate_ton_address(value: &str) -> AddressValidationResult {
-    let normalized = value.to_lowercase();
-    if normalized.len() == 66 && normalized.starts_with("0:") && is_lower_hex(&normalized[2..]) {
-        return make_result(normalized);
-    }
-
-    if value.len() == 48
-        && value.chars().all(|character| {
-            character.is_ascii_alphanumeric() || character == '-' || character == '_'
-        })
+fn validate_ton_address(value: &str, testnet: bool) -> AddressValidationResult {
+    match crate::derivation::chains::ton::parse_ton_address(value)
+        .and_then(|a| a.for_network(testnet))
     {
-        return make_result(value.to_string());
+        Ok(_) => make_result(if value.contains(':') {
+            value.to_lowercase()
+        } else {
+            value.replace('+', "-").replace('/', "_")
+        }),
+        Err(_) => invalid_result(),
     }
-
-    invalid_result()
 }
 
 fn validate_icp_address(value: &str) -> AddressValidationResult {
@@ -526,6 +525,39 @@ fn validate_cardano_address(value: &str) -> AddressValidationResult {
             if !data.is_empty() && (hrp.as_str() == "addr" || hrp.as_str() == "addr_test") =>
         {
             make_result(value.to_string())
+        }
+        _ => invalid_result(),
+    }
+}
+
+/// A Sui coin type: a package address, or `0xADDR::module::NAME`.
+///
+/// The composer judged this with `hasPrefix("0x") && (contains("::") || count > 2)`,
+/// which accepts `0xzz` and `0x::::` and rejects nothing that starts with two
+/// characters — so a mistyped package address was stored as a coin type and
+/// every balance read for it failed. Same shape as the Aptos rule beside it:
+/// the address component has to be an address.
+fn validate_sui_coin_type(value: &str) -> AddressValidationResult {
+    let normalized = value.trim().to_lowercase();
+    if normalized.is_empty() {
+        return invalid_result();
+    }
+
+    let address_result = validate_sui_address(&normalized);
+    if address_result.is_valid {
+        return make_string_result(address_result.normalized_value.unwrap_or(normalized));
+    }
+
+    let Some((address_component, rest)) = normalized.split_once("::") else {
+        return invalid_result();
+    };
+    if !validate_sui_address(address_component).is_valid {
+        return invalid_result();
+    }
+    // `module::NAME`: both halves have to be there, and neither may be empty.
+    match rest.split_once("::") {
+        Some((module, name)) if !module.is_empty() && !name.is_empty() && !name.contains("::") => {
+            make_string_result(normalized)
         }
         _ => invalid_result(),
     }
@@ -665,6 +697,44 @@ mod tests {
         });
 
         assert!(!result.is_valid);
+    }
+
+    /// A Sui coin type is a package address or `address::module::NAME`.
+    ///
+    /// The composer judged this with `hasPrefix("0x") && (contains("::") || count > 2)`,
+    /// which takes every string below that is now refused.
+    #[test]
+    fn validates_sui_coin_types() {
+        let package = "0x0000000000000000000000000000000000000000000000000000000000000002";
+        // Short form is a real Sui address — `0x2` is the framework package —
+        // so it is a coin type on its own and as the address half of one.
+        for good in [
+            package,
+            "0x2",
+            &format!("{package}::sui::SUI"),
+            &format!("{package}::coin::COIN"),
+            "0x2::sui::SUI",
+        ] {
+            assert!(
+                validate("suiCoinType", good.to_string()).is_valid,
+                "{good} should be a coin type"
+            );
+        }
+        for bad in [
+            "",
+            "0xzz",
+            "0x",
+            &format!("{package}::"),
+            &format!("{package}::sui"),
+            &format!("{package}::sui::SUI::EXTRA"),
+            &format!("{package}::::SUI"),
+            "sui::SUI",
+        ] {
+            assert!(
+                !validate("suiCoinType", bad.to_string()).is_valid,
+                "{bad:?} should not be a coin type"
+            );
+        }
     }
 
     #[test]
@@ -840,5 +910,45 @@ mod every_chain_accepts_what_it_derives {
             "only {checked} chains derived — the probe is broken"
         );
         assert!(failures.is_empty(), "{}", failures.join("\n"));
+    }
+}
+
+#[cfg(test)]
+mod ton_validation_tests {
+    use super::*;
+    #[test]
+    fn ton_checks_checksum_flags_network_and_both_base64_alphabets() {
+        let main = "EQDKbjIcfM6ezt8KjKJJLshZJJSqX7XOA4ff-W72r5gqPrHF";
+        let test = "kQDKbjIcfM6ezt8KjKJJLshZJJSqX7XOA4ff-W72r5gqPgpP";
+        let check = |s: &str, kind: &str| {
+            validate_address(AddressValidationRequest {
+                kind: kind.into(),
+                value: s.into(),
+            })
+            .is_valid
+        };
+        assert!(check(main, "ton"));
+        assert!(check(&main.replace('-', "+"), "ton"));
+        assert!(check(test, "tonTestnet"));
+        assert!(!check(test, "ton"));
+        assert!(!check(&"A".repeat(48), "ton"));
+        for i in 0..48 {
+            let mut typo = main.as_bytes().to_vec();
+            typo[i] = if typo[i] == b'A' { b'B' } else { b'A' };
+            assert!(
+                !check(std::str::from_utf8(&typo).unwrap(), "ton"),
+                "character {i}"
+            );
+        }
+        use base64::Engine;
+        let mut bytes = [0u8; 36];
+        bytes[0] = 0x12; // Wrong tag with an otherwise correct checksum.
+        let crc = crate::derivation::chains::ton::crc16_xmodem(&bytes[..34]);
+        bytes[34..].copy_from_slice(&crc.to_be_bytes());
+        assert!(!check(
+            &base64::engine::general_purpose::URL_SAFE_NO_PAD.encode(bytes),
+            "ton"
+        ));
+        assert!(check(&format!("-1:{}", "ab".repeat(32)), "ton"));
     }
 }

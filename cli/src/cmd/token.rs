@@ -1,10 +1,13 @@
-//! `SetTokenPreferences` clamps the display decimals — a token cannot show
-//! more places than it has — which is the rule the list moved into core for.
+//! Tracking a token is `is_enabled` on a row core already holds, not a row the
+//! caller assembles. This file used to read the whole preference list, edit it
+//! and write it back — with a duplicate rule (symbol, case-insensitively) that
+//! disagreed with the composer's (normalized contract), and no check on a
+//! custom token's contract at all.
 
 use clap::{Args, Subcommand};
 use colored::Colorize as _;
-use spectra_core::store::state::StateCommand;
-use spectra_core::store::wallet_domain::{CoreTokenHostingChain, CoreTokenPreferenceEntry};
+use spectra_core::store::state::{CoreTokenPreferenceKey, StateCommand, StateTransition};
+use spectra_core::store::wallet_domain::CoreTokenHostingChain;
 
 use super::resolve_chain;
 use crate::ctx::{wallet_address, Ctx};
@@ -17,10 +20,18 @@ pub enum TokenCommand {
     Catalog(CatalogArgs),
     /// Tokens this wallet tracks.
     List,
-    /// Track a token from the catalog, by symbol.
+    /// Track a token: turn on the row core holds for it.
     Track(TrackArgs),
     /// Stop tracking a token.
-    Untrack(UntrackArgs),
+    Untrack(TrackArgs),
+    /// Teach the wallet a token the catalog does not ship.
+    Add(AddArgs),
+    /// Forget a custom token.
+    Remove(RemoveArgs),
+    /// Change a custom token's display precision.
+    Decimals(DecimalsArgs),
+    /// Back to the catalog's own list, dropping every custom token.
+    Reset(ResetArgs),
     /// Ask the chain what a wallet actually holds.
     Discover(DiscoverArgs),
     /// How an amount renders, and why that many places.
@@ -58,22 +69,72 @@ pub struct TrackArgs {
     /// Chain display name, registry id or symbol.
     #[arg(long)]
     chain: String,
-    /// Token symbol as the catalog spells it.
+    /// Token symbol as the list spells it.
     symbol: String,
 }
 
 #[derive(Args)]
-pub struct UntrackArgs {
-    /// Token symbol.
+pub struct AddArgs {
+    /// Chain that hosts the token.
+    #[arg(long)]
+    chain: String,
+    /// Symbol, as it should be displayed.
+    #[arg(long)]
     symbol: String,
+    /// Token name.
+    #[arg(long)]
+    name: String,
+    /// Contract address, mint, jetton master or coin type, per the chain.
+    #[arg(long)]
+    contract: String,
+    /// How many decimal places the token has.
+    #[arg(long)]
+    decimals: u32,
+    /// CoinGecko id, when the token has a quoted price.
+    #[arg(long, default_value = "")]
+    coingecko_id: String,
+}
+
+#[derive(Args)]
+pub struct RemoveArgs {
+    /// Chain the token is on.
+    #[arg(long)]
+    chain: String,
+    /// Contract address, mint, jetton master or coin type.
+    #[arg(long)]
+    contract: String,
+}
+
+#[derive(Args)]
+pub struct DecimalsArgs {
+    /// Chain the token is on.
+    #[arg(long)]
+    chain: String,
+    /// Contract address, mint, jetton master or coin type.
+    #[arg(long)]
+    contract: String,
+    /// How many decimal places the token has.
+    #[arg(long)]
+    decimals: u32,
+}
+
+#[derive(Args)]
+pub struct ResetArgs {
+    /// Required: this drops every custom token.
+    #[arg(long)]
+    yes: bool,
 }
 
 pub fn run(ctx: &Ctx, out: Out, command: TokenCommand) -> CliResult<()> {
     match command {
         TokenCommand::Catalog(args) => catalog(out, args),
         TokenCommand::List => list(ctx, out),
-        TokenCommand::Track(args) => track(ctx, out, args),
-        TokenCommand::Untrack(args) => untrack(ctx, out, args),
+        TokenCommand::Track(args) => set_tracked(ctx, out, args, true),
+        TokenCommand::Untrack(args) => set_tracked(ctx, out, args, false),
+        TokenCommand::Add(args) => add(ctx, out, args),
+        TokenCommand::Remove(args) => remove(ctx, out, args),
+        TokenCommand::Decimals(args) => decimals(ctx, out, args),
+        TokenCommand::Reset(args) => reset(ctx, out, args),
         TokenCommand::Discover(args) => discover(ctx, out, args),
         TokenCommand::Format(args) => format_amount(ctx, out, args),
     }
@@ -153,97 +214,177 @@ fn list(ctx: &Ctx, out: Out) -> CliResult<()> {
     Ok(())
 }
 
-fn track(ctx: &Ctx, out: Out, args: TrackArgs) -> CliResult<()> {
+/// Turn a token on or off. The row is core's — every catalog token has one —
+/// so this names it and says which way, where it used to fetch the list, push
+/// or filter an entry and write the whole thing back.
+fn set_tracked(ctx: &Ctx, out: Out, args: TrackArgs, is_enabled: bool) -> CliResult<()> {
     let chain = resolve_chain(&args.chain)?;
-    let tokens = spectra_core::tokens::list_tokens(chain.str_id().to_string());
-    let token = tokens
-        .iter()
-        .find(|token| token.symbol.eq_ignore_ascii_case(&args.symbol))
+    let chain_name = chain.chain_display_name().to_string();
+    CoreTokenHostingChain::from_chain_name(&chain_name)
+        .ok_or_else(|| CliError::rejected(format!("{chain_name} does not support known tokens")))?;
+
+    let entry = ctx
+        .state()?
+        .token_preferences
+        .into_iter()
+        .find(|entry| {
+            entry.token.chain.eq_ignore_ascii_case(&chain_name)
+                && entry.token.symbol.eq_ignore_ascii_case(&args.symbol)
+        })
         .ok_or_else(|| {
-            CliError::rejected(format!(
-                "{} has no token {:?} in the catalog",
-                chain.chain_display_name(),
-                args.symbol
-            ))
+            CliError::rejected(format!("{chain_name} has no token {:?}", args.symbol))
         })?;
-
-    let _ =
-        CoreTokenHostingChain::from_chain_name(chain.chain_display_name()).ok_or_else(|| {
-            CliError::rejected(format!(
-                "{} does not support known tokens",
-                chain.chain_display_name()
-            ))
-        })?;
-
-    let mut entries = ctx.state()?.token_preferences;
-    if entries
-        .iter()
-        .any(|entry| entry.token.symbol.eq_ignore_ascii_case(&token.symbol))
-    {
+    if entry.is_enabled == is_enabled {
         return Err(CliError::rejected(format!(
-            "{} is already tracked",
-            token.symbol
+            "{} is already {}",
+            entry.token.symbol,
+            if is_enabled { "tracked" } else { "untracked" }
         )));
     }
-    entries.push(CoreTokenPreferenceEntry {
-        category: CoreTokenPreferenceEntry::category_from_tags(&token.tags),
-        is_built_in: true,
-        is_enabled: true,
-        token: token.clone(),
-    });
 
-    let transition = ctx.apply(StateCommand::SetTokenPreferences { entries })?;
+    let transition = ctx.apply(StateCommand::SetTokenPreferencesEnabled {
+        tokens: vec![CoreTokenPreferenceKey {
+            chain_name: chain_name.clone(),
+            contract: entry.token.contract.clone(),
+        }],
+        is_enabled,
+    })?;
+    reject_on_event(&transition)?;
+
+    let verb = if is_enabled { "tracking" } else { "untracked" };
+    out.text(|| {
+        println!("  {} {verb} {}", out::ok_mark(), entry.token.symbol.bold());
+        out::field("decimals", &entry.token.decimals.to_string());
+    });
+    out.emit(serde_json::json!({
+        "ok": true,
+        "chain": chain_name,
+        "symbol": entry.token.symbol,
+        "contract": entry.token.contract,
+        "decimals": entry.token.decimals,
+        "isEnabled": is_enabled,
+    }));
+    Ok(())
+}
+
+/// Teach the wallet a token the catalog does not ship.
+///
+/// Every rule here is the reducer's: the symbol is trimmed and upper-cased,
+/// the contract is judged by the hosting chain's own validator, a duplicate is
+/// refused and the list comes back sorted. The composer held all four and this
+/// command held none of them.
+fn add(ctx: &Ctx, out: Out, args: AddArgs) -> CliResult<()> {
+    let chain_name = resolve_chain(&args.chain)?.chain_display_name().to_string();
+    let transition = ctx.apply(StateCommand::AddCustomToken {
+        chain_name: chain_name.clone(),
+        symbol: args.symbol.clone(),
+        name: args.name,
+        contract: args.contract.clone(),
+        coingecko_id: args.coingecko_id,
+        decimals: args.decimals,
+    })?;
+    reject_on_event(&transition)?;
+
     let stored = transition
         .state
         .token_preferences
         .iter()
-        .find(|entry| entry.token.symbol.eq_ignore_ascii_case(&token.symbol))
-        .cloned()
+        .find(|entry| entry.token.contract.eq_ignore_ascii_case(&args.contract))
         .ok_or_else(|| CliError::failure("core accepted the token but did not store it"))?;
-
     out.text(|| {
-        println!(
-            "  {} tracking {}",
-            out::ok_mark(),
-            stored.token.symbol.bold()
-        );
+        println!("  {} added {}", out::ok_mark(), stored.token.symbol.bold());
+        out::field("chain", &stored.token.chain);
+        out::field("contract", &stored.token.contract);
         out::field("decimals", &stored.token.decimals.to_string());
     });
     out.emit(serde_json::json!({
         "ok": true,
+        "chain": stored.token.chain,
         "symbol": stored.token.symbol,
+        "contract": stored.token.contract,
         "decimals": stored.token.decimals,
     }));
     Ok(())
 }
 
-fn untrack(ctx: &Ctx, out: Out, args: UntrackArgs) -> CliResult<()> {
-    let entries = ctx.state()?.token_preferences;
-    let remaining: Vec<_> = entries
-        .iter()
-        .filter(|entry| !entry.token.symbol.eq_ignore_ascii_case(&args.symbol))
-        .cloned()
-        .collect();
-    if remaining.len() == entries.len() {
-        return Err(CliError::rejected(format!(
-            "{} is not tracked",
-            args.symbol
-        )));
-    }
-
-    ctx.apply(StateCommand::SetTokenPreferences { entries: remaining })?;
-    out.text(|| println!("  {} untracked {}", out::ok_mark(), args.symbol.bold()));
-    out.emit(serde_json::json!({ "ok": true, "untracked": args.symbol }));
+fn remove(ctx: &Ctx, out: Out, args: RemoveArgs) -> CliResult<()> {
+    let chain_name = resolve_chain(&args.chain)?.chain_display_name().to_string();
+    let transition = ctx.apply(StateCommand::RemoveCustomToken {
+        chain_name: chain_name.clone(),
+        contract: args.contract.clone(),
+    })?;
+    reject_on_event(&transition)?;
+    out.text(|| println!("  {} removed {}", out::ok_mark(), args.contract.bold()));
+    out.emit(serde_json::json!({
+        "ok": true, "chain": chain_name, "contract": args.contract
+    }));
     Ok(())
 }
 
-/// What the chain says this wallet holds, rather than what the catalog says it
-/// might.
+fn decimals(ctx: &Ctx, out: Out, args: DecimalsArgs) -> CliResult<()> {
+    let chain_name = resolve_chain(&args.chain)?.chain_display_name().to_string();
+    let transition = ctx.apply(StateCommand::SetCustomTokenDecimals {
+        chain_name: chain_name.clone(),
+        contract: args.contract.clone(),
+        decimals: args.decimals,
+    })?;
+    reject_on_event(&transition)?;
+    out.text(|| {
+        println!(
+            "  {} {} now shows {} places",
+            out::ok_mark(),
+            args.contract.bold(),
+            args.decimals
+        );
+    });
+    out.emit(serde_json::json!({
+        "ok": true, "chain": chain_name, "contract": args.contract, "decimals": args.decimals
+    }));
+    Ok(())
+}
+
+fn reset(ctx: &Ctx, out: Out, args: ResetArgs) -> CliResult<()> {
+    if !args.yes {
+        return Err(CliError::usage("pass --yes: this drops every custom token"));
+    }
+    let transition = ctx.apply(StateCommand::ResetTokenPreferences)?;
+    let count = transition.state.token_preferences.len();
+    out.text(|| println!("  {} back to the catalog's {count} tokens", out::ok_mark()));
+    out.emit(serde_json::json!({ "ok": true, "tokens": count }));
+    Ok(())
+}
+
+/// A refusal core reported, as a command failure the shell can see.
 ///
-/// A token the catalog does not vouch for prints its **contract address** and
-/// no name. That is deliberate: a discovered token's on-chain symbol is chosen
-/// by whoever deployed it, so an airdrop can call itself USDC, and the address
-/// is the one string it cannot forge.
+/// The reducer answers with an event rather than an error because a front end
+/// shows it beside the field; a command line has one exit code, so the reason
+/// becomes the message.
+fn reject_on_event(transition: &StateTransition) -> CliResult<()> {
+    match transition
+        .events
+        .iter()
+        .find(|event| event.kind == "tokenPreferenceRejected")
+        .and_then(|event| event.subject_id.as_deref())
+    {
+        None => Ok(()),
+        Some(reason) => Err(CliError::rejected(match reason {
+            "unknownChain" => "that chain does not host tokens".to_string(),
+            "emptySymbol" => "a token needs a symbol".to_string(),
+            "symbolTooLong" => "that symbol is too long to be one".to_string(),
+            "emptyName" => "a token needs a name".to_string(),
+            "emptyContract" => "a token needs a contract".to_string(),
+            "invalidContract" => "that is not a valid contract for the chain".to_string(),
+            "duplicateToken" => "that chain already knows this contract".to_string(),
+            "tooManyDecimals" => "more decimal places than any token has".to_string(),
+            "builtInToken" => {
+                "the catalog ships that token, so it is not yours to edit".to_string()
+            }
+            "unknownToken" => "no token with that contract on that chain".to_string(),
+            other => format!("core refused this: {other}"),
+        })),
+    }
+}
+
 fn discover(ctx: &Ctx, out: Out, args: DiscoverArgs) -> CliResult<()> {
     let wallet = ctx.find_wallet(&args.wallet)?;
     let chain = resolve_chain(&wallet.chain_name)?;

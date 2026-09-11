@@ -298,26 +298,9 @@ impl NearClient {
             decimals: meta.decimals,
         })
     }
-
-    pub async fn fetch_ft_balance(
-        &self,
-        contract: &str,
-        holder: &str,
-    ) -> Result<NearFtBalance, String> {
-        let raw = self.fetch_ft_balance_of(contract, holder).await?;
-        let meta = self.fetch_ft_metadata(contract).await?;
-        Ok(NearFtBalance {
-            contract: contract.to_string(),
-            holder: holder.to_string(),
-            balance_raw: raw.to_string(),
-            balance_display: format_ft_amount(raw, meta.decimals),
-            decimals: meta.decimals,
-            symbol: meta.symbol,
-        })
-    }
 }
 
-// ── Formatting helpers (used by balance + FT balance)
+// ── Formatting helpers
 
 fn format_near(yocto: &str) -> String {
     // yocto is a 25-digit decimal; divide by 10^24 for NEAR.
@@ -329,28 +312,6 @@ fn format_near(yocto: &str) -> String {
         return whole.to_string();
     }
     let frac_str = format!("{:024}", frac);
-    let trimmed = frac_str.trim_end_matches('0');
-    let capped = if trimmed.len() > 6 {
-        &trimmed[..6]
-    } else {
-        trimmed
-    };
-    format!("{}.{}", whole, capped)
-}
-
-/// Format a fungible-token raw amount using its `decimals`, up to 6
-/// fractional digits of display precision.
-fn format_ft_amount(raw: u128, decimals: u8) -> String {
-    if decimals == 0 {
-        return raw.to_string();
-    }
-    let divisor: u128 = 10u128.pow(decimals as u32);
-    let whole = raw / divisor;
-    let frac = raw % divisor;
-    if frac == 0 {
-        return whole.to_string();
-    }
-    let frac_str = format!("{:0>width$}", frac, width = decimals as usize);
     let trimmed = frac_str.trim_end_matches('0');
     let capped = if trimmed.len() > 6 {
         &trimmed[..6]

@@ -11,7 +11,7 @@
 //!   sequences_hash (32) ||
 //!   sig_op_counts_hash (32) ||
 //!   <input being signed: prevout (txid+index) || script_pubkey_version (u16 LE)
-//!     || varint(script_pubkey_len) || script_pubkey || amount (u64 LE)
+//!     || script_pubkey_len (u64 LE) || script_pubkey || amount (u64 LE)
 //!     || sequence (u64 LE) || sig_op_count (u8)> ||
 //!   outputs_hash (32) ||
 //!   lock_time (u64 LE) ||
@@ -25,7 +25,6 @@
 
 use serde::Serialize;
 
-use super::wire::{decode_txid_le, varint};
 use crate::derivation::chains::kaspa::{decode_kaspa_address, encode_kaspa_schnorr};
 use crate::fetch::chains::kaspa::{KasSendResult, KaspaClient};
 
@@ -45,6 +44,15 @@ impl KaspaClient {
         min_fee_sompi: Option<u64>,
         dust_threshold_sompi: Option<u64>,
     ) -> Result<KasSendResult, String> {
+        let secret =
+            secp256k1::SecretKey::from_slice(private_key_bytes).map_err(|e| e.to_string())?;
+        let public = secp256k1::PublicKey::from_secret_key(&secp256k1::Secp256k1::new(), &secret);
+        if encode_kaspa_schnorr(&public.x_only_public_key().0.serialize()) != from_address {
+            return Err("kaspa sender does not match signing key".into());
+        }
+        if amount_sompi == 0 {
+            return Err("kaspa amount must be positive".into());
+        }
         let utxos = self.fetch_utxos(from_address).await?;
         if utxos.is_empty() {
             return Err("kaspa: no spendable UTXOs at source address".to_string());
@@ -61,9 +69,14 @@ impl KaspaClient {
             ));
         }
 
-        let total_in: u64 = utxos.iter().map(|u| u.value_sompi).sum();
+        let total_in = utxos.iter().try_fold(0u64, |sum, u| {
+            sum.checked_add(u.value_sompi)
+                .ok_or("kaspa input sum overflow")
+        })?;
         let actual_fee = fee_sompi.max(min_fee_sompi.unwrap_or(1_000));
-        let needed = amount_sompi.saturating_add(actual_fee);
+        let needed = amount_sompi
+            .checked_add(actual_fee)
+            .ok_or("kaspa amount plus fee overflow")?;
         if total_in < needed {
             return Err(format!(
                 "kaspa: insufficient balance: have {total_in} sompi, need {needed} sompi"
@@ -86,8 +99,6 @@ impl KaspaClient {
                 script_version: 0,
             });
         }
-
-        let _ = encode_kaspa_schnorr; // address re-encode helper kept available
 
         // Per-input snapshot needed for both sighash and the final wire body.
         let inputs: Vec<KaspaInputBuild> = utxos
@@ -170,6 +181,13 @@ fn kaspa_payment_script(version: u8, payload: &[u8]) -> Result<Vec<u8>, String> 
     }
 }
 
+fn decode_transaction_id(txid: &str) -> Result<[u8; 32], String> {
+    hex::decode(txid)
+        .map_err(|e| format!("kaspa txid: {e}"))?
+        .try_into()
+        .map_err(|_| "kaspa txid must contain 32 bytes".into())
+}
+
 // ── Sighash construction ──────────────────────────────────────────────────
 
 fn blake2b256_keyed(key: &[u8], data: &[u8]) -> [u8; 32] {
@@ -185,7 +203,7 @@ fn blake2b256_keyed(key: &[u8], data: &[u8]) -> [u8; 32] {
 fn prev_outputs_hash(inputs: &[KaspaInputBuild]) -> Result<[u8; 32], String> {
     let mut buf = Vec::with_capacity(36 * inputs.len());
     for input in inputs {
-        buf.extend_from_slice(&decode_txid_le(&input.txid)?);
+        buf.extend_from_slice(&decode_transaction_id(&input.txid)?);
         buf.extend_from_slice(&input.vout.to_le_bytes());
     }
     Ok(blake2b256_keyed(KASPA_SIGHASH_KEY, &buf))
@@ -209,25 +227,25 @@ fn outputs_hash(outputs: &[KaspaOutputBuild]) -> [u8; 32] {
     for output in outputs {
         buf.extend_from_slice(&output.amount.to_le_bytes());
         buf.extend_from_slice(&output.script_version.to_le_bytes());
-        buf.extend_from_slice(&varint(output.script_pubkey.len()));
+        buf.extend_from_slice(&(output.script_pubkey.len() as u64).to_le_bytes());
         buf.extend_from_slice(&output.script_pubkey);
     }
     blake2b256_keyed(KASPA_SIGHASH_KEY, &buf)
 }
 
 fn payload_hash() -> [u8; 32] {
-    blake2b256_keyed(KASPA_SIGHASH_KEY, &[])
+    [0; 32]
 }
 
-fn sighash_for_input(
+fn sighash_for_input_with_lock_time(
     inputs: &[KaspaInputBuild],
-    _outputs: &[KaspaOutputBuild],
     signing_index: usize,
     prevouts: &[u8; 32],
     sequences: &[u8; 32],
     sigopcounts: &[u8; 32],
     outputs_h: &[u8; 32],
     payload_h: &[u8; 32],
+    lock_time: u64,
 ) -> Result<[u8; 32], String> {
     let input = &inputs[signing_index];
     let mut buf = Vec::new();
@@ -236,16 +254,16 @@ fn sighash_for_input(
     buf.extend_from_slice(sequences);
     buf.extend_from_slice(sigopcounts);
     // The input being signed, serialized inline.
-    buf.extend_from_slice(&decode_txid_le(&input.txid)?);
+    buf.extend_from_slice(&decode_transaction_id(&input.txid)?);
     buf.extend_from_slice(&input.vout.to_le_bytes());
     buf.extend_from_slice(&input.script_version.to_le_bytes());
-    buf.extend_from_slice(&varint(input.script_pubkey.len()));
+    buf.extend_from_slice(&(input.script_pubkey.len() as u64).to_le_bytes());
     buf.extend_from_slice(&input.script_pubkey);
     buf.extend_from_slice(&input.amount.to_le_bytes());
     buf.extend_from_slice(&input.sequence.to_le_bytes());
     buf.push(input.sig_op_count);
     buf.extend_from_slice(outputs_h);
-    buf.extend_from_slice(&0u64.to_le_bytes()); // lock_time
+    buf.extend_from_slice(&lock_time.to_le_bytes());
     buf.extend_from_slice(&[0u8; 20]); // subnetwork_id (zero for native)
     buf.extend_from_slice(&0u64.to_le_bytes()); // gas
     buf.extend_from_slice(payload_h);
@@ -273,15 +291,15 @@ fn sign_kaspa_inputs(
 
     let mut signed = Vec::with_capacity(inputs.len());
     for i in 0..inputs.len() {
-        let sighash = sighash_for_input(
+        let sighash = sighash_for_input_with_lock_time(
             inputs,
-            outputs,
             i,
             &prevouts,
             &sequences,
             &sigopcounts,
             &outputs_h,
             &payload_h,
+            0,
         )?;
         let msg = Message::from_digest_slice(&sighash).map_err(|e| e.to_string())?;
         let sig = secp.sign_schnorr(&msg, &keypair);
@@ -401,4 +419,54 @@ fn build_broadcast_body(
         },
     };
     serde_json::to_value(body).expect("static schema")
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// rusty-kaspa consensus/core/src/hashing/sighash.rs, native-all-0.
+    /// This is an independent expected digest, not a round trip through our encoder.
+    #[test]
+    fn kaspa_official_native_sighash_vector() {
+        let id = "880eb9819a31821d9d2399e2f35e2433b72637e393d71ecc9b8d0250f49153c3";
+        let a = hex::decode("208325613d2eeaf7176ac6c670b13c0043156c427438ed72d74b7800862ad884e8ac")
+            .unwrap();
+        let b = hex::decode("20fcef4c106cf11135bbd70f02a726a92162d2fb8b22f0469126f800862ad884e8ac")
+            .unwrap();
+        let inputs = (0..3)
+            .map(|i| KaspaInputBuild {
+                txid: id.into(),
+                vout: i,
+                sequence: i as u64,
+                sig_op_count: 0,
+                amount: (i as u64 + 1) * 100,
+                script_pubkey: if i == 0 { a.clone() } else { b.clone() },
+                script_version: 0,
+            })
+            .collect::<Vec<_>>();
+        let outputs = [b, a]
+            .into_iter()
+            .map(|script_pubkey| KaspaOutputBuild {
+                amount: 300,
+                script_pubkey,
+                script_version: 0,
+            })
+            .collect::<Vec<_>>();
+        let digest = sighash_for_input_with_lock_time(
+            &inputs,
+            0,
+            &prev_outputs_hash(&inputs).unwrap(),
+            &sequences_hash(&inputs),
+            &sig_op_counts_hash(&inputs),
+            &outputs_hash(&outputs),
+            &payload_hash(),
+            1615462089000,
+        )
+        .unwrap();
+        assert_eq!(
+            hex::encode(digest),
+            "03b7ac6927b2b67100734c3cc313ff8c2e8b3ce3e746d46dd660b706a916b1f5"
+        );
+    }
 }

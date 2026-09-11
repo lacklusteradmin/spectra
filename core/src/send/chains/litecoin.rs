@@ -1,7 +1,7 @@
 //! Litecoin send: P2PKH transactions and MWEB peg-in transactions, broadcast
 //! via Blockbook `/api/v2/sendtx`.
 
-use super::wire::{decode_txid_le, dsha256, varint};
+use super::bitcoin_wire::{decode_txid_le, dsha256, varint};
 use crate::derivation::chains::litecoin::{
     decode_ltc_address, is_mweb_address, ltc_p2pkh_script, parse_mweb_address,
 };

@@ -14,14 +14,7 @@ use crate::http::{with_fallback, HttpClient, RetryProfile};
 pub(crate) const SEL_BALANCE_OF: [u8; 4] = [0x70, 0xa0, 0x82, 0x31]; // balanceOf(address)
 pub(crate) const SEL_DECIMALS: [u8; 4] = [0x31, 0x3c, 0xe5, 0x67]; // decimals()
 pub(crate) const SEL_SYMBOL: [u8; 4] = [0x95, 0xd8, 0x9b, 0x41]; // symbol()
-#[allow(dead_code)]
-pub(crate) const SEL_NAME: [u8; 4] = [0x06, 0xfd, 0xde, 0x03]; // name()
-#[allow(dead_code)]
-pub(crate) const SEL_TOTAL_SUPPLY: [u8; 4] = [0x18, 0x16, 0x0d, 0xdd]; // totalSupply()
-pub(crate) const SEL_ALLOWANCE: [u8; 4] = [0xdd, 0x62, 0xed, 0x3e]; // allowance(address,address)
 pub(crate) const SEL_TRANSFER: [u8; 4] = [0xa9, 0x05, 0x9c, 0xbb]; // transfer(address,uint256)
-pub(crate) const SEL_TRANSFER_FROM: [u8; 4] = [0x23, 0xb8, 0x72, 0xdd]; // transferFrom(address,address,uint256)
-pub(crate) const SEL_APPROVE: [u8; 4] = [0x09, 0x5e, 0xa7, 0xb3]; // approve(address,uint256)
 
 // ── Internal helpers shared by derive/fetch/send
 
@@ -338,12 +331,6 @@ impl EvmClient {
         })
         .await
     }
-
-    /// Bump a base fee by +10% (the minimum EIP-1559 replacement rule).
-    /// Used by the UI to compute "speed up" / "cancel" suggested fees.
-    pub fn bumped_for_replacement(&self, base: u128) -> u128 {
-        base.saturating_mul(110) / 100
-    }
 }
 
 // EVM fetch paths: native balance, nonce, fee estimate, gas estimate, code,
@@ -432,28 +419,6 @@ impl EvmClient {
             .call("eth_feeHistory", json!([4, "latest", [25, 75]]))
             .await?;
         parse_fee_history(&result)
-    }
-
-    /// Fetch the pending nonce and fee estimate in a single JSON-RPC 2.0 batch.
-    /// Saves one round-trip vs calling `fetch_nonce` + `fetch_fee_estimate`
-    /// separately — use this when preparing a send preview.
-    pub async fn fetch_nonce_and_fee(
-        &self,
-        address: &str,
-    ) -> Result<(u64, EvmFeeEstimate), String> {
-        let results = self
-            .call_batch(vec![
-                ("eth_getTransactionCount", json!([address, "latest"])),
-                ("eth_feeHistory", json!([4, "latest", [25, 75]])),
-            ])
-            .await?;
-        let nonce = parse_hex_u64(
-            results[0]
-                .as_str()
-                .ok_or("eth_getTransactionCount: expected string")?,
-        )?;
-        let fee = parse_fee_history(&results[1])?;
-        Ok((nonce, fee))
     }
 
     pub async fn estimate_gas(
@@ -641,32 +606,6 @@ impl EvmClient {
         Ok(Erc20Metadata { symbol, decimals })
     }
 
-    /// Fetch the ERC-20 allowance granted by `owner` to `spender`.
-    pub async fn fetch_erc20_allowance(
-        &self,
-        contract: &str,
-        owner: &str,
-        spender: &str,
-    ) -> Result<u128, String> {
-        let data = encode_erc20_allowance(owner, spender)?;
-        let result = self
-            .call(
-                "eth_call",
-                json!([
-                    {
-                        "to": contract,
-                        "data": format!("0x{}", hex::encode(&data)),
-                    },
-                    "latest"
-                ]),
-            )
-            .await?;
-        let hex_str = result
-            .as_str()
-            .ok_or("eth_call allowance: expected string")?;
-        parse_hex_u128(hex_str)
-    }
-
     // ── History (Etherscan V2 multi-chain endpoint)
 
     pub async fn fetch_history(
@@ -850,28 +789,6 @@ pub fn encode_erc20_balance_of(holder: &str) -> Result<Vec<u8>, String> {
     out.extend_from_slice(&SEL_BALANCE_OF);
     out.extend_from_slice(&[0u8; 12]); // left-pad 20-byte address to 32 bytes
     out.extend_from_slice(&holder_bytes);
-    Ok(out)
-}
-
-/// Encode an `allowance(address owner, address spender)` call.
-pub fn encode_erc20_allowance(owner: &str, spender: &str) -> Result<Vec<u8>, String> {
-    let owner_bytes = decode_hex(owner)?;
-    let spender_bytes = decode_hex(spender)?;
-    if owner_bytes.len() != 20 {
-        return Err(format!("invalid EVM owner length: {}", owner_bytes.len()));
-    }
-    if spender_bytes.len() != 20 {
-        return Err(format!(
-            "invalid EVM spender length: {}",
-            spender_bytes.len()
-        ));
-    }
-    let mut out = Vec::with_capacity(4 + 32 + 32);
-    out.extend_from_slice(&SEL_ALLOWANCE);
-    out.extend_from_slice(&[0u8; 12]);
-    out.extend_from_slice(&owner_bytes);
-    out.extend_from_slice(&[0u8; 12]);
-    out.extend_from_slice(&spender_bytes);
     Ok(out)
 }
 
