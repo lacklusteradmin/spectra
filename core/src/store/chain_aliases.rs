@@ -24,37 +24,13 @@ fn chain_id_by_chain_name() -> &'static HashMap<String, String> {
 /// so they matched nothing and fell through to the chain-name comparison that
 /// would have answered anyway. Both tables covered forty of seventy-eight
 /// chains; the registry covers all of them.
-pub(super) fn canonical_chain_component_inner(chain_name: &str, symbol: &str) -> String {
+pub(super) fn canonical_chain_component_inner(chain_name: &str, _symbol: &str) -> String {
     // HashMap<String, String> requires an owned key for lookup; allocate once.
     let normalized_chain_lower = chain_name.trim().to_lowercase();
     if let Some(id) = chain_id_by_chain_name().get(&normalized_chain_lower) {
         return id.clone();
     }
-    let trimmed_symbol = symbol.trim();
-    if !trimmed_symbol.is_empty() {
-        if let Some(id) = chain_id_by_native_symbol().get(&trimmed_symbol.to_uppercase()) {
-            return id.clone();
-        }
-    }
     normalized_chain_lower.replace(' ', "-")
-}
-
-/// Native gas symbol → the id of the first chain in catalog order that pays
-/// its fees in it. The EVM family shares ETH, and Ethereum comes first.
-fn chain_id_by_native_symbol() -> &'static HashMap<String, String> {
-    use std::sync::OnceLock;
-    static LOOKUP: OnceLock<HashMap<String, String>> = OnceLock::new();
-    LOOKUP.get_or_init(|| {
-        let mut out = HashMap::new();
-        for c in crate::chains::catalog() {
-            if c.gas_token_symbol.is_empty() {
-                continue;
-            }
-            out.entry(c.gas_token_symbol.trim().to_uppercase())
-                .or_insert_with(|| c.id.clone());
-        }
-        out
-    })
 }
 
 #[uniffi::export]
@@ -98,6 +74,11 @@ pub fn core_icon_identifier(
 /// is not its chain's own ticker.
 #[uniffi::export]
 pub fn core_icon_asset_name(identifier: String) -> String {
+    if let Some(id) = identifier.strip_prefix("network:") {
+        return crate::chains::chain_by_str_id(id)
+            .map(|n| n.asset_name.clone())
+            .unwrap_or_default();
+    }
     let symbol = icon_identifier_symbol(&identifier).trim().to_uppercase();
     asset_name_by_symbol()
         .get(&symbol)
@@ -129,9 +110,6 @@ fn asset_name_by_symbol() -> &'static HashMap<String, String> {
     static LOOKUP: OnceLock<HashMap<String, String>> = OnceLock::new();
     LOOKUP.get_or_init(|| {
         let mut out: HashMap<String, String> = HashMap::new();
-        for chain in crate::chains::catalog() {
-            claim_artwork(&mut out, &chain.symbol, &chain.asset_name);
-        }
         for token in crate::tokens::catalog() {
             claim_artwork(&mut out, &token.symbol, &token.asset_name);
         }
@@ -181,8 +159,8 @@ mod artwork_follows_the_coin_not_the_chain {
     /// A chain's own ticker draws the chain. Base's gas is ETH, so the two
     /// live side by side and neither may answer for the other.
     #[test]
-    fn a_chain_ticker_draws_the_chain() {
-        assert_eq!(core_icon_asset_name("native:base:base".to_string()), "base");
+    fn network_names_are_not_token_symbols() {
+        assert_eq!(core_icon_asset_name("native:base:base".to_string()), "");
         assert_eq!(
             core_icon_asset_name("native:ethereum:eth".to_string()),
             "ethereum"
@@ -204,7 +182,7 @@ mod artwork_follows_the_coin_not_the_chain {
         );
         assert_eq!(
             core_icon_asset_name("native:x-layer:x layer".to_string()),
-            "okb"
+            ""
         );
     }
 
@@ -300,11 +278,11 @@ mod canonical_component_covers_the_catalog {
     /// A symbol with no chain name still finds a chain, and where several
     /// chains share a symbol it is the first in catalog order.
     #[test]
-    fn a_bare_native_symbol_resolves() {
-        assert_eq!(canonical_chain_component_inner("", "BTC"), "bitcoin");
-        assert_eq!(canonical_chain_component_inner("", "ETH"), "ethereum");
-        assert_eq!(canonical_chain_component_inner("", "ZEC"), "zcash");
-        assert_eq!(canonical_chain_component_inner("", "TAO"), "bittensor");
+    fn a_bare_symbol_never_selects_a_network() {
+        assert_eq!(canonical_chain_component_inner("", "BTC"), "");
+        assert_eq!(canonical_chain_component_inner("", "ETH"), "");
+        assert_eq!(canonical_chain_component_inner("", "ZEC"), "");
+        assert_eq!(canonical_chain_component_inner("", "TAO"), "");
     }
 
     /// Something the registry has never heard of is slugged, not dropped.

@@ -5,19 +5,19 @@ use std::sync::OnceLock;
 const APP_ENDPOINT_DIRECTORY_TOML: &str = include_str!("../data/endpoints.toml");
 
 const ENDPOINT_ROLE_READ: u32 = 1 << 0;
-const ENDPOINT_ROLE_BALANCE: u32 = 1 << 1;
+pub(crate) const ENDPOINT_ROLE_BALANCE: u32 = 1 << 1;
 const ENDPOINT_ROLE_HISTORY: u32 = 1 << 2;
 const ENDPOINT_ROLE_UTXO: u32 = 1 << 3;
 const ENDPOINT_ROLE_FEE: u32 = 1 << 4;
 const ENDPOINT_ROLE_BROADCAST: u32 = 1 << 5;
 const ENDPOINT_ROLE_VERIFICATION: u32 = 1 << 6;
-const ENDPOINT_ROLE_RPC: u32 = 1 << 7;
+pub(crate) const ENDPOINT_ROLE_RPC: u32 = 1 << 7;
 const ENDPOINT_ROLE_EXPLORER: u32 = 1 << 8;
 /// An address-indexed API. Its own bit because an indexer is not a `/tx/`
 /// link, and the two were sharing one — which is how `explorer_supplemental`
 /// briefly picked up every Esplora endpoint Bitcoin has.
 const ENDPOINT_ROLE_INDEXER: u32 = 1 << 9;
-const ENDPOINT_ROLE_BACKEND: u32 = 1 << 9;
+pub(crate) const ENDPOINT_ROLE_BACKEND: u32 = 1 << 9;
 
 /// Endpoint-table slot for a given chain. Mirrors `crate::registry::EndpointSlot`
 /// so the Swift side can ask Rust for the right `chain_id + offset` instead of

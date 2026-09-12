@@ -24,6 +24,9 @@ use std::collections::HashMap;
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, uniffi::Record)]
 #[serde(rename_all = "camelCase")]
 pub struct CoreTransactionRecord {
+    /// Known for local sends; provider history may omit protocol identity.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub deployment_id: Option<String>,
     pub id: String,
     pub wallet_id: Option<String>,
     pub kind: String,
@@ -132,6 +135,7 @@ fn status_to_raw(status: Option<CoreTransactionStatus>, kind: CoreTransactionKin
 impl From<CorePersistedTransactionRecord> for CoreTransactionRecord {
     fn from(stored: CorePersistedTransactionRecord) -> Self {
         Self {
+            deployment_id: stored.deployment_id,
             id: stored.id,
             wallet_id: stored.wallet_id,
             kind: kind_to_raw(stored.kind).to_string(),
@@ -170,6 +174,7 @@ impl From<CorePersistedTransactionRecord> for CoreTransactionRecord {
 impl From<CoreTransactionRecord> for CorePersistedTransactionRecord {
     fn from(wire: CoreTransactionRecord) -> Self {
         Self {
+            deployment_id: wire.deployment_id,
             id: wire.id,
             wallet_id: wire.wallet_id,
             kind: kind_from_raw(&wire.kind),
@@ -313,6 +318,9 @@ fn matches_identity(
     chain_name: &str,
     include_symbol_in_identity: bool,
 ) -> bool {
+    if existing.deployment_id != incoming.deployment_id {
+        return false;
+    }
     if existing.chain_name != chain_name
         || existing.transaction_hash != incoming.transaction_hash
         || existing.kind != incoming.kind
@@ -364,6 +372,7 @@ fn merge_standard_utxo(
     incoming: CoreTransactionRecord,
 ) -> CoreTransactionRecord {
     CoreTransactionRecord {
+        deployment_id: existing.deployment_id.or(incoming.deployment_id),
         id: existing.id,
         wallet_id: incoming.wallet_id.or(existing.wallet_id),
         kind: incoming.kind,
@@ -413,6 +422,7 @@ fn merge_dogecoin(
     incoming: CoreTransactionRecord,
 ) -> CoreTransactionRecord {
     CoreTransactionRecord {
+        deployment_id: existing.deployment_id.or(incoming.deployment_id),
         id: existing.id,
         wallet_id: incoming.wallet_id.or(existing.wallet_id),
         kind: incoming.kind,
@@ -471,6 +481,7 @@ fn merge_account_based(
     preserve_created_at_sentinel_unix: Option<f64>,
 ) -> CoreTransactionRecord {
     CoreTransactionRecord {
+        deployment_id: existing.deployment_id.or(incoming.deployment_id),
         id: existing.id,
         wallet_id: incoming.wallet_id.or(existing.wallet_id),
         kind: incoming.kind,
@@ -525,6 +536,7 @@ fn merge_evm(
     preserve_created_at_sentinel_unix: Option<f64>,
 ) -> CoreTransactionRecord {
     CoreTransactionRecord {
+        deployment_id: existing.deployment_id.or(incoming.deployment_id),
         id: existing.id,
         wallet_id: incoming.wallet_id.or(existing.wallet_id),
         kind: incoming.kind,
@@ -607,6 +619,7 @@ mod tests {
 
     fn sample_transaction(chain_name: &str) -> CoreTransactionRecord {
         CoreTransactionRecord {
+            deployment_id: None,
             id: "tx-1".to_string(),
             wallet_id: Some("wallet-1".to_string()),
             kind: "receive".to_string(),
@@ -804,6 +817,7 @@ mod wire_persisted_conversion {
     /// passing on defaults.
     fn populated_wire() -> CoreTransactionRecord {
         CoreTransactionRecord {
+            deployment_id: None,
             id: "TX-1".to_string(),
             wallet_id: Some("w1".to_string()),
             kind: "send".to_string(),

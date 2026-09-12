@@ -76,9 +76,9 @@ Navigation, editing and rendering caches remain platform view state.
 | 0 — Prove ownership on display currency | Done | `open_state` and state commands bind, update and persist core-owned state |
 | 1 — Move domain collections | Done | Wallets and address book are core-owned; history has its own queryable store; Swift renders projections |
 | 2 — Replace planners with intents | Done | No `core_plan_*` exports remain; some pure helpers only needed renaming |
-| 3 — Thin the shell | In progress | Remove remaining Swift orchestration and duplicate domain calculations |
+| 3 — Thin the shell | Done | History, reset, receive, quotes and transport are owned operations; Swift renders and forwards intents. See [closure audit](docs/STAGE3-C2-CLOSURE.md) |
 | C1 — Reshape core | Done | Shared chain catalog, service modules split by responsibility, duplicate modules and derivation primitives consolidated |
-| C2 — Reduce the FFI surface | In progress | Prefer operations over caller-assembled advice; retain distinct typed protocol inputs |
+| C2 — Reduce the FFI surface | Done | 162 callable exports, zero unreachable candidates; retained typed boundaries documented in the closure audit |
 | 4 — Android | Not started beyond skeleton | Implement against the shared core once the boundary is ready |
 
 Other completed ownership slices: settings, token preferences, price alerts,
@@ -88,7 +88,7 @@ and receive reservation now run in core through the shared secret layout.
 The asset wiki and its follow-up cleanup are also complete. The unused
 `LoadingTaskRegistry` and its Xcode references have been removed.
 
-### Remaining direction
+### Boundary rules for future work
 
 - Find Swift code that reads core-owned data only to send it back for a decision;
   make the owning service compute the answer instead.
@@ -132,6 +132,40 @@ loaded parallel run, which is the run the gate does. Assert the rule, not the
 race — mock the reads the test is not about so they succeed. Exercise changed FFI/UI paths in the app too: CLI tests
 cannot detect a missing Tokio runtime on a Swift async export, and offline
 assembly cannot verify a broadcast.
+
+## Network and token identity rewrite (2026-09-12)
+
+Approved scope: retain `chains.toml` and `tokens.toml`; separate concrete
+networks from token identities and their network-specific deployments. The catalog contains
+46 mainnets, 32 testnets, 131 token identities and 268 deployments (78 native).
+
+- [x] Put mainnets and testnets in equal explicit network records; remove
+  testnet inheritance and ambiguous network ticker. Keep stable network ids.
+- [x] Give tokens independent ids and typed native/protocol deployments;
+  register native tokens in `tokens.toml`, move precision and market identity
+  out of network data, and explicitly separate testnet token identities.
+- [x] Validate catalog references, unique deployment identities and protocol
+  identifiers. Never infer identity from ticker or price-provider identity.
+- [x] Bind stored holdings, balance refresh, sends, fees and transaction
+  context to concrete network/deployment identity; core derives metadata.
+- [x] Use explicit token identity for portfolio grouping and quotes; keep
+  wrapped/bridged tokens distinct and testnet tokens unpriced.
+- [x] Update CLI and Swift projections, network/token selection and icons;
+  regenerate UniFFI 0.31 / Swift 6 bindings, remove superseded inference.
+- [x] Add offline CLI coverage for equal network listing, native ETH/BTC,
+  native versus ERC-20 MNT, ARB versus ETH fees, duplicate symbols, cross-network
+  balances and unpriced testnets. Record purposeful behaviour changes below.
+- [x] Pass `cargo test --workspace`, `./scripts/cli-acceptance.sh` and the
+  required iPhone 17 Pro `xcodebuild test` suite.
+
+Verification completed 2026-09-12: workspace Rust tests **843 passed**; full
+CLI acceptance **347 passed**, including offline identity and fixture suites;
+iPhone 17 Pro tests **84 passed**, including
+`testEthereumTestNetworksExposeExpectedContextsAndEndpoints`.
+`git diff --check` and `scripts/unreachable-exports.sh` also pass.
+
+No compatibility shims or Git state changes. Network grouping is display
+metadata, not transaction identity; protocol/endpoint facts stay core-owned.
 
 ## Known open items
 
@@ -260,7 +294,157 @@ simulator suite (83 tests, zero failures). FFI remains 178 callables with zero
 unreachable candidates. Manual recheck from the previous remaining list is
 complete; history-refresh dispatch and broader Stage 3/C2 audit remain open.
 
+## Stage 3 / C2 closure
+
+Implementation is recorded in [the closure audit](docs/STAGE3-C2-CLOSURE.md):
+owned history/reset/receive/quote/transport operations replace the remaining
+caller-assembled workflows. The retained boundary is documented by responsibility.
+All final gates passed on 2026-09-12: Rust workspace (841 tests), CLI acceptance
+(346 checks plus both fixture batches), and iPhone 17 Pro (84 tests). The
+required Ethereum testnet endpoint test and new async operation binding test
+both pass. Earlier progress snapshots below describe their time of writing;
+this closure supersedes their remaining-work notes.
+
 ## Behaviour changed on purpose
+
+### History isolation, atomic status commits and indexed lookups
+
+- **Network isolation:** EVM refresh previously grouped equal addresses across
+  networks and fetched only the first wallet's network. Groups now include the
+  exact network, so mainnet and testnet histories cannot share a response.
+  Check `cargo test -p spectra_core evm_groups_share_only_the_same_network_and_address`.
+- **Status commits:** polling previously read a snapshot, changed it and upserted
+  it later, overwriting concurrent metadata or recreating deleted records. The
+  read, decision and write now share an immediate SQLite transaction; absent
+  records stay absent, and late pending/stale-failure results cannot undo a
+  committed confirmation. Tracker decisions publish only after the commit.
+  Check `cargo test -p spectra_core status_commit_regressions`.
+- **Indexed time and IDs:** status updates previously copied Swift reference
+  seconds directly into the Unix index and bypassed ID normalization. Every
+  status write now derives its indexed row through `history_record_from_payload`.
+  Sorting stays stable after confirmation and case-insensitive wallet reads
+  still find the row. Check the status-commit regressions above.
+- **Wallet deletion:** querying a wallet's history normalized its ID while deleting
+  it did not. Deletion now uses the same lowercase identity and the returned
+  removed IDs correspond to deleted rows. Check `cargo test -p spectra_core
+  store::tests::transaction_store`.
+- **Lookup cost:** checking even one history ID scanned the entire ID table.
+  A reused primary-key query now reads only the distinct requested IDs, without
+  a SQL parameter-count limit. Check `cargo test -p spectra_core
+  history_id_lookup_uses_the_primary_key_and_normalizes_duplicates`.
+- **Cooldown scope:** refreshing wallet A previously suppressed fresh requests
+  for wallet B on the same chain. Success clocks now use `(wallet ID, network ID)`;
+  a partial/failed batch stays retryable and an explicit zero interval still
+  forces a refresh. Check `cargo test -p spectra_core cooldown` and
+  `spectra history WALLET --save`; `scripts/cli-acceptance.sh` includes the
+  offline regression checks and the loopback CLI history fixture.
+
+
+Verified: `cargo test --workspace` (849 core tests),
+`./scripts/cli-acceptance.sh` (347 checks plus the offline fixture/regression
+batches), and the required iPhone 17 Pro simulator suite (84 tests, zero
+failures), including `testEthereumTestNetworksExposeExpectedContextsAndEndpoints`.
+
+
+### Explicit networks and token deployments
+
+- **Catalog:** mainnets previously lived in `[[chains]]` while only testnets
+  appeared in `[[networks]]`, inheriting a mainnet row and then clearing fields.
+  Every concrete network now has an explicit `[[networks]]` record, environment,
+  family and native deployment reference. Existing stable network ids remain.
+  Native symbols, precision and market ids are derived projections of
+  `tokens.toml`, not network-owned metadata. The ambiguous chain ticker is
+  removed, including chain wiki UI. Check `spectra --json chains --testnets`
+  and `spectra --json network list`.
+- **Tokens:** `tokens.toml` retains its name and now contains native BTC/ETH/MNT
+  alongside protocol tokens. Independent token ids join explicit deployments;
+  `Native` and `Protocol` are distinct types. Catalog loading rejects duplicate
+  ids, invalid protocol identifiers, wrong-network references and priced
+  testnets. Precision remains per deployment. `spectra token catalog --chain
+  mantle` and the Ethereum catalog show distinct native/ERC-20 MNT deployments
+  associated with the same explicitly registered token identity.
+- **Stored identity:** wallets now persist a required `networkId`, including
+  mainnet, rather than an optional network mode that silently follows settings.
+  Explicit network-selection intents update that selection for wallets in the
+  family. Existing balances retain their own concrete network identity rather
+  than being relabelled on a switch. Holdings are identified by the validated
+  (network, protocol, identifier) tuple; the deterministic deployment key is
+  derived from that tuple, never from a ticker. Core refuses missing/invalid
+  token identifiers before storing and derives known token metadata from the
+  catalog. No old storage-format adapter is provided.
+- **Send:** holding selection, routes, fee arithmetic, previews and token
+  metadata lookup no longer treat a ticker equal to the gas symbol as native.
+  Missing contracts are refused instead of filled in by symbol. An ERC-20
+  called ETH builds ERC-20 calldata; ARB uses the ETH gas balance. A send with
+  a network different from the wallet's selected network in that family is
+  refused rather than retargeted. CLI holding arguments are deployment ids;
+  `send affordability --deployment ID` explicitly selects a protocol token.
+  Token tracking accepts deployment ids and refuses ambiguous symbols.
+- **Portfolio and prices:** grouping uses explicit catalog token identity,
+  with separate deployment breakdowns. Equal tickers or market-provider ids
+  do not merge unrelated contracts. Quote-cache keys are deployment ids;
+  testnet assets are distinct and unpriced. Changing the selected network does
+  not change the identity or valuation of an existing mainnet holding/alert.
+  Dashboard pins now store token IDs and core owns the candidate list, so
+  pinning ETH cannot pin a different contract with the same symbol. Check
+  `spectra --json portfolio --stored --pin-token ethereum` and
+  `spectra --json portfolio --pin-options`.
+  Token settings and asset Wiki lookup also use token IDs; displayed decimals
+  and Swift quote lookup use deployment IDs. The UI unpriced set names concrete
+  testnets, never mainnets whose wallet selection happens to be a testnet.
+  Network artwork uses `network:ID`; token artwork and colors remain separate.
+- **Transactions:** local sends persist their deployment id. Provider records
+  without enough identity information remain explicitly unknown; they are not
+  merged into a known deployment merely by ticker. Native speed-up eligibility
+  requires the recorded native deployment, not a matching symbol. This may
+  leave an unidentified provider row separate from a locally recorded send;
+  preserving identity is preferable to merging unrelated asset movements.
+- **CLI proof:** `scripts/cli-network-token-identity.py`, included in acceptance,
+  exercises mainnet/testnet parity, native BTC/ETH, both MNT forms, ETH fees for
+  ARB, an ERC-20 called ETH, cross-network grouping, unpriced testnets, invalid
+  identifiers and reopening explicit wallet network identity. Rust regression
+  coverage lives in `store::tests::network_token_identity`.
+
+
+### Close history, reset, receive, quote and transport ownership
+
+- **History:** Swift previously selected protocol drivers and wrote page/clock
+  results. Core now selects stored wallet scope, dispatches through registry facts
+  and advances cursors only after successful merges. Empty explicit scope means
+  no work; a failed provider does not consume a successful-refresh cooldown.
+  Diagnostics now refresh and save the same history, rather than running a second
+  fetch only for diagnostics. Check `spectra history WALLET --save` and the
+  `cli-bitcoin-history.py` fixture through CLI acceptance.
+- **Reset:** Swift previously deleted secrets, cleared collections and scheduled
+  detached persistence separately. `spectra settings reset --scope SCOPE --yes`
+  now awaits core cleanup; invalid scopes fail before mutation, and a secret-store
+  error retains the wallet for retry. History/cache reset includes quotes and
+  refresh clocks. It is retryable, not atomic across Keychain and all stores.
+  Absence of an iOS install marker no longer silently deletes wallet secrets;
+  explicit reset owns that action. Check reset/refusal/reopen in CLI acceptance
+  and `owned_reset_refuses_invalid_scope_and_waits_for_secret_cleanup`.
+- **Receive:** the app previously read a mnemonic and assumed an empty passphrase
+  and `m/84'/0'/0'`, or live-scanned Bitcoin balances for an unused address. Core
+  now uses the stored network/path/passphrase and a durable reserved index.
+  Opening receive is an offline reservation; advancing used reservations belongs
+  to explicit rescan, whose activity check includes spent/pending history.
+  Xpub-only wallets still derive receiving addresses. Unsupported custom range
+  algorithms use the valid stored address rather than deriving under different
+  rules. Display reads do not register addresses; startup no longer invents
+  keypool indices for account chains. Check `spectra pool receive WALLET`,
+  `spectra pool discover-chain CHAIN`, and the owned receive/passphrase tests.
+- **Quotes:** Swift previously passed core's prices back for alert evaluation and
+  dashboard grouping. Both now read stored quotes directly; concurrent evaluation
+  emits a trigger once and persists it. Enabled native alerts also request quotes
+  without requiring a portfolio holding. Check `spectra alert check --stored`,
+  `spectra portfolio --stored`, and the concurrent alert/reopen regression.
+- **Transport:** Swift previously rebuilt catalog slots and asynchronously pushed
+  its settings copy into the service. Core now builds those slots and reads its
+  committed settings on requests. CLI and iOS share this configuration; explicit
+  CLI/test overrides continue to use only the supplied endpoints. Setting edits
+  take effect after their core write commits. Check `spectra settings set
+  rpc-endpoint.Ethereum URL` and the owned transport reset/reopen/override test.
+
 
 ### A shared HTTP client does not pool connections under test
 

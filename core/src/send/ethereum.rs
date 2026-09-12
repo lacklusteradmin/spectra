@@ -240,7 +240,7 @@ pub fn prepare_evm_send_assembly(
     }
     let destination = normalize_evm_address(&input.resolved_destination);
 
-    if is_native_evm_asset(&input.chain_name, &input.symbol) {
+    if input.token.is_none() && is_native_evm_asset(&input.chain_name, &input.symbol) {
         // Every EVM chain in the catalog is 18, but read it rather than
         // restate it — a chain that is not would be silently off by orders of
         // magnitude on the funds path.

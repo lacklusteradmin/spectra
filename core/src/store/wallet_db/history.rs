@@ -93,18 +93,19 @@ pub fn history_existing_ids(db_path: &str, ids: &[String]) -> Result<Vec<String>
         return Ok(Vec::new());
     }
     with_conn(db_path, |conn| {
+        use rusqlite::OptionalExtension;
         let mut stmt = conn
-            .prepare("SELECT id FROM history_records")
+            .prepare_cached("SELECT id FROM history_records WHERE id = ?1")
             .map_err(|e| format!("history_existing_ids prepare: {e}"))?;
-        let rows = stmt
-            .query_map([], |row| row.get::<_, String>(0))
-            .map_err(|e| format!("history_existing_ids query: {e}"))?;
-        let wanted: std::collections::HashSet<String> =
+        let wanted: std::collections::BTreeSet<String> =
             ids.iter().map(|id| id.to_lowercase()).collect();
         let mut found = Vec::new();
-        for row in rows {
-            let id = row.map_err(|e| format!("history_existing_ids row: {e}"))?;
-            if wanted.contains(&id) {
+        for id in wanted {
+            if let Some(id) = stmt
+                .query_row(params![id], |row| row.get::<_, String>(0))
+                .optional()
+                .map_err(|e| format!("history_existing_ids query: {e}"))?
+            {
                 found.push(id);
             }
         }
@@ -350,7 +351,7 @@ pub fn history_delete_for_wallet(db_path: &str, wallet_id: &str) -> Result<(), S
     with_conn(db_path, |conn| {
         conn.execute(
             "DELETE FROM history_records WHERE wallet_id = ?1",
-            params![wallet_id],
+            params![wallet_id.to_lowercase()],
         )
         .map_err(|e| format!("history_delete_for_wallet: {e}"))?;
         Ok(())

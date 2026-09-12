@@ -28,6 +28,16 @@ pub struct PriceArgs {
 
 #[derive(Args)]
 pub struct PortfolioArgs {
+    /// Pin exact token IDs (repeat for multiple tokens).
+    #[arg(long)]
+    pin_token: Vec<String>,
+    /// List core-owned pin candidates without network.
+    #[arg(long)]
+    pin_options: bool,
+
+    /// Render core dashboard groups using stored balances and quotes, without network.
+    #[arg(long)]
+    stored: bool,
     /// Skip wallets whose balance lookup fails instead of stopping.
     #[arg(long, default_value_t = true)]
     skip_unreachable: bool,
@@ -63,7 +73,7 @@ pub fn price(ctx: &Ctx, out: Out, args: PriceArgs) -> CliResult<()> {
             .ok_or_else(|| CliError::usage("specify a chain, --stored or --refresh"))?,
     )?;
     let usd = spot_price_usd(ctx, &[chain])?
-        .get(chain.coin_symbol())
+        .get(&chain.entry().native_deployment_id)
         .copied()
         .unwrap_or(0.0);
     let (rate, code) = fiat_conversion(ctx)?;
@@ -83,14 +93,33 @@ pub fn price(ctx: &Ctx, out: Out, args: PriceArgs) -> CliResult<()> {
         "ok": true,
         "chain": chain.chain_display_name(),
         "symbol": chain.coin_symbol(),
-        "priceUsd": usd,
-        "price": usd * rate,
+        "priceUsd": (!chain.is_testnet()).then_some(usd),
+        "price": (!chain.is_testnet()).then_some(usd * rate),
         "currency": code,
     }));
     Ok(())
 }
 
 pub fn portfolio(ctx: &Ctx, out: Out, args: PortfolioArgs) -> CliResult<()> {
+    if !args.pin_token.is_empty() {
+        ctx.rt.block_on(ctx.service()?.apply_state_command(
+            spectra_core::state::StateCommand::SetPinnedDashboardAssets {
+                token_ids: args.pin_token,
+            },
+        ))?;
+    }
+    if args.pin_options {
+        let options = ctx.rt.block_on(ctx.service()?.dashboard_pin_options())?;
+        out.text(|| println!("{options:?}"));
+        out.emit(serde_json::json!({"options":options}));
+        return Ok(());
+    }
+    if args.stored {
+        let groups = ctx.rt.block_on(ctx.service()?.dashboard_asset_groups())?;
+        out.text(|| println!("{groups:?}"));
+        out.emit(serde_json::json!({"groups":groups}));
+        return Ok(());
+    }
     let wallets = ctx.state()?.wallets;
     if wallets.is_empty() {
         out.text(|| println!("  {}", out::hint("no wallets")));
@@ -100,7 +129,7 @@ pub fn portfolio(ctx: &Ctx, out: Out, args: PortfolioArgs) -> CliResult<()> {
 
     let chains: Vec<Chain> = wallets
         .iter()
-        .map(|wallet| wallet.chain_name.clone())
+        .map(|wallet| wallet.network_id.clone())
         .collect::<BTreeSet<_>>()
         .iter()
         .filter_map(|name| resolve_chain(name).ok())
@@ -112,7 +141,7 @@ pub fn portfolio(ctx: &Ctx, out: Out, args: PortfolioArgs) -> CliResult<()> {
     let mut total_usd = 0.0;
     out.text(|| println!());
     for wallet in &wallets {
-        let Ok(chain) = resolve_chain(&wallet.chain_name) else {
+        let Ok(chain) = resolve_chain(&wallet.network_id) else {
             continue;
         };
         let amount = match native_balance(ctx, chain, wallet_address(wallet)) {
@@ -131,7 +160,10 @@ pub fn portfolio(ctx: &Ctx, out: Out, args: PortfolioArgs) -> CliResult<()> {
             Err(error) => return Err(error),
         };
 
-        let price_usd = prices.get(chain.coin_symbol()).copied().unwrap_or(0.0);
+        let price_usd = prices
+            .get(&chain.entry().native_deployment_id)
+            .copied()
+            .unwrap_or(0.0);
         let value_usd = amount * price_usd;
         total_usd += value_usd;
 
@@ -150,8 +182,8 @@ pub fn portfolio(ctx: &Ctx, out: Out, args: PortfolioArgs) -> CliResult<()> {
             "chain": chain.chain_display_name(),
             "symbol": chain.coin_symbol(),
             "amount": amount,
-            "priceUsd": price_usd,
-            "valueUsd": value_usd,
+            "priceUsd": (!chain.is_testnet()).then_some(price_usd),
+            "valueUsd": (!chain.is_testnet()).then_some(value_usd),
         }));
     }
 
@@ -273,7 +305,7 @@ fn rates(ctx: &Ctx, out: Out, refresh: bool) -> CliResult<()> {
 
 // ─── Shared lookups ─────────────────────────────────────────────────────────
 
-/// Spot USD prices keyed by coin symbol, in one CoinGecko call.
+/// Native prices keyed by deployment, never shared with a same-symbol testnet.
 pub(super) fn spot_price_usd(
     ctx: &Ctx,
     chains: &[Chain],
@@ -283,8 +315,9 @@ pub(super) fn spot_price_usd(
     }
     let requests: Vec<PriceRequestCoin> = chains
         .iter()
+        .filter(|chain| !chain.is_testnet())
         .map(|chain| PriceRequestCoin {
-            holding_key: chain.coin_symbol().to_string(),
+            holding_key: chain.entry().native_deployment_id.clone(),
             coin_gecko_id: chain.coin_gecko_id().to_string(),
         })
         .collect();

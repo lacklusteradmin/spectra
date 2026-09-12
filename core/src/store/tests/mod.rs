@@ -76,7 +76,7 @@ mod pinned_dashboard_assets;
 
 /// Adding a field to `AppSettings` must not make an already-written state file
 /// unreadable. This is not hypothetical: adding
-/// `pinned_dashboard_asset_symbols` without `#[serde(default)]` made every
+/// `pinned_dashboard_token_ids` without `#[serde(default)]` made every
 /// launch on an existing database fail with "missing field".
 mod settings_forward_compatibility;
 
@@ -132,3 +132,5 @@ mod resident_state_round_trip;
 
 /// One unreadable collection must not take the wallet list with it.
 mod a_bad_row_is_not_a_bad_database;
+
+mod network_token_identity;

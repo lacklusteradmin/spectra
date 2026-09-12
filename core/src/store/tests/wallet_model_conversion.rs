@@ -51,13 +51,13 @@ fn keeps_the_path_the_wallet_uses_and_drops_the_rest() {
 #[test]
 fn keeps_only_the_network_that_applies_to_this_wallets_family() {
     let summary = bitcoin_wallet().to_summary(false);
-    assert_eq!(summary.network_mode.as_deref(), Some("bitcoin-testnet-4"));
+    assert_eq!(summary.network_id.as_str(), "bitcoin-testnet-4");
 
     // A wallet on a chain with no network variants reports none, rather
     // than the meaningless mainnet default the record always holds.
     let mut solana = bitcoin_wallet();
     solana.selected_chain = "Solana".to_string();
-    assert_eq!(solana.to_summary(false).network_mode, None);
+    assert_eq!(solana.to_summary(false).network_id, "solana");
 }
 
 #[test]

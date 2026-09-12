@@ -23,7 +23,7 @@ impl WalletService {
         let holding = wallet
             .holdings
             .iter()
-            .find(|h| format!("{}|{}", h.chain_name, h.symbol) == holding_key)
+            .find(|h| h.deployment_key() == holding_key)
             .ok_or_else(|| SpectraBridgeError::InvalidInput {
                 message: "holding does not exist".into(),
             })?;
@@ -32,7 +32,7 @@ impl WalletService {
         if !family.is_evm() {
             return Err("EVM preview requires an EVM asset".into());
         }
-        let chain = super::send_execution::send_chain_for(&state, &wallet_id, family);
+        let chain = super::send_execution::send_chain_for(&state, &wallet_id, family)?;
         let from = wallet
             .address_on(chain)
             .or_else(|| wallet.address_on(family))
@@ -443,7 +443,10 @@ impl WalletService {
 
         // The native asset, by the catalog's gas token rather than the string
         // "TRX" — the same fact the rest of the send path routes on.
-        if symbol == Chain::Tron.coin_symbol() || contract_address.is_empty() {
+        if contract_address.is_empty() {
+            if symbol != Chain::Tron.coin_symbol() {
+                return Err("token identifier required".into());
+            }
             // TRX is the fee asset as well as the amount, so the fee comes out
             // of what is spendable. Only this branch needs the TRX balance;
             // reading it for a token send too was a wasted call whose result

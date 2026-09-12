@@ -1,8 +1,164 @@
 //! UTXO discovery and receive-address derivation.
 use super::*;
 
+#[derive(Debug, Clone, serde::Serialize, uniffi::Record)]
+pub struct WalletAddressDiscovery {
+    pub wallet_id: String,
+    pub addresses: Vec<String>,
+    pub error: Option<String>,
+}
+
 #[uniffi::export(async_runtime = "tokio")]
 impl WalletService {
+    /// Select the wallets and their networks from core state for a chain rescan.
+    pub async fn discover_chain_addresses(
+        &self,
+        chain_id: String,
+    ) -> Result<Vec<WalletAddressDiscovery>, SpectraBridgeError> {
+        let chain = chain_for_id(&chain_id)?;
+        let wallets: Vec<_> = {
+            let state = self.wallet_state.read().await;
+            state
+                .wallets
+                .iter()
+                .filter_map(|w| {
+                    let network = w.network_chain(&state.settings)?;
+                    (network.supports_deep_utxo_discovery()
+                        && if chain.is_testnet() {
+                            network == chain
+                        } else {
+                            network.mainnet_counterpart() == chain
+                        })
+                    .then(|| (w.id.clone(), network))
+                })
+                .collect()
+        };
+        let mut results = Vec::new();
+        for (wallet_id, network) in wallets {
+            let result = self
+                .discover_utxo_addresses(wallet_id.clone(), network.str_id().into())
+                .await;
+            results.push(match result {
+                Ok(addresses) => WalletAddressDiscovery {
+                    wallet_id,
+                    addresses,
+                    error: None,
+                },
+                Err(error) => WalletAddressDiscovery {
+                    wallet_id,
+                    addresses: Vec::new(),
+                    error: Some(error.to_string()),
+                },
+            });
+        }
+        Ok(results)
+    }
+
+    /// Select and optionally reserve a receive address from stored wallet identity.
+    pub async fn receive_address(
+        &self,
+        wallet_id: String,
+        chain_id: String,
+        reserve: bool,
+    ) -> Result<Option<String>, SpectraBridgeError> {
+        let requested = chain_for_id(&chain_id)?;
+        let (wallet_id, network, stored, xpub) = {
+            let state = self.wallet_state.read().await;
+            let wallet = state
+                .wallets
+                .iter()
+                .find(|w| w.id.eq_ignore_ascii_case(&wallet_id))
+                .ok_or_else(|| SpectraBridgeError::InvalidInput {
+                    message: "Wallet not found".into(),
+                })?;
+            let own = wallet.network_chain(&state.settings);
+            let network = if requested.is_testnet() {
+                requested
+            } else {
+                own.filter(|c| c.mainnet_counterpart() == requested.mainnet_counterpart())
+                    .unwrap_or_else(|| state.settings.network_chain(requested))
+            };
+            (
+                wallet.id.clone(),
+                network,
+                wallet.address_on(network).map(str::to_string),
+                wallet.xpub.clone(),
+            )
+        };
+        // Extended public keys are sufficient for watch-only Bitcoin receiving.
+        if network.mainnet_counterpart() == Chain::Bitcoin {
+            if let Some(xpub) = xpub.filter(|value| !value.trim().is_empty()) {
+                use crate::derivation::xpub_walker::{derive_children_on_network, HdNetwork};
+                let name = network.chain_display_name().to_string();
+                let hd_network = if network.is_testnet() {
+                    HdNetwork::Testnet
+                } else {
+                    HdNetwork::Mainnet
+                };
+                // Validate before reserving any index.
+                derive_children_on_network(&xpub, 0, 0, 1, hd_network, None)?;
+                let index = if reserve {
+                    self.reserve_receive_index(wallet_id.clone(), name.clone(), 1)
+                        .await?
+                } else {
+                    self.keypool_state(wallet_id.clone(), name.clone())
+                        .await?
+                        .reserved_receive_index
+                        .unwrap_or(0)
+                };
+                let index = u32::try_from(index)
+                    .map_err(|_| SpectraBridgeError::from("receive index is out of range"))?;
+                let address = derive_children_on_network(&xpub, 0, index, 1, hd_network, None)?
+                    .pop()
+                    .ok_or_else(|| SpectraBridgeError::from("missing derived address"))?
+                    .address;
+                if reserve {
+                    self.register_owned_address(
+                        wallet_id,
+                        name,
+                        address.clone(),
+                        None,
+                        Some("external".into()),
+                        Some(i64::from(index)),
+                    )
+                    .await?;
+                }
+                return Ok(Some(address));
+            }
+        }
+        if network.supports_deep_utxo_discovery() {
+            if let Some(address) = self
+                .utxo_receive_address(wallet_id.clone(), network.str_id().into(), reserve)
+                .await?
+            {
+                return Ok(Some(address));
+            }
+        }
+        let Some(address) = stored.filter(|a| !a.trim().is_empty()) else {
+            return Ok(None);
+        };
+        if !crate::send::flow::is_valid_send_address(
+            network.chain_display_name().into(),
+            address.clone(),
+        ) {
+            return Err(SpectraBridgeError::InvalidInput {
+                message: "stored receive address is invalid for its network".into(),
+            });
+        }
+        if reserve {
+            self.register_owned_address(
+                wallet_id,
+                network.chain_display_name().into(),
+                address.clone(),
+                None,
+                None,
+                None,
+            )
+            .await?;
+        }
+        Ok(Some(address))
+    }
+
     /// Every address this wallet is already known to hold on `chain_id`.
     ///
     /// No network and no derivation: the wallet's own address, what the owned
@@ -40,8 +196,7 @@ impl WalletService {
         }
         for record in self
             .transactions_for_wallet(wallet_id)
-            .await
-            .unwrap_or_default()
+            .await?
             .iter()
             .filter(|r| r.chain_name == chain_name)
         {
@@ -131,59 +286,6 @@ impl WalletService {
         Ok(ordered)
     }
 
-    /// The reserved receive address for a wallet on a deep-UTXO chain.
-    ///
-    /// `reserve` takes the next index when none is held; without it this only
-    /// reads. Deep-UTXO chains never hand out index 0 as a receive address,
-    /// which is why the reservation floor is 1.
-    ///
-    /// `None` for a chain without the walk, or a wallet whose phrase this path
-    /// cannot read — the caller falls back to the wallet's stored address, as
-    /// the Swift original did.
-    pub async fn utxo_receive_address(
-        &self,
-        wallet_id: String,
-        chain_id: String,
-        reserve: bool,
-    ) -> Result<Option<String>, SpectraBridgeError> {
-        let chain = chain_for_id(&chain_id)?;
-        if !chain.supports_deep_utxo_discovery() {
-            return Ok(None);
-        }
-        let chain_name = chain.chain_display_name().to_string();
-
-        let index = if reserve {
-            Some(
-                self.reserve_receive_index(wallet_id.clone(), chain_name.clone(), 1)
-                    .await?,
-            )
-        } else {
-            self.keypool_state(wallet_id.clone(), chain_name.clone())
-                .await?
-                .reserved_receive_index
-        };
-        let Some(index) = index.filter(|i| *i >= 0) else {
-            return Ok(None);
-        };
-
-        let Some(context) = self.utxo_derivation_context(&wallet_id, chain).await else {
-            return Ok(None);
-        };
-        let Some((address, path)) = context.derive(index as u32) else {
-            return Ok(None);
-        };
-        self.register_owned_address(
-            wallet_id,
-            chain_name,
-            address.clone(),
-            Some(path),
-            Some("external".to_string()),
-            Some(index),
-        )
-        .await?;
-        Ok(Some(address))
-    }
-
     /// Move each wallet's reservation past a receive address that has been used.
     ///
     /// Network reads happen outside the writer. Advance only the exact index
@@ -196,50 +298,47 @@ impl WalletService {
         if !chain.supports_deep_utxo_discovery() {
             return Ok(());
         }
-        let chain_name = chain.chain_display_name().to_string();
-
-        let wallet_ids: Vec<String> = {
+        let wallets: Vec<_> = {
             let state = self.wallet_state.read().await;
             state
                 .wallets
                 .iter()
-                .filter(|w| w.chain_name == chain_name)
-                .map(|w| w.id.clone())
+                .filter_map(|w| {
+                    let network = w.network_chain(&state.settings)?;
+                    (if chain.is_testnet() {
+                        network == chain
+                    } else {
+                        network.mainnet_counterpart() == chain
+                    })
+                    .then(|| (w.id.clone(), network))
+                })
                 .collect()
         };
-
-        for wallet_id in wallet_ids {
-            let Some(context) = self.utxo_derivation_context(&wallet_id, chain).await else {
+        for (wallet_id, network) in wallets {
+            let name = network.chain_display_name().to_string();
+            let Some(used) = self
+                .keypool_state(wallet_id.clone(), name.clone())
+                .await?
+                .reserved_receive_index
+            else {
                 continue;
             };
-            let used = self
-                .reserve_receive_index(wallet_id.clone(), chain_name.clone(), 1)
-                .await?;
-            let Some((address, _)) = context.derive(
-                u32::try_from(used)
-                    .map_err(|_| SpectraBridgeError::from("receive index is out of range"))?,
-            ) else {
-                continue;
-            };
-            if !self.utxo_address_has_activity(chain, &address).await? {
-                continue;
-            }
-            let Some(next) = self
-                .advance_receive_index_if_current(wallet_id.clone(), chain_name.clone(), used)
+            let Some(address) = self
+                .receive_address(wallet_id.clone(), network.str_id().into(), false)
                 .await?
             else {
                 continue;
             };
-            if let Some((next_address, path)) = context.derive(next.max(0) as u32) {
-                self.register_owned_address(
-                    wallet_id,
-                    chain_name.clone(),
-                    next_address,
-                    Some(path),
-                    Some("external".to_string()),
-                    Some(next),
-                )
-                .await?;
+            if !self.utxo_address_has_activity(network, &address).await? {
+                continue;
+            }
+            if self
+                .advance_receive_index_if_current(wallet_id.clone(), name, used)
+                .await?
+                .is_some()
+            {
+                self.receive_address(wallet_id, network.str_id().into(), true)
+                    .await?;
             }
         }
         Ok(())
@@ -303,10 +402,11 @@ impl WalletService {
         wallet_id: &str,
         chain: crate::registry::Chain,
     ) -> Option<UtxoDerivation> {
-        let wallet = {
+        let mut wallet = {
             let state = self.wallet_state.read().await;
             state.wallets.iter().find(|w| w.id == wallet_id).cloned()?
         };
+        let overrides = crate::store::wallet_domain::SensitiveOverrides::take_from(&mut wallet);
         let store = self.secrets().ok()?;
         let seed_phrase =
             crate::store::wallet_secrets::load_seed_phrase(&*store, wallet_id, None).ok()?;
@@ -318,18 +418,30 @@ impl WalletService {
         };
         let defaults = crate::app_core_derivation_paths_for_preset(account).ok()?;
         let imported = wallet.to_imported_wallet(&defaults);
-        let raw_path = imported
-            .seed_derivation_paths
-            .by_chain
-            .get(chain.mainnet_counterpart().str_id())
-            .cloned()
+        let raw_path = wallet
+            .addresses
+            .iter()
+            .find(|a| a.chain_name == chain.chain_display_name())
+            .and_then(|a| a.derivation_path.clone())
+            .or_else(|| {
+                imported
+                    .seed_derivation_paths
+                    .by_chain
+                    .get(chain.mainnet_counterpart().str_id())
+                    .cloned()
+            })
             .unwrap_or_default();
         let chain_name = chain.chain_display_name().to_string();
         let resolved =
             crate::app_core_resolve_derivation_path(chain_name.clone(), raw_path).ok()?;
 
         tokio::task::spawn_blocking(move || {
-            UtxoDerivation::new(chain, &seed_phrase, resolved.normalized_path)
+            UtxoDerivation::with_overrides(
+                chain,
+                &seed_phrase,
+                resolved.normalized_path,
+                &overrides.0,
+            )
         })
         .await
         .ok()?
@@ -346,11 +458,29 @@ pub(crate) struct UtxoDerivation {
 }
 
 impl UtxoDerivation {
+    #[cfg(test)]
     pub(super) fn new(
         chain: crate::registry::Chain,
         phrase: &str,
         base_path: String,
     ) -> Result<Self, String> {
+        Self::with_overrides(chain, phrase, base_path, &Default::default())
+    }
+
+    pub(super) fn with_overrides(
+        chain: crate::registry::Chain,
+        phrase: &str,
+        base_path: String,
+        overrides: &crate::store::wallet_domain::CoreWalletDerivationOverrides,
+    ) -> Result<Self, String> {
+        if overrides.curve.is_some()
+            || overrides.derivation_algorithm.is_some()
+            || overrides.address_algorithm.is_some()
+            || overrides.public_key_format.is_some()
+            || overrides.script_type.is_some()
+        {
+            return Err("custom address algorithms do not support range discovery".into());
+        }
         use crate::derivation::chains::bitcoin::{
             derive_bip39_seed, parse_bip32_path, ExtendedPrivateKey,
         };
@@ -363,8 +493,21 @@ impl UtxoDerivation {
         let mut indices = parse_bip32_path(&path)?;
         indices.pop().ok_or("missing address index")?;
         let secp = secp256k1::Secp256k1::new();
-        let seed = derive_bip39_seed(phrase, "", 0, None, None)?;
-        let master = ExtendedPrivateKey::master_from_seed(b"Bitcoin seed", seed.as_ref())?;
+        let seed = derive_bip39_seed(
+            phrase,
+            overrides.passphrase.as_deref().unwrap_or_default(),
+            overrides.iteration_count.unwrap_or(0),
+            overrides.mnemonic_wordlist.as_deref(),
+            overrides.salt_prefix.as_deref(),
+        )?;
+        let master = ExtendedPrivateKey::master_from_seed(
+            overrides
+                .hmac_key
+                .as_deref()
+                .unwrap_or("Bitcoin seed")
+                .as_bytes(),
+            seed.as_ref(),
+        )?;
         let branch = master.derive_path(&secp, &indices)?.to_neutered(&secp);
         Ok(Self {
             chain,
@@ -411,5 +554,62 @@ fn push_utxo_address(
     }
     if seen.insert(trimmed.to_lowercase()) {
         ordered.push(trimmed.to_string());
+    }
+}
+
+impl WalletService {
+    /// The reserved receive address for a wallet on a deep-UTXO chain.
+    ///
+    /// `reserve` takes the next index when none is held; without it this only
+    /// reads. Deep-UTXO chains never hand out index 0 as a receive address,
+    /// which is why the reservation floor is 1.
+    ///
+    /// `None` for a chain without the walk, or a wallet whose phrase this path
+    /// cannot read — the caller falls back to the wallet's stored address, as
+    /// the Swift original did.
+    pub async fn utxo_receive_address(
+        &self,
+        wallet_id: String,
+        chain_id: String,
+        reserve: bool,
+    ) -> Result<Option<String>, SpectraBridgeError> {
+        let chain = chain_for_id(&chain_id)?;
+        if !chain.supports_deep_utxo_discovery() {
+            return Ok(None);
+        }
+        let chain_name = chain.chain_display_name().to_string();
+
+        let Some(context) = self.utxo_derivation_context(&wallet_id, chain).await else {
+            return Ok(None);
+        };
+        let index = if reserve {
+            Some(
+                self.reserve_receive_index(wallet_id.clone(), chain_name.clone(), 1)
+                    .await?,
+            )
+        } else {
+            self.keypool_state(wallet_id.clone(), chain_name.clone())
+                .await?
+                .reserved_receive_index
+        };
+        let Some(index) = index.filter(|i| *i >= 0) else {
+            return Ok(None);
+        };
+
+        let Some((address, path)) = context.derive(index as u32) else {
+            return Ok(None);
+        };
+        if reserve {
+            self.register_owned_address(
+                wallet_id,
+                chain_name,
+                address.clone(),
+                Some(path),
+                Some("external".to_string()),
+                Some(index),
+            )
+            .await?;
+        }
+        Ok(Some(address))
     }
 }

@@ -11,6 +11,21 @@ use std::collections::HashMap;
 
 use crate::store::state::AppSettings;
 
+/// Identity of one independently refreshable wallet history.
+#[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
+pub(crate) struct HistoryRefreshKey {
+    pub wallet_id: String,
+    pub network_id: String,
+}
+impl HistoryRefreshKey {
+    pub(crate) fn new(wallet_id: &str, network_id: &str) -> Self {
+        Self {
+            wallet_id: wallet_id.to_lowercase(),
+            network_id: network_id.to_string(),
+        }
+    }
+}
+
 /// When each kind of refresh last ran, in unix seconds. Absent means never,
 /// which is why a fresh clock plans everything.
 #[derive(Debug, Clone, Default, PartialEq)]
@@ -18,7 +33,7 @@ pub struct RefreshClock {
     pub pending_transactions_at: Option<f64>,
     pub live_prices_at: Option<f64>,
     pub background_tick_at: Option<f64>,
-    pub history_at_by_chain_id: HashMap<String, f64>,
+    pub(crate) history_at_by_wallet: HashMap<HistoryRefreshKey, f64>,
 }
 
 /// Which clock a completed refresh stamps.
@@ -37,8 +52,8 @@ impl RefreshClock {
             RefreshKind::BackgroundTick => self.background_tick_at = Some(now_unix),
         }
     }
-    pub fn record_history(&mut self, chain_id: String, now_unix: f64) {
-        self.history_at_by_chain_id.insert(chain_id, now_unix);
+    pub(crate) fn record_history(&mut self, key: HistoryRefreshKey, now_unix: f64) {
+        self.history_at_by_wallet.insert(key, now_unix);
     }
     fn elapsed(last: Option<f64>, now_unix: f64, interval: f64) -> bool {
         match last {
@@ -197,25 +212,17 @@ pub fn maintenance_plan(
     }
 }
 
-/// Which of these chains are due a history refresh, in catalog order.
-pub fn history_plans(
+/// Wallet/network histories whose successful refresh is outside the interval.
+pub(crate) fn history_plans(
     clock: &RefreshClock,
-    chain_ids: Vec<String>,
+    keys: Vec<HistoryRefreshKey>,
     interval: f64,
     now_unix: f64,
-) -> Vec<String> {
-    let mut chain_ids = chain_ids;
-    // Ordered by display name, which the registry answers for every id.
-    chain_ids.sort_by_key(|id| {
-        crate::registry::Chain::from_str_id(id)
-            .map(|chain| chain.chain_display_name().to_string())
-            .unwrap_or_else(|| id.clone())
-    });
-    chain_ids
-        .into_iter()
-        .filter(|chain_id| {
+) -> Vec<HistoryRefreshKey> {
+    keys.into_iter()
+        .filter(|key| {
             RefreshClock::elapsed(
-                clock.history_at_by_chain_id.get(chain_id).copied(),
+                clock.history_at_by_wallet.get(key).copied(),
                 now_unix,
                 interval,
             )
@@ -311,18 +318,24 @@ mod tests {
     }
 
     #[test]
-    fn history_plans_skip_chains_refreshed_within_the_interval() {
+    fn history_cooldown_is_per_wallet_and_network() {
         let mut clock = RefreshClock::default();
-        clock.record_history("ethereum".into(), 900.0);
-        clock.record_history("solana".into(), 200.0);
-        let due = history_plans(
-            &clock,
-            vec!["solana".into(), "ethereum".into(), "bitcoin".into()],
-            300.0,
-            1_000.0,
+        let a = HistoryRefreshKey::new("A", "ethereum");
+        let b = HistoryRefreshKey::new("b", "ethereum");
+        let testnet = HistoryRefreshKey::new("a", "ethereum-sepolia");
+        clock.record_history(a.clone(), 900.0);
+        assert_eq!(
+            history_plans(
+                &clock,
+                vec![a.clone(), b.clone(), testnet.clone()],
+                300.0,
+                1000.0
+            ),
+            vec![b, testnet]
         );
-        // Bitcoin has never refreshed, Solana's is stale, Ethereum's is fresh.
-        // Ordered by display name, so Bitcoin comes before Solana.
-        assert_eq!(due, vec!["bitcoin".to_string(), "solana".to_string()]);
+        assert_eq!(
+            history_plans(&clock, vec![a.clone()], 300.0, 1200.0),
+            vec![a]
+        );
     }
 }

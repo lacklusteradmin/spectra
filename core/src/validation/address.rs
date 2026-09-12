@@ -31,7 +31,7 @@ pub fn validate_address(request: AddressValidationRequest) -> AddressValidationR
 
     // Each testnet has its own `kind` string (e.g. `"bitcoinTestnet"`,
     // `"litecoinTestnet"`), so the kind says which network to judge against.
-    // The request used to also carry a `network_mode` "for backwards
+    // The request used to also carry a `network_id` "for backwards
     // compatibility with stored wallets" — nothing read it, and prelaunch
     // there are no stored wallets to be compatible with.
     match request.kind.as_str() {

@@ -86,7 +86,11 @@ async fn seed_probe_holding(
         symbol: symbol.to_string(),
         coin_gecko_id: String::new(),
         chain_name: chain_name.clone(),
-        token_standard: String::new(),
+        token_standard: if token.is_none() {
+            "Native".into()
+        } else {
+            chain.entry().token_standard.clone()
+        },
         contract_address: token.map(|(contract, _)| contract.to_string()),
         amount: 1.0,
         price_usd: 0.0,
@@ -100,6 +104,12 @@ async fn seed_probe_holding(
             is_built_in: false,
             is_enabled: true,
             token: crate::tokens::TokenEntry {
+                id: "fixture:token".into(),
+                token_id: "fixture:token".into(),
+                kind: crate::tokens::TokenKind::Protocol {
+                    standard: "fixture".into(),
+                    identifier: "fixture".into(),
+                },
                 chain: hosting.chain_name().to_string(),
                 name: symbol.to_string(),
                 symbol: symbol.to_string(),
@@ -114,7 +124,7 @@ async fn seed_probe_holding(
             },
         });
     }
-    format!("{chain_name}|{symbol}")
+    state.wallets.last().unwrap().holdings[0].deployment_key()
 }
 
 #[cfg(test)]
@@ -137,7 +147,7 @@ mod a_destination_probe_refuses_before_it_guesses {
         let missing = service
             .send_destination_risk(
                 "no-such-wallet".into(),
-                "Bitcoin|BTC".into(),
+                "bitcoin:native".into(),
                 "bc1qar0srrr7xfkvy5l643lydnw9re59gtzzwf5mdq".into(),
             )
             .await;
@@ -488,10 +498,10 @@ mod a_preview_quotes_the_asset_it_moves {
             api_key: None,
         }])
         .unwrap();
-        let key = super::seed_probe_holding(&service, Chain::Ethereum, "ETH", None).await;
+        let key = super::seed_probe_holding(&service, Chain::EthereumSepolia, "ETH", None).await;
         {
             let mut state = service.wallet_state.write().await;
-            state.wallets[0].network_mode = Some("ethereum-sepolia".into());
+            state.wallets[0].network_id = "ethereum-sepolia".into();
             state.wallets[0].addresses[0].address = format!("0x{}", "11".repeat(20));
         }
         for amount in ["NaN", "-1", "0.0000000000000000001"] {

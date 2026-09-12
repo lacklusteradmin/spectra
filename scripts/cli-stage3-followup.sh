@@ -17,7 +17,7 @@ assert json.loads((p/'prices.json').read_text())['quotes']['prices']=={}
 assert json.loads((p/'maintenance.json').read_text())['chains']==[]
 assert 'Renamed' in (p/'list.json').read_text()
 PY
-if "$BIN" --data-dir "$TASK_DIR" --json send preview --wallet Renamed --holding 'Ethereum|ETH' --amount NaN > /dev/null 2>&1; then
+if "$BIN" --data-dir "$TASK_DIR" --json send preview --wallet Renamed --holding 'ethereum:native' --amount NaN > /dev/null 2>&1; then
     echo 'invalid amount preview accepted' >&2; exit 1
 fi
 cargo test -p spectra_core --lib store::tests::wallet_import
@@ -37,3 +37,10 @@ cargo test -p spectra_core --lib decred_and_kaspa_independent_mnemonic_vectors
 cargo test -p spectra_core --lib http_probe_regressions
 
 cargo test -p spectra_core --lib app_boundary_tests
+
+# History correctness and cost regressions, all offline.
+cargo test -p spectra_core --lib status_commit_regressions
+cargo test -p spectra_core --lib evm_groups_share_only_the_same_network_and_address
+cargo test -p spectra_core --lib cooldown
+cargo test -p spectra_core --lib history_id_lookup_uses_the_primary_key_and_normalizes_duplicates
+cargo test -p spectra_core --lib store::tests::transaction_store

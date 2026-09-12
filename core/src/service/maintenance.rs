@@ -38,34 +38,6 @@ impl WalletService {
         self.refresh_clock.write().await.record(kind, now);
     }
 
-    /// Which of these chains are due a history refresh.
-    ///
-    /// The caller used to pass its own copy of "when did each chain's history
-    /// last refresh"; core keeps it, so the answer cannot be stale by the age
-    /// of the caller's dictionary.
-    pub async fn history_refresh_plans(
-        &self,
-        chain_ids: Vec<String>,
-        interval_secs: f64,
-    ) -> Vec<String> {
-        let clock = self.refresh_clock.read().await;
-        crate::fetch::refresh::policy::history_plans(
-            &clock,
-            chain_ids,
-            interval_secs,
-            crate::store::wallet_db::now_secs() as f64,
-        )
-    }
-
-    /// Stamp one chain's history clock.
-    pub async fn record_history_refresh(&self, chain_id: String) {
-        let now = crate::store::wallet_db::now_secs() as f64;
-        self.refresh_clock
-            .write()
-            .await
-            .record_history(chain_id, now);
-    }
-
     /// Can this send be made, and how should it be routed?
     pub async fn send_submit_preflight(
         &self,
@@ -80,7 +52,7 @@ impl WalletService {
             wallet
                 .holdings
                 .iter()
-                .find(|h| format!("{}|{}", h.chain_name, h.symbol) == holding_key)
+                .find(|h| h.deployment_key() == holding_key)
         });
         let request = crate::send::SendSubmitPreflightRequest {
             wallet_found: wallet.is_some(),
@@ -115,7 +87,7 @@ impl WalletService {
             .find(|w| w.id == wallet_id)?
             .holdings
             .iter()
-            .find(|h| format!("{}|{}", h.chain_name, h.symbol) == holding_key)?;
+            .find(|h| h.deployment_key() == holding_key)?;
         Some(crate::send::route_send_asset(&routing_input(
             holding,
             &state.token_preferences,
@@ -139,7 +111,7 @@ impl WalletService {
         let Some(holding) = wallet
             .holdings
             .iter()
-            .find(|h| format!("{}|{}", h.chain_name, h.symbol) == holding_key)
+            .find(|h| h.deployment_key() == holding_key)
         else {
             return Vec::new();
         };
@@ -212,7 +184,7 @@ impl WalletService {
                 wallet
                     .holdings
                     .iter()
-                    .find(|h| format!("{}|{}", h.chain_name, h.symbol) == holding_key)
+                    .find(|h| h.deployment_key() == holding_key)
             })
         else {
             return Vec::new();
@@ -278,23 +250,13 @@ fn supported_evm_token(
     holding: &crate::store::wallet_domain::AssetHolding,
     preferences: &[crate::store::wallet_domain::CoreTokenPreferenceEntry],
 ) -> Option<(String, String)> {
-    use crate::store::wallet_domain::CoreTokenHostingChain;
     let chain = crate::registry::Chain::from_display_name(&holding.chain_name)?;
-    if !chain.is_evm() || chain.entry().gas_token_symbol == holding.symbol {
+    if !chain.is_evm() || holding.is_native() {
         return None;
     }
-    let hosting = CoreTokenHostingChain::from_chain_name(&holding.chain_name)?;
-    let contract = holding.contract_address.as_deref().map(str::to_lowercase);
     preferences
         .iter()
-        .find(|entry| {
-            entry.hosting_chain() == Some(hosting)
-                && entry.is_enabled
-                && entry.token.symbol == holding.symbol
-                && contract
-                    .as_deref()
-                    .is_none_or(|c| entry.token.contract.to_lowercase() == c)
-        })
+        .find(|entry| entry.is_enabled && entry.token.matches_holding(holding))
         .map(|entry| (entry.token.symbol.clone(), entry.token.contract.clone()))
 }
 
@@ -310,33 +272,13 @@ pub(super) fn send_token_identity(
     holding: &crate::store::wallet_domain::AssetHolding,
     preferences: &[crate::store::wallet_domain::CoreTokenPreferenceEntry],
 ) -> Option<crate::send::SendTokenIdentity> {
-    use crate::store::wallet_domain::CoreTokenHostingChain;
-    let chain = crate::registry::Chain::from_display_name(&holding.chain_name)?;
-    if holding.symbol == chain.coin_symbol() {
+    crate::registry::Chain::from_display_name(&holding.chain_name)?;
+    if holding.is_native() {
         return None;
     }
-    let hosting = CoreTokenHostingChain::from_chain_name(&holding.chain_name)?;
-    let contract = crate::tokens::normalize_token_identifier(
-        holding.contract_address.clone(),
-        holding.chain_name.clone(),
-    );
     preferences
         .iter()
-        .filter(|entry| entry.hosting_chain() == Some(hosting))
-        .filter(|entry| entry.token.symbol.eq_ignore_ascii_case(&holding.symbol))
-        .find(|entry| match &contract {
-            // A holding that names its contract must match on it; one that does
-            // not is identified by its symbol on that chain.
-            Some(contract) => {
-                crate::tokens::normalize_token_identifier(
-                    Some(entry.token.contract.clone()),
-                    holding.chain_name.clone(),
-                )
-                .as_deref()
-                    == Some(contract.as_str())
-            }
-            None => true,
-        })
+        .find(|entry| entry.is_enabled && entry.token.matches_holding(holding))
         .map(|entry| crate::send::SendTokenIdentity {
             contract: entry.token.contract.clone(),
             decimals: entry.token.decimals,
@@ -348,6 +290,7 @@ fn routing_input(
     preferences: &[crate::store::wallet_domain::CoreTokenPreferenceEntry],
 ) -> crate::send::SendAssetRoutingInput {
     crate::send::SendAssetRoutingInput {
+        is_native: holding.is_native(),
         chain_name: holding.chain_name.clone(),
         symbol: holding.symbol.clone(),
         is_evm_chain: crate::registry::Chain::from_display_name(&holding.chain_name)
@@ -371,26 +314,13 @@ fn supports_solana_send(
     if holding.chain_name != chain.chain_display_name() {
         return false;
     }
-    if holding.symbol == chain.coin_symbol() {
+    if holding.is_native() {
         return true;
     }
     if holding.token_standard != token_standard_for(CoreTokenHostingChain::Solana) {
         return false;
     }
-    let Some(mint) = holding
-        .contract_address
-        .clone()
-        .filter(|c| !c.is_empty())
-        .or_else(|| {
-            crate::tokens::catalog()
-                .iter()
-                .find(|token| {
-                    token.chain == chain.str_id()
-                        && token.symbol.eq_ignore_ascii_case(&holding.symbol)
-                })
-                .map(|token| token.contract.clone())
-        })
-    else {
+    let Some(mint) = holding.contract_address.clone().filter(|c| !c.is_empty()) else {
         return false;
     };
     preferences.iter().any(|entry| {
@@ -406,7 +336,7 @@ fn supports_near_token_send(
 ) -> bool {
     use crate::store::wallet_domain::CoreTokenHostingChain;
     let chain = crate::registry::Chain::Near;
-    if holding.chain_name != chain.chain_display_name() || holding.symbol == chain.coin_symbol() {
+    if holding.chain_name != chain.chain_display_name() || holding.is_native() {
         return false;
     }
     if holding.token_standard != token_standard_for(CoreTokenHostingChain::Near) {
@@ -458,6 +388,12 @@ mod preflight_tests {
             is_built_in: false,
             is_enabled: true,
             token: crate::tokens::TokenEntry {
+                id: "fixture:token".into(),
+                token_id: "fixture:token".into(),
+                kind: crate::tokens::TokenKind::Protocol {
+                    standard: "fixture".into(),
+                    identifier: "fixture".into(),
+                },
                 chain: chain.chain_name().to_string(),
                 name: "Token".into(),
                 symbol: "TOK".into(),
@@ -480,7 +416,7 @@ mod preflight_tests {
     /// assets core itself knows how to send.
     #[test]
     fn solana_sends_sol_always_and_a_token_only_when_known() {
-        let sol = holding("Solana", "SOL", "", None);
+        let sol = holding("Solana", "SOL", "Native", None);
         assert!(supports_solana_send(&sol, &[]));
 
         let standard = token_standard_for(CoreTokenHostingChain::Solana);
@@ -536,7 +472,10 @@ mod preflight_tests {
         }
 
         let untracked = service
-            .send_asset_routing("w1".into(), "Solana|USDC".into())
+            .send_asset_routing(
+                "w1".into(),
+                "solana:spl:EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v".into(),
+            )
             .await
             .expect("the holding is there");
         assert_eq!(
@@ -547,7 +486,10 @@ mod preflight_tests {
         service.wallet_state.write().await.token_preferences =
             vec![known(CoreTokenHostingChain::Solana, mint)];
         let known_now = service
-            .send_asset_routing("w1".into(), "Solana|USDC".into())
+            .send_asset_routing(
+                "w1".into(),
+                "solana:spl:EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v".into(),
+            )
             .await
             .expect("the holding is there");
         assert_eq!(known_now.submit_kind.as_deref(), Some("solana"));
@@ -564,7 +506,7 @@ mod preflight_tests {
         let err = service
             .send_submit_preflight(
                 "nope".into(),
-                "Bitcoin|BTC".into(),
+                "bitcoin:native".into(),
                 "bc1qexample".into(),
                 "1".into(),
             )
@@ -579,13 +521,13 @@ mod preflight_tests {
             let mut state = service.wallet_state.write().await;
             let mut wallet =
                 WalletSummary::single_address("w1", "W", "Bitcoin", "bc1qowner", None, false);
-            wallet.holdings = vec![holding("Bitcoin", "BTC", "", None)];
+            wallet.holdings = vec![holding("Bitcoin", "BTC", "Native", None)];
             state.wallets.push(wallet);
         }
         let plan = service
             .send_submit_preflight(
                 "w1".into(),
-                "Bitcoin|BTC".into(),
+                "bitcoin:native".into(),
                 "bc1qw508d6qejxtdg4y5r3zarvary0c5xw7kv8f3t4".into(),
                 "1".into(),
             )
@@ -607,6 +549,12 @@ mod send_token_identity_tests {
     fn entry(chain: &str, symbol: &str, contract: &str, decimals: u32) -> CoreTokenPreferenceEntry {
         CoreTokenPreferenceEntry {
             token: crate::tokens::TokenEntry {
+                id: "fixture:token".into(),
+                token_id: "fixture:token".into(),
+                kind: crate::tokens::TokenKind::Protocol {
+                    standard: "fixture".into(),
+                    identifier: "fixture".into(),
+                },
                 chain: chain.to_string(),
                 name: symbol.to_string(),
                 symbol: symbol.to_string(),
@@ -668,13 +616,8 @@ mod send_token_identity_tests {
         .expect("USDT is tracked");
         assert_eq!(usdt.decimals, 6);
 
-        // A holding with no contract is identified by its symbol on the chain.
-        assert_eq!(
-            send_token_identity(&holding("Tron", "USDD", None), &preferences)
-                .expect("matched by symbol")
-                .decimals,
-            18
-        );
+        // A ticker is not sufficient identity for a protocol token.
+        assert!(send_token_identity(&holding("Tron", "USDD", None), &preferences).is_none());
 
         // A token nothing tracks has no identity, so the send refuses rather
         // than guessing a scale.
@@ -717,10 +660,36 @@ mod boundary_tests {
                 .await
                 .refresh_live_prices
         );
-        service.record_history_refresh("ethereum".into()).await;
+        let eth = crate::fetch::refresh::policy::HistoryRefreshKey::new("w", "ethereum");
+        let btc = crate::fetch::refresh::policy::HistoryRefreshKey::new("w", "bitcoin");
+        service.record_history_refresh(eth.clone()).await;
         let due = service
-            .history_refresh_plans(vec!["ethereum".into(), "bitcoin".into()], 120.0)
+            .history_refresh_plans(vec![eth, btc.clone()], 120.0)
             .await;
-        assert_eq!(due, vec!["bitcoin"]);
+        assert_eq!(due, vec![btc]);
+    }
+}
+
+impl WalletService {
+    pub(crate) async fn history_refresh_plans(
+        &self,
+        keys: Vec<crate::fetch::refresh::policy::HistoryRefreshKey>,
+        interval_secs: f64,
+    ) -> Vec<crate::fetch::refresh::policy::HistoryRefreshKey> {
+        let clock = self.refresh_clock.read().await;
+        crate::fetch::refresh::policy::history_plans(
+            &clock,
+            keys,
+            interval_secs,
+            crate::store::wallet_db::now_secs() as f64,
+        )
+    }
+
+    pub(crate) async fn record_history_refresh(
+        &self,
+        key: crate::fetch::refresh::policy::HistoryRefreshKey,
+    ) {
+        let now = crate::store::wallet_db::now_secs() as f64;
+        self.refresh_clock.write().await.record_history(key, now);
     }
 }

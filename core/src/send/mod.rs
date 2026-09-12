@@ -19,6 +19,7 @@ use zeroize::Zeroize;
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, uniffi::Record)]
 #[serde(rename_all = "camelCase")]
 pub struct SendAssetRoutingInput {
+    pub is_native: bool,
     pub chain_name: String,
     pub symbol: String,
     pub is_evm_chain: bool,
@@ -197,12 +198,18 @@ pub struct SendExecutionResult {
 /// knew about it lived in Swift.
 #[derive(Debug, Clone, PartialEq, uniffi::Enum)]
 pub enum SendAffordability {
+    Unavailable,
     /// Amount and fee both fit.
     Affordable,
     /// A native send: amount plus fee is more than the wallet holds.
-    AmountPlusFeeExceedsBalance { symbol: String, required: String },
+    AmountPlusFeeExceedsBalance {
+        symbol: String,
+        required: String,
+    },
     /// A token send: the amount alone is more than the token balance.
-    AmountExceedsBalance { symbol: String },
+    AmountExceedsBalance {
+        symbol: String,
+    },
     /// A token send whose amount fits, with too little gas asset for the fee.
     FeeExceedsGasBalance {
         gas_symbol: String,
@@ -216,6 +223,7 @@ pub enum SendAffordability {
 /// is read from the registry here.
 #[derive(Debug, Clone, uniffi::Record)]
 pub struct SendAffordabilityInput {
+    pub is_native: bool,
     pub chain_name: String,
     /// The asset being sent.
     pub symbol: String,
@@ -243,6 +251,9 @@ pub struct SendAffordabilityInput {
 #[uniffi::export]
 pub fn send_affordability(input: SendAffordabilityInput) -> SendAffordability {
     let chain = crate::registry::Chain::from_display_name(&input.chain_name);
+    if chain.is_none() || (!input.is_native && input.gas_balance.is_none()) {
+        return SendAffordability::Unavailable;
+    }
     let gas_symbol = chain
         .map(|c| c.coin_symbol().to_string())
         .unwrap_or_default();
@@ -253,7 +264,7 @@ pub fn send_affordability(input: SendAffordabilityInput) -> SendAffordability {
     // A chain whose gas asset we cannot name is not a chain we can judge a
     // token send on, so treat the send as native: that path needs no gas
     // symbol and still refuses amount + fee over the balance.
-    let is_native = gas_symbol.is_empty() || input.symbol == gas_symbol;
+    let is_native = input.is_native;
 
     if is_native {
         let total = input.amount + input.network_fee;
@@ -284,50 +295,48 @@ pub fn send_affordability(input: SendAffordabilityInput) -> SendAffordability {
 }
 
 pub fn route_send_asset(input: &SendAssetRoutingInput) -> SendAssetRoutingPlan {
-    let submit_kind = match (input.chain_name.as_str(), input.symbol.as_str()) {
-        ("Bitcoin", "BTC") => Some("bitcoin"),
-        ("Bitcoin Cash", "BCH") => Some("bitcoinCash"),
-        ("Bitcoin SV", "BSV") => Some("bitcoinSV"),
-        ("Litecoin", "LTC") => Some("litecoin"),
-        ("Dogecoin", "DOGE") => Some("dogecoin"),
-        ("Tron", "TRX") | ("Tron", "USDT") => Some("tron"),
-        ("XRP Ledger", "XRP") => Some("xrp"),
-        ("Stellar", "XLM") => Some("stellar"),
-        ("Monero", "XMR") => Some("monero"),
-        ("Cardano", "ADA") => Some("cardano"),
-        ("Sui", "SUI") => Some("sui"),
-        ("Aptos", "APT") => Some("aptos"),
-        ("TON", "TON") => Some("ton"),
-        ("Internet Computer", "ICP") => Some("icp"),
-        ("NEAR", "NEAR") => Some("near"),
-        ("Polkadot", "DOT") => Some("polkadot"),
-        // Bittensor was wired into `execute_send` and never named here, so it
-        // had no `submit_kind` and no preview — which is why it sat outside
-        // the shared submit path with no reason recorded. Its extrinsic is
-        // Polkadot's with fewer fields.
-        ("Bittensor", "TAO") => Some("bittensor"),
-        // Five chains whose send was written, wired into `execute_send`, and
-        // then never named here — so `submit_kind` was `None` and the
-        // preflight answered "transfers are not enabled yet" for all of them.
-        // `core/src/send/chains/{zcash,bitcoin_gold,decred,kaspa,dash}.rs` are
-        // 179 to 426 lines each.
-        ("Zcash", "ZEC") => Some("zcash"),
-        ("Bitcoin Gold", "BTG") => Some("bitcoin-gold"),
-        ("Decred", "DCR") => Some("decred"),
-        ("Kaspa", "KAS") => Some("kaspa"),
-        ("Dash", "DASH") => Some("dash"),
-        _ if input.is_evm_chain => Some("ethereum"),
-        _ if input.supports_solana_send_coin => Some("solana"),
-        _ if input.supports_near_token_send => Some("near"),
-        _ => None,
+    let network = crate::registry::Chain::from_display_name(&input.chain_name);
+    let native_name = network.map(|c| c.mainnet_counterpart().chain_display_name());
+    let submit_kind = if network.is_some_and(|c| c.is_evm()) {
+        Some("ethereum")
+    } else if input.supports_solana_send_coin {
+        Some("solana")
+    } else if input.supports_near_token_send {
+        Some("near")
+    } else if native_name == Some("Tron") {
+        Some("tron")
+    } else if input.is_native {
+        match native_name {
+            Some("Bitcoin") => Some("bitcoin"),
+            Some("Bitcoin Cash") => Some("bitcoinCash"),
+            Some("Bitcoin SV") => Some("bitcoinSV"),
+            Some("Litecoin") => Some("litecoin"),
+            Some("Dogecoin") => Some("dogecoin"),
+            Some("XRP Ledger") => Some("xrp"),
+            Some("Stellar") => Some("stellar"),
+            Some("Monero") => Some("monero"),
+            Some("Cardano") => Some("cardano"),
+            Some("Sui") => Some("sui"),
+            Some("Aptos") => Some("aptos"),
+            Some("TON") => Some("ton"),
+            Some("Internet Computer") => Some("icp"),
+            Some("NEAR") => Some("near"),
+            Some("Polkadot") => Some("polkadot"),
+            Some("Bittensor") => Some("bittensor"),
+            Some("Zcash") => Some("zcash"),
+            Some("Bitcoin Gold") => Some("bitcoin-gold"),
+            Some("Decred") => Some("decred"),
+            Some("Kaspa") => Some("kaspa"),
+            Some("Dash") => Some("dash"),
+            _ => None,
+        }
+    } else {
+        None
     }
     .map(str::to_string);
 
     let native_evm_symbol = native_evm_symbol_for_chain(&input.chain_name);
-    let is_native_evm_asset = native_evm_symbol
-        .as_ref()
-        .map(|symbol| input.symbol == symbol.as_str())
-        .unwrap_or(false);
+    let is_native_evm_asset = native_evm_symbol.is_some() && input.is_native;
 
     SendAssetRoutingPlan {
         preview_kind: submit_kind.clone(),
@@ -381,9 +390,8 @@ pub fn plan_send_submit_preflight(
     // NEAR is the one chain where this depends on the asset: its native send
     // is the shared shape and a token on it is not.
     let chain = crate::registry::Chain::from_display_name(&asset.chain_name);
-    let uses_generic_submit = chain.is_some_and(|chain| {
-        chain.uses_generic_send_submit() && asset.symbol == chain.coin_symbol()
-    });
+    let uses_generic_submit =
+        chain.is_some_and(|chain| chain.uses_generic_send_submit() && asset.is_native);
     // Only a token send needs it: the native asset pays its own fee out of the
     // amount, which the balance check above already covers.
     let token_send_gas_reserve = token
@@ -451,6 +459,7 @@ mod tests {
         ];
         for chain in Chain::all().filter(|c| !c.is_testnet()) {
             let route = route_send_asset(&SendAssetRoutingInput {
+                is_native: true,
                 chain_name: chain.chain_display_name().to_string(),
                 symbol: chain.coin_symbol().to_string(),
                 is_evm_chain: chain.is_evm(),
@@ -486,6 +495,7 @@ mod tests {
 
         for chain in Chain::all() {
             let route = route_send_asset(&SendAssetRoutingInput {
+                is_native: true,
                 chain_name: chain.chain_display_name().to_string(),
                 symbol: chain.coin_symbol().to_string(),
                 is_evm_chain: chain.is_evm(),
@@ -656,6 +666,7 @@ mod tests {
                 continue;
             }
             let route = route_send_asset(&SendAssetRoutingInput {
+                is_native: true,
                 chain_name: chain.chain_display_name().to_string(),
                 symbol: chain.coin_symbol().to_string(),
                 is_evm_chain: chain.is_evm(),
@@ -677,6 +688,7 @@ mod tests {
     #[test]
     fn routes_evm_native_assets_with_native_symbol_metadata() {
         let route = route_send_asset(&SendAssetRoutingInput {
+            is_native: true,
             chain_name: "Avalanche".to_string(),
             symbol: "AVAX".to_string(),
             is_evm_chain: true,
@@ -699,6 +711,7 @@ mod tests {
     #[test]
     fn routes_supported_solana_assets_to_solana_preview_and_submit() {
         let route = route_send_asset(&SendAssetRoutingInput {
+            is_native: false,
             chain_name: "Solana".to_string(),
             symbol: "USDC".to_string(),
             is_evm_chain: false,
@@ -711,6 +724,7 @@ mod tests {
 
         // And an untracked mint routes nowhere, rather than to Solana.
         let untracked = route_send_asset(&SendAssetRoutingInput {
+            is_native: false,
             chain_name: "Solana".to_string(),
             symbol: "USDC".to_string(),
             is_evm_chain: false,
@@ -761,6 +775,7 @@ mod tests {
         for chain in Chain::mainnets() {
             let symbol = chain.entry().gas_token_symbol.clone();
             let route = route_send_asset(&SendAssetRoutingInput {
+                is_native: true,
                 chain_name: chain.chain_display_name().to_string(),
                 symbol,
                 is_evm_chain: chain.is_evm(),
@@ -811,6 +826,7 @@ mod tests {
             amount_input: "0".to_string(),
             available_balance: 1.0,
             asset: Some(SendAssetRoutingInput {
+                is_native: true,
                 chain_name: "Bitcoin".to_string(),
                 symbol: "BTC".to_string(),
                 is_evm_chain: false,
@@ -833,6 +849,7 @@ mod tests {
             amount_input: "0".to_string(),
             available_balance: 1.0,
             asset: Some(SendAssetRoutingInput {
+                is_native: true,
                 chain_name: "Ethereum".to_string(),
                 symbol: "ETH".to_string(),
                 is_evm_chain: true,
@@ -862,6 +879,7 @@ mod tests {
                 amount_input: "1".to_string(),
                 available_balance: 10.0,
                 asset: Some(SendAssetRoutingInput {
+                    is_native: true,
                     chain_name: "NEAR".to_string(),
                     symbol: symbol.to_string(),
                     is_evm_chain: false,
@@ -890,6 +908,7 @@ mod tests {
             amount_input: "1".to_string(),
             available_balance: 10.0,
             asset: Some(SendAssetRoutingInput {
+                is_native: false,
                 chain_name: "Tron".to_string(),
                 symbol: "USDT".to_string(),
                 is_evm_chain: false,
@@ -950,6 +969,7 @@ mod every_chain_with_a_send_implementation_can_route {
             ("Dash", "DASH", "dash"),
         ] {
             let route = super::route_send_asset(&super::SendAssetRoutingInput {
+                is_native: true,
                 chain_name: name.to_string(),
                 symbol: symbol.to_string(),
                 is_evm_chain: false,
@@ -1019,6 +1039,8 @@ mod affordability_reads_the_chain_rather_than_the_caller {
 
     fn input(chain: &str, symbol: &str) -> SendAffordabilityInput {
         SendAffordabilityInput {
+            is_native: crate::registry::Chain::from_display_name(chain)
+                .is_some_and(|c| c.coin_symbol() == symbol),
             chain_name: chain.to_string(),
             symbol: symbol.to_string(),
             amount: 1.0,
@@ -1099,7 +1121,7 @@ mod affordability_reads_the_chain_rather_than_the_caller {
     fn an_unresolvable_chain_still_refuses_rather_than_waving_it_through() {
         assert!(matches!(
             send_affordability(input("Not A Chain", "WAT")),
-            SendAffordability::AmountPlusFeeExceedsBalance { .. }
+            SendAffordability::Unavailable
         ));
     }
 }

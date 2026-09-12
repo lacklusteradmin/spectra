@@ -21,6 +21,7 @@ async fn opened(tag: &str) -> (std::sync::Arc<WalletService>, String) {
 
 fn wire(id: &str, hash: &str, confirmations: Option<i64>) -> CoreTransactionRecord {
     CoreTransactionRecord {
+        deployment_id: None,
         id: id.to_string(),
         wallet_id: Some("w1".to_string()),
         kind: "receive".to_string(),

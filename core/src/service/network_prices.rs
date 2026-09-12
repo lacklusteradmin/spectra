@@ -100,8 +100,8 @@ impl WalletService {
         }
         let derived = self.wallet_derived_state().await?;
         let mut coins = derived.unique_price_request_coins.clone();
-        for symbol in state.settings.pinned_dashboard_assets() {
-            if let Some(coin) = self.pinned_prototype(&symbol, &derived).await {
+        for token_id in state.settings.pinned_dashboard_assets() {
+            if let Some(coin) = self.pinned_prototype(&token_id, &derived).await {
                 coins.push(coin);
             }
         }
@@ -110,19 +110,35 @@ impl WalletService {
             let Some(chain) = Chain::from_display_name(&coin.chain_name) else {
                 continue;
             };
-            let network = state.settings.network_chain(chain);
+            let network = chain;
             if network.is_testnet() || coin.coin_gecko_id.trim().is_empty() {
                 continue;
             }
-            let key = format!("{}|{}", network.chain_display_name(), coin.symbol);
+            let key = coin.deployment_key();
             requests.insert(
                 key.clone(),
                 crate::price::PriceRequestCoin {
                     holding_key: key,
-                    coin_gecko_id: coin.coin_gecko_id,
+                    coin_gecko_id: coin
+                        .catalog_token()
+                        .map(|t| t.coingecko_id.clone())
+                        .unwrap_or_default(),
                 },
             );
         }
+        for alert in state.price_alerts.iter().filter(|a| a.is_enabled) {
+            if let Some(token) =
+                crate::tokens::deployment(&alert.holding_key).filter(|t| !t.coingecko_id.is_empty())
+            {
+                requests
+                    .entry(token.id.clone())
+                    .or_insert(crate::price::PriceRequestCoin {
+                        holding_key: token.id.clone(),
+                        coin_gecko_id: token.coingecko_id.clone(),
+                    });
+            }
+        }
+
         if requests.is_empty() {
             return Ok(state);
         }
@@ -303,7 +319,7 @@ mod tests {
             .unwrap();
         service
             .mutate_persisted_state(|s| {
-                s.quotes.prices.insert("Ethereum|ETH".into(), 12.0);
+                s.quotes.prices.insert("ethereum:native".into(), 12.0);
                 s.quotes.prices_attempt_at = Some(now());
                 s.quotes.prices_error = Some("provider unavailable".into());
                 vec![StateEvent {
@@ -318,7 +334,7 @@ mod tests {
             .open_state(path.to_string_lossy().into())
             .await
             .unwrap();
-        assert_eq!(state.quotes.prices["Ethereum|ETH"], 12.0);
+        assert_eq!(state.quotes.prices["ethereum:native"], 12.0);
         assert_eq!(
             reopened.refresh_owned_prices(false).await.unwrap().quotes,
             state.quotes

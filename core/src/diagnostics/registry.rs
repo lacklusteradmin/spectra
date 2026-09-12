@@ -81,7 +81,6 @@ pub fn diagnostics_forget_wallet(wallet_id: String) {
     }
 }
 
-#[uniffi::export]
 pub fn diagnostics_clear_all() {
     registry().lock().unwrap().history.clear();
 }

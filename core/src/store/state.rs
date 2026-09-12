@@ -17,7 +17,7 @@ pub struct WalletSummary {
     pub is_watch_only: bool,
     pub chain_name: String,
     pub include_in_portfolio_total: bool,
-    pub network_mode: Option<String>,
+    pub network_id: String,
     pub xpub: Option<String>,
     pub derivation_preset: String,
     /// The single path this wallet derives from. A wallet belongs to one chain,
@@ -52,7 +52,9 @@ impl WalletSummary {
             is_watch_only,
             chain_name: chain_name.clone(),
             include_in_portfolio_total: true,
-            network_mode: None,
+            network_id: crate::registry::Chain::from_display_name(&chain_name)
+                .map(|c| c.str_id().to_string())
+                .unwrap_or_default(),
             xpub: None,
             derivation_preset: "default".to_string(),
             derivation_path: derivation_path.clone(),
@@ -94,15 +96,10 @@ impl WalletSummary {
     /// One rule, read by everything that fetches for a wallet — balances,
     /// history, diagnostics. Each of them used to work it out again, and they
     /// did not agree.
-    pub fn network_chain(&self, settings: &AppSettings) -> Option<crate::registry::Chain> {
+    pub fn network_chain(&self, _settings: &AppSettings) -> Option<crate::registry::Chain> {
         let chain = crate::registry::Chain::from_display_name(&self.chain_name)?;
-        Some(
-            self.network_mode
-                .as_deref()
-                .and_then(crate::registry::Chain::from_str_id)
-                .filter(|selected| selected.mainnet_counterpart() == chain.mainnet_counterpart())
-                .unwrap_or_else(|| settings.network_chain(chain)),
-        )
+        crate::registry::Chain::from_str_id(&self.network_id)
+            .filter(|selected| selected.mainnet_counterpart() == chain.mainnet_counterpart())
     }
 
     /// This wallet's address on the network it is on, falling back to its own
@@ -204,7 +201,7 @@ pub struct CoreTokenPreferenceKey {
 pub struct AppSettings {
     /// ISO 4217 code the user wants amounts displayed in.
     pub fiat_currency_code: String,
-    /// Asset symbols the user pinned to the dashboard, in display order.
+    /// Token IDs the user pinned to the dashboard, in display order.
     /// Empty means "not chosen yet" — read it through
     /// [`AppSettings::pinned_dashboard_assets`], which answers with
     /// [`DEFAULT_PINNED_DASHBOARD_ASSETS`] in that case.
@@ -213,7 +210,7 @@ pub struct AppSettings {
     /// loads. Not a migration shim — the struct simply grows, and an absent
     /// list is exactly the same as an empty one.
     #[serde(default)]
-    pub pinned_dashboard_asset_symbols: Vec<String>,
+    pub pinned_dashboard_token_ids: Vec<String>,
     /// Which network the user selected for each chain family that offers a
     /// choice, as `mainnet str_id -> selected str_id`.
     ///
@@ -410,18 +407,16 @@ pub fn fiat_currency_codes() -> Vec<String> {
         .collect()
 }
 
-/// Chains whose selected network is a testnet, by display name — their coins
-/// have no price.
-///
-/// A free function over the settings rather than a service method, so a caller
-/// can apply it in the same synchronous step that adopts a new state. Asking
-/// core asynchronously left the render path briefly quoting a testnet at
-/// mainnet prices right after a network switch.
+/// Concrete testnet identities are unpriced regardless of selected wallet networks.
 #[uniffi::export]
-pub fn core_unpriced_chain_names(settings: AppSettings) -> Vec<String> {
-    crate::registry::Chain::mainnets()
-        .filter(|chain| settings.network_chain(*chain).is_testnet())
-        .map(|chain| chain.chain_display_name().to_string())
+pub fn core_unpriced_chain_names() -> Vec<String> {
+    crate::registry::Chain::testnets()
+        .flat_map(|chain| {
+            [
+                chain.chain_display_name().to_string(),
+                chain.str_id().to_string(),
+            ]
+        })
         .collect()
 }
 
@@ -431,7 +426,8 @@ pub fn core_unpriced_chain_names(settings: AppSettings) -> Vec<String> {
 /// list, so its pin cards showed four assets that core's own grouping did not
 /// order first, did not mark pinned, and gave no row to when the wallet held
 /// none of them.
-pub const DEFAULT_PINNED_DASHBOARD_ASSETS: [&str; 4] = ["BTC", "ETH", "USDT", "USDC"];
+pub const DEFAULT_PINNED_DASHBOARD_ASSETS: [&str; 4] =
+    ["bitcoin", "ethereum", "tether", "usd-coin"];
 
 /// The pinned symbols as a dashboard should read them.
 #[uniffi::export]
@@ -449,10 +445,10 @@ impl AppSettings {
     /// fresh wallet looks like, which is what `SetPinnedDashboardAssets` with
     /// an empty list has always meant.
     pub fn pinned_dashboard_assets(&self) -> Vec<String> {
-        if self.pinned_dashboard_asset_symbols.is_empty() {
+        if self.pinned_dashboard_token_ids.is_empty() {
             dashboard_default_pinned_assets()
         } else {
-            self.pinned_dashboard_asset_symbols.clone()
+            self.pinned_dashboard_token_ids.clone()
         }
     }
 }
@@ -461,7 +457,7 @@ impl Default for AppSettings {
     fn default() -> Self {
         Self {
             fiat_currency_code: "USD".to_string(),
-            pinned_dashboard_asset_symbols: Vec::new(),
+            pinned_dashboard_token_ids: Vec::new(),
             network_chain_by_family: std::collections::HashMap::new(),
             rpc_endpoint_by_chain: std::collections::HashMap::new(),
             etherscan_api_key: String::new(),
@@ -669,11 +665,11 @@ pub enum StateCommand {
     /// default — a literal per setting, in a file that had no way to know when
     /// one of them changed.
     ResetAppSettings,
-    /// Replace the pinned dashboard set. Symbols are normalised to upper case
+    /// Replace the pinned dashboard set. Token IDs are trimmed
     /// and de-duplicated, first occurrence winning, so display order is the
     /// order the user pinned them in.
     SetPinnedDashboardAssets {
-        symbols: Vec<String>,
+        token_ids: Vec<String>,
     },
     /// Pick which network of a chain family the user is on.
     ///
@@ -1199,7 +1195,9 @@ pub fn reduce_state_in_place(state: &mut CoreAppState, command: StateCommand) ->
         } => {
             let symbol = symbol.trim().to_uppercase();
             let name = name.trim().to_string();
-            let contract = contract.trim().to_string();
+            let contract =
+                crate::tokens::normalize_token_identifier(Some(contract), chain_name.clone())
+                    .unwrap_or_default();
             let hosting =
                 crate::store::wallet_domain::CoreTokenHostingChain::from_chain_name(&chain_name);
 
@@ -1243,6 +1241,26 @@ pub fn reduce_state_in_place(state: &mut CoreAppState, command: StateCommand) ->
                             is_built_in: false,
                             is_enabled: true,
                             token: crate::tokens::TokenEntry {
+                                id: format!(
+                                    "{}:{}:{}",
+                                    crate::registry::Chain::from_display_name(hosting.chain_name())
+                                        .unwrap()
+                                        .str_id(),
+                                    hosting.token_standard().to_lowercase(),
+                                    contract
+                                ),
+                                token_id: format!(
+                                    "custom:{}:{}:{}",
+                                    crate::registry::Chain::from_display_name(hosting.chain_name())
+                                        .unwrap()
+                                        .str_id(),
+                                    hosting.token_standard().to_lowercase(),
+                                    contract
+                                ),
+                                kind: crate::tokens::TokenKind::Protocol {
+                                    standard: hosting.token_standard().into(),
+                                    identifier: contract.clone(),
+                                },
                                 chain: hosting.chain_name().to_string(),
                                 name,
                                 symbol: symbol.clone(),
@@ -1360,16 +1378,16 @@ pub fn reduce_state_in_place(state: &mut CoreAppState, command: StateCommand) ->
             if let Some(chosen) = crate::registry::Chain::from_str_id(&chain_id) {
                 let family = chosen.mainnet_counterpart();
                 let before = state.settings.network_chain_by_family.clone();
-                if chosen == family {
-                    state
-                        .settings
-                        .network_chain_by_family
-                        .remove(family.str_id());
-                } else {
-                    state
-                        .settings
-                        .network_chain_by_family
-                        .insert(family.str_id().to_string(), chosen.str_id().to_string());
+                state
+                    .settings
+                    .network_chain_by_family
+                    .insert(family.str_id().into(), chosen.str_id().into());
+                for wallet in &mut state.wallets {
+                    if crate::registry::Chain::from_display_name(&wallet.chain_name)
+                        .is_some_and(|c| c.mainnet_counterpart() == family)
+                    {
+                        wallet.network_id = chosen.str_id().into();
+                    }
                 }
                 if before != state.settings.network_chain_by_family {
                     events.push(StateEvent {
@@ -1379,20 +1397,20 @@ pub fn reduce_state_in_place(state: &mut CoreAppState, command: StateCommand) ->
                 }
             }
         }
-        StateCommand::SetPinnedDashboardAssets { symbols } => {
+        StateCommand::SetPinnedDashboardAssets { token_ids } => {
             let mut seen = std::collections::HashSet::new();
-            let normalized: Vec<String> = symbols
+            let normalized: Vec<String> = token_ids
                 .into_iter()
                 .filter_map(|symbol| {
-                    let symbol = symbol.trim().to_uppercase();
+                    let symbol = symbol.trim().to_string();
                     if symbol.is_empty() || !seen.insert(symbol.clone()) {
                         return None;
                     }
                     Some(symbol)
                 })
                 .collect();
-            if normalized != state.settings.pinned_dashboard_asset_symbols {
-                state.settings.pinned_dashboard_asset_symbols = normalized;
+            if normalized != state.settings.pinned_dashboard_token_ids {
+                state.settings.pinned_dashboard_token_ids = normalized;
                 events.push(StateEvent {
                     kind: "pinnedDashboardAssetsChanged".to_string(),
                     subject_id: None,
@@ -1420,11 +1438,10 @@ mod tests {
             is_watch_only: false,
             chain_name: chain.to_string(),
             include_in_portfolio_total: true,
-            network_mode: if chain == "Bitcoin" {
-                Some("mainnet".to_string())
-            } else {
-                None
-            },
+            network_id: crate::registry::Chain::from_display_name(chain)
+                .unwrap()
+                .str_id()
+                .into(),
             xpub: None,
             derivation_preset: "standard".to_string(),
             derivation_overrides: Default::default(),

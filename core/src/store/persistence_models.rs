@@ -35,6 +35,9 @@ pub(crate) const SWIFT_REFERENCE_EPOCH_OFFSET_SECS: f64 = 978_307_200.0;
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, uniffi::Record)]
 #[serde(rename_all = "camelCase")]
 pub struct CorePersistedTransactionRecord {
+    /// Known for local sends; provider history may omit protocol identity.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub deployment_id: Option<String>,
     pub id: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub wallet_id: Option<String>,
@@ -119,6 +122,7 @@ mod tests {
     /// not a wall of `None`s.
     fn minimal_record() -> CorePersistedTransactionRecord {
         CorePersistedTransactionRecord {
+            deployment_id: None,
             id: "11111111-2222-3333-4444-555555555555".to_string(),
             wallet_id: None,
             kind: CoreTransactionKind::Receive,

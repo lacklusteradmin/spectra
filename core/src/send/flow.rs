@@ -1531,13 +1531,13 @@ mod validating_and_normalising_cannot_disagree {
 pub fn quoted_send_amount(
     preview: Option<SendPreview>,
     chain_name: String,
-    symbol: String,
+    is_native: bool,
     token_decimals: Option<u32>,
     percentage: u32,
 ) -> Option<String> {
     let chain = Chain::from_display_name(&chain_name)?;
     let preview = preview?;
-    let decimals = if symbol == chain.coin_symbol() {
+    let decimals = if is_native {
         u32::from(chain.native_decimals())
     } else {
         match &preview {
@@ -1558,17 +1558,14 @@ mod shortcut_preview_tests {
     use super::*;
     #[test]
     fn no_quote_and_gas_coin_quotes_cannot_fill_token_amounts() {
-        assert!(quoted_send_amount(None, "Bitcoin".into(), "BTC".into(), None, 100).is_none());
+        assert!(quoted_send_amount(None, "Bitcoin".into(), true, None, 100).is_none());
         let preview = SendPreview::Solana {
             preview: SolanaSendPreview {
                 maxSendable: 12.0,
                 ..Default::default()
             },
         };
-        assert!(
-            quoted_send_amount(Some(preview), "Solana".into(), "USDC".into(), Some(6), 100)
-                .is_none()
-        );
+        assert!(quoted_send_amount(Some(preview), "Solana".into(), false, Some(6), 100).is_none());
         let preview = SendPreview::Ethereum {
             preview: EvmSendPreview {
                 maxSendable: Some(4.2),
@@ -1576,14 +1573,7 @@ mod shortcut_preview_tests {
             },
         };
         assert_eq!(
-            quoted_send_amount(
-                Some(preview),
-                "Ethereum".into(),
-                "USDC".into(),
-                Some(6),
-                100
-            )
-            .as_deref(),
+            quoted_send_amount(Some(preview), "Ethereum".into(), false, Some(6), 100).as_deref(),
             Some("4.199999")
         );
     }

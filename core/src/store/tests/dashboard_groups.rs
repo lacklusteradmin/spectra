@@ -1,7 +1,6 @@
 use crate::service::WalletService;
 use crate::state::{StateCommand, WalletSummary};
 use crate::store::wallet_domain::AssetHolding;
-use std::collections::HashMap;
 
 fn holding(symbol: &str, chain: &str, amount: f64, price: f64) -> AssetHolding {
     AssetHolding {
@@ -57,10 +56,7 @@ async fn a_row_is_per_asset_and_breaks_down_by_chain() {
         ),
     ])
     .await;
-    let groups = service
-        .dashboard_asset_groups(HashMap::new())
-        .await
-        .expect("groups");
+    let groups = service.dashboard_asset_groups().await.expect("groups");
     let eth: Vec<_> = groups
         .iter()
         .filter(|g| g.holdings.iter().any(|h| h.coin.symbol == "ETH"))
@@ -94,14 +90,17 @@ async fn a_row_is_per_asset_and_breaks_down_by_chain() {
 #[tokio::test]
 async fn an_unvouched_token_is_never_merged_by_symbol() {
     let mut real = holding("USDX", "Ethereum", 1.0, 1.0);
-    real.contract_address = Some("0xaaaa".into());
+    real.token_standard = "ERC-20".into();
+    real.contract_address = Some("0x000000000000000000000000000000000000aaaa".into());
     real.coin_gecko_id = String::new();
     let mut lookalike = holding("USDX", "Tron", 999.0, 1.0);
-    lookalike.contract_address = Some("Tbbbb".into());
+    lookalike.token_standard = "TRC-20".into();
+    lookalike.contract_address = Some("T9yD14Nj9j7xAB4dbGeiX9h8unkKHxuWwb".into());
     lookalike.coin_gecko_id = String::new();
     // And a second contract on the same chain, same symbol.
     let mut sibling = holding("USDX", "Ethereum", 2.0, 1.0);
-    sibling.contract_address = Some("0xbbbb".into());
+    sibling.token_standard = "ERC-20".into();
+    sibling.contract_address = Some("0x000000000000000000000000000000000000bbbb".into());
     sibling.coin_gecko_id = String::new();
 
     let service = service_with(vec![
@@ -109,10 +108,7 @@ async fn an_unvouched_token_is_never_merged_by_symbol() {
         ("w2", "Tron", vec![lookalike]),
     ])
     .await;
-    let groups = service
-        .dashboard_asset_groups(HashMap::new())
-        .await
-        .expect("groups");
+    let groups = service.dashboard_asset_groups().await.expect("groups");
     let usdx: Vec<_> = groups
         .iter()
         .filter(|g| g.holdings.iter().any(|h| h.coin.symbol == "USDX"))
@@ -156,17 +152,24 @@ async fn a_live_price_beats_the_stored_one() {
         vec![holding("ETH", "Ethereum", 2.0, 1000.0)],
     )])
     .await;
-    let stored = service
-        .dashboard_asset_groups(HashMap::new())
-        .await
-        .expect("groups");
-    assert_eq!(row_value(&stored[0]), Some(2000.0));
+    let stored = service.dashboard_asset_groups().await.expect("groups");
+    assert_eq!(
+        row_value(stored.iter().find(|g| g.id == "ethereum").unwrap()),
+        Some(2000.0)
+    );
 
-    let live = service
-        .dashboard_asset_groups(HashMap::from([("Ethereum|ETH".to_string(), 3000.0)]))
+    service
+        .wallet_state
+        .write()
         .await
-        .expect("groups");
-    assert_eq!(row_value(&live[0]), Some(6000.0));
+        .quotes
+        .prices
+        .insert("ethereum:native".into(), 3000.0);
+    let live = service.dashboard_asset_groups().await.expect("groups");
+    assert_eq!(
+        row_value(live.iter().find(|g| g.id == "ethereum").unwrap()),
+        Some(6000.0)
+    );
 }
 
 /// A testnet holding has no value, so its row reports none rather than
@@ -176,7 +179,7 @@ async fn a_testnet_row_has_no_value() {
     let service = service_with(vec![(
         "w1",
         "Ethereum",
-        vec![holding("ETH", "Ethereum", 2.0, 1000.0)],
+        vec![holding("ETH", "Ethereum Sepolia", 2.0, 1000.0)],
     )])
     .await;
     service
@@ -185,14 +188,23 @@ async fn a_testnet_row_has_no_value() {
         })
         .await
         .expect("select");
-    let groups = service
-        .dashboard_asset_groups(HashMap::from([(
-            "Ethereum Sepolia|ETH".to_string(),
-            3000.0,
-        )]))
+    service
+        .wallet_state
+        .write()
         .await
-        .expect("groups");
-    assert_eq!(row_value(&groups[0]), None);
+        .quotes
+        .prices
+        .insert("ethereum-sepolia:native".into(), 3000.0);
+    let groups = service.dashboard_asset_groups().await.expect("groups");
+    assert_eq!(
+        row_value(
+            groups
+                .iter()
+                .find(|g| g.id == "ethereum-sepolia-native")
+                .unwrap()
+        ),
+        None
+    );
 }
 
 /// Pinned rows come first, in the order they were pinned, and a pinned
@@ -210,14 +222,11 @@ async fn pinned_rows_lead_in_pin_order() {
     .await;
     service
         .apply_state_command(StateCommand::SetPinnedDashboardAssets {
-            symbols: vec!["ETH".into(), "SOL".into()],
+            token_ids: vec!["ethereum".into(), "solana".into()],
         })
         .await
         .expect("pin");
-    let groups = service
-        .dashboard_asset_groups(HashMap::new())
-        .await
-        .expect("groups");
+    let groups = service.dashboard_asset_groups().await.expect("groups");
     let symbols: Vec<_> = groups.iter().map(row_symbol).collect();
     // ETH before SOL because that is the pin order, and both before the
     // unpinned BTC even though BTC is worth more.

@@ -374,101 +374,113 @@ impl WalletService {
             return Ok(Vec::new());
         }
 
-        let stored: Vec<_> = self
-            .transactions()
-            .await?
-            .into_iter()
-            .filter(|t| {
-                t.chain_name == chain_name && (by_id.contains_key(&t.id) || stale.contains(&t.id))
-            })
-            .collect();
+        let db_path = self.bound_state_db_path().await?;
+        // Keep tracker changes and the database commit ordered, including when
+        // the caller cancels while the blocking transaction is running.
+        let mut tracker_guard = self.status_trackers.clone().write_owned().await;
+        tokio::task::spawn_blocking(move || -> Result<_, String> {
+            let mut next_trackers = tracker_guard.clone();
+            let changes = crate::wallet_db::history_update_chain(&db_path, &chain_name, |rows| {
+                let stored: Vec<_> = rows
+                    .into_iter()
+                    .map(|row| row.payload)
+                    .filter(|t| by_id.contains_key(&t.id) || stale.contains(&t.id))
+                    .filter(|t| {
+                        // A delayed pending response or stale-failure candidate
+                        // cannot undo a confirmation committed by another reader.
+                        t.status
+                            != Some(crate::store::wallet_domain::CoreTransactionStatus::Confirmed)
+                            || by_id.get(&t.id).is_some_and(|r| r.status == "confirmed")
+                    })
+                    .collect();
+                let inputs: Vec<crate::store::ResolvedPendingTransactionInput> = stored
+                    .iter()
+                    .map(|t| crate::store::ResolvedPendingTransactionInput {
+                        id: t.id.clone(),
+                        old_status: status_string(t.status),
+                        old_failure_reason: t.failure_reason.clone(),
+                        old_confirmations: t.confirmation_count.map(|c| c.max(0) as u32),
+                        resolution: by_id.get(&t.id).map(|r| {
+                            crate::store::ResolvedPendingStatusInput {
+                                status: r.status.clone(),
+                                confirmations: r.confirmations,
+                            }
+                        }),
+                        is_stale_failure: stale.contains(&t.id)
+                            && t.status
+                                == Some(
+                                    crate::store::wallet_domain::CoreTransactionStatus::Pending,
+                                ),
+                    })
+                    .collect();
 
-        let inputs: Vec<crate::store::ResolvedPendingTransactionInput> = stored
-            .iter()
-            .map(|t| crate::store::ResolvedPendingTransactionInput {
-                id: t.id.clone(),
-                old_status: status_string(t.status),
-                old_failure_reason: t.failure_reason.clone(),
-                old_confirmations: t.confirmation_count.map(|c| c.max(0) as u32),
-                resolution: by_id
-                    .get(&t.id)
-                    .map(|r| crate::store::ResolvedPendingStatusInput {
-                        status: r.status.clone(),
-                        confirmations: r.confirmations,
-                    }),
-                is_stale_failure: stale.contains(&t.id),
-            })
-            .collect();
+                let now_unix = crate::store::wallet_db::now_secs() as f64;
+                let decisions = {
+                    crate::store::plan_apply_resolved_pending_transaction_statuses(
+                        inputs,
+                        &mut next_trackers,
+                        now_unix,
+                        TransactionStatusPollConfig::default(),
+                    )
+                };
 
-        let now_unix = crate::store::wallet_db::now_secs() as f64;
-        let decisions = {
-            let mut trackers = self.status_trackers.write().await;
-            crate::store::plan_apply_resolved_pending_transaction_statuses(
-                inputs,
-                &mut trackers,
-                now_unix,
-                TransactionStatusPollConfig::default(),
-            )
-        };
-
-        let stored_by_id: HashMap<
-            &str,
-            &crate::store::persistence_models::CorePersistedTransactionRecord,
-        > = stored.iter().map(|t| (t.id.as_str(), t)).collect();
-        let mut writes = Vec::new();
-        let mut changes = Vec::new();
-        for decision in decisions {
-            let Some(old) = stored_by_id.get(decision.id.as_str()).copied() else {
-                continue;
-            };
-            let Some(new_status) = parse_status(&decision.new_status) else {
-                continue;
-            };
-            let resolution = by_id.get(&decision.id);
-            let mut updated = old.clone();
-            updated.status = Some(new_status);
-            updated.failure_reason = match decision.failure_reason_disposition {
-                crate::store::FailureReasonDisposition::None => None,
-                crate::store::FailureReasonDisposition::Preserve => old.failure_reason.clone(),
-                crate::store::FailureReasonDisposition::LocalizedFallback => {
-                    Some(crate::store::FAILURE_REASON_STUCK.to_string())
+                let stored_by_id: HashMap<
+                    &str,
+                    &crate::store::persistence_models::CorePersistedTransactionRecord,
+                > = stored.iter().map(|t| (t.id.as_str(), t)).collect();
+                let mut writes = Vec::new();
+                let mut changes = Vec::new();
+                for decision in decisions {
+                    let Some(old) = stored_by_id.get(decision.id.as_str()).copied() else {
+                        continue;
+                    };
+                    let Some(new_status) = parse_status(&decision.new_status) else {
+                        continue;
+                    };
+                    let resolution = by_id.get(&decision.id);
+                    let mut updated = old.clone();
+                    updated.status = Some(new_status);
+                    updated.failure_reason = match decision.failure_reason_disposition {
+                        crate::store::FailureReasonDisposition::None => None,
+                        crate::store::FailureReasonDisposition::Preserve => {
+                            old.failure_reason.clone()
+                        }
+                        crate::store::FailureReasonDisposition::LocalizedFallback => {
+                            Some(crate::store::FAILURE_REASON_STUCK.to_string())
+                        }
+                    };
+                    if let Some(r) = resolution {
+                        if let Some(block) = r.receipt_block_number {
+                            updated.receipt_block_number = Some(block);
+                        }
+                        if let Some(c) = r.confirmations {
+                            updated.confirmation_count = Some(i64::from(c));
+                        }
+                        if let Some(fee) = r.dogecoin_network_fee_doge {
+                            updated.dogecoin_confirmed_network_fee_doge = Some(fee);
+                        }
+                    }
+                    changes.push(crate::store::TransactionStatusChange {
+                        id: decision.id.clone(),
+                        chain_name: updated.chain_name.clone(),
+                        transaction_hash: updated.transaction_hash.clone(),
+                        old_status: status_string(old.status),
+                        new_status: decision.new_status.clone(),
+                        status_changed: decision.status_changed,
+                        send_status_notification: decision.send_status_notification,
+                        emit_event_code: decision.emit_event_code.clone(),
+                        reached_finality_confirmations: decision.reached_finality_confirmations,
+                    });
+                    writes.push(crate::wallet_db::history_record_from_payload(updated));
                 }
-            };
-            if let Some(r) = resolution {
-                if let Some(block) = r.receipt_block_number {
-                    updated.receipt_block_number = Some(block);
-                }
-                if let Some(c) = r.confirmations {
-                    updated.confirmation_count = Some(i64::from(c));
-                }
-                if let Some(fee) = r.dogecoin_network_fee_doge {
-                    updated.dogecoin_confirmed_network_fee_doge = Some(fee);
-                }
-            }
-            changes.push(crate::store::TransactionStatusChange {
-                id: decision.id.clone(),
-                chain_name: updated.chain_name.clone(),
-                transaction_hash: updated.transaction_hash.clone(),
-                old_status: status_string(old.status),
-                new_status: decision.new_status.clone(),
-                status_changed: decision.status_changed,
-                send_status_notification: decision.send_status_notification,
-                emit_event_code: decision.emit_event_code.clone(),
-                reached_finality_confirmations: decision.reached_finality_confirmations,
-            });
-            writes.push(crate::wallet_db::HistoryRecord {
-                id: updated.id.clone(),
-                wallet_id: updated.wallet_id.clone(),
-                chain_name: updated.chain_name.clone(),
-                tx_hash: updated.transaction_hash.clone(),
-                created_at: updated.created_at,
-                payload: updated,
-            });
-        }
-        if !writes.is_empty() {
-            self.upsert_history_records(writes).await?;
-        }
-        Ok(changes)
+                Ok((writes, changes))
+            })?;
+            *tracker_guard = next_trackers;
+            Ok(changes)
+        })
+        .await
+        .map_err(|e| SpectraBridgeError::from(format!("spawn_blocking: {e}")))?
+        .map_err(Into::into)
     }
 
     /// Stored transactions for one wallet, newest first.
@@ -550,5 +562,176 @@ mod audit_fix5_tests {
         let records = service.transactions().await.unwrap();
         assert_eq!(records.len(), 2);
         assert_ne!(records[0].wallet_id, records[1].wallet_id);
+    }
+}
+
+#[cfg(test)]
+mod status_commit_regressions {
+    use super::*;
+    use crate::store::persistence_models::{
+        CorePersistedTransactionRecord, SWIFT_REFERENCE_EPOCH_OFFSET_SECS,
+    };
+
+    fn record(id: &str, time: f64) -> CorePersistedTransactionRecord {
+        serde_json::from_value(json!({
+            "id":id, "walletId":"W", "walletName":"Before", "kind":"send", "status":"pending",
+            "chainName":"Bitcoin", "transactionHash":format!("hash-{id}"), "amount":1.0,
+            "symbol":"BTC", "assetName":"Bitcoin", "address":"recipient", "createdAt":time
+        }))
+        .unwrap()
+    }
+    fn resolution(id: &str, status: &str) -> crate::store::ResolvedPendingStatus {
+        crate::store::ResolvedPendingStatus {
+            id: id.into(),
+            status: status.into(),
+            confirmations: Some(12),
+            receipt_block_number: Some(900000),
+            dogecoin_network_fee_doge: None,
+        }
+    }
+    async fn setup() -> (Arc<WalletService>, String) {
+        let service = WalletService::new_typed(vec![]).unwrap();
+        let db = std::env::temp_dir()
+            .join(format!(
+                "status-atomic-{}.sqlite",
+                crate::store::new_event_id()
+            ))
+            .to_string_lossy()
+            .to_string();
+        service.open_state(db.clone()).await.unwrap();
+        (service, db)
+    }
+
+    #[tokio::test]
+    async fn status_commit_keeps_unix_sorting_and_canonical_wallet_index() {
+        let (service, _) = setup().await;
+        service
+            .apply_transaction_command(TransactionCommand::Upsert {
+                records: vec![record("old", 700000000.0), record("NEW", 800000000.0)],
+            })
+            .await
+            .unwrap();
+        service
+            .apply_resolved_pending_statuses("Bitcoin".into(), vec![resolution("NEW", "confirmed")])
+            .await
+            .unwrap();
+        let rows = service.fetch_all_history_records_typed().await.unwrap();
+        assert_eq!(
+            rows.iter().map(|r| r.id.as_str()).collect::<Vec<_>>(),
+            vec!["new", "old"]
+        );
+        assert_eq!(
+            rows[0].created_at,
+            800000000.0 + SWIFT_REFERENCE_EPOCH_OFFSET_SECS
+        );
+        assert_eq!(
+            service
+                .transactions_for_wallet("W".into())
+                .await
+                .unwrap()
+                .len(),
+            2
+        );
+        let changes = service
+            .apply_resolved_pending_statuses("Bitcoin".into(), vec![resolution("NEW", "pending")])
+            .await
+            .unwrap();
+        assert!(
+            changes.is_empty(),
+            "a late pending read must not undo confirmation"
+        );
+    }
+
+    #[tokio::test]
+    async fn failed_status_commit_does_not_publish_tracker_changes() {
+        let (service, db) = setup().await;
+        service
+            .apply_transaction_command(TransactionCommand::Upsert {
+                records: vec![record("tx", 0.0)],
+            })
+            .await
+            .unwrap();
+        let conn = rusqlite::Connection::open(db).unwrap();
+        conn.execute_batch("CREATE TRIGGER reject_status BEFORE UPDATE ON history_records BEGIN SELECT RAISE(FAIL, 'test refusal'); END;").unwrap();
+        assert!(service
+            .apply_resolved_pending_statuses("Bitcoin".into(), vec![resolution("tx", "confirmed")])
+            .await
+            .is_err());
+        assert!(service.status_trackers.read().await.is_empty());
+        assert_eq!(
+            service.transactions().await.unwrap()[0].status,
+            Some(crate::store::wallet_domain::CoreTransactionStatus::Pending)
+        );
+        conn.execute_batch("DROP TRIGGER reject_status;").unwrap();
+        service
+            .apply_resolved_pending_statuses("Bitcoin".into(), vec![resolution("tx", "confirmed")])
+            .await
+            .unwrap();
+        assert!(service.status_trackers.read().await["tx"].reached_finality);
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+    async fn concurrent_status_commits_preserve_metadata_and_never_resurrect_deleted_rows() {
+        let (service, db) = setup().await;
+        for i in 0..24 {
+            let id = format!("tx{i}");
+            service
+                .apply_transaction_command(TransactionCommand::Upsert {
+                    records: vec![record(&id, 0.0)],
+                })
+                .await
+                .unwrap();
+            let barrier = Arc::new(tokio::sync::Barrier::new(2));
+            let sender = service.clone();
+            let gate = barrier.clone();
+            let key = id.clone();
+            let status = tokio::spawn(async move {
+                gate.wait().await;
+                sender
+                    .apply_resolved_pending_statuses(
+                        "Bitcoin".into(),
+                        vec![resolution(&key, "confirmed")],
+                    )
+                    .await
+                    .unwrap();
+            });
+            barrier.wait().await;
+            let path = db.clone();
+            let key = id.clone();
+            tokio::task::spawn_blocking(move || {
+                if i % 2 == 0 {
+                    crate::wallet_db::history_delete(&path, &[key]).unwrap();
+                } else {
+                    crate::wallet_db::history_update_chain(&path, "Bitcoin", |rows| {
+                        let writes = rows
+                            .into_iter()
+                            .filter(|r| r.id == key)
+                            .map(|r| {
+                                let mut payload = r.payload;
+                                payload.wallet_name = "After".into();
+                                crate::wallet_db::history_record_from_payload(payload)
+                            })
+                            .collect();
+                        Ok((writes, ()))
+                    })
+                    .unwrap();
+                }
+            })
+            .await
+            .unwrap();
+            status.await.unwrap();
+            let rows = service.transactions().await.unwrap();
+            let stored = rows.iter().find(|r| r.id == id);
+            if i % 2 == 0 {
+                assert!(stored.is_none());
+            } else {
+                let row = stored.unwrap();
+                assert_eq!(row.wallet_name, "After");
+                assert_eq!(
+                    row.status,
+                    Some(crate::store::wallet_domain::CoreTransactionStatus::Confirmed)
+                );
+            }
+        }
     }
 }

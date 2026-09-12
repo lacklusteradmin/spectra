@@ -45,7 +45,7 @@ fn public_children_match_full_derivation_for_every_discovery_network() {
     );
 }
 
-async fn scanning_service(endpoint: String) -> Arc<WalletService> {
+async fn scanning_service(endpoint: String) -> (Arc<WalletService>, String) {
     use crate::store::secret_backends::InMemorySecretStore;
     let service = WalletService::new_typed(vec![crate::service::ChainEndpoints {
         chain_id: "bitcoin".into(),
@@ -53,6 +53,11 @@ async fn scanning_service(endpoint: String) -> Arc<WalletService> {
         api_key: None,
     }])
     .unwrap();
+    let dir = std::env::temp_dir()
+        .join(format!("discovery-{}.sqlite", crate::store::new_event_id()))
+        .to_string_lossy()
+        .into_owned();
+    service.open_state(dir.clone()).await.unwrap();
     let secrets = Arc::new(InMemorySecretStore::new());
     crate::store::wallet_secrets::store_seed_phrase(&*secrets, "scan", SEED, None).unwrap();
     service.set_secret_store(secrets);
@@ -69,7 +74,7 @@ async fn scanning_service(endpoint: String) -> Arc<WalletService> {
         })
         .await
         .unwrap();
-    service
+    (service, dir)
 }
 
 #[tokio::test]
@@ -103,7 +108,7 @@ async fn discovery_has_four_in_flight_probes_and_returns_index_order() {
             });
         }
     });
-    let service = scanning_service(endpoint).await;
+    let (service, _dir) = scanning_service(endpoint).await;
     let scan_service = service.clone();
     let scan = tokio::spawn(async move {
         scan_service
@@ -215,7 +220,7 @@ async fn malformed_activity_is_an_error_and_does_not_advance_or_register() {
         .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({})))
         .mount(&server)
         .await;
-    let service = scanning_service(server.uri()).await;
+    let (service, _dir) = scanning_service(server.uri()).await;
     let before = service
         .reserve_receive_index("scan".into(), "Bitcoin".into(), 1)
         .await
@@ -243,4 +248,39 @@ async fn malformed_activity_is_an_error_and_does_not_advance_or_register() {
         .owned_everywhere()
         .next()
         .is_none());
+}
+
+#[test]
+fn owned_receive_derivation_uses_the_wallet_passphrase() {
+    let path = "m/84'/0'/2'/0/0".to_string();
+    let overrides = crate::store::wallet_domain::CoreWalletDerivationOverrides {
+        passphrase: Some("different wallet".into()),
+        ..Default::default()
+    };
+    let context =
+        UtxoDerivation::with_overrides(Chain::Bitcoin, SEED, path.clone(), &overrides).unwrap();
+    let (address, derived_path) = context.derive(3).unwrap();
+    let expected = crate::derivation::dispatch::derive_for_chain_name(
+        "Bitcoin",
+        SEED,
+        &derived_path,
+        Some("different wallet"),
+        None,
+        None,
+        true,
+        false,
+        false,
+    )
+    .unwrap()
+    .address
+    .unwrap();
+    assert_eq!(address, expected);
+    assert_ne!(
+        address,
+        UtxoDerivation::new(Chain::Bitcoin, SEED, path)
+            .unwrap()
+            .derive(3)
+            .unwrap()
+            .0
+    );
 }

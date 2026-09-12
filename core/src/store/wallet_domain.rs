@@ -56,6 +56,103 @@ pub struct AssetHolding {
     pub price_usd: f64,
 }
 
+impl AssetHolding {
+    /// Native is an explicit protocol type, never a symbol comparison.
+    pub fn is_native(&self) -> bool {
+        self.token_standard == "Native"
+            && self
+                .contract_address
+                .as_deref()
+                .is_none_or(|c| c.is_empty())
+    }
+
+    pub fn network(&self) -> Option<crate::registry::Chain> {
+        crate::registry::Chain::from_display_name(&self.chain_name)
+            .or_else(|| crate::registry::Chain::from_str_id(&self.chain_name))
+    }
+
+    pub fn deployment_key(&self) -> String {
+        let network = self
+            .network()
+            .map(|c| c.str_id())
+            .unwrap_or(&self.chain_name);
+        if self.is_native() {
+            return format!("{network}:native");
+        }
+        let contract = crate::tokens::normalize_token_identifier(
+            self.contract_address.clone(),
+            self.chain_name.clone(),
+        )
+        .unwrap_or_default();
+        format!(
+            "{network}:{}:{contract}",
+            self.token_standard.to_lowercase()
+        )
+    }
+
+    pub fn catalog_token(&self) -> Option<&'static crate::tokens::TokenEntry> {
+        let key = self.deployment_key();
+        crate::tokens::catalog().iter().find(|t| t.id == key)
+    }
+
+    /// Validate identity before persistence and derive catalog-owned display facts.
+    pub fn canonicalize(&mut self) -> Result<(), String> {
+        let network = self.network().ok_or("unknown holding network")?;
+        if !self.amount.is_finite() || self.amount < 0.0 {
+            return Err("invalid holding amount".into());
+        }
+        self.chain_name = network.chain_display_name().into();
+        self.contract_address = crate::tokens::normalize_token_identifier(
+            self.contract_address.clone(),
+            self.chain_name.clone(),
+        );
+        if self.token_standard == "Native" {
+            if self.contract_address.is_some() {
+                return Err("native token cannot carry a contract".into());
+            }
+        } else {
+            let contract = self
+                .contract_address
+                .as_ref()
+                .ok_or("protocol token requires an identifier")?;
+            let hosting = CoreTokenHostingChain::from_chain_name(&self.chain_name)
+                .ok_or("network does not support tracked tokens")?;
+            if self.token_standard != hosting.token_standard() {
+                return Err("token protocol does not match network".into());
+            }
+            if !crate::validation::address::validate_address(
+                crate::validation::address::AddressValidationRequest {
+                    kind: hosting.contract_validation_kind().into(),
+                    value: contract.clone(),
+                },
+            )
+            .is_valid
+            {
+                return Err("invalid token identifier".into());
+            }
+        }
+        if let Some(token) = self.catalog_token() {
+            self.name = token.name.clone();
+            self.symbol = token.symbol.clone();
+            self.coin_gecko_id = token.coingecko_id.clone();
+        } else {
+            // Caller-provided market ids must never price or merge an unverified asset.
+            self.coin_gecko_id.clear();
+        }
+        if network.is_testnet() {
+            self.coin_gecko_id.clear();
+            self.price_usd = 0.0;
+        }
+        Ok(())
+    }
+
+    pub fn token_identity(&self) -> String {
+        self.catalog_token()
+            .map(|t| t.token_id.clone())
+            .unwrap_or_else(|| format!("custom:{}", self.deployment_key()))
+    }
+}
+
 /// Power-user derivation overrides layered on top of the chain defaults in
 /// `core/data/chains.toml`. Every field is optional; `None` means
 /// "use the catalog default." Persisted per-wallet and propagated to
@@ -285,7 +382,10 @@ impl CoreImportedWallet {
             is_watch_only,
             chain_name: self.selected_chain.clone(),
             include_in_portfolio_total: self.include_in_portfolio_total,
-            network_mode: self.active_network_chain_id(),
+            network_id: self
+                .active_network_chain_id()
+                .or_else(|| chain.map(|c| c.str_id().into()))
+                .unwrap_or_default(),
             xpub: self.bitcoin_xpub.clone(),
             derivation_preset: match self.seed_derivation_preset {
                 CoreSeedDerivationPreset::Standard => "standard",
@@ -365,7 +465,7 @@ impl crate::store::state::WalletSummary {
         CoreImportedWallet {
             id: self.id.clone(),
             name: self.name.clone(),
-            network_chain_id: self.network_mode.clone(),
+            network_chain_id: Some(self.network_id.clone()),
             addresses: self
                 .addresses
                 .iter()
@@ -402,8 +502,7 @@ impl crate::store::state::WalletSummary {
     }
 }
 
-/// Stable identity for a holding: chain, symbol and contract are what make two
-/// holdings the same asset.
+/// Stable deployment identity: network, explicit native/protocol type and identifier.
 ///
 /// The front end's list key. It used to be an `id` field on the record, filled
 /// by whoever built it — five different formats across the callers, one of them
@@ -411,12 +510,7 @@ impl crate::store::state::WalletSummary {
 /// re-animate the whole list. Derived from the holding, it cannot drift.
 #[uniffi::export]
 pub fn holding_identity(holding: &crate::store::wallet_domain::AssetHolding) -> String {
-    format!(
-        "{}|{}|{}",
-        holding.chain_name,
-        holding.symbol,
-        holding.contract_address.as_deref().unwrap_or("")
-    )
+    holding.deployment_key()
 }
 
 /// Swift `TokenHostingChain` — rawValues are chain display names.
@@ -663,7 +757,8 @@ impl CoreTokenPreferenceEntry {
 }
 
 /// One place an asset is held: a chain, a token standard, a contract.
-#[derive(Debug, Clone, PartialEq, uniffi::Record)]
+#[derive(Debug, Clone, PartialEq, Serialize, uniffi::Record)]
+#[serde(rename_all = "camelCase")]
 pub struct CoreDashboardAssetHolding {
     pub coin: AssetHolding,
     pub value_usd: Option<f64>,
@@ -679,7 +774,8 @@ pub struct CoreDashboardAssetHolding {
 /// `holdings` and are not stored beside it. They used to be: a
 /// `representative_coin`, a `total_amount` and a `total_value_usd`, three
 /// fields that could disagree with the list they came from.
-#[derive(Debug, Clone, PartialEq, uniffi::Record)]
+#[derive(Debug, Clone, PartialEq, Serialize, uniffi::Record)]
+#[serde(rename_all = "camelCase")]
 pub struct CoreDashboardAssetGroup {
     pub id: String,
     pub holdings: Vec<CoreDashboardAssetHolding>,
@@ -687,8 +783,9 @@ pub struct CoreDashboardAssetGroup {
 }
 
 /// Swift `DashboardPinOption` — Color omitted (derived from symbol in Swift).
-#[derive(Debug, Clone, PartialEq, uniffi::Record)]
+#[derive(Debug, Clone, PartialEq, Serialize, uniffi::Record)]
 pub struct CoreDashboardPinOption {
+    pub token_id: String,
     pub symbol: String,
     pub name: String,
     pub subtitle: String,
@@ -719,6 +816,12 @@ mod roundtrip_tests {
             is_built_in: true,
             is_enabled: true,
             token: crate::tokens::TokenEntry {
+                id: "fixture:token".into(),
+                token_id: "fixture:token".into(),
+                kind: crate::tokens::TokenKind::Protocol {
+                    standard: "fixture".into(),
+                    identifier: "fixture".into(),
+                },
                 chain: "BNB Chain".to_string(),
                 name: "Tether USD".to_string(),
                 symbol: "USDT".to_string(),

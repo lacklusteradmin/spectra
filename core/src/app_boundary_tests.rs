@@ -7,11 +7,11 @@ fn amount_display_never_renders_positive_dust_as_zero() {
     assert!(dust.below_threshold);
     assert_eq!(dust.threshold, 1e-8);
     assert_eq!(
-        formatting::formatting_supported_decimal_places("Ethereum".into(), None),
+        crate::tokens::token_display_decimals(Some("ethereum:native".into()), None),
         18
     );
     assert_eq!(
-        formatting::formatting_supported_decimal_places("Ethereum".into(), Some(6)),
+        crate::tokens::token_display_decimals(Some("custom:unlisted".into()), Some(6)),
         6
     );
     assert_eq!(
@@ -21,10 +21,6 @@ fn amount_display_never_renders_positive_dust_as_zero() {
     assert_eq!(
         formatting::formatting_fiat_amount_rules("USD".into()).minimum_visible,
         0.01
-    );
-    assert_eq!(
-        formatting::formatting_token_preference_lookup_key(" Ethereum ".into(), " usdc ".into()),
-        "Ethereum|USDC"
     );
 }
 
@@ -102,19 +98,12 @@ fn portfolio_signature_ignores_order_but_not_holding_boundaries() {
 }
 
 #[test]
-fn testnet_pricing_uses_the_selected_family_and_rejects_foreign_networks() {
-    let mut settings = store::state::AppSettings::default();
-    settings
-        .network_chain_by_family
-        .insert("ethereum".into(), "ethereum-sepolia".into());
-    assert_eq!(
-        store::state::core_unpriced_chain_names(settings.clone()),
-        vec!["Ethereum"]
-    );
-    settings
-        .network_chain_by_family
-        .insert("ethereum".into(), "bitcoin-testnet-4".into());
-    assert!(store::state::core_unpriced_chain_names(settings).is_empty());
+fn testnet_pricing_uses_concrete_network_identity() {
+    let unpriced = store::state::core_unpriced_chain_names();
+    assert!(unpriced.contains(&"Ethereum Sepolia".into()));
+    assert!(unpriced.contains(&"ethereum-sepolia".into()));
+    assert!(!unpriced.contains(&"Ethereum".into()));
+    assert!(!unpriced.contains(&"ethereum".into()));
 }
 
 #[test]

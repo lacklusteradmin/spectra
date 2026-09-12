@@ -390,7 +390,9 @@ fn wallet(id: &str, chain: &str) -> WalletSummary {
         is_watch_only: false,
         chain_name: chain.to_string(),
         include_in_portfolio_total: true,
-        network_mode: None,
+        network_id: crate::registry::Chain::from_display_name(chain)
+            .map(|c| c.str_id().into())
+            .unwrap_or_default(),
         xpub: None,
         derivation_preset: "default".to_string(),
         derivation_path: Some("m/84'/0'/0'/0/0".to_string()),
@@ -422,7 +424,7 @@ fn app_state_round_trips() {
         selected_wallet_id: Some("w2".to_string()),
         settings: AppSettings {
             fiat_currency_code: "CNY".to_string(),
-            pinned_dashboard_asset_symbols: vec!["BTC".to_string()],
+            pinned_dashboard_token_ids: vec!["bitcoin".to_string()],
             // Every other field is a settings field the blob used to hold;
             // `every_settings_field_round_trips` covers them together.
             ..AppSettings::default()
@@ -631,4 +633,34 @@ fn delete_wallet_data_removes_the_wallet_row_and_its_history() {
         .map(|r| r.id)
         .collect();
     assert_eq!(remaining, vec!["tx2"], "only w1's history should be gone");
+}
+
+#[test]
+fn history_id_lookup_uses_the_primary_key_and_normalizes_duplicates() {
+    let db = std::env::temp_dir().join(format!(
+        "history-ids-{}.sqlite",
+        crate::store::new_event_id()
+    ));
+    let db = db.to_str().unwrap();
+    let rows: Vec<_> = (0..1100)
+        .map(|i| history_record(&format!("tx{i}"), "w"))
+        .collect();
+    history_upsert_batch(db, &rows).unwrap();
+    let mut ids: Vec<_> = (0..1100).map(|i| format!("TX{i}")).collect();
+    ids.extend(["tx0".into(), "absent".into()]);
+    assert_eq!(history_existing_ids(db, &ids).unwrap().len(), 1100);
+    with_conn(db, |conn| {
+        let plan: String = conn
+            .query_row(
+                "EXPLAIN QUERY PLAN SELECT id FROM history_records WHERE id = ?1",
+                params!["tx0"],
+                |r| r.get(3),
+            )
+            .unwrap();
+        assert!(plan.contains("SEARCH") && !plan.contains("SCAN"), "{plan}");
+        Ok(())
+    })
+    .unwrap();
+    history_delete_for_wallet(db, "W").unwrap();
+    assert!(history_fetch_all(db).unwrap().is_empty());
 }

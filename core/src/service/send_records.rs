@@ -36,7 +36,21 @@ impl WalletService {
                 .as_deref()
                 .unwrap_or(chain.coin_symbol())
         });
+        let deployment_id = match &request.contract_address {
+            None => chain.entry().native_deployment_id.clone(),
+            Some(contract) => format!(
+                "{}:{}:{}",
+                chain.str_id(),
+                chain.entry().token_standard.to_lowercase(),
+                crate::tokens::normalize_token_identifier(
+                    Some(contract.clone()),
+                    chain.chain_display_name().into()
+                )
+                .ok_or("token identifier missing")?
+            ),
+        };
         let record: CorePersistedTransactionRecord = serde_json::from_value(json!({
+            "deploymentId": deployment_id,
             "id": crate::store::new_transaction_id(), "walletId": wallet.id, "kind": "send", "status": "pending",
             "walletName": wallet.name, "assetName": token.map(|p| p.token.name.as_str()).unwrap_or(symbol), "symbol": symbol,
             "chainName": chain.chain_display_name(), "amount": request.amount_str.parse::<f64>().map_err(|_| "invalid amount")?,

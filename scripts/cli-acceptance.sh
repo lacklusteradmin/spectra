@@ -137,8 +137,8 @@ check "TON testnet accepts test-only address" $OK spectra address validate --cha
 
 section "chain registry"
 check "lists chains"                        $OK spectra chains
-contains "resolves a chain by symbol"  '"symbol":"BTC"' \
-    spectra --json chains --filter btc
+contains "resolves a network by name"  '"nativeSymbol":"BTC"' \
+    spectra --json chains --filter bitcoin
 contains "hides testnets by default"   '"chains":[]' \
     spectra --json chains --filter "bitcoin testnet"
 
@@ -774,16 +774,16 @@ contains "and quotes it to the chain's own decimals" '"required":"1.50000000"' \
 # Arbitrum charges gas in ETH, not ARB. A caller that took the governance token
 # for the native asset would check the fee against the wrong balance.
 contains "a governance token is not the gas asset" '"verdict":"feeExceedsGasBalance"' \
-    spectra --json send affordability --chain Arbitrum --symbol ARB --amount 1 --fee 0.5 \
+    spectra --json send affordability --chain Arbitrum --symbol ARB --deployment arbitrum:erc-20:0x912ce59144191c1204e64559fe8253a0e49e6548 --amount 1 --fee 0.5 \
         --balance 1.2 --gas-balance 0.1
 contains "and the fee is named in what gas is paid in" '"gasSymbol":"ETH"' \
-    spectra --json send affordability --chain Arbitrum --symbol ARB --amount 1 --fee 0.5 \
+    spectra --json send affordability --chain Arbitrum --symbol ARB --deployment arbitrum:erc-20:0x912ce59144191c1204e64559fe8253a0e49e6548 --amount 1 --fee 0.5 \
         --balance 1.2 --gas-balance 0.1
 contains "a token over its own balance is refused first" '"verdict":"amountExceedsBalance"' \
-    spectra --json send affordability --chain Ethereum --symbol USDC --amount 5 --fee 0.5 \
+    spectra --json send affordability --chain Ethereum --symbol USDC --deployment ethereum:erc-20:0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48 --amount 5 --fee 0.5 \
         --balance 1.2 --gas-balance 0.1
 contains "and both fitting is affordable" '"verdict":"affordable"' \
-    spectra --json send affordability --chain Ethereum --symbol USDC --amount 1 --fee 0.5 \
+    spectra --json send affordability --chain Ethereum --symbol USDC --deployment ethereum:erc-20:0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48 --amount 1 --fee 0.5 \
         --balance 1.2 --gas-balance 2
 
 section "send destination probe"
@@ -1101,6 +1101,22 @@ check "maintenance rejects conflicting scope" $USAGE spectra txs --refresh-pendi
 section "Bitcoin history pagination"
 check "loads and persists every Bitcoin history page against local fixtures" $OK \
     python3 "$(dirname "$0")/cli-bitcoin-history.py" "$BIN"
+
+section "Stage 3 / C2 closure operations"
+closure_spectra() { "$BIN" --data-dir "$DATA_DIR/closure" "$@"; }
+check "dashboard groups render from stored state" $OK closure_spectra --json portfolio --stored
+contains "empty chain discovery does not fetch" '"results":[]' closure_spectra --json pool discover-chain Bitcoin
+check "reset rejects an unknown scope" $REJECTED closure_spectra settings reset --scope typo --yes
+check "imports closure watch wallet" $OK closure_spectra wallet watch --chain Ethereum --name "Closure Watch" --address 0x1111111111111111111111111111111111111111
+contains "receive uses the stored address" '0x1111111111111111111111111111111111111111' closure_spectra --json pool receive "Closure Watch"
+check "stores closure alert" $OK closure_spectra alert add --chain Ethereum --target 100 --above
+check "stored alert evaluation needs no network" $OK closure_spectra alert check --stored
+check "resets wallets through the owned operation" $OK closure_spectra settings reset --scope walletsAndSecrets --scope alertsAndContacts --yes
+contains "reset remains empty after reopening" '"wallets":[]' closure_spectra --json wallet list
+
+section "Network and token identity"
+check "networks, deployments, collisions and unpriced testnets stay distinct" $OK \
+    python3 "$(dirname "$0")/cli-network-token-identity.py" "$BIN"
 
 # ── Result ──────────────────────────────────────────────────────────────────
 

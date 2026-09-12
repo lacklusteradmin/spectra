@@ -6,9 +6,8 @@ use clap::{Args, Subcommand};
 use colored::Colorize as _;
 use spectra_core::store::state::StateCommand;
 use spectra_core::store::wallet_domain::CorePriceAlertCondition;
-use spectra_core::store::{PriceAlertEvaluationAlert, PriceAlertEvaluationPrice};
+use spectra_core::store::PriceAlertEvaluationAlert;
 
-use super::market::spot_price_usd;
 use super::resolve_chain;
 use crate::ctx::Ctx;
 use crate::error::{CliError, CliResult};
@@ -23,7 +22,11 @@ pub enum AlertCommand {
     /// Remove an alert by id or symbol.
     Remove(RemoveArgs),
     /// Fetch live prices and report which alerts fire.
-    Check,
+    Check {
+        /// Evaluate already stored quotes without fetching.
+        #[arg(long)]
+        stored: bool,
+    },
 }
 
 #[derive(Args)]
@@ -50,7 +53,7 @@ pub fn run(ctx: &Ctx, out: Out, command: AlertCommand) -> CliResult<()> {
         AlertCommand::List => list(ctx, out),
         AlertCommand::Add(args) => add(ctx, out, args),
         AlertCommand::Remove(args) => remove(ctx, out, args),
-        AlertCommand::Check => check(ctx, out),
+        AlertCommand::Check { stored } => check(ctx, out, stored),
     }
 }
 
@@ -113,7 +116,7 @@ fn add(ctx: &Ctx, out: Out, args: AddArgs) -> CliResult<()> {
     let mut alerts = ctx.state()?.price_alerts;
     let new = PriceAlertEvaluationAlert {
         id: uuid::Uuid::new_v4().to_string().to_uppercase(),
-        holding_key: chain.coin_symbol().to_string(),
+        holding_key: chain.entry().native_deployment_id.clone(),
         asset_name: chain.coin_name().to_string(),
         symbol: chain.coin_symbol().to_string(),
         chain_name: chain.chain_display_name().to_string(),
@@ -164,35 +167,17 @@ fn remove(ctx: &Ctx, out: Out, args: RemoveArgs) -> CliResult<()> {
     Ok(())
 }
 
-fn check(ctx: &Ctx, out: Out) -> CliResult<()> {
+fn check(ctx: &Ctx, out: Out, stored: bool) -> CliResult<()> {
     let alerts = ctx.state()?.price_alerts;
     if alerts.is_empty() {
         return Err(CliError::rejected("no alerts to check"));
     }
 
-    let chains: Vec<_> = alerts
-        .iter()
-        .filter_map(|alert| resolve_chain(&alert.chain_name).ok())
-        .collect();
-    let prices = spot_price_usd(ctx, &chains)?;
-
-    // One call: core reads its own alerts, records what changed and hands back
-    // only what a front end has to act on.
     let service = ctx.service()?;
-    let notifications = ctx
-        .rt
-        .block_on(
-            service.evaluate_price_alerts(
-                prices
-                    .iter()
-                    .map(|(symbol, price)| PriceAlertEvaluationPrice {
-                        holding_key: symbol.clone(),
-                        live_price: *price,
-                    })
-                    .collect(),
-            ),
-        )
-        .map_err(CliError::from)?;
+    if !stored {
+        ctx.rt.block_on(service.refresh_owned_prices(true))?;
+    }
+    let notifications = ctx.rt.block_on(service.evaluate_price_alerts())?;
 
     out.text(|| {
         println!();

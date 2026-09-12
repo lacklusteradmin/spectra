@@ -351,6 +351,9 @@ fn fees(out: Out, args: FeesArgs) -> CliResult<()> {
 
 #[derive(Args)]
 pub struct AffordabilityArgs {
+    /// Deployment id from `token catalog`; omit for the native token.
+    #[arg(long)]
+    deployment: Option<String>,
     /// Chain the send is on.
     #[arg(long)]
     chain: String,
@@ -378,7 +381,18 @@ pub struct AffordabilityArgs {
 /// the chain is the whole input.
 fn affordability(out: Out, args: AffordabilityArgs) -> CliResult<()> {
     let chain = resolve_chain(&args.chain)?;
+    let deployment_id = args
+        .deployment
+        .unwrap_or_else(|| chain.entry().native_deployment_id.clone());
+    let token = spectra_core::tokens::deployment(&deployment_id)
+        .ok_or_else(|| CliError::usage("unknown deployment"))?;
+    if token.chain != chain.str_id() || token.symbol != args.symbol {
+        return Err(CliError::usage(
+            "deployment does not match the selected network and symbol",
+        ));
+    }
     let verdict = send_affordability(SendAffordabilityInput {
+        is_native: token.is_native(),
         chain_name: chain.chain_display_name().to_string(),
         symbol: args.symbol,
         amount: args.amount,
@@ -388,6 +402,7 @@ fn affordability(out: Out, args: AffordabilityArgs) -> CliResult<()> {
     });
 
     let body = match &verdict {
+        SendAffordability::Unavailable => serde_json::json!({"verdict":"unavailable"}),
         SendAffordability::Affordable => serde_json::json!({ "verdict": "affordable" }),
         SendAffordability::AmountPlusFeeExceedsBalance { symbol, required } => serde_json::json!({
             "verdict": "amountPlusFeeExceedsBalance", "symbol": symbol, "required": required,
@@ -410,6 +425,7 @@ fn affordability(out: Out, args: AffordabilityArgs) -> CliResult<()> {
     out.text(|| {
         println!();
         match &verdict {
+            SendAffordability::Unavailable => println!("Unable to determine fee affordability"),
             SendAffordability::Affordable => println!("  {}  the send fits", "\u{2713}".green()),
             SendAffordability::AmountPlusFeeExceedsBalance { symbol, required } => {
                 println!(
@@ -505,7 +521,7 @@ fn probe(ctx: &Ctx, out: Out, args: ProbeArgs) -> CliResult<()> {
         .block_on(service.open_state(ctx.db_path()))
         .map_err(CliError::from)?;
 
-    let holding_key = format!("{}|{}", holding.chain_name, holding.symbol);
+    let holding_key = holding.deployment_key();
     let risk = ctx
         .rt
         .block_on(service.send_destination_risk(wallet.id.clone(), holding_key, args.to.clone()))

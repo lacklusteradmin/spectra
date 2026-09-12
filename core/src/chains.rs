@@ -1,23 +1,10 @@
-//! Built-in chain registry.
-//!
-//! Two files, embedded at compile time. `core/data/chains.toml` holds what the
-//! app *computes* with — derivation paths, decimals, address formats, token
-//! standards. `core/data/chain-wiki.toml` holds what a reader reads, and
-//! nothing computes anything from it.
-//!
-//! They are separate because a wrong value in the first is a wrong address or
-//! a wrong balance, and a wrong value in the second is a wrong sentence on a
-//! page. The boundary is a type, not a convention: the editorial fields exist
-//! only on [`ChainWikiEntry`], so no code outside the wiki can reach them.
-//!
-//! Call [`list_all_chains`] for all chain entries (mainnet + testnet), and
-//! [`list_chain_wiki`] for the wiki rows (chains only — a testnet is not a
-//! different chain).
+//! Concrete network registry embedded from `chains.toml`.
+//! Mainnets and testnets are equal records. Native token metadata in the public
+//! projection is joined from `tokens.toml`; it is never stored as a network fact.
+//! `chain-wiki.toml` contains editorial prose outside the operational model.
 
 use serde::{Deserialize, Serialize};
 use std::sync::LazyLock;
-
-use crate::price::AssetMarketIds;
 
 static CHAINS_TOML: &str = include_str!("../data/chains.toml");
 static CHAIN_WIKI_TOML: &str = include_str!("../data/chain-wiki.toml");
@@ -26,17 +13,17 @@ static CHAIN_WIKI_TOML: &str = include_str!("../data/chain-wiki.toml");
 
 #[derive(Debug, Deserialize)]
 struct TomlFile {
-    chains: Vec<TomlChain>,
     networks: Vec<TomlNetwork>,
 }
 
-/// What a chain is — one row however many networks it runs.
+/// One concrete network. Mainnets and testnets have the same required fields.
 #[derive(Debug, Deserialize)]
-struct TomlChain {
+struct TomlNetwork {
     id: String,
     name: String,
-    symbol: String,
-    gas_token_symbol: String,
+    family: String,
+    environment: String,
+    native_deployment: String,
     search_keywords: Vec<String>,
     category: String,
     color: String,
@@ -44,26 +31,8 @@ struct TomlChain {
     #[serde(default)]
     address_prefix_hint: String,
     token_standard: String,
-    native_coingecko_id: String,
-    native_coinpaprika_id: String,
-    #[serde(default)]
-    native_coinlore_nameid: String,
-    native_decimals: u32,
-    native_asset_name: String,
     #[serde(default)]
     enumerates_holdings: bool,
-    derivation_path: Vec<TomlDerivationPathEntry>,
-}
-
-/// One network of a chain — a testnet. Inherits everything it does not state.
-#[derive(Debug, Deserialize)]
-struct TomlNetwork {
-    chain: String,
-    id: String,
-    name: String,
-    search_keywords: Vec<String>,
-    #[serde(default)]
-    address_prefix_hint: Option<String>,
     derivation_path: Vec<TomlDerivationPathEntry>,
 }
 
@@ -130,9 +99,11 @@ pub struct ChainDerivationPathEntry {
 
 #[derive(Debug, Clone, Serialize, uniffi::Record)]
 pub struct ChainEntry {
+    pub family: String,
+    pub is_testnet: bool,
     pub id: String,
     pub name: String,
-    pub symbol: String,
+    pub native_deployment_id: String,
     /// A terse example of what an address on this chain looks like, or empty.
     ///
     /// Two Swift tables held this: a fourteen-arm switch of format examples
@@ -158,28 +129,6 @@ pub struct ChainEntry {
     pub derivation_path: Vec<ChainDerivationPathEntry>,
 }
 
-/// The native asset's ids at the market-data providers, one row per chain.
-///
-/// Kept out of [`ChainEntry`] for the reason [`ChainWikiEntry`] is: nothing
-/// that renders a chain prices one, so these would be bytes crossing the FFI
-/// on every `list_all_chains()` call for a caller that never reads them.
-pub(crate) fn native_market_ids() -> &'static [AssetMarketIds] {
-    static IDS: LazyLock<Vec<AssetMarketIds>> = LazyLock::new(|| {
-        let parsed: TomlFile = toml::from_str(CHAINS_TOML)
-            .expect("chains.toml is embedded at compile time and must be valid TOML");
-        parsed
-            .chains
-            .iter()
-            .map(|c| AssetMarketIds {
-                coingecko_id: c.native_coingecko_id.clone(),
-                coinpaprika_id: c.native_coinpaprika_id.clone(),
-                coinlore_nameid: c.native_coinlore_nameid.clone(),
-            })
-            .collect()
-    });
-    &IDS
-}
-
 /// What a *chain* is — the facts that have no coin to belong to.
 ///
 /// Ten chains share ETH, so "Base is an optimistic rollup" cannot live on an
@@ -197,7 +146,7 @@ pub(crate) fn native_market_ids() -> &'static [AssetMarketIds] {
 pub struct ChainWikiEntry {
     pub id: String,
     pub name: String,
-    pub symbol: String,
+    pub native_deployment_id: String,
     pub tags: Vec<String>,
     pub comment: String,
     pub family: String,
@@ -222,80 +171,65 @@ static CATALOG: LazyLock<Vec<ChainEntry>> = LazyLock::new(|| {
     let parsed: TomlFile = toml::from_str(CHAINS_TOML)
         .expect("chains.toml is embedded at compile time and must be valid TOML");
 
-    let entry_of = |c: &TomlChain| ChainEntry {
-        id: c.id.clone(),
-        name: c.name.clone(),
-        symbol: c.symbol.clone(),
-        address_prefix_hint: c.address_prefix_hint.clone(),
-        gas_token_symbol: c.gas_token_symbol.clone(),
-        search_keywords: c.search_keywords.clone(),
-        category: c.category.clone(),
-        is_evm: is_evm_for(&c.category),
-        color: c.color.clone(),
-        asset_name: c.asset_name.clone(),
-        token_standard: c.token_standard.clone(),
-        enumerates_holdings: c.enumerates_holdings,
-        contract_address_prompt: contract_address_prompt_for(&c.token_standard),
-        native_coingecko_id: c.native_coingecko_id.clone(),
-        native_decimals: c.native_decimals,
-        native_asset_name: c.native_asset_name.clone(),
-        derivation_path: c
-            .derivation_path
-            .iter()
-            .map(|d| ChainDerivationPathEntry {
-                tag: d.tag.clone(),
-                path: d.path.clone(),
-                is_default: d.is_default,
-            })
-            .collect(),
-    };
-
-    let by_id: std::collections::HashMap<&str, &TomlChain> =
-        parsed.chains.iter().map(|c| (c.id.as_str(), c)).collect();
-
-    let mut out: Vec<ChainEntry> = parsed.chains.iter().map(entry_of).collect();
-
-    for n in &parsed.networks {
-        // A network naming a chain the file does not define is a build-time
-        // mistake, not a row to skip: the entry would carry an id and nothing
-        // that says what it is.
-        let chain = by_id.get(n.chain.as_str()).unwrap_or_else(|| {
-            panic!(
-                "chains.toml: network {} names unknown chain {}",
-                n.id, n.chain
-            )
-        });
-        let mut entry = entry_of(chain);
-        entry.id = n.id.clone();
-        entry.name = n.name.clone();
-        entry.search_keywords = n.search_keywords.clone();
-        entry.derivation_path = n
-            .derivation_path
-            .iter()
-            .map(|d| ChainDerivationPathEntry {
-                tag: d.tag.clone(),
-                path: d.path.clone(),
-                is_default: d.is_default,
-            })
-            .collect();
-
-        // What a network does *not* inherit.
-        //
-        // A testnet hosts no tokens, and a testnet asset has no price. The
-        // coingecko id used to be copied from the mainnet and then overridden
-        // elsewhere — a field that could only ever be wrong.
-        entry.token_standard = String::new();
-        entry.contract_address_prompt = String::new();
-        entry.native_coingecko_id = String::new();
-
-        // An address hint describes a network's address format, and a
-        // testnet's differs — Bitcoin's is `tb1…`, not `bc1q…`. A network
-        // states its own or has none.
-        entry.address_prefix_hint = n.address_prefix_hint.clone().unwrap_or_default();
-
-        out.push(entry);
-    }
-    out
+    let mut ids = std::collections::HashSet::new();
+    parsed
+        .networks
+        .iter()
+        .map(|c| {
+            assert!(ids.insert(&c.id), "duplicate network id {}", c.id);
+            assert!(
+                matches!(c.environment.as_str(), "mainnet" | "testnet"),
+                "invalid environment"
+            );
+            let native = crate::tokens::deployment(&c.native_deployment)
+                .expect("unknown native token deployment");
+            assert!(
+                native.is_native() && native.chain == c.id,
+                "native deployment belongs to another network"
+            );
+            let is_testnet = c.environment == "testnet";
+            assert!(
+                !is_testnet || native.coingecko_id.is_empty(),
+                "testnet token must be unpriced"
+            );
+            assert!(
+                parsed
+                    .networks
+                    .iter()
+                    .any(|n| n.id == c.family && n.environment == "mainnet"),
+                "unknown network family"
+            );
+            ChainEntry {
+                id: c.id.clone(),
+                name: c.name.clone(),
+                family: c.family.clone(),
+                is_testnet,
+                native_deployment_id: native.id.clone(),
+                address_prefix_hint: c.address_prefix_hint.clone(),
+                gas_token_symbol: native.symbol.clone(),
+                search_keywords: c.search_keywords.clone(),
+                category: c.category.clone(),
+                is_evm: is_evm_for(&c.category),
+                color: c.color.clone(),
+                asset_name: c.asset_name.clone(),
+                token_standard: c.token_standard.clone(),
+                enumerates_holdings: c.enumerates_holdings,
+                contract_address_prompt: contract_address_prompt_for(&c.token_standard),
+                native_coingecko_id: native.coingecko_id.clone(),
+                native_decimals: native.decimals,
+                native_asset_name: native.name.clone(),
+                derivation_path: c
+                    .derivation_path
+                    .iter()
+                    .map(|d| ChainDerivationPathEntry {
+                        tag: d.tag.clone(),
+                        path: d.path.clone(),
+                        is_default: d.is_default,
+                    })
+                    .collect(),
+            }
+        })
+        .collect()
 });
 
 static WIKI: LazyLock<Vec<ChainWikiEntry>> = LazyLock::new(|| {
@@ -314,7 +248,7 @@ static WIKI: LazyLock<Vec<ChainWikiEntry>> = LazyLock::new(|| {
             ChainWikiEntry {
                 id: chain.id.clone(),
                 name: chain.name.clone(),
-                symbol: chain.symbol.clone(),
+                native_deployment_id: chain.native_deployment_id.clone(),
                 tags: w.tags,
                 comment: w.comment,
                 family: w.family,
@@ -390,7 +324,7 @@ pub(crate) fn derivation_paths_for_chain(
 }
 
 #[cfg(test)]
-mod the_catalog_is_two_tables {
+mod explicit_network_catalog {
     use super::*;
     use crate::registry::Chain;
 
@@ -398,31 +332,14 @@ mod the_catalog_is_two_tables {
         CATALOG.iter().find(|c| c.id == id).expect("a catalog row")
     }
 
-    /// Every network resolves to a chain, and every chain runs at least the
-    /// network it is.
     #[test]
-    fn the_two_tables_cover_each_other() {
-        let parsed: TomlFile = toml::from_str(CHAINS_TOML).expect("valid TOML");
-        let ids: std::collections::HashSet<&str> =
-            parsed.chains.iter().map(|c| c.id.as_str()).collect();
+    fn mainnets_and_testnets_are_explicit_peers() {
+        let parsed: TomlFile = toml::from_str(CHAINS_TOML).unwrap();
+        assert_eq!(CATALOG.len(), parsed.networks.len());
         for n in &parsed.networks {
-            assert!(
-                ids.contains(n.chain.as_str()),
-                "{} names unknown chain {}",
-                n.id,
-                n.chain
-            );
-        }
-        assert_eq!(CATALOG.len(), parsed.chains.len() + parsed.networks.len());
-        // And the registry agrees about which is which.
-        for n in &parsed.networks {
-            let chain = Chain::from_str_id(&n.id).expect("the registry knows it");
-            assert!(
-                chain.is_testnet(),
-                "{} is a network row and not a testnet",
-                n.id
-            );
-            assert_eq!(chain.mainnet_counterpart().str_id(), n.chain);
+            let chain = Chain::from_str_id(&n.id).unwrap();
+            assert_eq!(chain.is_testnet(), n.environment == "testnet");
+            assert_eq!(chain.mainnet_counterpart().str_id(), n.family);
         }
     }
 
@@ -431,10 +348,9 @@ mod the_catalog_is_two_tables {
     /// They were columns on every testnet row — eight of them restated
     /// verbatim, which is eight chances for one to drift.
     #[test]
-    fn a_network_inherits_what_it_does_not_state() {
+    fn networks_share_protocol_facts_but_have_distinct_identity() {
         let (main, net) = (entry("ethereum"), entry("ethereum-sepolia"));
         for (field, a, b) in [
-            ("symbol", &main.symbol, &net.symbol),
             (
                 "gas_token_symbol",
                 &main.gas_token_symbol,
@@ -537,7 +453,7 @@ mod the_catalog_is_two_tables {
             .expect("a wiki row");
         let catalog = entry("polkadot");
         assert_eq!(dot.name, catalog.name);
-        assert_eq!(dot.symbol, catalog.symbol);
+        assert_eq!(dot.native_deployment_id, catalog.native_deployment_id);
         assert_eq!(dot.derivation_path.len(), catalog.derivation_path.len());
         assert!(!dot.family.is_empty());
     }

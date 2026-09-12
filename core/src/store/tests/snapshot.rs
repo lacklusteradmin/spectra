@@ -27,7 +27,7 @@ fn builds_secret_catalog_for_persisted_snapshot() {
         is_watch_only: false,
         chain_name: "Bitcoin".to_string(),
         include_in_portfolio_total: true,
-        network_mode: None,
+        network_id: "bitcoin".into(),
         xpub: None,
         derivation_preset: "standard".to_string(),
         derivation_path: None,

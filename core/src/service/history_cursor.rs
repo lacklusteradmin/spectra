@@ -46,40 +46,6 @@ impl WalletService {
         }
     }
 
-    /// Record the cursor returned after a successful cursor-based fetch (UTXO
-    /// chains). Pass `None` when the chain confirms there are no more pages —
-    /// this marks the chain as exhausted.
-    pub fn advance_history_cursor(
-        &self,
-        chain_id: String,
-        wallet_id: String,
-        next_cursor: Option<String>,
-    ) {
-        self.history_pagination
-            .advance_cursor(&chain_id, &wallet_id, next_cursor);
-    }
-
-    /// Record the page just fetched, and whether it was the last one.
-    ///
-    /// For the page-based family (EVM), where a page number is absolute rather
-    /// than a cursor. This was two exports — `set_history_page` and
-    /// `set_history_exhausted` — and the caller invoked both, in that order,
-    /// at its one call site: the page it fetched and whether the page came back
-    /// short. Two writes to one three-field cursor, so two chances for a reader
-    /// to see half an update.
-    pub fn set_history_page(
-        &self,
-        chain_id: String,
-        wallet_id: String,
-        page: u32,
-        is_exhausted: bool,
-    ) {
-        self.history_pagination
-            .set_page(&chain_id, &wallet_id, page);
-        self.history_pagination
-            .set_exhausted(&chain_id, &wallet_id, is_exhausted);
-    }
-
     /// Forget history pagination, for as much of it as `scope` names.
     pub fn reset_history(&self, scope: HistoryScope) {
         match scope {
@@ -136,5 +102,41 @@ mod tests {
             .history_cursor("bitcoin".into(), "a".into())
             .next_cursor
             .is_none());
+    }
+}
+
+impl WalletService {
+    /// Record the cursor returned after a successful cursor-based fetch (UTXO
+    /// chains). Pass `None` when the chain confirms there are no more pages —
+    /// this marks the chain as exhausted.
+    pub fn advance_history_cursor(
+        &self,
+        chain_id: String,
+        wallet_id: String,
+        next_cursor: Option<String>,
+    ) {
+        self.history_pagination
+            .advance_cursor(&chain_id, &wallet_id, next_cursor);
+    }
+
+    /// Record the page just fetched, and whether it was the last one.
+    ///
+    /// For the page-based family (EVM), where a page number is absolute rather
+    /// than a cursor. This was two exports — `set_history_page` and
+    /// `set_history_exhausted` — and the caller invoked both, in that order,
+    /// at its one call site: the page it fetched and whether the page came back
+    /// short. Two writes to one three-field cursor, so two chances for a reader
+    /// to see half an update.
+    pub fn set_history_page(
+        &self,
+        chain_id: String,
+        wallet_id: String,
+        page: u32,
+        is_exhausted: bool,
+    ) {
+        self.history_pagination
+            .set_page(&chain_id, &wallet_id, page);
+        self.history_pagination
+            .set_exhausted(&chain_id, &wallet_id, is_exhausted);
     }
 }

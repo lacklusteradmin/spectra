@@ -1,18 +1,4 @@
-//! The asset wiki: what a coin is, and everywhere the app can hold it.
-//!
-//! One table joined from three files. `crypto-wiki.toml` says what a coin is,
-//! `chains.toml` says which chains run it natively, and `tokens.toml` says
-//! which chains host it as a contract. A coin can be both — CRO is native to
-//! Cronos and an ERC-20 on Ethereum, and that is one row with two places.
-//!
-//! The app is organised by asset everywhere else: a dashboard row is a coin
-//! however many chains it sits on, the pin list is by symbol, holdings are
-//! coins. The wiki was the one screen organised by chain, so a holder of USDC
-//! could read about Base and not about USDC.
-//!
-//! Keyed on the coin's own symbol. For a native coin that is
-//! `gas_token_symbol`, never the chain's `symbol`: eleven chains disagree, and
-//! Arbitrum is ARB but runs on ETH.
+//! Asset pages group deployments by registered token ID. Symbols are display text.
 
 use crate::chains::{self, ChainEntry};
 use crate::tokens;
@@ -69,6 +55,7 @@ pub struct AssetWikiPlace {
 /// What a coin is, and everywhere it lives.
 #[derive(Debug, Clone, PartialEq, Serialize, uniffi::Record)]
 pub struct AssetWikiEntry {
+    pub token_id: String,
     pub symbol: String,
     pub name: String,
     pub coin_gecko_id: String,
@@ -98,7 +85,12 @@ fn build() -> Vec<AssetWikiEntry> {
             continue;
         }
         let slot = *index
-            .entry(chain.gas_token_symbol.clone())
+            .entry(
+                tokens::deployment(&chain.native_deployment_id)
+                    .unwrap()
+                    .token_id
+                    .clone(),
+            )
             .or_insert_with(|| {
                 out.push(entry_from_chain(chain));
                 out.len() - 1
@@ -115,11 +107,11 @@ fn build() -> Vec<AssetWikiEntry> {
 
     // Then the deployments. A coin already listed gains places rather than a
     // second row: CRO is native to Cronos and a contract on Ethereum.
-    for token in tokens::catalog() {
+    for token in tokens::catalog().iter().filter(|t| !t.is_native()) {
         let chain_name = chains::chain_by_str_id(&token.chain)
             .map(|c| c.name.clone())
             .unwrap_or_else(|| token.chain.clone());
-        let slot = *index.entry(token.symbol.clone()).or_insert_with(|| {
+        let slot = *index.entry(token.token_id.clone()).or_insert_with(|| {
             out.push(entry_from_token(token));
             out.len() - 1
         });
@@ -155,12 +147,14 @@ fn build() -> Vec<AssetWikiEntry> {
 }
 
 fn entry_from_chain(chain: &ChainEntry) -> AssetWikiEntry {
+    let token = tokens::deployment(&chain.native_deployment_id).unwrap();
     AssetWikiEntry {
+        token_id: token.token_id.clone(),
         symbol: chain.gas_token_symbol.clone(),
         name: chain.native_asset_name.clone(),
         coin_gecko_id: chain.native_coingecko_id.clone(),
-        color: chain.color.clone(),
-        asset_name: chain.asset_name.clone(),
+        color: token.color.clone(),
+        asset_name: token.asset_name.clone(),
         comment: String::new(),
         total_circulation_model: String::new(),
         tags: Vec::new(),
@@ -170,6 +164,7 @@ fn entry_from_chain(chain: &ChainEntry) -> AssetWikiEntry {
 
 fn entry_from_token(token: &tokens::TokenEntry) -> AssetWikiEntry {
     AssetWikiEntry {
+        token_id: token.token_id.clone(),
         symbol: token.symbol.clone(),
         name: token.name.clone(),
         coin_gecko_id: token.coingecko_id.clone(),
@@ -203,7 +198,7 @@ mod the_wiki_is_one_asset_table {
     #[test]
     fn one_row_per_coin() {
         let symbols: std::collections::BTreeSet<&str> =
-            ASSETS.iter().map(|a| a.symbol.as_str()).collect();
+            ASSETS.iter().map(|a| a.token_id.as_str()).collect();
         assert_eq!(symbols.len(), ASSETS.len(), "a coin has two rows");
         for a in ASSETS.iter() {
             assert!(!a.comment.is_empty(), "{} has no description", a.symbol);
@@ -287,14 +282,17 @@ mod the_wiki_is_one_asset_table {
     /// The table covers both catalogs and invents nothing.
     #[test]
     fn the_table_is_exactly_the_two_catalogs() {
-        let mut expected: std::collections::BTreeSet<&str> = crate::chains::catalog()
+        let expected: std::collections::BTreeSet<&str> = crate::tokens::catalog()
             .iter()
-            .filter(|c| !c.native_coingecko_id.is_empty())
-            .map(|c| c.gas_token_symbol.as_str())
+            .filter(|t| {
+                !crate::registry::Chain::from_str_id(&t.chain)
+                    .unwrap()
+                    .is_testnet()
+            })
+            .map(|t| t.token_id.as_str())
             .collect();
-        expected.extend(crate::tokens::catalog().iter().map(|t| t.symbol.as_str()));
         let got: std::collections::BTreeSet<&str> =
-            ASSETS.iter().map(|a| a.symbol.as_str()).collect();
+            ASSETS.iter().map(|a| a.token_id.as_str()).collect();
         assert_eq!(expected, got);
     }
 }

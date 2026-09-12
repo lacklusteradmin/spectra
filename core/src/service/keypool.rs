@@ -182,32 +182,6 @@ impl WalletService {
         })
         .await
     }
-
-    /// Release the reserved receive index once its address has been used.
-    pub async fn clear_reserved_receive_index(
-        &self,
-        wallet_id: String,
-        chain_name: String,
-    ) -> Result<(), SpectraBridgeError> {
-        self.write_persisted(move |service| async move {
-            let key = keypool_key(&wallet_id, &chain_name);
-            let mut tables = service.keypool.write().await;
-            let Some(mut state) = tables.state(&key).cloned() else {
-                return Ok(());
-            };
-            state.reserved_receive_index = None;
-            persist_keypool(
-                &service.state_binding,
-                &mut tables,
-                key,
-                &wallet_id,
-                &chain_name,
-                state,
-            )
-            .await
-        })
-        .await
-    }
 }
 
 impl WalletService {
@@ -695,5 +669,32 @@ mod the_keypool_forgets_indices_and_addresses_together {
     #[test]
     fn an_untouched_chain_reads_as_no_addresses() {
         assert!(KeypoolTables::default().owned_on("Bitcoin").is_empty());
+    }
+}
+
+impl WalletService {
+    pub async fn clear_reserved_receive_index(
+        &self,
+        wallet_id: String,
+        chain_name: String,
+    ) -> Result<(), SpectraBridgeError> {
+        self.write_persisted(move |service| async move {
+            let key = keypool_key(&wallet_id, &chain_name);
+            let mut tables = service.keypool.write().await;
+            let Some(mut state) = tables.state(&key).cloned() else {
+                return Ok(());
+            };
+            state.reserved_receive_index = None;
+            persist_keypool(
+                &service.state_binding,
+                &mut tables,
+                key,
+                &wallet_id,
+                &chain_name,
+                state,
+            )
+            .await
+        })
+        .await
     }
 }

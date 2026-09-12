@@ -76,7 +76,6 @@ impl WalletService {
             // transaction the user believed was a testnet one, valid on
             // mainnet. `spectra send broadcast --sign-only` shows the signed
             // chain id, which is how this was found.
-            let chain = send_chain_for(&self.app_state().await, &request.wallet_id, chain);
             // Refuse malformed overrides before reading or deriving signing material.
             if let Some(input) = &request.evm_overrides {
                 input.resolve(chain)?;
@@ -94,6 +93,7 @@ impl WalletService {
                 });
             }
             validate_execution_amount(chain, &request)?;
+            let chain = send_chain_for(&self.app_state().await, &request.wallet_id, chain)?;
             let signer = self
                 .resolve_send_identity(
                     chain,
@@ -260,14 +260,24 @@ pub(crate) fn send_chain_for(
     state: &crate::store::state::CoreAppState,
     wallet_id: &str,
     requested: Chain,
-) -> Chain {
-    state
+) -> Result<Chain, SpectraBridgeError> {
+    let wallet = state
         .wallets
         .iter()
-        .find(|wallet| wallet.id.eq_ignore_ascii_case(wallet_id))
-        .and_then(|wallet| wallet.network_chain(&state.settings))
-        .filter(|network| network.mainnet_counterpart() == requested.mainnet_counterpart())
-        .unwrap_or(requested)
+        .find(|w| w.id.eq_ignore_ascii_case(wallet_id))
+        .ok_or_else(|| SpectraBridgeError::InvalidInput {
+            message: "send wallet does not exist".into(),
+        })?;
+    let selected = wallet
+        .network_chain(&state.settings)
+        .ok_or("wallet has an invalid network identity")?;
+    if selected.mainnet_counterpart() == requested.mainnet_counterpart() && selected != requested {
+        return Err(
+            "selected asset network differs from wallet network; select an asset on that network"
+                .into(),
+        );
+    }
+    Ok(requested)
 }
 
 impl WalletService {

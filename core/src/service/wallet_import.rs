@@ -57,13 +57,6 @@ impl WalletService {
             .map_err(|e| SpectraBridgeError::from(e.to_string()))
     }
 
-    /// Remove every blob this wallet has. Idempotent.
-    pub fn delete_wallet_secrets(&self, wallet_id: String) -> Result<(), SpectraBridgeError> {
-        let store = self.secrets()?;
-        crate::store::wallet_secrets::delete(&*store, &wallet_id)
-            .map_err(|e| SpectraBridgeError::from(e.to_string()))
-    }
-
     /// Import wallets: plan them, build them, and store them.
     ///
     /// Replaces the old `core_plan_wallet_import` round trip, where core

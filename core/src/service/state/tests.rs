@@ -590,3 +590,159 @@ mod tor_and_rates {
         );
     }
 }
+
+#[tokio::test]
+async fn owned_alert_evaluation_uses_quotes_and_fires_once_across_reopen() {
+    let service = service();
+    let path = database();
+    service.open_state(path.clone()).await.unwrap();
+    service
+        .mutate_persisted_state(|state| {
+            state.settings.use_price_alerts = true;
+            state.price_alerts = vec![crate::store::PriceAlertEvaluationAlert {
+                id: "a".into(),
+                holding_key: "ethereum:native".into(),
+                asset_name: "Ethereum".into(),
+                symbol: "ETH".into(),
+                chain_name: "Ethereum".into(),
+                target_price: 2.0,
+                condition: crate::store::wallet_domain::CorePriceAlertCondition::Above,
+                is_enabled: true,
+                has_triggered: false,
+            }];
+            state.quotes.prices.insert("ethereum:native".into(), 3.0);
+            vec![crate::store::state::StateEvent {
+                kind: "fixture".into(),
+                subject_id: None,
+            }]
+        })
+        .await
+        .unwrap();
+    service
+        .apply_state_command(StateCommand::SelectNetworkChain {
+            chain_id: "ethereum-sepolia".into(),
+        })
+        .await
+        .unwrap();
+    // A network selection does not change the identity of a mainnet price alert.
+    let (a, b) = tokio::join!(
+        service.evaluate_price_alerts(),
+        service.evaluate_price_alerts()
+    );
+    assert_eq!(a.unwrap().len() + b.unwrap().len(), 1);
+    let reopened = WalletService::new_typed(vec![]).unwrap();
+    reopened.open_state(path.clone()).await.unwrap();
+    assert!(reopened.app_state().await.price_alerts[0].has_triggered);
+    assert!(reopened.evaluate_price_alerts().await.unwrap().is_empty());
+    let _ = std::fs::remove_file(path);
+}
+
+#[tokio::test]
+async fn owned_receive_validates_scope_and_keeps_display_reads_read_only() {
+    use crate::store::state::WalletSummary;
+    let service = service();
+    let path = database();
+    service.open_state(path.clone()).await.unwrap();
+    service
+        .apply_state_command(StateCommand::UpsertWallet {
+            wallet: WalletSummary::single_address(
+                "watch",
+                "Watch",
+                "Ethereum",
+                "0x1111111111111111111111111111111111111111",
+                None,
+                true,
+            ),
+        })
+        .await
+        .unwrap();
+    assert!(service
+        .receive_address("missing".into(), "ethereum".into(), true)
+        .await
+        .is_err());
+    assert!(service
+        .receive_address("watch".into(), "bitcoin".into(), true)
+        .await
+        .unwrap()
+        .is_none());
+    let read = service
+        .receive_address("watch".into(), "ethereum".into(), false)
+        .await
+        .unwrap()
+        .unwrap();
+    assert!(service
+        .owned_addresses_for_wallet("watch".into(), None)
+        .await
+        .is_empty());
+    assert_eq!(
+        service
+            .receive_address("watch".into(), "ethereum".into(), true)
+            .await
+            .unwrap(),
+        Some(read.clone())
+    );
+    let reopened = WalletService::new_typed(vec![]).unwrap();
+    reopened.open_state(path.clone()).await.unwrap();
+    assert!(reopened
+        .owned_addresses_for_wallet("watch".into(), None)
+        .await
+        .contains(&read));
+    assert!(reopened
+        .discover_chain_addresses("bitcoin".into())
+        .await
+        .unwrap()
+        .is_empty());
+    let _ = std::fs::remove_file(path);
+}
+
+#[tokio::test]
+async fn owned_catalog_transport_reads_saved_settings_and_preserves_explicit_overrides() {
+    let service = WalletService::new_catalog().unwrap();
+    let path = database();
+    service.open_state(path.clone()).await.unwrap();
+    let original = service.endpoints_for("ethereum").await;
+    assert!(!original.is_empty());
+    assert!(!service
+        .endpoints_for(
+            &crate::registry::Chain::Ton.endpoint_str_id(crate::registry::EndpointSlot::Secondary)
+        )
+        .await
+        .is_empty());
+    service
+        .apply_state_command(StateCommand::SetAppSetting {
+            update: crate::store::state::AppSettingUpdate::RpcEndpoint {
+                chain: "Ethereum".into(),
+                value: "http://127.0.0.1:8545".into(),
+            },
+        })
+        .await
+        .unwrap();
+    assert_eq!(
+        service.endpoints_for("ethereum").await[0],
+        "http://127.0.0.1:8545"
+    );
+    let reopened = WalletService::new_catalog().unwrap();
+    reopened.open_state(path.clone()).await.unwrap();
+    assert_eq!(
+        reopened.endpoints_for("ethereum").await[0],
+        "http://127.0.0.1:8545"
+    );
+    reopened
+        .update_endpoints_typed(vec![crate::service::ChainEndpoints {
+            chain_id: "ethereum".into(),
+            endpoints: vec!["http://127.0.0.1:9545".into()],
+            api_key: None,
+        }])
+        .await
+        .unwrap();
+    assert_eq!(
+        &*reopened.endpoints_for("ethereum").await,
+        &["http://127.0.0.1:9545"]
+    );
+    service
+        .reset_data(vec!["settingsAndEndpoints".into()])
+        .await
+        .unwrap();
+    assert_eq!(service.endpoints_for("ethereum").await, original);
+    let _ = std::fs::remove_file(path);
+}

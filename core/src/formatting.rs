@@ -29,31 +29,6 @@ const SIGNIFICANT_DIGITS: u32 = 6;
 /// rather than eighteen digits.
 const MAX_DISPLAY_PLACES: u32 = 8;
 
-pub fn token_preference_lookup_key(chain_name: &str, symbol: &str) -> String {
-    let chain_trimmed = chain_name.trim();
-    let symbol_trimmed = symbol.trim().to_uppercase();
-    format!("{}|{}", chain_trimmed, symbol_trimmed)
-}
-
-/// How many decimal places a chain's native asset actually has.
-///
-/// Read from the catalog, which answers for all seventy-eight entries: the
-/// forty-six chain rows carry `native_decimals` and the thirty-two network rows
-/// inherit their parent's. This used to be `SUPPORTED_DECIMAL_CHAINS`, a
-/// hand-written table of **twenty-two** of them beside the catalog, with
-/// everything else falling to a literal `6`. The twenty-two agreed with the
-/// catalog exactly — it was a correct transcription, and short by fifty-six.
-pub fn supported_decimal_places(chain_name: &str, override_decimals: Option<u32>) -> u32 {
-    if let Some(value) = override_decimals {
-        return value;
-    }
-    crate::chains::list_all_chains()
-        .iter()
-        .find(|entry| entry.name == chain_name)
-        .map(|entry| entry.native_decimals)
-        .unwrap_or(6)
-}
-
 /// How many decimal places to show for `amount` of an asset with
 /// `asset_decimals` of its own.
 ///
@@ -134,21 +109,8 @@ fn capitalize_word(word: &str) -> String {
 }
 
 #[uniffi::export]
-pub fn formatting_supported_decimal_places(
-    chain_name: String,
-    override_decimals: Option<u32>,
-) -> u32 {
-    supported_decimal_places(&chain_name, override_decimals)
-}
-
-#[uniffi::export]
 pub fn formatting_asset_amount_display(amount: f64, asset_decimals: u32) -> AssetAmountDisplay {
     asset_amount_display(amount, asset_decimals)
-}
-
-#[uniffi::export]
-pub fn formatting_token_preference_lookup_key(chain_name: String, symbol: String) -> String {
-    token_preference_lookup_key(&chain_name, &symbol)
 }
 
 #[derive(Debug, Clone, uniffi::Record)]
@@ -184,78 +146,9 @@ pub fn asset_minimum_visible_amount(visible_decimals: u32) -> f64 {
     }
 }
 
-/// What makes two holdings one dashboard row: the same asset, wherever it is
-/// held.
-///
-/// A row is per asset, so ETH on Ethereum and ETH on Arbitrum are one row with
-/// the amounts summed and a per-chain breakdown inside it.
-///
-/// The identity is the **coingecko id**, because that is the only thing that
-/// says "these are the same asset on two chains" — and every EVM L2 carries
-/// Ethereum's, so ETH on Base and ETH on Arbitrum are the ETH row.
-///
-/// Without one, a holding is its own row, keyed by contract. Falling back to
-/// the *symbol* would be the dangerous choice: symbols are not unique and
-/// nobody vouches for them, so a real holding would merge with a lookalike on
-/// another chain and be shown as one balance. A token the catalog does not
-/// vouch for is reported with an empty symbol on purpose — the front end shows
-/// its contract, the one string a deployer cannot forge — and grouping must not
-/// undo that.
-pub fn dashboard_asset_grouping_key(
-    coin_gecko_id: &str,
-    chain_identity: &str,
-    contract: &str,
-) -> String {
-    let cg = coin_gecko_id.trim().to_lowercase();
-    if !cg.is_empty() {
-        return format!("cg:{cg}");
-    }
-    format!(
-        "contract:{}|{}",
-        chain_identity.to_lowercase(),
-        contract.to_lowercase()
-    )
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    /// Every chain's native decimals come from the catalog.
-    ///
-    /// A table here would be short by however many chains it forgot, and the
-    /// forgotten ones would silently format at whatever the fallback is.
-    #[test]
-    fn native_decimals_come_from_the_catalog_for_every_chain() {
-        for entry in crate::chains::list_all_chains() {
-            assert_eq!(
-                supported_decimal_places(&entry.name, None),
-                entry.native_decimals,
-                "{} formats at the wrong precision",
-                entry.name
-            );
-        }
-        // The override still wins, which is what the argument is for.
-        assert_eq!(supported_decimal_places("Base", Some(2)), 2);
-        // And a chain the catalog does not know keeps the old fallback.
-        assert_eq!(supported_decimal_places("Not A Chain", None), 6);
-    }
-
-    #[test]
-    fn lookup_key_normalizes_inputs() {
-        assert_eq!(
-            token_preference_lookup_key("  Bitcoin  ", "  btc  "),
-            "Bitcoin|BTC"
-        );
-    }
-
-    #[test]
-    fn supported_defaults_match_chain_table() {
-        assert_eq!(supported_decimal_places("Bitcoin", None), 8);
-        assert_eq!(supported_decimal_places("Ethereum", None), 18);
-        assert_eq!(supported_decimal_places("Unknown", None), 6);
-        assert_eq!(supported_decimal_places("Ethereum", Some(6)), 6);
-    }
 
     /// The rule reads the amount, not a per-chain setting. Each row is a case a
     /// fixed count gets wrong in one direction or the other.

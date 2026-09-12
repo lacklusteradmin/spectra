@@ -84,6 +84,27 @@ fn targets(state: &CoreAppState, chain: Chain, wallet_ids: &[String]) -> Vec<Tar
         .collect()
 }
 
+/// Only identical addresses on the same network may share a provider response.
+fn evm_history_groups(targets: &[Target], load_more: bool) -> Vec<(Vec<String>, String)> {
+    let mut groups = std::collections::BTreeMap::new();
+    for target in targets {
+        let address = target.address.trim().to_lowercase();
+        let key = (
+            target.network.str_id(),
+            address,
+            load_more.then_some(&target.wallet_id),
+        );
+        groups
+            .entry(key)
+            .or_insert_with(Vec::new)
+            .push(target.wallet_id.clone());
+    }
+    groups
+        .into_iter()
+        .map(|((_, address, _), ids)| (ids, address))
+        .collect()
+}
+
 /// One normalized entry as a stored record.
 ///
 /// `created_at` is the entry's own timestamp in unix seconds, which is what
@@ -94,6 +115,7 @@ fn record_for(
     entry: crate::fetch::history_decode::NormalizedHistoryItem,
 ) -> crate::fetch::transactions::CoreTransactionRecord {
     crate::fetch::transactions::CoreTransactionRecord {
+        deployment_id: None,
         id: crate::store::new_transaction_id(),
         wallet_id: Some(target.wallet_id.clone()),
         kind: entry.kind,
@@ -130,7 +152,6 @@ fn record_for(
     }
 }
 
-#[uniffi::export(async_runtime = "tokio")]
 impl WalletService {
     /// Fetch one chain's history for its wallets and merge it into the store.
     ///
@@ -183,9 +204,11 @@ impl WalletService {
         let mut incoming = Vec::new();
         let mut wallets_refreshed = 0;
         let mut wallets_failed = 0;
+        let mut completed_wallets = Vec::new();
         for (index, entries) in fetched {
             match entries {
                 Some(entries) => {
+                    completed_wallets.push(targets[index].wallet_id.clone());
                     wallets_refreshed += 1;
                     incoming.extend(
                         entries
@@ -208,6 +231,9 @@ impl WalletService {
             })
             .await?;
 
+        for id in completed_wallets {
+            self.set_history_page(chain_id.clone(), id, 1, true);
+        }
         Ok(HistoryRefreshOutcome {
             wallets_refreshed,
             wallets_failed,
@@ -281,7 +307,6 @@ fn token_descriptors(state: &CoreAppState, chain: Chain) -> Vec<crate::service::
         .collect()
 }
 
-#[uniffi::export(async_runtime = "tokio")]
 impl WalletService {
     /// Fetch one EVM chain's history page for its wallets and merge it.
     ///
@@ -306,44 +331,14 @@ impl WalletService {
         let (groups, descriptors, wallet_names, networks) = {
             let state = self.app_state().await;
             let targets = targets(&state, chain, &wallet_ids);
-            let plan =
-                crate::fetch::plan_evm_refresh_targets(crate::fetch::EvmRefreshTargetsRequest {
-                    chain_name: chain.chain_display_name().to_string(),
-                    wallets: targets
-                        .iter()
-                        .map(|target| crate::fetch::RefreshWalletInput {
-                            wallet_id: target.wallet_id.clone(),
-                            selected_chain: chain.chain_display_name().to_string(),
-                            addresses: vec![target.address.clone()],
-                        })
-                        .collect(),
-                    allowed_wallet_ids: None,
-                    // Wallets that share an address share a page; loading more
-                    // walks each wallet's own cursor.
-                    group_by_normalized_address: !load_more,
-                });
+            let groups = evm_history_groups(&targets, load_more);
             let mut names = std::collections::HashMap::new();
             let mut networks = std::collections::HashMap::new();
             for target in targets {
                 networks.insert(target.wallet_id.clone(), target.network);
                 names.insert(target.wallet_id, target.wallet_name);
             }
-            (
-                if load_more {
-                    plan.wallet_targets
-                        .into_iter()
-                        .map(|target| (vec![target.wallet_id], target.normalized_address))
-                        .collect::<Vec<_>>()
-                } else {
-                    plan.grouped_targets
-                        .into_iter()
-                        .map(|group| (group.wallet_ids, group.normalized_address))
-                        .collect()
-                },
-                token_descriptors(&state, chain),
-                names,
-                networks,
-            )
+            (groups, token_descriptors(&state, chain), names, networks)
         };
         if groups.is_empty() {
             return Ok(HistoryRefreshOutcome::nothing());
@@ -365,6 +360,7 @@ impl WalletService {
         let mut wallets_refreshed = 0;
         let mut wallets_failed = 0;
         let mut exhausted = true;
+        let mut cursor_updates = Vec::new();
         for (group_wallet_ids, normalized_address) in groups {
             let Some(first) = group_wallet_ids.first().cloned() else {
                 continue;
@@ -427,7 +423,7 @@ impl WalletService {
                 && decoded.native.len() < page_size as usize;
             exhausted = exhausted && is_last_page;
             for wallet_id in &group_wallet_ids {
-                self.set_history_page(chain_id.clone(), wallet_id.clone(), page, is_last_page);
+                cursor_updates.push((wallet_id.clone(), page, is_last_page));
                 diagnostics.push(HistoryWalletDiagnostics {
                     wallet_id: wallet_id.clone(),
                     identifier: normalized_address.clone(),
@@ -472,6 +468,9 @@ impl WalletService {
             })
             .await?;
 
+        for (id, page, exhausted) in cursor_updates {
+            self.set_history_page(chain_id.clone(), id, page, exhausted);
+        }
         Ok(HistoryRefreshOutcome {
             wallets_refreshed,
             wallets_failed,
@@ -489,6 +488,7 @@ fn evm_record(
     planned: crate::fetch::history_decode::EvmPlannedTransactionRecord,
 ) -> crate::fetch::transactions::CoreTransactionRecord {
     crate::fetch::transactions::CoreTransactionRecord {
+        deployment_id: None,
         id: crate::store::new_transaction_id(),
         wallet_id: Some(planned.wallet_id),
         kind: planned.kind,
@@ -523,7 +523,6 @@ fn evm_record(
     }
 }
 
-#[uniffi::export(async_runtime = "tokio")]
 impl WalletService {
     /// Fetch and merge one UTXO chain's history across each wallet's known
     /// addresses.
@@ -558,11 +557,18 @@ impl WalletService {
         let mut incoming = Vec::new();
         let mut wallets_refreshed = 0;
         let mut wallets_failed = 0;
+        let mut completed_wallets = Vec::new();
         for (wallet_id, wallet_name, network) in wallets {
-            let addresses = self
+            let addresses = match self
                 .known_utxo_addresses(wallet_id.clone(), chain_id.clone())
                 .await
-                .unwrap_or_default();
+            {
+                Ok(addresses) => addresses,
+                Err(_) => {
+                    wallets_failed += 1;
+                    continue;
+                }
+            };
             if addresses.is_empty() {
                 continue;
             }
@@ -607,7 +613,7 @@ impl WalletService {
             }
             wallets_refreshed += 1;
             // A whole history in one call, so the page just fetched is the last.
-            self.set_history_page(chain_id.clone(), wallet_id.clone(), 1, true);
+            completed_wallets.push(wallet_id.clone());
 
             let aggregated = crate::fetch::history_decode::history_aggregate_by_transaction(
                 crate::fetch::history_decode::MultiAddressAggregateInput {
@@ -632,6 +638,9 @@ impl WalletService {
             })
             .await?;
 
+        for id in completed_wallets {
+            self.set_history_page(chain_id.clone(), id, 1, true);
+        }
         Ok(HistoryRefreshOutcome {
             wallets_refreshed,
             wallets_failed,
@@ -654,6 +663,7 @@ fn aggregated_record(
     aggregate: crate::fetch::history_decode::AggregatedTransaction,
 ) -> crate::fetch::transactions::CoreTransactionRecord {
     crate::fetch::transactions::CoreTransactionRecord {
+        deployment_id: None,
         id: crate::store::new_transaction_id(),
         wallet_id: Some(wallet_id.to_string()),
         kind: aggregate.kind,

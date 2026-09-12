@@ -447,7 +447,7 @@ mod refresh_entry_tests {
             is_watch_only: false,
             chain_name: chain.chain_display_name().to_string(),
             include_in_portfolio_total: true,
-            network_mode: None,
+            network_id: chain.str_id().into(),
             xpub: None,
             derivation_preset: "standard".to_string(),
             derivation_path: None,
@@ -488,10 +488,16 @@ mod refresh_entry_tests {
             Chain::Bitcoin.str_id().to_string(),
             Chain::BitcoinTestnet4.str_id().to_string(),
         );
+        assert_eq!(
+            refresh_entries_for(&state)[0].address,
+            "bc1main",
+            "settings cannot retarget a stored wallet"
+        );
+        state.wallets[0].network_id = "bitcoin-testnet-4".into();
         assert_eq!(refresh_entries_for(&state)[0].address, "tb1test");
 
         // A wallet's own network wins over the app's selection.
-        state.wallets[0].network_mode = Some(Chain::Bitcoin.str_id().to_string());
+        state.wallets[0].network_id = Chain::Bitcoin.str_id().to_string();
         assert_eq!(refresh_entries_for(&state)[0].address, "bc1main");
     }
 

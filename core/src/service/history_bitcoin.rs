@@ -9,7 +9,6 @@ const DEFAULT_BITCOIN_LIMIT: u32 = 20;
 const MIN_BITCOIN_LIMIT: u32 = 10;
 const MAX_BITCOIN_LIMIT: u32 = 100;
 
-#[uniffi::export(async_runtime = "tokio")]
 impl WalletService {
     /// Fetch and merge Bitcoin history for its wallets.
     ///
@@ -311,6 +310,7 @@ fn bitcoin_record(
     snapshot: crate::history::CoreBitcoinHistorySnapshot,
 ) -> crate::fetch::transactions::CoreTransactionRecord {
     crate::fetch::transactions::CoreTransactionRecord {
+        deployment_id: None,
         id: crate::store::new_transaction_id(),
         wallet_id: Some(wallet.id.clone()),
         kind: snapshot.kind,

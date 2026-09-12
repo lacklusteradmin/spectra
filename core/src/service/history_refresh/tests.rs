@@ -8,7 +8,7 @@ fn wallet(id: &str, chain: Chain, addresses: &[(Chain, &str)]) -> WalletSummary 
         is_watch_only: false,
         chain_name: chain.chain_display_name().to_string(),
         include_in_portfolio_total: true,
-        network_mode: None,
+        network_id: chain.str_id().into(),
         xpub: None,
         derivation_preset: "standard".to_string(),
         derivation_path: None,
@@ -71,6 +71,7 @@ fn a_testnet_wallet_fetches_its_network_and_files_under_its_family() {
         Chain::BitcoinTestnet4.str_id().to_string(),
     );
 
+    state.wallets[0].network_id = "bitcoin-testnet-4".into();
     let target = &targets(&state, Chain::Bitcoin, &[])[0];
     assert_eq!(target.network, Chain::BitcoinTestnet4, "fetched from");
     assert_eq!(target.address, "tb1test");
@@ -117,6 +118,7 @@ fn a_target_follows_the_network_the_wallet_is_on() {
         .collect(),
         ..AppSettings::default()
     };
+    state.wallets[0].network_id = "bitcoin-testnet-4".into();
     assert_eq!(targets(&state, Chain::Bitcoin, &[])[0].address, "tb1test");
 }
 
@@ -195,6 +197,12 @@ fn descriptors_are_the_enabled_tokens_for_the_chain() {
     fn entry(chain: &str, contract: &str, enabled: bool) -> CoreTokenPreferenceEntry {
         CoreTokenPreferenceEntry {
             token: crate::tokens::TokenEntry {
+                id: "fixture:token".into(),
+                token_id: "fixture:token".into(),
+                kind: crate::tokens::TokenKind::Protocol {
+                    standard: "fixture".into(),
+                    identifier: "fixture".into(),
+                },
                 chain: chain.to_string(),
                 name: "Token".to_string(),
                 symbol: "TKN".to_string(),
@@ -505,4 +513,127 @@ async fn a_chain_with_no_wallets_refreshes_nothing() {
         .refresh_chain_history("not-a-chain".to_string(), Vec::new())
         .await
         .is_err());
+}
+
+#[tokio::test]
+async fn owned_history_scope_and_failed_clock_are_core_decisions() {
+    use crate::service::HistoryRefreshScope;
+    let service = WalletService::new_typed(vec![]).unwrap();
+    assert!(service
+        .refresh_history(HistoryRefreshScope::All, false, None, 0.0)
+        .await
+        .is_err());
+    let path = std::env::temp_dir().join(format!(
+        "history-owned-{}.sqlite",
+        crate::store::new_event_id()
+    ));
+    service
+        .open_state(path.to_string_lossy().into())
+        .await
+        .unwrap();
+    service
+        .apply_state_command(crate::store::state::StateCommand::UpsertWallet {
+            wallet: wallet("w1", Chain::Cronos, &[(Chain::Ethereum, "0xabc")]),
+        })
+        .await
+        .unwrap();
+    assert!(service
+        .refresh_history(
+            HistoryRefreshScope::Wallets { wallet_ids: vec![] },
+            false,
+            None,
+            0.0
+        )
+        .await
+        .unwrap()
+        .is_empty());
+    assert!(service
+        .refresh_history(
+            HistoryRefreshScope::Chains {
+                chain_ids: vec!["invalid".into()]
+            },
+            false,
+            None,
+            0.0
+        )
+        .await
+        .is_err());
+    for _ in 0..2 {
+        let result = service
+            .refresh_history(HistoryRefreshScope::All, false, None, 3600.0)
+            .await
+            .unwrap();
+        assert_eq!(result.len(), 1);
+        assert_eq!(result[0].outcome.as_ref().unwrap().wallets_failed, 1);
+    }
+    assert!(
+        !service
+            .history_cursor("cronos".into(), "w1".into())
+            .is_exhausted
+    );
+}
+
+#[test]
+fn evm_groups_share_only_the_same_network_and_address() {
+    let target = |id: &str, network, address: &str| Target {
+        wallet_id: id.into(),
+        wallet_name: id.into(),
+        address: address.into(),
+        network,
+    };
+    let targets = vec![
+        target("main-a", Chain::Ethereum, "0xAbC"),
+        target("test", Chain::EthereumSepolia, "0xabc"),
+        target("main-b", Chain::Ethereum, "0xabc"),
+    ];
+    let groups = evm_history_groups(&targets, false);
+    assert_eq!(groups.len(), 2);
+    assert!(groups
+        .iter()
+        .any(|(ids, _)| ids == &vec!["main-a", "main-b"]));
+    assert!(groups.iter().any(|(ids, _)| ids == &vec!["test"]));
+    assert_eq!(evm_history_groups(&targets, true).len(), 3);
+}
+
+#[tokio::test]
+async fn wallet_history_scope_does_not_consume_another_wallet_cooldown() {
+    use crate::fetch::refresh::policy::HistoryRefreshKey;
+    use crate::service::HistoryRefreshScope;
+    let service = WalletService::new_typed(vec![]).unwrap();
+    let path = std::env::temp_dir().join(format!(
+        "history-clock-{}.sqlite",
+        crate::store::new_event_id()
+    ));
+    service
+        .open_state(path.to_string_lossy().into())
+        .await
+        .unwrap();
+    // Cronos has no keyless history provider: refusal is offline and remains retryable.
+    for id in ["a", "b"] {
+        service
+            .apply_state_command(crate::store::state::StateCommand::UpsertWallet {
+                wallet: wallet(id, Chain::Cronos, &[(Chain::Ethereum, "0xabc")]),
+            })
+            .await
+            .unwrap();
+    }
+    service
+        .record_history_refresh(HistoryRefreshKey::new("a", "cronos"))
+        .await;
+    let scope = |id: &str| HistoryRefreshScope::Wallets {
+        wallet_ids: vec![id.into()],
+    };
+    assert!(service
+        .refresh_history(scope("A"), false, None, 3600.0)
+        .await
+        .unwrap()
+        .is_empty());
+    for _ in 0..2 {
+        let results = service
+            .refresh_history(scope("B"), false, None, 3600.0)
+            .await
+            .unwrap();
+        assert_eq!(results.len(), 1);
+        assert_eq!(results[0].outcome.as_ref().unwrap().wallets_failed, 1);
+    }
 }

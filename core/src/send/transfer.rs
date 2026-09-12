@@ -19,24 +19,18 @@ pub(crate) fn can_send_coin(
         return false;
     }
     let Some(chain) = crate::registry::Chain::from_display_name(&coin.chain_name) else {
-        return true;
+        return false;
     };
     let is_known_token = || {
-        token_preferences.iter().any(|entry| {
-            entry.is_enabled
-                && entry.token.symbol == coin.symbol
-                && entry.token.chain == coin.chain_name
-                && match coin.contract_address.as_deref() {
-                    Some(contract) => entry.token.contract.eq_ignore_ascii_case(contract),
-                    None => true,
-                }
-        })
+        token_preferences
+            .iter()
+            .any(|entry| entry.is_enabled && entry.token.matches_holding(coin))
     };
     match chain.send_rule() {
         SendRule::Any => true,
-        SendRule::NativeOnly => coin.symbol == chain.coin_symbol(),
-        SendRule::NativeOrSupportedToken => coin.symbol == chain.coin_symbol() || is_known_token(),
-        SendRule::SupportedSolanaCoin => coin.symbol == chain.coin_symbol() || is_known_token(),
+        SendRule::NativeOnly => coin.is_native(),
+        SendRule::NativeOrSupportedToken => coin.is_native() || is_known_token(),
+        SendRule::SupportedSolanaCoin => coin.is_native() || is_known_token(),
     }
 }
 // ── FFI surface ─────────────────────────────────────────────────────────────

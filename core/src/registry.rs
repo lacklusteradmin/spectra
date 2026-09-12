@@ -221,7 +221,7 @@ pub enum EvmHistorySource {
 
 impl Chain {
     /// Named accounts authorize keys on chain instead of encoding the key in their address.
-    pub const fn supports_named_sender_accounts(self) -> bool {
+    pub fn supports_named_sender_accounts(self) -> bool {
         matches!(self, Self::Near | Self::NearTestnet)
     }
 
@@ -284,7 +284,7 @@ impl Chain {
     ///
     /// Testnets answer for their mainnet: the key material is the same, and
     /// which network an address is rendered for is the derivation's business.
-    pub const fn derives_from_private_key(self) -> bool {
+    pub fn derives_from_private_key(self) -> bool {
         let chain = self.mainnet_counterpart();
         chain.is_evm()
             || matches!(
@@ -311,7 +311,7 @@ impl Chain {
     /// Through `mainnet_counterpart` because the shape is what decoding needs
     /// and a testnet decodes like its mainnet; which network is reached is the
     /// chain id's business.
-    pub const fn simple_preview_chain(self) -> Option<crate::send::preview_decode::SimpleChain> {
+    pub fn simple_preview_chain(self) -> Option<crate::send::preview_decode::SimpleChain> {
         use crate::send::preview_decode::SimpleChain;
         Some(match self.mainnet_counterpart() {
             Chain::Solana => SimpleChain::Solana,
@@ -381,6 +381,13 @@ impl Chain {
     /// The front end held this as a fourteen-name table beside a two-name one.
     /// Twelve of the fourteen named chains have no supplement at all, and
     /// Hyperliquid, which has one, was not in either.
+    pub(crate) fn secondary_endpoint_ids(self) -> &'static [&'static str] {
+        match self {
+            Self::Ton => &["ton.api.v3"],
+            _ => &[],
+        }
+    }
+
     pub fn supplemental_endpoint_slot(self) -> EndpointSlot {
         match self.mainnet_counterpart() {
             Chain::Polkadot | Chain::Icp => EndpointSlot::Secondary,
@@ -406,7 +413,7 @@ impl Chain {
     /// sign-only is refused rather than quietly broadcast — a caller that
     /// wanted a dry run and got a real transfer is the worst way to find out
     /// the flag was ignored.
-    pub const fn supports_sign_only(self) -> bool {
+    pub fn supports_sign_only(self) -> bool {
         self.is_evm()
             || matches!(
                 self,
@@ -417,7 +424,7 @@ impl Chain {
             )
     }
 
-    pub const fn supports_staking(self) -> bool {
+    pub fn supports_staking(self) -> bool {
         matches!(
             self,
             Chain::Solana
@@ -447,82 +454,17 @@ impl Chain {
     }
 
     /// Returns `true` for chains that are testnets.
-    pub const fn is_testnet(self) -> bool {
-        matches!(
-            self,
-            Chain::BitcoinTestnet
-                | Chain::BitcoinTestnet4
-                | Chain::BitcoinSignet
-                | Chain::LitecoinTestnet
-                | Chain::BitcoinCashTestnet
-                | Chain::BitcoinSVTestnet
-                | Chain::DogecoinTestnet
-                | Chain::ZcashTestnet
-                | Chain::DecredTestnet
-                | Chain::KaspaTestnet
-                | Chain::DashTestnet
-                | Chain::EthereumSepolia
-                | Chain::EthereumHoodi
-                | Chain::ArbitrumSepolia
-                | Chain::OptimismSepolia
-                | Chain::BaseSepolia
-                | Chain::BnbChainTestnet
-                | Chain::AvalancheFuji
-                | Chain::PolygonAmoy
-                | Chain::HyperliquidTestnet
-                | Chain::EthereumClassicMordor
-                | Chain::TronNile
-                | Chain::SolanaDevnet
-                | Chain::XrpTestnet
-                | Chain::StellarTestnet
-                | Chain::CardanoPreprod
-                | Chain::SuiTestnet
-                | Chain::AptosTestnet
-                | Chain::TonTestnet
-                | Chain::NearTestnet
-                | Chain::PolkadotWestend
-                | Chain::MoneroStagenet
-        )
+    pub fn is_testnet(self) -> bool {
+        self.entry().is_testnet
     }
 
     /// Maps a testnet variant to its mainnet counterpart. Returns `self` for mainnets.
-    pub const fn mainnet_counterpart(self) -> Chain {
-        match self {
-            Chain::BitcoinTestnet | Chain::BitcoinTestnet4 | Chain::BitcoinSignet => Chain::Bitcoin,
-            Chain::LitecoinTestnet => Chain::Litecoin,
-            Chain::BitcoinCashTestnet => Chain::BitcoinCash,
-            Chain::BitcoinSVTestnet => Chain::BitcoinSV,
-            Chain::DogecoinTestnet => Chain::Dogecoin,
-            Chain::ZcashTestnet => Chain::Zcash,
-            Chain::DecredTestnet => Chain::Decred,
-            Chain::KaspaTestnet => Chain::Kaspa,
-            Chain::DashTestnet => Chain::Dash,
-            Chain::EthereumSepolia | Chain::EthereumHoodi => Chain::Ethereum,
-            Chain::ArbitrumSepolia => Chain::Arbitrum,
-            Chain::OptimismSepolia => Chain::Optimism,
-            Chain::BaseSepolia => Chain::Base,
-            Chain::BnbChainTestnet => Chain::BnbChain,
-            Chain::AvalancheFuji => Chain::Avalanche,
-            Chain::PolygonAmoy => Chain::Polygon,
-            Chain::HyperliquidTestnet => Chain::Hyperliquid,
-            Chain::EthereumClassicMordor => Chain::EthereumClassic,
-            Chain::TronNile => Chain::Tron,
-            Chain::SolanaDevnet => Chain::Solana,
-            Chain::XrpTestnet => Chain::Xrp,
-            Chain::StellarTestnet => Chain::Stellar,
-            Chain::CardanoPreprod => Chain::Cardano,
-            Chain::SuiTestnet => Chain::Sui,
-            Chain::AptosTestnet => Chain::Aptos,
-            Chain::TonTestnet => Chain::Ton,
-            Chain::NearTestnet => Chain::Near,
-            Chain::PolkadotWestend => Chain::Polkadot,
-            Chain::MoneroStagenet => Chain::Monero,
-            _ => self,
-        }
+    pub fn mainnet_counterpart(self) -> Chain {
+        Chain::from_str_id(&self.entry().family).expect("validated network family")
     }
 
     /// View the chain as an `EvmChain` if it's EVM-family.
-    pub const fn as_evm(self) -> Option<EvmChain> {
+    pub fn as_evm(self) -> Option<EvmChain> {
         if self.is_evm() {
             Some(EvmChain(self))
         } else {
@@ -531,7 +473,7 @@ impl Chain {
     }
 
     /// `true` for every EVM-compatible chain (mainnet or testnet).
-    pub const fn is_evm(self) -> bool {
+    pub fn is_evm(self) -> bool {
         matches!(
             self,
             Chain::Ethereum
@@ -571,7 +513,7 @@ impl Chain {
     }
 
     /// Aptos network identity bound into each locally constructed transaction.
-    pub const fn aptos_chain_id(self) -> Option<u8> {
+    pub fn aptos_chain_id(self) -> Option<u8> {
         match self {
             Self::Aptos => Some(1),
             Self::AptosTestnet => Some(2),
@@ -580,7 +522,7 @@ impl Chain {
     }
 
     /// EIP-155 chain id. Non-EVM chains return `1` (legacy fallback).
-    pub const fn evm_chain_id(self) -> u64 {
+    pub fn evm_chain_id(self) -> u64 {
         match self {
             Chain::Ethereum => 1,
             Chain::Arbitrum => 42161,
@@ -638,7 +580,7 @@ impl Chain {
     /// `api.bscscan.com`, `api.lineascan.build`, `api.sonicscan.org`,
     /// `api.basescan.org` and `api.hyperevmscan.io` all answer "You are using
     /// a deprecated V1 endpoint, switch to Etherscan API V2".
-    pub const fn evm_history_source(self) -> EvmHistorySource {
+    pub fn evm_history_source(self) -> EvmHistorySource {
         match self.mainnet_counterpart() {
             // Blockscout, from its own instance directory at
             // `chains.blockscout.com/api/chains`.
@@ -690,7 +632,7 @@ impl Chain {
     }
 
     /// Map to the `SendChain` discriminant used by send-payload classification.
-    pub const fn send_chain(self) -> SendChain {
+    pub fn send_chain(self) -> SendChain {
         match self {
             Chain::Bitcoin => SendChain::Bitcoin,
             Chain::BitcoinCash => SendChain::BitcoinCash,
@@ -789,11 +731,7 @@ impl Chain {
         self.entry().native_asset_name.as_str()
     }
 
-    /// The asset fees are paid in — the catalog's `gas_token_symbol`.
-    ///
-    /// Not `symbol`: an L2 usually has a governance token of its own while
-    /// still charging gas in ETH, and this is the one a balance is denominated
-    /// in.
+    /// The native token's symbol, joined through the network's deployment reference.
     pub fn coin_symbol(self) -> &'static str {
         self.entry().gas_token_symbol.as_str()
     }
@@ -1059,7 +997,7 @@ impl Chain {
     ///
     /// One rule now, on the side that refuses early: being told no is better
     /// than a signed transaction that cannot land.
-    pub const fn send_rule(self) -> SendRule {
+    pub fn send_rule(self) -> SendRule {
         let chain = self.mainnet_counterpart();
         match chain {
             Chain::EthereumClassic | Chain::Hyperliquid => SendRule::NativeOnly,
@@ -1075,7 +1013,7 @@ impl Chain {
     /// how its history merges, rather than silently defaulting to the wrong
     /// rule. This used to live as eighteen near-identical Swift wrappers,
     /// which is how a chain could be added and quietly get the wrong one.
-    pub const fn transaction_merge_strategy(
+    pub fn transaction_merge_strategy(
         self,
     ) -> crate::fetch::transactions::TransactionMergeStrategy {
         use crate::fetch::transactions::TransactionMergeStrategy as S;
@@ -1104,7 +1042,7 @@ impl Chain {
     ///
     /// Tron carries multiple assets on one transaction hash, so hash alone is
     /// not a unique key there.
-    pub const fn merge_identity_includes_symbol(self) -> bool {
+    pub fn merge_identity_includes_symbol(self) -> bool {
         matches!(self.mainnet_counterpart(), Chain::Tron)
     }
 
@@ -1154,14 +1092,14 @@ impl Chain {
     /// check against, so the floor is the whole check. It was `0.001` written
     /// into the iOS submit branch, next to the NEAR balance it was compared
     /// with — a number about a chain, held by the front end.
-    pub const fn token_send_gas_reserve(self) -> Option<f64> {
+    pub fn token_send_gas_reserve(self) -> Option<f64> {
         match self {
             Chain::Near => Some(0.001),
             _ => None,
         }
     }
 
-    pub const fn supports_deep_utxo_discovery(self) -> bool {
+    pub fn supports_deep_utxo_discovery(self) -> bool {
         matches!(
             self,
             Chain::Bitcoin
@@ -1191,7 +1129,7 @@ impl Chain {
     /// Swift asked `chainName == "Ethereum"` for this in three places: the
     /// composer's recipient probe, the EVM preview and the submit path. One
     /// fact stated three times is three chances for them to disagree.
-    pub const fn resolves_ens_names(self) -> bool {
+    pub fn resolves_ens_names(self) -> bool {
         matches!(self, Chain::Ethereum)
     }
 
@@ -1228,7 +1166,7 @@ impl Chain {
         }
     }
 
-    pub const fn address_validation_kind(self) -> &'static str {
+    pub fn address_validation_kind(self) -> &'static str {
         match self {
             // EVM: one format, network-agnostic on the wire.
             Chain::Ethereum
@@ -1319,7 +1257,7 @@ impl Chain {
     /// Monero is the notable exclusion: watching a Monero account needs the
     /// private view key, which an address does not carry. Testnets are excluded
     /// because import only populates mainnet slots — see [`Chain::address_slot`].
-    pub const fn supports_watch_only_import(self) -> bool {
+    pub fn supports_watch_only_import(self) -> bool {
         if self.is_testnet() {
             return false;
         }
@@ -1353,7 +1291,7 @@ impl Chain {
         )
     }
 
-    pub const fn flags_evm_address_as_wrong_chain(self) -> bool {
+    pub fn flags_evm_address_as_wrong_chain(self) -> bool {
         matches!(
             self,
             Chain::Bitcoin
@@ -1369,7 +1307,7 @@ impl Chain {
         )
     }
 
-    pub const fn static_fee_units(self) -> Option<u128> {
+    pub fn static_fee_units(self) -> Option<u128> {
         match self {
             Chain::Solana => Some(5_000),
             Chain::Tron => Some(1_000_000),
@@ -1534,10 +1472,10 @@ pub struct NetworkChoice {
 pub struct EvmChain(Chain);
 
 impl EvmChain {
-    pub const fn chain(self) -> Chain {
+    pub fn chain(self) -> Chain {
         self.0
     }
-    pub const fn chain_id(self) -> u64 {
+    pub fn chain_id(self) -> u64 {
         self.0.evm_chain_id()
     }
 }
@@ -1929,7 +1867,6 @@ pub fn core_chain_identities() -> Vec<ChainIdentity> {
 }
 
 /// Endpoint-table key for a given chain + slot combination.
-#[uniffi::export]
 pub fn core_endpoint_str_id(
     chain_id: String,
     slot: crate::app_core::AppCoreEndpointSlot,
@@ -1943,31 +1880,17 @@ pub fn core_endpoint_str_id(
     Some(chain.endpoint_str_id(mapped))
 }
 
-/// Resolve any chain name, display name, or ticker symbol to its canonical
+/// Resolve a network id or display name to its canonical
 /// string id as stored in the `chains.toml` catalog.
 #[uniffi::export]
-pub fn core_resolve_chain_id(input: String) -> String {
-    let normalized = input.trim().to_lowercase();
-    if normalized.is_empty() {
-        return input;
-    }
-    for entry in crate::chains::catalog() {
-        if entry.id.to_lowercase() == normalized
-            || entry.name.trim().to_lowercase() == normalized
-            || entry.symbol.trim().to_lowercase() == normalized
-        {
-            return entry.id.clone();
-        }
-    }
-    let kebab: String = normalized
-        .chars()
-        .map(|c| if c.is_alphanumeric() { c } else { '-' })
-        .collect();
-    kebab
-        .split('-')
-        .filter(|s| !s.is_empty())
-        .collect::<Vec<_>>()
-        .join("-")
+pub fn core_resolve_chain_id(input: String) -> Option<String> {
+    let normalized = input.trim();
+    crate::chains::catalog()
+        .iter()
+        .find(|entry| {
+            entry.id.eq_ignore_ascii_case(normalized) || entry.name.eq_ignore_ascii_case(normalized)
+        })
+        .map(|entry| entry.id.clone())
 }
 
 /// Not exported: it is a column of `core_chain_identities` now.
@@ -2165,5 +2088,27 @@ mod monero_takes_the_shared_submit_path {
         assert!(Chain::Monero.uses_generic_send_submit());
         assert!(Chain::Monero.simple_preview_chain().is_some());
         assert!(Chain::Monero.has_send_preview());
+    }
+}
+
+/// History service strategy; callers never select a protocol implementation.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum HistoryRefreshKind {
+    Bitcoin,
+    Evm,
+    Utxo,
+    Normalized,
+}
+impl Chain {
+    pub(crate) fn history_refresh_kind(self) -> HistoryRefreshKind {
+        if self.mainnet_counterpart() == Chain::Bitcoin {
+            HistoryRefreshKind::Bitcoin
+        } else if self.is_evm() {
+            HistoryRefreshKind::Evm
+        } else if self.supports_deep_utxo_discovery() {
+            HistoryRefreshKind::Utxo
+        } else {
+            HistoryRefreshKind::Normalized
+        }
     }
 }

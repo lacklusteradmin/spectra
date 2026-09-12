@@ -81,6 +81,9 @@ mod history_bitcoin;
 mod history_cursor;
 mod history_derived;
 mod history_refresh;
+pub use history_refresh::HistoryRefreshOutcome;
+mod history_operation;
+pub use history_operation::{ChainHistoryRefresh, HistoryRefreshScope};
 mod keypool;
 mod maintenance;
 mod network;
@@ -94,6 +97,7 @@ mod network_tokens;
 mod operational_events;
 mod pending_status;
 pub use pending_status::{PendingMaintenanceFailure, PendingMaintenanceResult};
+mod reset;
 mod send_broadcast;
 mod send_destination;
 mod send_execution;
@@ -103,6 +107,7 @@ mod send_preview;
 mod send_records;
 mod send_signing;
 mod standalone;
+pub use reset::ResetOutcome;
 mod state;
 mod transaction_recheck;
 mod transactions;
@@ -153,6 +158,7 @@ pub struct WalletService {
 
     /// Serializes persistent mutations, including database binding.
     pub(crate) state_writer: Arc<tokio::sync::Mutex<()>>,
+    uses_catalog_endpoints: Arc<std::sync::atomic::AtomicBool>,
     pub(crate) endpoints: Arc<AsyncRwLock<EndpointIndex>>,
     /// Per-wallet history pagination state (cursor / page / exhaustion).
     pub(crate) history_pagination: Arc<HistoryPaginationStore>,
@@ -166,7 +172,6 @@ pub struct WalletService {
     pub(crate) state_binding: Arc<crate::service::state::StateBinding>,
     /// User's Etherscan V2 API key. Shared across all EVM chains: Etherscan v2
     /// dispatches by `chainid` parameter against a single host.
-    pub(crate) etherscan_api_key: Arc<std::sync::RwLock<String>>,
     /// Confirmation-poll backoff state, keyed by transaction id. Not persisted:
     /// a restart should re-poll every pending transaction immediately, which is
     /// what an absent tracker already means.
@@ -189,7 +194,7 @@ pub struct WalletService {
     /// which has no such properties, could not ask the question at all.
     pub(crate) refresh_clock: Arc<AsyncRwLock<crate::fetch::refresh::policy::RefreshClock>>,
 }
-#[uniffi::export(async_runtime = "tokio")]
+#[uniffi::export]
 impl WalletService {
     #[uniffi::constructor]
     pub fn new_typed(endpoints: Vec<ChainEndpoints>) -> Result<Arc<Self>, SpectraBridgeError> {
@@ -216,34 +221,25 @@ impl WalletService {
             trc20_metadata: Arc::new(crate::fetch::chains::tron::MetadataCache::default()),
             quote_refresh_lock: Arc::new(tokio::sync::Mutex::new(())),
             state_writer: Arc::new(tokio::sync::Mutex::new(())),
+            uses_catalog_endpoints: Arc::new(std::sync::atomic::AtomicBool::new(false)),
             endpoints: Arc::new(AsyncRwLock::new(EndpointIndex::from_list(endpoints))),
             history_pagination: Arc::new(HistoryPaginationStore::new()),
             secret_store: Arc::new(std::sync::RwLock::new(None)),
             wallet_state: Arc::new(AsyncRwLock::new(CoreAppState::default())),
             state_binding: Arc::new(crate::service::state::StateBinding::default()),
-            etherscan_api_key: Arc::new(std::sync::RwLock::new(String::new())),
             status_trackers: Arc::new(AsyncRwLock::new(HashMap::new())),
             keypool: Arc::new(crate::service::keypool::Keypool::default()),
             refresh_clock: Arc::new(AsyncRwLock::new(Default::default())),
         }))
     }
 
-    pub async fn update_endpoints_typed(
-        &self,
-        endpoints: Vec<ChainEndpoints>,
-    ) -> Result<(), SpectraBridgeError> {
-        let mut guard = self.endpoints.write().await;
-        *guard = EndpointIndex::from_list(endpoints);
-        Ok(())
-    }
-
-    /// Swift pushes the user's Etherscan V2 API key here. Used for EVM history
-    /// fetches across every indexed EVM chain (chainid is passed as a query
-    /// param, so one key covers all of them).
-    pub fn set_etherscan_api_key(&self, key: String) {
-        if let Ok(mut guard) = self.etherscan_api_key.write() {
-            *guard = key;
-        }
+    #[uniffi::constructor]
+    pub fn new_catalog() -> Result<Arc<Self>, SpectraBridgeError> {
+        let service = Self::new_typed(catalog_endpoints()?)?;
+        service
+            .uses_catalog_endpoints
+            .store(true, std::sync::atomic::Ordering::Relaxed);
+        Ok(service)
     }
 
     // `fetch_native_balance_summary_auto` lives in the plain-impl block below
@@ -276,12 +272,35 @@ impl WalletService {
 
 impl WalletService {
     pub(crate) async fn endpoints_for(&self, chain_id: &str) -> Arc<Vec<String>> {
-        let guard = self.endpoints.read().await;
-        guard
+        let base = self
+            .endpoints
+            .read()
+            .await
             .endpoints
             .get(chain_id)
             .cloned()
-            .unwrap_or_else(|| Arc::new(Vec::new()))
+            .unwrap_or_default();
+        if self
+            .uses_catalog_endpoints
+            .load(std::sync::atomic::Ordering::Relaxed)
+        {
+            if let Some(chain) = Chain::from_str_id(chain_id) {
+                let custom = self
+                    .wallet_state
+                    .read()
+                    .await
+                    .settings
+                    .rpc_endpoint_by_chain
+                    .get(chain.chain_display_name())
+                    .cloned();
+                if let Some(custom) = custom.filter(|v| !v.trim().is_empty()) {
+                    let mut endpoints = vec![custom.clone()];
+                    endpoints.extend(base.iter().filter(|v| **v != custom).cloned());
+                    return Arc::new(endpoints);
+                }
+            }
+        }
+        base
     }
 
     pub(crate) async fn api_key_for(&self, chain_id: &str) -> Option<String> {
@@ -292,24 +311,75 @@ impl WalletService {
 
 /// Catalog transport configuration for a non-platform front end.
 pub fn catalog_endpoints() -> Result<Vec<ChainEndpoints>, SpectraBridgeError> {
-    Chain::all()
-        .map(|chain| {
-            Ok(ChainEndpoints {
-                chain_id: chain.str_id().into(),
-                endpoints: crate::endpoint_records_for_chain_masked(
-                    chain.chain_display_name().into(),
-                    0,
-                    false,
-                )?
-                .into_iter()
-                .filter(|e| e.kind != "web-link")
-                .map(|e| e.endpoint)
-                .collect(),
+    let mut endpoints = Vec::new();
+    for row in crate::app_core_chain_endpoints()? {
+        let chain = Chain::from_str_id(&row.chain_id).expect("catalog chain");
+        let primary = if chain.is_evm() {
+            row.evm_rpc
+        } else {
+            crate::endpoint_records_for_chain_masked(
+                row.chain_name,
+                crate::app_core::ENDPOINT_ROLE_RPC
+                    | crate::app_core::ENDPOINT_ROLE_BALANCE
+                    | crate::app_core::ENDPOINT_ROLE_BACKEND,
+                false,
+            )?
+            .into_iter()
+            .map(|r| r.endpoint)
+            .collect()
+        };
+        endpoints.push(ChainEndpoints {
+            chain_id: row.chain_id,
+            endpoints: primary,
+            api_key: None,
+        });
+        if !row.explorer_supplemental.is_empty() {
+            endpoints.push(ChainEndpoints {
+                chain_id: chain.endpoint_str_id(chain.supplemental_endpoint_slot()),
+                endpoints: row.explorer_supplemental,
                 api_key: None,
-            })
-        })
-        .collect()
+            });
+        }
+        if !chain.secondary_endpoint_ids().is_empty() {
+            endpoints.push(ChainEndpoints {
+                chain_id: chain.endpoint_str_id(crate::registry::EndpointSlot::Secondary),
+                endpoints: crate::app_core_endpoints_for_ids(
+                    chain
+                        .secondary_endpoint_ids()
+                        .iter()
+                        .map(|s| s.to_string())
+                        .collect(),
+                )?,
+                api_key: None,
+            });
+        }
+    }
+    Ok(endpoints)
 }
 
 #[cfg(test)]
 mod app_boundary_tests;
+
+pub use address_discovery::WalletAddressDiscovery;
+
+impl WalletService {
+    pub async fn update_endpoints_typed(
+        &self,
+        endpoints: Vec<ChainEndpoints>,
+    ) -> Result<(), SpectraBridgeError> {
+        self.uses_catalog_endpoints
+            .store(false, std::sync::atomic::Ordering::Relaxed);
+        let mut guard = self.endpoints.write().await;
+        *guard = EndpointIndex::from_list(endpoints);
+        Ok(())
+    }
+
+    async fn owned_etherscan_api_key(&self) -> String {
+        self.wallet_state
+            .read()
+            .await
+            .settings
+            .etherscan_api_key
+            .clone()
+    }
+}

@@ -14,7 +14,7 @@ fn summary() -> WalletSummary {
         is_watch_only: false,
         chain_name: "Bitcoin".to_string(),
         include_in_portfolio_total: true,
-        network_mode: Some("bitcoin-testnet-4".to_string()),
+        network_id: "bitcoin-testnet-4".to_string(),
         xpub: Some("zpub123".to_string()),
         derivation_preset: "account2".to_string(),
         derivation_path: Some("m/84'/0'/2'/0/0".to_string()),

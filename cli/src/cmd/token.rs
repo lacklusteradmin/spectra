@@ -169,6 +169,10 @@ fn catalog(out: Out, args: CatalogArgs) -> CliResult<()> {
         "tokens": tokens
             .iter()
             .map(|token| serde_json::json!({
+                "id": token.id,
+                "token_id": token.token_id,
+                "kind": token.kind,
+                "coingecko_id": token.coingecko_id,
                 "symbol": token.symbol,
                 "name": token.name,
                 "contract": token.contract,
@@ -204,6 +208,7 @@ fn list(ctx: &Ctx, out: Out) -> CliResult<()> {
             .iter()
             .map(|entry| serde_json::json!({
                 "id": entry.id(),
+                "id": entry.token.id,
                 "symbol": entry.token.symbol,
                 "name": entry.token.name,
                 "contract": entry.token.contract,
@@ -223,17 +228,26 @@ fn set_tracked(ctx: &Ctx, out: Out, args: TrackArgs, is_enabled: bool) -> CliRes
     CoreTokenHostingChain::from_chain_name(&chain_name)
         .ok_or_else(|| CliError::rejected(format!("{chain_name} does not support known tokens")))?;
 
-    let entry = ctx
+    let matches: Vec<_> = ctx
         .state()?
         .token_preferences
         .into_iter()
-        .find(|entry| {
-            entry.token.chain.eq_ignore_ascii_case(&chain_name)
-                && entry.token.symbol.eq_ignore_ascii_case(&args.symbol)
+        .filter(|entry| {
+            entry
+                .hosting_chain()
+                .is_some_and(|h| h.chain_name() == chain_name)
+                && (entry.token.id == args.symbol
+                    || entry.token.symbol.eq_ignore_ascii_case(&args.symbol))
         })
-        .ok_or_else(|| {
-            CliError::rejected(format!("{chain_name} has no token {:?}", args.symbol))
-        })?;
+        .collect();
+    if matches.len() > 1 {
+        return Err(CliError::usage(
+            "ambiguous token symbol; use the deployment id from token catalog/list",
+        ));
+    }
+    let entry = matches.into_iter().next().ok_or_else(|| {
+        CliError::rejected(format!("{chain_name} has no token {:?}", args.symbol))
+    })?;
     if entry.is_enabled == is_enabled {
         return Err(CliError::rejected(format!(
             "{} is already {}",
@@ -259,7 +273,8 @@ fn set_tracked(ctx: &Ctx, out: Out, args: TrackArgs, is_enabled: bool) -> CliRes
     out.emit(serde_json::json!({
         "ok": true,
         "chain": chain_name,
-        "symbol": entry.token.symbol,
+        "id": entry.token.id,
+                "symbol": entry.token.symbol,
         "contract": entry.token.contract,
         "decimals": entry.token.decimals,
         "isEnabled": is_enabled,
@@ -455,9 +470,10 @@ fn format_amount(ctx: &Ctx, out: Out, args: FormatArgs) -> CliResult<()> {
                 })?;
             entry.decimals
         }
-        None => {
-            spectra_core::formatting::supported_decimal_places(chain.chain_display_name(), None)
-        }
+        None => spectra_core::tokens::token_display_decimals(
+            Some(chain.entry().native_deployment_id.clone()),
+            None,
+        ),
     };
     let display = spectra_core::formatting::asset_amount_display(args.amount, asset_decimals);
     let rendered = if display.below_threshold {

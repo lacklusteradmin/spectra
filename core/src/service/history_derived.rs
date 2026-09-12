@@ -203,7 +203,8 @@ fn replaceable_send(
         amount: record.amount,
         transaction_hash: transaction_hash.to_owned(),
         recorded_nonce: record.ethereum_nonce,
-        can_speed_up: record.symbol == chain.coin_symbol(),
+        can_speed_up: record.deployment_id.as_deref()
+            == Some(chain.entry().native_deployment_id.as_str()),
     })
 }
 
@@ -357,6 +358,7 @@ mod replaceable_tests {
             "status": "pending",
             "walletName": "Main",
             "assetName": chain,
+            "deploymentId": crate::registry::Chain::from_display_name(chain).filter(|c| c.coin_symbol() == symbol).map(|c| c.entry().native_deployment_id.clone()),
             "symbol": symbol,
             "chainName": chain,
             "amount": 1.5,

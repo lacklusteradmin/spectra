@@ -205,8 +205,46 @@ impl WalletService {
     /// already is — `events` is empty and nothing is written.
     pub async fn apply_state_command(
         &self,
-        command: StateCommand,
+        mut command: StateCommand,
     ) -> Result<StateTransition, SpectraBridgeError> {
+        let validate =
+            |wallet: &mut crate::store::state::WalletSummary| -> Result<(), SpectraBridgeError> {
+                let network = crate::registry::Chain::from_str_id(&wallet.network_id)
+                    .ok_or("unknown wallet network")?;
+                let family = crate::registry::Chain::from_display_name(&wallet.chain_name)
+                    .ok_or("unknown wallet chain")?;
+                if network.mainnet_counterpart() != family.mainnet_counterpart() {
+                    return Err("wallet network belongs to another family".into());
+                }
+                for holding in &mut wallet.holdings {
+                    holding.canonicalize()?;
+                }
+                Ok(())
+            };
+        match &mut command {
+            StateCommand::SetPinnedDashboardAssets { token_ids } => {
+                let options = self.dashboard_pin_options().await?;
+                for id in token_ids
+                    .iter()
+                    .map(|id| id.trim())
+                    .filter(|id| !id.is_empty())
+                {
+                    if !options.iter().any(|option| option.token_id == id) {
+                        return Err(SpectraBridgeError::InvalidInput {
+                            message: format!("unknown or unpinnable token ID: {id}"),
+                        });
+                    }
+                }
+            }
+            StateCommand::UpsertWallet { wallet }
+            | StateCommand::UpdateWalletIfPresent { wallet } => validate(wallet)?,
+            StateCommand::ReplaceState { state } => {
+                for wallet in &mut state.wallets {
+                    validate(wallet)?;
+                }
+            }
+            _ => {}
+        }
         self.mutate_persisted_state(move |state| reduce_state_in_place(state, command))
             .await
     }
@@ -216,42 +254,79 @@ impl WalletService {
     /// The dashboard's asset rows: holdings grouped across chains, ordered,
     /// with the pinned ones first.
     ///
-    /// Live prices are the only input core does not have — everything else
-    /// (which holdings count toward the total, which tokens are tracked, which
-    /// symbols are pinned, which networks are unpriced, how a chain identifies
-    /// an asset) is core's already. `prices` is keyed the way core keys an
-    /// asset: `"<network title>|<symbol>"`.
+    /// Holdings, quotes, pins and selected networks are all owned here.
+    pub async fn dashboard_pin_options(
+        &self,
+    ) -> Result<Vec<crate::store::wallet_domain::CoreDashboardPinOption>, SpectraBridgeError> {
+        use crate::store::wallet_domain::CoreDashboardPinOption;
+        let state = self.wallet_state.read().await;
+        let catalog = crate::tokens::list_tokens(String::new());
+        let coins = catalog
+            .iter()
+            .chain(state.token_preferences.iter().map(|e| &e.token))
+            .map(|t| t.holding_template())
+            .chain(state.wallets.iter().flat_map(|w| w.holdings.clone()));
+        let mut options = std::collections::BTreeMap::<String, CoreDashboardPinOption>::new();
+        for coin in coins {
+            if !coin.network().is_some_and(|n| !n.is_testnet()) {
+                continue;
+            }
+            let token_id = coin.token_identity();
+            options
+                .entry(token_id.clone())
+                .or_insert_with(|| CoreDashboardPinOption {
+                    token_id: token_id.clone(),
+                    symbol: coin.symbol.clone(),
+                    name: coin.name.clone(),
+                    subtitle: if token_id.starts_with("custom:") {
+                        format!(
+                            "{} · {}",
+                            coin.network().unwrap().chain_display_name(),
+                            coin.contract_address.as_deref().unwrap_or("")
+                        )
+                    } else {
+                        coin.network().unwrap().chain_display_name().to_string()
+                    },
+                    asset_identifier: Some(crate::store::core_icon_identifier(
+                        coin.symbol.clone(),
+                        coin.chain_name.clone(),
+                        coin.contract_address.clone(),
+                        coin.token_standard.clone(),
+                    )),
+                });
+        }
+        let mut options: Vec<_> = options.into_values().collect();
+        options.sort_by(|a, b| a.symbol.cmp(&b.symbol).then(a.token_id.cmp(&b.token_id)));
+        Ok(options)
+    }
+
     pub async fn dashboard_asset_groups(
         &self,
-        prices: HashMap<String, f64>,
     ) -> Result<Vec<crate::store::wallet_domain::CoreDashboardAssetGroup>, SpectraBridgeError> {
         use crate::store::wallet_domain::{CoreDashboardAssetGroup, CoreDashboardAssetHolding};
 
-        let settings = self.wallet_state.read().await.settings.clone();
+        let (settings, prices) = {
+            let state = self.wallet_state.read().await;
+            (state.settings.clone(), state.quotes.prices.clone())
+        };
         let derived = self.wallet_derived_state().await?;
         let pinned = settings.pinned_dashboard_assets();
 
         let network_title = |chain_name: &str| -> String {
             crate::registry::Chain::from_display_name(chain_name)
-                .map(|chain| {
-                    settings
-                        .network_chain(chain)
-                        .chain_display_name()
-                        .to_string()
-                })
+                .map(|chain| chain.chain_display_name().to_string())
                 .unwrap_or_else(|| chain_name.to_string())
         };
         // Unpriced on a testnet, then the live quote, then the amount the
         // holding was last stored with. Same order the shell applied.
         let value_of = |coin: &crate::store::wallet_domain::AssetHolding| -> Option<f64> {
-            let title = network_title(&coin.chain_name);
             if crate::registry::Chain::from_display_name(&coin.chain_name)
-                .is_some_and(|chain| settings.network_chain(chain).is_testnet())
+                .is_some_and(|chain| chain.is_testnet())
             {
                 return None;
             }
             let price = prices
-                .get(&format!("{title}|{}", coin.symbol))
+                .get(&coin.deployment_key())
                 .copied()
                 .filter(|p| *p > 0.0)
                 .or(Some(coin.price_usd).filter(|p| *p > 0.0))?;
@@ -271,16 +346,7 @@ impl WalletService {
             .iter()
             .filter(|c| c.amount > 0.0)
         {
-            let contract = crate::tokens::normalize_token_identifier(
-                coin.contract_address.clone(),
-                coin.chain_name.clone(),
-            )
-            .unwrap_or_else(|| "native".to_string());
-            let key = crate::formatting::dashboard_asset_grouping_key(
-                &coin.coin_gecko_id,
-                &network_title(&coin.chain_name),
-                &contract,
-            );
+            let key = coin.token_identity();
             if !grouped.contains_key(&key) {
                 order.push(key.clone());
             }
@@ -339,17 +405,17 @@ impl WalletService {
                     .to_lowercase()
                     .cmp(&rhs.coin.chain_name.to_lowercase())
             });
-            let Some(first) = holdings.first() else {
+            let Some(_) = holdings.first() else {
                 continue;
             };
             groups.push(CoreDashboardAssetGroup {
-                is_pinned: pinned.contains(&first.coin.symbol.to_uppercase()),
+                is_pinned: pinned.contains(&key),
                 holdings,
                 id: key,
             });
         }
 
-        // A pinned symbol the user holds none of still gets a row.
+        // A pinned token the user holds none of still gets a row.
         // The row is presented as its first holding, so that is where its
         // symbol comes from.
         let row_symbol = |g: &CoreDashboardAssetGroup| -> String {
@@ -364,13 +430,14 @@ impl WalletService {
                 .map(|h| h.value_usd)
                 .try_fold(0.0, |sum, v| v.map(|v| sum + v))
         };
-        let present: std::collections::HashSet<String> = groups.iter().map(row_symbol).collect();
+        let present: std::collections::HashSet<String> =
+            groups.iter().map(|g| g.id.clone()).collect();
         for symbol in pinned.iter().filter(|s| !present.contains(*s)) {
             let Some(prototype) = self.pinned_prototype(symbol, &derived).await else {
                 continue;
             };
             groups.push(CoreDashboardAssetGroup {
-                id: format!("pinned:{}", symbol.to_lowercase()),
+                id: symbol.clone(),
                 holdings: vec![CoreDashboardAssetHolding {
                     coin: prototype,
                     value_usd: Some(0.0),
@@ -390,11 +457,11 @@ impl WalletService {
                 (false, true) => return std::cmp::Ordering::Greater,
                 (true, true) => {
                     let l = pin_order
-                        .get(row_symbol(lhs).as_str())
+                        .get(lhs.id.as_str())
                         .copied()
                         .unwrap_or(usize::MAX);
                     let r = pin_order
-                        .get(row_symbol(rhs).as_str())
+                        .get(rhs.id.as_str())
                         .copied()
                         .unwrap_or(usize::MAX);
                     return l.cmp(&r);
@@ -429,42 +496,56 @@ impl WalletService {
             .state)
     }
 
-    /// Evaluate the stored price alerts against live prices, record what
-    /// changed, and return only what the platform has to act on.
-    ///
-    /// Core owns the alerts, so it owns the verdict too. The planner this
-    /// replaces took the list as an argument and returned `has_triggered`
-    /// updates for the caller to write back — a caller that forgot to, or
-    /// wrote them to its own copy, silently re-notified on every price tick.
+    /// Evaluate and update alerts against core-owned quotes under the state writer.
     pub async fn evaluate_price_alerts(
         &self,
-        prices: Vec<crate::store::PriceAlertEvaluationPrice>,
     ) -> Result<Vec<crate::store::PriceAlertNotification>, SpectraBridgeError> {
-        let alerts = self.wallet_state.read().await.price_alerts.clone();
-        if alerts.is_empty() {
-            return Ok(Vec::new());
-        }
-        let plan = crate::store::plan_price_alert_evaluation(alerts.clone(), prices);
-        if plan.updates.is_empty() {
-            return Ok(plan.notifications);
-        }
-        let triggered: HashMap<&str, bool> = plan
-            .updates
-            .iter()
-            .map(|u| (u.id.as_str(), u.has_triggered))
-            .collect();
-        let next = alerts
-            .into_iter()
-            .map(|mut alert| {
-                if let Some(has_triggered) = triggered.get(alert.id.as_str()) {
-                    alert.has_triggered = *has_triggered;
+        let notifications = Arc::new(std::sync::Mutex::new(Vec::new()));
+        let output = notifications.clone();
+        self.mutate_persisted_state(move |state| {
+            if !state.settings.use_price_alerts {
+                return Vec::new();
+            }
+            let prices = state
+                .quotes
+                .prices
+                .iter()
+                .filter(|(_, p)| p.is_finite() && **p > 0.0)
+                .map(|(key, p)| crate::store::PriceAlertEvaluationPrice {
+                    holding_key: key.clone(),
+                    live_price: *p,
+                })
+                .collect();
+            let plan = crate::store::plan_price_alert_evaluation(
+                state
+                    .price_alerts
+                    .iter()
+                    .filter(|alert| {
+                        crate::tokens::deployment(&alert.holding_key)
+                            .is_some_and(|t| !t.coingecko_id.is_empty())
+                    })
+                    .cloned()
+                    .collect(),
+                prices,
+            );
+            for update in &plan.updates {
+                if let Some(alert) = state.price_alerts.iter_mut().find(|a| a.id == update.id) {
+                    alert.has_triggered = update.has_triggered;
                 }
-                alert
-            })
-            .collect();
-        self.apply_state_command(StateCommand::SetPriceAlerts { alerts: next })
-            .await?;
-        Ok(plan.notifications)
+            }
+            *output.lock().expect("alert result lock") = plan.notifications;
+            if plan.updates.is_empty() {
+                Vec::new()
+            } else {
+                vec![crate::store::state::StateEvent {
+                    kind: "priceAlertsEvaluated".into(),
+                    subject_id: None,
+                }]
+            }
+        })
+        .await?;
+        let result = notifications.lock().expect("alert result lock").clone();
+        Ok(result)
     }
 
     // ── Owned transaction store ───────────────────────────────────────────
@@ -507,15 +588,14 @@ impl WalletService {
                 private_key_backed_wallet_ids.push(wallet.id.clone());
             }
         }
-        let (token_preferences, settings) = {
+        let token_preferences = {
             let state = self.wallet_state.read().await;
-            (state.token_preferences.clone(), state.settings.clone())
+            state.token_preferences.clone()
         };
         // The network the user picked for a holding's family, and whether that
         // network is quoted at all.
         let network_of = |chain_name: &str| -> Option<crate::registry::Chain> {
             crate::registry::Chain::from_display_name(chain_name)
-                .map(|chain| settings.network_chain(chain))
         };
         let signing: HashSet<&str> = signing_material_wallet_ids
             .iter()
@@ -546,10 +626,7 @@ impl WalletService {
                 let network = network_of(&holding.chain_name);
                 // Identity is per *network*: testnet BTC groups separately from
                 // mainnet BTC and is quoted separately (which is to say, not).
-                let title = network
-                    .map(|chain| chain.chain_display_name().to_string())
-                    .unwrap_or_else(|| holding.chain_name.clone());
-                let identity_key = format!("{}|{}", title, holding.symbol);
+                let identity_key = holding.deployment_key();
                 // `chain_backends()` was a 78-row table beside `chains.toml`,
                 // with the same 78 names and `Live` on every one — so
                 // "has a backend", "supports send", "supports receive" and "is
@@ -573,13 +650,27 @@ impl WalletService {
                     *grouped_totals.entry(identity_key).or_default() += holding.amount;
                 }
 
-                if crate::send::transfer::can_send_coin(
-                    holding,
-                    has_signing_material,
-                    chain_is_known,
-                    chain_is_known,
-                    &token_preferences,
-                ) {
+                let selected_network = wallet
+                    .network_chain_id
+                    .as_deref()
+                    .and_then(Chain::from_str_id);
+                let on_selected_network = match (holding.network(), selected_network) {
+                    (Some(asset), Some(selected))
+                        if asset.mainnet_counterpart() == selected.mainnet_counterpart() =>
+                    {
+                        asset == selected
+                    }
+                    _ => true,
+                };
+                if on_selected_network
+                    && crate::send::transfer::can_send_coin(
+                        holding,
+                        has_signing_material,
+                        chain_is_known,
+                        chain_is_known,
+                        &token_preferences,
+                    )
+                {
                     send_coins.push(holding.clone());
                 }
                 if chain_is_known {
@@ -826,37 +917,28 @@ impl WalletService {
             .clone()
     }
 
-    /// A stand-in coin for a pinned symbol the user holds none of: a holding
-    /// if one exists at zero, else a known token, else nothing.
+    /// Resolve a pinned token by identity, including native tokens without a balance.
     pub(super) async fn pinned_prototype(
         &self,
-        symbol: &str,
+        token_id: &str,
         derived: &WalletDerivedState,
     ) -> Option<crate::store::wallet_domain::AssetHolding> {
         if let Some(coin) = derived
             .included_portfolio_holdings
             .iter()
-            .find(|c| c.symbol.eq_ignore_ascii_case(symbol))
+            .find(|c| c.token_identity() == token_id)
         {
-            return Some(coin.clone());
+            let mut coin = coin.clone();
+            coin.amount = 0.0;
+            return Some(coin);
         }
-        let preferences = self.wallet_state.read().await.token_preferences.clone();
-        let entry = preferences
+        let state = self.wallet_state.read().await;
+        let tokens = crate::tokens::list_tokens(String::new());
+        tokens
             .iter()
-            .find(|e| e.token.symbol.eq_ignore_ascii_case(symbol))?;
-        Some(crate::store::wallet_domain::AssetHolding {
-            name: entry.token.name.clone(),
-            symbol: entry.token.symbol.clone(),
-            coin_gecko_id: entry.token.coingecko_id.clone(),
-            chain_name: entry.token.chain.clone(),
-            token_standard: entry.token.token_standard.clone(),
-            contract_address: Some(entry.token.contract.clone()).filter(|c| !c.is_empty()),
-            amount: 0.0,
-            // No quote. A pinned asset the wallet does not hold has no price
-            // until the feed answers for it, and inventing one puts a number
-            // the user cannot tell from a real quote next to their funds.
-            price_usd: 0.0,
-        })
+            .chain(state.token_preferences.iter().map(|e| &e.token))
+            .find(|token| token.token_id == token_id)
+            .map(|token| token.holding_template())
     }
 
     /// The bound state database, or an error naming what the caller skipped.

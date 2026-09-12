@@ -14,13 +14,13 @@ impl WalletService {
             .into_iter()
             .find(|e| e.wallet_id == wallet_id)
             .ok_or("wallet has no refreshable address")?;
-        let chain = chain_for_id(&entry.chain_id)?;
+        let chain = chain_for_id(&entry.network_chain_id)?;
         let native = self
             .fetch_native_balance_summary_auto(&entry.network_chain_id, entry.address.clone())
             .await?;
         let mut holdings = vec![AssetHolding {
             amount: balance_amount(&native.amount_display)?,
-            ..native_coin_template(&entry.chain_id).ok_or("missing native asset")?
+            ..native_coin_template(&entry.network_chain_id).ok_or("missing native asset")?
         }];
         let known: Vec<_> = state
             .token_preferences
@@ -134,14 +134,8 @@ fn contract_key(chain: &str, contract: &str) -> String {
     crate::tokens::normalize_token_identifier(Some(contract.into()), chain.into())
         .unwrap_or_else(|| contract.into())
 }
-fn balance_key(h: &AssetHolding) -> (String, String) {
-    (
-        h.chain_name.clone(),
-        h.contract_address
-            .as_ref()
-            .map(|c| contract_key(&h.chain_name, c))
-            .unwrap_or_else(|| h.symbol.clone()),
-    )
+fn balance_key(h: &AssetHolding) -> String {
+    h.deployment_key()
 }
 fn merge_balances(stored: &mut Vec<AssetHolding>, incoming: Vec<AssetHolding>) {
     for h in incoming {

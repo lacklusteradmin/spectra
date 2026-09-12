@@ -42,7 +42,6 @@ pub fn run(ctx: &Ctx, out: Out, command: NetworkCommand) -> CliResult<()> {
 fn list(ctx: &Ctx, out: Out) -> CliResult<()> {
     let settings = ctx.state()?.settings;
     let families: Vec<(Chain, Chain)> = Chain::mainnets()
-        .filter(|chain| chain.has_network_choice())
         .map(|family| (family, settings.network_chain(family)))
         .collect();
 

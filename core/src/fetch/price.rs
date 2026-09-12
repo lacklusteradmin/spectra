@@ -325,9 +325,8 @@ pub(crate) struct AssetMarketIds {
 fn market_ids_for(gecko_id: &str) -> Option<&'static AssetMarketIds> {
     static BY_GECKO_ID: std::sync::LazyLock<HashMap<&'static str, &'static AssetMarketIds>> =
         std::sync::LazyLock::new(|| {
-            crate::chains::native_market_ids()
+            crate::tokens::market_ids()
                 .iter()
-                .chain(crate::tokens::market_ids())
                 .filter(|m| !m.coingecko_id.is_empty())
                 .map(|m| (m.coingecko_id.as_str(), m))
                 .collect()
@@ -707,10 +706,7 @@ mod market_id_tests {
     use std::collections::HashSet;
 
     fn all_rows() -> Vec<&'static AssetMarketIds> {
-        crate::chains::native_market_ids()
-            .iter()
-            .chain(crate::tokens::market_ids())
-            .collect()
+        crate::tokens::market_ids().iter().collect()
     }
 
     /// Ten chains share ETH and the CRO token shares Cronos's coin, so one

@@ -1,7 +1,6 @@
 //! Network hd: service adapters and dispatch.
 use super::*;
 
-#[uniffi::export(async_runtime = "tokio")]
 impl WalletService {
     /// Return the first address on the `change` leg (0 = receive, 1 = change)
     /// that has zero confirmed/unconfirmed history, scanning up to
@@ -63,7 +62,6 @@ impl WalletService {
 /// Exported as a function rather than a method on `WalletService`: it takes a
 /// phrase and a path and reads no wallet, no database and no endpoint. Hanging
 /// it off the service said otherwise to everyone who called it.
-#[uniffi::export]
 pub fn derive_bitcoin_account_xpub_typed(
     mnemonic_phrase: String,
     passphrase: String,

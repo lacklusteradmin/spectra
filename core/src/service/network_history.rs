@@ -29,41 +29,6 @@ impl WalletService {
             })
             .collect())
     }
-
-    /// One history fetch, and everything the callers ask about it.
-    ///
-    /// Three methods did this — `fetch_history_has_activity`,
-    /// `fetch_history_entry_count` and `fetch_history_confirmed_txids` — each
-    /// running the same `fetch_history` and applying one projection, and the
-    /// first was `entry_count > 0`.
-    pub async fn fetch_history_summary(
-        &self,
-        chain_id: String,
-        address: String,
-    ) -> Result<crate::diagnostics::HistorySummary, SpectraBridgeError> {
-        let raw = self.fetch_history(&chain_id, address).await?;
-        Ok(crate::diagnostics::diagnostics_history_summary(raw))
-    }
-
-    /// Fetch EVM history for diagnostics and return a fully-built row. On
-    /// network or chain-support failure the row is seeded with the error.
-    pub async fn fetch_evm_history_diagnostics(
-        &self,
-        chain_id: String,
-        wallet_id: String,
-        address: String,
-    ) -> crate::diagnostics::HistoryDiagnostics {
-        use crate::diagnostics::aggregate::{
-            diagnostics_make_evm_error, diagnostics_make_evm_success_record,
-        };
-        match self
-            .fetch_evm_history_page(chain_id, address.clone(), Vec::new(), 1, 50)
-            .await
-        {
-            Ok(page) => diagnostics_make_evm_success_record(wallet_id, address, &page),
-            Err(err) => diagnostics_make_evm_error(wallet_id, address, err.to_string()),
-        }
-    }
 }
 impl WalletService {
     pub(crate) async fn fetch_history(
@@ -105,11 +70,7 @@ impl WalletService {
 
         let source = chain.evm_history_source();
         let etherscan_chain_id = chain.evm_chain_id();
-        let api_key_owned: String = self
-            .etherscan_api_key
-            .read()
-            .map(|g| g.clone())
-            .unwrap_or_default();
+        let api_key_owned = self.owned_etherscan_api_key().await;
         let api_key_str = if api_key_owned.is_empty() {
             None
         } else {
@@ -248,12 +209,7 @@ async fn fetch_history(
         ),
         c if c.is_evm() => {
             let source = chain.evm_history_source();
-            let api_key_owned = service
-                .etherscan_api_key
-                .read()
-                .ok()
-                .map(|g| g.clone())
-                .unwrap_or_default();
+            let api_key_owned = service.owned_etherscan_api_key().await;
             let api_key_str = if api_key_owned.is_empty() {
                 None
             } else {
@@ -356,5 +312,36 @@ async fn fetch_history(
         c => Err(SpectraBridgeError::from(format!(
             "unsupported chain: {c:?}"
         ))),
+    }
+}
+
+impl WalletService {
+    pub async fn fetch_evm_history_diagnostics(
+        &self,
+        chain_id: String,
+        wallet_id: String,
+        address: String,
+    ) -> crate::diagnostics::HistoryDiagnostics {
+        use crate::diagnostics::aggregate::{
+            diagnostics_make_evm_error, diagnostics_make_evm_success_record,
+        };
+        match self
+            .fetch_evm_history_page(chain_id, address.clone(), Vec::new(), 1, 50)
+            .await
+        {
+            Ok(page) => diagnostics_make_evm_success_record(wallet_id, address, &page),
+            Err(err) => diagnostics_make_evm_error(wallet_id, address, err.to_string()),
+        }
+    }
+}
+
+impl WalletService {
+    pub async fn fetch_history_summary(
+        &self,
+        chain_id: String,
+        address: String,
+    ) -> Result<crate::diagnostics::HistorySummary, SpectraBridgeError> {
+        let raw = self.fetch_history(&chain_id, address).await?;
+        Ok(crate::diagnostics::diagnostics_history_summary(raw))
     }
 }

@@ -8,8 +8,18 @@ fn coin(symbol: &str, chain: &str, amount: f64) -> AssetHolding {
         symbol: symbol.to_string(),
         coin_gecko_id: symbol.to_lowercase(),
         chain_name: chain.to_string(),
-        token_standard: String::new(),
-        contract_address: None,
+        token_standard: if crate::registry::Chain::from_display_name(chain)
+            .is_some_and(|c| c.coin_symbol() == symbol)
+        {
+            "Native".into()
+        } else {
+            "ERC-20".into()
+        },
+        contract_address: if symbol == "SHIB" {
+            Some("0x95ad61b0a150d79219dcf64e1e6cc01f0b64c4ce".into())
+        } else {
+            None
+        },
         amount,
         price_usd: 1.0,
     }
@@ -77,7 +87,18 @@ async fn no_testnet_coin_is_quoted_on_any_family() {
         ("Ethereum", "ethereum-sepolia"),
         ("Dogecoin", "dogecoin-testnet"),
     ] {
-        let service = service_with(vec![("w1", chain, vec![coin("X", chain, 1.0)], true)]).await;
+        let network = crate::registry::Chain::from_str_id(testnet_id).unwrap();
+        let service = service_with(vec![(
+            "w1",
+            chain,
+            vec![coin(
+                network.coin_symbol(),
+                network.chain_display_name(),
+                1.0,
+            )],
+            true,
+        )])
+        .await;
         service
             .apply_state_command(StateCommand::SelectNetworkChain {
                 chain_id: testnet_id.into(),
@@ -95,7 +116,7 @@ async fn no_testnet_coin_is_quoted_on_any_family() {
 /// Selecting the mainnet clears the entry rather than storing it, so the
 /// two ways of saying "mainnet" cannot drift apart.
 #[tokio::test]
-async fn choosing_mainnet_stores_nothing() {
+async fn choosing_mainnet_stores_its_explicit_id() {
     let service = WalletService::new_typed(Vec::new()).expect("service");
     let after_testnet = service
         .apply_state_command(StateCommand::SelectNetworkChain {
@@ -114,11 +135,15 @@ async fn choosing_mainnet_stores_nothing() {
         })
         .await
         .expect("select");
-    assert!(after_mainnet
-        .state
-        .settings
-        .network_chain_by_family
-        .is_empty());
+    assert_eq!(
+        after_mainnet
+            .state
+            .settings
+            .network_chain_by_family
+            .get("bitcoin")
+            .map(String::as_str),
+        Some("bitcoin")
+    );
 }
 
 #[tokio::test]

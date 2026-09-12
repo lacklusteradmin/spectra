@@ -151,7 +151,7 @@ async fn removes_by_id_by_wallet_and_wholesale() {
 
     let by_wallet = service
         .apply_transaction_command(TransactionCommand::RemoveForWallet {
-            wallet_id: "w1".to_string(),
+            wallet_id: "W1".to_string(),
         })
         .await
         .expect("remove");

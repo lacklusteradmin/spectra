@@ -44,7 +44,7 @@ impl WalletService {
                     wallet
                         .holdings
                         .iter()
-                        .find(|h| format!("{}|{}", h.chain_name, h.symbol) == holding_key)
+                        .find(|h| h.deployment_key() == holding_key)
                 })
                 .ok_or_else(|| SpectraBridgeError::InvalidInput {
                     message: format!("no holding {holding_key} on wallet {wallet_id}"),
@@ -141,7 +141,7 @@ pub(super) fn destination_probe_asset(
             message: format!("unknown chain: {}", holding.chain_name),
         }
     })?;
-    if holding.symbol == chain.coin_symbol() {
+    if holding.is_native() {
         return Ok((chain, None));
     }
     let identity =

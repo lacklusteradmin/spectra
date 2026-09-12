@@ -21,7 +21,7 @@ fn unreadable_preferences_refuse_loading_without_deleting_wallets() {
         is_watch_only: false,
         chain_name: "Bitcoin".into(),
         include_in_portfolio_total: true,
-        network_mode: None,
+        network_id: "bitcoin".into(),
         xpub: None,
         derivation_preset: "standard".into(),
         derivation_path: None,

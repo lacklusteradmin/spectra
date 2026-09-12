@@ -91,7 +91,6 @@ fn evm_record(
 }
 
 /// The placeholder shown while a refresh is in flight.
-#[uniffi::export]
 pub fn diagnostics_make_evm_running(wallet_id: String, address: String) -> HistoryDiagnostics {
     evm_record(
         wallet_id,

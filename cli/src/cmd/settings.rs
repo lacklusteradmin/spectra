@@ -27,6 +27,9 @@ pub enum SettingsCommand {
 
 #[derive(Args)]
 pub struct ResetArgs {
+    /// Domain reset scopes; repeat for multiple scopes. Default: settings only.
+    #[arg(long)]
+    scope: Vec<String>,
     /// Reset without asking for confirmation.
     #[arg(long)]
     yes: bool,
@@ -366,8 +369,13 @@ fn reset(ctx: &Ctx, out: Out, args: ResetArgs) -> CliResult<()> {
             "this discards every setting, including endpoints and API keys — re-run with --yes",
         ));
     }
-    let transition = ctx.apply(StateCommand::ResetAppSettings)?;
-    let settings = transition.state.settings;
+    let scopes = if args.scope.is_empty() {
+        vec!["settingsAndEndpoints".into()]
+    } else {
+        args.scope
+    };
+    let outcome = ctx.rt.block_on(ctx.service()?.reset_data(scopes))?;
+    let settings = outcome.state.settings;
     let count = settings_in_order(&settings).len();
     out.text(|| println!("  {} {count} settings at their defaults", out::ok_mark()));
     out.emit(serde_json::json!({ "ok": true, "settings": count }));

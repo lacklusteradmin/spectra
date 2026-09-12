@@ -21,6 +21,7 @@ struct TomlFile {
 /// What a token is — one row however many chains it ships on.
 #[derive(Debug, Deserialize)]
 struct TomlToken {
+    id: String,
     symbol: String,
     name: String,
     coingecko_id: String,
@@ -35,19 +36,34 @@ struct TomlToken {
 /// Where it lives, and what is true only there.
 #[derive(Debug, Deserialize)]
 struct TomlDeployment {
+    id: String,
     token: String,
-    chain: String,
+    network: String,
+    kind: String,
+    #[serde(default)]
     contract: String,
     decimals: u32,
+    #[serde(default)]
     standard: String,
     enabled: bool,
 }
 
-// ── Public shape: one deployment, with its token's facts joined in.
+/// Protocol identity is explicit; a missing contract never implies native.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, uniffi::Enum)]
+pub enum TokenKind {
+    Native,
+    Protocol {
+        standard: String,
+        identifier: String,
+    },
+}
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, uniffi::Record)]
 #[serde(rename_all = "camelCase")]
 pub struct TokenEntry {
+    pub id: String,
+    pub token_id: String,
+    pub kind: TokenKind,
     pub chain: String,
     pub name: String,
     pub symbol: String,
@@ -61,16 +77,61 @@ pub struct TokenEntry {
     pub enabled: bool,
 }
 
+impl TokenEntry {
+    pub fn holding_template(&self) -> crate::store::wallet_domain::AssetHolding {
+        crate::store::wallet_domain::AssetHolding {
+            name: self.name.clone(),
+            symbol: self.symbol.clone(),
+            coin_gecko_id: self.coingecko_id.clone(),
+            chain_name: self.chain.clone(),
+            token_standard: self.token_standard.clone(),
+            contract_address: (!self.contract.is_empty()).then(|| self.contract.clone()),
+            amount: 0.0,
+            price_usd: 0.0,
+        }
+    }
+
+    pub fn is_native(&self) -> bool {
+        matches!(self.kind, TokenKind::Native)
+    }
+    pub fn matches_holding(&self, holding: &crate::store::wallet_domain::AssetHolding) -> bool {
+        let network = crate::registry::Chain::from_str_id(&self.chain)
+            .or_else(|| crate::registry::Chain::from_display_name(&self.chain));
+        (self.is_native() || !self.contract.trim().is_empty())
+            && network.is_some()
+            && network == holding.network()
+            && crate::tokens::normalize_token_identifier(
+                Some(self.contract.clone()),
+                network.unwrap().chain_display_name().into(),
+            ) == holding.contract_address.clone().and_then(|c| {
+                crate::tokens::normalize_token_identifier(Some(c), holding.chain_name.clone())
+            })
+            && self.is_native() == holding.is_native()
+    }
+}
+
 // ── Static catalog
 
 static CATALOG: LazyLock<Vec<TokenEntry>> = LazyLock::new(|| {
     let parsed: TomlFile = toml::from_str(TOKENS_TOML)
         .expect("tokens.toml is embedded at compile time and must be valid TOML");
-    let tokens: std::collections::HashMap<&str, &TomlToken> = parsed
-        .tokens
-        .iter()
-        .map(|t| (t.symbol.as_str(), t))
-        .collect();
+    let tokens: std::collections::HashMap<&str, &TomlToken> =
+        parsed.tokens.iter().map(|t| (t.id.as_str(), t)).collect();
+    assert_eq!(tokens.len(), parsed.tokens.len(), "duplicate token id");
+    #[derive(Deserialize)]
+    struct Networks {
+        networks: Vec<Network>,
+    }
+    #[derive(Deserialize)]
+    struct Network {
+        id: String,
+        environment: String,
+        native_deployment: String,
+        token_standard: String,
+    }
+    let networks: Networks =
+        toml::from_str(include_str!("../data/chains.toml")).expect("valid networks");
+    let mut identities = std::collections::HashSet::new();
     parsed
         .deployments
         .iter()
@@ -81,14 +142,91 @@ static CATALOG: LazyLock<Vec<TokenEntry>> = LazyLock::new(|| {
             let t = tokens.get(d.token.as_str()).unwrap_or_else(|| {
                 panic!(
                     "tokens.toml: deployment on {} names unknown token {}",
-                    d.chain, d.token
+                    d.network, d.token
                 )
             });
+            let network = networks
+                .networks
+                .iter()
+                .find(|n| n.id == d.network)
+                .expect("unknown deployment network");
+            assert!(identities.insert(&d.id), "duplicate deployment id {}", d.id);
+            assert!(d.decimals <= 38, "unsupported deployment precision");
+            assert!(
+                network.environment != "testnet"
+                    || (t.coingecko_id.is_empty()
+                        && t.coinpaprika_id.is_empty()
+                        && t.coinlore_nameid.is_empty()),
+                "testnet token has market identity"
+            );
+            if d.kind == "native" {
+                assert_eq!(
+                    network.native_deployment, d.id,
+                    "unreferenced native deployment"
+                );
+                assert_eq!(d.id, format!("{}:native", d.network));
+            } else {
+                assert_eq!(
+                    network.token_standard, d.standard,
+                    "protocol differs from network"
+                );
+                let validator = match d.standard.as_str() {
+                    "ERC-20" | "BEP-20" | "ARC-20" => "evm",
+                    "SPL" => "solana",
+                    "TRC-20" => "tron",
+                    "TEP-74" => "ton",
+                    "NEP-141" => "near",
+                    "Sui Coin" => "suiCoinType",
+                    "AIP-21" => "aptosTokenType",
+                    other => panic!("unsupported token standard {other}"),
+                };
+                assert!(
+                    crate::validation::address::validate_address(
+                        crate::validation::address::AddressValidationRequest {
+                            kind: validator.into(),
+                            value: d.contract.clone(),
+                        }
+                    )
+                    .is_valid,
+                    "invalid deployment identifier {}",
+                    d.id
+                );
+                assert_eq!(
+                    d.id,
+                    format!("{}:{}:{}", d.network, d.standard.to_lowercase(), d.contract)
+                );
+            }
             TokenEntry {
-                chain: d.chain.clone(),
+                id: d.id.clone(),
+                token_id: t.id.clone(),
+                kind: match d.kind.as_str() {
+                    "native" => {
+                        assert!(
+                            d.contract.is_empty() && d.standard.is_empty(),
+                            "native deployment has protocol fields"
+                        );
+                        TokenKind::Native
+                    }
+                    "token" => {
+                        assert!(
+                            !d.contract.is_empty() && !d.standard.is_empty(),
+                            "token requires protocol identity"
+                        );
+                        TokenKind::Protocol {
+                            standard: d.standard.clone(),
+                            identifier: d.contract.clone(),
+                        }
+                    }
+                    other => panic!("unknown deployment kind {other}"),
+                },
+                chain: d.network.clone(),
                 name: t.name.clone(),
                 symbol: t.symbol.clone(),
-                token_standard: d.standard.clone(),
+                token_standard: if d.kind == "native" {
+                    "Native".into()
+                } else {
+                    d.standard.clone()
+                },
                 contract: d.contract.clone(),
                 coingecko_id: t.coingecko_id.clone(),
                 decimals: d.decimals,
@@ -100,6 +238,11 @@ static CATALOG: LazyLock<Vec<TokenEntry>> = LazyLock::new(|| {
         })
         .collect()
 });
+
+/// Resolve an explicitly registered deployment, without guessing from a ticker.
+pub fn deployment(id: &str) -> Option<&'static TokenEntry> {
+    CATALOG.iter().find(|t| t.id == id)
+}
 
 // ── Public API
 
@@ -131,10 +274,11 @@ pub fn catalog() -> &'static [TokenEntry] {
 /// Enabled or not does not enter into it: what a token is called is a fact
 /// about the token, not about whether this wallet tracks it.
 pub(crate) fn token_name_on_chain(chain_id: &str, symbol: &str) -> Option<&'static str> {
-    CATALOG
+    let mut matches = CATALOG
         .iter()
-        .find(|t| t.chain == chain_id && t.symbol.eq_ignore_ascii_case(symbol))
-        .map(|t| t.name.as_str())
+        .filter(|t| t.chain == chain_id && t.symbol.eq_ignore_ascii_case(symbol));
+    let token = matches.next()?;
+    matches.next().is_none().then_some(token.name.as_str())
 }
 
 /// Each token's ids at the market-data providers, one row per token.
@@ -149,6 +293,7 @@ pub(crate) fn market_ids() -> &'static [crate::price::AssetMarketIds] {
         parsed
             .tokens
             .iter()
+            .filter(|t| !t.coingecko_id.is_empty())
             .map(|t| crate::price::AssetMarketIds {
                 coingecko_id: t.coingecko_id.clone(),
                 coinpaprika_id: t.coinpaprika_id.clone(),
@@ -516,7 +661,7 @@ mod the_catalog_is_two_tables {
     fn every_deployment_of_a_token_agrees_about_the_token() {
         let mut seen: HashMap<&str, &TokenEntry> = HashMap::new();
         for entry in CATALOG.iter() {
-            let first = seen.entry(entry.symbol.as_str()).or_insert(entry);
+            let first = seen.entry(entry.token_id.as_str()).or_insert(entry);
             for (field, a, b) in [
                 ("name", &first.name, &entry.name),
                 ("coingecko_id", &first.coingecko_id, &entry.coingecko_id),
@@ -530,53 +675,6 @@ mod the_catalog_is_two_tables {
                 );
             }
             assert_eq!(first.tags, entry.tags, "{}'s tags differ", entry.symbol);
-        }
-    }
-
-    /// One symbol, one market-data id — across *both* catalogs.
-    ///
-    /// CRO was two: `chains.toml` called the native coin `crypto-com-chain`
-    /// and `tokens.toml` called the ERC-20 at CoinGecko's own contract for
-    /// that coin `cronos`. Both ids answer `simple/price`, which is why
-    /// nothing looked broken — `cronos` returned $0.00010, `crypto-com-chain`
-    /// $0.054, a factor of five hundred on the same holding.
-    ///
-    /// Since a dashboard row is keyed by coingecko id, two ids for one coin is
-    /// also two rows for it. This is the invariant that makes both impossible.
-    #[test]
-    fn a_symbol_has_one_market_data_id_across_both_catalogs() {
-        let mut by_symbol: HashMap<&str, (&str, &str)> = HashMap::new();
-        for chain in crate::chains::catalog() {
-            if chain.native_coingecko_id.is_empty() {
-                continue;
-            }
-            // `gas_token_symbol`, not `symbol`: on eleven chains they differ,
-            // because `symbol` is the chain's ticker and the native coin is
-            // something else — Arbitrum is ARB and runs on ETH.
-            let (id, source) = by_symbol
-                .entry(chain.gas_token_symbol.as_str())
-                .or_insert((chain.native_coingecko_id.as_str(), chain.name.as_str()));
-            assert_eq!(
-                *id,
-                chain.native_coingecko_id.as_str(),
-                "{} is {id} as {source} and {} as {}",
-                chain.gas_token_symbol,
-                chain.native_coingecko_id,
-                chain.name
-            );
-        }
-        for entry in CATALOG.iter() {
-            if entry.coingecko_id.is_empty() {
-                continue;
-            }
-            let (id, source) = by_symbol
-                .entry(entry.symbol.as_str())
-                .or_insert((entry.coingecko_id.as_str(), entry.chain.as_str()));
-            assert_eq!(
-                *id, entry.coingecko_id,
-                "{} is {id} as {source} and {} in the token catalog",
-                entry.symbol, entry.coingecko_id
-            );
         }
     }
 
@@ -624,11 +722,23 @@ mod the_catalog_is_two_tables {
             .collect();
         for token in &parsed.tokens {
             assert!(
-                deployed.contains(token.symbol.as_str()),
+                deployed.contains(token.id.as_str()),
                 "{} is a token with no deployment",
                 token.symbol
             );
         }
         assert_eq!(CATALOG.len(), parsed.deployments.len());
     }
+}
+
+/// Display precision resolved by deployment; unknown history has no native assumption.
+#[uniffi::export]
+pub fn token_display_decimals(deployment_id: Option<String>, custom_decimals: Option<u32>) -> u32 {
+    deployment_id
+        .as_deref()
+        .and_then(deployment)
+        .map(|t| t.decimals)
+        .or(custom_decimals)
+        .unwrap_or(18)
+        .min(38)
 }

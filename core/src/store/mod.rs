@@ -355,6 +355,7 @@ fn normalize_known_token_identifier(
 pub fn built_in_token_preferences() -> Vec<wallet_domain::CoreTokenPreferenceEntry> {
     crate::tokens::catalog()
         .iter()
+        .filter(|token| !token.is_native())
         .filter_map(|token| {
             // A catalog row on a chain that cannot host tokens is a data
             // mistake, and skipping it is how it stays one.
@@ -520,7 +521,6 @@ pub struct CoreResetPlan {
 /// dispatches is platform (Keychain deletes, `UserDefaults`, URL caches).
 /// There is no core-owned state behind it to move, which is why it is not a
 /// `plan_` any more.
-#[uniffi::export]
 pub fn core_reset_dispatch(scopes: Vec<String>) -> CoreResetPlan {
     let has = |s: &str| scopes.iter().any(|x| x == s);
     let wallets_and_secrets = has("walletsAndSecrets");

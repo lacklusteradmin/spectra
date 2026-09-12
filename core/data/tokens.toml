@@ -1,37 +1,5 @@
-# Spectra built-in token registry — the source of truth for both front ends.
-#
-# Two tables, because a token catalog holds two different kinds of fact:
-#
-#   [[tokens]]      what a token *is*   — one row per token
-#   [[deployments]] where it lives      — one row per (token, chain)
-#
-# It was one table of ninety-one rows, so every field of a token that ships on
-# ten chains was written ten times. Two had already drifted apart.
-
-# ── Tokens: what a token *is*. One row per token, however many chains
-#    it is deployed on.
-#
-#    These were repeated on every deployment row — 91 rows carrying 31
-#    tokens' worth of names, colours and coingecko ids — and two of them
-#    had already drifted: DAI read "Dai" in orange on Ethereum and "Dai
-#    Stablecoin" in yellow on Base and Polygon, for the same token.
-
-# ── Market-data ids: three providers, three id spaces, one column each.
-#
-#    `coinpaprika_id` is CoinPaprika's own slug and is not derivable from the
-#    symbol — Aave is `aave-new`, Cronos is `cro-cryptocom-chain`, BitTorrent
-#    is `bttc-bittorrent-chain`, Tether America USD is bare `usat`. It was a
-#    hand-written table in `price.rs` covering a third of this file, three of
-#    whose ids no longer resolved, and what it missed fell through to matching
-#    on symbol: paprika lists thousands of coins, so BUSD priced as Binance USD
-#    and TON as TONToken. Nothing matches on symbol now.
-#
-#    Empty means no identity we could verify — a fallback quote lost, never a
-#    wrong one. `BUSD` is empty because ours is Bera USD and paprika's BUSD is
-#    Binance USD.
-#
-#    `coinlore_nameid` is stated only where it differs from `coingecko_id`;
-#    both are name slugs and they agree for every asset but seven.
+# Token identities and explicit network deployments, including native tokens.
+# Symbols are display labels, never identities. Precision belongs to a deployment.
 
 [[tokens]]
 symbol = "AAVE"
@@ -41,6 +9,7 @@ coinpaprika_id = "aave-new"
 color = "indigo"
 asset_name = "aave"
 tags = []
+id = "aave"
 
 [[tokens]]
 symbol = "BGB"
@@ -50,6 +19,7 @@ coinpaprika_id = "bgb-bitget-token"
 color = "yellow"
 asset_name = "bgb"
 tags = []
+id = "bitget-token"
 
 [[tokens]]
 symbol = "CRO"
@@ -59,6 +29,7 @@ coinpaprika_id = "cro-cryptocom-chain"
 color = "blue"
 asset_name = "cronos"
 tags = []
+id = "crypto-com-chain"
 
 [[tokens]]
 symbol = "DAI"
@@ -68,6 +39,7 @@ coinpaprika_id = "dai-dai"
 color = "yellow"
 asset_name = "dai"
 tags = ["stablecoin"]
+id = "dai"
 
 [[tokens]]
 symbol = "ENA"
@@ -77,6 +49,7 @@ coinpaprika_id = "ena-ethena"
 color = "blue"
 asset_name = "ethena"
 tags = []
+id = "ethena"
 
 [[tokens]]
 symbol = "EURC"
@@ -86,6 +59,7 @@ coinpaprika_id = "euroc-euro-coin"
 color = "blue"
 asset_name = "eurc"
 tags = ["stablecoin"]
+id = "euro-coin"
 
 [[tokens]]
 symbol = "FDUSD"
@@ -95,6 +69,7 @@ coinpaprika_id = "fdusd-first-digital-usd"
 color = "green"
 asset_name = "fdusd"
 tags = ["stablecoin"]
+id = "first-digital-usd"
 
 [[tokens]]
 symbol = "KCS"
@@ -104,6 +79,7 @@ coinpaprika_id = "kcs-kucoin-token"
 color = "yellow"
 asset_name = "kcs"
 tags = []
+id = "kucoin-shares"
 
 [[tokens]]
 symbol = "LEO"
@@ -113,6 +89,7 @@ coinpaprika_id = "leo-leo-token"
 color = "orange"
 asset_name = "leo"
 tags = []
+id = "leo-token"
 
 [[tokens]]
 symbol = "LINK"
@@ -122,6 +99,7 @@ coinpaprika_id = "link-chainlink"
 color = "blue"
 asset_name = "chainlink"
 tags = []
+id = "chainlink"
 
 [[tokens]]
 symbol = "PAXG"
@@ -131,6 +109,7 @@ coinpaprika_id = "paxg-pax-gold"
 color = "yellow"
 asset_name = "paxg"
 tags = []
+id = "pax-gold"
 
 [[tokens]]
 symbol = "PYUSD"
@@ -140,6 +119,7 @@ coinpaprika_id = "pyusd-paypal-usd"
 color = "blue"
 asset_name = "pyusd"
 tags = ["stablecoin"]
+id = "paypal-usd"
 
 [[tokens]]
 symbol = "RLUSD"
@@ -149,6 +129,7 @@ coinpaprika_id = "rlusd-ripple-usd"
 color = "indigo"
 asset_name = "rlusd"
 tags = ["stablecoin"]
+id = "ripple-usd"
 
 [[tokens]]
 symbol = "SHIB"
@@ -158,6 +139,7 @@ coinpaprika_id = "shib-shiba-inu"
 color = "orange"
 asset_name = "shibainu"
 tags = ["meme"]
+id = "shiba-inu"
 
 [[tokens]]
 symbol = "SKY"
@@ -167,6 +149,7 @@ coinpaprika_id = "sky-sky"
 color = "blue"
 asset_name = "sky"
 tags = []
+id = "sky"
 
 [[tokens]]
 symbol = "TUSD"
@@ -177,6 +160,7 @@ coinlore_nameid = "trueusd"
 color = "blue"
 asset_name = "tusd"
 tags = ["stablecoin"]
+id = "true-usd"
 
 [[tokens]]
 symbol = "UNI"
@@ -186,6 +170,7 @@ coinpaprika_id = "uni-uniswap"
 color = "pink"
 asset_name = "uniswap"
 tags = []
+id = "uniswap"
 
 [[tokens]]
 symbol = "USD1"
@@ -195,6 +180,7 @@ coinpaprika_id = "usd1-usd1"
 color = "green"
 asset_name = "usd1"
 tags = ["stablecoin"]
+id = "usd1-wlfi"
 
 [[tokens]]
 symbol = "USDC"
@@ -204,6 +190,7 @@ coinpaprika_id = "usdc-usd-coin"
 color = "blue"
 asset_name = "usdc"
 tags = ["stablecoin"]
+id = "usd-coin"
 
 [[tokens]]
 symbol = "USDD"
@@ -213,6 +200,7 @@ coinpaprika_id = "usdd-usdd"
 color = "green"
 asset_name = "usdd"
 tags = ["stablecoin"]
+id = "usdd"
 
 [[tokens]]
 symbol = "USDE"
@@ -222,6 +210,7 @@ coinpaprika_id = "usde-ethena-usde"
 color = "cyan"
 asset_name = "usde"
 tags = ["stablecoin"]
+id = "ethena-usde"
 
 [[tokens]]
 symbol = "USDG"
@@ -231,6 +220,7 @@ coinpaprika_id = "usdg-global-dollar"
 color = "teal"
 asset_name = "usdg"
 tags = ["stablecoin"]
+id = "global-dollar"
 
 [[tokens]]
 symbol = "USDS"
@@ -240,6 +230,7 @@ coinpaprika_id = "usds-usds"
 color = "teal"
 asset_name = "usds"
 tags = ["stablecoin"]
+id = "usds"
 
 [[tokens]]
 symbol = "USDT"
@@ -249,6 +240,7 @@ coinpaprika_id = "usdt-tether"
 color = "green"
 asset_name = "usdt"
 tags = ["stablecoin"]
+id = "tether"
 
 [[tokens]]
 symbol = "WBTC"
@@ -258,6 +250,7 @@ coinpaprika_id = "wbtc-wrapped-bitcoin"
 color = "orange"
 asset_name = "wrappedbitcoin"
 tags = []
+id = "wrapped-bitcoin"
 
 [[tokens]]
 symbol = "WLFI"
@@ -268,6 +261,7 @@ coinlore_nameid = "world-liberty-financial-wlfi"
 color = "gray"
 asset_name = "wlfi"
 tags = []
+id = "world-liberty-financial"
 
 [[tokens]]
 symbol = "XAUT"
@@ -277,6 +271,7 @@ coinpaprika_id = "xaut-tether-gold"
 color = "yellow"
 asset_name = "xaut"
 tags = []
+id = "tether-gold"
 
 [[tokens]]
 symbol = "JUP"
@@ -286,6 +281,7 @@ coinpaprika_id = "jup-jupiter-exchange-token"
 color = "orange"
 asset_name = "jupiter"
 tags = []
+id = "jupiter-exchange-solana"
 
 [[tokens]]
 symbol = "PUMP"
@@ -295,6 +291,7 @@ coinpaprika_id = "pump-pumpfun"
 color = "pink"
 asset_name = "pumpfun"
 tags = ["meme"]
+id = "pump-fun"
 
 [[tokens]]
 symbol = "BTT"
@@ -304,6 +301,7 @@ coinpaprika_id = "bttc-bittorrent-chain"
 color = "red"
 asset_name = "btt"
 tags = ["meme"]
+id = "bittorrent"
 
 [[tokens]]
 symbol = "USDB"
@@ -313,11 +311,8 @@ coinpaprika_id = "usdb-usdb"
 color = "yellow"
 asset_name = "usdb"
 tags = ["stablecoin"]
+id = "usdb"
 
-# No CoinPaprika id on purpose: it has no Bera USD row, and the `BUSD` ticker
-# there is `busd-binance-usd` — Binance's discontinued stablecoin, a different
-# token entirely. An empty id costs a fallback price source; the wrong one
-# would quote another coin's.
 [[tokens]]
 symbol = "BUSD"
 name = "Bera USD"
@@ -326,6 +321,7 @@ coinpaprika_id = ""
 color = "orange"
 asset_name = "berausd"
 tags = ["stablecoin"]
+id = "honey-3"
 
 [[tokens]]
 symbol = "USAT"
@@ -335,11 +331,8 @@ coinpaprika_id = "usat"
 color = "red"
 asset_name = "usat"
 tags = ["stablecoin"]
+id = "usa"
 
-# USDT0 and XAUT0 are their own tokens, not bridged copies of USDT and XAUT:
-# they price separately and, on the chains Tether upgraded in place, they *are*
-# the contract that used to be USDT — Polygon's 0xc2132D05… answers `symbol()`
-# with "USDT0" now, and Arbitrum's with "USD₮0".
 [[tokens]]
 symbol = "USDT0"
 name = "USDT0"
@@ -348,6 +341,7 @@ coinpaprika_id = "usdt0-usdt0"
 color = "green"
 asset_name = "usdt0"
 tags = ["stablecoin"]
+id = "usdt0"
 
 [[tokens]]
 symbol = "XAUT0"
@@ -357,13 +351,8 @@ coinpaprika_id = "xaut0-tether-gold-tokens"
 color = "yellow"
 asset_name = "xaut0"
 tags = []
+id = "tether-gold-tokens"
 
-# The chains' own tokens. Each takes its colour and artwork from the chain it
-# belongs to, so ARB looks the same whether it is read as Arbitrum's ticker or
-# as an ERC-20 balance. MNT and POL are gas tokens the wiki already knows as
-# native coins; the rows below are the Ethereum contracts that carry almost all
-# of their supply, which is the CRO shape — native on one chain, ERC-20 on
-# another.
 [[tokens]]
 symbol = "ARB"
 name = "Arbitrum"
@@ -372,6 +361,7 @@ coinpaprika_id = "arb-arbitrum"
 color = "cyan"
 asset_name = "arbitrum"
 tags = []
+id = "arbitrum"
 
 [[tokens]]
 symbol = "OP"
@@ -381,6 +371,7 @@ coinpaprika_id = "op-optimism"
 color = "red"
 asset_name = "optimism"
 tags = []
+id = "optimism"
 
 [[tokens]]
 symbol = "LINEA"
@@ -390,6 +381,7 @@ coinpaprika_id = "linea-linea"
 color = "blue"
 asset_name = "linea"
 tags = []
+id = "linea"
 
 [[tokens]]
 symbol = "SCR"
@@ -399,6 +391,7 @@ coinpaprika_id = "scr-scroll"
 color = "orange"
 asset_name = "scroll"
 tags = []
+id = "scroll"
 
 [[tokens]]
 symbol = "BLAST"
@@ -408,6 +401,7 @@ coinpaprika_id = "blast-blast-token"
 color = "yellow"
 asset_name = "blast"
 tags = []
+id = "blast"
 
 [[tokens]]
 symbol = "ZK"
@@ -417,6 +411,7 @@ coinpaprika_id = "zk-zksync"
 color = "gray"
 asset_name = "zksyncera"
 tags = []
+id = "zksync"
 
 [[tokens]]
 symbol = "MNT"
@@ -426,6 +421,7 @@ coinpaprika_id = "mnt-mantle"
 color = "green"
 asset_name = "mantle"
 tags = []
+id = "mantle"
 
 [[tokens]]
 symbol = "POL"
@@ -435,13 +431,8 @@ coinpaprika_id = "pol-polygon-ecosystem-token"
 color = "purple"
 asset_name = "polygon"
 tags = []
+id = "polygon-ecosystem-token"
 
-# Assets held rather than issued: wrapped and staked forms of coins the catalog
-# already carries, and the governance tokens of the protocols people keep
-# balances in. Most ship `asset_name = ""` — no mark exists for them and the
-# badge draws the coin's letter, which is better than waiting on artwork or
-# borrowing somebody else's. WETH is the exception: it *is* ETH, so it draws
-# Ethereum's.
 [[tokens]]
 symbol = "STETH"
 name = "Lido Staked Ether"
@@ -450,6 +441,7 @@ coinpaprika_id = "steth-lido-staked-ether"
 color = "cyan"
 asset_name = ""
 tags = []
+id = "staked-ether"
 
 [[tokens]]
 symbol = "WSTETH"
@@ -459,6 +451,7 @@ coinpaprika_id = "wsteth-wrapped-liquid-staked-ether-20"
 color = "cyan"
 asset_name = ""
 tags = []
+id = "wrapped-steth"
 
 [[tokens]]
 symbol = "WETH"
@@ -468,6 +461,7 @@ coinpaprika_id = "weth-weth"
 color = "gray"
 asset_name = "ethereum"
 tags = []
+id = "weth"
 
 [[tokens]]
 symbol = "CBBTC"
@@ -477,6 +471,7 @@ coinpaprika_id = "cbbtc-coinbase-wrapped-btc"
 color = "blue"
 asset_name = ""
 tags = []
+id = "coinbase-wrapped-btc"
 
 [[tokens]]
 symbol = "LBTC"
@@ -486,6 +481,7 @@ coinpaprika_id = "lbtc-lombard-staked-btc"
 color = "orange"
 asset_name = ""
 tags = []
+id = "lombard-staked-btc"
 
 [[tokens]]
 symbol = "RETH"
@@ -495,6 +491,7 @@ coinpaprika_id = "reth-rocket-pool-eth"
 color = "orange"
 asset_name = ""
 tags = []
+id = "rocket-pool-eth"
 
 [[tokens]]
 symbol = "SUSDS"
@@ -504,6 +501,7 @@ coinpaprika_id = "susds-susds"
 color = "teal"
 asset_name = ""
 tags = ["stablecoin"]
+id = "susds"
 
 [[tokens]]
 symbol = "SUSDE"
@@ -513,6 +511,7 @@ coinpaprika_id = "susde-ethena-staked-usde"
 color = "cyan"
 asset_name = ""
 tags = ["stablecoin"]
+id = "ethena-staked-usde"
 
 [[tokens]]
 symbol = "GHO"
@@ -522,6 +521,7 @@ coinpaprika_id = "gho-gho"
 color = "teal"
 asset_name = ""
 tags = ["stablecoin"]
+id = "gho"
 
 [[tokens]]
 symbol = "ONDO"
@@ -531,6 +531,7 @@ coinpaprika_id = "ondo-ondo"
 color = "blue"
 asset_name = ""
 tags = []
+id = "ondo-finance"
 
 [[tokens]]
 symbol = "MORPHO"
@@ -540,6 +541,7 @@ coinpaprika_id = "morpho-morpho"
 color = "blue"
 asset_name = ""
 tags = []
+id = "morpho"
 
 [[tokens]]
 symbol = "AERO"
@@ -549,6 +551,7 @@ coinpaprika_id = "aero-aerodrome-finance"
 color = "blue"
 asset_name = ""
 tags = []
+id = "aerodrome-finance"
 
 [[tokens]]
 symbol = "CRV"
@@ -558,6 +561,7 @@ coinpaprika_id = "crv-curve-dao-token"
 color = "yellow"
 asset_name = ""
 tags = []
+id = "curve-dao-token"
 
 [[tokens]]
 symbol = "CAKE"
@@ -567,6 +571,7 @@ coinpaprika_id = "cake-pancakeswap"
 color = "cyan"
 asset_name = ""
 tags = []
+id = "pancakeswap-token"
 
 [[tokens]]
 symbol = "PENDLE"
@@ -576,6 +581,7 @@ coinpaprika_id = "pendle-pendle"
 color = "teal"
 asset_name = ""
 tags = []
+id = "pendle"
 
 [[tokens]]
 symbol = "ETHFI"
@@ -585,6 +591,7 @@ coinpaprika_id = "ethfi-etherfi"
 color = "purple"
 asset_name = ""
 tags = []
+id = "ether-fi"
 
 [[tokens]]
 symbol = "LDO"
@@ -594,6 +601,7 @@ coinpaprika_id = "ldo-lido-dao"
 color = "cyan"
 asset_name = ""
 tags = []
+id = "lido-dao"
 
 [[tokens]]
 symbol = "ENS"
@@ -603,6 +611,7 @@ coinpaprika_id = "ens-ethereum-name-service"
 color = "blue"
 asset_name = ""
 tags = []
+id = "ethereum-name-service"
 
 [[tokens]]
 symbol = "PYTH"
@@ -612,6 +621,7 @@ coinpaprika_id = "pyth-pyth-network"
 color = "purple"
 asset_name = ""
 tags = []
+id = "pyth-network"
 
 [[tokens]]
 symbol = "RAY"
@@ -621,6 +631,7 @@ coinpaprika_id = "ray-raydium"
 color = "indigo"
 asset_name = ""
 tags = []
+id = "raydium"
 
 [[tokens]]
 symbol = "ZRO"
@@ -630,6 +641,7 @@ coinpaprika_id = "zro-layerzero"
 color = "gray"
 asset_name = ""
 tags = []
+id = "layerzero"
 
 [[tokens]]
 symbol = "WLD"
@@ -639,6 +651,7 @@ coinpaprika_id = "wld-worldcoin"
 color = "gray"
 asset_name = ""
 tags = []
+id = "worldcoin-wld"
 
 [[tokens]]
 symbol = "PEPE"
@@ -648,1534 +661,3243 @@ coinpaprika_id = "pepe-pepe"
 color = "green"
 asset_name = ""
 tags = ["meme"]
+id = "pepe"
 
-# ── Deployments: where it lives, and what is true only there.
-#
-#    `decimals` belongs here, not on the token: a bridged token really
-#    does differ by chain — ENA is 18 on Ethereum and 9 on Solana, LINK
-#    is 18 on Ethereum and 8 on Solana.
+[[tokens]]
+id = "bitcoin"
+symbol = "BTC"
+name = "Bitcoin"
+coingecko_id = "bitcoin"
+coinpaprika_id = "btc-bitcoin"
+coinlore_nameid = ""
+color = "orange"
+asset_name = "bitcoin"
+tags = []
+
+[[tokens]]
+id = "ethereum"
+symbol = "ETH"
+name = "Ethereum"
+coingecko_id = "ethereum"
+coinpaprika_id = "eth-ethereum"
+coinlore_nameid = ""
+color = "purple"
+asset_name = "ethereum"
+tags = []
+
+[[tokens]]
+id = "solana"
+symbol = "SOL"
+name = "Solana"
+coingecko_id = "solana"
+coinpaprika_id = "sol-solana"
+coinlore_nameid = ""
+color = "green"
+asset_name = "solana"
+tags = []
+
+[[tokens]]
+id = "dogecoin"
+symbol = "DOGE"
+name = "Dogecoin"
+coingecko_id = "dogecoin"
+coinpaprika_id = "doge-dogecoin"
+coinlore_nameid = ""
+color = "yellow"
+asset_name = "dogecoin"
+tags = []
+
+[[tokens]]
+id = "ripple"
+symbol = "XRP"
+name = "XRP"
+coingecko_id = "ripple"
+coinpaprika_id = "xrp-xrp"
+coinlore_nameid = ""
+color = "cyan"
+asset_name = "xrp"
+tags = []
+
+[[tokens]]
+id = "litecoin"
+symbol = "LTC"
+name = "Litecoin"
+coingecko_id = "litecoin"
+coinpaprika_id = "ltc-litecoin"
+coinlore_nameid = ""
+color = "blue"
+asset_name = "litecoin"
+tags = []
+
+[[tokens]]
+id = "bitcoin-cash"
+symbol = "BCH"
+name = "Bitcoin Cash"
+coingecko_id = "bitcoin-cash"
+coinpaprika_id = "bch-bitcoin-cash"
+coinlore_nameid = ""
+color = "orange"
+asset_name = "bitcoincash"
+tags = []
+
+[[tokens]]
+id = "tron"
+symbol = "TRX"
+name = "Tron"
+coingecko_id = "tron"
+coinpaprika_id = "trx-tron"
+coinlore_nameid = ""
+color = "red"
+asset_name = "tron"
+tags = []
+
+[[tokens]]
+id = "stellar"
+symbol = "XLM"
+name = "Stellar"
+coingecko_id = "stellar"
+coinpaprika_id = "xlm-stellar"
+coinlore_nameid = ""
+color = "teal"
+asset_name = "stellar"
+tags = []
+
+[[tokens]]
+id = "cardano"
+symbol = "ADA"
+name = "Cardano"
+coingecko_id = "cardano"
+coinpaprika_id = "ada-cardano"
+coinlore_nameid = ""
+color = "indigo"
+asset_name = "cardano"
+tags = []
+
+[[tokens]]
+id = "polkadot"
+symbol = "DOT"
+name = "Polkadot"
+coingecko_id = "polkadot"
+coinpaprika_id = "dot-polkadot-token"
+coinlore_nameid = ""
+color = "pink"
+asset_name = "polkadot"
+tags = []
+
+[[tokens]]
+id = "avalanche-2"
+symbol = "AVAX"
+name = "Avalanche"
+coingecko_id = "avalanche-2"
+coinpaprika_id = "avax-avalanche"
+coinlore_nameid = "avalanche"
+color = "red"
+asset_name = "avalanche"
+tags = []
+
+[[tokens]]
+id = "sui"
+symbol = "SUI"
+name = "Sui"
+coingecko_id = "sui"
+coinpaprika_id = "sui-sui"
+coinlore_nameid = ""
+color = "mint"
+asset_name = "sui"
+tags = []
+
+[[tokens]]
+id = "aptos"
+symbol = "APT"
+name = "Aptos"
+coingecko_id = "aptos"
+coinpaprika_id = "apt-aptos"
+coinlore_nameid = ""
+color = "cyan"
+asset_name = "aptos"
+tags = []
+
+[[tokens]]
+id = "the-open-network"
+symbol = "TON"
+name = "Toncoin"
+coingecko_id = "the-open-network"
+coinpaprika_id = "ton-tontoken"
+coinlore_nameid = "toncoin"
+color = "blue"
+asset_name = "ton"
+tags = []
+
+[[tokens]]
+id = "near"
+symbol = "NEAR"
+name = "NEAR"
+coingecko_id = "near"
+coinpaprika_id = "near-near-protocol"
+coinlore_nameid = "near-protocol"
+color = "indigo"
+asset_name = "near"
+tags = []
+
+[[tokens]]
+id = "internet-computer"
+symbol = "ICP"
+name = "Internet Computer"
+coingecko_id = "internet-computer"
+coinpaprika_id = "icp-internet-computer"
+coinlore_nameid = "dfinity"
+color = "indigo"
+asset_name = "internetcomputer"
+tags = []
+
+[[tokens]]
+id = "monero"
+symbol = "XMR"
+name = "Monero"
+coingecko_id = "monero"
+coinpaprika_id = "xmr-monero"
+coinlore_nameid = ""
+color = "orange"
+asset_name = "monero"
+tags = []
+
+[[tokens]]
+id = "ethereum-classic"
+symbol = "ETC"
+name = "Ethereum Classic"
+coingecko_id = "ethereum-classic"
+coinpaprika_id = "etc-ethereum-classic"
+coinlore_nameid = ""
+color = "green"
+asset_name = "ethereumclassic"
+tags = []
+
+[[tokens]]
+id = "bitcoin-cash-sv"
+symbol = "BSV"
+name = "Bitcoin SV"
+coingecko_id = "bitcoin-cash-sv"
+coinpaprika_id = "bsv-bitcoin-sv"
+coinlore_nameid = ""
+color = "orange"
+asset_name = "bitcoinsv"
+tags = []
+
+[[tokens]]
+id = "binancecoin"
+symbol = "BNB"
+name = "BNB"
+coingecko_id = "binancecoin"
+coinpaprika_id = "bnb-binance-coin"
+coinlore_nameid = "binance-coin"
+color = "yellow"
+asset_name = "bnb"
+tags = []
+
+[[tokens]]
+id = "hyperliquid"
+symbol = "HYPE"
+name = "Hyperliquid"
+coingecko_id = "hyperliquid"
+coinpaprika_id = "hype-hyperliquid"
+coinlore_nameid = ""
+color = "mint"
+asset_name = "hyperliquid"
+tags = []
+
+[[tokens]]
+id = "zcash"
+symbol = "ZEC"
+name = "Zcash"
+coingecko_id = "zcash"
+coinpaprika_id = "zec-zcash"
+coinlore_nameid = ""
+color = "yellow"
+asset_name = "zcash"
+tags = []
+
+[[tokens]]
+id = "bitcoin-gold"
+symbol = "BTG"
+name = "Bitcoin Gold"
+coingecko_id = "bitcoin-gold"
+coinpaprika_id = "btg-bitcoin-gold"
+coinlore_nameid = ""
+color = "yellow"
+asset_name = "bitcoingold"
+tags = []
+
+[[tokens]]
+id = "decred"
+symbol = "DCR"
+name = "Decred"
+coingecko_id = "decred"
+coinpaprika_id = "dcr-decred"
+coinlore_nameid = ""
+color = "indigo"
+asset_name = "decred"
+tags = []
+
+[[tokens]]
+id = "kaspa"
+symbol = "KAS"
+name = "Kaspa"
+coingecko_id = "kaspa"
+coinpaprika_id = "kas-kaspa"
+coinlore_nameid = ""
+color = "teal"
+asset_name = "kaspa"
+tags = []
+
+[[tokens]]
+id = "sei-network"
+symbol = "SEI"
+name = "Sei"
+coingecko_id = "sei-network"
+coinpaprika_id = "sei-sei"
+coinlore_nameid = ""
+color = "red"
+asset_name = "sei"
+tags = []
+
+[[tokens]]
+id = "celo"
+symbol = "CELO"
+name = "Celo"
+coingecko_id = "celo"
+coinpaprika_id = "celo-celo"
+coinlore_nameid = ""
+color = "yellow"
+asset_name = "celo"
+tags = []
+
+[[tokens]]
+id = "sonic-3"
+symbol = "S"
+name = "Sonic"
+coingecko_id = "sonic-3"
+coinpaprika_id = "s-sonic"
+coinlore_nameid = ""
+color = "gray"
+asset_name = "sonic"
+tags = []
+
+[[tokens]]
+id = "berachain-bera"
+symbol = "BERA"
+name = "Berachain"
+coingecko_id = "berachain-bera"
+coinpaprika_id = "bera-berachain"
+coinlore_nameid = ""
+color = "orange"
+asset_name = "bera"
+tags = []
+
+[[tokens]]
+id = "dash"
+symbol = "DASH"
+name = "Dash"
+coingecko_id = "dash"
+coinpaprika_id = "dash-dash"
+coinlore_nameid = ""
+color = "blue"
+asset_name = "dash"
+tags = []
+
+[[tokens]]
+id = "okb"
+symbol = "OKB"
+name = "OKB"
+coingecko_id = "okb"
+coinpaprika_id = "okb-okb"
+coinlore_nameid = ""
+color = "gray"
+asset_name = "okb"
+tags = []
+
+[[tokens]]
+id = "bittensor"
+symbol = "TAO"
+name = "Bittensor"
+coingecko_id = "bittensor"
+coinpaprika_id = "tao-bittensor"
+coinlore_nameid = ""
+color = "gray"
+asset_name = "bittensor"
+tags = []
+
+[[tokens]]
+id = "bitcoin-testnet-native"
+symbol = "BTC"
+name = "Bitcoin"
+coingecko_id = ""
+coinpaprika_id = ""
+coinlore_nameid = ""
+color = "orange"
+asset_name = "bitcoin"
+tags = []
+
+[[tokens]]
+id = "bitcoin-testnet-4-native"
+symbol = "BTC"
+name = "Bitcoin"
+coingecko_id = ""
+coinpaprika_id = ""
+coinlore_nameid = ""
+color = "orange"
+asset_name = "bitcoin"
+tags = []
+
+[[tokens]]
+id = "bitcoin-signet-native"
+symbol = "BTC"
+name = "Bitcoin"
+coingecko_id = ""
+coinpaprika_id = ""
+coinlore_nameid = ""
+color = "orange"
+asset_name = "bitcoin"
+tags = []
+
+[[tokens]]
+id = "litecoin-testnet-native"
+symbol = "LTC"
+name = "Litecoin"
+coingecko_id = ""
+coinpaprika_id = ""
+coinlore_nameid = ""
+color = "blue"
+asset_name = "litecoin"
+tags = []
+
+[[tokens]]
+id = "bitcoin-cash-testnet-native"
+symbol = "BCH"
+name = "Bitcoin Cash"
+coingecko_id = ""
+coinpaprika_id = ""
+coinlore_nameid = ""
+color = "orange"
+asset_name = "bitcoincash"
+tags = []
+
+[[tokens]]
+id = "bitcoin-sv-testnet-native"
+symbol = "BSV"
+name = "Bitcoin SV"
+coingecko_id = ""
+coinpaprika_id = ""
+coinlore_nameid = ""
+color = "orange"
+asset_name = "bitcoinsv"
+tags = []
+
+[[tokens]]
+id = "dogecoin-testnet-native"
+symbol = "DOGE"
+name = "Dogecoin"
+coingecko_id = ""
+coinpaprika_id = ""
+coinlore_nameid = ""
+color = "yellow"
+asset_name = "dogecoin"
+tags = []
+
+[[tokens]]
+id = "zcash-testnet-native"
+symbol = "ZEC"
+name = "Zcash"
+coingecko_id = ""
+coinpaprika_id = ""
+coinlore_nameid = ""
+color = "yellow"
+asset_name = "zcash"
+tags = []
+
+[[tokens]]
+id = "decred-testnet-native"
+symbol = "DCR"
+name = "Decred"
+coingecko_id = ""
+coinpaprika_id = ""
+coinlore_nameid = ""
+color = "indigo"
+asset_name = "decred"
+tags = []
+
+[[tokens]]
+id = "kaspa-testnet-native"
+symbol = "KAS"
+name = "Kaspa"
+coingecko_id = ""
+coinpaprika_id = ""
+coinlore_nameid = ""
+color = "teal"
+asset_name = "kaspa"
+tags = []
+
+[[tokens]]
+id = "dash-testnet-native"
+symbol = "DASH"
+name = "Dash"
+coingecko_id = ""
+coinpaprika_id = ""
+coinlore_nameid = ""
+color = "blue"
+asset_name = "dash"
+tags = []
+
+[[tokens]]
+id = "ethereum-sepolia-native"
+symbol = "ETH"
+name = "Ethereum"
+coingecko_id = ""
+coinpaprika_id = ""
+coinlore_nameid = ""
+color = "purple"
+asset_name = "ethereum"
+tags = []
+
+[[tokens]]
+id = "ethereum-hoodi-native"
+symbol = "ETH"
+name = "Ethereum"
+coingecko_id = ""
+coinpaprika_id = ""
+coinlore_nameid = ""
+color = "purple"
+asset_name = "ethereum"
+tags = []
+
+[[tokens]]
+id = "arbitrum-sepolia-native"
+symbol = "ETH"
+name = "Ethereum"
+coingecko_id = ""
+coinpaprika_id = ""
+coinlore_nameid = ""
+color = "cyan"
+asset_name = "arbitrum"
+tags = []
+
+[[tokens]]
+id = "optimism-sepolia-native"
+symbol = "ETH"
+name = "Ethereum"
+coingecko_id = ""
+coinpaprika_id = ""
+coinlore_nameid = ""
+color = "red"
+asset_name = "optimism"
+tags = []
+
+[[tokens]]
+id = "base-sepolia-native"
+symbol = "ETH"
+name = "Ethereum"
+coingecko_id = ""
+coinpaprika_id = ""
+coinlore_nameid = ""
+color = "blue"
+asset_name = "base"
+tags = []
+
+[[tokens]]
+id = "bnb-testnet-native"
+symbol = "BNB"
+name = "BNB"
+coingecko_id = ""
+coinpaprika_id = ""
+coinlore_nameid = ""
+color = "yellow"
+asset_name = "bnb"
+tags = []
+
+[[tokens]]
+id = "avalanche-fuji-native"
+symbol = "AVAX"
+name = "Avalanche"
+coingecko_id = ""
+coinpaprika_id = ""
+coinlore_nameid = ""
+color = "red"
+asset_name = "avalanche"
+tags = []
+
+[[tokens]]
+id = "polygon-amoy-native"
+symbol = "POL"
+name = "Polygon"
+coingecko_id = ""
+coinpaprika_id = ""
+coinlore_nameid = ""
+color = "purple"
+asset_name = "polygon"
+tags = []
+
+[[tokens]]
+id = "hyperliquid-testnet-native"
+symbol = "HYPE"
+name = "Hyperliquid"
+coingecko_id = ""
+coinpaprika_id = ""
+coinlore_nameid = ""
+color = "mint"
+asset_name = "hyperliquid"
+tags = []
+
+[[tokens]]
+id = "ethereum-classic-mordor-native"
+symbol = "ETC"
+name = "Ethereum Classic"
+coingecko_id = ""
+coinpaprika_id = ""
+coinlore_nameid = ""
+color = "green"
+asset_name = "ethereumclassic"
+tags = []
+
+[[tokens]]
+id = "tron-nile-native"
+symbol = "TRX"
+name = "Tron"
+coingecko_id = ""
+coinpaprika_id = ""
+coinlore_nameid = ""
+color = "red"
+asset_name = "tron"
+tags = []
+
+[[tokens]]
+id = "solana-devnet-native"
+symbol = "SOL"
+name = "Solana"
+coingecko_id = ""
+coinpaprika_id = ""
+coinlore_nameid = ""
+color = "green"
+asset_name = "solana"
+tags = []
+
+[[tokens]]
+id = "xrp-testnet-native"
+symbol = "XRP"
+name = "XRP"
+coingecko_id = ""
+coinpaprika_id = ""
+coinlore_nameid = ""
+color = "cyan"
+asset_name = "xrp"
+tags = []
+
+[[tokens]]
+id = "stellar-testnet-native"
+symbol = "XLM"
+name = "Stellar"
+coingecko_id = ""
+coinpaprika_id = ""
+coinlore_nameid = ""
+color = "teal"
+asset_name = "stellar"
+tags = []
+
+[[tokens]]
+id = "cardano-preprod-native"
+symbol = "ADA"
+name = "Cardano"
+coingecko_id = ""
+coinpaprika_id = ""
+coinlore_nameid = ""
+color = "indigo"
+asset_name = "cardano"
+tags = []
+
+[[tokens]]
+id = "sui-testnet-native"
+symbol = "SUI"
+name = "Sui"
+coingecko_id = ""
+coinpaprika_id = ""
+coinlore_nameid = ""
+color = "mint"
+asset_name = "sui"
+tags = []
+
+[[tokens]]
+id = "aptos-testnet-native"
+symbol = "APT"
+name = "Aptos"
+coingecko_id = ""
+coinpaprika_id = ""
+coinlore_nameid = ""
+color = "cyan"
+asset_name = "aptos"
+tags = []
+
+[[tokens]]
+id = "ton-testnet-native"
+symbol = "TON"
+name = "Toncoin"
+coingecko_id = ""
+coinpaprika_id = ""
+coinlore_nameid = ""
+color = "blue"
+asset_name = "ton"
+tags = []
+
+[[tokens]]
+id = "near-testnet-native"
+symbol = "NEAR"
+name = "NEAR"
+coingecko_id = ""
+coinpaprika_id = ""
+coinlore_nameid = ""
+color = "indigo"
+asset_name = "near"
+tags = []
+
+[[tokens]]
+id = "polkadot-westend-native"
+symbol = "DOT"
+name = "Polkadot"
+coingecko_id = ""
+coinpaprika_id = ""
+coinlore_nameid = ""
+color = "pink"
+asset_name = "polkadot"
+tags = []
+
+[[tokens]]
+id = "monero-stagenet-native"
+symbol = "XMR"
+name = "Monero"
+coingecko_id = ""
+coinpaprika_id = ""
+coinlore_nameid = ""
+color = "orange"
+asset_name = "monero"
+tags = []
 
 [[deployments]]
-token = "AAVE"
-chain = "ethereum"
-contract = "0x7Fc66500c84A76Ad7e9c93437bFc5Ac33E2DDaE9"
+token = "aave"
+contract = "0x7fc66500c84a76ad7e9c93437bfc5ac33e2ddae9"
 decimals = 18
 standard = "ERC-20"
 enabled = false
+network = "ethereum"
+kind = "token"
+id = "ethereum:erc-20:0x7fc66500c84a76ad7e9c93437bfc5ac33e2ddae9"
 
 [[deployments]]
-token = "ARB"
-chain = "ethereum"
-contract = "0xB50721BCf8d664c30412Cfbc6cf7a15145234ad1"
+token = "arbitrum"
+contract = "0xb50721bcf8d664c30412cfbc6cf7a15145234ad1"
 decimals = 18
 standard = "ERC-20"
 enabled = false
+network = "ethereum"
+kind = "token"
+id = "ethereum:erc-20:0xb50721bcf8d664c30412cfbc6cf7a15145234ad1"
 
 [[deployments]]
-token = "BGB"
-chain = "ethereum"
-contract = "0x54D2252757e1672EEaD234D27B1270728fF90581"
+token = "bitget-token"
+contract = "0x54d2252757e1672eead234d27b1270728ff90581"
 decimals = 18
 standard = "ERC-20"
 enabled = false
+network = "ethereum"
+kind = "token"
+id = "ethereum:erc-20:0x54d2252757e1672eead234d27b1270728ff90581"
 
 [[deployments]]
-token = "CRO"
-chain = "ethereum"
+token = "crypto-com-chain"
 contract = "0xa0b73e1ff0b80914ab6fe0444e65848c4c34450b"
 decimals = 8
 standard = "ERC-20"
 enabled = false
+network = "ethereum"
+kind = "token"
+id = "ethereum:erc-20:0xa0b73e1ff0b80914ab6fe0444e65848c4c34450b"
 
 [[deployments]]
-token = "DAI"
-chain = "ethereum"
-contract = "0x6B175474E89094C44Da98b954EedeAC495271d0F"
+token = "dai"
+contract = "0x6b175474e89094c44da98b954eedeac495271d0f"
 decimals = 18
 standard = "ERC-20"
 enabled = false
+network = "ethereum"
+kind = "token"
+id = "ethereum:erc-20:0x6b175474e89094c44da98b954eedeac495271d0f"
 
 [[deployments]]
-token = "ENA"
-chain = "ethereum"
-contract = "0x57e114B691Db790C35207b2e685D4A43181e6061"
+token = "ethena"
+contract = "0x57e114b691db790c35207b2e685d4a43181e6061"
 decimals = 18
 standard = "ERC-20"
 enabled = false
+network = "ethereum"
+kind = "token"
+id = "ethereum:erc-20:0x57e114b691db790c35207b2e685d4a43181e6061"
 
 [[deployments]]
-token = "EURC"
-chain = "ethereum"
-contract = "0x1aBaEA1f7C830bD89Acc67eC4af516284b1bC33c"
+token = "euro-coin"
+contract = "0x1abaea1f7c830bd89acc67ec4af516284b1bc33c"
 decimals = 6
 standard = "ERC-20"
 enabled = false
+network = "ethereum"
+kind = "token"
+id = "ethereum:erc-20:0x1abaea1f7c830bd89acc67ec4af516284b1bc33c"
 
 [[deployments]]
-token = "FDUSD"
-chain = "ethereum"
-contract = "0xc5f0f7b66764F6ec8C8Dff7BA683102295E16409"
+token = "first-digital-usd"
+contract = "0xc5f0f7b66764f6ec8c8dff7ba683102295e16409"
 decimals = 18
 standard = "ERC-20"
 enabled = false
+network = "ethereum"
+kind = "token"
+id = "ethereum:erc-20:0xc5f0f7b66764f6ec8c8dff7ba683102295e16409"
 
 [[deployments]]
-token = "KCS"
-chain = "ethereum"
-contract = "0xf34960d9d60be18cC1D5Afc1A6F012A723a28811"
+token = "kucoin-shares"
+contract = "0xf34960d9d60be18cc1d5afc1a6f012a723a28811"
 decimals = 6
 standard = "ERC-20"
 enabled = false
+network = "ethereum"
+kind = "token"
+id = "ethereum:erc-20:0xf34960d9d60be18cc1d5afc1a6f012a723a28811"
 
 [[deployments]]
-token = "LEO"
-chain = "ethereum"
+token = "leo-token"
 contract = "0x2af5d2ad76741191d15dfe7bf6ac92d4bd912ca3"
 decimals = 18
 standard = "ERC-20"
 enabled = false
+network = "ethereum"
+kind = "token"
+id = "ethereum:erc-20:0x2af5d2ad76741191d15dfe7bf6ac92d4bd912ca3"
 
 [[deployments]]
-token = "LINEA"
-chain = "ethereum"
-contract = "0x1789e0043623282D5DCc7F213d703C6D8BAfBB04"
+token = "linea"
+contract = "0x1789e0043623282d5dcc7f213d703c6d8bafbb04"
 decimals = 18
 standard = "ERC-20"
 enabled = false
+network = "ethereum"
+kind = "token"
+id = "ethereum:erc-20:0x1789e0043623282d5dcc7f213d703c6d8bafbb04"
 
 [[deployments]]
-token = "LINK"
-chain = "ethereum"
-contract = "0x514910771AF9Ca656af840dff83E8264EcF986CA"
+token = "chainlink"
+contract = "0x514910771af9ca656af840dff83e8264ecf986ca"
 decimals = 18
 standard = "ERC-20"
 enabled = false
+network = "ethereum"
+kind = "token"
+id = "ethereum:erc-20:0x514910771af9ca656af840dff83e8264ecf986ca"
 
 [[deployments]]
-token = "MNT"
-chain = "ethereum"
-contract = "0x3c3a81e81dc49A522A592e7622A7E711c06bf354"
+token = "mantle"
+contract = "0x3c3a81e81dc49a522a592e7622a7e711c06bf354"
 decimals = 18
 standard = "ERC-20"
 enabled = false
+network = "ethereum"
+kind = "token"
+id = "ethereum:erc-20:0x3c3a81e81dc49a522a592e7622a7e711c06bf354"
 
 [[deployments]]
-token = "PAXG"
-chain = "ethereum"
-contract = "0x45804880De22913dAFE09f4980848ECE6EcbAf78"
+token = "pax-gold"
+contract = "0x45804880de22913dafe09f4980848ece6ecbaf78"
 decimals = 18
 standard = "ERC-20"
 enabled = false
+network = "ethereum"
+kind = "token"
+id = "ethereum:erc-20:0x45804880de22913dafe09f4980848ece6ecbaf78"
 
 [[deployments]]
-token = "POL"
-chain = "ethereum"
-contract = "0x455e53CBB86018Ac2B8092FdCd39d8444aFFC3F6"
+token = "polygon-ecosystem-token"
+contract = "0x455e53cbb86018ac2b8092fdcd39d8444affc3f6"
 decimals = 18
 standard = "ERC-20"
 enabled = false
+network = "ethereum"
+kind = "token"
+id = "ethereum:erc-20:0x455e53cbb86018ac2b8092fdcd39d8444affc3f6"
 
 [[deployments]]
-token = "PYUSD"
-chain = "ethereum"
-contract = "0x6c3ea9036406852006290770BEdFcAbA0e23A0e8"
+token = "paypal-usd"
+contract = "0x6c3ea9036406852006290770bedfcaba0e23a0e8"
 decimals = 6
 standard = "ERC-20"
 enabled = false
+network = "ethereum"
+kind = "token"
+id = "ethereum:erc-20:0x6c3ea9036406852006290770bedfcaba0e23a0e8"
 
 [[deployments]]
-token = "RLUSD"
-chain = "ethereum"
+token = "ripple-usd"
 contract = "0xcfd748b9de538c9f5b1805e8db9e1d4671f7f2ec"
 decimals = 18
 standard = "ERC-20"
 enabled = false
+network = "ethereum"
+kind = "token"
+id = "ethereum:erc-20:0xcfd748b9de538c9f5b1805e8db9e1d4671f7f2ec"
 
 [[deployments]]
-token = "SHIB"
-chain = "ethereum"
-contract = "0x95aD61b0a150d79219dCF64E1E6Cc01f0B64C4cE"
+token = "shiba-inu"
+contract = "0x95ad61b0a150d79219dcf64e1e6cc01f0b64c4ce"
 decimals = 18
 standard = "ERC-20"
 enabled = false
+network = "ethereum"
+kind = "token"
+id = "ethereum:erc-20:0x95ad61b0a150d79219dcf64e1e6cc01f0b64c4ce"
 
 [[deployments]]
-token = "SKY"
-chain = "ethereum"
-contract = "0x56072C95FAA701256059aa122697B133aDEd9279"
+token = "sky"
+contract = "0x56072c95faa701256059aa122697b133aded9279"
 decimals = 18
 standard = "ERC-20"
 enabled = false
+network = "ethereum"
+kind = "token"
+id = "ethereum:erc-20:0x56072c95faa701256059aa122697b133aded9279"
 
 [[deployments]]
-token = "TUSD"
-chain = "ethereum"
-contract = "0x0000000000085d4780B73119b644AE5ecd22b376"
+token = "true-usd"
+contract = "0x0000000000085d4780b73119b644ae5ecd22b376"
 decimals = 18
 standard = "ERC-20"
 enabled = false
+network = "ethereum"
+kind = "token"
+id = "ethereum:erc-20:0x0000000000085d4780b73119b644ae5ecd22b376"
 
 [[deployments]]
-token = "UNI"
-chain = "ethereum"
-contract = "0x1f9840a85d5aF5bf1D1762F925BDADdC4201F984"
+token = "uniswap"
+contract = "0x1f9840a85d5af5bf1d1762f925bdaddc4201f984"
 decimals = 18
 standard = "ERC-20"
 enabled = false
+network = "ethereum"
+kind = "token"
+id = "ethereum:erc-20:0x1f9840a85d5af5bf1d1762f925bdaddc4201f984"
 
 [[deployments]]
-token = "USAT"
-chain = "ethereum"
-contract = "0x07041776f5007ACa2A54844F50503a18A72A8b68"
+token = "usa"
+contract = "0x07041776f5007aca2a54844f50503a18a72a8b68"
 decimals = 6
 standard = "ERC-20"
 enabled = false
+network = "ethereum"
+kind = "token"
+id = "ethereum:erc-20:0x07041776f5007aca2a54844f50503a18a72a8b68"
 
 [[deployments]]
-token = "USD1"
-chain = "ethereum"
-contract = "0x8d0D000Ee44948FC98c9B98A4FA4921476f08B0d"
+token = "usd1-wlfi"
+contract = "0x8d0d000ee44948fc98c9b98a4fa4921476f08b0d"
 decimals = 18
 standard = "ERC-20"
 enabled = false
+network = "ethereum"
+kind = "token"
+id = "ethereum:erc-20:0x8d0d000ee44948fc98c9b98a4fa4921476f08b0d"
 
 [[deployments]]
-token = "USDC"
-chain = "ethereum"
-contract = "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48"
-decimals = 6
-standard = "ERC-20"
-enabled = true
-
-[[deployments]]
-token = "USDD"
-chain = "ethereum"
-contract = "0x4f8e5DE400DE08B164E7421B3EE387f461beCD1A"
-decimals = 18
-standard = "ERC-20"
-enabled = false
-
-[[deployments]]
-token = "USDE"
-chain = "ethereum"
-contract = "0x4c9EDD5852cd905f086C759E8383e09bff1E68B3"
-decimals = 18
-standard = "ERC-20"
-enabled = false
-
-[[deployments]]
-token = "USDG"
-chain = "ethereum"
-contract = "0xe343167631d89B6Ffc58B88d6b7fB0228795491D"
-decimals = 6
-standard = "ERC-20"
-enabled = false
-
-[[deployments]]
-token = "USDS"
-chain = "ethereum"
-contract = "0xdC035D45d973E3EC169d2276DDab16f1e407384F"
-decimals = 18
-standard = "ERC-20"
-enabled = false
-
-[[deployments]]
-token = "USDT"
-chain = "ethereum"
-contract = "0xdAC17F958D2ee523a2206206994597C13D831ec7"
+token = "usd-coin"
+contract = "0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48"
 decimals = 6
 standard = "ERC-20"
 enabled = true
+network = "ethereum"
+kind = "token"
+id = "ethereum:erc-20:0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48"
 
 [[deployments]]
-token = "WBTC"
-chain = "ethereum"
-contract = "0x2260FAC5E5542a773Aa44fBCfeDf7C193bc2C599"
+token = "usdd"
+contract = "0x4f8e5de400de08b164e7421b3ee387f461becd1a"
+decimals = 18
+standard = "ERC-20"
+enabled = false
+network = "ethereum"
+kind = "token"
+id = "ethereum:erc-20:0x4f8e5de400de08b164e7421b3ee387f461becd1a"
+
+[[deployments]]
+token = "ethena-usde"
+contract = "0x4c9edd5852cd905f086c759e8383e09bff1e68b3"
+decimals = 18
+standard = "ERC-20"
+enabled = false
+network = "ethereum"
+kind = "token"
+id = "ethereum:erc-20:0x4c9edd5852cd905f086c759e8383e09bff1e68b3"
+
+[[deployments]]
+token = "global-dollar"
+contract = "0xe343167631d89b6ffc58b88d6b7fb0228795491d"
+decimals = 6
+standard = "ERC-20"
+enabled = false
+network = "ethereum"
+kind = "token"
+id = "ethereum:erc-20:0xe343167631d89b6ffc58b88d6b7fb0228795491d"
+
+[[deployments]]
+token = "usds"
+contract = "0xdc035d45d973e3ec169d2276ddab16f1e407384f"
+decimals = 18
+standard = "ERC-20"
+enabled = false
+network = "ethereum"
+kind = "token"
+id = "ethereum:erc-20:0xdc035d45d973e3ec169d2276ddab16f1e407384f"
+
+[[deployments]]
+token = "tether"
+contract = "0xdac17f958d2ee523a2206206994597c13d831ec7"
+decimals = 6
+standard = "ERC-20"
+enabled = true
+network = "ethereum"
+kind = "token"
+id = "ethereum:erc-20:0xdac17f958d2ee523a2206206994597c13d831ec7"
+
+[[deployments]]
+token = "wrapped-bitcoin"
+contract = "0x2260fac5e5542a773aa44fbcfedf7c193bc2c599"
 decimals = 8
 standard = "ERC-20"
 enabled = false
+network = "ethereum"
+kind = "token"
+id = "ethereum:erc-20:0x2260fac5e5542a773aa44fbcfedf7c193bc2c599"
 
 [[deployments]]
-token = "WLFI"
-chain = "ethereum"
-contract = "0xdA5e1988097297dCdc1f90D4dFE7909e847CBeF6"
+token = "world-liberty-financial"
+contract = "0xda5e1988097297dcdc1f90d4dfe7909e847cbef6"
 decimals = 18
 standard = "ERC-20"
 enabled = false
+network = "ethereum"
+kind = "token"
+id = "ethereum:erc-20:0xda5e1988097297dcdc1f90d4dfe7909e847cbef6"
 
 [[deployments]]
-token = "XAUT"
-chain = "ethereum"
-contract = "0x68749665FF8D2d112Fa859AA293F07A622782F38"
+token = "tether-gold"
+contract = "0x68749665ff8d2d112fa859aa293f07a622782f38"
 decimals = 6
 standard = "ERC-20"
 enabled = false
+network = "ethereum"
+kind = "token"
+id = "ethereum:erc-20:0x68749665ff8d2d112fa859aa293f07a622782f38"
 
 [[deployments]]
-token = "ZK"
-chain = "ethereum"
-contract = "0x66A5cFB2e9c529f14FE6364Ad1075dF3a649C0A5"
+token = "zksync"
+contract = "0x66a5cfb2e9c529f14fe6364ad1075df3a649c0a5"
 decimals = 18
 standard = "ERC-20"
 enabled = false
+network = "ethereum"
+kind = "token"
+id = "ethereum:erc-20:0x66a5cfb2e9c529f14fe6364ad1075df3a649c0a5"
 
 [[deployments]]
-token = "STETH"
-chain = "ethereum"
+token = "staked-ether"
 contract = "0xae7ab96520de3a18e5e111b5eaab095312d7fe84"
 decimals = 18
 standard = "ERC-20"
 enabled = false
+network = "ethereum"
+kind = "token"
+id = "ethereum:erc-20:0xae7ab96520de3a18e5e111b5eaab095312d7fe84"
 
 [[deployments]]
-token = "WSTETH"
-chain = "ethereum"
+token = "wrapped-steth"
 contract = "0x7f39c581f595b53c5cb19bd0b3f8da6c935e2ca0"
 decimals = 18
 standard = "ERC-20"
 enabled = false
+network = "ethereum"
+kind = "token"
+id = "ethereum:erc-20:0x7f39c581f595b53c5cb19bd0b3f8da6c935e2ca0"
 
 [[deployments]]
-token = "WETH"
-chain = "ethereum"
+token = "weth"
 contract = "0xc02aaa39b223fe8d0a0e5c4f27ead9083c756cc2"
 decimals = 18
 standard = "ERC-20"
 enabled = false
+network = "ethereum"
+kind = "token"
+id = "ethereum:erc-20:0xc02aaa39b223fe8d0a0e5c4f27ead9083c756cc2"
 
 [[deployments]]
-token = "CBBTC"
-chain = "ethereum"
+token = "coinbase-wrapped-btc"
 contract = "0xcbb7c0000ab88b473b1f5afd9ef808440eed33bf"
 decimals = 8
 standard = "ERC-20"
 enabled = false
+network = "ethereum"
+kind = "token"
+id = "ethereum:erc-20:0xcbb7c0000ab88b473b1f5afd9ef808440eed33bf"
 
 [[deployments]]
-token = "LBTC"
-chain = "ethereum"
+token = "lombard-staked-btc"
 contract = "0x8236a87084f8b84306f72007f36f2618a5634494"
 decimals = 8
 standard = "ERC-20"
 enabled = false
+network = "ethereum"
+kind = "token"
+id = "ethereum:erc-20:0x8236a87084f8b84306f72007f36f2618a5634494"
 
 [[deployments]]
-token = "RETH"
-chain = "ethereum"
+token = "rocket-pool-eth"
 contract = "0xae78736cd615f374d3085123a210448e74fc6393"
 decimals = 18
 standard = "ERC-20"
 enabled = false
+network = "ethereum"
+kind = "token"
+id = "ethereum:erc-20:0xae78736cd615f374d3085123a210448e74fc6393"
 
 [[deployments]]
-token = "SUSDS"
-chain = "ethereum"
+token = "susds"
 contract = "0xa3931d71877c0e7a3148cb7eb4463524fec27fbd"
 decimals = 18
 standard = "ERC-20"
 enabled = false
+network = "ethereum"
+kind = "token"
+id = "ethereum:erc-20:0xa3931d71877c0e7a3148cb7eb4463524fec27fbd"
 
 [[deployments]]
-token = "SUSDE"
-chain = "ethereum"
+token = "ethena-staked-usde"
 contract = "0x9d39a5de30e57443bff2a8307a4256c8797a3497"
 decimals = 18
 standard = "ERC-20"
 enabled = false
+network = "ethereum"
+kind = "token"
+id = "ethereum:erc-20:0x9d39a5de30e57443bff2a8307a4256c8797a3497"
 
 [[deployments]]
-token = "GHO"
-chain = "ethereum"
+token = "gho"
 contract = "0x40d16fc0246ad3160ccc09b8d0d3a2cd28ae6c2f"
 decimals = 18
 standard = "ERC-20"
 enabled = false
+network = "ethereum"
+kind = "token"
+id = "ethereum:erc-20:0x40d16fc0246ad3160ccc09b8d0d3a2cd28ae6c2f"
 
 [[deployments]]
-token = "ONDO"
-chain = "ethereum"
+token = "ondo-finance"
 contract = "0xfaba6f8e4a5e8ab82f62fe7c39859fa577269be3"
 decimals = 18
 standard = "ERC-20"
 enabled = false
+network = "ethereum"
+kind = "token"
+id = "ethereum:erc-20:0xfaba6f8e4a5e8ab82f62fe7c39859fa577269be3"
 
 [[deployments]]
-token = "MORPHO"
-chain = "ethereum"
+token = "morpho"
 contract = "0x58d97b57bb95320f9a05dc918aef65434969c2b2"
 decimals = 18
 standard = "ERC-20"
 enabled = false
+network = "ethereum"
+kind = "token"
+id = "ethereum:erc-20:0x58d97b57bb95320f9a05dc918aef65434969c2b2"
 
 [[deployments]]
-token = "CRV"
-chain = "ethereum"
+token = "curve-dao-token"
 contract = "0xd533a949740bb3306d119cc777fa900ba034cd52"
 decimals = 18
 standard = "ERC-20"
 enabled = false
+network = "ethereum"
+kind = "token"
+id = "ethereum:erc-20:0xd533a949740bb3306d119cc777fa900ba034cd52"
 
 [[deployments]]
-token = "CAKE"
-chain = "ethereum"
+token = "pancakeswap-token"
 contract = "0x152649ea73beab28c5b49b26eb48f7ead6d4c898"
 decimals = 18
 standard = "ERC-20"
 enabled = false
+network = "ethereum"
+kind = "token"
+id = "ethereum:erc-20:0x152649ea73beab28c5b49b26eb48f7ead6d4c898"
 
 [[deployments]]
-token = "PENDLE"
-chain = "ethereum"
+token = "pendle"
 contract = "0x808507121b80c02388fad14726482e061b8da827"
 decimals = 18
 standard = "ERC-20"
 enabled = false
+network = "ethereum"
+kind = "token"
+id = "ethereum:erc-20:0x808507121b80c02388fad14726482e061b8da827"
 
 [[deployments]]
-token = "ETHFI"
-chain = "ethereum"
+token = "ether-fi"
 contract = "0xfe0c30065b384f05761f15d0cc899d4f9f9cc0eb"
 decimals = 18
 standard = "ERC-20"
 enabled = false
+network = "ethereum"
+kind = "token"
+id = "ethereum:erc-20:0xfe0c30065b384f05761f15d0cc899d4f9f9cc0eb"
 
 [[deployments]]
-token = "LDO"
-chain = "ethereum"
+token = "lido-dao"
 contract = "0x5a98fcbea516cf06857215779fd812ca3bef1b32"
 decimals = 18
 standard = "ERC-20"
 enabled = false
+network = "ethereum"
+kind = "token"
+id = "ethereum:erc-20:0x5a98fcbea516cf06857215779fd812ca3bef1b32"
 
 [[deployments]]
-token = "ENS"
-chain = "ethereum"
+token = "ethereum-name-service"
 contract = "0xc18360217d8f7ab5e7c516566761ea12ce7f9d72"
 decimals = 18
 standard = "ERC-20"
 enabled = false
+network = "ethereum"
+kind = "token"
+id = "ethereum:erc-20:0xc18360217d8f7ab5e7c516566761ea12ce7f9d72"
 
 [[deployments]]
-token = "ZRO"
-chain = "ethereum"
+token = "layerzero"
 contract = "0x6985884c4392d348587b19cb9eaaf157f13271cd"
 decimals = 18
 standard = "ERC-20"
 enabled = false
+network = "ethereum"
+kind = "token"
+id = "ethereum:erc-20:0x6985884c4392d348587b19cb9eaaf157f13271cd"
 
 [[deployments]]
-token = "WLD"
-chain = "ethereum"
+token = "worldcoin-wld"
 contract = "0x163f8c2467924be0ae7b5347228cabf260318753"
 decimals = 18
 standard = "ERC-20"
 enabled = false
+network = "ethereum"
+kind = "token"
+id = "ethereum:erc-20:0x163f8c2467924be0ae7b5347228cabf260318753"
 
 [[deployments]]
-token = "PEPE"
-chain = "ethereum"
+token = "pepe"
 contract = "0x6982508145454ce325ddbe47a25d4ec3d2311933"
 decimals = 18
 standard = "ERC-20"
 enabled = false
+network = "ethereum"
+kind = "token"
+id = "ethereum:erc-20:0x6982508145454ce325ddbe47a25d4ec3d2311933"
 
 [[deployments]]
-token = "ENA"
-chain = "solana"
+token = "ethena"
 contract = "72QvBVwpxqmheEPfaCwWSWqEFsUy3rhWt6JhQBMNTwD1"
 decimals = 9
 standard = "SPL"
 enabled = false
+network = "solana"
+kind = "token"
+id = "solana:spl:72QvBVwpxqmheEPfaCwWSWqEFsUy3rhWt6JhQBMNTwD1"
 
 [[deployments]]
-token = "EURC"
-chain = "solana"
+token = "euro-coin"
 contract = "HzwqbKZw8HxMN6bF2yFZNrht3c2iXXzpKcFu7uBEDKtr"
 decimals = 6
 standard = "SPL"
 enabled = false
+network = "solana"
+kind = "token"
+id = "solana:spl:HzwqbKZw8HxMN6bF2yFZNrht3c2iXXzpKcFu7uBEDKtr"
 
 [[deployments]]
-token = "FDUSD"
-chain = "solana"
+token = "first-digital-usd"
 contract = "9zNQRsGLjNKwCUU5Gq5LR8beUCPzQMVMqKAi3SSZh54u"
 decimals = 6
 standard = "SPL"
 enabled = false
+network = "solana"
+kind = "token"
+id = "solana:spl:9zNQRsGLjNKwCUU5Gq5LR8beUCPzQMVMqKAi3SSZh54u"
 
 [[deployments]]
-token = "JUP"
-chain = "solana"
+token = "jupiter-exchange-solana"
 contract = "JUPyiwrYJFskUPiHa7hkeR8VUtAeFoSYbKedZNsDvCN"
 decimals = 6
 standard = "SPL"
 enabled = false
+network = "solana"
+kind = "token"
+id = "solana:spl:JUPyiwrYJFskUPiHa7hkeR8VUtAeFoSYbKedZNsDvCN"
 
 [[deployments]]
-token = "LINK"
-chain = "solana"
+token = "chainlink"
 contract = "LinkhB3afbBKb2EQQu7s7umdZceV3wcvAUJhQAfQ23L"
 decimals = 8
 standard = "SPL"
 enabled = false
+network = "solana"
+kind = "token"
+id = "solana:spl:LinkhB3afbBKb2EQQu7s7umdZceV3wcvAUJhQAfQ23L"
 
 [[deployments]]
-token = "PUMP"
-chain = "solana"
+token = "pump-fun"
 contract = "pumpCmXqMfrsAkQ5r49WcJnRayYRqmXz6ae8H7H9Dfn"
 decimals = 6
 standard = "SPL"
 enabled = false
+network = "solana"
+kind = "token"
+id = "solana:spl:pumpCmXqMfrsAkQ5r49WcJnRayYRqmXz6ae8H7H9Dfn"
 
 [[deployments]]
-token = "PYUSD"
-chain = "solana"
+token = "paypal-usd"
 contract = "2b1kV6DkPAnxd5ixfnxCpjxmKwqjjaYmCZfHsFu24GXo"
 decimals = 6
 standard = "SPL"
 enabled = false
+network = "solana"
+kind = "token"
+id = "solana:spl:2b1kV6DkPAnxd5ixfnxCpjxmKwqjjaYmCZfHsFu24GXo"
 
 [[deployments]]
-token = "USD1"
-chain = "solana"
+token = "usd1-wlfi"
 contract = "USD1ttGY1N17NEEHLmELoaybftRBUSErhqYiQzvEmuB"
 decimals = 6
 standard = "SPL"
 enabled = false
+network = "solana"
+kind = "token"
+id = "solana:spl:USD1ttGY1N17NEEHLmELoaybftRBUSErhqYiQzvEmuB"
 
 [[deployments]]
-token = "USDC"
-chain = "solana"
+token = "usd-coin"
 contract = "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v"
 decimals = 6
 standard = "SPL"
 enabled = true
+network = "solana"
+kind = "token"
+id = "solana:spl:EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v"
 
 [[deployments]]
-token = "USDE"
-chain = "solana"
+token = "ethena-usde"
 contract = "DEkqHyPN7GMRJ5cArtQFAWefqbZb33Hyf6s5iCwjEonT"
 decimals = 9
 standard = "SPL"
 enabled = false
+network = "solana"
+kind = "token"
+id = "solana:spl:DEkqHyPN7GMRJ5cArtQFAWefqbZb33Hyf6s5iCwjEonT"
 
 [[deployments]]
-token = "USDG"
-chain = "solana"
+token = "global-dollar"
 contract = "2u1tszSeqZ3qBWF3uNGPFc8TzMk2tdiwknnRMWGWjGWH"
 decimals = 6
 standard = "SPL"
 enabled = false
+network = "solana"
+kind = "token"
+id = "solana:spl:2u1tszSeqZ3qBWF3uNGPFc8TzMk2tdiwknnRMWGWjGWH"
 
 [[deployments]]
-token = "USDS"
-chain = "solana"
+token = "usds"
 contract = "USDSwr9ApdHk5bvJKMjzff41FfuX8bSxdKcR81vTwcA"
 decimals = 6
 standard = "SPL"
 enabled = false
+network = "solana"
+kind = "token"
+id = "solana:spl:USDSwr9ApdHk5bvJKMjzff41FfuX8bSxdKcR81vTwcA"
 
 [[deployments]]
-token = "USDT"
-chain = "solana"
+token = "tether"
 contract = "Es9vMFrzaCERmJfrF4H2FYD4KCoNkY11McCe8BenwNYB"
 decimals = 6
 standard = "SPL"
 enabled = true
+network = "solana"
+kind = "token"
+id = "solana:spl:Es9vMFrzaCERmJfrF4H2FYD4KCoNkY11McCe8BenwNYB"
 
 [[deployments]]
-token = "WLFI"
-chain = "solana"
+token = "world-liberty-financial"
 contract = "WLFinEv6ypjkczcS83FZqFpgFZYwQXutRbxGe7oC16g"
 decimals = 6
 standard = "SPL"
 enabled = false
+network = "solana"
+kind = "token"
+id = "solana:spl:WLFinEv6ypjkczcS83FZqFpgFZYwQXutRbxGe7oC16g"
 
 [[deployments]]
-token = "XAUT0"
-chain = "solana"
+token = "tether-gold-tokens"
 contract = "AymATz4TCL9sWNEEV9Kvyz45CHVhDZ6kUgjTJPzLpU9P"
 decimals = 6
 standard = "SPL"
 enabled = false
+network = "solana"
+kind = "token"
+id = "solana:spl:AymATz4TCL9sWNEEV9Kvyz45CHVhDZ6kUgjTJPzLpU9P"
 
 [[deployments]]
-token = "CBBTC"
-chain = "solana"
+token = "coinbase-wrapped-btc"
 contract = "cbbtcf3aa214zXHbiAZQwf4122FBYbraNdFqgw4iMij"
 decimals = 8
 standard = "SPL"
 enabled = false
+network = "solana"
+kind = "token"
+id = "solana:spl:cbbtcf3aa214zXHbiAZQwf4122FBYbraNdFqgw4iMij"
 
 [[deployments]]
-token = "LBTC"
-chain = "solana"
+token = "lombard-staked-btc"
 contract = "LBTCgU4b3wsFKsPwBn1rRZDx5DoFutM6RPiEt1TPDsY"
 decimals = 8
 standard = "SPL"
 enabled = false
+network = "solana"
+kind = "token"
+id = "solana:spl:LBTCgU4b3wsFKsPwBn1rRZDx5DoFutM6RPiEt1TPDsY"
 
 [[deployments]]
-token = "SUSDE"
-chain = "solana"
+token = "ethena-staked-usde"
 contract = "Eh6XEPhSwoLv5wFApukmnaVSHQ6sAnoD9BmgmwQoN2sN"
 decimals = 9
 standard = "SPL"
 enabled = false
+network = "solana"
+kind = "token"
+id = "solana:spl:Eh6XEPhSwoLv5wFApukmnaVSHQ6sAnoD9BmgmwQoN2sN"
 
 [[deployments]]
-token = "CAKE"
-chain = "solana"
+token = "pancakeswap-token"
 contract = "4qQeZ5LwSz6HuupUu8jCtgXyW1mYQcNbFAW1sWZp89HL"
 decimals = 9
 standard = "SPL"
 enabled = false
+network = "solana"
+kind = "token"
+id = "solana:spl:4qQeZ5LwSz6HuupUu8jCtgXyW1mYQcNbFAW1sWZp89HL"
 
 [[deployments]]
-token = "PYTH"
-chain = "solana"
+token = "pyth-network"
 contract = "HZ1JovNiVvGrGNiiYvEozEVgZ58xaU3RKwX8eACQBCt3"
 decimals = 6
 standard = "SPL"
 enabled = false
+network = "solana"
+kind = "token"
+id = "solana:spl:HZ1JovNiVvGrGNiiYvEozEVgZ58xaU3RKwX8eACQBCt3"
 
 [[deployments]]
-token = "RAY"
-chain = "solana"
+token = "raydium"
 contract = "4k3Dyjzvzp8eMZWUXbBCjEvwSkkk59S5iCNLY3QrkX6R"
 decimals = 6
 standard = "SPL"
 enabled = false
+network = "solana"
+kind = "token"
+id = "solana:spl:4k3Dyjzvzp8eMZWUXbBCjEvwSkkk59S5iCNLY3QrkX6R"
 
 [[deployments]]
-token = "BTT"
-chain = "tron"
+token = "bittorrent"
 contract = "TAFjULxiVgT4qWk6UZwjqwZXTSaGaqnVp4"
 decimals = 18
 standard = "TRC-20"
 enabled = false
+network = "tron"
+kind = "token"
+id = "tron:trc-20:TAFjULxiVgT4qWk6UZwjqwZXTSaGaqnVp4"
 
 [[deployments]]
-token = "TUSD"
-chain = "tron"
+token = "true-usd"
 contract = "TUpMhErZL2fhh4sVNULAbNKLokS4GjC1F4"
 decimals = 18
 standard = "TRC-20"
 enabled = false
+network = "tron"
+kind = "token"
+id = "tron:trc-20:TUpMhErZL2fhh4sVNULAbNKLokS4GjC1F4"
 
 [[deployments]]
-token = "USD1"
-chain = "tron"
+token = "usd1-wlfi"
 contract = "TPFqcBAaaUMCSVRCqPaQ9QnzKhmuoLR6Rc"
 decimals = 18
 standard = "TRC-20"
 enabled = false
+network = "tron"
+kind = "token"
+id = "tron:trc-20:TPFqcBAaaUMCSVRCqPaQ9QnzKhmuoLR6Rc"
 
 [[deployments]]
-token = "USDD"
-chain = "tron"
+token = "usdd"
 contract = "TXDk8mbtRbXeYuMNS83CfKPaYYT8XWv9Hz"
 decimals = 18
 standard = "TRC-20"
 enabled = false
+network = "tron"
+kind = "token"
+id = "tron:trc-20:TXDk8mbtRbXeYuMNS83CfKPaYYT8XWv9Hz"
 
 [[deployments]]
-token = "USDT"
-chain = "tron"
+token = "tether"
 contract = "TR7NHqjeKQxGTCi8q8ZY4pL8otSzgjLj6t"
 decimals = 6
 standard = "TRC-20"
 enabled = true
+network = "tron"
+kind = "token"
+id = "tron:trc-20:TR7NHqjeKQxGTCi8q8ZY4pL8otSzgjLj6t"
 
 [[deployments]]
-token = "AAVE"
-chain = "arbitrum"
-contract = "0xba5DdD1f9d7F570dc94a51479a000E3BCE967196"
+token = "aave"
+contract = "0xba5ddd1f9d7f570dc94a51479a000e3bce967196"
 decimals = 18
 standard = "ERC-20"
 enabled = false
+network = "arbitrum"
+kind = "token"
+id = "arbitrum:erc-20:0xba5ddd1f9d7f570dc94a51479a000e3bce967196"
 
 [[deployments]]
-token = "ARB"
-chain = "arbitrum"
-contract = "0x912CE59144191C1204E64559FE8253a0e49E6548"
+token = "arbitrum"
+contract = "0x912ce59144191c1204e64559fe8253a0e49e6548"
 decimals = 18
 standard = "ERC-20"
 enabled = false
+network = "arbitrum"
+kind = "token"
+id = "arbitrum:erc-20:0x912ce59144191c1204e64559fe8253a0e49e6548"
 
 [[deployments]]
-token = "ENA"
-chain = "arbitrum"
-contract = "0x58538e6A46E07434d7E7375Bc268D3cb839C0133"
+token = "ethena"
+contract = "0x58538e6a46e07434d7e7375bc268d3cb839c0133"
 decimals = 18
 standard = "ERC-20"
 enabled = false
+network = "arbitrum"
+kind = "token"
+id = "arbitrum:erc-20:0x58538e6a46e07434d7e7375bc268d3cb839c0133"
 
 [[deployments]]
-token = "FDUSD"
-chain = "arbitrum"
-contract = "0x93C9932E4afa59201F0B5E63f7d816516F1669fE"
+token = "first-digital-usd"
+contract = "0x93c9932e4afa59201f0b5e63f7d816516f1669fe"
 decimals = 18
 standard = "ERC-20"
 enabled = false
+network = "arbitrum"
+kind = "token"
+id = "arbitrum:erc-20:0x93c9932e4afa59201f0b5e63f7d816516f1669fe"
 
 [[deployments]]
-token = "LINK"
-chain = "arbitrum"
-contract = "0xf97f4df75117a78c1A5a0DBb814Af92458539FB4"
+token = "chainlink"
+contract = "0xf97f4df75117a78c1a5a0dbb814af92458539fb4"
 decimals = 18
 standard = "ERC-20"
 enabled = false
+network = "arbitrum"
+kind = "token"
+id = "arbitrum:erc-20:0xf97f4df75117a78c1a5a0dbb814af92458539fb4"
 
 [[deployments]]
-token = "PYUSD"
-chain = "arbitrum"
-contract = "0x46850aD61C2B7d64d08c9C754F45254596696984"
+token = "paypal-usd"
+contract = "0x46850ad61c2b7d64d08c9c754f45254596696984"
 decimals = 6
 standard = "ERC-20"
 enabled = false
+network = "arbitrum"
+kind = "token"
+id = "arbitrum:erc-20:0x46850ad61c2b7d64d08c9c754f45254596696984"
 
 [[deployments]]
-token = "USDC"
-chain = "arbitrum"
-contract = "0xaf88d065e77c8cC2239327C5EDb3A432268e5831"
-decimals = 6
-standard = "ERC-20"
-enabled = true
-
-[[deployments]]
-token = "USDE"
-chain = "arbitrum"
-contract = "0x5d3a1Ff2b6BAb83b63cd9AD0787074081a52ef34"
-decimals = 18
-standard = "ERC-20"
-enabled = false
-
-[[deployments]]
-token = "USDS"
-chain = "arbitrum"
-contract = "0x6491c05A82219b8D1479057361ff1654749b876b"
-decimals = 18
-standard = "ERC-20"
-enabled = false
-
-[[deployments]]
-token = "USDT0"
-chain = "arbitrum"
-contract = "0xFd086bC7CD5C481DCC9C85ebE478A1C0b69FCbb9"
+token = "usd-coin"
+contract = "0xaf88d065e77c8cc2239327c5edb3a432268e5831"
 decimals = 6
 standard = "ERC-20"
 enabled = true
+network = "arbitrum"
+kind = "token"
+id = "arbitrum:erc-20:0xaf88d065e77c8cc2239327c5edb3a432268e5831"
 
 [[deployments]]
-token = "XAUT0"
-chain = "arbitrum"
-contract = "0x40461291347e1eCbb09499F3371D3f17f10d7159"
+token = "ethena-usde"
+contract = "0x5d3a1ff2b6bab83b63cd9ad0787074081a52ef34"
+decimals = 18
+standard = "ERC-20"
+enabled = false
+network = "arbitrum"
+kind = "token"
+id = "arbitrum:erc-20:0x5d3a1ff2b6bab83b63cd9ad0787074081a52ef34"
+
+[[deployments]]
+token = "usds"
+contract = "0x6491c05a82219b8d1479057361ff1654749b876b"
+decimals = 18
+standard = "ERC-20"
+enabled = false
+network = "arbitrum"
+kind = "token"
+id = "arbitrum:erc-20:0x6491c05a82219b8d1479057361ff1654749b876b"
+
+[[deployments]]
+token = "usdt0"
+contract = "0xfd086bc7cd5c481dcc9c85ebe478a1c0b69fcbb9"
+decimals = 6
+standard = "ERC-20"
+enabled = true
+network = "arbitrum"
+kind = "token"
+id = "arbitrum:erc-20:0xfd086bc7cd5c481dcc9c85ebe478a1c0b69fcbb9"
+
+[[deployments]]
+token = "tether-gold-tokens"
+contract = "0x40461291347e1ecbb09499f3371d3f17f10d7159"
 decimals = 6
 standard = "ERC-20"
 enabled = false
+network = "arbitrum"
+kind = "token"
+id = "arbitrum:erc-20:0x40461291347e1ecbb09499f3371d3f17f10d7159"
 
 [[deployments]]
-token = "CBBTC"
-chain = "arbitrum"
+token = "coinbase-wrapped-btc"
 contract = "0xcbb7c0000ab88b473b1f5afd9ef808440eed33bf"
 decimals = 8
 standard = "ERC-20"
 enabled = false
+network = "arbitrum"
+kind = "token"
+id = "arbitrum:erc-20:0xcbb7c0000ab88b473b1f5afd9ef808440eed33bf"
 
 [[deployments]]
-token = "RETH"
-chain = "arbitrum"
+token = "rocket-pool-eth"
 contract = "0xec70dcb4a1efa46b8f2d97c310c9c4790ba5ffa8"
 decimals = 18
 standard = "ERC-20"
 enabled = false
+network = "arbitrum"
+kind = "token"
+id = "arbitrum:erc-20:0xec70dcb4a1efa46b8f2d97c310c9c4790ba5ffa8"
 
 [[deployments]]
-token = "SUSDS"
-chain = "arbitrum"
+token = "susds"
 contract = "0xddb46999f8891663a8f2828d25298f70416d7610"
 decimals = 18
 standard = "ERC-20"
 enabled = false
+network = "arbitrum"
+kind = "token"
+id = "arbitrum:erc-20:0xddb46999f8891663a8f2828d25298f70416d7610"
 
 [[deployments]]
-token = "SUSDE"
-chain = "arbitrum"
+token = "ethena-staked-usde"
 contract = "0x211cc4dd073734da055fbf44a2b4667d5e5fe5d2"
 decimals = 18
 standard = "ERC-20"
 enabled = false
+network = "arbitrum"
+kind = "token"
+id = "arbitrum:erc-20:0x211cc4dd073734da055fbf44a2b4667d5e5fe5d2"
 
 [[deployments]]
-token = "GHO"
-chain = "arbitrum"
+token = "gho"
 contract = "0x7dff72693f6a4149b17e7c6314655f6a9f7c8b33"
 decimals = 18
 standard = "ERC-20"
 enabled = false
+network = "arbitrum"
+kind = "token"
+id = "arbitrum:erc-20:0x7dff72693f6a4149b17e7c6314655f6a9f7c8b33"
 
 [[deployments]]
-token = "MORPHO"
-chain = "arbitrum"
+token = "morpho"
 contract = "0x40bd670a58238e6e230c430bbb5ce6ec0d40df48"
 decimals = 18
 standard = "ERC-20"
 enabled = false
+network = "arbitrum"
+kind = "token"
+id = "arbitrum:erc-20:0x40bd670a58238e6e230c430bbb5ce6ec0d40df48"
 
 [[deployments]]
-token = "CRV"
-chain = "arbitrum"
+token = "curve-dao-token"
 contract = "0x11cdb42b0eb46d95f990bedd4695a6e3fa034978"
 decimals = 18
 standard = "ERC-20"
 enabled = false
+network = "arbitrum"
+kind = "token"
+id = "arbitrum:erc-20:0x11cdb42b0eb46d95f990bedd4695a6e3fa034978"
 
 [[deployments]]
-token = "PENDLE"
-chain = "arbitrum"
+token = "pendle"
 contract = "0x0c880f6761f1af8d9aa9c466984b80dab9a8c9e8"
 decimals = 18
 standard = "ERC-20"
 enabled = false
+network = "arbitrum"
+kind = "token"
+id = "arbitrum:erc-20:0x0c880f6761f1af8d9aa9c466984b80dab9a8c9e8"
 
 [[deployments]]
-token = "ETHFI"
-chain = "arbitrum"
+token = "ether-fi"
 contract = "0x7189fb5b6504bbff6a852b13b7b82a3c118fdc27"
 decimals = 18
 standard = "ERC-20"
 enabled = false
+network = "arbitrum"
+kind = "token"
+id = "arbitrum:erc-20:0x7189fb5b6504bbff6a852b13b7b82a3c118fdc27"
 
 [[deployments]]
-token = "LDO"
-chain = "arbitrum"
+token = "lido-dao"
 contract = "0x13ad51ed4f1b7e9dc168d8a00cb3f4ddd85efa60"
 decimals = 18
 standard = "ERC-20"
 enabled = false
+network = "arbitrum"
+kind = "token"
+id = "arbitrum:erc-20:0x13ad51ed4f1b7e9dc168d8a00cb3f4ddd85efa60"
 
 [[deployments]]
-token = "ZRO"
-chain = "arbitrum"
+token = "layerzero"
 contract = "0x6985884c4392d348587b19cb9eaaf157f13271cd"
 decimals = 18
 standard = "ERC-20"
 enabled = false
+network = "arbitrum"
+kind = "token"
+id = "arbitrum:erc-20:0x6985884c4392d348587b19cb9eaaf157f13271cd"
 
 [[deployments]]
-token = "PEPE"
-chain = "arbitrum"
+token = "pepe"
 contract = "0x25d887ce7a35172c62febfd67a1856f20faebb00"
 decimals = 18
 standard = "ERC-20"
 enabled = false
+network = "arbitrum"
+kind = "token"
+id = "arbitrum:erc-20:0x25d887ce7a35172c62febfd67a1856f20faebb00"
 
 [[deployments]]
-token = "OP"
-chain = "optimism"
+token = "optimism"
 contract = "0x4200000000000000000000000000000000000042"
 decimals = 18
 standard = "ERC-20"
 enabled = false
+network = "optimism"
+kind = "token"
+id = "optimism:erc-20:0x4200000000000000000000000000000000000042"
 
 [[deployments]]
-token = "USDS"
-chain = "optimism"
-contract = "0x4F13a96EC5C4Cf34e442b46Bbd98a0791F20edC3"
+token = "usds"
+contract = "0x4f13a96ec5c4cf34e442b46bbd98a0791f20edc3"
 decimals = 18
 standard = "ERC-20"
 enabled = false
+network = "optimism"
+kind = "token"
+id = "optimism:erc-20:0x4f13a96ec5c4cf34e442b46bbd98a0791f20edc3"
 
 [[deployments]]
-token = "USDT0"
-chain = "optimism"
-contract = "0x01bFF41798a0BcF287b996046Ca68b395DbC1071"
+token = "usdt0"
+contract = "0x01bff41798a0bcf287b996046ca68b395dbc1071"
 decimals = 6
 standard = "ERC-20"
 enabled = true
+network = "optimism"
+kind = "token"
+id = "optimism:erc-20:0x01bff41798a0bcf287b996046ca68b395dbc1071"
 
 [[deployments]]
-token = "RETH"
-chain = "optimism"
+token = "rocket-pool-eth"
 contract = "0x9bcef72be871e61ed4fbbc7630889bee758eb81d"
 decimals = 18
 standard = "ERC-20"
 enabled = false
+network = "optimism"
+kind = "token"
+id = "optimism:erc-20:0x9bcef72be871e61ed4fbbc7630889bee758eb81d"
 
 [[deployments]]
-token = "SUSDS"
-chain = "optimism"
+token = "susds"
 contract = "0xb5b2dc7fd34c249f4be7fb1fcea07950784229e0"
 decimals = 18
 standard = "ERC-20"
 enabled = false
+network = "optimism"
+kind = "token"
+id = "optimism:erc-20:0xb5b2dc7fd34c249f4be7fb1fcea07950784229e0"
 
 [[deployments]]
-token = "CRV"
-chain = "optimism"
+token = "curve-dao-token"
 contract = "0x0994206dfe8de6ec6920ff4d779b0d950605fb53"
 decimals = 18
 standard = "ERC-20"
 enabled = false
+network = "optimism"
+kind = "token"
+id = "optimism:erc-20:0x0994206dfe8de6ec6920ff4d779b0d950605fb53"
 
 [[deployments]]
-token = "LDO"
-chain = "optimism"
+token = "lido-dao"
 contract = "0xfdb794692724153d1488ccdbe0c56c252596735f"
 decimals = 18
 standard = "ERC-20"
 enabled = false
+network = "optimism"
+kind = "token"
+id = "optimism:erc-20:0xfdb794692724153d1488ccdbe0c56c252596735f"
 
 [[deployments]]
-token = "WLD"
-chain = "optimism"
+token = "worldcoin-wld"
 contract = "0xdc6ff44d5d932cbd77b52e5612ba0529dc6226f1"
 decimals = 18
 standard = "ERC-20"
 enabled = false
+network = "optimism"
+kind = "token"
+id = "optimism:erc-20:0xdc6ff44d5d932cbd77b52e5612ba0529dc6226f1"
 
 [[deployments]]
-token = "EURC"
-chain = "avalanche"
-contract = "0xC891EB4cbdEFf6e073e859e987815Ed1505c2ACD"
+token = "euro-coin"
+contract = "0xc891eb4cbdeff6e073e859e987815ed1505c2acd"
 decimals = 6
 standard = "ARC-20"
 enabled = false
+network = "avalanche"
+kind = "token"
+id = "avalanche:arc-20:0xc891eb4cbdeff6e073e859e987815ed1505c2acd"
 
 [[deployments]]
-token = "LINK"
-chain = "avalanche"
-contract = "0x5947BB275c521040051D82396192181b413227A3"
+token = "chainlink"
+contract = "0x5947bb275c521040051d82396192181b413227a3"
 decimals = 18
 standard = "ARC-20"
 enabled = false
+network = "avalanche"
+kind = "token"
+id = "avalanche:arc-20:0x5947bb275c521040051d82396192181b413227a3"
 
 [[deployments]]
-token = "TUSD"
-chain = "avalanche"
-contract = "0x1C20E891Bab6b1727d14Da358FAe2984Ed9B59EB"
+token = "true-usd"
+contract = "0x1c20e891bab6b1727d14da358fae2984ed9b59eb"
 decimals = 18
 standard = "ARC-20"
 enabled = false
+network = "avalanche"
+kind = "token"
+id = "avalanche:arc-20:0x1c20e891bab6b1727d14da358fae2984ed9b59eb"
 
 [[deployments]]
-token = "USDC"
-chain = "avalanche"
-contract = "0xB97EF9Ef8734C71904D8002F8b6Bc66Dd9c48a6E"
+token = "usd-coin"
+contract = "0xb97ef9ef8734c71904d8002f8b6bc66dd9c48a6e"
 decimals = 6
 standard = "ARC-20"
 enabled = true
+network = "avalanche"
+kind = "token"
+id = "avalanche:arc-20:0xb97ef9ef8734c71904d8002f8b6bc66dd9c48a6e"
 
 [[deployments]]
-token = "USDT"
-chain = "avalanche"
-contract = "0x9702230A8Ea53601f5cD2dc00fDBc13d4dF4A8c7"
+token = "tether"
+contract = "0x9702230a8ea53601f5cd2dc00fdbc13d4df4a8c7"
 decimals = 6
 standard = "ARC-20"
 enabled = true
+network = "avalanche"
+kind = "token"
+id = "avalanche:arc-20:0x9702230a8ea53601f5cd2dc00fdbc13d4df4a8c7"
 
 [[deployments]]
-token = "XAUT0"
-chain = "avalanche"
-contract = "0x2775d5105276781B4b85bA6eA6a6653bEeD1dd32"
+token = "tether-gold-tokens"
+contract = "0x2775d5105276781b4b85ba6ea6a6653beed1dd32"
 decimals = 6
 standard = "ARC-20"
 enabled = false
+network = "avalanche"
+kind = "token"
+id = "avalanche:arc-20:0x2775d5105276781b4b85ba6ea6a6653beed1dd32"
 
 [[deployments]]
-token = "GHO"
-chain = "avalanche"
+token = "gho"
 contract = "0xfc421ad3c883bf9e7c4f42de845c4e4405799e73"
 decimals = 18
 standard = "ARC-20"
 enabled = false
+network = "avalanche"
+kind = "token"
+id = "avalanche:arc-20:0xfc421ad3c883bf9e7c4f42de845c4e4405799e73"
 
 [[deployments]]
-token = "PEPE"
-chain = "avalanche"
+token = "pepe"
 contract = "0xa659d083b677d6bffe1cb704e1473b896727be6d"
 decimals = 18
 standard = "ARC-20"
 enabled = false
+network = "avalanche"
+kind = "token"
+id = "avalanche:arc-20:0xa659d083b677d6bffe1cb704e1473b896727be6d"
 
 [[deployments]]
-token = "FDUSD"
-chain = "sui"
+token = "first-digital-usd"
 contract = "0xf16e6b723f242ec745dfd7634ad072c42d5c1d9ac9d62a39c381303eaa57693a::fdusd::FDUSD"
 decimals = 9
 standard = "Sui Coin"
 enabled = false
+network = "sui"
+kind = "token"
+id = "sui:sui coin:0xf16e6b723f242ec745dfd7634ad072c42d5c1d9ac9d62a39c381303eaa57693a::fdusd::FDUSD"
 
 [[deployments]]
-token = "USDC"
-chain = "sui"
+token = "usd-coin"
 contract = "0xdba34672e30cb065b1f93e3ab55318768fd6fef66c15942c9f7cb846e2f900e7::usdc::USDC"
 decimals = 6
 standard = "Sui Coin"
 enabled = true
+network = "sui"
+kind = "token"
+id = "sui:sui coin:0xdba34672e30cb065b1f93e3ab55318768fd6fef66c15942c9f7cb846e2f900e7::usdc::USDC"
 
 [[deployments]]
-token = "USD1"
-chain = "aptos"
-contract = "0x05fabd1b12e39967a3c24e91b7b8f67719a6dacee74f3c8b9fb7d93e855437d2"
+token = "usd1-wlfi"
+contract = "0x5fabd1b12e39967a3c24e91b7b8f67719a6dacee74f3c8b9fb7d93e855437d2"
 decimals = 6
 standard = "AIP-21"
 enabled = false
+network = "aptos"
+kind = "token"
+id = "aptos:aip-21:0x5fabd1b12e39967a3c24e91b7b8f67719a6dacee74f3c8b9fb7d93e855437d2"
 
 [[deployments]]
-token = "USDC"
-chain = "aptos"
+token = "usd-coin"
 contract = "0xbae207659db88bea0cbead6da0ed00aac12edcdda169e591cd41c94180b46f3b"
 decimals = 6
 standard = "AIP-21"
 enabled = true
+network = "aptos"
+kind = "token"
+id = "aptos:aip-21:0xbae207659db88bea0cbead6da0ed00aac12edcdda169e591cd41c94180b46f3b"
 
 [[deployments]]
-token = "USDE"
-chain = "aptos"
+token = "ethena-usde"
 contract = "0xf37a8864fe737eb8ec2c2931047047cbaed1beed3fb0e5b7c5526dafd3b9c2e9"
 decimals = 6
 standard = "AIP-21"
 enabled = false
+network = "aptos"
+kind = "token"
+id = "aptos:aip-21:0xf37a8864fe737eb8ec2c2931047047cbaed1beed3fb0e5b7c5526dafd3b9c2e9"
 
 [[deployments]]
-token = "USDT"
-chain = "aptos"
+token = "tether"
 contract = "0x357b0b74bc833e95a115ad22604854d6b0fca151cecd94111770e5d6ffc9dc2b"
 decimals = 6
 standard = "AIP-21"
 enabled = true
+network = "aptos"
+kind = "token"
+id = "aptos:aip-21:0x357b0b74bc833e95a115ad22604854d6b0fca151cecd94111770e5d6ffc9dc2b"
 
 [[deployments]]
-token = "ENA"
-chain = "ton"
+token = "ethena"
 contract = "EQAFhZFZYye0llsl785OzOJG9QT6PXyYUdmiC4U95lBuHh1S"
 decimals = 6
 standard = "TEP-74"
 enabled = false
+network = "ton"
+kind = "token"
+id = "ton:tep-74:EQAFhZFZYye0llsl785OzOJG9QT6PXyYUdmiC4U95lBuHh1S"
 
 [[deployments]]
-token = "FDUSD"
-chain = "ton"
+token = "first-digital-usd"
 contract = "EQD0Evpk4timFOHmy4Sv3l_KEUXlM-dN1_KhroTCfB2wkO89"
 decimals = 6
 standard = "TEP-74"
 enabled = false
+network = "ton"
+kind = "token"
+id = "ton:tep-74:EQD0Evpk4timFOHmy4Sv3l_KEUXlM-dN1_KhroTCfB2wkO89"
 
 [[deployments]]
-token = "USDE"
-chain = "ton"
+token = "ethena-usde"
 contract = "EQAIb6KmdfdDR7CN1GBqVJuP25iCnLKCvBlJ07Evuu2dzP5f"
 decimals = 6
 standard = "TEP-74"
 enabled = false
+network = "ton"
+kind = "token"
+id = "ton:tep-74:EQAIb6KmdfdDR7CN1GBqVJuP25iCnLKCvBlJ07Evuu2dzP5f"
 
 [[deployments]]
-token = "USDT"
-chain = "ton"
+token = "tether"
 contract = "EQCxE6mUtQJKFnGfaROTKOt1lZbDiiX1kCixRv7Nw2Id_sDs"
 decimals = 6
 standard = "TEP-74"
 enabled = true
+network = "ton"
+kind = "token"
+id = "ton:tep-74:EQCxE6mUtQJKFnGfaROTKOt1lZbDiiX1kCixRv7Nw2Id_sDs"
 
 [[deployments]]
-token = "XAUT0"
-chain = "ton"
+token = "tether-gold-tokens"
 contract = "EQA1R_LuQCLHlMgOo1S4G7Y7W1cd0FrAkbA10Zq7rddKxi9k"
 decimals = 6
 standard = "TEP-74"
 enabled = false
+network = "ton"
+kind = "token"
+id = "ton:tep-74:EQA1R_LuQCLHlMgOo1S4G7Y7W1cd0FrAkbA10Zq7rddKxi9k"
 
 [[deployments]]
-token = "USDC"
-chain = "near"
+token = "usd-coin"
 contract = "17208628f84f5d6ad33f0da3bbbeb27ffcb398eac501a31bd6ad2011e36133a1"
 decimals = 6
 standard = "NEP-141"
 enabled = true
+network = "near"
+kind = "token"
+id = "near:nep-141:17208628f84f5d6ad33f0da3bbbeb27ffcb398eac501a31bd6ad2011e36133a1"
 
 [[deployments]]
-token = "USDT"
-chain = "near"
+token = "tether"
 contract = "usdt.tether-token.near"
 decimals = 6
 standard = "NEP-141"
 enabled = true
+network = "near"
+kind = "token"
+id = "near:nep-141:usdt.tether-token.near"
 
 [[deployments]]
-token = "DAI"
-chain = "base"
-contract = "0x50c5725949A6F0c72E6C4a641F24049A917DB0Cb"
+token = "dai"
+contract = "0x50c5725949a6f0c72e6c4a641f24049a917db0cb"
 decimals = 18
 standard = "ERC-20"
 enabled = false
+network = "base"
+kind = "token"
+id = "base:erc-20:0x50c5725949a6f0c72e6c4a641f24049a917db0cb"
 
 [[deployments]]
-token = "USDC"
-chain = "base"
-contract = "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913"
+token = "usd-coin"
+contract = "0x833589fcd6edb6e08f4c7c32d4f71b54bda02913"
 decimals = 6
 standard = "ERC-20"
 enabled = true
+network = "base"
+kind = "token"
+id = "base:erc-20:0x833589fcd6edb6e08f4c7c32d4f71b54bda02913"
 
 [[deployments]]
-token = "CBBTC"
-chain = "base"
+token = "coinbase-wrapped-btc"
 contract = "0xcbb7c0000ab88b473b1f5afd9ef808440eed33bf"
 decimals = 8
 standard = "ERC-20"
 enabled = false
+network = "base"
+kind = "token"
+id = "base:erc-20:0xcbb7c0000ab88b473b1f5afd9ef808440eed33bf"
 
 [[deployments]]
-token = "LBTC"
-chain = "base"
+token = "lombard-staked-btc"
 contract = "0xecac9c5f704e954931349da37f60e39f515c11c1"
 decimals = 8
 standard = "ERC-20"
 enabled = false
+network = "base"
+kind = "token"
+id = "base:erc-20:0xecac9c5f704e954931349da37f60e39f515c11c1"
 
 [[deployments]]
-token = "RETH"
-chain = "base"
+token = "rocket-pool-eth"
 contract = "0xb6fe221fe9eef5aba221c348ba20a1bf5e73624c"
 decimals = 18
 standard = "ERC-20"
 enabled = false
+network = "base"
+kind = "token"
+id = "base:erc-20:0xb6fe221fe9eef5aba221c348ba20a1bf5e73624c"
 
 [[deployments]]
-token = "SUSDS"
-chain = "base"
+token = "susds"
 contract = "0x5875eee11cf8398102fdad704c9e96607675467a"
 decimals = 18
 standard = "ERC-20"
 enabled = false
+network = "base"
+kind = "token"
+id = "base:erc-20:0x5875eee11cf8398102fdad704c9e96607675467a"
 
 [[deployments]]
-token = "SUSDE"
-chain = "base"
+token = "ethena-staked-usde"
 contract = "0x211cc4dd073734da055fbf44a2b4667d5e5fe5d2"
 decimals = 18
 standard = "ERC-20"
 enabled = false
+network = "base"
+kind = "token"
+id = "base:erc-20:0x211cc4dd073734da055fbf44a2b4667d5e5fe5d2"
 
 [[deployments]]
-token = "GHO"
-chain = "base"
+token = "gho"
 contract = "0x6bb7a212910682dcfdbd5bcbb3e28fb4e8da10ee"
 decimals = 18
 standard = "ERC-20"
 enabled = false
+network = "base"
+kind = "token"
+id = "base:erc-20:0x6bb7a212910682dcfdbd5bcbb3e28fb4e8da10ee"
 
 [[deployments]]
-token = "MORPHO"
-chain = "base"
+token = "morpho"
 contract = "0xbaa5cc21fd487b8fcc2f632f3f4e8d37262a0842"
 decimals = 18
 standard = "ERC-20"
 enabled = false
+network = "base"
+kind = "token"
+id = "base:erc-20:0xbaa5cc21fd487b8fcc2f632f3f4e8d37262a0842"
 
 [[deployments]]
-token = "AERO"
-chain = "base"
+token = "aerodrome-finance"
 contract = "0x940181a94a35a4569e4529a3cdfb74e38fd98631"
 decimals = 18
 standard = "ERC-20"
 enabled = false
+network = "base"
+kind = "token"
+id = "base:erc-20:0x940181a94a35a4569e4529a3cdfb74e38fd98631"
 
 [[deployments]]
-token = "CRV"
-chain = "base"
+token = "curve-dao-token"
 contract = "0x8ee73c484a26e0a5df2ee2a4960b789967dd0415"
 decimals = 18
 standard = "ERC-20"
 enabled = false
+network = "base"
+kind = "token"
+id = "base:erc-20:0x8ee73c484a26e0a5df2ee2a4960b789967dd0415"
 
 [[deployments]]
-token = "CAKE"
-chain = "base"
+token = "pancakeswap-token"
 contract = "0x3055913c90fcc1a6ce9a358911721eeb942013a1"
 decimals = 18
 standard = "ERC-20"
 enabled = false
+network = "base"
+kind = "token"
+id = "base:erc-20:0x3055913c90fcc1a6ce9a358911721eeb942013a1"
 
 [[deployments]]
-token = "PENDLE"
-chain = "base"
+token = "pendle"
 contract = "0xa99f6e6785da0f5d6fb42495fe424bce029eeb3e"
 decimals = 18
 standard = "ERC-20"
 enabled = false
+network = "base"
+kind = "token"
+id = "base:erc-20:0xa99f6e6785da0f5d6fb42495fe424bce029eeb3e"
 
 [[deployments]]
-token = "ETHFI"
-chain = "base"
+token = "ether-fi"
 contract = "0x6c240dda6b5c336df09a4d011139beaaa1ea2aa2"
 decimals = 18
 standard = "ERC-20"
 enabled = false
+network = "base"
+kind = "token"
+id = "base:erc-20:0x6c240dda6b5c336df09a4d011139beaaa1ea2aa2"
 
 [[deployments]]
-token = "ZRO"
-chain = "base"
+token = "layerzero"
 contract = "0x6985884c4392d348587b19cb9eaaf157f13271cd"
 decimals = 18
 standard = "ERC-20"
 enabled = false
+network = "base"
+kind = "token"
+id = "base:erc-20:0x6985884c4392d348587b19cb9eaaf157f13271cd"
 
 [[deployments]]
-token = "ENA"
-chain = "bnb"
-contract = "0x58538e6A46E07434d7E7375Bc268D3cb839C0133"
+token = "ethena"
+contract = "0x58538e6a46e07434d7e7375bc268d3cb839c0133"
 decimals = 18
 standard = "BEP-20"
 enabled = false
+network = "bnb"
+kind = "token"
+id = "bnb:bep-20:0x58538e6a46e07434d7e7375bc268d3cb839c0133"
 
 [[deployments]]
-token = "FDUSD"
-chain = "bnb"
-contract = "0xc5f0f7b66764F6ec8C8Dff7BA683102295E16409"
+token = "first-digital-usd"
+contract = "0xc5f0f7b66764f6ec8c8dff7ba683102295e16409"
 decimals = 18
 standard = "BEP-20"
 enabled = false
+network = "bnb"
+kind = "token"
+id = "bnb:bep-20:0xc5f0f7b66764f6ec8c8dff7ba683102295e16409"
 
 [[deployments]]
-token = "LINK"
-chain = "bnb"
-contract = "0x404460C6A5EdE2D891e8297795264fDe62ADBB75"
+token = "chainlink"
+contract = "0x404460c6a5ede2d891e8297795264fde62adbb75"
 decimals = 18
 standard = "BEP-20"
 enabled = false
+network = "bnb"
+kind = "token"
+id = "bnb:bep-20:0x404460c6a5ede2d891e8297795264fde62adbb75"
 
 [[deployments]]
-token = "TUSD"
-chain = "bnb"
-contract = "0x40af3827F39D0EAcBF4A168f8D4ee67c121D11c9"
+token = "true-usd"
+contract = "0x40af3827f39d0eacbf4a168f8d4ee67c121d11c9"
 decimals = 18
 standard = "BEP-20"
 enabled = false
+network = "bnb"
+kind = "token"
+id = "bnb:bep-20:0x40af3827f39d0eacbf4a168f8d4ee67c121d11c9"
 
 [[deployments]]
-token = "USD1"
-chain = "bnb"
-contract = "0x8d0D000Ee44948FC98c9B98A4FA4921476f08B0d"
+token = "usd1-wlfi"
+contract = "0x8d0d000ee44948fc98c9b98a4fa4921476f08b0d"
 decimals = 18
 standard = "BEP-20"
 enabled = false
+network = "bnb"
+kind = "token"
+id = "bnb:bep-20:0x8d0d000ee44948fc98c9b98a4fa4921476f08b0d"
 
 [[deployments]]
-token = "USDD"
-chain = "bnb"
-contract = "0x45E51bc23D592EB2DBA86da3985299f7895d66Ba"
+token = "usdd"
+contract = "0x45e51bc23d592eb2dba86da3985299f7895d66ba"
 decimals = 18
 standard = "BEP-20"
 enabled = false
+network = "bnb"
+kind = "token"
+id = "bnb:bep-20:0x45e51bc23d592eb2dba86da3985299f7895d66ba"
 
 [[deployments]]
-token = "USDE"
-chain = "bnb"
-contract = "0x5d3a1Ff2b6BAb83b63cd9AD0787074081a52ef34"
+token = "ethena-usde"
+contract = "0x5d3a1ff2b6bab83b63cd9ad0787074081a52ef34"
 decimals = 18
 standard = "BEP-20"
 enabled = false
+network = "bnb"
+kind = "token"
+id = "bnb:bep-20:0x5d3a1ff2b6bab83b63cd9ad0787074081a52ef34"
 
 [[deployments]]
-token = "WLFI"
-chain = "bnb"
+token = "world-liberty-financial"
 contract = "0x47474747477b199288bf72a1d702f7fe0fb1deea"
 decimals = 18
 standard = "BEP-20"
 enabled = false
+network = "bnb"
+kind = "token"
+id = "bnb:bep-20:0x47474747477b199288bf72a1d702f7fe0fb1deea"
 
-# BNB Chain's XAUT0 answers `symbol()` with "XAUt" and `name()` with "Tether
-# Gold", with no 0 in either. It is the omnichain deployment all the same:
-# Tether lists it under XAUT0 and CoinGecko files it under `tether-gold-tokens`,
-# while `tether-gold` — the Ethereum XAUT this catalog already carries — has no
-# BNB Chain platform at all.
 [[deployments]]
-token = "XAUT0"
-chain = "bnb"
-contract = "0x21cAef8A43163Eea865baeE23b9C2E327696A3bf"
+token = "tether-gold-tokens"
+contract = "0x21caef8a43163eea865baee23b9c2e327696a3bf"
 decimals = 6
 standard = "BEP-20"
 enabled = false
+network = "bnb"
+kind = "token"
+id = "bnb:bep-20:0x21caef8a43163eea865baee23b9c2e327696a3bf"
 
 [[deployments]]
-token = "LBTC"
-chain = "bnb"
+token = "lombard-staked-btc"
 contract = "0xecac9c5f704e954931349da37f60e39f515c11c1"
 decimals = 8
 standard = "BEP-20"
 enabled = false
+network = "bnb"
+kind = "token"
+id = "bnb:bep-20:0xecac9c5f704e954931349da37f60e39f515c11c1"
 
 [[deployments]]
-token = "CAKE"
-chain = "bnb"
+token = "pancakeswap-token"
 contract = "0x0e09fabb73bd3ade0a17ecc321fd13a19e81ce82"
 decimals = 18
 standard = "BEP-20"
 enabled = false
+network = "bnb"
+kind = "token"
+id = "bnb:bep-20:0x0e09fabb73bd3ade0a17ecc321fd13a19e81ce82"
 
 [[deployments]]
-token = "PENDLE"
-chain = "bnb"
+token = "pendle"
 contract = "0xb3ed0a426155b79b898849803e3b36552f7ed507"
 decimals = 18
 standard = "BEP-20"
 enabled = false
+network = "bnb"
+kind = "token"
+id = "bnb:bep-20:0xb3ed0a426155b79b898849803e3b36552f7ed507"
 
 [[deployments]]
-token = "ZRO"
-chain = "bnb"
+token = "layerzero"
 contract = "0x6985884c4392d348587b19cb9eaaf157f13271cd"
 decimals = 18
 standard = "BEP-20"
 enabled = false
+network = "bnb"
+kind = "token"
+id = "bnb:bep-20:0x6985884c4392d348587b19cb9eaaf157f13271cd"
 
 [[deployments]]
-token = "PEPE"
-chain = "bnb"
+token = "pepe"
 contract = "0x25d887ce7a35172c62febfd67a1856f20faebb00"
 decimals = 18
 standard = "BEP-20"
 enabled = false
+network = "bnb"
+kind = "token"
+id = "bnb:bep-20:0x25d887ce7a35172c62febfd67a1856f20faebb00"
 
 [[deployments]]
-token = "LINK"
-chain = "hyperliquid"
-contract = "0x1AC2EE68b8d038C982C1E1f73F596927dd70De59"
+token = "chainlink"
+contract = "0x1ac2ee68b8d038c982c1e1f73f596927dd70de59"
 decimals = 18
 standard = "ERC-20"
 enabled = false
+network = "hyperliquid"
+kind = "token"
+id = "hyperliquid:erc-20:0x1ac2ee68b8d038c982c1e1f73f596927dd70de59"
 
 [[deployments]]
-token = "USDC"
-chain = "hyperliquid"
-contract = "0xb88339CB7199b77E23DB6E890353E22632Ba630f"
+token = "usd-coin"
+contract = "0xb88339cb7199b77e23db6e890353e22632ba630f"
 decimals = 6
 standard = "ERC-20"
 enabled = true
+network = "hyperliquid"
+kind = "token"
+id = "hyperliquid:erc-20:0xb88339cb7199b77e23db6e890353e22632ba630f"
 
 [[deployments]]
-token = "USDT0"
-chain = "hyperliquid"
-contract = "0xB8CE59FC3717ada4C02eaDF9682A9e934F625ebb"
+token = "usdt0"
+contract = "0xb8ce59fc3717ada4c02eadf9682a9e934f625ebb"
 decimals = 6
 standard = "ERC-20"
 enabled = true
+network = "hyperliquid"
+kind = "token"
+id = "hyperliquid:erc-20:0xb8ce59fc3717ada4c02eadf9682a9e934f625ebb"
 
 [[deployments]]
-token = "XAUT0"
-chain = "hyperliquid"
-contract = "0xf4D9235269a96aaDaFc9aDAe454a0618eBE37949"
+token = "tether-gold-tokens"
+contract = "0xf4d9235269a96aadafc9adae454a0618ebe37949"
 decimals = 6
 standard = "ERC-20"
 enabled = false
+network = "hyperliquid"
+kind = "token"
+id = "hyperliquid:erc-20:0xf4d9235269a96aadafc9adae454a0618ebe37949"
 
 [[deployments]]
-token = "DAI"
-chain = "polygon"
-contract = "0x8f3Cf7ad23Cd3CaDbD9735AFf958023239c6A063"
+token = "dai"
+contract = "0x8f3cf7ad23cd3cadbd9735aff958023239c6a063"
 decimals = 18
 standard = "ERC-20"
 enabled = true
+network = "polygon"
+kind = "token"
+id = "polygon:erc-20:0x8f3cf7ad23cd3cadbd9735aff958023239c6a063"
 
 [[deployments]]
-token = "USDC"
-chain = "polygon"
-contract = "0x3c499c542cEF5E3811e1192ce70d8cC03d5c3359"
+token = "usd-coin"
+contract = "0x3c499c542cef5e3811e1192ce70d8cc03d5c3359"
 decimals = 6
 standard = "ERC-20"
 enabled = true
+network = "polygon"
+kind = "token"
+id = "polygon:erc-20:0x3c499c542cef5e3811e1192ce70d8cc03d5c3359"
 
 [[deployments]]
-token = "USDT0"
-chain = "polygon"
-contract = "0xc2132D05D31c914a87C6611C10748AEb04B58e8F"
+token = "usdt0"
+contract = "0xc2132d05d31c914a87c6611c10748aeb04b58e8f"
 decimals = 6
 standard = "ERC-20"
 enabled = true
+network = "polygon"
+kind = "token"
+id = "polygon:erc-20:0xc2132d05d31c914a87c6611c10748aeb04b58e8f"
 
 [[deployments]]
-token = "XAUT0"
-chain = "polygon"
-contract = "0xF1815bd50389c46847f0Bda824eC8da914045D14"
+token = "tether-gold-tokens"
+contract = "0xf1815bd50389c46847f0bda824ec8da914045d14"
 decimals = 6
 standard = "ERC-20"
 enabled = false
+network = "polygon"
+kind = "token"
+id = "polygon:erc-20:0xf1815bd50389c46847f0bda824ec8da914045d14"
 
 [[deployments]]
-token = "LDO"
-chain = "polygon"
+token = "lido-dao"
 contract = "0xc3c7d422809852031b44ab29eec9f1eff2a58756"
 decimals = 18
 standard = "ERC-20"
 enabled = false
+network = "polygon"
+kind = "token"
+id = "polygon:erc-20:0xc3c7d422809852031b44ab29eec9f1eff2a58756"
 
 [[deployments]]
-token = "LINEA"
-chain = "linea"
-contract = "0x1789e0043623282D5DCc7F213d703C6D8BAfBB04"
+token = "linea"
+contract = "0x1789e0043623282d5dcc7f213d703c6d8bafbb04"
 decimals = 18
 standard = "ERC-20"
 enabled = false
+network = "linea"
+kind = "token"
+id = "linea:erc-20:0x1789e0043623282d5dcc7f213d703c6d8bafbb04"
 
 [[deployments]]
-token = "USDC"
-chain = "linea"
-contract = "0x176211869cA2b568f2A7D4EE941E073a821EE1ff"
+token = "usd-coin"
+contract = "0x176211869ca2b568f2a7d4ee941e073a821ee1ff"
 decimals = 6
 standard = "ERC-20"
 enabled = true
+network = "linea"
+kind = "token"
+id = "linea:erc-20:0x176211869ca2b568f2a7d4ee941e073a821ee1ff"
 
 [[deployments]]
-token = "SCR"
-chain = "scroll"
-contract = "0xd29687c813D741E2F938F4aC377128810E217b1b"
+token = "scroll"
+contract = "0xd29687c813d741e2f938f4ac377128810e217b1b"
 decimals = 18
 standard = "ERC-20"
 enabled = false
+network = "scroll"
+kind = "token"
+id = "scroll:erc-20:0xd29687c813d741e2f938f4ac377128810e217b1b"
 
 [[deployments]]
-token = "USDC"
-chain = "scroll"
-contract = "0x06eFdBFf2a14a7c8E15944D1F4A48F9F95F663A4"
+token = "usd-coin"
+contract = "0x06efdbff2a14a7c8e15944d1f4a48f9f95f663a4"
 decimals = 6
 standard = "ERC-20"
 enabled = true
+network = "scroll"
+kind = "token"
+id = "scroll:erc-20:0x06efdbff2a14a7c8e15944d1f4a48f9f95f663a4"
 
 [[deployments]]
-token = "ETHFI"
-chain = "scroll"
+token = "ether-fi"
 contract = "0x056a5fa5da84ceb7f93d36e545c5905607d8bd81"
 decimals = 18
 standard = "ERC-20"
 enabled = false
+network = "scroll"
+kind = "token"
+id = "scroll:erc-20:0x056a5fa5da84ceb7f93d36e545c5905607d8bd81"
 
 [[deployments]]
-token = "BLAST"
-chain = "blast"
-contract = "0xb1a5700fA2358173Fe465e6eA4Ff52E36e88E2ad"
+token = "blast"
+contract = "0xb1a5700fa2358173fe465e6ea4ff52e36e88e2ad"
 decimals = 18
 standard = "ERC-20"
 enabled = false
+network = "blast"
+kind = "token"
+id = "blast:erc-20:0xb1a5700fa2358173fe465e6ea4ff52e36e88e2ad"
 
 [[deployments]]
-token = "USDB"
-chain = "blast"
+token = "usdb"
 contract = "0x4300000000000000000000000000000000000003"
 decimals = 18
 standard = "ERC-20"
 enabled = true
+network = "blast"
+kind = "token"
+id = "blast:erc-20:0x4300000000000000000000000000000000000003"
 
 [[deployments]]
-token = "USDC"
-chain = "mantle"
-contract = "0x09Bc4E0D864854c6aFB6eB9A9cdF58aC190D0dF9"
+token = "usd-coin"
+contract = "0x09bc4e0d864854c6afb6eb9a9cdf58ac190d0df9"
 decimals = 6
 standard = "ERC-20"
 enabled = true
+network = "mantle"
+kind = "token"
+id = "mantle:erc-20:0x09bc4e0d864854c6afb6eb9a9cdf58ac190d0df9"
 
 [[deployments]]
-token = "USDT0"
-chain = "mantle"
-contract = "0x779Ded0c9e1022225f8E0630b35a9b54bE713736"
+token = "usdt0"
+contract = "0x779ded0c9e1022225f8e0630b35a9b54be713736"
 decimals = 6
 standard = "ERC-20"
 enabled = true
+network = "mantle"
+kind = "token"
+id = "mantle:erc-20:0x779ded0c9e1022225f8e0630b35a9b54be713736"
 
 [[deployments]]
-token = "USDT0"
-chain = "sei"
-contract = "0x9151434b16b9763660705744891fA906F660EcC5"
+token = "usdt0"
+contract = "0x9151434b16b9763660705744891fa906f660ecc5"
 decimals = 6
 standard = "ERC-20"
 enabled = true
+network = "sei"
+kind = "token"
+id = "sei:erc-20:0x9151434b16b9763660705744891fa906f660ecc5"
 
 [[deployments]]
-token = "USAT"
-chain = "celo"
-contract = "0xD2ab3C9A02DBBAB236BfEC45D1d755DF4267F771"
+token = "usa"
+contract = "0xd2ab3c9a02dbbab236bfec45d1d755df4267f771"
 decimals = 6
 standard = "ERC-20"
 enabled = false
+network = "celo"
+kind = "token"
+id = "celo:erc-20:0xd2ab3c9a02dbbab236bfec45d1d755df4267f771"
 
 [[deployments]]
-token = "XAUT0"
-chain = "celo"
-contract = "0xaf37E8B6C9ED7f6318979f56Fc287d76c30847ff"
+token = "tether-gold-tokens"
+contract = "0xaf37e8b6c9ed7f6318979f56fc287d76c30847ff"
 decimals = 6
 standard = "ERC-20"
 enabled = false
+network = "celo"
+kind = "token"
+id = "celo:erc-20:0xaf37e8b6c9ed7f6318979f56fc287d76c30847ff"
 
 [[deployments]]
-token = "ZK"
-chain = "zksync-era"
-contract = "0x5A7d6b2F92C77FAD6CCaBd7EE0624E64907Eaf3E"
+token = "zksync"
+contract = "0x5a7d6b2f92c77fad6ccabd7ee0624e64907eaf3e"
 decimals = 18
 standard = "ERC-20"
 enabled = false
+network = "zksync-era"
+kind = "token"
+id = "zksync-era:erc-20:0x5a7d6b2f92c77fad6ccabd7ee0624e64907eaf3e"
 
 [[deployments]]
-token = "BUSD"
-chain = "berachain"
-contract = "0xFCBD14DC51f0A4d49d5E53C2E0950e0bC26d0Dce"
+token = "honey-3"
+contract = "0xfcbd14dc51f0a4d49d5e53c2e0950e0bc26d0dce"
 decimals = 18
 standard = "ERC-20"
 enabled = true
+network = "berachain"
+kind = "token"
+id = "berachain:erc-20:0xfcbd14dc51f0a4d49d5e53c2e0950e0bc26d0dce"
 
 [[deployments]]
-token = "USDT0"
-chain = "berachain"
-contract = "0x779Ded0c9e1022225f8E0630b35a9b54bE713736"
+token = "usdt0"
+contract = "0x779ded0c9e1022225f8e0630b35a9b54be713736"
 decimals = 6
 standard = "ERC-20"
 enabled = true
+network = "berachain"
+kind = "token"
+id = "berachain:erc-20:0x779ded0c9e1022225f8e0630b35a9b54be713736"
 
 [[deployments]]
-token = "UNI"
-chain = "unichain"
-contract = "0x8f187aA05619a017077f5308904739877ce9eA21"
+token = "uniswap"
+contract = "0x8f187aa05619a017077f5308904739877ce9ea21"
 decimals = 18
 standard = "ERC-20"
 enabled = false
+network = "unichain"
+kind = "token"
+id = "unichain:erc-20:0x8f187aa05619a017077f5308904739877ce9ea21"
 
 [[deployments]]
-token = "USDT0"
-chain = "unichain"
-contract = "0x9151434b16b9763660705744891fA906F660EcC5"
+token = "usdt0"
+contract = "0x9151434b16b9763660705744891fa906f660ecc5"
 decimals = 6
 standard = "ERC-20"
 enabled = true
+network = "unichain"
+kind = "token"
+id = "unichain:erc-20:0x9151434b16b9763660705744891fa906f660ecc5"
 
 [[deployments]]
-token = "WSTETH"
-chain = "unichain"
+token = "wrapped-steth"
 contract = "0xc02fe7317d4eb8753a02c35fe019786854a92001"
 decimals = 18
 standard = "ERC-20"
 enabled = false
+network = "unichain"
+kind = "token"
+id = "unichain:erc-20:0xc02fe7317d4eb8753a02c35fe019786854a92001"
 
 [[deployments]]
-token = "USDT0"
-chain = "ink"
-contract = "0x0200C29006150606B650577BBE7B6248F58470c1"
+token = "usdt0"
+contract = "0x0200c29006150606b650577bbe7b6248f58470c1"
 decimals = 6
 standard = "ERC-20"
 enabled = true
+network = "ink"
+kind = "token"
+id = "ink:erc-20:0x0200c29006150606b650577bbe7b6248f58470c1"
 
 [[deployments]]
-token = "XAUT0"
-chain = "ink"
-contract = "0xF50258D3c1dd88946C567920B986A12e65b50dAc"
+token = "tether-gold-tokens"
+contract = "0xf50258d3c1dd88946c567920b986a12e65b50dac"
 decimals = 6
 standard = "ERC-20"
 enabled = false
+network = "ink"
+kind = "token"
+id = "ink:erc-20:0xf50258d3c1dd88946c567920b986a12e65b50dac"
 
 [[deployments]]
-token = "USDT0"
-chain = "x-layer"
-contract = "0x779Ded0c9e1022225f8E0630b35a9b54bE713736"
+token = "usdt0"
+contract = "0x779ded0c9e1022225f8e0630b35a9b54be713736"
 decimals = 6
 standard = "ERC-20"
+enabled = true
+network = "x-layer"
+kind = "token"
+id = "x-layer:erc-20:0x779ded0c9e1022225f8e0630b35a9b54be713736"
+
+[[deployments]]
+id = "bitcoin:native"
+token = "bitcoin"
+network = "bitcoin"
+kind = "native"
+decimals = 8
+enabled = true
+
+[[deployments]]
+id = "ethereum:native"
+token = "ethereum"
+network = "ethereum"
+kind = "native"
+decimals = 18
+enabled = true
+
+[[deployments]]
+id = "solana:native"
+token = "solana"
+network = "solana"
+kind = "native"
+decimals = 9
+enabled = true
+
+[[deployments]]
+id = "dogecoin:native"
+token = "dogecoin"
+network = "dogecoin"
+kind = "native"
+decimals = 8
+enabled = true
+
+[[deployments]]
+id = "xrp:native"
+token = "ripple"
+network = "xrp"
+kind = "native"
+decimals = 6
+enabled = true
+
+[[deployments]]
+id = "litecoin:native"
+token = "litecoin"
+network = "litecoin"
+kind = "native"
+decimals = 8
+enabled = true
+
+[[deployments]]
+id = "bitcoin-cash:native"
+token = "bitcoin-cash"
+network = "bitcoin-cash"
+kind = "native"
+decimals = 8
+enabled = true
+
+[[deployments]]
+id = "tron:native"
+token = "tron"
+network = "tron"
+kind = "native"
+decimals = 6
+enabled = true
+
+[[deployments]]
+id = "stellar:native"
+token = "stellar"
+network = "stellar"
+kind = "native"
+decimals = 7
+enabled = true
+
+[[deployments]]
+id = "cardano:native"
+token = "cardano"
+network = "cardano"
+kind = "native"
+decimals = 6
+enabled = true
+
+[[deployments]]
+id = "polkadot:native"
+token = "polkadot"
+network = "polkadot"
+kind = "native"
+decimals = 10
+enabled = true
+
+[[deployments]]
+id = "arbitrum:native"
+token = "ethereum"
+network = "arbitrum"
+kind = "native"
+decimals = 18
+enabled = true
+
+[[deployments]]
+id = "optimism:native"
+token = "ethereum"
+network = "optimism"
+kind = "native"
+decimals = 18
+enabled = true
+
+[[deployments]]
+id = "avalanche:native"
+token = "avalanche-2"
+network = "avalanche"
+kind = "native"
+decimals = 18
+enabled = true
+
+[[deployments]]
+id = "sui:native"
+token = "sui"
+network = "sui"
+kind = "native"
+decimals = 9
+enabled = true
+
+[[deployments]]
+id = "aptos:native"
+token = "aptos"
+network = "aptos"
+kind = "native"
+decimals = 8
+enabled = true
+
+[[deployments]]
+id = "ton:native"
+token = "the-open-network"
+network = "ton"
+kind = "native"
+decimals = 9
+enabled = true
+
+[[deployments]]
+id = "near:native"
+token = "near"
+network = "near"
+kind = "native"
+decimals = 24
+enabled = true
+
+[[deployments]]
+id = "internet-computer:native"
+token = "internet-computer"
+network = "internet-computer"
+kind = "native"
+decimals = 8
+enabled = true
+
+[[deployments]]
+id = "monero:native"
+token = "monero"
+network = "monero"
+kind = "native"
+decimals = 12
+enabled = true
+
+[[deployments]]
+id = "base:native"
+token = "ethereum"
+network = "base"
+kind = "native"
+decimals = 18
+enabled = true
+
+[[deployments]]
+id = "ethereum-classic:native"
+token = "ethereum-classic"
+network = "ethereum-classic"
+kind = "native"
+decimals = 18
+enabled = true
+
+[[deployments]]
+id = "bitcoin-sv:native"
+token = "bitcoin-cash-sv"
+network = "bitcoin-sv"
+kind = "native"
+decimals = 8
+enabled = true
+
+[[deployments]]
+id = "bnb:native"
+token = "binancecoin"
+network = "bnb"
+kind = "native"
+decimals = 18
+enabled = true
+
+[[deployments]]
+id = "hyperliquid:native"
+token = "hyperliquid"
+network = "hyperliquid"
+kind = "native"
+decimals = 18
+enabled = true
+
+[[deployments]]
+id = "polygon:native"
+token = "polygon-ecosystem-token"
+network = "polygon"
+kind = "native"
+decimals = 18
+enabled = true
+
+[[deployments]]
+id = "linea:native"
+token = "ethereum"
+network = "linea"
+kind = "native"
+decimals = 18
+enabled = true
+
+[[deployments]]
+id = "scroll:native"
+token = "ethereum"
+network = "scroll"
+kind = "native"
+decimals = 18
+enabled = true
+
+[[deployments]]
+id = "blast:native"
+token = "ethereum"
+network = "blast"
+kind = "native"
+decimals = 18
+enabled = true
+
+[[deployments]]
+id = "mantle:native"
+token = "mantle"
+network = "mantle"
+kind = "native"
+decimals = 18
+enabled = true
+
+[[deployments]]
+id = "zcash:native"
+token = "zcash"
+network = "zcash"
+kind = "native"
+decimals = 8
+enabled = true
+
+[[deployments]]
+id = "bitcoin-gold:native"
+token = "bitcoin-gold"
+network = "bitcoin-gold"
+kind = "native"
+decimals = 8
+enabled = true
+
+[[deployments]]
+id = "decred:native"
+token = "decred"
+network = "decred"
+kind = "native"
+decimals = 8
+enabled = true
+
+[[deployments]]
+id = "kaspa:native"
+token = "kaspa"
+network = "kaspa"
+kind = "native"
+decimals = 8
+enabled = true
+
+[[deployments]]
+id = "sei:native"
+token = "sei-network"
+network = "sei"
+kind = "native"
+decimals = 18
+enabled = true
+
+[[deployments]]
+id = "celo:native"
+token = "celo"
+network = "celo"
+kind = "native"
+decimals = 18
+enabled = true
+
+[[deployments]]
+id = "cronos:native"
+token = "crypto-com-chain"
+network = "cronos"
+kind = "native"
+decimals = 18
+enabled = true
+
+[[deployments]]
+id = "opbnb:native"
+token = "binancecoin"
+network = "opbnb"
+kind = "native"
+decimals = 18
+enabled = true
+
+[[deployments]]
+id = "zksync-era:native"
+token = "ethereum"
+network = "zksync-era"
+kind = "native"
+decimals = 18
+enabled = true
+
+[[deployments]]
+id = "sonic:native"
+token = "sonic-3"
+network = "sonic"
+kind = "native"
+decimals = 18
+enabled = true
+
+[[deployments]]
+id = "berachain:native"
+token = "berachain-bera"
+network = "berachain"
+kind = "native"
+decimals = 18
+enabled = true
+
+[[deployments]]
+id = "unichain:native"
+token = "ethereum"
+network = "unichain"
+kind = "native"
+decimals = 18
+enabled = true
+
+[[deployments]]
+id = "ink:native"
+token = "ethereum"
+network = "ink"
+kind = "native"
+decimals = 18
+enabled = true
+
+[[deployments]]
+id = "dash:native"
+token = "dash"
+network = "dash"
+kind = "native"
+decimals = 8
+enabled = true
+
+[[deployments]]
+id = "x-layer:native"
+token = "okb"
+network = "x-layer"
+kind = "native"
+decimals = 18
+enabled = true
+
+[[deployments]]
+id = "bittensor:native"
+token = "bittensor"
+network = "bittensor"
+kind = "native"
+decimals = 9
+enabled = true
+
+[[deployments]]
+id = "bitcoin-testnet:native"
+token = "bitcoin-testnet-native"
+network = "bitcoin-testnet"
+kind = "native"
+decimals = 8
+enabled = true
+
+[[deployments]]
+id = "bitcoin-testnet-4:native"
+token = "bitcoin-testnet-4-native"
+network = "bitcoin-testnet-4"
+kind = "native"
+decimals = 8
+enabled = true
+
+[[deployments]]
+id = "bitcoin-signet:native"
+token = "bitcoin-signet-native"
+network = "bitcoin-signet"
+kind = "native"
+decimals = 8
+enabled = true
+
+[[deployments]]
+id = "litecoin-testnet:native"
+token = "litecoin-testnet-native"
+network = "litecoin-testnet"
+kind = "native"
+decimals = 8
+enabled = true
+
+[[deployments]]
+id = "bitcoin-cash-testnet:native"
+token = "bitcoin-cash-testnet-native"
+network = "bitcoin-cash-testnet"
+kind = "native"
+decimals = 8
+enabled = true
+
+[[deployments]]
+id = "bitcoin-sv-testnet:native"
+token = "bitcoin-sv-testnet-native"
+network = "bitcoin-sv-testnet"
+kind = "native"
+decimals = 8
+enabled = true
+
+[[deployments]]
+id = "dogecoin-testnet:native"
+token = "dogecoin-testnet-native"
+network = "dogecoin-testnet"
+kind = "native"
+decimals = 8
+enabled = true
+
+[[deployments]]
+id = "zcash-testnet:native"
+token = "zcash-testnet-native"
+network = "zcash-testnet"
+kind = "native"
+decimals = 8
+enabled = true
+
+[[deployments]]
+id = "decred-testnet:native"
+token = "decred-testnet-native"
+network = "decred-testnet"
+kind = "native"
+decimals = 8
+enabled = true
+
+[[deployments]]
+id = "kaspa-testnet:native"
+token = "kaspa-testnet-native"
+network = "kaspa-testnet"
+kind = "native"
+decimals = 8
+enabled = true
+
+[[deployments]]
+id = "dash-testnet:native"
+token = "dash-testnet-native"
+network = "dash-testnet"
+kind = "native"
+decimals = 8
+enabled = true
+
+[[deployments]]
+id = "ethereum-sepolia:native"
+token = "ethereum-sepolia-native"
+network = "ethereum-sepolia"
+kind = "native"
+decimals = 18
+enabled = true
+
+[[deployments]]
+id = "ethereum-hoodi:native"
+token = "ethereum-hoodi-native"
+network = "ethereum-hoodi"
+kind = "native"
+decimals = 18
+enabled = true
+
+[[deployments]]
+id = "arbitrum-sepolia:native"
+token = "arbitrum-sepolia-native"
+network = "arbitrum-sepolia"
+kind = "native"
+decimals = 18
+enabled = true
+
+[[deployments]]
+id = "optimism-sepolia:native"
+token = "optimism-sepolia-native"
+network = "optimism-sepolia"
+kind = "native"
+decimals = 18
+enabled = true
+
+[[deployments]]
+id = "base-sepolia:native"
+token = "base-sepolia-native"
+network = "base-sepolia"
+kind = "native"
+decimals = 18
+enabled = true
+
+[[deployments]]
+id = "bnb-testnet:native"
+token = "bnb-testnet-native"
+network = "bnb-testnet"
+kind = "native"
+decimals = 18
+enabled = true
+
+[[deployments]]
+id = "avalanche-fuji:native"
+token = "avalanche-fuji-native"
+network = "avalanche-fuji"
+kind = "native"
+decimals = 18
+enabled = true
+
+[[deployments]]
+id = "polygon-amoy:native"
+token = "polygon-amoy-native"
+network = "polygon-amoy"
+kind = "native"
+decimals = 18
+enabled = true
+
+[[deployments]]
+id = "hyperliquid-testnet:native"
+token = "hyperliquid-testnet-native"
+network = "hyperliquid-testnet"
+kind = "native"
+decimals = 18
+enabled = true
+
+[[deployments]]
+id = "ethereum-classic-mordor:native"
+token = "ethereum-classic-mordor-native"
+network = "ethereum-classic-mordor"
+kind = "native"
+decimals = 18
+enabled = true
+
+[[deployments]]
+id = "tron-nile:native"
+token = "tron-nile-native"
+network = "tron-nile"
+kind = "native"
+decimals = 6
+enabled = true
+
+[[deployments]]
+id = "solana-devnet:native"
+token = "solana-devnet-native"
+network = "solana-devnet"
+kind = "native"
+decimals = 9
+enabled = true
+
+[[deployments]]
+id = "xrp-testnet:native"
+token = "xrp-testnet-native"
+network = "xrp-testnet"
+kind = "native"
+decimals = 6
+enabled = true
+
+[[deployments]]
+id = "stellar-testnet:native"
+token = "stellar-testnet-native"
+network = "stellar-testnet"
+kind = "native"
+decimals = 7
+enabled = true
+
+[[deployments]]
+id = "cardano-preprod:native"
+token = "cardano-preprod-native"
+network = "cardano-preprod"
+kind = "native"
+decimals = 6
+enabled = true
+
+[[deployments]]
+id = "sui-testnet:native"
+token = "sui-testnet-native"
+network = "sui-testnet"
+kind = "native"
+decimals = 9
+enabled = true
+
+[[deployments]]
+id = "aptos-testnet:native"
+token = "aptos-testnet-native"
+network = "aptos-testnet"
+kind = "native"
+decimals = 8
+enabled = true
+
+[[deployments]]
+id = "ton-testnet:native"
+token = "ton-testnet-native"
+network = "ton-testnet"
+kind = "native"
+decimals = 9
+enabled = true
+
+[[deployments]]
+id = "near-testnet:native"
+token = "near-testnet-native"
+network = "near-testnet"
+kind = "native"
+decimals = 24
+enabled = true
+
+[[deployments]]
+id = "polkadot-westend:native"
+token = "polkadot-westend-native"
+network = "polkadot-westend"
+kind = "native"
+decimals = 10
+enabled = true
+
+[[deployments]]
+id = "monero-stagenet:native"
+token = "monero-stagenet-native"
+network = "monero-stagenet"
+kind = "native"
+decimals = 12
 enabled = true

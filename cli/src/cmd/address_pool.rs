@@ -16,6 +16,10 @@ use crate::out::{self, Out};
 pub enum PoolCommand {
     /// Where a wallet's receive and change indices stand.
     Show(SelectArgs),
+    /// Resolve and reserve a receive address using the stored wallet identity.
+    Receive(SelectArgs),
+    /// Discover addresses for all wallets on a chain.
+    DiscoverChain { chain: String },
     /// Reserve the next receive index.
     Next(SelectArgs),
     /// Reserve the next change index. Always consumes one.
@@ -33,6 +37,28 @@ pub struct SelectArgs {
 pub fn run(ctx: &Ctx, out: Out, command: PoolCommand) -> CliResult<()> {
     match command {
         PoolCommand::Show(args) => show(ctx, out, args),
+        PoolCommand::Receive(args) => {
+            let wallet = ctx.find_wallet(&args.wallet)?;
+            let chain = super::resolve_chain(&wallet.chain_name)?;
+            let address = ctx.rt.block_on(ctx.service()?.receive_address(
+                wallet.id.clone(),
+                chain.str_id().into(),
+                true,
+            ))?;
+            out.text(|| println!("{}", address.as_deref().unwrap_or("unavailable")));
+            out.emit(serde_json::json!({"wallet":wallet.id,"address":address}));
+            Ok(())
+        }
+        PoolCommand::DiscoverChain { chain } => {
+            let chain = super::resolve_chain(&chain)?;
+            let results = ctx.rt.block_on(
+                ctx.service()?
+                    .discover_chain_addresses(chain.str_id().into()),
+            )?;
+            out.text(|| println!("{results:?}"));
+            out.emit(serde_json::json!({"results":results}));
+            Ok(())
+        }
         PoolCommand::Next(args) => next(ctx, out, args, false),
         PoolCommand::NextChange(args) => next(ctx, out, args, true),
         PoolCommand::Discover(args) => discover(ctx, out, args),
@@ -139,7 +165,7 @@ fn next(ctx: &Ctx, out: Out, args: SelectArgs, change: bool) -> CliResult<()> {
     } else {
         let chain = super::resolve_chain(&wallet.chain_name)?;
         ctx.rt
-            .block_on(service.utxo_receive_address(wallet.id.clone(), chain.str_id().into(), false))
+            .block_on(service.receive_address(wallet.id.clone(), chain.str_id().into(), false))
             .map_err(crate::error::CliError::from)?
     };
 

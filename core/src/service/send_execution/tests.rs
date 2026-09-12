@@ -587,6 +587,7 @@ mod the_router_and_the_builder_agree {
 
         for chain in Chain::mainnets() {
             let route = route_send_asset(&SendAssetRoutingInput {
+                is_native: true,
                 chain_name: chain.chain_display_name().to_string(),
                 symbol: chain.coin_symbol().to_string(),
                 is_evm_chain: chain.is_evm(),
@@ -688,14 +689,14 @@ mod send_chain_tests {
     use crate::registry::Chain;
     use crate::store::state::{CoreAppState, WalletSummary};
 
-    fn wallet(id: &str, chain: Chain, network_mode: Option<&str>) -> WalletSummary {
+    fn wallet(id: &str, chain: Chain, network_id: Option<&str>) -> WalletSummary {
         WalletSummary {
             id: id.to_string(),
             name: id.to_string(),
             is_watch_only: false,
             chain_name: chain.chain_display_name().to_string(),
             include_in_portfolio_total: true,
-            network_mode: network_mode.map(str::to_string),
+            network_id: network_id.unwrap_or(chain.str_id()).to_string(),
             xpub: None,
             derivation_preset: "standard".to_string(),
             derivation_path: None,
@@ -713,47 +714,22 @@ mod send_chain_tests {
     /// transaction was a valid mainnet one. `spectra send broadcast
     /// --sign-only` prints the signed chain id, which is how it was found.
     #[test]
-    fn a_send_follows_the_network_the_wallet_is_on() {
+    fn a_send_requires_the_explicit_network_and_never_retargets() {
         let mut state = CoreAppState::default();
-        state.wallets = vec![wallet("w1", Chain::Ethereum, None)];
+        state.wallets = vec![wallet("w1", Chain::Ethereum, Some("ethereum-sepolia"))];
+        assert!(send_chain_for(&state, "w1", Chain::Ethereum).is_err());
         assert_eq!(
-            send_chain_for(&state, "w1", Chain::Ethereum),
-            Chain::Ethereum
-        );
-
-        // The app's selection moves the family.
-        state.settings.network_chain_by_family.insert(
-            Chain::Ethereum.str_id().to_string(),
-            Chain::EthereumSepolia.str_id().to_string(),
-        );
-        assert_eq!(
-            send_chain_for(&state, "w1", Chain::Ethereum),
+            send_chain_for(&state, "w1", Chain::EthereumSepolia).unwrap(),
             Chain::EthereumSepolia
         );
-        // Ids cross the boundary in whichever case a front end holds them.
+        assert!(send_chain_for(&state, "nobody", Chain::Ethereum).is_err());
+        state
+            .settings
+            .network_chain_by_family
+            .insert("ethereum".into(), "ethereum-hoodi".into());
         assert_eq!(
-            send_chain_for(&state, "W1", Chain::Ethereum),
+            send_chain_for(&state, "w1", Chain::EthereumSepolia).unwrap(),
             Chain::EthereumSepolia
-        );
-
-        // A wallet's own record wins over the app's selection.
-        state.wallets[0].network_mode = Some(Chain::Ethereum.str_id().to_string());
-        assert_eq!(
-            send_chain_for(&state, "w1", Chain::Ethereum),
-            Chain::Ethereum
-        );
-
-        // A selection for another family does not move this one, and an
-        // unknown wallet keeps the requested chain rather than guessing.
-        state.wallets[0].network_mode = None;
-        assert_eq!(
-            send_chain_for(&state, "w1", Chain::Bitcoin),
-            Chain::Bitcoin,
-            "the Ethereum selection must not move a Bitcoin send"
-        );
-        assert_eq!(
-            send_chain_for(&state, "nobody", Chain::Ethereum),
-            Chain::Ethereum
         );
     }
 }

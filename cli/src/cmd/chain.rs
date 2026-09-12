@@ -121,7 +121,10 @@ pub fn chains(out: Out, args: ChainsArgs) -> CliResult<()> {
             .map(|chain| serde_json::json!({
                 "id": chain.str_id(),
                 "name": chain.chain_display_name(),
-                "symbol": chain.coin_symbol(),
+                "nativeSymbol": chain.coin_symbol(),
+                "nativeDeploymentId": chain.entry().native_deployment_id,
+                "family": chain.entry().family,
+                "isTestnet": chain.is_testnet(),
                 "isEvm": chain.is_evm(),
                 // The import picker's list, as a column rather than a second
                 // array: a chain is offered for private-key import exactly
@@ -258,7 +261,10 @@ pub fn balance(ctx: &Ctx, out: Out, args: BalanceArgs) -> CliResult<()> {
         "ok": true,
         "wallet": wallet.id,
         "chain": chain.chain_display_name(),
-        "symbol": chain.coin_symbol(),
+        "nativeSymbol": chain.coin_symbol(),
+                "nativeDeploymentId": chain.entry().native_deployment_id,
+                "family": chain.entry().family,
+                "isTestnet": chain.is_testnet(),
         "amount": summary.amount_display,
         "smallestUnit": summary.smallest_unit,
         "utxoCount": summary.utxo_count,
@@ -281,25 +287,26 @@ fn save_history(
     ctx.rt
         .block_on(service.open_state(ctx.db_path()))
         .map_err(CliError::from)?;
-    if chain.mainnet_counterpart() != Chain::Bitcoin && pages != 1 {
-        return Err(CliError::rejected(
-            "--pages is currently supported for Bitcoin history",
-        ));
-    }
     service.set_secret_store(ctx.secrets.clone());
-    let fetch = |load_more| {
-        if chain.mainnet_counterpart() == Chain::Bitcoin {
-            ctx.rt.block_on(service.refresh_bitcoin_history(
-                vec![wallet_id.into()],
-                load_more,
-                Some(limit.min(100) as u32),
-            ))
-        } else {
-            ctx.rt.block_on(service.refresh_chain_history(
-                chain.mainnet_counterpart().str_id().into(),
-                vec![wallet_id.into()],
-            ))
-        }
+    let fetch = |load_more| -> Result<
+        spectra_core::service::HistoryRefreshOutcome,
+        spectra_core::SpectraBridgeError,
+    > {
+        let mut results = ctx.rt.block_on(service.refresh_history(
+            spectra_core::service::HistoryRefreshScope::Wallets {
+                wallet_ids: vec![wallet_id.into()],
+            },
+            load_more,
+            Some(limit.min(100) as u32),
+            0.0,
+        ))?;
+        let row = results
+            .pop()
+            .ok_or_else(|| spectra_core::SpectraBridgeError::InvalidInput {
+                message: "No history wallet found".into(),
+            })?;
+        row.outcome
+            .ok_or_else(|| spectra_core::SpectraBridgeError::from(row.error.unwrap_or_default()))
     };
     let mut outcome = fetch(false).map_err(CliError::from)?;
     let mut fetched_pages = 1;
