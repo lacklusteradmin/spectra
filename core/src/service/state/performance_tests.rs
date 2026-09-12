@@ -237,9 +237,10 @@ async fn malformed_activity_is_an_error_and_does_not_advance_or_register() {
         Some(before)
     );
     assert!(service
-        .owned_addresses
+        .keypool
         .read()
         .await
-        .values()
-        .all(Vec::is_empty));
+        .owned_everywhere()
+        .next()
+        .is_none());
 }

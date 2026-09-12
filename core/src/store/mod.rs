@@ -267,10 +267,20 @@ pub fn core_receive_selection(request: ReceiveSelectionRequest) -> ReceiveSelect
 pub fn core_self_send_confirmation(
     request: SelfSendConfirmationRequest,
 ) -> SelfSendConfirmationPlan {
+    // Folded to lowercase, deliberately, and unlike the `new_address` check in
+    // `send::flow` — which compares in the chain's own normal form because a
+    // false match there *suppresses* a warning about a swapped destination.
+    //
+    // Here a wrong answer goes the other way. A false match adds a
+    // "you are sending to yourself" prompt the user dismisses; a miss removes
+    // one they should have seen. Bech32 is case-insensitive by definition, so
+    // an own address typed in caps is the same address, and `Bitcoin`'s
+    // `AddressNormalization::None` — correct for its base58 forms — cannot say
+    // that. Folding takes the side where being wrong costs a tap.
     let destination = request.destination_address.trim().to_lowercase();
     let owned_addresses = request
         .owned_addresses
-        .into_iter()
+        .iter()
         .map(|address| address.trim().to_lowercase())
         .collect::<std::collections::BTreeSet<_>>();
 

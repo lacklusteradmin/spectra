@@ -3,46 +3,6 @@ use super::*;
 
 #[uniffi::export(async_runtime = "tokio")]
 impl WalletService {
-    /// Derive the account-level xpub (mainnet, canonical `xpub…` encoding)
-    /// from a BIP39 mnemonic phrase.
-    ///
-    /// `account_path` is the **hardened account path** only, e.g.:
-    ///   - `"m/84'/0'/0'"` → native SegWit (BIP84)
-    ///   - `"m/49'/0'/0'"` → nested SegWit (BIP49)
-    ///   - `"m/44'/0'/0'"` → legacy P2PKH (BIP44)
-    ///
-    /// `passphrase` is the optional BIP39 passphrase — pass `""` for none.
-    pub fn derive_bitcoin_account_xpub_typed(
-        &self,
-        mnemonic_phrase: String,
-        passphrase: String,
-        account_path: String,
-    ) -> Result<String, SpectraBridgeError> {
-        crate::derivation::xpub_walker::derive_account_xpub(
-            &mnemonic_phrase,
-            &passphrase,
-            &account_path,
-        )
-        .map_err(Into::into)
-    }
-
-    /// Derive a contiguous range of child addresses from an account-level
-    /// extended public key (xpub/ypub/zpub).
-    ///
-    /// - `change` — 0 for external/receive, 1 for internal/change.
-    /// - `start_index`, `count` — [start, start+count) scan window.
-    pub(crate) async fn derive_bitcoin_hd_address_strings(
-        &self,
-        xpub: String,
-        change: u32,
-        start_index: u32,
-        count: u32,
-    ) -> Result<Vec<String>, SpectraBridgeError> {
-        let children =
-            crate::derivation::xpub_walker::derive_children(&xpub, change, start_index, count)?;
-        Ok(children.into_iter().map(|c| c.address).collect())
-    }
-
     /// Return the first address on the `change` leg (0 = receive, 1 = change)
     /// that has zero confirmed/unconfirmed history, scanning up to
     /// `gap_limit` candidates. Returns the derived address string, or
@@ -88,4 +48,31 @@ impl WalletService {
         )
         .await?)
     }
+}
+
+/// Derive the account-level xpub (mainnet, canonical `xpub…` encoding)
+/// from a BIP39 mnemonic phrase.
+///
+/// `account_path` is the **hardened account path** only, e.g.:
+///   - `"m/84'/0'/0'"` → native SegWit (BIP84)
+///   - `"m/49'/0'/0'"` → nested SegWit (BIP49)
+///   - `"m/44'/0'/0'"` → legacy P2PKH (BIP44)
+///
+/// `passphrase` is the optional BIP39 passphrase — pass `""` for none.
+///
+/// Exported as a function rather than a method on `WalletService`: it takes a
+/// phrase and a path and reads no wallet, no database and no endpoint. Hanging
+/// it off the service said otherwise to everyone who called it.
+#[uniffi::export]
+pub fn derive_bitcoin_account_xpub_typed(
+    mnemonic_phrase: String,
+    passphrase: String,
+    account_path: String,
+) -> Result<String, SpectraBridgeError> {
+    crate::derivation::xpub_walker::derive_account_xpub(
+        &mnemonic_phrase,
+        &passphrase,
+        &account_path,
+    )
+    .map_err(Into::into)
 }

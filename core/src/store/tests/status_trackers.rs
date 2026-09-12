@@ -47,32 +47,6 @@ async fn a_polled_transaction_waits_out_its_interval() {
     );
 }
 
-/// A manual recheck re-opens a transaction the tracker had finished with.
-#[tokio::test]
-async fn resetting_a_tracker_makes_it_due_again() {
-    let service = WalletService::new_typed(Vec::new()).expect("service");
-    service
-        .record_status_poll(
-            "tx1".into(),
-            crate::service::StatusPollOutcome::Confirmed {
-                confirmations: Some(99),
-            },
-        )
-        .await;
-    assert!(service
-        .transactions_due_for_status_poll(vec!["tx1".into()])
-        .await
-        .is_empty());
-
-    service.reset_status_tracker("tx1".into(), true).await;
-    assert_eq!(
-        service
-            .transactions_due_for_status_poll(vec!["tx1".into()])
-            .await,
-        vec!["tx1".to_string()]
-    );
-}
-
 /// Applying a resolution writes the record and reports the change.
 ///
 /// Core used to hand back a decision and the caller built the new record

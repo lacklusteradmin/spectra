@@ -101,13 +101,6 @@ fn make_result(normalized_value: String) -> AddressValidationResult {
     }
 }
 
-fn make_string_result(normalized_value: String) -> AddressValidationResult {
-    AddressValidationResult {
-        is_valid: true,
-        normalized_value: Some(normalized_value),
-    }
-}
-
 const BASE58_LUT: [bool; 128] = {
     let mut lut = [false; 128];
     let alphabet = b"123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz";
@@ -545,7 +538,7 @@ fn validate_sui_coin_type(value: &str) -> AddressValidationResult {
 
     let address_result = validate_sui_address(&normalized);
     if address_result.is_valid {
-        return make_string_result(address_result.normalized_value.unwrap_or(normalized));
+        return make_result(address_result.normalized_value.unwrap_or(normalized));
     }
 
     let Some((address_component, rest)) = normalized.split_once("::") else {
@@ -557,7 +550,7 @@ fn validate_sui_coin_type(value: &str) -> AddressValidationResult {
     // `module::NAME`: both halves have to be there, and neither may be empty.
     match rest.split_once("::") {
         Some((module, name)) if !module.is_empty() && !name.is_empty() && !name.contains("::") => {
-            make_string_result(normalized)
+            make_result(normalized)
         }
         _ => invalid_result(),
     }
@@ -574,7 +567,7 @@ fn validate_aptos_token_type(value: &str) -> AddressValidationResult {
 
     let addr_result = validate_aptos_address(&normalized);
     if addr_result.is_valid {
-        return make_string_result(addr_result.normalized_value.unwrap_or(normalized));
+        return make_result(addr_result.normalized_value.unwrap_or(normalized));
     }
 
     if !normalized.contains("::") {
@@ -592,7 +585,7 @@ fn validate_aptos_token_type(value: &str) -> AddressValidationResult {
         };
     }
 
-    make_string_result(normalized)
+    make_result(normalized)
 }
 
 #[cfg(test)]

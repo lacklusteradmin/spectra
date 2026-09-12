@@ -544,17 +544,23 @@ pub fn core_evaluate_high_risk_send_reasons(
         });
     }
 
-    // Normalize destination for case-insensitive comparison.
-    let norm_dest = normalize_address(chain_name, &request.destination_address).to_lowercase();
+    // The chain's own normalization is the comparison form, and nothing more
+    // is applied on top of it. A blanket `to_lowercase()` stood here: correct
+    // for the chains whose rule is already `Lowercase`, and wrong for every
+    // chain whose rule is `None` — "case and shape are significant", as
+    // `AddressNormalization` puts it. On Bitcoin and Solana two base58 strings
+    // differing only in case are two different addresses, so folding them
+    // together let a lookalike of an address in the book pass as one already
+    // seen, and the `new_address` warning — the one that catches a swapped
+    // destination — did not fire.
+    let norm_dest = normalize_address(chain_name, &request.destination_address);
 
     // 2. New address detection.
     let has_address_book = request.address_book_entries.iter().any(|e| {
-        e.chain_name == *chain_name
-            && normalize_address(chain_name, &e.address).to_lowercase() == norm_dest
+        e.chain_name == *chain_name && normalize_address(chain_name, &e.address) == norm_dest
     });
     let has_tx_history = request.tx_addresses.iter().any(|e| {
-        e.chain_name == *chain_name
-            && normalize_address(chain_name, &e.address).to_lowercase() == norm_dest
+        e.chain_name == *chain_name && normalize_address(chain_name, &e.address) == norm_dest
     });
     if !has_address_book && !has_tx_history {
         warnings.push(make("new_address"));
@@ -1388,6 +1394,89 @@ mod validating_and_normalising_cannot_disagree {
                 "{form} validates but was flagged invalid_format"
             );
         }
+    }
+
+    /// Case folding is the chain's decision, not this comparison's.
+    ///
+    /// A blanket `to_lowercase()` sat on top of `normalize_address` here. On
+    /// EVM that is a no-op — the rule is already `Lowercase` — but on a chain
+    /// whose rule is `None` it makes two different base58 addresses compare
+    /// equal, so an address that merely *looks* like one in the book passed as
+    /// already-seen and the `new_address` warning did not fire.
+    #[test]
+    fn a_case_sensitive_chain_does_not_fold_a_lookalike_into_a_known_address() {
+        use super::{HighRiskChainAddress, HighRiskSendRequest};
+
+        // A real Solana address, and the same string with one letter recased —
+        // a different address, and base58 says so.
+        let known = "9WzDXwBbmkg8ZTbNMqUxvQRAyrZzDsGYdLVL9zYtAWWM";
+        let lookalike = "9WzDXwBbmkg8ZTbNMqUxvQRAyrZzDsGYdLVL9zYtAWWm";
+        assert_ne!(known, lookalike);
+
+        let codes = |destination: &str| {
+            core_evaluate_high_risk_send_reasons(HighRiskSendRequest {
+                chain_name: "Solana".to_string(),
+                symbol: "SOL".to_string(),
+                amount: 1.0,
+                holding_amount: 1000.0,
+                destination_address: destination.to_string(),
+                destination_input: destination.to_string(),
+                used_ens_resolution: false,
+                wallet_selected_chain: "Solana".to_string(),
+                address_book_entries: vec![HighRiskChainAddress {
+                    chain_name: "Solana".to_string(),
+                    address: known.to_string(),
+                }],
+                tx_addresses: vec![],
+            })
+            .into_iter()
+            .map(|warning| warning.code)
+            .collect::<Vec<_>>()
+        };
+
+        assert!(
+            !codes(known).contains(&"new_address".to_string()),
+            "the address in the book is not a new address"
+        );
+        assert!(
+            codes(lookalike).contains(&"new_address".to_string()),
+            "a different address that differs only in case is still a new address"
+        );
+    }
+
+    /// The chains that *do* fold case keep folding it: this is the registry's
+    /// rule being applied, not case sensitivity being imposed everywhere.
+    #[test]
+    fn an_evm_address_still_matches_the_book_in_any_case() {
+        use super::{HighRiskChainAddress, HighRiskSendRequest};
+
+        let stored = "0xAbCdEf0123456789AbCdEf0123456789AbCdEf01";
+        let typed = stored.to_uppercase().replace("0X", "0x");
+        assert_ne!(stored, typed);
+
+        let codes = core_evaluate_high_risk_send_reasons(HighRiskSendRequest {
+            chain_name: "Ethereum".to_string(),
+            symbol: "ETH".to_string(),
+            amount: 1.0,
+            holding_amount: 1000.0,
+            destination_address: typed.clone(),
+            destination_input: typed,
+            used_ens_resolution: false,
+            wallet_selected_chain: "Ethereum".to_string(),
+            address_book_entries: vec![HighRiskChainAddress {
+                chain_name: "Ethereum".to_string(),
+                address: stored.to_string(),
+            }],
+            tx_addresses: vec![],
+        })
+        .into_iter()
+        .map(|warning| warning.code)
+        .collect::<Vec<_>>();
+
+        assert!(
+            !codes.contains(&"new_address".to_string()),
+            "EVM folds case, so this is the address already in the book: {codes:?}"
+        );
     }
 
     /// It still says so when the address really is malformed.

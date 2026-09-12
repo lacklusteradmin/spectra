@@ -230,7 +230,252 @@ Verified: `cargo test --workspace` (798 core tests), `./scripts/cli-acceptance.s
 simulator suite (81 tests, zero failures). The FFI surface is 179 callables,
 with zero unreachable export candidates. Broader Stage 3/C2 items remain open.
 
+## Stage 3 / C2 follow-up: pending maintenance ownership
+
+- [x] Core runs the full stored-network pending-status sweep and tracker cleanup.
+- [x] Swift adopts committed changes; pending polling no longer uses UI descriptors.
+- [x] CLI `txs --refresh-pending` drives the same operation; scope inspection remains.
+- [x] Remove scope-query and tracker-pruning FFI exports, add the sweep operation,
+  regenerate bindings and exercise the Swift async bridge.
+
+Verified: `cargo test --workspace` (822 core tests), `./scripts/cli-acceptance.sh`
+(334 checks plus Stage 3/follow-up fixtures), and the required iPhone 17 Pro
+simulator suite (82 tests, zero failures). FFI: 178 callables, zero unreachable
+candidates; generated Swift has neither removed method. Stage 3/C2 remain in
+progress. Remaining observed orchestration includes manual transaction-status
+recheck and history-refresh dispatch; this is not an exhaustive remaining list.
+
+## Stage 3 / C2 follow-up: manual transaction recheck
+
+- [x] Core validates the stored transaction, reads its recorded network and
+  commits only its status; explicit rechecks include failed/confirmed records.
+- [x] Refuse provider errors, mismatched hashes and deleted/changed identities;
+  preserve concurrent metadata and resume tracking after an unconfirmed read.
+- [x] CLI `txs --recheck <id>` and Swift use one operation. Remove the low-level
+  tracker-reset export, regenerate bindings and test the async bridge.
+
+Verified: `cargo test --workspace` (826 core tests), `./scripts/cli-acceptance.sh`
+(337 checks plus Stage 3/follow-up fixtures), and the required iPhone 17 Pro
+simulator suite (83 tests, zero failures). FFI remains 178 callables with zero
+unreachable candidates. Manual recheck from the previous remaining list is
+complete; history-refresh dispatch and broader Stage 3/C2 audit remain open.
+
 ## Behaviour changed on purpose
+
+### A shared HTTP client does not pool connections under test
+
+- The whole suite was intermittently failing one test with `dispatch task is
+  gone | runtime dropped the dispatch task`. The cause is not in that test:
+  `HttpClient` is a process-wide singleton, and hyper binds each pooled
+  connection's dispatch task to whichever tokio runtime first drove it. The app
+  has one runtime for its lifetime, so pooling is free there; a test binary has
+  one runtime *per test*, each dropped at the end of its test, so a later test
+  reusing a pooled connection fails for a reason unrelated to what it tested.
+- `pool_max_idle_per_host(0)` under `#[cfg(test)]` only. Production keeps its
+  pool. It flaked once in four full release runs before, and has not in three
+  since. CLI check: `cargo test --release -p spectra_core`, repeated.
+
+### Six functions stop pretending to be service methods
+
+- Six methods on `WalletService` took `&self` and never read it. A method that
+  ignores its receiver still says "this depends on wallet state" to everyone
+  who calls it, and `WalletService` is the type where that claim costs most.
+- `derive_bitcoin_hd_address_strings` is **deleted**: `pub(crate)`, zero
+  callers anywhere. `scripts/unreachable-exports.sh` did not catch it because
+  it was never exported — the script checks the FFI surface, and this was below
+  it.
+- `sign_and_broadcast_shared_utxo`, `sign_and_broadcast_token`,
+  `fetch_prices_typed` and `fetch_fiat_rates_typed` become free functions with
+  no FFI change: the first two are internal, and the price reads sat in an
+  `impl` block with no `#[uniffi::export]` at all, so the CLI was their only
+  caller. Both CLI commands built a whole `WalletService` to reach them and now
+  build nothing.
+- `derive_bitcoin_account_xpub_typed` becomes a free `#[uniffi::export]`
+  function — the one FFI-visible change. Deriving an xpub from a phrase and a
+  path reads no wallet, no database and no endpoint. Swift's one call site and
+  the bindings are updated.
+- `WalletService` is down to eleven fields from fifteen, and no method on it
+  ignores its receiver.
+
+### What #11 did not do, and why
+
+- The remaining shape of the god object is ~110 exported methods on one UniFFI
+  object. Splitting it was measured and rejected: the transaction cluster
+  (`transactions`, `pending_status`, `transaction_recheck`) *reads* only
+  `status_trackers`, which looks like a clean seam, but it *calls* `app_state`,
+  `evm_transaction_status`, `upsert_history_records` and `bound_state_db_path`.
+  A separate object would have to hold the wallet state, the endpoints and the
+  database binding as well — the god object would become a shared `Core` and
+  every field would still be reachable from every topic.
+- `scripts/unreachable-exports.sh` reports zero, so there is no dead surface to
+  delete either. What remained worth doing was the state that no type could
+  check (the keypool pair, the database binding) and the methods that never
+  needed the type at all. Those are done; a split is a decision to take on its
+  own evidence, not as the tail of this one.
+
+
+### The keypool is a type, not two fields on the service
+
+- `WalletService` carried `keypool` and `owned_addresses` as two `pub(crate)`
+  maps behind two locks. They are one fact: `owned_addresses` is where a
+  chain's baseline comes from — the highest index already issued — and
+  `keypool` is where the next one is taken from, so a reader of one that cannot
+  see the other can hand out an address somebody already holds.
+- Three files took them apart. `open_state` replaced both, wallet deletion
+  `retain`ed one and then acquired the other, and `register_owned_address`
+  cloned the whole table, mutated the copy and wrote it back — a shape that
+  drops any write landing in between. Every one of those is safe, and none of
+  them is safe *by itself*: what serializes them is the `state_writer` mutex
+  two layers up, which nothing at those call sites can see.
+- They are now one `Keypool` with one lock over both tables, and the operations
+  that span them are methods on it — `load`, `forget`, `remember_owned` —
+  rather than sequences a caller has to get right. No behaviour changes: the
+  same mutex still serializes the same writes. What changes is that the
+  invariant is now checkable where it lives. CLI check:
+  `cargo test -p spectra_core the_keypool_forgets`.
+### The database binding is one fact, not two fields
+
+- `state_db_path` and `state_database` were two `Option`s behind two locks
+  holding one fact: whether this service is bound to a database, and which.
+  `open_state` wrote both, one lock at a time, so a reader between the two
+  writes saw a path with no connection behind it.
+- The asymmetry is what hid it. Eleven call sites read `state_db_path` and
+  re-open by path; *nothing* read `state_database` — it holds the strong `Arc`
+  that keeps the connection alive, because the process-wide handle index behind
+  `WalletDatabase` keeps only `Weak`s. A field with no readers looks like a
+  field with no invariant.
+- They are one `StateBinding` now, with one `Option` and one `bind`. The
+  callers that only wanted the path ask for the path; the one that must have it
+  asks `required_path`, which carries the "call open_state first" error that was
+  spelled out at its single call site. CLI check: the existing
+  `service_holds_connection_until_rebind_or_drop` still proves the handle is
+  dropped on rebind, now through the type rather than around it.
+
+### Where this leaves the god object
+
+- `WalletService` is down from fifteen fields to twelve. Two of the three
+  removed were a pair whose invariant nothing could check.
+- `status_trackers` is *not* the next one: its uses are a plain map read and
+  written consistently, with the decisions already in `store::plan_transaction_status_*`.
+  Wrapping it would move code without moving a rule. The remaining pair-shaped
+  candidate is `endpoints` + `etherscan_api_key`.
+
+
+### Addresses compare in their own chain's normal form
+
+- `normalize_address` already applies `AddressNormalization`, which is the
+  registry's per-chain answer to "does case matter here". Both the high-risk
+  send check and the self-send confirmation then applied a blanket
+  `to_lowercase()` on top of it. That is a no-op on the chains whose rule is
+  already `Lowercase`, and wrong on every chain whose rule is `None` — "case
+  and shape are significant", as the enum puts it.
+- On Bitcoin and Solana two base58 strings differing only in case are two
+  different addresses, so the fold let a lookalike of an address in the book
+  pass as one already seen and the `new_address` warning — the one that catches
+  a swapped destination — did not fire. It compares normalized forms now and
+  nothing more. CLI check:
+  `cargo test -p spectra_core validating_and_normalising_cannot_disagree`.
+- **The self-send confirmation keeps folding case**, and the comment there now
+  says why rather than leaving it looking like the same oversight. A wrong
+  answer points the other way: a false match adds a prompt the user dismisses,
+  a miss removes one they should have seen. Bech32 is case-insensitive by
+  definition, so an own address typed in caps is the same address, and
+  `Bitcoin`'s `AddressNormalization::None` — correct for its base58 forms —
+  cannot express that. Two comparisons of one thing, kept apart on purpose.
+
+### A keypool index names a derivable child key
+
+- Keypool indices are `i64` in SQLite and `i32` across the FFI, and the two
+  were bridged with `as` — a narrowing that turns anything past `i32::MAX`
+  into a *negative* index, which derivation would then take as a path nobody
+  asked for.
+- The ceiling is BIP-32's own: the last non-hardened child, which is exactly
+  `i32::MAX`. It is enforced where an index is produced — reserving a receive
+  or change index, and advancing past a used one, all refuse at the end of the
+  keypool rather than rolling over — which is what makes the narrowing
+  lossless. The narrowing itself clamps rather than wraps, so a future
+  regression fails at an exhausted keypool instead of a negative path.
+  CLI check: `cargo test -p spectra_core the_keypool_stays_inside`.
+
+### An unreadable balance is not an empty wallet
+
+- `summary_display_balance` answered `0.0` for an unknown chain and for an
+  amount it could not parse, and the simple-chain send preview parsed its fee
+  the same way. Its caller subtracts the fee from the balance and offers the
+  difference as the send sheet's maximum, so an unread balance showed the
+  holder an empty wallet and an unread fee made the whole balance look
+  sendable. Both return errors now. A real zero still reads as zero. This is
+  the same rule already applied to the EVM and Tron previews and to the
+  balance-refresh engine; these were the instances left. CLI check:
+  `cargo test -p spectra_core an_unreadable_balance_is_an_error`.
+
+### Two smaller collapses
+
+- **One validator result helper:** `make_result` and `make_string_result` had
+  identical bodies and 33 call sites between them. One remains.
+- **Aptos identifiers are copied, not re-encoded:** the normalizer walked the
+  string by byte and pushed each one `as char`, which is a Latin-1 conversion
+  that silently rewrote any multi-byte sequence reaching it. An ASCII guard now
+  covers the whole function — an identifier is ASCII, and that is also what
+  makes the byte indexing below it sound — and the copy takes a `&str` slice
+  rather than casting, so the same mistake is a compile error next time.
+
+
+### Manual transaction status recheck is a core operation
+
+- Before: Swift inspected its transaction projection, reset a tracker using a
+  caller-selected finality flag, then ran automatic polling for the whole chain.
+  Failed transactions and confirmed non-finality-tracking transactions were
+  excluded by that sweep, so their recheck could make no network request. Read
+  errors were swallowed and the UI reported the old status as a successful check.
+- After: `recheck_transaction_status` takes only the stored transaction ID,
+  validates the registry's UTXO/kind capability and a 32-byte hexadecimal hash,
+  then reads that transaction on its recorded network regardless of prior status
+  or automatic backoff. CLI `txs --recheck <id>` and Swift use this operation.
+  The low-level `reset_status_tracker` export and Swift orchestration are removed.
+- Only the requested row changes. The write re-reads inside a SQLite transaction:
+  deletion or a changed hash/wallet/kind refuses the stale result; concurrent
+  metadata edits and indexed timestamps survive. Provider/decode failures and
+  mismatched response hashes report errors and preserve saved status and trackers.
+- A successful unconfirmed read clears old block/finality/confirmed-fee data and
+  resumes pending tracking. Failed-to-confirmed reads clear the old failure reason.
+  Confirmation counts and block heights are checked before narrowing integer types;
+  absent depth on a depth-tracking chain does not imply finality.
+- Rationale: explicit recheck must actually query the requested transaction,
+  never turn an unavailable provider into a status claim or resurrect a deleted row.
+  The old tracker-reset unit test is replaced by end-to-end recheck/reorg coverage.
+- CLI checks: `spectra --json txs --recheck <id> [--endpoint <read-url>]`;
+  `python3 scripts/cli-transaction-recheck.py target/debug/spectra` exercises
+  failed/confirmed/pending transitions, exact request scope and failed reads across
+  CLI processes with a local fixture. `cargo test -p spectra_core --lib explicit_recheck`
+  also covers invalid scope, finality reset and concurrent deletion/identity/metadata
+  changes. Both are included in offline acceptance.
+
+### Core runs the whole pending-transaction maintenance sweep
+
+- Before: Swift requested the stored network list, filtered it through its UI
+  refresh descriptors, pruned trackers, then launched one poll per descriptor.
+  A stored network absent from that UI directory was skipped; an empty scope
+  returned before pruning trackers for deleted or finalized transactions.
+- After: `WalletService::refresh_pending_transactions` derives the scope from
+  stored records, prunes even an empty sweep, polls the exact recorded networks
+  concurrently and returns the scope, committed changes and per-chain service
+  failures. Existing provider-failure backoff remains core-owned. A storage
+  failure is reported rather than treated as an empty wallet.
+- Swift adopts the result and handles notifications, history-view refreshes and
+  localized errors. Its in-flight guard is set before the first suspension.
+  The scope query remains a plain Rust method for CLI inspection; tracker
+  pruning is internal. The descriptor's pending-only callback is removed.
+  Reset no longer races an explicit prune against its detached wallet deletes;
+  orphan in-memory trackers are pruned from committed history on the next sweep.
+- Rationale: the UI's chain directory must not decide which stored transactions
+  receive maintenance, and one failed chain must not discard other committed
+  results. No signing or broadcasting occurs in this operation.
+- CLI checks: `spectra --json txs --refresh-pending`; `spectra txs --maintenance`
+  remains the read-only scope view. `cargo test -p spectra_core --lib
+  owned_pending_maintenance` covers mixed mainnet/testnet scope, independent
+  backoff, persisted confirmation, empty-scope cleanup and storage refusal;
+  these regressions and CLI argument checks run in offline acceptance.
 
 ### Remaining known-open verification
 

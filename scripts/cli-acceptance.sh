@@ -1089,6 +1089,15 @@ check "removes the audit wallet" $OK spectra wallet delete "Audit Aptos" --yes
 contains "Sui address matches the official SDK" "0x5e93a736d04fbb25737aa40bee40171ef79f65fae833749e3c089fe7cc2161f1" with_seed "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about" spectra --json wallet import --chain Sui --name "Audit Sui"
 check "removes the Sui audit wallet" $OK spectra wallet delete "Audit Sui" --yes
 
+section "manual status recheck"
+check "recheck rejects a missing transaction" $REJECTED spectra txs --recheck missing
+check "recheck rejects conflicting scope" $USAGE spectra txs --recheck missing --refresh-pending
+check "recheck endpoint requires a transaction" $USAGE spectra txs --endpoint http://127.0.0.1:1
+
+section "owned pending maintenance"
+contains "empty maintenance completes without network" '"chains":[]' spectra --json txs --refresh-pending
+check "maintenance rejects conflicting scope" $USAGE spectra txs --refresh-pending --poll-chain Ethereum
+
 section "Bitcoin history pagination"
 check "loads and persists every Bitcoin history page against local fixtures" $OK \
     python3 "$(dirname "$0")/cli-bitcoin-history.py" "$BIN"

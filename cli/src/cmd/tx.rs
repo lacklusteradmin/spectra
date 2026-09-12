@@ -21,6 +21,15 @@ use crate::out::{self, Out};
 
 #[derive(Args)]
 pub struct TxsArgs {
+    /// Explicit read endpoint for the rechecked transaction's stored network.
+    #[arg(long, requires = "recheck")]
+    endpoint: Option<String>,
+    /// Recheck one stored UTXO transaction, including failed or confirmed records.
+    #[arg(long, conflicts_with_all = ["refresh_pending", "maintenance", "poll_chain", "wallet", "replaceable"])]
+    recheck: Option<String>,
+    /// Poll all stored transaction networks and persist status changes.
+    #[arg(long, conflicts_with_all = ["maintenance", "poll_chain", "wallet", "replaceable"])]
+    refresh_pending: bool,
     /// Show chains whose stored transactions still need polling.
     #[arg(long)]
     maintenance: bool,
@@ -654,6 +663,49 @@ pub struct SendArgs {
 /// Transactions core has recorded locally. Distinct from `history`, which asks
 /// the chain.
 pub fn txs(ctx: &Ctx, out: Out, args: TxsArgs) -> CliResult<()> {
+    if let Some(id) = args.recheck {
+        let service = ctx.service()?;
+        if let Some(endpoint) = args.endpoint {
+            let transaction = ctx
+                .rt
+                .block_on(service.transactions())?
+                .into_iter()
+                .find(|row| row.id.eq_ignore_ascii_case(&id))
+                .ok_or_else(|| CliError::rejected("Transaction not found."))?;
+            let chain = resolve_chain(&transaction.chain_name)?;
+            ctx.rt.block_on(service.update_endpoints_typed(vec![
+                spectra_core::service::ChainEndpoints {
+                    chain_id: chain.str_id().into(),
+                    endpoints: vec![endpoint],
+                    api_key: None,
+                },
+            ]))?;
+        }
+        let change = ctx.rt.block_on(service.recheck_transaction_status(id))?;
+        out.text(|| println!("{}: {}", change.id, change.new_status));
+        out.emit(serde_json::json!({"ok": true, "change": change}));
+        return Ok(());
+    }
+    if args.refresh_pending {
+        let result = ctx
+            .rt
+            .block_on(ctx.service()?.refresh_pending_transactions())?;
+        out.text(|| {
+            println!(
+                "{} networks, {} changes, {} failures",
+                result.chains.len(),
+                result.changes.len(),
+                result.failures.len()
+            )
+        });
+        out.emit(serde_json::json!({"ok": result.failures.is_empty(), "maintenance": result}));
+        if !result.failures.is_empty() {
+            return Err(CliError::rejected(
+                "pending maintenance failed for one or more networks",
+            ));
+        }
+        return Ok(());
+    }
     if args.maintenance {
         let chains = ctx
             .rt

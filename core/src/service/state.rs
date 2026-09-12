@@ -3,6 +3,82 @@
 
 use super::*;
 
+/// Where this service's state is persisted, and the handle keeping it open.
+///
+/// Two fields before, each an `Option` behind its own lock. `state_db_path`
+/// was read by eleven call sites that re-open by path; `state_database` was
+/// read by none — it holds the strong `Arc` that keeps the connection alive,
+/// because the process-wide handle index behind `WalletDatabase` keeps only
+/// `Weak`s. They have to be bound and unbound together, and nothing made them:
+/// `open_state` wrote both, one lock at a time, and a reader between the two
+/// writes saw a path with no connection behind it.
+///
+/// Bound or unbound is one fact, so it is one `Option` and one transition.
+#[derive(Default)]
+pub struct StateBinding {
+    bound: AsyncRwLock<Option<BoundState>>,
+}
+
+struct BoundState {
+    path: String,
+    /// Held, never read. Dropping it closes the connection under everyone
+    /// still using the path above.
+    _connection: Arc<crate::wallet_db::WalletDatabase>,
+}
+
+impl StateBinding {
+    /// Bind both halves at once.
+    pub(crate) async fn bind(
+        &self,
+        path: String,
+        connection: Arc<crate::wallet_db::WalletDatabase>,
+    ) {
+        *self.bound.write().await = Some(BoundState {
+            path,
+            _connection: connection,
+        });
+    }
+
+    /// The database this service writes to, or `None` while it runs in memory.
+    pub(crate) async fn path(&self) -> Option<String> {
+        self.bound.read().await.as_ref().map(|b| b.path.clone())
+    }
+
+    /// Whether this service is already bound to `path`.
+    pub(crate) async fn is_bound_to(&self, path: &str) -> bool {
+        self.bound
+            .read()
+            .await
+            .as_ref()
+            .is_some_and(|b| b.path == path)
+    }
+
+    /// The live connection handle.
+    ///
+    /// Test affordance: nothing in production reads it, because holding it is
+    /// the whole job — but that is exactly the property worth a test, so the
+    /// one test that checks rebinding drops the old connection needs a way to
+    /// see it.
+    #[cfg(test)]
+    pub(crate) async fn connection(&self) -> Option<Arc<crate::wallet_db::WalletDatabase>> {
+        self.bound
+            .read()
+            .await
+            .as_ref()
+            .map(|b| b._connection.clone())
+    }
+
+    /// The database this service writes to, or the error every caller that
+    /// needs one raises.
+    pub(crate) async fn required_path(&self) -> Result<String, SpectraBridgeError> {
+        self.path().await.ok_or_else(|| {
+            SpectraBridgeError::from(
+                "transaction store not opened: call open_state first".to_string(),
+            )
+        })
+    }
+}
+
 #[uniffi::export(async_runtime = "tokio")]
 impl WalletService {
     /// Load the JSON state blob stored under `key` in the SQLite database at
@@ -51,7 +127,7 @@ impl WalletService {
             // (the app's launch reload racing a user action) would otherwise
             // replace the in-memory state with a snapshot taken before the newer
             // command, silently reverting it.
-            if service.state_db_path.read().await.as_deref() == Some(db_path.as_str()) {
+            if service.state_binding.is_bound_to(&db_path).await {
                 return Ok(service.wallet_state.read().await.clone());
             }
 
@@ -94,12 +170,10 @@ impl WalletService {
                     .push(record);
             }
 
-            *service.keypool.write().await = keypool;
-            *service.owned_addresses.write().await = by_chain;
+            service.keypool.write().await.load(keypool, by_chain);
 
-            *service.state_database.write().await = Some(database);
             let db_path_for_seed = db_path.clone();
-            *service.state_db_path.write().await = Some(db_path);
+            service.state_binding.bind(db_path, database).await;
             // The token list is the catalog plus whatever the user added, so
             // opening seeds it. A caller that forgot to ask for the merge
             // otherwise held a list with no built-ins in it at all — which is
@@ -622,7 +696,7 @@ impl WalletService {
         F: FnOnce(&mut CoreAppState) -> Vec<crate::store::state::StateEvent> + Send + 'static,
     {
         self.write_persisted(move |service| async move {
-            let path = service.state_db_path.read().await.clone();
+            let path = service.state_binding.path().await;
             let (snapshot, events, changes, removed, reset_chains) = {
                 let before = service.wallet_state.read().await;
                 let mut state = before.clone();
@@ -691,17 +765,14 @@ impl WalletService {
                 });
             }
 
-            service.keypool.write().await.retain(|key, _| {
-                key.split_once('|').is_none_or(|(id, chain)| {
-                    !removed.iter().any(|r| r == id) && !reset_chains.iter().any(|c| c == chain)
-                })
-            });
-            let mut owned = service.owned_addresses.write().await;
-            owned.retain(|chain, _| !reset_chains.contains(chain));
-            for rows in owned.values_mut() {
-                rows.retain(|row| !removed.contains(&row.wallet_id));
-            }
-            drop(owned);
+            // Both tables under one lock and in one call: forgetting an index
+            // without forgetting the addresses it issued — or the reverse — is
+            // how the same address gets handed out twice.
+            service
+                .keypool
+                .write()
+                .await
+                .forget(&removed, &reset_chains);
             *service.wallet_state.write().await = snapshot.clone();
             // The HTTP layer reads the Tor policy per request rather than the
             // store, so a change to either flag is pushed as it lands.
@@ -789,12 +860,12 @@ impl WalletService {
     }
 
     /// The bound state database, or an error naming what the caller skipped.
+    ///
+    /// Kept as a method on the service because twelve call sites read it and
+    /// `self.state_binding.required_path()` at each of them reaches through the
+    /// service to say the same thing.
     pub(super) async fn bound_state_db_path(&self) -> Result<String, SpectraBridgeError> {
-        self.state_db_path.read().await.clone().ok_or_else(|| {
-            SpectraBridgeError::from(
-                "transaction store not opened: call open_state first".to_string(),
-            )
-        })
+        self.state_binding.required_path().await
     }
 }
 

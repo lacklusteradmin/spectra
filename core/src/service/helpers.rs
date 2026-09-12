@@ -126,23 +126,32 @@ pub(super) fn format_decimals(raw: u128, decimals: u8) -> String {
 pub(super) fn summary_display_balance(
     chain_id: &str,
     summary: &crate::service::types::NativeBalanceSummary,
-) -> f64 {
-    let Some(chain) = Chain::from_str_id(chain_id) else {
-        return 0.0;
+) -> Result<f64, SpectraBridgeError> {
+    // A balance nobody could read is not a balance of zero. Every one of these
+    // used to answer `0.0`, and the one caller subtracts a fee from the result
+    // and offers the difference as the send sheet's maximum: an unreadable
+    // amount showed the holder an empty wallet, and an unknown chain showed
+    // every holder one.
+    let unreadable = |field: &str, value: &str| {
+        SpectraBridgeError::from(format!("{chain_id} {field}: not a number: {value:?}"))
     };
+    let chain = chain_for_id(chain_id)?;
     // NEAR's smallest unit is 10^24 yocto. Dividing that through an f64 loses
     // precision well before the decimal point, so the client's own display
     // string is the better source — the one chain where the old JSON version
     // also preferred `near_display` over dividing `yocto_near` itself.
     if chain == Chain::Near {
-        return summary.amount_display.parse::<f64>().unwrap_or(0.0);
+        return summary
+            .amount_display
+            .parse::<f64>()
+            .map_err(|_| unreadable("amount_display", &summary.amount_display));
     }
     let factor = 10f64.powi(chain.native_decimals() as i32);
     summary
         .smallest_unit
         .parse::<f64>()
         .map(|units| units / factor)
-        .unwrap_or(0.0)
+        .map_err(|_| unreadable("smallest_unit", &summary.smallest_unit))
 }
 
 /// The same scaling for a token, whose decimals come off its contract rather
@@ -351,7 +360,7 @@ mod display_balance_from_a_typed_summary {
             ("cardano", "1500000", 1.5),       // 6 decimals, was "lovelace"
             ("tron", "1500000", 1.5),          // 6 decimals, was "sun"
         ] {
-            let got = summary_display_balance(chain_id, &summary(smallest, "ignored"));
+            let got = summary_display_balance(chain_id, &summary(smallest, "ignored")).unwrap();
             assert!(
                 (got - expected).abs() < 1e-9,
                 "{chain_id}: {smallest} -> {got}, expected {expected}"
@@ -366,7 +375,7 @@ mod display_balance_from_a_typed_summary {
     #[test]
     fn near_reads_the_display_string_rather_than_dividing_yocto() {
         let s = summary("100000000000000000000000", "0.1");
-        assert_eq!(summary_display_balance("near", &s), 0.1);
+        assert_eq!(summary_display_balance("near", &s).unwrap(), 0.1);
         // And the smallest-unit path would not have produced it exactly.
         let divided = 1e23 / 10f64.powi(24);
         assert!(
@@ -375,11 +384,19 @@ mod display_balance_from_a_typed_summary {
         );
     }
 
-    /// An unknown chain is 0.0, not a panic — same as before.
+    /// What cannot be read is refused, not reported as an empty wallet.
+    ///
+    /// All three of these answered `0.0`, and the caller subtracts a fee from
+    /// the result and offers the difference as the send sheet's maximum — so a
+    /// balance nobody could read showed the holder nothing to send.
     #[test]
-    fn an_unknown_chain_is_zero() {
+    fn an_unreadable_balance_is_an_error_and_not_an_empty_wallet() {
+        assert!(summary_display_balance("not-a-chain", &summary("100", "1")).is_err());
+        assert!(summary_display_balance("solana", &summary("not-a-number", "1")).is_err());
+        assert!(summary_display_balance("near", &summary("100", "not-a-number")).is_err());
+        // A real zero still reads as zero.
         assert_eq!(
-            summary_display_balance("not-a-chain", &summary("100", "1")),
+            summary_display_balance("solana", &summary("0", "0")).unwrap(),
             0.0
         );
     }

@@ -5,7 +5,6 @@ use clap::Args;
 use colored::Colorize as _;
 use spectra_core::price::PriceRequestCoin;
 use spectra_core::registry::Chain;
-use spectra_core::service::WalletService;
 use spectra_core::store::state::StateCommand;
 use std::collections::BTreeSet;
 
@@ -289,10 +288,10 @@ pub(super) fn spot_price_usd(
             coin_gecko_id: chain.coin_gecko_id().to_string(),
         })
         .collect();
-    // Pricing needs no chain endpoints — it is not a per-chain RPC call.
-    let service = WalletService::new_typed(Vec::new()).map_err(CliError::from)?;
+    // Pricing needs no chain endpoints, and now no service either: the read
+    // is a function over the coins asked about.
     ctx.rt
-        .block_on(service.fetch_prices_typed(requests))
+        .block_on(spectra_core::service::fetch_prices_typed(requests))
         .map_err(CliError::from)
 }
 
@@ -316,10 +315,11 @@ fn fiat_conversion(ctx: &Ctx) -> CliResult<(f64, String)> {
     if code == "USD" {
         return Ok((1.0, code));
     }
-    let service = WalletService::new_typed(Vec::new()).map_err(CliError::from)?;
     let rates = ctx
         .rt
-        .block_on(service.fetch_fiat_rates_typed(vec![code.clone()]));
+        .block_on(spectra_core::service::fetch_fiat_rates_typed(vec![
+            code.clone()
+        ]));
     Ok(match rates.map(|rates| rates.get(&code).copied()) {
         Ok(Some(rate)) if rate > 0.0 => (rate, code),
         _ => (1.0, "USD".to_string()),

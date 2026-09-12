@@ -636,7 +636,8 @@ mod a_preview_quotes_the_asset_it_moves {
                 "TR7NHqjeKQxGTCi8q8ZY4pL8otgjLj6t".into(),
             )
             .await
-            .expect("preview").expect("valid typed preview");
+            .expect("preview")
+            .expect("valid typed preview");
 
         assert_eq!(value.spendableBalance, 4.2);
         assert_eq!(value.maxSendable, 4.2);

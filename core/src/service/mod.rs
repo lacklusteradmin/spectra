@@ -86,12 +86,14 @@ mod maintenance;
 mod network;
 mod network_balance;
 mod network_hd;
+pub use network_hd::derive_bitcoin_account_xpub_typed;
 mod network_history;
 mod network_prices;
-pub use network_prices::QuoteRefreshState;
+pub use network_prices::{fetch_fiat_rates_typed, fetch_prices_typed, QuoteRefreshState};
 mod network_tokens;
 mod operational_events;
 mod pending_status;
+pub use pending_status::{PendingMaintenanceFailure, PendingMaintenanceResult};
 mod send_broadcast;
 mod send_destination;
 mod send_execution;
@@ -102,6 +104,7 @@ mod send_records;
 mod send_signing;
 mod standalone;
 mod state;
+mod transaction_recheck;
 mod transactions;
 mod types;
 mod wallet_import;
@@ -147,8 +150,7 @@ impl EndpointIndex {
 pub struct WalletService {
     quote_refresh_lock: Arc<tokio::sync::Mutex<()>>,
     pub(crate) trc20_metadata: Arc<crate::fetch::chains::tron::MetadataCache>,
-    /// Retains the opened database connection for this service lifetime.
-    pub(crate) state_database: Arc<AsyncRwLock<Option<Arc<crate::wallet_db::WalletDatabase>>>>,
+
     /// Serializes persistent mutations, including database binding.
     pub(crate) state_writer: Arc<tokio::sync::Mutex<()>>,
     pub(crate) endpoints: Arc<AsyncRwLock<EndpointIndex>>,
@@ -158,10 +160,10 @@ pub struct WalletService {
     pub(crate) secret_store: Arc<std::sync::RwLock<Option<Arc<dyn SecretStore>>>>,
     /// Canonical in-memory wallet + holdings state.
     pub(crate) wallet_state: Arc<AsyncRwLock<CoreAppState>>,
-    /// Where `wallet_state` is persisted. `None` until `open_state` is called,
-    /// in which case commands apply in memory only — the shape tests and
-    /// short-lived tools want.
-    pub(crate) state_db_path: Arc<AsyncRwLock<Option<String>>>,
+    /// Where `wallet_state` is persisted, and the handle keeping it open.
+    /// Unbound until `open_state` is called, in which case commands apply in
+    /// memory only — the shape tests and short-lived tools want that.
+    pub(crate) state_binding: Arc<crate::service::state::StateBinding>,
     /// User's Etherscan V2 API key. Shared across all EVM chains: Etherscan v2
     /// dispatches by `chainid` parameter against a single host.
     pub(crate) etherscan_api_key: Arc<std::sync::RwLock<String>>,
@@ -169,21 +171,14 @@ pub struct WalletService {
     /// a restart should re-poll every pending transaction immediately, which is
     /// what an absent tracker already means.
     pub(crate) status_trackers: Arc<AsyncRwLock<HashMap<String, TransactionStatusTrackerState>>>,
-    /// Keypool indices, keyed by `wallet_id|chain_name`.
+    /// Keypool indices and the addresses already issued from them.
     ///
-    /// Unlike `status_trackers` this IS persisted — losing it means reissuing
-    /// an address that was already handed out. Held in memory so that
-    /// reserve-and-increment can happen atomically under one lock; every
-    /// mutation writes through to `wallet_keypool` before returning.
-    pub(crate) keypool: Arc<AsyncRwLock<HashMap<String, crate::wallet_db::KeypoolState>>>,
-    /// Addresses this wallet is known to own, keyed by chain name.
-    ///
-    /// Persisted like the keypool and for the same reason: the keypool
-    /// baseline is computed from the highest index already handed out, so
-    /// losing the table means reissuing an address. Held in memory because
-    /// every keypool operation reads it under the keypool's own lock.
-    pub(crate) owned_addresses:
-        Arc<AsyncRwLock<HashMap<String, Vec<crate::wallet_db::OwnedAddressRecord>>>>,
+    /// Persisted, unlike `status_trackers`, because losing either table means
+    /// handing out an address somebody already holds. Held in memory so that
+    /// reserve-and-increment happens atomically under one lock; every mutation
+    /// writes through to `wallet_keypool` before returning. The two tables are
+    /// one type and one lock — see [`crate::service::keypool::Keypool`].
+    pub(crate) keypool: Arc<crate::service::keypool::Keypool>,
     /// When each kind of refresh last ran, in unix seconds.
     ///
     /// Not persisted, and that is the whole difference from the keypool: a
@@ -219,18 +214,16 @@ impl WalletService {
         });
         Ok(Arc::new(Self {
             trc20_metadata: Arc::new(crate::fetch::chains::tron::MetadataCache::default()),
-            state_database: Arc::new(AsyncRwLock::new(None)),
             quote_refresh_lock: Arc::new(tokio::sync::Mutex::new(())),
             state_writer: Arc::new(tokio::sync::Mutex::new(())),
             endpoints: Arc::new(AsyncRwLock::new(EndpointIndex::from_list(endpoints))),
             history_pagination: Arc::new(HistoryPaginationStore::new()),
             secret_store: Arc::new(std::sync::RwLock::new(None)),
             wallet_state: Arc::new(AsyncRwLock::new(CoreAppState::default())),
-            state_db_path: Arc::new(AsyncRwLock::new(None)),
+            state_binding: Arc::new(crate::service::state::StateBinding::default()),
             etherscan_api_key: Arc::new(std::sync::RwLock::new(String::new())),
             status_trackers: Arc::new(AsyncRwLock::new(HashMap::new())),
-            keypool: Arc::new(AsyncRwLock::new(HashMap::new())),
-            owned_addresses: Arc::new(AsyncRwLock::new(HashMap::new())),
+            keypool: Arc::new(crate::service::keypool::Keypool::default()),
             refresh_clock: Arc::new(AsyncRwLock::new(Default::default())),
         }))
     }

@@ -19,7 +19,7 @@ impl WalletService {
                     .await
             }
             ExecuteSendParams::Token(token) => {
-                self.sign_and_broadcast_token(chain, token, endpoints).await
+                sign_and_broadcast_token(chain, token, endpoints).await
             }
         }
     }
@@ -57,10 +57,7 @@ impl WalletService {
                 let r = bitcoin_sign_and_broadcast(&client, send_params).await?;
                 Ok(serde_json::to_string(&r)?)
             }
-            SendParams::Utxo(p) => {
-                self.sign_and_broadcast_shared_utxo(chain, p, endpoints)
-                    .await
-            }
+            SendParams::Utxo(p) => sign_and_broadcast_shared_utxo(chain, p, endpoints).await,
             SendParams::Zcash(p) => {
                 let priv_bytes = decode_private_key(&p.private_key_hex)?;
                 let client = ZcashClient::new(endpoints);
@@ -368,154 +365,157 @@ impl WalletService {
             }
         }
     }
+}
 
-    /// The five chains that share one signing shape: amount, flat fee, dust
-    /// threshold, private key. Which client answers follows from the chain,
-    /// because `build_send_params` never wraps one chain's params in a
-    /// `SendParams::Utxo` meant for another.
-    pub(super) async fn sign_and_broadcast_shared_utxo(
-        &self,
-        chain: Chain,
-        p: crate::service::send_params::UtxoFixedFeeSendParams,
-        endpoints: Arc<Vec<String>>,
-    ) -> Result<String, SpectraBridgeError> {
-        let key = decode_private_key(&p.private_key_hex)?;
-        let fee = fee_or_static(chain, p.fee_sat);
-        let dust = p.dust_threshold_sats;
+/// The five chains that share one signing shape: amount, flat fee, dust
+/// threshold, private key. Which client answers follows from the chain,
+/// because `build_send_params` never wraps one chain's params in a
+/// `SendParams::Utxo` meant for another.
+///
+/// A free function: it took `&self` and never read it. Everything it needs
+/// arrives in its arguments, so hanging it off the service only widened what
+/// a reader has to consider to understand it.
+pub(super) async fn sign_and_broadcast_shared_utxo(
+    chain: Chain,
+    p: crate::service::send_params::UtxoFixedFeeSendParams,
+    endpoints: Arc<Vec<String>>,
+) -> Result<String, SpectraBridgeError> {
+    let key = decode_private_key(&p.private_key_hex)?;
+    let fee = fee_or_static(chain, p.fee_sat);
+    let dust = p.dust_threshold_sats;
 
-        match chain {
-            Chain::Dogecoin => {
-                let client = DogecoinClient::new(endpoints);
-                json_response(
-                    &client
-                        .sign_and_broadcast(&p.from, &p.to, p.amount_sat, fee, &key, dust)
-                        .await?,
-                )
-            }
-            Chain::BitcoinSV => {
-                let client = BitcoinSvClient::new(endpoints);
-                json_response(
-                    &client
-                        .sign_and_broadcast(&p.from, &p.to, p.amount_sat, fee, &key, dust)
-                        .await?,
-                )
-            }
-            Chain::Litecoin => {
-                let client = LitecoinClient::new(endpoints);
-                json_response(
-                    &client
-                        .sign_and_broadcast(&p.from, &p.to, p.amount_sat, fee, &key, dust)
-                        .await?,
-                )
-            }
-            Chain::BitcoinCash => {
-                let client = BitcoinCashClient::new(endpoints);
-                json_response(
-                    &client
-                        .sign_and_broadcast(&p.from, &p.to, p.amount_sat, fee, &key, dust)
-                        .await?,
-                )
-            }
-            Chain::BitcoinGold => {
-                let client = BitcoinGoldClient::new(endpoints);
-                json_response(
-                    &client
-                        .sign_and_broadcast(&p.from, &p.to, p.amount_sat, fee, &key, dust)
-                        .await?,
-                )
-            }
-            Chain::Dash => {
-                let client = DashClient::new(endpoints);
-                json_response(
-                    &client
-                        .sign_and_broadcast(&p.from, &p.to, p.amount_sat, fee, &key, dust)
-                        .await?,
-                )
-            }
-            c => Err(SpectraBridgeError::from(format!(
-                "sign_and_broadcast_send: {c:?} does not use the shared UTXO shape"
-            ))),
+    match chain {
+        Chain::Dogecoin => {
+            let client = DogecoinClient::new(endpoints);
+            json_response(
+                &client
+                    .sign_and_broadcast(&p.from, &p.to, p.amount_sat, fee, &key, dust)
+                    .await?,
+            )
         }
+        Chain::BitcoinSV => {
+            let client = BitcoinSvClient::new(endpoints);
+            json_response(
+                &client
+                    .sign_and_broadcast(&p.from, &p.to, p.amount_sat, fee, &key, dust)
+                    .await?,
+            )
+        }
+        Chain::Litecoin => {
+            let client = LitecoinClient::new(endpoints);
+            json_response(
+                &client
+                    .sign_and_broadcast(&p.from, &p.to, p.amount_sat, fee, &key, dust)
+                    .await?,
+            )
+        }
+        Chain::BitcoinCash => {
+            let client = BitcoinCashClient::new(endpoints);
+            json_response(
+                &client
+                    .sign_and_broadcast(&p.from, &p.to, p.amount_sat, fee, &key, dust)
+                    .await?,
+            )
+        }
+        Chain::BitcoinGold => {
+            let client = BitcoinGoldClient::new(endpoints);
+            json_response(
+                &client
+                    .sign_and_broadcast(&p.from, &p.to, p.amount_sat, fee, &key, dust)
+                    .await?,
+            )
+        }
+        Chain::Dash => {
+            let client = DashClient::new(endpoints);
+            json_response(
+                &client
+                    .sign_and_broadcast(&p.from, &p.to, p.amount_sat, fee, &key, dust)
+                    .await?,
+            )
+        }
+        c => Err(SpectraBridgeError::from(format!(
+            "sign_and_broadcast_send: {c:?} does not use the shared UTXO shape"
+        ))),
     }
+}
 
-    /// Token transfers: the four chains whose tokens Spectra can send.
-    pub(super) async fn sign_and_broadcast_token(
-        &self,
-        chain: Chain,
-        token: crate::service::send_params::SendTokenParams,
-        endpoints: Arc<Vec<String>>,
-    ) -> Result<String, SpectraBridgeError> {
-        use crate::service::send_params::SendTokenParams;
-        match token {
-            SendTokenParams::Evm(p, overrides) => {
-                let priv_bytes = decode_private_key(&p.private_key_hex)?;
-                let client = EvmClient::new(endpoints, chain.evm_chain_id());
-                let r = client
-                    .sign_and_broadcast_erc20_with_overrides(
-                        &p.from,
-                        &p.contract,
-                        &p.to,
-                        p.amount_raw,
-                        &priv_bytes,
-                        overrides,
-                    )
-                    .await?;
-                Ok(serde_json::to_string(&r)?)
-            }
-            SendTokenParams::Tron(p) => {
-                // Tron — TRC-20. Addresses are base58, amount is in token
-                // units, `fee_limit_sun` defaults to 100 TRX
-                // (100_000_000 sun), which covers typical USDT transfers
-                // (roughly 13-25 TRX actual cost).
-                let priv_bytes = decode_private_key(&p.private_key_hex)?;
-                let client = TronClient::new(endpoints);
-                let r = client
-                    .sign_and_broadcast_trc20(
-                        &p.from,
-                        &p.contract,
-                        &p.to,
-                        p.amount_raw,
-                        p.fee_limit_sun.unwrap_or(100_000_000),
-                        &priv_bytes,
-                    )
-                    .await?;
-                Ok(serde_json::to_string(&r)?)
-            }
-            SendTokenParams::Near(p) => {
-                // NEAR — NEP-141 fungible token transfer (ft_transfer).
-                let priv_arr = decode_secret_array::<32>(&p.private_key_hex)?;
-                let pub_arr: [u8; 32] = decode_hex_array(&p.public_key_hex, "public_key_hex")?;
-                let client = NearClient::new(endpoints);
-                let r = client
-                    .sign_and_broadcast_ft_transfer(
-                        &p.from,
-                        &p.contract,
-                        &p.to,
-                        p.amount_raw,
-                        &priv_arr,
-                        &pub_arr,
-                        p.gas_tgas,
-                    )
-                    .await?;
-                Ok(serde_json::to_string(&r)?)
-            }
-            SendTokenParams::Solana(p) => {
-                // Solana — SPL token transfer with idempotent ATA create.
-                let from_arr: [u8; 32] = decode_hex_array(&p.from_pubkey_hex, "from_pubkey_hex")?;
-                let priv_arr = crate::send::keys::Ed25519Seed::from_hex(&p.private_key_hex)?;
-                let client = SolanaClient::new(endpoints);
-                let r = client
-                    .sign_and_broadcast_spl(
-                        &from_arr,
-                        &p.to,
-                        &p.mint,
-                        p.amount_raw,
-                        p.decimals,
-                        &priv_arr,
-                    )
-                    .await?;
-                Ok(serde_json::to_string(&r)?)
-            }
+/// Token transfers: the four chains whose tokens Spectra can send. Free for
+/// the same reason as the shared-UTXO signer above.
+pub(super) async fn sign_and_broadcast_token(
+    chain: Chain,
+    token: crate::service::send_params::SendTokenParams,
+    endpoints: Arc<Vec<String>>,
+) -> Result<String, SpectraBridgeError> {
+    use crate::service::send_params::SendTokenParams;
+    match token {
+        SendTokenParams::Evm(p, overrides) => {
+            let priv_bytes = decode_private_key(&p.private_key_hex)?;
+            let client = EvmClient::new(endpoints, chain.evm_chain_id());
+            let r = client
+                .sign_and_broadcast_erc20_with_overrides(
+                    &p.from,
+                    &p.contract,
+                    &p.to,
+                    p.amount_raw,
+                    &priv_bytes,
+                    overrides,
+                )
+                .await?;
+            Ok(serde_json::to_string(&r)?)
+        }
+        SendTokenParams::Tron(p) => {
+            // Tron — TRC-20. Addresses are base58, amount is in token
+            // units, `fee_limit_sun` defaults to 100 TRX
+            // (100_000_000 sun), which covers typical USDT transfers
+            // (roughly 13-25 TRX actual cost).
+            let priv_bytes = decode_private_key(&p.private_key_hex)?;
+            let client = TronClient::new(endpoints);
+            let r = client
+                .sign_and_broadcast_trc20(
+                    &p.from,
+                    &p.contract,
+                    &p.to,
+                    p.amount_raw,
+                    p.fee_limit_sun.unwrap_or(100_000_000),
+                    &priv_bytes,
+                )
+                .await?;
+            Ok(serde_json::to_string(&r)?)
+        }
+        SendTokenParams::Near(p) => {
+            // NEAR — NEP-141 fungible token transfer (ft_transfer).
+            let priv_arr = decode_secret_array::<32>(&p.private_key_hex)?;
+            let pub_arr: [u8; 32] = decode_hex_array(&p.public_key_hex, "public_key_hex")?;
+            let client = NearClient::new(endpoints);
+            let r = client
+                .sign_and_broadcast_ft_transfer(
+                    &p.from,
+                    &p.contract,
+                    &p.to,
+                    p.amount_raw,
+                    &priv_arr,
+                    &pub_arr,
+                    p.gas_tgas,
+                )
+                .await?;
+            Ok(serde_json::to_string(&r)?)
+        }
+        SendTokenParams::Solana(p) => {
+            // Solana — SPL token transfer with idempotent ATA create.
+            let from_arr: [u8; 32] = decode_hex_array(&p.from_pubkey_hex, "from_pubkey_hex")?;
+            let priv_arr = crate::send::keys::Ed25519Seed::from_hex(&p.private_key_hex)?;
+            let client = SolanaClient::new(endpoints);
+            let r = client
+                .sign_and_broadcast_spl(
+                    &from_arr,
+                    &p.to,
+                    &p.mint,
+                    p.amount_raw,
+                    p.decimals,
+                    &priv_arr,
+                )
+                .await?;
+            Ok(serde_json::to_string(&r)?)
         }
     }
 }

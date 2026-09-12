@@ -53,7 +53,19 @@ pub(super) fn needs_status_poll(
         && (status == Some(S::Pending) || (finality && status == Some(S::Confirmed)))
 }
 
-#[uniffi::export(async_runtime = "tokio")]
+#[derive(Debug, Clone, serde::Serialize, uniffi::Record)]
+pub struct PendingMaintenanceFailure {
+    pub chain_id: String,
+    pub message: String,
+}
+
+#[derive(Debug, Clone, serde::Serialize, uniffi::Record)]
+pub struct PendingMaintenanceResult {
+    pub chains: Vec<String>,
+    pub changes: Vec<TransactionStatusChange>,
+    pub failures: Vec<PendingMaintenanceFailure>,
+}
+
 impl WalletService {
     /// The registry decides which stored records still need maintenance.
     pub async fn pending_maintenance_chains(&self) -> Result<Vec<String>, SpectraBridgeError> {
@@ -73,6 +85,41 @@ impl WalletService {
             }
         }
         Ok(chains.into_iter().collect())
+    }
+}
+
+#[uniffi::export(async_runtime = "tokio")]
+impl WalletService {
+    /// Run maintenance for the exact networks of stored transactions, independent
+    /// of a front end's visible chain catalog. Keep successful changes when a
+    /// different chain fails; provider failures retain their per-record backoff.
+    pub async fn refresh_pending_transactions(
+        &self,
+    ) -> Result<PendingMaintenanceResult, SpectraBridgeError> {
+        self.prune_status_trackers().await?;
+        let chains = self.pending_maintenance_chains().await?;
+        let outcomes = futures::future::join_all(
+            chains
+                .iter()
+                .map(|chain| self.poll_pending_transactions(chain.clone())),
+        )
+        .await;
+        let mut changes = Vec::new();
+        let mut failures = Vec::new();
+        for (chain_id, outcome) in chains.iter().zip(outcomes) {
+            match outcome {
+                Ok(updated) => changes.extend(updated),
+                Err(error) => failures.push(PendingMaintenanceFailure {
+                    chain_id: chain_id.clone(),
+                    message: error.to_string(),
+                }),
+            }
+        }
+        Ok(PendingMaintenanceResult {
+            chains,
+            changes,
+            failures,
+        })
     }
 
     /// Poll one chain's pending transactions and apply what came back.
@@ -620,7 +667,36 @@ mod tests {
         assert_eq!(count, 1);
     }
     #[tokio::test]
-    async fn audit_fix5_poll_uses_recorded_network_after_settings_change() {
+    async fn owned_pending_maintenance_prunes_even_when_no_network_needs_polling() {
+        let (service, _) = stored_service().await;
+        service
+            .record_status_poll("deleted".into(), crate::service::StatusPollOutcome::Failed)
+            .await;
+        let result = service.refresh_pending_transactions().await.unwrap();
+        assert!(result.chains.is_empty());
+        assert!(result.changes.is_empty());
+        assert!(result.failures.is_empty());
+        assert!(service.status_trackers.read().await.is_empty());
+    }
+
+    #[tokio::test]
+    async fn owned_pending_maintenance_refuses_unopened_and_corrupt_storage() {
+        let unopened = WalletService::new_typed(vec![]).unwrap();
+        assert!(unopened.refresh_pending_transactions().await.is_err());
+        let (service, path) = stored_service().await;
+        service
+            .record_status_poll("keep".into(), crate::service::StatusPollOutcome::Failed)
+            .await;
+        rusqlite::Connection::open(path)
+            .unwrap()
+            .execute("DROP TABLE history_records", [])
+            .unwrap();
+        assert!(service.refresh_pending_transactions().await.is_err());
+        assert!(service.status_trackers.read().await.contains_key("keep"));
+    }
+
+    #[tokio::test]
+    async fn audit_fix5_owned_pending_maintenance_uses_recorded_network_after_settings_change() {
         use wiremock::{matchers::any, Mock, MockServer, ResponseTemplate};
         let mainnet = MockServer::start().await;
         let sepolia = MockServer::start().await;
@@ -649,13 +725,35 @@ mod tests {
             ))])
             .await
             .unwrap();
-        // Defaults select mainnet; historical Sepolia hashes must stay on Sepolia.
         service
-            .poll_pending_transactions("ethereum-sepolia".into())
+            .upsert_history_records(vec![crate::wallet_db::history_record_from_payload(record(
+                "mainnet-backoff",
+                Chain::Ethereum,
+                json!({}),
+            ))])
             .await
             .unwrap();
+        for _ in 0..2 {
+            service
+                .record_status_poll(
+                    "mainnet-backoff".into(),
+                    crate::service::StatusPollOutcome::Failed,
+                )
+                .await;
+        }
+        // Defaults select mainnet; historical Sepolia hashes must stay on Sepolia.
+        let result = service.refresh_pending_transactions().await.unwrap();
+        assert_eq!(result.chains, vec!["ethereum", "ethereum-sepolia"]);
+        assert_eq!(result.changes.len(), 1);
+        assert!(result.failures.is_empty());
         assert!(mainnet.received_requests().await.unwrap().is_empty());
-        let row = service.transactions().await.unwrap().remove(0);
+        let row = service
+            .transactions()
+            .await
+            .unwrap()
+            .into_iter()
+            .find(|r| r.id == "sepolia-pending")
+            .unwrap();
         assert_eq!(
             row.status,
             Some(crate::store::wallet_domain::CoreTransactionStatus::Confirmed)

@@ -169,62 +169,6 @@ impl WalletService {
             .map_err(Into::into)
     }
 
-    /// Force `transaction_id` to be polled on the next sweep.
-    ///
-    /// `clear_finality` re-opens a transaction that had already been treated as
-    /// final — the UTXO chains do this when a reorg is suspected.
-    pub async fn reset_status_tracker(&self, transaction_id: String, clear_finality: bool) {
-        let now_unix = crate::store::wallet_db::now_secs() as f64;
-        let mut trackers = self.status_trackers.write().await;
-        let entry = trackers
-            .entry(transaction_id)
-            .or_insert_with(|| TransactionStatusTrackerState::initial(now_unix));
-        entry.next_check_at_unix = f64::NEG_INFINITY;
-        if clear_finality {
-            entry.reached_finality = false;
-        }
-    }
-
-    /// Drop trackers for transactions that no longer exist.
-    /// Keep only these trackers and forget the rest.
-    ///
-    /// `clear_status_trackers()` was a second name for this with an empty list,
-    /// and one call site already spelled it that way.
-    /// Drop trackers for transactions nothing polls any more.
-    ///
-    /// Refuses when no database is bound rather than reading "core holds no
-    /// transactions" as "none exist": dropping a live tracker stops a pending
-    /// send from ever being polled again, where keeping a stale one costs a
-    /// poll.
-    ///
-    /// Took the ids to keep, which meant the front end filtered core's own
-    /// transaction table — by kind, by chain, by status, and by the chain's
-    /// `pending_status_poll` shape — and told core the answer. Every one of
-    /// those is core's, so core works it out.
-    pub async fn prune_status_trackers(&self) -> Result<(), SpectraBridgeError> {
-        let live: std::collections::HashSet<String> = self
-            .transactions()
-            .await?
-            .into_iter()
-            .filter(|record| {
-                Chain::from_display_name(&record.chain_name).is_some_and(|chain| {
-                    super::pending_status::needs_status_poll(
-                        record.kind,
-                        record.status,
-                        record.transaction_hash.as_deref(),
-                        chain.pending_status_poll(),
-                    )
-                })
-            })
-            .map(|record| record.id)
-            .collect();
-        self.status_trackers
-            .write()
-            .await
-            .retain(|id, _| live.contains(id));
-        Ok(())
-    }
-
     /// Pending transactions old enough, and failing often enough, to be treated
     /// as failed. Failure counts come from core's own trackers.
     /// Sends on `chain_name` that have been pending too long and failed to
@@ -283,6 +227,46 @@ impl WalletService {
 }
 
 impl WalletService {
+    /// Drop trackers for transactions that no longer exist.
+    /// Keep only these trackers and forget the rest.
+    ///
+    /// `clear_status_trackers()` was a second name for this with an empty list,
+    /// and one call site already spelled it that way.
+    /// Drop trackers for transactions nothing polls any more.
+    ///
+    /// Refuses when no database is bound rather than reading "core holds no
+    /// transactions" as "none exist": dropping a live tracker stops a pending
+    /// send from ever being polled again, where keeping a stale one costs a
+    /// poll.
+    ///
+    /// Took the ids to keep, which meant the front end filtered core's own
+    /// transaction table — by kind, by chain, by status, and by the chain's
+    /// `pending_status_poll` shape — and told core the answer. Every one of
+    /// those is core's, so core works it out.
+    pub(crate) async fn prune_status_trackers(&self) -> Result<(), SpectraBridgeError> {
+        let live: std::collections::HashSet<String> = self
+            .transactions()
+            .await?
+            .into_iter()
+            .filter(|record| {
+                Chain::from_display_name(&record.chain_name).is_some_and(|chain| {
+                    super::pending_status::needs_status_poll(
+                        record.kind,
+                        record.status,
+                        record.transaction_hash.as_deref(),
+                        chain.pending_status_poll(),
+                    )
+                })
+            })
+            .map(|record| record.id)
+            .collect();
+        self.status_trackers
+            .write()
+            .await
+            .retain(|id, _| live.contains(id));
+        Ok(())
+    }
+
     // Not exported: the pending-status poll is core's own loop now, and it
     // is the only caller. It was an export because a front end drove the
     // loop and asked for each piece.

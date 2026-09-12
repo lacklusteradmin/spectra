@@ -504,11 +504,16 @@ impl WalletService {
             self.fetch_native_balance_summary(chain_id.to_string(), address),
         )?;
 
-        let fee_display = fee.display.parse::<f64>().unwrap_or(0.0);
+        // `max_sendable` is balance minus fee, so a zero standing in for either
+        // one is a wrong maximum offered to the user: an unread fee makes the
+        // whole balance look sendable, an unread balance makes none of it.
+        let fee_display = fee.display.parse::<f64>().map_err(|_| {
+            SpectraBridgeError::from(format!("{chain_id} fee: not a number: {:?}", fee.display))
+        })?;
         let fee_raw = fee.raw;
         let fee_rate_description = fee.source.to_string();
 
-        let balance_display = summary_display_balance(chain_id, &balance);
+        let balance_display = summary_display_balance(chain_id, &balance)?;
         let max_sendable = (balance_display - fee_display).max(0.0);
 
         Ok(json!({

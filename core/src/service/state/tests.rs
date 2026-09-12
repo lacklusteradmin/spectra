@@ -98,7 +98,7 @@ async fn failed_keypool_and_address_writes_leave_memory_unchanged() {
         )
         .await
         .is_err());
-    assert!(s.owned_addresses.read().await.is_empty());
+    assert!(s.keypool.read().await.owned_everywhere().next().is_none());
     sql(
         &db,
         "DROP TRIGGER reject_pool; DROP TRIGGER reject_address;",
@@ -380,7 +380,7 @@ async fn unreadable_history_refuses_keypool_reads_and_mutations() {
         .reserve_receive_index("w".into(), "Bitcoin".into(), 1)
         .await
         .unwrap();
-    let before = s.keypool.read().await.clone();
+    let before = s.keypool.read().await.indices().clone();
     sql(&db, "DROP TABLE history_records;");
     assert!(s.keypool_state("w".into(), "Bitcoin".into()).await.is_err());
     assert!(s
@@ -395,7 +395,7 @@ async fn unreadable_history_refuses_keypool_reads_and_mutations() {
         .advance_receive_index_if_current("w".into(), "Bitcoin".into(), held)
         .await
         .is_err());
-    assert_eq!(*s.keypool.read().await, before);
+    assert_eq!(*s.keypool.read().await.indices(), before);
     assert_eq!(
         crate::wallet_db::keypool_load(&db, "w", "Bitcoin")
             .unwrap()

@@ -58,29 +58,6 @@ fn apply_price_result(
 }
 
 impl WalletService {
-    /// Fetch USD spot prices for the supplied coins from `provider`.
-    ///
-    /// `provider` is the Swift-side display name (e.g. "CoinGecko").
-    /// `coins` are the known tokens. All providers use their public
-    /// endpoints — no API key plumbing.
-    pub async fn fetch_prices_typed(
-        &self,
-        coins: Vec<crate::price::PriceRequestCoin>,
-    ) -> Result<std::collections::HashMap<String, f64>, SpectraBridgeError> {
-        tracing::debug!(coins = coins.len(), "fetch_prices enter");
-        match crate::price::fetch_prices(&coins).await {
-            Ok(quotes) => {
-                tracing::debug!(returned = quotes.len(), "fetch_prices ok");
-                Ok(quotes)
-            }
-            Err(e) => {
-                tracing::error!(error = %e, "fetch_prices failed");
-                Err(SpectraBridgeError::from(e))
-            }
-        }
-    }
-
-    /// Typed variant — accepts typed currency list and returns typed map directly.
     /// Fetch the display-currency cross rates and store them.
     ///
     /// The rates are core's state: every quoted amount passes through them and
@@ -99,23 +76,6 @@ impl WalletService {
             return Err(error.into());
         }
         Ok(state.fiat_rates_from_usd)
-    }
-
-    pub async fn fetch_fiat_rates_typed(
-        &self,
-        currencies: Vec<String>,
-    ) -> Result<std::collections::HashMap<String, f64>, SpectraBridgeError> {
-        tracing::debug!(currencies = currencies.len(), "fetch_fiat_rates enter");
-        match crate::price::fetch_fiat_rates(&currencies).await {
-            Ok(rates) => {
-                tracing::debug!(returned = rates.len(), "fetch_fiat_rates ok");
-                Ok(rates)
-            }
-            Err(e) => {
-                tracing::error!(error = %e, "fetch_fiat_rates failed");
-                Err(SpectraBridgeError::from(e))
-            }
-        }
     }
 }
 
@@ -230,6 +190,55 @@ impl WalletService {
             })
             .await?;
         Ok(transition.state)
+    }
+}
+
+// ── Provider reads ────────────────────────────────────────────────────────
+//
+// Functions, not methods. Both took `&self` and read nothing from it — the
+// coins or currencies to quote arrive as arguments and the provider list is
+// the price module's own. They are not FFI exports either; the CLI is the only
+// caller. Sitting on `WalletService` only told a reader to go looking for
+// state that was never there.
+
+/// Fetch USD spot prices for the supplied coins.
+///
+/// `coins` are the known tokens. All providers use their public endpoints —
+/// no API key plumbing.
+pub async fn fetch_prices_typed(
+    coins: Vec<crate::price::PriceRequestCoin>,
+) -> Result<std::collections::HashMap<String, f64>, SpectraBridgeError> {
+    tracing::debug!(coins = coins.len(), "fetch_prices enter");
+    match crate::price::fetch_prices(&coins).await {
+        Ok(quotes) => {
+            tracing::debug!(returned = quotes.len(), "fetch_prices ok");
+            Ok(quotes)
+        }
+        Err(e) => {
+            tracing::error!(error = %e, "fetch_prices failed");
+            Err(SpectraBridgeError::from(e))
+        }
+    }
+}
+
+/// Fetch display-currency cross rates from USD, without storing them.
+///
+/// [`WalletService::refresh_fiat_rates`] is the stateful one: it fetches,
+/// merges and persists. This is the read on its own, which is what the CLI's
+/// `market` command wants.
+pub async fn fetch_fiat_rates_typed(
+    currencies: Vec<String>,
+) -> Result<std::collections::HashMap<String, f64>, SpectraBridgeError> {
+    tracing::debug!(currencies = currencies.len(), "fetch_fiat_rates enter");
+    match crate::price::fetch_fiat_rates(&currencies).await {
+        Ok(rates) => {
+            tracing::debug!(returned = rates.len(), "fetch_fiat_rates ok");
+            Ok(rates)
+        }
+        Err(e) => {
+            tracing::error!(error = %e, "fetch_fiat_rates failed");
+            Err(SpectraBridgeError::from(e))
+        }
     }
 }
 

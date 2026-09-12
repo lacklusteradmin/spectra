@@ -29,6 +29,9 @@ cargo test -p spectra_core --lib owned_preview_uses_wallet_network
 cargo test -p spectra_core --lib service::maintenance::boundary_tests
 cargo test -p spectra_core --lib service::history_cursor::tests
 cargo test -p spectra_core --lib maintenance_scope_uses_registry
+cargo test -p spectra_core --lib owned_pending_maintenance
+cargo test -p spectra_core --lib explicit_recheck
+python3 scripts/cli-transaction-recheck.py "$BIN"
 
 cargo test -p spectra_core --lib decred_and_kaspa_independent_mnemonic_vectors
 cargo test -p spectra_core --lib http_probe_regressions

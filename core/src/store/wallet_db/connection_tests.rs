@@ -83,13 +83,7 @@ async fn service_holds_connection_until_rebind_or_drop() {
     assert!(weak.upgrade().is_some());
     service.open_state(path()).await.unwrap();
     assert!(weak.upgrade().is_none());
-    let active = service
-        .state_database
-        .read()
-        .await
-        .as_ref()
-        .map(Arc::downgrade)
-        .unwrap();
+    let active = Arc::downgrade(&service.state_binding.connection().await.unwrap());
     drop(service);
     assert!(active.upgrade().is_none());
 }

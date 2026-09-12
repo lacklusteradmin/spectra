@@ -174,7 +174,7 @@ fn private_key_editor_normalizes_only_a_complete_hex_key() {
 async fn hd_receive_skips_spent_addresses_and_preview_accounts_for_network_fee() {
     let server = MockServer::start().await;
     let svc = service("bitcoin", &server);
-    let xpub=svc.derive_bitcoin_account_xpub_typed(
+    let xpub = crate::service::derive_bitcoin_account_xpub_typed(
         "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about".into(),
         String::new(),"m/44'/0'/0'".into()).unwrap();
     let children = crate::derivation::xpub_walker::derive_children(&xpub, 0, 0, 2).unwrap();

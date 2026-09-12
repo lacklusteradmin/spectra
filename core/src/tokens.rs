@@ -195,29 +195,34 @@ pub(crate) fn canonical_aptos_hex_address(value: String) -> String {
 /// Internal: `normalize_token_identifier` is the one entry point, and it
 /// dispatches here by chain.
 pub(crate) fn normalize_aptos_token_identifier(value: String) -> String {
-    let lowercased = value.trim().to_string();
-    if !lowercased.is_ascii() {
-        return lowercased;
+    let trimmed = value.trim().to_string();
+    // An identifier is ASCII, and everything below indexes it by byte. Handing
+    // back anything else untouched is what keeps those indices sound — and it
+    // is why the copy loop can move one byte at a time without re-encoding.
+    // Copying bytes as `char` did the Latin-1 thing to any multi-byte sequence
+    // that reached it, silently rewriting the identifier rather than refusing.
+    if !trimmed.is_ascii() || trimmed.is_empty() {
+        return trimmed;
     }
-    if lowercased.is_empty() {
-        return String::new();
-    }
-    let bytes = lowercased.as_bytes();
-    let mut out = String::with_capacity(lowercased.len());
+    let bytes = trimmed.as_bytes();
+    let mut out = String::with_capacity(trimmed.len());
     let mut i = 0;
     while i < bytes.len() {
-        if i + 1 < bytes.len() && &bytes[i..i + 2] == b"0x" {
+        if bytes[i..].starts_with(b"0x") {
             let start = i;
             let mut end = i + 2;
-            while end < bytes.len() && (bytes[end] as char).is_ascii_hexdigit() {
+            while end < bytes.len() && bytes[end].is_ascii_hexdigit() {
                 end += 1;
             }
             out.push_str(&canonical_aptos_hex_address(
-                lowercased[start..end].to_string(),
+                trimmed[start..end].to_string(),
             ));
             i = end;
         } else {
-            out.push(bytes[i] as char);
+            // A slice, not a byte cast: correct by construction for the ASCII
+            // this function has already established, and a compile error
+            // rather than a corruption if that ever stops being true.
+            out.push_str(&trimmed[i..i + 1]);
             i += 1;
         }
     }
