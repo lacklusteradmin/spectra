@@ -9,17 +9,18 @@ use std::sync::{Arc, Mutex};
 use clap::Args;
 use colored::Colorize as _;
 use spectra_core::fetch::refresh::engine::{BalanceObserver, BalanceRefreshEngine};
-use spectra_core::service::{ChainEndpoints, WalletService};
+use spectra_core::service::ChainEndpoints;
 use spectra_core::store::state::WalletSummary;
 
-use super::chain::{BALANCE, RPC};
-use super::resolve_chain;
 use crate::ctx::Ctx;
 use crate::error::{CliError, CliResult};
 use crate::out::{self, Out};
 
 #[derive(Args)]
 pub struct RefreshArgs {
+    /// Explicit balance endpoint for the selected wallet (also supports loopback fixtures).
+    #[arg(long, requires = "wallet")]
+    endpoint: Option<String>,
     /// Only this wallet (id, name or address). Default: every stored wallet.
     #[arg(long)]
     wallet: Option<String>,
@@ -64,51 +65,19 @@ pub fn refresh(ctx: &Ctx, out: Out, args: RefreshArgs) -> CliResult<()> {
         return Err(CliError::rejected("no wallets to refresh"));
     }
 
-    // Endpoints for every chain represented, gathered once. The engine takes
-    // them at construction the same way the app supplies them.
-    let mut chain_endpoints = Vec::new();
-    let mut refreshable = 0usize;
-    let mut skipped = Vec::new();
-    for wallet in &wallets {
-        let Ok(chain) = resolve_chain(&wallet.chain_name) else {
-            skipped.push(wallet.name.clone());
-            continue;
-        };
-        let endpoints: Vec<String> = spectra_core::endpoint_records_for_chain_masked(
-            chain.chain_display_name().to_string(),
-            BALANCE | RPC,
-            false,
-        )
-        .map_err(CliError::from)?
-        .into_iter()
-        .map(|record| record.endpoint)
-        .collect();
-        if endpoints.is_empty() {
-            skipped.push(wallet.name.clone());
-            continue;
-        }
-        if !chain_endpoints
-            .iter()
-            .any(|existing: &ChainEndpoints| existing.chain_id == chain.str_id())
-        {
-            chain_endpoints.push(ChainEndpoints {
-                chain_id: chain.str_id().to_string(),
-                endpoints,
+    let service = ctx.service()?;
+    if let Some(endpoint) = args.endpoint {
+        let chain = wallets[0]
+            .network_chain(&state.settings)
+            .ok_or_else(|| CliError::rejected("unknown wallet network"))?;
+        ctx.rt
+            .block_on(service.update_endpoints_typed(vec![ChainEndpoints {
+                chain_id: chain.str_id().into(),
+                endpoints: vec![endpoint],
                 api_key: None,
-            });
-        }
-        refreshable += 1;
+            }]))
+            .map_err(CliError::from)?;
     }
-    if refreshable == 0 {
-        return Err(CliError::rejected(
-            "no wallet has a chain with balance endpoints",
-        ));
-    }
-
-    let service = WalletService::new_typed(chain_endpoints).map_err(CliError::from)?;
-    ctx.rt
-        .block_on(service.open_state(ctx.db_path()))
-        .map_err(CliError::from)?;
 
     let engine = BalanceRefreshEngine::new(service);
     let collector = Arc::new(Collector(Mutex::new(Collected::default())));
@@ -129,12 +98,8 @@ pub fn refresh(ctx: &Ctx, out: Out, args: RefreshArgs) -> CliResult<()> {
         println!(
             "  {} refreshing {} wallet{}…",
             out::hint("→"),
-            wallets.len() - skipped.len(),
-            if wallets.len() - skipped.len() == 1 {
-                ""
-            } else {
-                "s"
-            }
+            entry_count as usize,
+            if entry_count as usize == 1 { "" } else { "s" }
         )
     });
     // One sweep, awaited: this process is about to exit, so a spawned
@@ -166,14 +131,6 @@ pub fn refresh(ctx: &Ctx, out: Out, args: RefreshArgs) -> CliResult<()> {
                 ),
             }
         }
-        for name in &skipped {
-            println!(
-                "  {}  {:<18} {}",
-                out::hint("·"),
-                name,
-                out::hint("skipped")
-            );
-        }
         println!();
         println!(
             "  {} refreshed, {} errors",
@@ -190,7 +147,7 @@ pub fn refresh(ctx: &Ctx, out: Out, args: RefreshArgs) -> CliResult<()> {
         "refreshed": collected.refreshed,
         "errors": collected.errors,
         "cycleCompleted": collected.complete,
-        "skipped": skipped,
+        "skipped": wallets.len().saturating_sub(entry_count as usize),
     }));
     Ok(())
 }

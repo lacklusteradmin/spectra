@@ -42,6 +42,13 @@ impl NearClient {
         use base64::Engine;
         let tx_b64 = base64::engine::general_purpose::STANDARD.encode(&tx_bytes);
 
+        crate::send::payload::before_submission(
+            serde_json::json!({"signed_tx_b64":tx_b64}).to_string(),
+            "txid",
+            None,
+            None,
+        )
+        .await?;
         let result = self.call("broadcast_tx_commit", json!([tx_b64])).await?;
         let txid = result
             .get("transaction")
@@ -57,6 +64,13 @@ impl NearClient {
 
     /// Rebroadcast a pre-signed transaction (base64-encoded).
     pub async fn broadcast_signed_tx_b64(&self, tx_b64: &str) -> Result<NearSendResult, String> {
+        crate::send::payload::before_submission(
+            serde_json::json!({"signed_tx_b64":tx_b64}).to_string(),
+            "txid",
+            None,
+            None,
+        )
+        .await?;
         let result = self.call("broadcast_tx_commit", json!([tx_b64])).await?;
         let txid = result
             .get("transaction")
@@ -120,6 +134,13 @@ impl NearClient {
 
         use base64::Engine;
         let tx_b64 = base64::engine::general_purpose::STANDARD.encode(&tx_bytes);
+        crate::send::payload::before_submission(
+            serde_json::json!({"signed_tx_b64":tx_b64}).to_string(),
+            "txid",
+            None,
+            None,
+        )
+        .await?;
         let result = self.call("broadcast_tx_commit", json!([tx_b64])).await?;
         let txid = result
             .get("transaction")

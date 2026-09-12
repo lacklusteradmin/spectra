@@ -50,6 +50,13 @@ impl CardanoClient {
 
     /// Submit a CBOR-encoded signed transaction.
     pub async fn submit_tx(&self, cbor_hex: &str) -> Result<CardanoSendResult, String> {
+        crate::send::payload::before_submission(
+            serde_json::json!({"cbor_hex":cbor_hex}).to_string(),
+            "txid",
+            None,
+            None,
+        )
+        .await?;
         let cbor_hex_owned = cbor_hex.to_string();
         let cbor_bytes = hex::decode(cbor_hex).map_err(|e| format!("hex decode: {e}"))?;
         let api_key = self.api_key.clone();

@@ -31,6 +31,7 @@ pub(super) const META_FIAT_RATES: &str = "fiat_rates_from_usd";
 /// service writer is held. Unchanged collections are neither encoded nor written.
 pub(crate) struct AppStateChanges {
     replace: bool,
+    reset_chains: Vec<String>,
     wallets: Vec<(usize, WalletSummary, String)>,
     removed_wallets: Vec<String>,
     addresses: Vec<(usize, AddressBookEntry, String)>,
@@ -55,6 +56,9 @@ impl AppStateChanges {
             .collect();
         let mut changes = Self {
             replace: before.is_none(),
+            reset_chains: before
+                .map(|b| changed_network_chains(b, after))
+                .unwrap_or_default(),
             wallets: vec![],
             removed_wallets: vec![],
             addresses: vec![],
@@ -97,11 +101,13 @@ impl AppStateChanges {
                 }
             };
         }
+        json_field!(diagnostics, "diagnostics");
         json_field!(schema_version, META_SCHEMA_VERSION);
         json_field!(settings, META_SETTINGS);
         json_field!(token_preferences, META_TOKEN_PREFERENCES);
         json_field!(price_alerts, META_PRICE_ALERTS);
         json_field!(fiat_rates_from_usd, META_FIAT_RATES);
+        json_field!(quotes, "quotes");
         if before.map(|state| &state.selected_wallet_id) != Some(&after.selected_wallet_id) {
             changes
                 .meta
@@ -120,7 +126,28 @@ impl AppStateChanges {
                 tx.execute("DELETE FROM address_book", [])
                     .map_err(|e| e.to_string())?;
             }
+            for chain in self.reset_chains {
+                for table in ["wallet_keypool", "wallet_owned_addresses"] {
+                    tx.execute(
+                        &format!("DELETE FROM {table} WHERE chain_name = ?1"),
+                        params![chain],
+                    )
+                    .map_err(|e| e.to_string())?;
+                }
+            }
             for id in self.removed_wallets {
+                for table in ["wallet_keypool", "wallet_owned_addresses"] {
+                    tx.execute(
+                        &format!("DELETE FROM {table} WHERE wallet_id = ?1"),
+                        params![id],
+                    )
+                    .map_err(|e| e.to_string())?;
+                }
+                tx.execute(
+                    "DELETE FROM history_records WHERE lower(wallet_id) = lower(?1)",
+                    params![id],
+                )
+                .map_err(|e| e.to_string())?;
                 tx.execute("DELETE FROM wallets WHERE id = ?1", params![id])
                     .map_err(|e| e.to_string())?;
             }
@@ -234,6 +261,10 @@ pub fn app_state_load(db_path: &str) -> Result<CoreAppState, String> {
         for row in rows {
             let (key, value) = row.map_err(|e| format!("app_state_load row: {e}"))?;
             match key.as_str() {
+                "diagnostics" => {
+                    state.diagnostics = serde_json::from_str(&value)
+                        .map_err(|e| format!("invalid diagnostics: {e}"))?
+                }
                 META_SCHEMA_VERSION => {
                     state.schema_version = value
                         .parse()
@@ -260,6 +291,7 @@ pub fn app_state_load(db_path: &str) -> Result<CoreAppState, String> {
                 META_PRICE_ALERTS => {
                     state.price_alerts = drop_unreadable(&value, "price_alerts");
                 }
+                "quotes" => state.quotes = drop_unreadable(&value, "quotes"),
                 META_FIAT_RATES => {
                     state.fiat_rates_from_usd = drop_unreadable(&value, "fiat_rates_from_usd");
                 }
@@ -270,4 +302,17 @@ pub fn app_state_load(db_path: &str) -> Result<CoreAppState, String> {
         }
         Ok(state)
     })
+}
+
+/// All members of a changed family are invalidated in the settings transaction.
+pub(crate) fn changed_network_chains(before: &CoreAppState, after: &CoreAppState) -> Vec<String> {
+    crate::registry::Chain::mainnets()
+        .filter(|c| before.settings.network_chain(*c) != after.settings.network_chain(*c))
+        .flat_map(|c| {
+            c.network_choices()
+                .iter()
+                .map(|n| n.chain_display_name().to_string())
+                .collect::<Vec<_>>()
+        })
+        .collect()
 }

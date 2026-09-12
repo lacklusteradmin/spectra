@@ -252,6 +252,13 @@ impl TronClient {
         if body["txID"].as_str() != Some(txid.as_str()) {
             return Err("Tron transaction hash mismatch".into());
         }
+        crate::send::payload::before_submission(
+            signed_tx_json.into(),
+            "txid",
+            Some(txid.clone()),
+            None,
+        )
+        .await?;
         let result = self.post("/wallet/broadcasttransaction", &body).await?;
         if result["result"].as_bool() != Some(true) {
             return Err(format!("Tron broadcast refused: {result}"));

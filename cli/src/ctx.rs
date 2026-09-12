@@ -106,7 +106,11 @@ impl Ctx {
     /// Opened fresh per command on purpose: a short-lived process never holds
     /// a snapshot old enough to overwrite a newer store with.
     pub fn service(&self) -> CliResult<Arc<WalletService>> {
-        let service = WalletService::new_typed(Vec::new()).map_err(CliError::from)?;
+        let service = WalletService::new_typed(
+            spectra_core::service::catalog_endpoints().map_err(CliError::from)?,
+        )
+        .map_err(CliError::from)?;
+        service.set_secret_store(self.secrets.clone());
         self.rt
             .block_on(service.open_state(self.db_path()))
             .map_err(CliError::from)?;
@@ -114,7 +118,11 @@ impl Ctx {
     }
 
     pub fn state(&self) -> CliResult<CoreAppState> {
-        let service = WalletService::new_typed(Vec::new()).map_err(CliError::from)?;
+        let service = WalletService::new_typed(
+            spectra_core::service::catalog_endpoints().map_err(CliError::from)?,
+        )
+        .map_err(CliError::from)?;
+        service.set_secret_store(self.secrets.clone());
         self.rt
             .block_on(service.open_state(self.db_path()))
             .map_err(CliError::from)

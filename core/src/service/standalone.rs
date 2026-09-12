@@ -41,7 +41,16 @@ pub fn core_evaluate_large_movement(
     usd_threshold: f64,
     percent_threshold: f64,
 ) -> LargeMovementEvaluation {
-    if previous_total_usd <= 0.0 {
+    if previous_total_usd <= 0.0
+        || [
+            previous_total_usd,
+            current_total_usd,
+            usd_threshold,
+            percent_threshold,
+        ]
+        .iter()
+        .any(|value| !value.is_finite() || *value < 0.0)
+    {
         return LargeMovementEvaluation {
             should_alert: false,
             absolute_delta: 0.0,

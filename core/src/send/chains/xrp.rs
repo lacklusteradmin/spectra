@@ -29,6 +29,13 @@ impl XrpClient {
             public_key_hex,
         )?;
 
+        crate::send::payload::before_submission(
+            serde_json::json!({"tx_blob_hex":tx_blob}).to_string(),
+            "txid",
+            None,
+            None,
+        )
+        .await?;
         let result = self.call("submit", json!({"tx_blob": tx_blob})).await?;
         let txid = result
             .get("tx_json")

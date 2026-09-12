@@ -10,6 +10,13 @@ use crate::fetch::chains::dogecoin::{DogeSendResult, DogecoinClient};
 
 impl DogecoinClient {
     pub async fn broadcast_raw_tx(&self, hex_tx: &str) -> Result<DogeSendResult, String> {
+        crate::send::payload::before_submission(
+            hex_tx.to_owned(),
+            "txid",
+            crate::send::payload::bitcoin_transaction_id(hex_tx),
+            None,
+        )
+        .await?;
         let hex = hex_tx.to_string();
         with_fallback(&self.endpoints, |base| {
             let client = self.client.clone();

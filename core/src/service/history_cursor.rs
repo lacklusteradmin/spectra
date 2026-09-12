@@ -95,3 +95,46 @@ impl WalletService {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    #[test]
+    fn pagination_updates_and_resets_do_not_cross_wallet_or_chain_boundaries() {
+        let service = WalletService::new_typed(vec![]).unwrap();
+        service.advance_history_cursor("bitcoin".into(), "a".into(), Some("next".into()));
+        service.set_history_page("ethereum".into(), "a".into(), 4, true);
+        service.set_history_page("ethereum".into(), "b".into(), 2, false);
+        assert_eq!(
+            service
+                .history_cursor("bitcoin".into(), "a".into())
+                .next_cursor
+                .as_deref(),
+            Some("next")
+        );
+        assert!(
+            service
+                .history_cursor("ethereum".into(), "a".into())
+                .is_exhausted
+        );
+        service.reset_history(HistoryScope::Wallet {
+            wallet_id: "a".into(),
+        });
+        assert_eq!(
+            service
+                .history_cursor("ethereum".into(), "a".into())
+                .next_page,
+            0
+        );
+        assert_eq!(
+            service
+                .history_cursor("ethereum".into(), "b".into())
+                .next_page,
+            2
+        );
+        assert!(service
+            .history_cursor("bitcoin".into(), "a".into())
+            .next_cursor
+            .is_none());
+    }
+}

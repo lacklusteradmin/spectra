@@ -406,7 +406,7 @@ impl EvmClient {
 
     pub async fn fetch_nonce(&self, address: &str) -> Result<u64, String> {
         let result = self
-            .call("eth_getTransactionCount", json!([address, "latest"]))
+            .call("eth_getTransactionCount", json!([address, "pending"]))
             .await?;
         let hex = result
             .as_str()
@@ -1024,7 +1024,7 @@ mod every_evm_chain_says_where_its_history_comes_from {
             .filter(|c| c.mainnet_counterpart() == **c)
             .filter(|c| matches!(c.evm_history_source(), EvmHistorySource::Open(_)))
             .count();
-        assert_eq!(keyless, 14, "fourteen mainnets need no API key");
+        assert_eq!(keyless, 15, "fifteen mainnets need no API key");
     }
 }
 

@@ -643,6 +643,7 @@ impl Chain {
             // Blockscout, from its own instance directory at
             // `chains.blockscout.com/api/chains`.
             Chain::Ethereum => EvmHistorySource::Open("https://eth.blockscout.com"),
+            Chain::Base => EvmHistorySource::Open("https://base.blockscout.com"),
             Chain::Arbitrum => EvmHistorySource::Open("https://arbitrum.blockscout.com"),
             Chain::Optimism => EvmHistorySource::Open("https://explorer.optimism.io"),
             Chain::EthereumClassic => EvmHistorySource::Open("https://etc.blockscout.com"),
@@ -669,17 +670,15 @@ impl Chain {
                 "https://api.routescan.io/v2/network/mainnet/evm/5000/etherscan",
             ),
 
-            // Nothing keyless serves these. Base has a Blockscout instance
-            // that answered one call in three, which is worse than a source
-            // that says so; the rest have no public indexer at all and their
-            // own explorers are Etherscan-family clones behind their own keys.
+            // No supported, verified keyless source is configured for these.
+            // Availability is provider-specific; do not infer it from a generic
+            // RPC endpoint (which does not index address transaction history).
             Chain::BnbChain
             | Chain::Sonic
             | Chain::OpBnb
             | Chain::Sei
             | Chain::Linea
-            | Chain::Hyperliquid
-            | Chain::Base => EvmHistorySource::EtherscanV2,
+            | Chain::Hyperliquid => EvmHistorySource::EtherscanV2,
 
             // Not in Etherscan V2's chain list either, so no key helps. This
             // was always true — they were pointed at Etherscan like everything
@@ -854,6 +853,14 @@ impl Chain {
     /// True when this chain's family offers more than one network.
     pub fn has_network_choice(self) -> bool {
         self.network_choices().len() > 1
+    }
+
+    /// Rosetta health is a POST, not JSON-RPC and not a GET.
+    pub(crate) fn http_health_post_body(self) -> Option<&'static str> {
+        match self.mainnet_counterpart() {
+            Chain::Icp => Some(r#"{"metadata":{}}"#),
+            _ => None,
+        }
     }
 
     /// The JSON-RPC method that answers "is this node alive", or `None` for a

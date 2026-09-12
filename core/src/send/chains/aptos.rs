@@ -113,6 +113,13 @@ impl AptosClient {
     pub async fn submit_signed_body(&self, signed_json: &str) -> Result<AptosSendResult, String> {
         let body: Value = serde_json::from_str(signed_json)
             .map_err(|e| format!("invalid Aptos transaction: {e}"))?;
+        crate::send::payload::before_submission(
+            serde_json::json!({"signed_body_json":signed_json}).to_string(),
+            "txid",
+            None,
+            None,
+        )
+        .await?;
         let response = self.post_val("/transactions", &body).await?;
         let txid = response["hash"]
             .as_str()

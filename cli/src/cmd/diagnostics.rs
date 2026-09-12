@@ -11,6 +11,16 @@ use crate::out::{self, Out};
 
 #[derive(Subcommand)]
 pub enum DiagnosticsCommand {
+    /// Inspect the core refresh policy with explicit device conditions, offline.
+    Maintenance {
+        #[arg(long)]
+        conditions: String,
+    },
+    /// Read durable diagnostics, optionally applying one typed JSON intent.
+    State {
+        #[arg(long)]
+        command: Option<String>,
+    },
     /// Run core's self-tests for one chain, or all of them.
     SelfTest(SelfTestArgs),
     /// The diagnostics document core builds for a chain.
@@ -33,6 +43,27 @@ pub struct ShowArgs {
 
 pub fn run(ctx: &Ctx, out: Out, command: DiagnosticsCommand) -> CliResult<()> {
     match command {
+        DiagnosticsCommand::Maintenance { conditions } => {
+            let conditions = serde_json::from_str(&conditions)
+                .map_err(|e| CliError::usage(format!("invalid conditions: {e}")))?;
+            let plan = ctx.rt.block_on(ctx.service()?.maintenance_plan(conditions));
+            out.emit(serde_json::json!({"plan":plan}));
+            Ok(())
+        }
+        DiagnosticsCommand::State { command } => {
+            let service = ctx.service()?;
+            let state = if let Some(json) = command {
+                let intent =
+                    serde_json::from_str(&json).map_err(|e| CliError::failure(e.to_string()))?;
+                ctx.rt
+                    .block_on(service.apply_diagnostic_command(intent))
+                    .map_err(CliError::from)?
+            } else {
+                ctx.rt.block_on(service.diagnostic_state())
+            };
+            out.emit(serde_json::json!({"ok": true, "state": state}));
+            Ok(())
+        }
         DiagnosticsCommand::SelfTest(args) => self_test(out, args),
         DiagnosticsCommand::Show(args) => show(ctx, out, args),
     }

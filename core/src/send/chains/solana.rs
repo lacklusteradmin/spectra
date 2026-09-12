@@ -55,8 +55,12 @@ impl SolanaClient {
         let to_owner = decode_b58_32(to_owner_b58)?;
         let mint = decode_b58_32(mint_b58)?;
 
-        let source_ata = derive_associated_token_account(from_owner_pubkey, &mint)?;
-        let dest_ata = derive_associated_token_account(&to_owner, &mint)?;
+        let (program, mint_decimals) = self.fetch_transfer_mint(mint_b58).await?;
+        if decimals != mint_decimals {
+            return Err("SPL: supplied decimals do not match mint".into());
+        }
+        let source_ata = derive_associated_token_account(from_owner_pubkey, &mint, &program)?;
+        let dest_ata = derive_associated_token_account(&to_owner, &mint, &program)?;
 
         let blockhash = self.fetch_recent_blockhash().await?;
         let raw_tx = build_spl_transfer_checked(
@@ -65,6 +69,7 @@ impl SolanaClient {
             &mint,
             &source_ata,
             &dest_ata,
+            &program,
             amount_raw,
             decimals,
             &blockhash,
@@ -77,6 +82,13 @@ impl SolanaClient {
 
     /// Broadcast an already-signed transaction given as a base64 string.
     pub async fn broadcast_raw(&self, signed_tx_base64: &str) -> Result<SolanaSendResult, String> {
+        let hash = base64::engine::general_purpose::STANDARD
+            .decode(signed_tx_base64)
+            .ok()
+            .filter(|raw| raw.first() == Some(&1))
+            .and_then(|raw| raw.get(1..65).map(|sig| bs58::encode(sig).into_string()));
+        crate::send::payload::before_submission(signed_tx_base64.into(), "signature", hash, None)
+            .await?;
         let result = self
             .call(
                 "sendTransaction",
@@ -142,9 +154,10 @@ pub const ASSOCIATED_TOKEN_PROGRAM_ID: [u8; 32] = [
 pub fn derive_associated_token_account(
     wallet: &[u8; 32],
     mint: &[u8; 32],
+    token_program: &[u8; 32],
 ) -> Result<[u8; 32], String> {
     use sha2::{Digest, Sha256};
-    let seeds: [&[u8]; 3] = [wallet, &SPL_TOKEN_PROGRAM_ID, mint];
+    let seeds: [&[u8]; 3] = [wallet, token_program, mint];
     // Brute-force the bump seed from 255 down until we find an off-curve point.
     for bump in (0u8..=255u8).rev() {
         let mut h = Sha256::new();
@@ -184,6 +197,7 @@ pub fn build_spl_transfer_checked(
     mint: &[u8; 32],
     source_ata: &[u8; 32],
     dest_ata: &[u8; 32],
+    token_program: &[u8; 32],
     amount_raw: u64,
     decimals: u8,
     recent_blockhash_b58: &str,
@@ -201,7 +215,7 @@ pub fn build_spl_transfer_checked(
             (*to_owner, false),
             (*mint, false),
             ([0; 32], false),
-            (SPL_TOKEN_PROGRAM_ID, false),
+            (*token_program, false),
             (ASSOCIATED_TOKEN_PROGRAM_ID, false),
         ],
         &[

@@ -178,13 +178,24 @@ async fn monero_rpc_is_bound_to_the_checked_sender_and_endpoint() {
             .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
                 "jsonrpc": "2.0", "result": {"address": if matches_wallet { "selected" } else { "other" }}
             }))).expect(1).mount(&rpc).await;
-        Mock::given(body_partial_json(serde_json::json!({"method": "transfer"})))
+        Mock::given(body_partial_json(serde_json::json!({"method": "transfer", "params":{"do_not_relay":true,"get_tx_metadata":true}})))
             .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
-                "jsonrpc": "2.0", "result": {"tx_hash": "mock-tx"}
+                "jsonrpc": "2.0", "result": {"tx_hash": "mock-tx", "tx_metadata":"signed-metadata"}
             })))
             .expect(if matches_wallet { 1 } else { 0 })
             .mount(&rpc)
             .await;
+        Mock::given(body_partial_json(
+            serde_json::json!({"method":"relay_tx", "params":{"hex":"signed-metadata"}}),
+        ))
+        .respond_with(
+            ResponseTemplate::new(200).set_body_json(
+                serde_json::json!({"jsonrpc":"2.0", "result":{"tx_hash":"mock-tx"}}),
+            ),
+        )
+        .expect(if matches_wallet { 1 } else { 0 })
+        .mount(&rpc)
+        .await;
         let service = WalletService::new_typed(vec![crate::service::ChainEndpoints {
             chain_id: "monero".into(),
             endpoints: vec![rpc.uri(), backup.uri()],

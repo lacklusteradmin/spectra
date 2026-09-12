@@ -8,11 +8,8 @@
 
 use clap::Args;
 use colored::Colorize as _;
-use spectra_core::derivation::funds_finder::{
-    core_generate_funds_finder_candidates, FundsFinderRequest,
-};
+use spectra_core::derivation::funds_finder::FundsFinderRequest;
 
-use super::chain::{service_for_chain, BALANCE, RPC};
 use super::resolve_chain;
 use crate::ctx::{Ctx, SecretSource};
 use crate::error::{CliError, CliResult};
@@ -50,22 +47,20 @@ pub fn rescan(ctx: &Ctx, out: Out, args: RescanArgs) -> CliResult<()> {
 
     crate::cmd::reject_bad_seed_phrase(&seed_phrase)?;
 
-    let mut candidates = core_generate_funds_finder_candidates(FundsFinderRequest {
-        seed_phrase,
-        passphrase: args.passphrase.clone(),
-    })
-    .map_err(CliError::from)?;
-
-    if let Some(name) = &args.chain {
-        let chain = resolve_chain(name)?;
-        candidates.retain(|candidate| candidate.chain_id == chain.str_id());
-        if candidates.is_empty() {
-            return Err(CliError::rejected(format!(
-                "no candidates for {}",
-                chain.chain_display_name()
-            )));
-        }
-    }
+    let service = ctx.service()?;
+    let scan = service
+        .begin_funds_scan(
+            FundsFinderRequest {
+                seed_phrase,
+                passphrase: args.passphrase.clone(),
+            },
+            args.chain
+                .as_ref()
+                .map(|n| resolve_chain(n).map(|c| c.str_id().to_string()))
+                .transpose()?,
+        )
+        .map_err(CliError::from)?;
+    let candidates = scan.candidates();
 
     if args.dry_run {
         out.text(|| {
@@ -110,44 +105,20 @@ pub fn rescan(ctx: &Ctx, out: Out, args: RescanArgs) -> CliResult<()> {
 
     let mut funded = Vec::new();
     let mut unreachable = 0u32;
-    for candidate in &candidates {
-        let Some(chain) = spectra_core::registry::Chain::from_str_id(&candidate.chain_id) else {
-            continue;
-        };
-        let Ok(service) = service_for_chain(chain, BALANCE | RPC) else {
-            unreachable += 1;
-            continue;
-        };
-        let summary =
-            ctx.rt.block_on(service.fetch_native_balance_summary(
-                candidate.chain_id.clone(),
-                candidate.address.clone(),
-            ));
-        let Ok(summary) = summary else {
-            unreachable += 1;
-            continue;
-        };
-        let amount: f64 = summary.amount_display.parse().unwrap_or(0.0);
-        if amount <= 0.0 {
-            continue;
+    loop {
+        let batch = ctx.rt.block_on(scan.next_batch());
+        for read in batch.reads {
+            if read.error.is_some() {
+                unreachable += 1;
+            }
+            if read.funded {
+                let balance = read.balance.unwrap();
+                funded.push(serde_json::json!({ "chain": read.candidate.chain_name, "label": read.candidate.path_label, "address": read.candidate.address, "amount": balance.amount_display }));
+            }
         }
-        out.text(|| {
-            println!(
-                "  {}  {:<26} {} {}",
-                out::tint("●", chain.chain_display_name()).bold(),
-                candidate.path_label,
-                summary.amount_display.bold(),
-                out::tint(chain.coin_symbol(), chain.chain_display_name()),
-            );
-            println!("     {}", out::hint(&candidate.address));
-        });
-        funded.push(serde_json::json!({
-            "chain": chain.chain_display_name(),
-            "label": candidate.path_label,
-            "address": candidate.address,
-            "amount": summary.amount_display,
-            "symbol": chain.coin_symbol(),
-        }));
+        if batch.complete {
+            break;
+        }
     }
 
     out.text(|| {

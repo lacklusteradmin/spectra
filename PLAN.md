@@ -135,32 +135,312 @@ assembly cannot verify a broadcast.
 
 ## Known open items
 
-- **Broadcast coverage:** every step of a send but the last is now exercisable
-  without moving funds — `spectra send broadcast --sign-only` resolves the
-  stored identity, converts the amount and fees, reads the live nonce, builds
-  and signs the transaction, and stops with the raw payload. What remains
-  unproven is `sendRawTransaction` itself: that a signed transaction is
-  accepted by a node and mines. That needs a funded testnet wallet and a person
-  willing to run the irreversible command, so it stays open. The offline gate
-  checks the refusals; the signing itself needs network.
-- **App-only domain exports:** some rules still lack a CLI caller or direct Rust
-  coverage. Audit callers before counting coverage. Custom EVM fees now have
-  a shared parser, CLI entry point and Swift binding tests.
-- **Decred and Kaspa mnemonic vectors:** no independent known-mnemonic →
-  known-address test was identified. Existing address-validation and Decred
-  private-key-import checks do not substitute. Use published or independently
-  derived vectors, not this implementation's output as its own expected value.
-- **Endpoint probes and redundancy:** the earlier sweep flagged probe URLs for
-  Bitcoin SV, Internet Computer and Zcash, plus chains with only one RPC node.
-  Recheck through `spectra endpoints` before changing rows; recorded failures
-  may be bad probe configuration rather than an unavailable service.
+- [ ] **Transparent send stages: build, sign, broadcast (core, CLI and Swift).**
+  Split the current combined signing/submission path into explicit core-owned
+  operations with typed prepared transactions, signed transactions and
+  broadcast results. Keep `execute_send` as a convenience that composes these
+  operations where appropriate. Chain-specific payloads and capabilities remain
+  explicit; do not force every protocol into an identical internal workflow.
+  This supports Spectra's transparency ethos and future external/offline
+  signers, while making each stage independently inspectable and testable.
+  - Core owns the prepared/signed transaction lifecycle, validation and any
+    durable state needed to resume after restart. Bind the reviewed content to
+    the transaction actually signed; validate network, signer, amounts, fees
+    and chain-specific freshness constraints (nonce, UTXOs, blockhash/expiry).
+    If rebuilding changes the reviewed transaction, require fresh review and
+    signing rather than silently replacing it. Never persist private keys in
+    transaction artifacts.
+  - Split Swift's send flow into visible Build, Sign and Broadcast steps with
+    explicit user actions and inspectable core-derived details/results. Show
+    what will be signed, when signing has completed without submission, and
+    which nodes received the transaction. Swift owns navigation/view state;
+    core owns transaction state and the rules for advancing each stage.
+  - Let users select one or more compatible broadcast endpoints and inspect
+    the selected network, endpoint URLs and submission outcomes. Core validates
+    endpoint network and broadcast capability before submission and uses only
+    the selected destinations; no silent fallback to unselected providers.
+    Keep chain capability facts in the registry and endpoint configuration in
+    core. Explain that selected nodes can propagate the transaction onward.
+  - Broadcast/retry the same signed payload, track outcomes per endpoint, and
+    distinguish node acceptance, uncertain submission and on-chain confirmation.
+    Partial success or a timeout must not trigger an automatic new transaction.
+  - Add CLI operations for each stage and endpoint selection, with offline
+    acceptance coverage using mock nodes for separate build/sign/broadcast,
+    stale or altered artifacts, incompatible endpoints, partial submissions,
+    identical-payload retries and reopening persisted state. Prove core rules
+    before replacing Swift orchestration, regenerate UniFFI bindings, exercise
+    the new UI, and pass all three required suites. Record implemented
+    before/after behaviour and concrete CLI checks under “Behaviour changed on
+    purpose”; this item is planned work, not a completed behaviour change.
+- **Endpoint availability and redundancy:** ICP's Rosetta POST probe and the
+  skipped Bitcoin SV explicit probe are fixed. Zcash's registered Trezor API
+  still returns HTTP 403; Bitcoin SV's Blockchair provider remains unavailable
+  in the live check. Single-provider chains still need independent supported
+  providers. A successful health probe does not prove every capability works.
+  The user explicitly retained these as external dependencies on 2026-09-12.
 - **EVM history availability:** the registry distinguishes open indexers,
   Etherscan V2 requiring a key, and unavailable sources. Remaining key-dependent
   chains need supported infrastructure if keyless history is required. Do not
-  silently depend on another wallet's private backend.
+  silently depend on another wallet's private backend. Base now uses its verified
+  public Blockscout source; the user retained the remaining providers as external
+  dependencies on 2026-09-12.
 
+
+Resolved in the [known-open audit](docs/KNOWN-OPEN-AUDIT.md): independent Decred
+and Kaspa mnemonic/address vectors, ICP HTTP protocol and Bitcoin SV explicit
+probe selection, the [app-boundary coverage audit](docs/APP-BOUNDARY-COVERAGE.md),
+and Base keyless history. The CLI-signed Sepolia transaction was accepted and
+mined successfully: [public evidence](docs/SEPOLIA-BROADCAST-PROOF.json). This
+closes the original EVM broadcast proof; it does not complete the newly planned
+visible build/sign/broadcast workflow or establish broadcasting on every chain.
+
+
+## Stage 3 / C2 completion work (requested ten items)
+
+- [x] Core applies and persists native/token balance refreshes; Swift adopts projections.
+- [x] Core owns wallet deletion, including failure/retry semantics.
+- [x] Core owns outgoing transaction records through broadcast.
+- [x] Core owns Funds Finder scanning and reports failed reads.
+- [x] Core owns durable diagnostics state.
+- [x] Derived wallet state reads signing availability through SecretStore.
+- [x] Balance refresh boundary accepts wallet scope rather than caller token lists.
+- [x] Stored transaction ID drives rebroadcast and record updates.
+- [x] Network selection and derivation reset commit together.
+- [x] Chain diagnostic operations replace caller orchestration and JSON state blobs.
+
+Verified: `cargo test --workspace` (788 core tests), `./scripts/cli-acceptance.sh`
+(332 checks plus the Stage 3 local fixtures), and the required iPhone 17 Pro
+simulator suite (80 tests). Export scripts report 182 callables and zero
+unreachable candidates. These ten slices are complete; the broader stage
+status and known open items above are unchanged.
+
+## Stage 3 / C2 follow-up (requested six items)
+
+- [x] Import and SecretStore coordination, cleanup and retry.
+- [x] Wallet rename and portfolio inclusion as field intents.
+- [x] Core quote cache and price/fiat refresh policy.
+- [x] Core-derived transaction maintenance scope.
+- [x] Stored-asset EVM preview; no seed reads for fee preview.
+- [x] FFI caller/coverage audit, CLI entry points and bridge cleanup.
+
+Implementation and coverage map: [six-slice follow-up](docs/STAGE3-C2-FOLLOWUP.md).
+
+Verified: `cargo test --workspace` (798 core tests), `./scripts/cli-acceptance.sh`
+(332 checks plus both Stage 3 fixture batches), and the required iPhone 17 Pro
+simulator suite (81 tests, zero failures). The FFI surface is 179 callables,
+with zero unreachable export candidates. Broader Stage 3/C2 items remain open.
 
 ## Behaviour changed on purpose
+
+### Remaining known-open verification
+
+- Before: Bitcoin single-address preview and status dispatched only mainnet.
+  After: the network supplies endpoints and its mainnet family selects the
+  protocol implementation. Testnet4 is tested through both service operations.
+- Before: derivation editing accepted indices at/above `2^31`, colliding with
+  the separate hardened flag. After: parsing rejects those indices early.
+- Before: negative/non-finite portfolio observations or thresholds could produce
+  misleading movement alerts. After: invalid inputs suppress the alert.
+- Before: portfolio composition joined keys with a delimiter that could also
+  appear inside a key. After: sorted keys use JSON string boundaries, retaining
+  order independence without collisions between differently grouped keys.
+- Before: Base history required an Etherscan key after a client-specific 403.
+  After: it uses the documented public Blockscout API, verified with three
+  standard HTTP reads and Spectra's own successful `history` query.
+- CLI checks: `cargo test -p spectra_core --lib app_boundary_tests` (included in
+  acceptance), the existing typed Tron fixtures, and `spectra history Base-probe`
+  using a temporary public zero-address watch wallet. Funded Sepolia proof is
+  recorded separately and is never repeated by the offline gate.
+
+
+### Send reliability audit: nonce, journal, network, history and SPL
+
+- Before: EVM read `latest` nonce and concurrent submissions could reuse it.
+  After: read `pending`, serialize each database/network/sender submission, and
+  reserve nonces from durable pending sends, including after a restart. An
+  atomic SQLite check also refuses a stale nonce selected by another process
+  before broadcasting. Explicit nonce overrides remain the intentional
+  replacement path.
+- Before: a pending placeholder preceded signing, but recoverable bytes were
+  saved only after the node replied. After: each protocol awaits the send's
+  durable journal after signing and before submission; signing failures leave
+  no row. Response loss retains the exact submission input, locally available
+  identifier and EVM nonce. Rebroadcast submits that input on the recorded
+  network. Missing receipts cannot expire a journaled send into a guessed failure.
+  Monero now prepares with `do_not_relay`/`get_tx_metadata`, then journals and
+  calls `relay_tx`. ICP, Kaspa and the remaining protocol inputs are retained
+  in the same submission envelope, without wallet signing keys or re-signing.
+- Before: pending polls remapped the recorded network through current settings.
+  After: core and CLI poll that exact network, including Sepolia when the
+  current selection is mainnet.
+- Before: history merged a snapshot outside its write transaction. After:
+  SQLite `BEGIN IMMEDIATE` covers read/merge/write, so concurrent refreshes
+  share one identity per wallet without collapsing separate wallet records.
+- Before: SPL sends trusted caller precision and always used the legacy Token
+  Program. After: validate the mint owner and precision, derive ATAs and build
+  instructions for that program. Basic Token-2022 transfers work; mints with
+  extensions are explicitly refused before signing until their transfer
+  semantics and extra accounts are supported.
+- CLI checks: `spectra send broadcast --from <wallet> --to <address> --amount
+  <amount> --yes`; `spectra send rebroadcast <transaction-id> --yes`;
+  `spectra txs --maintenance` and `spectra txs --poll-chain ethereum-sepolia`.
+  Deterministic loopback/SQLite regressions: `cargo test -p spectra_core --lib
+  audit_fix5` and `cargo test -p spectra_core --lib
+  audit_stored_wallets_reach_solana_sui_aptos_and_tron_submission`, run by
+  `./scripts/cli-acceptance.sh`. No files or directories were moved.
+
+### Known-open endpoint correctness
+
+- Before: Internet Computer's Rosetta `/network/list` received GET and appeared
+  dead. After: core selects POST with metadata and requires a nonempty network
+  list. Rationale: the health check must use the provider's protocol.
+- Before: an explicit probe equal to its endpoint (Bitcoin SV chain info) was
+  skipped. After: explicit probes are honored even when URLs are equal.
+- Before: failed REST checks hid HTTP status behind a generic failure. After:
+  diagnostics report the method and status, distinguishing a 403 denial from
+  an unchecked endpoint. A denied provider remains unavailable.
+- CLI check: `spectra endpoints --chain icp`, `spectra endpoints --chain
+  'Bitcoin SV'`, `spectra endpoints --chain zcash` (live, read-only); offline
+  regression: `cargo test -p spectra_core --lib http_probe_regressions`, also
+  included in CLI acceptance. Independent derivation vectors use pinned
+  reference-wallet tests, never this implementation's output as the oracle.
+
+
+### Six follow-up ownership slices
+
+- **Import:** before, Swift committed wallets then wrote secrets; CLI sealed
+  separately. After, core requires signing material, derives addresses, mints
+  IDs, writes secrets and commits the wallet batch together. Failure cleans
+  partial secrets and reports cleanup errors. Rationale: do not store claimed
+  signing addresses or partially imported wallets. A crash before the SQLite
+  commit can leave an orphan secret because SQLite and Keychain cannot share
+  a transaction. CLI: `wallet import`, `wallet create`, and failure/retry
+  fixtures in `scripts/cli-stage3-followup.sh`.
+- **Wallet edits:** before, rename/inclusion wrote a whole stale projection.
+  After, field intents change only the named field on an existing ID.
+  Rationale: preserve refreshed holdings and concurrent edits; never resurrect
+  deleted wallets. CLI: `wallet rename`, `wallet inclusion`.
+- **Quotes:** before, Swift selected requests, merged prices, saved a JSON cache
+  and timed fiat retries. After, core owns requests, valid-value merging, cache,
+  attempt/success timestamps and errors. Missing/invalid quotes retain previous
+  values; cooldown survives reopening; settings reset retains quotes.
+  Rationale: one durable authority. CLI: `price --stored`, `price --refresh`,
+  `currency --refresh-rates`.
+- **Maintenance:** before, Swift hardcoded Dogecoin and the scheduler retained
+  every confirmed send. After, both use stored history and the registry's
+  polling/finality rule. Rationale: confirmed EVM sends need no more polling;
+  depth-tracking chains still do. CLI: `txs --maintenance`,
+  `diagnostics maintenance --conditions <json>`.
+- **Preview:** before, Swift assembled EVM calldata and requested mainnet fees;
+  UTXO/Dogecoin quoting required revealing the seed. After, core resolves the
+  stored wallet/asset, network, destination and exact decimal amount; quoting
+  needs no seed. Rationale: preview and execution must agree without exposing
+  signing material. CLI: `send preview`, `send review`; the local Sepolia
+  fixture checks exact 1.1 ETH and invalid-input refusal before network access.
+- **Boundary:** before, low-level quote/secret/assembly hops remained exported.
+  After, seven become Rust-only and four owned operations replace them. Dead
+  Swift wrappers are removed; protocol-specific types and callbacks remain.
+  Rationale: remove orchestration rather than combine unrelated operations.
+  CLI: export scripts and follow-up acceptance; coverage map linked above.
+
+
+### Complete the ten Stage 3 / C2 ownership slices
+
+- **Balance refresh:** the engine formerly returned a one-holding summary and
+  Swift decided how to merge it, queried tracked tokens separately, and wrote
+  whole wallets back. Core now resolves the stored wallet/network and tracked
+  contracts, fetches both kinds of balance, merges with chain-specific contract
+  identity, and persists before notifying the observer. Invalid amounts refuse;
+  unreadable tokens keep their old balance, while a legitimate zero replaces it.
+  A result for a deleted wallet or changed address/network cannot overwrite the
+  new state. Solana/Tron base58, TON base64 and Move module/type names keep
+  their case; only hex address components are case-normalized, on testnets too.
+  Swift only coalesces projection reads. CLI: `spectra refresh
+  --wallet <id>`; `--endpoint` provides an explicit provider for a selected
+  wallet. `scripts/cli-balance-refresh.py target/debug/spectra` proves the real
+  CLI persists ETH/USDC and keeps the token balance after a malformed read.
+- **Deletion and network changes:** wallet removal now deletes its history,
+  addresses and keypool in the same SQLite transaction as the wallet. Registered
+  secrets are deleted idempotently first; a secret-backend failure leaves the
+  wallet present and reports an error. A database failure after secret deletion
+  may leave a wallet without signing material, never a false deletion success;
+  retrying finishes cleanup. A signing wallet in a bound store requires its
+  SecretStore. The platform cannot transactionally roll back Keychain together
+  with SQLite. Network selection now clears every member of the changed
+  family's derivation tables inside the settings transaction, including the
+  in-memory projections after commit. Re-selecting the same network is a no-op
+  and no longer clears reservations. CLI: `wallet delete ... --yes`, `network
+  set ...`; the `service::balance_refresh::lifecycle_tests` fixtures inject a
+  cleanup failure and prove settings roll back, then retry and reopen.
+- **Outgoing records:** only Swift used to create a pending transaction after
+  `execute_send` returned. Core now writes an uncertain-submission record before
+  submitting, and saves the resulting hash, actual network, nonce and opaque
+  signed payload before returning. The work survives caller cancellation.
+  Sign-only requests do not create pending transactions. An ambiguous failure
+  remains explicitly uncertain, so a timeout is not mistaken for proof that
+  nothing was submitted. Swift reads the committed record for its last-send
+  UI and notification permission. Preview-only fee/change guesses are no longer
+  copied into stored transaction facts. CLI: `send broadcast`; the
+  `audit_stored_wallets_reach_solana_sui_aptos_and_tron_submission` fixture
+  verifies records survive reopening after mock submissions, without funds.
+- **Rebroadcast:** Swift used to inspect payload formats, select a low-level
+  broadcaster, and update a whole transaction. Some unsupported formats even
+  returned deferred success without sending. `rebroadcast_transaction(id)` now
+  reads the stored chain and payload, refuses missing/competing formats and
+  confirmed records, requires a nonempty node transaction ID, and updates the
+  same record. Submission updates merge into the stored row and cannot revert
+  a receipt that confirmed it while the request was in flight. Errors cannot
+  become fabricated success. CLI: `send rebroadcast
+  <transaction-id> --yes`; `service::send_records::tests` exercises a mock
+  Sepolia provider, missing ID and confirmed-record refusal.
+- **Funds Finder:** separate Swift and CLI loops chose concurrency and classified
+  balances; Swift silently dropped failures and CLI used floating point to find
+  nonzero amounts. A core scan session owns candidates, batches of four and
+  progress. Its results distinguish funded, zero and failed reads using exact
+  smallest-unit digits. Cancelling a batch does not advance its cursor. The UI
+  only adopts progress/hits/errors. CLI: `rescan` and `rescan --dry-run`;
+  `service::funds_scan` checks all three outcomes against a local provider.
+- **Durable diagnostics:** Swift's log and sync-state JSON blobs and core's
+  separate per-chain event store are replaced directly by one core-owned typed
+  diagnostic state. Intents append, mark a chain healthy/degraded/synced, or clear
+  logs. Core stamps, trims and caps the global log at 800; the per-chain view
+  exposes its most recent 200. Recovery and last-success decisions live there.
+  The app no longer writes both copies of a chain event. Swift localizes the
+  projection and queues commands; persistence failures remain available as
+  `persistenceError`. CLI: `diagnostics state [--command <typed-JSON-intent>]`;
+  the offline gate changes state in separate processes and proves it survives.
+  Generic JSON storage remains only for the existing platform preferences and
+  live-price cache, outside this diagnostics slice. The six-item follow-up
+  subsequently moved that cache into typed core state; only platform
+  preferences retain generic blob storage.
+- **Derived wallet state and startup:** `wallet_derived_state()` reads signing
+  availability through its own SecretStore, removing the per-wallet Swift
+  queries and two caller-built ID lists. CLI: `wallet derived`. The duplicate
+  Swift token catalog builder is removed; Known Tokens shows a loading indicator
+  until core's seeded catalog arrives.
+- **Endpoint diagnostics and FFI:** iOS now calls `probe_chain_endpoints` like
+  `spectra endpoints`, with configured endpoints using the catalog's protocol
+  probe. Unprobeable rows explicitly say they were not checked. Swift no longer
+  chooses HTTP versus JSON-RPC or orchestrates endpoint loops. Low-level HTTP,
+  token fetch and payload-preparation helpers remain Rust internals where used;
+  obsolete per-wallet/per-chain cleanup methods are deleted. Protocol-specific
+  send input types are retained. Reproduce the surface with
+  `scripts/count-exports.sh`; no arbitrary export-count target is an acceptance
+  criterion. `scripts/cli-stage3.sh` is included in CLI acceptance.
+
+
+### Wiki headers use the original coin artwork once
+
+- Before: coin and chain detail pages placed a continuously rotating imitation
+  coin above a second small badge. Metallic rings, ridges, glare and orbit lines
+  surrounded artwork that already included its own background.
+- After: one 52pt original coin badge sits beside the name and symbol. The
+  rotating decoration, drag interaction and its rendering helpers are removed;
+  list-row artwork and core's artwork selection remain unchanged. This makes
+  the identity readable without duplicated symbols or decorative animation.
+- Presentation-only change, with no domain logic moved. CLI check:
+  `! rg 'WikiRotatingCoin|WikiStampedCoinLogo' swift/views`;
+  `scripts/check-design-tokens.sh` checks the surrounding UI tokens.
 
 ### Protocol encoders and Bitcoin history pagination (second core audit)
 
@@ -1997,8 +2277,6 @@ end supplies the wording.
   reducer; Swift `TokenPreferenceBridgeTests` covers the same across the async
   binding.
 
-Left in place: `TokenPreferenceEntry.builtIn`, Swift's own build of the catalog
-list, still backs the `cachedResolvedTokenPreferences` fallback for the moment
-between launch and core's first answer. It is a second builder of a list core
-owns and should go, but deleting it trades a duplicated rule for an empty
-Known Tokens screen on that hop, which is a UI decision rather than this one.
+Follow-up completed in the ten Stage 3 / C2 slices above: the duplicate
+`TokenPreferenceEntry.builtIn` builder and startup fallback are removed.
+Known Tokens shows loading until core's seeded catalog arrives.

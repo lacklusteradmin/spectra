@@ -21,6 +21,9 @@ use crate::out::{self, Out};
 
 #[derive(Args)]
 pub struct TxsArgs {
+    /// Show chains whose stored transactions still need polling.
+    #[arg(long)]
+    maintenance: bool,
     /// Poll pending transactions for this chain and persist status changes.
     #[arg(long, conflicts_with_all = ["wallet", "replaceable"])]
     poll_chain: Option<String>,
@@ -38,6 +41,34 @@ pub struct TxsArgs {
 /// irreversible half of this tool should take a word that says so.
 #[derive(Subcommand)]
 pub enum SendCommand {
+    /// Review stored-asset routing and submit preflight offline; never signs.
+    Review {
+        #[arg(long)]
+        wallet: String,
+        #[arg(long)]
+        holding: String,
+        #[arg(long)]
+        amount: String,
+        #[arg(long)]
+        destination: String,
+    },
+    /// Quote a stored EVM holding on its selected network; never signs.
+    Preview {
+        #[arg(long)]
+        wallet: String,
+        #[arg(long)]
+        holding: String,
+        #[arg(long)]
+        amount: String,
+        #[arg(long, default_value = "")]
+        destination: String,
+    },
+    /// Resubmit the signed payload of a stored transaction.
+    Rebroadcast {
+        transaction_id: String,
+        #[arg(long)]
+        yes: bool,
+    },
     /// Resolve the stored sender and check its signing identity offline.
     Identity(IdentityArgs),
     /// Validate exact decimal input and show integer units, without keys or network.
@@ -64,6 +95,58 @@ pub enum SendCommand {
 
 pub fn run(ctx: &Ctx, out: Out, command: SendCommand) -> CliResult<()> {
     match command {
+        SendCommand::Review {
+            wallet,
+            holding,
+            amount,
+            destination,
+        } => {
+            let wallet = ctx.find_wallet(&wallet)?;
+            let service = ctx.service()?;
+            let route = ctx
+                .rt
+                .block_on(service.send_asset_routing(wallet.id.clone(), holding.clone()));
+            let preflight = ctx.rt.block_on(service.send_submit_preflight(
+                wallet.id,
+                holding,
+                destination,
+                amount,
+            ))?;
+            out.emit(serde_json::json!({"route":route,"preflight":preflight}));
+            Ok(())
+        }
+        SendCommand::Preview {
+            wallet,
+            holding,
+            amount,
+            destination,
+        } => {
+            let wallet = ctx.find_wallet(&wallet)?;
+            let preview = ctx.rt.block_on(ctx.service()?.preview_owned_evm_send(
+                wallet.id,
+                holding,
+                amount,
+                destination,
+                None,
+                None,
+            ))?;
+            out.emit(serde_json::json!({"preview":preview}));
+            Ok(())
+        }
+        SendCommand::Rebroadcast {
+            transaction_id,
+            yes,
+        } => {
+            if !yes {
+                return Err(CliError::usage("rebroadcast requires --yes"));
+            }
+            let hash = ctx
+                .rt
+                .block_on(ctx.service()?.rebroadcast_transaction(transaction_id))
+                .map_err(CliError::from)?;
+            out.emit(serde_json::json!({"ok": true, "transactionHash": hash}));
+            Ok(())
+        }
         SendCommand::Identity(args) => identity(ctx, out, args),
         SendCommand::Amount(args) => exact_amount(out, args),
         SendCommand::Shortcut(args) => shortcut(out, args),
@@ -571,10 +654,18 @@ pub struct SendArgs {
 /// Transactions core has recorded locally. Distinct from `history`, which asks
 /// the chain.
 pub fn txs(ctx: &Ctx, out: Out, args: TxsArgs) -> CliResult<()> {
+    if args.maintenance {
+        let chains = ctx
+            .rt
+            .block_on(ctx.service()?.pending_maintenance_chains())?;
+        out.text(|| println!("{}", chains.join(", ")));
+        out.emit(serde_json::json!({"chains":chains}));
+        return Ok(());
+    }
     if let Some(name) = &args.poll_chain {
         let chain = resolve_chain(name)?;
-        let state = ctx.state()?;
-        let network = state.settings.network_chain(chain);
+        // A maintenance request names the stored transaction network.
+        let network = chain;
         let records = spectra_core::endpoint_records_for_chain_masked(
             network.chain_display_name().into(),
             RPC | HISTORY | UTXO,

@@ -71,6 +71,11 @@ pub(crate) use tokio::sync::RwLock as AsyncRwLock;
 pub(crate) use serde::{Deserialize, Serialize};
 
 mod address_discovery;
+mod balance_refresh;
+mod diagnostic_state;
+pub use diagnostic_state::{DiagnosticCommand, DiagnosticLog, DiagnosticLogInput, DiagnosticState};
+mod funds_scan;
+pub use funds_scan::{FundsScan, FundsScanProgress, FundsScanRead};
 mod helpers;
 mod history_bitcoin;
 mod history_cursor;
@@ -83,6 +88,7 @@ mod network_balance;
 mod network_hd;
 mod network_history;
 mod network_prices;
+pub use network_prices::QuoteRefreshState;
 mod network_tokens;
 mod operational_events;
 mod pending_status;
@@ -92,6 +98,7 @@ mod send_execution;
 mod send_identity;
 mod send_params;
 mod send_preview;
+mod send_records;
 mod send_signing;
 mod standalone;
 mod state;
@@ -101,7 +108,6 @@ mod wallet_import;
 
 pub(crate) use helpers::*;
 use keypool::keypool_key;
-use operational_events::OPERATIONAL_EVENTS_KEY;
 #[cfg(test)]
 use send_destination::{resolve_destination, verify_reviewed_destination};
 pub use standalone::*;
@@ -139,6 +145,7 @@ impl EndpointIndex {
 /// Swift holds one instance for the lifetime of the app session.
 #[derive(Clone, uniffi::Object)]
 pub struct WalletService {
+    quote_refresh_lock: Arc<tokio::sync::Mutex<()>>,
     pub(crate) trc20_metadata: Arc<crate::fetch::chains::tron::MetadataCache>,
     /// Retains the opened database connection for this service lifetime.
     pub(crate) state_database: Arc<AsyncRwLock<Option<Arc<crate::wallet_db::WalletDatabase>>>>,
@@ -177,13 +184,6 @@ pub struct WalletService {
     /// every keypool operation reads it under the keypool's own lock.
     pub(crate) owned_addresses:
         Arc<AsyncRwLock<HashMap<String, Vec<crate::wallet_db::OwnedAddressRecord>>>>,
-    /// Per-chain operational log, newest first, capped per chain.
-    ///
-    /// Not in `CoreAppState`: 200 entries × every chain is too much to clone
-    /// on an unrelated `SetFiatCurrency`. Same in-memory + write-through shape
-    /// as the keypool.
-    pub(crate) operational_events:
-        Arc<AsyncRwLock<HashMap<String, Vec<crate::store::ChainOperationalEventRecord>>>>,
     /// When each kind of refresh last ran, in unix seconds.
     ///
     /// Not persisted, and that is the whole difference from the keypool: a
@@ -220,6 +220,7 @@ impl WalletService {
         Ok(Arc::new(Self {
             trc20_metadata: Arc::new(crate::fetch::chains::tron::MetadataCache::default()),
             state_database: Arc::new(AsyncRwLock::new(None)),
+            quote_refresh_lock: Arc::new(tokio::sync::Mutex::new(())),
             state_writer: Arc::new(tokio::sync::Mutex::new(())),
             endpoints: Arc::new(AsyncRwLock::new(EndpointIndex::from_list(endpoints))),
             history_pagination: Arc::new(HistoryPaginationStore::new()),
@@ -231,7 +232,6 @@ impl WalletService {
             keypool: Arc::new(AsyncRwLock::new(HashMap::new())),
             owned_addresses: Arc::new(AsyncRwLock::new(HashMap::new())),
             refresh_clock: Arc::new(AsyncRwLock::new(Default::default())),
-            operational_events: Arc::new(AsyncRwLock::new(HashMap::new())),
         }))
     }
 
@@ -296,3 +296,27 @@ impl WalletService {
         guard.api_keys.get(chain_id).cloned()
     }
 }
+
+/// Catalog transport configuration for a non-platform front end.
+pub fn catalog_endpoints() -> Result<Vec<ChainEndpoints>, SpectraBridgeError> {
+    Chain::all()
+        .map(|chain| {
+            Ok(ChainEndpoints {
+                chain_id: chain.str_id().into(),
+                endpoints: crate::endpoint_records_for_chain_masked(
+                    chain.chain_display_name().into(),
+                    0,
+                    false,
+                )?
+                .into_iter()
+                .filter(|e| e.kind != "web-link")
+                .map(|e| e.endpoint)
+                .collect(),
+                api_key: None,
+            })
+        })
+        .collect()
+}
+
+#[cfg(test)]
+mod app_boundary_tests;

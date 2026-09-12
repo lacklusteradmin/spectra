@@ -187,15 +187,18 @@ fn strip_hex_leading_zeros(value: &str) -> String {
 /// Internal: `normalize_aptos_token_identifier` calls it. Exported until its
 /// Swift forwarder turned out to have no caller.
 pub(crate) fn canonical_aptos_hex_address(value: String) -> String {
-    strip_hex_leading_zeros(&value)
+    strip_hex_leading_zeros(&value.to_ascii_lowercase())
 }
 
-/// Normalize an Aptos coin-type / identifier string: lowercase, then rewrite
+/// Normalize an Aptos coin-type / identifier string: preserve type case, rewrite
 /// every `0x…` hex run in place with [`canonical_aptos_hex_address`].
 /// Internal: `normalize_token_identifier` is the one entry point, and it
 /// dispatches here by chain.
 pub(crate) fn normalize_aptos_token_identifier(value: String) -> String {
-    let lowercased = value.trim().to_lowercase();
+    let lowercased = value.trim().to_string();
+    if !lowercased.is_ascii() {
+        return lowercased;
+    }
     if lowercased.is_empty() {
         return String::new();
     }
@@ -224,14 +227,14 @@ pub(crate) fn normalize_aptos_token_identifier(value: String) -> String {
 /// Canonicalize just a Sui package identifier: `0x…` with trimmed zeroes.
 /// Internal: `normalize_sui_token_identifier` calls it.
 pub(crate) fn normalize_sui_package_component(value: String) -> String {
-    strip_hex_leading_zeros(&value)
+    strip_hex_leading_zeros(&value.to_ascii_lowercase())
 }
 
-/// Normalize a Sui token identifier: lowercase, split on `::`, canonicalize
+/// Normalize a Sui token identifier: preserve type case, split on `::`, canonicalize
 /// the first (package) component, rejoin.
 /// Internal: see `normalize_aptos_token_identifier`.
 pub(crate) fn normalize_sui_token_identifier(value: String) -> String {
-    let trimmed = value.trim().to_lowercase();
+    let trimmed = value.trim().to_string();
     if trimmed.is_empty() {
         return String::new();
     }
@@ -276,14 +279,18 @@ pub fn normalize_token_identifier(
     if trimmed.is_empty() {
         return None;
     }
-    match crate::registry::Chain::from_display_name(&chain_name) {
+    match crate::registry::Chain::from_display_name(&chain_name).map(|c| c.mainnet_counterpart()) {
         Some(crate::registry::Chain::Sui) => {
             Some(normalize_sui_token_identifier(trimmed.to_string()))
         }
         Some(crate::registry::Chain::Aptos) => {
             Some(normalize_aptos_token_identifier(trimmed.to_string()))
         }
-        Some(crate::registry::Chain::Ton) => Some(trimmed.to_string()),
+        Some(
+            crate::registry::Chain::Ton
+            | crate::registry::Chain::Solana
+            | crate::registry::Chain::Tron,
+        ) => Some(trimmed.to_string()),
         _ => Some(trimmed.to_lowercase()),
     }
 }
@@ -386,7 +393,7 @@ mod tests {
     fn normalize_aptos_rewrites_embedded_hex() {
         assert_eq!(
             normalize_aptos_token_identifier("0x001::coin::USDC".into()),
-            "0x1::coin::usdc"
+            "0x1::coin::USDC"
         );
         assert_eq!(normalize_aptos_token_identifier("   ".into()), "");
     }
@@ -395,7 +402,7 @@ mod tests {
     fn normalize_sui_roundtrip() {
         assert_eq!(
             normalize_sui_token_identifier("0x0002::Foo::bar".into()),
-            "0x2::foo::bar"
+            "0x2::Foo::bar"
         );
         assert_eq!(
             normalize_sui_token_identifier("plaintext".into()),
@@ -449,6 +456,21 @@ mod tests {
     /// Swift knew that and this function did not, until they became one.
     #[test]
     fn token_identifier_normalisation_is_per_chain() {
+        for chain in [
+            "Solana",
+            "Solana Devnet",
+            "Tron",
+            "Tron Nile",
+            "TON",
+            "TON Testnet",
+        ] {
+            assert_eq!(
+                normalize_token_identifier(Some(" AbCd ".into()), chain.into()),
+                Some("AbCd".into()),
+                "{chain}"
+            );
+        }
+
         assert_eq!(
             normalize_token_identifier(Some("  ".into()), "Ethereum".into()),
             None
@@ -460,11 +482,11 @@ mod tests {
         );
         assert_eq!(
             normalize_token_identifier(Some("0x0002::Foo::bar".into()), "Sui".into()),
-            Some("0x2::foo::bar".into())
+            Some("0x2::Foo::bar".into())
         );
         assert_eq!(
             normalize_token_identifier(Some("0x001::coin::USDC".into()), "Aptos".into()),
-            Some("0x1::coin::usdc".into())
+            Some("0x1::coin::USDC".into())
         );
         assert_eq!(
             normalize_token_identifier(Some("  EQAbC  ".into()), "TON".into()),

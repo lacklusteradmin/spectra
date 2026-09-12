@@ -98,6 +98,13 @@ impl StellarClient {
         use base64::Engine;
         let tx_b64 = base64::engine::general_purpose::STANDARD.encode(&tx_xdr);
 
+        crate::send::payload::before_submission(
+            serde_json::json!({"signed_xdr_b64":tx_b64}).to_string(),
+            "txid",
+            None,
+            None,
+        )
+        .await?;
         let result = with_fallback(&self.endpoints, |base| {
             let client = self.client.clone();
             let tx_b64 = tx_b64.clone();

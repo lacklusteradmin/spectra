@@ -493,7 +493,6 @@ fn parse_method(method: &str) -> Result<Method, HttpError> {
     })
 }
 
-#[uniffi::export(async_runtime = "tokio")]
 pub async fn http_request(
     method: String,
     url: String,
@@ -602,7 +601,6 @@ pub async fn http_get(
 /// POST a JSON body (already serialised) and return the response as text.
 /// Sets `Content-Type: application/json` automatically unless overridden
 /// by `headers`. Single-shot (no retry).
-#[uniffi::export(async_runtime = "tokio")]
 pub async fn http_post_json(
     url: String,
     body_json: String,
@@ -644,7 +642,6 @@ pub struct JsonRpcProbeResult {
     pub detail: String,
 }
 
-#[uniffi::export(async_runtime = "tokio")]
 pub async fn diagnostics_probe_jsonrpc(url: String, rpc_method: String) -> JsonRpcProbeResult {
     use crate::diagnostics::aggregate::diagnostics_parse_jsonrpc_probe;
 

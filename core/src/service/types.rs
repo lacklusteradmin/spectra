@@ -7,7 +7,7 @@
 use super::*;
 
 /// Everything the wallet list implies, with holdings already resolved.
-#[derive(Debug, Clone, uniffi::Record)]
+#[derive(Debug, Clone, serde::Serialize, uniffi::Record)]
 pub struct WalletDerivedState {
     pub included_portfolio_holdings: Vec<crate::store::wallet_domain::AssetHolding>,
     pub unique_price_request_coins: Vec<crate::store::wallet_domain::AssetHolding>,
@@ -55,7 +55,7 @@ pub struct TokenBalanceResult {
 /// Unified per-chain native balance projection used by `fetch_native_balance_summary`.
 /// `smallest_unit` is a base-10 integer string (sats, lamports, wei, yocto-NEAR, …);
 /// `amount_display` is the chain's human-readable native amount.
-#[derive(Debug, Clone, uniffi::Record)]
+#[derive(serde::Serialize, Debug, Clone, uniffi::Record)]
 pub struct NativeBalanceSummary {
     pub smallest_unit: String,
     pub amount_display: String,

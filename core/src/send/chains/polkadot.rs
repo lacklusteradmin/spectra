@@ -53,6 +53,13 @@ impl PolkadotClient {
         )?;
 
         let hex = format!("0x{}", hex::encode(&extrinsic));
+        crate::send::payload::before_submission(
+            serde_json::json!({"extrinsic_hex":hex}).to_string(),
+            "txid",
+            None,
+            None,
+        )
+        .await?;
         let result = self
             .rpc_call("author_submitExtrinsic", json!([hex]))
             .await?;
@@ -68,6 +75,13 @@ impl PolkadotClient {
 
     /// Submit a pre-signed extrinsic hex (for rebroadcast).
     pub async fn submit_extrinsic_hex(&self, hex: &str) -> Result<DotSendResult, String> {
+        crate::send::payload::before_submission(
+            serde_json::json!({"extrinsic_hex":hex}).to_string(),
+            "txid",
+            None,
+            None,
+        )
+        .await?;
         let result = self
             .rpc_call("author_submitExtrinsic", json!([hex]))
             .await?;

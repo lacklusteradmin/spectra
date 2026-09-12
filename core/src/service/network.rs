@@ -85,9 +85,25 @@ impl WalletService {
         let chain = chain_for_id(&chain_id)?;
         let name = chain.chain_display_name().to_string();
         let method = chain.rpc_health_method();
-        let records = crate::endpoint_records_for_chain_masked(name.clone(), 0, false)
+        let mut records = crate::endpoint_records_for_chain_masked(name.clone(), 0, false)
             .map_err(|e| SpectraBridgeError::from(format!("endpoints for {name}: {e}")))?;
 
+        // Custom endpoints use the same protocol probe as the catalog's node.
+        if let Some(template) = records.iter().find(|r| r.kind != "web-link").cloned() {
+            for endpoint in self.endpoints_for(&chain_id).await.iter() {
+                if records.iter().any(|r| &r.endpoint == endpoint) {
+                    continue;
+                }
+                let mut custom = template.clone();
+                custom.id = format!("configured:{endpoint}");
+                custom.probe_url = template
+                    .probe_url
+                    .as_ref()
+                    .map(|url| url.replacen(&template.endpoint, endpoint, 1));
+                custom.endpoint = endpoint.clone();
+                records.push(custom);
+            }
+        }
         let mut out = Vec::with_capacity(records.len());
         for record in records {
             // The `rpc` role means "JSON-RPC node", and only that: Bitcoin's
@@ -103,12 +119,9 @@ impl WalletService {
             // is `checked: false` rather than a failure.
             let is_rpc = record.kind == "rpc-node";
             let is_link_only = record.kind == "web-link";
-            let distinct_probe = record
-                .probe_url
-                .as_deref()
-                .filter(|url| *url != record.endpoint);
+            let explicit_probe = record.probe_url.as_deref();
             let rpc_method = is_rpc.then_some(method).flatten();
-            if is_link_only && distinct_probe.is_none() {
+            if is_link_only && explicit_probe.is_none() {
                 out.push(EndpointProbe {
                     chain_name: name.clone(),
                     endpoint: record.endpoint,
@@ -120,7 +133,7 @@ impl WalletService {
                 });
                 continue;
             }
-            let (checked, reachable, detail) = match (rpc_method, &distinct_probe) {
+            let (checked, reachable, detail) = match (rpc_method, &explicit_probe) {
                 (Some(method), _) => {
                     // Confirmed before it accuses. Sweeping every chain fires
                     // well over a hundred requests, and a burst produces
@@ -142,15 +155,8 @@ impl WalletService {
                     }
                 }
                 (None, Some(url)) => {
-                    let ok = crate::fetch::http::probe_endpoints(
-                        std::slice::from_ref(&url.to_string()),
-                        8,
-                    )
-                    .await
-                    .first()
-                    .map(|(_, ok)| *ok)
-                    .unwrap_or(false);
-                    (true, ok, "GET".to_string())
+                    let (ok, detail) = probe_http_endpoint(chain, url).await;
+                    (true, ok, detail)
                 }
                 (None, None) => (false, false, "no probe for this endpoint".to_string()),
             };
@@ -215,7 +221,7 @@ impl WalletService {
             ))
         })?;
         let endpoints = self.endpoints_for(chain.str_id()).await;
-        let status: UtxoTxStatus = match chain {
+        let status: UtxoTxStatus = match chain.mainnet_counterpart() {
             Chain::Bitcoin => {
                 let client = BitcoinClient::new(HttpClient::shared(), endpoints);
                 client.fetch_tx_status(&txid).await?
@@ -342,5 +348,88 @@ mod history_page_failures {
             .fetch_evm_history_page(Chain::BnbChain.str_id().into(), "from".into(), vec![], 2, 7)
             .await;
         assert!(result.unwrap_err().to_string().contains("key"));
+    }
+}
+
+async fn probe_http_endpoint(chain: Chain, url: &str) -> (bool, String) {
+    use crate::fetch::http::{http_request, HttpHeader, HttpRetryProfile};
+    let body = chain.http_health_post_body();
+    let method = if body.is_some() { "POST" } else { "GET" };
+    let response = http_request(
+        method.into(),
+        url.into(),
+        if body.is_some() {
+            vec![HttpHeader {
+                name: "Content-Type".into(),
+                value: "application/json".into(),
+            }]
+        } else {
+            vec![]
+        },
+        body.map(|s| s.as_bytes().to_vec()),
+        HttpRetryProfile::Diagnostics,
+    )
+    .await;
+    match response {
+        Ok(response) => {
+            let success = (200..300).contains(&response.status_code);
+            let valid = body.is_none()
+                || serde_json::from_slice::<serde_json::Value>(&response.body)
+                    .ok()
+                    .and_then(|v| {
+                        v.get("network_identifiers")
+                            .and_then(|v| v.as_array())
+                            .map(|a| !a.is_empty())
+                    })
+                    .unwrap_or(false);
+            (
+                success && valid,
+                format!(
+                    "{method} HTTP {}{}",
+                    response.status_code,
+                    if success && !valid {
+                        " (missing Rosetta networks)"
+                    } else {
+                        ""
+                    }
+                ),
+            )
+        }
+        Err(error) => (false, format!("{method}: {error}")),
+    }
+}
+
+#[cfg(test)]
+mod http_probe_regressions {
+    use super::*;
+    use wiremock::matchers::{body_json, method};
+    use wiremock::{Mock, MockServer, ResponseTemplate};
+    #[tokio::test]
+    async fn rosetta_posts_metadata_and_requires_a_network() {
+        let server = MockServer::start().await;
+        Mock::given(method("POST")).and(body_json(serde_json::json!({"metadata":{}})))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({"network_identifiers":[{"blockchain":"Internet Computer","network":"test"}]})))
+            .expect(1).mount(&server).await;
+        assert!(probe_http_endpoint(Chain::Icp, &server.uri()).await.0);
+        server.reset().await;
+        Mock::given(method("POST"))
+            .respond_with(
+                ResponseTemplate::new(200)
+                    .set_body_json(serde_json::json!({"network_identifiers":[]})),
+            )
+            .mount(&server)
+            .await;
+        assert!(!probe_http_endpoint(Chain::Icp, &server.uri()).await.0);
+    }
+    #[tokio::test]
+    async fn http_denials_are_reported_with_status() {
+        let server = MockServer::start().await;
+        Mock::given(method("GET"))
+            .respond_with(ResponseTemplate::new(403))
+            .mount(&server)
+            .await;
+        let (ok, detail) = probe_http_endpoint(Chain::Zcash, &server.uri()).await;
+        assert!(!ok);
+        assert!(detail.contains("403"), "{detail}");
     }
 }

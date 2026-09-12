@@ -80,6 +80,16 @@ impl EvmClient {
             });
         }
 
+        use sha3::Digest;
+        let local_hash = format!("0x{}", hex::encode(sha3::Keccak256::digest(&raw_tx)));
+        crate::send::payload::before_submission(
+            hex_tx.clone(),
+            "txid",
+            Some(local_hash),
+            Some(nonce),
+        )
+        .await?;
+
         let result = self
             .call("eth_sendRawTransaction", json!([hex_tx.clone()]))
             .await?;
@@ -154,6 +164,16 @@ impl EvmClient {
             });
         }
 
+        use sha3::Digest;
+        let local_hash = format!("0x{}", hex::encode(sha3::Keccak256::digest(&raw_tx)));
+        crate::send::payload::before_submission(
+            hex_tx.clone(),
+            "txid",
+            Some(local_hash),
+            Some(nonce),
+        )
+        .await?;
+
         let result = self
             .call("eth_sendRawTransaction", json!([hex_tx.clone()]))
             .await?;
@@ -192,7 +212,7 @@ impl EvmClient {
 // ── Send overrides + fee resolution
 
 /// Optional overrides for EIP-1559 sends. Any `None` field falls back to the
-/// default behavior (latest-nonce / recommended fee / estimated gas limit).
+/// default behavior (pending-nonce / recommended fee / estimated gas limit).
 ///
 /// * `nonce` — reuse a stuck transaction's nonce to build a replacement. The
 ///   EIP-1559 replacement-by-fee rule requires the new tx to bump BOTH

@@ -18,7 +18,13 @@ use crate::out::{self, Out};
 #[derive(Args)]
 pub struct PriceArgs {
     /// Chain display name, registry id or symbol.
-    chain: String,
+    chain: Option<String>,
+    /// Refresh prices for stored holdings and dashboard pins.
+    #[arg(long)]
+    refresh: bool,
+    /// Read core-owned cached quotes without network.
+    #[arg(long)]
+    stored: bool,
 }
 
 #[derive(Args)]
@@ -41,7 +47,22 @@ pub struct CurrencyArgs {
 }
 
 pub fn price(ctx: &Ctx, out: Out, args: PriceArgs) -> CliResult<()> {
-    let chain = resolve_chain(&args.chain)?;
+    if args.refresh || args.stored {
+        let service = ctx.service()?;
+        let state = if args.refresh {
+            ctx.rt.block_on(service.refresh_owned_prices(true))?
+        } else {
+            ctx.rt.block_on(service.app_state())
+        };
+        out.text(|| println!("{:?}", state.quotes.prices));
+        out.emit(serde_json::json!({"quotes":state.quotes}));
+        return Ok(());
+    }
+    let chain = resolve_chain(
+        args.chain
+            .as_deref()
+            .ok_or_else(|| CliError::usage("specify a chain, --stored or --refresh"))?,
+    )?;
     let usd = spot_price_usd(ctx, &[chain])?
         .get(chain.coin_symbol())
         .copied()

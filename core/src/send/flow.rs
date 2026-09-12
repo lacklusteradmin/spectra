@@ -11,7 +11,7 @@ use crate::wallet_core::*;
 pub fn portfolio_composition_signature(holding_keys: Vec<String>) -> String {
     let mut sorted = holding_keys;
     sorted.sort();
-    sorted.join("|")
+    serde_json::to_string(&sorted).expect("string vectors always serialize")
 }
 
 #[derive(Debug, Clone, uniffi::Record)]
@@ -926,7 +926,6 @@ pub struct PreparedBroadcastPayload {
     pub result_field: String,
 }
 
-#[uniffi::export]
 pub fn core_rebroadcast_prepare_payload(
     format: String,
     raw_payload: String,

@@ -14,7 +14,7 @@ use spectra_core::store::state::{StateCommand, WalletSummary};
 use spectra_core::store::wallet_domain::{
     CoreSeedDerivationPaths, CoreSeedDerivationPreset, CoreWalletDerivationOverrides,
 };
-use spectra_core::store::{wallet_db, wallet_secrets};
+use spectra_core::store::wallet_secrets;
 
 use super::resolve_chain;
 use crate::ctx::{wallet_address, Ctx, SecretSource};
@@ -23,6 +23,8 @@ use crate::out::{self, Out};
 
 #[derive(Subcommand)]
 pub enum WalletCommand {
+    /// Core-derived portfolio and signing capabilities.
+    Derived,
     /// Generate a new wallet and its seed phrase.
     New(NewArgs),
     /// Import a wallet from an existing seed phrase.
@@ -37,6 +39,12 @@ pub enum WalletCommand {
     Receive(SelectArgs),
     /// Rename a wallet.
     Rename(RenameArgs),
+    /// Include or exclude a wallet from portfolio totals.
+    Inclusion {
+        wallet: String,
+        #[arg(action = clap::ArgAction::Set)]
+        included: bool,
+    },
     /// Delete a wallet, its history and its secrets.
     Delete(DeleteArgs),
     /// Decrypt and print a wallet's seed phrase.
@@ -179,9 +187,26 @@ pub fn run(ctx: &Ctx, out: Out, command: WalletCommand) -> CliResult<()> {
         WalletCommand::Import(args) => import(ctx, out, args),
         WalletCommand::Watch(args) => watch(ctx, out, args),
         WalletCommand::List => list(ctx, out),
+        WalletCommand::Derived => {
+            let d = ctx
+                .rt
+                .block_on(ctx.service()?.wallet_derived_state())
+                .map_err(CliError::from)?;
+            out.emit(serde_json::to_value(d).map_err(|e| CliError::failure(e.to_string()))?);
+            Ok(())
+        }
         WalletCommand::Show(args) => show(ctx, out, args),
         WalletCommand::Receive(args) => receive(ctx, out, args),
         WalletCommand::Rename(args) => rename(ctx, out, args),
+        WalletCommand::Inclusion { wallet, included } => {
+            let wallet = ctx.find_wallet(&wallet)?;
+            ctx.apply(StateCommand::SetWalletPortfolioInclusion {
+                wallet_id: wallet.id,
+                included,
+            })?;
+            out.emit(serde_json::json!({"ok":true}));
+            Ok(())
+        }
         WalletCommand::Delete(args) => delete(ctx, out, args),
         WalletCommand::Export(args) => export(ctx, out, args),
     }
@@ -284,7 +309,6 @@ fn import_private_key(ctx: &Ctx, out: Out, args: ImportArgs, chain: Chain) -> Cl
 
     let password = args.creation.password()?;
     let wallet_id = new_wallet_id();
-    wallet_secrets::seal_private_key(ctx.secrets.as_ref(), &wallet_id, &private_key, &password)?;
 
     let name = args
         .creation
@@ -295,15 +319,10 @@ fn import_private_key(ctx: &Ctx, out: Out, args: ImportArgs, chain: Chain) -> Cl
     commit.request.is_private_key_import = true;
     commit.request.resolved_addresses = Default::default();
     commit.private_key = Some(private_key.clone());
+    commit.password = Some(password);
 
     let service = ctx.service()?;
-    let outcome = match ctx.rt.block_on(service.import_wallets(commit)) {
-        Ok(outcome) => outcome,
-        Err(error) => {
-            let _ = wallet_secrets::delete(ctx.secrets.as_ref(), &wallet_id);
-            return Err(CliError::from(error));
-        }
-    };
+    let outcome = ctx.rt.block_on(service.import_wallets(commit))?;
 
     let wallet = first_wallet(&outcome)?;
     out.text(|| {
@@ -349,15 +368,6 @@ fn seal_and_import(
     let password = args.optional_password()?;
     let wallet_ids: Vec<String> = chains.iter().map(|_| new_wallet_id()).collect();
 
-    for wallet_id in &wallet_ids {
-        wallet_secrets::store_seed_phrase(
-            ctx.secrets.as_ref(),
-            wallet_id,
-            seed_phrase,
-            password.as_deref(),
-        )?;
-    }
-
     let name = args
         .name
         .clone()
@@ -369,18 +379,13 @@ fn seal_and_import(
             .by_chain
             .insert(c.mainnet_counterpart().str_id().to_string(), path);
     }
-    let commit = seed_commit(chains, &wallet_ids, &name, paths, seed_phrase);
+    let mut commit = seed_commit(chains, &wallet_ids, &name, paths, seed_phrase);
+    commit.password = password;
 
     let service = ctx.service()?;
-    match ctx.rt.block_on(service.import_wallets(commit)) {
-        Ok(outcome) => Ok(outcome),
-        Err(error) => {
-            for wallet_id in &wallet_ids {
-                let _ = wallet_secrets::delete(ctx.secrets.as_ref(), wallet_id);
-            }
-            Err(CliError::from(error))
-        }
-    }
+    ctx.rt
+        .block_on(service.import_wallets(commit))
+        .map_err(CliError::from)
 }
 
 fn watch(ctx: &Ctx, out: Out, args: WatchArgs) -> CliResult<()> {
@@ -545,17 +550,19 @@ fn receive(ctx: &Ctx, out: Out, args: SelectArgs) -> CliResult<()> {
 // ─── Mutating ───────────────────────────────────────────────────────────────
 
 fn rename(ctx: &Ctx, out: Out, args: RenameArgs) -> CliResult<()> {
-    let mut wallet = ctx.find_wallet(&args.wallet)?;
+    let wallet = ctx.find_wallet(&args.wallet)?;
     let new_name = args.name.trim().to_string();
     if new_name.is_empty() {
         return Err(CliError::rejected("a wallet name cannot be empty"));
     }
     let previous = wallet.name.clone();
-    wallet.name = new_name.clone();
 
     // Through the reducer, not by editing state and saving it. Core decides
     // whether a wallet may change and persists the result itself.
-    ctx.apply(StateCommand::UpdateWalletIfPresent { wallet })?;
+    ctx.apply(StateCommand::RenameWallet {
+        wallet_id: wallet.id,
+        name: new_name.clone(),
+    })?;
 
     out.text(|| {
         println!(
@@ -582,12 +589,6 @@ fn delete(ctx: &Ctx, out: Out, args: DeleteArgs) -> CliResult<()> {
     ctx.apply(StateCommand::RemoveWallet {
         wallet_id: wallet.id.clone(),
     })?;
-    // Keypool, owned addresses and history rows go too: removing the wallet
-    // from the resident state only rewrites the wallet list.
-    wallet_db::delete_wallet_data(&ctx.db_path(), &wallet.id).map_err(CliError::failure)?;
-    if !wallet.is_watch_only {
-        wallet_secrets::delete(ctx.secrets.as_ref(), &wallet.id)?;
-    }
 
     out.text(|| println!("  {} deleted \"{}\"", out::ok_mark(), wallet.name));
     out.emit(serde_json::json!({ "ok": true, "deleted": wallet.id }));
@@ -714,6 +715,7 @@ fn seed_commit(
         watch_only_entries: WalletImportWatchOnlyEntries::default(),
     };
     WalletImportCommit {
+        password: None,
         request,
         holdings: Vec::new(),
         seed_derivation_preset: CoreSeedDerivationPreset::default(),
@@ -766,6 +768,7 @@ fn commit_for(
     seed_derivation_paths: CoreSeedDerivationPaths,
 ) -> WalletImportCommit {
     WalletImportCommit {
+        password: None,
         request,
         holdings: Vec::new(),
         seed_derivation_preset: Default::default(),

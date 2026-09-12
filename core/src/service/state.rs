@@ -30,36 +30,6 @@ impl WalletService {
             .map_err(Into::into)
     }
 
-    /// Remove all relational wallet state (keypool + addresses) for a deleted wallet.
-    /// This is the single call to make when a wallet is removed.
-    pub async fn delete_wallet_relational_data(
-        &self,
-        wallet_id: String,
-    ) -> Result<(), SpectraBridgeError> {
-        self.write_persisted(move |service| async move {
-            let db_path = service.bound_state_db_path().await?;
-            let to_delete = wallet_id.clone();
-            tokio::task::spawn_blocking(move || {
-                crate::wallet_db::delete_wallet_data(&db_path, &to_delete)
-            })
-            .await
-            .map_err(|e| SpectraBridgeError::from(format!("spawn_blocking: {e}")))?
-            .map_err(SpectraBridgeError::from)?;
-            // Clear the in-memory rows too. Leaving them means the keypool
-            // baseline still counts a deleted wallet's addresses.
-            service
-                .keypool
-                .write()
-                .await
-                .retain(|key, _| key.split_once('|').is_none_or(|(id, _)| id != wallet_id));
-            for rows in service.owned_addresses.write().await.values_mut() {
-                rows.retain(|row| row.wallet_id != wallet_id);
-            }
-            Ok(())
-        })
-        .await
-    }
-
     // ── Owned application state ───────────────────────────────────────────
     //
     // `CoreAppState` is the domain state, and this service owns it. Front ends
@@ -124,16 +94,8 @@ impl WalletService {
                     .push(record);
             }
 
-            let events = {
-                let path = db_path.clone();
-                tokio::task::spawn_blocking(move || sqlite_load(&path, OPERATIONAL_EVENTS_KEY))
-                    .await
-                    .map_err(|e| SpectraBridgeError::from(format!("spawn_blocking: {e}")))??
-            };
-            let events = serde_json::from_str(&events)?;
             *service.keypool.write().await = keypool;
             *service.owned_addresses.write().await = by_chain;
-            *service.operational_events.write().await = events;
 
             *service.state_database.write().await = Some(database);
             let db_path_for_seed = db_path.clone();
@@ -192,7 +154,7 @@ impl WalletService {
         use crate::store::wallet_domain::{CoreDashboardAssetGroup, CoreDashboardAssetHolding};
 
         let settings = self.wallet_state.read().await.settings.clone();
-        let derived = self.wallet_derived_state(Vec::new(), Vec::new()).await?;
+        let derived = self.wallet_derived_state().await?;
         let pinned = settings.pinned_dashboard_assets();
 
         let network_title = |chain_name: &str| -> String {
@@ -456,17 +418,21 @@ impl WalletService {
     /// coins against its own copy of the wallets. Core holds the wallets, so it
     /// resolves them itself.
     ///
-    /// The two inputs are the things core genuinely cannot know: which wallets
-    /// have signing material and which have a private key. Both are the
-    /// platform keystore's answer.
-    pub async fn wallet_derived_state(
-        &self,
-        signing_material_wallet_ids: Vec<String>,
-        private_key_backed_wallet_ids: Vec<String>,
-    ) -> Result<WalletDerivedState, SpectraBridgeError> {
+    /// Signing availability is read through the registered SecretStore.
+    pub async fn wallet_derived_state(&self) -> Result<WalletDerivedState, SpectraBridgeError> {
         use std::collections::{BTreeMap, HashSet};
-
         let wallets = self.wallets_for_display().await?;
+        let mut signing_material_wallet_ids = Vec::new();
+        let mut private_key_backed_wallet_ids = Vec::new();
+        for wallet in &wallets {
+            let secrets = self.wallet_secret_state(wallet.id.clone());
+            if secrets.has_signing_material {
+                signing_material_wallet_ids.push(wallet.id.clone());
+            }
+            if secrets.has_private_key {
+                private_key_backed_wallet_ids.push(wallet.id.clone());
+            }
+        }
         let (token_preferences, settings) = {
             let state = self.wallet_state.read().await;
             (state.token_preferences.clone(), state.settings.clone())
@@ -621,6 +587,7 @@ impl WalletService {
     ///
     /// Not a `StateCommand`: the rates are a fetch result, not an intent, so
     /// no front end gets a way to write arbitrary ones.
+    #[cfg(test)]
     pub(crate) async fn store_fiat_rates(
         &self,
         rates: std::collections::HashMap<String, f64>,
@@ -647,7 +614,7 @@ impl WalletService {
     /// from an intent, so they take the same writer, the same incremental diff
     /// and the same publish order without becoming a command a front end could
     /// send arbitrary values through.
-    async fn mutate_persisted_state<F>(
+    pub(super) async fn mutate_persisted_state<F>(
         &self,
         mutate: F,
     ) -> Result<StateTransition, SpectraBridgeError>
@@ -656,10 +623,15 @@ impl WalletService {
     {
         self.write_persisted(move |service| async move {
             let path = service.state_db_path.read().await.clone();
-            let (snapshot, events, changes) = {
+            let (snapshot, events, changes, removed, reset_chains) = {
                 let before = service.wallet_state.read().await;
                 let mut state = before.clone();
                 let events = mutate(&mut state);
+                for old in &before.wallets {
+                    if !state.wallets.iter().any(|w| w.id == old.id) {
+                        state.diagnostics.forget_wallet(&old.id);
+                    }
+                }
                 let changes = if path.is_some() && !events.is_empty() {
                     Some(crate::wallet_db::AppStateChanges::between(
                         Some(&before),
@@ -668,9 +640,45 @@ impl WalletService {
                 } else {
                     None
                 };
-                (state, events, changes)
+                let removed: Vec<String> = before
+                    .wallets
+                    .iter()
+                    .filter(|w| !state.wallets.iter().any(|next| next.id == w.id))
+                    .map(|w| w.id.clone())
+                    .collect();
+                let reset_chains = crate::wallet_db::changed_network_chains(&before, &state);
+                (state, events, changes, removed, reset_chains)
             };
 
+            // Secret deletion is idempotent. A backend failure leaves the wallet
+            // present so the same intent can be retried. SQLite changes commit together.
+            if !removed.is_empty() {
+                let store = service
+                    .secret_store
+                    .read()
+                    .map_err(|_| "secret store lock poisoned")?
+                    .clone();
+                if store.is_none()
+                    && path.is_some()
+                    && service
+                        .wallet_state
+                        .read()
+                        .await
+                        .wallets
+                        .iter()
+                        .any(|w| removed.contains(&w.id) && !w.is_watch_only)
+                {
+                    return Err(
+                        "secret store must be registered before deleting a signing wallet".into(),
+                    );
+                }
+                if let Some(store) = store {
+                    for id in &removed {
+                        crate::store::wallet_secrets::delete(&*store, id)
+                            .map_err(|e| SpectraBridgeError::from(e.to_string()))?;
+                    }
+                }
+            }
             if let (Some(path), Some(changes)) = (path, changes) {
                 tokio::task::spawn_blocking(move || changes.save(&path))
                     .await
@@ -683,6 +691,17 @@ impl WalletService {
                 });
             }
 
+            service.keypool.write().await.retain(|key, _| {
+                key.split_once('|').is_none_or(|(id, chain)| {
+                    !removed.iter().any(|r| r == id) && !reset_chains.iter().any(|c| c == chain)
+                })
+            });
+            let mut owned = service.owned_addresses.write().await;
+            owned.retain(|chain, _| !reset_chains.contains(chain));
+            for rows in owned.values_mut() {
+                rows.retain(|row| !removed.contains(&row.wallet_id));
+            }
+            drop(owned);
             *service.wallet_state.write().await = snapshot.clone();
             // The HTTP layer reads the Tor policy per request rather than the
             // store, so a change to either flag is pushed as it lands.
@@ -738,7 +757,7 @@ impl WalletService {
 
     /// A stand-in coin for a pinned symbol the user holds none of: a holding
     /// if one exists at zero, else a known token, else nothing.
-    async fn pinned_prototype(
+    pub(super) async fn pinned_prototype(
         &self,
         symbol: &str,
         derived: &WalletDerivedState,

@@ -69,55 +69,47 @@ impl WalletService {
                         .ok_or_else(|| format!("merge: unknown chain {chain_name:?}"))?;
                     let strategy = chain.transaction_merge_strategy();
                     let include_symbol_in_identity = chain.merge_identity_includes_symbol();
-                    // Scoped to this chain: a merge only ever matches within
-                    // one chain (`matches_identity` checks it before anything
-                    // else), so every other chain's history — every other
-                    // wallet's, too — was fetched, JSON-decoded and then
-                    // discarded by that check on every refresh. `idx_hr_chain`
-                    // exists in the schema for exactly this query and this
-                    // path was the one call site not using it.
-                    let existing: Vec<crate::fetch::transactions::CoreTransactionRecord> =
-                        crate::wallet_db::history_fetch_for_chain(&db_path, &chain_name)?
-                            .into_iter()
-                            .map(|row| row.payload.into())
+                    crate::wallet_db::history_update_chain(&db_path, &chain_name, |existing| {
+                        let existing: Vec<crate::fetch::transactions::CoreTransactionRecord> =
+                            existing.into_iter().map(|row| row.payload.into()).collect();
+                        let before: std::collections::HashMap<String, String> = existing
+                            .iter()
+                            .map(|record| (record.id.to_lowercase(), fingerprint(record)))
                             .collect();
-                    let before: std::collections::HashMap<String, String> = existing
-                        .iter()
-                        .map(|record| (record.id.to_lowercase(), fingerprint(record)))
-                        .collect();
 
-                    let merged = crate::fetch::transactions::merge_transactions(
-                        crate::fetch::transactions::TransactionMergeRequest {
-                            existing_transactions: existing,
-                            incoming_transactions: incoming,
-                            strategy,
-                            chain_name,
-                            include_symbol_in_identity,
-                            preserve_created_at_sentinel_unix,
-                        },
-                    );
+                        let merged = crate::fetch::transactions::merge_transactions(
+                            crate::fetch::transactions::TransactionMergeRequest {
+                                existing_transactions: existing,
+                                incoming_transactions: incoming,
+                                strategy,
+                                chain_name: chain_name.clone(),
+                                include_symbol_in_identity,
+                                preserve_created_at_sentinel_unix,
+                            },
+                        );
 
-                    // Only records the merge actually altered are written — a
-                    // history refresh mostly returns what is already stored.
-                    let mut added = Vec::new();
-                    let mut updated = Vec::new();
-                    let mut rows = Vec::new();
-                    for record in merged {
-                        let id = record.id.to_lowercase();
-                        match before.get(&id) {
-                            Some(previous) if *previous == fingerprint(&record) => continue,
-                            Some(_) => updated.push(id),
-                            None => added.push(id),
+                        // Only records the merge actually altered are written — a
+                        // history refresh mostly returns what is already stored.
+                        let mut added = Vec::new();
+                        let mut updated = Vec::new();
+                        let mut rows = Vec::new();
+                        for record in merged {
+                            let id = record.id.to_lowercase();
+                            match before.get(&id) {
+                                Some(previous) if *previous == fingerprint(&record) => continue,
+                                Some(_) => updated.push(id),
+                                None => added.push(id),
+                            }
+                            rows.push(crate::wallet_db::history_record_from_payload(record.into()));
                         }
-                        rows.push(crate::wallet_db::history_record_from_payload(record.into()));
-                    }
-                    if !rows.is_empty() {
-                        crate::wallet_db::history_upsert_batch(&db_path, &rows)?;
-                    }
-                    Ok(TransactionChange {
-                        added,
-                        updated,
-                        removed: Vec::new(),
+                        Ok((
+                            rows,
+                            TransactionChange {
+                                added,
+                                updated,
+                                removed: Vec::new(),
+                            },
+                        ))
                     })
                 }
                 TransactionCommand::Remove { ids } => {
@@ -268,6 +260,11 @@ impl WalletService {
             .await?
             .into_iter()
             .filter(|t| t.chain_name == chain_name && (!require_send_kind || t.kind == Send))
+            // A missing response/receipt cannot prove a journaled send failed.
+            // Keep its nonce reserved until an actual network outcome is known.
+            .filter(|t| {
+                t.signed_transaction_payload_format.as_deref() != Some("core.submission_json")
+            })
             .map(|t| crate::store::StalePendingFailureTransactionInput {
                 id: t.id,
                 created_at_unix: t.created_at
@@ -531,4 +528,43 @@ pub enum StatusPollOutcome {
 /// Serialization is enough: these records are flat and compare by value.
 fn fingerprint(record: &crate::fetch::transactions::CoreTransactionRecord) -> String {
     serde_json::to_string(record).unwrap_or_default()
+}
+
+#[cfg(test)]
+mod audit_fix5_tests {
+    use super::*;
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+    async fn audit_fix5_concurrent_history_merges_keep_one_identity_per_wallet() {
+        let service = WalletService::new_typed(vec![]).unwrap();
+        let path = std::env::temp_dir().join(format!(
+            "atomic-history-{}.sqlite",
+            crate::store::new_event_id()
+        ));
+        service
+            .open_state(path.to_string_lossy().into())
+            .await
+            .unwrap();
+        let barrier = Arc::new(tokio::sync::Barrier::new(24));
+        let mut tasks = Vec::new();
+        for i in 0..24 {
+            let service = service.clone();
+            let barrier = barrier.clone();
+            tasks.push(tokio::spawn(async move {
+                let record: crate::store::persistence_models::CorePersistedTransactionRecord = serde_json::from_value(json!({
+                    "id":crate::store::new_transaction_id(), "walletId":format!("wallet-{}",i%2), "walletName":"W", "kind":"send", "status":"confirmed", "chainName":"Ethereum", "transactionHash":"0xshared", "amount":1.0, "symbol":"ETH", "assetName":"Ether", "address":"0xrecipient", "createdAt":1000.0
+                })).unwrap();
+                barrier.wait().await;
+                service.apply_transaction_command(TransactionCommand::Merge { incoming:vec![record.into()], chain_name:"Ethereum".into(), preserve_created_at_sentinel_unix:None }).await.unwrap()
+            }));
+        }
+        let mut added = 0;
+        for task in tasks {
+            added += task.await.unwrap().added.len();
+        }
+        assert_eq!(added, 2);
+        let records = service.transactions().await.unwrap();
+        assert_eq!(records.len(), 2);
+        assert_ne!(records[0].wallet_id, records[1].wallet_id);
+    }
 }

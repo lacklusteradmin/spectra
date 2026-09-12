@@ -489,6 +489,10 @@ impl Default for AppSettings {
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, uniffi::Record)]
 #[serde(rename_all = "camelCase")]
 pub struct CoreAppState {
+    #[serde(default)]
+    pub quotes: crate::service::QuoteRefreshState,
+    #[serde(default)]
+    pub diagnostics: crate::service::DiagnosticState,
     pub schema_version: u32,
     pub wallets: Vec<WalletSummary>,
     pub selected_wallet_id: Option<String>,
@@ -516,7 +520,9 @@ pub struct CoreAppState {
 impl Default for CoreAppState {
     fn default() -> Self {
         Self {
+            quotes: Default::default(),
             schema_version: 2,
+            diagnostics: Default::default(),
             wallets: Vec::new(),
             selected_wallet_id: None,
             settings: AppSettings::default(),
@@ -622,6 +628,14 @@ pub enum AppSettingUpdate {
 pub enum StateCommand {
     ReplaceState {
         state: CoreAppState,
+    },
+    RenameWallet {
+        wallet_id: String,
+        name: String,
+    },
+    SetWalletPortfolioInclusion {
+        wallet_id: String,
+        included: bool,
     },
     UpsertWallet {
         wallet: WalletSummary,
@@ -952,6 +966,34 @@ pub fn reduce_state_in_place(state: &mut CoreAppState, command: StateCommand) ->
                 kind: "stateReplaced".to_string(),
                 subject_id: None,
             });
+        }
+        StateCommand::RenameWallet { wallet_id, name } => {
+            let name = name.trim();
+            if !name.is_empty() {
+                if let Some(wallet) = state.wallets.iter_mut().find(|w| w.id == wallet_id) {
+                    if wallet.name != name {
+                        wallet.name = name.to_owned();
+                        events.push(StateEvent {
+                            kind: "walletUpdated".into(),
+                            subject_id: Some(wallet_id),
+                        });
+                    }
+                }
+            }
+        }
+        StateCommand::SetWalletPortfolioInclusion {
+            wallet_id,
+            included,
+        } => {
+            if let Some(wallet) = state.wallets.iter_mut().find(|w| w.id == wallet_id) {
+                if wallet.include_in_portfolio_total != included {
+                    wallet.include_in_portfolio_total = included;
+                    events.push(StateEvent {
+                        kind: "walletUpdated".into(),
+                        subject_id: Some(wallet_id),
+                    });
+                }
+            }
         }
         StateCommand::UpsertWallet { wallet } => {
             let wallet_id = wallet.id.clone();

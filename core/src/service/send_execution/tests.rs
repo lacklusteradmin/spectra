@@ -13,11 +13,11 @@ mod token_decimals_come_from_the_contract {
     ///
     /// This asserts the gate, not the network read: a chain the helper has no
     /// client for must answer `None` without attempting a call, which is what
-    /// keeps the fallback reachable for Solana, TON, Sui and Aptos.
+    /// keeps the fallback reachable for TON, Sui and Aptos.
     #[tokio::test]
     async fn a_family_core_cannot_ask_falls_back_to_the_caller() {
         let service = WalletService::new_typed(Vec::new()).expect("service");
-        for chain in [Chain::Solana, Chain::Ton, Chain::Sui, Chain::Aptos] {
+        for chain in [Chain::Ton, Chain::Sui, Chain::Aptos] {
             assert_eq!(
                 service
                     .token_contract_decimals(chain, "whatever")
@@ -47,14 +47,17 @@ mod token_decimals_come_from_the_contract {
 }
 
 #[cfg(test)]
-mod build_send_params_tests {
+pub(super) mod build_send_params_tests {
     use crate::registry::Chain;
     use crate::send::ethereum::{EvmCustomFeeConfiguration, EvmSendOverridesInput};
     use crate::send::SendExecutionRequest;
     use crate::service::send_params::{ExecuteSendParams, SendParams, SendTokenParams};
     use crate::service::WalletService;
 
-    pub(super) fn req(chain_id: &str, _chain_name: &str) -> SendExecutionRequest {
+    pub(in crate::service::send_execution) fn req(
+        chain_id: &str,
+        _chain_name: &str,
+    ) -> SendExecutionRequest {
         SendExecutionRequest {
             chain_id: chain_id.to_string(),
             wallet_id: "w".into(),
@@ -107,6 +110,8 @@ mod build_send_params_tests {
                 serde_json::Value::Array(batch.iter().enumerate().map(|(i, item)| serde_json::json!({
                     "jsonrpc":"2.0", "id":item["id"], "result":format!("0x{}", if i == 0 { &decimals } else { &symbol })
                 })).collect())
+            } else if chain == Chain::Solana {
+                serde_json::json!({"jsonrpc":"2.0", "id":body["id"], "result":{"value":{"owner":"TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA", "data":{"parsed":{"type":"mint", "info":{"isInitialized":true, "decimals":9}}}}}})
             } else if chain == Chain::Near {
                 let metadata = serde_json::json!({"spec":"ft-1.0.0", "name":"Token", "symbol":"TOKEN", "decimals":6});
                 serde_json::json!({"jsonrpc":"2.0", "id":body["id"], "result":{"result":serde_json::to_vec(&metadata).unwrap()}})
@@ -151,8 +156,9 @@ mod build_send_params_tests {
             panic!("wrong native params")
         };
         assert_eq!(p.lamports, 9_007_199_254_740_993);
-        r.contract_address = Some("mint".into());
-        r.token_decimals = Some(9);
+        let (service, _server) = metadata_service(Chain::Solana).await;
+        r.contract_address = Some(bs58::encode([0x44; 32]).into_string());
+        r.token_decimals = Some(6); // The mint's 9 decimals win.
         let ExecuteSendParams::Token(SendTokenParams::Solana(p)) = service
             .build_send_params(Chain::Solana, &r, "from", "priv", &None)
             .await
@@ -520,7 +526,8 @@ mod build_send_params_tests {
         assert_eq!(p.amount_raw, 100_000); // Contract says 6, caller says 24.
 
         let mut r = req("solana", "Solana");
-        r.contract_address = Some("mint111".to_string());
+        let (service, _solana_server) = metadata_service(Chain::Solana).await;
+        r.contract_address = Some(bs58::encode([0x44; 32]).into_string());
         r.token_decimals = Some(6);
         r.amount_str = "1.5".into();
         let params = service
@@ -530,8 +537,8 @@ mod build_send_params_tests {
         let ExecuteSendParams::Token(SendTokenParams::Solana(p)) = params else {
             panic!("expected Solana token params")
         };
-        assert_eq!(p.amount_raw, 1_500_000);
-        assert_eq!(p.decimals, 6);
+        assert_eq!(p.amount_raw, 1_500_000_000);
+        assert_eq!(p.decimals, 9);
     }
 
     /// A token send with no contract-decimals source at all — no network

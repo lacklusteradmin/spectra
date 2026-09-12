@@ -479,6 +479,58 @@ mod a_preview_quotes_the_asset_it_moves {
         server
     }
 
+    #[tokio::test]
+    async fn owned_preview_uses_wallet_network_and_exact_amount_without_secrets() {
+        let server = evm_node().await;
+        let service = WalletService::new_typed(vec![ChainEndpoints {
+            chain_id: "ethereum-sepolia".into(),
+            endpoints: vec![server.uri()],
+            api_key: None,
+        }])
+        .unwrap();
+        let key = super::seed_probe_holding(&service, Chain::Ethereum, "ETH", None).await;
+        {
+            let mut state = service.wallet_state.write().await;
+            state.wallets[0].network_mode = Some("ethereum-sepolia".into());
+            state.wallets[0].addresses[0].address = format!("0x{}", "11".repeat(20));
+        }
+        for amount in ["NaN", "-1", "0.0000000000000000001"] {
+            assert!(matches!(
+                service
+                    .preview_owned_evm_send(
+                        "probe-wallet".into(),
+                        key.clone(),
+                        amount.into(),
+                        "".into(),
+                        None,
+                        None
+                    )
+                    .await,
+                Err(crate::SpectraBridgeError::InvalidInput { .. })
+            ));
+        }
+        assert!(server.received_requests().await.unwrap().is_empty());
+        let preview = service
+            .preview_owned_evm_send(
+                "probe-wallet".into(),
+                key,
+                "1.1".into(),
+                "".into(),
+                None,
+                None,
+            )
+            .await
+            .unwrap();
+        assert!(preview.is_some());
+        let requests = server.received_requests().await.unwrap();
+        let estimate = requests
+            .iter()
+            .map(|r| r.body_json::<serde_json::Value>().unwrap())
+            .find(|r| r["method"] == "eth_estimateGas")
+            .unwrap();
+        assert_eq!(estimate["params"][0]["value"], "0xf43fc2c04ee0000");
+    }
+
     /// `value_wei` and `data_hex` are what `prepare_evm_send_assembly` hands
     /// this call for the send in question — a token transfer carries its
     /// amount in the calldata and moves no ether, so its value is zero.
@@ -577,18 +629,17 @@ mod a_preview_quotes_the_asset_it_moves {
             api_key: None,
         }])
         .unwrap();
-        let raw_json = service
-            .fetch_tron_send_preview(
+        let value = service
+            .fetch_tron_send_preview_typed(
                 "TLa2f6VPqDgRE67v1736s7bJ8Ray5wYjU7".into(),
                 "TEST".into(),
                 "TR7NHqjeKQxGTCi8q8ZY4pL8otgjLj6t".into(),
             )
             .await
-            .expect("preview");
-        let value: serde_json::Value = serde_json::from_str(&raw_json).unwrap();
+            .expect("preview").expect("valid typed preview");
 
-        assert_eq!(value["spendable_balance"], json!(4.2));
-        assert_eq!(value["max_sendable"], json!(4.2));
+        assert_eq!(value.spendableBalance, 4.2);
+        assert_eq!(value.maxSendable, 4.2);
     }
 
     /// A token balance nobody could read is not a zero holding — the send
@@ -607,7 +658,7 @@ mod a_preview_quotes_the_asset_it_moves {
         }])
         .unwrap();
         let result = service
-            .fetch_tron_send_preview(
+            .fetch_tron_send_preview_typed(
                 "TLa2f6VPqDgRE67v1736s7bJ8Ray5wYjU7".into(),
                 "TEST".into(),
                 "TR7NHqjeKQxGTCi8q8ZY4pL8otgjLj6t".into(),

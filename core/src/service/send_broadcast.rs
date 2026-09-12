@@ -1,11 +1,10 @@
 //! Rebroadcast already-signed transactions.
 use super::*;
-#[uniffi::export(async_runtime = "tokio")]
 impl WalletService {
     /// Typed wrapper around `broadcast_raw`: runs the broadcast then extracts
     /// the named field (typically `"txid"` or `"digest"`) from the result JSON.
     /// Returns the field value as a string, or an empty string when missing.
-    pub async fn broadcast_raw_extract(
+    pub(crate) async fn broadcast_raw_extract(
         &self,
         chain_id: String,
         payload: String,
@@ -29,7 +28,7 @@ impl WalletService {
             SpectraBridgeError::from(format!("broadcast_raw: chain {chain_id} not supported"))
         })?;
         let eps = self.endpoints_for(chain.str_id()).await;
-        match chain {
+        match chain.mainnet_counterpart() {
             Chain::Bitcoin => {
                 let client = BitcoinClient::new(HttpClient::shared(), eps);
                 let txid = client.broadcast_raw_tx(&payload).await?;
@@ -66,7 +65,7 @@ impl WalletService {
                 Ok(serde_json::to_string(&res)?)
             }
             c if c.is_evm() => {
-                let client = EvmClient::new(eps, c.evm_chain_id());
+                let client = EvmClient::new(eps, chain.evm_chain_id());
                 let res = client.broadcast_raw(&payload).await?;
                 Ok(serde_json::to_string(&res)?)
             }
@@ -160,9 +159,64 @@ impl WalletService {
                 let res = client.broadcast_signed_tx_b64(&tx_b64).await?;
                 Ok(serde_json::to_string(&res)?)
             }
-            Chain::Icp => Err(SpectraBridgeError::from(
-                "ICP rebroadcast is not supported".to_string(),
-            )),
+            Chain::Icp => {
+                let client = IcpClient::new(eps);
+                Ok(serde_json::to_string(
+                    &client.submit_signed_transaction(&payload).await?,
+                )?)
+            }
+            Chain::Monero => {
+                let client = MoneroClient::new(eps);
+                Ok(serde_json::to_string(
+                    &client.relay_prepared(&payload).await?,
+                )?)
+            }
+            Chain::Bittensor => {
+                let val: serde_json::Value = serde_json::from_str(&payload)?;
+                let hex = val["extrinsic_hex"]
+                    .as_str()
+                    .ok_or("missing extrinsic_hex")?;
+                let secondary = self
+                    .endpoints_for(&chain.endpoint_str_id(EndpointSlot::Secondary))
+                    .await;
+                let client =
+                    BittensorClient::new(eps, secondary, self.api_key_for(chain.str_id()).await);
+                Ok(serde_json::to_string(
+                    &client.submit_extrinsic_hex(hex).await?,
+                )?)
+            }
+            Chain::Kaspa => {
+                let client = KaspaClient::new(eps);
+                Ok(serde_json::to_string(
+                    &client
+                        .broadcast_tx_body(serde_json::from_str(&payload)?)
+                        .await?,
+                )?)
+            }
+            Chain::Decred => {
+                let client = DecredClient::new(eps);
+                Ok(serde_json::to_string(
+                    &client.broadcast_raw_tx(&payload).await?,
+                )?)
+            }
+            Chain::Zcash => {
+                let client = ZcashClient::new(eps);
+                Ok(serde_json::to_string(
+                    &client.broadcast_raw_tx(&payload).await?,
+                )?)
+            }
+            Chain::BitcoinGold => {
+                let client = BitcoinGoldClient::new(eps);
+                Ok(serde_json::to_string(
+                    &client.broadcast_raw_tx(&payload).await?,
+                )?)
+            }
+            Chain::Dash => {
+                let client = DashClient::new(eps);
+                Ok(serde_json::to_string(
+                    &client.broadcast_raw_tx(&payload).await?,
+                )?)
+            }
             c => Err(SpectraBridgeError::from(format!(
                 "broadcast_raw: chain {c:?} not supported"
             ))),

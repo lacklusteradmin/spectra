@@ -415,6 +415,8 @@ fn app_state_load_on_empty_db_is_default() {
 fn app_state_round_trips() {
     let db = tmp_db();
     let state = CoreAppState {
+        diagnostics: Default::default(),
+        quotes: Default::default(),
         schema_version: 2,
         wallets: vec![wallet("w1", "Bitcoin"), wallet("w2", "Ethereum")],
         selected_wallet_id: Some("w2".to_string()),
@@ -451,6 +453,8 @@ fn app_state_save_preserves_wallet_order() {
         wallet("mm", "Sui"),
     ];
     let state = CoreAppState {
+        diagnostics: Default::default(),
+        quotes: Default::default(),
         wallets: ordered.clone(),
         ..CoreAppState::default()
     };

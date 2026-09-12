@@ -1,0 +1,20 @@
+{
+  "verifiedAtUTC": "2026-09-12T04:01:27.864174+00:00",
+  "network": "Ethereum Sepolia",
+  "chainId": 11155111,
+  "transactionHash": "0x7c96dddb0ae86e2ee91dab7b0aeb0de7a4b6acaaf9848c07c7666a9bf7475555",
+  "blockHash": "0x777804b83935b6b467c7c0994b08a2a729a52ed3efc644c0b6595a4148f00d16",
+  "blockNumber": 11686443,
+  "confirmationsAtCheck": 10,
+  "from": "0x57f8ff27db25da115989fd821994c4e0b9e18b6e",
+  "to": "0x57f8ff27db25da115989fd821994c4e0b9e18b6e",
+  "valueWei": "1000000000000",
+  "gasUsed": 21000,
+  "effectiveGasPriceWei": "1068169592",
+  "feeWei": "22431561432000",
+  "status": "success",
+  "signer": "spectra send broadcast --sign-only",
+  "submission": "eth_sendRawTransaction of the unchanged CLI-signed payload",
+  "rpc": "https://ethereum-sepolia-rpc.publicnode.com",
+  "scope": "EVM public-testnet acceptance and mined receipt; not all chains or UI broadcast orchestration"
+}

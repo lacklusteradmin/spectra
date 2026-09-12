@@ -1,9 +1,6 @@
 use crate::derivation::import::{WalletImportAddresses, WalletImportCommit, WalletImportRequest};
 use crate::service::WalletService;
-use crate::store::wallet_domain::{
-    CoreSeedDerivationPaths, CoreSeedDerivationPreset, CoreWalletDerivationOverrides,
-};
-use std::collections::HashMap;
+use crate::store::wallet_domain::{CoreSeedDerivationPreset, CoreWalletDerivationOverrides};
 
 // Real addresses: core validates every import address now, so a
 // placeholder would simply be dropped.
@@ -13,6 +10,7 @@ const MNEMONIC: &str = "test test test test test test test test test test test j
 
 fn commit(chains: &[&str], addresses: &[(&str, &str)]) -> WalletImportCommit {
     WalletImportCommit {
+        password: None,
         request: WalletImportRequest {
             wallet_name: String::new(),
             default_wallet_name_start_index: 1,
@@ -35,20 +33,26 @@ fn commit(chains: &[&str], addresses: &[(&str, &str)]) -> WalletImportCommit {
         },
         holdings: Vec::new(),
         seed_derivation_preset: CoreSeedDerivationPreset::Standard,
-        seed_derivation_paths: CoreSeedDerivationPaths {
-            by_chain: HashMap::new(),
-            is_custom_enabled: false,
-        },
+        seed_derivation_paths: crate::app_core::seed_derivation_paths_for_account(0).unwrap(),
         derivation_overrides: CoreWalletDerivationOverrides::default(),
         network_chain_by_family: Default::default(),
-        seed_phrase: None,
+        seed_phrase: Some(MNEMONIC.into()),
         private_key: None,
     }
 }
 
 #[tokio::test]
 async fn imported_wallets_land_in_core_state() {
+    let temp = std::env::temp_dir().join(crate::store::new_transaction_id());
+    std::fs::create_dir_all(&temp).unwrap();
     let service = WalletService::new_typed(Vec::new()).expect("service");
+    service.set_secret_store(std::sync::Arc::new(
+        crate::store::secret_backends::InMemorySecretStore::new(),
+    ));
+    service
+        .open_state(temp.join("state.db").to_string_lossy().into())
+        .await
+        .unwrap();
     let outcome = service
         .import_wallets(commit(&["Solana"], &[("solana", SOL)]))
         .await
@@ -61,7 +65,15 @@ async fn imported_wallets_land_in_core_state() {
     assert_eq!(stored[0].selected_chain, "Solana");
     assert_eq!(
         stored[0].addresses.get("solana").map(String::as_str),
-        Some(SOL)
+        Some(
+            crate::derivation::import::derive_import_addresses(
+                MNEMONIC,
+                &["Solana".into()],
+                &crate::app_core::seed_derivation_paths_for_account(0).unwrap(),
+                &CoreWalletDerivationOverrides::default()
+            )["Solana"]
+                .as_str()
+        )
     );
 }
 
@@ -75,7 +87,16 @@ async fn imported_wallets_land_in_core_state() {
 /// after a restart.
 #[tokio::test]
 async fn a_seed_import_stores_one_address_per_network_of_its_family() {
+    let temp = std::env::temp_dir().join(crate::store::new_transaction_id());
+    std::fs::create_dir_all(&temp).unwrap();
     let service = WalletService::new_typed(Vec::new()).expect("service");
+    service.set_secret_store(std::sync::Arc::new(
+        crate::store::secret_backends::InMemorySecretStore::new(),
+    ));
+    service
+        .open_state(temp.join("state.db").to_string_lossy().into())
+        .await
+        .unwrap();
     let mut commit = commit(&["Bitcoin"], &[]);
     commit.seed_phrase = Some(MNEMONIC.to_string());
     commit.seed_derivation_paths =
@@ -111,7 +132,16 @@ async fn a_seed_import_stores_one_address_per_network_of_its_family() {
 
 #[tokio::test]
 async fn a_network_selection_applies_only_to_its_own_family() {
+    let temp = std::env::temp_dir().join(crate::store::new_transaction_id());
+    std::fs::create_dir_all(&temp).unwrap();
     let service = WalletService::new_typed(Vec::new()).expect("service");
+    service.set_secret_store(std::sync::Arc::new(
+        crate::store::secret_backends::InMemorySecretStore::new(),
+    ));
+    service
+        .open_state(temp.join("state.db").to_string_lossy().into())
+        .await
+        .unwrap();
     let mut input = commit(&["Bitcoin", "Solana"], &[("bitcoin", BTC), ("solana", SOL)]);
     input.network_chain_by_family =
         std::collections::HashMap::from([("bitcoin".to_string(), "bitcoin-testnet".to_string())]);
@@ -128,4 +158,111 @@ async fn a_network_selection_applies_only_to_its_own_family() {
     );
     // Choosing Bitcoin testnet must not drag the Solana wallet with it.
     assert_eq!(by_chain["Solana"].network_chain_id, None);
+}
+
+#[derive(Default)]
+struct FailingSecrets {
+    inner: crate::store::secret_backends::InMemorySecretStore,
+    writes: std::sync::atomic::AtomicUsize,
+}
+impl crate::store::secret_store::SecretStore for FailingSecrets {
+    fn load_secret(
+        &self,
+        kind: crate::store::secret_store::SecretClass,
+        key: String,
+    ) -> Result<String, crate::store::secret_store::SecretStoreError> {
+        self.inner.load_secret(kind, key)
+    }
+    fn save_secret(
+        &self,
+        kind: crate::store::secret_store::SecretClass,
+        key: String,
+        value: String,
+    ) -> Result<(), crate::store::secret_store::SecretStoreError> {
+        if self
+            .writes
+            .fetch_add(1, std::sync::atomic::Ordering::SeqCst)
+            == 1
+        {
+            return Err(crate::store::secret_store::SecretStoreError::Backend {
+                message: "injected write failure".into(),
+            });
+        }
+        self.inner.save_secret(kind, key, value)
+    }
+    fn delete_secret(
+        &self,
+        kind: crate::store::secret_store::SecretClass,
+        key: String,
+    ) -> Result<(), crate::store::secret_store::SecretStoreError> {
+        self.inner.delete_secret(kind, key)
+    }
+    fn list_keys(
+        &self,
+        kind: crate::store::secret_store::SecretClass,
+        prefix: String,
+    ) -> Result<Vec<String>, crate::store::secret_store::SecretStoreError> {
+        self.inner.list_keys(kind, prefix)
+    }
+}
+
+#[tokio::test]
+async fn failed_multi_wallet_import_leaves_neither_wallets_nor_partial_secrets_and_retries() {
+    let path = std::env::temp_dir().join(format!(
+        "spectra-import-{}.db",
+        crate::store::new_transaction_id()
+    ));
+    let service = WalletService::new_typed(vec![]).unwrap();
+    let store = std::sync::Arc::new(FailingSecrets::default());
+    service.set_secret_store(store.clone());
+    service
+        .open_state(path.to_string_lossy().into())
+        .await
+        .unwrap();
+    let input = commit(&["Ethereum", "Solana"], &[]);
+    assert!(service.import_wallets(input.clone()).await.is_err());
+    assert!(service.app_state().await.wallets.is_empty());
+    assert_eq!(store.inner.len(), 0);
+    assert!(crate::wallet_db::app_state_load(path.to_str().unwrap())
+        .unwrap()
+        .wallets
+        .is_empty());
+    let outcome = service.import_wallets(input).await.unwrap();
+    assert_eq!(outcome.wallets.len(), 2);
+    for wallet in outcome.wallets {
+        assert!(service.wallet_secret_state(wallet.id).has_signing_material);
+    }
+    assert_eq!(
+        crate::wallet_db::app_state_load(path.to_str().unwrap())
+            .unwrap()
+            .wallets
+            .len(),
+        2
+    );
+}
+
+#[tokio::test]
+async fn database_failure_rolls_back_import_secrets_and_missing_material_is_refused() {
+    let path = std::env::temp_dir().join(format!(
+        "spectra-import-{}.db",
+        crate::store::new_transaction_id()
+    ));
+    let service = WalletService::new_typed(vec![]).unwrap();
+    let store = std::sync::Arc::new(crate::store::secret_backends::InMemorySecretStore::new());
+    service.set_secret_store(store.clone());
+    service
+        .open_state(path.to_string_lossy().into())
+        .await
+        .unwrap();
+    let mut missing = commit(&["Solana"], &[("solana", SOL)]);
+    missing.seed_phrase = None;
+    assert!(service.import_wallets(missing).await.is_err());
+    let db = rusqlite::Connection::open(&path).unwrap();
+    db.execute_batch("CREATE TRIGGER fail_import BEFORE INSERT ON wallets BEGIN SELECT RAISE(ABORT, 'injected'); END;").unwrap();
+    assert!(service
+        .import_wallets(commit(&["Ethereum", "Solana"], &[]))
+        .await
+        .is_err());
+    assert_eq!(store.len(), 0);
+    assert!(service.app_state().await.wallets.is_empty());
 }

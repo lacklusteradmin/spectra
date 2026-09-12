@@ -116,6 +116,7 @@ pub struct WalletImportPlan {
 /// settings the wallets are created with.
 #[derive(Debug, Clone, uniffi::Record)]
 pub struct WalletImportCommit {
+    pub password: Option<String>,
     pub request: WalletImportRequest,
     /// Holdings each created wallet starts with, from the chain picker.
     pub holdings: Vec<crate::store::wallet_domain::AssetHolding>,
@@ -235,13 +236,10 @@ pub fn derive_import_addresses(
     by_chain_name
 }
 
-/// What an import produced. `secret_instructions` is the only part the caller
-/// must still act on — Keychain is platform, so writing the seed phrase stays
-/// on the platform side.
+/// The committed wallets. SecretStore writes and rollback belong to core.
 #[derive(Debug, Clone, uniffi::Record)]
 pub struct WalletImportOutcome {
     pub secret_kind: String,
-    pub secret_instructions: Vec<WalletSecretInstruction>,
     pub wallets: Vec<crate::store::wallet_domain::CoreImportedWallet>,
     /// Addresses the import refused, in the form they were supplied.
     ///

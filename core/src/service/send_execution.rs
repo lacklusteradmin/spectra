@@ -48,6 +48,18 @@ impl WalletService {
     /// signing identity; callers cannot supply a competing chain name or key.
     pub async fn execute_send(
         &self,
+        request: crate::send::SendExecutionRequest,
+    ) -> Result<crate::send::SendExecutionResult, SpectraBridgeError> {
+        let service = self.clone();
+        // The submission and its record finish even if the UI task is cancelled.
+        tokio::spawn(async move { service.execute_send_owned(request).await })
+            .await
+            .map_err(|e| SpectraBridgeError::from(e.to_string()))?
+    }
+}
+impl WalletService {
+    async fn execute_send_owned(
+        &self,
         mut request: crate::send::SendExecutionRequest,
     ) -> Result<crate::send::SendExecutionResult, SpectraBridgeError> {
         let password = request.password.take().map(Zeroizing::new);
@@ -89,6 +101,27 @@ impl WalletService {
                     password.as_ref().map(|p| p.as_str()),
                 )
                 .await?;
+            // Serialize nonce selection through durable submission for this sender.
+            let _sender_guard = if wants_sign_only {
+                None
+            } else {
+                Some(self.lock_sender(chain, &signer.from_address).await?)
+            };
+            let reserve_nonce = chain.is_evm()
+                && request
+                    .evm_overrides
+                    .as_ref()
+                    .and_then(|o| o.nonce)
+                    .is_none();
+            if chain.is_evm() && !wants_sign_only {
+                let overrides = request.evm_overrides.get_or_insert_with(Default::default);
+                if overrides.nonce.is_none() {
+                    overrides.nonce = Some(
+                        i64::try_from(self.next_send_nonce(chain, &signer.from_address).await?)
+                            .map_err(|_| "EVM nonce exceeds supported range")?,
+                    );
+                }
+            }
             let params = self
                 .build_send_params(
                     chain,
@@ -98,7 +131,44 @@ impl WalletService {
                     &signer.public_key_hex,
                 )
                 .await?;
-            let result_json = self.sign_and_broadcast_send(chain, params).await?;
+            let saved = Arc::new(std::sync::Mutex::new(None));
+            let result_json = if wants_sign_only {
+                self.sign_and_broadcast_send(chain, params).await?
+            } else {
+                let draft = self
+                    .begin_send_record(chain, &request, &signer.from_address)
+                    .await?;
+                let service = self.clone();
+                let saved_record = saved.clone();
+                let journal: crate::send::payload::SubmissionJournal =
+                    Arc::new(move |submission| {
+                        let mut record = draft.clone();
+                        let service = service.clone();
+                        let saved = saved_record.clone();
+                        Box::pin(async move {
+                            record.transaction_hash = submission.transaction_hash.clone();
+                            record.ethereum_nonce = submission
+                                .nonce
+                                .map(i64::try_from)
+                                .transpose()
+                                .map_err(|_| "EVM nonce exceeds supported range")?;
+                            record.signed_transaction_payload = Some(
+                                serde_json::to_string(&submission).map_err(|e| e.to_string())?,
+                            );
+                            record.signed_transaction_payload_format =
+                                Some("core.submission_json".into());
+                            service
+                                .save_prepared_send_record(record.clone(), reserve_nonce)
+                                .await
+                                .map_err(|e| e.to_string())?;
+                            *saved.lock().map_err(|_| "send record lock poisoned")? = Some(record);
+                            Ok(())
+                        })
+                    });
+                crate::send::payload::SUBMISSION_JOURNAL
+                    .scope(journal, self.sign_and_broadcast_send(chain, params))
+                    .await?
+            };
 
             // Classify broadcast result.
             let send_chain = chain.send_chain();
@@ -155,6 +225,17 @@ impl WalletService {
                 None
             };
 
+            let pending = saved
+                .lock()
+                .map_err(|_| "send record lock poisoned")?
+                .clone();
+            if let Some(mut record) = pending {
+                if !outcome.transaction_hash.trim().is_empty() {
+                    record.transaction_hash = Some(outcome.transaction_hash.clone());
+                    record.failure_reason = None;
+                }
+                self.save_send_record(record).await?;
+            }
             Ok(crate::send::SendExecutionResult {
                 rebroadcast_payload: result_json,
                 transaction_hash: outcome.transaction_hash,
@@ -207,6 +288,12 @@ impl WalletService {
             let client = crate::fetch::chains::tron::TronClient::new(endpoints);
             return Ok(Some(u32::from(
                 client.fetch_trc20_metadata(contract).await?.decimals,
+            )));
+        }
+        if chain.mainnet_counterpart() == Chain::Solana {
+            let client = crate::fetch::chains::solana::SolanaClient::new(endpoints);
+            return Ok(Some(u32::from(
+                client.fetch_transfer_mint(contract).await?.1,
             )));
         }
         if chain.mainnet_counterpart() == Chain::Near {

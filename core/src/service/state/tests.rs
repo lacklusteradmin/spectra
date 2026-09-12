@@ -110,7 +110,12 @@ async fn failed_keypool_and_address_writes_leave_memory_unchanged() {
         1
     );
     sql(&db, "CREATE TRIGGER reject_delete BEFORE DELETE ON wallet_keypool BEGIN SELECT RAISE(FAIL, 'injected'); END;");
-    assert!(s.delete_keypool_for_wallet("w".into()).await.is_err());
+    assert!(s
+        .apply_state_command(StateCommand::SelectNetworkChain {
+            chain_id: "bitcoin-testnet-4".into()
+        })
+        .await
+        .is_err());
     assert_eq!(
         s.keypool_state("w".into(), "Bitcoin".into())
             .await
@@ -133,7 +138,7 @@ async fn failed_log_commit_does_not_publish() {
     )
     .await
     .unwrap();
-    sql(&db, "CREATE TRIGGER reject_log BEFORE INSERT ON state BEGIN SELECT RAISE(FAIL, 'injected'); END;");
+    sql(&db, "CREATE TRIGGER reject_log BEFORE INSERT ON app_state_meta BEGIN SELECT RAISE(FAIL, 'injected'); END;");
     assert!(s.clear_operational_events(None).await.is_err());
     assert_eq!(s.operational_events("Bitcoin".into()).await.len(), 1);
     let reopened = service();

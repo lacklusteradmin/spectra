@@ -67,6 +67,7 @@ fn hash_field_for(chain: SendChain) -> &'static str {
     match chain {
         SendChain::Sui => "digest",
         SendChain::Solana => "signature",
+        SendChain::Ton => "message_hash",
         _ => "txid",
     }
 }
@@ -156,4 +157,50 @@ mod fee_tests {
         assert_eq!(dogecoin_fee(0.01).unwrap(), 350000);
         assert_eq!(dogecoin_fee(0.00000001).unwrap(), 1);
     }
+}
+
+/// Exact input for submitting the same signed transaction again. Never include
+/// the wallet seed or wallet signing keys.
+#[derive(Clone, serde::Serialize, serde::Deserialize)]
+pub(crate) struct PreparedSubmission {
+    pub payload: String,
+    pub result_field: String,
+    pub transaction_hash: Option<String>,
+    pub nonce: Option<u64>,
+}
+
+type SubmissionFuture =
+    std::pin::Pin<Box<dyn std::future::Future<Output = Result<(), String>> + Send>>;
+pub(crate) type SubmissionJournal =
+    std::sync::Arc<dyn Fn(PreparedSubmission) -> SubmissionFuture + Send + Sync>;
+
+tokio::task_local! {
+    /// Each owned send has its own journal, including when two sends run concurrently.
+    pub(crate) static SUBMISSION_JOURNAL: SubmissionJournal;
+}
+
+/// Every protocol awaits this after signing and before its first submission.
+/// The service installs a durable journal; standalone protocol callers have no store.
+pub(crate) async fn before_submission(
+    payload: String,
+    result_field: &str,
+    transaction_hash: Option<String>,
+    nonce: Option<u64>,
+) -> Result<(), String> {
+    if let Ok(journal) = SUBMISSION_JOURNAL.try_with(Clone::clone) {
+        journal(PreparedSubmission {
+            payload,
+            result_field: result_field.into(),
+            transaction_hash,
+            nonce,
+        })
+        .await?;
+    }
+    Ok(())
+}
+
+pub(crate) fn bitcoin_transaction_id(raw: &str) -> Option<String> {
+    let bytes = hex::decode(raw).ok()?;
+    let tx: bitcoin::Transaction = bitcoin::consensus::deserialize(&bytes).ok()?;
+    Some(tx.compute_txid().to_string())
 }

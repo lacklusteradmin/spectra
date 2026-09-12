@@ -281,6 +281,7 @@ impl DecredClient {
     }
 
     pub async fn broadcast_raw_tx(&self, raw_tx_hex: &str) -> Result<DcrSendResult, String> {
+        crate::send::payload::before_submission(raw_tx_hex.to_owned(), "txid", None, None).await?;
         let raw_hex = raw_tx_hex.to_string();
         with_fallback(&self.endpoints, |base| {
             let client = self.client.clone();

@@ -51,10 +51,7 @@ async fn portfolio_sums_the_same_asset_across_wallets() {
         ("w2", "Bitcoin", vec![coin("BTC", "Bitcoin", 0.5)], true),
     ])
     .await;
-    let derived = service
-        .wallet_derived_state(vec![], vec![])
-        .await
-        .expect("derived");
+    let derived = service.wallet_derived_state().await.expect("derived");
     assert_eq!(derived.portfolio.len(), 1);
     assert_eq!(derived.portfolio[0].amount, 2.0);
 }
@@ -66,10 +63,7 @@ async fn wallets_excluded_from_the_total_contribute_nothing() {
         ("w2", "Bitcoin", vec![coin("BTC", "Bitcoin", 9.0)], false),
     ])
     .await;
-    let derived = service
-        .wallet_derived_state(vec![], vec![])
-        .await
-        .expect("derived");
+    let derived = service.wallet_derived_state().await.expect("derived");
     assert_eq!(derived.portfolio[0].amount, 1.0);
     assert_eq!(derived.included_portfolio_holdings.len(), 1);
 }
@@ -90,10 +84,7 @@ async fn no_testnet_coin_is_quoted_on_any_family() {
             })
             .await
             .expect("select");
-        let derived = service
-            .wallet_derived_state(vec![], vec![])
-            .await
-            .expect("derived");
+        let derived = service.wallet_derived_state().await.expect("derived");
         assert!(
             derived.unique_price_request_coins.is_empty(),
             "{chain} testnet coins have no price to request"
@@ -140,10 +131,7 @@ async fn sending_needs_signing_material_on_a_live_chain() {
     )])
     .await;
 
-    let watch_only = service
-        .wallet_derived_state(vec![], vec![])
-        .await
-        .expect("derived");
+    let watch_only = service.wallet_derived_state().await.expect("derived");
     assert!(watch_only.send_enabled_wallet_ids.is_empty());
     // Receiving never needs a key.
     assert_eq!(
@@ -151,10 +139,8 @@ async fn sending_needs_signing_material_on_a_live_chain() {
         vec!["w1".to_string()]
     );
 
-    let with_key = service
-        .wallet_derived_state(vec!["w1".into()], vec![])
-        .await
-        .expect("derived");
+    install_key(&service);
+    let with_key = service.wallet_derived_state().await.expect("derived");
     assert_eq!(with_key.send_enabled_wallet_ids, vec!["w1".to_string()]);
 }
 
@@ -167,13 +153,18 @@ async fn an_untracked_token_on_ethereum_cannot_be_sent() {
         true,
     )])
     .await;
-    let derived = service
-        .wallet_derived_state(vec!["w1".into()], vec![])
-        .await
-        .expect("derived");
+    install_key(&service);
+    let derived = service.wallet_derived_state().await.expect("derived");
     let sendable: Vec<&str> = derived.send_coins_by_wallet_id["w1"]
         .iter()
         .map(|c| c.symbol.as_str())
         .collect();
     assert_eq!(sendable, vec!["ETH"], "SHIB is not a known token");
+}
+
+fn install_key(service: &WalletService) {
+    service.set_secret_store(std::sync::Arc::new(
+        crate::store::secret_backends::InMemorySecretStore::new(),
+    ));
+    service.store_wallet_seed_phrase("w1".into(), "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about".into(), None).unwrap();
 }

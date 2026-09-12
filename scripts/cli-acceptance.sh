@@ -1096,6 +1096,11 @@ check "loads and persists every Bitcoin history page against local fixtures" $OK
 # ── Result ──────────────────────────────────────────────────────────────────
 
 printf '\n'
+
+# Stage 3 / C2 ownership, including local provider fixtures.
+"$(dirname "$0")/cli-stage3.sh" "$BIN" || exit 1
+"$(dirname "$0")/cli-stage3-followup.sh" "$BIN" || exit 1
+
 if [[ "$FAILED" -eq 0 ]]; then
     printf '\033[32m%s passed\033[0m\n' "$PASSED"
     exit 0

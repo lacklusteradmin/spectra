@@ -193,43 +193,16 @@ impl BalanceRefreshEngine {
             // entry — avoids N RwLock acquisitions during the hot path.
             let obs = inner.observer.read().unwrap().clone();
 
-            // Fan out balance fetches with bounded concurrency (up to 8 in flight).
-            // Fetch the native balance, then build a minimal WalletSummary (one
-            // holding) from the coin template and the fetched amount. The observer
-            // carries it to the front end, which merges it into the holding rather
-            // than replacing the wallet: this summary knows only the native asset.
+            // The service resolves, merges and commits each wallet before notification.
             let ws = Arc::clone(&inner.wallet_service);
             let results: Vec<Result<(String, String, WalletSummary), ()>> = stream::iter(entries)
                 .map(|entry| {
                     let ws = Arc::clone(&ws);
                     async move {
-                        // Fetched from the network the wallet is on, filed
-                        // under its family below.
-                        let fetched = ws
-                            .fetch_native_balance_summary_auto(
-                                &entry.network_chain_id,
-                                entry.address.clone(),
-                            )
+                        let wallet_summary = ws
+                            .refresh_wallet_balances(entry.wallet_id.clone())
                             .await
                             .map_err(|_| ())?;
-                        let template =
-                            crate::service::native_coin_template(&entry.chain_id).ok_or(())?;
-                        let amount = fetched.amount_display.parse::<f64>().unwrap_or(0.0);
-                        let holding = AssetHolding { amount, ..template };
-                        let wallet_summary = WalletSummary {
-                            id: entry.wallet_id.clone(),
-                            name: String::new(),
-                            is_watch_only: false,
-                            chain_name: holding.chain_name.clone(),
-                            include_in_portfolio_total: true,
-                            network_mode: None,
-                            derivation_overrides: Default::default(),
-                            xpub: None,
-                            derivation_preset: String::new(),
-                            derivation_path: None,
-                            holdings: vec![holding],
-                            addresses: vec![],
-                        };
                         Ok((entry.chain_id.clone(), entry.wallet_id, wallet_summary))
                     }
                 })
@@ -376,7 +349,6 @@ mod tests {
 }
 
 use crate::store::state::WalletSummary;
-use crate::store::wallet_domain::AssetHolding;
 
 /// Callback interface implemented by Swift. Rust calls these from the tokio
 /// task that owns the refresh timer loop. Implementations must be

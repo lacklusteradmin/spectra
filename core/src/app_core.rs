@@ -683,6 +683,7 @@ pub(crate) fn parse_derivation_path(raw_path: &str) -> Option<Vec<DerivationPath
             value_string
                 .parse::<u32>()
                 .ok()
+                .filter(|value| *value < (1 << 31))
                 .map(|value| DerivationPathSegment { value, is_hardened })
         })
         .collect()

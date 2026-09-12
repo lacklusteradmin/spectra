@@ -55,6 +55,26 @@ pub(super) fn needs_status_poll(
 
 #[uniffi::export(async_runtime = "tokio")]
 impl WalletService {
+    /// The registry decides which stored records still need maintenance.
+    pub async fn pending_maintenance_chains(&self) -> Result<Vec<String>, SpectraBridgeError> {
+        let rows = self.fetch_all_history_records_typed().await?;
+        let mut chains = std::collections::BTreeSet::new();
+        for row in rows {
+            let r = row.payload;
+            if let Some(chain) = Chain::from_display_name(&r.chain_name) {
+                if needs_status_poll(
+                    r.kind,
+                    r.status,
+                    r.transaction_hash.as_deref(),
+                    chain.pending_status_poll(),
+                ) {
+                    chains.insert(chain.str_id().to_owned());
+                }
+            }
+        }
+        Ok(chains.into_iter().collect())
+    }
+
     /// Poll one chain's pending transactions and apply what came back.
     ///
     /// Returns what changed: enough for a caller to write an operational event
@@ -93,10 +113,9 @@ impl WalletService {
             .into_iter()
             .collect();
 
-        let network = {
-            let state = self.app_state().await;
-            state.settings.network_chain(chain)
-        };
+        // `tracked` selected records for this exact stored network. Settings
+        // may have changed since submission and must not redirect old hashes.
+        let network = chain;
         let network_id = network.str_id().to_string();
 
         let mut resolutions = Vec::new();
@@ -420,6 +439,53 @@ mod tests {
             .await
             .is_err());
     }
+    #[tokio::test]
+    async fn maintenance_scope_uses_registry_finality_and_ignores_empty_hashes() {
+        let (service, path) = stored_service().await;
+        use crate::store::state::{StateCommand, WalletSummary};
+        service
+            .apply_state_command(StateCommand::UpsertWallet {
+                wallet: WalletSummary::single_address(
+                    "wallet-1",
+                    "W",
+                    "Ethereum",
+                    "0x1111111111111111111111111111111111111111",
+                    None,
+                    true,
+                ),
+            })
+            .await
+            .unwrap();
+        service
+            .apply_transaction_command(crate::service::TransactionCommand::Upsert {
+                records: vec![
+                    record(
+                        "eth-confirmed",
+                        Chain::Ethereum,
+                        json!({"status":"confirmed"}),
+                    ),
+                    record(
+                        "doge-confirmed",
+                        Chain::Dogecoin,
+                        json!({"status":"confirmed"}),
+                    ),
+                    record("btc-empty", Chain::Bitcoin, json!({"transactionHash":""})),
+                ],
+            })
+            .await
+            .unwrap();
+        assert_eq!(
+            service.pending_maintenance_chains().await.unwrap(),
+            vec!["dogecoin"]
+        );
+        let reopened = WalletService::new_typed(vec![]).unwrap();
+        reopened.open_state(path).await.unwrap();
+        assert_eq!(
+            reopened.pending_maintenance_chains().await.unwrap(),
+            vec!["dogecoin"]
+        );
+    }
+
     async fn stored_service() -> (std::sync::Arc<WalletService>, String) {
         let service = WalletService::new_typed(vec![]).unwrap();
         let path = std::env::temp_dir()
@@ -552,5 +618,48 @@ mod tests {
             .query_row("SELECT COUNT(*) FROM history_records", [], |r| r.get(0))
             .unwrap();
         assert_eq!(count, 1);
+    }
+    #[tokio::test]
+    async fn audit_fix5_poll_uses_recorded_network_after_settings_change() {
+        use wiremock::{matchers::any, Mock, MockServer, ResponseTemplate};
+        let mainnet = MockServer::start().await;
+        let sepolia = MockServer::start().await;
+        let (service, _) = stored_service().await;
+        service
+            .update_endpoints_typed(vec![
+                crate::service::ChainEndpoints {
+                    chain_id: "ethereum".into(),
+                    endpoints: vec![mainnet.uri()],
+                    api_key: None,
+                },
+                crate::service::ChainEndpoints {
+                    chain_id: "ethereum-sepolia".into(),
+                    endpoints: vec![sepolia.uri()],
+                    api_key: None,
+                },
+            ])
+            .await
+            .unwrap();
+        Mock::given(any()).respond_with(ResponseTemplate::new(200).set_body_json(json!({"jsonrpc":"2.0","id":1,"result":{"status":"0x1","blockNumber":"0x7","gasUsed":"0x5208","effectiveGasPrice":"0x1"}}))).expect(1).mount(&sepolia).await;
+        service
+            .upsert_history_records(vec![crate::wallet_db::history_record_from_payload(record(
+                "sepolia-pending",
+                Chain::EthereumSepolia,
+                json!({}),
+            ))])
+            .await
+            .unwrap();
+        // Defaults select mainnet; historical Sepolia hashes must stay on Sepolia.
+        service
+            .poll_pending_transactions("ethereum-sepolia".into())
+            .await
+            .unwrap();
+        assert!(mainnet.received_requests().await.unwrap().is_empty());
+        let row = service.transactions().await.unwrap().remove(0);
+        assert_eq!(
+            row.status,
+            Some(crate::store::wallet_domain::CoreTransactionStatus::Confirmed)
+        );
+        sepolia.verify().await;
     }
 }

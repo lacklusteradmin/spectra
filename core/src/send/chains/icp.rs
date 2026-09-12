@@ -117,16 +117,17 @@ impl IcpClient {
             .and_then(|v| v.as_str())
             .ok_or("combine: missing signed_transaction")?;
 
-        // Step 6: /construction/submit
-        let submit: Value = self
-            .rosetta_post(
-                "/construction/submit",
-                &json!({
-                    "network_identifier": network,
-                    "signed_transaction": signed_tx
-                }),
-            )
-            .await?;
+        let payload = json!({"network_identifier": network, "signed_transaction": signed_tx});
+        crate::send::payload::before_submission(payload.to_string(), "txid", None, None).await?;
+        self.submit_signed_transaction(&payload.to_string()).await
+    }
+
+    pub(crate) async fn submit_signed_transaction(
+        &self,
+        payload: &str,
+    ) -> Result<IcpSendResult, String> {
+        let body: Value = serde_json::from_str(payload).map_err(|e| e.to_string())?;
+        let submit: Value = self.rosetta_post("/construction/submit", &body).await?;
         let txid = submit
             .pointer("/transaction_identifier/hash")
             .and_then(Value::as_str)

@@ -535,7 +535,6 @@ pub fn merge_price_updates(
     }
 }
 
-#[uniffi::export]
 pub fn price_merge_live_updates(
     existing: HashMap<String, f64>,
     fetched: HashMap<String, f64>,

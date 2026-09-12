@@ -40,6 +40,13 @@ impl TonClient {
 
     /// Send a pre-built BOC (for rebroadcast).
     pub async fn send_boc(&self, boc_b64: &str) -> Result<TonSendResult, String> {
+        crate::send::payload::before_submission(
+            serde_json::json!({"boc_b64":boc_b64}).to_string(),
+            "message_hash",
+            None,
+            None,
+        )
+        .await?;
         let body = json!({"boc": boc_b64});
         let api_key = self.api_key.clone();
         let boc_b64 = boc_b64.to_string();

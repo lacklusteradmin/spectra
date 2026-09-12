@@ -277,6 +277,7 @@ impl KaspaClient {
         &self,
         body: serde_json::Value,
     ) -> Result<KasSendResult, String> {
+        crate::send::payload::before_submission(body.to_string(), "txid", None, None).await?;
         with_fallback(&self.endpoints, |base| {
             let client = self.client.clone();
             let body = body.clone();

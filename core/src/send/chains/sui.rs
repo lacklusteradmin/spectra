@@ -173,6 +173,13 @@ impl SuiClient {
         tx_bytes_b64: &str,
         sig_b64: &str,
     ) -> Result<SuiSendResult, String> {
+        crate::send::payload::before_submission(
+            serde_json::json!({"tx_bytes_b64":tx_bytes_b64,"sig_b64":sig_b64}).to_string(),
+            "digest",
+            None,
+            None,
+        )
+        .await?;
         let result = self
             .call(
                 "sui_executeTransactionBlock",

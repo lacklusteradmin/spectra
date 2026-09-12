@@ -28,40 +28,6 @@ impl WalletService {
         }
     }
 
-    /// Store a seed phrase, sealed under `password` when one is given.
-    pub fn store_wallet_seed_phrase(
-        &self,
-        wallet_id: String,
-        seed_phrase: String,
-        password: Option<String>,
-    ) -> Result<(), SpectraBridgeError> {
-        let store = self.secrets()?;
-        crate::store::wallet_secrets::store_seed_phrase(
-            &*store,
-            &wallet_id,
-            &seed_phrase,
-            password.as_deref(),
-        )
-        .map_err(|e| SpectraBridgeError::from(e.to_string()))
-    }
-
-    /// Store a raw private key, sealed under `password` when one is given.
-    pub fn store_wallet_private_key(
-        &self,
-        wallet_id: String,
-        private_key: String,
-        password: Option<String>,
-    ) -> Result<(), SpectraBridgeError> {
-        let store = self.secrets()?;
-        crate::store::wallet_secrets::store_private_key(
-            &*store,
-            &wallet_id,
-            &private_key,
-            password.as_deref(),
-        )
-        .map_err(|e| SpectraBridgeError::from(e.to_string()))
-    }
-
     /// Read a wallet's seed phrase. `password` is required exactly when
     /// `wallet_secret_state().is_sealed`.
     ///
@@ -102,8 +68,7 @@ impl WalletService {
     ///
     /// Replaces the old `core_plan_wallet_import` round trip, where core
     /// decided what to create and the caller constructed and stored it.
-    /// Secrets are not touched here — `secret_instructions` in the outcome
-    /// tells the platform what to write to its own keystore.
+    /// Core stores secrets before atomically committing all wallets.
     pub async fn import_wallets(
         &self,
         commit: crate::derivation::import::WalletImportCommit,
@@ -115,14 +80,14 @@ impl WalletService {
         // address core derived itself and skipped the path where the user
         // typed it.
         let mut commit = commit;
+        commit.request.has_wallet_password = commit.password.is_some();
+        commit.request.planned_wallet_ids.clear();
         // Derive here when the caller did not — from a seed phrase or from a
         // private key, whichever this import carries. Both front ends used to
         // derive first and hand the result over; the CLI could only do one
         // chain, so the multi-chain rule — every EVM chain derives from
         // Ethereum's path — existed on the iOS side alone.
-        if commit.request.resolved_addresses.by_slot.is_empty()
-            && !commit.request.is_watch_only_import
-        {
+        if !commit.request.is_watch_only_import {
             let key = commit
                 .private_key
                 .clone()
@@ -147,7 +112,9 @@ impl WalletService {
                     &commit.seed_derivation_paths,
                     &commit.derivation_overrides,
                 )),
-                (None, None) => None,
+                (None, None) => {
+                    return Err("Signing import requires a seed phrase or private key".into())
+                }
             };
             if let Some(derived) = derived {
                 commit.request.resolved_addresses.by_slot = derived
@@ -213,19 +180,123 @@ impl WalletService {
             }
             Err(message) => return Err(SpectraBridgeError::from(message)),
         };
+        commit.request.has_wallet_password = commit.password.is_some();
         let wallets = crate::derivation::import::wallets_for_import(&commit, &plan);
         let is_watch_only = commit.request.is_watch_only_import;
-        for wallet in &wallets {
-            self.apply_state_command(StateCommand::UpsertWallet {
-                wallet: wallet.to_summary(is_watch_only),
+        let seed = commit.seed_phrase.take().map(zeroize::Zeroizing::new);
+        let private_key = commit.private_key.take().map(zeroize::Zeroizing::new);
+        let password = commit.password.take().map(zeroize::Zeroizing::new);
+        self.write_persisted(move |service| async move {
+            let path = service.bound_state_db_path().await?;
+            let mut snapshot = service.wallet_state.read().await.clone();
+            if wallets
+                .iter()
+                .any(|w| snapshot.wallets.iter().any(|old| old.id == w.id))
+            {
+                return Err("Import ID already exists".into());
+            }
+            let previous = snapshot.clone();
+            for wallet in &wallets {
+                reduce_state_in_place(
+                    &mut snapshot,
+                    StateCommand::UpsertWallet {
+                        wallet: wallet.to_summary(is_watch_only),
+                    },
+                );
+            }
+            let changes = crate::wallet_db::AppStateChanges::between(Some(&previous), &snapshot)?;
+            let secrets = if is_watch_only {
+                None
+            } else {
+                Some(service.secrets()?)
+            };
+            let result: Result<(), SpectraBridgeError> = async {
+                if let Some(store) = &secrets {
+                    for wallet in &wallets {
+                        let result = if commit.request.is_private_key_import {
+                            crate::store::wallet_secrets::store_private_key(
+                                &**store,
+                                &wallet.id,
+                                private_key.as_ref().unwrap().as_str(),
+                                password.as_ref().map(|s| s.as_str()),
+                            )
+                        } else {
+                            crate::store::wallet_secrets::store_seed_phrase(
+                                &**store,
+                                &wallet.id,
+                                seed.as_ref().unwrap().as_str(),
+                                password.as_ref().map(|s| s.as_str()),
+                            )
+                        };
+                        result.map_err(|e| SpectraBridgeError::from(e.to_string()))?;
+                    }
+                }
+                tokio::task::spawn_blocking(move || changes.save(&path))
+                    .await
+                    .map_err(|e| SpectraBridgeError::from(e.to_string()))??;
+                Ok(())
+            }
+            .await;
+            if let Err(error) = result {
+                let mut cleanup_errors = Vec::new();
+                if let Some(store) = &secrets {
+                    for wallet in &wallets {
+                        if let Err(e) = crate::store::wallet_secrets::delete(&**store, &wallet.id) {
+                            cleanup_errors.push(format!("{}: {e}", wallet.id));
+                        }
+                    }
+                }
+                return Err(format!(
+                    "{error}; import not committed; secret cleanup failures: {}",
+                    cleanup_errors.join(", ")
+                )
+                .into());
+            }
+            *service.wallet_state.write().await = snapshot;
+            Ok(crate::derivation::import::WalletImportOutcome {
+                secret_kind: plan.secret_kind,
+                wallets,
+                rejected_addresses,
             })
-            .await?;
-        }
-        Ok(crate::derivation::import::WalletImportOutcome {
-            secret_kind: plan.secret_kind,
-            secret_instructions: plan.secret_instructions,
-            wallets,
-            rejected_addresses,
         })
+        .await
+    }
+}
+
+impl WalletService {
+    /// Store a seed phrase, sealed under `password` when one is given.
+    pub fn store_wallet_seed_phrase(
+        &self,
+        wallet_id: String,
+        seed_phrase: String,
+        password: Option<String>,
+    ) -> Result<(), SpectraBridgeError> {
+        let store = self.secrets()?;
+        crate::store::wallet_secrets::store_seed_phrase(
+            &*store,
+            &wallet_id,
+            &seed_phrase,
+            password.as_deref(),
+        )
+        .map_err(|e| SpectraBridgeError::from(e.to_string()))
+    }
+}
+
+impl WalletService {
+    /// Store a raw private key, sealed under `password` when one is given.
+    pub fn store_wallet_private_key(
+        &self,
+        wallet_id: String,
+        private_key: String,
+        password: Option<String>,
+    ) -> Result<(), SpectraBridgeError> {
+        let store = self.secrets()?;
+        crate::store::wallet_secrets::store_private_key(
+            &*store,
+            &wallet_id,
+            &private_key,
+            password.as_deref(),
+        )
+        .map_err(|e| SpectraBridgeError::from(e.to_string()))
     }
 }

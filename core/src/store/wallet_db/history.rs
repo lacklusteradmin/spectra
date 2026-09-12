@@ -1,4 +1,5 @@
 use super::*;
+use crate::store::persistence_models::CorePersistedTransactionRecord;
 
 // ── History record types ──────────────────────────────────────────────────────
 
@@ -163,24 +164,7 @@ pub fn history_upsert_batch(db_path: &str, records: &[HistoryRecord]) -> Result<
     with_conn(db_path, |conn| {
         conn.execute_batch("BEGIN IMMEDIATE")
             .map_err(|e| format!("history_upsert_batch begin: {e}"))?;
-        let result = (|| -> Result<(), String> {
-            for rec in records {
-                let payload_json = serde_json::to_string(&rec.payload)
-                    .map_err(|e| format!("history_upsert_batch encode payload: {e}"))?;
-                conn.execute(
-                    "INSERT INTO history_records (id, wallet_id, chain_name, tx_hash, created_at, payload)
-                     VALUES (?1, ?2, ?3, ?4, ?5, ?6)
-                     ON CONFLICT(id) DO UPDATE SET
-                         wallet_id  = excluded.wallet_id,
-                         chain_name = excluded.chain_name,
-                         tx_hash    = excluded.tx_hash,
-                         created_at = excluded.created_at,
-                         payload    = excluded.payload",
-                    params![rec.id, rec.wallet_id, rec.chain_name, rec.tx_hash, rec.created_at, payload_json],
-                ).map_err(|e| format!("history_upsert_batch row: {e}"))?;
-            }
-            Ok(())
-        })();
+        let result = history_upsert_on_conn(conn, records);
         match result {
             Ok(()) => {
                 conn.execute_batch("COMMIT")
@@ -192,6 +176,58 @@ pub fn history_upsert_batch(db_path: &str, records: &[HistoryRecord]) -> Result<
                 Err(e)
             }
         }
+    })
+}
+
+fn history_upsert_on_conn(
+    conn: &rusqlite::Connection,
+    records: &[HistoryRecord],
+) -> Result<(), String> {
+    for rec in records {
+        let payload_json = serde_json::to_string(&rec.payload)
+            .map_err(|e| format!("history_upsert_batch encode payload: {e}"))?;
+        conn.execute(
+            "INSERT INTO history_records (id, wallet_id, chain_name, tx_hash, created_at, payload)
+                     VALUES (?1, ?2, ?3, ?4, ?5, ?6)
+                     ON CONFLICT(id) DO UPDATE SET
+                         wallet_id  = excluded.wallet_id,
+                         chain_name = excluded.chain_name,
+                         tx_hash    = excluded.tx_hash,
+                         created_at = excluded.created_at,
+                         payload    = excluded.payload",
+            params![
+                rec.id,
+                rec.wallet_id,
+                rec.chain_name,
+                rec.tx_hash,
+                rec.created_at,
+                payload_json
+            ],
+        )
+        .map_err(|e| format!("history_upsert_batch row: {e}"))?;
+    }
+    Ok(())
+}
+
+/// Hold the SQLite write transaction across the read, domain merge and write.
+/// A second refresh (including another connection) sees the first one's result.
+pub(crate) fn history_update_chain<T>(
+    db_path: &str,
+    chain_name: &str,
+    update: impl FnOnce(Vec<HistoryRecord>) -> Result<(Vec<HistoryRecord>, T), String>,
+) -> Result<T, String> {
+    with_conn(db_path, |conn| {
+        let tx =
+            rusqlite::Transaction::new_unchecked(conn, rusqlite::TransactionBehavior::Immediate)
+                .map_err(|e| e.to_string())?;
+        let existing = {
+            let mut stmt = tx.prepare("SELECT id, wallet_id, chain_name, tx_hash, created_at, payload FROM history_records WHERE chain_name = ?1 ORDER BY created_at DESC, id ASC").map_err(|e| e.to_string())?;
+            decode_history_rows(&mut stmt, params![chain_name], "history_update_chain")?
+        };
+        let (rows, result) = update(existing)?;
+        history_upsert_on_conn(&tx, &rows)?;
+        tx.commit().map_err(|e| e.to_string())?;
+        Ok(result)
     })
 }
 
@@ -327,5 +363,92 @@ pub fn history_clear(db_path: &str) -> Result<(), String> {
         conn.execute("DELETE FROM history_records", [])
             .map_err(|e| format!("history_clear: {e}"))?;
         Ok(())
+    })
+}
+
+/// Submission completion updates only its own fields and cannot undo a receipt
+/// that arrived while the network request was in flight.
+pub(crate) fn history_save_send_progress(
+    db_path: &str,
+    incoming: &CorePersistedTransactionRecord,
+    reserve_nonce: bool,
+) -> Result<(), String> {
+    use rusqlite::OptionalExtension;
+    with_conn(db_path, |conn| {
+        let tx =
+            rusqlite::Transaction::new_unchecked(conn, rusqlite::TransactionBehavior::Immediate)
+                .map_err(|e| e.to_string())?;
+        let owner = incoming.wallet_id.as_deref().ok_or("send has no wallet")?;
+        let present: bool = tx
+            .query_row(
+                "SELECT EXISTS(SELECT 1 FROM wallets WHERE id = ?1)",
+                params![owner],
+                |row| row.get(0),
+            )
+            .map_err(|e| e.to_string())?;
+        if !present {
+            return Err("wallet removed during submission".into());
+        }
+        // The in-process sender lock orders normal sends. This reservation also
+        // refuses a stale nonce selected by another process before it broadcasts.
+        // Explicit replacement requests intentionally bypass this check.
+        if reserve_nonce {
+            let nonce = incoming
+                .ethereum_nonce
+                .ok_or("missing EVM nonce reservation")?;
+            let source = incoming
+                .source_address
+                .as_deref()
+                .ok_or("missing EVM sender")?;
+            let conflict: bool = tx.query_row(
+                "SELECT EXISTS(SELECT 1 FROM history_records WHERE chain_name = ?1 AND id != lower(?2)
+                 AND lower(json_extract(payload, '$.sourceAddress')) = lower(?3)
+                 AND json_extract(payload, '$.ethereumNonce') = ?4
+                 AND json_extract(payload, '$.kind') = 'send'
+                 AND json_extract(payload, '$.status') = 'pending')",
+                params![incoming.chain_name, incoming.id, source, nonce], |row| row.get(0)
+            ).map_err(|e| e.to_string())?;
+            if conflict {
+                return Err(
+                    "EVM nonce was reserved by another send; retry with a fresh nonce".into(),
+                );
+            }
+        }
+        let previous: Option<String> = tx
+            .query_row(
+                "SELECT payload FROM history_records WHERE id = lower(?1)",
+                params![incoming.id],
+                |row| row.get(0),
+            )
+            .optional()
+            .map_err(|e| e.to_string())?;
+        let payload = if let Some(json) = previous {
+            let mut stored: CorePersistedTransactionRecord =
+                serde_json::from_str(&json).map_err(|e| e.to_string())?;
+            if stored.wallet_id != incoming.wallet_id || stored.chain_name != incoming.chain_name {
+                return Err("send record identity changed".into());
+            }
+            stored.signed_transaction_payload = incoming.signed_transaction_payload.clone();
+            stored.signed_transaction_payload_format =
+                incoming.signed_transaction_payload_format.clone();
+            if incoming.ethereum_nonce.is_some() {
+                stored.ethereum_nonce = incoming.ethereum_nonce;
+            }
+            if incoming.transaction_hash.is_some() {
+                stored.transaction_hash = incoming.transaction_hash.clone();
+            }
+            if stored.status != Some(crate::store::wallet_domain::CoreTransactionStatus::Confirmed)
+            {
+                stored.status = incoming.status;
+                stored.failure_reason = incoming.failure_reason.clone();
+            }
+            stored
+        } else {
+            incoming.clone()
+        };
+        let record = history_record_from_payload(payload);
+        let json = serde_json::to_string(&record.payload).map_err(|e| e.to_string())?;
+        tx.execute("INSERT INTO history_records(id,wallet_id,chain_name,tx_hash,created_at,payload) VALUES(?1,?2,?3,?4,?5,?6) ON CONFLICT(id) DO UPDATE SET tx_hash=excluded.tx_hash,payload=excluded.payload", params![record.id, record.wallet_id, record.chain_name, record.tx_hash, record.created_at, json]).map_err(|e| e.to_string())?;
+        tx.commit().map_err(|e| e.to_string())
     })
 }

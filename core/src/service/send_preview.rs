@@ -2,30 +2,78 @@
 use super::*;
 #[uniffi::export(async_runtime = "tokio")]
 impl WalletService {
-    /// Typed EVM send preview: fetches the raw preview JSON then decodes it
-    /// into `EvmSendPreview` with the caller-supplied nonce / fee
-    /// overrides applied. Returns `None` when the decoder rejects the payload.
-    pub async fn fetch_evm_send_preview_typed(
+    /// Preview a stored asset on the wallet's actual network without exposing its secret.
+    pub async fn preview_owned_evm_send(
         &self,
-        chain_id: String,
-        from: String,
-        to: String,
-        value_wei: String,
-        data_hex: String,
+        wallet_id: String,
+        holding_key: String,
+        amount: String,
+        destination: String,
         explicit_nonce: Option<i64>,
         custom_fees: Option<crate::ethereum_send::EvmCustomFeeConfiguration>,
     ) -> Result<Option<crate::wallet_core::EvmSendPreview>, SpectraBridgeError> {
-        let raw = self
-            .fetch_evm_send_preview(&chain_id, from, to, value_wei, data_hex)
-            .await?;
-        Ok(crate::send::preview_decode::build_evm_send_preview_record(
-            crate::ethereum_send::EvmPreviewDecodeInput {
-                raw_json: raw,
-                explicit_nonce,
-                custom_fees,
+        let state = self.app_state().await;
+        let wallet = state
+            .wallets
+            .iter()
+            .find(|w| w.id == wallet_id)
+            .ok_or_else(|| SpectraBridgeError::InvalidInput {
+                message: "wallet does not exist".into(),
+            })?;
+        let holding = wallet
+            .holdings
+            .iter()
+            .find(|h| format!("{}|{}", h.chain_name, h.symbol) == holding_key)
+            .ok_or_else(|| SpectraBridgeError::InvalidInput {
+                message: "holding does not exist".into(),
+            })?;
+        let (family, token) =
+            super::send_destination::destination_probe_asset(holding, &state.token_preferences)?;
+        if !family.is_evm() {
+            return Err("EVM preview requires an EVM asset".into());
+        }
+        let chain = super::send_execution::send_chain_for(&state, &wallet_id, family);
+        let from = wallet
+            .address_on(chain)
+            .or_else(|| wallet.address_on(family))
+            .ok_or("wallet has no address on this network")?
+            .to_owned();
+        let destination = if destination.trim().is_empty() {
+            from.clone()
+        } else {
+            self.resolve_send_destination(chain.str_id().into(), destination)
+                .await?
+                .address
+        };
+        let assembly = crate::ethereum_send::prepare_evm_send_assembly(
+            crate::ethereum_send::EvmSendAssemblyInput {
+                chain_name: chain.chain_display_name().into(),
+                symbol: holding.symbol.clone(),
+                from_address: from.clone(),
+                resolved_destination: destination,
+                amount,
+                token: token.map(|t| crate::ethereum_send::EvmSupportedToken {
+                    symbol: t.symbol,
+                    contract_address: t.contract,
+                    decimals: t.decimals.into(),
+                }),
             },
-        ))
+        )
+        .map_err(|e| SpectraBridgeError::InvalidInput {
+            message: e.to_string(),
+        })?;
+        self.fetch_evm_send_preview_typed(
+            chain.str_id().into(),
+            from,
+            assembly.to_address,
+            assembly.value_wei,
+            assembly.data_hex,
+            explicit_nonce,
+            custom_fees,
+        )
+        .await
     }
+
     /// Typed Tron send preview wrapper around `fetch_tron_send_preview` +
     /// `build_tron_send_preview_record`.
     pub async fn fetch_tron_send_preview_typed(
@@ -222,7 +270,7 @@ impl WalletService {
             ))
         })?;
         let eps = self.endpoints_for(chain.str_id()).await;
-        match chain {
+        match chain.mainnet_counterpart() {
             Chain::Bitcoin => {
                 let client = BitcoinClient::new(HttpClient::shared(), eps);
                 let utxos = client.fetch_utxos(&address).await?;
@@ -477,3 +525,30 @@ impl WalletService {
 #[cfg(test)]
 #[path = "send/tests.rs"]
 mod tests;
+
+impl WalletService {
+    /// Typed EVM send preview: fetches the raw preview JSON then decodes it
+    /// into `EvmSendPreview` with the caller-supplied nonce / fee
+    /// overrides applied. Returns `None` when the decoder rejects the payload.
+    pub async fn fetch_evm_send_preview_typed(
+        &self,
+        chain_id: String,
+        from: String,
+        to: String,
+        value_wei: String,
+        data_hex: String,
+        explicit_nonce: Option<i64>,
+        custom_fees: Option<crate::ethereum_send::EvmCustomFeeConfiguration>,
+    ) -> Result<Option<crate::wallet_core::EvmSendPreview>, SpectraBridgeError> {
+        let raw = self
+            .fetch_evm_send_preview(&chain_id, from, to, value_wei, data_hex)
+            .await?;
+        Ok(crate::send::preview_decode::build_evm_send_preview_record(
+            crate::ethereum_send::EvmPreviewDecodeInput {
+                raw_json: raw,
+                explicit_nonce,
+                custom_fees,
+            },
+        ))
+    }
+}

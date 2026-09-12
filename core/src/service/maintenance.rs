@@ -264,21 +264,9 @@ impl WalletService {
     /// projection and passed the answer in, which is the shape the migration
     /// removes: core has the transactions.
     async fn has_pending_transaction_work(&self) -> bool {
-        let Ok(rows) = self.fetch_all_history_records_typed().await else {
-            return false;
-        };
-        rows.iter().any(|row| {
-            let payload = &row.payload;
-            matches!(
-                payload.kind,
-                crate::store::wallet_domain::CoreTransactionKind::Send
-            ) && payload.transaction_hash.is_some()
-                && matches!(
-                    payload.status,
-                    Some(crate::store::wallet_domain::CoreTransactionStatus::Pending)
-                        | Some(crate::store::wallet_domain::CoreTransactionStatus::Confirmed)
-                )
-        })
+        self.pending_maintenance_chains()
+            .await
+            .is_ok_and(|chains| !chains.is_empty())
     }
 }
 
@@ -698,5 +686,41 @@ mod send_token_identity_tests {
         .is_none());
         // And a chain that hosts no known tokens has none either.
         assert!(send_token_identity(&holding("Monero", "XMR", None), &preferences).is_none());
+    }
+}
+
+#[cfg(test)]
+mod boundary_tests {
+    use super::*;
+    #[tokio::test]
+    async fn owned_clock_coalesces_refreshes_and_partitions_history() {
+        let service = WalletService::new_typed(vec![]).unwrap();
+        let conditions = DeviceConditions {
+            app_is_active: true,
+            is_network_reachable: true,
+            is_constrained_network: false,
+            is_expensive_network: false,
+            is_low_power_mode: false,
+            battery_level: 1.0,
+            wants_price_refresh: true,
+        };
+        assert!(
+            service
+                .maintenance_plan(conditions.clone())
+                .await
+                .refresh_live_prices
+        );
+        service.record_refresh(RefreshKind::LivePrices).await;
+        assert!(
+            !service
+                .maintenance_plan(conditions)
+                .await
+                .refresh_live_prices
+        );
+        service.record_history_refresh("ethereum".into()).await;
+        let due = service
+            .history_refresh_plans(vec!["ethereum".into(), "bitcoin".into()], 120.0)
+            .await;
+        assert_eq!(due, vec!["bitcoin"]);
     }
 }

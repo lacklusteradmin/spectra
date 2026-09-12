@@ -25,8 +25,8 @@ pub struct FundsFinderRequest {
 }
 
 /// A single (chain, derivation path, address) tuple derived from the seed.
-/// The balance of this address is checked separately by Swift.
-#[derive(Debug, Clone, uniffi::Record)]
+/// The balance is checked by the core FundsScan session.
+#[derive(Debug, Clone, serde::Serialize, uniffi::Record)]
 pub struct FundsFinderCandidate {
     /// Machine-readable chain ID understood by `fetch_native_balance_summary`.
     pub chain_id: String,
@@ -47,7 +47,6 @@ pub struct FundsFinderCandidate {
 ///
 /// Derivation errors for individual candidates are silently skipped so that
 /// a bad path for one chain doesn't abort the entire scan.
-#[uniffi::export]
 pub fn core_generate_funds_finder_candidates(
     request: FundsFinderRequest,
 ) -> Result<Vec<FundsFinderCandidate>, SpectraBridgeError> {

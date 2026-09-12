@@ -22,6 +22,13 @@ use crate::fetch::chains::bitcoin::{BitcoinClient, BitcoinSendResult, EsploraUtx
 
 impl BitcoinClient {
     pub async fn broadcast_raw_tx(&self, raw_tx_hex: &str) -> Result<String, String> {
+        crate::send::payload::before_submission(
+            raw_tx_hex.to_owned(),
+            "txid",
+            crate::send::payload::bitcoin_transaction_id(raw_tx_hex),
+            None,
+        )
+        .await?;
         let raw = raw_tx_hex.to_string();
         let http = self.http.clone();
         let endpoints = self.endpoints.clone();

@@ -147,6 +147,17 @@ impl SolanaClient {
     /// `decimals` — so discovery answers "what does this address hold" and
     /// "how is it denominated" together, without a catalog and without an
     /// indexer.
+    pub(crate) async fn fetch_transfer_mint(&self, mint: &str) -> Result<([u8; 32], u8), String> {
+        crate::derivation::chains::solana::decode_b58_32(mint)?;
+        let result = self
+            .call(
+                "getAccountInfo",
+                json!([mint, {"encoding":"jsonParsed", "commitment":"confirmed"}]),
+            )
+            .await?;
+        validate_transfer_mint(&result["value"])
+    }
+
     pub async fn fetch_all_spl_balances(&self, owner: &str) -> Result<Vec<SplBalance>, String> {
         const TOKEN_PROGRAM: &str = "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA";
         const TOKEN_2022_PROGRAM: &str = "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb";
@@ -738,5 +749,73 @@ mod balance_read_tests {
                 Some(Some(raw)) => assert_eq!(result.unwrap()[0].balance_raw, raw),
             }
         }
+    }
+}
+
+/// Refuse unknown programs and extensions before signing. Extensions may alter
+/// transfer semantics or require accounts that our TransferChecked does not supply.
+fn validate_transfer_mint(account: &serde_json::Value) -> Result<([u8; 32], u8), String> {
+    let owner = account["owner"].as_str().ok_or("SPL mint: missing owner")?;
+    if ![
+        "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
+        "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb",
+    ]
+    .contains(&owner)
+    {
+        return Err("SPL mint: unsupported owner program".into());
+    }
+    let parsed = &account["data"]["parsed"];
+    let info = &parsed["info"];
+    if parsed["type"] != "mint" || info["isInitialized"] != true {
+        return Err("SPL mint: expected initialized mint".into());
+    }
+    if let Some(extensions) = info.get("extensions") {
+        if !extensions.as_array().is_some_and(|e| e.is_empty()) {
+            return Err("SPL mint: Token-2022 extensions are not supported for sending".into());
+        }
+    }
+    let decimals = info["decimals"]
+        .as_u64()
+        .and_then(|d| u8::try_from(d).ok())
+        .ok_or("SPL mint: invalid decimals")?;
+    Ok((
+        crate::derivation::chains::solana::decode_b58_32(owner)?,
+        decimals,
+    ))
+}
+
+#[cfg(test)]
+mod audit_fix5_mint_tests {
+    use super::*;
+    #[test]
+    fn audit_fix5_mint_program_precision_and_extensions_are_validated() {
+        let account = |owner: &str| json!({"owner":owner,"data":{"parsed":{"type":"mint","info":{"isInitialized":true,"decimals":9,"extensions":[]}}}});
+        let legacy = account("TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA");
+        let mut token2022 = account("TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb");
+        let (a, decimals) = validate_transfer_mint(&legacy).unwrap();
+        let (b, _) = validate_transfer_mint(&token2022).unwrap();
+        assert_ne!(a, b);
+        assert_eq!(decimals, 9);
+        let owner = crate::derivation::chains::solana::decode_b58_32(
+            "HAgk14JpMQLgt6rVgv7cBQFJWFto5Dqxi472uT3DKpqk",
+        )
+        .unwrap();
+        let mint = [0x44; 32];
+        // Independent @solana/spl-token 0.4.14 vectors.
+        let ata = crate::send::chains::solana::derive_associated_token_account;
+        assert_eq!(
+            bs58::encode(ata(&owner, &mint, &a).unwrap()).into_string(),
+            "FF2BjgeRK2LgK8Lj4wY2CTJrmJAKV5ZPCdHqfq1tJLGi"
+        );
+        assert_eq!(
+            bs58::encode(ata(&owner, &mint, &b).unwrap()).into_string(),
+            "Hzvpgx8hB4wZewvsYXSedgrgSb4yNycQRhufYeMaKuRM"
+        );
+        token2022["data"]["parsed"]["info"]["extensions"] = json!([{"extension":"transferHook"}]);
+        assert!(validate_transfer_mint(&token2022)
+            .unwrap_err()
+            .contains("extensions"));
+        assert!(validate_transfer_mint(&account("11111111111111111111111111111111")).is_err());
+        assert!(validate_transfer_mint(&serde_json::Value::Null).is_err());
     }
 }

@@ -167,7 +167,6 @@ impl WalletService {
     }
 }
 
-#[uniffi::export(async_runtime = "tokio")]
 impl WalletService {
     pub async fn fetch_token_balances(
         &self,

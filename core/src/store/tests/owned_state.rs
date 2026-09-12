@@ -113,3 +113,50 @@ async fn commands_apply_in_memory_when_no_database_is_bound() {
     assert_eq!(transition.state.settings.fiat_currency_code, "JPY");
     assert_eq!(service.fiat_currency_code().await, "JPY");
 }
+
+#[tokio::test]
+async fn field_intents_do_not_overwrite_each_other_or_resurrect_wallets() {
+    use crate::store::state::{StateCommand, WalletSummary};
+    let service = crate::service::WalletService::new_typed(vec![]).unwrap();
+    let wallet = WalletSummary::single_address(
+        "intent",
+        "Original",
+        "Ethereum",
+        "0x1111111111111111111111111111111111111111",
+        None,
+        true,
+    );
+    service
+        .apply_state_command(StateCommand::UpsertWallet { wallet })
+        .await
+        .unwrap();
+    let (rename, inclusion) = tokio::join!(
+        service.apply_state_command(StateCommand::RenameWallet {
+            wallet_id: "intent".into(),
+            name: "  Renamed  ".into()
+        }),
+        service.apply_state_command(StateCommand::SetWalletPortfolioInclusion {
+            wallet_id: "intent".into(),
+            included: false
+        })
+    );
+    rename.unwrap();
+    inclusion.unwrap();
+    let wallet = service.app_state().await.wallets.remove(0);
+    assert_eq!(wallet.name, "Renamed");
+    assert!(!wallet.include_in_portfolio_total);
+    service
+        .apply_state_command(StateCommand::RemoveWallet {
+            wallet_id: "intent".into(),
+        })
+        .await
+        .unwrap();
+    service
+        .apply_state_command(StateCommand::RenameWallet {
+            wallet_id: "intent".into(),
+            name: "Late".into(),
+        })
+        .await
+        .unwrap();
+    assert!(service.app_state().await.wallets.is_empty());
+}
