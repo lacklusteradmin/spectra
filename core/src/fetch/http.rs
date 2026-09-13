@@ -397,29 +397,6 @@ where
     Err(last_err)
 }
 
-/// Probe each URL in `endpoints` with a GET and return all that respond
-/// 200 OK (within the given timeout). Used by the diagnostics subsystem.
-pub async fn probe_endpoints(endpoints: &[String], timeout_secs: u64) -> Vec<(String, bool)> {
-    let client = Client::builder()
-        .timeout(Duration::from_secs(timeout_secs))
-        .https_only(true)
-        .user_agent("Spectra/1.0")
-        .build()
-        .unwrap_or_default();
-
-    let mut results = Vec::with_capacity(endpoints.len());
-    for url in endpoints {
-        let ok = client
-            .get(url.as_str())
-            .send()
-            .await
-            .map(|r| r.status().is_success())
-            .unwrap_or(false);
-        results.push((url.clone(), ok));
-    }
-    results
-}
-
 // ── FFI surface (merged from http_ffi.rs) ─────────────────────────
 
 #[derive(Debug, Clone, uniffi::Enum)]

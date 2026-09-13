@@ -124,13 +124,6 @@ impl BalanceRefreshEngine {
     /// If a cycle is already in flight, sets `pending_trigger` so the running
     /// cycle will re-run once it finishes (picks up any entry changes that
     /// arrived while the cycle was running).
-    pub async fn trigger_immediate(&self) {
-        let inner = Arc::clone(&self.inner);
-        tokio::spawn(async move {
-            inner.pending_trigger.store(true, Ordering::Release);
-            Self::run_cycle(&inner).await;
-        });
-    }
 
     /// Run one sweep and wait for it to finish.
     ///
@@ -540,5 +533,16 @@ mod refresh_entry_tests {
         assert_eq!(entries.len(), 1);
         assert_eq!(entries[0].address, "0xabc");
         assert_eq!(entries[0].chain_id, Chain::Arbitrum.str_id());
+    }
+}
+
+#[uniffi::export(async_runtime = "tokio")]
+impl BalanceRefreshEngine {
+    pub async fn trigger_immediate(&self) {
+        let inner = Arc::clone(&self.inner);
+        tokio::spawn(async move {
+            inner.pending_trigger.store(true, Ordering::Release);
+            Self::run_cycle(&inner).await;
+        });
     }
 }

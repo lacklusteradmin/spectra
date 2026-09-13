@@ -69,7 +69,10 @@ async fn failed_state_commit_does_not_publish_and_retry_persists() {
     sql(&db, "CREATE TRIGGER reject_meta BEFORE INSERT ON app_state_meta BEGIN SELECT RAISE(FAIL, 'injected'); END;");
     assert!(s.apply_state_command(currency("EUR")).await.is_err());
     assert_eq!(s.app_state().await, before);
-    assert_eq!(crate::wallet_db::app_state_load(&db).unwrap(), before);
+    assert_eq!(
+        crate::wallet_db::app_state_load(&crate::wallet_db::WalletDatabase::open(&db)).unwrap(),
+        before
+    );
     sql(&db, "DROP TRIGGER reject_meta;");
     s.apply_state_command(currency("EUR")).await.unwrap();
     assert_eq!(service().open_state(db).await.unwrap(), s.app_state().await);
@@ -174,7 +177,7 @@ async fn cancelling_caller_does_not_interrupt_an_admitted_commit() {
     let _writer = s.state_writer.lock().await;
     assert_eq!(s.app_state().await.settings.fiat_currency_code, "EUR");
     assert_eq!(
-        crate::wallet_db::app_state_load(&db).unwrap(),
+        crate::wallet_db::app_state_load(&crate::wallet_db::WalletDatabase::open(&db)).unwrap(),
         s.app_state().await
     );
 }
@@ -364,9 +367,13 @@ async fn unchanged_receive_reservation_skips_sql_but_merges_newly_owned_indices(
     assert_eq!(count(), 1);
     let state = service().open_state(db.clone()).await.unwrap();
     assert_eq!(state.wallets.len(), 0);
-    let pool = crate::wallet_db::keypool_load(&db, "w", "Bitcoin")
-        .unwrap()
-        .unwrap();
+    let pool = crate::wallet_db::keypool_load(
+        &crate::wallet_db::WalletDatabase::open(&db),
+        "w",
+        "Bitcoin",
+    )
+    .unwrap()
+    .unwrap();
     assert_eq!(pool.next_external_index, 11);
     assert_eq!(pool.reserved_receive_index, Some(reserved));
 }
@@ -397,9 +404,13 @@ async fn unreadable_history_refuses_keypool_reads_and_mutations() {
         .is_err());
     assert_eq!(*s.keypool.read().await.indices(), before);
     assert_eq!(
-        crate::wallet_db::keypool_load(&db, "w", "Bitcoin")
-            .unwrap()
-            .unwrap(),
+        crate::wallet_db::keypool_load(
+            &crate::wallet_db::WalletDatabase::open(&db),
+            "w",
+            "Bitcoin"
+        )
+        .unwrap()
+        .unwrap(),
         before[&keypool_key("w", "Bitcoin")]
     );
 }
@@ -745,4 +756,91 @@ async fn owned_catalog_transport_reads_saved_settings_and_preserves_explicit_ove
         .unwrap();
     assert_eq!(service.endpoints_for("ethereum").await, original);
     let _ = std::fs::remove_file(path);
+}
+
+#[tokio::test]
+async fn failed_open_does_not_publish_and_can_retry_seeding() {
+    for previously_bound in [false, true] {
+        let s = service();
+        if previously_bound {
+            s.open_state(database()).await.unwrap();
+            s.apply_state_command(currency("EUR")).await.unwrap();
+        }
+        let before = s.app_state().await;
+        let old = s.state_binding.connection().await;
+        let path = database();
+        let db = crate::wallet_db::WalletDatabase::open(&path);
+        db.with_connection(|conn| {
+            conn.execute_batch("CREATE TRIGGER reject_seed BEFORE INSERT ON app_state_meta WHEN NEW.key = 'token_preferences' BEGIN SELECT RAISE(FAIL, 'seed blocked'); END;").map_err(|e| e.to_string())
+        }).unwrap();
+        assert!(s
+            .open_state(path.clone())
+            .await
+            .unwrap_err()
+            .to_string()
+            .contains("seed blocked"));
+        assert_eq!(s.app_state().await, before);
+        assert!(!s.state_binding.is_bound_to(&path).await);
+        assert_eq!(
+            s.state_binding
+                .connection()
+                .await
+                .as_ref()
+                .map(|d| d.path().to_string()),
+            old.as_ref().map(|d| d.path().to_string())
+        );
+        sql(&path, "DROP TRIGGER reject_seed");
+        let opened = s.open_state(path.clone()).await.unwrap();
+        assert!(!opened.token_preferences.is_empty());
+        assert_eq!(opened, crate::wallet_db::app_state_load(&db).unwrap());
+        assert_eq!(opened, s.open_state(path).await.unwrap());
+    }
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn derived_wallet_maps_share_one_snapshot_during_mutation() {
+    let s = service();
+    let writer = s.clone();
+    let mutations = tokio::spawn(async move {
+        for i in 0..100 {
+            writer
+                .mutate_persisted_state(move |state| {
+                    state.wallets = vec![crate::store::state::WalletSummary::single_address(
+                        format!("w{i}"),
+                        "watch",
+                        "Ethereum",
+                        "0x1111111111111111111111111111111111111111",
+                        None,
+                        true,
+                    )];
+                    vec![crate::store::state::StateEvent {
+                        kind: "walletsChanged".into(),
+                        subject_id: None,
+                    }]
+                })
+                .await
+                .unwrap();
+        }
+    });
+    for _ in 0..100 {
+        let derived = s.wallet_derived_state().await.unwrap();
+        let ids = |map: &HashMap<String, Vec<AssetHolding>>| {
+            map.keys()
+                .cloned()
+                .collect::<std::collections::BTreeSet<_>>()
+        };
+        assert_eq!(
+            ids(&derived.send_coins_by_wallet_id),
+            ids(&derived.receive_coins_by_wallet_id)
+        );
+        assert_eq!(
+            ids(&derived.send_coins_by_wallet_id),
+            derived
+                .resolved_addresses_by_wallet_id
+                .keys()
+                .cloned()
+                .collect()
+        );
+    }
+    mutations.await.unwrap();
 }

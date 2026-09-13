@@ -56,7 +56,7 @@ fn targets_are_the_chains_wallets_that_have_an_address() {
 /// holding beside it; fetching from the family read the mainnet chain and
 /// found nothing. The two are separate answers.
 #[test]
-fn a_testnet_wallet_fetches_its_network_and_files_under_its_family() {
+fn a_testnet_wallet_fetches_and_persists_its_exact_network() {
     let mut state = CoreAppState::default();
     state.wallets = vec![wallet(
         "w1",
@@ -80,6 +80,7 @@ fn a_testnet_wallet_fetches_its_network_and_files_under_its_family() {
         target,
         Chain::Bitcoin,
         crate::fetch::history_decode::NormalizedHistoryItem {
+            deployment_id: None,
             kind: "receive".to_string(),
             status: "confirmed".to_string(),
             asset_name: "Bitcoin Testnet4".to_string(),
@@ -92,7 +93,11 @@ fn a_testnet_wallet_fetches_its_network_and_files_under_its_family() {
             timestamp: 1.0,
         },
     );
-    assert_eq!(record.chain_name, "Bitcoin", "filed under");
+    assert_eq!(record.chain_name, "Bitcoin Testnet4", "filed under");
+    assert_eq!(
+        record.deployment_id.as_deref(),
+        Some("bitcoin-testnet-4:native")
+    );
 }
 
 /// A wallet on a testnet fetches the address for that network.
@@ -136,6 +141,7 @@ fn a_record_names_its_wallet_and_carries_a_uuid() {
         &target,
         Chain::Solana,
         crate::fetch::history_decode::NormalizedHistoryItem {
+            deployment_id: None,
             kind: "receive".to_string(),
             status: "confirmed".to_string(),
             asset_name: "Solana".to_string(),
@@ -165,6 +171,7 @@ fn a_record_names_its_wallet_and_carries_a_uuid() {
 
     // An empty hash is no hash, not an empty one.
     let mut entry = crate::fetch::history_decode::NormalizedHistoryItem {
+        deployment_id: None,
         kind: "send".to_string(),
         status: "confirmed".to_string(),
         asset_name: "Solana".to_string(),
@@ -636,4 +643,172 @@ async fn wallet_history_scope_does_not_consume_another_wallet_cooldown() {
         assert_eq!(results.len(), 1);
         assert_eq!(results[0].outcome.as_ref().unwrap().wallets_failed, 1);
     }
+}
+
+#[tokio::test]
+async fn history_identity_merges_sends_on_the_exact_network_and_rejects_deleted_wallets() {
+    use crate::fetch::history_decode::*;
+    use crate::service::TransactionCommand;
+    let service = WalletService::new_typed(vec![]).unwrap();
+    let path = std::env::temp_dir().join(format!(
+        "history-identity-{}.sqlite",
+        crate::store::new_event_id()
+    ));
+    let db = path.to_string_lossy().to_string();
+    service.open_state(db.clone()).await.unwrap();
+    let mut w = wallet(
+        "w",
+        Chain::Ethereum,
+        &[(
+            Chain::Ethereum,
+            "0x1111111111111111111111111111111111111111",
+        )],
+    );
+    w.network_id = Chain::EthereumSepolia.str_id().into();
+    service
+        .apply_state_command(crate::store::state::StateCommand::UpsertWallet { wallet: w })
+        .await
+        .unwrap();
+    let page = EvmHistoryPageDecoded {
+        tokens: vec![],
+        native: vec![EvmNativeTransferItem {
+            status: "failed".into(),
+            from_address: "0x1111111111111111111111111111111111111111".into(),
+            to_address: "0x2222222222222222222222222222222222222222".into(),
+            amount_decimal: "1".into(),
+            transaction_hash: "same-hash".into(),
+            block_number: 123,
+            timestamp: 1700000000.0,
+        }],
+    };
+    let fetched = evm_record(
+        plan_evm_transaction_records(EvmTransactionRecordRequest {
+            decoded_page: page,
+            normalized_address: "0x1111111111111111111111111111111111111111".into(),
+            chain_name: Chain::EthereumSepolia.chain_display_name().into(),
+            token_source_used: None,
+            native_asset_name: "Ether".into(),
+            native_asset_symbol: "ETH".into(),
+            wallets: vec![EvmTransactionRecordWalletInput {
+                wallet_id: "w".into(),
+                wallet_name: "W".into(),
+            }],
+            unknown_timestamp_sentinel_unix: 0.0,
+        })
+        .remove(0),
+    );
+    assert_eq!(fetched.status, "failed");
+    assert_eq!(
+        fetched.deployment_id.as_deref(),
+        Some("ethereum-sepolia:native")
+    );
+    let mut local = fetched.clone();
+    local.id = "local-send".into();
+    local.status = "pending".into();
+    service
+        .apply_transaction_command(TransactionCommand::Upsert {
+            records: vec![local.into()],
+        })
+        .await
+        .unwrap();
+    let change = service
+        .merge_fetched_history(vec![fetched.clone()])
+        .await
+        .unwrap();
+    assert!(change.added.is_empty());
+    assert_eq!(change.updated, vec!["local-send"]);
+    let stored = service.transactions().await.unwrap();
+    assert_eq!(stored.len(), 1);
+    assert_eq!(
+        stored[0].status,
+        Some(crate::store::wallet_domain::CoreTransactionStatus::Failed)
+    );
+    assert_eq!(
+        stored[0].chain_name,
+        Chain::EthereumSepolia.chain_display_name()
+    );
+    let mut wrong_network = fetched.clone();
+    wrong_network.chain_name = "Ethereum".into();
+    wrong_network.id = "wrong-network".into();
+    assert!(service
+        .merge_fetched_history(vec![wrong_network])
+        .await
+        .unwrap()
+        .is_empty());
+    // The response was fetched before deletion and is submitted after the wallet transaction commits.
+    crate::wallet_db::delete_wallet_data(&crate::wallet_db::WalletDatabase::open(&db), "w")
+        .unwrap();
+    assert!(service
+        .merge_fetched_history(vec![fetched])
+        .await
+        .unwrap()
+        .is_empty());
+    let reopened = WalletService::new_typed(vec![]).unwrap();
+    reopened.open_state(db).await.unwrap();
+    assert!(reopened.transactions().await.unwrap().is_empty());
+}
+
+#[test]
+fn history_tokens_with_the_same_symbol_keep_distinct_contract_identities() {
+    assert_eq!(
+        crate::tokens::history_deployment(
+            Chain::EthereumSepolia,
+            Some("0x1111111111111111111111111111111111111111")
+        )
+        .as_deref(),
+        Some("ethereum-sepolia:erc-20:0x1111111111111111111111111111111111111111")
+    );
+
+    use crate::fetch::history_decode::*;
+    let tokens = [
+        "0x1111111111111111111111111111111111111111",
+        "0x2222222222222222222222222222222222222222",
+    ]
+    .into_iter()
+    .map(|contract| EvmTokenTransferItem {
+        contract_address: contract.into(),
+        token_name: "Same".into(),
+        symbol: "SAME".into(),
+        decimals: 6,
+        from_address: "from".into(),
+        to_address: "to".into(),
+        amount_decimal: "1".into(),
+        transaction_hash: "tx".into(),
+        block_number: 1,
+        log_index: 0,
+        timestamp: 1.0,
+    })
+    .collect();
+    let rows = plan_evm_transaction_records(EvmTransactionRecordRequest {
+        decoded_page: EvmHistoryPageDecoded {
+            tokens,
+            native: vec![],
+        },
+        normalized_address: "from".into(),
+        chain_name: "Ethereum".into(),
+        token_source_used: None,
+        native_asset_name: "Ether".into(),
+        native_asset_symbol: "ETH".into(),
+        wallets: vec![EvmTransactionRecordWalletInput {
+            wallet_id: "w".into(),
+            wallet_name: "W".into(),
+        }],
+        unknown_timestamp_sentinel_unix: 0.0,
+    })
+    .into_iter()
+    .map(evm_record)
+    .collect();
+    let merged = crate::fetch::transactions::merge_transactions(
+        crate::fetch::transactions::TransactionMergeRequest {
+            existing_transactions: vec![],
+            incoming_transactions: rows,
+            strategy: crate::fetch::transactions::TransactionMergeStrategy::Evm,
+            chain_name: "Ethereum".into(),
+            include_symbol_in_identity: true,
+            preserve_created_at_sentinel_unix: None,
+        },
+    );
+    assert_eq!(merged.len(), 2);
+    assert_ne!(merged[0].deployment_id, merged[1].deployment_id);
+    assert!(merged.iter().all(|r| r.deployment_id.is_some()));
 }

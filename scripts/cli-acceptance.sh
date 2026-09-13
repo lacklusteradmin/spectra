@@ -1118,6 +1118,18 @@ section "Network and token identity"
 check "networks, deployments, collisions and unpriced testnets stay distinct" $OK \
     python3 "$(dirname "$0")/cli-network-token-identity.py" "$BIN"
 
+section "Identity-based artwork"
+contains "token identity resolves Ether artwork" '"assetName":"ethereum"' spectra --json token artwork --token-id ethereum
+contains "network identity resolves Base artwork" '"assetName":"base"' spectra --json token artwork --network-id base
+contains "Base native deployment draws Ether" '"assetName":"ethereum"' spectra --json token artwork --deployment-id base:native
+contains "a ticker alone cannot claim artwork" '"assetName":""' spectra --json token artwork --token-id USDC
+contains "an unknown contract cannot claim artwork" '"assetName":""' spectra --json token artwork --deployment-id ethereum:erc-20:0xdead
+check "derived wallet state runs from the owned snapshot" $OK spectra --json wallet derived
+
+section "Swift shell ownership follow-up"
+check "naming, receive, durable movement and configured staking" $OK \
+    python3 "$(dirname "$0")/cli-shell-ownership.py" "$BIN"
+
 # ── Result ──────────────────────────────────────────────────────────────────
 
 printf '\n'

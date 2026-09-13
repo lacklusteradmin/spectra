@@ -66,38 +66,6 @@ fn reset_scopes_do_not_expand_to_unrelated_data() {
 }
 
 #[test]
-fn rpc_error_classification_preserves_retry_decisions() {
-    use store::{core_ethereum_send_error_code as classify, EthereumSendErrorCode as E};
-    assert_eq!(classify("RPC: NONCE TOO LOW".into()), E::NonceTooLow);
-    assert_eq!(
-        classify("replacement transaction underpriced".into()),
-        E::ReplacementUnderpriced
-    );
-    assert_eq!(
-        classify("insufficient funds for gas".into()),
-        E::InsufficientFunds
-    );
-    assert_ne!(classify("provider unavailable".into()), E::AlreadyKnown);
-}
-
-#[test]
-fn portfolio_signature_ignores_order_but_not_holding_boundaries() {
-    use send::flow::portfolio_composition_signature as signature;
-    assert_eq!(
-        signature(vec!["b".into(), "a".into()]),
-        signature(vec!["a".into(), "b".into()])
-    );
-    assert_ne!(
-        signature(vec!["a|b".into(), "c".into()]),
-        signature(vec!["a".into(), "b|c".into()])
-    );
-    assert_ne!(
-        signature(vec!["a".into()]),
-        signature(vec!["a".into(), "a".into()])
-    );
-}
-
-#[test]
 fn testnet_pricing_uses_concrete_network_identity() {
     let unpriced = store::state::core_unpriced_chain_names();
     assert!(unpriced.contains(&"Ethereum Sepolia".into()));

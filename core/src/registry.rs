@@ -463,15 +463,6 @@ impl Chain {
         Chain::from_str_id(&self.entry().family).expect("validated network family")
     }
 
-    /// View the chain as an `EvmChain` if it's EVM-family.
-    pub fn as_evm(self) -> Option<EvmChain> {
-        if self.is_evm() {
-            Some(EvmChain(self))
-        } else {
-            None
-        }
-    }
-
     /// `true` for every EVM-compatible chain (mainnet or testnet).
     pub fn is_evm(self) -> bool {
         matches!(
@@ -786,11 +777,6 @@ impl Chain {
             Chain::BitcoinSignet => bitcoin::Network::Signet,
             _ => bitcoin::Network::Bitcoin,
         }
-    }
-
-    /// True when this chain's family offers more than one network.
-    pub fn has_network_choice(self) -> bool {
-        self.network_choices().len() > 1
     }
 
     /// Rosetta health is a POST, not JSON-RPC and not a GET.

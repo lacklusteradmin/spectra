@@ -14,12 +14,12 @@ pub struct KeypoolState {
 
 /// Upsert keypool state for one (wallet, chain) pair.
 pub fn keypool_save(
-    db_path: &str,
+    database: &WalletDatabase,
     wallet_id: &str,
     chain_name: &str,
     state: &KeypoolState,
 ) -> Result<(), String> {
-    with_conn(db_path, |conn| {
+    with_conn(database, |conn| {
         conn.execute(
             "INSERT INTO wallet_keypool
                  (wallet_id, chain_name, next_external_index, next_change_index,
@@ -46,11 +46,11 @@ pub fn keypool_save(
 
 /// Load keypool state for one (wallet, chain) pair.
 pub fn keypool_load(
-    db_path: &str,
+    database: &WalletDatabase,
     wallet_id: &str,
     chain_name: &str,
 ) -> Result<Option<KeypoolState>, String> {
-    with_conn(db_path, |conn| {
+    with_conn(database, |conn| {
         let result = conn.query_row(
             "SELECT next_external_index, next_change_index, reserved_receive_index
              FROM wallet_keypool WHERE wallet_id = ?1 AND chain_name = ?2",
@@ -73,10 +73,10 @@ pub fn keypool_load(
 
 /// Load all keypool state for a wallet across every chain it has used.
 pub fn keypool_load_for_wallet(
-    db_path: &str,
+    database: &WalletDatabase,
     wallet_id: &str,
 ) -> Result<std::collections::HashMap<String, KeypoolState>, String> {
-    with_conn(db_path, |conn| {
+    with_conn(database, |conn| {
         let mut stmt = conn
             .prepare(
                 "SELECT chain_name, next_external_index, next_change_index, reserved_receive_index
@@ -106,10 +106,10 @@ pub fn keypool_load_for_wallet(
 
 /// Load all keypool state across every wallet for a given chain.
 pub fn keypool_load_for_chain(
-    db_path: &str,
+    database: &WalletDatabase,
     chain_name: &str,
 ) -> Result<std::collections::HashMap<String, KeypoolState>, String> {
-    with_conn(db_path, |conn| {
+    with_conn(database, |conn| {
         let mut stmt = conn
             .prepare(
                 "SELECT wallet_id, next_external_index, next_change_index, reserved_receive_index
@@ -140,12 +140,12 @@ pub fn keypool_load_for_chain(
 /// Load the entire keypool table as a nested map: chain → wallet_id → state.
 /// This is the startup bulk-load that replaces reading UserDefaults JSON.
 pub fn keypool_load_all(
-    db_path: &str,
+    database: &WalletDatabase,
 ) -> Result<
     std::collections::HashMap<String, std::collections::HashMap<String, KeypoolState>>,
     String,
 > {
-    with_conn(db_path, |conn| {
+    with_conn(database, |conn| {
         let mut stmt = conn
             .prepare(
                 "SELECT chain_name, wallet_id, next_external_index, next_change_index, reserved_receive_index
@@ -178,8 +178,8 @@ pub fn keypool_load_all(
 }
 
 /// Remove all keypool entries for a deleted wallet.
-pub fn keypool_delete_for_wallet(db_path: &str, wallet_id: &str) -> Result<(), String> {
-    with_conn(db_path, |conn| {
+pub fn keypool_delete_for_wallet(database: &WalletDatabase, wallet_id: &str) -> Result<(), String> {
+    with_conn(database, |conn| {
         conn.execute(
             "DELETE FROM wallet_keypool WHERE wallet_id = ?1",
             params![wallet_id],
@@ -190,8 +190,8 @@ pub fn keypool_delete_for_wallet(db_path: &str, wallet_id: &str) -> Result<(), S
 }
 
 /// Remove all keypool entries for a chain (e.g. when the user switches network modes).
-pub fn keypool_delete_for_chain(db_path: &str, chain_name: &str) -> Result<(), String> {
-    with_conn(db_path, |conn| {
+pub fn keypool_delete_for_chain(database: &WalletDatabase, chain_name: &str) -> Result<(), String> {
+    with_conn(database, |conn| {
         conn.execute(
             "DELETE FROM wallet_keypool WHERE chain_name = ?1",
             params![chain_name],
@@ -209,8 +209,11 @@ pub fn keypool_delete_for_chain(db_path: &str, chain_name: &str) -> Result<(), S
 /// one never derived, and owned addresses that outlive it are attributed to a
 /// network they were not derived on — so a half-applied delete is worse than
 /// a failed one, which at least leaves a state the next attempt can repeat.
-pub fn chain_derivation_delete_for_chain(db_path: &str, chain_name: &str) -> Result<(), String> {
-    with_conn(db_path, |conn| {
+pub fn chain_derivation_delete_for_chain(
+    database: &WalletDatabase,
+    chain_name: &str,
+) -> Result<(), String> {
+    with_conn(database, |conn| {
         let tx = conn
             .unchecked_transaction()
             .map_err(|e| format!("chain_derivation_delete_for_chain begin: {e}"))?;
@@ -227,8 +230,8 @@ pub fn chain_derivation_delete_for_chain(db_path: &str, chain_name: &str) -> Res
 }
 
 /// Wipe the entire keypool table (full reset).
-pub fn keypool_delete_all(db_path: &str) -> Result<(), String> {
-    with_conn(db_path, |conn| {
+pub fn keypool_delete_all(database: &WalletDatabase) -> Result<(), String> {
+    with_conn(database, |conn| {
         conn.execute("DELETE FROM wallet_keypool", [])
             .map_err(|e| format!("keypool_delete_all: {e}"))?;
         Ok(())

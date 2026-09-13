@@ -16,8 +16,8 @@ pub struct OwnedAddressRecord {
 // ── Owned address CRUD ────────────────────────────────────────────────────────
 
 /// Upsert a single owned address record (identified by wallet + chain + address).
-pub fn address_save(db_path: &str, record: &OwnedAddressRecord) -> Result<(), String> {
-    with_conn(db_path, |conn| {
+pub fn address_save(database: &WalletDatabase, record: &OwnedAddressRecord) -> Result<(), String> {
+    with_conn(database, |conn| {
         conn.execute(
             "INSERT INTO wallet_owned_addresses
                  (wallet_id, chain_name, address, derivation_path, branch, branch_index, updated_at)
@@ -44,11 +44,11 @@ pub fn address_save(db_path: &str, record: &OwnedAddressRecord) -> Result<(), St
 
 /// Load all owned addresses for a (wallet, chain) pair.
 pub fn address_load_all(
-    db_path: &str,
+    database: &WalletDatabase,
     wallet_id: &str,
     chain_name: &str,
 ) -> Result<Vec<OwnedAddressRecord>, String> {
-    with_conn(db_path, |conn| {
+    with_conn(database, |conn| {
         let mut stmt = conn
             .prepare(
                 "SELECT address, derivation_path, branch, branch_index
@@ -76,8 +76,10 @@ pub fn address_load_all(
 }
 
 /// Used at startup to bulk-restore the in-memory map.
-pub fn address_load_all_chains(db_path: &str) -> Result<Vec<OwnedAddressRecord>, String> {
-    with_conn(db_path, |conn| {
+pub fn address_load_all_chains(
+    database: &WalletDatabase,
+) -> Result<Vec<OwnedAddressRecord>, String> {
+    with_conn(database, |conn| {
         let mut stmt = conn
             .prepare(
                 "SELECT wallet_id, chain_name, address, derivation_path, branch, branch_index
@@ -105,8 +107,8 @@ pub fn address_load_all_chains(db_path: &str) -> Result<Vec<OwnedAddressRecord>,
 }
 
 /// Remove all owned address records for a deleted wallet.
-pub fn address_delete_for_wallet(db_path: &str, wallet_id: &str) -> Result<(), String> {
-    with_conn(db_path, |conn| {
+pub fn address_delete_for_wallet(database: &WalletDatabase, wallet_id: &str) -> Result<(), String> {
+    with_conn(database, |conn| {
         conn.execute(
             "DELETE FROM wallet_owned_addresses WHERE wallet_id = ?1",
             params![wallet_id],
@@ -117,8 +119,8 @@ pub fn address_delete_for_wallet(db_path: &str, wallet_id: &str) -> Result<(), S
 }
 
 /// Remove all owned address records for a chain (e.g. after a rescan).
-pub fn address_delete_for_chain(db_path: &str, chain_name: &str) -> Result<(), String> {
-    with_conn(db_path, |conn| {
+pub fn address_delete_for_chain(database: &WalletDatabase, chain_name: &str) -> Result<(), String> {
+    with_conn(database, |conn| {
         conn.execute(
             "DELETE FROM wallet_owned_addresses WHERE chain_name = ?1",
             params![chain_name],
@@ -129,8 +131,8 @@ pub fn address_delete_for_chain(db_path: &str, chain_name: &str) -> Result<(), S
 }
 
 /// Wipe the owned address table (full reset).
-pub fn address_delete_all(db_path: &str) -> Result<(), String> {
-    with_conn(db_path, |conn| {
+pub fn address_delete_all(database: &WalletDatabase) -> Result<(), String> {
+    with_conn(database, |conn| {
         conn.execute("DELETE FROM wallet_owned_addresses", [])
             .map_err(|e| format!("address_delete_all: {e}"))?;
         Ok(())

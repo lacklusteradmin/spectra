@@ -97,6 +97,7 @@ mod network_tokens;
 mod operational_events;
 mod pending_status;
 pub use pending_status::{PendingMaintenanceFailure, PendingMaintenanceResult};
+mod movement;
 mod reset;
 mod send_broadcast;
 mod send_destination;
@@ -105,8 +106,11 @@ mod send_identity;
 mod send_params;
 mod send_preview;
 mod send_records;
+mod send_result;
 mod send_signing;
+mod staking;
 mod standalone;
+pub use movement::PortfolioMovementBaseline;
 pub use reset::ResetOutcome;
 mod state;
 mod transaction_recheck;
@@ -166,7 +170,7 @@ pub struct WalletService {
     pub(crate) secret_store: Arc<std::sync::RwLock<Option<Arc<dyn SecretStore>>>>,
     /// Canonical in-memory wallet + holdings state.
     pub(crate) wallet_state: Arc<AsyncRwLock<CoreAppState>>,
-    /// Where `wallet_state` is persisted, and the handle keeping it open.
+    /// Database handle for persistent state and key/value storage.
     /// Unbound until `open_state` is called, in which case commands apply in
     /// memory only — the shape tests and short-lived tools want that.
     pub(crate) state_binding: Arc<crate::service::state::StateBinding>,
@@ -254,19 +258,6 @@ impl WalletService {
         if let Ok(mut guard) = self.secret_store.write() {
             *guard = Some(store);
         }
-    }
-
-    /// The registered delegate, or an error naming the reason.
-    ///
-    /// Every secret read and write goes through this rather than through a
-    /// key the front end computed: the key layout is core's, and there were
-    /// two of them for as long as the front end owned one.
-    pub(crate) fn secrets(&self) -> Result<Arc<dyn SecretStore>, SpectraBridgeError> {
-        self.secret_store
-            .read()
-            .ok()
-            .and_then(|guard| guard.clone())
-            .ok_or_else(|| SpectraBridgeError::from("secret store not registered".to_string()))
     }
 }
 
@@ -381,5 +372,19 @@ impl WalletService {
             .settings
             .etherscan_api_key
             .clone()
+    }
+}
+
+mod owned_send;
+
+pub use owned_send::{OwnedReplacementDraft, OwnedSendQuote};
+
+impl WalletService {
+    pub(crate) fn secrets(&self) -> Result<Arc<dyn SecretStore>, SpectraBridgeError> {
+        self.secret_store
+            .read()
+            .ok()
+            .and_then(|guard| guard.clone())
+            .ok_or_else(|| SpectraBridgeError::from("secret store not registered".to_string()))
     }
 }

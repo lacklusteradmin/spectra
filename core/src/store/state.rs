@@ -485,6 +485,7 @@ impl Default for AppSettings {
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, uniffi::Record)]
 #[serde(rename_all = "camelCase")]
 pub struct CoreAppState {
+    pub movement_baseline: Option<crate::service::PortfolioMovementBaseline>,
     #[serde(default)]
     pub quotes: crate::service::QuoteRefreshState,
     #[serde(default)]
@@ -516,6 +517,7 @@ pub struct CoreAppState {
 impl Default for CoreAppState {
     fn default() -> Self {
         Self {
+            movement_baseline: None,
             quotes: Default::default(),
             schema_version: 2,
             diagnostics: Default::default(),
@@ -731,10 +733,17 @@ pub enum StateCommand {
         address: String,
         note: String,
     },
-    /// Replace the price-alert list. Core normalises: an alert whose target is
-    /// not a positive number cannot fire, so it is refused rather than stored.
-    SetPriceAlerts {
-        alerts: Vec<crate::store::PriceAlertEvaluationAlert>,
+    AddPriceAlert {
+        holding_key: String,
+        target_price: f64,
+        currency_code: String,
+        condition: crate::store::wallet_domain::CorePriceAlertCondition,
+    },
+    TogglePriceAlert {
+        id: String,
+    },
+    RemovePriceAlert {
+        id: String,
     },
     RenameAddressBookEntry {
         id: String,
@@ -1172,18 +1181,23 @@ pub fn reduce_state_in_place(state: &mut CoreAppState, command: StateCommand) ->
                 });
             }
         }
-        StateCommand::SetPriceAlerts { alerts } => {
-            let kept: Vec<_> = alerts
-                .into_iter()
-                .filter(|alert| alert.target_price > 0.0 && !alert.holding_key.trim().is_empty())
-                .collect();
-            if kept != state.price_alerts {
-                state.price_alerts = kept;
-                events.push(StateEvent {
-                    kind: "priceAlertsChanged".to_string(),
-                    subject_id: None,
-                });
-            }
+        StateCommand::AddPriceAlert {
+            holding_key,
+            target_price,
+            currency_code,
+            condition,
+        } => events.extend(super::price_alerts::add(
+            state,
+            holding_key,
+            target_price,
+            currency_code,
+            condition,
+        )),
+        StateCommand::TogglePriceAlert { id } => {
+            events.extend(super::price_alerts::toggle(state, id))
+        }
+        StateCommand::RemovePriceAlert { id } => {
+            events.extend(super::price_alerts::remove(state, id))
         }
         StateCommand::AddCustomToken {
             chain_name,

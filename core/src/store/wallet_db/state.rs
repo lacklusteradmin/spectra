@@ -101,6 +101,7 @@ impl AppStateChanges {
                 }
             };
         }
+        json_field!(movement_baseline, "movement_baseline");
         json_field!(diagnostics, "diagnostics");
         json_field!(schema_version, META_SCHEMA_VERSION);
         json_field!(settings, META_SETTINGS);
@@ -116,8 +117,8 @@ impl AppStateChanges {
         Ok(changes)
     }
 
-    pub(crate) fn save(self, db_path: &str) -> Result<(), String> {
-        with_conn(db_path, |conn| {
+    pub(crate) fn save(self, database: &WalletDatabase) -> Result<(), String> {
+        with_conn(database, |conn| {
             let tx = conn.unchecked_transaction().map_err(|e| e.to_string())?;
             let updated_at = now_secs();
             if self.replace {
@@ -195,13 +196,13 @@ impl AppStateChanges {
 
 /// Explicit snapshot replacement (imports and standalone store callers).
 /// Service commands use a delta against their serialized committed state.
-pub fn app_state_save(db_path: &str, state: &CoreAppState) -> Result<(), String> {
-    AppStateChanges::between(None, state)?.save(db_path)
+pub fn app_state_save(database: &WalletDatabase, state: &CoreAppState) -> Result<(), String> {
+    AppStateChanges::between(None, state)?.save(database)
 }
 
 /// Load every saved recipient, in the stored display order.
-pub fn address_book_load_all(db_path: &str) -> Result<Vec<AddressBookEntry>, String> {
-    with_conn(db_path, |conn| {
+pub fn address_book_load_all(database: &WalletDatabase) -> Result<Vec<AddressBookEntry>, String> {
+    with_conn(database, |conn| {
         let mut stmt = conn
             .prepare("SELECT id, payload FROM address_book ORDER BY sort_index ASC")
             .map_err(|e| format!("address_book_load_all prepare: {e}"))?;
@@ -240,10 +241,10 @@ fn drop_unreadable<T: Default + serde::de::DeserializeOwned>(value: &str, key: &
     }
 }
 
-pub fn app_state_load(db_path: &str) -> Result<CoreAppState, String> {
-    let wallets = wallet_load_all(db_path)?;
-    let address_book = address_book_load_all(db_path)?;
-    with_conn(db_path, |conn| {
+pub fn app_state_load(database: &WalletDatabase) -> Result<CoreAppState, String> {
+    let wallets = wallet_load_all(database)?;
+    let address_book = address_book_load_all(database)?;
+    with_conn(database, |conn| {
         let mut stmt = conn
             .prepare("SELECT key, value FROM app_state_meta")
             .map_err(|e| format!("app_state_load prepare: {e}"))?;
@@ -290,6 +291,10 @@ pub fn app_state_load(db_path: &str) -> Result<CoreAppState, String> {
                 }
                 META_PRICE_ALERTS => {
                     state.price_alerts = drop_unreadable(&value, "price_alerts");
+                }
+                "movement_baseline" => {
+                    state.movement_baseline = serde_json::from_str(&value)
+                        .map_err(|e| format!("invalid movement baseline: {e}"))?
                 }
                 "quotes" => state.quotes = drop_unreadable(&value, "quotes"),
                 META_FIAT_RATES => {

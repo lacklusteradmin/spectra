@@ -50,11 +50,11 @@ pub fn history_record_from_payload(
 /// Project distinct indexed paths, not transaction payloads. Repeated transactions
 /// on one address produce one path to parse, scoped to this wallet and chain.
 pub(crate) fn history_keypool_indices(
-    db_path: &str,
+    database: &WalletDatabase,
     wallet_id: &str,
     chain_name: &str,
 ) -> Result<(Option<i32>, Option<i32>), String> {
-    with_conn(db_path, |conn| {
+    with_conn(database, |conn| {
         let mut maxima = [None, None];
         for (branch, field) in ["sourceDerivationPath", "changeDerivationPath"]
             .into_iter()
@@ -88,11 +88,14 @@ pub(crate) fn history_keypool_indices(
 }
 
 /// Which of `ids` already exist, lowercased.
-pub fn history_existing_ids(db_path: &str, ids: &[String]) -> Result<Vec<String>, String> {
+pub fn history_existing_ids(
+    database: &WalletDatabase,
+    ids: &[String],
+) -> Result<Vec<String>, String> {
     if ids.is_empty() {
         return Ok(Vec::new());
     }
-    with_conn(db_path, |conn| {
+    with_conn(database, |conn| {
         use rusqlite::OptionalExtension;
         let mut stmt = conn
             .prepare_cached("SELECT id FROM history_records WHERE id = ?1")
@@ -115,10 +118,14 @@ pub fn history_existing_ids(db_path: &str, ids: &[String]) -> Result<Vec<String>
 
 /// Load every transaction for one wallet, newest first.
 pub fn history_fetch_for_wallet(
-    db_path: &str,
+    database: &WalletDatabase,
     wallet_id: &str,
 ) -> Result<Vec<HistoryRecord>, String> {
-    history_fetch_where(db_path, "wallet_id = ?1", params![wallet_id.to_lowercase()])
+    history_fetch_where(
+        database,
+        "wallet_id = ?1",
+        params![wallet_id.to_lowercase()],
+    )
 }
 
 /// Every stored record for one chain, across every wallet — what a history
@@ -129,10 +136,10 @@ pub fn history_fetch_for_wallet(
 /// history alongside it was pure waste: rows this call will reject, paid for
 /// in a SQL round trip and a JSON decode each, on every refresh cycle.
 pub fn history_fetch_for_chain(
-    db_path: &str,
+    database: &WalletDatabase,
     chain_name: &str,
 ) -> Result<Vec<HistoryRecord>, String> {
-    history_fetch_where(db_path, "chain_name = ?1", params![chain_name])
+    history_fetch_where(database, "chain_name = ?1", params![chain_name])
 }
 
 /// Shared body for `history_fetch_all` and the scoped fetches: same query,
@@ -141,11 +148,11 @@ pub fn history_fetch_for_chain(
 /// what every caller here did until each was found reading the whole table
 /// for one wallet's or one chain's worth of rows.
 fn history_fetch_where(
-    db_path: &str,
+    database: &WalletDatabase,
     predicate: &str,
     query_params: impl rusqlite::Params,
 ) -> Result<Vec<HistoryRecord>, String> {
-    with_conn(db_path, |conn| {
+    with_conn(database, |conn| {
         let sql = format!(
             "SELECT id, wallet_id, chain_name, tx_hash, created_at, payload
              FROM history_records WHERE {predicate} ORDER BY created_at DESC, id ASC"
@@ -158,11 +165,14 @@ fn history_fetch_where(
 }
 
 /// Upsert a batch of history records. Existing rows (matched by `id`) are overwritten.
-pub fn history_upsert_batch(db_path: &str, records: &[HistoryRecord]) -> Result<(), String> {
+pub fn history_upsert_batch(
+    database: &WalletDatabase,
+    records: &[HistoryRecord],
+) -> Result<(), String> {
     if records.is_empty() {
         return Ok(());
     }
-    with_conn(db_path, |conn| {
+    with_conn(database, |conn| {
         conn.execute_batch("BEGIN IMMEDIATE")
             .map_err(|e| format!("history_upsert_batch begin: {e}"))?;
         let result = history_upsert_on_conn(conn, records);
@@ -213,11 +223,22 @@ fn history_upsert_on_conn(
 /// Hold the SQLite write transaction across the read, domain merge and write.
 /// A second refresh (including another connection) sees the first one's result.
 pub(crate) fn history_update_chain<T>(
-    db_path: &str,
+    database: &WalletDatabase,
     chain_name: &str,
     update: impl FnOnce(Vec<HistoryRecord>) -> Result<(Vec<HistoryRecord>, T), String>,
 ) -> Result<T, String> {
-    with_conn(db_path, |conn| {
+    history_update_chain_checked(database, chain_name, |_, rows| update(rows))
+}
+
+pub(crate) fn history_update_chain_checked<T>(
+    database: &WalletDatabase,
+    chain_name: &str,
+    update: impl FnOnce(
+        &rusqlite::Connection,
+        Vec<HistoryRecord>,
+    ) -> Result<(Vec<HistoryRecord>, T), String>,
+) -> Result<T, String> {
+    with_conn(database, |conn| {
         let tx =
             rusqlite::Transaction::new_unchecked(conn, rusqlite::TransactionBehavior::Immediate)
                 .map_err(|e| e.to_string())?;
@@ -225,7 +246,7 @@ pub(crate) fn history_update_chain<T>(
             let mut stmt = tx.prepare("SELECT id, wallet_id, chain_name, tx_hash, created_at, payload FROM history_records WHERE chain_name = ?1 ORDER BY created_at DESC, id ASC").map_err(|e| e.to_string())?;
             decode_history_rows(&mut stmt, params![chain_name], "history_update_chain")?
         };
-        let (rows, result) = update(existing)?;
+        let (rows, result) = update(&tx, existing)?;
         history_upsert_on_conn(&tx, &rows)?;
         tx.commit().map_err(|e| e.to_string())?;
         Ok(result)
@@ -233,8 +254,8 @@ pub(crate) fn history_update_chain<T>(
 }
 
 /// Fetch all history records ordered by created_at DESC.
-pub fn history_fetch_all(db_path: &str) -> Result<Vec<HistoryRecord>, String> {
-    with_conn(db_path, |conn| {
+pub fn history_fetch_all(database: &WalletDatabase) -> Result<Vec<HistoryRecord>, String> {
+    with_conn(database, |conn| {
         let mut stmt = conn
             .prepare(
                 "SELECT id, wallet_id, chain_name, tx_hash, created_at, payload
@@ -285,11 +306,11 @@ fn decode_history_rows(
 }
 
 /// Delete history records by ID list.
-pub fn history_delete(db_path: &str, ids: &[String]) -> Result<(), String> {
+pub fn history_delete(database: &WalletDatabase, ids: &[String]) -> Result<(), String> {
     if ids.is_empty() {
         return Ok(());
     }
-    with_conn(db_path, |conn| {
+    with_conn(database, |conn| {
         conn.execute_batch("BEGIN IMMEDIATE")
             .map_err(|e| format!("history_delete begin: {e}"))?;
         let result = (|| -> Result<(), String> {
@@ -314,8 +335,11 @@ pub fn history_delete(db_path: &str, ids: &[String]) -> Result<(), String> {
 }
 
 /// Atomically delete all records then insert the provided batch (full replacement).
-pub fn history_replace_all(db_path: &str, records: &[HistoryRecord]) -> Result<(), String> {
-    with_conn(db_path, |conn| {
+pub fn history_replace_all(
+    database: &WalletDatabase,
+    records: &[HistoryRecord],
+) -> Result<(), String> {
+    with_conn(database, |conn| {
         conn.execute_batch("BEGIN IMMEDIATE")
             .map_err(|e| format!("history_replace_all begin: {e}"))?;
         let result = (|| -> Result<(), String> {
@@ -347,8 +371,8 @@ pub fn history_replace_all(db_path: &str, records: &[HistoryRecord]) -> Result<(
 }
 
 /// Delete all history records for a given wallet_id.
-pub fn history_delete_for_wallet(db_path: &str, wallet_id: &str) -> Result<(), String> {
-    with_conn(db_path, |conn| {
+pub fn history_delete_for_wallet(database: &WalletDatabase, wallet_id: &str) -> Result<(), String> {
+    with_conn(database, |conn| {
         conn.execute(
             "DELETE FROM history_records WHERE wallet_id = ?1",
             params![wallet_id.to_lowercase()],
@@ -359,8 +383,8 @@ pub fn history_delete_for_wallet(db_path: &str, wallet_id: &str) -> Result<(), S
 }
 
 /// Delete all history records (hard reset).
-pub fn history_clear(db_path: &str) -> Result<(), String> {
-    with_conn(db_path, |conn| {
+pub fn history_clear(database: &WalletDatabase) -> Result<(), String> {
+    with_conn(database, |conn| {
         conn.execute("DELETE FROM history_records", [])
             .map_err(|e| format!("history_clear: {e}"))?;
         Ok(())
@@ -370,12 +394,12 @@ pub fn history_clear(db_path: &str) -> Result<(), String> {
 /// Submission completion updates only its own fields and cannot undo a receipt
 /// that arrived while the network request was in flight.
 pub(crate) fn history_save_send_progress(
-    db_path: &str,
+    database: &WalletDatabase,
     incoming: &CorePersistedTransactionRecord,
     reserve_nonce: bool,
 ) -> Result<(), String> {
     use rusqlite::OptionalExtension;
-    with_conn(db_path, |conn| {
+    with_conn(database, |conn| {
         let tx =
             rusqlite::Transaction::new_unchecked(conn, rusqlite::TransactionBehavior::Immediate)
                 .map_err(|e| e.to_string())?;

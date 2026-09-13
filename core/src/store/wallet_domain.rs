@@ -309,10 +309,6 @@ pub struct CoreImportedWallet {
 }
 
 impl CoreImportedWallet {
-    pub fn total_balance(&self) -> f64 {
-        self.holdings.iter().map(|c| c.amount * c.price_usd).sum()
-    }
-
     /// This wallet's address for `chain`, if it has one.
     pub fn address_for(&self, chain: crate::registry::Chain) -> Option<&str> {
         self.addresses.get(chain.address_slot()).map(String::as_str)
@@ -789,7 +785,7 @@ pub struct CoreDashboardPinOption {
     pub symbol: String,
     pub name: String,
     pub subtitle: String,
-    pub asset_identifier: Option<String>,
+    pub artwork_name: Option<String>,
 }
 
 /// What signing material a wallet has, and whether a password guards it.

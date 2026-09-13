@@ -17,10 +17,18 @@ use crate::out::{self, Out};
 pub enum AlertCommand {
     /// Alerts this wallet has set.
     List,
+    /// Compare stored portfolio holdings and quotes with the durable movement baseline.
+    Movement {
+        /// Advance the baseline without notifying, as a foreground app does.
+        #[arg(long)]
+        active: bool,
+    },
     /// Add an alert on a chain's native asset.
     Add(AddArgs),
     /// Remove an alert by id or symbol.
     Remove(RemoveArgs),
+    /// Toggle one alert by its identifier.
+    Toggle { id: String },
     /// Fetch live prices and report which alerts fire.
     Check {
         /// Evaluate already stored quotes without fetching.
@@ -32,8 +40,14 @@ pub enum AlertCommand {
 #[derive(Args)]
 pub struct AddArgs {
     /// Chain display name, registry id or symbol.
+    #[arg(long, required_unless_present = "holding", conflicts_with = "holding")]
+    chain: Option<String>,
+    /// Deployment identifier of a stored asset.
     #[arg(long)]
-    chain: String,
+    holding: Option<String>,
+    /// Currency of the entered target; core converts using its stored rate.
+    #[arg(long, default_value = "USD")]
+    currency: String,
     /// Price to watch for, in USD.
     #[arg(long)]
     target: f64,
@@ -51,8 +65,20 @@ pub struct RemoveArgs {
 pub fn run(ctx: &Ctx, out: Out, command: AlertCommand) -> CliResult<()> {
     match command {
         AlertCommand::List => list(ctx, out),
+        AlertCommand::Movement { active } => {
+            let notification = ctx
+                .rt
+                .block_on(ctx.service()?.evaluate_portfolio_movement(active))?;
+            out.emit(serde_json::json!({"ok":true,"notification":notification}));
+            Ok(())
+        }
         AlertCommand::Add(args) => add(ctx, out, args),
         AlertCommand::Remove(args) => remove(ctx, out, args),
+        AlertCommand::Toggle { id } => {
+            apply_alert(ctx, StateCommand::TogglePriceAlert { id })?;
+            out.emit(serde_json::json!({"ok":true}));
+            Ok(())
+        }
         AlertCommand::Check { stored } => check(ctx, out, stored),
     }
 }
@@ -111,59 +137,60 @@ fn list(ctx: &Ctx, out: Out) -> CliResult<()> {
     Ok(())
 }
 
-fn add(ctx: &Ctx, out: Out, args: AddArgs) -> CliResult<()> {
-    let chain = resolve_chain(&args.chain)?;
-    let mut alerts = ctx.state()?.price_alerts;
-    let new = PriceAlertEvaluationAlert {
-        id: uuid::Uuid::new_v4().to_string().to_uppercase(),
-        holding_key: chain.entry().native_deployment_id.clone(),
-        asset_name: chain.coin_name().to_string(),
-        symbol: chain.coin_symbol().to_string(),
-        chain_name: chain.chain_display_name().to_string(),
-        target_price: args.target,
-        condition: if args.above {
-            CorePriceAlertCondition::Above
-        } else {
-            CorePriceAlertCondition::Below
-        },
-        is_enabled: true,
-        has_triggered: false,
-    };
-    let description = describe(&new);
-    alerts.push(new);
-
-    let before = ctx.state()?.price_alerts.len();
-    let transition = ctx.apply(StateCommand::SetPriceAlerts { alerts })?;
-    if transition.state.price_alerts.len() == before {
+fn apply_alert(ctx: &Ctx, command: StateCommand) -> CliResult<()> {
+    let result = ctx.apply(command)?;
+    if let Some(error) = result
+        .events
+        .iter()
+        .find(|e| e.kind == "priceAlertRejected")
+    {
         return Err(CliError::rejected(
-            "an alert needs a positive target price to fire",
+            error.subject_id.clone().unwrap_or_default(),
         ));
     }
-
-    out.text(|| println!("  {} watching {}", out::ok_mark(), description.bold()));
-    out.emit(serde_json::json!({ "ok": true, "alert": description }));
     Ok(())
 }
-
+fn add(ctx: &Ctx, out: Out, args: AddArgs) -> CliResult<()> {
+    let key = match args.holding {
+        Some(key) => key,
+        None => resolve_chain(args.chain.as_deref().unwrap_or_default())?
+            .entry()
+            .native_deployment_id
+            .clone(),
+    };
+    apply_alert(
+        ctx,
+        StateCommand::AddPriceAlert {
+            holding_key: key,
+            target_price: args.target,
+            currency_code: args.currency,
+            condition: if args.above {
+                CorePriceAlertCondition::Above
+            } else {
+                CorePriceAlertCondition::Below
+            },
+        },
+    )?;
+    out.text(|| println!("Alert added"));
+    out.emit(serde_json::json!({"ok":true}));
+    Ok(())
+}
 fn remove(ctx: &Ctx, out: Out, args: RemoveArgs) -> CliResult<()> {
-    let alerts = ctx.state()?.price_alerts;
-    let remaining: Vec<_> = alerts
-        .iter()
-        .filter(|alert| {
-            !alert.id.eq_ignore_ascii_case(&args.alert)
-                && !alert.symbol.eq_ignore_ascii_case(&args.alert)
+    let matches: Vec<_> = ctx
+        .state()?
+        .price_alerts
+        .into_iter()
+        .filter(|a| {
+            a.id.eq_ignore_ascii_case(&args.alert) || a.symbol.eq_ignore_ascii_case(&args.alert)
         })
-        .cloned()
         .collect();
-    if remaining.len() == alerts.len() {
-        return Err(CliError::rejected(format!(
-            "no alert matching {:?}",
-            args.alert
-        )));
+    if matches.is_empty() {
+        return Err(CliError::rejected("Alert not found"));
     }
-    ctx.apply(StateCommand::SetPriceAlerts { alerts: remaining })?;
-    out.text(|| println!("  {} removed", out::ok_mark()));
-    out.emit(serde_json::json!({ "ok": true, "removed": args.alert }));
+    for alert in matches {
+        apply_alert(ctx, StateCommand::RemovePriceAlert { id: alert.id })?;
+    }
+    out.emit(serde_json::json!({"ok":true}));
     Ok(())
 }
 

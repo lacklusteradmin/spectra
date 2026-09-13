@@ -174,19 +174,36 @@ impl WalletService {
             Err(message) => return Err(SpectraBridgeError::from(message)),
         };
         commit.request.has_wallet_password = commit.password.is_some();
-        let wallets = crate::derivation::import::wallets_for_import(&commit, &plan);
+        let mut wallets = crate::derivation::import::wallets_for_import(&commit, &plan);
         let is_watch_only = commit.request.is_watch_only_import;
         let seed = commit.seed_phrase.take().map(zeroize::Zeroizing::new);
         let private_key = commit.private_key.take().map(zeroize::Zeroizing::new);
         let password = commit.password.take().map(zeroize::Zeroizing::new);
         self.write_persisted(move |service| async move {
-            let path = service.bound_state_db_path().await?;
+            let path = service.bound_database().await?;
             let mut snapshot = service.wallet_state.read().await.clone();
             if wallets
                 .iter()
                 .any(|w| snapshot.wallets.iter().any(|old| old.id == w.id))
             {
                 return Err("Import ID already exists".into());
+            }
+            if commit.request.wallet_name.trim().is_empty() {
+                let mut used: std::collections::HashSet<String> = snapshot
+                    .wallets
+                    .iter()
+                    .map(|wallet| wallet.name.clone())
+                    .collect();
+                let mut index = 1u64;
+                for wallet in &mut wallets {
+                    while used.contains(&format!("Wallet {index}")) {
+                        index = index
+                            .checked_add(1)
+                            .ok_or_else(|| SpectraBridgeError::from("Wallet names exhausted"))?;
+                    }
+                    wallet.name = format!("Wallet {index}");
+                    used.insert(wallet.name.clone());
+                }
             }
             let previous = snapshot.clone();
             for wallet in &wallets {

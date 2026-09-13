@@ -10,7 +10,7 @@ impl WalletService {
         request: &crate::send::SendExecutionRequest,
         source: &str,
     ) -> Result<CorePersistedTransactionRecord, SpectraBridgeError> {
-        self.bound_state_db_path().await?;
+        self.bound_database().await?;
         let state = self.app_state().await;
         let wallet = state
             .wallets
@@ -36,19 +36,9 @@ impl WalletService {
                 .as_deref()
                 .unwrap_or(chain.coin_symbol())
         });
-        let deployment_id = match &request.contract_address {
-            None => chain.entry().native_deployment_id.clone(),
-            Some(contract) => format!(
-                "{}:{}:{}",
-                chain.str_id(),
-                chain.entry().token_standard.to_lowercase(),
-                crate::tokens::normalize_token_identifier(
-                    Some(contract.clone()),
-                    chain.chain_display_name().into()
-                )
-                .ok_or("token identifier missing")?
-            ),
-        };
+        let deployment_id =
+            crate::tokens::history_deployment(chain, request.contract_address.as_deref())
+                .ok_or("token identifier missing")?;
         let record: CorePersistedTransactionRecord = serde_json::from_value(json!({
             "deploymentId": deployment_id,
             "id": crate::store::new_transaction_id(), "walletId": wallet.id, "kind": "send", "status": "pending",
@@ -82,7 +72,7 @@ impl WalletService {
             {
                 return Err("wallet removed during submission".into());
             }
-            let path = service.bound_state_db_path().await?;
+            let path = service.bound_database().await?;
             tokio::task::spawn_blocking(move || {
                 crate::wallet_db::history_save_send_progress(&path, &record, reserve_nonce)
             })
@@ -296,9 +286,10 @@ impl WalletService {
         chain: Chain,
         address: &str,
     ) -> Result<tokio::sync::OwnedMutexGuard<()>, SpectraBridgeError> {
-        let path = self.bound_state_db_path().await?;
+        let path = self.bound_database().await?;
         let key = format!(
-            "{path}|{}|{}",
+            "{}|{}|{}",
+            path.path(),
             chain.str_id(),
             if chain.is_evm() {
                 address.to_lowercase()

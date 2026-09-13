@@ -132,7 +132,7 @@ impl WalletService {
                 )
                 .await?;
             let saved = Arc::new(std::sync::Mutex::new(None));
-            let result_json = if wants_sign_only {
+            let protocol_result = if wants_sign_only {
                 self.sign_and_broadcast_send(chain, params).await?
             } else {
                 let draft = self
@@ -170,76 +170,36 @@ impl WalletService {
                     .await?
             };
 
-            // Classify broadcast result.
-            let send_chain = chain.send_chain();
-            let outcome = crate::send::payload::classify_send_broadcast_result(
-                send_chain,
-                result_json.clone(),
-            );
-
-            // For EVM chains, decode the typed result here so Swift doesn't
-            // have to round-trip through `decode_evm_send_result(json:)`.
-            let evm = if chain.is_evm() {
-                let fallback_nonce = request
-                    .evm_overrides
-                    .as_ref()
-                    .and_then(|o| o.nonce)
-                    .unwrap_or(0);
-                Some(crate::send::ethereum::decode_evm_send_result_internal(
-                    &result_json,
-                    fallback_nonce,
-                ))
-            } else {
-                None
-            };
-
-            // What was signed, for a run that stopped there. The EVM builder
-            // decodes it above; the Bitcoin builder puts it in its result JSON
-            // under the same name.
-            //
-            // `wants_sign_only`, the same question the gate above asked: a
-            // caller asking through the EVM overrides is owed the payload too.
+            let transaction_hash = protocol_result.transaction_hash().to_string();
+            let evm = protocol_result.evm()?;
             let signed_payload = if wants_sign_only {
-                let hex = match &evm {
-                    Some(evm) => evm.raw_tx_hex.clone(),
-                    None => crate::send::preview_decode::extract_json_string_field(
-                        result_json.clone(),
-                        "raw_tx_hex".to_string(),
-                    ),
-                };
-                if hex.is_empty() {
-                    // Nothing was broadcast, so there is nothing to undo — but
-                    // a dry run that reported success with no transaction to
-                    // show would be `supports_sign_only` promising what this
-                    // builder does not do. Say so rather than hand back an
-                    // empty string that reads like a payload.
-                    return Err(SpectraBridgeError::Failure {
-                        message: format!(
-                            "{} signed without broadcasting but returned no payload",
-                            chain.chain_display_name()
-                        ),
-                    });
+                let payload = protocol_result.signed_payload();
+                if payload.is_empty() {
+                    return Err("sign-only returned no signed payload".into());
                 }
-                Some(hex)
+                Some(payload.to_string())
             } else {
+                if transaction_hash.trim().is_empty() {
+                    return Err("submission returned no transaction identifier; inspect the saved submission before retrying".into());
+                }
                 None
             };
-
+            let result_json = serde_json::to_string(&protocol_result)?;
             let pending = saved
                 .lock()
                 .map_err(|_| "send record lock poisoned")?
                 .clone();
             if let Some(mut record) = pending {
-                if !outcome.transaction_hash.trim().is_empty() {
-                    record.transaction_hash = Some(outcome.transaction_hash.clone());
+                if !transaction_hash.trim().is_empty() {
+                    record.transaction_hash = Some(transaction_hash.clone());
                     record.failure_reason = None;
                 }
                 self.save_send_record(record).await?;
             }
             Ok(crate::send::SendExecutionResult {
                 rebroadcast_payload: result_json,
-                transaction_hash: outcome.transaction_hash,
-                payload_format: outcome.payload_format,
+                transaction_hash: transaction_hash,
+                payload_format: crate::send::payload::format_key_for(chain.send_chain()).into(),
                 evm,
                 signed_payload,
             })

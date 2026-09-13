@@ -12,13 +12,13 @@ import re, pathlib
 free, methods, blocks = 0, 0, []
 for f in sorted(pathlib.Path('core/src').rglob('*.rs')):
     t = f.read_text()
-    free += len(re.findall(r'#\[uniffi::export[^\]]*\]\s*\npub (?:async )?fn ', t))
+    free += len(re.findall(r'#\[uniffi::export[^\]]*\]\s*\npub(?:\([^)]*\))? (?:async )?fn ', t))
     for m in re.finditer(r'#\[uniffi::export[^\]]*\]\s*\nimpl ([^\{]*)\{', t):
         i, depth = m.end(), 1
         while depth and i < len(t):
             depth += (t[i] == '{') - (t[i] == '}')
             i += 1
-        n = len(re.findall(r'\n    pub (?:async )?fn ', t[m.end():i]))
+        n = len(re.findall(r'\n    pub(?:\([^)]*\))? (?:async )?fn ', t[m.end():i]))
         methods += n
         blocks.append((n, f"{f.relative_to('core/src')} impl {m.group(1).strip()}"))
 

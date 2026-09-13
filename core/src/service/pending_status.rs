@@ -351,8 +351,12 @@ impl WalletService {
             PendingStatusPoll::None => {}
         }
 
-        self.apply_resolved_pending_statuses(chain.chain_display_name().to_string(), resolutions)
-            .await
+        self.apply_polled_pending_statuses(
+            chain.chain_display_name().to_string(),
+            resolutions,
+            Some(records),
+        )
+        .await
     }
 }
 

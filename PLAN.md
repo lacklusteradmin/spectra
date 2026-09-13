@@ -76,9 +76,9 @@ Navigation, editing and rendering caches remain platform view state.
 | 0 — Prove ownership on display currency | Done | `open_state` and state commands bind, update and persist core-owned state |
 | 1 — Move domain collections | Done | Wallets and address book are core-owned; history has its own queryable store; Swift renders projections |
 | 2 — Replace planners with intents | Done | No `core_plan_*` exports remain; some pure helpers only needed renaming |
-| 3 — Thin the shell | Done | History, reset, receive, quotes and transport are owned operations; Swift renders and forwards intents. See [closure audit](docs/STAGE3-C2-CLOSURE.md) |
+| 3 — Thin the shell | Done | Audited alert, send/preview, replacement, address and self-send decisions now owned by core; obsolete projection mutations removed; see closure audit |
 | C1 — Reshape core | Done | Shared chain catalog, service modules split by responsibility, duplicate modules and derivation primitives consolidated |
-| C2 — Reduce the FFI surface | Done | 162 callable exports, zero unreachable candidates; retained typed boundaries documented in the closure audit |
+| C2 — Reduce the FFI surface | Done | 157 callable exports, zero unreachable candidates; owned operations replace caller-assembled send decisions |
 | 4 — Android | Not started beyond skeleton | Implement against the shared core once the boundary is ready |
 
 Other completed ownership slices: settings, token preferences, price alerts,
@@ -294,18 +294,348 @@ simulator suite (83 tests, zero failures). FFI remains 178 callables with zero
 unreachable candidates. Manual recheck from the previous remaining list is
 complete; history-refresh dispatch and broader Stage 3/C2 audit remain open.
 
-## Stage 3 / C2 closure
+## Stage 3 / C2 closure after the Swift ownership follow-up
 
-Implementation is recorded in [the closure audit](docs/STAGE3-C2-CLOSURE.md):
-owned history/reset/receive/quote/transport operations replace the remaining
-caller-assembled workflows. The retained boundary is documented by responsibility.
-All final gates passed on 2026-09-12: Rust workspace (841 tests), CLI acceptance
-(346 checks plus both fixture batches), and iPhone 17 Pro (84 tests). The
-required Ethereum testnet endpoint test and new async operation binding test
-both pass. Earlier progress snapshots below describe their time of writing;
-this closure supersedes their remaining-work notes.
+The previous closure was reopened after finding Swift-owned alert mutations,
+send decisions, address fallbacks and self-send inputs. The follow-up also
+removed Swift replacement assembly, local-first projection merging, background
+orphan deletion and test-only mutation helpers from the app target.
+
+The [closure audit](docs/STAGE3-C2-CLOSURE.md) records the removed decisions and
+remaining UI responsibilities. Final verification on 2026-09-12:
+
+- `cargo test --workspace`: 851 core tests, zero failures.
+- `./scripts/cli-acceptance.sh`: 347 checks plus Stage 3/follow-up fixtures,
+  including `cli-owned-send.py`, all passed.
+- Required iPhone 17 Pro `xcodebuild test`: 84 tests, zero failures, including
+  Ethereum testnet contexts/endpoints and the new alert-intent async binding test.
+- 157 callable FFI exports, zero unreachable candidates; generated bindings
+  contain none of the removed low-level preview/self-send/replacement helpers.
+- `git diff --check` passes. Changes remain uncommitted.
+
+Earlier progress entries describe their time of writing; this audited follow-up
+supersedes their remaining Stage 3/C2 work notes. Android remains a separate stage.
+
+## Swift shell ownership follow-up (2026-09-13)
+
+- [x] Receive uses only the owned optional address, with separate loading/errors
+  and stale-response protection. No message can become QR/copy/share payload.
+- [x] Core allocates unnamed imports under the serialized writer; remove the
+  caller's default-name start index and CLI's different naming defaults.
+- [x] Core owns and persists movement baselines, observations and notification
+  decisions. Swift supplies device activity and performs notification delivery.
+- [x] Staking queries read WalletService's current transport settings; remove the
+  separate Swift endpoint builder and cached service.
+- [x] Historical transaction labels use their recorded network.
+- [x] Delete unused Swift helpers/caches, obsolete receive FFI planners and
+  unconnected staking actions/positions/preview UI. Keep real validator queries.
+- [x] Export checks exclude declarations/comments and count `pub(crate)` exports;
+  move internal-only operations out of exported impl blocks.
+- [x] Final verification: workspace Rust **833 passed**, offline CLI **354 passed**
+  plus Stage 3/follow-up fixtures, iPhone 17 Pro **87 passed**. The required
+  Ethereum test-network test and new history/movement/staking bridge tests pass.
+  FFI: **145 callables** (64 free functions + 81 methods/constructors), zero
+  unreachable candidates, cross-checked against regenerated Swift bindings.
+  `git diff --check` and `scripts/check-design-tokens.sh` pass.
+
+Runtime smoke on iPhone 17: the staking tab explicitly presents query-only
+functionality; Solana returned 100 validators and its detail has Overview,
+Validators and Learn, with no Actions tab. A public watch-only test address
+(`0x1111111111111111111111111111111111111111`) imported without an entered name
+as **Wallet 1**, then displayed its receive QR and enabled Copy Address. No
+private keys or transactions were used. The simulator retains that read-only
+sample. Error/no-wallet receive behavior is also covered through CLI/core and
+Swift async-binding regression tests.
+
+Logs: `/tmp/spectra-audit-rust.log`, `/tmp/spectra-audit-cli.log`,
+`/tmp/spectra-audit-ios.log`. Changes are unstaged and uncommitted.
+
+This supersedes the earlier closure's residual-boundary claims. Build / Sign /
+Broadcast remains a separate planned project. The staking app is explicitly an
+information and validator-query interface; staking transaction execution is
+future work, not an implemented feature hidden behind nonfunctional buttons.
 
 ## Behaviour changed on purpose
+
+### Core dead-code closure (2026-09-13)
+
+- **Before:** Rust retained a staking action dispatcher, 23 per-chain preview
+  builders, two uncalled staking queries, and action request/preview types after
+  the Swift execution controls were removed. **After:** staking exposes only
+  the validator and position query paths; the isolated action implementations,
+  seven unused error variants, the unused staking error FFI export, and four
+  self-contained action tests are deleted. Rationale: these were never an executable signing/broadcasting flow;
+  retaining them falsely suggested supported transactions. CLI check:
+  `./scripts/cli-acceptance.sh` includes the configured Solana validator fixture
+  and unsupported-chain/testnet refusals in `scripts/cli-shell-ownership.py`.
+- **Before:** Stellar kept an uncalled issued-asset signing entry point and its
+  credit-asset encoder. **After:** the live native-XLM sender directly builds a
+  native payment; its unused wrapper, asset enum and credit encoding are gone.
+  Rationale: no app or CLI route supplies an asset code/issuer. CLI check:
+  `spectra send --help` retains the owned send interface; no issued-asset route
+  is added. The native envelope's amount, asset tag and Ed25519 signature are
+  checked by `native_payment_envelope_encodes_amount_and_verifiable_signature`.
+- Removed the obsolete Ethereum error classifier/FFI enum and portfolio
+  composition signature together with their two self-only tests. The live
+  persisted movement policy and send error paths remain covered by acceptance.
+- Removed six uncalled helpers: `Chain::as_evm`, `Chain::has_network_choice`,
+  `probe_endpoints`, `SolanaClient::account_exists`,
+  `CoreImportedWallet::total_balance`, and `plan_append_chain_operational_event`.
+  These removals change no reachable app/CLI behavior. UniFFI bindings are
+  regenerated from Rust; no compatibility shim is retained.
+- Final verification: `cargo test --workspace` **828 passed**;
+  `./scripts/cli-acceptance.sh` **354 passed**; iPhone 17 Pro `xcodebuild test`
+  **87 passed**, zero failures. Native XLM signature regression passed.
+  `git diff --check` passed; export scan reports **0 unreachable candidates**
+  and the callable FFI surface remains **145**. Generated bindings contain none
+  of the removed action/classification/error types. Logs:
+  `/tmp/spectra-dead-{rust,cli,ios}-final.log`. The first iOS attempt hit a
+  simulator service startup failure; restarting the test simulator resolved it.
+
+### Shell ownership: receive, naming, movement and staking
+
+- **Receive:** before, a formatter returned either addresses or instructions in
+  one string, and Swift could encode the latter as a QR. After, Swift consumes
+  only core's optional validated/reserved address, clears it during refresh,
+  rejects stale responses and displays errors separately. Removed the obsolete
+  message/source planners and their tests; owned receive validation, reservation
+  and wrong-network tests are the replacement coverage. CLI check:
+  `spectra pool receive <wallet>` and `scripts/cli-shell-ownership.py`; the async
+  Swift binding test also proves a missing wallet refuses before reservation.
+- **Names:** before, Swift computed a start index from its wallet projection,
+  while CLI supplied chain-specific default names. After, unnamed imports use
+  the first available positive `Wallet N`, allocated inside core's import writer
+  against the latest stored names. Explicit names remain explicit; no migration
+  or compatibility parameter remains. CLI check: repeated `wallet watch` without
+  `--name` in the new fixture, each in a fresh process. Rust test
+  `default_wallet_names_are_allocated_under_the_import_writer` covers concurrent
+  imports, existing names and reopening.
+- **Movement:** before, Swift kept session-only totals/composition and submitted
+  totals and thresholds to a pure evaluator. After, core reads stored holdings,
+  quotes and settings, persists the comparison baseline and returns each observed
+  qualifying change once. Changed wallet/deployment composition, disabled alerts
+  or incomplete/invalid quotes reset the baseline; testnets are excluded.
+  Foreground observations advance it without alerting, and reopening retains it.
+  Notification authorization/delivery remain device operations; failures are
+  logged. CLI check: `spectra alert movement [--active]`; the new fixture covers
+  thresholds, composition changes, missing quotes, restart and deduplication.
+- **Staking:** before, Swift and CLI assembled different endpoint-role lists;
+  the app cached a second service's endpoints. After, queries use core's current
+  effective transport; explicit Rust overrides stay explicit and unsupported or
+  testnet requests refuse before network access. CLI check: `spectra staking
+  endpoints --chain Solana` and `staking validators --chain Solana` against the
+  loopback fixture. iOS Actions previously only reloaded validators. Those
+  buttons, unreachable position/preview UI, unused pool reads and wrappers are
+  deleted; the page now explicitly says it does not sign/submit transactions.
+  Core builders remain internal Rust APIs, not proof of an end-user send flow.
+- **History labels:** before, current wallet/global selection could relabel an old
+  transaction. After, its title uses its recorded concrete chain. Unused network
+  suffix helpers are removed. CLI `txs` already reports the recorded chain; the
+  Swift regression switches global network and checks the historical title.
+- **Reachability:** before, declarations/comments could make an unused export
+  appear reachable and the count omitted exported `pub(crate)` methods. Now both
+  scripts count those methods, and the candidate search ignores declarations and
+  comments and requires call-shaped references. Internal secret/history/recipient
+  methods leave the FFI. This is a candidate search, not whole-program proof;
+  constructors and foreign callbacks are checked separately. CLI checks:
+  `scripts/count-exports.sh`, `scripts/unreachable-exports.sh` plus regenerated
+  binding inspection. System callbacks remain; dead helpers are deleted, not
+  ported, and a record-copy helper used only by a test lives with that test.
+
+
+### Core simplification: commit order, snapshots, results, database ownership and artwork
+
+- **Opening is a commit, not an early binding.** Before: `open_state` replaced
+  keypool and resident state and marked the database bound before saving the
+  catalog seed; a failed save could make a retry return the uncommitted state.
+  After: loading, seeding and saving finish before publishing any of those
+  values. A failed first open remains unbound, and a failed rebind retains the
+  previous state/connection. Check `cargo test -p spectra_core
+  failed_open_does_not_publish_and_can_retry_seeding`.
+- **One snapshot per derived response.** Before: wallets, token preferences
+  and resolved addresses were read separately, and domain calculations went
+  through `CoreImportedWallet`. After: a pure transformation reads one
+  `CoreAppState` snapshot directly; refreshable network names reflect the
+  wallet's concrete network. Secret availability remains a separately queried
+  external capability. Check `cargo test -p spectra_core
+  derived_wallet_maps_share_one_snapshot_during_mutation` and
+  `spectra --json wallet derived`.
+- **Typed send results until the output boundary.** Before: every protocol
+  result became JSON, then its transaction identifier and EVM fields were
+  scraped back out; missing fields could silently become empty strings or
+  fallback numbers. After: a protocol result enum retains the concrete
+  structs, uses `SignedSubmission` for common fields and converts EVM integers
+  with range checks. JSON is emitted only for the persisted/FFI result.
+  An empty submission identifier is refused; a sign-only result must carry
+  signed bytes. Protocol signing and submission behavior remains explicit;
+  this does not implement the separate planned build/sign/broadcast UI.
+  Check `cargo test -p spectra_core service::send_result`, plus the existing
+  offline `scripts/cli-owned-send.py` and send/rebroadcast fixtures in
+  `./scripts/cli-acceptance.sh`.
+- **The service passes its database handle directly.** Before: a held `Arc`
+  existed only to keep a weak global path index alive, and key/value storage
+  used a second process-global connection pool. After: all storage operations
+  take the owned `WalletDatabase`; clones share its connection, independent
+  opens have their own handles, and SQLite coordinates separate connections.
+  Key/value and domain tables share the same service connection. No database
+  lookup by path happens during an operation. Check `cargo test -p spectra_core
+  store::wallet_db::connection::tests` and the CLI persistence/reopen checks.
+- **Artwork follows identity.** Before: artwork identifiers packed network,
+  ticker and contract into strings, then lookup discarded everything except
+  ticker. After: token IDs, deployment IDs and network IDs directly resolve
+  catalog artwork; holdings derive their deployment identity in core. Unknown
+  contracts cannot borrow a known token's mark by copying its ticker. History
+  without a deployment identity draws a letter; identified local sends retain
+  their token artwork. Removed the unused canonical-chain symbol parameter and
+  the old identifier-building/parsing exports. CLI checks:
+  `spectra --json token artwork --token-id ethereum`,
+  `spectra --json token artwork --network-id base`,
+  `spectra --json token artwork --deployment-id base:native`; unknown identities
+  return an empty artwork name. The acceptance gate covers each case.
+- **Case-sensitive identifiers survive either network spelling.** The full
+  artwork deployment test exposed that `normalize_token_identifier` recognized
+  display names but not registry IDs and lowercased SPL/TON/TRC-20 identifiers
+  when given IDs. It now resolves both spellings before applying the protocol's
+  normalization. Check `cargo test -p spectra_core
+  artwork_uses_identity_and_unknown_contracts_cannot_borrow_a_symbol`, which
+  resolves every catalog deployment's holding template.
+
+Verified 2026-09-12: `cargo test --workspace` **846 passed**;
+`./scripts/cli-acceptance.sh` **353 passed** plus its offline fixture suites;
+iPhone 17 Pro `xcodebuild test` **85 passed**, including full-deployment artwork
+and `testEthereumTestNetworksExposeExpectedContextsAndEndpoints`.
+UniFFI bindings regenerated with `scripts/bindgen-ios.sh`; export audit reports
+158 callables and zero unreachable candidates. `git diff --check` passes.
+Changes remain uncommitted.
+
+
+### Swift awaits storage readiness before asynchronous core operations
+
+- Before: Swift async bridge calls could reach an unbound core service while
+  launch was still opening SQLite (or after a silently ignored open failure).
+  Import then reported `transaction store not opened: call open_state first`.
+- After: bridge operations await a successful core `open_state` before running;
+  concurrent opens use core's existing serialized, idempotent binding. Failed
+  opens propagate their actual error and can be retried; commands never fall
+  back to unpersisted state. The service has its Keychain adapter at creation,
+  before any operation can need signing material. Launch open failures are logged.
+- CLI check: `./scripts/cli-acceptance.sh` covers import and reopening persisted
+  wallets. Swift tests now import a known test mnemonic through a fresh bridge
+  without calling `openState` first, reopen it, and test a failed database open
+  followed by recovery without a phantom in-memory setting write.
+- Verification: Rust workspace 855 tests, CLI acceptance 347 checks plus offline
+  fixtures, and iPhone 17 Pro 85 tests passed, including cold bridge import,
+  failed-open recovery and network-selection projections. Launch snapshots
+  continue to use core's serialized `open_state` so they cannot overtake writes.
+
+### Wallet editing opens the name field
+
+- Before: Swift opened wallet editing on the chain-selection page, which hides
+  its content while editing, leaving no name field. After: editing opens the
+  wallet-name page with the edit heading and existing name; Save uses the
+  existing core rename intent. New-wallet flows still start at chain selection.
+- Rationale: the editor must start on its only page (`SetupFlow.editWallet`).
+- CLI check: `./scripts/cli-acceptance.sh` includes the offline follow-up check
+  `wallet rename Followup Renamed`, proving persisted rename and portfolio
+  inclusion remain independent. Swift's existing rename test checks holdings
+  and editor dismissal; the page-copy test checks the name page's edit heading.
+- Verification: workspace Rust tests (855), CLI acceptance (347 plus offline
+  fixtures), and iPhone 17 Pro tests (84) all passed. The simulator required a
+  restart after its test-launch service disconnected; the complete rerun passed.
+
+### Provider history uses transaction identity and checked ownership
+
+- **One identity for sends and refreshes:** provider history previously omitted
+  deployment IDs while local sends supplied them, so identical transaction
+  hashes failed to merge. EVM native/token history now derives deployment IDs
+  from the actual network and contract, using the same helper as sends. Native
+  Bitcoin/UTXO and normalized native history carry their network's deployment;
+  Solana mints and Tron contracts survive normalization. A ticker alone never
+  invents a token contract. Check `cargo test -p spectra_core history_identity`
+  and `cargo test -p spectra_core history_tokens_with_the_same_symbol`.
+- **Store the actual network:** refreshed testnet records previously used the
+  mainnet family's display name, unlike local sends and status polling. Every
+  owned refresh now writes the actual network and merges per network; refresh
+  scope and pagination remain wallet-scoped and core-owned. Check `cargo test -p
+  spectra_core a_testnet_wallet_fetches_and_persists_its_exact_network` and
+  `spectra history WALLET --save` via the offline CLI fixtures.
+- **Execution outcome:** EVM explorer history discarded execution failure flags
+  and marked every transfer confirmed. Native history now retains confirmed or
+  failed outcomes; missing execution evidence fails the fetch rather than
+  claiming success. Check `cargo test -p spectra_core execution_history_regressions`.
+- **Owned refresh writes:** a response arriving after wallet deletion used to
+  recreate its history. The merge now checks the wallet's existence and exact
+  network inside the same SQLite write transaction, and reads its current name.
+  Deleted or moved wallets cannot receive stale rows. Check the history-identity
+  regression above, including reopening the database after deletion.
+- **Fresh status corrections:** the previous blanket confirmed-state guard also
+  discarded real failures and reorgs. Automatic polling now carries the record
+  snapshot that initiated its read; changed identity/status/receipt fields
+  reject the stale response. A response to the current snapshot may report a
+  failure or return to pending, which clears obsolete receipt fields and resumes
+  tracking. Check `cargo test -p spectra_core status_commit_regressions`.
+
+
+Verified on the final code: `cargo test --workspace` (855 core tests),
+`./scripts/cli-acceptance.sh` (347 checks plus the offline fixture/regression
+batches), and the required iPhone 17 Pro simulator suite (84 tests, zero
+failures). UniFFI bindings were regenerated by the Xcode build phase; the
+Ethereum testnet endpoint test also passed.
+
+
+### Finish Swift-owned send and alert decisions (2026-09-12)
+
+- **Before:** Swift rounded alert targets to cents, converted fiat using its
+  cached rates, deduplicated and replaced the whole alert list, including trigger
+  flags. **After:** `AddPriceAlert`, `TogglePriceAlert` and `RemovePriceAlert`
+  apply to current core state. Core validates and converts using its stored rate,
+  preserves subcent targets and rejects exact duplicates. Editing one rule cannot
+  overwrite another rule's latest trigger flag. **Why:** one durable writer and
+  correct small-token prices. **CLI:** `alert add --chain ethereum --target
+  0.000001`, `alert toggle <id>`, `alert remove <id>`; `--holding` identifies tokens
+  and `--currency` chooses the input currency; a missing stored rate is rejected.
+- **Before:** Swift selected protocol previews, source addresses, native/token
+  routes, Polkadot seed availability, fee fallback and gas affordability, then
+  assembled a send request and multiplied fees by `1e8`. **After:**
+  `preview_owned_send`, `quote_owned_send` and `execute_owned_send` accept only
+  wallet/holding identity and user input. Core resolves its stored network,
+  addresses, token metadata, balances, fees and checked atomic fee units. A failed
+  provider read is an error rather than permission to use a guessed fee. A watch
+  address can be previewed without reading its signing secret. **Why:** protocol
+  and funds decisions must be identical for every front end. **CLI:** `send
+  preview`, `send quote` and explicit `send owned-broadcast --yes`; the acceptance
+  fixture never signs or broadcasts.
+- **Before:** Swift chose the self-send address set and had a separate Dogecoin
+  branch. **After:** core checks all managed wallets on the asset's network,
+  including owned UTXO discovery, and owns the acknowledgment expiry. Swift keeps
+  the transient acknowledgment and confirmation text. **Why:** sending to another
+  owned wallet is also a self-send. **CLI:** `send self-check --wallet <wallet>
+  --holding <deployment> --amount 1 --destination <address>`.
+- **Before:** Swift returned another address slot when the selected network's
+  address was absent. **After:** core supplies a validated display projection;
+  its family label resolves to the selected network, and absent selected-network
+  addresses stay absent. Import awaits this projection. Signing and quoting use
+  concrete networks and refuse a mismatch. **Why:** an address on another network
+  is not a fallback. **CLI:** `wallet derived` and the network-mismatch fixture.
+- **Before:** Swift built replacement destinations/amounts, truncated amounts to
+  eight decimals and substituted 4/2 gwei when estimation failed. **After:**
+  `replacement_draft` reads the pending record and wallet, preserves the recorded
+  decimal value, resolves the live nonce and requires a fee estimate. **Why:**
+  cancellation and speed-up must describe the actual stored transfer. **CLI:**
+  `send replacement <transaction-id> [--cancel]`.
+- **Before:** launch loading merged local wallet/history snapshots over stored
+  results; a further Swift difference of transaction IDs sent delete commands.
+  **After:** loading adopts core projections only if no newer local projection
+  landed during the read. The redundant background orphan deletion is removed;
+  core wallet deletion retains responsibility for relational cleanup. Test-only
+  whole-record seed helpers are removed from the app target. **Why:** stale views
+  must neither resurrect nor delete durable records. **CLI:** existing wallet
+  removal/reset and history/recheck acceptance fixtures exercise the durable
+  writer; normal `txs` reads do not delete orphan rows.
+
+Verification: `python3 scripts/cli-owned-send.py target/debug/spectra` (included
+in `cli-stage3-followup.sh` and the main acceptance gate), core alert-intent and
+non-EVM owned-preview regressions, plus the required three complete suites.
 
 ### History isolation, atomic status commits and indexed lookups
 

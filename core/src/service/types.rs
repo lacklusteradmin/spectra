@@ -9,6 +9,7 @@ use super::*;
 /// Everything the wallet list implies, with holdings already resolved.
 #[derive(Debug, Clone, serde::Serialize, uniffi::Record)]
 pub struct WalletDerivedState {
+    pub resolved_addresses_by_wallet_id: HashMap<String, HashMap<String, String>>,
     pub included_portfolio_holdings: Vec<crate::store::wallet_domain::AssetHolding>,
     pub unique_price_request_coins: Vec<crate::store::wallet_domain::AssetHolding>,
     /// One entry per asset, amounts summed across wallets.

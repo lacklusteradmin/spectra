@@ -8,7 +8,7 @@
 //! method names mirror that chain's vocabulary.
 //!
 //! Shared types in this module describe what the UI cares about —
-//! validators, positions, action previews — at a level chain-agnostic
+//! validators and positions — at a level chain-agnostic
 //! enough that Swift can render them uniformly.
 
 mod types;

@@ -1,7 +1,6 @@
 use crate::store::state::{reduce_state_in_place, CoreAppState, StateCommand};
 use crate::store::wallet_db;
 use crate::store::wallet_domain::CorePriceAlertCondition;
-use crate::store::PriceAlertEvaluationAlert;
 
 fn tmp_db() -> String {
     let mut path = std::env::temp_dir();
@@ -14,33 +13,23 @@ fn tmp_db() -> String {
     path.to_string_lossy().into_owned()
 }
 
-fn alert(id: &str, target: f64) -> PriceAlertEvaluationAlert {
-    PriceAlertEvaluationAlert {
-        id: id.to_string(),
-        holding_key: "BTC".to_string(),
-        asset_name: "Bitcoin".to_string(),
-        symbol: "BTC".to_string(),
-        chain_name: "Bitcoin".to_string(),
-        target_price: target,
-        condition: CorePriceAlertCondition::Above,
-        is_enabled: true,
-        has_triggered: false,
-    }
-}
-
 #[test]
 fn a_price_alert_survives_a_reopen() {
     let db = tmp_db();
     let mut state = CoreAppState::default();
     reduce_state_in_place(
         &mut state,
-        StateCommand::SetPriceAlerts {
-            alerts: vec![alert("A1", 100_000.0)],
+        StateCommand::AddPriceAlert {
+            holding_key: "bitcoin:native".into(),
+            target_price: 100_000.0,
+            currency_code: "USD".into(),
+            condition: CorePriceAlertCondition::Above,
         },
     );
-    wallet_db::app_state_save(&db, &state).expect("save");
+    wallet_db::app_state_save(&crate::wallet_db::WalletDatabase::open(&db), &state).expect("save");
 
-    let reloaded = wallet_db::app_state_load(&db).expect("load");
+    let reloaded =
+        wallet_db::app_state_load(&crate::wallet_db::WalletDatabase::open(&db)).expect("load");
     assert_eq!(reloaded.price_alerts.len(), 1, "price alert was lost");
     assert_eq!(reloaded.price_alerts[0].target_price, 100_000.0);
 }
@@ -48,14 +37,19 @@ fn a_price_alert_survives_a_reopen() {
 #[test]
 fn an_alert_that_cannot_fire_is_refused() {
     let mut state = CoreAppState::default();
-    reduce_state_in_place(
-        &mut state,
-        StateCommand::SetPriceAlerts {
-            alerts: vec![alert("A1", 0.0), alert("A2", -5.0), alert("A3", 42.0)],
-        },
-    );
+    for target in [0.0, -5.0, f64::INFINITY, f64::NAN, 0.000001] {
+        reduce_state_in_place(
+            &mut state,
+            StateCommand::AddPriceAlert {
+                holding_key: "bitcoin:native".into(),
+                target_price: target,
+                currency_code: "USD".into(),
+                condition: CorePriceAlertCondition::Above,
+            },
+        );
+    }
     assert_eq!(state.price_alerts.len(), 1);
-    assert_eq!(state.price_alerts[0].id, "A3");
+    assert_eq!(state.price_alerts[0].target_price, 0.000001);
 }
 
 /// Whatever the resident state holds must come back. Add a collection and
@@ -66,8 +60,11 @@ fn every_resident_collection_round_trips() {
     let mut state = CoreAppState::default();
     reduce_state_in_place(
         &mut state,
-        StateCommand::SetPriceAlerts {
-            alerts: vec![alert("A1", 1.0)],
+        StateCommand::AddPriceAlert {
+            holding_key: "bitcoin:native".into(),
+            target_price: 1.0,
+            currency_code: "USD".into(),
+            condition: CorePriceAlertCondition::Above,
         },
     );
     reduce_state_in_place(
@@ -86,8 +83,9 @@ fn every_resident_collection_round_trips() {
             fiat_currency_code: "CHF".into(),
         },
     );
-    wallet_db::app_state_save(&db, &state).expect("save");
-    let back = wallet_db::app_state_load(&db).expect("load");
+    wallet_db::app_state_save(&crate::wallet_db::WalletDatabase::open(&db), &state).expect("save");
+    let back =
+        wallet_db::app_state_load(&crate::wallet_db::WalletDatabase::open(&db)).expect("load");
 
     assert_eq!(back.price_alerts.len(), 1, "price_alerts not persisted");
     assert_eq!(back.address_book.len(), 1, "address_book not persisted");
@@ -226,8 +224,9 @@ fn every_settings_field_round_trips() {
         reduce_state_in_place(&mut state, StateCommand::SetAppSetting { update });
     }
     let written = state.settings.clone();
-    wallet_db::app_state_save(&db, &state).expect("save");
-    let back = wallet_db::app_state_load(&db).expect("load");
+    wallet_db::app_state_save(&crate::wallet_db::WalletDatabase::open(&db), &state).expect("save");
+    let back =
+        wallet_db::app_state_load(&crate::wallet_db::WalletDatabase::open(&db)).expect("load");
     assert_eq!(
         back.settings, written,
         "a settings field did not round trip"

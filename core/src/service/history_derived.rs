@@ -71,29 +71,6 @@ impl WalletService {
         ))
     }
 
-    /// Transaction ids whose wallet is still active, for a caller pruning the
-    /// ones whose wallet is gone.
-    pub async fn active_wallet_transaction_ids(&self) -> Result<Vec<String>, SpectraBridgeError> {
-        let (records, wallets) = self.history_and_wallets().await?;
-        Ok(crate::store::core_active_wallet_transaction_ids(
-            records
-                .iter()
-                .map(|record| crate::store::TransactionActivityInput {
-                    id: record.payload.id.clone(),
-                    wallet_id: record.payload.wallet_id.clone(),
-                    chain_name: record.payload.chain_name.clone(),
-                })
-                .collect(),
-            wallets
-                .iter()
-                .map(|wallet| crate::store::WalletChainInput {
-                    wallet_id: wallet.wallet_id.clone(),
-                    selected_chain: wallet.selected_chain.clone(),
-                })
-                .collect(),
-        ))
-    }
-
     /// The pending sends a caller may replace by resubmitting their nonce,
     /// newest first.
     ///
@@ -537,17 +514,11 @@ mod read_failure_tests {
             .await
             .unwrap()
             .is_empty());
-        assert!(service
-            .active_wallet_transaction_ids()
-            .await
-            .unwrap()
-            .is_empty());
         assert!(service.replaceable_sends().await.unwrap().is_empty());
         let db = rusqlite::Connection::open(&path).unwrap();
         db.execute("INSERT INTO history_records(id,chain_name,created_at,payload) VALUES('fault','Bitcoin',0,'{\"id\":42}')",[]).unwrap();
         assert!(service.normalized_history("Unknown".into()).await.is_err());
         assert!(service.earliest_transaction_dates().await.is_err());
-        assert!(service.active_wallet_transaction_ids().await.is_err());
         assert!(service.replaceable_sends().await.is_err());
         let raw: String = db
             .query_row(

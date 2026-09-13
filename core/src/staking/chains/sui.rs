@@ -1,24 +1,10 @@
-//! Sui staking — `0x3::sui_system::request_add_stake` Move call.
-//!
-//! Wallet flow:
-//! 1. `fetch_validators` returns the active validator set from
-//!    `0x5::sui_system_state::SuiSystemState` epoch info.
-//! 2. `build_request_add_stake_tx` constructs a programmable tx with a single
-//!    `request_add_stake_mul_coin` call: passes a SUI Coin, validator address,
-//!    and amount. Returns a `StakedSui` object owned by the wallet.
-//! 3. `build_request_withdraw_stake_tx` calls `request_withdraw_stake` with
-//!    the `StakedSui` object reference. Funds + rewards are returned at the
-//!    end of the current epoch.
-//!
-//! Native unit: MIST (1 SUI = 1e9 MIST). Rewards accrue per-epoch (~24h).
+//! Sui staking validator and position queries.
 
 use serde::Deserialize;
 use serde_json::json;
 
 use crate::http::{with_fallback, HttpClient, RetryProfile};
-use crate::staking::{
-    StakingActionKind, StakingActionPreview, StakingError, StakingPosition, StakingValidator,
-};
+use crate::staking::{StakingError, StakingPosition, StakingValidator};
 
 pub struct SuiStakingClient {
     rpc_endpoints: Vec<String>,
@@ -49,14 +35,6 @@ struct SuiValidatorSummary {
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
-
-fn mist_to_sui(mist: u64) -> f64 {
-    mist as f64 / 1_000_000_000.0
-}
-
-fn sui_display(mist: u64) -> String {
-    format!("{:.6} SUI", mist_to_sui(mist))
-}
 
 fn short_id(id: &str) -> &str {
     if id.len() >= 10 {
@@ -140,52 +118,5 @@ impl SuiStakingClient {
         _wallet_address: &str,
     ) -> Result<Vec<StakingPosition>, StakingError> {
         Ok(vec![])
-    }
-
-    pub async fn build_request_add_stake_tx(
-        &self,
-        _wallet_address: &str,
-        amount_mist: u64,
-        validator_address: &str,
-    ) -> Result<StakingActionPreview, StakingError> {
-        Ok(StakingActionPreview {
-            kind: StakingActionKind::Stake,
-            validator_identifier: validator_address.to_string(),
-            validator_display_name: format!("Validator {}", short_id(validator_address)),
-            amount_smallest_unit: amount_mist.to_string(),
-            amount_display: sui_display(amount_mist),
-            estimated_fee_smallest_unit: "1000000".to_string(), // 0.001 SUI
-            estimated_fee_display: "~0.001 SUI".to_string(),
-            unbonding_period_seconds: 24 * 3600, // until end of epoch
-            notes: vec![
-                "Creates a StakedSui object in your wallet.".to_string(),
-                "Minimum stake: 1 SUI. Rewards begin next epoch (~24h).".to_string(),
-            ],
-            post_action_balance_smallest_unit: None,
-            slashing_risk_note: None,
-            validator_min_met: Some(amount_mist >= 1_000_000_000),
-        })
-    }
-
-    /// `staked_sui_object_id` must be a `StakedSui` object owned by the wallet.
-    pub async fn build_request_withdraw_stake_tx(
-        &self,
-        _wallet_address: &str,
-        staked_sui_object_id: &str,
-    ) -> Result<StakingActionPreview, StakingError> {
-        Ok(StakingActionPreview {
-            kind: StakingActionKind::Unstake,
-            validator_identifier: staked_sui_object_id.to_string(),
-            validator_display_name: format!("StakedSui {}", short_id(staked_sui_object_id)),
-            amount_smallest_unit: "0".to_string(),
-            amount_display: "Full position".to_string(),
-            estimated_fee_smallest_unit: "1000000".to_string(),
-            estimated_fee_display: "~0.001 SUI".to_string(),
-            unbonding_period_seconds: 24 * 3600,
-            notes: vec!["Principal + rewards return at the end of the current epoch.".to_string()],
-            post_action_balance_smallest_unit: None,
-            slashing_risk_note: None,
-            validator_min_met: None,
-        })
     }
 }

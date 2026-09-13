@@ -63,7 +63,6 @@ impl WalletImportWatchOnlyEntries {
 #[serde(rename_all = "camelCase")]
 pub struct WalletImportRequest {
     pub wallet_name: String,
-    pub default_wallet_name_start_index: u64,
     pub primary_selected_chain_name: String,
     pub selected_chain_names: Vec<String>,
     /// Ids for the wallets this import will create, or empty to have core mint
@@ -512,7 +511,7 @@ fn plan_signing_import(request: WalletImportRequest) -> Result<WalletImportPlan,
             name: wallet_display_name(
                 &request.wallet_name,
                 index + 1,
-                request.default_wallet_name_start_index as usize + index,
+                index + 1,
                 selected_chain_count,
             ),
             chain_name: chain_name.clone(),
@@ -564,7 +563,7 @@ fn plan_watch_only_import(request: WalletImportRequest) -> Result<WalletImportPl
                 name: wallet_display_name(
                     &request.wallet_name,
                     index + 1,
-                    (request.default_wallet_name_start_index as usize) + index,
+                    index + 1,
                     selected_chain_count,
                 ),
                 chain_name,
@@ -915,7 +914,6 @@ mod tests {
     fn plans_multi_chain_seed_import() {
         let plan = plan_wallet_import(WalletImportRequest {
             wallet_name: "Main".to_string(),
-            default_wallet_name_start_index: 4,
             primary_selected_chain_name: "Bitcoin".to_string(),
             selected_chain_names: vec!["Bitcoin".to_string(), "Ethereum".to_string()],
             planned_wallet_ids: vec!["1".to_string(), "2".to_string()],
@@ -959,7 +957,6 @@ mod tests {
     fn evm_chains_share_one_address_slot() {
         let request = |chain: &str| WalletImportRequest {
             wallet_name: "W".to_string(),
-            default_wallet_name_start_index: 0,
             primary_selected_chain_name: chain.to_string(),
             selected_chain_names: vec![chain.to_string()],
             planned_wallet_ids: vec!["1".to_string()],
@@ -992,7 +989,6 @@ mod tests {
     fn ethereum_classic_fills_both_its_own_slot_and_the_evm_slot() {
         let plan = plan_wallet_import(WalletImportRequest {
             wallet_name: "W".to_string(),
-            default_wallet_name_start_index: 0,
             primary_selected_chain_name: "Ethereum Classic".to_string(),
             selected_chain_names: vec!["Ethereum Classic".to_string()],
             planned_wallet_ids: vec!["1".to_string()],
@@ -1025,7 +1021,6 @@ mod tests {
     fn seed_import_carries_bitcoin_xpub_only_on_the_bitcoin_wallet() {
         let plan = plan_wallet_import(WalletImportRequest {
             wallet_name: "Main".to_string(),
-            default_wallet_name_start_index: 0,
             primary_selected_chain_name: "Bitcoin".to_string(),
             selected_chain_names: vec!["Bitcoin".to_string(), "Solana".to_string()],
             planned_wallet_ids: vec!["1".to_string(), "2".to_string()],
@@ -1054,7 +1049,6 @@ mod tests {
     fn plans_watch_only_bitcoin_xpub_import() {
         let plan = plan_wallet_import(WalletImportRequest {
             wallet_name: String::new(),
-            default_wallet_name_start_index: 7,
             primary_selected_chain_name: "Bitcoin".to_string(),
             selected_chain_names: vec!["Bitcoin".to_string()],
             planned_wallet_ids: vec!["watch-1".to_string()],
@@ -1070,7 +1064,7 @@ mod tests {
         .expect("plan");
 
         assert_eq!(plan.wallets.len(), 1);
-        assert_eq!(plan.wallets[0].name, "Wallet 7");
+        assert_eq!(plan.wallets[0].name, "Wallet 1");
         assert_eq!(
             plan.wallets[0].addresses.bitcoin_xpub.as_deref(),
             Some("xpub123")
@@ -1082,7 +1076,6 @@ mod tests {
     fn watch_only_expands_one_wallet_per_address() {
         let plan = plan_wallet_import(WalletImportRequest {
             wallet_name: "Watch".to_string(),
-            default_wallet_name_start_index: 0,
             primary_selected_chain_name: "Solana".to_string(),
             selected_chain_names: vec!["Solana".to_string()],
             planned_wallet_ids: vec!["a".to_string(), "b".to_string()],
@@ -1123,7 +1116,6 @@ mod tests {
     fn watch_only_rejects_chains_that_need_more_than_an_address() {
         let plan = plan_wallet_import(WalletImportRequest {
             wallet_name: "Watch".to_string(),
-            default_wallet_name_start_index: 0,
             primary_selected_chain_name: "Monero".to_string(),
             selected_chain_names: vec!["Monero".to_string()],
             planned_wallet_ids: vec!["a".to_string()],
@@ -1146,7 +1138,6 @@ mod tests {
     fn unknown_chain_is_not_importable_watch_only() {
         let plan = plan_wallet_import(WalletImportRequest {
             wallet_name: "Watch".to_string(),
-            default_wallet_name_start_index: 0,
             primary_selected_chain_name: "Nonexistent Chain".to_string(),
             selected_chain_names: vec!["Nonexistent Chain".to_string()],
             planned_wallet_ids: vec!["a".to_string()],
@@ -1183,7 +1174,6 @@ mod minted_wallet_id_tests {
     fn request(chains: &[&str], planned: Vec<String>) -> WalletImportRequest {
         WalletImportRequest {
             wallet_name: "Main".to_string(),
-            default_wallet_name_start_index: 0,
             primary_selected_chain_name: chains[0].to_string(),
             selected_chain_names: chains.iter().map(|c| c.to_string()).collect(),
             planned_wallet_ids: planned,

@@ -215,3 +215,77 @@ async fn hd_receive_skips_spent_addresses_and_preview_accounts_for_network_fee()
         .await
         .is_err());
 }
+
+#[tokio::test]
+async fn owned_non_evm_preview_needs_only_stored_watch_address_and_valid_input() {
+    let server = MockServer::start().await;
+    let svc = service("solana", &server);
+    let address = "11111111111111111111111111111111";
+    let mut wallet = crate::store::state::WalletSummary::single_address(
+        "watch", "Watch", "Solana", address, None, true,
+    );
+    wallet
+        .holdings
+        .push(crate::store::wallet_domain::AssetHolding {
+            name: "Solana".into(),
+            symbol: "SOL".into(),
+            chain_name: "Solana".into(),
+            token_standard: "Native".into(),
+            amount: 2.0,
+            ..Default::default()
+        });
+    svc.wallet_state.write().await.wallets.push(wallet);
+    for (amount, nonce) in [("0.0000000001", None), ("NaN", None), ("1", Some(1))] {
+        assert!(svc
+            .preview_owned_send(
+                "watch".into(),
+                "solana:native".into(),
+                amount.into(),
+                "".into(),
+                nonce,
+                None
+            )
+            .await
+            .is_err());
+    }
+    assert!(server.received_requests().await.unwrap().is_empty());
+    Mock::given(method("POST"))
+        .and(body_partial_json(
+            json!({"method":"getBalance","params":[address]}),
+        ))
+        .respond_with(
+            ResponseTemplate::new(200)
+                .set_body_json(json!({"jsonrpc":"2.0","id":1,"result":{"value":2_000_000_000u64}})),
+        )
+        .mount(&server)
+        .await;
+    let result = svc
+        .preview_owned_send(
+            "watch".into(),
+            "solana:native".into(),
+            "1".into(),
+            "".into(),
+            None,
+            None,
+        )
+        .await
+        .unwrap();
+    let Some(crate::send::flow::SendPreview::Solana { preview }) = result else {
+        panic!("wrong preview")
+    };
+    assert_eq!(preview.maxSendable, 1.999995);
+    svc.wallet_state.write().await.wallets[0].addresses.clear();
+    let count = server.received_requests().await.unwrap().len();
+    assert!(svc
+        .preview_owned_send(
+            "watch".into(),
+            "solana:native".into(),
+            "1".into(),
+            "".into(),
+            None,
+            None
+        )
+        .await
+        .is_err());
+    assert_eq!(server.received_requests().await.unwrap().len(), count);
+}

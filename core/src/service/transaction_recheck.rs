@@ -36,7 +36,7 @@ impl WalletService {
         &self,
         transaction_id: String,
     ) -> Result<TransactionStatusChange, SpectraBridgeError> {
-        let db_path = self.bound_state_db_path().await?;
+        let db_path = self.bound_database().await?;
         let expected = self
             .transactions()
             .await?

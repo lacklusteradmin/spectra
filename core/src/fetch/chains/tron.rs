@@ -23,6 +23,7 @@ pub struct TronBalance {
 /// Unified history entry covering both native TRX and TRC-20 token transfers.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TronTransfer {
+    pub contract: Option<String>,
     pub txid: String,
     pub block_number: u64,
     /// Milliseconds since epoch (TronScan convention).
@@ -234,6 +235,7 @@ impl TronClient {
                 let trx = amount_sun as f64 / 1_000_000.0;
                 let amount_display = format_trx_f64(trx);
                 Some(TronTransfer {
+                    contract: None,
                     txid,
                     block_number,
                     timestamp_ms,
@@ -306,6 +308,14 @@ impl TronClient {
             };
 
             entries.push(TronTransfer {
+                contract: Some(
+                    tx.get("contract_address")
+                        .or_else(|| tx.pointer("/tokenInfo/tokenId"))
+                        .and_then(Value::as_str)
+                        .filter(|s| !s.is_empty())
+                        .ok_or("TRC20 history missing contract")?
+                        .to_string(),
+                ),
                 txid,
                 block_number,
                 timestamp_ms,

@@ -129,6 +129,7 @@ pub struct Erc20Metadata {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct EvmHistoryEntry {
+    pub status: String,
     pub txid: String,
     pub block_number: u64,
     pub timestamp: u64,
@@ -639,6 +640,10 @@ impl EvmClient {
         #[derive(Deserialize)]
         #[serde(rename_all = "camelCase")]
         struct TxItem {
+            #[serde(default)]
+            is_error: Option<String>,
+            #[serde(default, rename = "txreceipt_status")]
+            receipt_status: Option<String>,
             hash: String,
             block_number: String,
             time_stamp: String,
@@ -658,13 +663,19 @@ impl EvmClient {
         let entries = items
             .into_iter()
             .map(|tx| {
+                let status = match (tx.is_error.as_deref(), tx.receipt_status.as_deref()) {
+                    (Some("1"), _) | (_, Some("0")) => "failed",
+                    (Some("0"), _) | (_, Some("1")) => "confirmed",
+                    _ => return Err("history missing execution status".to_string()),
+                };
                 let fee_wei = tx
                     .gas_price
                     .parse::<u128>()
                     .unwrap_or(0)
                     .saturating_mul(tx.gas_used.parse::<u128>().unwrap_or(0))
                     .to_string();
-                EvmHistoryEntry {
+                Ok(EvmHistoryEntry {
+                    status: status.into(),
                     txid: tx.hash,
                     block_number: tx.block_number.parse().unwrap_or(0),
                     timestamp: tx.time_stamp.parse().unwrap_or(0),
@@ -673,11 +684,11 @@ impl EvmClient {
                     value_wei: tx.value,
                     fee_wei,
                     is_incoming: tx.to.to_lowercase() == addr_norm,
-                }
+                })
             })
             .collect();
 
-        Ok(entries)
+        entries
     }
 
     /// Fetch ERC-20 token transfer history for `address` via Etherscan `tokentx`.
@@ -1045,7 +1056,7 @@ mod history_page_tests {
             }
             ResponseTemplate::new(200).set_body_json(json!({"status":"1","message":"OK","result":[{
                 "hash":format!("page-{page}"), "blockNumber":"123", "timeStamp":"456", "from":"from", "to":"to",
-                "value":"1", "gasPrice":"1", "gasUsed":"21000"
+                "value":"1", "gasPrice":"1", "gasUsed":"21000", "isError":"0"
             }]}))
         }).mount(&server).await;
         let source = EvmHistorySource::Open(Box::leak(server.uri().into_boxed_str()));
@@ -1134,6 +1145,44 @@ mod fee_history_tests {
             json!({"baseFeePerGas": ["0x1"], "reward": [["0x1"], "nope"]}),
         ] {
             assert!(parse_fee_history(&body).is_err(), "{body}");
+        }
+    }
+}
+
+#[cfg(test)]
+mod execution_history_regressions {
+    use super::*;
+    use wiremock::{matchers::any, Mock, MockServer, ResponseTemplate};
+    #[tokio::test]
+    async fn history_preserves_reverts_and_refuses_unknown_execution_status() {
+        for (flags, expected) in [
+            (
+                json!({"isError":"1", "txreceipt_status":"0"}),
+                Some("failed"),
+            ),
+            (json!({"isError":"0"}), Some("confirmed")),
+            (json!({}), None),
+        ] {
+            let server = MockServer::start().await;
+            let mut row = json!({"hash":"tx","blockNumber":"1","timeStamp":"1700000000","from":"from","to":"to","value":"100","gasPrice":"1","gasUsed":"1"});
+            row.as_object_mut()
+                .unwrap()
+                .extend(flags.as_object().unwrap().clone());
+            Mock::given(any())
+                .respond_with(
+                    ResponseTemplate::new(200)
+                        .set_body_json(json!({"status":"1","message":"OK","result":[row]})),
+                )
+                .mount(&server)
+                .await;
+            let source = EvmHistorySource::Open(Box::leak(server.uri().into_boxed_str()));
+            let result = EvmClient::new(std::sync::Arc::new(vec![]), 1)
+                .fetch_history("from", source, None, 1, 1, 20)
+                .await;
+            match expected {
+                Some(status) => assert_eq!(result.unwrap()[0].status, status),
+                None => assert!(result.is_err()),
+            }
         }
     }
 }

@@ -419,7 +419,6 @@ pub(crate) fn normalize_sui_token_identifier(value: String) -> String {
 /// default — and the two disagreed about TON, which is the one chain where
 /// disagreeing changes the answer. One function, keyed by the chain, with the
 /// TON rule stated where the others are.
-#[uniffi::export]
 pub fn normalize_token_identifier(
     contract_address: Option<String>,
     chain_name: String,
@@ -429,7 +428,10 @@ pub fn normalize_token_identifier(
     if trimmed.is_empty() {
         return None;
     }
-    match crate::registry::Chain::from_display_name(&chain_name).map(|c| c.mainnet_counterpart()) {
+    match crate::registry::Chain::from_display_name(&chain_name)
+        .or_else(|| crate::registry::Chain::from_str_id(&chain_name))
+        .map(|c| c.mainnet_counterpart())
+    {
         Some(crate::registry::Chain::Sui) => {
             Some(normalize_sui_token_identifier(trimmed.to_string()))
         }
@@ -447,7 +449,6 @@ pub fn normalize_token_identifier(
 
 // ---- Bitcoin Esplora endpoint parsing / validation ----
 
-#[uniffi::export]
 pub fn parse_bitcoin_esplora_endpoints(raw: String) -> Vec<String> {
     raw.split([',', '\n', ';'])
         .map(|s| s.trim().to_string())
@@ -741,4 +742,29 @@ pub fn token_display_decimals(deployment_id: Option<String>, custom_decimals: Op
         .or(custom_decimals)
         .unwrap_or(18)
         .min(38)
+}
+
+/// Canonical deployment identity for a transfer on its actual network.
+pub(crate) fn history_deployment(
+    chain: crate::registry::Chain,
+    contract: Option<&str>,
+) -> Option<String> {
+    match contract {
+        None => Some(chain.entry().native_deployment_id.clone()),
+        Some(contract) => {
+            normalize_token_identifier(Some(contract.into()), chain.chain_display_name().into())
+                .map(|id| {
+                    format!(
+                        "{}:{}:{}",
+                        chain.str_id(),
+                        chain
+                            .mainnet_counterpart()
+                            .entry()
+                            .token_standard
+                            .to_lowercase(),
+                        id
+                    )
+                })
+        }
+    }
 }

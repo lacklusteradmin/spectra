@@ -7,13 +7,6 @@ use crate::registry::Chain;
 use crate::validation::address::{validate_address, AddressValidationRequest};
 use crate::wallet_core::*;
 
-#[uniffi::export]
-pub fn portfolio_composition_signature(holding_keys: Vec<String>) -> String {
-    let mut sorted = holding_keys;
-    sorted.sort();
-    serde_json::to_string(&sorted).expect("string vectors always serialize")
-}
-
 #[derive(Debug, Clone, uniffi::Record)]
 pub struct EvmReceiptClassification {
     pub is_confirmed: bool,
@@ -92,7 +85,7 @@ pub(crate) fn is_ens_name_candidate(value: &str) -> bool {
 /// One variant per preview record shape. The caller picks the variant, so no
 /// chain-name matching happens on this path and only the relevant preview
 /// crosses the FFI.
-#[derive(Debug, Clone, uniffi::Enum)]
+#[derive(Debug, Clone, serde::Serialize, uniffi::Enum)]
 pub enum SendPreview {
     /// Bitcoin, Bitcoin Cash, Bitcoin SV and Litecoin share one preview shape.
     Utxo {
@@ -298,58 +291,6 @@ fn simple(
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    /// The rule is the chain's, so a testnet takes its family's and a token
-    /// takes its chain's. Twenty-five variants and a `(symbol, chain)` table
-    /// used to decide this, and the table's first arm matched a ticker alone.
-    #[test]
-    fn a_receive_address_source_is_the_chains_rule_not_its_ticker() {
-        use crate::registry::Chain;
-        let source = |chain: Chain| core_receive_address_source(chain.chain_display_name().into());
-
-        assert_eq!(source(Chain::Bitcoin), ReceiveAddressSource::BitcoinAccount);
-        assert_eq!(
-            source(Chain::BitcoinSignet),
-            ReceiveAddressSource::BitcoinAccount
-        );
-        assert_eq!(source(Chain::Dogecoin), ReceiveAddressSource::Unavailable);
-        assert_eq!(
-            source(Chain::DogecoinTestnet),
-            ReceiveAddressSource::Unavailable
-        );
-        for chain in [
-            Chain::Ethereum,
-            Chain::Base,
-            Chain::Tron,
-            Chain::Solana,
-            Chain::Monero,
-            Chain::Zcash,
-            Chain::LitecoinTestnet,
-        ] {
-            assert_eq!(
-                source(chain),
-                ReceiveAddressSource::StoredForChain,
-                "{chain:?}"
-            );
-        }
-        assert_eq!(
-            core_receive_address_source("Nowhere".into()),
-            ReceiveAddressSource::Unavailable
-        );
-
-        // Every chain the registry knows answers a rule, Dogecoin's family
-        // aside. The old table's arms required the ticker to agree with the
-        // chain, so a symbol that did not spell its chain's — a token on one
-        // of the UTXO chains, a renamed coin — fell through to no address at
-        // all, which the receive screen shows as "not enabled".
-        for chain in Chain::all().filter(|c| c.mainnet_counterpart() != Chain::Dogecoin) {
-            assert_ne!(
-                source(chain),
-                ReceiveAddressSource::Unavailable,
-                "{chain:?} has no receive address source",
-            );
-        }
-    }
 
     fn utxo_preview() -> BitcoinSendPreview {
         BitcoinSendPreview {
@@ -993,45 +934,6 @@ pub fn seed_derivation_chain_raw(chain: crate::registry::Chain) -> Option<String
     Some(raw.to_string())
 }
 
-/// Where the receive screen reads the address it shows for a chain.
-///
-/// This was `ReceiveAddressResolverKind`: twenty-five variants, one per chain,
-/// chosen by a table of `(symbol, chain display name)` pairs — and the one
-/// caller switched on four of them, because the chains a variant named have
-/// nothing in common but the rule they land on. The rule is what this says.
-///
-/// Dispatching on the symbol was also wrong in a way the chains cannot be: the
-/// first arm was `("BTC", _)`, so any holding whose ticker read BTC — on any
-/// chain — was shown the wallet's Bitcoin address.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, uniffi::Enum)]
-pub enum ReceiveAddressSource {
-    /// The wallet's stored Bitcoin address, whichever Bitcoin network is
-    /// selected.
-    BitcoinAccount,
-    /// The address stored for the chain — by its mainnet counterpart, since a
-    /// testnet shares its family's slot, and the EVM family shares Ethereum's.
-    StoredForChain,
-    /// Nothing to read. Dogecoin resolves no address of its own, so a typed
-    /// watch address is all it ever shows, and a chain the registry does not
-    /// know has no slot at all.
-    Unavailable,
-}
-
-/// Which of those a chain uses. Takes the chain and nothing else: what a
-/// receive address is read from is a fact about the chain, and a token on one
-/// is received at the same address as its coin.
-#[uniffi::export]
-pub fn core_receive_address_source(chain_name: String) -> ReceiveAddressSource {
-    let Some(chain) = crate::registry::Chain::from_display_name(&chain_name) else {
-        return ReceiveAddressSource::Unavailable;
-    };
-    match chain.mainnet_counterpart() {
-        crate::registry::Chain::Bitcoin => ReceiveAddressSource::BitcoinAccount,
-        crate::registry::Chain::Dogecoin => ReceiveAddressSource::Unavailable,
-        _ => ReceiveAddressSource::StoredForChain,
-    }
-}
-
 // Lifted from Swift `evmHasContractCode`: a nonempty `eth_getCode` result
 // (anything other than "0x" or "0x0") indicates deployed bytecode.
 
@@ -1053,7 +955,6 @@ pub struct EvmReplacementFeeBump {
     pub priority_fee_gwei: String,
 }
 
-#[uniffi::export]
 pub fn core_evm_replacement_fee_bump(
     existing_max_fee_gwei: Option<String>,
     existing_priority_fee_gwei: Option<String>,

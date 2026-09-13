@@ -1,11 +1,4 @@
-// Per-chain send-payload JSON builders.
-//
-// Each function takes a human-scale decimal amount plus addresses/keys, performs
-// the raw-unit conversion, and returns the exact JSON body the Rust signer
-// expects. Consolidates ~17 scattered `UInt64(amount * 1eN)` + sendPayload()
-// call sites from Swift into one place.
-//
-// Shared broadcast-result classification also lives here .
+//! Exact fee units and durable signed-submission journaling.
 
 /// Interpret the shortest decimal representation of a UI fee exactly. Floats
 /// remain at the existing boundary; no rounding or saturating cast crosses it.
@@ -57,22 +50,7 @@ pub enum SendChain {
     Bittensor,
 }
 
-#[derive(Debug, Clone, uniffi::Record)]
-pub struct SendBroadcastOutcome {
-    pub transaction_hash: String,
-    pub payload_format: String,
-}
-
-fn hash_field_for(chain: SendChain) -> &'static str {
-    match chain {
-        SendChain::Sui => "digest",
-        SendChain::Solana => "signature",
-        SendChain::Ton => "message_hash",
-        _ => "txid",
-    }
-}
-
-fn format_key_for(chain: SendChain) -> &'static str {
+pub(crate) fn format_key_for(chain: SendChain) -> &'static str {
     match chain {
         SendChain::Bitcoin => "bitcoin.rust_json",
         SendChain::BitcoinCash => "bitcoin_cash.rust_json",
@@ -98,39 +76,6 @@ fn format_key_for(chain: SendChain) -> &'static str {
         SendChain::Kaspa => "kaspa.rust_json",
         SendChain::Dash => "dash.rust_json",
         SendChain::Bittensor => "bittensor.rust_json",
-    }
-}
-
-pub fn classify_send_broadcast_result(
-    chain: SendChain,
-    result_json: String,
-) -> SendBroadcastOutcome {
-    let field = hash_field_for(chain);
-    let hash = crate::send::preview_decode::extract_json_string_field(
-        result_json.clone(),
-        field.to_string(),
-    );
-    SendBroadcastOutcome {
-        transaction_hash: hash,
-        payload_format: format_key_for(chain).to_string(),
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn classify_sui_digest() {
-        let o = classify_send_broadcast_result(SendChain::Sui, r#"{"digest":"abc"}"#.into());
-        assert_eq!(o.transaction_hash, "abc");
-        assert_eq!(o.payload_format, "sui.rust_json");
-    }
-
-    #[test]
-    fn classify_icp_transaction_hash() {
-        let o = classify_send_broadcast_result(SendChain::Icp, r#"{"txid":"abc"}"#.into());
-        assert_eq!(o.transaction_hash, "abc");
     }
 }
 

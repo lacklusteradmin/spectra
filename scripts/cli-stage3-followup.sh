@@ -44,3 +44,11 @@ cargo test -p spectra_core --lib evm_groups_share_only_the_same_network_and_addr
 cargo test -p spectra_core --lib cooldown
 cargo test -p spectra_core --lib history_id_lookup_uses_the_primary_key_and_normalizes_duplicates
 cargo test -p spectra_core --lib store::tests::transaction_store
+
+python3 scripts/cli-owned-send.py "$BIN"
+
+# Provider identity, failed execution, late ownership and fresh status corrections.
+cargo test -p spectra_core --lib history_identity
+cargo test -p spectra_core --lib history_tokens_with_the_same_symbol
+cargo test -p spectra_core --lib execution_history_regressions
+cargo test -p spectra_core --lib a_testnet_wallet_fetches_and_persists_its_exact_network

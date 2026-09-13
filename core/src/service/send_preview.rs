@@ -1,6 +1,5 @@
 //! Send previews and fee estimates. Signing and rebroadcast live in sibling modules.
 use super::*;
-#[uniffi::export(async_runtime = "tokio")]
 impl WalletService {
     /// Preview a stored asset on the wallet's actual network without exposing its secret.
     pub async fn preview_owned_evm_send(
@@ -35,7 +34,6 @@ impl WalletService {
         let chain = super::send_execution::send_chain_for(&state, &wallet_id, family)?;
         let from = wallet
             .address_on(chain)
-            .or_else(|| wallet.address_on(family))
             .ok_or("wallet has no address on this network")?
             .to_owned();
         let destination = if destination.trim().is_empty() {
@@ -72,119 +70,6 @@ impl WalletService {
             custom_fees,
         )
         .await
-    }
-
-    /// Typed Tron send preview wrapper around `fetch_tron_send_preview` +
-    /// `build_tron_send_preview_record`.
-    pub async fn fetch_tron_send_preview_typed(
-        &self,
-        address: String,
-        symbol: String,
-        contract_address: String,
-    ) -> Result<Option<crate::wallet_core::TronSendPreview>, SpectraBridgeError> {
-        let raw = self
-            .fetch_tron_send_preview(address, symbol, contract_address)
-            .await?;
-        Ok(crate::send::preview_decode::build_tron_send_preview_record(
-            raw,
-        ))
-    }
-
-    /// Typed UTXO fee preview wrapper (BTC / LTC / BCH / BSV single-address
-    /// flow). Fuses `fetch_utxo_fee_preview` + `build_utxo_send_preview_record`.
-    pub async fn fetch_utxo_fee_preview_typed(
-        &self,
-        chain_id: String,
-        address: String,
-        fee_rate_svb: u64,
-        destination_address: String,
-    ) -> Result<Option<crate::wallet_core::BitcoinSendPreview>, SpectraBridgeError> {
-        let raw = self
-            .fetch_utxo_fee_preview(&chain_id, address, fee_rate_svb)
-            .await?;
-        let preview = crate::send::preview_decode::build_utxo_send_preview_record(raw);
-        let overhead = Chain::from_str_id(&chain_id)
-            .map(|chain| chain.extra_output_overhead_bytes(&destination_address))
-            .unwrap_or(0);
-        Ok(preview.map(|preview| {
-            crate::send::preview_decode::with_extra_output_overhead(preview, overhead)
-        }))
-    }
-
-    /// Typed Dogecoin send preview: runs the UTXO fee-preview fetch on the
-    /// Dogecoin chain then decodes with the requested amount + fee priority.
-    pub async fn fetch_dogecoin_send_preview_typed(
-        &self,
-        address: String,
-        requested_amount: f64,
-        fee_priority: String,
-    ) -> Result<Option<crate::wallet_core::DogecoinSendPreview>, SpectraBridgeError> {
-        let raw = self
-            .fetch_utxo_fee_preview(Chain::Dogecoin.str_id(), address, 0)
-            .await?;
-        Ok(
-            crate::send::preview_decode::build_dogecoin_send_preview_record(
-                raw,
-                requested_amount,
-                fee_priority,
-            ),
-        )
-    }
-
-    /// Typed Bitcoin HD send preview: concurrently fetches the xpub balance
-    /// and the Bitcoin fee estimate then decodes into `BitcoinSendPreview`.
-    ///
-    /// `chain_id` is the network the wallet is on, the way the balance refresh
-    /// takes it. It used to be Bitcoin's mainnet whatever was selected, which
-    /// only ever cost a wrong fee estimate — until `execute_send` started
-    /// following the wallet's network: a testnet send was then priced, and its
-    /// spendable balance read, against mainnet.
-    pub async fn fetch_bitcoin_hd_send_preview_typed(
-        &self,
-        chain_id: String,
-        xpub: String,
-        receive_count: u32,
-        change_count: u32,
-    ) -> Result<Option<crate::wallet_core::BitcoinSendPreview>, SpectraBridgeError> {
-        let chain = Chain::from_str_id(&chain_id)
-            .filter(|chain| chain.mainnet_counterpart() == Chain::Bitcoin)
-            .ok_or_else(|| SpectraBridgeError::InvalidInput {
-                message: format!("{chain_id:?} is not a Bitcoin network"),
-            })?;
-        let (balance, rate) = tokio::try_join!(
-            self.bitcoin_xpub_balance(chain.str_id(), xpub, receive_count, change_count),
-            self.bitcoin_fee_rate(chain),
-        )?;
-        Ok(
-            crate::send::preview_decode::build_bitcoin_hd_send_preview_record(
-                balance.confirmed_sats,
-                rate.sats_per_vbyte,
-            ),
-        )
-    }
-
-    /// Typed simple-chain send preview: fuses `fetch_simple_chain_send_preview`
-    /// + `build_simple_chain_preview` so Swift never sees the intermediate JSON.
-    /// The `chain: SimpleChain` argument is gone: it was derivable from
-    /// `chain_id`, and the only way for a caller to get one was an eleven-entry
-    /// table in Swift keyed by display name — a second spelling of the registry,
-    /// handed back to the registry's owner.
-    pub async fn fetch_simple_chain_send_preview_typed(
-        &self,
-        chain_id: String,
-        address: String,
-    ) -> Result<crate::send::preview_decode::SimpleChainPreview, SpectraBridgeError> {
-        let chain = crate::registry::Chain::from_str_id(&chain_id)
-            .and_then(|chain| chain.simple_preview_chain())
-            .ok_or_else(|| SpectraBridgeError::InvalidInput {
-                message: format!("{chain_id} has no shared-path send preview"),
-            })?;
-        let raw = self
-            .fetch_simple_chain_send_preview(&chain_id, address)
-            .await?;
-        Ok(crate::send::preview_decode::build_simple_chain_preview(
-            raw, chain,
-        ))
     }
 }
 
@@ -558,5 +443,96 @@ impl WalletService {
                 custom_fees,
             },
         ))
+    }
+}
+
+impl WalletService {
+    pub async fn fetch_bitcoin_hd_send_preview_typed(
+        &self,
+        chain_id: String,
+        xpub: String,
+        receive_count: u32,
+        change_count: u32,
+    ) -> Result<Option<crate::wallet_core::BitcoinSendPreview>, SpectraBridgeError> {
+        let chain = Chain::from_str_id(&chain_id)
+            .filter(|chain| chain.mainnet_counterpart() == Chain::Bitcoin)
+            .ok_or_else(|| SpectraBridgeError::InvalidInput {
+                message: format!("{chain_id:?} is not a Bitcoin network"),
+            })?;
+        let (balance, rate) = tokio::try_join!(
+            self.bitcoin_xpub_balance(chain.str_id(), xpub, receive_count, change_count),
+            self.bitcoin_fee_rate(chain),
+        )?;
+        Ok(
+            crate::send::preview_decode::build_bitcoin_hd_send_preview_record(
+                balance.confirmed_sats,
+                rate.sats_per_vbyte,
+            ),
+        )
+    }
+    pub async fn fetch_dogecoin_send_preview_typed(
+        &self,
+        address: String,
+        requested_amount: f64,
+        fee_priority: String,
+    ) -> Result<Option<crate::wallet_core::DogecoinSendPreview>, SpectraBridgeError> {
+        let raw = self
+            .fetch_utxo_fee_preview(Chain::Dogecoin.str_id(), address, 0)
+            .await?;
+        Ok(
+            crate::send::preview_decode::build_dogecoin_send_preview_record(
+                raw,
+                requested_amount,
+                fee_priority,
+            ),
+        )
+    }
+    pub async fn fetch_simple_chain_send_preview_typed(
+        &self,
+        chain_id: String,
+        address: String,
+    ) -> Result<crate::send::preview_decode::SimpleChainPreview, SpectraBridgeError> {
+        let chain = crate::registry::Chain::from_str_id(&chain_id)
+            .and_then(|chain| chain.simple_preview_chain())
+            .ok_or_else(|| SpectraBridgeError::InvalidInput {
+                message: format!("{chain_id} has no shared-path send preview"),
+            })?;
+        let raw = self
+            .fetch_simple_chain_send_preview(&chain_id, address)
+            .await?;
+        Ok(crate::send::preview_decode::build_simple_chain_preview(
+            raw, chain,
+        ))
+    }
+    pub async fn fetch_tron_send_preview_typed(
+        &self,
+        address: String,
+        symbol: String,
+        contract_address: String,
+    ) -> Result<Option<crate::wallet_core::TronSendPreview>, SpectraBridgeError> {
+        let raw = self
+            .fetch_tron_send_preview(address, symbol, contract_address)
+            .await?;
+        Ok(crate::send::preview_decode::build_tron_send_preview_record(
+            raw,
+        ))
+    }
+    pub async fn fetch_utxo_fee_preview_typed(
+        &self,
+        chain_id: String,
+        address: String,
+        fee_rate_svb: u64,
+        destination_address: String,
+    ) -> Result<Option<crate::wallet_core::BitcoinSendPreview>, SpectraBridgeError> {
+        let raw = self
+            .fetch_utxo_fee_preview(&chain_id, address, fee_rate_svb)
+            .await?;
+        let preview = crate::send::preview_decode::build_utxo_send_preview_record(raw);
+        let overhead = Chain::from_str_id(&chain_id)
+            .map(|chain| chain.extra_output_overhead_bytes(&destination_address))
+            .unwrap_or(0);
+        Ok(preview.map(|preview| {
+            crate::send::preview_decode::with_extra_output_overhead(preview, overhead)
+        }))
     }
 }

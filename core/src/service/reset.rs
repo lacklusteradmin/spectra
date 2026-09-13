@@ -13,7 +13,7 @@ impl WalletService {
         &self,
         scopes: Vec<String>,
     ) -> Result<ResetOutcome, SpectraBridgeError> {
-        self.bound_state_db_path().await?;
+        self.bound_database().await?;
         for scope in &scopes {
             if !matches!(
                 scope.as_str(),
@@ -50,6 +50,7 @@ impl WalletService {
             if mutation.reset_history_and_cache {
                 state.diagnostics = Default::default();
                 state.quotes = Default::default();
+                state.movement_baseline = None;
                 state.fiat_rates_from_usd.clear();
             }
             vec![crate::store::state::StateEvent {

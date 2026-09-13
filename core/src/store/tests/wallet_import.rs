@@ -13,7 +13,6 @@ fn commit(chains: &[&str], addresses: &[(&str, &str)]) -> WalletImportCommit {
         password: None,
         request: WalletImportRequest {
             wallet_name: String::new(),
-            default_wallet_name_start_index: 1,
             primary_selected_chain_name: chains[0].to_string(),
             selected_chain_names: chains.iter().map(|c| c.to_string()).collect(),
             planned_wallet_ids: (0..chains.len())
@@ -223,20 +222,26 @@ async fn failed_multi_wallet_import_leaves_neither_wallets_nor_partial_secrets_a
     assert!(service.import_wallets(input.clone()).await.is_err());
     assert!(service.app_state().await.wallets.is_empty());
     assert_eq!(store.inner.len(), 0);
-    assert!(crate::wallet_db::app_state_load(path.to_str().unwrap())
+    assert!(
+        crate::wallet_db::app_state_load(&crate::wallet_db::WalletDatabase::open(
+            path.to_str().unwrap()
+        ))
         .unwrap()
         .wallets
-        .is_empty());
+        .is_empty()
+    );
     let outcome = service.import_wallets(input).await.unwrap();
     assert_eq!(outcome.wallets.len(), 2);
     for wallet in outcome.wallets {
         assert!(service.wallet_secret_state(wallet.id).has_signing_material);
     }
     assert_eq!(
-        crate::wallet_db::app_state_load(path.to_str().unwrap())
-            .unwrap()
-            .wallets
-            .len(),
+        crate::wallet_db::app_state_load(&crate::wallet_db::WalletDatabase::open(
+            path.to_str().unwrap()
+        ))
+        .unwrap()
+        .wallets
+        .len(),
         2
     );
 }
@@ -265,4 +270,48 @@ async fn database_failure_rolls_back_import_secrets_and_missing_material_is_refu
         .is_err());
     assert_eq!(store.len(), 0);
     assert!(service.app_state().await.wallets.is_empty());
+}
+
+#[tokio::test]
+async fn default_wallet_names_are_allocated_under_the_import_writer() {
+    let temp = std::env::temp_dir().join(crate::store::new_transaction_id());
+    std::fs::create_dir_all(&temp).unwrap();
+    let path = temp.join("state.db").to_string_lossy().into_owned();
+    let service = WalletService::new_typed(vec![]).unwrap();
+    service.set_secret_store(std::sync::Arc::new(
+        crate::store::secret_backends::InMemorySecretStore::new(),
+    ));
+    service.open_state(path.clone()).await.unwrap();
+    let mut named = commit(&["Solana"], &[]);
+    named.request.wallet_name = "Wallet 1".into();
+    service.import_wallets(named).await.unwrap();
+    let (one, two) = tokio::join!(
+        service.import_wallets(commit(&["Solana"], &[])),
+        service.import_wallets(commit(&["Solana"], &[]))
+    );
+    let names: std::collections::HashSet<_> = [
+        one.unwrap().wallets[0].name.clone(),
+        two.unwrap().wallets[0].name.clone(),
+    ]
+    .into_iter()
+    .collect();
+    assert_eq!(
+        names,
+        ["Wallet 2".into(), "Wallet 3".into()].into_iter().collect()
+    );
+    let reopened = WalletService::new_typed(vec![]).unwrap();
+    reopened.set_secret_store(std::sync::Arc::new(
+        crate::store::secret_backends::InMemorySecretStore::new(),
+    ));
+    reopened.open_state(path).await.unwrap();
+    assert_eq!(
+        reopened
+            .import_wallets(commit(&["Solana"], &[]))
+            .await
+            .unwrap()
+            .wallets[0]
+            .name,
+        "Wallet 4"
+    );
+    std::fs::remove_dir_all(temp).unwrap();
 }

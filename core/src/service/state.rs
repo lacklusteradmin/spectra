@@ -3,104 +3,54 @@
 
 use super::*;
 
-/// Where this service's state is persisted, and the handle keeping it open.
-///
-/// Two fields before, each an `Option` behind its own lock. `state_db_path`
-/// was read by eleven call sites that re-open by path; `state_database` was
-/// read by none — it holds the strong `Arc` that keeps the connection alive,
-/// because the process-wide handle index behind `WalletDatabase` keeps only
-/// `Weak`s. They have to be bound and unbound together, and nothing made them:
-/// `open_state` wrote both, one lock at a time, and a reader between the two
-/// writes saw a path with no connection behind it.
-///
-/// Bound or unbound is one fact, so it is one `Option` and one transition.
+/// The service owns its database handle; storage operations clone this handle.
 #[derive(Default)]
 pub struct StateBinding {
-    bound: AsyncRwLock<Option<BoundState>>,
+    bound: AsyncRwLock<Option<Arc<crate::wallet_db::WalletDatabase>>>,
 }
-
-struct BoundState {
-    path: String,
-    /// Held, never read. Dropping it closes the connection under everyone
-    /// still using the path above.
-    _connection: Arc<crate::wallet_db::WalletDatabase>,
-}
-
 impl StateBinding {
-    /// Bind both halves at once.
-    pub(crate) async fn bind(
-        &self,
-        path: String,
-        connection: Arc<crate::wallet_db::WalletDatabase>,
-    ) {
-        *self.bound.write().await = Some(BoundState {
-            path,
-            _connection: connection,
-        });
+    pub(crate) async fn bind(&self, connection: Arc<crate::wallet_db::WalletDatabase>) {
+        *self.bound.write().await = Some(connection);
     }
-
-    /// The database this service writes to, or `None` while it runs in memory.
-    pub(crate) async fn path(&self) -> Option<String> {
-        self.bound.read().await.as_ref().map(|b| b.path.clone())
+    pub(crate) async fn connection(&self) -> Option<Arc<crate::wallet_db::WalletDatabase>> {
+        self.bound.read().await.clone()
     }
-
-    /// Whether this service is already bound to `path`.
     pub(crate) async fn is_bound_to(&self, path: &str) -> bool {
         self.bound
             .read()
             .await
             .as_ref()
-            .is_some_and(|b| b.path == path)
+            .is_some_and(|db| db.path() == path)
     }
-
-    /// The live connection handle.
-    ///
-    /// Test affordance: nothing in production reads it, because holding it is
-    /// the whole job — but that is exactly the property worth a test, so the
-    /// one test that checks rebinding drops the old connection needs a way to
-    /// see it.
-    #[cfg(test)]
-    pub(crate) async fn connection(&self) -> Option<Arc<crate::wallet_db::WalletDatabase>> {
-        self.bound
-            .read()
+    pub(crate) async fn required_connection(
+        &self,
+    ) -> Result<Arc<crate::wallet_db::WalletDatabase>, SpectraBridgeError> {
+        self.connection()
             .await
-            .as_ref()
-            .map(|b| b._connection.clone())
-    }
-
-    /// The database this service writes to, or the error every caller that
-    /// needs one raises.
-    pub(crate) async fn required_path(&self) -> Result<String, SpectraBridgeError> {
-        self.path().await.ok_or_else(|| {
-            SpectraBridgeError::from(
-                "transaction store not opened: call open_state first".to_string(),
-            )
-        })
+            .ok_or_else(|| "transaction store not opened: call open_state first".into())
     }
 }
 
 #[uniffi::export(async_runtime = "tokio")]
 impl WalletService {
-    /// Load the JSON state blob stored under `key` in the SQLite database at
-    /// `db_path`. Returns an empty JSON object `"{}"` when no value has been
+    /// Load the JSON state blob under `key` from the bound database. Returns an empty JSON object `"{}"` when no value has been
     /// saved yet. Thread-safe: rusqlite is called in `spawn_blocking`.
     pub async fn load_state(&self, key: String) -> Result<String, SpectraBridgeError> {
-        let db_path = self.bound_state_db_path().await?;
-        tokio::task::spawn_blocking(move || sqlite_load(&db_path, &key))
+        let database = self.bound_database().await?;
+        tokio::task::spawn_blocking(move || sqlite_load(&database, &key))
             .await
             .map_err(|e| SpectraBridgeError::from(format!("spawn_blocking: {e}")))?
             .map_err(Into::into)
     }
 
-    /// Persist the JSON state blob under `key` in the SQLite database at
-    /// `db_path`. Creates the file (and the `state` table) on first use.
+    /// Persist the JSON state blob under `key` in the bound database.
     pub async fn save_state(
         &self,
         key: String,
         state_json: String,
     ) -> Result<(), SpectraBridgeError> {
-        let db_path = self.bound_state_db_path().await?;
-        tokio::task::spawn_blocking(move || sqlite_save(&db_path, &key, &state_json))
+        let database = self.bound_database().await?;
+        tokio::task::spawn_blocking(move || sqlite_save(&database, &key, &state_json))
             .await
             .map_err(|e| SpectraBridgeError::from(format!("spawn_blocking: {e}")))?
             .map_err(Into::into)
@@ -131,19 +81,17 @@ impl WalletService {
                 return Ok(service.wallet_state.read().await.clone());
             }
 
-            let database = crate::wallet_db::WalletDatabase::acquire(&db_path);
-            let loaded = {
-                let path = db_path.clone();
-                tokio::task::spawn_blocking(move || crate::wallet_db::app_state_load(&path))
-                    .await
-                    .map_err(|e| SpectraBridgeError::from(format!("spawn_blocking: {e}")))??
-            };
-            let keypool = {
-                let path = db_path.clone();
-                tokio::task::spawn_blocking(move || crate::wallet_db::keypool_load_all(&path))
-                    .await
-                    .map_err(|e| SpectraBridgeError::from(format!("spawn_blocking: {e}")))??
-            };
+            let database = crate::wallet_db::WalletDatabase::open(&db_path);
+            let source = database.clone();
+            let (loaded, keypool, owned) = tokio::task::spawn_blocking(move || {
+                Ok::<_, String>((
+                    crate::wallet_db::app_state_load(&source)?,
+                    crate::wallet_db::keypool_load_all(&source)?,
+                    crate::wallet_db::address_load_all_chains(&source)?,
+                ))
+            })
+            .await
+            .map_err(|e| SpectraBridgeError::from(format!("spawn_blocking: {e}")))??;
             let keypool = keypool
                 .into_iter()
                 .flat_map(|(chain, per_wallet)| {
@@ -153,14 +101,6 @@ impl WalletService {
                 })
                 .collect();
 
-            let owned = {
-                let path = db_path.clone();
-                tokio::task::spawn_blocking(move || {
-                    crate::wallet_db::address_load_all_chains(&path)
-                })
-                .await
-                .map_err(|e| SpectraBridgeError::from(format!("spawn_blocking: {e}")))??
-            };
             let mut by_chain: HashMap<String, Vec<crate::wallet_db::OwnedAddressRecord>> =
                 HashMap::new();
             for record in owned {
@@ -170,29 +110,21 @@ impl WalletService {
                     .push(record);
             }
 
-            service.keypool.write().await.load(keypool, by_chain);
-
-            let db_path_for_seed = db_path.clone();
-            service.state_binding.bind(db_path, database).await;
-            // The token list is the catalog plus whatever the user added, so
-            // opening seeds it. A caller that forgot to ask for the merge
-            // otherwise held a list with no built-ins in it at all — which is
-            // what `spectra token track` had nothing to turn on — while the
-            // app happened to ask and so never saw it. Seeding here rather
-            // than on each read keeps "what was loaded" and "what is stored"
-            // the same document.
-            let mut state = service.wallet_state.write().await;
-            *state = loaded.clone();
+            let mut state = loaded.clone();
             let merged = reduce_state_in_place(&mut state, StateCommand::MergeBuiltInTokens);
             if !merged.is_empty() {
                 let changes = crate::wallet_db::AppStateChanges::between(Some(&loaded), &state)?;
-                let path = db_path_for_seed.clone();
-                tokio::task::spawn_blocking(move || changes.save(&path))
+                let target = database.clone();
+                tokio::task::spawn_blocking(move || changes.save(&target))
                     .await
                     .map_err(|e| SpectraBridgeError::from(format!("spawn_blocking: {e}")))??;
             }
+            // Publish only after every fallible initialization step succeeds.
+            service.keypool.write().await.load(keypool, by_chain);
+            *service.wallet_state.write().await = state.clone();
+            service.state_binding.bind(database).await;
             crate::tor::apply_policy(state.settings.tor_enabled, state.settings.tor_kill_switch);
-            Ok(state.clone())
+            Ok(state)
         })
         .await
     }
@@ -287,12 +219,7 @@ impl WalletService {
                     } else {
                         coin.network().unwrap().chain_display_name().to_string()
                     },
-                    asset_identifier: Some(crate::store::core_icon_identifier(
-                        coin.symbol.clone(),
-                        coin.chain_name.clone(),
-                        coin.contract_address.clone(),
-                        coin.token_standard.clone(),
-                    )),
+                    artwork_name: Some(crate::store::core_holding_icon_asset_name(coin.clone())),
                 });
         }
         let mut options: Vec<_> = options.into_values().collect();
@@ -575,11 +502,10 @@ impl WalletService {
     ///
     /// Signing availability is read through the registered SecretStore.
     pub async fn wallet_derived_state(&self) -> Result<WalletDerivedState, SpectraBridgeError> {
-        use std::collections::{BTreeMap, HashSet};
-        let wallets = self.wallets_for_display().await?;
+        let state = self.app_state().await;
         let mut signing_material_wallet_ids = Vec::new();
         let mut private_key_backed_wallet_ids = Vec::new();
-        for wallet in &wallets {
+        for wallet in &state.wallets {
             let secrets = self.wallet_secret_state(wallet.id.clone());
             if secrets.has_signing_material {
                 signing_material_wallet_ids.push(wallet.id.clone());
@@ -588,132 +514,11 @@ impl WalletService {
                 private_key_backed_wallet_ids.push(wallet.id.clone());
             }
         }
-        let token_preferences = {
-            let state = self.wallet_state.read().await;
-            state.token_preferences.clone()
-        };
-        // The network the user picked for a holding's family, and whether that
-        // network is quoted at all.
-        let network_of = |chain_name: &str| -> Option<crate::registry::Chain> {
-            crate::registry::Chain::from_display_name(chain_name)
-        };
-        let signing: HashSet<&str> = signing_material_wallet_ids
-            .iter()
-            .map(String::as_str)
-            .collect();
-
-        let mut included_portfolio_holdings = Vec::new();
-        let mut unique_price_request_coins = Vec::new();
-        let mut seen_price_keys = HashSet::new();
-        let mut grouped_order: Vec<String> = Vec::new();
-        let mut grouped_totals: BTreeMap<String, f64> = BTreeMap::new();
-        let mut grouped_representative: BTreeMap<
-            String,
-            crate::store::wallet_domain::AssetHolding,
-        > = BTreeMap::new();
-
-        let mut send_coins_by_wallet_id = HashMap::new();
-        let mut receive_coins_by_wallet_id = HashMap::new();
-        let mut send_enabled_wallet_ids = Vec::new();
-        let mut receive_enabled_wallet_ids = Vec::new();
-
-        for wallet in &wallets {
-            let has_signing_material = signing.contains(wallet.id.as_str());
-            let mut send_coins = Vec::new();
-            let mut receive_coins = Vec::new();
-
-            for holding in &wallet.holdings {
-                let network = network_of(&holding.chain_name);
-                // Identity is per *network*: testnet BTC groups separately from
-                // mainnet BTC and is quoted separately (which is to say, not).
-                let identity_key = holding.deployment_key();
-                // `chain_backends()` was a 78-row table beside `chains.toml`,
-                // with the same 78 names and `Live` on every one — so
-                // "has a backend", "supports send", "supports receive" and "is
-                // a live chain" were four spellings of "the registry knows this
-                // chain". Verified identical before it was deleted.
-                let chain_is_known =
-                    crate::registry::Chain::from_display_name(&holding.chain_name).is_some();
-
-                if network.is_none_or(|chain| !chain.is_testnet())
-                    && seen_price_keys.insert(identity_key.clone())
-                {
-                    unique_price_request_coins.push(holding.clone());
-                }
-
-                if wallet.include_in_portfolio_total {
-                    included_portfolio_holdings.push(holding.clone());
-                    if !grouped_totals.contains_key(&identity_key) {
-                        grouped_order.push(identity_key.clone());
-                        grouped_representative.insert(identity_key.clone(), holding.clone());
-                    }
-                    *grouped_totals.entry(identity_key).or_default() += holding.amount;
-                }
-
-                let selected_network = wallet
-                    .network_chain_id
-                    .as_deref()
-                    .and_then(Chain::from_str_id);
-                let on_selected_network = match (holding.network(), selected_network) {
-                    (Some(asset), Some(selected))
-                        if asset.mainnet_counterpart() == selected.mainnet_counterpart() =>
-                    {
-                        asset == selected
-                    }
-                    _ => true,
-                };
-                if on_selected_network
-                    && crate::send::transfer::can_send_coin(
-                        holding,
-                        has_signing_material,
-                        chain_is_known,
-                        chain_is_known,
-                        &token_preferences,
-                    )
-                {
-                    send_coins.push(holding.clone());
-                }
-                if chain_is_known {
-                    receive_coins.push(holding.clone());
-                }
-            }
-
-            if !send_coins.is_empty() {
-                send_enabled_wallet_ids.push(wallet.id.clone());
-            }
-            if !receive_coins.is_empty() {
-                receive_enabled_wallet_ids.push(wallet.id.clone());
-            }
-            send_coins_by_wallet_id.insert(wallet.id.clone(), send_coins);
-            receive_coins_by_wallet_id.insert(wallet.id.clone(), receive_coins);
-        }
-
-        let portfolio = grouped_order
-            .into_iter()
-            .filter_map(|key| {
-                let mut representative = grouped_representative.remove(&key)?;
-                representative.amount = grouped_totals.get(&key).copied().unwrap_or(0.0);
-                Some(representative)
-            })
-            .collect();
-
-        Ok(WalletDerivedState {
-            included_portfolio_holdings,
-            unique_price_request_coins,
-            portfolio,
-            send_coins_by_wallet_id,
-            receive_coins_by_wallet_id,
-            send_enabled_wallet_ids,
-            receive_enabled_wallet_ids,
-            refreshable_chain_names: wallets
-                .iter()
-                .map(|w| w.selected_chain.clone())
-                .collect::<HashSet<_>>()
-                .into_iter()
-                .collect(),
+        derive_wallet_state(
+            &state,
             signing_material_wallet_ids,
             private_key_backed_wallet_ids,
-        })
+        )
     }
 
     /// The wallets core holds, as the shape the iOS app renders.
@@ -724,18 +529,7 @@ impl WalletService {
     pub async fn wallets_for_display(
         &self,
     ) -> Result<Vec<crate::store::wallet_domain::CoreImportedWallet>, SpectraBridgeError> {
-        let wallets = self.wallet_state.read().await.wallets.clone();
-        let mut rendered = Vec::with_capacity(wallets.len());
-        for wallet in wallets {
-            let account = match wallet.derivation_preset.as_str() {
-                "account1" => 1,
-                "account2" => 2,
-                _ => 0,
-            };
-            let defaults = crate::app_core_derivation_paths_for_preset(account)?;
-            rendered.push(wallet.to_imported_wallet(&defaults));
-        }
-        Ok(rendered)
+        wallets_for_display(&*self.wallet_state.read().await)
     }
 
     /// Current snapshot of the owned state.
@@ -787,7 +581,7 @@ impl WalletService {
         F: FnOnce(&mut CoreAppState) -> Vec<crate::store::state::StateEvent> + Send + 'static,
     {
         self.write_persisted(move |service| async move {
-            let path = service.state_binding.path().await;
+            let database = service.state_binding.connection().await;
             let (snapshot, events, changes, removed, reset_chains) = {
                 let before = service.wallet_state.read().await;
                 let mut state = before.clone();
@@ -797,7 +591,7 @@ impl WalletService {
                         state.diagnostics.forget_wallet(&old.id);
                     }
                 }
-                let changes = if path.is_some() && !events.is_empty() {
+                let changes = if database.is_some() && !events.is_empty() {
                     Some(crate::wallet_db::AppStateChanges::between(
                         Some(&before),
                         &state,
@@ -824,7 +618,7 @@ impl WalletService {
                     .map_err(|_| "secret store lock poisoned")?
                     .clone();
                 if store.is_none()
-                    && path.is_some()
+                    && database.is_some()
                     && service
                         .wallet_state
                         .read()
@@ -844,8 +638,8 @@ impl WalletService {
                     }
                 }
             }
-            if let (Some(path), Some(changes)) = (path, changes) {
-                tokio::task::spawn_blocking(move || changes.save(&path))
+            if let (Some(database), Some(changes)) = (database, changes) {
+                tokio::task::spawn_blocking(move || changes.save(&database))
                     .await
                     .map_err(|e| SpectraBridgeError::from(format!("spawn_blocking: {e}")))??;
             }
@@ -944,10 +738,12 @@ impl WalletService {
     /// The bound state database, or an error naming what the caller skipped.
     ///
     /// Kept as a method on the service because twelve call sites read it and
-    /// `self.state_binding.required_path()` at each of them reaches through the
+    /// `self.state_binding.required_connection()` at each of them reaches through the
     /// service to say the same thing.
-    pub(super) async fn bound_state_db_path(&self) -> Result<String, SpectraBridgeError> {
-        self.state_binding.required_path().await
+    pub(super) async fn bound_database(
+        &self,
+    ) -> Result<Arc<crate::wallet_db::WalletDatabase>, SpectraBridgeError> {
+        self.state_binding.required_connection().await
     }
 }
 
@@ -1055,3 +851,186 @@ mod tests;
 
 #[cfg(test)]
 mod performance_tests;
+
+fn wallets_for_display(
+    state: &CoreAppState,
+) -> Result<Vec<crate::store::wallet_domain::CoreImportedWallet>, SpectraBridgeError> {
+    let wallets = &state.wallets;
+    let mut rendered = Vec::with_capacity(wallets.len());
+    for wallet in wallets {
+        let account = match wallet.derivation_preset.as_str() {
+            "account1" => 1,
+            "account2" => 2,
+            _ => 0,
+        };
+        let defaults = crate::app_core_derivation_paths_for_preset(account)?;
+        rendered.push(wallet.to_imported_wallet(&defaults));
+    }
+    Ok(rendered)
+}
+
+fn derive_wallet_state(
+    state: &CoreAppState,
+    signing_material_wallet_ids: Vec<String>,
+    private_key_backed_wallet_ids: Vec<String>,
+) -> Result<WalletDerivedState, SpectraBridgeError> {
+    use std::collections::{BTreeMap, HashSet};
+    let wallets = &state.wallets;
+    let token_preferences = &state.token_preferences;
+    // The network the user picked for a holding's family, and whether that
+    // network is quoted at all.
+    let network_of = |chain_name: &str| -> Option<crate::registry::Chain> {
+        crate::registry::Chain::from_display_name(chain_name)
+    };
+    let signing: HashSet<&str> = signing_material_wallet_ids
+        .iter()
+        .map(String::as_str)
+        .collect();
+
+    let mut included_portfolio_holdings = Vec::new();
+    let mut unique_price_request_coins = Vec::new();
+    let mut seen_price_keys = HashSet::new();
+    let mut grouped_order: Vec<String> = Vec::new();
+    let mut grouped_totals: BTreeMap<String, f64> = BTreeMap::new();
+    let mut grouped_representative: BTreeMap<String, crate::store::wallet_domain::AssetHolding> =
+        BTreeMap::new();
+
+    let mut send_coins_by_wallet_id = HashMap::new();
+    let mut receive_coins_by_wallet_id = HashMap::new();
+    let mut send_enabled_wallet_ids = Vec::new();
+    let mut receive_enabled_wallet_ids = Vec::new();
+
+    for wallet in wallets {
+        let has_signing_material = signing.contains(wallet.id.as_str());
+        let mut send_coins = Vec::new();
+        let mut receive_coins = Vec::new();
+
+        for holding in &wallet.holdings {
+            let network = network_of(&holding.chain_name);
+            // Identity is per *network*: testnet BTC groups separately from
+            // mainnet BTC and is quoted separately (which is to say, not).
+            let identity_key = holding.deployment_key();
+            // `chain_backends()` was a 78-row table beside `chains.toml`,
+            // with the same 78 names and `Live` on every one — so
+            // "has a backend", "supports send", "supports receive" and "is
+            // a live chain" were four spellings of "the registry knows this
+            // chain". Verified identical before it was deleted.
+            let chain_is_known =
+                crate::registry::Chain::from_display_name(&holding.chain_name).is_some();
+
+            if network.is_none_or(|chain| !chain.is_testnet())
+                && seen_price_keys.insert(identity_key.clone())
+            {
+                unique_price_request_coins.push(holding.clone());
+            }
+
+            if wallet.include_in_portfolio_total {
+                included_portfolio_holdings.push(holding.clone());
+                if !grouped_totals.contains_key(&identity_key) {
+                    grouped_order.push(identity_key.clone());
+                    grouped_representative.insert(identity_key.clone(), holding.clone());
+                }
+                *grouped_totals.entry(identity_key).or_default() += holding.amount;
+            }
+
+            let selected_network = wallet.network_chain(&state.settings);
+            let on_selected_network = match (holding.network(), selected_network) {
+                (Some(asset), Some(selected))
+                    if asset.mainnet_counterpart() == selected.mainnet_counterpart() =>
+                {
+                    asset == selected
+                }
+                _ => true,
+            };
+            if on_selected_network
+                && crate::send::transfer::can_send_coin(
+                    holding,
+                    has_signing_material,
+                    chain_is_known,
+                    chain_is_known,
+                    token_preferences,
+                )
+            {
+                send_coins.push(holding.clone());
+            }
+            if chain_is_known {
+                receive_coins.push(holding.clone());
+            }
+        }
+
+        if !send_coins.is_empty() {
+            send_enabled_wallet_ids.push(wallet.id.clone());
+        }
+        if !receive_coins.is_empty() {
+            receive_enabled_wallet_ids.push(wallet.id.clone());
+        }
+        send_coins_by_wallet_id.insert(wallet.id.clone(), send_coins);
+        receive_coins_by_wallet_id.insert(wallet.id.clone(), receive_coins);
+    }
+
+    let portfolio = grouped_order
+        .into_iter()
+        .filter_map(|key| {
+            let mut representative = grouped_representative.remove(&key)?;
+            representative.amount = grouped_totals.get(&key).copied().unwrap_or(0.0);
+            Some(representative)
+        })
+        .collect();
+
+    let resolved_addresses_by_wallet_id = state
+        .wallets
+        .iter()
+        .map(|wallet| {
+            let selected = wallet.network_chain(&state.settings);
+            let addresses = Chain::all()
+                .filter_map(|chain| {
+                    let effective = match selected {
+                        Some(network)
+                            if network.mainnet_counterpart() == chain.mainnet_counterpart() =>
+                        {
+                            if chain != network && chain != chain.mainnet_counterpart() {
+                                return None;
+                            }
+                            network
+                        }
+                        _ => chain,
+                    };
+                    wallet
+                        .address_on(effective)
+                        .filter(|a| {
+                            crate::send::flow::is_valid_send_address(
+                                effective.chain_display_name().into(),
+                                a.to_string(),
+                            )
+                        })
+                        .map(|address| {
+                            (chain.chain_display_name().to_string(), address.to_string())
+                        })
+                })
+                .collect();
+            (wallet.id.clone(), addresses)
+        })
+        .collect();
+    Ok(WalletDerivedState {
+        resolved_addresses_by_wallet_id,
+        included_portfolio_holdings,
+        unique_price_request_coins,
+        portfolio,
+        send_coins_by_wallet_id,
+        receive_coins_by_wallet_id,
+        send_enabled_wallet_ids,
+        receive_enabled_wallet_ids,
+        refreshable_chain_names: wallets
+            .iter()
+            .map(|w| {
+                w.network_chain(&state.settings)
+                    .map(|c| c.chain_display_name().to_string())
+                    .unwrap_or_else(|| w.chain_name.clone())
+            })
+            .collect::<HashSet<_>>()
+            .into_iter()
+            .collect(),
+        signing_material_wallet_ids,
+        private_key_backed_wallet_ids,
+    })
+}

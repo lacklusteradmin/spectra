@@ -57,7 +57,7 @@ pub struct CreationArgs {
     /// seed across several chains; `new` takes exactly one.
     #[arg(long, required = true)]
     chain: Vec<String>,
-    /// Wallet name (default: "My <chain> Wallet").
+    /// Wallet name (default: core assigns an available "Wallet N").
     #[arg(long)]
     name: Option<String>,
     /// Derivation path (default: the chain's catalog default).
@@ -138,7 +138,7 @@ pub struct WatchArgs {
     /// wallet per address, which is what the app's multi-line input does.
     #[arg(long, required = true)]
     address: Vec<String>,
-    /// Wallet name (default: "<chain> (watch)").
+    /// Wallet name (default: core assigns an available "Wallet N").
     #[arg(long)]
     name: Option<String>,
 }
@@ -310,11 +310,7 @@ fn import_private_key(ctx: &Ctx, out: Out, args: ImportArgs, chain: Chain) -> Cl
     let password = args.creation.password()?;
     let wallet_id = new_wallet_id();
 
-    let name = args
-        .creation
-        .name
-        .clone()
-        .unwrap_or_else(|| format!("My {} Wallet", chain.chain_display_name()));
+    let name = args.creation.name.clone().unwrap_or_default();
     let mut commit = signing_commit(chain, &wallet_id, &name, "", "");
     commit.request.is_private_key_import = true;
     commit.request.resolved_addresses = Default::default();
@@ -364,14 +360,10 @@ fn seal_and_import(
     chains: &[Chain],
     seed_phrase: &str,
 ) -> CliResult<WalletImportOutcome> {
-    let chain = chains[0];
     let password = args.optional_password()?;
     let wallet_ids: Vec<String> = chains.iter().map(|_| new_wallet_id()).collect();
 
-    let name = args
-        .name
-        .clone()
-        .unwrap_or_else(|| format!("My {} Wallet", chain.chain_display_name()));
+    let name = args.name.clone().unwrap_or_default();
     let mut paths = CoreSeedDerivationPaths::default();
     for c in chains {
         let path = derivation_path(*c, args.path.as_deref())?;
@@ -400,14 +392,10 @@ fn watch(ctx: &Ctx, out: Out, args: WatchArgs) -> CliResult<()> {
             chain.chain_display_name()
         )));
     }
-    let name = args
-        .name
-        .clone()
-        .unwrap_or_else(|| format!("{} (watch)", chain.chain_display_name()));
+    let name = args.name.clone().unwrap_or_default();
 
     let request = WalletImportRequest {
         wallet_name: name,
-        default_wallet_name_start_index: 0,
         primary_selected_chain_name: chain.chain_display_name().to_string(),
         selected_chain_names: vec![chain.chain_display_name().to_string()],
         // Core mints one id per wallet it plans, which for a watch-only import
@@ -701,7 +689,6 @@ fn seed_commit(
 ) -> WalletImportCommit {
     let request = WalletImportRequest {
         wallet_name: name.to_string(),
-        default_wallet_name_start_index: 0,
         primary_selected_chain_name: chains[0].chain_display_name().to_string(),
         selected_chain_names: chains
             .iter()
@@ -745,7 +732,6 @@ fn signing_commit(
 
     let request = WalletImportRequest {
         wallet_name: name.to_string(),
-        default_wallet_name_start_index: 0,
         primary_selected_chain_name: chain.chain_display_name().to_string(),
         selected_chain_names: vec![chain.chain_display_name().to_string()],
         planned_wallet_ids: vec![wallet_id.to_string()],

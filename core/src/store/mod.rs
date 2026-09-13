@@ -1,6 +1,7 @@
-pub mod chain_aliases;
+pub mod artwork;
 pub mod password_verifier;
 pub mod persistence_models;
+mod price_alerts;
 pub mod secret_backends;
 pub mod secret_store;
 pub mod seed_envelope;
@@ -11,8 +12,9 @@ pub mod wallet_db;
 pub mod wallet_domain;
 pub mod wallet_secrets;
 
-pub use chain_aliases::{
-    core_canonical_chain_component, core_icon_asset_name, core_icon_identifier,
+pub use artwork::{
+    core_deployment_icon_asset_name, core_holding_icon_asset_name, core_network_icon_asset_name,
+    core_token_icon_asset_name,
 };
 
 use serde::{Deserialize, Serialize};
@@ -263,7 +265,6 @@ pub fn core_receive_selection(request: ReceiveSelectionRequest) -> ReceiveSelect
     }
 }
 
-#[uniffi::export]
 pub fn core_self_send_confirmation(
     request: SelfSendConfirmationRequest,
 ) -> SelfSendConfirmationPlan {
@@ -700,23 +701,6 @@ pub fn new_event_id() -> String {
     hex::encode(bytes)
 }
 
-/// Prepend `new_event` to `existing_events` and cap the list to 200. Matches
-/// the Swift ring-buffer semantics inside `appendChainOperationalEvent`.
-pub fn plan_append_chain_operational_event(
-    existing_events: Vec<ChainOperationalEventRecord>,
-    new_event: ChainOperationalEventRecord,
-) -> Vec<ChainOperationalEventRecord> {
-    const RING_BUFFER_CAP: usize = 200;
-    let mut events = Vec::with_capacity((existing_events.len() + 1).min(RING_BUFFER_CAP));
-    events.push(new_event);
-    events.extend(
-        existing_events
-            .into_iter()
-            .take(RING_BUFFER_CAP.saturating_sub(1)),
-    );
-    events
-}
-
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(rename_all = "camelCase")]
 pub struct EvmRecipientPreflightRequest {
@@ -1091,41 +1075,6 @@ pub(crate) fn plan_apply_resolved_pending_transaction_statuses(
         decisions.extend(decision);
     }
     decisions
-}
-
-// Matches Swift `mapEthereumSendError`. Swift passes the lowercased error
-// message; Rust returns a code. Swift materializes the localized string.
-
-#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, uniffi::Enum)]
-#[serde(rename_all = "camelCase")]
-pub enum EthereumSendErrorCode {
-    NonceTooLow,
-    ReplacementUnderpriced,
-    AlreadyKnown,
-    InsufficientFunds,
-    MaxFeeBelowBaseFee,
-    IntrinsicGasLow,
-    Unknown,
-}
-
-#[uniffi::export]
-pub fn core_ethereum_send_error_code(message: String) -> EthereumSendErrorCode {
-    let lower = message.to_lowercase();
-    if lower.contains("nonce too low") {
-        EthereumSendErrorCode::NonceTooLow
-    } else if lower.contains("replacement transaction underpriced") {
-        EthereumSendErrorCode::ReplacementUnderpriced
-    } else if lower.contains("already known") {
-        EthereumSendErrorCode::AlreadyKnown
-    } else if lower.contains("insufficient funds") {
-        EthereumSendErrorCode::InsufficientFunds
-    } else if lower.contains("max fee per gas less than block base fee") {
-        EthereumSendErrorCode::MaxFeeBelowBaseFee
-    } else if lower.contains("intrinsic gas too low") {
-        EthereumSendErrorCode::IntrinsicGasLow
-    } else {
-        EthereumSendErrorCode::Unknown
-    }
 }
 
 // ─── N: Chain keypool state (baseline + merge with existing) ──────────────────

@@ -18,6 +18,8 @@ use crate::out::{self, Out};
 pub enum TokenCommand {
     /// Tokens the build knows about for a chain.
     Catalog(CatalogArgs),
+    /// Resolve bundled artwork by catalog identity; unknown identities have no mark.
+    Artwork(ArtworkArgs),
     /// Tokens this wallet tracks.
     List,
     /// Track a token: turn on the row core holds for it.
@@ -36,6 +38,17 @@ pub enum TokenCommand {
     Discover(DiscoverArgs),
     /// How an amount renders, and why that many places.
     Format(FormatArgs),
+}
+
+#[derive(Args)]
+#[group(required = true, multiple = false)]
+pub struct ArtworkArgs {
+    #[arg(long)]
+    token_id: Option<String>,
+    #[arg(long)]
+    network_id: Option<String>,
+    #[arg(long)]
+    deployment_id: Option<String>,
 }
 
 #[derive(Args)]
@@ -128,6 +141,17 @@ pub struct ResetArgs {
 pub fn run(ctx: &Ctx, out: Out, command: TokenCommand) -> CliResult<()> {
     match command {
         TokenCommand::Catalog(args) => catalog(out, args),
+        TokenCommand::Artwork(args) => {
+            let name = if let Some(id) = args.token_id {
+                spectra_core::store::core_token_icon_asset_name(id)
+            } else if let Some(id) = args.network_id {
+                spectra_core::store::core_network_icon_asset_name(id)
+            } else {
+                spectra_core::store::core_deployment_icon_asset_name(args.deployment_id)
+            };
+            out.emit(serde_json::json!({ "assetName": name }));
+            Ok(())
+        }
         TokenCommand::List => list(ctx, out),
         TokenCommand::Track(args) => set_tracked(ctx, out, args, true),
         TokenCommand::Untrack(args) => set_tracked(ctx, out, args, false),

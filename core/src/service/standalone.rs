@@ -24,7 +24,8 @@ pub fn core_private_key_hex(raw_value: String) -> Option<String> {
         .then_some(normalized)
 }
 
-#[derive(Debug, Clone, uniffi::Record)]
+#[derive(Debug, Clone, serde::Serialize, uniffi::Record)]
+#[serde(rename_all = "camelCase")]
 pub struct LargeMovementEvaluation {
     pub should_alert: bool,
     pub absolute_delta: f64,
@@ -34,8 +35,7 @@ pub struct LargeMovementEvaluation {
 
 /// Evaluate whether a portfolio-total swing crosses both an absolute USD
 /// threshold and a percent-change threshold (large-movement notifications).
-#[uniffi::export]
-pub fn core_evaluate_large_movement(
+pub(crate) fn core_evaluate_large_movement(
     previous_total_usd: f64,
     current_total_usd: f64,
     usd_threshold: f64,

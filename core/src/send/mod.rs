@@ -99,7 +99,7 @@ pub struct SendSubmitPreflightPlan {
 }
 
 /// Unified request for `WalletService::execute_send`.
-#[derive(Debug, Clone, uniffi::Record)]
+#[derive(Debug, Clone, serde::Serialize, uniffi::Record)]
 pub struct SendExecutionRequest {
     /// Spectra chain ID string (e.g. "bitcoin", "ethereum").
     pub chain_id: String,

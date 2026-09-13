@@ -35,7 +35,7 @@ impl WalletService {
             // the whole table, mutate the copy and write it back — a shape that
             // drops any write landing in between.
             let mut tables = service.keypool.write().await;
-            if let Some(db_path) = service.state_binding.path().await {
+            if let Some(db_path) = service.state_binding.connection().await {
                 let to_save = record.clone();
                 tokio::task::spawn_blocking(move || {
                     crate::wallet_db::address_save(&db_path, &to_save)
@@ -263,7 +263,7 @@ impl WalletService {
             return Ok(crate::store::plan_baseline_chain_keypool_state(input));
         }
 
-        if let Some(db_path) = self.state_binding.path().await {
+        if let Some(db_path) = self.state_binding.connection().await {
             let wallet = wallet_id.to_owned();
             let chain = chain_name.to_owned();
             let (external, change) = tokio::task::spawn_blocking(move || {
@@ -501,7 +501,7 @@ async fn persist_keypool(
     }
     // Without a bound database the service runs in memory only — the shape
     // tests and short-lived tools. Nothing to write.
-    let Some(db_path) = binding.path().await else {
+    let Some(db_path) = binding.connection().await else {
         tables.set_state(key, state);
         return Ok(());
     };

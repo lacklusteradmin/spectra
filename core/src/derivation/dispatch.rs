@@ -140,7 +140,6 @@ pub fn derive_for_chain_name(
 /// `the_registry_flag_and_the_dispatcher_agree_on_every_chain` pins to this
 /// match, so a chain that lands here was named by a caller rather than chosen
 /// in the app.
-#[uniffi::export]
 pub fn core_derive_from_private_key(
     chain_name: String,
     private_key_hex: String,

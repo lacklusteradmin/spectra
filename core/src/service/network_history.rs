@@ -16,6 +16,7 @@ impl WalletService {
         Ok(entries
             .into_iter()
             .map(|e| crate::fetch::history_decode::NormalizedHistoryItem {
+                deployment_id: e.deployment_id,
                 kind: e.kind,
                 status: e.status,
                 asset_name: e.asset_name,
@@ -158,6 +159,7 @@ impl WalletService {
         let native_decoded: Vec<EvmNativeTransferItem> = native_entries
             .into_iter()
             .map(|e| EvmNativeTransferItem {
+                status: e.status,
                 from_address: e.from,
                 to_address: e.to,
                 amount_decimal: crate::fetch::history_decode::decimal_string_from_wei(&e.value_wei),

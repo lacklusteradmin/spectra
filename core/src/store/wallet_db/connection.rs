@@ -17,34 +17,26 @@
 
 use parking_lot::Mutex;
 use rusqlite::Connection;
-use std::collections::HashMap;
 
-/// A connection lives as long as a service or an in-flight operation owns it.
-/// The weak index only locates handles; it never owns a connection or covers SQL.
-pub(crate) struct WalletDatabase {
+/// Explicitly owned SQLite connection, shared by cloning its Arc.
+pub struct WalletDatabase {
     path: String,
     connection: Mutex<Option<Connection>>,
 }
 
-static DATABASES: std::sync::LazyLock<Mutex<HashMap<String, std::sync::Weak<WalletDatabase>>>> =
-    std::sync::LazyLock::new(|| Mutex::new(HashMap::new()));
-
 impl WalletDatabase {
-    pub(crate) fn acquire(db_path: &str) -> std::sync::Arc<Self> {
-        let mut databases = DATABASES.lock();
-        databases.retain(|_, handle| handle.strong_count() > 0);
-        if let Some(database) = databases.get(db_path).and_then(std::sync::Weak::upgrade) {
-            return database;
-        }
-        let database = std::sync::Arc::new(Self {
+    pub fn open(db_path: &str) -> std::sync::Arc<Self> {
+        std::sync::Arc::new(Self {
             path: db_path.to_string(),
             connection: Mutex::new(None),
-        });
-        databases.insert(db_path.to_string(), std::sync::Arc::downgrade(&database));
-        database
+        })
     }
 
-    fn with_connection<T>(
+    pub fn path(&self) -> &str {
+        &self.path
+    }
+
+    pub(crate) fn with_connection<T>(
         &self,
         f: impl FnOnce(&Connection) -> Result<T, String>,
     ) -> Result<T, String> {
@@ -57,10 +49,10 @@ impl WalletDatabase {
 }
 
 pub(super) fn with_conn<T>(
-    db_path: &str,
+    database: &WalletDatabase,
     f: impl FnOnce(&Connection) -> Result<T, String>,
 ) -> Result<T, String> {
-    WalletDatabase::acquire(db_path).with_connection(f)
+    database.with_connection(f)
 }
 
 fn open_new(db_path: &str) -> Result<Connection, String> {
@@ -71,6 +63,7 @@ fn open_new(db_path: &str) -> Result<Connection, String> {
         "PRAGMA journal_mode = WAL;
          PRAGMA synchronous = NORMAL;
          PRAGMA temp_store = MEMORY;
+         CREATE TABLE IF NOT EXISTS state (key TEXT PRIMARY KEY, value TEXT NOT NULL, saved_at INTEGER NOT NULL);
          CREATE TABLE IF NOT EXISTS wallet_keypool (
              wallet_id              TEXT    NOT NULL,
              chain_name             TEXT    NOT NULL,

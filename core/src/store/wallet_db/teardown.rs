@@ -4,8 +4,8 @@ use super::*;
 
 /// Remove every trace of a deleted wallet: its row, keypool, owned addresses
 /// and history records.
-pub fn delete_wallet_data(db_path: &str, wallet_id: &str) -> Result<(), String> {
-    with_conn(db_path, |conn| {
+pub fn delete_wallet_data(database: &WalletDatabase, wallet_id: &str) -> Result<(), String> {
+    with_conn(database, |conn| {
         let tx = conn
             .unchecked_transaction()
             .map_err(|e| format!("delete_wallet_data begin: {e}"))?;

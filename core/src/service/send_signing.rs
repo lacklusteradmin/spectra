@@ -1,16 +1,13 @@
 //! Dispatch prepared send inputs to protocol signing and submission.
+use super::send_result::ProtocolSendResult;
 use super::*;
 impl WalletService {
-    /// Sign and broadcast, from an already-typed [`ExecuteSendParams`] —
-    /// what `sign_and_send` and `sign_and_send_token` did as two separate
-    /// JSON-in functions, merged into the one match their data now carries
-    /// its own chain identity for. See `build_send_params` for what used to
-    /// sit on the other side of the JSON these arms used to parse.
+    /// Dispatch typed inputs and retain the protocol result until serialization.
     pub(crate) async fn sign_and_broadcast_send(
         &self,
         chain: Chain,
         params: crate::service::send_params::ExecuteSendParams,
-    ) -> Result<String, SpectraBridgeError> {
+    ) -> Result<ProtocolSendResult, SpectraBridgeError> {
         use crate::service::send_params::ExecuteSendParams;
         let endpoints = self.endpoints_for(chain.str_id()).await;
         match params {
@@ -32,7 +29,7 @@ impl WalletService {
         chain: Chain,
         native: crate::service::send_params::SendParams,
         endpoints: Arc<Vec<String>>,
-    ) -> Result<String, SpectraBridgeError> {
+    ) -> Result<ProtocolSendResult, SpectraBridgeError> {
         use crate::service::send_params::SendParams;
         match native {
             SendParams::Bitcoin(p) => {
@@ -55,7 +52,7 @@ impl WalletService {
                     sign_only: p.sign_only,
                 };
                 let r = bitcoin_sign_and_broadcast(&client, send_params).await?;
-                Ok(serde_json::to_string(&r)?)
+                Ok(ProtocolSendResult::Bitcoin(r))
             }
             SendParams::Utxo(p) => sign_and_broadcast_shared_utxo(chain, p, endpoints).await,
             SendParams::Zcash(p) => {
@@ -72,7 +69,7 @@ impl WalletService {
                         p.dust_threshold_zats.unwrap_or(546),
                     )
                     .await?;
-                Ok(serde_json::to_string(&r)?)
+                Ok(ProtocolSendResult::Blockbook(r))
             }
             SendParams::Decred(p) => {
                 let priv_bytes = decode_private_key(&p.private_key_hex)?;
@@ -87,7 +84,7 @@ impl WalletService {
                         p.dust_threshold_atoms,
                     )
                     .await?;
-                Ok(serde_json::to_string(&r)?)
+                Ok(ProtocolSendResult::Decred(r))
             }
             SendParams::Kaspa(p) => {
                 let priv_bytes = decode_private_key(&p.private_key_hex)?;
@@ -103,7 +100,7 @@ impl WalletService {
                         p.dust_threshold_sompi,
                     )
                     .await?;
-                Ok(serde_json::to_string(&r)?)
+                Ok(ProtocolSendResult::Kaspa(r))
             }
             SendParams::Evm(p, overrides) => {
                 let priv_bytes = decode_private_key(&p.private_key_hex)?;
@@ -117,7 +114,7 @@ impl WalletService {
                         overrides,
                     )
                     .await?;
-                Ok(serde_json::to_string(&r)?)
+                Ok(ProtocolSendResult::Evm(r))
             }
             SendParams::Solana(p) => {
                 let from_arr: [u8; 32] = decode_hex_array(&p.from_pubkey_hex, "from_pubkey_hex")?;
@@ -126,7 +123,7 @@ impl WalletService {
                 let r = client
                     .sign_and_broadcast(&from_arr, &p.to, p.lamports, &priv_arr)
                     .await?;
-                Ok(serde_json::to_string(&r)?)
+                Ok(ProtocolSendResult::Solana(r))
             }
             SendParams::Xrp(p) => {
                 let priv_bytes = decode_private_key(&p.private_key_hex)?;
@@ -148,7 +145,7 @@ impl WalletService {
                 let r = client
                     .sign_and_submit(&p.from, &p.to, p.drops, &priv_bytes, pub_hex)
                     .await?;
-                Ok(serde_json::to_string(&r)?)
+                Ok(ProtocolSendResult::Xrp(r))
             }
             SendParams::Tron(p) => {
                 let priv_bytes = decode_private_key(&p.private_key_hex)?;
@@ -156,7 +153,7 @@ impl WalletService {
                 let r = client
                     .sign_and_broadcast(&p.from, &p.to, p.amount_sun, &priv_bytes)
                     .await?;
-                Ok(serde_json::to_string(&r)?)
+                Ok(ProtocolSendResult::Tron(r))
             }
             SendParams::Sui(p) => {
                 let priv_arr = crate::send::keys::Ed25519Seed::from_hex(&p.private_key_hex)?;
@@ -172,7 +169,7 @@ impl WalletService {
                         &pub_arr,
                     )
                     .await?;
-                Ok(serde_json::to_string(&r)?)
+                Ok(ProtocolSendResult::Sui(r))
             }
             SendParams::Aptos(p) => {
                 let priv_arr = crate::send::keys::Ed25519Seed::from_hex(&p.private_key_hex)?;
@@ -188,7 +185,7 @@ impl WalletService {
                         chain.aptos_chain_id().ok_or("not an Aptos network")?,
                     )
                     .await?;
-                Ok(serde_json::to_string(&r)?)
+                Ok(ProtocolSendResult::Aptos(r))
             }
             SendParams::Near(p) => {
                 let priv_arr = decode_secret_array::<32>(&p.private_key_hex)?;
@@ -197,7 +194,7 @@ impl WalletService {
                 let r = client
                     .sign_and_broadcast(&p.from, &p.to, p.yocto_near, &priv_arr, &pub_arr)
                     .await?;
-                Ok(serde_json::to_string(&r)?)
+                Ok(ProtocolSendResult::Near(r))
             }
             SendParams::Stellar(p) => {
                 // Accept 32-byte seed (raw import) or 64-byte expanded key (derived).
@@ -242,7 +239,7 @@ impl WalletService {
                         network_passphrase,
                     )
                     .await?;
-                Ok(serde_json::to_string(&r)?)
+                Ok(ProtocolSendResult::Stellar(r))
             }
             SendParams::Cardano(p) => {
                 let priv_arr = decode_secret_array::<64>(&p.private_key_hex)?;
@@ -261,7 +258,7 @@ impl WalletService {
                         p.min_change_lovelace,
                     )
                     .await?;
-                Ok(serde_json::to_string(&r)?)
+                Ok(ProtocolSendResult::Cardano(r))
             }
             SendParams::Polkadot(p) => {
                 let priv_arr = decode_secret_array::<32>(&p.private_key_hex)?;
@@ -274,7 +271,7 @@ impl WalletService {
                 let r = client
                     .sign_and_submit(&p.from, &p.to, p.planck, &priv_arr, &pub_arr, p.era, p.tip)
                     .await?;
-                json_response(&r)
+                Ok(ProtocolSendResult::Polkadot(r))
             }
             SendParams::Bittensor(p) => {
                 let priv_arr = decode_secret_array::<32>(&p.private_key_hex)?;
@@ -287,7 +284,7 @@ impl WalletService {
                 let r = client
                     .sign_and_submit(&p.from, &p.to, p.rao, &priv_arr, &pub_arr)
                     .await?;
-                json_response(&r)
+                Ok(ProtocolSendResult::Bittensor(r))
             }
             SendParams::Ton(p) => {
                 let priv_arr = decode_secret_array::<32>(&p.private_key_hex)?;
@@ -308,7 +305,7 @@ impl WalletService {
                         p.send_mode.map(|n| n as u8),
                     )
                     .await?;
-                Ok(serde_json::to_string(&r)?)
+                Ok(ProtocolSendResult::Ton(r))
             }
             SendParams::Icp(p) => {
                 let priv_bytes = decode_private_key(&p.private_key_hex)?;
@@ -334,7 +331,7 @@ impl WalletService {
                 let r = client
                     .sign_and_submit(&p.from, &p.to, p.e8s, &priv_bytes, pub_bytes)
                     .await?;
-                Ok(serde_json::to_string(&r)?)
+                Ok(ProtocolSendResult::Icp(r))
             }
             SendParams::Monero(p) => {
                 // Probe and submit through the same endpoint: fallback to a
@@ -359,7 +356,7 @@ impl WalletService {
                     let result = client
                         .send(&p.to, p.piconeros, 0, p.priority.unwrap_or(2) as u32)
                         .await?;
-                    return Ok(serde_json::to_string(&result)?);
+                    return Ok(ProtocolSendResult::Monero(result));
                 }
                 Err(unavailable)
             }
@@ -379,7 +376,7 @@ pub(super) async fn sign_and_broadcast_shared_utxo(
     chain: Chain,
     p: crate::service::send_params::UtxoFixedFeeSendParams,
     endpoints: Arc<Vec<String>>,
-) -> Result<String, SpectraBridgeError> {
+) -> Result<ProtocolSendResult, SpectraBridgeError> {
     let key = decode_private_key(&p.private_key_hex)?;
     let fee = fee_or_static(chain, p.fee_sat);
     let dust = p.dust_threshold_sats;
@@ -387,51 +384,51 @@ pub(super) async fn sign_and_broadcast_shared_utxo(
     match chain {
         Chain::Dogecoin => {
             let client = DogecoinClient::new(endpoints);
-            json_response(
-                &client
+            Ok(ProtocolSendResult::Dogecoin(
+                client
                     .sign_and_broadcast(&p.from, &p.to, p.amount_sat, fee, &key, dust)
                     .await?,
-            )
+            ))
         }
         Chain::BitcoinSV => {
             let client = BitcoinSvClient::new(endpoints);
-            json_response(
-                &client
+            Ok(ProtocolSendResult::BitcoinSV(
+                client
                     .sign_and_broadcast(&p.from, &p.to, p.amount_sat, fee, &key, dust)
                     .await?,
-            )
+            ))
         }
         Chain::Litecoin => {
             let client = LitecoinClient::new(endpoints);
-            json_response(
-                &client
+            Ok(ProtocolSendResult::Blockbook(
+                client
                     .sign_and_broadcast(&p.from, &p.to, p.amount_sat, fee, &key, dust)
                     .await?,
-            )
+            ))
         }
         Chain::BitcoinCash => {
             let client = BitcoinCashClient::new(endpoints);
-            json_response(
-                &client
+            Ok(ProtocolSendResult::Blockbook(
+                client
                     .sign_and_broadcast(&p.from, &p.to, p.amount_sat, fee, &key, dust)
                     .await?,
-            )
+            ))
         }
         Chain::BitcoinGold => {
             let client = BitcoinGoldClient::new(endpoints);
-            json_response(
-                &client
+            Ok(ProtocolSendResult::Blockbook(
+                client
                     .sign_and_broadcast(&p.from, &p.to, p.amount_sat, fee, &key, dust)
                     .await?,
-            )
+            ))
         }
         Chain::Dash => {
             let client = DashClient::new(endpoints);
-            json_response(
-                &client
+            Ok(ProtocolSendResult::Blockbook(
+                client
                     .sign_and_broadcast(&p.from, &p.to, p.amount_sat, fee, &key, dust)
                     .await?,
-            )
+            ))
         }
         c => Err(SpectraBridgeError::from(format!(
             "sign_and_broadcast_send: {c:?} does not use the shared UTXO shape"
@@ -445,7 +442,7 @@ pub(super) async fn sign_and_broadcast_token(
     chain: Chain,
     token: crate::service::send_params::SendTokenParams,
     endpoints: Arc<Vec<String>>,
-) -> Result<String, SpectraBridgeError> {
+) -> Result<ProtocolSendResult, SpectraBridgeError> {
     use crate::service::send_params::SendTokenParams;
     match token {
         SendTokenParams::Evm(p, overrides) => {
@@ -461,7 +458,7 @@ pub(super) async fn sign_and_broadcast_token(
                     overrides,
                 )
                 .await?;
-            Ok(serde_json::to_string(&r)?)
+            Ok(ProtocolSendResult::Evm(r))
         }
         SendTokenParams::Tron(p) => {
             // Tron — TRC-20. Addresses are base58, amount is in token
@@ -480,7 +477,7 @@ pub(super) async fn sign_and_broadcast_token(
                     &priv_bytes,
                 )
                 .await?;
-            Ok(serde_json::to_string(&r)?)
+            Ok(ProtocolSendResult::Tron(r))
         }
         SendTokenParams::Near(p) => {
             // NEAR — NEP-141 fungible token transfer (ft_transfer).
@@ -498,7 +495,7 @@ pub(super) async fn sign_and_broadcast_token(
                     p.gas_tgas,
                 )
                 .await?;
-            Ok(serde_json::to_string(&r)?)
+            Ok(ProtocolSendResult::Near(r))
         }
         SendTokenParams::Solana(p) => {
             // Solana — SPL token transfer with idempotent ATA create.
@@ -515,7 +512,7 @@ pub(super) async fn sign_and_broadcast_token(
                     &priv_arr,
                 )
                 .await?;
-            Ok(serde_json::to_string(&r)?)
+            Ok(ProtocolSendResult::Solana(r))
         }
     }
 }

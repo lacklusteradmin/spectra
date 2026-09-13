@@ -27,7 +27,7 @@ impl WalletService {
         limit: Option<u32>,
         interval_secs: f64,
     ) -> Result<Vec<ChainHistoryRefresh>, SpectraBridgeError> {
-        self.bound_state_db_path().await?;
+        self.bound_database().await?;
         if !interval_secs.is_finite() || interval_secs < 0.0 {
             return Err(SpectraBridgeError::InvalidInput {
                 message: "history interval must be finite and nonnegative".into(),

@@ -240,7 +240,10 @@ async fn audit_fix5_nonce_journal_survives_response_loss_restart_and_concurrent_
                         "0x{}",
                         hex::encode(sha3::Keccak256::digest(hex::decode(&raw[2..]).unwrap()))
                     );
-                    let records = crate::wallet_db::history_fetch_all(&database).unwrap();
+                    let records = crate::wallet_db::history_fetch_all(
+                        &crate::wallet_db::WalletDatabase::open(&database),
+                    )
+                    .unwrap();
                     let row = records
                         .iter()
                         .find(|r| r.payload.transaction_hash.as_deref() == Some(&hash))

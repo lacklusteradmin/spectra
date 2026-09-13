@@ -5,10 +5,10 @@ use super::*;
 ///
 /// Use this for a single-wallet edit. To write a whole state snapshot use
 /// [`app_state_save`], which also prunes wallets that are no longer present.
-pub fn wallet_upsert(db_path: &str, wallet: &WalletSummary) -> Result<(), String> {
+pub fn wallet_upsert(database: &WalletDatabase, wallet: &WalletSummary) -> Result<(), String> {
     let payload =
         serde_json::to_string(wallet).map_err(|e| format!("wallet_upsert encode: {e}"))?;
-    with_conn(db_path, |conn| {
+    with_conn(database, |conn| {
         let next_index: i64 = conn
             .query_row(
                 "SELECT COALESCE(MAX(sort_index) + 1, 0) FROM wallets",
@@ -44,8 +44,11 @@ pub fn wallet_upsert(db_path: &str, wallet: &WalletSummary) -> Result<(), String
     })
 }
 
-pub fn wallet_load(db_path: &str, wallet_id: &str) -> Result<Option<WalletSummary>, String> {
-    with_conn(db_path, |conn| {
+pub fn wallet_load(
+    database: &WalletDatabase,
+    wallet_id: &str,
+) -> Result<Option<WalletSummary>, String> {
+    with_conn(database, |conn| {
         let result = conn.query_row(
             "SELECT payload FROM wallets WHERE id = ?1",
             params![wallet_id],
@@ -62,8 +65,8 @@ pub fn wallet_load(db_path: &str, wallet_id: &str) -> Result<Option<WalletSummar
 }
 
 /// Load every wallet, in the stored display order.
-pub fn wallet_load_all(db_path: &str) -> Result<Vec<WalletSummary>, String> {
-    with_conn(db_path, |conn| {
+pub fn wallet_load_all(database: &WalletDatabase) -> Result<Vec<WalletSummary>, String> {
+    with_conn(database, |conn| {
         let mut stmt = conn
             .prepare("SELECT id, payload FROM wallets ORDER BY sort_index ASC")
             .map_err(|e| format!("wallet_load_all prepare: {e}"))?;
@@ -86,8 +89,8 @@ pub fn wallet_load_all(db_path: &str) -> Result<Vec<WalletSummary>, String> {
 
 /// Delete one wallet row. Does not touch that wallet's keypool, owned addresses
 /// or history — use [`delete_wallet_data`] for the full teardown.
-pub fn wallet_delete(db_path: &str, wallet_id: &str) -> Result<(), String> {
-    with_conn(db_path, |conn| {
+pub fn wallet_delete(database: &WalletDatabase, wallet_id: &str) -> Result<(), String> {
+    with_conn(database, |conn| {
         conn.execute("DELETE FROM wallets WHERE id = ?1", params![wallet_id])
             .map_err(|e| format!("wallet_delete: {e}"))?;
         Ok(())

@@ -61,7 +61,7 @@ pub enum SendCommand {
         #[arg(long)]
         destination: String,
     },
-    /// Quote a stored EVM holding on its selected network; never signs.
+    /// Quote a stored holding on its selected network; never signs.
     Preview {
         #[arg(long)]
         wallet: String,
@@ -71,6 +71,47 @@ pub enum SendCommand {
         amount: String,
         #[arg(long, default_value = "")]
         destination: String,
+    },
+    /// Resolve an owned send request and fees, without signing or broadcasting.
+    Quote {
+        #[arg(long)]
+        wallet: String,
+        #[arg(long)]
+        holding: String,
+        #[arg(long)]
+        amount: String,
+        #[arg(long)]
+        destination: String,
+    },
+    /// Determine self-send ownership from core wallets and history.
+    SelfCheck {
+        #[arg(long)]
+        wallet: String,
+        #[arg(long)]
+        holding: String,
+        #[arg(long)]
+        amount: f64,
+        #[arg(long)]
+        destination: String,
+    },
+    /// Build a replacement or cancellation from a stored pending transaction; never signs.
+    Replacement {
+        transaction_id: String,
+        #[arg(long)]
+        cancel: bool,
+    },
+    /// Send a stored holding using core-owned routing, fees and balances.
+    OwnedBroadcast {
+        #[arg(long)]
+        wallet: String,
+        #[arg(long)]
+        holding: String,
+        #[arg(long)]
+        amount: String,
+        #[arg(long)]
+        destination: String,
+        #[arg(long)]
+        yes: bool,
     },
     /// Resubmit the signed payload of a stored transaction.
     Rebroadcast {
@@ -131,7 +172,7 @@ pub fn run(ctx: &Ctx, out: Out, command: SendCommand) -> CliResult<()> {
             destination,
         } => {
             let wallet = ctx.find_wallet(&wallet)?;
-            let preview = ctx.rt.block_on(ctx.service()?.preview_owned_evm_send(
+            let preview = ctx.rt.block_on(ctx.service()?.preview_owned_send(
                 wallet.id,
                 holding,
                 amount,
@@ -140,6 +181,72 @@ pub fn run(ctx: &Ctx, out: Out, command: SendCommand) -> CliResult<()> {
                 None,
             ))?;
             out.emit(serde_json::json!({"preview":preview}));
+            Ok(())
+        }
+        SendCommand::Replacement {
+            transaction_id,
+            cancel,
+        } => {
+            let draft = ctx
+                .rt
+                .block_on(ctx.service()?.replacement_draft(transaction_id, cancel))?;
+            out.emit(serde_json::json!({"draft": draft}));
+            Ok(())
+        }
+        SendCommand::OwnedBroadcast {
+            wallet,
+            holding,
+            amount,
+            destination,
+            yes,
+        } => {
+            if !yes {
+                return Err(CliError::rejected("Broadcast requires --yes"));
+            }
+            let wallet = ctx.find_wallet(&wallet)?;
+            let result = ctx.rt.block_on(ctx.service()?.execute_owned_send(
+                wallet.id,
+                holding,
+                amount,
+                destination,
+                None,
+                None,
+            ))?;
+            out.emit(serde_json::json!({"transactionHash": result.transaction_hash}));
+            Ok(())
+        }
+        SendCommand::Quote {
+            wallet,
+            holding,
+            amount,
+            destination,
+        } => {
+            let wallet = ctx.find_wallet(&wallet)?;
+            let quote = ctx.rt.block_on(ctx.service()?.quote_owned_send(
+                wallet.id,
+                holding,
+                amount,
+                destination,
+                None,
+            ))?;
+            out.emit(serde_json::json!({"quote":quote}));
+            Ok(())
+        }
+        SendCommand::SelfCheck {
+            wallet,
+            holding,
+            amount,
+            destination,
+        } => {
+            let wallet = ctx.find_wallet(&wallet)?;
+            let result = ctx.rt.block_on(ctx.service()?.self_send_confirmation(
+                wallet.id,
+                holding,
+                destination,
+                amount,
+                None,
+            ))?;
+            out.emit(serde_json::json!({"confirmation":result}));
             Ok(())
         }
         SendCommand::Rebroadcast {

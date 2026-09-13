@@ -10,6 +10,7 @@ use crate::registry::Chain;
 /// directly to `CoreTransactionRecord` without any chain-specific parsing.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ChainHistoryEntry {
+    pub deployment_id: Option<String>,
     pub kind: String,   // "receive" | "send"
     pub status: String, // "confirmed" | "pending"
     pub asset_name: String,
@@ -321,8 +322,28 @@ pub fn normalize_chain_history(chain_id: &str, raw_json: &str) -> Vec<ChainHisto
             };
 
             Some(ChainHistoryEntry {
+                deployment_id: match entry
+                    .get("mint")
+                    .or_else(|| entry.get("contract"))
+                    .and_then(Value::as_str)
+                    .filter(|s| !s.is_empty())
+                {
+                    Some(contract) => crate::tokens::history_deployment(chain, Some(contract)),
+                    None if entry_symbol == symbol => {
+                        crate::tokens::history_deployment(chain, None)
+                    }
+                    None => None,
+                },
                 kind: if is_incoming { "receive" } else { "send" }.to_string(),
-                status: status.to_string(),
+                status: if chain.is_evm() {
+                    entry
+                        .get("status")
+                        .and_then(Value::as_str)
+                        .unwrap_or("pending")
+                } else {
+                    status
+                }
+                .to_string(),
                 asset_name: entry_asset.to_string(),
                 symbol: entry_symbol.to_string(),
                 chain_name: chain_name.to_string(),
@@ -1047,12 +1068,12 @@ mod normalize_chain_history_tests {
         ),
         (
             "ethereum",
-            r#"[{"txid":"p1","is_incoming":true,"value_wei":"1500000000000000000","from":"0xFrom","to":"0xTo","block_number":18000000,"timestamp":1700000021}]"#,
+            r#"[{"txid":"p1","is_incoming":true,"status":"confirmed","value_wei":"1500000000000000000","from":"0xFrom","to":"0xTo","block_number":18000000,"timestamp":1700000021}]"#,
             r#"[{"kind":"receive","status":"confirmed","asset_name":"Ethereum","symbol":"ETH","chain_name":"Ethereum","amount":1.5,"counterparty":"0xFrom","tx_hash":"p1","block_height":18000000,"timestamp":1700000021.0}]"#,
         ),
         (
             "polygon",
-            r#"[{"txid":"p2","is_incoming":false,"value_wei":"250000000000000000","from":"0xFrom","to":"0xTo","block_number":49000000,"timestamp":1700000022}]"#,
+            r#"[{"txid":"p2","is_incoming":false,"status":"confirmed","value_wei":"250000000000000000","from":"0xFrom","to":"0xTo","block_number":49000000,"timestamp":1700000022}]"#,
             r#"[{"kind":"send","status":"confirmed","asset_name":"Polygon","symbol":"POL","chain_name":"Polygon","amount":0.25,"counterparty":"0xTo","tx_hash":"p2","block_height":49000000,"timestamp":1700000022.0}]"#,
         ),
         (
@@ -1071,9 +1092,26 @@ mod normalize_chain_history_tests {
     fn every_chain_shape_normalizes_to_its_expected_row() {
         for (chain, raw, expected) in CASES {
             let rows = normalize_chain_history(chain, raw);
+            let mut actual = serde_json::to_value(&rows).unwrap();
+            for row in actual.as_array_mut().unwrap() {
+                let identity = row
+                    .as_object_mut()
+                    .unwrap()
+                    .remove("deployment_id")
+                    .unwrap();
+                if row["symbol"] == Chain::from_str_id(chain).unwrap().coin_symbol() {
+                    assert_eq!(
+                        identity,
+                        Chain::from_str_id(chain)
+                            .unwrap()
+                            .entry()
+                            .native_deployment_id
+                    );
+                }
+            }
             assert_eq!(
-                &serde_json::to_string(&rows).unwrap(),
-                expected,
+                actual,
+                serde_json::from_str::<Value>(expected).unwrap(),
                 "{chain} normalized differently"
             );
         }

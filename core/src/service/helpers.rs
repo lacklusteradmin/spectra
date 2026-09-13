@@ -227,55 +227,13 @@ pub(super) fn utxo_fee_preview_json(utxo_values: Vec<u64>, fee_rate: u64) -> Str
     .to_string()
 }
 
-// ── SQLite blocking helpers ───────────────────────────────────────────────
-//
-// Key/value `state` table backing AppState persistence (wallets, settings,
-// fiat rates, live prices, etc.). Mirrors the `with_conn` pool already in
-// `store/wallet_db/` — re-uses a single `Connection` per `db_path` instead
-// of opening + running DDL + closing on every load/save. With ~5–10 persists
-// per refresh cycle, the previous open-per-call cost was meaningful.
-//
-// PRAGMAs applied once per connection:
-//   - `journal_mode = WAL`     concurrent reads while a write is in flight
-//   - `synchronous  = NORMAL`  fsync only at checkpoint, ~5× faster writes
-//                              (still durable; only loses ms on power loss)
-//   - `temp_store   = MEMORY`  query temp tables don't hit disk
+// Key/value storage shares the service-owned connection with domain tables.
 
-use parking_lot::Mutex as PlMutex;
-
-pub(crate) static SQLITE_POOL: std::sync::LazyLock<PlMutex<HashMap<String, rusqlite::Connection>>> =
-    std::sync::LazyLock::new(|| PlMutex::new(HashMap::new()));
-
-pub(crate) fn with_state_conn<T>(
-    db_path: &str,
-    f: impl FnOnce(&rusqlite::Connection) -> Result<T, String>,
-) -> Result<T, String> {
-    let mut pool = SQLITE_POOL.lock();
-    if !pool.contains_key(db_path) {
-        pool.insert(db_path.to_string(), open_state_conn(db_path)?);
-    }
-    f(pool.get(db_path).unwrap())
-}
-
-pub(crate) fn open_state_conn(db_path: &str) -> Result<rusqlite::Connection, String> {
-    let conn =
-        rusqlite::Connection::open(db_path).map_err(|e| format!("sqlite open {db_path}: {e}"))?;
-    conn.execute_batch(
-        "PRAGMA journal_mode = WAL;
-         PRAGMA synchronous = NORMAL;
-         PRAGMA temp_store = MEMORY;
-         CREATE TABLE IF NOT EXISTS state (
-             key      TEXT    PRIMARY KEY,
-             value    TEXT    NOT NULL,
-             saved_at INTEGER NOT NULL
-         );",
-    )
-    .map_err(|e| format!("sqlite init: {e}"))?;
-    Ok(conn)
-}
-
-pub(super) fn sqlite_load(db_path: &str, key: &str) -> Result<String, String> {
-    with_state_conn(db_path, |conn| {
+pub(super) fn sqlite_load(
+    database: &crate::wallet_db::WalletDatabase,
+    key: &str,
+) -> Result<String, String> {
+    database.with_connection(|conn| {
         let result: rusqlite::Result<String> = conn.query_row(
             "SELECT value FROM state WHERE key = ?1",
             rusqlite::params![key],
@@ -289,12 +247,16 @@ pub(super) fn sqlite_load(db_path: &str, key: &str) -> Result<String, String> {
     })
 }
 
-pub(super) fn sqlite_save(db_path: &str, key: &str, value: &str) -> Result<(), String> {
+pub(super) fn sqlite_save(
+    database: &crate::wallet_db::WalletDatabase,
+    key: &str,
+    value: &str,
+) -> Result<(), String> {
     let now = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .unwrap_or_default()
         .as_secs() as i64;
-    with_state_conn(db_path, |conn| {
+    database.with_connection(|conn| {
         conn.execute(
             "INSERT INTO state (key, value, saved_at) VALUES (?1, ?2, ?3)
              ON CONFLICT(key) DO UPDATE SET value = excluded.value, saved_at = excluded.saved_at",

@@ -33,30 +33,9 @@ impl WalletService {
     // ── EVM utilities (contract detection, nonce lookup)
 
     /// Returns true iff `address` has deployed bytecode on the given EVM chain.
-    pub(crate) async fn fetch_evm_has_contract_code(
-        &self,
-        chain_id: String,
-        address: String,
-    ) -> Result<bool, SpectraBridgeError> {
-        let chain = chain_for_evm_id(&chain_id)?;
-        let eps = self.endpoints_for(chain.str_id()).await;
-        let client = EvmClient::new(eps, chain.evm_chain_id());
-        let code = client.fetch_code(&address).await?;
-        Ok(crate::send::flow::core_evm_has_contract_code(code))
-    }
 
     /// Fetch the nonce of a submitted transaction by hash on an EVM chain.
     /// Used to pre-fill the replacement-tx nonce field.
-    pub async fn fetch_evm_tx_nonce_typed(
-        &self,
-        chain_id: String,
-        tx_hash: String,
-    ) -> Result<u64, SpectraBridgeError> {
-        let chain = chain_for_evm_id(&chain_id)?;
-        let eps = self.endpoints_for(chain.str_id()).await;
-        let client = EvmClient::new(eps, chain.evm_chain_id());
-        client.fetch_tx_nonce(&tx_hash).await.map_err(Into::into)
-    }
 
     // `fetch_utxo_fee_preview` and `broadcast_raw` live in the plain-impl
     // block below (JSON shuttles — kept internal, not exported to Swift).
@@ -431,5 +410,33 @@ mod http_probe_regressions {
         let (ok, detail) = probe_http_endpoint(Chain::Zcash, &server.uri()).await;
         assert!(!ok);
         assert!(detail.contains("403"), "{detail}");
+    }
+}
+
+impl WalletService {
+    /// Read the live nonce for a core-owned replacement draft.
+    pub async fn fetch_evm_tx_nonce_typed(
+        &self,
+        chain_id: String,
+        tx_hash: String,
+    ) -> Result<u64, SpectraBridgeError> {
+        let chain = chain_for_evm_id(&chain_id)?;
+        let eps = self.endpoints_for(chain.str_id()).await;
+        let client = EvmClient::new(eps, chain.evm_chain_id());
+        client.fetch_tx_nonce(&tx_hash).await.map_err(Into::into)
+    }
+}
+
+impl WalletService {
+    pub(crate) async fn fetch_evm_has_contract_code(
+        &self,
+        chain_id: String,
+        address: String,
+    ) -> Result<bool, SpectraBridgeError> {
+        let chain = chain_for_evm_id(&chain_id)?;
+        let eps = self.endpoints_for(chain.str_id()).await;
+        let client = EvmClient::new(eps, chain.evm_chain_id());
+        let code = client.fetch_code(&address).await?;
+        Ok(crate::send::flow::core_evm_has_contract_code(code))
     }
 }

@@ -207,17 +207,27 @@ async fn explicit_recheck_does_not_resurrect_deleted_or_overwrite_changed_transa
         Mock::given(any())
             .respond_with(move |_: &Request| {
                 if action == "delete" {
-                    crate::wallet_db::history_delete(&path, &["target".into()]).unwrap();
+                    crate::wallet_db::history_delete(
+                        &crate::wallet_db::WalletDatabase::open(&path),
+                        &["target".into()],
+                    )
+                    .unwrap();
                 } else {
-                    let mut row = crate::wallet_db::history_fetch_all(&path)
-                        .unwrap()
-                        .remove(0);
+                    let mut row = crate::wallet_db::history_fetch_all(
+                        &crate::wallet_db::WalletDatabase::open(&path),
+                    )
+                    .unwrap()
+                    .remove(0);
                     if action == "hash" {
                         row.payload.transaction_hash = Some("cd".repeat(32));
                     } else {
                         row.payload.wallet_name = "Edited during read".into();
                     }
-                    crate::wallet_db::history_upsert_batch(&path, &[row]).unwrap();
+                    crate::wallet_db::history_upsert_batch(
+                        &crate::wallet_db::WalletDatabase::open(&path),
+                        &[row],
+                    )
+                    .unwrap();
                 }
                 ResponseTemplate::new(200)
                     .set_body_json(json!({"confirmed":true,"block_height":123}))

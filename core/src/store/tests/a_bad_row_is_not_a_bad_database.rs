@@ -29,7 +29,8 @@ fn unreadable_preferences_refuse_loading_without_deleting_wallets() {
         holdings: Vec::new(),
         addresses: Vec::new(),
     });
-    crate::store::wallet_db::app_state_save(&db, &state).expect("save");
+    crate::store::wallet_db::app_state_save(&crate::wallet_db::WalletDatabase::open(&db), &state)
+        .expect("save");
 
     // Overwrite the token-preferences blob with a shape this build cannot
     // read — an older row, or a newer one.
@@ -48,10 +49,14 @@ fn unreadable_preferences_refuse_loading_without_deleting_wallets() {
     // The row is dropped and rebuilt from the catalog on the next
     // evaluation; the load itself succeeds, because what it would take
     // down with it — the wallet list — cannot be rebuilt from anything.
-    let loaded = crate::store::wallet_db::app_state_load(&db).expect("load");
+    let loaded =
+        crate::store::wallet_db::app_state_load(&crate::wallet_db::WalletDatabase::open(&db))
+            .expect("load");
     assert!(loaded.token_preferences.is_empty());
     assert_eq!(loaded.wallets.len(), 1);
-    let wallets = crate::store::wallet_db::wallet_load_all(&db).unwrap();
+    let wallets =
+        crate::store::wallet_db::wallet_load_all(&crate::wallet_db::WalletDatabase::open(&db))
+            .unwrap();
     assert_eq!(wallets.len(), 1);
     assert_eq!(wallets[0].name, "Kept");
     let conn = rusqlite::Connection::open(&db).unwrap();

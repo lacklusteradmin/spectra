@@ -1,6 +1,4 @@
-//! Unified staking service — the single UniFFI-exported object Swift holds.
-//! Dispatches every call to the appropriate per-chain client so the Swift
-//! layer never imports chain-specific Rust types directly.
+//! Internal staking query dispatcher, configured by WalletService.
 
 use std::sync::Arc;
 
@@ -12,11 +10,9 @@ use crate::staking::{
         near::NearStakingClient, polkadot::PolkadotStakingClient, solana::SolanaStakingClient,
         sui::SuiStakingClient,
     },
-    StakingAction, StakingActionPreview, StakingActionRequest, StakingError, StakingPosition,
-    StakingValidator,
+    StakingError, StakingPosition, StakingValidator,
 };
 
-#[derive(uniffi::Object)]
 pub struct StakingService {
     solana: SolanaStakingClient,
     cardano: CardanoStakingClient,
@@ -41,17 +37,7 @@ impl StakingService {
     }
 }
 
-// `async_runtime = "tokio"` is not optional on a block with `async fn`s: without
-// it UniFFI polls the future with no reactor installed and every call fails with
-// "there is no reactor running, must be called from the context of a Tokio 1.x
-// runtime". This block was the only async-exporting one in the crate without it,
-// so the staking tab could never load a validator or a position on iOS. The CLI
-// could not show it — it drives `StakingService` from inside its own runtime via
-// `ctx.rt.block_on` — and no Swift test reaches the network. Found by opening the
-// app.
-#[uniffi::export(async_runtime = "tokio")]
 impl StakingService {
-    #[uniffi::constructor]
     pub fn new(endpoints: Vec<ChainEndpoints>) -> Arc<Self> {
         // Seven `const CHAIN_*: &str` spellings used to sit above this, and
         // `"internet-computer"` among them was one typo away from a staking tab
@@ -110,166 +96,6 @@ impl StakingService {
             Chain::Polkadot => self.polkadot.fetch_positions(&wallet_address).await,
             Chain::Icp => self.icp.fetch_positions(&wallet_address).await,
             _ => Err(StakingError::NotYetImplemented),
-        }
-    }
-
-    // ── Polkadot-specific ────────────────────────────────────────────────────
-
-    pub async fn polkadot_fetch_nomination_pools(
-        &self,
-    ) -> Result<Vec<StakingValidator>, StakingError> {
-        self.polkadot.fetch_nomination_pools().await
-    }
-
-    // ── Cardano-specific ─────────────────────────────────────────────────────
-
-    pub async fn cardano_is_stake_address_registered(
-        &self,
-        stake_address: String,
-    ) -> Result<bool, StakingError> {
-        self.cardano
-            .is_stake_address_registered(&stake_address)
-            .await
-    }
-
-    // ── Action previews: Solana ──────────────────────────────────────────────
-
-    /// Build the transaction for one staking action on one chain.
-    ///
-    /// Twenty-three exports stood here, one per (chain, action) pair, and the
-    /// Swift bridge and view model each repeated the same twenty-three names.
-    /// The pair is data; this matches on it.
-    pub async fn build_staking_tx(
-        &self,
-        request: StakingActionRequest,
-    ) -> Result<StakingActionPreview, StakingError> {
-        use crate::registry::Chain;
-        use StakingAction as A;
-
-        let chain = Chain::from_str_id(&request.chain_id)
-            .ok_or_else(|| request.malformed("chain_id", "no chain has that id"))?;
-        let unsupported = || StakingError::UnsupportedAction {
-            chain: chain.chain_display_name().to_string(),
-            action: request.action.label().to_string(),
-        };
-        let who = request.wallet_address.as_str();
-
-        match (chain.mainnet_counterpart(), request.action) {
-            (Chain::Solana, A::Stake) => {
-                self.solana
-                    .build_create_and_delegate_tx(who, request.amount_u64()?, request.target()?)
-                    .await
-            }
-            (Chain::Solana, A::Unstake) => {
-                self.solana
-                    .build_deactivate_tx(who, request.target()?)
-                    .await
-            }
-            (Chain::Solana, A::Withdraw) => {
-                self.solana
-                    .build_withdraw_tx(who, request.target()?, request.amount_u64()?)
-                    .await
-            }
-
-            (Chain::Cardano, A::Stake) => {
-                self.cardano
-                    .build_register_and_delegate_tx(who, request.target()?)
-                    .await
-            }
-            (Chain::Cardano, A::ClaimRewards) => {
-                self.cardano
-                    .build_claim_rewards_tx(who, request.amount_u64()?)
-                    .await
-            }
-            (Chain::Cardano, A::Deregister) => self.cardano.build_deregister_tx(who).await,
-
-            (Chain::Sui, A::Stake) => {
-                self.sui
-                    .build_request_add_stake_tx(who, request.amount_u64()?, request.target()?)
-                    .await
-            }
-            (Chain::Sui, A::Withdraw) => {
-                self.sui
-                    .build_request_withdraw_stake_tx(who, request.target()?)
-                    .await
-            }
-
-            (Chain::Aptos, A::Stake) => {
-                self.aptos
-                    .build_add_stake_tx(who, request.target()?, request.amount_u64()?)
-                    .await
-            }
-            (Chain::Aptos, A::Unstake) => {
-                self.aptos
-                    .build_unlock_tx(who, request.target()?, request.amount_u64()?)
-                    .await
-            }
-            (Chain::Aptos, A::Withdraw) => {
-                self.aptos
-                    .build_withdraw_tx(who, request.target()?, request.amount_u64()?)
-                    .await
-            }
-
-            (Chain::Near, A::Stake) => {
-                self.near
-                    .build_deposit_and_stake_tx(who, request.target()?, &request.amount)
-                    .await
-            }
-            (Chain::Near, A::Unstake) => {
-                self.near
-                    .build_unstake_tx(who, request.target()?, &request.amount)
-                    .await
-            }
-            (Chain::Near, A::Withdraw) => {
-                self.near
-                    .build_withdraw_tx(who, request.target()?, &request.amount)
-                    .await
-            }
-
-            (Chain::Polkadot, A::Stake) => {
-                self.polkadot
-                    .build_bond_and_nominate_tx(who, request.amount_u128()?, &request.targets)
-                    .await
-            }
-            (Chain::Polkadot, A::JoinPool) => {
-                self.polkadot
-                    .build_join_pool_tx(who, request.amount_u128()?, request.target_u32()?)
-                    .await
-            }
-            (Chain::Polkadot, A::Unstake) => {
-                self.polkadot
-                    .build_unbond_tx(who, request.amount_u128()?)
-                    .await
-            }
-            (Chain::Polkadot, A::Withdraw) => self.polkadot.build_withdraw_unbonded_tx(who).await,
-
-            (Chain::Icp, A::Stake) => {
-                self.icp
-                    .build_create_neuron_tx(who, request.amount_u64()?, request.months()?)
-                    .await
-            }
-            (Chain::Icp, A::ExtendLockup) => {
-                self.icp
-                    .build_increase_dissolve_delay_tx(who, request.target_u64()?, request.months()?)
-                    .await
-            }
-            (Chain::Icp, A::Unstake) => {
-                self.icp
-                    .build_start_dissolving_tx(who, request.target_u64()?)
-                    .await
-            }
-            (Chain::Icp, A::Withdraw) => {
-                self.icp
-                    .build_disburse_tx(who, request.target_u64()?, request.amount_u64()?)
-                    .await
-            }
-            (Chain::Icp, A::ClaimRewards) => {
-                self.icp
-                    .build_claim_maturity_tx(who, request.target_u64()?)
-                    .await
-            }
-
-            _ => Err(unsupported()),
         }
     }
 }
@@ -339,144 +165,5 @@ mod tests {
                 chain.chain_display_name()
             );
         }
-    }
-}
-
-#[cfg(test)]
-mod one_entry_point {
-    use super::*;
-    use crate::registry::Chain;
-
-    fn request(chain: Chain, action: StakingAction) -> StakingActionRequest {
-        StakingActionRequest {
-            chain_id: chain.str_id().to_string(),
-            action,
-            wallet_address: "whoever".into(),
-            amount: "1".into(),
-            targets: vec!["1".into()],
-            months: Some(6),
-        }
-    }
-
-    /// Every chain the registry says can stake accepts a stake.
-    ///
-    /// Offline some build locally and some fail on the network; either way the
-    /// pair was *recognised*, which is what this asserts.
-    #[tokio::test]
-    async fn every_staking_chain_accepts_a_stake() {
-        let service = StakingService::new(Vec::new());
-        for chain in Chain::all().filter(|c| c.supports_staking()) {
-            if let Err(err) = service
-                .build_staking_tx(request(chain, StakingAction::Stake))
-                .await
-            {
-                assert!(
-                    !matches!(err, StakingError::UnsupportedAction { .. }),
-                    "{} cannot stake: {err}",
-                    chain.chain_display_name()
-                );
-            }
-        }
-    }
-
-    /// The whole matrix, stated once.
-    ///
-    /// Cardano is why this is a table rather than "every chain does every
-    /// action": its model is delegate / claim / deregister, with no separate
-    /// unstake or withdraw — deregistering is how you stop, and it reclaims the
-    /// key deposit at the same time. Twenty-three exports said this by which
-    /// names existed, which is not somewhere a reader can look.
-    #[tokio::test]
-    async fn the_supported_matrix_is_exactly_this() {
-        use StakingAction as A;
-        const MATRIX: &[(Chain, &[StakingAction])] = &[
-            (Chain::Solana, &[A::Stake, A::Unstake, A::Withdraw]),
-            (Chain::Cardano, &[A::Stake, A::ClaimRewards, A::Deregister]),
-            (Chain::Sui, &[A::Stake, A::Withdraw]),
-            (Chain::Aptos, &[A::Stake, A::Unstake, A::Withdraw]),
-            (Chain::Near, &[A::Stake, A::Unstake, A::Withdraw]),
-            (
-                Chain::Polkadot,
-                &[A::Stake, A::JoinPool, A::Unstake, A::Withdraw],
-            ),
-            (
-                Chain::Icp,
-                &[
-                    A::Stake,
-                    A::Unstake,
-                    A::Withdraw,
-                    A::ClaimRewards,
-                    A::ExtendLockup,
-                ],
-            ),
-        ];
-        const EVERY_ACTION: &[StakingAction] = &[
-            A::Stake,
-            A::JoinPool,
-            A::Unstake,
-            A::Withdraw,
-            A::ClaimRewards,
-            A::Deregister,
-            A::ExtendLockup,
-        ];
-
-        let service = StakingService::new(Vec::new());
-        for (chain, supported) in MATRIX {
-            for action in EVERY_ACTION {
-                let refused = matches!(
-                    service.build_staking_tx(request(*chain, *action)).await,
-                    Err(StakingError::UnsupportedAction { .. })
-                );
-                assert_eq!(
-                    refused,
-                    !supported.contains(action),
-                    "{} / {}: supported says {}, the dispatch says {}",
-                    chain.chain_display_name(),
-                    action.label(),
-                    supported.contains(action),
-                    !refused
-                );
-            }
-        }
-
-        // And the table covers every chain the registry says stakes.
-        let tabled: Vec<Chain> = MATRIX.iter().map(|(c, _)| *c).collect();
-        for chain in Chain::all().filter(|c| c.supports_staking() && !c.is_testnet()) {
-            assert!(
-                tabled.contains(&chain),
-                "{} stakes and is not in the matrix",
-                chain.chain_display_name()
-            );
-        }
-    }
-
-    /// A pair no chain has says so, rather than being a name that does not
-    /// exist.
-    #[tokio::test]
-    async fn an_action_a_chain_does_not_have_is_refused_by_name() {
-        let service = StakingService::new(Vec::new());
-        let err = service
-            .build_staking_tx(request(Chain::Solana, StakingAction::JoinPool))
-            .await
-            .expect_err("Solana has no nomination pools");
-        match err {
-            StakingError::UnsupportedAction { chain, action } => {
-                assert_eq!(chain, "Solana");
-                assert_eq!(action, "join pool");
-            }
-            other => panic!("expected UnsupportedAction, got {other}"),
-        }
-    }
-
-    /// A chain id nothing knows is a malformed request, not a silent no-op.
-    #[tokio::test]
-    async fn an_unknown_chain_is_a_malformed_request() {
-        let service = StakingService::new(Vec::new());
-        let mut req = request(Chain::Solana, StakingAction::Stake);
-        req.chain_id = "not-a-chain".into();
-        assert!(matches!(
-            service.build_staking_tx(req).await,
-            Err(StakingError::MalformedRequest { .. })
-        ));
     }
 }

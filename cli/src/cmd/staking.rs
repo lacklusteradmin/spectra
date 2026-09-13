@@ -3,14 +3,10 @@
 
 use clap::{Args, Subcommand};
 use colored::Colorize as _;
-use spectra_core::registry::Chain;
-use spectra_core::staking::service::StakingService;
-use spectra_core::staking::StakingError;
 
-use super::chain::{BALANCE, RPC};
 use super::resolve_chain;
-use crate::ctx::{wallet_address, Ctx};
-use crate::error::{CliError, CliResult};
+use crate::ctx::Ctx;
+use crate::error::CliResult;
 use crate::out::{self, Out};
 
 #[derive(Subcommand)]
@@ -19,6 +15,8 @@ pub enum StakingCommand {
     Validators(ValidatorsArgs),
     /// What a wallet currently has staked.
     Positions(PositionsArgs),
+    /// Effective configured endpoints, without making network requests.
+    Endpoints(ValidatorsArgs),
 }
 
 #[derive(Args)]
@@ -41,59 +39,25 @@ pub fn run(ctx: &Ctx, out: Out, command: StakingCommand) -> CliResult<()> {
     match command {
         StakingCommand::Validators(args) => validators(ctx, out, args),
         StakingCommand::Positions(args) => positions(ctx, out, args),
-    }
-}
-
-/// A staking service bound to one chain's endpoints.
-///
-/// The flag is checked before the endpoints are: a chain that does not stake
-/// should say so rather than report "no endpoints registered for Bitcoin",
-/// which is true and about the wrong thing. It is also the same flag the app's
-/// staking picker is built from, so the two refuse the same set.
-fn service_for(chain: Chain) -> CliResult<std::sync::Arc<StakingService>> {
-    if !chain.supports_staking() {
-        return Err(CliError::rejected(format!(
-            "{} does not have protocol-native staking",
-            chain.chain_display_name()
-        )));
-    }
-    let name = chain.chain_display_name().to_string();
-    let endpoints: Vec<String> =
-        spectra_core::endpoint_records_for_chain_masked(name.clone(), BALANCE | RPC, false)
-            .map_err(CliError::from)?
-            .into_iter()
-            .map(|record| record.endpoint)
-            .collect();
-    if endpoints.is_empty() {
-        return Err(CliError::failure(format!(
-            "no endpoints registered for {name}"
-        )));
-    }
-    Ok(StakingService::new(vec![
-        spectra_core::service::ChainEndpoints {
-            chain_id: chain.str_id().to_string(),
-            endpoints,
-            api_key: None,
-        },
-    ]))
-}
-
-/// "This chain does not stake" is core considering the request and saying no,
-/// which a script has to be able to tell from the network being down.
-fn staking_error(error: StakingError) -> CliError {
-    match error {
-        StakingError::NotYetImplemented => CliError::rejected(error.to_string()),
-        other => CliError::failure(other.to_string()),
+        StakingCommand::Endpoints(args) => {
+            let chain = resolve_chain(&args.chain)?;
+            let config = ctx
+                .rt
+                .block_on(ctx.service()?.staking_endpoints(chain.str_id().into()))?;
+            out.emit(
+                serde_json::json!({"ok":true,"chain":config.chain_id,"endpoints":config.endpoints}),
+            );
+            Ok(())
+        }
     }
 }
 
 fn validators(ctx: &Ctx, out: Out, args: ValidatorsArgs) -> CliResult<()> {
     let chain = resolve_chain(&args.chain)?;
-    let service = service_for(chain)?;
+    let service = ctx.service()?;
     let validators = ctx
         .rt
-        .block_on(service.fetch_validators(chain.str_id().to_string()))
-        .map_err(staking_error)?;
+        .block_on(service.fetch_staking_validators(chain.str_id().to_string()))?;
 
     out.text(|| {
         println!();
@@ -137,14 +101,10 @@ fn validators(ctx: &Ctx, out: Out, args: ValidatorsArgs) -> CliResult<()> {
 fn positions(ctx: &Ctx, out: Out, args: PositionsArgs) -> CliResult<()> {
     let wallet = ctx.find_wallet(&args.wallet)?;
     let chain = resolve_chain(&wallet.chain_name)?;
-    let service = service_for(chain)?;
+    let service = ctx.service()?;
     let positions = ctx
         .rt
-        .block_on(service.fetch_positions(
-            chain.str_id().to_string(),
-            wallet_address(&wallet).to_string(),
-        ))
-        .map_err(staking_error)?;
+        .block_on(service.fetch_staking_positions(wallet.id.clone()))?;
 
     out.text(|| {
         println!();

@@ -214,7 +214,7 @@ async fn monero_rpc_is_bound_to_the_checked_sender_and_endpoint() {
             )
             .await;
         if matches_wallet {
-            assert!(result.unwrap().contains("mock-tx"));
+            assert!(result.unwrap().transaction_hash().contains("mock-tx"));
         } else {
             assert!(result.unwrap_err().to_string().contains("does not match"));
         }

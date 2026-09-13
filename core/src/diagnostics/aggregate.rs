@@ -279,6 +279,7 @@ mod tests {
             tokens: vec![],
             native: (0..3)
                 .map(|_| EvmNativeTransferItem {
+                    status: "confirmed".into(),
                     from_address: String::new(),
                     to_address: String::new(),
                     amount_decimal: "0".into(),

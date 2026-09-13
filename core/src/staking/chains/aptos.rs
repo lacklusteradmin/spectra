@@ -1,38 +1,15 @@
-//! Aptos staking — `0x1::delegation_pool::add_stake` Move call.
-//!
-//! Wallet flow:
-//! 1. `fetch_validators` returns delegation pools (each pool is an account
-//!    address with `delegation_pool::DelegationPool` resource).
-//! 2. `build_add_stake_tx` calls `add_stake(pool_address, amount)`. Stake
-//!    becomes active at the next epoch (~2h).
-//! 3. `build_unlock_tx` calls `unlock(pool_address, amount)` — moves stake
-//!    into a pending-inactive bucket. After the lockup cycle (configurable
-//!    per pool, typically 30 days), it becomes withdrawable.
-//! 4. `build_withdraw_tx` calls `withdraw(pool_address, amount)` to pull
-//!    inactive stake back to the wallet.
-//!
-//! Native unit: octa (1 APT = 1e8 octas).
+//! Aptos staking validator and position queries.
 
 use serde_json::json;
 
 use crate::http::{with_fallback, HttpClient, RetryProfile};
-use crate::staking::{
-    StakingActionKind, StakingActionPreview, StakingError, StakingPosition, StakingValidator,
-};
+use crate::staking::{StakingError, StakingPosition, StakingValidator};
 
 pub struct AptosStakingClient {
     rest_endpoints: Vec<String>,
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
-
-fn octas_to_apt(octas: u64) -> f64 {
-    octas as f64 / 1e8
-}
-
-fn apt_display(octas: u64) -> String {
-    format!("{:.6} APT", octas_to_apt(octas))
-}
 
 fn short_id(id: &str) -> &str {
     if id.len() >= 10 {
@@ -116,77 +93,5 @@ impl AptosStakingClient {
         _wallet_address: &str,
     ) -> Result<Vec<StakingPosition>, StakingError> {
         Ok(vec![])
-    }
-
-    pub async fn build_add_stake_tx(
-        &self,
-        _wallet_address: &str,
-        pool_address: &str,
-        amount_octas: u64,
-    ) -> Result<StakingActionPreview, StakingError> {
-        Ok(StakingActionPreview {
-            kind: StakingActionKind::Stake,
-            validator_identifier: pool_address.to_string(),
-            validator_display_name: format!("Pool {}", short_id(pool_address)),
-            amount_smallest_unit: amount_octas.to_string(),
-            amount_display: apt_display(amount_octas),
-            estimated_fee_smallest_unit: "10000".to_string(), // ~0.0001 APT
-            estimated_fee_display: "~0.0001 APT".to_string(),
-            unbonding_period_seconds: 30 * 24 * 3600, // ~30-day lockup
-            notes: vec![
-                "Calls 0x1::delegation_pool::add_stake.".to_string(),
-                "Minimum: 11 APT. Stake activates next epoch (~2h).".to_string(),
-                "Unlocking moves stake to pending-inactive for ~30 days.".to_string(),
-            ],
-            post_action_balance_smallest_unit: None,
-            slashing_risk_note: None,
-            validator_min_met: Some(amount_octas >= 1_100_000_000),
-        })
-    }
-
-    pub async fn build_unlock_tx(
-        &self,
-        _wallet_address: &str,
-        pool_address: &str,
-        amount_octas: u64,
-    ) -> Result<StakingActionPreview, StakingError> {
-        Ok(StakingActionPreview {
-            kind: StakingActionKind::Unstake,
-            validator_identifier: pool_address.to_string(),
-            validator_display_name: format!("Pool {}", short_id(pool_address)),
-            amount_smallest_unit: amount_octas.to_string(),
-            amount_display: apt_display(amount_octas),
-            estimated_fee_smallest_unit: "10000".to_string(),
-            estimated_fee_display: "~0.0001 APT".to_string(),
-            unbonding_period_seconds: 30 * 24 * 3600,
-            notes: vec![
-                "Stake moves to pending-inactive. After the lockup cycle (~30 days) it is withdrawable.".to_string(),
-            ],
-            post_action_balance_smallest_unit: None,
-            slashing_risk_note: None,
-            validator_min_met: None,
-        })
-    }
-
-    pub async fn build_withdraw_tx(
-        &self,
-        _wallet_address: &str,
-        pool_address: &str,
-        amount_octas: u64,
-    ) -> Result<StakingActionPreview, StakingError> {
-        Ok(StakingActionPreview {
-            kind: StakingActionKind::Withdraw,
-            validator_identifier: pool_address.to_string(),
-            validator_display_name: format!("Pool {}", short_id(pool_address)),
-            amount_smallest_unit: amount_octas.to_string(),
-            amount_display: apt_display(amount_octas),
-            estimated_fee_smallest_unit: "10000".to_string(),
-            estimated_fee_display: "~0.0001 APT".to_string(),
-            unbonding_period_seconds: 0,
-            notes: vec!["Requires the lockup cycle to have elapsed.".to_string()],
-            post_action_balance_smallest_unit: None,
-            slashing_risk_note: None,
-            validator_min_met: None,
-        })
     }
 }

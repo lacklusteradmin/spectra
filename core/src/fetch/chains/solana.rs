@@ -674,20 +674,6 @@ impl SolanaClient {
 
         Ok(result)
     }
-
-    /// Check whether an account exists on-chain.
-    pub async fn account_exists(&self, address: &str) -> Result<bool, String> {
-        let result = self
-            .call(
-                "getAccountInfo",
-                json!([address, {"encoding": "base64", "commitment": "confirmed"}]),
-            )
-            .await?;
-        Ok(result
-            .pointer("/value")
-            .map(|v| !v.is_null())
-            .unwrap_or(false))
-    }
 }
 
 fn format_lamports(lamports: u64) -> String {

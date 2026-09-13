@@ -11,6 +11,7 @@ use serde_json::Value;
 
 #[derive(Debug, Clone, uniffi::Record)]
 pub struct NormalizedHistoryItem {
+    pub deployment_id: Option<String>,
     pub kind: String,
     pub status: String,
     pub asset_name: String,
@@ -47,6 +48,7 @@ pub struct EvmTokenTransferItem {
 
 #[derive(Debug, Clone, uniffi::Record)]
 pub struct EvmNativeTransferItem {
+    pub status: String,
     pub from_address: String,
     pub to_address: String,
     pub amount_decimal: String,
@@ -206,7 +208,13 @@ pub fn history_decode_evm_page(json: String) -> EvmHistoryPageDecoded {
             let Some(wei_str) = item.get("value_wei").and_then(Value::as_str) else {
                 continue;
             };
+            let Some(status @ ("confirmed" | "failed" | "pending")) =
+                item.get("status").and_then(Value::as_str)
+            else {
+                continue;
+            };
             native.push(EvmNativeTransferItem {
+                status: status.into(),
                 from_address: from_addr.to_string(),
                 to_address: to_addr.to_string(),
                 amount_decimal: decimal_string_from_wei(wei_str),
@@ -230,6 +238,8 @@ pub fn history_decode_evm_page(json: String) -> EvmHistoryPageDecoded {
 
 #[derive(Debug, Clone, uniffi::Record)]
 pub struct EvmPlannedTransactionRecord {
+    pub status: String,
+    pub deployment_id: Option<String>,
     pub wallet_id: String,
     pub wallet_name: String,
     pub kind: String,
@@ -291,6 +301,11 @@ pub fn plan_evm_transaction_records(
                 request.unknown_timestamp_sentinel_unix
             };
             out.push(EvmPlannedTransactionRecord {
+                status: "confirmed".into(),
+                deployment_id: crate::registry::Chain::from_display_name(&request.chain_name)
+                    .and_then(|chain| {
+                        crate::tokens::history_deployment(chain, Some(&transfer.contract_address))
+                    }),
                 wallet_id: wallet.wallet_id.clone(),
                 wallet_name: wallet.wallet_name.clone(),
                 kind: if is_outgoing { "send" } else { "receive" }.to_string(),
@@ -323,6 +338,9 @@ pub fn plan_evm_transaction_records(
                 request.unknown_timestamp_sentinel_unix
             };
             out.push(EvmPlannedTransactionRecord {
+                status: transfer.status.clone(),
+                deployment_id: crate::registry::Chain::from_display_name(&request.chain_name)
+                    .and_then(|chain| crate::tokens::history_deployment(chain, None)),
                 wallet_id: wallet.wallet_id.clone(),
                 wallet_name: wallet.wallet_name.clone(),
                 kind: if is_outgoing { "send" } else { "receive" }.to_string(),
@@ -559,7 +577,7 @@ mod tests {
           "native":[{
             "from":"0x1","to":"0x2","txid":"0xhash2",
             "block_number":456,"timestamp":1700000001.0,
-            "value_wei":"1000000000000000000"
+            "status":"confirmed","value_wei":"1000000000000000000"
           }]
         }"#;
         let d = history_decode_evm_page(json.into());
@@ -586,6 +604,7 @@ mod tests {
                 timestamp: 1700000000.0,
             }],
             native: vec![EvmNativeTransferItem {
+                status: "confirmed".into(),
                 from_address: "0xother".into(),
                 to_address: "0xself".into(),
                 amount_decimal: "0.25".into(),
@@ -696,6 +715,7 @@ mod tests {
     fn dogecoin_aggregate_nets_amounts() {
         let entry =
             |kind: &str, amount, counterparty: &str, ts: f64, status: &str| NormalizedHistoryItem {
+                deployment_id: None,
                 kind: kind.into(),
                 status: status.into(),
                 asset_name: "Dogecoin".into(),
@@ -773,6 +793,7 @@ mod aggregation_is_not_chain_specific {
     #[test]
     fn two_legs_of_one_transaction_become_one_record() {
         let leg = |addr: &str, kind: &str, amount: f64| NormalizedHistoryItem {
+            deployment_id: None,
             kind: kind.to_string(),
             status: "confirmed".to_string(),
             asset_name: "Litecoin".to_string(),

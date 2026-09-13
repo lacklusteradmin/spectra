@@ -376,51 +376,6 @@ pub struct EvmSendResultDecoded {
     pub gas_limit: i64,
 }
 
-/// Internal helper: parse the broadcast result JSON into the typed EVM record.
-/// Used by `execute_send` to populate `SendExecutionResult.evm` so Swift
-/// doesn't have to re-parse the JSON.
-pub(crate) fn decode_evm_send_result_internal(
-    json: &str,
-    fallback_nonce: i64,
-) -> EvmSendResultDecoded {
-    let v: serde_json::Value = match serde_json::from_str(json) {
-        Ok(v) => v,
-        Err(_) => {
-            return EvmSendResultDecoded {
-                nonce: fallback_nonce,
-                ..Default::default()
-            };
-        }
-    };
-    let obj = v.as_object();
-    let get_str = |k: &str| -> String {
-        obj.and_then(|o| o.get(k))
-            .and_then(|v| v.as_str())
-            .unwrap_or("")
-            .to_string()
-    };
-    let nonce = obj
-        .and_then(|o| o.get("nonce"))
-        .and_then(|v| {
-            v.as_i64()
-                .or_else(|| v.as_str().and_then(|s| s.parse::<i64>().ok()))
-        })
-        .unwrap_or(fallback_nonce);
-    let gas_limit = obj
-        .and_then(|o| o.get("gas_limit"))
-        .and_then(|v| {
-            v.as_i64()
-                .or_else(|| v.as_str().and_then(|s| s.parse::<i64>().ok()))
-        })
-        .unwrap_or(0);
-    EvmSendResultDecoded {
-        txid: get_str("txid"),
-        raw_tx_hex: get_str("raw_tx_hex"),
-        nonce,
-        gas_limit,
-    }
-}
-
 /// The assembler and `execute_send` shift the same typed decimal into the same
 /// integer. They used not to: this one took an `f64`.
 #[cfg(test)]
@@ -703,22 +658,6 @@ mod tests {
         // 21000 * 50 gwei = 0.00105 ETH
         assert!((decoded.estimated_network_fee_eth - 0.00105).abs() < 1e-9);
         assert_eq!(decoded.spendable_balance, Some(4.2));
-    }
-
-    #[test]
-    fn decode_send_result_pulls_fields() {
-        let json = r#"{"txid":"0xabc","raw_tx_hex":"0xf86...","nonce":12,"gas_limit":21000}"#;
-        let r = decode_evm_send_result_internal(json, 0);
-        assert_eq!(r.txid, "0xabc");
-        assert_eq!(r.nonce, 12);
-        assert_eq!(r.gas_limit, 21000);
-    }
-
-    #[test]
-    fn decode_send_result_uses_fallback_on_missing_nonce() {
-        let r = decode_evm_send_result_internal(r#"{"txid":"x"}"#, 7);
-        assert_eq!(r.nonce, 7);
-        assert_eq!(r.gas_limit, 0);
     }
 
     #[test]

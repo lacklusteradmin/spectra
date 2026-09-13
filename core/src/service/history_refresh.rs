@@ -52,11 +52,7 @@ struct Target {
     wallet_id: String,
     wallet_name: String,
     address: String,
-    /// The chain to fetch *from*: the network this wallet is on. What the
-    /// records are filed *under* is the family, which is what the store groups
-    /// by and what the app names the asset after — so a wallet on a testnet
-    /// reads its testnet history and it lands in the same list, rather than
-    /// reading the mainnet chain's and finding nothing.
+    /// Exact network used both for fetching and persisted transaction identity.
     network: Chain,
 }
 
@@ -111,11 +107,14 @@ fn evm_history_groups(targets: &[Target], load_more: bool) -> Vec<(Vec<String>, 
 /// the merge orders and de-duplicates by.
 fn record_for(
     target: &Target,
-    chain: Chain,
+    _chain: Chain,
     entry: crate::fetch::history_decode::NormalizedHistoryItem,
 ) -> crate::fetch::transactions::CoreTransactionRecord {
     crate::fetch::transactions::CoreTransactionRecord {
-        deployment_id: None,
+        deployment_id: entry.deployment_id.or_else(|| {
+            (entry.symbol == target.network.coin_symbol())
+                .then(|| target.network.entry().native_deployment_id.clone())
+        }),
         id: crate::store::new_transaction_id(),
         wallet_id: Some(target.wallet_id.clone()),
         kind: entry.kind,
@@ -123,9 +122,7 @@ fn record_for(
         wallet_name: target.wallet_name.clone(),
         asset_name: entry.asset_name,
         symbol: entry.symbol,
-        // The family's name, not the network's: the store groups by it and a
-        // testnet record has to land in the same list as the wallet's others.
-        chain_name: chain.chain_display_name().to_string(),
+        chain_name: target.network.chain_display_name().to_string(),
         amount: entry.amount,
         address: entry.counterparty,
         transaction_hash: Some(entry.tx_hash).filter(|hash| !hash.is_empty()),
@@ -220,16 +217,7 @@ impl WalletService {
             }
         }
 
-        let change = self
-            .apply_transaction_command(crate::service::types::TransactionCommand::Merge {
-                incoming,
-                chain_name: chain.chain_display_name().to_string(),
-                // Records the app created for a send it just broadcast carry a
-                // sentinel time until the chain confirms them; the merge keeps
-                // that rather than moving them to the provider's timestamp.
-                preserve_created_at_sentinel_unix: Some(SENTINEL_CREATED_AT_UNIX),
-            })
-            .await?;
+        let change = self.merge_fetched_history(incoming).await?;
 
         for id in completed_wallets {
             self.set_history_page(chain_id.clone(), id, 1, true);
@@ -387,8 +375,6 @@ impl WalletService {
                 .max(1);
             let page = if load_more { current + 1 } else { current };
 
-            // Fetched from the network this group's wallets are on; the
-            // records below are filed under the family.
             let network = networks.get(&first).copied().unwrap_or(chain);
             let fetched = self
                 .fetch_evm_history_page(
@@ -438,7 +424,7 @@ impl WalletService {
                 crate::fetch::history_decode::EvmTransactionRecordRequest {
                     decoded_page: decoded,
                     normalized_address: normalized_address.clone(),
-                    chain_name: chain.chain_display_name().to_string(),
+                    chain_name: network.chain_display_name().to_string(),
                     token_source_used: Some("rust/etherscan".to_string()),
                     native_asset_name: native.asset_name.clone(),
                     native_asset_symbol: native.symbol.clone(),
@@ -460,13 +446,7 @@ impl WalletService {
             incoming.extend(planned.into_iter().map(evm_record));
         }
 
-        let change = self
-            .apply_transaction_command(crate::service::types::TransactionCommand::Merge {
-                incoming,
-                chain_name: chain.chain_display_name().to_string(),
-                preserve_created_at_sentinel_unix: Some(SENTINEL_CREATED_AT_UNIX),
-            })
-            .await?;
+        let change = self.merge_fetched_history(incoming).await?;
 
         for (id, page, exhausted) in cursor_updates {
             self.set_history_page(chain_id.clone(), id, page, exhausted);
@@ -488,11 +468,11 @@ fn evm_record(
     planned: crate::fetch::history_decode::EvmPlannedTransactionRecord,
 ) -> crate::fetch::transactions::CoreTransactionRecord {
     crate::fetch::transactions::CoreTransactionRecord {
-        deployment_id: None,
+        deployment_id: planned.deployment_id,
         id: crate::store::new_transaction_id(),
         wallet_id: Some(planned.wallet_id),
         kind: planned.kind,
-        status: "confirmed".to_string(),
+        status: planned.status,
         wallet_name: planned.wallet_name,
         asset_name: planned.asset_name,
         symbol: planned.symbol,
@@ -622,7 +602,13 @@ impl WalletService {
                 },
             );
             incoming.extend(aggregated.into_iter().map(|aggregate| {
-                aggregated_record(&wallet_id, &wallet_name, chain, &chain_id, aggregate)
+                aggregated_record(
+                    &wallet_id,
+                    &wallet_name,
+                    network,
+                    network.str_id(),
+                    aggregate,
+                )
             }));
         }
 
@@ -630,13 +616,7 @@ impl WalletService {
             return Ok(HistoryRefreshOutcome::nothing());
         }
 
-        let change = self
-            .apply_transaction_command(crate::service::types::TransactionCommand::Merge {
-                incoming,
-                chain_name: chain.chain_display_name().to_string(),
-                preserve_created_at_sentinel_unix: Some(SENTINEL_CREATED_AT_UNIX),
-            })
-            .await?;
+        let change = self.merge_fetched_history(incoming).await?;
 
         for id in completed_wallets {
             self.set_history_page(chain_id.clone(), id, 1, true);
@@ -663,7 +643,7 @@ fn aggregated_record(
     aggregate: crate::fetch::history_decode::AggregatedTransaction,
 ) -> crate::fetch::transactions::CoreTransactionRecord {
     crate::fetch::transactions::CoreTransactionRecord {
-        deployment_id: None,
+        deployment_id: crate::tokens::history_deployment(chain, None),
         id: crate::store::new_transaction_id(),
         wallet_id: Some(wallet_id.to_string()),
         kind: aggregate.kind,

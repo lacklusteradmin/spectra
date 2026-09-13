@@ -208,7 +208,8 @@ async fn created_at_is_converted_to_unix_time_for_the_index() {
         .await
         .expect("upsert");
 
-    let rows = crate::wallet_db::history_fetch_all(&db).expect("rows");
+    let rows = crate::wallet_db::history_fetch_all(&crate::wallet_db::WalletDatabase::open(&db))
+        .expect("rows");
     // createdAt 0.0 in Swift reference time is 2001-01-01 UTC.
     assert_eq!(rows[0].created_at, 978_307_200.0);
     // The record itself keeps the reference-time value it was given.

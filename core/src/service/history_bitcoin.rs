@@ -106,7 +106,7 @@ impl WalletService {
                         error: None,
                     });
                     incoming.extend(page.snapshots.into_iter().map(|snapshot| {
-                        bitcoin_record(&wallet, chain, &page.source_used, snapshot)
+                        bitcoin_record(&wallet, network, &page.source_used, snapshot)
                     }));
                 }
                 Err(error) => {
@@ -133,13 +133,7 @@ impl WalletService {
         if wallets_refreshed == 0 && wallets_failed == 0 {
             return Ok(HistoryRefreshOutcome::nothing());
         }
-        let change = self
-            .apply_transaction_command(crate::service::types::TransactionCommand::Merge {
-                incoming,
-                chain_name: chain.chain_display_name().to_string(),
-                preserve_created_at_sentinel_unix: Some(SENTINEL_CREATED_AT_UNIX),
-            })
-            .await?;
+        let change = self.merge_fetched_history(incoming).await?;
 
         // A failed database write must not consume fetched history.
         for (wallet_id, next) in cursor_updates {
@@ -310,7 +304,7 @@ fn bitcoin_record(
     snapshot: crate::history::CoreBitcoinHistorySnapshot,
 ) -> crate::fetch::transactions::CoreTransactionRecord {
     crate::fetch::transactions::CoreTransactionRecord {
-        deployment_id: None,
+        deployment_id: crate::tokens::history_deployment(chain, None),
         id: crate::store::new_transaction_id(),
         wallet_id: Some(wallet.id.clone()),
         kind: snapshot.kind,

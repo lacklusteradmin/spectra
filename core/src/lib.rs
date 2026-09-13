@@ -90,7 +90,6 @@ pub mod derivation;
 pub mod diagnostics;
 pub mod fetch;
 pub mod formatting;
-pub mod receive;
 pub mod registry;
 pub mod send;
 pub mod service;

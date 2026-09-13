@@ -7,7 +7,7 @@ use super::*;
 /// same nanosecond and read each other's rows — which is exactly how
 /// `app_state_round_trips` failed in a full run and passed on its own.
 /// Process, thread and a counter cannot collide.
-fn tmp_db() -> String {
+fn tmp_db() -> std::sync::Arc<WalletDatabase> {
     static NEXT: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
     let path = std::env::temp_dir().join(format!(
         "wallet_db_test_{}_{:?}_{}.sqlite",
@@ -16,7 +16,7 @@ fn tmp_db() -> String {
         NEXT.fetch_add(1, std::sync::atomic::Ordering::Relaxed)
     ));
     let _ = std::fs::remove_file(&path);
-    path.to_string_lossy().into_owned()
+    WalletDatabase::open(path.to_str().unwrap())
 }
 
 #[test]
@@ -417,6 +417,7 @@ fn app_state_load_on_empty_db_is_default() {
 fn app_state_round_trips() {
     let db = tmp_db();
     let state = CoreAppState {
+        movement_baseline: None,
         diagnostics: Default::default(),
         quotes: Default::default(),
         schema_version: 2,
@@ -455,6 +456,7 @@ fn app_state_save_preserves_wallet_order() {
         wallet("mm", "Sui"),
     ];
     let state = CoreAppState {
+        movement_baseline: None,
         diagnostics: Default::default(),
         quotes: Default::default(),
         wallets: ordered.clone(),
@@ -641,15 +643,15 @@ fn history_id_lookup_uses_the_primary_key_and_normalizes_duplicates() {
         "history-ids-{}.sqlite",
         crate::store::new_event_id()
     ));
-    let db = db.to_str().unwrap();
+    let db = WalletDatabase::open(db.to_str().unwrap());
     let rows: Vec<_> = (0..1100)
         .map(|i| history_record(&format!("tx{i}"), "w"))
         .collect();
-    history_upsert_batch(db, &rows).unwrap();
+    history_upsert_batch(&db, &rows).unwrap();
     let mut ids: Vec<_> = (0..1100).map(|i| format!("TX{i}")).collect();
     ids.extend(["tx0".into(), "absent".into()]);
-    assert_eq!(history_existing_ids(db, &ids).unwrap().len(), 1100);
-    with_conn(db, |conn| {
+    assert_eq!(history_existing_ids(&db, &ids).unwrap().len(), 1100);
+    with_conn(&db, |conn| {
         let plan: String = conn
             .query_row(
                 "EXPLAIN QUERY PLAN SELECT id FROM history_records WHERE id = ?1",
@@ -661,6 +663,6 @@ fn history_id_lookup_uses_the_primary_key_and_normalizes_duplicates() {
         Ok(())
     })
     .unwrap();
-    history_delete_for_wallet(db, "W").unwrap();
-    assert!(history_fetch_all(db).unwrap().is_empty());
+    history_delete_for_wallet(&db, "W").unwrap();
+    assert!(history_fetch_all(&db).unwrap().is_empty());
 }

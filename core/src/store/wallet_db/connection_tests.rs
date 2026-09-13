@@ -14,8 +14,8 @@ fn path() -> String {
 
 #[test]
 fn one_blocked_database_does_not_block_another_database() {
-    let a = WalletDatabase::acquire(&path());
-    let b = WalletDatabase::acquire(&path());
+    let a = WalletDatabase::open(&path());
+    let b = WalletDatabase::open(&path());
     let (started_tx, started_rx) = mpsc::channel();
     let (release_tx, release_rx) = mpsc::channel();
     let worker = std::thread::spawn(move || {
@@ -42,10 +42,10 @@ fn one_blocked_database_does_not_block_another_database() {
 }
 
 #[test]
-fn same_database_shares_a_handle_and_last_owner_releases_connection() {
+fn cloned_handle_keeps_connection_until_last_owner_releases_it() {
     let path = path();
-    let first = WalletDatabase::acquire(&path);
-    let second = WalletDatabase::acquire(&path);
+    let first = WalletDatabase::open(&path);
+    let second = first.clone();
     assert!(Arc::ptr_eq(&first, &second));
     first
         .with_connection(|conn| {
@@ -58,7 +58,7 @@ fn same_database_shares_a_handle_and_last_owner_releases_connection() {
     assert!(weak.upgrade().is_some());
     drop(second);
     assert!(weak.upgrade().is_none());
-    let reopened = WalletDatabase::acquire(&path);
+    let reopened = WalletDatabase::open(&path);
     reopened
         .with_connection(|conn| {
             let count: i32 = conn
@@ -79,7 +79,7 @@ async fn service_holds_connection_until_rebind_or_drop() {
     let service = crate::service::WalletService::new_typed(vec![]).unwrap();
     let first_path = path();
     service.open_state(first_path.clone()).await.unwrap();
-    let weak = Arc::downgrade(&WalletDatabase::acquire(&first_path));
+    let weak = Arc::downgrade(&service.state_binding.connection().await.unwrap());
     assert!(weak.upgrade().is_some());
     service.open_state(path()).await.unwrap();
     assert!(weak.upgrade().is_none());
