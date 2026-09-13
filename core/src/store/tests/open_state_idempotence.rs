@@ -16,7 +16,7 @@ fn tmp_db() -> String {
 /// The app calls it from a launch reload that races user actions.
 #[tokio::test]
 async fn reopening_does_not_revert_newer_writes() {
-    let service = WalletService::new_typed(Vec::new()).expect("service");
+    let service = WalletService::new(Vec::new()).expect("service");
     let db = tmp_db();
     service.open_state(db.clone()).await.expect("open");
 
@@ -35,7 +35,7 @@ async fn reopening_does_not_revert_newer_writes() {
 /// A different database is a genuine open, and does replace the state.
 #[tokio::test]
 async fn opening_a_different_database_replaces_the_state() {
-    let service = WalletService::new_typed(Vec::new()).expect("service");
+    let service = WalletService::new(Vec::new()).expect("service");
     let first = tmp_db();
     service.open_state(first.clone()).await.expect("open");
     service

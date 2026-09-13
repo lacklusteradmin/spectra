@@ -52,15 +52,32 @@ impl WalletService {
     ) -> Result<crate::send::SendExecutionResult, SpectraBridgeError> {
         let service = self.clone();
         // The submission and its record finish even if the UI task is cancelled.
-        tokio::spawn(async move { service.execute_send_owned(request).await })
+        tokio::spawn(async move { service.execute_send_owned(request, None).await })
             .await
             .map_err(|e| SpectraBridgeError::from(e.to_string()))?
     }
 }
 impl WalletService {
+    pub(super) async fn execute_confirmed_send(
+        &self,
+        request: crate::send::SendExecutionRequest,
+        sender: String,
+        automatic_nonce: bool,
+    ) -> Result<crate::send::SendExecutionResult, SpectraBridgeError> {
+        let service = self.clone();
+        tokio::spawn(async move {
+            service
+                .execute_send_owned(request, Some((sender, automatic_nonce)))
+                .await
+        })
+        .await
+        .map_err(|e| SpectraBridgeError::from(e.to_string()))?
+    }
+
     async fn execute_send_owned(
         &self,
         mut request: crate::send::SendExecutionRequest,
+        confirmation: Option<(String, bool)>,
     ) -> Result<crate::send::SendExecutionResult, SpectraBridgeError> {
         let password = request.password.take().map(Zeroizing::new);
         let result: Result<crate::send::SendExecutionResult, SpectraBridgeError> = async {
@@ -101,18 +118,28 @@ impl WalletService {
                     password.as_ref().map(|p| p.as_str()),
                 )
                 .await?;
+            if confirmation.as_ref().is_some_and(|(sender, _)| crate::send::flow::normalize_address(chain.chain_display_name(), sender) != signer.from_address) {
+                return Err("Sending identity changed; review again".into());
+            }
             // Serialize nonce selection through durable submission for this sender.
             let _sender_guard = if wants_sign_only {
                 None
             } else {
                 Some(self.lock_sender(chain, &signer.from_address).await?)
             };
+            let reviewed_automatic_nonce = confirmation.as_ref().is_some_and(|(_, automatic)| *automatic);
+            if chain.is_evm() && reviewed_automatic_nonce {
+                let next = self.next_send_nonce(chain, &signer.from_address).await?;
+                if request.evm_overrides.as_ref().and_then(|o| o.nonce).and_then(|n| u64::try_from(n).ok()) != Some(next) {
+                    return Err("Send nonce changed; review again".into());
+                }
+            }
             let reserve_nonce = chain.is_evm()
-                && request
+                && (reviewed_automatic_nonce || request
                     .evm_overrides
                     .as_ref()
                     .and_then(|o| o.nonce)
-                    .is_none();
+                    .is_none());
             if chain.is_evm() && !wants_sign_only {
                 let overrides = request.evm_overrides.get_or_insert_with(Default::default);
                 if overrides.nonce.is_none() {
@@ -133,7 +160,7 @@ impl WalletService {
                 .await?;
             let saved = Arc::new(std::sync::Mutex::new(None));
             let protocol_result = if wants_sign_only {
-                self.sign_and_broadcast_send(chain, params).await?
+                self.execute_protocol_send(chain, params).await?
             } else {
                 let draft = self
                     .begin_send_record(chain, &request, &signer.from_address)
@@ -166,7 +193,7 @@ impl WalletService {
                         })
                     });
                 crate::send::payload::SUBMISSION_JOURNAL
-                    .scope(journal, self.sign_and_broadcast_send(chain, params))
+                    .scope(journal, self.execute_protocol_send(chain, params))
                     .await?
             };
 
@@ -197,7 +224,7 @@ impl WalletService {
                 self.save_send_record(record).await?;
             }
             Ok(crate::send::SendExecutionResult {
-                rebroadcast_payload: result_json,
+                protocol_result_json: result_json,
                 transaction_hash: transaction_hash,
                 payload_format: crate::send::payload::format_key_for(chain.send_chain()).into(),
                 evm,

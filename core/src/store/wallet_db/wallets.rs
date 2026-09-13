@@ -5,7 +5,7 @@ use super::*;
 ///
 /// Use this for a single-wallet edit. To write a whole state snapshot use
 /// [`app_state_save`], which also prunes wallets that are no longer present.
-pub fn wallet_upsert(database: &WalletDatabase, wallet: &WalletSummary) -> Result<(), String> {
+pub fn wallet_upsert(database: &WalletDatabase, wallet: &WalletState) -> Result<(), String> {
     let payload =
         serde_json::to_string(wallet).map_err(|e| format!("wallet_upsert encode: {e}"))?;
     with_conn(database, |conn| {
@@ -47,7 +47,7 @@ pub fn wallet_upsert(database: &WalletDatabase, wallet: &WalletSummary) -> Resul
 pub fn wallet_load(
     database: &WalletDatabase,
     wallet_id: &str,
-) -> Result<Option<WalletSummary>, String> {
+) -> Result<Option<WalletState>, String> {
     with_conn(database, |conn| {
         let result = conn.query_row(
             "SELECT payload FROM wallets WHERE id = ?1",
@@ -65,7 +65,7 @@ pub fn wallet_load(
 }
 
 /// Load every wallet, in the stored display order.
-pub fn wallet_load_all(database: &WalletDatabase) -> Result<Vec<WalletSummary>, String> {
+pub fn wallet_load_all(database: &WalletDatabase) -> Result<Vec<WalletState>, String> {
     with_conn(database, |conn| {
         let mut stmt = conn
             .prepare("SELECT id, payload FROM wallets ORDER BY sort_index ASC")

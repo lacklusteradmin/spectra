@@ -70,18 +70,18 @@ impl WalletService {
     ///
     /// An untouched database yields `CoreAppState::default()`. Call once at
     /// startup; the returned state is the caller's initial snapshot.
-    pub async fn open_state(&self, db_path: String) -> Result<CoreAppState, SpectraBridgeError> {
+    pub async fn open_state(&self, database_path: String) -> Result<CoreAppState, SpectraBridgeError> {
         self.write_persisted(move |service| async move {
             // Opening is idempotent. A second call with the same database returns
             // what is already held rather than re-reading — a late `open_state`
             // (the app's launch reload racing a user action) would otherwise
             // replace the in-memory state with a snapshot taken before the newer
             // command, silently reverting it.
-            if service.state_binding.is_bound_to(&db_path).await {
+            if service.state_binding.is_bound_to(&database_path).await {
                 return Ok(service.wallet_state.read().await.clone());
             }
 
-            let database = crate::wallet_db::WalletDatabase::open(&db_path);
+            let database = crate::wallet_db::WalletDatabase::new(&database_path);
             let source = database.clone();
             let (loaded, keypool, owned) = tokio::task::spawn_blocking(move || {
                 Ok::<_, String>((
@@ -140,7 +140,7 @@ impl WalletService {
         mut command: StateCommand,
     ) -> Result<StateTransition, SpectraBridgeError> {
         let validate =
-            |wallet: &mut crate::store::state::WalletSummary| -> Result<(), SpectraBridgeError> {
+            |wallet: &mut crate::store::state::WalletState| -> Result<(), SpectraBridgeError> {
                 let network = crate::registry::Chain::from_str_id(&wallet.network_id)
                     .ok_or("unknown wallet network")?;
                 let family = crate::registry::Chain::from_display_name(&wallet.chain_name)
@@ -219,7 +219,7 @@ impl WalletService {
                     } else {
                         coin.network().unwrap().chain_display_name().to_string()
                     },
-                    artwork_name: Some(crate::store::core_holding_icon_asset_name(coin.clone())),
+                    artwork_name: Some(crate::store::core_holding_artwork_name(coin.clone())),
                 });
         }
         let mut options: Vec<_> = options.into_values().collect();
@@ -523,12 +523,12 @@ impl WalletService {
 
     /// The wallets core holds, as the shape the iOS app renders.
     ///
-    /// A view model built from the authoritative `WalletSummary` list, with the
+    /// A view model built from the authoritative `WalletState` list, with the
     /// derivation-path table filled from the catalog defaults for the wallet's
     /// preset.
     pub async fn wallets_for_display(
         &self,
-    ) -> Result<Vec<crate::store::wallet_domain::CoreImportedWallet>, SpectraBridgeError> {
+    ) -> Result<Vec<crate::store::wallet_domain::WalletView>, SpectraBridgeError> {
         wallets_for_display(&*self.wallet_state.read().await)
     }
 
@@ -781,7 +781,7 @@ mod pruning_reads_cores_own_tables {
     /// Pruning takes the stricter side when it cannot see the transactions.
     #[tokio::test]
     async fn pruning_refuses_rather_than_guessing() {
-        let service = crate::service::WalletService::new_typed(Vec::new()).expect("service");
+        let service = crate::service::WalletService::new(Vec::new()).expect("service");
         assert!(service.prune_status_trackers().await.is_err());
     }
 }
@@ -822,7 +822,7 @@ mod utxo_discovery_is_the_registrys_chain_set {
     /// than failing: the refresh loop asks for every chain a wallet is on.
     #[tokio::test]
     async fn a_chain_without_the_walk_does_nothing() {
-        let service = crate::service::WalletService::new_typed(Vec::new()).expect("service");
+        let service = crate::service::WalletService::new(Vec::new()).expect("service");
         let evm = Chain::Ethereum.str_id().to_string();
         assert!(service
             .discover_utxo_addresses("w".into(), evm.clone())
@@ -854,7 +854,7 @@ mod performance_tests;
 
 fn wallets_for_display(
     state: &CoreAppState,
-) -> Result<Vec<crate::store::wallet_domain::CoreImportedWallet>, SpectraBridgeError> {
+) -> Result<Vec<crate::store::wallet_domain::WalletView>, SpectraBridgeError> {
     let wallets = &state.wallets;
     let mut rendered = Vec::with_capacity(wallets.len());
     for wallet in wallets {
@@ -864,7 +864,7 @@ fn wallets_for_display(
             _ => 0,
         };
         let defaults = crate::app_core_derivation_paths_for_preset(account)?;
-        rendered.push(wallet.to_imported_wallet(&defaults));
+        rendered.push(wallet.to_wallet_view(&defaults));
     }
     Ok(rendered)
 }

@@ -1,5 +1,5 @@
 //! Wallets enter through `WalletService::import_wallets` and change through
-//! `StateCommand` — never by assembling a `WalletSummary` here. The previous
+//! `StateCommand` — never by assembling a `WalletState` here. The previous
 //! CLI did assemble them, and so skipped every rule core applies on the way
 //! in, including address validation.
 
@@ -10,7 +10,7 @@ use spectra_core::derivation::import::{
     WalletImportWatchOnlyEntries,
 };
 use spectra_core::registry::Chain;
-use spectra_core::store::state::{StateCommand, WalletSummary};
+use spectra_core::store::state::{StateCommand, WalletState};
 use spectra_core::store::wallet_domain::{
     CoreSeedDerivationPaths, CoreSeedDerivationPreset, CoreWalletDerivationOverrides,
 };
@@ -63,6 +63,9 @@ pub struct CreationArgs {
     /// Derivation path (default: the chain's catalog default).
     #[arg(long)]
     path: Option<String>,
+    /// JSON file containing raw derivation fields (including exact passphrase text).
+    #[arg(long)]
+    derivation_input_file: Option<String>,
     /// Read the wallet password from this file; `-` means stdin.
     #[arg(long, value_name = "PATH")]
     password_file: Option<String>,
@@ -286,6 +289,9 @@ fn import(ctx: &Ctx, out: Out, args: ImportArgs) -> CliResult<()> {
 /// private-key derivation by chain since `core_derive_from_private_key`, so
 /// what was missing was this command, not the derivation.
 fn import_private_key(ctx: &Ctx, out: Out, args: ImportArgs, chain: Chain) -> CliResult<()> {
+    if args.creation.derivation_input_file.is_some() {
+        return Err(CliError::rejected("Derivation overrides require a mnemonic wallet"));
+    }
     let env = args
         .private_key_env
         .clone()
@@ -373,6 +379,10 @@ fn seal_and_import(
     }
     let mut commit = seed_commit(chains, &wallet_ids, &name, paths, seed_phrase);
     commit.password = password;
+    if let Some(path) = &args.derivation_input_file {
+        let input = serde_json::from_str(&std::fs::read_to_string(path).map_err(|e| CliError::usage(e.to_string()))?).map_err(|e| CliError::usage(format!("invalid derivation input: {e}")))?;
+        commit.derivation_overrides = spectra_core::derivation::input::core_parse_wallet_derivation_input(input);
+    }
 
     let service = ctx.service()?;
     ctx.rt
@@ -421,10 +431,10 @@ fn watch(ctx: &Ctx, out: Out, args: WatchArgs) -> CliResult<()> {
 
     // One wallet per address entry, which is what the planner expanded them
     // into — printing only the first hid the rest.
-    let created: Vec<WalletSummary> = outcome
+    let created: Vec<WalletState> = outcome
         .wallets
         .iter()
-        .map(|wallet| wallet.to_summary(true))
+        .map(|wallet| wallet.to_wallet_state(true))
         .collect();
     let first = first_wallet(&outcome)?;
     out.text(|| {
@@ -722,7 +732,7 @@ fn signing_commit(
     address: &str,
 ) -> WalletImportCommit {
     // The path is carried in the derivation-path table rather than beside the
-    // address: `to_summary` reads it from there, keyed by the chain's mainnet
+    // address: `to_wallet_state` reads it from there, keyed by the chain's mainnet
     // counterpart, so a testnet wallet keeps its mainnet's path.
     let mut paths = CoreSeedDerivationPaths::default();
     paths.by_chain.insert(
@@ -767,23 +777,23 @@ fn commit_for(
     }
 }
 
-fn first_wallet(outcome: &WalletImportOutcome) -> CliResult<WalletSummary> {
+fn first_wallet(outcome: &WalletImportOutcome) -> CliResult<WalletState> {
     let is_watch_only = outcome.secret_kind == "watchOnly";
     outcome
         .wallets
         .first()
-        .map(|wallet| wallet.to_summary(is_watch_only))
+        .map(|wallet| wallet.to_wallet_state(is_watch_only))
         .ok_or_else(|| CliError::failure("core planned the import but created no wallet"))
 }
 
 // ─── Rendering ──────────────────────────────────────────────────────────────
 
-fn print_wallet(wallet: &WalletSummary) {
+fn print_wallet(wallet: &WalletState) {
     print_wallet_of_kind(wallet, None)
 }
 
 /// `signing` overrides the "type" line for a wallet whose key is not a phrase.
-fn print_wallet_of_kind(wallet: &WalletSummary, signing: Option<&str>) {
+fn print_wallet_of_kind(wallet: &WalletState, signing: Option<&str>) {
     out::field("name", &wallet.name.bold().to_string());
     out::field(
         "chain",
@@ -817,7 +827,7 @@ fn print_words(seed_phrase: &str) {
     }
 }
 
-fn wallet_json(wallet: &WalletSummary) -> serde_json::Value {
+fn wallet_json(wallet: &WalletState) -> serde_json::Value {
     serde_json::json!({
         "id": wallet.id,
         "name": wallet.name,

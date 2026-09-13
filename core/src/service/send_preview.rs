@@ -238,7 +238,7 @@ impl WalletService {
         value_wei: String,
         data_hex: String,
     ) -> Result<String, SpectraBridgeError> {
-        let chain = chain_for_evm_id(chain_id)?;
+        let chain = evm_network_for_id(chain_id)?;
         let eps = self.endpoints_for(chain.str_id()).await;
         let client = EvmClient::new(eps, chain.evm_chain_id());
 

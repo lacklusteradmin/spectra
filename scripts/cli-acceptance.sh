@@ -10,9 +10,8 @@
 # from this script.
 #
 # No external network. State, crypto and validation run offline; the Bitcoin
-# pagination check uses an isolated loopback fixture. This runs in CI
-# and in an offline checkout. Balance, history, price and send are deliberately
-# absent: they need a live chain and would make this flaky.
+# pagination and service checks use isolated loopback fixtures. Balance,
+# history and send workflows use these local providers; no live chain is needed.
 #
 # Usage:  scripts/cli-acceptance.sh [path/to/spectra]
 
@@ -40,60 +39,13 @@ spectra() { "$BIN" --data-dir "$DATA_DIR" "$@"; }
 with_seed() { local seed="$1"; shift; SPECTRA_SEED="$seed" "$@"; }
 with_password() { local password="$1"; shift; SPECTRA_PASSWORD="$password" "$@"; }
 
-# check <description> <expected-exit> <command...>
-check() {
-    local description="$1" expected="$2"
-    shift 2
-    local output status
-    output="$("$@" 2>&1)"
-    status=$?
-    if [[ "$status" == "$expected" ]]; then
-        PASSED=$((PASSED + 1))
-        printf '  \033[32m✓\033[0m %s\n' "$description"
-    else
-        FAILED=$((FAILED + 1))
-        printf '  \033[31m✗\033[0m %s \033[2m(exit %s, wanted %s)\033[0m\n' \
-            "$description" "$status" "$expected"
-        printf '    %s\n' "$output"
-    fi
-}
-
-# contains <description> <needle> <command...>
-contains() {
-    local description="$1" needle="$2"
-    shift 2
-    local output
-    output="$("$@" 2>&1)"
-    if [[ "$output" == *"$needle"* ]]; then
-        PASSED=$((PASSED + 1))
-        printf '  \033[32m✓\033[0m %s\n' "$description"
-    else
-        FAILED=$((FAILED + 1))
-        printf '  \033[31m✗\033[0m %s \033[2m(no %s)\033[0m\n' "$description" "$needle"
-        printf '    %s\n' "$output"
-    fi
-}
+# Shared assertions check both the command's exit status and its output.
+source "$(dirname "$0")/cli-assertions.sh"
 
 # Fee-adjusted shortcuts are floored in core, not multiplied as Swift Doubles.
 contains "MAX stays below its quoted budget" '0.99998999' spectra send shortcut --maximum 0.99999 --decimals 8
 contains "half is a plain decimal within precision" '0.49999999' spectra send shortcut --maximum 1 --decimals 8 --percentage 50
 check "shortcut refuses percentages over 100" 1 spectra send shortcut --maximum 1 --decimals 8 --percentage 101
-
-# lacks <description> <needle> <command...>
-lacks() {
-    local description="$1" needle="$2"
-    shift 2
-    local output
-    output="$("$@" 2>&1)"
-    if [[ "$output" != *"$needle"* ]]; then
-        PASSED=$((PASSED + 1))
-        printf '  \033[32m✓\033[0m %s\n' "$description"
-    else
-        FAILED=$((FAILED + 1))
-        printf '  \033[31m✗\033[0m %s \033[2m(found %s)\033[0m\n' "$description" "$needle"
-        printf '    %s\n' "$output"
-    fi
-}
 
 section() { printf '\n\033[1m%s\033[0m\n' "$1"; }
 
@@ -105,6 +57,8 @@ readonly OK=0 USAGE=2 REJECTED=3
 readonly EVM_ADDR=0x742d35Cc6634C0532925a3b844Bc454e4438f44e
 
 # ── Registry ────────────────────────────────────────────────────────────────
+
+check "assertions reject failed commands and wrong output" $OK bash "$(dirname "$0")/test-cli-assertions.sh"
 
 section "history read failures"
 check "corrupt history is refused without deleting records" $OK \
@@ -200,16 +154,13 @@ contains "the Bitcoin one too"                "bc1qgkju4yvvtuz0s8vqn837q396jezu2
     spectra --json wallet show "Multi 1"
 check 'but wallet new still takes exactly one' $USAGE \
     spectra wallet new --chain Bitcoin --chain Ethereum --name Two
-check "refuses a mnemonic that fails its checksum" $REJECTED \
-    with_seed "not a real seed phrase at all here" \
-    spectra wallet import --chain Solana --name Bad
 # One verdict decides a seed phrase, and it says which of the two things is
 # wrong: words that are in no wordlist are named, and only a phrase built
 # entirely of real words is worth checksumming.
-contains "names the words that are in no wordlist" "not in any BIP-39 word list" \
+contains_exit 3 "names the words that are in no wordlist" "not in any BIP-39 word list" \
     with_seed "not a real seed phrase at all here" \
     spectra wallet import --chain Solana --name Bad
-contains "and blames the checksum when the words are real" "checksum" \
+contains_exit 3 "and blames the checksum when the words are real" "checksum" \
     with_seed "legal winner thank year wave sausage worth useful legal winner thank legal" \
     spectra wallet import --chain Solana --name Bad
 # Simplified and Traditional Chinese share most of their word list, so a
@@ -253,9 +204,7 @@ section "watch-only import"
 check "accepts a valid watch address"       $OK \
     spectra wallet watch --chain Ethereum --name "Acceptance Watch" \
         --address 0x742d35Cc6634C0532925a3b844Bc454e4438f44e
-check "refuses a malformed watch address"   $REJECTED \
-    spectra wallet watch --chain Solana --address definitely-not-an-address
-contains "names the address it refused" "definitely-not-an-address" \
+contains_exit 3 "names the address it refused" "definitely-not-an-address" \
     spectra wallet watch --chain Solana --address definitely-not-an-address
 check "watch-only sender cannot resolve signing identity" $REJECTED \
     spectra send identity --from "Acceptance Watch"
@@ -649,10 +598,7 @@ check "refuses a token the chain does not have"    $REJECTED \
 # rather than broadcast a caller's dry run.
 
 section "sign without broadcasting"
-check "refuses sign-only where the builder cannot stop" $REJECTED \
-    spectra send broadcast --from "Multi 3" --to "BLeUXTx9thHGT7VJUtF9vHEmfMDgW1nnKZ9UVer2CoLX" \
-    --amount 0.001 --sign-only
-contains "and says which chain" "Solana" \
+contains_exit 3 "and says which chain" "Solana" \
     spectra send broadcast --from "Multi 3" --to "BLeUXTx9thHGT7VJUtF9vHEmfMDgW1nnKZ9UVer2CoLX" \
     --amount 0.001 --sign-only
 # A broadcast still takes --yes; signing does not, because it moves nothing.
@@ -875,9 +821,7 @@ section "token discovery"
 # Bitcoin and Ethereum refuse from the registry flag alone, so these assert
 # without touching a network. The enumerable chains' paths are real RPC calls
 # and cannot be asserted here.
-check "refuses a chain with no token program" 1 \
-    spectra token discover --wallet "Renamed BTC"
-contains "and says so rather than reporting an empty wallet" "cannot enumerate holdings" \
+contains_exit 1 "and says so rather than reporting an empty wallet" "cannot enumerate holdings" \
     spectra token discover --wallet "Renamed BTC"
 
 # ── FFI surface ─────────────────────────────────────────────────────────────
@@ -1047,9 +991,7 @@ contains "with no failures"                '"failed":0' \
     spectra --json diagnostics self-test --chain "XRP Ledger"
 
 section "staking"
-check "refuses staking on a chain that does not stake" $REJECTED \
-    spectra staking validators --chain Bitcoin
-contains "and says which chain, not which endpoint" "Bitcoin does not have protocol-native staking" \
+contains_exit 3 "and says which chain, not which endpoint" "Bitcoin does not have protocol-native staking" \
     spectra staking validators --chain Bitcoin
 check "refuses staking on an unknown chain"            $USAGE \
     spectra staking validators --chain Nope
@@ -1119,22 +1061,26 @@ check "networks, deployments, collisions and unpriced testnets stay distinct" $O
     python3 "$(dirname "$0")/cli-network-token-identity.py" "$BIN"
 
 section "Identity-based artwork"
-contains "token identity resolves Ether artwork" '"assetName":"ethereum"' spectra --json token artwork --token-id ethereum
-contains "network identity resolves Base artwork" '"assetName":"base"' spectra --json token artwork --network-id base
-contains "Base native deployment draws Ether" '"assetName":"ethereum"' spectra --json token artwork --deployment-id base:native
-contains "a ticker alone cannot claim artwork" '"assetName":""' spectra --json token artwork --token-id USDC
-contains "an unknown contract cannot claim artwork" '"assetName":""' spectra --json token artwork --deployment-id ethereum:erc-20:0xdead
+contains "token identity resolves Ether artwork" '"artworkName":"ethereum"' spectra --json token artwork --token-id ethereum
+contains "network identity resolves Base artwork" '"artworkName":"base"' spectra --json token artwork --network-id base
+contains "Base native deployment draws Ether" '"artworkName":"ethereum"' spectra --json token artwork --deployment-id base:native
+contains "a ticker alone cannot claim artwork" '"artworkName":""' spectra --json token artwork --token-id USDC
+contains "an unknown contract cannot claim artwork" '"artworkName":""' spectra --json token artwork --deployment-id ethereum:erc-20:0xdead
 check "derived wallet state runs from the owned snapshot" $OK spectra --json wallet derived
 
 section "Swift shell ownership follow-up"
 check "naming, receive, durable movement and configured staking" $OK \
     python3 "$(dirname "$0")/cli-shell-ownership.py" "$BIN"
 
+section "Remaining shell boundaries"
+check "exact derivation input and owned refresh intents" $OK \
+    python3 "$(dirname "$0")/cli-shell-boundary.py" "$BIN"
+
 # ── Result ──────────────────────────────────────────────────────────────────
 
 printf '\n'
 
-# Stage 3 / C2 ownership, including local provider fixtures.
+# CLI ownership and local provider fixtures. Rust unit tests run in the workspace gate.
 "$(dirname "$0")/cli-stage3.sh" "$BIN" || exit 1
 "$(dirname "$0")/cli-stage3-followup.sh" "$BIN" || exit 1
 

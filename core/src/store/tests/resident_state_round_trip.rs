@@ -26,10 +26,10 @@ fn a_price_alert_survives_a_reopen() {
             condition: CorePriceAlertCondition::Above,
         },
     );
-    wallet_db::app_state_save(&crate::wallet_db::WalletDatabase::open(&db), &state).expect("save");
+    wallet_db::app_state_save(&crate::wallet_db::WalletDatabase::new(&db), &state).expect("save");
 
     let reloaded =
-        wallet_db::app_state_load(&crate::wallet_db::WalletDatabase::open(&db)).expect("load");
+        wallet_db::app_state_load(&crate::wallet_db::WalletDatabase::new(&db)).expect("load");
     assert_eq!(reloaded.price_alerts.len(), 1, "price alert was lost");
     assert_eq!(reloaded.price_alerts[0].target_price, 100_000.0);
 }
@@ -83,9 +83,9 @@ fn every_resident_collection_round_trips() {
             fiat_currency_code: "CHF".into(),
         },
     );
-    wallet_db::app_state_save(&crate::wallet_db::WalletDatabase::open(&db), &state).expect("save");
+    wallet_db::app_state_save(&crate::wallet_db::WalletDatabase::new(&db), &state).expect("save");
     let back =
-        wallet_db::app_state_load(&crate::wallet_db::WalletDatabase::open(&db)).expect("load");
+        wallet_db::app_state_load(&crate::wallet_db::WalletDatabase::new(&db)).expect("load");
 
     assert_eq!(back.price_alerts.len(), 1, "price_alerts not persisted");
     assert_eq!(back.address_book.len(), 1, "address_book not persisted");
@@ -224,9 +224,9 @@ fn every_settings_field_round_trips() {
         reduce_state_in_place(&mut state, StateCommand::SetAppSetting { update });
     }
     let written = state.settings.clone();
-    wallet_db::app_state_save(&crate::wallet_db::WalletDatabase::open(&db), &state).expect("save");
+    wallet_db::app_state_save(&crate::wallet_db::WalletDatabase::new(&db), &state).expect("save");
     let back =
-        wallet_db::app_state_load(&crate::wallet_db::WalletDatabase::open(&db)).expect("load");
+        wallet_db::app_state_load(&crate::wallet_db::WalletDatabase::new(&db)).expect("load");
     assert_eq!(
         back.settings, written,
         "a settings field did not round trip"

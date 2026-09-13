@@ -14,7 +14,7 @@ fn tmp_db(tag: &str) -> String {
 fn pending_send(id: &str, chain: &str) -> CorePersistedTransactionRecord {
     serde_json::from_value(serde_json::json!({
         "id": id, "walletId": "w1", "kind": "send", "status": "pending",
-        "walletName": "W", "assetName": chain, "symbol": "BTC",
+        "walletName": "W", "assetDisplayName": chain, "symbol": "BTC",
         "chainName": chain, "amount": 1.0, "address": "bc1qexample",
         "transactionHash": format!("hash-{id}"), "createdAt": 0.0,
     }))
@@ -25,7 +25,7 @@ fn pending_send(id: &str, chain: &str) -> CorePersistedTransactionRecord {
 
 #[tokio::test]
 async fn untracked_transaction_is_always_due_for_poll() {
-    let service = WalletService::new_typed(Vec::new()).expect("service");
+    let service = WalletService::new(Vec::new()).expect("service");
     let due = service
         .transactions_due_for_status_poll(vec!["tx1".into(), "tx2".into()])
         .await;
@@ -34,7 +34,7 @@ async fn untracked_transaction_is_always_due_for_poll() {
 
 #[tokio::test]
 async fn a_polled_transaction_waits_out_its_interval() {
-    let service = WalletService::new_typed(Vec::new()).expect("service");
+    let service = WalletService::new(Vec::new()).expect("service");
     service
         .record_status_poll("tx1".into(), crate::service::StatusPollOutcome::Pending)
         .await;
@@ -55,7 +55,7 @@ async fn a_polled_transaction_waits_out_its_interval() {
 #[tokio::test]
 async fn applying_a_resolution_stores_it_and_reports_the_change() {
     use crate::store::ResolvedPendingStatus;
-    let service = WalletService::new_typed(Vec::new()).expect("service");
+    let service = WalletService::new(Vec::new()).expect("service");
     service
         .open_state(tmp_db("apply-resolved"))
         .await
@@ -132,7 +132,7 @@ async fn applying_a_resolution_stores_it_and_reports_the_change() {
 /// no longer exercise the path the app takes.
 #[tokio::test]
 async fn stale_pending_needs_both_age_and_repeated_failures() {
-    let service = WalletService::new_typed(Vec::new()).expect("service");
+    let service = WalletService::new(Vec::new()).expect("service");
     service
         .open_state(tmp_db("stale-pending"))
         .await
@@ -185,7 +185,7 @@ async fn stale_pending_needs_both_age_and_repeated_failures() {
 /// transaction table and told core the answer.
 #[tokio::test]
 async fn pruning_drops_trackers_for_transactions_that_no_longer_exist() {
-    let service = WalletService::new_typed(Vec::new()).expect("service");
+    let service = WalletService::new(Vec::new()).expect("service");
     for id in ["tx1", "tx2"] {
         service
             .record_status_poll(id.into(), crate::service::StatusPollOutcome::Pending)

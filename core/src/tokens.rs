@@ -29,7 +29,7 @@ struct TomlToken {
     #[serde(default)]
     coinlore_nameid: String,
     color: String,
-    asset_name: String,
+    artwork_name: String,
     tags: Vec<String>,
 }
 
@@ -73,7 +73,7 @@ pub struct TokenEntry {
     pub decimals: u32,
     pub tags: Vec<String>,
     pub color: String,
-    pub asset_name: String,
+    pub artwork_name: String,
     pub enabled: bool,
 }
 
@@ -232,7 +232,7 @@ static CATALOG: LazyLock<Vec<TokenEntry>> = LazyLock::new(|| {
                 decimals: d.decimals,
                 tags: t.tags.clone(),
                 color: t.color.clone(),
-                asset_name: t.asset_name.clone(),
+                artwork_name: t.artwork_name.clone(),
                 enabled: d.enabled,
             }
         })
@@ -667,7 +667,7 @@ mod the_catalog_is_two_tables {
                 ("name", &first.name, &entry.name),
                 ("coingecko_id", &first.coingecko_id, &entry.coingecko_id),
                 ("color", &first.color, &entry.color),
-                ("asset_name", &first.asset_name, &entry.asset_name),
+                ("artwork_name", &first.artwork_name, &entry.artwork_name),
             ] {
                 assert_eq!(
                     a, b,

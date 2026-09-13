@@ -1,6 +1,9 @@
 #!/usr/bin/env bash
-# Ownership checks, exclusively temporary stores and loopback/Rust fixtures.
+# Ownership checks, exclusively temporary stores and loopback fixtures.
 set -euo pipefail
+source "$(dirname "$0")/cli-assertions.sh"
+PASSED=0
+FAILED=0
 cd "$(dirname "$0")/.."
 BIN="${1:-$PWD/target/debug/spectra}"
 TASK_DIR=$(mktemp -d)
@@ -16,15 +19,9 @@ assert not d['degraded'] and 'Solana' in d['last_good_unix']
 assert len(d['logs'])==2 and d['logs'][0]['input']['message']=='Chain recovered'
 assert json.loads((p/'derived.json').read_text())['signing_material_wallet_ids']==[]
 PY
-if "$BIN" --data-dir "$TASK_DIR" --json send rebroadcast missing --yes > /dev/null 2>&1; then
-    echo 'missing transaction was rebroadcast' >&2; exit 1
-fi
-# Domain commits and submission use deterministic local fixtures.
-cargo test -p spectra_core --lib service::balance_refresh::
-cargo test -p spectra_core --lib service::funds_scan::
-cargo test -p spectra_core --lib service::diagnostic_state::
-cargo test -p spectra_core --lib service::send_records::
-cargo test -p spectra_core --lib audit_stored_wallets_reach_solana_sui_aptos_and_tron_submission
-cargo test -p spectra_core --lib audit_fix5
+contains_exit 1 "missing transaction cannot be rebroadcast" 'transaction not found' \
+    "$BIN" --data-dir "$TASK_DIR" --json send rebroadcast missing --yes
 
 python3 scripts/cli-balance-refresh.py "$BIN"
+
+[[ "$FAILED" == 0 ]]

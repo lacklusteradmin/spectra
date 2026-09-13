@@ -21,7 +21,7 @@ fn builds_secret_catalog_for_persisted_snapshot() {
     };
 
     let mut app_state = CoreAppState::default();
-    app_state.wallets.push(crate::state::WalletSummary {
+    app_state.wallets.push(crate::state::WalletState {
         id: "wallet-1".to_string(),
         name: "Main".to_string(),
         is_watch_only: false,

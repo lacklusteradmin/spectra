@@ -369,7 +369,7 @@ pub fn decode_evm_send_preview(input: EvmPreviewDecodeInput) -> Option<EvmPrevie
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize, uniffi::Record)]
 #[serde(rename_all = "camelCase")]
-pub struct EvmSendResultDecoded {
+pub struct EvmSendDetails {
     pub txid: String,
     pub raw_tx_hex: String,
     pub nonce: i64,

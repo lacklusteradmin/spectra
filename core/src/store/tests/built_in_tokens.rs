@@ -42,7 +42,7 @@ fn the_catalog_chain_names_all_resolve() {
 /// A user's choices survive the merge; the build's additions arrive.
 #[tokio::test]
 async fn merging_keeps_what_the_user_chose() {
-    let service = WalletService::new_typed(Vec::new()).expect("service");
+    let service = WalletService::new(Vec::new()).expect("service");
     let state = service
         .merge_built_in_token_preferences()
         .await

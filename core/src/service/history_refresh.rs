@@ -120,7 +120,7 @@ fn record_for(
         kind: entry.kind,
         status: entry.status,
         wallet_name: target.wallet_name.clone(),
-        asset_name: entry.asset_name,
+        asset_display_name: entry.asset_display_name,
         symbol: entry.symbol,
         chain_name: target.network.chain_display_name().to_string(),
         amount: entry.amount,
@@ -339,7 +339,7 @@ impl WalletService {
             chain.chain_display_name().to_string(),
         )
         .unwrap_or(crate::fetch::history_decode::EvmNativeAsset {
-            asset_name: "Ether".to_string(),
+            asset_display_name: "Ether".to_string(),
             symbol: "ETH".to_string(),
         });
 
@@ -426,7 +426,7 @@ impl WalletService {
                     normalized_address: normalized_address.clone(),
                     chain_name: network.chain_display_name().to_string(),
                     token_source_used: Some("rust/etherscan".to_string()),
-                    native_asset_name: native.asset_name.clone(),
+                    native_asset_display_name: native.asset_display_name.clone(),
                     native_asset_symbol: native.symbol.clone(),
                     wallets: group_wallet_ids
                         .iter()
@@ -474,7 +474,7 @@ fn evm_record(
         kind: planned.kind,
         status: planned.status,
         wallet_name: planned.wallet_name,
-        asset_name: planned.asset_name,
+        asset_display_name: planned.asset_display_name,
         symbol: planned.symbol,
         chain_name: planned.chain_name,
         amount: planned.amount_decimal.parse().unwrap_or(0.0),
@@ -649,7 +649,7 @@ fn aggregated_record(
         kind: aggregate.kind,
         status: aggregate.status,
         wallet_name: wallet_name.to_string(),
-        asset_name: chain.chain_display_name().to_string(),
+        asset_display_name: chain.chain_display_name().to_string(),
         symbol: chain.coin_symbol().to_string(),
         chain_name: chain.chain_display_name().to_string(),
         amount: aggregate.amount,

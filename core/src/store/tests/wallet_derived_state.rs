@@ -28,10 +28,10 @@ fn coin(symbol: &str, chain: &str, amount: f64) -> AssetHolding {
 async fn service_with(
     wallets: Vec<(&str, &str, Vec<AssetHolding>, bool)>,
 ) -> std::sync::Arc<WalletService> {
-    let service = WalletService::new_typed(Vec::new()).expect("service");
+    let service = WalletService::new(Vec::new()).expect("service");
     for (id, chain, holdings, included) in wallets {
         let mut summary =
-            crate::store::state::WalletSummary::single_address(id, id, chain, "addr", None, false);
+            crate::store::state::WalletState::single_address(id, id, chain, "addr", None, false);
         summary.include_in_portfolio_total = included;
         summary.holdings = holdings
             .into_iter()
@@ -117,7 +117,7 @@ async fn no_testnet_coin_is_quoted_on_any_family() {
 /// two ways of saying "mainnet" cannot drift apart.
 #[tokio::test]
 async fn choosing_mainnet_stores_its_explicit_id() {
-    let service = WalletService::new_typed(Vec::new()).expect("service");
+    let service = WalletService::new(Vec::new()).expect("service");
     let after_testnet = service
         .apply_state_command(StateCommand::SelectNetworkChain {
             chain_id: "bitcoin-testnet-4".into(),

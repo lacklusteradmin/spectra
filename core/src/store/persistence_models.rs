@@ -49,7 +49,7 @@ pub struct CorePersistedTransactionRecord {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub status: Option<CoreTransactionStatus>,
     pub wallet_name: String,
-    pub asset_name: String,
+    pub asset_display_name: String,
     pub symbol: String,
     pub chain_name: String,
     pub amount: f64,
@@ -107,7 +107,7 @@ mod tests {
         // Minimal encoded shape for a received record — mirrors what Swift's
         // vanilla JSONEncoder produces (no null fields, createdAt as seconds
         // since 2001-01-01 UTC).
-        let json = r#"{"id":"A1B2C3D4-E5F6-7890-ABCD-EF1234567890","kind":"receive","walletName":"Main","assetName":"Bitcoin","symbol":"BTC","chainName":"Bitcoin","amount":0.5,"address":"bc1qreceive","createdAt":745200000.0}"#;
+        let json = r#"{"id":"A1B2C3D4-E5F6-7890-ABCD-EF1234567890","kind":"receive","walletName":"Main","assetDisplayName":"Bitcoin","symbol":"BTC","chainName":"Bitcoin","amount":0.5,"address":"bc1qreceive","createdAt":745200000.0}"#;
         let decoded: CorePersistedTransactionRecord = serde_json::from_str(json).unwrap();
         assert_eq!(decoded.kind, CoreTransactionKind::Receive);
         assert!(decoded.status.is_none());
@@ -128,7 +128,7 @@ mod tests {
             kind: CoreTransactionKind::Receive,
             status: None,
             wallet_name: "Main".to_string(),
-            asset_name: "Bitcoin".to_string(),
+            asset_display_name: "Bitcoin".to_string(),
             symbol: "BTC".to_string(),
             chain_name: "Bitcoin".to_string(),
             amount: 0.0,
@@ -163,7 +163,7 @@ mod tests {
             wallet_id: Some("wallet-1".to_string()),
             kind: CoreTransactionKind::Send,
             status: Some(CoreTransactionStatus::Confirmed),
-            asset_name: "Ethereum".to_string(),
+            asset_display_name: "Ethereum".to_string(),
             symbol: "ETH".to_string(),
             chain_name: "Ethereum".to_string(),
             amount: 1.25,

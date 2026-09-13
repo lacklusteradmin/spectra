@@ -35,10 +35,10 @@ impl WalletService {
             // the whole table, mutate the copy and write it back — a shape that
             // drops any write landing in between.
             let mut tables = service.keypool.write().await;
-            if let Some(db_path) = service.state_binding.connection().await {
+            if let Some(database) = service.state_binding.connection().await {
                 let to_save = record.clone();
                 tokio::task::spawn_blocking(move || {
-                    crate::wallet_db::address_save(&db_path, &to_save)
+                    crate::wallet_db::address_save(&database, &to_save)
                 })
                 .await
                 .map_err(|e| SpectraBridgeError::from(format!("spawn_blocking: {e}")))??;
@@ -263,11 +263,11 @@ impl WalletService {
             return Ok(crate::store::plan_baseline_chain_keypool_state(input));
         }
 
-        if let Some(db_path) = self.state_binding.connection().await {
+        if let Some(database) = self.state_binding.connection().await {
             let wallet = wallet_id.to_owned();
             let chain = chain_name.to_owned();
             let (external, change) = tokio::task::spawn_blocking(move || {
-                crate::wallet_db::history_keypool_indices(&db_path, &wallet, &chain)
+                crate::wallet_db::history_keypool_indices(&database, &wallet, &chain)
             })
             .await
             .map_err(|e| SpectraBridgeError::from(format!("keypool history task: {e}")))??;
@@ -501,14 +501,14 @@ async fn persist_keypool(
     }
     // Without a bound database the service runs in memory only — the shape
     // tests and short-lived tools. Nothing to write.
-    let Some(db_path) = binding.connection().await else {
+    let Some(database) = binding.connection().await else {
         tables.set_state(key, state);
         return Ok(());
     };
     let (wallet_id, chain_name) = (wallet_id.to_string(), chain_name.to_string());
     let to_save = state.clone();
     tokio::task::spawn_blocking(move || {
-        crate::wallet_db::keypool_save(&db_path, &wallet_id, &chain_name, &to_save)
+        crate::wallet_db::keypool_save(&database, &wallet_id, &chain_name, &to_save)
     })
     .await
     .map_err(|e| SpectraBridgeError::from(format!("spawn_blocking: {e}")))?

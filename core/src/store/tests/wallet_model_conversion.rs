@@ -1,18 +1,18 @@
 use crate::registry::Chain;
 use crate::store::wallet_domain::{
-    AssetHolding, CoreImportedWallet, CoreSeedDerivationPaths, CoreSeedDerivationPreset,
+    AssetHolding, WalletView, CoreSeedDerivationPaths, CoreSeedDerivationPreset,
     CoreWalletDerivationOverrides,
 };
 use std::collections::HashMap;
 
-fn bitcoin_wallet() -> CoreImportedWallet {
+fn bitcoin_wallet() -> WalletView {
     let mut paths = CoreSeedDerivationPaths::default();
     // The full table every wallet carries today, of which one entry applies.
     paths.set_path_for(Chain::Bitcoin, "m/84'/0'/0'/0/0");
     paths.set_path_for(Chain::Ethereum, "m/44'/60'/0'/0/0");
     paths.set_path_for(Chain::Solana, "m/44'/501'/0'");
 
-    CoreImportedWallet {
+    WalletView {
         id: "w1".to_string(),
         name: "Cold".to_string(),
         network_chain_id: Some("bitcoin-testnet-4".to_string()),
@@ -41,7 +41,7 @@ fn bitcoin_wallet() -> CoreImportedWallet {
 
 #[test]
 fn keeps_the_path_the_wallet_uses_and_drops_the_rest() {
-    let summary = bitcoin_wallet().to_summary(false);
+    let summary = bitcoin_wallet().to_wallet_state(false);
     assert_eq!(summary.derivation_path.as_deref(), Some("m/84'/0'/0'/0/0"));
     // The Ethereum and Solana entries were global defaults, not this
     // wallet's data, and do not survive into the model core computes with.
@@ -50,19 +50,19 @@ fn keeps_the_path_the_wallet_uses_and_drops_the_rest() {
 
 #[test]
 fn keeps_only_the_network_that_applies_to_this_wallets_family() {
-    let summary = bitcoin_wallet().to_summary(false);
+    let summary = bitcoin_wallet().to_wallet_state(false);
     assert_eq!(summary.network_id.as_str(), "bitcoin-testnet-4");
 
     // A wallet on a chain with no network variants reports none, rather
     // than the meaningless mainnet default the record always holds.
     let mut solana = bitcoin_wallet();
     solana.selected_chain = "Solana".to_string();
-    assert_eq!(solana.to_summary(false).network_id, "solana");
+    assert_eq!(solana.to_wallet_state(false).network_id, "solana");
 }
 
 #[test]
 fn carries_overrides_xpub_preset_and_holdings() {
-    let summary = bitcoin_wallet().to_summary(false);
+    let summary = bitcoin_wallet().to_wallet_state(false);
     assert_eq!(
         summary.derivation_overrides.passphrase.as_deref(),
         Some("secret")
@@ -78,7 +78,7 @@ fn carries_overrides_xpub_preset_and_holdings() {
 /// rather than a bare string in a slot-keyed map.
 #[test]
 fn the_address_gains_its_chain_and_path() {
-    let summary = bitcoin_wallet().to_summary(false);
+    let summary = bitcoin_wallet().to_wallet_state(false);
     assert_eq!(summary.addresses.len(), 1);
     assert_eq!(summary.addresses[0].address, "bc1qexample");
     assert_eq!(summary.addresses[0].chain_name, "Bitcoin");
@@ -93,8 +93,8 @@ fn the_address_gains_its_chain_and_path() {
 /// so the caller states it.
 #[test]
 fn watch_only_comes_from_the_caller() {
-    assert!(!bitcoin_wallet().to_summary(false).is_watch_only);
-    assert!(bitcoin_wallet().to_summary(true).is_watch_only);
+    assert!(!bitcoin_wallet().to_wallet_state(false).is_watch_only);
+    assert!(bitcoin_wallet().to_wallet_state(true).is_watch_only);
 }
 
 /// A wallet whose chain the registry does not know converts without
@@ -109,7 +109,7 @@ fn watch_only_comes_from_the_caller() {
 fn an_unknown_chain_yields_no_address_of_its_own() {
     let mut wallet = bitcoin_wallet();
     wallet.selected_chain = "Nonexistent Chain".to_string();
-    let summary = wallet.to_summary(false);
+    let summary = wallet.to_wallet_state(false);
     assert_eq!(summary.derivation_path, None);
     assert!(summary
         .addresses

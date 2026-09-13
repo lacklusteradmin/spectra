@@ -60,7 +60,7 @@ pub struct AssetWikiEntry {
     pub name: String,
     pub coin_gecko_id: String,
     pub color: String,
-    pub asset_name: String,
+    pub artwork_name: String,
     pub comment: String,
     /// Empty for a token: a supply model is written for the coins that have
     /// one, and nobody has written one for an ERC-20.
@@ -151,10 +151,10 @@ fn entry_from_chain(chain: &ChainEntry) -> AssetWikiEntry {
     AssetWikiEntry {
         token_id: token.token_id.clone(),
         symbol: chain.gas_token_symbol.clone(),
-        name: chain.native_asset_name.clone(),
+        name: chain.native_asset_display_name.clone(),
         coin_gecko_id: chain.native_coingecko_id.clone(),
         color: token.color.clone(),
-        asset_name: token.asset_name.clone(),
+        artwork_name: token.artwork_name.clone(),
         comment: String::new(),
         total_circulation_model: String::new(),
         tags: Vec::new(),
@@ -169,7 +169,7 @@ fn entry_from_token(token: &tokens::TokenEntry) -> AssetWikiEntry {
         name: token.name.clone(),
         coin_gecko_id: token.coingecko_id.clone(),
         color: token.color.clone(),
-        asset_name: token.asset_name.clone(),
+        artwork_name: token.artwork_name.clone(),
         comment: String::new(),
         total_circulation_model: String::new(),
         tags: token.tags.clone(),

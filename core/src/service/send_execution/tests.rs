@@ -16,7 +16,7 @@ mod token_decimals_come_from_the_contract {
     /// keeps the fallback reachable for TON, Sui and Aptos.
     #[tokio::test]
     async fn a_family_core_cannot_ask_falls_back_to_the_caller() {
-        let service = WalletService::new_typed(Vec::new()).expect("service");
+        let service = WalletService::new(Vec::new()).expect("service");
         for chain in [Chain::Ton, Chain::Sui, Chain::Aptos] {
             assert_eq!(
                 service
@@ -78,7 +78,7 @@ pub(super) mod build_send_params_tests {
 
     #[tokio::test]
     async fn invalid_fees_are_refused_before_signing_identity() {
-        let service = WalletService::new_typed(vec![]).unwrap();
+        let service = WalletService::new(vec![]).unwrap();
         for bad in [f64::NAN, f64::INFINITY, -1.0, 0.0, 0.0000000001, f64::MAX] {
             for chain in [Chain::Cardano, Chain::Sui, Chain::Dogecoin] {
                 let mut request = req(chain.str_id(), "");
@@ -120,7 +120,7 @@ pub(super) mod build_send_params_tests {
             };
             ResponseTemplate::new(200).set_body_json(response)
         }).mount(&server).await;
-        let service = WalletService::new_typed(vec![crate::service::ChainEndpoints {
+        let service = WalletService::new(vec![crate::service::ChainEndpoints {
             chain_id: chain.str_id().into(),
             endpoints: vec![server.uri()],
             api_key: None,
@@ -131,7 +131,7 @@ pub(super) mod build_send_params_tests {
 
     #[tokio::test]
     async fn failed_metadata_never_uses_supplied_precision() {
-        let service = WalletService::new_typed(vec![]).unwrap();
+        let service = WalletService::new(vec![]).unwrap();
         for chain in [Chain::Ethereum, Chain::Tron, Chain::Near] {
             let mut request = req(chain.str_id(), chain.chain_display_name());
             request.contract_address = Some("contract".into());
@@ -145,7 +145,7 @@ pub(super) mod build_send_params_tests {
 
     #[tokio::test]
     async fn exact_amounts_reach_native_and_token_signing_params() {
-        let service = WalletService::new_typed(vec![]).unwrap();
+        let service = WalletService::new(vec![]).unwrap();
         let mut r = req("solana", "Solana");
         r.amount_str = "9007199.254740993".into();
         let ExecuteSendParams::Native(SendParams::Solana(p)) = service
@@ -182,7 +182,7 @@ pub(super) mod build_send_params_tests {
 
     #[tokio::test]
     async fn amount_precision_and_integer_overflow_are_refused() {
-        let service = WalletService::new_typed(vec![]).unwrap();
+        let service = WalletService::new(vec![]).unwrap();
         for (chain, amount) in [
             (Chain::Bitcoin, "0.000000001"),
             (Chain::Solana, "18446744073.709551616"),
@@ -219,7 +219,7 @@ pub(super) mod build_send_params_tests {
     /// `BitcoinSendParams`'s own `.unwrap_or(10.0)` to apply.
     #[tokio::test]
     async fn bitcoin_native_scales_by_1e8_sat() {
-        let service = WalletService::new_typed(Vec::new()).expect("service");
+        let service = WalletService::new(Vec::new()).expect("service");
         let r = req("bitcoin", "Bitcoin");
         let params = service
             .build_send_params(Chain::Bitcoin, &r, "from", "priv", &None)
@@ -242,7 +242,7 @@ pub(super) mod build_send_params_tests {
     /// shape by mistake, so it gets its own test.
     #[tokio::test]
     async fn dogecoin_uses_its_own_scale_and_kb_rate_fee() {
-        let service = WalletService::new_typed(Vec::new()).expect("service");
+        let service = WalletService::new(Vec::new()).expect("service");
         let mut r = req("dogecoin", "Dogecoin");
         r.amount_str = "2.0".into();
         r.fee_rate_svb = Some(1.0); // 1 DOGE/kb
@@ -269,7 +269,7 @@ pub(super) mod build_send_params_tests {
     /// registry that says `1_000`.
     #[tokio::test]
     async fn litecoin_scales_by_native_decimals_with_its_own_fee_default() {
-        let service = WalletService::new_typed(Vec::new()).expect("service");
+        let service = WalletService::new(Vec::new()).expect("service");
         let mut r = req("litecoin", "Litecoin");
         r.amount_str = "1.0".into();
         let params = service
@@ -292,7 +292,7 @@ pub(super) mod build_send_params_tests {
     /// and Bitcoin Cash 1_000 against 2_000.
     #[tokio::test]
     async fn an_unquoted_fee_falls_back_to_what_the_estimate_reports() {
-        let service = WalletService::new_typed(Vec::new()).expect("service");
+        let service = WalletService::new(Vec::new()).expect("service");
         for (chain, id, name) in [
             (Chain::Litecoin, "litecoin", "Litecoin"),
             (Chain::BitcoinCash, "bitcoin-cash", "Bitcoin Cash"),
@@ -330,7 +330,7 @@ pub(super) mod build_send_params_tests {
     /// `EvmSendOverridesInput` — no JSON in between.
     #[tokio::test]
     async fn evm_native_uses_string_exact_wei_and_carries_overrides() {
-        let service = WalletService::new_typed(Vec::new()).expect("service");
+        let service = WalletService::new(Vec::new()).expect("service");
         let mut r = req("ethereum", "Ethereum");
         r.amount_str = "0.1".to_string();
         r.evm_overrides = Some(EvmSendOverridesInput {
@@ -361,7 +361,7 @@ pub(super) mod build_send_params_tests {
 
     #[tokio::test]
     async fn evm_builder_refuses_invalid_typed_fees_without_the_ui_parser() {
-        let service = WalletService::new_typed(Vec::new()).expect("service");
+        let service = WalletService::new(Vec::new()).expect("service");
         for (max, priority) in [
             (f64::INFINITY, 1.0),
             (30.0, f64::NAN),
@@ -431,7 +431,7 @@ pub(super) mod build_send_params_tests {
 
     #[tokio::test]
     async fn malformed_evm_overrides_are_refused_before_keys_or_network() {
-        let service = WalletService::new_typed(Vec::new()).expect("service");
+        let service = WalletService::new(Vec::new()).expect("service");
         let mut request = req("ethereum", "Ethereum");
         request.evm_overrides = Some(EvmSendOverridesInput {
             nonce: Some(-1),
@@ -447,7 +447,7 @@ pub(super) mod build_send_params_tests {
     /// scaling would lose precision on an ordinary send amount.
     #[tokio::test]
     async fn polkadot_and_bittensor_use_string_exact_raw_units() {
-        let service = WalletService::new_typed(Vec::new()).expect("service");
+        let service = WalletService::new(Vec::new()).expect("service");
         let mut r = req("polkadot", "Polkadot");
         r.amount_str = "1.25".to_string();
         let params = service
@@ -474,7 +474,7 @@ pub(super) mod build_send_params_tests {
     /// Monero binds wallet-rpc to the resolved sender and defaults to priority 2.
     #[tokio::test]
     async fn monero_defaults_priority_to_2() {
-        let service = WalletService::new_typed(Vec::new()).expect("service");
+        let service = WalletService::new(Vec::new()).expect("service");
         let mut r = req("monero", "Monero");
         r.amount_str = "2.0".into();
         let params = service
@@ -498,7 +498,7 @@ pub(super) mod build_send_params_tests {
     /// send is supported, not an error, on both the old code and this one.
     #[tokio::test]
     async fn a_non_evm_testnet_is_a_named_error() {
-        let service = WalletService::new_typed(Vec::new()).expect("service");
+        let service = WalletService::new(Vec::new()).expect("service");
         let r = req("bitcoin-testnet", "Bitcoin Testnet");
         let err = service
             .build_send_params(Chain::BitcoinTestnet, &r, "from", "priv", &None)
@@ -547,7 +547,7 @@ pub(super) mod build_send_params_tests {
     /// decimals (the mistake this path was written to stop making).
     #[tokio::test]
     async fn a_token_send_with_no_decimals_source_is_a_named_error() {
-        let service = WalletService::new_typed(Vec::new()).expect("service");
+        let service = WalletService::new(Vec::new()).expect("service");
         let mut r = req("solana", "Solana");
         r.contract_address = Some("mint".to_string());
         r.token_decimals = None;
@@ -581,7 +581,7 @@ mod the_router_and_the_builder_agree {
     /// table and not the other.
     #[tokio::test]
     async fn every_routable_mainnet_builds_send_params() {
-        let service = WalletService::new_typed(Vec::new()).expect("service");
+        let service = WalletService::new(Vec::new()).expect("service");
         let mut unbuildable = Vec::new();
         let mut checked = 0usize;
 
@@ -687,10 +687,10 @@ mod sign_only_tests {
 mod send_chain_tests {
     use super::send_chain_for;
     use crate::registry::Chain;
-    use crate::store::state::{CoreAppState, WalletSummary};
+    use crate::store::state::{CoreAppState, WalletState};
 
-    fn wallet(id: &str, chain: Chain, network_id: Option<&str>) -> WalletSummary {
-        WalletSummary {
+    fn wallet(id: &str, chain: Chain, network_id: Option<&str>) -> WalletState {
+        WalletState {
             id: id.to_string(),
             name: id.to_string(),
             is_watch_only: false,

@@ -27,7 +27,7 @@ mod transaction_store;
 
 mod transaction_merge;
 
-// ── CoreImportedWallet → WalletSummary ───────────────────────────────────────
+// ── WalletView → WalletState ───────────────────────────────────────
 //
 // The app's wallet record converted into the model core computes with. What
 // these pin is which fields survive and which deliberately do not.

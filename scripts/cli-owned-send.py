@@ -11,7 +11,7 @@ class Handler(http.server.BaseHTTPRequestHandler):
         def answer(call):
             method = call['method']; requests.append(method)
             values = {'eth_getBalance': '0x8ac7230489e80000', 'eth_estimateGas': '0x5208',
-                      'eth_getTransactionCount': '0x7', 'eth_getTransactionByHash': {'nonce':'0x7'},
+                      'eth_getCode': '0x', 'eth_getTransactionCount': '0x7', 'eth_getTransactionByHash': {'nonce':'0x7'},
                       'eth_feeHistory': {'baseFeePerGas':['0x3b9aca00'], 'reward':[['0x77359400']]}}
             assert method in values, method
             return {'jsonrpc':'2.0', 'id':call['id'], 'result':None if fail else values[method]}
@@ -19,9 +19,12 @@ class Handler(http.server.BaseHTTPRequestHandler):
         data=json.dumps(result).encode(); self.send_response(200)
         self.send_header('Content-Length',str(len(data))); self.end_headers(); self.wfile.write(data)
 with tempfile.TemporaryDirectory(prefix='spectra-owned-') as directory:
-    def run(*args, success=True):
+    def run(*args, success=True, rejection=None):
         p=subprocess.run([binary,'--data-dir',directory,'--json',*args],capture_output=True,text=True)
         assert (p.returncode==0)==success,(args,p.stdout,p.stderr)
+        if rejection is not None:
+            assert p.returncode == 3,(args,p.stdout,p.stderr)
+            assert rejection in json.loads(p.stdout)['error'].lower(),(args,p.stdout,p.stderr)
         return json.loads(p.stdout) if success else None
     addresses=['0x'+'11'*20, '0x'+'22'*20]
     for name,address in zip(['Source','Other'],addresses):
@@ -50,7 +53,7 @@ with tempfile.TemporaryDirectory(prefix='spectra-owned-') as directory:
     assert not other['requiresConfirmation'], other
     run('send','self-check',*base,'--amount','0','--destination',addresses[0])
     for amount in ['NaN','-1','0.0000000000000000001']:
-        run('send','preview',*base,'--amount',amount,success=False)
+        run('send','preview',*base,f'--amount={amount}',success=False,rejection='amount')
     run('send','owned-broadcast',*base,'--amount','1','--destination',addresses[1],success=False)
     server=http.server.ThreadingHTTPServer(('127.0.0.1',0),Handler)
     worker=threading.Thread(target=server.serve_forever,daemon=True);worker.start()
@@ -60,11 +63,14 @@ with tempfile.TemporaryDirectory(prefix='spectra-owned-') as directory:
         assert quote['request']['chain_id']=='ethereum',quote
         assert quote['request']['amount_str']=='1' and quote['request']['to_address']==addresses[1]
         assert quote['preview'] is not None
+        assert quote['requires_self_send_confirmation']
+        assert quote['request']['evm_overrides']['nonce'] == 7
+        run('send','owned-broadcast',*base,'--amount','1','--destination',addresses[1],'--yes',success=False)
         run('send','quote',*base,'--amount','10','--destination',addresses[1],success=False)
         with sqlite3.connect(dbpath) as db:
             wid=db.execute("SELECT id FROM wallets WHERE name='Source'").fetchone()[0]
             row=dict(id='pending',walletId=wid,walletName='Source',kind='send',status='pending',
-                chainName='Ethereum',symbol='ETH',assetName='Ethereum',deploymentId='ethereum:native',
+                chainName='Ethereum',symbol='ETH',assetDisplayName='Ethereum',deploymentId='ethereum:native',
                 amount=0.123456789012,address=addresses[1],transactionHash='0x'+'aa'*32,createdAt=1234)
             db.execute('INSERT INTO history_records (id,wallet_id,chain_name,tx_hash,created_at,payload) VALUES (?,?,?,?,?,?)',
                 ('pending',wid,'Ethereum',row['transactionHash'],978308434,json.dumps(row)))

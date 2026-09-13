@@ -13,7 +13,7 @@ fn tmp_db(tag: &str) -> String {
 }
 
 async fn opened(tag: &str) -> (std::sync::Arc<WalletService>, String) {
-    let service = WalletService::new_typed(Vec::new()).expect("service");
+    let service = WalletService::new(Vec::new()).expect("service");
     let db = tmp_db(tag);
     service.open_state(db.clone()).await.expect("open");
     (service, db)
@@ -27,7 +27,7 @@ fn wire(id: &str, hash: &str, confirmations: Option<i64>) -> CoreTransactionReco
         kind: "receive".to_string(),
         status: "confirmed".to_string(),
         wallet_name: "W".to_string(),
-        asset_name: "Bitcoin".to_string(),
+        asset_display_name: "Bitcoin".to_string(),
         symbol: "BTC".to_string(),
         chain_name: "Bitcoin".to_string(),
         amount: 1.0,

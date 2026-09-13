@@ -10,7 +10,7 @@ use clap::Args;
 use colored::Colorize as _;
 use spectra_core::fetch::refresh::engine::{BalanceObserver, BalanceRefreshEngine};
 use spectra_core::service::ChainEndpoints;
-use spectra_core::store::state::WalletSummary;
+use spectra_core::store::state::WalletState;
 
 use crate::ctx::Ctx;
 use crate::error::{CliError, CliResult};
@@ -29,7 +29,7 @@ pub struct RefreshArgs {
 /// What the engine reported, collected for one sweep.
 #[derive(Default)]
 struct Collected {
-    updated: Vec<(String, Option<WalletSummary>)>,
+    updated: Vec<(String, Option<WalletState>)>,
     refreshed: u32,
     errors: u32,
     complete: bool,
@@ -42,7 +42,7 @@ impl BalanceObserver for Collector {
         &self,
         _chain_id: String,
         wallet_id: String,
-        summary: Option<WalletSummary>,
+        summary: Option<WalletState>,
     ) {
         self.0.lock().unwrap().updated.push((wallet_id, summary));
     }

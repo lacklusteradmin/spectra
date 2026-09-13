@@ -204,14 +204,12 @@ pub fn run(ctx: &Ctx, out: Out, command: SendCommand) -> CliResult<()> {
                 return Err(CliError::rejected("Broadcast requires --yes"));
             }
             let wallet = ctx.find_wallet(&wallet)?;
-            let result = ctx.rt.block_on(ctx.service()?.execute_owned_send(
-                wallet.id,
-                holding,
-                amount,
-                destination,
-                None,
-                None,
-            ))?;
+            let input = spectra_core::service::send_review::SendReviewInput {
+                wallet_id: wallet.id, holding_key: holding, amount, destination, overrides: None,
+            };
+            let service = ctx.service()?;
+            let review = ctx.rt.block_on(service.review_owned_send(input.clone()))?;
+            let result = ctx.rt.block_on(service.execute_owned_send(review.id, input, None))?;
             out.emit(serde_json::json!({"transactionHash": result.transaction_hash}));
             Ok(())
         }
@@ -222,12 +220,10 @@ pub fn run(ctx: &Ctx, out: Out, command: SendCommand) -> CliResult<()> {
             destination,
         } => {
             let wallet = ctx.find_wallet(&wallet)?;
-            let quote = ctx.rt.block_on(ctx.service()?.quote_owned_send(
-                wallet.id,
-                holding,
-                amount,
-                destination,
-                None,
+            let quote = ctx.rt.block_on(ctx.service()?.review_owned_send(
+                spectra_core::service::send_review::SendReviewInput {
+                    wallet_id: wallet.id, holding_key: holding, amount, destination, overrides: None,
+                },
             ))?;
             out.emit(serde_json::json!({"quote":quote}));
             Ok(())
@@ -688,7 +684,7 @@ fn destination(ctx: &Ctx, out: Out, args: DestinationArgs) -> CliResult<()> {
     let service = if chain.resolves_ens_names() {
         service_for_chain(chain, RPC)?
     } else {
-        WalletService::new_typed(Vec::new()).map_err(CliError::from)?
+        WalletService::new(Vec::new()).map_err(CliError::from)?
     };
     let resolved = ctx
         .rt
@@ -847,7 +843,7 @@ pub fn txs(ctx: &Ctx, out: Out, args: TxsArgs) -> CliResult<()> {
             false,
         )
         .map_err(CliError::from)?;
-        let service = WalletService::new_typed(vec![
+        let service = WalletService::new(vec![
             spectra_core::service::ChainEndpoints {
                 chain_id: network.str_id().into(),
                 endpoints: records
@@ -1034,7 +1030,7 @@ pub fn send(ctx: &Ctx, out: Out, args: SendArgs) -> CliResult<()> {
     // The network this wallet is on, not its family's mainnet: it decides
     // which chain id is signed and which endpoints the send reads. Core
     // resolves it the same way, so the two agree on one rule
-    // (`WalletSummary::network_chain`) rather than each having its own.
+    // (`WalletState::network_chain`) rather than each having its own.
     let chain = wallet
         .network_chain(&ctx.state()?.settings)
         .unwrap_or(resolve_chain(&wallet.chain_name)?);

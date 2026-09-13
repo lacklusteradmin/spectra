@@ -6,7 +6,7 @@ impl WalletService {
     // `fetch_history` lives in the plain-impl block below (JSON shuttle —
     // kept internal, not exported to Swift).
 
-    // `sign_and_broadcast_send` lives in the plain `impl WalletService` block
+    // `execute_protocol_send` lives in the plain `impl WalletService` block
     // in `service/send.rs`. UniFFI exports every method of a `#[uniffi::export]`
     // impl block regardless of `pub(crate)` visibility, so chain-dispatch
     // helpers consumed only by `execute_send` must be outside this block.
@@ -269,7 +269,7 @@ impl WalletService {
         chain_id: String,
         tx_hash: String,
     ) -> Result<Option<crate::send::flow::EvmReceiptClassification>, SpectraBridgeError> {
-        let chain = chain_for_evm_id(&chain_id)?;
+        let chain = evm_network_for_id(&chain_id)?;
         let eps = self.endpoints_for(chain.str_id()).await;
         let client = EvmClient::new(eps, chain.evm_chain_id());
         let receipt = client
@@ -320,7 +320,7 @@ mod history_page_failures {
     use super::*;
     #[tokio::test]
     async fn history_page_without_required_provider_credentials_is_an_error() {
-        let service = WalletService::new_typed(vec![]).unwrap();
+        let service = WalletService::new(vec![]).unwrap();
         // BSC's registry source requires an explorer key. This fails offline,
         // before HTTP, and must not masquerade as an empty successful page.
         let result = service
@@ -420,7 +420,7 @@ impl WalletService {
         chain_id: String,
         tx_hash: String,
     ) -> Result<u64, SpectraBridgeError> {
-        let chain = chain_for_evm_id(&chain_id)?;
+        let chain = evm_network_for_id(&chain_id)?;
         let eps = self.endpoints_for(chain.str_id()).await;
         let client = EvmClient::new(eps, chain.evm_chain_id());
         client.fetch_tx_nonce(&tx_hash).await.map_err(Into::into)
@@ -433,7 +433,7 @@ impl WalletService {
         chain_id: String,
         address: String,
     ) -> Result<bool, SpectraBridgeError> {
-        let chain = chain_for_evm_id(&chain_id)?;
+        let chain = evm_network_for_id(&chain_id)?;
         let eps = self.endpoints_for(chain.str_id()).await;
         let client = EvmClient::new(eps, chain.evm_chain_id());
         let code = client.fetch_code(&address).await?;

@@ -13,7 +13,7 @@ fn tmp_db(tag: &str) -> String {
 }
 
 fn service() -> std::sync::Arc<WalletService> {
-    WalletService::new_typed(Vec::new()).expect("service")
+    WalletService::new(Vec::new()).expect("service")
 }
 
 #[tokio::test]
@@ -116,9 +116,9 @@ async fn commands_apply_in_memory_when_no_database_is_bound() {
 
 #[tokio::test]
 async fn field_intents_do_not_overwrite_each_other_or_resurrect_wallets() {
-    use crate::store::state::{StateCommand, WalletSummary};
-    let service = crate::service::WalletService::new_typed(vec![]).unwrap();
-    let wallet = WalletSummary::single_address(
+    use crate::store::state::{StateCommand, WalletState};
+    let service = crate::service::WalletService::new(vec![]).unwrap();
+    let wallet = WalletState::single_address(
         "intent",
         "Original",
         "Ethereum",

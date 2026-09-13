@@ -1,15 +1,15 @@
 use crate::service::WalletService;
-use crate::state::{StateCommand, WalletSummary};
+use crate::state::{StateCommand, WalletState};
 
-fn wallet(id: &str, name: &str) -> WalletSummary {
-    WalletSummary::single_address(id, name, "Bitcoin", "bc1qexample", None, false)
+fn wallet(id: &str, name: &str) -> WalletState {
+    WalletState::single_address(id, name, "Bitcoin", "bc1qexample", None, false)
 }
 
 /// A balance result that arrives after the wallet was deleted must not
 /// bring it back.
 #[tokio::test]
 async fn does_not_resurrect_a_deleted_wallet() {
-    let service = WalletService::new_typed(Vec::new()).expect("service");
+    let service = WalletService::new(Vec::new()).expect("service");
     service
         .apply_state_command(StateCommand::UpsertWallet {
             wallet: wallet("w1", "Cold"),
@@ -35,7 +35,7 @@ async fn does_not_resurrect_a_deleted_wallet() {
 
 #[tokio::test]
 async fn updates_a_wallet_that_is_still_there() {
-    let service = WalletService::new_typed(Vec::new()).expect("service");
+    let service = WalletService::new(Vec::new()).expect("service");
     service
         .apply_state_command(StateCommand::UpsertWallet {
             wallet: wallet("w1", "Cold"),

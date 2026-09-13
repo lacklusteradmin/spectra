@@ -1,7 +1,7 @@
 //! Process context: paths, secret input, and the one place `WalletService` is
 //! opened.
 //!
-//! The CLI holds no wallet model of its own — `WalletSummary` and
+//! The CLI holds no wallet model of its own — `WalletState` and
 //! `CoreAppState` are core's, in the same SQLite store the app uses.
 
 use std::io::{IsTerminal, Read};
@@ -10,7 +10,7 @@ use std::sync::Arc;
 
 use spectra_core::service::WalletService;
 use spectra_core::store::secret_backends::FileSecretStore;
-use spectra_core::store::state::{CoreAppState, StateCommand, StateTransition, WalletSummary};
+use spectra_core::store::state::{CoreAppState, StateCommand, StateTransition, WalletState};
 
 use crate::error::{CliError, CliResult};
 
@@ -131,9 +131,9 @@ impl Ctx {
 
     /// By argument, never an interactive picker: a command that needs a TTY
     /// cannot be a test.
-    pub fn find_wallet(&self, needle: &str) -> CliResult<WalletSummary> {
+    pub fn find_wallet(&self, needle: &str) -> CliResult<WalletState> {
         let state = self.state()?;
-        let matches: Vec<&WalletSummary> = state
+        let matches: Vec<&WalletState> = state
             .wallets
             .iter()
             .filter(|w| wallet_matches(w, needle))
@@ -153,7 +153,7 @@ impl Ctx {
     }
 }
 
-fn wallet_matches(wallet: &WalletSummary, needle: &str) -> bool {
+fn wallet_matches(wallet: &WalletState, needle: &str) -> bool {
     wallet.id.eq_ignore_ascii_case(needle)
         || wallet.name.eq_ignore_ascii_case(needle)
         || wallet
@@ -163,6 +163,6 @@ fn wallet_matches(wallet: &WalletSummary, needle: &str) -> bool {
 
 /// Wallets carry an address by construction; the fallback keeps a malformed
 /// record printable rather than panicking mid-listing.
-pub fn wallet_address(wallet: &WalletSummary) -> &str {
+pub fn wallet_address(wallet: &WalletState) -> &str {
     wallet.primary_address().unwrap_or("")
 }

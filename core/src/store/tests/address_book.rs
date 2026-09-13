@@ -16,7 +16,7 @@ fn tmp_db(tag: &str) -> String {
 }
 
 fn service() -> std::sync::Arc<WalletService> {
-    WalletService::new_typed(Vec::new()).expect("service")
+    WalletService::new(Vec::new()).expect("service")
 }
 
 fn add(id: &str, name: &str, address: &str) -> StateCommand {

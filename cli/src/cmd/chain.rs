@@ -75,7 +75,7 @@ pub fn service_for_chain(chain: Chain, roles: u32) -> CliResult<Arc<WalletServic
             "no endpoints registered for {name}"
         )));
     }
-    WalletService::new_typed(vec![ChainEndpoints {
+    WalletService::new(vec![ChainEndpoints {
         chain_id: chain.str_id().to_string(),
         endpoints,
         api_key: None,
@@ -351,7 +351,7 @@ pub fn history(ctx: &Ctx, out: Out, args: HistoryArgs) -> CliResult<()> {
         .network_chain(&ctx.state()?.settings)
         .unwrap_or(chain);
     let service = if let Some(endpoint) = args.endpoint {
-        WalletService::new_typed(vec![ChainEndpoints {
+        WalletService::new(vec![ChainEndpoints {
             chain_id: network.str_id().into(),
             endpoints: vec![endpoint],
             api_key: None,

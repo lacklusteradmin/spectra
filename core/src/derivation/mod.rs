@@ -8,6 +8,7 @@ pub mod chains;
 pub mod dispatch;
 pub mod funds_finder;
 pub mod import;
+pub mod input;
 pub mod primitives;
 pub mod types;
 pub mod xpub_walker;

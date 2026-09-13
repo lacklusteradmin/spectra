@@ -15,7 +15,7 @@ fn tmp_db(label: &str) -> String {
 #[tokio::test]
 async fn events_survive_reopening_the_database() {
     let db = tmp_db("reopen");
-    let service = WalletService::new_typed(Vec::new()).expect("service");
+    let service = WalletService::new(Vec::new()).expect("service");
     service.open_state(db.clone()).await.expect("open");
     service
         .append_chain_operational_event(
@@ -27,7 +27,7 @@ async fn events_survive_reopening_the_database() {
         .await
         .expect("append");
 
-    let reopened = WalletService::new_typed(Vec::new()).expect("service");
+    let reopened = WalletService::new(Vec::new()).expect("service");
     reopened.open_state(db.clone()).await.expect("open");
     let events = reopened.operational_events("Bitcoin".into()).await;
     assert_eq!(events.len(), 1);
@@ -46,7 +46,7 @@ async fn events_survive_reopening_the_database() {
 /// could not enforce, because a caller wrote the answer down.
 #[tokio::test]
 async fn the_log_is_newest_first_and_bounded() {
-    let service = WalletService::new_typed(Vec::new()).expect("service");
+    let service = WalletService::new(Vec::new()).expect("service");
     for index in 0..205 {
         service
             .append_chain_operational_event(
@@ -71,7 +71,7 @@ async fn the_log_is_newest_first_and_bounded() {
 
 #[tokio::test]
 async fn clearing_one_chain_leaves_the_others() {
-    let service = WalletService::new_typed(Vec::new()).expect("service");
+    let service = WalletService::new(Vec::new()).expect("service");
     for chain in ["Bitcoin", "Solana"] {
         service
             .append_chain_operational_event(

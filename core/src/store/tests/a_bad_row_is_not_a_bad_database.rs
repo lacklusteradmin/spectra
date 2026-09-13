@@ -15,7 +15,7 @@ fn unreadable_preferences_refuse_loading_without_deleting_wallets() {
     };
 
     let mut state = CoreAppState::default();
-    state.wallets.push(crate::store::state::WalletSummary {
+    state.wallets.push(crate::store::state::WalletState {
         id: "w1".into(),
         name: "Kept".into(),
         is_watch_only: false,
@@ -29,7 +29,7 @@ fn unreadable_preferences_refuse_loading_without_deleting_wallets() {
         holdings: Vec::new(),
         addresses: Vec::new(),
     });
-    crate::store::wallet_db::app_state_save(&crate::wallet_db::WalletDatabase::open(&db), &state)
+    crate::store::wallet_db::app_state_save(&crate::wallet_db::WalletDatabase::new(&db), &state)
         .expect("save");
 
     // Overwrite the token-preferences blob with a shape this build cannot
@@ -50,12 +50,12 @@ fn unreadable_preferences_refuse_loading_without_deleting_wallets() {
     // evaluation; the load itself succeeds, because what it would take
     // down with it — the wallet list — cannot be rebuilt from anything.
     let loaded =
-        crate::store::wallet_db::app_state_load(&crate::wallet_db::WalletDatabase::open(&db))
+        crate::store::wallet_db::app_state_load(&crate::wallet_db::WalletDatabase::new(&db))
             .expect("load");
     assert!(loaded.token_preferences.is_empty());
     assert_eq!(loaded.wallets.len(), 1);
     let wallets =
-        crate::store::wallet_db::wallet_load_all(&crate::wallet_db::WalletDatabase::open(&db))
+        crate::store::wallet_db::wallet_load_all(&crate::wallet_db::WalletDatabase::new(&db))
             .unwrap();
     assert_eq!(wallets.len(), 1);
     assert_eq!(wallets[0].name, "Kept");

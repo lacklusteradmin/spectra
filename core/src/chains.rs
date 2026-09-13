@@ -27,7 +27,7 @@ struct TomlNetwork {
     search_keywords: Vec<String>,
     category: String,
     color: String,
-    asset_name: String,
+    artwork_name: String,
     #[serde(default)]
     address_prefix_hint: String,
     token_standard: String,
@@ -115,7 +115,7 @@ pub struct ChainEntry {
     pub category: String,
     pub is_evm: bool,
     pub color: String,
-    pub asset_name: String,
+    pub artwork_name: String,
     pub token_standard: String,
     /// Whether the chain has an RPC that answers "what tokens does this
     /// address hold?" without being told what to look for. False for the EVM
@@ -125,7 +125,7 @@ pub struct ChainEntry {
     pub contract_address_prompt: String,
     pub native_coingecko_id: String,
     pub native_decimals: u32,
-    pub native_asset_name: String,
+    pub native_asset_display_name: String,
     pub derivation_path: Vec<ChainDerivationPathEntry>,
 }
 
@@ -211,13 +211,13 @@ static CATALOG: LazyLock<Vec<ChainEntry>> = LazyLock::new(|| {
                 category: c.category.clone(),
                 is_evm: is_evm_for(&c.category),
                 color: c.color.clone(),
-                asset_name: c.asset_name.clone(),
+                artwork_name: c.artwork_name.clone(),
                 token_standard: c.token_standard.clone(),
                 enumerates_holdings: c.enumerates_holdings,
                 contract_address_prompt: contract_address_prompt_for(&c.token_standard),
                 native_coingecko_id: native.coingecko_id.clone(),
                 native_decimals: native.decimals,
-                native_asset_name: native.name.clone(),
+                native_asset_display_name: native.name.clone(),
                 derivation_path: c
                     .derivation_path
                     .iter()
@@ -357,11 +357,11 @@ mod explicit_network_catalog {
                 &net.gas_token_symbol,
             ),
             ("color", &main.color, &net.color),
-            ("asset_name", &main.asset_name, &net.asset_name),
+            ("artwork_name", &main.artwork_name, &net.artwork_name),
             (
-                "native_asset_name",
-                &main.native_asset_name,
-                &net.native_asset_name,
+                "native_asset_display_name",
+                &main.native_asset_display_name,
+                &net.native_asset_display_name,
             ),
             ("category", &main.category, &net.category),
         ] {

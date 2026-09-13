@@ -157,6 +157,8 @@ impl EndpointIndex {
 /// Swift holds one instance for the lifetime of the app session.
 #[derive(Clone, uniffi::Object)]
 pub struct WalletService {
+    pub(crate) send_reviews: Arc<tokio::sync::Mutex<HashMap<String, send_review::ReviewedSend>>>,
+    app_refresh_lock: Arc<tokio::sync::Mutex<()>>,
     quote_refresh_lock: Arc<tokio::sync::Mutex<()>>,
     pub(crate) trc20_metadata: Arc<crate::fetch::chains::tron::MetadataCache>,
 
@@ -201,7 +203,7 @@ pub struct WalletService {
 #[uniffi::export]
 impl WalletService {
     #[uniffi::constructor]
-    pub fn new_typed(endpoints: Vec<ChainEndpoints>) -> Result<Arc<Self>, SpectraBridgeError> {
+    pub fn new(endpoints: Vec<ChainEndpoints>) -> Result<Arc<Self>, SpectraBridgeError> {
         // A library installing a global subscriber is already a liberty; one
         // that writes to *stdout* at *debug* is a bug. It corrupted every
         // `spectra --json` run — core's connection logs landed in the middle of
@@ -223,6 +225,8 @@ impl WalletService {
         });
         Ok(Arc::new(Self {
             trc20_metadata: Arc::new(crate::fetch::chains::tron::MetadataCache::default()),
+            send_reviews: Arc::new(tokio::sync::Mutex::new(HashMap::new())),
+            app_refresh_lock: Arc::new(tokio::sync::Mutex::new(())),
             quote_refresh_lock: Arc::new(tokio::sync::Mutex::new(())),
             state_writer: Arc::new(tokio::sync::Mutex::new(())),
             uses_catalog_endpoints: Arc::new(std::sync::atomic::AtomicBool::new(false)),
@@ -239,7 +243,7 @@ impl WalletService {
 
     #[uniffi::constructor]
     pub fn new_catalog() -> Result<Arc<Self>, SpectraBridgeError> {
-        let service = Self::new_typed(catalog_endpoints()?)?;
+        let service = Self::new(catalog_endpoints()?)?;
         service
             .uses_catalog_endpoints
             .store(true, std::sync::atomic::Ordering::Relaxed);
@@ -376,6 +380,8 @@ impl WalletService {
 }
 
 mod owned_send;
+pub mod send_review;
+pub mod app_refresh;
 
 pub use owned_send::{OwnedReplacementDraft, OwnedSendQuote};
 

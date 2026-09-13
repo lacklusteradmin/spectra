@@ -16,6 +16,13 @@ pub enum DiagnosticsCommand {
         #[arg(long)]
         conditions: String,
     },
+    /// Execute a core-owned refresh with explicit intent and device conditions.
+    Refresh {
+        #[arg(long)]
+        intent: String,
+        #[arg(long)]
+        conditions: String,
+    },
     /// Read durable diagnostics, optionally applying one typed JSON intent.
     State {
         #[arg(long)]
@@ -48,6 +55,13 @@ pub fn run(ctx: &Ctx, out: Out, command: DiagnosticsCommand) -> CliResult<()> {
                 .map_err(|e| CliError::usage(format!("invalid conditions: {e}")))?;
             let plan = ctx.rt.block_on(ctx.service()?.maintenance_plan(conditions));
             out.emit(serde_json::json!({"plan":plan}));
+            Ok(())
+        }
+        DiagnosticsCommand::Refresh { intent, conditions } => {
+            let intent = serde_json::from_str(&intent).map_err(|e| CliError::usage(format!("invalid intent: {e}")))?;
+            let conditions = serde_json::from_str(&conditions).map_err(|e| CliError::usage(format!("invalid conditions: {e}")))?;
+            let result = ctx.rt.block_on(ctx.service()?.refresh_app(intent, conditions))?;
+            out.emit(serde_json::json!({"refresh": result}));
             Ok(())
         }
         DiagnosticsCommand::State { command } => {

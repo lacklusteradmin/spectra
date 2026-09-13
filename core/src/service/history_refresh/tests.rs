@@ -1,8 +1,8 @@
 use super::*;
-use crate::store::state::{AppSettings, WalletAddress, WalletSummary};
+use crate::store::state::{AppSettings, WalletAddress, WalletState};
 
-fn wallet(id: &str, chain: Chain, addresses: &[(Chain, &str)]) -> WalletSummary {
-    WalletSummary {
+fn wallet(id: &str, chain: Chain, addresses: &[(Chain, &str)]) -> WalletState {
+    WalletState {
         id: id.to_string(),
         name: format!("{id} wallet"),
         is_watch_only: false,
@@ -83,7 +83,7 @@ fn a_testnet_wallet_fetches_and_persists_its_exact_network() {
             deployment_id: None,
             kind: "receive".to_string(),
             status: "confirmed".to_string(),
-            asset_name: "Bitcoin Testnet4".to_string(),
+            asset_display_name: "Bitcoin Testnet4".to_string(),
             symbol: "BTC".to_string(),
             chain_name: "Bitcoin Testnet4".to_string(),
             amount: 1.0,
@@ -144,7 +144,7 @@ fn a_record_names_its_wallet_and_carries_a_uuid() {
             deployment_id: None,
             kind: "receive".to_string(),
             status: "confirmed".to_string(),
-            asset_name: "Solana".to_string(),
+            asset_display_name: "Solana".to_string(),
             symbol: "SOL".to_string(),
             chain_name: "Solana".to_string(),
             amount: 1.5,
@@ -174,7 +174,7 @@ fn a_record_names_its_wallet_and_carries_a_uuid() {
         deployment_id: None,
         kind: "send".to_string(),
         status: "confirmed".to_string(),
-        asset_name: "Solana".to_string(),
+        asset_display_name: "Solana".to_string(),
         symbol: "SOL".to_string(),
         chain_name: "Solana".to_string(),
         amount: 0.0,
@@ -219,7 +219,7 @@ fn descriptors_are_the_enabled_tokens_for_the_chain() {
                 decimals: 6,
                 tags: Vec::new(),
                 color: String::new(),
-                asset_name: String::new(),
+                artwork_name: String::new(),
                 enabled: true,
             },
             category: CoreTokenPreferenceCategory::Stablecoin,
@@ -263,7 +263,7 @@ fn descriptors_are_the_enabled_tokens_for_the_chain() {
 /// Offline: `explorer_query_url` refuses before any request is made.
 #[tokio::test]
 async fn a_chain_no_explorer_serves_counts_a_failure_and_reports_it() {
-    let service = WalletService::new_typed(Vec::new()).expect("service");
+    let service = WalletService::new(Vec::new()).expect("service");
     // The merge writes, so the store has to be open — a failed page still
     // ends in a merge of nothing.
     let db = std::env::temp_dir()
@@ -301,7 +301,7 @@ async fn a_chain_no_explorer_serves_counts_a_failure_and_reports_it() {
 /// Offline: the keypool is empty, so no provider is reached.
 #[tokio::test]
 async fn a_utxo_wallet_with_no_known_addresses_is_skipped() {
-    let service = WalletService::new_typed(Vec::new()).expect("service");
+    let service = WalletService::new(Vec::new()).expect("service");
     let db = std::env::temp_dir()
         .join(format!(
             "spectra-utxo-history-{}.sqlite",
@@ -370,7 +370,7 @@ async fn a_utxo_wallet_whose_address_did_not_answer_stores_nothing() {
         .mount(&server)
         .await;
 
-    let service = WalletService::new_typed(vec![crate::service::ChainEndpoints {
+    let service = WalletService::new(vec![crate::service::ChainEndpoints {
         chain_id: Chain::Litecoin.str_id().into(),
         endpoints: vec![server.uri()],
         api_key: None,
@@ -430,7 +430,7 @@ async fn a_utxo_wallet_whose_address_did_not_answer_stores_nothing() {
 /// identifier to fetch for, so no provider is reached.
 #[tokio::test]
 async fn a_bitcoin_wallet_with_nothing_to_fetch_for_says_so() {
-    let service = WalletService::new_typed(Vec::new()).expect("service");
+    let service = WalletService::new(Vec::new()).expect("service");
     let db = std::env::temp_dir()
         .join(format!(
             "spectra-btc-history-{}.sqlite",
@@ -474,7 +474,7 @@ async fn a_bitcoin_wallet_with_nothing_to_fetch_for_says_so() {
     );
 
     // No Bitcoin wallets at all is not a failure.
-    let empty = WalletService::new_typed(Vec::new()).expect("service");
+    let empty = WalletService::new(Vec::new()).expect("service");
     let outcome = empty
         .refresh_bitcoin_history(Vec::new(), false, None)
         .await
@@ -486,7 +486,7 @@ async fn a_bitcoin_wallet_with_nothing_to_fetch_for_says_so() {
 /// Only an EVM chain has an explorer page to fetch.
 #[tokio::test]
 async fn a_non_evm_chain_is_refused() {
-    let service = WalletService::new_typed(Vec::new()).expect("service");
+    let service = WalletService::new(Vec::new()).expect("service");
     assert!(service
         .refresh_evm_chain_history(Chain::Solana.str_id().to_string(), Vec::new(), false, None)
         .await
@@ -509,7 +509,7 @@ async fn a_non_evm_chain_is_refused() {
 /// A chain with no wallets is not an error and not a network call.
 #[tokio::test]
 async fn a_chain_with_no_wallets_refreshes_nothing() {
-    let service = WalletService::new_typed(Vec::new()).expect("service");
+    let service = WalletService::new(Vec::new()).expect("service");
     let outcome = service
         .refresh_chain_history(Chain::Solana.str_id().to_string(), Vec::new())
         .await
@@ -525,7 +525,7 @@ async fn a_chain_with_no_wallets_refreshes_nothing() {
 #[tokio::test]
 async fn owned_history_scope_and_failed_clock_are_core_decisions() {
     use crate::service::HistoryRefreshScope;
-    let service = WalletService::new_typed(vec![]).unwrap();
+    let service = WalletService::new(vec![]).unwrap();
     assert!(service
         .refresh_history(HistoryRefreshScope::All, false, None, 0.0)
         .await
@@ -606,7 +606,7 @@ fn evm_groups_share_only_the_same_network_and_address() {
 async fn wallet_history_scope_does_not_consume_another_wallet_cooldown() {
     use crate::fetch::refresh::policy::HistoryRefreshKey;
     use crate::service::HistoryRefreshScope;
-    let service = WalletService::new_typed(vec![]).unwrap();
+    let service = WalletService::new(vec![]).unwrap();
     let path = std::env::temp_dir().join(format!(
         "history-clock-{}.sqlite",
         crate::store::new_event_id()
@@ -649,7 +649,7 @@ async fn wallet_history_scope_does_not_consume_another_wallet_cooldown() {
 async fn history_identity_merges_sends_on_the_exact_network_and_rejects_deleted_wallets() {
     use crate::fetch::history_decode::*;
     use crate::service::TransactionCommand;
-    let service = WalletService::new_typed(vec![]).unwrap();
+    let service = WalletService::new(vec![]).unwrap();
     let path = std::env::temp_dir().join(format!(
         "history-identity-{}.sqlite",
         crate::store::new_event_id()
@@ -687,7 +687,7 @@ async fn history_identity_merges_sends_on_the_exact_network_and_rejects_deleted_
             normalized_address: "0x1111111111111111111111111111111111111111".into(),
             chain_name: Chain::EthereumSepolia.chain_display_name().into(),
             token_source_used: None,
-            native_asset_name: "Ether".into(),
+            native_asset_display_name: "Ether".into(),
             native_asset_symbol: "ETH".into(),
             wallets: vec![EvmTransactionRecordWalletInput {
                 wallet_id: "w".into(),
@@ -736,14 +736,14 @@ async fn history_identity_merges_sends_on_the_exact_network_and_rejects_deleted_
         .unwrap()
         .is_empty());
     // The response was fetched before deletion and is submitted after the wallet transaction commits.
-    crate::wallet_db::delete_wallet_data(&crate::wallet_db::WalletDatabase::open(&db), "w")
+    crate::wallet_db::delete_wallet_data(&crate::wallet_db::WalletDatabase::new(&db), "w")
         .unwrap();
     assert!(service
         .merge_fetched_history(vec![fetched])
         .await
         .unwrap()
         .is_empty());
-    let reopened = WalletService::new_typed(vec![]).unwrap();
+    let reopened = WalletService::new(vec![]).unwrap();
     reopened.open_state(db).await.unwrap();
     assert!(reopened.transactions().await.unwrap().is_empty());
 }
@@ -787,7 +787,7 @@ fn history_tokens_with_the_same_symbol_keep_distinct_contract_identities() {
         normalized_address: "from".into(),
         chain_name: "Ethereum".into(),
         token_source_used: None,
-        native_asset_name: "Ether".into(),
+        native_asset_display_name: "Ether".into(),
         native_asset_symbol: "ETH".into(),
         wallets: vec![EvmTransactionRecordWalletInput {
             wallet_id: "w".into(),

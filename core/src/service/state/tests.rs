@@ -11,7 +11,7 @@ fn database() -> String {
 }
 
 fn service() -> Arc<WalletService> {
-    WalletService::new_typed(vec![]).unwrap()
+    WalletService::new(vec![]).unwrap()
 }
 fn currency(code: &str) -> StateCommand {
     StateCommand::SetFiatCurrency {
@@ -70,7 +70,7 @@ async fn failed_state_commit_does_not_publish_and_retry_persists() {
     assert!(s.apply_state_command(currency("EUR")).await.is_err());
     assert_eq!(s.app_state().await, before);
     assert_eq!(
-        crate::wallet_db::app_state_load(&crate::wallet_db::WalletDatabase::open(&db)).unwrap(),
+        crate::wallet_db::app_state_load(&crate::wallet_db::WalletDatabase::new(&db)).unwrap(),
         before
     );
     sql(&db, "DROP TRIGGER reject_meta;");
@@ -177,7 +177,7 @@ async fn cancelling_caller_does_not_interrupt_an_admitted_commit() {
     let _writer = s.state_writer.lock().await;
     assert_eq!(s.app_state().await.settings.fiat_currency_code, "EUR");
     assert_eq!(
-        crate::wallet_db::app_state_load(&crate::wallet_db::WalletDatabase::open(&db)).unwrap(),
+        crate::wallet_db::app_state_load(&crate::wallet_db::WalletDatabase::new(&db)).unwrap(),
         s.app_state().await
     );
 }
@@ -281,12 +281,12 @@ async fn advancement_respects_addresses_discovered_while_probe_was_in_flight() {
 
 #[tokio::test]
 async fn a_setting_update_only_writes_its_metadata_and_noop_writes_nothing() {
-    use crate::store::state::WalletSummary;
+    use crate::store::state::WalletState;
     let s = service();
     let db = database();
     s.open_state(db.clone()).await.unwrap();
     s.apply_state_command(StateCommand::UpsertWallet {
-        wallet: WalletSummary::single_address(
+        wallet: WalletState::single_address(
             "w",
             "Wallet",
             "Bitcoin",
@@ -368,7 +368,7 @@ async fn unchanged_receive_reservation_skips_sql_but_merges_newly_owned_indices(
     let state = service().open_state(db.clone()).await.unwrap();
     assert_eq!(state.wallets.len(), 0);
     let pool = crate::wallet_db::keypool_load(
-        &crate::wallet_db::WalletDatabase::open(&db),
+        &crate::wallet_db::WalletDatabase::new(&db),
         "w",
         "Bitcoin",
     )
@@ -405,7 +405,7 @@ async fn unreadable_history_refuses_keypool_reads_and_mutations() {
     assert_eq!(*s.keypool.read().await.indices(), before);
     assert_eq!(
         crate::wallet_db::keypool_load(
-            &crate::wallet_db::WalletDatabase::open(&db),
+            &crate::wallet_db::WalletDatabase::new(&db),
             "w",
             "Bitcoin"
         )
@@ -613,7 +613,7 @@ async fn owned_alert_evaluation_uses_quotes_and_fires_once_across_reopen() {
             state.price_alerts = vec![crate::store::PriceAlertEvaluationAlert {
                 id: "a".into(),
                 holding_key: "ethereum:native".into(),
-                asset_name: "Ethereum".into(),
+                asset_display_name: "Ethereum".into(),
                 symbol: "ETH".into(),
                 chain_name: "Ethereum".into(),
                 target_price: 2.0,
@@ -641,7 +641,7 @@ async fn owned_alert_evaluation_uses_quotes_and_fires_once_across_reopen() {
         service.evaluate_price_alerts()
     );
     assert_eq!(a.unwrap().len() + b.unwrap().len(), 1);
-    let reopened = WalletService::new_typed(vec![]).unwrap();
+    let reopened = WalletService::new(vec![]).unwrap();
     reopened.open_state(path.clone()).await.unwrap();
     assert!(reopened.app_state().await.price_alerts[0].has_triggered);
     assert!(reopened.evaluate_price_alerts().await.unwrap().is_empty());
@@ -650,13 +650,13 @@ async fn owned_alert_evaluation_uses_quotes_and_fires_once_across_reopen() {
 
 #[tokio::test]
 async fn owned_receive_validates_scope_and_keeps_display_reads_read_only() {
-    use crate::store::state::WalletSummary;
+    use crate::store::state::WalletState;
     let service = service();
     let path = database();
     service.open_state(path.clone()).await.unwrap();
     service
         .apply_state_command(StateCommand::UpsertWallet {
-            wallet: WalletSummary::single_address(
+            wallet: WalletState::single_address(
                 "watch",
                 "Watch",
                 "Ethereum",
@@ -692,7 +692,7 @@ async fn owned_receive_validates_scope_and_keeps_display_reads_read_only() {
             .unwrap(),
         Some(read.clone())
     );
-    let reopened = WalletService::new_typed(vec![]).unwrap();
+    let reopened = WalletService::new(vec![]).unwrap();
     reopened.open_state(path.clone()).await.unwrap();
     assert!(reopened
         .owned_addresses_for_wallet("watch".into(), None)
@@ -769,7 +769,7 @@ async fn failed_open_does_not_publish_and_can_retry_seeding() {
         let before = s.app_state().await;
         let old = s.state_binding.connection().await;
         let path = database();
-        let db = crate::wallet_db::WalletDatabase::open(&path);
+        let db = crate::wallet_db::WalletDatabase::new(&path);
         db.with_connection(|conn| {
             conn.execute_batch("CREATE TRIGGER reject_seed BEFORE INSERT ON app_state_meta WHEN NEW.key = 'token_preferences' BEGIN SELECT RAISE(FAIL, 'seed blocked'); END;").map_err(|e| e.to_string())
         }).unwrap();
@@ -805,7 +805,7 @@ async fn derived_wallet_maps_share_one_snapshot_during_mutation() {
         for i in 0..100 {
             writer
                 .mutate_persisted_state(move |state| {
-                    state.wallets = vec![crate::store::state::WalletSummary::single_address(
+                    state.wallets = vec![crate::store::state::WalletState::single_address(
                         format!("w{i}"),
                         "watch",
                         "Ethereum",

@@ -286,11 +286,14 @@ impl WalletService {
         Ok(ordered)
     }
 
+}
+
+impl WalletService {
     /// Move each wallet's reservation past a receive address that has been used.
     ///
     /// Network reads happen outside the writer. Advance only the exact index
     /// whose address was checked; a stale probe cannot clear a newer reservation.
-    pub async fn advance_used_utxo_reservations(
+    pub(crate) async fn advance_used_utxo_reservations(
         &self,
         chain_id: String,
     ) -> Result<(), SpectraBridgeError> {
@@ -417,7 +420,7 @@ impl WalletService {
             _ => 0,
         };
         let defaults = crate::app_core_derivation_paths_for_preset(account).ok()?;
-        let imported = wallet.to_imported_wallet(&defaults);
+        let imported = wallet.to_wallet_view(&defaults);
         let raw_path = wallet
             .addresses
             .iter()
@@ -473,14 +476,7 @@ impl UtxoDerivation {
         base_path: String,
         overrides: &crate::store::wallet_domain::CoreWalletDerivationOverrides,
     ) -> Result<Self, String> {
-        if overrides.curve.is_some()
-            || overrides.derivation_algorithm.is_some()
-            || overrides.address_algorithm.is_some()
-            || overrides.public_key_format.is_some()
-            || overrides.script_type.is_some()
-        {
-            return Err("custom address algorithms do not support range discovery".into());
-        }
+        overrides.validate_for_chain(chain).map_err(|e| e.to_string())?;
         use crate::derivation::chains::bitcoin::{
             derive_bip39_seed, parse_bip32_path, ExtendedPrivateKey,
         };
@@ -496,9 +492,9 @@ impl UtxoDerivation {
         let seed = derive_bip39_seed(
             phrase,
             overrides.passphrase.as_deref().unwrap_or_default(),
-            overrides.iteration_count.unwrap_or(0),
-            overrides.mnemonic_wordlist.as_deref(),
-            overrides.salt_prefix.as_deref(),
+            0,
+            None,
+            None,
         )?;
         let master = ExtendedPrivateKey::master_from_seed(
             overrides

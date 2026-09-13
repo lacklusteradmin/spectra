@@ -19,7 +19,7 @@ impl WalletService {
                 deployment_id: e.deployment_id,
                 kind: e.kind,
                 status: e.status,
-                asset_name: e.asset_name,
+                asset_display_name: e.asset_display_name,
                 symbol: e.symbol,
                 chain_name: e.chain_name,
                 amount: e.amount,
@@ -64,7 +64,7 @@ impl WalletService {
         };
 
         // Only EVM chains are supported.
-        let chain = chain_for_evm_id(&chain_id)?;
+        let chain = evm_network_for_id(&chain_id)?;
 
         let eps = self.endpoints_for(chain.str_id()).await;
         let client = EvmClient::new(eps, chain.evm_chain_id());

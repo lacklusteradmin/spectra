@@ -145,7 +145,7 @@ mod tests {
     use super::*;
     #[tokio::test]
     async fn diagnostic_intents_persist_and_recover() {
-        let service = WalletService::new_typed(vec![]).unwrap();
+        let service = WalletService::new(vec![]).unwrap();
         let path = std::env::temp_dir().join(format!(
             "diagnostic-owned-{}.sqlite",
             crate::store::new_event_id()
@@ -170,7 +170,7 @@ mod tests {
         assert!(d.degraded.is_empty());
         assert_eq!(d.logs.len(), 2);
         assert!(d.last_good_unix.contains_key("Solana"));
-        let reopened = WalletService::new_typed(vec![]).unwrap();
+        let reopened = WalletService::new(vec![]).unwrap();
         assert_eq!(
             reopened
                 .open_state(path.to_string_lossy().into())

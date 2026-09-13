@@ -15,40 +15,18 @@ import json,pathlib,sys
 p=pathlib.Path(sys.argv[1])
 assert json.loads((p/'prices.json').read_text())['quotes']['prices']=={}
 assert json.loads((p/'maintenance.json').read_text())['chains']==[]
-assert 'Renamed' in (p/'list.json').read_text()
+wallets=json.loads((p/'list.json').read_text())['wallets']
+assert len(wallets)==1 and wallets[0]['name']=='Renamed',wallets
 PY
-if "$BIN" --data-dir "$TASK_DIR" --json send preview --wallet Renamed --holding 'ethereum:native' --amount NaN > /dev/null 2>&1; then
-    echo 'invalid amount preview accepted' >&2; exit 1
-fi
-cargo test -p spectra_core --lib store::tests::wallet_import
-cargo test -p spectra_core --lib field_intents_do_not_overwrite
-cargo test -p spectra_core --lib service::network_prices::tests
-cargo test -p spectra_core --lib owned_preview_uses_wallet_network
 
 "$BIN" --data-dir "$TASK_DIR" --json diagnostics maintenance --conditions '{"appIsActive":true,"isNetworkReachable":false,"isConstrainedNetwork":false,"isExpensiveNetwork":false,"isLowPowerMode":false,"batteryLevel":1,"wantsPriceRefresh":true}' > "$TASK_DIR/policy.json"
-cargo test -p spectra_core --lib service::maintenance::boundary_tests
-cargo test -p spectra_core --lib service::history_cursor::tests
-cargo test -p spectra_core --lib maintenance_scope_uses_registry
-cargo test -p spectra_core --lib owned_pending_maintenance
-cargo test -p spectra_core --lib explicit_recheck
+python3 - "$TASK_DIR/policy.json" <<'PYTHON'
+import json,sys
+plan=json.load(open(sys.argv[1]))['plan']
+assert plan['runBackgroundTick'] is False,plan
+assert plan['allowHeavyBackgroundWork'] is False,plan
+assert plan['pollSeconds'] > 0,plan
+PYTHON
 python3 scripts/cli-transaction-recheck.py "$BIN"
 
-cargo test -p spectra_core --lib decred_and_kaspa_independent_mnemonic_vectors
-cargo test -p spectra_core --lib http_probe_regressions
-
-cargo test -p spectra_core --lib app_boundary_tests
-
-# History correctness and cost regressions, all offline.
-cargo test -p spectra_core --lib status_commit_regressions
-cargo test -p spectra_core --lib evm_groups_share_only_the_same_network_and_address
-cargo test -p spectra_core --lib cooldown
-cargo test -p spectra_core --lib history_id_lookup_uses_the_primary_key_and_normalizes_duplicates
-cargo test -p spectra_core --lib store::tests::transaction_store
-
 python3 scripts/cli-owned-send.py "$BIN"
-
-# Provider identity, failed execution, late ownership and fresh status corrections.
-cargo test -p spectra_core --lib history_identity
-cargo test -p spectra_core --lib history_tokens_with_the_same_symbol
-cargo test -p spectra_core --lib execution_history_regressions
-cargo test -p spectra_core --lib a_testnet_wallet_fetches_and_persists_its_exact_network

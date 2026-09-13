@@ -2,7 +2,7 @@ use crate::service::WalletService;
 
 #[tokio::test]
 async fn receive_reservation_is_stable_across_calls() {
-    let service = WalletService::new_typed(Vec::new()).expect("service");
+    let service = WalletService::new(Vec::new()).expect("service");
     let first = service
         .reserve_receive_index("w1".into(), "Bitcoin".into(), 0)
         .await
@@ -17,7 +17,7 @@ async fn receive_reservation_is_stable_across_calls() {
 
 #[tokio::test]
 async fn change_indices_are_never_handed_out_twice() {
-    let service = WalletService::new_typed(Vec::new()).expect("service");
+    let service = WalletService::new(Vec::new()).expect("service");
     let mut handles = Vec::new();
     for _ in 0..32 {
         let service = service.clone();
@@ -40,7 +40,7 @@ async fn change_indices_are_never_handed_out_twice() {
 
 #[tokio::test]
 async fn clearing_a_reservation_frees_the_next_index() {
-    let service = WalletService::new_typed(Vec::new()).expect("service");
+    let service = WalletService::new(Vec::new()).expect("service");
     let first = service
         .reserve_receive_index("w1".into(), "Bitcoin".into(), 0)
         .await
@@ -69,14 +69,14 @@ async fn keypool_survives_reopening_the_database() {
         let _ = std::fs::remove_file(&path);
         path.to_string_lossy().into_owned()
     };
-    let service = WalletService::new_typed(Vec::new()).expect("service");
+    let service = WalletService::new(Vec::new()).expect("service");
     service.open_state(db.clone()).await.expect("open");
     let reserved = service
         .reserve_receive_index("w1".into(), "Bitcoin".into(), 0)
         .await
         .expect("reserve");
 
-    let reopened = WalletService::new_typed(Vec::new()).expect("service");
+    let reopened = WalletService::new(Vec::new()).expect("service");
     reopened.open_state(db.clone()).await.expect("open");
     let after = reopened
         .reserve_receive_index("w1".into(), "Bitcoin".into(), 0)
@@ -96,7 +96,7 @@ async fn keypool_survives_reopening_the_database() {
 /// copy of the owned-address table.
 #[tokio::test]
 async fn a_recorded_owned_address_raises_the_baseline() {
-    let service = WalletService::new_typed(Vec::new()).expect("service");
+    let service = WalletService::new(Vec::new()).expect("service");
     // Bitcoin is a deep-UTXO chain, so the baseline reads indices.
     service
         .register_owned_address(
@@ -132,7 +132,7 @@ async fn owned_addresses_survive_reopening_the_database() {
         let _ = std::fs::remove_file(&path);
         path.to_string_lossy().into_owned()
     };
-    let service = WalletService::new_typed(Vec::new()).expect("service");
+    let service = WalletService::new(Vec::new()).expect("service");
     service.open_state(db.clone()).await.expect("open");
     service
         .register_owned_address(
@@ -146,7 +146,7 @@ async fn owned_addresses_survive_reopening_the_database() {
         .await
         .expect("register");
 
-    let reopened = WalletService::new_typed(Vec::new()).expect("service");
+    let reopened = WalletService::new(Vec::new()).expect("service");
     reopened.open_state(db.clone()).await.expect("open");
     assert_eq!(
         reopened

@@ -13,7 +13,7 @@ fn tmp_db(tag: &str) -> String {
 }
 
 async fn opened(tag: &str) -> (std::sync::Arc<WalletService>, String) {
-    let service = WalletService::new_typed(Vec::new()).expect("service");
+    let service = WalletService::new(Vec::new()).expect("service");
     let db = tmp_db(tag);
     service.open_state(db.clone()).await.expect("open");
     (service, db)
@@ -26,7 +26,7 @@ fn record(id: &str, wallet: &str, status: &str) -> CorePersistedTransactionRecor
         "kind": "send",
         "status": status,
         "walletName": "W",
-        "assetName": "Bitcoin",
+        "assetDisplayName": "Bitcoin",
         "symbol": "BTC",
         "chainName": "Bitcoin",
         "amount": 1.0,
@@ -185,7 +185,7 @@ async fn removing_what_is_absent_is_not_a_change() {
 /// somewhere nobody will look.
 #[tokio::test]
 async fn commands_require_an_opened_store() {
-    let service = WalletService::new_typed(Vec::new()).expect("service");
+    let service = WalletService::new(Vec::new()).expect("service");
     let error = service
         .apply_transaction_command(TransactionCommand::Clear)
         .await
@@ -208,7 +208,7 @@ async fn created_at_is_converted_to_unix_time_for_the_index() {
         .await
         .expect("upsert");
 
-    let rows = crate::wallet_db::history_fetch_all(&crate::wallet_db::WalletDatabase::open(&db))
+    let rows = crate::wallet_db::history_fetch_all(&crate::wallet_db::WalletDatabase::new(&db))
         .expect("rows");
     // createdAt 0.0 in Swift reference time is 2001-01-01 UTC.
     assert_eq!(rows[0].created_at, 978_307_200.0);

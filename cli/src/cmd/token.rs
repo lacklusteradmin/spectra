@@ -143,13 +143,13 @@ pub fn run(ctx: &Ctx, out: Out, command: TokenCommand) -> CliResult<()> {
         TokenCommand::Catalog(args) => catalog(out, args),
         TokenCommand::Artwork(args) => {
             let name = if let Some(id) = args.token_id {
-                spectra_core::store::core_token_icon_asset_name(id)
+                spectra_core::store::core_token_artwork_name(id)
             } else if let Some(id) = args.network_id {
-                spectra_core::store::core_network_icon_asset_name(id)
+                spectra_core::store::core_network_artwork_name(id)
             } else {
-                spectra_core::store::core_deployment_icon_asset_name(args.deployment_id)
+                spectra_core::store::core_deployment_artwork_name(args.deployment_id)
             };
-            out.emit(serde_json::json!({ "assetName": name }));
+            out.emit(serde_json::json!({ "artworkName": name }));
             Ok(())
         }
         TokenCommand::List => list(ctx, out),

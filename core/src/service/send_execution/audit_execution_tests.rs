@@ -1,7 +1,7 @@
 //! Real stored mnemonic -> identity -> params -> signer -> mock submission.
 use super::*;
 use crate::store::{
-    secret_backends::InMemorySecretStore, state::WalletSummary, wallet_secrets::store_seed_phrase,
+    secret_backends::InMemorySecretStore, state::WalletState, wallet_secrets::store_seed_phrase,
 };
 use base64::{engine::general_purpose::STANDARD, Engine};
 use serde_json::{json, Value};
@@ -67,7 +67,7 @@ async fn audit_stored_wallets_reach_solana_sui_aptos_and_tron_submission() {
             };
             ResponseTemplate::new(200).set_body_json(if body["method"].is_string(){json!({"jsonrpc":"2.0","id":body["id"],"result":result})}else{result})
         }).mount(&server).await;
-        let service = WalletService::new_typed(vec![ChainEndpoints {
+        let service = WalletService::new(vec![ChainEndpoints {
             chain_id: chain.str_id().into(),
             endpoints: vec![server.uri()],
             api_key: None,
@@ -103,7 +103,7 @@ async fn audit_stored_wallets_reach_solana_sui_aptos_and_tron_submission() {
         };
         service
             .apply_state_command(StateCommand::UpsertWallet {
-                wallet: WalletSummary::single_address(
+                wallet: WalletState::single_address(
                     "w",
                     "Test",
                     chain.chain_display_name(),
@@ -168,7 +168,7 @@ async fn audit_stored_wallets_reach_solana_sui_aptos_and_tron_submission() {
             Some(result.transaction_hash.as_str())
         );
         assert!(rows[0].payload.signed_transaction_payload.is_some());
-        let reopened = WalletService::new_typed(vec![]).unwrap();
+        let reopened = WalletService::new(vec![]).unwrap();
         reopened
             .open_state(db.to_string_lossy().into())
             .await
@@ -200,7 +200,7 @@ async fn audit_fix5_nonce_journal_survives_response_loss_restart_and_concurrent_
         ))
         .to_string_lossy()
         .into_owned();
-    let service = WalletService::new_typed(vec![ChainEndpoints {
+    let service = WalletService::new(vec![ChainEndpoints {
         chain_id: "ethereum".into(),
         endpoints: vec![server.uri()],
         api_key: None,
@@ -211,7 +211,7 @@ async fn audit_fix5_nonce_journal_survives_response_loss_restart_and_concurrent_
     service.set_secret_store(secrets.clone());
     service
         .apply_state_command(StateCommand::UpsertWallet {
-            wallet: WalletSummary::single_address(
+            wallet: WalletState::single_address(
                 "w",
                 "W",
                 "Ethereum",
@@ -241,7 +241,7 @@ async fn audit_fix5_nonce_journal_survives_response_loss_restart_and_concurrent_
                         hex::encode(sha3::Keccak256::digest(hex::decode(&raw[2..]).unwrap()))
                     );
                     let records = crate::wallet_db::history_fetch_all(
-                        &crate::wallet_db::WalletDatabase::open(&database),
+                        &crate::wallet_db::WalletDatabase::new(&database),
                     )
                     .unwrap();
                     let row = records
@@ -289,7 +289,7 @@ async fn audit_fix5_nonce_journal_survives_response_loss_restart_and_concurrent_
     assert_eq!(first.ethereum_nonce, Some(7));
     assert!(first.failure_reason.is_some());
     drop(service);
-    let reopened = WalletService::new_typed(vec![ChainEndpoints {
+    let reopened = WalletService::new(vec![ChainEndpoints {
         chain_id: "ethereum".into(),
         endpoints: vec![server.uri()],
         api_key: None,

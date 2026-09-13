@@ -3,7 +3,7 @@ use crate::send::keys::SecretHex;
 // Internal typed requests. No JSON deserialization or secret serialization.
 
 /// What `execute_send` signs, once `build_send_params` has resolved which
-/// chain and which struct. One `match` — in `sign_and_broadcast_send` — reads
+/// chain and which struct. One `match` — in `execute_protocol_send` — reads
 /// this; nothing downstream re-derives `Chain` from a string to find out.
 #[derive(Debug)]
 pub(crate) enum SendParams {
@@ -47,7 +47,7 @@ pub(crate) enum SendTokenParams {
     Solana(SolanaTokenSendParams),
 }
 
-/// What `build_send_params` hands `sign_and_broadcast_send`: which of the two
+/// What `build_send_params` hands `execute_protocol_send`: which of the two
 /// kinds this send is, carrying the one already-typed struct that decides.
 #[derive(Debug)]
 pub(crate) enum ExecuteSendParams {

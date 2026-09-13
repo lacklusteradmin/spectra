@@ -170,21 +170,20 @@ impl SendExecutionRequest {
 /// Result from `WalletService::execute_send`.
 #[derive(Debug, Clone, uniffi::Record)]
 pub struct SendExecutionResult {
-    /// Opaque chain payload used only for persisted rebroadcast support.
+    /// Serialized protocol result, including protocol metadata and signed payload.
     /// Swift must not parse this for business state; add typed fields here
     /// when new send-result values are needed.
-    pub rebroadcast_payload: String,
+    pub protocol_result_json: String,
     /// Extracted transaction hash/ID.
     pub transaction_hash: String,
     /// Payload format key (e.g. "bitcoin.rust_json").
     pub payload_format: String,
-    /// Decoded EVM-specific result (nonce, raw_tx_hex, gas_limit). Populated
-    /// when the chain is EVM; `None` for non-EVM chains. Lets Swift skip the
-    /// `decode_evm_send_result(json:)` round-trip.
-    pub evm: Option<crate::send::ethereum::EvmSendResultDecoded>,
+    /// EVM-specific details (nonce, raw_tx_hex, gas_limit), converted directly
+    /// from the protocol result. `None` for non-EVM chains.
+    pub evm: Option<crate::send::ethereum::EvmSendDetails>,
     /// The signed transaction, hex-encoded, when `sign_only` was asked for.
     ///
-    /// A typed field rather than something to dig out of `rebroadcast_payload`:
+    /// A typed field rather than something to dig out of `protocol_result_json`:
     /// that is an opaque per-chain blob, and a caller reading it for business
     /// state is what this record's own comment warns against.
     pub signed_payload: Option<String>,
@@ -617,7 +616,7 @@ mod tests {
             )
             .unwrap_or_else(|| panic!("{} has no native asset", chain.chain_display_name()));
             assert_eq!(asset.symbol, chain.entry().gas_token_symbol);
-            assert!(!asset.asset_name.is_empty());
+            assert!(!asset.asset_display_name.is_empty());
         }
         // And a chain that is not EVM is still refused.
         assert!(crate::fetch::history_decode::history_evm_native_asset("Bitcoin".into()).is_none());

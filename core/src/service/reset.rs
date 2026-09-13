@@ -80,13 +80,13 @@ mod tests {
     use super::*;
     #[tokio::test]
     async fn owned_reset_refuses_invalid_scope_and_waits_for_secret_cleanup() {
-        let service = WalletService::new_typed(vec![]).unwrap();
+        let service = WalletService::new(vec![]).unwrap();
         let path = std::env::temp_dir()
             .join(format!("reset-{}.sqlite", crate::store::new_event_id()))
             .to_string_lossy()
             .into_owned();
         service.open_state(path.clone()).await.unwrap();
-        let wallet = crate::store::state::WalletSummary {
+        let wallet = crate::store::state::WalletState {
             id: "w".into(),
             name: "W".into(),
             is_watch_only: false,
@@ -141,7 +141,7 @@ mod tests {
             vec![key]
         );
         assert!(service.status_trackers.read().await.is_empty());
-        let reopened = WalletService::new_typed(vec![]).unwrap();
+        let reopened = WalletService::new(vec![]).unwrap();
         assert!(reopened.open_state(path).await.unwrap().wallets.is_empty());
     }
 }

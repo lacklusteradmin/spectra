@@ -1,5 +1,5 @@
 use crate::service::WalletService;
-use crate::state::{StateCommand, WalletSummary};
+use crate::state::{StateCommand, WalletState};
 use crate::store::wallet_domain::AssetHolding;
 
 fn holding(symbol: &str, chain: &str, amount: f64, price: f64) -> AssetHolding {
@@ -18,9 +18,9 @@ fn holding(symbol: &str, chain: &str, amount: f64, price: f64) -> AssetHolding {
 async fn service_with(
     wallets: Vec<(&str, &str, Vec<AssetHolding>)>,
 ) -> std::sync::Arc<WalletService> {
-    let service = WalletService::new_typed(Vec::new()).expect("service");
+    let service = WalletService::new(Vec::new()).expect("service");
     for (id, chain, holdings) in wallets {
-        let mut wallet = WalletSummary::single_address(id, id, chain, "addr", None, false);
+        let mut wallet = WalletState::single_address(id, id, chain, "addr", None, false);
         wallet.holdings = holdings;
         service
             .apply_state_command(StateCommand::UpsertWallet { wallet })

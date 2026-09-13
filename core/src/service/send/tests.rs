@@ -11,7 +11,7 @@ mod fee_estimates_are_typed {
     /// is catalog data, so these arms never build a client.
     #[tokio::test]
     async fn a_static_fee_chain_quotes_the_catalog_scaled_by_its_decimals() {
-        let service = WalletService::new_typed(Vec::new()).expect("service");
+        let service = WalletService::new(Vec::new()).expect("service");
         // (chain, raw units, display)
         for (chain, raw, display) in [
             (Chain::Solana, "5000", "0.000005"),     // 9 decimals
@@ -32,7 +32,7 @@ mod fee_estimates_are_typed {
     /// before and still does.
     #[tokio::test]
     async fn near_carries_its_fee_as_a_string() {
-        let service = WalletService::new_typed(Vec::new()).expect("service");
+        let service = WalletService::new(Vec::new()).expect("service");
         let fee = service.native_fee_estimate(Chain::Near).await.expect("fee");
         assert_eq!(fee.raw, "1000000000000000000000");
         assert_eq!(fee.display, "0.001");
@@ -46,7 +46,7 @@ mod fee_estimates_are_typed {
     /// the guard, not a live path.
     #[tokio::test]
     async fn a_chain_with_no_fee_is_a_named_error() {
-        let service = WalletService::new_typed(Vec::new()).expect("service");
+        let service = WalletService::new(Vec::new()).expect("service");
         let err = service
             .native_fee_estimate(Chain::Ethereum)
             .await
@@ -67,13 +67,13 @@ async fn seed_probe_holding(
     symbol: &str,
     token: Option<(&str, u32)>,
 ) -> String {
-    use crate::store::state::WalletSummary;
+    use crate::store::state::WalletState;
     use crate::store::wallet_domain::{
         AssetHolding, CoreTokenHostingChain, CoreTokenPreferenceCategory, CoreTokenPreferenceEntry,
     };
     let chain_name = chain.chain_display_name().to_string();
     let mut state = service.wallet_state.write().await;
-    let mut wallet = WalletSummary::single_address(
+    let mut wallet = WalletState::single_address(
         "probe-wallet",
         "Probe",
         chain_name.clone(),
@@ -119,7 +119,7 @@ async fn seed_probe_holding(
                 decimals,
                 tags: Vec::new(),
                 color: String::new(),
-                asset_name: String::new(),
+                artwork_name: String::new(),
                 enabled: true,
             },
         });
@@ -143,7 +143,7 @@ mod a_destination_probe_refuses_before_it_guesses {
     /// it could not identify one. No network: both refusals precede the reads.
     #[tokio::test]
     async fn an_unfindable_holding_is_an_error_and_not_a_clean_verdict() {
-        let service = WalletService::new_typed(Vec::new()).expect("service");
+        let service = WalletService::new(Vec::new()).expect("service");
         let missing = service
             .send_destination_risk(
                 "no-such-wallet".into(),
@@ -159,7 +159,7 @@ mod a_destination_probe_refuses_before_it_guesses {
         // The wallet is there and holds the asset, but nothing vouches for the
         // contract — so there is no balance to ask about, and saying so is the
         // answer.
-        let service = WalletService::new_typed(Vec::new()).expect("service");
+        let service = WalletService::new(Vec::new()).expect("service");
         let key = super::seed_probe_holding(
             &service,
             crate::registry::Chain::Ethereum,
@@ -202,7 +202,7 @@ mod destination_resolution_tests {
     /// touches the network is reached.
     #[tokio::test]
     async fn a_valid_address_is_normalized_and_not_a_name() {
-        let service = WalletService::new_typed(Vec::new()).expect("service");
+        let service = WalletService::new(Vec::new()).expect("service");
         let resolved = service
             .resolve_send_destination(
                 "ethereum".into(),
@@ -220,7 +220,7 @@ mod destination_resolution_tests {
     /// Nothing typed is refused rather than resolved to the empty string.
     #[tokio::test]
     async fn an_empty_destination_is_refused() {
-        let service = WalletService::new_typed(Vec::new()).expect("service");
+        let service = WalletService::new(Vec::new()).expect("service");
         let err = service
             .resolve_send_destination("bitcoin".into(), "   ".into())
             .await
@@ -236,7 +236,7 @@ mod destination_resolution_tests {
     /// called, so a network-less test proves the branch and not the timeout.
     #[tokio::test]
     async fn a_name_is_not_looked_up_off_the_chain_that_registers_it() {
-        let service = WalletService::new_typed(Vec::new()).expect("service");
+        let service = WalletService::new(Vec::new()).expect("service");
         for chain_id in ["arbitrum", "base", "polygon", "bitcoin"] {
             let err = service
                 .resolve_send_destination(chain_id.into(), "vitalik.eth".into())
@@ -252,7 +252,7 @@ mod destination_resolution_tests {
     /// An unknown chain is an error, not a destination.
     #[tokio::test]
     async fn an_unknown_chain_resolves_nothing() {
-        let service = WalletService::new_typed(Vec::new()).expect("service");
+        let service = WalletService::new(Vec::new()).expect("service");
         assert!(service
             .resolve_send_destination("not-a-chain".into(), "0xabc".into())
             .await
@@ -292,7 +292,7 @@ mod failed_reads {
             })
             .mount(&server)
             .await;
-        let service = WalletService::new_typed(vec![ChainEndpoints {
+        let service = WalletService::new(vec![ChainEndpoints {
             chain_id: "ethereum".into(),
             endpoints: vec![server.uri()],
             api_key: None,
@@ -337,7 +337,7 @@ mod failed_reads {
                 } else { json!({"jsonrpc":"2.0","id":body["id"],"result":result}) };
                 ResponseTemplate::new(200).set_body_json(response)
             }).mount(&server).await;
-            let service = WalletService::new_typed(vec![ChainEndpoints {
+            let service = WalletService::new(vec![ChainEndpoints {
                 chain_id: "ethereum".into(),
                 endpoints: vec![server.uri()],
                 api_key: None,
@@ -396,7 +396,7 @@ mod failed_reads {
                     .mount(&server)
                     .await;
             }
-            let service = WalletService::new_typed(vec![ChainEndpoints {
+            let service = WalletService::new(vec![ChainEndpoints {
                 chain_id: "tron".into(),
                 endpoints: vec![server.uri()],
                 api_key: None,
@@ -492,7 +492,7 @@ mod a_preview_quotes_the_asset_it_moves {
     #[tokio::test]
     async fn owned_preview_uses_wallet_network_and_exact_amount_without_secrets() {
         let server = evm_node().await;
-        let service = WalletService::new_typed(vec![ChainEndpoints {
+        let service = WalletService::new(vec![ChainEndpoints {
             chain_id: "ethereum-sepolia".into(),
             endpoints: vec![server.uri()],
             api_key: None,
@@ -550,7 +550,7 @@ mod a_preview_quotes_the_asset_it_moves {
         value_wei: &str,
         data_hex: String,
     ) -> serde_json::Value {
-        let service = WalletService::new_typed(vec![ChainEndpoints {
+        let service = WalletService::new(vec![ChainEndpoints {
             chain_id: "ethereum".into(),
             endpoints: vec![server.uri()],
             api_key: None,
@@ -633,7 +633,7 @@ mod a_preview_quotes_the_asset_it_moves {
                 .mount(&server)
                 .await;
         }
-        let service = WalletService::new_typed(vec![ChainEndpoints {
+        let service = WalletService::new(vec![ChainEndpoints {
             chain_id: "tron".into(),
             endpoints: vec![server.uri()],
             api_key: None,
@@ -662,7 +662,7 @@ mod a_preview_quotes_the_asset_it_moves {
             .respond_with(ResponseTemplate::new(500))
             .mount(&server)
             .await;
-        let service = WalletService::new_typed(vec![ChainEndpoints {
+        let service = WalletService::new(vec![ChainEndpoints {
             chain_id: "tron".into(),
             endpoints: vec![server.uri()],
             api_key: None,
@@ -705,7 +705,7 @@ mod destination_probe_tests {
             }).mount(&server).await;
             // Zero nonce on BNB needs its keyed explorer: without a key the
             // result is unknown/error, rather than an invented empty history.
-            let service = WalletService::new_typed(vec![ChainEndpoints {
+            let service = WalletService::new(vec![ChainEndpoints {
                 chain_id: Chain::BnbChain.str_id().into(),
                 endpoints: vec![server.uri()],
                 api_key: None,
@@ -750,7 +750,7 @@ mod destination_probe_tests {
             })
             .mount(&server)
             .await;
-        let service = WalletService::new_typed(vec![ChainEndpoints {
+        let service = WalletService::new(vec![ChainEndpoints {
             chain_id: "litecoin".into(),
             endpoints: vec![server.uri()],
             api_key: None,

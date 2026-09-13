@@ -36,7 +36,7 @@ impl WalletService {
         &self,
         transaction_id: String,
     ) -> Result<TransactionStatusChange, SpectraBridgeError> {
-        let db_path = self.bound_database().await?;
+        let database = self.bound_database().await?;
         let expected = self
             .transactions()
             .await?
@@ -82,7 +82,7 @@ impl WalletService {
         };
         let confirmed = status.confirmed;
         let (change, tracker) = tokio::task::spawn_blocking(move || {
-            crate::wallet_db::history_update_chain(&db_path, chain.chain_display_name(), |rows| {
+            crate::wallet_db::history_update_chain(&database, chain.chain_display_name(), |rows| {
                 let mut row = rows
                     .into_iter()
                     .find(|row| row.payload.id.eq_ignore_ascii_case(&expected.id))

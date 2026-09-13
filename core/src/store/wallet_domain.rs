@@ -153,52 +153,30 @@ impl AssetHolding {
     }
 }
 
-/// Power-user derivation overrides layered on top of the chain defaults in
-/// `core/data/chains.toml`. Every field is optional; `None` means
-/// "use the catalog default." Persisted per-wallet and propagated to
-/// every derivation call (import-time preview + send-time signing) so the
-/// imported address and the re-derived signing key stay in sync.
-///
-/// String values (rather than typed enums) keep the UniFFI record stable
-/// against future runtime-side additions; invalid values surface as runtime
-/// errors from the derivation pipeline.
+/// Exact derivation secrets supported consistently by import and signing.
+/// Algorithms and iteration settings come from the chain and derivation path.
 #[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq, uniffi::Record)]
-#[serde(rename_all = "camelCase")]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct CoreWalletDerivationOverrides {
     #[serde(default)]
     pub passphrase: Option<String>,
     #[serde(default)]
-    pub mnemonic_wordlist: Option<String>,
-    #[serde(default)]
-    pub iteration_count: Option<u32>,
-    #[serde(default)]
-    pub salt_prefix: Option<String>,
-    #[serde(default)]
     pub hmac_key: Option<String>,
-    #[serde(default)]
-    pub curve: Option<String>,
-    #[serde(default)]
-    pub derivation_algorithm: Option<String>,
-    #[serde(default)]
-    pub address_algorithm: Option<String>,
-    #[serde(default)]
-    pub public_key_format: Option<String>,
-    #[serde(default)]
-    pub script_type: Option<String>,
 }
 
 impl CoreWalletDerivationOverrides {
+    pub fn validate_for_chain(&self, chain: crate::registry::Chain) -> Result<(), crate::SpectraBridgeError> {
+        if self.passphrase.as_ref().is_some_and(|s| !s.is_empty()) && !chain.supports_derivation_passphrase() {
+            return Err(format!("{} does not support a derivation passphrase", chain.chain_display_name()).into());
+        }
+        if self.hmac_key.as_ref().is_some_and(|s| !s.is_empty()) && !chain.supports_derivation_hmac_override() {
+            return Err(format!("{} does not support a custom HMAC key", chain.chain_display_name()).into());
+        }
+        Ok(())
+    }
+
     pub fn is_empty(&self) -> bool {
-        self.passphrase.is_none()
-            && self.mnemonic_wordlist.is_none()
-            && self.iteration_count.is_none()
-            && self.salt_prefix.is_none()
-            && self.hmac_key.is_none()
-            && self.curve.is_none()
-            && self.derivation_algorithm.is_none()
-            && self.address_algorithm.is_none()
-            && self.public_key_format.is_none()
-            && self.script_type.is_none()
+        self.passphrase.is_none() && self.hmac_key.is_none()
     }
 
     pub(crate) fn zeroize_sensitive_fields(&mut self) {
@@ -208,23 +186,20 @@ impl CoreWalletDerivationOverrides {
         if let Some(value) = &mut self.hmac_key {
             value.zeroize();
         }
-        if let Some(value) = &mut self.salt_prefix {
-            value.zeroize();
-        }
     }
 }
 
 /// A wallet's derivation overrides, wiped when they go out of scope.
 ///
-/// The passphrase, HMAC key and salt prefix are derivation secrets, and a
-/// cloned `WalletSummary` carries them in the clear — so whatever takes them
+/// The passphrase and HMAC key are derivation secrets, and a
+/// cloned `WalletState` carries them in the clear — so whatever takes them
 /// out of one owes them a wipe. Two paths derive from a stored wallet, the
 /// send identity and Bitcoin's history xpub, and this is how both hold them.
 pub(crate) struct SensitiveOverrides(pub(crate) CoreWalletDerivationOverrides);
 
 impl SensitiveOverrides {
     /// Take the overrides out of a wallet record, leaving it with none.
-    pub(crate) fn take_from(wallet: &mut crate::store::state::WalletSummary) -> Self {
+    pub(crate) fn take_from(wallet: &mut crate::store::state::WalletState) -> Self {
         Self(std::mem::take(&mut wallet.derivation_overrides))
     }
 
@@ -280,7 +255,7 @@ impl CoreSeedDerivationPaths {
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq, uniffi::Record)]
 #[serde(rename_all = "camelCase")]
-pub struct CoreImportedWallet {
+pub struct WalletView {
     pub id: String,
     pub name: String,
     /// The network this wallet is on, as a registry chain id. `None` for
@@ -308,7 +283,7 @@ pub struct CoreImportedWallet {
     pub include_in_portfolio_total: bool,
 }
 
-impl CoreImportedWallet {
+impl WalletView {
     /// This wallet's address for `chain`, if it has one.
     pub fn address_for(&self, chain: crate::registry::Chain) -> Option<&str> {
         self.addresses.get(chain.address_slot()).map(String::as_str)
@@ -322,23 +297,23 @@ impl CoreImportedWallet {
     }
 }
 
-// ── CoreImportedWallet ↔ WalletSummary ───────────────────────────────────────
+// ── WalletView ↔ WalletState ───────────────────────────────────────
 //
-// `WalletSummary` is the model core computes with; `CoreImportedWallet` is the
+// `WalletState` is the model core computes with; `WalletView` is the
 // shape the iOS app still uses. The conversion exists so the two can coexist
 // while the app migrates, and it is **deliberately asymmetric**:
 //
-// A `CoreImportedWallet` carries the whole 45-entry derivation-path table and
+// A `WalletView` carries the whole 45-entry derivation-path table and
 // two network-mode fields on *every* wallet, even though a wallet belongs to
-// one chain and uses one path on one network. Converting to `WalletSummary`
+// one chain and uses one path on one network. Converting to `WalletState`
 // keeps the entry that wallet actually uses and drops the other 44 — they are
 // global defaults, not per-wallet data. Converting back therefore cannot
 // reconstruct them, and rebuilds the table from the defaults instead.
 //
 // That asymmetry is the point, not a defect: the round trip losing redundant
-// copies is what makes `WalletSummary` the smaller, correcter model.
+// copies is what makes `WalletState` the smaller, correcter model.
 
-impl CoreImportedWallet {
+impl WalletView {
     /// The network mode this wallet is actually on, as a raw string.
     ///
     /// Only one of the two stored modes applies — the one matching the wallet's
@@ -361,9 +336,9 @@ impl CoreImportedWallet {
     ///
     /// `is_watch_only` cannot be read off this record — the app derives it from
     /// whether the Keychain holds signing material — so the caller supplies it.
-    pub fn to_summary(&self, is_watch_only: bool) -> crate::store::state::WalletSummary {
+    pub fn to_wallet_state(&self, is_watch_only: bool) -> crate::store::state::WalletState {
         use crate::registry::Chain;
-        use crate::store::state::{WalletAddress, WalletSummary};
+        use crate::store::state::{WalletAddress, WalletState};
 
         let chain = Chain::from_display_name(&self.selected_chain);
         let derivation_path = chain.and_then(|chain| {
@@ -372,7 +347,7 @@ impl CoreImportedWallet {
                 .map(str::to_string)
         });
 
-        WalletSummary {
+        WalletState {
             id: self.id.clone(),
             name: self.name.clone(),
             is_watch_only,
@@ -430,26 +405,26 @@ impl CoreImportedWallet {
 
 /// Render an app wallet record back into the authoritative model.
 ///
-/// Exported so the shell can hand core a `WalletSummary` without reimplementing
+/// Exported so the shell can hand core a `WalletState` without reimplementing
 /// the mapping. `is_watch_only` is a platform fact the record cannot carry.
 #[uniffi::export]
-pub fn core_wallet_summary(
-    wallet: CoreImportedWallet,
+pub fn core_wallet_state(
+    wallet: WalletView,
     is_watch_only: bool,
-) -> crate::store::state::WalletSummary {
-    wallet.to_summary(is_watch_only)
+) -> crate::store::state::WalletState {
+    wallet.to_wallet_state(is_watch_only)
 }
 
-impl crate::store::state::WalletSummary {
+impl crate::store::state::WalletState {
     /// Convert back into the shape the iOS app renders.
     ///
-    /// The reverse of [`CoreImportedWallet::to_summary`], and lossy in the
+    /// The reverse of [`WalletView::to_wallet_state`], and lossy in the
     /// direction that does not matter: the 45-entry derivation-path table is
     /// rebuilt from `defaults` with this wallet's own path written over its
     /// chain's slot. Those defaults were never per-wallet data.
     ///
-    /// `WalletSummary` remains the authority. This produces a view model.
-    pub fn to_imported_wallet(&self, defaults: &CoreSeedDerivationPaths) -> CoreImportedWallet {
+    /// `WalletState` remains the authority. This produces a view model.
+    pub fn to_wallet_view(&self, defaults: &CoreSeedDerivationPaths) -> WalletView {
         use crate::registry::Chain;
 
         let chain = Chain::from_display_name(&self.chain_name);
@@ -458,7 +433,7 @@ impl crate::store::state::WalletSummary {
             seed_derivation_paths.set_path_for(chain, path);
         }
 
-        CoreImportedWallet {
+        WalletView {
             id: self.id.clone(),
             name: self.name.clone(),
             network_chain_id: Some(self.network_id.clone()),
@@ -827,7 +802,7 @@ mod roundtrip_tests {
                 decimals: 18,
                 tags: vec!["stablecoin".to_string()],
                 color: "green".to_string(),
-                asset_name: "usdt".to_string(),
+                artwork_name: "usdt".to_string(),
                 enabled: true,
             },
         };

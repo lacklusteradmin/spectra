@@ -1,6 +1,6 @@
 // Rust-owned balance refresh loop. Rust drives the timer, fetches, applies
 // each result to its own wallet state, and hands the observer a typed
-// `WalletSummary` — the front end only mirrors it.
+// `WalletState` — the front end only mirrors it.
 
 use crate::service::WalletService;
 use futures::stream::{self, StreamExt};
@@ -81,6 +81,15 @@ impl BalanceRefreshEngine {
         let count = entries.len() as u32;
         *self.inner.entries.write().unwrap() = entries;
         count
+    }
+
+    /// The platform supplies activity; core reads wallet scope and cadence.
+    pub async fn configure_for_device(&self, app_is_active: bool) {
+        self.stop();
+        let count = self.sync_entries(None).await;
+        if !app_is_active || count == 0 { return; }
+        let minutes = self.inner.wallet_service.app_state().await.settings.automatic_refresh_frequency_minutes;
+        self.start((minutes.max(1) as u64) * 60).await;
     }
 
     /// Start the periodic refresh loop.
@@ -188,7 +197,7 @@ impl BalanceRefreshEngine {
 
             // The service resolves, merges and commits each wallet before notification.
             let ws = Arc::clone(&inner.wallet_service);
-            let results: Vec<Result<(String, String, WalletSummary), ()>> = stream::iter(entries)
+            let results: Vec<Result<(String, String, WalletState), ()>> = stream::iter(entries)
                 .map(|entry| {
                     let ws = Arc::clone(&ws);
                     async move {
@@ -341,7 +350,7 @@ mod tests {
     }
 }
 
-use crate::store::state::WalletSummary;
+use crate::store::state::WalletState;
 
 /// Callback interface implemented by Swift. Rust calls these from the tokio
 /// task that owns the refresh timer loop. Implementations must be
@@ -349,18 +358,18 @@ use crate::store::state::WalletSummary;
 ///
 /// The refresh engine applies the balance update to the Rust-owned wallet
 /// state before invoking the callback, so Swift receives a typed
-/// `WalletSummary` record directly — no JSON shuttle.
+/// `WalletState` record directly — no JSON shuttle.
 #[uniffi::export(with_foreign)]
 pub trait BalanceObserver: Send + Sync {
     /// Called after each successful balance fetch within a cycle. `summary`
-    /// is the updated `WalletSummary` (already applied to the Rust store), or
+    /// is the updated `WalletState` (already applied to the Rust store), or
     /// `None` if the native amount could not be parsed or the wallet is not
     /// in the in-memory state.
     fn on_balance_updated(
         &self,
         chain_id: String,
         wallet_id: String,
-        summary: Option<WalletSummary>,
+        summary: Option<WalletState>,
     );
 
     /// Called once the full sweep of all registered entries completes.
@@ -431,10 +440,10 @@ pub struct RefreshEntry {
 mod refresh_entry_tests {
     use super::refresh_entries_for;
     use crate::registry::Chain;
-    use crate::store::state::{CoreAppState, WalletAddress, WalletSummary};
+    use crate::store::state::{CoreAppState, WalletAddress, WalletState};
 
-    fn wallet(id: &str, chain: Chain, addresses: &[(Chain, &str)]) -> WalletSummary {
-        WalletSummary {
+    fn wallet(id: &str, chain: Chain, addresses: &[(Chain, &str)]) -> WalletState {
+        WalletState {
             id: id.to_string(),
             name: id.to_string(),
             is_watch_only: false,

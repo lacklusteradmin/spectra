@@ -44,7 +44,7 @@ fn commit(chains: &[&str], addresses: &[(&str, &str)]) -> WalletImportCommit {
 async fn imported_wallets_land_in_core_state() {
     let temp = std::env::temp_dir().join(crate::store::new_transaction_id());
     std::fs::create_dir_all(&temp).unwrap();
-    let service = WalletService::new_typed(Vec::new()).expect("service");
+    let service = WalletService::new(Vec::new()).expect("service");
     service.set_secret_store(std::sync::Arc::new(
         crate::store::secret_backends::InMemorySecretStore::new(),
     ));
@@ -88,7 +88,7 @@ async fn imported_wallets_land_in_core_state() {
 async fn a_seed_import_stores_one_address_per_network_of_its_family() {
     let temp = std::env::temp_dir().join(crate::store::new_transaction_id());
     std::fs::create_dir_all(&temp).unwrap();
-    let service = WalletService::new_typed(Vec::new()).expect("service");
+    let service = WalletService::new(Vec::new()).expect("service");
     service.set_secret_store(std::sync::Arc::new(
         crate::store::secret_backends::InMemorySecretStore::new(),
     ));
@@ -133,7 +133,7 @@ async fn a_seed_import_stores_one_address_per_network_of_its_family() {
 async fn a_network_selection_applies_only_to_its_own_family() {
     let temp = std::env::temp_dir().join(crate::store::new_transaction_id());
     std::fs::create_dir_all(&temp).unwrap();
-    let service = WalletService::new_typed(Vec::new()).expect("service");
+    let service = WalletService::new(Vec::new()).expect("service");
     service.set_secret_store(std::sync::Arc::new(
         crate::store::secret_backends::InMemorySecretStore::new(),
     ));
@@ -211,7 +211,7 @@ async fn failed_multi_wallet_import_leaves_neither_wallets_nor_partial_secrets_a
         "spectra-import-{}.db",
         crate::store::new_transaction_id()
     ));
-    let service = WalletService::new_typed(vec![]).unwrap();
+    let service = WalletService::new(vec![]).unwrap();
     let store = std::sync::Arc::new(FailingSecrets::default());
     service.set_secret_store(store.clone());
     service
@@ -223,7 +223,7 @@ async fn failed_multi_wallet_import_leaves_neither_wallets_nor_partial_secrets_a
     assert!(service.app_state().await.wallets.is_empty());
     assert_eq!(store.inner.len(), 0);
     assert!(
-        crate::wallet_db::app_state_load(&crate::wallet_db::WalletDatabase::open(
+        crate::wallet_db::app_state_load(&crate::wallet_db::WalletDatabase::new(
             path.to_str().unwrap()
         ))
         .unwrap()
@@ -236,7 +236,7 @@ async fn failed_multi_wallet_import_leaves_neither_wallets_nor_partial_secrets_a
         assert!(service.wallet_secret_state(wallet.id).has_signing_material);
     }
     assert_eq!(
-        crate::wallet_db::app_state_load(&crate::wallet_db::WalletDatabase::open(
+        crate::wallet_db::app_state_load(&crate::wallet_db::WalletDatabase::new(
             path.to_str().unwrap()
         ))
         .unwrap()
@@ -252,7 +252,7 @@ async fn database_failure_rolls_back_import_secrets_and_missing_material_is_refu
         "spectra-import-{}.db",
         crate::store::new_transaction_id()
     ));
-    let service = WalletService::new_typed(vec![]).unwrap();
+    let service = WalletService::new(vec![]).unwrap();
     let store = std::sync::Arc::new(crate::store::secret_backends::InMemorySecretStore::new());
     service.set_secret_store(store.clone());
     service
@@ -277,7 +277,7 @@ async fn default_wallet_names_are_allocated_under_the_import_writer() {
     let temp = std::env::temp_dir().join(crate::store::new_transaction_id());
     std::fs::create_dir_all(&temp).unwrap();
     let path = temp.join("state.db").to_string_lossy().into_owned();
-    let service = WalletService::new_typed(vec![]).unwrap();
+    let service = WalletService::new(vec![]).unwrap();
     service.set_secret_store(std::sync::Arc::new(
         crate::store::secret_backends::InMemorySecretStore::new(),
     ));
@@ -299,7 +299,7 @@ async fn default_wallet_names_are_allocated_under_the_import_writer() {
         names,
         ["Wallet 2".into(), "Wallet 3".into()].into_iter().collect()
     );
-    let reopened = WalletService::new_typed(vec![]).unwrap();
+    let reopened = WalletService::new(vec![]).unwrap();
     reopened.set_secret_store(std::sync::Arc::new(
         crate::store::secret_backends::InMemorySecretStore::new(),
     ));
@@ -314,4 +314,76 @@ async fn default_wallet_names_are_allocated_under_the_import_writer() {
         "Wallet 4"
     );
     std::fs::remove_dir_all(temp).unwrap();
+}
+
+#[tokio::test]
+async fn raw_mnemonic_is_canonical_before_derivation_and_storage() {
+    let temp = std::env::temp_dir().join(crate::store::new_transaction_id());
+    std::fs::create_dir_all(&temp).unwrap();
+    let service = WalletService::new(vec![]).unwrap();
+    service.set_secret_store(std::sync::Arc::new(
+        crate::store::secret_backends::InMemorySecretStore::new(),
+    ));
+    service
+        .open_state(temp.join("state.db").to_string_lossy().into())
+        .await
+        .unwrap();
+    let mut raw = commit(&["Ethereum"], &[]);
+    raw.seed_phrase = Some(format!(
+        "  {}  ",
+        MNEMONIC.to_uppercase().replace(' ', "\t\n")
+    ));
+    let imported = service.import_wallets(raw).await.unwrap();
+    let normal = service
+        .import_wallets(commit(&["Ethereum"], &[]))
+        .await
+        .unwrap();
+    assert_eq!(imported.wallets[0].addresses, normal.wallets[0].addresses);
+    assert_eq!(
+        service
+            .wallet_seed_phrase(imported.wallets[0].id.clone(), None)
+            .unwrap(),
+        MNEMONIC
+    );
+}
+
+#[tokio::test]
+async fn deep_rescan_reports_provider_failures_and_empty_scope_success() {
+    use crate::fetch::refresh::policy::DeviceConditions;
+    use crate::service::app_refresh::AppRefreshIntent;
+    let temp = std::env::temp_dir().join(crate::store::new_transaction_id());
+    std::fs::create_dir_all(&temp).unwrap();
+    let service = WalletService::new(vec![]).unwrap();
+    service.set_secret_store(std::sync::Arc::new(
+        crate::store::secret_backends::InMemorySecretStore::new(),
+    ));
+    service
+        .open_state(temp.join("state.db").to_string_lossy().into())
+        .await
+        .unwrap();
+    let conditions = DeviceConditions {
+        app_is_active: true,
+        is_network_reachable: true,
+        is_constrained_network: false,
+        is_expensive_network: false,
+        is_low_power_mode: false,
+        battery_level: 1.0,
+        wants_price_refresh: false,
+    };
+    let intent = AppRefreshIntent::DeepRescan {
+        chain_id: "bitcoin".into(),
+    };
+    let empty = service
+        .refresh_app(intent.clone(), conditions.clone())
+        .await
+        .unwrap();
+    assert!(empty.failures.is_empty());
+    service
+        .import_wallets(commit(&["Bitcoin"], &[]))
+        .await
+        .unwrap();
+    // No configured providers: all network work must fail locally and remain visible.
+    let result = service.refresh_app(intent, conditions).await.unwrap();
+    assert!(!result.failures.is_empty());
+    assert!(result.state.quotes.prices_attempt_at.is_none());
 }

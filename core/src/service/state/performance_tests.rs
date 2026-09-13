@@ -1,7 +1,7 @@
 use super::*;
 use crate::registry::Chain;
 use crate::service::address_discovery::UtxoDerivation;
-use crate::store::state::WalletSummary;
+use crate::store::state::WalletState;
 use std::sync::Arc;
 
 const SEED: &str =
@@ -47,7 +47,7 @@ fn public_children_match_full_derivation_for_every_discovery_network() {
 
 async fn scanning_service(endpoint: String) -> (Arc<WalletService>, String) {
     use crate::store::secret_backends::InMemorySecretStore;
-    let service = WalletService::new_typed(vec![crate::service::ChainEndpoints {
+    let service = WalletService::new(vec![crate::service::ChainEndpoints {
         chain_id: "bitcoin".into(),
         endpoints: vec![endpoint],
         api_key: None,
@@ -63,7 +63,7 @@ async fn scanning_service(endpoint: String) -> (Arc<WalletService>, String) {
     service.set_secret_store(secrets);
     service
         .apply_state_command(StateCommand::UpsertWallet {
-            wallet: WalletSummary::single_address(
+            wallet: WalletState::single_address(
                 "scan",
                 "Scan",
                 "Bitcoin",
@@ -175,7 +175,7 @@ async fn activity_probes_include_pending_and_spent_addresses_without_transaction
             .expect(1)
             .mount(&server)
             .await;
-        let service = WalletService::new_typed(vec![crate::service::ChainEndpoints {
+        let service = WalletService::new(vec![crate::service::ChainEndpoints {
             chain_id: chain.str_id().into(),
             endpoints: vec![server.uri()],
             api_key: None,
@@ -199,7 +199,7 @@ async fn activity_probes_include_pending_and_spent_addresses_without_transaction
         .expect(1)
         .mount(&server)
         .await;
-    let service = WalletService::new_typed(vec![crate::service::ChainEndpoints {
+    let service = WalletService::new(vec![crate::service::ChainEndpoints {
         chain_id: Chain::BitcoinSV.str_id().into(),
         endpoints: vec![server.uri()],
         api_key: None,

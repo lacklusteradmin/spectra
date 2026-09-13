@@ -220,6 +220,13 @@ pub enum EvmHistorySource {
 }
 
 impl Chain {
+    pub fn supports_derivation_passphrase(self) -> bool {
+        self.mainnet_counterpart() != Self::Monero
+    }
+    pub fn supports_derivation_hmac_override(self) -> bool {
+        matches!(self.mainnet_counterpart(), Self::Solana | Self::Stellar | Self::Polkadot)
+    }
+
     /// Named accounts authorize keys on chain instead of encoding the key in their address.
     pub fn supports_named_sender_accounts(self) -> bool {
         matches!(self, Self::Near | Self::NearTestnet)
@@ -719,7 +726,7 @@ impl Chain {
     // ── Native-coin metadata
 
     pub fn coin_name(self) -> &'static str {
-        self.entry().native_asset_name.as_str()
+        self.entry().native_asset_display_name.as_str()
     }
 
     /// The native token's symbol, joined through the network's deployment reference.

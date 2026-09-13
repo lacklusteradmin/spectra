@@ -3,7 +3,7 @@ use super::send_result::ProtocolSendResult;
 use super::*;
 impl WalletService {
     /// Dispatch typed inputs and retain the protocol result until serialization.
-    pub(crate) async fn sign_and_broadcast_send(
+    pub(crate) async fn execute_protocol_send(
         &self,
         chain: Chain,
         params: crate::service::send_params::ExecuteSendParams,
@@ -431,7 +431,7 @@ pub(super) async fn sign_and_broadcast_shared_utxo(
             ))
         }
         c => Err(SpectraBridgeError::from(format!(
-            "sign_and_broadcast_send: {c:?} does not use the shared UTXO shape"
+            "execute_protocol_send: {c:?} does not use the shared UTXO shape"
         ))),
     }
 }

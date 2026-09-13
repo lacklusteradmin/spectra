@@ -1,7 +1,7 @@
 use super::*;
 use crate::derivation::types::BitcoinScriptType;
 use crate::store::{
-    secret_backends::InMemorySecretStore, state::WalletSummary, wallet_secrets::store_seed_phrase,
+    secret_backends::InMemorySecretStore, state::WalletState, wallet_secrets::store_seed_phrase,
 };
 use wiremock::{matchers::any, Mock, MockServer, Request, ResponseTemplate};
 
@@ -58,7 +58,7 @@ async fn stored_testnet_hd_history_uses_its_network_script_and_all_pages() {
         })
         .mount(&server)
         .await;
-    let service = WalletService::new_typed(vec![
+    let service = WalletService::new(vec![
         ChainEndpoints {
             chain_id: Chain::BitcoinTestnet4.str_id().into(),
             endpoints: vec![server.uri()],
@@ -83,7 +83,7 @@ async fn stored_testnet_hd_history_uses_its_network_script_and_all_pages() {
     store_seed_phrase(&*secrets, "w", SEED, None).unwrap();
     service.set_secret_store(secrets);
     let mut wallet =
-        WalletSummary::single_address("w", "Test", "Bitcoin", &address, Some(path.into()), false);
+        WalletState::single_address("w", "Test", "Bitcoin", &address, Some(path.into()), false);
     wallet.network_id = Chain::BitcoinTestnet4.str_id().into();
     wallet.addresses[0].chain_name = Chain::BitcoinTestnet4.chain_display_name().into();
     service

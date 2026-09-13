@@ -73,13 +73,36 @@ impl WalletService {
         // address core derived itself and skipped the path where the user
         // typed it.
         let mut commit = commit;
+        // Canonicalize before both derivation and storage, regardless of caller.
+        commit.seed_phrase = commit.seed_phrase.map(|phrase| {
+            phrase
+                .split_whitespace()
+                .map(str::to_lowercase)
+                .collect::<Vec<_>>()
+                .join(" ")
+        });
+        if commit.request.is_private_key_import {
+            commit.private_key = Some(super::standalone::core_private_key_hex(
+                commit.private_key.take().unwrap_or_default(),
+            ).ok_or("Enter a valid 32-byte hex key.")?);
+        }
+        if (commit.request.is_watch_only_import || commit.request.is_private_key_import)
+            && !commit.derivation_overrides.is_empty()
+        {
+            return Err("Derivation overrides require a mnemonic wallet".into());
+        }
+        for name in &commit.request.selected_chain_names {
+            let chain =
+                crate::registry::Chain::from_display_name(name).ok_or("Unknown import chain")?;
+            commit.derivation_overrides.validate_for_chain(chain)?;
+        }
         commit.request.has_wallet_password = commit.password.is_some();
         commit.request.planned_wallet_ids.clear();
         // Derive here when the caller did not — from a seed phrase or from a
         // private key, whichever this import carries. Both front ends used to
         // derive first and hand the result over; the CLI could only do one
         // chain, so the multi-chain rule — every EVM chain derives from
-        // Ethereum's path — existed on the iOS side alone.
+        // Ethereum's derivation path — existed on the iOS side alone.
         if !commit.request.is_watch_only_import {
             let key = commit
                 .private_key
@@ -180,7 +203,7 @@ impl WalletService {
         let private_key = commit.private_key.take().map(zeroize::Zeroizing::new);
         let password = commit.password.take().map(zeroize::Zeroizing::new);
         self.write_persisted(move |service| async move {
-            let path = service.bound_database().await?;
+            let database = service.bound_database().await?;
             let mut snapshot = service.wallet_state.read().await.clone();
             if wallets
                 .iter()
@@ -210,7 +233,7 @@ impl WalletService {
                 reduce_state_in_place(
                     &mut snapshot,
                     StateCommand::UpsertWallet {
-                        wallet: wallet.to_summary(is_watch_only),
+                        wallet: wallet.to_wallet_state(is_watch_only),
                     },
                 );
             }
@@ -241,7 +264,7 @@ impl WalletService {
                         result.map_err(|e| SpectraBridgeError::from(e.to_string()))?;
                     }
                 }
-                tokio::task::spawn_blocking(move || changes.save(&path))
+                tokio::task::spawn_blocking(move || changes.save(&database))
                     .await
                     .map_err(|e| SpectraBridgeError::from(e.to_string()))??;
                 Ok(())

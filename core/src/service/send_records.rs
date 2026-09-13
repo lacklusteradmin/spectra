@@ -42,7 +42,7 @@ impl WalletService {
         let record: CorePersistedTransactionRecord = serde_json::from_value(json!({
             "deploymentId": deployment_id,
             "id": crate::store::new_transaction_id(), "walletId": wallet.id, "kind": "send", "status": "pending",
-            "walletName": wallet.name, "assetName": token.map(|p| p.token.name.as_str()).unwrap_or(symbol), "symbol": symbol,
+            "walletName": wallet.name, "assetDisplayName": token.map(|p| p.token.name.as_str()).unwrap_or(symbol), "symbol": symbol,
             "chainName": chain.chain_display_name(), "amount": request.amount_str.parse::<f64>().map_err(|_| "invalid amount")?,
             "address": request.to_address, "sourceAddress": source,
             "failureReason": "Submission outcome unknown; check network status before sending again.",
@@ -72,9 +72,9 @@ impl WalletService {
             {
                 return Err("wallet removed during submission".into());
             }
-            let path = service.bound_database().await?;
+            let database = service.bound_database().await?;
             tokio::task::spawn_blocking(move || {
-                crate::wallet_db::history_save_send_progress(&path, &record, reserve_nonce)
+                crate::wallet_db::history_save_send_progress(&database, &record, reserve_nonce)
             })
             .await
             .map_err(|e| SpectraBridgeError::from(e.to_string()))??;
@@ -175,7 +175,7 @@ impl WalletService {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::store::state::WalletSummary;
+    use crate::store::state::WalletState;
     use wiremock::{
         matchers::{body_partial_json, method},
         Mock, MockServer, ResponseTemplate,
@@ -183,7 +183,7 @@ mod tests {
     #[tokio::test]
     async fn stored_rebroadcast_uses_recorded_network_and_requires_node_identifier() {
         let server = MockServer::start().await;
-        let service = WalletService::new_typed(vec![ChainEndpoints {
+        let service = WalletService::new(vec![ChainEndpoints {
             chain_id: "ethereum-sepolia".into(),
             endpoints: vec![server.uri()],
             api_key: None,
@@ -199,7 +199,7 @@ mod tests {
             .unwrap();
         service
             .apply_state_command(StateCommand::UpsertWallet {
-                wallet: WalletSummary::single_address(
+                wallet: WalletState::single_address(
                     "w",
                     "W",
                     "Ethereum",
@@ -211,7 +211,7 @@ mod tests {
             .await
             .unwrap();
         let mut record: CorePersistedTransactionRecord = serde_json::from_value(json!({
-            "id": crate::store::new_transaction_id().to_uppercase(), "walletId": "w", "kind": "send", "status": "pending", "walletName": "W", "assetName": "Ether", "symbol": "ETH", "chainName": "Ethereum Sepolia", "amount": 1.0, "address": "0x2222222222222222222222222222222222222222", "createdAt": 1000.0,
+            "id": crate::store::new_transaction_id().to_uppercase(), "walletId": "w", "kind": "send", "status": "pending", "walletName": "W", "assetDisplayName": "Ether", "symbol": "ETH", "chainName": "Ethereum Sepolia", "amount": 1.0, "address": "0x2222222222222222222222222222222222222222", "createdAt": 1000.0,
             "signedTransactionPayload": "0xdeadbeef", "signedTransactionPayloadFormat": "evm.raw_hex"
         })).unwrap();
         service.save_send_record(record.clone()).await.unwrap();
@@ -286,10 +286,10 @@ impl WalletService {
         chain: Chain,
         address: &str,
     ) -> Result<tokio::sync::OwnedMutexGuard<()>, SpectraBridgeError> {
-        let path = self.bound_database().await?;
+        let database = self.bound_database().await?;
         let key = format!(
             "{}|{}|{}",
-            path.path(),
+            database.path(),
             chain.str_id(),
             if chain.is_evm() {
                 address.to_lowercase()

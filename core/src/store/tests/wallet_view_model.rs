@@ -1,5 +1,5 @@
 use crate::registry::Chain;
-use crate::store::state::{WalletAddress, WalletSummary};
+use crate::store::state::{WalletAddress, WalletState};
 use crate::store::wallet_domain::AssetHolding;
 use crate::store::wallet_domain::CoreSeedDerivationPaths;
 
@@ -7,8 +7,8 @@ fn defaults() -> CoreSeedDerivationPaths {
     crate::app_core_derivation_paths_for_preset(0).expect("defaults")
 }
 
-fn summary() -> WalletSummary {
-    WalletSummary {
+fn summary() -> WalletState {
+    WalletState {
         id: "w1".to_string(),
         name: "Cold".to_string(),
         is_watch_only: false,
@@ -41,7 +41,7 @@ fn summary() -> WalletSummary {
 /// Everything the app renders survives the trip out to the view model.
 #[test]
 fn the_view_model_carries_what_the_app_shows() {
-    let view = summary().to_imported_wallet(&defaults());
+    let view = summary().to_wallet_view(&defaults());
     assert_eq!(view.id, "w1");
     assert_eq!(view.selected_chain, "Bitcoin");
     assert_eq!(view.bitcoin_xpub.as_deref(), Some("zpub123"));
@@ -63,7 +63,7 @@ fn the_view_model_carries_what_the_app_shows() {
 /// carrying a Bitcoin mode and a Dogecoin mode and a rule for reading them.
 #[test]
 fn the_wallets_own_network_survives_the_round_trip() {
-    let view = summary().to_imported_wallet(&defaults());
+    let view = summary().to_wallet_view(&defaults());
     assert_eq!(view.network_chain_id.as_deref(), Some("bitcoin-testnet-4"));
 }
 
@@ -72,8 +72,8 @@ fn the_wallets_own_network_survives_the_round_trip() {
 #[test]
 fn holding_ids_are_stable_across_rebuilds() {
     use crate::store::wallet_domain::holding_identity;
-    let first = summary().to_imported_wallet(&defaults());
-    let second = summary().to_imported_wallet(&defaults());
+    let first = summary().to_wallet_view(&defaults());
+    let second = summary().to_wallet_view(&defaults());
     assert_eq!(
         holding_identity(&first.holdings[0]),
         holding_identity(&second.holdings[0])
@@ -84,7 +84,7 @@ fn holding_ids_are_stable_across_rebuilds() {
     let mut other = summary();
     other.holdings[0].symbol = "USDT".to_string();
     other.holdings[0].contract_address = Some("0xdac1".to_string());
-    let third = other.to_imported_wallet(&defaults());
+    let third = other.to_wallet_view(&defaults());
     assert_ne!(
         holding_identity(&first.holdings[0]),
         holding_identity(&third.holdings[0])
@@ -97,7 +97,7 @@ fn holding_ids_are_stable_across_rebuilds() {
 fn summary_survives_a_round_trip_through_the_view_model() {
     let original = summary();
     let round_tripped = original
-        .to_imported_wallet(&defaults())
-        .to_summary(original.is_watch_only);
+        .to_wallet_view(&defaults())
+        .to_wallet_state(original.is_watch_only);
     assert_eq!(round_tripped, original);
 }

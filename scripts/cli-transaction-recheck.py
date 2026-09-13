@@ -37,7 +37,7 @@ with tempfile.TemporaryDirectory(prefix='spectra-recheck-') as directory:
     with sqlite3.connect(path) as db:
         for key, status, tx_hash in [('target', 'failed', 'ab'*32), ('other', 'pending', 'cd'*32)]:
             row = dict(id=key, walletId='wallet', walletName='Fixture', kind='send', status=status,
-                       chainName='Bitcoin Testnet4', symbol='BTC', assetName='Bitcoin', amount=1,
+                       chainName='Bitcoin Testnet4', symbol='BTC', assetDisplayName='Bitcoin', amount=1,
                        address='recipient', transactionHash=tx_hash, createdAt=1234, failureReason='old failure')
             db.execute('INSERT INTO history_records (id,wallet_id,chain_name,tx_hash,created_at,payload) VALUES (?,?,?,?,?,?)',
                        (key,'wallet',row['chainName'],tx_hash,978308434,json.dumps(row)))

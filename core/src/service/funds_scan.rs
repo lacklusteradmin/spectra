@@ -136,7 +136,7 @@ mod scan_tests {
             })
             .mount(&server)
             .await;
-        let service = WalletService::new_typed(vec![ChainEndpoints {
+        let service = WalletService::new(vec![ChainEndpoints {
             chain_id: "ethereum".into(),
             endpoints: vec![server.uri()],
             api_key: None,

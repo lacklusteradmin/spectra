@@ -35,7 +35,7 @@ impl WalletService {
         let limit = limit
             .unwrap_or(DEFAULT_BITCOIN_LIMIT)
             .clamp(MIN_BITCOIN_LIMIT, MAX_BITCOIN_LIMIT);
-        let (wallets, settings): (Vec<crate::store::state::WalletSummary>, _) = {
+        let (wallets, settings): (Vec<crate::store::state::WalletState>, _) = {
             let state = self.app_state().await;
             let wallets = state
                 .wallets
@@ -64,7 +64,7 @@ impl WalletService {
         for mut wallet in wallets {
             // The clone carries the wallet's derivation secrets in the clear.
             // Taking them into the guard wipes them at the end of the
-            // iteration rather than leaving them in a dropped `WalletSummary`.
+            // iteration rather than leaving them in a dropped `WalletState`.
             let overrides = crate::store::wallet_domain::SensitiveOverrides::take_from(&mut wallet);
             if load_more {
                 if self
@@ -160,7 +160,7 @@ pub(crate) struct BitcoinHistoryPage {
 
 /// What a diagnostics row calls this wallet: its address, else its xpub, else
 /// its name.
-fn bitcoin_identifier(wallet: &crate::store::state::WalletSummary) -> Option<String> {
+fn bitcoin_identifier(wallet: &crate::store::state::WalletState) -> Option<String> {
     wallet
         .address_on(Chain::Bitcoin)
         .map(str::to_string)
@@ -172,7 +172,7 @@ impl WalletService {
     /// A single address and an HD account share the same buffered pager.
     async fn bitcoin_history_page(
         &self,
-        wallet: &crate::store::state::WalletSummary,
+        wallet: &crate::store::state::WalletState,
         overrides: &crate::store::wallet_domain::SensitiveOverrides,
         network: Chain,
         limit: u32,
@@ -245,7 +245,7 @@ impl WalletService {
     /// keeps the wipe.
     fn bitcoin_account_xpub(
         &self,
-        wallet: &crate::store::state::WalletSummary,
+        wallet: &crate::store::state::WalletState,
         overrides: &crate::store::wallet_domain::SensitiveOverrides,
         network: Chain,
     ) -> Option<(String, crate::derivation::xpub_walker::HdScriptType)> {
@@ -298,7 +298,7 @@ impl WalletService {
 
 /// One HD snapshot as a stored record.
 fn bitcoin_record(
-    wallet: &crate::store::state::WalletSummary,
+    wallet: &crate::store::state::WalletState,
     chain: Chain,
     source_used: &str,
     snapshot: crate::history::CoreBitcoinHistorySnapshot,
@@ -310,7 +310,7 @@ fn bitcoin_record(
         kind: snapshot.kind,
         status: snapshot.status,
         wallet_name: wallet.name.clone(),
-        asset_name: chain.chain_display_name().to_string(),
+        asset_display_name: chain.chain_display_name().to_string(),
         symbol: chain.coin_symbol().to_string(),
         chain_name: chain.chain_display_name().to_string(),
         amount: snapshot.amount_btc,

@@ -16,7 +16,7 @@ fn tmp_db() -> std::sync::Arc<WalletDatabase> {
         NEXT.fetch_add(1, std::sync::atomic::Ordering::Relaxed)
     ));
     let _ = std::fs::remove_file(&path);
-    WalletDatabase::open(path.to_str().unwrap())
+    WalletDatabase::new(path.to_str().unwrap())
 }
 
 #[test]
@@ -365,7 +365,7 @@ fn history_record_on(id: &str, wallet_id: &str, chain_name: &str) -> HistoryReco
         "walletId": wallet_id,
         "kind": "send",
         "walletName": "Wallet",
-        "assetName": chain_name,
+        "assetDisplayName": chain_name,
         "symbol": "BTC",
         "chainName": chain_name,
         "amount": 1.0,
@@ -383,8 +383,8 @@ fn history_record_on(id: &str, wallet_id: &str, chain_name: &str) -> HistoryReco
     }
 }
 
-fn wallet(id: &str, chain: &str) -> WalletSummary {
-    WalletSummary {
+fn wallet(id: &str, chain: &str) -> WalletState {
+    WalletState {
         id: id.to_string(),
         name: format!("Wallet {id}"),
         is_watch_only: false,
@@ -643,7 +643,7 @@ fn history_id_lookup_uses_the_primary_key_and_normalizes_duplicates() {
         "history-ids-{}.sqlite",
         crate::store::new_event_id()
     ));
-    let db = WalletDatabase::open(db.to_str().unwrap());
+    let db = WalletDatabase::new(db.to_str().unwrap());
     let rows: Vec<_> = (0..1100)
         .map(|i| history_record(&format!("tx{i}"), "w"))
         .collect();

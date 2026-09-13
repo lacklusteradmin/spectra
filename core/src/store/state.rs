@@ -11,7 +11,7 @@ pub struct WalletAddress {
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, uniffi::Record)]
 #[serde(rename_all = "camelCase")]
-pub struct WalletSummary {
+pub struct WalletState {
     pub id: String,
     pub name: String,
     pub is_watch_only: bool,
@@ -31,7 +31,7 @@ pub struct WalletSummary {
 
 // Plain `impl` — deliberately not `#[uniffi::export]`. These are Rust-side
 // domain helpers; the FFI surface stays the record's fields.
-impl WalletSummary {
+impl WalletState {
     /// Build a summary for a wallet with one address on one chain.
     ///
     /// This is the shape most chains produce: a single derived address, no
@@ -491,7 +491,7 @@ pub struct CoreAppState {
     #[serde(default)]
     pub diagnostics: crate::service::DiagnosticState,
     pub schema_version: u32,
-    pub wallets: Vec<WalletSummary>,
+    pub wallets: Vec<WalletState>,
     pub selected_wallet_id: Option<String>,
     pub settings: AppSettings,
     /// Saved recipients, most recently added first.
@@ -636,7 +636,7 @@ pub enum StateCommand {
         included: bool,
     },
     UpsertWallet {
-        wallet: WalletSummary,
+        wallet: WalletState,
     },
     /// Update a wallet only if it is still stored.
     ///
@@ -644,7 +644,7 @@ pub enum StateCommand {
     /// deleted the wallet must not bring it back. Creating is a separate
     /// intent, and `UpsertWallet` is the command for it.
     UpdateWalletIfPresent {
-        wallet: WalletSummary,
+        wallet: WalletState,
     },
     SelectWallet {
         wallet_id: String,
@@ -1284,7 +1284,7 @@ pub fn reduce_state_in_place(state: &mut CoreAppState, command: StateCommand) ->
                                 decimals,
                                 tags: Vec::new(),
                                 color: String::new(),
-                                asset_name: String::new(),
+                                artwork_name: String::new(),
                                 enabled: true,
                             },
                         },
@@ -1445,8 +1445,8 @@ mod tests {
         StateTransition { state, events }
     }
 
-    fn test_wallet(id: &str, chain: &str) -> WalletSummary {
-        WalletSummary {
+    fn test_wallet(id: &str, chain: &str) -> WalletState {
+        WalletState {
             id: id.to_string(),
             name: "Main".to_string(),
             is_watch_only: false,

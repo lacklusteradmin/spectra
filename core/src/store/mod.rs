@@ -13,8 +13,8 @@ pub mod wallet_domain;
 pub mod wallet_secrets;
 
 pub use artwork::{
-    core_deployment_icon_asset_name, core_holding_icon_asset_name, core_network_icon_asset_name,
-    core_token_icon_asset_name,
+    core_deployment_artwork_name, core_holding_artwork_name, core_network_artwork_name,
+    core_token_artwork_name,
 };
 
 use serde::{Deserialize, Serialize};
@@ -545,7 +545,7 @@ pub fn core_reset_dispatch(scopes: Vec<String>) -> CoreResetPlan {
 pub struct PriceAlertEvaluationAlert {
     pub id: String,
     pub holding_key: String,
-    pub asset_name: String,
+    pub asset_display_name: String,
     pub symbol: String,
     pub chain_name: String,
     pub target_price: f64,
@@ -575,7 +575,7 @@ pub struct PriceAlertTriggerUpdate {
 #[serde(rename_all = "camelCase")]
 pub struct PriceAlertNotification {
     pub id: String,
-    pub asset_name: String,
+    pub asset_display_name: String,
     pub symbol: String,
     pub chain_name: String,
     pub target_price: f64,
@@ -618,7 +618,7 @@ pub fn plan_price_alert_evaluation(
             });
             notifications.push(PriceAlertNotification {
                 id: alert.id,
-                asset_name: alert.asset_name,
+                asset_display_name: alert.asset_display_name,
                 symbol: alert.symbol,
                 chain_name: alert.chain_name,
                 target_price: alert.target_price,

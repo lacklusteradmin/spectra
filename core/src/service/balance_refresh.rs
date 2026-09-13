@@ -1,14 +1,14 @@
 //! Fetch and commit balances against the wallet and network that requested them.
 use super::*;
 use crate::fetch::refresh::engine::{refresh_entries_for, RefreshEntry};
-use crate::store::state::WalletSummary;
+use crate::store::state::WalletState;
 use crate::store::wallet_domain::AssetHolding;
 
 impl WalletService {
     pub(crate) async fn refresh_wallet_balances(
         &self,
         wallet_id: String,
-    ) -> Result<WalletSummary, SpectraBridgeError> {
+    ) -> Result<WalletState, SpectraBridgeError> {
         let state = self.app_state().await;
         let entry = refresh_entries_for(&state)
             .into_iter()
@@ -79,7 +79,7 @@ impl WalletService {
         &self,
         entry: RefreshEntry,
         holdings: Vec<AssetHolding>,
-    ) -> Result<WalletSummary, SpectraBridgeError> {
+    ) -> Result<WalletState, SpectraBridgeError> {
         for h in &holdings {
             if !h.amount.is_finite() || h.amount < 0.0 {
                 return Err("invalid balance".into());
@@ -155,7 +155,7 @@ mod tests {
     use super::*;
     #[tokio::test]
     async fn balance_commit_preserves_metadata_and_refuses_stale_network() {
-        let service = WalletService::new_typed(vec![]).unwrap();
+        let service = WalletService::new(vec![]).unwrap();
         let path = std::env::temp_dir().join(format!(
             "balance-owned-{}.sqlite",
             crate::store::new_event_id()
@@ -164,7 +164,7 @@ mod tests {
             .open_state(path.to_string_lossy().into())
             .await
             .unwrap();
-        let mut w = WalletSummary::single_address(
+        let mut w = WalletState::single_address(
             "w",
             "Original",
             "Ethereum",
@@ -200,7 +200,7 @@ mod tests {
             .commit_balance_result(entry, vec![coin])
             .await
             .unwrap();
-        let reopened = WalletService::new_typed(vec![]).unwrap();
+        let reopened = WalletService::new(vec![]).unwrap();
         assert_eq!(
             reopened
                 .open_state(path.to_string_lossy().into())
@@ -222,7 +222,7 @@ mod lifecycle_tests {
     use super::*;
     #[tokio::test]
     async fn network_setting_and_derivation_cleanup_rollback_together() {
-        let service = WalletService::new_typed(vec![]).unwrap();
+        let service = WalletService::new(vec![]).unwrap();
         let path = std::env::temp_dir().join(format!(
             "network-atomic-{}.sqlite",
             crate::store::new_event_id()
@@ -259,7 +259,7 @@ mod lifecycle_tests {
             .await
             .unwrap();
         assert!(service.keypool.read().await.is_empty());
-        let reopened = WalletService::new_typed(vec![]).unwrap();
+        let reopened = WalletService::new(vec![]).unwrap();
         assert_eq!(
             reopened
                 .open_state(path.to_string_lossy().into())
@@ -272,7 +272,7 @@ mod lifecycle_tests {
     }
     #[tokio::test]
     async fn wallet_delete_removes_secrets_and_relations_and_can_retry() {
-        let service = WalletService::new_typed(vec![]).unwrap();
+        let service = WalletService::new(vec![]).unwrap();
         let path = std::env::temp_dir().join(format!(
             "delete-owned-{}.sqlite",
             crate::store::new_event_id()
@@ -287,7 +287,7 @@ mod lifecycle_tests {
         service.store_wallet_seed_phrase("w".into(), "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about".into(), None).unwrap();
         service
             .apply_state_command(StateCommand::UpsertWallet {
-                wallet: WalletSummary::single_address(
+                wallet: WalletState::single_address(
                     "w",
                     "W",
                     "Ethereum",
@@ -316,7 +316,7 @@ mod lifecycle_tests {
             .unwrap();
         assert!(!service.wallet_secret_state("w".into()).has_signing_material);
         assert!(service.keypool.read().await.is_empty());
-        let reopened = WalletService::new_typed(vec![]).unwrap();
+        let reopened = WalletService::new(vec![]).unwrap();
         assert!(reopened
             .open_state(path.to_string_lossy().into())
             .await

@@ -1,6 +1,6 @@
 use super::*;
 use crate::store::secret_backends::InMemorySecretStore;
-use crate::store::state::WalletSummary;
+use crate::store::state::WalletState;
 use crate::store::wallet_secrets::{store_private_key, store_seed_phrase};
 
 const SEED: &str =
@@ -12,12 +12,12 @@ async fn wallet(
     address: &str,
     password: Option<&str>,
 ) -> (Arc<WalletService>, Arc<InMemorySecretStore>) {
-    let service = WalletService::new_typed(vec![]).unwrap();
+    let service = WalletService::new(vec![]).unwrap();
     let secrets = Arc::new(InMemorySecretStore::new());
     service.set_secret_store(secrets.clone());
     service
         .apply_state_command(StateCommand::UpsertWallet {
-            wallet: WalletSummary::single_address(
+            wallet: WalletState::single_address(
                 "w",
                 "Wallet",
                 "Ethereum",
@@ -131,7 +131,7 @@ async fn passwords_unlock_stored_material_and_wrong_passwords_fail() {
 
 #[tokio::test]
 async fn every_mainnet_mnemonic_identity_resolves_using_stored_derivation_data() {
-    let service = WalletService::new_typed(vec![]).unwrap();
+    let service = WalletService::new(vec![]).unwrap();
     let secrets = Arc::new(InMemorySecretStore::new());
     service.set_secret_store(secrets.clone());
     let defaults = crate::app_core_derivation_paths_for_preset(0).unwrap();
@@ -145,7 +145,7 @@ async fn every_mainnet_mnemonic_identity_resolves_using_stored_derivation_data()
         let address = derived.address.unwrap();
         service
             .apply_state_command(StateCommand::UpsertWallet {
-                wallet: WalletSummary::single_address(
+                wallet: WalletState::single_address(
                     "w",
                     "Wallet",
                     name,
@@ -196,14 +196,14 @@ async fn monero_rpc_is_bound_to_the_checked_sender_and_endpoint() {
         .expect(if matches_wallet { 1 } else { 0 })
         .mount(&rpc)
         .await;
-        let service = WalletService::new_typed(vec![crate::service::ChainEndpoints {
+        let service = WalletService::new(vec![crate::service::ChainEndpoints {
             chain_id: "monero".into(),
             endpoints: vec![rpc.uri(), backup.uri()],
             api_key: None,
         }])
         .unwrap();
         let result = service
-            .sign_and_broadcast_send(
+            .execute_protocol_send(
                 Chain::Monero,
                 ExecuteSendParams::Native(SendParams::Monero(MoneroSendParams {
                     from: "selected".into(),
@@ -224,14 +224,14 @@ async fn monero_rpc_is_bound_to_the_checked_sender_and_endpoint() {
 
 #[tokio::test]
 async fn near_named_accounts_are_resolved_but_implicit_accounts_must_match_the_key() {
-    let service = WalletService::new_typed(vec![]).unwrap();
+    let service = WalletService::new(vec![]).unwrap();
     let secrets = Arc::new(InMemorySecretStore::new());
     service.set_secret_store(secrets.clone());
     store_seed_phrase(&*secrets, "w", SEED, None).unwrap();
     for (address, valid) in [("alice.near".to_string(), true), ("11".repeat(32), false)] {
         service
             .apply_state_command(StateCommand::UpsertWallet {
-                wallet: WalletSummary::single_address("w", "Wallet", "NEAR", &address, None, false),
+                wallet: WalletState::single_address("w", "Wallet", "NEAR", &address, None, false),
             })
             .await
             .unwrap();

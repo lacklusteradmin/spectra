@@ -7,7 +7,7 @@ use wiremock::{matchers::any, Mock, MockServer, Request, ResponseTemplate};
 fn record(id: &str, chain: Chain, status: &str) -> CorePersistedTransactionRecord {
     serde_json::from_value(json!({
         "id":id, "walletId":"wallet", "walletName":"Original", "kind":"send",
-        "chainName":chain.chain_display_name(), "symbol":chain.coin_symbol(), "assetName":"Coin",
+        "chainName":chain.chain_display_name(), "symbol":chain.coin_symbol(), "assetDisplayName":"Coin",
         "status":status, "amount":1, "address":"recipient", "createdAt":1234.0,
         "transactionHash":"ab".repeat(32), "failureReason":"old failure",
         "receiptBlockNumber":90, "confirmationCount":99
@@ -15,7 +15,7 @@ fn record(id: &str, chain: Chain, status: &str) -> CorePersistedTransactionRecor
     .unwrap()
 }
 async fn service(chain: Chain, server: &MockServer) -> (std::sync::Arc<WalletService>, String) {
-    let service = WalletService::new_typed(vec![ChainEndpoints {
+    let service = WalletService::new(vec![ChainEndpoints {
         chain_id: chain.str_id().into(),
         endpoints: vec![server.uri()],
         api_key: None,
@@ -71,7 +71,7 @@ async fn explicit_recheck_targets_failed_and_confirmed_records_on_the_stored_net
         assert_eq!(change.old_status, previous);
         assert_eq!(change.new_status, "confirmed");
         assert_eq!(change.status_changed, previous != "confirmed");
-        let reopened = WalletService::new_typed(vec![]).unwrap();
+        let reopened = WalletService::new(vec![]).unwrap();
         reopened.open_state(path.clone()).await.unwrap();
         let rows = reopened.fetch_all_history_records_typed().await.unwrap();
         let target = rows.iter().find(|r| r.id == "target").unwrap();
@@ -130,7 +130,7 @@ async fn explicit_recheck_reopens_finality_and_clears_reorg_metadata() {
 async fn explicit_recheck_refuses_invalid_scope_before_network_or_tracker_mutation() {
     let server = MockServer::start().await;
     let (service, _) = service(Chain::Bitcoin, &server).await;
-    assert!(WalletService::new_typed(vec![])
+    assert!(WalletService::new(vec![])
         .unwrap()
         .recheck_transaction_status("missing".into())
         .await
@@ -208,13 +208,13 @@ async fn explicit_recheck_does_not_resurrect_deleted_or_overwrite_changed_transa
             .respond_with(move |_: &Request| {
                 if action == "delete" {
                     crate::wallet_db::history_delete(
-                        &crate::wallet_db::WalletDatabase::open(&path),
+                        &crate::wallet_db::WalletDatabase::new(&path),
                         &["target".into()],
                     )
                     .unwrap();
                 } else {
                     let mut row = crate::wallet_db::history_fetch_all(
-                        &crate::wallet_db::WalletDatabase::open(&path),
+                        &crate::wallet_db::WalletDatabase::new(&path),
                     )
                     .unwrap()
                     .remove(0);
@@ -224,7 +224,7 @@ async fn explicit_recheck_does_not_resurrect_deleted_or_overwrite_changed_transa
                         row.payload.wallet_name = "Edited during read".into();
                     }
                     crate::wallet_db::history_upsert_batch(
-                        &crate::wallet_db::WalletDatabase::open(&path),
+                        &crate::wallet_db::WalletDatabase::new(&path),
                         &[row],
                     )
                     .unwrap();

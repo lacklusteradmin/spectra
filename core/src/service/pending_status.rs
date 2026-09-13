@@ -378,7 +378,7 @@ mod tests {
             "kind": "send",
             "status": "pending",
             "walletName": "Main",
-            "assetName": chain.chain_display_name(),
+            "assetDisplayName": chain.chain_display_name(),
             "symbol": chain.coin_symbol(),
             "chainName": chain.chain_display_name(),
             "amount": 1.0,
@@ -476,7 +476,7 @@ mod tests {
     /// refused. Offline: neither reaches a provider.
     #[tokio::test]
     async fn a_chain_that_is_not_polled_does_nothing() {
-        let service = WalletService::new_typed(Vec::new()).expect("service");
+        let service = WalletService::new(Vec::new()).expect("service");
         let unpolled = Chain::all()
             .find(|chain| matches!(chain.pending_status_poll(), PendingStatusPoll::None))
             .expect("some chain is not polled");
@@ -493,10 +493,10 @@ mod tests {
     #[tokio::test]
     async fn maintenance_scope_uses_registry_finality_and_ignores_empty_hashes() {
         let (service, path) = stored_service().await;
-        use crate::store::state::{StateCommand, WalletSummary};
+        use crate::store::state::{StateCommand, WalletState};
         service
             .apply_state_command(StateCommand::UpsertWallet {
-                wallet: WalletSummary::single_address(
+                wallet: WalletState::single_address(
                     "wallet-1",
                     "W",
                     "Ethereum",
@@ -529,7 +529,7 @@ mod tests {
             service.pending_maintenance_chains().await.unwrap(),
             vec!["dogecoin"]
         );
-        let reopened = WalletService::new_typed(vec![]).unwrap();
+        let reopened = WalletService::new(vec![]).unwrap();
         reopened.open_state(path).await.unwrap();
         assert_eq!(
             reopened.pending_maintenance_chains().await.unwrap(),
@@ -538,7 +538,7 @@ mod tests {
     }
 
     async fn stored_service() -> (std::sync::Arc<WalletService>, String) {
-        let service = WalletService::new_typed(vec![]).unwrap();
+        let service = WalletService::new(vec![]).unwrap();
         let path = std::env::temp_dir()
             .join(format!(
                 "spectra-poll-{}.sqlite",
@@ -596,7 +596,7 @@ mod tests {
             ResponseTemplate::new(200).set_body_json(json!({"jsonrpc":"2.0", "id":body["id"],
                 "result":if body["method"] == "eth_chainId" { json!("0x1") } else { serde_json::Value::Null }}))
         }).mount(&server).await;
-        let service = WalletService::new_typed(vec![crate::service::ChainEndpoints {
+        let service = WalletService::new(vec![crate::service::ChainEndpoints {
             chain_id: "ethereum".into(),
             endpoints: vec![server.uri()],
             api_key: None,
@@ -633,7 +633,7 @@ mod tests {
 
     #[tokio::test]
     async fn polling_propagates_unopened_and_corrupt_storage() {
-        let unopened = WalletService::new_typed(vec![]).unwrap();
+        let unopened = WalletService::new(vec![]).unwrap();
         assert!(unopened
             .poll_pending_transactions("ethereum".into())
             .await
@@ -685,7 +685,7 @@ mod tests {
 
     #[tokio::test]
     async fn owned_pending_maintenance_refuses_unopened_and_corrupt_storage() {
-        let unopened = WalletService::new_typed(vec![]).unwrap();
+        let unopened = WalletService::new(vec![]).unwrap();
         assert!(unopened.refresh_pending_transactions().await.is_err());
         let (service, path) = stored_service().await;
         service

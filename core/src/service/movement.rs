@@ -75,13 +75,13 @@ impl WalletService {
         app_is_active: bool,
     ) -> Result<Option<LargeMovementEvaluation>, SpectraBridgeError> {
         self.write_persisted(move |service| async move {
-            let path = service.bound_database().await?;
+            let database = service.bound_database().await?;
             let before = service.wallet_state.read().await.clone();
             let mut state = before.clone();
             let result = evaluate(&mut state, app_is_active);
             if state.movement_baseline != before.movement_baseline {
                 let changes = crate::wallet_db::AppStateChanges::between(Some(&before), &state)?;
-                tokio::task::spawn_blocking(move || changes.save(&path))
+                tokio::task::spawn_blocking(move || changes.save(&database))
                     .await
                     .map_err(|e| SpectraBridgeError::from(e.to_string()))??;
                 *service.wallet_state.write().await = state;
@@ -97,7 +97,7 @@ mod tests {
     use super::*;
     fn state() -> CoreAppState {
         let mut s = CoreAppState::default();
-        s.wallets.push(crate::store::state::WalletSummary {
+        s.wallets.push(crate::store::state::WalletState {
             id: "wallet-a".into(),
             name: "A".into(),
             is_watch_only: true,
@@ -149,7 +149,7 @@ mod tests {
     async fn movement_baseline_survives_reopen_and_consumes_each_change_once() {
         let path =
             std::env::temp_dir().join(format!("movement-{}.db", crate::store::new_event_id()));
-        let service = WalletService::new_typed(vec![]).unwrap();
+        let service = WalletService::new(vec![]).unwrap();
         service
             .open_state(path.to_string_lossy().into())
             .await
@@ -169,7 +169,7 @@ mod tests {
             .await
             .unwrap()
             .is_none());
-        let reopened = WalletService::new_typed(vec![]).unwrap();
+        let reopened = WalletService::new(vec![]).unwrap();
         reopened
             .open_state(path.to_string_lossy().into())
             .await

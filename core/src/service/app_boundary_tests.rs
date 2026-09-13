@@ -4,7 +4,7 @@ use wiremock::matchers::{body_partial_json, method, path};
 use wiremock::{Mock, MockServer, ResponseTemplate};
 
 fn service(chain: &str, server: &MockServer) -> Arc<WalletService> {
-    WalletService::new_typed(vec![ChainEndpoints {
+    WalletService::new(vec![ChainEndpoints {
         chain_id: chain.into(),
         endpoints: vec![server.uri()],
         api_key: None,
@@ -221,7 +221,7 @@ async fn owned_non_evm_preview_needs_only_stored_watch_address_and_valid_input()
     let server = MockServer::start().await;
     let svc = service("solana", &server);
     let address = "11111111111111111111111111111111";
-    let mut wallet = crate::store::state::WalletSummary::single_address(
+    let mut wallet = crate::store::state::WalletState::single_address(
         "watch", "Watch", "Solana", address, None, true,
     );
     wallet

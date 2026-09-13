@@ -13,7 +13,7 @@ pub struct ChainHistoryEntry {
     pub deployment_id: Option<String>,
     pub kind: String,   // "receive" | "send"
     pub status: String, // "confirmed" | "pending"
-    pub asset_name: String,
+    pub asset_display_name: String,
     pub symbol: String,
     pub chain_name: String,
     pub amount: f64,
@@ -248,7 +248,7 @@ pub fn normalize_chain_history(chain_id: &str, raw_json: &str) -> Vec<ChainHisto
         return vec![];
     };
 
-    let (asset_name, symbol, chain_name) = (
+    let (asset_display_name, symbol, chain_name) = (
         chain.coin_name(),
         chain.coin_symbol(),
         chain.chain_display_name(),
@@ -294,11 +294,11 @@ pub fn normalize_chain_history(chain_id: &str, raw_json: &str) -> Vec<ChainHisto
             };
 
             let (entry_asset, entry_symbol) = match shape.symbol_override {
-                SymbolOverride::None => (asset_name, symbol),
+                SymbolOverride::None => (asset_display_name, symbol),
                 SymbolOverride::RowNamesAsset => {
                     let found = entry["symbol"].as_str().unwrap_or(symbol);
                     if found == symbol {
-                        (asset_name, found)
+                        (asset_display_name, found)
                     } else {
                         let named = crate::tokens::token_name_on_chain(chain.str_id(), found);
                         (named.unwrap_or(found), found)
@@ -344,7 +344,7 @@ pub fn normalize_chain_history(chain_id: &str, raw_json: &str) -> Vec<ChainHisto
                     status
                 }
                 .to_string(),
-                asset_name: entry_asset.to_string(),
+                asset_display_name: entry_asset.to_string(),
                 symbol: entry_symbol.to_string(),
                 chain_name: chain_name.to_string(),
                 amount: if shape.amount_in_base_units {
@@ -498,7 +498,7 @@ pub struct HistoryTransaction {
     pub kind: String,
     pub status: String,
     pub wallet_name: String,
-    pub asset_name: String,
+    pub asset_display_name: String,
     pub symbol: String,
     pub chain_name: String,
     pub address: String,
@@ -525,7 +525,7 @@ pub struct CoreNormalizedHistoryEntry {
     pub kind: String,
     pub status: String,
     pub wallet_name: String,
-    pub asset_name: String,
+    pub asset_display_name: String,
     pub symbol: String,
     pub chain_name: String,
     pub address: String,
@@ -681,7 +681,7 @@ fn normalized_entry(
     );
     let search_index = [
         transaction.wallet_name.as_str(),
-        transaction.asset_name.as_str(),
+        transaction.asset_display_name.as_str(),
         transaction.symbol.as_str(),
         transaction.chain_name.as_str(),
         transaction.address.as_str(),
@@ -699,7 +699,7 @@ fn normalized_entry(
         kind: transaction.kind,
         status: transaction.status,
         wallet_name: transaction.wallet_name,
-        asset_name: transaction.asset_name,
+        asset_display_name: transaction.asset_display_name,
         symbol: transaction.symbol,
         chain_name: transaction.chain_name,
         address: transaction.address,
@@ -866,7 +866,7 @@ mod tests {
                     kind: "send".to_string(),
                     status: "pending".to_string(),
                     wallet_name: "Main".to_string(),
-                    asset_name: "Ether".to_string(),
+                    asset_display_name: "Ether".to_string(),
                     symbol: "ETH".to_string(),
                     chain_name: "Ethereum".to_string(),
                     address: "0xabc".to_string(),
@@ -880,7 +880,7 @@ mod tests {
                     kind: "send".to_string(),
                     status: "confirmed".to_string(),
                     wallet_name: "Main".to_string(),
-                    asset_name: "Ether".to_string(),
+                    asset_display_name: "Ether".to_string(),
                     symbol: "ETH".to_string(),
                     chain_name: "Ethereum".to_string(),
                     address: "0xabc".to_string(),
@@ -949,77 +949,77 @@ mod normalize_chain_history_tests {
         (
             "bitcoin",
             r#"[{"txid":"a1","confirmed":true,"block_height":800000,"block_time":1700000000,"net_sats":-12345}]"#,
-            r#"[{"kind":"send","status":"confirmed","asset_name":"Bitcoin","symbol":"BTC","chain_name":"Bitcoin","amount":0.00012345,"counterparty":"","tx_hash":"a1","block_height":800000,"timestamp":1700000000.0}]"#,
+            r#"[{"kind":"send","status":"confirmed","asset_display_name":"Bitcoin","symbol":"BTC","chain_name":"Bitcoin","amount":0.00012345,"counterparty":"","tx_hash":"a1","block_height":800000,"timestamp":1700000000.0}]"#,
         ),
         (
             "bitcoin",
             r#"[{"txid":"a2","confirmed":false,"block_height":null,"block_time":1700000001,"net_sats":6789}]"#,
-            r#"[{"kind":"receive","status":"pending","asset_name":"Bitcoin","symbol":"BTC","chain_name":"Bitcoin","amount":0.00006789,"counterparty":"","tx_hash":"a2","block_height":null,"timestamp":1700000001.0}]"#,
+            r#"[{"kind":"receive","status":"pending","asset_display_name":"Bitcoin","symbol":"BTC","chain_name":"Bitcoin","amount":0.00006789,"counterparty":"","tx_hash":"a2","block_height":null,"timestamp":1700000001.0}]"#,
         ),
         (
             "litecoin",
             r#"[{"txid":"b1","amount_sat":-500000,"block_height":250000,"timestamp":1700000002,"is_incoming":false}]"#,
-            r#"[{"kind":"send","status":"confirmed","asset_name":"Litecoin","symbol":"LTC","chain_name":"Litecoin","amount":0.005,"counterparty":"","tx_hash":"b1","block_height":250000,"timestamp":1700000002.0}]"#,
+            r#"[{"kind":"send","status":"confirmed","asset_display_name":"Litecoin","symbol":"LTC","chain_name":"Litecoin","amount":0.005,"counterparty":"","tx_hash":"b1","block_height":250000,"timestamp":1700000002.0}]"#,
         ),
         (
             "bitcoin-cash",
             r#"[{"txid":"b2","amount_sat":700000,"block_height":0,"timestamp":1700000003}]"#,
-            r#"[{"kind":"receive","status":"pending","asset_name":"Bitcoin Cash","symbol":"BCH","chain_name":"Bitcoin Cash","amount":0.007,"counterparty":"","tx_hash":"b2","block_height":0,"timestamp":1700000003.0}]"#,
+            r#"[{"kind":"receive","status":"pending","asset_display_name":"Bitcoin Cash","symbol":"BCH","chain_name":"Bitcoin Cash","amount":0.007,"counterparty":"","tx_hash":"b2","block_height":0,"timestamp":1700000003.0}]"#,
         ),
         (
             "bitcoin-sv",
             r#"[{"txid":"b3","amount_sat":900000,"block_height":10,"timestamp":1700000004,"is_incoming":true}]"#,
-            r#"[{"kind":"receive","status":"confirmed","asset_name":"Bitcoin SV","symbol":"BSV","chain_name":"Bitcoin SV","amount":0.009,"counterparty":"","tx_hash":"b3","block_height":10,"timestamp":1700000004.0}]"#,
+            r#"[{"kind":"receive","status":"confirmed","asset_display_name":"Bitcoin SV","symbol":"BSV","chain_name":"Bitcoin SV","amount":0.009,"counterparty":"","tx_hash":"b3","block_height":10,"timestamp":1700000004.0}]"#,
         ),
         (
             "dogecoin",
             r#"[{"txid":"c1","amount_koin":-123456789,"block_height":5,"timestamp":1700000005,"is_incoming":false}]"#,
-            r#"[{"kind":"send","status":"confirmed","asset_name":"Dogecoin","symbol":"DOGE","chain_name":"Dogecoin","amount":1.23456789,"counterparty":"","tx_hash":"c1","block_height":5,"timestamp":1700000005.0}]"#,
+            r#"[{"kind":"send","status":"confirmed","asset_display_name":"Dogecoin","symbol":"DOGE","chain_name":"Dogecoin","amount":1.23456789,"counterparty":"","tx_hash":"c1","block_height":5,"timestamp":1700000005.0}]"#,
         ),
         (
             "xrp",
             r#"[{"txid":"d1","timestamp":1700000006,"from":"rFrom","to":"rTo","amount_drops":250000,"is_incoming":true}]"#,
-            r#"[{"kind":"receive","status":"confirmed","asset_name":"XRP","symbol":"XRP","chain_name":"XRP Ledger","amount":0.25,"counterparty":"rFrom","tx_hash":"d1","block_height":null,"timestamp":1700000006.0}]"#,
+            r#"[{"kind":"receive","status":"confirmed","asset_display_name":"XRP","symbol":"XRP","chain_name":"XRP Ledger","amount":0.25,"counterparty":"rFrom","tx_hash":"d1","block_height":null,"timestamp":1700000006.0}]"#,
         ),
         (
             "stellar",
             r#"[{"txid":"e1","timestamp":"2023-11-14T22:13:20Z","from":"GFrom","to":"GTo","amount_stroops":3000000,"is_incoming":false}]"#,
-            r#"[{"kind":"send","status":"confirmed","asset_name":"Stellar","symbol":"XLM","chain_name":"Stellar","amount":0.3,"counterparty":"GTo","tx_hash":"e1","block_height":null,"timestamp":1700000000.0}]"#,
+            r#"[{"kind":"send","status":"confirmed","asset_display_name":"Stellar","symbol":"XLM","chain_name":"Stellar","amount":0.3,"counterparty":"GTo","tx_hash":"e1","block_height":null,"timestamp":1700000000.0}]"#,
         ),
         (
             "stellar",
             r#"[{"txid":"e2","timestamp":1700000008,"from":"GFrom","to":"GTo","amount_stroops":-4000000,"is_incoming":true}]"#,
-            r#"[{"kind":"receive","status":"confirmed","asset_name":"Stellar","symbol":"XLM","chain_name":"Stellar","amount":0.4,"counterparty":"GFrom","tx_hash":"e2","block_height":null,"timestamp":1700000008.0}]"#,
+            r#"[{"kind":"receive","status":"confirmed","asset_display_name":"Stellar","symbol":"XLM","chain_name":"Stellar","amount":0.4,"counterparty":"GFrom","tx_hash":"e2","block_height":null,"timestamp":1700000008.0}]"#,
         ),
         (
             "cardano",
             r#"[{"txid":"f1","block_time":1700000009,"amount_lovelace":-5000000,"is_incoming":false}]"#,
-            r#"[{"kind":"send","status":"confirmed","asset_name":"Cardano","symbol":"ADA","chain_name":"Cardano","amount":5.0,"counterparty":"","tx_hash":"f1","block_height":null,"timestamp":1700000009.0}]"#,
+            r#"[{"kind":"send","status":"confirmed","asset_display_name":"Cardano","symbol":"ADA","chain_name":"Cardano","amount":5.0,"counterparty":"","tx_hash":"f1","block_height":null,"timestamp":1700000009.0}]"#,
         ),
         (
             "polkadot",
             r#"[{"txid":"g1","amount_planck":60000000000.0,"timestamp":1700000010,"from":"5From","to":"5To","is_incoming":true}]"#,
-            r#"[{"kind":"receive","status":"confirmed","asset_name":"Polkadot","symbol":"DOT","chain_name":"Polkadot","amount":6.0,"counterparty":"5From","tx_hash":"g1","block_height":null,"timestamp":1700000010.0}]"#,
+            r#"[{"kind":"receive","status":"confirmed","asset_display_name":"Polkadot","symbol":"DOT","chain_name":"Polkadot","amount":6.0,"counterparty":"5From","tx_hash":"g1","block_height":null,"timestamp":1700000010.0}]"#,
         ),
         (
             "solana",
             r#"[{"signature":"h1","timestamp":1700000011,"is_incoming":false,"amount_display":"1.25","symbol":"SOL","mint":null,"from":"sFrom","to":"sTo"}]"#,
-            r#"[{"kind":"send","status":"confirmed","asset_name":"Solana","symbol":"SOL","chain_name":"Solana","amount":1.25,"counterparty":"sTo","tx_hash":"h1","block_height":null,"timestamp":1700000011.0}]"#,
+            r#"[{"kind":"send","status":"confirmed","asset_display_name":"Solana","symbol":"SOL","chain_name":"Solana","amount":1.25,"counterparty":"sTo","tx_hash":"h1","block_height":null,"timestamp":1700000011.0}]"#,
         ),
         (
             "solana",
             r#"[{"signature":"h2","timestamp":1700000012,"is_incoming":true,"amount_display":"42.5","symbol":"USDC","from":"sFrom","to":"sTo"}]"#,
-            r#"[{"kind":"receive","status":"confirmed","asset_name":"USD Coin","symbol":"USDC","chain_name":"Solana","amount":42.5,"counterparty":"sFrom","tx_hash":"h2","block_height":null,"timestamp":1700000012.0}]"#,
+            r#"[{"kind":"receive","status":"confirmed","asset_display_name":"USD Coin","symbol":"USDC","chain_name":"Solana","amount":42.5,"counterparty":"sFrom","tx_hash":"h2","block_height":null,"timestamp":1700000012.0}]"#,
         ),
         (
             "tron",
             r#"[{"txid":"i1","timestamp_ms":1700000013000,"from":"TFrom","to":"TTo","amount_display":"7.5","symbol":"USDT","is_incoming":true}]"#,
-            r#"[{"kind":"receive","status":"confirmed","asset_name":"Tether USD","symbol":"USDT","chain_name":"Tron","amount":7.5,"counterparty":"TFrom","tx_hash":"i1","block_height":null,"timestamp":1700000013.0}]"#,
+            r#"[{"kind":"receive","status":"confirmed","asset_display_name":"Tether USD","symbol":"USDT","chain_name":"Tron","amount":7.5,"counterparty":"TFrom","tx_hash":"i1","block_height":null,"timestamp":1700000013.0}]"#,
         ),
         (
             "tron",
             r#"[{"txid":"i2","timestamp_ms":1700000014000,"from":"TFrom","to":"TTo","amount_display":"3.5","symbol":"TRX","is_incoming":false}]"#,
-            r#"[{"kind":"send","status":"confirmed","asset_name":"Tron","symbol":"TRX","chain_name":"Tron","amount":3.5,"counterparty":"TTo","tx_hash":"i2","block_height":null,"timestamp":1700000014.0}]"#,
+            r#"[{"kind":"send","status":"confirmed","asset_display_name":"Tron","symbol":"TRX","chain_name":"Tron","amount":3.5,"counterparty":"TTo","tx_hash":"i2","block_height":null,"timestamp":1700000014.0}]"#,
         ),
         // The token catalog names a TRC-20, so every token on the chain has a
         // name. A four-entry table in this file used to, and TrueUSD was one
@@ -1027,64 +1027,64 @@ mod normalize_chain_history_tests {
         (
             "tron",
             r#"[{"txid":"i3","timestamp_ms":1700000014000,"from":"TFrom","to":"TTo","amount_display":"2.0","symbol":"TUSD","is_incoming":true}]"#,
-            r#"[{"kind":"receive","status":"confirmed","asset_name":"TrueUSD","symbol":"TUSD","chain_name":"Tron","amount":2.0,"counterparty":"TFrom","tx_hash":"i3","block_height":null,"timestamp":1700000014.0}]"#,
+            r#"[{"kind":"receive","status":"confirmed","asset_display_name":"TrueUSD","symbol":"TUSD","chain_name":"Tron","amount":2.0,"counterparty":"TFrom","tx_hash":"i3","block_height":null,"timestamp":1700000014.0}]"#,
         ),
         // A ticker the catalog does not carry stays the ticker: a row nobody
         // can name is still a row, and inventing a name for it would be worse.
         (
             "tron",
             r#"[{"txid":"i4","timestamp_ms":1700000014000,"from":"TFrom","to":"TTo","amount_display":"1.0","symbol":"NOTATOKEN","is_incoming":true}]"#,
-            r#"[{"kind":"receive","status":"confirmed","asset_name":"NOTATOKEN","symbol":"NOTATOKEN","chain_name":"Tron","amount":1.0,"counterparty":"TFrom","tx_hash":"i4","block_height":null,"timestamp":1700000014.0}]"#,
+            r#"[{"kind":"receive","status":"confirmed","asset_display_name":"NOTATOKEN","symbol":"NOTATOKEN","chain_name":"Tron","amount":1.0,"counterparty":"TFrom","tx_hash":"i4","block_height":null,"timestamp":1700000014.0}]"#,
         ),
         (
             "sui",
             r#"[{"digest":"j1","amount_mist":800000000.0,"timestamp_ms":1700000015000,"is_incoming":true}]"#,
-            r#"[{"kind":"receive","status":"confirmed","asset_name":"Sui","symbol":"SUI","chain_name":"Sui","amount":0.8,"counterparty":"","tx_hash":"j1","block_height":null,"timestamp":1700000015.0}]"#,
+            r#"[{"kind":"receive","status":"confirmed","asset_display_name":"Sui","symbol":"SUI","chain_name":"Sui","amount":0.8,"counterparty":"","tx_hash":"j1","block_height":null,"timestamp":1700000015.0}]"#,
         ),
         (
             "aptos",
             r#"[{"txid":"k1","amount_octas":900000000.0,"timestamp_us":1700000016000000,"from":"aFrom","to":"aTo","is_incoming":false}]"#,
-            r#"[{"kind":"send","status":"confirmed","asset_name":"Aptos","symbol":"APT","chain_name":"Aptos","amount":9.0,"counterparty":"aTo","tx_hash":"k1","block_height":null,"timestamp":1700000016.0}]"#,
+            r#"[{"kind":"send","status":"confirmed","asset_display_name":"Aptos","symbol":"APT","chain_name":"Aptos","amount":9.0,"counterparty":"aTo","tx_hash":"k1","block_height":null,"timestamp":1700000016.0}]"#,
         ),
         (
             "ton",
             r#"[{"txid":"l1","amount_nanotons":1000000000.0,"timestamp":1700000017,"from":"tFrom","to":"tTo","is_incoming":true}]"#,
-            r#"[{"kind":"receive","status":"confirmed","asset_name":"Toncoin","symbol":"TON","chain_name":"TON","amount":1.0,"counterparty":"tFrom","tx_hash":"l1","block_height":null,"timestamp":1700000017.0}]"#,
+            r#"[{"kind":"receive","status":"confirmed","asset_display_name":"Toncoin","symbol":"TON","chain_name":"TON","amount":1.0,"counterparty":"tFrom","tx_hash":"l1","block_height":null,"timestamp":1700000017.0}]"#,
         ),
         (
             "near",
             r#"[{"txid":"m1","timestamp_ns":1700000018000000000,"signer_id":"nSigner","receiver_id":"nReceiver","amount_yocto":"1500000000000000000000000","is_incoming":false}]"#,
-            r#"[{"kind":"send","status":"confirmed","asset_name":"NEAR","symbol":"NEAR","chain_name":"NEAR","amount":1.5,"counterparty":"nReceiver","tx_hash":"m1","block_height":null,"timestamp":1700000018.0}]"#,
+            r#"[{"kind":"send","status":"confirmed","asset_display_name":"NEAR","symbol":"NEAR","chain_name":"NEAR","amount":1.5,"counterparty":"nReceiver","tx_hash":"m1","block_height":null,"timestamp":1700000018.0}]"#,
         ),
         (
             "internet-computer",
             r#"[{"block_index":42,"amount_e8s":250000000.0,"timestamp_ns":1700000019000000000,"from":"iFrom","to":"iTo","is_incoming":true}]"#,
-            r#"[{"kind":"receive","status":"confirmed","asset_name":"Internet Computer","symbol":"ICP","chain_name":"Internet Computer","amount":2.5,"counterparty":"iFrom","tx_hash":"42","block_height":null,"timestamp":1700000019.0}]"#,
+            r#"[{"kind":"receive","status":"confirmed","asset_display_name":"Internet Computer","symbol":"ICP","chain_name":"Internet Computer","amount":2.5,"counterparty":"iFrom","tx_hash":"42","block_height":null,"timestamp":1700000019.0}]"#,
         ),
         (
             "monero",
             r#"[{"txid":"o1","amount_piconeros":1250000000000.0,"timestamp":1700000020,"is_incoming":false}]"#,
-            r#"[{"kind":"send","status":"confirmed","asset_name":"Monero","symbol":"XMR","chain_name":"Monero","amount":1.25,"counterparty":"","tx_hash":"o1","block_height":null,"timestamp":1700000020.0}]"#,
+            r#"[{"kind":"send","status":"confirmed","asset_display_name":"Monero","symbol":"XMR","chain_name":"Monero","amount":1.25,"counterparty":"","tx_hash":"o1","block_height":null,"timestamp":1700000020.0}]"#,
         ),
         (
             "ethereum",
             r#"[{"txid":"p1","is_incoming":true,"status":"confirmed","value_wei":"1500000000000000000","from":"0xFrom","to":"0xTo","block_number":18000000,"timestamp":1700000021}]"#,
-            r#"[{"kind":"receive","status":"confirmed","asset_name":"Ethereum","symbol":"ETH","chain_name":"Ethereum","amount":1.5,"counterparty":"0xFrom","tx_hash":"p1","block_height":18000000,"timestamp":1700000021.0}]"#,
+            r#"[{"kind":"receive","status":"confirmed","asset_display_name":"Ethereum","symbol":"ETH","chain_name":"Ethereum","amount":1.5,"counterparty":"0xFrom","tx_hash":"p1","block_height":18000000,"timestamp":1700000021.0}]"#,
         ),
         (
             "polygon",
             r#"[{"txid":"p2","is_incoming":false,"status":"confirmed","value_wei":"250000000000000000","from":"0xFrom","to":"0xTo","block_number":49000000,"timestamp":1700000022}]"#,
-            r#"[{"kind":"send","status":"confirmed","asset_name":"Polygon","symbol":"POL","chain_name":"Polygon","amount":0.25,"counterparty":"0xTo","tx_hash":"p2","block_height":49000000,"timestamp":1700000022.0}]"#,
+            r#"[{"kind":"send","status":"confirmed","asset_display_name":"Polygon","symbol":"POL","chain_name":"Polygon","amount":0.25,"counterparty":"0xTo","tx_hash":"p2","block_height":49000000,"timestamp":1700000022.0}]"#,
         ),
         (
             "bitcoin-testnet",
             r#"[{"txid":"q1","confirmed":true,"block_height":2500000,"block_time":1700000023,"net_sats":4242}]"#,
-            r#"[{"kind":"receive","status":"confirmed","asset_name":"Bitcoin","symbol":"BTC","chain_name":"Bitcoin Testnet","amount":0.00004242,"counterparty":"","tx_hash":"q1","block_height":2500000,"timestamp":1700000023.0}]"#,
+            r#"[{"kind":"receive","status":"confirmed","asset_display_name":"Bitcoin","symbol":"BTC","chain_name":"Bitcoin Testnet","amount":0.00004242,"counterparty":"","tx_hash":"q1","block_height":2500000,"timestamp":1700000023.0}]"#,
         ),
         (
             "litecoin-testnet",
             r#"[{"txid":"q2","amount_sat":31337,"block_height":9,"timestamp":1700000024,"is_incoming":true}]"#,
-            r#"[{"kind":"receive","status":"confirmed","asset_name":"Litecoin","symbol":"LTC","chain_name":"Litecoin Testnet","amount":0.00031337,"counterparty":"","tx_hash":"q2","block_height":9,"timestamp":1700000024.0}]"#,
+            r#"[{"kind":"receive","status":"confirmed","asset_display_name":"Litecoin","symbol":"LTC","chain_name":"Litecoin Testnet","amount":0.00031337,"counterparty":"","tx_hash":"q2","block_height":9,"timestamp":1700000024.0}]"#,
         ),
     ];
 

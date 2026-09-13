@@ -33,10 +33,10 @@ fn a_tracked_token_survives_a_reopen() {
     let db = tmp_db();
     let mut state = CoreAppState::default();
     crate::store::state::reduce_state_in_place(&mut state, add_custom("USDC", 6));
-    wallet_db::app_state_save(&crate::wallet_db::WalletDatabase::open(&db), &state).expect("save");
+    wallet_db::app_state_save(&crate::wallet_db::WalletDatabase::new(&db), &state).expect("save");
 
     let reloaded =
-        wallet_db::app_state_load(&crate::wallet_db::WalletDatabase::open(&db)).expect("load");
+        wallet_db::app_state_load(&crate::wallet_db::WalletDatabase::new(&db)).expect("load");
     assert_eq!(reloaded.token_preferences.len(), 1, "known token was lost");
     assert_eq!(reloaded.token_preferences[0].token.symbol, "USDC");
 }
@@ -69,9 +69,9 @@ fn an_impossible_precision_is_refused_rather_than_clamped() {
         &mut state,
         add_custom("USDT", crate::store::state::MAX_TOKEN_DECIMALS as u32),
     );
-    wallet_db::app_state_save(&crate::wallet_db::WalletDatabase::open(&db), &state).expect("save");
+    wallet_db::app_state_save(&crate::wallet_db::WalletDatabase::new(&db), &state).expect("save");
     let reloaded =
-        wallet_db::app_state_load(&crate::wallet_db::WalletDatabase::open(&db)).expect("load");
+        wallet_db::app_state_load(&crate::wallet_db::WalletDatabase::new(&db)).expect("load");
     assert_eq!(
         reloaded.token_preferences[0].token.decimals,
         crate::store::state::MAX_TOKEN_DECIMALS as u32

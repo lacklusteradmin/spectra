@@ -67,7 +67,7 @@ mod tests {
     use super::*;
     #[test]
     fn pagination_updates_and_resets_do_not_cross_wallet_or_chain_boundaries() {
-        let service = WalletService::new_typed(vec![]).unwrap();
+        let service = WalletService::new(vec![]).unwrap();
         service.advance_history_cursor("bitcoin".into(), "a".into(), Some("next".into()));
         service.set_history_page("ethereum".into(), "a".into(), 4, true);
         service.set_history_page("ethereum".into(), "b".into(), 2, false);

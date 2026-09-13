@@ -238,7 +238,6 @@ pub struct OwnedSendQuote {
     pub preview: Option<SendPreview>,
 }
 
-#[uniffi::export(async_runtime = "tokio")]
 impl WalletService {
     /// Resolve fees, token identity and affordability using owned state. No signing.
     pub async fn quote_owned_send(
@@ -372,22 +371,7 @@ impl WalletService {
         })
     }
 
-    pub async fn execute_owned_send(
-        &self,
-        wallet_id: String,
-        holding_key: String,
-        amount: String,
-        destination: String,
-        overrides: Option<crate::ethereum_send::EvmSendOverridesInput>,
-        password: Option<String>,
-    ) -> Result<crate::send::SendExecutionResult, SpectraBridgeError> {
-        let password = password.map(zeroize::Zeroizing::new);
-        let mut quote = self
-            .quote_owned_send(wallet_id, holding_key, amount, destination, overrides)
-            .await?;
-        quote.request.password = password.as_ref().map(|s| s.to_string());
-        self.execute_send(quote.request).await
-    }
+
 }
 
 #[derive(Debug, Clone, serde::Serialize, uniffi::Record)]

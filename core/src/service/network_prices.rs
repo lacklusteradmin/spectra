@@ -312,7 +312,7 @@ mod tests {
             "spectra-quotes-{}.db",
             crate::store::new_transaction_id()
         ));
-        let service = WalletService::new_typed(vec![]).unwrap();
+        let service = WalletService::new(vec![]).unwrap();
         service
             .open_state(path.to_string_lossy().into())
             .await
@@ -329,7 +329,7 @@ mod tests {
             })
             .await
             .unwrap();
-        let reopened = WalletService::new_typed(vec![]).unwrap();
+        let reopened = WalletService::new(vec![]).unwrap();
         let state = reopened
             .open_state(path.to_string_lossy().into())
             .await

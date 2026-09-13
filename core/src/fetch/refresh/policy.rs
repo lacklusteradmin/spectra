@@ -30,6 +30,7 @@ impl HistoryRefreshKey {
 /// which is why a fresh clock plans everything.
 #[derive(Debug, Clone, Default, PartialEq)]
 pub struct RefreshClock {
+    pub full_refresh_at: Option<f64>,
     pub pending_transactions_at: Option<f64>,
     pub live_prices_at: Option<f64>,
     pub background_tick_at: Option<f64>,

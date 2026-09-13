@@ -239,7 +239,7 @@ pub fn derive_import_addresses(
 #[derive(Debug, Clone, uniffi::Record)]
 pub struct WalletImportOutcome {
     pub secret_kind: String,
-    pub wallets: Vec<crate::store::wallet_domain::CoreImportedWallet>,
+    pub wallets: Vec<crate::store::wallet_domain::WalletView>,
     /// Addresses the import refused, in the form they were supplied.
     ///
     /// Refusals are reported rather than silent. Dropping them quietly means a
@@ -433,10 +433,10 @@ pub(crate) fn validated_watch_only_entries(
 pub(crate) fn wallets_for_import(
     commit: &WalletImportCommit,
     plan: &WalletImportPlan,
-) -> Vec<crate::store::wallet_domain::CoreImportedWallet> {
+) -> Vec<crate::store::wallet_domain::WalletView> {
     plan.wallets
         .iter()
-        .map(|planned| crate::store::wallet_domain::CoreImportedWallet {
+        .map(|planned| crate::store::wallet_domain::WalletView {
             id: planned.wallet_id.clone(),
             name: planned.name.clone(),
             // The selection applies only to the family the wallet is on.

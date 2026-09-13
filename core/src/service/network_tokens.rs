@@ -440,7 +440,7 @@ mod discovery_names_only_what_the_catalog_vouches_for {
     /// list; what matters is that they fail there and not on the gate.
     #[tokio::test]
     async fn the_registry_flag_and_the_client_arms_agree() {
-        let service = crate::service::WalletService::new_typed(Vec::new()).expect("service");
+        let service = crate::service::WalletService::new(Vec::new()).expect("service");
         for chain in Chain::all() {
             let err = service
                 .discover_token_balances(chain.str_id().into(), "whatever".into())
@@ -520,7 +520,7 @@ mod decimals_come_from_the_chain {
     /// A provider failure must remain an error, not an invented zero balance.
     #[tokio::test]
     async fn an_unreadable_contract_is_left_out_rather_than_reported_as_zero() {
-        let service = WalletService::new_typed(Vec::new()).expect("service");
+        let service = WalletService::new(Vec::new()).expect("service");
         for chain in [
             Chain::Ethereum,
             Chain::Tron,
@@ -599,7 +599,7 @@ mod decimals_come_from_the_chain {
             .mount(&server)
             .await;
 
-        let service = WalletService::new_typed(vec![ChainEndpoints {
+        let service = WalletService::new(vec![ChainEndpoints {
             chain_id: "ethereum".into(),
             endpoints: vec![server.uri()],
             api_key: None,
@@ -626,7 +626,7 @@ mod decimals_come_from_the_chain {
     /// An empty list is not a fetch.
     #[tokio::test]
     async fn no_tokens_is_no_round_trip() {
-        let service = WalletService::new_typed(Vec::new()).expect("service");
+        let service = WalletService::new(Vec::new()).expect("service");
         let out = service
             .fetch_token_balances("ethereum".into(), "whoever".into(), Vec::new())
             .await

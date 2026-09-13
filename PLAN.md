@@ -357,6 +357,196 @@ future work, not an implemented feature hidden behind nonfunctional buttons.
 
 ## Behaviour changed on purpose
 
+### Test gate cleanup (2026-09-13)
+
+- **Before:** CLI `contains` and `lacks` ignored command exit status. A failed
+  command could satisfy the expected text (or omit forbidden text) and pass.
+  **After:** shared assertions require exit zero as well as the output predicate;
+  rejection-message checks explicitly require their documented exit code. Five
+  duplicate exit-only invocations are folded into the message checks. The
+  rebroadcast fixture requires its exact failure code and missing-record message.
+  **Why:** crashes and usage errors must not masquerade as successful operations
+  or domain refusals. Delete the follow-up's false-positive invalid-amount check:
+  its wallet had no holding, so it failed before examining the amount. The
+  existing seeded-asset fixture in `cli-owned-send.py` now requires exit 3 and
+  an amount-specific error for each invalid amount instead of any failure.
+  Negative amounts use `--amount=-1` so argument parsing actually delivers the
+  value to core rather than rejecting it as an unknown option.
+  CLI check: `bash scripts/test-cli-assertions.sh` injects
+  success, wrong output and wrong exit codes; it is included in acceptance.
+- **Before:** the CLI gate launched 27 filtered `cargo test` commands, repeating
+  workspace coverage and allowing stale filters to succeed with zero tests.
+  **After:** those invocations are removed. All Rust tests remain in
+  `cargo test --workspace`; actual CLI processes and loopback provider fixtures
+  remain in `./scripts/cli-acceptance.sh`. The follow-up fixture now asserts the
+  returned maintenance policy and parses the wallet name structurally, instead
+  of merely writing JSON or matching text. Both gates are still required.
+- **Swift coverage:** remove `DiagnosticsChainTableTests`, which re-evaluated
+  the production registry expression. `DiagnosticsBundleCoverageTests` retains
+  unique names and per-chain document checks; `DiagnosticsBundleTests` retains
+  the export/import and canonical-key checks. Merge setup-flow copy coverage
+  into the complete page/mode matrix, including an explicit flow-page coverage
+  check; fold private-key precedence into the secret-copy cases and assert both
+  title and subtitle. Remove the second asset-wiki image-loading loop, retaining
+  the identity-to-image check and the separate network-wiki loop. Swift has 86
+  test methods instead of 89; no key, amount, persistence or FFI coverage is
+  removed. Verify with the required iPhone 17 Pro `xcodebuild test` command.
+- **Setup copy inconsistency caught by the stronger test:** when create mode
+  and private-key import were both set, the title said “Record Seed Phrase”
+  while the subtitle requested a private key. Both now describe private-key
+  import, matching the existing precedence of the input/subtitle. This is
+  presentation-only; `./scripts/cli-acceptance.sh` retains private-key import
+  and signing-identity coverage, while `testTheSecretPageNamesWhichSecretItIsAskingFor`
+  verifies the title/subtitle matrix in the iOS suite.
+
+Verification completed: `cargo test --workspace` (835 Rust tests passed),
+`./scripts/cli-acceptance.sh` (351 checks plus the CLI provider fixtures passed),
+and the required iPhone 17 Pro `xcodebuild test` suite (86 tests, zero failures,
+including `testEthereumTestNetworksExposeExpectedContextsAndEndpoints`).
+`git diff --check` passes. Changes remain uncommitted.
+
+
+### Deep rescan and import boundary cleanup (2026-09-13)
+
+Verification: `cargo test --workspace` passed 835 tests; CLI acceptance passed
+351 checks plus its follow-up fixtures; iOS passed 86 tests with zero failures,
+including the Ethereum test-network and async refresh-binding checks. The iOS
+run used `-derivedDataPath /tmp/spectra-rescan-derived` after a concurrent build
+locked the shared build database. `scripts/unreachable-exports.sh` reports zero
+and `git diff --check` passes. Logs: `/tmp/spectra-rescan-rust.log`,
+`/tmp/spectra-rescan-cli.log`, `/tmp/spectra-rescan-ios.log`.
+
+
+- **Deep rescan:** Swift previously sequenced discovery, receive reservation
+  advancement, balances, history and pending polling, swallowed failures and
+  unconditionally logged completion. `AppRefreshIntent::DeepRescan` now owns
+  this sequence under core's refresh lock. Unsupported chains refuse early;
+  offline scans return a failure; discovery, reservation, balance, history and
+  pending failures remain visible. Swift records successful completion only
+  when the operation and projection adoption succeed. Balance scope is the
+  requested network (or its family for a mainnet request), rather than every
+  wallet. Price refresh is not part of a deep rescan.
+  CLI check: `spectra --json diagnostics refresh --intent
+  '{"deepRescan":{"chain_id":"bitcoin"}}' --conditions
+  '{"appIsActive":true,"isNetworkReachable":false,"isConstrainedNetwork":false,"isExpensiveNetwork":false,"isLowPowerMode":false,"batteryLevel":1,"wantsPriceRefresh":false}'`
+  reports failures; the same request for Ethereum refuses. Covered in
+  `scripts/cli-shell-boundary.py`; core also checks an empty scope and provider
+  failure without configured providers.
+- **Raw import inputs:** Swift previously lowercased/split mnemonics, normalized
+  private keys, gated Bitcoin xpubs and repeated Monero watch-only refusal.
+  It now forwards the fields; core canonicalizes mnemonic whitespace/case and
+  private-key hex before derivation and storage, while existing registry-backed
+  import validation handles watch-only support and xpub applicability.
+  Uppercase mnemonics with tabs/newlines now derive and store the same identity
+  through either caller. CLI check: `scripts/cli-shell-boundary.py` imports the
+  raw and canonical forms and compares addresses plus `send identity` results;
+  the acceptance suite also exercises Monero watch-only refusal and xpub import.
+- **Dead persistence:** removed unused `PersistedCoin` conversions, Swift's
+  unused derivation-path Codable compatibility fallback, and the write-only
+  discovered-address cache. Core's current storage format is unchanged; no
+  migration shim is added.
+
+
+### Remaining Swift boundary rewrite (2026-09-13)
+
+- **Derivation inputs:** Swift previously trimmed passphrases/HMAC text and
+  converted invalid iteration text to a missing override. Eight other override
+  fields were not implemented consistently across import, discovery and signing.
+  The schema and UI now contain only exact passphrase and HMAC secrets; core
+  maps empty text to absence and the registry validates chain support. Unsupported
+  fields are removed directly, with unknown JSON fields refused. Derivation paths
+  and chain defaults remain supported. No migration or compatibility aliases.
+  CLI: `wallet import --derivation-input-file <file>` drives the same parser;
+  `scripts/cli-shell-boundary.py` checks whitespace-distinct wallets, signing
+  identity, unsupported parameters, and no writes on refusal.
+- **UTXO controls:** maximum-input, RBF/CPFP-intent and Litecoin change-strategy
+  controls were displayed but never reached owned preview/execution. They and
+  their Swift state are deleted. The actual core send policy and fee-priority
+  setting remain authoritative. No new RBF/CPFP or change-strategy support is
+  claimed. CLI: owned quotes and fee/refusal fixtures in `cli-owned-send.py`.
+- **Send confirmation:** a Swift bypass boolean and caller-held self-send
+  acknowledgment previously authorized subsequent composer inputs. Core now
+  issues a bounded, two-minute, single-use review of exact input strings,
+  resolved recipient, stored network/sender/token identity and quoted fees.
+  Swift displays the reviewed amount, network, address, fee and warnings before
+  confirmation. Core consumes the review before execution, rejects edited,
+  expired, missing or reused reviews, rechecks ENS and sender identity, and pins
+  EVM nonce/gas/fees. Automatic nonce freshness is checked under the sender lock;
+  a changed nonce requires a new review. A restart intentionally invalidates
+  unsubmitted reviews. CLI `send quote` includes review warnings, and
+  `send owned-broadcast --yes` reviews and explicitly confirms the same inputs.
+  Rust review tests cover sub-float amount edits, expiry and consumption; the
+  CLI loopback fixture checks the owned review and watch-wallet send refusal.
+  This binds the owned send's inputs and quote; the separately planned durable
+  Build / Sign / Broadcast artifacts and per-chain transaction-byte lifecycle
+  are still future work, not implemented by this review token.
+- **Refresh:** Swift selected foreground/background work, successful clocks,
+  post-send pending-versus-history routing, and balance-engine cadence. Core
+  now accepts scheduled, user, foreground, balance-update and selected-chain
+  intents plus device conditions. It selects work and history cooldowns, returns
+  committed state/failures, and avoids network work offline. Foreground full
+  refresh has a core-owned 120-second successful-refresh clock. A post-send
+  refresh also reads selected-chain history, including receipt-polling chains,
+  so incoming activity/details are not omitted. Balance-loop cadence and empty
+  wallet decisions read core state, with cadence reconfiguration after settings
+  commit. The background timing label now says adaptive rather than displaying
+  a separate Swift formula. CLI: `diagnostics refresh --intent <json>
+  --conditions <json>`; offline/invalid-network checks live in
+  `scripts/cli-shell-boundary.py`.
+
+
+Verification for this rewrite: `cargo test --workspace` **833 passed**;
+`./scripts/cli-acceptance.sh` **355 passed** plus fixture suites;
+iPhone 17 Pro `xcodebuild test` **89 passed**, including
+`testEthereumTestNetworksExposeExpectedContextsAndEndpoints`. The full local
+review/sign/broadcast regression passes, including checksum-case sender identity,
+single-use confirmation and stale-nonce refusal before a second broadcast.
+Bindings regenerated with UniFFI 0.31; **145** callable exports and **zero**
+unreachable candidates. Design-token and diff checks pass.
+
+Logs: `/tmp/spectra-boundary-rust.log`, `/tmp/spectra-boundary-cli.log`,
+`/tmp/spectra-boundary-ios.log`. Manual simulator UI inspection was attempted
+but the computer-use tool repeatedly timed out; no visual smoke result is
+claimed. No Git staging, commits or other Git state changes were performed.
+
+### Domain and boundary names describe the values they carry (2026-09-13)
+
+- `WalletSummary` is now `WalletState`, the authoritative wallet record;
+  `CoreImportedWallet` is `WalletView`, its platform projection. Conversion
+  methods are `to_wallet_state` / `to_wallet_view`, and the FFI conversion is
+  `core_wallet_state`. Swift uses `WalletView` directly without an
+  `ImportedWallet` alias.
+- Resource names are `artwork_name` / `artworkName`; asset display labels are
+  `asset_display_name` / `assetDisplayName` (including native asset labels).
+  Catalog TOML, persisted transaction/alert JSON, CLI outputs, fixtures and
+  Swift records use the new keys directly. There are no old-key aliases or
+  migrations. The artwork lookup functions are `core_*_artwork_name`.
+- Database handle locals are `database`, while actual path inputs are
+  `database_path`. `WalletDatabase::new` creates a lazy connection handle;
+  `WalletService::new` replaces the obsolete `new_typed` constructor.
+- `evm_network_for_id(network_id)` resolves an EVM network by registry string
+  ID; it does not accept an EVM numeric chain ID. `execute_protocol_send`
+  describes dispatch that may either sign only or also submit.
+  `EvmSendDetails` replaces the obsolete `EvmSendResultDecoded` name, and
+  `SendExecutionResult.protocol_result_json` explicitly names the serialized
+  protocol result rather than implying it is the raw broadcast payload.
+- As requested, `TokenEntry`, its `id`, `token_id` and `chain` remain named
+  as before. This pass changes names and serialized field keys, not wallet,
+  signing, broadcast or artwork decisions.
+- CLI checks: `spectra --json wallet derived`, `spectra --json token artwork
+  --token-id ethereum` (returns `artworkName`), and the transaction, alert and
+  send fixtures in `./scripts/cli-acceptance.sh`. Existing persistence and
+  Swift bridge tests exercise the coordinated schema and API rename.
+
+Verified 2026-09-13: `cargo test --workspace` **828 passed**;
+`./scripts/cli-acceptance.sh` **354 passed** plus its fixture suites;
+iPhone 17 Pro `xcodebuild test` **87 passed**, including
+`testEthereumTestNetworksExposeExpectedContextsAndEndpoints` and the
+all-deployment artwork bridge test. Bindings regenerated with UniFFI 0.31;
+export audit reports 145 callables and zero unreachable candidates.
+`git diff --check` passes. No Git state changes.
+
+
 ### Core dead-code closure (2026-09-13)
 
 - **Before:** Rust retained a staking action dispatcher, 23 per-chain preview

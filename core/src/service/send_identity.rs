@@ -1,6 +1,5 @@
 //! Resolve a stored wallet into one signing identity before any provider reads.
 use super::*;
-use crate::derivation::types::BitcoinScriptType;
 use crate::store::wallet_domain::SensitiveOverrides;
 use crate::store::wallet_secrets::{load_signing_material, SigningMaterial};
 use zeroize::Zeroizing;
@@ -83,19 +82,8 @@ impl WalletService {
                 let path = crate::app_core_resolve_derivation_path(name.into(), path.into())?
                     .normalized_path;
                 let overrides = &sensitive_overrides.0;
-                let script = match overrides
-                    .script_type
-                    .as_deref()
-                    .map(str::to_ascii_lowercase)
-                    .as_deref()
-                {
-                    None => crate::derivation::dispatch::script_type_for_path(&path),
-                    Some("p2pkh") => BitcoinScriptType::P2pkh,
-                    Some("p2shp2wpkh" | "p2sh-p2wpkh") => BitcoinScriptType::P2shP2wpkh,
-                    Some("p2wpkh") => BitcoinScriptType::P2wpkh,
-                    Some("p2tr") => BitcoinScriptType::P2tr,
-                    Some(_) => return Err(invalid("unsupported stored script type")),
-                };
+                overrides.validate_for_chain(chain)?;
+                let script = crate::derivation::dispatch::script_type_for_path(&path);
                 let mut derived = crate::derivation::dispatch::derive_for_chain_name(
                     name,
                     &seed,

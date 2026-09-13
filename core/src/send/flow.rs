@@ -440,7 +440,7 @@ pub struct HighRiskSendRequest {
 
 /// A single high-risk warning with a code and optional metadata fields.
 /// Swift maps these to localized user-facing strings.
-#[derive(Debug, Clone, uniffi::Record)]
+#[derive(Debug, Clone, serde::Serialize, uniffi::Record)]
 pub struct HighRiskSendWarning {
     pub code: String,
     pub chain: Option<String>,

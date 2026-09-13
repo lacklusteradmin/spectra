@@ -25,9 +25,10 @@ pub struct WalletDatabase {
 }
 
 impl WalletDatabase {
-    pub fn open(db_path: &str) -> std::sync::Arc<Self> {
+    /// Create a handle; the first storage operation opens the connection.
+    pub fn new(database_path: &str) -> std::sync::Arc<Self> {
         std::sync::Arc::new(Self {
-            path: db_path.to_string(),
+            path: database_path.to_string(),
             connection: Mutex::new(None),
         })
     }
@@ -55,8 +56,8 @@ pub(super) fn with_conn<T>(
     database.with_connection(f)
 }
 
-fn open_new(db_path: &str) -> Result<Connection, String> {
-    let conn = Connection::open(db_path).map_err(|e| format!("wallet_db open {db_path}: {e}"))?;
+fn open_new(database_path: &str) -> Result<Connection, String> {
+    let conn = Connection::open(database_path).map_err(|e| format!("wallet_db open {database_path}: {e}"))?;
     conn.busy_timeout(std::time::Duration::from_secs(5))
         .map_err(|e| format!("wallet_db busy timeout: {e}"))?;
     conn.execute_batch(
@@ -105,7 +106,7 @@ fn open_new(db_path: &str) -> Result<Connection, String> {
              is_watch_only              INTEGER NOT NULL DEFAULT 0,
              include_in_portfolio_total INTEGER NOT NULL DEFAULT 1,
              sort_index                 INTEGER NOT NULL,  -- preserves CoreAppState.wallets order
-             payload                    TEXT    NOT NULL,  -- full WalletSummary JSON
+             payload                    TEXT    NOT NULL,  -- full WalletState JSON
              updated_at                 INTEGER NOT NULL
          );
          CREATE INDEX IF NOT EXISTS idx_wallets_chain ON wallets(chain_name);

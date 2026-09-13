@@ -111,7 +111,7 @@ mod tests {
                 .await
                 .is_err());
         }
-        let explicit = WalletService::new_typed(vec![ChainEndpoints {
+        let explicit = WalletService::new(vec![ChainEndpoints {
             chain_id: "solana".into(),
             endpoints: vec!["http://127.0.0.1:13003".into()],
             api_key: None,

@@ -14,8 +14,8 @@ fn path() -> String {
 
 #[test]
 fn one_blocked_database_does_not_block_another_database() {
-    let a = WalletDatabase::open(&path());
-    let b = WalletDatabase::open(&path());
+    let a = WalletDatabase::new(&path());
+    let b = WalletDatabase::new(&path());
     let (started_tx, started_rx) = mpsc::channel();
     let (release_tx, release_rx) = mpsc::channel();
     let worker = std::thread::spawn(move || {
@@ -44,7 +44,7 @@ fn one_blocked_database_does_not_block_another_database() {
 #[test]
 fn cloned_handle_keeps_connection_until_last_owner_releases_it() {
     let path = path();
-    let first = WalletDatabase::open(&path);
+    let first = WalletDatabase::new(&path);
     let second = first.clone();
     assert!(Arc::ptr_eq(&first, &second));
     first
@@ -58,7 +58,7 @@ fn cloned_handle_keeps_connection_until_last_owner_releases_it() {
     assert!(weak.upgrade().is_some());
     drop(second);
     assert!(weak.upgrade().is_none());
-    let reopened = WalletDatabase::open(&path);
+    let reopened = WalletDatabase::new(&path);
     reopened
         .with_connection(|conn| {
             let count: i32 = conn
@@ -76,7 +76,7 @@ fn cloned_handle_keeps_connection_until_last_owner_releases_it() {
 
 #[tokio::test]
 async fn service_holds_connection_until_rebind_or_drop() {
-    let service = crate::service::WalletService::new_typed(vec![]).unwrap();
+    let service = crate::service::WalletService::new(vec![]).unwrap();
     let first_path = path();
     service.open_state(first_path.clone()).await.unwrap();
     let weak = Arc::downgrade(&service.state_binding.connection().await.unwrap());

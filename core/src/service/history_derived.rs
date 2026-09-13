@@ -35,7 +35,7 @@ impl WalletService {
                         kind: kind_string(record.payload.kind),
                         status: status_string(record.payload.status),
                         wallet_name: record.payload.wallet_name.clone(),
-                        asset_name: record.payload.asset_name.clone(),
+                        asset_display_name: record.payload.asset_display_name.clone(),
                         symbol: record.payload.symbol.clone(),
                         chain_name: record.payload.chain_name.clone(),
                         address: record.payload.address.clone(),
@@ -237,7 +237,7 @@ mod tests {
     ) -> CorePersistedTransactionRecord {
         let json = format!(
             r#"{{"id":"{id}","walletId":"{wallet}","kind":"receive","walletName":"W",
-                 "assetName":"Bitcoin","symbol":"BTC","chainName":"{chain}","amount":0.5,
+                 "assetDisplayName":"Bitcoin","symbol":"BTC","chainName":"{chain}","amount":0.5,
                  "address":"bc1qreceive","createdAt":{created_at_swift}}}"#
         );
         serde_json::from_str(&json).expect("a persisted record")
@@ -245,7 +245,7 @@ mod tests {
 
     #[tokio::test]
     async fn records_land_in_the_database_the_service_was_opened_on() {
-        let service = WalletService::new_typed(Vec::new()).expect("service");
+        let service = WalletService::new(Vec::new()).expect("service");
         assert!(
             service.fetch_all_history_records_typed().await.is_err(),
             "an unopened store has no database to read"
@@ -266,7 +266,7 @@ mod tests {
         // Read back through a second service opened on the same file: the
         // record is there, and it is there because the path came from the
         // binding rather than from the call.
-        let reopened = WalletService::new_typed(Vec::new()).expect("service");
+        let reopened = WalletService::new(Vec::new()).expect("service");
         reopened.open_state(db).await.expect("open");
         assert_eq!(
             reopened
@@ -286,7 +286,7 @@ mod tests {
     /// history entry to 1970 and orders the list by it.
     #[tokio::test]
     async fn derived_views_use_the_rows_unix_timestamp() {
-        let service = WalletService::new_typed(Vec::new()).expect("service");
+        let service = WalletService::new(Vec::new()).expect("service");
         let db = temp_db("timestamps");
         service.open_state(db.clone()).await.expect("open");
         let payload = record(
@@ -334,7 +334,7 @@ mod replaceable_tests {
             "kind": "send",
             "status": "pending",
             "walletName": "Main",
-            "assetName": chain,
+            "assetDisplayName": chain,
             "deploymentId": crate::registry::Chain::from_display_name(chain).filter(|c| c.coin_symbol() == symbol).map(|c| c.entry().native_deployment_id.clone()),
             "symbol": symbol,
             "chainName": chain,
@@ -429,7 +429,7 @@ mod replaceable_tests {
     /// The list is the store's, newest first, and survives reopening it.
     #[tokio::test]
     async fn the_store_answers_and_a_reopened_service_answers_the_same() {
-        let service = Arc::new(WalletService::new_typed(vec![]).unwrap());
+        let service = Arc::new(WalletService::new(vec![]).unwrap());
         let db = database();
         service.open_state(db.clone()).await.unwrap();
         service
@@ -474,7 +474,7 @@ mod replaceable_tests {
             .collect();
         assert_eq!(chains, expected);
 
-        let reopened = Arc::new(WalletService::new_typed(vec![]).unwrap());
+        let reopened = Arc::new(WalletService::new(vec![]).unwrap());
         reopened.open_state(db).await.unwrap();
         assert_eq!(
             reopened.replaceable_sends().await.unwrap(),
@@ -485,7 +485,7 @@ mod replaceable_tests {
     /// An unopened store cannot answer whether it has replaceable sends.
     #[tokio::test]
     async fn an_unopened_store_is_an_error() {
-        let service = WalletService::new_typed(vec![]).unwrap();
+        let service = WalletService::new(vec![]).unwrap();
         assert!(service.replaceable_sends().await.is_err());
     }
 }
@@ -495,7 +495,7 @@ mod read_failure_tests {
     use super::*;
     #[tokio::test]
     async fn corrupt_history_refuses_every_derived_read_without_changing_storage() {
-        let service = WalletService::new_typed(vec![]).unwrap();
+        let service = WalletService::new(vec![]).unwrap();
         let path = std::env::temp_dir().join(format!(
             "history-refusal-{}.sqlite",
             crate::store::new_event_id()

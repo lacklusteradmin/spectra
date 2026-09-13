@@ -32,7 +32,7 @@ pub(super) const META_FIAT_RATES: &str = "fiat_rates_from_usd";
 pub(crate) struct AppStateChanges {
     replace: bool,
     reset_chains: Vec<String>,
-    wallets: Vec<(usize, WalletSummary, String)>,
+    wallets: Vec<(usize, WalletState, String)>,
     removed_wallets: Vec<String>,
     addresses: Vec<(usize, AddressBookEntry, String)>,
     removed_addresses: Vec<String>,

@@ -30,14 +30,6 @@ impl WalletService {
         )
     }
 
-    /// Stamp the clock. Called once a refresh has actually run, so the next
-    /// plan measures from when the work happened rather than when it was asked
-    /// for.
-    pub async fn record_refresh(&self, kind: RefreshKind) {
-        let now = crate::store::wallet_db::now_secs() as f64;
-        self.refresh_clock.write().await.record(kind, now);
-    }
-
     /// Can this send be made, and how should it be routed?
     pub async fn send_submit_preflight(
         &self,
@@ -92,6 +84,17 @@ impl WalletService {
             holding,
             &state.token_preferences,
         )))
+    }
+
+}
+
+impl WalletService {
+    /// Stamp the clock. Called once a refresh has actually run, so the next
+    /// plan measures from when the work happened rather than when it was asked
+    /// for.
+    pub async fn record_refresh(&self, kind: RefreshKind) {
+        let now = crate::store::wallet_db::now_secs() as f64;
+        self.refresh_clock.write().await.record(kind, now);
     }
 
     /// Reasons this send looks risky, as codes the platform localizes.
@@ -363,7 +366,7 @@ fn token_standard_for(chain: crate::store::wallet_domain::CoreTokenHostingChain)
 #[cfg(test)]
 mod preflight_tests {
     use super::*;
-    use crate::store::state::WalletSummary;
+    use crate::store::state::WalletState;
     use crate::store::wallet_domain::AssetHolding;
     use crate::store::wallet_domain::{
         CoreTokenHostingChain, CoreTokenPreferenceCategory, CoreTokenPreferenceEntry,
@@ -403,7 +406,7 @@ mod preflight_tests {
                 decimals: 6,
                 tags: Vec::new(),
                 color: String::new(),
-                asset_name: String::new(),
+                artwork_name: String::new(),
                 enabled: true,
             },
         }
@@ -460,13 +463,13 @@ mod preflight_tests {
     /// three chances to disagree about whether a send can be made.
     #[tokio::test]
     async fn routing_follows_the_token_list_core_holds() {
-        let service = WalletService::new_typed(Vec::new()).expect("service");
+        let service = WalletService::new(Vec::new()).expect("service");
         let mint = "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v";
         let standard = token_standard_for(CoreTokenHostingChain::Solana);
         {
             let mut state = service.wallet_state.write().await;
             let mut wallet =
-                WalletSummary::single_address("w1", "W", "Solana", "SoLaddr", None, false);
+                WalletState::single_address("w1", "W", "Solana", "SoLaddr", None, false);
             wallet.holdings = vec![holding("Solana", "USDC", &standard, Some(mint))];
             state.wallets.push(wallet);
         }
@@ -502,7 +505,7 @@ mod preflight_tests {
     /// A wallet or holding core cannot find is refused, not guessed at.
     #[tokio::test]
     async fn a_send_for_an_unknown_wallet_is_refused() {
-        let service = WalletService::new_typed(Vec::new()).expect("service");
+        let service = WalletService::new(Vec::new()).expect("service");
         let err = service
             .send_submit_preflight(
                 "nope".into(),
@@ -516,11 +519,11 @@ mod preflight_tests {
 
     #[tokio::test]
     async fn a_send_resolves_its_holding_by_chain_and_symbol() {
-        let service = WalletService::new_typed(Vec::new()).expect("service");
+        let service = WalletService::new(Vec::new()).expect("service");
         {
             let mut state = service.wallet_state.write().await;
             let mut wallet =
-                WalletSummary::single_address("w1", "W", "Bitcoin", "bc1qowner", None, false);
+                WalletState::single_address("w1", "W", "Bitcoin", "bc1qowner", None, false);
             wallet.holdings = vec![holding("Bitcoin", "BTC", "Native", None)];
             state.wallets.push(wallet);
         }
@@ -564,7 +567,7 @@ mod send_token_identity_tests {
                 decimals,
                 tags: Vec::new(),
                 color: String::new(),
-                asset_name: String::new(),
+                artwork_name: String::new(),
                 enabled: true,
             },
             category: CoreTokenPreferenceCategory::Stablecoin,
@@ -637,7 +640,7 @@ mod boundary_tests {
     use super::*;
     #[tokio::test]
     async fn owned_clock_coalesces_refreshes_and_partitions_history() {
-        let service = WalletService::new_typed(vec![]).unwrap();
+        let service = WalletService::new(vec![]).unwrap();
         let conditions = DeviceConditions {
             app_is_active: true,
             is_network_reachable: true,

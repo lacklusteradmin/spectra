@@ -58,10 +58,10 @@ impl ProtocolSendResult {
     }
     pub(super) fn evm(
         &self,
-    ) -> Result<Option<crate::send::ethereum::EvmSendResultDecoded>, crate::SpectraBridgeError>
+    ) -> Result<Option<crate::send::ethereum::EvmSendDetails>, crate::SpectraBridgeError>
     {
         let Self::Evm(r) = self else { return Ok(None) };
-        Ok(Some(crate::send::ethereum::EvmSendResultDecoded {
+        Ok(Some(crate::send::ethereum::EvmSendDetails {
             txid: r.txid.clone(),
             raw_tx_hex: r.raw_tx_hex.clone(),
             nonce: i64::try_from(r.nonce).map_err(|_| "EVM nonce exceeds supported range")?,

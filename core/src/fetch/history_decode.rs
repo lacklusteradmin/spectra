@@ -14,7 +14,7 @@ pub struct NormalizedHistoryItem {
     pub deployment_id: Option<String>,
     pub kind: String,
     pub status: String,
-    pub asset_name: String,
+    pub asset_display_name: String,
     pub symbol: String,
     pub chain_name: String,
     pub amount: f64,
@@ -243,7 +243,7 @@ pub struct EvmPlannedTransactionRecord {
     pub wallet_id: String,
     pub wallet_name: String,
     pub kind: String,
-    pub asset_name: String,
+    pub asset_display_name: String,
     pub symbol: String,
     pub chain_name: String,
     pub amount_decimal: String,
@@ -267,7 +267,7 @@ pub struct EvmTransactionRecordRequest {
     pub normalized_address: String,
     pub chain_name: String,
     pub token_source_used: Option<String>,
-    pub native_asset_name: String,
+    pub native_asset_display_name: String,
     pub native_asset_symbol: String,
     pub wallets: Vec<EvmTransactionRecordWalletInput>,
     pub unknown_timestamp_sentinel_unix: f64,
@@ -309,7 +309,7 @@ pub fn plan_evm_transaction_records(
                 wallet_id: wallet.wallet_id.clone(),
                 wallet_name: wallet.wallet_name.clone(),
                 kind: if is_outgoing { "send" } else { "receive" }.to_string(),
-                asset_name: transfer.token_name.clone(),
+                asset_display_name: transfer.token_name.clone(),
                 symbol: transfer.symbol.clone(),
                 chain_name: request.chain_name.clone(),
                 amount_decimal: transfer.amount_decimal.clone(),
@@ -344,7 +344,7 @@ pub fn plan_evm_transaction_records(
                 wallet_id: wallet.wallet_id.clone(),
                 wallet_name: wallet.wallet_name.clone(),
                 kind: if is_outgoing { "send" } else { "receive" }.to_string(),
-                asset_name: request.native_asset_name.clone(),
+                asset_display_name: request.native_asset_display_name.clone(),
                 symbol: request.native_asset_symbol.clone(),
                 chain_name: request.chain_name.clone(),
                 amount_decimal: transfer.amount_decimal.clone(),
@@ -477,7 +477,7 @@ pub fn history_aggregate_by_transaction(
 
 #[derive(Debug, Clone, uniffi::Record)]
 pub struct EvmNativeAsset {
-    pub asset_name: String,
+    pub asset_display_name: String,
     pub symbol: String,
 }
 
@@ -492,7 +492,7 @@ pub fn history_evm_native_asset(chain_name: String) -> Option<EvmNativeAsset> {
         return None;
     }
     Some(EvmNativeAsset {
-        asset_name: chain.entry().native_asset_name.clone(),
+        asset_display_name: chain.entry().native_asset_display_name.clone(),
         symbol: chain.entry().gas_token_symbol.clone(),
     })
 }
@@ -618,7 +618,7 @@ mod tests {
             normalized_address: "0xself".into(),
             chain_name: "Ethereum".into(),
             token_source_used: Some("rust/etherscan".into()),
-            native_asset_name: "Ether".into(),
+            native_asset_display_name: "Ether".into(),
             native_asset_symbol: "ETH".into(),
             wallets: vec![EvmTransactionRecordWalletInput {
                 wallet_id: "w1".into(),
@@ -661,7 +661,7 @@ mod tests {
             normalized_address: "0xself".into(),
             chain_name: "Ethereum".into(),
             token_source_used: None,
-            native_asset_name: "Ether".into(),
+            native_asset_display_name: "Ether".into(),
             native_asset_symbol: "ETH".into(),
             wallets: vec![EvmTransactionRecordWalletInput {
                 wallet_id: "w1".into(),
@@ -718,7 +718,7 @@ mod tests {
                 deployment_id: None,
                 kind: kind.into(),
                 status: status.into(),
-                asset_name: "Dogecoin".into(),
+                asset_display_name: "Dogecoin".into(),
                 symbol: "DOGE".into(),
                 chain_name: "Dogecoin".into(),
                 amount,
@@ -746,7 +746,7 @@ mod tests {
         let eth = history_evm_native_asset("Ethereum".into()).unwrap();
         assert_eq!(eth.symbol, "ETH");
         let bnb = history_evm_native_asset("BNB Chain".into()).unwrap();
-        assert_eq!(bnb.asset_name, "BNB");
+        assert_eq!(bnb.asset_display_name, "BNB");
         assert!(history_evm_native_asset("Bitcoin".into()).is_none());
     }
 
@@ -796,7 +796,7 @@ mod aggregation_is_not_chain_specific {
             deployment_id: None,
             kind: kind.to_string(),
             status: "confirmed".to_string(),
-            asset_name: "Litecoin".to_string(),
+            asset_display_name: "Litecoin".to_string(),
             symbol: "LTC".to_string(),
             chain_name: "Litecoin".to_string(),
             amount,

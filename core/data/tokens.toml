@@ -7,7 +7,7 @@ name = "Aave"
 coingecko_id = "aave"
 coinpaprika_id = "aave-new"
 color = "indigo"
-asset_name = "aave"
+artwork_name = "aave"
 tags = []
 id = "aave"
 
@@ -17,7 +17,7 @@ name = "Bitget Token"
 coingecko_id = "bitget-token"
 coinpaprika_id = "bgb-bitget-token"
 color = "yellow"
-asset_name = "bgb"
+artwork_name = "bgb"
 tags = []
 id = "bitget-token"
 
@@ -27,7 +27,7 @@ name = "Cronos"
 coingecko_id = "crypto-com-chain"
 coinpaprika_id = "cro-cryptocom-chain"
 color = "blue"
-asset_name = "cronos"
+artwork_name = "cronos"
 tags = []
 id = "crypto-com-chain"
 
@@ -37,7 +37,7 @@ name = "Dai Stablecoin"
 coingecko_id = "dai"
 coinpaprika_id = "dai-dai"
 color = "yellow"
-asset_name = "dai"
+artwork_name = "dai"
 tags = ["stablecoin"]
 id = "dai"
 
@@ -47,7 +47,7 @@ name = "Ethena"
 coingecko_id = "ethena"
 coinpaprika_id = "ena-ethena"
 color = "blue"
-asset_name = "ethena"
+artwork_name = "ethena"
 tags = []
 id = "ethena"
 
@@ -57,7 +57,7 @@ name = "Euro Coin"
 coingecko_id = "euro-coin"
 coinpaprika_id = "euroc-euro-coin"
 color = "blue"
-asset_name = "eurc"
+artwork_name = "eurc"
 tags = ["stablecoin"]
 id = "euro-coin"
 
@@ -67,7 +67,7 @@ name = "First Digital USD"
 coingecko_id = "first-digital-usd"
 coinpaprika_id = "fdusd-first-digital-usd"
 color = "green"
-asset_name = "fdusd"
+artwork_name = "fdusd"
 tags = ["stablecoin"]
 id = "first-digital-usd"
 
@@ -77,7 +77,7 @@ name = "KuCoin Token"
 coingecko_id = "kucoin-shares"
 coinpaprika_id = "kcs-kucoin-token"
 color = "yellow"
-asset_name = "kcs"
+artwork_name = "kcs"
 tags = []
 id = "kucoin-shares"
 
@@ -87,7 +87,7 @@ name = "UNUS SED LEO"
 coingecko_id = "leo-token"
 coinpaprika_id = "leo-leo-token"
 color = "orange"
-asset_name = "leo"
+artwork_name = "leo"
 tags = []
 id = "leo-token"
 
@@ -97,7 +97,7 @@ name = "Chainlink"
 coingecko_id = "chainlink"
 coinpaprika_id = "link-chainlink"
 color = "blue"
-asset_name = "chainlink"
+artwork_name = "chainlink"
 tags = []
 id = "chainlink"
 
@@ -107,7 +107,7 @@ name = "PAX Gold"
 coingecko_id = "pax-gold"
 coinpaprika_id = "paxg-pax-gold"
 color = "yellow"
-asset_name = "paxg"
+artwork_name = "paxg"
 tags = []
 id = "pax-gold"
 
@@ -117,7 +117,7 @@ name = "PayPal USD"
 coingecko_id = "paypal-usd"
 coinpaprika_id = "pyusd-paypal-usd"
 color = "blue"
-asset_name = "pyusd"
+artwork_name = "pyusd"
 tags = ["stablecoin"]
 id = "paypal-usd"
 
@@ -127,7 +127,7 @@ name = "Ripple USD"
 coingecko_id = "ripple-usd"
 coinpaprika_id = "rlusd-ripple-usd"
 color = "indigo"
-asset_name = "rlusd"
+artwork_name = "rlusd"
 tags = ["stablecoin"]
 id = "ripple-usd"
 
@@ -137,7 +137,7 @@ name = "Shiba Inu"
 coingecko_id = "shiba-inu"
 coinpaprika_id = "shib-shiba-inu"
 color = "orange"
-asset_name = "shibainu"
+artwork_name = "shibainu"
 tags = ["meme"]
 id = "shiba-inu"
 
@@ -147,7 +147,7 @@ name = "Sky"
 coingecko_id = "sky"
 coinpaprika_id = "sky-sky"
 color = "blue"
-asset_name = "sky"
+artwork_name = "sky"
 tags = []
 id = "sky"
 
@@ -158,7 +158,7 @@ coingecko_id = "true-usd"
 coinpaprika_id = "tusd-trueusd"
 coinlore_nameid = "trueusd"
 color = "blue"
-asset_name = "tusd"
+artwork_name = "tusd"
 tags = ["stablecoin"]
 id = "true-usd"
 
@@ -168,7 +168,7 @@ name = "Uniswap"
 coingecko_id = "uniswap"
 coinpaprika_id = "uni-uniswap"
 color = "pink"
-asset_name = "uniswap"
+artwork_name = "uniswap"
 tags = []
 id = "uniswap"
 
@@ -178,7 +178,7 @@ name = "USD1"
 coingecko_id = "usd1-wlfi"
 coinpaprika_id = "usd1-usd1"
 color = "green"
-asset_name = "usd1"
+artwork_name = "usd1"
 tags = ["stablecoin"]
 id = "usd1-wlfi"
 
@@ -188,7 +188,7 @@ name = "USD Coin"
 coingecko_id = "usd-coin"
 coinpaprika_id = "usdc-usd-coin"
 color = "blue"
-asset_name = "usdc"
+artwork_name = "usdc"
 tags = ["stablecoin"]
 id = "usd-coin"
 
@@ -198,7 +198,7 @@ name = "USDD"
 coingecko_id = "usdd"
 coinpaprika_id = "usdd-usdd"
 color = "green"
-asset_name = "usdd"
+artwork_name = "usdd"
 tags = ["stablecoin"]
 id = "usdd"
 
@@ -208,7 +208,7 @@ name = "Ethena USDe"
 coingecko_id = "ethena-usde"
 coinpaprika_id = "usde-ethena-usde"
 color = "cyan"
-asset_name = "usde"
+artwork_name = "usde"
 tags = ["stablecoin"]
 id = "ethena-usde"
 
@@ -218,7 +218,7 @@ name = "Global Dollar"
 coingecko_id = "global-dollar"
 coinpaprika_id = "usdg-global-dollar"
 color = "teal"
-asset_name = "usdg"
+artwork_name = "usdg"
 tags = ["stablecoin"]
 id = "global-dollar"
 
@@ -228,7 +228,7 @@ name = "Sky Dollar"
 coingecko_id = "usds"
 coinpaprika_id = "usds-usds"
 color = "teal"
-asset_name = "usds"
+artwork_name = "usds"
 tags = ["stablecoin"]
 id = "usds"
 
@@ -238,7 +238,7 @@ name = "Tether USD"
 coingecko_id = "tether"
 coinpaprika_id = "usdt-tether"
 color = "green"
-asset_name = "usdt"
+artwork_name = "usdt"
 tags = ["stablecoin"]
 id = "tether"
 
@@ -248,7 +248,7 @@ name = "Wrapped Bitcoin"
 coingecko_id = "wrapped-bitcoin"
 coinpaprika_id = "wbtc-wrapped-bitcoin"
 color = "orange"
-asset_name = "wrappedbitcoin"
+artwork_name = "wrappedbitcoin"
 tags = []
 id = "wrapped-bitcoin"
 
@@ -259,7 +259,7 @@ coingecko_id = "world-liberty-financial"
 coinpaprika_id = "wlfi-official-world-liberty-financial"
 coinlore_nameid = "world-liberty-financial-wlfi"
 color = "gray"
-asset_name = "wlfi"
+artwork_name = "wlfi"
 tags = []
 id = "world-liberty-financial"
 
@@ -269,7 +269,7 @@ name = "Tether Gold"
 coingecko_id = "tether-gold"
 coinpaprika_id = "xaut-tether-gold"
 color = "yellow"
-asset_name = "xaut"
+artwork_name = "xaut"
 tags = []
 id = "tether-gold"
 
@@ -279,7 +279,7 @@ name = "Jupiter"
 coingecko_id = "jupiter-exchange-solana"
 coinpaprika_id = "jup-jupiter-exchange-token"
 color = "orange"
-asset_name = "jupiter"
+artwork_name = "jupiter"
 tags = []
 id = "jupiter-exchange-solana"
 
@@ -289,7 +289,7 @@ name = "pump.fun"
 coingecko_id = "pump-fun"
 coinpaprika_id = "pump-pumpfun"
 color = "pink"
-asset_name = "pumpfun"
+artwork_name = "pumpfun"
 tags = ["meme"]
 id = "pump-fun"
 
@@ -299,7 +299,7 @@ name = "BitTorrent"
 coingecko_id = "bittorrent"
 coinpaprika_id = "bttc-bittorrent-chain"
 color = "red"
-asset_name = "btt"
+artwork_name = "btt"
 tags = ["meme"]
 id = "bittorrent"
 
@@ -309,7 +309,7 @@ name = "USD Blast"
 coingecko_id = "usdb"
 coinpaprika_id = "usdb-usdb"
 color = "yellow"
-asset_name = "usdb"
+artwork_name = "usdb"
 tags = ["stablecoin"]
 id = "usdb"
 
@@ -319,7 +319,7 @@ name = "Bera USD"
 coingecko_id = "honey-3"
 coinpaprika_id = ""
 color = "orange"
-asset_name = "berausd"
+artwork_name = "berausd"
 tags = ["stablecoin"]
 id = "honey-3"
 
@@ -329,7 +329,7 @@ name = "Tether America USD"
 coingecko_id = "usa"
 coinpaprika_id = "usat"
 color = "red"
-asset_name = "usat"
+artwork_name = "usat"
 tags = ["stablecoin"]
 id = "usa"
 
@@ -339,7 +339,7 @@ name = "USDT0"
 coingecko_id = "usdt0"
 coinpaprika_id = "usdt0-usdt0"
 color = "green"
-asset_name = "usdt0"
+artwork_name = "usdt0"
 tags = ["stablecoin"]
 id = "usdt0"
 
@@ -349,7 +349,7 @@ name = "XAUT0"
 coingecko_id = "tether-gold-tokens"
 coinpaprika_id = "xaut0-tether-gold-tokens"
 color = "yellow"
-asset_name = "xaut0"
+artwork_name = "xaut0"
 tags = []
 id = "tether-gold-tokens"
 
@@ -359,7 +359,7 @@ name = "Arbitrum"
 coingecko_id = "arbitrum"
 coinpaprika_id = "arb-arbitrum"
 color = "cyan"
-asset_name = "arbitrum"
+artwork_name = "arbitrum"
 tags = []
 id = "arbitrum"
 
@@ -369,7 +369,7 @@ name = "Optimism"
 coingecko_id = "optimism"
 coinpaprika_id = "op-optimism"
 color = "red"
-asset_name = "optimism"
+artwork_name = "optimism"
 tags = []
 id = "optimism"
 
@@ -379,7 +379,7 @@ name = "Linea"
 coingecko_id = "linea"
 coinpaprika_id = "linea-linea"
 color = "blue"
-asset_name = "linea"
+artwork_name = "linea"
 tags = []
 id = "linea"
 
@@ -389,7 +389,7 @@ name = "Scroll"
 coingecko_id = "scroll"
 coinpaprika_id = "scr-scroll"
 color = "orange"
-asset_name = "scroll"
+artwork_name = "scroll"
 tags = []
 id = "scroll"
 
@@ -399,7 +399,7 @@ name = "Blast"
 coingecko_id = "blast"
 coinpaprika_id = "blast-blast-token"
 color = "yellow"
-asset_name = "blast"
+artwork_name = "blast"
 tags = []
 id = "blast"
 
@@ -409,7 +409,7 @@ name = "ZKsync"
 coingecko_id = "zksync"
 coinpaprika_id = "zk-zksync"
 color = "gray"
-asset_name = "zksyncera"
+artwork_name = "zksyncera"
 tags = []
 id = "zksync"
 
@@ -419,7 +419,7 @@ name = "Mantle"
 coingecko_id = "mantle"
 coinpaprika_id = "mnt-mantle"
 color = "green"
-asset_name = "mantle"
+artwork_name = "mantle"
 tags = []
 id = "mantle"
 
@@ -429,7 +429,7 @@ name = "Polygon"
 coingecko_id = "polygon-ecosystem-token"
 coinpaprika_id = "pol-polygon-ecosystem-token"
 color = "purple"
-asset_name = "polygon"
+artwork_name = "polygon"
 tags = []
 id = "polygon-ecosystem-token"
 
@@ -439,7 +439,7 @@ name = "Lido Staked Ether"
 coingecko_id = "staked-ether"
 coinpaprika_id = "steth-lido-staked-ether"
 color = "cyan"
-asset_name = ""
+artwork_name = ""
 tags = []
 id = "staked-ether"
 
@@ -449,7 +449,7 @@ name = "Wrapped stETH"
 coingecko_id = "wrapped-steth"
 coinpaprika_id = "wsteth-wrapped-liquid-staked-ether-20"
 color = "cyan"
-asset_name = ""
+artwork_name = ""
 tags = []
 id = "wrapped-steth"
 
@@ -459,7 +459,7 @@ name = "Wrapped Ether"
 coingecko_id = "weth"
 coinpaprika_id = "weth-weth"
 color = "gray"
-asset_name = "ethereum"
+artwork_name = "ethereum"
 tags = []
 id = "weth"
 
@@ -469,7 +469,7 @@ name = "Coinbase Wrapped BTC"
 coingecko_id = "coinbase-wrapped-btc"
 coinpaprika_id = "cbbtc-coinbase-wrapped-btc"
 color = "blue"
-asset_name = ""
+artwork_name = ""
 tags = []
 id = "coinbase-wrapped-btc"
 
@@ -479,7 +479,7 @@ name = "Lombard Staked Bitcoin"
 coingecko_id = "lombard-staked-btc"
 coinpaprika_id = "lbtc-lombard-staked-btc"
 color = "orange"
-asset_name = ""
+artwork_name = ""
 tags = []
 id = "lombard-staked-btc"
 
@@ -489,7 +489,7 @@ name = "Rocket Pool ETH"
 coingecko_id = "rocket-pool-eth"
 coinpaprika_id = "reth-rocket-pool-eth"
 color = "orange"
-asset_name = ""
+artwork_name = ""
 tags = []
 id = "rocket-pool-eth"
 
@@ -499,7 +499,7 @@ name = "Savings USDS"
 coingecko_id = "susds"
 coinpaprika_id = "susds-susds"
 color = "teal"
-asset_name = ""
+artwork_name = ""
 tags = ["stablecoin"]
 id = "susds"
 
@@ -509,7 +509,7 @@ name = "Ethena Staked USDe"
 coingecko_id = "ethena-staked-usde"
 coinpaprika_id = "susde-ethena-staked-usde"
 color = "cyan"
-asset_name = ""
+artwork_name = ""
 tags = ["stablecoin"]
 id = "ethena-staked-usde"
 
@@ -519,7 +519,7 @@ name = "GHO"
 coingecko_id = "gho"
 coinpaprika_id = "gho-gho"
 color = "teal"
-asset_name = ""
+artwork_name = ""
 tags = ["stablecoin"]
 id = "gho"
 
@@ -529,7 +529,7 @@ name = "Ondo"
 coingecko_id = "ondo-finance"
 coinpaprika_id = "ondo-ondo"
 color = "blue"
-asset_name = ""
+artwork_name = ""
 tags = []
 id = "ondo-finance"
 
@@ -539,7 +539,7 @@ name = "Morpho"
 coingecko_id = "morpho"
 coinpaprika_id = "morpho-morpho"
 color = "blue"
-asset_name = ""
+artwork_name = ""
 tags = []
 id = "morpho"
 
@@ -549,7 +549,7 @@ name = "Aerodrome Finance"
 coingecko_id = "aerodrome-finance"
 coinpaprika_id = "aero-aerodrome-finance"
 color = "blue"
-asset_name = ""
+artwork_name = ""
 tags = []
 id = "aerodrome-finance"
 
@@ -559,7 +559,7 @@ name = "Curve DAO"
 coingecko_id = "curve-dao-token"
 coinpaprika_id = "crv-curve-dao-token"
 color = "yellow"
-asset_name = ""
+artwork_name = ""
 tags = []
 id = "curve-dao-token"
 
@@ -569,7 +569,7 @@ name = "PancakeSwap"
 coingecko_id = "pancakeswap-token"
 coinpaprika_id = "cake-pancakeswap"
 color = "cyan"
-asset_name = ""
+artwork_name = ""
 tags = []
 id = "pancakeswap-token"
 
@@ -579,7 +579,7 @@ name = "Pendle"
 coingecko_id = "pendle"
 coinpaprika_id = "pendle-pendle"
 color = "teal"
-asset_name = ""
+artwork_name = ""
 tags = []
 id = "pendle"
 
@@ -589,7 +589,7 @@ name = "Ether.fi"
 coingecko_id = "ether-fi"
 coinpaprika_id = "ethfi-etherfi"
 color = "purple"
-asset_name = ""
+artwork_name = ""
 tags = []
 id = "ether-fi"
 
@@ -599,7 +599,7 @@ name = "Lido DAO"
 coingecko_id = "lido-dao"
 coinpaprika_id = "ldo-lido-dao"
 color = "cyan"
-asset_name = ""
+artwork_name = ""
 tags = []
 id = "lido-dao"
 
@@ -609,7 +609,7 @@ name = "Ethereum Name Service"
 coingecko_id = "ethereum-name-service"
 coinpaprika_id = "ens-ethereum-name-service"
 color = "blue"
-asset_name = ""
+artwork_name = ""
 tags = []
 id = "ethereum-name-service"
 
@@ -619,7 +619,7 @@ name = "Pyth Network"
 coingecko_id = "pyth-network"
 coinpaprika_id = "pyth-pyth-network"
 color = "purple"
-asset_name = ""
+artwork_name = ""
 tags = []
 id = "pyth-network"
 
@@ -629,7 +629,7 @@ name = "Raydium"
 coingecko_id = "raydium"
 coinpaprika_id = "ray-raydium"
 color = "indigo"
-asset_name = ""
+artwork_name = ""
 tags = []
 id = "raydium"
 
@@ -639,7 +639,7 @@ name = "LayerZero"
 coingecko_id = "layerzero"
 coinpaprika_id = "zro-layerzero"
 color = "gray"
-asset_name = ""
+artwork_name = ""
 tags = []
 id = "layerzero"
 
@@ -649,7 +649,7 @@ name = "Worldcoin"
 coingecko_id = "worldcoin-wld"
 coinpaprika_id = "wld-worldcoin"
 color = "gray"
-asset_name = ""
+artwork_name = ""
 tags = []
 id = "worldcoin-wld"
 
@@ -659,7 +659,7 @@ name = "Pepe"
 coingecko_id = "pepe"
 coinpaprika_id = "pepe-pepe"
 color = "green"
-asset_name = ""
+artwork_name = ""
 tags = ["meme"]
 id = "pepe"
 
@@ -671,7 +671,7 @@ coingecko_id = "bitcoin"
 coinpaprika_id = "btc-bitcoin"
 coinlore_nameid = ""
 color = "orange"
-asset_name = "bitcoin"
+artwork_name = "bitcoin"
 tags = []
 
 [[tokens]]
@@ -682,7 +682,7 @@ coingecko_id = "ethereum"
 coinpaprika_id = "eth-ethereum"
 coinlore_nameid = ""
 color = "purple"
-asset_name = "ethereum"
+artwork_name = "ethereum"
 tags = []
 
 [[tokens]]
@@ -693,7 +693,7 @@ coingecko_id = "solana"
 coinpaprika_id = "sol-solana"
 coinlore_nameid = ""
 color = "green"
-asset_name = "solana"
+artwork_name = "solana"
 tags = []
 
 [[tokens]]
@@ -704,7 +704,7 @@ coingecko_id = "dogecoin"
 coinpaprika_id = "doge-dogecoin"
 coinlore_nameid = ""
 color = "yellow"
-asset_name = "dogecoin"
+artwork_name = "dogecoin"
 tags = []
 
 [[tokens]]
@@ -715,7 +715,7 @@ coingecko_id = "ripple"
 coinpaprika_id = "xrp-xrp"
 coinlore_nameid = ""
 color = "cyan"
-asset_name = "xrp"
+artwork_name = "xrp"
 tags = []
 
 [[tokens]]
@@ -726,7 +726,7 @@ coingecko_id = "litecoin"
 coinpaprika_id = "ltc-litecoin"
 coinlore_nameid = ""
 color = "blue"
-asset_name = "litecoin"
+artwork_name = "litecoin"
 tags = []
 
 [[tokens]]
@@ -737,7 +737,7 @@ coingecko_id = "bitcoin-cash"
 coinpaprika_id = "bch-bitcoin-cash"
 coinlore_nameid = ""
 color = "orange"
-asset_name = "bitcoincash"
+artwork_name = "bitcoincash"
 tags = []
 
 [[tokens]]
@@ -748,7 +748,7 @@ coingecko_id = "tron"
 coinpaprika_id = "trx-tron"
 coinlore_nameid = ""
 color = "red"
-asset_name = "tron"
+artwork_name = "tron"
 tags = []
 
 [[tokens]]
@@ -759,7 +759,7 @@ coingecko_id = "stellar"
 coinpaprika_id = "xlm-stellar"
 coinlore_nameid = ""
 color = "teal"
-asset_name = "stellar"
+artwork_name = "stellar"
 tags = []
 
 [[tokens]]
@@ -770,7 +770,7 @@ coingecko_id = "cardano"
 coinpaprika_id = "ada-cardano"
 coinlore_nameid = ""
 color = "indigo"
-asset_name = "cardano"
+artwork_name = "cardano"
 tags = []
 
 [[tokens]]
@@ -781,7 +781,7 @@ coingecko_id = "polkadot"
 coinpaprika_id = "dot-polkadot-token"
 coinlore_nameid = ""
 color = "pink"
-asset_name = "polkadot"
+artwork_name = "polkadot"
 tags = []
 
 [[tokens]]
@@ -792,7 +792,7 @@ coingecko_id = "avalanche-2"
 coinpaprika_id = "avax-avalanche"
 coinlore_nameid = "avalanche"
 color = "red"
-asset_name = "avalanche"
+artwork_name = "avalanche"
 tags = []
 
 [[tokens]]
@@ -803,7 +803,7 @@ coingecko_id = "sui"
 coinpaprika_id = "sui-sui"
 coinlore_nameid = ""
 color = "mint"
-asset_name = "sui"
+artwork_name = "sui"
 tags = []
 
 [[tokens]]
@@ -814,7 +814,7 @@ coingecko_id = "aptos"
 coinpaprika_id = "apt-aptos"
 coinlore_nameid = ""
 color = "cyan"
-asset_name = "aptos"
+artwork_name = "aptos"
 tags = []
 
 [[tokens]]
@@ -825,7 +825,7 @@ coingecko_id = "the-open-network"
 coinpaprika_id = "ton-tontoken"
 coinlore_nameid = "toncoin"
 color = "blue"
-asset_name = "ton"
+artwork_name = "ton"
 tags = []
 
 [[tokens]]
@@ -836,7 +836,7 @@ coingecko_id = "near"
 coinpaprika_id = "near-near-protocol"
 coinlore_nameid = "near-protocol"
 color = "indigo"
-asset_name = "near"
+artwork_name = "near"
 tags = []
 
 [[tokens]]
@@ -847,7 +847,7 @@ coingecko_id = "internet-computer"
 coinpaprika_id = "icp-internet-computer"
 coinlore_nameid = "dfinity"
 color = "indigo"
-asset_name = "internetcomputer"
+artwork_name = "internetcomputer"
 tags = []
 
 [[tokens]]
@@ -858,7 +858,7 @@ coingecko_id = "monero"
 coinpaprika_id = "xmr-monero"
 coinlore_nameid = ""
 color = "orange"
-asset_name = "monero"
+artwork_name = "monero"
 tags = []
 
 [[tokens]]
@@ -869,7 +869,7 @@ coingecko_id = "ethereum-classic"
 coinpaprika_id = "etc-ethereum-classic"
 coinlore_nameid = ""
 color = "green"
-asset_name = "ethereumclassic"
+artwork_name = "ethereumclassic"
 tags = []
 
 [[tokens]]
@@ -880,7 +880,7 @@ coingecko_id = "bitcoin-cash-sv"
 coinpaprika_id = "bsv-bitcoin-sv"
 coinlore_nameid = ""
 color = "orange"
-asset_name = "bitcoinsv"
+artwork_name = "bitcoinsv"
 tags = []
 
 [[tokens]]
@@ -891,7 +891,7 @@ coingecko_id = "binancecoin"
 coinpaprika_id = "bnb-binance-coin"
 coinlore_nameid = "binance-coin"
 color = "yellow"
-asset_name = "bnb"
+artwork_name = "bnb"
 tags = []
 
 [[tokens]]
@@ -902,7 +902,7 @@ coingecko_id = "hyperliquid"
 coinpaprika_id = "hype-hyperliquid"
 coinlore_nameid = ""
 color = "mint"
-asset_name = "hyperliquid"
+artwork_name = "hyperliquid"
 tags = []
 
 [[tokens]]
@@ -913,7 +913,7 @@ coingecko_id = "zcash"
 coinpaprika_id = "zec-zcash"
 coinlore_nameid = ""
 color = "yellow"
-asset_name = "zcash"
+artwork_name = "zcash"
 tags = []
 
 [[tokens]]
@@ -924,7 +924,7 @@ coingecko_id = "bitcoin-gold"
 coinpaprika_id = "btg-bitcoin-gold"
 coinlore_nameid = ""
 color = "yellow"
-asset_name = "bitcoingold"
+artwork_name = "bitcoingold"
 tags = []
 
 [[tokens]]
@@ -935,7 +935,7 @@ coingecko_id = "decred"
 coinpaprika_id = "dcr-decred"
 coinlore_nameid = ""
 color = "indigo"
-asset_name = "decred"
+artwork_name = "decred"
 tags = []
 
 [[tokens]]
@@ -946,7 +946,7 @@ coingecko_id = "kaspa"
 coinpaprika_id = "kas-kaspa"
 coinlore_nameid = ""
 color = "teal"
-asset_name = "kaspa"
+artwork_name = "kaspa"
 tags = []
 
 [[tokens]]
@@ -957,7 +957,7 @@ coingecko_id = "sei-network"
 coinpaprika_id = "sei-sei"
 coinlore_nameid = ""
 color = "red"
-asset_name = "sei"
+artwork_name = "sei"
 tags = []
 
 [[tokens]]
@@ -968,7 +968,7 @@ coingecko_id = "celo"
 coinpaprika_id = "celo-celo"
 coinlore_nameid = ""
 color = "yellow"
-asset_name = "celo"
+artwork_name = "celo"
 tags = []
 
 [[tokens]]
@@ -979,7 +979,7 @@ coingecko_id = "sonic-3"
 coinpaprika_id = "s-sonic"
 coinlore_nameid = ""
 color = "gray"
-asset_name = "sonic"
+artwork_name = "sonic"
 tags = []
 
 [[tokens]]
@@ -990,7 +990,7 @@ coingecko_id = "berachain-bera"
 coinpaprika_id = "bera-berachain"
 coinlore_nameid = ""
 color = "orange"
-asset_name = "bera"
+artwork_name = "bera"
 tags = []
 
 [[tokens]]
@@ -1001,7 +1001,7 @@ coingecko_id = "dash"
 coinpaprika_id = "dash-dash"
 coinlore_nameid = ""
 color = "blue"
-asset_name = "dash"
+artwork_name = "dash"
 tags = []
 
 [[tokens]]
@@ -1012,7 +1012,7 @@ coingecko_id = "okb"
 coinpaprika_id = "okb-okb"
 coinlore_nameid = ""
 color = "gray"
-asset_name = "okb"
+artwork_name = "okb"
 tags = []
 
 [[tokens]]
@@ -1023,7 +1023,7 @@ coingecko_id = "bittensor"
 coinpaprika_id = "tao-bittensor"
 coinlore_nameid = ""
 color = "gray"
-asset_name = "bittensor"
+artwork_name = "bittensor"
 tags = []
 
 [[tokens]]
@@ -1034,7 +1034,7 @@ coingecko_id = ""
 coinpaprika_id = ""
 coinlore_nameid = ""
 color = "orange"
-asset_name = "bitcoin"
+artwork_name = "bitcoin"
 tags = []
 
 [[tokens]]
@@ -1045,7 +1045,7 @@ coingecko_id = ""
 coinpaprika_id = ""
 coinlore_nameid = ""
 color = "orange"
-asset_name = "bitcoin"
+artwork_name = "bitcoin"
 tags = []
 
 [[tokens]]
@@ -1056,7 +1056,7 @@ coingecko_id = ""
 coinpaprika_id = ""
 coinlore_nameid = ""
 color = "orange"
-asset_name = "bitcoin"
+artwork_name = "bitcoin"
 tags = []
 
 [[tokens]]
@@ -1067,7 +1067,7 @@ coingecko_id = ""
 coinpaprika_id = ""
 coinlore_nameid = ""
 color = "blue"
-asset_name = "litecoin"
+artwork_name = "litecoin"
 tags = []
 
 [[tokens]]
@@ -1078,7 +1078,7 @@ coingecko_id = ""
 coinpaprika_id = ""
 coinlore_nameid = ""
 color = "orange"
-asset_name = "bitcoincash"
+artwork_name = "bitcoincash"
 tags = []
 
 [[tokens]]
@@ -1089,7 +1089,7 @@ coingecko_id = ""
 coinpaprika_id = ""
 coinlore_nameid = ""
 color = "orange"
-asset_name = "bitcoinsv"
+artwork_name = "bitcoinsv"
 tags = []
 
 [[tokens]]
@@ -1100,7 +1100,7 @@ coingecko_id = ""
 coinpaprika_id = ""
 coinlore_nameid = ""
 color = "yellow"
-asset_name = "dogecoin"
+artwork_name = "dogecoin"
 tags = []
 
 [[tokens]]
@@ -1111,7 +1111,7 @@ coingecko_id = ""
 coinpaprika_id = ""
 coinlore_nameid = ""
 color = "yellow"
-asset_name = "zcash"
+artwork_name = "zcash"
 tags = []
 
 [[tokens]]
@@ -1122,7 +1122,7 @@ coingecko_id = ""
 coinpaprika_id = ""
 coinlore_nameid = ""
 color = "indigo"
-asset_name = "decred"
+artwork_name = "decred"
 tags = []
 
 [[tokens]]
@@ -1133,7 +1133,7 @@ coingecko_id = ""
 coinpaprika_id = ""
 coinlore_nameid = ""
 color = "teal"
-asset_name = "kaspa"
+artwork_name = "kaspa"
 tags = []
 
 [[tokens]]
@@ -1144,7 +1144,7 @@ coingecko_id = ""
 coinpaprika_id = ""
 coinlore_nameid = ""
 color = "blue"
-asset_name = "dash"
+artwork_name = "dash"
 tags = []
 
 [[tokens]]
@@ -1155,7 +1155,7 @@ coingecko_id = ""
 coinpaprika_id = ""
 coinlore_nameid = ""
 color = "purple"
-asset_name = "ethereum"
+artwork_name = "ethereum"
 tags = []
 
 [[tokens]]
@@ -1166,7 +1166,7 @@ coingecko_id = ""
 coinpaprika_id = ""
 coinlore_nameid = ""
 color = "purple"
-asset_name = "ethereum"
+artwork_name = "ethereum"
 tags = []
 
 [[tokens]]
@@ -1177,7 +1177,7 @@ coingecko_id = ""
 coinpaprika_id = ""
 coinlore_nameid = ""
 color = "cyan"
-asset_name = "arbitrum"
+artwork_name = "arbitrum"
 tags = []
 
 [[tokens]]
@@ -1188,7 +1188,7 @@ coingecko_id = ""
 coinpaprika_id = ""
 coinlore_nameid = ""
 color = "red"
-asset_name = "optimism"
+artwork_name = "optimism"
 tags = []
 
 [[tokens]]
@@ -1199,7 +1199,7 @@ coingecko_id = ""
 coinpaprika_id = ""
 coinlore_nameid = ""
 color = "blue"
-asset_name = "base"
+artwork_name = "base"
 tags = []
 
 [[tokens]]
@@ -1210,7 +1210,7 @@ coingecko_id = ""
 coinpaprika_id = ""
 coinlore_nameid = ""
 color = "yellow"
-asset_name = "bnb"
+artwork_name = "bnb"
 tags = []
 
 [[tokens]]
@@ -1221,7 +1221,7 @@ coingecko_id = ""
 coinpaprika_id = ""
 coinlore_nameid = ""
 color = "red"
-asset_name = "avalanche"
+artwork_name = "avalanche"
 tags = []
 
 [[tokens]]
@@ -1232,7 +1232,7 @@ coingecko_id = ""
 coinpaprika_id = ""
 coinlore_nameid = ""
 color = "purple"
-asset_name = "polygon"
+artwork_name = "polygon"
 tags = []
 
 [[tokens]]
@@ -1243,7 +1243,7 @@ coingecko_id = ""
 coinpaprika_id = ""
 coinlore_nameid = ""
 color = "mint"
-asset_name = "hyperliquid"
+artwork_name = "hyperliquid"
 tags = []
 
 [[tokens]]
@@ -1254,7 +1254,7 @@ coingecko_id = ""
 coinpaprika_id = ""
 coinlore_nameid = ""
 color = "green"
-asset_name = "ethereumclassic"
+artwork_name = "ethereumclassic"
 tags = []
 
 [[tokens]]
@@ -1265,7 +1265,7 @@ coingecko_id = ""
 coinpaprika_id = ""
 coinlore_nameid = ""
 color = "red"
-asset_name = "tron"
+artwork_name = "tron"
 tags = []
 
 [[tokens]]
@@ -1276,7 +1276,7 @@ coingecko_id = ""
 coinpaprika_id = ""
 coinlore_nameid = ""
 color = "green"
-asset_name = "solana"
+artwork_name = "solana"
 tags = []
 
 [[tokens]]
@@ -1287,7 +1287,7 @@ coingecko_id = ""
 coinpaprika_id = ""
 coinlore_nameid = ""
 color = "cyan"
-asset_name = "xrp"
+artwork_name = "xrp"
 tags = []
 
 [[tokens]]
@@ -1298,7 +1298,7 @@ coingecko_id = ""
 coinpaprika_id = ""
 coinlore_nameid = ""
 color = "teal"
-asset_name = "stellar"
+artwork_name = "stellar"
 tags = []
 
 [[tokens]]
@@ -1309,7 +1309,7 @@ coingecko_id = ""
 coinpaprika_id = ""
 coinlore_nameid = ""
 color = "indigo"
-asset_name = "cardano"
+artwork_name = "cardano"
 tags = []
 
 [[tokens]]
@@ -1320,7 +1320,7 @@ coingecko_id = ""
 coinpaprika_id = ""
 coinlore_nameid = ""
 color = "mint"
-asset_name = "sui"
+artwork_name = "sui"
 tags = []
 
 [[tokens]]
@@ -1331,7 +1331,7 @@ coingecko_id = ""
 coinpaprika_id = ""
 coinlore_nameid = ""
 color = "cyan"
-asset_name = "aptos"
+artwork_name = "aptos"
 tags = []
 
 [[tokens]]
@@ -1342,7 +1342,7 @@ coingecko_id = ""
 coinpaprika_id = ""
 coinlore_nameid = ""
 color = "blue"
-asset_name = "ton"
+artwork_name = "ton"
 tags = []
 
 [[tokens]]
@@ -1353,7 +1353,7 @@ coingecko_id = ""
 coinpaprika_id = ""
 coinlore_nameid = ""
 color = "indigo"
-asset_name = "near"
+artwork_name = "near"
 tags = []
 
 [[tokens]]
@@ -1364,7 +1364,7 @@ coingecko_id = ""
 coinpaprika_id = ""
 coinlore_nameid = ""
 color = "pink"
-asset_name = "polkadot"
+artwork_name = "polkadot"
 tags = []
 
 [[tokens]]
@@ -1375,7 +1375,7 @@ coingecko_id = ""
 coinpaprika_id = ""
 coinlore_nameid = ""
 color = "orange"
-asset_name = "monero"
+artwork_name = "monero"
 tags = []
 
 [[deployments]]

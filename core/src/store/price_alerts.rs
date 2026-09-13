@@ -51,7 +51,7 @@ pub(super) fn add(
                     )
                 })
         });
-    let Some((asset_name, symbol, chain_name)) = metadata else {
+    let Some((asset_display_name, symbol, chain_name)) = metadata else {
         return event("priceAlertRejected", "Unknown asset".into());
     };
     if state
@@ -70,7 +70,7 @@ pub(super) fn add(
         PriceAlertEvaluationAlert {
             id: id.clone(),
             holding_key: key,
-            asset_name,
+            asset_display_name,
             symbol,
             chain_name,
             target_price: target,

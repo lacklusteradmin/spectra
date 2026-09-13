@@ -1,5 +1,5 @@
 use crate::store::{
-    state::{StateCommand, WalletSummary},
+    state::{StateCommand, WalletState},
     wallet_domain::AssetHolding,
 };
 use crate::{registry::Chain, service::WalletService};
@@ -66,8 +66,8 @@ fn every_testnet_has_an_independent_unpriced_native_token() {
 
 #[tokio::test]
 async fn invalid_protocol_identity_is_refused_before_storage() {
-    let service = WalletService::new_typed(vec![]).unwrap();
-    let mut wallet = WalletSummary::single_address(
+    let service = WalletService::new(vec![]).unwrap();
+    let mut wallet = WalletState::single_address(
         "w",
         "W",
         "Ethereum",
