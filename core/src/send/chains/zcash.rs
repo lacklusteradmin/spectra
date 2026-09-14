@@ -201,7 +201,6 @@ fn sign_zcash_v5_p2pkh(
 
     // Final V5 transaction encoding.
     let mut raw = Vec::new();
-    // Header.
     let header = TX_VERSION_V5 | TX_VERSION_OVERWINTERED;
     raw.extend_from_slice(&header.to_le_bytes());
     raw.extend_from_slice(&network_upgrade.version_group_id.to_le_bytes());

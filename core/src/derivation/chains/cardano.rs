@@ -33,8 +33,6 @@ pub(crate) fn decode_cardano_addr_bytes(address: &str) -> Result<Vec<u8>, String
     }
 }
 
-// ── BIP-39 ───────────────────────────────────────────────────────────────
-
 // ── BIP-32 path parsing ──────────────────────────────────────────────────
 
 // Parse a BIP-32 derivation path string into a list of child index integers (hardened or soft).

@@ -94,7 +94,6 @@ pub fn sign_doge_p2pkh(
         fee_koin,
     )?;
 
-    // Build outputs.
     let mut outputs: Vec<(Vec<u8>, u64)> = vec![(
         p2pkh_script(&decode_doge_address(to_address)?)?,
         amount_koin,
@@ -106,7 +105,6 @@ pub fn sign_doge_p2pkh(
     // Sign each input.
     let mut signed_inputs: Vec<Vec<u8>> = Vec::new();
     for (txid, vout, _, script_pubkey) in utxos {
-        // SIGHASH_ALL preimage.
         let preimage = build_sighash_preimage(utxos, *vout, txid, script_pubkey, &outputs, 1)?;
         let hash = dsha256(&preimage);
         let msg = Message::from_digest_slice(&hash).map_err(|e| e.to_string())?;
@@ -146,7 +144,6 @@ fn build_sighash_preimage(
         }
         raw.extend_from_slice(&0xffffffffu32.to_le_bytes());
     }
-    // outputs
     raw.extend_from_slice(&varint(outputs.len()));
     for (script, value) in outputs {
         raw.extend_from_slice(&value.to_le_bytes());
@@ -155,7 +152,6 @@ fn build_sighash_preimage(
     }
     // locktime
     raw.extend_from_slice(&0u32.to_le_bytes());
-    // sighash type
     raw.extend_from_slice(&sighash_type.to_le_bytes());
     Ok(raw)
 }

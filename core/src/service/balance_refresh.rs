@@ -281,10 +281,15 @@ mod lifecycle_tests {
             .open_state(path.to_string_lossy().into())
             .await
             .unwrap();
-        service.set_secret_store(Arc::new(
-            crate::store::secret_backends::InMemorySecretStore::new(),
-        ));
-        service.store_wallet_seed_phrase("w".into(), "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about".into(), None).unwrap();
+        let secrets = Arc::new(crate::store::secret_backends::InMemorySecretStore::new());
+        crate::store::wallet_secrets::store_seed_phrase(
+            &*secrets,
+            "w",
+            "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about",
+            None,
+        )
+        .unwrap();
+        service.set_secret_store(secrets);
         service
             .apply_state_command(StateCommand::UpsertWallet {
                 wallet: WalletState::single_address(

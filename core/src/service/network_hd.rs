@@ -2,26 +2,6 @@
 use super::*;
 
 impl WalletService {
-    /// Return the first address on the `change` leg (0 = receive, 1 = change)
-    /// that has zero confirmed/unconfirmed history, scanning up to
-    /// `gap_limit` candidates. Returns the derived address string, or
-    /// `None` if every candidate in the `gap_limit` window had activity.
-    pub async fn fetch_bitcoin_next_unused_address_typed(
-        &self,
-        xpub: String,
-        change: u32,
-        gap_limit: u32,
-    ) -> Result<Option<String>, SpectraBridgeError> {
-        let endpoints = self.endpoints_for("bitcoin").await;
-        let client = BitcoinClient::new(HttpClient::shared(), endpoints);
-        let next = crate::derivation::xpub_walker::fetch_next_unused_address(
-            &client, &xpub, change, gap_limit,
-        )
-        .await?;
-        Ok(next.map(|c| c.address))
-    }
-}
-impl WalletService {
     /// The aggregated balance across an xpub's derived addresses.
     ///
     /// Returned the serialized `HdXpubBalance` as a JSON string before, which

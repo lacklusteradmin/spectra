@@ -182,66 +182,6 @@ async fn cancelling_caller_does_not_interrupt_an_admitted_commit() {
     );
 }
 
-#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
-async fn concurrent_probes_advance_only_the_reservation_they_checked() {
-    let s = service();
-    let db = database();
-    s.open_state(db.clone()).await.unwrap();
-    let used = s
-        .reserve_receive_index("w".into(), "Bitcoin".into(), 1)
-        .await
-        .unwrap();
-    let mut jobs = tokio::task::JoinSet::new();
-    for _ in 0..20 {
-        let s = s.clone();
-        jobs.spawn(async move {
-            s.advance_receive_index_if_current("w".into(), "Bitcoin".into(), used)
-                .await
-                .unwrap()
-        });
-    }
-    let mut advanced = vec![];
-    while let Some(result) = jobs.join_next().await {
-        if let Some(index) = result.unwrap() {
-            advanced.push(index);
-        }
-    }
-    assert_eq!(advanced, vec![2]);
-    let reopened = service();
-    reopened.open_state(db).await.unwrap();
-    assert_eq!(
-        reopened
-            .keypool_state("w".into(), "Bitcoin".into())
-            .await
-            .unwrap()
-            .reserved_receive_index,
-        Some(2)
-    );
-    // A probe returning after release/re-reserve must not touch the new index.
-    s.clear_reserved_receive_index("w".into(), "Bitcoin".into())
-        .await
-        .unwrap();
-    assert_eq!(
-        s.reserve_receive_index("w".into(), "Bitcoin".into(), 1)
-            .await
-            .unwrap(),
-        3
-    );
-    assert_eq!(
-        s.advance_receive_index_if_current("w".into(), "Bitcoin".into(), 2)
-            .await
-            .unwrap(),
-        None
-    );
-    assert_eq!(
-        s.keypool_state("w".into(), "Bitcoin".into())
-            .await
-            .unwrap()
-            .reserved_receive_index,
-        Some(3)
-    );
-}
-
 #[tokio::test]
 async fn advancement_respects_addresses_discovered_while_probe_was_in_flight() {
     let s = service();

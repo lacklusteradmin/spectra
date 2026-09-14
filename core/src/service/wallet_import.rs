@@ -296,24 +296,6 @@ impl WalletService {
     }
 }
 
-impl WalletService {
-    /// Store a seed phrase, sealed under `password` when one is given.
-    pub fn store_wallet_seed_phrase(
-        &self,
-        wallet_id: String,
-        seed_phrase: String,
-        password: Option<String>,
-    ) -> Result<(), SpectraBridgeError> {
-        let store = self.secrets()?;
-        crate::store::wallet_secrets::store_seed_phrase(
-            &*store,
-            &wallet_id,
-            &seed_phrase,
-            password.as_deref(),
-        )
-        .map_err(|e| SpectraBridgeError::from(e.to_string()))
-    }
-}
 
 impl WalletService {
     /// Store a raw private key, sealed under `password` when one is given.

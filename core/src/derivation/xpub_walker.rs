@@ -306,26 +306,6 @@ fn from_esplora_utxo(u: &EsploraUtxo, addr: &HdChildAddress) -> HdUtxo {
 
 // ── Next-unused address (receive/change discovery)
 
-/// Scan forward on the `change` leg until the first address that has zero
-/// historical transactions, respecting a gap limit. Returns `Ok(None)` if
-/// the entire scan window is used (caller should widen the gap limit or
-/// signal the wallet is nearly out of fresh addresses).
-pub async fn fetch_next_unused_address(
-    client: &BitcoinClient,
-    xpub_input: &str,
-    change: u32,
-    gap_limit: u32,
-) -> Result<Option<HdChildAddress>, String> {
-    let batch = derive_children(xpub_input, change, 0, gap_limit.max(1))?;
-    for candidate in batch {
-        let bal = client.fetch_balance(&candidate.address).await?;
-        if bal.utxo_count == 0 && bal.confirmed_sats == 0 && bal.unconfirmed_sats == 0 {
-            return Ok(Some(candidate));
-        }
-    }
-    Ok(None)
-}
-
 // ── Seed phrase → account-level xpub
 
 /// Derive the account-level extended public key (xpub) from a BIP39 mnemonic.

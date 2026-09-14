@@ -170,7 +170,6 @@ pub fn build_near_transfer_tx(
     use ed25519_dalek::{Signer, SigningKey};
     use sha2::{Digest, Sha256};
 
-    // BORSH-encode the transaction.
     let tx = borsh_encode_transfer(
         signer_id,
         public_key,
@@ -221,8 +220,8 @@ fn borsh_encode_transfer(
     // block_hash: [u8; 32]
     out.extend_from_slice(block_hash);
     // actions: array (u32 len)
-    out.extend_from_slice(&1u32.to_le_bytes()); // 1 action
-                                                // Action::Transfer = variant 3
+    out.extend_from_slice(&1u32.to_le_bytes());
+    // Action::Transfer = variant 3
     out.push(3u8);
     // Transfer.deposit: u128
     out.extend_from_slice(&yocto_amount.to_le_bytes());

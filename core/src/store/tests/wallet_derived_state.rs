@@ -188,8 +188,13 @@ async fn an_untracked_token_on_ethereum_cannot_be_sent() {
 }
 
 fn install_key(service: &WalletService) {
-    service.set_secret_store(std::sync::Arc::new(
-        crate::store::secret_backends::InMemorySecretStore::new(),
-    ));
-    service.store_wallet_seed_phrase("w1".into(), "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about".into(), None).unwrap();
+    let secrets = std::sync::Arc::new(crate::store::secret_backends::InMemorySecretStore::new());
+    crate::store::wallet_secrets::store_seed_phrase(
+        &*secrets,
+        "w1",
+        "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about",
+        None,
+    )
+    .unwrap();
+    service.set_secret_store(secrets);
 }

@@ -128,20 +128,6 @@ pub fn history_fetch_for_wallet(
     )
 }
 
-/// Every stored record for one chain, across every wallet — what a history
-/// merge needs to compare an incoming page against.
-///
-/// A merge only ever matches within one chain (`matches_identity` checks
-/// `chain_name` first, before anything else), so fetching every other chain's
-/// history alongside it was pure waste: rows this call will reject, paid for
-/// in a SQL round trip and a JSON decode each, on every refresh cycle.
-pub fn history_fetch_for_chain(
-    database: &WalletDatabase,
-    chain_name: &str,
-) -> Result<Vec<HistoryRecord>, String> {
-    history_fetch_where(database, "chain_name = ?1", params![chain_name])
-}
-
 /// Shared body for `history_fetch_all` and the scoped fetches: same query,
 /// same row decode, a different `WHERE` — pushed to SQL and `idx_hr_wallet` /
 /// `idx_hr_chain` rather than fetched whole and filtered in Rust, which is

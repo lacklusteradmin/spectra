@@ -48,24 +48,12 @@ impl super::SignedSubmission for NearSendResult {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct NearFtBalance {
-    pub contract: String,
-    pub holder: String,
-    pub balance_raw: String,
-    pub balance_display: String,
-    pub decimals: u8,
-    pub symbol: String,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct NearFtMetadata {
     pub spec: String,
     pub name: String,
     pub symbol: String,
     pub decimals: u8,
 }
-
-// ── UniFFI-exported history parsed snapshot
 
 // ── Client
 

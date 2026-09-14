@@ -567,12 +567,11 @@ fn wallet_upsert_appends_then_updates_in_place() {
     assert_eq!(all[1].id, "w2");
 }
 
-/// `history_fetch_for_wallet` and `history_fetch_for_chain` filter in
-/// SQL, not by fetching every row and discarding most of them in Rust.
+/// `history_fetch_for_wallet` filters in SQL, not by fetching every row and
+/// discarding most of them in Rust.
 ///
-/// Both used to be implemented as `history_fetch_all(..).filter(..)` (the
-/// chain-scoped one didn't exist at all — every caller fetched
-/// everything). A wallet's or a chain's worth of rows is what a caller
+/// It used to be implemented as `history_fetch_all(..).filter(..)`. A
+/// wallet's worth of rows is what a caller
 /// asking for one should pay for.
 #[test]
 fn scoped_history_fetches_return_only_their_own_rows() {
@@ -595,16 +594,6 @@ fn scoped_history_fetches_return_only_their_own_rows() {
     assert_eq!(
         std::collections::BTreeSet::from_iter(w1),
         std::collections::BTreeSet::from(["btc-w1".to_string(), "eth-w1".to_string()])
-    );
-
-    let btc: Vec<String> = history_fetch_for_chain(&db, "Bitcoin")
-        .unwrap()
-        .into_iter()
-        .map(|r| r.id)
-        .collect();
-    assert_eq!(
-        std::collections::BTreeSet::from_iter(btc),
-        std::collections::BTreeSet::from(["btc-w1".to_string(), "btc-w2".to_string()])
     );
 }
 

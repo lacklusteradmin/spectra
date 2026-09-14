@@ -120,10 +120,8 @@ pub fn build_signed_ada_tx(
 
     let tx_body = encode_tx_body(utxos, &outputs, fee_lovelace, ttl)?;
 
-    // Transaction body hash (Blake2b-256).
     let body_hash = blake2b_256(&tx_body);
 
-    // Sign.
     let signing_key = SigningKey::from_bytes(
         &signing_key_bytes[..32]
             .try_into()
@@ -229,7 +227,7 @@ fn cbor_array_of(items: &[Vec<u8>]) -> Vec<u8> {
 
 fn cbor_tagged_set(items: &[Vec<u8>]) -> Vec<u8> {
     // Tag 258 = finite set
-    let mut out = vec![0xd9, 0x01, 0x02]; // tag(258)
+    let mut out = vec![0xd9, 0x01, 0x02];
     out.extend_from_slice(&cbor_array(items));
     out
 }

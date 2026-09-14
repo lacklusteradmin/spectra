@@ -6,8 +6,6 @@ pub mod secret_backends;
 pub mod secret_store;
 pub mod seed_envelope;
 pub mod state;
-// token_helpers moved to root tokens.rs
-// wallet_core moved to send/preview_types.rs
 pub mod wallet_db;
 pub mod wallet_domain;
 pub mod wallet_secrets;
@@ -21,7 +19,6 @@ use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 use std::collections::HashMap;
 
-use self::state::CoreAppState;
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, uniffi::Record)]
 #[serde(rename_all = "camelCase")]
@@ -32,40 +29,6 @@ pub struct SecretMaterialDescriptor {
     pub has_private_key: bool,
     pub has_password: bool,
     pub has_signing_material: bool,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, uniffi::Record)]
-#[serde(rename_all = "camelCase")]
-pub struct PersistedAppSnapshot {
-    pub schema_version: u32,
-    pub app_state: CoreAppState,
-    pub secrets: Vec<SecretMaterialDescriptor>,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, uniffi::Record)]
-#[serde(rename_all = "camelCase")]
-pub struct WalletSecretObservation {
-    pub wallet_id: String,
-    pub secret_kind: Option<String>,
-    pub has_seed_phrase: bool,
-    pub has_private_key: bool,
-    pub has_password: bool,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
-#[serde(rename_all = "camelCase")]
-pub struct PersistedAppSnapshotRequest {
-    pub app_state_json: String,
-    pub secret_observations: Vec<WalletSecretObservation>,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, uniffi::Record)]
-#[serde(rename_all = "camelCase")]
-pub struct WalletSecretIndex {
-    pub descriptors: Vec<SecretMaterialDescriptor>,
-    pub signing_material_wallet_ids: Vec<String>,
-    pub private_key_backed_wallet_ids: Vec<String>,
-    pub password_protected_wallet_ids: Vec<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, uniffi::Record)]
@@ -146,72 +109,6 @@ pub trait SecretStore: Send + Sync {
     fn store_seed_phrase(&self, wallet_id: &str, seed_phrase: &str) -> Result<(), String>;
     fn load_seed_phrase(&self, wallet_id: &str) -> Result<Option<String>, String>;
     fn delete_wallet_secret(&self, wallet_id: &str) -> Result<(), String>;
-}
-
-pub fn build_persisted_snapshot(
-    request: PersistedAppSnapshotRequest,
-) -> Result<PersistedAppSnapshot, String> {
-    let app_state =
-        serde_json::from_str::<CoreAppState>(&request.app_state_json).map_err(display_error)?;
-    let observations_by_wallet_id = request
-        .secret_observations
-        .into_iter()
-        .map(|observation| (observation.wallet_id.clone(), observation))
-        .collect::<BTreeMap<_, _>>();
-
-    let secrets = app_state
-        .wallets
-        .iter()
-        .map(|wallet| {
-            secret_descriptor_for_wallet(
-                wallet.id.as_str(),
-                observations_by_wallet_id.get(&wallet.id),
-            )
-        })
-        .collect::<Vec<_>>();
-
-    Ok(PersistedAppSnapshot {
-        schema_version: 1,
-        app_state,
-        secrets,
-    })
-}
-
-pub fn persisted_snapshot_from_json(json: &str) -> Result<PersistedAppSnapshot, String> {
-    if let Ok(snapshot) = serde_json::from_str::<PersistedAppSnapshot>(json) {
-        return Ok(snapshot);
-    }
-
-    let app_state = serde_json::from_str::<CoreAppState>(json).map_err(display_error)?;
-    Ok(PersistedAppSnapshot {
-        schema_version: 1,
-        app_state,
-        secrets: Vec::new(),
-    })
-}
-
-pub fn wallet_secret_index(snapshot: &PersistedAppSnapshot) -> WalletSecretIndex {
-    WalletSecretIndex {
-        descriptors: snapshot.secrets.clone(),
-        signing_material_wallet_ids: snapshot
-            .secrets
-            .iter()
-            .filter(|descriptor| descriptor.has_signing_material)
-            .map(|descriptor| descriptor.wallet_id.clone())
-            .collect(),
-        private_key_backed_wallet_ids: snapshot
-            .secrets
-            .iter()
-            .filter(|descriptor| descriptor.has_private_key)
-            .map(|descriptor| descriptor.wallet_id.clone())
-            .collect(),
-        password_protected_wallet_ids: snapshot
-            .secrets
-            .iter()
-            .filter(|descriptor| descriptor.has_password)
-            .map(|descriptor| descriptor.wallet_id.clone())
-            .collect(),
-    }
 }
 
 pub fn aggregate_owned_addresses(request: OwnedAddressAggregationRequest) -> Vec<String> {
@@ -1195,45 +1092,6 @@ pub struct HoldingMergeAppendPayload {
 pub enum HoldingMergeAction {
     UpdateAmount { existing_index: u32, amount: f64 },
     Append { coin: HoldingMergeAppendPayload },
-}
-
-fn secret_descriptor_for_wallet(
-    wallet_id: &str,
-    observation: Option<&WalletSecretObservation>,
-) -> SecretMaterialDescriptor {
-    let has_seed_phrase = observation
-        .map(|observation| observation.has_seed_phrase)
-        .unwrap_or(false);
-    let has_private_key = observation
-        .map(|observation| observation.has_private_key)
-        .unwrap_or(false);
-    let has_password = observation
-        .map(|observation| observation.has_password)
-        .unwrap_or(false);
-    let secret_kind = observation
-        .and_then(|observation| observation.secret_kind.clone())
-        .unwrap_or_else(|| {
-            if has_private_key {
-                "privateKey".to_string()
-            } else if has_seed_phrase {
-                "seedPhrase".to_string()
-            } else {
-                "watchOnly".to_string()
-            }
-        });
-
-    SecretMaterialDescriptor {
-        wallet_id: wallet_id.to_string(),
-        secret_kind,
-        has_seed_phrase,
-        has_private_key,
-        has_password,
-        has_signing_material: has_seed_phrase || has_private_key,
-    }
-}
-
-fn display_error(error: impl std::fmt::Display) -> String {
-    error.to_string()
 }
 
 #[cfg(test)]

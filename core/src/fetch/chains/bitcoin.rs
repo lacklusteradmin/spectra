@@ -25,7 +25,6 @@ use serde::{Deserialize, Serialize};
 
 use crate::http::HttpClient;
 
-// ── Network helpers
 // ── Esplora API types
 
 #[derive(Debug, Deserialize)]
@@ -143,16 +142,12 @@ impl super::SignedSubmission for BitcoinSendResult {
     }
 }
 
-// ── Fee rate
-
 /// Satoshis per virtual byte, as returned by `GET /fee-estimates`.
 #[derive(Debug, Clone, Copy, Serialize, Deserialize)]
 pub struct FeeRate {
     /// Satoshis per virtual byte.
     pub sats_per_vbyte: f64,
 }
-
-// ── BitcoinClient
 
 /// Stateless client for all Bitcoin Esplora interactions.
 pub struct BitcoinClient {
@@ -185,8 +180,6 @@ impl BitcoinClient {
         .await
     }
 
-    // ── Fetch: balance
-
     pub async fn fetch_balance(&self, address: &str) -> Result<BitcoinBalance, String> {
         let addr = address.to_string();
         let http = self.http.clone();
@@ -215,8 +208,6 @@ impl BitcoinClient {
         .await
     }
 
-    // ── Fetch: UTXOs
-
     pub async fn fetch_utxos(&self, address: &str) -> Result<Vec<EsploraUtxo>, String> {
         let addr = address.to_string();
         let http = self.http.clone();
@@ -232,8 +223,6 @@ impl BitcoinClient {
         })
         .await
     }
-
-    // ── Fetch: transaction history
 
     pub async fn fetch_history(
         &self,
@@ -288,8 +277,6 @@ impl BitcoinClient {
         .await
     }
 
-    // ── Fetch: fee estimates
-
     /// Returns the fee rate for `confirmation_target` blocks (typically
     /// 1, 6, or 144). Falls back to a conservative 10 sat/vB if the
     /// estimate is unavailable.
@@ -324,8 +311,6 @@ impl BitcoinClient {
 
         Ok(FeeRate { sats_per_vbyte })
     }
-
-    // ── Fetch: tx status (confirmation lookup)
 
     /// Fetch the confirmation status for a single txid.
     /// Esplora `GET /tx/{txid}/status` returns `EsploraTxStatus` directly.

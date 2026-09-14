@@ -1,6 +1,6 @@
 # FFI boundary
 
-Integration rules for **UniFFI 0.31 + Swift 6**. See
+Integration rules for **UniFFI 0.31.2 + Swift 6**. See
 [architecture](ARCHITECTURE.md) for ownership and [PLAN.md](../PLAN.md) for the
 work to reduce the boundary.
 
@@ -67,8 +67,10 @@ coverage gaps are listed in [PLAN.md](../PLAN.md#known-open-items).
 
 Change the Rust API, regenerate, then build Swift. Never edit `swift/generated/`
 by hand. The Xcode “Build Rust Derivation Core” phase calls this script, which
-also patches `vtablePtr` statics with `nonisolated(unsafe)` for Swift 6.
-Change the generator patch there rather than duplicating it in Xcode.
+is the only writer of the generated sources: it post-processes nothing, so a
+Swift-6 problem in them is a UniFFI version or API-shape problem, not something
+to patch downstream. 0.31.2 is the floor because it is the release that emits
+`nonisolated(unsafe)` on the callback-interface `vtablePtr` statics itself.
 
 ## Common errors
 

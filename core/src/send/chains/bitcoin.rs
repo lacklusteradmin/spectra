@@ -47,8 +47,6 @@ impl BitcoinClient {
     }
 }
 
-// ── Transaction construction & signing
-
 // ── Professional coin-selection and output customization ──────────────────
 
 /// UTXO coin-selection strategy.

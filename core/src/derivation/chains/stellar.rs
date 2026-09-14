@@ -55,8 +55,6 @@ fn base32_decode_rfc4648(s: &str) -> Option<Vec<u8>> {
     Some(out)
 }
 
-// ── SLIP-10 ed25519 ──────────────────────────────────────────────────────
-
 // ── strkey (CRC-16/XMODEM + base32) ──────────────────────────────────────
 
 fn crc16_xmodem(bytes: &[u8]) -> u16 {

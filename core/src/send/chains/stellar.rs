@@ -167,7 +167,6 @@ fn encode_payment_tx(
     // sourceAccount: PUBLIC_KEY_TYPE_ED25519(0) + key
     tx.extend_from_slice(&0u32.to_be_bytes());
     tx.extend_from_slice(public_key);
-    // fee (Uint32)
     tx.extend_from_slice(&(base_fee as u32).to_be_bytes());
     // seqNum (SequenceNumber = Int64)
     tx.extend_from_slice(&(sequence as i64).to_be_bytes());

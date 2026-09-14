@@ -642,18 +642,6 @@ pub fn core_evm_chain_context(chain_name: String) -> Option<EvmChainContextInfo>
     })
 }
 
-pub fn core_parse_dogecoin_derivation_index(
-    path: Option<String>,
-    expected_prefix: String,
-) -> Option<i32> {
-    let path = path?;
-    if !path.starts_with(&expected_prefix) {
-        return None;
-    }
-    let suffix = &path[expected_prefix.len()..];
-    suffix.parse::<i32>().ok()
-}
-
 // Per-chain static config for the Litecoin/Dogecoin/Solana/XRP/Monero/Sui/Aptos
 // branch of Swift's destination-risk probe: display chain name and balance
 // label for messages.
@@ -1047,24 +1035,6 @@ mod flow_helpers_tests {
             "Polygon".to_string(),
             "not-an-address".to_string()
         ));
-    }
-
-    #[test]
-    fn parse_dogecoin_index() {
-        assert_eq!(
-            core_parse_dogecoin_derivation_index(
-                Some("m/44'/3'/0'/0/7".to_string()),
-                "m/44'/3'/0'/0/".to_string()
-            ),
-            Some(7)
-        );
-        assert_eq!(
-            core_parse_dogecoin_derivation_index(
-                Some("other".to_string()),
-                "m/44'/3'/0'/0/".to_string()
-            ),
-            None
-        );
     }
 
     #[test]

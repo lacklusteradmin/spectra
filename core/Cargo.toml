@@ -54,7 +54,7 @@ aes-gcm = "0.10"
 zeroize = { version = "1", features = ["alloc", "derive"] }
 
 # ─── FFI + serialization ────────────────────────────────────────────
-uniffi = { version = "0.31", features = ["tokio"] }
+uniffi = { version = "0.31.2", features = ["tokio"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 thiserror = "2"

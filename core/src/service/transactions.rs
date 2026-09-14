@@ -254,7 +254,12 @@ impl WalletService {
     /// A transaction given up on stores `FAILURE_REASON_STUCK`, a code. The
     /// text a user reads is localized at render — a localized string written
     /// into the database keeps its language when the user changes theirs.
-    pub async fn apply_resolved_pending_statuses(
+    ///
+    /// The unexpected-record check is what production polls through
+    /// `apply_polled_pending_statuses`; this is the same call without it,
+    /// which only tests want.
+    #[cfg(test)]
+    pub(crate) async fn apply_resolved_pending_statuses(
         &self,
         chain_name: String,
         resolutions: Vec<crate::store::ResolvedPendingStatus>,

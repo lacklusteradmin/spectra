@@ -11,31 +11,14 @@ impl WalletService {
     // impl block regardless of `pub(crate)` visibility, so chain-dispatch
     // helpers consumed only by `execute_send` must be outside this block.
 
-    // ── Token balance (ERC-20 / SPL / NEP-141 / TRC-20 / Stellar assets)
-
-    // ── Unified execute_send — collapses derive → payload → sign trampoline
-
     // `execute_send` lives in `service/send_execution.rs`.
-
-    // ── Bitcoin HD multi-address (xpub / ypub / zpub)
 
     // `bitcoin_xpub_balance` lives in the plain-impl block below: it returns a
     // typed `HdXpubBalance` to Rust callers only, not across the FFI.
 
-    // ── EVM paginated history (native + ERC-20 token transfers)
-
     // `fetch_evm_history_page` lives in the plain-impl block below: it is
     // called by `history_refresh` and by `fetch_evm_history_diagnostics`,
     // not across the FFI.
-
-    // ── Typed token-array wrappers (no JSON serialization on caller side)
-
-    // ── EVM utilities (contract detection, nonce lookup)
-
-    /// Returns true iff `address` has deployed bytecode on the given EVM chain.
-
-    /// Fetch the nonce of a submitted transaction by hash on an EVM chain.
-    /// Used to pre-fill the replacement-tx nonce field.
 
     // `fetch_utxo_fee_preview` and `broadcast_raw` live in the plain-impl
     // block below (JSON shuttles — kept internal, not exported to Swift).
@@ -151,14 +134,6 @@ impl WalletService {
         }
         Ok(out)
     }
-
-    // ── EVM receipt polling
-
-    // ── Typed send-preview wrappers (fuse fetch + decode in Rust)
-
-    // `send_destination_risk` is its only caller.
-
-    // ── UTXO tx status
 }
 
 impl WalletService {

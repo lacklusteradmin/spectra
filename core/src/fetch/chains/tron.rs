@@ -327,7 +327,6 @@ impl TronClient {
             });
         }
 
-        // Sort newest-first by timestamp.
         entries.sort_by(|a, b| b.timestamp_ms.cmp(&a.timestamp_ms));
         entries.truncate(limit);
         Ok(entries)

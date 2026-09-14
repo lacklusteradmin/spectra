@@ -1859,20 +1859,6 @@ pub fn core_chain_identities() -> Vec<ChainIdentity> {
         .collect()
 }
 
-/// Endpoint-table key for a given chain + slot combination.
-pub fn core_endpoint_str_id(
-    chain_id: String,
-    slot: crate::app_core::AppCoreEndpointSlot,
-) -> Option<String> {
-    let chain = Chain::from_str_id(&chain_id)?;
-    let mapped = match slot {
-        crate::app_core::AppCoreEndpointSlot::Primary => EndpointSlot::Primary,
-        crate::app_core::AppCoreEndpointSlot::Secondary => EndpointSlot::Secondary,
-        crate::app_core::AppCoreEndpointSlot::Explorer => EndpointSlot::Explorer,
-    };
-    Some(chain.endpoint_str_id(mapped))
-}
-
 /// Resolve a network id or display name to its canonical
 /// string id as stored in the `chains.toml` catalog.
 #[uniffi::export]

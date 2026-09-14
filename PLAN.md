@@ -357,6 +357,33 @@ future work, not an implemented feature hidden behind nonfunctional buttons.
 
 ## Behaviour changed on purpose
 
+### UniFFI floor moves to 0.31.2 (2026-09-14)
+
+- **Before:** `uniffi = "0.31"` resolved to 0.31.1, whose Swift template emits a
+  bare `static let vtablePtr`, which Swift 6 rejects. `scripts/bindgen-ios.sh`
+  rewrote the two declarations with a `sed` pass through a temp file held
+  outside `OUT_DIR`, so Xcode's synchronized group could not catch the ghost.
+  **After:** both manifests require 0.31.2, whose `CallbackInterfaceImpl.swift`
+  emits `nonisolated(unsafe)` itself. The patch, the temp-file dance and their
+  rationale are deleted; the script generates and copies the modulemap, nothing
+  more. **Why:** a downstream rewrite of generated sources is a second, silent
+  owner of them, and the failure that already cost this project a day was
+  exactly that — this script and Xcode's build phase patching differently, so
+  the bindings depended on which ran last. Check: `./scripts/bindgen-ios.sh`,
+  then `grep -c '^    static let vtablePtr:' swift/generated/spectra_core.swift`
+  is 0 while both declarations read `nonisolated(unsafe)`; the Xcode build
+  compiles that unpatched output under Swift 6.
+- **Before:** generated Swift lifted every Rust string with
+  `String(bytes:encoding:.utf8)!` — Foundation's NSString decoder, which
+  silently drops a leading U+FEFF, behind a force-unwrap.
+  **After:** 0.31.2 lifts with `String(decoding:as: UTF8.self)`. A string core
+  returns reaches Swift byte for byte, and malformed UTF-8 would substitute
+  U+FFFD rather than trap. **Why:** an address, memo or remote-sourced symbol
+  that displays differently from what core holds is the wrong kind of surprise
+  in a wallet. This is Rust to Swift only; strings Swift passes into core never
+  went through that path. No CLI check is possible — the converter exists only
+  in the generated Swift — so the gate is the iOS suite.
+
 ### Test gate cleanup (2026-09-13)
 
 - **Before:** CLI `contains` and `lacks` ignored command exit status. A failed

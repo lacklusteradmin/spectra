@@ -567,31 +567,6 @@ pub async fn http_request(
 
 // Ergonomic text-oriented wrappers // ----------------------------------------------------------------
 
-/// GET a URL and return the response body as UTF-8 text with headers.
-/// Single-shot (no retry). Use `http_request` for retry-profiled calls.
-pub async fn http_get(
-    url: String,
-    headers: std::collections::HashMap<String, String>,
-) -> Result<HttpTextResponse, HttpError> {
-    let client = HttpClient::shared();
-    let inner = client.reqwest_client();
-    let mut req = inner.get(&url);
-    for (k, v) in &headers {
-        req = req.header(k.as_str(), v.as_str());
-    }
-    let resp = req.send().await.map_err(classify_reqwest_error)?;
-    let status = resp.status().as_u16();
-    let response_headers = collect_headers(&resp);
-    let body = resp.text().await.map_err(|e| HttpError::Decode {
-        message: e.to_string(),
-    })?;
-    Ok(HttpTextResponse {
-        status,
-        body,
-        headers: response_headers,
-    })
-}
-
 /// POST a JSON body (already serialised) and return the response as text.
 /// Sets `Content-Type: application/json` automatically unless overridden
 /// by `headers`. Single-shot (no retry).
@@ -626,89 +601,11 @@ pub async fn http_post_json(
     })
 }
 
-/// A JSON-RPC reachability probe performed end-to-end: the POST plus the
-/// `diagnostics_parse_jsonrpc_probe` parse. Returns the probe outcome and the
-/// observed HTTP status, which the diagnostics row displays separately.
-#[derive(Debug, Clone, uniffi::Record)]
-pub struct JsonRpcProbeResult {
-    pub reachable: bool,
-    pub status_code: Option<i32>,
-    pub detail: String,
-}
-
-pub async fn diagnostics_probe_jsonrpc(url: String, rpc_method: String) -> JsonRpcProbeResult {
-    use crate::diagnostics::aggregate::diagnostics_parse_jsonrpc_probe;
-
-    let payload = serde_json::json!({
-        "jsonrpc": "2.0",
-        "id": "spectra-health",
-        "method": rpc_method,
-        "params": [],
-    })
-    .to_string();
-
-    let mut headers = std::collections::HashMap::new();
-    headers.insert("Content-Type".to_string(), "application/json".to_string());
-
-    match http_post_json(url, payload, headers).await {
-        Ok(resp) => {
-            let outcome = diagnostics_parse_jsonrpc_probe(Some(resp.status as i32), resp.body);
-            JsonRpcProbeResult {
-                reachable: outcome.reachable,
-                status_code: Some(resp.status as i32),
-                detail: outcome.detail,
-            }
-        }
-        Err(e) => JsonRpcProbeResult {
-            reachable: false,
-            status_code: None,
-            detail: e.to_string(),
-        },
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
     use wiremock::matchers::{method, path};
     use wiremock::{Mock, MockServer, ResponseTemplate};
-
-    #[tokio::test]
-    async fn http_get_success_returns_body_and_headers() {
-        let server = MockServer::start().await;
-        Mock::given(method("GET"))
-            .and(path("/hello"))
-            .respond_with(
-                ResponseTemplate::new(200)
-                    .insert_header("x-spectra-test", "yes")
-                    .set_body_string("world"),
-            )
-            .mount(&server)
-            .await;
-
-        let url = format!("{}/hello", server.uri());
-        let resp = http_get(url, Default::default()).await.expect("ok");
-        assert_eq!(resp.status, 200);
-        assert_eq!(resp.body, "world");
-        assert_eq!(
-            resp.headers.get("x-spectra-test").map(String::as_str),
-            Some("yes")
-        );
-    }
-
-    #[tokio::test]
-    async fn http_get_4xx_still_returns_response() {
-        let server = MockServer::start().await;
-        Mock::given(method("GET"))
-            .respond_with(ResponseTemplate::new(404).set_body_string("nope"))
-            .mount(&server)
-            .await;
-        let resp = http_get(server.uri(), Default::default())
-            .await
-            .expect("ok");
-        assert_eq!(resp.status, 404);
-        assert_eq!(resp.body, "nope");
-    }
 
     #[tokio::test]
     async fn http_post_json_sends_body_and_content_type() {
@@ -726,51 +623,4 @@ mod tests {
         assert!(resp.body.contains("result"));
     }
 
-    #[tokio::test]
-    async fn http_get_network_error_when_port_closed() {
-        // Port 1 is typically closed; use a dead address to trigger network error.
-        let result = http_get("http://127.0.0.1:1/".into(), Default::default()).await;
-        assert!(result.is_err());
-        match result.unwrap_err() {
-            HttpError::Network { .. } | HttpError::Transport { .. } | HttpError::Timeout { .. } => {
-            }
-            other => panic!("expected network-class error, got {other:?}"),
-        }
-    }
-
-    #[tokio::test]
-    async fn diagnostics_probe_jsonrpc_reachable_on_result() {
-        let server = MockServer::start().await;
-        Mock::given(method("POST"))
-            .respond_with(
-                ResponseTemplate::new(200).set_body_string(
-                    r#"{"jsonrpc":"2.0","id":"spectra-health","result":{"ok":true}}"#,
-                ),
-            )
-            .mount(&server)
-            .await;
-        let out = diagnostics_probe_jsonrpc(server.uri(), "status".into()).await;
-        assert!(out.reachable, "expected reachable, got {out:?}");
-        assert_eq!(out.status_code, Some(200));
-    }
-
-    #[tokio::test]
-    async fn diagnostics_probe_jsonrpc_unreachable_on_error_body() {
-        let server = MockServer::start().await;
-        Mock::given(method("POST"))
-            .respond_with(
-                ResponseTemplate::new(200).set_body_string(
-                    r#"{"jsonrpc":"2.0","id":"x","error":{"code":-32601,"message":"Method not found"}}"#,
-                ),
-            )
-            .mount(&server)
-            .await;
-        let out = diagnostics_probe_jsonrpc(server.uri(), "bogus".into()).await;
-        assert!(!out.reachable);
-        assert!(
-            out.detail.contains("Method not found"),
-            "detail={}",
-            out.detail
-        );
-    }
 }

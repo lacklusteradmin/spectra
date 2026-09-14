@@ -70,44 +70,6 @@ pub fn asset_amount_display(amount: f64, asset_decimals: u32) -> AssetAmountDisp
     }
 }
 
-pub fn normalized_history_source_tag(raw_source: Option<&str>, unknown_label: &str) -> String {
-    let trimmed = raw_source
-        .map(|value| value.trim().to_lowercase())
-        .unwrap_or_default();
-    if trimmed.is_empty() {
-        return unknown_label.to_string();
-    }
-    match trimmed.as_str() {
-        "esplora" => "Esplora".to_string(),
-        "litecoinspace" => "LitecoinSpace".to_string(),
-        "blockchair" => "Blockchair".to_string(),
-        "blockcypher" => "BlockCypher".to_string(),
-        "dogecoin.providers" => "DOGE Providers".to_string(),
-        "rpc" => "RPC".to_string(),
-        "etherscan" => "Etherscan".to_string(),
-        "blockscout" => "Blockscout".to_string(),
-        "ethplorer" => "Ethplorer".to_string(),
-        "none" => unknown_label.to_string(),
-        _ => capitalize_words(&trimmed),
-    }
-}
-
-fn capitalize_words(value: &str) -> String {
-    value
-        .split(|c: char| !c.is_alphanumeric())
-        .map(capitalize_word)
-        .collect::<Vec<_>>()
-        .join(" ")
-}
-
-fn capitalize_word(word: &str) -> String {
-    let mut chars = word.chars();
-    match chars.next() {
-        Some(first) => first.to_uppercase().collect::<String>() + chars.as_str(),
-        None => String::new(),
-    }
-}
-
 #[uniffi::export]
 pub fn formatting_asset_amount_display(amount: f64, asset_decimals: u32) -> AssetAmountDisplay {
     asset_amount_display(amount, asset_decimals)
@@ -136,14 +98,6 @@ pub fn fiat_amount_rules(currency_code: &str) -> FiatAmountRules {
 #[uniffi::export]
 pub fn formatting_fiat_amount_rules(currency_code: String) -> FiatAmountRules {
     fiat_amount_rules(&currency_code)
-}
-
-pub fn asset_minimum_visible_amount(visible_decimals: u32) -> f64 {
-    if visible_decimals == 0 {
-        0.0
-    } else {
-        10f64.powi(-(visible_decimals as i32))
-    }
 }
 
 #[cfg(test)]
@@ -213,27 +167,4 @@ mod tests {
         assert!((usd.minimum_visible - 0.01).abs() < 1e-9);
     }
 
-    #[test]
-    fn asset_minimum_visible_zero_decimals() {
-        assert_eq!(asset_minimum_visible_amount(0), 0.0);
-        assert!((asset_minimum_visible_amount(2) - 0.01).abs() < 1e-12);
-        assert!((asset_minimum_visible_amount(8) - 1e-8).abs() < 1e-16);
-    }
-
-    #[test]
-    fn history_source_tag_handles_known_and_unknown() {
-        assert_eq!(
-            normalized_history_source_tag(Some("esplora"), "Unknown"),
-            "Esplora"
-        );
-        assert_eq!(
-            normalized_history_source_tag(Some(""), "Unknown"),
-            "Unknown"
-        );
-        assert_eq!(normalized_history_source_tag(None, "Unknown"), "Unknown");
-        assert_eq!(
-            normalized_history_source_tag(Some("custom"), "Unknown"),
-            "Custom"
-        );
-    }
 }

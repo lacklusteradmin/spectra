@@ -130,7 +130,6 @@ pub fn sign_bsv_tx(
     let hash_prevouts = dsha256(&prevouts_data);
     let hash_sequence = dsha256(&sequences_data);
 
-    // hashOutputs.
     let mut outputs_data = Vec::new();
     for (script, value) in &outputs {
         outputs_data.extend_from_slice(&value.to_le_bytes());

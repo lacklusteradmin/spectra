@@ -147,8 +147,6 @@ fn history_row_value(row: &HistoryDiagnostics) -> Value {
     Value::Object(out)
 }
 
-// ---------- UTXO (Bitcoin-shape) ----------
-
 // ---------- Full diagnostics bundle ----------
 
 /// Complete diagnostics bundle. All chain JSON fields are non-optional — callers

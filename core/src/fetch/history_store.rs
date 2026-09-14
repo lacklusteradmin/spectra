@@ -93,21 +93,6 @@ impl HistoryPaginationStore {
         }
     }
 
-    /// Advance the page counter for page-numbered chains. Call after a
-    /// successful non-empty fetch. Pass `is_last = true` when the page was
-    /// the terminal page (empty result or chain said "no next").
-    pub fn advance_page(&self, chain_id: &str, wallet_id: &str, is_last: bool) {
-        if let Ok(mut map) = self.inner.write() {
-            let entry = map
-                .entry((chain_id.to_string(), wallet_id.to_string()))
-                .or_default();
-            entry.page = entry.page.saturating_add(1);
-            if is_last {
-                entry.exhausted = true;
-            }
-        }
-    }
-
     /// Directly set the page counter to `page`. Use this for page-based chains
     /// where Swift tracks the absolute page number (e.g. EVM chains start at
     /// page 1 for the first request and increment per load-more).
@@ -197,18 +182,6 @@ mod tests {
     }
 
     #[test]
-    fn advance_page_increments_and_exhausts() {
-        let store = HistoryPaginationStore::new();
-        store.advance_page("ethereum", "wallet-2", false);
-        assert_eq!(store.page("ethereum", "wallet-2"), 1);
-        assert!(!store.is_exhausted("ethereum", "wallet-2"));
-
-        store.advance_page("ethereum", "wallet-2", true);
-        assert_eq!(store.page("ethereum", "wallet-2"), 2);
-        assert!(store.is_exhausted("ethereum", "wallet-2"));
-    }
-
-    #[test]
     fn reset_clears_single_entry() {
         let store = HistoryPaginationStore::new();
         store.advance_cursor("bitcoin", "wallet-1", Some("tx1".to_string()));
@@ -218,26 +191,6 @@ mod tests {
 
         assert!(store.cursor("bitcoin", "wallet-1").is_none());
         assert_eq!(store.cursor("bitcoin", "wallet-2").as_deref(), Some("tx2"));
-    }
-
-    #[test]
-    fn reset_all_for_wallet_removes_all_chains() {
-        let store = HistoryPaginationStore::new();
-        store.advance_cursor("bitcoin", "wallet-1", Some("tx-btc".to_string()));
-        store.advance_page("ethereum", "wallet-1", false);
-        store.advance_cursor("xrp", "wallet-1", Some("tx-xrp".to_string()));
-        store.advance_cursor("bitcoin", "wallet-2", Some("tx-btc2".to_string()));
-
-        store.reset_all_for_wallet("wallet-1");
-
-        assert!(store.cursor("bitcoin", "wallet-1").is_none());
-        assert_eq!(store.page("ethereum", "wallet-1"), 0);
-        assert!(store.cursor("xrp", "wallet-1").is_none());
-        // wallet-2 unaffected
-        assert_eq!(
-            store.cursor("bitcoin", "wallet-2").as_deref(),
-            Some("tx-btc2")
-        );
     }
 
     #[test]

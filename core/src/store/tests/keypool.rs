@@ -39,26 +39,6 @@ async fn change_indices_are_never_handed_out_twice() {
 }
 
 #[tokio::test]
-async fn clearing_a_reservation_frees_the_next_index() {
-    let service = WalletService::new(Vec::new()).expect("service");
-    let first = service
-        .reserve_receive_index("w1".into(), "Bitcoin".into(), 0)
-        .await
-        .expect("reserve");
-    service
-        .clear_reserved_receive_index("w1".into(), "Bitcoin".into())
-        .await
-        .expect("clear");
-    let second = service
-        .reserve_receive_index("w1".into(), "Bitcoin".into(), 0)
-        .await
-        .expect("reserve");
-    // The used address must not be reissued.
-    assert_ne!(first, second);
-    assert_eq!(second, first + 1);
-}
-
-#[tokio::test]
 async fn keypool_survives_reopening_the_database() {
     let db = {
         let mut path = std::env::temp_dir();

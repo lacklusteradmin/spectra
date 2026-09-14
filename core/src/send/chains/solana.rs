@@ -136,12 +136,6 @@ pub fn build_sol_transfer(
 
 // ── SPL helpers: ATA derivation and SPL Transfer transaction builder
 
-/// SPL Token program id (decoded base58).
-pub const SPL_TOKEN_PROGRAM_ID: [u8; 32] = [
-    6, 221, 246, 225, 215, 101, 161, 147, 217, 203, 225, 70, 206, 235, 121, 172, 28, 180, 133, 237,
-    95, 91, 55, 145, 58, 140, 245, 133, 126, 255, 0, 169,
-];
-
 /// Associated Token Account program id (decoded base58).
 pub const ASSOCIATED_TOKEN_PROGRAM_ID: [u8; 32] = [
     140, 151, 37, 143, 78, 36, 137, 241, 187, 61, 16, 41, 20, 142, 13, 131, 11, 90, 19, 153, 218,

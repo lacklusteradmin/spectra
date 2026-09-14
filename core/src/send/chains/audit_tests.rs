@@ -3,6 +3,12 @@ use super::*;
 use crate::{derivation::dispatch::derive_for_chain_name, send::keys::Ed25519Seed};
 use base64::{engine::general_purpose::STANDARD, Engine};
 use serde_json::Value;
+/// The SPL Token program id. Production reads it off the mint's owner in the
+/// RPC response, so the bytes are not a constant anywhere in the crate.
+fn spl_token_program_id() -> [u8; 32] {
+    crate::derivation::chains::solana::decode_b58_32("TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA")
+        .unwrap()
+}
 fn vectors() -> Value {
     serde_json::from_str(include_str!("../../../testdata/send-audit-vectors.json")).unwrap()
 }
@@ -177,10 +183,10 @@ fn audit_solana_mnemonic_native_and_spl_instructions_match_official_sdk() {
     let native = solana::build_sol_transfer(&from, &to, 123456789, blockhash, &key).unwrap();
     assert_eq!(hex::encode(native), expected["native"]);
     let source =
-        solana::derive_associated_token_account(&from, &mint, &solana::SPL_TOKEN_PROGRAM_ID)
+        solana::derive_associated_token_account(&from, &mint, &spl_token_program_id())
             .unwrap();
     let dest =
-        solana::derive_associated_token_account(&to, &mint, &solana::SPL_TOKEN_PROGRAM_ID).unwrap();
+        solana::derive_associated_token_account(&to, &mint, &spl_token_program_id()).unwrap();
     assert_eq!(hex::encode(source), expected["source_ata"]);
     assert_eq!(hex::encode(dest), expected["dest_ata"]);
     let spl = solana::build_spl_transfer_checked(
@@ -189,7 +195,7 @@ fn audit_solana_mnemonic_native_and_spl_instructions_match_official_sdk() {
         &mint,
         &source,
         &dest,
-        &solana::SPL_TOKEN_PROGRAM_ID,
+        &spl_token_program_id(),
         123456789,
         6,
         blockhash,
@@ -329,7 +335,7 @@ fn audit_solana_self_transfers_merge_account_privileges() {
     let decoded = solana_semantics(&native);
     assert_eq!(decoded[1][0][1][0], decoded[1][0][1][1]);
     let mint = [0x44; 32];
-    let ata = solana::derive_associated_token_account(&owner, &mint, &solana::SPL_TOKEN_PROGRAM_ID)
+    let ata = solana::derive_associated_token_account(&owner, &mint, &spl_token_program_id())
         .unwrap();
     let spl = solana::build_spl_transfer_checked(
         &owner,
@@ -337,7 +343,7 @@ fn audit_solana_self_transfers_merge_account_privileges() {
         &mint,
         &ata,
         &ata,
-        &solana::SPL_TOKEN_PROGRAM_ID,
+        &spl_token_program_id(),
         1,
         6,
         hash,

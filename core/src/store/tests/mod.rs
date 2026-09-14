@@ -1,5 +1,4 @@
 //! Store regressions, grouped by domain.
-mod snapshot;
 
 // ── Owned application state ──────────────────────────────────────────────────
 //

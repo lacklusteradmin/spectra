@@ -37,6 +37,10 @@ impl WalletState {
     /// This is the shape most chains produce: a single derived address, no
     /// xpub, no network-mode variants. Multi-address wallets (Bitcoin and the
     /// other UTXO chains) push into `addresses` instead.
+    ///
+    /// A test constructor: production wallets are built by the import and
+    /// derivation paths, which fill in the fields this shortcut defaults.
+    #[cfg(test)]
     pub fn single_address(
         id: impl Into<String>,
         name: impl Into<String>,
@@ -396,9 +400,6 @@ impl AppSettings {
 pub const FIAT_CURRENCY_CODES: [&str; 12] = [
     "USD", "EUR", "GBP", "JPY", "CNY", "INR", "CAD", "AUD", "CHF", "BRL", "SGD", "AED",
 ];
-
-/// The base every stored rate is expressed against.
-pub const FIAT_BASE_CURRENCY: &str = "USD";
 
 pub fn fiat_currency_codes() -> Vec<String> {
     FIAT_CURRENCY_CODES

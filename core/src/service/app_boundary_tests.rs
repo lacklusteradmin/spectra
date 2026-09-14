@@ -171,52 +171,6 @@ fn private_key_editor_normalizes_only_a_complete_hex_key() {
 }
 
 #[tokio::test]
-async fn hd_receive_skips_spent_addresses_and_preview_accounts_for_network_fee() {
-    let server = MockServer::start().await;
-    let svc = service("bitcoin", &server);
-    let xpub = crate::service::derive_bitcoin_account_xpub_typed(
-        "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about".into(),
-        String::new(),"m/44'/0'/0'".into()).unwrap();
-    let children = crate::derivation::xpub_walker::derive_children(&xpub, 0, 0, 2).unwrap();
-    for (index, child) in children.iter().enumerate() {
-        Mock::given(method("GET")).and(path(format!("/address/{}",child.address)))
-            .respond_with(ResponseTemplate::new(200).set_body_json(json!({
-                "address":child.address,
-                "chain_stats":{"funded_txo_sum":0,"spent_txo_sum":0,"tx_count":if index==0 {2}else{0}},
-                "mempool_stats":{"funded_txo_sum":0,"spent_txo_sum":0,"tx_count":0}
-            }))).mount(&server).await;
-    }
-    assert_eq!(
-        svc.fetch_bitcoin_next_unused_address_typed(xpub.clone(), 0, 2)
-            .await
-            .unwrap(),
-        Some(children[1].address.clone())
-    );
-    assert_eq!(
-        svc.fetch_bitcoin_next_unused_address_typed(xpub.clone(), 0, 1)
-            .await
-            .unwrap(),
-        None
-    );
-    Mock::given(method("GET"))
-        .and(path("/fee-estimates"))
-        .respond_with(ResponseTemplate::new(200).set_body_json(json!({"3":2.0,"6":2.0})))
-        .mount(&server)
-        .await;
-    let preview = svc
-        .fetch_bitcoin_hd_send_preview_typed("bitcoin".into(), xpub.clone(), 2, 0)
-        .await
-        .unwrap()
-        .unwrap();
-    assert_eq!(preview.spendableBalance, Some(0.0));
-    assert_eq!(preview.estimatedFeeRateSatVb, 2);
-    assert!(svc
-        .fetch_bitcoin_hd_send_preview_typed("ethereum".into(), xpub, 2, 0)
-        .await
-        .is_err());
-}
-
-#[tokio::test]
 async fn owned_non_evm_preview_needs_only_stored_watch_address_and_valid_input() {
     let server = MockServer::start().await;
     let svc = service("solana", &server);
