@@ -55,7 +55,7 @@ mod tests {
     }
     #[test]
     fn every_named_mark_ships_a_file() {
-        let icons = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../icons/cryptoicon");
+        let icons = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../icons/crypto");
         for token in crate::tokens::catalog() {
             if !token.artwork_name.is_empty() {
                 assert!(icons.join(format!("{}.svg", token.artwork_name)).is_file());

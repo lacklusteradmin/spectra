@@ -1,4 +1,4 @@
-// House style for icons/cryptoicon and icons/fiaticon (see scripts/normalize-icons.sh).
+// House style for icons/crypto and icons/fiat (see scripts/normalize-icons.sh).
 //
 // Every icon is one 64x64 viewBox with a full-bleed background disc and artwork
 // on top. The two custom plugins below strip attributes that vector editors

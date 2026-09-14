@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Rewrites every icon under icons/cryptoicon/ and icons/fiaticon/ into the house
+# Rewrites every icon under icons/crypto/ and icons/fiat/ into the house
 # style defined by scripts/svgo.config.mjs, so the two directories stay a single
 # coherent icon library instead of a pile of exporter output.
 #
@@ -17,7 +17,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 
 CONFIG="$SCRIPT_DIR/svgo.config.mjs"
-DIRS=("$REPO_ROOT/icons/cryptoicon" "$REPO_ROOT/icons/fiaticon")
+DIRS=("$REPO_ROOT/icons/crypto" "$REPO_ROOT/icons/fiat")
 
 if ! command -v svgo &>/dev/null; then
   echo "error: svgo not found. Install with: brew install svgo" >&2
