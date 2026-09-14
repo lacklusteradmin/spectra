@@ -125,6 +125,24 @@ Gate logs for this run: `/tmp/spectra-clean-rust-gate.log`,
 `/tmp/spectra-clean-cli-gate.log`, `/tmp/spectra-clean-ios-gate.log`.
 
 
+## Residue sweep (2026-09-14)
+
+"Delete unused Swift helpers/caches" below was ticked while twelve pieces of
+unread state were still in the app: a four-field Swift mirror of which wallets
+hold signing material, `includedPortfolioHoldings`, a duplicate wallet index,
+two `WalletDerivedState` columns that crossed the FFI as echoes, the Tron
+send-error fields nothing ever assigned (with the dashboard notice, bundle keys
+and locale string they fed), two token-preference aliases, three counters and
+sets with no reader, and an eight-id popular-chain array that has become a
+`popular_rank` column on the catalog.
+
+The ownership tests could not catch these: they look for Swift *reading*
+core-owned data to decide something, and unread state has no such reader. The
+table below records what remains by responsibility; from this pass it also
+records that each of those fields has a reader. See PLAN's "Swift shell residue
+sweep (2026-09-14)" and the three behaviour-change entries for before/after and
+the CLI checks.
+
 ## Subsequent shell audit (2026-09-13)
 
 The earlier figures describe their own run. Direct caller inspection found

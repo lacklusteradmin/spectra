@@ -19,8 +19,6 @@ pub struct WalletDerivedState {
     pub send_enabled_wallet_ids: Vec<String>,
     pub receive_enabled_wallet_ids: Vec<String>,
     pub refreshable_chain_names: Vec<String>,
-    pub signing_material_wallet_ids: Vec<String>,
-    pub private_key_backed_wallet_ids: Vec<String>,
 }
 
 /// Token descriptor passed across UniFFI without JSON-shuttle marshalling.

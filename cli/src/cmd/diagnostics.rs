@@ -175,8 +175,6 @@ fn show(ctx: &Ctx, out: Out, args: ShowArgs) -> CliResult<()> {
         None,
         None,
         None,
-        None,
-        None,
     )
     .ok_or_else(|| {
         CliError::failure(format!(

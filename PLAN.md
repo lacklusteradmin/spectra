@@ -355,7 +355,183 @@ Broadcast remains a separate planned project. The staking app is explicitly an
 information and validator-query interface; staking transaction execution is
 future work, not an implemented feature hidden behind nonfunctional buttons.
 
+## Swift shell residue sweep (2026-09-14)
+
+The follow-up above ticked "delete unused Swift helpers/caches". A direct
+re-read of the shell found that box was ticked early: the decisions had moved,
+but the state they used to feed had not gone with them. What ownership audits
+look for is a *reader* — Swift reading core-owned data to decide something —
+and that test is blind to the opposite failure, state the app collects and
+nobody reads at all. Twelve of those were left. They are listed with their
+before/after under "Behaviour changed on purpose" (the unread-state entry, the
+Tron notice and the catalog rank); in summary:
+
+- [x] Five `WalletDerivedCache` fields with no reader, including a four-field
+  mirror of *which wallets can sign*, plus the duplicate `walletByIDString`.
+- [x] Two `WalletDerivedState` columns that crossed the FFI as echoes of an
+  input, and the diagnostics export's two always-nil send-error parameters.
+- [x] `tronLastSendErrorDetails`/`At`, which nothing ever assigned, and the
+  dashboard notice, bundle keys, `== "Tron"` tests and locale string they fed.
+- [x] `activeEthereumSendWalletIDs`, `normalizedHistoryRevision`,
+  `lastObservedTransactions`, `cachedResolvedTokenPreferences`,
+  `cachedTokenPreferencesByChain` and an orphaned `clamped(to:)`.
+- [x] The eight-id popular-chain array in `SetupView`, now `popular_rank` on the
+  catalog, and the descriptor's duplicate symbol field.
+
+What the sweep did **not** find is as much of the result: no unit conversion,
+fee arithmetic or protocol constant anywhere in hand-written Swift; one owned
+send operation with no execution branch beside it; no domain collection
+persisted outside core beyond the four-value platform-preferences blob; and
+`spectra` still drives every decision the app makes.
+
+The standing check this adds: a projection with no reader is not a cache, it is
+a second copy of core's answer going stale in the dark. Grep for a `cached…`
+field's readers before adding one, and delete it when the last reader goes.
+
+Gates for this sweep: `cargo test --workspace` **799 passed** (one new catalog
+test: the popular ranking is `1..=n` with no gaps, duplicates or testnets);
+`./scripts/cli-acceptance.sh` **353 passed**, including the two new
+`popularRank` checks and `cli-stage3.sh`'s derived-state assertion, rewritten to
+require that every field an empty store publishes comes back empty rather than
+naming a column that has since gone; iPhone 17 Pro `xcodebuild test` **92
+passed, zero failures**, including
+`testEthereumTestNetworksExposeExpectedContextsAndEndpoints`. FFI: **144
+callables** (65 free functions + 79 methods), zero unreachable candidates,
+against regenerated bindings. `scripts/check-design-tokens.sh` and `git diff
+--check` pass. Changes remain uncommitted.
+
 ## Behaviour changed on purpose
+
+### The shell's unread state is gone, and two FFI columns with it (2026-09-14)
+
+- **Before:** `WalletDerivedCache` carried fifteen fields and five had no
+  reader anywhere in the app: `signingMaterialWalletIDs`,
+  `privateKeyBackedWalletIDs`, `passwordProtectedWalletIDs`,
+  `secretDescriptorsByWalletID` — whose readers had moved to
+  `WalletServiceBridge.walletSecretState` — and `includedPortfolioHoldings`.
+  Two of them were refilled from core on every rebuild, two were carried
+  across it by a `preserved…` dance whose comment named populating paths that
+  no longer exist, and `clearWalletSecretIndex()` emptied all four on reset.
+  `walletByID` and `walletByIDString` were the same dictionary built twice
+  from the same expression. Beside them sat `activeEthereumSendWalletIDs`
+  (declared and reset, never read or written), `normalizedHistoryRevision`
+  (incremented, never observed), `lastObservedTransactions` (rewritten on every
+  transaction-projection change, never read), `cachedResolvedTokenPreferences`
+  and `cachedTokenPreferencesByChain` — the first an alias for
+  `tokenPreferences` through a `let resolvedPreferences = tokenPreferences`
+  no-op, the second written and never read while defaulting unknown chains to
+  `.ethereum` — and an unused `clamped(to:)` left behind when the settings
+  clamps moved into core. **After:** all of it is deleted; `WalletDerivedCache`
+  is nine fields, each with a reader, and `resolvedTokenPreferences` is one
+  name for one list. `WalletDerivedState` loses
+  `signing_material_wallet_ids` and `private_key_backed_wallet_ids`, which were
+  echoes of an input nothing on either side of the binding read; core still
+  computes signing availability, now as a local it uses to decide send and
+  receive enablement. **Why:** a projection nobody reads is not a cache, it is a
+  second copy of core's answer going stale in the dark, and it is exactly what
+  "Swift may hold view state, not authoritative domain state" is meant to keep
+  out — the secret index mirrored *which wallets can sign*, a funds-path fact,
+  for no reader at all. CLI check: `scripts/unreachable-exports.sh` stays at
+  zero and `scripts/count-exports.sh` is unchanged — these were record fields,
+  not exports — while `spectra wallet list` and `spectra send identity` still
+  resolve signing material through core in `scripts/cli-acceptance.sh`.
+
+### The Tron send-diagnostic notice never existed (2026-09-14)
+
+- **Before:** `AppState` held `tronLastSendErrorDetails` and
+  `tronLastSendErrorAt`; the dashboard rendered a notice from them, the
+  diagnostics bundle exported `lastSendErrorAt`/`lastSendErrorDetails` for
+  `chainName == "Tron"`, and `core_diagnostics_json` took both as parameters.
+  Nothing anywhere assigned either field — the only writes were `nil` on reset
+  — so the notice could not appear, the keys were always absent, and the app
+  carried a per-chain special case in three files for a feature with no
+  producer. **After:** the fields, the notice, the two chain-name tests and the
+  two parameters are gone, along with `tronSendDiagnosticTitle` in
+  `CommonContent` and its three locales. `core_diagnostics_json` now takes five
+  arguments; only `extra_network_mode` remains conditional, and only for
+  Bitcoin. **Why:** a chain name compared against a string literal in the shell
+  is the shape Rule 2 exists to prevent, and this one guarded state that could
+  never be non-nil — the worst version of it, since a reader could not tell the
+  feature was dead. Send failures are already reported through `sendError` and
+  the operational event log, which every chain shares. CLI check: `spectra
+  --json diagnostics show --chain tron` builds its document and contains no
+  `lastSendError` key; `core_diagnostics_json`'s every-chain test covers it.
+
+### The setup picker's short list is a catalog rank (2026-09-14)
+
+- **Before:** `SetupView` held `popularChainSelectionIDs`, eight chain ids
+  typed into a Swift view and used three ways — the short list, its order, and
+  the "extra selections" count. A chain added to `chains.toml` could not reach
+  that list, and an id removed from the catalog would have matched nothing
+  without saying so. Beside it, `SetupChainSelectionDescriptor` had both
+  `symbol` and `gasTokenSymbol`, filled from one catalog column through a
+  `gasToken` parameter whose only call site passed
+  `chain.gasTokenSymbol == chain.gasTokenSymbol ? nil : chain.gasTokenSymbol`
+  — a comparison of a value with itself, so always nil. **After:**
+  `popular_rank` is a column of `chains.toml` (Bitcoin 1 through Litecoin 8),
+  published on `ChainEntry`, and the view derives the list by sorting on it;
+  the descriptor has one symbol field. The picker shows the same eight chains
+  in the same order. **Why:** per-chain facts belong on the catalog, and a rank
+  carries the ordering the array was silently also providing. A catalog test
+  now states what the array could not: the ranks are `1..=n` with no gaps,
+  duplicates or testnets. CLI check: `spectra --json chains --filter Bitcoin`
+  reports `"popularRank":1` and `--filter Polygon` reports `"popularRank":null`;
+  both are in `scripts/cli-acceptance.sh`.
+
+### The performance-sample buffer and `swift-collections` are gone (2026-09-14)
+
+- **Before:** `AppState` kept `recentPerformanceSamples`, a 120-entry
+  `Deque<PerformanceSample>` that `recordPerformanceSample` prepended to from
+  `refreshPendingTransactions` and `rebuildNormalizedHistoryIndex`. Nothing read
+  it — no view, no log, no export, no test — so the timings were measured,
+  boxed and dropped. **After:** the buffer, the recorder, the
+  `PerformanceSample` record and both call sites are deleted, and with them the
+  `swift-collections` package: `DequeModule` was the only thing it supplied, so
+  the dependency existed to back a collection with no reader. `KeychainAccess`
+  stays; `swift/SecureStores.swift` is built on it. **Why:** instrumentation
+  that nobody can read is not instrumentation, and a package dependency is a
+  build input, a resolution step and a supply-chain surface. Timing worth
+  keeping belongs where it can be seen, which on this boundary means core, not
+  a Swift-side ring buffer. No CLI check is possible — the removed code was
+  Swift view-layer instrumentation with no core surface — so the gate is the
+  iOS suite, which still passes 92 tests, plus `xcodebuild
+  -resolvePackageDependencies` now resolving `KeychainAccess` alone.
+
+### The send Live Activity actually runs (2026-09-14)
+
+- **Before:** `SpectraLiveActivityExtension` compiled, embedded as an `.appex`
+  and the app declared `NSSupportsLiveActivities`, but nothing ever asked the
+  system to run one: `ActivityKit` appeared in the extension's own two files
+  and nowhere in the app. A lock-screen widget that could never be shown.
+  **After:** `swift/AppState+SendLiveActivity.swift` starts an activity when a
+  broadcast is accepted, ends it carrying the outcome when core reports a
+  terminal status for that transaction, and reconciles on foreground so a send
+  that resolved while the app was not running does not leave a spinner on the
+  lock screen. **Why:** the feature was three call sites short of existing, and
+  a send is exactly the wait a Live Activity is for — the alternative was
+  deleting a finished extension. The activity is identified by
+  `TransactionRecord.id` carried in its attributes, so `Activity.activities` is
+  enough to find it again, including after a relaunch when no Swift-side handle
+  survived; holding handles in `AppState` would be a second copy of a list
+  ActivityKit already keeps, and the copy is what goes stale. No CLI check is
+  possible — ActivityKit is presentation with no core surface — so the gates are
+  `swift/tests/SendLiveActivityContentTests.swift`, which pins the phase text,
+  the symbol/amount split and the truncations, plus the iOS suite.
+
+### `app_core_resolve_derivation_path` returns the path (2026-09-14)
+
+- **Before:** it returned `AppCoreDerivationPathResolution`, a four-field
+  UniFFI record: `chain` (the argument handed straight back), `normalized_path`,
+  `account_index` and `flavor`. **After:** it returns the normalized path.
+  `resolved_account_index`, `resolved_flavor`, `derivation_path_segment_value`,
+  `chains::derivation_paths_for_chain` and, on the Swift side,
+  `SeedDerivationResolution` and the six-case `SeedDerivationFlavor` are gone.
+  **Why:** every consumer read `normalized_path` and dropped the rest — the CLI,
+  both in-crate callers and the app. Swift decoded `flavor` into an enum whose
+  cases nothing ever compared against, so the work, the record and the bytes
+  crossing the binding were for nobody. Check: `spectra wallet new --chain
+  Bitcoin` still stores `m/84'/0'/0'/0/0` — the existing "stores the catalog
+  derivation path" assertion in `scripts/cli-acceptance.sh`.
 
 ### UniFFI floor moves to 0.31.2 (2026-09-14)
 

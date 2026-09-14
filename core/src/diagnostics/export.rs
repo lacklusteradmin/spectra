@@ -71,8 +71,6 @@ pub fn diagnostics_build_history_json(
     history_last_updated_at_unix: Option<f64>,
     endpoints_last_updated_at_unix: Option<f64>,
     extra_network_mode: Option<String>,
-    last_send_error_at_unix: Option<f64>,
-    last_send_error_details: Option<String>,
 ) -> Option<String> {
     let history_dicts: Vec<Value> = history.iter().map(history_row_value).collect();
     let endpoint_dicts: Vec<Value> = endpoints.iter().map(endpoint_row_value).collect();
@@ -87,21 +85,11 @@ pub fn diagnostics_build_history_json(
     );
     payload.insert("history".into(), Value::Array(history_dicts));
     payload.insert("endpoints".into(), Value::Array(endpoint_dicts));
-    // Only two chains have anything else to say, and saying nothing is not the
+    // Only Bitcoin has anything else to say, and saying nothing is not the
     // same as saying "none" — an absent key reads as "this chain has no such
     // thing", a present empty one as "it has one and it is empty".
     if let Some(mode) = extra_network_mode {
         payload.insert("networkMode".into(), Value::String(mode));
-    }
-    if last_send_error_at_unix.is_some() || last_send_error_details.is_some() {
-        payload.insert(
-            "lastSendErrorAt".into(),
-            json!(unix_or_zero(last_send_error_at_unix)),
-        );
-        payload.insert(
-            "lastSendErrorDetails".into(),
-            Value::String(last_send_error_details.unwrap_or_default()),
-        );
     }
     pretty_sanitized(Value::Object(payload))
 }
@@ -202,9 +190,8 @@ mod tests {
 
     #[test]
     fn a_document_carries_history_and_endpoints() {
-        let s =
-            diagnostics_build_history_json(vec![row("w1")], vec![], None, None, None, None, None)
-                .expect("builds");
+        let s = diagnostics_build_history_json(vec![row("w1")], vec![], None, None, None)
+            .expect("builds");
         assert!(s.contains("\"history\""));
         assert!(s.contains("\"endpoints\""));
         assert!(s.contains("\"walletID\""));
@@ -216,14 +203,12 @@ mod tests {
     /// chain has no such thing" from "it has one and it is empty".
     #[test]
     fn optional_keys_are_absent_when_the_chain_has_none() {
-        let plain =
-            diagnostics_build_history_json(vec![row("w1")], vec![], None, None, None, None, None)
-                .expect("builds");
+        let plain = diagnostics_build_history_json(vec![row("w1")], vec![], None, None, None)
+            .expect("builds");
         assert!(!plain.contains("nextCursor"));
         assert!(!plain.contains("scannedCount"));
         assert!(!plain.contains("perSource"));
         assert!(!plain.contains("networkMode"));
-        assert!(!plain.contains("lastSendErrorAt"));
 
         let mut full = row("w1");
         full.next_cursor = Some("c".into());
@@ -240,14 +225,11 @@ mod tests {
             None,
             None,
             Some("testnet".into()),
-            Some(42.0),
-            Some("details".into()),
         )
         .expect("builds");
         assert!(s.contains("\"nextCursor\""));
         assert!(s.contains("\"perSource\""));
         assert!(s.contains("\"networkMode\"") && s.contains("testnet"));
-        assert!(s.contains("\"lastSendErrorDetails\"") && s.contains("details"));
         // Derived, not stored.
         assert!(s.contains("\"undecodedCount\": 1"));
         assert!(s.contains("\"decodingCompleteness\""));
@@ -267,8 +249,6 @@ pub fn core_diagnostics_json(
     history_last_updated_at_unix: Option<f64>,
     endpoints_last_updated_at_unix: Option<f64>,
     extra_network_mode: Option<String>,
-    last_send_error_at_unix: Option<f64>,
-    last_send_error_details: Option<String>,
 ) -> Option<String> {
     use crate::diagnostics::registry as reg;
 
@@ -282,8 +262,6 @@ pub fn core_diagnostics_json(
         history_last_updated_at_unix,
         endpoints_last_updated_at_unix,
         extra_network_mode,
-        last_send_error_at_unix,
-        last_send_error_details,
     )
 }
 
@@ -302,8 +280,6 @@ mod one_builder_tests {
             let json = core_diagnostics_json(
                 chain.chain_display_name().to_string(),
                 Vec::new(),
-                None,
-                None,
                 None,
                 None,
                 None,

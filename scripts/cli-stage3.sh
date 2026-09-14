@@ -17,7 +17,12 @@ import json,sys,pathlib
 p=pathlib.Path(sys.argv[1]); d=json.loads((p/'diagnostics.json').read_text())['state']
 assert not d['degraded'] and 'Solana' in d['last_good_unix']
 assert len(d['logs'])==2 and d['logs'][0]['input']['message']=='Chain recovered'
-assert json.loads((p/'derived.json').read_text())['signing_material_wallet_ids']==[]
+derived=json.loads((p/'derived.json').read_text())
+# An empty store derives an empty answer for every field it publishes, and
+# publishes only fields a caller reads: the signing/private-key id lists that
+# stood here had no reader on either side of the binding and are gone.
+assert all(v==[] or v=={} for v in derived.values()), derived
+assert 'signing_material_wallet_ids' not in derived
 PY
 contains_exit 1 "missing transaction cannot be rebroadcast" 'transaction not found' \
     "$BIN" --data-dir "$TASK_DIR" --json send rebroadcast missing --yes

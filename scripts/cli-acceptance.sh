@@ -227,6 +227,11 @@ contains "and that Polygon is one of them"   '"watchOnlyImport":true' \
     spectra --json chains --filter Polygon
 contains "and Monero says it cannot"      '"watchOnlyImport":false' \
     spectra --json chains --filter Monero
+# The setup picker's short list is a catalog rank, not eight ids in a view.
+contains "the catalog ranks the picker's short list"  '"popularRank":1' \
+    spectra --json chains --filter Bitcoin
+contains "and a chain off that list has no rank"      '"popularRank":null' \
+    spectra --json chains --filter Polygon
 check "refuses to watch Monero"           $REJECTED \
     spectra wallet watch --chain Monero --name "Watch XMR" \
         --address 48ZFsbBKZAnN9Tyw7XsCakJ4dBxBpaD3wa9Az6V5ZwAK99kYQzcgckSNVv5iZhMp8o37fhNzY7eM2ERGoTWr4B282s4mcDi

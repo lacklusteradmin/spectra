@@ -685,7 +685,7 @@ fn derivation_path(chain: Chain, requested: Option<&str>) -> CliResult<String> {
         requested.unwrap_or_default().to_string(),
     )
     .map_err(CliError::from)?;
-    Ok(resolution.normalized_path)
+    Ok(resolution)
 }
 
 /// A signing import across one or more chains, with the addresses left for

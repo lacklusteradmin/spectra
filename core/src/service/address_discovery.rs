@@ -442,7 +442,7 @@ impl WalletService {
             UtxoDerivation::with_overrides(
                 chain,
                 &seed_phrase,
-                resolved.normalized_path,
+                resolved,
                 &overrides.0,
             )
         })

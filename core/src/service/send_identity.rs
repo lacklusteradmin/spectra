@@ -79,8 +79,7 @@ impl WalletService {
                     .as_deref()
                     .or_else(|| defaults.path_for(chain))
                     .unwrap_or_default();
-                let path = crate::app_core_resolve_derivation_path(name.into(), path.into())?
-                    .normalized_path;
+                let path = crate::app_core_resolve_derivation_path(name.into(), path.into())?;
                 let overrides = &sensitive_overrides.0;
                 overrides.validate_for_chain(chain)?;
                 let script = crate::derivation::dispatch::script_type_for_path(&path);

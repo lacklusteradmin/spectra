@@ -503,22 +503,16 @@ impl WalletService {
     /// Signing availability is read through the registered SecretStore.
     pub async fn wallet_derived_state(&self) -> Result<WalletDerivedState, SpectraBridgeError> {
         let state = self.app_state().await;
-        let mut signing_material_wallet_ids = Vec::new();
-        let mut private_key_backed_wallet_ids = Vec::new();
-        for wallet in &state.wallets {
-            let secrets = self.wallet_secret_state(wallet.id.clone());
-            if secrets.has_signing_material {
-                signing_material_wallet_ids.push(wallet.id.clone());
-            }
-            if secrets.has_private_key {
-                private_key_backed_wallet_ids.push(wallet.id.clone());
-            }
-        }
-        derive_wallet_state(
-            &state,
-            signing_material_wallet_ids,
-            private_key_backed_wallet_ids,
-        )
+        let signing_material_wallet_ids: Vec<String> = state
+            .wallets
+            .iter()
+            .filter(|wallet| {
+                self.wallet_secret_state(wallet.id.clone())
+                    .has_signing_material
+            })
+            .map(|wallet| wallet.id.clone())
+            .collect();
+        derive_wallet_state(&state, signing_material_wallet_ids)
     }
 
     /// The wallets core holds, as the shape the iOS app renders.
@@ -872,7 +866,6 @@ fn wallets_for_display(
 fn derive_wallet_state(
     state: &CoreAppState,
     signing_material_wallet_ids: Vec<String>,
-    private_key_backed_wallet_ids: Vec<String>,
 ) -> Result<WalletDerivedState, SpectraBridgeError> {
     use std::collections::{BTreeMap, HashSet};
     let wallets = &state.wallets;
@@ -1030,7 +1023,5 @@ fn derive_wallet_state(
             .collect::<HashSet<_>>()
             .into_iter()
             .collect(),
-        signing_material_wallet_ids,
-        private_key_backed_wallet_ids,
     })
 }

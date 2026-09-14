@@ -30,15 +30,6 @@ pub enum AppCoreEndpointSlot {
     Explorer,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, uniffi::Record)]
-#[serde(rename_all = "camelCase")]
-pub struct AppCoreDerivationPathResolution {
-    pub chain: String,
-    pub normalized_path: String,
-    pub account_index: u32,
-    pub flavor: String,
-}
-
 #[derive(Debug, Clone)]
 pub(crate) struct AppCoreCatalog {
     pub(crate) endpoint_records: Vec<AppCoreEndpointRecord>,
@@ -209,19 +200,20 @@ static APP_CORE_CATALOG: OnceLock<Result<AppCoreCatalog, String>> = OnceLock::ne
 
 // ── UniFFI exports ────────────────────────────────────────────────────────
 
+/// The derivation path a wallet on `chain` will use: the caller's, normalized,
+/// or the chain's catalog default when the caller named none.
+///
+/// Returned a four-field record before. `chain` was the argument handed back,
+/// and `account_index` and `flavor` were derived from the normalized path for
+/// nobody — Swift stored the flavor in a struct with no reader, and the CLI and
+/// both in-crate callers took `normalized_path` and dropped the rest.
 #[uniffi::export]
 pub fn app_core_resolve_derivation_path(
     chain: String,
     derivation_path: String,
-) -> Result<AppCoreDerivationPathResolution, crate::SpectraBridgeError> {
+) -> Result<String, crate::SpectraBridgeError> {
     let default_path = default_path_from_catalog(&chain)?;
-    let normalized_path = normalize_derivation_path(&derivation_path, &default_path);
-    Ok(AppCoreDerivationPathResolution {
-        chain: chain.clone(),
-        normalized_path: normalized_path.clone(),
-        account_index: resolved_account_index(&chain, &normalized_path),
-        flavor: resolved_flavor(&chain, &normalized_path),
-    })
+    Ok(normalize_derivation_path(&derivation_path, &default_path))
 }
 
 #[uniffi::export]
@@ -581,8 +573,6 @@ mod tests {
         let default_path = default_path_for_chain("Bitcoin").expect("default path");
         let normalized = normalize_derivation_path("m/86'/0'/2'/0/0", &default_path);
         assert_eq!(normalized, "m/86'/0'/2'/0/0");
-        assert_eq!(resolved_account_index("Bitcoin", &normalized), 2);
-        assert_eq!(resolved_flavor("Bitcoin", &normalized), "taproot");
     }
 
     #[test]
@@ -712,34 +702,6 @@ pub(crate) fn derivation_path_string(segments: &[DerivationPathSegment]) -> Stri
     } else {
         format!("m/{suffix}")
     }
-}
-
-pub(crate) fn derivation_path_segment_value(path: &str, index: usize) -> Option<u32> {
-    parse_derivation_path(path).and_then(|segments| segments.get(index).map(|s| s.value))
-}
-
-pub(super) fn resolved_account_index(chain_name: &str, normalized_path: &str) -> u32 {
-    match chain_name {
-        "Bitcoin" if normalized_path == "m/0'/0" || normalized_path == "m/0'/0/0" => 0,
-        "Bitcoin Cash" | "Bitcoin SV" if normalized_path == "m/0" => 0,
-        _ => derivation_path_segment_value(normalized_path, 2).unwrap_or(0),
-    }
-}
-
-pub(super) fn resolved_flavor(chain_name: &str, normalized_path: &str) -> String {
-    let account = resolved_account_index(chain_name, normalized_path);
-    crate::chains::derivation_paths_for_chain(chain_name)
-        .and_then(|entries| {
-            entries.iter().find_map(|entry| {
-                let rendered = render_derivation_path_template(&entry.path, account);
-                if normalize_derivation_path(&rendered, "") == normalized_path {
-                    Some(entry.tag.clone())
-                } else {
-                    None
-                }
-            })
-        })
-        .unwrap_or_else(|| "standard".to_string())
 }
 
 /// Default derivation paths for every mainnet chain at `account`.
@@ -1079,7 +1041,7 @@ mod testnet_derivation_paths {
                 .expect("testnet4");
         let mainnet = super::app_core_resolve_derivation_path("Bitcoin".to_string(), String::new())
             .expect("bitcoin");
-        assert_eq!(testnet.normalized_path, mainnet.normalized_path);
+        assert_eq!(testnet, mainnet);
     }
 }
 

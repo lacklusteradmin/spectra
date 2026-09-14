@@ -26,6 +26,9 @@ struct TomlNetwork {
     native_deployment: String,
     search_keywords: Vec<String>,
     category: String,
+    /// Position in the setup picker's short list, or absent.
+    #[serde(default)]
+    popular_rank: Option<u8>,
     color: String,
     artwork_name: String,
     #[serde(default)]
@@ -113,6 +116,13 @@ pub struct ChainEntry {
     pub gas_token_symbol: String,
     pub search_keywords: Vec<String>,
     pub category: String,
+    /// Where this chain sits in the setup picker's short list, or `None` for
+    /// the chains that reach it only through "browse all".
+    ///
+    /// The picker held this as an eight-id array in Swift, which is a per-chain
+    /// fact in a caller-owned list: adding a chain to the catalog could not put
+    /// it there, and removing one left an id the filter silently dropped.
+    pub popular_rank: Option<u8>,
     pub is_evm: bool,
     pub color: String,
     pub artwork_name: String,
@@ -209,6 +219,7 @@ static CATALOG: LazyLock<Vec<ChainEntry>> = LazyLock::new(|| {
                 gas_token_symbol: native.symbol.clone(),
                 search_keywords: c.search_keywords.clone(),
                 category: c.category.clone(),
+                popular_rank: c.popular_rank,
                 is_evm: is_evm_for(&c.category),
                 color: c.color.clone(),
                 artwork_name: c.artwork_name.clone(),
@@ -314,15 +325,6 @@ fn default_template_of(chain: &'static ChainEntry) -> Option<&'static str> {
         .filter(|path| path.starts_with("m/"))
 }
 
-pub(crate) fn derivation_paths_for_chain(
-    chain_name: &str,
-) -> Option<&'static [ChainDerivationPathEntry]> {
-    CATALOG
-        .iter()
-        .find(|c| c.name == chain_name)
-        .map(|chain| chain.derivation_path.as_slice())
-}
-
 #[cfg(test)]
 mod explicit_network_catalog {
     use super::*;
@@ -403,6 +405,22 @@ mod explicit_network_catalog {
             );
             assert!(e.contract_address_prompt.is_empty());
         }
+    }
+
+    /// The setup picker's short list is a rank per chain, so it cannot hold a
+    /// duplicate position, a gap, or a testnet.
+    #[test]
+    fn the_popular_short_list_is_a_ranking() {
+        let mut ranks: Vec<u8> = Vec::new();
+        for chain in Chain::all() {
+            let e = entry(chain.str_id());
+            let Some(rank) = e.popular_rank else { continue };
+            assert!(!e.is_testnet, "{} is a testnet on the short list", e.id);
+            ranks.push(rank);
+        }
+        ranks.sort_unstable();
+        let expected: Vec<u8> = (1..=ranks.len() as u8).collect();
+        assert_eq!(ranks, expected, "the short list is not 1..=n without gaps");
     }
 
     /// An address hint describes a network's format, so it is never inherited:
