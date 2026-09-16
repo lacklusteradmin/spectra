@@ -8,6 +8,7 @@ use std::collections::HashMap;
 use std::sync::LazyLock;
 
 use colored::Colorize;
+use spectra_core::chains::CatalogColor;
 
 #[derive(Debug, Clone, Copy)]
 pub struct Out {
@@ -71,35 +72,36 @@ pub fn field(label: &str, value: &str) {
 
 /// Built from `chains.toml`, so a new chain is tinted without a change here.
 /// The previous CLI hardcoded 30 of the 78 and rendered the rest grey.
-static CHAIN_COLOR: LazyLock<HashMap<String, String>> = LazyLock::new(|| {
+static CHAIN_COLOR: LazyLock<HashMap<String, CatalogColor>> = LazyLock::new(|| {
     spectra_core::chains::list_all_chains()
         .into_iter()
         .map(|chain| (chain.name, chain.color))
         .collect()
 });
 
-fn rgb_for_color_name(name: &str) -> (u8, u8, u8) {
-    match name {
-        "orange" => (247, 147, 26),
-        "yellow" => (240, 185, 11),
-        "green" => (120, 220, 130),
-        "mint" => (140, 240, 200),
-        "teal" => (90, 210, 200),
-        "cyan" => (100, 210, 245),
-        "blue" => (90, 140, 245),
-        "indigo" => (120, 120, 240),
-        "purple" => (165, 130, 255),
-        "pink" => (240, 110, 190),
-        "red" => (240, 85, 95),
-        "gray" | "grey" => (170, 170, 185),
-        _ => (200, 200, 210),
+/// Exhaustive over the catalog's palette, so a colour added there is a compile
+/// error here rather than a grey chain.
+fn rgb_for_color(color: CatalogColor) -> (u8, u8, u8) {
+    match color {
+        CatalogColor::Orange => (247, 147, 26),
+        CatalogColor::Yellow => (240, 185, 11),
+        CatalogColor::Green => (120, 220, 130),
+        CatalogColor::Mint => (140, 240, 200),
+        CatalogColor::Teal => (90, 210, 200),
+        CatalogColor::Cyan => (100, 210, 245),
+        CatalogColor::Blue => (90, 140, 245),
+        CatalogColor::Indigo => (120, 120, 240),
+        CatalogColor::Purple => (165, 130, 255),
+        CatalogColor::Pink => (240, 110, 190),
+        CatalogColor::Red => (240, 85, 95),
+        CatalogColor::Gray => (170, 170, 185),
     }
 }
 
 fn chain_rgb(chain_name: &str) -> (u8, u8, u8) {
     CHAIN_COLOR
         .get(chain_name)
-        .map(|name| rgb_for_color_name(name))
+        .map(|color| rgb_for_color(*color))
         .unwrap_or((200, 200, 210))
 }
 

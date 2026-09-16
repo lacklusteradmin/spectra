@@ -65,7 +65,6 @@ fn open_new(database_path: &str) -> Result<Connection, String> {
         "PRAGMA journal_mode = WAL;
          PRAGMA synchronous = NORMAL;
          PRAGMA temp_store = MEMORY;
-         CREATE TABLE IF NOT EXISTS state (key TEXT PRIMARY KEY, value TEXT NOT NULL, saved_at INTEGER NOT NULL);
          CREATE TABLE IF NOT EXISTS wallet_keypool (
              wallet_id              TEXT    NOT NULL,
              chain_name             TEXT    NOT NULL,

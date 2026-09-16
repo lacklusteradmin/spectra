@@ -219,10 +219,8 @@ impl CardanoClient {
             return Ok(vec![]);
         }
 
-        let tx_infos: Vec<KoiosTxInfo> = self
-            .post("/tx_info", &TxReq { tx_hashes: hashes })
-            .await
-            .unwrap_or_default();
+        let tx_infos: Vec<KoiosTxInfo> =
+            self.post("/tx_info", &TxReq { tx_hashes: hashes }).await?;
 
         let mut entries: Vec<CardanoHistoryEntry> = tx_infos
             .into_iter()

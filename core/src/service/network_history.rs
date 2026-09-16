@@ -318,26 +318,6 @@ async fn fetch_history(
 }
 
 impl WalletService {
-    pub async fn fetch_evm_history_diagnostics(
-        &self,
-        chain_id: String,
-        wallet_id: String,
-        address: String,
-    ) -> crate::diagnostics::HistoryDiagnostics {
-        use crate::diagnostics::aggregate::{
-            diagnostics_make_evm_error, diagnostics_make_evm_success_record,
-        };
-        match self
-            .fetch_evm_history_page(chain_id, address.clone(), Vec::new(), 1, 50)
-            .await
-        {
-            Ok(page) => diagnostics_make_evm_success_record(wallet_id, address, &page),
-            Err(err) => diagnostics_make_evm_error(wallet_id, address, err.to_string()),
-        }
-    }
-}
-
-impl WalletService {
     pub async fn fetch_history_summary(
         &self,
         chain_id: String,

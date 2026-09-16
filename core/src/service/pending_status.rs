@@ -35,7 +35,7 @@ fn tracked(
 /// Shared by polling and pruning: a tracker lives as long as its transaction is tracked.
 pub(super) fn needs_status_poll(
     kind: crate::store::wallet_domain::CoreTransactionKind,
-    status: Option<crate::store::wallet_domain::CoreTransactionStatus>,
+    status: crate::store::wallet_domain::CoreTransactionStatus,
     hash: Option<&str>,
     poll: PendingStatusPoll,
 ) -> bool {
@@ -50,7 +50,7 @@ pub(super) fn needs_status_poll(
     };
     hash.is_some_and(|h| !h.trim().is_empty())
         && (!sends_only || kind == K::Send)
-        && (status == Some(S::Pending) || (finality && status == Some(S::Confirmed)))
+        && (status == S::Pending || (finality && status == S::Confirmed))
 }
 
 #[derive(Debug, Clone, serde::Serialize, uniffi::Record)]
@@ -208,6 +208,7 @@ impl WalletService {
                                     .block_height
                                     .map(|height| height as i64),
                                 dogecoin_network_fee_doge: None,
+                                evm_receipt_cost: None,
                             });
                         }
                         Err(_) => {
@@ -264,6 +265,7 @@ impl WalletService {
                                 confirmations: None,
                                 receipt_block_number: classification.block_number,
                                 dogecoin_network_fee_doge: None,
+                                evm_receipt_cost: classification.cost,
                             });
                         }
                         Err(_) => {
@@ -344,6 +346,7 @@ impl WalletService {
                             confirmations: None,
                             receipt_block_number: None,
                             dogecoin_network_fee_doge: None,
+                            evm_receipt_cost: None,
                         });
                     }
                 }
@@ -760,8 +763,14 @@ mod tests {
             .unwrap();
         assert_eq!(
             row.status,
-            Some(crate::store::wallet_domain::CoreTransactionStatus::Confirmed)
+            crate::store::wallet_domain::CoreTransactionStatus::Confirmed
         );
+        // The receipt's cost reaches the record: 0x5208 gas at 1 wei is
+        // 21000 wei, in Sepolia ETH's eighteen places.
+        assert_eq!(row.receipt_gas_used.as_deref(), Some("21000"));
+        assert_eq!(row.receipt_effective_gas_price_gwei, Some(1e-9));
+        assert_eq!(row.receipt_network_fee, Some(21000.0 / 1e18));
+        assert_eq!(row.receipt_block_number, Some(7));
         sepolia.verify().await;
     }
 }

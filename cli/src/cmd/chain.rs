@@ -1,6 +1,6 @@
 //! Commands that talk to a chain: the supported list, balances and history.
 //!
-//! Endpoint selection is core's — `app_core_endpoint_records_for_chain` picks
+//! Endpoint selection is core's — `endpoint_records_for_chain_masked` picks
 //! them from the catalog by role. The CLI supplies the role mask for what it
 //! is about to do and nothing else.
 
@@ -140,6 +140,13 @@ pub fn chains(out: Out, args: ChainsArgs) -> CliResult<()> {
                 // The setup picker's short list, which was eight ids typed
                 // into the Swift view — a rank, so the order comes with it.
                 "popularRank": chain.entry().popular_rank,
+                // What the send screen's network card says core will do with
+                // a send here — twelve per-chain sentences in the iOS view
+                // before it was a column, one of which described Monero.
+                "sendBroadcastMode": chain.has_send_preview().then(|| match chain.send_broadcast_mode() {
+                    spectra_core::registry::SendBroadcastMode::SignsAndBroadcasts => "signsAndBroadcasts",
+                    spectra_core::registry::SendBroadcastMode::PreparesWithBackend => "preparesWithBackend",
+                }),
                 // Where this chain's transaction history comes from. One
                 // hardcoded Etherscan base used to answer for every EVM chain,
                 // and Etherscan V2 refuses without a key — which the caller

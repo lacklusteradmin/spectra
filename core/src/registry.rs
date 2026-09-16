@@ -371,13 +371,20 @@ impl Chain {
     /// knew about it, so a chain with its own extension output is a row rather
     /// than a fourth copy of a preview function.
     pub fn extra_output_overhead_bytes(self, destination: &str) -> u64 {
-        let lowered = destination.trim().to_lowercase();
-        match self.mainnet_counterpart() {
-            Chain::Litecoin if lowered.starts_with("ltcmweb1") || lowered.starts_with("tmweb1") => {
-                1017
-            }
-            _ => 0,
+        if self.is_extension_block_destination(destination) {
+            1017
+        } else {
+            0
         }
+    }
+
+    /// Whether a destination on this chain is an extension-block output:
+    /// Litecoin's MWEB, the only chain with one. The fee rule above and the
+    /// composer's privacy badge both ask this, so it is asked one way.
+    pub fn is_extension_block_destination(self, destination: &str) -> bool {
+        let lowered = destination.trim().to_lowercase();
+        self.mainnet_counterpart() == Chain::Litecoin
+            && (lowered.starts_with("ltcmweb1") || lowered.starts_with("tmweb1"))
     }
 
     /// Which endpoint slot this chain's supplemental explorer endpoints are
@@ -413,6 +420,16 @@ impl Chain {
             || !self.uses_generic_send_submit()
             || self.simple_preview_chain().is_some()
             || self.send_execution_shape().fee_fallback > 0.0
+    }
+
+    /// How core moves a send here. Only meaningful where
+    /// [`Chain::has_send_preview`] is true; that is the gate on the card this
+    /// answers for.
+    pub fn send_broadcast_mode(self) -> SendBroadcastMode {
+        match self.mainnet_counterpart() {
+            Chain::Monero => SendBroadcastMode::PreparesWithBackend,
+            _ => SendBroadcastMode::SignsAndBroadcasts,
+        }
     }
 
     /// This chain's send builder can sign a transaction and stop, without
@@ -1416,6 +1433,24 @@ pub enum SendFeeField {
     None,
 }
 
+/// How core moves a send on this chain — which is what the send screen's
+/// network card tells the user it is about to do.
+///
+/// The card's sentence was twelve strings in the iOS view, one per chain, and
+/// they had drifted into four verbs for two behaviours: "signs and broadcasts
+/// X transfers", "signs and broadcasts X payments", "signs and broadcasts ADA
+/// transfers" (the symbol, not the chain) and Monero's, which is the only one
+/// that describes something different. Two behaviours, so two variants.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, uniffi::Enum)]
+pub enum SendBroadcastMode {
+    /// Core signs on the device and broadcasts to this chain's endpoints.
+    SignsAndBroadcasts,
+    /// Core prepares the transfer against the configured backend, which also
+    /// quotes the fee. Monero has no in-process wallet to sign with, so the
+    /// backend does both halves and the card must not claim otherwise.
+    PreparesWithBackend,
+}
+
 /// What a front end needs to assemble a send for this chain, beyond the
 /// amount and the destination.
 #[derive(Debug, Clone, Copy, uniffi::Record)]
@@ -1479,6 +1514,59 @@ impl EvmChain {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// The network card claims in-app signing for every chain that has one
+    /// except the backend-prepared one. Monero's testnet answers like Monero:
+    /// the backend is what does the work on either network.
+    /// Every EVM chain carries its EIP-155 id, and Ethereum's test networks
+    /// carry theirs. These were asserted in the iOS suite through an
+    /// `EVMChainContext` wrapper the app no longer has; the facts are the
+    /// registry's, so this is where they are checked.
+    #[test]
+    fn evm_chains_carry_their_eip155_ids() {
+        for chain in Chain::all().filter(|chain| chain.is_evm()) {
+            assert!(
+                chain.evm_chain_id() > 0,
+                "{} has no chain id",
+                chain.str_id()
+            );
+        }
+        assert_eq!(Chain::EthereumSepolia.evm_chain_id(), 11_155_111);
+        assert_eq!(Chain::EthereumHoodi.evm_chain_id(), 560_048);
+        assert_eq!(Chain::EthereumClassic.evm_chain_id(), 61);
+    }
+
+    /// The Etherscan key is asked for where history reads it. Ethereum's comes
+    /// from Blockscout, so it is not among them.
+    #[test]
+    fn the_etherscan_key_belongs_to_the_chains_whose_history_needs_it() {
+        let needing: Vec<_> = core_chain_identities()
+            .into_iter()
+            .filter(|identity| identity.needs_etherscan_api_key && !identity.is_testnet)
+            .map(|identity| identity.name)
+            .collect();
+        assert!(!needing.contains(&"Ethereum".to_string()));
+        assert!(needing.contains(&"BNB Chain".to_string()));
+        for identity in core_chain_identities() {
+            assert!(
+                !identity.needs_etherscan_api_key || identity.is_evm,
+                "{}",
+                identity.name
+            );
+        }
+    }
+
+    #[test]
+    fn only_monero_sends_are_prepared_by_a_backend() {
+        for chain in Chain::all().filter(|c| c.has_send_preview()) {
+            let expected = if chain.mainnet_counterpart() == Chain::Monero {
+                SendBroadcastMode::PreparesWithBackend
+            } else {
+                SendBroadcastMode::SignsAndBroadcasts
+            };
+            assert_eq!(chain.send_broadcast_mode(), expected, "{}", chain.str_id());
+        }
+    }
 
     /// `address_validation_kind`'s EVM arms duplicate `is_evm`'s list so the
     /// match can stay exhaustive. This is what stops the two from drifting.
@@ -1793,6 +1881,14 @@ pub struct ChainIdentity {
     /// `init?(rawValue:)` and `allCases` for an enum core owns.
     pub token_hosting_chain: Option<crate::store::wallet_domain::CoreTokenHostingChain>,
     pub send_execution_shape: SendExecutionShape,
+    /// How core moves a send here, which is what the network card says.
+    pub send_broadcast_mode: SendBroadcastMode,
+    /// This chain's history is read through Etherscan V2, which refuses
+    /// without a key — so this is where the key setting belongs.
+    ///
+    /// The app showed that setting on Ethereum's screen, whose history comes
+    /// from Blockscout and never reads it, and on none of the six that do.
+    pub needs_etherscan_api_key: bool,
     /// The JSON-RPC method that answers "is this node alive", or `None` for a
     /// chain whose endpoints are checked over plain HTTP.
     pub rpc_health_method: Option<String>,
@@ -1841,6 +1937,9 @@ pub fn core_chain_identities() -> Vec<ChainIdentity> {
                     chain.chain_display_name(),
                 ),
             send_execution_shape: chain.send_execution_shape(),
+            send_broadcast_mode: chain.send_broadcast_mode(),
+            needs_etherscan_api_key: chain.is_evm()
+                && matches!(chain.evm_history_source(), EvmHistorySource::EtherscanV2),
             rpc_health_method: chain.rpc_health_method().map(str::to_string),
             pending_status_poll: chain.pending_status_poll(),
             seed_derivation_chain: crate::send::flow::seed_derivation_chain_raw(chain),

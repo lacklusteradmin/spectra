@@ -9,6 +9,30 @@ use std::sync::LazyLock;
 static CHAINS_TOML: &str = include_str!("../data/chains.toml");
 static CHAIN_WIKI_TOML: &str = include_str!("../data/chain-wiki.toml");
 
+/// A catalog entry's brand colour, from a closed palette.
+///
+/// Was a free `String` on chains, tokens and the wiki, rendered by a Swift
+/// switch whose `default` was the app's accent colour — so a misspelt or new
+/// name in a TOML file drew in the wrong colour and nothing failed. Per-chain
+/// presentation facts belong to the catalog; this makes the catalog's the only
+/// spelling, checked when the file is parsed, and the app's switch exhaustive.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, uniffi::Enum)]
+#[serde(rename_all = "lowercase")]
+pub enum CatalogColor {
+    Blue,
+    Cyan,
+    Gray,
+    Green,
+    Indigo,
+    Mint,
+    Orange,
+    Pink,
+    Purple,
+    Red,
+    Teal,
+    Yellow,
+}
+
 // ── Parsed TOML shape
 
 #[derive(Debug, Deserialize)]
@@ -29,7 +53,7 @@ struct TomlNetwork {
     /// Position in the setup picker's short list, or absent.
     #[serde(default)]
     popular_rank: Option<u8>,
-    color: String,
+    color: CatalogColor,
     artwork_name: String,
     #[serde(default)]
     address_prefix_hint: String,
@@ -124,7 +148,7 @@ pub struct ChainEntry {
     /// it there, and removing one left an id the filter silently dropped.
     pub popular_rank: Option<u8>,
     pub is_evm: bool,
-    pub color: String,
+    pub color: CatalogColor,
     pub artwork_name: String,
     pub token_standard: String,
     /// Whether the chain has an RPC that answers "what tokens does this
@@ -221,7 +245,7 @@ static CATALOG: LazyLock<Vec<ChainEntry>> = LazyLock::new(|| {
                 category: c.category.clone(),
                 popular_rank: c.popular_rank,
                 is_evm: is_evm_for(&c.category),
-                color: c.color.clone(),
+                color: c.color,
                 artwork_name: c.artwork_name.clone(),
                 token_standard: c.token_standard.clone(),
                 enumerates_holdings: c.enumerates_holdings,
@@ -358,7 +382,6 @@ mod explicit_network_catalog {
                 &main.gas_token_symbol,
                 &net.gas_token_symbol,
             ),
-            ("color", &main.color, &net.color),
             ("artwork_name", &main.artwork_name, &net.artwork_name),
             (
                 "native_asset_display_name",
@@ -369,6 +392,10 @@ mod explicit_network_catalog {
         ] {
             assert_eq!(a, b, "{field} did not carry through to the network");
         }
+        assert_eq!(
+            main.color, net.color,
+            "color did not carry through to the network"
+        );
         assert_eq!(main.native_decimals, net.native_decimals);
         assert_eq!(main.is_evm, net.is_evm);
         // And it states its own name and derivation path — a testnet derives

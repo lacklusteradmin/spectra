@@ -54,6 +54,13 @@ bindings when macros are involved; exclude `FfiConverter*` helpers from API
 counts. Counting attribute occurrences or all generated `public func` lines
 measures neither the same set nor the same thing.
 
+`scripts/uncalled-core-fns.sh` checks the layer below. A `pub fn` that no
+longer carries `#[uniffi::export]` is invisible to both gates rustc offers —
+`dead_code` treats it as API because the crate is a library, and the bindings
+never mentioned it — so it can lose its last caller and keep compiling.
+`derive_bitcoin_account_xpub_typed` did, for long enough that its doc comment
+still said it was exported. All three scripts run in `scripts/cli-acceptance.sh`.
+
 An export used only by the app may have no Rust coverage. Add a CLI entry point
 for domain rules: `spectra send assemble` exercises EVM assembly without keys
 or network. Offline assembly does not prove broadcasting works; the remaining

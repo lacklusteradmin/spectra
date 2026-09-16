@@ -23,6 +23,29 @@ pub enum CoreTransactionStatus {
     Failed,
 }
 
+impl CoreTransactionStatus {
+    /// The stored and wire spelling. Four functions used to spell these three
+    /// words, two of them disagreeing about what a missing status meant.
+    pub(crate) fn as_raw(self) -> &'static str {
+        match self {
+            Self::Pending => "pending",
+            Self::Confirmed => "confirmed",
+            Self::Failed => "failed",
+        }
+    }
+
+    /// The inverse, for a status read back from a string. `None` means the
+    /// string names no status; what to do about that is the caller's rule.
+    pub(crate) fn from_raw(raw: &str) -> Option<Self> {
+        match raw {
+            "pending" => Some(Self::Pending),
+            "confirmed" => Some(Self::Confirmed),
+            "failed" => Some(Self::Failed),
+            _ => None,
+        }
+    }
+}
+
 /// Swift `PriceAlertCondition` — rawValues: `"Above"`, `"Below"` (PascalCase).
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Hash, uniffi::Enum)]
 pub enum CorePriceAlertCondition {
@@ -816,7 +839,7 @@ mod roundtrip_tests {
                 coingecko_id: "tether".to_string(),
                 decimals: 18,
                 tags: vec!["stablecoin".to_string()],
-                color: "green".to_string(),
+                color: Some(crate::chains::CatalogColor::Green),
                 artwork_name: "usdt".to_string(),
                 enabled: true,
             },

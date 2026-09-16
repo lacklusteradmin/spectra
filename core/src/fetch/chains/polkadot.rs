@@ -122,6 +122,21 @@ impl PolkadotClient {
                 let resp: Value = client
                     .post_json_with_headers(&url, &*body, &headers, RetryProfile::ChainRead)
                     .await?;
+                // Subscan refuses with `200` and `{"code":<non-zero>,
+                // "message":...,"data":null}`. Decoding that `null` as `T`
+                // fails with "invalid type: null", which names the shape
+                // instead of the reason; the reason is in `message`.
+                if resp
+                    .get("code")
+                    .and_then(Value::as_i64)
+                    .is_some_and(|code| code != 0)
+                {
+                    let message = resp
+                        .get("message")
+                        .and_then(Value::as_str)
+                        .unwrap_or("no message");
+                    return Err(format!("subscan refused: {message}"));
+                }
                 let data = resp.get("data").cloned().unwrap_or(resp);
                 serde_json::from_value(data).map_err(|e| format!("parse: {e}"))
             }
@@ -133,22 +148,21 @@ impl PolkadotClient {
 // nonce (RPC), and history (Subscan).
 
 impl PolkadotClient {
+    /// The balance Subscan reports, or why it could not be read.
+    ///
+    /// `system_account` returns `AccountInfo` as SCALE bytes and this client
+    /// has no decoder for it, so Subscan is the only source of a number here.
+    /// A failure used to fall through to `balance: "0"` — "return a default",
+    /// the comment said — which turned every outage, rate limit and refusal
+    /// into an account holding nothing.
     pub async fn fetch_balance(&self, address: &str) -> Result<DotBalance, String> {
-        // system_account returns encoded AccountInfo; easier to use Subscan.
         #[derive(Deserialize)]
         struct SubscanAccount {
             balance: String,
         }
         let resp: SubscanAccount = self
             .subscan_post("/api/v2/scan/search", &json!({"key": address}))
-            .await
-            .or_else(|_e: String| -> Result<SubscanAccount, String> {
-                // Fallback: use state_getStorage to read system_account.
-                // This is complex to parse; return a default.
-                Ok(SubscanAccount {
-                    balance: "0".to_string(),
-                })
-            })?;
+            .await?;
 
         // Subscan returns balance in DOT (e.g. "123.456789"). Convert to planck.
         let planck = parse_dot_balance(&resp.balance);
@@ -219,8 +233,7 @@ impl PolkadotClient {
                 "/api/v2/scan/transfers",
                 &json!({"address": address, "row": 50, "page": 0}),
             )
-            .await
-            .unwrap_or_default();
+            .await?;
 
         Ok(transfers
             .transfers
@@ -247,4 +260,61 @@ pub(crate) fn parse_dot_balance(s: &str) -> u128 {
     let frac_padded = format!("{:0<10}", frac_str);
     let frac: u128 = frac_padded[..10].parse().unwrap_or(0);
     whole * 10_000_000_000 + frac
+}
+
+#[cfg(test)]
+mod balance_tests {
+    use super::*;
+    use std::sync::Arc;
+    use wiremock::{matchers::any, Mock, MockServer, ResponseTemplate};
+
+    fn client(subscan: &str) -> PolkadotClient {
+        PolkadotClient::new(Arc::new(vec![]), Arc::new(vec![subscan.to_string()]), None)
+    }
+
+    /// Subscan refuses with `200` and a non-zero `code`, so the refusal has to
+    /// be read out of the body. The balance used to `or_else` into `"0"` and
+    /// the history into an empty list, which is how an outage rendered as an
+    /// account holding nothing and having done nothing.
+    #[tokio::test]
+    async fn a_subscan_refusal_is_an_error_naming_its_reason() {
+        let server = MockServer::start().await;
+        Mock::given(any())
+            .respond_with(
+                ResponseTemplate::new(200).set_body_json(
+                    json!({"code": 10001, "message": "Record Not Found", "data": null}),
+                ),
+            )
+            .mount(&server)
+            .await;
+
+        for err in [
+            client(&server.uri())
+                .fetch_balance("addr")
+                .await
+                .unwrap_err(),
+            client(&server.uri())
+                .fetch_history("addr")
+                .await
+                .unwrap_err(),
+        ] {
+            assert!(err.contains("Record Not Found"), "{err}");
+            // Not the shape complaint decoding `data: null` used to produce.
+            assert!(!err.contains("invalid type"), "{err}");
+        }
+    }
+
+    #[tokio::test]
+    async fn a_balance_that_reads_is_converted_to_planck() {
+        let server = MockServer::start().await;
+        Mock::given(any())
+            .respond_with(ResponseTemplate::new(200).set_body_json(
+                json!({"code": 0, "message": "Success", "data": {"balance": "12.5"}}),
+            ))
+            .mount(&server)
+            .await;
+        let balance = client(&server.uri()).fetch_balance("addr").await.unwrap();
+        assert_eq!(balance.planck, 125_000_000_000);
+        assert_eq!(balance.dot_display, "12.5");
+    }
 }

@@ -110,7 +110,11 @@ impl WalletService {
                     ),
                 )]);
                 let old_status = super::history_derived::status_string(current.status);
-                let new_status = if confirmed { "confirmed" } else { "pending" };
+                let new_status = if confirmed {
+                    crate::store::wallet_domain::CoreTransactionStatus::Confirmed
+                } else {
+                    crate::store::wallet_domain::CoreTransactionStatus::Pending
+                };
                 let decision = crate::store::plan_apply_resolved_pending_transaction_statuses(
                     vec![crate::store::ResolvedPendingTransactionInput {
                         id: current.id.clone(),
@@ -120,7 +124,7 @@ impl WalletService {
                             .confirmation_count
                             .and_then(|v| u32::try_from(v).ok()),
                         resolution: Some(crate::store::ResolvedPendingStatusInput {
-                            status: new_status.into(),
+                            status: new_status.as_raw().to_string(),
                             confirmations,
                         }),
                         is_stale_failure: false,
@@ -130,7 +134,7 @@ impl WalletService {
                     config,
                 )
                 .remove(0);
-                current.status = super::history_derived::parse_status(new_status);
+                current.status = new_status;
                 current.failure_reason = None;
                 current.receipt_block_number = block;
                 current.confirmation_count = confirmations.map(i64::from);
@@ -142,7 +146,7 @@ impl WalletService {
                     chain_name: current.chain_name.clone(),
                     transaction_hash: current.transaction_hash.clone(),
                     old_status,
-                    new_status: new_status.into(),
+                    new_status: new_status.as_raw().to_string(),
                     status_changed: decision.status_changed,
                     send_status_notification: decision.send_status_notification,
                     emit_event_code: decision.emit_event_code,

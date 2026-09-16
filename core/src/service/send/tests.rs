@@ -118,7 +118,7 @@ async fn seed_probe_holding(
                 coingecko_id: String::new(),
                 decimals,
                 tags: Vec::new(),
-                color: String::new(),
+                color: None,
                 artwork_name: String::new(),
                 enabled: true,
             },

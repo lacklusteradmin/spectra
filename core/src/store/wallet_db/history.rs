@@ -448,8 +448,7 @@ pub(crate) fn history_save_send_progress(
             if incoming.transaction_hash.is_some() {
                 stored.transaction_hash = incoming.transaction_hash.clone();
             }
-            if stored.status != Some(crate::store::wallet_domain::CoreTransactionStatus::Confirmed)
-            {
+            if stored.status != crate::store::wallet_domain::CoreTransactionStatus::Confirmed {
                 stored.status = incoming.status;
                 stored.failure_reason = incoming.failure_reason.clone();
             }

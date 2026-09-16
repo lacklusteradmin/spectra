@@ -33,29 +33,6 @@ impl StateBinding {
 
 #[uniffi::export(async_runtime = "tokio")]
 impl WalletService {
-    /// Load the JSON state blob under `key` from the bound database. Returns an empty JSON object `"{}"` when no value has been
-    /// saved yet. Thread-safe: rusqlite is called in `spawn_blocking`.
-    pub async fn load_state(&self, key: String) -> Result<String, SpectraBridgeError> {
-        let database = self.bound_database().await?;
-        tokio::task::spawn_blocking(move || sqlite_load(&database, &key))
-            .await
-            .map_err(|e| SpectraBridgeError::from(format!("spawn_blocking: {e}")))?
-            .map_err(Into::into)
-    }
-
-    /// Persist the JSON state blob under `key` in the bound database.
-    pub async fn save_state(
-        &self,
-        key: String,
-        state_json: String,
-    ) -> Result<(), SpectraBridgeError> {
-        let database = self.bound_database().await?;
-        tokio::task::spawn_blocking(move || sqlite_save(&database, &key, &state_json))
-            .await
-            .map_err(|e| SpectraBridgeError::from(format!("spawn_blocking: {e}")))?
-            .map_err(Into::into)
-    }
-
     // ── Owned application state ───────────────────────────────────────────
     //
     // `CoreAppState` is the domain state, and this service owns it. Front ends

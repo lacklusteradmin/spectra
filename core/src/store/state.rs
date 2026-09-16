@@ -152,6 +152,44 @@ pub enum AddressBookRejection {
     DuplicateAddress,
 }
 
+/// How soon a chain's fee should get a transaction confirmed.
+///
+/// The three a fee picker offers. This was a free string in
+/// [`AppSettings::fee_priority_by_chain`] and a second enum in the app, so
+/// "which values exist" had two answers and the app's was the typed one.
+/// Front ends name them; which ones exist is core's.
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Hash, uniffi::Enum)]
+#[serde(rename_all = "lowercase")]
+pub enum FeePriority {
+    Economy,
+    Normal,
+    Priority,
+}
+
+impl FeePriority {
+    /// The stored spelling, and what a provider fee preview is asked for.
+    pub fn as_raw(self) -> &'static str {
+        match self {
+            Self::Economy => "economy",
+            Self::Normal => "normal",
+            Self::Priority => "priority",
+        }
+    }
+}
+
+/// Read a fee priority written as text — a stored value, a CLI argument.
+///
+/// Anything the three do not name is the default rather than a stored value no
+/// send path knows how to spend.
+#[uniffi::export]
+pub fn parse_fee_priority(raw: String) -> FeePriority {
+    match raw.trim().to_ascii_lowercase().as_str() {
+        "economy" => FeePriority::Economy,
+        "priority" => FeePriority::Priority,
+        _ => FeePriority::Normal,
+    }
+}
+
 /// Why a token-preference change was refused. Front ends map these to their
 /// own wording; the decision itself is core's.
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, uniffi::Enum)]
@@ -261,8 +299,8 @@ pub struct AppSettings {
     /// their own settings field and their own Swift enum, while the other
     /// seventy-six shared a dictionary iOS persisted itself — three stores for
     /// one preference, and the front ends disagreed about which was canonical.
-    #[serde(default)]
-    pub fee_priority_by_chain: std::collections::HashMap<String, String>,
+    #[serde(default, deserialize_with = "fee_priorities_read_leniently")]
+    pub fee_priority_by_chain: std::collections::HashMap<String, FeePriority>,
 
     // ── Network and refresh policy ────────────────────────────────────────
     /// Refuse endpoints the user has not vetted.
@@ -317,18 +355,22 @@ pub const LARGE_MOVEMENT_USD_RANGE: std::ops::RangeInclusive<f64> = 1.0..=100_00
 // serde reads them for a field a stored row does not carry. Splitting the two
 // is how a row written before `use_price_alerts` existed would have loaded with
 // alerts silently off, rather than on as a fresh install has them.
-fn default_fee_priority() -> String {
-    "normal".to_string()
-}
-
-/// The three the picker offers. Anything else is the default rather than a
-/// stored value no send path knows how to spend.
-fn normalized_fee_priority(raw: &str) -> String {
-    match raw.trim().to_ascii_lowercase().as_str() {
-        "economy" => "economy".to_string(),
-        "priority" => "priority".to_string(),
-        _ => default_fee_priority(),
-    }
+/// Stored priorities, read through [`parse_fee_priority`] so a file written by
+/// hand — or by a build that spelled a fourth value — opens rather than
+/// refusing to decode.
+fn fee_priorities_read_leniently<'de, D>(
+    deserializer: D,
+) -> Result<std::collections::HashMap<String, FeePriority>, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    use serde::Deserialize as _;
+    Ok(
+        std::collections::HashMap::<String, String>::deserialize(deserializer)?
+            .into_iter()
+            .map(|(chain, value)| (chain, parse_fee_priority(value)))
+            .collect(),
+    )
 }
 fn default_background_sync_profile() -> String {
     "balanced".to_string()
@@ -572,7 +614,7 @@ pub enum AppSettingUpdate {
     /// unknown `value` falls back to `normal`.
     FeePriority {
         chain: String,
-        value: String,
+        value: FeePriority,
     },
     UseStrictRpcOnly {
         value: bool,
@@ -912,8 +954,7 @@ fn apply_app_setting(settings: &mut AppSettings, update: AppSettingUpdate) -> bo
             let Some(chain) = crate::registry::Chain::from_display_name(&chain) else {
                 return false;
             };
-            let value = normalized_fee_priority(&value);
-            if value == default_fee_priority() {
+            if value == FeePriority::Normal {
                 settings
                     .fee_priority_by_chain
                     .remove(chain.chain_display_name());
@@ -1284,7 +1325,7 @@ pub fn reduce_state_in_place(state: &mut CoreAppState, command: StateCommand) ->
                                 coingecko_id: coingecko_id.trim().to_string(),
                                 decimals,
                                 tags: Vec::new(),
-                                color: String::new(),
+                                color: None,
                                 artwork_name: String::new(),
                                 enabled: true,
                             },
@@ -1435,6 +1476,75 @@ pub fn reduce_state_in_place(state: &mut CoreAppState, command: StateCommand) ->
     }
 
     events
+}
+
+#[cfg(test)]
+mod fee_priority_tests {
+    use super::*;
+
+    #[test]
+    fn the_three_are_read_by_name_and_everything_else_is_the_default() {
+        assert_eq!(parse_fee_priority(" Economy ".into()), FeePriority::Economy);
+        assert_eq!(parse_fee_priority("priority".into()), FeePriority::Priority);
+        assert_eq!(parse_fee_priority("NORMAL".into()), FeePriority::Normal);
+        for raw in ["lightspeed", "", "   ", "instant", "priority!"] {
+            assert_eq!(
+                parse_fee_priority(raw.to_string()),
+                FeePriority::Normal,
+                "{raw:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn a_stored_value_the_three_do_not_name_opens_as_the_default() {
+        let mut file = serde_json::to_value(AppSettings::default()).expect("settings serialize");
+        file["feePriorityByChain"] =
+            serde_json::json!({ "Bitcoin": "priority", "Dogecoin": "lightspeed" });
+        let settings: AppSettings = serde_json::from_value(file)
+            .expect("a settings file with a fourth priority still opens");
+        assert_eq!(
+            settings.fee_priority_by_chain.get("Bitcoin"),
+            Some(&FeePriority::Priority)
+        );
+        assert_eq!(
+            settings.fee_priority_by_chain.get("Dogecoin"),
+            Some(&FeePriority::Normal)
+        );
+    }
+
+    #[test]
+    fn the_stored_spelling_is_the_one_the_setting_had() {
+        assert_eq!(
+            serde_json::to_string(&FeePriority::Priority).expect("serializes"),
+            "\"priority\""
+        );
+        assert_eq!(FeePriority::Economy.as_raw(), "economy");
+    }
+
+    #[test]
+    fn picking_the_default_stops_storing_a_choice() {
+        let mut settings = AppSettings::default();
+        assert!(apply_app_setting(
+            &mut settings,
+            AppSettingUpdate::FeePriority {
+                chain: "Dogecoin".into(),
+                value: FeePriority::Economy,
+            }
+        ));
+        assert_eq!(
+            settings.fee_priority_by_chain.get("Dogecoin"),
+            Some(&FeePriority::Economy)
+        );
+        assert!(apply_app_setting(
+            &mut settings,
+            AppSettingUpdate::FeePriority {
+                chain: "Dogecoin".into(),
+                value: FeePriority::Normal,
+            }
+        ));
+        assert!(settings.fee_priority_by_chain.is_empty());
+    }
 }
 
 #[cfg(test)]

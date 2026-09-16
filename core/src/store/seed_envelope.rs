@@ -25,10 +25,14 @@ struct Envelope {
     nonce: Vec<u8>,
 }
 
-/// Encrypt `plaintext` with AES-256-GCM using `master_key` (must be 32 bytes).
-/// Returns JSON bytes matching the Swift envelope format.
+/// Length of the envelope's master key. AES-256, so 32 bytes; the number is
+/// the cipher's, not a caller's choice, and both halves check it.
+pub const MASTER_KEY_LEN: usize = 32;
+
+/// Encrypt `plaintext` with AES-256-GCM using `master_key` (must be
+/// [`MASTER_KEY_LEN`] bytes). Returns JSON bytes matching the envelope format.
 pub fn encrypt(plaintext: &[u8], master_key: &[u8]) -> Result<Vec<u8>, String> {
-    if master_key.len() != 32 {
+    if master_key.len() != MASTER_KEY_LEN {
         return Err("master key must be 32 bytes".into());
     }
     let key = Key::<Aes256Gcm>::from_slice(master_key);
@@ -55,7 +59,7 @@ pub fn encrypt(plaintext: &[u8], master_key: &[u8]) -> Result<Vec<u8>, String> {
 /// Decrypt an envelope produced by [`encrypt`] (or by Swift's
 /// `SeedMaterialEnvelope.encode`). Returns the plaintext seed phrase.
 pub fn decrypt(data: &[u8], master_key: &[u8]) -> Result<String, String> {
-    if master_key.len() != 32 {
+    if master_key.len() != MASTER_KEY_LEN {
         return Err("master key must be 32 bytes".into());
     }
     let envelope: Envelope =
@@ -120,6 +124,18 @@ mod tests {
         assert_eq!(decrypted, plaintext);
     }
 
+    /// A minted key is one the envelope accepts, and two are never the same:
+    /// the caller no longer chooses the length or the source.
+    #[test]
+    fn a_minted_master_key_seals_and_is_fresh_each_time() {
+        let key = new_seed_envelope_master_key().unwrap();
+        assert_eq!(key.len(), MASTER_KEY_LEN);
+        let envelope = encrypt(b"secret seed", &key).unwrap();
+        assert_eq!(decrypt(&envelope, &key).unwrap(), "secret seed");
+        assert_ne!(key, new_seed_envelope_master_key().unwrap());
+        assert!(key.iter().any(|b| *b != 0), "an all-zero key is not a key");
+    }
+
     #[test]
     fn wrong_key_fails() {
         let key = [0xABu8; 32];
@@ -136,6 +152,24 @@ mod tests {
 }
 
 // ── FFI surface ─────────────────────────────────────────────────────────────
+
+/// A fresh master key for the seed envelope, from the OS CSPRNG.
+///
+/// Both the length and where the bytes come from are the envelope's business,
+/// not the caller's: `encrypt` refuses anything but [`MASTER_KEY_LEN`] bytes.
+/// Swift minted these itself, restating the 32 and falling back to a
+/// non-throwing generator when `SecRandomCopyBytes` reported a failure — on
+/// the one key every stored seed is sealed under. A key that cannot be
+/// generated from the OS is an error, because the alternative is a seed sealed
+/// under something weaker than the caller believes.
+#[uniffi::export]
+pub fn new_seed_envelope_master_key() -> Result<Vec<u8>, crate::SpectraBridgeError> {
+    let mut key = vec![0u8; MASTER_KEY_LEN];
+    rand::rngs::OsRng
+        .try_fill_bytes(&mut key)
+        .map_err(|error| crate::SpectraBridgeError::from(format!("master key: {error}")))?;
+    Ok(key)
+}
 
 /// Encrypt a seed phrase with AES-256-GCM. `master_key_bytes` must be exactly
 /// 32 bytes. Returns the JSON envelope as `Data` (compatible with Swift's

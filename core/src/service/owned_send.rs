@@ -93,13 +93,13 @@ impl WalletService {
                     .settings
                     .fee_priority_by_chain
                     .get(chain.chain_display_name())
-                    .cloned()
-                    .unwrap_or_else(|| "normal".into());
+                    .copied()
+                    .unwrap_or(crate::store::state::FeePriority::Normal);
                 // This legacy provider preview accepts a display amount; signing parses the exact input separately.
                 self.fetch_dogecoin_send_preview_typed(
                     address,
                     amount.parse().map_err(|_| "invalid amount")?,
-                    priority,
+                    priority.as_raw().to_string(),
                 )
                 .await?
                 .map(|preview| SendPreview::Dogecoin { preview })

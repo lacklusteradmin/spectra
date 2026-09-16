@@ -224,7 +224,7 @@ fn descriptors_are_the_enabled_tokens_for_the_chain() {
                 coingecko_id: String::new(),
                 decimals: 6,
                 tags: Vec::new(),
-                color: String::new(),
+                color: None,
                 artwork_name: String::new(),
                 enabled: true,
             },
@@ -729,7 +729,7 @@ async fn history_identity_merges_sends_on_the_exact_network_and_rejects_deleted_
     assert_eq!(stored.len(), 1);
     assert_eq!(
         stored[0].status,
-        Some(crate::store::wallet_domain::CoreTransactionStatus::Failed)
+        crate::store::wallet_domain::CoreTransactionStatus::Failed
     );
     assert_eq!(
         stored[0].chain_name,

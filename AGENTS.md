@@ -58,7 +58,7 @@ including `testEthereumTestNetworksExposeExpectedContextsAndEndpoints`.
   and regenerate the bindings.
 - iOS `reqwest` must use `rustls-tls-webpki-roots`. Native roots are empty on
   iOS and cause HTTPS `UnknownIssuer` failures.
-- [docs/iosUI.md](docs/iosUI.md) is the authority for iOS 26 Liquid Glass,
+- [docs/IOS-UI.md](docs/IOS-UI.md) is the authority for Liquid Glass,
   typography, color, layout and corner radii.
 
 ## Swift conventions

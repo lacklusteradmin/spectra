@@ -644,6 +644,15 @@ mod tests {
                 .extra_output_overhead_bytes("ltc1qw508d6qejxtdg4y5r3zarvary0c5xw7kv8f3t4"),
             0
         );
+        // The composer's badge asks the same rule.
+        assert!(crate::send::flow::is_extension_block_send_destination(
+            "Litecoin".into(),
+            mweb.into()
+        ));
+        assert!(!crate::send::flow::is_extension_block_send_destination(
+            "Bitcoin".into(),
+            mweb.into()
+        ));
         // And no other chain charges it, whatever the destination looks like.
         for chain in Chain::all().filter(|c| c.mainnet_counterpart() != Chain::Litecoin) {
             assert_eq!(

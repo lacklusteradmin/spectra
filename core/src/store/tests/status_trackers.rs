@@ -81,6 +81,7 @@ async fn applying_a_resolution_stores_it_and_reports_the_change() {
                 confirmations: Some(6),
                 receipt_block_number: Some(900_000),
                 dogecoin_network_fee_doge: None,
+                evm_receipt_cost: None,
             }],
         )
         .await
@@ -97,7 +98,7 @@ async fn applying_a_resolution_stores_it_and_reports_the_change() {
     let tx = stored.iter().find(|t| t.id == "tx1").expect("still there");
     assert_eq!(
         tx.status,
-        Some(crate::store::wallet_domain::CoreTransactionStatus::Confirmed)
+        crate::store::wallet_domain::CoreTransactionStatus::Confirmed
     );
     assert_eq!(tx.confirmation_count, Some(6));
     assert_eq!(tx.receipt_block_number, Some(900_000));
@@ -117,6 +118,7 @@ async fn applying_a_resolution_stores_it_and_reports_the_change() {
                 confirmations: Some(6),
                 receipt_block_number: None,
                 dogecoin_network_fee_doge: None,
+                evm_receipt_cost: None,
             }],
         )
         .await

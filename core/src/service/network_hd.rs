@@ -28,29 +28,3 @@ impl WalletService {
         .await?)
     }
 }
-
-/// Derive the account-level xpub (mainnet, canonical `xpub…` encoding)
-/// from a BIP39 mnemonic phrase.
-///
-/// `account_path` is the **hardened account path** only, e.g.:
-///   - `"m/84'/0'/0'"` → native SegWit (BIP84)
-///   - `"m/49'/0'/0'"` → nested SegWit (BIP49)
-///   - `"m/44'/0'/0'"` → legacy P2PKH (BIP44)
-///
-/// `passphrase` is the optional BIP39 passphrase — pass `""` for none.
-///
-/// Exported as a function rather than a method on `WalletService`: it takes a
-/// phrase and a path and reads no wallet, no database and no endpoint. Hanging
-/// it off the service said otherwise to everyone who called it.
-pub fn derive_bitcoin_account_xpub_typed(
-    mnemonic_phrase: String,
-    passphrase: String,
-    account_path: String,
-) -> Result<String, SpectraBridgeError> {
-    crate::derivation::xpub_walker::derive_account_xpub(
-        &mnemonic_phrase,
-        &passphrase,
-        &account_path,
-    )
-    .map_err(Into::into)
-}

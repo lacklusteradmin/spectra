@@ -20,6 +20,470 @@ Split out of PLAN.md on 2026-09-15: it had reached 81 entries and 3171
 of PLAN.md's 3585 lines, which left Rule 0 and the open work buried under the
 history of work already done. Nothing was dropped in the move.
 
+### Settings screens pick their sections from the registry, not from chain names (2026-09-16)
+
+- **Before:** the diagnostics screen switched on `.bitcoin`, `.ethereum` and
+  `.monero`; the endpoints screen on those and `.dogecoin`. Custom RPC could be
+  set only on Ethereum's diagnostics screen, although core has applied
+  `rpc_endpoint_by_chain` to every chain since it replaced
+  `ethereum_rpc_endpoint`, and the same screen already listed a custom RPC first
+  for any EVM chain that had one. The Etherscan key field sat on Ethereum's
+  screen, whose history comes from Blockscout, and on none of the six chains
+  that read it; its note named seven chains, including Base, which does not.
+  Monero's three trusted backends were `MoneroBalanceService`: three catalog ids,
+  three display names and a default id in Swift, read by index. Only Bitcoin's
+  diagnostics JSON carried `networkMode`, and the address book opened on the
+  literal `"Bitcoin"`.
+  **After:** a section appears for what the chain has — Esplora bases in the
+  catalog (fee priority and custom Esplora), `isEVM` (custom RPC), the new
+  identity column `needs_etherscan_api_key` (the key), or
+  `sendBroadcastMode == preparesWithBackend` (backend URL and key). Backends are
+  the catalog's settings list for the chain, titled by host, the first marked
+  default. Every family with more than one network groups its endpoints by
+  network and reports `networkMode` in diagnostics JSON. The address book opens
+  on the catalog's first mainnet. Copy that named a chain now formats the
+  chain's name, and the Etherscan note describes the rule instead of a list.
+  The custom Esplora list is split by core's `parse_bitcoin_esplora_endpoints`,
+  exported for it, rather than by two copies in the views.
+- **Why:** rule 2. Each switch arm stood in for a registry fact, and three of the
+  four disagreed with the fact they stood in for.
+- **CLI check:** `spectra --json chains` reports `needsApiKey` true for BNB
+  Chain, Hyperliquid, Linea, Sei, opBNB and Sonic, and false for Ethereum;
+  `cargo test -p spectra_core the_etherscan_key_belongs_to_the_chains_whose_history_needs_it`.
+  `scripts/swift-shell-literals.sh` fails on a chain named by spelling in the
+  app.
+
+### Core writes an EVM receipt's cost onto the record (2026-09-16)
+
+- **Before:** the EVM client decoded `gasUsed` and `effectiveGasPrice` from
+  every receipt, and the pending poll dropped both. `receipt_gas_used`,
+  `receipt_effective_gas_price_gwei` and `receipt_network_fee_eth` were cleared
+  on every pending pass and written by nothing, so the transaction sheet's "Gas
+  Used", "Effective Gas Price" and "Network Fee" rows never appeared. The fee's
+  name said ETH on every EVM chain.
+  **After:** `EvmReceiptCost` travels on the poll's resolution and is stored
+  when the receipt resolves: gas used, the price in gwei, and `gas × price` in
+  the chain's gas token at its native decimals. The column is
+  `receipt_network_fee`; the record's stored shape changed outright.
+- **Why:** the data was already fetched; the rows existed to show it. A column
+  with no writer is the dual of the projection with no reader.
+- **CLI check:** none shows receipts offline. `cargo test -p spectra_core
+  audit_fix5_owned_pending_maintenance_uses_recorded_network_after_settings_change`
+  now asserts 21000 gas at 1 wei is stored as such, and
+  `a_receipt_cost_needs_both_fields_and_uses_the_gas_token_places` covers the
+  conversion.
+
+### The five platform preferences live in UserDefaults; core's key/value blob is gone (2026-09-16)
+
+- **Before:** hiding balances, Face ID, auto-lock and biometric-gated sends were
+  a JSON blob core stored for the app through `WalletService::save_state` /
+  `load_state` in a `state` table, loaded after launch; appearance, which must
+  be known before the first frame, was in `UserDefaults`. Until the blob loaded
+  the dashboard showed balances the user had hidden. Two doc comments counted
+  "four" and "five".
+  **After:** all five read synchronously from `UserDefaults` when preferences
+  are created and write back as they change. `save_state`, `load_state`, their
+  SQLite helpers and the `state` table are deleted.
+- **Why:** none of the five is a domain fact — a CLI has no Face ID and no
+  dashboard — so core held them only as storage, through two exports nothing
+  else used, and the asynchronous load was a privacy bug for the one that
+  matters on first render.
+- **CLI check:** none applies; `scripts/unreachable-exports.sh` and
+  `scripts/count-exports.sh` show the two methods gone.
+
+### The app's shell no longer crashes on core lookups, caches key candidates, or names what the registry knows (2026-09-16)
+
+- **Before:**
+  - `AppEndpointDirectory` called `preconditionFailure` if the endpoint catalog
+    did not load, and on any failed lookup by record id or by chain; a derivation
+    path that did not resolve was a `fatalError` in `Chain.resolve(path:)`,
+    whose only reader labels a reserved receive index on the diagnostics screen.
+  - The key editor asked `core_private_key_hex` on every render — which answered
+    with the normalised key itself — and `CachedCoreHelpers` kept up to 128
+    typed candidates as dictionary keys for the life of the process. The same
+    file cached two registry reads that were already local dictionaries.
+  - Colours were free strings rendered by a switch whose `default` was the
+    accent colour.
+  - `clearPersistedSecureDataOnFreshInstallIfNeeded()` set a marker and cleared
+    nothing; the earlier decision that install state never deletes secrets had
+    left its name and key behind.
+  - The composer's MWEB badge compared the chain name with `"Litecoin"` and the
+    address with two prefixes core already tested in
+    `extra_output_overhead_bytes`. Dogecoin's pending-status events had their own
+    "DOGE …" messages, and every other chain's confirmed message was unlocalized.
+  - `EVMChainContext` had one caller, `addressPreviewText` returned `address`,
+    `clearDeletedWalletDiagnostics` took two parameters it never read, and a
+    "persist wallet state optimistically" phase described writes core makes
+    itself.
+  **After:**
+  - The endpoint directory keeps the load error and the endpoints screen shows
+    it; lookups answer empty. The path label is empty when core cannot resolve.
+  - `core_is_private_key_hex` answers yes or no and the key is not returned or
+    cached; `core_private_key_hex` is internal to the import commit.
+    `CachedCoreHelpers` holds only the wiki tables and seed lengths.
+  - `CatalogColor` is a `uniffi::Enum` parsed from the TOML, so an unknown
+    colour fails the catalog load; the app's switch is exhaustive and a user
+    token without a colour is `nil`.
+  - The marker and its key are gone.
+  - `is_extension_block_send_destination` answers for the badge from
+    `Chain::is_extension_block_destination`, which the fee rule now uses too.
+    One localized message per status event for every chain.
+  - `EVMChainContext`, `core_evm_chain_context` and `EvmChainContextInfo` are
+    deleted; `evm_chains_carry_their_eip155_ids` checks Sepolia's and Hoodi's
+    ids in core, and the iOS test of that name asserts what the app reads.
+    The alias, the parameters and the empty phase are gone.
+  - `app_core_endpoint_records_for_chain`, `core_endpoint_role_mask` and the
+    export of `app_core_endpoints_for_ids` are gone, as are three columns of
+    `AppCoreChainEndpoints` nothing read — `diagnostics_checks`,
+    `broadcast_providers`, `bitcoin_wallet_store` — with the helpers behind them
+    and the five tests that pinned those projections. Endpoint probing is
+    `probe_chain_endpoints`, which never used them.
+- **Why:** each is either a shell deciding something core decides, a copy of a
+  secret held for no reason, or a name with no behaviour behind it.
+- **CLI check:** `cargo test -p spectra_core private_key_editor_normalizes_only_a_complete_hex_key`,
+  `only_litecoin_mweb_destinations_cost_extra_bytes` and
+  `every_deployment_of_a_token_agrees_about_the_token` (colour now typed).
+  `scripts/unreachable-exports.sh` no longer counts `swift/tests` as a caller,
+  so an export kept alive only by an iOS test fails it unless it is listed as a
+  fixture with its reason; `register_owned_address` and `core_wallet_state` are.
+  `scripts/swift-shell-literals.sh` is the new app-side gate.
+- **Verification (this batch):** `make lint` clean; `cargo test --workspace` **810 passed** (five projection-pinning tests deleted, new receipt, colour, Etherscan-column, EIP-155 and MWEB assertions added); `scripts/cli-acceptance.sh` **368 passed**, including `swift-shell-literals.sh`; iPhone 17 Pro `xcodebuild test` **93 passed, zero failures**, including `testEthereumTestNetworksExposeExpectedContextsAndEndpoints`. FFI **146 callables** (69 free functions + 77 methods), zero unreachable with iOS tests no longer counted as callers, zero uncalled; `unused-strings.sh`, `check-design-tokens.sh` and `git diff --check` pass.
+
+### A scanned QR code is read by core, against a chain, with no fallback (2026-09-16)
+
+- **Before:** the send composer's scanner split the payload in the view —
+  trimmed, cut at `?`, cut after `:`, host plus path from `URLComponents` —
+  and returned the first fragment `AddressValidation` accepted on the wallet's
+  network, lowercasing it if the chain was EVM. With no asset selected it
+  returned the first fragment **unvalidated**. Sui's and Aptos's missing `0x`
+  and NEAR's and ICP's case were left for the next reader of the field.
+  **After:** `scanned_send_address(chain, payload)` in `send/flow.rs` builds the
+  candidates (adding the `@chain-id` pin EIP-681 uses), validates each against
+  the chain and returns the first in the form `normalized_send_address`
+  produces. The view resolves the network as before and calls it; with no
+  asset there is no network and nothing is filled in.
+- **Why:** a camera string decides what goes in the send field, and AGENTS.md's
+  rule for addresses is to refuse early and validate before use. The unvalidated
+  fallback was the lenient side of that choice, and the parse was a domain rule
+  `spectra` could not drive.
+- **CLI check:** `spectra --json send scan --chain Bitcoin 'bitcoin:bc1q…?amount=0.1'`
+  returns the bare address; `--chain Ethereum` on an EIP-681 URI returns it
+  lowercased; an address for another chain or a URL with none exits 3. Four
+  `scanned payment payloads` checks in `cli-acceptance.sh`, and
+  `cargo test -p spectra_core scanned_payload`.
+- **Verification:** see the last entry of this batch.
+
+### The send screen's network card is picked by preview shape and says what core does (2026-09-16)
+
+- **Before:** after the UTXO and EVM sections, `SendNetworkStep` made twelve
+  `simpleFeeContent` calls naming Tron, XRP Ledger, Solana, Cardano, Monero,
+  NEAR, Polkadot, Stellar, Internet Computer, Sui, Aptos and TON, each with its
+  own footer sentence; eleven rendered nothing on any screen. Bittensor, which
+  has a shared-path preview, had no call and showed no fee. The sentences said
+  "X transfers", "Stellar payments", "ADA transfers" and, for Monero, described
+  a different behaviour. Tron and Solana each carried a sentence about paying
+  token fees in the gas token; no other token-hosting chain did. Only Dogecoin
+  showed a loading row among the UTXO chains.
+  **After:** one branch per shape — EVM, native UTXO, or everything else, which
+  gets the fee-priority picker and one fee card. The card's sentence comes from
+  `SendBroadcastMode` on the chain identity (`SignsAndBroadcasts`, or
+  `PreparesWithBackend` for Monero and its stagenet); the gas caption appears
+  for any non-native coin, naming the chain's `gasTokenSymbol`; chain-specific
+  lines come from an exhaustive switch over `SendPreview`. Every section shows a
+  loading row while its preview is fetched.
+- **Why:** rule 2 — which chains get a card, and what core does with a send
+  there, are per-chain facts, and the caller-owned list had already disagreed
+  with the registry's `simple_preview_chain` in both directions. Two behaviours
+  get two variants rather than twelve strings.
+- **CLI check:** `spectra --json chains --filter monero` reports
+  `"sendBroadcastMode":"preparesWithBackend"`; `--filter bittensor` reports
+  `"signsAndBroadcasts"`. `cargo test -p spectra_core only_monero_sends_are_prepared_by_a_backend`.
+  The layout itself has no CLI; the iOS suite builds it.
+
+### Fees and gas prices render at the places core picks (2026-09-16)
+
+- **Before:** fees were formatted with a count written at each call site —
+  `%.6f` for Dogecoin and EVM, `%.8f` for the other UTXO chains, `%.2f gwei` for
+  EIP-1559 fees, `%.3f gwei` for a receipt's gas price,
+  `"%.\(feeDecimals ?? 6)f"` on the simple cards and the confirmation step,
+  `"%.8f ETH"` for a receipt's fee on **every** EVM chain whatever its gas
+  token, `"%.6f DOGE"` and `"%.4f DOGE/KB"` in the transaction sheet, and
+  `String(Double)` in the high-risk review, which prints `2.1e-05`.
+  `TransactionRecord.amountText` rendered any amount at `%.4f` and had no reader.
+  **After:** `formattedNetworkFee(_:chain:)` renders a fee with
+  `formatting_asset_amount_display` at the chain's `nativeDecimals` and appends
+  its `gasTokenSymbol`; `formattedGasPrice(gwei:chain:)` does the same for a
+  gwei price. Every site above calls one of them, and `amountText` is deleted.
+- **Why:** one number was shown at a different precision on each screen, and
+  core already owns how many places an amount of an asset deserves. A fee is an
+  amount of the chain's native asset; restating a count per screen is the
+  protocol constant the Stage 3 sweep said was gone.
+- **CLI check:** none renders a fee string. `cargo test -p spectra_core
+  places_follow_the_amount_not_the_chain` pins the rule the fee now goes through.
+
+### Send previews are keyed by the chain's mainnet (2026-09-16)
+
+- **Before:** `SendPreviewStore` keyed previews by display name, except that
+  every EVM chain — testnets and Ethereum Classic included — wrote to
+  `"Ethereum"`. Nine typed accessors read slots by name (`"XRP Ledger"`,
+  `"TON"`, …). A refresh wrote under the holding's chain ("Bitcoin") and a
+  review under the network it resolved ("Bitcoin Testnet4"), so on a UTXO
+  testnet the two landed in different slots.
+  **After:** the slot is `chain.mainnetCounterpart.id`. The typed accessors are
+  gone; callers match on the preview they get for their chain.
+  `preparingChains` holds the same slots and views ask
+  `isPreparingSendPreview(forChainNamed:)`.
+- **Why:** the EVM sharing existed for the accessors, and the composer is on one
+  chain at a time, so it bought nothing but nine names — while the display-name
+  key split one chain's two writers.
+- **CLI check:** none; the store is view state. The iOS suite builds its callers.
+
+### The setup screen's default derivation path is core's (2026-09-16)
+
+- **Before:** `CachedCoreHelpers.chainDerivationPath` re-read the catalog in
+  Swift, picked the default entry, replaced `{account}` with 0 and checked for
+  `m/`. Testnets carry no paths of their own in the catalog, so a selected
+  testnet showed an empty default even though it derives on its mainnet's path.
+  **After:** `Chain.defaultDerivationPath` asks
+  `app_core_resolve_derivation_path(chain, "")`, which resolves testnets through
+  their mainnet and answers `""` for Monero.
+- **Why:** a second resolver of the same template, beside a core one whose own
+  test says every testnet resolves to its mainnet path.
+- **CLI check:** `spectra wallet new --chain "Bitcoin Testnet4" --name T4
+  --no-password`, then `spectra --json wallet show T4`, stores `m/84'/0'/0'/0/0`
+  — the path the screen now shows; `cargo test -p spectra_core
+  every_testnet_resolves_to_its_mainnet_path`.
+
+### A stored history source is named by core (2026-09-16)
+
+- **Before:** `TransactionRecord.historySourceText` mapped six ids —
+  `esplora`, `litecoinspace`, `blockchain.info`, `blockchair`,
+  `dogecoin.providers`, `rpc` — and passed anything else through. Core writes
+  `rpc`, `etherscan`, `rust`, `rust.hd`, `none` and `<chain-id>.providers`, so
+  the sheet showed "History Source: rust", "etherscan" and "none" verbatim, and
+  "DOGE Providers" in untranslated English.
+  **After:** `core_history_source` returns `Provider { name }`,
+  `ChainProviders { chain_name }` or `Internal`, or `None` for blank and `none`.
+  The app shows the name, formats "%@ providers" in the user's language, and
+  omits the row for Spectra's own reader.
+- **Why:** the id is core's, so what it means is core's; the one part that is a
+  sentence stays the app's to translate.
+- **CLI check:** `spectra --json txs` carries `historySource` per record;
+  `scripts/cli-history-source.py` seeds each id core writes and checks it.
+
+### The seed envelope's master key is minted by core (2026-09-16)
+
+- **Before:** `SeedMaterialEnvelope` generated the Keychain master key with
+  `SecRandomCopyBytes` and, when that reported failure, filled the key from
+  `UInt8.random` instead of failing. It restated the length as 32 and refused a
+  stored key of another length itself.
+  **After:** `new_seed_envelope_master_key()` fills `MASTER_KEY_LEN` bytes from
+  `OsRng` and returns an error when it cannot; the app stores what it gets or
+  refuses to seal. A stored key of the wrong length is still never overwritten —
+  core's envelope refuses to seal or open with it.
+- **Why:** the length and the source of the key are the envelope's, and a
+  generator failure on the key every seed is sealed under should refuse, not
+  fall back.
+- **CLI check:** none applies — the CLI seals with a password-derived key, not a
+  Keychain master key. `cargo test -p spectra_core a_minted_master_key_seals_and_is_fresh_each_time`.
+- **Verification (this batch):** `make lint` clean; `cargo test --workspace` **817 passed**; `scripts/cli-acceptance.sh` **367 passed**, including the new scan, broadcast-mode and history-source checks; iPhone 17 Pro `xcodebuild test` **93 passed, zero failures**, including `testEthereumTestNetworksExposeExpectedContextsAndEndpoints`. FFI **149 callables** (70 free functions + 79 methods), zero unreachable, zero uncalled; `unused-strings.sh`, `check-design-tokens.sh` and `git diff --check` pass.
+
+### A stored transaction has a status, and the app carries core's id verbatim (2026-09-16)
+
+- **Before:** `CorePersistedTransactionRecord.status` was optional, and absence
+  meant "legacy row — decide by kind at the read site". Three read sites
+  decided: core's `status_to_raw` read it as confirmed for a send and pending
+  for a receive, core's own `status_string` read it as pending whatever the
+  kind, and the app applied the first rule again in
+  `TransactionRecord.init?(snapshot:)`. The same reader parsed core's id string
+  into a `UUID` and returned `nil` when it did not parse, so `compactMap`
+  dropped that transaction from the history list without saying so.
+  **After:** `status` is required. One function, `CoreTransactionStatus::from_raw`,
+  spells the three names; the kind-based reading survives in exactly one place
+  — the wire record's free-string status, which a provider decoder can still
+  set to something none of the three names. The app's `TransactionRecord.id` is
+  core's string, `init(snapshot:)` cannot fail, and the three adoption sites
+  `map` rather than `compactMap`.
+- **Why:** Rule 0. Spectra is prelaunch, so there are no legacy rows for the
+  optional field to describe — it described a migration that never has to
+  happen, and bought four copies of a rule with it. The id parse was the app
+  deciding, quietly, which of core's transactions exist; core minted UUID-shaped
+  ids *because* of that parse, which its own comment said out loud.
+- **CLI check:** `spectra --json txs` and `spectra send broadcast` round-trip
+  the required field — a stored record without one no longer decodes, which is
+  what `cargo test -p spectra_core transaction_record_roundtrip_omits_none_fields`
+  pins. `an_unknown_wire_status_is_read_by_kind` and
+  `the_three_named_statuses_survive_a_round_trip` cover the one remaining
+  decision.
+- **Verification:** `make verify` clean — 810 Rust, 360 CLI, 93 iOS.
+
+### Which fee priorities exist is core's, not the app's (2026-09-16)
+
+- **Before:** core stored `fee_priority_by_chain` as a free `String` and
+  normalized it on write; the app declared `ChainFeePriorityOption`, a Swift
+  enum with its own `economy` / `normal` / `priority` raw values, and dropped
+  the key itself when the pick was the default — core's rule, held twice.
+  **After:** core owns `FeePriority`, a `uniffi::Enum`, and the setting is a
+  `HashMap<String, FeePriority>`. `parse_fee_priority` is the one place a
+  written-down value is read, for the CLI argument and for a settings file whose
+  map is decoded leniently. The app names the three for a picker and nothing
+  else; `setFeePriority` records the pick, including the default, and adopts the
+  projection core returns without it.
+- **Why:** Rule 0. Two models of one preference, and the typed one was on the
+  side that does not own it — a fourth value could reach the send path from the
+  CLI without the app's enum ever seeing it. The three names are now localized,
+  which they were not: `displayName` returned hardcoded English.
+- **CLI check:** `spectra settings set fee-priority.Dogecoin economy`,
+  `spectra --json settings get fee-priority.Solana` (reads `normal` unset), and
+  `spectra --json settings set fee-priority.Solana lightspeed` (stores the
+  default rather than a name no send path spends) — all three already in
+  `scripts/cli-acceptance.sh`, now driving the typed intent.
+- **Verification:** `make verify` clean — 810 Rust, 360 CLI, 93 iOS.
+
+### Core refuses a seed phrase length it does not define (2026-09-16)
+
+- **Before:** `generate_mnemonic` answered twelve words to any count it did not
+  recognize. Four lists of the five BIP-39 lengths existed to work around that:
+  its own `match`, `seed_phrase_length_warning`, the CLI's `12 | 24` guard, and
+  the app's length picker — which also carried a hand-written 12 → 128 entropy
+  table, and a third copy in the import draft.
+  **After:** `generate_mnemonic` returns `Err` for a non-standard length.
+  `seed_phrase_lengths()` is the exported list, with entropy derived from the
+  word count rather than tabulated (BIP-39 spends 32 bits per three words). The
+  CLI maps core's refusal to its usage exit; the app renders one chip per entry
+  and asks core rather than guarding, so `wallet new --words 18` now works
+  where it used to be refused by an argument check.
+- **Why:** Rule 0, and the funds rule above it: handing back a twelve-word
+  phrase to someone who asked for eighteen is a weaker wallet than they asked
+  for, and no front end could see it happen. The entropy label was a BIP-39
+  fact living in a SwiftUI view.
+- **CLI check:** `spectra wallet new --chain Bitcoin --name "Eighteen Words"
+  --words 18` succeeds; `--words 13` exits usage and names the five lengths.
+- **Verification:** `make verify` clean — 810 Rust, 360 CLI, 93 iOS.
+
+### A read that failed is an error, not a zero balance or an empty history (2026-09-16)
+
+- **Before:** eight network reads answered with a plausible value when the read
+  had not happened. Bittensor and Polkadot reported `0`; six history fetches
+  reported no transactions. **After:** each returns the error.
+- **Why:** Rule 0, and the rule above it for funds — refuse early rather than
+  substitute. This is the shape that hid ExchangeRate.host in the entry below,
+  found by scanning the rest of the decode paths for it, and on a balance it is
+  worse than a stale number: a wallet that cannot read an account does not know
+  the account is empty.
+  - **Bittensor `fetch_balance`** had four ways to zero: no API key, the
+    request failing, `balance_total` absent, and the string not parsing. The
+    first is the default path — `api_keys` starts empty — so a confident
+    `0 TAO` was the standard answer for every Bittensor address in the app.
+    Both Taostats reads now refuse without a key, since neither can be served
+    from the RPC: balance arrives as SCALE-encoded `AccountInfo` this client
+    cannot decode, and there is no on-chain transfer index. `fetch_history`
+    returned `Ok(vec![])` without a key for the same reason it now errors.
+  - **Polkadot `fetch_balance`** caught every Subscan failure with
+    `or_else(|_| Ok(SubscanAccount { balance: "0" }))`, commented "return a
+    default". `subscan_post` also lost the reason for a refusal: Subscan
+    answers `200` with `{"code":<non-zero>,"message":..,"data":null}`, which
+    reached `serde_json::from_value` as `null` and failed with "invalid type:
+    null" — the shape, not the reason. It now reads `code` and reports
+    `message`.
+  - **Six history fetches** ended in `.await.unwrap_or_default()` — Sui in
+    `.unwrap_or(json!({"data": []}))` — which is `?` with the failure erased:
+    Bittensor, NEAR, Cardano, Polkadot, Kaspa, Sui. Stored history survived
+    (`history_upsert_batch` returns early on an empty batch), but the empty
+    answer counted as `wallets_refreshed` in `history_refresh.rs`, so
+    `history_operation.rs` treated the batch as fully successful and stamped
+    the refresh clock. An indexer outage showed an empty list, no error, and no
+    retry until the interval elapsed.
+- **What was checked and left alone:** the broadcast paths are clean — Kaspa
+  tests `error` before returning a txid and Decred's non-optional `txid` makes
+  a refusal fail to decode, so nothing reports a send that did not happen.
+  Etherscan is guarded by `etherscan_result_rows`; `http.rs` rejects every
+  non-2xx, which leaves only `200`-with-an-error-body to handle by hand; the
+  JSON-RPC `call` helpers all test the `error` member. Tron's and Cardano's
+  `unwrap_or(0)` stay: an unactivated TRON account really is `{}` and an unused
+  Koios address really is `[]`, so zero is the answer, not a substitute.
+- **CLI check:** none reaches these without network — `scripts/cli-acceptance.sh`
+  runs offline. `cargo test -p spectra_core balance_tests` covers both refusals
+  against a mock Subscan and Taostats, including that the keyless Bittensor read
+  sends no request at all. The four remaining history sites are plain `?`
+  conversions with no branch to pin.
+
+### Fiat rates come from two providers, not four (2026-09-16)
+
+- **Before:** every fiat refresh asked Open ER, ExchangeRate.host, Frankfurter
+  and Fawaz Ahmed in parallel and merged their answers in that order.
+  **After:** it asks Open ER and Fawaz Ahmed.
+- **Why:** Rule 0 — two of the four were a fallback in name only, and one of
+  them failed in the shape that reads as success. ExchangeRate.host now
+  requires an API key: `GET /live?source=USD&currencies=EUR,AED` answers `200`
+  with `{"success":false,"error":{"code":101,"type":"missing_access_key"}}`,
+  which `quotes: Option<HashMap<..>>` plus `unwrap_or_default()` decoded into
+  an empty map and a `Ok(..)` — so it quoted nothing, every refresh, without
+  appearing among the failures that `fetch_fiat_rates` reports when no provider
+  answers. Frankfurter serves ECB reference rates, which do not list AED, so it
+  could never cover all twelve `FIAT_CURRENCY_CODES`; its `api.frankfurter.app`
+  host also `301`s to `api.frankfurter.dev/v1/` now, and the constant still
+  named the old one, leaving the call alive only because reqwest follows
+  redirects by default. The two kept both quote all eleven non-USD codes,
+  keyless, from independent infrastructure, and agreed to within 0.2% on the
+  day of the cut. Depth beyond that buys nothing here: unlike spot prices,
+  where a second provider lists coins the first does not, every fiat provider
+  quotes the same dozen currencies, and the value refreshes every six hours
+  against a `merge_fiat_rate_updates` that keeps the last good rate when the
+  whole fetch fails.
+- **CLI check:** `spectra currency EUR && spectra refresh` still prints
+  converted amounts; no CLI surface named a fiat provider before or after, and
+  `scripts/cli-acceptance.sh` runs without network, so the removal is covered
+  by `cargo test -p spectra_core fetch::price` (merge policy) rather than by an
+  acceptance case.
+
+### Dead code deleted, and three gates so it stays deleted (2026-09-16)
+
+- **Before:** seven public functions in `core` had no caller, `DiagnosticsContent`
+  shipped seven keys no struct decoded, and `RuntimeStrings` shipped 543 English
+  strings and their two translations for lines no longer in any view.
+  **After:** all of it is gone, and `scripts/cli-acceptance.sh` fails on the
+  next one.
+- **Why:** Rule 0 — none of this was a feature, and each piece read as one. The
+  functions were the worse half: `core_normalize_history`,
+  `core_active_wallet_transaction_ids` (with `WalletChainInput` and
+  `TransactionActivityInput`, which existed only as its arguments),
+  `list_builtin_tokens`, `price_merge_live_updates` and
+  `store_wallet_private_key` were wrappers whose callers had moved on, and
+  `derive_bitcoin_account_xpub_typed` still carried a doc comment calling
+  itself an export after `#[uniffi::export]` and its one Swift call site were
+  both gone. `fetch_evm_history_diagnostics` was a whole parallel path: it
+  built EVM diagnostics rows through `diagnostics_make_evm_error` /
+  `diagnostics_make_evm_success_record` while the live screen built its own in
+  `AppState+History.swift`, so deleting it took `evm_record` and the four-backend
+  table with it. `merge_price_updates` and `PriceMergeOutcome` went the same
+  way: `service::network_prices::apply_price_result` merges spot prices where
+  the fetch result and the last good quote are both in hand, and the older pair
+  survived on its own tests. No behaviour moved — every deletion was a path
+  nothing reached.
+- **Why the two existing gates missed all of it:**
+  `scripts/unreachable-exports.sh` checks the FFI surface and reported zero
+  throughout, correctly: none of these were exported. Below that surface rustc
+  offers nothing — `dead_code` treats a `pub fn` in a lib crate as API and
+  never fires. Shipped copy had no check at all, and `JSONDecoder` ignoring
+  unknown keys means a dead content key cannot even fail at runtime.
+- **The gates:** `scripts/uncalled-core-fns.sh` fails on a `pub fn` in `core`
+  that nothing outside its own definition, a `use` line, a comment or a test
+  names. `scripts/unused-strings.sh` fails on a content key with no field to
+  decode it, a runtime string no source can produce (format specifiers treated
+  as wildcards, since core writes English templates too — see
+  `diagnostics/degraded.rs`), and on locales whose key sets have drifted apart.
+  Both run in `scripts/cli-acceptance.sh` under a `dead weight` section, beside
+  the export check.
+- **CLI check:** `scripts/cli-acceptance.sh` — the `dead weight` section, three
+  checks, all green. Each script also runs standalone and exits non-zero with
+  the offending names when it finds any.
+- **Verification:** `make lint`, `make test` (799 passed), `make test-cli`
+  (359 passed) and `make test-ios` (93 passed). `RuntimeStrings` is 846 keys
+  per locale, down from 1389; the three files total 164 KB, down from 306 KB.
+  `scripts/count-exports.sh` is unchanged at 144 — nothing deleted was on the
+  FFI surface.
+
 ### Testnet tokens live in testnet-tokens.toml (2026-09-15)
 
 - **Before:** `tokens.toml` held all 131 token identities, the 32 faucet coins
@@ -342,7 +806,7 @@ history of work already done. Nothing was dropped in the move.
 - **The Staking section picker (unwrapped):** `detailSectionPicker` wrapped a
   system `.segmented` picker in `padding(6)` plus `spectraCardFill`, stacking
   Spectra glass on the control's own material — the one segmented picker in the
-  app that did so, and against two rules in [iosUI.md](iosUI.md) ("avoid
+  app that did so, and against two rules in [IOS-UI.md](IOS-UI.md) ("avoid
   stacking glass on glass"; leave a standard control the behaviour it already
   provides). It also read as a content card beside the hero and stats cards it
   controls. **After:** `.pickerStyle(.segmented)` alone, sitting on

@@ -168,18 +168,6 @@ pub struct AppCoreGroupedSettingsEntry {
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, uniffi::Record)]
 #[serde(rename_all = "camelCase")]
-pub struct AppCoreDiagnosticsCheck {
-    pub endpoint: String,
-    #[serde(rename = "probeURL")]
-    pub probe_url: String,
-    /// Set when this endpoint carries the catalog's `rpc` role and its chain
-    /// has a health method — probe it with this JSON-RPC call rather than a
-    /// GET against `probe_url`.
-    pub rpc_probe_method: Option<String>,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, uniffi::Record)]
-#[serde(rename_all = "camelCase")]
 pub struct AppCoreExplorerEntry {
     pub endpoint: String,
     pub label: String,
@@ -188,13 +176,6 @@ pub struct AppCoreExplorerEntry {
     /// `core_transaction_explorer_url` — the one thing that export did that a
     /// caller holding this record could not.
     pub tx_suffix: String,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, uniffi::Record)]
-#[serde(rename_all = "camelCase")]
-pub struct AppCoreBroadcastProviderOption {
-    pub id: String,
-    pub title: String,
 }
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, uniffi::Record)]
@@ -230,26 +211,10 @@ pub fn app_core_derivation_paths_for_preset(
     Ok(seed_derivation_paths_for_account(account_index)?)
 }
 
-/// A chain's endpoint records, filtered to the roles asked for.
+/// A chain's endpoint records, filtered to a role mask.
 ///
-/// Takes role *names*. It used to take the bit mask, and the only way to get
-/// one was `core_endpoint_role_mask` — so a caller made a round trip to turn
-/// `["rpc", "balance"]` into a `u32` and handed the `u32` straight back.
-/// Rust callers keep the mask constants; the boundary does not need them.
-#[uniffi::export]
-pub fn app_core_endpoint_records_for_chain(
-    chain_name: String,
-    roles: Vec<String>,
-    settings_visible_only: bool,
-) -> Result<Vec<AppCoreEndpointRecord>, crate::SpectraBridgeError> {
-    endpoint_records_for_chain_masked(
-        chain_name,
-        core_endpoint_role_mask(roles),
-        settings_visible_only,
-    )
-}
-
-/// The same, for Rust callers that already hold the mask constants.
+/// Was also exported with role *names*, for an app wrapper that nothing
+/// called; the CLI and core pass the mask constants.
 pub fn endpoint_records_for_chain_masked(
     chain_name: String,
     role_mask: u32,
@@ -275,13 +240,9 @@ pub struct AppCoreChainEndpoints {
     pub explorer_supplemental: Vec<String>,
     /// What the settings screen shows, grouped by network.
     pub grouped_settings: Vec<AppCoreGroupedSettingsEntry>,
-    pub diagnostics_checks: Vec<AppCoreDiagnosticsCheck>,
     pub transaction_explorer: Option<AppCoreExplorerEntry>,
-    pub broadcast_providers: Vec<AppCoreBroadcastProviderOption>,
     /// Esplora bases, for the Bitcoin family. Empty elsewhere.
     pub bitcoin_esplora: Vec<String>,
-    /// Wallet-store defaults, for the Bitcoin family. Empty elsewhere.
-    pub bitcoin_wallet_store: Vec<String>,
 }
 
 /// The endpoint catalog, one row per chain, in catalog order.
@@ -312,12 +273,8 @@ pub fn app_core_chain_endpoints() -> Result<Vec<AppCoreChainEndpoints>, crate::S
                     .map(|r| r.endpoint)
                     .collect(),
                 grouped_settings: grouped_settings_entries(catalog, &name),
-                diagnostics_checks: diagnostics_checks(catalog, &name),
                 transaction_explorer: transaction_explorer_entry(catalog, &name),
-                broadcast_providers: broadcast_provider_options(&name),
                 bitcoin_esplora: bitcoin_esplora_base_urls(catalog, &id).unwrap_or_default(),
-                bitcoin_wallet_store: bitcoin_wallet_store_default_base_urls(catalog, &id)
-                    .unwrap_or_default(),
                 chain_id: id,
                 chain_name: name,
             }
@@ -325,7 +282,11 @@ pub fn app_core_chain_endpoints() -> Result<Vec<AppCoreChainEndpoints>, crate::S
         .collect())
 }
 
-#[uniffi::export]
+/// Endpoints for catalog record ids, in the order asked.
+///
+/// Not exported: the app's only call named three Monero backend ids and three
+/// display names beside them. It reads the catalog's settings list for the
+/// chain now, which is where those three already were.
 pub fn app_core_endpoints_for_ids(
     ids: Vec<String>,
 ) -> Result<Vec<String>, crate::SpectraBridgeError> {
@@ -496,42 +457,6 @@ fn grouped_settings_entries(
         .collect()
 }
 
-/// Every endpoint of a chain that can be checked, and how to check it.
-///
-/// A record qualifies two ways: it carries a `probe_url` to GET, or it is an
-/// RPC endpoint on a chain with a health method, in which case the JSON-RPC
-/// call goes to the endpoint itself and no probe URL is needed.
-///
-/// That second clause is what merged the two endpoint-diagnostics paths. This
-/// used to require a `probe_url`, and no EVM RPC record has one — so twelve
-/// mainnets had an empty list here and were probed instead by
-/// `evmEndpointChecks` in Swift, reading `evm_rpc` off the same catalog and
-/// running its own `probeEthereumRPC`. One catalog, two slices, two probes.
-fn diagnostics_checks(catalog: &AppCoreCatalog, chain_name: &str) -> Vec<AppCoreDiagnosticsCheck> {
-    let health_method = crate::registry::Chain::from_display_name(chain_name)
-        .and_then(crate::registry::Chain::rpc_health_method);
-    endpoint_records_for_chain(catalog, chain_name, 0, false)
-        .into_iter()
-        .filter_map(|record| {
-            let is_rpc = record.kind == "rpc-node";
-            let rpc_probe_method = is_rpc
-                .then_some(health_method)
-                .flatten()
-                .map(str::to_string);
-            // An RPC endpoint is probed by POSTing to itself, so `probe_url`
-            // stands in as the endpoint and the RPC branch ignores it.
-            let probe_url = record
-                .probe_url
-                .or_else(|| rpc_probe_method.is_some().then(|| record.endpoint.clone()))?;
-            Some(AppCoreDiagnosticsCheck {
-                endpoint: record.endpoint,
-                probe_url,
-                rpc_probe_method,
-            })
-        })
-        .collect()
-}
-
 fn transaction_explorer_entry(
     catalog: &AppCoreCatalog,
     chain_name: &str,
@@ -650,14 +575,6 @@ pub fn app_core_endpoint_tag(endpoint: String) -> Option<AppCoreEndpointTag> {
             kind: r.kind.clone(),
             capabilities: r.capabilities.clone(),
         })
-}
-
-/// Not exported: the boundary takes role names, and this is how they become a
-/// mask on this side.
-pub fn core_endpoint_role_mask(roles: Vec<String>) -> u32 {
-    roles
-        .iter()
-        .fold(0u32, |mask, role| mask | endpoint_role_bit(role))
 }
 
 // ── Derivation paths ──────────────────────────────────────────────
@@ -869,100 +786,6 @@ pub(crate) fn core_derivation_path_replacing_last_two(
 
 // ── Registry-backed catalog lookups ───────────────────────────────
 
-pub(super) fn broadcast_provider_options(chain_name: &str) -> Vec<AppCoreBroadcastProviderOption> {
-    let resolved = crate::registry::Chain::from_display_name(chain_name)
-        .map(|c| c.mainnet_counterpart().chain_display_name())
-        .unwrap_or(chain_name);
-    let pairs: &[(&str, &str)] = match resolved {
-        "Bitcoin" => &[
-            ("esplora", "Esplora"),
-            ("maestro-esplora", "Maestro Esplora"),
-        ],
-        "Bitcoin Cash" => &[
-            ("blockchair", "Blockchair"),
-            ("actorforth", "ActorForth REST"),
-        ],
-        "Bitcoin SV" => &[
-            ("whatsonchain", "WhatsOnChain"),
-            ("blockchair", "Blockchair"),
-        ],
-        "Litecoin" => &[
-            ("litecoinspace", "LitecoinSpace"),
-            ("blockcypher", "BlockCypher"),
-        ],
-        "Dogecoin" => &[("blockcypher", "BlockCypher")],
-        "Tron" => &[
-            ("trongrid-io", "TronGrid"),
-            ("trongrid-pro", "TronGrid Pro"),
-            ("trongrid-network", "TronGrid Network"),
-        ],
-        "Solana" => &[
-            ("solana-mainnet-beta", "Solana Mainnet RPC"),
-            ("solana-ankr", "Ankr Solana RPC"),
-        ],
-        "Cardano" => &[
-            ("koios", "Koios"),
-            ("xray-koios", "Xray Koios"),
-            ("happystaking-koios", "HappyStake Koios"),
-        ],
-        "XRP Ledger" => &[
-            ("ripple-s1", "Ripple RPC S1"),
-            ("ripple-s2", "Ripple RPC S2"),
-            ("xrplcluster", "XRPL Cluster"),
-        ],
-        "Stellar" => &[
-            ("stellar-horizon", "Stellar Horizon"),
-            ("lobstr-horizon", "LOBSTR Horizon"),
-        ],
-        "Monero" => &[
-            ("edge-lws-1", "Edge Monero LWS 1"),
-            ("edge-lws-2", "Edge Monero LWS 2"),
-            ("edge-lws-3", "Edge Monero LWS 3"),
-        ],
-        "Sui" => &[
-            ("sui-mainnet", "Sui Mainnet"),
-            ("sui-publicnode", "PublicNode Sui"),
-            ("sui-blockvision", "BlockVision Sui"),
-            ("sui-blockpi", "BlockPI Sui"),
-            ("sui-suiscan", "SuiScan RPC"),
-        ],
-        "Aptos" => &[
-            ("aptoslabs-api", "Aptos Labs API"),
-            ("blastapi-aptos", "BlastAPI Aptos"),
-            ("aptoslabs-mainnet", "Aptos Mainnet"),
-        ],
-        "TON" => &[("ton-api-v2", "TON API v2")],
-        "Internet Computer" => &[("rosetta", "Rosetta")],
-        "NEAR" => &[
-            ("near-mainnet-rpc", "NEAR Mainnet RPC"),
-            ("fastnear-rpc", "FastNEAR RPC"),
-            ("lava-near-rpc", "Lava NEAR RPC"),
-        ],
-        "Polkadot" => &[("sidecar", "Sidecar")],
-        "Zcash" => &[("trezor-blockbook", "Trezor Blockbook")],
-        "Bitcoin Gold" => &[("trezor-blockbook", "Trezor Blockbook")],
-        "Decred" => &[("dcrdata", "dcrdata Insight")],
-        "Kaspa" => &[("kaspaorg", "api.kaspa.org")],
-        "Dash" => &[("trezor-blockbook", "Trezor Blockbook")],
-        "Bittensor" => &[("opentensor", "OpenTensor RPC")],
-        // Every EVM chain broadcasts through its RPC. This was two arms of
-        // thirteen and ten names — the twenty-three mainnets split by whichever
-        // half the author was looking at — and a twenty-fourth would have
-        // reached `_ => &[]`: no broadcast provider at all.
-        name if crate::registry::Chain::from_display_name(name).is_some_and(|c| c.is_evm()) => {
-            &[("rpc", "RPC Broadcast")]
-        }
-        _ => &[],
-    };
-    pairs
-        .iter()
-        .map(|(id, title)| AppCoreBroadcastProviderOption {
-            id: (*id).to_string(),
-            title: (*title).to_string(),
-        })
-        .collect()
-}
-
 // ── Bitcoin URL groups ────────────────────────────────────────────────────
 
 pub(super) fn bitcoin_esplora_base_urls(
@@ -979,24 +802,6 @@ pub(super) fn bitcoin_esplora_base_urls(
         "bitcoin-testnet" => &["bitcoin.testnet.blockstream", "bitcoin.testnet.mempool"],
         "bitcoin-testnet-4" => &["bitcoin.testnet4.mempool"],
         "bitcoin-signet" => &["bitcoin.signet.blockstream", "bitcoin.signet.mempool"],
-        _ => return Err(format!("Not a Bitcoin network: {chain_id}")),
-    };
-    endpoints_for_known_ids(catalog, ids)
-}
-
-pub(super) fn bitcoin_wallet_store_default_base_urls(
-    catalog: &AppCoreCatalog,
-    chain_id: &str,
-) -> Result<Vec<String>, String> {
-    let ids: &[&str] = match chain_id {
-        "bitcoin" => &[
-            "bitcoin.mainnet.blockstream",
-            "bitcoin.mainnet.mempool",
-            "bitcoin.mainnet.maestro",
-        ],
-        "bitcoin-testnet" => &["bitcoin.testnet.blockstream", "bitcoin.testnet.mempool"],
-        "bitcoin-testnet-4" => &["bitcoin.testnet4.mempool"],
-        "bitcoin-signet" => &["bitcoin.signet.mempool"],
         _ => return Err(format!("Not a Bitcoin network: {chain_id}")),
     };
     endpoints_for_known_ids(catalog, ids)
@@ -1122,146 +927,6 @@ mod endpoint_network_index_tests {
                 record.group_title
             );
         }
-    }
-}
-
-#[cfg(test)]
-mod rpc_health_probes {
-    /// Which endpoints get a JSON-RPC probe comes from the catalog's `rpc`
-    /// role, not from a list in Swift.
-    ///
-    /// Two hand-written id lists decided this —
-    /// `NearBalanceService.rpcEndpointCatalog` named three ids and
-    /// `PolkadotBalanceService.sidecarEndpointCatalog` named one, tested
-    /// inverted. Both agreed with the catalog when they were written. Adding a
-    /// provider meant editing `endpoints.toml` and remembering the
-    /// Swift list; forgetting it probes a JSON-RPC node with a GET, which many
-    /// answer 405 and this reports as unreachable.
-    #[test]
-    fn the_catalog_decides_which_endpoints_are_rpc() {
-        let catalog = super::load_app_core_catalog().expect("catalog");
-        let mut checked_any = false;
-
-        // Named endpoints used to stand here — `near.lava.build`, Polkadot's
-        // `dotters` and `ibp.network` — and all three have since gone dead and
-        // been removed, which broke a test whose subject was the rule and not
-        // those hosts. The rule, asserted over whatever the catalog holds: a
-        // record with the `rpc` role on a chain with a health method gets that
-        // method, and a record without the role never does.
-        for chain in crate::registry::Chain::all().filter(|c| !c.is_testnet()) {
-            let Some(method) = chain.rpc_health_method() else {
-                continue;
-            };
-            let name = chain.chain_display_name();
-            let records = super::endpoint_records_for_chain(&catalog, name, 0, false);
-            for check in super::diagnostics_checks(&catalog, name) {
-                let Some(record) = records.iter().find(|r| r.endpoint == check.endpoint) else {
-                    continue;
-                };
-                let is_rpc = record.kind == "rpc-node";
-                checked_any = true;
-                if is_rpc {
-                    assert_eq!(
-                        check.rpc_probe_method.as_deref(),
-                        Some(method),
-                        "{name} {} carries the rpc role and must be probed as one",
-                        check.endpoint
-                    );
-                } else {
-                    assert_eq!(
-                        check.rpc_probe_method, None,
-                        "{name} {} is not an rpc node and must keep its GET probe",
-                        check.endpoint
-                    );
-                }
-            }
-        }
-        assert!(
-            checked_any,
-            "no chain with a health method had any endpoint"
-        );
-    }
-
-    /// Every mainnet with catalog endpoints has something to check.
-    ///
-    /// `diagnostics_checks` used to require a `probe_url`, and no EVM RPC
-    /// record has one, so twelve mainnets answered with an empty list —
-    /// Arbitrum, Optimism, Avalanche, Base, Ethereum Classic, Hyperliquid,
-    /// Polygon, Linea, Scroll, Blast, Mantle and Monero. Their endpoints
-    /// screens were not blank, because Swift probed them down a second path
-    /// (`evmEndpointChecks` over `evm_rpc`, with its own `probeEthereumRPC`
-    /// and its own hardcoded explorer URLs). That path is gone; this is the
-    /// assertion that keeps the one that replaced it honest.
-    #[test]
-    fn every_mainnet_with_endpoints_has_something_to_check() {
-        let catalog = super::load_app_core_catalog().expect("catalog");
-        for chain in crate::registry::Chain::all().filter(|c| !c.is_testnet()) {
-            let name = chain.chain_display_name();
-            // Monero is checked against the backend URL in settings, not the
-            // catalog, so it is the one mainnet with no catalog endpoints.
-            if chain == crate::registry::Chain::Monero {
-                continue;
-            }
-            assert!(
-                !super::diagnostics_checks(&catalog, name).is_empty(),
-                "{name} has no endpoint diagnostics"
-            );
-        }
-    }
-
-    /// A chain with no health method never asks for a JSON-RPC probe.
-    #[test]
-    fn a_chain_without_a_health_method_probes_over_http() {
-        let catalog = super::load_app_core_catalog().expect("catalog");
-        for chain in crate::registry::Chain::all().filter(|c| c.rpc_health_method().is_none()) {
-            for check in super::diagnostics_checks(&catalog, chain.chain_display_name()) {
-                assert_eq!(
-                    check.rpc_probe_method,
-                    None,
-                    "{} {}",
-                    chain.chain_display_name(),
-                    check.endpoint
-                );
-            }
-        }
-    }
-}
-
-#[cfg(test)]
-mod broadcast_provider_coverage {
-    use super::broadcast_provider_options;
-    use crate::registry::Chain;
-
-    /// Every chain that can be sent from offers somewhere to broadcast it.
-    ///
-    /// The EVM arm was two hand-written halves; a chain outside both fell to
-    /// `_ => &[]` and the send screen had no provider to name.
-    #[test]
-    fn every_sendable_chain_names_a_broadcast_provider() {
-        for chain in Chain::all() {
-            if !chain.has_send_preview() {
-                continue;
-            }
-            let options = broadcast_provider_options(chain.chain_display_name());
-            assert!(
-                !options.is_empty(),
-                "{} can be sent from but offers no broadcast provider",
-                chain.chain_display_name()
-            );
-        }
-    }
-
-    /// A testnet folds onto its mainnet's providers rather than needing rows.
-    #[test]
-    fn a_testnet_reads_its_mainnets_providers() {
-        assert_eq!(
-            broadcast_provider_options("Ethereum Sepolia"),
-            broadcast_provider_options("Ethereum")
-        );
-        assert_eq!(
-            broadcast_provider_options("Bitcoin Testnet4"),
-            broadcast_provider_options("Bitcoin")
-        );
     }
 }
 

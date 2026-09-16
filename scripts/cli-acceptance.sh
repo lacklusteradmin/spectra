@@ -95,6 +95,11 @@ contains "resolves a network by name"  '"nativeSymbol":"BTC"' \
     spectra --json chains --filter bitcoin
 contains "hides testnets by default"   '"chains":[]' \
     spectra --json chains --filter "bitcoin testnet"
+# The network card's sentence: one variant per behaviour, not one string per chain.
+contains "Monero sends are prepared by the backend" '"sendBroadcastMode":"preparesWithBackend"' \
+    spectra --json chains --filter monero
+contains "Bittensor claims in-app signing like its peers" '"sendBroadcastMode":"signsAndBroadcasts"' \
+    spectra --json chains --filter bittensor
 
 # ── Address validation ──────────────────────────────────────────────────────
 #
@@ -124,6 +129,18 @@ check "refuses a broken EIP-55 checksum"    $REJECTED \
 check "accepts the unchecksummed lower-case form" $OK \
     spectra address validate --chain Ethereum 0x742d35cc6634c0532925a3b844bc454e4438f44e
 
+# The send composer's QR scanner. It parsed payment URIs in the iOS view and,
+# with no asset selected, put the first fragment in the send field unvalidated.
+section "scanned payment payloads"
+contains "reads the address out of a BIP-21 URI" '"address":"bc1qw508d6qejxtdg4y5r3zarvary0c5xw7kv8f3t4"' \
+    spectra --json send scan --chain Bitcoin 'bitcoin:bc1qw508d6qejxtdg4y5r3zarvary0c5xw7kv8f3t4?amount=0.1&label=Shop'
+contains "reads an EIP-681 URI and returns the stored form" '"address":"0x742d35cc6634c0532925a3b844bc454e4438f44e"' \
+    spectra --json send scan --chain Ethereum 'ethereum:0x742d35Cc6634C0532925a3b844Bc454e4438f44e@1/transfer?value=1'
+check "refuses an address for another chain" $REJECTED \
+    spectra send scan --chain Ethereum bc1qw508d6qejxtdg4y5r3zarvary0c5xw7kv8f3t4
+check "refuses a payload with no address"    $REJECTED \
+    spectra send scan --chain Bitcoin 'https://example.com/pay?to=someone'
+
 # ── Wallet lifecycle ────────────────────────────────────────────────────────
 
 section "wallet lifecycle"
@@ -131,8 +148,14 @@ check "creates a wallet"                    $OK \
     spectra wallet new --chain Bitcoin --name "Acceptance BTC"
 contains "stores the catalog derivation path" "m/84'/0'/0'/0/0" \
     spectra --json wallet show "Acceptance BTC"
-check "refuses a seed length that is not 12 or 24" $USAGE \
-    spectra wallet new --chain Bitcoin --name Bad --words 18
+# The five BIP-39 lengths are core's list. `generate_mnemonic` answered twelve
+# words to every count it did not recognize, so this command carried its own
+# `12 | 24` guard and the app carried a third copy next to its entropy table.
+check "creates a wallet at a non-default BIP-39 length" $OK \
+    spectra wallet new --chain Bitcoin --name "Eighteen Words" --words 18
+contains_exit $USAGE "refuses a length BIP-39 does not define, naming the five" \
+    "12, 15, 18, 21 or 24" \
+    spectra wallet new --chain Bitcoin --name Bad --words 13
 check "imports a known mnemonic"            $OK \
     with_seed "legal winner thank year wave sausage worth useful legal winner thank yellow" \
     spectra wallet import --chain Solana --name "Acceptance SOL"
@@ -869,15 +892,26 @@ section "token discovery"
 contains_exit 1 "and says so rather than reporting an empty wallet" "cannot enumerate holdings" \
     spectra token discover --wallet "Renamed BTC"
 
-# ── FFI surface ─────────────────────────────────────────────────────────────
+# ── Dead weight ─────────────────────────────────────────────────────────────
 #
 # An export nothing calls still costs: it is generated into the bindings, it
 # has to keep compiling, and it reads as API. Three had been unreachable long
 # enough that two of them were only kept alive by their own tests.
+#
+# Below the FFI surface the same rot has no lint at all: `dead_code` treats a
+# `pub fn` in a lib crate as API and never fires, so a function can lose its
+# last caller and keep compiling. Seven had. Shipped copy is the third shape —
+# `resources/` ships whether or not anything reads it.
 
-section "ffi surface"
+section "dead weight"
 check "no export is unreachable from both front ends" $OK \
     "$(cd "$(dirname "$0")" && pwd)/unreachable-exports.sh"
+check "no public core function is uncalled" $OK \
+    "$(cd "$(dirname "$0")" && pwd)/uncalled-core-fns.sh"
+check "no shipped string is unread" $OK \
+    "$(cd "$(dirname "$0")" && pwd)/unused-strings.sh"
+check "the app names no chain by spelling and fixes no amount precision" $OK \
+    "$(cd "$(dirname "$0")" && pwd)/swift-shell-literals.sh"
 
 section "settings"
 check "lists the settings core owns"        $OK spectra settings list
@@ -1120,6 +1154,8 @@ check "naming, receive, durable movement and configured staking" $OK \
 section "Remaining shell boundaries"
 check "exact derivation input and owned refresh intents" $OK \
     python3 "$(dirname "$0")/cli-shell-boundary.py" "$BIN"
+check "stored history sources are named by core" $OK \
+    python3 "$(dirname "$0")/cli-history-source.py" "$BIN"
 
 # ── Result ──────────────────────────────────────────────────────────────────
 

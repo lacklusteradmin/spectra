@@ -43,11 +43,12 @@ pub struct CorePersistedTransactionRecord {
     pub wallet_id: Option<String>,
     /// Swift `TransactionKind`: `"send"` or `"receive"`.
     pub kind: CoreTransactionKind,
-    /// Swift `TransactionStatus`: `"pending"` / `"confirmed"` / `"failed"`.
-    /// Legacy records without a status default to `"pending"` for receives and
-    /// `"confirmed"` for sends — replicate that fallback at the read site.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub status: Option<CoreTransactionStatus>,
+    /// Whether the transaction is pending, confirmed or failed.
+    ///
+    /// Not optional: a record with no status used to mean "legacy row, decide
+    /// by kind at the read site", and every read site that forgot got a
+    /// different answer — the app read it one way and core another.
+    pub status: CoreTransactionStatus,
     pub wallet_name: String,
     pub asset_display_name: String,
     pub symbol: String,
@@ -65,7 +66,7 @@ pub struct CorePersistedTransactionRecord {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub receipt_effective_gas_price_gwei: Option<f64>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub receipt_network_fee_eth: Option<f64>,
+    pub receipt_network_fee: Option<f64>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub fee_priority_raw: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -104,13 +105,14 @@ mod tests {
 
     #[test]
     fn transaction_record_roundtrip_omits_none_fields() {
-        // Minimal encoded shape for a received record — mirrors what Swift's
-        // vanilla JSONEncoder produces (no null fields, createdAt as seconds
-        // since 2001-01-01 UTC).
-        let json = r#"{"id":"A1B2C3D4-E5F6-7890-ABCD-EF1234567890","kind":"receive","walletName":"Main","assetDisplayName":"Bitcoin","symbol":"BTC","chainName":"Bitcoin","amount":0.5,"address":"bc1qreceive","createdAt":745200000.0}"#;
+        // Minimal encoded shape for a received record: no null fields, and
+        // createdAt as seconds since 2001-01-01 UTC. `status` is one of the
+        // required fields — it was optional, and absence meant "decide by
+        // kind at the read site", which the app and core decided differently.
+        let json = r#"{"id":"A1B2C3D4-E5F6-7890-ABCD-EF1234567890","kind":"receive","status":"pending","walletName":"Main","assetDisplayName":"Bitcoin","symbol":"BTC","chainName":"Bitcoin","amount":0.5,"address":"bc1qreceive","createdAt":745200000.0}"#;
         let decoded: CorePersistedTransactionRecord = serde_json::from_str(json).unwrap();
         assert_eq!(decoded.kind, CoreTransactionKind::Receive);
-        assert!(decoded.status.is_none());
+        assert_eq!(decoded.status, CoreTransactionStatus::Pending);
         assert_eq!(decoded.created_at, 745200000.0);
         let reencoded = serde_json::to_string(&decoded).unwrap();
         assert_eq!(reencoded, json);
@@ -126,7 +128,7 @@ mod tests {
             id: "11111111-2222-3333-4444-555555555555".to_string(),
             wallet_id: None,
             kind: CoreTransactionKind::Receive,
-            status: None,
+            status: CoreTransactionStatus::Pending,
             wallet_name: "Main".to_string(),
             asset_display_name: "Bitcoin".to_string(),
             symbol: "BTC".to_string(),
@@ -138,7 +140,7 @@ mod tests {
             receipt_block_number: None,
             receipt_gas_used: None,
             receipt_effective_gas_price_gwei: None,
-            receipt_network_fee_eth: None,
+            receipt_network_fee: None,
             fee_priority_raw: None,
             fee_rate_description: None,
             confirmation_count: None,
@@ -162,7 +164,7 @@ mod tests {
         let original = CorePersistedTransactionRecord {
             wallet_id: Some("wallet-1".to_string()),
             kind: CoreTransactionKind::Send,
-            status: Some(CoreTransactionStatus::Confirmed),
+            status: CoreTransactionStatus::Confirmed,
             asset_display_name: "Ethereum".to_string(),
             symbol: "ETH".to_string(),
             chain_name: "Ethereum".to_string(),
@@ -173,7 +175,7 @@ mod tests {
             receipt_block_number: Some(20_000_000),
             receipt_gas_used: Some("21000".to_string()),
             receipt_effective_gas_price_gwei: Some(25.5),
-            receipt_network_fee_eth: Some(0.000535),
+            receipt_network_fee: Some(0.000535),
             fee_priority_raw: Some("standard".to_string()),
             confirmation_count: Some(12),
             used_change_output: Some(true),

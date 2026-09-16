@@ -89,7 +89,6 @@ mod maintenance;
 mod network;
 mod network_balance;
 mod network_hd;
-pub use network_hd::derive_bitcoin_account_xpub_typed;
 mod network_history;
 mod network_prices;
 pub use network_prices::{fetch_fiat_rates_typed, fetch_prices_typed, QuoteRefreshState};

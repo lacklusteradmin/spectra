@@ -298,22 +298,3 @@ impl WalletService {
         .await
     }
 }
-
-impl WalletService {
-    /// Store a raw private key, sealed under `password` when one is given.
-    pub fn store_wallet_private_key(
-        &self,
-        wallet_id: String,
-        private_key: String,
-        password: Option<String>,
-    ) -> Result<(), SpectraBridgeError> {
-        let store = self.secrets()?;
-        crate::store::wallet_secrets::store_private_key(
-            &*store,
-            &wallet_id,
-            &private_key,
-            password.as_deref(),
-        )
-        .map_err(|e| SpectraBridgeError::from(e.to_string()))
-    }
-}

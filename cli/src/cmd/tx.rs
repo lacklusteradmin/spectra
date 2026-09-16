@@ -135,6 +135,8 @@ pub enum SendCommand {
     Probe(ProbeArgs),
     /// Resolve what was typed into the address a send would go to.
     Destination(DestinationArgs),
+    /// Read the address a scanned QR payload carries for a chain, offline.
+    Scan(ScanArgs),
     /// Ask whether a send can land once the fee is counted.
     Affordability(AffordabilityArgs),
     /// Validate custom EVM gas fees in gwei, without keys or network.
@@ -277,6 +279,7 @@ pub fn run(ctx: &Ctx, out: Out, command: SendCommand) -> CliResult<()> {
         SendCommand::Assemble(args) => assemble(ctx, out, args),
         SendCommand::Probe(args) => probe(ctx, out, args),
         SendCommand::Destination(args) => destination(ctx, out, args),
+        SendCommand::Scan(args) => scan(out, args),
         SendCommand::Affordability(args) => affordability(out, args),
         SendCommand::Fees(args) => fees(out, args),
         SendCommand::Overrides(args) => overrides(out, args),
@@ -685,6 +688,43 @@ pub struct DestinationArgs {
 /// Whether a `.eth` name is looked up is the chain's, not the caller's, so
 /// this needs no flag to say "try ENS": ask any other chain and the name is
 /// refused without a request leaving the machine.
+#[derive(Args)]
+pub struct ScanArgs {
+    /// Chain the send is on. Required: a payload is only an address once a
+    /// chain has judged it.
+    #[arg(long)]
+    chain: String,
+    /// The scanned text — a bare address or a payment URI.
+    payload: String,
+}
+
+/// The composer's scanner, without a camera. Exit 3 when the payload carries no
+/// address this chain accepts, so a script can assert the refusal.
+fn scan(out: Out, args: ScanArgs) -> CliResult<()> {
+    let chain = resolve_chain(&args.chain)?;
+    let Some(address) = spectra_core::send::flow::scanned_send_address(
+        chain.chain_display_name().to_string(),
+        args.payload.clone(),
+    ) else {
+        return Err(CliError::rejected(format!(
+            "no {} address in that payload",
+            chain.chain_display_name()
+        )));
+    };
+    out.text(|| {
+        println!();
+        out::field("scanned", &args.payload);
+        out::field("address", &address);
+    });
+    out.emit(serde_json::json!({
+        "ok": true,
+        "chain": chain.chain_display_name(),
+        "payload": args.payload,
+        "address": address,
+    }));
+    Ok(())
+}
+
 fn destination(ctx: &Ctx, out: Out, args: DestinationArgs) -> CliResult<()> {
     let chain = resolve_chain(&args.chain)?;
     // Only the name lookup needs a node, and only the chain that registers
@@ -953,6 +993,21 @@ pub fn txs(ctx: &Ctx, out: Out, args: TxsArgs) -> CliResult<()> {
                 "symbol": record.symbol,
                 "chain": record.chain_name,
                 "address": record.address,
+                // What the detail sheet's "History Source" row shows, as the
+                // app reads it: a proper noun, a chain's provider set, or
+                // Spectra's own reader, which the row does not name.
+                "historySource": record
+                    .transaction_history_source
+                    .clone()
+                    .and_then(spectra_core::fetch::transactions::core_history_source)
+                    .map(|source| match source {
+                        spectra_core::fetch::transactions::HistorySource::Provider { name } =>
+                            serde_json::json!({"provider": name}),
+                        spectra_core::fetch::transactions::HistorySource::ChainProviders { chain_name } =>
+                            serde_json::json!({"chainProviders": chain_name}),
+                        spectra_core::fetch::transactions::HistorySource::Internal =>
+                            serde_json::json!("internal"),
+                    }),
             }))
             .collect::<Vec<_>>(),
     }));

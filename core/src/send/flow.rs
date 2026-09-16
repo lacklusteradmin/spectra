@@ -12,6 +12,7 @@ pub struct EvmReceiptClassification {
     pub is_confirmed: bool,
     pub is_failed: bool,
     pub block_number: Option<i64>,
+    pub cost: Option<crate::store::EvmReceiptCost>,
 }
 
 /// Address-format kind for a chain *display name*.
@@ -66,6 +67,81 @@ pub(crate) fn normalize_address(chain_name: &str, address: &str) -> String {
 #[uniffi::export]
 pub fn normalized_send_address(chain_name: String, address: String) -> String {
     normalize_address(&chain_name, &address)
+}
+
+/// The address a scanned payment payload yields on `chain_name`, or `None`.
+///
+/// A QR code is rarely a bare address. Wallets encode BIP-21 and its
+/// descendants — `bitcoin:bc1q…?amount=0.1`, `ethereum:0x…@1/transfer`,
+/// `ton://transfer/EQ…` — so a scanner that hands the whole payload to the
+/// composer fills the address field with a URI. The payload is reduced to the
+/// substrings that could be an address and the first one this chain accepts is
+/// returned, normalized the way the store and the signer normalize.
+///
+/// The chain is required and there is no fallback. This lived in the iOS
+/// scanner, which returned the first candidate *unvalidated* when no asset was
+/// selected — putting an unchecked string from a camera straight into the send
+/// field. There is no address without a chain to judge it against.
+#[uniffi::export]
+pub fn scanned_send_address(chain_name: String, payload: String) -> Option<String> {
+    let kind = chain_kind(&chain_name)?;
+    scanned_address_candidates(&payload)
+        .into_iter()
+        .map(|candidate| normalize_address(&chain_name, &candidate))
+        .find(|normalized| {
+            validate_address(AddressValidationRequest {
+                kind: kind.to_string(),
+                value: normalized.clone(),
+            })
+            .is_valid
+        })
+}
+
+/// The substrings of a scanned payload that could be an address, most literal
+/// first.
+///
+/// Deliberately a candidate list rather than a URI grammar: the payload comes
+/// from a camera, the schemes differ per chain, and refusing everything that
+/// does not parse as one grammar refuses more real codes than it prevents.
+/// Every candidate is validated against the chain before it is used, which is
+/// what makes a loose split safe — a fragment that is not an address on this
+/// chain cannot survive the filter in [`scanned_send_address`].
+fn scanned_address_candidates(payload: &str) -> Vec<String> {
+    fn push(candidates: &mut Vec<String>, value: &str) {
+        let value = value.trim();
+        if !value.is_empty() && !candidates.iter().any(|c| c == value) {
+            candidates.push(value.to_string());
+        }
+    }
+
+    let trimmed = payload.trim();
+    let mut candidates = Vec::new();
+    if trimmed.is_empty() {
+        return candidates;
+    }
+    push(&mut candidates, trimmed);
+    // `?amount=`/`#` carry the request, not the address.
+    let without_query = trimmed.split(['?', '#']).next().unwrap_or(trimmed);
+    push(&mut candidates, without_query);
+    // `scheme:address`, and `scheme://host/path` for the chains that use one.
+    if let Some((_, rest)) = without_query.split_once(':') {
+        let rest = rest.trim_start_matches('/');
+        push(&mut candidates, rest);
+        // `ton://transfer/EQ…` puts the address in a path segment, and
+        // `ethereum:0x…/transfer` puts a function name after it.
+        for segment in rest.split('/') {
+            push(&mut candidates, segment);
+        }
+    }
+    // `ethereum:0x…@1` pins an EIP-155 chain id onto the address.
+    for pinned in candidates
+        .iter()
+        .filter_map(|c| c.split_once('@').map(|(address, _)| address.to_string()))
+        .collect::<Vec<_>>()
+    {
+        push(&mut candidates, &pinned);
+    }
+    candidates
 }
 
 /// Heuristic: does the trimmed input look like an ENS name (`foo.eth`, no
@@ -606,42 +682,6 @@ pub fn core_evaluate_high_risk_send_reasons(
 
 use crate::SpectraBridgeError;
 
-/// The per-chain facts an EVM send needs, for any EVM chain in the registry.
-///
-/// Swift held these in an `EVMChainContext` enum with a case per chain, which
-/// covered 15 of the 23 EVM mainnets — Sei, Celo, Cronos, opBNB, zkSync Era,
-/// Sonic, Berachain, Unichain, Ink and X Layer had no case, so `isEVMChain`
-/// answered *false* for them and every EVM path skipped them silently. Sourcing
-/// the facts from the registry means adding a chain there is enough.
-#[derive(Debug, Clone, PartialEq, Eq, uniffi::Record)]
-pub struct EvmChainContextInfo {
-    pub display_name: String,
-    /// EIP-155 chain id, checked against what the RPC reports before signing.
-    pub chain_id: u64,
-    /// BIP-44 coin type. 60 for the Ethereum family; Ethereum Classic has its
-    /// own registered type and derives from a different path.
-    pub coin_type: u32,
-    /// Ethereum mainnet and its testnets, which share fee and nonce handling.
-    pub is_ethereum_family: bool,
-    pub is_ethereum_mainnet: bool,
-}
-
-#[uniffi::export]
-pub fn core_evm_chain_context(chain_name: String) -> Option<EvmChainContextInfo> {
-    let chain = Chain::from_display_name(&chain_name).filter(|chain| chain.is_evm())?;
-    Some(EvmChainContextInfo {
-        display_name: chain.chain_display_name().to_string(),
-        chain_id: chain.evm_chain_id(),
-        coin_type: if chain.mainnet_counterpart() == Chain::EthereumClassic {
-            61
-        } else {
-            60
-        },
-        is_ethereum_family: chain.mainnet_counterpart() == Chain::Ethereum,
-        is_ethereum_mainnet: chain == Chain::Ethereum,
-    })
-}
-
 // Per-chain static config for the Litecoin/Dogecoin/Solana/XRP/Monero/Sui/Aptos
 // branch of Swift's destination-risk probe: display chain name and balance
 // label for messages.
@@ -1136,80 +1176,16 @@ mod flow_helpers_tests {
     }
 }
 
-#[cfg(test)]
-mod evm_chain_context_tests {
-    use super::*;
-
-    /// Every EVM chain in the registry resolves, including the ten the Swift
-    /// enum had no case for.
-    #[test]
-    fn every_evm_chain_has_a_context() {
-        for chain in Chain::all().filter(|chain| chain.is_evm()) {
-            let context = core_evm_chain_context(chain.chain_display_name().to_string())
-                .unwrap_or_else(|| panic!("{} has no context", chain.str_id()));
-            assert_eq!(context.chain_id, chain.evm_chain_id());
-            assert!(context.chain_id > 0, "{} has no chain id", chain.str_id());
-        }
-    }
-
-    #[test]
-    fn the_ten_chains_the_swift_enum_skipped_now_resolve() {
-        for name in [
-            "Sei",
-            "Celo",
-            "Cronos",
-            "opBNB",
-            "zkSync Era",
-            "Sonic",
-            "Berachain",
-            "Unichain",
-            "Ink",
-            "X Layer",
-        ] {
-            let context = core_evm_chain_context(name.to_string())
-                .unwrap_or_else(|| panic!("{name} missing"));
-            assert_eq!(
-                context.coin_type, 60,
-                "{name} should derive from coin type 60"
-            );
-            assert!(!context.is_ethereum_family, "{name} is not Ethereum family");
-        }
-    }
-
-    #[test]
-    fn ethereum_classic_derives_from_its_own_coin_type() {
-        let context = core_evm_chain_context("Ethereum Classic".to_string()).expect("context");
-        assert_eq!(context.coin_type, 61);
-        assert_eq!(context.chain_id, 61);
-        assert!(!context.is_ethereum_family);
-    }
-
-    #[test]
-    fn the_ethereum_family_is_mainnet_and_its_testnets() {
-        for name in ["Ethereum", "Ethereum Sepolia", "Ethereum Hoodi"] {
-            let context = core_evm_chain_context(name.to_string()).expect("context");
-            assert!(
-                context.is_ethereum_family,
-                "{name} should be Ethereum family"
-            );
-        }
-        assert!(
-            core_evm_chain_context("Ethereum".to_string())
-                .unwrap()
-                .is_ethereum_mainnet
-        );
-        assert!(
-            !core_evm_chain_context("Ethereum Sepolia".to_string())
-                .unwrap()
-                .is_ethereum_mainnet
-        );
-    }
-
-    #[test]
-    fn a_non_evm_chain_has_no_context() {
-        assert!(core_evm_chain_context("Bitcoin".to_string()).is_none());
-        assert!(core_evm_chain_context("Nope".to_string()).is_none());
-    }
+/// Whether a send is addressed to a private extension-block output, which the
+/// composer badges.
+///
+/// The app decided it by comparing the chain's name with "Litecoin" and the
+/// address with two prefixes — the rule `extra_output_overhead_bytes` already
+/// held in core, restated beside a string.
+#[uniffi::export]
+pub fn is_extension_block_send_destination(chain_name: String, destination: String) -> bool {
+    crate::registry::Chain::from_display_name(&chain_name)
+        .is_some_and(|chain| chain.is_extension_block_destination(&destination))
 }
 
 /// Extra transaction bytes a destination costs beyond a plain output, by chain.
@@ -1447,5 +1423,107 @@ mod shortcut_preview_tests {
             quoted_send_amount(Some(preview), "Ethereum".into(), false, Some(6), 100).as_deref(),
             Some("4.199999")
         );
+    }
+}
+
+#[cfg(test)]
+mod scanned_payload_tests {
+    use super::*;
+
+    const BTC: &str = "bc1qar0srrr7xfkvy5l643lydnw9re59gtzzwf5mdq";
+    const EVM: &str = "0x9858EfFD232B4033E47d90003D41EC34EcaEda94";
+
+    /// The shapes a wallet actually puts in a QR code. Every one of these was
+    /// pasted into the send field verbatim before the scanner asked core.
+    #[test]
+    fn payment_uris_reduce_to_the_address_they_carry() {
+        let cases = [
+            ("Bitcoin", BTC.to_string(), BTC),
+            ("Bitcoin", format!("bitcoin:{BTC}"), BTC),
+            (
+                "Bitcoin",
+                format!("bitcoin:{BTC}?amount=0.1&label=Shop"),
+                BTC,
+            ),
+            ("Bitcoin", format!("  {BTC}  "), BTC),
+            // EIP-681, with and without the chain-id pin and the function.
+            ("Ethereum", format!("ethereum:{EVM}"), EVM),
+            ("Ethereum", format!("ethereum:{EVM}@1"), EVM),
+            (
+                "Ethereum",
+                format!("ethereum:{EVM}@1/transfer?value=1"),
+                EVM,
+            ),
+            // A scheme that puts the address in a path segment.
+            ("Ethereum", format!("wc://x/{EVM}"), EVM),
+        ];
+        for (chain, payload, expected) in cases {
+            assert_eq!(
+                scanned_send_address(chain.into(), payload.clone()).as_deref(),
+                Some(normalize_address(chain, expected)).as_deref(),
+                "{chain} did not read {payload}"
+            );
+        }
+    }
+
+    /// The returned address is the stored form, not the scanned one. The
+    /// scanner lowercased EVM addresses itself and left every other chain's
+    /// normalization — Sui's and Aptos's missing `0x`, NEAR's and ICP's case —
+    /// to whoever read the field next.
+    #[test]
+    fn the_address_comes_back_in_the_form_the_store_keeps() {
+        assert_eq!(
+            scanned_send_address("Ethereum".into(), format!("ethereum:{EVM}")).as_deref(),
+            Some(EVM.to_lowercase().as_str())
+        );
+        let bare_sui = "1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef";
+        assert_eq!(
+            scanned_send_address("Sui".into(), format!("sui:{bare_sui}")).as_deref(),
+            Some(format!("0x{bare_sui}").as_str())
+        );
+    }
+
+    /// Nothing that is not an address on the named chain survives, and the
+    /// chain is not optional: the iOS caller returned the first candidate
+    /// unvalidated when no asset was selected.
+    #[test]
+    fn a_payload_with_no_address_for_this_chain_yields_nothing() {
+        for payload in [
+            "",
+            "   ",
+            "not-an-address",
+            "https://example.com/pay?to=someone",
+            // A real address, on the wrong chain.
+            BTC,
+        ] {
+            assert_eq!(
+                scanned_send_address("Ethereum".into(), payload.into()),
+                None,
+                "Ethereum accepted {payload}"
+            );
+        }
+        assert_eq!(
+            scanned_send_address("Not A Chain".into(), BTC.into()),
+            None,
+            "an unknown chain must judge nothing"
+        );
+    }
+
+    /// The whole payload is tried first, so a bare address is never split, and
+    /// a later candidate is only reached because the earlier ones failed.
+    #[test]
+    fn candidates_run_from_the_most_literal_to_the_least() {
+        let candidates = scanned_address_candidates(&format!("bitcoin:{BTC}?amount=1"));
+        assert_eq!(
+            candidates.first().map(String::as_str),
+            Some(format!("bitcoin:{BTC}?amount=1").as_str())
+        );
+        assert!(candidates.iter().any(|c| c == BTC));
+        // No empties and no duplicates, whatever the punctuation.
+        let noisy = scanned_address_candidates("ton://transfer//EQ1/");
+        assert!(noisy.iter().all(|c| !c.trim().is_empty()));
+        let mut unique = noisy.clone();
+        unique.dedup();
+        assert_eq!(unique.len(), noisy.len());
     }
 }

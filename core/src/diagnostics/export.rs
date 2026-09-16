@@ -85,9 +85,10 @@ pub fn diagnostics_build_history_json(
     );
     payload.insert("history".into(), Value::Array(history_dicts));
     payload.insert("endpoints".into(), Value::Array(endpoint_dicts));
-    // Only Bitcoin has anything else to say, and saying nothing is not the
-    // same as saying "none" — an absent key reads as "this chain has no such
-    // thing", a present empty one as "it has one and it is empty".
+    // Only a family with more than one network has anything else to say, and
+    // saying nothing is not the same as saying "none" — an absent key reads as
+    // "this chain has no such thing", a present empty one as "it has one and
+    // it is empty".
     if let Some(mode) = extra_network_mode {
         payload.insert("networkMode".into(), Value::String(mode));
     }

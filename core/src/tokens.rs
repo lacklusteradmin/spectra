@@ -35,7 +35,7 @@ struct TomlToken {
     name: String,
     coingecko_id: String,
     coinpaprika_id: String,
-    color: String,
+    color: crate::chains::CatalogColor,
     artwork_name: String,
     tags: Vec<String>,
     deployments: Vec<TomlDeployment>,
@@ -79,7 +79,8 @@ pub struct TokenEntry {
     pub coingecko_id: String,
     pub decimals: u32,
     pub tags: Vec<String>,
-    pub color: String,
+    /// `None` for a token the user added: the catalog has no colour for it.
+    pub color: Option<crate::chains::CatalogColor>,
     pub artwork_name: String,
     pub enabled: bool,
 }
@@ -252,7 +253,7 @@ static CATALOG: LazyLock<Vec<TokenEntry>> = LazyLock::new(|| {
                 coingecko_id: t.coingecko_id.clone(),
                 decimals: d.decimals,
                 tags: t.tags.clone(),
-                color: t.color.clone(),
+                color: Some(t.color),
                 artwork_name: t.artwork_name.clone(),
                 enabled: d.enabled,
             }
@@ -468,6 +469,12 @@ pub fn normalize_token_identifier(
 
 // ---- Bitcoin Esplora endpoint parsing / validation ----
 
+/// The custom Esplora bases a setting value names, in order.
+///
+/// Exported because the app split the same value itself, twice — once per
+/// settings screen — with its own separators and trimming beside the
+/// validation core already ran on it.
+#[uniffi::export]
 pub fn parse_bitcoin_esplora_endpoints(raw: String) -> Vec<String> {
     raw.split([',', '\n', ';'])
         .map(|s| s.trim().to_string())
@@ -685,7 +692,6 @@ mod a_token_and_the_deployments_under_it {
             for (field, a, b) in [
                 ("name", &first.name, &entry.name),
                 ("coingecko_id", &first.coingecko_id, &entry.coingecko_id),
-                ("color", &first.color, &entry.color),
                 ("artwork_name", &first.artwork_name, &entry.artwork_name),
             ] {
                 assert_eq!(
@@ -694,6 +700,7 @@ mod a_token_and_the_deployments_under_it {
                     entry.symbol, first.chain, entry.chain
                 );
             }
+            assert_eq!(first.color, entry.color, "{}'s color differs", entry.symbol);
             assert_eq!(first.tags, entry.tags, "{}'s tags differ", entry.symbol);
         }
     }

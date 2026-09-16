@@ -12,6 +12,51 @@
 
 pub mod address;
 
+/// A BIP-39 phrase length, and the entropy a phrase of that length carries.
+#[derive(uniffi::Record, Debug, Clone, Copy, PartialEq, Eq)]
+pub struct SeedPhraseLength {
+    pub word_count: u32,
+    pub entropy_bits: u32,
+}
+
+/// The five lengths BIP-39 defines, shortest first.
+///
+/// One exported list because there were four: `generate_mnemonic` matched on
+/// its own counts, [`seed_phrase_length_warning`] listed them again, the CLI
+/// kept a third to avoid asking for a count core would silently substitute,
+/// and the app's length picker carried a fourth alongside a hand-written
+/// 12 → 128 entropy table.
+#[uniffi::export]
+pub fn seed_phrase_lengths() -> Vec<SeedPhraseLength> {
+    STANDARD_SEED_PHRASE_WORD_COUNTS
+        .iter()
+        .map(|&word_count| SeedPhraseLength {
+            word_count,
+            entropy_bits: entropy_bits_for(word_count),
+        })
+        .collect()
+}
+
+/// The entropy `word_count` words carry, or `None` when BIP-39 defines no
+/// phrase of that length.
+///
+/// Checking for `None` is how a caller asks "is this a standard length"
+/// without holding the list. Not exported: a front end reads
+/// [`seed_phrase_lengths`], which answers both questions in one call.
+pub(crate) fn seed_phrase_entropy_bits(word_count: u32) -> Option<u32> {
+    STANDARD_SEED_PHRASE_WORD_COUNTS
+        .contains(&word_count)
+        .then(|| entropy_bits_for(word_count))
+}
+
+pub(crate) const STANDARD_SEED_PHRASE_WORD_COUNTS: [u32; 5] = [12, 15, 18, 21, 24];
+
+/// BIP-39 spends 32 bits of entropy per three words, so the entropy is
+/// derived rather than tabulated: 12 words carry 128 bits, 24 carry 256.
+fn entropy_bits_for(word_count: u32) -> u32 {
+    word_count / 3 * 32
+}
+
 /// One BIP-39 seed-phrase entry, as the user typed it.
 ///
 /// `words` are the raw per-slot entries, blanks included: whether the grid is
@@ -183,7 +228,7 @@ fn seed_phrase_length_warning(word_count: u32) -> Option<String> {
     if word_count < 12 {
         return Some("Seed phrase is too short. Use at least 12 words.".to_string());
     }
-    if ![12u32, 15, 18, 21, 24].contains(&word_count) {
+    if seed_phrase_entropy_bits(word_count).is_none() {
         return Some(
             "Non-standard length selected. BIP-39 standard lengths are 12, 15, 18, 21, or 24 words."
                 .to_string(),
@@ -215,6 +260,48 @@ pub fn core_validate_wallet_password(password: String, confirmation: String) -> 
         return Some("Wallet password confirmation does not match.".to_string());
     }
     None
+}
+
+#[cfg(test)]
+mod seed_phrase_length_tests {
+    use super::*;
+
+    #[test]
+    fn the_five_lengths_carry_the_entropy_bip39_defines() {
+        let pairs: Vec<(u32, u32)> = seed_phrase_lengths()
+            .into_iter()
+            .map(|length| (length.word_count, length.entropy_bits))
+            .collect();
+        assert_eq!(
+            pairs,
+            vec![(12, 128), (15, 160), (18, 192), (21, 224), (24, 256)]
+        );
+    }
+
+    #[test]
+    fn a_length_bip39_does_not_define_has_no_entropy() {
+        for word_count in [0, 1, 11, 13, 23, 25, 27, 48] {
+            assert_eq!(seed_phrase_entropy_bits(word_count), None, "{word_count}");
+        }
+    }
+
+    #[test]
+    fn a_non_standard_length_is_refused_rather_than_substituted() {
+        // Twelve words in answer to a request for eighteen is a weaker wallet
+        // than the caller asked for, and neither front end could see it.
+        let refusal = crate::service::generate_mnemonic(13).expect_err("13 is not a length");
+        assert!(refusal.to_string().contains("12, 15, 18, 21 or 24"));
+        for length in seed_phrase_lengths() {
+            let phrase = crate::service::generate_mnemonic(length.word_count)
+                .expect("a standard length generates");
+            assert_eq!(
+                phrase.split_whitespace().count() as u32,
+                length.word_count,
+                "{} words requested",
+                length.word_count
+            );
+        }
+    }
 }
 
 #[cfg(test)]

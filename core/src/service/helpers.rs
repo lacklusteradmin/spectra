@@ -229,46 +229,6 @@ pub(super) fn utxo_fee_preview_json(utxo_values: Vec<u64>, fee_rate: u64) -> Str
     .to_string()
 }
 
-// Key/value storage shares the service-owned connection with domain tables.
-
-pub(super) fn sqlite_load(
-    database: &crate::wallet_db::WalletDatabase,
-    key: &str,
-) -> Result<String, String> {
-    database.with_connection(|conn| {
-        let result: rusqlite::Result<String> = conn.query_row(
-            "SELECT value FROM state WHERE key = ?1",
-            rusqlite::params![key],
-            |row| row.get(0),
-        );
-        match result {
-            Ok(v) => Ok(v),
-            Err(rusqlite::Error::QueryReturnedNoRows) => Ok("{}".to_string()),
-            Err(e) => Err(format!("sqlite load: {e}")),
-        }
-    })
-}
-
-pub(super) fn sqlite_save(
-    database: &crate::wallet_db::WalletDatabase,
-    key: &str,
-    value: &str,
-) -> Result<(), String> {
-    let now = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .unwrap_or_default()
-        .as_secs() as i64;
-    database.with_connection(|conn| {
-        conn.execute(
-            "INSERT INTO state (key, value, saved_at) VALUES (?1, ?2, ?3)
-             ON CONFLICT(key) DO UPDATE SET value = excluded.value, saved_at = excluded.saved_at",
-            rusqlite::params![key, value, now],
-        )
-        .map_err(|e| format!("sqlite save: {e}"))?;
-        Ok(())
-    })
-}
-
 // ── State helpers ─────────────────────────────────────────────────────────
 
 /// Return a zero-amount AssetHolding template for the native coin of each

@@ -232,13 +232,14 @@ metadata, not transaction identity; protocol/endpoint facts stay core-owned.
   dependencies on 2026-09-12.
 
 
-Resolved in the [known-open audit](docs/KNOWN-OPEN-AUDIT.md): independent Decred
-and Kaspa mnemonic/address vectors, ICP HTTP protocol and Bitcoin SV explicit
-probe selection, the [app-boundary coverage audit](docs/APP-BOUNDARY-COVERAGE.md),
-and Base keyless history. The CLI-signed Sepolia transaction was accepted and
-mined successfully: [public evidence](docs/SEPOLIA-BROADCAST-PROOF.json). This
-closes the original EVM broadcast proof; it does not complete the newly planned
-visible build/sign/broadcast workflow or establish broadcasting on every chain.
+Resolved on 2026-09-12: independent Decred and Kaspa mnemonic/address vectors,
+ICP HTTP protocol and Bitcoin SV explicit probe selection, app-only rule
+coverage, and Base keyless history. The CLI-signed Sepolia self-transfer was
+accepted and mined successfully — 21,000 gas used, 0.000022431561432 Sepolia ETH
+fee, [transaction](https://sepolia.etherscan.io/tx/0x7c96dddb0ae86e2ee91dab7b0aeb0de7a4b6acaaf9848c07c7666a9bf7475555).
+This closes the original EVM broadcast proof; it does not complete the newly
+planned visible build/sign/broadcast workflow or establish broadcasting on every
+chain.
 
 
 ## Stage 3 / C2 completion work (requested ten items)
@@ -268,8 +269,6 @@ status and known open items above are unchanged.
 - [x] Core-derived transaction maintenance scope.
 - [x] Stored-asset EVM preview; no seed reads for fee preview.
 - [x] FFI caller/coverage audit, CLI entry points and bridge cleanup.
-
-Implementation and coverage map: [six-slice follow-up](docs/STAGE3-C2-FOLLOWUP.md).
 
 Verified: `cargo test --workspace` (798 core tests), `./scripts/cli-acceptance.sh`
 (332 checks plus both Stage 3 fixture batches), and the required iPhone 17 Pro
@@ -313,8 +312,7 @@ send decisions, address fallbacks and self-send inputs. The follow-up also
 removed Swift replacement assembly, local-first projection merging, background
 orphan deletion and test-only mutation helpers from the app target.
 
-The [closure audit](docs/STAGE3-C2-CLOSURE.md) records the removed decisions and
-remaining UI responsibilities. Final verification on 2026-09-12:
+Final verification on 2026-09-12:
 
 - `cargo test --workspace`: 851 core tests, zero failures.
 - `./scripts/cli-acceptance.sh`: 347 checks plus Stage 3/follow-up fixtures,
@@ -411,6 +409,48 @@ passed, zero failures**, including
 callables** (65 free functions + 79 methods), zero unreachable candidates,
 against regenerated bindings. `scripts/check-design-tokens.sh` and `git diff
 --check` pass. Changes remain uncommitted.
+## Swift shell: the view layer (2026-09-16)
+
+The 2026-09-14 sweep read `swift/*.swift` and reported no fee arithmetic or
+protocol constant in hand-written Swift. `swift/views/` had both, and so did the
+record extensions it renders from: fixed `%.6f`/`%.8f`/`%.2f gwei` fee counts,
+`"%.8f ETH"` for every EVM receipt, a twelve-chain dispatch naming chains and
+their sentences, a QR payload parser, and a second derivation-path resolver.
+Seven moves, each in [docs/BEHAVIOUR-CHANGES.md](docs/BEHAVIOUR-CHANGES.md):
+
+- [x] `scanned_send_address` — QR payloads parsed and validated against a chain
+  in core, with no unvalidated fallback; `spectra send scan`.
+- [x] `SendBroadcastMode` on the chain identity; the network card is one branch
+  per preview shape with an exhaustive switch over `SendPreview`.
+- [x] Every fee and gas price through `formatting_asset_amount_display`.
+- [x] Send previews keyed by mainnet id; nine chain-named accessors deleted.
+- [x] `Chain.defaultDerivationPath` from `app_core_resolve_derivation_path`.
+- [x] `core_history_source` names the ids core writes; `spectra --json txs`.
+- [x] `new_seed_envelope_master_key` mints the Keychain master key.
+
+The check this adds to the last one: a sweep's scope is a directory, and a
+claim about "hand-written Swift" covers the views or it does not.
+
+The rest of the same audit, also in BEHAVIOUR-CHANGES:
+
+- [x] Settings and diagnostics sections chosen by registry facts; custom RPC on
+  every EVM chain; the Etherscan key on the six chains that read it
+  (`needs_etherscan_api_key`); Monero's backends from the catalog.
+- [x] EVM receipt cost written to the record (`receipt_network_fee`).
+- [x] Platform preferences in `UserDefaults`; `save_state`/`load_state` and the
+  `state` table deleted.
+- [x] No crash on a failed catalog or path lookup; no cached key candidates;
+  typed `CatalogColor`; install marker, `EVMChainContext`, three unread
+  endpoint columns and their pinning tests deleted; MWEB badge from core.
+- [x] Gates: `swift-shell-literals.sh` reads the app for chain names and fixed
+  precision; `unreachable-exports.sh` no longer counts iOS tests as callers.
+
+Not done: a gate for FFI record fields no production code writes. A syntactic
+pass over `core/src` flags 56 of 270 `Option` fields, nearly all written through
+serde or multi-line merges it cannot follow, so it cannot gate without a
+type-aware tool. FFI: **146 callables** (69 free functions + 77 methods), zero
+unreachable.
+
 ## Behaviour changed on purpose
 
 Moved to [docs/BEHAVIOUR-CHANGES.md](docs/BEHAVIOUR-CHANGES.md), which is where

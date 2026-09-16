@@ -37,7 +37,7 @@ fn wire(id: &str, hash: &str, confirmations: Option<i64>) -> CoreTransactionReco
         receipt_block_number: None,
         receipt_gas_used: None,
         receipt_effective_gas_price_gwei: None,
-        receipt_network_fee_eth: None,
+        receipt_network_fee: None,
         fee_priority_raw: None,
         fee_rate_description: None,
         confirmation_count: confirmations,

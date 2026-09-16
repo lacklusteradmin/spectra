@@ -166,8 +166,10 @@ fn private_key_editor_normalizes_only_a_complete_hex_key() {
         Some("ab".repeat(32))
     );
     for invalid in ["ab".repeat(31), "gg".repeat(32), String::new()] {
+        assert!(!core_is_private_key_hex(invalid.clone()));
         assert!(core_private_key_hex(invalid).is_none());
     }
+    assert!(core_is_private_key_hex(format!("0x{}", "ab".repeat(32))));
 }
 
 #[tokio::test]

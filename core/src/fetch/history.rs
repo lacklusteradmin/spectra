@@ -723,12 +723,6 @@ fn title_case(value: &str) -> String {
         .join(" ")
 }
 
-/// Not exported: `WalletService::normalized_history` is the entry point: the records it
-/// normalizes are core's own.
-pub fn core_normalize_history(request: NormalizeHistoryRequest) -> Vec<CoreNormalizedHistoryEntry> {
-    normalize_history(request)
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;

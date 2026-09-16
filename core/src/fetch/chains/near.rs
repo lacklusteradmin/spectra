@@ -163,11 +163,7 @@ impl NearClient {
             indexer_base.trim_end_matches('/'),
             account_id
         );
-        let items: Vec<Value> = self
-            .client
-            .get_json(&url, RetryProfile::ChainRead)
-            .await
-            .unwrap_or_default();
+        let items: Vec<Value> = self.client.get_json(&url, RetryProfile::ChainRead).await?;
 
         Ok(items
             .into_iter()

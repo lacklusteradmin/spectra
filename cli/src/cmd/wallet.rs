@@ -108,7 +108,7 @@ impl CreationArgs {
 pub struct NewArgs {
     #[command(flatten)]
     creation: CreationArgs,
-    /// Seed phrase length: 12 or 24.
+    /// Seed phrase length: 12, 15, 18, 21 or 24.
     #[arg(long, default_value_t = 12)]
     words: u32,
 }
@@ -219,13 +219,12 @@ pub fn run(ctx: &Ctx, out: Out, command: WalletCommand) -> CliResult<()> {
 
 fn new(ctx: &Ctx, out: Out, args: NewArgs) -> CliResult<()> {
     let chain = only_chain(&args.creation)?;
-    // `generate_mnemonic` maps every count that is not 24 to twelve words;
-    // asking for 18 and silently getting 12 is not a substitution a wallet
-    // should make.
-    if !matches!(args.words, 12 | 24) {
-        return Err(CliError::usage("--words must be 12 or 24"));
-    }
-    let seed_phrase = spectra_core::service::generate_mnemonic(args.words);
+    // The accepted lengths are core's, and core refuses the rest rather than
+    // substituting twelve words. This used to hold its own `12 | 24` list
+    // because it could not tell a generated eighteen-word phrase from the
+    // twelve it would silently have been handed instead.
+    let seed_phrase = spectra_core::service::generate_mnemonic(args.words)
+        .map_err(|error| CliError::usage(error.to_string()))?;
     let outcome = seal_and_import(ctx, &args.creation, &[chain], &seed_phrase)?;
 
     let wallet = first_wallet(&outcome)?;

@@ -4,14 +4,21 @@
 //! JSON-RPC surface: `state_*`, `chain_*`, `system_*`, `author_*`. We use
 //! the public OpenTensor entrypoint (`https://entrypoint-finney.opentensor.ai`).
 //!
-//! History uses Taostats (`api.taostats.io`) when an API key is provided;
-//! otherwise history is empty (the on-chain RPC doesn't expose a transfer
-//! index, so a third-party indexer is the only practical path).
+//! Balance and history both come from Taostats (`api.taostats.io`), which
+//! needs an API key: the on-chain RPC returns `AccountInfo` as SCALE bytes and
+//! exposes no transfer index, so a third-party indexer is the only practical
+//! path to either number. Without a key this client refuses both reads rather
+//! than reporting an empty wallet.
 
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 
 use crate::http::{with_fallback, HttpClient, RetryProfile};
+
+/// What both Taostats reads answer when no key is configured. Neither can be
+/// served from the RPC, so this is a missing setting, not a missing address.
+const TAOSTATS_KEY_REQUIRED: &str =
+    "Bittensor balance and history need a Taostats API key; none is configured";
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TaoBalance {
@@ -93,33 +100,33 @@ impl BittensorClient {
         .await
     }
 
+    /// The balance Taostats reports, or why it could not be read.
+    ///
+    /// Every arm of this used to answer `rao: 0`: no key configured, the
+    /// request failing, `balance_total` absent, or the string not parsing. An
+    /// address whose balance cannot be read does not hold nothing, and since
+    /// `api_keys` starts empty, that made a confident zero the default answer
+    /// for every Bittensor address in the app.
     pub async fn fetch_balance(&self, address: &str) -> Result<TaoBalance, String> {
-        // Subtensor exposes balance via system::account, encoded as SCALE.
-        // Decoding the AccountInfo struct in Rust is non-trivial without a
-        // codegen pipeline, so we lean on the Taostats API (which mirrors
-        // Subscan's shape) when a key is configured.
-        if let Some(_key) = &self.taostats_api_key {
-            #[derive(Deserialize)]
-            struct TaostatsAccount {
-                balance_total: Option<String>,
-            }
-            let resp: Result<TaostatsAccount, _> = self
-                .taostats_get(&format!("/api/account/v1?address={address}"))
-                .await;
-            if let Ok(acc) = resp {
-                let raw = acc.balance_total.unwrap_or_default();
-                let rao = raw.parse::<u128>().unwrap_or(0);
-                return Ok(TaoBalance {
-                    rao,
-                    tao_display: format_tao(rao),
-                });
-            }
+        #[derive(Deserialize)]
+        struct TaostatsAccount {
+            balance_total: Option<String>,
         }
-        // Fallback: zero-balance default. Users without a Taostats API key
-        // see only their own outgoing transfers reflected after RPC submit.
+        if self.taostats_api_key.is_none() {
+            return Err(TAOSTATS_KEY_REQUIRED.to_string());
+        }
+        let account: TaostatsAccount = self
+            .taostats_get(&format!("/api/account/v1?address={address}"))
+            .await?;
+        let raw = account
+            .balance_total
+            .ok_or("taostats account: no balance_total")?;
+        let rao = raw
+            .parse::<u128>()
+            .map_err(|e| format!("taostats balance_total {raw:?}: {e}"))?;
         Ok(TaoBalance {
-            rao: 0,
-            tao_display: "0".to_string(),
+            rao,
+            tao_display: format_tao(rao),
         })
     }
 
@@ -164,7 +171,7 @@ impl BittensorClient {
 
     pub async fn fetch_history(&self, address: &str) -> Result<Vec<TaoHistoryEntry>, String> {
         if self.taostats_api_key.is_none() {
-            return Ok(Vec::new());
+            return Err(TAOSTATS_KEY_REQUIRED.to_string());
         }
         #[derive(Deserialize, Default)]
         struct TaostatsTransfers {
@@ -190,8 +197,7 @@ impl BittensorClient {
         }
         let transfers: TaostatsTransfers = self
             .taostats_get(&format!("/api/transfer/v1?address={address}&limit=50"))
-            .await
-            .unwrap_or_default();
+            .await?;
         Ok(transfers
             .data
             .into_iter()
@@ -238,4 +244,67 @@ pub(crate) fn format_tao(rao: u128) -> String {
     let frac_str = format!("{:09}", frac);
     let trimmed = frac_str.trim_end_matches('0');
     format!("{}.{}", whole, trimmed)
+}
+
+#[cfg(test)]
+mod balance_tests {
+    use super::*;
+    use std::sync::Arc;
+    use wiremock::{matchers::any, Mock, MockServer, ResponseTemplate};
+
+    fn client(taostats: &str, key: Option<&str>) -> BittensorClient {
+        BittensorClient::new(
+            Arc::new(vec![]),
+            Arc::new(vec![taostats.to_string()]),
+            key.map(str::to_string),
+        )
+    }
+
+    /// Each of these answered `Ok(rao: 0)` once, and the first is the one the
+    /// app hits by default: `api_keys` starts empty, so an unconfigured
+    /// Bittensor wallet reported a balance of zero rather than saying it had
+    /// no way to look.
+    #[tokio::test]
+    async fn a_balance_that_cannot_be_read_is_refused_rather_than_reported_as_zero() {
+        let server = MockServer::start().await;
+        Mock::given(any())
+            .respond_with(ResponseTemplate::new(200).set_body_json(json!({"balance_total": null})))
+            .mount(&server)
+            .await;
+
+        // No key: the read is impossible, not empty.
+        assert!(client(&server.uri(), None)
+            .fetch_balance("addr")
+            .await
+            .is_err());
+        assert!(client(&server.uri(), None)
+            .fetch_history("addr")
+            .await
+            .is_err());
+
+        // Keyed, but the account carries no balance_total.
+        let err = client(&server.uri(), Some("k"))
+            .fetch_balance("addr")
+            .await
+            .unwrap_err();
+        assert!(err.contains("balance_total"), "{err}");
+        assert_eq!(server.received_requests().await.unwrap().len(), 1);
+    }
+
+    #[tokio::test]
+    async fn a_balance_that_reads_is_returned_in_rao() {
+        let server = MockServer::start().await;
+        Mock::given(any())
+            .respond_with(
+                ResponseTemplate::new(200).set_body_json(json!({"balance_total": "2500000000"})),
+            )
+            .mount(&server)
+            .await;
+        let balance = client(&server.uri(), Some("k"))
+            .fetch_balance("addr")
+            .await
+            .unwrap();
+        assert_eq!(balance.rao, 2_500_000_000);
+        assert_eq!(balance.tao_display, "2.5");
+    }
 }

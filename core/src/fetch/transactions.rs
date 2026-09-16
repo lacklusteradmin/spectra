@@ -42,7 +42,7 @@ pub struct CoreTransactionRecord {
     pub receipt_block_number: Option<i64>,
     pub receipt_gas_used: Option<String>,
     pub receipt_effective_gas_price_gwei: Option<f64>,
-    pub receipt_network_fee_eth: Option<f64>,
+    pub receipt_network_fee: Option<f64>,
     pub fee_priority_raw: Option<String>,
     pub fee_rate_description: Option<String>,
     pub confirmation_count: Option<i64>,
@@ -58,6 +58,64 @@ pub struct CoreTransactionRecord {
     pub failure_reason: Option<String>,
     pub transaction_history_source: Option<String>,
     pub created_at_unix: f64,
+}
+
+/// What a stored `transaction_history_source` names.
+///
+/// The id is core's own — five producers write one — so core says what each
+/// means. The app held a six-arm switch over provider ids instead, and it was
+/// wrong in both directions: five of its six arms name a provider no producer
+/// emits, and none of them covers `rust`, `rust.hd`, `etherscan` or the
+/// `<chain-id>.providers` aggregate, which fell through to the raw id. A
+/// detail row read "History Source: rust".
+///
+/// An enum rather than a display string because only the first variant is a
+/// proper noun; the other two are sentences, and sentences are the app's to
+/// write and translate.
+#[derive(Debug, Clone, PartialEq, Eq, uniffi::Enum)]
+pub enum HistorySource {
+    /// A named third-party indexer. A proper noun, shown as it is.
+    Provider { name: String },
+    /// The aggregate of one chain's own history providers.
+    ChainProviders { chain_name: String },
+    /// Spectra's own reader. Not a third party, so not a source to name.
+    Internal,
+}
+
+/// Which source a stored history-source id names, or `None` when it names
+/// nothing — an absent, blank or `none` value.
+#[uniffi::export]
+pub fn core_history_source(source: String) -> Option<HistorySource> {
+    let trimmed = source.trim();
+    if trimmed.is_empty() || trimmed == "none" {
+        return None;
+    }
+    // `<chain-id>.providers`, written by the history aggregate. Resolved
+    // through the registry so a new chain needs no arm here.
+    if let Some(id) = trimmed.strip_suffix(".providers") {
+        if let Some(chain) = crate::registry::Chain::from_str_id(id) {
+            return Some(HistorySource::ChainProviders {
+                chain_name: chain.chain_display_name().to_string(),
+            });
+        }
+    }
+    // `rust` is a single address read in-process, `rust.hd` an xpub account
+    // walked from it. Both are Spectra reading the chain's own endpoints;
+    // neither is a provider the user can act on.
+    if trimmed == "rust" || trimmed == "rust.hd" {
+        return Some(HistorySource::Internal);
+    }
+    Some(HistorySource::Provider {
+        name: match trimmed {
+            "rpc" => "RPC".to_string(),
+            "etherscan" => "Etherscan".to_string(),
+            "blockchair" => "Blockchair".to_string(),
+            "esplora" => "Esplora".to_string(),
+            "litecoinspace" => "LitecoinSpace".to_string(),
+            "blockchain.info" => "Blockchain.info".to_string(),
+            other => other.to_string(),
+        },
+    })
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, uniffi::Enum)]
@@ -108,28 +166,19 @@ fn kind_to_raw(kind: CoreTransactionKind) -> &'static str {
     }
 }
 
-fn status_from_raw(raw: &str) -> Option<CoreTransactionStatus> {
-    match raw {
-        "pending" => Some(CoreTransactionStatus::Pending),
-        "confirmed" => Some(CoreTransactionStatus::Confirmed),
-        "failed" => Some(CoreTransactionStatus::Failed),
-        _ => None,
-    }
-}
-
-/// A stored record with no status is legacy data: receives were pending and
-/// sends were confirmed. Applying that here means no read site has to remember.
-fn status_to_raw(status: Option<CoreTransactionStatus>, kind: CoreTransactionKind) -> String {
-    match status {
-        Some(CoreTransactionStatus::Pending) => "pending",
-        Some(CoreTransactionStatus::Confirmed) => "confirmed",
-        Some(CoreTransactionStatus::Failed) => "failed",
-        None => match kind {
-            CoreTransactionKind::Send => "confirmed",
-            CoreTransactionKind::Receive => "pending",
-        },
-    }
-    .to_string()
+/// The wire status is a free string, so a value none of the three names has to
+/// read as something. It reads by kind — a receive is pending until a provider
+/// confirms it, a send is confirmed unless it says otherwise — which is the
+/// rule stored records used to carry as "no status at all", and which the app
+/// and core each applied separately.
+///
+/// This is the only place that decides it. A stored record's status is not
+/// optional, so no read site is asked to remember.
+fn status_from_raw(raw: &str, kind: CoreTransactionKind) -> CoreTransactionStatus {
+    CoreTransactionStatus::from_raw(raw).unwrap_or(match kind {
+        CoreTransactionKind::Send => CoreTransactionStatus::Confirmed,
+        CoreTransactionKind::Receive => CoreTransactionStatus::Pending,
+    })
 }
 
 impl From<CorePersistedTransactionRecord> for CoreTransactionRecord {
@@ -139,7 +188,7 @@ impl From<CorePersistedTransactionRecord> for CoreTransactionRecord {
             id: stored.id,
             wallet_id: stored.wallet_id,
             kind: kind_to_raw(stored.kind).to_string(),
-            status: status_to_raw(stored.status, stored.kind),
+            status: stored.status.as_raw().to_string(),
             wallet_name: stored.wallet_name,
             asset_display_name: stored.asset_display_name,
             symbol: stored.symbol,
@@ -151,7 +200,7 @@ impl From<CorePersistedTransactionRecord> for CoreTransactionRecord {
             receipt_block_number: stored.receipt_block_number,
             receipt_gas_used: stored.receipt_gas_used,
             receipt_effective_gas_price_gwei: stored.receipt_effective_gas_price_gwei,
-            receipt_network_fee_eth: stored.receipt_network_fee_eth,
+            receipt_network_fee: stored.receipt_network_fee,
             fee_priority_raw: stored.fee_priority_raw,
             fee_rate_description: stored.fee_rate_description,
             confirmation_count: stored.confirmation_count,
@@ -178,7 +227,7 @@ impl From<CoreTransactionRecord> for CorePersistedTransactionRecord {
             id: wire.id,
             wallet_id: wire.wallet_id,
             kind: kind_from_raw(&wire.kind),
-            status: status_from_raw(&wire.status),
+            status: status_from_raw(&wire.status, kind_from_raw(&wire.kind)),
             wallet_name: wire.wallet_name,
             asset_display_name: wire.asset_display_name,
             symbol: wire.symbol,
@@ -190,7 +239,7 @@ impl From<CoreTransactionRecord> for CorePersistedTransactionRecord {
             receipt_block_number: wire.receipt_block_number,
             receipt_gas_used: wire.receipt_gas_used,
             receipt_effective_gas_price_gwei: wire.receipt_effective_gas_price_gwei,
-            receipt_network_fee_eth: wire.receipt_network_fee_eth,
+            receipt_network_fee: wire.receipt_network_fee,
             fee_priority_raw: wire.fee_priority_raw,
             fee_rate_description: wire.fee_rate_description,
             confirmation_count: wire.confirmation_count,
@@ -390,7 +439,7 @@ fn merge_standard_utxo(
             .or(existing.receipt_block_number),
         receipt_gas_used: existing.receipt_gas_used,
         receipt_effective_gas_price_gwei: existing.receipt_effective_gas_price_gwei,
-        receipt_network_fee_eth: existing.receipt_network_fee_eth,
+        receipt_network_fee: existing.receipt_network_fee,
         fee_priority_raw: incoming.fee_priority_raw.or(existing.fee_priority_raw),
         fee_rate_description: incoming
             .fee_rate_description
@@ -440,7 +489,7 @@ fn merge_dogecoin(
             .or(existing.receipt_block_number),
         receipt_gas_used: existing.receipt_gas_used,
         receipt_effective_gas_price_gwei: existing.receipt_effective_gas_price_gwei,
-        receipt_network_fee_eth: existing.receipt_network_fee_eth,
+        receipt_network_fee: existing.receipt_network_fee,
         fee_priority_raw: incoming.fee_priority_raw.or(existing.fee_priority_raw),
         fee_rate_description: incoming
             .fee_rate_description
@@ -499,7 +548,7 @@ fn merge_account_based(
             .or(existing.receipt_block_number),
         receipt_gas_used: existing.receipt_gas_used,
         receipt_effective_gas_price_gwei: existing.receipt_effective_gas_price_gwei,
-        receipt_network_fee_eth: existing.receipt_network_fee_eth,
+        receipt_network_fee: existing.receipt_network_fee,
         fee_priority_raw: incoming.fee_priority_raw.or(existing.fee_priority_raw),
         fee_rate_description: incoming
             .fee_rate_description
@@ -556,9 +605,9 @@ fn merge_evm(
         receipt_effective_gas_price_gwei: incoming
             .receipt_effective_gas_price_gwei
             .or(existing.receipt_effective_gas_price_gwei),
-        receipt_network_fee_eth: incoming
-            .receipt_network_fee_eth
-            .or(existing.receipt_network_fee_eth),
+        receipt_network_fee: incoming
+            .receipt_network_fee
+            .or(existing.receipt_network_fee),
         fee_priority_raw: incoming.fee_priority_raw.or(existing.fee_priority_raw),
         fee_rate_description: incoming
             .fee_rate_description
@@ -635,7 +684,7 @@ mod tests {
             receipt_block_number: Some(10),
             receipt_gas_used: Some("100".to_string()),
             receipt_effective_gas_price_gwei: Some(2.5),
-            receipt_network_fee_eth: Some(0.01),
+            receipt_network_fee: Some(0.01),
             fee_priority_raw: Some("normal".to_string()),
             fee_rate_description: Some("normal".to_string()),
             confirmation_count: Some(2),
@@ -664,7 +713,7 @@ mod tests {
         incoming.address = "incoming-address".to_string();
         incoming.receipt_gas_used = None;
         incoming.receipt_effective_gas_price_gwei = None;
-        incoming.receipt_network_fee_eth = None;
+        incoming.receipt_network_fee = None;
         incoming.confirmation_count = Some(12);
         incoming.used_change_output = Some(false);
         incoming.source_address = Some("source-new".to_string());
@@ -781,7 +830,7 @@ mod tests {
         incoming.address = " 0xabcdef ".to_string();
         incoming.receipt_gas_used = Some("222".to_string());
         incoming.receipt_effective_gas_price_gwei = Some(4.0);
-        incoming.receipt_network_fee_eth = Some(0.02);
+        incoming.receipt_network_fee = Some(0.02);
         incoming.failure_reason = Some("new-failure".to_string());
         incoming.created_at_unix = -999_999.0;
 
@@ -799,7 +848,7 @@ mod tests {
         assert_eq!(record.id, "tx-1");
         assert_eq!(record.receipt_gas_used.as_deref(), Some("222"));
         assert_eq!(record.receipt_effective_gas_price_gwei, Some(4.0));
-        assert_eq!(record.receipt_network_fee_eth, Some(0.02));
+        assert_eq!(record.receipt_network_fee, Some(0.02));
         assert_eq!(record.source_address.as_deref(), Some("keep-source"));
         assert_eq!(record.failure_reason.as_deref(), Some("new-failure"));
         assert_eq!(record.created_at_unix, 900.0);
@@ -833,7 +882,7 @@ mod wire_persisted_conversion {
             receipt_block_number: Some(1234),
             receipt_gas_used: Some("21000".to_string()),
             receipt_effective_gas_price_gwei: Some(12.5),
-            receipt_network_fee_eth: Some(0.00042),
+            receipt_network_fee: Some(0.00042),
             fee_priority_raw: Some("priority".to_string()),
             fee_rate_description: Some("12 sat/vB".to_string()),
             confirmation_count: Some(6),
@@ -869,29 +918,76 @@ mod wire_persisted_conversion {
         assert_eq!(back.created_at_unix, 1_700_000_000.0);
     }
 
-    /// A stored record with no status is legacy data. Reading it applies the
-    /// documented fallback rather than inventing a status.
+    /// The wire status is a free string. One that names none of the three is
+    /// read by kind, once, here — a stored record has no absent status for a
+    /// read site to interpret its own way.
     #[test]
-    fn a_missing_stored_status_falls_back_by_kind() {
-        let mut stored: CorePersistedTransactionRecord = populated_wire().into();
-        stored.status = None;
-
-        stored.kind = CoreTransactionKind::Send;
-        let as_send: CoreTransactionRecord = stored.clone().into();
-        assert_eq!(as_send.status, "confirmed");
-
-        stored.kind = CoreTransactionKind::Receive;
-        let as_receive: CoreTransactionRecord = stored.into();
-        assert_eq!(as_receive.status, "pending");
-    }
-
-    /// An unrecognised status string does not silently become "pending" on the
-    /// way in — it stores as absent, and the fallback above then applies.
-    #[test]
-    fn an_unknown_status_string_stores_as_absent() {
+    fn an_unknown_wire_status_is_read_by_kind() {
         let mut wire = populated_wire();
         wire.status = "who-knows".to_string();
-        let stored: CorePersistedTransactionRecord = wire.into();
-        assert_eq!(stored.status, None);
+
+        wire.kind = "send".to_string();
+        let as_send: CorePersistedTransactionRecord = wire.clone().into();
+        assert_eq!(as_send.status, CoreTransactionStatus::Confirmed);
+
+        wire.kind = "receive".to_string();
+        let as_receive: CorePersistedTransactionRecord = wire.into();
+        assert_eq!(as_receive.status, CoreTransactionStatus::Pending);
+    }
+
+    #[test]
+    fn the_three_named_statuses_survive_a_round_trip() {
+        for (raw, status) in [
+            ("pending", CoreTransactionStatus::Pending),
+            ("confirmed", CoreTransactionStatus::Confirmed),
+            ("failed", CoreTransactionStatus::Failed),
+        ] {
+            let mut wire = populated_wire();
+            wire.status = raw.to_string();
+            let stored: CorePersistedTransactionRecord = wire.into();
+            assert_eq!(stored.status, status);
+            let back: CoreTransactionRecord = stored.into();
+            assert_eq!(back.status, raw);
+        }
+    }
+}
+
+#[cfg(test)]
+mod history_source_tests {
+    use super::{core_history_source, HistorySource};
+
+    /// Every id a producer writes names something, and the ones the app's
+    /// switch missed are among them.
+    #[test]
+    fn every_emitted_history_source_is_named() {
+        let provider = |name: &str| Some(HistorySource::Provider { name: name.into() });
+        assert_eq!(core_history_source("rpc".into()), provider("RPC"));
+        assert_eq!(
+            core_history_source("etherscan".into()),
+            provider("Etherscan")
+        );
+        assert_eq!(core_history_source(" esplora ".into()), provider("Esplora"));
+        assert_eq!(
+            core_history_source("rust".into()),
+            Some(HistorySource::Internal)
+        );
+        assert_eq!(
+            core_history_source("rust.hd".into()),
+            Some(HistorySource::Internal)
+        );
+        // The aggregate names any chain, not only the one the switch spelled out.
+        for (id, name) in [("dogecoin", "Dogecoin"), ("litecoin", "Litecoin")] {
+            assert_eq!(
+                core_history_source(format!("{id}.providers")),
+                Some(HistorySource::ChainProviders {
+                    chain_name: name.into()
+                })
+            );
+        }
+        for nothing in ["", "  ", "none"] {
+            assert_eq!(core_history_source(nothing.into()), None, "{nothing:?}");
+        }
+        // An id core does not know is still shown rather than hidden.
+        assert_eq!(core_history_source("mystery".into()), provider("mystery"));
     }
 }

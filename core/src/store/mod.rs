@@ -306,44 +306,6 @@ pub fn plan_merge_built_in_token_preferences(
     merged
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
-#[serde(rename_all = "camelCase")]
-pub struct WalletChainInput {
-    pub wallet_id: String,
-    pub selected_chain: String,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
-#[serde(rename_all = "camelCase")]
-pub struct TransactionActivityInput {
-    pub id: String,
-    pub wallet_id: Option<String>,
-    pub chain_name: String,
-}
-
-/// Not exported: `WalletService::active_wallet_transaction_ids` is the entry point.
-pub fn core_active_wallet_transaction_ids(
-    transactions: Vec<TransactionActivityInput>,
-    wallets: Vec<WalletChainInput>,
-) -> Vec<String> {
-    let wallet_chain: HashMap<String, String> = wallets
-        .into_iter()
-        .map(|wallet| (wallet.wallet_id, wallet.selected_chain))
-        .collect();
-    transactions
-        .into_iter()
-        .filter_map(|transaction| {
-            let wallet_id = transaction.wallet_id.as_ref()?;
-            let chain = wallet_chain.get(wallet_id)?;
-            if chain == &transaction.chain_name {
-                Some(transaction.id)
-            } else {
-                None
-            }
-        })
-        .collect()
-}
-
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, uniffi::Record)]
 #[serde(rename_all = "camelCase")]
 pub struct WalletEarliestTransactionDate {
@@ -568,10 +530,11 @@ pub fn now_unix() -> f64 {
 /// mint UUIDs here and no reader depended on that either.
 /// A random v4 UUID in the canonical dashed form.
 ///
-/// Transaction ids have to parse as UUIDs: a front end reads them back with
-/// `UUID(uuidString:)` and drops a row whose id does not parse, so a record
-/// core minted with a bare hex id would vanish from the history list rather
-/// than fail where it was made.
+/// The shape is core's own choice and callers must treat it as opaque. It used
+/// to be a requirement: the app parsed these back with `UUID(uuidString:)` and
+/// dropped a row whose id did not parse, so an id core minted as bare hex would
+/// have vanished from the history list rather than failing where it was made.
+/// The app now carries the id verbatim.
 pub fn new_transaction_id() -> String {
     use rand::RngCore as _;
     let mut bytes = [0u8; 16];
@@ -866,6 +829,43 @@ pub struct ResolvedPendingStatus {
     pub confirmations: Option<u32>,
     pub receipt_block_number: Option<i64>,
     pub dogecoin_network_fee_doge: Option<f64>,
+    /// What the EVM receipt says the transaction cost.
+    pub evm_receipt_cost: Option<EvmReceiptCost>,
+}
+
+/// An EVM receipt's cost, in the units the record stores.
+///
+/// The receipt reader decoded `gasUsed` and `effectiveGasPrice` and the poll
+/// dropped both, so the record's three receipt columns — and the transaction
+/// sheet's "Gas Used", "Effective Gas Price" and "Network Fee" rows — were
+/// cleared on every pending pass and written by nothing.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, uniffi::Record)]
+#[serde(rename_all = "camelCase")]
+pub struct EvmReceiptCost {
+    /// Gas consumed, as a decimal integer string.
+    pub gas_used: String,
+    pub effective_gas_price_gwei: f64,
+    /// `gas_used × effective_gas_price`, in the chain's gas token.
+    pub network_fee: f64,
+}
+
+impl EvmReceiptCost {
+    /// Both receipt fields as decimal strings, as the EVM client returns them,
+    /// on a chain whose gas token has `native_decimals`. `None` when either is
+    /// absent or unparseable: a partial cost is not a cost.
+    pub fn from_receipt(
+        gas_used: Option<&str>,
+        effective_gas_price_wei: Option<&str>,
+        native_decimals: u8,
+    ) -> Option<Self> {
+        let gas = gas_used?.parse::<u128>().ok()?;
+        let price = effective_gas_price_wei?.parse::<u128>().ok()?;
+        Some(Self {
+            gas_used: gas.to_string(),
+            effective_gas_price_gwei: price as f64 / 1e9,
+            network_fee: gas.saturating_mul(price) as f64 / 10f64.powi(i32::from(native_decimals)),
+        })
+    }
 }
 
 /// What changed when resolved statuses were applied — enough for a front end
@@ -1101,4 +1101,23 @@ mod tests;
 #[uniffi::export]
 pub fn core_aggregate_owned_addresses(request: OwnedAddressAggregationRequest) -> Vec<String> {
     aggregate_owned_addresses(request)
+}
+
+#[cfg(test)]
+mod evm_receipt_cost_tests {
+    use super::EvmReceiptCost;
+
+    #[test]
+    fn a_receipt_cost_needs_both_fields_and_uses_the_gas_token_places() {
+        let cost = EvmReceiptCost::from_receipt(Some("21000"), Some("2000000000"), 18).unwrap();
+        assert_eq!(cost.gas_used, "21000");
+        assert_eq!(cost.effective_gas_price_gwei, 2.0);
+        assert!((cost.network_fee - 0.000042).abs() < 1e-15);
+        assert_eq!(EvmReceiptCost::from_receipt(Some("21000"), None, 18), None);
+        assert_eq!(EvmReceiptCost::from_receipt(None, Some("1"), 18), None);
+        assert_eq!(
+            EvmReceiptCost::from_receipt(Some("0x5208"), Some("1"), 18),
+            None
+        );
+    }
 }

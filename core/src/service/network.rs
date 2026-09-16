@@ -17,8 +17,7 @@ impl WalletService {
     // typed `HdXpubBalance` to Rust callers only, not across the FFI.
 
     // `fetch_evm_history_page` lives in the plain-impl block below: it is
-    // called by `history_refresh` and by `fetch_evm_history_diagnostics`,
-    // not across the FFI.
+    // called by `history_refresh`, not across the FFI.
 
     // `fetch_utxo_fee_preview` and `broadcast_raw` live in the plain-impl
     // block below (JSON shuttles — kept internal, not exported to Swift).
@@ -256,6 +255,11 @@ impl WalletService {
                 is_confirmed: receipt.is_confirmed,
                 is_failed: receipt.is_failed,
                 block_number: receipt.block_number.map(|n| n as i64),
+                cost: crate::store::EvmReceiptCost::from_receipt(
+                    receipt.gas_used.as_deref(),
+                    receipt.effective_gas_price_wei.as_deref(),
+                    chain.native_decimals(),
+                ),
             }),
         )
     }

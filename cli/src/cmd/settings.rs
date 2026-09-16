@@ -7,7 +7,7 @@
 
 use clap::{Args, Subcommand};
 use colored::Colorize as _;
-use spectra_core::store::state::{AppSettingUpdate, AppSettings, StateCommand};
+use spectra_core::store::state::{AppSettingUpdate, AppSettings, FeePriority, StateCommand};
 
 use crate::ctx::Ctx;
 use crate::error::{CliError, CliResult};
@@ -202,12 +202,17 @@ const CHAIN_KEYED: &[ChainKeyedField] = &[
         read: |s, chain| {
             s.fee_priority_by_chain
                 .get(chain)
-                .cloned()
-                .unwrap_or_else(|| "normal".to_string())
+                .copied()
+                .unwrap_or(FeePriority::Normal)
+                .as_raw()
+                .to_string()
         },
+        // Which values exist is core's, and so is reading one written as text:
+        // a priority no send path spends stores as the default rather than
+        // under a name that says a fee was chosen.
         update: |chain, value| AppSettingUpdate::FeePriority {
             chain: chain.to_string(),
-            value: value.to_string(),
+            value: spectra_core::store::state::parse_fee_priority(value.to_string()),
         },
         stored: |s| s.fee_priority_by_chain.keys().cloned().collect(),
     },

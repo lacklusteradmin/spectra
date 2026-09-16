@@ -118,8 +118,7 @@ impl SuiClient {
                     true
                 ]),
             )
-            .await
-            .unwrap_or(json!({"data": []}));
+            .await?;
 
         let data = result
             .get("data")

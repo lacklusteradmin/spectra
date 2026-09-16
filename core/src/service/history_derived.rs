@@ -146,14 +146,10 @@ pub struct ReplaceableSend {
 /// The rule: an EVM chain, a send, still pending, with a hash to find its
 /// nonce by, belonging to a wallet.
 ///
-/// A stored send with no status at all is not pending — `status_to_raw` reads
-/// that absence as confirmed — so it is not replaceable either.
 fn replaceable_send(
     record: &crate::store::persistence_models::CorePersistedTransactionRecord,
 ) -> Option<ReplaceableSend> {
-    if record.kind != CoreTransactionKind::Send
-        || record.status != Some(CoreTransactionStatus::Pending)
-    {
+    if record.kind != CoreTransactionKind::Send || record.status != CoreTransactionStatus::Pending {
         return None;
     }
     let wallet_id = record
@@ -195,23 +191,8 @@ fn kind_string(kind: CoreTransactionKind) -> String {
     .to_string()
 }
 
-pub(crate) fn status_string(status: Option<CoreTransactionStatus>) -> String {
-    match status {
-        Some(CoreTransactionStatus::Pending) | None => "pending",
-        Some(CoreTransactionStatus::Confirmed) => "confirmed",
-        Some(CoreTransactionStatus::Failed) => "failed",
-    }
-    .to_string()
-}
-
-/// The inverse of `status_string`, for reading a decision back.
-pub(crate) fn parse_status(raw: &str) -> Option<CoreTransactionStatus> {
-    match raw {
-        "pending" => Some(CoreTransactionStatus::Pending),
-        "confirmed" => Some(CoreTransactionStatus::Confirmed),
-        "failed" => Some(CoreTransactionStatus::Failed),
-        _ => None,
-    }
+pub(crate) fn status_string(status: CoreTransactionStatus) -> String {
+    status.as_raw().to_string()
 }
 
 #[cfg(test)]
@@ -236,7 +217,7 @@ mod tests {
         created_at_swift: f64,
     ) -> CorePersistedTransactionRecord {
         let json = format!(
-            r#"{{"id":"{id}","walletId":"{wallet}","kind":"receive","walletName":"W",
+            r#"{{"id":"{id}","walletId":"{wallet}","kind":"receive","status":"pending","walletName":"W",
                  "assetDisplayName":"Bitcoin","symbol":"BTC","chainName":"{chain}","amount":0.5,
                  "address":"bc1qreceive","createdAt":{created_at_swift}}}"#
         );
@@ -402,8 +383,6 @@ mod replaceable_tests {
             json!({"kind": "receive"}),
             json!({"status": "confirmed"}),
             json!({"status": "failed"}),
-            // No status at all reads as confirmed for a send.
-            json!({"status": null}),
             json!({"transactionHash": null}),
             json!({"transactionHash": "  "}),
             json!({"walletId": null}),

@@ -364,6 +364,7 @@ fn history_record_on(id: &str, wallet_id: &str, chain_name: &str) -> HistoryReco
         "id": id,
         "walletId": wallet_id,
         "kind": "send",
+        "status": "pending",
         "walletName": "Wallet",
         "assetDisplayName": chain_name,
         "symbol": "BTC",

@@ -33,7 +33,7 @@ underway to finish moving domain state and decisions into Rust.
 - [Behaviour changes](docs/BEHAVIOUR-CHANGES.md): what changed on purpose, and why.
 - [Architecture](docs/ARCHITECTURE.md): design decisions and ownership boundaries.
 - [FFI boundary](docs/FFI-BOUNDARY.md): UniFFI 0.31 and Swift 6 integration.
-- [iOS UI](docs/iosUI.md): layout, typography and Liquid Glass rules.
+- [iOS UI](docs/IOS-UI.md): layout, typography and Liquid Glass rules.
 
 `rust-toolchain.toml` pins the toolchain, so `cargo` installs the right one on
 first use and no version needs naming here.

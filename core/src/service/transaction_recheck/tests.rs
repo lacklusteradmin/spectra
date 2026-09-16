@@ -84,7 +84,7 @@ async fn explicit_recheck_targets_failed_and_confirmed_records_on_the_stored_net
                 .unwrap()
                 .payload
                 .status,
-            Some(CoreTransactionStatus::Pending)
+            CoreTransactionStatus::Pending
         );
     }
     server.verify().await;
@@ -244,7 +244,7 @@ async fn explicit_recheck_does_not_resurrect_deleted_or_overwrite_changed_transa
             }
             "hash" => {
                 assert!(result.is_err());
-                assert_eq!(rows[0].status, Some(CoreTransactionStatus::Failed));
+                assert_eq!(rows[0].status, CoreTransactionStatus::Failed);
             }
             _ => {
                 assert!(result.is_ok());

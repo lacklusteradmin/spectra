@@ -112,7 +112,7 @@ impl WalletService {
         if record.kind != CoreTransactionKind::Send {
             return Err("only sends can be rebroadcast".into());
         }
-        if record.status == Some(CoreTransactionStatus::Confirmed) {
+        if record.status == CoreTransactionStatus::Confirmed {
             return Err("transaction already confirmed".into());
         }
         let chain =
@@ -165,7 +165,7 @@ impl WalletService {
             return Err("node returned no transaction identifier".into());
         }
         record.transaction_hash = Some(hash.clone());
-        record.status = Some(CoreTransactionStatus::Pending);
+        record.status = CoreTransactionStatus::Pending;
         record.failure_reason = None;
         self.save_send_record(record).await?;
         Ok(hash)
@@ -226,7 +226,7 @@ impl WalletService {
                     .as_deref()
                     .is_some_and(|a| a.eq_ignore_ascii_case(source))
                 && r.kind == CoreTransactionKind::Send
-                && r.status == Some(CoreTransactionStatus::Pending)
+                && r.status == CoreTransactionStatus::Pending
             {
                 if let Some(nonce) = r.ethereum_nonce {
                     let nonce = u64::try_from(nonce).map_err(|_| "invalid stored EVM nonce")?;
@@ -322,18 +322,18 @@ mod tests {
             .payload
             .failure_reason
             .is_some());
-        record.status = Some(CoreTransactionStatus::Confirmed);
+        record.status = CoreTransactionStatus::Confirmed;
         service.save_send_record(record.clone()).await.unwrap();
         server.reset().await;
         let mut late = record.clone();
-        late.status = Some(CoreTransactionStatus::Pending);
+        late.status = CoreTransactionStatus::Pending;
         late.failure_reason = Some("late result".into());
         service.save_send_record(late).await.unwrap();
         assert_eq!(
             service.fetch_all_history_records_typed().await.unwrap()[0]
                 .payload
                 .status,
-            Some(CoreTransactionStatus::Confirmed)
+            CoreTransactionStatus::Confirmed
         );
         assert!(service.rebroadcast_transaction(record.id).await.is_err());
         assert!(server.received_requests().await.unwrap().is_empty());

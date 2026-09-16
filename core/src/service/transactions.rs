@@ -270,7 +270,7 @@ impl WalletService {
         resolutions: Vec<crate::store::ResolvedPendingStatus>,
         expected: Option<Vec<crate::store::persistence_models::CorePersistedTransactionRecord>>,
     ) -> Result<Vec<crate::store::TransactionStatusChange>, SpectraBridgeError> {
-        use super::history_derived::{parse_status, status_string};
+        use super::history_derived::status_string;
         let stale: std::collections::HashSet<String> = self
             .stale_pending_failure_ids(chain_name.clone())
             .await?
@@ -323,9 +323,7 @@ impl WalletService {
                         }),
                         is_stale_failure: stale.contains(&t.id)
                             && t.status
-                                == Some(
-                                    crate::store::wallet_domain::CoreTransactionStatus::Pending,
-                                ),
+                                == crate::store::wallet_domain::CoreTransactionStatus::Pending,
                     })
                     .collect();
 
@@ -349,12 +347,16 @@ impl WalletService {
                     let Some(old) = stored_by_id.get(decision.id.as_str()).copied() else {
                         continue;
                     };
-                    let Some(new_status) = parse_status(&decision.new_status) else {
+                    let Some(new_status) =
+                        crate::store::wallet_domain::CoreTransactionStatus::from_raw(
+                            &decision.new_status,
+                        )
+                    else {
                         continue;
                     };
                     let resolution = by_id.get(&decision.id);
                     let mut updated = old.clone();
-                    updated.status = Some(new_status);
+                    updated.status = new_status;
                     updated.failure_reason = match decision.failure_reason_disposition {
                         crate::store::FailureReasonDisposition::None => None,
                         crate::store::FailureReasonDisposition::Preserve => {
@@ -368,7 +370,7 @@ impl WalletService {
                         updated.receipt_block_number = None;
                         updated.receipt_gas_used = None;
                         updated.receipt_effective_gas_price_gwei = None;
-                        updated.receipt_network_fee_eth = None;
+                        updated.receipt_network_fee = None;
                         updated.confirmation_count = None;
                         updated.dogecoin_confirmed_network_fee_doge = None;
                         let next = crate::store::plan_transaction_status_poll_success(
@@ -390,6 +392,12 @@ impl WalletService {
                         }
                         if let Some(fee) = r.dogecoin_network_fee_doge {
                             updated.dogecoin_confirmed_network_fee_doge = Some(fee);
+                        }
+                        if let Some(cost) = &r.evm_receipt_cost {
+                            updated.receipt_gas_used = Some(cost.gas_used.clone());
+                            updated.receipt_effective_gas_price_gwei =
+                                Some(cost.effective_gas_price_gwei);
+                            updated.receipt_network_fee = Some(cost.network_fee);
                         }
                     }
                     changes.push(crate::store::TransactionStatusChange {
@@ -519,6 +527,7 @@ mod status_commit_regressions {
             confirmations: Some(12),
             receipt_block_number: Some(900000),
             dogecoin_network_fee_doge: None,
+            evm_receipt_cost: None,
         }
     }
     async fn setup() -> (Arc<WalletService>, String) {
@@ -582,7 +591,7 @@ mod status_commit_regressions {
     async fn status_fresh_reorgs_and_failed_receipts_can_correct_confirmed_history() {
         let (service, _) = setup().await;
         let mut tx = record("tx", 0.0);
-        tx.status = Some(crate::store::wallet_domain::CoreTransactionStatus::Confirmed);
+        tx.status = crate::store::wallet_domain::CoreTransactionStatus::Confirmed;
         tx.receipt_block_number = Some(123);
         tx.confirmation_count = Some(12);
         service
@@ -602,7 +611,7 @@ mod status_commit_regressions {
         let row = service.transactions().await.unwrap().remove(0);
         assert_eq!(
             row.status,
-            Some(crate::store::wallet_domain::CoreTransactionStatus::Pending)
+            crate::store::wallet_domain::CoreTransactionStatus::Pending
         );
         assert!(row.receipt_block_number.is_none());
         assert!(row.confirmation_count.is_none());
@@ -640,7 +649,7 @@ mod status_commit_regressions {
         assert!(service.status_trackers.read().await.is_empty());
         assert_eq!(
             service.transactions().await.unwrap()[0].status,
-            Some(crate::store::wallet_domain::CoreTransactionStatus::Pending)
+            crate::store::wallet_domain::CoreTransactionStatus::Pending
         );
         conn.execute_batch("DROP TRIGGER reject_status;").unwrap();
         service
@@ -717,7 +726,7 @@ mod status_commit_regressions {
                 assert_eq!(row.wallet_name, "After");
                 assert_eq!(
                     row.status,
-                    Some(crate::store::wallet_domain::CoreTransactionStatus::Confirmed)
+                    crate::store::wallet_domain::CoreTransactionStatus::Confirmed
                 );
             }
         }
@@ -886,7 +895,7 @@ impl WalletService {
                 created_at_unix: t.created_at
                     + crate::store::persistence_models::SWIFT_REFERENCE_EPOCH_OFFSET_SECS,
                 status_is_pending: t.status
-                    == Some(crate::store::wallet_domain::CoreTransactionStatus::Pending),
+                    == crate::store::wallet_domain::CoreTransactionStatus::Pending,
             })
             .collect();
         Ok(crate::store::plan_stale_pending_failure_ids(

@@ -204,8 +204,7 @@ impl KaspaClient {
             .get(&format!(
                 "/addresses/{address}/full-transactions-page?limit=50"
             ))
-            .await
-            .unwrap_or_default();
+            .await?;
         Ok(txs
             .into_iter()
             .map(|tx| {

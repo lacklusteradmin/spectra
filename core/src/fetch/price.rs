@@ -50,18 +50,28 @@ impl PriceProvider {
 }
 
 /// Fiat-rate providers, likewise in preference order.
-const FIAT_RATE_PROVIDERS: &[FiatRateProvider] = &[
-    FiatRateProvider::OpenER,
-    FiatRateProvider::ExchangeRateHost,
-    FiatRateProvider::Frankfurter,
-    FiatRateProvider::FawazAhmed,
-];
+///
+/// Two, where there were four. ExchangeRate.host moved behind an API key: its
+/// `/live` endpoint answers `200` with `{"success":false,"error":{"code":101,
+/// "type":"missing_access_key"}}`, and decoding `quotes` as an optional field
+/// turned that into an empty success — an arm that quoted nothing and did not
+/// even reach the failure list a total outage is reported from. Frankfurter
+/// serves ECB reference rates, which do not list AED, so it could not cover
+/// [`crate::store::state::FIAT_CURRENCY_CODES`] however healthy it was.
+///
+/// The two left both quote every code in that list, keyless, from independent
+/// infrastructure — er-api's own API and a jsDelivr CDN — and agreed to within
+/// 0.2% when this was cut. Merging here is not the union it is for spot
+/// prices, where a second provider lists coins the first does not: every
+/// provider quotes the same dozen currencies, so a third and fourth arm buy
+/// availability alone, against a number that moves once a day, refreshes every
+/// six hours, and falls back to the last good rate when no one answers.
+const FIAT_RATE_PROVIDERS: &[FiatRateProvider] =
+    &[FiatRateProvider::OpenER, FiatRateProvider::FawazAhmed];
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum FiatRateProvider {
     OpenER,
-    ExchangeRateHost,
-    Frankfurter,
     FawazAhmed,
 }
 
@@ -69,8 +79,6 @@ impl FiatRateProvider {
     pub const fn label(self) -> &'static str {
         match self {
             Self::OpenER => "Open ER",
-            Self::ExchangeRateHost => "ExchangeRate.host",
-            Self::Frankfurter => "Frankfurter API",
             Self::FawazAhmed => "Fawaz Ahmed Currency API",
         }
     }
@@ -101,8 +109,6 @@ const COINGECKO_SIMPLE_PRICE_URL: &str = "https://api.coingecko.com/api/v3/simpl
 const COINPAPRIKA_TICKERS_URL: &str = "https://api.coinpaprika.com/v1/tickers";
 
 const OPEN_ER_LATEST_USD_URL: &str = "https://open.er-api.com/v6/latest/USD";
-const FRANKFURTER_LATEST_URL: &str = "https://api.frankfurter.app/latest";
-const EXCHANGE_RATE_HOST_LIVE_URL: &str = "https://api.exchangerate.host/live";
 const FAWAZ_AHMED_USD_RATES_URL: &str =
     "https://cdn.jsdelivr.net/npm/@fawazahmed0/currency-api@latest/v1/currencies/usd.json";
 
@@ -169,8 +175,6 @@ pub async fn fetch_fiat_rates(currencies: &[String]) -> Result<HashMap<String, f
         futures::future::join_all(FIAT_RATE_PROVIDERS.iter().map(|provider| async move {
             let result = match provider {
                 FiatRateProvider::OpenER => fetch_open_er_rates(targets).await,
-                FiatRateProvider::ExchangeRateHost => fetch_exchange_rate_host_rates(targets).await,
-                FiatRateProvider::Frankfurter => fetch_frankfurter_rates(targets).await,
                 FiatRateProvider::FawazAhmed => fetch_fawaz_ahmed_rates(targets).await,
             };
             (*provider, result)
@@ -354,17 +358,6 @@ struct OpenERResponse {
 }
 
 #[derive(Debug, Deserialize)]
-struct FrankfurterResponse {
-    rates: HashMap<String, f64>,
-}
-
-#[derive(Debug, Deserialize)]
-struct ExchangeRateHostResponse {
-    #[serde(default)]
-    quotes: Option<HashMap<String, f64>>,
-}
-
-#[derive(Debug, Deserialize)]
 struct FawazAhmedResponse {
     usd: HashMap<String, f64>,
 }
@@ -374,42 +367,6 @@ async fn fetch_open_er_rates(currencies: &[String]) -> Result<HashMap<String, f6
         .get_json(OPEN_ER_LATEST_USD_URL, RetryProfile::ChainRead)
         .await?;
     Ok(filter_rates(resp.rates, currencies))
-}
-
-async fn fetch_frankfurter_rates(currencies: &[String]) -> Result<HashMap<String, f64>, String> {
-    if currencies.is_empty() {
-        return Ok(HashMap::new());
-    }
-    let to_csv = currencies.join(",");
-    let url = format!("{FRANKFURTER_LATEST_URL}?from=USD&to={to_csv}");
-    let resp: FrankfurterResponse = HttpClient::shared()
-        .get_json(&url, RetryProfile::ChainRead)
-        .await?;
-    Ok(filter_rates(resp.rates, currencies))
-}
-
-async fn fetch_exchange_rate_host_rates(
-    currencies: &[String],
-) -> Result<HashMap<String, f64>, String> {
-    if currencies.is_empty() {
-        return Ok(HashMap::new());
-    }
-    let currencies_csv = currencies.join(",");
-    let url = format!("{EXCHANGE_RATE_HOST_LIVE_URL}?source=USD&currencies={currencies_csv}");
-    let resp: ExchangeRateHostResponse = HttpClient::shared()
-        .get_json(&url, RetryProfile::ChainRead)
-        .await?;
-    let quotes = resp.quotes.unwrap_or_default();
-    let mut out = HashMap::new();
-    for currency in currencies {
-        let key = format!("USD{currency}");
-        if let Some(rate) = quotes.get(&key) {
-            if *rate > 0.0 {
-                out.insert(currency.clone(), *rate);
-            }
-        }
-    }
-    Ok(out)
 }
 
 async fn fetch_fawaz_ahmed_rates(currencies: &[String]) -> Result<HashMap<String, f64>, String> {
@@ -438,38 +395,12 @@ fn filter_rates(rates: HashMap<String, f64>, allowed: &[String]) -> HashMap<Stri
     out
 }
 
-// ── Client-side merge policies (called from Swift after fetch)
-
-#[derive(Debug, Clone, uniffi::Record)]
-pub struct PriceMergeOutcome {
-    pub updated_prices: HashMap<String, f64>,
-    pub had_meaningful_change: bool,
-}
-
-pub fn merge_price_updates(
-    existing: HashMap<String, f64>,
-    fetched: HashMap<String, f64>,
-) -> PriceMergeOutcome {
-    let mut updated_prices = existing;
-    let mut had_meaningful_change = false;
-    for (key, value) in fetched {
-        if updated_prices.get(&key).copied() != Some(value) {
-            updated_prices.insert(key, value);
-            had_meaningful_change = true;
-        }
-    }
-    PriceMergeOutcome {
-        updated_prices,
-        had_meaningful_change,
-    }
-}
-
-pub fn price_merge_live_updates(
-    existing: HashMap<String, f64>,
-    fetched: HashMap<String, f64>,
-) -> PriceMergeOutcome {
-    merge_price_updates(existing, fetched)
-}
+// ── Client-side merge policy
+//
+// Spot prices merge in `service::network_prices::apply_price_result`, where
+// the fetch result and the last good quote are both in hand. Fiat rates keep
+// a function of their own: the set of currencies to carry forward is an
+// argument, not whatever the previous map happened to hold.
 
 pub fn merge_fiat_rate_updates(
     fetched: HashMap<String, f64>,
@@ -501,28 +432,6 @@ pub fn merge_fiat_rate_updates(
 #[cfg(test)]
 mod merge_tests {
     use super::*;
-
-    #[test]
-    fn price_merge_detects_change_only_on_difference() {
-        let existing = HashMap::from([("BTC".to_string(), 50000.0)]);
-        let fetched = HashMap::from([("BTC".to_string(), 50000.0)]);
-        let outcome = merge_price_updates(existing, fetched);
-        assert!(!outcome.had_meaningful_change);
-
-        let existing = HashMap::from([("BTC".to_string(), 50000.0)]);
-        let fetched = HashMap::from([("BTC".to_string(), 51000.0)]);
-        let outcome = merge_price_updates(existing, fetched);
-        assert!(outcome.had_meaningful_change);
-        assert_eq!(outcome.updated_prices.get("BTC"), Some(&51000.0));
-    }
-
-    #[test]
-    fn price_merge_preserves_missing_keys() {
-        let existing = HashMap::from([("BTC".to_string(), 50000.0), ("ETH".to_string(), 3000.0)]);
-        let fetched = HashMap::from([("BTC".to_string(), 51000.0)]);
-        let outcome = merge_price_updates(existing, fetched);
-        assert_eq!(outcome.updated_prices.get("ETH"), Some(&3000.0));
-    }
 
     #[test]
     fn fiat_merge_prefers_fetched_falls_back_to_existing() {
