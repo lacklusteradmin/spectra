@@ -353,6 +353,54 @@ pub fn catalog_endpoints() -> Result<Vec<ChainEndpoints>, SpectraBridgeError> {
 }
 
 #[cfg(test)]
+mod a_primary_endpoint_can_serve_a_primary_read {
+    use super::*;
+
+    /// A chain's primary list holds only endpoints that answer one of the
+    /// roles it was filtered on.
+    ///
+    /// `catalog_endpoints` asks a non-EVM chain for `RPC | BALANCE | BACKEND`
+    /// and hands the result to `with_fallback`, which tries them top to bottom
+    /// for reads. An endpoint that serves none of the three is not a slower
+    /// fallback, it is a wrong one: `ENDPOINT_ROLE_BACKEND` was written
+    /// `1 << 9` like `ENDPOINT_ROLE_INDEXER`, so the mask also matched every
+    /// indexer, and Bitcoin Cash's list picked up
+    /// `…/push/transaction` (broadcast only) and
+    /// `…/dashboards/transaction/` (a verification URL prefix) as its second
+    /// and third choices for a balance read.
+    ///
+    /// Stated over the catalog rather than over the constants, so it holds
+    /// whatever the mask is next written as. Supplemental and secondary rows
+    /// are deliberately excluded — those carry `web-link` explorers on
+    /// purpose, and they are the `:explorer` / `:secondary` ids here.
+    #[test]
+    fn no_chain_is_offered_an_endpoint_that_answers_none_of_them() {
+        let mut checked = 0;
+        for row in catalog_endpoints().expect("catalog endpoints") {
+            if Chain::from_str_id(&row.chain_id).is_none() {
+                continue; // a `:secondary` or `:explorer` slot, not the primary list
+            }
+            for endpoint in &row.endpoints {
+                let Some(tag) = crate::app_core_endpoint_tag(endpoint.clone()) else {
+                    continue; // no catalog row: a user-typed RPC or an assembled base
+                };
+                let serves = tag.kind == "rpc-node"
+                    || tag.kind == "backend"
+                    || tag.capabilities.iter().any(|c| c == "balance");
+                assert!(
+                    serves,
+                    "{} lists {endpoint} as a primary endpoint, but it is a {:?} \
+                     claiming only {:?}",
+                    row.chain_id, tag.kind, tag.capabilities
+                );
+                checked += 1;
+            }
+        }
+        assert!(checked > 0, "no primary endpoint was checked at all");
+    }
+}
+
+#[cfg(test)]
 mod app_boundary_tests;
 
 pub use address_discovery::WalletAddressDiscovery;
@@ -379,9 +427,9 @@ impl WalletService {
     }
 }
 
+pub mod app_refresh;
 mod owned_send;
 pub mod send_review;
-pub mod app_refresh;
 
 pub use owned_send::{OwnedReplacementDraft, OwnedSendQuote};
 

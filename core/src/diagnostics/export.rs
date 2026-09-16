@@ -219,14 +219,9 @@ mod tests {
             count: 1,
             error: None,
         }];
-        let s = diagnostics_build_history_json(
-            vec![full],
-            vec![],
-            None,
-            None,
-            Some("testnet".into()),
-        )
-        .expect("builds");
+        let s =
+            diagnostics_build_history_json(vec![full], vec![], None, None, Some("testnet".into()))
+                .expect("builds");
         assert!(s.contains("\"nextCursor\""));
         assert!(s.contains("\"perSource\""));
         assert!(s.contains("\"networkMode\"") && s.contains("testnet"));

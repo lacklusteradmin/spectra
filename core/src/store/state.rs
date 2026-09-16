@@ -1273,7 +1273,7 @@ pub fn reduce_state_in_place(state: &mut CoreAppState, command: StateCommand) ->
                                     contract
                                 ),
                                 kind: crate::tokens::TokenKind::Protocol {
-                                    standard: hosting.token_standard().into(),
+                                    standard: hosting.token_standard(),
                                     identifier: contract.clone(),
                                 },
                                 chain: hosting.chain_name().to_string(),

@@ -17,7 +17,14 @@ const ENDPOINT_ROLE_EXPLORER: u32 = 1 << 8;
 /// link, and the two were sharing one — which is how `explorer_supplemental`
 /// briefly picked up every Esplora endpoint Bitcoin has.
 const ENDPOINT_ROLE_INDEXER: u32 = 1 << 9;
-pub(crate) const ENDPOINT_ROLE_BACKEND: u32 = 1 << 9;
+/// A Monero light-wallet server. Its own bit for the same reason — which the
+/// comment above did not stop this one from being written `1 << 9` as well.
+/// `catalog_endpoints` asks for `RPC | BALANCE | BACKEND`, so every indexer
+/// matched it too, and the sixteen indexer rows that carry no `balance`
+/// capability were handed to non-EVM chains as general API bases: Bitcoin
+/// Cash's primary list held `/push/transaction` and a `/dashboards/transaction/`
+/// URL prefix, which `with_fallback` would try for a balance read.
+pub(crate) const ENDPOINT_ROLE_BACKEND: u32 = 1 << 10;
 
 /// Endpoint-table slot for a given chain. Mirrors `crate::registry::EndpointSlot`
 /// so the Swift side can ask Rust for the right `chain_id + offset` instead of
@@ -1448,6 +1455,62 @@ mod an_endpoints_kind_is_not_its_capabilities {
                 );
             }
         }
+    }
+
+    /// Each of the eleven role names owns a bit no other name owns.
+    ///
+    /// Both vocabularies share one `u32` mask, and a repeated shift amount is
+    /// invisible: the constants still compile, every filter still returns
+    /// endpoints, and the only symptom is a mask quietly matching a kind it
+    /// never asked for. It has happened twice — `explorer`/`indexer` first,
+    /// then `indexer`/`backend`, where `catalog_endpoints`' `RPC | BALANCE |
+    /// BACKEND` collected every indexer as well. Asserting it here costs one
+    /// test and removes the third occurrence.
+    #[test]
+    fn every_role_name_owns_a_distinct_bit() {
+        use std::collections::HashMap;
+
+        // The two vocabularies of `data/endpoints.toml`, pinned against the
+        // data by `every_record_has_a_kind_the_readers_understand` and
+        // `the_two_vocabularies_do_not_overlap` above.
+        const ROLES: [&str; 11] = [
+            "rpc-node",
+            "indexer",
+            "web-link",
+            "backend",
+            "read",
+            "balance",
+            "history",
+            "utxo",
+            "fee",
+            "broadcast",
+            "verification",
+        ];
+
+        let mut owner: HashMap<u32, &str> = HashMap::new();
+        for role in ROLES {
+            let bit = super::endpoint_role_bit(role);
+            assert_ne!(bit, 0, "{role:?} maps to no bit");
+            assert!(bit.is_power_of_two(), "{role:?} is {bit:#x}, not one bit");
+            if let Some(other) = owner.insert(bit, role) {
+                panic!("{role:?} and {other:?} share bit {bit:#x}");
+            }
+        }
+
+        // The aliases are the one place two names may share a bit: they are
+        // the older spellings of a role, not roles of their own.
+        assert_eq!(
+            super::endpoint_role_bit("rpc"),
+            super::endpoint_role_bit("rpc-node")
+        );
+        assert_eq!(
+            super::endpoint_role_bit("explorer"),
+            super::endpoint_role_bit("web-link")
+        );
+
+        // A name the catalog never uses claims nothing, rather than
+        // defaulting onto some other role's bit.
+        assert_eq!(super::endpoint_role_bit("not-a-role"), 0);
     }
 
     /// A web link is a URL for a person, so it claims nothing.

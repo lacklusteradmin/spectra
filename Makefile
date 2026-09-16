@@ -1,38 +1,45 @@
 SHELL := /bin/bash
 
-.DEFAULT_GOAL := help
-
 XCODE_PROJECT := swift/Spectra.xcodeproj
 XCODE_SCHEME ?= Spectra
 IOS_SIM_DEST ?= generic/platform=iOS Simulator
+IOS_TEST_DEST ?= platform=iOS Simulator,name=iPhone 17 Pro
 
-.PHONY: help check check-ui test ios iosr ios-artifacts ios-artifacts-release android androidr bindgen-ios bindgen-android clean clean-generated
+.PHONY: verify fmt lint check check-ui test test-cli test-ios \
+	ios iosr ios-artifacts ios-artifacts-release android androidr \
+	bindgen-ios bindgen-android clean clean-generated
 
-help:
-	@printf "Spectra build targets\n"
-	@printf "\n"
-	@printf "  make check                 Cargo check the full Rust workspace\n"
-	@printf "  make check-ui              Check Swift views against the design tokens\n"
-	@printf "  make test                  Run spectra_core Rust tests\n"
-	@printf "  make ios                   Build the iOS app through Xcode (Debug simulator)\n"
-	@printf "  make iosr                  Build the iOS app through Xcode (Release simulator)\n"
-	@printf "  make ios-artifacts         Build standalone iOS Rust libs + Swift bindings\n"
-	@printf "  make ios-artifacts-release Build standalone release iOS Rust libs + Swift bindings\n"
-	@printf "  make android               Build Android Rust libs + Kotlin bindings (debug)\n"
-	@printf "  make androidr              Build Android Rust libs + Kotlin bindings (release)\n"
-	@printf "  make bindgen-ios           Regenerate Swift bindings only\n"
-	@printf "  make bindgen-android       Regenerate Kotlin bindings only\n"
-	@printf "  make clean                 Remove Rust, mobile, and generated artifacts\n"
+# ── Verification ────────────────────────────────────────────────────
+# `verify` is the gate AGENTS.md describes: all three suites must pass
+# before a change is done. CI runs `lint test test-cli`; `test-ios`
+# needs Xcode and a simulator, so it stays local.
+verify: lint test test-cli test-ios
+
+lint:
+	cargo fmt --all -- --check
+	cargo clippy --workspace --all-targets -- -D warnings
+
+fmt:
+	cargo fmt --all
 
 check:
 	cargo check --workspace
 
 check-ui:
 	scripts/check-design-tokens.sh
+	scripts/normalize-icons.sh --check
 
 test:
-	cargo test -p spectra_core
+	cargo test --workspace
 
+test-cli:
+	scripts/cli-acceptance.sh
+
+test-ios:
+	xcodebuild test -project "$(XCODE_PROJECT)" -scheme "$(XCODE_SCHEME)" \
+		-destination "$(IOS_TEST_DEST)"
+
+# ── Builds ──────────────────────────────────────────────────────────
 ios:
 	xcodebuild -project "$(XCODE_PROJECT)" -scheme "$(XCODE_SCHEME)" -configuration Debug -destination "$(IOS_SIM_DEST)" build
 

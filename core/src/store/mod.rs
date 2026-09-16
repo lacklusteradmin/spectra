@@ -19,7 +19,6 @@ use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 use std::collections::HashMap;
 
-
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, uniffi::Record)]
 #[serde(rename_all = "camelCase")]
 pub struct SecretMaterialDescriptor {

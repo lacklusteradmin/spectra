@@ -2,7 +2,6 @@
 // UniFFI to get native records instead of re-parsing JSON. Also exposes the
 // small `HistoryChainID` enum-like mapping used across the history layer.
 
-
 // ────────────────────────────────────────────────────────────────────
 // Normalized chain history — typed item produced by
 // `WalletService::fetch_normalized_history` (see `history::ChainHistoryEntry`).

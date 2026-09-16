@@ -1,0 +1,66 @@
+name: CI
+
+# The gate for the two suites that need no Xcode. The iOS suite
+# (`make test-ios`) needs a simulator and stays local; see AGENTS.md.
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  CARGO_TERM_COLOR: always
+  # A wallet's arithmetic bugs are invisible in debug and silent in release,
+  # so fail loudly here rather than backtrace-lessly.
+  RUST_BACKTRACE: 1
+
+jobs:
+  rust:
+    name: fmt, clippy, tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # rust-toolchain.toml pins the version; rustup honours it on first use,
+      # so nothing here names a toolchain and the two cannot drift apart.
+      - name: Show toolchain
+        run: |
+          rustup show active-toolchain
+          cargo --version
+
+      - uses: Swatinem/rust-cache@v2
+
+      - name: Formatting
+        run: cargo fmt --all -- --check
+
+      - name: Clippy
+        run: cargo clippy --workspace --all-targets -- -D warnings
+
+      - name: Tests
+        run: cargo test --workspace
+
+  cli-acceptance:
+    name: CLI acceptance
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: Swatinem/rust-cache@v2
+
+      # The suite runs offline against a throwaway directory. `sqlite3` is
+      # optional — one case skips without it — but ubuntu-latest ships it, so
+      # a skipped case here would mean the runner image changed.
+      - name: Tool versions
+        run: |
+          python3 --version
+          sqlite3 --version
+
+      - name: Build the CLI
+        run: cargo build -p spectra-cli
+
+      - name: Acceptance suite
+        run: ./scripts/cli-acceptance.sh

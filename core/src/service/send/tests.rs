@@ -181,14 +181,6 @@ mod a_destination_probe_refuses_before_it_guesses {
     }
 }
 
-/// What a destination probe asks about, from the holding being sent.
-///
-/// `None` is the chain's own asset. A token the user does not track has no
-/// descriptor and is a refusal rather than a fallback: the probe would
-/// otherwise read the *chain's* balance and report it as the token's, which is
-/// what three of Swift's four arms did, or read nothing and show no verdict,
-/// which is what the EVM arm did. Neither says "we could not check".
-
 #[cfg(test)]
 mod destination_resolution_tests {
     use crate::service::WalletService;

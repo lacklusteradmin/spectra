@@ -69,3 +69,117 @@ fn unreadable_preferences_refuse_loading_without_deleting_wallets() {
         .unwrap();
     assert_eq!(raw, r#"[{"legacy":true}]"#);
 }
+
+/// A wallet row this build cannot decode costs that row, not the app.
+///
+/// The shape stored under `derivationOverrides` shrank from ten fields to two
+/// and gained `deny_unknown_fields`, so every row an earlier build wrote
+/// carries a `mnemonicWordlist` this one refuses. That refusal used to fail
+/// `wallet_load_all`, and with it `app_state_load`, `open_state`, and every
+/// call that waits on `open_state` — the install could not list a wallet,
+/// import one, or reset itself, and deleting the app was the only way out.
+///
+/// Three things are asserted together because the fix is only safe if all
+/// three hold: the readable wallet still loads, the refused bytes are still on
+/// disk, and the commit that follows the load does not prune the row it could
+/// not see.
+#[test]
+fn an_unreadable_wallet_row_does_not_take_the_readable_ones_with_it() {
+    let db = {
+        let mut path = std::env::temp_dir();
+        path.push(format!(
+            "spectra-badwallet-{}-{:?}.sqlite",
+            std::process::id(),
+            std::thread::current().id()
+        ));
+        let _ = std::fs::remove_file(&path);
+        path.to_string_lossy().into_owned()
+    };
+
+    let wallet = |id: &str, name: &str| crate::store::state::WalletState {
+        id: id.into(),
+        name: name.into(),
+        is_watch_only: false,
+        chain_name: "Bitcoin".into(),
+        include_in_portfolio_total: true,
+        network_id: "bitcoin".into(),
+        xpub: None,
+        derivation_preset: "standard".into(),
+        derivation_path: None,
+        derivation_overrides: Default::default(),
+        holdings: Vec::new(),
+        addresses: Vec::new(),
+    };
+
+    let mut state = CoreAppState::default();
+    state
+        .wallets
+        .push(wallet("stale", "Written by an older build"));
+    state.wallets.push(wallet("fresh", "Readable"));
+    crate::store::wallet_db::app_state_save(&crate::wallet_db::WalletDatabase::new(&db), &state)
+        .expect("save");
+
+    // Put the pre-shrink override shape back on one row, exactly as a build
+    // before the shrink left it — straight into the table, so no helper can
+    // normalise it on the way in.
+    let stale_payload = {
+        let conn = rusqlite::Connection::open(&db).expect("open");
+        let payload: String = conn
+            .query_row("SELECT payload FROM wallets WHERE id = 'stale'", [], |r| {
+                r.get(0)
+            })
+            .expect("read the row");
+        let payload = payload.replace(
+            r#""derivationOverrides":{"passphrase":null,"hmacKey":null}"#,
+            r#""derivationOverrides":{"passphrase":null,"mnemonicWordlist":null,"hmacKey":null}"#,
+        );
+        conn.execute(
+            "UPDATE wallets SET payload = ?1 WHERE id = 'stale'",
+            rusqlite::params![payload],
+        )
+        .expect("write the stale row");
+        payload
+    };
+    assert!(
+        stale_payload.contains("mnemonicWordlist"),
+        "the row under test must carry the field this build refuses"
+    );
+
+    // The load succeeds, and keeps everything it could read.
+    let loaded =
+        crate::store::wallet_db::app_state_load(&crate::wallet_db::WalletDatabase::new(&db))
+            .expect("a row this build cannot read must not fail the load");
+    assert_eq!(
+        loaded
+            .wallets
+            .iter()
+            .map(|w| w.id.as_str())
+            .collect::<Vec<_>>(),
+        ["fresh"],
+    );
+
+    // Committing on top of that load must not delete the row the load skipped:
+    // it is absent from both sides of the diff, so nothing may prune it.
+    let mut next = loaded.clone();
+    next.wallets.push(wallet("added", "Imported afterwards"));
+    crate::wallet_db::AppStateChanges::between(Some(&loaded), &next)
+        .expect("diff")
+        .save(&crate::wallet_db::WalletDatabase::new(&db))
+        .expect("commit");
+
+    let conn = rusqlite::Connection::open(&db).unwrap();
+    let raw: String = conn
+        .query_row("SELECT payload FROM wallets WHERE id = 'stale'", [], |r| {
+            r.get(0)
+        })
+        .expect("the refused row must still be on disk");
+    assert_eq!(raw, stale_payload);
+    let ids: Vec<String> = conn
+        .prepare("SELECT id FROM wallets ORDER BY id")
+        .unwrap()
+        .query_map([], |r| r.get(0))
+        .unwrap()
+        .collect::<Result<_, _>>()
+        .unwrap();
+    assert_eq!(ids, ["added", "fresh", "stale"]);
+}

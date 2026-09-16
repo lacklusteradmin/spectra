@@ -715,8 +715,10 @@ mod send_chain_tests {
     /// --sign-only` prints the signed chain id, which is how it was found.
     #[test]
     fn a_send_requires_the_explicit_network_and_never_retargets() {
-        let mut state = CoreAppState::default();
-        state.wallets = vec![wallet("w1", Chain::Ethereum, Some("ethereum-sepolia"))];
+        let mut state = CoreAppState {
+            wallets: vec![wallet("w1", Chain::Ethereum, Some("ethereum-sepolia"))],
+            ..Default::default()
+        };
         assert!(send_chain_for(&state, "w1", Chain::Ethereum).is_err());
         assert_eq!(
             send_chain_for(&state, "w1", Chain::EthereumSepolia).unwrap(),

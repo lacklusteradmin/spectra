@@ -3,10 +3,6 @@ use super::*;
 
 #[uniffi::export(async_runtime = "tokio")]
 impl WalletService {
-    /// Upsert a batch of transaction history records. `records[*].payload`
-    /// is the typed `CorePersistedTransactionRecord`; Rust serializes to JSON
-    /// for the SQLite TEXT column internally — no JSON crosses the FFI.
-
     pub async fn fetch_all_history_records_typed(
         &self,
     ) -> Result<Vec<crate::wallet_db::HistoryRecord>, SpectraBridgeError> {

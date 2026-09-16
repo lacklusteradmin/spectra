@@ -307,13 +307,10 @@ async fn unchanged_receive_reservation_skips_sql_but_merges_newly_owned_indices(
     assert_eq!(count(), 1);
     let state = service().open_state(db.clone()).await.unwrap();
     assert_eq!(state.wallets.len(), 0);
-    let pool = crate::wallet_db::keypool_load(
-        &crate::wallet_db::WalletDatabase::new(&db),
-        "w",
-        "Bitcoin",
-    )
-    .unwrap()
-    .unwrap();
+    let pool =
+        crate::wallet_db::keypool_load(&crate::wallet_db::WalletDatabase::new(&db), "w", "Bitcoin")
+            .unwrap()
+            .unwrap();
     assert_eq!(pool.next_external_index, 11);
     assert_eq!(pool.reserved_receive_index, Some(reserved));
 }
@@ -344,13 +341,9 @@ async fn unreadable_history_refuses_keypool_reads_and_mutations() {
         .is_err());
     assert_eq!(*s.keypool.read().await.indices(), before);
     assert_eq!(
-        crate::wallet_db::keypool_load(
-            &crate::wallet_db::WalletDatabase::new(&db),
-            "w",
-            "Bitcoin"
-        )
-        .unwrap()
-        .unwrap(),
+        crate::wallet_db::keypool_load(&crate::wallet_db::WalletDatabase::new(&db), "w", "Bitcoin")
+            .unwrap()
+            .unwrap(),
         before[&keypool_key("w", "Bitcoin")]
     );
 }

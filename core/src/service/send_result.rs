@@ -58,8 +58,7 @@ impl ProtocolSendResult {
     }
     pub(super) fn evm(
         &self,
-    ) -> Result<Option<crate::send::ethereum::EvmSendDetails>, crate::SpectraBridgeError>
-    {
+    ) -> Result<Option<crate::send::ethereum::EvmSendDetails>, crate::SpectraBridgeError> {
         let Self::Evm(r) = self else { return Ok(None) };
         Ok(Some(crate::send::ethereum::EvmSendDetails {
             txid: r.txid.clone(),

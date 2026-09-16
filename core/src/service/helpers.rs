@@ -22,7 +22,9 @@ pub(super) fn chain_for_id(chain_id: &str) -> Result<Chain, SpectraBridgeError> 
 pub(super) fn evm_network_for_id(network_id: &str) -> Result<Chain, SpectraBridgeError> {
     Chain::from_str_id(network_id)
         .filter(|c| c.is_evm())
-        .ok_or_else(|| SpectraBridgeError::from(format!("unsupported EVM network_id: {network_id}")))
+        .ok_or_else(|| {
+            SpectraBridgeError::from(format!("unsupported EVM network_id: {network_id}"))
+        })
 }
 
 /// Serialize a value to JSON, returning the bridge error type directly.
@@ -293,6 +295,17 @@ pub(super) fn is_extended_public_key(s: &str) -> bool {
     )
 }
 
+pub(super) fn decode_secret_array<const N: usize>(
+    value: &str,
+) -> Result<zeroize::Zeroizing<[u8; N]>, SpectraBridgeError> {
+    let bytes = decode_private_key(value)?;
+    let array: &[u8; N] = bytes
+        .as_slice()
+        .try_into()
+        .map_err(|_| SpectraBridgeError::from(format!("private key must be {N} bytes")))?;
+    Ok(zeroize::Zeroizing::new(*array))
+}
+
 #[cfg(test)]
 mod display_balance_from_a_typed_summary {
     use super::summary_display_balance;
@@ -362,15 +375,4 @@ mod display_balance_from_a_typed_summary {
             0.0
         );
     }
-}
-
-pub(super) fn decode_secret_array<const N: usize>(
-    value: &str,
-) -> Result<zeroize::Zeroizing<[u8; N]>, SpectraBridgeError> {
-    let bytes = decode_private_key(value)?;
-    let array: &[u8; N] = bytes
-        .as_slice()
-        .try_into()
-        .map_err(|_| SpectraBridgeError::from(format!("private key must be {N} bytes")))?;
-    Ok(zeroize::Zeroizing::new(*array))
 }

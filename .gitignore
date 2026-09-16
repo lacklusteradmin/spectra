@@ -10,10 +10,6 @@ xcuserdata/
 *.xcodeproj/xcuserdata/
 *.xcodeproj/project.xcworkspace/xcuserdata/
 
-# AI
-AGENTS.md
-CLAUDE.md
-
 # Rust
 target/
 

@@ -165,12 +165,27 @@ pub struct CoreWalletDerivationOverrides {
 }
 
 impl CoreWalletDerivationOverrides {
-    pub fn validate_for_chain(&self, chain: crate::registry::Chain) -> Result<(), crate::SpectraBridgeError> {
-        if self.passphrase.as_ref().is_some_and(|s| !s.is_empty()) && !chain.supports_derivation_passphrase() {
-            return Err(format!("{} does not support a derivation passphrase", chain.chain_display_name()).into());
+    pub fn validate_for_chain(
+        &self,
+        chain: crate::registry::Chain,
+    ) -> Result<(), crate::SpectraBridgeError> {
+        if self.passphrase.as_ref().is_some_and(|s| !s.is_empty())
+            && !chain.supports_derivation_passphrase()
+        {
+            return Err(format!(
+                "{} does not support a derivation passphrase",
+                chain.chain_display_name()
+            )
+            .into());
         }
-        if self.hmac_key.as_ref().is_some_and(|s| !s.is_empty()) && !chain.supports_derivation_hmac_override() {
-            return Err(format!("{} does not support a custom HMAC key", chain.chain_display_name()).into());
+        if self.hmac_key.as_ref().is_some_and(|s| !s.is_empty())
+            && !chain.supports_derivation_hmac_override()
+        {
+            return Err(format!(
+                "{} does not support a custom HMAC key",
+                chain.chain_display_name()
+            )
+            .into());
         }
         Ok(())
     }

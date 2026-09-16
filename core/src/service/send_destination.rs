@@ -28,6 +28,14 @@ impl WalletService {
     /// than trusting a caller-supplied address keeps the probe asking about
     /// the address a send would actually reach; for one already resolved it is
     /// re-validation and nothing more.
+    ///
+    /// `holding_key` names what the probe asks about, and resolves to the
+    /// chain's own asset or to one tracked token. A token the user does not
+    /// track has no descriptor and is a refusal rather than a fallback: the
+    /// probe would otherwise read the *chain's* balance and report it as the
+    /// token's, which is what three of Swift's four arms did, or read nothing
+    /// and show no verdict, which is what the EVM arm did. Neither says "we
+    /// could not check".
     pub async fn send_destination_risk(
         &self,
         wallet_id: String,

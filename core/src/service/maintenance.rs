@@ -85,7 +85,6 @@ impl WalletService {
             &state.token_preferences,
         )))
     }
-
 }
 
 impl WalletService {

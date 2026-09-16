@@ -370,8 +370,6 @@ impl WalletService {
             preview,
         })
     }
-
-
 }
 
 #[derive(Debug, Clone, serde::Serialize, uniffi::Record)]

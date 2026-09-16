@@ -166,5 +166,4 @@ mod tests {
         assert_eq!(usd.decimals, 2);
         assert!((usd.minimum_visible - 0.01).abs() < 1e-9);
     }
-
 }

@@ -205,11 +205,17 @@ pub fn run(ctx: &Ctx, out: Out, command: SendCommand) -> CliResult<()> {
             }
             let wallet = ctx.find_wallet(&wallet)?;
             let input = spectra_core::service::send_review::SendReviewInput {
-                wallet_id: wallet.id, holding_key: holding, amount, destination, overrides: None,
+                wallet_id: wallet.id,
+                holding_key: holding,
+                amount,
+                destination,
+                overrides: None,
             };
             let service = ctx.service()?;
             let review = ctx.rt.block_on(service.review_owned_send(input.clone()))?;
-            let result = ctx.rt.block_on(service.execute_owned_send(review.id, input, None))?;
+            let result = ctx
+                .rt
+                .block_on(service.execute_owned_send(review.id, input, None))?;
             out.emit(serde_json::json!({"transactionHash": result.transaction_hash}));
             Ok(())
         }
@@ -222,7 +228,11 @@ pub fn run(ctx: &Ctx, out: Out, command: SendCommand) -> CliResult<()> {
             let wallet = ctx.find_wallet(&wallet)?;
             let quote = ctx.rt.block_on(ctx.service()?.review_owned_send(
                 spectra_core::service::send_review::SendReviewInput {
-                    wallet_id: wallet.id, holding_key: holding, amount, destination, overrides: None,
+                    wallet_id: wallet.id,
+                    holding_key: holding,
+                    amount,
+                    destination,
+                    overrides: None,
                 },
             ))?;
             out.emit(serde_json::json!({"quote":quote}));
@@ -1072,7 +1082,7 @@ pub fn send(ctx: &Ctx, out: Out, args: SendArgs) -> CliResult<()> {
         fee_sat: None,
         gas_budget: None,
         fee_amount: None,
-        evm_overrides: (args.gas_limit.is_some() || args.nonce.is_some()).then(|| {
+        evm_overrides: (args.gas_limit.is_some() || args.nonce.is_some()).then_some({
             EvmSendOverridesInput {
                 nonce: args.nonce,
                 custom_fees: None,

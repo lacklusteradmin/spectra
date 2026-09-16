@@ -106,7 +106,7 @@ impl WalletService {
                         !confirmed,
                         confirmations,
                         now,
-                        config.clone(),
+                        config,
                     ),
                 )]);
                 let old_status = super::history_derived::status_string(current.status);

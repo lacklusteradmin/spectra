@@ -82,9 +82,12 @@ impl WalletService {
                 .join(" ")
         });
         if commit.request.is_private_key_import {
-            commit.private_key = Some(super::standalone::core_private_key_hex(
-                commit.private_key.take().unwrap_or_default(),
-            ).ok_or("Enter a valid 32-byte hex key.")?);
+            commit.private_key = Some(
+                super::standalone::core_private_key_hex(
+                    commit.private_key.take().unwrap_or_default(),
+                )
+                .ok_or("Enter a valid 32-byte hex key.")?,
+            );
         }
         if (commit.request.is_watch_only_import || commit.request.is_private_key_import)
             && !commit.derivation_overrides.is_empty()
@@ -295,7 +298,6 @@ impl WalletService {
         .await
     }
 }
-
 
 impl WalletService {
     /// Store a raw private key, sealed under `password` when one is given.

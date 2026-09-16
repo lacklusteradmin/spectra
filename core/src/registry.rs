@@ -224,7 +224,10 @@ impl Chain {
         self.mainnet_counterpart() != Self::Monero
     }
     pub fn supports_derivation_hmac_override(self) -> bool {
-        matches!(self.mainnet_counterpart(), Self::Solana | Self::Stellar | Self::Polkadot)
+        matches!(
+            self.mainnet_counterpart(),
+            Self::Solana | Self::Stellar | Self::Polkadot
+        )
     }
 
     /// Named accounts authorize keys on chain instead of encoding the key in their address.

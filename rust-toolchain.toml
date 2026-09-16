@@ -1,0 +1,17 @@
+# Pin the toolchain so a build is reproducible across machines and CI.
+#
+# Without this, `cargo` uses whatever rustup default the machine happens to
+# have. That is not a hypothetical difference for this workspace: the release
+# profile turns integer overflow into a panic for our own crates, lint
+# behaviour moves between releases, and `cargo fmt --all -- --check` gates CI —
+# a rustfmt from another toolchain reformats files and fails the gate for
+# nobody's change.
+#
+# `targets` deliberately omits the Apple ones. They are needed only when
+# building the iOS static libraries, and `scripts/build-ios.sh` adds them
+# itself; listing them here would make every Linux CI run download three
+# standard libraries it never links.
+[toolchain]
+channel = "1.94.1"
+components = ["rustfmt", "clippy"]
+profile = "minimal"

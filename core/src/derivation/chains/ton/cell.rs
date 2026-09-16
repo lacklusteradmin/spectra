@@ -14,7 +14,7 @@ impl Cell {
             return Err("TON: integer or cell bit capacity exceeded".into());
         }
         for shift in (0..width).rev() {
-            if self.bits % 8 == 0 {
+            if self.bits.is_multiple_of(8) {
                 self.data.push(0);
             }
             let i = self.bits / 8;
@@ -68,7 +68,7 @@ impl Cell {
             (self.bits / 8 + self.bits.div_ceil(8)) as u8,
         ];
         out.extend_from_slice(&self.data);
-        if self.bits % 8 != 0 {
+        if !self.bits.is_multiple_of(8) {
             *out.last_mut().expect("nonempty partial byte") |= 1 << (7 - self.bits % 8);
         }
         out

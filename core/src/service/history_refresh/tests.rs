@@ -30,12 +30,14 @@ fn wallet(id: &str, chain: Chain, addresses: &[(Chain, &str)]) -> WalletState {
 /// address for the network each is on.
 #[test]
 fn targets_are_the_chains_wallets_that_have_an_address() {
-    let mut state = CoreAppState::default();
-    state.wallets = vec![
-        wallet("w1", Chain::Solana, &[(Chain::Solana, "So1")]),
-        wallet("w2", Chain::Solana, &[]),
-        wallet("w3", Chain::Bitcoin, &[(Chain::Bitcoin, "bc1")]),
-    ];
+    let state = CoreAppState {
+        wallets: vec![
+            wallet("w1", Chain::Solana, &[(Chain::Solana, "So1")]),
+            wallet("w2", Chain::Solana, &[]),
+            wallet("w3", Chain::Bitcoin, &[(Chain::Bitcoin, "bc1")]),
+        ],
+        ..Default::default()
+    };
 
     let solana = targets(&state, Chain::Solana, &[]);
     assert_eq!(solana.len(), 1);
@@ -57,15 +59,17 @@ fn targets_are_the_chains_wallets_that_have_an_address() {
 /// found nothing. The two are separate answers.
 #[test]
 fn a_testnet_wallet_fetches_and_persists_its_exact_network() {
-    let mut state = CoreAppState::default();
-    state.wallets = vec![wallet(
-        "w1",
-        Chain::Bitcoin,
-        &[
-            (Chain::Bitcoin, "bc1main"),
-            (Chain::BitcoinTestnet4, "tb1test"),
-        ],
-    )];
+    let mut state = CoreAppState {
+        wallets: vec![wallet(
+            "w1",
+            Chain::Bitcoin,
+            &[
+                (Chain::Bitcoin, "bc1main"),
+                (Chain::BitcoinTestnet4, "tb1test"),
+            ],
+        )],
+        ..Default::default()
+    };
     state.settings.network_chain_by_family.insert(
         Chain::Bitcoin.str_id().to_string(),
         Chain::BitcoinTestnet4.str_id().to_string(),
@@ -103,15 +107,17 @@ fn a_testnet_wallet_fetches_and_persists_its_exact_network() {
 /// A wallet on a testnet fetches the address for that network.
 #[test]
 fn a_target_follows_the_network_the_wallet_is_on() {
-    let mut state = CoreAppState::default();
-    state.wallets = vec![wallet(
-        "w1",
-        Chain::Bitcoin,
-        &[
-            (Chain::Bitcoin, "bc1main"),
-            (Chain::BitcoinTestnet4, "tb1test"),
-        ],
-    )];
+    let mut state = CoreAppState {
+        wallets: vec![wallet(
+            "w1",
+            Chain::Bitcoin,
+            &[
+                (Chain::Bitcoin, "bc1main"),
+                (Chain::BitcoinTestnet4, "tb1test"),
+            ],
+        )],
+        ..Default::default()
+    };
     assert_eq!(targets(&state, Chain::Bitcoin, &[])[0].address, "bc1main");
 
     state.settings = AppSettings {
@@ -227,24 +233,26 @@ fn descriptors_are_the_enabled_tokens_for_the_chain() {
             is_enabled: enabled,
         }
     }
-    let mut state = CoreAppState::default();
-    state.token_preferences = vec![
-        entry(
-            "ethereum",
-            "0xAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
-            true,
-        ),
-        entry(
-            "ethereum",
-            "0xBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB",
-            false,
-        ),
-        entry(
-            "solana",
-            "So11111111111111111111111111111111111111112",
-            true,
-        ),
-    ];
+    let state = CoreAppState {
+        token_preferences: vec![
+            entry(
+                "ethereum",
+                "0xAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+                true,
+            ),
+            entry(
+                "ethereum",
+                "0xBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB",
+                false,
+            ),
+            entry(
+                "solana",
+                "So11111111111111111111111111111111111111112",
+                true,
+            ),
+        ],
+        ..Default::default()
+    };
 
     let descriptors = token_descriptors(&state, Chain::Ethereum);
     assert_eq!(descriptors.len(), 1);
@@ -736,8 +744,7 @@ async fn history_identity_merges_sends_on_the_exact_network_and_rejects_deleted_
         .unwrap()
         .is_empty());
     // The response was fetched before deletion and is submitted after the wallet transaction commits.
-    crate::wallet_db::delete_wallet_data(&crate::wallet_db::WalletDatabase::new(&db), "w")
-        .unwrap();
+    crate::wallet_db::delete_wallet_data(&crate::wallet_db::WalletDatabase::new(&db), "w").unwrap();
     assert!(service
         .merge_fetched_history(vec![fetched])
         .await

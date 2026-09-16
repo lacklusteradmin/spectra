@@ -229,8 +229,9 @@ pub fn address_book_load_all(database: &WalletDatabase) -> Result<Vec<AddressBoo
 /// no special-casing at the call site.
 /// Decode a rebuildable metadata row, or say so and start it over.
 ///
-/// Separate from the `?` the wallet rows use: what is lost here is a cache,
-/// and what a hard failure would lose with it is not.
+/// The same rule `wallet_load_all` follows, for the same reason: a row this
+/// build cannot read is dropped and reported, never allowed to fail the load
+/// that carries every other row with it.
 fn drop_unreadable<T: Default + serde::de::DeserializeOwned>(value: &str, key: &str) -> T {
     match serde_json::from_str(value) {
         Ok(parsed) => parsed,

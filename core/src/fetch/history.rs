@@ -777,7 +777,6 @@ mod tests {
         assert_eq!(entries[0].status, "confirmed");
         assert_eq!(entries[0].provider_count, 2);
     }
-
 }
 
 // ── FFI surface ─────────────────────────────────────────────────────────────

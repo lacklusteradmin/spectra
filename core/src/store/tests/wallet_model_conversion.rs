@@ -1,7 +1,7 @@
 use crate::registry::Chain;
 use crate::store::wallet_domain::{
-    AssetHolding, WalletView, CoreSeedDerivationPaths, CoreSeedDerivationPreset,
-    CoreWalletDerivationOverrides,
+    AssetHolding, CoreSeedDerivationPaths, CoreSeedDerivationPreset, CoreWalletDerivationOverrides,
+    WalletView,
 };
 use std::collections::HashMap;
 

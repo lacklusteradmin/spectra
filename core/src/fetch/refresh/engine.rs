@@ -87,8 +87,16 @@ impl BalanceRefreshEngine {
     pub async fn configure_for_device(&self, app_is_active: bool) {
         self.stop();
         let count = self.sync_entries(None).await;
-        if !app_is_active || count == 0 { return; }
-        let minutes = self.inner.wallet_service.app_state().await.settings.automatic_refresh_frequency_minutes;
+        if !app_is_active || count == 0 {
+            return;
+        }
+        let minutes = self
+            .inner
+            .wallet_service
+            .app_state()
+            .await
+            .settings
+            .automatic_refresh_frequency_minutes;
         self.start((minutes.max(1) as u64) * 60).await;
     }
 
@@ -126,13 +134,6 @@ impl BalanceRefreshEngine {
             let _ = tx.send(());
         }
     }
-
-    /// Run one refresh cycle immediately without waiting for the next tick.
-    /// Also `async` to guarantee Tokio context for `tokio::spawn`.
-    ///
-    /// If a cycle is already in flight, sets `pending_trigger` so the running
-    /// cycle will re-run once it finishes (picks up any entry changes that
-    /// arrived while the cycle was running).
 
     /// Run one sweep and wait for it to finish.
     ///
@@ -365,12 +366,7 @@ pub trait BalanceObserver: Send + Sync {
     /// is the updated `WalletState` (already applied to the Rust store), or
     /// `None` if the native amount could not be parsed or the wallet is not
     /// in the in-memory state.
-    fn on_balance_updated(
-        &self,
-        chain_id: String,
-        wallet_id: String,
-        summary: Option<WalletState>,
-    );
+    fn on_balance_updated(&self, chain_id: String, wallet_id: String, summary: Option<WalletState>);
 
     /// Called once the full sweep of all registered entries completes.
     fn on_refresh_cycle_complete(&self, refreshed: u32, errors: u32);
@@ -471,15 +467,17 @@ mod refresh_entry_tests {
     /// the network that wallet is on.
     #[test]
     fn an_entry_carries_the_address_for_the_network_the_wallet_is_on() {
-        let mut state = CoreAppState::default();
-        state.wallets = vec![wallet(
-            "w1",
-            Chain::Bitcoin,
-            &[
-                (Chain::Bitcoin, "bc1main"),
-                (Chain::BitcoinTestnet4, "tb1test"),
-            ],
-        )];
+        let mut state = CoreAppState {
+            wallets: vec![wallet(
+                "w1",
+                Chain::Bitcoin,
+                &[
+                    (Chain::Bitcoin, "bc1main"),
+                    (Chain::BitcoinTestnet4, "tb1test"),
+                ],
+            )],
+            ..Default::default()
+        };
 
         let mainnet = refresh_entries_for(&state);
         assert_eq!(mainnet.len(), 1);
@@ -521,11 +519,13 @@ mod refresh_entry_tests {
     /// A wallet with no address is left out rather than refreshed with nothing.
     #[test]
     fn a_wallet_with_no_address_is_not_an_entry() {
-        let mut state = CoreAppState::default();
-        state.wallets = vec![
-            wallet("w1", Chain::Solana, &[]),
-            wallet("w2", Chain::Solana, &[(Chain::Solana, "So1")]),
-        ];
+        let state = CoreAppState {
+            wallets: vec![
+                wallet("w1", Chain::Solana, &[]),
+                wallet("w2", Chain::Solana, &[(Chain::Solana, "So1")]),
+            ],
+            ..Default::default()
+        };
         let entries = refresh_entries_for(&state);
         assert_eq!(entries.len(), 1);
         assert_eq!(entries[0].wallet_id, "w2");
@@ -536,8 +536,10 @@ mod refresh_entry_tests {
     /// own — and an Arbitrum wallet reads the same slot.
     #[test]
     fn the_evm_family_shares_one_address() {
-        let mut state = CoreAppState::default();
-        state.wallets = vec![wallet("w1", Chain::Arbitrum, &[(Chain::Ethereum, "0xabc")])];
+        let state = CoreAppState {
+            wallets: vec![wallet("w1", Chain::Arbitrum, &[(Chain::Ethereum, "0xabc")])],
+            ..Default::default()
+        };
         let entries = refresh_entries_for(&state);
         assert_eq!(entries.len(), 1);
         assert_eq!(entries[0].address, "0xabc");
@@ -547,6 +549,13 @@ mod refresh_entry_tests {
 
 #[uniffi::export(async_runtime = "tokio")]
 impl BalanceRefreshEngine {
+    /// Run one refresh cycle immediately without waiting for the next tick.
+    /// Also `async` to guarantee Tokio context for `tokio::spawn`.
+    ///
+    /// If a cycle is already in flight, sets `pending_trigger` so the running
+    /// cycle will re-run once it finishes (picks up any entry changes that
+    /// arrived while the cycle was running). `refresh_now` is the variant that
+    /// waits for the sweep instead of spawning it.
     pub async fn trigger_immediate(&self) {
         let inner = Arc::clone(&self.inner);
         tokio::spawn(async move {

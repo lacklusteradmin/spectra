@@ -57,7 +57,8 @@ pub(super) fn with_conn<T>(
 }
 
 fn open_new(database_path: &str) -> Result<Connection, String> {
-    let conn = Connection::open(database_path).map_err(|e| format!("wallet_db open {database_path}: {e}"))?;
+    let conn = Connection::open(database_path)
+        .map_err(|e| format!("wallet_db open {database_path}: {e}"))?;
     conn.busy_timeout(std::time::Duration::from_secs(5))
         .map_err(|e| format!("wallet_db busy timeout: {e}"))?;
     conn.execute_batch(

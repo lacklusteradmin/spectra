@@ -290,7 +290,9 @@ fn import(ctx: &Ctx, out: Out, args: ImportArgs) -> CliResult<()> {
 /// what was missing was this command, not the derivation.
 fn import_private_key(ctx: &Ctx, out: Out, args: ImportArgs, chain: Chain) -> CliResult<()> {
     if args.creation.derivation_input_file.is_some() {
-        return Err(CliError::rejected("Derivation overrides require a mnemonic wallet"));
+        return Err(CliError::rejected(
+            "Derivation overrides require a mnemonic wallet",
+        ));
     }
     let env = args
         .private_key_env
@@ -380,8 +382,12 @@ fn seal_and_import(
     let mut commit = seed_commit(chains, &wallet_ids, &name, paths, seed_phrase);
     commit.password = password;
     if let Some(path) = &args.derivation_input_file {
-        let input = serde_json::from_str(&std::fs::read_to_string(path).map_err(|e| CliError::usage(e.to_string()))?).map_err(|e| CliError::usage(format!("invalid derivation input: {e}")))?;
-        commit.derivation_overrides = spectra_core::derivation::input::core_parse_wallet_derivation_input(input);
+        let input = serde_json::from_str(
+            &std::fs::read_to_string(path).map_err(|e| CliError::usage(e.to_string()))?,
+        )
+        .map_err(|e| CliError::usage(format!("invalid derivation input: {e}")))?;
+        commit.derivation_overrides =
+            spectra_core::derivation::input::core_parse_wallet_derivation_input(input);
     }
 
     let service = ctx.service()?;

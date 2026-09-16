@@ -671,4 +671,3 @@ mod the_keypool_forgets_indices_and_addresses_together {
         assert!(KeypoolTables::default().owned_on("Bitcoin").is_empty());
     }
 }
-

@@ -285,7 +285,6 @@ impl WalletService {
         }
         Ok(ordered)
     }
-
 }
 
 impl WalletService {
@@ -439,12 +438,7 @@ impl WalletService {
             crate::app_core_resolve_derivation_path(chain_name.clone(), raw_path).ok()?;
 
         tokio::task::spawn_blocking(move || {
-            UtxoDerivation::with_overrides(
-                chain,
-                &seed_phrase,
-                resolved,
-                &overrides.0,
-            )
+            UtxoDerivation::with_overrides(chain, &seed_phrase, resolved, &overrides.0)
         })
         .await
         .ok()?
@@ -476,7 +470,9 @@ impl UtxoDerivation {
         base_path: String,
         overrides: &crate::store::wallet_domain::CoreWalletDerivationOverrides,
     ) -> Result<Self, String> {
-        overrides.validate_for_chain(chain).map_err(|e| e.to_string())?;
+        overrides
+            .validate_for_chain(chain)
+            .map_err(|e| e.to_string())?;
         use crate::derivation::chains::bitcoin::{
             derive_bip39_seed, parse_bip32_path, ExtendedPrivateKey,
         };

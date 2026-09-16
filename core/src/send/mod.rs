@@ -395,7 +395,7 @@ pub fn plan_send_submit_preflight(
     // amount, which the balance check above already covers.
     let token_send_gas_reserve = token
         .as_ref()
-        .and_then(|_| chain)
+        .and(chain)
         .and_then(|chain| chain.token_send_gas_reserve());
 
     Ok(SendSubmitPreflightPlan {

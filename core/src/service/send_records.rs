@@ -172,6 +172,72 @@ impl WalletService {
     }
 }
 
+// Share a lock even across service instances using the same database. Weak entries
+// avoid retaining an unbounded list of wallet addresses after operations finish.
+static SEND_LOCKS: std::sync::LazyLock<
+    std::sync::Mutex<std::collections::HashMap<String, std::sync::Weak<tokio::sync::Mutex<()>>>>,
+> = std::sync::LazyLock::new(Default::default);
+
+impl WalletService {
+    pub(super) async fn lock_sender(
+        &self,
+        chain: Chain,
+        address: &str,
+    ) -> Result<tokio::sync::OwnedMutexGuard<()>, SpectraBridgeError> {
+        let database = self.bound_database().await?;
+        let key = format!(
+            "{}|{}|{}",
+            database.path(),
+            chain.str_id(),
+            if chain.is_evm() {
+                address.to_lowercase()
+            } else {
+                address.to_owned()
+            }
+        );
+        let lock = {
+            let mut locks = SEND_LOCKS.lock().map_err(|_| "send lock poisoned")?;
+            locks.retain(|_, lock| lock.strong_count() > 0);
+            if let Some(lock) = locks.get(&key).and_then(std::sync::Weak::upgrade) {
+                lock
+            } else {
+                let lock = Arc::new(tokio::sync::Mutex::new(()));
+                locks.insert(key, Arc::downgrade(&lock));
+                lock
+            }
+        };
+        Ok(lock.lock_owned().await)
+    }
+
+    pub(super) async fn next_send_nonce(
+        &self,
+        chain: Chain,
+        source: &str,
+    ) -> Result<u64, SpectraBridgeError> {
+        let client = EvmClient::new(
+            self.endpoints_for(chain.str_id()).await,
+            chain.evm_chain_id(),
+        );
+        let mut next = client.fetch_nonce(source).await?;
+        for row in self.fetch_all_history_records_typed().await? {
+            let r = row.payload;
+            if r.chain_name == chain.chain_display_name()
+                && r.source_address
+                    .as_deref()
+                    .is_some_and(|a| a.eq_ignore_ascii_case(source))
+                && r.kind == CoreTransactionKind::Send
+                && r.status == Some(CoreTransactionStatus::Pending)
+            {
+                if let Some(nonce) = r.ethereum_nonce {
+                    let nonce = u64::try_from(nonce).map_err(|_| "invalid stored EVM nonce")?;
+                    next = next.max(nonce.checked_add(1).ok_or("EVM nonce exhausted")?);
+                }
+            }
+        }
+        Ok(next)
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -271,71 +337,5 @@ mod tests {
         );
         assert!(service.rebroadcast_transaction(record.id).await.is_err());
         assert!(server.received_requests().await.unwrap().is_empty());
-    }
-}
-
-// Share a lock even across service instances using the same database. Weak entries
-// avoid retaining an unbounded list of wallet addresses after operations finish.
-static SEND_LOCKS: std::sync::LazyLock<
-    std::sync::Mutex<std::collections::HashMap<String, std::sync::Weak<tokio::sync::Mutex<()>>>>,
-> = std::sync::LazyLock::new(Default::default);
-
-impl WalletService {
-    pub(super) async fn lock_sender(
-        &self,
-        chain: Chain,
-        address: &str,
-    ) -> Result<tokio::sync::OwnedMutexGuard<()>, SpectraBridgeError> {
-        let database = self.bound_database().await?;
-        let key = format!(
-            "{}|{}|{}",
-            database.path(),
-            chain.str_id(),
-            if chain.is_evm() {
-                address.to_lowercase()
-            } else {
-                address.to_owned()
-            }
-        );
-        let lock = {
-            let mut locks = SEND_LOCKS.lock().map_err(|_| "send lock poisoned")?;
-            locks.retain(|_, lock| lock.strong_count() > 0);
-            if let Some(lock) = locks.get(&key).and_then(std::sync::Weak::upgrade) {
-                lock
-            } else {
-                let lock = Arc::new(tokio::sync::Mutex::new(()));
-                locks.insert(key, Arc::downgrade(&lock));
-                lock
-            }
-        };
-        Ok(lock.lock_owned().await)
-    }
-
-    pub(super) async fn next_send_nonce(
-        &self,
-        chain: Chain,
-        source: &str,
-    ) -> Result<u64, SpectraBridgeError> {
-        let client = EvmClient::new(
-            self.endpoints_for(chain.str_id()).await,
-            chain.evm_chain_id(),
-        );
-        let mut next = client.fetch_nonce(source).await?;
-        for row in self.fetch_all_history_records_typed().await? {
-            let r = row.payload;
-            if r.chain_name == chain.chain_display_name()
-                && r.source_address
-                    .as_deref()
-                    .is_some_and(|a| a.eq_ignore_ascii_case(source))
-                && r.kind == CoreTransactionKind::Send
-                && r.status == Some(CoreTransactionStatus::Pending)
-            {
-                if let Some(nonce) = r.ethereum_nonce {
-                    let nonce = u64::try_from(nonce).map_err(|_| "invalid stored EVM nonce")?;
-                    next = next.max(nonce.checked_add(1).ok_or("EVM nonce exhausted")?);
-                }
-            }
-        }
-        Ok(next)
     }
 }

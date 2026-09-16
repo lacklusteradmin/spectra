@@ -177,6 +177,46 @@ contains "and derives a Bitcoin address for it" '"address":"bc1q' \
 lacks "not the address the English phrase for the same entropy gives" \
     "bc1qcr8te4kr609gcawutmrza0j4xv80jy8z306fyu" \
     spectra --json wallet show Chinese
+
+# A stored shape that has since changed costs the row that used it, not the
+# install. `CoreWalletDerivationOverrides` shrank to two fields and gained
+# `deny_unknown_fields`, so a row an older build wrote carries a
+# `mnemonicWordlist` this one refuses — and refusing it used to fail
+# `wallet_load_all`, then `app_state_load`, then `open_state`, which every
+# command waits on. There are no migrations here by Rule 0, so each such
+# change would otherwise brick every existing install with no way out from
+# inside the app: no listing, no import, not even a reset.
+#
+# Reaching past the CLI into the table is the point — an older build's bytes
+# are precisely what this build cannot write for itself.
+if command -v sqlite3 >/dev/null 2>&1; then
+    stale_row() {
+        sqlite3 "$DATA_DIR/spectra.sqlite" "UPDATE wallets SET payload = REPLACE(payload,
+            '\"derivationOverrides\":{\"passphrase\":null,\"hmacKey\":null}',
+            '\"derivationOverrides\":{\"passphrase\":null,\"mnemonicWordlist\":null,\"hmacKey\":null}')
+            WHERE name = 'Chinese';"
+    }
+    fresh_row() {
+        sqlite3 "$DATA_DIR/spectra.sqlite" \
+            "UPDATE wallets SET payload = REPLACE(payload, '\"mnemonicWordlist\":null,', '')
+             WHERE name = 'Chinese';"
+    }
+    stale_row
+    contains "a wallet row this build cannot decode still lists the others" \
+        "Acceptance BTC" spectra wallet list
+    lacks "and only that row is missing" "Chinese" spectra wallet list
+    # The whole point: the install stays usable, so a new wallet can still be
+    # imported alongside the row that cannot be read.
+    check "importing still works with an undecodable row stored" $OK \
+        with_seed "legal winner thank year wave sausage worth useful legal winner thank yellow" \
+        spectra wallet import --chain Ethereum --name "After Stale Row"
+    # And the refused bytes were never destroyed to achieve any of that.
+    fresh_row
+    contains "the refused row is intact and returns when readable again" \
+        "Chinese" spectra wallet list
+else
+    printf '  \033[33m-\033[0m %s\n' "skipped (no sqlite3): undecodable wallet row"
+fi
 check "renames through the reducer"         $OK \
     spectra wallet rename "Acceptance BTC" "Renamed BTC"
 check "refuses an empty name"               $REJECTED \

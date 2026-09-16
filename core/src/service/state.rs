@@ -70,7 +70,10 @@ impl WalletService {
     ///
     /// An untouched database yields `CoreAppState::default()`. Call once at
     /// startup; the returned state is the caller's initial snapshot.
-    pub async fn open_state(&self, database_path: String) -> Result<CoreAppState, SpectraBridgeError> {
+    pub async fn open_state(
+        &self,
+        database_path: String,
+    ) -> Result<CoreAppState, SpectraBridgeError> {
         self.write_persisted(move |service| async move {
             // Opening is idempotent. A second call with the same database returns
             // what is already held rather than re-reading — a late `open_state`
@@ -200,7 +203,7 @@ impl WalletService {
             .chain(state.wallets.iter().flat_map(|w| w.holdings.clone()));
         let mut options = std::collections::BTreeMap::<String, CoreDashboardPinOption>::new();
         for coin in coins {
-            if !coin.network().is_some_and(|n| !n.is_testnet()) {
+            if coin.network().is_none_or(|n| n.is_testnet()) {
                 continue;
             }
             let token_id = coin.token_identity();

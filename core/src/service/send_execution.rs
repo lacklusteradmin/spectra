@@ -225,7 +225,7 @@ impl WalletService {
             }
             Ok(crate::send::SendExecutionResult {
                 protocol_result_json: result_json,
-                transaction_hash: transaction_hash,
+                transaction_hash,
                 payload_format: crate::send::payload::format_key_for(chain.send_chain()).into(),
                 evm,
                 signed_payload,

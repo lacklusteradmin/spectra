@@ -198,7 +198,7 @@ impl<N: BlockbookNetwork> BlockbookClient<N> {
     pub async fn fetch_utxos(&self, address: &str) -> Result<Vec<BlockbookUtxoEntry>, String> {
         let address = N::normalize_address(address);
         let utxos: Vec<BlockbookUtxo> = self.get(&format!("/api/v2/utxo/{address}")).await?;
-        Ok(utxos
+        utxos
             .into_iter()
             .map(|u| {
                 Ok(BlockbookUtxoEntry {
@@ -208,7 +208,7 @@ impl<N: BlockbookNetwork> BlockbookClient<N> {
                     confirmations: u.confirmations,
                 })
             })
-            .collect::<Result<_, String>>()?)
+            .collect::<Result<_, String>>()
     }
 
     /// Fetch recommended fee rate for `blocks` confirmation target.

@@ -58,9 +58,13 @@ pub fn run(ctx: &Ctx, out: Out, command: DiagnosticsCommand) -> CliResult<()> {
             Ok(())
         }
         DiagnosticsCommand::Refresh { intent, conditions } => {
-            let intent = serde_json::from_str(&intent).map_err(|e| CliError::usage(format!("invalid intent: {e}")))?;
-            let conditions = serde_json::from_str(&conditions).map_err(|e| CliError::usage(format!("invalid conditions: {e}")))?;
-            let result = ctx.rt.block_on(ctx.service()?.refresh_app(intent, conditions))?;
+            let intent = serde_json::from_str(&intent)
+                .map_err(|e| CliError::usage(format!("invalid intent: {e}")))?;
+            let conditions = serde_json::from_str(&conditions)
+                .map_err(|e| CliError::usage(format!("invalid conditions: {e}")))?;
+            let result = ctx
+                .rt
+                .block_on(ctx.service()?.refresh_app(intent, conditions))?;
             out.emit(serde_json::json!({"refresh": result}));
             Ok(())
         }

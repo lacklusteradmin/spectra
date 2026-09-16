@@ -622,5 +622,4 @@ mod tests {
         assert_eq!(resp.status, 200);
         assert!(resp.body.contains("result"));
     }
-
 }
