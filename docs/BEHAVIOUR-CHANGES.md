@@ -20,6 +20,200 @@ Split out of PLAN.md on 2026-09-15: it had reached 81 entries and 3171
 of PLAN.md's 3585 lines, which left Rule 0 and the open work buried under the
 history of work already done. Nothing was dropped in the move.
 
+### Testnet tokens live in testnet-tokens.toml (2026-09-15)
+
+- **Before:** `tokens.toml` held all 131 token identities, the 32 faucet coins
+  among them — `bitcoin-testnet-native`, `ethereum-sepolia-native`,
+  `polygon-amoy-native` and the rest, each a BTC/ETH/POL-shaped row with blank
+  market ids, interleaved with the coins the wallet actually prices. **After:**
+  `tokens.toml` holds the 99 mainnet identities and 236 deployments; the 32
+  testnet identities and their 32 native deployments are `testnet-tokens.toml`,
+  same shape, same order rule, embedded the same way. Core reads both and
+  concatenates them, testnets last.
+- **Why:** the two sets are read at different times by different people — one
+  is the shipped catalog, the other is scaffolding for a developer pointing the
+  app at a faucet — and mixing them made the shipped list a third longer than
+  it is. Splitting also turns a convention into a checked fact: the file a
+  token sits in is now a claim about its networks, and the catalog build
+  asserts `network.environment` matches, so a mainnet coin cannot drift into
+  the testnet file or the reverse. The rule that a testnet token carries no
+  market identity is stated on that file and still enforced.
+- **CLI check:** `spectra token catalog --chain ethereum-sepolia` still lists
+  native ETH at 18 decimals, and `--chain ethereum` is unchanged — the split is
+  invisible past the parser: same 131 tokens, same 268 deployment ids.
+- **Verification:** `make verify` clean — 802 Rust, 357 CLI, 93 iOS.
+
+### A deployment's id is derived, not declared (2026-09-15)
+
+- **Before:** every one of the 268 deployments carried an `id` beside the facts
+  it restates — `id = "ethereum:erc-20:0xa0b7…"` above `network`, `standard`
+  and `contract` — and the catalog build asserted the two agreed, character by
+  character, twice (once per kind). **After:** the field is gone from
+  `tokens.toml` and core builds the same string from the deployment:
+  `"{network}:native"`, or `"{network}:{standard-lowercased}:{contract}"`. The
+  268 ids are byte-identical to the ones deleted, and `chains.toml` still names
+  its `native_deployment` by id, still checked against the derived one.
+- **Why:** an id that restates three fields beside them is a fourth place to
+  get them wrong, and the assertions proving it did not were the file's own
+  admission that it was derivable. Deriving it is the rule for funds, keys and
+  addresses applied to identity: build it from what is true, do not trust the
+  spelling next to it. What the assertions really guarded — that the contract
+  is spelled the way every lookup spells it — is now a test of its own,
+  `every_catalog_contract_is_already_normalized`, since the contract *is* the
+  id and a mis-cased one would resolve to nothing.
+- **CLI check:** `spectra token catalog --chain ethereum --json` still reports
+  `"id": "ethereum:erc-20:0xa0b73e1ff0b80914ab6fe0444e65848c4c34450b"` for CRO,
+  with no id in the file to read it from.
+- **Verification:** `make verify` clean — 802 Rust, 357 CLI, 93 iOS.
+
+### tokens.toml nests each deployment under the token it carries (2026-09-15)
+
+- **Before:** the file was two flat arrays — 131 `[[tokens]]`, then 268
+  `[[deployments]]` grouped by network, each repeating its owner as
+  `token = "usd-coin"`. USDC's thirteen deployments sat in thirteen places, all
+  of them away from the identity they belong to, and a token's own row said
+  nothing about where it lives. **After:** every deployment is a
+  `[[tokens.deployments]]` under its token and the back-reference is gone.
+  Tokens with a native deployment lead the file in chain order (BTC, ETH,
+  SOL…) and the protocol tokens follow by symbol; inside a token the native
+  deployment precedes its contracts, which are in chain order too. Key order is one spelling now (`id` first) where it had drifted into two.
+  Nothing else moved: same 131 tokens, same 268 deployments, same field values.
+- **Why:** locality. The two-table shape asked a reader to hold a token id in
+  their head and grep a 3.8k-line file for its other half, and the only thing
+  it bought was the freedom to order deployments by network — which the nested
+  form keeps within each token anyway. The nesting also deletes a failure
+  rather than checking for it: a deployment naming a token the file does not
+  define used to panic at catalog build, and can no longer be written down. The
+  catalog it produces is token-major rather than network-major; every consumer
+  reads it by id or sorts it (the wiki still leads ETH with Ethereum, since
+  chain order is preserved within a token).
+- **CLI check:** `spectra token catalog --chain cronos` still prints CRO as
+  native at 18 decimals and `--chain ethereum` still prints it as an ERC-20 at
+  8 — the two rows that used to sit a thousand lines apart in the file, and one
+  block apart now.
+- **Verification:** `make verify` clean — 801 Rust, 357 CLI, 93 iOS.
+
+### Four faceted marks draw their facets in solid colour (2026-09-15)
+
+- **Before:** `ethereum`, `ethereumclassic`, `steth` and `wsteth` each drew one
+  glyph whose facets were separated by `fill-opacity` / `opacity` of `.6` and
+  `.2`, letting the disc tint them. **After:** every facet names the colour that
+  blend produced, and none of the four files contains an opacity attribute:
+
+  | icon | disc | glyph | `.6` | `.2` |
+  |---|---|---|---|---|
+  | `ethereum` | `#627eea` | `#fff` | `#c0cbf7` | `#8198ee` |
+  | `ethereumclassic` | `#328332` | `#fff` | `#adcdad` | `#5b9c5b` |
+  | `steth` | `#fff` | `#00a3ff` | `#66c8ff` | `#ccedff` |
+  | `wsteth` | `#00a3ff` | `#fff` | `#99daff` | `#33b5ff` |
+
+- **The facets tile without overlapping, so this is the same artwork.** That was
+  checked rather than assumed: each translucent shape was painted in a probe
+  colour to get its visible coverage, the document was rendered again without
+  it, and the backdrop was sampled through that coverage. All four came back
+  with one colour under every facet. The renders differ by 0.4–0.8% RMSE at
+  256 px across 230–500 of 65,536 pixels, all on the hairline seams between
+  facets, where partial coverage on both sides of an edge used to let the disc
+  through — the artifact that prompted this.
+- **Why:** the transparency was decoration the renderer had to be trusted to
+  compose, and on iOS it was not composing the way the source implied. A
+  flattened fill is what the icon always meant, stated in a form that cannot be
+  read two ways — the same reason the style bans `fill="none"` on the root and
+  `clip-rule` outside `<clipPath>`: nothing in a shipped icon should depend on a
+  renderer resolving a no-op.
+- **The other three alpha users keep it, because theirs is not a no-op.** The
+  same probe says `pumpfun`'s `.4` sheen lies over two colours (`#5fcb88` and
+  the white disc), `dogecoin`'s `.8` highlight over four gold ramps, and
+  `usd1`'s two `stop-opacity="0"` gradients fade over its concentric rings.
+  Flattening those means splitting artwork along boolean intersections, which is
+  a redraw, not a rewrite. `xcrun actool` compiles the catalog with no warning
+  on any of them.
+- **CLI check:** none applies; these are bundle resources, not domain state.
+  `scripts/normalize-icons.sh --check` is the gate and passes on all 88 icons,
+  and `CoinBadgeArtworkTests` still loads all four by name from the catalog.
+- **Verification:** `make verify` clean.
+
+### CoinLore is no longer a price provider (2026-09-15)
+
+- **Before:** `PRICE_PROVIDERS` held CoinGecko, CoinPaprika and CoinLore, and
+  every price refresh fetched all three concurrently and merged them in that
+  order. **After:** it holds CoinGecko and CoinPaprika. CoinLore's ticker
+  endpoint, its decoder, `coinlore_nameid_for`, the `coinlore_nameid` column on
+  `AssetMarketIds` and the 67 `coinlore_nameid` lines in `tokens.toml` are gone.
+- **Why:** it bought no coverage worth its cost. CoinLore was asked about the
+  same assets the first two already price, so it only ever filled a key the
+  other two had both missed — and it paid for that chance with a whole extra
+  round trip per refresh, on an endpoint that returns the top 1000 tickers and
+  is then discarded down to the handful asked about. Its id column was the
+  worse half of the bargain: `coinlore_nameid = ""` meant "the CoinGecko id",
+  so 124 of 131 rows carried a blank whose meaning lived in a resolver
+  elsewhere, and the seven that were not blank were the only rows that said
+  anything. A default nobody can read off the row is a rule, not data.
+- **Consequence, stated plainly:** an asset CoinGecko and CoinPaprika both miss
+  is now unpriced where CoinLore might have quoted it. Nothing in the catalog is
+  in that position today — `only_deliberately_unlisted_assets_have_no_paprika_id`
+  holds honey-3 as the single row without a CoinPaprika id, and it carries a
+  CoinGecko one — so this costs coverage only for a future asset one of the two
+  does not list, which is the point at which a third provider earns its place
+  back.
+- **CLI check:** `spectra market price BTC ETH SOL` and `spectra market
+  portfolio` still quote, now over two providers; `spectra market currency` is
+  untouched, since the four fiat-rate providers did not change. Acceptance runs
+  without network, so it cannot see which providers answered — the catalog side
+  is what the tests below pin.
+- **Test:** `cargo test -p spectra_core market_id_tests` covers the catalog's
+  remaining ids — `no_two_assets_claim_one_listing` now asks about CoinPaprika
+  alone, and `coinlore_nameids_default_to_the_gecko_id` is deleted with the
+  default it described. `merge_in_preference_order` is unchanged and its tests
+  still cover the partial-failure and nobody-answered paths.
+- **Verification:** `make lint test test-cli` clean (801 core tests);
+  `make test-ios` unaffected — no Swift file named CoinLore.
+
+### Six letter badges become marks, and Mantle's mark becomes the official one (2026-09-15)
+
+- **Before:** STETH, WSTETH, AERO, LDO, ZRO and WLD each carried
+  `artwork_name = ""`, so `CoinBadge` drew the first letters of their symbol.
+  **After:** they name `steth`, `wsteth`, `aerodrome`, `lido`, `layerzero` and
+  `worldcoin`, and those six SVGs are in `icons/crypto/` and the asset catalog.
+  Mantle keeps its name and loses its old traced mark: `mantle.svg` is now
+  Mantle's official brandmark, whose dashes are longer and whose hub is smaller
+  (4.1% RMSE against the old artwork at the same size), and its disc goes from
+  `#000` to Mantle's obsidian green `#092c24`.
+- **The incoming files were exporter output, not library members.** Each was
+  brought onto the house style rather than dropped in: the three Figma exports
+  (`LDO`, `stETH`, `wstETH`) drew their disc as a `<rect rx="40">` inside a
+  clip-path group, which is the shape `scaleToLibraryViewBox` cannot rescale and
+  the shape the style forbids, so the disc became the `<circle>` the style asks
+  for and the clip group went away. `LayerZero_emblem` and `[World] Logomark`
+  arrived as bare glyphs with no disc at all, so each got one — black, with the
+  emblem at 44/64 and World's logomark scaled so its own outer circle *is* the
+  disc, since that circle is the mark's boundary. Mantle's brandmark is drawn
+  full-bleed on its 800 canvas; it is inset to the 48/64 the old mark occupied,
+  which is where the rest of the library sits (48–83% of the disc).
+- **Aerodrome was 481 KB, and is 4.8 KB.** Its five swooshes were traced into
+  ~2,600 micro-curves each — segments of 0.03 units on an 800 canvas, which at
+  64 points is 0.0024 units, well under a pixel at any scale the app draws. The
+  curves were flattened and refit to cubics at a 0.5-unit tolerance: 480,413
+  characters of path data became 6,277, and the two renders differ by 0.3% RMSE.
+  Its backdrop-blur filter and two clip-paths were dropped as no-ops — the
+  render is identical without them.
+- **Why:** an icon that nothing names is dead weight that still ships, because
+  `export-swift-icons.sh` copies every SVG under `icons/crypto/` into the
+  catalog whether or not a token points at it. The house style exists so the
+  library is one set of 64×64 marks rather than a pile of exporter output, and
+  a 481 KB icon for a 40-point badge is that failure with a size attached.
+- **Test:** `CoinBadgeArtworkTests` covers this directly — every token whose
+  `artworkName` is non-empty must load a real bundled image, so a name that does
+  not match a file in the catalog fails rather than silently drawing a letter.
+  `scripts/normalize-icons.sh --check` is the gate on the style itself; it
+  passes on all 88 icons.
+- **CLI check:** `spectra --json token artwork --token-id lido-dao` returns
+  `{"artworkName":"lido"}`, and the same for `staked-ether`, `wrapped-steth`,
+  `aerodrome-finance`, `layerzero` and `worldcoin-wld`; each returned `""`
+  before.
+- **Verification:** `cargo test --workspace` **802 passed**;
+  `./scripts/cli-acceptance.sh` **357 passed**; iPhone 17 Pro **93 passed**
+
 ### Localized copy ships per locale and stops shipping an unread twin (2026-09-15)
 
 - **Before:** six content files shipped four copies each —

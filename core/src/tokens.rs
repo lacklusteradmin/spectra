@@ -1,24 +1,33 @@
 //! Built-in token registry.
 //!
-//! The source of truth is `core/data/tokens.toml`, embedded at compile time.
-//! Call [`list_tokens`] to get typed token entries for a given chain id string
-//! (or all chains when the empty string `""` is passed).
+//! The source of truth is `core/data/tokens.toml` and, for the faucet coins,
+//! `core/data/testnet-tokens.toml` — both embedded at compile time, and which
+//! file a token sits in is checked against its networks. Call [`list_tokens`]
+//! to get typed token entries for a given chain id string (or all chains when
+//! the empty string `""` is passed).
 
 use serde::{Deserialize, Serialize};
 use std::sync::LazyLock;
 
 // Embedded at compile time — no bundle dependency at runtime.
 static TOKENS_TOML: &str = include_str!("../data/tokens.toml");
+static TESTNET_TOKENS_TOML: &str = include_str!("../data/testnet-tokens.toml");
+
+/// The tokens one file spells, in file order.
+fn parse_tokens(file: &'static str, source: &str) -> Vec<TomlToken> {
+    let parsed: TomlFile = toml::from_str(file)
+        .unwrap_or_else(|e| panic!("{source} is embedded at compile time and must be valid: {e}"));
+    parsed.tokens
+}
 
 // ── Parsed TOML shape
 
 #[derive(Debug, Deserialize)]
 struct TomlFile {
     tokens: Vec<TomlToken>,
-    deployments: Vec<TomlDeployment>,
 }
 
-/// What a token is — one row however many chains it ships on.
+/// What a token is, and — nested under it — every network that carries it.
 #[derive(Debug, Deserialize)]
 struct TomlToken {
     id: String,
@@ -26,18 +35,16 @@ struct TomlToken {
     name: String,
     coingecko_id: String,
     coinpaprika_id: String,
-    #[serde(default)]
-    coinlore_nameid: String,
     color: String,
     artwork_name: String,
     tags: Vec<String>,
+    deployments: Vec<TomlDeployment>,
 }
 
-/// Where it lives, and what is true only there.
+/// Where it lives, and what is true only there. Its catalog id is those facts
+/// spelled one way, so the file does not carry one.
 #[derive(Debug, Deserialize)]
 struct TomlDeployment {
-    id: String,
-    token: String,
     network: String,
     kind: String,
     #[serde(default)]
@@ -113,11 +120,8 @@ impl TokenEntry {
 // ── Static catalog
 
 static CATALOG: LazyLock<Vec<TokenEntry>> = LazyLock::new(|| {
-    let parsed: TomlFile = toml::from_str(TOKENS_TOML)
-        .expect("tokens.toml is embedded at compile time and must be valid TOML");
-    let tokens: std::collections::HashMap<&str, &TomlToken> =
-        parsed.tokens.iter().map(|t| (t.id.as_str(), t)).collect();
-    assert_eq!(tokens.len(), parsed.tokens.len(), "duplicate token id");
+    let mainnet = parse_tokens(TOKENS_TOML, "tokens.toml");
+    let testnet = parse_tokens(TESTNET_TOKENS_TOML, "testnet-tokens.toml");
     #[derive(Deserialize)]
     struct Networks {
         networks: Vec<Network>,
@@ -132,39 +136,61 @@ static CATALOG: LazyLock<Vec<TokenEntry>> = LazyLock::new(|| {
     let networks: Networks =
         toml::from_str(include_str!("../data/chains.toml")).expect("valid networks");
     let mut identities = std::collections::HashSet::new();
-    parsed
-        .deployments
+    let mut token_ids = std::collections::HashSet::new();
+    mainnet
         .iter()
-        .map(|d| {
-            // A deployment naming a token the file does not define is a
-            // build-time mistake, not a row to skip: the entry would carry a
-            // symbol and nothing else.
-            let t = tokens.get(d.token.as_str()).unwrap_or_else(|| {
-                panic!(
-                    "tokens.toml: deployment on {} names unknown token {}",
-                    d.network, d.token
-                )
-            });
+        .map(|t| (t, "mainnet"))
+        .chain(testnet.iter().map(|t| (t, "testnet")))
+        .flat_map(|(t, environment)| {
+            assert!(
+                token_ids.insert(t.id.as_str()),
+                "duplicate token id {}",
+                t.id
+            );
+            // A token no network carries would reach a caller as a symbol and
+            // nothing else, so the file may not express one.
+            assert!(
+                !t.deployments.is_empty(),
+                "tokens.toml: token {} has no deployment",
+                t.id
+            );
+            t.deployments.iter().map(move |d| (t, environment, d))
+        })
+        .map(|(t, environment, d)| {
             let network = networks
                 .networks
                 .iter()
                 .find(|n| n.id == d.network)
                 .expect("unknown deployment network");
-            assert!(identities.insert(&d.id), "duplicate deployment id {}", d.id);
-            assert!(d.decimals <= 38, "unsupported deployment precision");
+            // Derived, not declared: an id written beside the facts it
+            // restates can disagree with them, and the file spelled 268 of
+            // them for the build to check character by character.
+            let id = if d.kind == "native" {
+                format!("{}:native", d.network)
+            } else {
+                format!("{}:{}:{}", d.network, d.standard.to_lowercase(), d.contract)
+            };
             assert!(
-                network.environment != "testnet"
-                    || (t.coingecko_id.is_empty()
-                        && t.coinpaprika_id.is_empty()
-                        && t.coinlore_nameid.is_empty()),
+                identities.insert(id.clone()),
+                "duplicate deployment id {id}"
+            );
+            assert!(d.decimals <= 38, "unsupported deployment precision");
+            // Which file a token is in is a claim about its networks, so the
+            // networks are what settles it.
+            assert_eq!(
+                network.environment, environment,
+                "{id} is in the wrong token file"
+            );
+            assert!(
+                environment != "testnet"
+                    || (t.coingecko_id.is_empty() && t.coinpaprika_id.is_empty()),
                 "testnet token has market identity"
             );
             if d.kind == "native" {
                 assert_eq!(
-                    network.native_deployment, d.id,
+                    network.native_deployment, id,
                     "unreferenced native deployment"
                 );
-                assert_eq!(d.id, format!("{}:native", d.network));
             } else {
                 assert_eq!(
                     network.token_standard, d.standard,
@@ -188,16 +214,11 @@ static CATALOG: LazyLock<Vec<TokenEntry>> = LazyLock::new(|| {
                         }
                     )
                     .is_valid,
-                    "invalid deployment identifier {}",
-                    d.id
-                );
-                assert_eq!(
-                    d.id,
-                    format!("{}:{}:{}", d.network, d.standard.to_lowercase(), d.contract)
+                    "invalid deployment identifier {id}"
                 );
             }
             TokenEntry {
-                id: d.id.clone(),
+                id,
                 token_id: t.id.clone(),
                 kind: match d.kind.as_str() {
                     "native" => {
@@ -288,16 +309,14 @@ pub(crate) fn token_name_on_chain(chain_id: &str, symbol: &str) -> Option<&'stat
 /// every `list_tokens` call for a caller that never reads them.
 pub(crate) fn market_ids() -> &'static [crate::price::AssetMarketIds] {
     static IDS: LazyLock<Vec<crate::price::AssetMarketIds>> = LazyLock::new(|| {
-        let parsed: TomlFile = toml::from_str(TOKENS_TOML)
-            .expect("tokens.toml is embedded at compile time and must be valid TOML");
-        parsed
-            .tokens
+        // Only the mainnet file: a testnet token with market ids does not
+        // parse, so there is nothing to read out of the other one.
+        parse_tokens(TOKENS_TOML, "tokens.toml")
             .iter()
             .filter(|t| !t.coingecko_id.is_empty())
             .map(|t| crate::price::AssetMarketIds {
                 coingecko_id: t.coingecko_id.clone(),
                 coinpaprika_id: t.coinpaprika_id.clone(),
-                coinlore_nameid: t.coinlore_nameid.clone(),
             })
             .collect()
     });
@@ -648,7 +667,7 @@ mod tests {
 }
 
 #[cfg(test)]
-mod the_catalog_is_two_tables {
+mod a_token_and_the_deployments_under_it {
     use super::*;
     use std::collections::{HashMap, HashSet};
 
@@ -711,24 +730,51 @@ mod the_catalog_is_two_tables {
         assert!(link.len() > 1, "LINK's decimals collapsed to one value");
     }
 
-    /// Every deployment resolves to a token, and every token is deployed
-    /// somewhere. A row on either side with no partner is dead data.
+    /// The contract is the id now, so it has to be spelled the way every
+    /// lookup spells it: `history_deployment` builds the same string from a
+    /// normalized address, and a row that disagrees is a row nothing resolves.
     #[test]
-    fn the_two_tables_cover_each_other() {
-        let parsed: TomlFile = toml::from_str(TOKENS_TOML).expect("valid TOML");
-        let deployed: HashSet<&str> = parsed
-            .deployments
-            .iter()
-            .map(|d| d.token.as_str())
-            .collect();
-        for token in &parsed.tokens {
+    fn every_catalog_contract_is_already_normalized() {
+        for entry in CATALOG.iter().filter(|e| !e.is_native()) {
+            let chain = crate::registry::Chain::from_str_id(&entry.chain)
+                .expect("a deployment network is a registry chain");
+            assert_eq!(
+                normalize_token_identifier(
+                    Some(entry.contract.clone()),
+                    chain.chain_display_name().into()
+                )
+                .as_deref(),
+                Some(entry.contract.as_str()),
+                "{} is not in normalized form",
+                entry.id
+            );
+        }
+    }
+
+    /// Nesting makes an orphan deployment unspellable, so what is left to
+    /// check is the other direction: no token sits there carried by nothing,
+    /// and the catalog holds every row the file spells.
+    #[test]
+    fn every_token_is_deployed_somewhere() {
+        let files = [
+            parse_tokens(TOKENS_TOML, "tokens.toml"),
+            parse_tokens(TESTNET_TOKENS_TOML, "testnet-tokens.toml"),
+        ];
+        for token in files.iter().flatten() {
             assert!(
-                deployed.contains(token.id.as_str()),
+                !token.deployments.is_empty(),
                 "{} is a token with no deployment",
                 token.symbol
             );
         }
-        assert_eq!(CATALOG.len(), parsed.deployments.len());
+        assert_eq!(
+            CATALOG.len(),
+            files
+                .iter()
+                .flatten()
+                .map(|t| t.deployments.len())
+                .sum::<usize>()
+        );
     }
 }
 

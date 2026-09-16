@@ -24,25 +24,20 @@ use crate::http::{HttpClient, RetryProfile};
 ///
 /// This used to be a user setting with one arm selected and no fallback: a
 /// provider that was down, rate limited, or simply did not list a coin yielded
-/// no prices at all, and the only cure was a trip to Settings. All three run
-/// now and their answers merge, so coverage is the union.
+/// no prices at all, and the only cure was a trip to Settings. Both run now
+/// and their answers merge, so coverage is the union.
 ///
 /// CoinGecko comes first because it prices every asset the catalog carries an
-/// id for; the other two are asked about whatever they also list. All three
-/// are asked by id. Matching a quote to a holding by ticker symbol was how
-/// BUSD — Bera USD here — priced as Binance USD, so nothing does it now: an
-/// asset the catalog cannot name at a provider goes unpriced there.
-const PRICE_PROVIDERS: &[PriceProvider] = &[
-    PriceProvider::CoinGecko,
-    PriceProvider::CoinPaprika,
-    PriceProvider::CoinLore,
-];
+/// id for; CoinPaprika is asked about whatever it also lists. Both are asked
+/// by id. Matching a quote to a holding by ticker symbol was how BUSD — Bera
+/// USD here — priced as Binance USD, so nothing does it now: an asset the
+/// catalog cannot name at a provider goes unpriced there.
+const PRICE_PROVIDERS: &[PriceProvider] = &[PriceProvider::CoinGecko, PriceProvider::CoinPaprika];
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum PriceProvider {
     CoinGecko,
     CoinPaprika,
-    CoinLore,
 }
 
 impl PriceProvider {
@@ -50,7 +45,6 @@ impl PriceProvider {
         match self {
             Self::CoinGecko => "CoinGecko",
             Self::CoinPaprika => "CoinPaprika",
-            Self::CoinLore => "CoinLore",
         }
     }
 }
@@ -105,7 +99,6 @@ pub type PriceQuoteMap = HashMap<String, f64>;
 
 const COINGECKO_SIMPLE_PRICE_URL: &str = "https://api.coingecko.com/api/v3/simple/price";
 const COINPAPRIKA_TICKERS_URL: &str = "https://api.coinpaprika.com/v1/tickers";
-const COINLORE_TICKERS_URL: &str = "https://api.coinlore.net/api/tickers/?start=0&limit=1000";
 
 const OPEN_ER_LATEST_USD_URL: &str = "https://open.er-api.com/v6/latest/USD";
 const FRANKFURTER_LATEST_URL: &str = "https://api.frankfurter.app/latest";
@@ -125,7 +118,6 @@ pub async fn fetch_prices(coins: &[PriceRequestCoin]) -> Result<PriceQuoteMap, S
         let result = match provider {
             PriceProvider::CoinGecko => fetch_coingecko_quotes(coins).await,
             PriceProvider::CoinPaprika => fetch_coinpaprika_quotes(coins).await,
-            PriceProvider::CoinLore => fetch_coinlore_quotes(coins).await,
         };
         (*provider, result)
     }))
@@ -312,9 +304,6 @@ pub(crate) struct AssetMarketIds {
     /// could identify. Not derivable: Aave is `aave-new` and Cronos is
     /// `cro-cryptocom-chain`.
     pub coinpaprika_id: String,
-    /// CoinLore's `nameid`, or empty where it is the CoinGecko id — the two
-    /// are the same name slug for every asset but seven.
-    pub coinlore_nameid: String,
 }
 
 /// The catalogs' market-data ids, indexed by CoinGecko id.
@@ -355,65 +344,6 @@ fn market_ids_for(gecko_id: &str) -> Option<&'static AssetMarketIds> {
 fn paprika_id_for(gecko_id: &str) -> Option<&'static str> {
     let ids = market_ids_for(gecko_id)?;
     (!ids.coinpaprika_id.is_empty()).then_some(ids.coinpaprika_id.as_str())
-}
-
-/// The CoinLore `nameid` for an asset, or `None` for one the catalogs do not
-/// carry. Empty in the catalog means "the CoinGecko id", which is what it is
-/// for all but seven assets.
-fn coinlore_nameid_for(gecko_id: &str) -> Option<&'static str> {
-    let ids = market_ids_for(gecko_id)?;
-    Some(if ids.coinlore_nameid.is_empty() {
-        ids.coingecko_id.as_str()
-    } else {
-        ids.coinlore_nameid.as_str()
-    })
-}
-
-// ── CoinLore
-
-#[derive(Debug, Deserialize)]
-struct CoinLoreTicker {
-    nameid: String,
-    #[serde(rename = "price_usd")]
-    price_usd: String,
-}
-
-#[derive(Debug, Deserialize)]
-struct CoinLoreResponse {
-    data: Vec<CoinLoreTicker>,
-}
-
-async fn fetch_coinlore_quotes(coins: &[PriceRequestCoin]) -> Result<PriceQuoteMap, String> {
-    let mut resolved = PriceQuoteMap::new();
-
-    let resp: CoinLoreResponse = HttpClient::shared()
-        .get_json(COINLORE_TICKERS_URL, RetryProfile::ChainRead)
-        .await?;
-
-    let mut by_nameid: HashMap<String, &CoinLoreTicker> = HashMap::new();
-    for t in &resp.data {
-        by_nameid.entry(t.nameid.to_lowercase()).or_insert(t);
-    }
-
-    for coin in coins {
-        if resolved.contains_key(&coin.holding_key) {
-            continue;
-        }
-        let Some(nameid) = coinlore_nameid_for(&coin.coin_gecko_id) else {
-            continue;
-        };
-        let Some(ticker) = by_nameid.get(nameid).copied() else {
-            continue;
-        };
-        let Ok(price) = ticker.price_usd.parse::<f64>() else {
-            continue;
-        };
-        if price > 0.0 {
-            resolved.insert(coin.holding_key.clone(), price);
-        }
-    }
-
-    Ok(resolved)
 }
 
 // ── Fiat rates
@@ -719,8 +649,7 @@ mod market_id_tests {
         for row in all_rows() {
             if let Some(first) = seen.insert(row.coingecko_id.as_str(), row) {
                 assert_eq!(
-                    (&first.coinpaprika_id, &first.coinlore_nameid),
-                    (&row.coinpaprika_id, &row.coinlore_nameid),
+                    first.coinpaprika_id, row.coinpaprika_id,
                     "catalog rows for {} disagree about where it is listed",
                     row.coingecko_id
                 );
@@ -733,24 +662,18 @@ mod market_id_tests {
     /// listings, and a copied line is how they would stop being.
     #[test]
     fn no_two_assets_claim_one_listing() {
-        let picks: [(fn(&AssetMarketIds) -> &String, &str); 2] = [
-            (|r| &r.coinpaprika_id, "coinpaprika"),
-            (|r| &r.coinlore_nameid, "coinlore"),
-        ];
-        for (id_of, provider) in picks {
-            let mut owner: HashMap<&str, &str> = HashMap::new();
-            for row in all_rows() {
-                let id = id_of(row);
-                if id.is_empty() {
-                    continue;
-                }
-                let claimant = owner.entry(id).or_insert(&row.coingecko_id);
-                assert_eq!(
-                    *claimant, row.coingecko_id,
-                    "{provider} listing {id} is claimed by both {claimant} and {}",
-                    row.coingecko_id
-                );
+        let mut owner: HashMap<&str, &str> = HashMap::new();
+        for row in all_rows() {
+            let id = row.coinpaprika_id.as_str();
+            if id.is_empty() {
+                continue;
             }
+            let claimant = owner.entry(id).or_insert(&row.coingecko_id);
+            assert_eq!(
+                *claimant, row.coingecko_id,
+                "coinpaprika listing {id} is claimed by both {claimant} and {}",
+                row.coingecko_id
+            );
         }
     }
 
@@ -758,7 +681,7 @@ mod market_id_tests {
     #[test]
     fn catalog_ids_are_lowercase_and_trimmed() {
         for row in all_rows() {
-            for id in [&row.coingecko_id, &row.coinpaprika_id, &row.coinlore_nameid] {
+            for id in [&row.coingecko_id, &row.coinpaprika_id] {
                 assert_eq!(id.trim().to_lowercase(), *id, "{id} is not a plain id");
             }
         }
@@ -799,17 +722,5 @@ mod market_id_tests {
         assert_eq!(paprika_id_for("honey-3"), None);
         assert_eq!(paprika_id_for("not-a-coin"), None);
         assert_eq!(paprika_id_for(""), None);
-    }
-
-    /// CoinLore's `nameid` is the CoinGecko id for every asset but the seven
-    /// the catalog states, which is why it is a default and not a column of
-    /// eighty repetitions.
-    #[test]
-    fn coinlore_nameids_default_to_the_gecko_id() {
-        assert_eq!(coinlore_nameid_for("bitcoin"), Some("bitcoin"));
-        assert_eq!(coinlore_nameid_for("near"), Some("near-protocol"));
-        assert_eq!(coinlore_nameid_for("avalanche-2"), Some("avalanche"));
-        assert_eq!(coinlore_nameid_for("the-open-network"), Some("toncoin"));
-        assert_eq!(coinlore_nameid_for("not-a-coin"), None);
     }
 }

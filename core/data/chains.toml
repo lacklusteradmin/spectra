@@ -1,5 +1,6 @@
 # Concrete networks. Mainnets and testnets are peers; no record inherits another.
-# Native token metadata belongs to tokens.toml; native_deployment references a deployment.
+# Native token metadata belongs to tokens.toml (testnet-tokens.toml for the
+# testnets); native_deployment references a deployment by its derived id.
 
 [[networks]]
 id = "bitcoin"
