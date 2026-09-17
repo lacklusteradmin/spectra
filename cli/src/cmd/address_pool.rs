@@ -16,8 +16,6 @@ use crate::out::{self, Out};
 pub enum PoolCommand {
     /// Where a wallet's receive and change indices stand.
     Show(SelectArgs),
-    /// Resolve and reserve a receive address using the stored wallet identity.
-    Receive(SelectArgs),
     /// Discover addresses for all wallets on a chain.
     DiscoverChain { chain: String },
     /// Reserve the next receive index.
@@ -37,18 +35,6 @@ pub struct SelectArgs {
 pub fn run(ctx: &Ctx, out: Out, command: PoolCommand) -> CliResult<()> {
     match command {
         PoolCommand::Show(args) => show(ctx, out, args),
-        PoolCommand::Receive(args) => {
-            let wallet = ctx.find_wallet(&args.wallet)?;
-            let chain = super::resolve_chain(&wallet.chain_name)?;
-            let address = ctx.rt.block_on(ctx.service()?.receive_address(
-                wallet.id.clone(),
-                chain.str_id().into(),
-                true,
-            ))?;
-            out.text(|| println!("{}", address.as_deref().unwrap_or("unavailable")));
-            out.emit(serde_json::json!({"wallet":wallet.id,"address":address}));
-            Ok(())
-        }
         PoolCommand::DiscoverChain { chain } => {
             let chain = super::resolve_chain(&chain)?;
             let results = ctx.rt.block_on(

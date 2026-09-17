@@ -20,6 +20,113 @@ Split out of PLAN.md on 2026-09-15: it had reached 81 entries and 3171
 of PLAN.md's 3585 lines, which left Rule 0 and the open work buried under the
 history of work already done. Nothing was dropped in the move.
 
+### The address book is a list of contacts, not a form with a list under it (2026-09-17)
+
+- **Before:** a `Form` whose first section was a five-field "New Contact" form.
+  It filled most of the screen, so the saved addresses the page is named after
+  started below the fold — on a first visit the empty state was the part you
+  scrolled to find. "Save Contact" was a `Form` row, indistinguishable from the
+  optional note above it. The chain was a text `Picker` and no row carried a
+  chain badge, on a screen in an app with a 78-chain icon library. Editing and
+  deleting existed only as swipe actions, with nothing on the row to suggest
+  them, and the page had no `SpectraBackdrop`.
+  **After:** the list is the page — `SpectraBackdrop`, a page header and one
+  glass card per contact carrying the chain badge, the name, and the address on
+  one line elided in the middle, with a glass copy button. `+` in the toolbar
+  pushes `NewAddressBookContactView`, whose primary action is a real button in
+  `SpectraBottomActionBar`; tapping a row pushes `AddressBookContactView`, which
+  holds the rename and a destructive delete. The chain is picked through the
+  chain page the wallet import already uses, with search and artwork, so
+  `AllChainsSelectionView.clearAllSelections` is optional — its running count
+  and "Clear all" belong to a multi-select.
+- **Why:** the screen was named for a collection and shaped like a form, so its
+  content was the thing you had to scroll past data entry to reach. Everything
+  else in the app does the opposite: wallets, assets and receive are lists with
+  the add action in the chrome. [docs/IOS-UI.md](IOS-UI.md) permits `Form` for
+  "settings-style utility details", and this is a list of the user's own data
+  reached from Settings, not a page of toggles.
+- Two defects went with it. **The success message was rendered red:** its colour
+  came from `canSaveAddressBookEntry` evaluated *after* `saveContact` cleared
+  the fields, so a save that worked was coloured by the now-empty form. Saving
+  pops back to the list instead, and the message is gone. **"Copied" never
+  reset:** one `copiedEntryID` on the page, set on copy and cleared by nothing,
+  so a row claimed it for the rest of the screen's life. Each card owns the
+  state and clears it through `.task(id:)`, which also cancels with the row.
+- **Also:** `addressBookError` — core's reason for refusing a contact — has been
+  set since address-book commands moved to core and no screen ever showed it,
+  making a refusal look like a save that did nothing. The list shows it.
+- **CLI check:** none applies to the layout. The rules behind it are core's and
+  `./scripts/cli-acceptance.sh` covers them under "address book" —
+  `spectra address book add|remove` with the duplicate, invalid-address and
+  empty-name refusals this screen disables its button for.
+- **Verification:** `make verify`, plus `scripts/check-design-tokens.sh` and
+  `scripts/unused-strings.sh`; the flows were driven on the simulator (add with
+  a chain change, rename, copy, delete, empty state).
+
+### One bottom action bar for the setup, send and receive flows (2026-09-17)
+
+- **Before:** three hand-written bars behind `safeAreaInset(edge: .bottom)`.
+  Send and receive backed the row with `.regularMaterial` — an opaque slab that
+  flattens the backdrop — and reached the screen's bottom edge only because
+  `background(_ style:)` ignores the safe area by default. Setup used
+  `glassEffect`, which is clipped to the bar's own bounds, so its glass stopped
+  in a hard seam above the tab bar with the backdrop showing below it. Divider
+  opacity and bottom padding differed too (0.2 vs 0.4, 12 vs 16).
+  **After:** `SpectraBottomActionBar` takes the flow's buttons as content and
+  all three use it. The band is glass tinted `GlassTint.elevated`, applied as a
+  background that ignores the bottom edge, so it reads through to the backdrop
+  *and* meets the screen edge with the tab bar floating over it.
+- **Why:** the two properties that decide how the bar meets the screen were
+  split across two spellings, each of which got one right, and neither file
+  said so. [docs/IOS-UI.md](IOS-UI.md) already rules out a material where glass
+  will do; nothing said where the bar stops, because nobody had noticed the
+  default on `background(_ style:)` was doing that work. One bar, and the
+  answer is in it.
+- **CLI check:** none applies — this is iOS chrome with no domain state behind
+  it. `make test-ios` and `scripts/check-design-tokens.sh` cover it; the
+  difference is visual and was confirmed on the simulator across the setup
+  flow's pages and the receive flow's two steps. Send takes the same component
+  and differs only in the buttons it hands it.
+- **Verification:** `make verify`.
+
+### A receive address has one producer, and the wallet step has a selection (2026-09-17)
+
+- **Before:** the receive flow's wallet step listed every receive-enabled
+  wallet as a card that could not be selected. The row itself was inert; only a
+  34pt QR button on it changed the choice, and that button also navigated. So
+  the list never showed which wallet was chosen, and "Continue" advanced with
+  whatever `beginReceive` had seeded — `receiveEnabledWallets.first`, a wallet
+  the user had neither picked nor seen marked. Each card also showed
+  `wallet.addresses[slot]` with its own copy button, and `spectra wallet
+  receive` printed the same stored address.
+  **After:** the card is the selection control: tapping it lights the glass and
+  marks the badge, and nothing else. "Continue" advances the selected wallet
+  and is disabled until there is one. `beginReceive` selects nothing, except
+  where there is exactly one receive-enabled wallet and so nothing to choose.
+  The card no longer shows or copies an address, and `spectra wallet receive`
+  asks `WalletService::receive_address(reserve: true)` — the same call the app
+  makes — and reports the network it resolved. `spectra pool receive`, which
+  already made that call, is gone: it was the same answer under the keypool's
+  debugging namespace.
+- **Why:** two of them. The wallet step had a hidden selection: state the UI
+  decided (first row) that the UI never rendered, so the only correct outcome
+  was the accidental one. And a receive address had two producers that
+  disagree. Core's reserves a keypool index — never 0 on a UTXO chain — and
+  registers the derived address as owned; the stored one is the record's
+  index-0 address and core does not watch it for incoming funds. Rule 0's
+  "collapse two models of one thing", on the side the funds rule names: derive
+  rather than trust a stored value.
+- **CLI check:** `spectra --json wallet receive "Open BTC"` on the unsealed
+  `abandon … about` wallet answers `bc1qnjg0jd8228aq7egyzacy8cys3knf9xvrerkf9g`,
+  the reserved index 1, never the record's index-0
+  `bc1qcr8te4kr609gcawutmrza0j4xv80jy8z306fyu`, and a second call returns the
+  first address rather than walking the keypool forward. On an account chain
+  there is no keypool and it still falls through to the stored address.
+  `./scripts/cli-acceptance.sh` covers all four.
+  The selection itself is iOS view state and has no CLI form; core's side of it
+  is that `beginReceive` stops choosing.
+- **Verification:** `make verify`.
+
 ### The dashboard's pins are core's answer per asset (2026-09-17)
 
 - **Before:** the app kept a mirror of the pinned token ids and re-applied

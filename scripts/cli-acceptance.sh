@@ -429,9 +429,23 @@ contains "derives the reserved receive address offline" '"address":"bc1q' \
     spectra --json pool next "Open BTC"
 contains "the receive index remains reserved on reopen" '"index":1' \
     spectra --json pool next "Open BTC"
+# One producer of receive addresses, and it is core. `wallet receive` printed
+# the wallet's stored account address — the record's index-0 one — while the
+# app's receive screen asked core, so the two named different addresses under
+# the same word and the CLI's was one core does not watch.
+contains "hands out the reserved address, not the stored one" \
+    '"address":"bc1qnjg0jd8228aq7egyzacy8cys3knf9xvrerkf9g"' \
+    spectra --json wallet receive "Open BTC"
+lacks "and never the index-0 address the wallet record holds" \
+    "bc1qcr8te4kr609gcawutmrza0j4xv80jy8z306fyu" \
+    spectra --json wallet receive "Open BTC"
+# Idempotent: opening the receive screen twice must not walk the keypool
+# forward and leave the address already shown unwatched.
+contains "asking again keeps the reserved index" \
+    '"address":"bc1qnjg0jd8228aq7egyzacy8cys3knf9xvrerkf9g"' \
+    spectra --json wallet receive "Open BTC"
 # The diagnostics row reports the reservation as it was recorded when handed
 # out. The app labelled the wallet's account path as the reserved one.
-check "hands the reserved address out" $OK spectra pool receive "Open BTC"
 contains "shows the path at the reserved index" "/0/1\"" \
     spectra --json pool show "Open BTC"
 check "deletes the temporary BTC wallet" $OK spectra wallet delete "Open BTC" --yes
@@ -1151,7 +1165,8 @@ check "and bitcoin is no longer pinned" $OK \
 contains "empty chain discovery does not fetch" '"results":[]' closure_spectra --json pool discover-chain Bitcoin
 check "reset rejects an unknown scope" $REJECTED closure_spectra settings reset --scope typo --yes
 check "imports closure watch wallet" $OK closure_spectra wallet watch --chain Ethereum --name "Closure Watch" --address 0x1111111111111111111111111111111111111111
-contains "receive uses the stored address" '0x1111111111111111111111111111111111111111' closure_spectra --json pool receive "Closure Watch"
+contains "receive falls back to the stored address on an account chain" \
+    '0x1111111111111111111111111111111111111111' closure_spectra --json wallet receive "Closure Watch"
 check "stores closure alert" $OK closure_spectra alert add --chain Ethereum --target 100 --above
 check "stored alert evaluation needs no network" $OK closure_spectra alert check --stored
 check "resets wallets through the owned operation" $OK closure_spectra settings reset --scope walletsAndSecrets --scope alertsAndContacts --yes

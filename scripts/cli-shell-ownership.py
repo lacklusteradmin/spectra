@@ -12,7 +12,7 @@ with tempfile.TemporaryDirectory(prefix='spectra-shell-') as directory:
         run('wallet','watch','--chain','ethereum','--address','0x'+f'{i+1:02x}'*20)
     wallets=run('wallet','list')['wallets']
     assert {w['name'] for w in wallets}=={'Wallet 1','Wallet 2','Wallet 3'},wallets
-    received=run('pool','receive','Wallet 1')
+    received=run('wallet','receive','Wallet 1')
     assert address in json.dumps(received), received
     dbpath=pathlib.Path(directory)/'spectra.sqlite'
     def change_wallets(change):

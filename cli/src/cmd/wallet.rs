@@ -516,25 +516,49 @@ fn show(ctx: &Ctx, out: Out, args: SelectArgs) -> CliResult<()> {
     Ok(())
 }
 
+/// The address the receive flow hands out, asked of core: `receive_address`
+/// resolves the wallet's network, derives from the xpub or the UTXO keypool
+/// where there is one, reserves the index and registers the result as owned.
+/// Asking twice returns the same address — the reserved index is kept, not
+/// burned.
+///
+/// It used to print the wallet's stored account address instead, which is the
+/// record's index-0 address. On a UTXO chain the reserved index is never 0, so
+/// wherever core could derive one the CLI and the app named two different
+/// addresses under the same word, and this one named an address core does not
+/// watch for incoming funds.
 fn receive(ctx: &Ctx, out: Out, args: SelectArgs) -> CliResult<()> {
     let wallet = ctx.find_wallet(&args.wallet)?;
-    let symbol = resolve_chain(&wallet.chain_name)
-        .map(|chain| chain.coin_symbol().to_string())
-        .unwrap_or_default();
+    let chain = resolve_chain(&wallet.chain_name)?;
+    let network = wallet
+        .network_chain(&ctx.state()?.settings)
+        .unwrap_or(chain);
+    let chain_name = network.chain_display_name().to_string();
+    let symbol = network.coin_symbol().to_string();
+    let address = ctx
+        .rt
+        .block_on(
+            ctx.service()?
+                .receive_address(wallet.id.clone(), network.str_id().into(), true),
+        )
+        .map_err(CliError::from)?
+        .ok_or_else(|| {
+            CliError::failure(format!(
+                "no receive address for {:?} on {chain_name}",
+                wallet.name
+            ))
+        })?;
     out.text(|| {
         println!();
-        println!("  {}", wallet_address(&wallet).bold());
+        println!("  {}", address.bold());
         println!();
-        out::field(
-            "chain",
-            &out::tint(&wallet.chain_name, &wallet.chain_name).to_string(),
-        );
+        out::field("chain", &out::tint(&chain_name, &chain_name).to_string());
         out::field("symbol", &symbol);
     });
     out.emit(serde_json::json!({
         "ok": true,
-        "address": wallet_address(&wallet),
-        "chain": wallet.chain_name,
+        "address": address,
+        "chain": chain_name,
         "symbol": symbol,
     }));
     Ok(())
