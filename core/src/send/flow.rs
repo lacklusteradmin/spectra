@@ -514,16 +514,59 @@ pub struct HighRiskSendRequest {
     pub tx_addresses: Vec<HighRiskChainAddress>,
 }
 
-/// A single high-risk warning with a code and optional metadata fields.
-/// Swift maps these to localized user-facing strings.
-#[derive(Debug, Clone, serde::Serialize, uniffi::Record)]
-pub struct HighRiskSendWarning {
-    pub code: String,
-    pub chain: Option<String>,
-    pub name: Option<String>,
-    pub address: Option<String>,
-    pub percent: Option<u64>,
-    pub symbol: Option<String>,
+/// A reason a send looks risky. Front ends word each one; which ones exist,
+/// and what each carries, are core's.
+///
+/// Was a record with a free-string `code` and five optional fields any code
+/// might or might not fill. The app switched on the string with a `default`
+/// that returned nothing, so a warning core added later would have vanished
+/// from the confirmation sheet without a compiler error or a test failing —
+/// on the screen whose job is to show every reason to stop. An enum makes a
+/// new reason a compile error on every front end that has not worded it.
+///
+/// The serialized form keeps `code` beside each variant's fields, which is
+/// what `spectra send quote` prints.
+#[derive(Debug, Clone, PartialEq, serde::Serialize, uniffi::Enum)]
+#[serde(tag = "code", rename_all = "snake_case")]
+pub enum HighRiskSendWarning {
+    /// The destination does not parse as an address on `chain`.
+    InvalidFormat { chain: String },
+    /// Neither the address book nor this wallet's history has sent here.
+    NewAddress,
+    /// An ENS `name` was resolved to `address`.
+    EnsResolved { name: String, address: String },
+    /// The send is `percent` of the `symbol` holding, at 25% or more.
+    LargeSend { percent: u64, symbol: String },
+    /// An EVM `chain`, and a destination shaped like another family's address.
+    NonEvmOnEvm { chain: String },
+    /// An ENS name on an EVM `chain` whose names do not resolve through ENS.
+    EnsOffEthereum { chain: String },
+    /// A chain that is not EVM, and a destination shaped like an EVM address.
+    EthOnUtxo { chain: String },
+    /// A destination shaped like another chain's address on `chain`.
+    ///
+    /// `non_tron`, `non_solana`, `non_xrp` and `non_monero` before: four codes
+    /// for one reason, each worded with its chain's name baked in.
+    ForeignAddressFormat { chain: String },
+    /// The holding's chain is not the wallet's.
+    ChainMismatch,
+}
+
+impl HighRiskSendWarning {
+    /// The serialized `code`, for tests and logs.
+    pub fn code(&self) -> &'static str {
+        match self {
+            Self::InvalidFormat { .. } => "invalid_format",
+            Self::NewAddress => "new_address",
+            Self::EnsResolved { .. } => "ens_resolved",
+            Self::LargeSend { .. } => "large_send",
+            Self::NonEvmOnEvm { .. } => "non_evm_on_evm",
+            Self::EnsOffEthereum { .. } => "ens_off_ethereum",
+            Self::EthOnUtxo { .. } => "eth_on_utxo",
+            Self::ForeignAddressFormat { .. } => "foreign_address_format",
+            Self::ChainMismatch => "chain_mismatch",
+        }
+    }
 }
 
 /// Typed high-risk send evaluation.
@@ -536,15 +579,6 @@ pub fn core_evaluate_high_risk_send_reasons(
     let chain_name = &request.chain_name;
     let mut warnings: Vec<HighRiskSendWarning> = Vec::new();
 
-    let make = |code: &str| HighRiskSendWarning {
-        code: code.to_string(),
-        chain: None,
-        name: None,
-        address: None,
-        percent: None,
-        symbol: None,
-    };
-
     // 1. Address format validation.
     //
     // Asked of the normalized address, because that is the form the store
@@ -555,9 +589,8 @@ pub fn core_evaluate_high_risk_send_reasons(
     // the composer accepted it, the store accepted it, and this stood beside
     // them calling it `invalid_format`. One question, one form, one answer.
     if !is_valid_send_address(chain_name.clone(), request.destination_address.clone()) {
-        warnings.push(HighRiskSendWarning {
-            chain: Some(chain_name.clone()),
-            ..make("invalid_format")
+        warnings.push(HighRiskSendWarning::InvalidFormat {
+            chain: chain_name.clone(),
         });
     }
 
@@ -580,15 +613,14 @@ pub fn core_evaluate_high_risk_send_reasons(
         e.chain_name == *chain_name && normalize_address(chain_name, &e.address) == norm_dest
     });
     if !has_address_book && !has_tx_history {
-        warnings.push(make("new_address"));
+        warnings.push(HighRiskSendWarning::NewAddress);
     }
 
     // 3. ENS resolution warning.
     if request.used_ens_resolution {
-        warnings.push(HighRiskSendWarning {
-            name: Some(request.destination_input.clone()),
-            address: Some(request.destination_address.clone()),
-            ..make("ens_resolved")
+        warnings.push(HighRiskSendWarning::EnsResolved {
+            name: request.destination_input.clone(),
+            address: request.destination_address.clone(),
         });
     }
 
@@ -597,10 +629,9 @@ pub fn core_evaluate_high_risk_send_reasons(
         let ratio = request.amount / request.holding_amount;
         if ratio >= 0.25 {
             let pct = (ratio * 100.0).round() as u64;
-            warnings.push(HighRiskSendWarning {
-                percent: Some(pct),
-                symbol: Some(request.symbol.clone()),
-                ..make("large_send")
+            warnings.push(HighRiskSendWarning::LargeSend {
+                percent: pct,
+                symbol: request.symbol.clone(),
             });
         }
     }
@@ -628,51 +659,50 @@ pub fn core_evaluate_high_risk_send_reasons(
             || lowered.starts_with('d')
             || lowered.starts_with('a');
         if looks_non_evm {
-            warnings.push(HighRiskSendWarning {
-                chain: Some(chain_name.clone()),
-                ..make("non_evm_on_evm")
+            warnings.push(HighRiskSendWarning::NonEvmOnEvm {
+                chain: chain_name.clone(),
             });
         }
         if is_ens_foreign_chain && is_ens_candidate {
-            warnings.push(HighRiskSendWarning {
-                chain: Some(chain_name.clone()),
-                ..make("ens_off_ethereum")
+            warnings.push(HighRiskSendWarning::EnsOffEthereum {
+                chain: chain_name.clone(),
             });
         }
     } else if crate::registry::Chain::from_display_name(chain_name)
         .is_some_and(|c| c.flags_evm_address_as_wrong_chain())
     {
         if lowered.starts_with("0x") || is_ens_candidate {
-            warnings.push(HighRiskSendWarning {
-                chain: Some(chain_name.clone()),
-                ..make("eth_on_utxo")
+            warnings.push(HighRiskSendWarning::EthOnUtxo {
+                chain: chain_name.clone(),
             });
         }
-    } else if chain_name == "Tron" {
-        if lowered.starts_with("0x") || lowered.starts_with("bc1") {
-            warnings.push(make("non_tron"));
+    } else {
+        let foreign = match chain_name.as_str() {
+            "Tron" => lowered.starts_with("0x") || lowered.starts_with("bc1"),
+            "Solana" => {
+                lowered.starts_with("0x")
+                    || lowered.starts_with("bc1")
+                    || lowered.starts_with("ltc1")
+                    || lowered.starts_with('t')
+            }
+            "XRP Ledger" => {
+                lowered.starts_with("0x") || lowered.starts_with("bc1") || lowered.starts_with('t')
+            }
+            "Monero" => {
+                lowered.starts_with("0x") || lowered.starts_with("bc1") || lowered.starts_with('r')
+            }
+            _ => false,
+        };
+        if foreign {
+            warnings.push(HighRiskSendWarning::ForeignAddressFormat {
+                chain: chain_name.clone(),
+            });
         }
-    } else if chain_name == "Solana" {
-        if lowered.starts_with("0x")
-            || lowered.starts_with("bc1")
-            || lowered.starts_with("ltc1")
-            || lowered.starts_with('t')
-        {
-            warnings.push(make("non_solana"));
-        }
-    } else if chain_name == "XRP Ledger" {
-        if lowered.starts_with("0x") || lowered.starts_with("bc1") || lowered.starts_with('t') {
-            warnings.push(make("non_xrp"));
-        }
-    } else if chain_name == "Monero"
-        && (lowered.starts_with("0x") || lowered.starts_with("bc1") || lowered.starts_with('r'))
-    {
-        warnings.push(make("non_monero"));
     }
 
     // 11. Wallet-chain context mismatch.
     if !request.wallet_selected_chain.is_empty() && request.wallet_selected_chain != *chain_name {
-        warnings.push(make("chain_mismatch"));
+        warnings.push(HighRiskSendWarning::ChainMismatch);
     }
 
     warnings
@@ -1220,7 +1250,7 @@ mod validating_and_normalising_cannot_disagree {
             tx_addresses: vec![],
         })
         .into_iter()
-        .map(|warning| warning.code)
+        .map(|warning| warning.code().to_string())
         .collect()
     }
 
@@ -1277,7 +1307,7 @@ mod validating_and_normalising_cannot_disagree {
                 tx_addresses: vec![],
             })
             .into_iter()
-            .map(|warning| warning.code)
+            .map(|warning| warning.code().to_string())
             .collect::<Vec<_>>()
         };
 
@@ -1317,7 +1347,7 @@ mod validating_and_normalising_cannot_disagree {
             tx_addresses: vec![],
         })
         .into_iter()
-        .map(|warning| warning.code)
+        .map(|warning| warning.code().to_string())
         .collect::<Vec<_>>();
 
         assert!(
@@ -1525,5 +1555,55 @@ mod scanned_payload_tests {
         let mut unique = noisy.clone();
         unique.dedup();
         assert_eq!(unique.len(), noisy.len());
+    }
+}
+
+#[cfg(test)]
+mod high_risk_warning_shape {
+    use super::{core_evaluate_high_risk_send_reasons, HighRiskSendRequest, HighRiskSendWarning};
+
+    fn warnings(chain_name: &str, destination: &str) -> Vec<HighRiskSendWarning> {
+        core_evaluate_high_risk_send_reasons(HighRiskSendRequest {
+            chain_name: chain_name.to_string(),
+            symbol: "X".to_string(),
+            amount: 1.0,
+            holding_amount: 1000.0,
+            destination_address: destination.to_string(),
+            destination_input: destination.to_string(),
+            used_ens_resolution: false,
+            wallet_selected_chain: chain_name.to_string(),
+            address_book_entries: vec![],
+            tx_addresses: vec![],
+        })
+    }
+
+    /// Four chain-named codes were one reason. It is one variant now, and the
+    /// chain it was raised on travels with it rather than being in its name.
+    #[test]
+    fn a_foreign_address_is_one_reason_that_names_its_chain() {
+        for chain in ["Tron", "Solana", "XRP Ledger", "Monero"] {
+            assert!(
+                warnings(chain, "0x1111111111111111111111111111111111111111").contains(
+                    &HighRiskSendWarning::ForeignAddressFormat {
+                        chain: chain.to_string()
+                    }
+                ),
+                "{chain} did not flag an EVM-shaped destination"
+            );
+        }
+    }
+
+    /// The code stays in the serialized form beside the variant's fields.
+    #[test]
+    fn a_warning_serializes_with_its_code() {
+        let warning = HighRiskSendWarning::LargeSend {
+            percent: 40,
+            symbol: "BTC".to_string(),
+        };
+        assert_eq!(
+            serde_json::to_value(&warning).unwrap(),
+            serde_json::json!({"code": "large_send", "percent": 40, "symbol": "BTC"})
+        );
+        assert_eq!(warning.code(), "large_send");
     }
 }

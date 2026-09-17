@@ -174,7 +174,7 @@ impl WalletService {
                         let saved = saved_record.clone();
                         Box::pin(async move {
                             record.transaction_hash = submission.transaction_hash.clone();
-                            record.ethereum_nonce = submission
+                            record.nonce = submission
                                 .nonce
                                 .map(i64::try_from)
                                 .transpose()

@@ -80,7 +80,7 @@ async fn applying_a_resolution_stores_it_and_reports_the_change() {
                 status: "confirmed".into(),
                 confirmations: Some(6),
                 receipt_block_number: Some(900_000),
-                dogecoin_network_fee_doge: None,
+                confirmed_network_fee: None,
                 evm_receipt_cost: None,
             }],
         )
@@ -88,10 +88,10 @@ async fn applying_a_resolution_stores_it_and_reports_the_change() {
         .expect("apply");
 
     assert_eq!(changes.len(), 1);
-    assert_eq!(changes[0].old_status, "pending");
-    assert_eq!(changes[0].new_status, "confirmed");
+    use crate::store::wallet_domain::CoreTransactionStatus;
+    assert_eq!(changes[0].old_status, CoreTransactionStatus::Pending);
+    assert_eq!(changes[0].new_status, CoreTransactionStatus::Confirmed);
     assert!(changes[0].status_changed);
-    assert_eq!(changes[0].emit_event_code.as_deref(), Some("confirmed"));
     assert_eq!(changes[0].transaction_hash.as_deref(), Some("hash-tx1"));
 
     let stored = service.transactions().await.expect("read");
@@ -117,7 +117,7 @@ async fn applying_a_resolution_stores_it_and_reports_the_change() {
                 status: "confirmed".into(),
                 confirmations: Some(6),
                 receipt_block_number: None,
-                dogecoin_network_fee_doge: None,
+                confirmed_network_fee: None,
                 evm_receipt_cost: None,
             }],
         )

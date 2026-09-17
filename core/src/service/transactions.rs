@@ -1,8 +1,8 @@
 //! Transaction commands and confirmation tracking.
 use super::*;
 
-#[uniffi::export(async_runtime = "tokio")]
 impl WalletService {
+    /// Every stored history row. Internal: front ends read `transactions`.
     pub async fn fetch_all_history_records_typed(
         &self,
     ) -> Result<Vec<crate::wallet_db::HistoryRecord>, SpectraBridgeError> {
@@ -12,7 +12,10 @@ impl WalletService {
             .map_err(|e| SpectraBridgeError::from(format!("spawn_blocking: {e}")))?
             .map_err(Into::into)
     }
+}
 
+#[uniffi::export(async_runtime = "tokio")]
+impl WalletService {
     /// Change a command made to the transaction store. Ids, not records —
     /// callers re-read only what they need.
     pub async fn apply_transaction_command(
@@ -116,6 +119,27 @@ impl WalletService {
             .map_err(|e| SpectraBridgeError::from(format!("spawn_blocking: {e}")))?
             .map(|rows| rows.into_iter().map(|row| row.payload).collect())
             .map_err(Into::into)
+    }
+
+    /// What to tell the user about a send, from its stored record.
+    ///
+    /// A missing record answers "no notice": nothing is known to say.
+    pub async fn send_verification_notice(
+        &self,
+        transaction_id: String,
+    ) -> Result<crate::send::verification::SendVerificationNotice, SpectraBridgeError> {
+        let record = self
+            .transactions()
+            .await?
+            .into_iter()
+            .find(|record| record.id.eq_ignore_ascii_case(&transaction_id));
+        Ok(
+            crate::send::verification::verification_notice_for_last_sent(
+                record
+                    .as_ref()
+                    .map(crate::send::verification::LastSentTransactionSnapshot::from),
+            ),
+        )
     }
 }
 
@@ -372,7 +396,7 @@ impl WalletService {
                         updated.receipt_effective_gas_price_gwei = None;
                         updated.receipt_network_fee = None;
                         updated.confirmation_count = None;
-                        updated.dogecoin_confirmed_network_fee_doge = None;
+                        updated.confirmed_network_fee = None;
                         let next = crate::store::plan_transaction_status_poll_success(
                             next_trackers.get(&updated.id).cloned(),
                             false,
@@ -390,8 +414,8 @@ impl WalletService {
                         if let Some(c) = r.confirmations {
                             updated.confirmation_count = Some(i64::from(c));
                         }
-                        if let Some(fee) = r.dogecoin_network_fee_doge {
-                            updated.dogecoin_confirmed_network_fee_doge = Some(fee);
+                        if let Some(fee) = r.confirmed_network_fee {
+                            updated.confirmed_network_fee = Some(fee);
                         }
                         if let Some(cost) = &r.evm_receipt_cost {
                             updated.receipt_gas_used = Some(cost.gas_used.clone());
@@ -404,11 +428,9 @@ impl WalletService {
                         id: decision.id.clone(),
                         chain_name: updated.chain_name.clone(),
                         transaction_hash: updated.transaction_hash.clone(),
-                        old_status: status_string(old.status),
-                        new_status: decision.new_status.clone(),
+                        old_status: old.status,
+                        new_status,
                         status_changed: decision.status_changed,
-                        send_status_notification: decision.send_status_notification,
-                        emit_event_code: decision.emit_event_code.clone(),
                         reached_finality_confirmations: decision.reached_finality_confirmations,
                     });
                     writes.push(crate::wallet_db::history_record_from_payload(updated));
@@ -526,7 +548,7 @@ mod status_commit_regressions {
             status: status.into(),
             confirmations: Some(12),
             receipt_block_number: Some(900000),
-            dogecoin_network_fee_doge: None,
+            confirmed_network_fee: None,
             evm_receipt_cost: None,
         }
     }
@@ -628,7 +650,10 @@ mod status_commit_regressions {
             )
             .await
             .unwrap();
-        assert_eq!(changes[0].new_status, "failed");
+        assert_eq!(
+            changes[0].new_status,
+            crate::store::wallet_domain::CoreTransactionStatus::Failed
+        );
     }
 
     #[tokio::test]

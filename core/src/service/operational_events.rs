@@ -1,22 +1,19 @@
 //! Per-chain views of the shared durable diagnostic log.
 use super::*;
-#[uniffi::export(async_runtime = "tokio")]
 impl WalletService {
+    /// Record something that happened on a chain. Internal: the app writes its
+    /// events through `apply_diagnostic_command`, and nothing else called this
+    /// across the boundary.
     pub async fn append_chain_operational_event(
         &self,
         chain_name: String,
-        level: crate::store::ChainOperationalEventLevel,
+        level: DiagnosticLogLevel,
         message: String,
         transaction_hash: Option<String>,
     ) -> Result<(), SpectraBridgeError> {
-        let level = match level {
-            crate::store::ChainOperationalEventLevel::Info => "info",
-            crate::store::ChainOperationalEventLevel::Warning => "warning",
-            crate::store::ChainOperationalEventLevel::Error => "error",
-        };
         self.apply_diagnostic_command(DiagnosticCommand::Append {
             input: DiagnosticLogInput {
-                level: level.into(),
+                level,
                 category: "Chain Operations".into(),
                 message,
                 chain_name: Some(chain_name),
@@ -29,30 +26,7 @@ impl WalletService {
         .await
         .map(|_| ())
     }
-    pub async fn operational_events(
-        &self,
-        chain_name: String,
-    ) -> Vec<crate::store::ChainOperationalEventRecord> {
-        self.diagnostic_state()
-            .await
-            .logs
-            .into_iter()
-            .filter(|l| l.input.chain_name.as_deref() == Some(&chain_name))
-            .take(200)
-            .map(|l| crate::store::ChainOperationalEventRecord {
-                id: l.id,
-                timestamp_unix: l.timestamp_unix,
-                chain_name: chain_name.clone(),
-                message: l.input.message,
-                transaction_hash: l.input.transaction_hash,
-                level: match l.input.level.as_str() {
-                    "warning" => crate::store::ChainOperationalEventLevel::Warning,
-                    "error" => crate::store::ChainOperationalEventLevel::Error,
-                    _ => crate::store::ChainOperationalEventLevel::Info,
-                },
-            })
-            .collect()
-    }
+    /// Forget a chain's events, or every chain's. Internal, like the append.
     pub async fn clear_operational_events(
         &self,
         chain_name: Option<String>,
@@ -60,5 +34,23 @@ impl WalletService {
         self.apply_diagnostic_command(DiagnosticCommand::ClearLogs { chain_name })
             .await
             .map(|_| ())
+    }
+}
+
+#[uniffi::export(async_runtime = "tokio")]
+impl WalletService {
+    /// One chain's log lines, newest first, at most 200.
+    ///
+    /// The durable log's own rows. This returned a second record shape with a
+    /// second level enum, mapped from the first with a fallback that turned an
+    /// unknown level into `info`.
+    pub async fn operational_events(&self, chain_name: String) -> Vec<DiagnosticLog> {
+        self.diagnostic_state()
+            .await
+            .logs
+            .into_iter()
+            .filter(|l| l.input.chain_name.as_deref() == Some(&chain_name))
+            .take(200)
+            .collect()
     }
 }

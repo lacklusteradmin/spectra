@@ -4,7 +4,7 @@ use crate::store::wallet_domain::AssetHolding;
 use crate::store::wallet_domain::CoreSeedDerivationPaths;
 
 fn defaults() -> CoreSeedDerivationPaths {
-    crate::app_core_derivation_paths_for_preset(0).expect("defaults")
+    crate::app_core_derivation_paths_for_preset(Default::default()).expect("defaults")
 }
 
 fn summary() -> WalletState {
@@ -16,7 +16,7 @@ fn summary() -> WalletState {
         include_in_portfolio_total: true,
         network_id: "bitcoin-testnet-4".to_string(),
         xpub: Some("zpub123".to_string()),
-        derivation_preset: "account2".to_string(),
+        derivation_preset: crate::store::wallet_domain::CoreSeedDerivationPreset::Account2,
         derivation_path: Some("m/84'/0'/2'/0/0".to_string()),
         derivation_overrides: Default::default(),
         holdings: vec![AssetHolding {
@@ -57,14 +57,13 @@ fn the_view_model_carries_what_the_app_shows() {
     assert!(view.seed_derivation_paths.path_for(Chain::Solana).is_some());
 }
 
-/// The network mode goes back into the field for the wallet's own chain and
 /// The wallet's network is one chain id, so there is nothing to leave
 /// alone — a wallet on Bitcoin testnet4 says exactly that, rather than
 /// carrying a Bitcoin mode and a Dogecoin mode and a rule for reading them.
 #[test]
 fn the_wallets_own_network_survives_the_round_trip() {
     let view = summary().to_wallet_view(&defaults());
-    assert_eq!(view.network_chain_id.as_deref(), Some("bitcoin-testnet-4"));
+    assert_eq!(view.network_chain_id, "bitcoin-testnet-4");
 }
 
 /// Holding ids are derived from what identifies the asset, so rebuilding

@@ -73,7 +73,9 @@ pub(crate) use serde::{Deserialize, Serialize};
 mod address_discovery;
 mod balance_refresh;
 mod diagnostic_state;
-pub use diagnostic_state::{DiagnosticCommand, DiagnosticLog, DiagnosticLogInput, DiagnosticState};
+pub use diagnostic_state::{
+    DiagnosticCommand, DiagnosticLog, DiagnosticLogInput, DiagnosticLogLevel, DiagnosticState,
+};
 mod funds_scan;
 pub use funds_scan::{FundsScan, FundsScanProgress, FundsScanRead};
 mod helpers;
@@ -81,7 +83,7 @@ mod history_bitcoin;
 mod history_cursor;
 mod history_derived;
 mod history_refresh;
-pub use history_refresh::HistoryRefreshOutcome;
+pub use history_refresh::{HistoryRefreshOutcome, HistoryWalletDiagnostics};
 mod history_operation;
 pub use history_operation::{ChainHistoryRefresh, HistoryRefreshScope};
 mod keypool;

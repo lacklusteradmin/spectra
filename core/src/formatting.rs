@@ -77,18 +77,23 @@ pub fn formatting_asset_amount_display(amount: f64, asset_decimals: u32) -> Asse
 
 #[derive(Debug, Clone, uniffi::Record)]
 pub struct FiatAmountRules {
+    /// The ISO 4217 code a currency formatter and a rate table take.
+    pub code: String,
     pub decimals: u32,
     pub minimum_visible: f64,
 }
 
-pub fn fiat_amount_rules(currency_code: &str) -> FiatAmountRules {
-    if currency_code.eq_ignore_ascii_case("JPY") {
+pub fn fiat_amount_rules(currency: crate::store::state::FiatCurrency) -> FiatAmountRules {
+    let code = currency.code().to_string();
+    if currency == crate::store::state::FiatCurrency::Jpy {
         FiatAmountRules {
+            code,
             decimals: 0,
             minimum_visible: 1.0,
         }
     } else {
         FiatAmountRules {
+            code,
             decimals: 2,
             minimum_visible: 0.01,
         }
@@ -96,8 +101,10 @@ pub fn fiat_amount_rules(currency_code: &str) -> FiatAmountRules {
 }
 
 #[uniffi::export]
-pub fn formatting_fiat_amount_rules(currency_code: String) -> FiatAmountRules {
-    fiat_amount_rules(&currency_code)
+pub fn formatting_fiat_amount_rules(
+    currency: crate::store::state::FiatCurrency,
+) -> FiatAmountRules {
+    fiat_amount_rules(currency)
 }
 
 #[cfg(test)]
@@ -159,10 +166,10 @@ mod tests {
 
     #[test]
     fn fiat_amount_rules_jpy_vs_others() {
-        let jpy = fiat_amount_rules("JPY");
+        let jpy = fiat_amount_rules(crate::store::state::FiatCurrency::Jpy);
         assert_eq!(jpy.decimals, 0);
         assert_eq!(jpy.minimum_visible, 1.0);
-        let usd = fiat_amount_rules("USD");
+        let usd = fiat_amount_rules(crate::store::state::FiatCurrency::Usd);
         assert_eq!(usd.decimals, 2);
         assert!((usd.minimum_visible - 0.01).abs() < 1e-9);
     }

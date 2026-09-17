@@ -4,7 +4,7 @@
 
 use serde::{Deserialize, Serialize};
 
-#[derive(Debug, Clone, Serialize, Deserialize, uniffi::Enum)]
+#[derive(Debug, Clone)]
 pub enum CoreSendVerificationStatus {
     Verified,
     Deferred,
@@ -19,7 +19,9 @@ pub struct SendVerificationNotice {
     pub is_warning: bool,
 }
 
-#[uniffi::export]
+/// Not exported: the app only ever asked this with `Verified`, after a send it
+/// had not verified. What a front end shows comes from the stored record,
+/// through [`verification_notice_for_last_sent`].
 pub fn verification_notice_for_status(
     status: CoreSendVerificationStatus,
     chain_name: String,
@@ -43,13 +45,11 @@ pub fn verification_notice_for_status(
     }
 }
 
-#[derive(Debug, Clone, Default, Serialize, Deserialize, uniffi::Record)]
-#[serde(rename_all = "camelCase")]
+/// The parts of a stored send record the notice reads.
+#[derive(Debug, Clone)]
 pub struct LastSentTransactionSnapshot {
-    /// "send" or other kind strings.
-    pub kind: String,
-    /// "pending" | "confirmed" | "failed".
-    pub status: String,
+    pub kind: crate::store::wallet_domain::CoreTransactionKind,
+    pub status: crate::store::wallet_domain::CoreTransactionStatus,
     pub chain_name: String,
     pub transaction_hash: Option<String>,
     pub failure_reason: Option<String>,
@@ -58,17 +58,38 @@ pub struct LastSentTransactionSnapshot {
     pub confirmation_count: Option<i64>,
 }
 
+impl From<&crate::store::persistence_models::CorePersistedTransactionRecord>
+    for LastSentTransactionSnapshot
+{
+    fn from(record: &crate::store::persistence_models::CorePersistedTransactionRecord) -> Self {
+        Self {
+            kind: record.kind,
+            status: record.status,
+            chain_name: record.chain_name.clone(),
+            transaction_hash: record.transaction_hash.clone(),
+            failure_reason: record.failure_reason.clone(),
+            transaction_history_source: record.transaction_history_source.clone(),
+            receipt_block_number: record.receipt_block_number,
+            confirmation_count: record.confirmation_count,
+        }
+    }
+}
+
 /// Decides what to tell the user about their most recent send: whether the
 /// broadcast has been seen by an indexer, is still unconfirmed, or failed.
 /// Returns the default (no notice) for anything that isn't a hashed send.
-#[uniffi::export]
+///
+/// Not exported: `WalletService::send_verification_notice` reads the stored
+/// record. The app used to rebuild this snapshot from its own copy of the
+/// record, with the kind and status spelled as strings, and hand it back.
 pub fn verification_notice_for_last_sent(
     snapshot: Option<LastSentTransactionSnapshot>,
 ) -> SendVerificationNotice {
+    use crate::store::wallet_domain::{CoreTransactionKind, CoreTransactionStatus};
     let Some(tx) = snapshot else {
         return SendVerificationNotice::default();
     };
-    if tx.kind != "send" {
+    if tx.kind != CoreTransactionKind::Send {
         return SendVerificationNotice::default();
     }
     let hash_trimmed = tx
@@ -79,7 +100,7 @@ pub fn verification_notice_for_last_sent(
     if hash_trimmed.is_empty() {
         return SendVerificationNotice::default();
     }
-    if tx.status == "failed" {
+    if tx.status == CoreTransactionStatus::Failed {
         let message = tx
             .failure_reason
             .clone()
@@ -89,7 +110,7 @@ pub fn verification_notice_for_last_sent(
             tx.chain_name.clone(),
         );
     }
-    let observed_on_network = tx.status == "confirmed"
+    let observed_on_network = tx.status == CoreTransactionStatus::Confirmed
         || tx.transaction_history_source.is_some()
         || tx.receipt_block_number.is_some()
         || tx.confirmation_count.unwrap_or(0) > 0;
@@ -102,6 +123,20 @@ pub fn verification_notice_for_last_sent(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::store::wallet_domain::{CoreTransactionKind, CoreTransactionStatus};
+
+    fn snapshot() -> LastSentTransactionSnapshot {
+        LastSentTransactionSnapshot {
+            kind: CoreTransactionKind::Send,
+            status: CoreTransactionStatus::Pending,
+            chain_name: String::new(),
+            transaction_hash: None,
+            failure_reason: None,
+            transaction_history_source: None,
+            receipt_block_number: None,
+            confirmation_count: None,
+        }
+    }
 
     #[test]
     fn verified_clears_notice() {
@@ -141,11 +176,11 @@ mod tests {
     #[test]
     fn last_sent_empty_hash_returns_clear() {
         let n = verification_notice_for_last_sent(Some(LastSentTransactionSnapshot {
-            kind: "send".into(),
-            status: "pending".into(),
+            kind: CoreTransactionKind::Send,
+            status: CoreTransactionStatus::Pending,
             chain_name: "Ethereum".into(),
             transaction_hash: Some("   ".into()),
-            ..Default::default()
+            ..snapshot()
         }));
         assert!(n.notice.is_none());
     }
@@ -153,11 +188,11 @@ mod tests {
     #[test]
     fn last_sent_confirmed_returns_clear() {
         let n = verification_notice_for_last_sent(Some(LastSentTransactionSnapshot {
-            kind: "send".into(),
-            status: "confirmed".into(),
+            kind: CoreTransactionKind::Send,
+            status: CoreTransactionStatus::Confirmed,
             chain_name: "Ethereum".into(),
             transaction_hash: Some("0xabc".into()),
-            ..Default::default()
+            ..snapshot()
         }));
         assert!(n.notice.is_none());
     }
@@ -165,12 +200,12 @@ mod tests {
     #[test]
     fn last_sent_failed_uses_fallback_reason() {
         let n = verification_notice_for_last_sent(Some(LastSentTransactionSnapshot {
-            kind: "send".into(),
-            status: "failed".into(),
+            kind: CoreTransactionKind::Send,
+            status: CoreTransactionStatus::Failed,
             chain_name: "Ethereum".into(),
             transaction_hash: Some("0xabc".into()),
             failure_reason: None,
-            ..Default::default()
+            ..snapshot()
         }));
         assert!(n.is_warning);
         assert!(n.notice.unwrap().contains("Broadcast was not confirmed"));
@@ -179,11 +214,11 @@ mod tests {
     #[test]
     fn last_sent_pending_unobserved_returns_deferred() {
         let n = verification_notice_for_last_sent(Some(LastSentTransactionSnapshot {
-            kind: "send".into(),
-            status: "pending".into(),
+            kind: CoreTransactionKind::Send,
+            status: CoreTransactionStatus::Pending,
             chain_name: "Solana".into(),
             transaction_hash: Some("0xabc".into()),
-            ..Default::default()
+            ..snapshot()
         }));
         assert!(n.notice.unwrap().contains("Solana"));
         assert!(!n.is_warning);
@@ -192,12 +227,12 @@ mod tests {
     #[test]
     fn last_sent_dogecoin_confirmed_via_counter_returns_clear() {
         let n = verification_notice_for_last_sent(Some(LastSentTransactionSnapshot {
-            kind: "send".into(),
-            status: "pending".into(),
+            kind: CoreTransactionKind::Send,
+            status: CoreTransactionStatus::Pending,
             chain_name: "Dogecoin".into(),
             transaction_hash: Some("abc".into()),
             confirmation_count: Some(1),
-            ..Default::default()
+            ..snapshot()
         }));
         assert!(n.notice.is_none());
     }

@@ -15,7 +15,7 @@ fn service() -> Arc<WalletService> {
 }
 fn currency(code: &str) -> StateCommand {
     StateCommand::SetFiatCurrency {
-        fiat_currency_code: code.into(),
+        currency: crate::store::state::FiatCurrency::from_code(code).unwrap(),
     }
 }
 fn sql(path: &str, statement: &str) {
@@ -39,7 +39,7 @@ async fn concurrent_commands_and_events_match_reopened_database() {
                 .unwrap();
             s.append_chain_operational_event(
                 "Bitcoin".into(),
-                crate::store::ChainOperationalEventLevel::Info,
+                crate::service::DiagnosticLogLevel::Info,
                 i.to_string(),
                 None,
             )
@@ -135,7 +135,7 @@ async fn failed_log_commit_does_not_publish() {
     s.open_state(db.clone()).await.unwrap();
     s.append_chain_operational_event(
         "Bitcoin".into(),
-        crate::store::ChainOperationalEventLevel::Info,
+        crate::service::DiagnosticLogLevel::Info,
         "original".into(),
         None,
     )
@@ -175,7 +175,10 @@ async fn cancelling_caller_does_not_interrupt_an_admitted_commit() {
     drop(state_guard);
     // Queue behind the admitted write, proving it completed despite cancellation.
     let _writer = s.state_writer.lock().await;
-    assert_eq!(s.app_state().await.settings.fiat_currency_code, "EUR");
+    assert_eq!(
+        s.app_state().await.settings.fiat_currency,
+        crate::store::state::FiatCurrency::Eur
+    );
     assert_eq!(
         crate::wallet_db::app_state_load(&crate::wallet_db::WalletDatabase::new(&db)).unwrap(),
         s.app_state().await
@@ -398,10 +401,10 @@ mod tor_and_rates {
                 .await
                 .unwrap();
             assert!(
-                transition
-                    .events
-                    .iter()
-                    .any(|event| event.kind == "appSettingRejected"),
+                transition.events.iter().any(|event| matches!(
+                    event,
+                    crate::store::state::StateEvent::AppSettingRejected
+                )),
                 "{bad} was not refused"
             );
             assert_eq!(
@@ -476,42 +479,6 @@ mod tor_and_rates {
         ));
     }
 
-    /// A display currency the app cannot quote in is refused. It used to be
-    /// stored, and every amount then rendered unconverted beside that code.
-    #[tokio::test]
-    async fn only_a_currency_the_app_quotes_in_can_be_selected() {
-        let s = service();
-        s.open_state(database()).await.unwrap();
-        for code in ["EUR", "jpy", " aed "] {
-            let transition = s
-                .apply_state_command(StateCommand::SetFiatCurrency {
-                    fiat_currency_code: code.into(),
-                })
-                .await
-                .unwrap();
-            assert_eq!(
-                transition.state.settings.fiat_currency_code,
-                code.trim().to_uppercase()
-            );
-        }
-        for code in ["ZZZ", "", "US", "BITCOIN"] {
-            let transition = s
-                .apply_state_command(StateCommand::SetFiatCurrency {
-                    fiat_currency_code: code.into(),
-                })
-                .await
-                .unwrap();
-            assert!(
-                transition
-                    .events
-                    .iter()
-                    .any(|event| event.kind == "fiatCurrencyRejected"),
-                "{code:?} was not refused"
-            );
-            assert_eq!(transition.state.settings.fiat_currency_code, "AED");
-        }
-    }
-
     /// Rates are stored where the state is, so a reopened service quotes the
     /// same amounts without a network call.
     #[tokio::test]
@@ -555,10 +522,7 @@ async fn owned_alert_evaluation_uses_quotes_and_fires_once_across_reopen() {
                 has_triggered: false,
             }];
             state.quotes.prices.insert("ethereum:native".into(), 3.0);
-            vec![crate::store::state::StateEvent {
-                kind: "fixture".into(),
-                subject_id: None,
-            }]
+            vec![crate::store::state::StateEvent::StateReplaced]
         })
         .await
         .unwrap();
@@ -684,7 +648,7 @@ async fn owned_catalog_transport_reads_saved_settings_and_preserves_explicit_ove
         &["http://127.0.0.1:9545"]
     );
     service
-        .reset_data(vec!["settingsAndEndpoints".into()])
+        .reset_data(vec![crate::store::state::ResetScope::SettingsAndEndpoints])
         .await
         .unwrap();
     assert_eq!(service.endpoints_for("ethereum").await, original);
@@ -746,10 +710,7 @@ async fn derived_wallet_maps_share_one_snapshot_during_mutation() {
                         None,
                         true,
                     )];
-                    vec![crate::store::state::StateEvent {
-                        kind: "walletsChanged".into(),
-                        subject_id: None,
-                    }]
+                    vec![crate::store::state::StateEvent::StateReplaced]
                 })
                 .await
                 .unwrap();

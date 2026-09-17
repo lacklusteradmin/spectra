@@ -68,8 +68,8 @@ async fn explicit_recheck_targets_failed_and_confirmed_records_on_the_stored_net
             .recheck_transaction_status("target".into())
             .await
             .unwrap();
-        assert_eq!(change.old_status, previous);
-        assert_eq!(change.new_status, "confirmed");
+        assert_eq!(change.old_status.as_raw(), previous);
+        assert_eq!(change.new_status, CoreTransactionStatus::Confirmed);
         assert_eq!(change.status_changed, previous != "confirmed");
         let reopened = WalletService::new(vec![]).unwrap();
         reopened.open_state(path.clone()).await.unwrap();
@@ -103,7 +103,7 @@ async fn explicit_recheck_reopens_finality_and_clears_reorg_metadata() {
         .mount(&server)
         .await;
     let mut row = record("target", Chain::Dogecoin, "confirmed");
-    row.dogecoin_confirmed_network_fee_doge = Some(1.0);
+    row.confirmed_network_fee = Some(1.0);
     save(&service, row).await;
     service
         .record_status_poll(
@@ -117,11 +117,11 @@ async fn explicit_recheck_reopens_finality_and_clears_reorg_metadata() {
         .recheck_transaction_status("target".into())
         .await
         .unwrap();
-    assert_eq!(change.new_status, "pending");
+    assert_eq!(change.new_status, CoreTransactionStatus::Pending);
     let row = service.transactions().await.unwrap().remove(0);
     assert_eq!(row.receipt_block_number, None);
     assert_eq!(row.confirmation_count, Some(0));
-    assert_eq!(row.dogecoin_confirmed_network_fee_doge, None);
+    assert_eq!(row.confirmed_network_fee, None);
     assert!(!service.status_trackers.read().await["target"].reached_finality);
     server.verify().await;
 }

@@ -2,6 +2,7 @@ pub mod artwork;
 pub mod password_verifier;
 pub mod persistence_models;
 mod price_alerts;
+pub use price_alerts::PriceAlertRejection;
 pub mod secret_backends;
 pub mod secret_store;
 pub mod seed_envelope;
@@ -46,31 +47,6 @@ pub struct GroupedPortfolioHolding {
     pub total_amount: String,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, uniffi::Record)]
-#[serde(rename_all = "camelCase")]
-pub struct OwnedAddressAggregationRequest {
-    pub candidate_addresses: Vec<String>,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, uniffi::Record)]
-#[serde(rename_all = "camelCase")]
-pub struct ReceiveSelectionHoldingInput {
-    pub holding_index: u64,
-    pub has_contract_address: bool,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, uniffi::Record)]
-#[serde(rename_all = "camelCase")]
-pub struct ReceiveSelectionRequest {
-    pub available_receive_holdings: Vec<ReceiveSelectionHoldingInput>,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, uniffi::Record)]
-#[serde(rename_all = "camelCase")]
-pub struct ReceiveSelectionPlan {
-    pub selected_receive_holding_index: Option<u64>,
-}
-
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, uniffi::Record)]
 #[serde(rename_all = "camelCase")]
 pub struct PendingSelfSendConfirmationInput {
@@ -110,11 +86,13 @@ pub trait SecretStore: Send + Sync {
     fn delete_wallet_secret(&self, wallet_id: &str) -> Result<(), String>;
 }
 
-pub fn aggregate_owned_addresses(request: OwnedAddressAggregationRequest) -> Vec<String> {
+/// Trimmed, blanks dropped, and each address once — compared case-folded, the
+/// first spelling kept.
+pub fn aggregate_owned_addresses(candidates: impl IntoIterator<Item = String>) -> Vec<String> {
     let mut ordered = Vec::new();
     let mut seen = std::collections::BTreeSet::<String>::new();
 
-    for candidate in request.candidate_addresses {
+    for candidate in candidates {
         let trimmed = candidate.trim();
         if trimmed.is_empty() {
             continue;
@@ -126,39 +104,6 @@ pub fn aggregate_owned_addresses(request: OwnedAddressAggregationRequest) -> Vec
     }
 
     ordered
-}
-
-/// Which of a wallet's holdings the receive screen should present itself as:
-/// the native one, or the first token if it somehow has no native holding.
-///
-/// This used to resolve a *chain* first — the caller passed a
-/// `receive_chain_name` and an `available_receive_chains` list, and holdings on
-/// other chains were filtered out. A wallet belongs to one chain: it is
-/// imported per chain (a seed across three chains makes three wallets), and its
-/// balances arrive from a single refresh entry built from `selected_chain`, so
-/// every holding it has carries that chain's name. The list always held one
-/// entry, the filter never excluded anything, and the resolved chain was always
-/// the wallet's own.
-///
-/// Note the address does not depend on this choice at all — every holding on a
-/// chain is received at the same address. The pick only decides which symbol
-/// and icon the screen shows.
-#[uniffi::export]
-pub fn core_receive_selection(request: ReceiveSelectionRequest) -> ReceiveSelectionPlan {
-    let mut first = None;
-    for holding in request.available_receive_holdings {
-        if first.is_none() {
-            first = Some(holding.holding_index);
-        }
-        if !holding.has_contract_address {
-            return ReceiveSelectionPlan {
-                selected_receive_holding_index: Some(holding.holding_index),
-            };
-        }
-    }
-    ReceiveSelectionPlan {
-        selected_receive_holding_index: first,
-    }
 }
 
 pub fn core_self_send_confirmation(
@@ -380,18 +325,19 @@ pub struct CoreResetPlan {
 /// dispatches is platform (Keychain deletes, `UserDefaults`, URL caches).
 /// There is no core-owned state behind it to move, which is why it is not a
 /// `plan_` any more.
-pub fn core_reset_dispatch(scopes: Vec<String>) -> CoreResetPlan {
-    let has = |s: &str| scopes.iter().any(|x| x == s);
-    let wallets_and_secrets = has("walletsAndSecrets");
-    let history_and_cache_direct = has("historyAndCache");
+pub fn core_reset_dispatch(scopes: Vec<state::ResetScope>) -> CoreResetPlan {
+    use state::ResetScope;
+    let has = |scope: ResetScope| scopes.contains(&scope);
+    let wallets_and_secrets = has(ResetScope::WalletsAndSecrets);
+    let history_and_cache_direct = has(ResetScope::HistoryAndCache);
     let history_and_cache = wallets_and_secrets || history_and_cache_direct;
     CoreResetPlan {
         reset_wallets_and_secrets: wallets_and_secrets,
         reset_history_and_cache: history_and_cache,
-        reset_alerts_and_contacts: has("alertsAndContacts"),
-        reset_settings_and_endpoints: has("settingsAndEndpoints"),
-        reset_dashboard_customization: has("dashboardCustomization"),
-        reset_provider_state: has("providerState"),
+        reset_alerts_and_contacts: has(ResetScope::AlertsAndContacts),
+        reset_settings_and_endpoints: has(ResetScope::SettingsAndEndpoints),
+        reset_dashboard_customization: has(ResetScope::DashboardCustomization),
+        reset_provider_state: has(ResetScope::ProviderState),
         clear_network_and_transport_caches: wallets_and_secrets || history_and_cache_direct,
     }
 }
@@ -496,25 +442,6 @@ pub fn plan_price_alert_evaluation(
     }
 }
 
-#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, uniffi::Enum)]
-#[serde(rename_all = "camelCase")]
-pub enum ChainOperationalEventLevel {
-    Info,
-    Warning,
-    Error,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, uniffi::Record)]
-#[serde(rename_all = "camelCase")]
-pub struct ChainOperationalEventRecord {
-    pub id: String,
-    pub timestamp_unix: f64,
-    pub chain_name: String,
-    pub level: ChainOperationalEventLevel,
-    pub message: String,
-    pub transaction_hash: Option<String>,
-}
-
 /// Seconds since the Unix epoch. The one clock read in this module.
 pub fn now_unix() -> f64 {
     std::time::SystemTime::now()
@@ -570,13 +497,31 @@ pub struct EvmRecipientPreflightRequest {
     pub token_has_code: Option<bool>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, uniffi::Record)]
-#[serde(rename_all = "camelCase")]
-pub struct EvmRecipientPreflightWarning {
-    pub code: String,
-    pub chain_name: Option<String>,
-    pub symbol: Option<String>,
-    pub token_symbol: Option<String>,
+/// A reason an EVM send's recipient or token contract looks wrong. Front ends
+/// word each one.
+///
+/// A record with a free-string `code` before, which the app switched on with a
+/// `default` that dropped anything it did not know; see
+/// [`crate::send::flow::HighRiskSendWarning`] for why that is the wrong shape
+/// for a warning.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, uniffi::Enum)]
+#[serde(tag = "code", rename_all = "snake_case")]
+pub enum EvmRecipientPreflightWarning {
+    /// The recipient has contract code, so it may not be able to receive
+    /// `symbol`.
+    RecipientIsContract { chain_name: String, symbol: String },
+    /// The recipient's code could not be read.
+    RecipientCodeUnknown { chain_name: String },
+    /// The token contract has no code on this chain.
+    TokenContractMissing {
+        chain_name: String,
+        token_symbol: String,
+    },
+    /// The token contract's code could not be read.
+    TokenCodeUnknown {
+        chain_name: String,
+        token_symbol: String,
+    },
 }
 
 /// Build warning codes for an EVM send's recipient + token contract checks.
@@ -587,34 +532,26 @@ pub fn core_evm_recipient_preflight_warnings(
     request: EvmRecipientPreflightRequest,
 ) -> Vec<EvmRecipientPreflightWarning> {
     let mut warnings = Vec::new();
+    let chain_name = request.chain_name;
     match request.recipient_has_code {
-        Some(true) => warnings.push(EvmRecipientPreflightWarning {
-            code: "recipient_is_contract".to_string(),
-            chain_name: Some(request.chain_name.clone()),
-            symbol: Some(request.holding_symbol.clone()),
-            token_symbol: None,
+        Some(true) => warnings.push(EvmRecipientPreflightWarning::RecipientIsContract {
+            chain_name: chain_name.clone(),
+            symbol: request.holding_symbol,
         }),
         Some(false) => {}
-        None => warnings.push(EvmRecipientPreflightWarning {
-            code: "recipient_code_unknown".to_string(),
-            chain_name: Some(request.chain_name.clone()),
-            symbol: None,
-            token_symbol: None,
+        None => warnings.push(EvmRecipientPreflightWarning::RecipientCodeUnknown {
+            chain_name: chain_name.clone(),
         }),
     }
     if let Some(token_symbol) = request.token_symbol {
         match request.token_has_code {
-            Some(false) => warnings.push(EvmRecipientPreflightWarning {
-                code: "token_contract_missing".to_string(),
-                chain_name: Some(request.chain_name.clone()),
-                symbol: None,
-                token_symbol: Some(token_symbol),
+            Some(false) => warnings.push(EvmRecipientPreflightWarning::TokenContractMissing {
+                chain_name,
+                token_symbol,
             }),
-            None => warnings.push(EvmRecipientPreflightWarning {
-                code: "token_code_unknown".to_string(),
-                chain_name: Some(request.chain_name.clone()),
-                symbol: None,
-                token_symbol: Some(token_symbol),
+            None => warnings.push(EvmRecipientPreflightWarning::TokenCodeUnknown {
+                chain_name,
+                token_symbol,
             }),
             Some(true) => {}
         }
@@ -802,12 +739,10 @@ pub struct ResolvedPendingTransactionDecision {
     pub new_status: String,
     pub status_changed: bool,
     pub failure_reason_disposition: FailureReasonDisposition,
-    pub emit_event_code: Option<String>,
     /// When set, emit a chain-event indicating the transaction newly reached the
     /// finality threshold this poll cycle. Independent of `status_changed` so it
     /// fires when `confirmed→confirmed` but confirmations crossed the threshold.
     pub reached_finality_confirmations: Option<u32>,
-    pub send_status_notification: bool,
 }
 
 /// Matches Swift `applyResolvedPendingTransactionStatuses` decision logic. Swift keeps
@@ -828,7 +763,7 @@ pub struct ResolvedPendingStatus {
     pub status: String,
     pub confirmations: Option<u32>,
     pub receipt_block_number: Option<i64>,
-    pub dogecoin_network_fee_doge: Option<f64>,
+    pub confirmed_network_fee: Option<f64>,
     /// What the EVM receipt says the transaction cost.
     pub evm_receipt_cost: Option<EvmReceiptCost>,
 }
@@ -873,16 +808,19 @@ impl EvmReceiptCost {
 /// records themselves are already stored.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, uniffi::Record)]
 #[serde(rename_all = "camelCase")]
+///
+/// Statuses are the typed enum. They were strings, with an `emit_event_code`
+/// string beside them that restated "the status changed to confirmed or
+/// failed" and a `send_status_notification` flag that restated
+/// `status_changed`, so a front end parsed the status back out of a string and
+/// had three fields to disagree about one fact.
 pub struct TransactionStatusChange {
     pub id: String,
     pub chain_name: String,
     pub transaction_hash: Option<String>,
-    pub old_status: String,
-    pub new_status: String,
+    pub old_status: crate::store::wallet_domain::CoreTransactionStatus,
+    pub new_status: crate::store::wallet_domain::CoreTransactionStatus,
     pub status_changed: bool,
-    pub send_status_notification: bool,
-    /// `"confirmed"` or `"failed"` when the change is worth an event.
-    pub emit_event_code: Option<String>,
     pub reached_finality_confirmations: Option<u32>,
 }
 
@@ -916,13 +854,6 @@ pub(crate) fn plan_apply_resolved_pending_transaction_statuses(
             } else {
                 FailureReasonDisposition::None
             };
-            let emit_event_code = if status_changed && new_status == "confirmed" {
-                Some("confirmed".to_string())
-            } else if status_changed && new_status == "failed" {
-                Some("failed".to_string())
-            } else {
-                None
-            };
             let reached_finality_confirmations = match (new_confirmations, input.old_confirmations)
             {
                 (Some(new_count), old)
@@ -939,9 +870,7 @@ pub(crate) fn plan_apply_resolved_pending_transaction_statuses(
                 new_status,
                 status_changed,
                 failure_reason_disposition,
-                emit_event_code,
                 reached_finality_confirmations,
-                send_status_notification: status_changed,
             })
         } else if input.is_stale_failure {
             let new_status = "failed".to_string();
@@ -951,19 +880,12 @@ pub(crate) fn plan_apply_resolved_pending_transaction_statuses(
             } else {
                 FailureReasonDisposition::LocalizedFallback
             };
-            let emit_event_code = if status_changed {
-                Some("failed".to_string())
-            } else {
-                None
-            };
             Some(ResolvedPendingTransactionDecision {
                 id: input.id,
                 new_status,
                 status_changed,
                 failure_reason_disposition,
-                emit_event_code,
                 reached_finality_confirmations: None,
-                send_status_notification: status_changed,
             })
         } else {
             None
@@ -1097,11 +1019,6 @@ pub enum HoldingMergeAction {
 mod tests;
 
 // ── FFI surface ─────────────────────────────────────────────────────────────
-
-#[uniffi::export]
-pub fn core_aggregate_owned_addresses(request: OwnedAddressAggregationRequest) -> Vec<String> {
-    aggregate_owned_addresses(request)
-}
 
 #[cfg(test)]
 mod evm_receipt_cost_tests {

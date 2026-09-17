@@ -108,9 +108,8 @@ impl WalletService {
                 if wallet.holdings == before {
                     vec![]
                 } else {
-                    vec![crate::store::state::StateEvent {
-                        kind: "walletsChanged".into(),
-                        subject_id: Some(wallet.id.clone()),
+                    vec![crate::store::state::StateEvent::WalletBalancesChanged {
+                        wallet_id: wallet.id.clone(),
                     }]
                 }
             })
@@ -319,7 +318,12 @@ mod lifecycle_tests {
             })
             .await
             .unwrap();
-        assert!(!service.wallet_secret_state("w".into()).has_signing_material);
+        assert!(
+            !service
+                .wallet_secret_state("w".into())
+                .unwrap()
+                .has_signing_material
+        );
         assert!(service.keypool.read().await.is_empty());
         let reopened = WalletService::new(vec![]).unwrap();
         assert!(reopened

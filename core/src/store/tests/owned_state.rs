@@ -21,7 +21,10 @@ async fn defaults_to_usd_before_anything_is_stored() {
     let service = service();
     let db = tmp_db("defaults");
     let state = service.open_state(db.clone()).await.expect("open");
-    assert_eq!(state.settings.fiat_currency_code, "USD");
+    assert_eq!(
+        state.settings.fiat_currency,
+        crate::store::state::FiatCurrency::Usd
+    );
     // Everything a user supplies is still empty; the token list is not one
     // of those, because opening seeds it from the catalog rather than
     // leaving a caller to remember the merge.
@@ -53,34 +56,41 @@ async fn a_command_persists_without_the_caller_saving() {
     first.open_state(db.clone()).await.expect("open");
     let transition = first
         .apply_state_command(StateCommand::SetFiatCurrency {
-            fiat_currency_code: "EUR".to_string(),
+            currency: crate::store::state::FiatCurrency::Eur,
         })
         .await
         .expect("apply");
-    assert_eq!(transition.state.settings.fiat_currency_code, "EUR");
+    assert_eq!(
+        transition.state.settings.fiat_currency,
+        crate::store::state::FiatCurrency::Eur
+    );
     assert_eq!(transition.events.len(), 1);
-    assert_eq!(transition.events[0].kind, "fiatCurrencyChanged");
+    assert!(matches!(
+        transition.events[0],
+        crate::store::state::StateEvent::FiatCurrencyChanged { .. }
+    ));
 
     // A second service, as a second process would see it.
     let second = service();
     let reopened = second.open_state(db.clone()).await.expect("reopen");
-    assert_eq!(reopened.settings.fiat_currency_code, "EUR");
-    assert_eq!(second.fiat_currency_code().await, "EUR");
+    assert_eq!(
+        reopened.settings.fiat_currency,
+        crate::store::state::FiatCurrency::Eur
+    );
 
     let _ = std::fs::remove_file(&db);
 }
 
-#[tokio::test]
-async fn currency_codes_are_normalized() {
-    let service = service();
-    service.open_state(tmp_db("normalize")).await.expect("open");
-    let transition = service
-        .apply_state_command(StateCommand::SetFiatCurrency {
-            fiat_currency_code: "  eur \n".to_string(),
-        })
-        .await
-        .expect("apply");
-    assert_eq!(transition.state.settings.fiat_currency_code, "EUR");
+/// A typed code is read in any case and spacing. What cannot name a currency
+/// is not one, so it never reaches the reducer.
+#[test]
+fn currency_codes_are_normalized() {
+    use crate::store::state::FiatCurrency;
+    assert_eq!(FiatCurrency::from_code("  eur \n"), Some(FiatCurrency::Eur));
+    assert_eq!(FiatCurrency::from_code("jpy"), Some(FiatCurrency::Jpy));
+    for code in ["ZZZ", "", "US", "BITCOIN"] {
+        assert_eq!(FiatCurrency::from_code(code), None, "{code:?}");
+    }
 }
 
 /// Setting a value to what it already is is not a change: no event, and
@@ -91,12 +101,15 @@ async fn a_no_op_command_emits_no_event() {
     service.open_state(tmp_db("noop")).await.expect("open");
     let transition = service
         .apply_state_command(StateCommand::SetFiatCurrency {
-            fiat_currency_code: "usd".to_string(),
+            currency: crate::store::state::FiatCurrency::Usd,
         })
         .await
         .expect("apply");
     assert!(transition.events.is_empty());
-    assert_eq!(transition.state.settings.fiat_currency_code, "USD");
+    assert_eq!(
+        transition.state.settings.fiat_currency,
+        crate::store::state::FiatCurrency::Usd
+    );
 }
 
 /// Without `open_state` the service still works, in memory only. Tests and
@@ -106,12 +119,14 @@ async fn commands_apply_in_memory_when_no_database_is_bound() {
     let service = service();
     let transition = service
         .apply_state_command(StateCommand::SetFiatCurrency {
-            fiat_currency_code: "JPY".to_string(),
+            currency: crate::store::state::FiatCurrency::Jpy,
         })
         .await
         .expect("apply");
-    assert_eq!(transition.state.settings.fiat_currency_code, "JPY");
-    assert_eq!(service.fiat_currency_code().await, "JPY");
+    assert_eq!(
+        transition.state.settings.fiat_currency,
+        crate::store::state::FiatCurrency::Jpy
+    );
 }
 
 #[tokio::test]

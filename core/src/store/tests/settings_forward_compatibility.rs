@@ -2,10 +2,10 @@ use crate::state::{AppSettings, CoreAppState};
 
 #[test]
 fn settings_written_before_a_field_existed_still_load() {
-    let legacy = r#"{"fiatCurrencyCode":"EUR"}"#;
+    let legacy = r#"{"fiatCurrency":"EUR"}"#;
     let settings: AppSettings =
         serde_json::from_str(legacy).expect("settings from before the field was added");
-    assert_eq!(settings.fiat_currency_code, "EUR");
+    assert_eq!(settings.fiat_currency, crate::state::FiatCurrency::Eur);
     assert!(settings.pinned_dashboard_token_ids.is_empty());
     // A field's serde default and `AppSettings::default()` are the same
     // function, so an absent field reads as a fresh install would, not as

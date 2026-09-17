@@ -106,6 +106,7 @@ impl WalletService {
                     self.refresh_chain_history(chain_id.clone(), ids).await
                 }
             };
+            self.record_history_run(chain, &result).await;
             match result {
                 Ok(outcome) => {
                     if !load_more && outcome.wallets_failed == 0 && outcome.wallets_refreshed > 0 {
@@ -129,5 +130,66 @@ impl WalletService {
             }
         }
         Ok(results)
+    }
+}
+
+impl WalletService {
+    /// Write what a history run found where the diagnostics screen reads it:
+    /// one row per wallet, and whether the chain is degraded or healthy.
+    ///
+    /// The app did this from the result of the call — copying each row back
+    /// through `diagnostics_record` and deciding health itself — on the two
+    /// paths it drove, and nothing did it on the scheduled refresh core runs.
+    /// A diagnostics write failing does not fail the refresh it describes.
+    pub(crate) async fn record_history_run(
+        &self,
+        chain: Chain,
+        result: &Result<HistoryRefreshOutcome, SpectraBridgeError>,
+    ) {
+        use crate::service::DiagnosticCommand;
+        let chain_name = chain.chain_display_name().to_string();
+        let command = match result {
+            Ok(outcome) => {
+                for row in &outcome.diagnostics {
+                    crate::diagnostics::diagnostics_record(
+                        chain_name.clone(),
+                        crate::diagnostics::HistoryDiagnostics {
+                            wallet_id: row.wallet_id.clone(),
+                            identifier: row.identifier.clone(),
+                            source_used: row.source_used.clone(),
+                            transaction_count: i32::try_from(row.transaction_count)
+                                .unwrap_or(i32::MAX),
+                            scanned_count: None,
+                            next_cursor: row.next_cursor.clone(),
+                            error: row.error.clone(),
+                            per_source: Vec::new(),
+                        },
+                    );
+                }
+                // English on purpose: this is stored, and the templates are
+                // what the diagnostics screen localizes when it shows them.
+                if outcome.wallets_failed > 0 {
+                    let detail = if outcome.wallets_refreshed == 0 {
+                        format!("{chain_name} history refresh failed. Using cached history.")
+                    } else {
+                        format!("{chain_name} history loaded with partial provider failures.")
+                    };
+                    Some(DiagnosticCommand::Degraded { chain_name, detail })
+                } else if outcome.wallets_refreshed > 0 {
+                    Some(DiagnosticCommand::Healthy { chain_name })
+                } else {
+                    None
+                }
+            }
+            Err(error) => Some(DiagnosticCommand::Degraded {
+                chain_name,
+                detail: error.to_string(),
+            }),
+        };
+        if let Some(command) = command {
+            if let Err(error) = self.apply_diagnostic_command(command).await {
+                tracing::warn!(%error, "history diagnostics were not recorded");
+            }
+        }
     }
 }

@@ -228,7 +228,7 @@ impl WalletService {
                 && r.kind == CoreTransactionKind::Send
                 && r.status == CoreTransactionStatus::Pending
             {
-                if let Some(nonce) = r.ethereum_nonce {
+                if let Some(nonce) = r.nonce {
                     let nonce = u64::try_from(nonce).map_err(|_| "invalid stored EVM nonce")?;
                     next = next.max(nonce.checked_add(1).ok_or("EVM nonce exhausted")?);
                 }

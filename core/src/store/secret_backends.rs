@@ -34,10 +34,10 @@ use super::secret_store::{SecretClass, SecretStore, SecretStoreError};
 // ── Key ↔ filename encoding ──────────────────────────────────────────────────
 //
 // Secret keys are caller-chosen strings ("<wallet-id>.seed", "etherscan.apiKey")
-// and must survive a round trip through a filename so `list_keys` can recover
-// them. Anything outside [A-Za-z0-9_-] is percent-encoded, `.` included — that
-// keeps `.`, `..` and dotfiles unrepresentable, so no key can escape its bucket
-// or hide from a directory listing.
+// and each must name exactly one file. Anything outside [A-Za-z0-9_-] is
+// percent-encoded, `.` included — that keeps `.`, `..` and dotfiles
+// unrepresentable, so no key can escape its bucket. Nothing lists a store, so
+// there is no decoder.
 
 /// Longest encoded filename we will write. Real keys are wallet-id shaped and
 /// land far below this; the limit exists so a pathological key fails loudly
@@ -67,29 +67,6 @@ fn encode_key(key: &str) -> Result<String, SecretStoreError> {
         });
     }
     Ok(encoded)
-}
-
-/// Inverse of [`encode_key`]. Returns `None` for names this module did not
-/// write (stray files in the bucket directory), so `list_keys` can skip them.
-fn decode_key(name: &str) -> Option<String> {
-    let bytes = name.as_bytes();
-    let mut out: Vec<u8> = Vec::with_capacity(bytes.len());
-    let mut i = 0;
-    while i < bytes.len() {
-        match bytes[i] {
-            b'%' => {
-                let hex = name.get(i + 1..i + 3)?;
-                out.push(u8::from_str_radix(hex, 16).ok()?);
-                i += 3;
-            }
-            b if b.is_ascii_alphanumeric() || b == b'-' || b == b'_' => {
-                out.push(b);
-                i += 1;
-            }
-            _ => return None,
-        }
-    }
-    String::from_utf8(out).ok()
 }
 
 /// Non-persistent [`SecretStore`], backed by a map. Contents vanish on drop.
@@ -138,21 +115,6 @@ impl SecretStore for InMemorySecretStore {
     fn delete_secret(&self, kind: SecretClass, key: String) -> Result<(), SecretStoreError> {
         self.entries.lock().remove(&(kind.bucket(), key));
         Ok(())
-    }
-
-    fn list_keys(
-        &self,
-        kind: SecretClass,
-        prefix_filter: String,
-    ) -> Result<Vec<String>, SecretStoreError> {
-        let bucket = kind.bucket();
-        Ok(self
-            .entries
-            .lock()
-            .keys()
-            .filter(|(b, k)| *b == bucket && k.starts_with(&prefix_filter))
-            .map(|(_, k)| k.clone())
-            .collect())
     }
 }
 
@@ -237,37 +199,6 @@ impl SecretStore for FileSecretStore {
             Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(()),
             Err(e) => Err(backend(&path, "delete", &e)),
         }
-    }
-
-    fn list_keys(
-        &self,
-        kind: SecretClass,
-        prefix_filter: String,
-    ) -> Result<Vec<String>, SecretStoreError> {
-        let dir = self.bucket_dir(kind);
-        let entries = match std::fs::read_dir(&dir) {
-            Ok(entries) => entries,
-            // An untouched bucket is an empty bucket, not an error.
-            Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(Vec::new()),
-            Err(e) => return Err(backend(&dir, "list", &e)),
-        };
-
-        let mut keys = Vec::new();
-        for entry in entries {
-            let entry = entry.map_err(|e| backend(&dir, "list", &e))?;
-            let Some(name) = entry.file_name().to_str().map(str::to_owned) else {
-                continue;
-            };
-            // Skip in-flight writes and anything this module didn't write.
-            let Some(key) = decode_key(&name) else {
-                continue;
-            };
-            if key.starts_with(&prefix_filter) {
-                keys.push(key);
-            }
-        }
-        keys.sort();
-        Ok(keys)
     }
 }
 
@@ -384,22 +315,6 @@ mod tests {
             "envelope-2"
         );
 
-        // Listing, filtered and unfiltered.
-        store
-            .save_secret(SecretClass::Seed, "wallet-2.seed".into(), "e2".into())
-            .unwrap();
-        store
-            .save_secret(SecretClass::Seed, "other.seed".into(), "e3".into())
-            .unwrap();
-        let mut all = store.list_keys(SecretClass::Seed, String::new()).unwrap();
-        all.sort();
-        assert_eq!(all, vec!["other.seed", "wallet-1.seed", "wallet-2.seed"]);
-        let mut filtered = store
-            .list_keys(SecretClass::Seed, "wallet-".into())
-            .unwrap();
-        filtered.sort();
-        assert_eq!(filtered, vec!["wallet-1.seed", "wallet-2.seed"]);
-
         // Delete is idempotent and scoped to one bucket.
         store
             .delete_secret(SecretClass::Seed, "wallet-1.seed".into())
@@ -429,13 +344,6 @@ mod tests {
                 "round trip failed for key {key:?}"
             );
         }
-        let mut generic = store
-            .list_keys(SecretClass::Generic, String::new())
-            .unwrap();
-        generic.sort();
-        let mut expected = vec!["a/b", "..", ".", "空格 key", "%41", "a\\b"];
-        expected.sort();
-        assert_eq!(generic, expected);
     }
 
     #[test]
@@ -452,7 +360,7 @@ mod tests {
     }
 
     #[test]
-    fn key_encoding_round_trips_and_stays_inside_the_bucket() {
+    fn key_encoding_stays_inside_the_bucket() {
         for key in ["simple", "a/b", "..", ".", "a b", "%41", "wallet-1.seed"] {
             let encoded = encode_key(key).unwrap();
             assert!(
@@ -463,7 +371,6 @@ mod tests {
                 encoded != "." && encoded != ".." && !encoded.starts_with('.'),
                 "{key:?} encoded to a directory-traversal or hidden name: {encoded:?}"
             );
-            assert_eq!(decode_key(&encoded).as_deref(), Some(key));
         }
     }
 
@@ -476,25 +383,6 @@ mod tests {
         // don't, even though 23 chars is nowhere near the limit by itself.
         assert!(encode_key(&"空".repeat(MAX_ENCODED_KEY_LEN / 9)).is_ok());
         assert!(encode_key(&"空".repeat(MAX_ENCODED_KEY_LEN / 9 + 1)).is_err());
-    }
-
-    #[test]
-    fn list_keys_ignores_files_this_module_did_not_write() {
-        let root = temp_root("stray");
-        let store = FileSecretStore::new(&root).unwrap();
-        store
-            .save_secret(SecretClass::Seed, "real".into(), "v".into())
-            .unwrap();
-
-        let bucket = root.join(SecretClass::Seed.bucket());
-        std::fs::write(bucket.join("real.tmp"), "leftover").unwrap();
-        std::fs::write(bucket.join(".DS_Store"), "junk").unwrap();
-
-        assert_eq!(
-            store.list_keys(SecretClass::Seed, String::new()).unwrap(),
-            vec!["real"]
-        );
-        std::fs::remove_dir_all(&root).unwrap();
     }
 
     #[cfg(unix)]

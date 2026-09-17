@@ -305,7 +305,7 @@ fn signing_password(
     file: Option<String>,
     env: Option<String>,
 ) -> CliResult<Option<String>> {
-    if !wallet_secrets::is_sealed(ctx.secrets.as_ref(), wallet_id) {
+    if !wallet_secrets::is_sealed(ctx.secrets.as_ref(), wallet_id)? {
         return Ok(None);
     }
     let env = env.filter(|name| std::env::var_os(name).is_some());
@@ -851,7 +851,7 @@ pub fn txs(ctx: &Ctx, out: Out, args: TxsArgs) -> CliResult<()> {
             ]))?;
         }
         let change = ctx.rt.block_on(service.recheck_transaction_status(id))?;
-        out.text(|| println!("{}: {}", change.id, change.new_status));
+        out.text(|| println!("{}: {}", change.id, change.new_status.as_raw()));
         out.emit(serde_json::json!({"ok": true, "change": change}));
         return Ok(());
     }

@@ -23,7 +23,7 @@ pub struct HistoryCursor {
 /// Four methods stood for these four cases — `reset_history`,
 /// `reset_history_for_wallet`, `reset_history_for_chain`, `reset_all_history`
 /// — which is one question with the answer in the method name.
-#[derive(Debug, Clone, PartialEq, uniffi::Enum)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum HistoryScope {
     /// One wallet's feed on one chain: pull-to-refresh, or a send confirming.
     ChainAndWallet { chain_id: String, wallet_id: String },
@@ -45,8 +45,14 @@ impl WalletService {
             is_exhausted: self.history_pagination.is_exhausted(&chain_id, &wallet_id),
         }
     }
+}
 
+impl WalletService {
     /// Forget history pagination, for as much of it as `scope` names.
+    ///
+    /// Internal: the commands that invalidate a feed — removing a wallet,
+    /// switching a family's network, changing Bitcoin's Esplora source — reset
+    /// it where they commit. The app issued those resets itself afterwards.
     pub fn reset_history(&self, scope: HistoryScope) {
         match scope {
             HistoryScope::ChainAndWallet {

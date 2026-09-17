@@ -495,8 +495,8 @@ pub struct HistoryWallet {
 pub struct HistoryTransaction {
     pub id: String,
     pub wallet_id: Option<String>,
-    pub kind: String,
-    pub status: String,
+    pub kind: crate::store::wallet_domain::CoreTransactionKind,
+    pub status: crate::store::wallet_domain::CoreTransactionStatus,
     pub wallet_name: String,
     pub asset_display_name: String,
     pub symbol: String,
@@ -522,8 +522,8 @@ pub struct CoreNormalizedHistoryEntry {
     pub transaction_id: String,
     pub dedupe_key: String,
     pub created_at_unix: f64,
-    pub kind: String,
-    pub status: String,
+    pub kind: crate::store::wallet_domain::CoreTransactionKind,
+    pub status: crate::store::wallet_domain::CoreTransactionStatus,
     pub wallet_name: String,
     pub asset_display_name: String,
     pub symbol: String,
@@ -670,8 +670,8 @@ fn compare_entries(
     lhs: &CoreNormalizedHistoryEntry,
     rhs: &CoreNormalizedHistoryEntry,
 ) -> std::cmp::Ordering {
-    status_rank(&lhs.status)
-        .cmp(&status_rank(&rhs.status))
+    status_rank(lhs.status)
+        .cmp(&status_rank(rhs.status))
         .then_with(|| {
             lhs.created_at_unix
                 .partial_cmp(&rhs.created_at_unix)
@@ -680,12 +680,12 @@ fn compare_entries(
         .then_with(|| lhs.transaction_id.cmp(&rhs.transaction_id))
 }
 
-fn status_rank(status: &str) -> i32 {
+fn status_rank(status: crate::store::wallet_domain::CoreTransactionStatus) -> i32 {
+    use crate::store::wallet_domain::CoreTransactionStatus::*;
     match status {
-        "confirmed" => 3,
-        "pending" => 2,
-        "failed" => 1,
-        _ => 0,
+        Confirmed => 3,
+        Pending => 2,
+        Failed => 1,
     }
 }
 
@@ -738,8 +738,8 @@ mod tests {
                 HistoryTransaction {
                     id: "tx-1".to_string(),
                     wallet_id: Some("wallet-1".to_string()),
-                    kind: "send".to_string(),
-                    status: "pending".to_string(),
+                    kind: crate::store::wallet_domain::CoreTransactionKind::Send,
+                    status: crate::store::wallet_domain::CoreTransactionStatus::Pending,
                     wallet_name: "Main".to_string(),
                     asset_display_name: "Ether".to_string(),
                     symbol: "ETH".to_string(),
@@ -752,8 +752,8 @@ mod tests {
                 HistoryTransaction {
                     id: "tx-2".to_string(),
                     wallet_id: Some("wallet-1".to_string()),
-                    kind: "send".to_string(),
-                    status: "confirmed".to_string(),
+                    kind: crate::store::wallet_domain::CoreTransactionKind::Send,
+                    status: crate::store::wallet_domain::CoreTransactionStatus::Confirmed,
                     wallet_name: "Main".to_string(),
                     asset_display_name: "Ether".to_string(),
                     symbol: "ETH".to_string(),
@@ -768,7 +768,10 @@ mod tests {
         });
 
         assert_eq!(entries.len(), 1);
-        assert_eq!(entries[0].status, "confirmed");
+        assert_eq!(
+            entries[0].status,
+            crate::store::wallet_domain::CoreTransactionStatus::Confirmed
+        );
         assert_eq!(entries[0].provider_count, 2);
     }
 }

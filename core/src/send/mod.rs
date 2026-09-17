@@ -576,7 +576,7 @@ mod tests {
             tx_addresses: Vec::new(),
         };
         let codes = |w: Vec<crate::send::flow::HighRiskSendWarning>| -> Vec<String> {
-            w.into_iter().map(|w| w.code).collect()
+            w.into_iter().map(|w| w.code().to_string()).collect()
         };
 
         for chain in Chain::all().filter(|c| c.is_evm()) {

@@ -6,7 +6,9 @@
 
 use clap::{Args, Subcommand};
 use colored::Colorize as _;
-use spectra_core::store::state::{CoreTokenPreferenceKey, StateCommand, StateTransition};
+use spectra_core::store::state::{
+    CoreTokenPreferenceKey, StateCommand, StateEvent, StateTransition, TokenPreferenceRejection,
+};
 use spectra_core::store::wallet_domain::CoreTokenHostingChain;
 
 use super::resolve_chain;
@@ -399,27 +401,24 @@ fn reset(ctx: &Ctx, out: Out, args: ResetArgs) -> CliResult<()> {
 /// shows it beside the field; a command line has one exit code, so the reason
 /// becomes the message.
 fn reject_on_event(transition: &StateTransition) -> CliResult<()> {
-    match transition
-        .events
-        .iter()
-        .find(|event| event.kind == "tokenPreferenceRejected")
-        .and_then(|event| event.subject_id.as_deref())
-    {
+    let reason = transition.events.iter().find_map(|event| match event {
+        StateEvent::TokenPreferenceRejected { reason } => Some(*reason),
+        _ => None,
+    });
+    use TokenPreferenceRejection as R;
+    match reason {
         None => Ok(()),
         Some(reason) => Err(CliError::rejected(match reason {
-            "unknownChain" => "that chain does not host tokens".to_string(),
-            "emptySymbol" => "a token needs a symbol".to_string(),
-            "symbolTooLong" => "that symbol is too long to be one".to_string(),
-            "emptyName" => "a token needs a name".to_string(),
-            "emptyContract" => "a token needs a contract".to_string(),
-            "invalidContract" => "that is not a valid contract for the chain".to_string(),
-            "duplicateToken" => "that chain already knows this contract".to_string(),
-            "tooManyDecimals" => "more decimal places than any token has".to_string(),
-            "builtInToken" => {
-                "the catalog ships that token, so it is not yours to edit".to_string()
-            }
-            "unknownToken" => "no token with that contract on that chain".to_string(),
-            other => format!("core refused this: {other}"),
+            R::UnknownChain => "that chain does not host tokens",
+            R::EmptySymbol => "a token needs a symbol",
+            R::SymbolTooLong => "that symbol is too long to be one",
+            R::EmptyName => "a token needs a name",
+            R::EmptyContract => "a token needs a contract",
+            R::InvalidContract => "that is not a valid contract for the chain",
+            R::DuplicateToken => "that chain already knows this contract",
+            R::TooManyDecimals => "more decimal places than any token has",
+            R::BuiltInToken => "the catalog ships that token, so it is not yours to edit",
+            R::UnknownToken => "no token with that contract on that chain",
         })),
     }
 }

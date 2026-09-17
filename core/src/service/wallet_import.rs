@@ -9,23 +9,26 @@ impl WalletService {
     /// `walletRequiresSeedPhrasePassword`, `walletHasSigningMaterial` and
     /// `isPrivateKeyBackedWallet` — each one reaching into the Keychain under
     /// a key it built itself.
-    pub fn wallet_secret_state(&self, wallet_id: String) -> WalletSecretState {
-        let Ok(store) = self.secrets() else {
-            return WalletSecretState {
-                has_signing_material: false,
-                has_private_key: false,
-                is_sealed: false,
-            };
+    ///
+    /// A store that cannot be read is an error, not three `false`s. Answering
+    /// "not sealed" for a sealed wallet whose verifier read failed is what let
+    /// the reveal path read the envelope as if it were the phrase.
+    pub fn wallet_secret_state(
+        &self,
+        wallet_id: String,
+    ) -> Result<WalletSecretState, SpectraBridgeError> {
+        use crate::store::wallet_secrets::{
+            has_signing_material, is_private_key_backed, is_sealed,
         };
-        WalletSecretState {
-            has_signing_material: crate::store::wallet_secrets::has_signing_material(
-                &*store, &wallet_id,
-            ),
-            has_private_key: crate::store::wallet_secrets::is_private_key_backed(
-                &*store, &wallet_id,
-            ),
-            is_sealed: crate::store::wallet_secrets::is_sealed(&*store, &wallet_id),
-        }
+        let store = self.secrets()?;
+        let read = |e: crate::store::wallet_secrets::WalletSecretError| {
+            SpectraBridgeError::from(e.to_string())
+        };
+        Ok(WalletSecretState {
+            has_signing_material: has_signing_material(&*store, &wallet_id).map_err(read)?,
+            has_private_key: is_private_key_backed(&*store, &wallet_id).map_err(read)?,
+            is_sealed: is_sealed(&*store, &wallet_id).map_err(read)?,
+        })
     }
 
     /// Read a wallet's seed phrase. `password` is required exactly when
@@ -41,19 +44,6 @@ impl WalletService {
         let store = self.secrets()?;
         crate::store::wallet_secrets::load_seed_phrase(&*store, &wallet_id, password.as_deref())
             .map(|phrase| phrase.to_string())
-            .map_err(|e| SpectraBridgeError::from(e.to_string()))
-    }
-
-    /// Read a wallet's raw private key. Same password rule as
-    /// [`Self::wallet_seed_phrase`].
-    pub fn wallet_private_key(
-        &self,
-        wallet_id: String,
-        password: Option<String>,
-    ) -> Result<String, SpectraBridgeError> {
-        let store = self.secrets()?;
-        crate::store::wallet_secrets::load_private_key(&*store, &wallet_id, password.as_deref())
-            .map(|key| key.to_string())
             .map_err(|e| SpectraBridgeError::from(e.to_string()))
     }
 
@@ -99,8 +89,7 @@ impl WalletService {
                 crate::registry::Chain::from_display_name(name).ok_or("Unknown import chain")?;
             commit.derivation_overrides.validate_for_chain(chain)?;
         }
-        commit.request.has_wallet_password = commit.password.is_some();
-        commit.request.planned_wallet_ids.clear();
+        let mut resolved_addresses = crate::derivation::import::WalletImportAddresses::default();
         // Derive here when the caller did not — from a seed phrase or from a
         // private key, whichever this import carries. Both front ends used to
         // derive first and hand the result over; the CLI could only do one
@@ -136,7 +125,7 @@ impl WalletService {
                 }
             };
             if let Some(derived) = derived {
-                commit.request.resolved_addresses.by_slot = derived
+                resolved_addresses.by_slot = derived
                     .into_iter()
                     .filter_map(|(chain_name, address)| {
                         crate::registry::Chain::from_display_name(&chain_name)
@@ -148,7 +137,7 @@ impl WalletService {
                 // does not apply — produced a stored wallet with an empty
                 // address that read to the user as "imported", which is the
                 // mistake watch-only imports already refuse to make.
-                if commit.request.resolved_addresses.by_slot.is_empty() {
+                if resolved_addresses.by_slot.is_empty() {
                     return Err(SpectraBridgeError::InvalidInput {
                         message: "Could not derive an address from this secret for any \
                                   selected chain."
@@ -170,14 +159,16 @@ impl WalletService {
         // they are on, and `ImportDraft` has no testnet row to put it in — so
         // a testnet address arrives in the mainnet slot and only the mode says
         // how to read it.
+        //
+        // The selection is core's setting, read here. The app sent its copy of
+        // it on the commit.
         let typed_networks = crate::derivation::import::ImportNetworks {
-            by_family: commit.network_chain_by_family.clone(),
+            by_family: self.app_state().await.settings.network_chain_by_family,
         };
         let (validated, mut rejected_addresses) = crate::derivation::import::validated_addresses(
-            &commit.request.resolved_addresses,
+            &resolved_addresses,
             &crate::derivation::import::ImportNetworks::default(),
         );
-        commit.request.resolved_addresses = validated;
         let (validated_watch_only, rejected_watch_only) =
             crate::derivation::import::validated_watch_only_entries(
                 &commit.request.watch_only_entries,
@@ -190,7 +181,12 @@ impl WalletService {
         // of what the caller supplied, not an internal failure — say which
         // address was refused, and classify it so a caller can tell the two
         // apart without reading the message.
-        let plan = match crate::derivation::import::plan_wallet_import(commit.request.clone()) {
+        let plan_request = crate::derivation::import::WalletImportPlanRequest::new(
+            commit.request.clone(),
+            validated,
+            commit.password.is_some(),
+        );
+        let plan = match crate::derivation::import::plan_wallet_import(plan_request) {
             Ok(plan) => plan,
             Err(message) if !rejected_addresses.is_empty() => {
                 return Err(SpectraBridgeError::InvalidInput {
@@ -199,8 +195,8 @@ impl WalletService {
             }
             Err(message) => return Err(SpectraBridgeError::from(message)),
         };
-        commit.request.has_wallet_password = commit.password.is_some();
-        let mut wallets = crate::derivation::import::wallets_for_import(&commit, &plan);
+        let mut wallets =
+            crate::derivation::import::wallets_for_import(&commit, &plan, &typed_networks);
         let is_watch_only = commit.request.is_watch_only_import;
         let seed = commit.seed_phrase.take().map(zeroize::Zeroizing::new);
         let private_key = commit.private_key.take().map(zeroize::Zeroizing::new);

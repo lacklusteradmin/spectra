@@ -10,7 +10,7 @@ fn wallet(id: &str, chain: Chain, addresses: &[(Chain, &str)]) -> WalletState {
         include_in_portfolio_total: true,
         network_id: chain.str_id().into(),
         xpub: None,
-        derivation_preset: "standard".to_string(),
+        derivation_preset: crate::store::wallet_domain::CoreSeedDerivationPreset::Standard,
         derivation_path: None,
         derivation_overrides: Default::default(),
         holdings: Vec::new(),
@@ -585,6 +585,18 @@ async fn owned_history_scope_and_failed_clock_are_core_decisions() {
         !service
             .history_cursor("cronos".into(), "w1".into())
             .is_exhausted
+    );
+    // The run records its own outcome where the diagnostics screen reads it:
+    // a failed read marks the chain degraded, in the English template the
+    // screen localizes.
+    assert_eq!(
+        service
+            .diagnostic_state()
+            .await
+            .degraded
+            .get("Cronos")
+            .map(String::as_str),
+        Some("Cronos history refresh failed. Using cached history.")
     );
 }
 

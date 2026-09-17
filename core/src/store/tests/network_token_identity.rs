@@ -29,7 +29,7 @@ fn native_and_protocol_mnt_share_a_token_but_not_a_deployment() {
     assert_eq!(native.token_id, contract.token_id);
     assert_ne!(native.id, contract.id);
     assert_eq!(Chain::Arbitrum.coin_symbol(), "ETH");
-    assert!(crate::registry::core_resolve_chain_id("ETH".into()).is_none());
+    assert!(Chain::from_display_name("ETH").is_none());
 }
 
 #[test]

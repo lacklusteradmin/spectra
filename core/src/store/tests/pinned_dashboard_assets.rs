@@ -96,3 +96,62 @@ async fn clearing_pins_is_distinguishable_from_never_pinning() {
     assert!(cleared.state.settings.pinned_dashboard_token_ids.is_empty());
     assert_eq!(cleared.events.len(), 1, "clearing is a real change");
 }
+
+/// Pinning or unpinning one asset starts from the set the dashboard shows —
+/// the default four when nothing has been pinned — and each option says
+/// whether it is on the dashboard now.
+#[tokio::test]
+async fn one_asset_is_pinned_against_the_set_the_dashboard_shows() {
+    let service = WalletService::new(Vec::new()).expect("service");
+    async fn stored_pins(service: &WalletService) -> Vec<String> {
+        service
+            .app_state()
+            .await
+            .settings
+            .pinned_dashboard_token_ids
+    }
+    let is_pinned = |options: &[crate::store::wallet_domain::CoreDashboardPinOption], id: &str| {
+        options
+            .iter()
+            .find(|option| option.token_id == id)
+            .map(|option| option.is_pinned)
+    };
+    let options = service.dashboard_pin_options().await.expect("options");
+    assert_eq!(is_pinned(&options, "bitcoin"), Some(true));
+    assert_eq!(is_pinned(&options, "solana"), Some(false));
+
+    service
+        .apply_state_command(StateCommand::SetDashboardAssetPinned {
+            token_id: "bitcoin".into(),
+            is_pinned: false,
+        })
+        .await
+        .expect("unpin");
+    assert_eq!(
+        stored_pins(&service).await,
+        vec!["ethereum", "tether", "usd-coin"]
+    );
+
+    service
+        .apply_state_command(StateCommand::SetDashboardAssetPinned {
+            token_id: " solana ".into(),
+            is_pinned: true,
+        })
+        .await
+        .expect("pin");
+    assert_eq!(
+        stored_pins(&service).await,
+        vec!["ethereum", "tether", "usd-coin", "solana"]
+    );
+    let options = service.dashboard_pin_options().await.expect("options");
+    assert_eq!(is_pinned(&options, "bitcoin"), Some(false));
+    assert_eq!(is_pinned(&options, "solana"), Some(true));
+
+    let refused = service
+        .apply_state_command(StateCommand::SetDashboardAssetPinned {
+            token_id: "no-such-token".into(),
+            is_pinned: true,
+        })
+        .await;
+    assert!(refused.is_err(), "an unknown asset is not pinned");
+}

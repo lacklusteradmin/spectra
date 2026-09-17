@@ -207,7 +207,7 @@ impl WalletService {
                                 receipt_block_number: status
                                     .block_height
                                     .map(|height| height as i64),
-                                dogecoin_network_fee_doge: None,
+                                confirmed_network_fee: None,
                                 evm_receipt_cost: None,
                             });
                         }
@@ -264,7 +264,7 @@ impl WalletService {
                                 status: status.to_string(),
                                 confirmations: None,
                                 receipt_block_number: classification.block_number,
-                                dogecoin_network_fee_doge: None,
+                                confirmed_network_fee: None,
                                 evm_receipt_cost: classification.cost,
                             });
                         }
@@ -345,7 +345,7 @@ impl WalletService {
                             status: if is_confirmed { "confirmed" } else { "pending" }.to_string(),
                             confirmations: None,
                             receipt_block_number: None,
-                            dogecoin_network_fee_doge: None,
+                            confirmed_network_fee: None,
                             evm_receipt_cost: None,
                         });
                     }

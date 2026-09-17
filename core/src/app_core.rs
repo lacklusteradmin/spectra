@@ -206,9 +206,9 @@ pub fn app_core_resolve_derivation_path(
 
 #[uniffi::export]
 pub fn app_core_derivation_paths_for_preset(
-    account_index: u32,
+    preset: crate::store::wallet_domain::CoreSeedDerivationPreset,
 ) -> Result<CoreSeedDerivationPaths, crate::SpectraBridgeError> {
-    Ok(seed_derivation_paths_for_account(account_index)?)
+    Ok(seed_derivation_paths_for_account(preset.account_index())?)
 }
 
 /// A chain's endpoint records, filtered to a role mask.

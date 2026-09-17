@@ -146,10 +146,7 @@ impl WalletService {
         let transition = self
             .mutate_persisted_state(move |state| {
                 apply_price_result(&mut state.quotes, time, result);
-                vec![StateEvent {
-                    kind: "quotesUpdated".into(),
-                    subject_id: None,
-                }]
+                vec![StateEvent::QuotesUpdated]
             })
             .await?;
         Ok(transition.state)
@@ -163,7 +160,7 @@ impl WalletService {
         let state = self.app_state().await;
         let time = now();
         if !force
-            && (state.settings.fiat_currency_code == "USD"
+            && (state.settings.fiat_currency == crate::store::state::FiatCurrency::Usd
                 || !due(
                     false,
                     time,
@@ -199,10 +196,7 @@ impl WalletService {
                             Some("No fiat-rate provider answered; using stored rates".into())
                     }
                 }
-                vec![StateEvent {
-                    kind: "quotesUpdated".into(),
-                    subject_id: None,
-                }]
+                vec![StateEvent::QuotesUpdated]
             })
             .await?;
         Ok(transition.state)
@@ -322,10 +316,7 @@ mod tests {
                 s.quotes.prices.insert("ethereum:native".into(), 12.0);
                 s.quotes.prices_attempt_at = Some(now());
                 s.quotes.prices_error = Some("provider unavailable".into());
-                vec![StateEvent {
-                    kind: "quotesUpdated".into(),
-                    subject_id: None,
-                }]
+                vec![StateEvent::QuotesUpdated]
             })
             .await
             .unwrap();

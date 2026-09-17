@@ -38,7 +38,7 @@ pub struct CoreTransactionRecord {
     pub amount: f64,
     pub address: String,
     pub transaction_hash: Option<String>,
-    pub ethereum_nonce: Option<i64>,
+    pub nonce: Option<i64>,
     pub receipt_block_number: Option<i64>,
     pub receipt_gas_used: Option<String>,
     pub receipt_effective_gas_price_gwei: Option<f64>,
@@ -46,8 +46,8 @@ pub struct CoreTransactionRecord {
     pub fee_priority_raw: Option<String>,
     pub fee_rate_description: Option<String>,
     pub confirmation_count: Option<i64>,
-    pub dogecoin_confirmed_network_fee_doge: Option<f64>,
-    pub dogecoin_estimated_fee_rate_doge_per_kb: Option<f64>,
+    pub confirmed_network_fee: Option<f64>,
+    pub estimated_fee_rate_per_kb: Option<f64>,
     pub used_change_output: Option<bool>,
     pub source_derivation_path: Option<String>,
     pub change_derivation_path: Option<String>,
@@ -196,7 +196,7 @@ impl From<CorePersistedTransactionRecord> for CoreTransactionRecord {
             amount: stored.amount,
             address: stored.address,
             transaction_hash: stored.transaction_hash,
-            ethereum_nonce: stored.ethereum_nonce,
+            nonce: stored.nonce,
             receipt_block_number: stored.receipt_block_number,
             receipt_gas_used: stored.receipt_gas_used,
             receipt_effective_gas_price_gwei: stored.receipt_effective_gas_price_gwei,
@@ -204,8 +204,8 @@ impl From<CorePersistedTransactionRecord> for CoreTransactionRecord {
             fee_priority_raw: stored.fee_priority_raw,
             fee_rate_description: stored.fee_rate_description,
             confirmation_count: stored.confirmation_count,
-            dogecoin_confirmed_network_fee_doge: stored.dogecoin_confirmed_network_fee_doge,
-            dogecoin_estimated_fee_rate_doge_per_kb: stored.dogecoin_estimated_fee_rate_doge_per_kb,
+            confirmed_network_fee: stored.confirmed_network_fee,
+            estimated_fee_rate_per_kb: stored.estimated_fee_rate_per_kb,
             used_change_output: stored.used_change_output,
             source_derivation_path: stored.source_derivation_path,
             change_derivation_path: stored.change_derivation_path,
@@ -235,7 +235,7 @@ impl From<CoreTransactionRecord> for CorePersistedTransactionRecord {
             amount: wire.amount,
             address: wire.address,
             transaction_hash: wire.transaction_hash,
-            ethereum_nonce: wire.ethereum_nonce,
+            nonce: wire.nonce,
             receipt_block_number: wire.receipt_block_number,
             receipt_gas_used: wire.receipt_gas_used,
             receipt_effective_gas_price_gwei: wire.receipt_effective_gas_price_gwei,
@@ -243,8 +243,8 @@ impl From<CoreTransactionRecord> for CorePersistedTransactionRecord {
             fee_priority_raw: wire.fee_priority_raw,
             fee_rate_description: wire.fee_rate_description,
             confirmation_count: wire.confirmation_count,
-            dogecoin_confirmed_network_fee_doge: wire.dogecoin_confirmed_network_fee_doge,
-            dogecoin_estimated_fee_rate_doge_per_kb: wire.dogecoin_estimated_fee_rate_doge_per_kb,
+            confirmed_network_fee: wire.confirmed_network_fee,
+            estimated_fee_rate_per_kb: wire.estimated_fee_rate_per_kb,
             used_change_output: wire.used_change_output,
             source_derivation_path: wire.source_derivation_path,
             change_derivation_path: wire.change_derivation_path,
@@ -433,7 +433,7 @@ fn merge_standard_utxo(
         amount: incoming.amount,
         address: incoming.address,
         transaction_hash: incoming.transaction_hash,
-        ethereum_nonce: incoming.ethereum_nonce.or(existing.ethereum_nonce),
+        nonce: incoming.nonce.or(existing.nonce),
         receipt_block_number: incoming
             .receipt_block_number
             .or(existing.receipt_block_number),
@@ -445,8 +445,8 @@ fn merge_standard_utxo(
             .fee_rate_description
             .or(existing.fee_rate_description),
         confirmation_count: incoming.confirmation_count.or(existing.confirmation_count),
-        dogecoin_confirmed_network_fee_doge: existing.dogecoin_confirmed_network_fee_doge,
-        dogecoin_estimated_fee_rate_doge_per_kb: existing.dogecoin_estimated_fee_rate_doge_per_kb,
+        confirmed_network_fee: existing.confirmed_network_fee,
+        estimated_fee_rate_per_kb: existing.estimated_fee_rate_per_kb,
         used_change_output: incoming.used_change_output.or(existing.used_change_output),
         source_derivation_path: existing.source_derivation_path,
         change_derivation_path: existing.change_derivation_path,
@@ -483,7 +483,7 @@ fn merge_dogecoin(
         amount: incoming.amount,
         address: incoming.address,
         transaction_hash: incoming.transaction_hash,
-        ethereum_nonce: incoming.ethereum_nonce.or(existing.ethereum_nonce),
+        nonce: incoming.nonce.or(existing.nonce),
         receipt_block_number: incoming
             .receipt_block_number
             .or(existing.receipt_block_number),
@@ -495,12 +495,12 @@ fn merge_dogecoin(
             .fee_rate_description
             .or(existing.fee_rate_description),
         confirmation_count: incoming.confirmation_count.or(existing.confirmation_count),
-        dogecoin_confirmed_network_fee_doge: incoming
-            .dogecoin_confirmed_network_fee_doge
-            .or(existing.dogecoin_confirmed_network_fee_doge),
-        dogecoin_estimated_fee_rate_doge_per_kb: incoming
-            .dogecoin_estimated_fee_rate_doge_per_kb
-            .or(existing.dogecoin_estimated_fee_rate_doge_per_kb),
+        confirmed_network_fee: incoming
+            .confirmed_network_fee
+            .or(existing.confirmed_network_fee),
+        estimated_fee_rate_per_kb: incoming
+            .estimated_fee_rate_per_kb
+            .or(existing.estimated_fee_rate_per_kb),
         used_change_output: incoming.used_change_output.or(existing.used_change_output),
         source_derivation_path: incoming
             .source_derivation_path
@@ -542,7 +542,7 @@ fn merge_account_based(
         amount: incoming.amount,
         address: incoming.address,
         transaction_hash: incoming.transaction_hash,
-        ethereum_nonce: existing.ethereum_nonce,
+        nonce: existing.nonce,
         receipt_block_number: incoming
             .receipt_block_number
             .or(existing.receipt_block_number),
@@ -554,8 +554,8 @@ fn merge_account_based(
             .fee_rate_description
             .or(existing.fee_rate_description),
         confirmation_count: incoming.confirmation_count.or(existing.confirmation_count),
-        dogecoin_confirmed_network_fee_doge: existing.dogecoin_confirmed_network_fee_doge,
-        dogecoin_estimated_fee_rate_doge_per_kb: existing.dogecoin_estimated_fee_rate_doge_per_kb,
+        confirmed_network_fee: existing.confirmed_network_fee,
+        estimated_fee_rate_per_kb: existing.estimated_fee_rate_per_kb,
         used_change_output: incoming.used_change_output.or(existing.used_change_output),
         source_derivation_path: existing.source_derivation_path,
         change_derivation_path: existing.change_derivation_path,
@@ -597,7 +597,7 @@ fn merge_evm(
         amount: incoming.amount,
         address: incoming.address,
         transaction_hash: incoming.transaction_hash,
-        ethereum_nonce: incoming.ethereum_nonce.or(existing.ethereum_nonce),
+        nonce: incoming.nonce.or(existing.nonce),
         receipt_block_number: incoming
             .receipt_block_number
             .or(existing.receipt_block_number),
@@ -613,8 +613,8 @@ fn merge_evm(
             .fee_rate_description
             .or(existing.fee_rate_description),
         confirmation_count: incoming.confirmation_count.or(existing.confirmation_count),
-        dogecoin_confirmed_network_fee_doge: existing.dogecoin_confirmed_network_fee_doge,
-        dogecoin_estimated_fee_rate_doge_per_kb: existing.dogecoin_estimated_fee_rate_doge_per_kb,
+        confirmed_network_fee: existing.confirmed_network_fee,
+        estimated_fee_rate_per_kb: existing.estimated_fee_rate_per_kb,
         used_change_output: incoming.used_change_output.or(existing.used_change_output),
         source_derivation_path: existing.source_derivation_path,
         change_derivation_path: existing.change_derivation_path,
@@ -680,7 +680,7 @@ mod tests {
             amount: 1.25,
             address: "0xAbC".to_string(),
             transaction_hash: Some("hash-1".to_string()),
-            ethereum_nonce: Some(7),
+            nonce: Some(7),
             receipt_block_number: Some(10),
             receipt_gas_used: Some("100".to_string()),
             receipt_effective_gas_price_gwei: Some(2.5),
@@ -688,8 +688,8 @@ mod tests {
             fee_priority_raw: Some("normal".to_string()),
             fee_rate_description: Some("normal".to_string()),
             confirmation_count: Some(2),
-            dogecoin_confirmed_network_fee_doge: Some(1.0),
-            dogecoin_estimated_fee_rate_doge_per_kb: Some(3.0),
+            confirmed_network_fee: Some(1.0),
+            estimated_fee_rate_per_kb: Some(3.0),
             used_change_output: Some(true),
             source_derivation_path: Some("m/0/0".to_string()),
             change_derivation_path: Some("m/1/0".to_string()),
@@ -878,7 +878,7 @@ mod wire_persisted_conversion {
             amount: 1.25,
             address: "bc1qexample".to_string(),
             transaction_hash: Some("0xhash".to_string()),
-            ethereum_nonce: Some(7),
+            nonce: Some(7),
             receipt_block_number: Some(1234),
             receipt_gas_used: Some("21000".to_string()),
             receipt_effective_gas_price_gwei: Some(12.5),
@@ -886,8 +886,8 @@ mod wire_persisted_conversion {
             fee_priority_raw: Some("priority".to_string()),
             fee_rate_description: Some("12 sat/vB".to_string()),
             confirmation_count: Some(6),
-            dogecoin_confirmed_network_fee_doge: Some(1.5),
-            dogecoin_estimated_fee_rate_doge_per_kb: Some(0.01),
+            confirmed_network_fee: Some(1.5),
+            estimated_fee_rate_per_kb: Some(0.01),
             used_change_output: Some(true),
             source_derivation_path: Some("m/84'/0'/0'/0/0".to_string()),
             change_derivation_path: Some("m/84'/0'/0'/1/0".to_string()),

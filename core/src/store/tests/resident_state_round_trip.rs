@@ -22,7 +22,7 @@ fn a_price_alert_survives_a_reopen() {
         StateCommand::AddPriceAlert {
             holding_key: "bitcoin:native".into(),
             target_price: 100_000.0,
-            currency_code: "USD".into(),
+            currency: crate::store::state::FiatCurrency::Usd,
             condition: CorePriceAlertCondition::Above,
         },
     );
@@ -43,7 +43,7 @@ fn an_alert_that_cannot_fire_is_refused() {
             StateCommand::AddPriceAlert {
                 holding_key: "bitcoin:native".into(),
                 target_price: target,
-                currency_code: "USD".into(),
+                currency: crate::store::state::FiatCurrency::Usd,
                 condition: CorePriceAlertCondition::Above,
             },
         );
@@ -63,7 +63,7 @@ fn every_resident_collection_round_trips() {
         StateCommand::AddPriceAlert {
             holding_key: "bitcoin:native".into(),
             target_price: 1.0,
-            currency_code: "USD".into(),
+            currency: crate::store::state::FiatCurrency::Usd,
             condition: CorePriceAlertCondition::Above,
         },
     );
@@ -80,7 +80,7 @@ fn every_resident_collection_round_trips() {
     reduce_state_in_place(
         &mut state,
         StateCommand::SetFiatCurrency {
-            fiat_currency_code: "CHF".into(),
+            currency: crate::store::state::FiatCurrency::Chf,
         },
     );
     wallet_db::app_state_save(&crate::wallet_db::WalletDatabase::new(&db), &state).expect("save");
@@ -90,7 +90,8 @@ fn every_resident_collection_round_trips() {
     assert_eq!(back.price_alerts.len(), 1, "price_alerts not persisted");
     assert_eq!(back.address_book.len(), 1, "address_book not persisted");
     assert_eq!(
-        back.settings.fiat_currency_code, "CHF",
+        back.settings.fiat_currency,
+        crate::store::state::FiatCurrency::Chf,
         "settings not persisted"
     );
 }
@@ -135,7 +136,7 @@ fn resetting_settings_restores_every_default() {
         },
         U::UseStrictRpcOnly { value: true },
         U::BackgroundSyncProfile {
-            value: "aggressive".into(),
+            value: crate::store::state::BackgroundSyncProfile::Aggressive,
         },
         U::AutomaticRefreshFrequencyMinutes { value: 30 },
         U::UsePriceAlerts { value: false },
@@ -149,7 +150,7 @@ fn resetting_settings_restores_every_default() {
     reduce_state_in_place(
         &mut state,
         StateCommand::SetFiatCurrency {
-            fiat_currency_code: "EUR".into(),
+            currency: crate::store::state::FiatCurrency::Eur,
         },
     );
     reduce_state_in_place(
@@ -162,7 +163,9 @@ fn resetting_settings_restores_every_default() {
 
     let events = reduce_state_in_place(&mut state, StateCommand::ResetAppSettings);
     assert_eq!(state.settings, defaults);
-    assert!(events.iter().any(|e| e.kind == "appSettingChanged"));
+    assert!(events
+        .iter()
+        .any(|e| matches!(e, crate::store::state::StateEvent::AppSettingChanged)));
 
     // Resetting what is already default is not a change.
     assert!(reduce_state_in_place(&mut state, StateCommand::ResetAppSettings).is_empty());
@@ -213,7 +216,7 @@ fn every_settings_field_round_trips() {
         },
         U::UseStrictRpcOnly { value: true },
         U::BackgroundSyncProfile {
-            value: "aggressive".into(),
+            value: crate::store::state::BackgroundSyncProfile::Aggressive,
         },
         U::AutomaticRefreshFrequencyMinutes { value: 30 },
         U::UsePriceAlerts { value: false },

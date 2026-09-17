@@ -108,10 +108,17 @@ fn discover(ctx: &Ctx, out: Out, args: SelectArgs) -> CliResult<()> {
 fn show(ctx: &Ctx, out: Out, args: SelectArgs) -> CliResult<()> {
     let wallet = ctx.find_wallet(&args.wallet)?;
     let service = ctx.service()?;
-    let state = ctx
+    // The diagnostics screen's row: the indices, and the address the reserved
+    // receive index was handed out as, read from what was recorded then.
+    let row = ctx
         .rt
-        .block_on(service.keypool_state(wallet.id.clone(), wallet.chain_name.clone()))
-        .map_err(crate::error::CliError::from)?;
+        .block_on(service.keypool_diagnostics(wallet.chain_name.clone()))
+        .map_err(crate::error::CliError::from)?
+        .into_iter()
+        .find(|row| row.wallet_id == wallet.id)
+        .ok_or_else(|| crate::error::CliError::rejected("no keypool for this wallet"))?;
+    let state = &row.keypool;
+    let reserved = row.reserved_receive.as_ref();
 
     out.text(|| {
         println!();
@@ -129,6 +136,12 @@ fn show(ctx: &Ctx, out: Out, args: SelectArgs) -> CliResult<()> {
                 .map(|i| i.to_string())
                 .unwrap_or_else(|| "none".into()),
         );
+        if let Some(reserved) = reserved {
+            out::field("address", &reserved.address);
+            if let Some(path) = &reserved.derivation_path {
+                out::field("path", path);
+            }
+        }
     });
     out.emit(serde_json::json!({
         "ok": true,
@@ -137,6 +150,8 @@ fn show(ctx: &Ctx, out: Out, args: SelectArgs) -> CliResult<()> {
         "nextExternalIndex": state.next_external_index,
         "nextChangeIndex": state.next_change_index,
         "reservedReceiveIndex": state.reserved_receive_index,
+        "reservedReceiveAddress": reserved.map(|r| &r.address),
+        "reservedReceivePath": reserved.and_then(|r| r.derivation_path.as_ref()),
     }));
     Ok(())
 }

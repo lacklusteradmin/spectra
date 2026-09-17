@@ -29,11 +29,11 @@ fn add(id: &str, name: &str, address: &str) -> StateCommand {
     }
 }
 
-fn rejection(events: &[crate::state::StateEvent]) -> Option<String> {
-    events
-        .iter()
-        .find(|e| e.kind == "addressBookRejected")
-        .and_then(|e| e.subject_id.clone())
+fn rejection(events: &[crate::state::StateEvent]) -> Option<crate::state::AddressBookRejection> {
+    events.iter().find_map(|e| match e {
+        crate::state::StateEvent::AddressBookRejected { reason } => Some(*reason),
+        _ => None,
+    })
 }
 
 #[tokio::test]
@@ -66,7 +66,10 @@ async fn refuses_an_empty_name() {
         .await
         .expect("add");
     assert!(transition.state.address_book.is_empty());
-    assert_eq!(rejection(&transition.events).as_deref(), Some("emptyName"));
+    assert_eq!(
+        rejection(&transition.events),
+        Some(crate::state::AddressBookRejection::EmptyName)
+    );
 }
 
 #[tokio::test]
@@ -78,8 +81,8 @@ async fn refuses_an_address_that_is_not_valid_for_the_chain() {
         .expect("add");
     assert!(transition.state.address_book.is_empty());
     assert_eq!(
-        rejection(&transition.events).as_deref(),
-        Some("invalidAddress")
+        rejection(&transition.events),
+        Some(crate::state::AddressBookRejection::InvalidAddress)
     );
 }
 
@@ -98,8 +101,8 @@ async fn refuses_a_duplicate_regardless_of_case() {
         .expect("add");
     assert_eq!(transition.state.address_book.len(), 1);
     assert_eq!(
-        rejection(&transition.events).as_deref(),
-        Some("duplicateAddress")
+        rejection(&transition.events),
+        Some(crate::state::AddressBookRejection::DuplicateAddress)
     );
 }
 
@@ -150,7 +153,10 @@ async fn renames_and_removes() {
         .await
         .expect("rename");
     assert_eq!(empty.state.address_book[0].name, "Vault", "unchanged");
-    assert_eq!(rejection(&empty.events).as_deref(), Some("emptyName"));
+    assert_eq!(
+        rejection(&empty.events),
+        Some(crate::state::AddressBookRejection::EmptyName)
+    );
 
     let removed = service
         .apply_state_command(StateCommand::RemoveAddressBookEntry {

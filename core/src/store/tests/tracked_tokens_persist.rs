@@ -53,12 +53,10 @@ fn an_impossible_precision_is_refused_rather_than_clamped() {
     let mut state = CoreAppState::default();
     let events = crate::store::state::reduce_state_in_place(&mut state, add_custom("USDT", 99));
     assert_eq!(
-        events.first().map(|e| e.kind.as_str()),
-        Some("tokenPreferenceRejected")
-    );
-    assert_eq!(
-        events.first().and_then(|e| e.subject_id.as_deref()),
-        Some("tooManyDecimals")
+        events.first(),
+        Some(&crate::store::state::StateEvent::TokenPreferenceRejected {
+            reason: crate::store::state::TokenPreferenceRejection::TooManyDecimals
+        })
     );
     assert!(
         state.token_preferences.is_empty(),

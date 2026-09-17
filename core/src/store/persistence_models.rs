@@ -58,7 +58,7 @@ pub struct CorePersistedTransactionRecord {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub transaction_hash: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub ethereum_nonce: Option<i64>,
+    pub nonce: Option<i64>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub receipt_block_number: Option<i64>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -74,9 +74,9 @@ pub struct CorePersistedTransactionRecord {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub confirmation_count: Option<i64>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub dogecoin_confirmed_network_fee_doge: Option<f64>,
+    pub confirmed_network_fee: Option<f64>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub dogecoin_estimated_fee_rate_doge_per_kb: Option<f64>,
+    pub estimated_fee_rate_per_kb: Option<f64>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub used_change_output: Option<bool>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -136,7 +136,7 @@ mod tests {
             amount: 0.0,
             address: "".to_string(),
             transaction_hash: None,
-            ethereum_nonce: None,
+            nonce: None,
             receipt_block_number: None,
             receipt_gas_used: None,
             receipt_effective_gas_price_gwei: None,
@@ -144,8 +144,8 @@ mod tests {
             fee_priority_raw: None,
             fee_rate_description: None,
             confirmation_count: None,
-            dogecoin_confirmed_network_fee_doge: None,
-            dogecoin_estimated_fee_rate_doge_per_kb: None,
+            confirmed_network_fee: None,
+            estimated_fee_rate_per_kb: None,
             used_change_output: None,
             source_derivation_path: None,
             change_derivation_path: None,
@@ -171,7 +171,7 @@ mod tests {
             amount: 1.25,
             address: "0xrecipient".to_string(),
             transaction_hash: Some("0xhash".to_string()),
-            ethereum_nonce: Some(7),
+            nonce: Some(7),
             receipt_block_number: Some(20_000_000),
             receipt_gas_used: Some("21000".to_string()),
             receipt_effective_gas_price_gwei: Some(25.5),

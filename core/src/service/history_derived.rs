@@ -32,8 +32,8 @@ impl WalletService {
                     .map(|record| crate::fetch::history::HistoryTransaction {
                         id: record.payload.id.to_lowercase(),
                         wallet_id: record.payload.wallet_id.as_deref().map(str::to_lowercase),
-                        kind: kind_string(record.payload.kind),
-                        status: status_string(record.payload.status),
+                        kind: record.payload.kind,
+                        status: record.payload.status,
                         wallet_name: record.payload.wallet_name.clone(),
                         asset_display_name: record.payload.asset_display_name.clone(),
                         symbol: record.payload.symbol.clone(),
@@ -175,20 +175,10 @@ fn replaceable_send(
         to_address: record.address.clone(),
         amount: record.amount,
         transaction_hash: transaction_hash.to_owned(),
-        recorded_nonce: record.ethereum_nonce,
+        recorded_nonce: record.nonce,
         can_speed_up: record.deployment_id.as_deref()
             == Some(chain.entry().native_deployment_id.as_str()),
     })
-}
-
-/// The strings the normalizer keys on. They are the Swift raw values, which is
-/// what the persisted records have always carried.
-fn kind_string(kind: CoreTransactionKind) -> String {
-    match kind {
-        CoreTransactionKind::Send => "send",
-        CoreTransactionKind::Receive => "receive",
-    }
-    .to_string()
 }
 
 pub(crate) fn status_string(status: CoreTransactionStatus) -> String {
@@ -345,9 +335,8 @@ mod replaceable_tests {
         assert_eq!(ethereum.chain_id, "ethereum");
         assert!(ethereum.can_speed_up);
 
-        let arbitrum =
-            replaceable_send(&record("b", "Arbitrum", "ETH", json!({"ethereumNonce": 7})))
-                .expect("arbitrum");
+        let arbitrum = replaceable_send(&record("b", "Arbitrum", "ETH", json!({"nonce": 7})))
+            .expect("arbitrum");
         assert_eq!(arbitrum.chain_id, "arbitrum");
         assert_eq!(arbitrum.recorded_nonce, Some(7));
         assert!(arbitrum.can_speed_up);

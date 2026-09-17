@@ -19,7 +19,8 @@ pub struct WalletState {
     pub include_in_portfolio_total: bool,
     pub network_id: String,
     pub xpub: Option<String>,
-    pub derivation_preset: String,
+    #[serde(default)]
+    pub derivation_preset: crate::store::wallet_domain::CoreSeedDerivationPreset,
     /// The single path this wallet derives from. A wallet belongs to one chain,
     /// so it needs one path — not the whole per-chain table.
     pub derivation_path: Option<String>,
@@ -60,7 +61,7 @@ impl WalletState {
                 .map(|c| c.str_id().to_string())
                 .unwrap_or_default(),
             xpub: None,
-            derivation_preset: "default".to_string(),
+            derivation_preset: crate::store::wallet_domain::CoreSeedDerivationPreset::Standard,
             derivation_path: derivation_path.clone(),
             derivation_overrides: Default::default(),
             holdings: Vec::new(),
@@ -241,8 +242,9 @@ pub struct CoreTokenPreferenceKey {
 /// fetched, what a send costs and when an alert fires, and the CLI had no way
 /// to read or set any of them.
 pub struct AppSettings {
-    /// ISO 4217 code the user wants amounts displayed in.
-    pub fiat_currency_code: String,
+    /// The currency amounts are displayed in.
+    #[serde(default)]
+    pub fiat_currency: FiatCurrency,
     /// Token IDs the user pinned to the dashboard, in display order.
     /// Empty means "not chosen yet" — read it through
     /// [`AppSettings::pinned_dashboard_assets`], which answers with
@@ -306,8 +308,8 @@ pub struct AppSettings {
     /// Refuse endpoints the user has not vetted.
     #[serde(default)]
     pub use_strict_rpc_only: bool,
-    #[serde(default = "default_background_sync_profile")]
-    pub background_sync_profile: String,
+    #[serde(default)]
+    pub background_sync_profile: BackgroundSyncProfile,
     #[serde(default = "default_refresh_frequency_minutes")]
     pub automatic_refresh_frequency_minutes: u32,
 
@@ -372,8 +374,81 @@ where
             .collect(),
     )
 }
-fn default_background_sync_profile() -> String {
-    "balanced".to_string()
+/// A part of the app's data a reset can clear.
+///
+/// Strings before: `reset_data` checked them against a list and the platform
+/// kept its own enum with the same names as raw values.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, uniffi::Enum)]
+#[serde(rename_all = "camelCase")]
+pub enum ResetScope {
+    WalletsAndSecrets,
+    HistoryAndCache,
+    AlertsAndContacts,
+    SettingsAndEndpoints,
+    DashboardCustomization,
+    ProviderState,
+}
+
+impl ResetScope {
+    pub const ALL: [ResetScope; 6] = [
+        Self::WalletsAndSecrets,
+        Self::HistoryAndCache,
+        Self::AlertsAndContacts,
+        Self::SettingsAndEndpoints,
+        Self::DashboardCustomization,
+        Self::ProviderState,
+    ];
+
+    pub fn as_raw(self) -> &'static str {
+        match self {
+            Self::WalletsAndSecrets => "walletsAndSecrets",
+            Self::HistoryAndCache => "historyAndCache",
+            Self::AlertsAndContacts => "alertsAndContacts",
+            Self::SettingsAndEndpoints => "settingsAndEndpoints",
+            Self::DashboardCustomization => "dashboardCustomization",
+            Self::ProviderState => "providerState",
+        }
+    }
+
+    pub fn from_raw(raw: &str) -> Option<Self> {
+        Self::ALL
+            .into_iter()
+            .find(|scope| scope.as_raw() == raw.trim())
+    }
+}
+
+/// How hard background refresh may work, traded against battery and data.
+///
+/// A free string before. Any trimmed value was stored, and the policy matched
+/// the three names with a wildcard that read everything else — a typo from
+/// the command line included — as `aggressive`.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize, uniffi::Enum)]
+#[serde(rename_all = "lowercase")]
+pub enum BackgroundSyncProfile {
+    Conservative,
+    #[default]
+    Balanced,
+    Aggressive,
+}
+
+impl BackgroundSyncProfile {
+    pub const ALL: [BackgroundSyncProfile; 3] =
+        [Self::Conservative, Self::Balanced, Self::Aggressive];
+
+    pub fn as_raw(self) -> &'static str {
+        match self {
+            Self::Conservative => "conservative",
+            Self::Balanced => "balanced",
+            Self::Aggressive => "aggressive",
+        }
+    }
+
+    pub fn from_raw(raw: &str) -> Option<Self> {
+        let raw = raw.trim().to_lowercase();
+        Self::ALL
+            .into_iter()
+            .find(|profile| profile.as_raw() == raw)
+    }
 }
 fn default_true() -> bool {
     true
@@ -439,14 +514,79 @@ impl AppSettings {
 /// ZZZ` set the display currency to `ZZZ`, which no rate table has, and every
 /// amount then rendered unconverted. The codes are the domain's, so they are
 /// here, and the reducer refuses one that is not in them.
-pub const FIAT_CURRENCY_CODES: [&str; 12] = [
-    "USD", "EUR", "GBP", "JPY", "CNY", "INR", "CAD", "AUD", "CHF", "BRL", "SGD", "AED",
-];
+///
+/// An enum across the boundary too. `SetFiatCurrency` took a code and refused
+/// the ones not listed, and the app kept a twelve-case enum of its own with
+/// the same codes as raw values, so there were two lists and a string between
+/// them. Parsing a typed code is now the front end's job, and the reducer
+/// cannot be handed a currency that does not exist.
+#[derive(
+    Debug, Clone, Copy, Default, PartialEq, Eq, Hash, Serialize, Deserialize, uniffi::Enum,
+)]
+#[serde(rename_all = "UPPERCASE")]
+pub enum FiatCurrency {
+    #[default]
+    Usd,
+    Eur,
+    Gbp,
+    Jpy,
+    Cny,
+    Inr,
+    Cad,
+    Aud,
+    Chf,
+    Brl,
+    Sgd,
+    Aed,
+}
+
+impl FiatCurrency {
+    pub const ALL: [FiatCurrency; 12] = [
+        Self::Usd,
+        Self::Eur,
+        Self::Gbp,
+        Self::Jpy,
+        Self::Cny,
+        Self::Inr,
+        Self::Cad,
+        Self::Aud,
+        Self::Chf,
+        Self::Brl,
+        Self::Sgd,
+        Self::Aed,
+    ];
+
+    /// The ISO 4217 code, which is what rate tables key on.
+    pub fn code(self) -> &'static str {
+        match self {
+            Self::Usd => "USD",
+            Self::Eur => "EUR",
+            Self::Gbp => "GBP",
+            Self::Jpy => "JPY",
+            Self::Cny => "CNY",
+            Self::Inr => "INR",
+            Self::Cad => "CAD",
+            Self::Aud => "AUD",
+            Self::Chf => "CHF",
+            Self::Brl => "BRL",
+            Self::Sgd => "SGD",
+            Self::Aed => "AED",
+        }
+    }
+
+    /// A typed code, trimmed and in any case, or `None` for one not quoted.
+    pub fn from_code(code: &str) -> Option<Self> {
+        let code = code.trim().to_uppercase();
+        Self::ALL
+            .into_iter()
+            .find(|currency| currency.code() == code)
+    }
+}
 
 pub fn fiat_currency_codes() -> Vec<String> {
-    FIAT_CURRENCY_CODES
+    FiatCurrency::ALL
         .iter()
-        .map(|code| code.to_string())
+        .map(|currency| currency.code().to_string())
         .collect()
 }
 
@@ -472,15 +612,6 @@ pub fn core_unpriced_chain_names() -> Vec<String> {
 pub const DEFAULT_PINNED_DASHBOARD_ASSETS: [&str; 4] =
     ["bitcoin", "ethereum", "tether", "usd-coin"];
 
-/// The pinned symbols as a dashboard should read them.
-#[uniffi::export]
-pub fn dashboard_default_pinned_assets() -> Vec<String> {
-    DEFAULT_PINNED_DASHBOARD_ASSETS
-        .iter()
-        .map(|s| s.to_string())
-        .collect()
-}
-
 impl AppSettings {
     /// What the user pinned, or the default when they have pinned nothing.
     ///
@@ -489,7 +620,10 @@ impl AppSettings {
     /// an empty list has always meant.
     pub fn pinned_dashboard_assets(&self) -> Vec<String> {
         if self.pinned_dashboard_token_ids.is_empty() {
-            dashboard_default_pinned_assets()
+            DEFAULT_PINNED_DASHBOARD_ASSETS
+                .iter()
+                .map(|id| id.to_string())
+                .collect()
         } else {
             self.pinned_dashboard_token_ids.clone()
         }
@@ -499,7 +633,7 @@ impl AppSettings {
 impl Default for AppSettings {
     fn default() -> Self {
         Self {
-            fiat_currency_code: "USD".to_string(),
+            fiat_currency: FiatCurrency::Usd,
             pinned_dashboard_token_ids: Vec::new(),
             network_chain_by_family: std::collections::HashMap::new(),
             rpc_endpoint_by_chain: std::collections::HashMap::new(),
@@ -510,7 +644,7 @@ impl Default for AppSettings {
             bitcoin_stop_gap: default_bitcoin_stop_gap(),
             fee_priority_by_chain: std::collections::HashMap::new(),
             use_strict_rpc_only: false,
-            background_sync_profile: default_background_sync_profile(),
+            background_sync_profile: BackgroundSyncProfile::Balanced,
             automatic_refresh_frequency_minutes: default_refresh_frequency_minutes(),
             use_price_alerts: default_true(),
             use_transaction_status_notifications: default_true(),
@@ -620,7 +754,7 @@ pub enum AppSettingUpdate {
         value: bool,
     },
     BackgroundSyncProfile {
-        value: String,
+        value: BackgroundSyncProfile,
     },
     AutomaticRefreshFrequencyMinutes {
         value: u32,
@@ -696,7 +830,7 @@ pub enum StateCommand {
         wallet_id: String,
     },
     SetFiatCurrency {
-        fiat_currency_code: String,
+        currency: FiatCurrency,
     },
     /// Change one settings field. Values are trimmed and bounded here, so a
     /// front end cannot store a stop gap of zero by writing to its own copy.
@@ -715,6 +849,15 @@ pub enum StateCommand {
     /// order the user pinned them in.
     SetPinnedDashboardAssets {
         token_ids: Vec<String>,
+    },
+    /// Pin or unpin one asset, against the set the dashboard shows — the
+    /// default four when nothing has been pinned.
+    ///
+    /// The app built the whole list itself for this, starting from its own
+    /// copy of that default rule.
+    SetDashboardAssetPinned {
+        token_id: String,
+        is_pinned: bool,
     },
     /// Pick which network of a chain family the user is on.
     ///
@@ -779,7 +922,7 @@ pub enum StateCommand {
     AddPriceAlert {
         holding_key: String,
         target_price: f64,
-        currency_code: String,
+        currency: FiatCurrency,
         condition: crate::store::wallet_domain::CorePriceAlertCondition,
     },
     TogglePriceAlert {
@@ -797,11 +940,81 @@ pub enum StateCommand {
     },
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, uniffi::Record)]
-#[serde(rename_all = "camelCase")]
-pub struct StateEvent {
-    pub kind: String,
-    pub subject_id: Option<String>,
+/// What a state change did, or why it was refused.
+///
+/// A record of a free-string `kind` and an optional `subject_id` before, so a
+/// refusal's reason was a string inside a string, every front end matched on
+/// spellings like `"addressBookRejected"`, and a misspelling compiled. The
+/// serialized form keeps `kind` beside each variant's fields.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, uniffi::Enum)]
+#[serde(
+    tag = "kind",
+    rename_all = "camelCase",
+    rename_all_fields = "camelCase"
+)]
+pub enum StateEvent {
+    StateReplaced,
+    DataReset,
+    WalletAdded {
+        wallet_id: String,
+    },
+    WalletUpdated {
+        wallet_id: String,
+    },
+    WalletSelected {
+        wallet_id: String,
+    },
+    WalletRemoved {
+        wallet_id: String,
+    },
+    /// A balance refresh changed a wallet's holdings.
+    WalletBalancesChanged {
+        wallet_id: String,
+    },
+    AddressBookEntryAdded {
+        id: String,
+    },
+    AddressBookEntryRenamed {
+        id: String,
+    },
+    AddressBookEntryRemoved {
+        id: String,
+    },
+    AddressBookRejected {
+        reason: AddressBookRejection,
+    },
+    FiatCurrencyChanged {
+        currency: FiatCurrency,
+    },
+    AppSettingChanged,
+    AppSettingRejected,
+    /// `symbol` names the one token changed, when one was.
+    TokenPreferencesChanged {
+        symbol: Option<String>,
+    },
+    TokenPreferenceRejected {
+        reason: TokenPreferenceRejection,
+    },
+    PriceAlertAdded {
+        id: String,
+    },
+    PriceAlertChanged {
+        id: String,
+    },
+    PriceAlertRemoved {
+        id: String,
+    },
+    PriceAlertRejected {
+        reason: super::PriceAlertRejection,
+    },
+    PriceAlertsEvaluated,
+    NetworkChainChanged {
+        chain_id: String,
+    },
+    PinnedDashboardAssetsChanged,
+    QuotesUpdated,
+    FiatRatesChanged,
+    DiagnosticsChanged,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, uniffi::Record)]
@@ -866,15 +1079,7 @@ fn token_preference_row(
 }
 
 fn token_preference_rejected(reason: TokenPreferenceRejection) -> StateEvent {
-    StateEvent {
-        kind: "tokenPreferenceRejected".to_string(),
-        subject_id: Some(
-            serde_json::to_value(reason)
-                .ok()
-                .and_then(|v| v.as_str().map(str::to_string))
-                .unwrap_or_default(),
-        ),
-    }
+    StateEvent::TokenPreferenceRejected { reason }
 }
 
 /// Chain, then the catalog's own rows before the user's, then symbol.
@@ -893,12 +1098,32 @@ fn sort_token_preferences(entries: &mut [crate::store::wallet_domain::CoreTokenP
 }
 
 /// Apply a state command in place, returning only the events.
-/// Avoids deep-cloning the entire CoreAppState on every mutation.
-/// Apply one settings update, trimming strings and bounding numbers.
+/// The settings a fresh install starts with.
+#[uniffi::export]
+pub fn app_settings_defaults() -> AppSettings {
+    AppSettings::default()
+}
+
+/// `settings` with `update` applied by the reducer's own rule, or unchanged
+/// when the rule refuses it.
+///
+/// For a front end to show an edit before the command that stores it returns.
+/// Its settings screen was eighteen mirrored properties, a hand-written diff
+/// against core's last answer and a hand-written adoption back, because
+/// showing the value core would store meant knowing core's trims and clamps.
+/// Asking the rule is cheaper than copying it.
+#[uniffi::export]
+pub fn app_settings_applying(settings: AppSettings, update: AppSettingUpdate) -> AppSettings {
+    let mut settings = settings;
+    apply_app_setting(&mut settings, update);
+    settings
+}
+
+/// Apply one settings update, trimming strings and bounding numbers, and
+/// answer whether it was accepted.
 ///
 /// The clamps were `didSet` bodies on the iOS side — the only copy, so a value
 /// out of range was only out of range where someone had remembered to check.
-/// Apply one settings update, answering whether it was accepted.
 ///
 /// An update naming a chain the registry does not have, or a proxy address
 /// that is not a SOCKS5 URL, changes nothing — and used to say nothing either,
@@ -919,12 +1144,21 @@ fn apply_app_setting(settings: &mut AppSettings, update: AppSettingUpdate) -> bo
             value
         }
     }
+    // An endpoint the app would fail to reach is refused rather than stored:
+    // every read of it would otherwise have to re-check, and a front end that
+    // shows the error while the user types needs nothing but this rule.
+    fn valid_endpoint(field: crate::tokens::EndpointField, value: &str) -> bool {
+        crate::tokens::endpoint_validation_error(field, value.to_string()).is_none()
+    }
     match update {
         AppSettingUpdate::RpcEndpoint { chain, value } => {
             let Some(chain) = crate::registry::Chain::from_display_name(&chain) else {
                 return false;
             };
             let value = trimmed(value);
+            if !valid_endpoint(crate::tokens::EndpointField::EvmRpc, &value) {
+                return false;
+            }
             if value.is_empty() {
                 settings
                     .rpc_endpoint_by_chain
@@ -937,7 +1171,11 @@ fn apply_app_setting(settings: &mut AppSettings, update: AppSettingUpdate) -> bo
         }
         AppSettingUpdate::EtherscanApiKey { value } => settings.etherscan_api_key = trimmed(value),
         AppSettingUpdate::MoneroBackendBaseUrl { value } => {
-            settings.monero_backend_base_url = trimmed(value)
+            let value = trimmed(value);
+            if !valid_endpoint(crate::tokens::EndpointField::MoneroBackend, &value) {
+                return false;
+            }
+            settings.monero_backend_base_url = value
         }
         AppSettingUpdate::MoneroBackendApiKey { value } => {
             settings.monero_backend_api_key = trimmed(value)
@@ -945,6 +1183,9 @@ fn apply_app_setting(settings: &mut AppSettings, update: AppSettingUpdate) -> bo
         // Not trimmed as a whole: this is a separated list, and the parser
         // trims each entry. Trimming the list would only drop its outer edges.
         AppSettingUpdate::BitcoinEsploraEndpoints { value } => {
+            if !valid_endpoint(crate::tokens::EndpointField::BitcoinEsploraList, &value) {
+                return false;
+            }
             settings.bitcoin_esplora_endpoints = value
         }
         AppSettingUpdate::BitcoinStopGap { value } => {
@@ -966,7 +1207,7 @@ fn apply_app_setting(settings: &mut AppSettings, update: AppSettingUpdate) -> bo
         }
         AppSettingUpdate::UseStrictRpcOnly { value } => settings.use_strict_rpc_only = value,
         AppSettingUpdate::BackgroundSyncProfile { value } => {
-            settings.background_sync_profile = trimmed(value)
+            settings.background_sync_profile = value
         }
         AppSettingUpdate::AutomaticRefreshFrequencyMinutes { value } => {
             settings.automatic_refresh_frequency_minutes =
@@ -1003,16 +1244,34 @@ fn apply_app_setting(settings: &mut AppSettings, update: AppSettingUpdate) -> bo
     true
 }
 
+/// Store a pin set: trimmed, de-duplicated with the first occurrence winning,
+/// so display order is the order the assets were pinned in.
+fn set_pinned_dashboard_assets(
+    state: &mut CoreAppState,
+    token_ids: Vec<String>,
+    events: &mut Vec<StateEvent>,
+) {
+    let mut seen = std::collections::HashSet::new();
+    let normalized: Vec<String> = token_ids
+        .into_iter()
+        .filter_map(|id| {
+            let id = id.trim().to_string();
+            (!id.is_empty() && seen.insert(id.clone())).then_some(id)
+        })
+        .collect();
+    if normalized != state.settings.pinned_dashboard_token_ids {
+        state.settings.pinned_dashboard_token_ids = normalized;
+        events.push(StateEvent::PinnedDashboardAssetsChanged);
+    }
+}
+
 pub fn reduce_state_in_place(state: &mut CoreAppState, command: StateCommand) -> Vec<StateEvent> {
     let mut events = Vec::new();
 
     match command {
         StateCommand::ReplaceState { state: next_state } => {
             *state = next_state;
-            events.push(StateEvent {
-                kind: "stateReplaced".to_string(),
-                subject_id: None,
-            });
+            events.push(StateEvent::StateReplaced);
         }
         StateCommand::RenameWallet { wallet_id, name } => {
             let name = name.trim();
@@ -1020,10 +1279,7 @@ pub fn reduce_state_in_place(state: &mut CoreAppState, command: StateCommand) ->
                 if let Some(wallet) = state.wallets.iter_mut().find(|w| w.id == wallet_id) {
                     if wallet.name != name {
                         wallet.name = name.to_owned();
-                        events.push(StateEvent {
-                            kind: "walletUpdated".into(),
-                            subject_id: Some(wallet_id),
-                        });
+                        events.push(StateEvent::WalletUpdated { wallet_id });
                     }
                 }
             }
@@ -1035,10 +1291,7 @@ pub fn reduce_state_in_place(state: &mut CoreAppState, command: StateCommand) ->
             if let Some(wallet) = state.wallets.iter_mut().find(|w| w.id == wallet_id) {
                 if wallet.include_in_portfolio_total != included {
                     wallet.include_in_portfolio_total = included;
-                    events.push(StateEvent {
-                        kind: "walletUpdated".into(),
-                        subject_id: Some(wallet_id),
-                    });
+                    events.push(StateEvent::WalletUpdated { wallet_id });
                 }
             }
         }
@@ -1050,15 +1303,13 @@ pub fn reduce_state_in_place(state: &mut CoreAppState, command: StateCommand) ->
                 .position(|candidate| candidate.id == wallet_id)
             {
                 state.wallets[index] = wallet;
-                events.push(StateEvent {
-                    kind: "walletUpdated".to_string(),
-                    subject_id: Some(wallet_id.clone()),
+                events.push(StateEvent::WalletUpdated {
+                    wallet_id: wallet_id.clone(),
                 });
             } else {
                 state.wallets.push(wallet);
-                events.push(StateEvent {
-                    kind: "walletAdded".to_string(),
-                    subject_id: Some(wallet_id.clone()),
+                events.push(StateEvent::WalletAdded {
+                    wallet_id: wallet_id.clone(),
                 });
             }
 
@@ -1071,20 +1322,14 @@ pub fn reduce_state_in_place(state: &mut CoreAppState, command: StateCommand) ->
                 if state.wallets[index] != wallet {
                     let wallet_id = wallet.id.clone();
                     state.wallets[index] = wallet;
-                    events.push(StateEvent {
-                        kind: "walletUpdated".to_string(),
-                        subject_id: Some(wallet_id),
-                    });
+                    events.push(StateEvent::WalletUpdated { wallet_id });
                 }
             }
         }
         StateCommand::SelectWallet { wallet_id } => {
             if state.wallets.iter().any(|wallet| wallet.id == wallet_id) {
                 state.selected_wallet_id = Some(wallet_id.clone());
-                events.push(StateEvent {
-                    kind: "walletSelected".to_string(),
-                    subject_id: Some(wallet_id),
-                });
+                events.push(StateEvent::WalletSelected { wallet_id });
             }
         }
         StateCommand::RemoveWallet { wallet_id } => {
@@ -1095,10 +1340,7 @@ pub fn reduce_state_in_place(state: &mut CoreAppState, command: StateCommand) ->
                     state.selected_wallet_id =
                         state.wallets.first().map(|wallet| wallet.id.clone());
                 }
-                events.push(StateEvent {
-                    kind: "walletRemoved".to_string(),
-                    subject_id: Some(wallet_id),
-                });
+                events.push(StateEvent::WalletRemoved { wallet_id });
             }
         }
         StateCommand::AddAddressBookEntry {
@@ -1126,15 +1368,7 @@ pub fn reduce_state_in_place(state: &mut CoreAppState, command: StateCommand) ->
             };
 
             match rejection {
-                Some(reason) => events.push(StateEvent {
-                    kind: "addressBookRejected".to_string(),
-                    subject_id: Some(
-                        serde_json::to_value(reason)
-                            .ok()
-                            .and_then(|v| v.as_str().map(str::to_string))
-                            .unwrap_or_default(),
-                    ),
-                }),
+                Some(reason) => events.push(StateEvent::AddressBookRejected { reason }),
                 None => {
                     // Newest first: the list is a recency-ordered shortlist,
                     // not an archive.
@@ -1148,27 +1382,20 @@ pub fn reduce_state_in_place(state: &mut CoreAppState, command: StateCommand) ->
                             note: note.trim().to_string(),
                         },
                     );
-                    events.push(StateEvent {
-                        kind: "addressBookEntryAdded".to_string(),
-                        subject_id: Some(id),
-                    });
+                    events.push(StateEvent::AddressBookEntryAdded { id });
                 }
             }
         }
         StateCommand::RenameAddressBookEntry { id, name } => {
             let name = name.trim().to_string();
             if name.is_empty() {
-                events.push(StateEvent {
-                    kind: "addressBookRejected".to_string(),
-                    subject_id: Some("emptyName".to_string()),
+                events.push(StateEvent::AddressBookRejected {
+                    reason: AddressBookRejection::EmptyName,
                 });
             } else if let Some(entry) = state.address_book.iter_mut().find(|e| e.id == id) {
                 if entry.name != name {
                     entry.name = name;
-                    events.push(StateEvent {
-                        kind: "addressBookEntryRenamed".to_string(),
-                        subject_id: Some(id),
-                    });
+                    events.push(StateEvent::AddressBookEntryRenamed { id });
                 }
             }
         }
@@ -1176,63 +1403,40 @@ pub fn reduce_state_in_place(state: &mut CoreAppState, command: StateCommand) ->
             let before = state.address_book.len();
             state.address_book.retain(|entry| entry.id != id);
             if state.address_book.len() != before {
-                events.push(StateEvent {
-                    kind: "addressBookEntryRemoved".to_string(),
-                    subject_id: Some(id),
-                });
+                events.push(StateEvent::AddressBookEntryRemoved { id });
             }
         }
-        StateCommand::SetFiatCurrency { fiat_currency_code } => {
-            let normalized = fiat_currency_code.trim().to_uppercase();
-            if !FIAT_CURRENCY_CODES.contains(&normalized.as_str()) {
-                events.push(StateEvent {
-                    kind: "fiatCurrencyRejected".to_string(),
-                    subject_id: Some(normalized),
-                });
-                return events;
-            }
-            if normalized != state.settings.fiat_currency_code {
-                state.settings.fiat_currency_code = normalized.clone();
-                events.push(StateEvent {
-                    kind: "fiatCurrencyChanged".to_string(),
-                    subject_id: Some(normalized),
-                });
+        StateCommand::SetFiatCurrency { currency } => {
+            if currency != state.settings.fiat_currency {
+                state.settings.fiat_currency = currency;
+                events.push(StateEvent::FiatCurrencyChanged { currency });
             }
         }
         StateCommand::SetAppSetting { update } => {
             let before = state.settings.clone();
             let accepted = apply_app_setting(&mut state.settings, update);
             if !accepted {
-                events.push(StateEvent {
-                    kind: "appSettingRejected".to_string(),
-                    subject_id: None,
-                });
+                events.push(StateEvent::AppSettingRejected);
             } else if state.settings != before {
-                events.push(StateEvent {
-                    kind: "appSettingChanged".to_string(),
-                    subject_id: None,
-                });
+                events.push(StateEvent::AppSettingChanged);
             }
         }
         StateCommand::ResetAppSettings => {
             let before = std::mem::take(&mut state.settings);
             if state.settings != before {
-                events.push(StateEvent {
-                    kind: "appSettingChanged".to_string(),
-                    subject_id: None,
-                });
+                events.push(StateEvent::AppSettingChanged);
             }
         }
         StateCommand::AddPriceAlert {
             holding_key,
             target_price,
-            currency_code,
+            currency,
             condition,
         } => events.extend(super::price_alerts::add(
             state,
             holding_key,
             target_price,
-            currency_code,
+            currency,
             condition,
         )),
         StateCommand::TogglePriceAlert { id } => {
@@ -1332,9 +1536,8 @@ pub fn reduce_state_in_place(state: &mut CoreAppState, command: StateCommand) ->
                         },
                     );
                     sort_token_preferences(&mut state.token_preferences);
-                    events.push(StateEvent {
-                        kind: "tokenPreferencesChanged".to_string(),
-                        subject_id: Some(symbol),
+                    events.push(StateEvent::TokenPreferencesChanged {
+                        symbol: Some(symbol),
                     });
                 }
                 (None, None) => unreachable!("an unknown chain is rejected above"),
@@ -1352,9 +1555,8 @@ pub fn reduce_state_in_place(state: &mut CoreAppState, command: StateCommand) ->
             ),
             Some(index) => {
                 let removed = state.token_preferences.remove(index);
-                events.push(StateEvent {
-                    kind: "tokenPreferencesChanged".to_string(),
-                    subject_id: Some(removed.token.symbol),
+                events.push(StateEvent::TokenPreferencesChanged {
+                    symbol: Some(removed.token.symbol),
                 });
             }
         },
@@ -1375,9 +1577,8 @@ pub fn reduce_state_in_place(state: &mut CoreAppState, command: StateCommand) ->
             Some(index) => {
                 if state.token_preferences[index].token.decimals != decimals {
                     state.token_preferences[index].token.decimals = decimals;
-                    events.push(StateEvent {
-                        kind: "tokenPreferencesChanged".to_string(),
-                        subject_id: Some(state.token_preferences[index].token.symbol.clone()),
+                    events.push(StateEvent::TokenPreferencesChanged {
+                        symbol: Some(state.token_preferences[index].token.symbol.clone()),
                     });
                 }
             }
@@ -1398,10 +1599,7 @@ pub fn reduce_state_in_place(state: &mut CoreAppState, command: StateCommand) ->
                 }
             }
             if changed {
-                events.push(StateEvent {
-                    kind: "tokenPreferencesChanged".to_string(),
-                    subject_id: None,
-                });
+                events.push(StateEvent::TokenPreferencesChanged { symbol: None });
             }
         }
         StateCommand::MergeBuiltInTokens => {
@@ -1411,10 +1609,7 @@ pub fn reduce_state_in_place(state: &mut CoreAppState, command: StateCommand) ->
             );
             if merged != state.token_preferences {
                 state.token_preferences = merged;
-                events.push(StateEvent {
-                    kind: "tokenPreferencesChanged".to_string(),
-                    subject_id: None,
-                });
+                events.push(StateEvent::TokenPreferencesChanged { symbol: None });
             } else {
                 state.token_preferences = merged;
             }
@@ -1424,10 +1619,7 @@ pub fn reduce_state_in_place(state: &mut CoreAppState, command: StateCommand) ->
             if defaults != state.token_preferences {
                 state.token_preferences = defaults;
                 sort_token_preferences(&mut state.token_preferences);
-                events.push(StateEvent {
-                    kind: "tokenPreferencesChanged".to_string(),
-                    subject_id: None,
-                });
+                events.push(StateEvent::TokenPreferencesChanged { symbol: None });
             }
         }
         StateCommand::SelectNetworkChain { chain_id } => {
@@ -1446,32 +1638,26 @@ pub fn reduce_state_in_place(state: &mut CoreAppState, command: StateCommand) ->
                     }
                 }
                 if before != state.settings.network_chain_by_family {
-                    events.push(StateEvent {
-                        kind: "networkChainChanged".to_string(),
-                        subject_id: Some(chosen.str_id().to_string()),
+                    events.push(StateEvent::NetworkChainChanged {
+                        chain_id: chosen.str_id().to_string(),
                     });
                 }
             }
         }
         StateCommand::SetPinnedDashboardAssets { token_ids } => {
-            let mut seen = std::collections::HashSet::new();
-            let normalized: Vec<String> = token_ids
-                .into_iter()
-                .filter_map(|symbol| {
-                    let symbol = symbol.trim().to_string();
-                    if symbol.is_empty() || !seen.insert(symbol.clone()) {
-                        return None;
-                    }
-                    Some(symbol)
-                })
-                .collect();
-            if normalized != state.settings.pinned_dashboard_token_ids {
-                state.settings.pinned_dashboard_token_ids = normalized;
-                events.push(StateEvent {
-                    kind: "pinnedDashboardAssetsChanged".to_string(),
-                    subject_id: None,
-                });
+            set_pinned_dashboard_assets(state, token_ids, &mut events)
+        }
+        StateCommand::SetDashboardAssetPinned {
+            token_id,
+            is_pinned,
+        } => {
+            let token_id = token_id.trim().to_string();
+            let mut token_ids = state.settings.pinned_dashboard_assets();
+            token_ids.retain(|id| *id != token_id);
+            if is_pinned {
+                token_ids.push(token_id);
             }
+            set_pinned_dashboard_assets(state, token_ids, &mut events)
         }
     }
 
@@ -1523,6 +1709,47 @@ mod fee_priority_tests {
     }
 
     #[test]
+    fn an_endpoint_that_is_not_a_url_is_refused_not_stored() {
+        let mut settings = AppSettings::default();
+        let refused = [
+            AppSettingUpdate::RpcEndpoint {
+                chain: "Base".into(),
+                value: "base.internal".into(),
+            },
+            AppSettingUpdate::MoneroBackendBaseUrl {
+                value: "ftp://node.example".into(),
+            },
+            AppSettingUpdate::BitcoinEsploraEndpoints {
+                value: "https://a.example, not a url".into(),
+            },
+        ];
+        for update in refused {
+            assert!(!apply_app_setting(&mut settings, update));
+        }
+        assert_eq!(settings, AppSettings::default());
+
+        // Clearing is always allowed: empty means "use the catalog".
+        assert!(apply_app_setting(
+            &mut settings,
+            AppSettingUpdate::RpcEndpoint {
+                chain: "Base".into(),
+                value: " https://base.internal ".into(),
+            }
+        ));
+        assert!(apply_app_setting(
+            &mut settings,
+            AppSettingUpdate::MoneroBackendBaseUrl { value: "".into() }
+        ));
+        assert_eq!(
+            settings
+                .rpc_endpoint_by_chain
+                .get("Base")
+                .map(String::as_str),
+            Some("https://base.internal")
+        );
+    }
+
+    #[test]
     fn picking_the_default_stops_storing_a_choice() {
         let mut settings = AppSettings::default();
         assert!(apply_app_setting(
@@ -1568,7 +1795,7 @@ mod tests {
                 .str_id()
                 .into(),
             xpub: None,
-            derivation_preset: "standard".to_string(),
+            derivation_preset: crate::store::wallet_domain::CoreSeedDerivationPreset::Standard,
             derivation_overrides: Default::default(),
             derivation_path: Some("m/84'/0'/0'/0/0".to_string()),
             holdings: Vec::new(),
@@ -1592,12 +1819,11 @@ mod tests {
         }
     }
 
-    fn rejection(transition: &StateTransition) -> Option<&str> {
-        transition
-            .events
-            .iter()
-            .find(|event| event.kind == "tokenPreferenceRejected")
-            .and_then(|event| event.subject_id.as_deref())
+    fn rejection(transition: &StateTransition) -> Option<TokenPreferenceRejection> {
+        transition.events.iter().find_map(|event| match event {
+            StateEvent::TokenPreferenceRejected { reason } => Some(*reason),
+            _ => None,
+        })
     }
 
     const EVM_CONTRACT: &str = "0x742d35cc6634c0532925a3b844bc454e4438f44e";
@@ -1613,14 +1839,20 @@ mod tests {
             CoreAppState::default(),
             add_token("Base", "USDC", solana_mint, 6),
         );
-        assert_eq!(rejection(&wrong_chain), Some("invalidContract"));
+        assert_eq!(
+            rejection(&wrong_chain),
+            Some(TokenPreferenceRejection::InvalidContract)
+        );
         assert!(wrong_chain.state.token_preferences.is_empty());
 
         let wrong_way_round = reduce_state(
             CoreAppState::default(),
             add_token("Solana", "USDC", EVM_CONTRACT, 6),
         );
-        assert_eq!(rejection(&wrong_way_round), Some("invalidContract"));
+        assert_eq!(
+            rejection(&wrong_way_round),
+            Some(TokenPreferenceRejection::InvalidContract)
+        );
 
         let right = reduce_state(
             CoreAppState::default(),
@@ -1650,13 +1882,19 @@ mod tests {
             CoreAppState::default(),
             add_token("Base", "Moonbeam Network Token", EVM_CONTRACT, 18),
         );
-        assert_eq!(rejection(&pasted), Some("symbolTooLong"));
+        assert_eq!(
+            rejection(&pasted),
+            Some(TokenPreferenceRejection::SymbolTooLong)
+        );
 
         let empty = reduce_state(
             CoreAppState::default(),
             add_token("Base", "  ", EVM_CONTRACT, 18),
         );
-        assert_eq!(rejection(&empty), Some("emptySymbol"));
+        assert_eq!(
+            rejection(&empty),
+            Some(TokenPreferenceRejection::EmptySymbol)
+        );
     }
 
     /// A duplicate is the same *contract* on the same chain, under the chain's
@@ -1672,7 +1910,10 @@ mod tests {
             first.state.clone(),
             add_token("Base", "SUN", &EVM_CONTRACT.to_uppercase(), 18),
         );
-        assert_eq!(rejection(&again), Some("duplicateToken"));
+        assert_eq!(
+            rejection(&again),
+            Some(TokenPreferenceRejection::DuplicateToken)
+        );
         assert_eq!(again.state.token_preferences.len(), 1);
 
         // Same contract string, different chain: two different tokens.
@@ -1701,7 +1942,10 @@ mod tests {
                 contract: built_in.token.contract.clone(),
             },
         );
-        assert_eq!(rejection(&removed), Some("builtInToken"));
+        assert_eq!(
+            rejection(&removed),
+            Some(TokenPreferenceRejection::BuiltInToken)
+        );
         assert_eq!(removed.state.token_preferences.len(), count);
 
         let rescaled = reduce_state(
@@ -1712,7 +1956,10 @@ mod tests {
                 decimals: 2,
             },
         );
-        assert_eq!(rejection(&rescaled), Some("builtInToken"));
+        assert_eq!(
+            rejection(&rescaled),
+            Some(TokenPreferenceRejection::BuiltInToken)
+        );
     }
 
     /// Turning a token off is not deleting it: the row stays, so the catalog
@@ -1764,7 +2011,7 @@ mod tests {
         assert_eq!(
             off.events
                 .iter()
-                .filter(|event| event.kind == "tokenPreferencesChanged")
+                .filter(|event| matches!(event, StateEvent::TokenPreferencesChanged { .. }))
                 .count(),
             1,
             "one change, however many rows it touched"
@@ -1814,6 +2061,9 @@ mod tests {
             transition.state.selected_wallet_id.as_deref(),
             Some("wallet-1")
         );
-        assert_eq!(transition.events[0].kind, "walletAdded");
+        assert!(matches!(
+            transition.events[0],
+            StateEvent::WalletAdded { .. }
+        ));
     }
 }

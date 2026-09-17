@@ -105,10 +105,11 @@ const BASE_BACKGROUND_INTERVAL_SECONDS: f64 = 15.0 * 60.0;
 
 /// How often to re-poll a pending send while the app is in front.
 fn pending_refresh_interval(settings: &AppSettings) -> f64 {
-    match settings.background_sync_profile.as_str() {
-        "conservative" => 30.0,
-        "aggressive" => 10.0,
-        _ => BALANCED_PENDING_REFRESH_SECONDS,
+    use crate::store::state::BackgroundSyncProfile as Profile;
+    match settings.background_sync_profile {
+        Profile::Conservative => 30.0,
+        Profile::Aggressive => 10.0,
+        Profile::Balanced => BALANCED_PENDING_REFRESH_SECONDS,
     }
 }
 
@@ -140,19 +141,20 @@ fn allows_heavy_work(settings: &AppSettings, conditions: &DeviceConditions) -> b
     if !conditions.is_network_reachable {
         return false;
     }
-    match settings.background_sync_profile.as_str() {
-        "conservative" => {
+    use crate::store::state::BackgroundSyncProfile as Profile;
+    match settings.background_sync_profile {
+        Profile::Conservative => {
             !conditions.is_constrained_network
                 && !conditions.is_expensive_network
                 && !conditions.is_low_power_mode
                 && conditions.battery_level >= 0.30
         }
-        "balanced" => {
+        Profile::Balanced => {
             !conditions.is_constrained_network
                 && !conditions.is_low_power_mode
                 && conditions.battery_level >= 0.20
         }
-        _ => {
+        Profile::Aggressive => {
             if conditions.is_low_power_mode && conditions.battery_level < 0.15 {
                 return false;
             }

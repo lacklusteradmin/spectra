@@ -22,13 +22,16 @@ async fn reopening_does_not_revert_newer_writes() {
 
     service
         .apply_state_command(StateCommand::SetFiatCurrency {
-            fiat_currency_code: "EUR".to_string(),
+            currency: crate::store::state::FiatCurrency::Eur,
         })
         .await
         .expect("apply");
 
     let reopened = service.open_state(db.clone()).await.expect("reopen");
-    assert_eq!(reopened.settings.fiat_currency_code, "EUR");
+    assert_eq!(
+        reopened.settings.fiat_currency,
+        crate::store::state::FiatCurrency::Eur
+    );
     let _ = std::fs::remove_file(&db);
 }
 
@@ -40,7 +43,7 @@ async fn opening_a_different_database_replaces_the_state() {
     service.open_state(first.clone()).await.expect("open");
     service
         .apply_state_command(StateCommand::SetFiatCurrency {
-            fiat_currency_code: "EUR".to_string(),
+            currency: crate::store::state::FiatCurrency::Eur,
         })
         .await
         .expect("apply");
@@ -51,7 +54,10 @@ async fn opening_a_different_database_replaces_the_state() {
         .open_state(second.clone())
         .await
         .expect("open other");
-    assert_eq!(switched.settings.fiat_currency_code, "USD");
+    assert_eq!(
+        switched.settings.fiat_currency,
+        crate::store::state::FiatCurrency::Usd
+    );
 
     let _ = std::fs::remove_file(&first);
     let _ = std::fs::remove_file(&second);

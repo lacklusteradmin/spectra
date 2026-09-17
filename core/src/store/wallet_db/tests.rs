@@ -395,7 +395,7 @@ fn wallet(id: &str, chain: &str) -> WalletState {
             .map(|c| c.str_id().into())
             .unwrap_or_default(),
         xpub: None,
-        derivation_preset: "default".to_string(),
+        derivation_preset: crate::store::wallet_domain::CoreSeedDerivationPreset::Standard,
         derivation_path: Some("m/84'/0'/0'/0/0".to_string()),
         derivation_overrides: Default::default(),
         holdings: Vec::new(),
@@ -425,7 +425,7 @@ fn app_state_round_trips() {
         wallets: vec![wallet("w1", "Bitcoin"), wallet("w2", "Ethereum")],
         selected_wallet_id: Some("w2".to_string()),
         settings: AppSettings {
-            fiat_currency_code: "CNY".to_string(),
+            fiat_currency: crate::store::state::FiatCurrency::Cny,
             pinned_dashboard_token_ids: vec!["bitcoin".to_string()],
             // Every other field is a settings field the blob used to hold;
             // `every_settings_field_round_trips` covers them together.
@@ -529,7 +529,7 @@ fn incremental_state_reorders_deletes_and_rolls_back_as_one_transaction() {
     after.wallets[0].name = "Renamed".into();
     after.selected_wallet_id = None;
     after.address_book.clear();
-    after.settings.fiat_currency_code = "EUR".into();
+    after.settings.fiat_currency = crate::store::state::FiatCurrency::Eur;
     with_conn(&db, |conn| conn.execute_batch("CREATE TRIGGER reject_meta BEFORE INSERT ON app_state_meta BEGIN SELECT RAISE(FAIL, 'injected'); END;").map_err(|e| e.to_string())).unwrap();
     assert!(AppStateChanges::between(Some(&before), &after)
         .unwrap()

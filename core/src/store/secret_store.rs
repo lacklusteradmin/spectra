@@ -83,12 +83,4 @@ pub trait SecretStore: Send + Sync {
     /// Remove the entry for `key` within the `kind` bucket. Succeeds whether
     /// or not the key existed (idempotent delete).
     fn delete_secret(&self, kind: SecretClass, key: String) -> Result<(), SecretStoreError>;
-
-    /// Return all keys inside `kind` whose name starts with `prefix_filter`.
-    /// Pass an empty string to list every key in the bucket.
-    fn list_keys(
-        &self,
-        kind: SecretClass,
-        prefix_filter: String,
-    ) -> Result<Vec<String>, SecretStoreError>;
 }

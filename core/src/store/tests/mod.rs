@@ -132,4 +132,5 @@ mod resident_state_round_trip;
 /// One unreadable collection must not take the wallet list with it.
 mod a_bad_row_is_not_a_bad_database;
 
+mod feed_state_follows_commands;
 mod network_token_identity;

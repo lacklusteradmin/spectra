@@ -26,7 +26,7 @@ pub enum CoreTransactionStatus {
 impl CoreTransactionStatus {
     /// The stored and wire spelling. Four functions used to spell these three
     /// words, two of them disagreeing about what a missing status meant.
-    pub(crate) fn as_raw(self) -> &'static str {
+    pub fn as_raw(self) -> &'static str {
         match self {
             Self::Pending => "pending",
             Self::Confirmed => "confirmed",
@@ -64,6 +64,21 @@ pub enum CoreSeedDerivationPreset {
     Standard,
     Account1,
     Account2,
+}
+
+impl CoreSeedDerivationPreset {
+    /// The BIP-44 account a preset's default paths use.
+    ///
+    /// Stated once. The wallet record stored the preset as a string, and three
+    /// services each matched `"account1"` and `"account2"` back into an index
+    /// while the app kept a fourth copy to call the export with.
+    pub fn account_index(self) -> u32 {
+        match self {
+            Self::Standard => 0,
+            Self::Account1 => 1,
+            Self::Account2 => 2,
+        }
+    }
 }
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq, uniffi::Record)]
@@ -296,11 +311,14 @@ impl CoreSeedDerivationPaths {
 pub struct WalletView {
     pub id: String,
     pub name: String,
-    /// The network this wallet is on, as a registry chain id. `None` for
-    /// chains whose family has only one. Replaced a `CoreBitcoinNetworkMode`
-    /// and a `CoreDogecoinNetworkMode` field, which were two enums spelling
-    /// out chains the registry already has.
-    pub network_chain_id: Option<String>,
+    /// The network this wallet is on, as a registry chain id — the chain's
+    /// own id on a family with one network. Replaced a
+    /// `CoreBitcoinNetworkMode` and a `CoreDogecoinNetworkMode` field, which
+    /// were two enums spelling out chains the registry already has.
+    ///
+    /// Was optional, though every wallet core produces has one, so each
+    /// reader supplied its own fallback.
+    pub network_chain_id: String,
     /// `Chain::address_slot()` → address for this wallet.
     ///
     /// A wallet belongs to one chain (`selected_chain`), so in practice this
@@ -352,10 +370,6 @@ impl WalletView {
 // copies is what makes `WalletState` the smaller, correcter model.
 
 impl WalletView {
-    /// The network mode this wallet is actually on, as a raw string.
-    ///
-    /// Only one of the two stored modes applies — the one matching the wallet's
-    /// chain — and every other chain is always mainnet.
     /// The chain this wallet is actually on, as a registry id.
     ///
     /// `selected_chain` names the family; this says which network of it. They
@@ -364,7 +378,7 @@ impl WalletView {
     fn active_network_chain_id(&self) -> Option<String> {
         use crate::registry::Chain;
         let family = Chain::from_display_name(&self.selected_chain)?.mainnet_counterpart();
-        let selected = Chain::from_str_id(self.network_chain_id.as_deref()?)?;
+        let selected = Chain::from_str_id(&self.network_chain_id)?;
         // Scoped to the wallet's own family: a wallet on Solana reports no
         // network even if a Bitcoin one was selected when it was imported.
         (selected.mainnet_counterpart() == family).then(|| selected.str_id().to_string())
@@ -396,12 +410,7 @@ impl WalletView {
                 .or_else(|| chain.map(|c| c.str_id().into()))
                 .unwrap_or_default(),
             xpub: self.bitcoin_xpub.clone(),
-            derivation_preset: match self.seed_derivation_preset {
-                CoreSeedDerivationPreset::Standard => "standard",
-                CoreSeedDerivationPreset::Account1 => "account1",
-                CoreSeedDerivationPreset::Account2 => "account2",
-            }
-            .to_string(),
+            derivation_preset: self.seed_derivation_preset,
             derivation_path: derivation_path.clone(),
             derivation_overrides: self.derivation_overrides.clone(),
             holdings: self.holdings.clone(),
@@ -441,18 +450,6 @@ impl WalletView {
     }
 }
 
-/// Render an app wallet record back into the authoritative model.
-///
-/// Exported so the shell can hand core a `WalletState` without reimplementing
-/// the mapping. `is_watch_only` is a platform fact the record cannot carry.
-#[uniffi::export]
-pub fn core_wallet_state(
-    wallet: WalletView,
-    is_watch_only: bool,
-) -> crate::store::state::WalletState {
-    wallet.to_wallet_state(is_watch_only)
-}
-
 impl crate::store::state::WalletState {
     /// Convert back into the shape the iOS app renders.
     ///
@@ -474,7 +471,7 @@ impl crate::store::state::WalletState {
         WalletView {
             id: self.id.clone(),
             name: self.name.clone(),
-            network_chain_id: Some(self.network_id.clone()),
+            network_chain_id: self.network_id.clone(),
             addresses: self
                 .addresses
                 .iter()
@@ -484,11 +481,7 @@ impl crate::store::state::WalletState {
                 })
                 .collect(),
             bitcoin_xpub: self.xpub.clone(),
-            seed_derivation_preset: match self.derivation_preset.as_str() {
-                "account1" => CoreSeedDerivationPreset::Account1,
-                "account2" => CoreSeedDerivationPreset::Account2,
-                _ => CoreSeedDerivationPreset::Standard,
-            },
+            seed_derivation_preset: self.derivation_preset,
             seed_derivation_paths,
             derivation_overrides: self.derivation_overrides.clone(),
             selected_chain: self.chain_name.clone(),
@@ -799,6 +792,8 @@ pub struct CoreDashboardPinOption {
     pub name: String,
     pub subtitle: String,
     pub artwork_name: Option<String>,
+    /// On the dashboard now, counting the default set when nothing is pinned.
+    pub is_pinned: bool,
 }
 
 /// What signing material a wallet has, and whether a password guards it.

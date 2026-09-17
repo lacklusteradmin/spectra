@@ -5,34 +5,49 @@ use super::{
     PriceAlertEvaluationAlert,
 };
 
-fn event(kind: &str, subject: String) -> Vec<StateEvent> {
-    vec![StateEvent {
-        kind: kind.into(),
-        subject_id: Some(subject),
-    }]
+/// Why an alert edit was refused. Front ends map these to their own wording;
+/// the decision is core's.
+///
+/// The refusal used to carry an English sentence as its subject, and the app
+/// showed it verbatim — the one rejection in the state reducer that reached a
+/// Chinese screen in English, and the one whose wording a front end could not
+/// change without matching on core's prose.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize, uniffi::Enum)]
+#[serde(rename_all = "camelCase")]
+pub enum PriceAlertRejection {
+    /// A target in a display currency core holds no rate for.
+    MissingCurrencyRate,
+    /// A target that is zero, negative or not a number.
+    InvalidTarget,
+    /// A holding core cannot name.
+    UnknownAsset,
+    /// The same asset, condition and target already has an alert.
+    DuplicateAlert,
+    /// The alert being changed no longer exists.
+    AlertNotFound,
+}
+
+fn rejected(reason: PriceAlertRejection) -> Vec<StateEvent> {
+    vec![StateEvent::PriceAlertRejected { reason }]
 }
 pub(super) fn add(
     state: &mut CoreAppState,
     key: String,
     target: f64,
-    currency: String,
+    currency: super::state::FiatCurrency,
     condition: CorePriceAlertCondition,
 ) -> Vec<StateEvent> {
-    let currency = currency.trim().to_uppercase();
-    let rate = if currency == "USD" {
+    let rate = if currency == crate::store::state::FiatCurrency::Usd {
         Some(1.0)
     } else {
-        state.fiat_rates_from_usd.get(&currency).copied()
+        state.fiat_rates_from_usd.get(currency.code()).copied()
     };
     let Some(rate) = rate.filter(|v| v.is_finite() && *v > 0.0) else {
-        return event("priceAlertRejected", "Missing currency rate".into());
+        return rejected(PriceAlertRejection::MissingCurrencyRate);
     };
     let target = target / rate;
     if !target.is_finite() || target <= 0.0 {
-        return event(
-            "priceAlertRejected",
-            "Target must be finite and positive".into(),
-        );
+        return rejected(PriceAlertRejection::InvalidTarget);
     }
     let metadata = state
         .wallets
@@ -52,17 +67,14 @@ pub(super) fn add(
                 })
         });
     let Some((asset_display_name, symbol, chain_name)) = metadata else {
-        return event("priceAlertRejected", "Unknown asset".into());
+        return rejected(PriceAlertRejection::UnknownAsset);
     };
     if state
         .price_alerts
         .iter()
         .any(|a| a.holding_key == key && a.condition == condition && a.target_price == target)
     {
-        return event(
-            "priceAlertRejected",
-            "An identical alert already exists".into(),
-        );
+        return rejected(PriceAlertRejection::DuplicateAlert);
     }
     let id = super::new_event_id();
     state.price_alerts.insert(
@@ -79,25 +91,25 @@ pub(super) fn add(
             has_triggered: false,
         },
     );
-    event("priceAlertAdded", id)
+    vec![StateEvent::PriceAlertAdded { id }]
 }
 pub(super) fn toggle(state: &mut CoreAppState, id: String) -> Vec<StateEvent> {
     let Some(alert) = state.price_alerts.iter_mut().find(|a| a.id == id) else {
-        return event("priceAlertRejected", "Alert not found".into());
+        return rejected(PriceAlertRejection::AlertNotFound);
     };
     alert.is_enabled = !alert.is_enabled;
     if !alert.is_enabled {
         alert.has_triggered = false;
     }
-    event("priceAlertChanged", id)
+    vec![StateEvent::PriceAlertChanged { id }]
 }
 pub(super) fn remove(state: &mut CoreAppState, id: String) -> Vec<StateEvent> {
     let before = state.price_alerts.len();
     state.price_alerts.retain(|a| a.id != id);
     if state.price_alerts.len() == before {
-        event("priceAlertRejected", "Alert not found".into())
+        rejected(PriceAlertRejection::AlertNotFound)
     } else {
-        event("priceAlertRemoved", id)
+        vec![StateEvent::PriceAlertRemoved { id }]
     }
 }
 
@@ -108,17 +120,16 @@ mod tests {
     fn alert_intents_preserve_other_trigger_state_and_convert_owned_rates() {
         let mut state = CoreAppState::default();
         state.fiat_rates_from_usd.insert("EUR".into(), 0.8);
-        assert_eq!(
+        assert!(matches!(
             add(
                 &mut state,
                 "ethereum:native".into(),
                 0.000008,
-                "EUR".into(),
+                crate::store::state::FiatCurrency::Eur,
                 CorePriceAlertCondition::Above
-            )[0]
-            .kind,
-            "priceAlertAdded"
-        );
+            )[0],
+            StateEvent::PriceAlertAdded { .. }
+        ));
         let first = state.price_alerts[0].id.clone();
         assert!((state.price_alerts[0].target_price - 0.00001).abs() < 1e-20);
         state.price_alerts[0].has_triggered = true;
@@ -126,7 +137,7 @@ mod tests {
             &mut state,
             "bitcoin:native".into(),
             100.0,
-            "USD".into(),
+            crate::store::state::FiatCurrency::Usd,
             CorePriceAlertCondition::Below,
         );
         let second = state.price_alerts[0].id.clone();
@@ -145,10 +156,71 @@ mod tests {
         assert!(!state.price_alerts[0].has_triggered);
         assert!(!state.price_alerts[0].is_enabled);
         let before = state.price_alerts.clone();
-        assert_eq!(
-            remove(&mut state, "missing".into())[0].kind,
-            "priceAlertRejected"
-        );
+        assert!(matches!(
+            remove(&mut state, "missing".into())[0],
+            StateEvent::PriceAlertRejected { .. }
+        ));
         assert_eq!(state.price_alerts, before);
+    }
+
+    /// A refusal carries a code for the front end to word, not core's prose.
+    #[test]
+    fn a_refusal_names_its_reason_as_a_code() {
+        let mut state = CoreAppState::default();
+        let subject = |events: Vec<StateEvent>| match &events[0] {
+            StateEvent::PriceAlertRejected { reason } => *reason,
+            other => panic!("not a refusal: {other:?}"),
+        };
+        assert_eq!(
+            subject(add(
+                &mut state,
+                "bitcoin:native".into(),
+                0.0,
+                crate::store::state::FiatCurrency::Usd,
+                CorePriceAlertCondition::Above
+            )),
+            PriceAlertRejection::InvalidTarget
+        );
+        assert_eq!(
+            subject(add(
+                &mut state,
+                "bitcoin:native".into(),
+                1.0,
+                crate::store::state::FiatCurrency::Eur,
+                CorePriceAlertCondition::Above
+            )),
+            PriceAlertRejection::MissingCurrencyRate
+        );
+        assert_eq!(
+            subject(add(
+                &mut state,
+                "nowhere:native".into(),
+                1.0,
+                crate::store::state::FiatCurrency::Usd,
+                CorePriceAlertCondition::Above
+            )),
+            PriceAlertRejection::UnknownAsset
+        );
+        add(
+            &mut state,
+            "bitcoin:native".into(),
+            1.0,
+            crate::store::state::FiatCurrency::Usd,
+            CorePriceAlertCondition::Above,
+        );
+        assert_eq!(
+            subject(add(
+                &mut state,
+                "bitcoin:native".into(),
+                1.0,
+                crate::store::state::FiatCurrency::Usd,
+                CorePriceAlertCondition::Above
+            )),
+            PriceAlertRejection::DuplicateAlert
+        );
+        assert_eq!(
+            subject(toggle(&mut state, "missing".into())),
+            PriceAlertRejection::AlertNotFound
+        );
     }
 }

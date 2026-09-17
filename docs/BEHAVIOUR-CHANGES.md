@@ -20,6 +20,454 @@ Split out of PLAN.md on 2026-09-15: it had reached 81 entries and 3171
 of PLAN.md's 3585 lines, which left Rule 0 and the open work buried under the
 history of work already done. Nothing was dropped in the move.
 
+### The dashboard's pins are core's answer per asset (2026-09-17)
+
+- **Before:** the app kept a mirror of the pinned token ids and re-applied
+  core's "nothing pinned means the default four" rule to it through an exported
+  `dashboard_default_pinned_assets`. Toggling one asset built the whole new list
+  in Swift from that copy and sent it back.
+  **After:** each `CoreDashboardPinOption` carries `is_pinned`, counting the
+  default set. `StateCommand::SetDashboardAssetPinned { token_id, is_pinned }`
+  pins or unpins one asset against the set the dashboard shows; pinning an
+  asset that is not an option is refused. The export and the Swift mirror are
+  gone. The CLI gains `spectra portfolio --unpin-token <id>`.
+- **Why:** a trivial default exported while the state it applies to stayed in
+  Swift; core now reads its own settings and answers.
+- **CLI check:** `spectra --json portfolio --pin-options` shows `bitcoin` with
+  `"is_pinned":true` on a fresh store; after `--unpin-token bitcoin` it is
+  `false` and `ethereum` is still pinned. `cargo test -p spectra_core
+  one_asset_is_pinned_against_the_set_the_dashboard_shows`.
+- **Verification:** `cargo fmt --check` and clippy clean; `cargo test
+  --workspace` 825 passed; `scripts/cli-acceptance.sh` 375 passed; iPhone 17
+  Pro `xcodebuild test` 93 passed. One run covers the three entries above.
+
+### Hollow signatures removed; a wallet's network is never optional (2026-09-17)
+
+- **Before:** `SecretStore::list_keys` was part of the platform trait, and the
+  iOS store answered `[]` whatever it was asked — nothing in core called it
+  outside its own backend tests. `WalletView.network_chain_id` was optional
+  though core always filled it, so readers wrote `?? ""`;
+  `walletNetworkChainID(for:family:)` ignored `family` and returned that
+  fallback. `applyRustBalance(walletId:summary:)` read neither argument. Two
+  exports existed for one caller each that did not need them:
+  `core_wallet_state` (Swift tests only) and `core_resolve_chain_id` (a lookup
+  `Chain(displayName:)` already answers).
+  **After:** `list_keys` and its key decoder are deleted from the trait and
+  every store. `network_chain_id` is a `String`; import produces a wallet only
+  for a registry chain, so it is always set. The Swift helper is gone and the
+  balance callback is `walletBalancesDidChange()`. Both exports are deleted.
+  FFI: **135 callables** (62 free functions + 73 methods).
+- **Why:** a signature that promises work the body does not do misleads every
+  caller.
+- **CLI check:** none changes output; `cargo test -p spectra_core
+  a_network_selection_applies_only_to_its_own_family` reads the id directly.
+- **Verification:** `cargo fmt --check` and clippy clean; `cargo test
+  --workspace` 825 passed; `scripts/cli-acceptance.sh` 375 passed; iPhone 17
+  Pro `xcodebuild test` 93 passed. One run covers the three entries above.
+
+### The app's copy is localized where it was still English (2026-09-17)
+
+- **Before:** Face ID prompt reasons, authentication errors, the rebroadcast
+  and status-recheck results, import errors, fiat currency names, seed-phrase
+  wordlist names, Tor status labels, fee-priority names on the send screen, the
+  transaction timeline, the staking descriptions and a set of page headers were
+  English in every language — some as raw literals, some passed to helpers
+  that localize but with no entry in `RuntimeStrings`. The Settings row drew its
+  own copy of the Tor badge with its own English labels. The contact saved from
+  the last send was named "<symbol> Recipient" in English.
+  **After:** each goes through `AppLocalization`, with 168 keys added to the
+  English, Simplified and Traditional Chinese tables; Settings uses
+  `TorStatusBadge`. Operational log messages and diagnostics exports stay in
+  English on purpose.
+- **Why:** a string a person reads is localized; the gate already checks the
+  three tables agree.
+- **CLI check:** none; `scripts/unused-strings.sh` reports zero unread or
+  inconsistent keys.
+- **Verification:** `cargo fmt --check` and clippy clean; `cargo test
+  --workspace` 825 passed; `scripts/cli-acceptance.sh` 375 passed; iPhone 17
+  Pro `xcodebuild test` 93 passed. One run covers the three entries above.
+
+### An endpoint that is not a URL is refused, not stored (2026-09-17)
+
+- **Before:** a custom EVM RPC, the Monero backend URL and the Esplora list were
+  stored whatever they held. The URL rule (`endpoint_validation_error`) drew a
+  red caption under the iOS field and nothing else: the text was saved on the
+  next debounce, and the send self-test re-checked it before use.
+  **After:** core's settings reducer refuses an `RpcEndpoint`,
+  `MoneroBackendBaseUrl` or `BitcoinEsploraEndpoints` update that fails that
+  rule (`AppSettingRejected`); an empty value still clears the override. The
+  app keeps what the user is typing in a view-local draft and shows the rule's
+  caption against the draft, so a half-typed URL is never sent as a setting.
+- **Why:** validate before storing. A stored endpoint every reader must
+  re-check is a second copy of the rule.
+- **CLI check:** `spectra settings set rpc-endpoint.Base base.internal.example`
+  and `spectra settings set bitcoin-esplora-endpoints "https://a.example,nope"`
+  exit 3; `cargo test -p spectra_core
+  an_endpoint_that_is_not_a_url_is_refused_not_stored`.
+- **Verification:** `make verify`: `cargo test --workspace` 825 passed;
+  `scripts/cli-acceptance.sh` 372 passed; iPhone 17 Pro `xcodebuild test` 93
+  passed. One run covers every 2026-09-17 entry.
+
+### Settings are one value, shown by core's rule before core answers (2026-09-17)
+
+- **Before:** `AppState` mirrored eighteen of core's settings as properties,
+  each with a `didSet` that scheduled a debounced commit. A hand-written diff
+  against the last settings core returned decided which updates to send, a
+  hand-written adoption copied core's answer back (re-running every `didSet`),
+  and two epochs kept a slow load from reverting an edit not yet sent. The
+  Esplora `didSet` had no equality guard. Text fields were bound to the mirror,
+  so core's trim came back into a field while it was being typed in.
+  **After:** `AppState.appSettings` is core's `AppSettings`. `updateSetting`
+  applies the update with `app_settings_applying` — the reducer's own rule,
+  exported as a pure function — shows the result at once and sends the command;
+  core's committed settings are adopted when no setting command is in flight.
+  Toggles and steppers bind through `settingBinding`; string settings use
+  `SettingTextField`, which commits a draft when typing pauses, on losing focus
+  and on leaving the screen. A stored change of the custom SOCKS5 proxy
+  reconnects Tor when the proxy is in use, wherever the change came from.
+  `Store+Settings.swift` is deleted.
+- **Why:** one model of settings, not a mirror with its own diff; the value on
+  screen is the value core stores because it is computed by core's rule.
+- **CLI check:** `spectra --json settings set etherscan-api-key "  KEY  "`
+  answers `"KEY"`, the same trim the app now shows before the round trip;
+  `cargo test -p spectra_core applying_a_setting_is_the_reducers_rule`. Swift
+  `testSettingsGoThroughCoreAndSurviveIntoAFreshAppState` asserts the trimmed
+  and clamped values before the command lands.
+- **Verification:** `make verify`: `cargo test --workspace` 825 passed;
+  `scripts/cli-acceptance.sh` 372 passed; iPhone 17 Pro `xcodebuild test` 93
+  passed. One run covers every 2026-09-17 entry.
+
+### An import holds its network's native asset in every front end (2026-09-17)
+
+- **Before:** the app built the import's holdings (the native coin of each
+  selected chain, from its own parse of the chain catalog), passed the network
+  selection it mirrored from core back to core, and sent an address table and
+  wallet ids that were always empty. The CLI passed no holdings, so a wallet it
+  imported held nothing until a balance read.
+  **After:** `WalletImportRequest` is the name, the chains, the mode and the
+  watch-only entries. Core mints the ids, derives the addresses, reads each
+  family's network from its own settings and gives every imported wallet its
+  network's native holding (`Chain::native_holding_template`).
+- **Why:** derive rather than trust caller input; and one front end's import
+  should not produce a different wallet from the other's.
+- **CLI check:** after `spectra wallet import --chain Ethereum …`,
+  `spectra --json portfolio` lists the wallet's `ETH` at 0, and
+  `spectra send probe --wallet "Multi 2" --asset USDC …` exits 3 (the probe
+  check names a token now: ETH is held from the start);
+  `cargo test -p spectra_core a_network_selection_applies_only_to_its_own_family`.
+- **Verification:** `make verify`: `cargo test --workspace` 825 passed;
+  `scripts/cli-acceptance.sh` 372 passed; iPhone 17 Pro `xcodebuild test` 93
+  passed. One run covers every 2026-09-17 entry.
+
+### Core decides an import form from the form, not from eleven answers (2026-09-17)
+
+- **Before:** `core_validate_wallet_import_draft` took eleven booleans the app
+  had already computed — whether the name was blank, the phrase's checksum held,
+  the key was hex, a backup check was required and complete — and combined
+  them.
+  **After:** it takes `WalletImportDraftInput`: the mode (create, seed phrase,
+  private key, watch-only, rename), the chains, the name, the phrase words and
+  language, the key text, whether the backup quiz passed, and the watch-only
+  entries. Core checks the phrase, the key and the addresses itself. The quiz
+  stays the front end's to run.
+- **Why:** a rule applied to answers it never saw the inputs for is a rule the
+  caller decides.
+- **CLI check:** none; the CLI imports without a form. `cargo test -p
+  spectra_core draft_validation_tests` covers each mode.
+- **Verification:** `make verify`: `cargo test --workspace` 825 passed;
+  `scripts/cli-acceptance.sh` 372 passed; iPhone 17 Pro `xcodebuild test` 93
+  passed. One run covers every 2026-09-17 entry.
+
+### A history run records its own diagnostics; removing a wallet resets its feed (2026-09-17)
+
+- **Before:** after `refresh_history` returned, the app copied each per-wallet
+  row back into core through an exported `diagnostics_record` and decided
+  whether the chain was degraded or healthy — on the two paths it drove. The
+  scheduled refresh core runs recorded neither. After removing a wallet the app
+  called `diagnostics_forget_wallet` and reset its pagination; a network or
+  Esplora change reset nothing.
+  **After:** the refresh records its rows and marks the chain degraded (all or
+  some wallets failed) or healthy. Removing a wallet drops its pagination and
+  rows in the same command, and a network switch or an Esplora change restarts
+  the family's feed. Both exports are internal.
+- **Why:** core owns the state it decides about; a cleanup the front end has to
+  remember is one the CLI never did.
+- **CLI check:** none shows the diagnostics registry. `cargo test -p
+  spectra_core a_history_run_records_its_rows_and_the_chains_health`,
+  `removing_a_wallet_forgets_its_pagination_and_diagnostics` and
+  `a_network_switch_or_an_esplora_change_restarts_the_family_feed`.
+- **Verification:** `make verify`: `cargo test --workspace` 825 passed;
+  `scripts/cli-acceptance.sh` 372 passed; iPhone 17 Pro `xcodebuild test` 93
+  passed. One run covers every 2026-09-17 entry.
+
+### States cross the boundary as enums, not strings (2026-09-17)
+
+- **Before:** `StateEvent` was a `kind` string and a `subjectId` string; a
+  transaction status change carried its statuses as strings beside an
+  `emit_event_code` and a `send_status_notification` flag that restated them;
+  history entries, diagnostic log levels, the fiat currency, the background sync
+  profile, reset scopes and the seed derivation preset were strings or integers.
+  Swift parsed each back with about 150 lines of hand-written `RawRepresentable`
+  and `Codable` conformances and dropped what did not parse. Record fields were
+  named for one chain: `ethereum_nonce`, `dogecoin_confirmed_network_fee_doge`,
+  `dogecoin_estimated_fee_rate_doge_per_kb`.
+  **After:** each is a `uniffi::Enum` (`FiatCurrency`, `BackgroundSyncProfile`,
+  `ResetScope`, `DiagnosticLogLevel`, `PriceAlertRejection`, typed
+  `StateEvent` variants), and the record fields are `nonce`,
+  `confirmed_network_fee` and `estimated_fee_rate_per_kb`. Prelaunch, stored
+  records change shape without migration. The Swift conformances are deleted.
+- **Why:** a string state is a second definition of the enum on each side, and
+  a parse that can fail is a place to lose data.
+- **CLI check:** `spectra settings set background-sync-profile turbo` and
+  `spectra settings reset --scope typo --yes` exit 3; `cargo test -p
+  spectra_core a_refusal_names_its_reason_as_a_code` and
+  `currency_codes_are_normalized`.
+- **Verification:** `make verify`: `cargo test --workspace` 825 passed;
+  `scripts/cli-acceptance.sh` 372 passed; iPhone 17 Pro `xcodebuild test` 93
+  passed. One run covers every 2026-09-17 entry.
+
+### The Swift shell reads core's records instead of copies of them (2026-09-17)
+
+- **Before:** the app kept a hand-copied `TransactionRecord`, two operational
+  log models (one rebuilt from core's rows with a failable parse), a
+  `NormalizedHistoryEntry` copy, and six representations of a chain
+  (`WalletChainID`, `NetworkChainID`, `ChainRegistryEntry`,
+  `NativeChainIconDescriptor` beside the generated `Chain`) fed by five separate
+  parses of `list_all_chains()`. It assembled a wallet's known addresses from
+  its projections for core to deduplicate, asked core which receive holding to
+  show by sending one boolean per holding, memoized address validation behind a
+  lock, kept a send preview per chain and emptied all but one on every refresh,
+  and carried unread state and unreachable wrappers (`WalletServiceBridgeProtocol`,
+  four bridge methods, `valueUSD`, `totalBalance`, `assetAmountDisplay`,
+  `normalizedWalletChainName`, two error cases).
+  **After:** `TransactionRecord`, the log entry (`DiagnosticLog`) and the history
+  entry are core's records; `Chain` and its catalog row are the one chain type.
+  Known addresses come from core's `known_wallet_addresses`. The receive screen
+  picks the native holding or the first token locally. Validation calls core
+  directly. The send composer holds one preview, tagged with its chain. The
+  dead code is deleted; `owned_addresses_for_wallet` is no longer exported and
+  `fiat_currency_code` is gone. Visible differences: a chain's diagnostics
+  screen shows log levels localized, the Esplora "Add" button is disabled while
+  the entry is not a URL, and a chain badge is looked up by the chain's display
+  name.
+- **Why:** Swift may hold view state, not copies of domain records; every copy
+  was a place for the two sides to disagree.
+- **CLI check:** none for rendering. `cargo test -p spectra_core
+  known_wallet_addresses_merge_the_wallet_and_its_owned_rows`; the dead-weight
+  gates (`unreachable-exports.sh`, `uncalled-core-fns.sh`, `unused-strings.sh`)
+  report zero. FFI: **138 callables** (65 free functions + 73 methods).
+- **Verification:** `make verify`: `cargo test --workspace` 825 passed;
+  `scripts/cli-acceptance.sh` 372 passed; iPhone 17 Pro `xcodebuild test` 93
+  passed. One run covers every 2026-09-17 entry.
+
+### A replaced wallet list is not a reason to refresh balances (2026-09-16)
+
+- **Before:** every assignment of the app's wallet projection — including the
+  one each balance sweep ends with, since balances are part of it — ran
+  `syncRefreshEntries`, `triggerImmediateBalanceRefresh` and
+  `configureForDevice`, and the last of those restarts the engine, whose first
+  tick fires at once. `adoptWalletsFromCore` set `suppressWalletSideEffects`
+  around the assignment, but the flag was read inside a 30 ms debounce, after it
+  had been cleared, so it suppressed nothing. The end of each sweep therefore
+  started the next: while wallets existed, the radio did not go quiet between
+  sweeps, and the configured interval never came into play. The engine also
+  printed every wallet's holdings and amounts to the device log on every sweep.
+  **After:** `BalanceRefreshEngine::reconcile_wallets(app_is_active)` rebuilds
+  the fetch entries from core's wallets and acts only when they differ from the
+  ones it holds: it starts the engine or triggers a sweep for a changed list and
+  stops it for an empty one. The app calls it from the debounced side effects in
+  place of the three calls, and the suppression flag is gone. A rename or a new
+  balance changes the list but not the entries, so it fetches nothing. Launch no
+  longer adds a trigger beside the engine's own first tick. The observer logs
+  nothing. `stop` is no longer exported.
+- **Why:** the decision "did what a sweep fetches change" is about entries core
+  builds, so core answers it; the flag was a second, broken answer.
+- **CLI check:** none drives the app's lifecycle. `cargo test -p spectra_core
+  only_a_change_in_what_is_fetched_counts_as_a_change` holds a same-list
+  reconcile, and a rename, to "no change", and an add or a removal to "change".
+- **Verification:** `cargo test --workspace` 816 passed;
+  `scripts/cli-acceptance.sh` 370 passed; iPhone 17 Pro `xcodebuild test` 95
+  passed. One run covers every 2026-09-16 correctness entry.
+
+### A send is not reported as verified before anything verified it (2026-09-16)
+
+- **Before:** after every broadcast the app passed `.verified` to
+  `runPostSendRefreshActions` — the only value ever passed — which cleared the
+  send notice and wrote "Broadcast verified by provider." to the chain's
+  operational log. Nothing had verified it; `.deferred` and `.failed` were never
+  constructed. `verification_notice_for_status` was exported for that one call.
+  **After:** the post-send path refreshes and then shows what core's stored
+  record says (`verification_notice_for_last_sent`), which is "still catching
+  up" until the network has seen the transaction. The status enum, its log
+  lines and the export are gone; "send broadcast accepted" is still logged.
+- **Why:** a claim about funds that nothing checked is worse than no claim.
+- **CLI check:** none; `cargo test -p spectra_core send::verification` covers the
+  notice a stored record produces.
+- **Verification:** `cargo test --workspace` 816 passed;
+  `scripts/cli-acceptance.sh` 370 passed; iPhone 17 Pro `xcodebuild test` 95
+  passed. One run covers every 2026-09-16 correctness entry.
+
+### A secret store that cannot be read is an error, not an empty store (2026-09-16)
+
+- **Before:** `is_sealed`, `is_private_key_backed` and `has_signing_material`
+  answered `false` for any store failure. A sealed wallet whose verifier could
+  not be read — a locked device, a Keychain error — was treated as unsealed, and
+  the reveal path read its envelope as if it were the phrase.
+  `wallet_secret_state` answered three `false`s when no store was registered.
+  On iOS the generic bucket (where core keeps a sealed wallet's salt and
+  verifier) and the private-key bucket turned every read failure into "not
+  found", and an envelope that would not open reached core as "not found" too;
+  the Swift comment claimed core never used the generic bucket. Seeds were
+  sealed under the device master key and private keys were not.
+  **After:** the three predicates return `Result`; only `NotFound` is "no".
+  `wallet_secret_state` throws on a store failure. `wallet_derived_state` treats
+  a wallet whose material cannot be read as unable to sign, so it offers no send
+  but the portfolio still renders. The iOS adapter reports `NotFound` only for a
+  missing item and `Backend` for everything else, and private keys go through
+  the same envelope as seeds. `wallet_private_key` — an export returning a raw
+  private key that nothing in the app called — is deleted. Prelaunch: a private
+  key stored before this change is not an envelope, so it reads as a backend
+  error until the wallet is re-imported.
+- **Why:** keys take the stricter side. Absence and failure lead to different
+  actions, and conflating them decided whether a password was asked for.
+- **CLI check:** `spectra wallet export` and `spectra send` now fail on a store
+  failure instead of proceeding unsealed; `cargo test -p spectra_core
+  an_unreadable_store_is_an_error_not_an_unsealed_wallet`. Swift
+  `SecureSeedStoreTests` covers the envelope on private keys and the missing
+  key reaching core as `NotFound`.
+- **Verification:** `cargo test --workspace` 816 passed;
+  `scripts/cli-acceptance.sh` 370 passed; iPhone 17 Pro `xcodebuild test` 95
+  passed. One run covers every 2026-09-16 correctness entry.
+
+### Send warnings are an enum, so a new one cannot vanish (2026-09-16)
+
+- **Before:** `HighRiskSendWarning` and `EvmRecipientPreflightWarning` were
+  records with a free-string `code` and optional fields. The app switched on the
+  string with `default: return nil`, so a reason core added later would have
+  been dropped from the confirmation sheet silently. Four codes — `non_tron`,
+  `non_solana`, `non_xrp`, `non_monero` — were one reason, each with its chain's
+  name in the code and in its sentence.
+  **After:** both are `uniffi::Enum`s carrying exactly the fields each reason
+  has, and the Swift wording is an exhaustive switch: an unworded reason does
+  not compile. The four codes are `foreign_address_format { chain }`, worded
+  once with the chain formatted in. The serialized form keeps `code` beside the
+  fields, so `spectra send quote` still prints `"code":"large_send"` and so on.
+  Core's per-chain prefix heuristics behind that reason are unchanged.
+- **Why:** the warnings screen is where a dropped item costs funds; the
+  compiler is the only reviewer that sees every future reason.
+- **CLI check:** `spectra --json send quote …` (network); offline,
+  `cargo test -p spectra_core high_risk_warning_shape`.
+- **Verification:** `cargo test --workspace` 816 passed;
+  `scripts/cli-acceptance.sh` 370 passed; iPhone 17 Pro `xcodebuild test` 95
+  passed. One run covers every 2026-09-16 correctness entry.
+
+### A price-alert refusal is a reason code, worded by the front end (2026-09-16)
+
+- **Before:** `priceAlertRejected` carried English prose ("Target must be
+  finite and positive") as its subject, and both front ends showed it verbatim —
+  in English on a Chinese app.
+  **After:** the subject is a code — `missingCurrencyRate`, `invalidTarget`,
+  `unknownAsset`, `duplicateAlert`, `alertNotFound` — as the address book and
+  token preferences already do. The app and the CLI each word it.
+- **Why:** one shape for every reducer refusal; wording belongs to the front end.
+- **CLI check:** `spectra alert add --chain Bitcoin --target 0` exits 3 with
+  "the target must be a positive number"; `cargo test -p spectra_core
+  a_refusal_names_its_reason_as_a_code`.
+- **Verification:** `cargo test --workspace` 816 passed;
+  `scripts/cli-acceptance.sh` 370 passed; iPhone 17 Pro `xcodebuild test` 95
+  passed. One run covers every 2026-09-16 correctness entry.
+
+### Fiat values are priced by the asset, not by its ticker (2026-09-16)
+
+- **Before:** `formattedFiatAmount(fromNative:symbol:)` priced the first
+  portfolio holding whose symbol matched. The send amount's fiat line took any
+  same-ticker holding's quote (USDC on Base could show Ethereum USDC's), and the
+  network-fee line took the first `ETH`, whichever network it was on.
+  **After:** an amount is priced at the selected holding's own quote, and a fee at
+  the network's native deployment (`ChainEntry.native_deployment_id`), which is
+  what quotes are keyed by. An unpriced network shows no fiat.
+- **Why:** the 2026-09-12 identity rewrite: never infer identity from a ticker.
+- **CLI check:** none for rendering; `spectra --json chains` lists each network's
+  `nativeDeploymentId`.
+- **Verification:** `cargo test --workspace` 816 passed;
+  `scripts/cli-acceptance.sh` 370 passed; iPhone 17 Pro `xcodebuild test` 95
+  passed. One run covers every 2026-09-16 correctness entry.
+
+### The transaction sheet does not fill in an address the record lacks (2026-09-16)
+
+- **Before:** with no `sourceAddress`, a send's "From" showed the wallet's first
+  known address; a receive with no owned address on record showed it as "To".
+  On a UTXO wallet that is one address of many and not necessarily the one this
+  transaction used. Ownership compared addresses with a Swift rule — lowercase
+  on EVM, verbatim elsewhere.
+  **After:** an end the record does not name is not shown, and ownership
+  compares in core's normal form for the chain.
+- **Why:** an address shown as a fact must be one.
+- **CLI check:** none; the sheet renders the stored record, and the owned
+  addresses it compares against come from `known_utxo_addresses` and
+  `owned_addresses_for_wallet`, which `spectra pool discover` lists.
+- **Verification:** `cargo test --workspace` 816 passed;
+  `scripts/cli-acceptance.sh` 370 passed; iPhone 17 Pro `xcodebuild test` 95
+  passed. One run covers every 2026-09-16 correctness entry.
+
+### Keypool diagnostics show the reservation as it was recorded (2026-09-16)
+
+- **Before:** the app built the diagnostics rows itself and labelled the
+  wallet's *account* derivation path as the "reserved receive path" — the helper
+  took the reserved index and ignored it — beside an address re-derived at read
+  time.
+  **After:** `keypool_diagnostics(chain_name)` returns each wallet's keypool and
+  the owned-address row recorded when its reserved index was handed out, path
+  included. Nothing reserved or nothing recorded shows nothing. `keypool_state`
+  is internal now.
+- **Why:** a diagnostic that reports a recomputation reports the code, not the
+  state.
+- **CLI check:** after `spectra pool receive <wallet>`, `spectra --json pool show
+  <wallet>` includes `reservedReceiveAddress` and `reservedReceivePath`
+  (`m/84'/0'/0'/0/1` for the acceptance wallet); `cargo test -p spectra_core
+  keypool_diagnostics_report_the_recorded_reservation`.
+- **Verification:** `cargo test --workspace` 816 passed;
+  `scripts/cli-acceptance.sh` 370 passed; iPhone 17 Pro `xcodebuild test` 95
+  passed. One run covers every 2026-09-16 correctness entry.
+
+### Stored text is stored in English, and notifications are localized (2026-09-16)
+
+- **Before:** the history refresh wrote a *localized* degraded sentence into
+  core's durable diagnostics, which matched no template, so it stayed in the
+  language of that moment. The price-alert notification inserted the
+  condition's raw value, lowercased (`above`), into a translated sentence. The
+  large-movement notification was built from English fragments.
+  **After:** the degraded detail is stored as the English template core
+  classifies and is localized when shown. The alert notification has one
+  sentence per condition, and the movement notification one per direction, all
+  in the locale files; the four chain-named warning sentences and the old alert
+  template are removed from them.
+- **Why:** what is persisted must be language-neutral; what is shown must be
+  whole sentences a translator can see.
+- **CLI check:** none; `scripts/unused-strings.sh` holds the locale files to
+  their readers.
+- **Verification:** `cargo test --workspace` 816 passed;
+  `scripts/cli-acceptance.sh` 370 passed; iPhone 17 Pro `xcodebuild test` 95
+  passed. One run covers every 2026-09-16 correctness entry.
+
+### The unreachable-export gate sees through dead bridge wrappers (2026-09-16)
+
+- **Before:** a call inside any `WalletServiceBridge` method counted as a caller,
+  even when nothing called that method, and a bare Swift call counted for an
+  exported *method* of the same name. So `wallet_private_key`,
+  `append_chain_operational_event`, `clear_operational_events` and
+  `fetch_all_history_records_typed` were "reachable" with no caller in the app.
+  **After:** bridge wrappers count only while something live calls them, and an
+  exported method needs a receiver (`.name(`). Those four are deleted or
+  internal, `apply_transaction_command` is listed as the iOS tests' transaction
+  fixture, and the dead wrappers are gone. FFI: 141 callables.
+- **Why:** the gate existed to catch exactly the private-key export it missed.
+- **CLI check:** `scripts/unreachable-exports.sh` (run by
+  `scripts/cli-acceptance.sh`).
+- **Verification:** `cargo test --workspace` 816 passed;
+  `scripts/cli-acceptance.sh` 370 passed; iPhone 17 Pro `xcodebuild test` 95
+  passed. One run covers every 2026-09-16 correctness entry.
+
 ### Settings screens pick their sections from the registry, not from chain names (2026-09-16)
 
 - **Before:** the diagnostics screen switched on `.bitcoin`, `.ethereum` and

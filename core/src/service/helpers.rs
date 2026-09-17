@@ -234,17 +234,7 @@ pub(super) fn utxo_fee_preview_json(utxo_values: Vec<u64>, fee_rate: u64) -> Str
 /// Return a zero-amount AssetHolding template for the native coin of each
 /// chain. Used as the default when the holding doesn't exist yet.
 pub(crate) fn native_coin_template(chain_id: &str) -> Option<AssetHolding> {
-    let chain = Chain::from_str_id(chain_id)?;
-    Some(AssetHolding {
-        name: chain.coin_name().to_string(),
-        symbol: chain.coin_symbol().to_string(),
-        coin_gecko_id: chain.coin_gecko_id().to_string(),
-        chain_name: chain.chain_display_name().to_string(),
-        token_standard: "Native".to_string(),
-        contract_address: None,
-        amount: 0.0,
-        price_usd: 0.0,
-    })
+    Chain::from_str_id(chain_id).map(Chain::native_holding_template)
 }
 
 /// Returns `true` when `s` starts with a BIP-32 extended public key prefix.

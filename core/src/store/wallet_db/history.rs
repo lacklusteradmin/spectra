@@ -404,9 +404,7 @@ pub(crate) fn history_save_send_progress(
         // refuses a stale nonce selected by another process before it broadcasts.
         // Explicit replacement requests intentionally bypass this check.
         if reserve_nonce {
-            let nonce = incoming
-                .ethereum_nonce
-                .ok_or("missing EVM nonce reservation")?;
+            let nonce = incoming.nonce.ok_or("missing EVM nonce reservation")?;
             let source = incoming
                 .source_address
                 .as_deref()
@@ -414,7 +412,7 @@ pub(crate) fn history_save_send_progress(
             let conflict: bool = tx.query_row(
                 "SELECT EXISTS(SELECT 1 FROM history_records WHERE chain_name = ?1 AND id != lower(?2)
                  AND lower(json_extract(payload, '$.sourceAddress')) = lower(?3)
-                 AND json_extract(payload, '$.ethereumNonce') = ?4
+                 AND json_extract(payload, '$.nonce') = ?4
                  AND json_extract(payload, '$.kind') = 'send'
                  AND json_extract(payload, '$.status') = 'pending')",
                 params![incoming.chain_name, incoming.id, source, nonce], |row| row.get(0)
@@ -442,8 +440,8 @@ pub(crate) fn history_save_send_progress(
             stored.signed_transaction_payload = incoming.signed_transaction_payload.clone();
             stored.signed_transaction_payload_format =
                 incoming.signed_transaction_payload_format.clone();
-            if incoming.ethereum_nonce.is_some() {
-                stored.ethereum_nonce = incoming.ethereum_nonce;
+            if incoming.nonce.is_some() {
+                stored.nonce = incoming.nonce;
             }
             if incoming.transaction_hash.is_some() {
                 stored.transaction_hash = incoming.transaction_hash.clone();

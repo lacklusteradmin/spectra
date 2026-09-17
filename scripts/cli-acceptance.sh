@@ -429,6 +429,11 @@ contains "derives the reserved receive address offline" '"address":"bc1q' \
     spectra --json pool next "Open BTC"
 contains "the receive index remains reserved on reopen" '"index":1' \
     spectra --json pool next "Open BTC"
+# The diagnostics row reports the reservation as it was recorded when handed
+# out. The app labelled the wallet's account path as the reserved one.
+check "hands the reserved address out" $OK spectra pool receive "Open BTC"
+contains "shows the path at the reserved index" "/0/1\"" \
+    spectra --json pool show "Open BTC"
 check "deletes the temporary BTC wallet" $OK spectra wallet delete "Open BTC" --yes
 
 # ── Address book ────────────────────────────────────────────────────────────
@@ -479,7 +484,9 @@ contains "no rates stored until one is fetched" '"count":0' \
 section "price alerts"
 check "adds an alert"                       $OK \
     spectra alert add --chain Bitcoin --target 1 --above
-check "refuses an alert that cannot fire"   $REJECTED \
+# Core names the reason as a code and the front end words it. It used to carry
+# its own English sentence, which the app showed verbatim in every language.
+contains_exit $REJECTED "refuses an alert that cannot fire, saying why" "positive number" \
     spectra alert add --chain Bitcoin --target 0
 contains "the alert survives a new process" '"symbol":"BTC"' \
     spectra --json alert list
@@ -808,12 +815,13 @@ section "send destination probe"
 # Named by wallet and asset now, not by a token descriptor the caller builds:
 # which contract an asset is on a chain is a catalog question, and both front
 # ends were reading core's token list to hand it back. Only the offline half is
-# assertable here — the verdict itself is a balance and a history read, and a
-# holding only exists after one.
+# assertable here — the verdict itself is a balance and a history read. An
+# import holds its network's native asset from the start (core adds it; the app
+# used to hand it in and this front end did not), so the refusal names a token.
 check "refuses a wallet that is not there"         1 \
     spectra send probe --wallet "no such wallet" --to $EVM_ADDR
 check "refuses an asset the wallet does not hold"  $REJECTED \
-    spectra send probe --wallet "Multi 2" --asset ETH --to $EVM_ADDR
+    spectra send probe --wallet "Multi 2" --asset USDC --to $EVM_ADDR
 check "refuses a chain the registry does not know" $USAGE \
     spectra send probe --wallet "Multi 2" --asset ETH --chain NotAChain --to $EVM_ADDR
 
@@ -948,6 +956,12 @@ contains "an empty value clears the override" '"value":""' \
     spectra --json settings set rpc-endpoint.Base ""
 check "refuses a chain the registry does not know" $REJECTED \
     spectra settings set rpc-endpoint.Nonsuch https://x.example
+# The URL rule was a red caption under an iOS text field; the text itself was
+# stored, and every node request read it back. Core refuses it now.
+check "refuses an endpoint that is not a URL" $REJECTED \
+    spectra settings set rpc-endpoint.Base base.internal.example
+check "refuses an Esplora list with one bad entry" $REJECTED \
+    spectra settings set bitcoin-esplora-endpoints "https://a.example,nope"
 # Resetting was iOS-only, and it reset settings by assigning each mirror a
 # literal it believed was the default — nineteen of them across two files, none
 # checkable against `AppSettings::default()`. It is a command now.
@@ -1126,6 +1140,14 @@ check "loads and persists every Bitcoin history page against local fixtures" $OK
 section "Stage 3 / C2 closure operations"
 closure_spectra() { "$BIN" --data-dir "$DATA_DIR/closure" "$@"; }
 check "dashboard groups render from stored state" $OK closure_spectra --json portfolio --stored
+# Which assets a fresh dashboard pins was a rule the app applied to its own copy
+# of the pin list. Core answers per option, counting the default set.
+check "a fresh dashboard pins bitcoin by default" $OK \
+    bash -c '"$1" --data-dir "$2/closure" --json portfolio --pin-options | grep -q "\"is_pinned\":true,[^}]*\"token_id\":\"bitcoin\""' _ "$BIN" "$DATA_DIR"
+check "unpinning one asset keeps the rest of the default set" $OK \
+    bash -c '"$1" --data-dir "$2/closure" --json portfolio --unpin-token bitcoin --pin-options | grep -q "\"is_pinned\":true,[^}]*\"token_id\":\"ethereum\""' _ "$BIN" "$DATA_DIR"
+check "and bitcoin is no longer pinned" $OK \
+    bash -c '"$1" --data-dir "$2/closure" --json portfolio --pin-options | grep -q "\"is_pinned\":false,[^}]*\"token_id\":\"bitcoin\""' _ "$BIN" "$DATA_DIR"
 contains "empty chain discovery does not fetch" '"results":[]' closure_spectra --json pool discover-chain Bitcoin
 check "reset rejects an unknown scope" $REJECTED closure_spectra settings reset --scope typo --yes
 check "imports closure watch wallet" $OK closure_spectra wallet watch --chain Ethereum --name "Closure Watch" --address 0x1111111111111111111111111111111111111111

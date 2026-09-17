@@ -4,9 +4,9 @@
 
 use clap::{Args, Subcommand};
 use colored::Colorize as _;
-use spectra_core::store::state::StateCommand;
+use spectra_core::store::state::{StateCommand, StateEvent};
 use spectra_core::store::wallet_domain::CorePriceAlertCondition;
-use spectra_core::store::PriceAlertEvaluationAlert;
+use spectra_core::store::{PriceAlertEvaluationAlert, PriceAlertRejection};
 
 use super::resolve_chain;
 use crate::ctx::Ctx;
@@ -139,16 +139,25 @@ fn list(ctx: &Ctx, out: Out) -> CliResult<()> {
 
 fn apply_alert(ctx: &Ctx, command: StateCommand) -> CliResult<()> {
     let result = ctx.apply(command)?;
-    if let Some(error) = result
-        .events
-        .iter()
-        .find(|e| e.kind == "priceAlertRejected")
-    {
-        return Err(CliError::rejected(
-            error.subject_id.clone().unwrap_or_default(),
-        ));
+    let reason = result.events.iter().find_map(|event| match event {
+        StateEvent::PriceAlertRejected { reason } => Some(*reason),
+        _ => None,
+    });
+    match reason {
+        Some(reason) => Err(CliError::rejected(rejection_text(reason))),
+        None => Ok(()),
     }
-    Ok(())
+}
+
+/// Core decides; the front end only chooses the wording.
+fn rejection_text(reason: PriceAlertRejection) -> &'static str {
+    match reason {
+        PriceAlertRejection::MissingCurrencyRate => "no exchange rate is stored for that currency",
+        PriceAlertRejection::InvalidTarget => "the target must be a positive number",
+        PriceAlertRejection::UnknownAsset => "no asset matches that holding",
+        PriceAlertRejection::DuplicateAlert => "an identical alert already exists",
+        PriceAlertRejection::AlertNotFound => "no such alert",
+    }
 }
 fn add(ctx: &Ctx, out: Out, args: AddArgs) -> CliResult<()> {
     let key = match args.holding {
@@ -163,7 +172,13 @@ fn add(ctx: &Ctx, out: Out, args: AddArgs) -> CliResult<()> {
         StateCommand::AddPriceAlert {
             holding_key: key,
             target_price: args.target,
-            currency_code: args.currency,
+            currency: spectra_core::store::state::FiatCurrency::from_code(&args.currency)
+                .ok_or_else(|| {
+                    CliError::rejected(format!(
+                        "{:?} is not a currency this app quotes in",
+                        args.currency
+                    ))
+                })?,
             condition: if args.above {
                 CorePriceAlertCondition::Above
             } else {

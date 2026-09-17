@@ -286,7 +286,7 @@ async fn audit_fix5_nonce_journal_survives_response_loss_restart_and_concurrent_
     );
     assert!(service.execute_send(request.clone()).await.is_err());
     let first = service.transactions().await.unwrap().remove(0);
-    assert_eq!(first.ethereum_nonce, Some(7));
+    assert_eq!(first.nonce, Some(7));
     assert!(first.failure_reason.is_some());
     drop(service);
     let reopened = WalletService::new(vec![ChainEndpoints {

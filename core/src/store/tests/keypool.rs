@@ -145,3 +145,136 @@ async fn owned_addresses_survive_reopening_the_database() {
 
     let _ = std::fs::remove_file(&db);
 }
+
+/// The diagnostics row reports the reserved address as it was recorded when
+/// it was handed out — its path included — and not the wallet's account path.
+#[tokio::test]
+async fn keypool_diagnostics_report_the_recorded_reservation() {
+    use crate::store::state::{StateCommand, WalletState};
+
+    let db = std::env::temp_dir()
+        .join(format!(
+            "spectra-keypool-diagnostics-{}.sqlite",
+            crate::store::new_event_id()
+        ))
+        .to_string_lossy()
+        .into_owned();
+    let service = WalletService::new(Vec::new()).expect("service");
+    service.open_state(db.clone()).await.expect("open");
+    service
+        .apply_state_command(StateCommand::UpsertWallet {
+            wallet: WalletState::single_address(
+                "w1",
+                "Savings",
+                "Bitcoin",
+                "bc1qar0srrr7xfkvy5l643lydnw9re59gtzzwf5mdq",
+                None,
+                true,
+            ),
+        })
+        .await
+        .expect("upsert");
+
+    let before = service
+        .keypool_diagnostics("Bitcoin".into())
+        .await
+        .expect("diagnostics");
+    assert_eq!(before.len(), 1);
+    assert!(before[0].reserved_receive.is_none(), "nothing reserved yet");
+
+    let index = service
+        .reserve_receive_index("w1".into(), "Bitcoin".into(), 7)
+        .await
+        .expect("reserve");
+    service
+        .register_owned_address(
+            "w1".into(),
+            "Bitcoin".into(),
+            "bc1qreserved".into(),
+            Some(format!("m/84'/0'/0'/0/{index}")),
+            Some("external".into()),
+            Some(index),
+        )
+        .await
+        .expect("register");
+
+    let rows = service
+        .keypool_diagnostics("Bitcoin".into())
+        .await
+        .expect("diagnostics");
+    assert_eq!(rows[0].wallet_name, "Savings");
+    assert_eq!(rows[0].keypool.reserved_receive_index, Some(index));
+    let reserved = rows[0].reserved_receive.as_ref().expect("the reserved row");
+    assert_eq!(reserved.address, "bc1qreserved");
+    assert_eq!(
+        reserved.derivation_path.as_deref(),
+        Some(format!("m/84'/0'/0'/0/{index}").as_str()),
+        "the path at the reserved index, not the account path"
+    );
+
+    let _ = std::fs::remove_file(&db);
+}
+
+/// A wallet's known addresses come from core's own tables, each once.
+#[tokio::test]
+async fn known_wallet_addresses_merge_the_wallet_and_its_owned_rows() {
+    use crate::store::state::{StateCommand, WalletState};
+
+    let db = std::env::temp_dir()
+        .join(format!(
+            "spectra-known-addresses-{}.sqlite",
+            crate::store::new_event_id()
+        ))
+        .to_string_lossy()
+        .into_owned();
+    let service = WalletService::new(Vec::new()).expect("service");
+    service.open_state(db.clone()).await.expect("open");
+    service
+        .apply_state_command(StateCommand::UpsertWallet {
+            wallet: WalletState::single_address(
+                "w1",
+                "Watch",
+                "Ethereum",
+                "0x742d35Cc6634C0532925a3b844Bc454e4438f44e",
+                None,
+                true,
+            ),
+        })
+        .await
+        .expect("upsert");
+    for address in [
+        // The same address in another case is the same row.
+        "0x742d35cc6634c0532925a3b844bc454e4438f44e",
+        "0x1111111111111111111111111111111111111111",
+    ] {
+        service
+            .register_owned_address(
+                "w1".into(),
+                "Ethereum".into(),
+                address.into(),
+                None,
+                None,
+                None,
+            )
+            .await
+            .expect("register");
+    }
+
+    assert_eq!(
+        service
+            .known_wallet_addresses("w1".into())
+            .await
+            .expect("known"),
+        vec![
+            "0x742d35Cc6634C0532925a3b844Bc454e4438f44e".to_string(),
+            "0x1111111111111111111111111111111111111111".to_string(),
+        ]
+    );
+    assert!(service
+        .known_wallet_addresses("nobody".into())
+        .await
+        .expect("known")
+        .is_empty());
+
+    let _ = std::fs::remove_file(&db);
+}

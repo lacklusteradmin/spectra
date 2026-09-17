@@ -105,7 +105,7 @@ mod tests {
             network_id: "ethereum".into(),
             include_in_portfolio_total: true,
             xpub: None,
-            derivation_preset: "standard".into(),
+            derivation_preset: crate::store::wallet_domain::CoreSeedDerivationPreset::Standard,
             derivation_path: None,
             derivation_overrides: Default::default(),
             addresses: vec![],
@@ -157,10 +157,7 @@ mod tests {
         service
             .mutate_persisted_state(|s| {
                 *s = state();
-                vec![crate::store::state::StateEvent {
-                    kind: "fixture".into(),
-                    subject_id: None,
-                }]
+                vec![crate::store::state::StateEvent::StateReplaced]
             })
             .await
             .unwrap();
@@ -177,10 +174,7 @@ mod tests {
         reopened
             .mutate_persisted_state(|s| {
                 s.quotes.prices.insert("ethereum:native".into(), 800.0);
-                vec![crate::store::state::StateEvent {
-                    kind: "fixture".into(),
-                    subject_id: None,
-                }]
+                vec![crate::store::state::StateEvent::StateReplaced]
             })
             .await
             .unwrap();
@@ -192,7 +186,7 @@ mod tests {
         assert_eq!(results.len(), 1);
         assert!(!results[0].direction_up);
         reopened
-            .reset_data(vec!["historyAndCache".into()])
+            .reset_data(vec![crate::store::state::ResetScope::HistoryAndCache])
             .await
             .unwrap();
         assert!(reopened.app_state().await.movement_baseline.is_none());

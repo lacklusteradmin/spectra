@@ -698,7 +698,7 @@ mod send_chain_tests {
             include_in_portfolio_total: true,
             network_id: network_id.unwrap_or(chain.str_id()).to_string(),
             xpub: None,
-            derivation_preset: "standard".to_string(),
+            derivation_preset: crate::store::wallet_domain::CoreSeedDerivationPreset::Standard,
             derivation_path: None,
             derivation_overrides: Default::default(),
             holdings: Vec::new(),

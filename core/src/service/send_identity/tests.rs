@@ -134,7 +134,7 @@ async fn every_mainnet_mnemonic_identity_resolves_using_stored_derivation_data()
     let service = WalletService::new(vec![]).unwrap();
     let secrets = Arc::new(InMemorySecretStore::new());
     service.set_secret_store(secrets.clone());
-    let defaults = crate::app_core_derivation_paths_for_preset(0).unwrap();
+    let defaults = crate::app_core_derivation_paths_for_preset(Default::default()).unwrap();
     for chain in Chain::mainnets() {
         let name = chain.chain_display_name();
         let path = defaults.path_for(chain).unwrap_or_default();

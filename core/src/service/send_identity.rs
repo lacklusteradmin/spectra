@@ -68,12 +68,8 @@ impl WalletService {
             .map_err(|error| invalid(&error.to_string()))?;
         let (derived, private_key_hex) = match material {
             SigningMaterial::Mnemonic(seed) => {
-                let account = match wallet.derivation_preset.as_str() {
-                    "account1" => 1,
-                    "account2" => 2,
-                    _ => 0,
-                };
-                let defaults = crate::app_core_derivation_paths_for_preset(account)?;
+                let defaults =
+                    crate::app_core_derivation_paths_for_preset(wallet.derivation_preset)?;
                 let path = wallet
                     .derivation_path
                     .as_deref()

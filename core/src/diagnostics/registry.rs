@@ -37,7 +37,9 @@ pub fn diagnostics_all(chain_name: String) -> HashMap<String, HistoryDiagnostics
 }
 
 /// Record one wallet's history-diagnostics row for a chain.
-#[uniffi::export]
+///
+/// Internal: `refresh_history` records its own rows. It was exported for the
+/// app to copy them back in from the result of that same call.
 pub fn diagnostics_record(chain_name: String, entry: HistoryDiagnostics) {
     registry()
         .lock()
@@ -73,7 +75,8 @@ pub fn diagnostics_run_summary(chain_name: String) -> DiagnosticsRunSummary {
 }
 
 /// Drop every diagnostics row a wallet left behind, on every chain.
-#[uniffi::export]
+///
+/// Internal: removing a wallet does it, where the app used to call it after.
 pub fn diagnostics_forget_wallet(wallet_id: String) {
     let mut reg = registry().lock().unwrap();
     for by_chain in reg.history.values_mut() {

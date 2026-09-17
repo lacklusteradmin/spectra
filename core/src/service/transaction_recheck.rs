@@ -109,7 +109,8 @@ impl WalletService {
                         config,
                     ),
                 )]);
-                let old_status = super::history_derived::status_string(current.status);
+                let current_status = current.status;
+                let old_status = current_status.as_raw().to_string();
                 let new_status = if confirmed {
                     crate::store::wallet_domain::CoreTransactionStatus::Confirmed
                 } else {
@@ -139,17 +140,15 @@ impl WalletService {
                 current.receipt_block_number = block;
                 current.confirmation_count = confirmations.map(i64::from);
                 if !confirmed {
-                    current.dogecoin_confirmed_network_fee_doge = None;
+                    current.confirmed_network_fee = None;
                 }
                 let change = TransactionStatusChange {
                     id: current.id.clone(),
                     chain_name: current.chain_name.clone(),
                     transaction_hash: current.transaction_hash.clone(),
-                    old_status,
-                    new_status: new_status.as_raw().to_string(),
+                    old_status: current_status,
+                    new_status,
                     status_changed: decision.status_changed,
-                    send_status_notification: decision.send_status_notification,
-                    emit_event_code: decision.emit_event_code,
                     reached_finality_confirmations: decision.reached_finality_confirmations,
                 };
                 let tracker = trackers.remove(&current.id).unwrap();

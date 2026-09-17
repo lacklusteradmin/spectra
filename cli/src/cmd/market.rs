@@ -5,7 +5,7 @@ use clap::Args;
 use colored::Colorize as _;
 use spectra_core::price::PriceRequestCoin;
 use spectra_core::registry::Chain;
-use spectra_core::store::state::StateCommand;
+use spectra_core::store::state::{FiatCurrency, StateCommand};
 use std::collections::BTreeSet;
 
 use super::chain::{service_for_chain, BALANCE, RPC};
@@ -31,6 +31,9 @@ pub struct PortfolioArgs {
     /// Pin exact token IDs (repeat for multiple tokens).
     #[arg(long)]
     pin_token: Vec<String>,
+    /// Unpin one token ID from the set the dashboard shows (repeatable).
+    #[arg(long)]
+    unpin_token: Vec<String>,
     /// List core-owned pin candidates without network.
     #[arg(long)]
     pin_options: bool,
@@ -105,6 +108,14 @@ pub fn portfolio(ctx: &Ctx, out: Out, args: PortfolioArgs) -> CliResult<()> {
         ctx.rt.block_on(ctx.service()?.apply_state_command(
             spectra_core::state::StateCommand::SetPinnedDashboardAssets {
                 token_ids: args.pin_token,
+            },
+        ))?;
+    }
+    for token_id in args.unpin_token {
+        ctx.rt.block_on(ctx.service()?.apply_state_command(
+            spectra_core::state::StateCommand::SetDashboardAssetPinned {
+                token_id,
+                is_pinned: false,
             },
         ))?;
     }
@@ -211,7 +222,7 @@ pub fn currency(ctx: &Ctx, out: Out, args: CurrencyArgs) -> CliResult<()> {
     if args.refresh_rates || args.rates {
         return rates(ctx, out, args.refresh_rates);
     }
-    let current = ctx.state()?.settings.fiat_currency_code;
+    let current = ctx.state()?.settings.fiat_currency.code();
     let Some(requested) = args.code else {
         out.text(|| {
             println!();
@@ -225,22 +236,16 @@ pub fn currency(ctx: &Ctx, out: Out, args: CurrencyArgs) -> CliResult<()> {
         return Ok(());
     };
 
-    let transition = ctx.apply(StateCommand::SetFiatCurrency {
-        fiat_currency_code: requested.clone(),
-    })?;
     // A code no rate table carries is refused rather than stored: it used to
     // be accepted, and every amount then rendered unconverted with that code
     // beside it.
-    if transition
-        .events
-        .iter()
-        .any(|event| event.kind == "fiatCurrencyRejected")
-    {
+    let Some(currency) = FiatCurrency::from_code(&requested) else {
         return Err(CliError::rejected(format!(
             "{requested:?} is not a currency this app quotes in"
         )));
-    }
-    let updated = transition.state.settings.fiat_currency_code;
+    };
+    let transition = ctx.apply(StateCommand::SetFiatCurrency { currency })?;
+    let updated = transition.state.settings.fiat_currency.code();
 
     out.text(|| {
         if updated == current {
@@ -249,7 +254,7 @@ pub fn currency(ctx: &Ctx, out: Out, args: CurrencyArgs) -> CliResult<()> {
             println!(
                 "  {} {} {} {}",
                 out::ok_mark(),
-                out::hint(&current),
+                out::hint(current),
                 out::hint("→"),
                 updated.bold()
             );
@@ -344,7 +349,7 @@ fn native_balance(ctx: &Ctx, chain: Chain, address: &str) -> CliResult<f64> {
 /// Falls back to USD when the selection is USD or the rate lookup fails: a
 /// display currency is never worth failing a command over.
 fn fiat_conversion(ctx: &Ctx) -> CliResult<(f64, String)> {
-    let code = ctx.state()?.settings.fiat_currency_code;
+    let code = ctx.state()?.settings.fiat_currency.code().to_string();
     if code == "USD" {
         return Ok((1.0, code));
     }

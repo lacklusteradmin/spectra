@@ -15,7 +15,7 @@ fn bitcoin_wallet() -> WalletView {
     WalletView {
         id: "w1".to_string(),
         name: "Cold".to_string(),
-        network_chain_id: Some("bitcoin-testnet-4".to_string()),
+        network_chain_id: "bitcoin-testnet-4".to_string(),
         addresses: HashMap::from([("bitcoin".to_string(), "bc1qexample".to_string())]),
         bitcoin_xpub: Some("zpub123".to_string()),
         seed_derivation_preset: CoreSeedDerivationPreset::Account2,
@@ -68,7 +68,10 @@ fn carries_overrides_xpub_preset_and_holdings() {
         Some("secret")
     );
     assert_eq!(summary.xpub.as_deref(), Some("zpub123"));
-    assert_eq!(summary.derivation_preset, "account2");
+    assert_eq!(
+        summary.derivation_preset,
+        crate::store::wallet_domain::CoreSeedDerivationPreset::Account2
+    );
     assert_eq!(summary.holdings.len(), 1);
     assert_eq!(summary.holdings[0].amount, 1.5);
     assert_eq!(summary.holdings[0].symbol, "BTC");

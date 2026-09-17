@@ -13,9 +13,22 @@ pub struct DiagnosticLog {
     pub timestamp_unix: f64,
     pub input: DiagnosticLogInput,
 }
+/// How serious a diagnostic log line is.
+///
+/// A free string before, checked against a list on append and parsed back by
+/// each reader with a fallback for anything else — the app dropped a line whose
+/// level it did not recognise.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, uniffi::Enum)]
+#[serde(rename_all = "lowercase")]
+pub enum DiagnosticLogLevel {
+    Debug,
+    Info,
+    Warning,
+    Error,
+}
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, uniffi::Record)]
 pub struct DiagnosticLogInput {
-    pub level: String,
+    pub level: DiagnosticLogLevel,
     pub category: String,
     pub message: String,
     pub chain_name: Option<String>,
@@ -82,11 +95,6 @@ impl WalletService {
         if chain_name.is_some_and(|s| Chain::from_display_name(s).is_none()) {
             return Err("unknown diagnostic chain".into());
         }
-        if let DiagnosticCommand::Append { input } = &command {
-            if !["debug", "info", "warning", "error"].contains(&input.level.as_str()) {
-                return Err("invalid diagnostic level".into());
-            }
-        }
         let result = self
             .mutate_persisted_state(move |state| {
                 let d = &mut state.diagnostics;
@@ -100,7 +108,11 @@ impl WalletService {
                         d.last_good_unix
                             .insert(chain_name.clone(), crate::store::now_unix());
                         if d.degraded.remove(&chain_name).is_some() {
-                            d.append(sync_log(chain_name, "info", "Chain recovered".into()));
+                            d.append(sync_log(
+                                chain_name,
+                                DiagnosticLogLevel::Info,
+                                "Chain recovered".into(),
+                            ));
                         }
                     }
                     DiagnosticCommand::Degraded { chain_name, detail } => {
@@ -112,25 +124,26 @@ impl WalletService {
                         }
                         d.degraded
                             .insert(chain_name.clone(), classified.normalized.clone());
-                        d.append(sync_log(chain_name, "warning", classified.normalized));
+                        d.append(sync_log(
+                            chain_name,
+                            DiagnosticLogLevel::Warning,
+                            classified.normalized,
+                        ));
                     }
                     DiagnosticCommand::ClearLogs { chain_name } => d
                         .logs
                         .retain(|l| chain_name.is_some() && l.input.chain_name != chain_name),
                     DiagnosticCommand::Reset => *d = DiagnosticState::default(),
                 }
-                vec![crate::store::state::StateEvent {
-                    kind: "diagnosticsChanged".into(),
-                    subject_id: None,
-                }]
+                vec![crate::store::state::StateEvent::DiagnosticsChanged]
             })
             .await?;
         Ok(result.state.diagnostics)
     }
 }
-fn sync_log(chain: String, level: &str, message: String) -> DiagnosticLogInput {
+fn sync_log(chain: String, level: DiagnosticLogLevel, message: String) -> DiagnosticLogInput {
     DiagnosticLogInput {
-        level: level.into(),
+        level,
         category: "Chain Sync".into(),
         message,
         chain_name: Some(chain),

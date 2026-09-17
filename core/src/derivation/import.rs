@@ -59,26 +59,61 @@ impl WalletImportWatchOnlyEntries {
     }
 }
 
+/// What a front end asks an import for: the chains, the kind of import, and
+/// the addresses a watch-only import was typed with.
+///
+/// It also carried a primary chain (always the first selected), wallet ids
+/// (always empty — core mints them), a password flag (overwritten from the
+/// password on the commit) and resolved addresses (overwritten by core's own
+/// derivation, and empty from every caller). Those are the planner's inputs,
+/// not the caller's, and live on [`WalletImportPlanRequest`].
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, uniffi::Record)]
 #[serde(rename_all = "camelCase")]
 pub struct WalletImportRequest {
     pub wallet_name: String,
+    pub selected_chain_names: Vec<String>,
+    pub is_watch_only_import: bool,
+    pub is_private_key_import: bool,
+    pub watch_only_entries: WalletImportWatchOnlyEntries,
+}
+
+/// The planner's input: a request, plus what core resolved for it.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct WalletImportPlanRequest {
+    pub wallet_name: String,
     pub primary_selected_chain_name: String,
     pub selected_chain_names: Vec<String>,
-    /// Ids for the wallets this import will create, or empty to have core mint
-    /// them.
-    ///
-    /// A caller supplying them has to predict how many wallets the import
-    /// makes — which for a watch-only import means parsing the address entries
-    /// the same way the planner does, and being refused when the two counts
-    /// disagree. That rule had a second copy on the front end's side for
-    /// exactly that reason.
+    /// Ids for the wallets this import will create, or empty to mint them.
     pub planned_wallet_ids: Vec<String>,
     pub is_watch_only_import: bool,
     pub is_private_key_import: bool,
     pub has_wallet_password: bool,
     pub resolved_addresses: WalletImportAddresses,
     pub watch_only_entries: WalletImportWatchOnlyEntries,
+}
+
+impl WalletImportPlanRequest {
+    pub fn new(
+        request: WalletImportRequest,
+        resolved_addresses: WalletImportAddresses,
+        has_wallet_password: bool,
+    ) -> Self {
+        Self {
+            primary_selected_chain_name: request
+                .selected_chain_names
+                .first()
+                .cloned()
+                .unwrap_or_default(),
+            wallet_name: request.wallet_name,
+            selected_chain_names: request.selected_chain_names,
+            planned_wallet_ids: Vec::new(),
+            is_watch_only_import: request.is_watch_only_import,
+            is_private_key_import: request.is_private_key_import,
+            has_wallet_password,
+            resolved_addresses,
+            watch_only_entries: request.watch_only_entries,
+        }
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, uniffi::Record)]
@@ -117,15 +152,9 @@ pub struct WalletImportPlan {
 pub struct WalletImportCommit {
     pub password: Option<String>,
     pub request: WalletImportRequest,
-    /// Holdings each created wallet starts with, from the chain picker.
-    pub holdings: Vec<crate::store::wallet_domain::AssetHolding>,
     pub seed_derivation_preset: crate::store::wallet_domain::CoreSeedDerivationPreset,
     pub seed_derivation_paths: crate::store::wallet_domain::CoreSeedDerivationPaths,
     pub derivation_overrides: crate::store::wallet_domain::CoreWalletDerivationOverrides,
-    /// The network the importer selected, per chain family, as
-    /// `mainnet id -> selected id`. Absent means mainnet. Two mode enums
-    /// before, which meant adding a third family meant a third field.
-    pub network_chain_by_family: std::collections::HashMap<String, String>,
     /// The seed to derive each selected chain's address from, when the caller
     /// has not derived them itself.
     ///
@@ -299,7 +328,7 @@ impl ImportNetworks {
     }
 
     /// The network selected for a family, defaulting to its mainnet.
-    fn selected(&self, chain: Chain) -> Chain {
+    pub(crate) fn selected(&self, chain: Chain) -> Chain {
         let family = chain.mainnet_counterpart();
         self.by_family
             .get(family.str_id())
@@ -430,45 +459,46 @@ pub(crate) fn validated_watch_only_entries(
 /// Build the wallets an import plan calls for, without storing them.
 ///
 /// Mirrors what the iOS app used to do by hand after reading the plan.
+///
+/// The network each wallet is on is the one its family is selected on in
+/// `networks`, which is core's own setting. The app sent its copy of that
+/// setting on the commit, and the holdings each wallet starts with — native
+/// coin rows it built from the catalog — beside it. Each wallet now starts
+/// with its own network's native holding, where every wallet in a
+/// multi-chain import used to start with every selected chain's.
 pub(crate) fn wallets_for_import(
     commit: &WalletImportCommit,
     plan: &WalletImportPlan,
+    networks: &ImportNetworks,
 ) -> Vec<crate::store::wallet_domain::WalletView> {
     plan.wallets
         .iter()
-        .map(|planned| crate::store::wallet_domain::WalletView {
-            id: planned.wallet_id.clone(),
-            name: planned.name.clone(),
+        // The planner plans only registry chains, so none is dropped here.
+        .filter_map(|planned| {
             // The selection applies only to the family the wallet is on.
-            network_chain_id: crate::registry::Chain::from_display_name(&planned.chain_name)
-                .and_then(|chain| {
-                    commit
-                        .network_chain_by_family
-                        .get(chain.mainnet_counterpart().str_id())
-                        .cloned()
-                }),
-            addresses: planned.addresses.by_slot.clone(),
-            bitcoin_xpub: if planned.chain_name == "Bitcoin" {
-                planned.addresses.bitcoin_xpub.clone()
-            } else {
-                None
-            },
-            seed_derivation_preset: commit.seed_derivation_preset,
-            seed_derivation_paths: commit.seed_derivation_paths.clone(),
-            derivation_overrides: commit.derivation_overrides.clone(),
-            selected_chain: planned.chain_name.clone(),
-            holdings: commit.holdings.clone(),
-            include_in_portfolio_total: true,
+            let network = networks.selected(Chain::from_display_name(&planned.chain_name)?);
+            Some(crate::store::wallet_domain::WalletView {
+                id: planned.wallet_id.clone(),
+                name: planned.name.clone(),
+                network_chain_id: network.str_id().to_string(),
+                addresses: planned.addresses.by_slot.clone(),
+                bitcoin_xpub: if planned.chain_name == "Bitcoin" {
+                    planned.addresses.bitcoin_xpub.clone()
+                } else {
+                    None
+                },
+                seed_derivation_preset: commit.seed_derivation_preset,
+                seed_derivation_paths: commit.seed_derivation_paths.clone(),
+                derivation_overrides: commit.derivation_overrides.clone(),
+                selected_chain: planned.chain_name.clone(),
+                holdings: vec![network.native_holding_template()],
+                include_in_portfolio_total: true,
+            })
         })
         .collect()
 }
 
-#[uniffi::export]
-pub fn core_validate_wallet_import_draft(request: WalletImportDraftValidationRequest) -> bool {
-    validate_wallet_import_draft(request)
-}
-
-pub fn plan_wallet_import(request: WalletImportRequest) -> Result<WalletImportPlan, String> {
+pub fn plan_wallet_import(request: WalletImportPlanRequest) -> Result<WalletImportPlan, String> {
     if request.is_watch_only_import {
         plan_watch_only_import(request)
     } else {
@@ -476,7 +506,7 @@ pub fn plan_wallet_import(request: WalletImportRequest) -> Result<WalletImportPl
     }
 }
 
-fn plan_signing_import(request: WalletImportRequest) -> Result<WalletImportPlan, String> {
+fn plan_signing_import(request: WalletImportPlanRequest) -> Result<WalletImportPlan, String> {
     if request.selected_chain_names.is_empty() {
         return Err("Select a chain first.".to_string());
     }
@@ -534,7 +564,7 @@ fn plan_signing_import(request: WalletImportRequest) -> Result<WalletImportPlan,
     })
 }
 
-fn plan_watch_only_import(request: WalletImportRequest) -> Result<WalletImportPlan, String> {
+fn plan_watch_only_import(request: WalletImportPlanRequest) -> Result<WalletImportPlan, String> {
     let watch_entries = watch_only_addresses_for_chain(
         &request.primary_selected_chain_name,
         &request.watch_only_entries,
@@ -708,79 +738,76 @@ fn trim_optional(value: Option<&str>) -> Option<&str> {
     })
 }
 
-// ── Import draft validation (replaces Swift-side canImportWallet) ──
+// ── Import draft validation ──
 
+/// Which form an import draft is filling in.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, uniffi::Enum)]
+pub enum WalletImportDraftMode {
+    /// A new wallet from a generated phrase, which needs its backup confirmed.
+    Create,
+    ImportSeedPhrase,
+    ImportPrivateKey,
+    WatchOnly,
+    /// An existing wallet being renamed.
+    Rename,
+}
+
+/// An import form as typed.
+///
+/// The request this replaced was eleven booleans the app had already worked
+/// out — whether the name was blank, whether the phrase's checksum held,
+/// whether the key was hex, whether a backup check was required — so core
+/// combined answers it had not seen the inputs for. It takes the inputs now.
+/// The backup quiz stays the front end's to run; whether it is required is
+/// the mode's.
 #[derive(Debug, Clone, uniffi::Record)]
-pub struct WalletImportDraftValidationRequest {
+pub struct WalletImportDraftInput {
+    pub mode: WalletImportDraftMode,
     pub selected_chain_names: Vec<String>,
-    pub is_watch_only: bool,
-    pub is_private_key_import: bool,
-    pub is_editing: bool,
-    pub is_create_mode: bool,
-    pub has_valid_wallet_name: bool,
-    pub has_valid_seed_phrase: bool,
-    pub has_valid_private_key_hex: bool,
-    pub is_backup_verification_complete: bool,
-    pub requires_backup_verification: bool,
+    pub wallet_name: String,
+    pub seed_phrase_words: Vec<String>,
+    pub seed_phrase_language: Option<String>,
+    pub seed_phrase_word_count: u32,
+    pub private_key: String,
+    pub backup_verified: bool,
     pub watch_only_entries: WalletImportWatchOnlyEntries,
 }
 
-pub fn validate_wallet_import_draft(request: WalletImportDraftValidationRequest) -> bool {
-    if request.is_editing {
-        return request.has_valid_wallet_name;
-    }
+#[uniffi::export]
+pub fn core_validate_wallet_import_draft(draft: WalletImportDraftInput) -> bool {
+    validate_wallet_import_draft(draft)
+}
 
-    let has_chains = !request.selected_chain_names.is_empty();
-
-    if request.is_create_mode {
-        return has_chains
-            && request.has_valid_seed_phrase
-            && request.is_backup_verification_complete;
-    }
-
-    // Mode compatibility
-    if request.is_watch_only && request.selected_chain_names.iter().any(|n| n == "Monero") {
-        return false;
-    }
-    if request.is_private_key_import {
-        if request.selected_chain_names.len() != 1 {
-            return false;
+pub fn validate_wallet_import_draft(draft: WalletImportDraftInput) -> bool {
+    let has_chains = !draft.selected_chain_names.is_empty();
+    let seed_phrase_valid = || {
+        crate::validation::core_check_seed_phrase(crate::validation::SeedPhraseCheck {
+            words: draft.seed_phrase_words.clone(),
+            language: draft.seed_phrase_language.clone(),
+            expected_word_count: draft.seed_phrase_word_count,
+        })
+        .checksum_valid
+    };
+    match draft.mode {
+        WalletImportDraftMode::Rename => !draft.wallet_name.trim().is_empty(),
+        WalletImportDraftMode::Create => has_chains && seed_phrase_valid() && draft.backup_verified,
+        WalletImportDraftMode::ImportSeedPhrase => has_chains && seed_phrase_valid(),
+        WalletImportDraftMode::ImportPrivateKey => {
+            draft.selected_chain_names.len() == 1
+                && draft
+                    .selected_chain_names
+                    .iter()
+                    .all(|name| is_private_key_chain_supported(name))
+                && crate::service::core_is_private_key_hex(draft.private_key.clone())
         }
-        if request
-            .selected_chain_names
-            .iter()
-            .any(|n| !is_private_key_chain_supported(n))
-        {
-            return false;
+        WalletImportDraftMode::WatchOnly => {
+            draft.selected_chain_names.len() == 1
+                && validate_watch_only_draft_addresses(
+                    &draft.selected_chain_names,
+                    &draft.watch_only_entries,
+                )
         }
     }
-    if request.is_watch_only && request.selected_chain_names.len() != 1 {
-        return false;
-    }
-
-    // Watch-only address validation
-    if request.is_watch_only
-        && !validate_watch_only_draft_addresses(
-            &request.selected_chain_names,
-            &request.watch_only_entries,
-        )
-    {
-        return false;
-    }
-
-    // Secret validation
-    if !request.is_watch_only && !request.is_private_key_import && !request.has_valid_seed_phrase {
-        return false;
-    }
-    if request.is_private_key_import && !request.has_valid_private_key_hex {
-        return false;
-    }
-
-    let is_backup_verified = request.is_watch_only
-        || !request.requires_backup_verification
-        || request.is_backup_verification_complete;
-
-    has_chains && is_backup_verified
 }
 
 fn is_private_key_chain_supported(chain_name: &str) -> bool {
@@ -912,7 +939,7 @@ mod tests {
 
     #[test]
     fn plans_multi_chain_seed_import() {
-        let plan = plan_wallet_import(WalletImportRequest {
+        let plan = plan_wallet_import(WalletImportPlanRequest {
             wallet_name: "Main".to_string(),
             primary_selected_chain_name: "Bitcoin".to_string(),
             selected_chain_names: vec!["Bitcoin".to_string(), "Ethereum".to_string()],
@@ -955,7 +982,7 @@ mod tests {
 
     #[test]
     fn evm_chains_share_one_address_slot() {
-        let request = |chain: &str| WalletImportRequest {
+        let request = |chain: &str| WalletImportPlanRequest {
             wallet_name: "W".to_string(),
             primary_selected_chain_name: chain.to_string(),
             selected_chain_names: vec![chain.to_string()],
@@ -987,7 +1014,7 @@ mod tests {
 
     #[test]
     fn ethereum_classic_fills_both_its_own_slot_and_the_evm_slot() {
-        let plan = plan_wallet_import(WalletImportRequest {
+        let plan = plan_wallet_import(WalletImportPlanRequest {
             wallet_name: "W".to_string(),
             primary_selected_chain_name: "Ethereum Classic".to_string(),
             selected_chain_names: vec!["Ethereum Classic".to_string()],
@@ -1019,7 +1046,7 @@ mod tests {
 
     #[test]
     fn seed_import_carries_bitcoin_xpub_only_on_the_bitcoin_wallet() {
-        let plan = plan_wallet_import(WalletImportRequest {
+        let plan = plan_wallet_import(WalletImportPlanRequest {
             wallet_name: "Main".to_string(),
             primary_selected_chain_name: "Bitcoin".to_string(),
             selected_chain_names: vec!["Bitcoin".to_string(), "Solana".to_string()],
@@ -1047,7 +1074,7 @@ mod tests {
 
     #[test]
     fn plans_watch_only_bitcoin_xpub_import() {
-        let plan = plan_wallet_import(WalletImportRequest {
+        let plan = plan_wallet_import(WalletImportPlanRequest {
             wallet_name: String::new(),
             primary_selected_chain_name: "Bitcoin".to_string(),
             selected_chain_names: vec!["Bitcoin".to_string()],
@@ -1074,7 +1101,7 @@ mod tests {
 
     #[test]
     fn watch_only_expands_one_wallet_per_address() {
-        let plan = plan_wallet_import(WalletImportRequest {
+        let plan = plan_wallet_import(WalletImportPlanRequest {
             wallet_name: "Watch".to_string(),
             primary_selected_chain_name: "Solana".to_string(),
             selected_chain_names: vec!["Solana".to_string()],
@@ -1114,7 +1141,7 @@ mod tests {
 
     #[test]
     fn watch_only_rejects_chains_that_need_more_than_an_address() {
-        let plan = plan_wallet_import(WalletImportRequest {
+        let plan = plan_wallet_import(WalletImportPlanRequest {
             wallet_name: "Watch".to_string(),
             primary_selected_chain_name: "Monero".to_string(),
             selected_chain_names: vec!["Monero".to_string()],
@@ -1136,7 +1163,7 @@ mod tests {
 
     #[test]
     fn unknown_chain_is_not_importable_watch_only() {
-        let plan = plan_wallet_import(WalletImportRequest {
+        let plan = plan_wallet_import(WalletImportPlanRequest {
             wallet_name: "Watch".to_string(),
             primary_selected_chain_name: "Nonexistent Chain".to_string(),
             selected_chain_names: vec!["Nonexistent Chain".to_string()],
@@ -1171,8 +1198,8 @@ mod tests {
 mod minted_wallet_id_tests {
     use super::*;
 
-    fn request(chains: &[&str], planned: Vec<String>) -> WalletImportRequest {
-        WalletImportRequest {
+    fn request(chains: &[&str], planned: Vec<String>) -> WalletImportPlanRequest {
+        WalletImportPlanRequest {
             wallet_name: "Main".to_string(),
             primary_selected_chain_name: chains[0].to_string(),
             selected_chain_names: chains.iter().map(|c| c.to_string()).collect(),
@@ -1224,5 +1251,81 @@ mod minted_wallet_id_tests {
             vec!["one".to_string(), "two".to_string()]
         ))
         .is_err());
+    }
+}
+
+#[cfg(test)]
+mod draft_validation_tests {
+    use super::*;
+
+    const PHRASE: &str =
+        "legal winner thank year wave sausage worth useful legal winner thank yellow";
+
+    fn draft(mode: WalletImportDraftMode, chains: &[&str]) -> WalletImportDraftInput {
+        WalletImportDraftInput {
+            mode,
+            selected_chain_names: chains.iter().map(|c| c.to_string()).collect(),
+            wallet_name: String::new(),
+            seed_phrase_words: PHRASE.split(' ').map(str::to_string).collect(),
+            seed_phrase_language: None,
+            seed_phrase_word_count: 12,
+            private_key: String::new(),
+            backup_verified: false,
+            watch_only_entries: WalletImportWatchOnlyEntries::default(),
+        }
+    }
+
+    /// Core reads the phrase itself: a wrong checksum is refused whatever the
+    /// front end believed about it.
+    #[test]
+    fn a_seed_import_needs_a_phrase_whose_checksum_holds() {
+        assert!(validate_wallet_import_draft(draft(
+            WalletImportDraftMode::ImportSeedPhrase,
+            &["Bitcoin"]
+        )));
+        let mut broken = draft(WalletImportDraftMode::ImportSeedPhrase, &["Bitcoin"]);
+        broken.seed_phrase_words[11] = "legal".into();
+        assert!(!validate_wallet_import_draft(broken));
+        assert!(!validate_wallet_import_draft(draft(
+            WalletImportDraftMode::ImportSeedPhrase,
+            &[]
+        )));
+    }
+
+    /// Creating a wallet requires its backup confirmed; importing one does not.
+    #[test]
+    fn only_a_created_wallet_needs_its_backup_confirmed() {
+        let mut create = draft(WalletImportDraftMode::Create, &["Bitcoin"]);
+        assert!(!validate_wallet_import_draft(create.clone()));
+        create.backup_verified = true;
+        assert!(validate_wallet_import_draft(create));
+    }
+
+    #[test]
+    fn a_private_key_import_is_one_supported_chain_and_a_hex_key() {
+        let mut key = draft(WalletImportDraftMode::ImportPrivateKey, &["Ethereum"]);
+        key.private_key = "4c0883a69102937d6231471b5dbb6204fe5129617082792ae468d01a3f362318".into();
+        assert!(validate_wallet_import_draft(key.clone()));
+        key.selected_chain_names.push("Bitcoin".into());
+        assert!(!validate_wallet_import_draft(key.clone()));
+        key.selected_chain_names = vec!["Ethereum".into()];
+        key.private_key = "not hex".into();
+        assert!(!validate_wallet_import_draft(key));
+    }
+
+    #[test]
+    fn a_watch_only_import_needs_a_valid_address_and_a_rename_a_name() {
+        let mut watch = draft(WalletImportDraftMode::WatchOnly, &["Ethereum"]);
+        assert!(!validate_wallet_import_draft(watch.clone()));
+        watch.watch_only_entries.by_slot.insert(
+            Chain::Ethereum.address_slot().to_string(),
+            vec!["0x742d35Cc6634C0532925a3b844Bc454e4438f44e".into()],
+        );
+        assert!(validate_wallet_import_draft(watch));
+
+        let mut rename = draft(WalletImportDraftMode::Rename, &[]);
+        assert!(!validate_wallet_import_draft(rename.clone()));
+        rename.wallet_name = "  Savings ".into();
+        assert!(validate_wallet_import_draft(rename));
     }
 }

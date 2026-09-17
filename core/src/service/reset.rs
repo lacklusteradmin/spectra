@@ -11,24 +11,9 @@ impl WalletService {
     /// failure is explicit, so a partially completed reset can be retried.
     pub async fn reset_data(
         &self,
-        scopes: Vec<String>,
+        scopes: Vec<crate::store::state::ResetScope>,
     ) -> Result<ResetOutcome, SpectraBridgeError> {
         self.bound_database().await?;
-        for scope in &scopes {
-            if !matches!(
-                scope.as_str(),
-                "walletsAndSecrets"
-                    | "historyAndCache"
-                    | "alertsAndContacts"
-                    | "settingsAndEndpoints"
-                    | "dashboardCustomization"
-                    | "providerState"
-            ) {
-                return Err(SpectraBridgeError::InvalidInput {
-                    message: format!("unknown reset scope {scope}"),
-                });
-            }
-        }
         let plan = crate::store::core_reset_dispatch(scopes);
         let mutation = plan.clone();
         self.mutate_persisted_state(move |state| {
@@ -53,10 +38,7 @@ impl WalletService {
                 state.movement_baseline = None;
                 state.fiat_rates_from_usd.clear();
             }
-            vec![crate::store::state::StateEvent {
-                kind: "dataReset".into(),
-                subject_id: None,
-            }]
+            vec![crate::store::state::StateEvent::DataReset]
         })
         .await?;
         if plan.reset_history_and_cache {
@@ -94,7 +76,7 @@ mod tests {
             include_in_portfolio_total: true,
             network_id: "ethereum".into(),
             xpub: None,
-            derivation_preset: "standard".into(),
+            derivation_preset: crate::store::wallet_domain::CoreSeedDerivationPreset::Standard,
             derivation_path: None,
             derivation_overrides: Default::default(),
             holdings: vec![],
@@ -106,14 +88,14 @@ mod tests {
             })
             .await
             .unwrap();
-        assert!(service.reset_data(vec!["typo".into()]).await.is_err());
+        use crate::store::state::ResetScope;
         assert!(service
-            .reset_data(vec!["walletsAndSecrets".into()])
+            .reset_data(vec![ResetScope::WalletsAndSecrets])
             .await
             .is_err());
         assert_eq!(service.app_state().await.wallets.len(), 1);
         service
-            .reset_data(vec!["settingsAndEndpoints".into()])
+            .reset_data(vec![ResetScope::SettingsAndEndpoints])
             .await
             .unwrap();
         assert_eq!(service.app_state().await.wallets.len(), 1);
@@ -129,7 +111,10 @@ mod tests {
         let key = crate::fetch::refresh::policy::HistoryRefreshKey::new("w", "ethereum");
         service.record_history_refresh(key.clone()).await;
         let result = service
-            .reset_data(vec!["walletsAndSecrets".into(), "alertsAndContacts".into()])
+            .reset_data(vec![
+                ResetScope::WalletsAndSecrets,
+                ResetScope::AlertsAndContacts,
+            ])
             .await
             .unwrap();
         assert!(result.plan.reset_history_and_cache);

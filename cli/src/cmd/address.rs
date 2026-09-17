@@ -4,7 +4,7 @@
 
 use clap::{Args, Subcommand};
 use colored::Colorize as _;
-use spectra_core::store::state::{StateCommand, StateTransition};
+use spectra_core::store::state::{AddressBookRejection, StateCommand, StateEvent, StateTransition};
 use spectra_core::validation::address::{validate_address, AddressValidationRequest};
 
 use super::resolve_chain;
@@ -160,7 +160,7 @@ fn book_add(ctx: &Ctx, out: Out, args: BookAddArgs) -> CliResult<()> {
     })?;
 
     if let Some(reason) = rejection(&transition) {
-        return Err(CliError::rejected(rejection_text(&reason)));
+        return Err(CliError::rejected(rejection_text(reason)));
     }
 
     out.text(|| println!("  {} saved {}", out::ok_mark(), args.name.bold()));
@@ -188,19 +188,17 @@ fn book_remove(ctx: &Ctx, out: Out, args: BookRemoveArgs) -> CliResult<()> {
 }
 
 /// Core decides; the front end only chooses the wording.
-fn rejection(transition: &StateTransition) -> Option<String> {
-    transition
-        .events
-        .iter()
-        .find(|event| event.kind == "addressBookRejected")
-        .and_then(|event| event.subject_id.clone())
+fn rejection(transition: &StateTransition) -> Option<AddressBookRejection> {
+    transition.events.iter().find_map(|event| match event {
+        StateEvent::AddressBookRejected { reason } => Some(*reason),
+        _ => None,
+    })
 }
 
-fn rejection_text(reason: &str) -> String {
+fn rejection_text(reason: AddressBookRejection) -> &'static str {
     match reason {
-        "emptyName" => "a contact name cannot be empty".to_string(),
-        "invalidAddress" => "that address is not valid for this chain".to_string(),
-        "duplicateAddress" => "that address is already saved".to_string(),
-        other => format!("rejected: {other}"),
+        AddressBookRejection::EmptyName => "a contact name cannot be empty",
+        AddressBookRejection::InvalidAddress => "that address is not valid for this chain",
+        AddressBookRejection::DuplicateAddress => "that address is already saved",
     }
 }

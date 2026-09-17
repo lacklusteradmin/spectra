@@ -6,14 +6,11 @@
 use clap::{Args, Subcommand};
 use colored::Colorize as _;
 use spectra_core::derivation::import::{
-    WalletImportAddresses, WalletImportCommit, WalletImportOutcome, WalletImportRequest,
-    WalletImportWatchOnlyEntries,
+    WalletImportCommit, WalletImportOutcome, WalletImportRequest, WalletImportWatchOnlyEntries,
 };
 use spectra_core::registry::Chain;
 use spectra_core::store::state::{StateCommand, WalletState};
-use spectra_core::store::wallet_domain::{
-    CoreSeedDerivationPaths, CoreSeedDerivationPreset, CoreWalletDerivationOverrides,
-};
+use spectra_core::store::wallet_domain::CoreSeedDerivationPaths;
 use spectra_core::store::wallet_secrets;
 
 use super::resolve_chain;
@@ -315,12 +312,13 @@ fn import_private_key(ctx: &Ctx, out: Out, args: ImportArgs, chain: Chain) -> Cl
     .map_err(CliError::rejected)?;
 
     let password = args.creation.password()?;
-    let wallet_id = new_wallet_id();
 
     let name = args.creation.name.clone().unwrap_or_default();
-    let mut commit = signing_commit(chain, &wallet_id, &name, "", "");
+    let mut commit = commit_for(
+        request_for(&[chain], &name),
+        CoreSeedDerivationPaths::default(),
+    );
     commit.request.is_private_key_import = true;
-    commit.request.resolved_addresses = Default::default();
     commit.private_key = Some(private_key.clone());
     commit.password = Some(password);
 
@@ -368,7 +366,6 @@ fn seal_and_import(
     seed_phrase: &str,
 ) -> CliResult<WalletImportOutcome> {
     let password = args.optional_password()?;
-    let wallet_ids: Vec<String> = chains.iter().map(|_| new_wallet_id()).collect();
 
     let name = args.name.clone().unwrap_or_default();
     let mut paths = CoreSeedDerivationPaths::default();
@@ -378,7 +375,8 @@ fn seal_and_import(
             .by_chain
             .insert(c.mainnet_counterpart().str_id().to_string(), path);
     }
-    let mut commit = seed_commit(chains, &wallet_ids, &name, paths, seed_phrase);
+    let mut commit = commit_for(request_for(chains, &name), paths);
+    commit.seed_phrase = Some(seed_phrase.to_string());
     commit.password = password;
     if let Some(path) = &args.derivation_input_file {
         let input = serde_json::from_str(
@@ -409,23 +407,15 @@ fn watch(ctx: &Ctx, out: Out, args: WatchArgs) -> CliResult<()> {
     }
     let name = args.name.clone().unwrap_or_default();
 
-    let request = WalletImportRequest {
-        wallet_name: name,
-        primary_selected_chain_name: chain.chain_display_name().to_string(),
-        selected_chain_names: vec![chain.chain_display_name().to_string()],
-        // Core mints one id per wallet it plans, which for a watch-only import
-        // is one per address entry.
-        planned_wallet_ids: Vec::new(),
-        is_watch_only_import: true,
-        is_private_key_import: false,
-        has_wallet_password: false,
-        resolved_addresses: WalletImportAddresses::default(),
-        watch_only_entries: WalletImportWatchOnlyEntries {
-            by_slot: [(chain.address_slot().to_string(), args.address.clone())]
-                .into_iter()
-                .collect(),
-            bitcoin_xpub: None,
-        },
+    // Core mints one id per wallet it plans, which for a watch-only import is
+    // one per address entry.
+    let mut request = request_for(&[chain], &name);
+    request.is_watch_only_import = true;
+    request.watch_only_entries = WalletImportWatchOnlyEntries {
+        by_slot: [(chain.address_slot().to_string(), args.address.clone())]
+            .into_iter()
+            .collect(),
+        bitcoin_xpub: None,
     };
 
     let service = ctx.service()?;
@@ -515,7 +505,7 @@ fn show(ctx: &Ctx, out: Out, args: SelectArgs) -> CliResult<()> {
     let wallet = ctx.find_wallet(&args.wallet)?;
     // Asked of the secret store, which is what decides whether this wallet can
     // sign and with what.
-    let signing = wallet_secrets::is_private_key_backed(ctx.secrets.as_ref(), &wallet.id)
+    let signing = wallet_secrets::is_private_key_backed(ctx.secrets.as_ref(), &wallet.id)?
         .then_some("private key");
     out.text(|| {
         println!();
@@ -606,7 +596,7 @@ fn export(ctx: &Ctx, out: Out, args: ExportArgs) -> CliResult<()> {
     // A wallet imported from a raw key has no phrase, and the store is what
     // knows which it is. Reporting "no sealed secret" for one was accurate
     // about the phrase and wrong about the wallet.
-    let is_private_key = wallet_secrets::is_private_key_backed(ctx.secrets.as_ref(), &wallet.id);
+    let is_private_key = wallet_secrets::is_private_key_backed(ctx.secrets.as_ref(), &wallet.id)?;
     let what = if is_private_key {
         "private key"
     } else {
@@ -624,7 +614,7 @@ fn export(ctx: &Ctx, out: Out, args: ExportArgs) -> CliResult<()> {
         .filter(|name| std::env::var_os(name).is_some());
     // Asked for only when there is something to unlock: a wallet stored
     // without a password has nothing for it to decrypt.
-    let password = if wallet_secrets::is_sealed(ctx.secrets.as_ref(), &wallet.id) {
+    let password = if wallet_secrets::is_sealed(ctx.secrets.as_ref(), &wallet.id)? {
         Some(
             SecretSource {
                 file: args.password_file.clone(),
@@ -678,10 +668,6 @@ fn export(ctx: &Ctx, out: Out, args: ExportArgs) -> CliResult<()> {
 
 // ─── Building an import ─────────────────────────────────────────────────────
 
-fn new_wallet_id() -> String {
-    uuid::Uuid::new_v4().to_string().to_uppercase()
-}
-
 /// The derivation path a wallet is created with: the caller's, or the chain's
 /// catalog default resolved by core.
 fn derivation_path(chain: Chain, requested: Option<&str>) -> CliResult<String> {
@@ -693,75 +679,19 @@ fn derivation_path(chain: Chain, requested: Option<&str>) -> CliResult<String> {
     Ok(resolution)
 }
 
-/// A signing import across one or more chains, with the addresses left for
-/// core to derive from `seed_phrase`.
-fn seed_commit(
-    chains: &[Chain],
-    wallet_ids: &[String],
-    name: &str,
-    paths: CoreSeedDerivationPaths,
-    seed_phrase: &str,
-) -> WalletImportCommit {
-    let request = WalletImportRequest {
+/// An import on `chains`, named `name`. Core mints the wallet ids, derives
+/// the addresses and reads the selected networks itself.
+fn request_for(chains: &[Chain], name: &str) -> WalletImportRequest {
+    WalletImportRequest {
         wallet_name: name.to_string(),
-        primary_selected_chain_name: chains[0].chain_display_name().to_string(),
         selected_chain_names: chains
             .iter()
             .map(|c| c.chain_display_name().to_string())
             .collect(),
-        planned_wallet_ids: wallet_ids.to_vec(),
         is_watch_only_import: false,
         is_private_key_import: false,
-        has_wallet_password: true,
-        resolved_addresses: WalletImportAddresses::default(),
         watch_only_entries: WalletImportWatchOnlyEntries::default(),
-    };
-    WalletImportCommit {
-        password: None,
-        request,
-        holdings: Vec::new(),
-        seed_derivation_preset: CoreSeedDerivationPreset::default(),
-        seed_derivation_paths: paths,
-        derivation_overrides: CoreWalletDerivationOverrides::default(),
-        network_chain_by_family: std::collections::HashMap::new(),
-        seed_phrase: Some(seed_phrase.to_string()),
-        private_key: None,
     }
-}
-
-fn signing_commit(
-    chain: Chain,
-    wallet_id: &str,
-    name: &str,
-    path: &str,
-    address: &str,
-) -> WalletImportCommit {
-    // The path is carried in the derivation-path table rather than beside the
-    // address: `to_wallet_state` reads it from there, keyed by the chain's mainnet
-    // counterpart, so a testnet wallet keeps its mainnet's path.
-    let mut paths = CoreSeedDerivationPaths::default();
-    paths.by_chain.insert(
-        chain.mainnet_counterpart().str_id().to_string(),
-        path.to_string(),
-    );
-
-    let request = WalletImportRequest {
-        wallet_name: name.to_string(),
-        primary_selected_chain_name: chain.chain_display_name().to_string(),
-        selected_chain_names: vec![chain.chain_display_name().to_string()],
-        planned_wallet_ids: vec![wallet_id.to_string()],
-        is_watch_only_import: false,
-        is_private_key_import: false,
-        has_wallet_password: true,
-        resolved_addresses: WalletImportAddresses {
-            by_slot: [(chain.address_slot().to_string(), address.to_string())]
-                .into_iter()
-                .collect(),
-            bitcoin_xpub: None,
-        },
-        watch_only_entries: WalletImportWatchOnlyEntries::default(),
-    };
-    commit_for(request, paths)
 }
 
 fn commit_for(
@@ -771,12 +701,9 @@ fn commit_for(
     WalletImportCommit {
         password: None,
         request,
-        holdings: Vec::new(),
         seed_derivation_preset: Default::default(),
         seed_derivation_paths,
         derivation_overrides: Default::default(),
-        // The CLI imports on mainnet; `spectra` has no network picker.
-        network_chain_by_family: Default::default(),
         seed_phrase: None,
         private_key: None,
     }

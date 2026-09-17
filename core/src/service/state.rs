@@ -148,6 +148,18 @@ impl WalletService {
                     }
                 }
             }
+            StateCommand::SetDashboardAssetPinned {
+                token_id,
+                is_pinned: true,
+            } => {
+                let options = self.dashboard_pin_options().await?;
+                let id = token_id.trim();
+                if !options.iter().any(|option| option.token_id == id) {
+                    return Err(SpectraBridgeError::InvalidInput {
+                        message: format!("unknown or unpinnable token ID: {id}"),
+                    });
+                }
+            }
             StateCommand::UpsertWallet { wallet }
             | StateCommand::UpdateWalletIfPresent { wallet } => validate(wallet)?,
             StateCommand::ReplaceState { state } => {
@@ -172,6 +184,7 @@ impl WalletService {
     ) -> Result<Vec<crate::store::wallet_domain::CoreDashboardPinOption>, SpectraBridgeError> {
         use crate::store::wallet_domain::CoreDashboardPinOption;
         let state = self.wallet_state.read().await;
+        let pinned = state.settings.pinned_dashboard_assets();
         let catalog = crate::tokens::list_tokens(String::new());
         let coins = catalog
             .iter()
@@ -200,6 +213,7 @@ impl WalletService {
                         coin.network().unwrap().chain_display_name().to_string()
                     },
                     artwork_name: Some(crate::store::core_holding_artwork_name(coin.clone())),
+                    is_pinned: pinned.contains(&token_id),
                 });
         }
         let mut options: Vec<_> = options.into_values().collect();
@@ -444,10 +458,7 @@ impl WalletService {
             if plan.updates.is_empty() {
                 Vec::new()
             } else {
-                vec![crate::store::state::StateEvent {
-                    kind: "priceAlertsEvaluated".into(),
-                    subject_id: None,
-                }]
+                vec![crate::store::state::StateEvent::PriceAlertsEvaluated]
             }
         })
         .await?;
@@ -483,12 +494,15 @@ impl WalletService {
     /// Signing availability is read through the registered SecretStore.
     pub async fn wallet_derived_state(&self) -> Result<WalletDerivedState, SpectraBridgeError> {
         let state = self.app_state().await;
+        // A wallet whose material cannot be read right now cannot sign right
+        // now, so it offers no send. The portfolio still renders; failing the
+        // whole projection for one unreadable Keychain item would not.
         let signing_material_wallet_ids: Vec<String> = state
             .wallets
             .iter()
             .filter(|wallet| {
                 self.wallet_secret_state(wallet.id.clone())
-                    .has_signing_material
+                    .is_ok_and(|secrets| secrets.has_signing_material)
             })
             .map(|wallet| wallet.id.clone())
             .collect();
@@ -530,10 +544,7 @@ impl WalletService {
                 return Vec::new();
             }
             state.fiat_rates_from_usd = rates;
-            vec![crate::store::state::StateEvent {
-                kind: "fiatRatesChanged".to_string(),
-                subject_id: None,
-            }]
+            vec![crate::store::state::StateEvent::FiatRatesChanged]
         })
         .await
         .map(|_| ())
@@ -556,7 +567,7 @@ impl WalletService {
     {
         self.write_persisted(move |service| async move {
             let database = service.state_binding.connection().await;
-            let (snapshot, events, changes, removed, reset_chains) = {
+            let (snapshot, events, changes, removed, reset_chains, esplora_changed) = {
                 let before = service.wallet_state.read().await;
                 let mut state = before.clone();
                 let events = mutate(&mut state);
@@ -580,7 +591,16 @@ impl WalletService {
                     .map(|w| w.id.clone())
                     .collect();
                 let reset_chains = crate::wallet_db::changed_network_chains(&before, &state);
-                (state, events, changes, removed, reset_chains)
+                let esplora_changed = before.settings.bitcoin_esplora_endpoints
+                    != state.settings.bitcoin_esplora_endpoints;
+                (
+                    state,
+                    events,
+                    changes,
+                    removed,
+                    reset_chains,
+                    esplora_changed,
+                )
             };
 
             // Secret deletion is idempotent. A backend failure leaves the wallet
@@ -632,6 +652,27 @@ impl WalletService {
                 .write()
                 .await
                 .forget(&removed, &reset_chains);
+            // History pagination and the diagnostics rows describe what was
+            // fetched, so they go with what they were fetched for: a removed
+            // wallet, a family whose network changed, and Bitcoin when its
+            // Esplora source did. The app issued these resets itself after
+            // each of those commands, and nothing else did.
+            for id in &removed {
+                service.history_pagination.reset_all_for_wallet(id);
+                crate::diagnostics::diagnostics_forget_wallet(id.clone());
+            }
+            for name in &reset_chains {
+                if let Some(chain) = crate::registry::Chain::from_display_name(name) {
+                    service
+                        .history_pagination
+                        .reset_chain(chain.mainnet_counterpart().str_id());
+                }
+            }
+            if esplora_changed {
+                service
+                    .history_pagination
+                    .reset_chain(crate::registry::Chain::Bitcoin.str_id());
+            }
             *service.wallet_state.write().await = snapshot.clone();
             // The HTTP layer reads the Tor policy per request rather than the
             // store, so a change to either flag is pushed as it lands.
@@ -674,16 +715,6 @@ impl WalletService {
     // Reachable from Rust — the CLI, or core itself — and from nothing across
     // the boundary. A method in the block above is an entry point whether or
     // not a platform uses it, and these were entry points nobody had taken.
-
-    /// Fiat currency the user has chosen, as an ISO 4217 code.
-    pub async fn fiat_currency_code(&self) -> String {
-        self.wallet_state
-            .read()
-            .await
-            .settings
-            .fiat_currency_code
-            .clone()
-    }
 
     /// Resolve a pinned token by identity, including native tokens without a balance.
     pub(super) async fn pinned_prototype(
@@ -832,12 +863,7 @@ fn wallets_for_display(
     let wallets = &state.wallets;
     let mut rendered = Vec::with_capacity(wallets.len());
     for wallet in wallets {
-        let account = match wallet.derivation_preset.as_str() {
-            "account1" => 1,
-            "account2" => 2,
-            _ => 0,
-        };
-        let defaults = crate::app_core_derivation_paths_for_preset(account)?;
+        let defaults = crate::app_core_derivation_paths_for_preset(wallet.derivation_preset)?;
         rendered.push(wallet.to_wallet_view(&defaults));
     }
     Ok(rendered)

@@ -7,7 +7,10 @@
 
 use clap::{Args, Subcommand};
 use colored::Colorize as _;
-use spectra_core::store::state::{AppSettingUpdate, AppSettings, FeePriority, StateCommand};
+use spectra_core::store::state::{
+    AppSettingUpdate, AppSettings, BackgroundSyncProfile, FeePriority, ResetScope, StateCommand,
+    StateEvent,
+};
 
 use crate::ctx::Ctx;
 use crate::error::{CliError, CliResult};
@@ -118,8 +121,12 @@ const FIELDS: &[Field] = &[
     },
     Field {
         key: "background-sync-profile",
-        read: |s| s.background_sync_profile.clone(),
-        update: |v| Ok(AppSettingUpdate::BackgroundSyncProfile { value: v.into() }),
+        read: |s| s.background_sync_profile.as_raw().to_string(),
+        update: |v| {
+            BackgroundSyncProfile::from_raw(v)
+                .map(|value| AppSettingUpdate::BackgroundSyncProfile { value })
+                .ok_or("expected conservative, balanced or aggressive")
+        },
     },
     Field {
         key: "refresh-frequency-minutes",
@@ -347,7 +354,7 @@ fn set(ctx: &Ctx, out: Out, args: SetArgs) -> CliResult<()> {
     if transition
         .events
         .iter()
-        .any(|event| event.kind == "appSettingRejected")
+        .any(|event| matches!(event, StateEvent::AppSettingRejected))
     {
         return Err(CliError::rejected(format!(
             "{key}: core refused {:?}",
@@ -375,9 +382,15 @@ fn reset(ctx: &Ctx, out: Out, args: ResetArgs) -> CliResult<()> {
         ));
     }
     let scopes = if args.scope.is_empty() {
-        vec!["settingsAndEndpoints".into()]
+        vec![ResetScope::SettingsAndEndpoints]
     } else {
         args.scope
+            .iter()
+            .map(|raw| {
+                ResetScope::from_raw(raw)
+                    .ok_or_else(|| CliError::rejected(format!("{raw:?} is not a reset scope")))
+            })
+            .collect::<CliResult<Vec<_>>>()?
     };
     let outcome = ctx.rt.block_on(ctx.service()?.reset_data(scopes))?;
     let settings = outcome.state.settings;

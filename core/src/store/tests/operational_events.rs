@@ -1,5 +1,5 @@
+use crate::service::DiagnosticLogLevel;
 use crate::service::WalletService;
-use crate::store::ChainOperationalEventLevel;
 
 fn tmp_db(label: &str) -> String {
     let mut path = std::env::temp_dir();
@@ -20,7 +20,7 @@ async fn events_survive_reopening_the_database() {
     service
         .append_chain_operational_event(
             "Bitcoin".into(),
-            ChainOperationalEventLevel::Warning,
+            DiagnosticLogLevel::Warning,
             "broadcast deferred".into(),
             Some("abc123".into()),
         )
@@ -31,9 +31,9 @@ async fn events_survive_reopening_the_database() {
     reopened.open_state(db.clone()).await.expect("open");
     let events = reopened.operational_events("Bitcoin".into()).await;
     assert_eq!(events.len(), 1);
-    assert_eq!(events[0].message, "broadcast deferred");
-    assert_eq!(events[0].level, ChainOperationalEventLevel::Warning);
-    assert_eq!(events[0].transaction_hash.as_deref(), Some("abc123"));
+    assert_eq!(events[0].input.message, "broadcast deferred");
+    assert_eq!(events[0].input.level, DiagnosticLogLevel::Warning);
+    assert_eq!(events[0].input.transaction_hash.as_deref(), Some("abc123"));
     assert!(
         events[0].timestamp_unix > 0.0,
         "core did not stamp the time"
@@ -51,7 +51,7 @@ async fn the_log_is_newest_first_and_bounded() {
         service
             .append_chain_operational_event(
                 "Solana".into(),
-                ChainOperationalEventLevel::Info,
+                DiagnosticLogLevel::Info,
                 format!("event {index}"),
                 None,
             )
@@ -60,8 +60,8 @@ async fn the_log_is_newest_first_and_bounded() {
     }
     let events = service.operational_events("Solana".into()).await;
     assert_eq!(events.len(), 200, "the cap did not hold");
-    assert_eq!(events[0].message, "event 204");
-    assert_eq!(events[199].message, "event 5");
+    assert_eq!(events[0].input.message, "event 204");
+    assert_eq!(events[199].input.message, "event 5");
     // A different chain keeps its own list.
     assert!(service
         .operational_events("Bitcoin".into())
@@ -76,7 +76,7 @@ async fn clearing_one_chain_leaves_the_others() {
         service
             .append_chain_operational_event(
                 chain.into(),
-                ChainOperationalEventLevel::Error,
+                DiagnosticLogLevel::Error,
                 "send failed".into(),
                 None,
             )

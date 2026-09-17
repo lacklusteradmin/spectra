@@ -83,6 +83,36 @@ impl BalanceRefreshEngine {
         count
     }
 
+    /// Adopt the wallets core holds now, and refresh only if what the engine
+    /// fetches changed. Answers whether it did.
+    ///
+    /// A front end calls this whenever its wallet list is replaced, and a
+    /// balance refresh replaces it — balances are part of the list. The app
+    /// used to answer every replacement with `sync_entries`, `trigger_immediate`
+    /// and `configure_for_device`, whose restart ticks at once, so the end of
+    /// each sweep started the next one and the radio never went quiet. The
+    /// entries are what a sweep fetches; a list whose entries did not change
+    /// has nothing new to fetch.
+    pub async fn reconcile_wallets(&self, app_is_active: bool) -> bool {
+        let state = self.inner.wallet_service.app_state().await;
+        let entries = refresh_entries_for(&state);
+        let has_entries = !entries.is_empty();
+        if !self.replace_entries(entries) {
+            return false;
+        }
+        if !has_entries {
+            self.stop();
+        } else if app_is_active {
+            if self.is_running() {
+                self.trigger_immediate().await;
+            } else {
+                let minutes = state.settings.automatic_refresh_frequency_minutes;
+                self.start((minutes.max(1) as u64) * 60).await;
+            }
+        }
+        true
+    }
+
     /// The platform supplies activity; core reads wallet scope and cadence.
     pub async fn configure_for_device(&self, app_is_active: bool) {
         self.stop();
@@ -128,13 +158,6 @@ impl BalanceRefreshEngine {
         });
     }
 
-    /// Stop the periodic refresh loop. Safe to call even if not started.
-    pub fn stop(&self) {
-        if let Some(tx) = self.inner.stop_tx.lock().unwrap().take() {
-            let _ = tx.send(());
-        }
-    }
-
     /// Run one sweep and wait for it to finish.
     ///
     /// `trigger_immediate` spawns and returns, which is right for a long-lived
@@ -150,6 +173,31 @@ impl BalanceRefreshEngine {
 // ── Refresh cycle (private, not exported)
 
 impl BalanceRefreshEngine {
+    /// Store `entries` if they differ from the current list. Answers whether
+    /// they did.
+    fn replace_entries(&self, entries: Vec<RefreshEntry>) -> bool {
+        let mut current = self.inner.entries.write().unwrap();
+        if *current == entries {
+            return false;
+        }
+        *current = entries;
+        true
+    }
+
+    fn is_running(&self) -> bool {
+        self.inner.stop_tx.lock().unwrap().is_some()
+    }
+
+    /// Stop the periodic refresh loop. Safe to call even if not started.
+    ///
+    /// Internal: `reconcile_wallets` stops the engine when no wallet is left to
+    /// fetch, and `configure_for_device` when the app leaves the foreground.
+    fn stop(&self) {
+        if let Some(tx) = self.inner.stop_tx.lock().unwrap().take() {
+            let _ = tx.send(());
+        }
+    }
+
     async fn run_cycle(inner: &Inner) {
         // Acquire the in-flight flag atomically; bail if another cycle is
         // already running. Protects against overlapping cycles from tick +
@@ -413,7 +461,7 @@ pub(crate) fn refresh_entries_for(state: &crate::store::state::CoreAppState) -> 
 /// For Bitcoin HD wallets: set `address` to the xpub/ypub/zpub.
 /// `WalletService::fetch_native_balance_summary_auto` detects extended keys
 /// automatically.
-#[derive(Debug, Clone, serde::Deserialize, uniffi::Record)]
+#[derive(Debug, Clone, PartialEq, serde::Deserialize, uniffi::Record)]
 pub struct RefreshEntry {
     /// The chain the balance is *filed* under: the wallet's family, which is
     /// what its holding is named after and what pricing keys on.
@@ -447,7 +495,7 @@ mod refresh_entry_tests {
             include_in_portfolio_total: true,
             network_id: chain.str_id().into(),
             xpub: None,
-            derivation_preset: "standard".to_string(),
+            derivation_preset: crate::store::wallet_domain::CoreSeedDerivationPreset::Standard,
             derivation_path: None,
             derivation_overrides: Default::default(),
             holdings: Vec::new(),
@@ -544,6 +592,70 @@ mod refresh_entry_tests {
         assert_eq!(entries.len(), 1);
         assert_eq!(entries[0].address, "0xabc");
         assert_eq!(entries[0].chain_id, Chain::Arbitrum.str_id());
+    }
+
+    /// Replacing the wallet list is not a reason to refresh unless what a sweep
+    /// fetches changed. Answering yes to every replacement is what made the end
+    /// of each sweep — which replaces the list with new balances — start the
+    /// next one.
+    #[tokio::test]
+    async fn only_a_change_in_what_is_fetched_counts_as_a_change() {
+        use super::BalanceRefreshEngine;
+        use crate::service::WalletService;
+        use crate::store::state::StateCommand;
+
+        let service = WalletService::new(vec![]).unwrap();
+        let path = std::env::temp_dir().join(format!(
+            "reconcile-wallets-{}.sqlite",
+            crate::store::new_event_id()
+        ));
+        service
+            .open_state(path.to_string_lossy().into())
+            .await
+            .unwrap();
+        let engine = BalanceRefreshEngine::new(service.clone());
+        let upsert = |name: &str| StateCommand::UpsertWallet {
+            wallet: WalletState::single_address(
+                "w",
+                name,
+                "Ethereum",
+                "0x1111111111111111111111111111111111111111",
+                None,
+                true,
+            ),
+        };
+
+        assert!(
+            !engine.reconcile_wallets(false).await,
+            "no wallets, no entries"
+        );
+        service.apply_state_command(upsert("W")).await.unwrap();
+        assert!(
+            engine.reconcile_wallets(false).await,
+            "a new wallet is a change"
+        );
+        assert!(
+            !engine.reconcile_wallets(false).await,
+            "the same list again is not"
+        );
+
+        // A rename reaches the list and not the fetch.
+        service
+            .apply_state_command(upsert("Renamed"))
+            .await
+            .unwrap();
+        assert!(!engine.reconcile_wallets(false).await);
+
+        service
+            .apply_state_command(StateCommand::RemoveWallet {
+                wallet_id: "w".into(),
+            })
+            .await
+            .unwrap();
+        assert!(
+            engine.reconcile_wallets(false).await,
+            "a removal is a change"
+        );
     }
 }
 

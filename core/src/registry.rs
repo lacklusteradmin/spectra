@@ -745,6 +745,21 @@ impl Chain {
 
     // ── Native-coin metadata
 
+    /// A zero-balance holding of this network's native coin: what a wallet
+    /// starts with before its first refresh.
+    pub fn native_holding_template(self) -> crate::store::wallet_domain::AssetHolding {
+        crate::store::wallet_domain::AssetHolding {
+            name: self.coin_name().to_string(),
+            symbol: self.coin_symbol().to_string(),
+            coin_gecko_id: self.coin_gecko_id().to_string(),
+            chain_name: self.chain_display_name().to_string(),
+            token_standard: "Native".to_string(),
+            contract_address: None,
+            amount: 0.0,
+            price_usd: 0.0,
+        }
+    }
+
     pub fn coin_name(self) -> &'static str {
         self.entry().native_asset_display_name.as_str()
     }
@@ -1959,19 +1974,6 @@ pub fn core_chain_identities() -> Vec<ChainIdentity> {
                 .collect(),
         })
         .collect()
-}
-
-/// Resolve a network id or display name to its canonical
-/// string id as stored in the `chains.toml` catalog.
-#[uniffi::export]
-pub fn core_resolve_chain_id(input: String) -> Option<String> {
-    let normalized = input.trim();
-    crate::chains::catalog()
-        .iter()
-        .find(|entry| {
-            entry.id.eq_ignore_ascii_case(normalized) || entry.name.eq_ignore_ascii_case(normalized)
-        })
-        .map(|entry| entry.id.clone())
 }
 
 /// Not exported: it is a column of `core_chain_identities` now.

@@ -451,6 +451,101 @@ serde or multi-line merges it cannot follow, so it cannot gate without a
 type-aware tool. FFI: **146 callables** (69 free functions + 77 methods), zero
 unreachable.
 
+## Swift shell: correctness follow-up (2026-09-16)
+
+A re-read of the shell after the view-layer sweep found defects the earlier
+audits' tests could not see, because each looked for Swift *deciding* something
+and these were Swift *relaying* or *mislabelling* core's answers. Fixed, each in
+[docs/BEHAVIOUR-CHANGES.md](docs/BEHAVIOUR-CHANGES.md):
+
+- [x] Balance refresh: a replaced wallet list no longer starts a sweep; core's
+  `reconcile_wallets` acts only when the fetch entries change. No balances in
+  the device log.
+- [x] No post-send "verified" claim; the notice comes from the stored record.
+- [x] Secret-store failures are errors in core and in the iOS adapter; private
+  keys are sealed like seeds; `wallet_private_key` deleted.
+- [x] Send warnings are enums with exhaustive wording; price-alert refusals are
+  codes.
+- [x] Fiat values priced by deployment, not ticker; the transaction sheet shows
+  only the ends the record names; keypool diagnostics read the recorded
+  reservation.
+- [x] Persisted degraded details in English; alert and movement notifications
+  localized.
+- [x] `unreachable-exports.sh` ignores calls inside dead bridge wrappers and
+  requires a receiver for exported methods. FFI: **141 callables**.
+
+Gates: `cargo test --workspace` **816 passed**, `./scripts/cli-acceptance.sh`
+**370 passed**, iPhone 17 Pro `xcodebuild test` **95 passed**, including
+`testEthereumTestNetworksExposeExpectedContextsAndEndpoints`. The balance-loop
+fix is covered by a core test of the reconcile rule, not by a run of the app.
+
+Not done, and not correctness: the remaining unread Swift state
+(`lastLivePriceRefreshAt` and its siblings), dead bridge wrappers whose exports
+the CLI still reaches, Swift assembling inputs from core's own data for core to
+decide (`knownOwnedAddresses`, `receiveSelection`, `canImportWallet`, history
+diagnostics), and the hand-copied `TransactionRecord` and settings mirror. Done
+in the next section.
+
+## Swift shell: what was not shrunk enough (2026-09-17)
+
+The same audit's second list: Swift state nothing read, Swift reading core's
+data to hand it back, and second models of core's records. Each behaviour change
+is in [docs/BEHAVIOUR-CHANGES.md](docs/BEHAVIOUR-CHANGES.md).
+
+- [x] Dead state and code deleted: refresh timestamps and the balance-refresh
+  window flag, `valueUSD`/`totalBalance`, `assetAmountDisplay`, two error cases,
+  `WalletServiceBridgeProtocol` and four bridge wrappers, the test-only seed
+  setter (moved to the test target), `normalizedWalletChainName`, the always
+  empty import address table and wallet ids.
+- [x] Core assembles what Swift used to gather for it: known wallet addresses,
+  import holdings and networks, the import form's validation input, history
+  diagnostics and chain health, and the feed reset on wallet removal or network
+  change. The send-verification notice is read by transaction id.
+- [x] One model per record: `TransactionRecord`, `DiagnosticLog` and the
+  normalized history entry are core's; `Chain` is the only chain type and
+  `list_all_chains()` is parsed once; the settings mirror is `appSettings`,
+  changed through `app_settings_applying`. Core refuses endpoints that are not
+  URLs.
+- [x] String states are enums: state events, status changes, history entries,
+  log levels, fiat currency, sync profile, reset scope, derivation preset; the
+  hand-written conformances are gone. Chain-named record fields renamed.
+- [x] Receive selection is local, the address-validation memo and the per-chain
+  preview dictionary are gone, and pending polls have one entry point.
+
+Gates: `make verify` — `cargo test --workspace` **825 passed**,
+`./scripts/cli-acceptance.sh` **372 passed**, iPhone 17 Pro `xcodebuild test`
+**93 passed**, including `testEthereumTestNetworksExposeExpectedContextsAndEndpoints`.
+FFI: **138 callables** (65 free functions + 73 methods),
+zero unreachable.
+
+## Swift shell: hollow, reversed and untidy (2026-09-17)
+
+The audit's third and fourth lists. Behaviour changes are in
+[docs/BEHAVIOUR-CHANGES.md](docs/BEHAVIOUR-CHANGES.md).
+
+- [x] Hollow signatures: `SecretStore::list_keys` (iOS answered `[]`),
+  `walletNetworkChainID`'s unused `family`, `applyRustBalance`'s unused
+  arguments, and smaller unused parameters are gone; `WalletView.network_chain_id`
+  is required.
+- [x] Reversed direction: the dashboard's pins are answered per option by core
+  (`is_pinned`, `SetDashboardAssetPinned`); `dashboard_default_pinned_assets`,
+  `core_wallet_state` and `core_resolve_chain_id` are no longer exported.
+  FFI: **135 callables**.
+- [x] Files by domain: the seven `*Store*` files are `AppState+Dashboard`,
+  `+Diagnostics`, `+Maintenance`, `+Persistence`, `+DiagnosticsExport`, `+Reset`
+  and `+DerivedState`; `AppState+SendFlow` is split into `+AddressBook`,
+  `+ChainActions`, `+Lifecycle`, `+AppLock`, `+TransactionActions` and
+  `+Networks`; import moved to `+ImportLifecycle`, wallet reads to `+Wallets`,
+  prices to `+PricingFiat`; `ContentView` and `SpectraApp` have their own files.
+- [x] Orphaned doc comments and comments naming symbols that no longer exist are
+  fixed or removed.
+- [x] Funds Finder's scan state lives in its view; the six `_`-prefixed
+  properties and their forwards are gone from `AppState`.
+- [x] User-facing English localized, with 168 new keys in each table.
+
+Gates: `cargo test --workspace` **825 passed**, `./scripts/cli-acceptance.sh`
+**375 passed**, iPhone 17 Pro `xcodebuild test` **93 passed**, lint clean.
+
 ## Behaviour changed on purpose
 
 Moved to [docs/BEHAVIOUR-CHANGES.md](docs/BEHAVIOUR-CHANGES.md), which is where

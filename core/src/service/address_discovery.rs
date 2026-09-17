@@ -413,12 +413,8 @@ impl WalletService {
         let seed_phrase =
             crate::store::wallet_secrets::load_seed_phrase(&*store, wallet_id, None).ok()?;
 
-        let account = match wallet.derivation_preset.as_str() {
-            "account1" => 1,
-            "account2" => 2,
-            _ => 0,
-        };
-        let defaults = crate::app_core_derivation_paths_for_preset(account).ok()?;
+        let defaults =
+            crate::app_core_derivation_paths_for_preset(wallet.derivation_preset).ok()?;
         let imported = wallet.to_wallet_view(&defaults);
         let raw_path = wallet
             .addresses
