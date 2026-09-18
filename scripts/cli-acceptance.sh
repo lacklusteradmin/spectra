@@ -1154,6 +1154,20 @@ check "loads and persists every Bitcoin history page against local fixtures" $OK
 section "Stage 3 / C2 closure operations"
 closure_spectra() { "$BIN" --data-dir "$DATA_DIR/closure" "$@"; }
 check "dashboard groups render from stored state" $OK closure_spectra --json portfolio --stored
+# A pinned asset the user holds none of is built from the catalog rather than
+# read from a wallet, so it never passes the canonicalize every stored holding
+# does. Its `chain_name` used to be the catalog's `network` — a str id — while
+# every held asset beside it carried the display name, and the app's exact-match
+# chain lookup rendered the id verbatim.
+contains "a pinned asset nobody holds names its chain like a stored one" \
+    '"chainName":"Bitcoin"' closure_spectra --json portfolio --stored
+lacks "and never the catalog's str id" \
+    '"chainName":"bitcoin"' closure_spectra --json portfolio --stored
+# And it holds nothing, rather than carrying a synthesized holding so the row
+# had something to name itself with — which told the reader they held zero of
+# the asset on whichever chain the catalog listed first.
+contains "and holds nothing at all" \
+    '"holdings":[],"id":"bitcoin"' closure_spectra --json portfolio --stored
 # Which assets a fresh dashboard pins was a rule the app applied to its own copy
 # of the pin list. Core answers per option, counting the default set.
 check "a fresh dashboard pins bitcoin by default" $OK \

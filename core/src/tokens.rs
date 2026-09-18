@@ -86,12 +86,31 @@ pub struct TokenEntry {
 }
 
 impl TokenEntry {
+    /// A zero-balance holding of this token, in the shape a stored one has.
+    ///
+    /// `chain_name` is the chain's display name, which is what
+    /// `AssetHolding::canonicalize` leaves behind and what
+    /// `Chain::native_holding_template` has always produced. This copied
+    /// `self.chain` instead — the catalog's `network`, a str id — so a template
+    /// carried `"bitcoin"` where a stored holding carried `"Bitcoin"`. Nothing
+    /// in core noticed, because every reader goes through `network()`, which
+    /// tries both spellings; the app's exact-match lookup does not, so the id
+    /// reached the screen. Templates are built on the read path and never
+    /// persisted, which is how they slipped past the canonicalize that every
+    /// stored holding passes through.
     pub fn holding_template(&self) -> crate::store::wallet_domain::AssetHolding {
+        // The catalog writes a str id; a token the user added names its chain.
+        let chain_name = crate::registry::Chain::from_str_id(&self.chain)
+            .or_else(|| crate::registry::Chain::from_display_name(&self.chain))
+            .map_or_else(
+                || self.chain.clone(),
+                |c| c.chain_display_name().to_string(),
+            );
         crate::store::wallet_domain::AssetHolding {
             name: self.name.clone(),
             symbol: self.symbol.clone(),
             coin_gecko_id: self.coingecko_id.clone(),
-            chain_name: self.chain.clone(),
+            chain_name,
             token_standard: self.token_standard.clone(),
             contract_address: (!self.contract.is_empty()).then(|| self.contract.clone()),
             amount: 0.0,
@@ -557,6 +576,46 @@ fn is_valid_http_url(s: &str) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// The rule, not the symptom: a template is already what `canonicalize`
+    /// would leave behind, so the two ways of getting an `AssetHolding` for a
+    /// catalog token cannot drift apart again. `chain_name` is the field that
+    /// did — the catalog's `network` is a str id and a stored holding's is a
+    /// display name — and this checks every entry, so a catalog row spelled the
+    /// other way fails here rather than on someone's screen.
+    #[test]
+    fn a_holding_template_is_already_canonical() {
+        for token in catalog() {
+            let template = token.holding_template();
+            let mut canonical = template.clone();
+            if canonical.canonicalize().is_err() {
+                continue; // A chain the registry does not know; `network()` is None either way.
+            }
+            assert_eq!(
+                template, canonical,
+                "{} builds a template canonicalize would rewrite",
+                token.id
+            );
+        }
+    }
+
+    /// The spelling itself, on the entry that reported it.
+    #[test]
+    fn a_native_template_names_its_chain_the_way_a_stored_holding_does() {
+        let bitcoin = catalog()
+            .iter()
+            .find(|t| t.id == "bitcoin:native")
+            .expect("the catalog lists bitcoin");
+        assert_eq!(bitcoin.chain, "bitcoin", "the catalog stores a str id");
+        assert_eq!(bitcoin.holding_template().chain_name, "Bitcoin");
+        assert_eq!(
+            bitcoin.holding_template().chain_name,
+            crate::registry::Chain::Bitcoin
+                .native_holding_template()
+                .chain_name,
+            "the two template builders agree"
+        );
+    }
 
     #[test]
     fn canonical_hex_strips_leading_zeros() {

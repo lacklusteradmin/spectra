@@ -326,25 +326,21 @@ impl WalletService {
                     .to_lowercase()
                     .cmp(&rhs.coin.chain_name.to_lowercase())
             });
-            let Some(_) = holdings.first() else {
+            let Some(largest) = holdings.first() else {
                 continue;
             };
             groups.push(CoreDashboardAssetGroup {
                 is_pinned: pinned.contains(&key),
+                identity: largest.coin.clone(),
                 holdings,
                 id: key,
             });
         }
 
-        // A pinned token the user holds none of still gets a row.
-        // The row is presented as its first holding, so that is where its
-        // symbol comes from.
-        let row_symbol = |g: &CoreDashboardAssetGroup| -> String {
-            g.holdings
-                .first()
-                .map(|h| h.coin.symbol.to_uppercase())
-                .unwrap_or_default()
-        };
+        // A pinned token the user holds none of still gets a row, named by the
+        // catalog and holding nothing.
+        let row_symbol =
+            |g: &CoreDashboardAssetGroup| -> String { g.identity.symbol.to_uppercase() };
         let row_value = |g: &CoreDashboardAssetGroup| -> Option<f64> {
             g.holdings
                 .iter()
@@ -359,10 +355,8 @@ impl WalletService {
             };
             groups.push(CoreDashboardAssetGroup {
                 id: symbol.clone(),
-                holdings: vec![CoreDashboardAssetHolding {
-                    coin: prototype,
-                    value_usd: Some(0.0),
-                }],
+                identity: prototype,
+                holdings: Vec::new(),
                 is_pinned: true,
             });
         }

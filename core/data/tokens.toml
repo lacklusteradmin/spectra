@@ -817,7 +817,7 @@ name = "PancakeSwap"
 coingecko_id = "pancakeswap-token"
 coinpaprika_id = "cake-pancakeswap"
 color = "cyan"
-artwork_name = ""
+artwork_name = "cake"
 tags = []
 
   [[tokens.deployments]]
@@ -859,7 +859,7 @@ name = "Coinbase Wrapped BTC"
 coingecko_id = "coinbase-wrapped-btc"
 coinpaprika_id = "cbbtc-coinbase-wrapped-btc"
 color = "blue"
-artwork_name = ""
+artwork_name = "cbbtc"
 tags = []
 
   [[tokens.deployments]]
@@ -901,7 +901,7 @@ name = "Curve DAO"
 coingecko_id = "curve-dao-token"
 coinpaprika_id = "crv-curve-dao-token"
 color = "yellow"
-artwork_name = ""
+artwork_name = "crv"
 tags = []
 
   [[tokens.deployments]]
@@ -1027,7 +1027,7 @@ name = "Ethereum Name Service"
 coingecko_id = "ethereum-name-service"
 coinpaprika_id = "ens-ethereum-name-service"
 color = "blue"
-artwork_name = ""
+artwork_name = "ens"
 tags = []
 
   [[tokens.deployments]]
@@ -1045,7 +1045,7 @@ name = "Ether.fi"
 coingecko_id = "ether-fi"
 coinpaprika_id = "ethfi-etherfi"
 color = "purple"
-artwork_name = ""
+artwork_name = "ethfi"
 tags = []
 
   [[tokens.deployments]]
@@ -1179,7 +1179,7 @@ name = "GHO"
 coingecko_id = "gho"
 coinpaprika_id = "gho-gho"
 color = "teal"
-artwork_name = ""
+artwork_name = "gho"
 tags = ["stablecoin"]
 
   [[tokens.deployments]]
@@ -1443,7 +1443,7 @@ name = "Morpho"
 coingecko_id = "morpho"
 coinpaprika_id = "morpho-morpho"
 color = "blue"
-artwork_name = ""
+artwork_name = "morpho"
 tags = []
 
   [[tokens.deployments]]
@@ -1477,7 +1477,7 @@ name = "Ondo"
 coingecko_id = "ondo-finance"
 coinpaprika_id = "ondo-ondo"
 color = "blue"
-artwork_name = ""
+artwork_name = "ondo"
 tags = []
 
   [[tokens.deployments]]
@@ -1531,7 +1531,7 @@ name = "Pendle"
 coingecko_id = "pendle"
 coinpaprika_id = "pendle-pendle"
 color = "teal"
-artwork_name = ""
+artwork_name = "pendle"
 tags = []
 
   [[tokens.deployments]]
@@ -1573,7 +1573,7 @@ name = "Pepe"
 coingecko_id = "pepe"
 coinpaprika_id = "pepe-pepe"
 color = "green"
-artwork_name = ""
+artwork_name = "pepe"
 tags = ["meme"]
 
   [[tokens.deployments]]
@@ -1835,7 +1835,7 @@ name = "Ethena Staked USDe"
 coingecko_id = "ethena-staked-usde"
 coinpaprika_id = "susde-ethena-staked-usde"
 color = "cyan"
-artwork_name = ""
+artwork_name = "susde"
 tags = ["stablecoin"]
 
   [[tokens.deployments]]
@@ -1877,7 +1877,7 @@ name = "Savings USDS"
 coingecko_id = "susds"
 coinpaprika_id = "susds-susds"
 color = "teal"
-artwork_name = ""
+artwork_name = "susds"
 tags = ["stablecoin"]
 
   [[tokens.deployments]]

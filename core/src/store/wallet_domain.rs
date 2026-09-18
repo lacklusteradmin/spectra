@@ -769,17 +769,27 @@ pub struct CoreDashboardAssetHolding {
 /// One dashboard row: an asset, and everywhere it is held.
 ///
 /// A row is per **asset**, not per (chain, asset) — ETH on Ethereum and ETH on
-/// Arbitrum are one row. `holdings` is where it lives, largest value first, and
-/// the first is what the row is presented as.
+/// Arbitrum are one row.
 ///
-/// The name, symbol, icon, total amount and total value are all derived from
-/// `holdings` and are not stored beside it. They used to be: a
-/// `representative_coin`, a `total_amount` and a `total_value_usd`, three
-/// fields that could disagree with the list they came from.
+/// `holdings` is **where the user holds it**, largest value first, and it is
+/// empty for a pinned asset they hold nowhere. It used to carry a synthesized
+/// holding in that case so the row had something to name itself with, which
+/// said the user held zero of the asset on whichever chain the catalog listed
+/// first — a place they had never been shown and could not have chosen. The
+/// naming job is `identity`'s now, and `holdings` states only what is true.
+///
+/// The total amount and total value are still derived from `holdings` rather
+/// than stored beside it. They used to be stored, along with a
+/// `representative_coin`: three fields that could disagree with the list they
+/// came from.
 #[derive(Debug, Clone, PartialEq, Serialize, uniffi::Record)]
 #[serde(rename_all = "camelCase")]
 pub struct CoreDashboardAssetGroup {
     pub id: String,
+    /// What the row calls itself and prices itself by: the largest place it is
+    /// held, or the catalog's entry for it when it is held nowhere. An identity,
+    /// not a place — read `holdings` for those.
+    pub identity: AssetHolding,
     pub holdings: Vec<CoreDashboardAssetHolding>,
     pub is_pinned: bool,
 }

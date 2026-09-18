@@ -72,7 +72,14 @@ const explicitBackgroundFill = {
 // the factor into the coordinates. A viewBox that is not square, or does not
 // start at 0 0, is left alone: fitting that artwork onto the disc is a design
 // decision, not a rewrite.
-const SCALES = { circle: ['cx', 'cy', 'r'] };
+// A shape whose geometry can be scaled in place, rather than by wrapping it in
+// a transform. `stroke-width` rides along with the geometry: a transform scales
+// the stroke as part of the matrix, so a shape rescaled attribute by attribute
+// has to be told. Leaving it out made an icon's ring the source file's width at
+// the library's size — 3x too thick on a 210px source, and clipped by the
+// viewBox it now overflowed.
+const STROKE = 'stroke-width';
+const SCALES = { circle: ['cx', 'cy', 'r', STROKE] };
 const scaleToLibraryViewBox = {
   name: 'scaleToLibraryViewBox',
   fn: () => ({
@@ -94,6 +101,7 @@ const scaleToLibraryViewBox = {
             }
             continue;
           }
+
           const scale = `scale(${String(Number(k.toFixed(8)))})`;
           child.attributes.transform = child.attributes.transform
             ? `${scale} ${child.attributes.transform}`
@@ -111,11 +119,27 @@ export default {
   plugins: [
     scaleToLibraryViewBox,
     // keepDataAttrs would otherwise preserve exporter leftovers like data-name.
-    { name: 'preset-default', params: { overrides: { removeUnknownsAndDefaults: { keepDataAttrs: false } } } },
+    // inlineStyles defaults to `onlyMatchedOnce`, which leaves a <style> block
+    // alone as soon as one of its classes styles more than one element — the
+    // usual shape of an Illustrator export, and the one thing that kept an
+    // icon's fills in CSS where nothing else in this config can read them.
+    {
+      name: 'preset-default',
+      params: {
+        overrides: {
+          removeUnknownsAndDefaults: { keepDataAttrs: false },
+          inlineStyles: { onlyMatchedOnce: false },
+        },
+      },
+    },
     // inlineStyles (inside the preset) lands CSS classes in a style attribute;
     // this turns those into the presentation attributes the rest of the config
     // reads. It has to run after the preset, so multipass does the baking.
     'convertStyleToAttrs',
+    // `xml:space="preserve"` is an Illustrator habit. There is no text in the
+    // library for it to preserve whitespace in, and svgo's own passes leave it.
+    // The separator has to move: the attribute's own name contains a colon.
+    { name: 'removeAttrs', params: { elemSeparator: '|', attrs: 'svg|xml:space' } },
     'removeDimensions',
     'sortAttrs',
     removeRootFillNone,

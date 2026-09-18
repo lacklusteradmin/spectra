@@ -20,6 +20,146 @@ Split out of PLAN.md on 2026-09-15: it had reached 81 entries and 3171
 of PLAN.md's 3585 lines, which left Rule 0 and the open work buried under the
 history of work already done. Nothing was dropped in the move.
 
+### A dashboard row names itself, so it can hold nothing (2026-09-18)
+
+- **Before:** `CoreDashboardAssetGroup` had no identity of its own — the row's
+  name, symbol, artwork, colour and price all came from `holdings.first`. A
+  pinned asset the user holds nowhere therefore needed a holding to exist at
+  all, so the builder synthesized one: `pinned_prototype`'s catalog template,
+  with `value_usd: Some(0.0)`, on whichever chain the catalog lists first. The
+  row could be drawn, at the cost of core stating that the user holds zero of
+  the asset on a chain they were never shown and could not have chosen.
+  **After:** the group carries `identity: AssetHolding` — the largest place it
+  is held, or the catalog's entry when it is held nowhere — and `holdings` is
+  exactly where the user holds it, empty in the second case. Swift's
+  `representative` is that field and is no longer optional, so `name`, `symbol`,
+  `artworkName` and `color` lose their `?? ""` fallbacks, and the amount's
+  decimal places key off the identity rather than off whichever place sorted
+  first.
+- **Why:** a row that cannot name itself will borrow a name from somewhere, and
+  the only place available was the list of facts about the user's wallets. This
+  is the second producer in two days caught stating something it had made up so
+  a reader would have something to render — the first was
+  `TokenEntry::holding_template`, two entries below. Fixing the reader would
+  have left the claim in core's answer for the CLI and every later consumer.
+- **CLI check:** `spectra --json portfolio --stored` on a store with the default
+  pins — each pinned asset nobody holds is `"holdings":[]` beside an `identity`
+  that names it. `./scripts/cli-acceptance.sh` asserts it.
+  `cargo test -p spectra_core dashboard_groups` adds
+  `a_pinned_asset_held_nowhere_holds_nothing`, which also pins the other half:
+  a held asset keeps its places and its identity is the largest of them.
+- **Verification:** `make verify`.
+
+### The chain breakdown draws chains, and says so when there are none (2026-09-18)
+
+- **Before:** each row in the asset detail's Chain Breakdown drew
+  `holding.coin.artworkName` — the **asset's** mark — on a hardcoded orange
+  backplate. USDC on Ethereum and USDC on Solana were therefore two rows under
+  two identical USDC logos, and the title beside them was the only thing that
+  told them apart. And a pinned asset held nowhere still listed a row: core
+  supplies one synthetic holding so the dashboard has something to show, and
+  the card read it as a place, claiming "Ethereum — 0 USDT" for someone who
+  holds USDT on no chain at all.
+  **After:** the badge is the chain's, from `Coin.nativeChainBadge`, falling
+  back to the asset's colour for a chain the registry has no artwork for. A
+  group whose `totalAmount` is zero draws "No balance on any chain." instead of
+  rows, and drops the chain-count chip with them.
+- **Why:** the row's subject is the chain, so its mark should be the chain's —
+  the asset is already named by the page it is on. The empty case is tested on
+  the amount rather than on how the holding was built: a real holding that has
+  been emptied is the same statement to the reader, and deserves the same
+  sentence, so this is the condition itself rather than a stand-in for
+  "synthetic".
+- **CLI check:** none applies — both are rendering. The grouping behind them is
+  core's and `./scripts/cli-acceptance.sh` covers it.
+- **Verification:** `xcodebuild build`, `scripts/check-design-tokens.sh` and
+  `scripts/unused-strings.sh`. Not checked on the simulator: reproducing one
+  asset held on two chains needs live balances, and the run was skipped by
+  request.
+
+### A holding template names its chain the way a stored holding does (2026-09-17)
+
+- **Before:** `TokenEntry::holding_template` copied the catalog's `network`
+  straight into `AssetHolding::chain_name`. That column is a chain **str id** —
+  `network = "bitcoin"` in `tokens.toml` — while the canonical spelling of that
+  field is the display name: `AssetHolding::canonicalize` rewrites it to
+  `chain_display_name()`, and the other builder,
+  `Chain::native_holding_template`, has always produced one. So one record type
+  carried two spellings depending on who built it, and
+  `spectra --json portfolio --stored` answered `"chainName": "bitcoin"` for a
+  pinned asset beside `"chainName": "Ethereum"` for a held one.
+  **After:** the template resolves `self.chain` through the registry — either
+  spelling, as `matches_holding` beside it already assumes — and stores the
+  display name.
+- **Why:** templates are built on the read path and never persisted, so they
+  never meet the `canonicalize` every stored holding passes through; the drift
+  had nothing to stop it. Core never noticed because every reader goes through
+  `AssetHolding::network()`, which tries both spellings — the tolerant reader
+  was what hid the bad producer. The app's `Chain(displayName:)` is an exact
+  dictionary lookup, so the id reached the screen: a pinned asset nobody held
+  showed a lowercase chain in the dashboard row and in the asset detail's
+  Chain Breakdown. Rule 0's "collapse two models of one thing", fixed at the
+  producer rather than by adding a second tolerant reader in Swift.
+- **CLI check:** `spectra --json portfolio --stored` with the default pins and
+  no wallets at all — every `chainName` is a display name, and the catalog's
+  `"chainName":"bitcoin"` appears nowhere. `./scripts/cli-acceptance.sh` asserts
+  both. `cargo test -p spectra_core tokens::tests` adds
+  `a_holding_template_is_already_canonical`, which checks every catalog entry
+  against what `canonicalize` would leave behind rather than against the one
+  symbol that reported this, and
+  `a_native_template_names_its_chain_the_way_a_stored_holding_does`, which pins
+  the two builders together. Both fail without the fix.
+- **Verification:** `make verify`.
+
+### A dashboard asset row no longer names a chain (2026-09-17)
+
+- **Before:** each My Assets row carried a third line, `dashboardChainSummaryText`
+  — "On <chain>", plus "+N more" when the asset was held on several. It named
+  the group's representative holding, which is one chain out of however many the
+  group spans.
+  **After:** the row is the asset's name, its amount, its value and its price.
+  `chainSummaryText` and the helper behind it are gone.
+- **Why:** the line answered a question the row cannot answer. An asset group
+  exists precisely because one asset is held across chains, so naming the
+  largest one and counting the rest is a summary of the thing the row already
+  said it was aggregating. The full answer is one tap away and better shaped:
+  `AssetGroupDetailView` opens on `AssetChainBreakdownCard`, which lists every
+  chain with its own amount and value. Rule 0's "delete a feature that is not
+  worth its complexity" — here the cost was a line of type on every row and a
+  three-line row where two will do.
+- **CLI check:** none applies — a rendered line with no state behind it. The
+  grouping it summarised is core's and `spectra --json portfolio` still reports
+  it per holding.
+- **Verification:** `make verify`; the rows and the breakdown card were checked
+  on the simulator.
+
+### The transaction detail and About carry the backdrop, and copy buttons are their own (2026-09-17)
+
+- **Before:** both pages opened with a `ZStack` holding nothing but their
+  `ScrollView` — the place a backdrop goes, left empty — so glass cards sat on
+  the system background and pushing into them dropped the gradient.
+  Its two address blocks shared one `didCopyAddress` on the view: copying "From"
+  made "To" say "Copied" as well, and nothing cleared the flag, so both kept
+  saying it for the rest of the screen's life.
+  **After:** `SpectraBackdrop` fills that `ZStack` and the navigation bar
+  background is hidden, the way every other business detail root does it. They
+  were the only two page roots that drew glass cards over nothing; the other
+  files that do so without a backdrop are components or steps inside a parent
+  that has one.
+  `TransactionAddressBlock` is a view with its own `didCopy`, cleared by
+  `.task(id:)`, and it takes the haptic every other copy button in the app has.
+- **Why:** [docs/IOS-UI.md](IOS-UI.md) asks for the backdrop "at main business
+  detail roots". The copy flag is the third instance of one shape
+  of bug — a page-level `@State` standing in for per-row state — after the
+  address book's `copiedEntryID`; here it was also read by two rows at once.
+- **CLI check:** none applies — iOS chrome and view state. `make test-ios`
+  covers the build; the page was driven on the simulator against a seeded
+  history record, which confirmed the copy button puts the right address on the
+  pasteboard and leaves neither button stuck.
+- **Also:** `HistoryDetailView` is `TransactionDetailView`, after the file it
+  has always lived in.
+- **Verification:** `make verify`.
+
 ### The address book is a list of contacts, not a form with a list under it (2026-09-17)
 
 - **Before:** a `Form` whose first section was a five-field "New Contact" form.

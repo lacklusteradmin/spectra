@@ -124,12 +124,10 @@ async fn an_unvouched_token_is_never_merged_by_symbol() {
     }
 }
 
-/// A row is presented as the place most of it is held.
+/// A row names itself from its identity, which is the place most of it is held
+/// — or the catalog's entry, for a pinned asset held nowhere.
 fn row_symbol(g: &crate::store::wallet_domain::CoreDashboardAssetGroup) -> &str {
-    g.holdings
-        .first()
-        .map(|h| h.coin.symbol.as_str())
-        .unwrap_or_default()
+    g.identity.symbol.as_str()
 }
 
 /// A row's value: the sum of its holdings', or none when any is unpriced.
@@ -204,6 +202,45 @@ async fn a_testnet_row_has_no_value() {
                 .unwrap()
         ),
         None
+    );
+}
+
+/// A pinned asset the user holds nowhere is a row that holds nothing.
+///
+/// `holdings` used to carry a synthesized entry so the row had a name, which
+/// told the reader they held zero of the asset on whichever chain the catalog
+/// listed first — a place they had never been shown. The name is `identity`'s
+/// job; `holdings` says only where it is actually held.
+#[tokio::test]
+async fn a_pinned_asset_held_nowhere_holds_nothing() {
+    let service = service_with(vec![(
+        "w1",
+        "Ethereum",
+        vec![holding("ETH", "Ethereum", 1.0, 2000.0)],
+    )])
+    .await;
+    service
+        .apply_state_command(StateCommand::SetPinnedDashboardAssets {
+            token_ids: vec!["ethereum".into(), "solana".into()],
+        })
+        .await
+        .expect("pin");
+    let groups = service.dashboard_asset_groups().await.expect("groups");
+
+    let solana = groups.iter().find(|g| g.id == "solana").expect("a row");
+    assert!(
+        solana.holdings.is_empty(),
+        "the user holds no SOL, so the row holds nothing: {:?}",
+        solana.holdings
+    );
+    assert_eq!(solana.identity.symbol, "SOL", "and still names itself");
+    assert_eq!(solana.identity.chain_name, "Solana");
+
+    let ethereum = groups.iter().find(|g| g.id == "ethereum").expect("a row");
+    assert_eq!(ethereum.holdings.len(), 1, "a held asset keeps its places");
+    assert_eq!(
+        ethereum.identity, ethereum.holdings[0].coin,
+        "and is named by the largest of them"
     );
 }
 
