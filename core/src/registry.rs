@@ -282,18 +282,9 @@ impl Chain {
         }
     }
 
-    /// Whether a raw private key alone yields an address on this chain.
-    ///
-    /// One fact with two readers: `core_derive_from_private_key` dispatches on
-    /// it, and the import flow offers the chain because of it. They used to be
-    /// four separate lists and all four disagreed — a 39-name array gating the
-    /// picker, a 23-name `matches!` gating the submit, a 30-arm Swift switch
-    /// deciding whether an address appeared, and the dispatcher, which is the
-    /// only one that could actually produce one. Eleven chains satisfied all
-    /// four; the rest were offered and then refused somewhere downstream.
-    ///
-    /// Testnets answer for their mainnet: the key material is the same, and
-    /// which network an address is rendered for is the derivation's business.
+    /// Whether a raw private key yields an address on this chain.
+    /// Shared by derivation and import eligibility. Testnets follow their
+    /// mainnet; derivation handles network-specific address encoding.
     pub fn derives_from_private_key(self) -> bool {
         let chain = self.mainnet_counterpart();
         chain.is_evm()
@@ -340,36 +331,9 @@ impl Chain {
         })
     }
 
-    /// Whether this chain has protocol-native staking Spectra can drive.
-    ///
-    /// Exact rather than through `mainnet_counterpart`: the staking clients are
-    /// built against mainnet endpoints and mainnet contract addresses, so a
-    /// testnet answering "yes" would route to a client that cannot serve it.
-    ///
-    /// One fact with three readers before it existed here — `fetch_validators`
-    /// and `fetch_positions` each matched the same seven chain ids, and
-    /// `StakingSupportedChain` in Swift was a seven-case enum with a display
-    /// name switch and an id switch over the same seven. Widening staking is
-    /// adding a client and a variant here; it was three edits and a chance for
-    /// the picker to offer what the service refuses.
-    /// Whether the send screen has a network card to show for this chain.
-    ///
-    /// A chain qualifies if core can name a fee for it — through the EVM path,
-    /// through a shared-path preview shape, or through the fee fallback the
-    /// generic submit uses when there is no preview to ask. The send screen
-    /// used to decide this from a seventeen-name set beside the EVM check,
-    /// described as "the chains `SendPreviewStore` keeps a field for" — a field
-    /// list that no longer exists, and one that never named Zcash, Bitcoin
-    /// Gold, Decred, Kaspa, Dash or Bittensor, so those six showed "no network
-    /// preview" on a screen that could have priced their send.
-    /// Extra transaction bytes a destination on this chain costs beyond a
-    /// plain output.
-    ///
-    /// Litecoin's MWEB is the only case: an extension-block output is about a
-    /// kilobyte larger, and neither the fee nor the max sendable reflects it
-    /// unless it is added. Kept here rather than in the one preview path that
-    /// knew about it, so a chain with its own extension output is a row rather
-    /// than a fourth copy of a preview function.
+    /// Extra transaction bytes beyond a plain output.
+    /// Litecoin MWEB extension-block outputs add about a kilobyte, which must
+    /// be included in fee and maximum-send calculations.
     pub fn extra_output_overhead_bytes(self, destination: &str) -> u64 {
         if self.is_extension_block_destination(destination) {
             1017
@@ -579,25 +543,8 @@ impl Chain {
         }
     }
 
-    /// Etherscan V2 base URL for this EVM chain, or `None` if the chain is not
-    /// indexed by Etherscan. Etherscan V2 is a unified multichain endpoint
-    /// (`/v2/api?chainid=X`) — all Etherscan-family chains share the same host.
-    /// Chains using other explorers (Blockscout for ETC, Hyperliquid's own
-    /// explorer) return `None` and history falls back to empty.
-    /// Where this chain's transaction history comes from.
-    ///
-    /// This was one constant — `Some("https://api.etherscan.io")` for every
-    /// EVM chain — which meant every chain needed an Etherscan API key, and
-    /// Etherscan V2 has no keyless tier: without a key the call returns
-    /// `NOTOK / Missing-Invalid API Key`, which the caller read as "this
-    /// address has no transactions".
-    ///
-    /// The hosts below were each called three times while writing this table;
-    /// only ones that answered on all three are listed. Etherscan's own V1
-    /// endpoints are not an option for any chain — `api.etherscan.io`,
-    /// `api.bscscan.com`, `api.lineascan.build`, `api.sonicscan.org`,
-    /// `api.basescan.org` and `api.hyperevmscan.io` all answer "You are using
-    /// a deprecated V1 endpoint, switch to Etherscan API V2".
+    /// The explorer source for this EVM chain. Etherscan V2 requires an API key;
+    /// open indexers use their registered endpoints.
     pub fn evm_history_source(self) -> EvmHistorySource {
         match self.mainnet_counterpart() {
             // Blockscout, from its own instance directory at
@@ -782,14 +729,7 @@ impl Chain {
         self.entry().native_coingecko_id.as_str()
     }
 
-    /// The networks a user can pick between for this chain: the mainnet first,
-    /// then its testnets in registry order.
-    ///
-    /// A "network mode" is not a separate concept — it is which `Chain` of a
-    /// family the user selected. Three enums used to model this in parallel
-    /// (`CoreBitcoinNetworkMode`, `CoreDogecoinNetworkMode` and a Swift-only
-    /// Ethereum one), which is why a Dogecoin testnet was quoted at mainnet
-    /// prices: the pricing rule listed two of the three by hand.
+    /// Selectable networks: mainnet first, then testnets in registry order.
     pub fn network_choices(self) -> Vec<Chain> {
         let mainnet = self.mainnet_counterpart();
         std::iter::once(mainnet)
@@ -1035,12 +975,8 @@ impl Chain {
         }
     }
 
-    /// How incoming history for this chain merges with what is already stored.
-    ///
-    /// Exhaustive on purpose: a new chain will not compile until someone says
-    /// how its history merges, rather than silently defaulting to the wrong
-    /// rule. This used to live as eighteen near-identical Swift wrappers,
-    /// which is how a chain could be added and quietly get the wrong one.
+    /// How incoming history merges with stored history.
+    /// Exhaustive so each new chain must specify its merge rule.
     pub fn transaction_merge_strategy(
         self,
     ) -> crate::fetch::transactions::TransactionMergeStrategy {
@@ -1161,28 +1097,8 @@ impl Chain {
         matches!(self, Chain::Ethereum)
     }
 
-    /// The `kind` string [`crate::validation::address::validate_address`]
-    /// dispatches on for this chain's address format.
-    ///
-    /// Address *format* families are coarser than chains: every EVM chain
-    /// validates as `"evm"`, and each testnet has its own flavour because the
-    /// version bytes differ. This is the single source for that mapping —
-    /// import validation, send validation and diagnostics all read it. Do not
-    /// re-tabulate it per module; a stale copy silently rejects every address
-    /// on the chains it misses.
-    /// The match is exhaustive on purpose: adding a `Chain` variant must not
-    /// compile until someone states its address format. The EVM arms duplicate
-    /// [`Chain::is_evm`]'s list to keep that property; a test asserts the two
-    /// never disagree.
-    /// How an address on this chain is folded to its canonical form before it
-    /// is stored or compared.
-    ///
-    /// Testnets follow their mainnet, so a new network needs no row. This was a
-    /// match in `send::flow` over seventeen spelled-out names, and it named
-    /// seven of the twenty-three EVM mainnets: an address on Base, Polygon,
-    /// Linea, Scroll, Blast, Mantle, Sei, Celo, Cronos, opBNB, zkSync Era,
-    /// Sonic, Berachain, Unichain, Ink or X Layer went into the address book
-    /// with whatever case the user typed.
+    /// Canonical address normalization for storage and comparison.
+    /// Testnets follow their mainnet; EVM addresses are lowercased.
     pub fn address_normalization(self) -> AddressNormalization {
         if self.is_evm() {
             return AddressNormalization::Lowercase;
@@ -1194,6 +1110,8 @@ impl Chain {
         }
     }
 
+    /// Address-format key used by validation. Exhaustive so each new chain
+    /// must declare its format; EVM chains share the network-agnostic format.
     pub fn address_validation_kind(self) -> &'static str {
         match self {
             // EVM: one format, network-agnostic on the wire.

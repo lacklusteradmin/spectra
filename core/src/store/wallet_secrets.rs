@@ -1,11 +1,6 @@
-//! The *policy* binding [`seed_envelope`](super::seed_envelope)'s cipher to
-//! [`password_verifier`](super::password_verifier)'s check: the KDF and its
-//! cost, the three blobs a sealed wallet consists of, and their keys.
-//!
-//! It belongs in core because both front ends must agree on it — it used to
-//! live in `cli/src/main.rs`, where a front end could have changed the PBKDF2
-//! cost with nothing to disagree. The *backend* stays platform-owned: Keychain
-//! on iOS, files for the CLI.
+//! Wallet sealing policy: KDF cost, encrypted blobs, and storage keys.
+//! Both front ends share this policy; storage backends are platform-owned
+//! (Keychain on iOS, files for the CLI).
 
 use base64::Engine as _;
 use rand::RngCore;

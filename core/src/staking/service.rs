@@ -39,9 +39,6 @@ impl StakingService {
 
 impl StakingService {
     pub fn new(endpoints: Vec<ChainEndpoints>) -> Arc<Self> {
-        // Seven `const CHAIN_*: &str` spellings used to sit above this, and
-        // `"internet-computer"` among them was one typo away from a staking tab
-        // that silently listed no validators. The registry is the one speller.
         let eps = |chain: Chain| -> Vec<String> {
             endpoints
                 .iter()

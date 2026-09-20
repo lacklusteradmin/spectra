@@ -13,7 +13,7 @@ use spectra_core::service::WalletService;
 use spectra_core::store::wallet_domain::CoreTransactionKind;
 use spectra_core::store::wallet_secrets;
 
-use super::chain::{service_for_chain, BALANCE, BROADCAST, FEE, HISTORY, RPC, UTXO};
+use super::chain::{service_for_chain, BALANCE, BROADCAST, FEE, NATIVE_HISTORY, RPC, UTXO};
 use super::resolve_chain;
 use crate::ctx::{Ctx, SecretSource};
 use crate::error::{CliError, CliResult};
@@ -615,16 +615,9 @@ pub struct ProbeArgs {
     to: String,
 }
 
-/// The recipient check the send composer runs, on the command line.
-///
-/// Named by wallet and asset, because which contract an asset is on a chain is
-/// a catalog question and the catalog is core's. The composer used to answer it
-/// — reading core's token preferences to hand a descriptor straight back — and
-/// so did this command, through three flags a caller had to keep consistent
-/// with the row core already had.
-///
-/// Core answers with two booleans and nothing else; the sentence a user reads
-/// is built by whichever front end asked, from its own strings.
+/// Run the composer's recipient check by wallet and asset.
+/// Core resolves the contract and returns typed verdict flags;
+/// the CLI supplies the wording.
 fn probe(ctx: &Ctx, out: Out, args: ProbeArgs) -> CliResult<()> {
     let wallet = ctx.find_wallet(&args.wallet)?;
     let wallet_chain = resolve_chain(&wallet.chain_name)?;
@@ -660,7 +653,7 @@ fn probe(ctx: &Ctx, out: Out, args: ProbeArgs) -> CliResult<()> {
 
     // Both halves in one service: the holding and the token row come from the
     // opened state, the balance and history reads from the chain's endpoints.
-    let service = service_for_chain(chain, BALANCE | HISTORY | RPC)?;
+    let service = service_for_chain(chain, BALANCE | NATIVE_HISTORY | RPC)?;
     ctx.rt
         .block_on(service.open_state(ctx.db_path()))
         .map_err(CliError::from)?;
@@ -953,8 +946,8 @@ pub fn txs(ctx: &Ctx, out: Out, args: TxsArgs) -> CliResult<()> {
         // A maintenance request names the stored transaction network.
         let network = chain;
         let records = spectra_core::endpoint_records_for_chain_masked(
-            network.chain_display_name().into(),
-            RPC | HISTORY | UTXO,
+            network.str_id().into(),
+            RPC | NATIVE_HISTORY | UTXO,
             false,
         )
         .map_err(CliError::from)?;

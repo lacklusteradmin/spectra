@@ -237,10 +237,7 @@ pub fn run(ctx: &Ctx, out: Out, command: WalletCommand) -> CliResult<()> {
 
 fn new(ctx: &Ctx, out: Out, args: NewArgs) -> CliResult<()> {
     let chain = only_chain(&args.creation)?;
-    // The accepted lengths are core's, and core refuses the rest rather than
-    // substituting twelve words. This used to hold its own `12 | 24` list
-    // because it could not tell a generated eighteen-word phrase from the
-    // twelve it would silently have been handed instead.
+    // Core validates the requested BIP-39 length.
     let seed_phrase = spectra_core::service::generate_mnemonic(args.words)
         .map_err(|error| CliError::usage(error.to_string()))?;
     let outcome = seal_and_import(ctx, &args.creation, &[chain], &seed_phrase)?;
@@ -375,11 +372,8 @@ fn only_chain(args: &CreationArgs) -> CliResult<Chain> {
     Ok(chains[0])
 }
 
-/// Seal the seed once and import a wallet on every chain named.
-///
-/// The addresses are core's: `import_wallets` derives one per selected chain
-/// from the seed on the commit. This used to derive one here and pass it in,
-/// which is why `--chain` could only be given once.
+/// Seal the seed once and import each selected chain.
+/// Core derives the addresses during the import commit.
 fn seal_and_import(
     ctx: &Ctx,
     args: &CreationArgs,
@@ -537,17 +531,9 @@ fn show(ctx: &Ctx, out: Out, args: SelectArgs) -> CliResult<()> {
     Ok(())
 }
 
-/// The address the receive flow hands out, asked of core: `receive_address`
-/// resolves the wallet's network, derives from the xpub or the UTXO keypool
-/// where there is one, reserves the index and registers the result as owned.
-/// Asking twice returns the same address — the reserved index is kept, not
-/// burned.
-///
-/// It used to print the wallet's stored account address instead, which is the
-/// record's index-0 address. On a UTXO chain the reserved index is never 0, so
-/// wherever core could derive one the CLI and the app named two different
-/// addresses under the same word, and this one named an address core does not
-/// watch for incoming funds.
+/// Ask core for the receive address on the wallet's network.
+/// Core reserves UTXO indices and registers derived addresses as owned.
+/// Repeated calls reuse the reserved index.
 fn receive(ctx: &Ctx, out: Out, args: SelectArgs) -> CliResult<()> {
     let wallet = ctx.find_wallet(&args.wallet)?;
     let chain = resolve_chain(&wallet.chain_name)?;
@@ -810,11 +796,7 @@ fn wallet_json(wallet: &WalletState) -> serde_json::Value {
         "name": wallet.name,
         "chain": wallet.chain_name,
         "address": wallet_address(wallet),
-        // Every network of this wallet's family, by chain name. A wallet on a
-        // family with testnets holds one address per network: the app used to
-        // re-derive the testnet one from the seed on every read, so nothing
-        // outside that app could see it and a sealed wallet could not produce
-        // it at all.
+        // Stored addresses for each network in the wallet's family.
         "addresses": wallet
             .addresses
             .iter()

@@ -236,9 +236,7 @@ pub fn currency(ctx: &Ctx, out: Out, args: CurrencyArgs) -> CliResult<()> {
         return Ok(());
     };
 
-    // A code no rate table carries is refused rather than stored: it used to
-    // be accepted, and every amount then rendered unconverted with that code
-    // beside it.
+    // Reject currency codes absent from the rate table.
     let Some(currency) = FiatCurrency::from_code(&requested) else {
         return Err(CliError::rejected(format!(
             "{requested:?} is not a currency this app quotes in"

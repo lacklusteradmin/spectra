@@ -331,15 +331,44 @@ check "refuses the wrong password"          $REJECTED \
 check "will not print a seed without --yes" $USAGE \
     spectra wallet export "Renamed BTC"
 
-section "endpoint kinds"
+section "endpoint kinds and capabilities"
 # `roles` held two things at once: what an endpoint is, and what it is used
 # for. Nothing kept them consistent, and both drifted — ten EVM chains' RPC
 # nodes lost the `rpc` marker, and forty-six claimed a `history` capability no
 # EVM node can serve, because `eth_getTransactionsByAddress` is not a method.
 contains "an EVM node is an rpc-node"        '"kind":"rpc-node"' \
-    spectra --json endpoints --chain Ethereum
-contains "and does not claim address history" '"capabilities":["read","balance","fee","broadcast"]' \
-    spectra --json endpoints --chain Ethereum
+    spectra --json endpoints --catalog --chain Ethereum
+contains "and does not claim address history" '"capabilities":["read","balance","fee","broadcast","token-balance"]' \
+    spectra --json endpoints --catalog --chain Ethereum
+
+lacks "the ambiguous history capability is gone" '"history"' \
+    spectra --json endpoints --catalog
+contains "Bitcoin exposes native history" '"native-history"' \
+    spectra --json endpoints --catalog --chain Bitcoin
+lacks "Bitcoin does not claim token balances" '"token-balance"' \
+    spectra --json endpoints --catalog --chain Bitcoin
+contains "an indexer separates token history and holdings" '"capabilities":["read","native-history","token-balance","token-discovery","token-history"]' \
+    spectra --json endpoints --catalog --chain Ethereum
+contains "Solana nodes enumerate tokens and expose token transfers" '"capabilities":["read","balance","native-history","fee","broadcast","token-balance","token-discovery","token-history"]' \
+    spectra --json endpoints --catalog --chain Solana
+contains "TON v2 only claims native history" '"capabilities":["read","balance","native-history","fee","broadcast","verification"]' \
+    spectra --json endpoints --catalog --chain TON
+contains "TON v3 exposes jetton balances and transfers" '"capabilities":["read","balance","native-history","token-balance","token-discovery","token-history"]' \
+    spectra --json endpoints --catalog --chain TON
+
+section "endpoint network identity"
+contains "Sepolia endpoints carry their concrete network ID" '"networkId":"ethereum-sepolia"' \
+    spectra --json endpoints --catalog --chain ethereum-sepolia
+lacks "Sepolia never returns mainnet ownership" '"networkId":"ethereum"' \
+    spectra --json endpoints --catalog --chain ethereum-sepolia
+lacks "Ethereum does not absorb testnet endpoints" 'ethereum-sepolia' \
+    spectra --json endpoints --catalog --chain ethereum
+contains "Bitcoin Testnet4 is independent of its display title" '"networkId":"bitcoin-testnet-4"' \
+    spectra --json endpoints --catalog --chain bitcoin-testnet-4
+lacks "catalog identity carries no grouping title" '"groupTitle"' \
+    spectra --json endpoints --catalog
+check "unknown endpoint network is refused" $USAGE \
+    spectra --json endpoints --catalog --chain unknown-network
 
 section "evm history source"
 # Fourteen EVM mainnets read history from a keyless explorer; seven still need

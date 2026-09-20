@@ -1,6 +1,4 @@
-//! Price alerts. Core owns both the rules and the evaluation now — it used to
-//! own only the evaluator, with Swift holding the list and applying the verdict
-//! to it, which is the `core_plan_*` shape `PLAN.md` is removing.
+//! Price-alert commands. Core owns storage, validation, and evaluation.
 
 use clap::{Args, Subcommand};
 use colored::Colorize as _;

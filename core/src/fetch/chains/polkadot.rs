@@ -148,13 +148,8 @@ impl PolkadotClient {
 // nonce (RPC), and history (Subscan).
 
 impl PolkadotClient {
-    /// The balance Subscan reports, or why it could not be read.
-    ///
-    /// `system_account` returns `AccountInfo` as SCALE bytes and this client
-    /// has no decoder for it, so Subscan is the only source of a number here.
-    /// A failure used to fall through to `balance: "0"` — "return a default",
-    /// the comment said — which turned every outage, rate limit and refusal
-    /// into an account holding nothing.
+    /// Read the Subscan balance or return an error. `system_account` returns
+    /// SCALE bytes this client cannot decode, so it is not a fallback source.
     pub async fn fetch_balance(&self, address: &str) -> Result<DotBalance, String> {
         #[derive(Deserialize)]
         struct SubscanAccount {

@@ -322,7 +322,7 @@ pub fn catalog_endpoints() -> Result<Vec<ChainEndpoints>, SpectraBridgeError> {
             row.evm_rpc
         } else {
             crate::endpoint_records_for_chain_masked(
-                row.chain_name,
+                row.chain_id.clone(),
                 crate::app_core::ENDPOINT_ROLE_RPC
                     | crate::app_core::ENDPOINT_ROLE_BALANCE
                     | crate::app_core::ENDPOINT_ROLE_BACKEND,

@@ -139,12 +139,8 @@ pub struct TransactionMergeRequest {
     pub preserve_created_at_sentinel_unix: Option<f64>,
 }
 
-// ── Wire ↔ persisted conversion ──────────────────────────────────────────────
-//
-// The two shapes hold the same 30 fields and differ in three ways: `kind` and
-// `status` are strings on the wire and enums in storage, and the timestamp is
-// Unix on the wire and Swift reference time in storage. Both platforms used to
-// own this conversion; it belongs here, next to the merge that needs it.
+// Wire/storage conversion: kind and status strings become enums, and
+// Unix timestamps become Swift reference timestamps.
 
 use crate::store::persistence_models::CorePersistedTransactionRecord;
 use crate::store::wallet_domain::{CoreTransactionKind, CoreTransactionStatus};
@@ -166,14 +162,9 @@ fn kind_to_raw(kind: CoreTransactionKind) -> &'static str {
     }
 }
 
-/// The wire status is a free string, so a value none of the three names has to
-/// read as something. It reads by kind — a receive is pending until a provider
-/// confirms it, a send is confirmed unless it says otherwise — which is the
-/// rule stored records used to carry as "no status at all", and which the app
-/// and core each applied separately.
-///
-/// This is the only place that decides it. A stored record's status is not
-/// optional, so no read site is asked to remember.
+/// Resolve unknown wire status by kind: receives default to pending,
+/// sends to confirmed. Persisted status is required, so this fallback
+/// is applied only at ingestion.
 fn status_from_raw(raw: &str, kind: CoreTransactionKind) -> CoreTransactionStatus {
     CoreTransactionStatus::from_raw(raw).unwrap_or(match kind {
         CoreTransactionKind::Send => CoreTransactionStatus::Confirmed,

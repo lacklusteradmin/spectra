@@ -18,14 +18,14 @@ use crate::out::{self, Out};
 /// Endpoint role bits, as `AppEndpointDirectory` defines them.
 mod role {
     pub const BALANCE: u32 = 1 << 1;
-    pub const HISTORY: u32 = 1 << 2;
+    pub const NATIVE_HISTORY: u32 = 1 << 2;
     pub const UTXO: u32 = 1 << 3;
     pub const FEE: u32 = 1 << 4;
     pub const BROADCAST: u32 = 1 << 5;
     pub const RPC: u32 = 1 << 7;
 }
 
-pub use role::{BALANCE, BROADCAST, FEE, HISTORY, RPC, UTXO};
+pub use role::{BALANCE, BROADCAST, FEE, NATIVE_HISTORY, RPC, UTXO};
 
 #[derive(Args)]
 pub struct ChainsArgs {
@@ -65,7 +65,7 @@ pub struct HistoryArgs {
 pub fn service_for_chain(chain: Chain, roles: u32) -> CliResult<Arc<WalletService>> {
     let name = chain.chain_display_name().to_string();
     let endpoints: Vec<String> =
-        spectra_core::endpoint_records_for_chain_masked(name.clone(), roles, false)
+        spectra_core::endpoint_records_for_chain_masked(chain.str_id().into(), roles, false)
             .map_err(CliError::from)?
             .into_iter()
             .map(|record| record.endpoint)
@@ -147,14 +147,8 @@ pub fn chains(out: Out, args: ChainsArgs) -> CliResult<()> {
                     spectra_core::registry::SendBroadcastMode::SignsAndBroadcasts => "signsAndBroadcasts",
                     spectra_core::registry::SendBroadcastMode::PreparesWithBackend => "preparesWithBackend",
                 }),
-                // Where this chain's transaction history comes from. One
-                // hardcoded Etherscan base used to answer for every EVM chain,
-                // and Etherscan V2 refuses without a key — which the caller
-                // read as "this address has no transactions".
-                // Only for the EVM family: `evm_history_source` is a fact
-                // about explorers, and a non-EVM chain reading "none" here
-                // would say it has no history when it simply has another
-                // route to it.
+                // Explorer history source for EVM chains only. Other families use
+                // different history routes.
                 "historySource": chain.is_evm().then(|| match chain.evm_history_source() {
                     spectra_core::registry::EvmHistorySource::Open(base) => base,
                     spectra_core::registry::EvmHistorySource::EtherscanV2 => "etherscan-v2",
@@ -175,6 +169,9 @@ pub struct EndpointsArgs {
     /// Chain to probe. Omit to probe every chain the catalog knows.
     #[arg(long)]
     chain: Option<String>,
+    /// List registered endpoints and capabilities offline, without health probes.
+    #[arg(long)]
+    catalog: bool,
 }
 
 /// Call every registered endpoint and report which ones answer.
@@ -190,6 +187,31 @@ pub fn endpoints(ctx: &Ctx, out: Out, args: EndpointsArgs) -> CliResult<()> {
             .filter(|c| c.mainnet_counterpart() == *c)
             .collect(),
     };
+    if args.catalog {
+        let mut records = Vec::new();
+        for chain in chains {
+            records.extend(spectra_core::endpoint_records_for_chain_masked(
+                chain.str_id().into(),
+                0,
+                false,
+            )?);
+        }
+        out.text(|| {
+            for record in &records {
+                println!("{}  {}", record.network_id, record.endpoint);
+                println!("  {} · {}", record.kind, record.capabilities.join(" · "));
+            }
+        });
+        out.emit(serde_json::json!({
+            "catalog": true,
+            "total": records.len(),
+            "endpoints": records.iter().map(|r| serde_json::json!({
+                "networkId": r.network_id, "endpoint": r.endpoint,
+                "kind": r.kind, "capabilities": r.capabilities,
+            })).collect::<Vec<_>>(),
+        }));
+        return Ok(());
+    }
     let service = ctx.service()?;
 
     let mut rows = Vec::new();
@@ -233,7 +255,7 @@ pub fn endpoints(ctx: &Ctx, out: Out, args: EndpointsArgs) -> CliResult<()> {
         "unreachable": unreachable,
         "unchecked": unchecked,
         "endpoints": rows.iter().map(|r| serde_json::json!({
-            "chain": r.chain_name, "endpoint": r.endpoint,
+            "networkId": r.network_id, "chain": r.chain_name, "endpoint": r.endpoint,
             "kind": r.kind, "capabilities": r.capabilities,
             "checked": r.checked, "reachable": r.reachable, "detail": r.detail,
         })).collect::<Vec<_>>(),
@@ -368,7 +390,7 @@ pub fn history(ctx: &Ctx, out: Out, args: HistoryArgs) -> CliResult<()> {
         }])
         .map_err(CliError::from)?
     } else {
-        service_for_chain(network, HISTORY | BALANCE | RPC)?
+        service_for_chain(network, NATIVE_HISTORY | BALANCE | RPC)?
     };
     if args.save {
         return save_history(

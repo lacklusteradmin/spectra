@@ -102,11 +102,7 @@ pub fn sign_bsv_tx(
         fee_sat,
     )?;
 
-    // A transaction's outputs must all be on the chain its inputs are on. The
-    // decoder used to accept any of the four version bytes and hand back only
-    // the hash, so a mainnet send to an `m…` destination built a perfectly
-    // valid output paying a hash the user never meant — the address they typed
-    // names a different chain, and nothing along the way said so.
+    // Every output address must belong to the transaction's network.
     let (to_hash, to_network) = decode_bsv_address(to_address)?;
     let (change_hash, change_network) = decode_bsv_address(change_address)?;
     if to_network != change_network {

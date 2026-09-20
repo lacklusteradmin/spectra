@@ -100,13 +100,8 @@ impl BittensorClient {
         .await
     }
 
-    /// The balance Taostats reports, or why it could not be read.
-    ///
-    /// Every arm of this used to answer `rao: 0`: no key configured, the
-    /// request failing, `balance_total` absent, or the string not parsing. An
-    /// address whose balance cannot be read does not hold nothing, and since
-    /// `api_keys` starts empty, that made a confident zero the default answer
-    /// for every Bittensor address in the app.
+    /// Read the Taostats balance or return an error. Missing credentials,
+    /// request failures, and malformed balances must not become zero holdings.
     pub async fn fetch_balance(&self, address: &str) -> Result<TaoBalance, String> {
         #[derive(Deserialize)]
         struct TaostatsAccount {

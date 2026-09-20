@@ -1,10 +1,5 @@
-//! Whether a refresh is due. Pure — no I/O, no clock of its own.
-//!
-//! Five exports used to live here and in `send/flow.rs`, each taking the piece
-//! of state it needed as an argument because core held none of it. The state
-//! is `RefreshClock` now, on `WalletService`, and the intervals are settings
-//! and policy core owns; what is left here is the arithmetic, which is what a
-//! policy module should be.
+//! Pure refresh scheduling arithmetic. `WalletService` owns the
+//! `RefreshClock`, settings, and policy inputs.
 
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;

@@ -342,14 +342,8 @@ fn build_unsigned_spend(
     identity: &SpendIdentity,
     sizing: SpendSizing,
 ) -> Result<UnsignedSpend, String> {
-    // Built before coin selection, because what they pay out is part of what
-    // has to be funded. Selection used to target the recipient amount alone
-    // and the extras were appended afterwards, so a batch send laid out a
-    // transaction whose outputs exceeded its inputs: 200_000 sats in, 60_000
-    // to the recipient, 7_000 to an extra, and change computed as if the
-    // extra were free. `saturating_sub` then hid it — the shortfall became a
-    // change of zero instead of a refusal — and the node rejected the signed
-    // result with `bad-txns-in-belowout`.
+    // Build extra outputs before coin selection so their amounts are
+    // included in the funding target and change calculation.
     let extra = build_extra_outputs(&params.extra_outputs, identity.network)?;
     let spend_sats = extra
         .iter()

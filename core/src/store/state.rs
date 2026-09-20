@@ -88,19 +88,7 @@ impl WalletState {
             .map(|a| a.address.as_str())
     }
 
-    /// This wallet's address on a chain, or `None` if it has none there.
-    ///
-    /// Compares address *slots*, not names, which is what the slot is for: one
-    /// derived secp256k1 address serves every EVM chain, so a wallet on
-    /// Ethereum resolves an address for Arbitrum and a name comparison would
-    /// say it does not.
-    /// The network this wallet is on for its own family: the one it recorded
-    /// at import if that is still a network of the family, otherwise whatever
-    /// the app is set to.
-    ///
-    /// One rule, read by everything that fetches for a wallet — balances,
-    /// history, diagnostics. Each of them used to work it out again, and they
-    /// did not agree.
+    /// The wallet's recorded network, if it belongs to the wallet's chain family.
     pub fn network_chain(&self, _settings: &AppSettings) -> Option<crate::registry::Chain> {
         let chain = crate::registry::Chain::from_display_name(&self.chain_name)?;
         crate::registry::Chain::from_str_id(&self.network_id)
@@ -116,6 +104,8 @@ impl WalletState {
             .or_else(|| self.address_on(chain))
     }
 
+    /// Resolve by address slot, allowing chains with a shared derivation
+    /// (such as EVM chains) to use the same stored address.
     pub fn address_on(&self, chain: crate::registry::Chain) -> Option<&str> {
         let slot = chain.address_slot();
         self.addresses
@@ -153,12 +143,7 @@ pub enum AddressBookRejection {
     DuplicateAddress,
 }
 
-/// How soon a chain's fee should get a transaction confirmed.
-///
-/// The three a fee picker offers. This was a free string in
-/// [`AppSettings::fee_priority_by_chain`] and a second enum in the app, so
-/// "which values exist" had two answers and the app's was the typed one.
-/// Front ends name them; which ones exist is core's.
+/// Fee-priority choices. Front ends supply their localized names.
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Hash, uniffi::Enum)]
 #[serde(rename_all = "lowercase")]
 pub enum FeePriority {
@@ -305,11 +290,8 @@ pub struct AppSettings {
     #[serde(default)]
     pub background_sync_profile: BackgroundSyncProfile,
 
-    // ── Tor ───────────────────────────────────────────────────────────────
-    /// Route traffic through Tor. The platform starts and stops the client —
-    /// the embedded one needs a writable directory only it can name — but
-    /// whether Tor is wanted at all is state, and it used to live in one front
-    /// end's `UserDefaults`, where no other front end and no test could see it.
+    // Tor routing preference. The platform manages the client lifecycle
+    // and provides its writable directory.
     #[serde(default)]
     pub tor_enabled: bool,
     /// Use a SOCKS5 proxy the user runs (Orbot) instead of the embedded client.
@@ -696,13 +678,8 @@ impl Default for CoreAppState {
 /// producing an unrenderable amount.
 pub(crate) const MAX_TOKEN_DECIMALS: i32 = 30;
 
-/// One settings field, and its new value.
-///
-/// A variant per field rather than a whole-record setter: the record was how
-/// this state used to move — iOS built all twenty-three fields from its own
-/// properties and wrote them together, so two screens changing two settings
-/// raced, and the later write carried the earlier screen's stale copy of
-/// everything else. Setting one field says one field.
+/// One settings field and its new value. Field-level updates avoid
+/// overwriting unrelated settings with a caller's stale snapshot.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, uniffi::Enum)]
 #[serde(tag = "field", rename_all = "camelCase")]
 pub enum AppSettingUpdate {
@@ -817,12 +794,7 @@ pub enum StateCommand {
     SetAppSetting {
         update: AppSettingUpdate,
     },
-    /// Put every setting core owns back to its default.
-    ///
-    /// The defaults are `AppSettings::default()` and nowhere else. iOS used to
-    /// reset them by assigning each mirror the value it believed was the
-    /// default — a literal per setting, in a file that had no way to know when
-    /// one of them changed.
+    /// Reset core-owned settings to `AppSettings::default()`.
     ResetAppSettings,
     /// Replace the pinned dashboard set. Token IDs are trimmed
     /// and de-duplicated, first occurrence winning, so display order is the
@@ -849,14 +821,9 @@ pub enum StateCommand {
     SelectNetworkChain {
         chain_id: String,
     },
-    /// Add a token the catalog does not ship.
-    ///
-    /// The reducer trims, upper-cases the symbol, validates the contract with
-    /// the chain's own `contract_validation_kind` and refuses a duplicate; a
-    /// rejected token produces a `tokenPreferenceRejected` event and no
-    /// change. Both front ends used to assemble the whole list and hand it
-    /// back — with different duplicate rules, and only one of them checking
-    /// the contract at all.
+    /// Add a custom token. Trim input, uppercase the symbol, validate the
+    /// contract using the chain's rule, and reject duplicates.
+    /// Rejection emits `tokenPreferenceRejected` without changing state.
     AddCustomToken {
         chain_name: String,
         symbol: String,
@@ -885,11 +852,8 @@ pub enum StateCommand {
     },
     /// Back to the catalog's own list, with every custom token dropped.
     ResetTokenPreferences,
-    /// Fold this build's catalog into the stored preferences: a user's
-    /// `is_enabled` survives, tokens the build added appear, and tokens the
-    /// user added stay. Both lists are core's, so neither crosses the
-    /// boundary — the caller used to fetch the catalog, reshape it and send
-    /// both back for merging.
+    /// Merge the catalog into stored preferences: preserve `is_enabled`,
+    /// include new built-ins, and retain user-added tokens.
     MergeBuiltInTokens,
     /// Add a recipient. `address` is normalized and validated by the reducer;
     /// a rejected entry produces an `addressBookRejected` event and no change.
@@ -1100,17 +1064,9 @@ pub fn app_settings_applying(settings: AppSettings, update: AppSettingUpdate) ->
     settings
 }
 
-/// Apply one settings update, trimming strings and bounding numbers, and
-/// answer whether it was accepted.
-///
-/// The clamps were `didSet` bodies on the iOS side — the only copy, so a value
-/// out of range was only out of range where someone had remembered to check.
-///
-/// An update naming a chain the registry does not have, or a proxy address
-/// that is not a SOCKS5 URL, changes nothing — and used to say nothing either,
-/// so a front end or a script could set a value, be told the command
-/// succeeded, and read back the old one. The caller turns `false` into a
-/// refusal event.
+/// Apply one settings update, trimming strings and bounding numbers.
+/// Unknown chains and invalid SOCKS5 URLs leave state unchanged;
+/// `false` tells the caller to emit a refusal event.
 fn apply_app_setting(settings: &mut AppSettings, update: AppSettingUpdate) -> bool {
     fn trimmed(value: String) -> String {
         value.trim().to_string()

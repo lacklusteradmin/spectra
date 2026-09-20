@@ -501,11 +501,8 @@ pub fn parse_bitcoin_esplora_endpoints(raw: String) -> Vec<String> {
         .collect()
 }
 
-/// Which endpoint setting a value came from.
-///
-/// Decides both how the value is parsed — one URL, or a comma-separated list —
-/// and which message names it. There were three exports for this and two of
-/// them were byte-identical but for their string.
+/// Endpoint setting identity. Determines URL parsing (single or
+/// comma-separated) and the validation message.
 #[derive(Debug, Clone, Copy, uniffi::Enum)]
 pub enum EndpointField {
     /// A comma, semicolon or newline separated list.
@@ -575,6 +572,18 @@ fn is_valid_http_url(s: &str) -> bool {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn display_decimals_use_known_deployment_or_custom_precision() {
+        assert_eq!(
+            super::token_display_decimals(Some("ethereum:native".into()), None),
+            18
+        );
+        assert_eq!(
+            super::token_display_decimals(Some("custom:unlisted".into()), Some(6)),
+            6
+        );
+    }
+
     use super::*;
 
     /// The rule, not the symptom: a template is already what `canonicalize`

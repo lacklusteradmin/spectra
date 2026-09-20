@@ -155,14 +155,7 @@ pub struct WalletImportCommit {
     pub seed_derivation_preset: crate::store::wallet_domain::CoreSeedDerivationPreset,
     pub seed_derivation_paths: crate::store::wallet_domain::CoreSeedDerivationPaths,
     pub derivation_overrides: crate::store::wallet_domain::CoreWalletDerivationOverrides,
-    /// The seed to derive each selected chain's address from, when the caller
-    /// has not derived them itself.
-    ///
-    /// A signing import that leaves `resolved_addresses` empty gets its
-    /// addresses here. Both front ends used to derive first and pass the
-    /// result in, which meant the rule that every EVM chain derives from
-    /// Ethereum's path lived in whichever front end imported more than one
-    /// chain at a time — iOS — and not in the registry that owns it.
+    /// Seed used to derive selected chains when `resolved_addresses` is empty.
     pub seed_phrase: Option<String>,
     /// The key to derive a private-key import's address from, when the caller
     /// has not derived it itself.
@@ -456,16 +449,8 @@ pub(crate) fn validated_watch_only_entries(
     )
 }
 
-/// Build the wallets an import plan calls for, without storing them.
-///
-/// Mirrors what the iOS app used to do by hand after reading the plan.
-///
-/// The network each wallet is on is the one its family is selected on in
-/// `networks`, which is core's own setting. The app sent its copy of that
-/// setting on the commit, and the holdings each wallet starts with — native
-/// coin rows it built from the catalog — beside it. Each wallet now starts
-/// with its own network's native holding, where every wallet in a
-/// multi-chain import used to start with every selected chain's.
+/// Build imported wallets without storing them. Core's network settings
+/// select each wallet's network and initial native holding.
 pub(crate) fn wallets_for_import(
     commit: &WalletImportCommit,
     plan: &WalletImportPlan,
@@ -670,11 +655,8 @@ fn addresses_for_chain(
     };
 
     let mut by_slot = HashMap::new();
-    // Every network of this wallet's family, each under its own slot. The
-    // address a user sees after switching to Testnet4 is a different key from
-    // the mainnet one, and it used to be re-derived from the seed on every
-    // read — which a password-sealed wallet cannot do, so it silently showed
-    // the mainnet address instead.
+    // Store an address for each network in the wallet's family so network
+    // switching does not need to reopen the seed.
     for network in chain.network_choices() {
         if let Some(address) = addresses.address_for(network) {
             by_slot.insert(network.address_slot().to_string(), address.to_string());

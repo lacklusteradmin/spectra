@@ -4,6 +4,8 @@ XCODE_PROJECT := swift/Spectra.xcodeproj
 XCODE_SCHEME ?= Spectra
 IOS_SIM_DEST ?= generic/platform=iOS Simulator
 IOS_TEST_DEST ?= platform=iOS Simulator,name=iPhone 17 Pro
+# Optional isolation when another task is building the same Xcode project.
+IOS_TEST_DERIVED_DATA ?=
 
 .PHONY: verify fmt lint check check-ui test test-cli test-ios \
 	ios iosr ios-artifacts ios-artifacts-release android androidr \
@@ -37,7 +39,8 @@ test-cli:
 
 test-ios:
 	xcodebuild test -project "$(XCODE_PROJECT)" -scheme "$(XCODE_SCHEME)" \
-		-destination "$(IOS_TEST_DEST)"
+		-destination "$(IOS_TEST_DEST)" \
+		$(if $(IOS_TEST_DERIVED_DATA),-derivedDataPath "$(IOS_TEST_DERIVED_DATA)")
 
 # ── Builds ──────────────────────────────────────────────────────────
 ios:

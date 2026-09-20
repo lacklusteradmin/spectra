@@ -54,14 +54,7 @@ enum SymbolOverride {
     RowNamesAsset,
 }
 
-/// Where one chain's history JSON keeps the fields a normalized entry needs,
-/// and what units they arrive in.
-///
-/// This was fifteen match arms of twenty near-identical lines: they differed
-/// in field names, in one divisor, and in nothing else, while each re-derived
-/// the same `if is_incoming { "receive" } else { "send" }`. A chain with no arm
-/// of its own returned an empty history however well its fetch had gone, which
-/// is what every UTXO testnet did.
+/// JSON fields and source units used to normalize a chain's history.
 struct HistoryShape {
     hash: HashField,
     /// Field holding the amount.

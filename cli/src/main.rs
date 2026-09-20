@@ -1,9 +1,5 @@
-//! `spectra` — a front end for `spectra_core`, and the check that core needs
-//! no platform.
-//!
-//! Every command is non-interactive and scriptable, because `PLAN.md` rule 1
-//! makes this CLI the acceptance gate: a rule it cannot drive is in the wrong
-//! place. The previous version was a REPL, which cannot gate anything.
+//! `spectra`: a non-interactive, scriptable front end for `spectra_core`.
+//! CLI acceptance proves domain rules work without a platform UI.
 
 mod cmd;
 mod ctx;

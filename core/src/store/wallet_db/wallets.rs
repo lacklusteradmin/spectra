@@ -64,28 +64,10 @@ pub fn wallet_load(
     })
 }
 
-/// Load every wallet, in the stored display order. A row this build cannot
-/// decode is skipped rather than fatal.
-///
-/// It used to be fatal, and that took the whole app down with it. Stored
-/// shapes change here without migrations — Rule 0 says so outright — so every
-/// such change orphans the rows the previous shape wrote. One of them failed
-/// this load, which failed `app_state_load`, which failed `open_state`; every
-/// call into core waits on `open_state`, so the app could no longer list
-/// wallets, import one, or even reset itself. Shrinking
-/// `CoreWalletDerivationOverrides` to two fields is what demonstrated it: a
-/// row carrying the old `mnemonicWordlist` bricked the install, and the only
-/// way out was deleting the app.
-///
-/// Refusing protected nothing. What the row holds — a name, a chain, cached
-/// addresses and balances — is re-derivable from the secret the Keychain
-/// still holds under the same wallet id, and the bytes are left untouched on
-/// disk either way: no production write replaces the table wholesale, and a
-/// skipped id is absent from both sides of every `AppStateChanges::between`,
-/// so nothing prunes it. The strictness that does matter is on the way in —
-/// `CoreWalletDerivationOverrides` keeps `deny_unknown_fields`, because
-/// silently ignoring an override a caller *set* would derive a different
-/// address than the caller asked for.
+/// Load wallets in stored display order, skipping undecodable rows.
+/// Skipped rows remain on disk and their secrets remain in the secret store.
+/// Writes still validate overrides strictly: ignoring an unknown derivation
+/// override could produce a different address than requested.
 pub fn wallet_load_all(database: &WalletDatabase) -> Result<Vec<WalletState>, String> {
     with_conn(database, |conn| {
         let mut stmt = conn

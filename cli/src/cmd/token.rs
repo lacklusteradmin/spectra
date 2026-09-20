@@ -1,8 +1,5 @@
-//! Tracking a token is `is_enabled` on a row core already holds, not a row the
-//! caller assembles. This file used to read the whole preference list, edit it
-//! and write it back — with a duplicate rule (symbol, case-insensitively) that
-//! disagreed with the composer's (normalized contract), and no check on a
-//! custom token's contract at all.
+//! Token commands update core-owned preference rows. Core validates custom
+//! contracts and duplicates; tracking toggles `is_enabled`.
 
 use clap::{Args, Subcommand};
 use colored::Colorize as _;
@@ -245,9 +242,7 @@ fn list(ctx: &Ctx, out: Out) -> CliResult<()> {
     Ok(())
 }
 
-/// Turn a token on or off. The row is core's — every catalog token has one —
-/// so this names it and says which way, where it used to fetch the list, push
-/// or filter an entry and write the whole thing back.
+/// Enable or disable a core-owned token preference.
 fn set_tracked(ctx: &Ctx, out: Out, args: TrackArgs, is_enabled: bool) -> CliResult<()> {
     let chain = resolve_chain(&args.chain)?;
     let chain_name = chain.chain_display_name().to_string();

@@ -172,18 +172,9 @@ pub fn explorer_query_url(
     }
 }
 
-/// Separate "no transactions" from "the explorer refused".
-///
-/// Both answer `status: "0"`, which is why the two call sites below used to
-/// return an empty list for either and a caller could not tell an address with
-/// no history from an explorer that would not talk to it. The difference is in
-/// `result`: an empty history carries an empty **array**, and every refusal —
-/// Etherscan's `"Missing/Invalid API Key"`, Blockscout's transient
-/// `"Something went wrong."` with a null result — carries something that is not
-/// an array.
-///
-/// Judged on the shape rather than on `message`, so it does not depend on an
-/// explorer's wording staying put.
+/// Distinguish empty history from explorer refusal by the shape of `result`.
+/// Both can have status "0": an empty array is empty history, while a
+/// non-array result is an error. Do not rely on explorer message wording.
 fn etherscan_result_rows(status: &str, message: &str, result: Value) -> Result<Vec<Value>, String> {
     match result {
         Value::Array(rows) => Ok(rows),

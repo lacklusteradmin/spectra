@@ -5,13 +5,7 @@ use super::{
     PriceAlertEvaluationAlert,
 };
 
-/// Why an alert edit was refused. Front ends map these to their own wording;
-/// the decision is core's.
-///
-/// The refusal used to carry an English sentence as its subject, and the app
-/// showed it verbatim — the one rejection in the state reducer that reached a
-/// Chinese screen in English, and the one whose wording a front end could not
-/// change without matching on core's prose.
+/// Typed reasons for refused alert edits; front ends localize them.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize, uniffi::Enum)]
 #[serde(rename_all = "camelCase")]
 pub enum PriceAlertRejection {

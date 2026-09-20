@@ -82,11 +82,7 @@ pub fn refresh(ctx: &Ctx, out: Out, args: RefreshArgs) -> CliResult<()> {
     let engine = BalanceRefreshEngine::new(service);
     let collector = Arc::new(Collector(Mutex::new(Collected::default())));
     engine.set_observer(collector.clone());
-    // Core builds the list from the wallets it holds. This command used to
-    // build its own — a third copy of the rule beside the app's and core's, and
-    // it disagreed with both: it took any wallet's `xpub` as the fetch key
-    // rather than only Bitcoin's, and the wallet's first stored address rather
-    // than the one for the network it is on.
+    // Core builds refresh entries from its wallets and their networks.
     let entry_count = ctx
         .rt
         .block_on(engine.sync_entries(args.wallet.as_ref().map(|_| wallets[0].id.clone())));

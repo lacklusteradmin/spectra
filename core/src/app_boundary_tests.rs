@@ -2,31 +2,6 @@
 use crate::*;
 
 #[test]
-fn amount_display_never_renders_positive_dust_as_zero() {
-    let dust = formatting::formatting_asset_amount_display(1e-10, 18);
-    assert!(dust.below_threshold);
-    assert_eq!(dust.threshold, 1e-8);
-    assert_eq!(
-        crate::tokens::token_display_decimals(Some("ethereum:native".into()), None),
-        18
-    );
-    assert_eq!(
-        crate::tokens::token_display_decimals(Some("custom:unlisted".into()), Some(6)),
-        6
-    );
-    assert_eq!(
-        formatting::formatting_fiat_amount_rules(crate::store::state::FiatCurrency::Jpy)
-            .minimum_visible,
-        1.0
-    );
-    assert_eq!(
-        formatting::formatting_fiat_amount_rules(crate::store::state::FiatCurrency::Usd)
-            .minimum_visible,
-        0.01
-    );
-}
-
-#[test]
 fn derivation_editor_preserves_hardening_and_refuses_malformed_paths() {
     let path = "m/44'/60'/0'/0/7";
     let segments = core_parse_derivation_path(path.into()).unwrap();
@@ -37,21 +12,6 @@ fn derivation_editor_preserves_hardening_and_refuses_malformed_paths() {
             "{invalid}"
         );
     }
-}
-
-#[test]
-fn envelope_rejects_wrong_keys_and_tampering_at_the_app_boundary() {
-    use store::seed_envelope::{decrypt_seed_envelope, encrypt_seed_envelope};
-    let envelope = encrypt_seed_envelope("public test fixture".into(), vec![7; 32]).unwrap();
-    assert_eq!(
-        decrypt_seed_envelope(envelope.clone(), vec![7; 32]).unwrap(),
-        "public test fixture"
-    );
-    assert!(decrypt_seed_envelope(envelope.clone(), vec![8; 32]).is_err());
-    let mut payload: serde_json::Value = serde_json::from_slice(&envelope).unwrap();
-    payload["nonce"] = serde_json::json!("AA==");
-    assert!(decrypt_seed_envelope(serde_json::to_vec(&payload).unwrap(), vec![7; 32]).is_err());
-    assert!(encrypt_seed_envelope("fixture".into(), vec![7; 31]).is_err());
 }
 
 #[test]

@@ -20,18 +20,9 @@ use crate::http::{HttpClient, RetryProfile};
 
 // ── Provider catalog
 
-/// Market-data providers, in the order their answers are preferred.
-///
-/// This used to be a user setting with one arm selected and no fallback: a
-/// provider that was down, rate limited, or simply did not list a coin yielded
-/// no prices at all, and the only cure was a trip to Settings. Both run now
-/// and their answers merge, so coverage is the union.
-///
-/// CoinGecko comes first because it prices every asset the catalog carries an
-/// id for; CoinPaprika is asked about whatever it also lists. Both are asked
-/// by id. Matching a quote to a holding by ticker symbol was how BUSD — Bera
-/// USD here — priced as Binance USD, so nothing does it now: an asset the
-/// catalog cannot name at a provider goes unpriced there.
+/// Market-data providers in preference order. Merge results for combined
+/// coverage, querying by catalog provider ids only. Assets without a
+/// provider id stay unpriced there; tickers do not establish identity.
 const PRICE_PROVIDERS: &[PriceProvider] = &[PriceProvider::CoinGecko, PriceProvider::CoinPaprika];
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -337,14 +328,7 @@ fn market_ids_for(gecko_id: &str) -> Option<&'static AssetMarketIds> {
     }
 }
 
-/// The CoinPaprika id for an asset, or `None` when the catalogs do not name
-/// one — an unlisted asset, or one whose identity there we could not verify.
-///
-/// This was a pair of hand-written tables covering a third of the token
-/// catalog, three of whose ids no longer resolved (`aave-aave`, `cro-cronos`,
-/// `leo-unus-sed-leo`). Whatever they missed fell through to a symbol match
-/// against several thousand paprika listings, which is a wrong asset's price,
-/// not a missing one.
+/// The asset's catalog CoinPaprika id, or `None` when no verified id is listed.
 fn paprika_id_for(gecko_id: &str) -> Option<&'static str> {
     let ids = market_ids_for(gecko_id)?;
     (!ids.coinpaprika_id.is_empty()).then_some(ids.coinpaprika_id.as_str())

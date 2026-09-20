@@ -3,15 +3,8 @@
 
 // ── Address validation ───────────────────────────────────────────────────
 
-/// Which BSV network an address belongs to.
-///
-/// The version byte says this, and everything here used to read it only to
-/// check it was one of the four and then throw it away. That is the whole of
-/// the bug: `validate_bsv_address` took no network and both `"bitcoinSV"` and
-/// `"bitcoinSVTestnet"` dispatched to it, so the testnet kind decided nothing —
-/// a mainnet send accepted an `m…`/`n…`/`2…` destination and a testnet send
-/// accepted a `1…`/`3…` one. Every other base58 chain in the validator
-/// (Litecoin, Dash, Decred, Zcash) splits by network; this is that split.
+/// BSV network encoded in the address version byte. Validation and output
+/// construction must reject addresses belonging to the other network.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum BsvNetwork {
     Mainnet,

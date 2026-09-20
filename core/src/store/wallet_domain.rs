@@ -707,7 +707,7 @@ impl CoreTokenHostingChain {
     }
 }
 
-/// Swift `TokenPreferenceCategory` — rawValues: "stablecoin", "meme", "custom".
+/// Token preference categories for built-in and user-added tokens.
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Hash, uniffi::Enum)]
 #[serde(rename_all = "lowercase")]
 pub enum CoreTokenPreferenceCategory {

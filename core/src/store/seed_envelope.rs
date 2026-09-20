@@ -137,6 +137,39 @@ mod tests {
     }
 
     #[test]
+    fn valid_length_tampering_fails_authentication() {
+        let key = [7; 32];
+        let sealed = encrypt(b"public test fixture", &key).unwrap();
+        let original: Envelope = serde_json::from_slice(&sealed).unwrap();
+        // Change message bytes, the appended authentication tag, and the nonce
+        // independently. All still pass structural validation.
+        for target in [0, original.ciphertext.len() - 1, original.ciphertext.len()] {
+            let mut envelope: Envelope = serde_json::from_slice(&sealed).unwrap();
+            if target == envelope.ciphertext.len() {
+                envelope.nonce[0] ^= 1;
+            } else {
+                envelope.ciphertext[target] ^= 1;
+            }
+            let tampered = serde_json::to_vec(&envelope).unwrap();
+            assert_eq!(
+                decrypt(&tampered, &key).unwrap_err(),
+                "AES-GCM decrypt failed (bad key or corrupted data)"
+            );
+        }
+    }
+
+    #[test]
+    fn malformed_nonce_is_refused_before_decryption() {
+        let sealed = encrypt(b"fixture", &[7; 32]).unwrap();
+        let mut envelope: Envelope = serde_json::from_slice(&sealed).unwrap();
+        envelope.nonce = vec![0];
+        assert_eq!(
+            decrypt(&serde_json::to_vec(&envelope).unwrap(), &[7; 32]).unwrap_err(),
+            "invalid nonce length"
+        );
+    }
+
+    #[test]
     fn wrong_key_fails() {
         let key = [0xABu8; 32];
         let wrong_key = [0xCDu8; 32];

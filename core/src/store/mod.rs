@@ -413,18 +413,7 @@ pub fn now_unix() -> f64 {
         .unwrap_or(0.0)
 }
 
-/// An opaque identifier for a newly recorded event.
-///
-/// Random hex rather than a UUID: nothing parses these, and the shape is not
-/// worth a dependency. Callers must treat it as opaque — the platform used to
-/// mint UUIDs here and no reader depended on that either.
-/// A random v4 UUID in the canonical dashed form.
-///
-/// The shape is core's own choice and callers must treat it as opaque. It used
-/// to be a requirement: the app parsed these back with `UUID(uuidString:)` and
-/// dropped a row whose id did not parse, so an id core minted as bare hex would
-/// have vanished from the history list rather than failing where it was made.
-/// The app now carries the id verbatim.
+/// A random v4 UUID in canonical dashed form. Callers treat it as opaque.
 pub fn new_transaction_id() -> String {
     use rand::RngCore as _;
     let mut bytes = [0u8; 16];
@@ -443,6 +432,7 @@ pub fn new_transaction_id() -> String {
     )
 }
 
+/// Random hex event identifier. Callers treat it as opaque.
 pub fn new_event_id() -> String {
     use rand::RngCore as _;
     let mut bytes = [0u8; 16];

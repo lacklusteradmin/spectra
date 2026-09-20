@@ -46,7 +46,7 @@ impl WalletService {
         let chain = chain_for_id(&chain_id)?;
         let name = chain.chain_display_name().to_string();
         let method = chain.rpc_health_method();
-        let mut records = crate::endpoint_records_for_chain_masked(name.clone(), 0, false)
+        let mut records = crate::endpoint_records_for_chain_masked(chain_id.clone(), 0, false)
             .map_err(|e| SpectraBridgeError::from(format!("endpoints for {name}: {e}")))?;
 
         // Custom endpoints use the same protocol probe as the catalog's node.
@@ -84,6 +84,7 @@ impl WalletService {
             let rpc_method = is_rpc.then_some(method).flatten();
             if is_link_only && explicit_probe.is_none() {
                 out.push(EndpointProbe {
+                    network_id: chain_id.clone(),
                     chain_name: name.clone(),
                     endpoint: record.endpoint,
                     kind: record.kind.clone(),
@@ -122,6 +123,7 @@ impl WalletService {
                 (None, None) => (false, false, "no probe for this endpoint".to_string()),
             };
             out.push(EndpointProbe {
+                network_id: chain_id.clone(),
                 chain_name: name.clone(),
                 endpoint: record.endpoint,
                 kind: record.kind.clone(),

@@ -35,11 +35,7 @@ fn pretty_sanitized(value: Value) -> Option<String> {
     Some(sanitize_diagnostics_string(&s))
 }
 
-/// One endpoint's row.
-///
-/// There were two of these — one emitting `label` and one not — chosen by which
-/// chain family was being built. A row that has a label carries it; one that
-/// does not omits the key rather than printing an empty string.
+/// One endpoint row. Include `label` only when present.
 fn endpoint_row_value(row: &EndpointHealthRow) -> Value {
     let mut out = Map::new();
     if !row.label.is_empty() {
@@ -58,13 +54,7 @@ fn unix_or_zero(t: Option<f64>) -> f64 {
 
 // ---------- History JSON ----------
 
-/// One chain's diagnostics document.
-///
-/// There were five of these, one per record shape, and they built the same
-/// payload — `historyLastUpdatedAt`, `endpointsLastUpdatedAt`, `history[]`,
-/// `endpoints[]` — differing only in the field names inside a row. Rows are
-/// uniform now, so the document is one function and adding a chain is not a
-/// new builder.
+/// One chain's diagnostics document, with uniform history and endpoint rows.
 pub fn diagnostics_build_history_json(
     history: Vec<HistoryDiagnostics>,
     endpoints: Vec<EndpointHealthRow>,
@@ -232,12 +222,8 @@ mod tests {
     }
 }
 
-/// The diagnostics document for one chain.
-///
-/// One export in place of five builders, and it takes no `history` argument
-/// because core owns that now — the caller used to read core's registry, hand
-/// the rows straight back across the FFI, and receive JSON built from them.
-/// It does not match on chain at all: every chain records the same row.
+/// Build a chain's diagnostics document from core-owned history and supplied
+/// endpoint health results.
 #[uniffi::export]
 pub fn core_diagnostics_json(
     chain_name: String,

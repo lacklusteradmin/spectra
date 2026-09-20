@@ -62,16 +62,8 @@ impl BalanceRefreshEngine {
         *self.inner.observer.write().unwrap() = None;
     }
 
-    /// Rebuild the entry list from the wallets core holds, and answer how many
-    /// there are. `wallet_id` scopes it to one wallet.
-    ///
-    /// A front end used to build this list: it walked its own wallet
-    /// projection, resolved each address — by reading the seed out of the
-    /// Keychain and deriving it — and handed the triples back. So what the
-    /// engine refreshed was one platform's copy of core's own state, and a
-    /// wallet that copy could not resolve an address for was dropped from the
-    /// refresh with a `print`. Core reads its wallets and its selected
-    /// networks directly.
+    /// Rebuild refresh entries from core-owned wallets and their selected
+    /// networks. `wallet_id` scopes the rebuild; returns the entry count.
     pub async fn sync_entries(&self, wallet_id: Option<String>) -> u32 {
         let state = self.inner.wallet_service.app_state().await;
         let mut entries = refresh_entries_for(&state);
@@ -83,16 +75,9 @@ impl BalanceRefreshEngine {
         count
     }
 
-    /// Adopt the wallets core holds now, and refresh only if what the engine
-    /// fetches changed. Answers whether it did.
-    ///
-    /// A front end calls this whenever its wallet list is replaced, and a
-    /// balance refresh replaces it — balances are part of the list. The app
-    /// used to answer every replacement with `sync_entries`, `trigger_immediate`
-    /// and `configure_for_device`, whose restart ticks at once, so the end of
-    /// each sweep started the next one and the radio never went quiet. The
-    /// entries are what a sweep fetches; a list whose entries did not change
-    /// has nothing new to fetch.
+    /// Adopt core's wallets and refresh only when fetch inputs change.
+    /// Returns whether they changed. Balance-only updates must not retrigger
+    /// a sweep, since sweeps themselves update wallet balances.
     pub async fn reconcile_wallets(&self, app_is_active: bool) -> bool {
         let state = self.inner.wallet_service.app_state().await;
         let entries = refresh_entries_for(&state);
@@ -458,13 +443,8 @@ pub struct RefreshEntry {
     /// The chain the balance is *filed* under: the wallet's family, which is
     /// what its holding is named after and what pricing keys on.
     pub chain_id: String,
-    /// The chain the balance is *fetched* from: the network the wallet is on.
-    ///
-    /// The two differ on a testnet, and they used to be one field — so a
-    /// wallet on Testnet4 fetched its testnet address from Bitcoin's *mainnet*
-    /// endpoints and read zero. Filing under the network instead would have
-    /// renamed the holding and left the mainnet one beside it, which is why
-    /// this is a second field rather than a change to the first.
+    /// Network to fetch the balance from. Keep it distinct from the holding
+    /// identity so testnet fetches use testnet endpoints without renaming assets.
     pub network_chain_id: String,
     pub wallet_id: String,
     /// The canonical fetch key: a wallet address for most chains, or an
