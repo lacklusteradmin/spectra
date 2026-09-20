@@ -195,12 +195,7 @@ async fn a_testnet_row_has_no_value() {
         .insert("ethereum-sepolia:native".into(), 3000.0);
     let groups = service.portfolio_snapshot().await.expect("snapshot").groups;
     assert_eq!(
-        row_value(
-            groups
-                .iter()
-                .find(|g| g.id == "ethereum-sepolia-native")
-                .unwrap()
-        ),
+        row_value(groups.iter().find(|g| g.id == "ethereum-sepolia").unwrap()),
         None
     );
 }

@@ -1,12 +1,13 @@
 //! Concrete network registry embedded from `chains.toml`.
 //! Mainnets and testnets are equal records. Native token metadata in the public
 //! projection is joined from `tokens.toml`; it is never stored as a network fact.
-//! `chain-wiki.toml` contains editorial prose outside the operational model.
+//! `chain-ui.toml` supplies presentation by network ID; `chain-wiki.toml` holds prose.
 
 use serde::{Deserialize, Serialize};
 use std::sync::LazyLock;
 
 static CHAINS_TOML: &str = include_str!("../data/chains.toml");
+static CHAIN_UI_TOML: &str = include_str!("../data/chain-ui.toml");
 static CHAIN_WIKI_TOML: &str = include_str!("../data/chain-wiki.toml");
 
 /// A catalog entry's brand colour, from a closed palette.
@@ -36,18 +37,35 @@ pub enum CatalogColor {
 // ── Parsed TOML shape
 
 #[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
 struct TomlFile {
     networks: Vec<TomlNetwork>,
 }
 
 /// One concrete network. Mainnets and testnets have the same required fields.
 #[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
 struct TomlNetwork {
     id: String,
     name: String,
     family: String,
     environment: String,
-    native_deployment: String,
+    token_standard: String,
+    #[serde(default)]
+    enumerates_holdings: bool,
+    derivation_path: Vec<TomlDerivationPathEntry>,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct TomlUiFile {
+    networks: Vec<TomlNetworkUi>,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct TomlNetworkUi {
+    network_id: String,
     search_keywords: Vec<String>,
     category: String,
     /// Position in the setup picker's short list, or absent.
@@ -57,10 +75,6 @@ struct TomlNetwork {
     artwork_name: String,
     #[serde(default)]
     address_prefix_hint: String,
-    token_standard: String,
-    #[serde(default)]
-    enumerates_holdings: bool,
-    derivation_path: Vec<TomlDerivationPathEntry>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -104,15 +118,6 @@ fn contract_address_prompt_for(token_standard: &str) -> String {
         _ => "Contract Address",
     }
     .to_string()
-}
-
-/// Whether the chain is EVM-compatible, from the family it belongs to.
-///
-/// Was a column. It could not be derived while `category` doubled as a
-/// network-kind flag — every testnet's category was `"testnet"`, whatever
-/// family it actually belonged to.
-fn is_evm_for(category: &str) -> bool {
-    matches!(category, "evm-l1" | "evm-l2")
 }
 
 // ── Public serialized shape — exposed to Swift via UniFFI
@@ -201,21 +206,43 @@ impl From<TomlDerivationPathEntry> for ChainDerivationPathEntry {
 
 // ── Static catalog
 
-static CATALOG: LazyLock<Vec<ChainEntry>> = LazyLock::new(|| {
-    let parsed: TomlFile = toml::from_str(CHAINS_TOML)
+static CATALOG: LazyLock<Vec<ChainEntry>> =
+    LazyLock::new(|| load_catalog(CHAINS_TOML, CHAIN_UI_TOML));
+
+fn load_catalog(networks: &str, presentation: &str) -> Vec<ChainEntry> {
+    let parsed: TomlFile = toml::from_str(networks)
         .expect("chains.toml is embedded at compile time and must be valid TOML");
 
+    let ui: TomlUiFile = toml::from_str(presentation)
+        .expect("chain-ui.toml must contain valid network presentation records");
+    let mut ui_by_id = std::collections::HashMap::new();
+    for row in ui.networks {
+        let id = row.network_id.clone();
+        assert!(
+            ui_by_id.insert(id.clone(), row).is_none(),
+            "duplicate UI network_id {id}"
+        );
+    }
+
+    // Chain discriminants already index this catalog. Use that same ordering
+    // here; from_str_id/entry would recursively initialize CATALOG.
+    assert_eq!(
+        parsed.networks.len(),
+        crate::registry::Chain::all().count(),
+        "network catalog and registry must have the same number of chains"
+    );
     let mut ids = std::collections::HashSet::new();
-    parsed
+    let catalog = parsed
         .networks
         .iter()
-        .map(|c| {
+        .zip(crate::registry::Chain::all())
+        .map(|(c, chain)| {
             assert!(ids.insert(&c.id), "duplicate network id {}", c.id);
             assert!(
                 matches!(c.environment.as_str(), "mainnet" | "testnet"),
                 "invalid environment"
             );
-            let native = crate::tokens::deployment(&c.native_deployment)
+            let native = crate::tokens::deployment(&format!("{}:native", c.id))
                 .expect("unknown native token deployment");
             assert!(
                 native.is_native() && native.chain == c.id,
@@ -233,20 +260,23 @@ static CATALOG: LazyLock<Vec<ChainEntry>> = LazyLock::new(|| {
                     .any(|n| n.id == c.family && n.environment == "mainnet"),
                 "unknown network family"
             );
+            let ui = ui_by_id
+                .remove(&c.id)
+                .unwrap_or_else(|| panic!("missing UI record for network {}", c.id));
             ChainEntry {
                 id: c.id.clone(),
                 name: c.name.clone(),
                 family: c.family.clone(),
                 is_testnet,
                 native_deployment_id: native.id.clone(),
-                address_prefix_hint: c.address_prefix_hint.clone(),
+                address_prefix_hint: ui.address_prefix_hint,
                 gas_token_symbol: native.symbol.clone(),
-                search_keywords: c.search_keywords.clone(),
-                category: c.category.clone(),
-                popular_rank: c.popular_rank,
-                is_evm: is_evm_for(&c.category),
-                color: c.color,
-                artwork_name: c.artwork_name.clone(),
+                search_keywords: ui.search_keywords,
+                category: ui.category,
+                popular_rank: ui.popular_rank,
+                is_evm: chain.is_evm(),
+                color: ui.color,
+                artwork_name: ui.artwork_name,
                 token_standard: c.token_standard.clone(),
                 enumerates_holdings: c.enumerates_holdings,
                 contract_address_prompt: contract_address_prompt_for(&c.token_standard),
@@ -264,8 +294,10 @@ static CATALOG: LazyLock<Vec<ChainEntry>> = LazyLock::new(|| {
                     .collect(),
             }
         })
-        .collect()
-});
+        .collect();
+    assert!(ui_by_id.is_empty(), "UI records reference unknown networks");
+    catalog
+}
 
 static WIKI: LazyLock<Vec<ChainWikiEntry>> = LazyLock::new(|| {
     let parsed: TomlWikiFile = toml::from_str(CHAIN_WIKI_TOML)
@@ -359,6 +391,82 @@ mod explicit_network_catalog {
     }
 
     #[test]
+    fn presentation_joins_by_id_independent_of_row_order() {
+        let reversed = CHAIN_UI_TOML
+            .split("[[networks]]")
+            .skip(1)
+            .collect::<Vec<_>>()
+            .into_iter()
+            .rev()
+            .map(|row| format!("[[networks]]{row}"))
+            .collect::<String>();
+        let actual = load_catalog(CHAINS_TOML, &reversed);
+        assert_eq!(
+            serde_json::to_value(actual).unwrap(),
+            serde_json::to_value(&*CATALOG).unwrap()
+        );
+    }
+
+    #[test]
+    fn display_categories_cannot_change_evm_membership() {
+        let changed = CHAIN_UI_TOML
+            .replace("category = \"evm-l1\"", "category = \"other\"")
+            .replace("category = \"evm-l2\"", "category = \"other\"")
+            .replace("category = \"bitcoin-family\"", "category = \"evm-l1\"");
+        let catalog = load_catalog(CHAINS_TOML, &changed);
+        for (actual, expected) in catalog.iter().zip(CATALOG.iter()) {
+            assert_eq!(actual.is_evm, expected.is_evm, "{}", actual.id);
+        }
+        assert!(catalog.iter().any(|c| c.is_evm && c.category == "other"));
+        assert!(catalog.iter().any(|c| !c.is_evm && c.category == "evm-l1"));
+    }
+
+    #[test]
+    #[should_panic(expected = "duplicate UI network_id bitcoin")]
+    fn duplicate_presentation_references_are_rejected() {
+        let first = CHAIN_UI_TOML.split("[[networks]]").nth(1).unwrap();
+        load_catalog(
+            CHAINS_TOML,
+            &format!("{CHAIN_UI_TOML}\n[[networks]]{first}"),
+        );
+    }
+
+    #[test]
+    #[should_panic(expected = "missing UI record for network bitcoin")]
+    fn missing_presentation_is_rejected() {
+        let without_bitcoin = CHAIN_UI_TOML
+            .split("[[networks]]")
+            .skip(2)
+            .map(|row| format!("[[networks]]{row}"))
+            .collect::<String>();
+        load_catalog(CHAINS_TOML, &without_bitcoin);
+    }
+
+    #[test]
+    #[should_panic(expected = "UI records reference unknown networks")]
+    fn unknown_presentation_references_are_rejected() {
+        let unknown = CHAIN_UI_TOML.split("[[networks]]").nth(1).unwrap().replace(
+            "network_id = \"bitcoin\"",
+            "network_id = \"unknown-network\"",
+        );
+        load_catalog(
+            CHAINS_TOML,
+            &format!("{CHAIN_UI_TOML}\n[[networks]]{unknown}"),
+        );
+    }
+
+    #[test]
+    fn fields_in_the_wrong_catalog_are_rejected() {
+        let wrong_core =
+            CHAINS_TOML.replacen("[[networks]]", "[[networks]]\ncolor = \"orange\"", 1);
+        assert!(toml::from_str::<TomlFile>(&wrong_core).is_err());
+        let configured_evm = CHAINS_TOML.replacen("[[networks]]", "[[networks]]\nis_evm = true", 1);
+        assert!(toml::from_str::<TomlFile>(&configured_evm).is_err());
+        let wrong_ui = CHAIN_UI_TOML.replacen("[[networks]]", "[[networks]]\nis_evm = false", 1);
+        assert!(toml::from_str::<TomlUiFile>(&wrong_ui).is_err());
+    }
+
+    #[test]
     fn mainnets_and_testnets_are_explicit_peers() {
         let parsed: TomlFile = toml::from_str(CHAINS_TOML).unwrap();
         assert_eq!(CATALOG.len(), parsed.networks.len());
@@ -377,11 +485,6 @@ mod explicit_network_catalog {
     fn networks_share_protocol_facts_but_have_distinct_identity() {
         let (main, net) = (entry("ethereum"), entry("ethereum-sepolia"));
         for (field, a, b) in [
-            (
-                "gas_token_symbol",
-                &main.gas_token_symbol,
-                &net.gas_token_symbol,
-            ),
             ("artwork_name", &main.artwork_name, &net.artwork_name),
             (
                 "native_asset_display_name",
@@ -398,17 +501,29 @@ mod explicit_network_catalog {
         );
         assert_eq!(main.native_decimals, net.native_decimals);
         assert_eq!(main.is_evm, net.is_evm);
-        // And it states its own name and derivation path — a testnet derives
-        // down a different coin type.
         assert_ne!(main.name, net.name);
-        let paths = |e: &ChainEntry| -> Vec<String> {
-            e.derivation_path.iter().map(|d| d.path.clone()).collect()
-        };
+        // EVM accounts use the same path across networks, while Bitcoin's
+        // test networks use coin type 1. Neither rule is inferred from names.
+        assert_eq!(main.derivation_path[0].path, net.derivation_path[0].path);
         assert_ne!(
-            paths(main),
-            paths(net),
-            "the network inherited its chain's derivation path"
+            entry("bitcoin").derivation_path[0].path,
+            entry("bitcoin-testnet-4").derivation_path[0].path
         );
+    }
+
+    #[test]
+    fn testnet_native_symbols_are_visibly_distinct_from_mainnet() {
+        for chain in Chain::all().filter(|chain| chain.is_testnet()) {
+            let native = chain.native_holding_template();
+            assert_eq!(
+                native.symbol,
+                format!("t{}", chain.mainnet_counterpart().coin_symbol())
+            );
+            assert_eq!(chain.coin_symbol(), native.symbol);
+            assert!(native.coin_gecko_id.is_empty());
+        }
+        assert_eq!(Chain::Bitcoin.coin_symbol(), "BTC");
+        assert_eq!(Chain::Ethereum.coin_symbol(), "ETH");
     }
 
     /// A testnet asset has no price and hosts no tokens, structurally.
@@ -503,15 +618,10 @@ mod explicit_network_catalog {
         assert!(!dot.family.is_empty());
     }
 
-    /// `is_evm` and the contract prompt are computed, not stored.
-    ///
-    /// `is_evm` could not be derived while `category` doubled as a
-    /// network-kind flag: every testnet's category was `"testnet"`, whatever
-    /// family it belonged to.
+    /// Contract prompts follow token standards; EVM membership comes from the registry.
     #[test]
     fn the_derived_columns_agree_with_what_they_derive_from() {
         for e in CATALOG.iter() {
-            assert_eq!(e.is_evm, is_evm_for(&e.category), "{}", e.id);
             assert_eq!(
                 e.contract_address_prompt,
                 if e.token_standard.is_empty() {
@@ -523,11 +633,10 @@ mod explicit_network_catalog {
                 e.id
             );
         }
-        // The EVM family is exactly the two EVM categories.
         for chain in Chain::all() {
             assert_eq!(
                 chain.is_evm(),
-                matches!(entry(chain.str_id()).category.as_str(), "evm-l1" | "evm-l2"),
+                entry(chain.str_id()).is_evm,
                 "{} disagrees about being EVM",
                 chain.str_id()
             );

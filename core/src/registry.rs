@@ -440,8 +440,7 @@ impl Chain {
     /// everywhere it was asked, and Monero is a chain for which it is the
     /// answer. See `default_path_from_catalog`.
     pub fn uses_derivation_path(self) -> bool {
-        crate::chains::default_derivation_path_template_by_id(self.mainnet_counterpart().str_id())
-            .is_some()
+        crate::chains::default_derivation_path_template_by_id(self.str_id()).is_some()
     }
 
     /// Returns `true` for chains that are testnets.
@@ -455,6 +454,8 @@ impl Chain {
     }
 
     /// `true` for every EVM-compatible chain (mainnet or testnet).
+    /// Registry-owned and independent of the catalog: catalog initialization
+    /// calls this to project the same fact to CLI and platform clients.
     pub fn is_evm(self) -> bool {
         matches!(
             self,
@@ -1501,8 +1502,7 @@ mod tests {
         }
     }
 
-    /// `address_validation_kind`'s EVM arms duplicate `is_evm`'s list so the
-    /// match can stay exhaustive. This is what stops the two from drifting.
+    /// Exhaustive address validators independently check registry EVM membership.
     #[test]
     fn evm_validation_kind_agrees_with_is_evm() {
         for chain in Chain::all() {
@@ -1896,6 +1896,9 @@ pub fn core_chain_identities() -> Vec<ChainIdentity> {
 
 /// Not exported: it is a column of `core_chain_identities` now.
 pub fn evm_seed_derivation_chain(chain: Chain) -> Option<String> {
+    if chain.is_testnet() && chain.is_evm() {
+        return Some(chain.chain_display_name().to_string());
+    }
     Some(
         match chain {
             Chain::Ethereum => "Ethereum",

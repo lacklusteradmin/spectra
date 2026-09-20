@@ -57,6 +57,12 @@ and tests use the same domain operations.
 `registry::Chain` is the authority for chain identity and capabilities, backed
 by `core/data/chains.toml`. Adding a chain requires a catalog row and an enum
 variant in matching order. Registry tests check that relationship independently.
+Presentation lives in `core/data/chain-ui.toml`, joined one-to-one by
+`network_id`; UI row order is independent of the network/enum order. Core
+rejects missing, duplicate and unknown presentation references. Display
+categories do not determine protocol capabilities. EVM membership is defined
+by `Chain::is_evm()` in Rust; the catalog projects that result for clients
+without a configurable TOML flag.
 Address formats, derivation paths, address slots, EVM membership and routing
 facts belong there rather than in caller-owned lists.
 

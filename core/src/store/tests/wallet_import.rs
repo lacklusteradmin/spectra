@@ -383,3 +383,94 @@ async fn deep_rescan_reports_provider_failures_and_empty_scope_success() {
     assert!(!result.failures.is_empty());
     assert!(result.state.quotes.prices_attempt_at.is_none());
 }
+
+#[tokio::test]
+async fn testnet_paths_survive_reopen_switching_and_signing() {
+    use crate::registry::Chain;
+    use crate::store::secret_backends::InMemorySecretStore;
+    use crate::store::state::StateCommand;
+    use std::sync::Arc;
+    let temp = std::env::temp_dir().join(crate::store::new_transaction_id());
+    std::fs::create_dir_all(&temp).unwrap();
+    let db = temp.join("state.db").to_string_lossy().into_owned();
+    let secrets = Arc::new(InMemorySecretStore::new());
+    let service = WalletService::new(vec![]).unwrap();
+    service.set_secret_store(secrets.clone());
+    service.open_state(db.clone()).await.unwrap();
+    let mut input = commit(&["Bitcoin"]);
+    input.password = Some("test-password".into());
+    // Custom mainnet and testnet paths must not overwrite each other.
+    input
+        .seed_derivation_paths
+        .set_path_for(Chain::Bitcoin, "m/84'/0'/2'/0/0");
+    input
+        .seed_derivation_paths
+        .set_path_for(Chain::BitcoinTestnet4, "m/84'/1'/3'/0/0");
+    // An explicitly selected mainnet-style path on a testnet remains valid
+    // user input; network defaults must never rewrite it.
+    input
+        .seed_derivation_paths
+        .set_path_for(Chain::BitcoinSignet, "m/84'/0'/9'/0/0");
+    let outcome = service.import_wallets(input).await.unwrap();
+    let wallet_id = outcome.wallets[0].id.clone();
+    drop(service);
+    let service = WalletService::new(vec![]).unwrap();
+    service.set_secret_store(secrets);
+    service.open_state(db).await.unwrap();
+    for (chain, path) in [
+        (Chain::BitcoinTestnet4, "m/84'/1'/3'/0/0"),
+        (Chain::BitcoinSignet, "m/84'/0'/9'/0/0"),
+        (Chain::BitcoinTestnet, "m/84'/1'/0'/0/0"),
+        (Chain::Bitcoin, "m/84'/0'/2'/0/0"),
+    ] {
+        service
+            .apply_state_command(StateCommand::SelectNetworkChain {
+                chain_id: chain.str_id().into(),
+            })
+            .await
+            .unwrap();
+        let state = service.app_state().await;
+        let wallet = &state.wallets[0];
+        assert_eq!(wallet.derivation_path.as_deref(), Some(path));
+        let expected = crate::derivation::dispatch::derive_for_chain_name(
+            chain.chain_display_name(),
+            MNEMONIC,
+            path,
+            None,
+            None,
+            None,
+            true,
+            false,
+            false,
+        )
+        .unwrap()
+        .address
+        .unwrap();
+        assert_eq!(wallet.address_on(chain), Some(expected.as_str()));
+        assert_eq!(
+            service
+                .send_identity_address(
+                    wallet_id.clone(),
+                    chain.str_id().into(),
+                    Some("test-password".into())
+                )
+                .await
+                .unwrap(),
+            expected
+        );
+    }
+}
+
+#[test]
+fn an_absent_testnet_address_never_falls_back_to_mainnet() {
+    let mut wallet = crate::store::state::WalletState::single_address(
+        "w",
+        "Wallet",
+        "Bitcoin",
+        "bc1main",
+        Some("m/84'/0'/0'/0/0".into()),
+        false,
+    );
+    wallet.network_id = "bitcoin-testnet-4".into();
+    assert!(wallet.active_address(&Default::default()).is_none());
+}

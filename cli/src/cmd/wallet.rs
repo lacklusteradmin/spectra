@@ -384,11 +384,15 @@ fn seal_and_import(
 
     let name = args.name.clone().unwrap_or_default();
     let mut paths = CoreSeedDerivationPaths::default();
+    let settings = ctx.state()?.settings;
     for c in chains {
-        let path = derivation_path(*c, args.path.as_deref())?;
-        paths
-            .by_chain
-            .insert(c.mainnet_counterpart().str_id().to_string(), path);
+        let network = if c.is_testnet() {
+            *c
+        } else {
+            settings.network_chain(*c)
+        };
+        let path = derivation_path(network, args.path.as_deref())?;
+        paths.by_chain.insert(network.str_id().to_string(), path);
     }
     let mut commit = commit_for(request_for(chains, &name), paths);
     commit.seed_phrase = Some(seed_phrase.to_string());

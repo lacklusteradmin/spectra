@@ -287,6 +287,11 @@ contains "and that Polygon is one of them"   '"watchOnlyImport":true' \
     spectra --json chains --filter Polygon
 contains "and Monero says it cannot"      '"watchOnlyImport":false' \
     spectra --json chains --filter Monero
+# EVM membership comes from the registry; display ranks join from chain-ui.toml.
+contains "Sepolia exposes core EVM membership" '"isEvm":true' \
+    spectra --json chains --testnets --filter "Ethereum Sepolia"
+contains "Bitcoin remains non-EVM with separate UI metadata" '"isEvm":false' \
+    spectra --json chains --filter Bitcoin
 # The setup picker's short list is a catalog rank, not eight ids in a view.
 contains "the catalog ranks the picker's short list"  '"popularRank":1' \
     spectra --json chains --filter Bitcoin
@@ -597,6 +602,29 @@ contains "builds a diagnostics document"  '"endpoints"' \
 # display more places than it has. And they have to survive a reopen — every
 # command here is a separate process, so this section is also the persistence
 # test.
+
+section "token and deployment references"
+contains "Ethereum deployment resolves its token identity" '"token_id":"ethereum"' \
+    spectra --json token catalog --chain ethereum
+contains "Arbitrum deployment shares the Ethereum token identity" '"token_id":"ethereum"' \
+    spectra --json token catalog --chain arbitrum
+contains "Sepolia deployment resolves a separate testnet token" '"token_id":"ethereum-sepolia"' \
+    spectra --json token catalog --chain ethereum-sepolia
+contains "Sepolia keeps its derived deployment ID" '"id":"ethereum-sepolia:native"' \
+    spectra --json token catalog --chain ethereum-sepolia
+contains "testnet token has no market identity" '"coingecko_id":""' \
+    spectra --json token catalog --chain ethereum-sepolia
+contains "Bitcoin Testnet4 resolves from the flat testnet tables" '"id":"bitcoin-testnet-4:native"' \
+    spectra --json token catalog --chain bitcoin-testnet-4
+
+contains "Bitcoin test coins display tBTC" '"symbol":"tBTC"' \
+    spectra --json token catalog --chain bitcoin-testnet-4
+contains "Sepolia test coins display tETH" '"symbol":"tETH"' \
+    spectra --json token catalog --chain ethereum-sepolia
+contains "Sui test coins display tSUI" '"symbol":"tSUI"' \
+    spectra --json token catalog --chain sui-testnet
+contains "Aptos test coins display tAPT" '"symbol":"tAPT"' \
+    spectra --json token catalog --chain aptos-testnet
 
 section "tracked tokens"
 # Tracking is `is_enabled` on a row core already holds — opening the store seeds
@@ -919,6 +947,24 @@ contains "including the two just moved"     '"family":"solana","isTestnet":false
     spectra --json network list
 contains "and the other one"                '"family":"bitcoin","isTestnet":false,"selected":"bitcoin"' \
     spectra --json network list
+
+section "testnet derivation identity"
+check "selects Bitcoin Testnet4 for import" $OK spectra network set bitcoin-testnet-4
+check "imports a testnet wallet with network-local paths" $OK \
+    with_seed "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about" \
+    spectra wallet import --chain Bitcoin --name "Testnet Paths"
+contains "stored testnet path uses coin type one" "m/84'/1'/0'/0/0" \
+    spectra --json wallet show "Testnet Paths"
+contains "wallet summary shows the active testnet address" '"address":"tb1' \
+    spectra --json wallet show "Testnet Paths"
+check "reopened testnet wallet resolves its signer" $OK \
+    spectra send identity --from "Testnet Paths" --chain bitcoin-testnet-4
+check "switches the wallet back to mainnet" $OK spectra network set bitcoin
+contains "mainnet keeps its own path" "m/84'/0'/0'/0/0" \
+    spectra --json wallet show "Testnet Paths"
+check "mainnet signer still matches after the switch" $OK \
+    spectra send identity --from "Testnet Paths" --chain bitcoin
+check "cleans up testnet derivation wallet" $OK spectra wallet delete "Testnet Paths" --yes
 
 # ── Token discovery ─────────────────────────────────────────────────────────
 #

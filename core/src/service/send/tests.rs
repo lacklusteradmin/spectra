@@ -490,7 +490,7 @@ mod a_preview_quotes_the_asset_it_moves {
             api_key: None,
         }])
         .unwrap();
-        let key = super::seed_probe_holding(&service, Chain::EthereumSepolia, "ETH", None).await;
+        let key = super::seed_probe_holding(&service, Chain::EthereumSepolia, "tETH", None).await;
         {
             let mut state = service.wallet_state.write().await;
             state.wallets[0].network_id = "ethereum-sepolia".into();

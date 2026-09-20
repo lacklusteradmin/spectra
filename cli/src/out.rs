@@ -2,7 +2,7 @@
 //! at the same call site, so one cannot quietly fall behind the other.
 //!
 //! The colour table here maps a *semantic* name to a terminal colour. Which
-//! colour a chain has is a chain fact and comes from `chains.toml`.
+//! colour a chain has is a chain fact and comes from `chain-ui.toml`.
 
 use std::collections::HashMap;
 use std::sync::LazyLock;
@@ -70,7 +70,7 @@ pub fn field(label: &str, value: &str) {
 
 // ─── Chain tint ─────────────────────────────────────────────────────────────
 
-/// Built from `chains.toml`, so a new chain is tinted without a change here.
+/// Built from `chain-ui.toml`, so a new chain is tinted without a change here.
 /// The previous CLI hardcoded 30 of the 78 and rendered the rest grey.
 static CHAIN_COLOR: LazyLock<HashMap<String, CatalogColor>> = LazyLock::new(|| {
     spectra_core::chains::list_all_chains()

@@ -103,10 +103,7 @@ fn run_for_chain(chain_key: &str) -> Vec<ChainSelfTestResult> {
     if crate::send::flow::seed_derivation_chain_raw(chain).is_none() {
         return results;
     }
-    // The chain itself, not its mainnet counterpart: `seed_derivation_chain_raw`
-    // folds testnets onto their mainnet, and deriving Bitcoin Testnet that way
-    // yields a `bc1q…` mainnet address that Bitcoin Testnet's own validator
-    // correctly rejects.
+    // Derive for the exact network, using its own path and address format.
     let derivation_chain = chain.chain_display_name().to_string();
     let Ok(path) = crate::app_core::default_path_from_catalog(chain.chain_display_name()) else {
         return results;

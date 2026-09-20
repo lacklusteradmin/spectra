@@ -164,5 +164,5 @@ fn wallet_matches(wallet: &WalletState, needle: &str) -> bool {
 /// Wallets carry an address by construction; the fallback keeps a malformed
 /// record printable rather than panicking mid-listing.
 pub fn wallet_address(wallet: &WalletState) -> &str {
-    wallet.primary_address().unwrap_or("")
+    wallet.active_address(&Default::default()).unwrap_or("")
 }

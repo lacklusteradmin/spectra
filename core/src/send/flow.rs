@@ -981,6 +981,9 @@ fn sui_signed_json_remap(raw: &str) -> Option<String> {
 /// of truth for that mapping.
 /// Not exported: it is a column of `core_chain_identities` now.
 pub fn seed_derivation_chain_raw(chain: crate::registry::Chain) -> Option<String> {
+    if chain.is_testnet() {
+        return Some(chain.chain_display_name().to_string());
+    }
     let mainnet = chain.mainnet_counterpart();
     // Some EVM L1/L2/sidechains (BNB Chain, Optimism, etc.) reuse Ethereum's
     // derivation path; the historical raw-name table preserved that

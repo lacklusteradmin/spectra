@@ -130,12 +130,12 @@ async fn passwords_unlock_stored_material_and_wrong_passwords_fail() {
 }
 
 #[tokio::test]
-async fn every_mainnet_mnemonic_identity_resolves_using_stored_derivation_data() {
+async fn every_network_mnemonic_identity_resolves_using_stored_derivation_data() {
     let service = WalletService::new(vec![]).unwrap();
     let secrets = Arc::new(InMemorySecretStore::new());
     service.set_secret_store(secrets.clone());
     let defaults = crate::app_core_derivation_paths_for_preset(Default::default()).unwrap();
-    for chain in Chain::mainnets() {
+    for chain in Chain::all() {
         let name = chain.chain_display_name();
         let path = defaults.path_for(chain).unwrap_or_default();
         let derived = crate::derivation::dispatch::derive_for_chain_name(

@@ -508,37 +508,22 @@ mod tests {
         assert_eq!(paths.path_for(Chain::Solana), Some("m/44'/501'/2'/0'"));
     }
 
-    /// Every mainnet chain the catalog gives a BIP-32 template for gets a path,
-    /// and testnets resolve through their mainnet counterpart rather than
-    /// carrying their own entry.
+    /// Every concrete network with a catalog template gets its own path.
     #[test]
     fn derivation_paths_cover_the_catalog_and_resolve_testnets() {
         use crate::registry::Chain;
 
         let paths = seed_derivation_paths_for_account(0).expect("paths");
         for chain in Chain::all() {
-            let mainnet = chain.mainnet_counterpart();
             let expected =
-                crate::chains::default_derivation_path_template_by_id(mainnet.str_id()).is_some();
+                crate::chains::default_derivation_path_template_by_id(chain.str_id()).is_some();
             assert_eq!(
                 paths.path_for(chain).is_some(),
                 expected,
                 "{} path presence disagrees with the catalog",
                 chain.str_id()
             );
-            if chain.is_testnet() {
-                assert!(
-                    !paths.by_chain.contains_key(chain.str_id()),
-                    "{} should not have its own entry",
-                    chain.str_id()
-                );
-                assert_eq!(
-                    paths.path_for(chain),
-                    paths.path_for(mainnet),
-                    "{} must resolve to its mainnet path",
-                    chain.str_id()
-                );
-            }
+            assert_eq!(paths.by_chain.contains_key(chain.str_id()), expected);
         }
 
         // Monero derives its keys its own way and has `derivation_path = []`
@@ -625,10 +610,8 @@ pub(crate) fn derivation_path_string(segments: &[DerivationPathSegment]) -> Stri
 /// replaced named 44 chains and had to be edited alongside `chains.toml`, the
 /// Rust record and the Swift enum every time a chain was added.
 ///
-/// Testnets are skipped: they resolve through `mainnet_counterpart()` at read
-/// time. Chains whose catalog entry has no template are skipped rather than
-/// failing the whole build — one unconfigured chain should not take out
-/// derivation for the other 45.
+/// Paths are keyed by concrete network. A missing template means that the
+/// chain derives without a configurable BIP-32 path.
 pub(super) fn seed_derivation_paths_for_account(
     account: u32,
 ) -> Result<CoreSeedDerivationPaths, String> {
@@ -636,9 +619,6 @@ pub(super) fn seed_derivation_paths_for_account(
 
     let mut by_chain = std::collections::HashMap::new();
     for chain in Chain::all() {
-        if chain.is_testnet() {
-            continue;
-        }
         // Keyed by id rather than display name — ids are the stable key, and
         // `every_catalog_name_resolves` guarantees every name resolves back to
         // the id it belongs to.
@@ -671,18 +651,7 @@ pub(super) fn default_path_from_catalog(chain_name: &str) -> Result<String, Stri
 fn default_path_from_catalog_for_account(chain_name: &str, account: u32) -> Result<String, String> {
     use crate::registry::Chain;
 
-    // Testnets carry `derivation_path = []` in the catalog: they derive from
-    // their mainnet's path and differ only in address encoding. Resolving
-    // through `mainnet_counterpart` states that rule here too — without it,
-    // asking for any testnet's path fails, and the iOS caller turns that into
-    // a `fatalError`.
-    let template = crate::chains::default_derivation_path_template(chain_name).or_else(|| {
-        Chain::from_display_name(chain_name).and_then(|chain| {
-            crate::chains::default_derivation_path_template_by_id(
-                chain.mainnet_counterpart().str_id(),
-            )
-        })
-    });
+    let template = crate::chains::default_derivation_path_template(chain_name);
     if let Some(template) = template {
         return Ok(render_derivation_path_template(template, account));
     }
@@ -809,15 +778,10 @@ fn endpoints_for_known_ids(catalog: &AppCoreCatalog, ids: &[&str]) -> Result<Vec
 mod testnet_derivation_paths {
     use crate::registry::Chain;
 
-    /// Testnets have no catalog template of their own; asking for one used to
-    /// fail, and the iOS caller turns a failure here into a `fatalError`.
+    /// Every network resolves independently, including pathless derivation.
     #[test]
-    fn every_testnet_resolves_to_its_mainnet_path() {
+    fn every_testnet_resolves_its_own_catalog_path() {
         for chain in Chain::all().filter(|c| c.is_testnet()) {
-            let mainnet = chain.mainnet_counterpart();
-            if crate::chains::default_derivation_path_template_by_id(mainnet.str_id()).is_none() {
-                continue; // Monero and friends have no BIP-32 path at all.
-            }
             let resolved = super::app_core_resolve_derivation_path(
                 chain.chain_display_name().to_string(),
                 String::new(),
@@ -832,13 +796,14 @@ mod testnet_derivation_paths {
     }
 
     #[test]
-    fn a_testnet_resolves_to_the_same_path_as_its_mainnet() {
+    fn bitcoin_testnet_uses_coin_type_one() {
         let testnet =
             super::app_core_resolve_derivation_path("Bitcoin Testnet4".to_string(), String::new())
                 .expect("testnet4");
         let mainnet = super::app_core_resolve_derivation_path("Bitcoin".to_string(), String::new())
             .expect("bitcoin");
-        assert_eq!(testnet, mainnet);
+        assert_eq!(testnet, "m/84'/1'/0'/0/0");
+        assert_eq!(mainnet, "m/84'/0'/0'/0/0");
     }
 }
 

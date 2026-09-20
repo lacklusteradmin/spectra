@@ -9,6 +9,7 @@ fn bitcoin_wallet() -> WalletView {
     let mut paths = CoreSeedDerivationPaths::default();
     // The full table every wallet carries today, of which one entry applies.
     paths.set_path_for(Chain::Bitcoin, "m/84'/0'/0'/0/0");
+    paths.set_path_for(Chain::BitcoinTestnet4, "m/84'/1'/0'/0/0");
     paths.set_path_for(Chain::Ethereum, "m/44'/60'/0'/0/0");
     paths.set_path_for(Chain::Solana, "m/44'/501'/0'");
 
@@ -42,7 +43,7 @@ fn bitcoin_wallet() -> WalletView {
 #[test]
 fn keeps_the_path_the_wallet_uses_and_drops_the_rest() {
     let summary = bitcoin_wallet().to_wallet_state(false);
-    assert_eq!(summary.derivation_path.as_deref(), Some("m/84'/0'/0'/0/0"));
+    assert_eq!(summary.derivation_path.as_deref(), Some("m/84'/1'/0'/0/0"));
     // The Ethereum and Solana entries were global defaults, not this
     // wallet's data, and do not survive into the model core computes with.
     assert_eq!(summary.chain_name, "Bitcoin");

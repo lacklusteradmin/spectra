@@ -278,31 +278,21 @@ impl Drop for SensitiveOverrides {
 #[serde(rename_all = "camelCase")]
 pub struct CoreSeedDerivationPaths {
     pub is_custom_enabled: bool,
-    /// `Chain::str_id()` → derivation path, for mainnet chains only.
-    ///
-    /// Testnets resolve through `Chain::mainnet_counterpart()` rather than
-    /// carrying their own entry — a testnet wallet derives from the same path
-    /// as its mainnet, only the address encoding differs. Use
-    /// [`CoreSeedDerivationPaths::path_for`] rather than indexing directly so
-    /// that stays true at every call site.
+    /// Concrete network ID → derivation path. Mainnet and testnet overrides
+    /// are independent, even when their default paths happen to match.
     pub by_chain: HashMap<String, String>,
 }
 
 impl CoreSeedDerivationPaths {
-    /// Derivation path configured for `chain`, resolving testnets to their
-    /// mainnet counterpart's entry.
+    /// Derivation path configured for this exact network.
     pub fn path_for(&self, chain: crate::registry::Chain) -> Option<&str> {
-        self.by_chain
-            .get(chain.mainnet_counterpart().str_id())
-            .map(String::as_str)
+        self.by_chain.get(chain.str_id()).map(String::as_str)
     }
 
-    /// Set the path for `chain`, writing through to the mainnet slot.
+    /// Set the path for this exact network.
     pub fn set_path_for(&mut self, chain: crate::registry::Chain, path: impl Into<String>) {
-        self.by_chain.insert(
-            chain.mainnet_counterpart().str_id().to_string(),
-            path.into(),
-        );
+        self.by_chain
+            .insert(chain.str_id().to_string(), path.into());
     }
 }
 
@@ -393,7 +383,11 @@ impl WalletView {
         use crate::store::state::{WalletAddress, WalletState};
 
         let chain = Chain::from_display_name(&self.selected_chain);
-        let derivation_path = chain.and_then(|chain| {
+        let active_chain = self
+            .active_network_chain_id()
+            .and_then(|id| Chain::from_str_id(&id))
+            .or(chain);
+        let derivation_path = active_chain.and_then(|chain| {
             self.seed_derivation_paths
                 .path_for(chain)
                 .map(str::to_string)
@@ -441,7 +435,10 @@ impl WalletView {
                             chain_name: owner.chain_display_name().to_string(),
                             address: address.clone(),
                             kind: "receive".to_string(),
-                            derivation_path: derivation_path.clone(),
+                            derivation_path: self
+                                .seed_derivation_paths
+                                .path_for(owner)
+                                .map(str::to_string),
                         })
                     })
                     .collect()
@@ -454,16 +451,23 @@ impl crate::store::state::WalletState {
     /// Convert back into the shape the iOS app renders.
     ///
     /// The reverse of [`WalletView::to_wallet_state`], and lossy in the
-    /// direction that does not matter: the 45-entry derivation-path table is
-    /// rebuilt from `defaults` with this wallet's own path written over its
-    /// chain's slot. Those defaults were never per-wallet data.
+    /// direction that does not matter: network defaults are overlaid with
+    /// the explicit paths stored on addresses and the active wallet path.
     ///
     /// `WalletState` remains the authority. This produces a view model.
     pub fn to_wallet_view(&self, defaults: &CoreSeedDerivationPaths) -> WalletView {
         use crate::registry::Chain;
 
-        let chain = Chain::from_display_name(&self.chain_name);
+        let chain = Chain::from_str_id(&self.network_id);
         let mut seed_derivation_paths = defaults.clone();
+        for address in &self.addresses {
+            if let (Some(network), Some(path)) = (
+                Chain::from_display_name(&address.chain_name),
+                address.derivation_path.as_deref(),
+            ) {
+                seed_derivation_paths.set_path_for(network, path);
+            }
+        }
         if let (Some(chain), Some(path)) = (chain, self.derivation_path.as_deref()) {
             seed_derivation_paths.set_path_for(chain, path);
         }

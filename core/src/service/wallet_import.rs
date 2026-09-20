@@ -89,6 +89,14 @@ impl WalletService {
                 crate::registry::Chain::from_display_name(name).ok_or("Unknown import chain")?;
             commit.derivation_overrides.validate_for_chain(chain)?;
         }
+        // Complete explicit overrides with network-local defaults before
+        // deriving, so those same paths are persisted with the addresses.
+        let mut paths = crate::app_core_derivation_paths_for_preset(commit.seed_derivation_preset)?;
+        paths.is_custom_enabled = commit.seed_derivation_paths.is_custom_enabled;
+        paths
+            .by_chain
+            .extend(std::mem::take(&mut commit.seed_derivation_paths.by_chain));
+        commit.seed_derivation_paths = paths;
         let mut resolved_addresses = crate::derivation::import::WalletImportAddresses::default();
         // Derive here when the caller did not — from a seed phrase or from a
         // private key, whichever this import carries. Both front ends used to
@@ -149,11 +157,10 @@ impl WalletService {
         // The two inputs carry addresses of different provenance, so they are
         // judged against different networks.
         //
-        // `resolved_addresses` holds what the caller *derived*, and derivation
-        // runs against the mainnet chain whatever network mode is selected — a
-        // testnet wallet stores a mainnet-format address and re-derives the
-        // testnet one for display. Judging it by the selected mode would drop
-        // every address on a testnet import.
+        // `resolved_addresses` contains core-derived addresses for each
+        // concrete network, stored under that network's validated slot.
+        // Validate each slot as its own network, independently of the current
+        // UI selection.
         //
         // `watch_only_entries` holds what the user *typed*, for the network
         // they are on, and `ImportDraft` has no testnet row to put it in — so

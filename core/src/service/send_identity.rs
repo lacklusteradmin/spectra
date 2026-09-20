@@ -71,8 +71,18 @@ impl WalletService {
                 let defaults =
                     crate::app_core_derivation_paths_for_preset(wallet.derivation_preset)?;
                 let path = wallet
-                    .derivation_path
-                    .as_deref()
+                    .addresses
+                    .iter()
+                    .find(|a| {
+                        crate::registry::Chain::from_display_name(&a.chain_name)
+                            .is_some_and(|owner| owner.address_slot() == chain.address_slot())
+                    })
+                    .and_then(|a| a.derivation_path.as_deref())
+                    .or_else(|| {
+                        (wallet.network_id == chain.str_id())
+                            .then_some(wallet.derivation_path.as_deref())
+                            .flatten()
+                    })
                     .or_else(|| defaults.path_for(chain))
                     .unwrap_or_default();
                 let path = crate::app_core_resolve_derivation_path(name.into(), path.into())?;

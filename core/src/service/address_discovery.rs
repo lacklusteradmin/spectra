@@ -425,7 +425,7 @@ impl WalletService {
                 imported
                     .seed_derivation_paths
                     .by_chain
-                    .get(chain.mainnet_counterpart().str_id())
+                    .get(chain.str_id())
                     .cloned()
             })
             .unwrap_or_default();

@@ -95,13 +95,11 @@ impl WalletState {
             .filter(|selected| selected.mainnet_counterpart() == chain.mainnet_counterpart())
     }
 
-    /// This wallet's address on the network it is on, falling back to its own
-    /// chain's slot.
+    /// The recorded network's address. An absent testnet address must never
+    /// fall back to a mainnet address.
     pub fn active_address(&self, settings: &AppSettings) -> Option<&str> {
-        let chain = crate::registry::Chain::from_display_name(&self.chain_name)?;
         self.network_chain(settings)
             .and_then(|network| self.address_on(network))
-            .or_else(|| self.address_on(chain))
     }
 
     /// Resolve by address slot, allowing chains with a shared derivation
@@ -1568,6 +1566,11 @@ pub fn reduce_state_in_place(state: &mut CoreAppState, command: StateCommand) ->
                         .is_some_and(|c| c.mainnet_counterpart() == family)
                     {
                         wallet.network_id = chosen.str_id().into();
+                        wallet.derivation_path = wallet
+                            .addresses
+                            .iter()
+                            .find(|a| a.chain_name == chosen.chain_display_name())
+                            .and_then(|a| a.derivation_path.clone());
                     }
                 }
                 if before != state.settings.network_chain_by_family {

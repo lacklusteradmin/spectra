@@ -39,3 +39,17 @@ fn every_chain_the_switch_named_still_resolves() {
         );
     }
 }
+
+#[test]
+fn testnet_derivation_metadata_names_the_concrete_network() {
+    for chain in Chain::all().filter(|c| c.is_testnet()) {
+        assert_eq!(
+            crate::send::flow::seed_derivation_chain_raw(chain).as_deref(),
+            Some(chain.chain_display_name())
+        );
+        assert_eq!(
+            crate::registry::evm_seed_derivation_chain(chain).as_deref(),
+            chain.is_evm().then_some(chain.chain_display_name())
+        );
+    }
+}

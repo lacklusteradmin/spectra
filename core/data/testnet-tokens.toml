@@ -1,10 +1,13 @@
-# Testnet token identities, in chain order, same shape as tokens.toml.
-# Every one is native to a testnet and carries no market identity: a faucet
-# coin has no price, and pricing it as its mainnet namesake would be a lie.
+# Testnet token identities and deployments, using the same schema as tokens.toml.
+# Faucet coins have no market identity or price.
+# Deployments reference tokens.id via token_id and chains.toml networks.id via network_id.
+# Symbols are display labels. Precision belongs to the deployment.
+# Core derives deployment IDs from network, standard and contract; no stored deployment ID.
+# Keep each token immediately followed by its deployments; both tables are top-level.
 
 [[tokens]]
-id = "bitcoin-testnet-native"
-symbol = "BTC"
+id = "bitcoin-testnet"
+symbol = "tBTC"
 name = "Bitcoin"
 coingecko_id = ""
 coinpaprika_id = ""
@@ -12,15 +15,16 @@ color = "orange"
 artwork_name = "bitcoin"
 tags = []
 
-  [[tokens.deployments]]
-  network = "bitcoin-testnet"
-  kind = "native"
-  decimals = 8
-  enabled = true
+[[deployments]]
+token_id = "bitcoin-testnet"
+network_id = "bitcoin-testnet"
+kind = "native"
+decimals = 8
+enabled = true
 
 [[tokens]]
-id = "bitcoin-testnet-4-native"
-symbol = "BTC"
+id = "bitcoin-testnet-4"
+symbol = "tBTC"
 name = "Bitcoin"
 coingecko_id = ""
 coinpaprika_id = ""
@@ -28,15 +32,16 @@ color = "orange"
 artwork_name = "bitcoin"
 tags = []
 
-  [[tokens.deployments]]
-  network = "bitcoin-testnet-4"
-  kind = "native"
-  decimals = 8
-  enabled = true
+[[deployments]]
+token_id = "bitcoin-testnet-4"
+network_id = "bitcoin-testnet-4"
+kind = "native"
+decimals = 8
+enabled = true
 
 [[tokens]]
-id = "bitcoin-signet-native"
-symbol = "BTC"
+id = "bitcoin-signet"
+symbol = "tBTC"
 name = "Bitcoin"
 coingecko_id = ""
 coinpaprika_id = ""
@@ -44,15 +49,16 @@ color = "orange"
 artwork_name = "bitcoin"
 tags = []
 
-  [[tokens.deployments]]
-  network = "bitcoin-signet"
-  kind = "native"
-  decimals = 8
-  enabled = true
+[[deployments]]
+token_id = "bitcoin-signet"
+network_id = "bitcoin-signet"
+kind = "native"
+decimals = 8
+enabled = true
 
 [[tokens]]
-id = "litecoin-testnet-native"
-symbol = "LTC"
+id = "litecoin-testnet"
+symbol = "tLTC"
 name = "Litecoin"
 coingecko_id = ""
 coinpaprika_id = ""
@@ -60,15 +66,16 @@ color = "blue"
 artwork_name = "litecoin"
 tags = []
 
-  [[tokens.deployments]]
-  network = "litecoin-testnet"
-  kind = "native"
-  decimals = 8
-  enabled = true
+[[deployments]]
+token_id = "litecoin-testnet"
+network_id = "litecoin-testnet"
+kind = "native"
+decimals = 8
+enabled = true
 
 [[tokens]]
-id = "bitcoin-cash-testnet-native"
-symbol = "BCH"
+id = "bitcoin-cash-testnet"
+symbol = "tBCH"
 name = "Bitcoin Cash"
 coingecko_id = ""
 coinpaprika_id = ""
@@ -76,15 +83,16 @@ color = "orange"
 artwork_name = "bitcoincash"
 tags = []
 
-  [[tokens.deployments]]
-  network = "bitcoin-cash-testnet"
-  kind = "native"
-  decimals = 8
-  enabled = true
+[[deployments]]
+token_id = "bitcoin-cash-testnet"
+network_id = "bitcoin-cash-testnet"
+kind = "native"
+decimals = 8
+enabled = true
 
 [[tokens]]
-id = "bitcoin-sv-testnet-native"
-symbol = "BSV"
+id = "bitcoin-sv-testnet"
+symbol = "tBSV"
 name = "Bitcoin SV"
 coingecko_id = ""
 coinpaprika_id = ""
@@ -92,15 +100,16 @@ color = "orange"
 artwork_name = "bitcoinsv"
 tags = []
 
-  [[tokens.deployments]]
-  network = "bitcoin-sv-testnet"
-  kind = "native"
-  decimals = 8
-  enabled = true
+[[deployments]]
+token_id = "bitcoin-sv-testnet"
+network_id = "bitcoin-sv-testnet"
+kind = "native"
+decimals = 8
+enabled = true
 
 [[tokens]]
-id = "dogecoin-testnet-native"
-symbol = "DOGE"
+id = "dogecoin-testnet"
+symbol = "tDOGE"
 name = "Dogecoin"
 coingecko_id = ""
 coinpaprika_id = ""
@@ -108,15 +117,16 @@ color = "yellow"
 artwork_name = "dogecoin"
 tags = []
 
-  [[tokens.deployments]]
-  network = "dogecoin-testnet"
-  kind = "native"
-  decimals = 8
-  enabled = true
+[[deployments]]
+token_id = "dogecoin-testnet"
+network_id = "dogecoin-testnet"
+kind = "native"
+decimals = 8
+enabled = true
 
 [[tokens]]
-id = "zcash-testnet-native"
-symbol = "ZEC"
+id = "zcash-testnet"
+symbol = "tZEC"
 name = "Zcash"
 coingecko_id = ""
 coinpaprika_id = ""
@@ -124,15 +134,16 @@ color = "yellow"
 artwork_name = "zcash"
 tags = []
 
-  [[tokens.deployments]]
-  network = "zcash-testnet"
-  kind = "native"
-  decimals = 8
-  enabled = true
+[[deployments]]
+token_id = "zcash-testnet"
+network_id = "zcash-testnet"
+kind = "native"
+decimals = 8
+enabled = true
 
 [[tokens]]
-id = "decred-testnet-native"
-symbol = "DCR"
+id = "decred-testnet"
+symbol = "tDCR"
 name = "Decred"
 coingecko_id = ""
 coinpaprika_id = ""
@@ -140,15 +151,16 @@ color = "indigo"
 artwork_name = "decred"
 tags = []
 
-  [[tokens.deployments]]
-  network = "decred-testnet"
-  kind = "native"
-  decimals = 8
-  enabled = true
+[[deployments]]
+token_id = "decred-testnet"
+network_id = "decred-testnet"
+kind = "native"
+decimals = 8
+enabled = true
 
 [[tokens]]
-id = "kaspa-testnet-native"
-symbol = "KAS"
+id = "kaspa-testnet"
+symbol = "tKAS"
 name = "Kaspa"
 coingecko_id = ""
 coinpaprika_id = ""
@@ -156,15 +168,16 @@ color = "teal"
 artwork_name = "kaspa"
 tags = []
 
-  [[tokens.deployments]]
-  network = "kaspa-testnet"
-  kind = "native"
-  decimals = 8
-  enabled = true
+[[deployments]]
+token_id = "kaspa-testnet"
+network_id = "kaspa-testnet"
+kind = "native"
+decimals = 8
+enabled = true
 
 [[tokens]]
-id = "dash-testnet-native"
-symbol = "DASH"
+id = "dash-testnet"
+symbol = "tDASH"
 name = "Dash"
 coingecko_id = ""
 coinpaprika_id = ""
@@ -172,15 +185,16 @@ color = "blue"
 artwork_name = "dash"
 tags = []
 
-  [[tokens.deployments]]
-  network = "dash-testnet"
-  kind = "native"
-  decimals = 8
-  enabled = true
+[[deployments]]
+token_id = "dash-testnet"
+network_id = "dash-testnet"
+kind = "native"
+decimals = 8
+enabled = true
 
 [[tokens]]
-id = "ethereum-sepolia-native"
-symbol = "ETH"
+id = "ethereum-sepolia"
+symbol = "tETH"
 name = "Ethereum"
 coingecko_id = ""
 coinpaprika_id = ""
@@ -188,15 +202,16 @@ color = "purple"
 artwork_name = "ethereum"
 tags = []
 
-  [[tokens.deployments]]
-  network = "ethereum-sepolia"
-  kind = "native"
-  decimals = 18
-  enabled = true
+[[deployments]]
+token_id = "ethereum-sepolia"
+network_id = "ethereum-sepolia"
+kind = "native"
+decimals = 18
+enabled = true
 
 [[tokens]]
-id = "ethereum-hoodi-native"
-symbol = "ETH"
+id = "ethereum-hoodi"
+symbol = "tETH"
 name = "Ethereum"
 coingecko_id = ""
 coinpaprika_id = ""
@@ -204,15 +219,16 @@ color = "purple"
 artwork_name = "ethereum"
 tags = []
 
-  [[tokens.deployments]]
-  network = "ethereum-hoodi"
-  kind = "native"
-  decimals = 18
-  enabled = true
+[[deployments]]
+token_id = "ethereum-hoodi"
+network_id = "ethereum-hoodi"
+kind = "native"
+decimals = 18
+enabled = true
 
 [[tokens]]
-id = "arbitrum-sepolia-native"
-symbol = "ETH"
+id = "arbitrum-sepolia"
+symbol = "tETH"
 name = "Ethereum"
 coingecko_id = ""
 coinpaprika_id = ""
@@ -220,15 +236,16 @@ color = "cyan"
 artwork_name = "arbitrum"
 tags = []
 
-  [[tokens.deployments]]
-  network = "arbitrum-sepolia"
-  kind = "native"
-  decimals = 18
-  enabled = true
+[[deployments]]
+token_id = "arbitrum-sepolia"
+network_id = "arbitrum-sepolia"
+kind = "native"
+decimals = 18
+enabled = true
 
 [[tokens]]
-id = "optimism-sepolia-native"
-symbol = "ETH"
+id = "optimism-sepolia"
+symbol = "tETH"
 name = "Ethereum"
 coingecko_id = ""
 coinpaprika_id = ""
@@ -236,15 +253,16 @@ color = "red"
 artwork_name = "optimism"
 tags = []
 
-  [[tokens.deployments]]
-  network = "optimism-sepolia"
-  kind = "native"
-  decimals = 18
-  enabled = true
+[[deployments]]
+token_id = "optimism-sepolia"
+network_id = "optimism-sepolia"
+kind = "native"
+decimals = 18
+enabled = true
 
 [[tokens]]
-id = "base-sepolia-native"
-symbol = "ETH"
+id = "base-sepolia"
+symbol = "tETH"
 name = "Ethereum"
 coingecko_id = ""
 coinpaprika_id = ""
@@ -252,15 +270,16 @@ color = "blue"
 artwork_name = "base"
 tags = []
 
-  [[tokens.deployments]]
-  network = "base-sepolia"
-  kind = "native"
-  decimals = 18
-  enabled = true
+[[deployments]]
+token_id = "base-sepolia"
+network_id = "base-sepolia"
+kind = "native"
+decimals = 18
+enabled = true
 
 [[tokens]]
-id = "bnb-testnet-native"
-symbol = "BNB"
+id = "bnb-testnet"
+symbol = "tBNB"
 name = "BNB"
 coingecko_id = ""
 coinpaprika_id = ""
@@ -268,15 +287,16 @@ color = "yellow"
 artwork_name = "bnb"
 tags = []
 
-  [[tokens.deployments]]
-  network = "bnb-testnet"
-  kind = "native"
-  decimals = 18
-  enabled = true
+[[deployments]]
+token_id = "bnb-testnet"
+network_id = "bnb-testnet"
+kind = "native"
+decimals = 18
+enabled = true
 
 [[tokens]]
-id = "avalanche-fuji-native"
-symbol = "AVAX"
+id = "avalanche-fuji"
+symbol = "tAVAX"
 name = "Avalanche"
 coingecko_id = ""
 coinpaprika_id = ""
@@ -284,15 +304,16 @@ color = "red"
 artwork_name = "avalanche"
 tags = []
 
-  [[tokens.deployments]]
-  network = "avalanche-fuji"
-  kind = "native"
-  decimals = 18
-  enabled = true
+[[deployments]]
+token_id = "avalanche-fuji"
+network_id = "avalanche-fuji"
+kind = "native"
+decimals = 18
+enabled = true
 
 [[tokens]]
-id = "polygon-amoy-native"
-symbol = "POL"
+id = "polygon-amoy"
+symbol = "tPOL"
 name = "Polygon"
 coingecko_id = ""
 coinpaprika_id = ""
@@ -300,15 +321,16 @@ color = "purple"
 artwork_name = "polygon"
 tags = []
 
-  [[tokens.deployments]]
-  network = "polygon-amoy"
-  kind = "native"
-  decimals = 18
-  enabled = true
+[[deployments]]
+token_id = "polygon-amoy"
+network_id = "polygon-amoy"
+kind = "native"
+decimals = 18
+enabled = true
 
 [[tokens]]
-id = "hyperliquid-testnet-native"
-symbol = "HYPE"
+id = "hyperliquid-testnet"
+symbol = "tHYPE"
 name = "Hyperliquid"
 coingecko_id = ""
 coinpaprika_id = ""
@@ -316,15 +338,16 @@ color = "mint"
 artwork_name = "hyperliquid"
 tags = []
 
-  [[tokens.deployments]]
-  network = "hyperliquid-testnet"
-  kind = "native"
-  decimals = 18
-  enabled = true
+[[deployments]]
+token_id = "hyperliquid-testnet"
+network_id = "hyperliquid-testnet"
+kind = "native"
+decimals = 18
+enabled = true
 
 [[tokens]]
-id = "ethereum-classic-mordor-native"
-symbol = "ETC"
+id = "ethereum-classic-mordor"
+symbol = "tETC"
 name = "Ethereum Classic"
 coingecko_id = ""
 coinpaprika_id = ""
@@ -332,15 +355,16 @@ color = "green"
 artwork_name = "ethereumclassic"
 tags = []
 
-  [[tokens.deployments]]
-  network = "ethereum-classic-mordor"
-  kind = "native"
-  decimals = 18
-  enabled = true
+[[deployments]]
+token_id = "ethereum-classic-mordor"
+network_id = "ethereum-classic-mordor"
+kind = "native"
+decimals = 18
+enabled = true
 
 [[tokens]]
-id = "tron-nile-native"
-symbol = "TRX"
+id = "tron-nile"
+symbol = "tTRX"
 name = "Tron"
 coingecko_id = ""
 coinpaprika_id = ""
@@ -348,15 +372,16 @@ color = "red"
 artwork_name = "tron"
 tags = []
 
-  [[tokens.deployments]]
-  network = "tron-nile"
-  kind = "native"
-  decimals = 6
-  enabled = true
+[[deployments]]
+token_id = "tron-nile"
+network_id = "tron-nile"
+kind = "native"
+decimals = 6
+enabled = true
 
 [[tokens]]
-id = "solana-devnet-native"
-symbol = "SOL"
+id = "solana-devnet"
+symbol = "tSOL"
 name = "Solana"
 coingecko_id = ""
 coinpaprika_id = ""
@@ -364,15 +389,16 @@ color = "green"
 artwork_name = "solana"
 tags = []
 
-  [[tokens.deployments]]
-  network = "solana-devnet"
-  kind = "native"
-  decimals = 9
-  enabled = true
+[[deployments]]
+token_id = "solana-devnet"
+network_id = "solana-devnet"
+kind = "native"
+decimals = 9
+enabled = true
 
 [[tokens]]
-id = "xrp-testnet-native"
-symbol = "XRP"
+id = "xrp-testnet"
+symbol = "tXRP"
 name = "XRP"
 coingecko_id = ""
 coinpaprika_id = ""
@@ -380,15 +406,16 @@ color = "cyan"
 artwork_name = "xrp"
 tags = []
 
-  [[tokens.deployments]]
-  network = "xrp-testnet"
-  kind = "native"
-  decimals = 6
-  enabled = true
+[[deployments]]
+token_id = "xrp-testnet"
+network_id = "xrp-testnet"
+kind = "native"
+decimals = 6
+enabled = true
 
 [[tokens]]
-id = "stellar-testnet-native"
-symbol = "XLM"
+id = "stellar-testnet"
+symbol = "tXLM"
 name = "Stellar"
 coingecko_id = ""
 coinpaprika_id = ""
@@ -396,15 +423,16 @@ color = "teal"
 artwork_name = "stellar"
 tags = []
 
-  [[tokens.deployments]]
-  network = "stellar-testnet"
-  kind = "native"
-  decimals = 7
-  enabled = true
+[[deployments]]
+token_id = "stellar-testnet"
+network_id = "stellar-testnet"
+kind = "native"
+decimals = 7
+enabled = true
 
 [[tokens]]
-id = "cardano-preprod-native"
-symbol = "ADA"
+id = "cardano-preprod"
+symbol = "tADA"
 name = "Cardano"
 coingecko_id = ""
 coinpaprika_id = ""
@@ -412,15 +440,16 @@ color = "indigo"
 artwork_name = "cardano"
 tags = []
 
-  [[tokens.deployments]]
-  network = "cardano-preprod"
-  kind = "native"
-  decimals = 6
-  enabled = true
+[[deployments]]
+token_id = "cardano-preprod"
+network_id = "cardano-preprod"
+kind = "native"
+decimals = 6
+enabled = true
 
 [[tokens]]
-id = "sui-testnet-native"
-symbol = "SUI"
+id = "sui-testnet"
+symbol = "tSUI"
 name = "Sui"
 coingecko_id = ""
 coinpaprika_id = ""
@@ -428,15 +457,16 @@ color = "mint"
 artwork_name = "sui"
 tags = []
 
-  [[tokens.deployments]]
-  network = "sui-testnet"
-  kind = "native"
-  decimals = 9
-  enabled = true
+[[deployments]]
+token_id = "sui-testnet"
+network_id = "sui-testnet"
+kind = "native"
+decimals = 9
+enabled = true
 
 [[tokens]]
-id = "aptos-testnet-native"
-symbol = "APT"
+id = "aptos-testnet"
+symbol = "tAPT"
 name = "Aptos"
 coingecko_id = ""
 coinpaprika_id = ""
@@ -444,15 +474,16 @@ color = "cyan"
 artwork_name = "aptos"
 tags = []
 
-  [[tokens.deployments]]
-  network = "aptos-testnet"
-  kind = "native"
-  decimals = 8
-  enabled = true
+[[deployments]]
+token_id = "aptos-testnet"
+network_id = "aptos-testnet"
+kind = "native"
+decimals = 8
+enabled = true
 
 [[tokens]]
-id = "ton-testnet-native"
-symbol = "TON"
+id = "ton-testnet"
+symbol = "tTON"
 name = "Toncoin"
 coingecko_id = ""
 coinpaprika_id = ""
@@ -460,15 +491,16 @@ color = "blue"
 artwork_name = "ton"
 tags = []
 
-  [[tokens.deployments]]
-  network = "ton-testnet"
-  kind = "native"
-  decimals = 9
-  enabled = true
+[[deployments]]
+token_id = "ton-testnet"
+network_id = "ton-testnet"
+kind = "native"
+decimals = 9
+enabled = true
 
 [[tokens]]
-id = "near-testnet-native"
-symbol = "NEAR"
+id = "near-testnet"
+symbol = "tNEAR"
 name = "NEAR"
 coingecko_id = ""
 coinpaprika_id = ""
@@ -476,15 +508,16 @@ color = "indigo"
 artwork_name = "near"
 tags = []
 
-  [[tokens.deployments]]
-  network = "near-testnet"
-  kind = "native"
-  decimals = 24
-  enabled = true
+[[deployments]]
+token_id = "near-testnet"
+network_id = "near-testnet"
+kind = "native"
+decimals = 24
+enabled = true
 
 [[tokens]]
-id = "polkadot-westend-native"
-symbol = "DOT"
+id = "polkadot-westend"
+symbol = "tDOT"
 name = "Polkadot"
 coingecko_id = ""
 coinpaprika_id = ""
@@ -492,15 +525,16 @@ color = "pink"
 artwork_name = "polkadot"
 tags = []
 
-  [[tokens.deployments]]
-  network = "polkadot-westend"
-  kind = "native"
-  decimals = 10
-  enabled = true
+[[deployments]]
+token_id = "polkadot-westend"
+network_id = "polkadot-westend"
+kind = "native"
+decimals = 10
+enabled = true
 
 [[tokens]]
-id = "monero-stagenet-native"
-symbol = "XMR"
+id = "monero-stagenet"
+symbol = "tXMR"
 name = "Monero"
 coingecko_id = ""
 coinpaprika_id = ""
@@ -508,8 +542,9 @@ color = "orange"
 artwork_name = "monero"
 tags = []
 
-  [[tokens.deployments]]
-  network = "monero-stagenet"
-  kind = "native"
-  decimals = 12
-  enabled = true
+[[deployments]]
+token_id = "monero-stagenet"
+network_id = "monero-stagenet"
+kind = "native"
+decimals = 12
+enabled = true

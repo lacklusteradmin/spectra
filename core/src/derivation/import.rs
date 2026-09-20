@@ -201,8 +201,8 @@ pub fn derive_private_key_import_address(
 /// is needed once, at import, and the address for a network the user switches
 /// to later is already stored under that network's own slot.
 ///
-/// The path comes from `CoreSeedDerivationPaths::path_for`, which resolves a
-/// testnet through its mainnet. A chain whose derivation fails is skipped
+/// The path comes from `CoreSeedDerivationPaths::path_for` for the concrete
+/// network. A chain whose derivation fails is skipped
 /// rather than failing the import: `validated_addresses` reports what is
 /// missing, and an import left with nothing is refused by the planner.
 pub fn derive_import_addresses(
@@ -234,8 +234,10 @@ pub fn derive_import_addresses(
         }
     }
     for chain in chains {
-        let Some(path) = paths.path_for(chain) else {
-            continue;
+        let path = match paths.path_for(chain) {
+            Some(path) => path,
+            None if !chain.uses_derivation_path() => "",
+            None => continue,
         };
         let derived = crate::derivation::dispatch::derive_for_chain_name(
             chain.chain_display_name(),
@@ -322,6 +324,9 @@ impl ImportNetworks {
 
     /// The network selected for a family, defaulting to its mainnet.
     pub(crate) fn selected(&self, chain: Chain) -> Chain {
+        if chain.is_testnet() {
+            return chain;
+        }
         let family = chain.mainnet_counterpart();
         self.by_family
             .get(family.str_id())
