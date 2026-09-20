@@ -253,9 +253,9 @@ pub enum SimpleChain {
 
 pub fn build_evm_send_preview_record(
     input: crate::ethereum_send::EvmPreviewDecodeInput,
-) -> Option<crate::wallet_core::EvmSendPreview> {
+) -> Option<crate::send::preview_types::EvmSendPreview> {
     let d = crate::ethereum_send::decode_evm_send_preview(input)?;
-    Some(crate::wallet_core::EvmSendPreview {
+    Some(crate::send::preview_types::EvmSendPreview {
         nonce: d.nonce,
         gasLimit: d.gas_limit,
         maxFeePerGasGwei: d.max_fee_per_gas_gwei,
@@ -272,12 +272,12 @@ pub fn build_evm_send_preview_record(
 
 pub fn build_utxo_send_preview_record(
     json: String,
-) -> Option<crate::wallet_core::BitcoinSendPreview> {
+) -> Option<crate::send::preview_types::BitcoinSendPreview> {
     let d = decode_utxo_send_preview(json)?;
     if d.spendable_sat == 0 {
         return None;
     }
-    Some(crate::wallet_core::BitcoinSendPreview {
+    Some(crate::send::preview_types::BitcoinSendPreview {
         estimatedFeeRateSatVb: d.estimated_fee_rate_sat_vb,
         estimatedNetworkFee: d.estimated_network_fee_coin,
         feeRateDescription: Some(d.fee_rate_description),
@@ -292,9 +292,9 @@ pub fn build_utxo_send_preview_record(
 pub fn build_bitcoin_hd_send_preview_record(
     confirmed_sats: u64,
     sats_per_vbyte: f64,
-) -> Option<crate::wallet_core::BitcoinSendPreview> {
+) -> Option<crate::send::preview_types::BitcoinSendPreview> {
     let d = decode_bitcoin_hd_send_preview(confirmed_sats, sats_per_vbyte)?;
-    Some(crate::wallet_core::BitcoinSendPreview {
+    Some(crate::send::preview_types::BitcoinSendPreview {
         estimatedFeeRateSatVb: d.estimated_fee_rate_sat_vb,
         estimatedNetworkFee: d.estimated_network_fee_btc,
         feeRateDescription: Some(d.fee_rate_description),
@@ -310,9 +310,9 @@ pub fn build_dogecoin_send_preview_record(
     json: String,
     requested_amount: f64,
     fee_priority: String,
-) -> Option<crate::wallet_core::DogecoinSendPreview> {
+) -> Option<crate::send::preview_types::DogecoinSendPreview> {
     let d = decode_dogecoin_send_preview(json, requested_amount, fee_priority)?;
-    Some(crate::wallet_core::DogecoinSendPreview {
+    Some(crate::send::preview_types::DogecoinSendPreview {
         spendableBalanceDoge: d.spendable_balance_doge,
         requestedAmountDoge: d.requested_amount_doge,
         estimatedNetworkFee: d.estimated_network_fee_doge,
@@ -328,9 +328,11 @@ pub fn build_dogecoin_send_preview_record(
     })
 }
 
-pub fn build_tron_send_preview_record(json: String) -> Option<crate::wallet_core::TronSendPreview> {
+pub fn build_tron_send_preview_record(
+    json: String,
+) -> Option<crate::send::preview_types::TronSendPreview> {
     let d = decode_tron_send_preview(json)?;
-    Some(crate::wallet_core::TronSendPreview {
+    Some(crate::send::preview_types::TronSendPreview {
         estimatedNetworkFee: d.estimated_network_fee_trx,
         feeLimitSun: d.fee_limit_sun,
         simulationUsed: false,
@@ -348,48 +350,48 @@ pub fn build_tron_send_preview_record(json: String) -> Option<crate::wallet_core
 #[derive(Debug, Clone, uniffi::Enum)]
 pub enum SimpleChainPreview {
     Solana {
-        preview: crate::wallet_core::SolanaSendPreview,
+        preview: crate::send::preview_types::SolanaSendPreview,
     },
     Xrp {
-        preview: crate::wallet_core::XrpSendPreview,
+        preview: crate::send::preview_types::XrpSendPreview,
     },
     Stellar {
-        preview: crate::wallet_core::StellarSendPreview,
+        preview: crate::send::preview_types::StellarSendPreview,
     },
     Monero {
-        preview: crate::wallet_core::MoneroSendPreview,
+        preview: crate::send::preview_types::MoneroSendPreview,
     },
     Cardano {
-        preview: crate::wallet_core::CardanoSendPreview,
+        preview: crate::send::preview_types::CardanoSendPreview,
     },
     Sui {
-        preview: crate::wallet_core::SuiSendPreview,
+        preview: crate::send::preview_types::SuiSendPreview,
     },
     Aptos {
-        preview: crate::wallet_core::AptosSendPreview,
+        preview: crate::send::preview_types::AptosSendPreview,
     },
     Ton {
-        preview: crate::wallet_core::TonSendPreview,
+        preview: crate::send::preview_types::TonSendPreview,
     },
     Icp {
-        preview: crate::wallet_core::IcpSendPreview,
+        preview: crate::send::preview_types::IcpSendPreview,
     },
     Near {
-        preview: crate::wallet_core::NearSendPreview,
+        preview: crate::send::preview_types::NearSendPreview,
     },
     Polkadot {
-        preview: crate::wallet_core::PolkadotSendPreview,
+        preview: crate::send::preview_types::PolkadotSendPreview,
     },
     /// Substrate, like Polkadot, so the same record shape. Its fee is the
     /// catalog's static 125,000 rao rather than an on-chain quote — the same
     /// arrangement Polkadot's preview has had.
     Bittensor {
-        preview: crate::wallet_core::PolkadotSendPreview,
+        preview: crate::send::preview_types::PolkadotSendPreview,
     },
 }
 
 pub fn build_simple_chain_preview(json: String, chain: SimpleChain) -> SimpleChainPreview {
-    use crate::wallet_core::*;
+    use crate::send::preview_types::*;
     let p = decode_simple_send_preview(json);
     let fee = p.fee_display;
     let bal = p.balance_display;
@@ -638,15 +640,15 @@ mod tests {
 /// arithmetic was on the front end's side, beside a registry fact it fetched
 /// to do it, and had no test.
 pub fn with_extra_output_overhead(
-    preview: crate::wallet_core::BitcoinSendPreview,
+    preview: crate::send::preview_types::BitcoinSendPreview,
     overhead_bytes: u64,
-) -> crate::wallet_core::BitcoinSendPreview {
+) -> crate::send::preview_types::BitcoinSendPreview {
     if overhead_bytes == 0 {
         return preview;
     }
     let additional_fee =
         overhead_bytes as f64 * preview.estimatedFeeRateSatVb as f64 / 100_000_000.0;
-    crate::wallet_core::BitcoinSendPreview {
+    crate::send::preview_types::BitcoinSendPreview {
         estimatedNetworkFee: preview.estimatedNetworkFee + additional_fee,
         estimatedTransactionBytes: Some(
             preview.estimatedTransactionBytes.unwrap_or(0) + overhead_bytes as i64,
@@ -661,7 +663,7 @@ pub fn with_extra_output_overhead(
 #[cfg(test)]
 mod extra_output_overhead_tests {
     use super::with_extra_output_overhead;
-    use crate::wallet_core::BitcoinSendPreview;
+    use crate::send::preview_types::BitcoinSendPreview;
 
     fn preview() -> BitcoinSendPreview {
         BitcoinSendPreview {

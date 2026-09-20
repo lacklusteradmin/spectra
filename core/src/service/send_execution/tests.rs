@@ -689,14 +689,14 @@ mod send_chain_tests {
     use crate::registry::Chain;
     use crate::store::state::{CoreAppState, WalletState};
 
-    fn wallet(id: &str, chain: Chain, network_id: Option<&str>) -> WalletState {
+    fn wallet(id: &str, chain: Chain, chain_id: Option<&str>) -> WalletState {
         WalletState {
             id: id.to_string(),
             name: id.to_string(),
             is_watch_only: false,
             chain_name: chain.chain_display_name().to_string(),
             include_in_portfolio_total: true,
-            network_id: network_id.unwrap_or(chain.str_id()).to_string(),
+            chain_id: chain_id.unwrap_or(chain.str_id()).to_string(),
             xpub: None,
             derivation_preset: crate::store::wallet_domain::CoreSeedDerivationPreset::Standard,
             derivation_path: None,
@@ -727,7 +727,7 @@ mod send_chain_tests {
         assert!(send_chain_for(&state, "nobody", Chain::Ethereum).is_err());
         state
             .settings
-            .network_chain_by_family
+            .selected_chain_by_family
             .insert("ethereum".into(), "ethereum-hoodi".into());
         assert_eq!(
             send_chain_for(&state, "w1", Chain::EthereumSepolia).unwrap(),

@@ -96,7 +96,7 @@ mod network_balance;
 mod network_hd;
 mod network_history;
 mod network_prices;
-pub use network_prices::{fetch_fiat_rates_typed, fetch_prices_typed, QuoteRefreshState};
+pub use network_prices::{fetch_fiat_rates, fetch_prices, QuoteRefreshState};
 mod network_tokens;
 mod operational_events;
 mod pending_status;
@@ -316,16 +316,16 @@ impl WalletService {
 /// Catalog transport configuration for a non-platform front end.
 pub fn catalog_endpoints() -> Result<Vec<ChainEndpoints>, SpectraBridgeError> {
     let mut endpoints = Vec::new();
-    for row in crate::app_core_chain_endpoints()? {
+    for row in crate::chain_endpoints()? {
         let chain = Chain::from_str_id(&row.chain_id).expect("catalog chain");
         let primary = if chain.is_evm() {
             row.evm_rpc
         } else {
-            crate::endpoint_records_for_chain_masked(
+            crate::filtered_endpoint_records_for_chain(
                 row.chain_id.clone(),
-                crate::app_core::ENDPOINT_ROLE_RPC
-                    | crate::app_core::ENDPOINT_ROLE_BALANCE
-                    | crate::app_core::ENDPOINT_ROLE_BACKEND,
+                crate::app_core::ENDPOINT_KIND_RPC_NODE
+                    | crate::app_core::ENDPOINT_CAPABILITY_BALANCE
+                    | crate::app_core::ENDPOINT_KIND_BACKEND,
                 false,
             )?
             .into_iter()
@@ -347,7 +347,7 @@ pub fn catalog_endpoints() -> Result<Vec<ChainEndpoints>, SpectraBridgeError> {
         if !chain.secondary_endpoint_ids().is_empty() {
             endpoints.push(ChainEndpoints {
                 chain_id: chain.endpoint_str_id(crate::registry::EndpointSlot::Secondary),
-                endpoints: crate::app_core_endpoints_for_ids(
+                endpoints: crate::endpoints_for_ids(
                     chain
                         .secondary_endpoint_ids()
                         .iter()
@@ -371,8 +371,8 @@ mod a_primary_endpoint_can_serve_a_primary_read {
     /// `catalog_endpoints` asks a non-EVM chain for `RPC | BALANCE | BACKEND`
     /// and hands the result to `with_fallback`, which tries them top to bottom
     /// for reads. An endpoint that serves none of the three is not a slower
-    /// fallback, it is a wrong one: `ENDPOINT_ROLE_BACKEND` was written
-    /// `1 << 9` like `ENDPOINT_ROLE_INDEXER`, so the mask also matched every
+    /// fallback, it is a wrong one: `ENDPOINT_KIND_BACKEND` was written
+    /// `1 << 9` like `ENDPOINT_KIND_INDEXER`, so the mask also matched every
     /// indexer, and Bitcoin Cash's list picked up
     /// `…/push/transaction` (broadcast only) and
     /// `…/dashboards/transaction/` (a verification URL prefix) as its second
@@ -390,7 +390,7 @@ mod a_primary_endpoint_can_serve_a_primary_read {
                 continue; // a `:secondary` or `:explorer` slot, not the primary list
             }
             for endpoint in &row.endpoints {
-                let Some(tag) = crate::app_core_endpoint_tag(endpoint.clone()) else {
+                let Some(tag) = crate::endpoint_tag(endpoint.clone()) else {
                     continue; // no catalog row: a user-typed RPC or an assembled base
                 };
                 let serves = tag.kind == "rpc-node"
@@ -415,7 +415,7 @@ mod app_boundary_tests;
 pub use address_discovery::WalletAddressDiscovery;
 
 impl WalletService {
-    pub async fn update_endpoints_typed(
+    pub async fn update_endpoints(
         &self,
         endpoints: Vec<ChainEndpoints>,
     ) -> Result<(), SpectraBridgeError> {

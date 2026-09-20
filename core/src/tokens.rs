@@ -2,7 +2,7 @@
 //!
 //! The source of truth is `core/data/tokens.toml` and, for the faucet coins,
 //! `core/data/testnet-tokens.toml` — both embedded at compile time, and which
-//! file a token sits in is checked against its networks. Call [`list_tokens`]
+//! file a token sits in is checked against its networks. Call [`list_token_deployments`]
 //! to get typed token entries for a given chain id string (or all chains when
 //! the empty string `""` is passed).
 
@@ -74,7 +74,7 @@ struct TomlToken {
 #[serde(deny_unknown_fields)]
 struct TomlDeployment {
     token_id: String,
-    network_id: String,
+    chain_id: String,
     kind: String,
     #[serde(default)]
     contract: String,
@@ -96,11 +96,11 @@ pub enum TokenKind {
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, uniffi::Record)]
 #[serde(rename_all = "camelCase")]
-pub struct TokenEntry {
-    pub id: String,
+pub struct TokenDeploymentEntry {
+    pub deployment_id: String,
     pub token_id: String,
     pub kind: TokenKind,
-    pub chain: String,
+    pub chain_id: String,
     pub name: String,
     pub symbol: String,
     pub token_standard: String,
@@ -114,31 +114,17 @@ pub struct TokenEntry {
     pub enabled: bool,
 }
 
-impl TokenEntry {
-    /// A zero-balance holding of this token, in the shape a stored one has.
-    ///
-    /// `chain_name` is the chain's display name, which is what
-    /// `AssetHolding::canonicalize` leaves behind and what
-    /// `Chain::native_holding_template` has always produced. This copied
-    /// `self.chain` instead — the catalog's `network`, a str id — so a template
-    /// carried `"bitcoin"` where a stored holding carried `"Bitcoin"`. Nothing
-    /// in core noticed, because every reader goes through `network()`, which
-    /// tries both spellings; the app's exact-match lookup does not, so the id
-    /// reached the screen. Templates are built on the read path and never
-    /// persisted, which is how they slipped past the canonicalize that every
-    /// stored holding passes through.
+impl TokenDeploymentEntry {
+    /// A zero-balance holding, with the registry display name derived from its chain ID.
     pub fn holding_template(&self) -> crate::store::wallet_domain::AssetHolding {
-        // The catalog writes a str id; a token the user added names its chain.
-        let chain_name = crate::registry::Chain::from_str_id(&self.chain)
-            .or_else(|| crate::registry::Chain::from_display_name(&self.chain))
-            .map_or_else(
-                || self.chain.clone(),
-                |c| c.chain_display_name().to_string(),
-            );
+        let chain_name = crate::registry::Chain::from_str_id(&self.chain_id).map_or_else(
+            || self.chain_id.clone(),
+            |c| c.chain_display_name().to_string(),
+        );
         crate::store::wallet_domain::AssetHolding {
             name: self.name.clone(),
             symbol: self.symbol.clone(),
-            coin_gecko_id: self.coingecko_id.clone(),
+            coingecko_id: self.coingecko_id.clone(),
             chain_name,
             token_standard: self.token_standard.clone(),
             contract_address: (!self.contract.is_empty()).then(|| self.contract.clone()),
@@ -151,11 +137,10 @@ impl TokenEntry {
         matches!(self.kind, TokenKind::Native)
     }
     pub fn matches_holding(&self, holding: &crate::store::wallet_domain::AssetHolding) -> bool {
-        let network = crate::registry::Chain::from_str_id(&self.chain)
-            .or_else(|| crate::registry::Chain::from_display_name(&self.chain));
+        let network = crate::registry::Chain::from_str_id(&self.chain_id);
         (self.is_native() || !self.contract.trim().is_empty())
             && network.is_some()
-            && network == holding.network()
+            && network == holding.chain()
             && crate::tokens::normalize_token_identifier(
                 Some(self.contract.clone()),
                 network.unwrap().chain_display_name().into(),
@@ -168,26 +153,25 @@ impl TokenEntry {
 
 // ── Static catalog
 
-static CATALOG: LazyLock<Vec<TokenEntry>> = LazyLock::new(|| {
+static CATALOG: LazyLock<Vec<TokenDeploymentEntry>> = LazyLock::new(|| {
     load_catalog(
         embedded_token_file(TOKENS_TOML, "tokens.toml"),
         embedded_token_file(TESTNET_TOKENS_TOML, "testnet-tokens.toml"),
     )
 });
 
-fn load_catalog(mainnet: TomlFile, testnet: TomlFile) -> Vec<TokenEntry> {
+fn load_catalog(mainnet: TomlFile, testnet: TomlFile) -> Vec<TokenDeploymentEntry> {
     #[derive(Deserialize)]
-    struct Networks {
-        networks: Vec<Network>,
+    struct Chains {
+        chains: Vec<ChainRecord>,
     }
     #[derive(Deserialize)]
-    struct Network {
+    struct ChainRecord {
         id: String,
         environment: String,
         token_standard: String,
     }
-    let networks: Networks =
-        toml::from_str(include_str!("../data/chains.toml")).expect("valid networks");
+    let chains: Chains = toml::from_str(include_str!("../data/chains.toml")).expect("valid chains");
     let mut identities = std::collections::HashSet::new();
     let files = [(mainnet, "mainnet"), (testnet, "testnet")];
     let mut tokens_by_id = std::collections::HashMap::new();
@@ -205,20 +189,20 @@ fn load_catalog(mainnet: TomlFile, testnet: TomlFile) -> Vec<TokenEntry> {
         .flat_map(|(file, environment)| file.deployments.iter().map(move |d| (*environment, d)))
         .map(|(environment, d)| {
             let t = tokens_by_id[d.token_id.as_str()];
-            let network = networks
-                .networks
+            let network = chains
+                .chains
                 .iter()
-                .find(|n| n.id == d.network_id)
-                .unwrap_or_else(|| panic!("unknown deployment network_id {:?}", d.network_id));
+                .find(|n| n.id == d.chain_id)
+                .unwrap_or_else(|| panic!("unknown deployment chain_id {:?}", d.chain_id));
             // Derived, not declared: an id written beside the facts it
             // restates can disagree with them, and the file spelled 268 of
             // them for the build to check character by character.
             let id = if d.kind == "native" {
-                format!("{}:native", d.network_id)
+                format!("{}:native", d.chain_id)
             } else {
                 format!(
                     "{}:{}:{}",
-                    d.network_id,
+                    d.chain_id,
                     d.standard.to_lowercase(),
                     d.contract
                 )
@@ -265,8 +249,8 @@ fn load_catalog(mainnet: TomlFile, testnet: TomlFile) -> Vec<TokenEntry> {
                     "invalid deployment identifier {id}"
                 );
             }
-            TokenEntry {
-                id,
+            TokenDeploymentEntry {
+                deployment_id: id,
                 token_id: t.id.clone(),
                 kind: match d.kind.as_str() {
                     "native" => {
@@ -288,7 +272,7 @@ fn load_catalog(mainnet: TomlFile, testnet: TomlFile) -> Vec<TokenEntry> {
                     }
                     other => panic!("unknown deployment kind {other}"),
                 },
-                chain: d.network_id.clone(),
+                chain_id: d.chain_id.clone(),
                 name: t.name.clone(),
                 symbol: t.symbol.clone(),
                 token_standard: if d.kind == "native" {
@@ -309,28 +293,28 @@ fn load_catalog(mainnet: TomlFile, testnet: TomlFile) -> Vec<TokenEntry> {
 }
 
 /// Resolve an explicitly registered deployment, without guessing from a ticker.
-pub fn deployment(id: &str) -> Option<&'static TokenEntry> {
-    CATALOG.iter().find(|t| t.id == id)
+pub fn deployment(id: &str) -> Option<&'static TokenDeploymentEntry> {
+    CATALOG.iter().find(|t| t.deployment_id == id)
 }
 
 // ── Public API
 
 /// Return token entries for `chain_id`, or all chains when `chain_id` is `""`.
 #[uniffi::export]
-pub fn list_tokens(chain_id: String) -> Vec<TokenEntry> {
+pub fn list_token_deployments(chain_id: String) -> Vec<TokenDeploymentEntry> {
     if chain_id.is_empty() {
         CATALOG.clone()
     } else {
         CATALOG
             .iter()
-            .filter(|t| t.chain == chain_id)
+            .filter(|t| t.chain_id == chain_id)
             .cloned()
             .collect()
     }
 }
 
 /// Return a reference to the static catalog slice.
-pub fn catalog() -> &'static [TokenEntry] {
+pub fn catalog() -> &'static [TokenDeploymentEntry] {
     &CATALOG
 }
 
@@ -345,16 +329,16 @@ pub fn catalog() -> &'static [TokenEntry] {
 pub(crate) fn token_name_on_chain(chain_id: &str, symbol: &str) -> Option<&'static str> {
     let mut matches = CATALOG
         .iter()
-        .filter(|t| t.chain == chain_id && t.symbol.eq_ignore_ascii_case(symbol));
+        .filter(|t| t.chain_id == chain_id && t.symbol.eq_ignore_ascii_case(symbol));
     let token = matches.next()?;
     matches.next().is_none().then_some(token.name.as_str())
 }
 
 /// Each token's ids at the market-data providers, one row per token.
 ///
-/// Kept out of [`TokenEntry`] the way the chain catalog keeps them out of
+/// Kept out of [`TokenDeploymentEntry`] the way the chain catalog keeps them out of
 /// `ChainEntry`: no front end prices anything, so these would cross the FFI on
-/// every `list_tokens` call for a caller that never reads them.
+/// every `list_token_deployments` call for a caller that never reads them.
 pub(crate) fn market_ids() -> &'static [crate::price::AssetMarketIds] {
     static IDS: LazyLock<Vec<crate::price::AssetMarketIds>> = LazyLock::new(|| {
         // Only mainnet identities have market prices; testnet identities are
@@ -632,7 +616,7 @@ mod tests {
             assert_eq!(
                 template, canonical,
                 "{} builds a template canonicalize would rewrite",
-                token.id
+                token.deployment_id
             );
         }
     }
@@ -642,9 +626,9 @@ mod tests {
     fn a_native_template_names_its_chain_the_way_a_stored_holding_does() {
         let bitcoin = catalog()
             .iter()
-            .find(|t| t.id == "bitcoin:native")
+            .find(|t| t.deployment_id == "bitcoin:native")
             .expect("the catalog lists bitcoin");
-        assert_eq!(bitcoin.chain, "bitcoin", "the catalog stores a str id");
+        assert_eq!(bitcoin.chain_id, "bitcoin", "the catalog stores a str id");
         assert_eq!(bitcoin.holding_template().chain_name, "Bitcoin");
         assert_eq!(
             bitcoin.holding_template().chain_name,
@@ -779,14 +763,14 @@ mod tokens_and_deployments {
     const SAMPLE: &str = r#"
 [[deployments]]
 token_id = "ether"
-network_id = "ethereum"
+chain_id = "ethereum"
 kind = "native"
 decimals = 18
 enabled = true
 
 [[deployments]]
 token_id = "usdc"
-network_id = "ethereum"
+chain_id = "ethereum"
 kind = "token"
 contract = "0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48"
 standard = "ERC-20"
@@ -825,7 +809,7 @@ tags = []
         let entries = load_catalog(file, empty_file());
         assert_eq!(entries[0].token_id, "ether");
         assert_eq!(entries[0].symbol, "ETH");
-        assert_eq!(entries[0].id, "ethereum:native");
+        assert_eq!(entries[0].deployment_id, "ethereum:native");
         assert_eq!(entries[1].symbol, "USDC");
         assert_eq!(entries[1].decimals, 6);
         assert_eq!(
@@ -854,7 +838,7 @@ tags = []
                 "missing field `token_id`",
             ),
             (
-                SAMPLE.replace("network_id =", "network ="),
+                SAMPLE.replace("chain_id =", "network ="),
                 "unknown field `network`",
             ),
             (
@@ -870,11 +854,8 @@ tags = []
     #[test]
     fn flat_deployments_still_enforce_network_and_asset_integrity() {
         for file in [
-            SAMPLE.replace("network_id = \"ethereum\"", "network_id = \"unknown\""),
-            SAMPLE.replace(
-                "network_id = \"ethereum\"",
-                "network_id = \"ethereum-sepolia\"",
-            ),
+            SAMPLE.replace("chain_id = \"ethereum\"", "chain_id = \"unknown\""),
+            SAMPLE.replace("chain_id = \"ethereum\"", "chain_id = \"ethereum-sepolia\""),
             SAMPLE.replace("decimals = 6", "decimals = 39"),
             SAMPLE.replace("0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48", "bad-contract"),
         ] {
@@ -896,10 +877,7 @@ tags = []
         })
         .is_err());
         // Testnet assets still cannot borrow a mainnet market identity.
-        let testnet = SAMPLE.replace(
-            "network_id = \"ethereum\"",
-            "network_id = \"ethereum-sepolia\"",
-        );
+        let testnet = SAMPLE.replace("chain_id = \"ethereum\"", "chain_id = \"ethereum-sepolia\"");
         assert!(std::panic::catch_unwind(|| {
             load_catalog(empty_file(), parse_token_file(&testnet).unwrap())
         })
@@ -914,7 +892,7 @@ tags = []
     /// Polygon. The join makes that unrepresentable; this asserts it.
     #[test]
     fn every_deployment_of_a_token_agrees_about_the_token() {
-        let mut seen: HashMap<&str, &TokenEntry> = HashMap::new();
+        let mut seen: HashMap<&str, &TokenDeploymentEntry> = HashMap::new();
         for entry in CATALOG.iter() {
             let first = seen.entry(entry.token_id.as_str()).or_insert(entry);
             for (field, a, b) in [
@@ -925,7 +903,7 @@ tags = []
                 assert_eq!(
                     a, b,
                     "{}'s {field} differs between {} and {}",
-                    entry.symbol, first.chain, entry.chain
+                    entry.symbol, first.chain_id, entry.chain_id
                 );
             }
             assert_eq!(first.color, entry.color, "{}'s color differs", entry.symbol);
@@ -971,7 +949,7 @@ tags = []
     #[test]
     fn every_catalog_contract_is_already_normalized() {
         for entry in CATALOG.iter().filter(|e| !e.is_native()) {
-            let chain = crate::registry::Chain::from_str_id(&entry.chain)
+            let chain = crate::registry::Chain::from_str_id(&entry.chain_id)
                 .expect("a deployment network is a registry chain");
             assert_eq!(
                 normalize_token_identifier(
@@ -981,7 +959,7 @@ tags = []
                 .as_deref(),
                 Some(entry.contract.as_str()),
                 "{} is not in normalized form",
-                entry.id
+                entry.deployment_id
             );
         }
     }

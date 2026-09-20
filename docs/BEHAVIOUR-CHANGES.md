@@ -16,6 +16,69 @@ how to check it without the app:
   that none applies and what covers it instead.
 - **Verification** — the three suites at the time of the change.
 
+## 2026-09-20 — Unify domain names and remove obsolete naming layers
+
+- **Before:** Wallet projections/settings mixed `network_chain` with `chain`;
+  deployment records were named `TokenEntry` with ambiguous `id` and `chain`
+  fields; custom deployments stored display names. CoinGecko keys, Swift ID
+  spelling, free-function prefixes and raw/structured result names differed.
+  Endpoint filters retained role names, obsolete aliases and CLI-owned bit values.
+- **After:** Wallet chain identity uses `chain_id`; family selection uses
+  `selected_chain_by_family`. Refresh entries distinguish `holding_chain_id`
+  from the queried `chain_id`. `TokenDeploymentEntry` uses `deployment_id`,
+  `token_id` and registry `chain_id` for both built-in and custom deployments.
+  Preference keys and ordering consistently use chain IDs. Built-in hosting
+  lookup resolves the ID through `Chain` before reading its display name, so
+  IDs such as `bnb-chain` no longer silently omit their built-in tokens.
+  CoinGecko keys use `coingecko_id` / `coingeckoId`; handwritten Swift uses `Id`.
+  Functions omit `core_` / `app_core_`, structured functions omit `_typed`, and
+  raw preview functions use `_json`. Endpoint kind and capability constants
+  come from core; obsolete `rpc` / `explorer` filter aliases are rejected.
+  The unused secret-store trait, redundant validation forwarding functions and
+  misleading `wallet_core` module alias are removed. The endpoint Swift file
+  is named after `AppEndpointDirectory`. Generated bindings are regenerated.
+- **Why:** One name per identity or operation, explicit names for different
+  identities, and one owner for endpoint filter definitions. Stored JSON shapes
+  change directly without migration or compatibility aliases.
+- **CLI check:** `spectra --json token catalog --chain ethereum-sepolia` emits
+  `deployment_id` separately from `token_id`; `spectra --json endpoints --catalog
+  --chain ethereum-sepolia` retains the concrete chain identity. Offline token
+  preference checks cover custom deployment IDs, built-in token resolution,
+  duplicate rejection, enable/disable, removal and persistence after reopening.
+- **Verification:** `make verify` passed: formatting/clippy, 847 Rust tests,
+  419 CLI acceptance checks and 102 iPhone simulator tests.
+
+## 2026-09-20 — Use chain IDs consistently across catalogs and callers
+
+- **Before:** Chain references in presentation, deployments, endpoints, wallet
+  state and endpoint probes used `network_id` / `networkId`, despite resolving
+  to registry `Chain` IDs. Artwork lookup exposed `--network-id`.
+- **After:** These references use `chain_id` / `chainId`, including persisted
+  wallet JSON, SQL JSON lookups, CLI output and generated Swift bindings.
+  Artwork lookup uses `--chain-id` and `core_chain_artwork_name`. Stored shapes
+  change directly, with no aliases or migrations. IDs and network selection
+  behavior are unchanged. Protocol-defined Cardano network IDs and Rosetta
+  `network_identifier` fields keep their protocol names.
+- **Why:** Use one name for registry chain identity throughout its consumers.
+- **CLI check:** `spectra --json endpoints --catalog --chain ethereum-sepolia`
+  emits `chainId: ethereum-sepolia`; `spectra --json token artwork --chain-id base`
+  returns `artworkName: base`. CLI acceptance also exercises stored wallet
+  `chainId`, testnet selection and send identity after reopening state.
+- **Verification:** `make verify` passed: formatting/clippy, 847 Rust tests,
+  419 CLI acceptance checks and 102 iPhone simulator tests.
+
+## 2026-09-20 — Name chain catalog tables consistently
+
+- **Before:** `chains.toml` and `chain-ui.toml` used `[[networks]]` tables.
+- **After:** Both use `[[chains]]`, with matching Rust deserialization fields.
+  Mainnet and testnet records remain peers; record fields and IDs are unchanged.
+- **Why:** Match the file names and the registry's `Chain` terminology without
+  keeping a second spelling or compatibility alias for the same collection.
+- **CLI check:** `spectra --json chains --testnets --filter sepolia` and
+  `spectra --json token catalog --chain ethereum-sepolia` load the renamed tables.
+- **Verification:** `make verify` passed: formatting/clippy, 847 Rust tests,
+  419 CLI acceptance checks and 102 iPhone simulator tests.
+
 ## 2026-09-20 — Remove redundant native suffixes from testnet token IDs
 
 - **Before:** Testnet token IDs used names such as `bitcoin-testnet-native`

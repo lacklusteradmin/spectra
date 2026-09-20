@@ -225,7 +225,7 @@ mod tests {
 /// Build a chain's diagnostics document from core-owned history and supplied
 /// endpoint health results.
 #[uniffi::export]
-pub fn core_diagnostics_json(
+pub fn diagnostics_json(
     chain_name: String,
     endpoints: Vec<EndpointHealthRow>,
     history_last_updated_at_unix: Option<f64>,
@@ -259,7 +259,7 @@ mod one_builder_tests {
     #[test]
     fn every_chain_produces_a_document() {
         for chain in Chain::all().filter(|c| !c.is_testnet()) {
-            let json = core_diagnostics_json(
+            let json = diagnostics_json(
                 chain.chain_display_name().to_string(),
                 Vec::new(),
                 None,

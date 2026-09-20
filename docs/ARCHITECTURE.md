@@ -58,7 +58,7 @@ and tests use the same domain operations.
 by `core/data/chains.toml`. Adding a chain requires a catalog row and an enum
 variant in matching order. Registry tests check that relationship independently.
 Presentation lives in `core/data/chain-ui.toml`, joined one-to-one by
-`network_id`; UI row order is independent of the network/enum order. Core
+`chain_id`; UI row order is independent of the network/enum order. Core
 rejects missing, duplicate and unknown presentation references. Display
 categories do not determine protocol capabilities. EVM membership is defined
 by `Chain::is_evm()` in Rust; the catalog projects that result for clients
@@ -70,6 +70,8 @@ Chain-specific implementations live under each domain's `chains/` directory.
 Keep differences that carry protocol meaning; share cryptographic primitives
 and wrappers that differ only in a chain name. Tests over the registry should
 assert complete capability coverage, rather than only test named examples.
+
+See [Naming](NAMING.md) for identifiers, function names and endpoint terminology.
 
 ## Boundary design
 

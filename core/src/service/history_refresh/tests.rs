@@ -8,7 +8,7 @@ fn wallet(id: &str, chain: Chain, addresses: &[(Chain, &str)]) -> WalletState {
         is_watch_only: false,
         chain_name: chain.chain_display_name().to_string(),
         include_in_portfolio_total: true,
-        network_id: chain.str_id().into(),
+        chain_id: chain.str_id().into(),
         xpub: None,
         derivation_preset: crate::store::wallet_domain::CoreSeedDerivationPreset::Standard,
         derivation_path: None,
@@ -70,12 +70,12 @@ fn a_testnet_wallet_fetches_and_persists_its_exact_network() {
         )],
         ..Default::default()
     };
-    state.settings.network_chain_by_family.insert(
+    state.settings.selected_chain_by_family.insert(
         Chain::Bitcoin.str_id().to_string(),
         Chain::BitcoinTestnet4.str_id().to_string(),
     );
 
-    state.wallets[0].network_id = "bitcoin-testnet-4".into();
+    state.wallets[0].chain_id = "bitcoin-testnet-4".into();
     let target = &targets(&state, Chain::Bitcoin, &[])[0];
     assert_eq!(target.network, Chain::BitcoinTestnet4, "fetched from");
     assert_eq!(target.address, "tb1test");
@@ -121,7 +121,7 @@ fn a_target_follows_the_network_the_wallet_is_on() {
     assert_eq!(targets(&state, Chain::Bitcoin, &[])[0].address, "bc1main");
 
     state.settings = AppSettings {
-        network_chain_by_family: [(
+        selected_chain_by_family: [(
             Chain::Bitcoin.str_id().to_string(),
             Chain::BitcoinTestnet4.str_id().to_string(),
         )]
@@ -129,7 +129,7 @@ fn a_target_follows_the_network_the_wallet_is_on() {
         .collect(),
         ..AppSettings::default()
     };
-    state.wallets[0].network_id = "bitcoin-testnet-4".into();
+    state.wallets[0].chain_id = "bitcoin-testnet-4".into();
     assert_eq!(targets(&state, Chain::Bitcoin, &[])[0].address, "tb1test");
 }
 
@@ -209,14 +209,14 @@ fn descriptors_are_the_enabled_tokens_for_the_chain() {
     use crate::store::wallet_domain::{CoreTokenPreferenceCategory, CoreTokenPreferenceEntry};
     fn entry(chain: &str, contract: &str, enabled: bool) -> CoreTokenPreferenceEntry {
         CoreTokenPreferenceEntry {
-            token: crate::tokens::TokenEntry {
-                id: "fixture:token".into(),
+            token: crate::tokens::TokenDeploymentEntry {
+                deployment_id: "fixture:token".into(),
                 token_id: "fixture:token".into(),
                 kind: crate::tokens::TokenKind::Protocol {
                     standard: "fixture".into(),
                     identifier: "fixture".into(),
                 },
-                chain: chain.to_string(),
+                chain_id: chain.to_string(),
                 name: "Token".to_string(),
                 symbol: "TKN".to_string(),
                 token_standard: "erc20".to_string(),
@@ -684,7 +684,7 @@ async fn history_identity_merges_sends_on_the_exact_network_and_rejects_deleted_
             "0x1111111111111111111111111111111111111111",
         )],
     );
-    w.network_id = Chain::EthereumSepolia.str_id().into();
+    w.chain_id = Chain::EthereumSepolia.str_id().into();
     service
         .apply_state_command(crate::store::state::StateCommand::UpsertWallet { wallet: w })
         .await

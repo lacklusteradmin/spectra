@@ -92,7 +92,7 @@ pub struct BitcoinSendParams {
     /// `"bitcoin-testnet-4"`, …). It was a mode string, which meant a table
     /// mapping those strings back to a network beside the one the registry
     /// already has.
-    pub network_chain_id: String,
+    pub chain_id: String,
     /// Whether to signal RBF (replace-by-fee) on inputs.
     pub enable_rbf: bool,
     /// Minimum change output in satoshis; dust below this is absorbed into fee.
@@ -291,7 +291,7 @@ fn parse_spend_identity(
     secp: &Secp256k1<bitcoin::secp256k1::All>,
     params: &BitcoinSendParams,
 ) -> Result<SpendIdentity, String> {
-    let network = crate::registry::Chain::from_str_id(&params.network_chain_id)
+    let network = crate::registry::Chain::from_str_id(&params.chain_id)
         .unwrap_or(crate::registry::Chain::Bitcoin)
         .bitcoin_network();
 
@@ -632,7 +632,7 @@ pub async fn sign_and_broadcast(
         .ok()
         .and_then(|addr| {
             addr.require_network(
-                crate::registry::Chain::from_str_id(&params.network_chain_id)
+                crate::registry::Chain::from_str_id(&params.chain_id)
                     .unwrap_or(crate::registry::Chain::Bitcoin)
                     .bitcoin_network(),
             )
@@ -741,7 +741,7 @@ mod tests {
                 sats_per_vbyte: 10.0,
             },
             available_utxos: utxos,
-            network_chain_id: "bitcoin".to_string(),
+            chain_id: "bitcoin".to_string(),
             enable_rbf: true,
             dust_threshold: None,
             pinned_utxos: None,

@@ -61,7 +61,9 @@ fn discover(ctx: &Ctx, out: Out, args: SelectArgs) -> CliResult<()> {
     let chain = super::resolve_chain(&wallet.chain_name)?;
     let service = super::chain::service_for_chain(
         chain,
-        super::chain::BALANCE | super::chain::NATIVE_HISTORY | super::chain::RPC,
+        super::chain::ENDPOINT_CAPABILITY_BALANCE
+            | super::chain::ENDPOINT_CAPABILITY_NATIVE_HISTORY
+            | super::chain::ENDPOINT_KIND_RPC_NODE,
     )?;
     service.set_secret_store(ctx.secrets.clone());
     ctx.rt

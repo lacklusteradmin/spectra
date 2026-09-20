@@ -1,7 +1,7 @@
 //! Funds Finder — scan many derivation paths from a seed phrase to locate
 //! hidden or lost funds across supported blockchains.
 //!
-//! `core_generate_funds_finder_candidates` is a pure computation step: it
+//! `generate_funds_finder_candidates` is a pure computation step: it
 //! derives addresses for every (chain, path, script-type) combination in the
 //! candidate matrix and returns them to Swift. Swift then calls the existing
 //! `fetch_native_balance_summary` for each candidate and surfaces hits.
@@ -47,7 +47,7 @@ pub struct FundsFinderCandidate {
 ///
 /// Derivation errors for individual candidates are silently skipped so that
 /// a bad path for one chain doesn't abort the entire scan.
-pub fn core_generate_funds_finder_candidates(
+pub fn generate_funds_finder_candidates(
     request: FundsFinderRequest,
 ) -> Result<Vec<FundsFinderCandidate>, SpectraBridgeError> {
     let seed = &request.seed_phrase;

@@ -30,9 +30,8 @@ struct Inner {
 
 // ── BalanceRefreshEngine (UniFFI-exported object)
 
-/// Order matters: observer and entries before `start`, and `set_entries_typed`
-/// again whenever the wallet list changes. A short-lived caller wants
-/// `refresh_now` instead of `start`.
+/// Attach an observer before `start`. The service refreshes registered entries
+/// when its wallet state changes. A short-lived caller uses `refresh_now`.
 #[derive(uniffi::Object)]
 pub struct BalanceRefreshEngine {
     inner: Arc<Inner>,
@@ -231,7 +230,11 @@ impl BalanceRefreshEngine {
                             .refresh_wallet_balances(entry.wallet_id.clone())
                             .await
                             .map_err(|_| ())?;
-                        Ok((entry.chain_id.clone(), entry.wallet_id, wallet_summary))
+                        Ok((
+                            entry.holding_chain_id.clone(),
+                            entry.wallet_id,
+                            wallet_summary,
+                        ))
                     }
                 })
                 .buffer_unordered(8)
@@ -418,14 +421,10 @@ pub(crate) fn refresh_entries_for(state: &crate::store::state::CoreAppState) -> 
                 .as_deref()
                 .map(str::trim)
                 .filter(|xpub| chain == Chain::Bitcoin && !xpub.is_empty())
-                .or_else(|| wallet.active_address(&state.settings))?;
+                .or_else(|| wallet.active_address())?;
             Some(RefreshEntry {
-                chain_id: chain.str_id().to_string(),
-                network_chain_id: wallet
-                    .network_chain(&state.settings)
-                    .unwrap_or(chain)
-                    .str_id()
-                    .to_string(),
+                holding_chain_id: chain.str_id().to_string(),
+                chain_id: wallet.chain().unwrap_or(chain).str_id().to_string(),
                 wallet_id: wallet.id.clone(),
                 address: address.to_string(),
             })
@@ -442,10 +441,10 @@ pub(crate) fn refresh_entries_for(state: &crate::store::state::CoreAppState) -> 
 pub struct RefreshEntry {
     /// The chain the balance is *filed* under: the wallet's family, which is
     /// what its holding is named after and what pricing keys on.
-    pub chain_id: String,
+    pub holding_chain_id: String,
     /// Network to fetch the balance from. Keep it distinct from the holding
     /// identity so testnet fetches use testnet endpoints without renaming assets.
-    pub network_chain_id: String,
+    pub chain_id: String,
     pub wallet_id: String,
     /// The canonical fetch key: a wallet address for most chains, or an
     /// xpub/ypub/zpub for Bitcoin HD wallets.
@@ -465,7 +464,7 @@ mod refresh_entry_tests {
             is_watch_only: false,
             chain_name: chain.chain_display_name().to_string(),
             include_in_portfolio_total: true,
-            network_id: chain.str_id().into(),
+            chain_id: chain.str_id().into(),
             xpub: None,
             derivation_preset: crate::store::wallet_domain::CoreSeedDerivationPreset::Standard,
             derivation_path: None,
@@ -504,7 +503,7 @@ mod refresh_entry_tests {
         assert_eq!(mainnet[0].address, "bc1main");
 
         // The app's selection moves the whole family.
-        state.settings.network_chain_by_family.insert(
+        state.settings.selected_chain_by_family.insert(
             Chain::Bitcoin.str_id().to_string(),
             Chain::BitcoinTestnet4.str_id().to_string(),
         );
@@ -513,11 +512,11 @@ mod refresh_entry_tests {
             "bc1main",
             "settings cannot retarget a stored wallet"
         );
-        state.wallets[0].network_id = "bitcoin-testnet-4".into();
+        state.wallets[0].chain_id = "bitcoin-testnet-4".into();
         assert_eq!(refresh_entries_for(&state)[0].address, "tb1test");
 
         // A wallet's own network wins over the app's selection.
-        state.wallets[0].network_id = Chain::Bitcoin.str_id().to_string();
+        state.wallets[0].chain_id = Chain::Bitcoin.str_id().to_string();
         assert_eq!(refresh_entries_for(&state)[0].address, "bc1main");
     }
 

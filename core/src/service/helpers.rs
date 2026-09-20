@@ -19,12 +19,10 @@ pub(super) fn chain_for_id(chain_id: &str) -> Result<Chain, SpectraBridgeError> 
         .ok_or_else(|| SpectraBridgeError::from(format!("unknown chain_id: {chain_id}")))
 }
 
-pub(super) fn evm_network_for_id(network_id: &str) -> Result<Chain, SpectraBridgeError> {
-    Chain::from_str_id(network_id)
+pub(super) fn evm_network_for_id(chain_id: &str) -> Result<Chain, SpectraBridgeError> {
+    Chain::from_str_id(chain_id)
         .filter(|c| c.is_evm())
-        .ok_or_else(|| {
-            SpectraBridgeError::from(format!("unsupported EVM network_id: {network_id}"))
-        })
+        .ok_or_else(|| SpectraBridgeError::from(format!("unsupported EVM chain_id: {chain_id}")))
 }
 
 /// Serialize a value to JSON, returning the bridge error type directly.

@@ -17,14 +17,14 @@ fn observe(state: &CoreAppState) -> Option<PortfolioMovementBaseline> {
         .filter(|w| w.include_in_portfolio_total)
     {
         for holding in &wallet.holdings {
-            let chain = holding.network()?;
+            let chain = holding.chain()?;
             if chain.is_testnet() {
                 continue;
             }
             if !holding.amount.is_finite() || holding.amount < 0.0 {
                 return None;
             }
-            composition.push(serde_json::to_string(&(&wallet.id, holding.deployment_key())).ok()?);
+            composition.push(serde_json::to_string(&(&wallet.id, holding.deployment_id())).ok()?);
             if holding.amount == 0.0 {
                 continue;
             }
@@ -52,7 +52,7 @@ fn evaluate(state: &mut CoreAppState, app_is_active: bool) -> Option<LargeMoveme
     if app_is_active || previous.composition != current.composition {
         return None;
     }
-    let result = core_evaluate_large_movement(
+    let result = evaluate_large_movement(
         previous.total_usd,
         current.total_usd,
         state.settings.large_movement_alert_usd_threshold,
@@ -96,7 +96,7 @@ mod tests {
             name: "A".into(),
             is_watch_only: true,
             chain_name: "Ethereum".into(),
-            network_id: "ethereum".into(),
+            chain_id: "ethereum".into(),
             include_in_portfolio_total: true,
             xpub: None,
             derivation_preset: crate::store::wallet_domain::CoreSeedDerivationPreset::Standard,
@@ -107,7 +107,7 @@ mod tests {
                 name: "Ethereum".into(),
                 symbol: "ETH".into(),
                 chain_name: "Ethereum".into(),
-                coin_gecko_id: "ethereum".into(),
+                coingecko_id: "ethereum".into(),
                 token_standard: "Native".into(),
                 contract_address: None,
                 amount: 1.0,

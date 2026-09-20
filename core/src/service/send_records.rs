@@ -103,7 +103,7 @@ impl WalletService {
         transaction_id: String,
     ) -> Result<String, SpectraBridgeError> {
         let mut record = self
-            .fetch_all_history_records_typed()
+            .fetch_all_history_records()
             .await?
             .into_iter()
             .find(|r| r.id.eq_ignore_ascii_case(&transaction_id))
@@ -145,10 +145,8 @@ impl WalletService {
             }
             (raw, "txid".to_string())
         } else {
-            let prepared = crate::send::flow::core_rebroadcast_prepare_payload(
-                format.into(),
-                payload.clone(),
-            )?;
+            let prepared =
+                crate::send::flow::rebroadcast_prepare_payload(format.into(), payload.clone())?;
             if Chain::from_str_id(&prepared.chain_id) != Some(chain.mainnet_counterpart()) {
                 return Err("payload does not match transaction chain".into());
             }
@@ -219,7 +217,7 @@ impl WalletService {
             chain.evm_chain_id(),
         );
         let mut next = client.fetch_nonce(source).await?;
-        for row in self.fetch_all_history_records_typed().await? {
+        for row in self.fetch_all_history_records().await? {
             let r = row.payload;
             if r.chain_name == chain.chain_display_name()
                 && r.source_address
@@ -299,7 +297,7 @@ mod tests {
             "0xaccepted"
         );
         let stored = service
-            .fetch_all_history_records_typed()
+            .fetch_all_history_records()
             .await
             .unwrap()
             .remove(0)
@@ -318,7 +316,7 @@ mod tests {
             .rebroadcast_transaction(record.id.clone())
             .await
             .is_err());
-        assert!(service.fetch_all_history_records_typed().await.unwrap()[0]
+        assert!(service.fetch_all_history_records().await.unwrap()[0]
             .payload
             .failure_reason
             .is_some());
@@ -330,7 +328,7 @@ mod tests {
         late.failure_reason = Some("late result".into());
         service.save_send_record(late).await.unwrap();
         assert_eq!(
-            service.fetch_all_history_records_typed().await.unwrap()[0]
+            service.fetch_all_history_records().await.unwrap()[0]
                 .payload
                 .status,
             CoreTransactionStatus::Confirmed

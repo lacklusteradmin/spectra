@@ -73,10 +73,8 @@ impl WalletService {
         });
         if commit.request.is_private_key_import {
             commit.private_key = Some(
-                super::standalone::core_private_key_hex(
-                    commit.private_key.take().unwrap_or_default(),
-                )
-                .ok_or("Enter a valid 32-byte hex key.")?,
+                super::standalone::private_key_hex(commit.private_key.take().unwrap_or_default())
+                    .ok_or("Enter a valid 32-byte hex key.")?,
             );
         }
         if (commit.request.is_watch_only_import || commit.request.is_private_key_import)
@@ -91,7 +89,7 @@ impl WalletService {
         }
         // Complete explicit overrides with network-local defaults before
         // deriving, so those same paths are persisted with the addresses.
-        let mut paths = crate::app_core_derivation_paths_for_preset(commit.seed_derivation_preset)?;
+        let mut paths = crate::derivation_paths_for_preset(commit.seed_derivation_preset)?;
         paths.is_custom_enabled = commit.seed_derivation_paths.is_custom_enabled;
         paths
             .by_chain
@@ -170,7 +168,7 @@ impl WalletService {
         // The selection is core's setting, read here. The app sent its copy of
         // it on the commit.
         let typed_networks = crate::derivation::import::ImportNetworks {
-            by_family: self.app_state().await.settings.network_chain_by_family,
+            by_family: self.app_state().await.settings.selected_chain_by_family,
         };
         let (validated, mut rejected_addresses) = crate::derivation::import::validated_addresses(
             &resolved_addresses,

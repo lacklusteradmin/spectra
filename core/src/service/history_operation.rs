@@ -61,13 +61,13 @@ impl WalletService {
                     .as_ref()
                     .unwrap()
                     .iter()
-                    .any(|c| *c == chain || Some(*c) == wallet.network_chain(&state.settings)),
+                    .any(|c| *c == chain || Some(*c) == wallet.chain()),
             };
             if selected {
                 groups
                     .entry(chain.str_id().into())
                     .or_default()
-                    .push(HistoryRefreshKey::new(&wallet.id, &wallet.network_id));
+                    .push(HistoryRefreshKey::new(&wallet.id, &wallet.chain_id));
             }
         }
         drop(state);

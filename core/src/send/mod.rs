@@ -561,7 +561,7 @@ mod tests {
     #[test]
     fn every_evm_chain_runs_the_evm_destination_checks() {
         use crate::registry::Chain;
-        use crate::send::flow::{core_evaluate_high_risk_send_reasons, HighRiskSendRequest};
+        use crate::send::flow::{evaluate_high_risk_send_reasons, HighRiskSendRequest};
 
         let request = |chain: Chain, destination: &str| HighRiskSendRequest {
             chain_name: chain.chain_display_name().to_string(),
@@ -583,7 +583,7 @@ mod tests {
             // A native SegWit address is not an EVM address on any chain.
             let bitcoin_address = "bc1qar0srrr7xfkvy5l643lydnw9re59gtzzwf5mdq";
             assert!(
-                codes(core_evaluate_high_risk_send_reasons(request(
+                codes(evaluate_high_risk_send_reasons(request(
                     chain,
                     bitcoin_address
                 )))
@@ -593,7 +593,7 @@ mod tests {
             );
 
             let ens = "vitalik.eth";
-            let raised = codes(core_evaluate_high_risk_send_reasons(request(chain, ens)));
+            let raised = codes(evaluate_high_risk_send_reasons(request(chain, ens)));
             let expected = chain.mainnet_counterpart() != Chain::Ethereum;
             assert_eq!(
                 raised.contains(&"ens_off_ethereum".to_string()),
@@ -1014,9 +1014,9 @@ mod token_decimals_are_not_assumed {
     fn a_chain_can_host_tokens_of_different_decimals() {
         use std::collections::{HashMap, HashSet};
         let mut by_chain: HashMap<String, HashSet<u32>> = HashMap::new();
-        for token in crate::tokens::list_tokens(String::new()) {
+        for token in crate::tokens::list_token_deployments(String::new()) {
             by_chain
-                .entry(token.chain.clone())
+                .entry(token.chain_id.clone())
                 .or_default()
                 .insert(token.decimals);
         }

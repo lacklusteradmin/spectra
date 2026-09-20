@@ -68,8 +68,7 @@ impl WalletService {
             .map_err(|error| invalid(&error.to_string()))?;
         let (derived, private_key_hex) = match material {
             SigningMaterial::Mnemonic(seed) => {
-                let defaults =
-                    crate::app_core_derivation_paths_for_preset(wallet.derivation_preset)?;
+                let defaults = crate::derivation_paths_for_preset(wallet.derivation_preset)?;
                 let path = wallet
                     .addresses
                     .iter()
@@ -79,13 +78,13 @@ impl WalletService {
                     })
                     .and_then(|a| a.derivation_path.as_deref())
                     .or_else(|| {
-                        (wallet.network_id == chain.str_id())
+                        (wallet.chain_id == chain.str_id())
                             .then_some(wallet.derivation_path.as_deref())
                             .flatten()
                     })
                     .or_else(|| defaults.path_for(chain))
                     .unwrap_or_default();
-                let path = crate::app_core_resolve_derivation_path(name.into(), path.into())?;
+                let path = crate::resolve_derivation_path(name.into(), path.into())?;
                 let overrides = &sensitive_overrides.0;
                 overrides.validate_for_chain(chain)?;
                 let script = crate::derivation::dispatch::script_type_for_path(&path);
@@ -120,7 +119,7 @@ impl WalletService {
                         .unwrap_or(key.trim())
                         .to_string(),
                 );
-                let derived = crate::derivation::dispatch::core_derive_from_private_key(
+                let derived = crate::derivation::dispatch::derive_from_private_key(
                     name.into(),
                     key.to_string(),
                     true,

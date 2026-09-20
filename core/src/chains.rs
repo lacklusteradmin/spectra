@@ -39,13 +39,13 @@ pub enum CatalogColor {
 #[derive(Debug, Deserialize)]
 #[serde(deny_unknown_fields)]
 struct TomlFile {
-    networks: Vec<TomlNetwork>,
+    chains: Vec<TomlChain>,
 }
 
 /// One concrete network. Mainnets and testnets have the same required fields.
 #[derive(Debug, Deserialize)]
 #[serde(deny_unknown_fields)]
-struct TomlNetwork {
+struct TomlChain {
     id: String,
     name: String,
     family: String,
@@ -59,13 +59,13 @@ struct TomlNetwork {
 #[derive(Debug, Deserialize)]
 #[serde(deny_unknown_fields)]
 struct TomlUiFile {
-    networks: Vec<TomlNetworkUi>,
+    chains: Vec<TomlChainUi>,
 }
 
 #[derive(Debug, Deserialize)]
 #[serde(deny_unknown_fields)]
-struct TomlNetworkUi {
-    network_id: String,
+struct TomlChainUi {
+    chain_id: String,
     search_keywords: Vec<String>,
     category: String,
     /// Position in the setup picker's short list, or absent.
@@ -209,31 +209,31 @@ impl From<TomlDerivationPathEntry> for ChainDerivationPathEntry {
 static CATALOG: LazyLock<Vec<ChainEntry>> =
     LazyLock::new(|| load_catalog(CHAINS_TOML, CHAIN_UI_TOML));
 
-fn load_catalog(networks: &str, presentation: &str) -> Vec<ChainEntry> {
-    let parsed: TomlFile = toml::from_str(networks)
+fn load_catalog(chains: &str, presentation: &str) -> Vec<ChainEntry> {
+    let parsed: TomlFile = toml::from_str(chains)
         .expect("chains.toml is embedded at compile time and must be valid TOML");
 
     let ui: TomlUiFile = toml::from_str(presentation)
         .expect("chain-ui.toml must contain valid network presentation records");
     let mut ui_by_id = std::collections::HashMap::new();
-    for row in ui.networks {
-        let id = row.network_id.clone();
+    for row in ui.chains {
+        let id = row.chain_id.clone();
         assert!(
             ui_by_id.insert(id.clone(), row).is_none(),
-            "duplicate UI network_id {id}"
+            "duplicate UI chain_id {id}"
         );
     }
 
     // Chain discriminants already index this catalog. Use that same ordering
     // here; from_str_id/entry would recursively initialize CATALOG.
     assert_eq!(
-        parsed.networks.len(),
+        parsed.chains.len(),
         crate::registry::Chain::all().count(),
         "network catalog and registry must have the same number of chains"
     );
     let mut ids = std::collections::HashSet::new();
     let catalog = parsed
-        .networks
+        .chains
         .iter()
         .zip(crate::registry::Chain::all())
         .map(|(c, chain)| {
@@ -245,7 +245,7 @@ fn load_catalog(networks: &str, presentation: &str) -> Vec<ChainEntry> {
             let native = crate::tokens::deployment(&format!("{}:native", c.id))
                 .expect("unknown native token deployment");
             assert!(
-                native.is_native() && native.chain == c.id,
+                native.is_native() && native.chain_id == c.id,
                 "native deployment belongs to another network"
             );
             let is_testnet = c.environment == "testnet";
@@ -255,7 +255,7 @@ fn load_catalog(networks: &str, presentation: &str) -> Vec<ChainEntry> {
             );
             assert!(
                 parsed
-                    .networks
+                    .chains
                     .iter()
                     .any(|n| n.id == c.family && n.environment == "mainnet"),
                 "unknown network family"
@@ -268,7 +268,7 @@ fn load_catalog(networks: &str, presentation: &str) -> Vec<ChainEntry> {
                 name: c.name.clone(),
                 family: c.family.clone(),
                 is_testnet,
-                native_deployment_id: native.id.clone(),
+                native_deployment_id: native.deployment_id.clone(),
                 address_prefix_hint: ui.address_prefix_hint,
                 gas_token_symbol: native.symbol.clone(),
                 search_keywords: ui.search_keywords,
@@ -393,12 +393,12 @@ mod explicit_network_catalog {
     #[test]
     fn presentation_joins_by_id_independent_of_row_order() {
         let reversed = CHAIN_UI_TOML
-            .split("[[networks]]")
+            .split("[[chains]]")
             .skip(1)
             .collect::<Vec<_>>()
             .into_iter()
             .rev()
-            .map(|row| format!("[[networks]]{row}"))
+            .map(|row| format!("[[chains]]{row}"))
             .collect::<String>();
         let actual = load_catalog(CHAINS_TOML, &reversed);
         assert_eq!(
@@ -422,22 +422,19 @@ mod explicit_network_catalog {
     }
 
     #[test]
-    #[should_panic(expected = "duplicate UI network_id bitcoin")]
+    #[should_panic(expected = "duplicate UI chain_id bitcoin")]
     fn duplicate_presentation_references_are_rejected() {
-        let first = CHAIN_UI_TOML.split("[[networks]]").nth(1).unwrap();
-        load_catalog(
-            CHAINS_TOML,
-            &format!("{CHAIN_UI_TOML}\n[[networks]]{first}"),
-        );
+        let first = CHAIN_UI_TOML.split("[[chains]]").nth(1).unwrap();
+        load_catalog(CHAINS_TOML, &format!("{CHAIN_UI_TOML}\n[[chains]]{first}"));
     }
 
     #[test]
     #[should_panic(expected = "missing UI record for network bitcoin")]
     fn missing_presentation_is_rejected() {
         let without_bitcoin = CHAIN_UI_TOML
-            .split("[[networks]]")
+            .split("[[chains]]")
             .skip(2)
-            .map(|row| format!("[[networks]]{row}"))
+            .map(|row| format!("[[chains]]{row}"))
             .collect::<String>();
         load_catalog(CHAINS_TOML, &without_bitcoin);
     }
@@ -445,32 +442,32 @@ mod explicit_network_catalog {
     #[test]
     #[should_panic(expected = "UI records reference unknown networks")]
     fn unknown_presentation_references_are_rejected() {
-        let unknown = CHAIN_UI_TOML.split("[[networks]]").nth(1).unwrap().replace(
-            "network_id = \"bitcoin\"",
-            "network_id = \"unknown-network\"",
-        );
+        let unknown = CHAIN_UI_TOML
+            .split("[[chains]]")
+            .nth(1)
+            .unwrap()
+            .replace("chain_id = \"bitcoin\"", "chain_id = \"unknown-network\"");
         load_catalog(
             CHAINS_TOML,
-            &format!("{CHAIN_UI_TOML}\n[[networks]]{unknown}"),
+            &format!("{CHAIN_UI_TOML}\n[[chains]]{unknown}"),
         );
     }
 
     #[test]
     fn fields_in_the_wrong_catalog_are_rejected() {
-        let wrong_core =
-            CHAINS_TOML.replacen("[[networks]]", "[[networks]]\ncolor = \"orange\"", 1);
+        let wrong_core = CHAINS_TOML.replacen("[[chains]]", "[[chains]]\ncolor = \"orange\"", 1);
         assert!(toml::from_str::<TomlFile>(&wrong_core).is_err());
-        let configured_evm = CHAINS_TOML.replacen("[[networks]]", "[[networks]]\nis_evm = true", 1);
+        let configured_evm = CHAINS_TOML.replacen("[[chains]]", "[[chains]]\nis_evm = true", 1);
         assert!(toml::from_str::<TomlFile>(&configured_evm).is_err());
-        let wrong_ui = CHAIN_UI_TOML.replacen("[[networks]]", "[[networks]]\nis_evm = false", 1);
+        let wrong_ui = CHAIN_UI_TOML.replacen("[[chains]]", "[[chains]]\nis_evm = false", 1);
         assert!(toml::from_str::<TomlUiFile>(&wrong_ui).is_err());
     }
 
     #[test]
     fn mainnets_and_testnets_are_explicit_peers() {
         let parsed: TomlFile = toml::from_str(CHAINS_TOML).unwrap();
-        assert_eq!(CATALOG.len(), parsed.networks.len());
-        for n in &parsed.networks {
+        assert_eq!(CATALOG.len(), parsed.chains.len());
+        for n in &parsed.chains {
             let chain = Chain::from_str_id(&n.id).unwrap();
             assert_eq!(chain.is_testnet(), n.environment == "testnet");
             assert_eq!(chain.mainnet_counterpart().str_id(), n.family);
@@ -520,7 +517,7 @@ mod explicit_network_catalog {
                 format!("t{}", chain.mainnet_counterpart().coin_symbol())
             );
             assert_eq!(chain.coin_symbol(), native.symbol);
-            assert!(native.coin_gecko_id.is_empty());
+            assert!(native.coingecko_id.is_empty());
         }
         assert_eq!(Chain::Bitcoin.coin_symbol(), "BTC");
         assert_eq!(Chain::Ethereum.coin_symbol(), "ETH");

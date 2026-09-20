@@ -16,7 +16,7 @@ fn bitcoin_wallet() -> WalletView {
     WalletView {
         id: "w1".to_string(),
         name: "Cold".to_string(),
-        network_chain_id: "bitcoin-testnet-4".to_string(),
+        chain_id: "bitcoin-testnet-4".to_string(),
         addresses: HashMap::from([("bitcoin".to_string(), "bc1qexample".to_string())]),
         bitcoin_xpub: Some("zpub123".to_string()),
         seed_derivation_preset: CoreSeedDerivationPreset::Account2,
@@ -29,7 +29,7 @@ fn bitcoin_wallet() -> WalletView {
         holdings: vec![AssetHolding {
             name: "Bitcoin".to_string(),
             symbol: "BTC".to_string(),
-            coin_gecko_id: "bitcoin".to_string(),
+            coingecko_id: "bitcoin".to_string(),
             chain_name: "Bitcoin".to_string(),
             token_standard: "Native".to_string(),
             contract_address: None,
@@ -52,13 +52,13 @@ fn keeps_the_path_the_wallet_uses_and_drops_the_rest() {
 #[test]
 fn keeps_only_the_network_that_applies_to_this_wallets_family() {
     let summary = bitcoin_wallet().to_wallet_state(false);
-    assert_eq!(summary.network_id.as_str(), "bitcoin-testnet-4");
+    assert_eq!(summary.chain_id.as_str(), "bitcoin-testnet-4");
 
     // A wallet on a chain with no network variants reports none, rather
     // than the meaningless mainnet default the record always holds.
     let mut solana = bitcoin_wallet();
     solana.selected_chain = "Solana".to_string();
-    assert_eq!(solana.to_wallet_state(false).network_id, "solana");
+    assert_eq!(solana.to_wallet_state(false).chain_id, "solana");
 }
 
 #[test]

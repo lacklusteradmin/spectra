@@ -104,7 +104,7 @@ pub struct SeedPhraseVerdict {
 /// checksum stay quiet behind them. Only then is a wrong count worth naming,
 /// and only then is the checksum worth computing.
 #[uniffi::export]
-pub fn core_check_seed_phrase(check: SeedPhraseCheck) -> SeedPhraseVerdict {
+pub fn check_seed_phrase(check: SeedPhraseCheck) -> SeedPhraseVerdict {
     let expected = check.expected_word_count as usize;
     let is_complete = expected > 0
         && check.words.len() >= expected
@@ -252,7 +252,7 @@ pub enum WalletPasswordRejection {
 }
 
 #[uniffi::export]
-pub fn core_validate_wallet_password(
+pub fn validate_wallet_password(
     password: String,
     confirmation: String,
 ) -> Option<WalletPasswordRejection> {
@@ -320,7 +320,7 @@ mod seed_phrase_tests {
                            abandon abandon abandon abandon abandon about";
 
     fn check(words: &str, language: Option<&str>, expected: u32) -> SeedPhraseVerdict {
-        core_check_seed_phrase(SeedPhraseCheck {
+        check_seed_phrase(SeedPhraseCheck {
             words: words.split(' ').map(str::to_string).collect(),
             language: language.map(str::to_string),
             expected_word_count: expected,
@@ -427,7 +427,7 @@ mod password_verdict_tests {
             (" abcd ", "abcd", None),
         ] {
             assert_eq!(
-                core_validate_wallet_password(password.into(), confirmation.into()),
+                validate_wallet_password(password.into(), confirmation.into()),
                 expected
             );
         }

@@ -10,7 +10,7 @@ fn native(chain: Chain) -> AssetHolding {
         symbol: chain.coin_symbol().into(),
         chain_name: chain.chain_display_name().into(),
         token_standard: "Native".into(),
-        coin_gecko_id: chain.coin_gecko_id().into(),
+        coingecko_id: chain.coingecko_id().into(),
         contract_address: None,
         amount: 0.0,
         price_usd: 0.0,
@@ -22,12 +22,12 @@ fn native_and_protocol_mnt_share_a_token_but_not_a_deployment() {
     let native = crate::tokens::deployment("mantle:native").unwrap();
     let contract = crate::tokens::catalog()
         .iter()
-        .find(|t| t.symbol == "MNT" && t.chain == "ethereum")
+        .find(|t| t.symbol == "MNT" && t.chain_id == "ethereum")
         .unwrap();
     assert!(native.is_native());
     assert!(!contract.is_native());
     assert_eq!(native.token_id, contract.token_id);
-    assert_ne!(native.id, contract.id);
+    assert_ne!(native.deployment_id, contract.deployment_id);
     assert_eq!(Chain::Arbitrum.coin_symbol(), "ETH");
     assert!(Chain::from_display_name("ETH").is_none());
 }
@@ -40,22 +40,22 @@ fn symbols_and_market_ids_never_identify_a_holding() {
     lookalike.token_standard = "ERC-20".into();
     lookalike.contract_address = Some("0x1111111111111111111111111111111111111111".into());
     assert!(!lookalike.is_native());
-    assert_ne!(lookalike.deployment_key(), eth.deployment_key());
+    assert_ne!(lookalike.deployment_id(), eth.deployment_id());
     assert_ne!(lookalike.token_identity(), eth.token_identity());
     assert_eq!(eth.token_identity(), base.token_identity());
-    assert_ne!(eth.deployment_key(), base.deployment_key());
+    assert_ne!(eth.deployment_id(), base.deployment_id());
     lookalike.canonicalize().unwrap();
-    assert!(lookalike.coin_gecko_id.is_empty());
+    assert!(lookalike.coingecko_id.is_empty());
 }
 
 #[test]
 fn every_testnet_has_an_independent_unpriced_native_token() {
     for network in Chain::testnets() {
         let mut holding = native(network);
-        holding.coin_gecko_id = network.mainnet_counterpart().coin_gecko_id().into();
+        holding.coingecko_id = network.mainnet_counterpart().coingecko_id().into();
         holding.price_usd = 100.0;
         holding.canonicalize().unwrap();
-        assert!(holding.coin_gecko_id.is_empty());
+        assert!(holding.coingecko_id.is_empty());
         assert_eq!(holding.price_usd, 0.0);
         assert_ne!(
             holding.token_identity(),
@@ -125,9 +125,12 @@ fn display_precision_is_deployment_specific() {
     );
     let usdc = crate::tokens::catalog()
         .iter()
-        .find(|t| t.chain == "ethereum" && t.token_id == "usd-coin")
+        .find(|t| t.chain_id == "ethereum" && t.token_id == "usd-coin")
         .unwrap();
-    assert_eq!(token_display_decimals(Some(usdc.id.clone()), None), 6);
+    assert_eq!(
+        token_display_decimals(Some(usdc.deployment_id.clone()), None),
+        6
+    );
     assert_eq!(
         token_display_decimals(Some("custom:unlisted".into()), Some(2)),
         2

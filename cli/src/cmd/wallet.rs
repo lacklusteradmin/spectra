@@ -199,7 +199,7 @@ pub fn run(ctx: &Ctx, out: Out, command: WalletCommand) -> CliResult<()> {
             let confirmation = std::env::var(confirmation_env)
                 .map_err(|_| CliError::usage("Confirmation environment variable is missing"))?;
             let rejection =
-                spectra_core::validation::core_validate_wallet_password(password, confirmation);
+                spectra_core::validation::validate_wallet_password(password, confirmation);
             out.emit(serde_json::json!({"valid": rejection.is_none(), "rejection": rejection}));
             out.text(|| println!("{}", serde_json::to_string(&rejection).unwrap()));
             Ok(())
@@ -300,7 +300,7 @@ fn import(ctx: &Ctx, out: Out, args: ImportArgs) -> CliResult<()> {
 /// Import a wallet from a raw private key.
 ///
 /// The last wallet operation the CLI could not drive. Core has dispatched
-/// private-key derivation by chain since `core_derive_from_private_key`, so
+/// private-key derivation by chain since `derive_from_private_key`, so
 /// what was missing was this command, not the derivation.
 fn import_private_key(ctx: &Ctx, out: Out, args: ImportArgs, chain: Chain) -> CliResult<()> {
     if args.creation.derivation_input_file.is_some() {
@@ -389,7 +389,7 @@ fn seal_and_import(
         let network = if c.is_testnet() {
             *c
         } else {
-            settings.network_chain(*c)
+            settings.selected_chain_for_family(*c)
         };
         let path = derivation_path(network, args.path.as_deref())?;
         paths.by_chain.insert(network.str_id().to_string(), path);
@@ -403,7 +403,7 @@ fn seal_and_import(
         )
         .map_err(|e| CliError::usage(format!("invalid derivation input: {e}")))?;
         commit.derivation_overrides =
-            spectra_core::derivation::input::core_parse_wallet_derivation_input(input);
+            spectra_core::derivation::input::parse_wallet_derivation_input(input);
     }
 
     let service = ctx.service()?;
@@ -541,9 +541,7 @@ fn show(ctx: &Ctx, out: Out, args: SelectArgs) -> CliResult<()> {
 fn receive(ctx: &Ctx, out: Out, args: SelectArgs) -> CliResult<()> {
     let wallet = ctx.find_wallet(&args.wallet)?;
     let chain = resolve_chain(&wallet.chain_name)?;
-    let network = wallet
-        .network_chain(&ctx.state()?.settings)
-        .unwrap_or(chain);
+    let network = wallet.chain().unwrap_or(chain);
     let chain_name = network.chain_display_name().to_string();
     let symbol = network.coin_symbol().to_string();
     let address = ctx
@@ -706,7 +704,7 @@ fn export(ctx: &Ctx, out: Out, args: ExportArgs) -> CliResult<()> {
 /// The derivation path a wallet is created with: the caller's, or the chain's
 /// catalog default resolved by core.
 fn derivation_path(chain: Chain, requested: Option<&str>) -> CliResult<String> {
-    let resolution = spectra_core::app_core_resolve_derivation_path(
+    let resolution = spectra_core::resolve_derivation_path(
         chain.chain_display_name().to_string(),
         requested.unwrap_or_default().to_string(),
     )

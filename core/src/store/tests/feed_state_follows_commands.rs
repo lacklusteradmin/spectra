@@ -78,7 +78,7 @@ async fn a_network_switch_or_an_esplora_change_restarts_the_family_feed() {
 
     service.advance_history_cursor("bitcoin".into(), "w".into(), None);
     service
-        .apply_state_command(StateCommand::SelectNetworkChain {
+        .apply_state_command(StateCommand::SelectChainForFamily {
             chain_id: "bitcoin-testnet".into(),
         })
         .await

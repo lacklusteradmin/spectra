@@ -1,5 +1,5 @@
 # Spectra endpoint directory — every service the app talks to, per network.
-# `network_id` references a concrete networks.id in chains.toml. Mainnets and
+# `chain_id` references a concrete chains.id in chains.toml. Mainnets and
 # testnets are peers; display names and settings groups are derived from registry.
 #
 # Two vocabularies, deliberately separate. They used to share one `roles` array
@@ -36,7 +36,7 @@
 
 [[endpoints]]
 id = "bitcoin.blockchain_info.multiaddr"
-network_id = "bitcoin"
+chain_id = "bitcoin"
 provider_id = "blockchain-info"
 endpoint = "https://blockchain.info/multiaddr"
 kind = "indexer"
@@ -44,7 +44,7 @@ capabilities = ["read", "balance", "native-history"]
 
 [[endpoints]]
 id = "bitcoin.blockchair.xpub"
-network_id = "bitcoin"
+chain_id = "bitcoin"
 provider_id = "blockchair"
 endpoint = "https://api.blockchair.com/bitcoin/dashboards/xpub/"
 kind = "indexer"
@@ -52,7 +52,7 @@ capabilities = ["read", "balance", "native-history"]
 
 [[endpoints]]
 id = "bitcoin.mainnet.blockstream"
-network_id = "bitcoin"
+chain_id = "bitcoin"
 provider_id = "esplora"
 endpoint = "https://blockstream.info/api"
 kind = "indexer"
@@ -62,7 +62,7 @@ settings_visible = true
 
 [[endpoints]]
 id = "bitcoin.mainnet.mempool"
-network_id = "bitcoin"
+chain_id = "bitcoin"
 provider_id = "esplora"
 endpoint = "https://mempool.space/api"
 kind = "indexer"
@@ -72,7 +72,7 @@ settings_visible = true
 
 [[endpoints]]
 id = "bitcoin.mainnet.mempool_emzy"
-network_id = "bitcoin"
+chain_id = "bitcoin"
 provider_id = "esplora"
 endpoint = "https://mempool.emzy.de/api"
 kind = "indexer"
@@ -82,7 +82,7 @@ settings_visible = true
 
 [[endpoints]]
 id = "bitcoin.mainnet.maestro"
-network_id = "bitcoin"
+chain_id = "bitcoin"
 provider_id = "maestro-esplora"
 endpoint = "https://xbt-mainnet.gomaestro-api.org/v0/esplora"
 kind = "indexer"
@@ -92,7 +92,7 @@ settings_visible = true
 
 [[endpoints]]
 id = "bitcoin.explorer.tx"
-network_id = "bitcoin"
+chain_id = "bitcoin"
 provider_id = "mempool"
 endpoint = "https://mempool.space/tx/"
 kind = "web-link"
@@ -101,7 +101,7 @@ explorer_label = "Open In Mempool"
 
 [[endpoints]]
 id = "bitcoin.testnet.blockstream"
-network_id = "bitcoin-testnet"
+chain_id = "bitcoin-testnet"
 provider_id = "esplora"
 endpoint = "https://blockstream.info/testnet/api"
 kind = "indexer"
@@ -111,7 +111,7 @@ settings_visible = true
 
 [[endpoints]]
 id = "bitcoin.testnet.mempool"
-network_id = "bitcoin-testnet"
+chain_id = "bitcoin-testnet"
 provider_id = "esplora"
 endpoint = "https://mempool.space/testnet/api"
 kind = "indexer"
@@ -121,7 +121,7 @@ settings_visible = true
 
 [[endpoints]]
 id = "bitcoin.testnet4.mempool"
-network_id = "bitcoin-testnet-4"
+chain_id = "bitcoin-testnet-4"
 provider_id = "esplora"
 endpoint = "https://mempool.space/testnet4/api"
 kind = "indexer"
@@ -131,7 +131,7 @@ settings_visible = true
 
 [[endpoints]]
 id = "bitcoin.signet.blockstream"
-network_id = "bitcoin-signet"
+chain_id = "bitcoin-signet"
 provider_id = "esplora"
 endpoint = "https://blockstream.info/signet/api"
 kind = "indexer"
@@ -141,7 +141,7 @@ settings_visible = true
 
 [[endpoints]]
 id = "bitcoin.signet.mempool"
-network_id = "bitcoin-signet"
+chain_id = "bitcoin-signet"
 provider_id = "esplora"
 endpoint = "https://mempool.space/signet/api"
 kind = "indexer"
@@ -151,7 +151,7 @@ settings_visible = true
 
 [[endpoints]]
 id = "bitcoincash.blockchair.api"
-network_id = "bitcoin-cash"
+chain_id = "bitcoin-cash"
 provider_id = "blockchair"
 endpoint = "https://api.blockchair.com/bitcoin-cash"
 kind = "indexer"
@@ -161,7 +161,7 @@ settings_visible = true
 
 [[endpoints]]
 id = "bitcoincash.blockchair.push"
-network_id = "bitcoin-cash"
+chain_id = "bitcoin-cash"
 provider_id = "blockchair"
 endpoint = "https://api.blockchair.com/bitcoin-cash/push/transaction"
 kind = "indexer"
@@ -170,7 +170,7 @@ probe_url = "https://api.blockchair.com/bitcoin-cash/stats"
 
 [[endpoints]]
 id = "bitcoincash.blockchair.txprefix"
-network_id = "bitcoin-cash"
+chain_id = "bitcoin-cash"
 provider_id = "blockchair"
 endpoint = "https://api.blockchair.com/bitcoin-cash/dashboards/transaction/"
 kind = "indexer"
@@ -179,7 +179,7 @@ probe_url = "https://api.blockchair.com/bitcoin-cash/stats"
 
 [[endpoints]]
 id = "bitcoincash.actorforth.api"
-network_id = "bitcoin-cash"
+chain_id = "bitcoin-cash"
 provider_id = "actorforth"
 endpoint = "https://rest.bch.actorforth.org/v2"
 kind = "indexer"
@@ -189,7 +189,7 @@ settings_visible = true
 
 [[endpoints]]
 id = "bitcoincash.actorforth.broadcast"
-network_id = "bitcoin-cash"
+chain_id = "bitcoin-cash"
 provider_id = "actorforth"
 endpoint = "https://rest.bch.actorforth.org/v2/rawtransactions/sendRawTransaction/"
 kind = "indexer"
@@ -198,7 +198,7 @@ probe_url = "https://rest.bch.actorforth.org/v2/blockchain/getBlockchainInfo"
 
 [[endpoints]]
 id = "bitcoincash.actorforth.txprefix"
-network_id = "bitcoin-cash"
+chain_id = "bitcoin-cash"
 provider_id = "actorforth"
 endpoint = "https://rest.bch.actorforth.org/v2/transaction/details/"
 kind = "indexer"
@@ -207,7 +207,7 @@ probe_url = "https://rest.bch.actorforth.org/v2/blockchain/getBlockchainInfo"
 
 [[endpoints]]
 id = "bitcoincash.explorer.tx"
-network_id = "bitcoin-cash"
+chain_id = "bitcoin-cash"
 provider_id = "blockchair"
 endpoint = "https://blockchair.com/bitcoin-cash/transaction/"
 kind = "web-link"
@@ -216,7 +216,7 @@ explorer_label = "Open In Blockchair"
 
 [[endpoints]]
 id = "bitcoinsv.whatsonchain.api"
-network_id = "bitcoin-sv"
+chain_id = "bitcoin-sv"
 provider_id = "whatsonchain"
 endpoint = "https://api.whatsonchain.com/v1/bsv/main"
 kind = "indexer"
@@ -226,7 +226,7 @@ settings_visible = true
 
 [[endpoints]]
 id = "bitcoinsv.whatsonchain.chaininfo"
-network_id = "bitcoin-sv"
+chain_id = "bitcoin-sv"
 provider_id = "whatsonchain"
 endpoint = "https://api.whatsonchain.com/v1/bsv/main/chain/info"
 kind = "indexer"
@@ -235,7 +235,7 @@ probe_url = "https://api.whatsonchain.com/v1/bsv/main/chain/info"
 
 [[endpoints]]
 id = "bitcoinsv.whatsonchain.broadcast"
-network_id = "bitcoin-sv"
+chain_id = "bitcoin-sv"
 provider_id = "whatsonchain"
 endpoint = "https://api.whatsonchain.com/v1/bsv/main/tx/raw"
 kind = "indexer"
@@ -244,7 +244,7 @@ probe_url = "https://api.whatsonchain.com/v1/bsv/main/chain/info"
 
 [[endpoints]]
 id = "bitcoinsv.whatsonchain.txprefix"
-network_id = "bitcoin-sv"
+chain_id = "bitcoin-sv"
 provider_id = "whatsonchain"
 endpoint = "https://api.whatsonchain.com/v1/bsv/main/tx/hash/"
 kind = "indexer"
@@ -253,7 +253,7 @@ probe_url = "https://api.whatsonchain.com/v1/bsv/main/chain/info"
 
 [[endpoints]]
 id = "bitcoinsv.blockchair.api"
-network_id = "bitcoin-sv"
+chain_id = "bitcoin-sv"
 provider_id = "blockchair"
 endpoint = "https://api.blockchair.com/bitcoin-sv"
 kind = "indexer"
@@ -263,7 +263,7 @@ settings_visible = true
 
 [[endpoints]]
 id = "bitcoinsv.blockchair.push"
-network_id = "bitcoin-sv"
+chain_id = "bitcoin-sv"
 provider_id = "blockchair"
 endpoint = "https://api.blockchair.com/bitcoin-sv/push/transaction"
 kind = "indexer"
@@ -272,7 +272,7 @@ probe_url = "https://api.blockchair.com/bitcoin-sv/stats"
 
 [[endpoints]]
 id = "bitcoinsv.blockchair.txprefix"
-network_id = "bitcoin-sv"
+chain_id = "bitcoin-sv"
 provider_id = "blockchair"
 endpoint = "https://api.blockchair.com/bitcoin-sv/dashboards/transaction/"
 kind = "indexer"
@@ -281,7 +281,7 @@ probe_url = "https://api.blockchair.com/bitcoin-sv/stats"
 
 [[endpoints]]
 id = "bitcoinsv.explorer.tx"
-network_id = "bitcoin-sv"
+chain_id = "bitcoin-sv"
 provider_id = "whatsonchain"
 endpoint = "https://whatsonchain.com/tx/"
 kind = "web-link"
@@ -290,7 +290,7 @@ explorer_label = "Open In WhatsOnChain"
 
 [[endpoints]]
 id = "litecoin.litecoinspace.api"
-network_id = "litecoin"
+chain_id = "litecoin"
 provider_id = "litecoinspace"
 endpoint = "https://litecoinspace.org/api"
 kind = "indexer"
@@ -300,7 +300,7 @@ settings_visible = true
 
 [[endpoints]]
 id = "litecoin.blockcypher.api"
-network_id = "litecoin"
+chain_id = "litecoin"
 provider_id = "blockcypher"
 endpoint = "https://api.blockcypher.com/v1/ltc/main"
 kind = "indexer"
@@ -310,7 +310,7 @@ settings_visible = true
 
 [[endpoints]]
 id = "litecoin.sochain.api"
-network_id = "litecoin"
+chain_id = "litecoin"
 provider_id = "sochain"
 endpoint = "https://sochain.com/api/v2"
 kind = "indexer"
@@ -320,7 +320,7 @@ settings_visible = true
 
 [[endpoints]]
 id = "litecoin.explorer.tx"
-network_id = "litecoin"
+chain_id = "litecoin"
 provider_id = "litecoinspace"
 endpoint = "https://litecoinspace.org/tx/"
 kind = "web-link"
@@ -329,7 +329,7 @@ explorer_label = "Open In LitecoinSpace"
 
 [[endpoints]]
 id = "dogecoin.mainnet.blockcypher"
-network_id = "dogecoin"
+chain_id = "dogecoin"
 provider_id = "blockcypher"
 endpoint = "https://api.blockcypher.com/v1/doge/main"
 kind = "indexer"
@@ -339,7 +339,7 @@ settings_visible = true
 
 [[endpoints]]
 id = "dogecoin.testnet.blockcypher"
-network_id = "dogecoin-testnet"
+chain_id = "dogecoin-testnet"
 provider_id = "blockcypher"
 endpoint = "https://api.blockcypher.com/v1/doge/test3"
 kind = "indexer"
@@ -349,7 +349,7 @@ settings_visible = true
 
 [[endpoints]]
 id = "dogecoin.explorer.tx"
-network_id = "dogecoin"
+chain_id = "dogecoin"
 provider_id = "dogechain"
 endpoint = "https://dogechain.info/tx/"
 kind = "web-link"
@@ -358,7 +358,7 @@ explorer_label = "Open In Dogechain"
 
 [[endpoints]]
 id = "tron.tronscan.account"
-network_id = "tron"
+chain_id = "tron"
 provider_id = "tronscan"
 endpoint = "https://apilist.tronscanapi.com/api/accountv2"
 kind = "indexer"
@@ -368,7 +368,7 @@ settings_visible = true
 
 [[endpoints]]
 id = "tron.trongrid.accounts.io"
-network_id = "tron"
+chain_id = "tron"
 provider_id = "trongrid-accounts"
 endpoint = "https://api.trongrid.io/v1/accounts"
 kind = "indexer"
@@ -378,7 +378,7 @@ settings_visible = true
 
 [[endpoints]]
 id = "tron.trongrid.accounts.pro"
-network_id = "tron"
+chain_id = "tron"
 provider_id = "trongrid-accounts"
 endpoint = "https://api.trongrid.pro/v1/accounts"
 kind = "indexer"
@@ -388,7 +388,7 @@ settings_visible = true
 
 [[endpoints]]
 id = "tron.trongrid.accounts.network"
-network_id = "tron"
+chain_id = "tron"
 provider_id = "trongrid-accounts"
 endpoint = "https://api.trongrid.network/v1/accounts"
 kind = "indexer"
@@ -398,7 +398,7 @@ settings_visible = true
 
 [[endpoints]]
 id = "tron.trongrid.rpc.io"
-network_id = "tron"
+chain_id = "tron"
 provider_id = "trongrid-rpc"
 endpoint = "https://api.trongrid.io"
 kind = "rpc-node"
@@ -408,7 +408,7 @@ settings_visible = true
 
 [[endpoints]]
 id = "tron.rpc.publicnode"
-network_id = "tron"
+chain_id = "tron"
 provider_id = "rpc"
 endpoint = "https://tron-rpc.publicnode.com"
 # Replaced api.trongrid.pro and .network, both unreachable.
@@ -418,7 +418,7 @@ settings_visible = true
 
 [[endpoints]]
 id = "tron.explorer.tx"
-network_id = "tron"
+chain_id = "tron"
 provider_id = "tronscan"
 endpoint = "https://tronscan.org/#/transaction/"
 kind = "web-link"
@@ -427,7 +427,7 @@ explorer_label = "Open In TronScan"
 
 [[endpoints]]
 id = "solana.rpc.mainnet"
-network_id = "solana"
+chain_id = "solana"
 provider_id = "solana-mainnet-beta"
 endpoint = "https://api.mainnet-beta.solana.com"
 kind = "rpc-node"
@@ -437,7 +437,7 @@ settings_visible = true
 
 [[endpoints]]
 id = "solana.rpc.publicnode"
-network_id = "solana"
+chain_id = "solana"
 provider_id = "solana-publicnode"
 endpoint = "https://solana-rpc.publicnode.com"
 kind = "rpc-node"
@@ -447,7 +447,7 @@ settings_visible = true
 
 [[endpoints]]
 id = "xrp.history.xrpscan_api"
-network_id = "xrp"
+chain_id = "xrp"
 provider_id = "xrpscan"
 endpoint = "https://api.xrpscan.com/api/v1/account"
 kind = "indexer"
@@ -456,7 +456,7 @@ settings_visible = true
 
 [[endpoints]]
 id = "xrp.history.xrpscan"
-network_id = "xrp"
+chain_id = "xrp"
 provider_id = "xrpscan"
 endpoint = "https://xrpscan.com/api/v1/account"
 kind = "indexer"
@@ -465,7 +465,7 @@ settings_visible = true
 
 [[endpoints]]
 id = "xrp.rpc.s1"
-network_id = "xrp"
+chain_id = "xrp"
 provider_id = "ripple-s1"
 endpoint = "https://s1.ripple.com:51234/"
 kind = "rpc-node"
@@ -475,7 +475,7 @@ settings_visible = true
 
 [[endpoints]]
 id = "xrp.rpc.s2"
-network_id = "xrp"
+chain_id = "xrp"
 provider_id = "ripple-s2"
 endpoint = "https://s2.ripple.com:51234/"
 kind = "rpc-node"
@@ -485,7 +485,7 @@ settings_visible = true
 
 [[endpoints]]
 id = "xrp.rpc.cluster"
-network_id = "xrp"
+chain_id = "xrp"
 provider_id = "xrpl-cluster"
 endpoint = "https://xrplcluster.com/"
 kind = "rpc-node"
@@ -495,7 +495,7 @@ settings_visible = true
 
 [[endpoints]]
 id = "xrp.explorer.tx"
-network_id = "xrp"
+chain_id = "xrp"
 provider_id = "xrpscan"
 endpoint = "https://livenet.xrpl.org/transactions/"
 kind = "web-link"
@@ -504,7 +504,7 @@ explorer_label = "Open In XRP Explorer"
 
 [[endpoints]]
 id = "cardano.koios.primary"
-network_id = "cardano"
+chain_id = "cardano"
 provider_id = "koios"
 endpoint = "https://api.koios.rest/api/v1"
 kind = "indexer"
@@ -514,7 +514,7 @@ settings_visible = true
 
 [[endpoints]]
 id = "cardano.koios.xray"
-network_id = "cardano"
+chain_id = "cardano"
 provider_id = "koios"
 endpoint = "https://graph.xray.app/output/services/koios/mainnet/api/v1"
 kind = "indexer"
@@ -524,7 +524,7 @@ settings_visible = true
 
 [[endpoints]]
 id = "cardano.koios.happystaking"
-network_id = "cardano"
+chain_id = "cardano"
 provider_id = "koios"
 endpoint = "https://koios.happystaking.io:8453/api/v1"
 kind = "indexer"
@@ -534,7 +534,7 @@ settings_visible = true
 
 [[endpoints]]
 id = "cardano.explorer.tx"
-network_id = "cardano"
+chain_id = "cardano"
 provider_id = "cexplorer"
 endpoint = "https://cexplorer.io/tx/"
 kind = "web-link"
@@ -543,7 +543,7 @@ explorer_label = "Open In Cardano Explorer"
 
 [[endpoints]]
 id = "aptos.rpc.aptoslabs"
-network_id = "aptos"
+chain_id = "aptos"
 provider_id = "aptos-mainnet-rpc"
 endpoint = "https://api.mainnet.aptoslabs.com/v1"
 kind = "rpc-node"
@@ -553,7 +553,7 @@ settings_visible = true
 
 [[endpoints]]
 id = "aptos.rpc.mainnet"
-network_id = "aptos"
+chain_id = "aptos"
 provider_id = "aptoslabs-mainnet"
 endpoint = "https://mainnet.aptoslabs.com/v1"
 kind = "rpc-node"
@@ -563,7 +563,7 @@ settings_visible = true
 
 [[endpoints]]
 id = "aptos.explorer.tx"
-network_id = "aptos"
+chain_id = "aptos"
 provider_id = "aptoslabs-explorer"
 endpoint = "https://explorer.aptoslabs.com/txn/"
 kind = "web-link"
@@ -573,7 +573,7 @@ tx_suffix = "?network=mainnet"
 
 [[endpoints]]
 id = "ton.api.v2"
-network_id = "ton"
+chain_id = "ton"
 provider_id = "toncenter-v2"
 endpoint = "https://toncenter.com/api/v2"
 kind = "indexer"
@@ -583,7 +583,7 @@ settings_visible = true
 
 [[endpoints]]
 id = "ton.api.v3"
-network_id = "ton"
+chain_id = "ton"
 provider_id = "toncenter-v3"
 endpoint = "https://toncenter.com/api/v3"
 kind = "indexer"
@@ -593,7 +593,7 @@ settings_visible = true
 
 [[endpoints]]
 id = "ton.explorer.tx"
-network_id = "ton"
+chain_id = "ton"
 provider_id = "tonviewer"
 endpoint = "https://tonviewer.com/"
 kind = "web-link"
@@ -602,7 +602,7 @@ explorer_label = "Open In Tonviewer"
 
 [[endpoints]]
 id = "sui.rpc.publicnode"
-network_id = "sui"
+chain_id = "sui"
 provider_id = "sui-publicnode"
 endpoint = "https://sui-rpc.publicnode.com"
 kind = "rpc-node"
@@ -612,7 +612,7 @@ settings_visible = true
 
 [[endpoints]]
 id = "sui.rpc.blockvision"
-network_id = "sui"
+chain_id = "sui"
 provider_id = "sui-blockvision"
 endpoint = "https://sui-mainnet-endpoint.blockvision.org"
 kind = "rpc-node"
@@ -622,7 +622,7 @@ settings_visible = true
 
 [[endpoints]]
 id = "sui.rpc.blockpi"
-network_id = "sui"
+chain_id = "sui"
 provider_id = "sui-blockpi"
 endpoint = "https://sui.blockpi.network/v1/rpc/public"
 kind = "rpc-node"
@@ -632,7 +632,7 @@ settings_visible = true
 
 [[endpoints]]
 id = "sui.rpc.suiscan"
-network_id = "sui"
+chain_id = "sui"
 provider_id = "sui-suiscan"
 endpoint = "https://rpc-mainnet.suiscan.xyz"
 kind = "rpc-node"
@@ -642,7 +642,7 @@ settings_visible = true
 
 [[endpoints]]
 id = "near.rpc.mainnet"
-network_id = "near"
+chain_id = "near"
 provider_id = "near-mainnet-rpc"
 endpoint = "https://rpc.mainnet.near.org"
 kind = "rpc-node"
@@ -652,7 +652,7 @@ settings_visible = true
 
 [[endpoints]]
 id = "near.rpc.fastnear"
-network_id = "near"
+chain_id = "near"
 provider_id = "fastnear-rpc"
 endpoint = "https://free.rpc.fastnear.com"
 kind = "rpc-node"
@@ -662,7 +662,7 @@ settings_visible = true
 
 [[endpoints]]
 id = "near.history.nearblocks"
-network_id = "near"
+chain_id = "near"
 provider_id = "nearblocks"
 endpoint = "https://api.nearblocks.io/v1"
 kind = "indexer"
@@ -672,7 +672,7 @@ settings_visible = true
 
 [[endpoints]]
 id = "near.explorer.tx"
-network_id = "near"
+chain_id = "near"
 provider_id = "nearblocks"
 endpoint = "https://nearblocks.io/txns/"
 kind = "web-link"
@@ -681,7 +681,7 @@ explorer_label = "Open In NearBlocks"
 
 [[endpoints]]
 id = "polkadot.sidecar.parity"
-network_id = "polkadot"
+chain_id = "polkadot"
 provider_id = "sidecar"
 endpoint = "https://polkadot-public-sidecar.parity-chains.parity.io"
 kind = "indexer"
@@ -691,7 +691,7 @@ settings_visible = true
 
 [[endpoints]]
 id = "polkadot.rpc.onfinality"
-network_id = "polkadot"
+chain_id = "polkadot"
 provider_id = "rpc"
 endpoint = "https://polkadot.api.onfinality.io/public"
 kind = "rpc-node"
@@ -701,7 +701,7 @@ settings_visible = true
 
 [[endpoints]]
 id = "polkadot.rpc.official"
-network_id = "polkadot"
+chain_id = "polkadot"
 provider_id = "rpc"
 endpoint = "https://rpc.polkadot.io"
 # The official node, which was not in this file while two of the three
@@ -712,7 +712,7 @@ settings_visible = true
 
 [[endpoints]]
 id = "polkadot.explorer.tx"
-network_id = "polkadot"
+chain_id = "polkadot"
 provider_id = "subscan"
 endpoint = "https://polkadot.subscan.io/extrinsic/"
 kind = "web-link"
@@ -721,7 +721,7 @@ explorer_label = "Open In Subscan"
 
 [[endpoints]]
 id = "stellar.horizon.primary"
-network_id = "stellar"
+chain_id = "stellar"
 provider_id = "horizon"
 endpoint = "https://horizon.stellar.org"
 kind = "indexer"
@@ -731,7 +731,7 @@ settings_visible = true
 
 [[endpoints]]
 id = "stellar.horizon.lobstr"
-network_id = "stellar"
+chain_id = "stellar"
 provider_id = "horizon"
 endpoint = "https://horizon.stellar.lobstr.co"
 kind = "indexer"
@@ -741,7 +741,7 @@ settings_visible = true
 
 [[endpoints]]
 id = "stellar.explorer.tx"
-network_id = "stellar"
+chain_id = "stellar"
 provider_id = "stellar-expert"
 endpoint = "https://stellar.expert/explorer/public/tx/"
 kind = "web-link"
@@ -750,7 +750,7 @@ explorer_label = "Open In Stellar Expert"
 
 [[endpoints]]
 id = "monero.backend.1"
-network_id = "monero"
+chain_id = "monero"
 provider_id = "trusted-backend"
 endpoint = "https://monerolws1.edge.app"
 kind = "backend"
@@ -759,7 +759,7 @@ settings_visible = true
 
 [[endpoints]]
 id = "monero.backend.2"
-network_id = "monero"
+chain_id = "monero"
 provider_id = "trusted-backend"
 endpoint = "https://monerolws2.edge.app"
 kind = "backend"
@@ -768,7 +768,7 @@ settings_visible = true
 
 [[endpoints]]
 id = "monero.backend.3"
-network_id = "monero"
+chain_id = "monero"
 provider_id = "trusted-backend"
 endpoint = "https://monerolws3.edge.app"
 kind = "backend"
@@ -777,7 +777,7 @@ settings_visible = true
 
 [[endpoints]]
 id = "monero.explorer.tx"
-network_id = "monero"
+chain_id = "monero"
 provider_id = "xmrchain"
 endpoint = "https://xmrchain.net/tx/"
 kind = "web-link"
@@ -786,7 +786,7 @@ explorer_label = "Open In Monero Explorer"
 
 [[endpoints]]
 id = "icp.rosetta"
-network_id = "internet-computer"
+chain_id = "internet-computer"
 provider_id = "rosetta"
 endpoint = "https://rosetta-api.internetcomputer.org"
 kind = "indexer"
@@ -796,7 +796,7 @@ settings_visible = true
 
 [[endpoints]]
 id = "icp.explorer.tx"
-network_id = "internet-computer"
+chain_id = "internet-computer"
 provider_id = "dashboard"
 endpoint = "https://dashboard.internetcomputer.org/transaction/"
 kind = "web-link"
@@ -805,7 +805,7 @@ explorer_label = "Open In ICP Dashboard"
 
 [[endpoints]]
 id = "ethereum.rpc.publicnode"
-network_id = "ethereum"
+chain_id = "ethereum"
 provider_id = "rpc"
 endpoint = "https://ethereum-rpc.publicnode.com"
 kind = "rpc-node"
@@ -814,7 +814,7 @@ settings_visible = true
 
 [[endpoints]]
 id = "ethereum.rpc.cloudflare"
-network_id = "ethereum"
+chain_id = "ethereum"
 provider_id = "rpc"
 endpoint = "https://cloudflare-eth.com"
 kind = "rpc-node"
@@ -823,7 +823,7 @@ settings_visible = true
 
 [[endpoints]]
 id = "ethereum.rpc.1rpc"
-network_id = "ethereum"
+chain_id = "ethereum"
 provider_id = "rpc"
 endpoint = "https://1rpc.io/eth"
 kind = "rpc-node"
@@ -832,7 +832,7 @@ settings_visible = true
 
 [[endpoints]]
 id = "ethereum.explorer.ethplorer"
-network_id = "ethereum"
+chain_id = "ethereum"
 provider_id = "ethplorer"
 endpoint = "https://api.ethplorer.io"
 # The one endpoint registered alongside an RPC list rather than instead
@@ -845,7 +845,7 @@ supplements_rpc_list = true
 
 [[endpoints]]
 id = "ethereum.explorer.blockscout"
-network_id = "ethereum"
+chain_id = "ethereum"
 provider_id = "blockscout"
 endpoint = "https://eth.blockscout.com"
 # Keyless. Etherscan-V1 request shape; 3/3 in the 2026-09 sweep.
@@ -854,7 +854,7 @@ capabilities = ["read", "native-history", "token-balance", "token-discovery", "t
 
 [[endpoints]]
 id = "ethereum.explorer.tx"
-network_id = "ethereum"
+chain_id = "ethereum"
 provider_id = "etherscan-web"
 endpoint = "https://etherscan.io/tx/"
 kind = "web-link"
@@ -863,7 +863,7 @@ explorer_label = "Open In Etherscan"
 
 [[endpoints]]
 id = "ethereum.sepolia.rpc.publicnode"
-network_id = "ethereum-sepolia"
+chain_id = "ethereum-sepolia"
 provider_id = "rpc"
 endpoint = "https://ethereum-sepolia-rpc.publicnode.com"
 kind = "rpc-node"
@@ -872,7 +872,7 @@ settings_visible = true
 
 [[endpoints]]
 id = "ethereum.hoodi.rpc.publicnode"
-network_id = "ethereum-hoodi"
+chain_id = "ethereum-hoodi"
 provider_id = "rpc"
 endpoint = "https://ethereum-hoodi-rpc.publicnode.com"
 kind = "rpc-node"
@@ -881,7 +881,7 @@ settings_visible = true
 
 [[endpoints]]
 id = "ethereumclassic.rpc.etcdesktop"
-network_id = "ethereum-classic"
+chain_id = "ethereum-classic"
 provider_id = "rpc"
 endpoint = "https://etc.etcdesktop.com"
 # Replaced geth-at.etc-network.info, which stopped answering. Returns
@@ -892,7 +892,7 @@ settings_visible = true
 
 [[endpoints]]
 id = "ethereumclassic.explorer.blockscout"
-network_id = "ethereum-classic"
+chain_id = "ethereum-classic"
 provider_id = "blockscout"
 endpoint = "https://blockscout.com/etc/mainnet"
 kind = "indexer"
@@ -900,7 +900,7 @@ capabilities = ["read", "native-history", "token-balance", "token-discovery", "t
 
 [[endpoints]]
 id = "ethereumclassic.explorer.tx"
-network_id = "ethereum-classic"
+chain_id = "ethereum-classic"
 provider_id = "blockscout-web"
 endpoint = "https://blockscout.com/etc/mainnet/tx/"
 kind = "web-link"
@@ -909,7 +909,7 @@ explorer_label = "Open In Blockscout"
 
 [[endpoints]]
 id = "arbitrum.rpc.publicnode"
-network_id = "arbitrum"
+chain_id = "arbitrum"
 provider_id = "rpc"
 endpoint = "https://arbitrum-one-rpc.publicnode.com"
 kind = "rpc-node"
@@ -918,7 +918,7 @@ settings_visible = true
 
 [[endpoints]]
 id = "arbitrum.rpc.arb1"
-network_id = "arbitrum"
+chain_id = "arbitrum"
 provider_id = "rpc"
 endpoint = "https://arb1.arbitrum.io/rpc"
 kind = "rpc-node"
@@ -927,7 +927,7 @@ settings_visible = true
 
 [[endpoints]]
 id = "arbitrum.rpc.1rpc"
-network_id = "arbitrum"
+chain_id = "arbitrum"
 provider_id = "rpc"
 endpoint = "https://1rpc.io/arb"
 kind = "rpc-node"
@@ -936,7 +936,7 @@ settings_visible = true
 
 [[endpoints]]
 id = "arbitrum.explorer.tx"
-network_id = "arbitrum"
+chain_id = "arbitrum"
 provider_id = "arbiscan"
 endpoint = "https://arbiscan.io/tx/"
 kind = "web-link"
@@ -945,7 +945,7 @@ explorer_label = "Open In Arbiscan"
 
 [[endpoints]]
 id = "optimism.rpc.mainnet"
-network_id = "optimism"
+chain_id = "optimism"
 provider_id = "rpc"
 endpoint = "https://mainnet.optimism.io"
 kind = "rpc-node"
@@ -954,7 +954,7 @@ settings_visible = true
 
 [[endpoints]]
 id = "optimism.rpc.publicnode"
-network_id = "optimism"
+chain_id = "optimism"
 provider_id = "rpc"
 endpoint = "https://optimism-rpc.publicnode.com"
 kind = "rpc-node"
@@ -963,7 +963,7 @@ settings_visible = true
 
 [[endpoints]]
 id = "optimism.rpc.1rpc"
-network_id = "optimism"
+chain_id = "optimism"
 provider_id = "rpc"
 endpoint = "https://1rpc.io/op"
 kind = "rpc-node"
@@ -972,7 +972,7 @@ settings_visible = true
 
 [[endpoints]]
 id = "optimism.explorer.tx"
-network_id = "optimism"
+chain_id = "optimism"
 provider_id = "optimistic-etherscan"
 endpoint = "https://optimistic.etherscan.io/tx/"
 kind = "web-link"
@@ -981,7 +981,7 @@ explorer_label = "Open In Optimism Etherscan"
 
 [[endpoints]]
 id = "bnb.rpc.primary"
-network_id = "bnb"
+chain_id = "bnb"
 provider_id = "rpc"
 endpoint = "https://bsc-dataseed.bnbchain.org"
 kind = "rpc-node"
@@ -990,7 +990,7 @@ settings_visible = true
 
 [[endpoints]]
 id = "bnb.rpc.binance"
-network_id = "bnb"
+chain_id = "bnb"
 provider_id = "rpc"
 endpoint = "https://bsc-dataseed1.binance.org"
 kind = "rpc-node"
@@ -999,7 +999,7 @@ settings_visible = true
 
 [[endpoints]]
 id = "bnb.rpc.defibit"
-network_id = "bnb"
+chain_id = "bnb"
 provider_id = "rpc"
 endpoint = "https://bsc-dataseed1.defibit.io"
 kind = "rpc-node"
@@ -1008,7 +1008,7 @@ settings_visible = true
 
 [[endpoints]]
 id = "bnb.rpc.ninicoin"
-network_id = "bnb"
+chain_id = "bnb"
 provider_id = "rpc"
 endpoint = "https://bsc-dataseed1.ninicoin.io"
 kind = "rpc-node"
@@ -1017,7 +1017,7 @@ settings_visible = true
 
 [[endpoints]]
 id = "bnb.explorer.tx"
-network_id = "bnb"
+chain_id = "bnb"
 provider_id = "bscscan-web"
 endpoint = "https://bscscan.com/tx/"
 kind = "web-link"
@@ -1026,7 +1026,7 @@ explorer_label = "Open In BscScan"
 
 [[endpoints]]
 id = "avalanche.rpc.primary"
-network_id = "avalanche"
+chain_id = "avalanche"
 provider_id = "rpc"
 endpoint = "https://api.avax.network/ext/bc/C/rpc"
 kind = "rpc-node"
@@ -1035,7 +1035,7 @@ settings_visible = true
 
 [[endpoints]]
 id = "avalanche.rpc.publicnode"
-network_id = "avalanche"
+chain_id = "avalanche"
 provider_id = "rpc"
 endpoint = "https://avalanche-c-chain-rpc.publicnode.com"
 kind = "rpc-node"
@@ -1044,7 +1044,7 @@ settings_visible = true
 
 [[endpoints]]
 id = "avalanche.rpc.1rpc"
-network_id = "avalanche"
+chain_id = "avalanche"
 provider_id = "rpc"
 endpoint = "https://1rpc.io/avax/c"
 kind = "rpc-node"
@@ -1053,7 +1053,7 @@ settings_visible = true
 
 [[endpoints]]
 id = "avalanche.explorer.tx"
-network_id = "avalanche"
+chain_id = "avalanche"
 provider_id = "snowtrace-web"
 endpoint = "https://snowtrace.io/tx/"
 kind = "web-link"
@@ -1062,7 +1062,7 @@ explorer_label = "Open In Snowtrace"
 
 [[endpoints]]
 id = "hyperliquid.rpc.primary"
-network_id = "hyperliquid"
+chain_id = "hyperliquid"
 provider_id = "rpc"
 endpoint = "https://rpc.hyperliquid.xyz/evm"
 kind = "rpc-node"
@@ -1071,7 +1071,7 @@ settings_visible = true
 
 [[endpoints]]
 id = "hyperliquid.rpc.onfinality"
-network_id = "hyperliquid"
+chain_id = "hyperliquid"
 provider_id = "rpc"
 endpoint = "https://hyperliquid.api.onfinality.io/evm/public"
 kind = "rpc-node"
@@ -1080,7 +1080,7 @@ settings_visible = true
 
 [[endpoints]]
 id = "hyperliquid.explorer.web"
-network_id = "hyperliquid"
+chain_id = "hyperliquid"
 provider_id = "hyperevmscan"
 endpoint = "https://hyperevmscan.io"
 kind = "indexer"
@@ -1088,7 +1088,7 @@ capabilities = ["read", "native-history"]
 
 [[endpoints]]
 id = "hyperliquid.explorer.tx"
-network_id = "hyperliquid"
+chain_id = "hyperliquid"
 provider_id = "hyperliquid-web"
 endpoint = "https://app.hyperliquid.xyz/explorer/tx/"
 kind = "web-link"
@@ -1097,7 +1097,7 @@ explorer_label = "Open In Hyperliquid Explorer"
 
 [[endpoints]]
 id = "base.rpc.publicnode"
-network_id = "base"
+chain_id = "base"
 provider_id = "rpc"
 endpoint = "https://base-rpc.publicnode.com"
 kind = "rpc-node"
@@ -1106,7 +1106,7 @@ settings_visible = true
 
 [[endpoints]]
 id = "base.rpc.mainnet"
-network_id = "base"
+chain_id = "base"
 provider_id = "rpc"
 endpoint = "https://mainnet.base.org"
 kind = "rpc-node"
@@ -1115,7 +1115,7 @@ settings_visible = true
 
 [[endpoints]]
 id = "base.rpc.1rpc"
-network_id = "base"
+chain_id = "base"
 provider_id = "rpc"
 endpoint = "https://1rpc.io/base"
 kind = "rpc-node"
@@ -1124,7 +1124,7 @@ settings_visible = true
 
 [[endpoints]]
 id = "base.explorer.tx"
-network_id = "base"
+chain_id = "base"
 provider_id = "basescan"
 endpoint = "https://basescan.org/tx/"
 kind = "web-link"
@@ -1133,7 +1133,7 @@ explorer_label = "Open In BaseScan"
 
 [[endpoints]]
 id = "linea.rpc.linea-rpc"
-network_id = "linea"
+chain_id = "linea"
 provider_id = "rpc"
 endpoint = "https://linea-rpc.publicnode.com"
 kind = "rpc-node"
@@ -1142,7 +1142,7 @@ settings_visible = true
 
 [[endpoints]]
 id = "linea.rpc.rpc"
-network_id = "linea"
+chain_id = "linea"
 provider_id = "rpc"
 endpoint = "https://rpc.linea.build"
 kind = "rpc-node"
@@ -1151,7 +1151,7 @@ settings_visible = true
 
 [[endpoints]]
 id = "linea.rpc.1rpc"
-network_id = "linea"
+chain_id = "linea"
 provider_id = "rpc"
 endpoint = "https://1rpc.io/linea"
 kind = "rpc-node"
@@ -1160,7 +1160,7 @@ settings_visible = true
 
 [[endpoints]]
 id = "linea.explorer.tx"
-network_id = "linea"
+chain_id = "linea"
 provider_id = "lineascan"
 endpoint = "https://lineascan.build/tx/"
 kind = "web-link"
@@ -1169,7 +1169,7 @@ explorer_label = "Open In LineaScan"
 
 [[endpoints]]
 id = "scroll.rpc.scroll-rpc"
-network_id = "scroll"
+chain_id = "scroll"
 provider_id = "rpc"
 endpoint = "https://scroll-rpc.publicnode.com"
 kind = "rpc-node"
@@ -1178,7 +1178,7 @@ settings_visible = true
 
 [[endpoints]]
 id = "scroll.rpc.rpc"
-network_id = "scroll"
+chain_id = "scroll"
 provider_id = "rpc"
 endpoint = "https://rpc.scroll.io"
 kind = "rpc-node"
@@ -1187,7 +1187,7 @@ settings_visible = true
 
 [[endpoints]]
 id = "scroll.rpc.1rpc"
-network_id = "scroll"
+chain_id = "scroll"
 provider_id = "rpc"
 endpoint = "https://1rpc.io/scroll"
 kind = "rpc-node"
@@ -1196,7 +1196,7 @@ settings_visible = true
 
 [[endpoints]]
 id = "scroll.explorer.tx"
-network_id = "scroll"
+chain_id = "scroll"
 provider_id = "scrollscan"
 endpoint = "https://scrollscan.com/tx/"
 kind = "web-link"
@@ -1205,7 +1205,7 @@ explorer_label = "Open In ScrollScan"
 
 [[endpoints]]
 id = "blast.rpc.blast-rpc"
-network_id = "blast"
+chain_id = "blast"
 provider_id = "rpc"
 endpoint = "https://blast-rpc.publicnode.com"
 kind = "rpc-node"
@@ -1214,7 +1214,7 @@ settings_visible = true
 
 [[endpoints]]
 id = "blast.rpc.rpc"
-network_id = "blast"
+chain_id = "blast"
 provider_id = "rpc"
 endpoint = "https://rpc.blast.io"
 kind = "rpc-node"
@@ -1223,7 +1223,7 @@ settings_visible = true
 
 [[endpoints]]
 id = "blast.explorer.tx"
-network_id = "blast"
+chain_id = "blast"
 provider_id = "blastscan"
 endpoint = "https://blastscan.io/tx/"
 kind = "web-link"
@@ -1232,7 +1232,7 @@ explorer_label = "Open In BlastScan"
 
 [[endpoints]]
 id = "mantle.rpc.mantle-rpc"
-network_id = "mantle"
+chain_id = "mantle"
 provider_id = "rpc"
 endpoint = "https://mantle-rpc.publicnode.com"
 kind = "rpc-node"
@@ -1241,7 +1241,7 @@ settings_visible = true
 
 [[endpoints]]
 id = "mantle.rpc.rpc"
-network_id = "mantle"
+chain_id = "mantle"
 provider_id = "rpc"
 endpoint = "https://rpc.mantle.xyz"
 kind = "rpc-node"
@@ -1250,7 +1250,7 @@ settings_visible = true
 
 [[endpoints]]
 id = "mantle.explorer.tx"
-network_id = "mantle"
+chain_id = "mantle"
 provider_id = "mantlescan"
 endpoint = "https://mantlescan.xyz/tx/"
 kind = "web-link"
@@ -1259,7 +1259,7 @@ explorer_label = "Open In MantleScan"
 
 [[endpoints]]
 id = "polygon.rpc.publicnode"
-network_id = "polygon"
+chain_id = "polygon"
 provider_id = "rpc"
 endpoint = "https://polygon-bor-rpc.publicnode.com"
 kind = "rpc-node"
@@ -1268,7 +1268,7 @@ settings_visible = true
 
 [[endpoints]]
 id = "polygon.rpc.1rpc"
-network_id = "polygon"
+chain_id = "polygon"
 provider_id = "rpc"
 endpoint = "https://1rpc.io/matic"
 kind = "rpc-node"
@@ -1277,7 +1277,7 @@ settings_visible = true
 
 [[endpoints]]
 id = "polygon.explorer.tx"
-network_id = "polygon"
+chain_id = "polygon"
 provider_id = "polygonscan"
 endpoint = "https://polygonscan.com/tx/"
 kind = "web-link"
@@ -1286,7 +1286,7 @@ explorer_label = "Open In PolygonScan"
 
 [[endpoints]]
 id = "zcash.mainnet.trezor_blockbook"
-network_id = "zcash"
+chain_id = "zcash"
 provider_id = "trezor-blockbook"
 endpoint = "https://zec1.trezor.io"
 kind = "indexer"
@@ -1296,7 +1296,7 @@ settings_visible = true
 
 [[endpoints]]
 id = "zcash.explorer.tx"
-network_id = "zcash"
+chain_id = "zcash"
 provider_id = "zcashblockexplorer"
 endpoint = "https://zcashblockexplorer.com/transactions/"
 kind = "web-link"
@@ -1305,7 +1305,7 @@ explorer_label = "Open In Zcash Block Explorer"
 
 [[endpoints]]
 id = "bitcoinGold.mainnet.trezor_blockbook"
-network_id = "bitcoin-gold"
+chain_id = "bitcoin-gold"
 provider_id = "trezor-blockbook"
 endpoint = "https://btg1.trezor.io"
 kind = "indexer"
@@ -1315,7 +1315,7 @@ settings_visible = true
 
 [[endpoints]]
 id = "bitcoinGold.explorer.tx"
-network_id = "bitcoin-gold"
+chain_id = "bitcoin-gold"
 provider_id = "btgexplorer"
 endpoint = "https://explorer.bitcoingold.org/insight/tx/"
 kind = "web-link"
@@ -1324,7 +1324,7 @@ explorer_label = "Open In BTG Explorer"
 
 [[endpoints]]
 id = "decred.mainnet.dcrdata"
-network_id = "decred"
+chain_id = "decred"
 provider_id = "dcrdata"
 endpoint = "https://dcrdata.decred.org/insight/api"
 kind = "indexer"
@@ -1334,7 +1334,7 @@ settings_visible = true
 
 [[endpoints]]
 id = "decred.explorer.tx"
-network_id = "decred"
+chain_id = "decred"
 provider_id = "dcrdata"
 endpoint = "https://dcrdata.decred.org/tx/"
 kind = "web-link"
@@ -1343,7 +1343,7 @@ explorer_label = "Open In dcrdata"
 
 [[endpoints]]
 id = "kaspa.mainnet.kaspaorg"
-network_id = "kaspa"
+chain_id = "kaspa"
 provider_id = "kaspaorg"
 endpoint = "https://api.kaspa.org"
 kind = "indexer"
@@ -1353,7 +1353,7 @@ settings_visible = true
 
 [[endpoints]]
 id = "kaspa.explorer.tx"
-network_id = "kaspa"
+chain_id = "kaspa"
 provider_id = "explorer-kaspaorg"
 endpoint = "https://explorer.kaspa.org/txs/"
 kind = "web-link"
@@ -1362,7 +1362,7 @@ explorer_label = "Open In Kaspa Explorer"
 
 [[endpoints]]
 id = "sei.mainnet.evm"
-network_id = "sei"
+chain_id = "sei"
 provider_id = "rpc"
 endpoint = "https://evm-rpc.sei-apis.com"
 kind = "rpc-node"
@@ -1372,7 +1372,7 @@ settings_visible = true
 
 [[endpoints]]
 id = "sei.explorer.tx"
-network_id = "sei"
+chain_id = "sei"
 provider_id = "seitrace"
 endpoint = "https://seitrace.com/tx/"
 kind = "web-link"
@@ -1381,7 +1381,7 @@ explorer_label = "Open In Seitrace"
 
 [[endpoints]]
 id = "celo.mainnet.evm"
-network_id = "celo"
+chain_id = "celo"
 provider_id = "rpc"
 endpoint = "https://forno.celo.org"
 kind = "rpc-node"
@@ -1391,7 +1391,7 @@ settings_visible = true
 
 [[endpoints]]
 id = "celo.explorer.tx"
-network_id = "celo"
+chain_id = "celo"
 provider_id = "celoscan"
 endpoint = "https://celoscan.io/tx/"
 kind = "web-link"
@@ -1400,7 +1400,7 @@ explorer_label = "Open In CeloScan"
 
 [[endpoints]]
 id = "cronos.mainnet.evm"
-network_id = "cronos"
+chain_id = "cronos"
 provider_id = "rpc"
 endpoint = "https://evm.cronos.org"
 kind = "rpc-node"
@@ -1410,7 +1410,7 @@ settings_visible = true
 
 [[endpoints]]
 id = "cronos.explorer.tx"
-network_id = "cronos"
+chain_id = "cronos"
 provider_id = "cronoscan"
 endpoint = "https://cronoscan.com/tx/"
 kind = "web-link"
@@ -1419,7 +1419,7 @@ explorer_label = "Open In CronoScan"
 
 [[endpoints]]
 id = "opBNB.mainnet.evm"
-network_id = "opbnb"
+chain_id = "opbnb"
 provider_id = "rpc"
 endpoint = "https://opbnb-mainnet-rpc.bnbchain.org"
 kind = "rpc-node"
@@ -1429,7 +1429,7 @@ settings_visible = true
 
 [[endpoints]]
 id = "opBNB.explorer.tx"
-network_id = "opbnb"
+chain_id = "opbnb"
 provider_id = "opbnbscan"
 endpoint = "https://opbnbscan.com/tx/"
 kind = "web-link"
@@ -1438,7 +1438,7 @@ explorer_label = "Open In opBNBScan"
 
 [[endpoints]]
 id = "zkSyncEra.mainnet.evm"
-network_id = "zksync-era"
+chain_id = "zksync-era"
 provider_id = "rpc"
 endpoint = "https://mainnet.era.zksync.io"
 kind = "rpc-node"
@@ -1448,7 +1448,7 @@ settings_visible = true
 
 [[endpoints]]
 id = "zkSyncEra.explorer.tx"
-network_id = "zksync-era"
+chain_id = "zksync-era"
 provider_id = "zksyncscan"
 endpoint = "https://explorer.zksync.io/tx/"
 kind = "web-link"
@@ -1457,7 +1457,7 @@ explorer_label = "Open In zkSync Explorer"
 
 [[endpoints]]
 id = "sonic.mainnet.evm"
-network_id = "sonic"
+chain_id = "sonic"
 provider_id = "rpc"
 endpoint = "https://rpc.soniclabs.com"
 kind = "rpc-node"
@@ -1467,7 +1467,7 @@ settings_visible = true
 
 [[endpoints]]
 id = "sonic.explorer.tx"
-network_id = "sonic"
+chain_id = "sonic"
 provider_id = "sonicscan"
 endpoint = "https://sonicscan.org/tx/"
 kind = "web-link"
@@ -1476,7 +1476,7 @@ explorer_label = "Open In SonicScan"
 
 [[endpoints]]
 id = "berachain.mainnet.evm"
-network_id = "berachain"
+chain_id = "berachain"
 provider_id = "rpc"
 endpoint = "https://rpc.berachain.com"
 kind = "rpc-node"
@@ -1486,7 +1486,7 @@ settings_visible = true
 
 [[endpoints]]
 id = "berachain.explorer.tx"
-network_id = "berachain"
+chain_id = "berachain"
 provider_id = "berascan"
 endpoint = "https://berascan.com/tx/"
 kind = "web-link"
@@ -1495,7 +1495,7 @@ explorer_label = "Open In BeraScan"
 
 [[endpoints]]
 id = "unichain.mainnet.evm"
-network_id = "unichain"
+chain_id = "unichain"
 provider_id = "rpc"
 endpoint = "https://mainnet.unichain.org"
 kind = "rpc-node"
@@ -1505,7 +1505,7 @@ settings_visible = true
 
 [[endpoints]]
 id = "unichain.explorer.tx"
-network_id = "unichain"
+chain_id = "unichain"
 provider_id = "uniscan"
 endpoint = "https://uniscan.xyz/tx/"
 kind = "web-link"
@@ -1514,7 +1514,7 @@ explorer_label = "Open In UniScan"
 
 [[endpoints]]
 id = "ink.mainnet.evm"
-network_id = "ink"
+chain_id = "ink"
 provider_id = "rpc"
 endpoint = "https://rpc-gel.inkonchain.com"
 kind = "rpc-node"
@@ -1524,7 +1524,7 @@ settings_visible = true
 
 [[endpoints]]
 id = "ink.explorer.tx"
-network_id = "ink"
+chain_id = "ink"
 provider_id = "inkscan"
 endpoint = "https://explorer.inkonchain.com/tx/"
 kind = "web-link"
@@ -1533,7 +1533,7 @@ explorer_label = "Open In Ink Explorer"
 
 [[endpoints]]
 id = "dash.mainnet.trezor_blockbook"
-network_id = "dash"
+chain_id = "dash"
 provider_id = "trezor-blockbook"
 endpoint = "https://dash1.trezor.io"
 kind = "indexer"
@@ -1543,7 +1543,7 @@ settings_visible = true
 
 [[endpoints]]
 id = "dash.explorer.tx"
-network_id = "dash"
+chain_id = "dash"
 provider_id = "insight"
 endpoint = "https://insight.dash.org/insight/tx/"
 kind = "web-link"
@@ -1552,7 +1552,7 @@ explorer_label = "Open In Dash Insight"
 
 [[endpoints]]
 id = "xLayer.mainnet.evm"
-network_id = "x-layer"
+chain_id = "x-layer"
 provider_id = "rpc"
 endpoint = "https://rpc.xlayer.tech"
 kind = "rpc-node"
@@ -1562,7 +1562,7 @@ settings_visible = true
 
 [[endpoints]]
 id = "xLayer.explorer.tx"
-network_id = "x-layer"
+chain_id = "x-layer"
 provider_id = "okxscan"
 endpoint = "https://www.okx.com/web3/explorer/xlayer/tx/"
 kind = "web-link"
@@ -1571,7 +1571,7 @@ explorer_label = "Open In OKX X Layer Explorer"
 
 [[endpoints]]
 id = "bittensor.mainnet.opentensor"
-network_id = "bittensor"
+chain_id = "bittensor"
 provider_id = "opentensor"
 endpoint = "https://entrypoint-finney.opentensor.ai"
 kind = "indexer"
@@ -1581,7 +1581,7 @@ settings_visible = true
 
 [[endpoints]]
 id = "bittensor.mainnet.taostats"
-network_id = "bittensor"
+chain_id = "bittensor"
 provider_id = "taostats"
 endpoint = "https://api.taostats.io"
 kind = "indexer"
@@ -1591,7 +1591,7 @@ settings_visible = true
 
 [[endpoints]]
 id = "bittensor.explorer.tx"
-network_id = "bittensor"
+chain_id = "bittensor"
 provider_id = "taostats"
 endpoint = "https://taostats.io/extrinsic/"
 kind = "web-link"

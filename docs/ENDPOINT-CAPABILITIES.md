@@ -1,10 +1,10 @@
 # Endpoint capabilities
 
 `core/data/endpoints.toml` owns the declarations. Each row references a concrete
-`network_id` from `chains.toml`; unknown IDs and obsolete name/title ownership
+`chain_id` from `chains.toml`; unknown IDs and obsolete name/title ownership
 fields are rejected. Core indexes by network ID and derives settings families
 and titles from the registry, including separate mainnet/testnet groups.
-CLI catalog rows identify the network with `networkId`. Core validates the vocabulary,
+CLI catalog rows identify the network with `chainId`. Core validates the vocabulary,
 uses distinct role-mask bits, and exposes the same strings to CLI diagnostics
 and the localized Endpoints screen. `kind` describes the API surface separately.
 

@@ -155,7 +155,7 @@ async fn audit_stored_wallets_reach_solana_sui_aptos_and_tron_submission() {
             .await
             .unwrap_or_else(|e| panic!("{chain:?} token={token}: {e}"));
         assert!(!result.transaction_hash.is_empty(), "{chain:?}");
-        let rows = service.fetch_all_history_records_typed().await.unwrap();
+        let rows = service.fetch_all_history_records().await.unwrap();
         assert_eq!(rows.len(), 1);
         assert_eq!(
             rows[0].id.len(),
@@ -174,7 +174,7 @@ async fn audit_stored_wallets_reach_solana_sui_aptos_and_tron_submission() {
             .await
             .unwrap();
         assert_eq!(
-            reopened.fetch_all_history_records_typed().await.unwrap()[0].payload,
+            reopened.fetch_all_history_records().await.unwrap()[0].payload,
             rows[0].payload
         );
         let requests = server.received_requests().await.unwrap();

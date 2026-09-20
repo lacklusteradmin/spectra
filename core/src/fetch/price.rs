@@ -78,7 +78,7 @@ impl FiatRateProvider {
 // ── Inputs / outputs
 
 /// One coin the caller wants priced. `holding_key` is the caller's own
-/// identifier, returned in the quote map; `coin_gecko_id` is the catalog id
+/// identifier, returned in the quote map; `coingecko_id` is the catalog id
 /// every provider is resolved from.
 ///
 /// It also carried the ticker symbol, for providers to match on when the id
@@ -88,7 +88,7 @@ impl FiatRateProvider {
 #[serde(rename_all = "camelCase")]
 pub struct PriceRequestCoin {
     pub holding_key: String,
-    pub coin_gecko_id: String,
+    pub coingecko_id: String,
 }
 
 /// Keyed by `holding_key`. Value is USD price.
@@ -191,7 +191,7 @@ async fn fetch_coingecko_quotes(coins: &[PriceRequestCoin]) -> Result<PriceQuote
     // Group by normalized gecko id; skip coins without one.
     let mut grouped: HashMap<String, Vec<&PriceRequestCoin>> = HashMap::new();
     for coin in coins {
-        let id = coin.coin_gecko_id.trim().to_lowercase();
+        let id = coin.coingecko_id.trim().to_lowercase();
         if id.is_empty() {
             continue;
         }
@@ -272,7 +272,7 @@ async fn fetch_coinpaprika_quotes(coins: &[PriceRequestCoin]) -> Result<PriceQuo
         if resolved.contains_key(&coin.holding_key) {
             continue;
         }
-        let Some(id) = paprika_id_for(&coin.coin_gecko_id) else {
+        let Some(id) = paprika_id_for(&coin.coingecko_id) else {
             continue;
         };
         let Some(ticker) = by_id.get(id) else {
@@ -290,7 +290,7 @@ async fn fetch_coinpaprika_quotes(coins: &[PriceRequestCoin]) -> Result<PriceQuo
 
 /// One asset's ids at the market-data providers, as the catalogs state them.
 ///
-/// Kept off `ChainEntry` and `TokenEntry`: no front end prices anything, so a
+/// Kept off `ChainEntry` and `TokenDeploymentEntry`: no front end prices anything, so a
 /// column there would only be bytes crossing the FFI on every catalog call.
 #[derive(Debug, Clone)]
 pub(crate) struct AssetMarketIds {

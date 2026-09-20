@@ -1,6 +1,6 @@
 //! Artwork is catalog metadata, addressed by token or network identity.
 #[uniffi::export]
-pub fn core_token_artwork_name(token_id: String) -> String {
+pub fn token_artwork_name(token_id: String) -> String {
     crate::tokens::catalog()
         .iter()
         .find(|t| t.token_id == token_id)
@@ -8,20 +8,24 @@ pub fn core_token_artwork_name(token_id: String) -> String {
         .unwrap_or_default()
 }
 #[uniffi::export]
-pub fn core_network_artwork_name(network_id: String) -> String {
-    crate::chains::chain_by_str_id(&network_id)
+pub fn chain_artwork_name(chain_id: String) -> String {
+    crate::chains::chain_by_str_id(&chain_id)
         .map(|c| c.artwork_name.clone())
         .unwrap_or_default()
 }
 #[uniffi::export]
-pub fn core_holding_artwork_name(holding: crate::store::wallet_domain::AssetHolding) -> String {
-    core_deployment_artwork_name(Some(holding.deployment_key()))
+pub fn holding_artwork_name(holding: crate::store::wallet_domain::AssetHolding) -> String {
+    deployment_artwork_name(Some(holding.deployment_id()))
 }
 
 #[uniffi::export]
-pub fn core_deployment_artwork_name(deployment_id: Option<String>) -> String {
+pub fn deployment_artwork_name(deployment_id: Option<String>) -> String {
     deployment_id
-        .and_then(|id| crate::tokens::catalog().iter().find(|t| t.id == id))
+        .and_then(|id| {
+            crate::tokens::catalog()
+                .iter()
+                .find(|t| t.deployment_id == id)
+        })
         .map(|t| t.artwork_name.clone())
         .unwrap_or_default()
 }
@@ -33,14 +37,14 @@ mod tests {
     fn artwork_uses_identity_and_unknown_contracts_cannot_borrow_a_symbol() {
         for token in crate::tokens::catalog() {
             assert_eq!(
-                core_token_artwork_name(token.token_id.clone()),
+                token_artwork_name(token.token_id.clone()),
                 token.artwork_name
             );
             assert_eq!(
-                core_holding_artwork_name(token.holding_template()),
+                holding_artwork_name(token.holding_template()),
                 token.artwork_name,
                 "{}",
-                token.id
+                token.deployment_id
             );
         }
         let mut impostor = crate::tokens::catalog()
@@ -49,9 +53,9 @@ mod tests {
             .unwrap()
             .holding_template();
         impostor.contract_address = Some("unknown-contract".into());
-        assert_eq!(core_holding_artwork_name(impostor), "");
-        assert_eq!(core_token_artwork_name("USDC".into()), "");
-        assert_eq!(core_network_artwork_name("base".into()), "base");
+        assert_eq!(holding_artwork_name(impostor), "");
+        assert_eq!(token_artwork_name("USDC".into()), "");
+        assert_eq!(chain_artwork_name("base".into()), "base");
     }
     #[test]
     fn every_named_mark_ships_a_file() {

@@ -131,8 +131,8 @@ impl WalletService {
                 )))
             }
         };
-        let known: std::collections::HashMap<String, crate::tokens::TokenEntry> =
-            crate::tokens::list_tokens(chain.str_id().to_string())
+        let known: std::collections::HashMap<String, crate::tokens::TokenDeploymentEntry> =
+            crate::tokens::list_token_deployments(chain.str_id().to_string())
                 .into_iter()
                 .map(|t| (t.contract.clone(), t))
                 .collect();

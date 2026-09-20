@@ -4,24 +4,21 @@ use crate::*;
 #[test]
 fn derivation_editor_preserves_hardening_and_refuses_malformed_paths() {
     let path = "m/44'/60'/0'/0/7";
-    let segments = core_parse_derivation_path(path.into()).unwrap();
-    assert_eq!(core_derivation_path_string(segments), path);
+    let segments = parse_derivation_path(path.into()).unwrap();
+    assert_eq!(format_derivation_path(segments), path);
     for invalid in ["m/2147483648", "m/-1", "m/nope", "m/44'//0"] {
-        assert!(
-            core_parse_derivation_path(invalid.into()).is_none(),
-            "{invalid}"
-        );
+        assert!(parse_derivation_path(invalid.into()).is_none(), "{invalid}");
     }
 }
 
 #[test]
 fn reset_scopes_do_not_expand_to_unrelated_data() {
     use store::state::ResetScope;
-    let wallets = store::core_reset_dispatch(vec![ResetScope::WalletsAndSecrets]);
+    let wallets = store::reset_dispatch(vec![ResetScope::WalletsAndSecrets]);
     assert!(wallets.reset_wallets_and_secrets && wallets.reset_history_and_cache);
     assert!(wallets.clear_network_and_transport_caches);
     assert!(!wallets.reset_alerts_and_contacts && !wallets.reset_settings_and_endpoints);
-    let settings = store::core_reset_dispatch(vec![ResetScope::SettingsAndEndpoints]);
+    let settings = store::reset_dispatch(vec![ResetScope::SettingsAndEndpoints]);
     assert!(settings.reset_settings_and_endpoints);
     assert!(!settings.reset_wallets_and_secrets && !settings.reset_history_and_cache);
     assert_eq!(ResetScope::from_raw("typo"), None);
@@ -33,7 +30,7 @@ fn reset_scopes_do_not_expand_to_unrelated_data() {
 
 #[test]
 fn testnet_pricing_uses_concrete_network_identity() {
-    let unpriced = store::state::core_unpriced_chain_names();
+    let unpriced = store::state::unpriced_chain_names();
     assert!(unpriced.contains(&"Ethereum Sepolia".into()));
     assert!(unpriced.contains(&"ethereum-sepolia".into()));
     assert!(!unpriced.contains(&"Ethereum".into()));

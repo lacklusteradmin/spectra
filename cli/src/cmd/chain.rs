@@ -1,7 +1,7 @@
 //! Commands that talk to a chain: the supported list, balances and history.
 //!
-//! Endpoint selection is core's — `endpoint_records_for_chain_masked` picks
-//! them from the catalog by role. The CLI supplies the role mask for what it
+//! Endpoint selection is core's — `filtered_endpoint_records_for_chain` picks
+//! them from the catalog by kind or capability. The CLI supplies the filter mask for what it
 //! is about to do and nothing else.
 
 use clap::Args;
@@ -15,17 +15,10 @@ use crate::ctx::{wallet_address, Ctx};
 use crate::error::{CliError, CliResult};
 use crate::out::{self, Out};
 
-/// Endpoint role bits, as `AppEndpointDirectory` defines them.
-mod role {
-    pub const BALANCE: u32 = 1 << 1;
-    pub const NATIVE_HISTORY: u32 = 1 << 2;
-    pub const UTXO: u32 = 1 << 3;
-    pub const FEE: u32 = 1 << 4;
-    pub const BROADCAST: u32 = 1 << 5;
-    pub const RPC: u32 = 1 << 7;
-}
-
-pub use role::{BALANCE, BROADCAST, FEE, NATIVE_HISTORY, RPC, UTXO};
+pub use spectra_core::{
+    ENDPOINT_CAPABILITY_BALANCE, ENDPOINT_CAPABILITY_BROADCAST, ENDPOINT_CAPABILITY_FEE,
+    ENDPOINT_CAPABILITY_NATIVE_HISTORY, ENDPOINT_CAPABILITY_UTXO, ENDPOINT_KIND_RPC_NODE,
+};
 
 #[derive(Args)]
 pub struct ChainsArgs {
@@ -61,15 +54,18 @@ pub struct HistoryArgs {
     endpoint: Option<String>,
 }
 
-/// A service bound to one chain's endpoints for the roles a command needs.
-pub fn service_for_chain(chain: Chain, roles: u32) -> CliResult<Arc<WalletService>> {
+/// A service bound to one chain's endpoints for the kinds or capabilities a command needs.
+pub fn service_for_chain(chain: Chain, filter_mask: u32) -> CliResult<Arc<WalletService>> {
     let name = chain.chain_display_name().to_string();
-    let endpoints: Vec<String> =
-        spectra_core::endpoint_records_for_chain_masked(chain.str_id().into(), roles, false)
-            .map_err(CliError::from)?
-            .into_iter()
-            .map(|record| record.endpoint)
-            .collect();
+    let endpoints: Vec<String> = spectra_core::filtered_endpoint_records_for_chain(
+        chain.str_id().into(),
+        filter_mask,
+        false,
+    )
+    .map_err(CliError::from)?
+    .into_iter()
+    .map(|record| record.endpoint)
+    .collect();
     if endpoints.is_empty() {
         return Err(CliError::failure(format!(
             "no endpoints registered for {name}"
@@ -190,7 +186,7 @@ pub fn endpoints(ctx: &Ctx, out: Out, args: EndpointsArgs) -> CliResult<()> {
     if args.catalog {
         let mut records = Vec::new();
         for chain in chains {
-            records.extend(spectra_core::endpoint_records_for_chain_masked(
+            records.extend(spectra_core::filtered_endpoint_records_for_chain(
                 chain.str_id().into(),
                 0,
                 false,
@@ -198,7 +194,7 @@ pub fn endpoints(ctx: &Ctx, out: Out, args: EndpointsArgs) -> CliResult<()> {
         }
         out.text(|| {
             for record in &records {
-                println!("{}  {}", record.network_id, record.endpoint);
+                println!("{}  {}", record.chain_id, record.endpoint);
                 println!("  {} · {}", record.kind, record.capabilities.join(" · "));
             }
         });
@@ -206,7 +202,7 @@ pub fn endpoints(ctx: &Ctx, out: Out, args: EndpointsArgs) -> CliResult<()> {
             "catalog": true,
             "total": records.len(),
             "endpoints": records.iter().map(|r| serde_json::json!({
-                "networkId": r.network_id, "endpoint": r.endpoint,
+                "chainId": r.chain_id, "endpoint": r.endpoint,
                 "kind": r.kind, "capabilities": r.capabilities,
             })).collect::<Vec<_>>(),
         }));
@@ -255,7 +251,7 @@ pub fn endpoints(ctx: &Ctx, out: Out, args: EndpointsArgs) -> CliResult<()> {
         "unreachable": unreachable,
         "unchecked": unchecked,
         "endpoints": rows.iter().map(|r| serde_json::json!({
-            "networkId": r.network_id, "chain": r.chain_name, "endpoint": r.endpoint,
+            "chainId": r.chain_id, "chain": r.chain_name, "endpoint": r.endpoint,
             "kind": r.kind, "capabilities": r.capabilities,
             "checked": r.checked, "reachable": r.reachable, "detail": r.detail,
         })).collect::<Vec<_>>(),
@@ -266,7 +262,7 @@ pub fn endpoints(ctx: &Ctx, out: Out, args: EndpointsArgs) -> CliResult<()> {
 pub fn balance(ctx: &Ctx, out: Out, args: BalanceArgs) -> CliResult<()> {
     let wallet = ctx.find_wallet(&args.wallet)?;
     let chain = resolve_chain(&wallet.chain_name)?;
-    let service = service_for_chain(chain, BALANCE | RPC)?;
+    let service = service_for_chain(chain, ENDPOINT_CAPABILITY_BALANCE | ENDPOINT_KIND_RPC_NODE)?;
 
     let summary = ctx
         .rt
@@ -379,9 +375,7 @@ fn save_history(
 pub fn history(ctx: &Ctx, out: Out, args: HistoryArgs) -> CliResult<()> {
     let wallet = ctx.find_wallet(&args.wallet)?;
     let chain = resolve_chain(&wallet.chain_name)?;
-    let network = wallet
-        .network_chain(&ctx.state()?.settings)
-        .unwrap_or(chain);
+    let network = wallet.chain().unwrap_or(chain);
     let service = if let Some(endpoint) = args.endpoint {
         WalletService::new(vec![ChainEndpoints {
             chain_id: network.str_id().into(),
@@ -390,7 +384,12 @@ pub fn history(ctx: &Ctx, out: Out, args: HistoryArgs) -> CliResult<()> {
         }])
         .map_err(CliError::from)?
     } else {
-        service_for_chain(network, NATIVE_HISTORY | BALANCE | RPC)?
+        service_for_chain(
+            network,
+            ENDPOINT_CAPABILITY_NATIVE_HISTORY
+                | ENDPOINT_CAPABILITY_BALANCE
+                | ENDPOINT_KIND_RPC_NODE,
+        )?
     };
     if args.save {
         return save_history(
@@ -404,7 +403,7 @@ pub fn history(ctx: &Ctx, out: Out, args: HistoryArgs) -> CliResult<()> {
             service.fetch_normalized_history(
                 network.str_id().to_string(),
                 wallet
-                    .active_address(&ctx.state()?.settings)
+                    .active_address()
                     .ok_or_else(|| CliError::rejected("wallet has no address on selected network"))?
                     .to_string(),
             ),

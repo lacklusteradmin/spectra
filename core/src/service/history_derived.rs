@@ -128,7 +128,7 @@ mod tests {
     async fn records_land_in_the_database_the_service_was_opened_on() {
         let service = WalletService::new(Vec::new()).expect("service");
         assert!(
-            service.fetch_all_history_records_typed().await.is_err(),
+            service.fetch_all_history_records().await.is_err(),
             "an unopened store has no database to read"
         );
 
@@ -151,7 +151,7 @@ mod tests {
         reopened.open_state(db).await.expect("open");
         assert_eq!(
             reopened
-                .fetch_all_history_records_typed()
+                .fetch_all_history_records()
                 .await
                 .expect("read")
                 .len(),

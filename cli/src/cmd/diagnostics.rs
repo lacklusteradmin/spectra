@@ -193,7 +193,7 @@ fn self_test(out: Out, args: SelfTestArgs) -> CliResult<()> {
 fn show(ctx: &Ctx, out: Out, args: ShowArgs) -> CliResult<()> {
     let chain = resolve_chain(&args.chain)?;
     let _ = ctx;
-    let json = spectra_core::diagnostics::core_diagnostics_json(
+    let json = spectra_core::diagnostics::diagnostics_json(
         chain.chain_display_name().to_string(),
         Vec::new(),
         None,

@@ -1,7 +1,7 @@
 //! A bounded scan session. Only addresses survive candidate generation.
 use super::*;
 use crate::derivation::funds_finder::{
-    core_generate_funds_finder_candidates, FundsFinderCandidate, FundsFinderRequest,
+    generate_funds_finder_candidates, FundsFinderCandidate, FundsFinderRequest,
 };
 use futures::{stream, StreamExt};
 
@@ -35,7 +35,7 @@ impl WalletService {
         if let Some(id) = &chain_id {
             chain_for_id(id)?;
         }
-        let mut candidates = core_generate_funds_finder_candidates(request)?;
+        let mut candidates = generate_funds_finder_candidates(request)?;
         if let Some(id) = chain_id {
             candidates.retain(|c| c.chain_id == id);
         }

@@ -190,7 +190,7 @@ impl WalletService {
             || !wallet
                 .holdings
                 .iter()
-                .any(|h| h.deployment_key() == input.holding_key && h.network() == Some(chain))
+                .any(|h| h.deployment_id() == input.holding_key && h.chain() == Some(chain))
         {
             return Err("Sending identity changed; review again".into());
         }

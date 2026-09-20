@@ -19,13 +19,13 @@ pub struct PortfolioValuation {
 }
 
 pub(super) fn price(state: &CoreAppState, holding: &AssetHolding) -> Option<f64> {
-    if holding.network()?.is_testnet() {
+    if holding.chain()?.is_testnet() {
         return None;
     }
     state
         .quotes
         .prices
-        .get(&holding.deployment_key())
+        .get(&holding.deployment_id())
         .copied()
         .filter(|p| p.is_finite() && *p > 0.0)
 }
@@ -45,7 +45,7 @@ pub(super) fn total<'a>(
     let mut total = 0.0;
     let mut unpriced_count = 0;
     for holding in holdings {
-        if holding.network().is_some_and(|chain| chain.is_testnet()) || holding.amount == 0.0 {
+        if holding.chain().is_some_and(|chain| chain.is_testnet()) || holding.amount == 0.0 {
             continue;
         }
         match value(state, holding) {
@@ -109,13 +109,13 @@ mod tests {
         ] {
             state.quotes.prices.clear();
             if let Some(price) = price {
-                state.quotes.prices.insert(coin.deployment_key(), price);
+                state.quotes.prices.insert(coin.deployment_id(), price);
             }
             let result = total(&state, std::iter::once(&coin));
             assert_eq!(result.total, 0.0);
             assert_eq!(result.unpriced_count, 1);
         }
-        state.quotes.prices.insert(coin.deployment_key(), 3000.0);
+        state.quotes.prices.insert(coin.deployment_id(), 3000.0);
         state.settings.fiat_currency = crate::state::FiatCurrency::Eur;
         let result = total(&state, std::iter::once(&coin));
         assert_eq!(result.total, 6000.0);

@@ -214,7 +214,10 @@ impl WalletService {
         use crate::diagnostics::self_tests::{self_tests_run_chain, self_tests_run_evm_rpc};
         let requested = chain_for_id(&chain_id)?;
         let chain = if requested == requested.mainnet_counterpart() {
-            self.app_state().await.settings.network_chain(requested)
+            self.app_state()
+                .await
+                .settings
+                .selected_chain_for_family(requested)
         } else {
             requested
         };
@@ -275,7 +278,7 @@ mod configured_tests {
                 .unwrap();
         }
         service
-            .apply_state_command(StateCommand::SelectNetworkChain {
+            .apply_state_command(StateCommand::SelectChainForFamily {
                 chain_id: "ethereum-sepolia".into(),
             })
             .await
@@ -295,7 +298,7 @@ mod configured_tests {
             selected.results
         );
         service
-            .apply_state_command(StateCommand::SelectNetworkChain {
+            .apply_state_command(StateCommand::SelectChainForFamily {
                 chain_id: "ethereum".into(),
             })
             .await

@@ -14,7 +14,7 @@ impl WalletService {
         scopes: Vec<crate::store::state::ResetScope>,
     ) -> Result<ResetOutcome, SpectraBridgeError> {
         self.bound_database().await?;
-        let plan = crate::store::core_reset_dispatch(scopes);
+        let plan = crate::store::reset_dispatch(scopes);
         let mutation = plan.clone();
         self.mutate_persisted_state(move |state| {
             if mutation.reset_wallets_and_secrets {
@@ -74,7 +74,7 @@ mod tests {
             is_watch_only: false,
             chain_name: "Ethereum".into(),
             include_in_portfolio_total: true,
-            network_id: "ethereum".into(),
+            chain_id: "ethereum".into(),
             xpub: None,
             derivation_preset: crate::store::wallet_domain::CoreSeedDerivationPreset::Standard,
             derivation_path: None,

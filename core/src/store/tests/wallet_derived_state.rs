@@ -6,7 +6,7 @@ fn coin(symbol: &str, chain: &str, amount: f64) -> AssetHolding {
     AssetHolding {
         name: symbol.to_string(),
         symbol: symbol.to_string(),
-        coin_gecko_id: symbol.to_lowercase(),
+        coingecko_id: symbol.to_lowercase(),
         chain_name: chain.to_string(),
         token_standard: if crate::registry::Chain::from_display_name(chain)
             .is_some_and(|c| c.coin_symbol() == symbol)
@@ -38,7 +38,7 @@ async fn service_with(
             .map(|c| crate::store::wallet_domain::AssetHolding {
                 name: c.name,
                 symbol: c.symbol,
-                coin_gecko_id: c.coin_gecko_id,
+                coingecko_id: c.coingecko_id,
                 chain_name: c.chain_name,
                 token_standard: c.token_standard,
                 contract_address: c.contract_address,
@@ -100,7 +100,7 @@ async fn no_testnet_coin_is_quoted_on_any_family() {
         )])
         .await;
         service
-            .apply_state_command(StateCommand::SelectNetworkChain {
+            .apply_state_command(StateCommand::SelectChainForFamily {
                 chain_id: testnet_id.into(),
             })
             .await
@@ -119,18 +119,18 @@ async fn no_testnet_coin_is_quoted_on_any_family() {
 async fn choosing_mainnet_stores_its_explicit_id() {
     let service = WalletService::new(Vec::new()).expect("service");
     let after_testnet = service
-        .apply_state_command(StateCommand::SelectNetworkChain {
+        .apply_state_command(StateCommand::SelectChainForFamily {
             chain_id: "bitcoin-testnet-4".into(),
         })
         .await
         .expect("select");
     assert_eq!(
-        after_testnet.state.settings.network_chain_by_family.len(),
+        after_testnet.state.settings.selected_chain_by_family.len(),
         1
     );
 
     let after_mainnet = service
-        .apply_state_command(StateCommand::SelectNetworkChain {
+        .apply_state_command(StateCommand::SelectChainForFamily {
             chain_id: "bitcoin".into(),
         })
         .await
@@ -139,7 +139,7 @@ async fn choosing_mainnet_stores_its_explicit_id() {
         after_mainnet
             .state
             .settings
-            .network_chain_by_family
+            .selected_chain_by_family
             .get("bitcoin")
             .map(String::as_str),
         Some("bitcoin")

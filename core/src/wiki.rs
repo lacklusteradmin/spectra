@@ -58,7 +58,7 @@ pub struct AssetWikiEntry {
     pub token_id: String,
     pub symbol: String,
     pub name: String,
-    pub coin_gecko_id: String,
+    pub coingecko_id: String,
     pub color: Option<crate::chains::CatalogColor>,
     pub artwork_name: String,
     pub comment: String,
@@ -108,15 +108,15 @@ fn build() -> Vec<AssetWikiEntry> {
     // Then the deployments. A coin already listed gains places rather than a
     // second row: CRO is native to Cronos and a contract on Ethereum.
     for token in tokens::catalog().iter().filter(|t| !t.is_native()) {
-        let chain_name = chains::chain_by_str_id(&token.chain)
+        let chain_name = chains::chain_by_str_id(&token.chain_id)
             .map(|c| c.name.clone())
-            .unwrap_or_else(|| token.chain.clone());
+            .unwrap_or_else(|| token.chain_id.clone());
         let slot = *index.entry(token.token_id.clone()).or_insert_with(|| {
             out.push(entry_from_token(token));
             out.len() - 1
         });
         out[slot].lives_on.push(AssetWikiPlace {
-            chain_id: token.chain.clone(),
+            chain_id: token.chain_id.clone(),
             chain_name,
             token_standard: token.token_standard.clone(),
             contract: token.contract.clone(),
@@ -152,7 +152,7 @@ fn entry_from_chain(chain: &ChainEntry) -> AssetWikiEntry {
         token_id: token.token_id.clone(),
         symbol: chain.gas_token_symbol.clone(),
         name: chain.native_asset_display_name.clone(),
-        coin_gecko_id: chain.native_coingecko_id.clone(),
+        coingecko_id: chain.native_coingecko_id.clone(),
         color: token.color,
         artwork_name: token.artwork_name.clone(),
         comment: String::new(),
@@ -162,12 +162,12 @@ fn entry_from_chain(chain: &ChainEntry) -> AssetWikiEntry {
     }
 }
 
-fn entry_from_token(token: &tokens::TokenEntry) -> AssetWikiEntry {
+fn entry_from_token(token: &tokens::TokenDeploymentEntry) -> AssetWikiEntry {
     AssetWikiEntry {
         token_id: token.token_id.clone(),
         symbol: token.symbol.clone(),
         name: token.name.clone(),
-        coin_gecko_id: token.coingecko_id.clone(),
+        coingecko_id: token.coingecko_id.clone(),
         color: token.color,
         artwork_name: token.artwork_name.clone(),
         comment: String::new(),
@@ -206,7 +206,7 @@ mod the_wiki_is_one_asset_table {
             // A coin enabled anywhere must be priceable. USD1 and WLFI once
             // had no id at all; both are disabled, so nothing showed an
             // unpriced balance, but enabling one would have.
-            assert!(!a.coin_gecko_id.is_empty(), "{} has no market id", a.symbol);
+            assert!(!a.coingecko_id.is_empty(), "{} has no market id", a.symbol);
         }
     }
 
@@ -285,7 +285,7 @@ mod the_wiki_is_one_asset_table {
         let expected: std::collections::BTreeSet<&str> = crate::tokens::catalog()
             .iter()
             .filter(|t| {
-                !crate::registry::Chain::from_str_id(&t.chain)
+                !crate::registry::Chain::from_str_id(&t.chain_id)
                     .unwrap()
                     .is_testnet()
             })

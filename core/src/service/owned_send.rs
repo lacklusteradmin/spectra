@@ -22,7 +22,7 @@ impl WalletService {
         let holding = wallet
             .holdings
             .iter()
-            .find(|h| h.deployment_key() == holding_key)
+            .find(|h| h.deployment_id() == holding_key)
             .ok_or("holding does not exist")?;
         let (network, token) =
             super::send_destination::destination_probe_asset(holding, &state.token_preferences)?;
@@ -69,23 +69,18 @@ impl WalletService {
                 .address
         };
         let preview = match chain.mainnet_counterpart() {
-            Chain::Bitcoin => if let Some(xpub) =
-                wallet.xpub.as_ref().filter(|x| !x.trim().is_empty())
-            {
-                self.fetch_bitcoin_hd_send_preview_typed(
-                    chain.str_id().into(),
-                    xpub.clone(),
-                    20,
-                    20,
-                )
-                .await?
-            } else {
-                self.fetch_utxo_fee_preview_typed(chain.str_id().into(), address, 0, destination)
-                    .await?
+            Chain::Bitcoin => {
+                if let Some(xpub) = wallet.xpub.as_ref().filter(|x| !x.trim().is_empty()) {
+                    self.fetch_bitcoin_hd_send_preview(chain.str_id().into(), xpub.clone(), 20, 20)
+                        .await?
+                } else {
+                    self.fetch_utxo_fee_preview(chain.str_id().into(), address, 0, destination)
+                        .await?
+                }
+                .map(|preview| SendPreview::Utxo { preview })
             }
-            .map(|preview| SendPreview::Utxo { preview }),
             Chain::BitcoinCash | Chain::BitcoinSV | Chain::Litecoin => self
-                .fetch_utxo_fee_preview_typed(chain.str_id().into(), address, 0, destination)
+                .fetch_utxo_fee_preview(chain.str_id().into(), address, 0, destination)
                 .await?
                 .map(|preview| SendPreview::Utxo { preview }),
             Chain::Dogecoin => {
@@ -96,7 +91,7 @@ impl WalletService {
                     .copied()
                     .unwrap_or(crate::store::state::FeePriority::Normal);
                 // This legacy provider preview accepts a display amount; signing parses the exact input separately.
-                self.fetch_dogecoin_send_preview_typed(
+                self.fetch_dogecoin_send_preview(
                     address,
                     amount.parse().map_err(|_| "invalid amount")?,
                     priority.as_raw().to_string(),
@@ -105,7 +100,7 @@ impl WalletService {
                 .map(|preview| SendPreview::Dogecoin { preview })
             }
             Chain::Tron => self
-                .fetch_tron_send_preview_typed(
+                .fetch_tron_send_preview(
                     address,
                     holding.symbol.clone(),
                     token.map(|t| t.contract).unwrap_or_default(),
@@ -113,7 +108,7 @@ impl WalletService {
                 .await?
                 .map(|preview| SendPreview::Tron { preview }),
             _ => Some(
-                self.fetch_simple_chain_send_preview_typed(chain.str_id().into(), address)
+                self.fetch_simple_chain_send_preview(chain.str_id().into(), address)
                     .await?
                     .into(),
             ),
@@ -141,9 +136,9 @@ impl WalletService {
         let holding = wallet
             .holdings
             .iter()
-            .find(|h| h.deployment_key() == holding_key)
+            .find(|h| h.deployment_id() == holding_key)
             .ok_or("holding does not exist")?;
-        let chain = holding.network().ok_or("invalid asset network")?;
+        let chain = holding.chain().ok_or("invalid asset network")?;
         super::send_execution::send_chain_for(&state, &wallet_id, chain)?;
         let destination = self
             .resolve_send_destination(chain.str_id().into(), destination)
@@ -161,16 +156,14 @@ impl WalletService {
                 )
                 .await,
             );
-            if chain.supports_deep_utxo_discovery()
-                && wallet.network_chain(&state.settings) == Some(chain)
-            {
+            if chain.supports_deep_utxo_discovery() && wallet.chain() == Some(chain) {
                 owned.extend(
                     self.known_utxo_addresses(wallet.id.clone(), chain.str_id().into())
                         .await?,
                 );
             }
         }
-        Ok(crate::store::core_self_send_confirmation(
+        Ok(crate::store::self_send_confirmation(
             crate::store::SelfSendConfirmationRequest {
                 pending_confirmation: pending,
                 wallet_id,
@@ -265,9 +258,9 @@ impl WalletService {
         let holding = wallet
             .holdings
             .iter()
-            .find(|h| h.deployment_key() == holding_key)
+            .find(|h| h.deployment_id() == holding_key)
             .ok_or("holding does not exist")?;
-        let chain = holding.network().ok_or("invalid network")?;
+        let chain = holding.chain().ok_or("invalid network")?;
         super::send_execution::send_chain_for(&state, &wallet_id, chain)?;
         if let Some(input) = &overrides {
             input.resolve(chain)?;
@@ -307,7 +300,7 @@ impl WalletService {
         let holding = wallet
             .holdings
             .iter()
-            .find(|h| h.deployment_key() == holding_key)
+            .find(|h| h.deployment_id() == holding_key)
             .ok_or("holding was removed")?;
         let verdict = crate::send::send_affordability(crate::send::SendAffordabilityInput {
             is_native: holding.is_native(),
@@ -319,7 +312,7 @@ impl WalletService {
             gas_balance: wallet
                 .holdings
                 .iter()
-                .find(|h| h.is_native() && h.network() == Some(chain))
+                .find(|h| h.is_native() && h.chain() == Some(chain))
                 .map(|h| h.amount),
         });
         use crate::send::SendAffordability;
@@ -411,7 +404,7 @@ impl WalletService {
         let holding = wallet
             .holdings
             .iter()
-            .find(|h| h.is_native() && h.network() == Some(chain))
+            .find(|h| h.is_native() && h.chain() == Some(chain))
             .ok_or("wallet has no native holding on transaction network")?;
         let destination = if cancel {
             wallet
@@ -428,14 +421,14 @@ impl WalletService {
             pending.amount.to_string()
         };
         let nonce = i64::try_from(
-            self.fetch_evm_tx_nonce_typed(pending.chain_id, pending.transaction_hash)
+            self.fetch_evm_tx_nonce(pending.chain_id, pending.transaction_hash)
                 .await?,
         )
         .map_err(|_| "nonce exceeds supported range")?;
         let preview = self
             .preview_owned_evm_send(
                 wallet.id.clone(),
-                holding.deployment_key(),
+                holding.deployment_id(),
                 amount.clone(),
                 destination.clone(),
                 Some(nonce),
@@ -443,7 +436,7 @@ impl WalletService {
             )
             .await?
             .ok_or("Unable to estimate replacement fees")?;
-        let bump = crate::send::flow::core_evm_replacement_fee_bump(
+        let bump = crate::send::flow::evm_replacement_fee_bump(
             Some(preview.maxFeePerGasGwei.to_string()),
             Some(preview.maxPriorityFeePerGasGwei.to_string()),
             preview.maxFeePerGasGwei,
@@ -451,7 +444,7 @@ impl WalletService {
         );
         Ok(OwnedReplacementDraft {
             wallet_id: wallet.id.clone(),
-            holding_key: holding.deployment_key(),
+            holding_key: holding.deployment_id(),
             destination,
             amount,
             nonce,

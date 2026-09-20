@@ -4,19 +4,19 @@ use std::sync::OnceLock;
 
 const APP_ENDPOINT_DIRECTORY_TOML: &str = include_str!("../data/endpoints.toml");
 
-const ENDPOINT_ROLE_READ: u32 = 1 << 0;
-pub(crate) const ENDPOINT_ROLE_BALANCE: u32 = 1 << 1;
-const ENDPOINT_ROLE_NATIVE_HISTORY: u32 = 1 << 2;
-const ENDPOINT_ROLE_UTXO: u32 = 1 << 3;
-const ENDPOINT_ROLE_FEE: u32 = 1 << 4;
-const ENDPOINT_ROLE_BROADCAST: u32 = 1 << 5;
-const ENDPOINT_ROLE_VERIFICATION: u32 = 1 << 6;
-pub(crate) const ENDPOINT_ROLE_RPC: u32 = 1 << 7;
-const ENDPOINT_ROLE_EXPLORER: u32 = 1 << 8;
+const ENDPOINT_CAPABILITY_READ: u32 = 1 << 0;
+pub const ENDPOINT_CAPABILITY_BALANCE: u32 = 1 << 1;
+pub const ENDPOINT_CAPABILITY_NATIVE_HISTORY: u32 = 1 << 2;
+pub const ENDPOINT_CAPABILITY_UTXO: u32 = 1 << 3;
+pub const ENDPOINT_CAPABILITY_FEE: u32 = 1 << 4;
+pub const ENDPOINT_CAPABILITY_BROADCAST: u32 = 1 << 5;
+const ENDPOINT_CAPABILITY_VERIFICATION: u32 = 1 << 6;
+pub const ENDPOINT_KIND_RPC_NODE: u32 = 1 << 7;
+const ENDPOINT_KIND_WEB_LINK: u32 = 1 << 8;
 /// An address-indexed API. Its own bit because an indexer is not a `/tx/`
 /// link, and the two were sharing one — which is how `explorer_supplemental`
 /// briefly picked up every Esplora endpoint Bitcoin has.
-const ENDPOINT_ROLE_INDEXER: u32 = 1 << 9;
+const ENDPOINT_KIND_INDEXER: u32 = 1 << 9;
 /// A Monero light-wallet server. Its own bit for the same reason — which the
 /// comment above did not stop this one from being written `1 << 9` as well.
 /// `catalog_endpoints` asks for `RPC | BALANCE | BACKEND`, so every indexer
@@ -24,10 +24,10 @@ const ENDPOINT_ROLE_INDEXER: u32 = 1 << 9;
 /// capability were handed to non-EVM chains as general API bases: Bitcoin
 /// Cash's primary list held `/push/transaction` and a `/dashboards/transaction/`
 /// URL prefix, which `with_fallback` would try for a balance read.
-pub(crate) const ENDPOINT_ROLE_BACKEND: u32 = 1 << 10;
-const ENDPOINT_ROLE_TOKEN_HISTORY: u32 = 1 << 11;
-const ENDPOINT_ROLE_TOKEN_DISCOVERY: u32 = 1 << 12;
-const ENDPOINT_ROLE_TOKEN_BALANCE: u32 = 1 << 13;
+pub(crate) const ENDPOINT_KIND_BACKEND: u32 = 1 << 10;
+const ENDPOINT_CAPABILITY_TOKEN_HISTORY: u32 = 1 << 11;
+const ENDPOINT_CAPABILITY_TOKEN_DISCOVERY: u32 = 1 << 12;
+const ENDPOINT_CAPABILITY_TOKEN_BALANCE: u32 = 1 << 13;
 
 const ENDPOINT_CAPABILITIES: [&str; 10] = [
     "read",
@@ -57,10 +57,10 @@ pub enum AppCoreEndpointSlot {
 pub(crate) struct AppCoreCatalog {
     pub(crate) endpoint_records: Vec<AppCoreEndpointRecord>,
     /// Parallel to `endpoint_records`: pre-computed bitmask per record so the
-    /// hot-path filter avoids per-call string matching on `roles`.
-    pub(crate) endpoint_role_masks: Vec<u32>,
+    /// hot-path filter avoids per-call string matching on kinds and capabilities.
+    pub(crate) endpoint_filter_masks: Vec<u32>,
     /// Concrete network ID → record indices, preserving endpoint order.
-    endpoint_records_by_network: std::collections::HashMap<String, Vec<usize>>,
+    endpoint_records_by_chain: std::collections::HashMap<String, Vec<usize>>,
 }
 
 /// The file's shape, kept separate from the record that crosses the FFI —
@@ -76,7 +76,7 @@ struct TomlEndpointFile {
 #[serde(deny_unknown_fields)]
 struct TomlEndpoint {
     id: String,
-    network_id: String,
+    chain_id: String,
     provider_id: String,
     endpoint: String,
     kind: String,
@@ -97,11 +97,11 @@ impl TryFrom<TomlEndpoint> for AppCoreEndpointRecord {
     type Error = String;
 
     fn try_from(e: TomlEndpoint) -> Result<Self, Self::Error> {
-        crate::registry::Chain::from_str_id(&e.network_id)
-            .ok_or_else(|| format!("{}: unknown endpoint network_id {:?}", e.id, e.network_id))?;
+        crate::registry::Chain::from_str_id(&e.chain_id)
+            .ok_or_else(|| format!("{}: unknown endpoint chain_id {:?}", e.id, e.chain_id))?;
         Ok(AppCoreEndpointRecord {
             id: e.id,
-            network_id: e.network_id,
+            chain_id: e.chain_id,
             provider_id: e.provider_id,
             endpoint: e.endpoint,
             kind: e.kind,
@@ -119,7 +119,7 @@ impl TryFrom<TomlEndpoint> for AppCoreEndpointRecord {
 #[serde(rename_all = "camelCase")]
 pub struct AppCoreEndpointRecord {
     pub id: String,
-    pub network_id: String,
+    pub chain_id: String,
     #[serde(rename = "providerID")]
     pub provider_id: String,
     pub endpoint: String,
@@ -172,7 +172,7 @@ pub struct AppCoreEndpointTag {
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, uniffi::Record)]
 #[serde(rename_all = "camelCase")]
 pub struct AppCoreGroupedSettingsEntry {
-    pub network_id: String,
+    pub chain_id: String,
     pub title: String,
     pub endpoints: Vec<String>,
 }
@@ -207,7 +207,7 @@ static APP_CORE_CATALOG: OnceLock<Result<AppCoreCatalog, String>> = OnceLock::ne
 /// nobody — Swift stored the flavor in a struct with no reader, and the CLI and
 /// both in-crate callers took `normalized_path` and dropped the rest.
 #[uniffi::export]
-pub fn app_core_resolve_derivation_path(
+pub fn resolve_derivation_path(
     chain: String,
     derivation_path: String,
 ) -> Result<String, crate::SpectraBridgeError> {
@@ -216,7 +216,7 @@ pub fn app_core_resolve_derivation_path(
 }
 
 #[uniffi::export]
-pub fn app_core_derivation_paths_for_preset(
+pub fn derivation_paths_for_preset(
     preset: crate::store::wallet_domain::CoreSeedDerivationPreset,
 ) -> Result<CoreSeedDerivationPaths, crate::SpectraBridgeError> {
     Ok(seed_derivation_paths_for_account(preset.account_index())?)
@@ -226,18 +226,18 @@ pub fn app_core_derivation_paths_for_preset(
 ///
 /// Was also exported with role *names*, for an app wrapper that nothing
 /// called; the CLI and core pass the mask constants.
-pub fn endpoint_records_for_chain_masked(
-    network_id: String,
-    role_mask: u32,
+pub fn filtered_endpoint_records_for_chain(
+    chain_id: String,
+    filter_mask: u32,
     settings_visible_only: bool,
 ) -> Result<Vec<AppCoreEndpointRecord>, crate::SpectraBridgeError> {
-    crate::registry::Chain::from_str_id(&network_id)
-        .ok_or_else(|| format!("Unknown endpoint network_id: {network_id}"))?;
-    let catalog = app_core_catalog()?;
+    crate::registry::Chain::from_str_id(&chain_id)
+        .ok_or_else(|| format!("Unknown endpoint chain_id: {chain_id}"))?;
+    let catalog = endpoint_catalog()?;
     Ok(endpoint_records_for_chain(
         catalog,
-        &network_id,
-        role_mask,
+        &chain_id,
+        filter_mask,
         settings_visible_only,
     ))
 }
@@ -259,13 +259,13 @@ pub struct AppCoreChainEndpoints {
 
 /// The endpoint catalog, one row per chain, in catalog order.
 #[uniffi::export]
-pub fn app_core_chain_endpoints() -> Result<Vec<AppCoreChainEndpoints>, crate::SpectraBridgeError> {
-    let catalog = app_core_catalog()?;
+pub fn chain_endpoints() -> Result<Vec<AppCoreChainEndpoints>, crate::SpectraBridgeError> {
+    let catalog = endpoint_catalog()?;
     Ok(crate::registry::Chain::all()
         .map(|chain| {
             let id = chain.str_id().to_string();
             AppCoreChainEndpoints {
-                evm_rpc: endpoint_records_for_chain(catalog, &id, ENDPOINT_ROLE_RPC, false)
+                evm_rpc: endpoint_records_for_chain(catalog, &id, ENDPOINT_KIND_RPC_NODE, false)
                     .into_iter()
                     .map(|r| r.endpoint)
                     .collect(),
@@ -297,10 +297,8 @@ pub fn app_core_chain_endpoints() -> Result<Vec<AppCoreChainEndpoints>, crate::S
 /// Not exported: the app's only call named three Monero backend ids and three
 /// display names beside them. It reads the catalog's settings list for the
 /// chain now, which is where those three already were.
-pub fn app_core_endpoints_for_ids(
-    ids: Vec<String>,
-) -> Result<Vec<String>, crate::SpectraBridgeError> {
-    Ok(app_core_catalog().and_then(|catalog| {
+pub fn endpoints_for_ids(ids: Vec<String>) -> Result<Vec<String>, crate::SpectraBridgeError> {
+    Ok(endpoint_catalog().and_then(|catalog| {
         ids.iter()
             .map(|id| {
                 catalog
@@ -316,14 +314,14 @@ pub fn app_core_endpoints_for_ids(
 
 // ── Internals ─────────────────────────────────────────────────────────────
 
-pub(crate) fn app_core_catalog() -> Result<&'static AppCoreCatalog, String> {
-    match APP_CORE_CATALOG.get_or_init(load_app_core_catalog) {
+pub(crate) fn endpoint_catalog() -> Result<&'static AppCoreCatalog, String> {
+    match APP_CORE_CATALOG.get_or_init(load_endpoint_catalog) {
         Ok(catalog) => Ok(catalog),
         Err(message) => Err(message.clone()),
     }
 }
 
-fn load_app_core_catalog() -> Result<AppCoreCatalog, String> {
+fn load_endpoint_catalog() -> Result<AppCoreCatalog, String> {
     let endpoint_records = toml::from_str::<TomlEndpointFile>(APP_ENDPOINT_DIRECTORY_TOML)
         .map_err(|e| e.to_string())?
         .endpoints
@@ -340,62 +338,62 @@ fn load_app_core_catalog() -> Result<AppCoreCatalog, String> {
             }
         }
     }
-    let endpoint_role_masks: Vec<u32> = endpoint_records
+    let endpoint_filter_masks: Vec<u32> = endpoint_records
         .iter()
         .map(|r| {
             r.capabilities
                 .iter()
                 .chain(std::iter::once(&r.kind))
-                .fold(0u32, |acc, role| acc | endpoint_role_bit(role))
+                .fold(0u32, |acc, role| acc | endpoint_filter_bit(role))
         })
         .collect();
-    let mut endpoint_records_by_network: std::collections::HashMap<String, Vec<usize>> =
+    let mut endpoint_records_by_chain: std::collections::HashMap<String, Vec<usize>> =
         std::collections::HashMap::new();
     for (idx, record) in endpoint_records.iter().enumerate() {
-        endpoint_records_by_network
-            .entry(record.network_id.clone())
+        endpoint_records_by_chain
+            .entry(record.chain_id.clone())
             .or_default()
             .push(idx);
     }
     Ok(AppCoreCatalog {
         endpoint_records,
-        endpoint_role_masks,
-        endpoint_records_by_network,
+        endpoint_filter_masks,
+        endpoint_records_by_chain,
     })
 }
 
-pub(crate) fn endpoint_role_bit(role: &str) -> u32 {
+pub(crate) fn endpoint_filter_bit(role: &str) -> u32 {
     match role {
-        "read" => ENDPOINT_ROLE_READ,
-        "balance" => ENDPOINT_ROLE_BALANCE,
-        "native-history" => ENDPOINT_ROLE_NATIVE_HISTORY,
-        "token-history" => ENDPOINT_ROLE_TOKEN_HISTORY,
-        "token-discovery" => ENDPOINT_ROLE_TOKEN_DISCOVERY,
-        "token-balance" => ENDPOINT_ROLE_TOKEN_BALANCE,
-        "utxo" => ENDPOINT_ROLE_UTXO,
-        "fee" => ENDPOINT_ROLE_FEE,
-        "broadcast" => ENDPOINT_ROLE_BROADCAST,
-        "verification" => ENDPOINT_ROLE_VERIFICATION,
+        "read" => ENDPOINT_CAPABILITY_READ,
+        "balance" => ENDPOINT_CAPABILITY_BALANCE,
+        "native-history" => ENDPOINT_CAPABILITY_NATIVE_HISTORY,
+        "token-history" => ENDPOINT_CAPABILITY_TOKEN_HISTORY,
+        "token-discovery" => ENDPOINT_CAPABILITY_TOKEN_DISCOVERY,
+        "token-balance" => ENDPOINT_CAPABILITY_TOKEN_BALANCE,
+        "utxo" => ENDPOINT_CAPABILITY_UTXO,
+        "fee" => ENDPOINT_CAPABILITY_FEE,
+        "broadcast" => ENDPOINT_CAPABILITY_BROADCAST,
+        "verification" => ENDPOINT_CAPABILITY_VERIFICATION,
         // Kinds map onto the same mask so a caller can still ask for "the RPC
-        // nodes" in one filter. `rpc` is the name the old data used.
-        "rpc" | "rpc-node" => ENDPOINT_ROLE_RPC,
-        "explorer" | "web-link" => ENDPOINT_ROLE_EXPLORER,
-        "indexer" => ENDPOINT_ROLE_INDEXER,
-        "backend" => ENDPOINT_ROLE_BACKEND,
+        // nodes" in one filter.
+        "rpc-node" => ENDPOINT_KIND_RPC_NODE,
+        "web-link" => ENDPOINT_KIND_WEB_LINK,
+        "indexer" => ENDPOINT_KIND_INDEXER,
+        "backend" => ENDPOINT_KIND_BACKEND,
         _ => 0,
     }
 }
 
 fn endpoint_records_for_chain(
     catalog: &AppCoreCatalog,
-    network_id: &str,
-    role_mask: u32,
+    chain_id: &str,
+    filter_mask: u32,
     settings_visible_only: bool,
 ) -> Vec<AppCoreEndpointRecord> {
     records_from(
         catalog,
-        catalog.endpoint_records_by_network.get(network_id),
-        role_mask,
+        catalog.endpoint_records_by_chain.get(chain_id),
+        filter_mask,
         settings_visible_only,
     )
 }
@@ -403,7 +401,7 @@ fn endpoint_records_for_chain(
 fn records_from(
     catalog: &AppCoreCatalog,
     indices: Option<&Vec<usize>>,
-    role_mask: u32,
+    filter_mask: u32,
     settings_visible_only: bool,
 ) -> Vec<AppCoreEndpointRecord> {
     let Some(indices) = indices else {
@@ -416,7 +414,7 @@ fn records_from(
             if settings_visible_only && !record.settings_visible {
                 return None;
             }
-            if role_mask != 0 && catalog.endpoint_role_masks[idx] & role_mask == 0 {
+            if filter_mask != 0 && catalog.endpoint_filter_masks[idx] & filter_mask == 0 {
                 return None;
             }
             Some(record.clone())
@@ -440,7 +438,7 @@ fn grouped_settings_entries(
                 }
             }
             (!endpoints.is_empty()).then(|| AppCoreGroupedSettingsEntry {
-                network_id: network.str_id().to_string(),
+                chain_id: network.str_id().to_string(),
                 title: network.chain_display_name().to_string(),
                 endpoints,
             })
@@ -450,10 +448,10 @@ fn grouped_settings_entries(
 
 fn transaction_explorer_entry(
     catalog: &AppCoreCatalog,
-    network_id: &str,
+    chain_id: &str,
 ) -> Option<AppCoreExplorerEntry> {
     // A `/tx/` link for a person to open, which is exactly `web-link`.
-    endpoint_records_for_chain(catalog, network_id, ENDPOINT_ROLE_EXPLORER, false)
+    endpoint_records_for_chain(catalog, chain_id, ENDPOINT_KIND_WEB_LINK, false)
         .into_iter()
         .find_map(|record| {
             record.explorer_label.map(|label| AppCoreExplorerEntry {
@@ -540,9 +538,9 @@ mod tests {
 /// What the catalog knows about one endpoint URL. `None` for anything it does
 /// not list — a user's own RPC, or a runtime-assembled Esplora base.
 #[uniffi::export]
-pub fn app_core_endpoint_tag(endpoint: String) -> Option<AppCoreEndpointTag> {
+pub fn endpoint_tag(endpoint: String) -> Option<AppCoreEndpointTag> {
     let trimmed = endpoint.trim().trim_end_matches('/');
-    load_app_core_catalog()
+    load_endpoint_catalog()
         .ok()?
         .endpoint_records
         .iter()
@@ -555,7 +553,7 @@ pub fn app_core_endpoint_tag(endpoint: String) -> Option<AppCoreEndpointTag> {
 
 // ── Derivation paths ──────────────────────────────────────────────
 
-pub(crate) fn parse_derivation_path(raw_path: &str) -> Option<Vec<DerivationPathSegment>> {
+pub(crate) fn parse_derivation_path_str(raw_path: &str) -> Option<Vec<DerivationPathSegment>> {
     let trimmed = raw_path.trim();
     let mut components = trimmed.split('/');
     let head = components.next()?;
@@ -580,12 +578,12 @@ pub(crate) fn parse_derivation_path(raw_path: &str) -> Option<Vec<DerivationPath
 }
 
 pub(crate) fn normalize_derivation_path(raw_path: &str, fallback: &str) -> String {
-    parse_derivation_path(raw_path)
-        .map(|segments| derivation_path_string(&segments))
+    parse_derivation_path_str(raw_path)
+        .map(|segments| format_derivation_path_segments(&segments))
         .unwrap_or_else(|| fallback.to_string())
 }
 
-pub(crate) fn derivation_path_string(segments: &[DerivationPathSegment]) -> String {
+pub(crate) fn format_derivation_path_segments(segments: &[DerivationPathSegment]) -> String {
     let suffix = segments
         .iter()
         .map(|segment| {
@@ -671,8 +669,8 @@ fn default_path_from_catalog_for_account(chain_name: &str, account: u32) -> Resu
 /// chain's default path and the penultimate segment is the requested branch.
 pub(crate) fn utxo_discovery_index(raw_path: &str, chain_name: &str, branch: u32) -> Option<u32> {
     let default_path = default_path_from_catalog(chain_name).ok()?;
-    let path = parse_derivation_path(raw_path)?;
-    let mut candidate = parse_derivation_path(&default_path)?;
+    let path = parse_derivation_path_str(raw_path)?;
+    let mut candidate = parse_derivation_path_str(&default_path)?;
     if path.len() != candidate.len() || path.len() < 5 {
         return None;
     }
@@ -685,7 +683,9 @@ pub(crate) fn utxo_discovery_index(raw_path: &str, chain_name: &str, branch: u32
         value: path[last].value,
         is_hardened: false,
     };
-    if derivation_path_string(&candidate[..last]) != derivation_path_string(&path[..last]) {
+    if format_derivation_path_segments(&candidate[..last])
+        != format_derivation_path_segments(&path[..last])
+    {
         return None;
     }
     if path[last - 1].value != branch {
@@ -702,25 +702,25 @@ pub(super) fn default_path_for_chain(chain_name: &str) -> Result<String, String>
 // ── FFI surface ──────────────────────────────────────────────────────────
 
 #[uniffi::export]
-pub fn core_parse_derivation_path(raw_path: String) -> Option<Vec<DerivationPathSegment>> {
-    parse_derivation_path(&raw_path)
+pub fn parse_derivation_path(raw_path: String) -> Option<Vec<DerivationPathSegment>> {
+    parse_derivation_path_str(&raw_path)
 }
 
 #[uniffi::export]
-pub fn core_derivation_path_string(segments: Vec<DerivationPathSegment>) -> String {
-    derivation_path_string(&segments)
+pub fn format_derivation_path(segments: Vec<DerivationPathSegment>) -> String {
+    format_derivation_path_segments(&segments)
 }
 
 /// A discovery path: the chain's default path with its last two segments
 /// replaced by branch and index.
-pub(crate) fn core_derivation_path_replacing_last_two(
+pub(crate) fn derivation_path_replacing_last_two(
     raw_path: String,
     branch: u32,
     index: u32,
     fallback: String,
 ) -> String {
     let normalized = normalize_derivation_path(&raw_path, &fallback);
-    let Some(mut segments) = parse_derivation_path(&normalized) else {
+    let Some(mut segments) = parse_derivation_path_str(&normalized) else {
         return fallback;
     };
     if segments.len() < 2 {
@@ -735,7 +735,7 @@ pub(crate) fn core_derivation_path_replacing_last_two(
         value: index,
         is_hardened: false,
     };
-    derivation_path_string(&segments)
+    format_derivation_path_segments(&segments)
 }
 
 // ── Registry-backed catalog lookups ───────────────────────────────
@@ -782,7 +782,7 @@ mod testnet_derivation_paths {
     #[test]
     fn every_testnet_resolves_its_own_catalog_path() {
         for chain in Chain::all().filter(|c| c.is_testnet()) {
-            let resolved = super::app_core_resolve_derivation_path(
+            let resolved = super::resolve_derivation_path(
                 chain.chain_display_name().to_string(),
                 String::new(),
             );
@@ -797,11 +797,10 @@ mod testnet_derivation_paths {
 
     #[test]
     fn bitcoin_testnet_uses_coin_type_one() {
-        let testnet =
-            super::app_core_resolve_derivation_path("Bitcoin Testnet4".to_string(), String::new())
-                .expect("testnet4");
-        let mainnet = super::app_core_resolve_derivation_path("Bitcoin".to_string(), String::new())
-            .expect("bitcoin");
+        let testnet = super::resolve_derivation_path("Bitcoin Testnet4".to_string(), String::new())
+            .expect("testnet4");
+        let mainnet =
+            super::resolve_derivation_path("Bitcoin".to_string(), String::new()).expect("bitcoin");
         assert_eq!(testnet, "m/84'/1'/0'/0/0");
         assert_eq!(mainnet, "m/84'/0'/0'/0/0");
     }
@@ -813,11 +812,11 @@ mod endpoint_network_index_tests {
 
     /// Reads through the one catalog the front ends read, so the index this
     /// asserts about is the index they get.
-    fn rpc_endpoints(network_id: &str) -> Vec<String> {
-        app_core_chain_endpoints()
+    fn rpc_endpoints(chain_id: &str) -> Vec<String> {
+        chain_endpoints()
             .expect("catalog")
             .into_iter()
-            .find(|entry| entry.chain_id == network_id)
+            .find(|entry| entry.chain_id == chain_id)
             .map(|entry| entry.evm_rpc)
             .unwrap_or_default()
     }
@@ -849,7 +848,7 @@ mod endpoint_network_index_tests {
     /// separate groups inside one section.
     #[test]
     fn settings_keeps_a_chain_and_its_testnets_together() {
-        let catalog = app_core_catalog().expect("catalog");
+        let catalog = endpoint_catalog().expect("catalog");
         let titles: Vec<String> =
             grouped_settings_entries(catalog, crate::registry::Chain::Bitcoin)
                 .into_iter()
@@ -862,19 +861,19 @@ mod endpoint_network_index_tests {
 
     #[test]
     fn every_record_belongs_to_exactly_its_network() {
-        let catalog = app_core_catalog().expect("catalog");
+        let catalog = endpoint_catalog().expect("catalog");
         for chain in crate::registry::Chain::all() {
             let rows = endpoint_records_for_chain(catalog, chain.str_id(), 0, false);
             let expected: Vec<_> = catalog
                 .endpoint_records
                 .iter()
-                .filter(|r| r.network_id == chain.str_id())
+                .filter(|r| r.chain_id == chain.str_id())
                 .cloned()
                 .collect();
             assert_eq!(rows, expected);
             let groups = grouped_settings_entries(catalog, chain);
             for group in groups {
-                let network = crate::registry::Chain::from_str_id(&group.network_id).unwrap();
+                let network = crate::registry::Chain::from_str_id(&group.chain_id).unwrap();
                 assert!(
                     network == chain
                         || (!chain.is_testnet() && network.mainnet_counterpart() == chain)
@@ -887,14 +886,14 @@ mod endpoint_network_index_tests {
     #[test]
     fn invalid_network_ids_and_title_based_ownership_are_refused() {
         let valid = r#"id = "test"
-network_id = "ethereum-sepolia"
+chain_id = "ethereum-sepolia"
 provider_id = "test"
 endpoint = "https://example.com"
 kind = "rpc-node"
 capabilities = []"#;
         let row = toml::from_str::<TomlEndpoint>(valid).unwrap();
         assert_eq!(
-            AppCoreEndpointRecord::try_from(row).unwrap().network_id,
+            AppCoreEndpointRecord::try_from(row).unwrap().chain_id,
             "ethereum-sepolia"
         );
         for bad in ["Ethereum Sepolia", "unknown-network", ""] {
@@ -908,7 +907,7 @@ capabilities = []"#;
                     .is_err()
             );
         }
-        assert!(endpoint_records_for_chain_masked("Ethereum".into(), 0, false).is_err());
+        assert!(filtered_endpoint_records_for_chain("Ethereum".into(), 0, false).is_err());
     }
 }
 
@@ -917,7 +916,7 @@ mod supplemental_endpoints_are_data {
     use crate::registry::{Chain, EndpointSlot};
 
     fn supplemental(chain: Chain) -> Vec<String> {
-        super::app_core_chain_endpoints()
+        super::chain_endpoints()
             .unwrap_or_default()
             .into_iter()
             .find(|c| c.chain_id == chain.str_id())
@@ -1040,7 +1039,7 @@ mod an_endpoints_kind_is_not_its_capabilities {
     #[test]
     fn no_evm_node_claims_history() {
         for record in records() {
-            let Some(chain) = Chain::from_str_id(&record.network_id) else {
+            let Some(chain) = Chain::from_str_id(&record.chain_id) else {
                 continue;
             };
             if !chain.is_evm() || record.kind != "rpc-node" {
@@ -1052,7 +1051,7 @@ mod an_endpoints_kind_is_not_its_capabilities {
                     "native-history" | "token-history" | "token-discovery"
                 )),
                 "{} {} is an EVM node and cannot serve address history",
-                record.network_id,
+                record.chain_id,
                 record.endpoint
             );
         }
@@ -1069,7 +1068,7 @@ mod an_endpoints_kind_is_not_its_capabilities {
                     "rpc-node" | "indexer" | "web-link" | "backend"
                 ),
                 "{} {} has kind {:?}",
-                record.network_id,
+                record.chain_id,
                 record.endpoint,
                 record.kind
             );
@@ -1092,7 +1091,7 @@ mod an_endpoints_kind_is_not_its_capabilities {
                 assert!(
                     CAPABILITIES.contains(&capability.as_str()),
                     "{} {} lists {capability:?} as a capability",
-                    record.network_id,
+                    record.chain_id,
                     record.endpoint
                 );
             }
@@ -1109,13 +1108,13 @@ mod an_endpoints_kind_is_not_its_capabilities {
     /// BACKEND` collected every indexer as well. Asserting it here costs one
     /// test and removes the third occurrence.
     #[test]
-    fn every_role_name_owns_a_distinct_bit() {
+    fn every_filter_criterion_owns_a_distinct_bit() {
         use std::collections::HashMap;
 
         // The two vocabularies of `data/endpoints.toml`, pinned against the
         // data by `every_record_has_a_kind_the_readers_understand` and
         // `the_two_vocabularies_do_not_overlap` above.
-        const ROLES: [&str; 14] = [
+        const FILTER_CRITERIA: [&str; 14] = [
             "rpc-node",
             "indexer",
             "web-link",
@@ -1133,8 +1132,8 @@ mod an_endpoints_kind_is_not_its_capabilities {
         ];
 
         let mut owner: HashMap<u32, &str> = HashMap::new();
-        for role in ROLES {
-            let bit = super::endpoint_role_bit(role);
+        for role in FILTER_CRITERIA {
+            let bit = super::endpoint_filter_bit(role);
             assert_ne!(bit, 0, "{role:?} maps to no bit");
             assert!(bit.is_power_of_two(), "{role:?} is {bit:#x}, not one bit");
             if let Some(other) = owner.insert(bit, role) {
@@ -1142,29 +1141,22 @@ mod an_endpoints_kind_is_not_its_capabilities {
             }
         }
 
-        // The aliases are the one place two names may share a bit: they are
-        // the older spellings of a role, not roles of their own.
-        assert_eq!(
-            super::endpoint_role_bit("rpc"),
-            super::endpoint_role_bit("rpc-node")
-        );
-        assert_eq!(
-            super::endpoint_role_bit("explorer"),
-            super::endpoint_role_bit("web-link")
-        );
+        // Obsolete catalog spellings are not accepted as filter criteria.
+        assert_eq!(super::endpoint_filter_bit("rpc"), 0);
+        assert_eq!(super::endpoint_filter_bit("explorer"), 0);
 
         // A name the catalog never uses claims nothing, rather than
         // defaulting onto some other role's bit.
-        assert_eq!(super::endpoint_role_bit("not-a-role"), 0);
-        assert_eq!(super::endpoint_role_bit("history"), 0);
+        assert_eq!(super::endpoint_filter_bit("not-a-role"), 0);
+        assert_eq!(super::endpoint_filter_bit("history"), 0);
     }
 
     #[test]
     fn token_capabilities_select_the_api_that_can_answer() {
         let selected = |chain: &str, capability: &str| {
-            super::endpoint_records_for_chain_masked(
+            super::filtered_endpoint_records_for_chain(
                 chain.into(),
-                super::endpoint_role_bit(capability),
+                super::endpoint_filter_bit(capability),
                 false,
             )
             .unwrap()
@@ -1197,7 +1189,7 @@ mod an_endpoints_kind_is_not_its_capabilities {
             assert!(
                 record.capabilities.is_empty(),
                 "{} {} is a link and claims {:?}",
-                record.network_id,
+                record.chain_id,
                 record.endpoint,
                 record.capabilities
             );
@@ -1211,7 +1203,7 @@ mod an_endpoint_can_be_asked_what_it_is {
     /// knows what each one is; this is how the row asks.
     #[test]
     fn a_catalog_endpoint_reports_its_kind_and_capabilities() {
-        let node = super::app_core_endpoint_tag("https://ethereum-rpc.publicnode.com".into())
+        let node = super::endpoint_tag("https://ethereum-rpc.publicnode.com".into())
             .expect("Ethereum's node is in the catalog");
         assert_eq!(node.kind, "rpc-node");
         assert!(node.capabilities.contains(&"balance".to_string()));
@@ -1220,7 +1212,7 @@ mod an_endpoint_can_be_asked_what_it_is {
             "an EVM node cannot serve address history"
         );
 
-        let indexer = super::app_core_endpoint_tag("https://eth.blockscout.com".into())
+        let indexer = super::endpoint_tag("https://eth.blockscout.com".into())
             .expect("Ethereum's indexer is in the catalog");
         assert_eq!(indexer.kind, "indexer");
         assert!(indexer.capabilities.contains(&"native-history".to_string()));
@@ -1230,8 +1222,8 @@ mod an_endpoint_can_be_asked_what_it_is {
     #[test]
     fn the_lookup_ignores_a_trailing_slash() {
         assert_eq!(
-            super::app_core_endpoint_tag("https://eth.blockscout.com/".into()),
-            super::app_core_endpoint_tag("https://eth.blockscout.com".into()),
+            super::endpoint_tag("https://eth.blockscout.com/".into()),
+            super::endpoint_tag("https://eth.blockscout.com".into()),
         );
     }
 
@@ -1239,6 +1231,6 @@ mod an_endpoint_can_be_asked_what_it_is {
     /// guessing a kind for it.
     #[test]
     fn an_endpoint_the_catalog_does_not_list_has_no_tag() {
-        assert!(super::app_core_endpoint_tag("https://my-own-node.example".into()).is_none());
+        assert!(super::endpoint_tag("https://my-own-node.example".into()).is_none());
     }
 }

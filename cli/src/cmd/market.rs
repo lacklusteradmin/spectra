@@ -8,7 +8,7 @@ use spectra_core::registry::Chain;
 use spectra_core::store::state::{FiatCurrency, StateCommand};
 use std::collections::BTreeSet;
 
-use super::chain::{service_for_chain, BALANCE, RPC};
+use super::chain::{service_for_chain, ENDPOINT_CAPABILITY_BALANCE, ENDPOINT_KIND_RPC_NODE};
 use super::resolve_chain;
 use crate::ctx::{wallet_address, Ctx};
 use crate::error::{CliError, CliResult};
@@ -140,7 +140,7 @@ pub fn portfolio(ctx: &Ctx, out: Out, args: PortfolioArgs) -> CliResult<()> {
 
     let chains: Vec<Chain> = wallets
         .iter()
-        .map(|wallet| wallet.network_id.clone())
+        .map(|wallet| wallet.chain_id.clone())
         .collect::<BTreeSet<_>>()
         .iter()
         .filter_map(|name| resolve_chain(name).ok())
@@ -152,7 +152,7 @@ pub fn portfolio(ctx: &Ctx, out: Out, args: PortfolioArgs) -> CliResult<()> {
     let mut total_usd = 0.0;
     out.text(|| println!());
     for wallet in &wallets {
-        let Ok(chain) = resolve_chain(&wallet.network_id) else {
+        let Ok(chain) = resolve_chain(&wallet.chain_id) else {
             continue;
         };
         let amount = match native_balance(ctx, chain, wallet_address(wallet)) {
@@ -321,18 +321,18 @@ pub(super) fn spot_price_usd(
         .filter(|chain| !chain.is_testnet())
         .map(|chain| PriceRequestCoin {
             holding_key: chain.entry().native_deployment_id.clone(),
-            coin_gecko_id: chain.coin_gecko_id().to_string(),
+            coingecko_id: chain.coingecko_id().to_string(),
         })
         .collect();
     // Pricing needs no chain endpoints, and now no service either: the read
     // is a function over the coins asked about.
     ctx.rt
-        .block_on(spectra_core::service::fetch_prices_typed(requests))
+        .block_on(spectra_core::service::fetch_prices(requests))
         .map_err(CliError::from)
 }
 
 fn native_balance(ctx: &Ctx, chain: Chain, address: &str) -> CliResult<f64> {
-    let service = service_for_chain(chain, BALANCE | RPC)?;
+    let service = service_for_chain(chain, ENDPOINT_CAPABILITY_BALANCE | ENDPOINT_KIND_RPC_NODE)?;
     let summary = ctx
         .rt
         .block_on(
@@ -353,9 +353,7 @@ fn fiat_conversion(ctx: &Ctx) -> CliResult<(f64, String)> {
     }
     let rates = ctx
         .rt
-        .block_on(spectra_core::service::fetch_fiat_rates_typed(vec![
-            code.clone()
-        ]));
+        .block_on(spectra_core::service::fetch_fiat_rates(vec![code.clone()]));
     Ok(match rates.map(|rates| rates.get(&code).copied()) {
         Ok(Some(rate)) if rate > 0.0 => (rate, code),
         _ => (1.0, "USD".to_string()),

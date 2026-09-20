@@ -140,7 +140,7 @@ pub fn derive_for_chain_name(
 /// `the_registry_flag_and_the_dispatcher_agree_on_every_chain` pins to this
 /// match, so a chain that lands here was named by a caller rather than chosen
 /// in the app.
-pub fn core_derive_from_private_key(
+pub fn derive_from_private_key(
     chain_name: String,
     private_key_hex: String,
     want_address: bool,
@@ -199,7 +199,7 @@ mod dispatch_export_tests {
     fn the_registry_flag_and_the_dispatcher_agree_on_every_chain() {
         const KEY: &str = "4c0883a69102937d6231471b5dbb6204fe5129617082792ae468d01a3f362318";
         let derives = |name: &str| {
-            core_derive_from_private_key(name.to_string(), KEY.to_string(), true, false)
+            derive_from_private_key(name.to_string(), KEY.to_string(), true, false)
                 .expect("a valid key never errors")
                 .and_then(|r| r.address)
         };

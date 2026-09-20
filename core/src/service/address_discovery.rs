@@ -22,7 +22,7 @@ impl WalletService {
                 .wallets
                 .iter()
                 .filter_map(|w| {
-                    let network = w.network_chain(&state.settings)?;
+                    let network = w.chain()?;
                     (network.supports_deep_utxo_discovery()
                         && if chain.is_testnet() {
                             network == chain
@@ -71,12 +71,12 @@ impl WalletService {
                 .ok_or_else(|| SpectraBridgeError::InvalidInput {
                     message: "Wallet not found".into(),
                 })?;
-            let own = wallet.network_chain(&state.settings);
+            let own = wallet.chain();
             let network = if requested.is_testnet() {
                 requested
             } else {
                 own.filter(|c| c.mainnet_counterpart() == requested.mainnet_counterpart())
-                    .unwrap_or_else(|| state.settings.network_chain(requested))
+                    .unwrap_or_else(|| state.settings.selected_chain_for_family(requested))
             };
             (
                 wallet.id.clone(),
@@ -306,7 +306,7 @@ impl WalletService {
                 .wallets
                 .iter()
                 .filter_map(|w| {
-                    let network = w.network_chain(&state.settings)?;
+                    let network = w.chain()?;
                     (if chain.is_testnet() {
                         network == chain
                     } else {
@@ -413,8 +413,7 @@ impl WalletService {
         let seed_phrase =
             crate::store::wallet_secrets::load_seed_phrase(&*store, wallet_id, None).ok()?;
 
-        let defaults =
-            crate::app_core_derivation_paths_for_preset(wallet.derivation_preset).ok()?;
+        let defaults = crate::derivation_paths_for_preset(wallet.derivation_preset).ok()?;
         let imported = wallet.to_wallet_view(&defaults);
         let raw_path = wallet
             .addresses
@@ -430,8 +429,7 @@ impl WalletService {
             })
             .unwrap_or_default();
         let chain_name = chain.chain_display_name().to_string();
-        let resolved =
-            crate::app_core_resolve_derivation_path(chain_name.clone(), raw_path).ok()?;
+        let resolved = crate::resolve_derivation_path(chain_name.clone(), raw_path).ok()?;
 
         tokio::task::spawn_blocking(move || {
             UtxoDerivation::with_overrides(chain, &seed_phrase, resolved, &overrides.0)
@@ -472,7 +470,7 @@ impl UtxoDerivation {
         use crate::derivation::chains::bitcoin::{
             derive_bip39_seed, parse_bip32_path, ExtendedPrivateKey,
         };
-        let path = crate::app_core::core_derivation_path_replacing_last_two(
+        let path = crate::app_core::derivation_path_replacing_last_two(
             base_path.clone(),
             0,
             0,
@@ -506,7 +504,7 @@ impl UtxoDerivation {
     }
 
     pub(crate) fn derive(&self, index: u32) -> Option<(String, String)> {
-        let path = crate::app_core::core_derivation_path_replacing_last_two(
+        let path = crate::app_core::derivation_path_replacing_last_two(
             self.base_path.clone(),
             0,
             index,

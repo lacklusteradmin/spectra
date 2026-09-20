@@ -45,7 +45,7 @@ pub struct ArtworkArgs {
     #[arg(long)]
     token_id: Option<String>,
     #[arg(long)]
-    network_id: Option<String>,
+    chain_id: Option<String>,
     #[arg(long)]
     deployment_id: Option<String>,
 }
@@ -142,11 +142,11 @@ pub fn run(ctx: &Ctx, out: Out, command: TokenCommand) -> CliResult<()> {
         TokenCommand::Catalog(args) => catalog(out, args),
         TokenCommand::Artwork(args) => {
             let name = if let Some(id) = args.token_id {
-                spectra_core::store::core_token_artwork_name(id)
-            } else if let Some(id) = args.network_id {
-                spectra_core::store::core_network_artwork_name(id)
+                spectra_core::store::token_artwork_name(id)
+            } else if let Some(id) = args.chain_id {
+                spectra_core::store::chain_artwork_name(id)
             } else {
-                spectra_core::store::core_deployment_artwork_name(args.deployment_id)
+                spectra_core::store::deployment_artwork_name(args.deployment_id)
             };
             out.emit(serde_json::json!({ "artworkName": name }));
             Ok(())
@@ -165,7 +165,7 @@ pub fn run(ctx: &Ctx, out: Out, command: TokenCommand) -> CliResult<()> {
 
 fn catalog(out: Out, args: CatalogArgs) -> CliResult<()> {
     let chain = resolve_chain(&args.chain)?;
-    let tokens = spectra_core::tokens::list_tokens(chain.str_id().to_string());
+    let tokens = spectra_core::tokens::list_token_deployments(chain.str_id().to_string());
 
     out.text(|| {
         println!();
@@ -192,7 +192,7 @@ fn catalog(out: Out, args: CatalogArgs) -> CliResult<()> {
         "tokens": tokens
             .iter()
             .map(|token| serde_json::json!({
-                "id": token.id,
+                "deployment_id": token.deployment_id,
                 "token_id": token.token_id,
                 "kind": token.kind,
                 "coingecko_id": token.coingecko_id,
@@ -231,7 +231,7 @@ fn list(ctx: &Ctx, out: Out) -> CliResult<()> {
             .iter()
             .map(|entry| serde_json::json!({
                 "id": entry.id(),
-                "id": entry.token.id,
+                "id": entry.token.deployment_id,
                 "symbol": entry.token.symbol,
                 "name": entry.token.name,
                 "contract": entry.token.contract,
@@ -257,7 +257,7 @@ fn set_tracked(ctx: &Ctx, out: Out, args: TrackArgs, is_enabled: bool) -> CliRes
             entry
                 .hosting_chain()
                 .is_some_and(|h| h.chain_name() == chain_name)
-                && (entry.token.id == args.symbol
+                && (entry.token.deployment_id == args.symbol
                     || entry.token.symbol.eq_ignore_ascii_case(&args.symbol))
         })
         .collect();
@@ -294,7 +294,7 @@ fn set_tracked(ctx: &Ctx, out: Out, args: TrackArgs, is_enabled: bool) -> CliRes
     out.emit(serde_json::json!({
         "ok": true,
         "chain": chain_name,
-        "id": entry.token.id,
+        "id": entry.token.deployment_id,
                 "symbol": entry.token.symbol,
         "contract": entry.token.contract,
         "decimals": entry.token.decimals,
@@ -329,13 +329,13 @@ fn add(ctx: &Ctx, out: Out, args: AddArgs) -> CliResult<()> {
         .ok_or_else(|| CliError::failure("core accepted the token but did not store it"))?;
     out.text(|| {
         println!("  {} added {}", out::ok_mark(), stored.token.symbol.bold());
-        out::field("chain", &stored.token.chain);
+        out::field("chain", &stored.token.chain_id);
         out::field("contract", &stored.token.contract);
         out::field("decimals", &stored.token.decimals.to_string());
     });
     out.emit(serde_json::json!({
         "ok": true,
-        "chain": stored.token.chain,
+        "chain": stored.token.chain_id,
         "symbol": stored.token.symbol,
         "contract": stored.token.contract,
         "decimals": stored.token.decimals,
@@ -477,7 +477,7 @@ fn format_amount(ctx: &Ctx, out: Out, args: FormatArgs) -> CliResult<()> {
     let asset_decimals = match &args.symbol {
         Some(symbol) => {
             let symbol_upper = symbol.to_uppercase();
-            let entry = spectra_core::tokens::list_tokens(chain.str_id().to_string())
+            let entry = spectra_core::tokens::list_token_deployments(chain.str_id().to_string())
                 .into_iter()
                 .find(|t| t.symbol.eq_ignore_ascii_case(&symbol_upper))
                 .ok_or_else(|| {

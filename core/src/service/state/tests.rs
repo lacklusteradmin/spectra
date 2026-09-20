@@ -114,7 +114,7 @@ async fn failed_keypool_and_address_writes_leave_memory_unchanged() {
     );
     sql(&db, "CREATE TRIGGER reject_delete BEFORE DELETE ON wallet_keypool BEGIN SELECT RAISE(FAIL, 'injected'); END;");
     assert!(s
-        .apply_state_command(StateCommand::SelectNetworkChain {
+        .apply_state_command(StateCommand::SelectChainForFamily {
             chain_id: "bitcoin-testnet-4".into()
         })
         .await
@@ -527,7 +527,7 @@ async fn owned_alert_evaluation_uses_quotes_and_fires_once_across_reopen() {
         .await
         .unwrap();
     service
-        .apply_state_command(StateCommand::SelectNetworkChain {
+        .apply_state_command(StateCommand::SelectChainForFamily {
             chain_id: "ethereum-sepolia".into(),
         })
         .await
@@ -636,7 +636,7 @@ async fn owned_catalog_transport_reads_saved_settings_and_preserves_explicit_ove
         "http://127.0.0.1:8545"
     );
     reopened
-        .update_endpoints_typed(vec![crate::service::ChainEndpoints {
+        .update_endpoints(vec![crate::service::ChainEndpoints {
             chain_id: "ethereum".into(),
             endpoints: vec!["http://127.0.0.1:9545".into()],
             api_key: None,

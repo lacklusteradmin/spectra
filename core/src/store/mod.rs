@@ -12,8 +12,7 @@ pub mod wallet_domain;
 pub mod wallet_secrets;
 
 pub use artwork::{
-    core_deployment_artwork_name, core_holding_artwork_name, core_network_artwork_name,
-    core_token_artwork_name,
+    chain_artwork_name, deployment_artwork_name, holding_artwork_name, token_artwork_name,
 };
 
 use serde::{Deserialize, Serialize};
@@ -79,12 +78,6 @@ pub struct SelfSendConfirmationPlan {
     pub clear_pending_confirmation: bool,
 }
 
-pub trait SecretStore: Send + Sync {
-    fn store_seed_phrase(&self, wallet_id: &str, seed_phrase: &str) -> Result<(), String>;
-    fn load_seed_phrase(&self, wallet_id: &str) -> Result<Option<String>, String>;
-    fn delete_wallet_secret(&self, wallet_id: &str) -> Result<(), String>;
-}
-
 /// Trimmed, blanks dropped, and each address once — compared case-folded, the
 /// first spelling kept.
 pub fn aggregate_owned_addresses(candidates: impl IntoIterator<Item = String>) -> Vec<String> {
@@ -105,9 +98,7 @@ pub fn aggregate_owned_addresses(candidates: impl IntoIterator<Item = String>) -
     ordered
 }
 
-pub fn core_self_send_confirmation(
-    request: SelfSendConfirmationRequest,
-) -> SelfSendConfirmationPlan {
+pub fn self_send_confirmation(request: SelfSendConfirmationRequest) -> SelfSendConfirmationPlan {
     // Folded to lowercase, deliberately, and unlike the `new_address` check in
     // `send::flow` — which compares in the chain's own normal form because a
     // false match there *suppresses* a warning about a swapped destination.
@@ -185,7 +176,7 @@ fn normalize_known_token_identifier(
 
 /// The built-in token catalog, as preference entries.
 ///
-/// Built from `tokens.toml` — the same catalog `list_all_builtin_tokens`
+/// Built from `tokens.toml` — the same catalog `list_all_builtin_token_deployments`
 /// serves. A caller used to fetch that list, reshape each row into a
 /// preference entry, and hand it back for merging; the reshaping is here now,
 /// where the catalog already is.
@@ -200,7 +191,9 @@ pub fn built_in_token_preferences() -> Vec<wallet_domain::CoreTokenPreferenceEnt
         .filter_map(|token| {
             // A catalog row on a chain that cannot host tokens is a data
             // mistake, and skipping it is how it stays one.
-            wallet_domain::CoreTokenHostingChain::from_chain_name(&token.chain)?;
+            wallet_domain::CoreTokenHostingChain::from_chain_name(
+                crate::registry::Chain::from_str_id(&token.chain_id)?.chain_display_name(),
+            )?;
             Some(wallet_domain::CoreTokenPreferenceEntry {
                 category: wallet_domain::CoreTokenPreferenceEntry::category_from_tags(&token.tags),
                 is_built_in: true,
@@ -228,7 +221,7 @@ pub fn plan_merge_built_in_token_preferences(
             normalize_known_token_identifier(built_in_chain, &built_in.token.contract);
         let existing = persisted.iter().find(|entry| {
             entry.is_built_in
-                && entry.token.chain == built_in.token.chain
+                && entry.token.chain_id == built_in.token.chain_id
                 && entry.hosting_chain().is_some_and(|c| {
                     normalize_known_token_identifier(c, &entry.token.contract) == built_in_key
                 })
@@ -242,8 +235,8 @@ pub fn plan_merge_built_in_token_preferences(
     merged.extend(persisted.into_iter().filter(|entry| !entry.is_built_in));
     merged.sort_by(|lhs, rhs| {
         lhs.token
-            .chain
-            .cmp(&rhs.token.chain)
+            .chain_id
+            .cmp(&rhs.token.chain_id)
             .then_with(|| rhs.is_built_in.cmp(&lhs.is_built_in))
             .then_with(|| lhs.token.symbol.cmp(&rhs.token.symbol))
     });
@@ -288,7 +281,7 @@ pub struct CoreResetPlan {
 /// dispatches is platform (Keychain deletes, `UserDefaults`, URL caches).
 /// There is no core-owned state behind it to move, which is why it is not a
 /// `plan_` any more.
-pub fn core_reset_dispatch(scopes: Vec<state::ResetScope>) -> CoreResetPlan {
+pub fn reset_dispatch(scopes: Vec<state::ResetScope>) -> CoreResetPlan {
     use state::ResetScope;
     let has = |scope: ResetScope| scopes.contains(&scope);
     let wallets_and_secrets = has(ResetScope::WalletsAndSecrets);
@@ -481,7 +474,7 @@ pub enum EvmRecipientPreflightWarning {
 /// Swift localizes the codes into user-facing strings.
 /// Not exported: `WalletService::evm_recipient_preflight` is the entry point,
 /// because the two contract-code probes it needs are core's own network calls.
-pub fn core_evm_recipient_preflight_warnings(
+pub fn evm_recipient_preflight_warnings(
     request: EvmRecipientPreflightRequest,
 ) -> Vec<EvmRecipientPreflightWarning> {
     let mut warnings = Vec::new();
@@ -942,7 +935,7 @@ pub struct HoldingMergeExistingInput {
 pub struct HoldingMergeIncomingInput {
     pub name: String,
     pub symbol: String,
-    pub coin_gecko_id: String,
+    pub coingecko_id: String,
     pub chain_name: String,
     pub token_standard: String,
     pub contract_address: Option<String>,
@@ -954,7 +947,7 @@ pub struct HoldingMergeIncomingInput {
 pub struct HoldingMergeAppendPayload {
     pub name: String,
     pub symbol: String,
-    pub coin_gecko_id: String,
+    pub coingecko_id: String,
     pub chain_name: String,
     pub token_standard: String,
     pub contract_address: Option<String>,

@@ -48,7 +48,7 @@ impl WalletService {
         let (chain, tracks_finality) = recheck_chain(&expected)
             .map_err(|message| SpectraBridgeError::InvalidInput { message })?;
         let status = self
-            .fetch_utxo_tx_status_typed(
+            .fetch_utxo_tx_status(
                 chain.str_id().into(),
                 expected.transaction_hash.clone().unwrap(),
             )

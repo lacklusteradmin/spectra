@@ -9,7 +9,7 @@ pub struct WalletDerivationInput {
 }
 
 #[uniffi::export]
-pub fn core_parse_wallet_derivation_input(
+pub fn parse_wallet_derivation_input(
     input: WalletDerivationInput,
 ) -> CoreWalletDerivationOverrides {
     fn exact(s: String) -> Option<String> {
@@ -34,7 +34,7 @@ mod tests {
             assert!(serde_json::from_str::<WalletDerivationInput>(input).is_err());
             assert!(serde_json::from_str::<CoreWalletDerivationOverrides>(input).is_err());
         }
-        let parsed = core_parse_wallet_derivation_input(WalletDerivationInput {
+        let parsed = parse_wallet_derivation_input(WalletDerivationInput {
             passphrase: " secret ".into(),
             hmac_key: " key ".into(),
         });

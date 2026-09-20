@@ -179,7 +179,7 @@ pub fn derive_private_key_import_address(
     let Some(name) = selected_chain_names.first() else {
         return Err("Select a chain first.".to_string());
     };
-    let address = crate::derivation::dispatch::core_derive_from_private_key(
+    let address = crate::derivation::dispatch::derive_from_private_key(
         name.clone(),
         private_key.trim().trim_start_matches("0x").to_string(),
         true,
@@ -470,7 +470,7 @@ pub(crate) fn wallets_for_import(
             Some(crate::store::wallet_domain::WalletView {
                 id: planned.wallet_id.clone(),
                 name: planned.name.clone(),
-                network_chain_id: network.str_id().to_string(),
+                chain_id: network.str_id().to_string(),
                 addresses: planned.addresses.by_slot.clone(),
                 bitcoin_xpub: if planned.chain_name == "Bitcoin" {
                     planned.addresses.bitcoin_xpub.clone()
@@ -761,14 +761,10 @@ pub struct WalletImportDraftInput {
 }
 
 #[uniffi::export]
-pub fn core_validate_wallet_import_draft(draft: WalletImportDraftInput) -> bool {
-    validate_wallet_import_draft(draft)
-}
-
 pub fn validate_wallet_import_draft(draft: WalletImportDraftInput) -> bool {
     let has_chains = !draft.selected_chain_names.is_empty();
     let seed_phrase_valid = || {
-        crate::validation::core_check_seed_phrase(crate::validation::SeedPhraseCheck {
+        crate::validation::check_seed_phrase(crate::validation::SeedPhraseCheck {
             words: draft.seed_phrase_words.clone(),
             language: draft.seed_phrase_language.clone(),
             expected_word_count: draft.seed_phrase_word_count,
@@ -785,7 +781,7 @@ pub fn validate_wallet_import_draft(draft: WalletImportDraftInput) -> bool {
                     .selected_chain_names
                     .iter()
                     .all(|name| is_private_key_chain_supported(name))
-                && crate::service::core_is_private_key_hex(draft.private_key.clone())
+                && crate::service::is_private_key_hex(draft.private_key.clone())
         }
         WalletImportDraftMode::WatchOnly => {
             draft.selected_chain_names.len() == 1

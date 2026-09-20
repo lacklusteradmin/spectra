@@ -34,7 +34,7 @@ async fn bitcoin_testnet_preview_and_status_use_the_selected_network() {
         .await;
     let svc = service(Chain::BitcoinTestnet4.str_id(), &server);
     let preview = svc
-        .fetch_utxo_fee_preview_typed(
+        .fetch_utxo_fee_preview(
             Chain::BitcoinTestnet4.str_id().into(),
             "sender".into(),
             2,
@@ -47,7 +47,7 @@ async fn bitcoin_testnet_preview_and_status_use_the_selected_network() {
     assert_eq!(preview.estimatedNetworkFee, 384.0 / 100_000_000.0);
     assert_eq!(preview.maxSendable, Some(99616.0 / 100_000_000.0));
     let status = svc
-        .fetch_utxo_tx_status_typed(Chain::BitcoinTestnet4.str_id().into(), "hash".into())
+        .fetch_utxo_tx_status(Chain::BitcoinTestnet4.str_id().into(), "hash".into())
         .await
         .unwrap();
     assert!(status.confirmed);
@@ -76,7 +76,7 @@ async fn replacement_nonce_is_read_from_the_transaction_and_missing_is_an_error(
             .mount(&server)
             .await;
         let result = svc
-            .fetch_evm_tx_nonce_typed("ethereum".into(), "hash".into())
+            .fetch_evm_tx_nonce("ethereum".into(), "hash".into())
             .await;
         match expected {
             Some(n) => assert_eq!(result.unwrap(), n),
@@ -98,7 +98,7 @@ async fn simple_preview_subtracts_native_fee_and_propagates_unread_balance() {
         .mount(&server)
         .await;
     let result = svc
-        .fetch_simple_chain_send_preview_typed("solana".into(), "sender".into())
+        .fetch_simple_chain_send_preview("solana".into(), "sender".into())
         .await
         .unwrap();
     let crate::send::preview_decode::SimpleChainPreview::Solana { preview } = result else {
@@ -114,11 +114,11 @@ async fn simple_preview_subtracts_native_fee_and_propagates_unread_balance() {
         .mount(&server)
         .await;
     assert!(svc
-        .fetch_simple_chain_send_preview_typed("solana".into(), "sender".into())
+        .fetch_simple_chain_send_preview("solana".into(), "sender".into())
         .await
         .is_err());
     assert!(svc
-        .fetch_simple_chain_send_preview_typed("ethereum".into(), "sender".into())
+        .fetch_simple_chain_send_preview("ethereum".into(), "sender".into())
         .await
         .is_err());
 }
@@ -135,7 +135,7 @@ async fn dogecoin_preview_excludes_spent_outputs_and_preserves_requested_amount(
         .mount(&server)
         .await;
     let preview = service("dogecoin", &server)
-        .fetch_dogecoin_send_preview_typed("sender".into(), 1.0, "standard".into())
+        .fetch_dogecoin_send_preview("sender".into(), 1.0, "standard".into())
         .await
         .unwrap()
         .unwrap();
@@ -147,7 +147,7 @@ async fn dogecoin_preview_excludes_spent_outputs_and_preserves_requested_amount(
 
 #[test]
 fn movement_alert_requires_both_thresholds_and_valid_observations() {
-    let evaluate = core_evaluate_large_movement;
+    let evaluate = evaluate_large_movement;
     assert!(!evaluate(100.0, 109.0, 10.0, 5.0).should_alert);
     assert!(!evaluate(1000.0, 1020.0, 10.0, 5.0).should_alert);
     let down = evaluate(100.0, 80.0, 10.0, 5.0);
@@ -162,14 +162,14 @@ fn movement_alert_requires_both_thresholds_and_valid_observations() {
 #[test]
 fn private_key_editor_normalizes_only_a_complete_hex_key() {
     assert_eq!(
-        core_private_key_hex(format!("  0X{}  ", "AB".repeat(32))),
+        private_key_hex(format!("  0X{}  ", "AB".repeat(32))),
         Some("ab".repeat(32))
     );
     for invalid in ["ab".repeat(31), "gg".repeat(32), String::new()] {
-        assert!(!core_is_private_key_hex(invalid.clone()));
-        assert!(core_private_key_hex(invalid).is_none());
+        assert!(!is_private_key_hex(invalid.clone()));
+        assert!(private_key_hex(invalid).is_none());
     }
-    assert!(core_is_private_key_hex(format!("0x{}", "ab".repeat(32))));
+    assert!(is_private_key_hex(format!("0x{}", "ab".repeat(32))));
 }
 
 #[tokio::test]

@@ -73,7 +73,7 @@ async fn explicit_recheck_targets_failed_and_confirmed_records_on_the_stored_net
         assert_eq!(change.status_changed, previous != "confirmed");
         let reopened = WalletService::new(vec![]).unwrap();
         reopened.open_state(path.clone()).await.unwrap();
-        let rows = reopened.fetch_all_history_records_typed().await.unwrap();
+        let rows = reopened.fetch_all_history_records().await.unwrap();
         let target = rows.iter().find(|r| r.id == "target").unwrap();
         assert_eq!(target.payload.receipt_block_number, Some(123));
         assert_eq!(target.payload.failure_reason, None);

@@ -1,8 +1,8 @@
 //! Which network of a family a chain is on.
 //!
 //! A "network mode" is not a separate concept: it is which `Chain` of a family
-//! the user selected, stored as `network_chain_by_family` and read back through
-//! `AppSettings::network_chain`. Absent means mainnet.
+//! the user selected, stored as `selected_chain_by_family` and read back through
+//! `AppSettings::selected_chain_for_family`. Absent means mainnet.
 //!
 //! This had no command until now, and that is how a reset that put three
 //! families back to mainnet where twenty-nine have a choice went unnoticed —
@@ -42,7 +42,7 @@ pub fn run(ctx: &Ctx, out: Out, command: NetworkCommand) -> CliResult<()> {
 fn list(ctx: &Ctx, out: Out) -> CliResult<()> {
     let settings = ctx.state()?.settings;
     let families: Vec<(Chain, Chain)> = Chain::mainnets()
-        .map(|family| (family, settings.network_chain(family)))
+        .map(|family| (family, settings.selected_chain_for_family(family)))
         .collect();
 
     out.text(|| {
@@ -85,10 +85,10 @@ fn set(ctx: &Ctx, out: Out, args: SetArgs) -> CliResult<()> {
     let chain = Chain::from_str_id(&args.chain_id)
         .ok_or_else(|| CliError::rejected(format!("no chain with id {}", args.chain_id)))?;
     let family = chain.mainnet_counterpart();
-    let transition = ctx.apply(StateCommand::SelectNetworkChain {
+    let transition = ctx.apply(StateCommand::SelectChainForFamily {
         chain_id: chain.str_id().to_string(),
     })?;
-    let selected = transition.state.settings.network_chain(family);
+    let selected = transition.state.settings.selected_chain_for_family(family);
 
     // A switch invalidates what the family derived on the network it left:
     // reserved keypool indices belong to that network, and so do the addresses

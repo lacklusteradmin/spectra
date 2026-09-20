@@ -1,10 +1,10 @@
 # Concrete network identities and operational rules. Mainnets and testnets are peers.
 # EVM membership is defined by registry::Chain, not configured here.
-# Presentation belongs to chain-ui.toml, joined by network_id.
+# Presentation belongs to chain-ui.toml, joined by chain_id.
 # Native token metadata belongs to tokens.toml (testnet-tokens.toml for testnets);
-# core derives the native deployment ID as "<network_id>:native".
+# core derives the native deployment ID as "<chain_id>:native".
 
-[[networks]]
+[[chains]]
 id = "bitcoin"
 name = "Bitcoin"
 family = "bitcoin"
@@ -19,7 +19,7 @@ derivation_path = [
   { tag = "electrumLegacy", path = "m/0'/0/0" },
 ]
 
-[[networks]]
+[[chains]]
 id = "ethereum"
 name = "Ethereum"
 family = "ethereum"
@@ -29,7 +29,7 @@ derivation_path = [
   { tag = "standard", path = "m/44'/60'/{account}'/0/0", is_default = true },
 ]
 
-[[networks]]
+[[chains]]
 id = "solana"
 name = "Solana"
 family = "solana"
@@ -41,7 +41,7 @@ derivation_path = [
   { tag = "legacy", path = "m/44'/501'/{account}'" },
 ]
 
-[[networks]]
+[[chains]]
 id = "dogecoin"
 name = "Dogecoin"
 family = "dogecoin"
@@ -51,7 +51,7 @@ derivation_path = [
   { tag = "standard", path = "m/44'/3'/{account}'/0/0", is_default = true },
 ]
 
-[[networks]]
+[[chains]]
 id = "xrp"
 name = "XRP Ledger"
 family = "xrp"
@@ -62,7 +62,7 @@ derivation_path = [
   { tag = "legacy", path = "m/44'/144'/{account}'" },
 ]
 
-[[networks]]
+[[chains]]
 id = "litecoin"
 name = "Litecoin"
 family = "litecoin"
@@ -74,7 +74,7 @@ derivation_path = [
   { tag = "nestedSegWit", path = "m/49'/2'/{account}'/0/0" },
 ]
 
-[[networks]]
+[[chains]]
 id = "bitcoin-cash"
 name = "Bitcoin Cash"
 family = "bitcoin-cash"
@@ -86,7 +86,7 @@ derivation_path = [
   { tag = "electrumLegacy", path = "m/0" },
 ]
 
-[[networks]]
+[[chains]]
 id = "tron"
 name = "Tron"
 family = "tron"
@@ -99,7 +99,7 @@ derivation_path = [
   { tag = "legacy", path = "m/44'/60'/{account}'/0/0" },
 ]
 
-[[networks]]
+[[chains]]
 id = "stellar"
 name = "Stellar"
 family = "stellar"
@@ -109,7 +109,7 @@ derivation_path = [
   { tag = "standard", path = "m/44'/148'/{account}'", is_default = true },
 ]
 
-[[networks]]
+[[chains]]
 id = "cardano"
 name = "Cardano"
 family = "cardano"
@@ -120,7 +120,7 @@ derivation_path = [
   { tag = "legacy", path = "m/44'/1815'/{account}'/0/0" },
 ]
 
-[[networks]]
+[[chains]]
 id = "polkadot"
 name = "Polkadot"
 family = "polkadot"
@@ -130,7 +130,7 @@ derivation_path = [
   { tag = "standard", path = "m/44'/354'/{account}'", is_default = true },
 ]
 
-[[networks]]
+[[chains]]
 id = "arbitrum"
 name = "Arbitrum"
 family = "arbitrum"
@@ -140,7 +140,7 @@ derivation_path = [
   { tag = "standard", path = "m/44'/60'/{account}'/0/0", is_default = true },
 ]
 
-[[networks]]
+[[chains]]
 id = "optimism"
 name = "Optimism"
 family = "optimism"
@@ -150,7 +150,7 @@ derivation_path = [
   { tag = "standard", path = "m/44'/60'/{account}'/0/0", is_default = true },
 ]
 
-[[networks]]
+[[chains]]
 id = "avalanche"
 name = "Avalanche"
 family = "avalanche"
@@ -160,7 +160,7 @@ derivation_path = [
   { tag = "standard", path = "m/44'/60'/{account}'/0/0", is_default = true },
 ]
 
-[[networks]]
+[[chains]]
 id = "sui"
 name = "Sui"
 family = "sui"
@@ -171,7 +171,7 @@ derivation_path = [
   { tag = "standard", path = "m/44'/784'/{account}'/0'/0'", is_default = true },
 ]
 
-[[networks]]
+[[chains]]
 id = "aptos"
 name = "Aptos"
 family = "aptos"
@@ -182,7 +182,7 @@ derivation_path = [
   { tag = "standard", path = "m/44'/637'/{account}'/0'/0'", is_default = true },
 ]
 
-[[networks]]
+[[chains]]
 id = "ton"
 name = "TON"
 family = "ton"
@@ -193,7 +193,7 @@ derivation_path = [
   { tag = "standard", path = "m/44'/607'/{account}'/0/0", is_default = true },
 ]
 
-[[networks]]
+[[chains]]
 id = "near"
 name = "NEAR"
 family = "near"
@@ -203,7 +203,7 @@ derivation_path = [
   { tag = "standard", path = "m/44'/397'/{account}'", is_default = true },
 ]
 
-[[networks]]
+[[chains]]
 id = "internet-computer"
 name = "Internet Computer"
 family = "internet-computer"
@@ -213,7 +213,7 @@ derivation_path = [
   { tag = "standard", path = "m/44'/223'/{account}'/0/0", is_default = true },
 ]
 
-[[networks]]
+[[chains]]
 id = "monero"
 name = "Monero"
 family = "monero"
@@ -221,7 +221,7 @@ environment = "mainnet"
 token_standard = ""
 derivation_path = []
 
-[[networks]]
+[[chains]]
 id = "base"
 name = "Base"
 family = "base"
@@ -231,7 +231,7 @@ derivation_path = [
   { tag = "standard", path = "m/44'/60'/{account}'/0/0", is_default = true },
 ]
 
-[[networks]]
+[[chains]]
 id = "ethereum-classic"
 name = "Ethereum Classic"
 family = "ethereum-classic"
@@ -241,7 +241,7 @@ derivation_path = [
   { tag = "standard", path = "m/44'/61'/{account}'/0/0", is_default = true },
 ]
 
-[[networks]]
+[[chains]]
 id = "bitcoin-sv"
 name = "Bitcoin SV"
 family = "bitcoin-sv"
@@ -251,7 +251,7 @@ derivation_path = [
   { tag = "standard", path = "m/44'/236'/{account}'/0/0", is_default = true },
 ]
 
-[[networks]]
+[[chains]]
 id = "bnb"
 name = "BNB Chain"
 family = "bnb"
@@ -261,7 +261,7 @@ derivation_path = [
   { tag = "standard", path = "m/44'/60'/{account}'/0/0", is_default = true },
 ]
 
-[[networks]]
+[[chains]]
 id = "hyperliquid"
 name = "Hyperliquid"
 family = "hyperliquid"
@@ -271,7 +271,7 @@ derivation_path = [
   { tag = "standard", path = "m/44'/60'/{account}'/0/0", is_default = true },
 ]
 
-[[networks]]
+[[chains]]
 id = "polygon"
 name = "Polygon"
 family = "polygon"
@@ -281,7 +281,7 @@ derivation_path = [
   { tag = "standard", path = "m/44'/60'/{account}'/0/0", is_default = true },
 ]
 
-[[networks]]
+[[chains]]
 id = "linea"
 name = "Linea"
 family = "linea"
@@ -291,7 +291,7 @@ derivation_path = [
   { tag = "standard", path = "m/44'/60'/{account}'/0/0", is_default = true },
 ]
 
-[[networks]]
+[[chains]]
 id = "scroll"
 name = "Scroll"
 family = "scroll"
@@ -301,7 +301,7 @@ derivation_path = [
   { tag = "standard", path = "m/44'/60'/{account}'/0/0", is_default = true },
 ]
 
-[[networks]]
+[[chains]]
 id = "blast"
 name = "Blast"
 family = "blast"
@@ -311,7 +311,7 @@ derivation_path = [
   { tag = "standard", path = "m/44'/60'/{account}'/0/0", is_default = true },
 ]
 
-[[networks]]
+[[chains]]
 id = "mantle"
 name = "Mantle"
 family = "mantle"
@@ -321,7 +321,7 @@ derivation_path = [
   { tag = "standard", path = "m/44'/60'/{account}'/0/0", is_default = true },
 ]
 
-[[networks]]
+[[chains]]
 id = "zcash"
 name = "Zcash"
 family = "zcash"
@@ -331,7 +331,7 @@ derivation_path = [
   { tag = "standard", path = "m/44'/133'/{account}'/0/0", is_default = true },
 ]
 
-[[networks]]
+[[chains]]
 id = "bitcoin-gold"
 name = "Bitcoin Gold"
 family = "bitcoin-gold"
@@ -341,7 +341,7 @@ derivation_path = [
   { tag = "standard", path = "m/44'/156'/{account}'/0/0", is_default = true },
 ]
 
-[[networks]]
+[[chains]]
 id = "decred"
 name = "Decred"
 family = "decred"
@@ -351,7 +351,7 @@ derivation_path = [
   { tag = "standard", path = "m/44'/42'/{account}'/0/0", is_default = true },
 ]
 
-[[networks]]
+[[chains]]
 id = "kaspa"
 name = "Kaspa"
 family = "kaspa"
@@ -361,7 +361,7 @@ derivation_path = [
   { tag = "standard", path = "m/44'/111111'/{account}'/0/0", is_default = true },
 ]
 
-[[networks]]
+[[chains]]
 id = "sei"
 name = "Sei"
 family = "sei"
@@ -371,7 +371,7 @@ derivation_path = [
   { tag = "standard", path = "m/44'/60'/{account}'/0/0", is_default = true },
 ]
 
-[[networks]]
+[[chains]]
 id = "celo"
 name = "Celo"
 family = "celo"
@@ -381,7 +381,7 @@ derivation_path = [
   { tag = "standard", path = "m/44'/60'/{account}'/0/0", is_default = true },
 ]
 
-[[networks]]
+[[chains]]
 id = "cronos"
 name = "Cronos"
 family = "cronos"
@@ -391,7 +391,7 @@ derivation_path = [
   { tag = "standard", path = "m/44'/60'/{account}'/0/0", is_default = true },
 ]
 
-[[networks]]
+[[chains]]
 id = "opbnb"
 name = "opBNB"
 family = "opbnb"
@@ -401,7 +401,7 @@ derivation_path = [
   { tag = "standard", path = "m/44'/60'/{account}'/0/0", is_default = true },
 ]
 
-[[networks]]
+[[chains]]
 id = "zksync-era"
 name = "zkSync Era"
 family = "zksync-era"
@@ -411,7 +411,7 @@ derivation_path = [
   { tag = "standard", path = "m/44'/60'/{account}'/0/0", is_default = true },
 ]
 
-[[networks]]
+[[chains]]
 id = "sonic"
 name = "Sonic"
 family = "sonic"
@@ -421,7 +421,7 @@ derivation_path = [
   { tag = "standard", path = "m/44'/60'/{account}'/0/0", is_default = true },
 ]
 
-[[networks]]
+[[chains]]
 id = "berachain"
 name = "Berachain"
 family = "berachain"
@@ -431,7 +431,7 @@ derivation_path = [
   { tag = "standard", path = "m/44'/60'/{account}'/0/0", is_default = true },
 ]
 
-[[networks]]
+[[chains]]
 id = "unichain"
 name = "Unichain"
 family = "unichain"
@@ -441,7 +441,7 @@ derivation_path = [
   { tag = "standard", path = "m/44'/60'/{account}'/0/0", is_default = true },
 ]
 
-[[networks]]
+[[chains]]
 id = "ink"
 name = "Ink"
 family = "ink"
@@ -451,7 +451,7 @@ derivation_path = [
   { tag = "standard", path = "m/44'/60'/{account}'/0/0", is_default = true },
 ]
 
-[[networks]]
+[[chains]]
 id = "dash"
 name = "Dash"
 family = "dash"
@@ -461,7 +461,7 @@ derivation_path = [
   { tag = "standard", path = "m/44'/5'/{account}'/0/0", is_default = true },
 ]
 
-[[networks]]
+[[chains]]
 id = "x-layer"
 name = "X Layer"
 family = "x-layer"
@@ -471,7 +471,7 @@ derivation_path = [
   { tag = "standard", path = "m/44'/60'/{account}'/0/0", is_default = true },
 ]
 
-[[networks]]
+[[chains]]
 id = "bittensor"
 name = "Bittensor"
 family = "bittensor"
@@ -481,7 +481,7 @@ derivation_path = [
   { tag = "standard", path = "m/44'/1005'/{account}'/0'/0'", is_default = true },
 ]
 
-[[networks]]
+[[chains]]
 id = "bitcoin-testnet"
 name = "Bitcoin Testnet"
 family = "bitcoin"
@@ -496,7 +496,7 @@ derivation_path = [
   { tag = "electrumLegacy", path = "m/0'/0/0" },
 ]
 
-[[networks]]
+[[chains]]
 id = "bitcoin-testnet-4"
 name = "Bitcoin Testnet4"
 family = "bitcoin"
@@ -511,7 +511,7 @@ derivation_path = [
   { tag = "electrumLegacy", path = "m/0'/0/0" },
 ]
 
-[[networks]]
+[[chains]]
 id = "bitcoin-signet"
 name = "Bitcoin Signet"
 family = "bitcoin"
@@ -526,7 +526,7 @@ derivation_path = [
   { tag = "electrumLegacy", path = "m/0'/0/0" },
 ]
 
-[[networks]]
+[[chains]]
 id = "litecoin-testnet"
 name = "Litecoin Testnet"
 family = "litecoin"
@@ -538,7 +538,7 @@ derivation_path = [
   { tag = "nestedSegWit", path = "m/49'/1'/{account}'/0/0" },
 ]
 
-[[networks]]
+[[chains]]
 id = "bitcoin-cash-testnet"
 name = "Bitcoin Cash Testnet"
 family = "bitcoin-cash"
@@ -550,7 +550,7 @@ derivation_path = [
   { tag = "electrumLegacy", path = "m/0" },
 ]
 
-[[networks]]
+[[chains]]
 id = "bitcoin-sv-testnet"
 name = "Bitcoin SV Testnet"
 family = "bitcoin-sv"
@@ -560,7 +560,7 @@ derivation_path = [
   { tag = "standard", path = "m/44'/1'/{account}'/0/0", is_default = true },
 ]
 
-[[networks]]
+[[chains]]
 id = "dogecoin-testnet"
 name = "Dogecoin Testnet"
 family = "dogecoin"
@@ -570,7 +570,7 @@ derivation_path = [
   { tag = "standard", path = "m/44'/1'/{account}'/0/0", is_default = true },
 ]
 
-[[networks]]
+[[chains]]
 id = "zcash-testnet"
 name = "Zcash Testnet"
 family = "zcash"
@@ -580,7 +580,7 @@ derivation_path = [
   { tag = "standard", path = "m/44'/1'/{account}'/0/0", is_default = true },
 ]
 
-[[networks]]
+[[chains]]
 id = "decred-testnet"
 name = "Decred Testnet"
 family = "decred"
@@ -590,7 +590,7 @@ derivation_path = [
   { tag = "standard", path = "m/44'/1'/{account}'/0/0", is_default = true },
 ]
 
-[[networks]]
+[[chains]]
 id = "kaspa-testnet"
 name = "Kaspa Testnet"
 family = "kaspa"
@@ -600,7 +600,7 @@ derivation_path = [
   { tag = "standard", path = "m/44'/111111'/{account}'/0/0", is_default = true },
 ]
 
-[[networks]]
+[[chains]]
 id = "dash-testnet"
 name = "Dash Testnet"
 family = "dash"
@@ -610,7 +610,7 @@ derivation_path = [
   { tag = "standard", path = "m/44'/1'/{account}'/0/0", is_default = true },
 ]
 
-[[networks]]
+[[chains]]
 id = "ethereum-sepolia"
 name = "Ethereum Sepolia"
 family = "ethereum"
@@ -620,7 +620,7 @@ derivation_path = [
   { tag = "standard", path = "m/44'/60'/{account}'/0/0", is_default = true },
 ]
 
-[[networks]]
+[[chains]]
 id = "ethereum-hoodi"
 name = "Ethereum Hoodi"
 family = "ethereum"
@@ -630,7 +630,7 @@ derivation_path = [
   { tag = "standard", path = "m/44'/60'/{account}'/0/0", is_default = true },
 ]
 
-[[networks]]
+[[chains]]
 id = "arbitrum-sepolia"
 name = "Arbitrum Sepolia"
 family = "arbitrum"
@@ -640,7 +640,7 @@ derivation_path = [
   { tag = "standard", path = "m/44'/60'/{account}'/0/0", is_default = true },
 ]
 
-[[networks]]
+[[chains]]
 id = "optimism-sepolia"
 name = "Optimism Sepolia"
 family = "optimism"
@@ -650,7 +650,7 @@ derivation_path = [
   { tag = "standard", path = "m/44'/60'/{account}'/0/0", is_default = true },
 ]
 
-[[networks]]
+[[chains]]
 id = "base-sepolia"
 name = "Base Sepolia"
 family = "base"
@@ -660,7 +660,7 @@ derivation_path = [
   { tag = "standard", path = "m/44'/60'/{account}'/0/0", is_default = true },
 ]
 
-[[networks]]
+[[chains]]
 id = "bnb-testnet"
 name = "BNB Chain Testnet"
 family = "bnb"
@@ -670,7 +670,7 @@ derivation_path = [
   { tag = "standard", path = "m/44'/60'/{account}'/0/0", is_default = true },
 ]
 
-[[networks]]
+[[chains]]
 id = "avalanche-fuji"
 name = "Avalanche Fuji"
 family = "avalanche"
@@ -680,7 +680,7 @@ derivation_path = [
   { tag = "standard", path = "m/44'/60'/{account}'/0/0", is_default = true },
 ]
 
-[[networks]]
+[[chains]]
 id = "polygon-amoy"
 name = "Polygon Amoy"
 family = "polygon"
@@ -690,7 +690,7 @@ derivation_path = [
   { tag = "standard", path = "m/44'/60'/{account}'/0/0", is_default = true },
 ]
 
-[[networks]]
+[[chains]]
 id = "hyperliquid-testnet"
 name = "Hyperliquid Testnet"
 family = "hyperliquid"
@@ -700,7 +700,7 @@ derivation_path = [
   { tag = "standard", path = "m/44'/60'/{account}'/0/0", is_default = true },
 ]
 
-[[networks]]
+[[chains]]
 id = "ethereum-classic-mordor"
 name = "Ethereum Classic Mordor"
 family = "ethereum-classic"
@@ -710,7 +710,7 @@ derivation_path = [
   { tag = "standard", path = "m/44'/61'/{account}'/0/0", is_default = true },
 ]
 
-[[networks]]
+[[chains]]
 id = "tron-nile"
 name = "Tron Nile"
 family = "tron"
@@ -723,7 +723,7 @@ derivation_path = [
   { tag = "legacy", path = "m/44'/60'/{account}'/0/0" },
 ]
 
-[[networks]]
+[[chains]]
 id = "solana-devnet"
 name = "Solana Devnet"
 family = "solana"
@@ -735,7 +735,7 @@ derivation_path = [
   { tag = "legacy", path = "m/44'/501'/{account}'" },
 ]
 
-[[networks]]
+[[chains]]
 id = "xrp-testnet"
 name = "XRP Ledger Testnet"
 family = "xrp"
@@ -746,7 +746,7 @@ derivation_path = [
   { tag = "legacy", path = "m/44'/144'/{account}'" },
 ]
 
-[[networks]]
+[[chains]]
 id = "stellar-testnet"
 name = "Stellar Testnet"
 family = "stellar"
@@ -756,7 +756,7 @@ derivation_path = [
   { tag = "standard", path = "m/44'/148'/{account}'", is_default = true },
 ]
 
-[[networks]]
+[[chains]]
 id = "cardano-preprod"
 name = "Cardano Preprod"
 family = "cardano"
@@ -767,7 +767,7 @@ derivation_path = [
   { tag = "legacy", path = "m/44'/1815'/{account}'/0/0" },
 ]
 
-[[networks]]
+[[chains]]
 id = "sui-testnet"
 name = "Sui Testnet"
 family = "sui"
@@ -778,7 +778,7 @@ derivation_path = [
   { tag = "standard", path = "m/44'/784'/{account}'/0'/0'", is_default = true },
 ]
 
-[[networks]]
+[[chains]]
 id = "aptos-testnet"
 name = "Aptos Testnet"
 family = "aptos"
@@ -789,7 +789,7 @@ derivation_path = [
   { tag = "standard", path = "m/44'/637'/{account}'/0'/0'", is_default = true },
 ]
 
-[[networks]]
+[[chains]]
 id = "ton-testnet"
 name = "TON Testnet"
 family = "ton"
@@ -800,7 +800,7 @@ derivation_path = [
   { tag = "standard", path = "m/44'/607'/{account}'/0/0", is_default = true },
 ]
 
-[[networks]]
+[[chains]]
 id = "near-testnet"
 name = "NEAR Testnet"
 family = "near"
@@ -810,7 +810,7 @@ derivation_path = [
   { tag = "standard", path = "m/44'/397'/{account}'", is_default = true },
 ]
 
-[[networks]]
+[[chains]]
 id = "polkadot-westend"
 name = "Polkadot Westend"
 family = "polkadot"
@@ -820,7 +820,7 @@ derivation_path = [
   { tag = "standard", path = "m/44'/354'/{account}'", is_default = true },
 ]
 
-[[networks]]
+[[chains]]
 id = "monero-stagenet"
 name = "Monero Stagenet"
 family = "monero"

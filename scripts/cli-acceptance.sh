@@ -362,13 +362,13 @@ contains "TON v3 exposes jetton balances and transfers" '"capabilities":["read",
     spectra --json endpoints --catalog --chain TON
 
 section "endpoint network identity"
-contains "Sepolia endpoints carry their concrete network ID" '"networkId":"ethereum-sepolia"' \
+contains "Sepolia endpoints carry their concrete network ID" '"chainId":"ethereum-sepolia"' \
     spectra --json endpoints --catalog --chain ethereum-sepolia
-lacks "Sepolia never returns mainnet ownership" '"networkId":"ethereum"' \
+lacks "Sepolia never returns mainnet ownership" '"chainId":"ethereum"' \
     spectra --json endpoints --catalog --chain ethereum-sepolia
 lacks "Ethereum does not absorb testnet endpoints" 'ethereum-sepolia' \
     spectra --json endpoints --catalog --chain ethereum
-contains "Bitcoin Testnet4 is independent of its display title" '"networkId":"bitcoin-testnet-4"' \
+contains "Bitcoin Testnet4 is independent of its display title" '"chainId":"bitcoin-testnet-4"' \
     spectra --json endpoints --catalog --chain bitcoin-testnet-4
 lacks "catalog identity carries no grouping title" '"groupTitle"' \
     spectra --json endpoints --catalog
@@ -610,11 +610,11 @@ contains "Arbitrum deployment shares the Ethereum token identity" '"token_id":"e
     spectra --json token catalog --chain arbitrum
 contains "Sepolia deployment resolves a separate testnet token" '"token_id":"ethereum-sepolia"' \
     spectra --json token catalog --chain ethereum-sepolia
-contains "Sepolia keeps its derived deployment ID" '"id":"ethereum-sepolia:native"' \
+contains "Sepolia keeps its derived deployment ID" '"deployment_id":"ethereum-sepolia:native"' \
     spectra --json token catalog --chain ethereum-sepolia
 contains "testnet token has no market identity" '"coingecko_id":""' \
     spectra --json token catalog --chain ethereum-sepolia
-contains "Bitcoin Testnet4 resolves from the flat testnet tables" '"id":"bitcoin-testnet-4:native"' \
+contains "Bitcoin Testnet4 resolves from the flat testnet tables" '"deployment_id":"bitcoin-testnet-4:native"' \
     spectra --json token catalog --chain bitcoin-testnet-4
 
 contains "Bitcoin test coins display tBTC" '"symbol":"tBTC"' \
@@ -1110,7 +1110,7 @@ contains "the switch is still armed"        '"value":"true"' \
 
 section "private-key import"
 # The last wallet operation the CLI could not drive. Core has dispatched
-# private-key derivation by chain since `core_derive_from_private_key`; what
+# private-key derivation by chain since `derive_from_private_key`; what
 # was missing was the command.
 printf '4c0883a69102937d6231471b5dbb6204fe5129617082792ae468d01a3f362318\n' > "$DATA_DIR/pk.hex"
 check "imports a wallet from a private key"  $OK \
@@ -1262,7 +1262,7 @@ contains "reset remains empty after reopening" '"wallets":[]' closure_spectra --
 
 section "Identity-based artwork"
 contains "token identity resolves Ether artwork" '"artworkName":"ethereum"' spectra --json token artwork --token-id ethereum
-contains "network identity resolves Base artwork" '"artworkName":"base"' spectra --json token artwork --network-id base
+contains "network identity resolves Base artwork" '"artworkName":"base"' spectra --json token artwork --chain-id base
 contains "Base native deployment draws Ether" '"artworkName":"ethereum"' spectra --json token artwork --deployment-id base:native
 contains "a ticker alone cannot claim artwork" '"artworkName":""' spectra --json token artwork --token-id USDC
 contains "an unknown contract cannot claim artwork" '"artworkName":""' spectra --json token artwork --deployment-id ethereum:erc-20:0xdead

@@ -104,7 +104,7 @@ pub struct WalletSecretState {
 /// One endpoint and whether it answered.
 #[derive(Debug, Clone, uniffi::Record)]
 pub struct EndpointProbe {
-    pub network_id: String,
+    pub chain_id: String,
     pub chain_name: String,
     pub endpoint: String,
     /// What the endpoint is: `rpc-node`, `indexer`, `web-link` or `backend`.
@@ -170,7 +170,7 @@ pub enum TransactionCommand {
 }
 
 /// Endpoint configuration passed in from Swift at construction time and
-/// rebuilt via `update_endpoints_typed`.
+/// rebuilt via `update_endpoints`.
 #[derive(Debug, Clone, Serialize, Deserialize, uniffi::Record)]
 pub struct ChainEndpoints {
     pub chain_id: String,

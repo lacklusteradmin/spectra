@@ -256,7 +256,7 @@ pub(crate) fn send_chain_for(
             message: "send wallet does not exist".into(),
         })?;
     let selected = wallet
-        .network_chain(&state.settings)
+        .chain()
         .ok_or("wallet has an invalid network identity")?;
     if selected.mainnet_counterpart() == requested.mainnet_counterpart() && selected != requested {
         return Err(

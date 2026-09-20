@@ -4,8 +4,8 @@
 // Every function here is a pure transform with no platform dependencies.
 
 use crate::registry::Chain;
+use crate::send::preview_types::*;
 use crate::validation::address::{validate_address, AddressValidationRequest};
-use crate::wallet_core::*;
 
 #[derive(Debug, Clone, uniffi::Record)]
 pub struct EvmReceiptClassification {
@@ -573,9 +573,7 @@ impl HighRiskSendWarning {
 ///
 /// Not exported: `WalletService::high_risk_send_reasons` is the entry point,
 /// because the address book and the send history this reads are core's.
-pub fn core_evaluate_high_risk_send_reasons(
-    request: HighRiskSendRequest,
-) -> Vec<HighRiskSendWarning> {
+pub fn evaluate_high_risk_send_reasons(request: HighRiskSendRequest) -> Vec<HighRiskSendWarning> {
     let chain_name = &request.chain_name;
     let mut warnings: Vec<HighRiskSendWarning> = Vec::new();
 
@@ -727,7 +725,7 @@ pub struct RebroadcastDispatch {
     pub extract_field: Option<String>,
 }
 
-pub fn core_rebroadcast_dispatch_for_format(
+pub fn rebroadcast_dispatch_for_format(
     format: String,
 ) -> Result<RebroadcastDispatch, SpectraBridgeError> {
     // Keep chain IDs aligned with SpectraChainID in Swift.
@@ -931,7 +929,7 @@ pub struct PreparedBroadcastPayload {
     pub result_field: String,
 }
 
-pub fn core_rebroadcast_prepare_payload(
+pub fn rebroadcast_prepare_payload(
     format: String,
     raw_payload: String,
 ) -> Result<PreparedBroadcastPayload, SpectraBridgeError> {
@@ -943,7 +941,7 @@ pub fn core_rebroadcast_prepare_payload(
             result_field: "digest".to_string(),
         });
     }
-    let dispatch = core_rebroadcast_dispatch_for_format(format)?;
+    let dispatch = rebroadcast_dispatch_for_format(format)?;
     let broadcast_payload = if let Some(extract_field) = dispatch.extract_field.as_ref() {
         crate::send::preview_decode::extract_json_string_field(
             raw_payload.clone(),
@@ -979,7 +977,7 @@ fn sui_signed_json_remap(raw: &str) -> Option<String> {
 /// Testnets share their mainnet counterpart's derivation engine, so e.g.
 /// `"Ethereum Sepolia"` returns `"Ethereum"`. The Chain enum is the source
 /// of truth for that mapping.
-/// Not exported: it is a column of `core_chain_identities` now.
+/// Not exported: it is a column of `chain_identities` now.
 pub fn seed_derivation_chain_raw(chain: crate::registry::Chain) -> Option<String> {
     if chain.is_testnet() {
         return Some(chain.chain_display_name().to_string());
@@ -998,7 +996,7 @@ pub fn seed_derivation_chain_raw(chain: crate::registry::Chain) -> Option<String
 // Lifted from Swift `evmHasContractCode`: a nonempty `eth_getCode` result
 // (anything other than "0x" or "0x0") indicates deployed bytecode.
 
-pub fn core_evm_has_contract_code(code: String) -> bool {
+pub fn evm_has_contract_code(code: String) -> bool {
     let trimmed = code.trim();
     !trimmed.is_empty()
         && !trimmed.eq_ignore_ascii_case("0x")
@@ -1016,7 +1014,7 @@ pub struct EvmReplacementFeeBump {
     pub priority_fee_gwei: String,
 }
 
-pub fn core_evm_replacement_fee_bump(
+pub fn evm_replacement_fee_bump(
     existing_max_fee_gwei: Option<String>,
     existing_priority_fee_gwei: Option<String>,
     default_max_fee_gwei: f64,
@@ -1112,40 +1110,36 @@ mod flow_helpers_tests {
 
     #[test]
     fn rebroadcast_dispatch_btc() {
-        let d = core_rebroadcast_dispatch_for_format("bitcoin.raw_hex".to_string()).unwrap();
+        let d = rebroadcast_dispatch_for_format("bitcoin.raw_hex".to_string()).unwrap();
         assert_eq!(d.chain_id, "bitcoin");
         assert_eq!(d.result_field, "txid");
     }
 
     #[test]
     fn rebroadcast_dispatch_unknown_errors() {
-        assert!(core_rebroadcast_dispatch_for_format("nope".to_string()).is_err());
+        assert!(rebroadcast_dispatch_for_format("nope".to_string()).is_err());
     }
 
     #[test]
     fn evm_has_contract_code_variants() {
-        assert!(!core_evm_has_contract_code("0x".to_string()));
-        assert!(!core_evm_has_contract_code("0X0".to_string()));
-        assert!(!core_evm_has_contract_code("   0x ".to_string()));
-        assert!(!core_evm_has_contract_code(String::new()));
-        assert!(core_evm_has_contract_code("0x60806040".to_string()));
+        assert!(!evm_has_contract_code("0x".to_string()));
+        assert!(!evm_has_contract_code("0X0".to_string()));
+        assert!(!evm_has_contract_code("   0x ".to_string()));
+        assert!(!evm_has_contract_code(String::new()));
+        assert!(evm_has_contract_code("0x60806040".to_string()));
     }
 
     #[test]
     fn evm_bump_defaults_when_blank() {
-        let r = core_evm_replacement_fee_bump(None, Some(" ".to_string()), 4.0, 2.0);
+        let r = evm_replacement_fee_bump(None, Some(" ".to_string()), 4.0, 2.0);
         assert_eq!(r.max_fee_gwei, "4.0");
         assert_eq!(r.priority_fee_gwei, "2.0");
     }
 
     #[test]
     fn evm_bump_scales_existing() {
-        let r = core_evm_replacement_fee_bump(
-            Some("5.0".to_string()),
-            Some("2.5".to_string()),
-            4.0,
-            2.0,
-        );
+        let r =
+            evm_replacement_fee_bump(Some("5.0".to_string()), Some("2.5".to_string()), 4.0, 2.0);
         assert_eq!(r.max_fee_gwei, "6.000");
         assert_eq!(r.priority_fee_gwei, "3.000");
     }
@@ -1153,7 +1147,7 @@ mod flow_helpers_tests {
     #[test]
     fn prepare_payload_sui_signed_json_remap() {
         let raw = r#"{"txBytesBase64":"AAAA","signatureBase64":"BBBB"}"#;
-        let p = core_rebroadcast_prepare_payload("sui.signed_json".into(), raw.into()).unwrap();
+        let p = rebroadcast_prepare_payload("sui.signed_json".into(), raw.into()).unwrap();
         assert_eq!(p.chain_id, "sui");
         assert_eq!(p.result_field, "digest");
         let parsed: serde_json::Value = serde_json::from_str(&p.broadcast_payload).unwrap();
@@ -1164,13 +1158,13 @@ mod flow_helpers_tests {
     #[test]
     fn prepare_payload_sui_malformed_passthrough() {
         let raw = "not json";
-        let p = core_rebroadcast_prepare_payload("sui.signed_json".into(), raw.into()).unwrap();
+        let p = rebroadcast_prepare_payload("sui.signed_json".into(), raw.into()).unwrap();
         assert_eq!(p.broadcast_payload, raw);
     }
 
     #[test]
     fn prepare_payload_wrap_key() {
-        let p = core_rebroadcast_prepare_payload("xrp.blob_hex".into(), "deadbeef".into()).unwrap();
+        let p = rebroadcast_prepare_payload("xrp.blob_hex".into(), "deadbeef".into()).unwrap();
         assert_eq!(p.chain_id, "xrp");
         assert_eq!(p.result_field, "txid");
         let parsed: serde_json::Value = serde_json::from_str(&p.broadcast_payload).unwrap();
@@ -1180,30 +1174,26 @@ mod flow_helpers_tests {
     #[test]
     fn prepare_payload_extract_field() {
         let raw = r#"{"raw_tx_hex":"ff00","other":"x"}"#;
-        let p = core_rebroadcast_prepare_payload("bitcoin.rust_json".into(), raw.into()).unwrap();
+        let p = rebroadcast_prepare_payload("bitcoin.rust_json".into(), raw.into()).unwrap();
         assert_eq!(p.chain_id, "bitcoin");
         assert_eq!(p.broadcast_payload, "ff00");
     }
 
     #[test]
     fn prepare_payload_passthrough() {
-        let p = core_rebroadcast_prepare_payload("bitcoin.raw_hex".into(), "abcd".into()).unwrap();
+        let p = rebroadcast_prepare_payload("bitcoin.raw_hex".into(), "abcd".into()).unwrap();
         assert_eq!(p.broadcast_payload, "abcd");
     }
 
     #[test]
     fn prepare_payload_unknown_errors() {
-        assert!(core_rebroadcast_prepare_payload("nope".into(), "x".into()).is_err());
+        assert!(rebroadcast_prepare_payload("nope".into(), "x".into()).is_err());
     }
 
     #[test]
     fn evm_bump_respects_floor() {
-        let r = core_evm_replacement_fee_bump(
-            Some("0.01".to_string()),
-            Some("0.01".to_string()),
-            4.0,
-            2.0,
-        );
+        let r =
+            evm_replacement_fee_bump(Some("0.01".to_string()), Some("0.01".to_string()), 4.0, 2.0);
         assert_eq!(r.max_fee_gwei, "0.100");
         assert_eq!(r.priority_fee_gwei, "0.100");
     }
@@ -1234,13 +1224,13 @@ pub fn extra_output_overhead_bytes(chain_name: String, destination: String) -> u
 #[cfg(test)]
 mod validating_and_normalising_cannot_disagree {
     use super::{
-        core_evaluate_high_risk_send_reasons, is_valid_send_address, normalize_address,
+        evaluate_high_risk_send_reasons, is_valid_send_address, normalize_address,
         HighRiskSendRequest,
     };
     use crate::registry::Chain;
 
     fn high_risk_codes(chain_name: &str, destination: &str) -> Vec<String> {
-        core_evaluate_high_risk_send_reasons(HighRiskSendRequest {
+        evaluate_high_risk_send_reasons(HighRiskSendRequest {
             chain_name: chain_name.to_string(),
             symbol: "SUI".to_string(),
             amount: 1.0,
@@ -1294,7 +1284,7 @@ mod validating_and_normalising_cannot_disagree {
         assert_ne!(known, lookalike);
 
         let codes = |destination: &str| {
-            core_evaluate_high_risk_send_reasons(HighRiskSendRequest {
+            evaluate_high_risk_send_reasons(HighRiskSendRequest {
                 chain_name: "Solana".to_string(),
                 symbol: "SOL".to_string(),
                 amount: 1.0,
@@ -1334,7 +1324,7 @@ mod validating_and_normalising_cannot_disagree {
         let typed = stored.to_uppercase().replace("0X", "0x");
         assert_ne!(stored, typed);
 
-        let codes = core_evaluate_high_risk_send_reasons(HighRiskSendRequest {
+        let codes = evaluate_high_risk_send_reasons(HighRiskSendRequest {
             chain_name: "Ethereum".to_string(),
             symbol: "ETH".to_string(),
             amount: 1.0,
@@ -1563,10 +1553,10 @@ mod scanned_payload_tests {
 
 #[cfg(test)]
 mod high_risk_warning_shape {
-    use super::{core_evaluate_high_risk_send_reasons, HighRiskSendRequest, HighRiskSendWarning};
+    use super::{evaluate_high_risk_send_reasons, HighRiskSendRequest, HighRiskSendWarning};
 
     fn warnings(chain_name: &str, destination: &str) -> Vec<HighRiskSendWarning> {
-        core_evaluate_high_risk_send_reasons(HighRiskSendRequest {
+        evaluate_high_risk_send_reasons(HighRiskSendRequest {
             chain_name: chain_name.to_string(),
             symbol: "X".to_string(),
             amount: 1.0,

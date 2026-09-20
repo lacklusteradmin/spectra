@@ -73,8 +73,8 @@ fn targets(state: &CoreAppState, chain: Chain, wallet_ids: &[String]) -> Vec<Tar
             Some(Target {
                 wallet_id: wallet.id.clone(),
                 wallet_name: wallet.name.clone(),
-                address: wallet.active_address(&state.settings)?.to_string(),
-                network: wallet.network_chain(&state.settings).unwrap_or(chain),
+                address: wallet.active_address()?.to_string(),
+                network: wallet.chain().unwrap_or(chain),
             })
         })
         .collect()
@@ -186,12 +186,10 @@ impl WalletService {
             })
             .collect();
         let fetched: Vec<(usize, Option<Vec<_>>)> = stream::iter(requests)
-            .map(|(index, network_id, address)| async move {
+            .map(|(index, chain_id, address)| async move {
                 (
                     index,
-                    self.fetch_normalized_history(network_id, address)
-                        .await
-                        .ok(),
+                    self.fetch_normalized_history(chain_id, address).await.ok(),
                 )
             })
             .buffer_unordered(4)

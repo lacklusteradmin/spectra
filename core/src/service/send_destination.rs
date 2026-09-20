@@ -52,7 +52,7 @@ impl WalletService {
                     wallet
                         .holdings
                         .iter()
-                        .find(|h| h.deployment_key() == holding_key)
+                        .find(|h| h.deployment_id() == holding_key)
                 })
                 .ok_or_else(|| SpectraBridgeError::InvalidInput {
                     message: format!("no holding {holding_key} on wallet {wallet_id}"),
@@ -122,7 +122,7 @@ impl WalletService {
         input: String,
     ) -> Result<SendDestinationResolution, SpectraBridgeError> {
         resolve_destination(chain_for_id(&chain_id)?, input, |name| {
-            self.resolve_ens_name_typed(name)
+            self.resolve_ens_name(name)
         })
         .await
     }

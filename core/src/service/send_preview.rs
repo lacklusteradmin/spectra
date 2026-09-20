@@ -10,7 +10,7 @@ impl WalletService {
         destination: String,
         explicit_nonce: Option<i64>,
         custom_fees: Option<crate::ethereum_send::EvmCustomFeeConfiguration>,
-    ) -> Result<Option<crate::wallet_core::EvmSendPreview>, SpectraBridgeError> {
+    ) -> Result<Option<crate::send::preview_types::EvmSendPreview>, SpectraBridgeError> {
         let state = self.app_state().await;
         let wallet = state
             .wallets
@@ -22,7 +22,7 @@ impl WalletService {
         let holding = wallet
             .holdings
             .iter()
-            .find(|h| h.deployment_key() == holding_key)
+            .find(|h| h.deployment_id() == holding_key)
             .ok_or_else(|| SpectraBridgeError::InvalidInput {
                 message: "holding does not exist".into(),
             })?;
@@ -60,7 +60,7 @@ impl WalletService {
         .map_err(|e| SpectraBridgeError::InvalidInput {
             message: e.to_string(),
         })?;
-        self.fetch_evm_send_preview_typed(
+        self.fetch_evm_send_preview(
             chain.str_id().into(),
             from,
             assembly.to_address,
@@ -143,7 +143,7 @@ impl WalletService {
         }
     }
 
-    pub(crate) async fn fetch_utxo_fee_preview(
+    pub(crate) async fn fetch_utxo_fee_preview_json(
         &self,
         chain_id: &str,
         address: String,
@@ -151,7 +151,7 @@ impl WalletService {
     ) -> Result<String, SpectraBridgeError> {
         let chain = Chain::from_str_id(chain_id).ok_or_else(|| {
             SpectraBridgeError::from(format!(
-                "fetch_utxo_fee_preview: unsupported chain_id: {chain_id}"
+                "fetch_utxo_fee_preview_json: unsupported chain_id: {chain_id}"
             ))
         })?;
         let eps = self.endpoints_for(chain.str_id()).await;
@@ -208,7 +208,7 @@ impl WalletService {
                 Ok(utxo_fee_preview_json(values, rate))
             }
             c => Err(SpectraBridgeError::from(format!(
-                "fetch_utxo_fee_preview: unsupported chain: {c:?}"
+                "fetch_utxo_fee_preview_json: unsupported chain: {c:?}"
             ))),
         }
     }
@@ -230,7 +230,7 @@ impl WalletService {
     /// descriptor: an ERC-20 transfer *is* `transfer(address,uint256)`
     /// addressed to the token contract, so the selector names the case and
     /// the contract's own `decimals()` scales the answer.
-    pub(crate) async fn fetch_evm_send_preview(
+    pub(crate) async fn fetch_evm_send_preview_json(
         &self,
         chain_id: &str,
         from: String,
@@ -317,7 +317,7 @@ impl WalletService {
         .to_string())
     }
 
-    pub(crate) async fn fetch_tron_send_preview(
+    pub(crate) async fn fetch_tron_send_preview_json(
         &self,
         address: String,
         symbol: String,
@@ -380,7 +380,7 @@ impl WalletService {
         .to_string())
     }
 
-    pub(crate) async fn fetch_simple_chain_send_preview(
+    pub(crate) async fn fetch_simple_chain_send_preview_json(
         &self,
         chain_id: &str,
         address: String,
@@ -423,7 +423,7 @@ impl WalletService {
     /// Typed EVM send preview: fetches the raw preview JSON then decodes it
     /// into `EvmSendPreview` with the caller-supplied nonce / fee
     /// overrides applied. Returns `None` when the decoder rejects the payload.
-    pub async fn fetch_evm_send_preview_typed(
+    pub async fn fetch_evm_send_preview(
         &self,
         chain_id: String,
         from: String,
@@ -432,9 +432,9 @@ impl WalletService {
         data_hex: String,
         explicit_nonce: Option<i64>,
         custom_fees: Option<crate::ethereum_send::EvmCustomFeeConfiguration>,
-    ) -> Result<Option<crate::wallet_core::EvmSendPreview>, SpectraBridgeError> {
+    ) -> Result<Option<crate::send::preview_types::EvmSendPreview>, SpectraBridgeError> {
         let raw = self
-            .fetch_evm_send_preview(&chain_id, from, to, value_wei, data_hex)
+            .fetch_evm_send_preview_json(&chain_id, from, to, value_wei, data_hex)
             .await?;
         Ok(crate::send::preview_decode::build_evm_send_preview_record(
             crate::ethereum_send::EvmPreviewDecodeInput {
@@ -447,13 +447,13 @@ impl WalletService {
 }
 
 impl WalletService {
-    pub async fn fetch_bitcoin_hd_send_preview_typed(
+    pub async fn fetch_bitcoin_hd_send_preview(
         &self,
         chain_id: String,
         xpub: String,
         receive_count: u32,
         change_count: u32,
-    ) -> Result<Option<crate::wallet_core::BitcoinSendPreview>, SpectraBridgeError> {
+    ) -> Result<Option<crate::send::preview_types::BitcoinSendPreview>, SpectraBridgeError> {
         let chain = Chain::from_str_id(&chain_id)
             .filter(|chain| chain.mainnet_counterpart() == Chain::Bitcoin)
             .ok_or_else(|| SpectraBridgeError::InvalidInput {
@@ -470,14 +470,14 @@ impl WalletService {
             ),
         )
     }
-    pub async fn fetch_dogecoin_send_preview_typed(
+    pub async fn fetch_dogecoin_send_preview(
         &self,
         address: String,
         requested_amount: f64,
         fee_priority: String,
-    ) -> Result<Option<crate::wallet_core::DogecoinSendPreview>, SpectraBridgeError> {
+    ) -> Result<Option<crate::send::preview_types::DogecoinSendPreview>, SpectraBridgeError> {
         let raw = self
-            .fetch_utxo_fee_preview(Chain::Dogecoin.str_id(), address, 0)
+            .fetch_utxo_fee_preview_json(Chain::Dogecoin.str_id(), address, 0)
             .await?;
         Ok(
             crate::send::preview_decode::build_dogecoin_send_preview_record(
@@ -487,7 +487,7 @@ impl WalletService {
             ),
         )
     }
-    pub async fn fetch_simple_chain_send_preview_typed(
+    pub async fn fetch_simple_chain_send_preview(
         &self,
         chain_id: String,
         address: String,
@@ -498,34 +498,34 @@ impl WalletService {
                 message: format!("{chain_id} has no shared-path send preview"),
             })?;
         let raw = self
-            .fetch_simple_chain_send_preview(&chain_id, address)
+            .fetch_simple_chain_send_preview_json(&chain_id, address)
             .await?;
         Ok(crate::send::preview_decode::build_simple_chain_preview(
             raw, chain,
         ))
     }
-    pub async fn fetch_tron_send_preview_typed(
+    pub async fn fetch_tron_send_preview(
         &self,
         address: String,
         symbol: String,
         contract_address: String,
-    ) -> Result<Option<crate::wallet_core::TronSendPreview>, SpectraBridgeError> {
+    ) -> Result<Option<crate::send::preview_types::TronSendPreview>, SpectraBridgeError> {
         let raw = self
-            .fetch_tron_send_preview(address, symbol, contract_address)
+            .fetch_tron_send_preview_json(address, symbol, contract_address)
             .await?;
         Ok(crate::send::preview_decode::build_tron_send_preview_record(
             raw,
         ))
     }
-    pub async fn fetch_utxo_fee_preview_typed(
+    pub async fn fetch_utxo_fee_preview(
         &self,
         chain_id: String,
         address: String,
         fee_rate_svb: u64,
         destination_address: String,
-    ) -> Result<Option<crate::wallet_core::BitcoinSendPreview>, SpectraBridgeError> {
+    ) -> Result<Option<crate::send::preview_types::BitcoinSendPreview>, SpectraBridgeError> {
         let raw = self
-            .fetch_utxo_fee_preview(&chain_id, address, fee_rate_svb)
+            .fetch_utxo_fee_preview_json(&chain_id, address, fee_rate_svb)
             .await?;
         let preview = crate::send::preview_decode::build_utxo_send_preview_record(raw);
         let overhead = Chain::from_str_id(&chain_id)

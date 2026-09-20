@@ -65,7 +65,7 @@ class SendTests(unittest.TestCase):
                 with sqlite3.connect(pathlib.Path(directory)/'spectra.sqlite') as db:
                     wid,payload=db.execute('SELECT id,payload FROM wallets').fetchone()
                     wallet=json.loads(payload)
-                    wallet['holdings']=[dict(name='Ethereum',symbol='ETH',coinGeckoId='ethereum',chainName='Ethereum',
+                    wallet['holdings']=[dict(name='Ethereum',symbol='ETH',coingeckoId='ethereum',chainName='Ethereum',
                         tokenStandard='Native',contractAddress=None,amount=10,priceUsd=0)]
                     db.execute('UPDATE wallets SET payload=? WHERE id=?',(json.dumps(wallet),wid))
                 args=('send','owned-broadcast','--wallet','Sealed','--holding','ethereum:native','--amount','1',
@@ -128,7 +128,7 @@ class SendTests(unittest.TestCase):
                         w=json.loads(payload); change(w)
                         db.execute('UPDATE wallets SET payload=? WHERE id=?',(json.dumps(w),id))
             def seed(w):
-                w['holdings']=[dict(name='Ethereum',symbol='ETH',coinGeckoId='ethereum',chainName='Ethereum',
+                w['holdings']=[dict(name='Ethereum',symbol='ETH',coingeckoId='ethereum',chainName='Ethereum',
                     tokenStandard='Native',contractAddress=None,amount=10,priceUsd=2000)]
             update_wallets(seed)
             base=['--wallet','Source','--holding','ethereum:native']
@@ -165,7 +165,7 @@ class SendTests(unittest.TestCase):
                 run('send','quote',*base,'--amount','1','--destination',addresses[1],success=False)
                 run('send','replacement','pending','--cancel',success=False)
                 before=len(requests)
-                update_wallets(lambda w: w.update(networkId='ethereum-sepolia'))
+                update_wallets(lambda w: w.update(chainId='ethereum-sepolia'))
                 run('send','preview',*base,'--amount','1',success=False)
                 assert len(requests)==before,'mismatched network reached provider'
                 derived=run('wallet','derived')

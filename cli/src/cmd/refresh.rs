@@ -68,10 +68,10 @@ pub fn refresh(ctx: &Ctx, out: Out, args: RefreshArgs) -> CliResult<()> {
     let service = ctx.service()?;
     if let Some(endpoint) = args.endpoint {
         let chain = wallets[0]
-            .network_chain(&state.settings)
+            .chain()
             .ok_or_else(|| CliError::rejected("unknown wallet network"))?;
         ctx.rt
-            .block_on(service.update_endpoints_typed(vec![ChainEndpoints {
+            .block_on(service.update_endpoints(vec![ChainEndpoints {
                 chain_id: chain.str_id().into(),
                 endpoints: vec![endpoint],
                 api_key: None,

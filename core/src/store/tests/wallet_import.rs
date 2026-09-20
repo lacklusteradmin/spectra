@@ -133,7 +133,7 @@ async fn a_network_selection_applies_only_to_its_own_family() {
         .unwrap();
     // The selection is core's own setting, not something the commit carries.
     service
-        .apply_state_command(crate::store::state::StateCommand::SelectNetworkChain {
+        .apply_state_command(crate::store::state::StateCommand::SelectChainForFamily {
             chain_id: "bitcoin-testnet".into(),
         })
         .await
@@ -148,9 +148,9 @@ async fn a_network_selection_applies_only_to_its_own_family() {
         .iter()
         .map(|w| (w.selected_chain.as_str(), w))
         .collect();
-    assert_eq!(by_chain["Bitcoin"].network_chain_id, "bitcoin-testnet");
+    assert_eq!(by_chain["Bitcoin"].chain_id, "bitcoin-testnet");
     // Choosing Bitcoin testnet must not drag the Solana wallet with it.
-    assert_eq!(by_chain["Solana"].network_chain_id, "solana");
+    assert_eq!(by_chain["Solana"].chain_id, "solana");
     // Each wallet starts with its own network's native holding, and no other.
     let holdings = |chain: &str| {
         by_chain[chain]
@@ -424,7 +424,7 @@ async fn testnet_paths_survive_reopen_switching_and_signing() {
         (Chain::Bitcoin, "m/84'/0'/2'/0/0"),
     ] {
         service
-            .apply_state_command(StateCommand::SelectNetworkChain {
+            .apply_state_command(StateCommand::SelectChainForFamily {
                 chain_id: chain.str_id().into(),
             })
             .await
@@ -471,6 +471,6 @@ fn an_absent_testnet_address_never_falls_back_to_mainnet() {
         Some("m/84'/0'/0'/0/0".into()),
         false,
     );
-    wallet.network_id = "bitcoin-testnet-4".into();
-    assert!(wallet.active_address(&Default::default()).is_none());
+    wallet.chain_id = "bitcoin-testnet-4".into();
+    assert!(wallet.active_address().is_none());
 }

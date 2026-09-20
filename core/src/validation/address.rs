@@ -19,10 +19,6 @@ pub struct AddressValidationResult {
 }
 
 #[uniffi::export]
-pub fn core_validate_address(request: AddressValidationRequest) -> AddressValidationResult {
-    validate_address(request)
-}
-
 pub fn validate_address(request: AddressValidationRequest) -> AddressValidationResult {
     let normalized_input = trim_string(&request.value);
     if normalized_input.is_empty() {

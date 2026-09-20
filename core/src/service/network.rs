@@ -19,11 +19,11 @@ impl WalletService {
     // `fetch_evm_history_page` lives in the plain-impl block below: it is
     // called by `history_refresh`, not across the FFI.
 
-    // `fetch_utxo_fee_preview` and `broadcast_raw` live in the plain-impl
+    // `fetch_utxo_fee_preview_json` and `broadcast_raw` live in the plain-impl
     // block below (JSON shuttles — kept internal, not exported to Swift).
 
-    // `fetch_evm_send_preview` / `fetch_tron_send_preview` /
-    // `fetch_simple_chain_send_preview` live in the plain-impl block below
+    // `fetch_evm_send_preview_json` / `fetch_tron_send_preview_json` /
+    // `fetch_simple_chain_send_preview_json` live in the plain-impl block below
     // (JSON shuttles — kept internal, not exported to Swift). Their typed
     // wrappers below call into those internal helpers.
 
@@ -46,7 +46,7 @@ impl WalletService {
         let chain = chain_for_id(&chain_id)?;
         let name = chain.chain_display_name().to_string();
         let method = chain.rpc_health_method();
-        let mut records = crate::endpoint_records_for_chain_masked(chain_id.clone(), 0, false)
+        let mut records = crate::filtered_endpoint_records_for_chain(chain_id.clone(), 0, false)
             .map_err(|e| SpectraBridgeError::from(format!("endpoints for {name}: {e}")))?;
 
         // Custom endpoints use the same protocol probe as the catalog's node.
@@ -84,7 +84,7 @@ impl WalletService {
             let rpc_method = is_rpc.then_some(method).flatten();
             if is_link_only && explicit_probe.is_none() {
                 out.push(EndpointProbe {
-                    network_id: chain_id.clone(),
+                    chain_id: chain_id.clone(),
                     chain_name: name.clone(),
                     endpoint: record.endpoint,
                     kind: record.kind.clone(),
@@ -123,7 +123,7 @@ impl WalletService {
                 (None, None) => (false, false, "no probe for this endpoint".to_string()),
             };
             out.push(EndpointProbe {
-                network_id: chain_id.clone(),
+                chain_id: chain_id.clone(),
                 chain_name: name.clone(),
                 endpoint: record.endpoint,
                 kind: record.kind.clone(),
@@ -148,7 +148,7 @@ impl WalletService {
     /// point, because *when* a typed name is a name to look up is
     /// `Chain::resolves_ens_names` and every lookup reads the provider again. A front end
     /// calling this directly is a front end deciding both.
-    pub(crate) async fn resolve_ens_name_typed(
+    pub(crate) async fn resolve_ens_name(
         &self,
         name: String,
     ) -> Result<Option<String>, SpectraBridgeError> {
@@ -165,7 +165,7 @@ impl WalletService {
     /// Returns a typed record so Swift can read `confirmed`/`block_height`/
     /// `confirmations` fields without bouncing through JSON.
     /// Supported chain_ids: 0 (BTC), 3 (DOGE), 5 (LTC), 6 (BCH), 22 (BSV).
-    pub async fn fetch_utxo_tx_status_typed(
+    pub async fn fetch_utxo_tx_status(
         &self,
         chain_id: String,
         txid: String,
@@ -396,7 +396,7 @@ mod http_probe_regressions {
 
 impl WalletService {
     /// Read the live nonce for a core-owned replacement draft.
-    pub async fn fetch_evm_tx_nonce_typed(
+    pub async fn fetch_evm_tx_nonce(
         &self,
         chain_id: String,
         tx_hash: String,
@@ -418,6 +418,6 @@ impl WalletService {
         let eps = self.endpoints_for(chain.str_id()).await;
         let client = EvmClient::new(eps, chain.evm_chain_id());
         let code = client.fetch_code(&address).await?;
-        Ok(crate::send::flow::core_evm_has_contract_code(code))
+        Ok(crate::send::flow::evm_has_contract_code(code))
     }
 }

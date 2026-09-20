@@ -44,7 +44,7 @@ impl WalletService {
             wallet
                 .holdings
                 .iter()
-                .find(|h| h.deployment_key() == holding_key)
+                .find(|h| h.deployment_id() == holding_key)
         });
         let request = crate::send::SendSubmitPreflightRequest {
             wallet_found: wallet.is_some(),
@@ -79,7 +79,7 @@ impl WalletService {
             .find(|w| w.id == wallet_id)?
             .holdings
             .iter()
-            .find(|h| h.deployment_key() == holding_key)?;
+            .find(|h| h.deployment_id() == holding_key)?;
         Some(crate::send::route_send_asset(&routing_input(
             holding,
             &state.token_preferences,
@@ -113,7 +113,7 @@ impl WalletService {
         let Some(holding) = wallet
             .holdings
             .iter()
-            .find(|h| h.deployment_key() == holding_key)
+            .find(|h| h.deployment_id() == holding_key)
         else {
             return Vec::new();
         };
@@ -135,7 +135,7 @@ impl WalletService {
         // destination is one of the risk signals, so reading a caller's copy of
         // the history meant the signal was only as complete as that copy.
         let mut seen: std::collections::BTreeSet<String> = Default::default();
-        if let Ok(rows) = self.fetch_all_history_records_typed().await {
+        if let Ok(rows) = self.fetch_all_history_records().await {
             for row in rows {
                 if row.payload.chain_name == chain_name {
                     seen.insert(row.payload.address.clone());
@@ -143,26 +143,24 @@ impl WalletService {
             }
         }
 
-        crate::send::flow::core_evaluate_high_risk_send_reasons(
-            crate::send::flow::HighRiskSendRequest {
-                chain_name: chain_name.clone(),
-                symbol,
-                amount,
-                holding_amount,
-                destination_address,
-                destination_input,
-                used_ens_resolution,
-                wallet_selected_chain,
-                address_book_entries,
-                tx_addresses: seen
-                    .into_iter()
-                    .map(|address| crate::send::flow::HighRiskChainAddress {
-                        chain_name: chain_name.clone(),
-                        address,
-                    })
-                    .collect(),
-            },
-        )
+        crate::send::flow::evaluate_high_risk_send_reasons(crate::send::flow::HighRiskSendRequest {
+            chain_name: chain_name.clone(),
+            symbol,
+            amount,
+            holding_amount,
+            destination_address,
+            destination_input,
+            used_ens_resolution,
+            wallet_selected_chain,
+            address_book_entries,
+            tx_addresses: seen
+                .into_iter()
+                .map(|address| crate::send::flow::HighRiskChainAddress {
+                    chain_name: chain_name.clone(),
+                    address,
+                })
+                .collect(),
+        })
     }
 
     /// Warnings about an EVM recipient, as codes the platform localizes.
@@ -186,7 +184,7 @@ impl WalletService {
                 wallet
                     .holdings
                     .iter()
-                    .find(|h| h.deployment_key() == holding_key)
+                    .find(|h| h.deployment_id() == holding_key)
             })
         else {
             return Vec::new();
@@ -216,15 +214,13 @@ impl WalletService {
                 .ok(),
             None => None,
         };
-        crate::store::core_evm_recipient_preflight_warnings(
-            crate::store::EvmRecipientPreflightRequest {
-                chain_name,
-                holding_symbol,
-                token_symbol: token.map(|(symbol, _)| symbol),
-                recipient_has_code,
-                token_has_code,
-            },
-        )
+        crate::store::evm_recipient_preflight_warnings(crate::store::EvmRecipientPreflightRequest {
+            chain_name,
+            holding_symbol,
+            token_symbol: token.map(|(symbol, _)| symbol),
+            recipient_has_code,
+            token_has_code,
+        })
     }
 }
 
@@ -375,7 +371,7 @@ mod preflight_tests {
         AssetHolding {
             name: symbol.to_string(),
             symbol: symbol.to_string(),
-            coin_gecko_id: String::new(),
+            coingecko_id: String::new(),
             chain_name: chain.to_string(),
             token_standard: standard.to_string(),
             contract_address: contract.map(str::to_string),
@@ -389,14 +385,17 @@ mod preflight_tests {
             category: CoreTokenPreferenceCategory::Stablecoin,
             is_built_in: false,
             is_enabled: true,
-            token: crate::tokens::TokenEntry {
-                id: "fixture:token".into(),
+            token: crate::tokens::TokenDeploymentEntry {
+                deployment_id: "fixture:token".into(),
                 token_id: "fixture:token".into(),
                 kind: crate::tokens::TokenKind::Protocol {
                     standard: "fixture".into(),
                     identifier: "fixture".into(),
                 },
-                chain: chain.chain_name().to_string(),
+                chain_id: crate::registry::Chain::from_display_name(chain.chain_name())
+                    .unwrap()
+                    .str_id()
+                    .to_string(),
                 name: "Token".into(),
                 symbol: "TOK".into(),
                 token_standard: String::new(),
@@ -550,14 +549,14 @@ mod send_token_identity_tests {
 
     fn entry(chain: &str, symbol: &str, contract: &str, decimals: u32) -> CoreTokenPreferenceEntry {
         CoreTokenPreferenceEntry {
-            token: crate::tokens::TokenEntry {
-                id: "fixture:token".into(),
+            token: crate::tokens::TokenDeploymentEntry {
+                deployment_id: "fixture:token".into(),
                 token_id: "fixture:token".into(),
                 kind: crate::tokens::TokenKind::Protocol {
                     standard: "fixture".into(),
                     identifier: "fixture".into(),
                 },
-                chain: chain.to_string(),
+                chain_id: chain.to_string(),
                 name: symbol.to_string(),
                 symbol: symbol.to_string(),
                 token_standard: "trc20".to_string(),
@@ -579,7 +578,7 @@ mod send_token_identity_tests {
         AssetHolding {
             name: symbol.to_string(),
             symbol: symbol.to_string(),
-            coin_gecko_id: String::new(),
+            coingecko_id: String::new(),
             chain_name: chain.to_string(),
             token_standard: "trc20".to_string(),
             contract_address: contract.map(str::to_string),

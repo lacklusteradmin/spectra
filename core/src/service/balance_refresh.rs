@@ -14,13 +14,13 @@ impl WalletService {
             .into_iter()
             .find(|e| e.wallet_id == wallet_id)
             .ok_or("wallet has no refreshable address")?;
-        let chain = chain_for_id(&entry.network_chain_id)?;
+        let chain = chain_for_id(&entry.chain_id)?;
         let native = self
-            .fetch_native_balance_summary_auto(&entry.network_chain_id, entry.address.clone())
+            .fetch_native_balance_summary_auto(&entry.chain_id, entry.address.clone())
             .await?;
         let mut holdings = vec![AssetHolding {
             amount: balance_amount(&native.amount_display)?,
-            ..native_coin_template(&entry.network_chain_id).ok_or("missing native asset")?
+            ..native_coin_template(&entry.chain_id).ok_or("missing native asset")?
         }];
         let known: Vec<_> = state
             .token_preferences
@@ -47,11 +47,7 @@ impl WalletService {
                 .collect::<Result<Vec<_>, SpectraBridgeError>>()?;
             // Failed tokens are omitted by the provider adapter; their prior balances survive.
             let balances = self
-                .fetch_token_balances(
-                    entry.network_chain_id.clone(),
-                    entry.address.clone(),
-                    descriptors,
-                )
+                .fetch_token_balances(entry.chain_id.clone(), entry.address.clone(), descriptors)
                 .await?;
             for result in balances {
                 let key = contract_key(chain.chain_display_name(), &result.contract_address);
@@ -62,7 +58,7 @@ impl WalletService {
                     holdings.push(AssetHolding {
                         name: p.token.name.clone(),
                         symbol: p.token.symbol.clone(),
-                        coin_gecko_id: p.token.coingecko_id.clone(),
+                        coingecko_id: p.token.coingecko_id.clone(),
                         chain_name: chain.chain_display_name().into(),
                         token_standard: p.token.token_standard.clone(),
                         contract_address: Some(p.token.contract.clone()),
@@ -93,8 +89,8 @@ impl WalletService {
                     .find(|e| e.wallet_id == entry.wallet_id);
                 if !current.is_some_and(|e| {
                     e.address == entry.address
-                        && e.network_chain_id == entry.network_chain_id
                         && e.chain_id == entry.chain_id
+                        && e.holding_chain_id == entry.holding_chain_id
                 }) {
                     return vec![];
                 }
@@ -134,7 +130,7 @@ fn contract_key(chain: &str, contract: &str) -> String {
         .unwrap_or_else(|| contract.into())
 }
 fn balance_key(h: &AssetHolding) -> String {
-    h.deployment_key()
+    h.deployment_id()
 }
 fn merge_balances(stored: &mut Vec<AssetHolding>, incoming: Vec<AssetHolding>) {
     for h in incoming {
@@ -189,7 +185,7 @@ mod tests {
         assert_eq!(updated.holdings[0].amount, 0.0);
         assert_eq!(updated.holdings[0].price_usd, 123.0);
         service
-            .apply_state_command(StateCommand::SelectNetworkChain {
+            .apply_state_command(StateCommand::SelectChainForFamily {
                 chain_id: "ethereum-sepolia".into(),
             })
             .await
@@ -237,7 +233,7 @@ mod lifecycle_tests {
             .await
             .unwrap();
         assert!(service
-            .apply_state_command(StateCommand::SelectNetworkChain {
+            .apply_state_command(StateCommand::SelectChainForFamily {
                 chain_id: "ethereum-sepolia".into()
             })
             .await
@@ -247,12 +243,12 @@ mod lifecycle_tests {
                 .app_state()
                 .await
                 .settings
-                .network_chain(Chain::Ethereum),
+                .selected_chain_for_family(Chain::Ethereum),
             Chain::Ethereum
         );
         db.execute_batch("DROP TRIGGER reject_cleanup;").unwrap();
         service
-            .apply_state_command(StateCommand::SelectNetworkChain {
+            .apply_state_command(StateCommand::SelectChainForFamily {
                 chain_id: "ethereum-sepolia".into(),
             })
             .await
@@ -265,7 +261,7 @@ mod lifecycle_tests {
                 .await
                 .unwrap()
                 .settings
-                .network_chain(Chain::Ethereum),
+                .selected_chain_for_family(Chain::Ethereum),
             Chain::EthereumSepolia
         );
     }

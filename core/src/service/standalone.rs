@@ -6,7 +6,7 @@
 use crate::SpectraBridgeError;
 
 /// Trim + lowercase + strip leading `0x` from a private-key hex string.
-pub(crate) fn core_private_key_hex_normalized(raw_value: String) -> String {
+pub(crate) fn private_key_hex_normalized(raw_value: String) -> String {
     let trimmed = raw_value.trim().to_lowercase();
     match trimmed.strip_prefix("0x") {
         Some(stripped) => stripped.to_string(),
@@ -17,24 +17,24 @@ pub(crate) fn core_private_key_hex_normalized(raw_value: String) -> String {
 /// The normalised 32-byte hex key, or `None` when the input is not one.
 ///
 /// Not exported: the import commit is the only caller that needs the key, and
-/// it is in core. The editor needs only [`core_is_private_key_hex`].
-pub(crate) fn core_private_key_hex(raw_value: String) -> Option<String> {
-    let normalized = core_private_key_hex_normalized(raw_value);
+/// it is in core. The editor needs only [`is_private_key_hex`].
+pub(crate) fn private_key_hex(raw_value: String) -> Option<String> {
+    let normalized = private_key_hex_normalized(raw_value);
     (normalized.len() == 64 && normalized.chars().all(|c| c.is_ascii_hexdigit()))
         .then_some(normalized)
 }
 
 /// Whether the input is a 32-byte hex key, once normalised.
 ///
-/// The key editor asks this on every render. It asked `core_private_key_hex`,
+/// The key editor asks this on every render. It asked `private_key_hex`,
 /// which answered with the normalised key itself — a fresh copy of a secret
 /// back across the boundary each time, for a caller that compared it with
 /// `nil` — and the app then kept up to 128 typed candidates as the keys of a
 /// process-lifetime cache so as not to ask again. A yes or no is all the
 /// editor reads, and it is cheap enough to ask directly.
 #[uniffi::export]
-pub fn core_is_private_key_hex(raw_value: String) -> bool {
-    core_private_key_hex(raw_value).is_some()
+pub fn is_private_key_hex(raw_value: String) -> bool {
+    private_key_hex(raw_value).is_some()
 }
 
 #[derive(Debug, Clone, serde::Serialize, uniffi::Record)]
@@ -48,7 +48,7 @@ pub struct LargeMovementEvaluation {
 
 /// Evaluate whether a portfolio-total swing crosses both an absolute USD
 /// threshold and a percent-change threshold (large-movement notifications).
-pub(crate) fn core_evaluate_large_movement(
+pub(crate) fn evaluate_large_movement(
     previous_total_usd: f64,
     current_total_usd: f64,
     usd_threshold: f64,
@@ -87,12 +87,12 @@ use crate::tokens;
 
 /// Return the entire built-in token catalog across every registered chain.
 ///
-/// The per-chain variant next to it had no caller left: `tokens::list_tokens`
+/// The per-chain variant next to it had no caller left: `tokens::list_token_deployments`
 /// takes the chain id directly, so a wrapper that only forwarded one was a
 /// second name for the same call.
 #[uniffi::export]
-pub fn list_all_builtin_tokens() -> Vec<tokens::TokenEntry> {
-    tokens::list_tokens(String::new())
+pub fn list_all_builtin_token_deployments() -> Vec<tokens::TokenDeploymentEntry> {
+    tokens::list_token_deployments(String::new())
 }
 
 /// Generate a new random BIP-39 mnemonic of `word_count` words.

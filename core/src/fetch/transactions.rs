@@ -85,7 +85,7 @@ pub enum HistorySource {
 /// Which source a stored history-source id names, or `None` when it names
 /// nothing — an absent, blank or `none` value.
 #[uniffi::export]
-pub fn core_history_source(source: String) -> Option<HistorySource> {
+pub fn history_source(source: String) -> Option<HistorySource> {
     let trimmed = source.trim();
     if trimmed.is_empty() || trimmed == "none" {
         return None;
@@ -945,40 +945,34 @@ mod wire_persisted_conversion {
 
 #[cfg(test)]
 mod history_source_tests {
-    use super::{core_history_source, HistorySource};
+    use super::{history_source, HistorySource};
 
     /// Every id a producer writes names something, and the ones the app's
     /// switch missed are among them.
     #[test]
     fn every_emitted_history_source_is_named() {
         let provider = |name: &str| Some(HistorySource::Provider { name: name.into() });
-        assert_eq!(core_history_source("rpc".into()), provider("RPC"));
+        assert_eq!(history_source("rpc".into()), provider("RPC"));
+        assert_eq!(history_source("etherscan".into()), provider("Etherscan"));
+        assert_eq!(history_source(" esplora ".into()), provider("Esplora"));
+        assert_eq!(history_source("rust".into()), Some(HistorySource::Internal));
         assert_eq!(
-            core_history_source("etherscan".into()),
-            provider("Etherscan")
-        );
-        assert_eq!(core_history_source(" esplora ".into()), provider("Esplora"));
-        assert_eq!(
-            core_history_source("rust".into()),
-            Some(HistorySource::Internal)
-        );
-        assert_eq!(
-            core_history_source("rust.hd".into()),
+            history_source("rust.hd".into()),
             Some(HistorySource::Internal)
         );
         // The aggregate names any chain, not only the one the switch spelled out.
         for (id, name) in [("dogecoin", "Dogecoin"), ("litecoin", "Litecoin")] {
             assert_eq!(
-                core_history_source(format!("{id}.providers")),
+                history_source(format!("{id}.providers")),
                 Some(HistorySource::ChainProviders {
                     chain_name: name.into()
                 })
             );
         }
         for nothing in ["", "  ", "none"] {
-            assert_eq!(core_history_source(nothing.into()), None, "{nothing:?}");
+            assert_eq!(history_source(nothing.into()), None, "{nothing:?}");
         }
         // An id core does not know is still shown rather than hidden.
-        assert_eq!(core_history_source("mystery".into()), provider("mystery"));
+        assert_eq!(history_source("mystery".into()), provider("mystery"));
     }
 }

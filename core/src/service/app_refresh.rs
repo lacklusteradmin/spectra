@@ -101,10 +101,10 @@ impl WalletService {
             let entries = crate::fetch::refresh::engine::refresh_entries_for(&state);
             for entry in entries {
                 if chain.is_some_and(|c| {
-                    entry.network_chain_id != c.str_id()
+                    entry.chain_id != c.str_id()
                         && !(deep_rescan
                             && !c.is_testnet()
-                            && chain_for_id(&entry.network_chain_id)
+                            && chain_for_id(&entry.chain_id)
                                 .is_ok_and(|network| network.mainnet_counterpart() == c))
                 }) {
                     continue;

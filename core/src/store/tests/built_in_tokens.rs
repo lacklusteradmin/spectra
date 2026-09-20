@@ -17,16 +17,14 @@ fn every_built_in_has_a_unique_id() {
     );
 }
 
-/// The chain mapping used to exist four times. `tokens.toml` spells BNB
-/// Chain `"bnb"`, which is the case a strict name match would drop.
+/// Every deployment references a registered chain; token-hosting projections
+/// must resolve the registry identity rather than depend on display spelling.
 #[test]
-fn the_catalog_chain_names_all_resolve() {
+fn the_catalog_chain_ids_all_resolve() {
     for token in crate::tokens::catalog() {
-        if token.chain.eq_ignore_ascii_case("bnb") {
-            assert_eq!(
-                CoreTokenHostingChain::from_chain_name(&token.chain),
-                Some(CoreTokenHostingChain::Bnb)
-            );
+        let chain = crate::registry::Chain::from_str_id(&token.chain_id).unwrap();
+        if !token.is_native() {
+            assert!(CoreTokenHostingChain::from_chain_name(chain.chain_display_name()).is_some());
         }
     }
     for chain in CoreTokenHostingChain::ALL {
@@ -57,7 +55,7 @@ async fn merging_keeps_what_the_user_chose() {
         .expect("an enabled built-in");
     let id = target.id().clone();
     let key = crate::store::state::CoreTokenPreferenceKey {
-        chain_name: target.token.chain.clone(),
+        chain_name: target.token.chain_id.clone(),
         contract: target.token.contract.clone(),
     };
     service

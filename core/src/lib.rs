@@ -105,7 +105,6 @@ pub mod wiki;
 pub use derivation::*;
 pub use fetch::{history, http, price};
 pub use send::ethereum as ethereum_send;
-pub use send::preview_types as wallet_core;
 pub use store::{state, wallet_db};
 
 #[cfg(test)]

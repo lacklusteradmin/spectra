@@ -47,7 +47,7 @@ pub(super) fn add(
         .wallets
         .iter()
         .flat_map(|w| &w.holdings)
-        .find(|h| h.deployment_key() == key)
+        .find(|h| h.deployment_id() == key)
         .map(|h| (h.name.clone(), h.symbol.clone(), h.chain_name.clone()))
         .or_else(|| {
             crate::registry::Chain::all()

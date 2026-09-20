@@ -4,7 +4,7 @@ use crate::store::wallet_domain::AssetHolding;
 use crate::store::wallet_domain::CoreSeedDerivationPaths;
 
 fn defaults() -> CoreSeedDerivationPaths {
-    crate::app_core_derivation_paths_for_preset(Default::default()).expect("defaults")
+    crate::derivation_paths_for_preset(Default::default()).expect("defaults")
 }
 
 fn summary() -> WalletState {
@@ -14,7 +14,7 @@ fn summary() -> WalletState {
         is_watch_only: false,
         chain_name: "Bitcoin".to_string(),
         include_in_portfolio_total: true,
-        network_id: "bitcoin-testnet-4".to_string(),
+        chain_id: "bitcoin-testnet-4".to_string(),
         xpub: Some("zpub123".to_string()),
         derivation_preset: crate::store::wallet_domain::CoreSeedDerivationPreset::Account2,
         derivation_path: Some("m/84'/0'/2'/0/0".to_string()),
@@ -22,7 +22,7 @@ fn summary() -> WalletState {
         holdings: vec![AssetHolding {
             name: "Bitcoin".to_string(),
             symbol: "BTC".to_string(),
-            coin_gecko_id: "bitcoin".to_string(),
+            coingecko_id: "bitcoin".to_string(),
             chain_name: "Bitcoin".to_string(),
             token_standard: "Native".to_string(),
             contract_address: None,
@@ -63,7 +63,7 @@ fn the_view_model_carries_what_the_app_shows() {
 #[test]
 fn the_wallets_own_network_survives_the_round_trip() {
     let view = summary().to_wallet_view(&defaults());
-    assert_eq!(view.network_chain_id, "bitcoin-testnet-4");
+    assert_eq!(view.chain_id, "bitcoin-testnet-4");
 }
 
 /// Holding ids are derived from what identifies the asset, so rebuilding

@@ -111,15 +111,15 @@ impl WalletService {
                 continue;
             };
             let network = chain;
-            if network.is_testnet() || coin.coin_gecko_id.trim().is_empty() {
+            if network.is_testnet() || coin.coingecko_id.trim().is_empty() {
                 continue;
             }
-            let key = coin.deployment_key();
+            let key = coin.deployment_id();
             requests.insert(
                 key.clone(),
                 crate::price::PriceRequestCoin {
                     holding_key: key,
-                    coin_gecko_id: coin
+                    coingecko_id: coin
                         .catalog_token()
                         .map(|t| t.coingecko_id.clone())
                         .unwrap_or_default(),
@@ -130,12 +130,12 @@ impl WalletService {
             if let Some(token) =
                 crate::tokens::deployment(&alert.holding_key).filter(|t| !t.coingecko_id.is_empty())
             {
-                requests
-                    .entry(token.id.clone())
-                    .or_insert(crate::price::PriceRequestCoin {
-                        holding_key: token.id.clone(),
-                        coin_gecko_id: token.coingecko_id.clone(),
-                    });
+                requests.entry(token.deployment_id.clone()).or_insert(
+                    crate::price::PriceRequestCoin {
+                        holding_key: token.deployment_id.clone(),
+                        coingecko_id: token.coingecko_id.clone(),
+                    },
+                );
             }
         }
 
@@ -215,7 +215,7 @@ impl WalletService {
 ///
 /// `coins` are the known tokens. All providers use their public endpoints —
 /// no API key plumbing.
-pub async fn fetch_prices_typed(
+pub async fn fetch_prices(
     coins: Vec<crate::price::PriceRequestCoin>,
 ) -> Result<std::collections::HashMap<String, f64>, SpectraBridgeError> {
     tracing::debug!(coins = coins.len(), "fetch_prices enter");
@@ -236,7 +236,7 @@ pub async fn fetch_prices_typed(
 /// [`WalletService::refresh_fiat_rates`] is the stateful one: it fetches,
 /// merges and persists. This is the read on its own, which is what the CLI's
 /// `market` command wants.
-pub async fn fetch_fiat_rates_typed(
+pub async fn fetch_fiat_rates(
     currencies: Vec<String>,
 ) -> Result<std::collections::HashMap<String, f64>, SpectraBridgeError> {
     tracing::debug!(currencies = currencies.len(), "fetch_fiat_rates enter");

@@ -1,5 +1,5 @@
 # Mainnet token identities and deployments. Testnet assets live in testnet-tokens.toml.
-# Deployments reference tokens.id via token_id and chains.toml networks.id via network_id.
+# Deployments reference tokens.id via token_id and chains.toml chains.id via chain_id.
 # Symbols are display labels. Precision belongs to the deployment.
 # Core derives deployment IDs from network, standard and contract; no stored deployment ID.
 # Keep each token immediately followed by its deployments; both tables are top-level.
@@ -16,7 +16,7 @@ tags = []
 
 [[deployments]]
 token_id = "bitcoin"
-network_id = "bitcoin"
+chain_id = "bitcoin"
 kind = "native"
 decimals = 8
 enabled = true
@@ -33,70 +33,70 @@ tags = []
 
 [[deployments]]
 token_id = "ethereum"
-network_id = "ethereum"
+chain_id = "ethereum"
 kind = "native"
 decimals = 18
 enabled = true
 
 [[deployments]]
 token_id = "ethereum"
-network_id = "arbitrum"
+chain_id = "arbitrum"
 kind = "native"
 decimals = 18
 enabled = true
 
 [[deployments]]
 token_id = "ethereum"
-network_id = "optimism"
+chain_id = "optimism"
 kind = "native"
 decimals = 18
 enabled = true
 
 [[deployments]]
 token_id = "ethereum"
-network_id = "base"
+chain_id = "base"
 kind = "native"
 decimals = 18
 enabled = true
 
 [[deployments]]
 token_id = "ethereum"
-network_id = "linea"
+chain_id = "linea"
 kind = "native"
 decimals = 18
 enabled = true
 
 [[deployments]]
 token_id = "ethereum"
-network_id = "scroll"
+chain_id = "scroll"
 kind = "native"
 decimals = 18
 enabled = true
 
 [[deployments]]
 token_id = "ethereum"
-network_id = "blast"
+chain_id = "blast"
 kind = "native"
 decimals = 18
 enabled = true
 
 [[deployments]]
 token_id = "ethereum"
-network_id = "zksync-era"
+chain_id = "zksync-era"
 kind = "native"
 decimals = 18
 enabled = true
 
 [[deployments]]
 token_id = "ethereum"
-network_id = "unichain"
+chain_id = "unichain"
 kind = "native"
 decimals = 18
 enabled = true
 
 [[deployments]]
 token_id = "ethereum"
-network_id = "ink"
+chain_id = "ink"
 kind = "native"
 decimals = 18
 enabled = true
@@ -113,7 +113,7 @@ tags = []
 
 [[deployments]]
 token_id = "solana"
-network_id = "solana"
+chain_id = "solana"
 kind = "native"
 decimals = 9
 enabled = true
@@ -130,7 +130,7 @@ tags = []
 
 [[deployments]]
 token_id = "dogecoin"
-network_id = "dogecoin"
+chain_id = "dogecoin"
 kind = "native"
 decimals = 8
 enabled = true
@@ -147,7 +147,7 @@ tags = []
 
 [[deployments]]
 token_id = "ripple"
-network_id = "xrp"
+chain_id = "xrp"
 kind = "native"
 decimals = 6
 enabled = true
@@ -164,7 +164,7 @@ tags = []
 
 [[deployments]]
 token_id = "litecoin"
-network_id = "litecoin"
+chain_id = "litecoin"
 kind = "native"
 decimals = 8
 enabled = true
@@ -181,7 +181,7 @@ tags = []
 
 [[deployments]]
 token_id = "bitcoin-cash"
-network_id = "bitcoin-cash"
+chain_id = "bitcoin-cash"
 kind = "native"
 decimals = 8
 enabled = true
@@ -198,7 +198,7 @@ tags = []
 
 [[deployments]]
 token_id = "tron"
-network_id = "tron"
+chain_id = "tron"
 kind = "native"
 decimals = 6
 enabled = true
@@ -215,7 +215,7 @@ tags = []
 
 [[deployments]]
 token_id = "stellar"
-network_id = "stellar"
+chain_id = "stellar"
 kind = "native"
 decimals = 7
 enabled = true
@@ -232,7 +232,7 @@ tags = []
 
 [[deployments]]
 token_id = "cardano"
-network_id = "cardano"
+chain_id = "cardano"
 kind = "native"
 decimals = 6
 enabled = true
@@ -249,7 +249,7 @@ tags = []
 
 [[deployments]]
 token_id = "polkadot"
-network_id = "polkadot"
+chain_id = "polkadot"
 kind = "native"
 decimals = 10
 enabled = true
@@ -266,7 +266,7 @@ tags = []
 
 [[deployments]]
 token_id = "avalanche-2"
-network_id = "avalanche"
+chain_id = "avalanche"
 kind = "native"
 decimals = 18
 enabled = true
@@ -283,7 +283,7 @@ tags = []
 
 [[deployments]]
 token_id = "sui"
-network_id = "sui"
+chain_id = "sui"
 kind = "native"
 decimals = 9
 enabled = true
@@ -300,7 +300,7 @@ tags = []
 
 [[deployments]]
 token_id = "aptos"
-network_id = "aptos"
+chain_id = "aptos"
 kind = "native"
 decimals = 8
 enabled = true
@@ -317,7 +317,7 @@ tags = []
 
 [[deployments]]
 token_id = "the-open-network"
-network_id = "ton"
+chain_id = "ton"
 kind = "native"
 decimals = 9
 enabled = true
@@ -334,7 +334,7 @@ tags = []
 
 [[deployments]]
 token_id = "near"
-network_id = "near"
+chain_id = "near"
 kind = "native"
 decimals = 24
 enabled = true
@@ -351,7 +351,7 @@ tags = []
 
 [[deployments]]
 token_id = "internet-computer"
-network_id = "internet-computer"
+chain_id = "internet-computer"
 kind = "native"
 decimals = 8
 enabled = true
@@ -368,7 +368,7 @@ tags = []
 
 [[deployments]]
 token_id = "monero"
-network_id = "monero"
+chain_id = "monero"
 kind = "native"
 decimals = 12
 enabled = true
@@ -385,7 +385,7 @@ tags = []
 
 [[deployments]]
 token_id = "ethereum-classic"
-network_id = "ethereum-classic"
+chain_id = "ethereum-classic"
 kind = "native"
 decimals = 18
 enabled = true
@@ -402,7 +402,7 @@ tags = []
 
 [[deployments]]
 token_id = "bitcoin-cash-sv"
-network_id = "bitcoin-sv"
+chain_id = "bitcoin-sv"
 kind = "native"
 decimals = 8
 enabled = true
@@ -419,14 +419,14 @@ tags = []
 
 [[deployments]]
 token_id = "binancecoin"
-network_id = "bnb"
+chain_id = "bnb"
 kind = "native"
 decimals = 18
 enabled = true
 
 [[deployments]]
 token_id = "binancecoin"
-network_id = "opbnb"
+chain_id = "opbnb"
 kind = "native"
 decimals = 18
 enabled = true
@@ -443,7 +443,7 @@ tags = []
 
 [[deployments]]
 token_id = "hyperliquid"
-network_id = "hyperliquid"
+chain_id = "hyperliquid"
 kind = "native"
 decimals = 18
 enabled = true
@@ -460,14 +460,14 @@ tags = []
 
 [[deployments]]
 token_id = "polygon-ecosystem-token"
-network_id = "polygon"
+chain_id = "polygon"
 kind = "native"
 decimals = 18
 enabled = true
 
 [[deployments]]
 token_id = "polygon-ecosystem-token"
-network_id = "ethereum"
+chain_id = "ethereum"
 kind = "token"
 standard = "ERC-20"
 contract = "0x455e53cbb86018ac2b8092fdcd39d8444affc3f6"
@@ -486,14 +486,14 @@ tags = []
 
 [[deployments]]
 token_id = "mantle"
-network_id = "mantle"
+chain_id = "mantle"
 kind = "native"
 decimals = 18
 enabled = true
 
 [[deployments]]
 token_id = "mantle"
-network_id = "ethereum"
+chain_id = "ethereum"
 kind = "token"
 standard = "ERC-20"
 contract = "0x3c3a81e81dc49a522a592e7622a7e711c06bf354"
@@ -512,7 +512,7 @@ tags = []
 
 [[deployments]]
 token_id = "zcash"
-network_id = "zcash"
+chain_id = "zcash"
 kind = "native"
 decimals = 8
 enabled = true
@@ -529,7 +529,7 @@ tags = []
 
 [[deployments]]
 token_id = "bitcoin-gold"
-network_id = "bitcoin-gold"
+chain_id = "bitcoin-gold"
 kind = "native"
 decimals = 8
 enabled = true
@@ -546,7 +546,7 @@ tags = []
 
 [[deployments]]
 token_id = "decred"
-network_id = "decred"
+chain_id = "decred"
 kind = "native"
 decimals = 8
 enabled = true
@@ -563,7 +563,7 @@ tags = []
 
 [[deployments]]
 token_id = "kaspa"
-network_id = "kaspa"
+chain_id = "kaspa"
 kind = "native"
 decimals = 8
 enabled = true
@@ -580,7 +580,7 @@ tags = []
 
 [[deployments]]
 token_id = "sei-network"
-network_id = "sei"
+chain_id = "sei"
 kind = "native"
 decimals = 18
 enabled = true
@@ -597,7 +597,7 @@ tags = []
 
 [[deployments]]
 token_id = "celo"
-network_id = "celo"
+chain_id = "celo"
 kind = "native"
 decimals = 18
 enabled = true
@@ -614,14 +614,14 @@ tags = []
 
 [[deployments]]
 token_id = "crypto-com-chain"
-network_id = "cronos"
+chain_id = "cronos"
 kind = "native"
 decimals = 18
 enabled = true
 
 [[deployments]]
 token_id = "crypto-com-chain"
-network_id = "ethereum"
+chain_id = "ethereum"
 kind = "token"
 standard = "ERC-20"
 contract = "0xa0b73e1ff0b80914ab6fe0444e65848c4c34450b"
@@ -640,7 +640,7 @@ tags = []
 
 [[deployments]]
 token_id = "sonic-3"
-network_id = "sonic"
+chain_id = "sonic"
 kind = "native"
 decimals = 18
 enabled = true
@@ -657,7 +657,7 @@ tags = []
 
 [[deployments]]
 token_id = "berachain-bera"
-network_id = "berachain"
+chain_id = "berachain"
 kind = "native"
 decimals = 18
 enabled = true
@@ -674,7 +674,7 @@ tags = []
 
 [[deployments]]
 token_id = "dash"
-network_id = "dash"
+chain_id = "dash"
 kind = "native"
 decimals = 8
 enabled = true
@@ -691,7 +691,7 @@ tags = []
 
 [[deployments]]
 token_id = "okb"
-network_id = "x-layer"
+chain_id = "x-layer"
 kind = "native"
 decimals = 18
 enabled = true
@@ -708,7 +708,7 @@ tags = []
 
 [[deployments]]
 token_id = "bittensor"
-network_id = "bittensor"
+chain_id = "bittensor"
 kind = "native"
 decimals = 9
 enabled = true
@@ -725,7 +725,7 @@ tags = []
 
 [[deployments]]
 token_id = "aave"
-network_id = "ethereum"
+chain_id = "ethereum"
 kind = "token"
 standard = "ERC-20"
 contract = "0x7fc66500c84a76ad7e9c93437bfc5ac33e2ddae9"
@@ -734,7 +734,7 @@ enabled = false
 
 [[deployments]]
 token_id = "aave"
-network_id = "arbitrum"
+chain_id = "arbitrum"
 kind = "token"
 standard = "ERC-20"
 contract = "0xba5ddd1f9d7f570dc94a51479a000e3bce967196"
@@ -753,7 +753,7 @@ tags = []
 
 [[deployments]]
 token_id = "aerodrome-finance"
-network_id = "base"
+chain_id = "base"
 kind = "token"
 standard = "ERC-20"
 contract = "0x940181a94a35a4569e4529a3cdfb74e38fd98631"
@@ -772,7 +772,7 @@ tags = []
 
 [[deployments]]
 token_id = "arbitrum"
-network_id = "ethereum"
+chain_id = "ethereum"
 kind = "token"
 standard = "ERC-20"
 contract = "0xb50721bcf8d664c30412cfbc6cf7a15145234ad1"
@@ -781,7 +781,7 @@ enabled = false
 
 [[deployments]]
 token_id = "arbitrum"
-network_id = "arbitrum"
+chain_id = "arbitrum"
 kind = "token"
 standard = "ERC-20"
 contract = "0x912ce59144191c1204e64559fe8253a0e49e6548"
@@ -800,7 +800,7 @@ tags = []
 
 [[deployments]]
 token_id = "bitget-token"
-network_id = "ethereum"
+chain_id = "ethereum"
 kind = "token"
 standard = "ERC-20"
 contract = "0x54d2252757e1672eead234d27b1270728ff90581"
@@ -819,7 +819,7 @@ tags = []
 
 [[deployments]]
 token_id = "blast"
-network_id = "blast"
+chain_id = "blast"
 kind = "token"
 standard = "ERC-20"
 contract = "0xb1a5700fa2358173fe465e6ea4ff52e36e88e2ad"
@@ -838,7 +838,7 @@ tags = ["meme"]
 
 [[deployments]]
 token_id = "bittorrent"
-network_id = "tron"
+chain_id = "tron"
 kind = "token"
 standard = "TRC-20"
 contract = "TAFjULxiVgT4qWk6UZwjqwZXTSaGaqnVp4"
@@ -857,7 +857,7 @@ tags = ["stablecoin"]
 
 [[deployments]]
 token_id = "honey-3"
-network_id = "berachain"
+chain_id = "berachain"
 kind = "token"
 standard = "ERC-20"
 contract = "0xfcbd14dc51f0a4d49d5e53c2e0950e0bc26d0dce"
@@ -876,7 +876,7 @@ tags = []
 
 [[deployments]]
 token_id = "pancakeswap-token"
-network_id = "ethereum"
+chain_id = "ethereum"
 kind = "token"
 standard = "ERC-20"
 contract = "0x152649ea73beab28c5b49b26eb48f7ead6d4c898"
@@ -885,7 +885,7 @@ enabled = false
 
 [[deployments]]
 token_id = "pancakeswap-token"
-network_id = "solana"
+chain_id = "solana"
 kind = "token"
 standard = "SPL"
 contract = "4qQeZ5LwSz6HuupUu8jCtgXyW1mYQcNbFAW1sWZp89HL"
@@ -894,7 +894,7 @@ enabled = false
 
 [[deployments]]
 token_id = "pancakeswap-token"
-network_id = "base"
+chain_id = "base"
 kind = "token"
 standard = "ERC-20"
 contract = "0x3055913c90fcc1a6ce9a358911721eeb942013a1"
@@ -903,7 +903,7 @@ enabled = false
 
 [[deployments]]
 token_id = "pancakeswap-token"
-network_id = "bnb"
+chain_id = "bnb"
 kind = "token"
 standard = "BEP-20"
 contract = "0x0e09fabb73bd3ade0a17ecc321fd13a19e81ce82"
@@ -922,7 +922,7 @@ tags = []
 
 [[deployments]]
 token_id = "coinbase-wrapped-btc"
-network_id = "ethereum"
+chain_id = "ethereum"
 kind = "token"
 standard = "ERC-20"
 contract = "0xcbb7c0000ab88b473b1f5afd9ef808440eed33bf"
@@ -931,7 +931,7 @@ enabled = false
 
 [[deployments]]
 token_id = "coinbase-wrapped-btc"
-network_id = "solana"
+chain_id = "solana"
 kind = "token"
 standard = "SPL"
 contract = "cbbtcf3aa214zXHbiAZQwf4122FBYbraNdFqgw4iMij"
@@ -940,7 +940,7 @@ enabled = false
 
 [[deployments]]
 token_id = "coinbase-wrapped-btc"
-network_id = "arbitrum"
+chain_id = "arbitrum"
 kind = "token"
 standard = "ERC-20"
 contract = "0xcbb7c0000ab88b473b1f5afd9ef808440eed33bf"
@@ -949,7 +949,7 @@ enabled = false
 
 [[deployments]]
 token_id = "coinbase-wrapped-btc"
-network_id = "base"
+chain_id = "base"
 kind = "token"
 standard = "ERC-20"
 contract = "0xcbb7c0000ab88b473b1f5afd9ef808440eed33bf"
@@ -968,7 +968,7 @@ tags = []
 
 [[deployments]]
 token_id = "curve-dao-token"
-network_id = "ethereum"
+chain_id = "ethereum"
 kind = "token"
 standard = "ERC-20"
 contract = "0xd533a949740bb3306d119cc777fa900ba034cd52"
@@ -977,7 +977,7 @@ enabled = false
 
 [[deployments]]
 token_id = "curve-dao-token"
-network_id = "arbitrum"
+chain_id = "arbitrum"
 kind = "token"
 standard = "ERC-20"
 contract = "0x11cdb42b0eb46d95f990bedd4695a6e3fa034978"
@@ -986,7 +986,7 @@ enabled = false
 
 [[deployments]]
 token_id = "curve-dao-token"
-network_id = "optimism"
+chain_id = "optimism"
 kind = "token"
 standard = "ERC-20"
 contract = "0x0994206dfe8de6ec6920ff4d779b0d950605fb53"
@@ -995,7 +995,7 @@ enabled = false
 
 [[deployments]]
 token_id = "curve-dao-token"
-network_id = "base"
+chain_id = "base"
 kind = "token"
 standard = "ERC-20"
 contract = "0x8ee73c484a26e0a5df2ee2a4960b789967dd0415"
@@ -1014,7 +1014,7 @@ tags = ["stablecoin"]
 
 [[deployments]]
 token_id = "dai"
-network_id = "ethereum"
+chain_id = "ethereum"
 kind = "token"
 standard = "ERC-20"
 contract = "0x6b175474e89094c44da98b954eedeac495271d0f"
@@ -1023,7 +1023,7 @@ enabled = false
 
 [[deployments]]
 token_id = "dai"
-network_id = "base"
+chain_id = "base"
 kind = "token"
 standard = "ERC-20"
 contract = "0x50c5725949a6f0c72e6c4a641f24049a917db0cb"
@@ -1032,7 +1032,7 @@ enabled = false
 
 [[deployments]]
 token_id = "dai"
-network_id = "polygon"
+chain_id = "polygon"
 kind = "token"
 standard = "ERC-20"
 contract = "0x8f3cf7ad23cd3cadbd9735aff958023239c6a063"
@@ -1051,7 +1051,7 @@ tags = []
 
 [[deployments]]
 token_id = "ethena"
-network_id = "ethereum"
+chain_id = "ethereum"
 kind = "token"
 standard = "ERC-20"
 contract = "0x57e114b691db790c35207b2e685d4a43181e6061"
@@ -1060,7 +1060,7 @@ enabled = false
 
 [[deployments]]
 token_id = "ethena"
-network_id = "solana"
+chain_id = "solana"
 kind = "token"
 standard = "SPL"
 contract = "72QvBVwpxqmheEPfaCwWSWqEFsUy3rhWt6JhQBMNTwD1"
@@ -1069,7 +1069,7 @@ enabled = false
 
 [[deployments]]
 token_id = "ethena"
-network_id = "arbitrum"
+chain_id = "arbitrum"
 kind = "token"
 standard = "ERC-20"
 contract = "0x58538e6a46e07434d7e7375bc268d3cb839c0133"
@@ -1078,7 +1078,7 @@ enabled = false
 
 [[deployments]]
 token_id = "ethena"
-network_id = "ton"
+chain_id = "ton"
 kind = "token"
 standard = "TEP-74"
 contract = "EQAFhZFZYye0llsl785OzOJG9QT6PXyYUdmiC4U95lBuHh1S"
@@ -1087,7 +1087,7 @@ enabled = false
 
 [[deployments]]
 token_id = "ethena"
-network_id = "bnb"
+chain_id = "bnb"
 kind = "token"
 standard = "BEP-20"
 contract = "0x58538e6a46e07434d7e7375bc268d3cb839c0133"
@@ -1106,7 +1106,7 @@ tags = []
 
 [[deployments]]
 token_id = "ethereum-name-service"
-network_id = "ethereum"
+chain_id = "ethereum"
 kind = "token"
 standard = "ERC-20"
 contract = "0xc18360217d8f7ab5e7c516566761ea12ce7f9d72"
@@ -1125,7 +1125,7 @@ tags = []
 
 [[deployments]]
 token_id = "ether-fi"
-network_id = "ethereum"
+chain_id = "ethereum"
 kind = "token"
 standard = "ERC-20"
 contract = "0xfe0c30065b384f05761f15d0cc899d4f9f9cc0eb"
@@ -1134,7 +1134,7 @@ enabled = false
 
 [[deployments]]
 token_id = "ether-fi"
-network_id = "arbitrum"
+chain_id = "arbitrum"
 kind = "token"
 standard = "ERC-20"
 contract = "0x7189fb5b6504bbff6a852b13b7b82a3c118fdc27"
@@ -1143,7 +1143,7 @@ enabled = false
 
 [[deployments]]
 token_id = "ether-fi"
-network_id = "base"
+chain_id = "base"
 kind = "token"
 standard = "ERC-20"
 contract = "0x6c240dda6b5c336df09a4d011139beaaa1ea2aa2"
@@ -1152,7 +1152,7 @@ enabled = false
 
 [[deployments]]
 token_id = "ether-fi"
-network_id = "scroll"
+chain_id = "scroll"
 kind = "token"
 standard = "ERC-20"
 contract = "0x056a5fa5da84ceb7f93d36e545c5905607d8bd81"
@@ -1171,7 +1171,7 @@ tags = ["stablecoin"]
 
 [[deployments]]
 token_id = "euro-coin"
-network_id = "ethereum"
+chain_id = "ethereum"
 kind = "token"
 standard = "ERC-20"
 contract = "0x1abaea1f7c830bd89acc67ec4af516284b1bc33c"
@@ -1180,7 +1180,7 @@ enabled = false
 
 [[deployments]]
 token_id = "euro-coin"
-network_id = "solana"
+chain_id = "solana"
 kind = "token"
 standard = "SPL"
 contract = "HzwqbKZw8HxMN6bF2yFZNrht3c2iXXzpKcFu7uBEDKtr"
@@ -1189,7 +1189,7 @@ enabled = false
 
 [[deployments]]
 token_id = "euro-coin"
-network_id = "avalanche"
+chain_id = "avalanche"
 kind = "token"
 standard = "ARC-20"
 contract = "0xc891eb4cbdeff6e073e859e987815ed1505c2acd"
@@ -1208,7 +1208,7 @@ tags = ["stablecoin"]
 
 [[deployments]]
 token_id = "first-digital-usd"
-network_id = "ethereum"
+chain_id = "ethereum"
 kind = "token"
 standard = "ERC-20"
 contract = "0xc5f0f7b66764f6ec8c8dff7ba683102295e16409"
@@ -1217,7 +1217,7 @@ enabled = false
 
 [[deployments]]
 token_id = "first-digital-usd"
-network_id = "solana"
+chain_id = "solana"
 kind = "token"
 standard = "SPL"
 contract = "9zNQRsGLjNKwCUU5Gq5LR8beUCPzQMVMqKAi3SSZh54u"
@@ -1226,7 +1226,7 @@ enabled = false
 
 [[deployments]]
 token_id = "first-digital-usd"
-network_id = "arbitrum"
+chain_id = "arbitrum"
 kind = "token"
 standard = "ERC-20"
 contract = "0x93c9932e4afa59201f0b5e63f7d816516f1669fe"
@@ -1235,7 +1235,7 @@ enabled = false
 
 [[deployments]]
 token_id = "first-digital-usd"
-network_id = "sui"
+chain_id = "sui"
 kind = "token"
 standard = "Sui Coin"
 contract = "0xf16e6b723f242ec745dfd7634ad072c42d5c1d9ac9d62a39c381303eaa57693a::fdusd::FDUSD"
@@ -1244,7 +1244,7 @@ enabled = false
 
 [[deployments]]
 token_id = "first-digital-usd"
-network_id = "ton"
+chain_id = "ton"
 kind = "token"
 standard = "TEP-74"
 contract = "EQD0Evpk4timFOHmy4Sv3l_KEUXlM-dN1_KhroTCfB2wkO89"
@@ -1253,7 +1253,7 @@ enabled = false
 
 [[deployments]]
 token_id = "first-digital-usd"
-network_id = "bnb"
+chain_id = "bnb"
 kind = "token"
 standard = "BEP-20"
 contract = "0xc5f0f7b66764f6ec8c8dff7ba683102295e16409"
@@ -1272,7 +1272,7 @@ tags = ["stablecoin"]
 
 [[deployments]]
 token_id = "gho"
-network_id = "ethereum"
+chain_id = "ethereum"
 kind = "token"
 standard = "ERC-20"
 contract = "0x40d16fc0246ad3160ccc09b8d0d3a2cd28ae6c2f"
@@ -1281,7 +1281,7 @@ enabled = false
 
 [[deployments]]
 token_id = "gho"
-network_id = "arbitrum"
+chain_id = "arbitrum"
 kind = "token"
 standard = "ERC-20"
 contract = "0x7dff72693f6a4149b17e7c6314655f6a9f7c8b33"
@@ -1290,7 +1290,7 @@ enabled = false
 
 [[deployments]]
 token_id = "gho"
-network_id = "avalanche"
+chain_id = "avalanche"
 kind = "token"
 standard = "ARC-20"
 contract = "0xfc421ad3c883bf9e7c4f42de845c4e4405799e73"
@@ -1299,7 +1299,7 @@ enabled = false
 
 [[deployments]]
 token_id = "gho"
-network_id = "base"
+chain_id = "base"
 kind = "token"
 standard = "ERC-20"
 contract = "0x6bb7a212910682dcfdbd5bcbb3e28fb4e8da10ee"
@@ -1318,7 +1318,7 @@ tags = []
 
 [[deployments]]
 token_id = "jupiter-exchange-solana"
-network_id = "solana"
+chain_id = "solana"
 kind = "token"
 standard = "SPL"
 contract = "JUPyiwrYJFskUPiHa7hkeR8VUtAeFoSYbKedZNsDvCN"
@@ -1337,7 +1337,7 @@ tags = []
 
 [[deployments]]
 token_id = "kucoin-shares"
-network_id = "ethereum"
+chain_id = "ethereum"
 kind = "token"
 standard = "ERC-20"
 contract = "0xf34960d9d60be18cc1d5afc1a6f012a723a28811"
@@ -1356,7 +1356,7 @@ tags = []
 
 [[deployments]]
 token_id = "lombard-staked-btc"
-network_id = "ethereum"
+chain_id = "ethereum"
 kind = "token"
 standard = "ERC-20"
 contract = "0x8236a87084f8b84306f72007f36f2618a5634494"
@@ -1365,7 +1365,7 @@ enabled = false
 
 [[deployments]]
 token_id = "lombard-staked-btc"
-network_id = "solana"
+chain_id = "solana"
 kind = "token"
 standard = "SPL"
 contract = "LBTCgU4b3wsFKsPwBn1rRZDx5DoFutM6RPiEt1TPDsY"
@@ -1374,7 +1374,7 @@ enabled = false
 
 [[deployments]]
 token_id = "lombard-staked-btc"
-network_id = "base"
+chain_id = "base"
 kind = "token"
 standard = "ERC-20"
 contract = "0xecac9c5f704e954931349da37f60e39f515c11c1"
@@ -1383,7 +1383,7 @@ enabled = false
 
 [[deployments]]
 token_id = "lombard-staked-btc"
-network_id = "bnb"
+chain_id = "bnb"
 kind = "token"
 standard = "BEP-20"
 contract = "0xecac9c5f704e954931349da37f60e39f515c11c1"
@@ -1402,7 +1402,7 @@ tags = []
 
 [[deployments]]
 token_id = "lido-dao"
-network_id = "ethereum"
+chain_id = "ethereum"
 kind = "token"
 standard = "ERC-20"
 contract = "0x5a98fcbea516cf06857215779fd812ca3bef1b32"
@@ -1411,7 +1411,7 @@ enabled = false
 
 [[deployments]]
 token_id = "lido-dao"
-network_id = "arbitrum"
+chain_id = "arbitrum"
 kind = "token"
 standard = "ERC-20"
 contract = "0x13ad51ed4f1b7e9dc168d8a00cb3f4ddd85efa60"
@@ -1420,7 +1420,7 @@ enabled = false
 
 [[deployments]]
 token_id = "lido-dao"
-network_id = "optimism"
+chain_id = "optimism"
 kind = "token"
 standard = "ERC-20"
 contract = "0xfdb794692724153d1488ccdbe0c56c252596735f"
@@ -1429,7 +1429,7 @@ enabled = false
 
 [[deployments]]
 token_id = "lido-dao"
-network_id = "polygon"
+chain_id = "polygon"
 kind = "token"
 standard = "ERC-20"
 contract = "0xc3c7d422809852031b44ab29eec9f1eff2a58756"
@@ -1448,7 +1448,7 @@ tags = []
 
 [[deployments]]
 token_id = "leo-token"
-network_id = "ethereum"
+chain_id = "ethereum"
 kind = "token"
 standard = "ERC-20"
 contract = "0x2af5d2ad76741191d15dfe7bf6ac92d4bd912ca3"
@@ -1467,7 +1467,7 @@ tags = []
 
 [[deployments]]
 token_id = "linea"
-network_id = "ethereum"
+chain_id = "ethereum"
 kind = "token"
 standard = "ERC-20"
 contract = "0x1789e0043623282d5dcc7f213d703c6d8bafbb04"
@@ -1476,7 +1476,7 @@ enabled = false
 
 [[deployments]]
 token_id = "linea"
-network_id = "linea"
+chain_id = "linea"
 kind = "token"
 standard = "ERC-20"
 contract = "0x1789e0043623282d5dcc7f213d703c6d8bafbb04"
@@ -1495,7 +1495,7 @@ tags = []
 
 [[deployments]]
 token_id = "chainlink"
-network_id = "ethereum"
+chain_id = "ethereum"
 kind = "token"
 standard = "ERC-20"
 contract = "0x514910771af9ca656af840dff83e8264ecf986ca"
@@ -1504,7 +1504,7 @@ enabled = false
 
 [[deployments]]
 token_id = "chainlink"
-network_id = "solana"
+chain_id = "solana"
 kind = "token"
 standard = "SPL"
 contract = "LinkhB3afbBKb2EQQu7s7umdZceV3wcvAUJhQAfQ23L"
@@ -1513,7 +1513,7 @@ enabled = false
 
 [[deployments]]
 token_id = "chainlink"
-network_id = "arbitrum"
+chain_id = "arbitrum"
 kind = "token"
 standard = "ERC-20"
 contract = "0xf97f4df75117a78c1a5a0dbb814af92458539fb4"
@@ -1522,7 +1522,7 @@ enabled = false
 
 [[deployments]]
 token_id = "chainlink"
-network_id = "avalanche"
+chain_id = "avalanche"
 kind = "token"
 standard = "ARC-20"
 contract = "0x5947bb275c521040051d82396192181b413227a3"
@@ -1531,7 +1531,7 @@ enabled = false
 
 [[deployments]]
 token_id = "chainlink"
-network_id = "bnb"
+chain_id = "bnb"
 kind = "token"
 standard = "BEP-20"
 contract = "0x404460c6a5ede2d891e8297795264fde62adbb75"
@@ -1540,7 +1540,7 @@ enabled = false
 
 [[deployments]]
 token_id = "chainlink"
-network_id = "hyperliquid"
+chain_id = "hyperliquid"
 kind = "token"
 standard = "ERC-20"
 contract = "0x1ac2ee68b8d038c982c1e1f73f596927dd70de59"
@@ -1559,7 +1559,7 @@ tags = []
 
 [[deployments]]
 token_id = "morpho"
-network_id = "ethereum"
+chain_id = "ethereum"
 kind = "token"
 standard = "ERC-20"
 contract = "0x58d97b57bb95320f9a05dc918aef65434969c2b2"
@@ -1568,7 +1568,7 @@ enabled = false
 
 [[deployments]]
 token_id = "morpho"
-network_id = "arbitrum"
+chain_id = "arbitrum"
 kind = "token"
 standard = "ERC-20"
 contract = "0x40bd670a58238e6e230c430bbb5ce6ec0d40df48"
@@ -1577,7 +1577,7 @@ enabled = false
 
 [[deployments]]
 token_id = "morpho"
-network_id = "base"
+chain_id = "base"
 kind = "token"
 standard = "ERC-20"
 contract = "0xbaa5cc21fd487b8fcc2f632f3f4e8d37262a0842"
@@ -1596,7 +1596,7 @@ tags = []
 
 [[deployments]]
 token_id = "ondo-finance"
-network_id = "ethereum"
+chain_id = "ethereum"
 kind = "token"
 standard = "ERC-20"
 contract = "0xfaba6f8e4a5e8ab82f62fe7c39859fa577269be3"
@@ -1615,7 +1615,7 @@ tags = []
 
 [[deployments]]
 token_id = "optimism"
-network_id = "optimism"
+chain_id = "optimism"
 kind = "token"
 standard = "ERC-20"
 contract = "0x4200000000000000000000000000000000000042"
@@ -1634,7 +1634,7 @@ tags = []
 
 [[deployments]]
 token_id = "pax-gold"
-network_id = "ethereum"
+chain_id = "ethereum"
 kind = "token"
 standard = "ERC-20"
 contract = "0x45804880de22913dafe09f4980848ece6ecbaf78"
@@ -1653,7 +1653,7 @@ tags = []
 
 [[deployments]]
 token_id = "pendle"
-network_id = "ethereum"
+chain_id = "ethereum"
 kind = "token"
 standard = "ERC-20"
 contract = "0x808507121b80c02388fad14726482e061b8da827"
@@ -1662,7 +1662,7 @@ enabled = false
 
 [[deployments]]
 token_id = "pendle"
-network_id = "arbitrum"
+chain_id = "arbitrum"
 kind = "token"
 standard = "ERC-20"
 contract = "0x0c880f6761f1af8d9aa9c466984b80dab9a8c9e8"
@@ -1671,7 +1671,7 @@ enabled = false
 
 [[deployments]]
 token_id = "pendle"
-network_id = "base"
+chain_id = "base"
 kind = "token"
 standard = "ERC-20"
 contract = "0xa99f6e6785da0f5d6fb42495fe424bce029eeb3e"
@@ -1680,7 +1680,7 @@ enabled = false
 
 [[deployments]]
 token_id = "pendle"
-network_id = "bnb"
+chain_id = "bnb"
 kind = "token"
 standard = "BEP-20"
 contract = "0xb3ed0a426155b79b898849803e3b36552f7ed507"
@@ -1699,7 +1699,7 @@ tags = ["meme"]
 
 [[deployments]]
 token_id = "pepe"
-network_id = "ethereum"
+chain_id = "ethereum"
 kind = "token"
 standard = "ERC-20"
 contract = "0x6982508145454ce325ddbe47a25d4ec3d2311933"
@@ -1708,7 +1708,7 @@ enabled = false
 
 [[deployments]]
 token_id = "pepe"
-network_id = "arbitrum"
+chain_id = "arbitrum"
 kind = "token"
 standard = "ERC-20"
 contract = "0x25d887ce7a35172c62febfd67a1856f20faebb00"
@@ -1717,7 +1717,7 @@ enabled = false
 
 [[deployments]]
 token_id = "pepe"
-network_id = "avalanche"
+chain_id = "avalanche"
 kind = "token"
 standard = "ARC-20"
 contract = "0xa659d083b677d6bffe1cb704e1473b896727be6d"
@@ -1726,7 +1726,7 @@ enabled = false
 
 [[deployments]]
 token_id = "pepe"
-network_id = "bnb"
+chain_id = "bnb"
 kind = "token"
 standard = "BEP-20"
 contract = "0x25d887ce7a35172c62febfd67a1856f20faebb00"
@@ -1745,7 +1745,7 @@ tags = ["meme"]
 
 [[deployments]]
 token_id = "pump-fun"
-network_id = "solana"
+chain_id = "solana"
 kind = "token"
 standard = "SPL"
 contract = "pumpCmXqMfrsAkQ5r49WcJnRayYRqmXz6ae8H7H9Dfn"
@@ -1764,7 +1764,7 @@ tags = []
 
 [[deployments]]
 token_id = "pyth-network"
-network_id = "solana"
+chain_id = "solana"
 kind = "token"
 standard = "SPL"
 contract = "HZ1JovNiVvGrGNiiYvEozEVgZ58xaU3RKwX8eACQBCt3"
@@ -1783,7 +1783,7 @@ tags = ["stablecoin"]
 
 [[deployments]]
 token_id = "paypal-usd"
-network_id = "ethereum"
+chain_id = "ethereum"
 kind = "token"
 standard = "ERC-20"
 contract = "0x6c3ea9036406852006290770bedfcaba0e23a0e8"
@@ -1792,7 +1792,7 @@ enabled = false
 
 [[deployments]]
 token_id = "paypal-usd"
-network_id = "solana"
+chain_id = "solana"
 kind = "token"
 standard = "SPL"
 contract = "2b1kV6DkPAnxd5ixfnxCpjxmKwqjjaYmCZfHsFu24GXo"
@@ -1801,7 +1801,7 @@ enabled = false
 
 [[deployments]]
 token_id = "paypal-usd"
-network_id = "arbitrum"
+chain_id = "arbitrum"
 kind = "token"
 standard = "ERC-20"
 contract = "0x46850ad61c2b7d64d08c9c754f45254596696984"
@@ -1820,7 +1820,7 @@ tags = []
 
 [[deployments]]
 token_id = "raydium"
-network_id = "solana"
+chain_id = "solana"
 kind = "token"
 standard = "SPL"
 contract = "4k3Dyjzvzp8eMZWUXbBCjEvwSkkk59S5iCNLY3QrkX6R"
@@ -1839,7 +1839,7 @@ tags = []
 
 [[deployments]]
 token_id = "rocket-pool-eth"
-network_id = "ethereum"
+chain_id = "ethereum"
 kind = "token"
 standard = "ERC-20"
 contract = "0xae78736cd615f374d3085123a210448e74fc6393"
@@ -1848,7 +1848,7 @@ enabled = false
 
 [[deployments]]
 token_id = "rocket-pool-eth"
-network_id = "arbitrum"
+chain_id = "arbitrum"
 kind = "token"
 standard = "ERC-20"
 contract = "0xec70dcb4a1efa46b8f2d97c310c9c4790ba5ffa8"
@@ -1857,7 +1857,7 @@ enabled = false
 
 [[deployments]]
 token_id = "rocket-pool-eth"
-network_id = "optimism"
+chain_id = "optimism"
 kind = "token"
 standard = "ERC-20"
 contract = "0x9bcef72be871e61ed4fbbc7630889bee758eb81d"
@@ -1866,7 +1866,7 @@ enabled = false
 
 [[deployments]]
 token_id = "rocket-pool-eth"
-network_id = "base"
+chain_id = "base"
 kind = "token"
 standard = "ERC-20"
 contract = "0xb6fe221fe9eef5aba221c348ba20a1bf5e73624c"
@@ -1885,7 +1885,7 @@ tags = ["stablecoin"]
 
 [[deployments]]
 token_id = "ripple-usd"
-network_id = "ethereum"
+chain_id = "ethereum"
 kind = "token"
 standard = "ERC-20"
 contract = "0xcfd748b9de538c9f5b1805e8db9e1d4671f7f2ec"
@@ -1904,7 +1904,7 @@ tags = []
 
 [[deployments]]
 token_id = "scroll"
-network_id = "scroll"
+chain_id = "scroll"
 kind = "token"
 standard = "ERC-20"
 contract = "0xd29687c813d741e2f938f4ac377128810e217b1b"
@@ -1923,7 +1923,7 @@ tags = ["meme"]
 
 [[deployments]]
 token_id = "shiba-inu"
-network_id = "ethereum"
+chain_id = "ethereum"
 kind = "token"
 standard = "ERC-20"
 contract = "0x95ad61b0a150d79219dcf64e1e6cc01f0b64c4ce"
@@ -1942,7 +1942,7 @@ tags = []
 
 [[deployments]]
 token_id = "sky"
-network_id = "ethereum"
+chain_id = "ethereum"
 kind = "token"
 standard = "ERC-20"
 contract = "0x56072c95faa701256059aa122697b133aded9279"
@@ -1961,7 +1961,7 @@ tags = []
 
 [[deployments]]
 token_id = "staked-ether"
-network_id = "ethereum"
+chain_id = "ethereum"
 kind = "token"
 standard = "ERC-20"
 contract = "0xae7ab96520de3a18e5e111b5eaab095312d7fe84"
@@ -1980,7 +1980,7 @@ tags = ["stablecoin"]
 
 [[deployments]]
 token_id = "ethena-staked-usde"
-network_id = "ethereum"
+chain_id = "ethereum"
 kind = "token"
 standard = "ERC-20"
 contract = "0x9d39a5de30e57443bff2a8307a4256c8797a3497"
@@ -1989,7 +1989,7 @@ enabled = false
 
 [[deployments]]
 token_id = "ethena-staked-usde"
-network_id = "solana"
+chain_id = "solana"
 kind = "token"
 standard = "SPL"
 contract = "Eh6XEPhSwoLv5wFApukmnaVSHQ6sAnoD9BmgmwQoN2sN"
@@ -1998,7 +1998,7 @@ enabled = false
 
 [[deployments]]
 token_id = "ethena-staked-usde"
-network_id = "arbitrum"
+chain_id = "arbitrum"
 kind = "token"
 standard = "ERC-20"
 contract = "0x211cc4dd073734da055fbf44a2b4667d5e5fe5d2"
@@ -2007,7 +2007,7 @@ enabled = false
 
 [[deployments]]
 token_id = "ethena-staked-usde"
-network_id = "base"
+chain_id = "base"
 kind = "token"
 standard = "ERC-20"
 contract = "0x211cc4dd073734da055fbf44a2b4667d5e5fe5d2"
@@ -2026,7 +2026,7 @@ tags = ["stablecoin"]
 
 [[deployments]]
 token_id = "susds"
-network_id = "ethereum"
+chain_id = "ethereum"
 kind = "token"
 standard = "ERC-20"
 contract = "0xa3931d71877c0e7a3148cb7eb4463524fec27fbd"
@@ -2035,7 +2035,7 @@ enabled = false
 
 [[deployments]]
 token_id = "susds"
-network_id = "arbitrum"
+chain_id = "arbitrum"
 kind = "token"
 standard = "ERC-20"
 contract = "0xddb46999f8891663a8f2828d25298f70416d7610"
@@ -2044,7 +2044,7 @@ enabled = false
 
 [[deployments]]
 token_id = "susds"
-network_id = "optimism"
+chain_id = "optimism"
 kind = "token"
 standard = "ERC-20"
 contract = "0xb5b2dc7fd34c249f4be7fb1fcea07950784229e0"
@@ -2053,7 +2053,7 @@ enabled = false
 
 [[deployments]]
 token_id = "susds"
-network_id = "base"
+chain_id = "base"
 kind = "token"
 standard = "ERC-20"
 contract = "0x5875eee11cf8398102fdad704c9e96607675467a"
@@ -2072,7 +2072,7 @@ tags = ["stablecoin"]
 
 [[deployments]]
 token_id = "true-usd"
-network_id = "ethereum"
+chain_id = "ethereum"
 kind = "token"
 standard = "ERC-20"
 contract = "0x0000000000085d4780b73119b644ae5ecd22b376"
@@ -2081,7 +2081,7 @@ enabled = false
 
 [[deployments]]
 token_id = "true-usd"
-network_id = "tron"
+chain_id = "tron"
 kind = "token"
 standard = "TRC-20"
 contract = "TUpMhErZL2fhh4sVNULAbNKLokS4GjC1F4"
@@ -2090,7 +2090,7 @@ enabled = false
 
 [[deployments]]
 token_id = "true-usd"
-network_id = "avalanche"
+chain_id = "avalanche"
 kind = "token"
 standard = "ARC-20"
 contract = "0x1c20e891bab6b1727d14da358fae2984ed9b59eb"
@@ -2099,7 +2099,7 @@ enabled = false
 
 [[deployments]]
 token_id = "true-usd"
-network_id = "bnb"
+chain_id = "bnb"
 kind = "token"
 standard = "BEP-20"
 contract = "0x40af3827f39d0eacbf4a168f8d4ee67c121d11c9"
@@ -2118,7 +2118,7 @@ tags = []
 
 [[deployments]]
 token_id = "uniswap"
-network_id = "ethereum"
+chain_id = "ethereum"
 kind = "token"
 standard = "ERC-20"
 contract = "0x1f9840a85d5af5bf1d1762f925bdaddc4201f984"
@@ -2127,7 +2127,7 @@ enabled = false
 
 [[deployments]]
 token_id = "uniswap"
-network_id = "unichain"
+chain_id = "unichain"
 kind = "token"
 standard = "ERC-20"
 contract = "0x8f187aa05619a017077f5308904739877ce9ea21"
@@ -2146,7 +2146,7 @@ tags = ["stablecoin"]
 
 [[deployments]]
 token_id = "usa"
-network_id = "ethereum"
+chain_id = "ethereum"
 kind = "token"
 standard = "ERC-20"
 contract = "0x07041776f5007aca2a54844f50503a18a72a8b68"
@@ -2155,7 +2155,7 @@ enabled = false
 
 [[deployments]]
 token_id = "usa"
-network_id = "celo"
+chain_id = "celo"
 kind = "token"
 standard = "ERC-20"
 contract = "0xd2ab3c9a02dbbab236bfec45d1d755df4267f771"
@@ -2174,7 +2174,7 @@ tags = ["stablecoin"]
 
 [[deployments]]
 token_id = "usd1-wlfi"
-network_id = "ethereum"
+chain_id = "ethereum"
 kind = "token"
 standard = "ERC-20"
 contract = "0x8d0d000ee44948fc98c9b98a4fa4921476f08b0d"
@@ -2183,7 +2183,7 @@ enabled = false
 
 [[deployments]]
 token_id = "usd1-wlfi"
-network_id = "solana"
+chain_id = "solana"
 kind = "token"
 standard = "SPL"
 contract = "USD1ttGY1N17NEEHLmELoaybftRBUSErhqYiQzvEmuB"
@@ -2192,7 +2192,7 @@ enabled = false
 
 [[deployments]]
 token_id = "usd1-wlfi"
-network_id = "tron"
+chain_id = "tron"
 kind = "token"
 standard = "TRC-20"
 contract = "TPFqcBAaaUMCSVRCqPaQ9QnzKhmuoLR6Rc"
@@ -2201,7 +2201,7 @@ enabled = false
 
 [[deployments]]
 token_id = "usd1-wlfi"
-network_id = "aptos"
+chain_id = "aptos"
 kind = "token"
 standard = "AIP-21"
 contract = "0x5fabd1b12e39967a3c24e91b7b8f67719a6dacee74f3c8b9fb7d93e855437d2"
@@ -2210,7 +2210,7 @@ enabled = false
 
 [[deployments]]
 token_id = "usd1-wlfi"
-network_id = "bnb"
+chain_id = "bnb"
 kind = "token"
 standard = "BEP-20"
 contract = "0x8d0d000ee44948fc98c9b98a4fa4921476f08b0d"
@@ -2229,7 +2229,7 @@ tags = ["stablecoin"]
 
 [[deployments]]
 token_id = "usdb"
-network_id = "blast"
+chain_id = "blast"
 kind = "token"
 standard = "ERC-20"
 contract = "0x4300000000000000000000000000000000000003"
@@ -2248,7 +2248,7 @@ tags = ["stablecoin"]
 
 [[deployments]]
 token_id = "usd-coin"
-network_id = "ethereum"
+chain_id = "ethereum"
 kind = "token"
 standard = "ERC-20"
 contract = "0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48"
@@ -2257,7 +2257,7 @@ enabled = true
 
 [[deployments]]
 token_id = "usd-coin"
-network_id = "solana"
+chain_id = "solana"
 kind = "token"
 standard = "SPL"
 contract = "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v"
@@ -2266,7 +2266,7 @@ enabled = true
 
 [[deployments]]
 token_id = "usd-coin"
-network_id = "arbitrum"
+chain_id = "arbitrum"
 kind = "token"
 standard = "ERC-20"
 contract = "0xaf88d065e77c8cc2239327c5edb3a432268e5831"
@@ -2275,7 +2275,7 @@ enabled = true
 
 [[deployments]]
 token_id = "usd-coin"
-network_id = "avalanche"
+chain_id = "avalanche"
 kind = "token"
 standard = "ARC-20"
 contract = "0xb97ef9ef8734c71904d8002f8b6bc66dd9c48a6e"
@@ -2284,7 +2284,7 @@ enabled = true
 
 [[deployments]]
 token_id = "usd-coin"
-network_id = "sui"
+chain_id = "sui"
 kind = "token"
 standard = "Sui Coin"
 contract = "0xdba34672e30cb065b1f93e3ab55318768fd6fef66c15942c9f7cb846e2f900e7::usdc::USDC"
@@ -2293,7 +2293,7 @@ enabled = true
 
 [[deployments]]
 token_id = "usd-coin"
-network_id = "aptos"
+chain_id = "aptos"
 kind = "token"
 standard = "AIP-21"
 contract = "0xbae207659db88bea0cbead6da0ed00aac12edcdda169e591cd41c94180b46f3b"
@@ -2302,7 +2302,7 @@ enabled = true
 
 [[deployments]]
 token_id = "usd-coin"
-network_id = "near"
+chain_id = "near"
 kind = "token"
 standard = "NEP-141"
 contract = "17208628f84f5d6ad33f0da3bbbeb27ffcb398eac501a31bd6ad2011e36133a1"
@@ -2311,7 +2311,7 @@ enabled = true
 
 [[deployments]]
 token_id = "usd-coin"
-network_id = "base"
+chain_id = "base"
 kind = "token"
 standard = "ERC-20"
 contract = "0x833589fcd6edb6e08f4c7c32d4f71b54bda02913"
@@ -2320,7 +2320,7 @@ enabled = true
 
 [[deployments]]
 token_id = "usd-coin"
-network_id = "hyperliquid"
+chain_id = "hyperliquid"
 kind = "token"
 standard = "ERC-20"
 contract = "0xb88339cb7199b77e23db6e890353e22632ba630f"
@@ -2329,7 +2329,7 @@ enabled = true
 
 [[deployments]]
 token_id = "usd-coin"
-network_id = "polygon"
+chain_id = "polygon"
 kind = "token"
 standard = "ERC-20"
 contract = "0x3c499c542cef5e3811e1192ce70d8cc03d5c3359"
@@ -2338,7 +2338,7 @@ enabled = true
 
 [[deployments]]
 token_id = "usd-coin"
-network_id = "linea"
+chain_id = "linea"
 kind = "token"
 standard = "ERC-20"
 contract = "0x176211869ca2b568f2a7d4ee941e073a821ee1ff"
@@ -2347,7 +2347,7 @@ enabled = true
 
 [[deployments]]
 token_id = "usd-coin"
-network_id = "scroll"
+chain_id = "scroll"
 kind = "token"
 standard = "ERC-20"
 contract = "0x06efdbff2a14a7c8e15944d1f4a48f9f95f663a4"
@@ -2356,7 +2356,7 @@ enabled = true
 
 [[deployments]]
 token_id = "usd-coin"
-network_id = "mantle"
+chain_id = "mantle"
 kind = "token"
 standard = "ERC-20"
 contract = "0x09bc4e0d864854c6afb6eb9a9cdf58ac190d0df9"
@@ -2375,7 +2375,7 @@ tags = ["stablecoin"]
 
 [[deployments]]
 token_id = "usdd"
-network_id = "ethereum"
+chain_id = "ethereum"
 kind = "token"
 standard = "ERC-20"
 contract = "0x4f8e5de400de08b164e7421b3ee387f461becd1a"
@@ -2384,7 +2384,7 @@ enabled = false
 
 [[deployments]]
 token_id = "usdd"
-network_id = "tron"
+chain_id = "tron"
 kind = "token"
 standard = "TRC-20"
 contract = "TXDk8mbtRbXeYuMNS83CfKPaYYT8XWv9Hz"
@@ -2393,7 +2393,7 @@ enabled = false
 
 [[deployments]]
 token_id = "usdd"
-network_id = "bnb"
+chain_id = "bnb"
 kind = "token"
 standard = "BEP-20"
 contract = "0x45e51bc23d592eb2dba86da3985299f7895d66ba"
@@ -2412,7 +2412,7 @@ tags = ["stablecoin"]
 
 [[deployments]]
 token_id = "ethena-usde"
-network_id = "ethereum"
+chain_id = "ethereum"
 kind = "token"
 standard = "ERC-20"
 contract = "0x4c9edd5852cd905f086c759e8383e09bff1e68b3"
@@ -2421,7 +2421,7 @@ enabled = false
 
 [[deployments]]
 token_id = "ethena-usde"
-network_id = "solana"
+chain_id = "solana"
 kind = "token"
 standard = "SPL"
 contract = "DEkqHyPN7GMRJ5cArtQFAWefqbZb33Hyf6s5iCwjEonT"
@@ -2430,7 +2430,7 @@ enabled = false
 
 [[deployments]]
 token_id = "ethena-usde"
-network_id = "arbitrum"
+chain_id = "arbitrum"
 kind = "token"
 standard = "ERC-20"
 contract = "0x5d3a1ff2b6bab83b63cd9ad0787074081a52ef34"
@@ -2439,7 +2439,7 @@ enabled = false
 
 [[deployments]]
 token_id = "ethena-usde"
-network_id = "aptos"
+chain_id = "aptos"
 kind = "token"
 standard = "AIP-21"
 contract = "0xf37a8864fe737eb8ec2c2931047047cbaed1beed3fb0e5b7c5526dafd3b9c2e9"
@@ -2448,7 +2448,7 @@ enabled = false
 
 [[deployments]]
 token_id = "ethena-usde"
-network_id = "ton"
+chain_id = "ton"
 kind = "token"
 standard = "TEP-74"
 contract = "EQAIb6KmdfdDR7CN1GBqVJuP25iCnLKCvBlJ07Evuu2dzP5f"
@@ -2457,7 +2457,7 @@ enabled = false
 
 [[deployments]]
 token_id = "ethena-usde"
-network_id = "bnb"
+chain_id = "bnb"
 kind = "token"
 standard = "BEP-20"
 contract = "0x5d3a1ff2b6bab83b63cd9ad0787074081a52ef34"
@@ -2476,7 +2476,7 @@ tags = ["stablecoin"]
 
 [[deployments]]
 token_id = "global-dollar"
-network_id = "ethereum"
+chain_id = "ethereum"
 kind = "token"
 standard = "ERC-20"
 contract = "0xe343167631d89b6ffc58b88d6b7fb0228795491d"
@@ -2485,7 +2485,7 @@ enabled = false
 
 [[deployments]]
 token_id = "global-dollar"
-network_id = "solana"
+chain_id = "solana"
 kind = "token"
 standard = "SPL"
 contract = "2u1tszSeqZ3qBWF3uNGPFc8TzMk2tdiwknnRMWGWjGWH"
@@ -2504,7 +2504,7 @@ tags = ["stablecoin"]
 
 [[deployments]]
 token_id = "usds"
-network_id = "ethereum"
+chain_id = "ethereum"
 kind = "token"
 standard = "ERC-20"
 contract = "0xdc035d45d973e3ec169d2276ddab16f1e407384f"
@@ -2513,7 +2513,7 @@ enabled = false
 
 [[deployments]]
 token_id = "usds"
-network_id = "solana"
+chain_id = "solana"
 kind = "token"
 standard = "SPL"
 contract = "USDSwr9ApdHk5bvJKMjzff41FfuX8bSxdKcR81vTwcA"
@@ -2522,7 +2522,7 @@ enabled = false
 
 [[deployments]]
 token_id = "usds"
-network_id = "arbitrum"
+chain_id = "arbitrum"
 kind = "token"
 standard = "ERC-20"
 contract = "0x6491c05a82219b8d1479057361ff1654749b876b"
@@ -2531,7 +2531,7 @@ enabled = false
 
 [[deployments]]
 token_id = "usds"
-network_id = "optimism"
+chain_id = "optimism"
 kind = "token"
 standard = "ERC-20"
 contract = "0x4f13a96ec5c4cf34e442b46bbd98a0791f20edc3"
@@ -2550,7 +2550,7 @@ tags = ["stablecoin"]
 
 [[deployments]]
 token_id = "tether"
-network_id = "ethereum"
+chain_id = "ethereum"
 kind = "token"
 standard = "ERC-20"
 contract = "0xdac17f958d2ee523a2206206994597c13d831ec7"
@@ -2559,7 +2559,7 @@ enabled = true
 
 [[deployments]]
 token_id = "tether"
-network_id = "solana"
+chain_id = "solana"
 kind = "token"
 standard = "SPL"
 contract = "Es9vMFrzaCERmJfrF4H2FYD4KCoNkY11McCe8BenwNYB"
@@ -2568,7 +2568,7 @@ enabled = true
 
 [[deployments]]
 token_id = "tether"
-network_id = "tron"
+chain_id = "tron"
 kind = "token"
 standard = "TRC-20"
 contract = "TR7NHqjeKQxGTCi8q8ZY4pL8otSzgjLj6t"
@@ -2577,7 +2577,7 @@ enabled = true
 
 [[deployments]]
 token_id = "tether"
-network_id = "avalanche"
+chain_id = "avalanche"
 kind = "token"
 standard = "ARC-20"
 contract = "0x9702230a8ea53601f5cd2dc00fdbc13d4df4a8c7"
@@ -2586,7 +2586,7 @@ enabled = true
 
 [[deployments]]
 token_id = "tether"
-network_id = "aptos"
+chain_id = "aptos"
 kind = "token"
 standard = "AIP-21"
 contract = "0x357b0b74bc833e95a115ad22604854d6b0fca151cecd94111770e5d6ffc9dc2b"
@@ -2595,7 +2595,7 @@ enabled = true
 
 [[deployments]]
 token_id = "tether"
-network_id = "ton"
+chain_id = "ton"
 kind = "token"
 standard = "TEP-74"
 contract = "EQCxE6mUtQJKFnGfaROTKOt1lZbDiiX1kCixRv7Nw2Id_sDs"
@@ -2604,7 +2604,7 @@ enabled = true
 
 [[deployments]]
 token_id = "tether"
-network_id = "near"
+chain_id = "near"
 kind = "token"
 standard = "NEP-141"
 contract = "usdt.tether-token.near"
@@ -2623,7 +2623,7 @@ tags = ["stablecoin"]
 
 [[deployments]]
 token_id = "usdt0"
-network_id = "arbitrum"
+chain_id = "arbitrum"
 kind = "token"
 standard = "ERC-20"
 contract = "0xfd086bc7cd5c481dcc9c85ebe478a1c0b69fcbb9"
@@ -2632,7 +2632,7 @@ enabled = true
 
 [[deployments]]
 token_id = "usdt0"
-network_id = "optimism"
+chain_id = "optimism"
 kind = "token"
 standard = "ERC-20"
 contract = "0x01bff41798a0bcf287b996046ca68b395dbc1071"
@@ -2641,7 +2641,7 @@ enabled = true
 
 [[deployments]]
 token_id = "usdt0"
-network_id = "hyperliquid"
+chain_id = "hyperliquid"
 kind = "token"
 standard = "ERC-20"
 contract = "0xb8ce59fc3717ada4c02eadf9682a9e934f625ebb"
@@ -2650,7 +2650,7 @@ enabled = true
 
 [[deployments]]
 token_id = "usdt0"
-network_id = "polygon"
+chain_id = "polygon"
 kind = "token"
 standard = "ERC-20"
 contract = "0xc2132d05d31c914a87c6611c10748aeb04b58e8f"
@@ -2659,7 +2659,7 @@ enabled = true
 
 [[deployments]]
 token_id = "usdt0"
-network_id = "mantle"
+chain_id = "mantle"
 kind = "token"
 standard = "ERC-20"
 contract = "0x779ded0c9e1022225f8e0630b35a9b54be713736"
@@ -2668,7 +2668,7 @@ enabled = true
 
 [[deployments]]
 token_id = "usdt0"
-network_id = "sei"
+chain_id = "sei"
 kind = "token"
 standard = "ERC-20"
 contract = "0x9151434b16b9763660705744891fa906f660ecc5"
@@ -2677,7 +2677,7 @@ enabled = true
 
 [[deployments]]
 token_id = "usdt0"
-network_id = "berachain"
+chain_id = "berachain"
 kind = "token"
 standard = "ERC-20"
 contract = "0x779ded0c9e1022225f8e0630b35a9b54be713736"
@@ -2686,7 +2686,7 @@ enabled = true
 
 [[deployments]]
 token_id = "usdt0"
-network_id = "unichain"
+chain_id = "unichain"
 kind = "token"
 standard = "ERC-20"
 contract = "0x9151434b16b9763660705744891fa906f660ecc5"
@@ -2695,7 +2695,7 @@ enabled = true
 
 [[deployments]]
 token_id = "usdt0"
-network_id = "ink"
+chain_id = "ink"
 kind = "token"
 standard = "ERC-20"
 contract = "0x0200c29006150606b650577bbe7b6248f58470c1"
@@ -2704,7 +2704,7 @@ enabled = true
 
 [[deployments]]
 token_id = "usdt0"
-network_id = "x-layer"
+chain_id = "x-layer"
 kind = "token"
 standard = "ERC-20"
 contract = "0x779ded0c9e1022225f8e0630b35a9b54be713736"
@@ -2723,7 +2723,7 @@ tags = []
 
 [[deployments]]
 token_id = "wrapped-bitcoin"
-network_id = "ethereum"
+chain_id = "ethereum"
 kind = "token"
 standard = "ERC-20"
 contract = "0x2260fac5e5542a773aa44fbcfedf7c193bc2c599"
@@ -2742,7 +2742,7 @@ tags = []
 
 [[deployments]]
 token_id = "weth"
-network_id = "ethereum"
+chain_id = "ethereum"
 kind = "token"
 standard = "ERC-20"
 contract = "0xc02aaa39b223fe8d0a0e5c4f27ead9083c756cc2"
@@ -2761,7 +2761,7 @@ tags = []
 
 [[deployments]]
 token_id = "worldcoin-wld"
-network_id = "ethereum"
+chain_id = "ethereum"
 kind = "token"
 standard = "ERC-20"
 contract = "0x163f8c2467924be0ae7b5347228cabf260318753"
@@ -2770,7 +2770,7 @@ enabled = false
 
 [[deployments]]
 token_id = "worldcoin-wld"
-network_id = "optimism"
+chain_id = "optimism"
 kind = "token"
 standard = "ERC-20"
 contract = "0xdc6ff44d5d932cbd77b52e5612ba0529dc6226f1"
@@ -2789,7 +2789,7 @@ tags = []
 
 [[deployments]]
 token_id = "world-liberty-financial"
-network_id = "ethereum"
+chain_id = "ethereum"
 kind = "token"
 standard = "ERC-20"
 contract = "0xda5e1988097297dcdc1f90d4dfe7909e847cbef6"
@@ -2798,7 +2798,7 @@ enabled = false
 
 [[deployments]]
 token_id = "world-liberty-financial"
-network_id = "solana"
+chain_id = "solana"
 kind = "token"
 standard = "SPL"
 contract = "WLFinEv6ypjkczcS83FZqFpgFZYwQXutRbxGe7oC16g"
@@ -2807,7 +2807,7 @@ enabled = false
 
 [[deployments]]
 token_id = "world-liberty-financial"
-network_id = "bnb"
+chain_id = "bnb"
 kind = "token"
 standard = "BEP-20"
 contract = "0x47474747477b199288bf72a1d702f7fe0fb1deea"
@@ -2826,7 +2826,7 @@ tags = []
 
 [[deployments]]
 token_id = "wrapped-steth"
-network_id = "ethereum"
+chain_id = "ethereum"
 kind = "token"
 standard = "ERC-20"
 contract = "0x7f39c581f595b53c5cb19bd0b3f8da6c935e2ca0"
@@ -2835,7 +2835,7 @@ enabled = false
 
 [[deployments]]
 token_id = "wrapped-steth"
-network_id = "unichain"
+chain_id = "unichain"
 kind = "token"
 standard = "ERC-20"
 contract = "0xc02fe7317d4eb8753a02c35fe019786854a92001"
@@ -2854,7 +2854,7 @@ tags = []
 
 [[deployments]]
 token_id = "tether-gold"
-network_id = "ethereum"
+chain_id = "ethereum"
 kind = "token"
 standard = "ERC-20"
 contract = "0x68749665ff8d2d112fa859aa293f07a622782f38"
@@ -2873,7 +2873,7 @@ tags = []
 
 [[deployments]]
 token_id = "tether-gold-tokens"
-network_id = "solana"
+chain_id = "solana"
 kind = "token"
 standard = "SPL"
 contract = "AymATz4TCL9sWNEEV9Kvyz45CHVhDZ6kUgjTJPzLpU9P"
@@ -2882,7 +2882,7 @@ enabled = false
 
 [[deployments]]
 token_id = "tether-gold-tokens"
-network_id = "arbitrum"
+chain_id = "arbitrum"
 kind = "token"
 standard = "ERC-20"
 contract = "0x40461291347e1ecbb09499f3371d3f17f10d7159"
@@ -2891,7 +2891,7 @@ enabled = false
 
 [[deployments]]
 token_id = "tether-gold-tokens"
-network_id = "avalanche"
+chain_id = "avalanche"
 kind = "token"
 standard = "ARC-20"
 contract = "0x2775d5105276781b4b85ba6ea6a6653beed1dd32"
@@ -2900,7 +2900,7 @@ enabled = false
 
 [[deployments]]
 token_id = "tether-gold-tokens"
-network_id = "ton"
+chain_id = "ton"
 kind = "token"
 standard = "TEP-74"
 contract = "EQA1R_LuQCLHlMgOo1S4G7Y7W1cd0FrAkbA10Zq7rddKxi9k"
@@ -2909,7 +2909,7 @@ enabled = false
 
 [[deployments]]
 token_id = "tether-gold-tokens"
-network_id = "bnb"
+chain_id = "bnb"
 kind = "token"
 standard = "BEP-20"
 contract = "0x21caef8a43163eea865baee23b9c2e327696a3bf"
@@ -2918,7 +2918,7 @@ enabled = false
 
 [[deployments]]
 token_id = "tether-gold-tokens"
-network_id = "hyperliquid"
+chain_id = "hyperliquid"
 kind = "token"
 standard = "ERC-20"
 contract = "0xf4d9235269a96aadafc9adae454a0618ebe37949"
@@ -2927,7 +2927,7 @@ enabled = false
 
 [[deployments]]
 token_id = "tether-gold-tokens"
-network_id = "polygon"
+chain_id = "polygon"
 kind = "token"
 standard = "ERC-20"
 contract = "0xf1815bd50389c46847f0bda824ec8da914045d14"
@@ -2936,7 +2936,7 @@ enabled = false
 
 [[deployments]]
 token_id = "tether-gold-tokens"
-network_id = "celo"
+chain_id = "celo"
 kind = "token"
 standard = "ERC-20"
 contract = "0xaf37e8b6c9ed7f6318979f56fc287d76c30847ff"
@@ -2945,7 +2945,7 @@ enabled = false
 
 [[deployments]]
 token_id = "tether-gold-tokens"
-network_id = "ink"
+chain_id = "ink"
 kind = "token"
 standard = "ERC-20"
 contract = "0xf50258d3c1dd88946c567920b986a12e65b50dac"
@@ -2964,7 +2964,7 @@ tags = []
 
 [[deployments]]
 token_id = "zksync"
-network_id = "ethereum"
+chain_id = "ethereum"
 kind = "token"
 standard = "ERC-20"
 contract = "0x66a5cfb2e9c529f14fe6364ad1075df3a649c0a5"
@@ -2973,7 +2973,7 @@ enabled = false
 
 [[deployments]]
 token_id = "zksync"
-network_id = "zksync-era"
+chain_id = "zksync-era"
 kind = "token"
 standard = "ERC-20"
 contract = "0x5a7d6b2f92c77fad6ccabd7ee0624e64907eaf3e"
@@ -2992,7 +2992,7 @@ tags = []
 
 [[deployments]]
 token_id = "layerzero"
-network_id = "ethereum"
+chain_id = "ethereum"
 kind = "token"
 standard = "ERC-20"
 contract = "0x6985884c4392d348587b19cb9eaaf157f13271cd"
@@ -3001,7 +3001,7 @@ enabled = false
 
 [[deployments]]
 token_id = "layerzero"
-network_id = "arbitrum"
+chain_id = "arbitrum"
 kind = "token"
 standard = "ERC-20"
 contract = "0x6985884c4392d348587b19cb9eaaf157f13271cd"
@@ -3010,7 +3010,7 @@ enabled = false
 
 [[deployments]]
 token_id = "layerzero"
-network_id = "base"
+chain_id = "base"
 kind = "token"
 standard = "ERC-20"
 contract = "0x6985884c4392d348587b19cb9eaaf157f13271cd"
@@ -3019,7 +3019,7 @@ enabled = false
 
 [[deployments]]
 token_id = "layerzero"
-network_id = "bnb"
+chain_id = "bnb"
 kind = "token"
 standard = "BEP-20"
 contract = "0x6985884c4392d348587b19cb9eaaf157f13271cd"

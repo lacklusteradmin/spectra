@@ -391,7 +391,7 @@ fn wallet(id: &str, chain: &str) -> WalletState {
         is_watch_only: false,
         chain_name: chain.to_string(),
         include_in_portfolio_total: true,
-        network_id: crate::registry::Chain::from_display_name(chain)
+        chain_id: crate::registry::Chain::from_display_name(chain)
             .map(|c| c.str_id().into())
             .unwrap_or_default(),
         xpub: None,

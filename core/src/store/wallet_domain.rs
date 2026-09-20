@@ -86,7 +86,7 @@ impl CoreSeedDerivationPreset {
 pub struct AssetHolding {
     pub name: String,
     pub symbol: String,
-    pub coin_gecko_id: String,
+    pub coingecko_id: String,
     pub chain_name: String,
     pub token_standard: String,
     pub contract_address: Option<String>,
@@ -104,16 +104,13 @@ impl AssetHolding {
                 .is_none_or(|c| c.is_empty())
     }
 
-    pub fn network(&self) -> Option<crate::registry::Chain> {
+    pub fn chain(&self) -> Option<crate::registry::Chain> {
         crate::registry::Chain::from_display_name(&self.chain_name)
             .or_else(|| crate::registry::Chain::from_str_id(&self.chain_name))
     }
 
-    pub fn deployment_key(&self) -> String {
-        let network = self
-            .network()
-            .map(|c| c.str_id())
-            .unwrap_or(&self.chain_name);
+    pub fn deployment_id(&self) -> String {
+        let network = self.chain().map(|c| c.str_id()).unwrap_or(&self.chain_name);
         if self.is_native() {
             return format!("{network}:native");
         }
@@ -128,14 +125,16 @@ impl AssetHolding {
         )
     }
 
-    pub fn catalog_token(&self) -> Option<&'static crate::tokens::TokenEntry> {
-        let key = self.deployment_key();
-        crate::tokens::catalog().iter().find(|t| t.id == key)
+    pub fn catalog_token(&self) -> Option<&'static crate::tokens::TokenDeploymentEntry> {
+        let key = self.deployment_id();
+        crate::tokens::catalog()
+            .iter()
+            .find(|t| t.deployment_id == key)
     }
 
     /// Validate identity before persistence and derive catalog-owned display facts.
     pub fn canonicalize(&mut self) -> Result<(), String> {
-        let network = self.network().ok_or("unknown holding network")?;
+        let network = self.chain().ok_or("unknown holding network")?;
         if !self.amount.is_finite() || self.amount < 0.0 {
             return Err("invalid holding amount".into());
         }
@@ -172,13 +171,13 @@ impl AssetHolding {
         if let Some(token) = self.catalog_token() {
             self.name = token.name.clone();
             self.symbol = token.symbol.clone();
-            self.coin_gecko_id = token.coingecko_id.clone();
+            self.coingecko_id = token.coingecko_id.clone();
         } else {
             // Caller-provided market ids must never price or merge an unverified asset.
-            self.coin_gecko_id.clear();
+            self.coingecko_id.clear();
         }
         if network.is_testnet() {
-            self.coin_gecko_id.clear();
+            self.coingecko_id.clear();
             self.price_usd = 0.0;
         }
         Ok(())
@@ -187,7 +186,7 @@ impl AssetHolding {
     pub fn token_identity(&self) -> String {
         self.catalog_token()
             .map(|t| t.token_id.clone())
-            .unwrap_or_else(|| format!("custom:{}", self.deployment_key()))
+            .unwrap_or_else(|| format!("custom:{}", self.deployment_id()))
     }
 }
 
@@ -308,7 +307,7 @@ pub struct WalletView {
     ///
     /// Was optional, though every wallet core produces has one, so each
     /// reader supplied its own fallback.
-    pub network_chain_id: String,
+    pub chain_id: String,
     /// `Chain::address_slot()` → address for this wallet.
     ///
     /// A wallet belongs to one chain (`selected_chain`), so in practice this
@@ -345,19 +344,9 @@ impl WalletView {
 
 // ── WalletView ↔ WalletState ───────────────────────────────────────
 //
-// `WalletState` is the model core computes with; `WalletView` is the
-// shape the iOS app still uses. The conversion exists so the two can coexist
-// while the app migrates, and it is **deliberately asymmetric**:
-//
-// A `WalletView` carries the whole 45-entry derivation-path table and
-// two network-mode fields on *every* wallet, even though a wallet belongs to
-// one chain and uses one path on one network. Converting to `WalletState`
-// keeps the entry that wallet actually uses and drops the other 44 — they are
-// global defaults, not per-wallet data. Converting back therefore cannot
-// reconstruct them, and rebuilds the table from the defaults instead.
-//
-// That asymmetry is the point, not a defect: the round trip losing redundant
-// copies is what makes `WalletState` the smaller, correcter model.
+// `WalletState` owns persisted wallet facts; `WalletView` projects them for the
+// native UI. Both identify the selected chain with `chain_id`. View derivation
+// defaults are rebuilt from the catalog; only the wallet's actual path is stored.
 
 impl WalletView {
     /// The chain this wallet is actually on, as a registry id.
@@ -365,10 +354,10 @@ impl WalletView {
     /// `selected_chain` names the family; this says which network of it. They
     /// used to be a family name plus one of two mode enums, chosen by matching
     /// the family name — so the answer lived in three places at once.
-    fn active_network_chain_id(&self) -> Option<String> {
+    fn active_chain_id(&self) -> Option<String> {
         use crate::registry::Chain;
         let family = Chain::from_display_name(&self.selected_chain)?.mainnet_counterpart();
-        let selected = Chain::from_str_id(&self.network_chain_id)?;
+        let selected = Chain::from_str_id(&self.chain_id)?;
         // Scoped to the wallet's own family: a wallet on Solana reports no
         // network even if a Bitcoin one was selected when it was imported.
         (selected.mainnet_counterpart() == family).then(|| selected.str_id().to_string())
@@ -384,7 +373,7 @@ impl WalletView {
 
         let chain = Chain::from_display_name(&self.selected_chain);
         let active_chain = self
-            .active_network_chain_id()
+            .active_chain_id()
             .and_then(|id| Chain::from_str_id(&id))
             .or(chain);
         let derivation_path = active_chain.and_then(|chain| {
@@ -399,8 +388,8 @@ impl WalletView {
             is_watch_only,
             chain_name: self.selected_chain.clone(),
             include_in_portfolio_total: self.include_in_portfolio_total,
-            network_id: self
-                .active_network_chain_id()
+            chain_id: self
+                .active_chain_id()
                 .or_else(|| chain.map(|c| c.str_id().into()))
                 .unwrap_or_default(),
             xpub: self.bitcoin_xpub.clone(),
@@ -458,7 +447,7 @@ impl crate::store::state::WalletState {
     pub fn to_wallet_view(&self, defaults: &CoreSeedDerivationPaths) -> WalletView {
         use crate::registry::Chain;
 
-        let chain = Chain::from_str_id(&self.network_id);
+        let chain = Chain::from_str_id(&self.chain_id);
         let mut seed_derivation_paths = defaults.clone();
         for address in &self.addresses {
             if let (Some(network), Some(path)) = (
@@ -475,7 +464,7 @@ impl crate::store::state::WalletState {
         WalletView {
             id: self.id.clone(),
             name: self.name.clone(),
-            network_chain_id: self.network_id.clone(),
+            chain_id: self.chain_id.clone(),
             addresses: self
                 .addresses
                 .iter()
@@ -495,7 +484,7 @@ impl crate::store::state::WalletState {
                 .map(|holding| AssetHolding {
                     name: holding.name.clone(),
                     symbol: holding.symbol.clone(),
-                    coin_gecko_id: holding.coin_gecko_id.clone(),
+                    coingecko_id: holding.coingecko_id.clone(),
                     chain_name: holding.chain_name.clone(),
                     token_standard: holding.token_standard.clone(),
                     contract_address: holding.contract_address.clone(),
@@ -516,7 +505,7 @@ impl crate::store::state::WalletState {
 /// re-animate the whole list. Derived from the holding, it cannot drift.
 #[uniffi::export]
 pub fn holding_identity(holding: &crate::store::wallet_domain::AssetHolding) -> String {
-    holding.deployment_key()
+    holding.deployment_id()
 }
 
 /// Swift `TokenHostingChain` — rawValues are chain display names.
@@ -723,7 +712,7 @@ pub enum CoreTokenPreferenceCategory {
 /// A token the app knows about, and what the user has done to it.
 ///
 /// Held seven copies of the catalog's fields under different names —
-/// `contract_address` for `contract`, `coin_gecko_id` for `coingecko_id`,
+/// `contract_address` for `contract`, `coingecko_id` for `coingecko_id`,
 /// `decimals: i32` for `decimals: u32` — so a token had four spellings of its
 /// contract across the catalog, the state, the Swift mirror and the fetch
 /// descriptor. It embeds the token now: there is one spelling because there is
@@ -731,7 +720,7 @@ pub enum CoreTokenPreferenceCategory {
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, uniffi::Record)]
 #[serde(rename_all = "camelCase")]
 pub struct CoreTokenPreferenceEntry {
-    pub token: crate::tokens::TokenEntry,
+    pub token: crate::tokens::TokenDeploymentEntry,
     pub category: CoreTokenPreferenceCategory,
     /// The catalog ships it; the user cannot edit or delete it.
     pub is_built_in: bool,
@@ -742,7 +731,7 @@ impl CoreTokenPreferenceEntry {
     /// Identity: a token *is* its contract on its chain. The id used to be a
     /// stored `builtin:{chain}:{contract}` string, regenerated on every launch.
     pub fn id(&self) -> String {
-        format!("{}|{}", self.token.chain, self.token.contract)
+        format!("{}|{}", self.token.chain_id, self.token.contract)
     }
 
     /// The category the catalog's tags imply. It was stored beside the tags it
@@ -758,7 +747,8 @@ impl CoreTokenPreferenceEntry {
     }
 
     pub fn hosting_chain(&self) -> Option<CoreTokenHostingChain> {
-        CoreTokenHostingChain::from_chain_name(&self.token.chain)
+        crate::registry::Chain::from_str_id(&self.token.chain_id)
+            .and_then(|chain| CoreTokenHostingChain::from_chain_name(chain.chain_display_name()))
     }
 }
 
@@ -832,14 +822,14 @@ mod roundtrip_tests {
             category: CoreTokenPreferenceCategory::Stablecoin,
             is_built_in: true,
             is_enabled: true,
-            token: crate::tokens::TokenEntry {
-                id: "fixture:token".into(),
+            token: crate::tokens::TokenDeploymentEntry {
+                deployment_id: "fixture:token".into(),
                 token_id: "fixture:token".into(),
                 kind: crate::tokens::TokenKind::Protocol {
                     standard: "fixture".into(),
                     identifier: "fixture".into(),
                 },
-                chain: "BNB Chain".to_string(),
+                chain_id: "bnb-chain".to_string(),
                 name: "Tether USD".to_string(),
                 symbol: "USDT".to_string(),
                 token_standard: "BEP-20".to_string(),
@@ -853,7 +843,7 @@ mod roundtrip_tests {
             },
         };
         let json = serde_json::to_string(&entry).unwrap();
-        assert!(json.contains("\"chain\":\"BNB Chain\""));
+        assert!(json.contains("\"chainId\":\"bnb-chain\""));
         assert!(json.contains("\"category\":\"stablecoin\""));
         assert!(json.contains("\"coingeckoId\""));
         assert!(json.contains("\"isBuiltIn\":true"));
@@ -862,7 +852,7 @@ mod roundtrip_tests {
 
         // Identity is the token's, not a stored string. It used to be a
         // `builtin:{chain}:{contract}` id regenerated on every launch.
-        assert_eq!(entry.id(), "BNB Chain|0x55d39897");
+        assert_eq!(entry.id(), "bnb-chain|0x55d39897");
         // And the category the tags imply, rather than a second copy of it.
         assert_eq!(
             CoreTokenPreferenceEntry::category_from_tags(&entry.token.tags),

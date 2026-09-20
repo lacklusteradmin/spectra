@@ -10,13 +10,13 @@ use crate::store::state::AppSettings;
 #[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub(crate) struct HistoryRefreshKey {
     pub wallet_id: String,
-    pub network_id: String,
+    pub chain_id: String,
 }
 impl HistoryRefreshKey {
-    pub(crate) fn new(wallet_id: &str, network_id: &str) -> Self {
+    pub(crate) fn new(wallet_id: &str, chain_id: &str) -> Self {
         Self {
             wallet_id: wallet_id.to_lowercase(),
-            network_id: network_id.to_string(),
+            chain_id: chain_id.to_string(),
         }
     }
 }

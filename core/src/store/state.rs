@@ -17,7 +17,7 @@ pub struct WalletState {
     pub is_watch_only: bool,
     pub chain_name: String,
     pub include_in_portfolio_total: bool,
-    pub network_id: String,
+    pub chain_id: String,
     pub xpub: Option<String>,
     #[serde(default)]
     pub derivation_preset: crate::store::wallet_domain::CoreSeedDerivationPreset,
@@ -57,7 +57,7 @@ impl WalletState {
             is_watch_only,
             chain_name: chain_name.clone(),
             include_in_portfolio_total: true,
-            network_id: crate::registry::Chain::from_display_name(&chain_name)
+            chain_id: crate::registry::Chain::from_display_name(&chain_name)
                 .map(|c| c.str_id().to_string())
                 .unwrap_or_default(),
             xpub: None,
@@ -89,17 +89,16 @@ impl WalletState {
     }
 
     /// The wallet's recorded network, if it belongs to the wallet's chain family.
-    pub fn network_chain(&self, _settings: &AppSettings) -> Option<crate::registry::Chain> {
+    pub fn chain(&self) -> Option<crate::registry::Chain> {
         let chain = crate::registry::Chain::from_display_name(&self.chain_name)?;
-        crate::registry::Chain::from_str_id(&self.network_id)
+        crate::registry::Chain::from_str_id(&self.chain_id)
             .filter(|selected| selected.mainnet_counterpart() == chain.mainnet_counterpart())
     }
 
     /// The recorded network's address. An absent testnet address must never
     /// fall back to a mainnet address.
-    pub fn active_address(&self, settings: &AppSettings) -> Option<&str> {
-        self.network_chain(settings)
-            .and_then(|network| self.address_on(network))
+    pub fn active_address(&self) -> Option<&str> {
+        self.chain().and_then(|network| self.address_on(network))
     }
 
     /// Resolve by address slot, allowing chains with a shared derivation
@@ -240,7 +239,7 @@ pub struct AppSettings {
     /// settings, three enums and three hand-written pricing cases, and adding
     /// a fourth meant touching all of them.
     #[serde(default)]
-    pub network_chain_by_family: std::collections::HashMap<String, String>,
+    pub selected_chain_by_family: std::collections::HashMap<String, String>,
 
     // ── Providers ─────────────────────────────────────────────────────────
     /// Which price source to quote from.
@@ -465,9 +464,12 @@ fn default_large_movement_usd() -> f64 {
 
 impl AppSettings {
     /// The chain the user is actually on for a family, defaulting to mainnet.
-    pub fn network_chain(&self, chain: crate::registry::Chain) -> crate::registry::Chain {
+    pub fn selected_chain_for_family(
+        &self,
+        chain: crate::registry::Chain,
+    ) -> crate::registry::Chain {
         let family = chain.mainnet_counterpart();
-        self.network_chain_by_family
+        self.selected_chain_by_family
             .get(family.str_id())
             .and_then(|id| crate::registry::Chain::from_str_id(id))
             .filter(|selected| selected.mainnet_counterpart() == family)
@@ -560,7 +562,7 @@ pub fn fiat_currency_codes() -> Vec<String> {
 
 /// Concrete testnet identities are unpriced regardless of selected wallet networks.
 #[uniffi::export]
-pub fn core_unpriced_chain_names() -> Vec<String> {
+pub fn unpriced_chain_names() -> Vec<String> {
     crate::registry::Chain::testnets()
         .flat_map(|chain| {
             [
@@ -599,7 +601,7 @@ impl Default for AppSettings {
         Self {
             fiat_currency: FiatCurrency::Usd,
             pinned_dashboard_token_ids: default_pinned_dashboard_assets(),
-            network_chain_by_family: std::collections::HashMap::new(),
+            selected_chain_by_family: std::collections::HashMap::new(),
             rpc_endpoint_by_chain: std::collections::HashMap::new(),
             etherscan_api_key: String::new(),
             monero_backend_base_url: String::new(),
@@ -816,7 +818,7 @@ pub enum StateCommand {
     /// under the family's mainnet. Selecting the mainnet clears the entry
     /// rather than storing it, so "no choice made" and "chose mainnet" are the
     /// same state and cannot drift apart.
-    SelectNetworkChain {
+    SelectChainForFamily {
         chain_id: String,
     },
     /// Add a custom token. Trim input, uppercase the symbol, validate the
@@ -951,7 +953,7 @@ pub enum StateEvent {
         reason: super::PriceAlertRejection,
     },
     PriceAlertsEvaluated,
-    NetworkChainChanged {
+    SelectedChainChanged {
         chain_id: String,
     },
     PinnedDashboardAssetsChanged,
@@ -1033,8 +1035,8 @@ fn token_preference_rejected(reason: TokenPreferenceRejection) -> StateEvent {
 fn sort_token_preferences(entries: &mut [crate::store::wallet_domain::CoreTokenPreferenceEntry]) {
     entries.sort_by(|lhs, rhs| {
         lhs.token
-            .chain
-            .cmp(&rhs.token.chain)
+            .chain_id
+            .cmp(&rhs.token.chain_id)
             .then_with(|| rhs.is_built_in.cmp(&lhs.is_built_in))
             .then_with(|| lhs.token.symbol.cmp(&rhs.token.symbol))
     });
@@ -1431,8 +1433,8 @@ pub fn reduce_state_in_place(state: &mut CoreAppState, command: StateCommand) ->
                                 crate::store::wallet_domain::CoreTokenPreferenceCategory::Custom,
                             is_built_in: false,
                             is_enabled: true,
-                            token: crate::tokens::TokenEntry {
-                                id: format!(
+                            token: crate::tokens::TokenDeploymentEntry {
+                                deployment_id: format!(
                                     "{}:{}:{}",
                                     crate::registry::Chain::from_display_name(hosting.chain_name())
                                         .unwrap()
@@ -1452,7 +1454,12 @@ pub fn reduce_state_in_place(state: &mut CoreAppState, command: StateCommand) ->
                                     standard: hosting.token_standard(),
                                     identifier: contract.clone(),
                                 },
-                                chain: hosting.chain_name().to_string(),
+                                chain_id: crate::registry::Chain::from_display_name(
+                                    hosting.chain_name(),
+                                )
+                                .expect("token hosting chain is registered")
+                                .str_id()
+                                .to_string(),
                                 name,
                                 symbol: symbol.clone(),
                                 token_standard: hosting.token_standard().to_string(),
@@ -1553,19 +1560,19 @@ pub fn reduce_state_in_place(state: &mut CoreAppState, command: StateCommand) ->
                 events.push(StateEvent::TokenPreferencesChanged { symbol: None });
             }
         }
-        StateCommand::SelectNetworkChain { chain_id } => {
+        StateCommand::SelectChainForFamily { chain_id } => {
             if let Some(chosen) = crate::registry::Chain::from_str_id(&chain_id) {
                 let family = chosen.mainnet_counterpart();
-                let before = state.settings.network_chain_by_family.clone();
+                let before = state.settings.selected_chain_by_family.clone();
                 state
                     .settings
-                    .network_chain_by_family
+                    .selected_chain_by_family
                     .insert(family.str_id().into(), chosen.str_id().into());
                 for wallet in &mut state.wallets {
                     if crate::registry::Chain::from_display_name(&wallet.chain_name)
                         .is_some_and(|c| c.mainnet_counterpart() == family)
                     {
-                        wallet.network_id = chosen.str_id().into();
+                        wallet.chain_id = chosen.str_id().into();
                         wallet.derivation_path = wallet
                             .addresses
                             .iter()
@@ -1573,8 +1580,8 @@ pub fn reduce_state_in_place(state: &mut CoreAppState, command: StateCommand) ->
                             .and_then(|a| a.derivation_path.clone());
                     }
                 }
-                if before != state.settings.network_chain_by_family {
-                    events.push(StateEvent::NetworkChainChanged {
+                if before != state.settings.selected_chain_by_family {
+                    events.push(StateEvent::SelectedChainChanged {
                         chain_id: chosen.str_id().to_string(),
                     });
                 }
@@ -1729,7 +1736,7 @@ mod tests {
             is_watch_only: false,
             chain_name: chain.to_string(),
             include_in_portfolio_total: true,
-            network_id: crate::registry::Chain::from_display_name(chain)
+            chain_id: crate::registry::Chain::from_display_name(chain)
                 .unwrap()
                 .str_id()
                 .into(),
@@ -1877,7 +1884,10 @@ mod tests {
         let removed = reduce_state(
             state.clone(),
             StateCommand::RemoveCustomToken {
-                chain_name: built_in.token.chain.clone(),
+                chain_name: crate::registry::Chain::from_str_id(&built_in.token.chain_id)
+                    .unwrap()
+                    .chain_display_name()
+                    .to_string(),
                 contract: built_in.token.contract.clone(),
             },
         );
@@ -1890,7 +1900,10 @@ mod tests {
         let rescaled = reduce_state(
             state,
             StateCommand::SetCustomTokenDecimals {
-                chain_name: built_in.token.chain.clone(),
+                chain_name: crate::registry::Chain::from_str_id(&built_in.token.chain_id)
+                    .unwrap()
+                    .chain_display_name()
+                    .to_string(),
                 contract: built_in.token.contract.clone(),
                 decimals: 2,
             },
@@ -1914,7 +1927,10 @@ mod tests {
             .filter(|entry| entry.is_enabled)
             .take(3)
             .map(|entry| CoreTokenPreferenceKey {
-                chain_name: entry.token.chain.clone(),
+                chain_name: crate::registry::Chain::from_str_id(&entry.token.chain_id)
+                    .unwrap()
+                    .chain_display_name()
+                    .to_string(),
                 contract: entry.token.contract.clone(),
             })
             .collect();

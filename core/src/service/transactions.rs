@@ -3,7 +3,7 @@ use super::*;
 
 impl WalletService {
     /// Every stored history row. Internal: front ends read `transactions`.
-    pub async fn fetch_all_history_records_typed(
+    pub async fn fetch_all_history_records(
         &self,
     ) -> Result<Vec<crate::wallet_db::HistoryRecord>, SpectraBridgeError> {
         let database = self.bound_database().await?;
@@ -578,7 +578,7 @@ mod status_commit_regressions {
             .apply_resolved_pending_statuses("Bitcoin".into(), vec![resolution("NEW", "confirmed")])
             .await
             .unwrap();
-        let rows = service.fetch_all_history_records_typed().await.unwrap();
+        let rows = service.fetch_all_history_records().await.unwrap();
         assert_eq!(
             rows.iter().map(|r| r.id.as_str()).collect::<Vec<_>>(),
             vec!["new", "old"]
@@ -830,7 +830,7 @@ impl WalletService {
                         let mut accepted = Vec::new();
                         let mut query = conn
                             .prepare_cached(
-                                "SELECT name, json_extract(payload, '$.networkId') FROM wallets WHERE id = ?1",
+                                "SELECT name, json_extract(payload, '$.chainId') FROM wallets WHERE id = ?1",
                             )
                             .map_err(|e| e.to_string())?;
                         for mut record in incoming {
@@ -841,8 +841,8 @@ impl WalletService {
                                 .query_row([id], |r| Ok((r.get(0)?, r.get(1)?)))
                                 .optional()
                                 .map_err(|e| e.to_string())?;
-                            let Some((wallet_name, network_id)) = owner else { continue; };
-                            if network_id != chain.str_id() { continue; }
+                            let Some((wallet_name, chain_id)) = owner else { continue; };
+                            if chain_id != chain.str_id() { continue; }
                             record.wallet_name = wallet_name;
                             accepted.push(record);
                         }

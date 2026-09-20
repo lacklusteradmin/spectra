@@ -52,7 +52,7 @@ impl WalletService {
                 .find(|w| w.id == wallet_id)
                 .ok_or_else(|| SpectraBridgeError::from("Wallet not found"))?;
             let chain = wallet
-                .network_chain(&state.settings)
+                .chain()
                 .ok_or_else(|| SpectraBridgeError::from("Wallet has no network"))?;
             let address = wallet
                 .address_on(chain)

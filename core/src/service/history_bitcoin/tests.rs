@@ -84,7 +84,7 @@ async fn stored_testnet_hd_history_uses_its_network_script_and_all_pages() {
     service.set_secret_store(secrets);
     let mut wallet =
         WalletState::single_address("w", "Test", "Bitcoin", &address, Some(path.into()), false);
-    wallet.network_id = Chain::BitcoinTestnet4.str_id().into();
+    wallet.chain_id = Chain::BitcoinTestnet4.str_id().into();
     wallet.addresses[0].chain_name = Chain::BitcoinTestnet4.chain_display_name().into();
     service
         .apply_state_command(StateCommand::UpsertWallet { wallet })

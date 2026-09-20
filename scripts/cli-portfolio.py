@@ -35,7 +35,7 @@ class PortfolioTests(unittest.TestCase):
                         w=json.loads(payload); change(w)
                         db.execute('UPDATE wallets SET payload=? WHERE id=?',(json.dumps(w),id))
             def seed(w):
-                w['holdings']=[dict(name='Ethereum',symbol='ETH',coinGeckoId='ethereum',chainName='Ethereum',
+                w['holdings']=[dict(name='Ethereum',symbol='ETH',coingeckoId='ethereum',chainName='Ethereum',
                     tokenStandard='Native',contractAddress=None,amount=1,priceUsd=0)]
             change_wallets(seed)
             def quote(price):
@@ -69,8 +69,8 @@ class PortfolioTests(unittest.TestCase):
             with sqlite3.connect(dbpath) as db:
                 wid, raw = db.execute('SELECT id,payload FROM wallets').fetchone()
                 wallet = json.loads(raw)
-                native = dict(name='Ethereum', symbol='ETH', coinGeckoId='ethereum', chainName='Ethereum', tokenStandard='Native', contractAddress=None, amount=2, priceUsd=999)
-                usdc = dict(name='USD Coin', symbol='USDC', coinGeckoId='usd-coin', chainName='Ethereum', tokenStandard='ERC-20', contractAddress='0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48', amount=100, priceUsd=1)
+                native = dict(name='Ethereum', symbol='ETH', coingeckoId='ethereum', chainName='Ethereum', tokenStandard='Native', contractAddress=None, amount=2, priceUsd=999)
+                usdc = dict(name='USD Coin', symbol='USDC', coingeckoId='usd-coin', chainName='Ethereum', tokenStandard='ERC-20', contractAddress='0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48', amount=100, priceUsd=1)
                 wallet['holdings'] = [native, usdc]
                 db.execute('UPDATE wallets SET payload=? WHERE id=?', (json.dumps(wallet),wid))
                 db.execute('INSERT OR REPLACE INTO app_state_meta VALUES (?,?)', ('quotes',json.dumps({'prices':{'ethereum:native':3000}})))
@@ -173,12 +173,12 @@ class PortfolioTests(unittest.TestCase):
             assert networks["arbitrum"]["nativeSymbol"] == "ETH"
             def catalog(network):
                 return run("token", "catalog", "--chain", network)["tokens"]
-            eth = next(t for t in catalog("ethereum") if t["id"] == "ethereum:native")
-            btc = next(t for t in catalog("bitcoin") if t["id"] == "bitcoin:native")
-            mnt_native = next(t for t in catalog("mantle") if t["id"] == "mantle:native")
+            eth = next(t for t in catalog("ethereum") if t["deployment_id"] == "ethereum:native")
+            btc = next(t for t in catalog("bitcoin") if t["deployment_id"] == "bitcoin:native")
+            mnt_native = next(t for t in catalog("mantle") if t["deployment_id"] == "mantle:native")
             mnt_token = next(t for t in catalog("ethereum") if t["symbol"] == "MNT")
             assert eth["kind"] == btc["kind"] == mnt_native["kind"] == "Native"
-            assert mnt_token["token_id"] == mnt_native["token_id"] and mnt_token["id"] != mnt_native["id"]
+            assert mnt_token["token_id"] == mnt_native["token_id"] and mnt_token["deployment_id"] != mnt_native["deployment_id"]
             test_eth = catalog("ethereum-sepolia")[0]
             assert test_eth["coingecko_id"] == "" and test_eth["token_id"] != eth["token_id"]
             run("token", "catalog", "--chain", "ETH", succeeds=False)
@@ -189,7 +189,7 @@ class PortfolioTests(unittest.TestCase):
             with sqlite3.connect(pathlib.Path(directory) / "spectra.sqlite") as db:
                 wallet = json.loads(db.execute("SELECT payload FROM wallets").fetchone()[0])
                 def holding(network, amount, contract=None):
-                    return dict(name="Ether", symbol="ETH", coinGeckoId="ethereum", chainName=network, tokenStandard="ERC-20" if contract else "Native", contractAddress=contract, amount=amount, priceUsd=100)
+                    return dict(name="Ether", symbol="ETH", coingeckoId="ethereum", chainName=network, tokenStandard="ERC-20" if contract else "Native", contractAddress=contract, amount=amount, priceUsd=100)
                 wallet["holdings"] = [holding("Ethereum", 1), holding("Base", 2), holding("Ethereum Sepolia", 3), holding("Ethereum", 4, "0x1111111111111111111111111111111111111111")]
                 db.execute("UPDATE wallets SET payload=?", (json.dumps(wallet),))
             groups = run("portfolio", "--stored", "--pin-token", "ethereum")["groups"]
@@ -209,7 +209,7 @@ class PortfolioTests(unittest.TestCase):
             run("network", "set", "ethereum")
             with sqlite3.connect(pathlib.Path(directory) / "spectra.sqlite") as db:
                 wallet = json.loads(db.execute("SELECT payload FROM wallets").fetchone()[0])
-                assert wallet["networkId"] == "ethereum"
+                assert wallet["chainId"] == "ethereum"
             assert len(next(n for n in run("network", "list")["families"] if n["family"] == "ethereum")["choices"]) >= 3
 
     def test_price_alerts(self):

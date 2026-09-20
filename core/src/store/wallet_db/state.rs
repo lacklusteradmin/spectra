@@ -57,7 +57,7 @@ impl AppStateChanges {
         let mut changes = Self {
             replace: before.is_none(),
             reset_chains: before
-                .map(|b| changed_network_chains(b, after))
+                .map(|b| changed_selected_chains(b, after))
                 .unwrap_or_default(),
             wallets: vec![],
             removed_wallets: vec![],
@@ -311,9 +311,12 @@ pub fn app_state_load(database: &WalletDatabase) -> Result<CoreAppState, String>
 }
 
 /// All members of a changed family are invalidated in the settings transaction.
-pub(crate) fn changed_network_chains(before: &CoreAppState, after: &CoreAppState) -> Vec<String> {
+pub(crate) fn changed_selected_chains(before: &CoreAppState, after: &CoreAppState) -> Vec<String> {
     crate::registry::Chain::mainnets()
-        .filter(|c| before.settings.network_chain(*c) != after.settings.network_chain(*c))
+        .filter(|c| {
+            before.settings.selected_chain_for_family(*c)
+                != after.settings.selected_chain_for_family(*c)
+        })
         .flat_map(|c| {
             c.network_choices()
                 .iter()

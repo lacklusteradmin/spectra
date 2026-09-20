@@ -69,7 +69,7 @@ pub struct PendingMaintenanceResult {
 impl WalletService {
     /// The registry decides which stored records still need maintenance.
     pub async fn pending_maintenance_chains(&self) -> Result<Vec<String>, SpectraBridgeError> {
-        let rows = self.fetch_all_history_records_typed().await?;
+        let rows = self.fetch_all_history_records().await?;
         let mut chains = std::collections::BTreeSet::new();
         for row in rows {
             let r = row.payload;
@@ -144,7 +144,7 @@ impl WalletService {
         self.prune_status_trackers().await?;
 
         let records = {
-            let stored = self.fetch_all_history_records_typed().await?;
+            let stored = self.fetch_all_history_records().await?;
             let all: Vec<_> = stored.into_iter().map(|row| row.payload).collect();
             tracked(&all, chain, poll)
         };
@@ -163,7 +163,7 @@ impl WalletService {
         // `tracked` selected records for this exact stored network. Settings
         // may have changed since submission and must not redirect old hashes.
         let network = chain;
-        let network_id = network.str_id().to_string();
+        let chain_id = network.str_id().to_string();
 
         let mut resolutions = Vec::new();
         match poll {
@@ -174,10 +174,7 @@ impl WalletService {
                     let Some(hash) = record.transaction_hash.clone() else {
                         continue;
                     };
-                    match self
-                        .fetch_utxo_tx_status_typed(network_id.clone(), hash)
-                        .await
-                    {
+                    match self.fetch_utxo_tx_status(chain_id.clone(), hash).await {
                         Ok(status) => {
                             let confirmations: Option<u32> = tracks_finality
                                 .then(|| {
@@ -226,7 +223,7 @@ impl WalletService {
                     let Some(hash) = record.transaction_hash.clone() else {
                         continue;
                     };
-                    match self.evm_transaction_status(network_id.clone(), hash).await {
+                    match self.evm_transaction_status(chain_id.clone(), hash).await {
                         // A node that answered "no receipt yet" is a pending
                         // poll, not a failed one.
                         Ok(None) => {
@@ -294,7 +291,7 @@ impl WalletService {
                                 .iter()
                                 .find(|wallet| wallet.id.eq_ignore_ascii_case(wallet_id))
                         })
-                        .and_then(|wallet| wallet.active_address(&state.settings))
+                        .and_then(|wallet| wallet.active_address())
                     else {
                         continue;
                     };
@@ -304,26 +301,24 @@ impl WalletService {
                         .push(record);
                 }
                 for (address, group) in by_address {
-                    let confirmed = match self
-                        .fetch_history_summary(network_id.clone(), address)
-                        .await
-                    {
-                        Ok(summary) => summary
-                            .confirmed_txids
-                            .into_iter()
-                            .map(|txid| txid.to_lowercase())
-                            .collect::<std::collections::HashSet<_>>(),
-                        Err(_) => {
-                            for record in group {
-                                self.record_status_poll(
-                                    record.id.clone(),
-                                    crate::service::StatusPollOutcome::Failed,
-                                )
-                                .await;
+                    let confirmed =
+                        match self.fetch_history_summary(chain_id.clone(), address).await {
+                            Ok(summary) => summary
+                                .confirmed_txids
+                                .into_iter()
+                                .map(|txid| txid.to_lowercase())
+                                .collect::<std::collections::HashSet<_>>(),
+                            Err(_) => {
+                                for record in group {
+                                    self.record_status_poll(
+                                        record.id.clone(),
+                                        crate::service::StatusPollOutcome::Failed,
+                                    )
+                                    .await;
+                                }
+                                continue;
                             }
-                            continue;
-                        }
-                    };
+                        };
                     for record in group.into_iter().filter(|r| due.contains(&r.id)) {
                         let is_confirmed = record
                             .transaction_hash
@@ -709,7 +704,7 @@ mod tests {
         let sepolia = MockServer::start().await;
         let (service, _) = stored_service().await;
         service
-            .update_endpoints_typed(vec![
+            .update_endpoints(vec![
                 crate::service::ChainEndpoints {
                     chain_id: "ethereum".into(),
                     endpoints: vec![mainnet.uri()],

@@ -69,7 +69,7 @@ async fn seed_probe_holding(
 ) -> String {
     use crate::store::state::WalletState;
     use crate::store::wallet_domain::{
-        AssetHolding, CoreTokenHostingChain, CoreTokenPreferenceCategory, CoreTokenPreferenceEntry,
+        AssetHolding, CoreTokenPreferenceCategory, CoreTokenPreferenceEntry,
     };
     let chain_name = chain.chain_display_name().to_string();
     let mut state = service.wallet_state.write().await;
@@ -84,7 +84,7 @@ async fn seed_probe_holding(
     wallet.holdings = vec![AssetHolding {
         name: symbol.to_string(),
         symbol: symbol.to_string(),
-        coin_gecko_id: String::new(),
+        coingecko_id: String::new(),
         chain_name: chain_name.clone(),
         token_standard: if token.is_none() {
             "Native".into()
@@ -97,20 +97,18 @@ async fn seed_probe_holding(
     }];
     state.wallets.push(wallet);
     if let Some((contract, decimals)) = token {
-        let hosting =
-            CoreTokenHostingChain::from_chain_name(&chain_name).expect("the chain hosts tokens");
         state.token_preferences.push(CoreTokenPreferenceEntry {
             category: CoreTokenPreferenceCategory::Stablecoin,
             is_built_in: false,
             is_enabled: true,
-            token: crate::tokens::TokenEntry {
-                id: "fixture:token".into(),
+            token: crate::tokens::TokenDeploymentEntry {
+                deployment_id: "fixture:token".into(),
                 token_id: "fixture:token".into(),
                 kind: crate::tokens::TokenKind::Protocol {
                     standard: "fixture".into(),
                     identifier: "fixture".into(),
                 },
-                chain: hosting.chain_name().to_string(),
+                chain_id: chain.str_id().to_string(),
                 name: symbol.to_string(),
                 symbol: symbol.to_string(),
                 token_standard: String::new(),
@@ -124,7 +122,7 @@ async fn seed_probe_holding(
             },
         });
     }
-    state.wallets.last().unwrap().holdings[0].deployment_key()
+    state.wallets.last().unwrap().holdings[0].deployment_id()
 }
 
 #[cfg(test)]
@@ -336,7 +334,7 @@ mod failed_reads {
             }])
             .unwrap();
             let preview = service
-                .fetch_evm_send_preview(
+                .fetch_evm_send_preview_json(
                     "ethereum",
                     "from".into(),
                     "to".into(),
@@ -354,7 +352,7 @@ mod failed_reads {
             let before = server.received_requests().await.unwrap().len();
             for value in ["bad", "-1", "+1", "340282366920938463463374607431768211456"] {
                 assert!(service
-                    .fetch_evm_send_preview(
+                    .fetch_evm_send_preview_json(
                         "ethereum",
                         "from".into(),
                         "to".into(),
@@ -493,7 +491,7 @@ mod a_preview_quotes_the_asset_it_moves {
         let key = super::seed_probe_holding(&service, Chain::EthereumSepolia, "tETH", None).await;
         {
             let mut state = service.wallet_state.write().await;
-            state.wallets[0].network_id = "ethereum-sepolia".into();
+            state.wallets[0].chain_id = "ethereum-sepolia".into();
             state.wallets[0].addresses[0].address = format!("0x{}", "11".repeat(20));
         }
         for amount in ["NaN", "-1", "0.0000000000000000001"] {
@@ -549,7 +547,7 @@ mod a_preview_quotes_the_asset_it_moves {
         }])
         .unwrap();
         let raw = service
-            .fetch_evm_send_preview(
+            .fetch_evm_send_preview_json(
                 "ethereum",
                 format!("0x{}", "11".repeat(20)),
                 to,
@@ -632,7 +630,7 @@ mod a_preview_quotes_the_asset_it_moves {
         }])
         .unwrap();
         let value = service
-            .fetch_tron_send_preview_typed(
+            .fetch_tron_send_preview(
                 "TLa2f6VPqDgRE67v1736s7bJ8Ray5wYjU7".into(),
                 "TEST".into(),
                 "TR7NHqjeKQxGTCi8q8ZY4pL8otgjLj6t".into(),
@@ -661,7 +659,7 @@ mod a_preview_quotes_the_asset_it_moves {
         }])
         .unwrap();
         let result = service
-            .fetch_tron_send_preview_typed(
+            .fetch_tron_send_preview(
                 "TLa2f6VPqDgRE67v1736s7bJ8Ray5wYjU7".into(),
                 "TEST".into(),
                 "TR7NHqjeKQxGTCi8q8ZY4pL8otgjLj6t".into(),

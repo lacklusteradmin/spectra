@@ -699,7 +699,7 @@ impl Chain {
         crate::store::wallet_domain::AssetHolding {
             name: self.coin_name().to_string(),
             symbol: self.coin_symbol().to_string(),
-            coin_gecko_id: self.coin_gecko_id().to_string(),
+            coingecko_id: self.coingecko_id().to_string(),
             chain_name: self.chain_display_name().to_string(),
             token_standard: "Native".to_string(),
             contract_address: None,
@@ -726,7 +726,7 @@ impl Chain {
         self.entry().native_decimals as u8
     }
 
-    pub fn coin_gecko_id(self) -> &'static str {
+    pub fn coingecko_id(self) -> &'static str {
         self.entry().native_coingecko_id.as_str()
     }
 
@@ -1425,7 +1425,7 @@ pub enum PendingStatusPoll {
 /// The networks available for a chain's family, mainnet first.
 #[derive(Debug, Clone, uniffi::Record)]
 pub struct NetworkChoice {
-    /// Registry id — what `SelectNetworkChain` takes.
+    /// Registry id — what `SelectChainForFamily` takes.
     pub chain_id: String,
     /// What to show in a picker: "Bitcoin", "Bitcoin Testnet4", …
     pub title: String,
@@ -1474,14 +1474,14 @@ mod tests {
     /// from Blockscout, so it is not among them.
     #[test]
     fn the_etherscan_key_belongs_to_the_chains_whose_history_needs_it() {
-        let needing: Vec<_> = core_chain_identities()
+        let needing: Vec<_> = chain_identities()
             .into_iter()
             .filter(|identity| identity.needs_etherscan_api_key && !identity.is_testnet)
             .map(|identity| identity.name)
             .collect();
         assert!(!needing.contains(&"Ethereum".to_string()));
         assert!(needing.contains(&"BNB Chain".to_string()));
-        for identity in core_chain_identities() {
+        for identity in chain_identities() {
             assert!(
                 !identity.needs_etherscan_api_key || identity.is_evm,
                 "{}",
@@ -1598,7 +1598,7 @@ mod tests {
     #[test]
     fn token_hosting_chains_map_one_to_one() {
         let mut seen = std::collections::HashMap::new();
-        for identity in core_chain_identities() {
+        for identity in chain_identities() {
             if let Some(t) = identity.token_hosting_chain {
                 if let Some(prev) = seen.insert(format!("{t:?}"), identity.name.clone()) {
                     panic!("{t:?} claimed by both {prev} and {}", identity.name);
@@ -1845,7 +1845,7 @@ pub struct ChainIdentity {
 /// an id without the name that goes with it. `Chain` deliberately has no
 /// `CaseIterable` on the Swift side — the order that matters is the catalog's.
 #[uniffi::export]
-pub fn core_chain_identities() -> Vec<ChainIdentity> {
+pub fn chain_identities() -> Vec<ChainIdentity> {
     Chain::all()
         .map(|chain| ChainIdentity {
             chain,
@@ -1894,7 +1894,7 @@ pub fn core_chain_identities() -> Vec<ChainIdentity> {
         .collect()
 }
 
-/// Not exported: it is a column of `core_chain_identities` now.
+/// Not exported: it is a column of `chain_identities` now.
 pub fn evm_seed_derivation_chain(chain: Chain) -> Option<String> {
     if chain.is_testnet() && chain.is_evm() {
         return Some(chain.chain_display_name().to_string());

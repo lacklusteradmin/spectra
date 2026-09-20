@@ -6,7 +6,7 @@ fn holding(symbol: &str, chain: &str, amount: f64, price: f64) -> AssetHolding {
     AssetHolding {
         name: symbol.to_string(),
         symbol: symbol.to_string(),
-        coin_gecko_id: symbol.to_lowercase(),
+        coingecko_id: symbol.to_lowercase(),
         chain_name: chain.to_string(),
         token_standard: "Native".to_string(),
         contract_address: None,
@@ -92,16 +92,16 @@ async fn an_unvouched_token_is_never_merged_by_symbol() {
     let mut real = holding("USDX", "Ethereum", 1.0, 1.0);
     real.token_standard = "ERC-20".into();
     real.contract_address = Some("0x000000000000000000000000000000000000aaaa".into());
-    real.coin_gecko_id = String::new();
+    real.coingecko_id = String::new();
     let mut lookalike = holding("USDX", "Tron", 999.0, 1.0);
     lookalike.token_standard = "TRC-20".into();
     lookalike.contract_address = Some("T9yD14Nj9j7xAB4dbGeiX9h8unkKHxuWwb".into());
-    lookalike.coin_gecko_id = String::new();
+    lookalike.coingecko_id = String::new();
     // And a second contract on the same chain, same symbol.
     let mut sibling = holding("USDX", "Ethereum", 2.0, 1.0);
     sibling.token_standard = "ERC-20".into();
     sibling.contract_address = Some("0x000000000000000000000000000000000000bbbb".into());
-    sibling.coin_gecko_id = String::new();
+    sibling.coingecko_id = String::new();
 
     let service = service_with(vec![
         ("w1", "Ethereum", vec![real, sibling]),
@@ -181,7 +181,7 @@ async fn a_testnet_row_has_no_value() {
     )])
     .await;
     service
-        .apply_state_command(StateCommand::SelectNetworkChain {
+        .apply_state_command(StateCommand::SelectChainForFamily {
             chain_id: "ethereum-sepolia".into(),
         })
         .await

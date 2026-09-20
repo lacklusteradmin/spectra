@@ -35,7 +35,7 @@ impl WalletService {
         let limit = limit
             .unwrap_or(DEFAULT_BITCOIN_LIMIT)
             .clamp(MIN_BITCOIN_LIMIT, MAX_BITCOIN_LIMIT);
-        let (wallets, settings): (Vec<crate::store::state::WalletState>, _) = {
+        let wallets: Vec<crate::store::state::WalletState> = {
             let state = self.app_state().await;
             let wallets = state
                 .wallets
@@ -49,7 +49,7 @@ impl WalletService {
                 })
                 .cloned()
                 .collect();
-            (wallets, state.settings.clone())
+            wallets
         };
         if wallets.is_empty() {
             return Ok(HistoryRefreshOutcome::nothing());
@@ -86,7 +86,7 @@ impl WalletService {
                 .next_cursor;
 
             let network = wallet
-                .network_chain(&settings)
+                .chain()
                 .filter(|network| network.mainnet_counterpart() == chain)
                 .unwrap_or(chain);
             match self

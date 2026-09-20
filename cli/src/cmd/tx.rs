@@ -13,7 +13,11 @@ use spectra_core::service::WalletService;
 use spectra_core::store::wallet_domain::CoreTransactionKind;
 use spectra_core::store::wallet_secrets;
 
-use super::chain::{service_for_chain, BALANCE, BROADCAST, FEE, NATIVE_HISTORY, RPC, UTXO};
+use super::chain::{
+    service_for_chain, ENDPOINT_CAPABILITY_BALANCE, ENDPOINT_CAPABILITY_BROADCAST,
+    ENDPOINT_CAPABILITY_FEE, ENDPOINT_CAPABILITY_NATIVE_HISTORY, ENDPOINT_CAPABILITY_UTXO,
+    ENDPOINT_KIND_RPC_NODE,
+};
 use super::resolve_chain;
 use crate::ctx::{Ctx, SecretSource};
 use crate::error::{CliError, CliResult};
@@ -45,7 +49,7 @@ pub struct TxsArgs {
     /// Explicit read endpoint for the rechecked transaction's stored network.
     #[arg(long, requires = "recheck")]
     endpoint: Option<String>,
-    /// Recheck one stored UTXO transaction, including failed or confirmed records.
+    /// Recheck one stored ENDPOINT_CAPABILITY_UTXO transaction, including failed or confirmed records.
     #[arg(long, conflicts_with_all = ["refresh_pending", "maintenance", "poll_chain", "wallet", "replaceable"])]
     recheck: Option<String>,
     /// Poll all stored transaction networks and persist status changes.
@@ -530,7 +534,7 @@ fn affordability(out: Out, args: AffordabilityArgs) -> CliResult<()> {
         .unwrap_or_else(|| chain.entry().native_deployment_id.clone());
     let token = spectra_core::tokens::deployment(&deployment_id)
         .ok_or_else(|| CliError::usage("unknown deployment"))?;
-    if token.chain != chain.str_id() || token.symbol != args.symbol {
+    if token.chain_id != chain.str_id() || token.symbol != args.symbol {
         return Err(CliError::usage(
             "deployment does not match the selected network and symbol",
         ));
@@ -653,12 +657,15 @@ fn probe(ctx: &Ctx, out: Out, args: ProbeArgs) -> CliResult<()> {
 
     // Both halves in one service: the holding and the token row come from the
     // opened state, the balance and history reads from the chain's endpoints.
-    let service = service_for_chain(chain, BALANCE | NATIVE_HISTORY | RPC)?;
+    let service = service_for_chain(
+        chain,
+        ENDPOINT_CAPABILITY_BALANCE | ENDPOINT_CAPABILITY_NATIVE_HISTORY | ENDPOINT_KIND_RPC_NODE,
+    )?;
     ctx.rt
         .block_on(service.open_state(ctx.db_path()))
         .map_err(CliError::from)?;
 
-    let holding_key = holding.deployment_key();
+    let holding_key = holding.deployment_id();
     let risk = ctx
         .rt
         .block_on(service.send_destination_risk(wallet.id.clone(), holding_key, args.to.clone()))
@@ -750,10 +757,10 @@ fn destination(ctx: &Ctx, out: Out, args: DestinationArgs) -> CliResult<()> {
     let chain = resolve_chain(&args.chain)?;
     // Only the name lookup needs a node, and only the chain that registers
     // names does one — everywhere else this is address validation, so binding
-    // endpoints would refuse chains that have no RPC role for a question that
+    // endpoints would refuse chains that have no ENDPOINT_KIND_RPC_NODE role for a question that
     // never asks a node anything.
     let service = if chain.resolves_ens_names() {
-        service_for_chain(chain, RPC)?
+        service_for_chain(chain, ENDPOINT_KIND_RPC_NODE)?
     } else {
         WalletService::new(Vec::new()).map_err(CliError::from)?
     };
@@ -831,7 +838,7 @@ pub struct SendArgs {
     #[arg(long)]
     yes: bool,
     /// Sign the transaction and stop, printing the raw payload. Reads the live
-    /// nonce or UTXO set, moves nothing, and needs no `--yes`.
+    /// nonce or ENDPOINT_CAPABILITY_UTXO set, moves nothing, and needs no `--yes`.
     #[arg(long)]
     sign_only: bool,
     /// EVM gas limit. Given explicitly, the builder skips estimation — which
@@ -900,7 +907,7 @@ pub fn txs(ctx: &Ctx, out: Out, args: TxsArgs) -> CliResult<()> {
                 .find(|row| row.id.eq_ignore_ascii_case(&id))
                 .ok_or_else(|| CliError::rejected("Transaction not found."))?;
             let chain = resolve_chain(&transaction.chain_name)?;
-            ctx.rt.block_on(service.update_endpoints_typed(vec![
+            ctx.rt.block_on(service.update_endpoints(vec![
                 spectra_core::service::ChainEndpoints {
                     chain_id: chain.str_id().into(),
                     endpoints: vec![endpoint],
@@ -945,9 +952,9 @@ pub fn txs(ctx: &Ctx, out: Out, args: TxsArgs) -> CliResult<()> {
         let chain = resolve_chain(name)?;
         // A maintenance request names the stored transaction network.
         let network = chain;
-        let records = spectra_core::endpoint_records_for_chain_masked(
+        let records = spectra_core::filtered_endpoint_records_for_chain(
             network.str_id().into(),
-            RPC | NATIVE_HISTORY | UTXO,
+            ENDPOINT_KIND_RPC_NODE | ENDPOINT_CAPABILITY_NATIVE_HISTORY | ENDPOINT_CAPABILITY_UTXO,
             false,
         )
         .map_err(CliError::from)?;
@@ -1057,7 +1064,7 @@ pub fn txs(ctx: &Ctx, out: Out, args: TxsArgs) -> CliResult<()> {
                 "historySource": record
                     .transaction_history_source
                     .clone()
-                    .and_then(spectra_core::fetch::transactions::core_history_source)
+                    .and_then(spectra_core::fetch::transactions::history_source)
                     .map(|source| match source {
                         spectra_core::fetch::transactions::HistorySource::Provider { name } =>
                             serde_json::json!({"provider": name}),
@@ -1153,10 +1160,8 @@ pub fn send(ctx: &Ctx, out: Out, args: SendArgs) -> CliResult<()> {
     // The network this wallet is on, not its family's mainnet: it decides
     // which chain id is signed and which endpoints the send reads. Core
     // resolves it the same way, so the two agree on one rule
-    // (`WalletState::network_chain`) rather than each having its own.
-    let chain = wallet
-        .network_chain(&ctx.state()?.settings)
-        .unwrap_or(resolve_chain(&wallet.chain_name)?);
+    // (`WalletState::chain`) rather than each having its own.
+    let chain = wallet.chain().unwrap_or(resolve_chain(&wallet.chain_name)?);
 
     let amount: f64 = args
         .amount
@@ -1180,7 +1185,14 @@ pub fn send(ctx: &Ctx, out: Out, args: SendArgs) -> CliResult<()> {
     }
 
     let password = signing_password(ctx, &wallet.id, args.password_file, args.password_env)?;
-    let service = service_for_chain(chain, BALANCE | RPC | BROADCAST | FEE | UTXO)?;
+    let service = service_for_chain(
+        chain,
+        ENDPOINT_CAPABILITY_BALANCE
+            | ENDPOINT_KIND_RPC_NODE
+            | ENDPOINT_CAPABILITY_BROADCAST
+            | ENDPOINT_CAPABILITY_FEE
+            | ENDPOINT_CAPABILITY_UTXO,
+    )?;
     service.set_secret_store(ctx.secrets.clone());
     ctx.rt.block_on(service.open_state(ctx.db_path()))?;
     let request = SendExecutionRequest {

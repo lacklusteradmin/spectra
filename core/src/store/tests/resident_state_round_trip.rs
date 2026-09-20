@@ -154,7 +154,7 @@ fn resetting_settings_restores_every_default() {
     );
     reduce_state_in_place(
         &mut state,
-        StateCommand::SelectNetworkChain {
+        StateCommand::SelectChainForFamily {
             chain_id: "bitcoin-testnet".into(),
         },
     );
