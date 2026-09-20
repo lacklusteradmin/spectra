@@ -138,7 +138,6 @@ fn resetting_settings_restores_every_default() {
         U::BackgroundSyncProfile {
             value: crate::store::state::BackgroundSyncProfile::Aggressive,
         },
-        U::AutomaticRefreshFrequencyMinutes { value: 30 },
         U::UsePriceAlerts { value: false },
         U::UseTransactionStatusNotifications { value: false },
         U::UseLargeMovementNotifications { value: false },
@@ -218,7 +217,6 @@ fn every_settings_field_round_trips() {
         U::BackgroundSyncProfile {
             value: crate::store::state::BackgroundSyncProfile::Aggressive,
         },
-        U::AutomaticRefreshFrequencyMinutes { value: 30 },
         U::UsePriceAlerts { value: false },
         U::UseTransactionStatusNotifications { value: false },
         U::UseLargeMovementNotifications { value: false },
@@ -258,7 +256,6 @@ fn a_setting_outside_its_range_is_bounded() {
     }
 
     set(&mut state, U::BitcoinStopGap { value: 0 });
-    set(&mut state, U::AutomaticRefreshFrequencyMinutes { value: 1 });
     set(
         &mut state,
         U::LargeMovementAlertPercentThreshold { value: 0.0 },
@@ -268,21 +265,15 @@ fn a_setting_outside_its_range_is_bounded() {
         U::LargeMovementAlertUsdThreshold { value: 1_000_000.0 },
     );
     assert_eq!(state.settings.bitcoin_stop_gap, 1);
-    assert_eq!(state.settings.automatic_refresh_frequency_minutes, 5);
     assert_eq!(state.settings.large_movement_alert_percent_threshold, 1.0);
     assert_eq!(state.settings.large_movement_alert_usd_threshold, 100_000.0);
 
     set(&mut state, U::BitcoinStopGap { value: 9_999 });
     set(
         &mut state,
-        U::AutomaticRefreshFrequencyMinutes { value: 9_999 },
-    );
-    set(
-        &mut state,
         U::LargeMovementAlertPercentThreshold { value: 500.0 },
     );
     assert_eq!(state.settings.bitcoin_stop_gap, 200);
-    assert_eq!(state.settings.automatic_refresh_frequency_minutes, 60);
     assert_eq!(state.settings.large_movement_alert_percent_threshold, 90.0);
 
     // Trimmed, so a pasted key with a stray newline is the same key.

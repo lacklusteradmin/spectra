@@ -20,6 +20,60 @@ Split out of PLAN.md on 2026-09-15: it had reached 81 entries and 3171
 of PLAN.md's 3585 lines, which left Rule 0 and the open work buried under the
 history of work already done. Nothing was dropped in the move.
 
+### Scrollable controls use native press handling (2026-09-19)
+
+- **Before:** Dashboard rows, Staking links and other controls attached a
+  zero-distance drag gesture solely to animate a pressed scale and opacity.
+  Touches starting on those controls could compete with the parent scroll view
+  and show a pressed row instead of scrolling.
+- **After:** Remove the shared gesture modifier and its call sites. Controls
+  retain their existing native button styles and actions, letting the system
+  arbitrate taps and scrolling without an extra drag recognizer.
+- **Why:** Decorative feedback must not interfere with page navigation. Native
+  controls already provide press handling; a second gesture is unnecessary.
+- **CLI check:** No domain or CLI behaviour changes. Check removal with
+  `! rg 'spectraPressable|DragGesture' swift/views`; manually swipe starting on
+  Dashboard asset/wallet rows and Staking chain tiles, then tap to verify their
+  destinations still open. Also check Dashboard pull-to-refresh.
+- **Verification:** `make verify` passed formatting, clippy, 831 Rust tests,
+  387 offline CLI checks and the iPhone 17 Pro simulator suite. Full log:
+  `/tmp/spectra-scroll-verify.log`. Device gesture checks remain manual.
+
+### Known Tokens chain support uses registry display names (2026-09-19)
+
+- **Before:** The iOS Chain Support rows printed the token's raw chain field,
+  exposing identifiers such as `ethereum` instead of the chain's display name.
+- **After:** Rows resolve chain identifiers or token hosting names through the
+  existing registry and display its official name, such as `Ethereum` or
+  `BNB Chain`. Unrecognized values remain visible verbatim.
+- **Why:** User-facing chain names belong to the registry; rendering a storage
+  identifier or mechanically capitalizing it loses the registry's spelling.
+- **CLI check:** None applies to this Swift text rendering change. The iOS
+  build checks the existing registry adapter integration; inspect Known Tokens
+  → a token → Chain Support for the displayed names.
+- **Verification:** `make verify` passed formatting, clippy and 831 Rust tests,
+  but CLI acceptance had 386 passes and one unrelated failure: the removed
+  `refresh-frequency-minutes` setting returns exit 3 while the check expects 2.
+  Separately, `make test-ios` passed all 105 iPhone simulator tests. Logs:
+  `/tmp/spectra-chain-support-verify.log` and `/tmp/spectra-chain-support-ios.log`.
+
+### Persisted floating-point values round-trip exactly (2026-09-19)
+
+- **Before:** JSON decoding could change a persisted `f64` by one least
+  significant bit. Diagnostic timestamps therefore sometimes differed after
+  reopening, failing the concurrent state persistence test in CI.
+- **After:** Core enables serde_json's `float_roundtrip` feature so finite
+  floating-point values decode back to their original representation.
+- **Why:** Reopening persisted state must preserve its values; weakening the
+  equality assertion would hide a real serialization defect.
+- **CLI check:** No CLI command exposes timestamp bits. Run
+  `cargo test -p spectra_core persisted_floats_round_trip_without_changing_bits`;
+  it saves and reloads 256 adjacent timestamps through SQLite. The regression
+  fails before the fix without depending on the wall clock or thread timing.
+- **Verification:** `make verify` passed: formatting, clippy, 831 Rust tests,
+  386 offline CLI checks and 105 iPhone 17 Pro tests. Full log:
+  `/tmp/spectra-ci-fix-verify.log`.
+
 ### Password-protected wallets can use the owned send flow (2026-09-19)
 
 - **Before:** Both Swift and CLI owned sends passed no password, even for a
@@ -4807,3 +4861,103 @@ Known Tokens shows loading until core's seeded catalog arrives.
   presentation-only change, `rg -n 'historyFilterMenu|activeFilterStrip|filterCapsuleLabel'
   swift/views/HistoryView.swift` should show only the toolbar menu and its definition.
   In the app, open History and verify all three pickers in the Filter menu.
+
+
+## Wallet details keep technical metadata in Advanced (2026-09-19)
+
+- **Before:** Wallet Details displayed a separate card for Mode, Asset Count
+  and First Activity. Advanced displayed Wallet ID and Derivation Paths on a
+  custom glass card.
+- **After:** remove the statistics card and its Mode/Asset Count rows. First
+  Activity appears in Advanced beside Wallet ID and optional Derivation Paths,
+  using a system Form. Its existing date formatting and “No activity yet”
+  fallback remain in use.
+- **Why:** holdings already show the assets; low-frequency metadata belongs in
+  Advanced. A native grouped form suits this utility page, while the main
+  wallet detail keeps its glass cards and backdrop.
+- **CLI check:** `rg -n 'walletStatsCard|walletStatRow|nonZeroAssetCount|First Activity'
+  swift/views/WalletFlowViews.swift` returns only the First Activity row inside
+  Advanced. `make verify` covers core, CLI and iOS integration. In the app,
+  inspect Wallet Details → Advanced with and without recorded activity.
+
+## History left-hand text uses two lines (2026-09-19)
+
+- **Before:** the subtitle combined asset/network information and the wallet
+  name, wrapping below the signed amount and producing three lines.
+- **After:** the signed amount stays on the first line; the subtitle shows only
+  the wallet name on one line. Icons, status, timestamp, metadata, navigation
+  and actions are unchanged.
+- **Why:** keep the left-hand summary focused on the amount and its wallet.
+- **CLI check:** `rg -n 'Text\(row.subtitleText\)|subtitleText: transaction'
+  swift/views/HistoryView.swift` shows the single-line wallet subtitle.
+  `make verify` covers core, CLI and iOS integration.
+
+
+## Automatic refresh without a frequency setting (2026-09-19)
+
+Before: iOS exposed a 5–60 minute stepper in “Refresh Frequency”, titled
+“Background Sync”. The default five minutes triggered an orange warning, and
+“Adaptive” background refresh was advertised even though iOS stops its refresh
+loops when inactive. The same stored interval controlled balances and prices.
+
+After: remove the page, its empty settings section, localized explanatory copy,
+and the stored/FFI/CLI interval setting. Core owns a five-minute cadence shared
+by the balance engine and visible-price maintenance. Pending confirmations keep
+an independent cadence; manual refresh and foreground catch-up remain available.
+iOS still stops ordinary polling when inactive. Diagnostics describe actual
+network conditions without presenting a user-configured interval.
+
+Rationale: freshness is automatic app behavior. A minute picker and warnings on
+the default obscure that behavior and imply background guarantees we do not
+implement. No compatibility shim is added to this prelaunch storage shape.
+
+CLI checks (offline, using a temporary `--data-dir`):
+
+- `spectra settings set refresh-frequency-minutes 30` refuses the removed key.
+- `spectra --json diagnostics maintenance --conditions
+  '{"appIsActive":true,"isNetworkReachable":false,"isConstrainedNetwork":false,"isExpensiveNetwork":false,"isLowPowerMode":false,"batteryLevel":1,"wantsPriceRefresh":true}'`
+  reports `pollSeconds: 300` with no background tick for an idle wallet.
+- Both checks run in `scripts/cli-acceptance.sh` (including its stage-three
+  follow-up fixture). Existing policy tests cover independent pending polling
+  and price freshness cooldowns.
+
+Verification: `make verify` passed — rustfmt and clippy, 831 Rust tests,
+387 CLI checks, and 105 iPhone 17 Pro tests with zero failures. Swift bindings
+were regenerated by the Xcode build. Log: `/tmp/spectra-auto-refresh-verify.log`.
+
+
+## CLI test suites organized by feature (2026-09-19)
+
+Before: 13 separate fixture scripts mixed wallet, history, send and diagnostic
+checks under migration-stage and follow-up names. The stage scripts ran outside
+the normal acceptance result counter and stopped at the first failed scenario.
+Wallet inclusion was executed without checking its result; rename and empty-state
+smoke checks overlapped the main acceptance suite.
+
+After: five feature suites (`cli-wallets.py`, `cli-portfolio.py`, `cli-history.py`,
+`cli-send.py`, `cli-diagnostics.py`) run through the acceptance harness. Each uses
+standard-library unittest to report independent scenarios and continue after a
+failure. Subprocesses have timeouts, and optimized Python is refused because it
+would disable assertions. `scripts/README.md` describes every remaining script
+and maps old fixture names to the new suites. Product behavior is unchanged.
+
+Removed the empty derived-state shape test, separate empty quote/maintenance
+checks, redundant rename setup, the Arbitrum fee check already covered in the main
+acceptance script, obsolete-field absence assertions and a zero-value self-check that asserted no result. Kept error/refusal and persistence coverage,
+including the existing offline 300-second maintenance policy. Added checks that
+portfolio inclusion persists, changes totals and preserves holdings; repeated
+Bitcoin history refreshes retain exactly the expected transaction identities; and
+a successful password-protected send submits one nonempty payload and persists
+the matching wallet, network, amount, recipient and pending transaction.
+
+CLI checks: `make test-cli`, or `python3 scripts/cli-portfolio.py
+target/debug/spectra PortfolioTests.test_valuation_and_inclusion`,
+`python3 scripts/cli-history.py target/debug/spectra
+HistoryTests.test_bitcoin_pagination`, and `python3 scripts/cli-send.py
+target/debug/spectra SendTests.test_password_protected_broadcast`. All fixtures
+use temporary stores and local nodes; they do not establish real-chain broadcast
+acceptance. Full project verification: `make verify`.
+
+Verification: `make verify` passed — rustfmt and clippy, 831 Rust tests,
+385 CLI acceptance checks (including all 19 integration scenarios), and 105 iOS
+simulator tests with zero failures. Log: `/tmp/spectra-script-cleanup/verify.log`.

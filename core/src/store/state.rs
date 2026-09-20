@@ -304,8 +304,6 @@ pub struct AppSettings {
     pub use_strict_rpc_only: bool,
     #[serde(default)]
     pub background_sync_profile: BackgroundSyncProfile,
-    #[serde(default = "default_refresh_frequency_minutes")]
-    pub automatic_refresh_frequency_minutes: u32,
 
     // ── Tor ───────────────────────────────────────────────────────────────
     /// Route traffic through Tor. The platform starts and stops the client —
@@ -340,10 +338,9 @@ pub struct AppSettings {
 }
 
 // Bounds live here rather than in a front end's `didSet`, which is where they
-// were: a value outside them is refused at the reducer, so no caller can store
-// a stop gap of zero or a refresh interval that would hammer an endpoint.
+// were: the reducer bounds values so no caller can store a stop gap of zero
+// or an out-of-range movement threshold.
 pub const BITCOIN_STOP_GAP_RANGE: std::ops::RangeInclusive<u32> = 1..=200;
-pub const REFRESH_FREQUENCY_MINUTES_RANGE: std::ops::RangeInclusive<u32> = 5..=60;
 pub const LARGE_MOVEMENT_PERCENT_RANGE: std::ops::RangeInclusive<f64> = 1.0..=90.0;
 pub const LARGE_MOVEMENT_USD_RANGE: std::ops::RangeInclusive<f64> = 1.0..=100_000.0;
 
@@ -478,9 +475,6 @@ pub(crate) fn parsed_socks5_proxy(raw: &str) -> Option<String> {
         return None;
     }
     Some(trimmed.to_string())
-}
-fn default_refresh_frequency_minutes() -> u32 {
-    5
 }
 fn default_large_movement_percent() -> f64 {
     10.0
@@ -635,7 +629,6 @@ impl Default for AppSettings {
             fee_priority_by_chain: std::collections::HashMap::new(),
             use_strict_rpc_only: false,
             background_sync_profile: BackgroundSyncProfile::Balanced,
-            automatic_refresh_frequency_minutes: default_refresh_frequency_minutes(),
             use_price_alerts: default_true(),
             use_transaction_status_notifications: default_true(),
             use_large_movement_notifications: default_true(),
@@ -745,9 +738,6 @@ pub enum AppSettingUpdate {
     },
     BackgroundSyncProfile {
         value: BackgroundSyncProfile,
-    },
-    AutomaticRefreshFrequencyMinutes {
-        value: u32,
     },
     UsePriceAlerts {
         value: bool,
@@ -1199,10 +1189,6 @@ fn apply_app_setting(settings: &mut AppSettings, update: AppSettingUpdate) -> bo
         AppSettingUpdate::UseStrictRpcOnly { value } => settings.use_strict_rpc_only = value,
         AppSettingUpdate::BackgroundSyncProfile { value } => {
             settings.background_sync_profile = value
-        }
-        AppSettingUpdate::AutomaticRefreshFrequencyMinutes { value } => {
-            settings.automatic_refresh_frequency_minutes =
-                clamp(value, REFRESH_FREQUENCY_MINUTES_RANGE)
         }
         AppSettingUpdate::UsePriceAlerts { value } => settings.use_price_alerts = value,
         AppSettingUpdate::UseTransactionStatusNotifications { value } => {

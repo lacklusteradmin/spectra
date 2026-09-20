@@ -106,8 +106,7 @@ impl BalanceRefreshEngine {
             if self.is_running() {
                 self.trigger_immediate().await;
             } else {
-                let minutes = state.settings.automatic_refresh_frequency_minutes;
-                self.start((minutes.max(1) as u64) * 60).await;
+                self.start(super::policy::AUTOMATIC_REFRESH_SECONDS).await;
             }
         }
         true
@@ -120,14 +119,7 @@ impl BalanceRefreshEngine {
         if !app_is_active || count == 0 {
             return;
         }
-        let minutes = self
-            .inner
-            .wallet_service
-            .app_state()
-            .await
-            .settings
-            .automatic_refresh_frequency_minutes;
-        self.start((minutes.max(1) as u64) * 60).await;
+        self.start(super::policy::AUTOMATIC_REFRESH_SECONDS).await;
     }
 
     /// Start the periodic refresh loop.

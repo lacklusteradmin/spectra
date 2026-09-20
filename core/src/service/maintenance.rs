@@ -6,7 +6,7 @@
 //! `evaluate_heavy_refresh_gate`, `compute_background_maintenance_interval`
 //! and `active_pending_refresh_interval_for_profile` were five exports that
 //! together answered one: what should happen this tick. The intervals they
-//! needed are settings core owns, and the only inputs core genuinely lacks are
+//! needed come from core settings and policy. The only inputs core lacks are
 //! the device's — reachability, power, and whether a screen showing prices is
 //! in front of the user.
 

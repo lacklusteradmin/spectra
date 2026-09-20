@@ -415,6 +415,29 @@ fn app_state_load_on_empty_db_is_default() {
 }
 
 #[test]
+fn persisted_floats_round_trip_without_changing_bits() {
+    let db = tmp_db();
+    let mut state = CoreAppState::default();
+    // Adjacent representable timestamps exercise decimal parsing without relying
+    // on the wall clock to happen to produce a value that loses precision.
+    for offset in 0..256 {
+        let timestamp = f64::from_bits(1_789_862_724.180_276_6_f64.to_bits() + offset);
+        state
+            .diagnostics
+            .last_good_unix
+            .insert("Bitcoin".into(), timestamp);
+
+        app_state_save(&db, &state).unwrap();
+        let loaded = app_state_load(&db).unwrap();
+        assert_eq!(
+            loaded.diagnostics.last_good_unix["Bitcoin"].to_bits(),
+            timestamp.to_bits(),
+            "timestamp {timestamp} changed after reopening"
+        );
+    }
+}
+
+#[test]
 fn app_state_round_trips() {
     let db = tmp_db();
     let state = CoreAppState {

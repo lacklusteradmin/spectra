@@ -3,7 +3,7 @@
 //! Five exports used to live here and in `send/flow.rs`, each taking the piece
 //! of state it needed as an argument because core held none of it. The state
 //! is `RefreshClock` now, on `WalletService`, and the intervals are settings
-//! core owns; what is left in this file is the arithmetic, which is what a
+//! and policy core owns; what is left here is the arithmetic, which is what a
 //! policy module should be.
 
 use serde::{Deserialize, Serialize};
@@ -66,8 +66,7 @@ impl RefreshClock {
 
 /// What only the device can tell core.
 ///
-/// Everything else the plan needs — the sync profile, the refresh cadence — is
-/// a setting core holds, and the clock is core's own.
+/// Core owns the sync profile, automatic cadence and refresh clock.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, uniffi::Record)]
 #[serde(rename_all = "camelCase")]
 pub struct DeviceConditions {
@@ -96,8 +95,9 @@ pub struct MaintenancePlan {
     pub poll_seconds: u64,
 }
 
-/// Poll cadences. They were `AppState` constants, which is where a caller that
-/// is not `AppState` could not find them.
+/// Ordinary balances and visible prices refresh automatically every five minutes.
+/// Transaction confirmation has its own independent cadence.
+pub(crate) const AUTOMATIC_REFRESH_SECONDS: u64 = 5 * 60;
 const ACTIVE_POLL_SECONDS: u64 = 30;
 const INACTIVE_POLL_SECONDS: u64 = 60;
 const BALANCED_PENDING_REFRESH_SECONDS: f64 = 60.0;
@@ -113,16 +113,10 @@ fn pending_refresh_interval(settings: &AppSettings) -> f64 {
     }
 }
 
-/// How often prices may refresh, floored at a minute whatever the setting says.
-fn price_refresh_interval(settings: &AppSettings) -> f64 {
-    (settings.automatic_refresh_frequency_minutes as f64 * 60.0).max(60.0)
-}
-
 /// How long between background ticks, stretched by anything that costs the
 /// user power or data.
-fn background_interval(settings: &AppSettings, conditions: &DeviceConditions) -> f64 {
-    let mut interval = BASE_BACKGROUND_INTERVAL_SECONDS
-        .max(settings.automatic_refresh_frequency_minutes as f64 * 60.0);
+fn background_interval(conditions: &DeviceConditions) -> f64 {
+    let mut interval = BASE_BACKGROUND_INTERVAL_SECONDS;
     if conditions.is_constrained_network || conditions.is_expensive_network {
         interval = interval.max(30.0 * 60.0);
     }
@@ -181,7 +175,7 @@ pub fn maintenance_plan(
             && RefreshClock::elapsed(
                 clock.live_prices_at,
                 now_unix,
-                price_refresh_interval(settings),
+                AUTOMATIC_REFRESH_SECONDS as f64,
             );
         // Nothing pending to watch means the next question can wait a whole
         // price interval. Spinning every thirty seconds to ask "anything to
@@ -189,7 +183,7 @@ pub fn maintenance_plan(
         let poll_seconds = if has_pending_transaction_work {
             ACTIVE_POLL_SECONDS
         } else {
-            ACTIVE_POLL_SECONDS.max(price_refresh_interval(settings) as u64)
+            AUTOMATIC_REFRESH_SECONDS
         };
         return MaintenancePlan {
             refresh_pending_transactions,
@@ -204,7 +198,7 @@ pub fn maintenance_plan(
         && RefreshClock::elapsed(
             clock.background_tick_at,
             now_unix,
-            background_interval(settings, conditions),
+            background_interval(conditions),
         );
     MaintenancePlan {
         refresh_pending_transactions: false,

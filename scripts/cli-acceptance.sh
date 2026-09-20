@@ -60,10 +60,6 @@ readonly EVM_ADDR=0x742d35Cc6634C0532925a3b844Bc454e4438f44e
 
 check "assertions reject failed commands and wrong output" $OK bash "$(dirname "$0")/test-cli-assertions.sh"
 
-section "history read failures"
-check "corrupt history is refused without deleting records" $OK \
-    python3 "$(dirname "$0")/cli-history-corruption.py" "$BIN"
-
 section "exact send amounts"
 contains "Solana preserves units beyond f64 precision" '"rawAmount":"9007199254740993"' \
     spectra --json send amount --chain Solana --amount 9007199.254740993
@@ -242,6 +238,7 @@ else
 fi
 check "renames through the reducer"         $OK \
     spectra wallet rename "Acceptance BTC" "Renamed BTC"
+contains "renamed wallet survives reopening" '"name":"Renamed BTC"' spectra --json wallet list
 check "refuses an empty name"               $REJECTED \
     spectra wallet rename "Renamed BTC" "   "
 check "reports an unknown wallet"           1 spectra wallet show "no such wallet"
@@ -937,6 +934,8 @@ check "the app names no chain by spelling and fixes no amount precision" $OK \
 
 section "settings"
 check "lists the settings core owns"        $OK spectra settings list
+check "automatic refresh has no manual interval setting" $REJECTED \
+    spectra settings set refresh-frequency-minutes 30
 check "sets one"                            $OK \
     spectra settings set etherscan-api-key ACCEPTANCE-KEY
 contains "and a second process reads it back" '"value":"ACCEPTANCE-KEY"' \
@@ -1147,11 +1146,7 @@ section "owned pending maintenance"
 contains "empty maintenance completes without network" '"chains":[]' spectra --json txs --refresh-pending
 check "maintenance rejects conflicting scope" $USAGE spectra txs --refresh-pending --poll-chain Ethereum
 
-section "Bitcoin history pagination"
-check "loads and persists every Bitcoin history page against local fixtures" $OK \
-    python3 "$(dirname "$0")/cli-bitcoin-history.py" "$BIN"
-
-section "Stage 3 / C2 closure operations"
+section "Dashboard, receive and reset"
 closure_spectra() { "$BIN" --data-dir "$DATA_DIR/closure" "$@"; }
 check "dashboard groups render from stored state" $OK closure_spectra --json portfolio --stored
 # A pinned asset the user holds none of is built from the catalog rather than
@@ -1190,41 +1185,24 @@ check "stored alert evaluation needs no network" $OK closure_spectra alert check
 check "resets wallets through the owned operation" $OK closure_spectra settings reset --scope walletsAndSecrets --scope alertsAndContacts --yes
 contains "reset remains empty after reopening" '"wallets":[]' closure_spectra --json wallet list
 
-section "Network and token identity"
-check "networks, deployments, collisions and unpriced testnets stay distinct" $OK \
-    python3 "$(dirname "$0")/cli-network-token-identity.py" "$BIN"
-
 section "Identity-based artwork"
 contains "token identity resolves Ether artwork" '"artworkName":"ethereum"' spectra --json token artwork --token-id ethereum
 contains "network identity resolves Base artwork" '"artworkName":"base"' spectra --json token artwork --network-id base
 contains "Base native deployment draws Ether" '"artworkName":"ethereum"' spectra --json token artwork --deployment-id base:native
 contains "a ticker alone cannot claim artwork" '"artworkName":""' spectra --json token artwork --token-id USDC
 contains "an unknown contract cannot claim artwork" '"artworkName":""' spectra --json token artwork --deployment-id ethereum:erc-20:0xdead
-check "derived wallet state runs from the owned snapshot" $OK spectra --json wallet derived
+contains_exit 1 "missing transaction cannot be rebroadcast" 'transaction not found' \
+    spectra --json send rebroadcast missing --yes
 
-section "Swift shell ownership follow-up"
-check "naming, receive, durable movement and configured staking" $OK \
-    python3 "$(dirname "$0")/cli-shell-ownership.py" "$BIN"
-
-section "Remaining shell boundaries"
-check "exact derivation input and owned refresh intents" $OK \
-    python3 "$(dirname "$0")/cli-shell-boundary.py" "$BIN"
-check "stored history sources are named by core" $OK \
-    python3 "$(dirname "$0")/cli-history-source.py" "$BIN"
-
-check "coherent valuation and bounded stored history" $OK \
-    python3 "$(dirname "$0")/cli-projection-boundary.py" "$BIN"
-
-check "configured diagnostics and password-protected owned sends" $OK \
-    python3 "$(dirname "$0")/cli-shell-five-fixes.py" "$BIN"
+section "Offline integration suites"
+for domain in wallets portfolio history send diagnostics; do
+    check "$domain integration checks" $OK \
+        python3 "$(dirname "$0")/cli-$domain.py" "$BIN"
+done
 
 # ── Result ──────────────────────────────────────────────────────────────────
 
 printf '\n'
-
-# CLI ownership and local provider fixtures. Rust unit tests run in the workspace gate.
-"$(dirname "$0")/cli-stage3.sh" "$BIN" || exit 1
-"$(dirname "$0")/cli-stage3-followup.sh" "$BIN" || exit 1
 
 if [[ "$FAILED" -eq 0 ]]; then
     printf '\033[32m%s passed\033[0m\n' "$PASSED"

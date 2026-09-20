@@ -129,13 +129,6 @@ const FIELDS: &[Field] = &[
         },
     },
     Field {
-        key: "refresh-frequency-minutes",
-        read: |s| s.automatic_refresh_frequency_minutes.to_string(),
-        update: |v| {
-            parse_u32(v).map(|value| AppSettingUpdate::AutomaticRefreshFrequencyMinutes { value })
-        },
-    },
-    Field {
         key: "price-alerts",
         read: |s| s.use_price_alerts.to_string(),
         update: |v| parse_bool(v).map(|value| AppSettingUpdate::UsePriceAlerts { value }),
