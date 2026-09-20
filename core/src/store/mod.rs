@@ -17,7 +17,6 @@ pub use artwork::{
 };
 
 use serde::{Deserialize, Serialize};
-use std::collections::BTreeMap;
 use std::collections::HashMap;
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, uniffi::Record)]
@@ -256,42 +255,6 @@ pub fn plan_merge_built_in_token_preferences(
 pub struct WalletEarliestTransactionDate {
     pub wallet_id: String,
     pub earliest_created_at_unix: f64,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
-#[serde(rename_all = "camelCase")]
-pub struct TransactionEarliestInput {
-    pub wallet_id: Option<String>,
-    pub created_at_unix: f64,
-}
-
-/// Not exported: `WalletService::earliest_transaction_dates` is the entry point.
-pub fn core_earliest_transaction_dates(
-    transactions: Vec<TransactionEarliestInput>,
-) -> Vec<WalletEarliestTransactionDate> {
-    let mut earliest: BTreeMap<String, f64> = BTreeMap::new();
-    for transaction in transactions {
-        let Some(wallet_id) = transaction.wallet_id else {
-            continue;
-        };
-        earliest
-            .entry(wallet_id)
-            .and_modify(|current| {
-                if transaction.created_at_unix < *current {
-                    *current = transaction.created_at_unix;
-                }
-            })
-            .or_insert(transaction.created_at_unix);
-    }
-    earliest
-        .into_iter()
-        .map(
-            |(wallet_id, earliest_created_at_unix)| WalletEarliestTransactionDate {
-                wallet_id,
-                earliest_created_at_unix,
-            },
-        )
-        .collect()
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, uniffi::Record)]

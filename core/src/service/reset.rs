@@ -30,7 +30,7 @@ impl WalletService {
                 reduce_state_in_place(state, StateCommand::ResetTokenPreferences);
             }
             if mutation.reset_dashboard_customization {
-                state.settings.pinned_dashboard_token_ids.clear();
+                reduce_state_in_place(state, StateCommand::ResetPinnedDashboardAssets);
             }
             if mutation.reset_history_and_cache {
                 state.diagnostics = Default::default();

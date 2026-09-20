@@ -6,6 +6,8 @@ use serde::{Deserialize, Serialize};
 mod addresses;
 mod connection;
 mod history;
+mod history_query;
+pub(crate) use history_query::*;
 mod keypool;
 mod state;
 mod teardown;

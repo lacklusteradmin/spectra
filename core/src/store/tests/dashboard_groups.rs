@@ -56,7 +56,7 @@ async fn a_row_is_per_asset_and_breaks_down_by_chain() {
         ),
     ])
     .await;
-    let groups = service.dashboard_asset_groups().await.expect("groups");
+    let groups = service.portfolio_snapshot().await.expect("snapshot").groups;
     let eth: Vec<_> = groups
         .iter()
         .filter(|g| g.holdings.iter().any(|h| h.coin.symbol == "ETH"))
@@ -108,7 +108,7 @@ async fn an_unvouched_token_is_never_merged_by_symbol() {
         ("w2", "Tron", vec![lookalike]),
     ])
     .await;
-    let groups = service.dashboard_asset_groups().await.expect("groups");
+    let groups = service.portfolio_snapshot().await.expect("snapshot").groups;
     let usdx: Vec<_> = groups
         .iter()
         .filter(|g| g.holdings.iter().any(|h| h.coin.symbol == "USDX"))
@@ -141,19 +141,19 @@ fn row_value(g: &crate::store::wallet_domain::CoreDashboardAssetGroup) -> Option
         .try_fold(0.0, |sum, v| v.map(|v| sum + v))
 }
 
-/// Live prices win over the amount a holding was stored with.
+/// Only quotes are prices; an old value embedded in a holding is not a fallback.
 #[tokio::test]
-async fn a_live_price_beats_the_stored_one() {
+async fn an_unquoted_holding_stays_unpriced_until_a_quote_arrives() {
     let service = service_with(vec![(
         "w1",
         "Ethereum",
         vec![holding("ETH", "Ethereum", 2.0, 1000.0)],
     )])
     .await;
-    let stored = service.dashboard_asset_groups().await.expect("groups");
+    let stored = service.portfolio_snapshot().await.expect("snapshot").groups;
     assert_eq!(
         row_value(stored.iter().find(|g| g.id == "ethereum").unwrap()),
-        Some(2000.0)
+        None
     );
 
     service
@@ -163,7 +163,7 @@ async fn a_live_price_beats_the_stored_one() {
         .quotes
         .prices
         .insert("ethereum:native".into(), 3000.0);
-    let live = service.dashboard_asset_groups().await.expect("groups");
+    let live = service.portfolio_snapshot().await.expect("snapshot").groups;
     assert_eq!(
         row_value(live.iter().find(|g| g.id == "ethereum").unwrap()),
         Some(6000.0)
@@ -193,7 +193,7 @@ async fn a_testnet_row_has_no_value() {
         .quotes
         .prices
         .insert("ethereum-sepolia:native".into(), 3000.0);
-    let groups = service.dashboard_asset_groups().await.expect("groups");
+    let groups = service.portfolio_snapshot().await.expect("snapshot").groups;
     assert_eq!(
         row_value(
             groups
@@ -225,7 +225,7 @@ async fn a_pinned_asset_held_nowhere_holds_nothing() {
         })
         .await
         .expect("pin");
-    let groups = service.dashboard_asset_groups().await.expect("groups");
+    let groups = service.portfolio_snapshot().await.expect("snapshot").groups;
 
     let solana = groups.iter().find(|g| g.id == "solana").expect("a row");
     assert!(
@@ -263,7 +263,7 @@ async fn pinned_rows_lead_in_pin_order() {
         })
         .await
         .expect("pin");
-    let groups = service.dashboard_asset_groups().await.expect("groups");
+    let groups = service.portfolio_snapshot().await.expect("snapshot").groups;
     let symbols: Vec<_> = groups.iter().map(row_symbol).collect();
     // ETH before SOL because that is the pin order, and both before the
     // unpinned BTC even though BTC is worth more.
@@ -274,4 +274,38 @@ async fn pinned_rows_lead_in_pin_order() {
             .any(|g| row_symbol(g) == "BTC" && !g.is_pinned),
         "BTC is still shown, unpinned"
     );
+}
+
+#[tokio::test]
+async fn portfolio_snapshot_keeps_wallets_groups_and_valuation_on_one_version() {
+    let service = service_with(vec![(
+        "w1",
+        "Ethereum",
+        vec![holding("ETH", "Ethereum", 2.0, 99.0)],
+    )])
+    .await;
+    service
+        .wallet_state
+        .write()
+        .await
+        .quotes
+        .prices
+        .insert("ethereum:native".into(), 3000.0);
+    let before = service.portfolio_snapshot().await.unwrap();
+    service
+        .apply_state_command(StateCommand::SetWalletPortfolioInclusion {
+            wallet_id: "w1".into(),
+            included: false,
+        })
+        .await
+        .unwrap();
+    let after = service.portfolio_snapshot().await.unwrap();
+    assert!(after.revision > before.revision);
+    assert_eq!(before.valuation.portfolio.total, 6000.0);
+    assert!(before.wallets[0].include_in_portfolio_total);
+    assert_eq!(after.valuation.portfolio.total, 0.0);
+    assert!(!after.wallets[0].include_in_portfolio_total);
+    assert!(after.derived.portfolio.is_empty());
+    assert!(after.groups.iter().all(|group| group.holdings.is_empty()));
+    assert_eq!(after.valuation.wallets["w1"].total, 6000.0);
 }

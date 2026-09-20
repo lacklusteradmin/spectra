@@ -41,7 +41,11 @@ async fn imported_wallets_land_in_core_state() {
 
     assert_eq!(outcome.wallets.len(), 1);
     // The caller does not store anything — core already did.
-    let stored = service.wallets_for_display().await.expect("wallets");
+    let stored = service
+        .portfolio_snapshot()
+        .await
+        .expect("snapshot")
+        .wallets;
     assert_eq!(stored.len(), 1);
     assert_eq!(stored[0].selected_chain, "Solana");
     assert_eq!(
@@ -84,7 +88,11 @@ async fn a_seed_import_stores_one_address_per_network_of_its_family() {
         crate::app_core::seed_derivation_paths_for_account(0).expect("default paths");
     service.import_wallets(commit).await.expect("import");
 
-    let stored = service.wallets_for_display().await.expect("wallets");
+    let stored = service
+        .portfolio_snapshot()
+        .await
+        .expect("snapshot")
+        .wallets;
     assert_eq!(stored.len(), 1);
     let addresses = &stored[0].addresses;
     for network in crate::registry::Chain::Bitcoin.network_choices() {

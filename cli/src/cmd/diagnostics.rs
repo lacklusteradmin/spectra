@@ -30,6 +30,11 @@ pub enum DiagnosticsCommand {
     },
     /// Run core's self-tests for one chain, or all of them.
     SelfTest(SelfTestArgs),
+    /// Diagnose the selected network and RPC using the service's current settings.
+    Configured {
+        #[arg(long)]
+        chain: String,
+    },
     /// The diagnostics document core builds for a chain.
     Show(ShowArgs),
 }
@@ -84,6 +89,21 @@ pub fn run(ctx: &Ctx, out: Out, command: DiagnosticsCommand) -> CliResult<()> {
         }
         DiagnosticsCommand::SelfTest(args) => self_test(out, args),
         DiagnosticsCommand::Show(args) => show(ctx, out, args),
+        DiagnosticsCommand::Configured { chain } => {
+            let chain = resolve_chain(&chain)?;
+            let report = ctx.rt.block_on(
+                ctx.service()?
+                    .run_configured_self_tests(chain.str_id().into()),
+            )?;
+            let passed = report.results.iter().all(|r| r.passed);
+            out.text(|| println!("{}", serde_json::to_string_pretty(&report).unwrap()));
+            out.emit(serde_json::json!({"ok": passed, "report": report}));
+            if passed {
+                Ok(())
+            } else {
+                Err(CliError::reported("Configured network self-tests failed"))
+            }
+        }
     }
 }
 

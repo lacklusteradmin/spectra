@@ -245,15 +245,9 @@ pub struct AppSettings {
     /// The currency amounts are displayed in.
     #[serde(default)]
     pub fiat_currency: FiatCurrency,
-    /// Token IDs the user pinned to the dashboard, in display order.
-    /// Empty means "not chosen yet" — read it through
-    /// [`AppSettings::pinned_dashboard_assets`], which answers with
-    /// [`DEFAULT_PINNED_DASHBOARD_ASSETS`] in that case.
-    ///
-    /// `default` so that a state file written before this field existed still
-    /// loads. Not a migration shim — the struct simply grows, and an absent
-    /// list is exactly the same as an empty one.
-    #[serde(default)]
+    /// Token IDs pinned in display order. An empty list means no pins.
+    /// Defaults are applied only when settings or this field are initialized.
+    #[serde(default = "default_pinned_dashboard_assets")]
     pub pinned_dashboard_token_ids: Vec<String>,
     /// Which network the user selected for each chain family that offers a
     /// choice, as `mainnet str_id -> selected str_id`.
@@ -612,21 +606,17 @@ pub fn core_unpriced_chain_names() -> Vec<String> {
 pub const DEFAULT_PINNED_DASHBOARD_ASSETS: [&str; 4] =
     ["bitcoin", "ethereum", "tether", "usd-coin"];
 
+fn default_pinned_dashboard_assets() -> Vec<String> {
+    DEFAULT_PINNED_DASHBOARD_ASSETS
+        .iter()
+        .map(|id| id.to_string())
+        .collect()
+}
+
 impl AppSettings {
-    /// What the user pinned, or the default when they have pinned nothing.
-    ///
-    /// Unpinning everything is not a choice to show nothing — it is what a
-    /// fresh wallet looks like, which is what `SetPinnedDashboardAssets` with
-    /// an empty list has always meant.
+    /// The exact saved selection, including an intentionally empty list.
     pub fn pinned_dashboard_assets(&self) -> Vec<String> {
-        if self.pinned_dashboard_token_ids.is_empty() {
-            DEFAULT_PINNED_DASHBOARD_ASSETS
-                .iter()
-                .map(|id| id.to_string())
-                .collect()
-        } else {
-            self.pinned_dashboard_token_ids.clone()
-        }
+        self.pinned_dashboard_token_ids.clone()
     }
 }
 
@@ -634,7 +624,7 @@ impl Default for AppSettings {
     fn default() -> Self {
         Self {
             fiat_currency: FiatCurrency::Usd,
-            pinned_dashboard_token_ids: Vec::new(),
+            pinned_dashboard_token_ids: default_pinned_dashboard_assets(),
             network_chain_by_family: std::collections::HashMap::new(),
             rpc_endpoint_by_chain: std::collections::HashMap::new(),
             etherscan_api_key: String::new(),
@@ -850,8 +840,9 @@ pub enum StateCommand {
     SetPinnedDashboardAssets {
         token_ids: Vec<String>,
     },
-    /// Pin or unpin one asset, against the set the dashboard shows — the
-    /// default four when nothing has been pinned.
+    /// Restore the default dashboard pins explicitly.
+    ResetPinnedDashboardAssets,
+    /// Pin or unpin one asset against the saved selection.
     ///
     /// The app built the whole list itself for this, starting from its own
     /// copy of that default rule.
@@ -1643,6 +1634,9 @@ pub fn reduce_state_in_place(state: &mut CoreAppState, command: StateCommand) ->
                     });
                 }
             }
+        }
+        StateCommand::ResetPinnedDashboardAssets => {
+            set_pinned_dashboard_assets(state, default_pinned_dashboard_assets(), &mut events)
         }
         StateCommand::SetPinnedDashboardAssets { token_ids } => {
             set_pinned_dashboard_assets(state, token_ids, &mut events)

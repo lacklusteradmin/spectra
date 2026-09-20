@@ -20,6 +20,199 @@ Split out of PLAN.md on 2026-09-15: it had reached 81 entries and 3171
 of PLAN.md's 3585 lines, which left Rule 0 and the open work buried under the
 history of work already done. Nothing was dropped in the move.
 
+### Password-protected wallets can use the owned send flow (2026-09-19)
+
+- **Before:** Both Swift and CLI owned sends passed no password, even for a
+  wallet imported with encrypted signing material. Device authentication could
+  succeed and signing would still fail for lack of a wallet password.
+- **After:** Core's review reports whether its wallet requires a password. The
+  native confirmation collects it only when required, clears its field on
+  submission/cancellation/dismissal, and forwards it to core. CLI owned sends
+  use the existing file/environment/prompt password source. Missing or wrong
+  passwords never broadcast; a failed attempt needs a fresh review.
+- **Why:** Password entry is platform interaction; secret validation/decryption
+  remains core-owned. Device authentication does not decrypt a wallet envelope.
+- **CLI check:** `python3 scripts/cli-shell-five-fixes.py target/debug/spectra`
+  imports a sealed fixture wallet, refuses empty/wrong passwords without any
+  submission, then signs and submits exactly once to a loopback mock.
+- **Verification:** `make verify` passed: 831 Rust tests, 382 offline CLI
+  checks and 104 iPhone 17 Pro tests; formatting and clippy are clean.
+
+### Diagnostics inspect the service's configured network (2026-09-19)
+
+- **Before:** Swift chose a custom RPC or the first catalog row and assembled
+  the RPC and offline self-tests itself, independently of network selection.
+- **After:** `run_configured_self_tests` resolves a family through stored network
+  selection (an explicitly requested testnet stays explicit), runs that network's
+  offline tests and probes its first effective RPC. The result names the actual
+  network and endpoint; failure does not silently substitute another endpoint.
+  Swift only displays results. Existing all-chain offline tests remain available.
+- **Why:** Endpoint/network choice belongs to the service that uses them.
+- **CLI check:** `spectra --json diagnostics configured --chain ethereum`;
+  the loopback fixture above proves selected Sepolia, a wrong-chain response,
+  explicit testnet selection and the configured custom endpoint across reopening.
+- **Verification:** `make verify` passed: 831 Rust tests, 382 offline CLI
+  checks and 104 iPhone 17 Pro tests; formatting and clippy are clean.
+
+### Preview success and failure belong to the same captured form (2026-09-19)
+
+- **Before:** Error completions ignored nonce/fee edits; nonce was parsed after
+  an await while the rest of the request came from earlier input. Old failures
+  could clear a newer form's preview or display an obsolete error.
+- **After:** Capture and parse all fields before awaiting. Every response checks
+  request identity, cancellation and the complete raw form, including invalid
+  nonce/fee text. Only the latest request clears its loading state. Resetting
+  or cancelling the composer invalidates in-flight previews.
+- **Why:** This is native asynchronous view state, not a reason to move UI tasks
+  into core. Raw input matters because different invalid edits both parse to nil.
+- **CLI check:** Not applicable to Swift task ordering. iOS regression tests
+  deliver stale successes and failures after every relevant form edit and after
+  a newer request, and verify that the current message survives.
+- **Verification:** `make verify` passed: 831 Rust tests, 382 offline CLI
+  checks and 104 iPhone 17 Pro tests; formatting and clippy are clean.
+
+### Password validation returns reasons, not English UI text (2026-09-19)
+
+- **Before:** Core returned English sentences which the import form displayed
+  directly. Its four-character rule counted UTF-8 bytes, accepting two Chinese
+  characters despite the stated minimum.
+- **After:** Core returns `TooShort` or `ConfirmationMismatch`; Swift maps these
+  exhaustively to English, Simplified Chinese and Traditional Chinese resources.
+  The minimum counts Unicode scalar values, not UTF-8 bytes. Blank remains allowed.
+- **Why:** Core owns validation; native localization owns its wording.
+- **CLI check:** `SPECTRA_PASSWORD=abc SPECTRA_PASSWORD_CONFIRMATION=abc spectra
+  --json wallet check-password` reports `tooShort`. The loopback fixture also
+  checks blank, mismatch and multibyte input without echoing any secrets.
+- **Verification:** `make verify` passed: 831 Rust tests, 382 offline CLI
+  checks and 104 iPhone 17 Pro tests; formatting and clippy are clean.
+
+### Runtime settings follow committed state (2026-09-19)
+
+- **Before:** Optimistically editing a setting immediately started/stopped Tor
+  or requested notification permission before the durable command succeeded.
+- **After:** The form retains optimistic editing, but a separate read-only
+  committed projection drives Tor, notification permission and refresh cadence.
+  Ordered successful commits adopt that projection; failed writes do not apply
+  their runtime effects and restore the last committed form when no edits remain.
+  Manual Tor reconnect also reads committed settings.
+- **Why:** An uncommitted text field/toggle must not change live transport policy.
+- **CLI check:** Core setting persistence/refusal remains covered by `spectra
+  settings set/get` in CLI acceptance. Native optimistic-versus-committed timing
+  is covered by the iOS settings test; CLI has no optimistic view state.
+- **Verification:** `make verify` passed: 831 Rust tests, 382 offline CLI
+  checks and 104 iPhone 17 Pro tests; formatting and clippy are clean.
+
+### Coherent portfolio projections and bounded history reads (2026-09-19)
+
+- **Before:** Swift assembled wallet, quote, dashboard and pin projections from
+  independent reads; late requests could replace newer results or combine two
+  versions. Portfolio totals and missing-price rules were repeated in Swift;
+  dashboard rows could fall back to an old price stored in a holding.
+  **After:** `portfolio_snapshot` captures one resident state under the writer,
+  derives its wallets, capabilities, groups, pins and valuation together, and
+  assigns an ordered session revision. Swift adopts only newer snapshots and
+  rejects the entire snapshot if a newer state command has already been adopted.
+  Portfolio/wallet totals, dashboard valuation and movement alerts use the same
+  core quote policy: finite positive deployment quotes, no testnet valuation,
+  no stored-price fallback. Partial totals carry a missing-price count; missing
+  currency rates yield no fiat value. Wallet cards label partial totals; all
+  unavailable values render as a dash rather than a fabricated zero.
+- **Before:** refreshing history loaded the whole table four times for the list
+  and its derived indexes. The screen's 20-row limit bounded rendering only.
+  Normalization took translated `Unknown` prose as a domain-query input and
+  returned another full display record.
+  **After:** `history_page` applies deduplication, filtering, searching and
+  ordering in SQLite and decodes at most one bounded page plus its lookahead.
+  Search uses Unicode lowercasing; unclassifiable record identities/statuses
+  fail the read rather than vanishing behind a filter.
+  Asset deployment identity participates in deduplication; missing deployment
+  identities are kept distinct and case-significant transaction hashes are
+  retained. Recorded networks
+  remain visible after changing a wallet's selected network. The small
+  `transaction_snapshot` reads recent records and pending activity plus indexed
+  first-activity dates and a count in one SQLite read transaction. Details,
+  notifications and transaction actions read by ID, so older records remain
+  actionable. Refresh restarts screen pagination; stale page responses are
+  discarded. The localized normalization interface and its duplicate record
+  are deleted; provider identity remains core-owned and wording stays native.
+- **Why:** one domain owner must also provide coherent answers. Lower export
+  counts and moving loops to Rust alone did not establish that boundary.
+- **CLI checks:** `spectra --json portfolio --stored`, `spectra --json txs
+  --page --limit 20 --offset 20`, `spectra --json txs --page --filter pending`,
+  `spectra --json txs --summary`, `spectra --json txs --record <id>`.
+  `python3 scripts/cli-projection-boundary.py target/debug/spectra` proves missing
+  quotes/rates, reopening, cross-page deduplication, filtering, summaries and
+  direct record lookup using a temporary offline database. Rust tests cover
+  nonfinite quotes and consistent projections; Swift bridge tests deliver an
+  older snapshot after a newer one and verify it cannot replace it.
+- **Display-policy decision:** keep six significant digits / eight fractional
+  places as a shared compact-display policy, explicitly separate from asset
+  precision and exact signing amounts. Localization, grouping separators,
+  editing drafts and navigation remain in Swift. No new domain operation is
+  introduced solely to render a string.
+- **Verification:** `make verify` passed: lint/formatting, 829 Rust tests, 381
+  offline CLI checks and 99 iPhone 17 Pro tests. The app launches and renders
+  its empty portfolio through the new snapshot path; iOS bridge tests execute
+  successful history page/summary/ID reads and both stale-snapshot scenarios.
+
+### Keep recipient probes and operation outcomes attached to the current UI (2026-09-19)
+
+- **Before:** recipient probes cached by chain, ticker and lowercased address;
+  same-ticker deployments and case-significant addresses could share a result,
+  and cache hits bypassed stale-response checks.
+  **After:** delete this cache. Each probe carries the captured wallet,
+  deployment and typed destination to core; only the still-current request may
+  update the warning, failure notice or loading state. Core performs protocol
+  normalization and resolution. ENS resolution remains in the reviewed send;
+  the activity probe no longer builds a separate ENS explanation.
+- **Before:** completion cleared a partial import's rejected-address notice;
+  maintenance buttons reported completion even when refresh returned failure.
+  **After:** import completion carries its notice through dismissal, and both
+  full and per-chain refresh controls render the actual success/failure result,
+  including failure to read back the updated wallet or history projection.
+- **Why:** a thin shell must faithfully display results, including uncertainty,
+  partial success and failure; it must not invent identities or erase outcomes.
+- **CLI check:** `spectra send probe` continues to exercise the core recipient
+  rule. The UI-only request lifetime and wording have no CLI equivalent;
+  async bridge tests and `testImportCompletionPreservesAPartialSuccessNotice`,
+  `testRefreshFailureDoesNotClaimCompletion` cover delivery and presentation.
+  No signing, broadcasting or real funds are needed for these checks.
+- **Verification:** the same complete `make verify` run above passed. Partial
+  import coverage also checks that the notice remains in the dashboard's
+  visible notice collection after dismissal.
+
+### A transaction subtitle names its chain once, or not at all (2026-09-18)
+
+- **Before:** `transactionSubtitleFormat` was `"%@ on %@ • %@"` — asset, chain,
+  wallet — so a native asset read "Solana on Solana • Main Wallet". Every
+  native asset's display name *is* its chain's, which is the common row in
+  History, and the repeated word pushed the line past the width left beside the
+  badge, the status chip and the timestamp: a three-line card to say one word
+  twice. The format was also spelled out at three call sites —
+  `TransactionRecord.subtitleText`, `HistoryView` and `TransactionDetailView` —
+  the latter two passing `store.displayChainTitle(for: transaction)`, which
+  returns `transaction.chainName`, so all three produced the same string.
+  **After:** `subtitleText` is the one producer and both views call it. It
+  names the chain only when the asset is not the network's own:
+  "Solana • Main Wallet", "USD Coin on Solana • Main Wallet",
+  "Bitcoin on Bitcoin Testnet4 • Main Wallet". `transactionSubtitleFormat` is
+  `"%@ • %@"` in all three locales, and the asset-on-chain pair is
+  `assetOnChainFormat` — the key that was `priceAlertTitleFormat`, holding the
+  same `"%@ on %@"` / `"%@（%@）"` it always did, renamed for the second caller.
+- **Why:** two of Rule 0's cases at once. The duplicate line was a second model
+  of one fact — the asset and the chain are the same thing for a native asset,
+  and the format could not say so because it took the pair unconditionally. And
+  one string had three spellings, two of them routed through a chain-title
+  lookup that is the identity function for a record; a change to the wording
+  would have had to be made three times or drift.
+- **CLI check:** none applies — a rendered line over fields core already
+  reports. `spectra --json history` shows the `assetDisplayName`, `chainName`
+  and `walletName` the subtitle is composed from, including the native case
+  where the first two match. Swift's `PresentationCatalogTests` adds
+  `testTransactionSubtitleNamesTheChainOnlyWhenItIsNotTheAsset`, which pins
+  both shapes against the shipped formats rather than against English.
+- **Verification:** `make verify`.
+
 ### A dashboard row names itself, so it can hold nothing (2026-09-18)
 
 - **Before:** `CoreDashboardAssetGroup` had no identity of its own — the row's
@@ -4582,3 +4775,35 @@ end supplies the wording.
 Follow-up completed in the ten Stage 3 / C2 slices above: the duplicate
 `TokenPreferenceEntry.builtIn` builder and startup fallback are removed.
 Known Tokens shows loading until core's seeded catalog arrives.
+
+
+## Empty dashboard pins are an explicit selection (2026-09-19)
+
+- **Before:** removing the last pinned asset made core substitute the default
+  four again. The pin editor could never retain an empty selection.
+- **After:** fresh settings store the default four; an explicitly empty list
+  stays empty, including after reopening. Pin options, portfolio grouping and
+  quote refresh use that exact selection. The pin editor's Reset command and
+  dashboard customization reset explicitly restore the defaults.
+- **Why:** absence of a saved choice and a deliberate choice of no pins have
+  different meanings. Core owns both initialization and explicit reset.
+- **CLI check:** on a fresh data directory, run
+  `spectra --data-dir "$dir" --json portfolio --unpin-token bitcoin --unpin-token ethereum --unpin-token tether --unpin-token usd-coin --pin-options`;
+  rerun `portfolio --pin-options` and confirm every option is unpinned.
+  `settings reset --scope dashboardCustomization --yes` restores the defaults.
+  Covered by CLI acceptance, a core persistence regression and the Swift
+  async bridge regression.
+
+
+## History uses one filter entry point (2026-09-19)
+
+- **Before:** the history header showed Wallet, Type and Sort menus, duplicating
+  the same pickers in the top-right Filter menu.
+- **After:** the header controls are removed; Wallet, Type and Sort remain
+  available through the top-right Filter menu.
+- **Why:** one entry point removes redundant controls and leaves more room for
+  transaction history.
+- **CLI check:** `make verify` checks the core, CLI and iOS integration. For this
+  presentation-only change, `rg -n 'historyFilterMenu|activeFilterStrip|filterCapsuleLabel'
+  swift/views/HistoryView.swift` should show only the toolbar menu and its definition.
+  In the app, open History and verify all three pickers in the Filter menu.

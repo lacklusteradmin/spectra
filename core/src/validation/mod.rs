@@ -237,27 +237,35 @@ fn seed_phrase_length_warning(word_count: u32) -> Option<String> {
     None
 }
 
-/// Returns an error message when `password` / `confirmation` fail the wallet
+/// Returns a typed rejection when `password` / `confirmation` fail the wallet
 /// password rules, or `None` when both fields pass.
 ///
 /// Rules:
 ///  * Both empty → valid (no password is allowed).
 ///  * Non-empty password shorter than 4 characters → error.
 ///  * Password and confirmation mismatch → error.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, uniffi::Enum)]
+#[serde(rename_all = "camelCase")]
+pub enum WalletPasswordRejection {
+    TooShort,
+    ConfirmationMismatch,
+}
+
 #[uniffi::export]
-pub fn core_validate_wallet_password(password: String, confirmation: String) -> Option<String> {
+pub fn core_validate_wallet_password(
+    password: String,
+    confirmation: String,
+) -> Option<WalletPasswordRejection> {
     let p = password.trim();
     let c = confirmation.trim();
     if p.is_empty() && c.is_empty() {
         return None;
     }
-    if p.len() < 4 {
-        return Some(
-            "Wallet password must be at least 4 characters, or leave it blank.".to_string(),
-        );
+    if p.chars().count() < 4 {
+        return Some(WalletPasswordRejection::TooShort);
     }
     if p != c {
-        return Some("Wallet password confirmation does not match.".to_string());
+        return Some(WalletPasswordRejection::ConfirmationMismatch);
     }
     None
 }
@@ -397,5 +405,31 @@ mod seed_phrase_tests {
         assert!(check("abandon", Some("en"), 13).length_warning.is_some());
         assert!(check("abandon", Some("en"), 8).length_warning.is_some());
         assert!(check(ENGLISH, Some("en"), 12).length_warning.is_none());
+    }
+}
+
+#[cfg(test)]
+mod password_verdict_tests {
+    use super::*;
+    #[test]
+    fn password_rejections_are_typed_and_count_unicode_characters() {
+        for (password, confirmation, expected) in [
+            ("", "", None),
+            ("   ", " ", None),
+            ("abc", "abc", Some(WalletPasswordRejection::TooShort)),
+            ("密碼", "密碼", Some(WalletPasswordRejection::TooShort)),
+            ("密碼測試", "密碼測試", None),
+            (
+                "abcd",
+                "abce",
+                Some(WalletPasswordRejection::ConfirmationMismatch),
+            ),
+            (" abcd ", "abcd", None),
+        ] {
+            assert_eq!(
+                core_validate_wallet_password(password.into(), confirmation.into()),
+                expected
+            );
+        }
     }
 }

@@ -778,13 +778,12 @@ pub struct CoreDashboardAssetHolding {
 /// first — a place they had never been shown and could not have chosen. The
 /// naming job is `identity`'s now, and `holdings` states only what is true.
 ///
-/// The total amount and total value are still derived from `holdings` rather
-/// than stored beside it. They used to be stored, along with a
-/// `representative_coin`: three fields that could disagree with the list they
-/// came from.
+/// Valuation is derived with the holdings in the same snapshot; it is not
+/// persisted beside them. None means at least one place is unpriced.
 #[derive(Debug, Clone, PartialEq, Serialize, uniffi::Record)]
 #[serde(rename_all = "camelCase")]
 pub struct CoreDashboardAssetGroup {
+    pub total_value_usd: Option<f64>,
     pub id: String,
     /// What the row calls itself and prices itself by: the largest place it is
     /// held, or the catalog's entry for it when it is held nowhere. An identity,
@@ -802,7 +801,7 @@ pub struct CoreDashboardPinOption {
     pub name: String,
     pub subtitle: String,
     pub artwork_name: Option<String>,
-    /// On the dashboard now, counting the default set when nothing is pinned.
+    /// Whether this asset is in the saved dashboard pin selection.
     pub is_pinned: bool,
 }
 

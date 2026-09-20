@@ -28,13 +28,7 @@ fn observe(state: &CoreAppState) -> Option<PortfolioMovementBaseline> {
             if holding.amount == 0.0 {
                 continue;
             }
-            let price = state
-                .quotes
-                .prices
-                .get(&holding.deployment_key())
-                .copied()
-                .filter(|p| p.is_finite() && *p > 0.0)?;
-            total_usd += holding.amount * price;
+            total_usd += super::valuation::value(state, holding)?;
         }
     }
     composition.sort();

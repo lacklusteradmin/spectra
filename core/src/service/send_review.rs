@@ -18,6 +18,7 @@ pub struct OwnedSendReview {
     pub warnings: Vec<crate::send::flow::HighRiskSendWarning>,
     pub recipient_warnings: Vec<crate::store::EvmRecipientPreflightWarning>,
     pub requires_self_send_confirmation: bool,
+    pub requires_wallet_password: bool,
 }
 pub(crate) struct ReviewedSend {
     input: String,
@@ -135,6 +136,7 @@ impl WalletService {
             .address_on(chain)
             .ok_or("Wallet has no sending address")?
             .to_owned();
+        let requires_wallet_password = self.wallet_secret_state(input.wallet_id.clone())?.is_sealed;
         let id = hex::encode(rand::random::<[u8; 32]>());
         let mut reviews = self.send_reviews.lock().await;
         reviews.retain(|_, r| r.created.elapsed().as_secs() < 120);
@@ -157,6 +159,7 @@ impl WalletService {
             warnings,
             recipient_warnings,
             requires_self_send_confirmation: self_send.requires_confirmation,
+            requires_wallet_password,
         })
     }
 
@@ -325,112 +328,142 @@ mod tests {
     }
     #[tokio::test]
     async fn reviewed_quote_signs_once_and_stale_nonce_never_broadcasts() {
-        use crate::store::{
-            secret_backends::InMemorySecretStore, state::WalletState,
-            wallet_secrets::store_seed_phrase,
-        };
-        use serde_json::{json, Value};
-        use sha3::Digest;
-        use std::sync::atomic::{AtomicU64, Ordering};
-        use wiremock::{matchers::any, Mock, MockServer, Request, ResponseTemplate};
-        let server = MockServer::start().await;
-        let nonce = Arc::new(AtomicU64::new(7));
-        let observed_nonce = nonce.clone();
-        Mock::given(any())
-            .respond_with(move |r: &Request| {
-                let body: Value = r.body_json().unwrap();
-                let result = match body["method"].as_str().unwrap() {
-                    "eth_getTransactionCount" => {
-                        json!(format!("0x{:x}", observed_nonce.load(Ordering::SeqCst)))
-                    }
-                    "eth_getBalance" => json!("0x8ac7230489e80000"),
-                    "eth_estimateGas" => json!("0x5208"),
-                    "eth_getCode" => json!("0x"),
-                    "eth_feeHistory" => {
-                        json!({"baseFeePerGas":["0x3b9aca00"], "reward":[["0x77359400"]]})
-                    }
-                    "eth_sendRawTransaction" => {
-                        let raw = body["params"][0].as_str().unwrap();
-                        json!(format!(
-                            "0x{}",
-                            hex::encode(sha3::Keccak256::digest(hex::decode(&raw[2..]).unwrap()))
-                        ))
-                    }
-                    other => panic!("Unexpected RPC {other}"),
-                };
-                ResponseTemplate::new(200)
-                    .set_body_json(json!({"jsonrpc":"2.0", "id":body["id"], "result":result}))
-            })
-            .mount(&server)
-            .await;
-        let service = WalletService::new(vec![ChainEndpoints {
-            chain_id: "ethereum".into(),
-            endpoints: vec![server.uri()],
-            api_key: None,
-        }])
-        .unwrap();
-        let database = std::env::temp_dir().join(format!(
-            "send-review-{}.sqlite",
-            crate::store::new_event_id()
-        ));
-        service
-            .open_state(database.to_string_lossy().into())
-            .await
+        for password in [None, Some("sealed-test-password")] {
+            use crate::store::{
+                secret_backends::InMemorySecretStore, state::WalletState,
+                wallet_secrets::store_seed_phrase,
+            };
+            use serde_json::{json, Value};
+            use sha3::Digest;
+            use std::sync::atomic::{AtomicU64, Ordering};
+            use wiremock::{matchers::any, Mock, MockServer, Request, ResponseTemplate};
+            let server = MockServer::start().await;
+            let nonce = Arc::new(AtomicU64::new(7));
+            let observed_nonce = nonce.clone();
+            Mock::given(any())
+                .respond_with(move |r: &Request| {
+                    let body: Value = r.body_json().unwrap();
+                    let result = match body["method"].as_str().unwrap() {
+                        "eth_getTransactionCount" => {
+                            json!(format!("0x{:x}", observed_nonce.load(Ordering::SeqCst)))
+                        }
+                        "eth_getBalance" => json!("0x8ac7230489e80000"),
+                        "eth_estimateGas" => json!("0x5208"),
+                        "eth_getCode" => json!("0x"),
+                        "eth_feeHistory" => {
+                            json!({"baseFeePerGas":["0x3b9aca00"], "reward":[["0x77359400"]]})
+                        }
+                        "eth_sendRawTransaction" => {
+                            let raw = body["params"][0].as_str().unwrap();
+                            json!(format!(
+                                "0x{}",
+                                hex::encode(sha3::Keccak256::digest(
+                                    hex::decode(&raw[2..]).unwrap()
+                                ))
+                            ))
+                        }
+                        other => panic!("Unexpected RPC {other}"),
+                    };
+                    ResponseTemplate::new(200)
+                        .set_body_json(json!({"jsonrpc":"2.0", "id":body["id"], "result":result}))
+                })
+                .mount(&server)
+                .await;
+            let service = WalletService::new(vec![ChainEndpoints {
+                chain_id: "ethereum".into(),
+                endpoints: vec![server.uri()],
+                api_key: None,
+            }])
             .unwrap();
-        let secrets = Arc::new(InMemorySecretStore::new());
-        service.set_secret_store(secrets.clone());
-        let mut wallet = WalletState::single_address(
-            "w",
-            "W",
-            "Ethereum",
-            "0x9858EfFD232B4033E47d90003D41EC34EcaEda94",
-            Some("m/44'/60'/0'/0/0".into()),
-            false,
-        );
-        let mut holding = native_coin_template("ethereum").unwrap();
-        holding.amount = 10.0;
-        wallet.holdings.push(holding);
-        service
-            .apply_state_command(StateCommand::UpsertWallet { wallet })
-            .await
-            .unwrap();
-        store_seed_phrase(&*secrets, "w", "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about", None).unwrap();
-        let input = input();
-        let review = service.review_owned_send(input.clone()).await.unwrap();
-        let pinned = review.request.evm_overrides.clone().unwrap();
-        assert_eq!(pinned.nonce, Some(7));
-        let sent = service
-            .execute_owned_send(review.id.clone(), input.clone(), None)
-            .await
-            .unwrap();
-        assert_eq!(sent.evm.unwrap().nonce, 7);
-        assert!(service
-            .execute_owned_send(review.id, input.clone(), None)
-            .await
-            .unwrap_err()
-            .to_string()
-            .contains("already consumed"));
-        let stale = service.review_owned_send(input.clone()).await.unwrap();
-        assert_eq!(
-            stale.request.evm_overrides.unwrap().nonce,
-            Some(8),
-            "the journal advances a stale provider's nonce"
-        );
-        nonce.store(9, Ordering::SeqCst);
-        assert!(service
-            .execute_owned_send(stale.id, input, None)
-            .await
-            .unwrap_err()
-            .to_string()
-            .contains("nonce changed"));
-        let broadcasts = server
-            .received_requests()
-            .await
-            .unwrap()
-            .iter()
-            .filter(|r| r.body_json::<Value>().unwrap()["method"] == "eth_sendRawTransaction")
-            .count();
-        assert_eq!(broadcasts, 1);
-        assert_eq!(service.transactions().await.unwrap().len(), 1);
+            let database = std::env::temp_dir().join(format!(
+                "send-review-{}.sqlite",
+                crate::store::new_event_id()
+            ));
+            service
+                .open_state(database.to_string_lossy().into())
+                .await
+                .unwrap();
+            let secrets = Arc::new(InMemorySecretStore::new());
+            service.set_secret_store(secrets.clone());
+            let mut wallet = WalletState::single_address(
+                "w",
+                "W",
+                "Ethereum",
+                "0x9858EfFD232B4033E47d90003D41EC34EcaEda94",
+                Some("m/44'/60'/0'/0/0".into()),
+                false,
+            );
+            let mut holding = native_coin_template("ethereum").unwrap();
+            holding.amount = 10.0;
+            wallet.holdings.push(holding);
+            service
+                .apply_state_command(StateCommand::UpsertWallet { wallet })
+                .await
+                .unwrap();
+            store_seed_phrase(&*secrets, "w", "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about", password).unwrap();
+            let input = input();
+            if password.is_some() {
+                for supplied in [None, Some("wrong-password".into())] {
+                    let review = service.review_owned_send(input.clone()).await.unwrap();
+                    assert!(review.requires_wallet_password);
+                    let error = service
+                        .execute_owned_send(review.id, input.clone(), supplied)
+                        .await
+                        .unwrap_err();
+                    assert!(error.to_string().contains("password"), "{error}");
+                }
+                assert!(service.transactions().await.unwrap().is_empty());
+                assert!(
+                    !server
+                        .received_requests()
+                        .await
+                        .unwrap()
+                        .iter()
+                        .any(|r| r.body_json::<Value>().unwrap()["method"]
+                            == "eth_sendRawTransaction")
+                );
+            }
+            let review = service.review_owned_send(input.clone()).await.unwrap();
+            assert_eq!(review.requires_wallet_password, password.is_some());
+            let pinned = review.request.evm_overrides.clone().unwrap();
+            assert_eq!(pinned.nonce, Some(7));
+            let sent = service
+                .execute_owned_send(
+                    review.id.clone(),
+                    input.clone(),
+                    password.map(str::to_owned),
+                )
+                .await
+                .unwrap();
+            assert_eq!(sent.evm.unwrap().nonce, 7);
+            assert!(service
+                .execute_owned_send(review.id, input.clone(), None)
+                .await
+                .unwrap_err()
+                .to_string()
+                .contains("already consumed"));
+            let stale = service.review_owned_send(input.clone()).await.unwrap();
+            assert_eq!(
+                stale.request.evm_overrides.unwrap().nonce,
+                Some(8),
+                "the journal advances a stale provider's nonce"
+            );
+            nonce.store(9, Ordering::SeqCst);
+            assert!(service
+                .execute_owned_send(stale.id, input, password.map(str::to_owned))
+                .await
+                .unwrap_err()
+                .to_string()
+                .contains("nonce changed"));
+            let broadcasts = server
+                .received_requests()
+                .await
+                .unwrap()
+                .iter()
+                .filter(|r| r.body_json::<Value>().unwrap()["method"] == "eth_sendRawTransaction")
+                .count();
+            assert_eq!(broadcasts, 1);
+            assert_eq!(service.transactions().await.unwrap().len(), 1);
+        }
     }
 }

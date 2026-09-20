@@ -1,16 +1,6 @@
 use crate::service::WalletService;
 use crate::state::StateCommand;
 
-async fn pins(service: &WalletService) -> Vec<String> {
-    service
-        .apply_state_command(StateCommand::SetPinnedDashboardAssets { token_ids: vec![] })
-        .await
-        .expect("read")
-        .state
-        .settings
-        .pinned_dashboard_token_ids
-}
-
 #[tokio::test]
 async fn token_ids_are_trimmed_and_deduplicated_in_pin_order() {
     let service = WalletService::new(Vec::new()).expect("service");
@@ -51,55 +41,68 @@ async fn setting_the_same_pins_emits_nothing() {
     );
 }
 
-/// The four iOS used to keep to itself, so its pin cards and core's
-/// grouping disagreed about what a fresh wallet pins.
 #[tokio::test]
-async fn an_unpinned_dashboard_reads_as_the_default_four() {
+async fn unpinning_every_asset_stays_empty_after_reopening_and_reset_restores_defaults() {
+    let path = std::env::temp_dir()
+        .join(format!("pins-{}.sqlite", crate::store::new_event_id()))
+        .to_string_lossy()
+        .into_owned();
     let service = WalletService::new(Vec::new()).expect("service");
-    let settings = service
+    let state = service.open_state(path.clone()).await.expect("open");
+    let defaults = vec!["bitcoin", "ethereum", "tether", "usd-coin"];
+    assert_eq!(state.settings.pinned_dashboard_assets(), defaults);
+    for token_id in &defaults {
+        let transition = service
+            .apply_state_command(StateCommand::SetDashboardAssetPinned {
+                token_id: (*token_id).into(),
+                is_pinned: false,
+            })
+            .await
+            .expect("unpin");
+        assert_eq!(transition.events.len(), 1);
+    }
+    let reopened = WalletService::new(Vec::new()).expect("service");
+    let state = reopened.open_state(path).await.expect("reopen");
+    assert!(state.settings.pinned_dashboard_assets().is_empty());
+    assert!(reopened
+        .dashboard_pin_options()
+        .await
+        .expect("options")
+        .iter()
+        .all(|option| !option.is_pinned));
+    assert!(reopened
+        .portfolio_snapshot()
+        .await
+        .expect("portfolio")
+        .groups
+        .is_empty());
+
+    let reset = reopened
+        .apply_state_command(StateCommand::ResetPinnedDashboardAssets)
+        .await
+        .expect("reset");
+    assert_eq!(reset.state.settings.pinned_dashboard_assets(), defaults);
+    assert_eq!(reset.events.len(), 1);
+    let cleared = reopened
         .apply_state_command(StateCommand::SetPinnedDashboardAssets { token_ids: vec![] })
         .await
-        .expect("read")
-        .state
-        .settings;
-    assert!(settings.pinned_dashboard_token_ids.is_empty());
-    assert_eq!(
-        settings.pinned_dashboard_assets(),
-        vec!["bitcoin", "ethereum", "tether", "usd-coin"]
-    );
-
-    let chosen = service
-        .apply_state_command(StateCommand::SetPinnedDashboardAssets {
-            token_ids: vec!["solana".into()],
-        })
-        .await
-        .expect("apply")
-        .state
-        .settings;
-    assert_eq!(chosen.pinned_dashboard_assets(), vec!["solana".to_string()]);
-}
-
-#[tokio::test]
-async fn clearing_pins_is_distinguishable_from_never_pinning() {
-    let service = WalletService::new(Vec::new()).expect("service");
-    assert!(pins(&service).await.is_empty());
-    service
-        .apply_state_command(StateCommand::SetPinnedDashboardAssets {
-            token_ids: vec!["bitcoin".into()],
-        })
-        .await
-        .expect("apply");
-    let cleared = service
+        .expect("clear");
+    assert!(cleared.state.settings.pinned_dashboard_assets().is_empty());
+    assert_eq!(cleared.events.len(), 1);
+    let unchanged = reopened
         .apply_state_command(StateCommand::SetPinnedDashboardAssets { token_ids: vec![] })
         .await
-        .expect("apply");
-    assert!(cleared.state.settings.pinned_dashboard_token_ids.is_empty());
-    assert_eq!(cleared.events.len(), 1, "clearing is a real change");
+        .expect("clear again");
+    assert!(unchanged.events.is_empty());
+    let reset = reopened
+        .reset_data(vec![crate::state::ResetScope::DashboardCustomization])
+        .await
+        .expect("reset dashboard");
+    assert_eq!(reset.state.settings.pinned_dashboard_assets(), defaults);
 }
 
-/// Pinning or unpinning one asset starts from the set the dashboard shows —
-/// the default four when nothing has been pinned — and each option says
-/// whether it is on the dashboard now.
+/// Pinning or unpinning one asset starts from the saved selection and each
+/// option says whether it is pinned now.
 #[tokio::test]
 async fn one_asset_is_pinned_against_the_set_the_dashboard_shows() {
     let service = WalletService::new(Vec::new()).expect("service");

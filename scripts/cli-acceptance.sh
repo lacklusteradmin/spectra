@@ -1176,6 +1176,10 @@ check "unpinning one asset keeps the rest of the default set" $OK \
     bash -c '"$1" --data-dir "$2/closure" --json portfolio --unpin-token bitcoin --pin-options | grep -q "\"is_pinned\":true,[^}]*\"token_id\":\"ethereum\""' _ "$BIN" "$DATA_DIR"
 check "and bitcoin is no longer pinned" $OK \
     bash -c '"$1" --data-dir "$2/closure" --json portfolio --pin-options | grep -q "\"is_pinned\":false,[^}]*\"token_id\":\"bitcoin\""' _ "$BIN" "$DATA_DIR"
+check "all remaining default pins can be removed" $OK closure_spectra --json portfolio --unpin-token ethereum --unpin-token tether --unpin-token usd-coin --pin-options
+lacks "no pins return after reopening" '"is_pinned":true' closure_spectra --json portfolio --pin-options
+check "dashboard reset restores defaults explicitly" $OK closure_spectra settings reset --scope dashboardCustomization --yes
+contains "reset pins bitcoin again" '"is_pinned":true' closure_spectra --json portfolio --pin-options
 contains "empty chain discovery does not fetch" '"results":[]' closure_spectra --json pool discover-chain Bitcoin
 check "reset rejects an unknown scope" $REJECTED closure_spectra settings reset --scope typo --yes
 check "imports closure watch wallet" $OK closure_spectra wallet watch --chain Ethereum --name "Closure Watch" --address 0x1111111111111111111111111111111111111111
@@ -1207,6 +1211,12 @@ check "exact derivation input and owned refresh intents" $OK \
     python3 "$(dirname "$0")/cli-shell-boundary.py" "$BIN"
 check "stored history sources are named by core" $OK \
     python3 "$(dirname "$0")/cli-history-source.py" "$BIN"
+
+check "coherent valuation and bounded stored history" $OK \
+    python3 "$(dirname "$0")/cli-projection-boundary.py" "$BIN"
+
+check "configured diagnostics and password-protected owned sends" $OK \
+    python3 "$(dirname "$0")/cli-shell-five-fixes.py" "$BIN"
 
 # ── Result ──────────────────────────────────────────────────────────────────
 

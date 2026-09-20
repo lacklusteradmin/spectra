@@ -59,6 +59,14 @@ pub(super) fn with_conn<T>(
 fn open_new(database_path: &str) -> Result<Connection, String> {
     let conn = Connection::open(database_path)
         .map_err(|e| format!("wallet_db open {database_path}: {e}"))?;
+    conn.create_scalar_function(
+        "spectra_lower",
+        1,
+        rusqlite::functions::FunctionFlags::SQLITE_UTF8
+            | rusqlite::functions::FunctionFlags::SQLITE_DETERMINISTIC,
+        |context| Ok(context.get::<String>(0)?.to_lowercase()),
+    )
+    .map_err(|e| format!("wallet_db search function: {e}"))?;
     conn.busy_timeout(std::time::Duration::from_secs(5))
         .map_err(|e| format!("wallet_db busy timeout: {e}"))?;
     conn.execute_batch(
@@ -95,6 +103,9 @@ fn open_new(database_path: &str) -> Result<Connection, String> {
          CREATE INDEX IF NOT EXISTS idx_hr_wallet  ON history_records(wallet_id);
          CREATE INDEX IF NOT EXISTS idx_hr_chain   ON history_records(chain_name);
          CREATE INDEX IF NOT EXISTS idx_hr_created ON history_records(created_at DESC);
+         CREATE INDEX IF NOT EXISTS idx_hr_wallet_date ON history_records(wallet_id, created_at);
+         CREATE INDEX IF NOT EXISTS idx_hr_status_date ON history_records
+             (json_extract(payload, '$.status'), created_at DESC, id);
          CREATE INDEX IF NOT EXISTS idx_hr_source_path ON history_records
              (wallet_id, chain_name, json_extract(payload, '$.sourceDerivationPath'));
          CREATE INDEX IF NOT EXISTS idx_hr_change_path ON history_records

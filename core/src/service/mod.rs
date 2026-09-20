@@ -74,14 +74,17 @@ mod address_discovery;
 mod balance_refresh;
 mod diagnostic_state;
 pub use diagnostic_state::{
-    DiagnosticCommand, DiagnosticLog, DiagnosticLogInput, DiagnosticLogLevel, DiagnosticState,
+    ConfiguredSelfTestReport, DiagnosticCommand, DiagnosticLog, DiagnosticLogInput,
+    DiagnosticLogLevel, DiagnosticState,
 };
 mod funds_scan;
 pub use funds_scan::{FundsScan, FundsScanProgress, FundsScanRead};
 mod helpers;
 mod history_bitcoin;
 mod history_cursor;
-mod history_derived;
+pub(crate) mod history_derived;
+mod history_query;
+pub use history_query::{HistoryPage, HistoryQuery, HistoryQueryFilter, TransactionSnapshot};
 mod history_refresh;
 pub use history_refresh::{HistoryRefreshOutcome, HistoryWalletDiagnostics};
 mod history_operation;
@@ -99,6 +102,9 @@ mod operational_events;
 mod pending_status;
 pub use pending_status::{PendingMaintenanceFailure, PendingMaintenanceResult};
 mod movement;
+mod valuation;
+pub use state::PortfolioSnapshot;
+pub use valuation::{PortfolioValuation, QuotedTotal};
 mod reset;
 mod send_broadcast;
 mod send_destination;
@@ -159,6 +165,7 @@ impl EndpointIndex {
 #[derive(Clone, uniffi::Object)]
 pub struct WalletService {
     pub(crate) send_reviews: Arc<tokio::sync::Mutex<HashMap<String, send_review::ReviewedSend>>>,
+    pub(crate) projection_sequence: Arc<std::sync::atomic::AtomicU64>,
     app_refresh_lock: Arc<tokio::sync::Mutex<()>>,
     quote_refresh_lock: Arc<tokio::sync::Mutex<()>>,
     pub(crate) trc20_metadata: Arc<crate::fetch::chains::tron::MetadataCache>,
@@ -229,6 +236,7 @@ impl WalletService {
             send_reviews: Arc::new(tokio::sync::Mutex::new(HashMap::new())),
             app_refresh_lock: Arc::new(tokio::sync::Mutex::new(())),
             quote_refresh_lock: Arc::new(tokio::sync::Mutex::new(())),
+            projection_sequence: Arc::new(std::sync::atomic::AtomicU64::new(0)),
             state_writer: Arc::new(tokio::sync::Mutex::new(())),
             uses_catalog_endpoints: Arc::new(std::sync::atomic::AtomicBool::new(false)),
             endpoints: Arc::new(AsyncRwLock::new(EndpointIndex::from_list(endpoints))),

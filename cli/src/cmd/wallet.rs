@@ -20,6 +20,13 @@ use crate::out::{self, Out};
 
 #[derive(Subcommand)]
 pub enum WalletCommand {
+    /// Validate password and confirmation from environment variables; never print either.
+    CheckPassword {
+        #[arg(long, default_value = "SPECTRA_PASSWORD")]
+        password_env: String,
+        #[arg(long, default_value = "SPECTRA_PASSWORD_CONFIRMATION")]
+        confirmation_env: String,
+    },
     /// Core-derived portfolio and signing capabilities.
     Derived,
     /// Generate a new wallet and its seed phrase.
@@ -183,6 +190,20 @@ pub struct ExportArgs {
 
 pub fn run(ctx: &Ctx, out: Out, command: WalletCommand) -> CliResult<()> {
     match command {
+        WalletCommand::CheckPassword {
+            password_env,
+            confirmation_env,
+        } => {
+            let password = std::env::var(password_env)
+                .map_err(|_| CliError::usage("Password environment variable is missing"))?;
+            let confirmation = std::env::var(confirmation_env)
+                .map_err(|_| CliError::usage("Confirmation environment variable is missing"))?;
+            let rejection =
+                spectra_core::validation::core_validate_wallet_password(password, confirmation);
+            out.emit(serde_json::json!({"valid": rejection.is_none(), "rejection": rejection}));
+            out.text(|| println!("{}", serde_json::to_string(&rejection).unwrap()));
+            Ok(())
+        }
         WalletCommand::New(args) => new(ctx, out, args),
         WalletCommand::Import(args) => import(ctx, out, args),
         WalletCommand::Watch(args) => watch(ctx, out, args),

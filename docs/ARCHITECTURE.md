@@ -36,7 +36,17 @@ queryable store so changing a setting does not clone every transaction.
 `WalletService::open_state` binds the database; state commands persist before
 returning and no-op commands emit no events or writes. UI projections have one
 writer. Derived domain data is computed from core's store and adopted by the UI,
-not computed by sending the projection back to core.
+not computed by sending the projection back to core. Portfolio snapshots derive
+wallets, quotes, grouping, pins and valuation from one state and carry a session
+revision; front ends must reject older results. History pages are bounded queries,
+while recent/pending activity and indexed aggregates arrive in a separate summary.
+A summary is not the entire history; details and actions resolve stored IDs.
+
+Settings forms may display optimistic edits. Runtime effects (Tor, notification
+permission/delivery and refresh cadence) read only the last committed projection;
+an uncommitted edit is never transport configuration. Send confirmation renders
+core's password requirement and forwards transient native password input for
+core to unlock, without keeping it in application state.
 
 Core drives secret reads, writes and password encryption through `SecretStore`.
 The platform implements storage; native file and in-memory backends let the CLI

@@ -194,8 +194,7 @@ async fn fetch_eth_rpc_hex(url: &str, method: &str, id: u32) -> Result<u64, Stri
 /// family, and the only one whose diagnostics screen offered the check. The id
 /// to expect is `Chain::evm_chain_id`, so every EVM chain can be asked whether
 /// the node it is pointed at is the node it means.
-#[uniffi::export(async_runtime = "tokio")]
-pub async fn self_tests_run_evm_rpc(
+pub(crate) async fn self_tests_run_evm_rpc(
     chain_id: String,
     rpc_url: String,
     rpc_label: String,
@@ -257,7 +256,6 @@ pub async fn self_tests_run_evm_rpc(
     }
 }
 
-#[uniffi::export]
 pub fn self_tests_run_chain(chain_key: String) -> Vec<ChainSelfTestResult> {
     run_for_chain(&chain_key)
 }

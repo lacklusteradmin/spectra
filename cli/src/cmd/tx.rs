@@ -21,6 +21,27 @@ use crate::out::{self, Out};
 
 #[derive(Args)]
 pub struct TxsArgs {
+    /// Read the recent/pending projection and indexed history aggregates.
+    #[arg(long)]
+    summary: bool,
+    /// Read one transaction directly by stored ID.
+    #[arg(long)]
+    record: Option<String>,
+
+    /// Query a bounded, deduplicated page of stored history.
+    #[arg(long)]
+    page: bool,
+    #[arg(long, default_value_t = 20)]
+    limit: u32,
+    #[arg(long, default_value_t = 0)]
+    offset: u64,
+    #[arg(long, default_value = "")]
+    search: String,
+    #[arg(long)]
+    oldest_first: bool,
+    #[arg(long, default_value = "all", value_parser = ["all", "send", "receive", "pending"])]
+    filter: String,
+
     /// Explicit read endpoint for the rechecked transaction's stored network.
     #[arg(long, requires = "recheck")]
     endpoint: Option<String>,
@@ -112,6 +133,10 @@ pub enum SendCommand {
         destination: String,
         #[arg(long)]
         yes: bool,
+        #[arg(long, value_name = "PATH")]
+        password_file: Option<String>,
+        #[arg(long, value_name = "VAR", default_value = "SPECTRA_PASSWORD")]
+        password_env: Option<String>,
     },
     /// Resubmit the signed payload of a stored transaction.
     Rebroadcast {
@@ -201,6 +226,8 @@ pub fn run(ctx: &Ctx, out: Out, command: SendCommand) -> CliResult<()> {
             amount,
             destination,
             yes,
+            password_file,
+            password_env,
         } => {
             if !yes {
                 return Err(CliError::rejected("Broadcast requires --yes"));
@@ -214,10 +241,11 @@ pub fn run(ctx: &Ctx, out: Out, command: SendCommand) -> CliResult<()> {
                 overrides: None,
             };
             let service = ctx.service()?;
+            let password = signing_password(ctx, &input.wallet_id, password_file, password_env)?;
             let review = ctx.rt.block_on(service.review_owned_send(input.clone()))?;
             let result = ctx
                 .rt
-                .block_on(service.execute_owned_send(review.id, input, None))?;
+                .block_on(service.execute_owned_send(review.id, input, password))?;
             out.emit(serde_json::json!({"transactionHash": result.transaction_hash}));
             Ok(())
         }
@@ -832,6 +860,43 @@ pub struct SendArgs {
 /// Transactions core has recorded locally. Distinct from `history`, which asks
 /// the chain.
 pub fn txs(ctx: &Ctx, out: Out, args: TxsArgs) -> CliResult<()> {
+    if args.summary {
+        let summary = ctx.rt.block_on(ctx.service()?.transaction_snapshot())?;
+        out.text(|| println!("{summary:?}"));
+        out.emit(serde_json::json!({"ok":true,"summary":summary}));
+        return Ok(());
+    }
+    if let Some(id) = args.record {
+        let record = ctx.rt.block_on(ctx.service()?.transaction(id))?;
+        out.text(|| println!("{record:?}"));
+        out.emit(serde_json::json!({"ok":true,"record":record}));
+        return Ok(());
+    }
+    if args.page {
+        use spectra_core::service::{HistoryQuery, HistoryQueryFilter};
+        let wallet_id = args
+            .wallet
+            .as_deref()
+            .map(|needle| ctx.find_wallet(needle).map(|w| w.id))
+            .transpose()?;
+        let page = ctx.rt.block_on(ctx.service()?.history_page(HistoryQuery {
+            wallet_id,
+            filter: match args.filter.as_str() {
+                "send" => HistoryQueryFilter::Send,
+                "receive" => HistoryQueryFilter::Receive,
+                "pending" => HistoryQueryFilter::Pending,
+                _ => HistoryQueryFilter::All,
+            },
+            search: args.search,
+            oldest_first: args.oldest_first,
+            offset: args.offset,
+            limit: args.limit,
+        }))?;
+        out.text(|| println!("{page:?}"));
+        out.emit(serde_json::json!({"ok":true,"page":page}));
+        return Ok(());
+    }
+
     if let Some(id) = args.recheck {
         let service = ctx.service()?;
         if let Some(endpoint) = args.endpoint {

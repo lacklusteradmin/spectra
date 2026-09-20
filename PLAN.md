@@ -79,7 +79,7 @@ Navigation, editing and rendering caches remain platform view state.
 | 2 — Replace planners with intents | Done | No `core_plan_*` exports remain; some pure helpers only needed renaming |
 | 3 — Thin the shell | Done | Audited alert, send/preview, replacement, address and self-send decisions now owned by core; obsolete projection mutations removed; see closure audit |
 | C1 — Reshape core | Done | Shared chain catalog, service modules split by responsibility, duplicate modules and derivation primitives consolidated |
-| C2 — Reduce the FFI surface | Done | 157 callable exports, zero unreachable candidates; owned operations replace caller-assembled send decisions |
+| C2 — Reduce the FFI surface | Done | 134 callable exports, zero unreachable candidates; owned operations and coherent snapshots replace caller-assembled decisions |
 | 4 — Android | Not started beyond skeleton | Implement against the shared core once the boundary is ready |
 
 Other completed ownership slices: settings, token preferences, price alerts,
@@ -545,6 +545,68 @@ The audit's third and fourth lists. Behaviour changes are in
 
 Gates: `cargo test --workspace` **825 passed**, `./scripts/cli-acceptance.sh`
 **375 passed**, iPhone 17 Pro `xcodebuild test` **93 passed**, lint clean.
+
+## Swift shell projection boundary follow-up (2026-09-19)
+
+- [x] Core owns portfolio/wallet totals, incomplete valuations and dashboard
+  values. Missing deployment quotes or currency rates never become a complete
+  zero valuation; stored holding prices are not a fallback.
+- [x] Wallets, capabilities, dashboard groups, pins and valuation cross as one
+  ordered portfolio snapshot. Swift rejects older responses as a whole, also
+  when a newer state command has already been adopted.
+- [x] History uses bounded database queries with filtering, Unicode search,
+  deduplication and ordering. A separate recent/pending summary supplies counts,
+  replacement candidates and first activity; older records remain accessible by
+  ID for details and actions. Delete the localized full-history normalization
+  interface and repeated full-table projections.
+- [x] Delete recipient-probe caches keyed by ticker/lowercased address. Captured
+  request identity gates every returned warning/error and loading completion.
+- [x] Preserve partial-import notices and report actual full/per-chain refresh
+  outcomes, including readback failure.
+- [x] Keep native wording, locale formatting, editing and navigation in Swift.
+  Shared compact numeric formatting is explicitly display policy, independent
+  of token precision and exact transaction amounts.
+
+The corresponding before/after decisions and offline CLI examples are in
+[docs/BEHAVIOUR-CHANGES.md](docs/BEHAVIOUR-CHANGES.md). FFI remains **135
+callables** (62 free functions, 73 methods), with zero unreachable candidates.
+Runtime smoke: the iPhone 17 Pro app launches and renders its empty portfolio
+through the new snapshot path. Successful empty history queries, summaries and
+ID lookups also run inside the iOS test host through the regenerated async
+bindings. No signing or broadcasting was performed.
+
+Verification: `make verify` passed on 2026-09-19 — formatting and clippy at
+`-D warnings`, **829 Rust tests**, **381 offline CLI checks**, and **99 iPhone
+17 Pro tests**, including the required Ethereum test-network case. Export,
+localization, Swift literal and design-token checks pass; `git diff --check`
+is clean. Full log: `/tmp/spectra-boundary-verify-final.log`. Changes are
+unstaged and uncommitted.
+
+## Swift shell: five audit fixes (2026-09-19)
+
+- [x] Native send confirmation collects a wallet password when core's review
+  requires it, erases the field on submission/dismissal and forwards it only to
+  core. CLI owned sends now use the same password-capable execution path.
+- [x] Configured self-tests resolve selected networks and effective RPCs inside
+  WalletService. Swift renders the result; `diagnostics configured` drives it
+  from CLI with loopback coverage for testnet selection and wrong-chain replies.
+- [x] Send previews capture every raw nonce/fee input before awaiting; one request
+  identity protects success, error and loading completion. Composer reset
+  invalidates outstanding requests.
+- [x] Password validation returns typed rejection reasons. Swift localizes the
+  wording; the character minimum counts Unicode scalar values instead of bytes.
+- [x] Optimistic settings remain form state. Tor, notification permission/delivery
+  and refresh cadence follow a separate read-only committed projection; failure
+  does not execute the rejected edit's runtime effects.
+
+Verification: `make verify` passed — formatting and clippy at `-D warnings`,
+**831 Rust tests**, **382 offline CLI checks**, **104 iPhone 17 Pro tests**, zero
+failures, including the required Ethereum test-network test and direct Tor
+commit-ordering regression. The configured-diagnostics async binding runs in the
+iOS test host. Password send tests use temporary wallets and loopback RPCs; no
+real-chain transaction was broadcast. UniFFI bindings regenerated; **134 callable
+exports**, zero unreachable candidates. `git diff --check` and design-token checks
+pass. Full log: `/tmp/spectra-five-verify.log`. No Git state was changed.
 
 ## Behaviour changed on purpose
 

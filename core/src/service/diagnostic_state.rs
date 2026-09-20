@@ -194,3 +194,125 @@ mod tests {
         );
     }
 }
+
+/// Diagnostics of the service's selected network and first configured RPC.
+/// The selected endpoint is explicit in the result; a failure never silently
+/// tests a different provider and reports it as the configured node.
+#[derive(Debug, Clone, Serialize, uniffi::Record)]
+pub struct ConfiguredSelfTestReport {
+    pub chain_id: String,
+    pub rpc_endpoint: Option<String>,
+    pub results: Vec<crate::diagnostics::self_tests::ChainSelfTestResult>,
+}
+
+#[uniffi::export(async_runtime = "tokio")]
+impl WalletService {
+    pub async fn run_configured_self_tests(
+        &self,
+        chain_id: String,
+    ) -> Result<ConfiguredSelfTestReport, SpectraBridgeError> {
+        use crate::diagnostics::self_tests::{self_tests_run_chain, self_tests_run_evm_rpc};
+        let requested = chain_for_id(&chain_id)?;
+        let chain = if requested == requested.mainnet_counterpart() {
+            self.app_state().await.settings.network_chain(requested)
+        } else {
+            requested
+        };
+        let mut results = self_tests_run_chain(chain.chain_display_name().into());
+        let rpc_endpoint = if chain.is_evm() {
+            let endpoints = self.endpoints_for(chain.str_id()).await;
+            let rpc = endpoints
+                .first()
+                .ok_or("No RPC configured for this network")?
+                .clone();
+            results.extend(
+                self_tests_run_evm_rpc(chain.str_id().into(), rpc.clone(), rpc.clone()).await,
+            );
+            Some(rpc)
+        } else {
+            None
+        };
+        Ok(ConfiguredSelfTestReport {
+            chain_id: chain.str_id().into(),
+            rpc_endpoint,
+            results,
+        })
+    }
+}
+
+#[cfg(test)]
+mod configured_tests {
+    use super::*;
+    use serde_json::json;
+    use wiremock::{matchers::any, Mock, MockServer, Request, ResponseTemplate};
+
+    #[tokio::test]
+    async fn configured_diagnostics_follow_selected_network_and_report_wrong_chain() {
+        let server = MockServer::start().await;
+        Mock::given(any())
+            .respond_with(|r: &Request| {
+                let request: serde_json::Value = r.body_json().unwrap();
+                let result = match request["method"].as_str().unwrap() {
+                    "eth_chainId" => "0xaa36a7", // Sepolia
+                    "eth_blockNumber" => "0x123",
+                    other => panic!("unexpected {other}"),
+                };
+                ResponseTemplate::new(200)
+                    .set_body_json(json!({"jsonrpc":"2.0", "id":request["id"], "result":result}))
+            })
+            .mount(&server)
+            .await;
+        let service = WalletService::new_catalog().unwrap();
+        for chain in ["Ethereum", "Ethereum Sepolia"] {
+            service
+                .apply_state_command(StateCommand::SetAppSetting {
+                    update: crate::store::state::AppSettingUpdate::RpcEndpoint {
+                        chain: chain.into(),
+                        value: server.uri(),
+                    },
+                })
+                .await
+                .unwrap();
+        }
+        service
+            .apply_state_command(StateCommand::SelectNetworkChain {
+                chain_id: "ethereum-sepolia".into(),
+            })
+            .await
+            .unwrap();
+        let selected = service
+            .run_configured_self_tests("ethereum".into())
+            .await
+            .unwrap();
+        assert_eq!(selected.chain_id, "ethereum-sepolia");
+        assert_eq!(
+            selected.rpc_endpoint.as_deref(),
+            Some(server.uri().as_str())
+        );
+        assert!(
+            selected.results.iter().all(|r| r.passed),
+            "{:?}",
+            selected.results
+        );
+        service
+            .apply_state_command(StateCommand::SelectNetworkChain {
+                chain_id: "ethereum".into(),
+            })
+            .await
+            .unwrap();
+        let mainnet = service
+            .run_configured_self_tests("ethereum".into())
+            .await
+            .unwrap();
+        assert!(mainnet
+            .results
+            .iter()
+            .any(|r| r.name == "RPC Chain ID" && !r.passed));
+        let explicit = service
+            .run_configured_self_tests("ethereum-sepolia".into())
+            .await
+            .unwrap();
+        assert!(explicit.results.iter().all(|r| r.passed));
+        assert_eq!(server.received_requests().await.unwrap().len(), 6);
+    }
+}

@@ -126,9 +126,9 @@ pub fn portfolio(ctx: &Ctx, out: Out, args: PortfolioArgs) -> CliResult<()> {
         return Ok(());
     }
     if args.stored {
-        let groups = ctx.rt.block_on(ctx.service()?.dashboard_asset_groups())?;
-        out.text(|| println!("{groups:?}"));
-        out.emit(serde_json::json!({"groups":groups}));
+        let snapshot = ctx.rt.block_on(ctx.service()?.portfolio_snapshot())?;
+        out.text(|| println!("{:?}", snapshot.valuation));
+        out.emit(serde_json::json!({"groups":snapshot.groups,"valuation":snapshot.valuation,"revision":snapshot.revision}));
         return Ok(());
     }
     let wallets = ctx.state()?.wallets;

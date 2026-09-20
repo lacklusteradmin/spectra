@@ -182,217 +182,7 @@ impl WalletService {
     pub async fn dashboard_pin_options(
         &self,
     ) -> Result<Vec<crate::store::wallet_domain::CoreDashboardPinOption>, SpectraBridgeError> {
-        use crate::store::wallet_domain::CoreDashboardPinOption;
-        let state = self.wallet_state.read().await;
-        let pinned = state.settings.pinned_dashboard_assets();
-        let catalog = crate::tokens::list_tokens(String::new());
-        let coins = catalog
-            .iter()
-            .chain(state.token_preferences.iter().map(|e| &e.token))
-            .map(|t| t.holding_template())
-            .chain(state.wallets.iter().flat_map(|w| w.holdings.clone()));
-        let mut options = std::collections::BTreeMap::<String, CoreDashboardPinOption>::new();
-        for coin in coins {
-            if coin.network().is_none_or(|n| n.is_testnet()) {
-                continue;
-            }
-            let token_id = coin.token_identity();
-            options
-                .entry(token_id.clone())
-                .or_insert_with(|| CoreDashboardPinOption {
-                    token_id: token_id.clone(),
-                    symbol: coin.symbol.clone(),
-                    name: coin.name.clone(),
-                    subtitle: if token_id.starts_with("custom:") {
-                        format!(
-                            "{} · {}",
-                            coin.network().unwrap().chain_display_name(),
-                            coin.contract_address.as_deref().unwrap_or("")
-                        )
-                    } else {
-                        coin.network().unwrap().chain_display_name().to_string()
-                    },
-                    artwork_name: Some(crate::store::core_holding_artwork_name(coin.clone())),
-                    is_pinned: pinned.contains(&token_id),
-                });
-        }
-        let mut options: Vec<_> = options.into_values().collect();
-        options.sort_by(|a, b| a.symbol.cmp(&b.symbol).then(a.token_id.cmp(&b.token_id)));
-        Ok(options)
-    }
-
-    pub async fn dashboard_asset_groups(
-        &self,
-    ) -> Result<Vec<crate::store::wallet_domain::CoreDashboardAssetGroup>, SpectraBridgeError> {
-        use crate::store::wallet_domain::{CoreDashboardAssetGroup, CoreDashboardAssetHolding};
-
-        let (settings, prices) = {
-            let state = self.wallet_state.read().await;
-            (state.settings.clone(), state.quotes.prices.clone())
-        };
-        let derived = self.wallet_derived_state().await?;
-        let pinned = settings.pinned_dashboard_assets();
-
-        let network_title = |chain_name: &str| -> String {
-            crate::registry::Chain::from_display_name(chain_name)
-                .map(|chain| chain.chain_display_name().to_string())
-                .unwrap_or_else(|| chain_name.to_string())
-        };
-        // Unpriced on a testnet, then the live quote, then the amount the
-        // holding was last stored with. Same order the shell applied.
-        let value_of = |coin: &crate::store::wallet_domain::AssetHolding| -> Option<f64> {
-            if crate::registry::Chain::from_display_name(&coin.chain_name)
-                .is_some_and(|chain| chain.is_testnet())
-            {
-                return None;
-            }
-            let price = prices
-                .get(&coin.deployment_key())
-                .copied()
-                .filter(|p| *p > 0.0)
-                .or(Some(coin.price_usd).filter(|p| *p > 0.0))?;
-            Some(coin.amount * price)
-        };
-
-        // One row per asset, wherever it is held. The same asset on two
-        // chains, or on one chain across two wallets, is one row.
-        //
-        // Two passes: group holdings by asset, then split each group by
-        // (network, standard, contract) so the row can show where it lives.
-        let mut order: Vec<String> = Vec::new();
-        let mut grouped: HashMap<String, Vec<crate::store::wallet_domain::AssetHolding>> =
-            HashMap::new();
-        for coin in derived
-            .included_portfolio_holdings
-            .iter()
-            .filter(|c| c.amount > 0.0)
-        {
-            let key = coin.token_identity();
-            if !grouped.contains_key(&key) {
-                order.push(key.clone());
-            }
-            grouped.entry(key).or_default().push(coin.clone());
-        }
-
-        let mut groups: Vec<CoreDashboardAssetGroup> = Vec::new();
-        for key in order {
-            let Some(coins) = grouped.get(&key) else {
-                continue;
-            };
-            // Within a row, one entry per place: the same asset held on one
-            // chain by two wallets is one entry with the amounts summed.
-            let mut place_order: Vec<String> = Vec::new();
-            let mut by_place: HashMap<String, crate::store::wallet_domain::AssetHolding> =
-                HashMap::new();
-            for coin in coins {
-                let contract = crate::tokens::normalize_token_identifier(
-                    coin.contract_address.clone(),
-                    coin.chain_name.clone(),
-                )
-                .unwrap_or_else(|| "native".to_string());
-                let place = format!(
-                    "{}|{}|{contract}",
-                    network_title(&coin.chain_name).to_lowercase(),
-                    coin.token_standard.to_lowercase()
-                );
-                match by_place.get_mut(&place) {
-                    Some(existing) => {
-                        existing.amount += coin.amount;
-                        existing.price_usd = coin.price_usd;
-                    }
-                    None => {
-                        place_order.push(place.clone());
-                        by_place.insert(place, coin.clone());
-                    }
-                }
-            }
-            let mut holdings: Vec<CoreDashboardAssetHolding> = place_order
-                .iter()
-                .filter_map(|p| by_place.get(p))
-                .map(|coin| CoreDashboardAssetHolding {
-                    value_usd: value_of(coin),
-                    coin: coin.clone(),
-                })
-                .collect();
-            // Largest value first, so the row is presented as the place most of
-            // it is. Ties break on chain name so the order does not wander.
-            holdings.sort_by(|lhs, rhs| {
-                let (l, r) = (lhs.value_usd.unwrap_or(-1.0), rhs.value_usd.unwrap_or(-1.0));
-                if (l - r).abs() > 0.000_001 {
-                    return r.total_cmp(&l);
-                }
-                lhs.coin
-                    .chain_name
-                    .to_lowercase()
-                    .cmp(&rhs.coin.chain_name.to_lowercase())
-            });
-            let Some(largest) = holdings.first() else {
-                continue;
-            };
-            groups.push(CoreDashboardAssetGroup {
-                is_pinned: pinned.contains(&key),
-                identity: largest.coin.clone(),
-                holdings,
-                id: key,
-            });
-        }
-
-        // A pinned token the user holds none of still gets a row, named by the
-        // catalog and holding nothing.
-        let row_symbol =
-            |g: &CoreDashboardAssetGroup| -> String { g.identity.symbol.to_uppercase() };
-        let row_value = |g: &CoreDashboardAssetGroup| -> Option<f64> {
-            g.holdings
-                .iter()
-                .map(|h| h.value_usd)
-                .try_fold(0.0, |sum, v| v.map(|v| sum + v))
-        };
-        let present: std::collections::HashSet<String> =
-            groups.iter().map(|g| g.id.clone()).collect();
-        for symbol in pinned.iter().filter(|s| !present.contains(*s)) {
-            let Some(prototype) = self.pinned_prototype(symbol, &derived).await else {
-                continue;
-            };
-            groups.push(CoreDashboardAssetGroup {
-                id: symbol.clone(),
-                identity: prototype,
-                holdings: Vec::new(),
-                is_pinned: true,
-            });
-        }
-
-        let pin_order: HashMap<&str, usize> = pinned
-            .iter()
-            .enumerate()
-            .map(|(i, s)| (s.as_str(), i))
-            .collect();
-        groups.sort_by(|lhs, rhs| {
-            match (lhs.is_pinned, rhs.is_pinned) {
-                (true, false) => return std::cmp::Ordering::Less,
-                (false, true) => return std::cmp::Ordering::Greater,
-                (true, true) => {
-                    let l = pin_order
-                        .get(lhs.id.as_str())
-                        .copied()
-                        .unwrap_or(usize::MAX);
-                    let r = pin_order
-                        .get(rhs.id.as_str())
-                        .copied()
-                        .unwrap_or(usize::MAX);
-                    return l.cmp(&r);
-                }
-                (false, false) => {}
-            }
-            let (l, r) = (
-                row_value(lhs).unwrap_or(-1.0),
-                row_value(rhs).unwrap_or(-1.0),
-            );
-            if (l - r).abs() > 0.000_001 {
-                return r.total_cmp(&l);
-            }
-            row_symbol(lhs).cmp(&row_symbol(rhs))
-        });
-        Ok(groups)
+        dashboard_pin_options_from(&self.app_state().await)
     }
 
     /// Fold this build's built-in token catalog into the stored preferences
@@ -488,30 +278,7 @@ impl WalletService {
     /// Signing availability is read through the registered SecretStore.
     pub async fn wallet_derived_state(&self) -> Result<WalletDerivedState, SpectraBridgeError> {
         let state = self.app_state().await;
-        // A wallet whose material cannot be read right now cannot sign right
-        // now, so it offers no send. The portfolio still renders; failing the
-        // whole projection for one unreadable Keychain item would not.
-        let signing_material_wallet_ids: Vec<String> = state
-            .wallets
-            .iter()
-            .filter(|wallet| {
-                self.wallet_secret_state(wallet.id.clone())
-                    .is_ok_and(|secrets| secrets.has_signing_material)
-            })
-            .map(|wallet| wallet.id.clone())
-            .collect();
-        derive_wallet_state(&state, signing_material_wallet_ids)
-    }
-
-    /// The wallets core holds, as the shape the iOS app renders.
-    ///
-    /// A view model built from the authoritative `WalletState` list, with the
-    /// derivation-path table filled from the catalog defaults for the wallet's
-    /// preset.
-    pub async fn wallets_for_display(
-        &self,
-    ) -> Result<Vec<crate::store::wallet_domain::WalletView>, SpectraBridgeError> {
-        wallets_for_display(&*self.wallet_state.read().await)
+        self.derive_wallet_projection(&state)
     }
 
     /// Current snapshot of the owned state.
@@ -711,29 +478,6 @@ impl WalletService {
     // not a platform uses it, and these were entry points nobody had taken.
 
     /// Resolve a pinned token by identity, including native tokens without a balance.
-    pub(super) async fn pinned_prototype(
-        &self,
-        token_id: &str,
-        derived: &WalletDerivedState,
-    ) -> Option<crate::store::wallet_domain::AssetHolding> {
-        if let Some(coin) = derived
-            .included_portfolio_holdings
-            .iter()
-            .find(|c| c.token_identity() == token_id)
-        {
-            let mut coin = coin.clone();
-            coin.amount = 0.0;
-            return Some(coin);
-        }
-        let state = self.wallet_state.read().await;
-        let tokens = crate::tokens::list_tokens(String::new());
-        tokens
-            .iter()
-            .chain(state.token_preferences.iter().map(|e| &e.token))
-            .find(|token| token.token_id == token_id)
-            .map(|token| token.holding_template())
-    }
-
     /// The bound state database, or an error naming what the caller skipped.
     ///
     /// Kept as a method on the service because twelve call sites read it and
@@ -1024,4 +768,290 @@ fn derive_wallet_state(
             .into_iter()
             .collect(),
     })
+}
+
+fn dashboard_pin_options_from(
+    state: &CoreAppState,
+) -> Result<Vec<crate::store::wallet_domain::CoreDashboardPinOption>, SpectraBridgeError> {
+    use crate::store::wallet_domain::CoreDashboardPinOption;
+    let pinned = state.settings.pinned_dashboard_assets();
+    let catalog = crate::tokens::list_tokens(String::new());
+    let coins = catalog
+        .iter()
+        .chain(state.token_preferences.iter().map(|e| &e.token))
+        .map(|t| t.holding_template())
+        .chain(state.wallets.iter().flat_map(|w| w.holdings.clone()));
+    let mut options = std::collections::BTreeMap::<String, CoreDashboardPinOption>::new();
+    for coin in coins {
+        if coin.network().is_none_or(|n| n.is_testnet()) {
+            continue;
+        }
+        let token_id = coin.token_identity();
+        options
+            .entry(token_id.clone())
+            .or_insert_with(|| CoreDashboardPinOption {
+                token_id: token_id.clone(),
+                symbol: coin.symbol.clone(),
+                name: coin.name.clone(),
+                subtitle: if token_id.starts_with("custom:") {
+                    format!(
+                        "{} · {}",
+                        coin.network().unwrap().chain_display_name(),
+                        coin.contract_address.as_deref().unwrap_or("")
+                    )
+                } else {
+                    coin.network().unwrap().chain_display_name().to_string()
+                },
+                artwork_name: Some(crate::store::core_holding_artwork_name(coin.clone())),
+                is_pinned: pinned.contains(&token_id),
+            });
+    }
+    let mut options: Vec<_> = options.into_values().collect();
+    options.sort_by(|a, b| a.symbol.cmp(&b.symbol).then(a.token_id.cmp(&b.token_id)));
+    Ok(options)
+}
+
+fn dashboard_groups_from(
+    state: &CoreAppState,
+    derived: &WalletDerivedState,
+) -> Result<Vec<crate::store::wallet_domain::CoreDashboardAssetGroup>, SpectraBridgeError> {
+    use crate::store::wallet_domain::{CoreDashboardAssetGroup, CoreDashboardAssetHolding};
+
+    let settings = &state.settings;
+    let pinned = settings.pinned_dashboard_assets();
+
+    let network_title = |chain_name: &str| -> String {
+        crate::registry::Chain::from_display_name(chain_name)
+            .map(|chain| chain.chain_display_name().to_string())
+            .unwrap_or_else(|| chain_name.to_string())
+    };
+    let value_of = |coin: &crate::store::wallet_domain::AssetHolding| valuation::value(state, coin);
+
+    // One row per asset, wherever it is held. The same asset on two
+    // chains, or on one chain across two wallets, is one row.
+    //
+    // Two passes: group holdings by asset, then split each group by
+    // (network, standard, contract) so the row can show where it lives.
+    let mut order: Vec<String> = Vec::new();
+    let mut grouped: HashMap<String, Vec<crate::store::wallet_domain::AssetHolding>> =
+        HashMap::new();
+    for coin in derived
+        .included_portfolio_holdings
+        .iter()
+        .filter(|c| c.amount > 0.0)
+    {
+        let key = coin.token_identity();
+        if !grouped.contains_key(&key) {
+            order.push(key.clone());
+        }
+        grouped.entry(key).or_default().push(coin.clone());
+    }
+
+    let mut groups: Vec<CoreDashboardAssetGroup> = Vec::new();
+    for key in order {
+        let Some(coins) = grouped.get(&key) else {
+            continue;
+        };
+        // Within a row, one entry per place: the same asset held on one
+        // chain by two wallets is one entry with the amounts summed.
+        let mut place_order: Vec<String> = Vec::new();
+        let mut by_place: HashMap<String, crate::store::wallet_domain::AssetHolding> =
+            HashMap::new();
+        for coin in coins {
+            let contract = crate::tokens::normalize_token_identifier(
+                coin.contract_address.clone(),
+                coin.chain_name.clone(),
+            )
+            .unwrap_or_else(|| "native".to_string());
+            let place = format!(
+                "{}|{}|{contract}",
+                network_title(&coin.chain_name).to_lowercase(),
+                coin.token_standard.to_lowercase()
+            );
+            match by_place.get_mut(&place) {
+                Some(existing) => {
+                    existing.amount += coin.amount;
+                    existing.price_usd = coin.price_usd;
+                }
+                None => {
+                    place_order.push(place.clone());
+                    by_place.insert(place, coin.clone());
+                }
+            }
+        }
+        let mut holdings: Vec<CoreDashboardAssetHolding> = place_order
+            .iter()
+            .filter_map(|p| by_place.get(p))
+            .map(|coin| CoreDashboardAssetHolding {
+                value_usd: value_of(coin),
+                coin: coin.clone(),
+            })
+            .collect();
+        // Largest value first, so the row is presented as the place most of
+        // it is. Ties break on chain name so the order does not wander.
+        holdings.sort_by(|lhs, rhs| {
+            let (l, r) = (lhs.value_usd.unwrap_or(-1.0), rhs.value_usd.unwrap_or(-1.0));
+            if (l - r).abs() > 0.000_001 {
+                return r.total_cmp(&l);
+            }
+            lhs.coin
+                .chain_name
+                .to_lowercase()
+                .cmp(&rhs.coin.chain_name.to_lowercase())
+        });
+        let Some(largest) = holdings.first() else {
+            continue;
+        };
+        let total_value_usd = holdings.iter().try_fold(0.0, |sum, holding| {
+            holding.value_usd.and_then(|value| {
+                let total = sum + value;
+                total.is_finite().then_some(total)
+            })
+        });
+        groups.push(CoreDashboardAssetGroup {
+            total_value_usd,
+            is_pinned: pinned.contains(&key),
+            identity: largest.coin.clone(),
+            holdings,
+            id: key,
+        });
+    }
+
+    // A pinned token the user holds none of still gets a row, named by the
+    // catalog and holding nothing.
+    let row_symbol = |g: &CoreDashboardAssetGroup| -> String { g.identity.symbol.to_uppercase() };
+    let row_value = |g: &CoreDashboardAssetGroup| g.total_value_usd;
+    let present: std::collections::HashSet<String> = groups.iter().map(|g| g.id.clone()).collect();
+    for symbol in pinned.iter().filter(|s| !present.contains(*s)) {
+        let Some(prototype) = pinned_prototype(state, symbol, derived) else {
+            continue;
+        };
+        groups.push(CoreDashboardAssetGroup {
+            total_value_usd: Some(0.0),
+            id: symbol.clone(),
+            identity: prototype,
+            holdings: Vec::new(),
+            is_pinned: true,
+        });
+    }
+
+    let pin_order: HashMap<&str, usize> = pinned
+        .iter()
+        .enumerate()
+        .map(|(i, s)| (s.as_str(), i))
+        .collect();
+    groups.sort_by(|lhs, rhs| {
+        match (lhs.is_pinned, rhs.is_pinned) {
+            (true, false) => return std::cmp::Ordering::Less,
+            (false, true) => return std::cmp::Ordering::Greater,
+            (true, true) => {
+                let l = pin_order
+                    .get(lhs.id.as_str())
+                    .copied()
+                    .unwrap_or(usize::MAX);
+                let r = pin_order
+                    .get(rhs.id.as_str())
+                    .copied()
+                    .unwrap_or(usize::MAX);
+                return l.cmp(&r);
+            }
+            (false, false) => {}
+        }
+        let (l, r) = (
+            row_value(lhs).unwrap_or(-1.0),
+            row_value(rhs).unwrap_or(-1.0),
+        );
+        if (l - r).abs() > 0.000_001 {
+            return r.total_cmp(&l);
+        }
+        row_symbol(lhs).cmp(&row_symbol(rhs))
+    });
+    Ok(groups)
+}
+fn pinned_prototype(
+    state: &CoreAppState,
+    token_id: &str,
+    derived: &WalletDerivedState,
+) -> Option<crate::store::wallet_domain::AssetHolding> {
+    if let Some(coin) = derived
+        .included_portfolio_holdings
+        .iter()
+        .find(|c| c.token_identity() == token_id)
+    {
+        let mut coin = coin.clone();
+        coin.amount = 0.0;
+        return Some(coin);
+    }
+    let tokens = crate::tokens::list_tokens(String::new());
+    tokens
+        .iter()
+        .chain(state.token_preferences.iter().map(|e| &e.token))
+        .find(|token| token.token_id == token_id)
+        .map(|token| token.holding_template())
+}
+
+impl WalletService {
+    fn derive_wallet_projection(
+        &self,
+        state: &CoreAppState,
+    ) -> Result<WalletDerivedState, SpectraBridgeError> {
+        // A wallet whose material cannot be read right now cannot sign right
+        // now, so it offers no send. The portfolio still renders; failing the
+        // whole projection for one unreadable Keychain item would not.
+        let signing_material_wallet_ids: Vec<String> = state
+            .wallets
+            .iter()
+            .filter(|wallet| {
+                self.wallet_secret_state(wallet.id.clone())
+                    .is_ok_and(|secrets| secrets.has_signing_material)
+            })
+            .map(|wallet| wallet.id.clone())
+            .collect();
+        derive_wallet_state(state, signing_material_wallet_ids)
+    }
+}
+
+/// A coherent read of the portfolio. Revision orders snapshots within this service session.
+#[derive(Debug, Clone, serde::Serialize, uniffi::Record)]
+#[serde(rename_all = "camelCase")]
+pub struct PortfolioSnapshot {
+    pub revision: u64,
+    pub state: CoreAppState,
+    pub wallets: Vec<crate::store::wallet_domain::WalletView>,
+    pub derived: WalletDerivedState,
+    pub groups: Vec<crate::store::wallet_domain::CoreDashboardAssetGroup>,
+    pub pin_options: Vec<crate::store::wallet_domain::CoreDashboardPinOption>,
+    pub valuation: super::valuation::PortfolioValuation,
+}
+
+#[uniffi::export(async_runtime = "tokio")]
+impl WalletService {
+    pub async fn portfolio_snapshot(&self) -> Result<PortfolioSnapshot, SpectraBridgeError> {
+        let _guard = self.state_writer.lock().await;
+        let state = self.wallet_state.read().await.clone();
+        let revision = self
+            .projection_sequence
+            .fetch_add(1, std::sync::atomic::Ordering::SeqCst)
+            + 1;
+        let derived = self.derive_wallet_projection(&state)?;
+        Ok(PortfolioSnapshot {
+            revision,
+            wallets: wallets_for_display(&state)?,
+            groups: dashboard_groups_from(&state, &derived)?,
+            pin_options: dashboard_pin_options_from(&state)?,
+            valuation: valuation::portfolio_valuation(&state),
+            derived,
+            state,
+        })
+    }
+}
+
+impl WalletService {
+    pub(super) async fn pinned_prototype(
+        &self,
+        token_id: &str,
+        derived: &WalletDerivedState,
+    ) -> Option<AssetHolding> {
+        pinned_prototype(&self.app_state().await, token_id, derived)
+    }
 }
