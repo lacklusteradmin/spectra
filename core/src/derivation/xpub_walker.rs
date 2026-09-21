@@ -192,7 +192,7 @@ fn address_from_pubkey(
     let compressed = child.public_key.serialize();
     let params = network.params();
     match script_type {
-        HdScriptType::P2pkh => Ok(encode_p2pkh(&params, &compressed)),
+        HdScriptType::P2pkh => Ok(encode_p2pkh(params.p2pkh_version, &compressed)),
         HdScriptType::P2shP2wpkh => Ok(encode_p2sh_p2wpkh(&params, &compressed)),
         HdScriptType::P2wpkh => encode_p2wpkh(&params, &compressed),
         HdScriptType::P2tr => {

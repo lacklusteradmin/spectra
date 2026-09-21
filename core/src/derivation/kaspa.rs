@@ -181,36 +181,7 @@ pub fn validate_kaspa_address(address: &str) -> bool {
 
 use secp256k1::{PublicKey, Secp256k1};
 
-const HARDENED_OFFSET: u32 = 0x80000000;
-
-// Parse a BIP-32 derivation path string ("m/44'/111111'/0'/0/0") into a list of child index integers.
-fn parse_bip32_path(path: &str) -> Result<Vec<u32>, String> {
-    let trimmed = path.trim().trim_start_matches('m').trim_start_matches('M');
-    let trimmed = trimmed.trim_start_matches('/');
-    if trimmed.is_empty() {
-        return Ok(Vec::new());
-    }
-    let mut out = Vec::new();
-    for segment in trimmed.split('/') {
-        let (value, hardened) = if let Some(stripped) = segment.strip_suffix('\'') {
-            (stripped, true)
-        } else if let Some(stripped) = segment.strip_suffix('h') {
-            (stripped, true)
-        } else if let Some(stripped) = segment.strip_suffix('H') {
-            (stripped, true)
-        } else {
-            (segment, false)
-        };
-        let raw: u32 = value
-            .parse()
-            .map_err(|_| format!("invalid path segment: {segment}"))?;
-        if raw >= HARDENED_OFFSET {
-            return Err(format!("path segment out of range: {segment}"));
-        }
-        out.push(if hardened { raw | HARDENED_OFFSET } else { raw });
-    }
-    Ok(out)
-}
+use crate::derivation::primitives::parse_bip32_path;
 
 // Derive a Kaspa Schnorr address, public key, and private key from a mnemonic via BIP-39 + BIP-32.
 pub(crate) fn derive_from_seed_phrase(

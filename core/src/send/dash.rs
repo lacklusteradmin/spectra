@@ -3,8 +3,9 @@
 //! `/api/v2/sendtx`. The wire format is identical to Bitcoin/Litecoin
 //! legacy — Dash never adopted SegWit on mainnet.
 
+use super::bitcoin_wire::p2pkh_script;
 use super::bitcoin_wire::{decode_txid_le, dsha256, varint};
-use crate::derivation::dash::{dash_p2pkh_script, decode_dash_address};
+use crate::derivation::dash::decode_dash_address;
 use crate::fetch::blockbook::{BlockbookClient, BlockbookSendResult};
 
 const SIGHASH_ALL: u32 = 1;
@@ -22,7 +23,7 @@ impl BlockbookClient {
         self.require_chain(crate::registry::Chain::Dash)?;
         let utxos = self.fetch_utxos(from_address).await?;
         let from_hash = decode_dash_address(from_address)?;
-        let from_script = dash_p2pkh_script(&from_hash);
+        let from_script = p2pkh_script(&from_hash);
         let utxo_tuples: Vec<(String, u32, u64, Vec<u8>)> = utxos
             .iter()
             .map(|u| (u.txid.clone(), u.vout, u.value_sat, from_script.clone()))
@@ -62,15 +63,10 @@ fn sign_dash_p2pkh(
         fee_sat,
     )?;
 
-    let mut outputs: Vec<(Vec<u8>, u64)> = vec![(
-        dash_p2pkh_script(&decode_dash_address(to_address)?),
-        amount_sat,
-    )];
+    let mut outputs: Vec<(Vec<u8>, u64)> =
+        vec![(p2pkh_script(&decode_dash_address(to_address)?), amount_sat)];
     if change > dust_threshold.unwrap_or(546) {
-        outputs.push((
-            dash_p2pkh_script(&decode_dash_address(change_address)?),
-            change,
-        ));
+        outputs.push((p2pkh_script(&decode_dash_address(change_address)?), change));
     }
 
     let mut signed_inputs: Vec<Vec<u8>> = Vec::new();

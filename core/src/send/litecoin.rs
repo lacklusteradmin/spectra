@@ -1,10 +1,9 @@
 //! Litecoin send: P2PKH transactions and MWEB peg-in transactions, broadcast
 //! via Blockbook `/api/v2/sendtx`.
 
+use super::bitcoin_wire::p2pkh_script;
 use super::bitcoin_wire::{decode_txid_le, dsha256, varint};
-use crate::derivation::litecoin::{
-    decode_ltc_address, is_mweb_address, ltc_p2pkh_script, parse_mweb_address,
-};
+use crate::derivation::litecoin::{decode_ltc_address, is_mweb_address, parse_mweb_address};
 use crate::fetch::blockbook::{BlockbookClient, BlockbookSendResult};
 use crate::send::mweb::{build_peg_in_extension, MWEB_PEGIN_OVERHEAD_BYTES};
 
@@ -35,14 +34,14 @@ impl BlockbookClient {
                 .await;
         }
         let utxos = self.fetch_utxos(from_address).await?;
-        let script_pubkey = ltc_p2pkh_script(&decode_ltc_address(from_address)?)?;
+        let script_pubkey = p2pkh_script(&decode_ltc_address(from_address)?);
         let utxo_tuples: Vec<(String, u32, u64, Vec<u8>)> = utxos
             .iter()
             .map(|u| (u.txid.clone(), u.vout, u.value_sat, script_pubkey.clone()))
             .collect();
         let raw = sign_ltc_with_output_script(
             &utxo_tuples,
-            &ltc_p2pkh_script(&decode_ltc_address(to_address)?)?,
+            &p2pkh_script(&decode_ltc_address(to_address)?),
             amount_sat,
             fee_sat,
             from_address,
@@ -80,7 +79,7 @@ impl BlockbookClient {
         let (mweb_ext, hog_script) = build_peg_in_extension(&mweb_addr, amount_sat, effective_fee)?;
 
         let utxos = self.fetch_utxos(from_address).await?;
-        let script_pubkey = ltc_p2pkh_script(&decode_ltc_address(from_address)?)?;
+        let script_pubkey = p2pkh_script(&decode_ltc_address(from_address)?);
         let utxo_tuples: Vec<(String, u32, u64, Vec<u8>)> = utxos
             .iter()
             .map(|u| (u.txid.clone(), u.vout, u.value_sat, script_pubkey.clone()))
@@ -135,10 +134,7 @@ fn sign_ltc_with_output_script(
 
     let mut outputs: Vec<(Vec<u8>, u64)> = vec![(to_script.to_vec(), amount_sat)];
     if change > dust_threshold.unwrap_or(546) {
-        outputs.push((
-            ltc_p2pkh_script(&decode_ltc_address(change_address)?)?,
-            change,
-        ));
+        outputs.push((p2pkh_script(&decode_ltc_address(change_address)?), change));
     }
 
     let mut signed_inputs: Vec<Vec<u8>> = Vec::new();

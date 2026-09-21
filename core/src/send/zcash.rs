@@ -9,8 +9,8 @@
 //! consensus_branch_id `0xC2D6D0B4`. We hardcode NU5 because the next
 //! upgrade (NU6) requires a fresh sighash table and a code update anyway.
 
-use super::bitcoin_wire::{decode_txid_le, varint};
-use crate::derivation::zcash::{decode_zcash_address, zcash_p2pkh_script};
+use super::bitcoin_wire::{decode_txid_le, p2pkh_script, varint};
+use crate::derivation::zcash::decode_zcash_address;
 use crate::fetch::blockbook::{BlockbookClient, BlockbookSendResult};
 
 // ── Network upgrade descriptor ────────────────────────────────────────────
@@ -60,7 +60,7 @@ impl BlockbookClient {
         // Match zcashd default: 40-block expiry window.
         let expiry_height = expiry_height(tip)?;
         let from_hash = decode_zcash_address(from_address)?;
-        let from_script = zcash_p2pkh_script(&from_hash);
+        let from_script = p2pkh_script(&from_hash);
         let utxo_tuples: Vec<(String, u32, u64, Vec<u8>)> = utxos
             .iter()
             .map(|u| (u.txid.clone(), u.vout, u.value_sat, from_script.clone()))
@@ -138,15 +138,10 @@ fn sign_zcash_v5_p2pkh(
         fee_sat,
     )?;
 
-    let mut outputs: Vec<(Vec<u8>, u64)> = vec![(
-        zcash_p2pkh_script(&decode_zcash_address(to_address)?),
-        amount_sat,
-    )];
+    let mut outputs: Vec<(Vec<u8>, u64)> =
+        vec![(p2pkh_script(&decode_zcash_address(to_address)?), amount_sat)];
     if change > dust_threshold_zats {
-        outputs.push((
-            zcash_p2pkh_script(&decode_zcash_address(change_address)?),
-            change,
-        ));
+        outputs.push((p2pkh_script(&decode_zcash_address(change_address)?), change));
     }
 
     // Per-tx digests that are constant across all inputs.

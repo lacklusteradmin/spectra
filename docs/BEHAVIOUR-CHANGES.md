@@ -17,6 +17,28 @@ how to check it without the app:
 - **Verification** — the three suites at the time of the change.
 
 
+## 2026-09-21 — Share cross-chain primitives and remove an unused error type
+
+- **Before:** Bitcoin-family chains repeated identical P2PKH derivation,
+  address/script construction and BIP-32 path parsing; Polkadot and Bittensor
+  repeated wire helpers. `SubstrateSignError` had no consumers.
+- **After:** Call the shared implementations listed in
+  [the duplication audit](DUPLICATION-AUDIT.md). Unsupported P2PKH-only script
+  requests now consistently report “This chain only supports P2PKH addresses.”
+  instead of some helpers naming the chain. Addresses, keys, signed bytes,
+  storage and public entry points otherwise keep their existing contracts.
+- **Why:** One implementation per protocol primitive; retain real differences
+  in address validation, network versions and transaction signing.
+- **CLI check:** `scripts/cli-acceptance.sh` exercises offline derivation,
+  wallet import and send workflows. Existing independent Rust derivation and
+  transaction vectors cover shared primitive integration. The unused type has
+  no CLI behavior to exercise.
+- **Verification:** `make verify` passed: rustfmt/clippy, 837 Rust unit tests,
+  1 transport integration test, 440 CLI checks and 106 iOS tests. The first
+  sandboxed run could not bind local mock-server ports; the complete rerun
+  with the required local execution permissions passed.
+
+
 ## 2026-09-21 — Remove prelaunch storage compatibility
 
 - **Before:** Loading skipped undecodable wallets, defaulted unreadable metadata

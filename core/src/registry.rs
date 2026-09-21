@@ -1008,23 +1008,27 @@ impl Chain {
             Self::BitcoinTestnet | Self::BitcoinTestnet4 | Self::BitcoinSignet => {
                 return btc::encode_address_inner(btc::BTC_TESTNET, script, key)
             }
-            Self::BitcoinCash => bch::p2pkh_address(bch::BCH_MAINNET_VERSION, key),
-            Self::BitcoinCashTestnet => bch::p2pkh_address(bch::BCH_TESTNET_VERSION, key),
-            Self::BitcoinSV => bsv::p2pkh_address(bsv::BSV_MAINNET_VERSION, key),
-            Self::BitcoinSVTestnet => bsv::p2pkh_address(bsv::BSV_TESTNET_VERSION, key),
-            Self::Dogecoin => doge::doge_p2pkh_address(doge::DOGE_MAINNET_VERSION, key),
-            Self::DogecoinTestnet => doge::doge_p2pkh_address(doge::DOGE_TESTNET_VERSION, key),
+            Self::BitcoinCash => btc::encode_p2pkh(bch::BCH_MAINNET_VERSION, &key.serialize()),
+            Self::BitcoinCashTestnet => {
+                btc::encode_p2pkh(bch::BCH_TESTNET_VERSION, &key.serialize())
+            }
+            Self::BitcoinSV => btc::encode_p2pkh(bsv::BSV_MAINNET_VERSION, &key.serialize()),
+            Self::BitcoinSVTestnet => btc::encode_p2pkh(bsv::BSV_TESTNET_VERSION, &key.serialize()),
+            Self::Dogecoin => btc::encode_p2pkh(doge::DOGE_MAINNET_VERSION, &key.serialize()),
+            Self::DogecoinTestnet => {
+                btc::encode_p2pkh(doge::DOGE_TESTNET_VERSION, &key.serialize())
+            }
             Self::Litecoin | Self::LitecoinTestnet => {
                 if !matches!(script, BitcoinScriptType::P2pkh) {
                     return Err("Litecoin discovery only supports P2PKH paths".into());
                 }
-                ltc::p2pkh_address(
+                btc::encode_p2pkh(
                     if self == Self::Litecoin {
                         ltc::LTC_MAINNET_VERSION
                     } else {
                         ltc::LTC_TESTNET_VERSION
                     },
-                    key,
+                    &key.serialize(),
                 )
             }
             _ => return Err("chain does not support UTXO discovery".into()),

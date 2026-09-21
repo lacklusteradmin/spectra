@@ -23,50 +23,13 @@ pub(crate) fn decode_bch_to_hash20(address: &str) -> Result<[u8; 20], String> {
     Err(format!("cannot decode BCH address: {address}"))
 }
 
-use crate::derivation::bitcoin::{base58check_encode, derive_secp_keypair, hash160};
-use crate::derivation::types::{parse_path_metadata, DerivationResult};
+use crate::derivation::bitcoin::{derive_legacy_p2pkh, encode_p2pkh};
+use crate::derivation::types::DerivationResult;
 use crate::SpectraBridgeError;
 use secp256k1::{PublicKey, Secp256k1, SecretKey};
 
 pub(crate) const BCH_MAINNET_VERSION: u8 = 0x00;
 pub(crate) const BCH_TESTNET_VERSION: u8 = 0x6f;
-
-// Build a BCH P2PKH address: base58check(version || hash160(pubkey)).
-pub(crate) fn p2pkh_address(version: u8, pubkey: &PublicKey) -> String {
-    let mut payload = vec![version];
-    payload.extend_from_slice(&hash160(&pubkey.serialize()));
-    base58check_encode(&payload)
-}
-
-// Shared body for derive_bitcoin_cash / derive_bitcoin_cash_testnet; rejects non-P2PKH script types.
-fn bch_internal(
-    version: u8,
-    seed_phrase: String,
-    derivation_path: String,
-    passphrase: Option<String>,
-    script_type: crate::derivation::types::BitcoinScriptType,
-    want_address: bool,
-    want_public_key: bool,
-    want_private_key: bool,
-) -> Result<DerivationResult, SpectraBridgeError> {
-    use crate::derivation::types::BitcoinScriptType;
-    if !matches!(script_type, BitcoinScriptType::P2pkh) {
-        return Err(SpectraBridgeError::InvalidInput {
-            message: "Bitcoin Cash only supports P2PKH addresses.".into(),
-        });
-    }
-    let (account, branch, index) = parse_path_metadata(&derivation_path);
-    let (pk, priv_bytes) =
-        derive_secp_keypair(&seed_phrase, &derivation_path, passphrase.as_deref())?;
-    Ok(DerivationResult {
-        address: want_address.then(|| p2pkh_address(version, &pk)),
-        public_key_hex: want_public_key.then(|| hex::encode(pk.serialize())),
-        private_key_hex: want_private_key.then(|| hex::encode(priv_bytes)),
-        account,
-        branch,
-        index,
-    })
-}
 
 /// Derive Bitcoin Cash mainnet keys (P2PKH only).
 pub fn derive_bitcoin_cash(
@@ -78,7 +41,7 @@ pub fn derive_bitcoin_cash(
     want_public_key: bool,
     want_private_key: bool,
 ) -> Result<DerivationResult, SpectraBridgeError> {
-    bch_internal(
+    derive_legacy_p2pkh(
         BCH_MAINNET_VERSION,
         seed_phrase,
         derivation_path,
@@ -100,7 +63,7 @@ pub fn derive_bitcoin_cash_testnet(
     want_public_key: bool,
     want_private_key: bool,
 ) -> Result<DerivationResult, SpectraBridgeError> {
-    bch_internal(
+    derive_legacy_p2pkh(
         BCH_TESTNET_VERSION,
         seed_phrase,
         derivation_path,
@@ -131,7 +94,7 @@ pub fn derive_bitcoin_cash_from_private_key(
     let secret_key = SecretKey::from_slice(&key_bytes).map_err(|e| e.to_string())?;
     let pk = PublicKey::from_secret_key(&secp, &secret_key);
     Ok(DerivationResult {
-        address: want_address.then(|| p2pkh_address(BCH_MAINNET_VERSION, &pk)),
+        address: want_address.then(|| encode_p2pkh(BCH_MAINNET_VERSION, &pk.serialize())),
         public_key_hex: want_public_key.then(|| hex::encode(pk.serialize())),
         private_key_hex: None,
         account: 0,

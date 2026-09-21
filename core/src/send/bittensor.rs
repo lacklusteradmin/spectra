@@ -11,6 +11,7 @@
 //! Pallet/call indexes live in `super::substrate`; re-verify against runtime
 //! metadata after each subtensor runtime upgrade.
 
+use super::substrate::{blake2b_256, decode_hash_hex, scale_compact_u128, scale_compact_u32};
 use serde_json::json;
 
 use crate::derivation::bittensor::decode_bittensor_ss58;
@@ -158,42 +159,4 @@ pub fn build_signed_transfer(
     let mut out = scale_compact_u32(extrinsic_body.len() as u32);
     out.extend_from_slice(&extrinsic_body);
     Ok(out)
-}
-
-fn scale_compact_u32(n: u32) -> Vec<u8> {
-    scale_compact_u128(n as u128)
-}
-
-fn scale_compact_u128(n: u128) -> Vec<u8> {
-    if n <= 63 {
-        vec![(n << 2) as u8]
-    } else if n <= 0x3fff {
-        let v = ((n << 2) | 1) as u16;
-        v.to_le_bytes().to_vec()
-    } else if n <= 0x3fff_ffff {
-        let v = ((n << 2) | 2) as u32;
-        v.to_le_bytes().to_vec()
-    } else {
-        let bytes = n.to_le_bytes();
-        let sig_bytes = bytes.iter().rev().skip_while(|&&b| b == 0).count();
-        let mut out = vec![((sig_bytes - 4) << 2 | 3) as u8];
-        out.extend_from_slice(&bytes[..sig_bytes]);
-        out
-    }
-}
-
-fn decode_hash_hex(hex_str: &str) -> Result<[u8; 32], String> {
-    let s = hex_str.strip_prefix("0x").unwrap_or(hex_str);
-    let bytes = hex::decode(s).map_err(|e| format!("hash decode: {e}"))?;
-    bytes
-        .try_into()
-        .map_err(|_| format!("hash wrong length: {}", hex_str))
-}
-
-fn blake2b_256(data: &[u8]) -> [u8; 32] {
-    use blake2::digest::consts::U32;
-    use blake2::{Blake2b, Digest};
-    let mut h = Blake2b::<U32>::new();
-    h.update(data);
-    h.finalize().into()
 }

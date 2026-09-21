@@ -1,11 +1,12 @@
 //! Dogecoin send: P2PKH signer and Blockbook broadcast.
 
+use super::bitcoin_wire::p2pkh_script;
 use crate::fetch::http::{with_fallback, RetryProfile};
 
 use super::bitcoin_wire::{
     build_input, build_tx, decode_txid_le, dsha256, p2pkh_script_sig, varint,
 };
-use crate::derivation::dogecoin::{decode_doge_address, p2pkh_script};
+use crate::derivation::dogecoin::decode_doge_address;
 use crate::fetch::dogecoin::{DogeSendResult, DogecoinClient};
 
 impl DogecoinClient {
@@ -46,7 +47,7 @@ impl DogecoinClient {
         dust_threshold: Option<u64>,
     ) -> Result<DogeSendResult, String> {
         let utxos = self.fetch_utxos(from_address).await?;
-        let script_pubkey = p2pkh_script(&decode_doge_address(from_address)?)?;
+        let script_pubkey = p2pkh_script(&decode_doge_address(from_address)?);
         let utxo_tuples: Vec<(String, u32, u64, Vec<u8>)> = utxos
             .iter()
             .map(|u| (u.txid.clone(), u.vout, u.value_koin, script_pubkey.clone()))
@@ -94,12 +95,10 @@ pub fn sign_doge_p2pkh(
         fee_koin,
     )?;
 
-    let mut outputs: Vec<(Vec<u8>, u64)> = vec![(
-        p2pkh_script(&decode_doge_address(to_address)?)?,
-        amount_koin,
-    )];
+    let mut outputs: Vec<(Vec<u8>, u64)> =
+        vec![(p2pkh_script(&decode_doge_address(to_address)?), amount_koin)];
     if change > dust_threshold.unwrap_or(546) {
-        outputs.push((p2pkh_script(&decode_doge_address(change_address)?)?, change));
+        outputs.push((p2pkh_script(&decode_doge_address(change_address)?), change));
     }
 
     // Sign each input.

@@ -11,8 +11,9 @@
 //! Spectra ships SIGHASH_ALL only — the dominant case for normal transfers.
 //! Tree-stake (PoS) inputs and split-tx flows are out of scope.
 
+use super::bitcoin_wire::p2pkh_script;
 use super::bitcoin_wire::{decode_txid_le, varint};
-use crate::derivation::decred::{blake256, dcr_p2pkh_script, decode_dcr_address};
+use crate::derivation::decred::{blake256, decode_dcr_address};
 use crate::fetch::decred::{DcrSendResult, DecredClient};
 
 /// Decred wire `version | serType` 32-bit header, encoded little-endian. The
@@ -40,7 +41,7 @@ impl DecredClient {
     ) -> Result<DcrSendResult, String> {
         let utxos = self.fetch_utxos(from_address).await?;
         let from_hash = decode_dcr_address(from_address)?;
-        let from_script = dcr_p2pkh_script(&from_hash);
+        let from_script = p2pkh_script(&from_hash);
         let to_hash = decode_dcr_address(to_address)?;
 
         let change = super::accounting::checked_change(
@@ -49,13 +50,13 @@ impl DecredClient {
             fee_atoms,
         )?;
 
-        let mut outputs: Vec<(Vec<u8>, u64)> = vec![(dcr_p2pkh_script(&to_hash), amount_atoms)];
+        let mut outputs: Vec<(Vec<u8>, u64)> = vec![(p2pkh_script(&to_hash), amount_atoms)];
         if change > dust_threshold.unwrap_or(6_030) {
             // Change goes back to the sender's own script, built from the
             // hash the address decodes to — so the caller's spelling of that
             // address, canonical or not, cannot reach the wire.
             let change_hash = decode_dcr_address(from_address)?;
-            outputs.push((dcr_p2pkh_script(&change_hash), change));
+            outputs.push((p2pkh_script(&change_hash), change));
         }
 
         let inputs: Vec<DcrInputBuild> = utxos

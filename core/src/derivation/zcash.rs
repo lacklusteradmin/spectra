@@ -24,14 +24,6 @@ pub(crate) fn decode_zcash_address(address: &str) -> Result<[u8; 20], String> {
     Ok(hash)
 }
 
-// Build the standard P2PKH script for a Zcash transparent address.
-pub(crate) fn zcash_p2pkh_script(pubkey_hash: &[u8; 20]) -> Vec<u8> {
-    let mut s = vec![0x76u8, 0xa9, 0x14];
-    s.extend_from_slice(pubkey_hash);
-    s.extend_from_slice(&[0x88, 0xac]);
-    s
-}
-
 /// True if address passes Zcash base58check decode with a recognised t1/t3 version prefix.
 /// Whether `address` is valid on the network asked about.
 ///
@@ -152,17 +144,5 @@ mod tests {
             "1A1zP1eP5QGefi2DMPTfTL5SLmv7DivfNa",
             false
         ));
-    }
-
-    #[test]
-    fn p2pkh_script_shape() {
-        let hash = [0u8; 20];
-        let s = zcash_p2pkh_script(&hash);
-        assert_eq!(s.len(), 25);
-        assert_eq!(s[0], 0x76);
-        assert_eq!(s[1], 0xa9);
-        assert_eq!(s[2], 0x14);
-        assert_eq!(s[23], 0x88);
-        assert_eq!(s[24], 0xac);
     }
 }

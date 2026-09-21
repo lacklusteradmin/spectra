@@ -259,16 +259,6 @@ pub(crate) fn decode_dcr_address(address: &str) -> Result<[u8; 20], String> {
     Ok(hash)
 }
 
-/// Standard Decred P2PKH script: `OP_DUP OP_HASH160 <hash> OP_EQUALVERIFY OP_CHECKSIG`.
-/// Identical opcodes to Bitcoin; the difference is the hash function used to
-/// build the input hash, which the caller has already done.
-pub(crate) fn dcr_p2pkh_script(pubkey_hash: &[u8; 20]) -> Vec<u8> {
-    let mut s = vec![0x76u8, 0xa9, 0x14];
-    s.extend_from_slice(pubkey_hash);
-    s.extend_from_slice(&[0x88, 0xac]);
-    s
-}
-
 /// True if address is a valid Decred mainnet address (Ds… P2PKH or Dc… P2SH).
 /// Whether `address` is valid on the network asked about.
 ///
@@ -295,36 +285,7 @@ pub fn validate_decred_address(address: &str, testnet: bool) -> bool {
 
 // ── BIP-32 ───────────────────────────────────────────────────────────────
 
-const HARDENED_OFFSET: u32 = 0x80000000;
-
-// Parse a BIP-32 derivation path string ("m/44'/42'/0'/0/0") into a list of child index integers.
-fn parse_bip32_path(path: &str) -> Result<Vec<u32>, String> {
-    let trimmed = path.trim().trim_start_matches('m').trim_start_matches('M');
-    let trimmed = trimmed.trim_start_matches('/');
-    if trimmed.is_empty() {
-        return Ok(Vec::new());
-    }
-    let mut out = Vec::new();
-    for segment in trimmed.split('/') {
-        let (value, hardened) = if let Some(stripped) = segment.strip_suffix('\'') {
-            (stripped, true)
-        } else if let Some(stripped) = segment.strip_suffix('h') {
-            (stripped, true)
-        } else if let Some(stripped) = segment.strip_suffix('H') {
-            (stripped, true)
-        } else {
-            (segment, false)
-        };
-        let raw: u32 = value
-            .parse()
-            .map_err(|_| format!("invalid path segment: {segment}"))?;
-        if raw >= HARDENED_OFFSET {
-            return Err(format!("path segment out of range: {segment}"));
-        }
-        out.push(if hardened { raw | HARDENED_OFFSET } else { raw });
-    }
-    Ok(out)
-}
+use crate::derivation::primitives::parse_bip32_path;
 
 // BIP-39 → BIP-32 path walk → (compressed secp256k1 pubkey, raw 32-byte private key).
 fn derive_secp_keypair(

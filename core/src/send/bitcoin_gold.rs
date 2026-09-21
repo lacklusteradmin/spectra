@@ -6,8 +6,9 @@
 //! the field value is `0x00004F41`. The signature itself appends only the
 //! low byte (`0x41`) to the DER per standard P2PKH script.
 
+use super::bitcoin_wire::p2pkh_script;
 use super::bitcoin_wire::{dsha256, varint};
-use crate::derivation::bitcoin_gold::{btg_p2pkh_script, decode_btg_address};
+use crate::derivation::bitcoin_gold::decode_btg_address;
 use crate::fetch::blockbook::{BlockbookClient, BlockbookSendResult};
 
 const SIGHASH_ALL_FORKID_BYTE: u8 = 0x41;
@@ -27,7 +28,7 @@ impl BlockbookClient {
         self.require_chain(crate::registry::Chain::BitcoinGold)?;
         let utxos = self.fetch_utxos(from_address).await?;
         let from_hash = decode_btg_address(from_address)?;
-        let from_script = btg_p2pkh_script(&from_hash);
+        let from_script = p2pkh_script(&from_hash);
         let utxo_tuples: Vec<(String, u32, u64, Vec<u8>)> = utxos
             .iter()
             .map(|u| (u.txid.clone(), u.vout, u.value_sat, from_script.clone()))
@@ -70,9 +71,9 @@ fn sign_btg_tx(
     let to_hash = decode_btg_address(to_address)?;
     let change_hash = decode_btg_address(change_address)?;
 
-    let mut outputs: Vec<(Vec<u8>, u64)> = vec![(btg_p2pkh_script(&to_hash), amount_sat)];
+    let mut outputs: Vec<(Vec<u8>, u64)> = vec![(p2pkh_script(&to_hash), amount_sat)];
     if change > dust_threshold.unwrap_or(546) {
-        outputs.push((btg_p2pkh_script(&change_hash), change));
+        outputs.push((p2pkh_script(&change_hash), change));
     }
 
     // Precompute hashPrevouts and hashSequence (BIP143 §1,2).

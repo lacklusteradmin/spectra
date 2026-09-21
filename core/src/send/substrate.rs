@@ -31,59 +31,41 @@ pub const POLKADOT_BALANCES_TRANSFER_KEEP_ALIVE: RuntimeCallIndex =
 pub const BITTENSOR_BALANCES_TRANSFER_KEEP_ALIVE: RuntimeCallIndex =
     RuntimeCallIndex::new(0x06, 0x03);
 
-/// Typed error for substrate-family signing paths. Replaces the
-/// `Result<_, String>` returns that lost structure: callers can now
-/// pattern-match on the failure mode (transient vs permanent vs caller
-/// bug) instead of regex-matching the string. The `Display` impl
-/// preserves the human-readable shape for log lines.
-#[derive(Debug)]
-pub enum SubstrateSignError {
-    /// The 32-byte mini-secret didn't pass schnorrkel's validation
-    /// (zero scalar, malformed encoding). Caller bug — the bytes
-    /// shouldn't have made it past `derive_polkadot`.
-    InvalidMiniSecret(String),
-    /// Hex string failed to decode. Includes the field name so logs
-    /// say which field — `genesis_hash`, `block_hash`, etc.
-    HashDecode {
-        field: &'static str,
-        source: hex::FromHexError,
-    },
-    /// Hex string decoded but the byte count was wrong. Includes the
-    /// expected and actual lengths plus the field name.
-    WrongLength {
-        field: &'static str,
-        expected: usize,
-        got: usize,
-    },
+pub(super) fn scale_compact_u32(n: u32) -> Vec<u8> {
+    scale_compact_u128(n as u128)
 }
 
-impl std::fmt::Display for SubstrateSignError {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            SubstrateSignError::InvalidMiniSecret(detail) => {
-                write!(f, "invalid sr25519 mini-secret: {detail}")
-            }
-            SubstrateSignError::HashDecode { field, source } => {
-                write!(f, "{field} hex decode: {source}")
-            }
-            SubstrateSignError::WrongLength {
-                field,
-                expected,
-                got,
-            } => {
-                write!(
-                    f,
-                    "{field} wrong length: expected {expected} bytes, got {got}"
-                )
-            }
-        }
+pub(super) fn scale_compact_u128(n: u128) -> Vec<u8> {
+    if n <= 63 {
+        vec![(n << 2) as u8]
+    } else if n <= 0x3fff {
+        let v = ((n << 2) | 1) as u16;
+        v.to_le_bytes().to_vec()
+    } else if n <= 0x3fff_ffff {
+        let v = ((n << 2) | 2) as u32;
+        v.to_le_bytes().to_vec()
+    } else {
+        // Big-integer mode.
+        let bytes = n.to_le_bytes();
+        let sig_bytes = bytes.iter().rev().skip_while(|&&b| b == 0).count();
+        let mut out = vec![((sig_bytes - 4) << 2 | 3) as u8];
+        out.extend_from_slice(&bytes[..sig_bytes]);
+        out
     }
 }
 
-impl std::error::Error for SubstrateSignError {}
+pub(super) fn decode_hash_hex(hex_str: &str) -> Result<[u8; 32], String> {
+    let s = hex_str.strip_prefix("0x").unwrap_or(hex_str);
+    let bytes = hex::decode(s).map_err(|e| format!("hash decode: {e}"))?;
+    bytes
+        .try_into()
+        .map_err(|_| format!("hash wrong length: {}", hex_str))
+}
 
-impl From<SubstrateSignError> for String {
-    fn from(err: SubstrateSignError) -> String {
-        err.to_string()
-    }
+pub(super) fn blake2b_256(data: &[u8]) -> [u8; 32] {
+    use blake2::digest::consts::U32;
+    use blake2::{Blake2b, Digest};
+    let mut h = Blake2b::<U32>::new();
+    h.update(data);
+    h.finalize().into()
 }

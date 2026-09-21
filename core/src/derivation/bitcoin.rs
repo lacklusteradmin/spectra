@@ -2,10 +2,8 @@
 //! P2WPKH / P2TR encoding, and the full BIP-39 → BIP-32 → secp256k1 →
 //! address pipeline.
 //!
-//! This file is **self-contained**: BIP-32, BIP-39, HMAC, path parsing,
-//! base58check, hash160, and secp material derivation all live here. Other
-//! Bitcoin-family chains (Litecoin, Dogecoin, BCH, BSV, BTG, Dash, Zcash,
-//! Decred, Kaspa) duplicate the same primitives in their own files.
+//! Bitcoin-family chains share the address encoders here and the derivation
+//! primitives in `primitives`; this module also owns extended-key serialization.
 
 pub(crate) use crate::derivation::primitives::{
     derive_bip39_seed, parse_bip32_path, HARDENED_OFFSET,
@@ -311,9 +309,9 @@ pub(crate) const BTC_TESTNET: BitcoinNetworkParams = BitcoinNetworkParams {
 };
 
 // Encode a P2PKH address: version_byte || hash160(pubkey), base58check-encoded.
-pub(crate) fn encode_p2pkh(params: &BitcoinNetworkParams, compressed_pubkey: &[u8]) -> String {
+pub(crate) fn encode_p2pkh(version: u8, compressed_pubkey: &[u8]) -> String {
     let mut payload = Vec::with_capacity(21);
-    payload.push(params.p2pkh_version);
+    payload.push(version);
     payload.extend_from_slice(&hash160(compressed_pubkey));
     base58check_encode(&payload)
 }
@@ -396,7 +394,7 @@ pub(crate) fn encode_address_inner(
 ) -> Result<String, String> {
     let compressed = public_key.serialize();
     match script_type {
-        BitcoinScriptType::P2pkh => Ok(encode_p2pkh(&params, &compressed)),
+        BitcoinScriptType::P2pkh => Ok(encode_p2pkh(params.p2pkh_version, &compressed)),
         BitcoinScriptType::P2shP2wpkh => Ok(encode_p2sh_p2wpkh(&params, &compressed)),
         BitcoinScriptType::P2wpkh => encode_p2wpkh(&params, &compressed),
         BitcoinScriptType::P2tr => {
@@ -633,4 +631,33 @@ pub(crate) fn parse_bitcoin_address(s: &str) -> Result<ParsedBitcoinAddress, Str
         other => return Err(format!("unknown legacy version byte: 0x{other:02x}")),
     };
     Ok(ParsedBitcoinAddress::Legacy { network })
+}
+
+/// Derive a P2PKH-only Bitcoin-family wallet for the supplied network version.
+pub(crate) fn derive_legacy_p2pkh(
+    version: u8,
+    seed_phrase: String,
+    derivation_path: String,
+    passphrase: Option<String>,
+    script_type: BitcoinScriptType,
+    want_address: bool,
+    want_public_key: bool,
+    want_private_key: bool,
+) -> Result<DerivationResult, SpectraBridgeError> {
+    if !matches!(script_type, BitcoinScriptType::P2pkh) {
+        return Err(SpectraBridgeError::InvalidInput {
+            message: "This chain only supports P2PKH addresses.".into(),
+        });
+    }
+    let (account, branch, index) = parse_path_metadata(&derivation_path);
+    let (pk, priv_bytes) =
+        derive_secp_keypair(&seed_phrase, &derivation_path, passphrase.as_deref())?;
+    Ok(DerivationResult {
+        address: want_address.then(|| encode_p2pkh(version, &pk.serialize())),
+        public_key_hex: want_public_key.then(|| hex::encode(pk.serialize())),
+        private_key_hex: want_private_key.then(|| hex::encode(priv_bytes)),
+        account,
+        branch,
+        index,
+    })
 }

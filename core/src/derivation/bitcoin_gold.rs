@@ -26,16 +26,8 @@ pub(crate) fn decode_btg_address(address: &str) -> Result<[u8; 20], String> {
     Ok(hash)
 }
 
-// Build the standard P2PKH script (OP_DUP OP_HASH160 <hash> OP_EQUALVERIFY OP_CHECKSIG).
-pub(crate) fn btg_p2pkh_script(pubkey_hash: &[u8; 20]) -> Vec<u8> {
-    let mut s = vec![0x76u8, 0xa9, 0x14];
-    s.extend_from_slice(pubkey_hash);
-    s.extend_from_slice(&[0x88, 0xac]);
-    s
-}
-
-use crate::derivation::bitcoin::{base58check_encode, derive_secp_keypair, hash160};
-use crate::derivation::types::{parse_path_metadata, BitcoinScriptType, DerivationResult};
+use crate::derivation::bitcoin::derive_legacy_p2pkh;
+use crate::derivation::types::{BitcoinScriptType, DerivationResult};
 use crate::SpectraBridgeError;
 
 /// UniFFI export: derive Bitcoin Gold mainnet keys; only P2PKH script type is supported.
@@ -48,27 +40,16 @@ pub fn derive_bitcoin_gold(
     want_public_key: bool,
     want_private_key: bool,
 ) -> Result<DerivationResult, SpectraBridgeError> {
-    if !matches!(script_type, BitcoinScriptType::P2pkh) {
-        return Err(SpectraBridgeError::InvalidInput {
-            message: "Bitcoin Gold only supports P2PKH addresses.".into(),
-        });
-    }
-    let (account, branch, index) = parse_path_metadata(&derivation_path);
-    let (pk, priv_bytes) =
-        derive_secp_keypair(&seed_phrase, &derivation_path, passphrase.as_deref())?;
-    let address = want_address.then(|| {
-        let mut payload = vec![BTG_P2PKH_VERSION];
-        payload.extend_from_slice(&hash160(&pk.serialize()));
-        base58check_encode(&payload)
-    });
-    Ok(DerivationResult {
-        address,
-        public_key_hex: want_public_key.then(|| hex::encode(pk.serialize())),
-        private_key_hex: want_private_key.then(|| hex::encode(priv_bytes)),
-        account,
-        branch,
-        index,
-    })
+    derive_legacy_p2pkh(
+        BTG_P2PKH_VERSION,
+        seed_phrase,
+        derivation_path,
+        passphrase,
+        script_type,
+        want_address,
+        want_public_key,
+        want_private_key,
+    )
 }
 
 /// True if address is a valid BTG P2PKH (base58check) or P2WPKH (bech32 "btg1") address.
@@ -91,13 +72,5 @@ mod tests {
         assert!(!validate_bitcoin_gold_address(
             "1A1zP1eP5QGefi2DMPTfTL5SLmv7DivfNa"
         ));
-    }
-
-    #[test]
-    fn p2pkh_script_shape() {
-        let s = btg_p2pkh_script(&[0u8; 20]);
-        assert_eq!(s.len(), 25);
-        assert_eq!(s[0], 0x76);
-        assert_eq!(s[24], 0xac);
     }
 }

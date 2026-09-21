@@ -26,14 +26,6 @@ pub(crate) fn decode_dash_address(address: &str) -> Result<[u8; 20], String> {
     Ok(hash)
 }
 
-// Build the standard P2PKH locking script for the given 20-byte pubkey hash.
-pub(crate) fn dash_p2pkh_script(pubkey_hash: &[u8; 20]) -> Vec<u8> {
-    let mut s = vec![0x76u8, 0xa9, 0x14];
-    s.extend_from_slice(pubkey_hash);
-    s.extend_from_slice(&[0x88, 0xac]);
-    s
-}
-
 /// True if address passes Dash base58check decode with a recognised version byte.
 /// Whether `address` is valid on the network asked about.
 ///
@@ -61,48 +53,12 @@ pub fn validate_dash_address(address: &str, testnet: bool) -> bool {
     }
 }
 
-use crate::derivation::bitcoin::{base58check_encode, derive_secp_keypair, hash160};
-use crate::derivation::types::{parse_path_metadata, BitcoinScriptType, DerivationResult};
+use crate::derivation::bitcoin::derive_legacy_p2pkh;
+use crate::derivation::types::{BitcoinScriptType, DerivationResult};
 use crate::SpectraBridgeError;
 
 const DASH_MAINNET_P2PKH: u8 = 0x4C;
 const DASH_TESTNET_P2PKH: u8 = 0x8C;
-
-// Build a Dash P2PKH address: base58check(version || hash160(pubkey)).
-fn p2pkh_address(version: u8, pubkey: &secp256k1::PublicKey) -> String {
-    let mut payload = vec![version];
-    payload.extend_from_slice(&hash160(&pubkey.serialize()));
-    base58check_encode(&payload)
-}
-
-// Shared body for derive_dash / derive_dash_testnet; rejects non-P2PKH script types.
-fn dash_internal(
-    version: u8,
-    seed_phrase: String,
-    derivation_path: String,
-    passphrase: Option<String>,
-    script_type: BitcoinScriptType,
-    want_address: bool,
-    want_public_key: bool,
-    want_private_key: bool,
-) -> Result<DerivationResult, SpectraBridgeError> {
-    if !matches!(script_type, BitcoinScriptType::P2pkh) {
-        return Err(SpectraBridgeError::InvalidInput {
-            message: "Dash only supports P2PKH addresses.".into(),
-        });
-    }
-    let (account, branch, index) = parse_path_metadata(&derivation_path);
-    let (pk, priv_bytes) =
-        derive_secp_keypair(&seed_phrase, &derivation_path, passphrase.as_deref())?;
-    Ok(DerivationResult {
-        address: want_address.then(|| p2pkh_address(version, &pk)),
-        public_key_hex: want_public_key.then(|| hex::encode(pk.serialize())),
-        private_key_hex: want_private_key.then(|| hex::encode(priv_bytes)),
-        account,
-        branch,
-        index,
-    })
-}
 
 /// UniFFI export: derive Dash mainnet keys (P2PKH only).
 pub fn derive_dash(
@@ -114,7 +70,7 @@ pub fn derive_dash(
     want_public_key: bool,
     want_private_key: bool,
 ) -> Result<DerivationResult, SpectraBridgeError> {
-    dash_internal(
+    derive_legacy_p2pkh(
         DASH_MAINNET_P2PKH,
         seed_phrase,
         derivation_path,
@@ -136,7 +92,7 @@ pub fn derive_dash_testnet(
     want_public_key: bool,
     want_private_key: bool,
 ) -> Result<DerivationResult, SpectraBridgeError> {
-    dash_internal(
+    derive_legacy_p2pkh(
         DASH_TESTNET_P2PKH,
         seed_phrase,
         derivation_path,
@@ -158,13 +114,5 @@ mod tests {
             "1A1zP1eP5QGefi2DMPTfTL5SLmv7DivfNa",
             false
         ));
-    }
-
-    #[test]
-    fn p2pkh_script_shape() {
-        let s = dash_p2pkh_script(&[0u8; 20]);
-        assert_eq!(s.len(), 25);
-        assert_eq!(s[0], 0x76);
-        assert_eq!(s[24], 0xac);
     }
 }
