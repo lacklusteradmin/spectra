@@ -4,8 +4,8 @@
 //! retains unconsumed rows and each address's provider cursor. Complete block
 //! cohorts are merged before being displayed, so an HD transfer split across
 //! addresses or provider pages is counted exactly once.
-use super::chains::bitcoin::BitcoinHistoryEntry;
-use crate::history::CoreBitcoinHistorySnapshot;
+use super::bitcoin::BitcoinHistoryEntry;
+use crate::fetch::history::CoreBitcoinHistorySnapshot;
 use futures::{stream, StreamExt, TryStreamExt};
 use serde::{Deserialize, Serialize};
 use std::collections::{HashSet, VecDeque};

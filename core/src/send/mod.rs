@@ -11,7 +11,37 @@ pub mod transfer;
 pub mod verification;
 
 // Per-chain write-path: build / sign / broadcast transaction methods.
-pub mod chains;
+mod accounting;
+pub mod aptos;
+#[cfg(test)]
+mod audit_tests;
+mod bcs;
+pub mod bitcoin;
+pub mod bitcoin_cash;
+pub mod bitcoin_gold;
+pub mod bitcoin_sv;
+mod bitcoin_wire;
+pub mod bittensor;
+pub mod cardano;
+pub mod dash;
+pub mod decred;
+pub mod dogecoin;
+pub mod evm;
+pub mod icp;
+pub mod kaspa;
+pub mod litecoin;
+pub mod monero;
+pub mod mweb;
+pub mod near;
+pub mod polkadot;
+pub mod solana;
+pub mod stellar;
+pub mod substrate;
+pub mod sui;
+pub mod ton;
+pub mod tron;
+pub mod xrp;
+pub mod zcash;
 
 use serde::{Deserialize, Serialize};
 use zeroize::Zeroize;
@@ -616,6 +646,11 @@ mod tests {
             )
             .unwrap_or_else(|| panic!("{} has no native asset", chain.chain_display_name()));
             assert_eq!(asset.symbol, chain.entry().gas_token_symbol);
+            assert!(
+                !asset.symbol.is_empty(),
+                "{} has no native symbol",
+                chain.str_id()
+            );
             assert!(!asset.asset_display_name.is_empty());
         }
         // And a chain that is not EVM is still refused.
@@ -804,7 +839,7 @@ mod tests {
         //
         // This list held six. Five of them — Zcash, Bitcoin Gold, Decred,
         // Kaspa and Dash — had complete send implementations under
-        // `send/chains/` and arms in `service/send_execution.rs`; what they
+        // `send/` and arms in `service/send_execution.rs`; what they
         // did not have was a row in `route_send_asset`, so the preflight
         // refused before any of it ran. The list was recording the symptom,
         // not a decision.
@@ -964,7 +999,7 @@ mod every_chain_with_a_send_implementation_can_route {
     /// `route_send_asset` is a table of `(chain, symbol)` pairs, and five
     /// chains with complete send implementations were missing from it: Zcash,
     /// Bitcoin Gold, Decred, Kaspa and Dash. Each has a module under
-    /// `send/chains/`, an arm in `service/send_execution.rs`, and derivation —
+    /// `send/`, an arm in `service/send_execution.rs`, and derivation —
     /// and the preflight answered "transfers are not enabled yet" before any
     /// of it was reached.
     #[test]

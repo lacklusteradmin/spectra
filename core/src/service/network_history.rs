@@ -12,7 +12,7 @@ impl WalletService {
         address: String,
     ) -> Result<Vec<crate::fetch::history_decode::NormalizedHistoryItem>, SpectraBridgeError> {
         let raw = self.fetch_history(&chain_id, address).await?;
-        let entries = crate::history::normalize_chain_history(&chain_id, &raw);
+        let entries = crate::fetch::history::normalize_chain_history(&chain_id, &raw);
         Ok(entries
             .into_iter()
             .map(|e| crate::fetch::history_decode::NormalizedHistoryItem {
@@ -70,37 +70,16 @@ impl WalletService {
         let client = EvmClient::new(eps, chain.evm_chain_id()?);
 
         let source = chain.evm_history_source();
-        let etherscan_chain_id = chain.evm_chain_id()?;
-        let api_key_owned = self.owned_etherscan_api_key().await;
-        let api_key_str = if api_key_owned.is_empty() {
-            None
-        } else {
-            Some(api_key_owned.as_str())
-        };
 
         // Fetch native and token transfers concurrently.
         let (native_result, token_result) = tokio::join!(
-            client.fetch_history(
-                &address,
-                source,
-                api_key_str,
-                etherscan_chain_id,
-                page,
-                page_size
-            ),
+            client.fetch_history(&address, source, page, page_size),
             async {
                 if tokens.is_empty() {
                     Ok(Vec::new())
                 } else {
                     client
-                        .fetch_token_transfers(
-                            &address,
-                            source,
-                            api_key_str,
-                            etherscan_chain_id,
-                            page,
-                            page_size,
-                        )
+                        .fetch_token_transfers(&address, source, page, page_size)
                         .await
                 }
             }
@@ -135,7 +114,7 @@ impl WalletService {
                 if dec != entry.decimals {
                     entry.decimals = dec;
                     entry.amount_display =
-                        crate::fetch::chains::evm::format_evm_decimals(&entry.amount_raw, dec);
+                        crate::fetch::evm::format_evm_decimals(&entry.amount_raw, dec);
                 }
                 if entry.from != addr_lower && entry.to != addr_lower {
                     return None;
@@ -207,14 +186,9 @@ async fn fetch_history(
         ),
         Api::EvmJsonRpc => {
             let source = chain.evm_history_source();
-            let api_key_owned = service.owned_etherscan_api_key().await;
-            let api_key_str = if api_key_owned.is_empty() {
-                None
-            } else {
-                Some(api_key_owned.as_str())
-            };
+
             let h = EvmClient::new(endpoints, chain.evm_chain_id()?)
-                .fetch_history(address, source, api_key_str, chain.evm_chain_id()?, 1, 50)
+                .fetch_history(address, source, 1, 50)
                 .await?;
             json_response(&h)
         }
@@ -238,49 +212,20 @@ async fn fetch_history(
         }
         Api::Horizon => json_response(&StellarClient::new(endpoints).fetch_history(address).await?),
         Api::XrplJsonRpc => json_response(&XrpClient::new(endpoints).fetch_history(address).await?),
-        Api::Koios => {
-            let api_key = service
-                .api_key_for(chain.str_id())
-                .await
-                .unwrap_or_default();
-            json_response(
-                &CardanoClient::new(endpoints, api_key)
-                    .fetch_history(address)
-                    .await?,
-            )
-        }
-        Api::SubstrateJsonRpc if chain.mainnet_counterpart() == Chain::Bittensor => {
-            let taostats = service
-                .endpoints_for(&chain.endpoint_str_id(EndpointSlot::Secondary))
-                .await;
-            let api_key = service.api_key_for(chain.str_id()).await;
-            json_response(
-                &BittensorClient::new(endpoints, taostats, api_key)
-                    .fetch_history(address)
-                    .await?,
-            )
-        }
-        Api::SubstrateJsonRpc => {
-            let subscan = service
-                .endpoints_for(&chain.endpoint_str_id(EndpointSlot::Secondary))
-                .await;
-            let api_key = service.api_key_for(chain.str_id()).await;
-            json_response(
-                &PolkadotClient::new(endpoints, subscan, api_key)
-                    .fetch_history(address)
-                    .await?,
-            )
-        }
+        Api::Koios => json_response(&CardanoClient::new(endpoints).fetch_history(address).await?),
+        Api::SubstrateJsonRpc if chain.mainnet_counterpart() == Chain::Bittensor => json_response(
+            &BittensorClient::new(endpoints)
+                .fetch_history(address)
+                .await?,
+        ),
+        Api::SubstrateJsonRpc => json_response(
+            &PolkadotClient::new(endpoints)
+                .fetch_history(address)
+                .await?,
+        ),
         Api::SuiJsonRpc => json_response(&SuiClient::new(endpoints).fetch_history(address).await?),
         Api::AptosRest => json_response(&AptosClient::new(endpoints).fetch_history(address).await?),
-        Api::ToncenterV2 => {
-            let api_key = service.api_key_for(chain.str_id()).await;
-            json_response(
-                &TonClient::new(endpoints, api_key)
-                    .fetch_history(address)
-                    .await?,
-            )
-        }
+        Api::ToncenterV2 => json_response(&TonClient::new(endpoints).fetch_history(address).await?),
         Api::NearJsonRpc => {
             let indexer = service
                 .endpoints_for(&chain.endpoint_str_id(EndpointSlot::Explorer))

@@ -100,14 +100,8 @@ pub mod store;
 pub mod tokens;
 pub mod tor;
 pub mod validation;
+pub mod wallet_db;
 pub mod wiki;
-
-// Crate-root shortcuts for the heavily-used internal modules. Other paths use
-// the folder-qualified `crate::fetch::http`, `crate::store::state`, etc.
-pub use derivation::*;
-pub use fetch::{history, http, price};
-pub use send::ethereum as ethereum_send;
-pub use store::{state, wallet_db};
 
 #[cfg(test)]
 mod app_boundary_tests;

@@ -1,5 +1,5 @@
 use crate::service::WalletService;
-use crate::state::{StateCommand, WalletState};
+use crate::store::state::{StateCommand, WalletState};
 
 fn wallet(id: &str, name: &str) -> WalletState {
     WalletState::single_address(id, name, "Bitcoin", "bc1qexample", None, false)

@@ -2,7 +2,7 @@
 
 use serde::{Deserialize, Serialize};
 
-use crate::derivation::chains::bitcoin::{parse_bitcoin_address, BitcoinNetworkKind};
+use crate::derivation::bitcoin::{parse_bitcoin_address, BitcoinNetworkKind};
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, uniffi::Record)]
 #[serde(rename_all = "camelCase")]
@@ -207,10 +207,8 @@ fn validate_bitcoin_address(
         Err(_) => return invalid_result(),
     };
     let network = match &parsed {
-        crate::derivation::chains::bitcoin::ParsedBitcoinAddress::Legacy { network, .. }
-        | crate::derivation::chains::bitcoin::ParsedBitcoinAddress::SegWit { network, .. } => {
-            network
-        }
+        crate::derivation::bitcoin::ParsedBitcoinAddress::Legacy { network, .. }
+        | crate::derivation::bitcoin::ParsedBitcoinAddress::SegWit { network, .. } => network,
     };
     let is_valid = match expected_network {
         BitcoinNetworkKind::Mainnet => matches!(network, BitcoinNetworkKind::Mainnet),
@@ -241,7 +239,7 @@ fn validate_bitcoin_sv_address(value: &str, testnet: bool) -> AddressValidationR
     // BSV is legacy-only: base58check P2PKH / P2SH, whose version bytes are
     // 0x00 / 0x05 on mainnet and 0x6f / 0xc4 on testnet. SegWit and Taproot
     // are not valid on either.
-    if crate::derivation::chains::bitcoin_sv::validate_bsv_address(value, testnet) {
+    if crate::derivation::bitcoin_sv::validate_bsv_address(value, testnet) {
         return make_result(value.to_string());
     }
     invalid_result()
@@ -250,7 +248,7 @@ fn validate_bitcoin_sv_address(value: &str, testnet: bool) -> AddressValidationR
 fn validate_litecoin_address(value: &str, testnet: bool) -> AddressValidationResult {
     if testnet {
         if validate_segwit_hrp(value, &["tltc"])
-            || crate::derivation::chains::litecoin::parse_mweb_address(value)
+            || crate::derivation::litecoin::parse_mweb_address(value)
                 .map(|_| value.to_ascii_lowercase().starts_with("tmweb1"))
                 .unwrap_or(false)
             || validate_legacy_base58_payload(value, &[0x6f, 0x3a, 0xc4]).is_some()
@@ -260,7 +258,7 @@ fn validate_litecoin_address(value: &str, testnet: bool) -> AddressValidationRes
         return invalid_result();
     }
     if validate_segwit_hrp(value, &["ltc"])
-        || crate::derivation::chains::litecoin::parse_mweb_address(value)
+        || crate::derivation::litecoin::parse_mweb_address(value)
             .map(|_| value.to_ascii_lowercase().starts_with("ltcmweb1"))
             .unwrap_or(false)
         || validate_legacy_base58_payload(value, &[0x30, 0x32, 0x05]).is_some()
@@ -271,42 +269,42 @@ fn validate_litecoin_address(value: &str, testnet: bool) -> AddressValidationRes
 }
 
 fn validate_zcash_address(value: &str, testnet: bool) -> AddressValidationResult {
-    if crate::derivation::chains::zcash::validate_zcash_address(value, testnet) {
+    if crate::derivation::zcash::validate_zcash_address(value, testnet) {
         return make_result(value.to_string());
     }
     invalid_result()
 }
 
 fn validate_bitcoin_gold_address(value: &str) -> AddressValidationResult {
-    if crate::derivation::chains::bitcoin_gold::validate_bitcoin_gold_address(value) {
+    if crate::derivation::bitcoin_gold::validate_bitcoin_gold_address(value) {
         return make_result(value.to_string());
     }
     invalid_result()
 }
 
 fn validate_decred_address(value: &str, testnet: bool) -> AddressValidationResult {
-    if crate::derivation::chains::decred::validate_decred_address(value, testnet) {
+    if crate::derivation::decred::validate_decred_address(value, testnet) {
         return make_result(value.to_string());
     }
     invalid_result()
 }
 
 fn validate_kaspa_address(value: &str) -> AddressValidationResult {
-    if crate::derivation::chains::kaspa::validate_kaspa_address(value) {
+    if crate::derivation::kaspa::validate_kaspa_address(value) {
         return make_result(value.trim().to_ascii_lowercase());
     }
     invalid_result()
 }
 
 fn validate_dash_address(value: &str, testnet: bool) -> AddressValidationResult {
-    if crate::derivation::chains::dash::validate_dash_address(value, testnet) {
+    if crate::derivation::dash::validate_dash_address(value, testnet) {
         return make_result(value.to_string());
     }
     invalid_result()
 }
 
 fn validate_bittensor_address(value: &str) -> AddressValidationResult {
-    if crate::derivation::chains::bittensor::validate_bittensor_address(value) {
+    if crate::derivation::bittensor::validate_bittensor_address(value) {
         return make_result(value.to_string());
     }
     invalid_result()
@@ -349,7 +347,7 @@ fn validate_evm_address(value: &str) -> AddressValidationResult {
         let Ok(bytes) = hex::decode(&normalized[2..]) else {
             return invalid_result();
         };
-        if crate::derivation::chains::evm::eip55_checksum(&bytes) != trimmed {
+        if crate::derivation::evm::eip55_checksum(&bytes) != trimmed {
             return invalid_result();
         }
     }
@@ -357,7 +355,7 @@ fn validate_evm_address(value: &str) -> AddressValidationResult {
 }
 
 fn validate_tron_address(value: &str) -> AddressValidationResult {
-    if crate::derivation::chains::tron::tron_base58_to_evm_hex(value).is_ok() {
+    if crate::derivation::tron::tron_base58_to_evm_hex(value).is_ok() {
         return make_result(value.to_string());
     }
     invalid_result()
@@ -379,14 +377,14 @@ fn validate_solana_address(value: &str) -> AddressValidationResult {
 }
 
 fn validate_stellar_address(value: &str) -> AddressValidationResult {
-    if crate::derivation::chains::stellar::decode_stellar_address(value).is_ok() {
+    if crate::derivation::stellar::decode_stellar_address(value).is_ok() {
         return make_result(value.to_string());
     }
     invalid_result()
 }
 
 fn validate_xrp_address(value: &str) -> AddressValidationResult {
-    if crate::derivation::chains::xrp::decode_xrp_address(value).is_ok() {
+    if crate::derivation::xrp::decode_xrp_address(value).is_ok() {
         return make_result(value.to_string());
     }
     invalid_result()
@@ -414,9 +412,7 @@ fn validate_aptos_address(value: &str) -> AddressValidationResult {
 }
 
 fn validate_ton_address(value: &str, testnet: bool) -> AddressValidationResult {
-    match crate::derivation::chains::ton::parse_ton_address(value)
-        .and_then(|a| a.for_network(testnet))
-    {
+    match crate::derivation::ton::parse_ton_address(value).and_then(|a| a.for_network(testnet)) {
         Ok(_) => make_result(if value.contains(':') {
             value.to_lowercase()
         } else {
@@ -473,7 +469,7 @@ fn validate_near_address(value: &str) -> AddressValidationResult {
 }
 
 fn validate_polkadot_address(value: &str) -> AddressValidationResult {
-    if crate::derivation::chains::polkadot::decode_ss58(value).is_ok() {
+    if crate::derivation::polkadot::decode_ss58(value).is_ok() {
         return make_result(value.to_string());
     }
     invalid_result()
@@ -742,7 +738,7 @@ mod tests {
 
     #[test]
     fn rejects_mutated_checksum_addresses() {
-        let xrp = crate::derivation::chains::xrp::derive_xrp(
+        let xrp = crate::derivation::xrp::derive_xrp(
             MNEMONIC.to_string(),
             "m/44'/144'/0'/0/0".to_string(),
             None,
@@ -756,7 +752,7 @@ mod tests {
         assert!(validate("xrp", xrp.clone()).is_valid);
         assert!(!validate("xrp", mutate_last_char(&xrp)).is_valid);
 
-        let tron = crate::derivation::chains::tron::derive_tron(
+        let tron = crate::derivation::tron::derive_tron(
             MNEMONIC.to_string(),
             "m/44'/195'/0'/0/0".to_string(),
             None,
@@ -770,7 +766,7 @@ mod tests {
         assert!(validate("tron", tron.clone()).is_valid);
         assert!(!validate("tron", mutate_last_char(&tron)).is_valid);
 
-        let stellar = crate::derivation::chains::stellar::derive_stellar(
+        let stellar = crate::derivation::stellar::derive_stellar(
             MNEMONIC.to_string(),
             "m/44'/148'/0'".to_string(),
             None,
@@ -785,7 +781,7 @@ mod tests {
         assert!(validate("stellar", stellar.clone()).is_valid);
         assert!(!validate("stellar", mutate_last_char(&stellar)).is_valid);
 
-        let bittensor = crate::derivation::chains::bittensor::derive_bittensor(
+        let bittensor = crate::derivation::bittensor::derive_bittensor(
             MNEMONIC.to_string(),
             None,
             true,
@@ -805,7 +801,7 @@ mod tests {
         assert!(validate("bitcoinCash", bch_cashaddr.clone()).is_valid);
         assert!(!validate("bitcoinCash", mutate_last_char(&bch_cashaddr)).is_valid);
 
-        let doge = crate::derivation::chains::dogecoin::derive_dogecoin(
+        let doge = crate::derivation::dogecoin::derive_dogecoin(
             MNEMONIC.to_string(),
             "m/44'/3'/0'/0/0".to_string(),
             None,
@@ -820,7 +816,7 @@ mod tests {
         assert!(validate("dogecoin", doge.clone()).is_valid);
         assert!(!validate("dogecoinTestnet", doge).is_valid);
 
-        let ltc = crate::derivation::chains::litecoin::derive_litecoin(
+        let ltc = crate::derivation::litecoin::derive_litecoin(
             MNEMONIC.to_string(),
             "m/44'/2'/0'/0/0".to_string(),
             None,
@@ -846,7 +842,7 @@ mod every_chain_accepts_what_it_derives {
 
     /// A chain's validator accepts the address that chain derives.
     ///
-    /// The two halves are written separately — `derivation/chains/*` produces
+    /// The two halves are written separately — `derivation/*` produces
     /// the address, `validation/address.rs` judges it — so nothing made them
     /// agree. A chain whose derived address its own validator refuses can be
     /// imported and then cannot be sent to, and neither side's tests would
@@ -932,7 +928,7 @@ mod ton_validation_tests {
         use base64::Engine;
         let mut bytes = [0u8; 36];
         bytes[0] = 0x12; // Wrong tag with an otherwise correct checksum.
-        let crc = crate::derivation::chains::ton::crc16_xmodem(&bytes[..34]);
+        let crc = crate::derivation::ton::crc16_xmodem(&bytes[..34]);
         bytes[34..].copy_from_slice(&crc.to_be_bytes());
         assert!(!check(
             &base64::engine::general_purpose::URL_SAFE_NO_PAD.encode(bytes),

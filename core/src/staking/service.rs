@@ -5,17 +5,13 @@ use std::sync::Arc;
 use crate::registry::Chain;
 use crate::service::ChainEndpoints;
 use crate::staking::{
-    chains::{
-        aptos::AptosStakingClient, cardano::CardanoStakingClient, icp::IcpStakingClient,
-        near::NearStakingClient, polkadot::PolkadotStakingClient, solana::SolanaStakingClient,
-        sui::SuiStakingClient,
-    },
+    aptos::AptosStakingClient, icp::IcpStakingClient, near::NearStakingClient,
+    polkadot::PolkadotStakingClient, solana::SolanaStakingClient, sui::SuiStakingClient,
     StakingError, StakingPosition, StakingValidator,
 };
 
 pub struct StakingService {
     solana: SolanaStakingClient,
-    cardano: CardanoStakingClient,
     sui: SuiStakingClient,
     aptos: AptosStakingClient,
     near: NearStakingClient,
@@ -46,13 +42,8 @@ impl StakingService {
                 .map(|e| e.endpoints.clone())
                 .unwrap_or_default()
         };
-        let cardano_api_key = endpoints
-            .iter()
-            .find(|e| e.chain_id == Chain::Cardano.str_id())
-            .and_then(|e| e.api_key.clone());
         Arc::new(Self {
             solana: SolanaStakingClient::new(eps(Chain::Solana)),
-            cardano: CardanoStakingClient::new(eps(Chain::Cardano), cardano_api_key),
             sui: SuiStakingClient::new(eps(Chain::Sui)),
             aptos: AptosStakingClient::new(eps(Chain::Aptos)),
             near: NearStakingClient::new(eps(Chain::Near)),
@@ -69,7 +60,6 @@ impl StakingService {
     ) -> Result<Vec<StakingValidator>, StakingError> {
         match self.staking_chain(&chain_id)? {
             Chain::Solana => self.solana.fetch_validators().await,
-            Chain::Cardano => self.cardano.fetch_validators().await,
             Chain::Sui => self.sui.fetch_validators().await,
             Chain::Aptos => self.aptos.fetch_validators().await,
             Chain::Near => self.near.fetch_validators().await,
@@ -86,7 +76,6 @@ impl StakingService {
     ) -> Result<Vec<StakingPosition>, StakingError> {
         match self.staking_chain(&chain_id)? {
             Chain::Solana => self.solana.fetch_positions(&wallet_address).await,
-            Chain::Cardano => self.cardano.fetch_positions(&wallet_address).await,
             Chain::Sui => self.sui.fetch_positions(&wallet_address).await,
             Chain::Aptos => self.aptos.fetch_positions(&wallet_address).await,
             Chain::Near => self.near.fetch_positions(&wallet_address).await,

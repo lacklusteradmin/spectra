@@ -339,15 +339,15 @@ pub(crate) fn token_name_on_chain(chain_id: &str, symbol: &str) -> Option<&'stat
 /// Kept out of [`TokenDeploymentEntry`] the way the chain catalog keeps them out of
 /// `ChainEntry`: no front end prices anything, so these would cross the FFI on
 /// every `list_token_deployments` call for a caller that never reads them.
-pub(crate) fn market_ids() -> &'static [crate::price::AssetMarketIds] {
-    static IDS: LazyLock<Vec<crate::price::AssetMarketIds>> = LazyLock::new(|| {
+pub(crate) fn market_ids() -> &'static [crate::fetch::price::AssetMarketIds] {
+    static IDS: LazyLock<Vec<crate::fetch::price::AssetMarketIds>> = LazyLock::new(|| {
         // Only mainnet identities have market prices; testnet identities are
         // checked by the catalog loader and never reach this provider list.
         embedded_token_file(TOKENS_TOML, "tokens.toml")
             .tokens
             .iter()
             .filter(|t| !t.coingecko_id.is_empty())
-            .map(|t| crate::price::AssetMarketIds {
+            .map(|t| crate::fetch::price::AssetMarketIds {
                 coingecko_id: t.coingecko_id.clone(),
                 coinpaprika_id: t.coinpaprika_id.clone(),
             })

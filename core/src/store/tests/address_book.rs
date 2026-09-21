@@ -1,5 +1,5 @@
 use crate::service::WalletService;
-use crate::state::{AddressBookRejection, StateCommand};
+use crate::store::state::{AddressBookRejection, StateCommand};
 
 const BTC: &str = "bc1qcr8te4kr609gcawutmrza0j4xv80jy8z306fyu";
 const BTC2: &str = "bc1qw508d6qejxtdg4y5r3zarvary0c5xw7kv8f3t4";
@@ -29,9 +29,11 @@ fn add(id: &str, name: &str, address: &str) -> StateCommand {
     }
 }
 
-fn rejection(events: &[crate::state::StateEvent]) -> Option<crate::state::AddressBookRejection> {
+fn rejection(
+    events: &[crate::store::state::StateEvent],
+) -> Option<crate::store::state::AddressBookRejection> {
     events.iter().find_map(|e| match e {
-        crate::state::StateEvent::AddressBookRejected { reason } => Some(*reason),
+        crate::store::state::StateEvent::AddressBookRejected { reason } => Some(*reason),
         _ => None,
     })
 }
@@ -68,7 +70,7 @@ async fn refuses_an_empty_name() {
     assert!(transition.state.address_book.is_empty());
     assert_eq!(
         rejection(&transition.events),
-        Some(crate::state::AddressBookRejection::EmptyName)
+        Some(crate::store::state::AddressBookRejection::EmptyName)
     );
 }
 
@@ -82,7 +84,7 @@ async fn refuses_an_address_that_is_not_valid_for_the_chain() {
     assert!(transition.state.address_book.is_empty());
     assert_eq!(
         rejection(&transition.events),
-        Some(crate::state::AddressBookRejection::InvalidAddress)
+        Some(crate::store::state::AddressBookRejection::InvalidAddress)
     );
 }
 
@@ -102,7 +104,7 @@ async fn refuses_a_duplicate_regardless_of_case() {
     assert_eq!(transition.state.address_book.len(), 1);
     assert_eq!(
         rejection(&transition.events),
-        Some(crate::state::AddressBookRejection::DuplicateAddress)
+        Some(crate::store::state::AddressBookRejection::DuplicateAddress)
     );
 }
 
@@ -155,7 +157,7 @@ async fn renames_and_removes() {
     assert_eq!(empty.state.address_book[0].name, "Vault", "unchanged");
     assert_eq!(
         rejection(&empty.events),
-        Some(crate::state::AddressBookRejection::EmptyName)
+        Some(crate::store::state::AddressBookRejection::EmptyName)
     );
 
     let removed = service

@@ -81,13 +81,13 @@ impl WalletService {
         // Not `unwrap_or_default()` on any arm: a node that will not answer is
         // not an address that holds nothing, and the difference is what a user
         // reads as "my tokens are gone".
-        let held: Vec<crate::fetch::chains::HeldToken> = match chain {
+        let held: Vec<crate::fetch::HeldToken> = match chain {
             Chain::Solana | Chain::SolanaDevnet => SolanaClient::new(endpoints)
                 .fetch_all_spl_balances(&address)
                 .await
                 .map_err(SpectraBridgeError::from)?
                 .into_iter()
-                .map(|b| crate::fetch::chains::HeldToken {
+                .map(|b| crate::fetch::HeldToken {
                     contract: b.mint,
                     balance_raw: b.balance_raw.parse().unwrap_or(0),
                     decimals: Some(b.decimals),
@@ -116,8 +116,7 @@ impl WalletService {
                 let v3 = self
                     .endpoints_for(&chain.endpoint_str_id(EndpointSlot::Secondary))
                     .await;
-                let api_key = self.api_key_for(chain.str_id()).await;
-                TonClient::new(endpoints, api_key)
+                TonClient::new(endpoints)
                     .with_v3_endpoints(v3)
                     .fetch_all_jetton_balances(&address)
                     .await
@@ -156,7 +155,7 @@ impl WalletService {
                         .unwrap_or_default(),
                     decimals,
                     balance_raw: b.balance_raw.to_string(),
-                    balance_display: crate::fetch::chains::evm::format_token_amount(
+                    balance_display: crate::fetch::evm::format_token_amount(
                         b.balance_raw,
                         decimals,
                     ),
@@ -205,9 +204,9 @@ impl WalletService {
                                 client.fetch_coin_decimals(&coin_type)
                             );
                             let raw = raw?;
-                            let decimals = crate::fetch::chains::checked_token_decimals(
-                                u128::from(own.ok_or("token decimals unavailable")?),
-                            )?;
+                            let decimals = crate::fetch::checked_token_decimals(u128::from(
+                                own.ok_or("token decimals unavailable")?,
+                            ))?;
                             Ok::<_, String>(TokenBalanceResult {
                                 contract_address: coin_type,
                                 symbol,
@@ -318,9 +317,8 @@ impl WalletService {
                                 client.fetch_ft_metadata(&contract)
                             );
                             let raw = raw?;
-                            let decimals = crate::fetch::chains::checked_token_decimals(
-                                u128::from(meta?.decimals),
-                            )?;
+                            let decimals =
+                                crate::fetch::checked_token_decimals(u128::from(meta?.decimals))?;
                             let display = format_decimals(raw, decimals);
                             Ok::<_, String>(TokenBalanceResult {
                                 contract_address: contract,
@@ -343,8 +341,7 @@ impl WalletService {
                 let v3_endpoints = self
                     .endpoints_for(&chain.endpoint_str_id(EndpointSlot::Secondary))
                     .await;
-                let api_key = self.api_key_for(chain.str_id()).await;
-                let client = TonClient::new(endpoints, api_key).with_v3_endpoints(v3_endpoints);
+                let client = TonClient::new(endpoints).with_v3_endpoints(v3_endpoints);
                 let jetton_balances = client.fetch_jetton_balances(&address).await?;
 
                 let own_decimals = futures::future::join_all(
@@ -363,7 +360,7 @@ impl WalletService {
                             .find(|j| j.master_address.eq_ignore_ascii_case(&t.contract))
                             .map(|j| j.balance_raw)
                             .unwrap_or(0u128);
-                        let decimals = crate::fetch::chains::checked_token_decimals(u128::from(
+                        let decimals = crate::fetch::checked_token_decimals(u128::from(
                             own.ok_or("token decimals unavailable")?,
                         ))?;
                         Ok::<_, String>(TokenBalanceResult {
@@ -404,9 +401,8 @@ impl WalletService {
                         client.fetch_erc20_metadata(&contract)
                     );
                     let read = raw.and_then(|raw| {
-                        let decimals = crate::fetch::chains::checked_token_decimals(u128::from(
-                            meta?.decimals,
-                        ))?;
+                        let decimals =
+                            crate::fetch::checked_token_decimals(u128::from(meta?.decimals))?;
                         Ok(TokenBalanceResult {
                             contract_address: contract,
                             symbol: token.symbol.clone(),
@@ -602,7 +598,6 @@ mod decimals_come_from_the_chain {
         let service = WalletService::new(vec![ChainEndpoints {
             chain_id: "ethereum".into(),
             endpoints: vec![server.uri()],
-            api_key: None,
         }])
         .unwrap();
         let descriptor = |contract: &str| TokenDescriptor {

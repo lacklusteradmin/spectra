@@ -92,8 +92,7 @@ impl WalletService {
                     .as_str()
                     .ok_or("broadcast_raw cardano: missing cbor_hex")?
                     .to_string();
-                let api_key = self.api_key_for(chain.str_id()).await.unwrap_or_default();
-                let client = CardanoClient::new(eps, api_key);
+                let client = CardanoClient::new(eps);
                 let res = client.submit_tx(&cbor).await?;
                 Ok(serde_json::to_string(&res)?)
             }
@@ -102,11 +101,7 @@ impl WalletService {
                 let hex = val["extrinsic_hex"]
                     .as_str()
                     .ok_or("missing extrinsic_hex")?;
-                let secondary = self
-                    .endpoints_for(&chain.endpoint_str_id(EndpointSlot::Secondary))
-                    .await;
-                let client =
-                    BittensorClient::new(eps, secondary, self.api_key_for(chain.str_id()).await);
+                let client = BittensorClient::new(eps);
                 Ok(serde_json::to_string(
                     &client.submit_extrinsic_hex(hex).await?,
                 )?)
@@ -117,11 +112,7 @@ impl WalletService {
                     .as_str()
                     .ok_or("broadcast_raw polkadot: missing extrinsic_hex")?
                     .to_string();
-                let subscan = self
-                    .endpoints_for(&chain.endpoint_str_id(EndpointSlot::Secondary))
-                    .await;
-                let api_key = self.api_key_for(chain.str_id()).await;
-                let client = PolkadotClient::new(eps, subscan, api_key);
+                let client = PolkadotClient::new(eps);
                 let res = client.submit_extrinsic_hex(&ext_hex).await?;
                 Ok(serde_json::to_string(&res)?)
             }
@@ -155,8 +146,7 @@ impl WalletService {
                     .as_str()
                     .ok_or("broadcast_raw ton: missing boc_b64")?
                     .to_string();
-                let api_key = self.api_key_for(chain.str_id()).await;
-                let client = TonClient::new(eps, api_key);
+                let client = TonClient::new(eps);
                 let res = client.send_boc(&boc).await?;
                 Ok(serde_json::to_string(&res)?)
             }

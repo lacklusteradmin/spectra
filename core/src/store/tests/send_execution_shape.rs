@@ -1,7 +1,7 @@
 use crate::registry::{Chain, SendFeeField};
 
 #[test]
-fn the_shape_matches_what_the_call_sites_carried() {
+fn protocol_fee_units_and_signing_capabilities_match_execution_requirements() {
     let cases: &[(&str, u8, bool, SendFeeField, f64)] = &[
         ("Sui", 6, false, SendFeeField::GasBudget, 0.0),
         ("Aptos", 6, false, SendFeeField::None, 0.0),

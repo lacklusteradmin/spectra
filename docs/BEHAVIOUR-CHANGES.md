@@ -17,6 +17,168 @@ how to check it without the app:
 - **Verification** — the three suites at the time of the change.
 
 
+## 2026-09-21 — Remove prelaunch storage compatibility
+
+- **Before:** Loading skipped undecodable wallets, defaulted unreadable metadata
+  and missing settings fields, ignored unknown metadata, and coerced unknown
+  stored fee priorities to normal. State schema versions were not checked.
+  Password verifiers accepted unchecked versions and a range of work factors.
+- **After:** Refuse these shapes without rewriting stored bytes. Saved settings
+  require current fields, and existing metadata requires the current key set
+  and schema version. Fresh databases persist complete application defaults
+  before incremental updates. Seed and
+  verifier envelopes reject unknown fields; verifiers require the exact current
+  version and work factor. Remove obsolete Swift-format compatibility comments.
+- **Why:** Prelaunch builds have no historical data contract. An unreadable
+  wallet must not disappear from a successful load, and preferences and alerts
+  cannot be reconstructed by silently replacing them with empty collections.
+- **CLI check:** `scripts/cli-acceptance.sh` injects incompatible wallet data,
+  unknown/missing metadata, unsupported versions and malformed settings into
+  throwaway databases; `spectra wallet list` refuses and preserves stored bytes.
+  Envelope validation is covered by Rust tests and CLI password workflows.
+- **Verification:** `make verify` passed: rustfmt/clippy, 840 Rust unit tests
+  plus the transport integration test, 440 CLI checks, and 106 iOS tests.
+
+
+## 2026-09-21 — Remove redundant store tests
+
+- **Before:** Store tests included historical Swift-list snapshots, obsolete
+  whole-state JSON compatibility and repeated single-field/reopen checks.
+- **After:** Remove 9 tests and 3 test files; retain two useful checks beside
+  their owners and strengthen the surviving payload/metadata assertions.
+  Production behavior and storage formats are unchanged.
+- **Why:** Keep independent domain and failure-path coverage without requiring
+  legacy behavior or duplicating implementation. [Test audit](TEST-AUDIT.md)
+  records each deletion and its remaining coverage, including retained
+  financial, persistence and concurrency checks.
+- **CLI check:** `scripts/cli-acceptance.sh` still exercises the same offline
+  workflows; this cleanup adds no CLI behavior.
+- **Verification:** `make verify` passed: 838 core unit tests, the transport
+  integration test, 441 CLI checks and 106 iOS tests. Formatting, Clippy and
+  Rust tests were also rerun after concurrent staking edits. Later concurrent
+  strict-storage edits are outside this verified snapshot; see the audit note.
+
+
+## 2026-09-21 — Remove all API-key configuration and provider adapters
+
+- **Before:** Endpoint records carried optional credentials for Taostats,
+  Subscan, Toncenter and Cardano; a persisted Monero backend key had a UI but
+  no network consumer. Ethplorer used a public `freekey`. Cardano's broadcast
+  used a Blockfrost-shaped request against Koios, and staking queries were
+  empty Blockfrost placeholders.
+- **After:** Endpoint records and settings have no API-key fields. Monero's
+  field and localized UI are removed. Taostats, Subscan and Ethplorer adapters
+  and catalog entries are removed. The now-empty supplemental-explorer fields
+  and Swift aggregation helpers are deleted; pending polling retains all
+  configured slots for the requested network. Polkadot (including Westend) and Bittensor
+  have no balance/history source; reads fail without network access rather
+  than showing zero or empty history. Their RPC endpoints retain fee and
+  broadcast capabilities. TON uses only unauthenticated requests.
+  Cardano submits raw CBOR to Koios `/submittx`, expects HTTP 202 and a
+  64-character hex transaction id, and no longer offers unimplemented staking
+  queries. No credential migration or compatibility fields are retained.
+- **Why:** The app supports keyless providers only. Unavailable operations must
+  say so; unused key controls and incompatible authenticated request shapes
+  must not suggest working integrations.
+- **CLI check:** `spectra --json endpoints --catalog` contains none of the
+  removed API families; `spectra settings set monero-backend-api-key KEY` is
+  rejected. Offline CLI acceptance creates disposable Polkadot/Bittensor
+  wallets and verifies balance/history failure, and checks Cardano staking is
+  unavailable. Rust mock tests verify raw Koios CBOR, absent credentials,
+  invalid response rejection and HTTP failure.
+- **Protocol reference:** [Koios submission specification](https://github.com/cardano-community/koios-artifacts/blob/main/specs/fragments/paths/transactions.yaml).
+- **Verification:** `make verify` passed lint, workspace Rust tests and all
+  441 CLI acceptance checks. Its iOS step was blocked by another build holding
+  the Xcode database lock; after that build finished, `make test-ios` passed
+  on the iPhone 17 Pro simulator. Swift bindings were regenerated.
+
+
+## 2026-09-21 — Flatten core source modules
+
+- **Before:** Chain implementations lived under four domain-local `chains/`
+  modules; refresh helpers, TON cells, Tron metadata caching and service tests
+  added further directories. SQLite lived under `store::wallet_db`, and root
+  aliases offered multiple paths to several modules.
+- **After:** Chain implementations and named helpers are domain siblings;
+  service test files sit beside their owner while remaining logical child
+  modules. Relational storage is `wallet_db`; callers use canonical domain
+  paths. `store/tests/` remains a grouped test directory. Runtime behavior,
+  persisted data and front-end operation names do not change.
+- **Why:** Reduce navigation depth and ambiguous imports while retaining domain
+  ownership, protocol differences and private test access. No compatibility
+  modules are needed for this unpublished workspace.
+- **CLI check:** `scripts/cli-acceptance.sh` exercises the updated Rust callers
+  and offline domain operations. There is no new CLI behavior for a source
+  layout change.
+- **Verification:** `make verify` passed: formatting and Clippy, 851 core unit
+  tests plus the transport integration test, 430 CLI acceptance checks, and
+  106 iOS tests on the iPhone 17 Pro simulator. Xcode regenerated the UniFFI
+  Swift bindings through `scripts/bindgen-ios.sh`.
+
+
+## 2026-09-21 — Remove API-key-dependent EVM history
+
+- **Before:** BNB Chain, Sonic, opBNB, Sei, Linea and Hyperliquid queried
+  Etherscan V2 for native and ERC-20 history using a persisted API key.
+- **After:** These chains have no configured history source. History queries
+  fail before network access instead of asking for a key or returning empty
+  history. RPC balance and send endpoints remain available. The API-key
+  setting, chain flag and Swift settings field are removed. CLI chain output
+  reports `historySource: "none"` and drops the obsolete `needsApiKey` field.
+- **Why:** Prefer explicit unavailable history over a provider requiring keys.
+  Existing Blockscout and Routescan keyless sources remain configured.
+- **CLI check:** `spectra --json chains --filter "BNB Chain"` reports no history
+  source; `spectra settings set etherscan-api-key KEY` is rejected.
+  CLI acceptance covers all six removed sources and the retained Ethereum source.
+- **Verification:** `make verify` passed: rustfmt/clippy, workspace Rust tests,
+  offline CLI acceptance and iPhone 17 Pro simulator tests.
+
+
+## 2026-09-21 — Bound refresh work and remove unused shell code
+
+- **Before:** Requested balance refresh waited for each wallet in sequence while
+  the automatic engine could issue overlapping reads. Every wallet read and
+  commit rebuilt a full refresh list and cloned application state.
+- **After:** Both entry points share in-flight reads by wallet/network/address,
+  with at most eight wallet reads running across the service. A completed read is
+  not cached. Commit rechecks the current address/network under the state writer,
+  persists only that wallet, and publishes only after persistence succeeds.
+- **Why:** Avoid duplicated network work and whole-state copies without weakening
+  stale-result rejection, write ordering, or restart durability.
+- **CLI check:** `cargo test -p spectra_core service::balance_refresh` exercises
+  requested refresh against a gated local node, the eight-read bound, overlapping
+  readers, reopening the database and stale-network refusal.
+- **Cleanup:** Remove the uncalled Swift `forChainName` lookup and its private
+  index, plus the unused `readOnlyFootnote` field and all three translations.
+  Move coin factories and persistence-wait helpers used only by tests into the
+  test target. These removals have no visible UI behaviour change; CLI does not
+  render these fields, so Swift compilation/tests cover the target separation.
+- **Verification:** `make verify` passed (lint, 853 core unit tests, transport
+  integration test, 423 CLI acceptance checks and 106 iOS tests). The final
+  completed-read eviction adjustment also passed lint and the balance-refresh suite.
+
+## 2026-09-21 — Indexed history pages and write-time classification checks
+
+- **Before:** Every history page scanned all rows for invalid identity/status
+  JSON and ranked all matching transactions before applying its page limit.
+  Snapshot merging searched a growing vector once per pending record.
+- **After:** SQLite refuses invalid identity/kind/status on insert or update.
+  Stored generated identity and precedence columns let each date-ordered row
+  seek its winning record through an index. Confirmed-over-pending precedence,
+  distinct deployments, case-sensitive hashes, stable ties, search and offsets
+  remain explicit. Snapshot merging uses an ID set.
+- **Why:** Invalid classification must be refused before storage; a small page
+  must not require rebuilding and sorting the entire history. The schema changes
+  directly; there is no prelaunch migration or compatibility fallback.
+- **CLI check:** `python3 scripts/cli-history.py target/debug/spectra
+  HistoryTests.test_stored_pages HistoryTests.test_invalid_history_is_refused_on_write`.
+  `cargo test -p spectra_core history_pages_seek_identity_winners_without_temporary_sorts`
+  checks the actual SQLite plans for both sort directions and wallet scopes.
+- **Verification:** `make verify` passed (lint, 853 core unit tests, transport
+  integration test, 423 CLI acceptance checks and 106 iOS tests). The final
+  completed-read eviction adjustment also passed lint and the balance-refresh suite.
+
+
 ## 2026-09-21 — Remove endpoint kind and its duplicate selection rules
 
 - **Before:** Endpoint rows carried an overlapping `kind` classification alongside

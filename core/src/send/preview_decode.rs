@@ -252,9 +252,9 @@ pub enum SimpleChain {
 // inputs the old Swift helpers used; decode + wrap happens in Rust.
 
 pub fn build_evm_send_preview_record(
-    input: crate::ethereum_send::EvmPreviewDecodeInput,
+    input: crate::send::ethereum::EvmPreviewDecodeInput,
 ) -> Option<crate::send::preview_types::EvmSendPreview> {
-    let d = crate::ethereum_send::decode_evm_send_preview(input)?;
+    let d = crate::send::ethereum::decode_evm_send_preview(input)?;
     Some(crate::send::preview_types::EvmSendPreview {
         nonce: d.nonce,
         gasLimit: d.gas_limit,

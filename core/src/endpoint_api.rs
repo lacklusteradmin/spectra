@@ -23,7 +23,6 @@ pub enum EndpointApi {
     Whatsonchain,
     SochainV2,
     Blockscout,
-    Ethplorer,
     ToncenterV2,
     ToncenterV3,
     Koios,
@@ -36,8 +35,6 @@ pub enum EndpointApi {
     Xrpscan,
     Nearblocks,
     SubstrateSidecar,
-    Subscan,
-    Taostats,
     MoneroLightWallet,
     Insight,
     KaspaRest,
@@ -63,7 +60,6 @@ impl EndpointApi {
             Self::Whatsonchain => "whatsonchain",
             Self::SochainV2 => "sochain-v2",
             Self::Blockscout => "blockscout",
-            Self::Ethplorer => "ethplorer",
             Self::ToncenterV2 => "toncenter-v2",
             Self::ToncenterV3 => "toncenter-v3",
             Self::Koios => "koios",
@@ -76,8 +72,6 @@ impl EndpointApi {
             Self::Xrpscan => "xrpscan",
             Self::Nearblocks => "nearblocks",
             Self::SubstrateSidecar => "substrate-sidecar",
-            Self::Subscan => "subscan",
-            Self::Taostats => "taostats",
             Self::MoneroLightWallet => "monero-light-wallet",
             Self::Insight => "insight",
             Self::KaspaRest => "kaspa-rest",
@@ -118,7 +112,10 @@ pub(crate) fn validate_configured_endpoint(
             record.api == expected
                 && expected.is_some()
                 && (slot != crate::registry::EndpointSlot::Primary
-                    || record.capabilities.iter().any(|c| c == "balance"))
+                    || record
+                        .capabilities
+                        .iter()
+                        .any(|c| matches!(c.as_str(), "balance" | "fee" | "broadcast")))
         })
     {
         return Err(format!(

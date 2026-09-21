@@ -85,7 +85,6 @@ pub fn service_for_chain(
     let service = WalletService::new(vec![ChainEndpoints {
         chain_id: chain.str_id().to_string(),
         endpoints,
-        api_key: None,
     }])
     .map_err(CliError::from)?;
     ctx.prepare_transport(&service)?;
@@ -160,13 +159,8 @@ pub fn chains(out: Out, args: ChainsArgs) -> CliResult<()> {
                 // different history routes.
                 "historySource": chain.is_evm().then(|| match chain.evm_history_source() {
                     spectra_core::registry::EvmHistorySource::Open(base) => base,
-                    spectra_core::registry::EvmHistorySource::EtherscanV2 => "etherscan-v2",
                     spectra_core::registry::EvmHistorySource::Unavailable => "none",
                 }),
-                "needsApiKey": chain.is_evm().then(|| matches!(
-                    chain.evm_history_source(),
-                    spectra_core::registry::EvmHistorySource::EtherscanV2
-                )),
             }))
             .collect::<Vec<_>>(),
     }));
@@ -408,7 +402,6 @@ pub fn history(ctx: &Ctx, out: Out, args: HistoryArgs) -> CliResult<()> {
         WalletService::new(vec![ChainEndpoints {
             chain_id: network.str_id().into(),
             endpoints: vec![endpoint],
-            api_key: None,
         }])
         .map_err(CliError::from)?
     } else {

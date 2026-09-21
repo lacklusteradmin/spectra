@@ -36,13 +36,13 @@ this directory is not an exhaustive inventory of every provider feature.
 ## Token declarations and evidence
 
 - EVM RPC: `token-balance`, via ERC-20 `balanceOf` in
-  `core/src/fetch/chains/evm.rs`. Ordinary nodes do not enumerate holdings or
+  `core/src/fetch/evm.rs`. Ordinary nodes do not enumerate holdings or
   supply address-indexed native/token history. Reading known logs is not an
   address-history index.
 - Solana RPC: token balance/discovery via `getTokenAccountsByOwner`; token
-  transfers via signature/transaction reads in `core/src/fetch/chains/solana.rs`.
+  transfers via signature/transaction reads in `core/src/fetch/solana.rs`.
 - Sui and Aptos APIs: token balance/discovery via their coin balance and account
-  resource queries in the respective `core/src/fetch/chains/` clients. No new
+  resource queries in the respective `core/src/fetch/` clients. No new
   token-history claim is inferred from their history label.
 - NEAR RPC: `token-balance` via `ft_balance_of` in the NEAR client. Address
   history belongs to the separately registered NearBlocks indexer.

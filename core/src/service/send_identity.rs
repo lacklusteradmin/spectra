@@ -151,4 +151,5 @@ impl WalletService {
 }
 
 #[cfg(test)]
+#[path = "send_identity_tests.rs"]
 mod tests;

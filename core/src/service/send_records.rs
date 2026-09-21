@@ -250,7 +250,6 @@ mod tests {
         let service = WalletService::new(vec![ChainEndpoints {
             chain_id: "ethereum-sepolia".into(),
             endpoints: vec![server.uri()],
-            api_key: None,
         }])
         .unwrap();
         let path = std::env::temp_dir().join(format!(

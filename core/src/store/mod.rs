@@ -7,7 +7,6 @@ pub mod secret_backends;
 pub mod secret_store;
 pub mod seed_envelope;
 pub mod state;
-pub mod wallet_db;
 pub mod wallet_domain;
 pub mod wallet_secrets;
 

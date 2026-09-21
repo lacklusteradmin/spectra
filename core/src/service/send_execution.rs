@@ -8,7 +8,7 @@ fn validate_execution_amount(
     request: &crate::send::SendExecutionRequest,
 ) -> Result<(), SpectraBridgeError> {
     if chain.mainnet_counterpart() == Chain::Ton {
-        crate::derivation::chains::ton::parse_ton_address(&request.to_address)
+        crate::derivation::ton::parse_ton_address(&request.to_address)
             .and_then(|a| a.for_network(chain.is_testnet()))
             .map_err(|message| SpectraBridgeError::InvalidInput { message })?;
     }
@@ -276,26 +276,25 @@ impl WalletService {
     ) -> Result<Option<u32>, SpectraBridgeError> {
         let endpoints = self.endpoints_for(chain.str_id()).await;
         if chain.is_evm() {
-            let client =
-                crate::fetch::chains::evm::EvmClient::new(endpoints, chain.evm_chain_id()?);
+            let client = crate::fetch::evm::EvmClient::new(endpoints, chain.evm_chain_id()?);
             return Ok(Some(u32::from(
                 client.fetch_erc20_metadata(contract).await?.decimals,
             )));
         }
         if chain.mainnet_counterpart() == Chain::Tron {
-            let client = crate::fetch::chains::tron::TronClient::new(endpoints);
+            let client = crate::fetch::tron::TronClient::new(endpoints);
             return Ok(Some(u32::from(
                 client.fetch_trc20_metadata(contract).await?.decimals,
             )));
         }
         if chain.mainnet_counterpart() == Chain::Solana {
-            let client = crate::fetch::chains::solana::SolanaClient::new(endpoints);
+            let client = crate::fetch::solana::SolanaClient::new(endpoints);
             return Ok(Some(u32::from(
                 client.fetch_transfer_mint(contract).await?.1,
             )));
         }
         if chain.mainnet_counterpart() == Chain::Near {
-            let client = crate::fetch::chains::near::NearClient::new(endpoints);
+            let client = crate::fetch::near::NearClient::new(endpoints);
             return Ok(Some(u32::from(
                 client.fetch_ft_metadata(contract).await?.decimals,
             )));
@@ -628,6 +627,8 @@ impl WalletService {
 }
 
 #[cfg(test)]
+#[path = "send_execution_audit_tests.rs"]
 mod audit_execution_tests;
 #[cfg(test)]
+#[path = "send_execution_tests.rs"]
 mod tests;

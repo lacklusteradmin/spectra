@@ -241,19 +241,6 @@ impl HttpClient {
         .await
     }
 
-    /// POST a JSON body with custom headers.
-    pub async fn post_json_with_headers<B: Serialize, T: DeserializeOwned>(
-        &self,
-        url: &str,
-        body: &B,
-        headers: &HashMap<&str, &str>,
-        profile: RetryProfile,
-    ) -> Result<T, String> {
-        let json_body = serde_json::to_value(body).map_err(|e| e.to_string())?;
-        self.request_with_retry(Method::POST, url, Some(&json_body), headers, profile)
-            .await
-    }
-
     /// POST raw bytes (for broadcast endpoints that want a hex string body).
     pub async fn post_text(
         &self,

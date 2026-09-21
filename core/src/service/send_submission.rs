@@ -39,7 +39,7 @@ impl WalletService {
                     private_key_hex: p.private_key_hex,
                     to_address: p.to,
                     amount_sats: p.amount_sat,
-                    fee_rate: crate::fetch::chains::bitcoin::FeeRate {
+                    fee_rate: crate::fetch::bitcoin::FeeRate {
                         sats_per_vbyte: p.fee_rate_svb.unwrap_or(10.0),
                     },
                     available_utxos: vec![],
@@ -48,7 +48,7 @@ impl WalletService {
                     dust_threshold: p.dust_threshold_sats,
                     pinned_utxos: None,
                     extra_outputs: vec![],
-                    coin_selection: crate::send::chains::bitcoin::CoinSelectionStrategy::default(),
+                    coin_selection: crate::send::bitcoin::CoinSelectionStrategy::default(),
                     sign_only: p.sign_only,
                 };
                 let r = bitcoin_sign_and_broadcast(&client, send_params).await?;
@@ -65,7 +65,7 @@ impl WalletService {
                         p.amount_sat,
                         fee_or_static(chain, p.fee_sat),
                         &priv_bytes,
-                        crate::send::chains::zcash::ZcashNetworkUpgrade::NU5,
+                        crate::send::zcash::ZcashNetworkUpgrade::NU5,
                         p.dust_threshold_zats.unwrap_or(546),
                     )
                     .await?;
@@ -244,8 +244,7 @@ impl WalletService {
             SendParams::Cardano(p) => {
                 let priv_arr = decode_secret_array::<64>(&p.private_key_hex)?;
                 let pub_arr: [u8; 32] = decode_hex_array(&p.public_key_hex, "public_key_hex")?;
-                let api_key = self.api_key_for(chain.str_id()).await.unwrap_or_default();
-                let client = CardanoClient::new(endpoints, api_key);
+                let client = CardanoClient::new(endpoints);
                 let r = client
                     .sign_and_broadcast(
                         &p.from,
@@ -263,11 +262,7 @@ impl WalletService {
             SendParams::Polkadot(p) => {
                 let priv_arr = decode_secret_array::<32>(&p.private_key_hex)?;
                 let pub_arr: [u8; 32] = decode_hex_array(&p.public_key_hex, "public_key_hex")?;
-                let subscan = self
-                    .endpoints_for(&chain.endpoint_str_id(EndpointSlot::Secondary))
-                    .await;
-                let api_key = self.api_key_for(chain.str_id()).await;
-                let client = PolkadotClient::new(endpoints, subscan, api_key);
+                let client = PolkadotClient::new(endpoints);
                 let r = client
                     .sign_and_submit(&p.from, &p.to, p.planck, &priv_arr, &pub_arr, p.era, p.tip)
                     .await?;
@@ -276,11 +271,7 @@ impl WalletService {
             SendParams::Bittensor(p) => {
                 let priv_arr = decode_secret_array::<32>(&p.private_key_hex)?;
                 let pub_arr: [u8; 32] = decode_hex_array(&p.public_key_hex, "public_key_hex")?;
-                let taostats = self
-                    .endpoints_for(&chain.endpoint_str_id(EndpointSlot::Secondary))
-                    .await;
-                let api_key = self.api_key_for(chain.str_id()).await;
-                let client = BittensorClient::new(endpoints, taostats, api_key);
+                let client = BittensorClient::new(endpoints);
                 let r = client
                     .sign_and_submit(&p.from, &p.to, p.rao, &priv_arr, &pub_arr)
                     .await?;
@@ -289,8 +280,7 @@ impl WalletService {
             SendParams::Ton(p) => {
                 let priv_arr = decode_secret_array::<32>(&p.private_key_hex)?;
                 let pub_arr: [u8; 32] = decode_hex_array(&p.public_key_hex, "public_key_hex")?;
-                let api_key = self.api_key_for(chain.str_id()).await;
-                let client = TonClient::new(endpoints, api_key);
+                let client = TonClient::new(endpoints);
                 let seqno = client.fetch_seqno(&p.from).await?;
                 let r = client
                     .sign_and_send(

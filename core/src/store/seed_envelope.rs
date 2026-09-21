@@ -1,9 +1,6 @@
 //! AES-256-GCM envelope encryption for seed phrases.
 //!
-//! Produces a JSON envelope compatible with the Swift `SeedMaterialEnvelope`
-//! format: `{"version":1,"ciphertext":"<base64>","nonce":"<base64>"}`.
-//! The `ciphertext` field is AES-GCM ciphertext + 16-byte tag concatenated,
-//! matching CryptoKit's `SealedBox.ciphertext + SealedBox.tag` layout.
+//! Core-owned versioned JSON envelope with base64 ciphertext and nonce.
 
 #![allow(deprecated)] // from_slice is correct for aes-gcm 0.10; warning comes from generic-array version conflict with curve25519-dalek
 
@@ -13,10 +10,9 @@ use rand::RngCore;
 use serde::{Deserialize, Serialize};
 use zeroize::{Zeroize, Zeroizing};
 
-/// On-disk envelope — field names and base64 encoding match the Swift
-/// `SeedMaterialEnvelope.Envelope` struct exactly so existing keychain
-/// data can be decrypted transparently.
+/// Current on-disk seed envelope.
 #[derive(Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 struct Envelope {
     version: u32,
     #[serde(with = "base64_serde")]
@@ -56,8 +52,7 @@ pub fn encrypt(plaintext: &[u8], master_key: &[u8]) -> Result<Vec<u8>, String> {
     serde_json::to_vec(&envelope).map_err(|e| format!("JSON encode failed: {e}"))
 }
 
-/// Decrypt an envelope produced by [`encrypt`] (or by Swift's
-/// `SeedMaterialEnvelope.encode`). Returns the plaintext seed phrase.
+/// Decrypt an envelope produced by [`encrypt`]. Returns the plaintext seed phrase.
 pub fn decrypt(data: &[u8], master_key: &[u8]) -> Result<String, String> {
     if master_key.len() != MASTER_KEY_LEN {
         return Err("master key must be 32 bytes".into());
@@ -205,8 +200,7 @@ pub fn new_seed_envelope_master_key() -> Result<Vec<u8>, crate::SpectraBridgeErr
 }
 
 /// Encrypt a seed phrase with AES-256-GCM. `master_key_bytes` must be exactly
-/// 32 bytes. Returns the JSON envelope as `Data` (compatible with Swift's
-/// existing `SeedMaterialEnvelope` keychain format).
+/// 32 bytes. Returns the current JSON envelope as bytes.
 #[uniffi::export]
 pub fn encrypt_seed_envelope(
     plaintext: String,

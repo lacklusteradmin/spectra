@@ -7,7 +7,6 @@ fn service(chain: &str, server: &MockServer) -> Arc<WalletService> {
     WalletService::new(vec![ChainEndpoints {
         chain_id: chain.into(),
         endpoints: vec![server.uri()],
-        api_key: None,
     }])
     .unwrap()
 }

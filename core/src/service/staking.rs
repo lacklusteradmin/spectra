@@ -25,7 +25,7 @@ impl WalletService {
         if chain.is_testnet() || !chain.supports_staking() {
             return Err(SpectraBridgeError::InvalidInput {
                 message: format!(
-                    "{} does not have protocol-native staking",
+                    "Staking queries are unavailable for {}",
                     chain.chain_display_name()
                 ),
             });
@@ -37,7 +37,6 @@ impl WalletService {
         Ok(ChainEndpoints {
             chain_id,
             endpoints,
-            api_key: self.api_key_for(chain.str_id()).await,
         })
     }
     pub async fn fetch_staking_positions(
@@ -114,7 +113,6 @@ mod tests {
         let explicit = WalletService::new(vec![ChainEndpoints {
             chain_id: "solana".into(),
             endpoints: vec!["http://127.0.0.1:13003".into()],
-            api_key: None,
         }])
         .unwrap();
         explicit

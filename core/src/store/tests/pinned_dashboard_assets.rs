@@ -1,5 +1,5 @@
 use crate::service::WalletService;
-use crate::state::StateCommand;
+use crate::store::state::StateCommand;
 
 #[tokio::test]
 async fn token_ids_are_trimmed_and_deduplicated_in_pin_order() {
@@ -95,7 +95,9 @@ async fn unpinning_every_asset_stays_empty_after_reopening_and_reset_restores_de
         .expect("clear again");
     assert!(unchanged.events.is_empty());
     let reset = reopened
-        .reset_data(vec![crate::state::ResetScope::DashboardCustomization])
+        .reset_data(vec![
+            crate::store::state::ResetScope::DashboardCustomization,
+        ])
         .await
         .expect("reset dashboard");
     assert_eq!(reset.state.settings.pinned_dashboard_assets(), defaults);

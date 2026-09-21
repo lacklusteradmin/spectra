@@ -1,35 +1,10 @@
-// The one record still stored as a Swift-shaped JSON blob.
-//
-// Its JSON representation MUST round-trip with the matching Swift Codable type
-// byte-for-byte. If you add or rename a field, update the Swift side and the
-// roundtrip tests below in the same change.
-//
-// The price-alert and address-book records that used to sit beside it are
-// gone: both collections live in `CoreAppState` now, so there is no second
-// blob to keep in step.
+// Core-owned transaction payload stored in SQLite.
 
 use serde::{Deserialize, Serialize};
 
 use crate::store::wallet_domain::{CoreTransactionKind, CoreTransactionStatus};
 
-/// SQLite-storage form of a transaction record. Matches Swift
-/// `PersistedTransactionRecord`.
-///
-/// Sibling type: [`crate::fetch::transactions::CoreTransactionRecord`] is the
-/// wire/merge form. Their fields look nearly identical but the two are
-/// deliberately separate — see that type's doc comment for the timestamp
-/// and enum-typing differences.
-///
-/// `created_at` is a Double (seconds since the Swift reference date,
-/// 2001-01-01T00:00:00Z) — emitted by a vanilla `JSONEncoder()` which is what
-/// `persistCodableToSQLite` uses on the Swift side.
-///
-/// All optional fields are emitted when present and omitted (not encoded as
-/// `null`) when absent — Swift `decodeIfPresent` accepts both, and `serde`
-/// with `skip_serializing_if` preserves the "omit when none" shape.
-/// Seconds between the Unix epoch and the Swift reference date, for the
-/// `created_at` above. Defined once; `fetch/transactions.rs` and
-/// `store/wallet_db/` each had a private copy.
+/// Seconds between Unix time and the transaction payload epoch (2001-01-01).
 pub(crate) const SWIFT_REFERENCE_EPOCH_OFFSET_SECS: f64 = 978_307_200.0;
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, uniffi::Record)]
@@ -39,7 +14,7 @@ pub struct CorePersistedTransactionRecord {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub deployment_id: Option<String>,
     pub id: String,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub wallet_id: Option<String>,
     /// Swift `TransactionKind`: `"send"` or `"receive"`.
     pub kind: CoreTransactionKind,
@@ -55,45 +30,45 @@ pub struct CorePersistedTransactionRecord {
     pub chain_name: String,
     pub amount: f64,
     pub address: String,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub transaction_hash: Option<String>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub nonce: Option<i64>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub receipt_block_number: Option<i64>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub receipt_gas_used: Option<String>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub receipt_effective_gas_price_gwei: Option<f64>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub receipt_network_fee: Option<f64>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub fee_priority_raw: Option<String>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub fee_rate_description: Option<String>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub confirmation_count: Option<i64>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub confirmed_network_fee: Option<f64>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub estimated_fee_rate_per_kb: Option<f64>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub used_change_output: Option<bool>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub source_derivation_path: Option<String>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub change_derivation_path: Option<String>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub source_address: Option<String>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub change_address: Option<String>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub signed_transaction_payload: Option<String>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub signed_transaction_payload_format: Option<String>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub failure_reason: Option<String>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub transaction_history_source: Option<String>,
     /// Seconds since Swift reference date (2001-01-01T00:00:00Z).
     pub created_at: f64,

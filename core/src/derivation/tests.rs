@@ -1,27 +1,27 @@
-use crate::derivation::chains::aptos::derive_aptos;
-use crate::derivation::chains::bitcoin::derive_bitcoin;
-use crate::derivation::chains::bitcoin::{derive_bip39_seed, ExtendedPrivateKey};
-use crate::derivation::chains::bitcoin_cash::derive_bitcoin_cash;
-use crate::derivation::chains::bitcoin_sv::derive_bitcoin_sv;
-use crate::derivation::chains::cardano::derive_cardano;
-use crate::derivation::chains::cardano::derive_cardano_icarus_xprv_root;
-use crate::derivation::chains::dogecoin::derive_dogecoin;
-use crate::derivation::chains::evm::derive_evm;
-use crate::derivation::chains::icp::derive_icp;
-use crate::derivation::chains::litecoin::derive_litecoin;
-use crate::derivation::chains::monero::derive_monero;
-use crate::derivation::chains::monero::monero_base58_encode;
-use crate::derivation::chains::near::derive_near;
-use crate::derivation::chains::polkadot::derive_polkadot;
-use crate::derivation::chains::solana::derive_solana;
-use crate::derivation::chains::stellar::derive_stellar;
-use crate::derivation::chains::sui::derive_sui;
-use crate::derivation::chains::ton::derive_ton;
-use crate::derivation::chains::ton::{crc16_xmodem, derive_ton_seed, v4r2_code_hash_and_depth};
-use crate::derivation::chains::tron::derive_tron;
-use crate::derivation::chains::xrp::derive_xrp;
+use crate::derivation::aptos::derive_aptos;
+use crate::derivation::bitcoin::derive_bitcoin;
+use crate::derivation::bitcoin::{derive_bip39_seed, ExtendedPrivateKey};
+use crate::derivation::bitcoin_cash::derive_bitcoin_cash;
+use crate::derivation::bitcoin_sv::derive_bitcoin_sv;
+use crate::derivation::cardano::derive_cardano;
+use crate::derivation::cardano::derive_cardano_icarus_xprv_root;
+use crate::derivation::dogecoin::derive_dogecoin;
+use crate::derivation::evm::derive_evm;
+use crate::derivation::icp::derive_icp;
+use crate::derivation::litecoin::derive_litecoin;
+use crate::derivation::monero::derive_monero;
+use crate::derivation::monero::monero_base58_encode;
+use crate::derivation::near::derive_near;
+use crate::derivation::polkadot::derive_polkadot;
 use crate::derivation::primitives::derive_substrate_sr25519_material;
+use crate::derivation::solana::derive_solana;
+use crate::derivation::stellar::derive_stellar;
+use crate::derivation::sui::derive_sui;
+use crate::derivation::ton::derive_ton;
+use crate::derivation::ton::{crc16_xmodem, derive_ton_seed, v4r2_code_hash_and_depth};
+use crate::derivation::tron::derive_tron;
 use crate::derivation::types::BitcoinScriptType;
+use crate::derivation::xrp::derive_xrp;
 use ed25519_dalek::SigningKey;
 
 const MNEMONIC: &str =
@@ -695,7 +695,7 @@ fn monero_passphrase_changes_keys() {
 fn monero_electrum_seed_decodes_known_vector() {
     // Test vector sourced from the libmonero crate's own doc-test.
     // 24 data words encode the spend secret; word 25 ("rounded") is the CRC checksum.
-    use crate::derivation::chains::monero::decode_monero_electrum_seed;
+    use crate::derivation::monero::decode_monero_electrum_seed;
     let phrase = "tissue raking haunted huts afraid volcano howls liar egotistic \
                   befit rounded older bluntly imbalance pivot exotic tuxedo amaze \
                   mostly lukewarm macro vocal hounded biplane rounded";
@@ -708,7 +708,7 @@ fn monero_electrum_seed_decodes_known_vector() {
 
 #[test]
 fn monero_electrum_seed_bad_checksum_rejected() {
-    use crate::derivation::chains::monero::decode_monero_electrum_seed;
+    use crate::derivation::monero::decode_monero_electrum_seed;
     // Replace the checksum word with a wrong word.
     let phrase = "tissue raking haunted huts afraid volcano howls liar egotistic \
                   befit rounded older bluntly imbalance pivot exotic tuxedo amaze \
@@ -724,7 +724,7 @@ fn monero_electrum_seed_bad_checksum_rejected() {
 fn monero_electrum_and_bip39_produce_different_addresses() {
     // The same 12-word BIP-39 mnemonic treated as a Monero Electrum seed must fail
     // because the BIP-39 word list ≠ Monero word list.
-    use crate::derivation::chains::monero::decode_monero_electrum_seed;
+    use crate::derivation::monero::decode_monero_electrum_seed;
     let bip39_12 = "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about";
     assert!(
         decode_monero_electrum_seed(bip39_12).is_err(),
@@ -1088,7 +1088,7 @@ fn decred_and_kaspa_independent_mnemonic_vectors() {
     // Trust Wallet: the mnemonic/passphrase produces dpubZFUmm..., whose
     // m/44'/42'/0'/0/0 address is explicitly asserted in DerivePubkeyFromDpub.
     // https://github.com/trustwallet/wallet-core/blob/cd5a27481d2181e63362cb57e2b2160506cce163/tests/chains/Decred/TWDecredTests.cpp
-    let decred = crate::derivation::chains::decred::derive_decred(
+    let decred = crate::derivation::decred::derive_decred(
         "ripple scissors kick mammal hire column oak again sun offer wealth tomorrow wagon turn fatal".into(),
         "m/44'/42'/0'/0/0".into(), Some("TREZOR".into()), true, false, false,
     ).unwrap();
@@ -1099,7 +1099,7 @@ fn decred_and_kaspa_independent_mnemonic_vectors() {
 
     // Kaspa's gen1 wallet, account 0, receive index 1; testnet only changes HRP.
     // https://github.com/kaspanet/rusty-kaspa/blob/15cee1a4cbcdd7abbaf005cbf77d29c5ad0354eb/wallet/keys/src/derivation/gen1/hd.rs
-    let kaspa = crate::derivation::chains::kaspa::derive_kaspa_testnet(
+    let kaspa = crate::derivation::kaspa::derive_kaspa_testnet(
         "hunt bitter praise lift buyer topic crane leopard uniform network inquiry over grain pass match crush marine strike doll relax fortune trumpet sunny silk".into(),
         "m/44'/111111'/0'/0/1".into(), None, true, false, false,
     ).unwrap();

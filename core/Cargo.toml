@@ -36,9 +36,9 @@ crc = "3"
 alloy-rlp = { version = "0.3", features = ["derive"] }
 
 # ─── Transaction building + signing ─────────────────────────────────
-# The `bitcoin` crate is used by send/chains/bitcoin.rs and nowhere else:
+# The `bitcoin` crate is used by send/bitcoin.rs and nowhere else:
 # consensus serialization and sighashes only. Derivation deliberately does
-# not go through it — derivation/chains/bitcoin.rs hand-rolls BIP-32,
+# not go through it — derivation/bitcoin.rs hand-rolls BIP-32,
 # base58check and the address encoders. Do not "simplify" one into the other.
 #
 # secp256k1zkp is the Grin fork of libsecp256k1-zkp, needed for the Pedersen

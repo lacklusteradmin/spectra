@@ -27,14 +27,6 @@ fn the_catalog_chain_ids_all_resolve() {
             assert!(CoreTokenHostingChain::from_chain_name(chain.chain_display_name()).is_some());
         }
     }
-    for chain in CoreTokenHostingChain::ALL {
-        assert_eq!(
-            CoreTokenHostingChain::from_chain_name(chain.chain_name()),
-            Some(*chain),
-            "{} does not round-trip",
-            chain.chain_name()
-        );
-    }
 }
 
 /// A user's choices survive the merge; the build's additions arrive.

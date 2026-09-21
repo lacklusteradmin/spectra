@@ -195,8 +195,6 @@ pub enum TransactionCommand {
 pub struct ChainEndpoints {
     pub chain_id: String,
     pub endpoints: Vec<String>,
-    /// Optional API key for services that require one (Blockfrost, Subscan, etc.).
-    pub api_key: Option<String>,
 }
 
 // Per-chain send parameter records live in `super::send_params`.

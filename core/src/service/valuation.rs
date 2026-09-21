@@ -13,7 +13,7 @@ pub struct QuotedTotal {
 #[derive(Debug, Clone, Serialize, uniffi::Record)]
 #[serde(rename_all = "camelCase")]
 pub struct PortfolioValuation {
-    pub currency: crate::state::FiatCurrency,
+    pub currency: crate::store::state::FiatCurrency,
     pub portfolio: QuotedTotal,
     pub wallets: HashMap<String, QuotedTotal>,
 }
@@ -53,7 +53,7 @@ pub(super) fn total<'a>(
             _ => unpriced_count += 1,
         }
     }
-    let rate = if state.settings.fiat_currency == crate::state::FiatCurrency::Usd {
+    let rate = if state.settings.fiat_currency == crate::store::state::FiatCurrency::Usd {
         Some(1.0)
     } else {
         state
@@ -116,7 +116,7 @@ mod tests {
             assert_eq!(result.unpriced_count, 1);
         }
         state.quotes.prices.insert(coin.deployment_id(), 3000.0);
-        state.settings.fiat_currency = crate::state::FiatCurrency::Eur;
+        state.settings.fiat_currency = crate::store::state::FiatCurrency::Eur;
         let result = total(&state, std::iter::once(&coin));
         assert_eq!(result.total, 6000.0);
         assert_eq!(result.fiat_total, None);

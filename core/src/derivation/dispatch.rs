@@ -27,7 +27,7 @@ pub fn derive_for_chain_name(
 ) -> Result<DerivationResult, SpectraBridgeError> {
     use crate::registry::Chain;
 
-    use crate::derivation::chains::{
+    use crate::derivation::{
         aptos, bitcoin as btc, bitcoin_cash as bch, bitcoin_gold as btg, bitcoin_sv as bsv,
         bittensor, cardano, dash, decred, dogecoin as doge, evm, icp, kaspa, litecoin as ltc,
         monero as xmr, near, polkadot, solana, stellar, sui, ton, tron, xrp, zcash,
@@ -146,7 +146,7 @@ pub fn derive_from_private_key(
     want_address: bool,
     want_public_key: bool,
 ) -> Result<Option<DerivationResult>, SpectraBridgeError> {
-    use crate::derivation::chains::{
+    use crate::derivation::{
         bitcoin as btc, bitcoin_cash as bch, decred, dogecoin as doge, evm, litecoin as ltc,
     };
     use crate::registry::Chain;

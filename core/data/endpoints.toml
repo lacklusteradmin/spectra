@@ -561,7 +561,7 @@ id = "polkadot.rpc.onfinality"
 api = "substrate-json-rpc"
 chain_id = "polkadot"
 endpoint = "https://polkadot.api.onfinality.io/public"
-capabilities = ["balance", "fee", "broadcast"]
+capabilities = ["fee", "broadcast"]
 probe_url = "https://polkadot.api.onfinality.io/public"
 
 [[endpoints]]
@@ -571,7 +571,7 @@ chain_id = "polkadot"
 endpoint = "https://rpc.polkadot.io"
 # The official node, which was not in this file while two of the three
 # listed for Polkadot were dead.
-capabilities = ["balance", "fee", "broadcast"]
+capabilities = ["fee", "broadcast"]
 
 [[endpoints]]
 id = "polkadot.explorer.tx"
@@ -666,17 +666,6 @@ api = "evm-json-rpc"
 chain_id = "ethereum"
 endpoint = "https://1rpc.io/eth"
 capabilities = ["balance", "fee", "broadcast", "token-balance"]
-
-[[endpoints]]
-id = "ethereum.explorer.ethplorer"
-api = "ethplorer"
-chain_id = "ethereum"
-endpoint = "https://api.ethplorer.io"
-# The one endpoint registered alongside an RPC list rather than instead
-# of it — see supplements_rpc_list.
-capabilities = ["history", "token-balance", "token-discovery", "token-history"]
-probe_url = "https://api.ethplorer.io/getAddressInfo/0x0000000000000000000000000000000000000000?apiKey=freekey"
-supplements_rpc_list = true
 
 [[endpoints]]
 id = "ethereum.explorer.blockscout"
@@ -1253,16 +1242,8 @@ id = "bittensor.mainnet.opentensor"
 api = "substrate-json-rpc"
 chain_id = "bittensor"
 endpoint = "https://entrypoint-finney.opentensor.ai"
-capabilities = ["balance", "fee", "broadcast"]
+capabilities = ["fee", "broadcast"]
 probe_url = "https://entrypoint-finney.opentensor.ai"
-
-[[endpoints]]
-id = "bittensor.mainnet.taostats"
-api = "taostats"
-chain_id = "bittensor"
-endpoint = "https://api.taostats.io"
-capabilities = ["history", "verification"]
-probe_url = "https://api.taostats.io"
 
 [[endpoints]]
 id = "bittensor.explorer.tx"

@@ -184,9 +184,11 @@ Swift async export, and offline assembly cannot verify a broadcast.
   in the live check. Single-provider chains still need independent supported
   providers. A successful health probe does not prove every capability works.
   The user explicitly retained these as external dependencies on 2026-09-12.
-- **EVM history availability:** the registry distinguishes open indexers,
-  Etherscan V2 requiring a key, and unavailable sources. Remaining key-dependent
-  chains need supported infrastructure if keyless history is required. Do not
-  silently depend on another wallet's private backend. Base now uses its verified
-  public Blockscout source; the user retained the remaining providers as external
-  dependencies on 2026-09-12.
+- **EVM history availability:** only verified keyless indexers are configured.
+  BNB Chain, Sonic, opBNB, Sei, Linea and Hyperliquid have no history source;
+  Etherscan V2 and its API-key setting were removed by user request.
+
+- **Keyless provider policy:** API-key configuration and authenticated provider
+  adapters are removed. Polkadot/Westend and Bittensor balance/history remain
+  unavailable until supported keyless implementations exist. Cardano staking
+  queries are unavailable; its keyless Koios broadcast is implemented.

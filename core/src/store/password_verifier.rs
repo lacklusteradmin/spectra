@@ -1,8 +1,6 @@
 //! PBKDF2-HMAC-SHA256 password verifier for seed-phrase passwords.
 //!
-//! Produces a JSON envelope compatible with the Swift
-//! `SecureSeedPasswordStore.PasswordVerifierEnvelope` format:
-//! `{"version":1,"salt":"<base64>","rounds":210000,"digest":"<base64>"}`.
+//! Core-owned versioned verifier using fixed PBKDF2 parameters.
 
 use pbkdf2::pbkdf2_hmac;
 use rand::RngCore;
@@ -16,29 +14,12 @@ const CURRENT_VERSION: u32 = 1;
 /// PBKDF2-HMAC-SHA256.
 const DEFAULT_ROUNDS: u32 = 210_000;
 
-/// Weakest verifier [`verify`] will honour.
-///
-/// Separate from [`DEFAULT_ROUNDS`] on purpose: the default is what we write
-/// now and may rise, while this is the floor below which a stored envelope is
-/// not worth trusting. Keeping them apart is what lets the cost go up without
-/// locking anyone out of a verifier sealed at the old one.
-const MINIMUM_ROUNDS: u32 = 210_000;
-
-/// Most work a stored envelope may ask for.
-///
-/// `rounds` is read back out of storage, and PBKDF2 does exactly as many
-/// iterations as it is told. Unbounded, an envelope edited to `u32::MAX` makes
-/// unlocking run for hours on the main thread — the app simply never comes
-/// back. At twenty times the default this is still a fraction of a second on a
-/// phone.
-const MAXIMUM_ROUNDS: u32 = DEFAULT_ROUNDS * 20;
-
 const DERIVED_KEY_LENGTH: usize = 32;
 const SALT_LENGTH: usize = 16;
 
-/// On-disk verifier envelope — field names and base64 encoding match the
-/// Swift `SecureSeedPasswordStore.PasswordVerifierEnvelope` exactly.
+/// Current on-disk password verifier.
 #[derive(Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 struct PasswordVerifierEnvelope {
     version: u32,
     #[serde(with = "super::seed_envelope::base64_serde")]
@@ -49,7 +30,7 @@ struct PasswordVerifierEnvelope {
 }
 
 /// Create a PBKDF2-HMAC-SHA256 verifier for `password`.
-/// Returns JSON bytes compatible with Swift's format.
+/// Returns the current JSON envelope.
 pub fn create_verifier(password: &str) -> Result<Vec<u8>, String> {
     let normalized = password.trim();
     if normalized.is_empty() {
@@ -75,7 +56,7 @@ pub fn create_verifier(password: &str) -> Result<Vec<u8>, String> {
 }
 
 /// Verify `password` against a verifier envelope produced by
-/// [`create_verifier`] (or by Swift's `SecureSeedPasswordStore.save`).
+/// [`create_verifier`].
 pub fn verify(password: &str, verifier_data: &[u8]) -> bool {
     let normalized = password.trim();
     if normalized.is_empty() {
@@ -87,13 +68,9 @@ pub fn verify(password: &str, verifier_data: &[u8]) -> bool {
         Err(_) => return false,
     };
 
-    // Everything below comes out of storage, so none of it is trusted to be
-    // what `create_verifier` wrote. The version was checked and the work
-    // factor was not: PBKDF2 runs exactly the iterations it is handed, so an
-    // envelope edited to `u32::MAX` hangs the unlock, and one edited to `1`
-    // turns the verifier into a single HMAC an attacker can precompute. A
-    // short salt is the same weakening by another field.
-    if !(MINIMUM_ROUNDS..=MAXIMUM_ROUNDS).contains(&envelope.rounds)
+    // Accept only the format and work factor this build writes.
+    if envelope.version != CURRENT_VERSION
+        || envelope.rounds != DEFAULT_ROUNDS
         || envelope.salt.len() != SALT_LENGTH
         || envelope.digest.len() != DERIVED_KEY_LENGTH
     {
@@ -172,7 +149,7 @@ mod a_stored_envelope_is_not_trusted {
     /// does not rescue it — the envelope itself is refused.
     #[test]
     fn a_downgraded_work_factor_is_refused_even_with_the_right_password() {
-        for rounds in [0u32, 1, 1_000, MINIMUM_ROUNDS - 1] {
+        for rounds in [0u32, 1, 1_000, DEFAULT_ROUNDS - 1] {
             let data = tampered("correct horse battery staple", |value| {
                 value["rounds"] = serde_json::json!(rounds);
             });
@@ -188,7 +165,7 @@ mod a_stored_envelope_is_not_trusted {
     /// unlocking an envelope edited to `u32::MAX` never returns.
     #[test]
     fn an_absurd_work_factor_is_refused_rather_than_run() {
-        for rounds in [MAXIMUM_ROUNDS + 1, 100_000_000, u32::MAX] {
+        for rounds in [DEFAULT_ROUNDS + 1, 100_000_000, u32::MAX] {
             let data = tampered("correct horse battery staple", |value| {
                 value["rounds"] = serde_json::json!(rounds);
             });
@@ -199,6 +176,12 @@ mod a_stored_envelope_is_not_trusted {
                 "rounds={rounds} was run rather than refused"
             );
         }
+    }
+
+    #[test]
+    fn unknown_version_is_refused() {
+        let data = tampered("password", |value| value["version"] = serde_json::json!(2));
+        assert!(!verify("password", &data));
     }
 
     /// A salt or digest of the wrong length is the same weakening by another
@@ -225,7 +208,6 @@ mod a_stored_envelope_is_not_trusted {
     /// real thing.
     #[test]
     fn the_envelope_we_write_is_inside_its_own_bounds() {
-        assert!((MINIMUM_ROUNDS..=MAXIMUM_ROUNDS).contains(&DEFAULT_ROUNDS));
         let verifier = create_verifier("correct horse battery staple").unwrap();
         assert!(verify("correct horse battery staple", &verifier));
         assert!(!verify("wrong password", &verifier));

@@ -33,7 +33,7 @@ use super::secret_store::{SecretClass, SecretStore, SecretStoreError};
 
 // ── Key ↔ filename encoding ──────────────────────────────────────────────────
 //
-// Secret keys are caller-chosen strings ("<wallet-id>.seed", "etherscan.apiKey")
+// Secret keys are caller-chosen strings ("<wallet-id>.seed")
 // and each must name exactly one file. Anything outside [A-Za-z0-9_-] is
 // percent-encoded, `.` included — that keeps `.`, `..` and dotfiles
 // unrepresentable, so no key can escape its bucket. Nothing lists a store, so

@@ -96,7 +96,7 @@ impl WalletService {
                     return Err("Transaction changed during status recheck; check it again.".into());
                 }
                 recheck_chain(current)?;
-                let now = crate::store::wallet_db::now_secs() as f64;
+                let now = crate::wallet_db::now_secs() as f64;
                 let config = TransactionStatusPollConfig::default();
                 let mut trackers = std::collections::HashMap::from([(
                     current.id.clone(),
@@ -167,4 +167,5 @@ impl WalletService {
 }
 
 #[cfg(test)]
+#[path = "transaction_recheck_tests.rs"]
 mod tests;

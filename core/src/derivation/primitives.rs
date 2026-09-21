@@ -268,7 +268,7 @@ pub(crate) fn decode_ss58(
 /// One copy, not one per chain. Decred, EVM, Kaspa, Tron and XRP each carried a
 /// byte-identical 60-line version of this; the derivation is BIP-32's, not any
 /// of theirs, and five copies is five places for a fix to miss four. Bitcoin
-/// keeps its own in `chains/bitcoin.rs` because it also serialises xpubs.
+/// keeps its own in `bitcoin.rs` because it also serialises xpubs.
 #[derive(Clone)]
 pub(crate) struct ExtendedPrivateKey {
     pub(crate) private_key: SecretKey,

@@ -63,11 +63,11 @@ fn applying_a_setting_is_the_reducers_rule() {
     let defaults = app_settings_defaults();
     let trimmed = app_settings_applying(
         defaults.clone(),
-        AppSettingUpdate::EtherscanApiKey {
-            value: "  key \n".into(),
+        AppSettingUpdate::MoneroBackendBaseUrl {
+            value: "  https://wallet.example \n".into(),
         },
     );
-    assert_eq!(trimmed.etherscan_api_key, "key");
+    assert_eq!(trimmed.monero_backend_base_url, "https://wallet.example");
     let bounded = app_settings_applying(
         defaults.clone(),
         AppSettingUpdate::BitcoinStopGap { value: 0 },

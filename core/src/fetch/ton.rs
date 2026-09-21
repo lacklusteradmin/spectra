@@ -1,0 +1,378 @@
+//! TON (The Open Network) chain client.
+//!
+//! Uses the TON Center REST API (toncenter.com/api/v2).
+//! Signing uses Ed25519 (ed25519-dalek).
+//! TON cells are complex; for transfers we use the tonlib-compatible
+//! approach of sending via the `walletv4r2` contract message format.
+
+use serde::{Deserialize, Serialize};
+
+use crate::fetch::http::{with_fallback, HttpClient, RetryProfile};
+
+// ── Public result types
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct TonBalance {
+    /// Nanotons (1 TON = 1_000_000_000 nanotons).
+    pub nanotons: u64,
+    pub ton_display: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct TonHistoryEntry {
+    pub txid: String,
+    pub timestamp: u64,
+    pub from: String,
+    pub to: String,
+    pub amount_nanotons: u64,
+    pub fee_nanotons: u64,
+    pub is_incoming: bool,
+    pub comment: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct TonSendResult {
+    pub message_hash: String,
+    /// Base64-encoded BOC — stored for rebroadcast.
+    pub boc_b64: String,
+}
+
+impl super::SignedSubmission for TonSendResult {
+    fn submission_id(&self) -> &str {
+        &self.message_hash
+    }
+    fn signed_payload(&self) -> &str {
+        &self.boc_b64
+    }
+    fn signed_payload_format(&self) -> super::SignedPayloadFormat {
+        super::SignedPayloadFormat::Base64
+    }
+}
+
+/// One jetton (token) balance entry returned by the v3 API.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct TonJettonBalance {
+    /// Jetton master contract address (matches the known-token `contract` field).
+    pub master_address: String,
+    /// Jetton wallet contract address (holder's personal wallet for this token).
+    pub wallet_address: String,
+    /// Raw balance in the token's smallest unit.
+    pub balance_raw: u128,
+}
+
+// ── Client
+
+pub struct TonClient {
+    pub(crate) endpoints: std::sync::Arc<Vec<String>>,
+    pub(crate) v3_endpoints: std::sync::Arc<Vec<String>>,
+    pub(crate) client: std::sync::Arc<HttpClient>,
+}
+
+impl TonClient {
+    pub fn new(endpoints: std::sync::Arc<Vec<String>>) -> Self {
+        Self {
+            endpoints,
+            v3_endpoints: std::sync::Arc::new(Vec::new()),
+            client: HttpClient::shared(),
+        }
+    }
+
+    pub fn with_v3_endpoints(mut self, v3_endpoints: std::sync::Arc<Vec<String>>) -> Self {
+        self.v3_endpoints = v3_endpoints;
+        self
+    }
+
+    pub(crate) async fn get<T: serde::de::DeserializeOwned>(
+        &self,
+        path: &str,
+    ) -> Result<T, String> {
+        let path = path.to_string();
+        with_fallback(&self.endpoints, |base| {
+            let client = self.client.clone();
+            let url = format!("{}{}", base.trim_end_matches('/'), path);
+            async move { client.get_json(&url, RetryProfile::ChainRead).await }
+        })
+        .await
+    }
+
+    /// GET from the TonCenter v3 base URL (if configured).
+    pub(crate) async fn get_v3<T: serde::de::DeserializeOwned>(
+        &self,
+        path: &str,
+    ) -> Result<T, String> {
+        if self.v3_endpoints.is_empty() {
+            return Err("ton: no v3 endpoints configured".to_string());
+        }
+        let path = path.to_string();
+        with_fallback(&self.v3_endpoints, |base| {
+            let client = self.client.clone();
+            let url = format!("{}{}", base.trim_end_matches('/'), path);
+            async move { client.get_json(&url, RetryProfile::ChainRead).await }
+        })
+        .await
+    }
+}
+// TON fetch paths: balance, seqno, history (TonCenter v2), jetton balances (v3).
+
+impl TonClient {
+    /// Fetch all jetton (token) balances for `address` via the TonCenter v3 API.
+    /// Returns a list of `TonJettonBalance` entries — one per jetton wallet found.
+    pub async fn fetch_jetton_balances(
+        &self,
+        address: &str,
+    ) -> Result<Vec<TonJettonBalance>, String> {
+        #[derive(Deserialize)]
+        struct Envelope {
+            jetton_wallets: Option<Vec<JettonEntry>>,
+        }
+        #[derive(Deserialize)]
+        struct JettonEntry {
+            balance: Option<String>,
+            address: Option<String>,
+            jetton: Option<AddressWrapper>,
+        }
+        #[derive(Deserialize)]
+        struct AddressWrapper {
+            address: Option<String>,
+        }
+
+        let path = format!("/jetton/wallets?owner_address={address}&limit=100");
+        let resp: Envelope = self.get_v3(&path).await?;
+        let wallets = resp.jetton_wallets.unwrap_or_default();
+        Ok(wallets
+            .into_iter()
+            .filter_map(|entry| {
+                let master_address = entry.jetton?.address?;
+                let wallet_address = entry.address?;
+                let balance_raw: u128 = entry.balance?.parse().ok()?;
+                Some(TonJettonBalance {
+                    master_address,
+                    wallet_address,
+                    balance_raw,
+                })
+            })
+            .collect())
+    }
+
+    /// A jetton master's own decimals, from its content. `None` when the
+    /// master will not answer.
+    pub async fn fetch_jetton_decimals(&self, master_address: &str) -> Option<u8> {
+        #[derive(Deserialize)]
+        struct MasterEnvelope {
+            jetton_masters: Option<Vec<Master>>,
+        }
+        #[derive(Deserialize)]
+        struct Master {
+            jetton_content: Option<Content>,
+        }
+        #[derive(Deserialize)]
+        struct Content {
+            decimals: Option<serde_json::Value>,
+        }
+        let path = format!("/jetton/masters?address={master_address}&limit=1");
+        let content = self
+            .get_v3::<MasterEnvelope>(&path)
+            .await
+            .ok()?
+            .jetton_masters?
+            .into_iter()
+            .next()?
+            .jetton_content?;
+        // TON metadata carries decimals as a string as often as a number, and
+        // both mean the same count.
+        let raw = content.decimals?;
+        raw.as_u64()
+            .or_else(|| raw.as_str().and_then(|s| s.parse().ok()))
+            .map(|d| d as u8)
+    }
+
+    /// Every jetton the address holds, with each jetton master's own decimals.
+    ///
+    /// `/jetton/wallets` enumerates the holdings but carries no content, so
+    /// each master's metadata is read concurrently; a master that will not
+    /// answer is reported unnamed rather than dropped.
+    pub async fn fetch_all_jetton_balances(
+        &self,
+        address: &str,
+    ) -> Result<Vec<super::HeldToken>, String> {
+        let wallets: Vec<TonJettonBalance> = self
+            .fetch_jetton_balances(address)
+            .await?
+            .into_iter()
+            .filter(|w| w.balance_raw > 0)
+            .collect();
+
+        let metadata = futures::future::join_all(
+            wallets
+                .iter()
+                .map(|w| self.fetch_jetton_decimals(&w.master_address)),
+        )
+        .await;
+
+        Ok(wallets
+            .into_iter()
+            .zip(metadata)
+            .map(|(w, decimals)| super::HeldToken {
+                contract: w.master_address,
+                balance_raw: w.balance_raw,
+                decimals,
+                symbol: None,
+            })
+            .collect())
+    }
+
+    pub async fn fetch_balance(&self, address: &str) -> Result<TonBalance, String> {
+        #[derive(Deserialize)]
+        struct Resp {
+            result: String,
+        }
+        let resp: Resp = self
+            .get(&format!("/getAddressBalance?address={address}"))
+            .await?;
+        let nanotons: u64 = resp.result.parse().unwrap_or(0);
+        Ok(TonBalance {
+            nanotons,
+            ton_display: format_ton(nanotons),
+        })
+    }
+
+    pub async fn fetch_seqno(&self, address: &str) -> Result<u32, String> {
+        use serde_json::{json, Value};
+        // A failed read is not an undeployed wallet. Only a positive state
+        // response may select seqno zero and the deployment path.
+        let info: Value = self
+            .get(&format!("/getAddressInformation?address={address}"))
+            .await?;
+        if info["ok"].as_bool() != Some(true) {
+            return Err("TON: cannot read account state".into());
+        }
+        match info["result"]["state"].as_str() {
+            Some("uninitialized") => return Ok(0),
+            Some("active") => {}
+            _ => return Err("TON: account is frozen or state is unreadable".into()),
+        }
+        with_fallback(&self.endpoints, |base| {
+            let client = self.client.clone();
+            let url = format!("{}/runGetMethod", base.trim_end_matches('/'));
+            let body = json!({"address": address, "method": "seqno", "stack": []});
+            async move {
+                let response: Value = client
+                    .post_json(&url, &body, RetryProfile::ChainRead)
+                    .await?;
+                if response["ok"].as_bool() != Some(true)
+                    || response["result"]["exit_code"].as_i64() != Some(0)
+                {
+                    return Err("TON: seqno get method failed".into());
+                }
+                let stack = response["result"]["stack"]
+                    .as_array()
+                    .ok_or("TON: missing seqno stack")?;
+                if stack.len() != 1 || stack[0][0].as_str() != Some("num") {
+                    return Err("TON: invalid seqno stack".into());
+                }
+                let value = stack[0][1].as_str().ok_or("TON: missing seqno value")?;
+                u32::from_str_radix(
+                    value
+                        .strip_prefix("0x")
+                        .ok_or("TON: invalid seqno encoding")?,
+                    16,
+                )
+                .map_err(|_| "TON: invalid seqno range".into())
+            }
+        })
+        .await
+    }
+
+    pub async fn fetch_history(&self, address: &str) -> Result<Vec<TonHistoryEntry>, String> {
+        #[derive(Deserialize)]
+        struct Resp {
+            result: Vec<TonTx>,
+        }
+        #[derive(Deserialize)]
+        struct TonTx {
+            transaction_id: TonTxId,
+            utime: u64,
+            in_msg: Option<TonMsg>,
+            out_msgs: Vec<TonMsg>,
+            fee: String,
+        }
+        #[derive(Deserialize)]
+        struct TonTxId {
+            hash: String,
+        }
+        #[derive(Deserialize)]
+        struct TonMsg {
+            source: String,
+            destination: String,
+            value: String,
+            #[serde(default)]
+            message: String,
+        }
+
+        let resp: Resp = self
+            .get(&format!(
+                "/getTransactions?address={address}&limit=50&archival=false"
+            ))
+            .await?;
+
+        let mut entries = Vec::new();
+        for tx in resp.result {
+            let txid = tx.transaction_id.hash;
+            let timestamp = tx.utime;
+            let fee: u64 = tx.fee.parse().unwrap_or(0);
+
+            // Incoming: in_msg.destination == address
+            if let Some(msg) = &tx.in_msg {
+                if !msg.destination.is_empty() {
+                    let amount: u64 = msg.value.parse().unwrap_or(0);
+                    let comment = if msg.message.is_empty() {
+                        None
+                    } else {
+                        Some(msg.message.clone())
+                    };
+                    entries.push(TonHistoryEntry {
+                        txid: txid.clone(),
+                        timestamp,
+                        from: msg.source.clone(),
+                        to: msg.destination.clone(),
+                        amount_nanotons: amount,
+                        fee_nanotons: fee,
+                        is_incoming: true,
+                        comment,
+                    });
+                }
+            }
+            // Outgoing.
+            for msg in &tx.out_msgs {
+                let amount: u64 = msg.value.parse().unwrap_or(0);
+                entries.push(TonHistoryEntry {
+                    txid: txid.clone(),
+                    timestamp,
+                    from: msg.source.clone(),
+                    to: msg.destination.clone(),
+                    amount_nanotons: amount,
+                    fee_nanotons: fee,
+                    is_incoming: false,
+                    comment: None,
+                });
+            }
+        }
+        Ok(entries)
+    }
+}
+
+fn format_ton(nanotons: u64) -> String {
+    let whole = nanotons / 1_000_000_000;
+    let frac = nanotons % 1_000_000_000;
+    if frac == 0 {
+        return whole.to_string();
+    }
+    let frac_str = format!("{:09}", frac);
+    let trimmed = frac_str.trim_end_matches('0');
+    let capped = if trimmed.len() > 6 {
+        &trimmed[..6]
+    } else {
+        trimmed
+    };
+    format!("{}.{}", whole, capped)
+}

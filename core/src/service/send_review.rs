@@ -8,7 +8,7 @@ pub struct SendReviewInput {
     pub holding_key: String,
     pub amount: String,
     pub destination: String,
-    pub overrides: Option<crate::ethereum_send::EvmSendOverridesInput>,
+    pub overrides: Option<crate::send::ethereum::EvmSendOverridesInput>,
 }
 #[derive(Debug, Clone, serde::Serialize, uniffi::Record)]
 pub struct OwnedSendReview {
@@ -81,7 +81,7 @@ impl WalletService {
                 .get_or_insert_with(Default::default);
             fees.nonce = Some(preview.nonce);
             fees.gas_limit = Some(preview.gasLimit);
-            fees.custom_fees = Some(crate::ethereum_send::EvmCustomFeeConfiguration {
+            fees.custom_fees = Some(crate::send::ethereum::EvmCustomFeeConfiguration {
                 max_fee_per_gas_gwei: preview.maxFeePerGasGwei,
                 max_priority_fee_per_gas_gwei: preview.maxPriorityFeePerGasGwei,
             });
@@ -278,7 +278,7 @@ mod tests {
                 ..original.clone()
             },
             SendReviewInput {
-                overrides: Some(crate::ethereum_send::EvmSendOverridesInput {
+                overrides: Some(crate::send::ethereum::EvmSendOverridesInput {
                     nonce: Some(7),
                     ..Default::default()
                 }),
@@ -372,7 +372,6 @@ mod tests {
             let service = WalletService::new(vec![ChainEndpoints {
                 chain_id: "ethereum".into(),
                 endpoints: vec![server.uri()],
-                api_key: None,
             }])
             .unwrap();
             let database = std::env::temp_dir().join(format!(

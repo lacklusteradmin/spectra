@@ -279,14 +279,14 @@ async fn probe_json_rpc(endpoint: &str, method: &str) -> Result<(), String> {
 mod history_page_failures {
     use super::*;
     #[tokio::test]
-    async fn history_page_without_required_provider_credentials_is_an_error() {
+    async fn history_page_without_a_configured_source_is_an_error() {
         let service = WalletService::new(vec![]).unwrap();
-        // BSC's registry source requires an explorer key. This fails offline,
+        // BSC has no configured keyless history source. This fails offline,
         // before HTTP, and must not masquerade as an empty successful page.
         let result = service
             .fetch_evm_history_page(Chain::BnbChain.str_id().into(), "from".into(), vec![], 2, 7)
             .await;
-        assert!(result.unwrap_err().to_string().contains("key"));
+        assert!(result.unwrap_err().to_string().contains("no explorer"));
     }
 }
 

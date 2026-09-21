@@ -8,7 +8,7 @@ use std::sync::{Arc, Mutex};
 
 use clap::Args;
 use colored::Colorize as _;
-use spectra_core::fetch::refresh::engine::{BalanceObserver, BalanceRefreshEngine};
+use spectra_core::fetch::refresh_engine::{BalanceObserver, BalanceRefreshEngine};
 use spectra_core::service::ChainEndpoints;
 use spectra_core::store::state::WalletState;
 
@@ -74,7 +74,6 @@ pub fn refresh(ctx: &Ctx, out: Out, args: RefreshArgs) -> CliResult<()> {
             .block_on(service.update_endpoints(vec![ChainEndpoints {
                 chain_id: chain.str_id().into(),
                 endpoints: vec![endpoint],
-                api_key: None,
             }]))
             .map_err(CliError::from)?;
     }

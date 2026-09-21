@@ -358,14 +358,14 @@ impl WalletService {
         chain: crate::registry::Chain,
         address: &str,
     ) -> Result<bool, SpectraBridgeError> {
-        use crate::fetch::chains::{
+        use crate::fetch::{
             bitcoin::BitcoinClient, bitcoin_sv::BitcoinSvClient, blockbook::BlockbookClient,
             dogecoin::DogecoinClient,
         };
         let endpoints = self.endpoints_for(chain.str_id()).await;
         let active = match chain.mainnet_counterpart() {
             crate::registry::Chain::Bitcoin => {
-                BitcoinClient::new(crate::http::HttpClient::shared(), endpoints)
+                BitcoinClient::new(crate::fetch::http::HttpClient::shared(), endpoints)
                     .has_activity(address)
                     .await?
             }
@@ -440,7 +440,7 @@ impl WalletService {
 /// Scan-local external xpub. No mnemonic or private key is kept while probing.
 pub(crate) struct UtxoDerivation {
     chain: crate::registry::Chain,
-    branch: crate::derivation::chains::bitcoin::ExtendedPublicKey,
+    branch: crate::derivation::bitcoin::ExtendedPublicKey,
     secp: secp256k1::Secp256k1<secp256k1::All>,
     base_path: String,
 }
@@ -464,9 +464,7 @@ impl UtxoDerivation {
         overrides
             .validate_for_chain(chain)
             .map_err(|e| e.to_string())?;
-        use crate::derivation::chains::bitcoin::{
-            derive_bip39_seed, parse_bip32_path, ExtendedPrivateKey,
-        };
+        use crate::derivation::bitcoin::{derive_bip39_seed, parse_bip32_path, ExtendedPrivateKey};
         let path = crate::app_core::derivation_path_replacing_last_two(
             base_path.clone(),
             0,

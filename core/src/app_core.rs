@@ -27,17 +27,6 @@ const ENDPOINT_CAPABILITIES: [&str; 9] = [
     "verification",
 ];
 
-/// Endpoint-table slot for a given chain. Mirrors `crate::registry::EndpointSlot`
-/// so the Swift side can ask Rust for the right `chain_id + offset` instead of
-/// reimplementing the offset arithmetic.
-#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Hash, uniffi::Enum)]
-#[serde(rename_all = "camelCase")]
-pub enum AppCoreEndpointSlot {
-    Primary,
-    Secondary,
-    Explorer,
-}
-
 #[derive(Debug, Clone)]
 pub(crate) struct AppCoreCatalog {
     pub(crate) endpoint_records: Vec<AppCoreEndpointRecord>,
@@ -67,8 +56,6 @@ struct TomlEndpoint {
     capabilities: Vec<String>,
     #[serde(default)]
     probe_url: Option<String>,
-    #[serde(default)]
-    supplements_rpc_list: bool,
     #[serde(default)]
     explorer_label: Option<String>,
     #[serde(default)]
@@ -100,7 +87,6 @@ impl TryFrom<TomlEndpoint> for AppCoreEndpointRecord {
             endpoint: e.endpoint,
             capabilities: e.capabilities,
             probe_url: e.probe_url,
-            supplements_rpc_list: e.supplements_rpc_list,
             explorer_label: e.explorer_label,
             tx_suffix: e.tx_suffix,
         })
@@ -119,15 +105,6 @@ pub struct AppCoreEndpointRecord {
     pub capabilities: Vec<String>,
     #[serde(rename = "probeURL")]
     pub probe_url: Option<String>,
-    /// Registered alongside the chain's RPC list rather than instead of it.
-    ///
-    /// Was inferred from an `explorer` tag that four records carried — three
-    /// of them Etherscan V1 endpoints that have since been shut down — while
-    /// XRP's `xrpscan` and NEAR's `nearblocks`, which are the same kind of
-    /// thing, did not. A tag that describes one member is not describing
-    /// anything, so this says it outright.
-    #[serde(default)]
-    pub supplements_rpc_list: bool,
     pub explorer_label: Option<String>,
     /// Appended after the transaction hash, for an explorer whose URL needs
     /// more than a prefix. Aptos wants `?network=mainnet`; nothing else does.
@@ -226,8 +203,6 @@ pub struct AppCoreChainEndpoints {
     pub service_endpoints: Vec<String>,
     /// Light-wallet backends eligible for the backend selector.
     pub backends: Vec<String>,
-    /// Explorer endpoints that supplement the RPC list.
-    pub explorer_supplemental: Vec<String>,
     /// What the settings screen shows, grouped by network.
     pub grouped_settings: Vec<AppCoreGroupedSettingsEntry>,
     pub transaction_explorer: Option<AppCoreExplorerEntry>,
@@ -256,12 +231,6 @@ pub fn chain_endpoints() -> Result<Vec<AppCoreChainEndpoints>, crate::SpectraBri
                 evm_rpc: endpoint_records_for_chain(catalog, &id, 0)
                     .into_iter()
                     .filter(|r| r.api == Some(EndpointApi::EvmJsonRpc))
-                    .map(|r| r.endpoint)
-                    .collect(),
-                // Supplemental APIs registered alongside the RPC list.
-                explorer_supplemental: endpoint_records_for_chain(catalog, &id, 0)
-                    .into_iter()
-                    .filter(|r| r.supplements_rpc_list)
                     .map(|r| r.endpoint)
                     .collect(),
                 grouped_settings: grouped_settings_entries(catalog, chain),
@@ -876,101 +845,6 @@ capabilities = []"#;
             );
         }
         assert!(filtered_endpoint_records_for_chain("Ethereum".into(), 0).is_err());
-    }
-}
-
-#[cfg(test)]
-mod supplemental_endpoints_are_data {
-    use crate::registry::{Chain, EndpointSlot};
-
-    fn supplemental(chain: Chain) -> Vec<String> {
-        super::chain_endpoints()
-            .unwrap_or_default()
-            .into_iter()
-            .find(|c| c.chain_id == chain.str_id())
-            .map(|c| c.explorer_supplemental)
-            .unwrap_or_default()
-    }
-
-    /// Which chains have a supplement is the catalog's answer, not a list.
-    ///
-    /// The front end held sixteen names. Twelve of them have no supplement at
-    /// all, so those entries registered nothing; Hyperliquid had one and was
-    /// not named, so its endpoints never reached the service.
-    ///
-    /// Hyperliquid's supplement was `api.hyperevmscan.io`, which Etherscan has
-    /// since shut down along with the rest of its V1 family — the record is
-    /// deleted and the chain reads its history through Etherscan V2 now. The
-    /// property under test is unchanged: the catalog decides, and a chain with
-    /// a supplement gets it without being named anywhere.
-    #[test]
-    fn a_supplement_comes_from_the_catalog_and_most_chains_have_none() {
-        assert_eq!(
-            supplemental(Chain::Ethereum),
-            vec!["https://api.ethplorer.io".to_string()],
-            "Ethereum's supplement is catalog data and was not in the sixteen-name table either"
-        );
-        assert!(supplemental(Chain::Hyperliquid).is_empty());
-        for chain in [
-            Chain::Arbitrum,
-            Chain::Optimism,
-            Chain::Base,
-            Chain::Polygon,
-            Chain::Linea,
-            Chain::Scroll,
-            Chain::Blast,
-            Chain::Mantle,
-            Chain::Avalanche,
-            Chain::Near,
-            Chain::Tron,
-            Chain::EthereumClassic,
-        ] {
-            assert!(
-                supplemental(chain).is_empty(),
-                "{} has a supplement after all; the table was not as inert as it looked",
-                chain.chain_display_name()
-            );
-        }
-    }
-
-    /// Where a supplement lands is a registry column, and only two chains
-    /// differ: Polkadot's and ICP's are a working API the send path queries
-    /// (Subscan, the ICP dashboard), so they go in `Secondary` rather than
-    /// `Explorer`.
-    #[test]
-    fn only_polkadot_and_icp_use_the_secondary_slot() {
-        for chain in Chain::all() {
-            let expected = match chain.mainnet_counterpart() {
-                Chain::Polkadot | Chain::Icp => EndpointSlot::Secondary,
-                _ => EndpointSlot::Explorer,
-            };
-            assert_eq!(
-                chain.supplemental_endpoint_slot(),
-                expected,
-                "{} put its supplement in the wrong slot",
-                chain.chain_display_name()
-            );
-        }
-    }
-
-    /// Every chain with a supplement is reachable, because the loop walks the
-    /// registry rather than a table.
-    #[test]
-    fn every_chain_with_a_supplement_has_a_slot_to_put_it_in() {
-        let mut found = 0;
-        for chain in Chain::all() {
-            if supplemental(chain).is_empty() {
-                continue;
-            }
-            found += 1;
-            let slot_id = chain.endpoint_str_id(chain.supplemental_endpoint_slot());
-            assert!(
-                slot_id.contains(':'),
-                "{} would write its supplement over its own primary endpoints",
-                chain.chain_display_name()
-            );
-        }
-        assert!(found > 0, "no chain has a supplemental endpoint at all");
     }
 }
 

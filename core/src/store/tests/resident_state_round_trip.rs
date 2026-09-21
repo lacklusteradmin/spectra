@@ -1,6 +1,6 @@
 use crate::store::state::{reduce_state_in_place, CoreAppState, StateCommand};
-use crate::store::wallet_db;
 use crate::store::wallet_domain::CorePriceAlertCondition;
+use crate::wallet_db;
 
 fn tmp_db() -> String {
     let mut path = std::env::temp_dir();
@@ -11,27 +11,6 @@ fn tmp_db() -> String {
     ));
     let _ = std::fs::remove_file(&path);
     path.to_string_lossy().into_owned()
-}
-
-#[test]
-fn a_price_alert_survives_a_reopen() {
-    let db = tmp_db();
-    let mut state = CoreAppState::default();
-    reduce_state_in_place(
-        &mut state,
-        StateCommand::AddPriceAlert {
-            holding_key: "bitcoin:native".into(),
-            target_price: 100_000.0,
-            currency: crate::store::state::FiatCurrency::Usd,
-            condition: CorePriceAlertCondition::Above,
-        },
-    );
-    wallet_db::app_state_save(&crate::wallet_db::WalletDatabase::new(&db), &state).expect("save");
-
-    let reloaded =
-        wallet_db::app_state_load(&crate::wallet_db::WalletDatabase::new(&db)).expect("load");
-    assert_eq!(reloaded.price_alerts.len(), 1, "price alert was lost");
-    assert_eq!(reloaded.price_alerts[0].target_price, 100_000.0);
 }
 
 #[test]
@@ -52,10 +31,9 @@ fn an_alert_that_cannot_fire_is_refused() {
     assert_eq!(state.price_alerts[0].target_price, 0.000001);
 }
 
-/// Whatever the resident state holds must come back. Add a collection and
-/// this fails until `app_state_save` learns about it.
+/// Alerts and contacts retain their full payload alongside the chosen currency.
 #[test]
-fn every_resident_collection_round_trips() {
+fn alerts_contacts_and_currency_survive_reopening() {
     let db = tmp_db();
     let mut state = CoreAppState::default();
     reduce_state_in_place(
@@ -87,8 +65,10 @@ fn every_resident_collection_round_trips() {
     let back =
         wallet_db::app_state_load(&crate::wallet_db::WalletDatabase::new(&db)).expect("load");
 
-    assert_eq!(back.price_alerts.len(), 1, "price_alerts not persisted");
-    assert_eq!(back.address_book.len(), 1, "address_book not persisted");
+    assert_eq!(state.price_alerts.len(), 1);
+    assert_eq!(state.address_book.len(), 1);
+    assert_eq!(back.price_alerts, state.price_alerts);
+    assert_eq!(back.address_book, state.address_book);
     assert_eq!(
         back.settings.fiat_currency,
         crate::store::state::FiatCurrency::Chf,
@@ -117,14 +97,8 @@ fn resetting_settings_restores_every_default() {
             chain: "Base".into(),
             value: "https://x.example".into(),
         },
-        U::EtherscanApiKey {
-            value: "KEY".into(),
-        },
         U::MoneroBackendBaseUrl {
             value: "https://xmr.example".into(),
-        },
-        U::MoneroBackendApiKey {
-            value: "XKEY".into(),
         },
         U::BitcoinEsploraEndpoints {
             value: "https://a.example".into(),
@@ -192,14 +166,8 @@ fn every_settings_field_round_trips() {
             chain: "Base".into(),
             value: "https://base.example".into(),
         },
-        U::EtherscanApiKey {
-            value: "KEY".into(),
-        },
         U::MoneroBackendBaseUrl {
             value: "https://xmr.example".into(),
-        },
-        U::MoneroBackendApiKey {
-            value: "XKEY".into(),
         },
         U::BitcoinEsploraEndpoints {
             value: "https://a.example,https://b.example".into(),
@@ -276,12 +244,15 @@ fn a_setting_outside_its_range_is_bounded() {
     assert_eq!(state.settings.bitcoin_stop_gap, 200);
     assert_eq!(state.settings.large_movement_alert_percent_threshold, 90.0);
 
-    // Trimmed, so a pasted key with a stray newline is the same key.
+    // Trimmed, so a pasted URL with a stray newline is the same URL.
     set(
         &mut state,
-        U::EtherscanApiKey {
-            value: "  ABC123\n".into(),
+        U::MoneroBackendBaseUrl {
+            value: "  https://wallet.example\n".into(),
         },
     );
-    assert_eq!(state.settings.etherscan_api_key, "ABC123");
+    assert_eq!(
+        state.settings.monero_backend_base_url,
+        "https://wallet.example"
+    );
 }

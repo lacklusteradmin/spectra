@@ -195,7 +195,7 @@ impl WalletService {
         &self,
         transaction_ids: Vec<String>,
     ) -> Vec<String> {
-        let now_unix = crate::store::wallet_db::now_secs() as f64;
+        let now_unix = crate::wallet_db::now_secs() as f64;
         let trackers = self.status_trackers.read().await;
         transaction_ids
             .into_iter()
@@ -215,7 +215,7 @@ impl WalletService {
     /// written as two, so "confirmed and pending" was representable and had no
     /// meaning. The outcome is the outcome.
     pub async fn record_status_poll(&self, transaction_id: String, outcome: StatusPollOutcome) {
-        let now_unix = crate::store::wallet_db::now_secs() as f64;
+        let now_unix = crate::wallet_db::now_secs() as f64;
         let mut trackers = self.status_trackers.write().await;
         let previous = trackers.get(&transaction_id).cloned();
         let next = match outcome {
@@ -350,7 +350,7 @@ impl WalletService {
                     })
                     .collect();
 
-                let now_unix = crate::store::wallet_db::now_secs() as f64;
+                let now_unix = crate::wallet_db::now_secs() as f64;
                 let decisions = {
                     crate::store::apply_resolved_pending_transaction_statuses(
                         inputs,
@@ -925,7 +925,7 @@ impl WalletService {
         Ok(crate::store::stale_pending_failure_ids(
             inputs,
             &failures,
-            crate::store::wallet_db::now_secs() as f64,
+            crate::wallet_db::now_secs() as f64,
             TransactionStatusPollConfig::default(),
         ))
     }

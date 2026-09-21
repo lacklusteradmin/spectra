@@ -902,7 +902,6 @@ pub fn txs(ctx: &Ctx, out: Out, args: TxsArgs) -> CliResult<()> {
                 spectra_core::service::ChainEndpoints {
                     chain_id: chain.str_id().into(),
                     endpoints: vec![endpoint],
-                    api_key: None,
                 },
             ]))?;
         }
@@ -946,11 +945,7 @@ pub fn txs(ctx: &Ctx, out: Out, args: TxsArgs) -> CliResult<()> {
         let service = WalletService::new(
             spectra_core::service::catalog_endpoints()?
                 .into_iter()
-                .filter(|row| {
-                    row.chain_id == network.str_id()
-                        || row.chain_id
-                            == network.endpoint_str_id(network.supplemental_endpoint_slot())
-                })
+                .filter(|row| row.chain_id.split(':').next() == Some(network.str_id()))
                 .collect(),
         )
         .map_err(CliError::from)?;

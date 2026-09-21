@@ -1,5 +1,5 @@
 //! Refresh scheduling from core-owned clocks, settings and pending transactions.
-use crate::fetch::refresh::policy::{DeviceConditions, MaintenancePlan, RefreshKind};
+use crate::fetch::refresh_policy::{DeviceConditions, MaintenancePlan, RefreshKind};
 use crate::service::WalletService;
 
 #[uniffi::export(async_runtime = "tokio")]
@@ -9,12 +9,12 @@ impl WalletService {
         let settings = self.wallet_state.read().await.settings.clone();
         let has_pending_work = self.has_pending_transaction_work().await;
         let clock = self.refresh_clock.read().await.clone();
-        crate::fetch::refresh::policy::maintenance_plan(
+        crate::fetch::refresh_policy::maintenance_plan(
             &clock,
             &settings,
             &conditions,
             has_pending_work,
-            crate::store::wallet_db::now_secs() as f64,
+            crate::wallet_db::now_secs() as f64,
         )
     }
 }
@@ -24,7 +24,7 @@ impl WalletService {
     /// plan measures from when the work happened rather than when it was asked
     /// for.
     pub async fn record_refresh(&self, kind: RefreshKind) {
-        let now = crate::store::wallet_db::now_secs() as f64;
+        let now = crate::wallet_db::now_secs() as f64;
         self.refresh_clock.write().await.record(kind, now);
     }
 
@@ -43,23 +43,23 @@ impl WalletService {
 impl WalletService {
     pub(crate) async fn history_refresh_plans(
         &self,
-        keys: Vec<crate::fetch::refresh::policy::HistoryRefreshKey>,
+        keys: Vec<crate::fetch::refresh_policy::HistoryRefreshKey>,
         interval_secs: f64,
-    ) -> Vec<crate::fetch::refresh::policy::HistoryRefreshKey> {
+    ) -> Vec<crate::fetch::refresh_policy::HistoryRefreshKey> {
         let clock = self.refresh_clock.read().await;
-        crate::fetch::refresh::policy::history_plans(
+        crate::fetch::refresh_policy::history_plans(
             &clock,
             keys,
             interval_secs,
-            crate::store::wallet_db::now_secs() as f64,
+            crate::wallet_db::now_secs() as f64,
         )
     }
 
     pub(crate) async fn record_history_refresh(
         &self,
-        key: crate::fetch::refresh::policy::HistoryRefreshKey,
+        key: crate::fetch::refresh_policy::HistoryRefreshKey,
     ) {
-        let now = crate::store::wallet_db::now_secs() as f64;
+        let now = crate::wallet_db::now_secs() as f64;
         self.refresh_clock.write().await.record_history(key, now);
     }
 }
@@ -92,8 +92,8 @@ mod boundary_tests {
                 .await
                 .refresh_live_prices
         );
-        let eth = crate::fetch::refresh::policy::HistoryRefreshKey::new("w", "ethereum");
-        let btc = crate::fetch::refresh::policy::HistoryRefreshKey::new("w", "bitcoin");
+        let eth = crate::fetch::refresh_policy::HistoryRefreshKey::new("w", "ethereum");
+        let btc = crate::fetch::refresh_policy::HistoryRefreshKey::new("w", "bitcoin");
         service.record_history_refresh(eth.clone()).await;
         let due = service
             .history_refresh_plans(vec![eth, btc.clone()], 120.0)

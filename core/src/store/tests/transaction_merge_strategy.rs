@@ -8,7 +8,7 @@ fn strategy(display_name: &str) -> S {
 }
 
 #[test]
-fn matches_the_swift_wrappers_it_replaced() {
+fn history_protocols_select_their_merge_semantics() {
     for name in ["Bitcoin", "Bitcoin Cash", "Bitcoin SV", "Litecoin"] {
         assert_eq!(strategy(name), S::StandardUtxo, "{name}");
     }

@@ -90,19 +90,9 @@ fn parse_f64(raw: &str) -> Result<f64, &'static str> {
 
 const FIELDS: &[Field] = &[
     Field {
-        key: "etherscan-api-key",
-        read: |s| s.etherscan_api_key.clone(),
-        update: |v| Ok(AppSettingUpdate::EtherscanApiKey { value: v.into() }),
-    },
-    Field {
         key: "monero-backend-url",
         read: |s| s.monero_backend_base_url.clone(),
         update: |v| Ok(AppSettingUpdate::MoneroBackendBaseUrl { value: v.into() }),
-    },
-    Field {
-        key: "monero-backend-api-key",
-        read: |s| s.monero_backend_api_key.clone(),
-        update: |v| Ok(AppSettingUpdate::MoneroBackendApiKey { value: v.into() }),
     },
     Field {
         key: "bitcoin-esplora-endpoints",
@@ -371,7 +361,7 @@ fn set(ctx: &Ctx, out: Out, args: SetArgs) -> CliResult<()> {
 fn reset(ctx: &Ctx, out: Out, args: ResetArgs) -> CliResult<()> {
     if !args.yes {
         return Err(CliError::usage(
-            "this discards every setting, including endpoints and API keys — re-run with --yes",
+            "this discards every setting, including endpoints and preferences — re-run with --yes",
         ));
     }
     let scopes = if args.scope.is_empty() {

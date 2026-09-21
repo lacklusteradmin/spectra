@@ -1,6 +1,6 @@
 use crate::store::state::{CoreAppState, StateCommand};
-use crate::store::wallet_db;
 use crate::store::wallet_domain::CoreTokenHostingChain;
+use crate::wallet_db;
 
 /// One database per test. Keyed by thread id as well as pid: two tests in
 /// the same process share a pid, and the first version of this helper did
@@ -26,19 +26,6 @@ fn add_custom(symbol: &str, decimals: u32) -> StateCommand {
         coingecko_id: symbol.to_lowercase(),
         decimals,
     }
-}
-
-#[test]
-fn a_tracked_token_survives_a_reopen() {
-    let db = tmp_db();
-    let mut state = CoreAppState::default();
-    crate::store::state::reduce_state_in_place(&mut state, add_custom("USDC", 6));
-    wallet_db::app_state_save(&crate::wallet_db::WalletDatabase::new(&db), &state).expect("save");
-
-    let reloaded =
-        wallet_db::app_state_load(&crate::wallet_db::WalletDatabase::new(&db)).expect("load");
-    assert_eq!(reloaded.token_preferences.len(), 1, "known token was lost");
-    assert_eq!(reloaded.token_preferences[0].token.symbol, "USDC");
 }
 
 /// A precision no token has is refused, where it used to be clamped.
@@ -67,11 +54,13 @@ fn an_impossible_precision_is_refused_rather_than_clamped() {
         &mut state,
         add_custom("USDT", crate::store::state::MAX_TOKEN_DECIMALS as u32),
     );
+    assert_eq!(state.token_preferences.len(), 1);
+    assert_eq!(
+        state.token_preferences[0].token.decimals,
+        crate::store::state::MAX_TOKEN_DECIMALS as u32
+    );
     wallet_db::app_state_save(&crate::wallet_db::WalletDatabase::new(&db), &state).expect("save");
     let reloaded =
         wallet_db::app_state_load(&crate::wallet_db::WalletDatabase::new(&db)).expect("load");
-    assert_eq!(
-        reloaded.token_preferences[0].token.decimals,
-        crate::store::state::MAX_TOKEN_DECIMALS as u32
-    );
+    assert_eq!(reloaded.token_preferences, state.token_preferences);
 }

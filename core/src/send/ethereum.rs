@@ -219,7 +219,7 @@ fn encode_erc20_transfer_data(
     // calldata back and the code that writes it cannot drift apart.
     Ok(format!(
         "0x{}{}{}",
-        crate::fetch::chains::evm::erc20_transfer_selector_hex(),
+        crate::fetch::evm::erc20_transfer_selector_hex(),
         addr_padded,
         amount_padded
     ))

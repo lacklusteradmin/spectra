@@ -68,7 +68,7 @@ impl WalletService {
         amount: String,
         destination: String,
         explicit_nonce: Option<i64>,
-        custom_fees: Option<crate::ethereum_send::EvmCustomFeeConfiguration>,
+        custom_fees: Option<crate::send::ethereum::EvmCustomFeeConfiguration>,
     ) -> Result<Option<OwnedSendPreview>, SpectraBridgeError> {
         let state = self.app_state().await;
         let wallet = state
@@ -308,7 +308,7 @@ impl WalletService {
         holding_key: String,
         amount: String,
         destination: String,
-        overrides: Option<crate::ethereum_send::EvmSendOverridesInput>,
+        overrides: Option<crate::send::ethereum::EvmSendOverridesInput>,
     ) -> Result<OwnedSendQuote, SpectraBridgeError> {
         let preflight = self
             .send_submit_preflight(

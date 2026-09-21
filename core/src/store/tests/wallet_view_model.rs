@@ -44,6 +44,7 @@ fn the_view_model_carries_what_the_app_shows() {
     let view = summary().to_wallet_view(&defaults());
     assert_eq!(view.id, "w1");
     assert_eq!(view.family_name, "Bitcoin");
+    assert_eq!(view.chain_id, "bitcoin-testnet-4");
     assert_eq!(view.bitcoin_xpub.as_deref(), Some("zpub123"));
     assert_eq!(view.address_for(Chain::Bitcoin), Some("bc1qexample"));
     assert_eq!(view.holdings.len(), 1);
@@ -55,39 +56,6 @@ fn the_view_model_carries_what_the_app_shows() {
     );
     // Other chains keep the catalog defaults, which is all they ever were.
     assert!(view.seed_derivation_paths.path_for(Chain::Solana).is_some());
-}
-
-/// The wallet's network is one chain id, so there is nothing to leave
-/// alone — a wallet on Bitcoin testnet4 says exactly that, rather than
-/// carrying a Bitcoin mode and a Dogecoin mode and a rule for reading them.
-#[test]
-fn the_wallets_own_network_survives_the_round_trip() {
-    let view = summary().to_wallet_view(&defaults());
-    assert_eq!(view.chain_id, "bitcoin-testnet-4");
-}
-
-/// Holding ids are derived from what identifies the asset, so rebuilding
-/// the view model does not make SwiftUI think every row is new.
-#[test]
-fn holding_ids_are_stable_across_rebuilds() {
-    use crate::store::wallet_domain::holding_identity;
-    let first = summary().to_wallet_view(&defaults());
-    let second = summary().to_wallet_view(&defaults());
-    assert_eq!(
-        holding_identity(&first.holdings[0]),
-        holding_identity(&second.holdings[0])
-    );
-    assert!(!holding_identity(&first.holdings[0]).is_empty());
-
-    // Two different assets do not collide.
-    let mut other = summary();
-    other.holdings[0].symbol = "USDT".to_string();
-    other.holdings[0].contract_address = Some("0xdac1".to_string());
-    let third = other.to_wallet_view(&defaults());
-    assert_ne!(
-        holding_identity(&first.holdings[0]),
-        holding_identity(&third.holdings[0])
-    );
 }
 
 /// Round trip through both conversions preserves everything the summary

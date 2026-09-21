@@ -1,29 +1,29 @@
 //! Protocol results stay typed until the persistence/FFI output boundary.
-use crate::fetch::chains::{self, SignedSubmission};
+use crate::fetch::{self, SignedSubmission};
 
 #[derive(Debug, serde::Serialize)]
 #[serde(untagged)]
 pub(crate) enum ProtocolSendResult {
-    Bitcoin(chains::bitcoin::BitcoinSendResult),
-    Evm(chains::evm::EvmSendResult),
-    Solana(chains::solana::SolanaSendResult),
-    Xrp(chains::xrp::XrpSendResult),
-    Tron(chains::tron::TronSendResult),
-    Sui(chains::sui::SuiSendResult),
-    Aptos(chains::aptos::AptosSendResult),
-    Near(chains::near::NearSendResult),
-    Stellar(chains::stellar::StellarSendResult),
-    Cardano(chains::cardano::CardanoSendResult),
-    Polkadot(chains::polkadot::DotSendResult),
-    Bittensor(chains::bittensor::TaoSendResult),
-    Ton(chains::ton::TonSendResult),
-    Icp(chains::icp::IcpSendResult),
-    Monero(chains::monero::MoneroSendResult),
-    Blockbook(chains::blockbook::BlockbookSendResult),
-    Decred(chains::decred::DcrSendResult),
-    Kaspa(chains::kaspa::KasSendResult),
-    Dogecoin(chains::dogecoin::DogeSendResult),
-    BitcoinSV(chains::bitcoin_sv::BsvSendResult),
+    Bitcoin(fetch::bitcoin::BitcoinSendResult),
+    Evm(fetch::evm::EvmSendResult),
+    Solana(fetch::solana::SolanaSendResult),
+    Xrp(fetch::xrp::XrpSendResult),
+    Tron(fetch::tron::TronSendResult),
+    Sui(fetch::sui::SuiSendResult),
+    Aptos(fetch::aptos::AptosSendResult),
+    Near(fetch::near::NearSendResult),
+    Stellar(fetch::stellar::StellarSendResult),
+    Cardano(fetch::cardano::CardanoSendResult),
+    Polkadot(fetch::polkadot::DotSendResult),
+    Bittensor(fetch::bittensor::TaoSendResult),
+    Ton(fetch::ton::TonSendResult),
+    Icp(fetch::icp::IcpSendResult),
+    Monero(fetch::monero::MoneroSendResult),
+    Blockbook(fetch::blockbook::BlockbookSendResult),
+    Decred(fetch::decred::DcrSendResult),
+    Kaspa(fetch::kaspa::KasSendResult),
+    Dogecoin(fetch::dogecoin::DogeSendResult),
+    BitcoinSV(fetch::bitcoin_sv::BsvSendResult),
 }
 impl ProtocolSendResult {
     fn submission(&self) -> &dyn SignedSubmission {
@@ -75,7 +75,7 @@ mod tests {
     use super::*;
     #[test]
     fn typed_evm_result_preserves_reviewed_values_and_rejects_overflow() {
-        let mut result = chains::evm::EvmSendResult {
+        let mut result = fetch::evm::EvmSendResult {
             txid: "0xabc".into(),
             raw_tx_hex: "0x1234".into(),
             nonce: 12,

@@ -597,7 +597,6 @@ mod tests {
         let service = WalletService::new(vec![crate::service::ChainEndpoints {
             chain_id: "ethereum".into(),
             endpoints: vec![server.uri()],
-            api_key: None,
         }])
         .unwrap();
         let db = std::env::temp_dir().join(format!(
@@ -655,7 +654,10 @@ mod tests {
             .await;
         rusqlite::Connection::open(&path)
             .unwrap()
-            .execute("UPDATE history_records SET payload = '{}'", [])
+            .execute(
+                "UPDATE history_records SET payload = json_set(payload, '$.amount', 'broken')",
+                [],
+            )
             .unwrap();
         assert!(service
             .poll_pending_transactions("ethereum".into())
@@ -708,12 +710,10 @@ mod tests {
                 crate::service::ChainEndpoints {
                     chain_id: "ethereum".into(),
                     endpoints: vec![mainnet.uri()],
-                    api_key: None,
                 },
                 crate::service::ChainEndpoints {
                     chain_id: "ethereum-sepolia".into(),
                     endpoints: vec![sepolia.uri()],
-                    api_key: None,
                 },
             ])
             .await

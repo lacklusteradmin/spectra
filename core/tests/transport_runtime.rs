@@ -2,7 +2,7 @@
 //! proxy under unrelated parallel HTTP fixtures in the library test binary.
 use spectra_core::{
     service::WalletService,
-    state::{AppSettingUpdate, StateCommand},
+    store::state::{AppSettingUpdate, StateCommand},
     tor::{tor_status, TorStatus},
 };
 
@@ -42,7 +42,9 @@ async fn committed_settings_switch_proxy_and_reset_without_a_shell_callback() {
     assert!(matches!(tor_status(), TorStatus::Ready));
     assert!(matches!(service.reconnect_tor().await, TorStatus::Ready));
     service
-        .reset_data(vec![spectra_core::state::ResetScope::SettingsAndEndpoints])
+        .reset_data(vec![
+            spectra_core::store::state::ResetScope::SettingsAndEndpoints,
+        ])
         .await
         .unwrap();
     assert!(matches!(tor_status(), TorStatus::Stopped));

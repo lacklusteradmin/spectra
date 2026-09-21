@@ -2,8 +2,8 @@
 
 use serde::Deserialize;
 
-use super::chains::evm::{AccessListEntry, EvmSendOverrides};
 use super::ethereum::EvmSendOverridesInput;
+use super::evm::{AccessListEntry, EvmSendOverrides};
 use crate::SpectraBridgeError;
 
 fn invalid(message: impl Into<String>) -> SpectraBridgeError {

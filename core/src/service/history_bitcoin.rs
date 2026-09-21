@@ -152,7 +152,7 @@ impl WalletService {
 
 /// One wallet's Bitcoin history page, and which source answered.
 pub(crate) struct BitcoinHistoryPage {
-    pub snapshots: Vec<crate::history::CoreBitcoinHistorySnapshot>,
+    pub snapshots: Vec<crate::fetch::history::CoreBitcoinHistorySnapshot>,
     pub next_cursor: Option<String>,
     pub source_used: String,
     pub identifier: String,
@@ -212,8 +212,8 @@ impl WalletService {
                 .to_string();
             (vec![address.clone()], address, "rust")
         };
-        let client = std::sync::Arc::new(crate::fetch::chains::bitcoin::BitcoinClient::new(
-            crate::http::HttpClient::shared(),
+        let client = std::sync::Arc::new(crate::fetch::bitcoin::BitcoinClient::new(
+            crate::fetch::http::HttpClient::shared(),
             self.endpoints_for(network.str_id()).await,
         ));
         let page = crate::fetch::bitcoin_history::page(
@@ -301,7 +301,7 @@ fn bitcoin_record(
     wallet: &crate::store::state::WalletState,
     chain: Chain,
     source_used: &str,
-    snapshot: crate::history::CoreBitcoinHistorySnapshot,
+    snapshot: crate::fetch::history::CoreBitcoinHistorySnapshot,
 ) -> crate::fetch::transactions::CoreTransactionRecord {
     crate::fetch::transactions::CoreTransactionRecord {
         deployment_id: crate::tokens::history_deployment(chain, None),
@@ -344,4 +344,5 @@ fn bitcoin_record(
 }
 
 #[cfg(test)]
+#[path = "history_bitcoin_tests.rs"]
 mod tests;

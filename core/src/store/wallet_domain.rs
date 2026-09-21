@@ -195,9 +195,7 @@ impl AssetHolding {
 #[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq, uniffi::Record)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct CoreWalletDerivationOverrides {
-    #[serde(default)]
     pub passphrase: Option<String>,
-    #[serde(default)]
     pub hmac_key: Option<String>,
 }
 
@@ -321,7 +319,6 @@ pub struct WalletView {
     pub bitcoin_xpub: Option<String>,
     pub seed_derivation_preset: CoreSeedDerivationPreset,
     pub seed_derivation_paths: CoreSeedDerivationPaths,
-    #[serde(default)]
     pub derivation_overrides: CoreWalletDerivationOverrides,
     pub family_name: String,
     pub holdings: Vec<AssetHolding>,

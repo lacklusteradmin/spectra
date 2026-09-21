@@ -1,7 +1,7 @@
 //! Cross-chain staking surface.
 //!
 //! Each chain has its own protocol-native staking model (Solana stake
-//! accounts, Cardano stake-address certs, Cosmos-style nominate/bond on
+//! accounts, nominate/bond on
 //! Polkadot, Move calls on Sui/Aptos, function calls on NEAR, neuron
 //! lock-ups on ICP). Rather than try to flatten them into a single
 //! generic "stake" RPC, each chain owns a `<Chain>StakingClient` whose
@@ -17,12 +17,9 @@ pub use types::*;
 pub mod service;
 pub use service::StakingService;
 
-pub mod chains {
-    pub mod aptos;
-    pub mod cardano;
-    pub mod icp;
-    pub mod near;
-    pub mod polkadot;
-    pub mod solana;
-    pub mod sui;
-}
+pub mod aptos;
+pub mod icp;
+pub mod near;
+pub mod polkadot;
+pub mod solana;
+pub mod sui;

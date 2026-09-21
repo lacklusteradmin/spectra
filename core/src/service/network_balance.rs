@@ -47,7 +47,6 @@ async fn fetch_native_balance_summary(
 ) -> Result<NativeBalanceSummary, SpectraBridgeError> {
     let (api, endpoints) = service.fetch_endpoints(chain).await?;
     use crate::EndpointApi as Api;
-    let api_key = service.api_key_for(chain.str_id()).await;
     let mut utxo_count = 0;
     let units = match api {
         Api::Esplora => {
@@ -98,23 +97,20 @@ async fn fetch_native_balance_summary(
             .await?
             .drops
             .to_string(),
-        Api::Koios => CardanoClient::new(endpoints, api_key.unwrap_or_default())
+        Api::Koios => CardanoClient::new(endpoints)
             .fetch_balance(address)
             .await?
             .lovelace
             .to_string(),
         Api::SubstrateJsonRpc => {
-            let indexer = service
-                .endpoints_for(&chain.endpoint_str_id(EndpointSlot::Secondary))
-                .await;
             if chain.mainnet_counterpart() == Chain::Bittensor {
-                BittensorClient::new(endpoints, indexer, api_key)
+                BittensorClient::new(endpoints)
                     .fetch_balance(address)
                     .await?
                     .rao
                     .to_string()
             } else {
-                PolkadotClient::new(endpoints, indexer, api_key)
+                PolkadotClient::new(endpoints)
                     .fetch_balance(address)
                     .await?
                     .planck
@@ -131,7 +127,7 @@ async fn fetch_native_balance_summary(
             .await?
             .octas
             .to_string(),
-        Api::ToncenterV2 => TonClient::new(endpoints, api_key)
+        Api::ToncenterV2 => TonClient::new(endpoints)
             .fetch_balance(address)
             .await?
             .nanotons

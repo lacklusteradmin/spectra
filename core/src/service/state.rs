@@ -64,11 +64,21 @@ impl WalletService {
             let database = crate::wallet_db::WalletDatabase::new(&database_path);
             let source = database.clone();
             let (loaded, keypool, owned) = tokio::task::spawn_blocking(move || {
-                Ok::<_, String>((
-                    crate::wallet_db::app_state_load(&source)?,
-                    crate::wallet_db::keypool_load_all(&source)?,
-                    crate::wallet_db::address_load_all_chains(&source)?,
-                ))
+                let loaded = crate::wallet_db::app_state_load(&source)?;
+                let keypool = crate::wallet_db::keypool_load_all(&source)?;
+                let owned = crate::wallet_db::address_load_all_chains(&source)?;
+                let is_new = source.with_connection(|conn| {
+                    conn.query_row(
+                        "SELECT NOT EXISTS(SELECT 1 FROM app_state_meta)",
+                        [],
+                        |row| row.get::<_, bool>(0),
+                    )
+                    .map_err(|e| e.to_string())
+                })?;
+                if is_new {
+                    crate::wallet_db::app_state_save(&source, &loaded)?;
+                }
+                Ok::<_, String>((loaded, keypool, owned))
             })
             .await
             .map_err(|e| SpectraBridgeError::from(format!("spawn_blocking: {e}")))??;
@@ -584,9 +594,11 @@ mod utxo_discovery_is_the_registrys_chain_set {
 }
 
 #[cfg(test)]
+#[path = "state_tests.rs"]
 mod tests;
 
 #[cfg(test)]
+#[path = "state_performance_tests.rs"]
 mod performance_tests;
 
 fn wallets_for_display(

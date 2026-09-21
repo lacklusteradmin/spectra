@@ -11,10 +11,7 @@ pub(crate) enum SendParams {
     /// Carries the overrides alongside the params: they cross to the client
     /// call as a separate argument (`sign_and_broadcast_with_overrides`), not
     /// through a field on `EvmNativeSendParams`.
-    Evm(
-        EvmNativeSendParams,
-        crate::send::chains::evm::EvmSendOverrides,
-    ),
+    Evm(EvmNativeSendParams, crate::send::evm::EvmSendOverrides),
     Solana(SolanaNativeSendParams),
     Xrp(XrpSendParams),
     Tron(TronNativeSendParams),
@@ -38,10 +35,7 @@ pub(crate) enum SendParams {
 /// families `execute_send` can build a token transfer for today.
 #[derive(Debug)]
 pub(crate) enum SendTokenParams {
-    Evm(
-        TokenAmountSendParams,
-        crate::send::chains::evm::EvmSendOverrides,
-    ),
+    Evm(TokenAmountSendParams, crate::send::evm::EvmSendOverrides),
     Tron(TronTokenSendParams),
     Near(NearTokenSendParams),
     Solana(SolanaTokenSendParams),

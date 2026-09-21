@@ -1,7 +1,7 @@
 //! Per-chain diagnostics JSON builders.
 //!
 //! The JSON output shape is part of the exported diagnostics bundle contract —
-//! keep field names stable across migrations.
+//! define the current diagnostic export format.
 //!
 //! Each builder takes an already-normalized list of diagnostics records and
 //! returns a pretty-printed, sanitized JSON string. `Option<String>` return

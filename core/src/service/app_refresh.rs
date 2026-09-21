@@ -1,6 +1,6 @@
 //! Refresh intentions are platform inputs; scope, cadence and work belong here.
 use super::*;
-use crate::fetch::refresh::policy::{DeviceConditions, RefreshKind};
+use crate::fetch::refresh_policy::{DeviceConditions, RefreshKind};
 
 #[derive(Debug, Clone, serde::Deserialize, uniffi::Enum)]
 #[serde(rename_all = "camelCase")]
@@ -55,7 +55,7 @@ impl WalletService {
         }
         if matches!(intent, AppRefreshIntent::Foreground) {
             let last = self.refresh_clock.read().await.full_refresh_at;
-            if last.is_some_and(|at| crate::store::wallet_db::now_secs() as f64 - at < 120.0) {
+            if last.is_some_and(|at| crate::wallet_db::now_secs() as f64 - at < 120.0) {
                 return Ok(result);
             }
         }
@@ -97,20 +97,28 @@ impl WalletService {
             }
         }
         if heavy {
-            let state = self.app_state().await;
-            let entries = crate::fetch::refresh::engine::refresh_entries_for(&state);
-            for entry in entries {
-                if chain.is_some_and(|c| {
-                    entry.chain_id != c.str_id()
-                        && !(deep_rescan
+            use futures::{stream, StreamExt};
+            let entries = {
+                let state = self.wallet_state.read().await;
+                crate::fetch::refresh_engine::refresh_entries_for(&state)
+            };
+            let entries = entries.into_iter().filter(|entry| {
+                chain.is_none_or(|c| {
+                    entry.chain_id == c.str_id()
+                        || (deep_rescan
                             && !c.is_testnet()
                             && chain_for_id(&entry.chain_id)
                                 .is_ok_and(|network| network.mainnet_counterpart() == c))
-                }) {
-                    continue;
-                }
-                if let Err(e) = self.refresh_wallet_balances(entry.wallet_id).await {
-                    result.failures.push(e.to_string());
+                })
+            });
+            let outcomes = stream::iter(entries)
+                .map(|entry| self.refresh_wallet_balances(entry.wallet_id))
+                .buffer_unordered(8)
+                .collect::<Vec<_>>()
+                .await;
+            for outcome in outcomes {
+                if let Err(error) = outcome {
+                    result.failures.push(error.to_string());
                 }
             }
             // History remains useful on receipt-polling chains too: it supplies
@@ -182,7 +190,7 @@ impl WalletService {
                 .is_none_or(|p| p.failures.is_empty())
         {
             self.refresh_clock.write().await.full_refresh_at =
-                Some(crate::store::wallet_db::now_secs() as f64);
+                Some(crate::wallet_db::now_secs() as f64);
         }
         result.state = self.app_state().await;
         Ok(result)

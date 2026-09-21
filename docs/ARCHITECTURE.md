@@ -83,7 +83,8 @@ without a configurable TOML flag.
 Address formats, derivation paths, address slots, EVM membership and routing
 facts belong there rather than in caller-owned lists.
 
-Chain-specific implementations live under each domain's `chains/` directory.
+Chain-specific implementations live directly in each domain directory, for
+example `derivation/bitcoin.rs`, `fetch/bitcoin.rs` and `send/bitcoin.rs`.
 Keep differences that carry protocol meaning; share cryptographic primitives
 and wrappers that differ only in a chain name. Tests over the registry should
 assert complete capability coverage, rather than only test named examples.
@@ -127,17 +128,34 @@ boundaries; mock-node tests exercise the stored-wallet execution route.
 
 ## Core module boundaries
 
+Production source files normally sit at `core/src/<domain>/<topic>.rs`, with
+no further directory nesting. Chain names and topic prefixes identify siblings:
+`derivation/ton_cell.rs`, `fetch/tron_metadata_cache.rs`, `fetch/refresh_engine.rs`
+and `fetch/refresh_policy.rs`. Keep cohesive modules; flattening directories is
+not a reason to merge unrelated code or enlarge existing files.
+
+Use the domain-qualified Rust path (`crate::fetch::http`, `crate::store::state`,
+`crate::send::ethereum`). Do not add crate-root module aliases or compatibility
+re-exports for moved modules. `wallet_db` is a root module owning relational
+storage; `store` owns resident state and wallet-domain rules.
+
+External service unit-test files sit beside their implementation with a topic
+prefix, such as `send_execution_tests.rs`. Declare them as child modules with
+`#[cfg(test)]` and `#[path = "send_execution_tests.rs"]` so tests keep private
+access without widening production visibility. `store/tests/` is the deliberate
+exception to the depth rule: it groups the store's many domain regressions.
+
 - `service/network.rs` owns endpoint health and status probes. Its siblings
   `network_balance`, `network_tokens`, `network_history`, `network_hd` and
   `network_prices` own the corresponding reads and dispatch.
 - `service/history_bitcoin.rs` selects wallet/network/HD scope and persists
   results. `fetch/bitcoin_history.rs` owns provider pagination and buffered
   block-cohort aggregation; a display limit never means provider exhaustion.
-- `send/chains/bitcoin_wire.rs` contains only Bitcoin-format serialization.
+- `send/bitcoin_wire.rs` contains only Bitcoin-format serialization.
   Other UTXO protocols must establish byte compatibility before reusing it.
   Kaspa owns its own hash preimage encoding. Solana compiles a unique account
   list across all instructions before signing.
-- `store/wallet_db/` separates connection/schema, keypool, addresses, history,
+- `wallet_db/` separates connection/schema, keypool, addresses, history,
   wallets, state and teardown. `state` and `teardown` keep their cross-table
   transactions; splitting files does not split commits. `store/tests/` groups
   regressions by domain.

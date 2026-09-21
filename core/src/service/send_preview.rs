@@ -9,7 +9,7 @@ impl WalletService {
         amount: String,
         destination: String,
         explicit_nonce: Option<i64>,
-        custom_fees: Option<crate::ethereum_send::EvmCustomFeeConfiguration>,
+        custom_fees: Option<crate::send::ethereum::EvmCustomFeeConfiguration>,
     ) -> Result<Option<crate::send::preview_types::EvmSendPreview>, SpectraBridgeError> {
         let state = self.app_state().await;
         let wallet = state
@@ -43,14 +43,14 @@ impl WalletService {
                 .await?
                 .address
         };
-        let assembly = crate::ethereum_send::prepare_evm_send_assembly(
-            crate::ethereum_send::EvmSendAssemblyInput {
+        let assembly = crate::send::ethereum::prepare_evm_send_assembly(
+            crate::send::ethereum::EvmSendAssemblyInput {
                 chain_name: chain.chain_display_name().into(),
                 symbol: holding.symbol.clone(),
                 from_address: from.clone(),
                 resolved_destination: destination,
                 amount,
-                token: token.map(|t| crate::ethereum_send::EvmSupportedToken {
+                token: token.map(|t| crate::send::ethereum::EvmSupportedToken {
                     symbol: t.symbol,
                     contract_address: t.contract,
                     decimals: t.decimals.into(),
@@ -90,7 +90,7 @@ impl WalletService {
     pub(crate) async fn bitcoin_fee_rate(
         &self,
         chain: Chain,
-    ) -> Result<crate::fetch::chains::bitcoin::FeeRate, SpectraBridgeError> {
+    ) -> Result<crate::fetch::bitcoin::FeeRate, SpectraBridgeError> {
         let endpoints = self.endpoints_for(chain.str_id()).await;
         let client = BitcoinClient::new(HttpClient::shared(), endpoints);
         Ok(client.fetch_fee_rate(6).await?)
@@ -247,7 +247,7 @@ impl WalletService {
         // An ERC-20 transfer is addressed to the token contract, so the
         // destination *is* the token whose balance this send spends.
         let token_contract = data_opt
-            .filter(|data| crate::fetch::chains::evm::is_erc20_transfer(data))
+            .filter(|data| crate::fetch::evm::is_erc20_transfer(data))
             .map(|_| to.as_str());
 
         let (nonce_res, fee_res, gas_res, bal_res, token_res) = tokio::join!(
@@ -298,7 +298,7 @@ impl WalletService {
             "max_priority_fee_per_gas_gwei": priority_fee_gwei,
             "estimated_fee_eth": estimated_fee_eth,
             "spendable_balance": spendable_balance,
-            "is_token": crate::fetch::chains::evm::is_erc20_transfer(&data_hex),
+            "is_token": crate::fetch::evm::is_erc20_transfer(&data_hex),
             "native_balance_wei": balance_wei_val.to_string(),
             "fee_rate_description": format!("Max {:.2} gwei / Priority {:.2} gwei",
                 max_fee_gwei, priority_fee_gwei),
@@ -405,7 +405,7 @@ impl WalletService {
 }
 
 #[cfg(test)]
-#[path = "send/tests.rs"]
+#[path = "send_preview_tests.rs"]
 mod tests;
 
 impl WalletService {
@@ -420,13 +420,13 @@ impl WalletService {
         value_wei: String,
         data_hex: String,
         explicit_nonce: Option<i64>,
-        custom_fees: Option<crate::ethereum_send::EvmCustomFeeConfiguration>,
+        custom_fees: Option<crate::send::ethereum::EvmCustomFeeConfiguration>,
     ) -> Result<Option<crate::send::preview_types::EvmSendPreview>, SpectraBridgeError> {
         let raw = self
             .fetch_evm_send_preview_json(&chain_id, from, to, value_wei, data_hex)
             .await?;
         Ok(crate::send::preview_decode::build_evm_send_preview_record(
-            crate::ethereum_send::EvmPreviewDecodeInput {
+            crate::send::ethereum::EvmPreviewDecodeInput {
                 raw_json: raw,
                 explicit_nonce,
                 custom_fees,

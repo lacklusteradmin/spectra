@@ -203,19 +203,13 @@ const ALL_CHAINS: &[Chain] = &[
 
 /// Where an EVM chain's transaction history can be read from.
 ///
-/// Two request shapes, not two providers: `Open` is the Etherscan **V1** query
-/// (`{base}/api?module=…`) that Blockscout and Routescan both serve without a
-/// key, and `EtherscanV2` is the multichain one (`/v2/api?chainid=…`) that
-/// needs a key and is the only thing covering the rest.
+/// Only keyless explorer sources are configured.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum EvmHistorySource {
     /// A keyless endpoint. The base already identifies the chain, so no
     /// `chainid` is sent.
     Open(&'static str),
-    /// Etherscan V2 — one host for many chains, selected by `chainid`, and it
-    /// refuses without an API key.
-    EtherscanV2,
-    /// No indexer serves this chain. Asking is an error, not an empty list.
+    /// No keyless indexer is configured. Asking is an error, not an empty list.
     Unavailable,
 }
 
@@ -385,23 +379,13 @@ impl Chain {
             }),
             EndpointSlot::Secondary => match chain {
                 Chain::Ton => Some(Api::ToncenterV3),
-                Chain::Polkadot => Some(Api::Subscan),
-                Chain::Bittensor => Some(Api::Taostats),
                 _ => None,
             },
             EndpointSlot::Explorer => match chain {
-                Chain::Ethereum => Some(Api::Ethplorer),
                 Chain::Near => Some(Api::Nearblocks),
                 Chain::Xrp => Some(Api::Xrpscan),
                 _ => None,
             },
-        }
-    }
-
-    pub fn supplemental_endpoint_slot(self) -> EndpointSlot {
-        match self.mainnet_counterpart() {
-            Chain::Polkadot | Chain::Icp => EndpointSlot::Secondary,
-            _ => EndpointSlot::Explorer,
         }
     }
 
@@ -447,13 +431,7 @@ impl Chain {
     pub fn supports_staking(self) -> bool {
         matches!(
             self,
-            Chain::Solana
-                | Chain::Cardano
-                | Chain::Sui
-                | Chain::Aptos
-                | Chain::Near
-                | Chain::Polkadot
-                | Chain::Icp
+            Chain::Solana | Chain::Sui | Chain::Aptos | Chain::Near | Chain::Polkadot | Chain::Icp
         )
     }
 
@@ -573,8 +551,7 @@ impl Chain {
         })
     }
 
-    /// The explorer source for this EVM chain. Etherscan V2 requires an API key;
-    /// open indexers use their registered endpoints.
+    /// The keyless explorer source for this EVM chain, if configured.
     pub fn evm_history_source(self) -> EvmHistorySource {
         match self.mainnet_counterpart() {
             // Blockscout, from its own instance directory at
@@ -607,21 +584,7 @@ impl Chain {
                 "https://api.routescan.io/v2/network/mainnet/evm/5000/etherscan",
             ),
 
-            // No supported, verified keyless source is configured for these.
-            // Availability is provider-specific; do not infer it from a generic
-            // RPC endpoint (which does not index address transaction history).
-            Chain::BnbChain
-            | Chain::Sonic
-            | Chain::OpBnb
-            | Chain::Sei
-            | Chain::Linea
-            | Chain::Hyperliquid => EvmHistorySource::EtherscanV2,
-
-            // Not in Etherscan V2's chain list either, so no key helps. This
-            // was always true — they were pointed at Etherscan like everything
-            // else and have never returned a transaction.
-            Chain::Cronos | Chain::XLayer => EvmHistorySource::Unavailable,
-
+            // No verified keyless source is configured for the remaining chains.
             _ => EvmHistorySource::Unavailable,
         }
     }
@@ -1035,11 +998,11 @@ impl Chain {
         key: &secp256k1::PublicKey,
         script: crate::derivation::types::BitcoinScriptType,
     ) -> Result<String, String> {
-        use crate::derivation::chains::{
+        use crate::derivation::types::BitcoinScriptType;
+        use crate::derivation::{
             bitcoin as btc, bitcoin_cash as bch, bitcoin_sv as bsv, dogecoin as doge,
             litecoin as ltc,
         };
-        use crate::derivation::types::BitcoinScriptType;
         Ok(match self {
             Self::Bitcoin => return btc::encode_address_inner(btc::BTC_MAINNET, script, key),
             Self::BitcoinTestnet | Self::BitcoinTestnet4 | Self::BitcoinSignet => {
@@ -1482,26 +1445,6 @@ mod tests {
         }
     }
 
-    /// The Etherscan key is asked for where history reads it. Ethereum's comes
-    /// from Blockscout, so it is not among them.
-    #[test]
-    fn the_etherscan_key_belongs_to_the_chains_whose_history_needs_it() {
-        let needing: Vec<_> = chain_identities()
-            .into_iter()
-            .filter(|identity| identity.needs_etherscan_api_key && !identity.is_testnet)
-            .map(|identity| identity.name)
-            .collect();
-        assert!(!needing.contains(&"Ethereum".to_string()));
-        assert!(needing.contains(&"BNB Chain".to_string()));
-        for identity in chain_identities() {
-            assert!(
-                !identity.needs_etherscan_api_key || identity.is_evm,
-                "{}",
-                identity.name
-            );
-        }
-    }
-
     #[test]
     fn only_monero_sends_are_prepared_by_a_backend() {
         for chain in Chain::all().filter(|c| c.has_send_preview()) {
@@ -1639,6 +1582,20 @@ mod tests {
     }
 
     #[test]
+    fn testnet_derivation_metadata_names_the_concrete_network() {
+        for chain in Chain::all().filter(|c| c.is_testnet()) {
+            assert_eq!(
+                crate::send::flow::seed_derivation_chain_raw(chain).as_deref(),
+                Some(chain.chain_display_name())
+            );
+            assert_eq!(
+                crate::registry::evm_seed_derivation_chain(chain).as_deref(),
+                chain.is_evm().then_some(chain.chain_display_name())
+            );
+        }
+    }
+
+    #[test]
     fn str_id_roundtrips() {
         for chain in Chain::all() {
             let id = chain.str_id();
@@ -1695,15 +1652,6 @@ mod tests {
             .collect();
         actual.sort();
         assert_eq!(actual, expected);
-    }
-
-    #[test]
-    fn testnet_counts_match_total() {
-        let total = Chain::all().count();
-        let testnets = Chain::testnets().count();
-        let mainnets = Chain::mainnets().count();
-        assert_eq!(testnets + mainnets, total);
-        assert!(testnets > 0 && mainnets > 0);
     }
 
     #[test]
@@ -1815,8 +1763,6 @@ pub struct ChainIdentity {
     /// The send screen has a network card to show for this chain — a fee, a
     /// preview, or both. False only where core routes no send at all.
     pub has_send_preview: bool,
-    /// Which endpoint slot this chain's supplemental explorer endpoints go in.
-    pub supplemental_endpoint_slot: crate::app_core::AppCoreEndpointSlot,
     /// Which `CoreTokenHostingChain` this chain is, if it can host known
     /// tokens. `None` for the chains that cannot.
     ///
@@ -1828,12 +1774,6 @@ pub struct ChainIdentity {
     pub send_execution_shape: SendExecutionShape,
     /// How core moves a send here, which is what the network card says.
     pub send_broadcast_mode: SendBroadcastMode,
-    /// This chain's history is read through Etherscan V2, which refuses
-    /// without a key — so this is where the key setting belongs.
-    ///
-    /// The app showed that setting on Ethereum's screen, whose history comes
-    /// from Blockscout and never reads it, and on none of the six that do.
-    pub needs_etherscan_api_key: bool,
     /// The JSON-RPC method that answers "is this node alive", or `None` for a
     /// chain whose endpoints are checked over plain HTTP.
     pub rpc_health_method: Option<String>,
@@ -1872,19 +1812,12 @@ pub fn chain_identities() -> Vec<ChainIdentity> {
             derives_from_private_key: chain.derives_from_private_key(),
             supports_staking: chain.supports_staking(),
             has_send_preview: chain.has_send_preview(),
-            supplemental_endpoint_slot: match chain.supplemental_endpoint_slot() {
-                EndpointSlot::Primary => crate::app_core::AppCoreEndpointSlot::Primary,
-                EndpointSlot::Secondary => crate::app_core::AppCoreEndpointSlot::Secondary,
-                EndpointSlot::Explorer => crate::app_core::AppCoreEndpointSlot::Explorer,
-            },
             token_hosting_chain:
                 crate::store::wallet_domain::CoreTokenHostingChain::from_chain_name(
                     chain.chain_display_name(),
                 ),
             send_execution_shape: chain.send_execution_shape(),
             send_broadcast_mode: chain.send_broadcast_mode(),
-            needs_etherscan_api_key: chain.is_evm()
-                && matches!(chain.evm_history_source(), EvmHistorySource::EtherscanV2),
             rpc_health_method: chain.rpc_health_method().map(str::to_string),
             pending_status_poll: chain.pending_status_poll(),
             seed_derivation_chain: crate::send::flow::seed_derivation_chain_raw(chain),

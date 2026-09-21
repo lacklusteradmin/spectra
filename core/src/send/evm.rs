@@ -1,0 +1,602 @@
+//! EVM send: EIP-1559 RLP builder, secp256k1 signer, eth_sendRawTransaction
+//! broadcast (native ETH + ERC-20 transfer paths, with optional override hooks
+//! for replacement-by-fee / speed-up / cancel flows).
+
+use serde_json::json;
+
+use crate::fetch::evm::{decode_hex, EvmClient, EvmSendResult, SEL_TRANSFER};
+
+impl EvmClient {
+    /// Sign and broadcast an EIP-1559 ETH transfer.
+    pub async fn sign_and_broadcast(
+        &self,
+        from_address: &str,
+        to_address: &str,
+        value_wei: u128,
+        private_key_bytes: &[u8],
+    ) -> Result<EvmSendResult, String> {
+        self.sign_and_broadcast_with_overrides(
+            from_address,
+            to_address,
+            value_wei,
+            private_key_bytes,
+            EvmSendOverrides::default(),
+        )
+        .await
+    }
+
+    /// Sign and broadcast an EIP-1559 ETH transfer with optional overrides
+    /// for nonce, gas limit, and fee fields. Used for "speed up" and "cancel"
+    /// (replacement-by-fee) flows and power-user custom fee edits.
+    pub async fn sign_and_broadcast_with_overrides(
+        &self,
+        from_address: &str,
+        to_address: &str,
+        value_wei: u128,
+        private_key_bytes: &[u8],
+        overrides: EvmSendOverrides,
+    ) -> Result<EvmSendResult, String> {
+        let nonce = match overrides.nonce {
+            Some(n) => n,
+            None => self.fetch_nonce(from_address).await?,
+        };
+        let (max_fee, max_priority) = resolve_fees(self, &overrides).await?;
+        let native_data = overrides.calldata.as_deref().unwrap_or(&[]);
+        let gas_limit = resolve_gas(
+            self,
+            from_address,
+            to_address,
+            value_wei,
+            native_data,
+            nonce,
+            max_fee,
+            max_priority,
+            &overrides,
+        )
+        .await?;
+        let raw_tx = build_eip1559_tx(
+            self.chain_id,
+            nonce,
+            max_fee,
+            max_priority,
+            gas_limit,
+            to_address,
+            value_wei,
+            native_data,
+            &overrides.access_list,
+            private_key_bytes,
+        )?;
+
+        let hex_tx = format!("0x{}", hex::encode(&raw_tx));
+
+        if overrides.sign_only {
+            return Ok(EvmSendResult {
+                txid: String::new(),
+                nonce,
+                raw_tx_hex: hex_tx,
+                gas_limit,
+                max_fee_per_gas_wei: max_fee.to_string(),
+                max_priority_fee_per_gas_wei: max_priority.to_string(),
+            });
+        }
+
+        use sha3::Digest;
+        let local_hash = format!("0x{}", hex::encode(sha3::Keccak256::digest(&raw_tx)));
+        crate::send::payload::before_submission(
+            hex_tx.clone(),
+            "txid",
+            Some(local_hash),
+            Some(nonce),
+        )
+        .await?;
+
+        let result = self
+            .call("eth_sendRawTransaction", json!([hex_tx.clone()]))
+            .await?;
+        let txid = result
+            .as_str()
+            .ok_or("eth_sendRawTransaction: expected string")?
+            .to_string();
+        Ok(EvmSendResult {
+            txid,
+            nonce,
+            raw_tx_hex: hex_tx,
+            gas_limit,
+            max_fee_per_gas_wei: max_fee.to_string(),
+            max_priority_fee_per_gas_wei: max_priority.to_string(),
+        })
+    }
+
+    /// Sign and broadcast an ERC-20 transfer with fee/nonce overrides.
+    pub async fn sign_and_broadcast_erc20_with_overrides(
+        &self,
+        from_address: &str,
+        contract: &str,
+        to_address: &str,
+        amount_raw: u128,
+        private_key_bytes: &[u8],
+        overrides: EvmSendOverrides,
+    ) -> Result<EvmSendResult, String> {
+        let nonce = match overrides.nonce {
+            Some(n) => n,
+            None => self.fetch_nonce(from_address).await?,
+        };
+        let (max_fee, max_priority) = resolve_fees(self, &overrides).await?;
+
+        let data = encode_erc20_transfer(to_address, amount_raw)?;
+        let call_data = overrides.calldata.as_deref().unwrap_or(&data);
+        let gas_limit = resolve_gas(
+            self,
+            from_address,
+            contract,
+            0,
+            call_data,
+            nonce,
+            max_fee,
+            max_priority,
+            &overrides,
+        )
+        .await?;
+
+        let raw_tx = build_eip1559_tx(
+            self.chain_id,
+            nonce,
+            max_fee,
+            max_priority,
+            gas_limit,
+            contract,
+            0u128,
+            call_data,
+            &overrides.access_list,
+            private_key_bytes,
+        )?;
+
+        let hex_tx = format!("0x{}", hex::encode(&raw_tx));
+
+        if overrides.sign_only {
+            return Ok(EvmSendResult {
+                txid: String::new(),
+                nonce,
+                raw_tx_hex: hex_tx,
+                gas_limit,
+                max_fee_per_gas_wei: max_fee.to_string(),
+                max_priority_fee_per_gas_wei: max_priority.to_string(),
+            });
+        }
+
+        use sha3::Digest;
+        let local_hash = format!("0x{}", hex::encode(sha3::Keccak256::digest(&raw_tx)));
+        crate::send::payload::before_submission(
+            hex_tx.clone(),
+            "txid",
+            Some(local_hash),
+            Some(nonce),
+        )
+        .await?;
+
+        let result = self
+            .call("eth_sendRawTransaction", json!([hex_tx.clone()]))
+            .await?;
+        let txid = result
+            .as_str()
+            .ok_or("eth_sendRawTransaction: expected string")?
+            .to_string();
+        Ok(EvmSendResult {
+            txid,
+            nonce,
+            raw_tx_hex: hex_tx,
+            gas_limit,
+            max_fee_per_gas_wei: max_fee.to_string(),
+            max_priority_fee_per_gas_wei: max_priority.to_string(),
+        })
+    }
+
+    /// Broadcast a pre-signed raw transaction hex (0x-prefixed).
+    pub async fn broadcast_raw(&self, hex_tx: &str) -> Result<EvmSendResult, String> {
+        let result = self.call("eth_sendRawTransaction", json!([hex_tx])).await?;
+        let txid = result
+            .as_str()
+            .ok_or("eth_sendRawTransaction: expected string")?
+            .to_string();
+        Ok(EvmSendResult {
+            txid,
+            nonce: 0,
+            raw_tx_hex: hex_tx.to_string(),
+            gas_limit: 0,
+            max_fee_per_gas_wei: String::new(),
+            max_priority_fee_per_gas_wei: String::new(),
+        })
+    }
+}
+
+// ── Send overrides + fee resolution
+
+/// Optional overrides for EIP-1559 sends. Any `None` field falls back to the
+/// default behavior (pending-nonce / recommended fee / estimated gas limit).
+///
+/// * `nonce` — reuse a stuck transaction's nonce to build a replacement. The
+///   EIP-1559 replacement-by-fee rule requires the new tx to bump BOTH
+///   `max_fee_per_gas_wei` and `max_priority_fee_per_gas_wei` by at least 10%
+///   vs. the stuck one.
+/// * `max_fee_per_gas_wei` / `max_priority_fee_per_gas_wei` — explicit fee
+///   fields. If either is `None` we fetch `fetch_fee_estimate()` and fill
+///   the missing one from the suggestion.
+/// * `gas_limit` — pin the gas limit instead of calling `eth_estimateGas`.
+/// * `calldata` — arbitrary calldata bytes. For the native send path, overrides
+///   the default empty data field (e.g. attaching a memo). For the ERC-20
+///   path, overrides the auto-encoded `transfer(to, amount)` calldata, enabling
+///   arbitrary contract calls (approve, swap, multicall, etc.).
+/// * `access_list` — EIP-2930 access list. Pre-warms storage slots to reduce
+///   gas on contracts with known read patterns.
+/// * `sign_only` — build and sign the transaction but do not broadcast it.
+///   The signed raw transaction is returned in `EvmSendResult.raw_tx_hex`
+///   and `txid` is left empty.
+#[derive(Debug, Clone, Default)]
+pub struct EvmSendOverrides {
+    pub nonce: Option<u64>,
+    pub max_fee_per_gas_wei: Option<u128>,
+    pub max_priority_fee_per_gas_wei: Option<u128>,
+    pub gas_limit: Option<u64>,
+    pub calldata: Option<Vec<u8>>,
+    pub access_list: Vec<AccessListEntry>,
+    pub sign_only: bool,
+    /// Percentage buffer added to the `eth_estimateGas` result when
+    /// `gas_limit` is not pinned. Default `20` (i.e. +20%).
+    pub gas_buffer_pct: Option<u32>,
+}
+
+/// Estimate the final transaction, including calldata, fees and access list.
+async fn resolve_gas(
+    client: &EvmClient,
+    from: &str,
+    to: &str,
+    value: u128,
+    data: &[u8],
+    nonce: u64,
+    max_fee: u128,
+    priority: u128,
+    overrides: &EvmSendOverrides,
+) -> Result<u64, String> {
+    if let Some(gas) = overrides.gas_limit {
+        return if gas > 0 {
+            Ok(gas)
+        } else {
+            Err("gas limit must be positive".into())
+        };
+    }
+    let access_list: Vec<_> = overrides.access_list.iter().map(|entry| json!({
+        "address": format!("0x{}", hex::encode(entry.address)),
+        "storageKeys": entry.storage_keys.iter().map(|key| format!("0x{}", hex::encode(key))).collect::<Vec<_>>(),
+    })).collect();
+    let result = client
+        .call(
+            "eth_estimateGas",
+            json!([{
+                "from": from, "to": to, "value": format!("0x{value:x}"),
+                "data": format!("0x{}", hex::encode(data)), "nonce": format!("0x{nonce:x}"),
+                "maxFeePerGas": format!("0x{max_fee:x}"),
+                "maxPriorityFeePerGas": format!("0x{priority:x}"), "accessList": access_list,
+            }]),
+        )
+        .await?;
+    let gas = crate::fetch::evm::parse_hex_u64(
+        result.as_str().ok_or("eth_estimateGas: expected string")?,
+    )?;
+    if gas == 0 {
+        return Err("gas estimate must be positive".into());
+    }
+    let buffered = u128::from(gas) * (100 + u128::from(overrides.gas_buffer_pct.unwrap_or(20)));
+    u64::try_from(buffered.div_ceil(100)).map_err(|_| "buffered gas limit out of range".into())
+}
+
+/// Resolve (max_fee_per_gas, max_priority_fee_per_gas) from overrides plus
+/// fallback `fetch_fee_estimate()` values. If both fields are set, no RPC
+/// call is made.
+async fn resolve_fees(
+    client: &EvmClient,
+    overrides: &EvmSendOverrides,
+) -> Result<(u128, u128), String> {
+    match (
+        overrides.max_fee_per_gas_wei,
+        overrides.max_priority_fee_per_gas_wei,
+    ) {
+        (Some(mf), Some(mp)) => Ok((mf, mp)),
+        (mf_opt, mp_opt) => {
+            let fee = client.fetch_fee_estimate().await?;
+            Ok((
+                mf_opt.unwrap_or(fee.max_fee_per_gas_wei),
+                mp_opt.unwrap_or(fee.priority_fee_wei),
+            ))
+        }
+    }
+}
+
+// ── EIP-1559 transaction builder + signer
+
+// EIP-2930 access list entry: (address, storage_keys).
+// An empty access list is the common case; power users can supply one
+// to pre-warm storage slots and reduce gas cost on subsequent reads.
+#[derive(Debug, Clone, Default, alloy_rlp::RlpEncodable)]
+pub struct AccessListEntry {
+    pub address: [u8; 20],
+    pub storage_keys: Vec<[u8; 32]>,
+}
+
+/// Build a signed EIP-1559 (type 2) transaction.
+///
+/// Returns the raw RLP-encoded transaction bytes, ready to be hex-encoded and
+/// broadcast via `eth_sendRawTransaction`.
+#[allow(clippy::too_many_arguments)]
+pub fn build_eip1559_tx(
+    chain_id: u64,
+    nonce: u64,
+    max_fee_per_gas: u128,
+    max_priority_fee_per_gas: u128,
+    gas_limit: u64,
+    to: &str,
+    value_wei: u128,
+    data: &[u8],
+    access_list: &[AccessListEntry],
+    private_key_bytes: &[u8],
+) -> Result<Vec<u8>, String> {
+    let to_bytes = decode_hex(to)?;
+    if to_bytes.len() != 20 {
+        return Err(format!("invalid EVM address length: {}", to_bytes.len()));
+    }
+    let to_arr: [u8; 20] = to_bytes.try_into().unwrap();
+
+    // EIP-1559 signing payload:
+    //   0x02 || RLP([chain_id, nonce, max_priority_fee, max_fee, gas_limit,
+    //                to, value, data, access_list])
+    let mut signing_payload = vec![0x02u8];
+    encode_eip1559_fields(
+        chain_id,
+        nonce,
+        max_priority_fee_per_gas,
+        max_fee_per_gas,
+        gas_limit,
+        &to_arr,
+        value_wei,
+        data,
+        access_list,
+        None,
+        None,
+        None, // no v/r/s yet
+        &mut signing_payload,
+    );
+
+    let msg_hash = crate::derivation::evm::keccak256(&signing_payload);
+
+    use secp256k1::{Message, Secp256k1, SecretKey};
+    let secp = Secp256k1::new();
+    let secret_key =
+        SecretKey::from_slice(private_key_bytes).map_err(|e| format!("invalid key: {e}"))?;
+    let msg = Message::from_digest_slice(&msg_hash).map_err(|e| format!("msg: {e}"))?;
+    let (rec_id, sig_bytes) = secp
+        .sign_ecdsa_recoverable(&msg, &secret_key)
+        .serialize_compact();
+
+    let v: u64 = rec_id.to_i32() as u64; // 0 or 1 for EIP-1559
+    let r: [u8; 32] = sig_bytes[..32].try_into().unwrap();
+    let s: [u8; 32] = sig_bytes[32..].try_into().unwrap();
+
+    let mut raw = vec![0x02u8];
+    encode_eip1559_fields(
+        chain_id,
+        nonce,
+        max_priority_fee_per_gas,
+        max_fee_per_gas,
+        gas_limit,
+        &to_arr,
+        value_wei,
+        data,
+        access_list,
+        Some(v),
+        Some(&r),
+        Some(&s),
+        &mut raw,
+    );
+    Ok(raw)
+}
+
+/// Encode the EIP-1559 field list into `out`. When `v/r/s` are `None`,
+/// produces the signing payload (no signature fields); when `Some`, produces
+/// the full signed transaction body. Called twice to avoid duplicating the
+/// field list.
+#[allow(clippy::too_many_arguments)]
+fn encode_eip1559_fields(
+    chain_id: u64,
+    nonce: u64,
+    max_priority_fee_per_gas: u128,
+    max_fee_per_gas: u128,
+    gas_limit: u64,
+    to: &[u8; 20],
+    value_wei: u128,
+    data: &[u8],
+    access_list: &[AccessListEntry],
+    v: Option<u64>,
+    r: Option<&[u8; 32]>,
+    s: Option<&[u8; 32]>,
+    out: &mut Vec<u8>,
+) {
+    use alloy_rlp::{Encodable, Header};
+
+    // Collect the payload first so we can write the list header.
+    let mut payload = Vec::new();
+    chain_id.encode(&mut payload);
+    nonce.encode(&mut payload);
+    max_priority_fee_per_gas.encode(&mut payload);
+    max_fee_per_gas.encode(&mut payload);
+    gas_limit.encode(&mut payload);
+    // `to` is a fixed-length address, encoded as a 20-byte string.
+    Header {
+        list: false,
+        payload_length: 20,
+    }
+    .encode(&mut payload);
+    payload.extend_from_slice(to);
+    value_wei.encode(&mut payload);
+    data.encode(&mut payload);
+    // Access list as an RLP list of entries.
+    let mut al_buf = Vec::new();
+    for entry in access_list {
+        alloy_rlp::Encodable::encode(entry, &mut al_buf);
+    }
+    Header {
+        list: true,
+        payload_length: al_buf.len(),
+    }
+    .encode(&mut payload);
+    payload.extend_from_slice(&al_buf);
+
+    if let (Some(v), Some(r), Some(s)) = (v, r, s) {
+        v.encode(&mut payload);
+        // r and s are 32-byte big integers — strip leading zeros per RLP spec.
+        encode_uint256(r, &mut payload);
+        encode_uint256(s, &mut payload);
+    }
+
+    Header {
+        list: true,
+        payload_length: payload.len(),
+    }
+    .encode(out);
+    out.extend_from_slice(&payload);
+}
+
+/// Encode a 32-byte big-endian integer as a minimal RLP byte string
+/// (strip leading zero bytes, then apply string header).
+fn encode_uint256(bytes: &[u8; 32], out: &mut Vec<u8>) {
+    use alloy_rlp::Header;
+    let trimmed = bytes
+        .iter()
+        .copied()
+        .skip_while(|&b| b == 0)
+        .collect::<Vec<_>>();
+    if trimmed.is_empty() {
+        // Zero: RLP empty string 0x80
+        out.push(0x80);
+    } else if trimmed.len() == 1 && trimmed[0] < 0x80 {
+        out.push(trimmed[0]);
+    } else {
+        Header {
+            list: false,
+            payload_length: trimmed.len(),
+        }
+        .encode(out);
+        out.extend_from_slice(&trimmed);
+    }
+}
+
+// ── ERC-20 transfer ABI encoding (used by the send path)
+
+/// Encode a `transfer(address,uint256)` call.
+pub(crate) fn encode_erc20_transfer(to: &str, amount: u128) -> Result<Vec<u8>, String> {
+    let to_bytes = decode_hex(to)?;
+    if to_bytes.len() != 20 {
+        return Err(format!("invalid EVM to length: {}", to_bytes.len()));
+    }
+    let mut out = Vec::with_capacity(4 + 32 + 32);
+    out.extend_from_slice(&SEL_TRANSFER);
+    out.extend_from_slice(&[0u8; 12]);
+    out.extend_from_slice(&to_bytes);
+    let mut amount_bytes = [0u8; 32];
+    amount_bytes[16..].copy_from_slice(&amount.to_be_bytes());
+    out.extend_from_slice(&amount_bytes);
+    Ok(out)
+}
+
+#[cfg(test)]
+mod gas_tests {
+    use super::*;
+    use std::sync::Arc;
+    use wiremock::{matchers::any, Mock, MockServer, Request, ResponseTemplate};
+
+    #[tokio::test]
+    async fn signing_estimates_final_payload_and_refuses_failed_gas() {
+        let address = "0x1111111111111111111111111111111111111111";
+        for token in [false, true] {
+            for estimate in [
+                Some("0x7531"),
+                None,
+                Some("0x0"),
+                Some("0xffffffffffffffff"),
+            ] {
+                let server = MockServer::start().await;
+                Mock::given(any()).respond_with(move |req: &Request| {
+                    let body: serde_json::Value = req.body_json().unwrap();
+                    assert_eq!(body["method"], "eth_estimateGas", "must not broadcast after estimate failure");
+                    let tx = &body["params"][0];
+                    assert_eq!(tx["data"], "0xaabb");
+                    assert_eq!(tx["to"], address);
+                    assert_eq!(tx["value"], if token { "0x0" } else { "0x7" });
+                    assert_eq!(tx["nonce"], "0x3");
+                    assert_eq!(tx["maxFeePerGas"], "0xa");
+                    assert_eq!(tx["accessList"][0]["address"], address);
+                    assert_eq!(tx["accessList"][0]["storageKeys"][0], format!("0x{}", "22".repeat(32)));
+                    ResponseTemplate::new(200).set_body_json(match estimate {
+                        Some(gas) => json!({"jsonrpc":"2.0", "id":body["id"], "result":gas}),
+                        None => json!({"jsonrpc":"2.0", "id":body["id"], "error":{"code":-32000,"message":"reverted"}}),
+                    })
+                }).mount(&server).await;
+                let client = EvmClient::new(Arc::new(vec![server.uri()]), 1);
+                let overrides = EvmSendOverrides {
+                    nonce: Some(3),
+                    max_fee_per_gas_wei: Some(10),
+                    max_priority_fee_per_gas_wei: Some(1),
+                    calldata: Some(vec![0xaa, 0xbb]),
+                    access_list: vec![AccessListEntry {
+                        address: [0x11; 20],
+                        storage_keys: vec![[0x22; 32]],
+                    }],
+                    sign_only: true,
+                    ..Default::default()
+                };
+                let result = if token {
+                    client
+                        .sign_and_broadcast_erc20_with_overrides(
+                            address, address, address, 7, &[1; 32], overrides,
+                        )
+                        .await
+                } else {
+                    client
+                        .sign_and_broadcast_with_overrides(address, address, 7, &[1; 32], overrides)
+                        .await
+                };
+                if estimate == Some("0x7531") {
+                    let tx = result.unwrap();
+                    assert_eq!(tx.gas_limit, 36002);
+                    assert!(!tx.raw_tx_hex.is_empty());
+                } else {
+                    assert!(result.is_err(), "{estimate:?}");
+                }
+                assert!(!server.received_requests().await.unwrap().is_empty());
+            }
+        }
+    }
+
+    #[tokio::test]
+    async fn explicit_gas_signs_offline_and_zero_is_refused() {
+        let client = EvmClient::new(Arc::new(vec![]), 1);
+        let address = "0x1111111111111111111111111111111111111111";
+        for gas in [0, 21000] {
+            let result = client
+                .sign_and_broadcast_with_overrides(
+                    address,
+                    address,
+                    1,
+                    &[1; 32],
+                    EvmSendOverrides {
+                        nonce: Some(0),
+                        max_fee_per_gas_wei: Some(2),
+                        max_priority_fee_per_gas_wei: Some(1),
+                        gas_limit: Some(gas),
+                        sign_only: true,
+                        ..Default::default()
+                    },
+                )
+                .await;
+            assert_eq!(result.is_ok(), gas > 0);
+        }
+    }
+}

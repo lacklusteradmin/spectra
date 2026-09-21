@@ -1,0 +1,228 @@
+//! Sui chain client.
+//!
+//! Uses the Sui JSON-RPC API (sui_getBalance, sui_getCoins,
+//! sui_queryTransactionBlocks, unsafe_transferSui / sui_executeTransactionBlock).
+//! Signing uses Ed25519 via ed25519-dalek.
+//! Sui addresses are 32-byte Blake2b-256 hashes of the public key,
+//! prefixed with a flag byte (0x00 for Ed25519).
+
+use serde::{Deserialize, Serialize};
+use serde_json::{json, Value};
+
+use crate::fetch::http::HttpClient;
+
+// ── Public result types
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SuiBalance {
+    /// MIST (1 SUI = 1_000_000_000 MIST).
+    pub mist: u64,
+    pub sui_display: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SuiHistoryEntry {
+    pub digest: String,
+    pub timestamp_ms: u64,
+    pub is_incoming: bool,
+    pub amount_mist: u64,
+    pub gas_mist: u64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SuiSendResult {
+    /// Base64 tx bytes — stored for rebroadcast.
+    pub tx_bytes_b64: String,
+    /// Base64 signature — stored for rebroadcast.
+    pub sig_b64: String,
+    pub digest: String,
+}
+
+impl super::SignedSubmission for SuiSendResult {
+    fn submission_id(&self) -> &str {
+        &self.digest
+    }
+    fn signed_payload(&self) -> &str {
+        &self.tx_bytes_b64
+    }
+    fn signed_payload_format(&self) -> super::SignedPayloadFormat {
+        super::SignedPayloadFormat::Base64
+    }
+}
+
+// ── Client
+
+pub struct SuiClient {
+    endpoints: std::sync::Arc<Vec<String>>,
+    client: std::sync::Arc<HttpClient>,
+}
+
+impl SuiClient {
+    pub fn new(endpoints: std::sync::Arc<Vec<String>>) -> Self {
+        Self {
+            endpoints,
+            client: HttpClient::shared(),
+        }
+    }
+
+    pub(crate) async fn call(&self, method: &str, params: Value) -> Result<Value, String> {
+        crate::fetch::json_rpc::call(
+            crate::EndpointApi::SuiJsonRpc,
+            &self.client,
+            &self.endpoints,
+            method,
+            params,
+        )
+        .await
+    }
+}
+
+// Sui fetch paths: native balance, per-coin balance, history.
+
+impl SuiClient {
+    pub async fn fetch_balance(&self, address: &str) -> Result<SuiBalance, String> {
+        let result = self
+            .call("suix_getBalance", json!([address, "0x2::sui::SUI"]))
+            .await?;
+        let mist: u64 = result
+            .get("totalBalance")
+            .and_then(|v| v.as_str())
+            .and_then(|s| s.parse().ok())
+            .ok_or("suix_getBalance: missing totalBalance")?;
+        Ok(SuiBalance {
+            mist,
+            sui_display: format_sui(mist),
+        })
+    }
+
+    pub async fn fetch_history(&self, address: &str) -> Result<Vec<SuiHistoryEntry>, String> {
+        let result = self
+            .call(
+                "suix_queryTransactionBlocks",
+                json!([
+                    {"ToAddress": address},
+                    null,
+                    20,
+                    true
+                ]),
+            )
+            .await?;
+
+        let data = result
+            .get("data")
+            .and_then(|v| v.as_array())
+            .cloned()
+            .unwrap_or_default();
+
+        Ok(data
+            .into_iter()
+            .map(|item| {
+                let digest = item
+                    .get("digest")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("")
+                    .to_string();
+                let timestamp_ms = item
+                    .get("timestampMs")
+                    .and_then(|v| v.as_str())
+                    .and_then(|s| s.parse().ok())
+                    .unwrap_or(0);
+                SuiHistoryEntry {
+                    digest,
+                    timestamp_ms,
+                    is_incoming: true,
+                    amount_mist: 0,
+                    gas_mist: 0,
+                }
+            })
+            .collect())
+    }
+
+    /// A coin type's own decimals, as the node reports them.
+    ///
+    /// `None` when the type has no metadata — a caller then falls back to what
+    /// it was told, which is the only case where a catalog number is used.
+    pub async fn fetch_coin_decimals(&self, coin_type: &str) -> Option<u8> {
+        self.call("suix_getCoinMetadata", json!([coin_type]))
+            .await
+            .ok()?
+            .get("decimals")?
+            .as_u64()
+            .map(|d| d as u8)
+    }
+
+    /// Every coin type the address holds, as the node reports it.
+    ///
+    /// `suix_getAllBalances` returns coin types and totals but no decimals, so
+    /// each type's metadata is read concurrently; a type whose metadata is
+    /// missing is reported unnamed rather than dropped.
+    pub async fn fetch_all_coin_balances(
+        &self,
+        address: &str,
+    ) -> Result<Vec<super::HeldToken>, String> {
+        let result = self.call("suix_getAllBalances", json!([address])).await?;
+        let mut held: Vec<(String, u128)> = Vec::new();
+        for entry in result.as_array().map(|v| v.as_slice()).unwrap_or_default() {
+            let Some(coin_type) = entry.get("coinType").and_then(|v| v.as_str()) else {
+                continue;
+            };
+            if coin_type.ends_with("::sui::SUI") {
+                continue;
+            }
+            let raw = entry
+                .get("totalBalance")
+                .and_then(|v| v.as_str())
+                .and_then(|s| s.parse::<u128>().ok())
+                .unwrap_or(0);
+            if raw == 0 {
+                continue;
+            }
+            held.push((coin_type.to_string(), raw));
+        }
+
+        let metadata = futures::future::join_all(
+            held.iter()
+                .map(|(coin_type, _)| self.fetch_coin_decimals(coin_type)),
+        )
+        .await;
+        Ok(held
+            .into_iter()
+            .zip(metadata)
+            .map(|((contract, balance_raw), decimals)| super::HeldToken {
+                contract,
+                balance_raw,
+                decimals,
+                symbol: None,
+            })
+            .collect())
+    }
+
+    /// Fetch the balance for a specific coin type (e.g. `0x5d4b...::coin::COIN`).
+    /// Returns the raw balance in the coin's smallest unit.
+    pub async fn fetch_coin_balance(&self, address: &str, coin_type: &str) -> Result<u64, String> {
+        let result = self
+            .call("suix_getBalance", json!([address, coin_type]))
+            .await?;
+        result
+            .get("totalBalance")
+            .and_then(|v| v.as_str())
+            .and_then(|s| s.parse().ok())
+            .ok_or_else(|| format!("suix_getBalance: missing totalBalance for {coin_type}"))
+    }
+}
+
+fn format_sui(mist: u64) -> String {
+    let whole = mist / 1_000_000_000;
+    let frac = mist % 1_000_000_000;
+    if frac == 0 {
+        return whole.to_string();
+    }
+    let frac_str = format!("{:09}", frac);
+    let trimmed = frac_str.trim_end_matches('0');
+    let capped = if trimmed.len() > 6 {
+        &trimmed[..6]
+    } else {
+        trimmed
+    };
+    format!("{}.{}", whole, capped)
+}

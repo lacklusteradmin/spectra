@@ -146,29 +146,22 @@ class HistoryTests(unittest.TestCase):
                 server.server_close()
                 worker.join()
 
-    def test_corrupt_records(self):
-        """Refuse corrupt history without deleting or overwriting its bytes."""
+    def test_invalid_history_is_refused_on_write(self):
+        """Identity/status corruption is rejected before it can poison any page."""
         with tempfile.TemporaryDirectory(prefix="spectra-history-check-") as directory:
-            def run(*args):
-                return subprocess.run(
-                    [binary, "--data-dir", directory, "--json", *args],
-                    capture_output=True, text=True, check=False,
-                    timeout=60,
-                )
-
-            initialized = run("txs", "--replaceable")
-            assert initialized.returncode == 0, initialized.stderr
-            with sqlite3.connect(pathlib.Path(directory) / "spectra.sqlite") as db:
-                raw = '{"id":42}'
-                db.execute(
-                    "INSERT INTO history_records(id,chain_name,created_at,payload) VALUES(?,?,?,?)",
-                    ("fault", "Bitcoin", 0, raw),
-                )
-            for args in [("txs", "--replaceable"), ("txs", "--page"), ("txs", "--summary"), ("txs", "--poll-chain", "Ethereum")]:
-                result = run(*args)
-                assert result.returncode != 0, result.stdout
-            with sqlite3.connect(pathlib.Path(directory) / "spectra.sqlite") as db:
-                assert db.execute("SELECT payload FROM history_records WHERE id='fault'").fetchone() == (raw,)
+            result = subprocess.run([binary, '--data-dir', directory, '--json', 'txs'],
+                                    capture_output=True, text=True, timeout=60)
+            self.assertEqual(result.returncode, 0, result.stderr)
+            with sqlite3.connect(pathlib.Path(directory) / 'spectra.sqlite') as db:
+                for raw in ['{"id":42}', '{}', '{"id":"fault","kind":"receive","status":"unknown"}']:
+                    with self.assertRaises(sqlite3.IntegrityError):
+                        db.execute('INSERT INTO history_records(id,chain_name,created_at,payload) VALUES(?,?,?,?)',
+                                   ('fault', 'Bitcoin', 0, raw))
+                self.assertEqual(db.execute('SELECT COUNT(*) FROM history_records').fetchone()[0], 0)
+            for mode in ('--page', '--summary', '--replaceable'):
+                result = subprocess.run([binary, '--data-dir', directory, '--json', 'txs', mode],
+                                        capture_output=True, text=True, timeout=60)
+                self.assertEqual(result.returncode, 0, result.stderr)
 
     def test_source_labels(self):
         """Expose the correct source label for stored provider identities."""

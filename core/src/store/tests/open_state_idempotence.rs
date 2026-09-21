@@ -1,5 +1,5 @@
 use crate::service::WalletService;
-use crate::state::StateCommand;
+use crate::store::state::StateCommand;
 
 fn tmp_db() -> String {
     let mut path = std::env::temp_dir();

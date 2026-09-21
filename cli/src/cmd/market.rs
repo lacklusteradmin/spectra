@@ -3,7 +3,7 @@
 
 use clap::Args;
 use colored::Colorize as _;
-use spectra_core::price::PriceRequestCoin;
+use spectra_core::fetch::price::PriceRequestCoin;
 use spectra_core::registry::Chain;
 use spectra_core::store::state::{FiatCurrency, StateCommand};
 use std::collections::BTreeSet;
@@ -106,14 +106,14 @@ pub fn price(ctx: &Ctx, out: Out, args: PriceArgs) -> CliResult<()> {
 pub fn portfolio(ctx: &Ctx, out: Out, args: PortfolioArgs) -> CliResult<()> {
     if !args.pin_token.is_empty() {
         ctx.rt.block_on(ctx.service()?.apply_state_command(
-            spectra_core::state::StateCommand::SetPinnedDashboardAssets {
+            spectra_core::store::state::StateCommand::SetPinnedDashboardAssets {
                 token_ids: args.pin_token,
             },
         ))?;
     }
     for token_id in args.unpin_token {
         ctx.rt.block_on(ctx.service()?.apply_state_command(
-            spectra_core::state::StateCommand::SetDashboardAssetPinned {
+            spectra_core::store::state::StateCommand::SetDashboardAssetPinned {
                 token_id,
                 is_pinned: false,
             },

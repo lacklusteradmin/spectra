@@ -3,7 +3,7 @@ use std::sync::Arc;
 
 use serde_json::{json, Value};
 
-use crate::http::{with_fallback, HttpClient, RetryProfile};
+use crate::fetch::http::{with_fallback, HttpClient, RetryProfile};
 use crate::EndpointApi;
 
 pub(crate) async fn call(

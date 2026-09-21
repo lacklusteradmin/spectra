@@ -197,17 +197,7 @@ lacks "not the address the English phrase for the same entropy gives" \
     "bc1qcr8te4kr609gcawutmrza0j4xv80jy8z306fyu" \
     spectra --json wallet show Chinese
 
-# A stored shape that has since changed costs the row that used it, not the
-# install. `CoreWalletDerivationOverrides` shrank to two fields and gained
-# `deny_unknown_fields`, so a row an older build wrote carries a
-# `mnemonicWordlist` this one refuses — and refusing it used to fail
-# `wallet_load_all`, then `app_state_load`, then `open_state`, which every
-# command waits on. There are no migrations here by Rule 0, so each such
-# change would otherwise brick every existing install with no way out from
-# inside the app: no listing, no import, not even a reset.
-#
-# Reaching past the CLI into the table is the point — an older build's bytes
-# are precisely what this build cannot write for itself.
+# Incompatible stored wallet records must refuse loading without changing the bytes.
 if command -v sqlite3 >/dev/null 2>&1; then
     stale_row() {
         sqlite3 "$DATA_DIR/spectra.sqlite" "UPDATE wallets SET payload = REPLACE(payload,
@@ -221,17 +211,9 @@ if command -v sqlite3 >/dev/null 2>&1; then
              WHERE name = 'Chinese';"
     }
     stale_row
-    contains "a wallet row this build cannot decode still lists the others" \
-        "Acceptance BTC" spectra wallet list
-    lacks "and only that row is missing" "Chinese" spectra wallet list
-    # The whole point: the install stays usable, so a new wallet can still be
-    # imported alongside the row that cannot be read.
-    check "importing still works with an undecodable row stored" $OK \
-        with_seed "legal winner thank year wave sausage worth useful legal winner thank yellow" \
-        spectra wallet import --chain Ethereum --name "After Stale Row"
-    # And the refused bytes were never destroyed to achieve any of that.
+    contains_exit 1 "an incompatible wallet refuses loading" "wallet_load_all decode" spectra wallet list
     fresh_row
-    contains "the refused row is intact and returns when readable again" \
+    contains "failed loading leaves the stored wallet intact" \
         "Chinese" spectra wallet list
 else
     printf '  \033[33m-\033[0m %s\n' "skipped (no sqlite3): undecodable wallet row"
@@ -242,6 +224,36 @@ contains "renamed wallet survives reopening" '"name":"Renamed BTC"' spectra --js
 check "refuses an empty name"               $REJECTED \
     spectra wallet rename "Renamed BTC" "   "
 check "reports an unknown wallet"           1 spectra wallet show "no such wallet"
+
+# Each malformed metadata case uses a copy; refusal must preserve it exactly.
+check "stored metadata strictly requires the current format" 0 python3 - "$BIN" "$DATA_DIR" <<'PYSTORED'
+import json, pathlib, shutil, sqlite3, subprocess, sys, tempfile
+binary, source = sys.argv[1:]
+for case in ["version", "missing_version", "unknown_key", "missing_setting", "unknown_setting", "fee", "preferences", "alerts", "rates", "quotes"]:
+    with tempfile.TemporaryDirectory() as root:
+        path = pathlib.Path(root) / "spectra.sqlite"
+        with sqlite3.connect(pathlib.Path(source) / "spectra.sqlite") as original, sqlite3.connect(path) as db:
+            original.backup(db)
+            if case == "missing_version":
+                db.execute("DELETE FROM app_state_meta WHERE key = 'schema_version'")
+            else:
+                key, value = {"version": ("schema_version", "999"), "unknown_key": ("unknown", "null"),
+                    "preferences": ("token_preferences", "{}"), "alerts": ("price_alerts", "{}"),
+                    "rates": ("fiat_rates_from_usd", "null"), "quotes": ("quotes", "null")}.get(case, ("settings", None))
+                if key == "settings":
+                    settings = json.loads(db.execute("SELECT value FROM app_state_meta WHERE key='settings'").fetchone()[0])
+                    if case == "missing_setting": del settings["fiatCurrency"]
+                    elif case == "unknown_setting": settings["obsolete"] = True
+                    else: settings["feePriorityByChain"] = {"Bitcoin": "lightspeed"}
+                    value = json.dumps(settings)
+                db.execute("INSERT OR REPLACE INTO app_state_meta VALUES (?, ?)", (key, value))
+            db.commit()
+            before = list(db.iterdump())
+        result = subprocess.run([binary, "--data-dir", root, "wallet", "list"], capture_output=True, text=True)
+        assert result.returncode == 1, (case, result.stdout, result.stderr)
+        with sqlite3.connect(path) as db:
+            assert list(db.iterdump()) == before, case
+PYSTORED
 
 section "stored signing identity"
 contains "core resolves stored Bitcoin identity" 'bc1qgkju4yvvtuz0s8vqn837q396jezu2h8ex7gk98' \
@@ -362,7 +374,8 @@ assert "https://blockchain.info/multiaddr" not in btc
 assert configured["ton"] == ["https://toncenter.com/api/v2"]
 assert configured["ton:secondary"] == ["https://toncenter.com/api/v3"]
 assert configured["tron"] == ["https://api.trongrid.io"]
-assert configured["bittensor:secondary"] == ["https://api.taostats.io"]
+assert "bittensor:secondary" not in configured
+assert not any(r["api"] in ("taostats", "subscan", "ethplorer") for r in records)
 # Existing clients have no matching catalog API for these chains.
 assert configured["litecoin"] == []
 assert configured["bitcoin-cash"] == []
@@ -408,17 +421,24 @@ lacks "catalog identity carries no grouping title" '"groupTitle"' \
 check "unknown endpoint network is refused" $USAGE \
     spectra --json endpoints --catalog --chain unknown-network
 
+section "keyless provider policy"
+for chain in Polkadot Bittensor; do
+    check "$chain offline wallet creation" $OK spectra wallet new --chain "$chain" --name "Keyless $chain" --no-password
+    contains_exit 1 "$chain balance has no source" "no compatible" spectra balance "Keyless $chain"
+    contains_exit 1 "$chain history has no source" "no compatible" spectra history "Keyless $chain"
+    check "$chain fixture wallet cleanup" $OK spectra wallet delete "Keyless $chain" --yes
+done
+contains_exit 3 "Cardano staking refuses without network access" "Staking queries are unavailable for Cardano" spectra staking validators --chain Cardano
+contains "Cardano has no staking query implementation" '"staking":false' spectra --json chains --filter Cardano
+
 section "evm history source"
-# Fourteen EVM mainnets read history from a keyless explorer; seven still need
-# an Etherscan key because V2 has no keyless tier and V1 is shut down across
-# the whole family; two are served by nobody. Offline assertions only — the
-# table itself, not the fetch.
-contains "a keyless chain names no api key"   '"needsApiKey":false' \
+# No API-key provider is configured; missing history is explicit.
+for chain in "BNB Chain" Sonic opBNB Sei Linea Hyperliquid Cronos "X Layer"; do
+    contains "$chain has no history source" '"historySource":"none"' \
+        spectra --json chains --filter "$chain"
+done
+contains "Ethereum retains its keyless history source" 'https://eth.blockscout.com' \
     spectra --json chains --filter Ethereum
-contains "and a key-only chain says so"       '"needsApiKey":true' \
-    spectra --json chains --filter "BNB Chain"
-contains "a chain nobody serves says that"    '"historySource":"none"' \
-    spectra --json chains --filter Cronos
 
 section "utxo address discovery"
 # The derive-and-probe walk the app runs on every UTXO refresh. It lived in
@@ -1041,13 +1061,15 @@ check "the app names no chain by spelling and fixes no amount precision" $OK \
     "$(cd "$(dirname "$0")" && pwd)/swift-shell-literals.sh"
 
 section "settings"
+check "backend key setting is removed" $REJECTED spectra settings set monero-backend-api-key KEY
+check "Etherscan key setting is removed" $REJECTED spectra settings set etherscan-api-key KEY
 check "lists the settings core owns"        $OK spectra settings list
 check "automatic refresh has no manual interval setting" $REJECTED \
     spectra settings set refresh-frequency-minutes 30
 check "sets one"                            $OK \
-    spectra settings set etherscan-api-key ACCEPTANCE-KEY
-contains "and a second process reads it back" '"value":"ACCEPTANCE-KEY"' \
-    spectra --json settings get etherscan-api-key
+    spectra settings set monero-backend-url https://wallet.example
+contains "and a second process reads it back" '"value":"https://wallet.example"' \
+    spectra --json settings get monero-backend-url
 # Fee priority is keyed by chain rather than global: two chains had a settings
 # field each and the other seventy-six shared a dictionary iOS persisted
 # itself, so the CLI could set exactly two of the seventy-eight.
@@ -1100,8 +1122,8 @@ check "bounds a number instead of storing it" $OK \
     spectra settings set bitcoin-stop-gap 9999
 contains "clamped to the top of the range"  '"value":"200"' \
     spectra --json settings get bitcoin-stop-gap
-contains "trims a pasted value"             '"value":"KEY"' \
-    spectra --json settings set etherscan-api-key "  KEY  "
+contains "trims a pasted value"             '"value":"https://wallet.example"' \
+    spectra --json settings set monero-backend-url "  https://wallet.example  "
 check "refuses a setting that does not exist" $REJECTED spectra settings set nope 1
 check "refuses a value of the wrong kind"   $REJECTED \
     spectra settings set strict-rpc-only maybe
@@ -1205,7 +1227,7 @@ contains "with no failures"                '"failed":0' \
     spectra --json diagnostics self-test --chain "XRP Ledger"
 
 section "staking"
-contains_exit 3 "and says which chain, not which endpoint" "Bitcoin does not have protocol-native staking" \
+contains_exit 3 "and says which chain, not which endpoint" "Staking queries are unavailable for Bitcoin" \
     spectra staking validators --chain Bitcoin
 check "refuses staking on an unknown chain"            $USAGE \
     spectra staking validators --chain Nope

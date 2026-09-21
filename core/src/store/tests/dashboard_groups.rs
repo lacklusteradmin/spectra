@@ -1,5 +1,5 @@
 use crate::service::WalletService;
-use crate::state::{StateCommand, WalletState};
+use crate::store::state::{StateCommand, WalletState};
 use crate::store::wallet_domain::AssetHolding;
 
 fn holding(symbol: &str, chain: &str, amount: f64, price: f64) -> AssetHolding {

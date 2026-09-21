@@ -6,13 +6,13 @@
 //! candidate matrix and returns them to Swift. Swift then calls the existing
 //! `fetch_native_balance_summary` for each candidate and surfaces hits.
 
-use crate::derivation::chains::{
+use crate::derivation::types::BitcoinScriptType;
+use crate::derivation::{
     bitcoin::derive_bitcoin, bitcoin_cash::derive_bitcoin_cash, bitcoin_gold::derive_bitcoin_gold,
     bitcoin_sv::derive_bitcoin_sv, dash::derive_dash, dogecoin::derive_dogecoin, evm::derive_evm,
     litecoin::derive_litecoin, polkadot::derive_polkadot, solana::derive_solana,
     stellar::derive_stellar, tron::derive_tron, xrp::derive_xrp, zcash::derive_zcash,
 };
-use crate::derivation::types::BitcoinScriptType;
 use crate::SpectraBridgeError;
 
 // ── Public types ─────────────────────────────────────────────────────────────

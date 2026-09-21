@@ -28,9 +28,9 @@ use secp256k1::{All, Secp256k1};
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 
-use crate::fetch::chains::bitcoin::{BitcoinClient, EsploraUtxo};
+use crate::fetch::bitcoin::{BitcoinClient, EsploraUtxo};
 
-use super::chains::bitcoin::{
+use super::bitcoin::{
     encode_p2pkh, encode_p2sh_p2wpkh, encode_p2wpkh, parse_bip32_path, BitcoinNetworkParams,
     ExtendedPrivateKey, ExtendedPublicKey, BTC_MAINNET, BTC_TESTNET, XPUB_VERSION_MAINNET,
     XPUB_VERSION_TESTNET,
@@ -196,7 +196,7 @@ fn address_from_pubkey(
         HdScriptType::P2shP2wpkh => Ok(encode_p2sh_p2wpkh(&params, &compressed)),
         HdScriptType::P2wpkh => encode_p2wpkh(&params, &compressed),
         HdScriptType::P2tr => {
-            super::chains::bitcoin::encode_p2tr(&params, &Secp256k1::new(), &child.public_key)
+            super::bitcoin::encode_p2tr(&params, &Secp256k1::new(), &child.public_key)
         }
     }
 }

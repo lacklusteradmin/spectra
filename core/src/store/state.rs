@@ -10,7 +10,7 @@ pub struct WalletAddress {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, uniffi::Record)]
-#[serde(rename_all = "camelCase")]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct WalletState {
     pub id: String,
     pub name: String,
@@ -19,7 +19,6 @@ pub struct WalletState {
     pub include_in_portfolio_total: bool,
     pub chain_id: String,
     pub xpub: Option<String>,
-    #[serde(default)]
     pub derivation_preset: crate::store::wallet_domain::CoreSeedDerivationPreset,
     /// The single path this wallet derives from. A wallet belongs to one chain,
     /// so it needs one path — not the whole per-chain table.
@@ -208,7 +207,7 @@ pub struct CoreTokenPreferenceKey {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, uniffi::Record)]
-#[serde(rename_all = "camelCase")]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
 /// Settings that are part of the domain — every front end must agree on them,
 /// and losing one on restart would be a bug.
 ///
@@ -225,11 +224,9 @@ pub struct CoreTokenPreferenceKey {
 /// to read or set any of them.
 pub struct AppSettings {
     /// The currency amounts are displayed in.
-    #[serde(default)]
     pub fiat_currency: FiatCurrency,
     /// Token IDs pinned in display order. An empty list means no pins.
     /// Defaults are applied only when settings or this field are initialized.
-    #[serde(default = "default_pinned_dashboard_assets")]
     pub pinned_dashboard_token_ids: Vec<String>,
     /// Which network the user selected for each chain family that offers a
     /// choice, as `mainnet str_id -> selected str_id`.
@@ -238,7 +235,6 @@ pub struct AppSettings {
     /// rather than one per family: the three that had a choice were three
     /// settings, three enums and three hand-written pricing cases, and adding
     /// a fourth meant touching all of them.
-    #[serde(default)]
     pub selected_chain_by_family: std::collections::HashMap<String, String>,
 
     // ── Providers ─────────────────────────────────────────────────────────
@@ -253,19 +249,11 @@ pub struct AppSettings {
     /// a single String, and the Swift accessor that read it was
     /// `chainName == "Ethereum" ? … : nil` — so twenty-two of the twenty-three
     /// EVM mainnets could not be pointed at a private node at all.
-    #[serde(default)]
     pub rpc_endpoint_by_chain: std::collections::HashMap<String, String>,
-    #[serde(default)]
-    pub etherscan_api_key: String,
-    #[serde(default)]
     pub monero_backend_base_url: String,
-    #[serde(default)]
-    pub monero_backend_api_key: String,
     /// Custom Esplora bases, comma/semicolon/newline separated, or empty.
-    #[serde(default)]
     pub bitcoin_esplora_endpoints: String,
     /// How far past the last used address HD discovery keeps looking.
-    #[serde(default = "default_bitcoin_stop_gap")]
     pub bitcoin_stop_gap: u32,
 
     // ── Fees ──────────────────────────────────────────────────────────────
@@ -277,42 +265,30 @@ pub struct AppSettings {
     /// their own settings field and their own Swift enum, while the other
     /// seventy-six shared a dictionary iOS persisted itself — three stores for
     /// one preference, and the front ends disagreed about which was canonical.
-    #[serde(default, deserialize_with = "fee_priorities_read_leniently")]
     pub fee_priority_by_chain: std::collections::HashMap<String, FeePriority>,
 
     // ── Network and refresh policy ────────────────────────────────────────
     /// Refuse endpoints the user has not vetted.
-    #[serde(default)]
     pub use_strict_rpc_only: bool,
-    #[serde(default)]
     pub background_sync_profile: BackgroundSyncProfile,
 
     // Tor routing preference. The platform manages the client lifecycle
     // and provides its writable directory.
-    #[serde(default)]
     pub tor_enabled: bool,
     /// Use a SOCKS5 proxy the user runs (Orbot) instead of the embedded client.
-    #[serde(default)]
     pub tor_use_custom_proxy: bool,
     /// Where that proxy is. Validated on write, so a value that cannot be a
     /// SOCKS5 endpoint is never stored and cannot be handed to the HTTP layer.
-    #[serde(default = "default_tor_custom_proxy_address")]
     pub tor_custom_proxy_address: String,
     /// Refuse network requests while Tor is wanted but not ready, rather than
     /// falling back to a direct connection.
-    #[serde(default)]
     pub tor_kill_switch: bool,
 
     // ── Alerting ──────────────────────────────────────────────────────────
-    #[serde(default = "default_true")]
     pub use_price_alerts: bool,
-    #[serde(default = "default_true")]
     pub use_transaction_status_notifications: bool,
-    #[serde(default = "default_true")]
     pub use_large_movement_notifications: bool,
-    #[serde(default = "default_large_movement_percent")]
     pub large_movement_alert_percent_threshold: f64,
-    #[serde(default = "default_large_movement_usd")]
     pub large_movement_alert_usd_threshold: f64,
 }
 
@@ -323,27 +299,6 @@ pub const BITCOIN_STOP_GAP_RANGE: std::ops::RangeInclusive<u32> = 1..=200;
 pub const LARGE_MOVEMENT_PERCENT_RANGE: std::ops::RangeInclusive<f64> = 1.0..=90.0;
 pub const LARGE_MOVEMENT_USD_RANGE: std::ops::RangeInclusive<f64> = 1.0..=100_000.0;
 
-// One notion of "default" per field: `AppSettings::default()` calls these, and
-// serde reads them for a field a stored row does not carry. Splitting the two
-// is how a row written before `use_price_alerts` existed would have loaded with
-// alerts silently off, rather than on as a fresh install has them.
-/// Stored priorities, read through [`parse_fee_priority`] so a file written by
-/// hand — or by a build that spelled a fourth value — opens rather than
-/// refusing to decode.
-fn fee_priorities_read_leniently<'de, D>(
-    deserializer: D,
-) -> Result<std::collections::HashMap<String, FeePriority>, D::Error>
-where
-    D: serde::Deserializer<'de>,
-{
-    use serde::Deserialize as _;
-    Ok(
-        std::collections::HashMap::<String, String>::deserialize(deserializer)?
-            .into_iter()
-            .map(|(chain, value)| (chain, parse_fee_priority(value)))
-            .collect(),
-    )
-}
 /// A part of the app's data a reset can clear.
 ///
 /// Strings before: `reset_data` checked them against a list and the platform
@@ -603,9 +558,7 @@ impl Default for AppSettings {
             pinned_dashboard_token_ids: default_pinned_dashboard_assets(),
             selected_chain_by_family: std::collections::HashMap::new(),
             rpc_endpoint_by_chain: std::collections::HashMap::new(),
-            etherscan_api_key: String::new(),
             monero_backend_base_url: String::new(),
-            monero_backend_api_key: String::new(),
             bitcoin_esplora_endpoints: String::new(),
             bitcoin_stop_gap: default_bitcoin_stop_gap(),
             fee_priority_by_chain: std::collections::HashMap::new(),
@@ -625,12 +578,10 @@ impl Default for AppSettings {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, uniffi::Record)]
-#[serde(rename_all = "camelCase")]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct CoreAppState {
     pub movement_baseline: Option<crate::service::PortfolioMovementBaseline>,
-    #[serde(default)]
     pub quotes: crate::service::QuoteRefreshState,
-    #[serde(default)]
     pub diagnostics: crate::service::DiagnosticState,
     pub schema_version: u32,
     pub wallets: Vec<WalletState>,
@@ -639,11 +590,9 @@ pub struct CoreAppState {
     /// Saved recipients, most recently added first.
     pub address_book: Vec<AddressBookEntry>,
     /// Which tokens the user tracks, and how many decimals each displays.
-    #[serde(default)]
     pub token_preferences: Vec<crate::store::wallet_domain::CoreTokenPreferenceEntry>,
     /// Price alerts. Domain state by rule 4 — losing one on restart means an
     /// alert the user set never fires.
-    #[serde(default)]
     pub price_alerts: Vec<crate::store::PriceAlertEvaluationAlert>,
     /// USD → display-currency cross rates, as `code -> rate`.
     ///
@@ -652,16 +601,17 @@ pub struct CoreAppState {
     /// them on restart means every non-USD balance renders as USD until a
     /// network call lands. One front end kept them in its own SQLite blob,
     /// seeded from an older `UserDefaults` key that still won a race at launch.
-    #[serde(default)]
     pub fiat_rates_from_usd: std::collections::HashMap<String, f64>,
 }
+
+pub(crate) const APP_STATE_SCHEMA_VERSION: u32 = 2;
 
 impl Default for CoreAppState {
     fn default() -> Self {
         Self {
             movement_baseline: None,
             quotes: Default::default(),
-            schema_version: 2,
+            schema_version: APP_STATE_SCHEMA_VERSION,
             diagnostics: Default::default(),
             wallets: Vec::new(),
             selected_wallet_id: None,
@@ -689,13 +639,7 @@ pub enum AppSettingUpdate {
         chain: String,
         value: String,
     },
-    EtherscanApiKey {
-        value: String,
-    },
     MoneroBackendBaseUrl {
-        value: String,
-    },
-    MoneroBackendApiKey {
         value: String,
     },
     BitcoinEsploraEndpoints {
@@ -1113,16 +1057,12 @@ fn apply_app_setting(settings: &mut AppSettings, update: AppSettingUpdate) -> bo
                     .insert(chain.chain_display_name().to_string(), value);
             }
         }
-        AppSettingUpdate::EtherscanApiKey { value } => settings.etherscan_api_key = trimmed(value),
         AppSettingUpdate::MoneroBackendBaseUrl { value } => {
             let value = trimmed(value);
             if !valid_endpoint(crate::tokens::EndpointField::MoneroBackend, &value) {
                 return false;
             }
             settings.monero_backend_base_url = value
-        }
-        AppSettingUpdate::MoneroBackendApiKey { value } => {
-            settings.monero_backend_api_key = trimmed(value)
         }
         // Not trimmed as a whole: this is a separated list, and the parser
         // trims each entry. Trimming the list would only drop its outer edges.
@@ -1636,20 +1576,10 @@ mod fee_priority_tests {
     }
 
     #[test]
-    fn a_stored_value_the_three_do_not_name_opens_as_the_default() {
-        let mut file = serde_json::to_value(AppSettings::default()).expect("settings serialize");
-        file["feePriorityByChain"] =
-            serde_json::json!({ "Bitcoin": "priority", "Dogecoin": "lightspeed" });
-        let settings: AppSettings = serde_json::from_value(file)
-            .expect("a settings file with a fourth priority still opens");
-        assert_eq!(
-            settings.fee_priority_by_chain.get("Bitcoin"),
-            Some(&FeePriority::Priority)
-        );
-        assert_eq!(
-            settings.fee_priority_by_chain.get("Dogecoin"),
-            Some(&FeePriority::Normal)
-        );
+    fn unknown_stored_fee_priority_is_refused() {
+        let mut value = serde_json::to_value(AppSettings::default()).unwrap();
+        value["feePriorityByChain"] = serde_json::json!({"Dogecoin": "lightspeed"});
+        assert!(serde_json::from_value::<AppSettings>(value).is_err());
     }
 
     #[test]
@@ -2007,6 +1937,20 @@ mod tests {
             "a custom token survived the reset"
         );
         assert!(reset.state.token_preferences.iter().all(|e| e.is_built_in));
+    }
+
+    #[test]
+    fn stored_settings_require_every_current_field() {
+        let complete = serde_json::to_value(AppSettings::default()).unwrap();
+        for key in complete.as_object().unwrap().keys() {
+            let mut partial = complete.clone();
+            partial.as_object_mut().unwrap().remove(key);
+            assert!(
+                serde_json::from_value::<AppSettings>(partial).is_err(),
+                "{key}"
+            );
+        }
+        assert!(serde_json::from_value::<AppSettings>(complete).is_ok());
     }
 
     #[test]
